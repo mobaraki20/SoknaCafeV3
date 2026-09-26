@@ -38,8 +38,9 @@ Current state:
 - M5.1 Explicit Sellables: complete.
 - M5.2 Canonical Orders: complete.
 - M5.3 Staff Quick Order + server-persistent Table Draft: complete.
-- M5.4 Preparation permission/action owner: complete; verified by M5 Preparation Gate `36254559171` and V3 Component Gates `36254558003`.
-- Next ordered slice: **M5.5 — Inventory**.
+- M5.4 Preparation permission/action owner: complete.
+- M5.5 Inventory: complete; verified by M5 Inventory Gate `36258340099`, M5 Orders Gate `36258340117`, and V3 Component Gates `36258337148`.
+- Next ordered slice: **M5.6 — Supply/Purchase**.
 
 Historical status files remain evidence, but they are not continuation authority when they disagree with `CURRENT_CONTINUATION_FA.md`.
 
