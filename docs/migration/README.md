@@ -2,6 +2,12 @@
 
 This directory is the operational bridge from historical `mobaraki20/SoknaCafe` to the explicit V3 owners.
 
+## Read order
+
+1. `MIGRATION_SLICES.md` — ordered execution plan and exit gates.
+2. `MIGRATION_MATRIX.csv` — capability-by-capability owner/treatment/status inventory.
+3. relevant contract/component/ADR documents before implementation movement.
+
 ## Baseline
 
 - historical repository: `mobaraki20/SoknaCafe`
