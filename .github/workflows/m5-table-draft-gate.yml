@@ -1,0 +1,69 @@
+name: M5 Table Draft Gate
+
+on:
+  pull_request:
+    paths:
+      - 'apps/local-web/**'
+      - 'apps/public/**'
+      - 'tests/local-m5-table-draft-selftest.php'
+      - 'tests/local-mysql-migration-selftest.php'
+      - '.github/workflows/m5-table-draft-gate.yml'
+  push:
+    branches:
+      - main
+      - 'architecture/**'
+      - 'migration/**'
+    paths:
+      - 'apps/local-web/**'
+      - 'apps/public/**'
+      - 'tests/local-m5-table-draft-selftest.php'
+      - 'tests/local-mysql-migration-selftest.php'
+      - '.github/workflows/m5-table-draft-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  table-draft:
+    name: Staff Quick Order + Table Draft / MariaDB
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PDO MySQL is available
+        run: |
+          if ! php -m | grep -qi '^pdo_mysql$'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+      - name: Syntax-check M5.3 owners
+        run: |
+          php -l apps/local-web/src/Domain/Orders/OrderCatalogService.php
+          php -l apps/local-web/src/Domain/Orders/OrderCommitService.php
+          php -l apps/local-web/src/Domain/Orders/StaffQuickOrderService.php
+          php -l apps/local-web/src/Domain/Orders/TableDraftService.php
+      - name: Validate ordered Local migration stack
+        env: &db
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m2
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/local-mysql-migration-selftest.php
+      - name: Validate Table Draft and Staff Quick Order semantics
+        env: *db
+        run: php tests/local-m5-table-draft-selftest.php
