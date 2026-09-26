@@ -37,6 +37,7 @@ require_once __DIR__ . '/src/Domain/Tax/TaxService.php';
 require_once __DIR__ . '/src/Domain/Expenses/ExpenseException.php';
 require_once __DIR__ . '/src/Domain/Finance/FinancialPeriodException.php';
 require_once __DIR__ . '/src/Domain/Finance/FinancialPeriodIdentityService.php';
+require_once __DIR__ . '/src/Domain/Finance/FinancialPeriodService.php';
 require_once __DIR__ . '/src/Domain/Expenses/ExpenseService.php';
 require_once __DIR__ . '/src/Relay/ExpenseDeferredAdapter.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyException.php';
