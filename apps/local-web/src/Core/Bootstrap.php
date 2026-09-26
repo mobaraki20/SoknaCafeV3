@@ -14,6 +14,9 @@ use Sokna\Local\Relay\TableDraftRealtimeAdapter;
 use Sokna\Local\Domain\Preparation\PreparationAccessService;
 use Sokna\Local\Domain\Preparation\PreparationService;
 use Sokna\Local\Relay\PreparationRealtimeAdapter;
+use Sokna\Local\Domain\Inventory\InventoryService;
+use Sokna\Local\Domain\Inventory\InventoryCountService;
+use Sokna\Local\Relay\InventoryDeferredAdapter;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 
 final class Bootstrap
@@ -33,6 +36,9 @@ final class Bootstrap
     private ?PreparationAccessService $preparationAccess = null;
     private ?PreparationService $preparation = null;
     private ?PreparationRealtimeAdapter $preparationRealtime = null;
+    private ?InventoryService $inventory = null;
+    private ?InventoryCountService $inventoryCounts = null;
+    private ?InventoryDeferredAdapter $inventoryDeferred = null;
 
     private function __construct(
         private readonly Config $config,
@@ -141,6 +147,21 @@ final class Bootstrap
     public function preparationRealtime(): PreparationRealtimeAdapter
     {
         return $this->preparationRealtime ??= new PreparationRealtimeAdapter($this->database(), $this->preparation());
+    }
+
+    public function inventory(): InventoryService
+    {
+        return $this->inventory ??= new InventoryService($this->database(), $this->identityRepository(), $this->capabilities());
+    }
+
+    public function inventoryCounts(): InventoryCountService
+    {
+        return $this->inventoryCounts ??= new InventoryCountService($this->database(), $this->inventory());
+    }
+
+    public function inventoryDeferred(): InventoryDeferredAdapter
+    {
+        return $this->inventoryDeferred ??= new InventoryDeferredAdapter($this->database(), $this->inventory(), $this->inventoryCounts());
     }
 
     public function startSession(string $cookiePath = '/', ?bool $secure = null): void
