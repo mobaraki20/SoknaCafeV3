@@ -57,6 +57,7 @@ jobs:
           php -l apps/local-web/src/Domain/Inventory/InventoryException.php
           php -l apps/local-web/src/Domain/Inventory/InventoryService.php
           php -l apps/local-web/src/Domain/Inventory/InventoryCountService.php
+          php -l apps/local-web/src/Domain/Inventory/InventoryOrderService.php
           php -l apps/local-web/src/Relay/InventoryDeferredAdapter.php
       - name: Validate ordered Local migration stack
         env: &db
