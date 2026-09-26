@@ -7,6 +7,8 @@
     "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
     "sources": [
       "includes/relay_protocol.php",
+      "public_edge/bootstrap.php",
+      "public_edge/database/schema.sql",
       "public_edge/api/v1/realtime/enqueue.php",
       "public_edge/api/v1/realtime/result.php",
       "public_edge/api/v1/local/claim.php",
@@ -16,7 +18,8 @@
   "status": "extracted_legacy_wire_contract_for_v3_review",
   "authentication": {
     "algorithm": "HMAC-SHA256",
-    "headers": {
+    "local_required_headers": {
+      "installation": "X-SOKNA-INSTALLATION",
       "timestamp": "X-SOKNA-TIMESTAMP",
       "nonce": "X-SOKNA-NONCE",
       "signature": "X-SOKNA-SIGNATURE"
@@ -31,15 +34,47 @@
     ],
     "separator": "\\n",
     "default_clock_skew_seconds": 300,
-    "replay_guard": "durable_nonce_guard_required"
+    "verification_errors": {
+      "400": ["installation_required"],
+      "401": ["unknown_installation", "invalid_signature", "bad_signature"],
+      "409": ["replay_detected"]
+    },
+    "replay_guard": {
+      "storage": "request_nonces",
+      "primary_key": ["installation_id", "nonce"],
+      "ttl_seconds": "max(60, clock_skew_seconds * 2); default 600",
+      "rule": "nonce is durably inserted after signature verification; duplicate key is replay_detected; expired rows are periodically deleted"
+    }
+  },
+  "capability_map": {
+    "guest_order.submit": "guest_orders",
+    "guest_order.list": "guest_orders",
+    "guest_order.status": "guest_orders",
+    "guest_table.context": "guest_orders",
+    "waiter_call.create": "guest_waiter_call",
+    "waiter_call.status": "guest_waiter_call",
+    "waiter_call.cancel": "guest_waiter_call",
+    "order.edit": "order_edit",
+    "order.cancel": "order_edit",
+    "settlement.commit": "settlement",
+    "preparation.mutate": "preparation",
+    "table_draft.get": "quick_order",
+    "table_draft.create": "quick_order",
+    "table_draft.edit": "quick_order",
+    "table_draft.finalize": "quick_order",
+    "table_draft.cancel": "quick_order"
+  },
+  "persistence": {
+    "table": "realtime_requests",
+    "idempotency_unique_key": ["installation_id", "request_id"],
+    "request_hash": "canonical envelope hash used to distinguish idempotent replay from request_id_conflict",
+    "lease_token_storage": "SHA256 hash only",
+    "state_storage": ["queued", "claimed", "committed", "rejected", "expired", "cancelled", "unknown_review"]
   },
   "request_envelope": {
     "required": ["request_id", "kind", "created_at", "expires_at", "payload", "actor_projection_id_or_session_id"],
     "optional": ["expected_version", "expected_state", "correlation_id"],
-    "request_id": {
-      "max_length": 96,
-      "pattern": "^[A-Za-z0-9._:-]+$"
-    },
+    "request_id": {"max_length": 96, "pattern": "^[A-Za-z0-9._:-]+$"},
     "payload_type": "object",
     "expected_version_types": ["integer", "string"],
     "expected_state_type": "string",
@@ -51,22 +86,10 @@
     "terminal": ["committed", "rejected", "expired", "cancelled", "unknown_review"]
   },
   "kinds": [
-    "guest_order.submit",
-    "guest_order.list",
-    "guest_order.status",
-    "guest_table.context",
-    "waiter_call.create",
-    "waiter_call.status",
-    "waiter_call.cancel",
-    "order.edit",
-    "order.cancel",
-    "settlement.commit",
-    "preparation.mutate",
-    "table_draft.get",
-    "table_draft.create",
-    "table_draft.edit",
-    "table_draft.finalize",
-    "table_draft.cancel"
+    "guest_order.submit", "guest_order.list", "guest_order.status", "guest_table.context",
+    "waiter_call.create", "waiter_call.status", "waiter_call.cancel",
+    "order.edit", "order.cancel", "settlement.commit", "preparation.mutate",
+    "table_draft.get", "table_draft.create", "table_draft.edit", "table_draft.finalize", "table_draft.cancel"
   ],
   "historical_routes": {
     "remote_enqueue": "/api/v1/realtime/enqueue.php",
@@ -79,10 +102,7 @@
       "auth": "Public session",
       "method": "POST",
       "request": "realtime request envelope; actor_projection_id is server-authored from session",
-      "new_response": {
-        "http": 202,
-        "body": {"ok": true, "state": "queued", "deduplicated": false}
-      },
+      "new_response": {"http": 202, "body": {"ok": true, "state": "queued", "deduplicated": false}},
       "deduplicated_response_fields": ["ok=true", "state=current_state", "deduplicated=true", "result", "error_code"],
       "idempotency": "unique installation_id + request_id; same request_id+same canonical envelope returns existing state/result; different canonical envelope returns request_id_conflict",
       "special_rules": [
@@ -90,12 +110,7 @@
         "table_draft.* requires fresh Local connectivity before enqueue",
         "kind capability is enforced against Public session projection"
       ],
-      "errors": {
-        "400": ["invalid_envelope"],
-        "403": ["forbidden"],
-        "409": ["order_intake_disabled", "request_id_conflict"],
-        "503": ["local_unavailable"]
-      }
+      "errors": {"400": ["invalid_envelope"], "403": ["forbidden"], "409": ["order_intake_disabled", "request_id_conflict"], "503": ["local_unavailable"]}
     },
     "local_claim": {
       "auth": "signed Local request",
@@ -105,10 +120,7 @@
       "pre_claim_expiry": "queued rows with expires_at<=UTC now transition to expired and clear lease fields",
       "lease_token": "24 random bytes returned as 48 hex chars; only SHA256(token) is stored",
       "success_fields": ["ok=true", "request=<stored envelope>", "lease_token", "lease_seconds"],
-      "errors": {
-        "404": ["empty_queue"],
-        "409": ["remote_disabled"]
-      }
+      "errors": {"404": ["empty_queue"], "409": ["remote_disabled"]}
     },
     "local_ack": {
       "auth": "signed Local request",
@@ -119,11 +131,7 @@
       "dedupe_rule": "if stored state is already terminal, return that stored state with deduplicated=true without rewriting result",
       "lease_rule": "non-terminal row must be claimed and stored SHA256(lease_token) must match",
       "success_fields": ["ok=true", "state", "deduplicated"],
-      "errors": {
-        "400": ["invalid_ack"],
-        "404": ["not_found"],
-        "409": ["lease_conflict"]
-      }
+      "errors": {"400": ["invalid_ack"], "404": ["not_found"], "409": ["lease_conflict"]}
     },
     "remote_result": {
       "auth": "Public session",
@@ -131,19 +139,16 @@
       "required_query": ["request_id"],
       "access_rule": "session must own actor_projection_id unless capability wildcard *",
       "success_fields": ["ok=true", "state", "terminal", "result", "error_code", "updated_at"],
-      "errors": {
-        "400": ["request_id_required"],
-        "403": ["forbidden"],
-        "404": ["not_found"]
-      }
+      "errors": {"400": ["request_id_required"], "403": ["forbidden"], "404": ["not_found"]}
     }
   },
   "semantic_invariants": [
     "Local revalidates terminal/expiry state before business mutation.",
     "Claim lease expiry permits re-claim, not duplicate business commit.",
-    "Business effect is idempotent by request_id.",
+    "Business effect is idempotent by request_id and persistence uniqueness.",
     "Client success requires a terminal committed result, not enqueue success.",
     "Ambiguity after transport failure is resolved by result lookup; no surprise commit after expiry.",
+    "Signed Local requests are installation-bound and replay-protected by durable nonce storage.",
     "This state machine is never merged with deferred-safe work."
   ],
   "v3_note": "This file captures proven legacy wire semantics for migration. Endpoint names and final V3 version remain draft until producer/consumer implementation and compatibility tests are migrated."
