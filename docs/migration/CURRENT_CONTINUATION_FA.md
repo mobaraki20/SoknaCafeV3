@@ -12,18 +12,18 @@
 
 ## آخرین checkpoint اجرایی تأییدشده
 
-M5.1 Explicit Sellables checkpoint:
+M5.2 Canonical Orders checkpoint:
 
-- Head: `dc096b5d57decf8bf16bfb1ca457491d3c516476`
-- implementation commit: `b5fb10fd932b391978835b540721d535e4dd4564`
-- `M5 Sellables Gate`: run `36244864710` — **SUCCESS**
-- `V3 Component Gates`: run `36244864724` — **SUCCESS**
-- M4 regression gates on the same head also remain **SUCCESS**.
+- Head: `b1628c44c113372516bf094b140241a53993bc53`
+- `M5 Orders Gate`: run `36253424745` — **SUCCESS**
+- `M5 Sellables Gate`: run `36253424706` — **SUCCESS**
+- `V3 Component Gates`: run `36253424830` — **SUCCESS**
+- M4 regression gates on the same head — **SUCCESS**
 
 Canonical evidence:
 
+- `docs/migration/M5_ORDERS_AUDIT_FA.md`
 - `docs/migration/M5_SELLABLES_AUDIT_FA.md`
-- `docs/migration/M4_CLOSURE_EVIDENCE_FA.md`
 
 ## Slice status
 
@@ -33,7 +33,8 @@ Canonical evidence:
 - M3: COMPLETE at Public Edge transport/auth/projection slice level.
 - M4: COMPLETE — Guest Publish/Runtime/Remote Read Models exit gate satisfied.
 - M5.1: **COMPLETE — Explicit Sellables/catalog authority exit gate satisfied.**
-- M5.2: **NEXT — canonical Orders services.**
+- M5.2: **COMPLETE — canonical Orders authority exit gate satisfied.**
+- M5.3: **NEXT — Staff Quick Order + server-persistent Table Draft.**
 - M6: continuous SCDS cross-cutting track.
 - M7..M10: planned / not complete.
 
@@ -54,31 +55,29 @@ Canonical evidence:
 Canonical disposition record:
 `docs/reviews/EXTERNAL_OBSERVER_DISPOSITION_2026-09-26_FA.md`
 
-## Immediate continuation — M5.2 canonical Orders
+## Immediate continuation — M5.3 Staff Quick Order + Table Draft
 
-Do not bulk-copy the historical order stack. Audit/freeze authority first, then implement the smallest canonical transaction owner.
+Historical authority to audit/preserve:
 
-### Historical owners to audit first
-
-- `includes/guest_order_service.php`
-- `includes/guest_order_manage_service.php`
+- `docs/handoffs/PHASE6C_HANDOFF_FA.md`
+- `docs/architecture-migration-r2/PHASE6C_DESIGN_NOTES_FA.md`
+- `includes/table_draft.php`
 - `includes/staff_order_service.php`
 - `staff/api_quick_order.php`
-- `operator/api_bill.php`
-- `orders`, `order_items`, `order_business_sequences`
-- table/session ownership only insofar as canonical order commit requires it
-- business-date/shift snapshot helpers used by order numbering/commit
+- historical Realtime `table_draft.*` adapter/actor behavior
 
-### Frozen M5.2 requirements already known from M5.1
+Frozen requirements:
 
-1. New committed order lines persist explicit `sellable_kind_snapshot` from the locked canonical item row.
-2. Historical committed rows are not backfilled merely to populate sellable classification.
-3. Category/station/name/recipe/takeaway must never infer sellable kind.
-4. Orders remain Local canonical authority; Public compatibility routes only reach them through already-migrated M3 Realtime.
-5. No preparation task, inventory movement, settlement/finance side effect or receipt should be invented outside the historical canonical commit boundary.
-6. Idempotency/client-token behavior, business-order numbering and business-date/shift snapshots must be audited before implementation.
-7. M5.2 must not silently pull Table Draft/Staff Quick Order ownership forward; those are the following sub-slice unless a shared primitive is strictly required for canonical Orders.
-8. Any user-facing Orders UI touched by the migration must follow SCDS in the same sub-slice.
+1. exactly one active draft per table;
+2. server/Local persistence is authoritative; browser-only draft state is not;
+3. optimistic `version` prevents stale writers overwriting newer state;
+4. Save/Edit Draft creates no `orders` row, no business order number and no downstream business side effect;
+5. no auto-expiry — only explicit Finalize/Cancel closes the lifecycle;
+6. Finalize revalidates current table/session/catalog/price/availability/fulfillment and current actor permission;
+7. Finalize delegates to M5.2 canonical `OrderCommitService`; no second order-commit SQL owner;
+8. retried Finalize resolves idempotently to the already-finalized order;
+9. remote draft mutation remains Realtime/Local-required and never Deferred-safe;
+10. no Preparation/Inventory/Finance/Print ownership is pulled forward.
 
 ### M5 remaining dependency order
 
