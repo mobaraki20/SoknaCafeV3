@@ -398,6 +398,68 @@ final class InventoryService
         ];
     }
 
+    /** Resolve a physical operation quantity while snapshotting purchase-unit conversion. */
+    public function resolveOperationQuantityTx(
+        int $itemId,
+        int $purchaseUnitId,
+        mixed $unitCountInput,
+        mixed $actualMajorInput=null
+    ): array {
+        $this->requireTx();
+        $item=$this->itemTx($itemId);
+        if($item===null||(int)$item['active']!==1)throw new InventoryException('item_not_found','کالای انبار معتبر نیست.',404);
+        $unitCount=self::decimal($unitCountInput);
+        if($unitCount<=0)throw new InventoryException('invalid_quantity','مقدار عملیات باید بیشتر از صفر باشد.',422);
+        if($purchaseUnitId<1){
+            $baseQty=self::majorToBase($unitCount,(string)$item['base_unit']);
+            if($baseQty<1)throw new InventoryException('invalid_quantity','مقدار عملیات معتبر نیست.',422);
+            return [
+                'quantity_base'=>$baseQty,'purchase_unit_id'=>null,'purchase_unit_name_snapshot'=>null,
+                'purchase_unit_count'=>null,'conversion_base_quantity_snapshot'=>null,'conversion_mode'=>'base',
+            ];
+        }
+        $stmt=$this->pdo->prepare('SELECT * FROM inventory_purchase_units WHERE id=? AND inventory_item_id=? AND active=1 FOR UPDATE');
+        $stmt->execute([$purchaseUnitId,$itemId]);$unit=$stmt->fetch(PDO::FETCH_ASSOC);
+        if(!is_array($unit))throw new InventoryException('invalid_purchase_unit','واحد خرید معتبر نیست.',422);
+        $mode=(string)$unit['conversion_mode'];
+        $conversion=null;
+        if($mode==='actual_quantity'){
+            $baseQty=self::majorToBase($actualMajorInput,(string)$item['base_unit']);
+            if($baseQty<1)throw new InventoryException('actual_quantity_required','مقدار واقعی این ورود را وارد کن.',422);
+        }else{
+            $conversion=(int)($unit['base_quantity']??0);
+            if($conversion<1)throw new InventoryException('conversion_incomplete','تبدیل این واحد خرید هنوز کامل نشده است.',409);
+            $baseQty=(int)round($unitCount*$conversion);
+        }
+        if($baseQty<1)throw new InventoryException('invalid_quantity','مقدار عملیات معتبر نیست.',422);
+        return [
+            'quantity_base'=>$baseQty,
+            'purchase_unit_id'=>(int)$unit['id'],
+            'purchase_unit_name_snapshot'=>(string)$unit['name'],
+            'purchase_unit_count'=>$unitCount,
+            'conversion_base_quantity_snapshot'=>$conversion,
+            'conversion_mode'=>$mode,
+        ];
+    }
+
+    public static function moneyValue(mixed $value): int
+    {
+        $raw=str_replace([',','٬',' '],'',trim((string)$value));
+        if($raw===''||!preg_match('/^\\d+$/',$raw)||strlen($raw)>18)
+            throw new InventoryException('invalid_cost','مبلغ واردشده معتبر نیست.',422);
+        return (int)$raw;
+    }
+
+    private static function decimal(mixed $value): float
+    {
+        $raw=str_replace([',','٬','٫',' '],['','','.',''],trim((string)$value));
+        if($raw===''||!preg_match('/^(?:\\d+(?:\\.\\d+)?|\\.\\d+)$/',$raw))
+            throw new InventoryException('invalid_quantity','مقدار عددی واردشده معتبر نیست.',422);
+        $number=(float)$raw;
+        if(!is_finite($number)||$number<0)throw new InventoryException('invalid_quantity','مقدار عددی واردشده معتبر نیست.',422);
+        return $number;
+    }
+
     public static function majorToBase(mixed $value,string $baseUnit): int
     {
         $raw=trim((string)$value);
