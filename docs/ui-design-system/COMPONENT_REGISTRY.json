@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "design_system_id": "SCDS-CANONICAL-2026-R1",
+  "status": "v3_migration_foundation",
+  "language": "fa",
+  "direction": "rtl",
+  "previous_sokna_design_systems": "rejected_not_authoritative",
+  "source_baseline": {
+    "repository": "mobaraki20/SoknaCafe",
+    "branch": "work/reconcile-dev39",
+    "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05"
+  },
+  "components": [
+    {
+      "id": "button",
+      "v3_owner": "planned:apps/local-web UI foundation/shared component layer",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".btn", ".btn-primary", ".btn-light", ".btn-danger", ".btn-sm"]
+    },
+    {
+      "id": "icon_button",
+      "v3_owner": "planned:apps/local-web UI foundation/shared component layer",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".icon-btn"]
+    },
+    {
+      "id": "form_control",
+      "v3_owner": "planned:apps/local-web UI foundation/shared component layer",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".form-control"]
+    },
+    {
+      "id": "status_badge",
+      "v3_owner": "planned:shared SCDS state component layer",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".badge", ".status-chip"]
+    },
+    {
+      "id": "card_surface",
+      "v3_owner": "planned:shared SCDS surface layer",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".card"]
+    },
+    {
+      "id": "alert",
+      "v3_owner": "planned:shared SCDS feedback layer",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".alert"]
+    },
+    {
+      "id": "dialog_sheet",
+      "v3_owner": "planned:shared SCDS overlay owner",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".panel-confirm-layer", ".panel-form-dialog-layer", ".success-modal"]
+    },
+    {
+      "id": "tabs",
+      "v3_owner": "planned:shared SCDS navigation layer",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".panel-primary-tabs", ".category-tabs"]
+    },
+    {
+      "id": "data_table",
+      "v3_owner": "planned:shared SCDS responsive data-surface layer",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".data-table", ".mobile-card-table"]
+    },
+    {
+      "id": "quantity_stepper",
+      "v3_owner": "planned:shared SCDS quantity component + canonical behavior",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".quantity-stepper"]
+    },
+    {
+      "id": "jalali_date",
+      "v3_owner": "planned:shared SCDS Jalali date control",
+      "status": "audit_before_migrate",
+      "legacy_selectors": [".jalali-date-control", ".jalali-picker-dialog"]
+    },
+    {
+      "id": "app_shell",
+      "v3_owner": "planned:apps/local-web canonical shell; Public uses approved shared primitives without becoming a parallel generic owner",
+      "status": "legacy_migrating",
+      "legacy_selectors": [".panel-shell", ".side-nav", ".panel-main", ".app-bottom-nav"]
+    },
+    {
+      "id": "system_state_page",
+      "v3_owner": "planned:shared SCDS system-state pattern",
+      "status": "historical_canonical_to_migrate",
+      "historical_owner": "assets/css/scds-system-state.css",
+      "historical_consumers": ["menu/index.php maintenance", "menu/index.php invalid QR"],
+      "requirements": ["Persian RTL", "Vazirmatn", "320px safe", "44px action", "no inline style island"]
+    }
+  ],
+  "rule": "A reusable component has one canonical V3 owner. Status must move toward canonical/retired-legacy; migration must not create a second generic owner."
+}
