@@ -1,28 +1,42 @@
 # SOKNA Cafe V3 — UI Design System
 
-This document is a mandatory V3 product contract for the user interface. It is inherited from the canonical Sokna UI/UX rules in the historical repository and adapted to V3 component boundaries.
+**Canonical Design Authority:** `SCDS-CANONICAL-2026-R1`
 
-## Source lineage
+This document is the mandatory V3 UI engineering contract. It carries the latest approved SOKNA design authority forward into V3 component boundaries.
 
-Historical canonical sources:
+## Source authority and lineage
 
-- `mobaraki20/SoknaCafe/docs/UI_DESIGN_SYSTEM_FA.md`
-- `mobaraki20/SoknaCafe/docs/UI_BEHAVIOR_PRESERVATION_CONTRACT_FA.md`
-- `mobaraki20/SoknaCafe/docs/DECISIONS_FA.md`
+The authoritative historical source is:
 
-During V3 migration, architecture refactoring does not authorize visual or interaction redesign. A deliberate change requires an explicit product decision and corresponding tests.
+- `mobaraki20/SoknaCafe@work/reconcile-dev39/docs/ui-design-system/CANONICAL_DESIGN_SYSTEM_CONTRACT_FA.md`
+- Design System ID: `SCDS-CANONICAL-2026-R1`
+- supporting registry: `docs/ui-design-system/COMPONENT_REGISTRY.json`
+- product language: `docs/ui-design-system/PRODUCT_LANGUAGE_FA.md`
+- migration debt evidence: `docs/ui-design-system/UI_DEBT_BASELINE.json`
+
+Earlier SOKNA Design System versions, freezes and R-series packages are **not Design Authority**. `docs/UI_DESIGN_SYSTEM_FA.md`, older UI freezes and historical ZIP/reference artifacts remain compatibility/provenance evidence only.
+
+`1.36.4-dev.26` is not the final Design System. It may be used only as business/UI provenance and useful visual DNA after audit and correction.
+
+The V3 UI migration formula is:
+
+`Audit -> Correct -> Standardize -> Migrate -> Enforce`
+
+Architecture refactoring is not permission to copy old UI defects or to invent a new visual language per page.
 
 ## 1. Canonical Design-System Rule
 
 SOKNA has one canonical Design System. Agents and contributors must not create page-local substitutes for an existing shared token, component, interaction pattern, visual hierarchy, state model or accessibility behavior.
 
-Before implementing any user-facing change, the contributor must identify the current canonical owner. If no owner exists, the new pattern must first be proposed as a Design-System addition, reviewed, documented and tested before broad consumption.
+Before implementing any user-facing change, the contributor must identify the current canonical owner. If no owner exists, the new reusable pattern enters the Design-System lifecycle before broad consumption.
 
-A page is not allowed to become an accidental design authority merely because it implemented a pattern first.
+A page is never an accidental design authority merely because it implemented a pattern first.
 
 ## 2. Single-owner rule
 
-A reusable UI concern has one canonical owner.
+Every reusable UI concern has exactly one canonical owner.
+
+A page/domain style cannot create a second generic component owner. Parallel implementations are migration debt and must be removed from the migrated scope.
 
 Examples include:
 - buttons and action hierarchy;
@@ -34,180 +48,237 @@ Examples include:
 - focus/keyboard behavior;
 - empty/error/loading/disabled states;
 - record/list shells;
-- shared financial composition;
-- shared navigation and utility actions.
+- navigation and utility actions;
+- shared state presentation.
 
-Parallel implementations are migration debt and must be removed from the migrated scope. Legacy CSS/JS/markup may remain only while an explicit migration plan still references it; it must not silently coexist as an alternate owner.
+Legacy CSS/JS/markup may remain only while an explicit migration inventory still references it. It must not silently coexist as an alternate owner after its consumers have migrated.
 
 ## 3. Pattern lifecycle
 
-A reusable new pattern should move through this lifecycle:
+Reusable new patterns follow:
 
-`Candidate -> Review -> Canonical Owner -> Contract/Regression Gate -> General Use`
+`Candidate -> QA/Review -> Registry -> Canonical Owner -> General Use`
 
-The exact storage mechanism may evolve, but these semantics are mandatory:
-
-1. prove that an existing pattern cannot satisfy the requirement;
-2. define the new pattern at Design-System level rather than page level;
+Required steps:
+1. prove an existing pattern cannot satisfy the requirement;
+2. define the pattern at Design-System level, not page level;
 3. define tokens, states, accessibility and responsive behavior;
-4. add tests/visual or device UAT requirements;
-5. only then allow general page consumption.
+4. register its owner and migration/consumer state;
+5. add contract/browser/visual/device gates appropriate to risk;
+6. only then allow broad reuse.
 
 No agent may bypass this lifecycle by hard-coding a local implementation and calling it an exception without an explicit recorded decision.
 
-## 4. Token-first implementation
+## 4. Token-first foundation
 
-Visual values that represent product semantics must come from shared tokens or explicitly scoped component tokens.
+Semantic tokens own product-level visual meaning. Direct values in components/domains require a reviewed exception.
 
-Do not hard-code page-specific alternatives for:
-- primary/accent/state colors;
-- typography scales/weights;
-- common spacing/radius/shadow;
-- focus visuals;
-- common surface/border semantics;
-- repeated amount/status treatments.
+Required token families include:
+- semantic colors: canvas/surface/text/border/primary/accent/success/warning/danger/info/disabled/focus;
+- typography: family/size/weight/line-height/number presentation;
+- spacing;
+- radius;
+- elevation;
+- motion;
+- z-index;
+- control/touch/density;
+- content widths;
+- responsive/container contracts.
 
-Scoped local tokens are allowed only when the component/family is the explicit owner and the tokens derive from the current product theme rather than creating a private theme.
+`!important`, page-specific specificity patches and breakpoint-per-bug fixes are not normal solutions. Migration must ratchet these debts downward.
 
-## 5. Core UI invariants
+## 5. Core component registry
 
-1. The primary operational UI is Persian and true RTL.
-2. Minimum operational touch target is 44px.
-3. In RTL, primary/confirm/final actions are placed on the right; secondary/cancel/back/reject actions on the left.
-4. Color alone must never communicate state; use text/icon/state semantics as well.
-5. UI is mobile-first and must be validated at 320, 360, 390 and 412px before tablet/desktop.
-6. Stable high-risk surfaces such as Guest, Quick Order, Settlement, financial flows and printing are changed only for an explicit requirement or proven defect.
-7. Refactor is not redesign. Observable workflow, action placement, permissions, state transitions and user-visible outcomes remain stable unless explicitly approved.
-8. Persian/RTL behavior is designed natively; it is not a post-processing flip of an LTR-first implementation.
+At minimum the canonical registry covers:
 
-## 6. Surface ownership and spacing
+Button, IconButton, Input, Textarea, Select/Choice, Search, MoneyInput, JalaliDate, QuantityStepper, Checkbox/Switch, Badge/Status, Alert, Card/Surface, ListRow, DataTable/ResponsiveTable, Tabs, Toolbar/FilterBar, Disclosure, Dialog, Sheet/Drawer, Toast/InlineMessage, EmptyState, Loading/Skeleton, ErrorState, Pagination, PageHeader, AppShell and BottomNav.
 
-- Each independent surface owns its own border/radius.
-- The parent owns spacing/gap between sibling surfaces.
-- Do not fix layout with page-specific margin hacks, specificity patches or stacked overrides.
-- Repeated long lists should not become card-per-row without an operational reason.
-- Empty, filled, error and form states must be covered at mobile breakpoints.
-- A new card/surface is justified by a real context boundary, not merely visual decoration.
+Domain patterns may compose these primitives but must not redefine them.
 
-## 7. Action hierarchy
+Domain families include:
+- Operational / Table / Order / Preparation;
+- Inventory / Supply / Purchase;
+- Finance / Settlement / Expenses / Tax;
+- Printing / Infrastructure;
+- Guest / Public.
 
-- Record/detail headers keep identity on the RTL right side and utility actions in a stable left-side utility slot.
-- Utility actions such as edit, print, download and copy are limited and icon-accessible with `aria-label`/tooltip.
-- Operational tasks use explicit primary/secondary buttons.
-- Destructive actions live in exception/action menus with confirmation and are not placed next to ordinary actions by default.
-- The same semantic action should not change hierarchy from page to page without a documented workflow reason.
+## 6. Persian-first / RTL-first contract
 
-## 8. Shared component state contract
+1. Human UI is Persian and true RTL from the source, not an LTR UI flipped later.
+2. `<html lang="fa" dir="rtl">` or an equivalent server-owned guarantee is required.
+3. Canonical UI font is pinned Vazirmatn unless an explicit requirement changes it.
+4. Layout uses logical inline/block properties; physical left/right is an exception requiring justification.
+5. Technical URL/hash/code/ID content uses local bidi isolation/LTR treatment rather than changing the whole component direction.
+6. Human-readable digits are Persian where appropriate; protocol/API/database values remain canonical ASCII.
+7. Money presentation uses Persian digits/grouping while submit/calculation values stay canonical.
+8. Human dates use one Jalali owner; backend date values remain canonical ISO/Gregorian.
+9. Product vocabulary is canonical Persian and is shared by UI, search placeholders, help, user-facing errors, receipts and print labels.
+10. Persian IME/search/clear/Enter/mobile-keyboard behavior is part of control ownership.
 
-Shared components must define and reuse consistent states where applicable:
+## 7. Product language
 
-- default;
+The current canonical vocabulary rules are versioned with the Design System. At migration start, the historical authority includes these decisions:
+
+- `subscriber / cafe credit customer` -> `مشتری / مشتریان / حساب مشتری`;
+- `مشترک / مشترکین / حساب مشترک` is prohibited for that customer concept;
+- `direct settlement` -> `تسویه`;
+- `shared` may still translate to `مشترک` where it genuinely means shared/common, such as a shared draft or cryptographic secret.
+
+Backend/schema/API compatibility names may remain legacy English; UI vocabulary changes do not imply schema renames.
+
+## 8. Shared state semantics
+
+Architecture/product states use one presentation language across consumers. This includes where applicable:
+
+- pending;
+- deferred;
+- needs_review;
+- conflict;
+- stale;
+- offline;
+- reconnecting;
+- saving;
+- publishing;
 - loading;
 - empty;
 - error;
-- disabled;
-- read-only;
+- disabled/read-only;
 - dirty/unsaved;
 - success/committed;
 - retry/recovery;
 - unavailable/degraded.
 
-Pages must not independently invent conflicting visual or behavioral meanings for these states.
+Pages must not independently invent conflicting colors, vocabulary or interaction behavior for the same semantic state.
 
-## 9. Numeric, money and canonical values
+## 9. Accessibility contract
 
-- Human-readable numeric input is rendered in Persian digits where appropriate.
-- Technical IDs, URLs, codes and canonical transport values stay technical/Latin.
-- Money presentation may use Persian digits and grouping, but submit/API/database values remain canonical integers.
-- Localized numeric controls use semantic `inputmode`; presentation must not be coupled to canonical storage.
-- Invalid numeric input must fail validation rather than be force-cast.
+- keyboard-complete interaction;
+- visible shared `:focus-visible` treatment;
+- focus trap/return for modal/sheet;
+- Escape behavior according to critical-action policy;
+- semantic HTML and valid labels/names;
+- accessible name for icon-only actions;
+- color is never the sole carrier of meaning;
+- `prefers-reduced-motion` support for motion;
+- operational touch target at least 44x44px;
+- contrast plus disabled/read-only differentiation.
 
-## 10. Overlays, drawers and interaction classes
+Accessibility is Definition of Done, not later polish.
 
-- Compact choice -> centered modal.
-- Browse choice -> mobile bottom sheet; suitable desktop presentation.
-- Date/time -> modal.
-- Contextual menu -> desktop popover / mobile action sheet.
-- Nested overlays are prohibited by default.
-- Form drawers have fixed header/footer and one scrollable body.
-- Dirty forms require safe-close confirmation.
-- Protected financial/destructive modals do not gain gesture-dismiss behavior by default.
-- Overlay focus/close behavior is shared behavior, not reimplemented per page.
+## 10. Responsive contract
 
-## 11. Progressive disclosure
+Validation covers at least:
 
-- Low-frequency metadata must not permanently inflate the primary workflow.
-- Optional fields may be added/removed by the user before submit.
-- Healthy states without an action should not dominate the main screen; surface exceptions first.
-- Instruction/help and alerts are distinct UI semantics.
+`320, 360, 390, 412, 768, 1024, 1366/1440px`
 
-## 12. Error, state and safety
+Rules:
+- no horizontal overflow at 320px unless the data surface has a documented canonical pattern;
+- no new breakpoint without registry/design-system ownership;
+- prefer fluid/container-aware layout over breakpoint-per-bug patches;
+- mobile and desktop are one product language, not two unrelated implementations;
+- desktop may increase density/width while preserving vocabulary, hierarchy and state meaning.
 
-- Raw technical errors (`Failed to fetch`, stack traces, PDO errors, raw exception messages) never appear in ordinary UI.
-- Sensitive actions must be retry-safe/idempotent where required.
-- New management side effects must not be hidden behind GET requests.
-- State changes use explicit desired-state semantics rather than blind toggles when correctness matters.
-- Error, retry and degraded-state presentation must reuse shared semantics rather than page-local wording/colors alone.
+## 11. Surface ownership
 
-## 13. Accessibility and focus
+- an independent surface owns its own border/radius;
+- parent owns gap between sibling surfaces;
+- card/surface exists for a real context boundary, not decorative separation alone;
+- long repeated lists must not become card-per-row without operational reason;
+- layout defects are fixed at the owning primitive/root cause rather than with page-local margin/specificity islands.
 
-- Shared focus styling must be clearly visible without layered ring hacks.
-- Closing an overlay restores focus to its trigger when applicable.
-- Icon-only utility actions require accessible labels.
-- State must not be communicated only by color.
-- Keyboard/IME behavior belongs to shared control owners when the same interaction recurs across pages.
+## 12. Action hierarchy
 
-## 14. Date/time controls
+- record/detail identity follows the RTL reading start; utility actions use a stable utility slot;
+- edit/print/download/copy utilities are limited and accessible;
+- operational tasks use explicit primary/secondary controls;
+- destructive actions use exception/action patterns and confirmation;
+- equivalent actions should not change hierarchy from page to page without a documented workflow reason;
+- quantity stepper order/behavior follows the canonical RTL contract with 44px touch targets.
 
-- Jalali calendar layout remains structurally stable; month navigation must not cause modal height jumps.
-- Month navigation arrows remain available; swipe is enhancement, not the only control.
-- Custom date controls remain coherent composite controls rather than overlapping icon hacks.
-- Time controls use explicit semantic minute steps and keep human presentation separate from canonical 24h values.
+## 13. Numeric, money and canonical values
 
-## 15. Responsive contract
+- human numeric presentation may use Persian digits;
+- technical IDs/URLs/codes/canonical transport values stay technical/Latin;
+- localized controls use semantic `inputmode`;
+- presentation is decoupled from storage/transport values;
+- invalid numeric input fails validation rather than being force-cast.
 
-Mobile and desktop are one product language, not two unrelated UIs.
+## 14. Overlays, drawers and interaction classes
 
-- Prefer one data model and semantic markup across breakpoints.
-- Desktop may increase density and workspace width but must retain vocabulary, hierarchy and state meaning.
-- Do not create simultaneous "desktop table + mobile card" implementations for the same feature unless a documented operational requirement proves it necessary.
-- Responsive acceptance must cover at least 320/360/390/412 and relevant tablet/desktop widths for the feature family.
+- compact choice -> centered modal;
+- browse choice -> mobile bottom sheet / suitable desktop presentation;
+- date/time -> modal;
+- contextual menu -> desktop popover / mobile action sheet;
+- nested overlays are prohibited by default;
+- form drawers use fixed header/footer and one scrollable body;
+- dirty forms require safe-close confirmation;
+- protected financial/destructive actions do not gain gesture-dismiss by default;
+- overlay focus/close behavior is owned centrally rather than per page.
 
-## 16. Agent implementation protocol
+## 15. Progressive disclosure
 
-Before an agent creates or changes a page, it must:
+- low-frequency metadata does not permanently inflate primary workflows;
+- optional fields can be added/removed before submit where appropriate;
+- healthy no-action states do not dominate the main screen; exceptions are surfaced first;
+- instruction/help and alerts are different semantics.
 
-1. read this file;
-2. identify existing shared owners/patterns relevant to the page;
-3. reuse those owners rather than recreate them;
-4. identify any missing pattern;
-5. if a reusable pattern is missing, update/propose the Design System before implementing a local substitute;
-6. preserve current approved behavior unless explicit change approval exists;
-7. include appropriate contract/browser/visual/UAT coverage.
+## 16. Error and safety
 
-A change that introduces an undocumented parallel pattern should be treated as a regression even if the page appears visually acceptable in isolation.
+- raw stack/PDO/HTTP/exception messages never appear in ordinary UI;
+- sensitive actions are retry-safe/idempotent when required;
+- management side effects are not hidden behind new GET requests;
+- correctness-sensitive state changes use desired-state semantics, not blind toggles;
+- degraded/retry/error presentation reuses shared semantics.
 
 ## 17. Migration rule
 
-For every migrated Local/Public UI scope:
+Every touched legacy UI scope follows:
 
-1. capture the legacy observable baseline;
-2. identify the canonical V3 UI owner;
-3. move/refactor implementation without changing observable behavior;
-4. remove duplicate/legacy UI owners in the migrated scope;
-5. run contract/browser/visual regression gates;
-6. mark device-sensitive behavior as `UAT_REQUIRED` until tested on real target devices.
+1. inventory the current surface, owner, workflow and observable behavior;
+2. audit against `SCDS-CANONICAL-2026-R1`;
+3. correct legacy defects instead of treating them as requirements;
+4. standardize the reusable primitive/pattern and register its single owner;
+5. migrate consumers;
+6. remove old parallel owners/overrides from the migrated scope;
+7. run Persian/RTL, 320px, keyboard/focus, state/error/loading, browser/visual and risk-appropriate UAT gates;
+8. ratchet relevant legacy debt ceilings downward.
 
-Anything historically built or tested that conflicts with the canonical Design System must be corrected during migration rather than copied forward unchanged.
+This is deliberately **not** a blind visual-preservation rule. Business workflows and valid product behavior are preserved, but defects and rejected Design-System patterns are corrected during migration.
 
-Any intentional redesign must be explicitly marked and documented as `REDESIGN_APPROVED` or `BEHAVIOR_CHANGE_APPROVED` before merge.
+## 18. Agent implementation protocol
 
-## 18. Change control
+Before an agent creates or changes user-facing code it must:
 
-A UI standard change is incomplete unless the same release also updates:
+1. read this contract and the component registry;
+2. identify the canonical owner(s);
+3. identify legacy debt/consumer mappings in the migration inventory;
+4. reuse or migrate canonical owners rather than create a parallel implementation;
+5. if a reusable pattern is missing, register/review it before general use;
+6. preserve valid business behavior while correcting rejected UI debt;
+7. add the appropriate contract/browser/visual/UAT evidence;
+8. remove obsolete owner(s) when the migration slice is complete.
 
-- this Design-System contract or a referenced standards register;
-- the corresponding contract/regression tests;
-- UAT coverage when device/visual verification is required.
+A visually acceptable page that creates a duplicate owner, new style island or unregistered shared pattern is a regression.
 
-The Design System is therefore both documentation and an enforceable engineering contract.
+## 19. Change control and Definition of Done
+
+A UI feature/migration is Complete only when:
+- business behavior regression is absent;
+- canonical component/token ownership is respected;
+- Persian/RTL + 320px + keyboard/focus + state/error/loading gates pass;
+- no duplicate selector owner/style island is introduced;
+- visual/browser/device evidence matches risk;
+- registry and migration inventory reflect owner/consumer status;
+- relevant UI debt does not increase without a reviewed exception.
+
+A Design-System standard change must update in the same change set:
+- this contract or a referenced canonical standard;
+- component/standard registry where ownership changes;
+- corresponding contract/regression tests;
+- UAT/visual/device coverage when required.
+
+## 20. Historical authority policy
+
+The historical source files under `mobaraki20/SoknaCafe@work/reconcile-dev39/docs/ui-design-system/` are the evidence for the V3 starting authority. V3 must progressively own its own canonical registry and standards; it must not depend forever on a mutable historical branch.
+
+Earlier Design System documents can be consulted for compatibility evidence, but cannot overrule `SCDS-CANONICAL-2026-R1` unless an explicit newer V3 ADR/product decision supersedes it.
