@@ -5,7 +5,16 @@
     "repository": "mobaraki20/SoknaCafe",
     "branch": "work/reconcile-dev39",
     "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
-    "source": "includes/relay_protocol.php"
+    "sources": [
+      "includes/relay_protocol.php",
+      "public_edge/api/v1/deferred/enqueue.php",
+      "public_edge/api/v1/deferred/list.php",
+      "public_edge/api/v1/deferred/result.php",
+      "public_edge/api/v1/local/deferred/claim.php",
+      "public_edge/api/v1/local/deferred/ack.php",
+      "public_edge/api/v1/local/deferred/reconcile.php",
+      "public_edge/api/v1/local/deferred/period-status.php"
+    ]
   },
   "status": "extracted_legacy_wire_contract_for_v3_review",
   "authentication": {
@@ -24,7 +33,8 @@
     "expected_version_types": ["integer", "string"],
     "expected_state_type": "string",
     "occurred_at_rule": "must parse and must not be more than 300 seconds in the future",
-    "expires_at": "forbidden_by_semantics"
+    "expires_at": "forbidden_by_semantics",
+    "server_rule": "remote enqueue overwrites actor_projection_id with authenticated Public session projection_id before validation/hash/storage"
   },
   "states": {
     "workflow": ["pending_sync", "committed", "needs_review", "rejected"],
@@ -58,6 +68,99 @@
     "local_ack": "/api/v1/local/deferred/ack.php",
     "local_reconcile": "/api/v1/local/deferred/reconcile.php",
     "local_period_status": "/api/v1/local/deferred/period-status.php"
+  },
+  "operations": {
+    "remote_enqueue": {
+      "auth": "Public session",
+      "method": "POST",
+      "request": "deferred envelope; actor_projection_id is server-authored from session",
+      "capability_rule": "kind maps to a required projected capability and is checked at enqueue",
+      "new_response": {
+        "http": 202,
+        "body": {"ok": true, "state": "pending_sync", "deduplicated": false}
+      },
+      "deduplicated_response_fields": ["ok=true", "state=current_state", "deduplicated=true", "result", "error_code"],
+      "idempotency": "unique installation_id + request_id; same canonical envelope returns existing state/result; different canonical envelope returns request_id_conflict",
+      "errors": {
+        "400": ["invalid_envelope"],
+        "403": ["forbidden"],
+        "409": ["request_id_conflict"]
+      }
+    },
+    "remote_list": {
+      "auth": "Public session",
+      "method": "GET",
+      "access_rule": "wildcard capability may list installation rows; ordinary session only rows matching its actor_projection_id",
+      "limit": 100,
+      "order": "created_at DESC",
+      "item_fields": ["request_id", "kind", "actor_projection_id", "state", "occurred_at", "error_code", "created_at", "updated_at"]
+    },
+    "remote_result": {
+      "auth": "Public session",
+      "method": "GET",
+      "required_query": ["request_id"],
+      "access_rule": "actor access is checked by public_deferred_actor_can_access",
+      "success_fields": ["ok=true", "request_id", "kind", "actor_projection_id", "state", "occurred_at", "result", "error_code", "created_at", "updated_at"],
+      "errors": {
+        "400": ["request_id_required"],
+        "403": ["forbidden"],
+        "404": ["not_found"]
+      }
+    },
+    "local_claim": {
+      "auth": "signed Local request",
+      "method": "POST",
+      "request_fields": {"lease_seconds": "optional integer; clamped 10..120; default 30"},
+      "installation_rules": ["installation must be active", "remote_enabled must be true"],
+      "lease_expiry_rule": "expired lease clears lease_token/lease_expires_at while state remains pending_sync",
+      "selection": "oldest pending_sync unleased row ordered by occurred_at, created_at, request_id",
+      "lease_token": "32 random bytes returned as 64 hex chars; historical deferred implementation stores the token value in deferred_work for lease comparison",
+      "attempt_rule": "claim increments attempt_count",
+      "success_fields": ["ok=true", "lease_token", "lease_seconds", "request=<stored envelope>"],
+      "errors": {
+        "404": ["empty_queue"],
+        "409": ["installation_inactive", "remote_disabled"]
+      }
+    },
+    "local_ack": {
+      "auth": "signed Local request",
+      "method": "POST",
+      "required_fields": ["request_id", "lease_token", "state"],
+      "optional_fields": ["result object", "error_code string truncated to 80 chars"],
+      "state_rule": "state must be deferred terminal state committed|needs_review|rejected",
+      "terminal_dedupe_rule": "if current state is terminal and equals target, return deduplicated=true; different terminal target returns terminal_state_conflict",
+      "lease_rule": "non-terminal row must be pending_sync and lease token must match",
+      "success_fields": ["ok=true", "state", "deduplicated"],
+      "errors": {
+        "400": ["invalid_ack"],
+        "404": ["not_found"],
+        "409": ["terminal_state_conflict", "lease_conflict"]
+      }
+    },
+    "local_reconcile": {
+      "auth": "signed Local request",
+      "method": "POST",
+      "required_fields": ["request_id", "state"],
+      "optional_fields": ["result object", "error_code string truncated to 80 chars"],
+      "target_states": ["committed", "rejected"],
+      "transition_rule": "only needs_review may transition to committed or rejected; if current already equals target return deduplicated=true",
+      "success_fields": ["ok=true", "state", "deduplicated"],
+      "errors": {
+        "400": ["invalid_reconcile"],
+        "404": ["not_found"],
+        "409": ["state_conflict"]
+      }
+    },
+    "local_period_status": {
+      "auth": "signed Local request",
+      "method": "POST",
+      "required_fields": ["from_date YYYY-MM-DD", "to_date YYYY-MM-DD"],
+      "validation": "both strict date strings and to_date >= from_date",
+      "success_fields": ["ok=true", "from_date", "to_date", "counts", "blocking"],
+      "counts_shape": {"pending_sync": 0, "committed": 0, "needs_review": 0, "rejected": 0},
+      "blocking_formula": "pending_sync + needs_review",
+      "errors": {"400": ["invalid_period"]}
+    }
   },
   "semantic_invariants": [
     "Public enqueue persists pending_sync only and is never final business success.",
