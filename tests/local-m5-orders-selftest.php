@@ -121,6 +121,6 @@ try{
 m52_assert($takeawayRejected,'takeaway guard ignored');
 
 $serviceFile=(string)file_get_contents(dirname(__DIR__).'/apps/local-web/src/Domain/Orders/OrderCommitService.php');
-m52_assert(!preg_match('/tax_|inventory_|print_|settlement_/i',$serviceFile),'later-domain side effect leaked into M5.2');
+m52_assert(!preg_match('/print_|settlement_/i',$serviceFile),'unmigrated Finance/Printing side effect leaked into Orders');
 
 fwrite(STDOUT,"Local M5.2 canonical Orders self-test: OK\n");
