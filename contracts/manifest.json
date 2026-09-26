@@ -10,7 +10,10 @@
       "trust_boundary": "authenticated signed Local/Public relay",
       "state_machine": "realtime_local_required",
       "compatibility": "draft-no-stability-claim",
-      "spec": "contracts/local-public-realtime/README.md"
+      "spec": "contracts/local-public-realtime/README.md",
+      "wire_spec": "contracts/local-public-realtime/wire-v1.json",
+      "wire_evidence": "extracted-from-dev39-implementation",
+      "regression_gate": "tests/relay-wire-contract.py"
     },
     {
       "id": "local-public-deferred",
@@ -20,7 +23,10 @@
       "trust_boundary": "authenticated deferred-safe Local/Public reconciliation",
       "state_machine": "deferred_safe_separate_from_realtime",
       "compatibility": "draft-no-stability-claim",
-      "spec": "contracts/local-public-deferred/README.md"
+      "spec": "contracts/local-public-deferred/README.md",
+      "wire_spec": "contracts/local-public-deferred/wire-v1.json",
+      "wire_evidence": "extracted-from-dev39-implementation",
+      "regression_gate": "tests/relay-wire-contract.py"
     },
     {
       "id": "runtime-api",
@@ -30,7 +36,8 @@
       "trust_boundary": "loopback-only machine-authenticated API",
       "state_machine": "os_integration_supervision_only",
       "compatibility": "draft-no-stability-claim",
-      "spec": "contracts/runtime-api/README.md"
+      "spec": "contracts/runtime-api/README.md",
+      "wire_evidence": "boundary-only-not-yet-extracted"
     },
     {
       "id": "print-agent-api",
@@ -40,13 +47,15 @@
       "trust_boundary": "local machine authenticated print/service boundary",
       "state_machine": "durable_print_submission_and_spooler_execution",
       "compatibility": "draft-no-stability-claim",
-      "spec": "contracts/print-agent-api/README.md"
+      "spec": "contracts/print-agent-api/README.md",
+      "wire_evidence": "boundary-only-not-yet-extracted"
     }
   ],
   "rules": [
     "Realtime and deferred-safe state machines are distinct contracts and must never be merged.",
     "Runtime API must not expose business mutations or Local DB writes.",
     "Print Agent API must preserve Print Agent ownership of durable submission/spooler/device state.",
-    "Draft contract versions are boundary declarations, not claims that wire schemas are finalized."
+    "Extracted legacy wire evidence is regression input, not an automatic promise that final V3 endpoint paths remain identical.",
+    "Draft contract versions are boundary declarations, not claims that all producer/consumer implementations are finalized."
   ]
 }
