@@ -12,6 +12,7 @@ use Sokna\PublicEdge\Auth\PublicSessionStore;
 use Sokna\PublicEdge\Connectivity\ConnectivityService;
 use Sokna\PublicEdge\Deferred\DeferredService;
 use Sokna\PublicEdge\Guest\GuestAvailabilityService;
+use Sokna\PublicEdge\Guest\GuestCompatibilityService;
 use Sokna\PublicEdge\Guest\GuestMediaStore;
 use Sokna\PublicEdge\Guest\GuestPublishService;
 use Sokna\PublicEdge\Guest\GuestRuntimeService;
@@ -38,6 +39,7 @@ final class Bootstrap
     private ?GuestPublishService $guestPublishService = null;
     private ?GuestAvailabilityService $guestAvailabilityService = null;
     private ?GuestRuntimeService $guestRuntimeService = null;
+    private ?GuestCompatibilityService $guestCompatibilityService = null;
     private ?RemoteReadModelService $remoteReadModelService = null;
 
     private function __construct(private readonly Config $config)
@@ -154,6 +156,14 @@ final class Bootstrap
     public function guestRuntime(): GuestRuntimeService
     {
         return $this->guestRuntimeService ??= new GuestRuntimeService($this->database());
+    }
+
+    public function guestCompatibility(): GuestCompatibilityService
+    {
+        return $this->guestCompatibilityService ??= new GuestCompatibilityService(
+            $this->guestRuntime(),
+            $this->realtime(),
+        );
     }
 
     public function remoteReadModels(): RemoteReadModelService

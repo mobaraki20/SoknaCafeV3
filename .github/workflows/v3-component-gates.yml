@@ -167,6 +167,9 @@ jobs:
       - name: Validate M4 Remote Read Model sync/read/filter capability scope
         env: *public_db_env
         run: php tests/public-m4-remote-read-model-selftest.php
+      - name: Validate M4 Guest compatibility adapters reuse M3 Realtime
+        env: *public_db_env
+        run: php tests/public-m4-guest-compat-selftest.php
       - name: Validate M3 authoritative auth projection sync
         env: *public_db_env
         run: php tests/public-auth-projection-selftest.php

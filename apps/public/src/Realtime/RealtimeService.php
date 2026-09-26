@@ -11,13 +11,19 @@ final class RealtimeService
 {
     private const TERMINAL = ['committed', 'rejected', 'expired', 'cancelled', 'unknown_review'];
     private const KINDS = [
-        'guest_order.submit', 'guest_order.list', 'guest_order.status', 'guest_table.context',
+        'guest_order.submit', 'guest_order.quote', 'guest_order.list', 'guest_order.status', 'guest_table.context',
         'waiter_call.create', 'waiter_call.status', 'waiter_call.cancel',
         'order.edit', 'order.cancel', 'settlement.commit', 'preparation.mutate',
         'table_draft.get', 'table_draft.create', 'table_draft.edit', 'table_draft.finalize', 'table_draft.cancel',
     ];
+    private const GUEST_KINDS = [
+        'guest_order.submit', 'guest_order.quote', 'guest_order.list', 'guest_order.status', 'guest_table.context',
+        'waiter_call.create', 'waiter_call.status', 'waiter_call.cancel',
+        'order.edit', 'order.cancel',
+    ];
     private const CAPABILITIES = [
         'guest_order.submit' => 'guest.order.submit',
+        'guest_order.quote' => 'guest.order.submit',
         'guest_order.list' => 'guest.order.submit',
         'guest_order.status' => 'guest.order.submit',
         'guest_table.context' => 'guest.order.submit',
@@ -89,6 +95,87 @@ final class RealtimeService
             $existing = $existingStmt->fetch(PDO::FETCH_ASSOC);
             if (is_array($existing)) {
                 if (!hash_equals((string)$existing['request_hash'], $requestHash)) {
+                    $this->pdo->rollBack();
+                    return $this->error(409, 'request_id_conflict');
+                }
+                $this->pdo->commit();
+                return ['status' => 200, 'body' => [
+                    'ok' => true,
+                    'state' => (string)$existing['state'],
+                    'deduplicated' => true,
+                    'result' => self::decodeObject($existing['result_json'] ?? null),
+                    'error_code' => (string)($existing['error_code'] ?? ''),
+                ]];
+            }
+
+            $insert = $this->pdo->prepare(
+                'INSERT INTO realtime_requests(installation_id,request_id,request_hash,kind,actor_projection_id,envelope_json,state,expires_at) ' .
+                'VALUES(?,?,?,?,?,?,?,?)'
+            );
+            $insert->execute([$installationId, $requestId, $requestHash, $kind, $projectionId, $canonical, 'queued', $expiresAt]);
+            $this->pdo->commit();
+        } catch (Throwable $e) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $e;
+        }
+
+        return ['status' => 202, 'body' => ['ok' => true, 'state' => 'queued', 'deduplicated' => false]];
+    }
+
+    /**
+     * Guest compatibility uses the same authoritative Realtime queue but preserves
+     * dev.39 retry identity: timestamps may change while kind+actor+payload stay stable.
+     */
+    public function enqueueGuest(string $installationId, array $envelope): array
+    {
+        $installationId = trim($installationId);
+        if ($installationId === '') return $this->error(401, 'unauthorized');
+
+        unset($envelope['session_id']);
+        $validation = $this->validateEnvelope($envelope);
+        if ($validation['errors'] !== []) {
+            return ['status' => 400, 'body' => ['ok' => false, 'error' => 'invalid_envelope', 'fields' => $validation['errors']]];
+        }
+
+        $kind = (string)$envelope['kind'];
+        if (!in_array($kind, self::GUEST_KINDS, true)) {
+            return $this->error(403, 'forbidden');
+        }
+
+        $flags = $this->installationFlags($installationId);
+        if ($flags === null || !$flags['active'] || !$flags['remote_enabled']) {
+            return $this->error(409, 'remote_disabled');
+        }
+
+        $requestId = (string)$envelope['request_id'];
+        $projectionId = (string)$envelope['actor_projection_id'];
+        $canonical = self::canonicalJson($envelope);
+        $requestHash = hash('sha256', $canonical);
+        $expiresAt = gmdate('Y-m-d H:i:s', (int)$validation['expires_ts']);
+        $logical = [
+            'kind' => $kind,
+            'actor_projection_id' => $projectionId,
+            'payload' => (array)$envelope['payload'],
+        ];
+        $logicalHash = hash('sha256', self::canonicalJson($logical));
+
+        $this->pdo->beginTransaction();
+        try {
+            $existingStmt = $this->pdo->prepare(
+                'SELECT state,result_json,error_code,envelope_json FROM realtime_requests ' .
+                'WHERE installation_id=? AND request_id=? FOR UPDATE'
+            );
+            $existingStmt->execute([$installationId, $requestId]);
+            $existing = $existingStmt->fetch(PDO::FETCH_ASSOC);
+            if (is_array($existing)) {
+                $oldEnvelope = self::decodeObject($existing['envelope_json'] ?? null);
+                $oldLogical = is_array($oldEnvelope) ? [
+                    'kind' => (string)($oldEnvelope['kind'] ?? ''),
+                    'actor_projection_id' => (string)($oldEnvelope['actor_projection_id'] ?? ''),
+                    'payload' => is_array($oldEnvelope['payload'] ?? null) ? $oldEnvelope['payload'] : [],
+                ] : [];
+                $oldLogicalHash = hash('sha256', self::canonicalJson($oldLogical));
+                if (!hash_equals($oldLogicalHash, $logicalHash)) {
                     $this->pdo->rollBack();
                     return $this->error(409, 'request_id_conflict');
                 }

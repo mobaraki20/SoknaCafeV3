@@ -22,8 +22,10 @@ require_once __DIR__ . '/src/Guest/GuestMediaStore.php';
 require_once __DIR__ . '/src/Guest/GuestPublishService.php';
 require_once __DIR__ . '/src/Guest/GuestAvailabilityService.php';
 require_once __DIR__ . '/src/Guest/GuestRuntimeService.php';
+require_once __DIR__ . '/src/Guest/GuestCompatibilityService.php';
 require_once __DIR__ . '/src/Remote/RemoteReadModelService.php';
 require_once __DIR__ . '/src/Http/RemoteReadModelHttpAdapter.php';
+require_once __DIR__ . '/src/Http/GuestCompatibilityHttpAdapter.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_public_bootstrap(array $config): Bootstrap
