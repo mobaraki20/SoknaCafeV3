@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "status": "foundation",
+  "contracts": [
+    {
+      "id": "local-public-realtime",
+      "version": "0.1.0-draft",
+      "producer_owners": ["apps/local-web", "apps/public"],
+      "consumer_owners": ["apps/local-web", "apps/public"],
+      "trust_boundary": "authenticated signed Local/Public relay",
+      "state_machine": "realtime_local_required",
+      "compatibility": "draft-no-stability-claim",
+      "spec": "contracts/local-public-realtime/README.md"
+    },
+    {
+      "id": "local-public-deferred",
+      "version": "0.1.0-draft",
+      "producer_owners": ["apps/local-web", "apps/public"],
+      "consumer_owners": ["apps/local-web", "apps/public"],
+      "trust_boundary": "authenticated deferred-safe Local/Public reconciliation",
+      "state_machine": "deferred_safe_separate_from_realtime",
+      "compatibility": "draft-no-stability-claim",
+      "spec": "contracts/local-public-deferred/README.md"
+    },
+    {
+      "id": "runtime-api",
+      "version": "0.1.0-draft",
+      "producer_owners": ["windows/runtime"],
+      "consumer_owners": ["apps/local-web"],
+      "trust_boundary": "loopback-only machine-authenticated API",
+      "state_machine": "os_integration_supervision_only",
+      "compatibility": "draft-no-stability-claim",
+      "spec": "contracts/runtime-api/README.md"
+    },
+    {
+      "id": "print-agent-api",
+      "version": "0.1.0-draft",
+      "producer_owners": ["windows/print-agent"],
+      "consumer_owners": ["apps/local-web", "windows/runtime"],
+      "trust_boundary": "local machine authenticated print/service boundary",
+      "state_machine": "durable_print_submission_and_spooler_execution",
+      "compatibility": "draft-no-stability-claim",
+      "spec": "contracts/print-agent-api/README.md"
+    }
+  ],
+  "rules": [
+    "Realtime and deferred-safe state machines are distinct contracts and must never be merged.",
+    "Runtime API must not expose business mutations or Local DB writes.",
+    "Print Agent API must preserve Print Agent ownership of durable submission/spooler/device state.",
+    "Draft contract versions are boundary declarations, not claims that wire schemas are finalized."
+  ]
+}
