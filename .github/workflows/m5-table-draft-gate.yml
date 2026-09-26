@@ -56,6 +56,7 @@ jobs:
           php -l apps/local-web/src/Domain/Orders/OrderCommitService.php
           php -l apps/local-web/src/Domain/Orders/StaffQuickOrderService.php
           php -l apps/local-web/src/Domain/Orders/TableDraftService.php
+          php -l apps/local-web/src/Relay/TableDraftRealtimeAdapter.php
       - name: Validate ordered Local migration stack
         env: &db
           SOKNA_TEST_DB_HOST: 127.0.0.1
