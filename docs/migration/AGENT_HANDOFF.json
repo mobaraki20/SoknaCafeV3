@@ -17,10 +17,11 @@
     "2e9c3b9",
     "0489e16",
     "69ea035",
-    "f9aedc6"
+    "f9aedc6",
+    "d404d92"
   ],
   "current_phase": "M10",
-  "working_tree_m10_uncommitted": true,
+  "working_tree_m10_uncommitted": false,
   "local_passed_checks": [
     "tests/m10-release-qualification.py",
     "tests/m9-packaging-gate.py",
@@ -44,5 +45,6 @@
     "windows_clean_install",
     "physical_thermal_printer",
     "responsive_touch_persian_ime"
-  ]
+  ],
+  "m10_commit": "d404d9238c6c40ac214da13245a7da0d50c4eaa4"
 }

@@ -22,6 +22,7 @@ In order:
 4. `0489e16` — `feat(m7): implement Windows Runtime contract and Local trigger owner`
 5. `69ea035` — `feat(m8): migrate durable Print Agent and Local print owner`
 6. `f9aedc6` — `feat(m9): implement immutable packaging and unified setup lifecycle`
+7. `d404d92` — `feat(m10): qualify recovery installer and release lifecycle`
 
 These commits are local continuation commits; do not recreate them from chat prose.
 
@@ -29,7 +30,7 @@ These commits are local continuation commits; do not recreate them from chat pro
 
 **M10 — Release Qualification / Recovery / Installer stabilization**
 
-M10 implementation exists in the working tree but was not yet committed at the time this handoff was written.
+M10 implementation is committed locally at `d404d9238c6c40ac214da13245a7da0d50c4eaa4`.
 
 ### Main M10 additions/changes
 
@@ -94,8 +95,8 @@ These require real Windows/hardware interaction before a production release. Aut
 
 1. Re-check current `git status` and `git diff --check`.
 2. Review M10 working-tree diff for security/recovery correctness; do not remove fail-closed UAT policy.
-3. Commit M10 locally as one coherent commit once review is complete.
-4. Update canonical continuation docs (`CURRENT_CONTINUATION_FA.md`, matrix, README/START_HERE as appropriate) to reflect M5.11/M6/M7/M8/M9/M10 actual state.
+3. M10 is already committed locally; do not recreate it from prose.
+4. Update/verify canonical continuation docs (`CURRENT_CONTINUATION_FA.md`, matrix, README/START_HERE as appropriate) to reflect M5.11/M6/M7/M8/M9/M10 actual state.
 5. Produce one integration candidate from the local branch and push it to GitHub only once.
 6. Run the full CI suite, especially `M10 Release Qualification`.
 7. Fix only evidence-based CI defects; rerun until green.
