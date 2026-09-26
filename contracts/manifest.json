@@ -35,36 +35,45 @@
     {
       "id": "runtime-api",
       "version": "0.1.0-draft",
-      "producer_owners": ["windows/runtime"],
-      "consumer_owners": ["apps/local-web"],
-      "trust_boundary": "loopback-only machine-authenticated API",
+      "producer_owners": ["windows/runtime", "apps/local-web"],
+      "consumer_owners": ["apps/local-web", "windows/runtime"],
+      "trust_boundary": "loopback-only machine-authenticated bidirectional Runtime/Local boundary",
       "state_machine": "os_integration_supervision_only",
-      "compatibility": "draft-no-stability-claim",
+      "compatibility": "new-v3-versioned-contract-informed-by-historical-evidence",
       "spec": "contracts/runtime-api/README.md",
       "historical_audit": "contracts/runtime-api/historical-audit-v1.json",
+      "v3_contract": "contracts/runtime-api/contract-v1.json",
+      "compatibility_vectors": "contracts/runtime-api/compatibility-vectors-v1.json",
       "wire_evidence": "historical-cli-state-scm-audited-no-stable-http-api",
-      "regression_gate": "tests/runtime-print-contract-audit.py"
+      "adr": "docs/adr/0001-runtime-local-contract-direction.md",
+      "regression_gates": ["tests/runtime-print-contract-audit.py", "tests/runtime-print-v1-contract.py"]
     },
     {
       "id": "print-agent-api",
       "version": "0.1.0-draft",
-      "producer_owners": ["windows/print-agent"],
-      "consumer_owners": ["apps/local-web", "windows/runtime"],
-      "trust_boundary": "local machine authenticated print/service boundary",
+      "producer_owners": ["apps/local-web", "windows/print-agent"],
+      "consumer_owners": ["windows/print-agent", "apps/local-web", "windows/runtime"],
+      "trust_boundary": "authenticated Local/Print Agent server boundary plus paired loopback browser bridge",
       "state_machine": "durable_print_submission_and_spooler_execution",
-      "compatibility": "draft-no-stability-claim",
+      "compatibility": "retain-proven-v4-server-and-v1-loopback-semantics",
       "spec": "contracts/print-agent-api/README.md",
       "historical_audit": "contracts/print-agent-api/historical-audit-v1.json",
+      "server_wire": "contracts/print-agent-api/server-wire-v4.json",
+      "loopback_wire": "contracts/print-agent-api/loopback-v1.json",
+      "compatibility_vectors": "contracts/print-agent-api/compatibility-vectors-v4.json",
       "wire_evidence": "historical-print-api-v4-and-loopback-bridge-audited",
-      "regression_gate": "tests/runtime-print-contract-audit.py"
+      "regression_gates": ["tests/runtime-print-contract-audit.py", "tests/runtime-print-v1-contract.py"]
     }
   ],
   "rules": [
     "Realtime and deferred-safe state machines are distinct contracts and must never be merged.",
     "Runtime API must not expose business mutations or Local DB writes.",
-    "Historical Runtime has no stable HTTP API; any V3 Runtime HTTP/IPC surface is a new versioned contract constrained by audited CLI/state/SCM semantics.",
-    "Print Agent API must preserve Print Agent ownership of durable submission/spooler/device state.",
-    "Extracted legacy wire evidence is regression input, not an automatic promise that final V3 endpoint paths remain identical.",
-    "Draft contract versions are boundary declarations, not claims that all producer/consumer implementations are finalized."
+    "Historical Runtime has no stable HTTP API; the V3 Runtime/Local contract is new/versioned and constrained by audited CLI/state/SCM semantics.",
+    "Runtime trigger requests are allowlisted scheduling intents only; they never carry executable/shell/SQL/business payloads.",
+    "Public/Internet never directly controls Windows Runtime.",
+    "Print Agent API preserves Print Agent ownership of durable submission/spooler/device state and retains the mature accept/start/report submission fence.",
+    "Print loopback wake/preview is separate from durable print submission and cannot become an alternate business/print authority.",
+    "Extracted legacy wire evidence is regression input, not an automatic promise that every historical endpoint path remains identical forever.",
+    "Draft contract versions are boundary declarations and M1 executable evidence, not claims that producer/consumer implementations are already migrated or release-qualified."
   ]
 }
