@@ -41,8 +41,8 @@ $tables = array_values(array_map('strval', $pdo->query('SHOW TABLES')->fetchAll(
 foreach (['menus','categories','menu_categories','items','menu_items'] as $table) {
     m5_sellable_assert(in_array($table, $tables, true), "M5.1 sellable/catalog table {$table} is missing.");
 }
-foreach (['orders','order_items','table_drafts','inventory_items','financial_periods'] as $notM51) {
-    m5_sellable_assert(!in_array($notM51, $tables, true), "M5.1 leaked later-domain table {$notM51} into Sellables scope.");
+foreach (['table_drafts','inventory_items','financial_periods','settlement_records','print_jobs'] as $laterDomain) {
+    m5_sellable_assert(!in_array($laterDomain, $tables, true), "Current Local stack leaked post-M5.2 domain table {$laterDomain}.");
 }
 
 m5_sellable_assert(SellableKind::normalizeRead(null) === SellableKind::MENU_ITEM, 'Legacy-safe missing kind did not normalize to menu_item.');
