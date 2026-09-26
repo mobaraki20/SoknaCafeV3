@@ -74,7 +74,7 @@ final class StaffQuickOrderService
             $token='S'.bin2hex(random_bytes(24));
             $insert=$this->pdo->prepare(
                 "INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,opened_by_user_id,started_at,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot)
-                 VALUES(?,?,'active',?,?,NOW(),?,?,?,?,?)"
+                 VALUES(?,?,'active',?,?,NOW(),?,?,?,?)"
             );
             $insert->execute([
                 $token,$tableId,$tableId,$userId,
