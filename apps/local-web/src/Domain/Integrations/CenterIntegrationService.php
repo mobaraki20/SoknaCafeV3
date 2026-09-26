@@ -19,6 +19,25 @@ final class CenterIntegrationService
         return ['version'=>1,'source_version'=>hash('sha256',$canonical),'generated_at'=>gmdate('Y-m-d\TH:i:s\Z'),'users'=>$users];
     }
 
+    public function syncProjection(): array
+    {
+        if(!(bool)$this->config->get('integrations.center.enabled',false))return ['status'=>'disabled','source_version'=>''];
+        $base=rtrim($this->config->string('integrations.center.base_url',''),'/');$secret=$this->config->string('integrations.center.secret','');
+        if($base===''||$secret==='')throw new IntegrationException('center_not_configured','اتصال مرکز سکنا تنظیم نشده است.',409);
+        $parts=parse_url($base);$host=strtolower((string)($parts['host']??''));$scheme=strtolower((string)($parts['scheme']??''));
+        if($scheme!=='https'&&!in_array($host,['localhost','127.0.0.1','::1'],true))throw new IntegrationException('insecure_endpoint','ارتباط مرکز سکنا باید HTTPS باشد.',409);
+        $projection=$this->projection();$this->recordProjectionAttempt($projection,'pending');
+        $now=time();$payload=['issuer'=>'cafe','audience'=>'center','purpose'=>'user_projection','context'=>'CAFE','timestamp'=>$now,'expires_at'=>$now+60,'nonce'=>bin2hex(random_bytes(24)),'source_version'=>$projection['source_version']];
+        $header=self::b64(json_encode(['typ'=>'SOKNA-S2S','alg'=>'HS256'],JSON_UNESCAPED_SLASHES));$body=self::b64(json_encode($payload,JSON_UNESCAPED_SLASHES));$token=$header.'.'.$body.'.'.self::b64(hash_hmac('sha256',$header.'.'.$body,$secret,true));
+        $form=http_build_query(['token'=>$token,'projection'=>json_encode($projection,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)],'','&',PHP_QUERY_RFC3986);
+        $ctx=stream_context_create(['http'=>['method'=>'POST','timeout'=>5,'ignore_errors'=>true,'header'=>"Content-Type: application/x-www-form-urlencoded\r\n",'content'=>$form]]);
+        $raw=@file_get_contents($base.'/api/s2s/cafe_users_sync.php',false,$ctx);
+        if($raw===false){$this->recordProjectionAttempt($projection,'failed','transport_error');return ['status'=>'failed','source_version'=>$projection['source_version'],'error_code'=>'transport_error'];}
+        $data=json_decode($raw,true);$ack=is_array($data)&&($data['ok']??false)===true?(string)($data['data']['source_version']??''):'';
+        if($ack===''||!hash_equals((string)$projection['source_version'],$ack)){$this->recordProjectionAttempt($projection,'failed','ack_mismatch');return ['status'=>'failed','source_version'=>$projection['source_version'],'error_code'=>'ack_mismatch'];}
+        $this->recordProjectionAttempt($projection,'synced');return ['status'=>'synced','source_version'=>$ack,'count'=>count($projection['users'])];
+    }
+
     public function recordProjectionAttempt(array $projection,string $state,string $errorCode=''): void
     {
         $state=in_array($state,['pending','synced','failed'],true)?$state:'failed';

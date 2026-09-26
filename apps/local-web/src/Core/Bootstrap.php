@@ -27,6 +27,8 @@ use Sokna\Local\Domain\Integrations\SubscriberService;
 use Sokna\Local\Domain\Integrations\AccommodationTransport;
 use Sokna\Local\Domain\Integrations\AccommodationService;
 use Sokna\Local\Domain\Integrations\CenterIntegrationService;
+use Sokna\Local\Runtime\RuntimeTriggerService;
+use Sokna\Local\Http\RuntimeTriggerHttpAdapter;
 use Sokna\Local\Domain\Expenses\ExpenseService;
 use Sokna\Local\Relay\ExpenseDeferredAdapter;
 use Sokna\Local\Domain\Supply\SupplyAccessService;
@@ -65,6 +67,8 @@ final class Bootstrap
     private ?AccommodationTransport $accommodationTransport = null;
     private ?AccommodationService $accommodation = null;
     private ?CenterIntegrationService $centerIntegration = null;
+    private ?RuntimeTriggerService $runtimeTriggers = null;
+    private ?RuntimeTriggerHttpAdapter $runtimeTriggerHttp = null;
     private ?ExpenseService $expenses = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
@@ -245,6 +249,22 @@ final class Bootstrap
     public function centerIntegration(): CenterIntegrationService
     {
         return $this->centerIntegration ??= new CenterIntegrationService($this->database(), $this->config, $this->identityRepository());
+    }
+
+    public function runtimeTriggers(): RuntimeTriggerService
+    {
+        return $this->runtimeTriggers ??= new RuntimeTriggerService($this->database(), [
+            'inventory.order_events'=>fn():array=>$this->inventoryOrders()->processPending(30),
+            'center.user_projection'=>fn():array=>$this->centerIntegration()->syncProjection(),
+            'maintenance.health'=>fn():array=>['ok'=>true,'checked_at'=>date(DATE_ATOM)],
+        ]);
+    }
+
+    public function runtimeTriggerHttp(): RuntimeTriggerHttpAdapter
+    {
+        return $this->runtimeTriggerHttp ??= new RuntimeTriggerHttpAdapter(
+            $this->runtimeTriggers(), $this->config->string('runtime.local_token','')
+        );
     }
 
     public function financialPeriodClose(): FinancialPeriodCloseService
