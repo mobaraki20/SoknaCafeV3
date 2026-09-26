@@ -11,6 +11,7 @@ use Sokna\PublicEdge\Auth\PublicLoginService;
 use Sokna\PublicEdge\Auth\PublicSessionStore;
 use Sokna\PublicEdge\Connectivity\ConnectivityService;
 use Sokna\PublicEdge\Deferred\DeferredService;
+use Sokna\PublicEdge\Health\PublicHealthService;
 use Sokna\PublicEdge\Realtime\RealtimeService;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
 
@@ -27,6 +28,7 @@ final class Bootstrap
     private ?ConnectivityService $connectivityService = null;
     private ?RealtimeService $realtimeService = null;
     private ?DeferredService $deferredService = null;
+    private ?PublicHealthService $healthService = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -115,5 +117,10 @@ final class Bootstrap
     public function deferred(): DeferredService
     {
         return $this->deferredService ??= new DeferredService($this->database());
+    }
+
+    public function health(): PublicHealthService
+    {
+        return $this->healthService ??= new PublicHealthService($this->database());
     }
 }

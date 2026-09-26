@@ -138,6 +138,8 @@ jobs:
         run: python3 tests/public-m3-contract.py
       - name: Validate M3 Realtime/Deferred transport ownership contracts
         run: python3 tests/public-m3-transport-contract.py
+      - name: Validate M3 Public health/safe-error contract
+        run: python3 tests/public-health-contract.py
       - name: Ensure PDO MySQL is available
         shell: bash
         run: |
@@ -175,6 +177,9 @@ jobs:
       - name: Validate M3 Deferred-safe producer/consumer transport
         env: *public_db_env
         run: php tests/public-deferred-selftest.php
+      - name: Validate M3 Public health and safe-error behavior
+        env: *public_db_env
+        run: php tests/public-health-selftest.php
 
   runtime:
     name: Windows Runtime gate (foundation stage)
