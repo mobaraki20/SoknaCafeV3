@@ -32,6 +32,8 @@ require_once __DIR__ . '/src/Domain/Inventory/InventoryService.php';
 require_once __DIR__ . '/src/Domain/Inventory/InventoryCountService.php';
 require_once __DIR__ . '/src/Domain/Inventory/InventoryOrderService.php';
 require_once __DIR__ . '/src/Relay/InventoryDeferredAdapter.php';
+require_once __DIR__ . '/src/Domain/Tax/TaxException.php';
+require_once __DIR__ . '/src/Domain/Tax/TaxService.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyException.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyAccessService.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyService.php';
