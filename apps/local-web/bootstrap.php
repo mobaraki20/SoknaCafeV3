@@ -27,6 +27,10 @@ require_once __DIR__ . '/src/Domain/Preparation/PreparationAccessService.php';
 require_once __DIR__ . '/src/Domain/Preparation/PreparationException.php';
 require_once __DIR__ . '/src/Domain/Preparation/PreparationService.php';
 require_once __DIR__ . '/src/Relay/PreparationRealtimeAdapter.php';
+require_once __DIR__ . '/src/Domain/Inventory/InventoryException.php';
+require_once __DIR__ . '/src/Domain/Inventory/InventoryService.php';
+require_once __DIR__ . '/src/Domain/Inventory/InventoryCountService.php';
+require_once __DIR__ . '/src/Relay/InventoryDeferredAdapter.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_local_bootstrap(array $config): Bootstrap
