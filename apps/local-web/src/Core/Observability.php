@@ -21,7 +21,9 @@ final class Observability
     {
         $environment = trim((string)(getenv('SOKNA_DATA_DIR') ?: ''));
         $root = $environment !== '' ? $environment : $config->requiredString('app.data_dir');
-        return new self(rtrim($root, "\\/"));
+        $instance = new self(rtrim($root, "\\/"));
+        $instance->bootHttp();
+        return $instance;
     }
 
     public function dataRoot(): string
@@ -43,11 +45,21 @@ final class Observability
     {
         if ($this->requestCorrelationId !== null) return $this->requestCorrelationId;
 
+        if ($candidate === null && PHP_SAPI !== 'cli') {
+            $candidate = (string)($_SERVER['HTTP_X_SOKNA_CORRELATION_ID'] ?? '');
+        }
+
         $candidate = trim((string)$candidate);
         if ($candidate !== '' && preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$/D', $candidate) === 1) {
             return $this->requestCorrelationId = $candidate;
         }
         return $this->requestCorrelationId = bin2hex(random_bytes(16));
+    }
+
+    public function bootHttp(): void
+    {
+        if (PHP_SAPI === 'cli' || headers_sent()) return;
+        header('X-Sokna-Correlation-ID: ' . $this->correlationId());
     }
 
     public function redact(mixed $value, string $key = '', int $depth = 0): mixed
@@ -72,11 +84,12 @@ final class Observability
         $level = strtolower(trim($level));
         if (!in_array($level, ['debug', 'info', 'warning', 'error', 'critical'], true)) $level = 'info';
         $event = preg_replace('/[^A-Za-z0-9_.:-]+/', '_', trim($event)) ?: 'event';
+        $resolvedCorrelationId = $this->correlationId($correlationId);
         $entry = [
             'ts' => gmdate('Y-m-d\\TH:i:s\\Z'),
             'level' => $level,
             'event' => $event,
-            'correlation_id' => $this->correlationId($correlationId),
+            'correlation_id' => $resolvedCorrelationId,
             'pid' => getmypid(),
             'context' => $this->redact($context),
         ];
@@ -91,7 +104,7 @@ final class Observability
         } catch (Throwable) {
             // Fall through without exposing the original context.
         }
-        error_log('[SOKNA][' . $level . '][' . $event . ']');
+        error_log('[SOKNA][' . $level . '][' . $event . '] correlation_id=' . $resolvedCorrelationId);
     }
 
     public function atomicJsonWrite(string $path, array $payload): void
