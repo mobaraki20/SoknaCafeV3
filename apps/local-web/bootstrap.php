@@ -22,6 +22,7 @@ require_once __DIR__ . '/src/Domain/Orders/StaffQuickOrderException.php';
 require_once __DIR__ . '/src/Domain/Orders/StaffQuickOrderService.php';
 require_once __DIR__ . '/src/Domain/Orders/TableDraftException.php';
 require_once __DIR__ . '/src/Domain/Orders/TableDraftService.php';
+require_once __DIR__ . '/src/Relay/TableDraftRealtimeAdapter.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_local_bootstrap(array $config): Bootstrap
