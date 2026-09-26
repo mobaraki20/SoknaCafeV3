@@ -7,6 +7,8 @@
     "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
     "sources": [
       "includes/relay_protocol.php",
+      "public_edge/bootstrap.php",
+      "public_edge/database/schema.sql",
       "public_edge/api/v1/deferred/enqueue.php",
       "public_edge/api/v1/deferred/list.php",
       "public_edge/api/v1/deferred/result.php",
@@ -18,17 +20,44 @@
   },
   "status": "extracted_legacy_wire_contract_for_v3_review",
   "authentication": {
-    "inherits": "realtime HMAC-SHA256 request signing",
-    "headers": ["X-SOKNA-TIMESTAMP", "X-SOKNA-NONCE", "X-SOKNA-SIGNATURE"],
-    "default_clock_skew_seconds": 300
+    "inherits": "realtime HMAC-SHA256 installation-bound Local request verification",
+    "local_required_headers": ["X-SOKNA-INSTALLATION", "X-SOKNA-TIMESTAMP", "X-SOKNA-NONCE", "X-SOKNA-SIGNATURE"],
+    "default_clock_skew_seconds": 300,
+    "verification_errors": {
+      "400": ["installation_required"],
+      "401": ["unknown_installation", "invalid_signature", "bad_signature"],
+      "409": ["replay_detected"]
+    },
+    "replay_guard": {
+      "storage": "request_nonces",
+      "primary_key": ["installation_id", "nonce"],
+      "ttl_seconds": "max(60, clock_skew_seconds * 2); default 600",
+      "rule": "same durable nonce guard as signed realtime Local requests"
+    }
+  },
+  "capability_map": {
+    "supply.need.create": "supply_need_create",
+    "supply.status.prepare": "supply_prepare_return",
+    "supply.status.return": "supply_prepare_return",
+    "supply.receipt": "supply_receipt",
+    "inventory.waste": "inventory_waste",
+    "inventory.count_draft": "inventory_count",
+    "subscriber.payment": "subscribers",
+    "expense.create": "expenses"
+  },
+  "persistence": {
+    "table": "deferred_work",
+    "idempotency_primary_key": ["installation_id", "request_id"],
+    "request_hash": "canonical envelope hash distinguishes idempotent replay from request_id_conflict",
+    "lease_token_storage": "historical deferred implementation stores lease token value for comparison",
+    "attempt_count": "increments on claim",
+    "state_storage": ["pending_sync", "committed", "needs_review", "rejected"],
+    "indexes": "dedicated claim/period/actor indexes; storage remains separate from realtime_requests"
   },
   "request_envelope": {
     "required": ["request_id", "kind", "created_at", "occurred_at", "payload", "actor_projection_id_or_session_id"],
     "optional": ["expected_version", "expected_state", "correlation_id"],
-    "request_id": {
-      "max_length": 96,
-      "pattern": "^[A-Za-z0-9._:-]+$"
-    },
+    "request_id": {"max_length": 96, "pattern": "^[A-Za-z0-9._:-]+$"},
     "payload_type": "object",
     "expected_version_types": ["integer", "string"],
     "expected_state_type": "string",
@@ -41,24 +70,12 @@
     "terminal": ["committed", "needs_review", "rejected"]
   },
   "kinds": [
-    "supply.need.create",
-    "supply.status.prepare",
-    "supply.status.return",
-    "supply.receipt",
-    "inventory.waste",
-    "inventory.count_draft",
-    "subscriber.payment",
-    "expense.create"
+    "supply.need.create", "supply.status.prepare", "supply.status.return", "supply.receipt",
+    "inventory.waste", "inventory.count_draft", "subscriber.payment", "expense.create"
   ],
   "forbidden_realtime_or_local_required_examples": [
-    "settlement",
-    "committed-order mutation",
-    "preparation mutation",
-    "inventory count finalize",
-    "inventory correction",
-    "payment reversal",
-    "expense reversal",
-    "catalog/users/theme mutation"
+    "settlement", "committed-order mutation", "preparation mutation", "inventory count finalize",
+    "inventory correction", "payment reversal", "expense reversal", "catalog/users/theme mutation"
   ],
   "historical_routes": {
     "remote_enqueue": "/api/v1/deferred/enqueue.php",
@@ -74,88 +91,58 @@
       "auth": "Public session",
       "method": "POST",
       "request": "deferred envelope; actor_projection_id is server-authored from session",
-      "capability_rule": "kind maps to a required projected capability and is checked at enqueue",
-      "new_response": {
-        "http": 202,
-        "body": {"ok": true, "state": "pending_sync", "deduplicated": false}
-      },
+      "capability_rule": "kind maps to required projected capability",
+      "new_response": {"http": 202, "body": {"ok": true, "state": "pending_sync", "deduplicated": false}},
       "deduplicated_response_fields": ["ok=true", "state=current_state", "deduplicated=true", "result", "error_code"],
       "idempotency": "unique installation_id + request_id; same canonical envelope returns existing state/result; different canonical envelope returns request_id_conflict",
-      "errors": {
-        "400": ["invalid_envelope"],
-        "403": ["forbidden"],
-        "409": ["request_id_conflict"]
-      }
+      "errors": {"400": ["invalid_envelope"], "403": ["forbidden"], "409": ["request_id_conflict"]}
     },
     "remote_list": {
-      "auth": "Public session",
-      "method": "GET",
-      "access_rule": "wildcard capability may list installation rows; ordinary session only rows matching its actor_projection_id",
-      "limit": 100,
-      "order": "created_at DESC",
+      "auth": "Public session", "method": "GET",
+      "access_rule": "wildcard capability may list installation rows; ordinary session only matching actor_projection_id",
+      "limit": 100, "order": "created_at DESC",
       "item_fields": ["request_id", "kind", "actor_projection_id", "state", "occurred_at", "error_code", "created_at", "updated_at"]
     },
     "remote_result": {
-      "auth": "Public session",
-      "method": "GET",
-      "required_query": ["request_id"],
-      "access_rule": "actor access is checked by public_deferred_actor_can_access",
+      "auth": "Public session", "method": "GET", "required_query": ["request_id"],
+      "access_rule": "actor access checked by deferred actor access owner",
       "success_fields": ["ok=true", "request_id", "kind", "actor_projection_id", "state", "occurred_at", "result", "error_code", "created_at", "updated_at"],
-      "errors": {
-        "400": ["request_id_required"],
-        "403": ["forbidden"],
-        "404": ["not_found"]
-      }
+      "errors": {"400": ["request_id_required"], "403": ["forbidden"], "404": ["not_found"]}
     },
     "local_claim": {
-      "auth": "signed Local request",
-      "method": "POST",
+      "auth": "signed Local request", "method": "POST",
       "request_fields": {"lease_seconds": "optional integer; clamped 10..120; default 30"},
       "installation_rules": ["installation must be active", "remote_enabled must be true"],
       "lease_expiry_rule": "expired lease clears lease_token/lease_expires_at while state remains pending_sync",
       "selection": "oldest pending_sync unleased row ordered by occurred_at, created_at, request_id",
-      "lease_token": "32 random bytes returned as 64 hex chars; historical deferred implementation stores the token value in deferred_work for lease comparison",
+      "lease_token": "32 random bytes returned as 64 hex chars; historical deferred implementation stores token value",
       "attempt_rule": "claim increments attempt_count",
       "success_fields": ["ok=true", "lease_token", "lease_seconds", "request=<stored envelope>"],
-      "errors": {
-        "404": ["empty_queue"],
-        "409": ["installation_inactive", "remote_disabled"]
-      }
+      "errors": {"404": ["empty_queue"], "409": ["installation_inactive", "remote_disabled"]}
     },
     "local_ack": {
-      "auth": "signed Local request",
-      "method": "POST",
+      "auth": "signed Local request", "method": "POST",
       "required_fields": ["request_id", "lease_token", "state"],
       "optional_fields": ["result object", "error_code string truncated to 80 chars"],
-      "state_rule": "state must be deferred terminal state committed|needs_review|rejected",
-      "terminal_dedupe_rule": "if current state is terminal and equals target, return deduplicated=true; different terminal target returns terminal_state_conflict",
+      "state_rule": "committed|needs_review|rejected only",
+      "terminal_dedupe_rule": "same terminal target => deduplicated=true; different terminal target => terminal_state_conflict",
       "lease_rule": "non-terminal row must be pending_sync and lease token must match",
       "success_fields": ["ok=true", "state", "deduplicated"],
-      "errors": {
-        "400": ["invalid_ack"],
-        "404": ["not_found"],
-        "409": ["terminal_state_conflict", "lease_conflict"]
-      }
+      "errors": {"400": ["invalid_ack"], "404": ["not_found"], "409": ["terminal_state_conflict", "lease_conflict"]}
     },
     "local_reconcile": {
-      "auth": "signed Local request",
-      "method": "POST",
+      "auth": "signed Local request", "method": "POST",
       "required_fields": ["request_id", "state"],
       "optional_fields": ["result object", "error_code string truncated to 80 chars"],
       "target_states": ["committed", "rejected"],
-      "transition_rule": "only needs_review may transition to committed or rejected; if current already equals target return deduplicated=true",
+      "transition_rule": "only needs_review may transition to committed or rejected; current target is deduplicated",
       "success_fields": ["ok=true", "state", "deduplicated"],
-      "errors": {
-        "400": ["invalid_reconcile"],
-        "404": ["not_found"],
-        "409": ["state_conflict"]
-      }
+      "errors": {"400": ["invalid_reconcile"], "404": ["not_found"], "409": ["state_conflict"]}
     },
     "local_period_status": {
-      "auth": "signed Local request",
-      "method": "POST",
+      "auth": "signed Local request", "method": "POST",
       "required_fields": ["from_date YYYY-MM-DD", "to_date YYYY-MM-DD"],
-      "validation": "both strict date strings and to_date >= from_date",
+      "validation": "strict dates and to_date >= from_date",
       "success_fields": ["ok=true", "from_date", "to_date", "counts", "blocking"],
       "counts_shape": {"pending_sync": 0, "committed": 0, "needs_review": 0, "rejected": 0},
       "blocking_formula": "pending_sync + needs_review",
@@ -169,7 +156,8 @@
     "Receipt/result persistence precedes ACK so reclaim after lost ACK cannot duplicate business effect.",
     "Conflict or closed-period work can become needs_review.",
     "Review resolution is explicit and audited; no silent financial-period reopen/back-post.",
-    "Realtime and deferred stores/claim paths remain separate."
+    "Signed Local requests are installation-bound and replay-protected by the shared durable nonce guard.",
+    "Realtime and deferred persistence and claim paths remain separate."
   ],
   "v3_note": "This captures proven deferred-safe semantics from dev39. Final V3 endpoint/schema compatibility remains draft until executable producer/consumer migrations are complete."
 }
