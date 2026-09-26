@@ -14,6 +14,7 @@ use Sokna\PublicEdge\Deferred\DeferredService;
 use Sokna\PublicEdge\Guest\GuestAvailabilityService;
 use Sokna\PublicEdge\Guest\GuestCompatibilityService;
 use Sokna\PublicEdge\Guest\GuestMediaStore;
+use Sokna\PublicEdge\Guest\GuestPageRenderer;
 use Sokna\PublicEdge\Guest\GuestPublishService;
 use Sokna\PublicEdge\Guest\GuestRuntimeService;
 use Sokna\PublicEdge\Health\PublicHealthService;
@@ -40,6 +41,7 @@ final class Bootstrap
     private ?GuestAvailabilityService $guestAvailabilityService = null;
     private ?GuestRuntimeService $guestRuntimeService = null;
     private ?GuestCompatibilityService $guestCompatibilityService = null;
+    private ?GuestPageRenderer $guestPageRenderer = null;
     private ?RemoteReadModelService $remoteReadModelService = null;
 
     private function __construct(private readonly Config $config)
@@ -164,6 +166,11 @@ final class Bootstrap
             $this->guestRuntime(),
             $this->realtime(),
         );
+    }
+
+    public function guestRenderer(): GuestPageRenderer
+    {
+        return $this->guestPageRenderer ??= new GuestPageRenderer($this->guestRuntime());
     }
 
     public function remoteReadModels(): RemoteReadModelService

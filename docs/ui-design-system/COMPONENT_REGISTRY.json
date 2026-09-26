@@ -89,7 +89,26 @@
       "status": "historical_canonical_to_migrate",
       "historical_owner": "assets/css/scds-system-state.css",
       "historical_consumers": ["menu/index.php maintenance", "menu/index.php invalid QR"],
+      "v3_guest_consumer": "apps/public/src/Guest/GuestPageRenderer.php uses the domain-scoped .sg-system-state consumer without claiming a second generic owner",
       "requirements": ["Persian RTL", "Vazirmatn", "320px safe", "44px action", "no inline style island"]
+    },
+    {
+      "id": "guest_menu_shell",
+      "v3_owner": "apps/public/src/Guest/GuestPageRenderer.php + apps/public/assets/scds/guest.css",
+      "status": "canonical_migrated_m4",
+      "scope": "Guest/Public domain only; must not become a generic button/card/input owner",
+      "v3_selectors": [".sg-app", ".sg-header", ".sg-search", ".sg-category-nav", ".sg-category", ".sg-item", ".sg-action-state", ".sg-system-state"],
+      "legacy_evidence": ["public_edge/guest/index.php", "includes/guest_menu_view.php", "assets/css/guest-menu.css"],
+      "requirements": ["Persian RTL from server", "read-only degraded mode", "320px safe", "keyboard focus", "reduced motion", "escaped snapshot text", "no inline style island", "sg-* domain namespace"]
+    },
+    {
+      "id": "guest_order_flow",
+      "v3_owner": "apps/public/assets/scds/guest.js + apps/public/src/Guest/GuestCompatibilityService.php",
+      "status": "canonical_migrated_m4",
+      "scope": "Guest interaction controller; canonical business mutation remains Local through M3 Realtime",
+      "v3_selectors": [".sg-quantity", ".sg-basket", ".sg-waiter", ".sg-inline-message"],
+      "legacy_evidence": ["assets/js/menu.js", "public_edge/api/v1/guest/compat/*"],
+      "requirements": ["44px touch targets", "no mutation while degraded", "retry-safe compatibility path", "no innerHTML injection", "no second Realtime queue"]
     }
   ],
   "rule": "A reusable component has one canonical V3 owner. Status must move toward canonical/retired-legacy; migration must not create a second generic owner."
