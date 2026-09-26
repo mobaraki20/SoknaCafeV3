@@ -5,6 +5,7 @@ namespace Sokna\Local\Core;
 
 use DateTimeZone;
 use PDO;
+use Sokna\Local\Domain\Sellables\SellableRepository;
 
 final class Bootstrap
 {
@@ -13,6 +14,7 @@ final class Bootstrap
     private ?Capabilities $capabilities = null;
     private ?Auth $auth = null;
     private ?Migrations $migrations = null;
+    private ?SellableRepository $sellables = null;
 
     private function __construct(
         private readonly Config $config,
@@ -65,6 +67,11 @@ final class Bootstrap
     {
         $directory = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'migrations';
         return $this->migrations ??= new Migrations($this->database(), $directory);
+    }
+
+    public function sellables(): SellableRepository
+    {
+        return $this->sellables ??= new SellableRepository($this->database());
     }
 
     public function startSession(string $cookiePath = '/', ?bool $secure = null): void

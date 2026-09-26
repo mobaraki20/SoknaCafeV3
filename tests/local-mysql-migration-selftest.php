@@ -31,25 +31,31 @@ $core = sokna_local_bootstrap([
     ],
 ]);
 
+$expected = ['0001_m2_platform_core', '0002_m5_sellables'];
 $first = $core->migrations()->migrate();
-if ($first !== ['0001_m2_platform_core']) {
-    mysql_migration_fail('First M2 migration pass did not apply exactly the expected migration.');
+if ($first !== $expected) {
+    mysql_migration_fail('First Local migration pass did not apply the expected ordered migration stack: ' . json_encode($first));
 }
 $second = $core->migrations()->migrate();
-if ($second !== []) mysql_migration_fail('Second M2 migration pass was not idempotent.');
+if ($second !== []) mysql_migration_fail('Second Local migration pass was not idempotent.');
 
 $pdo = $core->database();
 $tables = array_values(array_map('strval', $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN)));
-foreach (['schema_migrations', 'settings', 'users', 'user_capabilities', 'audit_log'] as $table) {
-    if (!in_array($table, $tables, true)) mysql_migration_fail("Expected M2 table {$table} is missing after migrate().");
+foreach (['schema_migrations', 'settings', 'users', 'user_capabilities', 'audit_log', 'menus', 'categories', 'items', 'menu_items'] as $table) {
+    if (!in_array($table, $tables, true)) mysql_migration_fail("Expected Local table {$table} is missing after migrate().");
 }
 if (in_array('user_preparation_areas', $tables, true)) {
-    mysql_migration_fail('M2 created user_preparation_areas even though that schema belongs to Orders/Preparation.');
+    mysql_migration_fail('Local migration stack created user_preparation_areas before the Preparation sub-slice owns it.');
+}
+foreach (['orders', 'order_items', 'table_drafts', 'inventory_items', 'financial_periods'] as $laterDomain) {
+    if (in_array($laterDomain, $tables, true)) mysql_migration_fail("M5.1 Sellables leaked later-domain table {$laterDomain}.");
 }
 
 $marker = $pdo->prepare('SELECT COUNT(*) FROM schema_migrations WHERE version=?');
-$marker->execute(['0001_m2_platform_core']);
-if ((int)$marker->fetchColumn() !== 1) mysql_migration_fail('Migration ledger marker is missing or duplicated.');
+foreach ($expected as $version) {
+    $marker->execute([$version]);
+    if ((int)$marker->fetchColumn() !== 1) mysql_migration_fail("Migration ledger marker {$version} is missing or duplicated.");
+}
 
 $passwordHash = password_hash('ci-password', PASSWORD_DEFAULT);
 $insertUser = $pdo->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)');
@@ -69,4 +75,4 @@ if (!in_array('actor_display_name_snapshot', array_map('strval', $columns), true
     mysql_migration_fail('Audit compatibility snapshot column is missing from the real migrated schema.');
 }
 
-fwrite(STDOUT, "Local MariaDB M2 migration self-test: OK\n");
+fwrite(STDOUT, "Local MariaDB migration stack self-test: OK\n");
