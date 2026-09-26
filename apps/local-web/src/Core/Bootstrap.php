@@ -23,6 +23,10 @@ use Sokna\Local\Domain\Finance\FinancialPeriodIdentityService;
 use Sokna\Local\Domain\Finance\FinancialPeriodService;
 use Sokna\Local\Domain\Finance\SettlementService;
 use Sokna\Local\Domain\Finance\FinancialPeriodCloseService;
+use Sokna\Local\Domain\Integrations\SubscriberService;
+use Sokna\Local\Domain\Integrations\AccommodationTransport;
+use Sokna\Local\Domain\Integrations\AccommodationService;
+use Sokna\Local\Domain\Integrations\CenterIntegrationService;
 use Sokna\Local\Domain\Expenses\ExpenseService;
 use Sokna\Local\Relay\ExpenseDeferredAdapter;
 use Sokna\Local\Domain\Supply\SupplyAccessService;
@@ -57,6 +61,10 @@ final class Bootstrap
     private ?FinancialPeriodService $financialPeriods = null;
     private ?SettlementService $settlements = null;
     private ?FinancialPeriodCloseService $financialPeriodClose = null;
+    private ?SubscriberService $subscribers = null;
+    private ?AccommodationTransport $accommodationTransport = null;
+    private ?AccommodationService $accommodation = null;
+    private ?CenterIntegrationService $centerIntegration = null;
     private ?ExpenseService $expenses = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
@@ -213,8 +221,30 @@ final class Bootstrap
     public function settlements(): SettlementService
     {
         return $this->settlements ??= new SettlementService(
-            $this->database(), $this->identityRepository(), $this->capabilities(), $this->businessClock(), $this->financialPeriods(), $this->tax()
+            $this->database(), $this->identityRepository(), $this->capabilities(), $this->businessClock(), $this->financialPeriods(), $this->tax(), $this->subscribers()
         );
+    }
+
+    public function subscribers(): SubscriberService
+    {
+        return $this->subscribers ??= new SubscriberService($this->database(), $this->identityRepository());
+    }
+
+    public function accommodationTransport(): AccommodationTransport
+    {
+        return $this->accommodationTransport ??= new AccommodationTransport($this->config);
+    }
+
+    public function accommodation(): AccommodationService
+    {
+        return $this->accommodation ??= new AccommodationService(
+            $this->database(), $this->identityRepository(), $this->capabilities(), $this->settlements(), $this->accommodationTransport()
+        );
+    }
+
+    public function centerIntegration(): CenterIntegrationService
+    {
+        return $this->centerIntegration ??= new CenterIntegrationService($this->database(), $this->config, $this->identityRepository());
     }
 
     public function financialPeriodClose(): FinancialPeriodCloseService
