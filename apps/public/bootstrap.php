@@ -11,6 +11,7 @@ require_once __DIR__ . '/src/Auth/AuthThrottle.php';
 require_once __DIR__ . '/src/Auth/AuthSecurityAudit.php';
 require_once __DIR__ . '/src/Auth/PublicSessionStore.php';
 require_once __DIR__ . '/src/Auth/PublicLoginService.php';
+require_once __DIR__ . '/src/Security/SignedLocalRequestVerifier.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_public_bootstrap(array $config): Bootstrap

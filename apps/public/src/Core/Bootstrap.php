@@ -9,6 +9,7 @@ use Sokna\PublicEdge\Auth\AuthSecurityAudit;
 use Sokna\PublicEdge\Auth\AuthThrottle;
 use Sokna\PublicEdge\Auth\PublicLoginService;
 use Sokna\PublicEdge\Auth\PublicSessionStore;
+use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
 
 final class Bootstrap
 {
@@ -19,6 +20,7 @@ final class Bootstrap
     private ?AuthSecurityAudit $authSecurityAudit = null;
     private ?PublicSessionStore $publicSessions = null;
     private ?PublicLoginService $publicLoginService = null;
+    private ?SignedLocalRequestVerifier $signedLocalRequestVerifier = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -80,6 +82,17 @@ final class Bootstrap
             $this->authThrottle(),
             $this->publicSessions(),
             $this->authAudit(),
+        );
+    }
+
+    public function signedLocalRequests(): SignedLocalRequestVerifier
+    {
+        $secrets = $this->config->get('relay.installation_secrets', []);
+        if (!is_array($secrets)) $secrets = [];
+        return $this->signedLocalRequestVerifier ??= new SignedLocalRequestVerifier(
+            $this->database(),
+            $secrets,
+            max(30, (int)$this->config->get('relay.clock_skew_seconds', 300)),
         );
     }
 }
