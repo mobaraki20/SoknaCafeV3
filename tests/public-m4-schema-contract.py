@@ -51,7 +51,13 @@ for table in sorted(expected_tables):
     if table not in audit:
         fail(f'M4 audit does not document owner table {table}.')
 
-if 'Local remains the source of canonical catalog/business data and the publish decision' not in audit:
+legacy_owner_wording = 'Local remains the source of canonical catalog/business data and the publish decision' in audit
+closed_owner_wording = (
+    '### Local remains owner of' in audit
+    and 'canonical catalog/table/menu/business source data;' in audit
+    and 'publish decision/source versions;' in audit
+)
+if not (legacy_owner_wording or closed_owner_wording):
     fail('M4 audit no longer freezes Local canonical/publish-decision ownership.')
 if 'read models never accept business mutations' not in audit:
     fail('M4 audit no longer freezes read-model non-mutation authority.')
