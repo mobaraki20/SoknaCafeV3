@@ -21,6 +21,7 @@ require_once __DIR__ . '/src/Health/PublicHealthService.php';
 require_once __DIR__ . '/src/Guest/GuestMediaStore.php';
 require_once __DIR__ . '/src/Guest/GuestPublishService.php';
 require_once __DIR__ . '/src/Guest/GuestAvailabilityService.php';
+require_once __DIR__ . '/src/Guest/GuestRuntimeService.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_public_bootstrap(array $config): Bootstrap

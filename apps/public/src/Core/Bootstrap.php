@@ -14,6 +14,7 @@ use Sokna\PublicEdge\Deferred\DeferredService;
 use Sokna\PublicEdge\Guest\GuestAvailabilityService;
 use Sokna\PublicEdge\Guest\GuestMediaStore;
 use Sokna\PublicEdge\Guest\GuestPublishService;
+use Sokna\PublicEdge\Guest\GuestRuntimeService;
 use Sokna\PublicEdge\Health\PublicHealthService;
 use Sokna\PublicEdge\Realtime\RealtimeService;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
@@ -35,6 +36,7 @@ final class Bootstrap
     private ?GuestMediaStore $guestMediaStore = null;
     private ?GuestPublishService $guestPublishService = null;
     private ?GuestAvailabilityService $guestAvailabilityService = null;
+    private ?GuestRuntimeService $guestRuntimeService = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -145,5 +147,10 @@ final class Bootstrap
     public function guestAvailability(): GuestAvailabilityService
     {
         return $this->guestAvailabilityService ??= new GuestAvailabilityService($this->database());
+    }
+
+    public function guestRuntime(): GuestRuntimeService
+    {
+        return $this->guestRuntimeService ??= new GuestRuntimeService($this->database());
     }
 }
