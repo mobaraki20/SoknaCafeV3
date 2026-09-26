@@ -26,6 +26,14 @@
 > رفتارها و فرایندهای موجود نباید تغییر کنند، مگر آنکه تغییر مشخصی صریحاً در
 > Handover/اسناد مورد تأیید درخواست شده باشد.
 
+تکمیل ثبت‌شده درباره چاپ:
+
+> Print Agent قدیمی قرار نیست دور انداخته شود. کد، منطق و safety behaviorهای مفید
+> آن باید audit و در Print Agent محلی جدید استفاده شوند. در معماری مقصد، Print
+> Agent یک عامل local/machine-bound است و نباید endpoint قابل دسترسی از
+> Public/Internet داشته باشد. انتخاب transport داخلی مانند loopback یا IPC باید
+> طبق Handover و معماری نهایی انجام شود؛ «محلی بودن» به معنی حذف منطق بالغ چاپ نیست.
+
 بنابراین «متفاوت بودن با legacy» به‌تنهایی نه اثبات regression است و نه اثبات یک
 تصمیم درست V3. برای نمونه، درخواست صریح **Table Draft** می‌تواند به‌طور مشروع روی
 مدل دامنه، سرویس‌ها، persistence، permission و contract اثر بگذارد. Agent مالک
@@ -319,15 +327,58 @@ checks/review مطابق فرایند پروژه فعال شود. این مور�
 
 ---
 
-## EOR-09 — محدوده Print Agent در این بازبینی
+## EOR-09 — مسیر مهاجرت Print Agent: reuse محلی، نه حذف
 
-**وضعیت:** OUT OF SCOPE برای ادامه فعلی مهاجرت SoknaCafe
+**اولویت بررسی:** P1 پیش از شروع M8؛ blocker مستقیم ادامه M3 نیست
 
+**حکم ناظر:** هدف محصول روشن است، ولی قرارداد/transport نهایی باید توسط Agent مالک
+مهاجرت با این هدف تطبیق داده شود.
 
-Print Agent یک deployable مستقل است. تأخیر چاپ، installer، preview/paper parity و
-physical printer UAT در این checkpoint به‌عنوان مانع M2/M3 اعلام نمی‌شوند. تنها
-موضوع مرتبط با V3، حفظ boundary و contract versioned میان Local/Runtime/Print است.
-هر کار عملیاتی Print باید در milestone و پذیرش مستقل خودش انجام شود.
+### قید ثبت‌شده
+
+- Print Agent قدیمی منبع migration evidence و reusable implementation است؛ قرار
+  نیست کل آن حذف یا بدون audit از نو نوشته شود.
+- state machine، idempotency، receipt/content-hash fence، retry/recovery، تشخیص
+  وضعیت مبهم، rendering مفید، Winspool/driver integration و diagnostics آن باید
+  برای reuse/refactor بررسی شوند.
+- مقصد، یک Agent محلی و machine-bound است.
+- هیچ Print endpoint نباید از Public یا Internet قابل دسترسی یا کنترل باشد.
+- Runtime فقط lifecycle آن را supervise می‌کند و نباید state machine چاپ را جذب کند.
+- Local همچنان مالک business print intent و محتوای business document است.
+
+### نقطه‌ای که باید reconcile شود
+
+اسناد فعلی M1، `server-wire-v4.json` را به‌عنوان retained Print API معرفی می‌کنند
+و مسیر تاریخی `windows/print-agent -> apps/local-web print server API` را نگه
+داشته‌اند. این می‌تواند صرفاً حفظ semantics بالغ claim/accept/start/report باشد؛
+اما نباید به‌طور خودکار به معنی حفظ transport اینترنتی یا endpoint remotely
+reachable در V3 تفسیر شود.
+
+شواهد فعلی:
+
+- `contracts/print-agent-api/server-wire-v4.json`
+- `contracts/print-agent-api/loopback-v1.json`
+- `contracts/print-agent-api/README.md`
+- `docs/migration/MIGRATION_SLICES.md`، بخش M8
+- `docs/migration/MIGRATION_MATRIX.csv`، ردیف‌های Printing
+- lineage پروژه `Pagent` و implementationهای چاپ در baseline تاریخی
+
+### شرط بستن
+
+1. یک reuse inventory بنویس که برای هر بخش قدیمی نتیجه `REUSE`، `REFACTOR`،
+   `REPLACE` یا `RETIRE` و دلیل آن را ثبت کند؛ حذف کلی مجاز نیست.
+2. قرارداد مقصد صریحاً network scope را local-only تعریف کند. اگر HTTP استفاده
+   می‌شود باید loopback/machine-authenticated و بدون bind عمومی باشد؛ اگر IPC یا
+   روش دیگری انتخاب می‌شود، ADR و تست معادل لازم است.
+3. تست اثبات کند Public/Internet نمی‌تواند Print Agent را discover، submit یا
+   control کند و چاپ محلی در قطع اینترنت همچنان طبق رفتار مورد انتظار کار می‌کند.
+4. safety semantics بالغ مانند idempotency، durable receipt،
+   `accept -> start -> physical execution -> report` و جلوگیری از blind reprint
+   حفظ یا با جایگزین اثبات‌شده پوشش داده شوند.
+5. قرارداد `server-wire-v4` تا زمان تصمیم transport به‌عنوان **historical semantic
+   baseline** تفسیر شود، نه الزام به حفظ دسترسی اینترنتی.
+6. تأخیر چاپ، installer، preview/paper parity و physical printer UAT در milestone
+   مستقل Print تکمیل شوند و مانع مصنوعی برای M2/M3 ایجاد نکنند.
 
 ---
 
