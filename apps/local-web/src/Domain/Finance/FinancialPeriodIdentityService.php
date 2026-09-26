@@ -6,7 +6,6 @@ namespace Sokna\Local\Domain\Finance;
 use DateTimeImmutable;
 use PDO;
 use PDOException;
-use Sokna\Local\Domain\Expenses\ExpenseException;
 
 final class FinancialPeriodIdentityService
 {
@@ -34,7 +33,7 @@ final class FinancialPeriodIdentityService
             if((string)$e->getCode()!=='23000')throw $e;
         }
         $stmt->execute([$day]);$period=$stmt->fetch(PDO::FETCH_ASSOC);
-        if(!is_array($period))throw new ExpenseException('period_unavailable','دوره مالی متناسب با تاریخ ساخته نشد.',500);
+        if(!is_array($period))throw new FinancialPeriodException('period_unavailable','دوره مالی متناسب با تاریخ ساخته نشد.',500);
         return $period;
     }
 
@@ -43,7 +42,7 @@ final class FinancialPeriodIdentityService
         $this->requireTx();
         $stmt=$this->pdo->prepare('SELECT * FROM financial_periods WHERE id=? FOR UPDATE');
         $stmt->execute([$periodId]);$period=$stmt->fetch(PDO::FETCH_ASSOC);
-        if(!is_array($period))throw new ExpenseException('period_not_found','دوره مالی پیدا نشد.',404);
+        if(!is_array($period))throw new FinancialPeriodException('period_not_found','دوره مالی پیدا نشد.',404);
         return $period;
     }
 
@@ -51,9 +50,9 @@ final class FinancialPeriodIdentityService
     {
         $day=substr($occurredAt,0,10);
         if($day<(string)$period['start_date']||$day>(string)$period['end_date'])
-            throw new ExpenseException('period_mismatch','تاریخ هزینه با دوره مالی انتخاب‌شده هم‌خوان نیست.',409);
+            throw new FinancialPeriodException('period_mismatch','تاریخ هزینه با دوره مالی انتخاب‌شده هم‌خوان نیست.',409);
         if((string)$period['status']==='closed'&&!$allowClosedPeriod)
-            throw new ExpenseException('closed_financial_period','دوره مالی این هزینه بسته شده است؛ اصلاح عادی روی دوره بسته مجاز نیست.',409,[
+            throw new FinancialPeriodException('closed_financial_period','دوره مالی این هزینه بسته شده است؛ اصلاح عادی روی دوره بسته مجاز نیست.',409,[
                 'financial_period_id'=>(int)$period['id']
             ]);
     }
@@ -61,7 +60,7 @@ final class FinancialPeriodIdentityService
     public static function boundsForDate(string $date): array
     {
         $time=strtotime($date);
-        if($time===false)throw new ExpenseException('invalid_date','تاریخ دوره مالی معتبر نیست.',422);
+        if($time===false)throw new FinancialPeriodException('invalid_date','تاریخ دوره مالی معتبر نیست.',422);
         [$jy]=self::gregorianToJalali((int)date('Y',$time),(int)date('n',$time),(int)date('j',$time));
         [$sy,$sm,$sd]=self::jalaliToGregorian($jy,1,1);
         [$ey,$em,$ed]=self::jalaliToGregorian($jy+1,1,1);
@@ -109,7 +108,7 @@ final class FinancialPeriodIdentityService
     private function normalizeDay(string $date): string
     {
         $ts=strtotime(trim($date));
-        if($ts===false)throw new ExpenseException('invalid_date','تاریخ دوره مالی معتبر نیست.',422);
+        if($ts===false)throw new FinancialPeriodException('invalid_date','تاریخ دوره مالی معتبر نیست.',422);
         return date('Y-m-d',$ts);
     }
 
