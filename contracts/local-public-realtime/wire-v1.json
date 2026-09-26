@@ -35,8 +35,7 @@
     "separator": "\\n",
     "default_clock_skew_seconds": 300,
     "verification_errors": {
-      "400": ["installation_required"],
-      "401": ["unknown_installation", "invalid_signature", "bad_signature"],
+      "401": ["unknown_installation", "bad_signature"],
       "409": ["replay_detected"]
     },
     "replay_guard": {
@@ -47,22 +46,22 @@
     }
   },
   "capability_map": {
-    "guest_order.submit": "guest_orders",
-    "guest_order.list": "guest_orders",
-    "guest_order.status": "guest_orders",
-    "guest_table.context": "guest_orders",
-    "waiter_call.create": "guest_waiter_call",
-    "waiter_call.status": "guest_waiter_call",
-    "waiter_call.cancel": "guest_waiter_call",
-    "order.edit": "order_edit",
-    "order.cancel": "order_edit",
-    "settlement.commit": "settlement",
-    "preparation.mutate": "preparation",
-    "table_draft.get": "quick_order",
-    "table_draft.create": "quick_order",
-    "table_draft.edit": "quick_order",
-    "table_draft.finalize": "quick_order",
-    "table_draft.cancel": "quick_order"
+    "guest_order.submit": "guest.order.submit",
+    "guest_order.list": "guest.order.submit",
+    "guest_order.status": "guest.order.submit",
+    "guest_table.context": "guest.order.submit",
+    "waiter_call.create": "guest.waiter_call.create",
+    "waiter_call.status": "guest.waiter_call.create",
+    "waiter_call.cancel": "guest.waiter_call.create",
+    "order.edit": "orders.mutate",
+    "order.cancel": "orders.mutate",
+    "settlement.commit": "finance.settle",
+    "preparation.mutate": "preparation.mutate",
+    "table_draft.get": "orders.table_draft",
+    "table_draft.create": "orders.table_draft",
+    "table_draft.edit": "orders.table_draft",
+    "table_draft.finalize": "orders.table_draft",
+    "table_draft.cancel": "orders.table_draft"
   },
   "persistence": {
     "table": "realtime_requests",

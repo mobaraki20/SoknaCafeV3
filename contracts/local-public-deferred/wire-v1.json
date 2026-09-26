@@ -24,8 +24,7 @@
     "local_required_headers": ["X-SOKNA-INSTALLATION", "X-SOKNA-TIMESTAMP", "X-SOKNA-NONCE", "X-SOKNA-SIGNATURE"],
     "default_clock_skew_seconds": 300,
     "verification_errors": {
-      "400": ["installation_required"],
-      "401": ["unknown_installation", "invalid_signature", "bad_signature"],
+      "401": ["unknown_installation", "bad_signature"],
       "409": ["replay_detected"]
     },
     "replay_guard": {
@@ -36,14 +35,14 @@
     }
   },
   "capability_map": {
-    "supply.need.create": "supply_need_create",
-    "supply.status.prepare": "supply_prepare_return",
-    "supply.status.return": "supply_prepare_return",
-    "supply.receipt": "supply_receipt",
-    "inventory.waste": "inventory_waste",
-    "inventory.count_draft": "inventory_count",
-    "subscriber.payment": "subscribers",
-    "expense.create": "expenses"
+    "supply.need.create": "supply.need.defer",
+    "supply.status.prepare": "supply.manage.defer",
+    "supply.status.return": "supply.manage.defer",
+    "supply.receipt": "supply.manage.defer",
+    "inventory.waste": "inventory.waste.defer",
+    "inventory.count_draft": "inventory.count_draft.defer",
+    "subscriber.payment": "subscriber.payment.defer",
+    "expense.create": "expense.create.defer"
   },
   "persistence": {
     "table": "deferred_work",

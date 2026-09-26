@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REALTIME_PATH = ROOT / "contracts/local-public-realtime/wire-v1.json"
 DEFERRED_PATH = ROOT / "contracts/local-public-deferred/wire-v1.json"
+BASELINE_FIXTURE_PATH = ROOT / "tests/fixtures/dev39-relay-baseline-v1.json"
 
 
 def load(path: Path) -> dict:
@@ -26,9 +27,12 @@ def check(condition: bool, message: str) -> None:
 def main() -> None:
     realtime = load(REALTIME_PATH)
     deferred = load(DEFERRED_PATH)
+    baseline = load(BASELINE_FIXTURE_PATH)
 
     check(realtime["source_protocol"] == "sokna-relay-v1", "realtime source protocol changed")
     check(deferred["source_protocol"] == "sokna-relay-v1/deferred", "deferred source protocol changed")
+    check(realtime["source_baseline"]["commit"] == baseline["provenance"]["commit"], "realtime baseline provenance drifted")
+    check(deferred["source_baseline"]["commit"] == baseline["provenance"]["commit"], "deferred baseline provenance drifted")
 
     auth = realtime["authentication"]
     check(auth["algorithm"] == "HMAC-SHA256", "unexpected HMAC algorithm")
@@ -39,11 +43,8 @@ def main() -> None:
         "signature": "X-SOKNA-SIGNATURE",
     }, "relay local auth headers drifted")
     check(auth["default_clock_skew_seconds"] == 300, "clock skew default drifted")
-    check(auth["verification_errors"] == {
-        "400": ["installation_required"],
-        "401": ["unknown_installation", "invalid_signature", "bad_signature"],
-        "409": ["replay_detected"],
-    }, "signed-request error taxonomy drifted")
+    check(auth["verification_errors"] == baseline["hmac_verification_errors"], "signed-request error taxonomy drifted from baseline fixture")
+    check(deferred["authentication"]["verification_errors"] == baseline["hmac_verification_errors"], "deferred signed-request error taxonomy drifted from baseline fixture")
     guard = auth["replay_guard"]
     check(guard["storage"] == "request_nonces", "nonce storage owner drifted")
     check(guard["primary_key"] == ["installation_id", "nonce"], "nonce durable uniqueness drifted")
@@ -97,18 +98,8 @@ def main() -> None:
     check(set(deferred["kinds"]) == expected_deferred_kinds, "deferred kind registry drifted")
     check(set(realtime["kinds"]).isdisjoint(deferred["kinds"]), "realtime/deferred kinds overlap")
 
-    expected_rt_caps = {
-        "guest_order.submit": "guest_orders", "guest_order.list": "guest_orders", "guest_order.status": "guest_orders", "guest_table.context": "guest_orders",
-        "waiter_call.create": "guest_waiter_call", "waiter_call.status": "guest_waiter_call", "waiter_call.cancel": "guest_waiter_call",
-        "order.edit": "order_edit", "order.cancel": "order_edit", "settlement.commit": "settlement", "preparation.mutate": "preparation",
-        "table_draft.get": "quick_order", "table_draft.create": "quick_order", "table_draft.edit": "quick_order", "table_draft.finalize": "quick_order", "table_draft.cancel": "quick_order",
-    }
-    check(realtime["capability_map"] == expected_rt_caps, "realtime capability map drifted")
-    check(deferred["capability_map"] == {
-        "supply.need.create": "supply_need_create", "supply.status.prepare": "supply_prepare_return", "supply.status.return": "supply_prepare_return",
-        "supply.receipt": "supply_receipt", "inventory.waste": "inventory_waste", "inventory.count_draft": "inventory_count",
-        "subscriber.payment": "subscribers", "expense.create": "expenses",
-    }, "deferred capability map drifted")
+    check(realtime["capability_map"] == baseline["realtime_capability_map"], "realtime capability map drifted from baseline fixture")
+    check(deferred["capability_map"] == baseline["deferred_capability_map"], "deferred capability map drifted from baseline fixture")
 
     rt_persistence = realtime["persistence"]
     check(rt_persistence["idempotency_unique_key"] == ["installation_id", "request_id"], "realtime idempotency uniqueness drifted")
@@ -148,8 +139,9 @@ def main() -> None:
 
     check("request_id_conflict" in realtime["operations"]["remote_enqueue"]["errors"]["409"], "realtime idempotency conflict missing")
     check("request_id_conflict" in deferred["operations"]["remote_enqueue"]["errors"]["409"], "deferred idempotency conflict missing")
+    check("remote_list" in deferred["operations"], "deferred remote_list operation missing")
 
-    print("Relay/deferred wire-v1 extraction contract passed.")
+    print("Relay/deferred wire-v1 extraction contract passed against immutable dev39 fixture.")
 
 
 if __name__ == "__main__":

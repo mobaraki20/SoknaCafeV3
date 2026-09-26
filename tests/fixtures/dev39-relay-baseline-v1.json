@@ -1,0 +1,42 @@
+{
+  "provenance": {
+    "repository": "mobaraki20/SoknaCafe",
+    "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "sources": [
+      "public_edge/bootstrap.php",
+      "includes/relay_projection.php"
+    ]
+  },
+  "hmac_verification_errors": {
+    "401": ["unknown_installation", "bad_signature"],
+    "409": ["replay_detected"]
+  },
+  "realtime_capability_map": {
+    "guest_order.submit": "guest.order.submit",
+    "guest_order.list": "guest.order.submit",
+    "guest_order.status": "guest.order.submit",
+    "guest_table.context": "guest.order.submit",
+    "waiter_call.create": "guest.waiter_call.create",
+    "waiter_call.status": "guest.waiter_call.create",
+    "waiter_call.cancel": "guest.waiter_call.create",
+    "order.edit": "orders.mutate",
+    "order.cancel": "orders.mutate",
+    "settlement.commit": "finance.settle",
+    "preparation.mutate": "preparation.mutate",
+    "table_draft.get": "orders.table_draft",
+    "table_draft.create": "orders.table_draft",
+    "table_draft.edit": "orders.table_draft",
+    "table_draft.finalize": "orders.table_draft",
+    "table_draft.cancel": "orders.table_draft"
+  },
+  "deferred_capability_map": {
+    "supply.need.create": "supply.need.defer",
+    "supply.status.prepare": "supply.manage.defer",
+    "supply.status.return": "supply.manage.defer",
+    "supply.receipt": "supply.manage.defer",
+    "inventory.waste": "inventory.waste.defer",
+    "inventory.count_draft": "inventory.count_draft.defer",
+    "subscriber.payment": "subscriber.payment.defer",
+    "expense.create": "expense.create.defer"
+  }
+}
