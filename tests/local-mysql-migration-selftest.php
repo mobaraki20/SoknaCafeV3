@@ -31,7 +31,7 @@ $core = sokna_local_bootstrap([
     ],
 ]);
 
-$expected = ['0001_m2_platform_core', '0002_m5_sellables', '0003_m5_orders', '0004_m5_table_drafts'];
+$expected = ['0001_m2_platform_core', '0002_m5_sellables', '0003_m5_orders', '0004_m5_table_drafts', '0005_m5_preparation'];
 $first = $core->migrations()->migrate();
 if ($first !== $expected) {
     mysql_migration_fail('First Local migration pass did not apply the expected ordered migration stack: ' . json_encode($first));
@@ -41,11 +41,8 @@ if ($second !== []) mysql_migration_fail('Second Local migration pass was not id
 
 $pdo = $core->database();
 $tables = array_values(array_map('strval', $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN)));
-foreach (['schema_migrations', 'settings', 'users', 'user_capabilities', 'audit_log', 'menus', 'categories', 'items', 'menu_items', 'cafe_tables', 'table_sessions', 'orders', 'order_items', 'order_business_sequences', 'order_status_history', 'table_drafts', 'table_draft_items'] as $table) {
+foreach (['schema_migrations', 'settings', 'users', 'user_capabilities', 'audit_log', 'menus', 'categories', 'items', 'menu_items', 'cafe_tables', 'table_sessions', 'orders', 'order_items', 'order_business_sequences', 'order_status_history', 'table_drafts', 'table_draft_items', 'user_preparation_areas', 'order_preparation_claims'] as $table) {
     if (!in_array($table, $tables, true)) mysql_migration_fail("Expected Local table {$table} is missing after migrate().");
-}
-if (in_array('user_preparation_areas', $tables, true)) {
-    mysql_migration_fail('Local migration stack created user_preparation_areas before the Preparation sub-slice owns it.');
 }
 foreach (['inventory_items', 'financial_periods', 'settlement_records', 'print_jobs'] as $laterDomain) {
     if (in_array($laterDomain, $tables, true)) mysql_migration_fail("M5.2 Local stack leaked later-domain table {$laterDomain}.");
