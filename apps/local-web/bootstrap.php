@@ -16,7 +16,12 @@ require_once __DIR__ . '/src/Domain/Sellables/SellableKind.php';
 require_once __DIR__ . '/src/Domain/Sellables/SellableRepository.php';
 require_once __DIR__ . '/src/Domain/Orders/BusinessClock.php';
 require_once __DIR__ . '/src/Domain/Orders/OrderCommitException.php';
+require_once __DIR__ . '/src/Domain/Orders/OrderCatalogService.php';
 require_once __DIR__ . '/src/Domain/Orders/OrderCommitService.php';
+require_once __DIR__ . '/src/Domain/Orders/StaffQuickOrderException.php';
+require_once __DIR__ . '/src/Domain/Orders/StaffQuickOrderService.php';
+require_once __DIR__ . '/src/Domain/Orders/TableDraftException.php';
+require_once __DIR__ . '/src/Domain/Orders/TableDraftService.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_local_bootstrap(array $config): Bootstrap
