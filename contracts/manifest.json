@@ -12,8 +12,10 @@
       "compatibility": "draft-no-stability-claim",
       "spec": "contracts/local-public-realtime/README.md",
       "wire_spec": "contracts/local-public-realtime/wire-v1.json",
+      "operation_schema": "contracts/local-public-realtime/operation-schemas-v1.json",
+      "compatibility_vectors": "contracts/local-public-realtime/compatibility-vectors-v1.json",
       "wire_evidence": "extracted-from-dev39-implementation",
-      "regression_gate": "tests/relay-wire-contract.py"
+      "regression_gates": ["tests/relay-wire-contract.py", "tests/relay-operation-contract.py"]
     },
     {
       "id": "local-public-deferred",
@@ -25,8 +27,10 @@
       "compatibility": "draft-no-stability-claim",
       "spec": "contracts/local-public-deferred/README.md",
       "wire_spec": "contracts/local-public-deferred/wire-v1.json",
+      "operation_schema": "contracts/local-public-deferred/operation-schemas-v1.json",
+      "compatibility_vectors": "contracts/local-public-deferred/compatibility-vectors-v1.json",
       "wire_evidence": "extracted-from-dev39-implementation",
-      "regression_gate": "tests/relay-wire-contract.py"
+      "regression_gates": ["tests/relay-wire-contract.py", "tests/relay-operation-contract.py"]
     },
     {
       "id": "runtime-api",
