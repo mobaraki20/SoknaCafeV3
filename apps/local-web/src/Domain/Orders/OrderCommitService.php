@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Sokna\Local\Domain\Orders;
 
 use PDO;
+use Sokna\Local\Domain\Inventory\InventoryOrderService;
 use Throwable;
 
 final class OrderCommitService
@@ -12,6 +13,7 @@ final class OrderCommitService
         private readonly PDO $pdo,
         private readonly BusinessClock $clock,
         private readonly OrderCatalogService $catalog,
+        private readonly InventoryOrderService $inventoryOrders,
     ) {}
 
     public function commit(array $data): array
@@ -79,6 +81,12 @@ final class OrderCommitService
         }
         $this->pdo->prepare('INSERT INTO order_status_history(order_id,from_status,to_status,actor_user_id) VALUES(?,NULL,?,?)')
             ->execute([$orderId,$command['status'],$actor]);
+
+        if($command['status']==='accounted'){
+            // Optional Inventory never owns Order success/failure. It captures a durable
+            // accounted event and may process it; all Inventory errors are contained there.
+            $this->inventoryOrders->enqueueAccountedTx($orderId,(int)($actor??0));
+        }
 
         return [
             'success'=>true,'duplicate'=>false,'order_id'=>$orderId,'order_number'=>$number,
