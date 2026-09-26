@@ -5,6 +5,7 @@ namespace Sokna\Local\Domain\Orders;
 
 use PDO;
 use Sokna\Local\Domain\Inventory\InventoryOrderService;
+use Sokna\Local\Domain\Tax\TaxService;
 use Throwable;
 
 final class OrderCommitService
@@ -14,6 +15,7 @@ final class OrderCommitService
         private readonly BusinessClock $clock,
         private readonly OrderCatalogService $catalog,
         private readonly InventoryOrderService $inventoryOrders,
+        private readonly TaxService $tax,
     ) {}
 
     public function commit(array $data): array
@@ -49,6 +51,15 @@ final class OrderCommitService
         }
 
         $lines=$this->catalog->snapshotRowsTx($command['items'],$command['source']);
+        $taxAt=date('Y-m-d H:i:s');
+        foreach($lines as &$line){
+            $snapshot=$this->tax->orderLineSnapshotTx((int)($line['item_id']??0),$taxAt);
+            $line['tax_policy_snapshot']=$snapshot['policy'];
+            $line['tax_rate_bps_snapshot']=$snapshot['rate_bps'];
+            $line['tax_rate_version_id']=$snapshot['rate_version_id'];
+            $line['tax_item_policy_version_id']=$snapshot['policy_version_id'];
+        }
+        unset($line);
         $total=array_sum(array_map(static fn(array $line):int=>(int)$line['line_total'],$lines));
 
         $business=$this->clock->assignment($command['occurred_at']);
@@ -70,13 +81,15 @@ final class OrderCommitService
         $orderId=(int)$this->pdo->lastInsertId();
 
         $lineInsert=$this->pdo->prepare(
-            'INSERT INTO order_items(order_id,item_id,item_name,sellable_kind_snapshot,unit_price,quantity,ordered_quantity,item_note,fulfillment_mode,preparation_station,line_total) '.
-            'VALUES(?,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO order_items(order_id,item_id,item_name,sellable_kind_snapshot,unit_price,quantity,ordered_quantity,item_note,fulfillment_mode,preparation_station,line_total,'.
+            'tax_policy_snapshot,tax_rate_bps_snapshot,tax_rate_version_id,tax_item_policy_version_id) '.
+            'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
         );
         foreach($lines as $line){
             $lineInsert->execute([
                 $orderId,$line['item_id'],$line['item_name'],$line['sellable_kind'],$line['unit_price'],
                 $line['quantity'],$line['quantity'],$line['item_note'],$line['fulfillment_mode'],$line['preparation_station'],$line['line_total'],
+                $line['tax_policy_snapshot'],$line['tax_rate_bps_snapshot'],$line['tax_rate_version_id'],$line['tax_item_policy_version_id'],
             ]);
         }
         $this->pdo->prepare('INSERT INTO order_status_history(order_id,from_status,to_status,actor_user_id) VALUES(?,NULL,?,?)')
