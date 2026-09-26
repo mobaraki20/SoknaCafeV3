@@ -48,8 +48,15 @@ Read, in this order:
 1. `ARCHITECTURE.md`
 2. `PROJECT_LINEAGE.md`
 3. `UI_DESIGN_SYSTEM.md` for any user-facing or interaction-affecting change
-4. the target component README
-5. relevant ADRs
+4. the current migration-status file under `docs/migration/`
+5. `docs/reviews/EXTERNAL_OBSERVER_REVIEW_2026-09-26_FA.md` and disposition any open finding that affects the target slice
+6. the target component README
+7. relevant ADRs
+
+The external review is an evidence checkpoint, not an architecture authority. Do
+not mechanically change behavior to satisfy it. Trace each applicable finding to
+the approved handover/ADR and historical baseline, then record whether it is
+preserved behavior, an approved change, a fixed regression, or an open decision.
 
 Then identify:
 
