@@ -28,6 +28,8 @@ use Sokna\Local\Domain\Integrations\AccommodationTransport;
 use Sokna\Local\Domain\Integrations\AccommodationService;
 use Sokna\Local\Domain\Integrations\CenterIntegrationService;
 use Sokna\Local\Runtime\RuntimeTriggerService;
+use Sokna\Local\Domain\Printing\PrintService;
+use Sokna\Local\Http\PrintAgentV4HttpAdapter;
 use Sokna\Local\Http\RuntimeTriggerHttpAdapter;
 use Sokna\Local\Domain\Expenses\ExpenseService;
 use Sokna\Local\Relay\ExpenseDeferredAdapter;
@@ -68,6 +70,8 @@ final class Bootstrap
     private ?AccommodationService $accommodation = null;
     private ?CenterIntegrationService $centerIntegration = null;
     private ?RuntimeTriggerService $runtimeTriggers = null;
+    private ?PrintService $printing = null;
+    private ?PrintAgentV4HttpAdapter $printAgentV4Http = null;
     private ?RuntimeTriggerHttpAdapter $runtimeTriggerHttp = null;
     private ?ExpenseService $expenses = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
@@ -146,7 +150,7 @@ final class Bootstrap
 
     public function orders(): OrderCommitService
     {
-        return $this->orders ??= new OrderCommitService($this->database(), $this->businessClock(), $this->orderCatalog(), $this->inventoryOrders(), $this->tax());
+        return $this->orders ??= new OrderCommitService($this->database(), $this->businessClock(), $this->orderCatalog(), $this->inventoryOrders(), $this->tax(), $this->printing());
     }
 
     public function staffQuickOrders(): StaffQuickOrderService
@@ -225,7 +229,7 @@ final class Bootstrap
     public function settlements(): SettlementService
     {
         return $this->settlements ??= new SettlementService(
-            $this->database(), $this->identityRepository(), $this->capabilities(), $this->businessClock(), $this->financialPeriods(), $this->tax(), $this->subscribers()
+            $this->database(), $this->identityRepository(), $this->capabilities(), $this->businessClock(), $this->financialPeriods(), $this->tax(), $this->subscribers(), $this->printing()
         );
     }
 
@@ -249,6 +253,16 @@ final class Bootstrap
     public function centerIntegration(): CenterIntegrationService
     {
         return $this->centerIntegration ??= new CenterIntegrationService($this->database(), $this->config, $this->identityRepository());
+    }
+
+    public function printing(): PrintService
+    {
+        return $this->printing ??= new PrintService($this->database(), $this->identityRepository());
+    }
+
+    public function printAgentV4Http(): PrintAgentV4HttpAdapter
+    {
+        return $this->printAgentV4Http ??= new PrintAgentV4HttpAdapter($this->printing());
     }
 
     public function runtimeTriggers(): RuntimeTriggerService

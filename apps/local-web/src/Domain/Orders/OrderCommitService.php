@@ -6,6 +6,7 @@ namespace Sokna\Local\Domain\Orders;
 use PDO;
 use Sokna\Local\Domain\Inventory\InventoryOrderService;
 use Sokna\Local\Domain\Tax\TaxService;
+use Sokna\Local\Domain\Printing\PrintService;
 use Throwable;
 
 final class OrderCommitService
@@ -16,6 +17,7 @@ final class OrderCommitService
         private readonly OrderCatalogService $catalog,
         private readonly InventoryOrderService $inventoryOrders,
         private readonly TaxService $tax,
+        private readonly PrintService $printing,
     ) {}
 
     public function commit(array $data): array
@@ -100,6 +102,9 @@ final class OrderCommitService
             // accounted event and may process it; all Inventory errors are contained there.
             $this->inventoryOrders->enqueueAccountedTx($orderId,(int)($actor??0));
         }
+
+        // Printing is a secondary durable intent. Queue failure never owns Order success.
+        $this->printing->enqueueOrderTx($orderId,(int)($actor??0));
 
         return [
             'success'=>true,'duplicate'=>false,'order_id'=>$orderId,'order_number'=>$number,

@@ -24,7 +24,7 @@ $core->migrations()->migrate();$pdo=$core->database();
 
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
 foreach(['subscribers','subscriber_ledger','accommodation_transfers','center_projection_receipts','center_entitlement_cache'] as $t)m511_assert(in_array($t,$tables,true),"missing {$t}");
-foreach(['print_jobs'] as $later)m511_assert(!in_array($later,$tables,true),"M5.11 pulled later owner {$later} forward");
+foreach([] as $later)m511_assert(!in_array($later,$tables,true),"M5.11 pulled later owner {$later} forward");
 
 $makeUser=function(string $name,string $role,array $caps)use($pdo):array{
     $pdo->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)')->execute([$name,password_hash('x',PASSWORD_DEFAULT),$name,$role]);

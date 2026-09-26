@@ -2,7 +2,7 @@
   "schema_version": 1,
   "contract_id": "sokna-print-agent-loopback-v1",
   "protocol_version": 1,
-  "status": "m1-retained-proven-loopback-contract",
+  "status": "m8-implemented-retained-contract",
   "source": {
     "repository": "mobaraki20/SoknaCafe",
     "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
@@ -14,7 +14,10 @@
   "direction": "Local browser/UI origin -> windows/print-agent loopback bridge",
   "network": {
     "bind": "127.0.0.1 only",
-    "methods": ["POST", "OPTIONS"],
+    "methods": [
+      "POST",
+      "OPTIONS"
+    ],
     "content_type": "application/json",
     "cors": "exact configured Local origin only",
     "authentication": "X-Sokna-Bridge-Pairing fixed-time comparison plus exact Origin match",
@@ -23,24 +26,58 @@
     "max_header_bytes": 16384,
     "default_max_body_bytes": 8192,
     "preview_max_body_bytes": 262144,
-    "busy_response": {"http": 503, "body": {"success": false, "code": "bridge_busy"}}
+    "busy_response": {
+      "http": 503,
+      "body": {
+        "success": false,
+        "code": "bridge_busy"
+      }
+    }
   },
   "routes": {
     "/v1/wake": {
       "request": {
-        "required": ["type", "protocol_version", "request_id", "job_ids", "expires_at"],
+        "required": [
+          "type",
+          "protocol_version",
+          "request_id",
+          "job_ids",
+          "expires_at"
+        ],
         "properties": {
-          "type": {"const": "print.wake"},
-          "protocol_version": {"const": 1},
-          "request_id": {"type": "string", "min_length": 8, "max_length": 96},
-          "job_ids": {"type": "array_positive_int64", "min_items": 1, "max_items": 50},
-          "expires_at": {"type": "timestamp_explicit_offset", "historical_window": "not older than 5 seconds and not more than 2 minutes in future"}
+          "type": {
+            "const": "print.wake"
+          },
+          "protocol_version": {
+            "const": 1
+          },
+          "request_id": {
+            "type": "string",
+            "min_length": 8,
+            "max_length": 96
+          },
+          "job_ids": {
+            "type": "array_positive_int64",
+            "min_items": 1,
+            "max_items": 50
+          },
+          "expires_at": {
+            "type": "timestamp_explicit_offset",
+            "historical_window": "not older than 5 seconds and not more than 2 minutes in future"
+          }
         },
         "additional_properties": "historical JSON parser ignores unrelated properties; V3 consumers should not rely on them"
       },
       "success": {
-        "required": ["success", "accepted", "idempotent"],
-        "constants": {"success": true, "accepted": true}
+        "required": [
+          "success",
+          "accepted",
+          "idempotent"
+        ],
+        "constants": {
+          "success": true,
+          "accepted": true
+        }
       },
       "semantics": [
         "wake is a nudge only; job identity/content is never trusted from browser for physical execution",
@@ -51,30 +88,95 @@
     },
     "/v1/preview": {
       "request": {
-        "required": ["type", "protocol_version", "revision", "session_id", "payload_json", "paper_width_mm", "printable_width_mm"],
-        "optional": ["dpi", "dpi_x", "dpi_y"],
+        "required": [
+          "type",
+          "protocol_version",
+          "revision",
+          "session_id",
+          "payload_json",
+          "paper_width_mm",
+          "printable_width_mm"
+        ],
+        "optional": [
+          "dpi",
+          "dpi_x",
+          "dpi_y"
+        ],
         "properties": {
-          "type": {"const": "print.preview"},
-          "protocol_version": {"const": 1},
-          "revision": {"type": "positive_int64"},
-          "session_id": {"type": "string", "min_length": 8, "max_length": 96},
-          "payload_json": {"type": "string"},
-          "paper_width_mm": {"type": "number"},
-          "printable_width_mm": {"type": "number"},
-          "dpi": {"type": "integer", "default": 203},
-          "dpi_x": {"type": "integer", "default_from": "dpi"},
-          "dpi_y": {"type": "integer", "default_from": "dpi"}
+          "type": {
+            "const": "print.preview"
+          },
+          "protocol_version": {
+            "const": 1
+          },
+          "revision": {
+            "type": "positive_int64"
+          },
+          "session_id": {
+            "type": "string",
+            "min_length": 8,
+            "max_length": 96
+          },
+          "payload_json": {
+            "type": "string"
+          },
+          "paper_width_mm": {
+            "type": "number"
+          },
+          "printable_width_mm": {
+            "type": "number"
+          },
+          "dpi": {
+            "type": "integer",
+            "default": 203
+          },
+          "dpi_x": {
+            "type": "integer",
+            "default_from": "dpi"
+          },
+          "dpi_y": {
+            "type": "integer",
+            "default_from": "dpi"
+          }
         }
       },
       "success": {
-        "required": ["success", "revision", "session_id", "image_base64", "width", "height", "dpi", "dpi_x", "dpi_y", "png_sha256", "renderer_version", "font_family", "bundled_font"],
-        "constants": {"success": true}
+        "required": [
+          "success",
+          "revision",
+          "session_id",
+          "image_base64",
+          "width",
+          "height",
+          "dpi",
+          "dpi_x",
+          "dpi_y",
+          "png_sha256",
+          "renderer_version",
+          "font_family",
+          "bundled_font"
+        ],
+        "constants": {
+          "success": true
+        }
       },
       "errors": {
-        "422": ["preview_limits_invalid", "preview_raster_budget_exceeded", "preview_output_size_exceeded", "preview_metadata_mismatch"],
-        "429": ["preview_busy"],
-        "409": ["preview_superseded", "preview_cancelled"],
-        "504": ["preview_timeout"]
+        "422": [
+          "preview_limits_invalid",
+          "preview_raster_budget_exceeded",
+          "preview_output_size_exceeded",
+          "preview_metadata_mismatch"
+        ],
+        "429": [
+          "preview_busy"
+        ],
+        "409": [
+          "preview_superseded",
+          "preview_cancelled"
+        ],
+        "504": [
+          "preview_timeout"
+        ]
       },
       "semantics": [
         "preview is bounded by configured payload/text/item/height/pixel/output budgets",

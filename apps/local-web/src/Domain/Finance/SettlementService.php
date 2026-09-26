@@ -9,6 +9,7 @@ use Sokna\Local\Core\IdentityRepository;
 use Sokna\Local\Domain\Orders\BusinessClock;
 use Sokna\Local\Domain\Tax\TaxService;
 use Sokna\Local\Domain\Integrations\SubscriberService;
+use Sokna\Local\Domain\Printing\PrintService;
 use Throwable;
 
 final class SettlementService
@@ -21,6 +22,7 @@ final class SettlementService
         private readonly FinancialPeriodService $periods,
         private readonly TaxService $tax,
         private readonly SubscriberService $subscribers,
+        private readonly PrintService $printing,
     ) {}
 
     public function account(int $sessionId): array
@@ -224,6 +226,8 @@ final class SettlementService
                 'subtotal'=>(int)$review['subtotal'],'discount'=>(int)$review['discount'],'tax'=>(int)$review['tax'],
                 'total'=>(int)$review['total'],'remaining_total'=>(int)$review['remaining_total'],'line_count'=>count($review['lines'])
             ]);
+            // Final receipt printing is optional and must never own Settlement success.
+            $this->printing->enqueueSettlementTx($settlementId,(int)$actor['id']);
             $record=$this->findRequestTx($requestId);
             if($record===null)throw new SettlementException('record_missing','سند تسویه پس از ثبت قابل بازیابی نیست.',500);
             $result=$this->recordResult($record,false)+['completed_orders'=>$completedOrders];
