@@ -161,6 +161,12 @@ jobs:
       - name: Validate M4 signed Guest media/publish/availability ownership
         env: *public_db_env
         run: php tests/public-m4-guest-publish-selftest.php
+      - name: Validate M4 Guest runtime degraded-state projection
+        env: *public_db_env
+        run: php tests/public-m4-guest-runtime-selftest.php
+      - name: Validate M4 Remote Read Model sync/read/filter capability scope
+        env: *public_db_env
+        run: php tests/public-m4-remote-read-model-selftest.php
       - name: Validate M3 authoritative auth projection sync
         env: *public_db_env
         run: php tests/public-auth-projection-selftest.php
