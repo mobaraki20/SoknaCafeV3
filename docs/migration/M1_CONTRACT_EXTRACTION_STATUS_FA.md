@@ -11,10 +11,10 @@
 
 ## وضعیت کلی
 - F0 Foundation: کامل در سطح معماری/قرارداد.
-- M1: در حال انجام.
-- M1.1 Realtime: استخراج wire و operation schema/compatibility vectors انجام شده؛ مسیر نهایی V3 و producer/consumer implementation هنوز Draft است.
-- M1.2 Deferred-safe: استخراج wire و operation schema/compatibility vectors انجام شده؛ review taxonomy/domain result details و producer/consumer implementation هنوز باید هنگام مهاجرت ownerها تکمیل شوند.
-- M1.3 Runtime/Print: هنوز شروع اجرایی نشده؛ ابتدا audit تاریخی و سپس استخراج قرارداد، بدون اختراع schema جدید قبل از audit.
+- M1: در حال انجام، با extraction evidence اجرایی برای Realtime/Deferred و historical surface audit برای Runtime/Print.
+- M1.1 Realtime: wire + operation schema + compatibility vectors استخراج و در CI قفل شده‌اند. مسیر نهایی V3 و producer/consumer implementation هنوز Draft است.
+- M1.2 Deferred-safe: wire + operation schema + compatibility vectors استخراج و در CI قفل شده‌اند. جزئیات domain result/review هنگام مهاجرت ownerهای واقعی باید تکمیل شوند؛ final API stability هنوز ادعا نمی‌شود.
+- M1.3 Runtime/Print: historical surface/ownership audit انجام و در CI قفل شده است. Runtime تاریخی API HTTP پایدار نداشته؛ Print API v4 و loopback bridge اثبات‌شده audit شده‌اند. قرارداد نهایی V3 برای subset موردنیاز Runtime/Print هنوز باید طراحی/استخراج و با compatibility vectors تثبیت شود.
 
 ## شواهد ثبت‌شده
 ### Realtime
@@ -43,18 +43,44 @@
 - period blocking = `pending_sync + needs_review`؛
 - result response shape تاریخی.
 
-## CI
-- `tests/relay-wire-contract.py`: wire-level invariants، HMAC، state/kind separation و route evidence.
-- `tests/relay-operation-contract.py`: operation schema و compatibility vectors.
-- `.github/workflows/v3-component-gates.yml`: Contracts gate هر دو تست را اجرا می‌کند.
+### Runtime
+- `contracts/runtime-api/historical-audit-v1.json`
 
-## قاعده ادامه
-1. نتیجه CI این head باید بررسی شود؛ pending/skipped به‌عنوان PASS حساب نمی‌شود.
-2. اگر Contracts/Foundation سبز بود، M1.1 و M1.2 در سطح extraction evidence قابل بسته‌شدن هستند، نه در سطح final API stability.
-3. قدم بعدی M1.3 است: audit دقیق Runtime API و Print Agent API از سورس تاریخی/Pagent lineage.
-4. Runtime فقط supervision/OS integration؛ هیچ business mutation یا direct Local business-table write وارد قرارداد Runtime نشود.
-5. Print Agent owner مستقل durable print/device/spooler state باقی بماند؛ Runtime فقط supervise کند.
-6. قبل از حرکت producer/consumer code بین componentها، contract executable باید وجود داشته باشد.
+نتیجه audit:
+- در dev39 یک Runtime HTTP API پایدار وجود ندارد.
+- interface اثبات‌شده شامل CLI، فایل state با format `sokna-local-runtime-v1` و Windows SCM service host است.
+- هر HTTP/IPC جدید در V3 باید به‌عنوان قرارداد جدید versioned طراحی شود؛ نباید به‌اشتباه legacy-compatible معرفی شود.
+- Runtime فقط supervision/OS integration است و Business Authority یا owner چاپ نیست.
+
+### Print Agent
+- `contracts/print-agent-api/historical-audit-v1.json`
+
+نتیجه audit:
+- Print API v4 تاریخی و loopback bridge audit شده‌اند.
+- رفتارهای بالغ مثل durable claim/accept/start/report، submission fence، request/body idempotency، server-scope binding، unknown/recovery_hold و device/spooler execution باید حفظ شوند.
+- loopback bridge تاریخی `/v1/wake` و `/v1/preview`، pairing/origin guard و resource limits مشخص دارد.
+- عبارت تاریخی dev39 مبنی بر internal Local component بودن Print Worker، authority معماری V3 نیست؛ owner V3 برابر `windows/print-agent` است و Runtime فقط آن را supervise می‌کند.
+
+## CI
+Contracts gate اکنون این سه gate اجرایی را اجرا می‌کند:
+- `tests/relay-wire-contract.py`
+- `tests/relay-operation-contract.py`
+- `tests/runtime-print-contract-audit.py`
+
+آخرین CI تأییدشده برای checkpoint قبل از این به‌روزرسانی سند:
+- head: `5af39e53a37b016fab9fc7f4d0841201329dee6a`
+- workflow: `V3 Component Gates`
+- run: `36209559220`
+- نتیجه: همه jobها SUCCESS، شامل Foundation، Contracts، Local، Public، Runtime، Print Agent، Platform، Packaging، Migration و SCDS.
+
+این موفقیت فقط architecture/contract-foundation و extraction/audit evidence را اثبات می‌کند؛ application migration، clean-machine installer acceptance و physical-printer UAT را اثبات نمی‌کند.
+
+## نقطه دقیق ادامه
+1. final V3 Runtime contract را از روی نیاز مصرف‌کننده و historical CLI/state/SCM semantics تعریف کن؛ هیچ business mutation یا direct Local business-table write وارد آن نشود.
+2. برای Print Agent، subset نهایی V3 از Print API v4/loopback behavior را مشخص کن و exact request/response/state schemas + compatibility vectors را بساز.
+3. semantics بالغ `accept -> start -> report`, durable receipt/content hash, unknown/recovery_hold و submission fence ضعیف نشوند.
+4. بعد از executable شدن Runtime/Print contracts، M1 exit gate را ارزیابی کن؛ قبل از آن producer/consumer implementation را بین componentها جابه‌جا نکن.
+5. بعد از بسته‌شدن M1، طبق `MIGRATION_SLICES.md` وارد M2 Local Core شو.
 
 ## نکته handoff
 اگر چت یا Agent عوض شد، از PR #1، این فایل، `docs/migration/MIGRATION_SLICES.md` و `contracts/manifest.json` ادامه بده؛ حافظه گفتگو مرجع پروژه نیست.
