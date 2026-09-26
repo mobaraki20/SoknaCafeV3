@@ -31,7 +31,7 @@ $core = sokna_local_bootstrap([
     ],
 ]);
 
-$expected = ['0001_m2_platform_core', '0002_m5_sellables', '0003_m5_orders', '0004_m5_table_drafts', '0005_m5_preparation'];
+$expected = ['0001_m2_platform_core', '0002_m5_sellables', '0003_m5_orders', '0004_m5_table_drafts', '0005_m5_preparation', '0006_m5_inventory'];
 $first = $core->migrations()->migrate();
 if ($first !== $expected) {
     mysql_migration_fail('First Local migration pass did not apply the expected ordered migration stack: ' . json_encode($first));
@@ -41,10 +41,10 @@ if ($second !== []) mysql_migration_fail('Second Local migration pass was not id
 
 $pdo = $core->database();
 $tables = array_values(array_map('strval', $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN)));
-foreach (['schema_migrations', 'settings', 'users', 'user_capabilities', 'audit_log', 'menus', 'categories', 'items', 'menu_items', 'cafe_tables', 'table_sessions', 'orders', 'order_items', 'order_business_sequences', 'order_status_history', 'table_drafts', 'table_draft_items', 'user_preparation_areas', 'order_preparation_claims'] as $table) {
+foreach (['schema_migrations', 'settings', 'users', 'user_capabilities', 'audit_log', 'menus', 'categories', 'items', 'menu_items', 'cafe_tables', 'table_sessions', 'orders', 'order_items', 'order_business_sequences', 'order_status_history', 'table_drafts', 'table_draft_items', 'user_preparation_areas', 'order_preparation_claims', 'inventory_categories', 'inventory_items', 'inventory_purchase_units', 'inventory_balances', 'inventory_movements', 'inventory_recipe_versions', 'inventory_recipe_components', 'inventory_count_sessions', 'inventory_count_lines', 'inventory_order_events'] as $table) {
     if (!in_array($table, $tables, true)) mysql_migration_fail("Expected Local table {$table} is missing after migrate().");
 }
-foreach (['inventory_items', 'financial_periods', 'settlement_records', 'print_jobs'] as $laterDomain) {
+foreach (['financial_periods', 'settlement_records', 'print_jobs', 'inventory_supply_needs', 'inventory_supply_receipts'] as $laterDomain) {
     if (in_array($laterDomain, $tables, true)) mysql_migration_fail("M5.2 Local stack leaked later-domain table {$laterDomain}.");
 }
 
