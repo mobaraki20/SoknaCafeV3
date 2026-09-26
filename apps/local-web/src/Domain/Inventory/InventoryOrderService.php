@@ -19,6 +19,9 @@ final class InventoryOrderService
         try{
             $actor=$this->inventory->assertActor($user,'inventory_manage');
             $normalized=$this->normalizeComponents($components);
+            $menuLock=$this->pdo->prepare('SELECT id FROM items WHERE id=? AND active=1 FOR UPDATE');
+            $menuLock->execute([$menuItemId]);
+            if($menuLock->fetchColumn()===false)throw new InventoryException('menu_item_not_found','آیتم منو برای دستور مصرف پیدا نشد.',404);
             $this->validateComponentsTx($normalized);
 
             $current=$this->activeRecipeTx($menuItemId,true);
@@ -41,7 +44,7 @@ final class InventoryOrderService
                 return ['recipe_id'=>null,'changed'=>true];
             }
 
-            $versionStmt=$this->pdo->prepare('SELECT COALESCE(MAX(version_no),0)+1 FROM inventory_recipe_versions WHERE menu_item_id=? FOR UPDATE');
+            $versionStmt=$this->pdo->prepare('SELECT COALESCE(MAX(version_no),0)+1 FROM inventory_recipe_versions WHERE menu_item_id=?');
             $versionStmt->execute([$menuItemId]);$version=(int)$versionStmt->fetchColumn();
             $this->pdo->prepare("INSERT INTO inventory_recipe_versions(menu_item_id,version_no,status,created_by_user_id) VALUES(?,?,'active',?)")
                 ->execute([$menuItemId,$version,(int)$actor['id']]);
