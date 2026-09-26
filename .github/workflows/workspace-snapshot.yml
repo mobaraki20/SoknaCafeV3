@@ -1,0 +1,31 @@
+name: Workspace Snapshot
+
+on:
+  push:
+    branches:
+      - 'workspace/snapshot-*'
+    paths:
+      - '.github/workflows/workspace-snapshot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch complete Git history
+        run: git fetch --all --tags --prune
+      - name: Build workspace archive
+        run: |
+          tar -czf "$RUNNER_TEMP/repository-workspace.tar.gz" .
+      - name: Upload workspace archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-workspace-${{ github.sha }}
+          path: ${{ runner.temp }}/repository-workspace.tar.gz
+          if-no-files-found: error
+          retention-days: 3
