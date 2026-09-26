@@ -243,6 +243,34 @@ final class InventoryService
         return $row;
     }
 
+    public function createUnreviewedItemTx(
+        string $name,
+        string $baseUnit,
+        string $department,
+        int $actorUserId,
+        string $sourceLabel='external_workflow'
+    ): int {
+        $this->requireTx();
+        $name=self::truncate(trim($name),160);
+        if($name==='')throw new InventoryException('name_required','نام کالای جدید مشخص نیست.',422);
+        $base=self::normalizeBaseUnit($baseUnit);
+        $dept=self::normalizeDepartment($department)??'shared';
+        $source=self::truncate(trim($sourceLabel),80)?:'external_workflow';
+        $code='INV-'.strtoupper(bin2hex(random_bytes(5)));
+        $note='این کالا از فرایند «'.$source.'» ساخته شده است؛ دسته، واحد، حد هشدار و واحد خرید را بررسی کن.';
+        $stmt=$this->pdo->prepare(
+            "INSERT INTO inventory_items(item_code,name,category,base_unit,default_department,warning_threshold,review_status,review_note,active,created_by_user_id)
+             VALUES(?,?,'ingredient',?,?,0,'needs_review',?,1,?)"
+        );
+        $stmt->execute([$code,$name,$base,$dept,$note,$actorUserId>0?$actorUserId:null]);
+        $itemId=(int)$this->pdo->lastInsertId();
+        $this->balanceTx($itemId);
+        $this->audit('inventory.item_created_from_supply','inventory_item',$itemId,$actorUserId,[
+            'name'=>$name,'base_unit'=>$base,'department'=>$dept,'review_status'=>'needs_review','source'=>$source,
+        ]);
+        return $itemId;
+    }
+
     public function createItem(array $data,array $user): array
     {
         $this->pdo->beginTransaction();
