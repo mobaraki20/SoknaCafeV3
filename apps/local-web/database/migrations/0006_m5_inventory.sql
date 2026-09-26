@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS inventory_balances (
     quantity_base BIGINT NOT NULL DEFAULT 0,
     average_unit_cost DECIMAL(20,6) NULL,
     cost_status VARCHAR(20) NOT NULL DEFAULT 'unknown',
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     CONSTRAINT fk_m55_inventory_balance_item FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id) ON UPDATE CASCADE ON DELETE RESTRICT,
     CONSTRAINT ck_m55_inventory_balance_cost_status CHECK (cost_status IN ('known','estimated','partial','unknown'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
