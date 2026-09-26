@@ -42,7 +42,7 @@ This status does not claim application, Windows, physical printer or installer a
 
 ## M1 — Extract Proven Cross-Component Contracts Before Code Movement
 
-**Status:** in progress.
+**Status:** in progress. Realtime/Deferred extraction evidence is executable; Runtime/Print historical surface audit is complete. Final V3 Runtime/Print contract subsets are still Draft.
 
 ### M1.1 Realtime relay wire contract
 
@@ -55,21 +55,20 @@ Source audit:
 V3 target:
 - `contracts/local-public-realtime/`.
 
-Current evidence already migrated:
+Current executable evidence:
 - exact `sokna-relay-v1` HMAC signature construction;
-- auth header names;
+- auth header names and durable nonce/replay semantics;
 - envelope validation rules;
 - realtime state/terminal-state registry;
-- realtime kind registry;
+- realtime kind/capability registry;
 - historical route map;
+- exact claim/ACK/result operation schema;
+- compatibility vectors for lease normalization, terminal ACK dedupe, lease conflict and result shape;
 - regression HMAC test vector.
 
-Remaining before M1.1 completion:
-- extract claim lease/ACK/result payload schemas from executable source;
-- extract error/result code taxonomy;
-- extract replay/nonce durable semantics and idempotency storage rules;
-- extract compatibility test vectors from historical tests;
-- define which endpoint paths remain compatibility aliases vs new V3 canonical paths.
+Remaining before M1.1 implementation stability:
+- define which endpoint paths remain compatibility aliases vs new V3 canonical paths;
+- bind migrated producer/consumer implementations to the executable contract without weakening idempotency/expiry/ambiguity semantics.
 
 ### M1.2 Deferred-safe wire contract
 
@@ -83,28 +82,41 @@ Source audit:
 V3 target:
 - `contracts/local-public-deferred/`.
 
-Current evidence already migrated:
-- state model;
-- allowed kind registry;
+Current executable evidence:
+- state and allowed-kind registries;
 - `occurred_at` validation and no-expiry semantics;
-- route map;
-- separation from realtime states/kinds;
-- financial integrity invariants.
+- route map and strict separation from realtime;
+- exact claim/ACK/reconcile/period-status/result operation schemas;
+- compatibility vectors for lease normalization, terminal-state conflict, `needs_review` resolution and financial-period blocking;
+- idempotency/storage evidence and financial integrity invariants.
 
-Remaining before M1.2 completion:
-- exact claim/ACK/reconcile payload/result schemas;
-- needs-review reason taxonomy;
-- period-status schema;
-- idempotency/receipt key rules;
-- admin review resolution compatibility tests.
+Remaining before M1.2 implementation stability:
+- preserve domain-specific `needs_review` reason/result details as each canonical Local owner is migrated;
+- bind migrated producer/consumer implementations to the executable contract;
+- keep admin review resolution explicit/audited and never silently reopen/back-post financial periods.
 
 ### M1.3 Runtime and Print contracts
 
-Do not invent final schemas yet. First audit historical runtime/print APIs, then extract proven semantics while applying the V3 ownership correction:
+Historical audit status:
+- Runtime audit: complete. dev39 has no stable Runtime HTTP API; proven external surfaces are CLI, `sokna-local-runtime-v1` state file and Windows SCM service host.
+- Print audit: complete. Print API v4 and the loopback `/v1/wake` + `/v1/preview` bridge have been audited, including durable submission/attempt semantics, request-body idempotency, server-scope binding and device/spooler ownership.
+
+V3 ownership correction remains frozen:
 - Runtime = supervision/OS integration only;
 - Print Agent = separate deployable owner of durable print/device/spooler execution.
 
-**Exit gate for M1:** executable contract schemas/tests exist before producer/consumer code is moved across V3 component boundaries.
+Current evidence:
+- `contracts/runtime-api/historical-audit-v1.json`;
+- `contracts/print-agent-api/historical-audit-v1.json`;
+- `tests/runtime-print-contract-audit.py`.
+
+Remaining before M1 completion:
+- define the final versioned V3 Runtime local IPC/HTTP subset from actual consumer needs, adapting proven health/service semantics without inventing legacy compatibility;
+- select the retained Print API v4/loopback subset and extract exact V3 request/response/state schemas plus compatibility vectors;
+- preserve `accept -> start -> report`, durable receipt/content hash, submission fence, `unknown`/`recovery_hold`, retry/reconciliation and spooler/device failure semantics;
+- make those final Runtime/Print schemas executable in CI.
+
+**Exit gate for M1:** executable cross-component contracts exist for Realtime, Deferred-safe, Runtime and Print Agent before producer/consumer implementation code is moved across V3 component boundaries.
 
 ---
 
