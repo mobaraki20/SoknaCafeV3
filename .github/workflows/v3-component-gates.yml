@@ -114,14 +114,46 @@ jobs:
         run: php tests/local-mysql-migration-selftest.php
 
   public:
-    name: Public gate (foundation stage)
+    name: Public Edge gate (M3)
     needs: [changes, foundation]
     if: needs.changes.outputs.public == 'true'
     runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m3
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/validate-v3-foundation.py --component public
-      - run: echo 'Public implementation/build suite is not yet registered; this gate currently validates ownership metadata only.'
+      - name: Validate M3 Public persistence ownership and contracts
+        run: python3 tests/public-m3-contract.py
+      - name: Ensure PDO MySQL is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -qi '^pdo_mysql$'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+      - name: Validate M3 Public migrations against real MariaDB
+        env:
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m3
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/public-mysql-migration-selftest.php
 
   runtime:
     name: Windows Runtime gate (foundation stage)
