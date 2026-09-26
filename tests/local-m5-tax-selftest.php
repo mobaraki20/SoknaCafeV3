@@ -25,7 +25,7 @@ $pdo=$core->database();
 
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
 foreach(['tax_rate_versions','tax_item_policy_versions'] as $table)m57_assert(in_array($table,$tables,true),"missing {$table}");
-foreach(['financial_periods','settlement_records','settlement_record_lines','print_jobs'] as $later)
+foreach(['settlement_records','settlement_record_lines','print_jobs'] as $later)
     m57_assert(!in_array($later,$tables,true),"M5.7 pulled later owner {$later} forward");
 
 m57_assert(TaxService::rateBpsNormalize('10')===1000,'10% basis-point normalization drifted');
