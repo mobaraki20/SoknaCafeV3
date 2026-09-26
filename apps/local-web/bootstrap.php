@@ -32,6 +32,11 @@ require_once __DIR__ . '/src/Domain/Inventory/InventoryService.php';
 require_once __DIR__ . '/src/Domain/Inventory/InventoryCountService.php';
 require_once __DIR__ . '/src/Domain/Inventory/InventoryOrderService.php';
 require_once __DIR__ . '/src/Relay/InventoryDeferredAdapter.php';
+require_once __DIR__ . '/src/Domain/Supply/SupplyException.php';
+require_once __DIR__ . '/src/Domain/Supply/SupplyAccessService.php';
+require_once __DIR__ . '/src/Domain/Supply/SupplyService.php';
+require_once __DIR__ . '/src/Relay/DeferredReceiptService.php';
+require_once __DIR__ . '/src/Relay/SupplyDeferredAdapter.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_local_bootstrap(array $config): Bootstrap
