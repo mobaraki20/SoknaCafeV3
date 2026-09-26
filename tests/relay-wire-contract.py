@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression gate for the proven dev39 Local/Public relay wire semantics carried into V3."""
+"""Regression gate for proven dev39 Local/Public relay wire semantics carried into V3."""
 
 from __future__ import annotations
 
@@ -92,11 +92,44 @@ def main() -> None:
     check(set(deferred["kinds"]) == expected_deferred_kinds, "deferred kind registry drifted")
     check(set(realtime["kinds"]).isdisjoint(deferred["kinds"]), "realtime/deferred kind registries overlap")
 
+    # Route separation is part of the proven architecture, not cosmetic naming.
     check(realtime["historical_routes"]["local_claim"] == "/api/v1/local/claim.php", "realtime claim route drifted")
     check(realtime["historical_routes"]["local_ack"] == "/api/v1/local/ack.php", "realtime ACK route drifted")
     check(deferred["historical_routes"]["local_claim"] == "/api/v1/local/deferred/claim.php", "deferred claim route drifted")
     check(deferred["historical_routes"]["local_ack"] == "/api/v1/local/deferred/ack.php", "deferred ACK route drifted")
     check(deferred["historical_routes"]["local_reconcile"] == "/api/v1/local/deferred/reconcile.php", "deferred reconcile route drifted")
+
+    # Operation-level lease and conflict semantics intentionally differ.
+    rt_claim = realtime["operations"]["local_claim"]
+    check(rt_claim["request_fields"]["lease_seconds"] == "optional integer; clamped 5..60; default 20", "realtime lease range/default drifted")
+    check("SHA256(token)" in rt_claim["lease_token"], "realtime lease storage must remain hashed in extracted evidence")
+    check(set(rt_claim["errors"]["409"]) == {"remote_disabled"}, "realtime claim 409 taxonomy drifted")
+
+    rt_ack = realtime["operations"]["local_ack"]
+    check(set(rt_ack["errors"]["409"]) == {"lease_conflict"}, "realtime ACK conflict taxonomy drifted")
+    check("without rewriting result" in rt_ack["dedupe_rule"], "realtime terminal ACK dedupe semantics drifted")
+
+    df_claim = deferred["operations"]["local_claim"]
+    check(df_claim["request_fields"]["lease_seconds"] == "optional integer; clamped 10..120; default 30", "deferred lease range/default drifted")
+    check("state remains pending_sync" in df_claim["lease_expiry_rule"], "deferred lease expiry must not adopt claimed state")
+    check(df_claim["attempt_rule"] == "claim increments attempt_count", "deferred attempt_count semantics drifted")
+
+    df_ack = deferred["operations"]["local_ack"]
+    check(set(df_ack["errors"]["409"]) == {"terminal_state_conflict", "lease_conflict"}, "deferred ACK conflict taxonomy drifted")
+    check(df_ack["state_rule"].endswith("committed|needs_review|rejected"), "deferred ACK target states drifted")
+
+    reconcile = deferred["operations"]["local_reconcile"]
+    check(reconcile["target_states"] == ["committed", "rejected"], "reconcile target states drifted")
+    check("only needs_review" in reconcile["transition_rule"], "reconcile source-state rule drifted")
+
+    period = deferred["operations"]["local_period_status"]
+    check(period["blocking_formula"] == "pending_sync + needs_review", "financial blocking formula drifted")
+    check(period["counts_shape"] == {"pending_sync": 0, "committed": 0, "needs_review": 0, "rejected": 0}, "period-status count schema drifted")
+
+    realtime_errors = realtime["operations"]["remote_enqueue"]["errors"]
+    check("request_id_conflict" in realtime_errors["409"], "realtime enqueue idempotency conflict missing")
+    deferred_errors = deferred["operations"]["remote_enqueue"]["errors"]
+    check("request_id_conflict" in deferred_errors["409"], "deferred enqueue idempotency conflict missing")
 
     print("Relay/deferred wire-v1 extraction contract passed.")
 
