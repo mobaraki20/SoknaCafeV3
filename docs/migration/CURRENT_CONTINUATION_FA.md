@@ -12,17 +12,19 @@
 
 ## آخرین checkpoint اجرایی تأییدشده
 
-M5.3 Staff Quick Order + Server-persistent Table Draft checkpoint:
+M5.4 Preparation permission/action checkpoint:
 
-- Head: `b7c021ff7cd318bd40ee6212c2385c540aad3632`
-- `M5 Table Draft Gate`: run `36254200135` — **SUCCESS**
-- `M5 Orders Gate`: run `36254200164` — **SUCCESS**
-- `M5 Sellables Gate`: run `36254200133` — **SUCCESS**
-- `V3 Component Gates`: push run `36254196611` — **SUCCESS**
-- M4 Guest Renderer / Failure Isolation regression gates — **SUCCESS**
+- Head: `8d24779cd059d854614e11d6ba800c963986a6c1`
+- `M5 Preparation Gate`: run `36254559171` — **SUCCESS**
+- `M5 Table Draft Gate`: run `36254559182` — **SUCCESS**
+- `M5 Orders Gate`: run `36254559189` — **SUCCESS**
+- `M5 Sellables Gate`: run `36254559163` — **SUCCESS**
+- `V3 Component Gates`: push run `36254558003` — **SUCCESS**
+- M4 regression gates — **SUCCESS**
 
 Canonical evidence:
 
+- `docs/migration/M5_PREPARATION_AUDIT_FA.md`
 - `docs/migration/M5_TABLE_DRAFT_AUDIT_FA.md`
 - `docs/migration/M5_ORDERS_AUDIT_FA.md`
 - `docs/migration/M5_SELLABLES_AUDIT_FA.md`
@@ -37,7 +39,8 @@ Canonical evidence:
 - M5.1: **COMPLETE — Explicit Sellables/catalog authority exit gate satisfied.**
 - M5.2: **COMPLETE — canonical Orders authority exit gate satisfied.**
 - M5.3: **COMPLETE — Staff Quick Order + server-persistent Table Draft exit gate satisfied.**
-- M5.4: **NEXT — Preparation permission/action owner.**
+- M5.4: **COMPLETE — Preparation permission/action owner exit gate satisfied.**
+- M5.5: **NEXT — Inventory.**
 - M6: continuous SCDS cross-cutting track.
 - M7..M10: planned / not complete.
 
@@ -58,32 +61,27 @@ Canonical evidence:
 Canonical disposition record:
 `docs/reviews/EXTERNAL_OBSERVER_DISPOSITION_2026-09-26_FA.md`
 
-## Immediate continuation — M5.4 Preparation permission/action owner
+## Immediate continuation — M5.5 Inventory
 
-Historical authority to audit/preserve:
+Audit/freeze before implementation:
 
-- `docs/handoffs/PHASE6A_HANDOFF_FA.md`
-- `docs/architecture-migration-r2/PHASE6A_CHECKPOINT_FA.md`
-- `includes/preparation_permissions.php`
-- `waiter/api_feed.php`
-- `waiter/api_action.php`
-- `user_preparation_areas`
-- `order_preparation_claims`
-- existing `preparation_adjustments` behavior only where required by the Preparation action boundary
-- historical Local/Public projection of Preparation scopes and `preparation.mutate`
+- `includes/inventory.php` — canonical movement/balance authority;
+- inventory schema: items, balances, movements, units/conversions, recipes;
+- stock-count draft/finalize owner and capability split;
+- receive/waste/manual-adjustment idempotency contracts;
+- historical order-accounted inventory event boundary;
+- existing Deferred-safe inventory kinds and Local reconciliation behavior.
 
-Frozen requirements:
+Known invariants from historical evidence:
 
-1. Preparation visibility and mutation authority are separate server-side concepts.
-2. `preparation` only: assigned areas visible and actionable.
-3. `shift_supervision` only: all areas visible, none actionable.
-4. `shift_supervision + preparation`: all areas visible, only assigned areas actionable.
-5. Admin role alone: all areas visible, no Preparation mutation authority.
-6. Browser/Public projection may filter, but Local revalidates active user/capabilities/assigned areas on every mutation.
-7. Read/feed behavior is side-effect free.
-8. Mutation never normalizes an invalid/unassigned area into an authorized one.
-9. `preparation.mutate` remains Realtime/Local-required and is excluded from Deferred-safe transport.
-10. Do not pull Inventory, Finance, Settlement or Print lifecycle forward merely to implement Preparation permission/action ownership.
+1. inventory balance changes through the canonical Movement contract, not arbitrary balance writes;
+2. sensitive inventory writes are transactional and idempotent;
+3. movement idempotency keys must prevent duplicate stock effects;
+4. stock-count draft editing and Local finalize are separate authorities;
+5. remote count work may edit a draft but must not perform Local-only finalize;
+6. current-cost/average-cost chronology must not be silently recomputed with a different ordering rule;
+7. Public/Deferred owns transport/review state only; Local owns final inventory validation and commit;
+8. Inventory migration must not silently pull Supply/Purchase or Finance ownership forward.
 
 ### M5 remaining dependency order
 
