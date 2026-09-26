@@ -25,31 +25,31 @@ final class DeferredReceiptService
         return self::rowResult($row,true);
     }
 
-    public function committedTx(string $installationId,array $envelope,array $actor,array $result): array
+    public function committedTx(string $installationId,array $envelope,array $actor,array $result,?int $financialPeriodId=null): array
     {
-        return $this->insertTx($installationId,$envelope,$actor,'committed',$result,'',false);
+        return $this->insertTx($installationId,$envelope,$actor,'committed',$result,'',false,$financialPeriodId);
     }
 
     public function rejectedTx(
-        string $installationId,array $envelope,array $actor,string $errorCode,array $result=[]
+        string $installationId,array $envelope,array $actor,string $errorCode,array $result=[],?int $financialPeriodId=null
     ): array {
-        return $this->insertTx($installationId,$envelope,$actor,'rejected',$result,$errorCode,false);
+        return $this->insertTx($installationId,$envelope,$actor,'rejected',$result,$errorCode,false,$financialPeriodId);
     }
 
     public function reviewTx(
-        string $installationId,array $envelope,array $actor,string $reasonCode,string $message,string $reviewType='conflict'
+        string $installationId,array $envelope,array $actor,string $reasonCode,string $message,string $reviewType='conflict',?int $financialPeriodId=null
     ): array {
         $out=$this->insertTx(
             $installationId,$envelope,$actor,'needs_review',
             ['review_type'=>$reviewType,'message'=>$message],
-            $reasonCode,false
+            $reasonCode,false,$financialPeriodId
         );
         $message=self::truncate(trim($message),500);
         $stmt=$this->pdo->prepare(
             "INSERT INTO deferred_review_items(receipt_id,review_type,financial_period_id,reason_code,message,state)
-             VALUES(?,?,NULL,?,?,'pending')"
+             VALUES(?,?,?,?,?,'pending')"
         );
-        $stmt->execute([(int)$out['receipt_id'],$reviewType,$reasonCode,$message]);
+        $stmt->execute([(int)$out['receipt_id'],$reviewType,$financialPeriodId,$reasonCode,$message]);
         $reviewId=(int)$this->pdo->lastInsertId();
         $this->audit('deferred.needs_review','deferred_work_receipt',(int)$out['receipt_id'],(int)$actor['id'],[
             'request_id'=>$envelope['request_id']??'','kind'=>$envelope['kind']??'',
@@ -132,7 +132,7 @@ final class DeferredReceiptService
     }
 
     private function insertTx(
-        string $installationId,array $envelope,array $actor,string $state,array $result,string $errorCode,bool $reconcile
+        string $installationId,array $envelope,array $actor,string $state,array $result,string $errorCode,bool $reconcile,?int $financialPeriodId=null
     ): array {
         $this->requireTx();
         $requestId=trim((string)($envelope['request_id']??''));
@@ -144,13 +144,13 @@ final class DeferredReceiptService
         $stmt=$this->pdo->prepare(
             'INSERT INTO deferred_work_receipts(installation_id,request_id,request_hash,kind,actor_projection_id,actor_user_id,
              occurred_at,envelope_json,state,result_json,error_code,financial_period_id,public_reconcile_pending,committed_at)
-             VALUES(?,?,?,?,?,?,?, ?,?,?,?,NULL,?,?)'
+             VALUES(?,?,?,?,?,?,?, ?,?,?,?,?,?,?)'
         );
         $stmt->execute([
             $installationId,$requestId,self::requestHash($envelope),(string)($envelope['kind']??''),
             (string)($envelope['actor_projection_id']??''),(int)($actor['id']??0),
             date('Y-m-d H:i:s',$occurredTs),self::canonicalJson($envelope),$state,self::json($result),
-            $errorCode!==''?$errorCode:null,$reconcile?1:0,$state==='committed'?date('Y-m-d H:i:s'):null,
+            $errorCode!==''?$errorCode:null,$financialPeriodId,$reconcile?1:0,$state==='committed'?date('Y-m-d H:i:s'):null,
         ]);
         $id=(int)$this->pdo->lastInsertId();
         $this->audit($state==='committed'?'deferred.committed':'deferred.rejected','deferred_work_receipt',$id,(int)($actor['id']??0),[
