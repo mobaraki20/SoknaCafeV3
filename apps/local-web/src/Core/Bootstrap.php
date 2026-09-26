@@ -5,6 +5,8 @@ namespace Sokna\Local\Core;
 
 use DateTimeZone;
 use PDO;
+use Sokna\Local\Domain\Orders\BusinessClock;
+use Sokna\Local\Domain\Orders\OrderCommitService;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 
 final class Bootstrap
@@ -15,6 +17,8 @@ final class Bootstrap
     private ?Auth $auth = null;
     private ?Migrations $migrations = null;
     private ?SellableRepository $sellables = null;
+    private ?BusinessClock $businessClock = null;
+    private ?OrderCommitService $orders = null;
 
     private function __construct(
         private readonly Config $config,
@@ -72,6 +76,16 @@ final class Bootstrap
     public function sellables(): SellableRepository
     {
         return $this->sellables ??= new SellableRepository($this->database());
+    }
+
+    public function businessClock(): BusinessClock
+    {
+        return $this->businessClock ??= new BusinessClock($this->database(), $this->config->string('app.timezone', 'Asia/Tehran'));
+    }
+
+    public function orders(): OrderCommitService
+    {
+        return $this->orders ??= new OrderCommitService($this->database(), $this->businessClock());
     }
 
     public function startSession(string $cookiePath = '/', ?bool $secure = null): void
