@@ -11,6 +11,9 @@ use Sokna\PublicEdge\Auth\PublicLoginService;
 use Sokna\PublicEdge\Auth\PublicSessionStore;
 use Sokna\PublicEdge\Connectivity\ConnectivityService;
 use Sokna\PublicEdge\Deferred\DeferredService;
+use Sokna\PublicEdge\Guest\GuestAvailabilityService;
+use Sokna\PublicEdge\Guest\GuestMediaStore;
+use Sokna\PublicEdge\Guest\GuestPublishService;
 use Sokna\PublicEdge\Health\PublicHealthService;
 use Sokna\PublicEdge\Realtime\RealtimeService;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
@@ -29,6 +32,9 @@ final class Bootstrap
     private ?RealtimeService $realtimeService = null;
     private ?DeferredService $deferredService = null;
     private ?PublicHealthService $healthService = null;
+    private ?GuestMediaStore $guestMediaStore = null;
+    private ?GuestPublishService $guestPublishService = null;
+    private ?GuestAvailabilityService $guestAvailabilityService = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -122,5 +128,22 @@ final class Bootstrap
     public function health(): PublicHealthService
     {
         return $this->healthService ??= new PublicHealthService($this->database());
+    }
+
+    public function guestMedia(): GuestMediaStore
+    {
+        $storage = trim($this->config->string('app.storage_dir'));
+        if ($storage === '') $storage = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'storage';
+        return $this->guestMediaStore ??= new GuestMediaStore($storage);
+    }
+
+    public function guestPublish(): GuestPublishService
+    {
+        return $this->guestPublishService ??= new GuestPublishService($this->database(), $this->guestMedia());
+    }
+
+    public function guestAvailability(): GuestAvailabilityService
+    {
+        return $this->guestAvailabilityService ??= new GuestAvailabilityService($this->database());
     }
 }
