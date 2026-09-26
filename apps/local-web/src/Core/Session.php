@@ -9,7 +9,7 @@ final class Session
 {
     public const DEFAULT_LIFETIME = 43200;
 
-    public static function start(Config $config, Observability $observability, string $cookiePath = '/', ?bool $secure = null): void
+    public static function start(Config $config, Observability $observability, ?string $cookiePath = null, ?bool $secure = null): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) return;
 
@@ -31,8 +31,12 @@ final class Session
                 || ((int)($_SERVER['SERVER_PORT'] ?? 80) === 443);
         }
 
-        $cookiePath = '/' . trim($cookiePath, '/');
-        if ($cookiePath !== '/') $cookiePath .= '/';
+        if ($cookiePath === null) {
+            $cookiePath = self::cookiePathForRequest();
+        } else {
+            $cookiePath = '/' . trim($cookiePath, '/');
+            if ($cookiePath !== '/') $cookiePath .= '/';
+        }
 
         session_start([
             'cookie_httponly' => true,
@@ -44,6 +48,53 @@ final class Session
             'use_strict_mode' => true,
             'use_only_cookies' => true,
         ]);
+    }
+
+    public static function cookiePathForRequest(
+        ?string $scriptName = null,
+        ?string $scriptFilename = null,
+        ?string $documentRoot = null,
+        ?string $appRoot = null,
+    ): string {
+        $scriptName = str_replace('\\', '/', $scriptName ?? (string)($_SERVER['SCRIPT_NAME'] ?? '/index.php'));
+        $scriptName = '/' . ltrim((string)(parse_url($scriptName, PHP_URL_PATH) ?? $scriptName), '/');
+        $scriptFilename = str_replace('\\', '/', $scriptFilename ?? (string)($_SERVER['SCRIPT_FILENAME'] ?? ''));
+        $documentRoot = str_replace('\\', '/', $documentRoot ?? (string)($_SERVER['DOCUMENT_ROOT'] ?? ''));
+        $appRoot = str_replace('\\', '/', $appRoot ?? dirname(__DIR__, 2));
+
+        $normalizeFs = static function (string $path): string {
+            if ($path === '') return '';
+            $real = realpath($path);
+            $path = str_replace('\\', '/', $real !== false ? $real : $path);
+            return rtrim($path, '/');
+        };
+
+        $appFs = $normalizeFs($appRoot);
+        $docFs = $normalizeFs($documentRoot);
+        $scriptFs = $normalizeFs($scriptFilename);
+        $mount = '';
+
+        if ($appFs !== '' && $docFs !== '' && ($appFs === $docFs || str_starts_with($appFs . '/', $docFs . '/'))) {
+            $relative = ltrim(substr($appFs, strlen($docFs)), '/');
+            $mount = $relative === '' ? '' : '/' . trim($relative, '/');
+        } elseif ($appFs !== '' && $scriptFs !== '' && ($scriptFs === $appFs || str_starts_with($scriptFs . '/', $appFs . '/'))) {
+            $relativeFile = ltrim(substr($scriptFs, strlen($appFs)), '/');
+            if ($relativeFile !== '') {
+                $suffix = '/' . $relativeFile;
+                if (str_ends_with($scriptName, $suffix)) {
+                    $candidate = substr($scriptName, 0, -strlen($suffix));
+                    $mount = $candidate === '' || $candidate === '/' ? '' : '/' . trim($candidate, '/');
+                }
+            }
+        } else {
+            $base = basename($scriptName);
+            if (in_array($base, ['index.php', 'install.php', 'login.php'], true)) {
+                $dir = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
+                if ($dir !== '.' && $dir !== '/') $mount = '/' . trim($dir, '/');
+            }
+        }
+
+        return $mount === '' ? '/' : $mount . '/';
     }
 
     public static function refreshCookie(int $lifetime = self::DEFAULT_LIFETIME): void
