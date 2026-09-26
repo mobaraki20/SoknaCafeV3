@@ -201,7 +201,7 @@ final class InventoryService
         }
         $movementId=(int)$this->pdo->lastInsertId();
 
-        $this->pdo->prepare('UPDATE inventory_balances SET quantity_base=?,average_unit_cost=?,cost_status=?,updated_at=NOW() WHERE inventory_item_id=?')
+        $this->pdo->prepare('UPDATE inventory_balances SET quantity_base=?,average_unit_cost=?,cost_status=?,updated_at=NOW(6) WHERE inventory_item_id=?')
             ->execute([$newQty,$newAvg,$newCostStatus,$itemId]);
         if($requiresChronologicalRebuild){
             $projection=$this->rebuildProjectionTx($itemId);
@@ -289,7 +289,7 @@ final class InventoryService
     {
         $projection=$this->projectionReplayTx($itemId);
         $this->balanceTx($itemId);
-        $this->pdo->prepare('UPDATE inventory_balances SET quantity_base=?,average_unit_cost=?,cost_status=?,updated_at=NOW() WHERE inventory_item_id=?')
+        $this->pdo->prepare('UPDATE inventory_balances SET quantity_base=?,average_unit_cost=?,cost_status=?,updated_at=NOW(6) WHERE inventory_item_id=?')
             ->execute([(int)$projection['quantity_base'],$projection['average_unit_cost'],(string)$projection['cost_status'],$itemId]);
         return $projection;
     }
