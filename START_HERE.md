@@ -1,75 +1,47 @@
 # START HERE — SOKNA Cafe V3
 
-This file is the operational entrypoint for every human or agent.
+This is the operational entrypoint for every human or agent.
 
-## 1. Do not start from legacy assumptions
+## Current truth
 
-The old repository is a historical source, not the active architecture owner. Historical repository:
+SOKNA V3 has strong validated backend/component foundations, but the product migration is **not yet complete**. Do not start from the historical `3.0.0-rc.1 / Manual UAT next` assumption.
 
-`mobaraki20/SoknaCafe`
+Read in this order:
 
-Historical engineering baseline used to start V3:
+1. `docs/migration/CURRENT_CONTINUATION_FA.md`
+2. `docs/product/MASTER_PRODUCT_INTENT_AUDIT_FA.md`
+3. `COMPONENTS.json`
+4. `ARCHITECTURE.md`
+5. `PROJECT_LINEAGE.md`
+6. UI/Design System authority for any user-facing work
+7. target component README/handoff and relevant contracts/ADRs
 
-`work/reconcile-dev39` @ `a46435cca57df5bd5b9770efd0bb95390528aa05`
+Historical migration/M10 documents remain evidence, not current product-completion authority.
 
-If old code or documentation conflicts with V3 architecture, V3 documents and ADRs win unless a newer V3 ADR explicitly changes them.
+## Source hierarchy
 
-## 2. Product invariant
+1. Latest explicitly approved V3 decisions/ADRs win implementation-method conflicts.
+2. Initial architecture handoff R2 remains product-intent authority unless explicitly superseded.
+3. Legacy final post-UI baseline `mobaraki20/SoknaCafe@a46435cca57df5bd5b9770efd0bb95390528aa05` is observable UI/behavior evidence.
+4. dev.26 is business provenance/historical behavior evidence.
+5. Current V3 source proves what exists, not what may silently be removed from intended product scope.
 
-SOKNA is one product with independently releasable components. A change in one component must not force a release of another component unless a versioned contract or compatibility boundary changes.
+## Component rule
 
-## 3. Component ownership
+One monorepo, independently releasable components, explicit contracts. Use `COMPONENTS.json` and work on one component at a time. Do not re-audit closed cores without an evidence defect or explicit contract impact.
 
-- `apps/local-web`: sole owner of local business rules and primary business data.
-- `apps/public`: Public Edge, guest/remote surfaces, safe projections, relay-facing behavior and Public-owned storage only.
-- `windows/runtime`: Windows integration, service supervision, hardware/OS adapters, diagnostics and scheduling; no business decisions.
-- `windows/print-agent`: separate local/machine-bound owner of durable print/device/spooler execution; no Public/Internet control.
-- `platform`: approved Apache/PHP/MariaDB/runtime dependencies and platform lifecycle.
-- `contracts`: versioned interfaces and compatibility declarations.
+## Final deployment decision
 
-## 4. Mandatory rules
+`docs/adr/0004-deployment-and-component-lifecycle-v2.md` supersedes the old unified Windows composition where relevant:
 
-1. Business logic must not be duplicated in Windows Runtime or Public.
-2. Public never becomes a full clone of Local business data.
-3. Windows Runtime never writes Local business tables directly.
-4. Local Web never directly owns Winspool, Registry, Windows Service Control, ACL or elevated OS operations.
-5. Full immutable release packages are canonical; delta packages are optional optimization only.
-6. Repair, Update and Recover are separate operations.
-7. Platform, Runtime, Local and Public have independent versions.
-8. CI must be component/path aware. Full Windows acceptance is not required for ordinary Local/Public-only changes.
-9. Shared contracts must be versioned and backward-compatible where rolling upgrades require it.
-10. Legacy code is migrated by explicit ownership decision, not by bulk copy.
-11. Architecture migration is not permission to redesign the UI. `UI_DESIGN_SYSTEM.md` is a mandatory product contract.
-12. Refactors must preserve established UI/behavior unless an explicit `REDESIGN_APPROVED` or `BEHAVIOR_CHANGE_APPROVED` decision exists.
+- Local Web: ZIP + Browser Setup Wizard; no PS1/EXE installer.
+- Windows Services installer: Runtime + Print Agent only.
+- Infrastructure prerequisites: detect/acquire/manual fallback; not bundled.
+- Public Edge: independent deploy package.
+- Local Update Center + Public Emergency Console are required product surfaces.
 
-## 5. Before editing code
+## Mandatory preservation rules
 
-Read, in this order:
+Local remains final Business Authority. Public is not a second full business DB/admin clone. Runtime never writes business tables or decides business validity. Realtime and Deferred-safe remain separate. SCDS is canonical and UI migration is not redesign permission. Important committed history uses correction/reversal/audit, not hard deletion. Recovery must survive broken application releases.
 
-1. `ARCHITECTURE.md`
-2. `PROJECT_LINEAGE.md`
-3. `UI_DESIGN_SYSTEM.md` for any user-facing or interaction-affecting change
-4. `docs/migration/CURRENT_CONTINUATION_FA.md` — the single current continuation authority
-5. `docs/migration/AGENT_HANDOFF_FA.md` when resuming across chats/agents or from a workspace snapshot
-6. `docs/reviews/EXTERNAL_OBSERVER_REVIEW_2026-09-26_FA.md` and disposition any open finding that affects the target slice
-7. the target component README
-8. relevant ADRs
-
-Historical migration/status documents remain evidence. If they disagree about the current slice, `docs/migration/CURRENT_CONTINUATION_FA.md` is authoritative until intentionally superseded by a newer recorded continuation decision.
-
-The external review is an evidence checkpoint, not an architecture authority. Do
-not mechanically change behavior to satisfy it. Trace each applicable finding to
-the approved handover/ADR and historical baseline, then record whether it is
-preserved behavior, an approved change, a fixed regression, or an open decision.
-
-Then identify:
-
-- owner component,
-- contract impact,
-- data owner,
-- release artifact impacted,
-- UI/behavior preservation impact,
-- tests required,
-- rollback behavior.
-
-If ownership is unclear, stop implementation and add or update an ADR first. If a user-visible behavior would change without explicit approval, treat it as a regression rather than an incidental cleanup.
+Manual UAT resumes only after product-gap closure, new M9/M10 qualification, and a new RC.
