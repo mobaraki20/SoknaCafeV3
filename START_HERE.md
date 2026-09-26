@@ -38,16 +38,27 @@ SOKNA is one product with independently releasable components. A change in one c
 8. CI must be component/path aware. Full Windows acceptance is not required for ordinary Local/Public-only changes.
 9. Shared contracts must be versioned and backward-compatible where rolling upgrades require it.
 10. Legacy code is migrated by explicit ownership decision, not by bulk copy.
+11. Architecture migration is not permission to redesign the UI. `UI_DESIGN_SYSTEM.md` is a mandatory product contract.
+12. Refactors must preserve established UI/behavior unless an explicit `REDESIGN_APPROVED` or `BEHAVIOR_CHANGE_APPROVED` decision exists.
 
 ## 5. Before editing code
 
-Read `ARCHITECTURE.md`, `PROJECT_LINEAGE.md`, the target component README, and relevant ADRs. Then identify:
+Read, in this order:
+
+1. `ARCHITECTURE.md`
+2. `PROJECT_LINEAGE.md`
+3. `UI_DESIGN_SYSTEM.md` for any user-facing or interaction-affecting change
+4. the target component README
+5. relevant ADRs
+
+Then identify:
 
 - owner component,
 - contract impact,
 - data owner,
 - release artifact impacted,
+- UI/behavior preservation impact,
 - tests required,
 - rollback behavior.
 
-If ownership is unclear, stop implementation and add or update an ADR first.
+If ownership is unclear, stop implementation and add or update an ADR first. If a user-visible behavior would change without explicit approval, treat it as a regression rather than an incidental cleanup.
