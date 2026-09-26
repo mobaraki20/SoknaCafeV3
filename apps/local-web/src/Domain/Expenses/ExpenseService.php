@@ -6,6 +6,7 @@ namespace Sokna\Local\Domain\Expenses;
 use PDO;
 use Sokna\Local\Core\IdentityRepository;
 use Sokna\Local\Domain\Finance\FinancialPeriodIdentityService;
+use Sokna\Local\Domain\Finance\FinancialPeriodException;
 use Throwable;
 
 final class ExpenseService
@@ -89,10 +90,14 @@ final class ExpenseService
         if($cat->fetchColumn()===false)throw new ExpenseException('invalid_category','دسته هزینه معتبر نیست.',422);
 
         $periodId=(int)($data['financial_period_id']??0);
-        $period=$periodId>0
-            ?$this->periods->byIdTx($periodId)
-            :$this->periods->forDateTx(substr($occurredAt,0,10),$actorUserId);
-        $this->periods->assertAccepts($period,$occurredAt,$allowClosedPeriod);
+        try{
+            $period=$periodId>0
+                ?$this->periods->byIdTx($periodId)
+                :$this->periods->forDateTx(substr($occurredAt,0,10),$actorUserId);
+            $this->periods->assertAccepts($period,$occurredAt,$allowClosedPeriod);
+        }catch(FinancialPeriodException $e){
+            throw new ExpenseException($e->errorCode,$e->getMessage(),$e->httpStatus,$e->details);
+        }
 
         $stmt=$this->pdo->prepare(
             "INSERT INTO expenses(financial_period_id,category_key,amount,description,occurred_at,actor_user_id,source_request_id,status)
@@ -137,8 +142,12 @@ final class ExpenseService
             ];
         }
 
-        $period=$this->periods->byIdTx((int)$original['financial_period_id']);
-        $this->periods->assertAccepts($period,(string)$original['occurred_at'],$allowClosedPeriod);
+        try{
+            $period=$this->periods->byIdTx((int)$original['financial_period_id']);
+            $this->periods->assertAccepts($period,(string)$original['occurred_at'],$allowClosedPeriod);
+        }catch(FinancialPeriodException $e){
+            throw new ExpenseException($e->errorCode,$e->getMessage(),$e->httpStatus,$e->details);
+        }
         $description=self::truncate('برگشت هزینه — '.$reason,500);
         $insert=$this->pdo->prepare(
             "INSERT INTO expenses(financial_period_id,category_key,amount,description,occurred_at,actor_user_id,source_request_id,status,reverses_expense_id)
