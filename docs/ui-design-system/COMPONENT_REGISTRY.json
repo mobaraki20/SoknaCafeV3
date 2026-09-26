@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "design_system_id": "SCDS-CANONICAL-2026-R1",
-  "status": "v3_migration_foundation",
+  "status": "m6_shared_foundation_canonical",
   "language": "fa",
   "direction": "rtl",
   "previous_sokna_design_systems": "rejected_not_authoritative",
@@ -13,102 +13,231 @@
   "components": [
     {
       "id": "button",
-      "v3_owner": "planned:apps/local-web UI foundation/shared component layer",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".btn", ".btn-primary", ".btn-light", ".btn-danger", ".btn-sm"]
+      "v3_owner": "apps/local-web/assets/scds/components.css + apps/local-web/src/UI/SCDS.php",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".btn",
+        ".btn-primary",
+        ".btn-light",
+        ".btn-danger",
+        ".btn-sm"
+      ],
+      "v3_selectors": [
+        ".sc-button"
+      ]
     },
     {
       "id": "icon_button",
-      "v3_owner": "planned:apps/local-web UI foundation/shared component layer",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".icon-btn"]
+      "v3_owner": "apps/local-web/assets/scds/components.css",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".icon-btn"
+      ],
+      "v3_selectors": [
+        ".sc-icon-button"
+      ]
     },
     {
       "id": "form_control",
-      "v3_owner": "planned:apps/local-web UI foundation/shared component layer",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".form-control"]
+      "v3_owner": "apps/local-web/assets/scds/components.css + apps/local-web/src/UI/SCDS.php",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".form-control"
+      ],
+      "v3_selectors": [
+        ".sc-field",
+        ".sc-control"
+      ]
     },
     {
       "id": "status_badge",
-      "v3_owner": "planned:shared SCDS state component layer",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".badge", ".status-chip"]
+      "v3_owner": "apps/local-web/assets/scds/components.css + apps/local-web/src/UI/SCDS.php",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".badge",
+        ".status-chip"
+      ],
+      "v3_selectors": [
+        ".sc-badge"
+      ]
     },
     {
       "id": "card_surface",
-      "v3_owner": "planned:shared SCDS surface layer",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".card"]
+      "v3_owner": "apps/local-web/assets/scds/components.css",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".card"
+      ],
+      "v3_selectors": [
+        ".sc-card"
+      ]
     },
     {
       "id": "alert",
-      "v3_owner": "planned:shared SCDS feedback layer",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".alert"]
+      "v3_owner": "apps/local-web/assets/scds/components.css + apps/local-web/src/UI/SCDS.php",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".alert"
+      ],
+      "v3_selectors": [
+        ".sc-alert"
+      ]
     },
     {
       "id": "dialog_sheet",
-      "v3_owner": "planned:shared SCDS overlay owner",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".panel-confirm-layer", ".panel-form-dialog-layer", ".success-modal"]
+      "v3_owner": "apps/local-web/assets/scds/components.css + apps/local-web/assets/scds/scds.js",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".panel-confirm-layer",
+        ".panel-form-dialog-layer",
+        ".success-modal"
+      ],
+      "v3_selectors": [
+        ".sc-dialog"
+      ]
     },
     {
       "id": "tabs",
-      "v3_owner": "planned:shared SCDS navigation layer",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".panel-primary-tabs", ".category-tabs"]
+      "v3_owner": "apps/local-web/assets/scds/components.css + apps/local-web/assets/scds/scds.js",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".panel-primary-tabs",
+        ".category-tabs"
+      ],
+      "v3_selectors": [
+        ".sc-tabs",
+        ".sc-tab"
+      ]
     },
     {
       "id": "data_table",
-      "v3_owner": "planned:shared SCDS responsive data-surface layer",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".data-table", ".mobile-card-table"]
+      "v3_owner": "apps/local-web/assets/scds/components.css",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".data-table",
+        ".mobile-card-table"
+      ],
+      "v3_selectors": [
+        ".sc-table-wrap",
+        ".sc-table"
+      ]
     },
     {
       "id": "quantity_stepper",
-      "v3_owner": "planned:shared SCDS quantity component + canonical behavior",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".quantity-stepper"]
+      "v3_owner": "apps/local-web/assets/scds/components.css + apps/local-web/assets/scds/scds.js",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".quantity-stepper"
+      ],
+      "v3_selectors": [
+        ".sc-quantity"
+      ]
     },
     {
       "id": "jalali_date",
-      "v3_owner": "planned:shared SCDS Jalali date control",
-      "status": "audit_before_migrate",
-      "legacy_selectors": [".jalali-date-control", ".jalali-picker-dialog"]
+      "v3_owner": "apps/local-web shared date-control contract; consumer implementation must use SCDS field/dialog primitives",
+      "status": "canonical_contract_m6_uat_required",
+      "legacy_selectors": [
+        ".jalali-date-control",
+        ".jalali-picker-dialog"
+      ],
+      "v3_selectors": [
+        ".sc-field",
+        ".sc-control",
+        ".sc-dialog"
+      ]
     },
     {
       "id": "app_shell",
-      "v3_owner": "planned:apps/local-web canonical shell; Public uses approved shared primitives without becoming a parallel generic owner",
-      "status": "legacy_migrating",
-      "legacy_selectors": [".panel-shell", ".side-nav", ".panel-main", ".app-bottom-nav"]
+      "v3_owner": "apps/local-web/assets/scds/components.css",
+      "status": "canonical_m6",
+      "legacy_selectors": [
+        ".panel-shell",
+        ".side-nav",
+        ".panel-main",
+        ".app-bottom-nav"
+      ],
+      "v3_selectors": [
+        ".sc-shell",
+        ".sc-shell__nav",
+        ".sc-shell__main"
+      ]
     },
     {
       "id": "system_state_page",
-      "v3_owner": "planned:shared SCDS system-state pattern",
-      "status": "historical_canonical_to_migrate",
+      "v3_owner": "apps/local-web/assets/scds/components.css + apps/local-web/src/UI/SCDS.php",
+      "status": "canonical_m6",
       "historical_owner": "assets/css/scds-system-state.css",
-      "historical_consumers": ["menu/index.php maintenance", "menu/index.php invalid QR"],
+      "historical_consumers": [
+        "menu/index.php maintenance",
+        "menu/index.php invalid QR"
+      ],
       "v3_guest_consumer": "apps/public/src/Guest/GuestPageRenderer.php uses the domain-scoped .sg-system-state consumer without claiming a second generic owner",
-      "requirements": ["Persian RTL", "Vazirmatn", "320px safe", "44px action", "no inline style island"]
+      "requirements": [
+        "Persian RTL",
+        "Vazirmatn",
+        "320px safe",
+        "44px action",
+        "no inline style island"
+      ],
+      "v3_selectors": [
+        ".sc-system-state",
+        ".sc-system-state__panel"
+      ]
     },
     {
       "id": "guest_menu_shell",
       "v3_owner": "apps/public/src/Guest/GuestPageRenderer.php + apps/public/assets/scds/guest.css",
       "status": "canonical_migrated_m4",
       "scope": "Guest/Public domain only; must not become a generic button/card/input owner",
-      "v3_selectors": [".sg-app", ".sg-header", ".sg-search", ".sg-category-nav", ".sg-category", ".sg-item", ".sg-action-state", ".sg-system-state"],
-      "legacy_evidence": ["public_edge/guest/index.php", "includes/guest_menu_view.php", "assets/css/guest-menu.css"],
-      "requirements": ["Persian RTL from server", "read-only degraded mode", "320px safe", "keyboard focus", "reduced motion", "escaped snapshot text", "no inline style island", "sg-* domain namespace"]
+      "v3_selectors": [
+        ".sg-app",
+        ".sg-header",
+        ".sg-search",
+        ".sg-category-nav",
+        ".sg-category",
+        ".sg-item",
+        ".sg-action-state",
+        ".sg-system-state"
+      ],
+      "legacy_evidence": [
+        "public_edge/guest/index.php",
+        "includes/guest_menu_view.php",
+        "assets/css/guest-menu.css"
+      ],
+      "requirements": [
+        "Persian RTL from server",
+        "read-only degraded mode",
+        "320px safe",
+        "keyboard focus",
+        "reduced motion",
+        "escaped snapshot text",
+        "no inline style island",
+        "sg-* domain namespace"
+      ]
     },
     {
       "id": "guest_order_flow",
       "v3_owner": "apps/public/assets/scds/guest.js + apps/public/src/Guest/GuestCompatibilityService.php",
       "status": "canonical_migrated_m4",
       "scope": "Guest interaction controller; canonical business mutation remains Local through M3 Realtime",
-      "v3_selectors": [".sg-quantity", ".sg-basket", ".sg-waiter", ".sg-inline-message"],
-      "legacy_evidence": ["assets/js/menu.js", "public_edge/api/v1/guest/compat/*"],
-      "requirements": ["44px touch targets", "no mutation while degraded", "retry-safe compatibility path", "no innerHTML injection", "no second Realtime queue"]
+      "v3_selectors": [
+        ".sg-quantity",
+        ".sg-basket",
+        ".sg-waiter",
+        ".sg-inline-message"
+      ],
+      "legacy_evidence": [
+        "assets/js/menu.js",
+        "public_edge/api/v1/guest/compat/*"
+      ],
+      "requirements": [
+        "44px touch targets",
+        "no mutation while degraded",
+        "retry-safe compatibility path",
+        "no innerHTML injection",
+        "no second Realtime queue"
+      ]
     }
   ],
   "rule": "A reusable component has one canonical V3 owner. Status must move toward canonical/retired-legacy; migration must not create a second generic owner."
