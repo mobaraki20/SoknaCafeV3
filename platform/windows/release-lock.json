@@ -1,0 +1,69 @@
+{
+  "format": "sokna-windows-prerequisite-lock-v1",
+  "schema_version": 1,
+  "release_frozen": true,
+  "app_version": "1.36.4-dev.39",
+  "source_candidate_sha256": "e1a4c081808c92a000ac655b8c003e902fcb907a5b91e58e934cd3def96dbdfa",
+  "artifacts": [
+    {
+      "id": "php-8.2.34-ts-x64",
+      "dependency": "php",
+      "version": "8.2.34",
+      "filename": "php-8.2.34-Win32-vs16-x64.zip",
+      "source_url": "https://downloads.php.net/~windows/releases/php-8.2.34-Win32-vs16-x64.zip",
+      "sha256": "6df2a5f59f10f08022bede47a26d61c3c16756c54d86aad58503dc8a9d3c25ad",
+      "size": 33585038,
+      "installation": "manual-external",
+      "authenticode": {
+        "required": false,
+        "publisher_contains": ""
+      },
+      "instructions_fa": "PHP 8.2.34 x64 Thread Safe برای Apache؛ extensionهای pdo_mysql، fileinfo، openssl، sodium و mbstring باید در preflight تأیید شوند."
+    },
+    {
+      "id": "apache-2.4.68-vs18-x64",
+      "dependency": "apache",
+      "version": "2.4.68-260920-vs18-x64",
+      "filename": "httpd-2.4.68-260920-Win64-VS18.zip",
+      "source_url": "https://www.apachelounge.com/download/VS18/binaries/httpd-2.4.68-260920-Win64-VS18.zip",
+      "sha256": "f6dcf17d08aa32721ae418cd818c157e4c521c9e889b758646fb64287f1d56e3",
+      "size": 14560618,
+      "installation": "manual-external",
+      "authenticode": {
+        "required": false,
+        "publisher_contains": ""
+      },
+      "instructions_fa": "Apache Lounge x64؛ lifecycle همچنان external است. OpenSSL مورد نیاز SOKNA باید از bin همین Apache یا یک OpenSSL از پیش نصب‌شده و تأییدشده انتخاب شود؛ SOKNA مالک سرویس Apache نیست."
+    },
+    {
+      "id": "mariadb-11.4.12-x64",
+      "dependency": "mariadb",
+      "version": "11.4.12",
+      "filename": "mariadb-11.4.12-winx64.msi",
+      "source_url": "https://dlm.mariadb.com/4699687/MariaDB/mariadb-11.4.12/winx64-packages/mariadb-11.4.12-winx64.msi",
+      "sha256": "4d92fb5f16c0ec8d5a9fc1efdb33a377eaa712d6bce97451e151465c3041ccac",
+      "size": 87056384,
+      "installation": "manual-external",
+      "authenticode": {
+        "required": false,
+        "publisher_contains": ""
+      },
+      "instructions_fa": "MariaDB Community Server 11.4.12 x64؛ نصب/سرویس shared و external باقی می‌ماند و ابزار setup-machine.php readiness را تأیید می‌کند."
+    },
+    {
+      "id": "vc-runtime-14.51.36247.0-x64",
+      "dependency": "vc_runtime",
+      "version": "14.51.36247.0",
+      "filename": "VC_redist.x64.exe",
+      "source_url": "https://download.visualstudio.microsoft.com/download/pr/ebdab8e5-1d7b-4d9f-a11b-cbb1720c3b12/843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C/VC_redist.x64.exe",
+      "sha256": "843068991daaa1f73ad9f6239bce4d0f6a07a51f18c37ea2a867e9beca71295c",
+      "size": 18731856,
+      "installation": "manual-external",
+      "authenticode": {
+        "required": true,
+        "publisher_contains": "Microsoft Corporation"
+      },
+      "instructions_fa": "Microsoft Visual C++ v14 x64 14.51.36247.0؛ artifact immutable فعلی Microsoft برای VS 2017–2026. Setup کاربر آن را خودکار نصب نمی‌کند و نسخه جدیدتر موجود روی سیستم نباید downgrade شود."
+    }
+  ]
+}

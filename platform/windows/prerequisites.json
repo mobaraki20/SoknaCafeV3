@@ -1,0 +1,44 @@
+{
+  "format": "sokna-windows-prerequisites-v1",
+  "schema_version": 1,
+  "acquisition_policy": "preinstalled-or-release-verified-offline-bundle",
+  "automatic_download_allowed": false,
+  "php": {
+    "minimum_version_id": 80200,
+    "architecture": "x64",
+    "required_extensions": [
+      "pdo_mysql",
+      "fileinfo",
+      "openssl",
+      "sodium",
+      "mbstring"
+    ]
+  },
+  "web_server": {
+    "family": "apache",
+    "lifecycle_owner": "external",
+    "executable_names": [
+      "httpd.exe",
+      "apache.exe"
+    ],
+    "required_for_release": true
+  },
+  "openssl": {
+    "lifecycle_owner": "external",
+    "required_when_https_enabled": true,
+    "probe_argument": "version"
+  },
+  "database": {
+    "family": "mysql-mariadb",
+    "lifecycle_owner": "external",
+    "php_driver": "pdo_mysql",
+    "validation_owner": "tools/setup-machine.php"
+  },
+  "offline_bundle": {
+    "relative_cache_path": "Prerequisites",
+    "format": "sokna-windows-prerequisite-bundle-v1",
+    "automatic_install": false,
+    "shared_dependency_owner": "external",
+    "release_lock_required": true
+  }
+}
