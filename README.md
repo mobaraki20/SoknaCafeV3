@@ -24,19 +24,20 @@ One product, independently releasable components:
 
 ## Current execution point
 
-- Active migration branch: `architecture/v3-foundation`
-- Active draft PR: `#1`
-- F0 architecture/contract foundation: complete.
-- M1 cross-component contract extraction: in progress.
-  - Realtime and Deferred-safe wire semantics, exact operation schemas and compatibility vectors are executable in CI.
-  - Runtime historical audit confirms dev39 exposed CLI/state-file/SCM semantics rather than a stable Runtime HTTP API.
-  - Print Agent historical audit covers Print API v4 and the loopback wake/preview bridge while preserving V3 separate-deployable ownership.
-  - Final V3 Runtime/Print contract subsets remain Draft and must become executable before producer/consumer implementation moves across component boundaries.
+The single canonical continuation record is:
 
-For the exact continuation state, read:
-1. `docs/migration/M1_CONTRACT_EXTRACTION_STATUS_FA.md`
-2. `docs/migration/MIGRATION_SLICES.md`
-3. `contracts/manifest.json`
+`docs/migration/CURRENT_CONTINUATION_FA.md`
+
+Current state:
+
+- F0 foundation: complete.
+- M1 contract extraction: complete at executable contract-extraction level.
+- M2 Local Core: complete at slice level.
+- Observer contract reconciliation EOR-01..03: fixed on `ebceeacf21ebdc6996634d113f6cac4a3d5a7083`; workflow `36216627352` SUCCESS.
+- EOR-04/EOR-05 reconciliation: current work.
+- Next ordered implementation slice after reconciliation: **M3 — Public Edge Persistence, Auth Projection and Relay Transport**.
+
+Historical status files remain evidence, but they are not continuation authority when they disagree with `CURRENT_CONTINUATION_FA.md`.
 
 ## Start here
 
@@ -45,7 +46,7 @@ Every human or agent must read, in this order, before changing code:
 1. `START_HERE.md`
 2. `ARCHITECTURE.md`
 3. `PROJECT_LINEAGE.md`
-4. the current migration-status file under `docs/migration/`
+4. `docs/migration/CURRENT_CONTINUATION_FA.md`
 5. the README of the component being changed
 6. relevant ADRs under `docs/adr/`
 
