@@ -5,7 +5,7 @@
   "local_branch": "work/local-migration",
   "remote_base": {
     "branch": "architecture/v3-foundation",
-    "sha": "510a3433470c1f97de84fd3534165f883d0718fc"
+    "sha": "61eab5dcf4af6e8c8620f21ed0906a03ed11d64e"
   },
   "legacy_baseline": {
     "repository": "mobaraki20/SoknaCafe",
@@ -46,5 +46,48 @@
     "physical_thermal_printer",
     "responsive_touch_persian_ime"
   ],
-  "m10_commit": "d404d9238c6c40ac214da13245a7da0d50c4eaa4"
+  "m10_commit": "d404d9238c6c40ac214da13245a7da0d50c4eaa4",
+  "integration_candidate": {
+    "sha": "41d2aafc4f440a544b29e2632da387ed6314e8bb",
+    "tree_sha": "35a950298a4ca77788ee2eff43d5504705f5e924"
+  },
+  "local_commits_after_remote_base_reference": [
+    "9f8bb67",
+    "7188328",
+    "2e9c3b9",
+    "0489e16",
+    "69ea035",
+    "f9aedc6",
+    "d404d92",
+    "06f241e",
+    "d4fd538",
+    "9c6426e"
+  ],
+  "candidate_ci": {
+    "passed": [
+      "M4 Guest Renderer",
+      "M4 Failure Isolation",
+      "M5 Sellables",
+      "M5 Orders",
+      "M5 Table Draft",
+      "M5 Preparation",
+      "M5 Inventory",
+      "M5 Supply",
+      "M5 Tax",
+      "M5 Expenses",
+      "M5 Financial Period",
+      "M5 Integration Adapters",
+      "M6 SCDS",
+      "M9 Packaging",
+      "V3 Component Gates"
+    ],
+    "failed_then_fixed_locally": [
+      "M5 Settlement",
+      "M7 Runtime",
+      "M8 Print Agent",
+      "M10 Release Qualification"
+    ]
+  },
+  "stabilization_commit": "9c6426e",
+  "next_action": "publish stabilization delta and rerun Settlement/M7/M8/M10 CI; preserve manual UAT blockers"
 }

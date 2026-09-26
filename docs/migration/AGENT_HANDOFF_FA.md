@@ -8,7 +8,9 @@
 
 - Repository: `mobaraki20/SoknaCafeV3`
 - Local working branch: `work/local-migration`
-- Remote integration base: `origin/architecture/v3-foundation` @ `510a3433470c1f97de84fd3534165f883d0718fc`
+- Remote integration branch: `architecture/v3-foundation`
+- Full integration candidate: `41d2aafc4f440a544b29e2632da387ed6314e8bb` (tree exactly matched local `35a950298a4ca77788ee2eff43d5504705f5e924`)
+- Remote stabilization after candidate: `61eab5dcf4af6e8c8620f21ed0906a03ed11d64e` (M5.10 test forward-compatible with M5.11 Accommodation adapter)
 - Historical baseline repo: `mobaraki20/SoknaCafe` @ `a46435cca57df5bd5b9770efd0bb95390528aa05`
 - Historical baseline is also available in the companion workspace snapshot.
 
@@ -23,6 +25,9 @@ In order:
 5. `69ea035` — `feat(m8): migrate durable Print Agent and Local print owner`
 6. `f9aedc6` — `feat(m9): implement immutable packaging and unified setup lifecycle`
 7. `d404d92` — `feat(m10): qualify recovery installer and release lifecycle`
+8. `06f241e` — `docs: make cross-agent continuation durable`
+9. `d4fd538` — `test(m5.10): forward-compat Settlement with M5.11 adapter owner`
+10. `9c6426e` — `fix(rc): stabilize runtime print installer and recovery qualification`
 
 These commits are local continuation commits; do not recreate them from chat prose.
 
@@ -102,6 +107,41 @@ These require real Windows/hardware interaction before a production release. Aut
 7. Fix only evidence-based CI defects; rerun until green.
 8. Preserve the three manual UAT blockers as pending until real evidence is supplied.
 9. After green automated CI, create/update the final release/merge handoff and remove temporary snapshot branches only after the durable final state exists.
+
+
+## Integration-candidate CI evidence (2026-09-27)
+
+Candidate `41d2aafc4f440a544b29e2632da387ed6314e8bb` triggered the complete M4-M10 suite.
+
+PASS on candidate:
+
+- M4 Guest Renderer / Failure Isolation
+- M5 Sellables / Orders / Table Draft / Preparation / Inventory / Supply / Tax / Expenses / Financial Periods
+- M5.11 Integration Adapters
+- M6 SCDS
+- M9 Packaging
+- V3 Component Gates
+
+Evidence-based failures and current local fixes:
+
+1. M5 Settlement: old M5.10 test still required Accommodation to be unavailable after M5.11. Fixed in local `d4fd538` and remote `61eab5dc...`; now asserts Accommodation cannot bypass its canonical transfer owner.
+2. M7 Runtime: RFC3339 explicit-offset `requested_at` was inserted directly into MariaDB DATETIME. Fixed in `9c6426e`: explicit offset is required, canonical instant is normalized to UTC, DB representation uses `Y-m-d H:i:s`.
+3. M8 Print Agent: ContractAcceptance executable was invoked without required `--case A18 --results ...` arguments. Fixed in `9c6426e`.
+4. M10 Inno: invalid `SetupArchitecture` directive. Removed in `9c6426e`; supported `ArchitecturesAllowed/ArchitecturesInstallIn64BitMode` remain.
+5. M10 manual-UAT workflow: heredoc was not a YAML literal block. Fixed in `9c6426e`; it validates only the explicit blocker contract and does not fabricate hardware PASS.
+6. M10 recovery: MariaDB rejected `SHOW KEYS ... ORDER BY`. Fixed in `9c6426e` by sorting `Seq_in_index` in PHP after a valid `SHOW KEYS`.
+
+Local post-fix checks PASS:
+
+- PHP lint for changed PHP files
+- `python3 tests/m7-runtime-gate.py`
+- `python3 tests/m8-print-agent-gate.py`
+- `python3 tests/m9-packaging-gate.py`
+- `python3 tests/m10-release-qualification.py`
+- workflow YAML parse
+- `git diff --check`
+
+Next exact action: publish the `9c6426e` stabilization delta (plus this handoff update) to `architecture/v3-foundation`, then re-run M5 Settlement, M7, M8 and M10 and inspect only evidence-based failures.
 
 ## Important architectural boundaries
 
