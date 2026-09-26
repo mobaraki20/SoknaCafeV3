@@ -18,16 +18,17 @@ if(-not $GitSha){try{$GitSha=(& git -C $RepoRoot rev-parse HEAD 2>$null).Trim()}
 
 # Installer-owned immutable shell. Do not copy config.php/install.lock/storage/uploads or a live app tree here.
 $owned=@(
-    'runtime\windows\setup-sokna.ps1',
-    'runtime\windows\setup-support.psm1',
-    'runtime\windows\provision-local-https.ps1',
-    'runtime\windows\configure-apache.ps1',
-    'runtime\windows\apache\sokna-local-https.conf.template',
-    'runtime\windows\prerequisites.json',
-    'installer\windows\scripts\deploy-seed.ps1',
-    'installer\windows\scripts\collect-support.ps1',
-    'installer\windows\scripts\verify-prerequisite-bundle.ps1',
-    'installer\windows\assets\Sokna.ico'
+    'platform\windows\setup-sokna.ps1',
+    'platform\windows\remove-owned-services.ps1',
+    'platform\windows\setup-support.psm1',
+    'platform\windows\provision-local-https.ps1',
+    'platform\windows\configure-apache.ps1',
+    'platform\windows\sokna-local-https.conf.template',
+    'platform\windows\prerequisites.json',
+    'packaging\windows\scripts\deploy-seed.ps1',
+    'packaging\windows\scripts\collect-support.ps1',
+    'packaging\windows\scripts\verify-prerequisite-bundle.ps1',
+    'packaging\windows\Sokna.ico'
 )
 foreach($rel in $owned){
     $src=Join-Path $RepoRoot $rel
@@ -42,7 +43,7 @@ Copy-Item $PrintWorkerBundle (Join-Path $OutputRoot 'print-worker') -Recurse -Fo
 
 if(-not [string]::IsNullOrWhiteSpace($PrerequisiteBundleRoot)){
     $PrerequisiteBundleRoot=[IO.Path]::GetFullPath($PrerequisiteBundleRoot).TrimEnd('\')
-    $verifyBundle=Join-Path $RepoRoot 'installer\windows\scripts\verify-prerequisite-bundle.ps1'
+    $verifyBundle=Join-Path $RepoRoot 'packaging\windows\scripts\verify-prerequisite-bundle.ps1'
     & $verifyBundle -BundleRoot $PrerequisiteBundleRoot -ExpectedAppVersion $version
     # The PowerShell verifier throws on failure; LASTEXITCODE belongs to native commands.
     Copy-Item -LiteralPath $PrerequisiteBundleRoot -Destination (Join-Path $OutputRoot 'Prerequisites') -Recurse -Force
@@ -52,16 +53,15 @@ if(-not [string]::IsNullOrWhiteSpace($PrerequisiteBundleRoot)){
 $seedStage=Join-Path ([IO.Path]::GetTempPath()) ('sokna-seed-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $seedStage|Out-Null
 try{
-    $excludeTop=@('.git','storage','uploads','installer')
-    # Package tracked source only. CI builds leave bin/obj outputs under runtime;
-    # copying the workspace recursively would duplicate generated binaries in the app seed.
+    # Local installer seed contains only the Local Web component plus release version.
+    # Runtime, Print Agent, Public and Platform remain independently owned deployables.
     $tracked = @(& git -C $RepoRoot -c core.quotepath=false ls-files --cached)
-    if ($LASTEXITCODE -ne 0 -or $tracked.Count -eq 0) { throw 'Cannot enumerate tracked application seed files.' }
+    if ($LASTEXITCODE -ne 0 -or $tracked.Count -eq 0) { throw 'Cannot enumerate tracked Local application seed files.' }
     foreach ($relative in $tracked) {
-        $top = ($relative -split '/')[0]
-        if ($excludeTop -contains $top -or $relative -in @('config.php','install.lock')) { continue }
+        if ($relative -ne 'VERSION.txt' -and -not $relative.StartsWith('apps/local-web/')) { continue }
+        if ($relative -in @('config.php','install.lock')) { continue }
         $source = Join-Path $RepoRoot $relative
-        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Tracked seed source is missing: $relative" }
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Tracked Local seed source is missing: $relative" }
         $destination = Join-Path $seedStage $relative
         New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($destination)) -Force | Out-Null
         Copy-Item -LiteralPath $source -Destination $destination -Force

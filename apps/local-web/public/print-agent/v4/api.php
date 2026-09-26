@@ -1,0 +1,2 @@
+<?php
+declare(strict_types=1);$core=require dirname(__DIR__,2).'/_app.php';$body=json_decode((string)file_get_contents('php://input'),true);if(!is_array($body))$body=[];$body['action']=(string)($_GET['action']??'');$response=$core->printAgentV4Http()->handle((string)($_SERVER['HTTP_AUTHORIZATION']??''),$body);http_response_code((int)$response['status']);header('Content-Type: application/json; charset=utf-8');echo json_encode($response['body'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);

@@ -2,7 +2,7 @@
   "format": "sokna-windows-prerequisite-candidate-v1",
   "schema_version": 1,
   "release_frozen": false,
-  "app_version": "1.36.4-dev.39",
+  "app_version": "3.0.0-rc.1",
   "policy": {
     "purpose": "Provider approval input only; this file is not a release lock and cannot be consumed by end-user setup.",
     "download_scope": "release-engineering-only",

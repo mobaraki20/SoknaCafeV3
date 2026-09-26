@@ -1,4 +1,4 @@
-﻿param(
+param(
     [ValidateSet('New','Recover','Repair','Validate','RemovePlatform')][string]$Mode = 'Validate',
     [string]$AppRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
     [Parameter(Mandatory=$true)][string]$PhpExe,
@@ -87,7 +87,7 @@ function Test-SoknaLocalWebHealth([string]$HostName, [int]$Port) {
 }
 
 function Get-RuntimeBinPath([string]$HostExe) {
-    ((@($HostExe,'--php',$PhpExe,'--app-root',$AppRoot,'--data-root',$DataRoot) | ForEach-Object { ConvertTo-SoknaArgument $_ }) -join ' ')
+    ((@($HostExe,'--config',(Join-Path $DataRoot 'runtime\runtime-config.json')) | ForEach-Object { ConvertTo-SoknaArgument $_ }) -join ' ')
 }
 
 function Install-RuntimeService([string]$Candidate) {
@@ -269,7 +269,7 @@ function Install-PrintWorkerComponent([string]$BundleRoot, [string]$ProvisionFil
         $needsRepairProvision = -not (Test-Path -LiteralPath (Join-Path $componentData 'config.json') -PathType Leaf) -or -not (Test-Path -LiteralPath (Join-Path $componentData 'secret.dat') -PathType Leaf)
         if ([string]::IsNullOrWhiteSpace($ProvisionFile) -and $Mode -eq 'Repair' -and $needsRepairProvision) {
             $ProvisionFile = Join-Path $session 'print-worker-repair-provision.private'
-            Invoke-SoknaProcess $PhpExe @((Join-Path $AppRoot 'tools\provision-print-worker.php'),("--output-file=" + $ProvisionFile)) | Out-Null
+            Invoke-SoknaProcess $PhpExe @((Join-Path $AppRoot 'apps\local-web\tools\provision-print-worker.php'),("--output-file=" + $ProvisionFile)) | Out-Null
             Write-SetupEvent 'print-worker-repair-pairing' 'Missing internal Print Worker pairing was regenerated while print services were stopped.'
         }
 
@@ -383,7 +383,8 @@ try {
     $summary.preflight.minimum_free_bytes = $MinimumFreeBytes
     if ([int64]$summary.preflight.app_drive_free_bytes -lt $MinimumFreeBytes -or [int64]$summary.preflight.data_drive_free_bytes -lt $MinimumFreeBytes) { throw 'Not enough free disk space for SOKNA setup/rollback.' }
     Assert-File $PhpExe 'PHP executable'
-    Assert-File (Join-Path $AppRoot 'runtime\sokna-runtime.php') 'Runtime entrypoint'
+    Assert-File (Join-Path $AppRoot 'apps\local-web\bootstrap.php') 'Local Web bootstrap'
+    Assert-File (Join-Path $AppRoot 'apps\local-web\public\login.php') 'Local Web login surface'
     if ($Hostname -notmatch '^(?=.{1,253}$)[a-z0-9]+(?:[.-][a-z0-9]+)*$') { throw 'Invalid local hostname.' }
     if (Test-Path (Join-Path $AppRoot 'VERSION.txt')) { $summary.version = (Get-Content (Join-Path $AppRoot 'VERSION.txt') -Raw).Trim() }
     $summary.preflight.is_admin = [bool]$isAdmin
@@ -409,7 +410,7 @@ try {
         if (-not $SkipHttps) {
             $apacheOwner = Join-Path $PSScriptRoot 'configure-apache.ps1'
             Assert-File $apacheOwner 'SOKNA Apache integration owner'
-            $apachePreflight = (& $apacheOwner -WebServerExe $webServer -AppRoot $AppRoot -DataRoot $DataRoot -Hostname $Hostname -HttpsPort $HttpsPort -ValidateOnly | Out-String).Trim() | ConvertFrom-Json
+            $apachePreflight = (& $apacheOwner -WebServerExe $webServer -AppRoot (Join-Path $AppRoot 'apps\local-web\public') -DataRoot $DataRoot -Hostname $Hostname -HttpsPort $HttpsPort -ValidateOnly | Out-String).Trim() | ConvertFrom-Json
             $summary.preflight.apache = $apachePreflight
         }
     }
@@ -424,7 +425,15 @@ try {
         throw "HTTPS port $HttpsPort is already in use and its web-server owner could not be verified."
     }
     # Validate touches only this private session, never the target data root or SCM.
-    Invoke-SoknaProcess $ServiceHostExe @('--self-test','--php',$PhpExe,'--app-root',$AppRoot,'--data-root',(Join-Path $session 'host-validation')) | Out-Null
+    $runtimeValidation=New-SoknaPrivateDirectory (Join-Path $session 'runtime-validation')
+    $runtimeValidationSecrets=New-SoknaPrivateDirectory (Join-Path $runtimeValidation 'secrets')
+    $validationHealth=Join-Path $runtimeValidationSecrets 'health.token'
+    $validationLocal=Join-Path $runtimeValidationSecrets 'local.token'
+    [IO.File]::WriteAllText($validationHealth,([guid]::NewGuid().ToString('N')+[guid]::NewGuid().ToString('N')),(New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($validationLocal,([guid]::NewGuid().ToString('N')+[guid]::NewGuid().ToString('N')),(New-Object Text.UTF8Encoding($false)))
+    $validationConfig=Join-Path $runtimeValidation 'runtime-config.json'
+    [ordered]@{contractVersion=1;instanceId=('validation-'+[guid]::NewGuid().ToString('N'));dataRoot=(Join-Path $runtimeValidation 'state');healthPort=17621;runtimeTokenFile=$validationHealth;localTokenFile=$validationLocal;localBaseUrl='https://127.0.0.1';printAgentServiceName=$PrintWorkerServiceName;supervisePrintAgent=$false;triggers=@()} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $validationConfig -Encoding UTF8
+    Invoke-SoknaProcess $ServiceHostExe @('--config',$validationConfig,'--self-test') | Out-Null
     $PrintWorkerBundle = Resolve-PrintWorkerBundle $PrintWorkerBundle
     $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($Mode -in @('New','Recover') -and $existing) { throw 'Runtime service already exists; use Repair with the installed paths.' }
@@ -460,7 +469,7 @@ try {
                 $privatePassphrase = Copy-PrivateInput $RecoveryPassphraseFile 'recovery-passphrase'
             }
         }
-        Invoke-SoknaProcess $PhpExe @((Join-Path $AppRoot 'tools\setup-machine.php'),"--mode=$($Mode.ToLower())","--config-file=$privateConfig",'--validate-only') | Out-Null
+        Invoke-SoknaProcess $PhpExe @((Join-Path $AppRoot 'apps\local-web\tools\setup-machine.php'),"--mode=$($Mode.ToLower())","--config-file=$privateConfig",'--validate-only') | Out-Null
     }
     Write-SetupEvent $stage 'Prerequisite and target checks passed.'
     if ($Mode -eq 'Validate' -or $PreflightOnly) {
@@ -474,7 +483,7 @@ try {
         $env:SOKNA_DATA_DIR = $DataRoot
         if ($Mode -in @('New','Recover')) {
             $stage = 'application-setup'
-            $arguments = @((Join-Path $AppRoot 'tools\setup-machine.php'),"--mode=$($Mode.ToLower())","--config-file=$privateConfig")
+            $arguments = @((Join-Path $AppRoot 'apps\local-web\tools\setup-machine.php'),"--mode=$($Mode.ToLower())","--config-file=$privateConfig")
             if ($Mode -eq 'Recover') {
                 $arguments += "--recovery-file=$RecoveryFile"
                 if ($privatePassphrase) { $arguments += "--passphrase-file=$privatePassphrase" }
@@ -488,7 +497,7 @@ try {
         $stage = 'web-server-config'
         if (-not $SkipHttps -and $webServer) {
             $apacheOwner = Join-Path $PSScriptRoot 'configure-apache.ps1'
-            $apacheResult = (& $apacheOwner -WebServerExe $webServer -AppRoot $AppRoot -DataRoot $DataRoot -Hostname $Hostname -HttpsPort $HttpsPort | Out-String).Trim() | ConvertFrom-Json
+            $apacheResult = (& $apacheOwner -WebServerExe $webServer -AppRoot (Join-Path $AppRoot 'apps\local-web\public') -DataRoot $DataRoot -Hostname $Hostname -HttpsPort $HttpsPort | Out-String).Trim() | ConvertFrom-Json
             $summary.web_server = $apacheResult
             $summary.web_server_reload_required = [bool]$apacheResult.reload_required
             Write-SetupEvent $stage 'SOKNA Apache include validated and installed; Apache lifecycle remains external and reload is not performed by SOKNA.'
@@ -498,7 +507,7 @@ try {
         $stage = 'print-worker'
         Install-PrintWorkerComponent $PrintWorkerBundle $printWorkerProvisionFile
         $stage = 'runtime-self-check'
-        Invoke-SoknaProcess $PhpExe @((Join-Path $AppRoot 'runtime\sokna-runtime.php'),'--self-check') | Out-Null
+        Invoke-SoknaProcess $ServiceHostExe @('--config',(Join-Path $DataRoot 'runtime\runtime-config.json'),'--self-test') | Out-Null
         $summary.runtime_service = $(if ($SkipService) { 'skipped' } else { 'running' })
         $summary.print_worker = 'running'
         $summary.https = $(if ($SkipHttps) { 'skipped' } else { 'provisioned' })
@@ -577,7 +586,7 @@ try {
         if (-not (Test-Path -LiteralPath $installedRuntimeHost -PathType Leaf)) { $installedRuntimeHost = $ServiceHostExe }
         $installedPrintHost = Join-Path $DataRoot 'bin\print-worker\Service\Sokna.PrintAgent.Service.exe'
         try {
-            Write-SoknaSupportSnapshot -Session $session -AppRoot $AppRoot -DataRoot $DataRoot -RuntimeServiceName $ServiceName -PrintServiceName $PrintWorkerServiceName -ServiceHostPath $installedRuntimeHost -PrintServicePath $installedPrintHost
+            Write-SoknaSupportSnapshot -Session $session -AppRoot (Join-Path $AppRoot 'apps\local-web\public') -DataRoot $DataRoot -RuntimeServiceName $ServiceName -PrintServiceName $PrintWorkerServiceName -ServiceHostPath $installedRuntimeHost -PrintServicePath $installedPrintHost
         } catch {
             [ordered]@{ schema_version=1; captured_utc=[DateTime]::UtcNow.ToString('o'); diagnostic_error=(Protect-SoknaLog $_.Exception.Message) } |
                 ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $componentsPath -Encoding UTF8

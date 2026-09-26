@@ -59,3 +59,8 @@ Every human or agent must read, in this order, before changing code:
 6. relevant ADRs under `docs/adr/`
 
 Do not revive a legacy owner, workflow, installer path, or duplicate business implementation unless an ADR explicitly authorizes it. Conversation history is not a project source of truth; decisions, evidence, CI state and the exact continuation point must be recorded in-repo.
+
+
+## Migration continuation
+
+See `docs/migration/CURRENT_CONTINUATION_FA.md`.

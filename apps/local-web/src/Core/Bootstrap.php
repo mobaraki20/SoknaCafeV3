@@ -32,6 +32,7 @@ use Sokna\Local\Domain\Printing\PrintService;
 use Sokna\Local\Http\PrintAgentV4HttpAdapter;
 use Sokna\Local\Http\RuntimeTriggerHttpAdapter;
 use Sokna\Local\Domain\Expenses\ExpenseService;
+use Sokna\Local\Domain\Recovery\BusinessBackupService;
 use Sokna\Local\Relay\ExpenseDeferredAdapter;
 use Sokna\Local\Domain\Supply\SupplyAccessService;
 use Sokna\Local\Domain\Supply\SupplyService;
@@ -74,6 +75,7 @@ final class Bootstrap
     private ?PrintAgentV4HttpAdapter $printAgentV4Http = null;
     private ?RuntimeTriggerHttpAdapter $runtimeTriggerHttp = null;
     private ?ExpenseService $expenses = null;
+    private ?BusinessBackupService $businessBackup = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
     private ?SupplyService $supply = null;
@@ -291,6 +293,15 @@ final class Bootstrap
     public function expenses(): ExpenseService
     {
         return $this->expenses ??= new ExpenseService($this->database(), $this->identityRepository(), $this->financialPeriodIdentity());
+    }
+
+    public function businessBackup(): BusinessBackupService
+    {
+        return $this->businessBackup ??= new BusinessBackupService(
+            $this->database(),
+            $this->observability(),
+            $this->config->string('installation.id','')
+        );
     }
 
     public function expenseDeferred(): ExpenseDeferredAdapter

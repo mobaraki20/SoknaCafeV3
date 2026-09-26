@@ -2,8 +2,8 @@
   "format": "sokna-windows-prerequisite-lock-v1",
   "schema_version": 1,
   "release_frozen": true,
-  "app_version": "1.36.4-dev.39",
-  "source_candidate_sha256": "e1a4c081808c92a000ac655b8c003e902fcb907a5b91e58e934cd3def96dbdfa",
+  "app_version": "3.0.0-rc.1",
+  "source_candidate_sha256": "e5b69920af14593d19ea5bb76017ced3d3cd07415fa91790e645beed26a0a70a",
   "artifacts": [
     {
       "id": "php-8.2.34-ts-x64",

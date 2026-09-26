@@ -28,11 +28,7 @@ RestartApplications=no
 SetupIconFile={#SourceRoot}\Sokna.ico
 
 [Files]
-Source: "{#SourceRoot}\setup-ui\publish\SoknaSetupUi.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceRoot}\setup-host\publish\SoknaSetupHost.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceRoot}\..\manifests\*"; DestDir: "{app}\manifests"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceRoot}\scripts\*"; DestDir: "{app}\scripts"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceRoot}\Sokna.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{srcexe}"; DestDir: "{app}\maintenance"; DestName: "Setup.exe"; Flags: external
 
 [Icons]
@@ -41,3 +37,6 @@ Name: "{commondesktop}\SOKNA"; Filename: "https://sokna.local/"; IconFilename: "
 
 [Run]
 Filename: "{app}\SoknaSetupUi.exe"; Description: "راه‌اندازی سکنا"; Flags: postinstall nowait skipifsilent
+
+[UninstallRun]
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File \"{app}\remove-owned-services.ps1\""; Flags: runhidden waituntilterminated; RunOnceId: "SoknaOwnedServicesCleanup"

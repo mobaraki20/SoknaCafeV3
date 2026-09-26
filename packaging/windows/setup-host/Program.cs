@@ -167,7 +167,7 @@ internal static class Program
         var mode = p.Mode.Trim().ToLowerInvariant();
         var shell = Path.GetFullPath(p.ShellRoot);
         var script = mode == "repair"
-            ? Path.Combine(Path.GetFullPath(p.AppRoot), "runtime", "windows", "setup-sokna.ps1")
+            ? Path.Combine(shell, "setup-sokna.ps1")
             : Path.Combine(shell, "deploy-seed.ps1");
         RequireAbsoluteFile(script, "موتور راه‌اندازی سکنا");
 

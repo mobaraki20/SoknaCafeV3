@@ -4,7 +4,7 @@ param(
     [string]$Configuration='Release'
 )
 $ErrorActionPreference='Stop'
-$project=Join-Path $RepoRoot 'installer\windows\setup-host\Sokna.SetupHost.csproj'
+$project=Join-Path $RepoRoot 'packaging\windows\setup-host\Sokna.SetupHost.csproj'
 $out=[IO.Path]::GetFullPath($OutputPath)
 $dir=[IO.Path]::GetDirectoryName($out)
 New-Item -ItemType Directory -Path $dir -Force|Out-Null

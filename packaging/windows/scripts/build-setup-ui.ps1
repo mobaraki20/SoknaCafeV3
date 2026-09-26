@@ -1,10 +1,10 @@
-﻿param(
+param(
     [string]$RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path,
     [Parameter(Mandatory=$true)][string]$OutputPath,
     [string]$Configuration='Release'
 )
 $ErrorActionPreference='Stop'
-$project=Join-Path $RepoRoot 'installer\windows\setup-ui\Sokna.SetupUi.csproj'
+$project=Join-Path $RepoRoot 'packaging\windows\setup-ui\Sokna.SetupUi.csproj'
 $out=[IO.Path]::GetFullPath($OutputPath)
 $dir=[IO.Path]::GetDirectoryName($out)
 New-Item -ItemType Directory -Path $dir -Force|Out-Null

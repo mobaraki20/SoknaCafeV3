@@ -2,108 +2,121 @@
 
 وضعیت این فایل: **CURRENT / canonical continuation authority**
 
-تاریخ: 2026-09-26
+تاریخ: 2026-09-27
 
 ## مبنا
 
 - Historical baseline: `mobaraki20/SoknaCafe@a46435cca57df5bd5b9770efd0bb95390528aa05`
-- Active V3 branch: `architecture/v3-foundation`
-- Active PR: `#1`
+- Remote V3 integration branch: `architecture/v3-foundation`
+- Remote base used by the local continuation: `510a3433470c1f97de84fd3534165f883d0718fc`
+- Local continuation branch: `work/local-migration`
+- Durable cross-chat handoff: `docs/migration/AGENT_HANDOFF_FA.md` and `docs/migration/AGENT_HANDOFF.json`
 
-## آخرین checkpoint اجرایی تأییدشده
+## وضعیت اجرایی واقعی
 
-M5.8 Expenses checkpoint:
+تمام ownerهای اصلی migration از M1 تا M9 در V3 پیاده‌سازی شده‌اند. M10 نیز در workspace به integration-candidate رسیده و qualificationهای قابل‌اجرای محلی سبزند. تنها تأییدهای نهاییِ وابسته به محیط بیرونی هنوز باید روی CI/Windows واقعی اجرا شوند.
 
-- Head: `44aec5939e7d4ce343dfa7db89952c094528962d`
-- `M5 Expenses Gate`: PR run `36260585942` — **SUCCESS**
-- M5 Orders / Inventory / Supply / Tax / Preparation / Table Draft / Sellables regressions — **SUCCESS**
-- M4 regressions — **SUCCESS**
+Local continuation commits after remote base:
 
-Canonical evidence:
+- `9f8bb67` — M5.10 settlement token regression fix
+- `7188328` — M5.11 Settlement integration adapters
+- `2e9c3b9` — M6 canonical SCDS foundation
+- `0489e16` — M7 Windows Runtime + Local trigger owner
+- `69ea035` — M8 durable Print Agent + Local print owner
+- `f9aedc6` — M9 immutable packaging + unified setup lifecycle
 
-- `docs/migration/M5_EXPENSES_AUDIT_FA.md`
-- `docs/migration/M5_TAX_AUDIT_FA.md`
-- `docs/migration/M5_SUPPLY_AUDIT_FA.md`
-- `docs/migration/M5_INVENTORY_AUDIT_FA.md`
-- `docs/migration/M5_PREPARATION_AUDIT_FA.md`
-- `docs/migration/M5_TABLE_DRAFT_AUDIT_FA.md`
-- `docs/migration/M5_ORDERS_AUDIT_FA.md`
-- `docs/migration/M5_SELLABLES_AUDIT_FA.md`
+M10 working tree adds release qualification, secure business recovery, crash-safe migration replay, canonical Local public/setup surfaces, Windows setup stabilization, release lock/version metadata, and explicit manual-UAT blockers.
 
 ## Slice status
 
-- F0: COMPLETE at foundation level.
-- M1: COMPLETE at contract-extraction / executable-boundary level.
-- M2: COMPLETE at Local Core slice level.
-- M3: COMPLETE at Public Edge transport/auth/projection slice level.
-- M4: COMPLETE — Guest Publish/Runtime/Remote Read Models exit gate satisfied.
-- M5.1: **COMPLETE — Explicit Sellables/catalog authority exit gate satisfied.**
-- M5.2: **COMPLETE — canonical Orders authority exit gate satisfied.**
-- M5.3: **COMPLETE — Staff Quick Order + server-persistent Table Draft exit gate satisfied.**
-- M5.4: **COMPLETE — Preparation permission/action owner exit gate satisfied.**
-- M5.5: **COMPLETE — Inventory exit gate satisfied.**
-- M5.6: **COMPLETE — Supply/Purchase exit gate satisfied.**
-- M5.7: **COMPLETE — Tax exit gate satisfied.**
-- M5.8: **COMPLETE — Expenses exit gate satisfied.**
-- M5.9: **NEXT — Financial Periods.**
-- M6: continuous SCDS cross-cutting track.
-- M7..M10: planned / not complete.
+- F0: **COMPLETE** — V3 foundation/ownership contracts.
+- M1: **COMPLETE** — executable cross-component contracts.
+- M2: **COMPLETE** — Local Core.
+- M3: **COMPLETE** — Public Edge persistence/auth/relay.
+- M4: **COMPLETE** — Guest publish/runtime/remote read/failure isolation.
+- M5.1: **COMPLETE** — Sellables/catalog authority.
+- M5.2: **COMPLETE** — canonical Orders.
+- M5.3: **COMPLETE** — Staff Quick Order + Table Draft.
+- M5.4: **COMPLETE** — Preparation permission/action owner.
+- M5.5: **COMPLETE** — Inventory.
+- M5.6: **COMPLETE** — Supply/Purchase.
+- M5.7: **COMPLETE** — Tax owner + immutable Order snapshots.
+- M5.8: **COMPLETE** — Expenses + minimal period identity prerequisite.
+- M5.9: **COMPLETE** — Financial Period numbering/preflight.
+- M5.10: **COMPLETE at implementation level** — Settlement/Reconciliation + final Financial Period close. Remote Settlement gate was proven green after the request-token regression fix.
+- M5.11: **COMPLETE at implementation level / final integration CI pending** — Accommodation, Subscriber and Center adapters over canonical Settlement/Local owners.
+- M6: **COMPLETE at shared-foundation level / progressive consumer migration remains a continuous rule** — SCDS tokens/components/registry owner and enforcement gate.
+- M7: **COMPLETE at implementation level / Windows build CI pending on final candidate** — Runtime contract/service + Local trigger owner.
+- M8: **COMPLETE at implementation level / Windows build and physical-printer UAT pending on final candidate** — separate durable Print Agent + Local printing owner.
+- M9: **COMPLETE at implementation level / Windows installer build CI pending on final candidate** — immutable component lifecycle, compatibility, rollback/repair and unified Setup composition.
+- M10: **INTEGRATION CANDIDATE** — automated local qualification passed; MariaDB/Windows CI and real-device UAT remain explicit final evidence.
 
-## Observer reconciliation
+## M10 qualification already passed locally
 
-- EOR-01: `REGRESSION_FIXED`
-- EOR-02: `REGRESSION_FIXED`
-- EOR-03: `REGRESSION_FIXED`
-- EOR-04: `REGRESSION_FIXED` — this file is the single continuation authority; README/START_HERE point here.
-- EOR-05: `REGRESSION_FIXED` for five proven parity items; transient authenticated-session DB failure behavior remains intentionally `PRESERVED` per M2.
-- EOR-06: deferred to M10 upgrade/recovery qualification.
-- EOR-07: `PRESERVED` with explicit V3 security boundary in `docs/adr/0003-public-auth-projection-strategy.md`.
-- EOR-08: deferred release-governance item; not a domain-migration blocker.
-- EOR-09: local/machine-bound Print Agent constraint preserved for M8; mature Pagent behavior is reuse evidence.
-- EOR-10: staged-migration clarification preserved.
-- EOR-11: hardening backlog; address when affected boundaries are touched.
+- `python3 tests/m10-release-qualification.py`
+- `python3 tests/m9-packaging-gate.py`
+- `python3 tests/m8-print-agent-gate.py`
+- `python3 tests/m7-runtime-gate.py`
+- `python3 tests/scds-m6-gate.py`
+- `python3 tests/runtime-print-v1-contract.py`
+- `python3 tests/runtime-print-contract-audit.py`
+- PHP syntax check across `apps/**/*.php` and `tests/**/*.php`
+- JSON parse check across repository JSON files
+- `git diff --check`
 
-Canonical disposition record:
-`docs/reviews/EXTERNAL_OBSERVER_DISPOSITION_2026-09-26_FA.md`
+A prior combined local command timed out only because several tests were chained under one execution deadline. The same tests were rerun individually and passed; that timeout is not a product failure.
 
-## Immediate continuation — M5.9 Financial Periods
+## Final automated evidence still required
 
-Audit/freeze before implementation:
+The final integration-candidate CI must prove:
 
-- `financial_period_for_date_locked()` and `financial_period_issue_invoice_locked()` in historical `includes/settlement.php`
-- `admin/financial_periods.php`
-- `financial_period_close_overrides`
-- Deferred period/review close blockers
-- business-day-aware invoice numbering
+1. MariaDB migration stack and all M5 domain gates, including M5.11 adapters.
+2. M10 encrypted Business Backup -> empty-target restore -> machine takeover.
+3. M10 crash-safe migration replay and migration-byte drift rejection after execution starts.
+4. Windows Runtime build.
+5. Windows Print Agent build.
+6. SetupHost/SetupUI publish.
+7. PowerShell parse for platform/packaging owners.
+8. Inno Setup source compile.
+9. Full V3 component/failure-isolation regressions.
 
-Known invariants:
+## Manual production-release blockers
 
-1. Financial Periods follow Jalali fiscal-year bounds.
-2. A financial document issued in the after-midnight business-day tail belongs to the same operational date/period as the café shift.
-3. Invoice/reversal display numbers share the period's locked monotonic sequence and use `I-<jalali-year>-<6 digits>` / `R-...`.
-4. Closed periods reject new normal financial documents.
-5. Late Deferred work never silently reopens or rewrites a closed period.
-6. Normal close is blocked by pending Local reviews and, when paired, unknown/pending Public Deferred state.
-7. An override is Admin-only, reasoned and durably audited.
-8. Final close also depends on canonical Settlement totals and other Finance blockers; until M5.10 Settlement exists, M5.9 must not write `status='closed'` as a standalone approximation.
-9. M5.9 may own close-readiness evidence and override records; M5.10 activates final close with canonical Settlement summary.
+CI must **not** fabricate PASS evidence for the following. Their canonical state is `release/manual-uat-status.json`:
 
-### M5 remaining dependency order
+- Windows clean install / New-Recover-Repair-Uninstall on a real supported x64 machine;
+- real thermal-printer Persian RTL/restart/retry/no-duplicate-print UAT;
+- responsive touch/mobile + Persian IME/focus/contrast UAT.
 
-After canonical Orders:
+These may remain `pending` while automated engineering qualification is completed, but a Production release must not claim them passed without real evidence.
 
-1. Staff Quick Order + Table Draft — COMPLETE;
-2. Preparation permission/action owner — COMPLETE;
-3. Inventory — COMPLETE;
-4. Supply/Purchase — COMPLETE;
-5. Tax — COMPLETE;
-6. Expenses — COMPLETE;
-7. Financial Periods — NEXT;
-8. Settlement/Reconciliation;
-9. Accommodation/Center adapters.
+## Next exact continuation
 
-Do not start M7/M8/M9 implementation as a substitute for M5 domain migration.
+1. Commit the complete M10 integration candidate locally.
+2. Push the accumulated local continuation (`M5.11` through `M10`) to `architecture/v3-foundation` as one integration candidate rather than phase-by-phase pushes.
+3. Run the complete GitHub CI suite.
+4. Fix only evidence-based failures, preferably as one stabilization pass.
+5. When automated CI is green, record exact run IDs in the final qualification audit and update this file to `M10 COMPLETE — automated qualification satisfied`.
+6. Keep the three manual UAT items pending until real evidence exists.
+7. After final durable state exists, remove temporary snapshot branches/artifacts if desired and prepare merge/release handoff.
 
-## Failure-isolation note carried forward
+## Continuity rule
 
-M4 proved boundary-level Local-down/Public-down/Internet-or-sync-loss behavior. It did not claim packet-level NIC/DNS/proxy/browser chaos qualification; that remains explicit M10 release-qualification work.
+Do not reconstruct the project from chat history. If a new agent/chat continues the work, use:
+
+- `docs/migration/AGENT_HANDOFF_FA.md`;
+- `docs/migration/AGENT_HANDOFF.json`;
+- the durable V3 workspace archive in Library `/SoknaCafeV3-Handoff/`;
+- Git history on `work/local-migration` inside that archive.
+
+## Frozen architecture rules carried to release
+
+- Local Web is the sole canonical business-state authority.
+- Public owns transport/safe projections, never a full Local business clone.
+- Runtime owns Windows supervision/integration, never business decisions or direct business-table writes.
+- Print Agent remains a separate machine-bound durable device/spooler owner.
+- M5.11 integration destinations are adapters over canonical Settlement/Local owners, not alternate Finance authorities.
+- Business backup excludes machine-bound Runtime/Print/TLS/Center signing identity; recovered machines reprovision them.
+- Installer is componentized; Local AppRoot is not a monorepo copy.
+- Historical committed rows/snapshots are not reinterpreted by later configuration changes.
+- Unknown/corrupt/incompatible recovery or package state fails closed.

@@ -1,4 +1,4 @@
-﻿param(
+param(
     [ValidateSet('New','Recover')][string]$Mode,
     [Parameter(Mandatory=$true)][string]$ShellRoot,
     [Parameter(Mandatory=$true)][string]$AppRoot,
@@ -128,7 +128,7 @@ try{
     Expand-SoknaSeedSecure $seed $staging
     $stagedVersion=(Get-Content -LiteralPath (Join-Path $staging 'VERSION.txt') -Raw).Trim()
     if($stagedVersion -ne [string]$manifest.app_version){throw 'Seed version does not match installer payload manifest.'}
-    foreach($required in @('tools\setup-machine.php','runtime\sokna-runtime.php','database\schema.sql')){
+    foreach($required in @('apps\local-web\tools\setup-machine.php','apps\local-web\bootstrap.php','apps\local-web\public\login.php','VERSION.txt')){
         if(-not(Test-Path -LiteralPath (Join-Path $staging $required) -PathType Leaf)){throw "Seed is missing required application file: $required"}
     }
 
@@ -186,7 +186,7 @@ try{
     # New/Recover can legitimately commit business state and then stop at the external
     # Apache ownership boundary. Preserve the canonical setup exit code so Setup Host/UI
     # can present the required Reload/Repair action instead of collapsing it to code 1.
-    $finalExit=Invoke-SetupChild (Join-Path $AppRoot 'runtime\windows\setup-sokna.ps1') $run @(0,20,21,3010)
+    $finalExit=Invoke-SetupChild (Join-Path $ShellRoot 'setup-sokna.ps1') $run @(0,20,21,3010)
     Write-Host "SOKNA $Mode deployment orchestration finished with exit code $finalExit."
     if($finalExit -in @(20,21,3010)){exit $finalExit}
 } catch {

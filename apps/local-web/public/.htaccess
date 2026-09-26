@@ -1,0 +1,3 @@
+Options -Indexes
+RewriteEngine On
+RewriteRule ^internal/runtime/v1/trigger$ internal/runtime/v1/trigger.php [L,QSA]

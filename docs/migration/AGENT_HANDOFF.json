@@ -1,0 +1,48 @@
+{
+  "format": "sokna-v3-agent-handoff-v1",
+  "updated_at": "2026-09-27",
+  "repository": "mobaraki20/SoknaCafeV3",
+  "local_branch": "work/local-migration",
+  "remote_base": {
+    "branch": "architecture/v3-foundation",
+    "sha": "510a3433470c1f97de84fd3534165f883d0718fc"
+  },
+  "legacy_baseline": {
+    "repository": "mobaraki20/SoknaCafe",
+    "sha": "a46435cca57df5bd5b9770efd0bb95390528aa05"
+  },
+  "local_commits_after_remote_base": [
+    "9f8bb67",
+    "7188328",
+    "2e9c3b9",
+    "0489e16",
+    "69ea035",
+    "f9aedc6"
+  ],
+  "current_phase": "M10",
+  "working_tree_m10_uncommitted": true,
+  "local_passed_checks": [
+    "tests/m10-release-qualification.py",
+    "tests/m9-packaging-gate.py",
+    "tests/m8-print-agent-gate.py",
+    "tests/m7-runtime-gate.py",
+    "tests/scds-m6-gate.py",
+    "tests/runtime-print-v1-contract.py",
+    "tests/runtime-print-contract-audit.py",
+    "php_lint_apps_and_tests",
+    "json_parse_repo",
+    "git_diff_check"
+  ],
+  "ci_only_checks": [
+    "local-mysql-migration-selftest.php",
+    "local-m10-release-selftest.php",
+    "windows_dotnet_builds",
+    "powershell_parse",
+    "inno_setup_compile"
+  ],
+  "manual_release_blockers": [
+    "windows_clean_install",
+    "physical_thermal_printer",
+    "responsive_touch_persian_ime"
+  ]
+}

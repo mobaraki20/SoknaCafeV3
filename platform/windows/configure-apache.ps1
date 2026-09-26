@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory=$true)][string]$WebServerExe,
     [Parameter(Mandatory=$true)][string]$AppRoot,
     [Parameter(Mandatory=$true)][string]$DataRoot,
@@ -122,7 +122,7 @@ $owner=Get-ApacheOwnerInfo $WebServerExe
 Invoke-SoknaProcess $WebServerExe @('-t','-f',$owner.config) | Out-Null
 $moduleProbe=Invoke-SoknaProcess $WebServerExe @('-M','-f',$owner.config)
 $modules=($moduleProbe.Output+"`n"+$moduleProbe.Error)
-foreach($required in @('ssl_module','headers_module','authz_core_module')){if($modules -notmatch ('(?m)^\s*'+[regex]::Escape($required)+'\s+\(shared\)|^\s*'+[regex]::Escape($required)+'\s+\(static\)')){throw "Apache module required by SOKNA is not loaded: $required"}}
+foreach($required in @('ssl_module','headers_module','authz_core_module','rewrite_module')){if($modules -notmatch ('(?m)^\s*'+[regex]::Escape($required)+'\s+\(shared\)|^\s*'+[regex]::Escape($required)+'\s+\(static\)')){throw "Apache module required by SOKNA is not loaded: $required"}}
 
 $configDir=[IO.Path]::GetDirectoryName($owner.config)
 $managedInclude=Join-Path $configDir 'sokna-local.conf'
