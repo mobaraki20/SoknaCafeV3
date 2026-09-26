@@ -38,4 +38,4 @@ Name: "{commondesktop}\SOKNA"; Filename: "https://sokna.local/"; IconFilename: "
 Filename: "{app}\SoknaSetupUi.exe"; Description: "راه‌اندازی سکنا"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File \"{app}\remove-owned-services.ps1\""; Flags: runhidden waituntilterminated; RunOnceId: "SoknaOwnedServicesCleanup"
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\remove-owned-services.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "SoknaOwnedServicesCleanup"
