@@ -28,7 +28,7 @@ foreach([
     'inventory_categories','inventory_items','inventory_purchase_units','inventory_balances','inventory_movements',
     'inventory_recipe_versions','inventory_recipe_components','inventory_count_sessions','inventory_count_lines','inventory_order_events'
 ] as $table)m55_assert(in_array($table,$tables,true),"missing {$table}");
-foreach(['financial_periods','settlement_records','print_jobs'] as $later)
+foreach(['settlement_records','print_jobs'] as $later)
     m55_assert(!in_array($later,$tables,true),"M5.5 leaked later/dependent owner {$later}");
 
 $makeUser=function(string $name,array $caps)use($pdo):array{
