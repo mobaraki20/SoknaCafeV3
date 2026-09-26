@@ -156,55 +156,73 @@ M1 Runtime/Print gates:
 
 ## M2 — Local Core: Bootstrap, Data Ownership, Auth and Observability
 
-**Status:** next slice; ready to start after verified M1 completion.
+**Status:** complete at Local Core slice level.
 
 Target owner: `apps/local-web`.
 
-Move/refactor the minimum Local foundation needed by all business slices:
+Migrated/refactored foundation:
 - configuration/bootstrap without Windows-specific ownership;
 - Local DB connection/schema/migration owner;
 - users/capabilities/preparation-area authority;
 - correlation IDs, safe errors, redaction and Local health primitives;
 - canonical shared business-service bootstrapping.
 
-Constraints:
-- no Runtime/Winspool/Registry/SCM access inside Local core;
+Preserved constraints:
+- no Runtime/Winspool/Registry/SCM ownership inside Local core;
 - no second permission system;
 - schema migrations prefer Expand -> Migrate -> Contract;
-- no UI rewrite merely because file structure changes.
+- M2 completion does not claim Orders/Preparation/Inventory/Finance domain migration.
 
-**Exit gate:** Local core can run/tests can initialize without Public/Runtime/Print being required for ordinary business-domain unit/integration tests.
+Executable evidence includes Local ownership/bootstrap gates and MariaDB migration self-tests in `V3 Component Gates`.
+
+**M2 exit gate: SATISFIED.** Local core initializes and its foundation tests execute without requiring Public/Runtime/Print as ordinary business-domain dependencies.
 
 ---
 
 ## M3 — Public Edge Persistence, Auth Projection and Relay Transport
 
-**Status:** planned.
+**Status:** complete at Public Edge slice level.
 
 Target owner: `apps/public` plus M1 contracts.
 
-Move/refactor:
+Migrated/refactored:
 - Public DB/migrations;
-- Local/Public binding/authentication material;
-- minimal user/capability projection;
+- Local/Public binding state;
+- minimal user/capability verifier projection and Public sessions;
+- login throttling/security audit;
+- signed Local HMAC and durable replay protection;
 - realtime durable relay transport;
 - deferred-safe durable pending/review transport;
 - heartbeat/connectivity metadata;
 - Public safe error/health primitives.
 
-Constraints:
+Preserved constraints:
 - no Local full business DB clone;
 - no business SQL/decision owner on Public;
 - Local remains final mutation authority;
-- Realtime and Deferred stores/routes remain distinct.
+- Realtime and Deferred stores/routes/state machines remain distinct;
+- M4 Guest publish/read-model tables were deliberately excluded.
 
-**Exit gate:** transport/projection tests pass against executable M1 contracts with Local business owners stubbed/mocked, proving Public can fail independently.
+Verified M3 checkpoint:
+- head `07757f037ece5c71097cafb0f3dcc1d21ae4dcdf`;
+- `V3 Component Gates` run `36241108219`;
+- result `SUCCESS`.
+
+Executable evidence:
+- `tests/public-m3-contract.py`;
+- `tests/public-m3-transport-contract.py`;
+- `tests/public-health-contract.py`;
+- Public MariaDB migration/auth/HMAC/connectivity/realtime/deferred/health self-tests.
+
+**M3 exit gate: SATISFIED.** Public-owned transport/projection/health boundaries execute against M1 semantics while canonical business authority remains outside Public.
+
+Canonical evidence: `docs/migration/M3_PUBLIC_EDGE_AUDIT_FA.md`.
 
 ---
 
 ## M4 — Guest Publish, Guest Runtime and Remote Read Models
 
-**Status:** planned.
+**Status:** next slice / audit in progress; no M4 implementation completion claimed yet.
 
 Move/refactor:
 - immutable guest snapshot/media publish;
@@ -217,6 +235,11 @@ Move/refactor:
 SCDS requirement:
 - audit/correct/standardize before migrating legacy guest CSS/markup;
 - rejected Design System patterns are not preserved as requirements.
+
+Ownership boundary:
+- Local owns source business/catalog data and publish decision;
+- Public owns published immutable artifacts/projections/runtime storage;
+- Public/Guest remains non-authoritative for canonical business mutation.
 
 **Exit gate:** Local-down/Public-down/Internet-down scenarios have explicit tested behavior and no Public business authority emerges.
 

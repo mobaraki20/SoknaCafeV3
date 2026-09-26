@@ -12,23 +12,23 @@
 
 ## آخرین checkpoint تأییدشده
 
-- Head: `931ec31adc2b8769d4786d8f79fcf79ce5b4eb60`
-- GitHub Actions workflow: `36217446207`
+- Head: `07757f037ece5c71097cafb0f3dcc1d21ae4dcdf`
+- GitHub Actions workflow: `36241108219`
 - Workflow: `V3 Component Gates`
 - Result: `SUCCESS`
 
-این checkpoint شامل contract reconciliation، Local Core parity reconciliation، ADR امنیتی Auth Projection و disposition ناظر بیرونی است.
+این checkpoint شامل M3 کامل در سطح Public Edge است: Public persistence/migrations، Auth Projection و session/throttle/audit، HMAC/replay guard، heartbeat/connectivity، Realtime transport، Deferred-safe transport و Public health/safe-error boundary.
 
 ## Slice status
 
 - F0: COMPLETE at foundation level.
 - M1: COMPLETE at contract-extraction / executable-boundary level.
 - M2: COMPLETE at Local Core slice level.
-- Observer reconciliation: COMPLETE for M3 blockers; EOR-06/EOR-08 remain later acceptance/governance items.
-- M3: **IN PROGRESS** — Public Edge Persistence, Auth Projection and Relay Transport.
-- M4..M10: planned / not complete.
+- M3: **COMPLETE at Public Edge slice level; exit gate satisfied.**
+- M4: **NEXT** — Guest Publish, Guest Runtime and Remote Read Models.
+- M5..M10: planned / not complete.
 
-M2 completion به معنی migrate شدن Orders/Preparation/Inventory/Finance نیست.
+تکمیل M2/M3 به معنی migrate شدن business-domain ownerهای Orders/Preparation/Inventory/Supply/Finance نیست؛ Local همچنان مرجع نهایی mutationهای کسب‌وکار است و آن ownerها در sliceهای بعدی منتقل می‌شوند.
 
 ## Observer reconciliation
 
@@ -47,11 +47,15 @@ M2 completion به معنی migrate شدن Orders/Preparation/Inventory/Finance 
 Canonical disposition record:
 `docs/reviews/EXTERNAL_OBSERVER_DISPOSITION_2026-09-26_FA.md`
 
-## Immediate continuation — M3
+## Immediate continuation — M4
 
-1. Migrate only Public-owned persistence from dev.39 baseline: installations, auth projections, Public sessions, Realtime relay queue, request nonce/replay storage, heartbeats/connectivity metadata and Deferred-safe queue.
-2. Do **not** pull M4 guest publish/remote read-model tables into M3 merely because they share the historical schema file.
-3. Preserve ADR 0003 remote-login semantics: Local remains identity/capability authority; Public stores only the minimal verifier projection needed for remote login.
-4. Bind Realtime and Deferred implementations to the reconciled M1 contracts; keep their persistence/state machines separate.
-5. Add a real MariaDB Public gate before claiming any M3 persistence milestone complete.
-6. Keep Local as final Business Authority for all canonical business mutations.
+1. Audit the historical Guest Publish/Guest Runtime/Remote Read Model owners from the selected dev.39 baseline before moving code.
+2. Keep Local as source/publish-decision owner; Public may own immutable published snapshots/media, availability projection and remote read-model storage/runtime only.
+3. Migrate `guest_publish_revisions`, `guest_active_revisions`, `guest_availability_state` and `remote_read_models` only inside M4, with explicit ownership and migration tests.
+4. Preserve atomic active-revision switching and degraded read-only behavior when Local/Internet availability changes.
+5. Apply SCDS rule `Audit -> Correct -> Standardize -> Migrate -> Enforce`; do not blindly copy legacy guest CSS/markup or create a second renderer authority.
+6. Remote read models must remain filtered by projected capability/preparation-area scope and must never become mutation/business authority.
+7. Do not start M5 business-domain movement or M7/M8/M9 implementation as a substitute for completing the M4 exit gate.
+
+M3 evidence and exit decision:
+`docs/migration/M3_PUBLIC_EDGE_AUDIT_FA.md`
