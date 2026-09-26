@@ -12,16 +12,18 @@
 
 ## آخرین checkpoint اجرایی تأییدشده
 
-M5.2 Canonical Orders checkpoint:
+M5.3 Staff Quick Order + Server-persistent Table Draft checkpoint:
 
-- Head: `b1628c44c113372516bf094b140241a53993bc53`
-- `M5 Orders Gate`: run `36253424745` — **SUCCESS**
-- `M5 Sellables Gate`: run `36253424706` — **SUCCESS**
-- `V3 Component Gates`: run `36253424830` — **SUCCESS**
-- M4 regression gates on the same head — **SUCCESS**
+- Head: `b7c021ff7cd318bd40ee6212c2385c540aad3632`
+- `M5 Table Draft Gate`: run `36254200135` — **SUCCESS**
+- `M5 Orders Gate`: run `36254200164` — **SUCCESS**
+- `M5 Sellables Gate`: run `36254200133` — **SUCCESS**
+- `V3 Component Gates`: push run `36254196611` — **SUCCESS**
+- M4 Guest Renderer / Failure Isolation regression gates — **SUCCESS**
 
 Canonical evidence:
 
+- `docs/migration/M5_TABLE_DRAFT_AUDIT_FA.md`
 - `docs/migration/M5_ORDERS_AUDIT_FA.md`
 - `docs/migration/M5_SELLABLES_AUDIT_FA.md`
 
@@ -34,7 +36,8 @@ Canonical evidence:
 - M4: COMPLETE — Guest Publish/Runtime/Remote Read Models exit gate satisfied.
 - M5.1: **COMPLETE — Explicit Sellables/catalog authority exit gate satisfied.**
 - M5.2: **COMPLETE — canonical Orders authority exit gate satisfied.**
-- M5.3: **NEXT — Staff Quick Order + server-persistent Table Draft.**
+- M5.3: **COMPLETE — Staff Quick Order + server-persistent Table Draft exit gate satisfied.**
+- M5.4: **NEXT — Preparation permission/action owner.**
 - M6: continuous SCDS cross-cutting track.
 - M7..M10: planned / not complete.
 
@@ -55,29 +58,32 @@ Canonical evidence:
 Canonical disposition record:
 `docs/reviews/EXTERNAL_OBSERVER_DISPOSITION_2026-09-26_FA.md`
 
-## Immediate continuation — M5.3 Staff Quick Order + Table Draft
+## Immediate continuation — M5.4 Preparation permission/action owner
 
 Historical authority to audit/preserve:
 
-- `docs/handoffs/PHASE6C_HANDOFF_FA.md`
-- `docs/architecture-migration-r2/PHASE6C_DESIGN_NOTES_FA.md`
-- `includes/table_draft.php`
-- `includes/staff_order_service.php`
-- `staff/api_quick_order.php`
-- historical Realtime `table_draft.*` adapter/actor behavior
+- `docs/handoffs/PHASE6A_HANDOFF_FA.md`
+- `docs/architecture-migration-r2/PHASE6A_CHECKPOINT_FA.md`
+- `includes/preparation_permissions.php`
+- `waiter/api_feed.php`
+- `waiter/api_action.php`
+- `user_preparation_areas`
+- `order_preparation_claims`
+- existing `preparation_adjustments` behavior only where required by the Preparation action boundary
+- historical Local/Public projection of Preparation scopes and `preparation.mutate`
 
 Frozen requirements:
 
-1. exactly one active draft per table;
-2. server/Local persistence is authoritative; browser-only draft state is not;
-3. optimistic `version` prevents stale writers overwriting newer state;
-4. Save/Edit Draft creates no `orders` row, no business order number and no downstream business side effect;
-5. no auto-expiry — only explicit Finalize/Cancel closes the lifecycle;
-6. Finalize revalidates current table/session/catalog/price/availability/fulfillment and current actor permission;
-7. Finalize delegates to M5.2 canonical `OrderCommitService`; no second order-commit SQL owner;
-8. retried Finalize resolves idempotently to the already-finalized order;
-9. remote draft mutation remains Realtime/Local-required and never Deferred-safe;
-10. no Preparation/Inventory/Finance/Print ownership is pulled forward.
+1. Preparation visibility and mutation authority are separate server-side concepts.
+2. `preparation` only: assigned areas visible and actionable.
+3. `shift_supervision` only: all areas visible, none actionable.
+4. `shift_supervision + preparation`: all areas visible, only assigned areas actionable.
+5. Admin role alone: all areas visible, no Preparation mutation authority.
+6. Browser/Public projection may filter, but Local revalidates active user/capabilities/assigned areas on every mutation.
+7. Read/feed behavior is side-effect free.
+8. Mutation never normalizes an invalid/unassigned area into an authorized one.
+9. `preparation.mutate` remains Realtime/Local-required and is excluded from Deferred-safe transport.
+10. Do not pull Inventory, Finance, Settlement or Print lifecycle forward merely to implement Preparation permission/action ownership.
 
 ### M5 remaining dependency order
 
