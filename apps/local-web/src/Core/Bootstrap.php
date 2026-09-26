@@ -18,6 +18,7 @@ use Sokna\Local\Domain\Inventory\InventoryService;
 use Sokna\Local\Domain\Inventory\InventoryCountService;
 use Sokna\Local\Domain\Inventory\InventoryOrderService;
 use Sokna\Local\Relay\InventoryDeferredAdapter;
+use Sokna\Local\Domain\Tax\TaxService;
 use Sokna\Local\Domain\Supply\SupplyAccessService;
 use Sokna\Local\Domain\Supply\SupplyService;
 use Sokna\Local\Relay\DeferredReceiptService;
@@ -45,6 +46,7 @@ final class Bootstrap
     private ?InventoryCountService $inventoryCounts = null;
     private ?InventoryOrderService $inventoryOrders = null;
     private ?InventoryDeferredAdapter $inventoryDeferred = null;
+    private ?TaxService $tax = null;
     private ?SupplyAccessService $supplyAccess = null;
     private ?SupplyService $supply = null;
     private ?DeferredReceiptService $deferredReceipts = null;
@@ -120,7 +122,7 @@ final class Bootstrap
 
     public function orders(): OrderCommitService
     {
-        return $this->orders ??= new OrderCommitService($this->database(), $this->businessClock(), $this->orderCatalog(), $this->inventoryOrders());
+        return $this->orders ??= new OrderCommitService($this->database(), $this->businessClock(), $this->orderCatalog(), $this->inventoryOrders(), $this->tax());
     }
 
     public function staffQuickOrders(): StaffQuickOrderService
@@ -177,6 +179,11 @@ final class Bootstrap
     public function inventoryDeferred(): InventoryDeferredAdapter
     {
         return $this->inventoryDeferred ??= new InventoryDeferredAdapter($this->database(), $this->inventory(), $this->inventoryCounts());
+    }
+
+    public function tax(): TaxService
+    {
+        return $this->tax ??= new TaxService($this->database(), $this->identityRepository());
     }
 
     public function supplyAccess(): SupplyAccessService
