@@ -136,6 +136,8 @@ jobs:
       - run: python3 tests/validate-v3-foundation.py --component public
       - name: Validate M3 Public persistence/auth/security/http contracts
         run: python3 tests/public-m3-contract.py
+      - name: Validate M3 Realtime/Deferred transport ownership contracts
+        run: python3 tests/public-m3-transport-contract.py
       - name: Ensure PDO MySQL is available
         shell: bash
         run: |
@@ -164,6 +166,15 @@ jobs:
       - name: Validate M3 auth HTTP adapters
         env: *public_db_env
         run: php tests/public-auth-http-adapter-selftest.php
+      - name: Validate M3 heartbeat/connectivity transport
+        env: *public_db_env
+        run: php tests/public-connectivity-selftest.php
+      - name: Validate M3 Realtime producer/consumer transport
+        env: *public_db_env
+        run: php tests/public-realtime-selftest.php
+      - name: Validate M3 Deferred-safe producer/consumer transport
+        env: *public_db_env
+        run: php tests/public-deferred-selftest.php
 
   runtime:
     name: Windows Runtime gate (foundation stage)

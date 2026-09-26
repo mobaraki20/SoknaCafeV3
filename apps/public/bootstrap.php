@@ -14,6 +14,7 @@ require_once __DIR__ . '/src/Auth/PublicLoginService.php';
 require_once __DIR__ . '/src/Security/SignedLocalRequestVerifier.php';
 require_once __DIR__ . '/src/Connectivity/ConnectivityService.php';
 require_once __DIR__ . '/src/Realtime/RealtimeService.php';
+require_once __DIR__ . '/src/Deferred/DeferredService.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_public_bootstrap(array $config): Bootstrap

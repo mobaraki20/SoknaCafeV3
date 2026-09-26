@@ -10,6 +10,7 @@ use Sokna\PublicEdge\Auth\AuthThrottle;
 use Sokna\PublicEdge\Auth\PublicLoginService;
 use Sokna\PublicEdge\Auth\PublicSessionStore;
 use Sokna\PublicEdge\Connectivity\ConnectivityService;
+use Sokna\PublicEdge\Deferred\DeferredService;
 use Sokna\PublicEdge\Realtime\RealtimeService;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
 
@@ -25,6 +26,7 @@ final class Bootstrap
     private ?SignedLocalRequestVerifier $signedLocalRequestVerifier = null;
     private ?ConnectivityService $connectivityService = null;
     private ?RealtimeService $realtimeService = null;
+    private ?DeferredService $deferredService = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -108,5 +110,10 @@ final class Bootstrap
     public function realtime(): RealtimeService
     {
         return $this->realtimeService ??= new RealtimeService($this->database(), $this->connectivity());
+    }
+
+    public function deferred(): DeferredService
+    {
+        return $this->deferredService ??= new DeferredService($this->database());
     }
 }
