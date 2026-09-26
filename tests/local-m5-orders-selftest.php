@@ -26,8 +26,8 @@ $pdo=$core->database();
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
 foreach(['cafe_tables','table_sessions','orders','order_items','order_business_sequences','order_status_history'] as $table)
     m52_assert(in_array($table,$tables,true),"missing {$table}");
-foreach(['table_drafts','inventory_items','financial_periods','settlement_records','print_jobs'] as $later)
-    m52_assert(!in_array($later,$tables,true),"M5.2 leaked {$later}");
+foreach(['inventory_items','financial_periods','settlement_records','print_jobs'] as $later)
+    m52_assert(!in_array($later,$tables,true),"post-M5.3 domain leaked into current Local stack: {$later}");
 
 $pdo->exec("INSERT INTO settings(setting_key,setting_value) VALUES('business_day_cutoff','04:00')");
 $clock=new BusinessClock($pdo,'Asia/Tehran');
