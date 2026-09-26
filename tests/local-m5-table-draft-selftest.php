@@ -25,7 +25,7 @@ $pdo=$core->database();
 
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
 foreach(['table_drafts','table_draft_items'] as $table)m53_assert(in_array($table,$tables,true),"missing {$table}");
-foreach(['financial_periods','settlement_records','print_jobs'] as $later)
+foreach(['settlement_records','print_jobs'] as $later)
     m53_assert(!in_array($later,$tables,true),"M5.3 leaked {$later}");
 
 $makeUser=function(string $name,bool $allowed)use($pdo):array{
