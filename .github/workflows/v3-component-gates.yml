@@ -133,6 +133,8 @@ jobs:
         run: python3 tests/relay-wire-contract.py
       - name: Validate relay operation schemas and compatibility vectors
         run: python3 tests/relay-operation-contract.py
+      - name: Validate Runtime and Print Agent historical ownership audit
+        run: python3 tests/runtime-print-contract-audit.py
 
   packaging:
     name: Packaging gate (foundation stage)
