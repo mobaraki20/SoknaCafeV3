@@ -30,6 +30,7 @@ require_once __DIR__ . '/src/Relay/PreparationRealtimeAdapter.php';
 require_once __DIR__ . '/src/Domain/Inventory/InventoryException.php';
 require_once __DIR__ . '/src/Domain/Inventory/InventoryService.php';
 require_once __DIR__ . '/src/Domain/Inventory/InventoryCountService.php';
+require_once __DIR__ . '/src/Domain/Inventory/InventoryOrderService.php';
 require_once __DIR__ . '/src/Relay/InventoryDeferredAdapter.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
