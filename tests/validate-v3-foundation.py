@@ -22,6 +22,11 @@ REQUIRED_FILES = [
     "windows/print-agent/README.md",
     "platform/README.md",
     "contracts/README.md",
+    "contracts/manifest.json",
+    "contracts/local-public-realtime/README.md",
+    "contracts/local-public-deferred/README.md",
+    "contracts/runtime-api/README.md",
+    "contracts/print-agent-api/README.md",
     "packaging/README.md",
     "docs/adr/README.md",
     "docs/migration/README.md",
@@ -70,13 +75,20 @@ KNOWN_OWNER_TOKENS = {
     "docs/ui-design-system",
 }
 
+REQUIRED_CONTRACTS = {
+    "local-public-realtime": "contracts/local-public-realtime/README.md",
+    "local-public-deferred": "contracts/local-public-deferred/README.md",
+    "runtime-api": "contracts/runtime-api/README.md",
+    "print-agent-api": "contracts/print-agent-api/README.md",
+}
+
 COMPONENT_REQUIRED = {
     "local": ["apps/local-web/README.md"],
     "public": ["apps/public/README.md"],
-    "runtime": ["windows/runtime/README.md"],
-    "print": ["windows/print-agent/README.md"],
+    "runtime": ["windows/runtime/README.md", "contracts/runtime-api/README.md"],
+    "print": ["windows/print-agent/README.md", "contracts/print-agent-api/README.md"],
     "platform": ["platform/README.md"],
-    "contracts": ["contracts/README.md"],
+    "contracts": ["contracts/README.md", "contracts/manifest.json"],
     "packaging": ["packaging/README.md"],
     "ui": ["UI_DESIGN_SYSTEM.md", "docs/ui-design-system/COMPONENT_REGISTRY.json"],
     "migration": ["docs/migration/README.md", "docs/migration/MIGRATION_MATRIX.csv"],
@@ -120,6 +132,47 @@ def validate_authority() -> None:
     debt = json.loads(read_text("docs/ui-design-system/LEGACY_UI_DEBT_BASELINE.json"))
     if debt.get("policy") != "ratchet_down_only_during_legacy_migration":
         fail("legacy UI debt policy must remain ratchet-down-only")
+
+
+def validate_contracts() -> None:
+    manifest = json.loads(read_text("contracts/manifest.json"))
+    contracts = manifest.get("contracts")
+    if not isinstance(contracts, list) or not contracts:
+        fail("contracts/manifest.json has no contracts")
+
+    by_id = {}
+    for entry in contracts:
+        cid = entry.get("id")
+        if not cid or cid in by_id:
+            fail(f"contract id is missing or duplicated: {cid!r}")
+        by_id[cid] = entry
+        version = entry.get("version", "")
+        if not version.endswith("-draft"):
+            fail(f"foundation contract {cid} must remain explicitly draft until executable compatibility gates exist")
+        if entry.get("compatibility") != "draft-no-stability-claim":
+            fail(f"foundation contract {cid} makes an unsupported stability claim")
+        spec = entry.get("spec")
+        if not spec or not (ROOT / spec).is_file():
+            fail(f"contract {cid} references missing spec {spec!r}")
+
+    missing = sorted(set(REQUIRED_CONTRACTS) - set(by_id))
+    if missing:
+        fail("contract manifest missing: " + ", ".join(missing))
+
+    for cid, spec in REQUIRED_CONTRACTS.items():
+        if by_id[cid].get("spec") != spec:
+            fail(f"contract {cid} spec mismatch")
+
+    if by_id["local-public-realtime"].get("state_machine") == by_id["local-public-deferred"].get("state_machine"):
+        fail("realtime and deferred contracts must remain distinct state machines")
+
+    runtime = read_text("contracts/runtime-api/README.md")
+    if "never writes Local business tables directly" not in runtime:
+        fail("Runtime contract lost the no-direct-business-DB-write boundary")
+
+    print_contract = read_text("contracts/print-agent-api/README.md")
+    if "separate Windows deployable" not in print_contract:
+        fail("Print Agent contract lost separate-deployable ownership")
 
 
 def validate_matrix() -> None:
@@ -190,6 +243,7 @@ def main() -> None:
 
     validate_files()
     validate_authority()
+    validate_contracts()
     validate_matrix()
     validate_component(args.component)
     suffix = f" ({args.component})" if args.component else ""
