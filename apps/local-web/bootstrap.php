@@ -11,6 +11,7 @@ require_once __DIR__ . '/src/Core/PdoIdentityRepository.php';
 require_once __DIR__ . '/src/Core/Capabilities.php';
 require_once __DIR__ . '/src/Core/Session.php';
 require_once __DIR__ . '/src/Core/Auth.php';
+require_once __DIR__ . '/src/Core/Migrations.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_local_bootstrap(array $config): Bootstrap
