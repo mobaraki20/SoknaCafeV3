@@ -9,6 +9,7 @@ use Sokna\PublicEdge\Auth\AuthSecurityAudit;
 use Sokna\PublicEdge\Auth\AuthThrottle;
 use Sokna\PublicEdge\Auth\PublicLoginService;
 use Sokna\PublicEdge\Auth\PublicSessionStore;
+use Sokna\PublicEdge\Connectivity\ConnectivityService;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
 
 final class Bootstrap
@@ -21,6 +22,7 @@ final class Bootstrap
     private ?PublicSessionStore $publicSessions = null;
     private ?PublicLoginService $publicLoginService = null;
     private ?SignedLocalRequestVerifier $signedLocalRequestVerifier = null;
+    private ?ConnectivityService $connectivityService = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -94,5 +96,10 @@ final class Bootstrap
             $secrets,
             max(30, (int)$this->config->get('relay.clock_skew_seconds', 300)),
         );
+    }
+
+    public function connectivity(): ConnectivityService
+    {
+        return $this->connectivityService ??= new ConnectivityService($this->database());
     }
 }
