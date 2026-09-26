@@ -62,7 +62,7 @@ $pdo->exec("INSERT INTO cafe_tables(name,table_number,code,access_token,active,s
 $tableId=(int)$pdo->lastInsertId();
 
 $order=$core->staffQuickOrders()->commit([
-    'table_id'=>$tableId,'expected_session_id'=>0,'request_token'=>'m510-order-0001',
+    'table_id'=>$tableId,'expected_session_id'=>0,'request_token'=>'m510-order-00001',
     'items'=>[
         ['id'=>$itemA,'quantity'=>2,'expected_price'=>1000],
         ['id'=>$itemB,'quantity'=>1,'expected_price'=>2000],
