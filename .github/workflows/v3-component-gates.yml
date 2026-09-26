@@ -136,7 +136,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/validate-v3-foundation.py --component public
-      - name: Validate M3 Public persistence ownership and contracts
+      - name: Validate M3 Public persistence and auth-projection contracts
         run: python3 tests/public-m3-contract.py
       - name: Ensure PDO MySQL is available
         shell: bash
@@ -154,6 +154,14 @@ jobs:
           SOKNA_TEST_DB_USER: sokna
           SOKNA_TEST_DB_PASS: sokna
         run: php tests/public-mysql-migration-selftest.php
+      - name: Validate M3 authoritative auth projection sync
+        env:
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m3
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/public-auth-projection-selftest.php
 
   runtime:
     name: Windows Runtime gate (foundation stage)

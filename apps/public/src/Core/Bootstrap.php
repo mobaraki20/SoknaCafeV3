@@ -4,11 +4,13 @@ declare(strict_types=1);
 namespace Sokna\PublicEdge\Core;
 
 use PDO;
+use Sokna\PublicEdge\Auth\AuthProjectionService;
 
 final class Bootstrap
 {
     private ?PDO $database = null;
     private ?Migrations $migrations = null;
+    private ?AuthProjectionService $authProjectionService = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -33,5 +35,10 @@ final class Bootstrap
     {
         $directory = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'migrations';
         return $this->migrations ??= new Migrations($this->database(), $directory);
+    }
+
+    public function authProjections(): AuthProjectionService
+    {
+        return $this->authProjectionService ??= new AuthProjectionService($this->database());
     }
 }

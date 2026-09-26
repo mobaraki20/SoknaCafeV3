@@ -8,6 +8,7 @@ import subprocess
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PUBLIC = ROOT / "apps" / "public"
 CORE = PUBLIC / "src" / "Core"
+AUTH = PUBLIC / "src" / "Auth"
 MIGRATION = PUBLIC / "database" / "migrations" / "0001_m3_public_edge_core.sql"
 
 required = [
@@ -16,8 +17,10 @@ required = [
     CORE / "Database.php",
     CORE / "Migrations.php",
     CORE / "Bootstrap.php",
+    AUTH / "AuthProjectionService.php",
     MIGRATION,
     ROOT / "tests" / "public-mysql-migration-selftest.php",
+    ROOT / "tests" / "public-auth-projection-selftest.php",
 ]
 missing = [str(path.relative_to(ROOT)) for path in required if not path.is_file()]
 if missing:
@@ -63,10 +66,23 @@ if "lease_token_hash char(64)" not in sql:
 if "lease_token char(64)" not in sql:
     raise SystemExit("Historical deferred lease token compatibility field missing")
 
+projection_source = (AUTH / "AuthProjectionService.php").read_text(encoding="utf-8")
+if "UPDATE auth_projections SET active=0 WHERE installation_id=?" not in projection_source:
+    raise SystemExit("Authoritative projection sync no longer deactivates omitted projections")
+if "ON DUPLICATE KEY UPDATE" not in projection_source:
+    raise SystemExit("Projection sync lost replay-safe upsert behavior")
+
 php = shutil.which("php")
 if php is None:
     raise SystemExit("PHP CLI is required for the Public M3 gate")
-for path in [PUBLIC / "bootstrap.php", *sorted(CORE.glob("*.php")), ROOT / "tests" / "public-mysql-migration-selftest.php"]:
+php_files = [
+    PUBLIC / "bootstrap.php",
+    *sorted(CORE.glob("*.php")),
+    *sorted(AUTH.glob("*.php")),
+    ROOT / "tests" / "public-mysql-migration-selftest.php",
+    ROOT / "tests" / "public-auth-projection-selftest.php",
+]
+for path in php_files:
     subprocess.run([php, "-l", str(path)], cwd=ROOT, check=True)
 
-print("Public M3 persistence contract: OK")
+print("Public M3 persistence/auth-projection contract: OK")
