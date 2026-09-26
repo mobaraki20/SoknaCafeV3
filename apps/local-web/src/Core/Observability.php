@@ -8,6 +8,8 @@ use Throwable;
 
 final class Observability
 {
+    private ?string $requestCorrelationId = null;
+
     public function __construct(private readonly string $dataRoot)
     {
         if (trim($this->dataRoot) === '') {
@@ -39,11 +41,13 @@ final class Observability
 
     public function correlationId(?string $candidate = null): string
     {
+        if ($this->requestCorrelationId !== null) return $this->requestCorrelationId;
+
         $candidate = trim((string)$candidate);
         if ($candidate !== '' && preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$/D', $candidate) === 1) {
-            return $candidate;
+            return $this->requestCorrelationId = $candidate;
         }
-        return bin2hex(random_bytes(16));
+        return $this->requestCorrelationId = bin2hex(random_bytes(16));
     }
 
     public function redact(mixed $value, string $key = '', int $depth = 0): mixed
