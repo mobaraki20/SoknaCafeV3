@@ -26,7 +26,7 @@ $pdo=$core->database();
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
 foreach(['inventory_supply_needs','inventory_supply_receipts','inventory_supply_receipt_allocations','deferred_work_receipts','deferred_review_items'] as $table)
     m56_assert(in_array($table,$tables,true),"missing {$table}");
-foreach(['settlement_records','print_jobs'] as $later)
+foreach(['print_jobs'] as $later)
     m56_assert(!in_array($later,$tables,true),"M5.6 leaked later-domain owner {$later}");
 
 $setting=$pdo->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');

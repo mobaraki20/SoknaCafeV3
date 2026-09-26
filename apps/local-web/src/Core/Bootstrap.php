@@ -21,6 +21,8 @@ use Sokna\Local\Relay\InventoryDeferredAdapter;
 use Sokna\Local\Domain\Tax\TaxService;
 use Sokna\Local\Domain\Finance\FinancialPeriodIdentityService;
 use Sokna\Local\Domain\Finance\FinancialPeriodService;
+use Sokna\Local\Domain\Finance\SettlementService;
+use Sokna\Local\Domain\Finance\FinancialPeriodCloseService;
 use Sokna\Local\Domain\Expenses\ExpenseService;
 use Sokna\Local\Relay\ExpenseDeferredAdapter;
 use Sokna\Local\Domain\Supply\SupplyAccessService;
@@ -53,6 +55,8 @@ final class Bootstrap
     private ?TaxService $tax = null;
     private ?FinancialPeriodIdentityService $financialPeriodIdentity = null;
     private ?FinancialPeriodService $financialPeriods = null;
+    private ?SettlementService $settlements = null;
+    private ?FinancialPeriodCloseService $financialPeriodClose = null;
     private ?ExpenseService $expenses = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
@@ -203,6 +207,20 @@ final class Bootstrap
     {
         return $this->financialPeriods ??= new FinancialPeriodService(
             $this->database(), $this->identityRepository(), $this->businessClock(), $this->financialPeriodIdentity()
+        );
+    }
+
+    public function settlements(): SettlementService
+    {
+        return $this->settlements ??= new SettlementService(
+            $this->database(), $this->identityRepository(), $this->capabilities(), $this->businessClock(), $this->financialPeriods(), $this->tax()
+        );
+    }
+
+    public function financialPeriodClose(): FinancialPeriodCloseService
+    {
+        return $this->financialPeriodClose ??= new FinancialPeriodCloseService(
+            $this->database(), $this->identityRepository(), $this->financialPeriodIdentity(), $this->financialPeriods()
         );
     }
 

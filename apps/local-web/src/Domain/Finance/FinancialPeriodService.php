@@ -129,8 +129,8 @@ final class FinancialPeriodService
             ],
             'blockers'=>$blockers,
             'preflight_ready'=>$preflightReady,
-            'final_close_allowed'=>false,
-            'final_close_blocker'=>'settlement_owner_not_migrated',
+            'final_close_allowed'=>$preflightReady,
+            'final_close_blocker'=>$preflightReady?'':'preflight_blocked',
         ];
     }
 
@@ -139,39 +139,35 @@ final class FinancialPeriodService
         $this->pdo->beginTransaction();
         try{
             $actor=$this->assertAdmin($user);
-            $period=$this->periods->byIdTx($periodId);
-            if((string)$period['status']!=='open')
-                throw new FinancialPeriodException('period_closed','دوره مالی قبلاً بسته شده است.',409);
-
-            $reason=self::truncate(trim($reason),500);
-            if($reason==='')throw new FinancialPeriodException('reason_required','دلیل عبور از کنترل Deferred را ثبت کن.',422);
-            $json=json_encode($publicStatus,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
-            $stmt=$this->pdo->prepare(
-                'INSERT INTO financial_period_close_overrides(financial_period_id,actor_user_id,reason,public_status_json) VALUES(?,?,?,?)'
-            );
-            $stmt->execute([$periodId,(int)$actor['id'],$reason,$json]);
-            $id=(int)$this->pdo->lastInsertId();
-            $this->audit('financial_period.deferred_override','financial_period',$periodId,(int)$actor['id'],[
-                'override_id'=>$id,'reason'=>$reason,'status'=>$publicStatus,
-            ]);
+            $result=$this->recordCloseOverrideTx($periodId,$reason,$publicStatus,$actor);
             $this->pdo->commit();
-            return ['override_id'=>$id,'financial_period_id'=>$periodId];
+            return $result;
         }catch(Throwable $e){
             if($this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
     }
 
-    /**
-     * Explicit guard: M5.9 cannot finalize a period without the M5.10 Settlement summary owner.
-     */
-    public function assertFinalCloseAvailable(): never
+    /** Caller owns the transaction; used by canonical final-close owner. */
+    public function recordCloseOverrideTx(int $periodId,string $reason,array $publicStatus,array $actor): array
     {
-        throw new FinancialPeriodException(
-            'settlement_owner_not_migrated',
-            'بستن نهایی دوره تا مهاجرت مالک Settlement فعال نمی‌شود.',
-            409
+        $this->requireTx();
+        $period=$this->periods->byIdTx($periodId);
+        if((string)$period['status']!=='open')
+            throw new FinancialPeriodException('period_closed','دوره مالی قبلاً بسته شده است.',409);
+
+        $reason=self::truncate(trim($reason),500);
+        if($reason==='')throw new FinancialPeriodException('reason_required','دلیل عبور از کنترل Deferred را ثبت کن.',422);
+        $json=json_encode($publicStatus,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+        $stmt=$this->pdo->prepare(
+            'INSERT INTO financial_period_close_overrides(financial_period_id,actor_user_id,reason,public_status_json) VALUES(?,?,?,?)'
         );
+        $stmt->execute([$periodId,(int)$actor['id'],$reason,$json]);
+        $id=(int)$this->pdo->lastInsertId();
+        $this->audit('financial_period.deferred_override','financial_period',$periodId,(int)$actor['id'],[
+            'override_id'=>$id,'reason'=>$reason,'status'=>$publicStatus,
+        ]);
+        return ['override_id'=>$id,'financial_period_id'=>$periodId];
     }
 
     private function assertAdmin(array $user): array

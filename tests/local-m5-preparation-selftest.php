@@ -25,7 +25,7 @@ $pdo=$core->database();
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
 foreach(['user_preparation_areas','order_preparation_claims'] as $table)
     m54_assert(in_array($table,$tables,true),"missing {$table}");
-foreach(['preparation_adjustments','settlement_records','print_jobs'] as $later)
+foreach(['preparation_adjustments','print_jobs'] as $later)
     m54_assert(!in_array($later,$tables,true),"M5.4 leaked dependency/later-domain table {$later}");
 
 $makeUser=function(string $name,string $role,array $caps,array $areas)use($pdo):array{

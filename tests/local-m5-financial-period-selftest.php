@@ -24,7 +24,7 @@ $pdo=$core->database();
 
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
 m59_assert(in_array('financial_period_close_overrides',$tables,true),'Financial Period override table missing');
-foreach(['settlement_records','settlement_record_lines','invoice_discount_audit','print_jobs'] as $later)
+foreach(['print_jobs'] as $later)
     m59_assert(!in_array($later,$tables,true),"M5.9 pulled later owner {$later} forward");
 
 $pdo->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)')
@@ -84,7 +84,7 @@ $ready=$core->financialPeriods()->closePreflight($oldPeriodId,[
     'blocking'=>0
 ]);
 m59_assert(!empty($ready['period_ended'])&&!empty($ready['preflight_ready']),'clean period did not pass M5.9 preflight');
-m59_assert(empty($ready['final_close_allowed'])&&$ready['final_close_blocker']==='settlement_owner_not_migrated','M5.9 incorrectly enabled final close before Settlement');
+m59_assert(!empty($ready['final_close_allowed'])&&$ready['final_close_blocker']==='','clean preflight did not expose final-close readiness after Settlement migration');
 
 $override=$core->financialPeriods()->recordCloseOverride(
     $oldPeriodId,'Public checked manually',['paired'=>true,'known'=>false,'error'=>'public_unreachable'],$admin
@@ -100,12 +100,8 @@ try{$core->financialPeriods()->recordCloseOverride(
 );}catch(FinancialPeriodException $e){$operatorDenied=$e->errorCode==='forbidden';}
 m59_assert($operatorDenied,'non-admin user recorded Financial Period close override');
 
-$finalBlocked=false;
-try{$core->financialPeriods()->assertFinalCloseAvailable();}
-catch(FinancialPeriodException $e){$finalBlocked=$e->errorCode==='settlement_owner_not_migrated';}
-m59_assert($finalBlocked,'M5.9 final-close fence is missing');
 $status=(string)$pdo->query("SELECT status FROM financial_periods WHERE id={$oldPeriodId}")->fetchColumn();
-m59_assert($status==='open','M5.9 mutated period status closed before Settlement migration');
+m59_assert($status==='open','Financial Period preflight mutated period status before canonical close owner was invoked');
 
 $publicDeferred=(string)file_get_contents(dirname(__DIR__).'/apps/public/src/Deferred/DeferredService.php');
 m59_assert(str_contains($publicDeferred,'function periodStatus')||str_contains($publicDeferred,'function periodStatus('),'Public Deferred period-status contract missing');
@@ -113,6 +109,6 @@ m59_assert(str_contains($publicDeferred,"'pending_sync'")&&str_contains($publicD
 
 $service=(string)file_get_contents(dirname(__DIR__).'/apps/local-web/src/Domain/Finance/FinancialPeriodService.php');
 m59_assert(!preg_match("/UPDATE\s+financial_periods\s+SET\s+status\s*=\s*['\\\"]closed/i",$service),'M5.9 implemented final close before Settlement owner');
-m59_assert(!preg_match('/settlement_records|settlement_record_lines/i',$service),'M5.9 Financial Period service pulled Settlement SQL forward');
+m59_assert(!preg_match('/settlement_records|settlement_record_lines/i',$service),'Financial Period numbering/preflight service duplicated Settlement SQL owner');
 
 fwrite(STDOUT,"Local M5.9 Financial Period numbering/preflight self-test: OK\n");
