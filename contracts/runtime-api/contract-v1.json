@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "contract_id": "sokna-runtime-local-v1",
+  "contract_version": "1.0.0-draft",
+  "status": "m1-executable-contract-foundation",
+  "authority": {
+    "business_authority": "apps/local-web",
+    "runtime_owner": "windows/runtime",
+    "runtime_must_not": [
+      "validate business orders/settlements/inventory policy",
+      "write Local business tables directly",
+      "execute arbitrary shell/PowerShell/command requests from Local",
+      "own Realtime or Deferred business state machines",
+      "own Print Agent spooler/device state"
+    ]
+  },
+  "transport": {
+    "network_scope": "loopback-only",
+    "default_bind": "127.0.0.1",
+    "internet_exposure": false,
+    "authentication": "machine-bound bearer secret with OS ACL protected storage",
+    "content_type": "application/json; charset=utf-8",
+    "timestamps": "ISO-8601 with explicit offset",
+    "named_pipe_status": "not_part_of_v1_without_future_ADR"
+  },
+  "interfaces": {
+    "local_to_runtime_health": {
+      "direction": "apps/local-web -> windows/runtime",
+      "method": "GET",
+      "path": "/v1/health",
+      "mutation": false,
+      "request_headers": {
+        "Authorization": "Bearer <machine-bound-runtime-token>",
+        "X-Sokna-Runtime-Contract": "1"
+      },
+      "response": {
+        "required": [
+          "success",
+          "contract_version",
+          "runtime_version",
+          "instance_id",
+          "status",
+          "started_at",
+          "last_seen_at",
+          "capabilities",
+          "scheduler",
+          "supervised_components"
+        ],
+        "properties": {
+          "success": {"const": true},
+          "contract_version": {"const": 1},
+          "runtime_version": {"type": "string", "min_length": 1, "max_length": 64},
+          "instance_id": {"type": "string", "min_length": 8, "max_length": 128},
+          "status": {"enum": ["starting", "running", "degraded", "maintenance_paused", "failed"]},
+          "started_at": {"type": "timestamp_explicit_offset"},
+          "last_seen_at": {"type": "timestamp_explicit_offset"},
+          "capabilities": {"type": "array_unique_string", "max_items": 64},
+          "scheduler": {
+            "required": ["healthy", "last_cycle_at"],
+            "properties": {
+              "healthy": {"type": "boolean"},
+              "last_cycle_at": {"type": ["timestamp_explicit_offset", "null"]},
+              "last_error_code": {"type": ["safe_code", "null"]}
+            },
+            "additional_properties": false
+          },
+          "supervised_components": {
+            "type": "object_map",
+            "value_schema": {
+              "required": ["status"],
+              "properties": {
+                "status": {"enum": ["unknown", "starting", "running", "degraded", "stopped", "failed", "disabled"]},
+                "last_seen_at": {"type": ["timestamp_explicit_offset", "null"]},
+                "version": {"type": ["string", "null"], "max_length": 64},
+                "error_code": {"type": ["safe_code", "null"]}
+              },
+              "additional_properties": false
+            }
+          }
+        },
+        "additional_properties": false
+      },
+      "errors": {
+        "401": "unauthorized",
+        "426": "runtime_contract_upgrade_required",
+        "503": "runtime_not_ready"
+      },
+      "compatibility_basis": "adapts proven dev39 sokna-local-runtime-v1 status/last_seen/worker health semantics without claiming a historical HTTP route"
+    },
+    "runtime_to_local_trigger": {
+      "direction": "windows/runtime -> apps/local-web",
+      "method": "POST",
+      "path": "/internal/runtime/v1/trigger",
+      "owner_of_endpoint": "apps/local-web",
+      "request_headers": {
+        "Authorization": "Bearer <machine-bound-runtime-to-local-token>",
+        "X-Sokna-Runtime-Contract": "1"
+      },
+      "request": {
+        "required": ["request_id", "runtime_instance_id", "trigger_key", "requested_at", "correlation_id"],
+        "properties": {
+          "request_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$"},
+          "runtime_instance_id": {"type": "string", "min_length": 8, "max_length": 128},
+          "trigger_key": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{1,63}$", "semantic": "must resolve through Local-owned allowlist; never executable/path text"},
+          "requested_at": {"type": "timestamp_explicit_offset"},
+          "correlation_id": {"type": "string", "min_length": 8, "max_length": 128}
+        },
+        "additional_properties": false,
+        "explicitly_forbidden_fields": [
+          "command",
+          "executable",
+          "args",
+          "arguments",
+          "powershell",
+          "shell",
+          "sql",
+          "table",
+          "query",
+          "business_payload",
+          "entity",
+          "entity_id",
+          "payload"
+        ]
+      },
+      "response": {
+        "required": ["success", "accepted", "deduplicated", "trigger_key", "accepted_at", "correlation_id"],
+        "properties": {
+          "success": {"const": true},
+          "accepted": {"type": "boolean"},
+          "deduplicated": {"type": "boolean"},
+          "trigger_key": {"type": "string"},
+          "accepted_at": {"type": "timestamp_explicit_offset"},
+          "correlation_id": {"type": "string"}
+        },
+        "additional_properties": false
+      },
+      "semantics": [
+        "request_id is the idempotency key within the Local trigger receipt store/window",
+        "accepted means Local accepted the scheduling intent; it does not mean business work committed",
+        "Local re-resolves trigger_key against its own allowlisted handler registry on every new request",
+        "Runtime never supplies executable paths/arguments or business payload",
+        "Runtime may retry an ambiguous transport result with the same request_id",
+        "printing is not a Runtime business-worker trigger; durable print execution belongs to windows/print-agent"
+      ],
+      "errors": {
+        "400": "invalid_request",
+        "401": "unauthorized",
+        "404": "unsupported_trigger",
+        "409": "request_id_conflict",
+        "426": "runtime_contract_upgrade_required",
+        "503": "local_not_ready"
+      }
+    }
+  },
+  "failure_isolation": [
+    "Runtime down does not make ordinary Local business UI unavailable where OS integration is unnecessary",
+    "Local down does not authorize Runtime to mutate business data directly as a fallback",
+    "Public/Internet never calls Runtime directly",
+    "Print Agent failure is reported/supervised independently and does not move print state ownership into Runtime"
+  ],
+  "historical_evidence": {
+    "source_commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "audit": "contracts/runtime-api/historical-audit-v1.json",
+    "historical_http_api": false,
+    "proven_surfaces": ["runtime CLI", "sokna-local-runtime-v1 state file", "Windows SCM service host"]
+  },
+  "stability_note": "This is the M1 executable V3 boundary contract. HTTP implementation details may evolve compatibly before M7, but authority, direction, no-arbitrary-command and idempotent-trigger semantics are frozen unless superseded by ADR."
+}
