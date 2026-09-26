@@ -17,6 +17,7 @@ use Sokna\PublicEdge\Guest\GuestPublishService;
 use Sokna\PublicEdge\Guest\GuestRuntimeService;
 use Sokna\PublicEdge\Health\PublicHealthService;
 use Sokna\PublicEdge\Realtime\RealtimeService;
+use Sokna\PublicEdge\Remote\RemoteReadModelService;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
 
 final class Bootstrap
@@ -37,6 +38,7 @@ final class Bootstrap
     private ?GuestPublishService $guestPublishService = null;
     private ?GuestAvailabilityService $guestAvailabilityService = null;
     private ?GuestRuntimeService $guestRuntimeService = null;
+    private ?RemoteReadModelService $remoteReadModelService = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -152,5 +154,13 @@ final class Bootstrap
     public function guestRuntime(): GuestRuntimeService
     {
         return $this->guestRuntimeService ??= new GuestRuntimeService($this->database());
+    }
+
+    public function remoteReadModels(): RemoteReadModelService
+    {
+        return $this->remoteReadModelService ??= new RemoteReadModelService(
+            $this->database(),
+            $this->connectivity(),
+        );
     }
 }
