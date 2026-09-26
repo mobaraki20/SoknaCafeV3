@@ -12,17 +12,18 @@
 
 ## آخرین checkpoint اجرایی تأییدشده
 
-M4 implementation/exit checkpoint:
+M5.1 Explicit Sellables checkpoint:
 
-- Head: `08119caa741916badac997350aa71e8c4ee72822`
-- `V3 Component Gates`: run `36244318018` — **SUCCESS**
-- `M4 Guest Renderer Gate`: run `36244318015` — **SUCCESS**
-- `M4 Failure Isolation Gate`: run `36244318053` — **SUCCESS**
+- Head: `dc096b5d57decf8bf16bfb1ca457491d3c516476`
+- implementation commit: `b5fb10fd932b391978835b540721d535e4dd4564`
+- `M5 Sellables Gate`: run `36244864710` — **SUCCESS**
+- `V3 Component Gates`: run `36244864724` — **SUCCESS**
+- M4 regression gates on the same head also remain **SUCCESS**.
 
-Canonical M4 closure evidence:
-`docs/migration/M4_CLOSURE_EVIDENCE_FA.md`
+Canonical evidence:
 
-این checkpoint شامل Guest/Public M4 است: immutable publish/media revisions، atomic active revision، availability projection، Guest runtime/degraded state، Remote Read Models با scope filtering، Guest compatibility روی M3 Realtime، SCDS Guest renderer و failure-isolation exit scenarios.
+- `docs/migration/M5_SELLABLES_AUDIT_FA.md`
+- `docs/migration/M4_CLOSURE_EVIDENCE_FA.md`
 
 ## Slice status
 
@@ -30,12 +31,11 @@ Canonical M4 closure evidence:
 - M1: COMPLETE at contract-extraction / executable-boundary level.
 - M2: COMPLETE at Local Core slice level.
 - M3: COMPLETE at Public Edge transport/auth/projection slice level.
-- M4: **COMPLETE — Guest Publish/Runtime/Remote Read Models exit gate satisfied.**
-- M5: **NEXT — Local Business Domains in dependency order.**
+- M4: COMPLETE — Guest Publish/Runtime/Remote Read Models exit gate satisfied.
+- M5.1: **COMPLETE — Explicit Sellables/catalog authority exit gate satisfied.**
+- M5.2: **NEXT — canonical Orders services.**
 - M6: continuous SCDS cross-cutting track.
 - M7..M10: planned / not complete.
-
-تکمیل M4 به معنی migrate شدن business-domain ownerهای Orders/Preparation/Inventory/Supply/Finance نیست. Local همچنان مرجع نهایی mutationهای کسب‌وکار است و همین ownerها موضوع M5 هستند.
 
 ## Observer reconciliation
 
@@ -54,39 +54,47 @@ Canonical M4 closure evidence:
 Canonical disposition record:
 `docs/reviews/EXTERNAL_OBSERVER_DISPOSITION_2026-09-26_FA.md`
 
-## Immediate continuation — M5
+## Immediate continuation — M5.2 canonical Orders
 
-M5 must be executed as dependency-ordered sub-slices, not a bulk directory move.
+Do not bulk-copy the historical order stack. Audit/freeze authority first, then implement the smallest canonical transaction owner.
 
-### M5.1 — Explicit Sellables first
+### Historical owners to audit first
 
-1. Audit historical owner/behavior before code movement:
-   - `includes/sellable.php`
-   - `items` schema/usage
-   - `admin/items.php`
-   - menu/catalog paths that infer sellability.
-2. Freeze explicit `menu_item` / `service_item` semantics and identify every legacy inference from category/station/name/recipe that must be retired rather than copied.
-3. Define the canonical Local service/repository/data migration owner under `apps/local-web`; Public receives only published projection data through already-migrated M4 boundaries.
-4. Add migration and regression gates for historical order/receipt compatibility before changing canonical Orders.
-5. If user-facing admin/catalog surfaces are touched, migrate them through SCDS in the same sub-slice; do not defer UI correction.
-6. Update `MIGRATION_MATRIX.csv` only when implementation evidence supports the status change.
+- `includes/guest_order_service.php`
+- `includes/guest_order_manage_service.php`
+- `includes/staff_order_service.php`
+- `staff/api_quick_order.php`
+- `operator/api_bill.php`
+- `orders`, `order_items`, `order_business_sequences`
+- table/session ownership only insofar as canonical order commit requires it
+- business-date/shift snapshot helpers used by order numbering/commit
 
-### Then M5 dependency order
+### Frozen M5.2 requirements already known from M5.1
 
-After Sellables exit gate:
+1. New committed order lines persist explicit `sellable_kind_snapshot` from the locked canonical item row.
+2. Historical committed rows are not backfilled merely to populate sellable classification.
+3. Category/station/name/recipe/takeaway must never infer sellable kind.
+4. Orders remain Local canonical authority; Public compatibility routes only reach them through already-migrated M3 Realtime.
+5. No preparation task, inventory movement, settlement/finance side effect or receipt should be invented outside the historical canonical commit boundary.
+6. Idempotency/client-token behavior, business-order numbering and business-date/shift snapshots must be audited before implementation.
+7. M5.2 must not silently pull Table Draft/Staff Quick Order ownership forward; those are the following sub-slice unless a shared primitive is strictly required for canonical Orders.
+8. Any user-facing Orders UI touched by the migration must follow SCDS in the same sub-slice.
 
-1. canonical Orders services;
-2. Staff Quick Order + Table Draft;
-3. Preparation permission/action owner;
-4. Inventory;
-5. Supply/Purchase;
-6. Expenses;
-7. Financial periods/Settlement/Reconciliation;
-8. Tax/cross-domain finance integration;
-9. Accommodation/Center adapters.
+### M5 remaining dependency order
+
+After canonical Orders:
+
+1. Staff Quick Order + Table Draft;
+2. Preparation permission/action owner;
+3. Inventory;
+4. Supply/Purchase;
+5. Expenses;
+6. Financial periods/Settlement/Reconciliation;
+7. Tax/cross-domain finance integration;
+8. Accommodation/Center adapters.
 
 Do not start M7/M8/M9 implementation as a substitute for M5 domain migration.
 
 ## Failure-isolation note carried forward
 
-M4 proved boundary-level Local-down/Public-down/Internet-or-sync-loss behavior. It did **not** claim packet-level NIC/DNS/proxy/browser chaos qualification; that remains explicit M10 release-qualification work.
+M4 proved boundary-level Local-down/Public-down/Internet-or-sync-loss behavior. It did not claim packet-level NIC/DNS/proxy/browser chaos qualification; that remains explicit M10 release-qualification work.
