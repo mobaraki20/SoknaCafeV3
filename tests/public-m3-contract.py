@@ -11,6 +11,7 @@ CORE = PUBLIC / "src" / "Core"
 AUTH = PUBLIC / "src" / "Auth"
 SECURITY = PUBLIC / "src" / "Security"
 CONNECTIVITY = PUBLIC / "src" / "Connectivity"
+REALTIME = PUBLIC / "src" / "Realtime"
 HTTP = PUBLIC / "src" / "Http"
 MIGRATION = PUBLIC / "database" / "migrations" / "0001_m3_public_edge_core.sql"
 
@@ -21,7 +22,8 @@ required = [
     AUTH / "PublicSessionStore.php", AUTH / "PublicLoginService.php",
     SECURITY / "SignedLocalRequestVerifier.php",
     CONNECTIVITY / "ConnectivityService.php",
-    HTTP / "AuthHttpAdapter.php", HTTP / "ConnectivityHttpAdapter.php",
+    REALTIME / "RealtimeService.php",
+    HTTP / "AuthHttpAdapter.php", HTTP / "ConnectivityHttpAdapter.php", HTTP / "RealtimeHttpAdapter.php",
     MIGRATION,
     ROOT / "tests" / "public-mysql-migration-selftest.php",
     ROOT / "tests" / "public-auth-projection-selftest.php",
@@ -90,13 +92,39 @@ for delegated_call in ("signedLocalRequests()->verify", "connectivity()->heartbe
     if delegated_call not in connectivity_adapter:
         raise SystemExit(f"Connectivity adapter no longer delegates to canonical service: {delegated_call}")
 
+realtime_source = (REALTIME / "RealtimeService.php").read_text(encoding="utf-8")
+for token in (
+    "orders.mutate", "finance.settle", "preparation.mutate", "orders.table_draft",
+    "request_id_conflict", "lease_token_hash", "hash('sha256', $leaseToken)",
+    "state='expired'", "deduplicated", "local_unavailable", "order_intake_disabled",
+):
+    if token not in realtime_source:
+        raise SystemExit(f"Realtime service missing contract invariant: {token}")
+if "deferred_work" in realtime_source:
+    raise SystemExit("Realtime service must not absorb Deferred persistence/state")
+
+realtime_adapter = (HTTP / "RealtimeHttpAdapter.php").read_text(encoding="utf-8")
+for forbidden_logic in ("INSERT INTO realtime_requests", "UPDATE realtime_requests", "SELECT id,envelope_json FROM realtime_requests"):
+    if forbidden_logic in realtime_adapter:
+        raise SystemExit(f"Realtime HTTP adapter duplicated persistence logic: {forbidden_logic}")
+for delegated_call in (
+    "publicSessions()->resolve", "signedLocalRequests()->verify", "realtime()->enqueue",
+    "realtime()->result", "realtime()->claim", "realtime()->ack",
+):
+    if delegated_call not in realtime_adapter:
+        raise SystemExit(f"Realtime adapter no longer delegates to canonical service: {delegated_call}")
+
+bootstrap_source = (CORE / "Bootstrap.php").read_text(encoding="utf-8")
+if "function realtime(): RealtimeService" not in bootstrap_source:
+    raise SystemExit("Public Bootstrap does not expose canonical Realtime service")
+
 php = shutil.which("php")
 if php is None:
     raise SystemExit("PHP CLI is required for the Public M3 gate")
 php_files = [
     PUBLIC / "bootstrap.php",
     *sorted(CORE.glob("*.php")), *sorted(AUTH.glob("*.php")), *sorted(SECURITY.glob("*.php")),
-    *sorted(CONNECTIVITY.glob("*.php")), *sorted(HTTP.glob("*.php")),
+    *sorted(CONNECTIVITY.glob("*.php")), *sorted(REALTIME.glob("*.php")), *sorted(HTTP.glob("*.php")),
     ROOT / "tests" / "public-mysql-migration-selftest.php",
     ROOT / "tests" / "public-auth-projection-selftest.php",
     ROOT / "tests" / "public-login-selftest.php",
@@ -107,4 +135,4 @@ php_files = [
 for path in php_files:
     subprocess.run([php, "-l", str(path)], cwd=ROOT, check=True)
 
-print("Public M3 persistence/auth/security/http/connectivity contract: OK")
+print("Public M3 persistence/auth/security/http/connectivity/realtime contract: OK")

@@ -10,6 +10,7 @@ use Sokna\PublicEdge\Auth\AuthThrottle;
 use Sokna\PublicEdge\Auth\PublicLoginService;
 use Sokna\PublicEdge\Auth\PublicSessionStore;
 use Sokna\PublicEdge\Connectivity\ConnectivityService;
+use Sokna\PublicEdge\Realtime\RealtimeService;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
 
 final class Bootstrap
@@ -23,6 +24,7 @@ final class Bootstrap
     private ?PublicLoginService $publicLoginService = null;
     private ?SignedLocalRequestVerifier $signedLocalRequestVerifier = null;
     private ?ConnectivityService $connectivityService = null;
+    private ?RealtimeService $realtimeService = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -101,5 +103,10 @@ final class Bootstrap
     public function connectivity(): ConnectivityService
     {
         return $this->connectivityService ??= new ConnectivityService($this->database());
+    }
+
+    public function realtime(): RealtimeService
+    {
+        return $this->realtimeService ??= new RealtimeService($this->database(), $this->connectivity());
     }
 }
