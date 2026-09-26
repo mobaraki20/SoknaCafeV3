@@ -129,6 +129,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/validate-v3-foundation.py --component contracts
+      - name: Validate extracted Local/Public relay wire semantics
+        run: python3 tests/relay-wire-contract.py
 
   packaging:
     name: Packaging gate (foundation stage)
