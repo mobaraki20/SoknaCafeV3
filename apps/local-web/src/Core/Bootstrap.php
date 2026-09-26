@@ -11,6 +11,9 @@ use Sokna\Local\Domain\Orders\OrderCommitService;
 use Sokna\Local\Domain\Orders\StaffQuickOrderService;
 use Sokna\Local\Domain\Orders\TableDraftService;
 use Sokna\Local\Relay\TableDraftRealtimeAdapter;
+use Sokna\Local\Domain\Preparation\PreparationAccessService;
+use Sokna\Local\Domain\Preparation\PreparationService;
+use Sokna\Local\Relay\PreparationRealtimeAdapter;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 
 final class Bootstrap
@@ -27,6 +30,9 @@ final class Bootstrap
     private ?StaffQuickOrderService $staffQuickOrders = null;
     private ?TableDraftService $tableDrafts = null;
     private ?TableDraftRealtimeAdapter $tableDraftRealtime = null;
+    private ?PreparationAccessService $preparationAccess = null;
+    private ?PreparationService $preparation = null;
+    private ?PreparationRealtimeAdapter $preparationRealtime = null;
 
     private function __construct(
         private readonly Config $config,
@@ -120,6 +126,21 @@ final class Bootstrap
     public function tableDraftRealtime(): TableDraftRealtimeAdapter
     {
         return $this->tableDraftRealtime ??= new TableDraftRealtimeAdapter($this->database(), $this->tableDrafts());
+    }
+
+    public function preparationAccess(): PreparationAccessService
+    {
+        return $this->preparationAccess ??= new PreparationAccessService($this->database(), $this->identityRepository(), $this->capabilities());
+    }
+
+    public function preparation(): PreparationService
+    {
+        return $this->preparation ??= new PreparationService($this->database(), $this->preparationAccess(), $this->businessClock());
+    }
+
+    public function preparationRealtime(): PreparationRealtimeAdapter
+    {
+        return $this->preparationRealtime ??= new PreparationRealtimeAdapter($this->database(), $this->preparation());
     }
 
     public function startSession(string $cookiePath = '/', ?bool $secure = null): void
