@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "contract_id": "sokna-print-server-v4",
+  "protocol_version": 4,
+  "status": "m1-retained-proven-wire-contract",
+  "source": {
+    "repository": "mobaraki20/SoknaCafe",
+    "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "files": [
+      "print-agent/v4/api.php",
+      "includes/print_agent_api.php",
+      "runtime/print-worker/source/src/Sokna.PrintAgent.Core/HttpPrintTransport.cs",
+      "runtime/print-worker/source/src/Sokna.PrintAgent.Core/IPrintTransport.cs",
+      "runtime/print-worker/source/src/Sokna.PrintAgent.Core/Models.cs",
+      "runtime/print-worker/source/src/Sokna.PrintAgent.Core/AttemptStatusContract.cs"
+    ]
+  },
+  "direction": "windows/print-agent -> apps/local-web print server API",
+  "ownership": {
+    "business_print_intent_and_document_meaning": "apps/local-web",
+    "durable_local_agent_execution_device_spooler_state": "windows/print-agent",
+    "runtime_role": "service lifecycle supervision only"
+  },
+  "transport": {
+    "method": "POST",
+    "historical_path_template": "/print-agent/v4/api.php?action={action}",
+    "content_type": "application/json",
+    "max_request_bytes": 262144,
+    "authentication": "Authorization: Bearer <agent-token>; Local stores/looks up SHA256(token) for an active agent",
+    "https": "required except historical localhost loopback exception",
+    "request_timeout_seconds_historical_client": 10,
+    "request_id": {
+      "source": "body request_id; historical helper can fall back to X-Request-ID",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,79}$"
+    },
+    "agent_version": "semantic version string",
+    "protocol_version": 4,
+    "timestamps": "ISO-8601 with explicit offset on wire"
+  },
+  "constants": {
+    "lease_seconds": 45,
+    "max_attempts": 5,
+    "local_receipt_id_pattern": "^r-[A-Fa-f0-9]{32}$",
+    "content_sha256_pattern": "^[A-Fa-f0-9]{64}$"
+  },
+  "types": {
+    "destination": {
+      "required": ["destination_key", "label", "windows_queue_name", "paper_width_mm", "printable_width_mm", "copies", "layout_mode"],
+      "properties": {
+        "destination_key": "string",
+        "label": "string",
+        "windows_queue_name": "string",
+        "paper_width_mm": "number",
+        "printable_width_mm": "number",
+        "copies": "integer",
+        "layout_mode": "string"
+      }
+    },
+    "claimed_job": {
+      "required": ["id", "public_token", "job_type", "required", "entity_type", "entity_id", "created_at", "contract_version", "content_sha256", "payload_json"]
+    },
+    "claim_attempt": {
+      "required": ["id", "attempt_no", "lease_token", "lease_expires_at"]
+    },
+    "claim_item": {
+      "required": ["job", "attempt", "destination"]
+    },
+    "api_result": {
+      "required": ["success"],
+      "optional": ["status", "idempotent", "code", "message", "requires_human_resolution", "attempt_id", "job_id", "local_receipt_id", "next_action", "current_state", "server_time"]
+    },
+    "printer_health": {
+      "required_client_fields": ["name", "offline", "paused", "paper_out", "error", "jobs", "driver", "port"]
+    }
+  },
+  "actions": {
+    "probe": {
+      "request": {
+        "required": ["agent_version", "protocol_version"],
+        "additional_properties": false
+      },
+      "response": {
+        "required": ["success", "protocol_version", "minimum_agent_version", "recommended_agent_version", "destinations"],
+        "optional": ["capabilities", "server_instance_id", "server_time", "agent", "capability_semantics"]
+      },
+      "semantics": [
+        "protocol_version must equal 4",
+        "agent below server minimum returns agent_upgrade_required",
+        "server_instance_id binds backlog to server identity/scope",
+        "capabilities describe protocol support, not business authorization"
+      ]
+    },
+    "heartbeat": {
+      "request": {
+        "required_client_wire_fields": [
+          "request_id", "agent_version", "protocol_version", "hostname", "os_version", "uptime_seconds",
+          "local_backlog_count", "local_unknown_count", "sqlite_health", "disk_free_mb", "worker_ok", "config_ok",
+          "instance_lock_ok", "printers", "consecutive_api_failures", "bridge_protocol_version", "bridge_port",
+          "pending_report_count", "auth_blocked_report_count", "reconciliation_report_count",
+          "printer_discovery_fresh", "printer_discovery_generation"
+        ],
+        "optional_client_wire_fields": [
+          "last_poll_success_at", "last_submission_at", "last_successful_action", "last_api_success_at",
+          "last_api_error_code", "last_api_latency_ms", "printer_discovery_at", "printer_discovery_last_failure_at",
+          "printer_discovery_error", "printer_discovery_age_milliseconds", "bridge_pairing_id", "bridge_origin"
+        ]
+      },
+      "response": {
+        "shape": "probe response plus request_id"
+      }
+    },
+    "claim": {
+      "request": {
+        "required": ["request_id", "agent_version", "protocol_version", "limit", "ready_destination_keys"],
+        "rules": {
+          "limit": "integer 1..5; historical client normally requests <=5",
+          "ready_destination_keys": "explicit array; empty means no destination is currently ready"
+        }
+      },
+      "response": {
+        "required": ["success", "request_id", "jobs", "server_time", "idempotent"],
+        "jobs": "array<claim_item>"
+      },
+      "request_fingerprint_fields": ["request_id", "agent_version", "protocol_version", "limit", "ready_destination_keys"],
+      "semantics": [
+        "Claim creates/returns durable reserved attempts with immutable destination snapshot",
+        "same request_id/body is idempotent",
+        "same request_id with incompatible body/claim evidence requires conflict handling, never silent replacement"
+      ]
+    },
+    "claim_reconcile": {
+      "request": {
+        "required": [
+          "request_id", "agent_version", "protocol_version", "claim_request_id", "attempt_id", "local_server_job_id",
+          "local_content_sha256", "local_destination_key", "local_max_attempt_id", "mismatch_fields"
+        ]
+      },
+      "response": {
+        "required": ["success"],
+        "optional": ["status", "claim_request_id", "old_attempt_id", "replacement_attempt_id", "idempotent", "server_time"]
+      },
+      "semantics": ["Reconciliation is explicit evidence-based repair for claim identity mismatch; it must not silently rebind a local receipt to unrelated work"]
+    },
+    "attempt_status": {
+      "request": {
+        "required": ["agent_version", "protocol_version", "attempt_id", "lease_token", "local_receipt_id"]
+      },
+      "response": {
+        "required": ["success", "attempt_id", "job_id", "attempt_state", "job_state", "receipt_matches", "next_action", "terminal", "requires_human_resolution", "lease_expires_at", "server_time"]
+      },
+      "known_attempt_states": ["reserved", "claimed", "started", "submitted", "failed", "expired", "cancelled", "unknown", "recovery_hold"],
+      "rules": [
+        "claimed -> next_action start|continue",
+        "started -> next_action continue|report|start",
+        "terminal=true cannot use next_action=continue",
+        "expired|cancelled|failed require terminal=true",
+        "claimed|started require terminal=false",
+        "attempt_id/job_id/local receipt must match local durable job evidence",
+        "requires_human_resolution=true is not safe for autonomous continuation"
+      ]
+    },
+    "renew": {
+      "request": {
+        "required": ["request_id", "agent_version", "protocol_version", "attempt_id", "lease_token"]
+      },
+      "response": {"shape": "api_result; success normally returns status, lease_expires_at when supported, idempotent"},
+      "request_fingerprint_fields": ["request_id", "agent_version", "protocol_version", "attempt_id", "lease_token"],
+      "semantics": ["only reserved, unexpired lease may renew", "same request_id/body is idempotent"]
+    },
+    "accept": {
+      "request": {
+        "required": ["request_id", "agent_version", "protocol_version", "attempt_id", "lease_token", "local_receipt_id", "content_sha256"]
+      },
+      "response": {"shape": "api_result; successful new accept returns status=claimed and idempotent=false"},
+      "request_fingerprint_fields": ["request_id", "agent_version", "protocol_version", "attempt_id", "lease_token", "local_receipt_id", "content_sha256"],
+      "semantics": [
+        "accept durably binds local_receipt_id and content_sha256 before worker/spooler execution",
+        "invalid or mismatched job reservation fails closed",
+        "local receipt ID and content hash are durable submission-fence evidence"
+      ]
+    },
+    "start": {
+      "request": {
+        "required": ["request_id", "agent_version", "protocol_version", "attempt_id", "lease_token"]
+      },
+      "response": {"shape": "api_result; started state may return idempotent=true on exact replay"},
+      "request_fingerprint_fields": ["request_id", "agent_version", "protocol_version", "attempt_id", "lease_token"],
+      "semantics": ["transition to started requires claimed state unless exact started replay", "terminal/ambiguous states never silently restart"]
+    },
+    "report": {
+      "request": {
+        "required": [
+          "request_id", "agent_version", "protocol_version", "attempt_id", "lease_token", "local_receipt_id",
+          "status", "spooler_job_id", "retryable", "error_code", "error_message"
+        ],
+        "status_enum": ["submitted", "failed", "unknown", "recovery_hold"]
+      },
+      "response": {"shape": "api_result"},
+      "request_fingerprint_fields": [
+        "request_id", "agent_version", "protocol_version", "attempt_id", "lease_token", "local_receipt_id",
+        "status", "spooler_job_id", "retryable", "error_code", "error_message"
+      ],
+      "semantics": [
+        "report local_receipt_id must match accepted attempt",
+        "unknown/recovery_hold are durable safety states, not failures to be auto-replayed blindly",
+        "same mutation request_id with different body is request_body_conflict",
+        "report delivery may retry without repeating physical print execution"
+      ]
+    }
+  },
+  "attempt_terminal_states": ["submitted", "failed", "unknown", "recovery_hold", "cancelled", "expired"],
+  "request_idempotency": {
+    "rule": "mutation request_id is bound to attempt/action and request fingerprint; reuse for another attempt or a different body is rejected",
+    "conflict_codes": ["request_id_conflict", "request_body_conflict"]
+  },
+  "safety_invariants": [
+    "destination snapshot is immutable after claim; missing/corrupt claimed snapshot fails closed",
+    "accept precedes physical execution and establishes local receipt/content fence",
+    "start precedes worker/spooler submission",
+    "ambiguous physical outcome becomes unknown/recovery_hold and may require human resolution",
+    "printing failure never rolls back unrelated committed business state",
+    "business receipt and preparation ticket remain distinct document semantics; tax is not a preparation-ticket concern"
+  ],
+  "common_error_taxonomy": [
+    "unauthorized", "https_required", "method_not_allowed", "unsupported_media_type", "payload_too_large",
+    "invalid_json", "invalid_json_object", "missing_field", "invalid_field_type", "invalid_field_value", "field_too_long",
+    "request_id_required", "invalid_agent_version", "agent_upgrade_required", "timestamp_offset_required", "invalid_timestamp",
+    "request_id_conflict", "request_body_conflict", "invalid_lease", "lease_expired", "invalid_transition",
+    "job_reservation_conflict", "local_receipt_conflict"
+  ],
+  "v3_retention_decision": "Retain the proven v4 pull/claim/accept/start/report protocol family as the V3 Print Agent server contract baseline. Deployment ownership changes to windows/print-agent, but mature wire safety semantics are not weakened."
+}
