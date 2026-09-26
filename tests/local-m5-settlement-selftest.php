@@ -109,12 +109,12 @@ try{$core->settlements()->setDiscount($sessionId,'fixed',100,$cashier);}
 catch(SettlementStateConflict $e){$discountLocked=$e->errorCode==='itemized_locked';}
 m510_assert($discountLocked,'discount changed after itemized payment began');
 
-$adapterDenied=false;
+$adapterGuarded=false;
 try{$core->settlements()->settle([
-    'session_id'=>$sessionId,'destination'=>'accommodation','mode'=>'full','request_id'=>'m510-adapter-block',
+    'session_id'=>$sessionId,'destination'=>'accommodation','mode'=>'full','request_id'=>'m510-adapter-guard',
     'expected_session_id'=>$sessionId,'expected_remaining_total'=>$account1['remaining_total'],'expected_signature'=>$account1['signature'],
-],$cashier);}catch(SettlementException $e){$adapterDenied=$e->errorCode==='adapter_not_migrated';}
-m510_assert($adapterDenied,'M5.10 activated Accommodation adapter early');
+],$cashier);}catch(SettlementException $e){$adapterGuarded=$e->errorCode==='accommodation_transfer_required';}
+m510_assert($adapterGuarded,'Accommodation settlement bypassed its canonical transfer owner');
 
 $final=$core->settlements()->settle([
     'session_id'=>$sessionId,'destination'=>'direct','mode'=>'full','request_id'=>'m510-settle-final',
