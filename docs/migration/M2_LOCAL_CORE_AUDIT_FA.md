@@ -81,42 +81,71 @@ V3 ownership correction:
 4. Local Core must not embed Public transport or Print Agent implementation.
 5. Request bootstrap should not become the owner of immutable-package/server provisioning. Runtime filesystem/server protection needed for production packaging is a Platform/Setup concern unless it is application-private runtime storage behavior.
 
-## 3. Proposed V3 Local Core boundaries
+## 3. V3 Local Core boundaries
 
-The first implementation step should establish small owners under `apps/local-web`:
+Implemented owners under `apps/local-web`:
 
 - `src/Core/Config.php` — validated app/local configuration access only.
 - `src/Core/Database.php` — PDO construction/connection policy; no business queries.
-- `src/Core/Observability.php` — DB-independent correlation/log/redaction primitives.
-- `src/Core/Session.php` — Local web session policy.
-- `src/Core/Auth.php` — session identity refresh/login/logout/guards using existing authorities.
-- `src/Core/Capabilities.php` — capability evaluation adapter over canonical Local data/Preparation owner, not a new permission system.
-- `bootstrap.php` — composition root for the above; no Windows/Print/Public ownership.
+- `src/Core/Observability.php` — DB-independent correlation/log/redaction/state primitives.
+- `src/Core/Session.php` — Local web session policy and private Local session storage.
+- `src/Core/IdentityRepository.php` — identity/capability/preparation-area read contract.
+- `src/Core/PdoIdentityRepository.php` — canonical PDO adapter over existing Local authorities.
+- `src/Core/Auth.php` — session identity refresh/login/logout preserving dev39 semantics.
+- `src/Core/Capabilities.php` — capability evaluation over existing Local authorities; no new permission model.
+- `src/Core/Bootstrap.php` + `bootstrap.php` — composition root; DB/identity/auth remain lazy and no Windows/Print/Public implementation is loaded.
 
-Exact file names may change only if ownership remains equivalent and this document is updated in the same change.
+Ownership notes:
+- `user_preparation_areas` is read through the identity adapter but remains an Orders/Preparation-owned table; M2 does not claim schema ownership for it.
+- Admin capability compatibility is preserved at the generic capability layer; Preparation operational mutation restrictions remain a separate canonical Preparation rule and must be preserved when that domain moves.
+- Windows `%PROGRAMDATA%` inference is intentionally absent from Local Core. Setup/Platform supplies `SOKNA_DATA_DIR` or `app.data_dir`.
 
 ## 4. M2 implementation order
 
-1. Create Local Core directory/composition root without business-domain eager loads.
-2. Port DB-independent observability first and test it without MariaDB.
-3. Add config + Database owner and a test bootstrap that can use injected/test configuration.
-4. Add session/auth/capability owner preserving legacy behavior.
-5. Add schema/migration bootstrap for M2-owned tables only.
-6. Add tests proving Local Core initialization does not require Public/Runtime/Print.
-7. Add forbidden-dependency gate for Windows-specific ownership inside Local Core.
-8. Only then mark M2 migrated and proceed to M3/M5 consumers.
+1. [DONE] Create Local Core directory/composition root without business-domain eager loads.
+2. [DONE] Port DB-independent observability first and test it without MariaDB.
+3. [DONE] Add config + Database owner with lazy DB initialization.
+4. [DONE] Add session/auth/capability owner preserving legacy identity semantics.
+5. [NEXT] Add schema/migration bootstrap for M2-owned tables only (`schema_migrations`, `settings`, `users`, `user_capabilities`, platform audit owner as applicable).
+6. [IN PROGRESS] Expand tests proving Local Core initialization does not require Public/Runtime/Print.
+7. [DONE] Add forbidden-dependency gate for Windows-specific ownership inside Local Core.
+8. [PENDING] Close M2 only after schema/migration and final Local CI evidence are complete.
 
-## 5. M2 exit evidence required
+## 5. Executable evidence now present
+
+CI wiring:
+- `.github/workflows/v3-component-gates.yml` Local job now runs `python3 tests/local-core-contract.py`.
+
+Core tests:
+- `tests/local-core-selftest.php` verifies configuration, explicit Local data root, stable correlation IDs, redaction, atomic state and structured logging without opening a DB connection.
+- `tests/local-auth-selftest.php` verifies active-user refresh, disabled-user rejection, 12h expiry, preserved transient-DB compatibility, password login, unknown-capability rejection and kitchen/bar preparation-scope filtering using an injected identity repository.
+- `tests/local-core-contract.py` PHP-lints all Local Core files, executes both PHP self-tests and rejects Windows ownership tokens such as `%PROGRAMDATA%`, Winspool, Registry/SCM and PowerShell inside Local Core.
+
+Verified earlier M2 checkpoint before Auth expansion:
+- head `00bd62a8706eca80b9aca73b2be51ab6b29bae12`;
+- workflow run `36211338368` completed SUCCESS with the executable Local M2 gate.
+
+Current Auth-expanded head is newer than that checkpoint; its workflow must be used as the next verification evidence before M2 advances to schema/migration completion.
+
+## 6. M2 exit evidence required
 
 M2 is not complete until all are true:
 - Local Core starts under CLI/integration tests with Public/Runtime/Print absent;
 - observability tests pass without DB availability;
 - database/config tests prove deterministic injection/configuration;
 - auth/capability regression tests cover active/disabled user and capability scope;
+- M2-owned schema/migration bootstrap is implemented and tested;
 - no second permission schema exists;
 - no direct Windows Registry/SCM/Winspool/PowerShell ownership exists in Local Core;
 - migration/status docs point to concrete test/CI evidence.
 
-## 6. Current continuation point
+## 7. Current continuation point
 
-Historical audit for bootstrap, platform table ownership, auth and observability is complete enough to begin implementation. Next action: create the minimal `apps/local-web` Core implementation + executable M2 regression tests, then wire the Local component CI gate to those tests.
+Do **not** restart M2 from audit. Core implementation and Auth/Capability extraction are already present on `architecture/v3-foundation`.
+
+Next action sequence:
+1. verify the latest Auth-expanded Local CI run;
+2. fix any regression if that run fails;
+3. audit exact dev39 definitions/upgrade semantics for `schema_migrations`, `settings`, `users`, `user_capabilities` and platform audit storage;
+4. implement the V3 Local migration runner/bootstrap without claiming `user_preparation_areas` ownership;
+5. add migration tests and update this document with the final M2 checkpoint before marking the slice complete.
