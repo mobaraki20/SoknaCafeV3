@@ -135,6 +135,8 @@ jobs:
         run: python3 tests/relay-operation-contract.py
       - name: Validate Runtime and Print Agent historical ownership audit
         run: python3 tests/runtime-print-contract-audit.py
+      - name: Validate Runtime v1 and retained Print Agent v4 contracts
+        run: python3 tests/runtime-print-v1-contract.py
 
   packaging:
     name: Packaging gate (foundation stage)
