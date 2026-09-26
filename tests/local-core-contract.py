@@ -4,7 +4,6 @@ from __future__ import annotations
 import pathlib
 import shutil
 import subprocess
-import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LOCAL = ROOT / "apps" / "local-web"
@@ -15,8 +14,14 @@ required = [
     CORE / "Config.php",
     CORE / "Database.php",
     CORE / "Observability.php",
+    CORE / "IdentityRepository.php",
+    CORE / "PdoIdentityRepository.php",
+    CORE / "Capabilities.php",
+    CORE / "Session.php",
+    CORE / "Auth.php",
     CORE / "Bootstrap.php",
     ROOT / "tests" / "local-core-selftest.php",
+    ROOT / "tests" / "local-auth-selftest.php",
 ]
 
 missing = [str(path.relative_to(ROOT)) for path in required if not path.is_file()]
@@ -47,9 +52,9 @@ php = shutil.which("php")
 if php is None:
     raise SystemExit("PHP CLI is required for the Local Web M2 gate")
 
-for path in required:
-    if path.suffix == ".php":
-        subprocess.run([php, "-l", str(path)], cwd=ROOT, check=True)
+for path in [LOCAL / "bootstrap.php", *sorted(CORE.glob("*.php")), ROOT / "tests" / "local-core-selftest.php", ROOT / "tests" / "local-auth-selftest.php"]:
+    subprocess.run([php, "-l", str(path)], cwd=ROOT, check=True)
 
 subprocess.run([php, str(ROOT / "tests" / "local-core-selftest.php")], cwd=ROOT, check=True)
+subprocess.run([php, str(ROOT / "tests" / "local-auth-selftest.php")], cwd=ROOT, check=True)
 print("Local Core M2 contract: OK")
