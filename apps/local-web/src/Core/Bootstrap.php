@@ -16,6 +16,7 @@ use Sokna\Local\Domain\Preparation\PreparationService;
 use Sokna\Local\Relay\PreparationRealtimeAdapter;
 use Sokna\Local\Domain\Inventory\InventoryService;
 use Sokna\Local\Domain\Inventory\InventoryCountService;
+use Sokna\Local\Domain\Inventory\InventoryOrderService;
 use Sokna\Local\Relay\InventoryDeferredAdapter;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 
@@ -38,6 +39,7 @@ final class Bootstrap
     private ?PreparationRealtimeAdapter $preparationRealtime = null;
     private ?InventoryService $inventory = null;
     private ?InventoryCountService $inventoryCounts = null;
+    private ?InventoryOrderService $inventoryOrders = null;
     private ?InventoryDeferredAdapter $inventoryDeferred = null;
 
     private function __construct(
@@ -110,7 +112,7 @@ final class Bootstrap
 
     public function orders(): OrderCommitService
     {
-        return $this->orders ??= new OrderCommitService($this->database(), $this->businessClock(), $this->orderCatalog());
+        return $this->orders ??= new OrderCommitService($this->database(), $this->businessClock(), $this->orderCatalog(), $this->inventoryOrders());
     }
 
     public function staffQuickOrders(): StaffQuickOrderService
@@ -157,6 +159,11 @@ final class Bootstrap
     public function inventoryCounts(): InventoryCountService
     {
         return $this->inventoryCounts ??= new InventoryCountService($this->database(), $this->inventory());
+    }
+
+    public function inventoryOrders(): InventoryOrderService
+    {
+        return $this->inventoryOrders ??= new InventoryOrderService($this->database(), $this->inventory());
     }
 
     public function inventoryDeferred(): InventoryDeferredAdapter
