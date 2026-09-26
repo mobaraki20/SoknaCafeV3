@@ -19,6 +19,9 @@ use Sokna\Local\Domain\Inventory\InventoryCountService;
 use Sokna\Local\Domain\Inventory\InventoryOrderService;
 use Sokna\Local\Relay\InventoryDeferredAdapter;
 use Sokna\Local\Domain\Tax\TaxService;
+use Sokna\Local\Domain\Finance\FinancialPeriodIdentityService;
+use Sokna\Local\Domain\Expenses\ExpenseService;
+use Sokna\Local\Relay\ExpenseDeferredAdapter;
 use Sokna\Local\Domain\Supply\SupplyAccessService;
 use Sokna\Local\Domain\Supply\SupplyService;
 use Sokna\Local\Relay\DeferredReceiptService;
@@ -47,6 +50,9 @@ final class Bootstrap
     private ?InventoryOrderService $inventoryOrders = null;
     private ?InventoryDeferredAdapter $inventoryDeferred = null;
     private ?TaxService $tax = null;
+    private ?FinancialPeriodIdentityService $financialPeriodIdentity = null;
+    private ?ExpenseService $expenses = null;
+    private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
     private ?SupplyService $supply = null;
     private ?DeferredReceiptService $deferredReceipts = null;
@@ -184,6 +190,23 @@ final class Bootstrap
     public function tax(): TaxService
     {
         return $this->tax ??= new TaxService($this->database(), $this->identityRepository());
+    }
+
+    public function financialPeriodIdentity(): FinancialPeriodIdentityService
+    {
+        return $this->financialPeriodIdentity ??= new FinancialPeriodIdentityService($this->database());
+    }
+
+    public function expenses(): ExpenseService
+    {
+        return $this->expenses ??= new ExpenseService($this->database(), $this->identityRepository(), $this->financialPeriodIdentity());
+    }
+
+    public function expenseDeferred(): ExpenseDeferredAdapter
+    {
+        return $this->expenseDeferred ??= new ExpenseDeferredAdapter(
+            $this->database(), $this->identityRepository(), $this->expenses(), $this->financialPeriodIdentity(), $this->deferredReceipts()
+        );
     }
 
     public function supplyAccess(): SupplyAccessService
