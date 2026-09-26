@@ -12,14 +12,18 @@ Migration rule: bring legacy business capability here only after identifying its
 
 Canonical continuation document: `docs/migration/M2_LOCAL_CORE_AUDIT_FA.md`.
 
-First migrated core owners:
+Implemented core owners:
 - `src/Core/Config.php` — configuration access;
 - `src/Core/Database.php` — PDO connection policy only;
 - `src/Core/Observability.php` — DB-independent correlation/log/redaction/state primitives;
-- `src/Core/Bootstrap.php` + `bootstrap.php` — minimal Local composition root with lazy DB connection.
+- `src/Core/Session.php` — Local session policy/storage;
+- `src/Core/IdentityRepository.php` + `PdoIdentityRepository.php` — canonical identity/capability/preparation-area reads;
+- `src/Core/Capabilities.php` — capability filtering over existing authorities;
+- `src/Core/Auth.php` — active-user refresh, login/logout and session compatibility semantics;
+- `src/Core/Bootstrap.php` + `bootstrap.php` — minimal composition root with lazy DB/auth dependencies.
 
 The M2 bootstrap intentionally does **not** eager-load business domains and does not discover/provision Windows paths. `SOKNA_DATA_DIR` or Local app configuration supplies the data root; Windows Setup/Platform owns machine-specific provisioning.
 
-Executable gate: `tests/local-core-contract.py` runs PHP syntax checks and `tests/local-core-selftest.php`, and rejects Windows Runtime/Print ownership tokens inside Local Core.
+Executable gate: `tests/local-core-contract.py` PHP-lints Local Core, runs `tests/local-core-selftest.php` and `tests/local-auth-selftest.php`, and rejects Windows Runtime/Print ownership tokens inside Local Core.
 
-Still required before M2 exit: session/auth/capability ownership, M2-owned schema/migration bootstrap and regression coverage for active/disabled users and capability/preparation scopes.
+Still required before M2 exit: M2-owned schema/migration bootstrap and its regression coverage, followed by a final green Local CI checkpoint recorded in the migration handoff.
