@@ -12,6 +12,7 @@ final class Bootstrap
     private ?IdentityRepository $identityRepository = null;
     private ?Capabilities $capabilities = null;
     private ?Auth $auth = null;
+    private ?Migrations $migrations = null;
 
     private function __construct(
         private readonly Config $config,
@@ -58,6 +59,12 @@ final class Bootstrap
     {
         $lifetime = max(300, (int)$this->config->get('app.session_lifetime', Session::DEFAULT_LIFETIME));
         return $this->auth ??= new Auth($this->identityRepository(), $this->capabilities(), $lifetime);
+    }
+
+    public function migrations(): Migrations
+    {
+        $directory = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'migrations';
+        return $this->migrations ??= new Migrations($this->database(), $directory);
     }
 
     public function startSession(string $cookiePath = '/', ?bool $secure = null): void
