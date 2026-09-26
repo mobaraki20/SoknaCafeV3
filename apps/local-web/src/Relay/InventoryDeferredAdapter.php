@@ -53,6 +53,19 @@ final class InventoryDeferredAdapter
             }
 
             if($kind==='inventory.waste'){
+                $dedupeKey='deferred:waste:'.$requestId;
+                $dup=$this->pdo->prepare('SELECT id,quantity_base FROM inventory_movements WHERE idempotency_key=? LIMIT 1 FOR UPDATE');
+                $dup->execute([$dedupeKey]);
+                $existing=$dup->fetch(PDO::FETCH_ASSOC);
+                if(is_array($existing)){
+                    $this->pdo->commit();
+                    return [
+                        'state'=>'committed',
+                        'result'=>['movement_id'=>(int)$existing['id'],'quantity_base'=>abs((int)$existing['quantity_base'])],
+                        'error_code'=>'',
+                        'idempotent'=>true,
+                    ];
+                }
                 $itemId=(int)($payload['inventory_item_id']??0);
                 $item=$this->inventory->itemTx($itemId);
                 if($item===null||(int)$item['active']!==1){
@@ -77,7 +90,7 @@ final class InventoryDeferredAdapter
                     'item_id'=>$itemId,'movement_type'=>'waste','quantity_base'=>-$qty,
                     'department'=>InventoryService::normalizeDepartment((string)($payload['department']??$item['default_department']))??'shared',
                     'source_type'=>'deferred_waste','source_id'=>$requestId,
-                    'idempotency_key'=>'deferred:waste:'.$requestId,
+                    'idempotency_key'=>$dedupeKey,
                     'metadata'=>['origin'=>'public_deferred'],
                     'note'=>self::truncate(trim((string)($payload['note']??'')),500)?:null,
                     'actor_user_id'=>(int)$actor['id'],
