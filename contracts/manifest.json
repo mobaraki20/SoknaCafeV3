@@ -41,7 +41,9 @@
       "state_machine": "os_integration_supervision_only",
       "compatibility": "draft-no-stability-claim",
       "spec": "contracts/runtime-api/README.md",
-      "wire_evidence": "boundary-only-not-yet-extracted"
+      "historical_audit": "contracts/runtime-api/historical-audit-v1.json",
+      "wire_evidence": "historical-cli-state-scm-audited-no-stable-http-api",
+      "regression_gate": "tests/runtime-print-contract-audit.py"
     },
     {
       "id": "print-agent-api",
@@ -52,12 +54,15 @@
       "state_machine": "durable_print_submission_and_spooler_execution",
       "compatibility": "draft-no-stability-claim",
       "spec": "contracts/print-agent-api/README.md",
-      "wire_evidence": "boundary-only-not-yet-extracted"
+      "historical_audit": "contracts/print-agent-api/historical-audit-v1.json",
+      "wire_evidence": "historical-print-api-v4-and-loopback-bridge-audited",
+      "regression_gate": "tests/runtime-print-contract-audit.py"
     }
   ],
   "rules": [
     "Realtime and deferred-safe state machines are distinct contracts and must never be merged.",
     "Runtime API must not expose business mutations or Local DB writes.",
+    "Historical Runtime has no stable HTTP API; any V3 Runtime HTTP/IPC surface is a new versioned contract constrained by audited CLI/state/SCM semantics.",
     "Print Agent API must preserve Print Agent ownership of durable submission/spooler/device state.",
     "Extracted legacy wire evidence is regression input, not an automatic promise that final V3 endpoint paths remain identical.",
     "Draft contract versions are boundary declarations, not claims that all producer/consumer implementations are finalized."
