@@ -162,7 +162,7 @@ m53_assert($remoteActorRejected,'Realtime adapter did not revalidate disabled Lo
 
 $publicRealtime=(string)file_get_contents(dirname(__DIR__).'/apps/public/src/Realtime/RealtimeService.php');
 $publicDeferred=(string)file_get_contents(dirname(__DIR__).'/apps/public/src/Deferred/DeferredService.php');
-m53_assert(str_contains($publicRealtime,"'table_draft.finalize'")&&str_contains($publicRealtime,"str_starts_with($kind, 'table_draft.')")&&str_contains($publicRealtime,"'local_unavailable'"),'Public Realtime lost Local-required Table Draft boundary');
+m53_assert(str_contains($publicRealtime,"'table_draft.finalize'")&&str_contains($publicRealtime,"str_starts_with(\$kind, 'table_draft.')")&&str_contains($publicRealtime,"'local_unavailable'"),'Public Realtime lost Local-required Table Draft boundary');
 m53_assert(!str_contains($publicDeferred,'table_draft.'),'Table Draft leaked into Deferred-safe transport');
 
 $draftSource=(string)file_get_contents(dirname(__DIR__).'/apps/local-web/src/Domain/Orders/TableDraftService.php');
