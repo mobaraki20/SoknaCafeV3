@@ -12,20 +12,17 @@
 
 ## آخرین checkpoint اجرایی تأییدشده
 
-M5.6 Supply/Purchase checkpoint:
+M5.7 Tax checkpoint:
 
-- Head: `2a18c0e3540f90b219b1be0b61dbdd03c96dd400`
-- `M5 Supply Gate`: PR run `36259004015` — **SUCCESS**
-- `M5 Inventory Gate`: PR run `36259004004` — **SUCCESS**
-- `M5 Orders Gate`: PR run `36259004003` — **SUCCESS**
-- `M5 Table Draft Gate`: PR run `36259003998` — **SUCCESS**
-- `M5 Preparation Gate`: PR run `36259003997` — **SUCCESS**
-- `M5 Sellables Gate`: PR run `36259004010` — **SUCCESS**
-- `V3 Component Gates`: PR run `36259004019` — **SUCCESS**
-- M4 regression gates — **SUCCESS**
+- Head: `23473d0a04484190ec194bb667f93d6d0fa8f859`
+- `M5 Tax Gate`: PR run `36259999682` — **SUCCESS**
+- `V3 Component Gates`: push run `36259996859` — **SUCCESS**
+- M5 Orders / Inventory / Supply / Preparation / Sellables regressions — **SUCCESS**
+- M4 regressions — **SUCCESS**
 
 Canonical evidence:
 
+- `docs/migration/M5_TAX_AUDIT_FA.md`
 - `docs/migration/M5_SUPPLY_AUDIT_FA.md`
 - `docs/migration/M5_INVENTORY_AUDIT_FA.md`
 - `docs/migration/M5_PREPARATION_AUDIT_FA.md`
@@ -46,7 +43,8 @@ Canonical evidence:
 - M5.4: **COMPLETE — Preparation permission/action owner exit gate satisfied.**
 - M5.5: **COMPLETE — Inventory exit gate satisfied.**
 - M5.6: **COMPLETE — Supply/Purchase exit gate satisfied.**
-- M5.7: **NEXT — Tax.**
+- M5.7: **COMPLETE — Tax exit gate satisfied.**
+- M5.8: **NEXT — Expenses.**
 - M6: continuous SCDS cross-cutting track.
 - M7..M10: planned / not complete.
 
@@ -67,32 +65,29 @@ Canonical evidence:
 Canonical disposition record:
 `docs/reviews/EXTERNAL_OBSERVER_DISPOSITION_2026-09-26_FA.md`
 
-## Immediate continuation — M5.7 Tax
+## Immediate continuation — M5.8 Expenses
 
-Historical authority to audit/freeze before implementation:
+Audit/freeze before implementation:
 
-- `includes/tax.php`
-- `admin/tax.php`
-- `docs/architecture-migration-r2/PHASE6F_LOCAL_MIGRATION.sql`
-- `docs/architecture-migration-r2/PHASE6F_TAX_COMPLETION_FA.md`
-- `docs/handoffs/HOUSE_TAX_SNAPSHOT_HANDOFF_FA.md`
-- `tests/r2-phase6f-tax-contract.php`
-- `tests/r2-phase6f-tax-integration-contract.py`
-- `tests/accommodation-tax-snapshot-contract.php`
-- existing order/settlement/receipt snapshot columns and renderers
+- `includes/expenses.php`
+- `admin/expenses.php`
+- Expense schema and category seeds
+- Financial Period identity/lookup helper required at create time
+- Deferred `expense.create` source-request idempotency
+- append-only reversal/correction behavior
 
 Known invariants:
 
-1. Tax is additive/optional; enabling it must not rewrite historical business rows.
-2. Tax configuration is effective-dated and future changes must not change already-committed line semantics.
-3. Applicability is explicit; it is not inferred from sellable kind, category, station, recipe or service behavior.
-4. Order lines snapshot the applicable tax policy/rate at commit.
-5. Settlement/receipt calculation consumes immutable snapshots rather than current configuration.
-6. Rounding/calculation rules must be deterministic and covered by golden tests.
-7. Business receipt may show Tax; preparation ticket must not.
-8. Historical lines without Tax snapshots retain legacy/no-tax semantics unless an explicit migration contract says otherwise.
-9. Tax UI/config ownership must not become a second Order/Settlement authority.
-10. Finance dependencies are integrated through snapshots/calculation contracts, not by rewriting historical settlements.
+1. Expenses are general café expenses only; Inventory/Supply purchase cost is not duplicated here.
+2. Expense rows are immutable after commit.
+3. Reversal is a new append-only row; original expense is never edited/deleted.
+4. Correction is one transaction: reversal of old row + replacement committed row.
+5. `source_request_id` owns exactly-once semantics.
+6. Expense category must be active at create time.
+7. Every expense belongs to the Financial Period covering its occurred date.
+8. Normal mutation of a closed period is forbidden.
+9. Because Expenses require period identity, M5.8 may introduce only minimal Financial Period identity/lookup as a prerequisite; period closing and Settlement-aware summaries remain M5.9.
+10. Deferred expense mutation must use the same Local receipt/review owner migrated in M5.6.
 
 ### M5 remaining dependency order
 
