@@ -18,6 +18,10 @@ use Sokna\Local\Domain\Inventory\InventoryService;
 use Sokna\Local\Domain\Inventory\InventoryCountService;
 use Sokna\Local\Domain\Inventory\InventoryOrderService;
 use Sokna\Local\Relay\InventoryDeferredAdapter;
+use Sokna\Local\Domain\Supply\SupplyAccessService;
+use Sokna\Local\Domain\Supply\SupplyService;
+use Sokna\Local\Relay\DeferredReceiptService;
+use Sokna\Local\Relay\SupplyDeferredAdapter;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 
 final class Bootstrap
@@ -41,6 +45,10 @@ final class Bootstrap
     private ?InventoryCountService $inventoryCounts = null;
     private ?InventoryOrderService $inventoryOrders = null;
     private ?InventoryDeferredAdapter $inventoryDeferred = null;
+    private ?SupplyAccessService $supplyAccess = null;
+    private ?SupplyService $supply = null;
+    private ?DeferredReceiptService $deferredReceipts = null;
+    private ?SupplyDeferredAdapter $supplyDeferred = null;
 
     private function __construct(
         private readonly Config $config,
@@ -169,6 +177,28 @@ final class Bootstrap
     public function inventoryDeferred(): InventoryDeferredAdapter
     {
         return $this->inventoryDeferred ??= new InventoryDeferredAdapter($this->database(), $this->inventory(), $this->inventoryCounts());
+    }
+
+    public function supplyAccess(): SupplyAccessService
+    {
+        return $this->supplyAccess ??= new SupplyAccessService($this->identityRepository(), $this->capabilities(), $this->preparationAccess());
+    }
+
+    public function supply(): SupplyService
+    {
+        return $this->supply ??= new SupplyService($this->database(), $this->inventory(), $this->supplyAccess());
+    }
+
+    public function deferredReceipts(): DeferredReceiptService
+    {
+        return $this->deferredReceipts ??= new DeferredReceiptService($this->database());
+    }
+
+    public function supplyDeferred(): SupplyDeferredAdapter
+    {
+        return $this->supplyDeferred ??= new SupplyDeferredAdapter(
+            $this->database(), $this->inventory(), $this->supply(), $this->supplyAccess(), $this->deferredReceipts()
+        );
     }
 
     public function startSession(string $cookiePath = '/', ?bool $secure = null): void
