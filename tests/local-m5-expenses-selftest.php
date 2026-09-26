@@ -26,7 +26,7 @@ $pdo=$core->database();
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
 foreach(['financial_periods','expense_categories','expenses','deferred_work_receipts','deferred_review_items'] as $table)
     m58_assert(in_array($table,$tables,true),"missing {$table}");
-foreach(['print_jobs'] as $later)
+foreach([] as $later)
     m58_assert(!in_array($later,$tables,true),"M5.8 pulled later owner {$later} forward");
 
 m58_assert(FinancialPeriodIdentityService::gregorianToJalali(2026,7,25)===[1405,5,3],'Gregorian→Jalali identity drifted');

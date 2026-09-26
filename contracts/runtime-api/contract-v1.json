@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "contract_id": "sokna-runtime-local-v1",
-  "contract_version": "1.0.0-draft",
-  "status": "m1-executable-contract-foundation",
+  "contract_version": "1.0.0",
+  "status": "m7-implemented-contract",
   "authority": {
     "business_authority": "apps/local-web",
     "runtime_owner": "windows/runtime",
@@ -47,32 +47,102 @@
           "supervised_components"
         ],
         "properties": {
-          "success": {"const": true},
-          "contract_version": {"const": 1},
-          "runtime_version": {"type": "string", "min_length": 1, "max_length": 64},
-          "instance_id": {"type": "string", "min_length": 8, "max_length": 128},
-          "status": {"enum": ["starting", "running", "degraded", "maintenance_paused", "failed"]},
-          "started_at": {"type": "timestamp_explicit_offset"},
-          "last_seen_at": {"type": "timestamp_explicit_offset"},
-          "capabilities": {"type": "array_unique_string", "max_items": 64},
+          "success": {
+            "const": true
+          },
+          "contract_version": {
+            "const": 1
+          },
+          "runtime_version": {
+            "type": "string",
+            "min_length": 1,
+            "max_length": 64
+          },
+          "instance_id": {
+            "type": "string",
+            "min_length": 8,
+            "max_length": 128
+          },
+          "status": {
+            "enum": [
+              "starting",
+              "running",
+              "degraded",
+              "maintenance_paused",
+              "failed"
+            ]
+          },
+          "started_at": {
+            "type": "timestamp_explicit_offset"
+          },
+          "last_seen_at": {
+            "type": "timestamp_explicit_offset"
+          },
+          "capabilities": {
+            "type": "array_unique_string",
+            "max_items": 64
+          },
           "scheduler": {
-            "required": ["healthy", "last_cycle_at"],
+            "required": [
+              "healthy",
+              "last_cycle_at"
+            ],
             "properties": {
-              "healthy": {"type": "boolean"},
-              "last_cycle_at": {"type": ["timestamp_explicit_offset", "null"]},
-              "last_error_code": {"type": ["safe_code", "null"]}
+              "healthy": {
+                "type": "boolean"
+              },
+              "last_cycle_at": {
+                "type": [
+                  "timestamp_explicit_offset",
+                  "null"
+                ]
+              },
+              "last_error_code": {
+                "type": [
+                  "safe_code",
+                  "null"
+                ]
+              }
             },
             "additional_properties": false
           },
           "supervised_components": {
             "type": "object_map",
             "value_schema": {
-              "required": ["status"],
+              "required": [
+                "status"
+              ],
               "properties": {
-                "status": {"enum": ["unknown", "starting", "running", "degraded", "stopped", "failed", "disabled"]},
-                "last_seen_at": {"type": ["timestamp_explicit_offset", "null"]},
-                "version": {"type": ["string", "null"], "max_length": 64},
-                "error_code": {"type": ["safe_code", "null"]}
+                "status": {
+                  "enum": [
+                    "unknown",
+                    "starting",
+                    "running",
+                    "degraded",
+                    "stopped",
+                    "failed",
+                    "disabled"
+                  ]
+                },
+                "last_seen_at": {
+                  "type": [
+                    "timestamp_explicit_offset",
+                    "null"
+                  ]
+                },
+                "version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "max_length": 64
+                },
+                "error_code": {
+                  "type": [
+                    "safe_code",
+                    "null"
+                  ]
+                }
               },
               "additional_properties": false
             }
@@ -97,13 +167,36 @@
         "X-Sokna-Runtime-Contract": "1"
       },
       "request": {
-        "required": ["request_id", "runtime_instance_id", "trigger_key", "requested_at", "correlation_id"],
+        "required": [
+          "request_id",
+          "runtime_instance_id",
+          "trigger_key",
+          "requested_at",
+          "correlation_id"
+        ],
         "properties": {
-          "request_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$"},
-          "runtime_instance_id": {"type": "string", "min_length": 8, "max_length": 128},
-          "trigger_key": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{1,63}$", "semantic": "must resolve through Local-owned allowlist; never executable/path text"},
-          "requested_at": {"type": "timestamp_explicit_offset"},
-          "correlation_id": {"type": "string", "min_length": 8, "max_length": 128}
+          "request_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$"
+          },
+          "runtime_instance_id": {
+            "type": "string",
+            "min_length": 8,
+            "max_length": 128
+          },
+          "trigger_key": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{1,63}$",
+            "semantic": "must resolve through Local-owned allowlist; never executable/path text"
+          },
+          "requested_at": {
+            "type": "timestamp_explicit_offset"
+          },
+          "correlation_id": {
+            "type": "string",
+            "min_length": 8,
+            "max_length": 128
+          }
         },
         "additional_properties": false,
         "explicitly_forbidden_fields": [
@@ -123,14 +216,33 @@
         ]
       },
       "response": {
-        "required": ["success", "accepted", "deduplicated", "trigger_key", "accepted_at", "correlation_id"],
+        "required": [
+          "success",
+          "accepted",
+          "deduplicated",
+          "trigger_key",
+          "accepted_at",
+          "correlation_id"
+        ],
         "properties": {
-          "success": {"const": true},
-          "accepted": {"type": "boolean"},
-          "deduplicated": {"type": "boolean"},
-          "trigger_key": {"type": "string"},
-          "accepted_at": {"type": "timestamp_explicit_offset"},
-          "correlation_id": {"type": "string"}
+          "success": {
+            "const": true
+          },
+          "accepted": {
+            "type": "boolean"
+          },
+          "deduplicated": {
+            "type": "boolean"
+          },
+          "trigger_key": {
+            "type": "string"
+          },
+          "accepted_at": {
+            "type": "timestamp_explicit_offset"
+          },
+          "correlation_id": {
+            "type": "string"
+          }
         },
         "additional_properties": false
       },
@@ -162,7 +274,16 @@
     "source_commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
     "audit": "contracts/runtime-api/historical-audit-v1.json",
     "historical_http_api": false,
-    "proven_surfaces": ["runtime CLI", "sokna-local-runtime-v1 state file", "Windows SCM service host"]
+    "proven_surfaces": [
+      "runtime CLI",
+      "sokna-local-runtime-v1 state file",
+      "Windows SCM service host"
+    ]
   },
-  "stability_note": "This is the M1 executable V3 boundary contract. HTTP implementation details may evolve compatibly before M7, but authority, direction, no-arbitrary-command and idempotent-trigger semantics are frozen unless superseded by ADR."
+  "stability_note": "This is the M1 executable V3 boundary contract. HTTP implementation details may evolve compatibly before M7, but authority, direction, no-arbitrary-command and idempotent-trigger semantics are frozen unless superseded by ADR.",
+  "implementation": {
+    "runtime": "windows/runtime/source",
+    "local_trigger_owner": "apps/local-web/src/Runtime/RuntimeTriggerService.php",
+    "http_adapter": "apps/local-web/src/Http/RuntimeTriggerHttpAdapter.php"
+  }
 }

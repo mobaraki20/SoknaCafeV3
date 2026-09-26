@@ -1,0 +1,7 @@
+{
+  "format": "sokna-recovery-set-schema-v1",
+  "schema_version": 1,
+  "required": ["format","created_at","business_backup","source_installation_id","excluded_machine_identity"],
+  "excluded_machine_identity": ["runtime machine secret","print-agent token/private SQLite identity","TLS private key","Center machine signing secret"],
+  "rule": "Recovery restores business data/config only; machine identity is reprovisioned on target."
+}

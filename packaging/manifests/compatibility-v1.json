@@ -1,0 +1,13 @@
+{
+  "format": "sokna-compatibility-v1",
+  "schema_version": 1,
+  "release_line": "v3",
+  "components": {
+    "local": {"requires": {"runtime_contract": ">=1.0.0 <2.0.0", "print_server_protocol": 4}},
+    "public": {"requires": {"local_public_contract": 1}},
+    "runtime": {"requires": {"runtime_contract": "1.0.0"}},
+    "print-agent": {"requires": {"print_server_protocol": 4, "loopback_protocol": 1}},
+    "platform": {"requires": {"php_version_id": 80200, "pdo_mysql": true}}
+  },
+  "activation_rule": "reject-before-activate on incompatible required contract"
+}

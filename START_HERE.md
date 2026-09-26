@@ -50,9 +50,10 @@ Read, in this order:
 2. `PROJECT_LINEAGE.md`
 3. `UI_DESIGN_SYSTEM.md` for any user-facing or interaction-affecting change
 4. `docs/migration/CURRENT_CONTINUATION_FA.md` — the single current continuation authority
-5. `docs/reviews/EXTERNAL_OBSERVER_REVIEW_2026-09-26_FA.md` and disposition any open finding that affects the target slice
-6. the target component README
-7. relevant ADRs
+5. `docs/migration/AGENT_HANDOFF_FA.md` when resuming across chats/agents or from a workspace snapshot
+6. `docs/reviews/EXTERNAL_OBSERVER_REVIEW_2026-09-26_FA.md` and disposition any open finding that affects the target slice
+7. the target component README
+8. relevant ADRs
 
 Historical migration/status documents remain evidence. If they disagree about the current slice, `docs/migration/CURRENT_CONTINUATION_FA.md` is authoritative until intentionally superseded by a newer recorded continuation decision.
 

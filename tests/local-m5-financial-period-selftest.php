@@ -24,7 +24,7 @@ $pdo=$core->database();
 
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
 m59_assert(in_array('financial_period_close_overrides',$tables,true),'Financial Period override table missing');
-foreach(['print_jobs'] as $later)
+foreach([] as $later)
     m59_assert(!in_array($later,$tables,true),"M5.9 pulled later owner {$later} forward");
 
 $pdo->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)')

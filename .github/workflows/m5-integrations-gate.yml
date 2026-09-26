@@ -1,0 +1,53 @@
+name: M5 Integration Adapters Gate
+
+on:
+  pull_request:
+    paths:
+      - 'apps/local-web/**'
+      - 'tests/local-m5-integrations-selftest.php'
+      - 'tests/local-mysql-migration-selftest.php'
+      - '.github/workflows/m5-integrations-gate.yml'
+  push:
+    branches: [main, 'architecture/**', 'migration/**']
+    paths:
+      - 'apps/local-web/**'
+      - 'tests/local-m5-integrations-selftest.php'
+      - 'tests/local-mysql-migration-selftest.php'
+      - '.github/workflows/m5-integrations-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  integrations:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PDO MySQL
+        run: |
+          if ! php -m | grep -qi '^pdo_mysql$'; then sudo apt-get update && sudo apt-get install -y php-mysql; fi
+      - name: PHP syntax
+        run: find apps/local-web/src/Domain/Integrations -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Migration stack
+        env: &db
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m2
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/local-mysql-migration-selftest.php
+      - name: Integration adapter contracts
+        env: *db
+        run: php tests/local-m5-integrations-selftest.php

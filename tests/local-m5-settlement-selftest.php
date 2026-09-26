@@ -26,7 +26,7 @@ $pdo=$core->database();
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
 foreach(['settlement_records','settlement_record_lines','invoice_discount_audit'] as $table)
     m510_assert(in_array($table,$tables,true),"missing {$table}");
-foreach(['subscriber_ledger','accommodation_transfers','print_jobs'] as $later)
+foreach([] as $later)
     m510_assert(!in_array($later,$tables,true),"M5.10 pulled adapter/later owner {$later} forward");
 
 $makeUser=function(string $name,string $role,array $caps)use($pdo):array{
@@ -177,7 +177,8 @@ $closedRetry=$core->financialPeriodClose()->close($oldId,[
 m510_assert(!empty($closedRetry['idempotent']),'Financial Period close retry was not idempotent');
 
 $settlementSource=(string)file_get_contents(dirname(__DIR__).'/apps/local-web/src/Domain/Finance/SettlementService.php');
-m510_assert(!preg_match('/subscriber_ledger|accommodation_transfers|print_jobs/i',$settlementSource),'Settlement owner pulled adapter/Printing side effects forward');
+m510_assert(str_contains($settlementSource,'PrintService')&&str_contains($settlementSource,'enqueueSettlementTx'),'Settlement did not hand secondary receipt intent to canonical Printing owner');
+m510_assert(!preg_match('/INSERT\s+INTO\s+print_jobs/i',$settlementSource),'Settlement became a second print queue SQL owner');
 m510_assert(str_contains($settlementSource,'request_fingerprint')&&str_contains($settlementSource,'settlement_record_lines'),'Settlement lost request fingerprint or itemized line owner');
 
 fwrite(STDOUT,"Local M5.10 Settlement/Reconciliation self-test: OK\n");

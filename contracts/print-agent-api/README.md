@@ -1,6 +1,6 @@
 # Contract: Local/Runtime ↔ Print Agent
 
-Version: `0.1.0-draft`
+Version: `1.0.0`
 
 The V3 Print Agent is a separate Windows deployable that owns durable print submission/device/spooler execution. Runtime may supervise its service lifecycle; Local Web owns business print intent and document content.
 
@@ -47,9 +47,9 @@ Critical semantics preserved:
 
 The mature historical state machine comes from `runtime/print-worker/source/`, `print-agent/v4/`, shared print contracts and the Pagent lineage. V3 intentionally rejects the dev39 packaging statement that Print Worker is an internal Local component. The execution owner is `windows/print-agent`; Runtime supervision does not change that ownership.
 
-## Still draft / later gates
+## M8 implementation status
 
-M1 executable contract evidence does not claim implementation migration or release readiness. Later gates still include:
+M8 migrates the independently deployable Print Agent implementation and Local durable print owner. Remaining release/UAT gates include:
 - actual separate-deployable service implementation and upgrade/repair lifecycle;
 - secret/token provisioning and rotation;
 - durable SQLite/state migration and recovery tests;

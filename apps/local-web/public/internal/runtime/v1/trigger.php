@@ -1,0 +1,2 @@
+<?php
+declare(strict_types=1);$core=require dirname(__DIR__,3).'/_app.php';$raw=(string)file_get_contents('php://input');$response=$core->runtimeTriggerHttp()->handle((string)($_SERVER['HTTP_AUTHORIZATION']??''),(string)($_SERVER['HTTP_X_SOKNA_RUNTIME_CONTRACT']??''),$raw);http_response_code((int)$response['status']);header('Content-Type: application/json; charset=utf-8');echo json_encode($response['body'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);

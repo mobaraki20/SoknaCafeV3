@@ -196,34 +196,35 @@ jobs:
         run: php tests/public-health-selftest.php
 
   runtime:
-    name: Windows Runtime gate (foundation stage)
+    name: Windows Runtime gate (M7)
     needs: [changes, foundation]
     if: needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/validate-v3-foundation.py --component runtime
-      - run: echo 'Windows runtime integration tests will be added with the first audited runtime migration slice.'
+      - run: python3 tests/m7-runtime-gate.py
 
   print:
-    name: Print Agent gate (foundation stage)
+    name: Print Agent gate (M8)
     needs: [changes, foundation]
     if: needs.changes.outputs.print == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/validate-v3-foundation.py --component print
-      - run: echo 'Print Agent build/spooler tests and physical-printer UAT remain future migration gates, not implied PASS here.'
+      - run: python3 tests/m8-print-agent-gate.py
 
   platform:
-    name: Platform gate (foundation stage)
+    name: Platform gate (M9/M10)
     needs: [changes, foundation]
     if: needs.changes.outputs.platform == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/validate-v3-foundation.py --component platform
-      - run: echo 'Clean-machine platform acceptance is intentionally not claimed until platform implementation is migrated.'
+      - run: python3 tests/m9-packaging-gate.py
+      - run: python3 tests/m10-release-qualification.py
 
   contracts:
     name: Contracts gate (foundation stage)
@@ -243,14 +244,15 @@ jobs:
         run: python3 tests/runtime-print-v1-contract.py
 
   packaging:
-    name: Packaging gate (foundation stage)
+    name: Packaging gate (M9/M10)
     needs: [changes, foundation]
     if: needs.changes.outputs.packaging == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/validate-v3-foundation.py --component packaging
-      - run: echo 'Installer/update/repair acceptance is not claimed before packaging code exists in V3.'
+      - run: python3 tests/m9-packaging-gate.py
+      - run: python3 tests/m10-release-qualification.py
 
   migration:
     name: Migration inventory gate

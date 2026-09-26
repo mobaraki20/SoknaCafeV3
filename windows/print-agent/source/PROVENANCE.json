@@ -1,0 +1,15 @@
+{
+  "component": "SOKNA Local internal Print Worker",
+  "upstream_product": "Sokna Print Agent",
+  "upstream_version": "6.2.5",
+  "upstream_user_supplied_archive": "Pagent-release-v6.2.5-final.zip",
+  "upstream_archive_sha256": "c9c205fe0efb08c5d3a270b1065b0e320489b0e7f3c8764d2295724fb01c102a",
+  "upstream_import_commit": "65e12c4",
+  "integration_rule": "Operational Core/Runtime/Service/Worker source is internalized. Standalone Setup and Control products are intentionally not imported.",
+  "architecture_authority": "R2 01_FROZEN_PRODUCT_DECISIONS_FA.md section N and 09_PRINTING_NOTIFICATIONS_FA.md",
+  "status": "internalization-baseline",
+  "v3_owner": "windows/print-agent",
+  "historical_repository": "mobaraki20/SoknaCafe",
+  "historical_commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+  "migration_status": "m8-retained-implementation"
+}

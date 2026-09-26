@@ -1,0 +1,32 @@
+:root{
+  color-scheme:light;
+  --sc-font:"Vazirmatn",system-ui,sans-serif;
+  --sc-bg:#f7f5f1;
+  --sc-surface:#ffffff;
+  --sc-surface-subtle:#f1eee8;
+  --sc-text:#211f1b;
+  --sc-muted:#716b62;
+  --sc-border:#d8d2c8;
+  --sc-accent:#176b5b;
+  --sc-accent-strong:#0f5548;
+  --sc-danger:#a43c32;
+  --sc-warning:#8a5a00;
+  --sc-success:#176b5b;
+  --sc-focus:#185caa;
+  --sc-radius-sm:.5rem;
+  --sc-radius-md:.8rem;
+  --sc-radius-lg:1.1rem;
+  --sc-space-1:.25rem;
+  --sc-space-2:.5rem;
+  --sc-space-3:.75rem;
+  --sc-space-4:1rem;
+  --sc-space-5:1.5rem;
+  --sc-space-6:2rem;
+  --sc-shadow:0 .4rem 1.4rem rgb(32 29 25 / .08);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{font-family:var(--sc-font);background:var(--sc-bg);color:var(--sc-text)}
+body{margin:0;direction:rtl;text-align:start}
+:focus-visible{outline:.2rem solid var(--sc-focus);outline-offset:.18rem}
+[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto;animation-duration:.001ms;animation-iteration-count:1;transition-duration:.001ms}}

@@ -17,6 +17,11 @@ final class FinancialPeriodService
         private readonly FinancialPeriodIdentityService $periods,
     ) {}
 
+    public function periodByIdTx(int $periodId): array
+    {
+        return $this->periods->byIdTx($periodId);
+    }
+
     public function issueDocumentNumber(string $issuedAt,int $actorUserId,string $prefix='I'): array
     {
         $this->pdo->beginTransaction();

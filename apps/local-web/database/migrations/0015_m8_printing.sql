@@ -1,0 +1,191 @@
+-- M8 — durable Local print intent + Print Agent v4 execution contract.
+-- Local owns business print intent. Print Agent owns device/spooler execution.
+
+CREATE TABLE IF NOT EXISTS print_agents (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    token_hint VARCHAR(16) NOT NULL,
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    retired_at DATETIME NULL,
+    retired_by_user_id INT UNSIGNED NULL,
+    hostname VARCHAR(190) NULL,
+    agent_version VARCHAR(40) NULL,
+    os_version VARCHAR(190) NULL,
+    printers_json JSON NULL,
+    health_json JSON NULL,
+    bridge_protocol_version TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    bridge_port INT UNSIGNED NOT NULL DEFAULT 0,
+    bridge_pairing_id VARCHAR(128) NULL,
+    bridge_origin VARCHAR(240) NULL,
+    bridge_runtime_seen_at DATETIME NULL,
+    uptime_seconds BIGINT UNSIGNED NULL,
+    local_backlog_count INT UNSIGNED NOT NULL DEFAULT 0,
+    local_unknown_count INT UNSIGNED NOT NULL DEFAULT 0,
+    last_submission_at DATETIME NULL,
+    sqlite_health VARCHAR(30) NULL,
+    disk_free_mb BIGINT UNSIGNED NULL,
+    last_heartbeat_at DATETIME NULL,
+    last_seen_at DATETIME NULL,
+    last_error VARCHAR(500) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    CONSTRAINT fk_m8_print_agent_retired_by FOREIGN KEY (retired_by_user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    INDEX idx_m8_print_agents_active_seen (active,last_seen_at),
+    INDEX idx_m8_print_agents_heartbeat (active,retired_at,last_heartbeat_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS print_destinations (
+    destination_key VARCHAR(40) PRIMARY KEY,
+    label VARCHAR(160) NOT NULL,
+    destination_type VARCHAR(20) NOT NULL DEFAULT 'preparation',
+    preparation_areas_json JSON NULL,
+    agent_id INT UNSIGNED NULL,
+    windows_queue_name VARCHAR(190) NULL,
+    active TINYINT(1) NOT NULL DEFAULT 0,
+    required_for_operation TINYINT(1) NOT NULL DEFAULT 0,
+    paper_width_mm DECIMAL(5,1) NOT NULL DEFAULT 80.0,
+    printable_width_mm DECIMAL(5,1) NOT NULL DEFAULT 72.1,
+    copies TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    layout_mode VARCHAR(30) NOT NULL DEFAULT 'combined',
+    fallback_agent_id INT UNSIGNED NULL,
+    fallback_windows_queue_name VARCHAR(190) NULL,
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    CONSTRAINT fk_m8_print_destination_agent FOREIGN KEY (agent_id) REFERENCES print_agents(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_m8_print_destination_fallback FOREIGN KEY (fallback_agent_id) REFERENCES print_agents(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT ck_m8_print_destination_type CHECK (destination_type IN ('preparation','customer')),
+    INDEX idx_m8_print_destination_agent_active (agent_id,active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO print_destinations(destination_key,label,destination_type,preparation_areas_json,active,required_for_operation,paper_width_mm,printable_width_mm,layout_mode)
+VALUES
+('customer_receipt','سند مشتری','customer',NULL,0,0,80.0,72.1,'combined'),
+('prep_shared','آماده‌سازی مشترک','preparation',JSON_ARRAY('kitchen','bar'),0,0,80.0,72.1,'combined')
+ON DUPLICATE KEY UPDATE destination_key=VALUES(destination_key);
+
+CREATE TABLE IF NOT EXISTS print_jobs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    public_token CHAR(32) NOT NULL UNIQUE,
+    idempotency_key VARCHAR(190) NOT NULL UNIQUE,
+    contract_version SMALLINT UNSIGNED NOT NULL DEFAULT 4,
+    job_type VARCHAR(40) NOT NULL,
+    destination_key VARCHAR(40) NOT NULL,
+    required TINYINT(1) NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    blocked_reason VARCHAR(160) NULL,
+    payload_json JSON NOT NULL,
+    content_sha256 CHAR(64) NOT NULL,
+    entity_type VARCHAR(60) NOT NULL,
+    entity_id VARCHAR(100) NULL,
+    requested_by_user_id INT UNSIGNED NULL,
+    reprint_of_id BIGINT UNSIGNED NULL,
+    reprint_reason VARCHAR(300) NULL,
+    attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+    retry_cycle INT UNSIGNED NOT NULL DEFAULT 0,
+    retry_cycle_started_at DATETIME NULL,
+    retry_cycle_started_by_user_id INT UNSIGNED NULL,
+    next_attempt_at DATETIME NULL,
+    claimed_by_agent_id INT UNSIGNED NULL,
+    claimed_at DATETIME NULL,
+    lease_expires_at DATETIME NULL,
+    accepted_at DATETIME NULL,
+    local_receipt_id VARCHAR(96) NULL,
+    submitted_at DATETIME NULL,
+    completed_at DATETIME NULL,
+    last_error_code VARCHAR(80) NULL,
+    last_error VARCHAR(500) NULL,
+    resolution_state VARCHAR(30) NULL,
+    resolved_at DATETIME NULL,
+    resolved_by_user_id INT UNSIGNED NULL,
+    resolution_note VARCHAR(500) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    CONSTRAINT fk_m8_print_job_destination FOREIGN KEY (destination_key) REFERENCES print_destinations(destination_key) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_m8_print_job_user FOREIGN KEY (requested_by_user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_m8_print_job_reprint FOREIGN KEY (reprint_of_id) REFERENCES print_jobs(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_m8_print_job_agent FOREIGN KEY (claimed_by_agent_id) REFERENCES print_agents(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_m8_print_job_retry_user FOREIGN KEY (retry_cycle_started_by_user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT ck_m8_print_job_status CHECK (status IN ('pending','reserved','claimed','started','submitted','failed','unknown','recovery_hold','cancelled','blocked')),
+    INDEX idx_m8_print_jobs_queue (status,destination_key,next_attempt_at,id),
+    INDEX idx_m8_print_jobs_agent (claimed_by_agent_id,status,claimed_at),
+    INDEX idx_m8_print_jobs_entity (entity_type,entity_id,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS print_attempts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    job_id BIGINT UNSIGNED NOT NULL,
+    attempt_no INT UNSIGNED NOT NULL,
+    retry_cycle INT UNSIGNED NOT NULL DEFAULT 0,
+    cycle_attempt_no INT UNSIGNED NOT NULL DEFAULT 1,
+    agent_id INT UNSIGNED NOT NULL,
+    state VARCHAR(24) NOT NULL DEFAULT 'reserved',
+    claim_request_id VARCHAR(80) NOT NULL,
+    lease_token_hash CHAR(64) NOT NULL,
+    lease_expires_at DATETIME NOT NULL,
+    destination_snapshot_json JSON NULL,
+    local_receipt_id VARCHAR(96) NULL,
+    spooler_job_id VARCHAR(96) NULL,
+    accept_request_id VARCHAR(80) NULL,
+    accept_request_hash CHAR(64) NULL,
+    start_request_id VARCHAR(80) NULL,
+    start_request_hash CHAR(64) NULL,
+    renew_request_id VARCHAR(80) NULL,
+    renew_request_hash CHAR(64) NULL,
+    report_request_id VARCHAR(80) NULL,
+    report_request_hash CHAR(64) NULL,
+    leased_at DATETIME NOT NULL,
+    accepted_at DATETIME NULL,
+    started_at DATETIME NULL,
+    submitted_at DATETIME NULL,
+    finished_at DATETIME NULL,
+    outcome VARCHAR(40) NULL,
+    error_code VARCHAR(80) NULL,
+    error_message VARCHAR(500) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    CONSTRAINT fk_m8_print_attempt_job FOREIGN KEY (job_id) REFERENCES print_jobs(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_m8_print_attempt_agent FOREIGN KEY (agent_id) REFERENCES print_agents(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    UNIQUE KEY uq_m8_print_attempt_job_no (job_id,attempt_no),
+    UNIQUE KEY uq_m8_print_attempt_agent_receipt (agent_id,local_receipt_id),
+    UNIQUE KEY uq_m8_print_attempt_accept_request (agent_id,accept_request_id),
+    UNIQUE KEY uq_m8_print_attempt_start_request (agent_id,start_request_id),
+    UNIQUE KEY uq_m8_print_attempt_renew_request (agent_id,renew_request_id),
+    UNIQUE KEY uq_m8_print_attempt_report_request (agent_id,report_request_id),
+    INDEX idx_m8_print_attempt_state (state,lease_expires_at,id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS print_claim_requests (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    agent_id INT UNSIGNED NOT NULL,
+    request_id VARCHAR(80) NOT NULL,
+    request_hash CHAR(64) NOT NULL,
+    agent_version VARCHAR(40) NOT NULL,
+    attempt_ids_json JSON NULL,
+    response_snapshot_json JSON NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_m8_print_claim_agent FOREIGN KEY (agent_id) REFERENCES print_agents(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    UNIQUE KEY uq_m8_print_claim_request (agent_id,request_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS print_claim_reconciliations (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    claim_request_row_id BIGINT UNSIGNED NOT NULL,
+    agent_id INT UNSIGNED NOT NULL,
+    request_id VARCHAR(80) NOT NULL,
+    request_hash CHAR(64) NOT NULL,
+    old_attempt_id BIGINT UNSIGNED NOT NULL,
+    replacement_attempt_id BIGINT UNSIGNED NOT NULL,
+    evidence_json JSON NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_m8_print_reconcile_claim FOREIGN KEY (claim_request_row_id) REFERENCES print_claim_requests(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_m8_print_reconcile_agent FOREIGN KEY (agent_id) REFERENCES print_agents(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_m8_print_reconcile_old FOREIGN KEY (old_attempt_id) REFERENCES print_attempts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_m8_print_reconcile_new FOREIGN KEY (replacement_attempt_id) REFERENCES print_attempts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    UNIQUE KEY uq_m8_print_reconcile_request (agent_id,request_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE settlement_records
+    ADD CONSTRAINT fk_m8_settlement_final_print_job FOREIGN KEY (final_print_job_id) REFERENCES print_jobs(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+INSERT INTO settings(setting_key,setting_value) VALUES('module.printing.enabled','1')
+ON DUPLICATE KEY UPDATE setting_key=VALUES(setting_key);

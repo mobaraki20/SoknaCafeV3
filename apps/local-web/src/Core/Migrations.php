@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Sokna\Local\Core;
 
 use PDO;
+use PDOException;
 use RuntimeException;
 use Throwable;
 
@@ -32,10 +33,10 @@ final class Migrations
                     throw new RuntimeException("Migration '{$version}' is empty or unreadable.");
                 }
 
-                // MySQL DDL may implicitly commit, so migration files must be replay-safe.
-                // The ledger marker is written only after every statement succeeds.
-                foreach (self::splitStatements($sql) as $statement) {
-                    $this->pdo->exec($statement);
+                // MySQL DDL may implicitly commit. Each statement is journaled so a process
+                // crash can reconcile a statement that committed before its ledger update.
+                foreach (self::splitStatements($sql) as $ordinal => $statement) {
+                    $this->applyStatement($version, $ordinal + 1, $statement);
                 }
                 $stmt = $this->pdo->prepare('INSERT INTO schema_migrations(version) VALUES(?)');
                 $stmt->execute([$version]);
@@ -83,6 +84,59 @@ final class Migrations
             'applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP' .
             ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
+        $this->pdo->exec(
+            'CREATE TABLE IF NOT EXISTS schema_migration_statements (' .
+            'version VARCHAR(40) NOT NULL,' .
+            'ordinal_no INT UNSIGNED NOT NULL,' .
+            'statement_sha256 CHAR(64) NOT NULL,' .
+            "state VARCHAR(16) NOT NULL DEFAULT 'running'," .
+            'started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,' .
+            'applied_at DATETIME NULL,' .
+            'PRIMARY KEY(version,ordinal_no),' .
+            'CONSTRAINT ck_schema_migration_statement_state CHECK (state IN (\'running\',\'applied\'))' .
+            ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+    }
+
+    private function applyStatement(string $version, int $ordinal, string $statement): void
+    {
+        $hash = hash('sha256', $statement);
+        $lookup = $this->pdo->prepare(
+            'SELECT statement_sha256,state FROM schema_migration_statements WHERE version=? AND ordinal_no=? LIMIT 1'
+        );
+        $lookup->execute([$version, $ordinal]);
+        $row = $lookup->fetch(PDO::FETCH_ASSOC);
+        if (is_array($row)) {
+            if (!hash_equals((string)$row['statement_sha256'], $hash)) {
+                throw new RuntimeException("Migration '{$version}' statement {$ordinal} changed after execution began.");
+            }
+            if ((string)$row['state'] === 'applied') return;
+        } else {
+            $insert = $this->pdo->prepare(
+                "INSERT INTO schema_migration_statements(version,ordinal_no,statement_sha256,state) VALUES(?,?,?,'running')"
+            );
+            $insert->execute([$version, $ordinal, $hash]);
+        }
+
+        try {
+            $this->pdo->exec($statement);
+        } catch (PDOException $e) {
+            // Only a previously journaled RUNNING statement may reconcile a known
+            // duplicate-DDL result. Fresh migration errors are never hidden.
+            if (!is_array($row) || (string)$row['state'] !== 'running' || !self::isRecoverableDuplicateDdl($e)) {
+                throw $e;
+            }
+        }
+        $done = $this->pdo->prepare(
+            "UPDATE schema_migration_statements SET state='applied',applied_at=NOW() WHERE version=? AND ordinal_no=?"
+        );
+        $done->execute([$version, $ordinal]);
+    }
+
+    private static function isRecoverableDuplicateDdl(PDOException $e): bool
+    {
+        $errno = isset($e->errorInfo[1]) ? (int)$e->errorInfo[1] : 0;
+        return in_array($errno, [1050, 1060, 1061, 1826], true);
     }
 
     private function acquireLock(): void
