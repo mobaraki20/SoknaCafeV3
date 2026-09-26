@@ -40,8 +40,9 @@ Current state:
 - M5.3 Staff Quick Order + server-persistent Table Draft: complete.
 - M5.4 Preparation permission/action owner: complete.
 - M5.5 Inventory: complete.
-- M5.6 Supply/Purchase: complete; verified by M5 Supply Gate `36259004015`, M5 Inventory Gate `36259004004`, and V3 Component Gates `36259004019`.
-- Next ordered slice: **M5.7 — Tax**.
+- M5.6 Supply/Purchase: complete.
+- M5.7 Tax: complete; verified by M5 Tax Gate `36259999682` and V3 Component Gates push `36259996859`.
+- Next ordered slice: **M5.8 — Expenses**.
 
 Historical status files remain evidence, but they are not continuation authority when they disagree with `CURRENT_CONTINUATION_FA.md`.
 
