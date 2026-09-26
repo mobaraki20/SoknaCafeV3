@@ -5,7 +5,6 @@
   #define ProductVersion "0.0.0-dev"
 #endif
 [Setup]
-SetupArchitecture=x64
 AppId={{8E19AF58-57C6-45D0-A39E-2D6C3D61D003}
 AppName=SOKNA
 UninstallDisplayName=SOKNA
