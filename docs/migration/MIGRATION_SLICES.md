@@ -6,7 +6,7 @@ Historical baseline: `mobaraki20/SoknaCafe@work/reconcile-dev39` / `a46435cca57d
 
 ## Global rule for every slice
 
-A slice is complete only when all of the following are true:
+A capability slice is complete only when all applicable implementation requirements are true:
 
 1. historical owner and behavior are audited;
 2. V3 owner/data owner/contract are explicit;
@@ -14,7 +14,9 @@ A slice is complete only when all of the following are true:
 4. relevant business and SCDS behavior has executable regression coverage;
 5. duplicate legacy owner for that scoped capability is removed/retired;
 6. rollback/compatibility behavior is documented and tested at the applicable level;
-7. `MIGRATION_MATRIX.csv` is updated from `ready/in_progress` to `migrated` only with evidence.
+7. `MIGRATION_MATRIX.csv` is updated from `ready/in_progress` to `migrated` only with implementation evidence.
+
+Preparatory slices such as M1 may complete their explicit contract-extraction exit gate without falsely marking downstream capability implementations as `migrated`.
 
 Copying files is never completion.
 
@@ -42,7 +44,15 @@ This status does not claim application, Windows, physical printer or installer a
 
 ## M1 — Extract Proven Cross-Component Contracts Before Code Movement
 
-**Status:** in progress. Realtime/Deferred extraction evidence is executable; Runtime/Print historical surface audit is complete. Final V3 Runtime/Print contract subsets are still Draft.
+**Status:** complete at contract-extraction / executable-boundary level.
+
+Verified M1 checkpoint:
+- head `6fd46e4d8196d350884539067d446bd83db6f46a`;
+- PR workflow run `36210340655` (#109);
+- Foundation and Contracts gates SUCCESS;
+- Contracts gate executed all four M1 contract tests successfully.
+
+M1 completion does **not** mean producer/consumer application implementations are migrated or release-stable. All manifest contracts remain explicitly Draft until implementation/integration gates mature them.
 
 ### M1.1 Realtime relay wire contract
 
@@ -55,7 +65,7 @@ Source audit:
 V3 target:
 - `contracts/local-public-realtime/`.
 
-Current executable evidence:
+Executable evidence:
 - exact `sokna-relay-v1` HMAC signature construction;
 - auth header names and durable nonce/replay semantics;
 - envelope validation rules;
@@ -64,11 +74,12 @@ Current executable evidence:
 - historical route map;
 - exact claim/ACK/result operation schema;
 - compatibility vectors for lease normalization, terminal ACK dedupe, lease conflict and result shape;
-- regression HMAC test vector.
+- regression HMAC test vector;
+- `tests/relay-wire-contract.py` and `tests/relay-operation-contract.py`.
 
-Remaining before M1.1 implementation stability:
-- define which endpoint paths remain compatibility aliases vs new V3 canonical paths;
-- bind migrated producer/consumer implementations to the executable contract without weakening idempotency/expiry/ambiguity semantics.
+Implementation work remains for later slices:
+- decide which historical paths are compatibility aliases vs final V3 canonical paths as producer/consumer code migrates;
+- bind migrated Local/Public implementations to the executable contract without weakening idempotency/expiry/ambiguity semantics.
 
 ### M1.2 Deferred-safe wire contract
 
@@ -82,47 +93,70 @@ Source audit:
 V3 target:
 - `contracts/local-public-deferred/`.
 
-Current executable evidence:
+Executable evidence:
 - state and allowed-kind registries;
 - `occurred_at` validation and no-expiry semantics;
 - route map and strict separation from realtime;
 - exact claim/ACK/reconcile/period-status/result operation schemas;
 - compatibility vectors for lease normalization, terminal-state conflict, `needs_review` resolution and financial-period blocking;
-- idempotency/storage evidence and financial integrity invariants.
+- idempotency/storage evidence and financial integrity invariants;
+- `tests/relay-wire-contract.py` and `tests/relay-operation-contract.py`.
 
-Remaining before M1.2 implementation stability:
+Implementation work remains for later slices:
 - preserve domain-specific `needs_review` reason/result details as each canonical Local owner is migrated;
 - bind migrated producer/consumer implementations to the executable contract;
 - keep admin review resolution explicit/audited and never silently reopen/back-post financial periods.
 
 ### M1.3 Runtime and Print contracts
 
-Historical audit status:
-- Runtime audit: complete. dev39 has no stable Runtime HTTP API; proven external surfaces are CLI, `sokna-local-runtime-v1` state file and Windows SCM service host.
-- Print audit: complete. Print API v4 and the loopback `/v1/wake` + `/v1/preview` bridge have been audited, including durable submission/attempt semantics, request-body idempotency, server-scope binding and device/spooler ownership.
+Historical audit:
+- Runtime audit complete: dev39 has no stable Runtime HTTP API; proven external surfaces are CLI, `sokna-local-runtime-v1` state file and Windows SCM service host.
+- Print audit complete: Print API v4 and loopback `/v1/wake` + `/v1/preview` audited, including durable submission/attempt semantics, request-body idempotency, server-scope binding and device/spooler ownership.
 
 V3 ownership correction remains frozen:
 - Runtime = supervision/OS integration only;
 - Print Agent = separate deployable owner of durable print/device/spooler execution.
 
-Current evidence:
+Runtime executable evidence:
 - `contracts/runtime-api/historical-audit-v1.json`;
+- `docs/adr/0001-runtime-local-contract-direction.md`;
+- `contracts/runtime-api/contract-v1.json`;
+- `contracts/runtime-api/compatibility-vectors-v1.json`.
+
+Runtime v1 freezes:
+- machine-bound loopback observation/health boundary from Local to Runtime;
+- idempotent allowlisted trigger intent from Runtime to a Local-owned endpoint;
+- no arbitrary command/shell/PowerShell/SQL/business payload escape hatch;
+- no direct business-table writes;
+- no Public/Internet direct Runtime control;
+- no migration of historical `printing` ownership into Runtime.
+
+Print executable evidence:
 - `contracts/print-agent-api/historical-audit-v1.json`;
-- `tests/runtime-print-contract-audit.py`.
+- `contracts/print-agent-api/server-wire-v4.json`;
+- `contracts/print-agent-api/loopback-v1.json`;
+- `contracts/print-agent-api/compatibility-vectors-v4.json`.
 
-Remaining before M1 completion:
-- define the final versioned V3 Runtime local IPC/HTTP subset from actual consumer needs, adapting proven health/service semantics without inventing legacy compatibility;
-- select the retained Print API v4/loopback subset and extract exact V3 request/response/state schemas plus compatibility vectors;
-- preserve `accept -> start -> report`, durable receipt/content hash, submission fence, `unknown`/`recovery_hold`, retry/reconciliation and spooler/device failure semantics;
-- make those final Runtime/Print schemas executable in CI.
+Retained Print semantics:
+- server actions `probe`, `heartbeat`, `claim`, `claim_reconcile`, `attempt_status`, `renew`, `accept`, `start`, `report`;
+- request/body idempotency and claim reconciliation;
+- immutable claimed destination evidence;
+- durable receipt/content-hash fence;
+- `accept -> start -> physical execution -> report` ordering;
+- durable `unknown` / `recovery_hold` ambiguity handling and no blind auto-reprint;
+- paired loopback wake/preview remains separate from durable submission.
 
-**Exit gate for M1:** executable cross-component contracts exist for Realtime, Deferred-safe, Runtime and Print Agent before producer/consumer implementation code is moved across V3 component boundaries.
+M1 Runtime/Print gates:
+- `tests/runtime-print-contract-audit.py`;
+- `tests/runtime-print-v1-contract.py`.
+
+**M1 exit gate: SATISFIED.** Executable cross-component contracts now exist for Realtime, Deferred-safe, Runtime and Print Agent before producer/consumer implementation movement.
 
 ---
 
 ## M2 — Local Core: Bootstrap, Data Ownership, Auth and Observability
 
-**Status:** planned after M1 contract extraction.
+**Status:** next slice; ready to start after verified M1 completion.
 
 Target owner: `apps/local-web`.
 
@@ -231,7 +265,7 @@ Physical/device-sensitive interactions stay `UAT_REQUIRED` until verified on tar
 
 ## M7 — Windows Runtime and Background Supervision
 
-**Status:** planned after Local worker/business ownership is explicit.
+**Status:** planned after Local worker/business ownership is explicit. M1 Runtime contract foundation is complete.
 
 Move/refactor:
 - Windows service host;
@@ -252,7 +286,7 @@ Do not migrate:
 
 ## M8 — Separate Print Agent
 
-**Status:** planned after M1.3 contract audit.
+**Status:** planned implementation slice; M1 Print contract foundation is complete.
 
 Preserve mature semantics from historical print implementations/Pagent lineage while changing deployment ownership to V3:
 - separate Windows deployable;
