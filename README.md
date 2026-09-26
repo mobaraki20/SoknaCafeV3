@@ -36,8 +36,9 @@ Current state:
 - M3 Public Edge transport/auth/projection: complete at slice level.
 - M4 Guest Publish/Runtime/Remote Read Models: complete at slice level.
 - M5.1 Explicit Sellables: complete.
-- M5.2 Canonical Orders: complete; verified by M5 Orders Gate `36253424745` and V3 Component Gates `36253424830`.
-- Next ordered slice: **M5.3 — Staff Quick Order + server-persistent Table Draft**.
+- M5.2 Canonical Orders: complete.
+- M5.3 Staff Quick Order + server-persistent Table Draft: complete; verified by M5 Table Draft Gate `36254200135`, M5 Orders Gate `36254200164`, and V3 Component Gates `36254196611`.
+- Next ordered slice: **M5.4 — Preparation permission/action owner**.
 
 Historical status files remain evidence, but they are not continuation authority when they disagree with `CURRENT_CONTINUATION_FA.md`.
 
