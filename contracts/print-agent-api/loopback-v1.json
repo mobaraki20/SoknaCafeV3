@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "contract_id": "sokna-print-agent-loopback-v1",
+  "protocol_version": 1,
+  "status": "m1-retained-proven-loopback-contract",
+  "source": {
+    "repository": "mobaraki20/SoknaCafe",
+    "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "files": [
+      "runtime/print-worker/source/src/Sokna.PrintAgent.Service/LocalBridgeService.cs",
+      "runtime/print-worker/source/src/Sokna.PrintAgent.Service/LoopbackBridgeServer.cs"
+    ]
+  },
+  "direction": "Local browser/UI origin -> windows/print-agent loopback bridge",
+  "network": {
+    "bind": "127.0.0.1 only",
+    "methods": ["POST", "OPTIONS"],
+    "content_type": "application/json",
+    "cors": "exact configured Local origin only",
+    "authentication": "X-Sokna-Bridge-Pairing fixed-time comparison plus exact Origin match",
+    "pairing_material": "24 random bytes encoded as 48 lowercase hex on first creation; ProgramData file with ACL-protected deployment and rotation-by-replace semantics",
+    "max_connections": 24,
+    "max_header_bytes": 16384,
+    "default_max_body_bytes": 8192,
+    "preview_max_body_bytes": 262144,
+    "busy_response": {"http": 503, "body": {"success": false, "code": "bridge_busy"}}
+  },
+  "routes": {
+    "/v1/wake": {
+      "request": {
+        "required": ["type", "protocol_version", "request_id", "job_ids", "expires_at"],
+        "properties": {
+          "type": {"const": "print.wake"},
+          "protocol_version": {"const": 1},
+          "request_id": {"type": "string", "min_length": 8, "max_length": 96},
+          "job_ids": {"type": "array_positive_int64", "min_items": 1, "max_items": 50},
+          "expires_at": {"type": "timestamp_explicit_offset", "historical_window": "not older than 5 seconds and not more than 2 minutes in future"}
+        },
+        "additional_properties": "historical JSON parser ignores unrelated properties; V3 consumers should not rely on them"
+      },
+      "success": {
+        "required": ["success", "accepted", "idempotent"],
+        "constants": {"success": true, "accepted": true}
+      },
+      "semantics": [
+        "wake is a nudge only; job identity/content is never trusted from browser for physical execution",
+        "request_id is kept in an in-memory replay map until expires_at",
+        "duplicate request_id returns idempotent=true without duplicate pulse",
+        "actual durable jobs are still claimed through the server Print API contract"
+      ]
+    },
+    "/v1/preview": {
+      "request": {
+        "required": ["type", "protocol_version", "revision", "session_id", "payload_json", "paper_width_mm", "printable_width_mm"],
+        "optional": ["dpi", "dpi_x", "dpi_y"],
+        "properties": {
+          "type": {"const": "print.preview"},
+          "protocol_version": {"const": 1},
+          "revision": {"type": "positive_int64"},
+          "session_id": {"type": "string", "min_length": 8, "max_length": 96},
+          "payload_json": {"type": "string"},
+          "paper_width_mm": {"type": "number"},
+          "printable_width_mm": {"type": "number"},
+          "dpi": {"type": "integer", "default": 203},
+          "dpi_x": {"type": "integer", "default_from": "dpi"},
+          "dpi_y": {"type": "integer", "default_from": "dpi"}
+        }
+      },
+      "success": {
+        "required": ["success", "revision", "session_id", "image_base64", "width", "height", "dpi", "dpi_x", "dpi_y", "png_sha256", "renderer_version", "font_family", "bundled_font"],
+        "constants": {"success": true}
+      },
+      "errors": {
+        "422": ["preview_limits_invalid", "preview_raster_budget_exceeded", "preview_output_size_exceeded", "preview_metadata_mismatch"],
+        "429": ["preview_busy"],
+        "409": ["preview_superseded", "preview_cancelled"],
+        "504": ["preview_timeout"]
+      },
+      "semantics": [
+        "preview is bounded by configured payload/text/item/height/pixel/output budgets",
+        "newer revisions may supersede older work",
+        "preview rendering does not create/accept/start/report a durable print attempt"
+      ]
+    }
+  },
+  "generic_errors": {
+    "400": "invalid JSON or invalid UTF-8",
+    "403": "origin/pairing mismatch",
+    "404": "unknown route",
+    "405": "method not allowed",
+    "415": "unsupported media type",
+    "422": "schema/semantic validation failure",
+    "500": "bridge internal error"
+  },
+  "v3_retention_decision": "Retain wake/preview as a distinct loopback subprotocol while Local UI requires these device-local interactions. It is not the durable print submission protocol and must never become one."
+}
