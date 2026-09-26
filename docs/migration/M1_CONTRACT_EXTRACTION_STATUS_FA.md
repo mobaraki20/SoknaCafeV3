@@ -11,11 +11,13 @@
 
 ## وضعیت کلی
 - F0 Foundation: کامل در سطح معماری/قرارداد.
-- M1: **exit candidate**. چهار خانواده قرارداد اکنون evidence ماشین‌خوان و gate اجرایی دارند؛ بسته‌شدن رسمی M1 منوط به سبز شدن CI روی head شامل Runtime v1 و Print v4/loopback v1 است.
+- **M1: COMPLETE در سطح contract extraction / executable boundary evidence.**
 - M1.1 Realtime: wire + operation schema + compatibility vectors استخراج و در CI قفل شده‌اند. producer/consumer implementation هنوز migrate نشده و contract همچنان Draft است.
 - M1.2 Deferred-safe: wire + operation schema + compatibility vectors استخراج و در CI قفل شده‌اند. جزئیات domain result/review هنگام مهاجرت ownerهای واقعی تکمیل می‌شوند؛ API stability نهایی هنوز ادعا نمی‌شود.
-- M1.3 Runtime: historical audit + ADR + V3 `contract-v1.json` + compatibility vectors ایجاد شده‌اند. Runtime HTTP تاریخی وجود نداشت؛ V3 contract جدید و versioned است و legacy HTTP compatibility ادعا نمی‌کند.
-- M1.3 Print: historical audit + retained Print API v4 + loopback v1 + compatibility vectors ایجاد شده‌اند. ownership به `windows/print-agent` منتقل/تصحیح شده ولی safety semantics بالغ حفظ می‌شوند.
+- M1.3 Runtime: historical audit + ADR + V3 `contract-v1.json` + compatibility vectors ایجاد و در CI قفل شده‌اند. Runtime HTTP تاریخی وجود نداشت؛ V3 contract جدید و versioned است و legacy HTTP compatibility ادعا نمی‌کند.
+- M1.3 Print: historical audit + retained Print API v4 + loopback v1 + compatibility vectors ایجاد و در CI قفل شده‌اند. ownership به `windows/print-agent` تصحیح شده ولی safety semantics بالغ حفظ شده‌اند.
+
+**معنای COMPLETE:** قراردادهای لازم برای شروع حرکت implementation بین componentها وجود دارند و executable regression gate دارند. این وضعیت به معنی migrate شدن application code، Windows integration، installer، physical printer UAT یا release readiness نیست.
 
 ## شواهد ثبت‌شده
 ### Realtime
@@ -81,29 +83,53 @@
 - loopback `/v1/wake` فقط nudge است و `/v1/preview` فقط render preview؛ هیچ‌کدام durable submission path نیستند؛
 - Runtime فقط lifecycle سرویس Print Agent را supervise می‌کند.
 
-## CI
-Contracts gate اکنون چهار gate اجرایی را اجرا می‌کند:
-- `tests/relay-wire-contract.py`
-- `tests/relay-operation-contract.py`
-- `tests/runtime-print-contract-audit.py`
-- `tests/runtime-print-v1-contract.py`
-
-آخرین CI کاملاً تأییدشده قبل از اضافه‌شدن Runtime v1/Print v4 final M1 contract files:
-- head: `5af39e53a37b016fab9fc7f4d0841201329dee6a`
+## CI evidence برای بستن M1
+Checkpoint تأییدشده:
+- head: `6fd46e4d8196d350884539067d446bd83db6f46a`
 - workflow: `V3 Component Gates`
-- run: `36209559220`
-- نتیجه: همه jobها SUCCESS.
+- PR run: `36210340655` (#109)
+- نتیجه کلی: **SUCCESS**
 
-CI روی head جدید شامل `runtime-print-v1-contract.py` باید جداگانه سبز شود؛ pending/skipped به‌عنوان PASS حساب نمی‌شود.
+Jobهای تأییدشده روی همان PR diff:
+- Foundation: SUCCESS
+- Contracts: SUCCESS
+- Local: SUCCESS
+- Public: SUCCESS
+- Windows Runtime: SUCCESS
+- Print Agent: SUCCESS
+- Platform: SUCCESS
+- Packaging: SUCCESS
+- Migration: SUCCESS
+- SCDS: SUCCESS
 
-## Exit gate M1
-M1 فقط وقتی بسته است که:
-1. چهار خانواده Realtime / Deferred / Runtime / Print contract evidence اجرایی داشته باشند؛
-2. Contracts + Foundation gates روی head شامل همه فایل‌های بالا SUCCESS باشند؛
-3. هیچ producer/consumer implementation قبل از contract به‌صورت موازی/حدسی migrate نشده باشد؛
-4. manifest و migration docs همین boundaryها را منعکس کنند.
+داخل Contracts gate هر چهار تست زیر واقعاً اجرا و SUCCESS شدند:
+1. `tests/relay-wire-contract.py`
+2. `tests/relay-operation-contract.py`
+3. `tests/runtime-print-contract-audit.py`
+4. `tests/runtime-print-v1-contract.py`
 
-بعد از تحقق این gate، قدم بعدی **M2 — Local Core** است: bootstrap/config، Local DB/schema owner، users/capabilities/preparation-area authority، observability/health primitives و business-service bootstrapping؛ بدون Windows/Winspool/SCM ownership و بدون redesign UI.
+Push-runهایی که به‌دلیل path impact بعضی jobها را skipped کرده‌اند، evidence بستن M1 محسوب نشده‌اند؛ مبنا PR-run کامل بالا است.
+
+## چرا MIGRATION_MATRIX هنوز implementationها را migrated نشان نمی‌دهد
+M1 قرارداد و boundary را کامل کرده، نه migration implementation هر capability را. بنابراین ردیف‌هایی مثل Realtime relay، Deferred-safe، Windows Runtime و Printing - OS execution فقط وقتی `migrated` می‌شوند که owner implementation مربوطه طبق sliceهای بعدی منتقل، تست و legacy duplicate همان scope retire شود. M1 completion نباید این واقعیت را جعل کند.
+
+## نقطه دقیق ادامه — M2
+قدم بعدی **M2 — Local Core: Bootstrap, Data Ownership, Auth and Observability** است.
+
+ترتیب پیشنهادی M2:
+1. audit دقیق bootstrap/config/database/auth/observability در baseline تاریخی؛
+2. ایجاد حداقل skeleton اجرایی `apps/local-web` بدون Windows ownership؛
+3. Local DB connection/schema/migration owner؛
+4. users/capabilities/preparation-area authority بدون permission system دوم؛
+5. correlation ID / safe error / redaction / Local health primitives؛
+6. shared business-service bootstrap که domain sliceهای بعدی روی آن سوار شوند؛
+7. تست init/unit/integration طوری که ordinary Local core برای تست به Public/Runtime/Print نیاز نداشته باشد.
+
+قیود M2:
+- هیچ Runtime/Winspool/Registry/SCM access داخل Local core؛
+- هیچ UI redesign صرفاً به‌خاطر تغییر ساختار فایل؛ هر UI touched scope باید تحت SCDS canonical rule بماند؛
+- schema evolution ترجیحاً Expand -> Migrate -> Contract؛
+- code bulk-copy completion محسوب نمی‌شود؛ owner و regression evidence باید روشن باشد.
 
 ## نکته handoff
 اگر چت یا Agent عوض شد، از PR #1، این فایل، `docs/migration/MIGRATION_SLICES.md`، `contracts/manifest.json` و ADR-0001 ادامه بده؛ حافظه گفتگو مرجع پروژه نیست.
