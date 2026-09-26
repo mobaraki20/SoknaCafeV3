@@ -112,7 +112,7 @@ jobs:
         run: php tests/local-mysql-migration-selftest.php
 
   public:
-    name: Public Edge gate (M3)
+    name: Public Edge gate (M3/M4)
     needs: [changes, foundation]
     if: needs.changes.outputs.public == 'true'
     runs-on: ubuntu-latest
@@ -140,6 +140,8 @@ jobs:
         run: python3 tests/public-m3-transport-contract.py
       - name: Validate M3 Public health/safe-error contract
         run: python3 tests/public-health-contract.py
+      - name: Validate M4 Guest/Public projection schema ownership
+        run: python3 tests/public-m4-schema-contract.py
       - name: Ensure PDO MySQL is available
         shell: bash
         run: |
@@ -148,7 +150,7 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y php-mysql
           fi
-      - name: Validate M3 Public migrations against real MariaDB
+      - name: Validate M3/M4 Public migrations against real MariaDB
         env: &public_db_env
           SOKNA_TEST_DB_HOST: 127.0.0.1
           SOKNA_TEST_DB_PORT: '3306'
