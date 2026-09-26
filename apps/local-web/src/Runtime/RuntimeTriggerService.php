@@ -24,8 +24,9 @@ final class RuntimeTriggerService
                 return ['success'=>true,'accepted'=>true,'deduplicated'=>true,'trigger_key'=>(string)$existing['trigger_key'],'accepted_at'=>(string)$existing['accepted_at'],'correlation_id'=>(string)$existing['correlation_id'],'state'=>(string)$existing['state'],'result'=>is_array($result)?$result:[]];
             }
             $handler=$this->handlers[$normalized['trigger_key']]??null;if(!is_callable($handler))throw new RuntimeTriggerException('unsupported_trigger','این trigger در Local ثبت نشده است.',404);
+            $requestedAtDb=(new DateTimeImmutable($normalized['requested_at']))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
             $this->pdo->prepare("INSERT INTO runtime_trigger_receipts(runtime_instance_id,request_id,request_hash,trigger_key,correlation_id,state,result_json,requested_at) VALUES(?,?,?,?,?,'accepted','{}',?)")
-                ->execute([$normalized['runtime_instance_id'],$normalized['request_id'],$hash,$normalized['trigger_key'],$normalized['correlation_id'],$normalized['requested_at']]);
+                ->execute([$normalized['runtime_instance_id'],$normalized['request_id'],$hash,$normalized['trigger_key'],$normalized['correlation_id'],$requestedAtDb]);
             $receiptId=(int)$this->pdo->lastInsertId();
             try{$result=$handler();if(!is_array($result))$result=['ok'=>true];$state='completed';}
             catch(Throwable $e){$result=['error_code'=>'handler_failed','message'=>'Runtime-triggered Local worker failed.'];$state='failed';}
@@ -46,9 +47,11 @@ final class RuntimeTriggerService
         if(strlen($instance)<8||strlen($instance)>128)throw new RuntimeTriggerException('invalid_request','runtime_instance_id معتبر نیست.',400);
         if(!preg_match('/^[a-z][a-z0-9_.-]{1,63}$/',$key))throw new RuntimeTriggerException('invalid_request','trigger_key معتبر نیست.',400);
         if(strlen($correlation)<8||strlen($correlation)>128)throw new RuntimeTriggerException('invalid_request','correlation_id معتبر نیست.',400);
+        if(!preg_match('/(?:Z|[+-]\d{2}:\d{2})$/',$at))throw new RuntimeTriggerException('invalid_request','requested_at باید offset زمانی صریح داشته باشد.',400);
         try{$dt=new DateTimeImmutable($at);}catch(Throwable){throw new RuntimeTriggerException('invalid_request','requested_at معتبر نیست.',400);}
         if($dt->getTimestamp()>time()+300||$dt->getTimestamp()<time()-86400)throw new RuntimeTriggerException('invalid_request','requested_at خارج از پنجره مجاز است.',400);
-        return ['request_id'=>$requestId,'runtime_instance_id'=>$instance,'trigger_key'=>$key,'requested_at'=>$dt->format(DATE_ATOM),'correlation_id'=>$correlation];
+        $canonicalAt=$dt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:sP');
+        return ['request_id'=>$requestId,'runtime_instance_id'=>$instance,'trigger_key'=>$key,'requested_at'=>$canonicalAt,'correlation_id'=>$correlation];
     }
     private static function canonicalJson(array $value): string{ksort($value,SORT_STRING);return json_encode($value,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);}
 }

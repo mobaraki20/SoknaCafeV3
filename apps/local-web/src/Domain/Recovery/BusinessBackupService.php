@@ -175,7 +175,8 @@ final class BusinessBackupService
 
     private function stableOrder(string $table,array $columns): string
     {
-        $pk=$this->pdo->query('SHOW KEYS FROM `'.str_replace('`','``',$table).'` WHERE Key_name=\'PRIMARY\' ORDER BY Seq_in_index')->fetchAll(PDO::FETCH_ASSOC);
+        $pk=$this->pdo->query('SHOW KEYS FROM `'.str_replace('`','``',$table).'` WHERE Key_name=\'PRIMARY\'')->fetchAll(PDO::FETCH_ASSOC);
+        usort($pk,static fn(array $a,array $b):int=>(int)($a['Seq_in_index']??0)<=>(int)($b['Seq_in_index']??0));
         $order=[];foreach($pk as $row)$order[]='`'.str_replace('`','``',(string)$row['Column_name']).'`';
         if(!$order&&$columns)$order[]='`'.str_replace('`','``',$columns[0]).'`';
         return $order?implode(',',$order):'1';

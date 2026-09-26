@@ -114,10 +114,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python3 - <<'PY'
+      - name: Validate explicit manual-UAT blockers
+        run: |
+          python3 - <<'PY'
           import json
           x=json.load(open('release/manual-uat-status.json',encoding='utf-8'))
           req={'windows_clean_install','physical_thermal_printer','responsive_touch_persian_ime'}
           assert req <= {c['id'] for c in x['checks']}
+          assert all(c['status'] in {'pending','passed','failed'} for c in x['checks'])
           print('Manual UAT contract recorded; CI does not fabricate physical-device PASS evidence.')
           PY

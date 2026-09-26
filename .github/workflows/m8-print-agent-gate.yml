@@ -36,4 +36,4 @@ jobs:
       - working-directory: windows/print-agent/source
         run: dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
       - working-directory: windows/print-agent/source
-        run: dotnet run --project tests/Sokna.PrintAgent.ContractAcceptance/Sokna.PrintAgent.ContractAcceptance.csproj -c Release
+        run: dotnet run --project tests/Sokna.PrintAgent.ContractAcceptance/Sokna.PrintAgent.ContractAcceptance.csproj -c Release -- --case A18 --results "$env:RUNNER_TEMP\sokna-print-contract"
