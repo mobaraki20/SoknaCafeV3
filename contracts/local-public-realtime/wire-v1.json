@@ -5,7 +5,13 @@
     "repository": "mobaraki20/SoknaCafe",
     "branch": "work/reconcile-dev39",
     "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
-    "source": "includes/relay_protocol.php"
+    "sources": [
+      "includes/relay_protocol.php",
+      "public_edge/api/v1/realtime/enqueue.php",
+      "public_edge/api/v1/realtime/result.php",
+      "public_edge/api/v1/local/claim.php",
+      "public_edge/api/v1/local/ack.php"
+    ]
   },
   "status": "extracted_legacy_wire_contract_for_v3_review",
   "authentication": {
@@ -37,7 +43,8 @@
     "payload_type": "object",
     "expected_version_types": ["integer", "string"],
     "expected_state_type": "string",
-    "time_rule": "expires_at must parse and be strictly after created_at"
+    "time_rule": "expires_at must parse and be strictly after created_at",
+    "server_rule": "remote enqueue overwrites actor_projection_id with authenticated Public session projection_id before validation/hash/storage"
   },
   "states": {
     "workflow": ["queued", "claimed", "committed", "rejected", "expired", "cancelled", "unknown_review"],
@@ -66,6 +73,70 @@
     "remote_result": "/api/v1/realtime/result.php",
     "local_claim": "/api/v1/local/claim.php",
     "local_ack": "/api/v1/local/ack.php"
+  },
+  "operations": {
+    "remote_enqueue": {
+      "auth": "Public session",
+      "method": "POST",
+      "request": "realtime request envelope; actor_projection_id is server-authored from session",
+      "new_response": {
+        "http": 202,
+        "body": {"ok": true, "state": "queued", "deduplicated": false}
+      },
+      "deduplicated_response_fields": ["ok=true", "state=current_state", "deduplicated=true", "result", "error_code"],
+      "idempotency": "unique installation_id + request_id; same request_id+same canonical envelope returns existing state/result; different canonical envelope returns request_id_conflict",
+      "special_rules": [
+        "guest_order.submit and waiter_call.create require order_intake_enabled",
+        "table_draft.* requires fresh Local connectivity before enqueue",
+        "kind capability is enforced against Public session projection"
+      ],
+      "errors": {
+        "400": ["invalid_envelope"],
+        "403": ["forbidden"],
+        "409": ["order_intake_disabled", "request_id_conflict"],
+        "503": ["local_unavailable"]
+      }
+    },
+    "local_claim": {
+      "auth": "signed Local request",
+      "method": "POST",
+      "request_fields": {"lease_seconds": "optional integer; clamped 5..60; default 20"},
+      "selection": "oldest eligible row by id where queued+not expired OR claimed+lease expired",
+      "pre_claim_expiry": "queued rows with expires_at<=UTC now transition to expired and clear lease fields",
+      "lease_token": "24 random bytes returned as 48 hex chars; only SHA256(token) is stored",
+      "success_fields": ["ok=true", "request=<stored envelope>", "lease_token", "lease_seconds"],
+      "errors": {
+        "404": ["empty_queue"],
+        "409": ["remote_disabled"]
+      }
+    },
+    "local_ack": {
+      "auth": "signed Local request",
+      "method": "POST",
+      "required_fields": ["request_id", "lease_token", "state"],
+      "optional_fields": ["result object", "error_code string"],
+      "state_rule": "state must be one of realtime terminal states",
+      "dedupe_rule": "if stored state is already terminal, return that stored state with deduplicated=true without rewriting result",
+      "lease_rule": "non-terminal row must be claimed and stored SHA256(lease_token) must match",
+      "success_fields": ["ok=true", "state", "deduplicated"],
+      "errors": {
+        "400": ["invalid_ack"],
+        "404": ["not_found"],
+        "409": ["lease_conflict"]
+      }
+    },
+    "remote_result": {
+      "auth": "Public session",
+      "method": "GET",
+      "required_query": ["request_id"],
+      "access_rule": "session must own actor_projection_id unless capability wildcard *",
+      "success_fields": ["ok=true", "state", "terminal", "result", "error_code", "updated_at"],
+      "errors": {
+        "400": ["request_id_required"],
+        "403": ["forbidden"],
+        "404": ["not_found"]
+      }
+    }
   },
   "semantic_invariants": [
     "Local revalidates terminal/expiry state before business mutation.",
