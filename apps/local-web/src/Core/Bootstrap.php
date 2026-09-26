@@ -6,7 +6,10 @@ namespace Sokna\Local\Core;
 use DateTimeZone;
 use PDO;
 use Sokna\Local\Domain\Orders\BusinessClock;
+use Sokna\Local\Domain\Orders\OrderCatalogService;
 use Sokna\Local\Domain\Orders\OrderCommitService;
+use Sokna\Local\Domain\Orders\StaffQuickOrderService;
+use Sokna\Local\Domain\Orders\TableDraftService;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 
 final class Bootstrap
@@ -18,7 +21,10 @@ final class Bootstrap
     private ?Migrations $migrations = null;
     private ?SellableRepository $sellables = null;
     private ?BusinessClock $businessClock = null;
+    private ?OrderCatalogService $orderCatalog = null;
     private ?OrderCommitService $orders = null;
+    private ?StaffQuickOrderService $staffQuickOrders = null;
+    private ?TableDraftService $tableDrafts = null;
 
     private function __construct(
         private readonly Config $config,
@@ -83,9 +89,30 @@ final class Bootstrap
         return $this->businessClock ??= new BusinessClock($this->database(), $this->config->string('app.timezone', 'Asia/Tehran'));
     }
 
+    public function orderCatalog(): OrderCatalogService
+    {
+        return $this->orderCatalog ??= new OrderCatalogService($this->database());
+    }
+
     public function orders(): OrderCommitService
     {
-        return $this->orders ??= new OrderCommitService($this->database(), $this->businessClock());
+        return $this->orders ??= new OrderCommitService($this->database(), $this->businessClock(), $this->orderCatalog());
+    }
+
+    public function staffQuickOrders(): StaffQuickOrderService
+    {
+        return $this->staffQuickOrders ??= new StaffQuickOrderService(
+            $this->database(),
+            $this->businessClock(),
+            $this->identityRepository(),
+            $this->capabilities(),
+            $this->orders(),
+        );
+    }
+
+    public function tableDrafts(): TableDraftService
+    {
+        return $this->tableDrafts ??= new TableDraftService($this->database(), $this->orderCatalog(), $this->staffQuickOrders());
     }
 
     public function startSession(string $cookiePath = '/', ?bool $secure = null): void
