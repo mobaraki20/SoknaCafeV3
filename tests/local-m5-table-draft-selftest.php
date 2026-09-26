@@ -134,6 +134,37 @@ $quick=$core->staffQuickOrders()->commit([
 ],$userA);
 m53_assert((int)$quick['order_id']>0&&(int)$quick['session_id']>0,'direct Staff Quick Order did not use canonical commit/session owner');
 
+$pdo->exec("INSERT INTO cafe_tables(name,table_number,code,access_token,active,sort_order) VALUES('Remote Table',14,'D14','m53-remote-table',1,4)");
+$remoteTable=(int)$pdo->lastInsertId();
+$remote=$core->tableDraftRealtime()->dispatch([
+    'kind'=>'table_draft.create',
+    'actor_projection_id'=>'user:'.$userB['id'],
+    'payload'=>[
+        'table_id'=>$remoteTable,'expected_session_id'=>0,
+        'items'=>[['id'=>$itemId,'quantity'=>1,'expected_price'=>100000]],
+    ],
+]);
+m53_assert((int)($remote['draft']['id']??0)>0,'Realtime Table Draft adapter did not create Local-owned draft');
+
+$pdo->prepare('UPDATE users SET active=0 WHERE id=?')->execute([$userB['id']]);
+$remoteActorRejected=false;
+try{
+    $core->tableDraftRealtime()->dispatch([
+        'kind'=>'table_draft.edit',
+        'actor_projection_id'=>'user:'.$userB['id'],
+        'payload'=>[
+            'table_id'=>$remoteTable,'expected_version'=>(int)$remote['draft']['version'],'expected_session_id'=>0,
+            'items'=>[['id'=>$itemId,'quantity'=>2,'expected_price'=>100000]],
+        ],
+    ]);
+}catch(TableDraftException $e){$remoteActorRejected=$e->errorCode==='actor_invalid';}
+m53_assert($remoteActorRejected,'Realtime adapter did not revalidate disabled Local actor');
+
+$publicRealtime=(string)file_get_contents(dirname(__DIR__).'/apps/public/src/Realtime/RealtimeService.php');
+$publicDeferred=(string)file_get_contents(dirname(__DIR__).'/apps/public/src/Deferred/DeferredService.php');
+m53_assert(str_contains($publicRealtime,"'table_draft.finalize'")&&str_contains($publicRealtime,"str_starts_with($kind, 'table_draft.')")&&str_contains($publicRealtime,"'local_unavailable'"),'Public Realtime lost Local-required Table Draft boundary');
+m53_assert(!str_contains($publicDeferred,'table_draft.'),'Table Draft leaked into Deferred-safe transport');
+
 $draftSource=(string)file_get_contents(dirname(__DIR__).'/apps/local-web/src/Domain/Orders/TableDraftService.php');
 m53_assert(!preg_match('/INSERT\s+INTO\s+orders/i',$draftSource),'Table Draft duplicated canonical order INSERT');
 m53_assert(!str_contains($draftSource,'order_business_sequences'),'Table Draft allocated business numbers itself');
