@@ -39,7 +39,7 @@ $makeUser=function(string $name,array $caps)use($pdo):array{
     foreach($caps as $cap)$stmt->execute([$id,$cap]);
     return ['id'=>$id,'username'=>$name,'display_name'=>$name,'role'=>'operator','active'=>1];
 };
-$operator=$makeUser('m55-operator',['inventory_view','inventory_operations','inventory_manage']);
+$operator=$makeUser('m55-operator',['orders_floor','inventory_view','inventory_operations','inventory_manage']);
 $finalizer=$makeUser('m55-finalizer',['inventory_view','inventory_finalize']);
 $viewer=$makeUser('m55-viewer',['inventory_view']);
 
@@ -94,6 +94,45 @@ $r2=$core->inventory()->recordMovement([
 $chrono=(array)$pdo->query("SELECT * FROM inventory_balances WHERE inventory_item_id={$item2Id}")->fetch(PDO::FETCH_ASSOC);
 m55_assert((int)$chrono['quantity_base']===18,'backdated movement replay produced wrong quantity');
 m55_assert(abs((float)$chrono['average_unit_cost']-200.0)<0.0001,'backdated movement replay produced wrong moving average');
+
+$pdo->exec("INSERT INTO categories(category_key,name,audience,sort_order,active) VALUES('m55-menu','M55 Menu','guest_staff',10,1)");
+$menuCategoryId=(int)$pdo->lastInsertId();
+$pdo->exec("INSERT INTO menus(menu_key,name,status,sort_order) VALUES('m55-main','M55 Main','active',10)");
+$menuId=(int)$pdo->lastInsertId();
+$pdo->prepare('INSERT INTO menu_categories(menu_id,category_id,sort_order) VALUES(?,?,10)')->execute([$menuId,$menuCategoryId]);
+$menuItemId=$core->sellables()->create([
+    'category_id'=>$menuCategoryId,'name'=>'Recipe Drink','price'=>50000,'preparation_station'=>'kitchen',
+    'sellable_kind'=>'menu_item','staff_only'=>false,'takeaway_allowed'=>true,
+]);
+$pdo->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$menuId,$menuItemId]);
+$recipe=$core->inventoryOrders()->saveRecipe($menuItemId,[
+    ['inventory_item_id'=>$item1Id,'quantity_base'=>2],
+],$operator);
+m55_assert(!empty($recipe['recipe_id']),'Inventory recipe version was not created');
+
+$beforeOrderQty=(int)$pdo->query("SELECT quantity_base FROM inventory_balances WHERE inventory_item_id={$item1Id}")->fetchColumn();
+$pdo->exec("INSERT INTO cafe_tables(name,table_number,code,access_token,active,sort_order) VALUES('Inventory Table',31,'I31','m55-inventory-table',1,1)");
+$orderTable=(int)$pdo->lastInsertId();
+$order=$core->staffQuickOrders()->commit([
+    'table_id'=>$orderTable,'expected_session_id'=>0,'request_token'=>'m55-order-inventory-0001',
+    'items'=>[['id'=>$menuItemId,'quantity'=>2,'expected_price'=>50000]],
+],$operator);
+$orderId=(int)$order['order_id'];
+m55_assert($orderId>0,'Inventory fixture order did not commit');
+$event=(array)$pdo->query("SELECT id,status,attempt_count FROM inventory_order_events WHERE order_id={$orderId}")->fetch(PDO::FETCH_ASSOC);
+m55_assert((int)($event['id']??0)>0&&(string)($event['status']??'')==='done','accounted Order did not produce/process durable Inventory event');
+$recipeMoves=(int)$pdo->query("SELECT COUNT(*) FROM inventory_movements WHERE source_type='order_item' AND metadata_json LIKE '%\"order_id\":{$orderId}%'")->fetchColumn();
+m55_assert($recipeMoves===1,'accounted Order produced duplicate/missing recipe movement');
+$afterOrderQty=(int)$pdo->query("SELECT quantity_base FROM inventory_balances WHERE inventory_item_id={$item1Id}")->fetchColumn();
+m55_assert($afterOrderQty===$beforeOrderQty-4,'recipe consumption did not use order quantity × recipe snapshot');
+
+$orderRetry=$core->staffQuickOrders()->commit([
+    'table_id'=>$orderTable,'expected_session_id'=>(int)$order['session_id'],'request_token'=>'m55-order-inventory-0001',
+    'items'=>[['id'=>$menuItemId,'quantity'=>2,'expected_price'=>50000]],
+],$operator);
+m55_assert(!empty($orderRetry['duplicate'])&&(int)$orderRetry['order_id']===$orderId,'Order retry lost canonical idempotency');
+$recipeMovesAfterRetry=(int)$pdo->query("SELECT COUNT(*) FROM inventory_movements WHERE source_type='order_item' AND metadata_json LIKE '%\"order_id\":{$orderId}%'")->fetchColumn();
+m55_assert($recipeMovesAfterRetry===1,'Order retry duplicated Inventory recipe consumption');
 
 $movementCountBefore=(int)$pdo->query("SELECT COUNT(*) FROM inventory_movements WHERE inventory_item_id={$item2Id}")->fetchColumn();
 $duplicate=$core->inventory()->recordMovement([
