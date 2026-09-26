@@ -70,5 +70,3 @@ if ((int)($login['status'] ?? 0) !== 200 || ($login['body']['ok'] ?? false) !== 
 if (!is_string($login['body']['token'] ?? null) || ($login['body']['token'] ?? '') === '') public_http_fail('Login HTTP adapter did not return opaque session token.');
 
 fwrite(STDOUT, "Public M3 auth HTTP adapter self-test: OK\n");
-
-require __DIR__ . '/public-connectivity-selftest.php';
