@@ -23,6 +23,10 @@ require_once __DIR__ . '/src/Domain/Orders/StaffQuickOrderService.php';
 require_once __DIR__ . '/src/Domain/Orders/TableDraftException.php';
 require_once __DIR__ . '/src/Domain/Orders/TableDraftService.php';
 require_once __DIR__ . '/src/Relay/TableDraftRealtimeAdapter.php';
+require_once __DIR__ . '/src/Domain/Preparation/PreparationAccessService.php';
+require_once __DIR__ . '/src/Domain/Preparation/PreparationException.php';
+require_once __DIR__ . '/src/Domain/Preparation/PreparationService.php';
+require_once __DIR__ . '/src/Relay/PreparationRealtimeAdapter.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_local_bootstrap(array $config): Bootstrap
