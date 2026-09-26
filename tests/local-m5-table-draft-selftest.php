@@ -140,7 +140,7 @@ $remote=$core->tableDraftRealtime()->dispatch([
     'kind'=>'table_draft.create',
     'actor_projection_id'=>'user:'.$userB['id'],
     'payload'=>[
-        'table_id'=>$remoteTable,'expected_session_id'=>0,
+        'table_id'=>$remoteTable,'expected_version'=>999,'expected_session_id'=>0,
         'items'=>[['id'=>$itemId,'quantity'=>1,'expected_price'=>100000]],
     ],
 ]);
