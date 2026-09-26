@@ -23,6 +23,7 @@ SOKNA is one product with independently releasable components. A change in one c
 - `apps/local-web`: sole owner of local business rules and primary business data.
 - `apps/public`: Public Edge, guest/remote surfaces, safe projections, relay-facing behavior and Public-owned storage only.
 - `windows/runtime`: Windows integration, service supervision, hardware/OS adapters, diagnostics and scheduling; no business decisions.
+- `windows/print-agent`: separate local/machine-bound owner of durable print/device/spooler execution; no Public/Internet control.
 - `platform`: approved Apache/PHP/MariaDB/runtime dependencies and platform lifecycle.
 - `contracts`: versioned interfaces and compatibility declarations.
 
@@ -48,10 +49,12 @@ Read, in this order:
 1. `ARCHITECTURE.md`
 2. `PROJECT_LINEAGE.md`
 3. `UI_DESIGN_SYSTEM.md` for any user-facing or interaction-affecting change
-4. the current migration-status file under `docs/migration/`
+4. `docs/migration/CURRENT_CONTINUATION_FA.md` — the single current continuation authority
 5. `docs/reviews/EXTERNAL_OBSERVER_REVIEW_2026-09-26_FA.md` and disposition any open finding that affects the target slice
 6. the target component README
 7. relevant ADRs
+
+Historical migration/status documents remain evidence. If they disagree about the current slice, `docs/migration/CURRENT_CONTINUATION_FA.md` is authoritative until intentionally superseded by a newer recorded continuation decision.
 
 The external review is an evidence checkpoint, not an architecture authority. Do
 not mechanically change behavior to satisfy it. Trace each applicable finding to
