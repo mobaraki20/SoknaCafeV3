@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "source_protocol": "sokna-relay-v1/deferred",
+  "source_baseline": {
+    "repository": "mobaraki20/SoknaCafe",
+    "branch": "work/reconcile-dev39",
+    "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "source": "includes/relay_protocol.php"
+  },
+  "status": "extracted_legacy_wire_contract_for_v3_review",
+  "authentication": {
+    "inherits": "realtime HMAC-SHA256 request signing",
+    "headers": ["X-SOKNA-TIMESTAMP", "X-SOKNA-NONCE", "X-SOKNA-SIGNATURE"],
+    "default_clock_skew_seconds": 300
+  },
+  "request_envelope": {
+    "required": ["request_id", "kind", "created_at", "occurred_at", "payload", "actor_projection_id_or_session_id"],
+    "optional": ["expected_version", "expected_state", "correlation_id"],
+    "request_id": {
+      "max_length": 96,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "payload_type": "object",
+    "expected_version_types": ["integer", "string"],
+    "expected_state_type": "string",
+    "occurred_at_rule": "must parse and must not be more than 300 seconds in the future",
+    "expires_at": "forbidden_by_semantics"
+  },
+  "states": {
+    "workflow": ["pending_sync", "committed", "needs_review", "rejected"],
+    "terminal": ["committed", "needs_review", "rejected"]
+  },
+  "kinds": [
+    "supply.need.create",
+    "supply.status.prepare",
+    "supply.status.return",
+    "supply.receipt",
+    "inventory.waste",
+    "inventory.count_draft",
+    "subscriber.payment",
+    "expense.create"
+  ],
+  "forbidden_realtime_or_local_required_examples": [
+    "settlement",
+    "committed-order mutation",
+    "preparation mutation",
+    "inventory count finalize",
+    "inventory correction",
+    "payment reversal",
+    "expense reversal",
+    "catalog/users/theme mutation"
+  ],
+  "historical_routes": {
+    "remote_enqueue": "/api/v1/deferred/enqueue.php",
+    "remote_list": "/api/v1/deferred/list.php",
+    "remote_result": "/api/v1/deferred/result.php",
+    "local_claim": "/api/v1/local/deferred/claim.php",
+    "local_ack": "/api/v1/local/deferred/ack.php",
+    "local_reconcile": "/api/v1/local/deferred/reconcile.php",
+    "local_period_status": "/api/v1/local/deferred/period-status.php"
+  },
+  "semantic_invariants": [
+    "Public enqueue persists pending_sync only and is never final business success.",
+    "Local revalidates active user/capability, expected state/version, module readiness and financial-period rules.",
+    "Local canonical domain owner performs the business commit.",
+    "Receipt/result persistence precedes ACK so reclaim after lost ACK cannot duplicate business effect.",
+    "Conflict or closed-period work can become needs_review.",
+    "Review resolution is explicit and audited; no silent financial-period reopen/back-post.",
+    "Realtime and deferred stores/claim paths remain separate."
+  ],
+  "v3_note": "This captures proven deferred-safe semantics from dev39. Final V3 endpoint/schema compatibility remains draft until executable producer/consumer migrations are complete."
+}
