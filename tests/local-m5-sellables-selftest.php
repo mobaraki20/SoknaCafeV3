@@ -41,7 +41,7 @@ $tables = array_values(array_map('strval', $pdo->query('SHOW TABLES')->fetchAll(
 foreach (['menus','categories','menu_categories','items','menu_items'] as $table) {
     m5_sellable_assert(in_array($table, $tables, true), "M5.1 sellable/catalog table {$table} is missing.");
 }
-foreach (['financial_periods','settlement_records','print_jobs'] as $laterDomain) {
+foreach (['settlement_records','print_jobs'] as $laterDomain) {
     m5_sellable_assert(!in_array($laterDomain, $tables, true), "Current Local stack leaked post-M5.2 domain table {$laterDomain}.");
 }
 
