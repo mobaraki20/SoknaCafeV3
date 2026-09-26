@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "status": "extracted_legacy_wire_contract_for_v3_compatibility",
+  "source": {
+    "repository": "mobaraki20/SoknaCafe",
+    "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "files": {
+      "local_claim": "public_edge/api/v1/local/deferred/claim.php",
+      "local_ack": "public_edge/api/v1/local/deferred/ack.php",
+      "local_reconcile": "public_edge/api/v1/local/deferred/reconcile.php",
+      "local_period_status": "public_edge/api/v1/local/deferred/period-status.php",
+      "remote_result": "public_edge/api/v1/deferred/result.php"
+    }
+  },
+  "operations": {
+    "local_claim": {
+      "method": "POST",
+      "historical_path": "/api/v1/local/deferred/claim.php",
+      "auth": "signed_local",
+      "request": {
+        "transport": "json_object",
+        "required": [],
+        "properties": {
+          "lease_seconds": {
+            "required": false,
+            "legacy_normalization": "PHP integer cast, then clamp to 10..120",
+            "default": 30,
+            "minimum_after_normalization": 10,
+            "maximum_after_normalization": 120
+          }
+        },
+        "additional_properties": "ignored_by_historical_endpoint"
+      },
+      "success": {
+        "http": 200,
+        "required_fields": ["ok", "lease_token", "lease_seconds", "request"],
+        "constants": {"ok": true},
+        "field_rules": {
+          "lease_token": "64 hexadecimal characters representing 32 random bytes; historical storage keeps token value",
+          "lease_seconds": "normalized integer 10..120",
+          "request": "stored deferred request envelope object or {} if decoding is not an array"
+        }
+      },
+      "errors": {
+        "404": {"error": "empty_queue"},
+        "409": {"errors": ["installation_inactive", "remote_disabled"]}
+      },
+      "state_effect": "expired lease is cleared while state remains pending_sync; selected row receives lease and attempt_count increments"
+    },
+    "local_ack": {
+      "method": "POST",
+      "historical_path": "/api/v1/local/deferred/ack.php",
+      "auth": "signed_local",
+      "request": {
+        "transport": "json_object",
+        "required": ["request_id", "lease_token", "state"],
+        "properties": {
+          "request_id": {"normalization": "trimmed string", "must_be_non_empty": true},
+          "lease_token": {"normalization": "trimmed string", "must_be_non_empty": true},
+          "state": {"enum": ["committed", "needs_review", "rejected"]},
+          "result": {"normalization": "array/object value retained when PHP is_array; otherwise {}"},
+          "error_code": {"normalization": "trimmed string, truncated to 80 characters; empty stored as null"}
+        },
+        "additional_properties": "ignored_by_historical_endpoint"
+      },
+      "success": {
+        "http": 200,
+        "required_fields": ["ok", "state", "deduplicated"],
+        "constants": {"ok": true},
+        "dedupe_rule": "if current terminal state equals requested target, return deduplicated=true"
+      },
+      "errors": {
+        "400": {"error": "invalid_ack"},
+        "404": {"error": "not_found"},
+        "409": {
+          "terminal_state_conflict": "current terminal state differs from requested target; response also includes current state",
+          "lease_conflict": "current row is not pending_sync or provided lease does not match; response also includes current state"
+        }
+      }
+    },
+    "local_reconcile": {
+      "method": "POST",
+      "historical_path": "/api/v1/local/deferred/reconcile.php",
+      "auth": "signed_local",
+      "request": {
+        "transport": "json_object",
+        "required": ["request_id", "state"],
+        "properties": {
+          "request_id": {"normalization": "trimmed string", "must_be_non_empty": true},
+          "state": {"enum": ["committed", "rejected"]},
+          "result": {"normalization": "array/object value retained when PHP is_array; otherwise {}"},
+          "error_code": {"normalization": "trimmed string, truncated to 80 characters; empty stored as null"}
+        },
+        "additional_properties": "ignored_by_historical_endpoint"
+      },
+      "success": {
+        "http": 200,
+        "required_fields": ["ok", "state", "deduplicated"],
+        "constants": {"ok": true},
+        "transition_rule": "needs_review -> committed|rejected; if current state already equals target, return deduplicated=true"
+      },
+      "errors": {
+        "400": {"error": "invalid_reconcile"},
+        "404": {"error": "not_found"},
+        "409": {"error": "state_conflict", "response_includes": ["state"]}
+      }
+    },
+    "local_period_status": {
+      "method": "POST",
+      "historical_path": "/api/v1/local/deferred/period-status.php",
+      "auth": "signed_local",
+      "request": {
+        "transport": "json_object",
+        "required": ["from_date", "to_date"],
+        "properties": {
+          "from_date": {"format": "YYYY-MM-DD", "normalization": "trimmed string"},
+          "to_date": {"format": "YYYY-MM-DD", "normalization": "trimmed string", "rule": "lexically >= from_date after strict format validation"}
+        }
+      },
+      "success": {
+        "http": 200,
+        "required_fields": ["ok", "from_date", "to_date", "counts", "blocking"],
+        "constants": {"ok": true},
+        "counts": {"pending_sync": "integer", "committed": "integer", "needs_review": "integer", "rejected": "integer"},
+        "blocking_formula": "counts.pending_sync + counts.needs_review"
+      },
+      "errors": {"400": {"error": "invalid_period"}}
+    },
+    "remote_result": {
+      "method": "GET",
+      "historical_path": "/api/v1/deferred/result.php",
+      "auth": "public_session",
+      "request": {
+        "transport": "query",
+        "required": ["request_id"],
+        "properties": {"request_id": {"normalization": "trimmed string", "must_be_non_empty": true}}
+      },
+      "success": {
+        "http": 200,
+        "required_fields": ["ok", "request_id", "kind", "actor_projection_id", "state", "occurred_at", "result", "error_code", "created_at", "updated_at"],
+        "constants": {"ok": true},
+        "field_rules": {"result": "decoded result_json; result_json field is removed before response"}
+      },
+      "errors": {
+        "400": {"error": "request_id_required"},
+        "403": {"error": "forbidden"},
+        "404": {"error": "not_found"}
+      },
+      "access_rule": "public_deferred_actor_can_access(session, actor_projection_id)"
+    }
+  },
+  "compatibility_note": "These schemas preserve proven dev39 behavior, including the intentional difference from realtime ACK semantics and the explicit needs_review reconciliation path."
+}
