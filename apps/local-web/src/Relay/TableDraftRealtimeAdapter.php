@@ -44,7 +44,7 @@ final class TableDraftRealtimeAdapter
 
             $result=match($kind){
                 'table_draft.get'=>$this->drafts->get((int)($payload['table_id']??0),$actor),
-                'table_draft.create'=>$this->drafts->saveTx($payload+['expected_version'=>0],$actor),
+                'table_draft.create'=>$this->drafts->saveTx(['expected_version'=>0]+$payload,$actor),
                 'table_draft.edit'=>$this->drafts->saveTx($payload,$actor),
                 'table_draft.finalize'=>$this->drafts->finalizeTx($payload,$actor),
                 'table_draft.cancel'=>$this->drafts->cancelTx($payload,$actor),
