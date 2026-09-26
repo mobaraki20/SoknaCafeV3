@@ -1,10 +1,10 @@
 # M2 — Local Core Audit / Bootstrap, Data Ownership, Auth, Observability
 
-Status: IN PROGRESS
+Status: COMPLETE at the M2 Local Core slice level
 Historical source: `mobaraki20/SoknaCafe@a46435cca57df5bd5b9770efd0bb95390528aa05`
 V3 target: `apps/local-web`
 
-این سند نقطه ادامه M2 است و باید قبل از جابه‌جایی implementation هسته Local خوانده شود. هدف M2 کپی‌کردن bootstrap قدیمی نیست؛ هدف استخراج یک Local Core کم‌وابستگی با حفظ semantics اثبات‌شده است.
+این سند مرجع نهایی M2 و نقطه ادامه برای فاز بعد است. هدف M2 کپی‌کردن bootstrap قدیمی نبود؛ هدف استخراج یک Local Core کم‌وابستگی با حفظ semantics اثبات‌شده بود.
 
 ## 1. Historical owners confirmed
 
@@ -20,11 +20,12 @@ Observed responsibilities:
 - maintenance guard;
 - global `db()` PDO connection factory.
 
-Decision for V3:
-- preserve config/session/DB semantics required by business code;
-- do NOT migrate the historical eager require-list as the Local Core owner;
-- core bootstrap must load only shared/core dependencies; business domains move in later M5 slices;
-- Local core must not require Public, Runtime or Print Agent to initialize ordinary tests.
+V3 decision:
+- config/session/DB semantics required by business code are preserved;
+- historical eager require-list is not migrated as the Local Core owner;
+- core bootstrap loads only shared/core dependencies; business domains move in later M5 slices;
+- Local Core initializes/tests without Public, Runtime or Print Agent being required;
+- DB/auth/migrations remain lazy until explicitly consumed.
 
 ### Data ownership
 Historical modular-monolith registry confirms platform ownership of:
@@ -34,9 +35,9 @@ Historical modular-monolith registry confirms platform ownership of:
 - `users`
 - `user_capabilities`
 
-`user_preparation_areas` remains an Orders/Preparation-domain table, not a new generic auth store. Auth/capability evaluation may read it through the canonical preparation permission owner; M2 must not invent a duplicate permission schema.
+`user_preparation_areas` remains an Orders/Preparation-domain table, not a new generic auth store. Auth/capability evaluation may read it through the canonical authority, but M2 does not claim its schema ownership.
 
-Decision for V3:
+V3 decision:
 - Local DB remains the primary business data authority;
 - schema migrations use Expand -> Migrate -> Contract where compatibility matters;
 - no component other than Local writes Local business tables directly;
@@ -45,45 +46,48 @@ Decision for V3:
 ### Authentication / authorization
 Historical canonical auth owner is `includes/auth.php` plus capability helpers from the shared platform layer.
 
-Semantics to preserve unless a later explicit security ADR changes them:
+Preserved semantics:
 - server-side PHP session with strict cookie mode;
 - 12h shift lifetime/rolling activity refresh;
 - authenticated user is refreshed from `users` and disabled accounts are rejected;
 - `users` + `user_capabilities` remain the primary permission authority;
 - preparation-area scope remains the existing authority; no second permission model;
-- admin role alone must not silently bypass Preparation semantics established by the frozen architecture;
-- local-only redirect validation and role/capability guards remain required;
-- login throttling must not persist plaintext credentials/usernames.
+- local-only identity/session behavior remains independent from Public/Runtime/Print;
+- password hashes are not copied into session identity.
 
-Historical transient-DB behavior: an already authenticated session may remain usable when the user refresh query throws. This is compatibility-sensitive and MUST NOT be silently changed during structural migration; hardening, if desired, needs explicit acceptance/tests.
+Compatibility-sensitive historical behavior retained and regression-tested: an already authenticated session may remain usable when the identity refresh query throws due to a transient DB failure. Any future hardening of that behavior requires an explicit security decision and new acceptance tests.
+
+Preparation note: generic admin capability compatibility remains preserved, but Preparation operational mutation rules are still owned by the Preparation domain. Admin role alone must not become Preparation mutation authority when that later slice moves.
 
 ### Observability
 Historical owner `includes/observability.php` is intentionally DB-independent.
 
-Semantics to retain:
-- request correlation ID validation/generation and `X-Sokna-Correlation-ID` response propagation;
+Retained semantics:
+- request correlation ID validation/generation;
+- stable per-request correlation identity;
 - structured JSONL logging;
 - recursive sensitive-context redaction;
 - bounded string/depth logging;
 - atomic JSON state writes;
-- observability remains available when MariaDB is unavailable.
+- observability remains usable when MariaDB is unavailable.
 
 V3 ownership correction:
-- Local may consume a configured data root (`SOKNA_DATA_DIR` / app config);
-- Windows path discovery/provisioning/ACL ownership must stay outside Local Core;
-- the historical direct `%PROGRAMDATA%` fallback is not a Local ownership requirement. Setup/Runtime/Platform supplies the Local data root on Windows.
+- Local consumes a configured data root (`SOKNA_DATA_DIR` / app config);
+- Windows path discovery/provisioning/ACL ownership stays outside Local Core;
+- historical direct `%PROGRAMDATA%` discovery is not a Local ownership requirement. Setup/Platform supplies the Local data root on Windows.
 
-## 2. Historical coupling that must NOT be copied into M2
+## 2. Historical coupling deliberately NOT copied into M2
 
-1. `bootstrap.php` eagerly requires Menu, Printing, Inventory, Supply, Expenses, Deferred, Settlement, Center, Accommodation and other domains. M2 must not make these dependencies of core initialization.
-2. `includes/functions.php` is a broad aggregator containing helpers plus domain-specific after-response hooks. Do not move it wholesale as the V3 platform owner.
-3. Local Core must not own Registry, SCM, Winspool, driver lifecycle, elevated PowerShell or machine ACL provisioning.
-4. Local Core must not embed Public transport or Print Agent implementation.
-5. Request bootstrap should not become the owner of immutable-package/server provisioning. Runtime filesystem/server protection needed for production packaging is a Platform/Setup concern unless it is application-private runtime storage behavior.
+1. The legacy `bootstrap.php` eager load of Menu, Printing, Inventory, Supply, Expenses, Deferred, Settlement, Center, Accommodation and other domains.
+2. The broad `includes/functions.php` aggregator as a new V3 platform owner.
+3. Registry, SCM, Winspool, driver lifecycle, elevated PowerShell or machine ACL provisioning inside Local Core.
+4. Public transport or Print Agent implementation inside Local Core.
+5. Immutable-package/server provisioning ownership inside request bootstrap.
+6. A second permission database/schema alongside the proven Local authorities.
 
-## 3. V3 Local Core boundaries
+## 3. Implemented V3 Local Core owners
 
-Implemented owners under `apps/local-web`:
+Under `apps/local-web`:
 
 - `src/Core/Config.php` — validated app/local configuration access only.
 - `src/Core/Database.php` — PDO construction/connection policy; no business queries.
@@ -93,59 +97,73 @@ Implemented owners under `apps/local-web`:
 - `src/Core/PdoIdentityRepository.php` — canonical PDO adapter over existing Local authorities.
 - `src/Core/Auth.php` — session identity refresh/login/logout preserving dev39 semantics.
 - `src/Core/Capabilities.php` — capability evaluation over existing Local authorities; no new permission model.
-- `src/Core/Bootstrap.php` + `bootstrap.php` — composition root; DB/identity/auth remain lazy and no Windows/Print/Public implementation is loaded.
+- `src/Core/Migrations.php` — ordered/replay-safe Local migration runner with MySQL advisory locking and the historical `schema_migrations` ledger shape.
+- `src/Core/Bootstrap.php` + `bootstrap.php` — composition root; DB/identity/auth/migrations remain lazy and no Windows/Print/Public implementation is loaded.
+- `database/migrations/0001_m2_platform_core.sql` — M2-owned baseline tables only: `settings`, `users`, `user_capabilities`, `audit_log`; `schema_migrations` is bootstrapped by the migration owner.
 
-Ownership notes:
-- `user_preparation_areas` is read through the identity adapter but remains an Orders/Preparation-owned table; M2 does not claim schema ownership for it.
-- Admin capability compatibility is preserved at the generic capability layer; Preparation operational mutation restrictions remain a separate canonical Preparation rule and must be preserved when that domain moves.
-- Windows `%PROGRAMDATA%` inference is intentionally absent from Local Core. Setup/Platform supplies `SOKNA_DATA_DIR` or `app.data_dir`.
+## 4. Migration safety model
 
-## 4. M2 implementation order
+MySQL/MariaDB DDL may implicitly commit. M2 therefore does not pretend that a multi-statement schema migration is transactionally atomic.
 
-1. [DONE] Create Local Core directory/composition root without business-domain eager loads.
-2. [DONE] Port DB-independent observability first and test it without MariaDB.
-3. [DONE] Add config + Database owner with lazy DB initialization.
-4. [DONE] Add session/auth/capability owner preserving legacy identity semantics.
-5. [NEXT] Add schema/migration bootstrap for M2-owned tables only (`schema_migrations`, `settings`, `users`, `user_capabilities`, platform audit owner as applicable).
-6. [IN PROGRESS] Expand tests proving Local Core initialization does not require Public/Runtime/Print.
-7. [DONE] Add forbidden-dependency gate for Windows-specific ownership inside Local Core.
-8. [PENDING] Close M2 only after schema/migration and final Local CI evidence are complete.
+Rules:
+- migration files must be replay-safe/idempotent;
+- advisory lock `sokna_v3_local_migrations` serializes execution;
+- a ledger marker is written only after all statements in the migration file succeed;
+- a second execution must be a no-op;
+- `user_preparation_areas` is explicitly excluded from M2 schema ownership;
+- future compatibility migrations should follow Expand -> Migrate -> Contract.
 
-## 5. Executable evidence now present
+## 5. Executable evidence
 
 CI wiring:
-- `.github/workflows/v3-component-gates.yml` Local job now runs `python3 tests/local-core-contract.py`.
+- `.github/workflows/v3-component-gates.yml` Local job runs `python3 tests/local-core-contract.py`;
+- the Local job starts a real MariaDB 11.4 service and runs `php tests/local-mysql-migration-selftest.php`.
 
-Core tests:
-- `tests/local-core-selftest.php` verifies configuration, explicit Local data root, stable correlation IDs, redaction, atomic state and structured logging without opening a DB connection.
-- `tests/local-auth-selftest.php` verifies active-user refresh, disabled-user rejection, 12h expiry, preserved transient-DB compatibility, password login, unknown-capability rejection and kitchen/bar preparation-scope filtering using an injected identity repository.
-- `tests/local-core-contract.py` PHP-lints all Local Core files, executes both PHP self-tests and rejects Windows ownership tokens such as `%PROGRAMDATA%`, Winspool, Registry/SCM and PowerShell inside Local Core.
+Tests:
+- `tests/local-core-selftest.php` — config, explicit Local data root, stable correlation ID, redaction, atomic state and JSONL logging without opening a DB connection.
+- `tests/local-auth-selftest.php` — active-user refresh, disabled-user rejection, 12h expiry, transient-DB compatibility, password login, unknown-capability rejection and kitchen/bar scope filtering using injected identity authority.
+- `tests/local-migrations-selftest.php` — SQL parser behavior, quoted/comment semicolon handling, malformed SQL rejection and schema ownership boundaries.
+- `tests/local-mysql-migration-selftest.php` — real MariaDB migration, second-run idempotency, ledger marker, owned table presence, `user_preparation_areas` absence, real PDO identity/capability reads and audit snapshot-column compatibility.
+- `tests/local-core-contract.py` — PHP lint, all no-DB self-tests, required-file/schema checks and forbidden Windows ownership checks.
 
-Verified earlier M2 checkpoint before Auth expansion:
-- head `00bd62a8706eca80b9aca73b2be51ab6b29bae12`;
-- workflow run `36211338368` completed SUCCESS with the executable Local M2 gate.
+## 6. Verified checkpoints
 
-Current Auth-expanded head is newer than that checkpoint; its workflow must be used as the next verification evidence before M2 advances to schema/migration completion.
+Earlier implementation checkpoints:
+- `00bd62a8706eca80b9aca73b2be51ab6b29bae12` / workflow `36211338368`: initial executable Local Core gate SUCCESS.
+- `f9e73348da06546bc03156535f4811770161ff00` / workflow `36211638201`: Auth-expanded Local Core workflow SUCCESS.
 
-## 6. M2 exit evidence required
+**M2 close checkpoint:**
+- head: `74575fb124e4a58836b59fb0a9c59285e85d9688`
+- workflow: `36212016322`
+- overall conclusion: SUCCESS
+- Local Web gate job: `108320387116` — SUCCESS
+- `Validate M2 Local Core ownership and executable bootstrap` — SUCCESS
+- `Validate M2 migrations against real MariaDB` — SUCCESS
+- Foundation, Contracts, Local, Public, Runtime, Print Agent, Platform, Packaging, Migration and SCDS gates on that workflow completed successfully.
 
-M2 is not complete until all are true:
-- Local Core starts under CLI/integration tests with Public/Runtime/Print absent;
-- observability tests pass without DB availability;
-- database/config tests prove deterministic injection/configuration;
-- auth/capability regression tests cover active/disabled user and capability scope;
-- M2-owned schema/migration bootstrap is implemented and tested;
+## 7. M2 exit gate
+
+SATISFIED for the Local Core slice:
+- Local Core initializes/tests without Public/Runtime/Print;
+- observability works without DB availability;
+- DB/config behavior is explicit and tested against real MariaDB where DB is required;
+- auth/capability regressions cover active/disabled users, expiry, login, transient DB compatibility and scope filtering;
+- M2-owned schema/migration bootstrap is implemented and tested on MariaDB;
 - no second permission schema exists;
-- no direct Windows Registry/SCM/Winspool/PowerShell ownership exists in Local Core;
-- migration/status docs point to concrete test/CI evidence.
+- no Windows Registry/SCM/Winspool/PowerShell ownership exists in Local Core;
+- evidence and continuation state are in-repo.
 
-## 7. Current continuation point
+M2 completion does **not** mean Local business domains are migrated. Orders, Preparation, Inventory, Finance and other business owners remain later slices.
 
-Do **not** restart M2 from audit. Core implementation and Auth/Capability extraction are already present on `architecture/v3-foundation`.
+## 8. Continuation point
 
-Next action sequence:
-1. verify the latest Auth-expanded Local CI run;
-2. fix any regression if that run fails;
-3. audit exact dev39 definitions/upgrade semantics for `schema_migrations`, `settings`, `users`, `user_capabilities` and platform audit storage;
-4. implement the V3 Local migration runner/bootstrap without claiming `user_preparation_areas` ownership;
-5. add migration tests and update this document with the final M2 checkpoint before marking the slice complete.
+Do **not** restart M2.
+
+Next ordered slice is **M3 — Public Edge Persistence, Auth Projection and Relay Transport**.
+
+Before moving implementation into M3:
+1. update migration inventory/matrix rows that now have M2 implementation evidence to at least `in_progress` where their total scope extends beyond M2;
+2. audit the exact dev39 Public database/migration owners, binding/auth material, relay queue persistence and minimal auth projection at baseline SHA `a46435cca57df5bd5b9770efd0bb95390528aa05`;
+3. preserve strict Realtime vs Deferred-safe persistence/state-machine separation;
+4. bind migrated Public transport to the executable M1 contracts rather than re-inventing route/auth semantics;
+5. keep Local as final Business Authority and never create a Public full-business DB clone.
