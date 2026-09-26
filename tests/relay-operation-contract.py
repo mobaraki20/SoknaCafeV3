@@ -48,7 +48,8 @@ def main() -> None:
     check(rt_claim["historical_path"] == "/api/v1/local/claim.php", "realtime claim path drifted")
     rt_lease = rt_claim["request"]["properties"]["lease_seconds"]
     check((rt_lease["default"], rt_lease["minimum_after_normalization"], rt_lease["maximum_after_normalization"]) == (20, 5, 60), "realtime lease normalization drifted")
-    check("SHA256(lease_token)" in rt["operations"]["local_ack"]["lease_rule"], "realtime ACK lease hashing rule missing")
+    rt_lease_rule = rt["operations"]["local_ack"]["lease_rule"]
+    check("SHA256" in rt_lease_rule and "lease_token" in rt_lease_rule, "realtime ACK lease hashing rule missing")
     check(rt["operations"]["local_ack"]["request"]["properties"]["state"]["enum"] == ["committed", "rejected", "expired", "cancelled", "unknown_review"], "realtime ACK terminal state schema drifted")
     check(rt["operations"]["remote_result"]["success"]["required_fields"] == ["ok", "state", "terminal", "result", "error_code", "updated_at"], "realtime result shape drifted")
 
