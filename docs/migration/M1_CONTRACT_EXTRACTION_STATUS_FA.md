@@ -11,28 +11,32 @@
 
 ## وضعیت کلی
 - F0 Foundation: کامل در سطح معماری/قرارداد.
-- M1: در حال انجام، با extraction evidence اجرایی برای Realtime/Deferred و historical surface audit برای Runtime/Print.
-- M1.1 Realtime: wire + operation schema + compatibility vectors استخراج و در CI قفل شده‌اند. مسیر نهایی V3 و producer/consumer implementation هنوز Draft است.
-- M1.2 Deferred-safe: wire + operation schema + compatibility vectors استخراج و در CI قفل شده‌اند. جزئیات domain result/review هنگام مهاجرت ownerهای واقعی باید تکمیل شوند؛ final API stability هنوز ادعا نمی‌شود.
-- M1.3 Runtime/Print: historical surface/ownership audit انجام و در CI قفل شده است. Runtime تاریخی API HTTP پایدار نداشته؛ Print API v4 و loopback bridge اثبات‌شده audit شده‌اند. قرارداد نهایی V3 برای subset موردنیاز Runtime/Print هنوز باید طراحی/استخراج و با compatibility vectors تثبیت شود.
+- M1: **exit candidate**. چهار خانواده قرارداد اکنون evidence ماشین‌خوان و gate اجرایی دارند؛ بسته‌شدن رسمی M1 منوط به سبز شدن CI روی head شامل Runtime v1 و Print v4/loopback v1 است.
+- M1.1 Realtime: wire + operation schema + compatibility vectors استخراج و در CI قفل شده‌اند. producer/consumer implementation هنوز migrate نشده و contract همچنان Draft است.
+- M1.2 Deferred-safe: wire + operation schema + compatibility vectors استخراج و در CI قفل شده‌اند. جزئیات domain result/review هنگام مهاجرت ownerهای واقعی تکمیل می‌شوند؛ API stability نهایی هنوز ادعا نمی‌شود.
+- M1.3 Runtime: historical audit + ADR + V3 `contract-v1.json` + compatibility vectors ایجاد شده‌اند. Runtime HTTP تاریخی وجود نداشت؛ V3 contract جدید و versioned است و legacy HTTP compatibility ادعا نمی‌کند.
+- M1.3 Print: historical audit + retained Print API v4 + loopback v1 + compatibility vectors ایجاد شده‌اند. ownership به `windows/print-agent` منتقل/تصحیح شده ولی safety semantics بالغ حفظ می‌شوند.
 
 ## شواهد ثبت‌شده
 ### Realtime
 - `contracts/local-public-realtime/wire-v1.json`
 - `contracts/local-public-realtime/operation-schemas-v1.json`
 - `contracts/local-public-realtime/compatibility-vectors-v1.json`
+- `tests/relay-wire-contract.py`
+- `tests/relay-operation-contract.py`
 
 رفتارهای قفل‌شده شامل:
 - claim lease: default 20، clamp به 5..60؛
 - lease token: 24 random bytes / 48 hex، فقط SHA256 در persistence؛
 - ACK states: `committed|rejected|expired|cancelled|unknown_review`؛
 - terminal ACK تاریخی: state ذخیره‌شده را dedupe می‌کند و result را بازنویسی نمی‌کند؛
-- result shape و access rule تاریخی.
+- result shape، auth/replay و Realtime/Deferred separation.
 
 ### Deferred-safe
 - `contracts/local-public-deferred/wire-v1.json`
 - `contracts/local-public-deferred/operation-schemas-v1.json`
 - `contracts/local-public-deferred/compatibility-vectors-v1.json`
+- همان relay contract gates بالا.
 
 رفتارهای قفل‌شده شامل:
 - claim lease: default 30، clamp به 10..120؛
@@ -45,42 +49,61 @@
 
 ### Runtime
 - `contracts/runtime-api/historical-audit-v1.json`
+- `docs/adr/0001-runtime-local-contract-direction.md`
+- `contracts/runtime-api/contract-v1.json`
+- `contracts/runtime-api/compatibility-vectors-v1.json`
+- `tests/runtime-print-contract-audit.py`
+- `tests/runtime-print-v1-contract.py`
 
-نتیجه audit:
-- در dev39 یک Runtime HTTP API پایدار وجود ندارد.
-- interface اثبات‌شده شامل CLI، فایل state با format `sokna-local-runtime-v1` و Windows SCM service host است.
-- هر HTTP/IPC جدید در V3 باید به‌عنوان قرارداد جدید versioned طراحی شود؛ نباید به‌اشتباه legacy-compatible معرفی شود.
-- Runtime فقط supervision/OS integration است و Business Authority یا owner چاپ نیست.
+تصمیم‌های قفل‌شده M1:
+- dev39 Runtime HTTP API پایدار نداشت؛ evidence تاریخی CLI + `sokna-local-runtime-v1` state + Windows SCM است.
+- Local -> Runtime v1 فقط boundary مشاهده/health/supervision ماشین‌محور و loopback است.
+- Runtime -> Local فقط idempotent allowlisted trigger intent است؛ Business work/DB داخل Local می‌ماند.
+- هیچ generic execute/shell/PowerShell/SQL/business payload در contract وجود ندارد.
+- Public/Internet مستقیماً Runtime را کنترل نمی‌کند.
+- historical `printing` trigger مالکیت چاپ را به Runtime منتقل نمی‌کند.
 
 ### Print Agent
 - `contracts/print-agent-api/historical-audit-v1.json`
+- `contracts/print-agent-api/server-wire-v4.json`
+- `contracts/print-agent-api/loopback-v1.json`
+- `contracts/print-agent-api/compatibility-vectors-v4.json`
+- `tests/runtime-print-contract-audit.py`
+- `tests/runtime-print-v1-contract.py`
 
-نتیجه audit:
-- Print API v4 تاریخی و loopback bridge audit شده‌اند.
-- رفتارهای بالغ مثل durable claim/accept/start/report، submission fence، request/body idempotency، server-scope binding، unknown/recovery_hold و device/spooler execution باید حفظ شوند.
-- loopback bridge تاریخی `/v1/wake` و `/v1/preview`، pairing/origin guard و resource limits مشخص دارد.
-- عبارت تاریخی dev39 مبنی بر internal Local component بودن Print Worker، authority معماری V3 نیست؛ owner V3 برابر `windows/print-agent` است و Runtime فقط آن را supervise می‌کند.
+رفتارهای قفل‌شده M1:
+- retained Print server actions: `probe`, `heartbeat`, `claim`, `claim_reconcile`, `attempt_status`, `renew`, `accept`, `start`, `report`؛
+- `request_id`/request-body fingerprint idempotency؛
+- immutable claimed destination evidence؛
+- durable `local_receipt_id + content_sha256` fence قبل از physical execution؛
+- `accept -> start -> physical execution -> report`؛
+- `unknown` و `recovery_hold` safety stateهای durable هستند و blind auto-reprint ممنوع است؛
+- loopback `/v1/wake` فقط nudge است و `/v1/preview` فقط render preview؛ هیچ‌کدام durable submission path نیستند؛
+- Runtime فقط lifecycle سرویس Print Agent را supervise می‌کند.
 
 ## CI
-Contracts gate اکنون این سه gate اجرایی را اجرا می‌کند:
+Contracts gate اکنون چهار gate اجرایی را اجرا می‌کند:
 - `tests/relay-wire-contract.py`
 - `tests/relay-operation-contract.py`
 - `tests/runtime-print-contract-audit.py`
+- `tests/runtime-print-v1-contract.py`
 
-آخرین CI تأییدشده برای checkpoint قبل از این به‌روزرسانی سند:
+آخرین CI کاملاً تأییدشده قبل از اضافه‌شدن Runtime v1/Print v4 final M1 contract files:
 - head: `5af39e53a37b016fab9fc7f4d0841201329dee6a`
 - workflow: `V3 Component Gates`
 - run: `36209559220`
-- نتیجه: همه jobها SUCCESS، شامل Foundation، Contracts، Local، Public، Runtime، Print Agent، Platform، Packaging، Migration و SCDS.
+- نتیجه: همه jobها SUCCESS.
 
-این موفقیت فقط architecture/contract-foundation و extraction/audit evidence را اثبات می‌کند؛ application migration، clean-machine installer acceptance و physical-printer UAT را اثبات نمی‌کند.
+CI روی head جدید شامل `runtime-print-v1-contract.py` باید جداگانه سبز شود؛ pending/skipped به‌عنوان PASS حساب نمی‌شود.
 
-## نقطه دقیق ادامه
-1. final V3 Runtime contract را از روی نیاز مصرف‌کننده و historical CLI/state/SCM semantics تعریف کن؛ هیچ business mutation یا direct Local business-table write وارد آن نشود.
-2. برای Print Agent، subset نهایی V3 از Print API v4/loopback behavior را مشخص کن و exact request/response/state schemas + compatibility vectors را بساز.
-3. semantics بالغ `accept -> start -> report`, durable receipt/content hash, unknown/recovery_hold و submission fence ضعیف نشوند.
-4. بعد از executable شدن Runtime/Print contracts، M1 exit gate را ارزیابی کن؛ قبل از آن producer/consumer implementation را بین componentها جابه‌جا نکن.
-5. بعد از بسته‌شدن M1، طبق `MIGRATION_SLICES.md` وارد M2 Local Core شو.
+## Exit gate M1
+M1 فقط وقتی بسته است که:
+1. چهار خانواده Realtime / Deferred / Runtime / Print contract evidence اجرایی داشته باشند؛
+2. Contracts + Foundation gates روی head شامل همه فایل‌های بالا SUCCESS باشند؛
+3. هیچ producer/consumer implementation قبل از contract به‌صورت موازی/حدسی migrate نشده باشد؛
+4. manifest و migration docs همین boundaryها را منعکس کنند.
+
+بعد از تحقق این gate، قدم بعدی **M2 — Local Core** است: bootstrap/config، Local DB/schema owner، users/capabilities/preparation-area authority، observability/health primitives و business-service bootstrapping؛ بدون Windows/Winspool/SCM ownership و بدون redesign UI.
 
 ## نکته handoff
-اگر چت یا Agent عوض شد، از PR #1، این فایل، `docs/migration/MIGRATION_SLICES.md` و `contracts/manifest.json` ادامه بده؛ حافظه گفتگو مرجع پروژه نیست.
+اگر چت یا Agent عوض شد، از PR #1، این فایل، `docs/migration/MIGRATION_SLICES.md`، `contracts/manifest.json` و ADR-0001 ادامه بده؛ حافظه گفتگو مرجع پروژه نیست.
