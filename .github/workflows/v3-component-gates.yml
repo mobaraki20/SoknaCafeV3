@@ -158,6 +158,9 @@ jobs:
           SOKNA_TEST_DB_USER: sokna
           SOKNA_TEST_DB_PASS: sokna
         run: php tests/public-mysql-migration-selftest.php
+      - name: Validate M4 signed Guest media/publish/availability ownership
+        env: *public_db_env
+        run: php tests/public-m4-guest-publish-selftest.php
       - name: Validate M3 authoritative auth projection sync
         env: *public_db_env
         run: php tests/public-auth-projection-selftest.php
