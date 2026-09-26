@@ -10,25 +10,22 @@ PUBLIC = ROOT / "apps" / "public"
 CORE = PUBLIC / "src" / "Core"
 AUTH = PUBLIC / "src" / "Auth"
 SECURITY = PUBLIC / "src" / "Security"
+HTTP = PUBLIC / "src" / "Http"
 MIGRATION = PUBLIC / "database" / "migrations" / "0001_m3_public_edge_core.sql"
 
 required = [
     PUBLIC / "bootstrap.php",
-    CORE / "Config.php",
-    CORE / "Database.php",
-    CORE / "Migrations.php",
-    CORE / "Bootstrap.php",
-    AUTH / "AuthProjectionService.php",
-    AUTH / "AuthThrottle.php",
-    AUTH / "AuthSecurityAudit.php",
-    AUTH / "PublicSessionStore.php",
-    AUTH / "PublicLoginService.php",
+    CORE / "Config.php", CORE / "Database.php", CORE / "Migrations.php", CORE / "Bootstrap.php",
+    AUTH / "AuthProjectionService.php", AUTH / "AuthThrottle.php", AUTH / "AuthSecurityAudit.php",
+    AUTH / "PublicSessionStore.php", AUTH / "PublicLoginService.php",
     SECURITY / "SignedLocalRequestVerifier.php",
+    HTTP / "AuthHttpAdapter.php",
     MIGRATION,
     ROOT / "tests" / "public-mysql-migration-selftest.php",
     ROOT / "tests" / "public-auth-projection-selftest.php",
     ROOT / "tests" / "public-login-selftest.php",
     ROOT / "tests" / "public-signed-local-request-selftest.php",
+    ROOT / "tests" / "public-auth-http-adapter-selftest.php",
 ]
 missing = [str(path.relative_to(ROOT)) for path in required if not path.is_file()]
 if missing:
@@ -74,20 +71,27 @@ for token in ("unknown_installation", "bad_signature", "replay_detected", "isDup
 if "catch (PDOException $e)" not in signed_source or "if ($this->isDuplicateKey($e))" not in signed_source:
     raise SystemExit("Nonce insert no longer distinguishes duplicate-key replay from infrastructure failure")
 
+adapter_source = (HTTP / "AuthHttpAdapter.php").read_text(encoding="utf-8")
+for forbidden_logic in ("password_verify", "INSERT INTO", "UPDATE auth_projections", "DELETE FROM auth_login_throttle"):
+    if forbidden_logic in adapter_source:
+        raise SystemExit(f"HTTP adapter duplicated service-owned auth logic: {forbidden_logic}")
+for delegated_call in ("signedLocalRequests()->verify", "authProjections()->sync", "loginService()->login"):
+    if delegated_call not in adapter_source:
+        raise SystemExit(f"HTTP adapter no longer delegates to canonical service: {delegated_call}")
+
 php = shutil.which("php")
 if php is None:
     raise SystemExit("PHP CLI is required for the Public M3 gate")
 php_files = [
     PUBLIC / "bootstrap.php",
-    *sorted(CORE.glob("*.php")),
-    *sorted(AUTH.glob("*.php")),
-    *sorted(SECURITY.glob("*.php")),
+    *sorted(CORE.glob("*.php")), *sorted(AUTH.glob("*.php")), *sorted(SECURITY.glob("*.php")), *sorted(HTTP.glob("*.php")),
     ROOT / "tests" / "public-mysql-migration-selftest.php",
     ROOT / "tests" / "public-auth-projection-selftest.php",
     ROOT / "tests" / "public-login-selftest.php",
     ROOT / "tests" / "public-signed-local-request-selftest.php",
+    ROOT / "tests" / "public-auth-http-adapter-selftest.php",
 ]
 for path in php_files:
     subprocess.run([php, "-l", str(path)], cwd=ROOT, check=True)
 
-print("Public M3 persistence/auth/security contract: OK")
+print("Public M3 persistence/auth/security/http contract: OK")

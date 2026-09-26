@@ -31,7 +31,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Determine changed paths
         id: diff
         shell: bash
@@ -57,7 +56,6 @@ jobs:
           echo "head=$HEAD_SHA"
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-files.txt
           cat changed-files.txt
-
       - name: Map paths to V3 owners
         id: impact
         run: python3 tests/component-impact.py --files changed-files.txt --github-output "$GITHUB_OUTPUT"
@@ -136,7 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/validate-v3-foundation.py --component public
-      - name: Validate M3 Public persistence/auth/security contracts
+      - name: Validate M3 Public persistence/auth/security/http contracts
         run: python3 tests/public-m3-contract.py
       - name: Ensure PDO MySQL is available
         shell: bash
@@ -163,6 +161,9 @@ jobs:
       - name: Validate M3 signed Local HMAC and durable replay guard
         env: *public_db_env
         run: php tests/public-signed-local-request-selftest.php
+      - name: Validate M3 auth HTTP adapters
+        env: *public_db_env
+        run: php tests/public-auth-http-adapter-selftest.php
 
   runtime:
     name: Windows Runtime gate (foundation stage)
