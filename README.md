@@ -41,8 +41,9 @@ Current state:
 - M5.4 Preparation permission/action owner: complete.
 - M5.5 Inventory: complete.
 - M5.6 Supply/Purchase: complete.
-- M5.7 Tax: complete; verified by M5 Tax Gate `36259999682` and V3 Component Gates push `36259996859`.
-- Next ordered slice: **M5.8 — Expenses**.
+- M5.7 Tax: complete.
+- M5.8 Expenses: complete; verified by M5 Expenses Gate `36260585942`.
+- Next ordered slice: **M5.9 — Financial Periods**.
 
 Historical status files remain evidence, but they are not continuation authority when they disagree with `CURRENT_CONTINUATION_FA.md`.
 
