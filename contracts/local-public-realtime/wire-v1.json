@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "source_protocol": "sokna-relay-v1",
+  "source_baseline": {
+    "repository": "mobaraki20/SoknaCafe",
+    "branch": "work/reconcile-dev39",
+    "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "source": "includes/relay_protocol.php"
+  },
+  "status": "extracted_legacy_wire_contract_for_v3_review",
+  "authentication": {
+    "algorithm": "HMAC-SHA256",
+    "headers": {
+      "timestamp": "X-SOKNA-TIMESTAMP",
+      "nonce": "X-SOKNA-NONCE",
+      "signature": "X-SOKNA-SIGNATURE"
+    },
+    "signature_base_lines": [
+      "sokna-relay-v1",
+      "UPPERCASE_TRIMMED_HTTP_METHOD",
+      "NORMALIZED_PATH_WITH_LEADING_SLASH",
+      "TRIMMED_TIMESTAMP",
+      "TRIMMED_NONCE",
+      "SHA256_RAW_HTTP_BODY_HEX"
+    ],
+    "separator": "\\n",
+    "default_clock_skew_seconds": 300,
+    "replay_guard": "durable_nonce_guard_required"
+  },
+  "request_envelope": {
+    "required": ["request_id", "kind", "created_at", "expires_at", "payload", "actor_projection_id_or_session_id"],
+    "optional": ["expected_version", "expected_state", "correlation_id"],
+    "request_id": {
+      "max_length": 96,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "payload_type": "object",
+    "expected_version_types": ["integer", "string"],
+    "expected_state_type": "string",
+    "time_rule": "expires_at must parse and be strictly after created_at"
+  },
+  "states": {
+    "workflow": ["queued", "claimed", "committed", "rejected", "expired", "cancelled", "unknown_review"],
+    "terminal": ["committed", "rejected", "expired", "cancelled", "unknown_review"]
+  },
+  "kinds": [
+    "guest_order.submit",
+    "guest_order.list",
+    "guest_order.status",
+    "guest_table.context",
+    "waiter_call.create",
+    "waiter_call.status",
+    "waiter_call.cancel",
+    "order.edit",
+    "order.cancel",
+    "settlement.commit",
+    "preparation.mutate",
+    "table_draft.get",
+    "table_draft.create",
+    "table_draft.edit",
+    "table_draft.finalize",
+    "table_draft.cancel"
+  ],
+  "historical_routes": {
+    "remote_enqueue": "/api/v1/realtime/enqueue.php",
+    "remote_result": "/api/v1/realtime/result.php",
+    "local_claim": "/api/v1/local/claim.php",
+    "local_ack": "/api/v1/local/ack.php"
+  },
+  "semantic_invariants": [
+    "Local revalidates terminal/expiry state before business mutation.",
+    "Claim lease expiry permits re-claim, not duplicate business commit.",
+    "Business effect is idempotent by request_id.",
+    "Client success requires a terminal committed result, not enqueue success.",
+    "Ambiguity after transport failure is resolved by result lookup; no surprise commit after expiry.",
+    "This state machine is never merged with deferred-safe work."
+  ],
+  "v3_note": "This file captures proven legacy wire semantics for migration. Endpoint names and final V3 version remain draft until producer/consumer implementation and compatibility tests are migrated."
+}
