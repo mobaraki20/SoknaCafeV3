@@ -35,7 +35,7 @@ $secretMessage = 'password=do-not-leak db-host=internal';
 $safe = SafeErrors::fromThrowable(new RuntimeException($secretMessage), $correlationId);
 $encoded = json_encode($safe, JSON_UNESCAPED_SLASHES);
 if (!is_string($encoded)) public_health_fail('Safe error encoding failed.');
-if (str_contains($encoded, 'do-not-leak') || str_contains($encoded, 'internal') || str_contains($encoded, 'RuntimeException')) {
+if (str_contains($encoded, 'password=do-not-leak') || str_contains($encoded, 'db-host=internal') || str_contains($encoded, 'RuntimeException')) {
     public_health_fail('Safe error leaked exception detail.');
 }
 if ((int)($safe['status'] ?? 0) !== 500 || ($safe['body']['error'] ?? '') !== 'public_internal_error') public_health_fail('Safe error taxonomy drifted.');
