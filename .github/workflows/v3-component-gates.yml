@@ -72,14 +72,15 @@ jobs:
         run: python3 tests/validate-v3-foundation.py
 
   local:
-    name: Local Web gate (foundation stage)
+    name: Local Web gate (M2)
     needs: [changes, foundation]
     if: needs.changes.outputs.local == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/validate-v3-foundation.py --component local
-      - run: echo 'Local implementation/build suite will be registered when the first audited Local slice is migrated; no product-test claim is made by this foundation gate.'
+      - name: Validate M2 Local Core ownership and executable bootstrap
+        run: python3 tests/local-core-contract.py
 
   public:
     name: Public gate (foundation stage)
