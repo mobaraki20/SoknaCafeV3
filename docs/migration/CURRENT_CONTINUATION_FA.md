@@ -12,23 +12,20 @@
 
 ## آخرین checkpoint تأییدشده
 
-- Contract reconciliation commit: `ebceeacf21ebdc6996634d113f6cac4a3d5a7083`
-- GitHub Actions workflow: `36216627352`
+- Head: `931ec31adc2b8769d4786d8f79fcf79ce5b4eb60`
+- GitHub Actions workflow: `36217446207`
 - Workflow: `V3 Component Gates`
 - Result: `SUCCESS`
 
-این checkpoint، EOR-01 تا EOR-03 را در سطح contract/evidence می‌بندد:
-
-- capability map با dev.39 reconcile شد؛
-- HMAC observable taxonomy با baseline reconcile شد؛
-- fixture مستقل با provenance دقیق dev.39 به gate اضافه شد.
+این checkpoint شامل contract reconciliation، Local Core parity reconciliation، ADR امنیتی Auth Projection و disposition ناظر بیرونی است.
 
 ## Slice status
 
 - F0: COMPLETE at foundation level.
 - M1: COMPLETE at contract-extraction / executable-boundary level.
 - M2: COMPLETE at Local Core slice level.
-- M3: NEXT ordered implementation slice after observer reconciliation.
+- Observer reconciliation: COMPLETE for M3 blockers; EOR-06/EOR-08 remain later acceptance/governance items.
+- M3: **IN PROGRESS** — Public Edge Persistence, Auth Projection and Relay Transport.
 - M4..M10: planned / not complete.
 
 M2 completion به معنی migrate شدن Orders/Preparation/Inventory/Finance نیست.
@@ -38,19 +35,23 @@ M2 completion به معنی migrate شدن Orders/Preparation/Inventory/Finance 
 - EOR-01: `REGRESSION_FIXED`
 - EOR-02: `REGRESSION_FIXED`
 - EOR-03: `REGRESSION_FIXED`
-- EOR-04: this file is the single continuation authority; top-level entrypoints must point here.
-- EOR-05: proven Local Core parity items are being restored; transient authenticated-session DB failure behavior remains intentionally preserved pending an explicit security decision.
-- EOR-06: deferred to upgrade/recovery qualification; not an M3 design blocker.
-- EOR-07: must be closed before Public login/auth projection implementation in M3.
-- EOR-08: release-governance item; not a domain-migration blocker.
-- EOR-09: M8 constraint remains local/machine-bound Print Agent with mature behavior reuse; no Public/Internet control.
-- EOR-10: informational staging clarification.
-- EOR-11: lower-priority hardening items.
+- EOR-04: `REGRESSION_FIXED` — this file is the single continuation authority; README/START_HERE point here.
+- EOR-05: `REGRESSION_FIXED` for five proven parity items; transient authenticated-session DB failure behavior remains intentionally `PRESERVED` per M2.
+- EOR-06: deferred to M10 upgrade/recovery qualification.
+- EOR-07: `PRESERVED` with explicit V3 security boundary in `docs/adr/0003-public-auth-projection-strategy.md`.
+- EOR-08: deferred release-governance item; not a domain-migration blocker.
+- EOR-09: local/machine-bound Print Agent constraint preserved for M8; mature Pagent behavior is reuse evidence.
+- EOR-10: staged-migration clarification preserved.
+- EOR-11: hardening backlog; address when affected boundaries are touched.
 
-## Immediate continuation
+Canonical disposition record:
+`docs/reviews/EXTERNAL_OBSERVER_DISPOSITION_2026-09-26_FA.md`
 
-1. Finish EOR-04/EOR-05 parity and evidence.
-2. Close EOR-07 with an explicit auth-projection ADR before migrating Public login.
-3. Start M3 Public Edge persistence/auth projection/relay transport on the reconciled M1 contracts.
-4. Keep Realtime and Deferred stores/state machines separate.
-5. Keep Local as final Business Authority.
+## Immediate continuation — M3
+
+1. Migrate only Public-owned persistence from dev.39 baseline: installations, auth projections, Public sessions, Realtime relay queue, request nonce/replay storage, heartbeats/connectivity metadata and Deferred-safe queue.
+2. Do **not** pull M4 guest publish/remote read-model tables into M3 merely because they share the historical schema file.
+3. Preserve ADR 0003 remote-login semantics: Local remains identity/capability authority; Public stores only the minimal verifier projection needed for remote login.
+4. Bind Realtime and Deferred implementations to the reconciled M1 contracts; keep their persistence/state machines separate.
+5. Add a real MariaDB Public gate before claiming any M3 persistence milestone complete.
+6. Keep Local as final Business Authority for all canonical business mutations.
