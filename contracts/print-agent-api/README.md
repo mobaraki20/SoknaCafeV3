@@ -6,17 +6,53 @@ The V3 Print Agent is a separate Windows deployable that owns durable print subm
 
 ## Frozen boundary
 
-- Local Web decides what business document/ticket should be printed and submits through the versioned contract.
-- Print Agent owns durable submission fence/state, local execution state, driver/spooler interaction and device diagnostics.
-- Windows Runtime may start/stop/health-check/supervise the Print Agent but must not duplicate its spooler state machine.
+- Local Web decides what business document/ticket should be printed and exposes the versioned server contract consumed by Print Agent.
+- Print Agent owns durable local receipt/submission fence, local execution state, driver/spooler interaction and device diagnostics.
+- Windows Runtime may supervise the Print Agent service lifecycle but must not duplicate its spooler/attempt state machine.
 - Print Agent does not decide whether an order/settlement is business-valid.
 - Printing failure does not corrupt or roll back unrelated committed business state.
 - Business receipt and preparation ticket are different document semantics; tax belongs to business receipt, not preparation ticket.
+- Browser/device-local wake and preview are a separate paired loopback subprotocol, never a second durable submission path.
 
-## Historical source
+## M1 executable contracts
 
-Audit the mature historical print state machine across `runtime/print-worker/source/`, `print-agent/v4/`, shared print contracts and the Pagent 6.2.5 lineage. V3 intentionally changes deployment ownership from the dev.39 internal Print Worker composition to a separate deployable Print Agent while preserving proven execution semantics.
+- Historical audit: `historical-audit-v1.json`
+- Retained Local server/Agent protocol: `server-wire-v4.json`
+- Paired loopback wake/preview protocol: `loopback-v1.json`
+- Compatibility vectors: `compatibility-vectors-v4.json`
+- CI gates: `tests/runtime-print-contract-audit.py` and `tests/runtime-print-v1-contract.py`
 
-## Draft work still required
+### Retained Print API v4 actions
 
-Before stability define request envelope, document payload/version, idempotency/submission key, result/health schema, queue/retry semantics, spooler state mapping, authentication, service-supervision surface and backward-compatibility tests. Physical-printer UAT remains a distinct release gate.
+`probe`, `heartbeat`, `claim`, `claim_reconcile`, `attempt_status`, `renew`, `accept`, `start`, `report`.
+
+The retained safety sequence is:
+
+`claim/reserve -> durable local persistence -> accept(receipt + content hash) -> start -> physical spooler execution -> report`
+
+Critical semantics preserved:
+- mutation `request_id` is body-fingerprinted/idempotent;
+- destination snapshot cannot silently change after claim;
+- durable `local_receipt_id` + `content_sha256` fence is established before physical execution;
+- ambiguous physical outcomes become durable `unknown` / `recovery_hold` rather than blind automatic reprints;
+- report delivery can retry independently from physical printing;
+- server identity/scope binding prevents a backlog from silently moving to an unrelated server.
+
+### Retained loopback v1
+
+- `/v1/wake` is a bounded, paired-origin nudge only; durable jobs are still obtained through Print API v4.
+- `/v1/preview` is bounded device-local rendering and does not create a print attempt or mutate business state.
+
+## Historical source and ownership correction
+
+The mature historical state machine comes from `runtime/print-worker/source/`, `print-agent/v4/`, shared print contracts and the Pagent lineage. V3 intentionally rejects the dev39 packaging statement that Print Worker is an internal Local component. The execution owner is `windows/print-agent`; Runtime supervision does not change that ownership.
+
+## Still draft / later gates
+
+M1 executable contract evidence does not claim implementation migration or release readiness. Later gates still include:
+- actual separate-deployable service implementation and upgrade/repair lifecycle;
+- secret/token provisioning and rotation;
+- durable SQLite/state migration and recovery tests;
+- Winspool/driver restart/failure tests;
+- physical-printer UAT;
+- Local/Agent compatible-version negotiation during staged update/rollback.
