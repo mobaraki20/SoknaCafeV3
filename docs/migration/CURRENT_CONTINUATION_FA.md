@@ -10,25 +10,32 @@
 - Active V3 branch: `architecture/v3-foundation`
 - Active PR: `#1`
 
-## آخرین checkpoint تأییدشده
+## آخرین checkpoint اجرایی تأییدشده
 
-- Head: `07757f037ece5c71097cafb0f3dcc1d21ae4dcdf`
-- GitHub Actions workflow: `36241108219`
-- Workflow: `V3 Component Gates`
-- Result: `SUCCESS`
+M4 implementation/exit checkpoint:
 
-این checkpoint شامل M3 کامل در سطح Public Edge است: Public persistence/migrations، Auth Projection و session/throttle/audit، HMAC/replay guard، heartbeat/connectivity، Realtime transport، Deferred-safe transport و Public health/safe-error boundary.
+- Head: `08119caa741916badac997350aa71e8c4ee72822`
+- `V3 Component Gates`: run `36244318018` — **SUCCESS**
+- `M4 Guest Renderer Gate`: run `36244318015` — **SUCCESS**
+- `M4 Failure Isolation Gate`: run `36244318053` — **SUCCESS**
+
+Canonical M4 closure evidence:
+`docs/migration/M4_CLOSURE_EVIDENCE_FA.md`
+
+این checkpoint شامل Guest/Public M4 است: immutable publish/media revisions، atomic active revision، availability projection، Guest runtime/degraded state، Remote Read Models با scope filtering، Guest compatibility روی M3 Realtime، SCDS Guest renderer و failure-isolation exit scenarios.
 
 ## Slice status
 
 - F0: COMPLETE at foundation level.
 - M1: COMPLETE at contract-extraction / executable-boundary level.
 - M2: COMPLETE at Local Core slice level.
-- M3: **COMPLETE at Public Edge slice level; exit gate satisfied.**
-- M4: **NEXT** — Guest Publish, Guest Runtime and Remote Read Models.
-- M5..M10: planned / not complete.
+- M3: COMPLETE at Public Edge transport/auth/projection slice level.
+- M4: **COMPLETE — Guest Publish/Runtime/Remote Read Models exit gate satisfied.**
+- M5: **NEXT — Local Business Domains in dependency order.**
+- M6: continuous SCDS cross-cutting track.
+- M7..M10: planned / not complete.
 
-تکمیل M2/M3 به معنی migrate شدن business-domain ownerهای Orders/Preparation/Inventory/Supply/Finance نیست؛ Local همچنان مرجع نهایی mutationهای کسب‌وکار است و آن ownerها در sliceهای بعدی منتقل می‌شوند.
+تکمیل M4 به معنی migrate شدن business-domain ownerهای Orders/Preparation/Inventory/Supply/Finance نیست. Local همچنان مرجع نهایی mutationهای کسب‌وکار است و همین ownerها موضوع M5 هستند.
 
 ## Observer reconciliation
 
@@ -47,15 +54,39 @@
 Canonical disposition record:
 `docs/reviews/EXTERNAL_OBSERVER_DISPOSITION_2026-09-26_FA.md`
 
-## Immediate continuation — M4
+## Immediate continuation — M5
 
-1. Audit the historical Guest Publish/Guest Runtime/Remote Read Model owners from the selected dev.39 baseline before moving code.
-2. Keep Local as source/publish-decision owner; Public may own immutable published snapshots/media, availability projection and remote read-model storage/runtime only.
-3. Migrate `guest_publish_revisions`, `guest_active_revisions`, `guest_availability_state` and `remote_read_models` only inside M4, with explicit ownership and migration tests.
-4. Preserve atomic active-revision switching and degraded read-only behavior when Local/Internet availability changes.
-5. Apply SCDS rule `Audit -> Correct -> Standardize -> Migrate -> Enforce`; do not blindly copy legacy guest CSS/markup or create a second renderer authority.
-6. Remote read models must remain filtered by projected capability/preparation-area scope and must never become mutation/business authority.
-7. Do not start M5 business-domain movement or M7/M8/M9 implementation as a substitute for completing the M4 exit gate.
+M5 must be executed as dependency-ordered sub-slices, not a bulk directory move.
 
-M3 evidence and exit decision:
-`docs/migration/M3_PUBLIC_EDGE_AUDIT_FA.md`
+### M5.1 — Explicit Sellables first
+
+1. Audit historical owner/behavior before code movement:
+   - `includes/sellable.php`
+   - `items` schema/usage
+   - `admin/items.php`
+   - menu/catalog paths that infer sellability.
+2. Freeze explicit `menu_item` / `service_item` semantics and identify every legacy inference from category/station/name/recipe that must be retired rather than copied.
+3. Define the canonical Local service/repository/data migration owner under `apps/local-web`; Public receives only published projection data through already-migrated M4 boundaries.
+4. Add migration and regression gates for historical order/receipt compatibility before changing canonical Orders.
+5. If user-facing admin/catalog surfaces are touched, migrate them through SCDS in the same sub-slice; do not defer UI correction.
+6. Update `MIGRATION_MATRIX.csv` only when implementation evidence supports the status change.
+
+### Then M5 dependency order
+
+After Sellables exit gate:
+
+1. canonical Orders services;
+2. Staff Quick Order + Table Draft;
+3. Preparation permission/action owner;
+4. Inventory;
+5. Supply/Purchase;
+6. Expenses;
+7. Financial periods/Settlement/Reconciliation;
+8. Tax/cross-domain finance integration;
+9. Accommodation/Center adapters.
+
+Do not start M7/M8/M9 implementation as a substitute for M5 domain migration.
+
+## Failure-isolation note carried forward
+
+M4 proved boundary-level Local-down/Public-down/Internet-or-sync-loss behavior. It did **not** claim packet-level NIC/DNS/proxy/browser chaos qualification; that remains explicit M10 release-qualification work.
