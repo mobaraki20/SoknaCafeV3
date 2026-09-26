@@ -10,6 +10,7 @@ use Sokna\Local\Domain\Orders\OrderCatalogService;
 use Sokna\Local\Domain\Orders\OrderCommitService;
 use Sokna\Local\Domain\Orders\StaffQuickOrderService;
 use Sokna\Local\Domain\Orders\TableDraftService;
+use Sokna\Local\Relay\TableDraftRealtimeAdapter;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 
 final class Bootstrap
@@ -25,6 +26,7 @@ final class Bootstrap
     private ?OrderCommitService $orders = null;
     private ?StaffQuickOrderService $staffQuickOrders = null;
     private ?TableDraftService $tableDrafts = null;
+    private ?TableDraftRealtimeAdapter $tableDraftRealtime = null;
 
     private function __construct(
         private readonly Config $config,
@@ -113,6 +115,11 @@ final class Bootstrap
     public function tableDrafts(): TableDraftService
     {
         return $this->tableDrafts ??= new TableDraftService($this->database(), $this->orderCatalog(), $this->staffQuickOrders());
+    }
+
+    public function tableDraftRealtime(): TableDraftRealtimeAdapter
+    {
+        return $this->tableDraftRealtime ??= new TableDraftRealtimeAdapter($this->database(), $this->tableDrafts());
     }
 
     public function startSession(string $cookiePath = '/', ?bool $secure = null): void
