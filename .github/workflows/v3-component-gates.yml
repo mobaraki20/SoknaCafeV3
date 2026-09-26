@@ -162,6 +162,14 @@ jobs:
           SOKNA_TEST_DB_USER: sokna
           SOKNA_TEST_DB_PASS: sokna
         run: php tests/public-auth-projection-selftest.php
+      - name: Validate M3 login, session revocation, throttling and auth audit
+        env:
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m3
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/public-login-selftest.php
 
   runtime:
     name: Windows Runtime gate (foundation stage)
