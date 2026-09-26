@@ -55,6 +55,7 @@ jobs:
       - name: Syntax-check M5.8 owners
         run: |
           php -l apps/local-web/src/Domain/Expenses/ExpenseException.php
+          php -l apps/local-web/src/Domain/Finance/FinancialPeriodException.php
           php -l apps/local-web/src/Domain/Finance/FinancialPeriodIdentityService.php
           php -l apps/local-web/src/Domain/Expenses/ExpenseService.php
           php -l apps/local-web/src/Relay/DeferredReceiptService.php
