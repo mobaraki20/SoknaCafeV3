@@ -132,7 +132,7 @@ def validate_recovery(path:Path):
     r=load(path)
     if r.get('format')!='sokna-recovery-set-v1': raise ValueError('recovery_contract')
     excluded=set(r.get('excluded_machine_identity',[]))
-    mandatory={'runtime_machine_secret','print_agent_identity','tls_private_key','center_machine_signing_secret'}
+    mandatory={'runtime_machine_secret','print_agent_identity','tls_private_key'}
     if not mandatory.issubset(excluded): raise ValueError('machine_identity_not_excluded')
     b=r.get('business_backup',{});bp=Path(b.get('path',''))
     if not bp.is_file() or sha256(bp)!=b.get('sha256'): raise ValueError('business_backup_integrity')

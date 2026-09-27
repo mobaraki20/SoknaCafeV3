@@ -259,7 +259,7 @@ Suggested dependency order:
 7. Expenses;
 8. Financial periods/Settlement/Reconciliation;
 9. Tax and cross-domain finance integration;
-10. Accommodation/Center adapters.
+10. Accommodation adapter. SOKNA Center/Core is retired by final product decision and is not a migration target.
 
 Each sub-slice must migrate its UI through SCDS in the same slice when user-facing surfaces are touched. UI migration is not deferred to a final cosmetic phase.
 

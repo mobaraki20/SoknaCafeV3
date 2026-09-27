@@ -9,7 +9,6 @@
   "printAgentServiceName": "SoknaPrintAgent",
   "supervisePrintAgent": true,
   "triggers": [
-    {"key":"inventory.order_events","intervalSeconds":15},
-    {"key":"center.user_projection","intervalSeconds":60}
+    {"key":"inventory.order_events","intervalSeconds":15}
   ]
 }

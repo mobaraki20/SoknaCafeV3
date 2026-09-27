@@ -78,7 +78,7 @@ V3 ownership correction:
 
 ## 2. Historical coupling deliberately NOT copied into M2
 
-1. The legacy `bootstrap.php` eager load of Menu, Printing, Inventory, Supply, Expenses, Deferred, Settlement, Center, Accommodation and other domains.
+1. The legacy `bootstrap.php` eager load of Menu, Printing, Inventory, Supply, Expenses, Deferred, Settlement, legacy Center (now retired), Accommodation and other domains.
 2. The broad `includes/functions.php` aggregator as a new V3 platform owner.
 3. Registry, SCM, Winspool, driver lifecycle, elevated PowerShell or machine ACL provisioning inside Local Core.
 4. Public transport or Print Agent implementation inside Local Core.

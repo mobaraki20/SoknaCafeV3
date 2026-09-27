@@ -50,15 +50,17 @@
     "stop_rule": "stop process tree; failure to stop is fatal for repair continuation"
   },
   "historical_worker_registry": [
-    "push", "printing", "inventory", "backup", "relay", "relay_projection", "remote_read_models", "deferred_sync", "center_projection", "guest_availability"
+    "push", "printing", "inventory", "backup", "relay", "relay_projection", "remote_read_models", "deferred_sync", "guest_availability"
   ],
   "v3_ownership_correction": {
     "runtime_owner": "windows/runtime",
     "allowed": ["service supervision", "worker scheduling/triggers", "health", "diagnostics", "approved OS integration"],
     "forbidden": ["business policy", "business mutation ownership", "direct Local business-table writes", "Print Agent spooler/device state machine"],
     "worker_registry_note": "Historical process launching is evidence of supervision cadence only; each business worker/domain remains owned by Local or its explicit V3 component.",
-    "print_note": "Historical printing entry in the Runtime registry does not transfer Print Agent ownership to Runtime in V3."
+    "print_note": "Historical printing entry in the Runtime registry does not transfer Print Agent ownership to Runtime in V3.",
+    "retirement_note": "center_projection is historical evidence only; SOKNA Center/Core was cancelled before operational baseline and must not be implemented or configured in V3."
   },
+  "retired_historical_workers": ["center_projection"],
   "next_contract_work": [
     "choose versioned local transport only after consumer requirements are audited",
     "define machine-bound authentication and secret rotation",

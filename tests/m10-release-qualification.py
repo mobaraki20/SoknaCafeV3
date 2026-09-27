@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix='sokna-m10-') as td:
     rec=t/'recovery.json';rec.write_text(json.dumps({
       'format':'sokna-recovery-set-v1','created_at':'2026-09-26T00:00:00Z',
       'business_backup':{'path':str(business),'sha256':hashlib.sha256(business.read_bytes()).hexdigest()},
-      'excluded_machine_identity':['runtime_machine_secret','print_agent_identity','tls_private_key','center_machine_signing_secret']
+      'excluded_machine_identity':['runtime_machine_secret','print_agent_identity','tls_private_key']
     }),encoding='utf-8')
     run('verify-recovery',rec)
     badrec=t/'bad-recovery.json';badrec.write_text(json.dumps({'format':'sokna-recovery-set-v1','business_backup':{'path':str(business),'sha256':'0'*64},'excluded_machine_identity':[]}),encoding='utf-8')

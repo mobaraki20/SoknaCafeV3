@@ -81,7 +81,7 @@ initial handoff checked: `SOKNA_ARCHITECTURE_HANDOFF_STANDALONE_FINAL_R2_2026-09
 - **A27 — Printing business UI** [P1 / PARTIAL_REQUIRED]: Build Local printers/destinations/history/test/health UI
 - **A28 — Print templates / package** [P2 / MISSING_REQUIRED]: Migrate template manager and .soknaprint lifecycle on canonical renderer
 - **A31 — Accommodation integration** [P2 / PARTIAL_REQUIRED]: Migrate Local integration settings/status/log/UI and shared finance acceptance
-- **A32 — SOKNA Center** [P2 / PARTIAL_REQUIRED]: Migrate personnel/Center configuration/status/entitlement projection UI and worker
+- **A32 — SOKNA Center/Core — RETIRED / SUPERSEDED**: cancelled by final product decision before operational baseline; hard-removed across Local/Runtime/packaging/tests. Personnel remains an independent Local identity and is not tied to Center.
 - **A33 — Backup / business recovery** [P1 / CORE_COMPLETE_UI_MISSING]: Build recovery UI/workflow and support final componentized recovery set
 - **A34 — Machine takeover** [P1 / PARTIAL_CRITICAL]: Implement operational takeover/re-enrollment UI/API with Public Emergency path
 - **A47 — Module enable/disable** [P2 / PARTIAL_REQUIRED]: Implement module registry/settings lifecycle; history preserved; dependencies explicit

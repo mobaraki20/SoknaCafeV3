@@ -42,7 +42,7 @@ m10_assert((string)file_get_contents($backup, false, null, 0, 11)==="SOKNA-SKB1\
 m10_assert(strpos((string)file_get_contents($backup),$uname)===false,'plaintext business identity leaked into encrypted backup');
 $manifest=$core->businessBackup()->inspectEncrypted($backup,$secret);
 m10_assert(($manifest['source_installation_id']??'')==='m10-source-installation','backup installation identity drifted');
-foreach(['runtime_machine_secret','print_agent_identity','tls_private_key','center_machine_signing_secret'] as $excluded)
+foreach(['runtime_machine_secret','print_agent_identity','tls_private_key'] as $excluded)
     m10_assert(in_array($excluded,(array)($manifest['excluded_machine_identity']??[]),true),'machine identity exclusion missing: '.$excluded);
 $bad=false;try{$core->businessBackup()->inspectEncrypted($backup,'definitely-wrong-secret');}catch(RecoveryException $e){$bad=$e->errorCode==='backup_auth_failed';}
 m10_assert($bad,'wrong backup passphrase did not fail closed');

@@ -72,6 +72,8 @@ jobs:
         run: python3 tests/component-registry-gate.py
       - name: Validate canonical Product Parity inventory
         run: python3 tests/product-parity-gate.py --mode inventory
+      - name: Enforce retired SOKNA Center/Core absence
+        run: python3 tests/r1-center-hard-removal-gate.py
 
   local:
     name: Local Web gate (M2)

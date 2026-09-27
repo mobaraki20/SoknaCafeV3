@@ -150,7 +150,7 @@ Next exact action: publish the `9c6426e` stabilization delta (plus this handoff 
 
 - Do not recreate a second authority for Orders, Inventory, Supply, Tax, Expenses, Financial Periods, Settlement, Runtime or Printing.
 - M5.11 integration destinations are adapters over canonical Settlement, not alternate settlement owners.
-- Business backup excludes machine-bound Runtime/Print/TLS/Center signing identities; recovered machines must reprovision them.
+- Business backup excludes machine-bound Runtime/Print/TLS identities; recovered machines must reprovision them. SOKNA Center/Core is retired and has no machine identity.
 - Public owns transport/projection boundaries; Local owns canonical business state.
 - Installer is componentized; Local AppRoot must not become a copy of the monorepo.
 - Historical committed rows/snapshots must not be reinterpreted by later configuration changes.

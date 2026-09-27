@@ -42,6 +42,7 @@ REQUIRED_FILES = [
     "docs/product/CONTINUATION_STATE.json",
     "tests/component-registry-gate.py",
     "tests/product-parity-gate.py",
+    "tests/r1-center-hard-removal-gate.py",
 ]
 
 MATRIX_HEADERS = [

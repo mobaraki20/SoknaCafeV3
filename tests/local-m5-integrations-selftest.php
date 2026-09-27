@@ -23,7 +23,7 @@ $core=sokna_local_bootstrap([
 $core->migrations()->migrate();$pdo=$core->database();
 
 $tables=array_map('strval',$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
-foreach(['subscribers','subscriber_ledger','accommodation_transfers','center_projection_receipts','center_entitlement_cache'] as $t)m511_assert(in_array($t,$tables,true),"missing {$t}");
+foreach(['subscribers','subscriber_ledger','accommodation_transfers'] as $t)m511_assert(in_array($t,$tables,true),"missing {$t}");
 foreach([] as $later)m511_assert(!in_array($later,$tables,true),"M5.11 pulled later owner {$later} forward");
 
 $makeUser=function(string $name,string $role,array $caps)use($pdo):array{
@@ -99,14 +99,6 @@ $blocked=false;try{$core->settlements()->settle([
     'expected_session_id'=>$session3,'expected_remaining_total'=>$account3['remaining_total'],'expected_signature'=>$account3['signature'],
 ],$cashier);}catch(SettlementStateConflict $e){$blocked=$e->errorCode==='accommodation_transfer_open';}
 m511_assert($blocked,'ambiguous Accommodation transfer allowed alternate settlement and double-charge risk');
-
-$projection=$core->centerIntegration()->projection();m511_assert(preg_match('/^[a-f0-9]{64}$/',(string)$projection['source_version'])===1&&count($projection['users'])>=2,'Center projection is not deterministic/canonical');
-$core->centerIntegration()->recordProjectionAttempt($projection,'synced');
-$centerRow=(array)$pdo->query("SELECT state,user_count FROM center_projection_receipts WHERE source_version='".$projection['source_version']."'")->fetch(PDO::FETCH_ASSOC);
-m511_assert($centerRow['state']==='synced'&&(int)$centerRow['user_count']===count($projection['users']),'Center projection receipt missing');
-$unknown=$core->centerIntegration()->entitlementState((int)$cashier['id']);m511_assert($unknown['state']==='unknown','Center entitlement must fail closed before fresh remote evidence');
-$core->centerIntegration()->cacheEntitlement((int)$cashier['id'],true,'center-user-1',600);
-$allowed=$core->centerIntegration()->entitlementState((int)$cashier['id']);m511_assert($allowed['state']==='allow'&&!empty($allowed['fresh']),'Center entitlement cache did not preserve explicit allow evidence');
 
 $settlementSource=(string)file_get_contents(dirname(__DIR__).'/apps/local-web/src/Domain/Finance/SettlementService.php');
 m511_assert(!preg_match('/file_get_contents\(|stream_context_create|Authorization:/i',$settlementSource),'Settlement owner absorbed remote transport implementation');
