@@ -1,0 +1,116 @@
+name: F1 Final6 Real MariaDB Qualification
+
+on:
+  push:
+    branches:
+      - qualification/f1-real-db-754b49b
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualification:
+    name: F1.7 final6 MariaDB 11.4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: "%"
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: "3306"
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+
+    steps:
+      - name: Checkout qualification branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact final F1 qualification source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .qualification/g1-427be0b/part-* > /tmp/g1-overlay.b64
+          echo "ee4a9b53d1a9c06e664961e4fb7a15ad65f6d82954d6544fcef46d0d96410f8a  /tmp/g1-overlay.b64" | sha256sum -c -
+          base64 -d /tmp/g1-overlay.b64 > /tmp/g1-overlay.tar.gz
+          echo "52f89a4ed2e1c55d145d650fee47ff46fb5405d1a2ff22122798f1e2ed94580a  /tmp/g1-overlay.tar.gz" | sha256sum -c -
+          rm -rf /tmp/g1-overlay && mkdir -p /tmp/g1-overlay
+          tar -xzf /tmp/g1-overlay.tar.gz -C /tmp/g1-overlay
+          cp -a /tmp/g1-overlay/root/. ./
+          while IFS= read -r path; do
+            [[ -z "$path" ]] || rm -f -- "$path"
+          done < /tmp/g1-overlay/DELETE_PATHS.txt
+
+          cat .qualification/f1-754b49b/part-* > /tmp/f1-patch.b64
+          echo "45ad31996f6c0951071060fc2e7370bccfae35e649ae162abea8074d8e7e0708  /tmp/f1-patch.b64" | sha256sum -c -
+          base64 -d /tmp/f1-patch.b64 > /tmp/f1.patch.gz
+          echo "84d404f26258c56fb7b7081b61993ae43d5dbfcb21761d0ae7aaf30469244f1d  /tmp/f1.patch.gz" | sha256sum -c -
+          gzip -dc /tmp/f1.patch.gz > /tmp/f1.patch
+          echo "2c78492522994cf6f0d67a1a1385898cd8930dd7d8becc631cdaa219f695cc51  /tmp/f1.patch" | sha256sum -c -
+          git apply --check /tmp/f1.patch
+          git apply /tmp/f1.patch
+
+          for patch in fix-40953.patch fix-11e29a3.patch fix-db0c49b.patch fix-6b5f7e7.patch fix-c851eb4.patch; do
+            git apply --check ".qualification/f1-754b49b/$patch"
+            git apply ".qualification/f1-754b49b/$patch"
+          done
+
+          mkdir -p docs/product
+          cp .qualification/g1-427be0b/docs-product-COMPLETION_STATUS_POLICY_FA.md docs/product/COMPLETION_STATUS_POLICY_FA.md
+          cp .qualification/g1-427be0b/docs-product-WORKSPACE_CHECKPOINT_POLICY_FA.md docs/product/WORKSPACE_CHECKPOINT_POLICY_FA.md
+          cp .qualification/g1-427be0b/docs-product-CONTINUATION_STATE.json docs/product/CONTINUATION_STATE.json
+          cp .qualification/g1-427be0b/tests-component-registry-gate.py tests/component-registry-gate.py
+          cp .qualification/g1-427be0b/COMPONENTS.v2.json COMPONENTS.json
+          chmod +x tests/run-f1-real-db-qualification.sh tests/run-g1-real-db-qualification.sh tests/component-registry-gate.py
+          echo "Qualification source local HEAD: c851eb418a27a34579cd601d7f650b4027b14afa"
+
+      - name: Ensure PHP pdo_mysql
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! php -r 'exit(in_array("mysql", PDO::getAvailableDrivers(), true) ? 0 : 1);'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+          php -v
+          php -r 'echo "PDO drivers: ".implode(",", PDO::getAvailableDrivers()).PHP_EOL;'
+
+      - name: Validate F1 qualification runner
+        run: python3 tests/f1-real-db-qualification-contract.py
+
+      - name: Run F1.7 real MariaDB qualification
+        shell: bash
+        run: |
+          set -o pipefail
+          ./tests/run-f1-real-db-qualification.sh 2>&1 | tee f1-real-db-qualification.log
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f1-real-db-qualification-final6-c851eb4
+          path: |
+            f1-real-db-qualification.log
+            docs/product/MASTER_CAPABILITY_MATRIX.json
+            docs/product/MASTER_CAPABILITY_MATRIX.csv
+          if-no-files-found: warn
+          retention-days: 14
