@@ -55,6 +55,7 @@ use Sokna\Local\Relay\GuestOrderRealtimeAdapter;
 use Sokna\Local\Relay\WaiterCallRealtimeAdapter;
 use Sokna\Local\Relay\RealtimeDispatchService;
 use Sokna\Local\Domain\Sellables\SellableRepository;
+use Sokna\Local\Domain\Sellables\CatalogAdminService;
 use Sokna\Local\Domain\Admin\AdminControlService;
 
 final class Bootstrap
@@ -66,6 +67,7 @@ final class Bootstrap
     private ?Migrations $migrations = null;
     private ?AdminControlService $adminControls = null;
     private ?SellableRepository $sellables = null;
+    private ?CatalogAdminService $catalogAdmin = null;
     private ?BusinessClock $businessClock = null;
     private ?OrderCatalogService $orderCatalog = null;
     private ?OrderCommitService $orders = null;
@@ -177,6 +179,11 @@ final class Bootstrap
     public function sellables(): SellableRepository
     {
         return $this->sellables ??= new SellableRepository($this->database());
+    }
+
+    public function catalogAdmin(): CatalogAdminService
+    {
+        return $this->catalogAdmin ??= new CatalogAdminService($this->database(), $this->identityRepository());
     }
 
     public function businessClock(): BusinessClock
