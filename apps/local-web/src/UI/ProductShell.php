@@ -33,6 +33,7 @@ final class ProductShell
         $items=[['id'=>'home','label'=>'خانه','href'=>'/']];
         if(self::any($core,$user,['orders_floor','cashier_accounts','shift_supervision']))$items[]=['id'=>'operator','label'=>'کار روزانه','href'=>'/operator/'];
         if($core->auth()->hasCapability('orders_floor',$user))$items[]=['id'=>'staff','label'=>'سفارش سریع','href'=>'/staff/'];
+        if(self::any($core,$user,['staff_consumption_self','staff_consumption_proxy','staff_benefit_manage','staff_account_manage','staff_consumption_reports']))$items[]=['id'=>'staff-consumption','label'=>'مصرف پرسنل','href'=>'/staff-consumption/'];
         if($core->auth()->hasCapability('preparation',$user))$items[]=['id'=>'preparation','label'=>'آماده‌سازی','href'=>'/waiter/'];
         if(self::any($core,$user,['inventory_operations','inventory_finalize','inventory_manage','preparation','shift_supervision']))$items[]=['id'=>'operations','label'=>'انبار و تأمین','href'=>'/operations/'];
         if((string)($user['role']??'')==='admin'||$core->auth()->hasCapability('cashier_accounts',$user)){

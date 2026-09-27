@@ -14,7 +14,7 @@ ProductShell::start($core,$user,'مدیریت','admin','کاربران، پرس�
   </section>
 
   <section class="sc-work-panel" data-panel="personnel" hidden>
-    <div class="sc-section-head"><div><h2>پرسنل</h2><p>پرسنل می‌تواند بدون حساب ورود وجود داشته باشد. این هویت پایه برای مزایا و مصرف پرسنلی آینده است.</p></div><button class="sc-button" type="button" data-open="personnel">پرسنل جدید</button></div>
+    <div class="sc-section-head"><div><h2>پرسنل</h2><p>پرسنل می‌تواند بدون حساب ورود وجود داشته باشد. این هویت پایه برای مزایا، مصرف پرسنلی و حساب مستقل پرسنل است.</p></div><button class="sc-button" type="button" data-open="personnel">پرسنل جدید</button></div>
     <div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>نام</th><th>سمت</th><th>کد</th><th>حساب متصل</th><th>وضعیت</th><th></th></tr></thead><tbody data-personnel></tbody></table></div>
   </section>
 

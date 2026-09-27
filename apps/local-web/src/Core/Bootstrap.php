@@ -66,6 +66,8 @@ use Sokna\Local\Domain\StaffConsumption\StaffAccountService;
 use Sokna\Local\Domain\StaffConsumption\StaffConsumptionFoundationService;
 use Sokna\Local\Domain\StaffConsumption\StaffConsumptionRepository;
 use Sokna\Local\Domain\StaffConsumption\StaffConsumptionPostingService;
+use Sokna\Local\Domain\StaffConsumption\StaffConsumptionWorkspaceService;
+use Sokna\Local\Domain\StaffConsumption\StaffConsumptionReportService;
 use Sokna\Local\Search\GlobalSearchService;
 use Sokna\Local\Search\CatalogSearchProvider;
 use Sokna\Local\Search\InventorySearchProvider;
@@ -91,6 +93,8 @@ final class Bootstrap
     private ?StaffConsumptionFoundationService $staffConsumptionFoundation = null;
     private ?StaffConsumptionRepository $staffConsumptionRepository = null;
     private ?StaffConsumptionPostingService $staffConsumptionPosting = null;
+    private ?StaffConsumptionWorkspaceService $staffConsumptionWorkspace = null;
+    private ?StaffConsumptionReportService $staffConsumptionReports = null;
     private ?GlobalSearchService $globalSearch = null;
     private ?SellableRepository $sellables = null;
     private ?CatalogAdminService $catalogAdmin = null;
@@ -260,6 +264,21 @@ final class Bootstrap
             $this->database(), $this->staffConsumptionFoundation(), $this->staffConsumptionRepository(),
             $this->orderCatalog(), $this->staffBenefitCalculation(), $this->orders(), $this->staffAccountService(),
             $this->inventoryOrders(), $this->printing()
+        );
+    }
+
+    public function staffConsumptionWorkspace(): StaffConsumptionWorkspaceService
+    {
+        return $this->staffConsumptionWorkspace ??= new StaffConsumptionWorkspaceService(
+            $this->database(), $this->identityRepository(), $this->capabilities(), $this->personnel(),
+            $this->staffConsumptionFoundation(), $this->orderCatalog(), $this->staffBenefitCalculation()
+        );
+    }
+
+    public function staffConsumptionReports(): StaffConsumptionReportService
+    {
+        return $this->staffConsumptionReports ??= new StaffConsumptionReportService(
+            $this->database(), $this->identityRepository(), $this->capabilities()
         );
     }
 
