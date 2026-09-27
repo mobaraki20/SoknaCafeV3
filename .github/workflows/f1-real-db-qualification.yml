@@ -62,11 +62,11 @@ jobs:
           done < /tmp/g1-overlay/DELETE_PATHS.txt
 
           cat .qualification/f1-754b49b/part-* > /tmp/f1-patch.b64
-          echo "88340a3d2db1305a5a7ca41f85288cba460d73b9394ed658803b07b412a231b5  /tmp/f1-patch.b64" | sha256sum -c -
+          echo "45ad31996f6c0951071060fc2e7370bccfae35e649ae162abea8074d8e7e0708  /tmp/f1-patch.b64" | sha256sum -c -
           base64 -d /tmp/f1-patch.b64 > /tmp/f1.patch.gz
-          echo "77dcc22fec6542661edc5f7a70e0c1c4602b56586d9d4caebe050f3b0729615b  /tmp/f1.patch.gz" | sha256sum -c -
+          echo "84d404f26258c56fb7b7081b61993ae43d5dbfcb21761d0ae7aaf30469244f1d  /tmp/f1.patch.gz" | sha256sum -c -
           gzip -dc /tmp/f1.patch.gz > /tmp/f1.patch
-          echo "056a8de856120ee4caaf1766ad632a9678d253d11f3184f466e1b85773b1ab18  /tmp/f1.patch" | sha256sum -c -
+          echo "2c78492522994cf6f0d67a1a1385898cd8930dd7d8becc631cdaa219f695cc51  /tmp/f1.patch" | sha256sum -c -
           git apply --check /tmp/f1.patch
           git apply /tmp/f1.patch
 
@@ -83,7 +83,7 @@ jobs:
 
           echo "6eaac2f423c3b74d68309c0a0cd8911eb565a809eee448e6862c8b053c9a0688  tests/run-f1-real-db-qualification.sh" | sha256sum -c -
           echo "02b0a18a4dccb6633c3d1c279889fdde5dc4f24678463f0cad194ef0cbe91c05  tests/f1-real-db-qualification-contract.py" | sha256sum -c -
-          echo "Qualification source local HEAD: 754b49b12454276c39ef4a81f3922608a3f26038"
+          echo "Qualification source local HEAD: cd00b72ad7d9d5150204e28e73c7ad3412d7b4c4"
 
       - name: Ensure PHP pdo_mysql
         shell: bash
@@ -111,7 +111,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: f1-real-db-qualification-754b49b
+          name: f1-real-db-qualification-cd00b72
           path: |
             f1-real-db-qualification.log
             docs/product/MASTER_CAPABILITY_MATRIX.json
