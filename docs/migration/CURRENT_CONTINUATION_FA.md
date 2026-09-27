@@ -27,6 +27,13 @@ Required read order there:
 The original initial handoff is durably stored at:
 `/SoknaCafeV3-Handoff/00-Canonical-History/SOKNA_ARCHITECTURE_HANDOFF_STANDALONE_FINAL_R2_2026-09-18.zip`
 
+## Master capability register
+
+- Canonical matrix: **50 capabilities** — 23 P0 / 15 P1 / 10 P2 / 2 P3.
+- Full CSV/JSON + audit + roadmap + continuation state: `/SOKNA_V3_CONTINUE_HERE__PRODUCT_GAP_CLOSURE/` in the project Library.
+- Initial handoff archive: `/SoknaCafeV3-Handoff/00-Canonical-History/SOKNA_ARCHITECTURE_HANDOFF_STANDALONE_FINAL_R2_2026-09-18.zip`.
+- Verified source hashes: initial handoff ZIP `9962187b9ab0f2a246f276aa5cac4e7ab971bfe08c7cd9b006efbe765094d945`; dev.26 ZIP `1a1d0723edb5cf2ebdb6e7f37925b08ca729d82ceb283089183fbca61439e4dc`.
+
 ## Important correction
 
 Automated M4–M10 evidence on `911d9700755508d23e30ff94fa7464eba6cfaa43` remains valid engineering evidence, but `3.0.0-rc.1` is **not** a Final Product RC. Manual UAT is not the next stage.
