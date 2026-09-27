@@ -1,0 +1,94 @@
+name: G1 Real MariaDB Qualification
+
+on:
+  push:
+    branches:
+      - qualification/g1-real-db-427be0b
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualification:
+    name: G1.7 real MariaDB 11.4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: "%"
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: "3306"
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+
+    steps:
+      - name: Checkout qualification branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact G1 qualification overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .qualification/g1-427be0b/part-* > /tmp/g1-overlay.b64
+          echo "ee4a9b53d1a9c06e664961e4fb7a15ad65f6d82954d6544fcef46d0d96410f8a  /tmp/g1-overlay.b64" | sha256sum -c -
+          base64 -d /tmp/g1-overlay.b64 > /tmp/g1-overlay.tar.gz
+          echo "52f89a4ed2e1c55d145d650fee47ff46fb5405d1a2ff22122798f1e2ed94580a  /tmp/g1-overlay.tar.gz" | sha256sum -c -
+          rm -rf /tmp/g1-overlay && mkdir -p /tmp/g1-overlay
+          tar -xzf /tmp/g1-overlay.tar.gz -C /tmp/g1-overlay
+          cp -a /tmp/g1-overlay/root/. ./
+          while IFS= read -r path; do
+            [[ -z "$path" ]] || rm -f -- "$path"
+          done < /tmp/g1-overlay/DELETE_PATHS.txt
+          test -x tests/run-g1-real-db-qualification.sh
+          echo "Qualification source local HEAD: 427be0b5e7ffbe1080418685f6ad7588a199ff81"
+
+      - name: Ensure PHP pdo_mysql
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! php -r 'exit(in_array("mysql", PDO::getAvailableDrivers(), true) ? 0 : 1);'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+          php -v
+          php -r 'echo "PDO drivers: ".implode(",", PDO::getAvailableDrivers()).PHP_EOL;'
+          python3 --version
+          node --version
+
+      - name: Validate frozen qualification runner contract
+        run: python3 tests/g1-real-db-qualification-contract.py
+
+      - name: Run G1.7 real MariaDB qualification
+        shell: bash
+        run: |
+          set -o pipefail
+          ./tests/run-g1-real-db-qualification.sh 2>&1 | tee g1-real-db-qualification.log
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g1-real-db-qualification-427be0b
+          path: g1-real-db-qualification.log
+          if-no-files-found: warn
+          retention-days: 14
