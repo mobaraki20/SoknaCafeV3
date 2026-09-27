@@ -63,6 +63,7 @@ require_once __DIR__ . '/src/Http/PrintAgentV4HttpAdapter.php';
 require_once __DIR__ . '/src/Http/RuntimeTriggerHttpAdapter.php';
 require_once __DIR__ . '/src/Domain/Finance/FinancialPeriodCloseService.php';
 require_once __DIR__ . '/src/Domain/Expenses/ExpenseService.php';
+require_once __DIR__ . '/src/Domain/Operations/OperationsWorkspaceService.php';
 require_once __DIR__ . '/src/Domain/Recovery/RecoveryException.php';
 require_once __DIR__ . '/src/Domain/Recovery/BusinessBackupService.php';
 require_once __DIR__ . '/src/Relay/ExpenseDeferredAdapter.php';

@@ -47,6 +47,26 @@ final class InventoryService
             && !$this->settingBoolTx('inventory_reconciliation_required',false);
     }
 
+    public function recordManualAdjustment(array $data,array $user): array
+    {
+        $this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertActor($user,'inventory_operations');$itemId=(int)($data['item_id']??0);
+            $item=$this->itemTx($itemId);if($item===null)throw new InventoryException('item_not_found','کالای انبار پیدا نشد.',404);
+            $kind=(string)($data['kind']??'count_adjustment');if(!in_array($kind,['waste','count_adjustment'],true))throw new InventoryException('invalid_movement','نوع اصلاح دستی معتبر نیست.',422);if(!$this->runtimeReadyTx())throw new InventoryException('inventory_not_ready','انبار برای اصلاح دستی آماده نیست.',409);
+            $base=self::majorToBase($data['quantity_major']??'',(string)$item['base_unit']);if($base<1)throw new InventoryException('invalid_quantity','مقدار عملیات باید بیشتر از صفر باشد.',422);
+            $direction=(string)($data['direction']??'remove');if(!in_array($direction,['add','remove'],true))throw new InventoryException('invalid_direction','جهت اصلاح موجودی معتبر نیست.',422);$quantity=$direction==='add'?$base:-$base;if($kind==='waste')$quantity=-$base;
+            $requestId=trim((string)($data['request_id']??''));if($requestId===''||strlen($requestId)>96)throw new InventoryException('request_id_required','شناسه یکتای عملیات موجودی معتبر نیست.',422);
+            $id=$this->recordMovementTx([
+                'item_id'=>$itemId,'movement_type'=>$kind,'quantity_base'=>$quantity,
+                'department'=>(string)($data['department']??''),'source_type'=>'manual_ui',
+                'source_id'=>$requestId,'idempotency_key'=>'inventory:manual:'.$requestId,
+                'note'=>(string)($data['note']??''),'actor_user_id'=>(int)$actor['id'],'occurred_at'=>(string)($data['occurred_at']??''),
+            ]);
+            $balance=$this->balanceTx($itemId);$this->pdo->commit();return ['movement_id'=>$id,'balance'=>$balance];
+        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
     public function recordMovement(array $data,array $user,string $capability='inventory_operations'): array
     {
         $this->pdo->beginTransaction();
