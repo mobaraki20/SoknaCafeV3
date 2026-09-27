@@ -1,2 +1,16 @@
 <?php
-declare(strict_types=1);$core=require __DIR__.'/_app.php';$user=$core->auth()->currentUser();if($user===null){header('Location: /login.php');exit;}?><!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>سکنا</title><link rel="stylesheet" href="/scds.php?file=tokens.css"><link rel="stylesheet" href="/scds.php?file=components.css"></head><body><main class="scds-page"><header class="scds-card" style="padding:var(--space-4)"><strong>سکنا</strong> — <?=htmlspecialchars((string)$user['display_name'],ENT_QUOTES,'UTF-8')?> <a href="/logout.php">خروج</a></header><section class="scds-card" style="margin-top:var(--space-4);padding:var(--space-5)"><h1>سامانه محلی آماده است</h1><p>مالکیت‌های V3 فعال‌اند و عملیات کسب‌وکار از Local Web انجام می‌شود.</p></section></main></body></html>
+declare(strict_types=1);
+use Sokna\Local\UI\LocalPage;
+use Sokna\Local\UI\ProductShell;
+$core=require __DIR__.'/_app.php';$user=LocalPage::user($core);ProductShell::start($core,$user,'خانه','home','مسیرهای کاری این حساب از همین‌جا در دسترس است.');
+$links=ProductShell::navigation($core,$user);
+?>
+<section class="sc-stack" aria-label="دسترسی‌های اصلی">
+  <div class="sc-launcher">
+  <?php foreach($links as $item): if($item['id']==='home')continue; ?>
+    <a class="sc-launcher__item" href="<?=htmlspecialchars($item['href'],ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>"><strong><?=htmlspecialchars($item['label'],ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?></strong><span>ورود به فضای کاری</span></a>
+  <?php endforeach; ?>
+  </div>
+  <?php if(count($links)===1): ?><div class="sc-alert">برای این حساب هنوز فضای کاری فعالی تعریف نشده است.</div><?php endif; ?>
+</section>
+<?php ProductShell::end(); ?>

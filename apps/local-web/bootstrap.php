@@ -71,6 +71,9 @@ require_once __DIR__ . '/src/Relay/SettlementRealtimeAdapter.php';
 require_once __DIR__ . '/src/Relay/GuestOrderRealtimeAdapter.php';
 require_once __DIR__ . '/src/Relay/WaiterCallRealtimeAdapter.php';
 require_once __DIR__ . '/src/Relay/RealtimeDispatchService.php';
+require_once __DIR__ . '/src/UI/SCDS.php';
+require_once __DIR__ . '/src/UI/LocalPage.php';
+require_once __DIR__ . '/src/UI/ProductShell.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_local_bootstrap(array $config): Bootstrap
