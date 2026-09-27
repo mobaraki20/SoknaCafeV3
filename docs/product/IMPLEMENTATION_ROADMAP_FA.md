@@ -25,12 +25,15 @@ Exit: agent can be asked for one component by name and knows exact scope/tests/p
 - users/settings/modules/tables/QR;
 - Local domain UIs for Orders/Preparation/Inventory/Supply/Expenses/Tax/Finance/Subscribers/Integrations/Printing.
 
-## G2 — Local Setup / Observability / Update
-- **G2.1 Browser Setup — IMPLEMENTATION COMPLETE / REAL DB QUALIFICATION DEFERRED TO G2.4**: standalone `/setup/`, preflight, MariaDB 11.4.x test/optional create, migrations, initial admin/config, installation identity, Runtime token/config, final health, valid lock and partial-setup resume.
-- **G2.2 Observability / Diagnostics — NEXT**: unified component health/log/diagnostics/support UI and support bundle.
-- **G2.3 Local Update Center / Updater — PENDING**: component status/version/compatibility model, update orchestration, Local updater + stable recovery entrypoint.
-- **G2.4 Qualification — PENDING**: real MariaDB Browser Setup plus observability/update/recovery integration gates.
-- backup/recovery/takeover UX is integrated where owned by Local and remains coordinated with later Public/Windows workstreams.
+## G2 — Local Setup / Observability / Update — WORKSTREAM COMPLETE / REAL ENV PASS
+- **G2.1 Browser Setup — QUALIFIED REAL ENV PASS**: standalone `/setup/`, preflight incl. PHP zip, MariaDB 11.4.x test/create, migrations, initial admin/config, installation identity, Runtime token/config, final health, setup lock and partial-setup resume.
+- **G2.2 Observability / Diagnostics — QUALIFIED LOCAL SCOPE PASS**: unified `/system/`, bounded structured logs, redacted Support Bundle, DB/Runtime/Print/Public configuration status. Public live status/log and Emergency limited logs remain G3.
+- **G2.3 Local Update Center / Updater / Recovery — QUALIFIED LOCAL SCOPE PASS**: component inventory/current-previous-LKG, Local verify/stage/activate/rollback/repair/auto-rollback, stable `/local-recovery.php`, Business Backup/restore. Public updater and machine takeover remain G3/A34.
+- **G2.4 Product Qualification — PASS**: GitHub Actions run `36336444894`, job `108668083226`; MariaDB `11.4.13-MariaDB-ubu2404`, PDO MySQL, ZipArchive and sodium PASS; terminal `G2 Product Qualification: PASS`.
+- Qualified implementation HEAD: `e63818386eeefd8ae8056ebe1af8617b2c184d54`.
+- Temporary GitHub qualification override ended after PASS. Daily execution returns to Local Workspace + Library Checkpoints.
+
+Next: **G3 — Public Edge Productization**.
 
 ## G3 — Public Edge Productization
 - hosting-ready deploy package and document root;
