@@ -14,7 +14,8 @@ repo='apps/local-web/src/Domain/StaffConsumption/StaffAccountRepository.php'
 service='apps/local-web/src/Domain/StaffConsumption/StaffAccountService.php'
 posting='apps/local-web/src/Domain/StaffConsumption/StaffConsumptionPostingService.php'
 boot='apps/local-web/src/Core/Bootstrap.php'
-for p in [migration,repo,service,posting,boot,'tests/local-f1-staff-account-selftest.php']:
+entry_boot='apps/local-web/bootstrap.php'
+for p in [migration,repo,service,posting,boot,entry_boot,'tests/local-f1-staff-account-selftest.php']:
     text(p)
 need(migration,'occurred_at DATETIME','ledger occurrence timestamp missing')
 need(migration,'uq_f14_staff_account_consumption_type (consumption_id,entry_type)','one-entry-type-per-consumption uniqueness missing')
@@ -37,4 +38,5 @@ if 'UPDATE staff_consumptions' in text(service): fail('Staff Account must not re
 need(posting,'chargeConsumptionTx($consumptionId,$actorId,$occurredAt)','payable charge not integrated in posting transaction')
 need(posting,"'staff_account_charge_id'",'posting result lacks account charge evidence')
 need(boot,'staffAccountService()','Bootstrap Staff Account service accessor missing')
+need(entry_boot,"/src/Domain/StaffConsumption/StaffAccountService.php",'entry bootstrap does not load StaffAccountService')
 print('PASS F1.4 staff account contract')

@@ -15,8 +15,9 @@ workspace='apps/local-web/src/Domain/StaffConsumption/StaffConsumptionWorkspaceS
 report='apps/local-web/src/Domain/StaffConsumption/StaffConsumptionReportService.php'
 nav='apps/local-web/src/UI/ProductShell.php'
 boot='apps/local-web/src/Core/Bootstrap.php'
+entry_boot='apps/local-web/bootstrap.php'
 migration='apps/local-web/database/migrations/0021_f1_staff_consumption_reporting.sql'
-for p in [page,api,js,workspace,report,nav,boot,migration,'tests/local-f1-staff-ui-reporting-selftest.php']: text(p)
+for p in [page,api,js,workspace,report,nav,boot,entry_boot,migration,'tests/local-f1-staff-ui-reporting-selftest.php']: text(p)
 need(nav,"'staff-consumption','label'=>'مصرف پرسنل','href'=>'/staff-consumption/'",'staff consumption is not a distinct navigation entry')
 for token in ['مصرف من','ثبت برای پرسنل','سوابق','مزایا','حساب پرسنل','گزارش']:
     need(page,token,'missing UI entry point: '+token)
@@ -40,5 +41,7 @@ need(js,"'post_self':'post_proxy'",'self/proxy consumption UI not wired')
 need(js,"'account_payment':'account_waiver'",'waiver UI not wired separately')
 need(js,'data-report-metric','report metric renderer missing')
 need(js,'initialTab','initial permission-driven tab activation missing')
+need(entry_boot,"/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php",'entry bootstrap does not load StaffConsumptionWorkspaceService')
+need(entry_boot,"/src/Domain/StaffConsumption/StaffConsumptionReportService.php",'entry bootstrap does not load StaffConsumptionReportService')
 if 'subscriber_ledger' in text(report) or 'subscriber_ledger' in text(workspace): fail('Staff Consumption UI/reporting depends on Subscriber Ledger')
 print('PASS F1.6 staff UI/reporting contract')
