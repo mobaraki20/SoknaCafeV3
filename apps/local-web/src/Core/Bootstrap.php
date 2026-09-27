@@ -55,6 +55,7 @@ use Sokna\Local\Relay\GuestOrderRealtimeAdapter;
 use Sokna\Local\Relay\WaiterCallRealtimeAdapter;
 use Sokna\Local\Relay\RealtimeDispatchService;
 use Sokna\Local\Domain\Sellables\SellableRepository;
+use Sokna\Local\Domain\Admin\AdminControlService;
 
 final class Bootstrap
 {
@@ -63,6 +64,7 @@ final class Bootstrap
     private ?Capabilities $capabilities = null;
     private ?Auth $auth = null;
     private ?Migrations $migrations = null;
+    private ?AdminControlService $adminControls = null;
     private ?SellableRepository $sellables = null;
     private ?BusinessClock $businessClock = null;
     private ?OrderCatalogService $orderCatalog = null;
@@ -165,6 +167,11 @@ final class Bootstrap
     {
         $directory = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'migrations';
         return $this->migrations ??= new Migrations($this->database(), $directory);
+    }
+
+    public function adminControls(): AdminControlService
+    {
+        return $this->adminControls ??= new AdminControlService($this->database(), $this->identityRepository());
     }
 
     public function sellables(): SellableRepository
