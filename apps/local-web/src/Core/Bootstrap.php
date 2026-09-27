@@ -58,6 +58,9 @@ use Sokna\Local\Domain\Sellables\CatalogAdminService;
 use Sokna\Local\Domain\Admin\AdminControlService;
 use Sokna\Local\Domain\StaffConsumption\PersonnelRepository;
 use Sokna\Local\Domain\StaffConsumption\StaffBenefitRepository;
+use Sokna\Local\Domain\StaffConsumption\StaffBenefitCalculator;
+use Sokna\Local\Domain\StaffConsumption\StaffBenefitCalculationService;
+use Sokna\Local\Domain\StaffConsumption\StaffBenefitManagementService;
 use Sokna\Local\Domain\StaffConsumption\StaffAccountRepository;
 use Sokna\Local\Domain\StaffConsumption\StaffConsumptionFoundationService;
 use Sokna\Local\Search\GlobalSearchService;
@@ -77,6 +80,9 @@ final class Bootstrap
     private ?AdminControlService $adminControls = null;
     private ?PersonnelRepository $personnel = null;
     private ?StaffBenefitRepository $staffBenefits = null;
+    private ?StaffBenefitCalculator $staffBenefitCalculator = null;
+    private ?StaffBenefitCalculationService $staffBenefitCalculation = null;
+    private ?StaffBenefitManagementService $staffBenefitManagement = null;
     private ?StaffAccountRepository $staffAccounts = null;
     private ?StaffConsumptionFoundationService $staffConsumptionFoundation = null;
     private ?GlobalSearchService $globalSearch = null;
@@ -197,6 +203,25 @@ final class Bootstrap
     public function staffBenefits(): StaffBenefitRepository
     {
         return $this->staffBenefits ??= new StaffBenefitRepository($this->database());
+    }
+
+    public function staffBenefitCalculator(): StaffBenefitCalculator
+    {
+        return $this->staffBenefitCalculator ??= new StaffBenefitCalculator();
+    }
+
+    public function staffBenefitCalculation(): StaffBenefitCalculationService
+    {
+        return $this->staffBenefitCalculation ??= new StaffBenefitCalculationService(
+            $this->staffBenefits(), $this->staffBenefitCalculator(), $this->identityRepository(), $this->capabilities()
+        );
+    }
+
+    public function staffBenefitManagement(): StaffBenefitManagementService
+    {
+        return $this->staffBenefitManagement ??= new StaffBenefitManagementService(
+            $this->database(), $this->identityRepository(), $this->capabilities()
+        );
     }
 
     public function staffAccounts(): StaffAccountRepository
