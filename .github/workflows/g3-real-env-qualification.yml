@@ -41,7 +41,7 @@ jobs:
       SOKNA_TEST_DB_PASS: sokna
       SOKNA_TEST_DB_ROOT_USER: root
       SOKNA_TEST_DB_ROOT_PASS: root
-      SOKNA_G3_QUAL_SOURCE_COMMIT: 1103c6e5faaf361b46e144b8c3b081c707460358
+      SOKNA_G3_QUAL_SOURCE_COMMIT: dec16fc68b06d3b990f3755e1595545b7547dd19
 
     steps:
       - name: Checkout qualification merge ref
@@ -114,11 +114,18 @@ jobs:
           git apply --check .qualification/g3-bc8e408/fix-g32-db-grant.patch
           git apply .qualification/g3-bc8e408/fix-g32-db-grant.patch
 
+          echo "274c7594020e9ba66e34cfcca1f28c3eb92bf29345cbeb4f2d6b05bc54efb44f  .qualification/g3-bc8e408/fix-g33-db-grant.patch.xz.b64" | sha256sum -c -
+          base64 -d .qualification/g3-bc8e408/fix-g33-db-grant.patch.xz.b64 > /tmp/fix-g33-db-grant.patch.xz
+          xz -dc /tmp/fix-g33-db-grant.patch.xz > /tmp/fix-g33-db-grant.patch
+          echo "77931ca33d539fb07bbb694d1a52658d85454cc5687db746f03a62fb88b69077  /tmp/fix-g33-db-grant.patch" | sha256sum -c -
+          git apply --check /tmp/fix-g33-db-grant.patch
+          git apply /tmp/fix-g33-db-grant.patch
+
           cp .qualification/g3-bc8e408/run-g3-product-qualification.sh tests/run-g3-product-qualification.sh
           cp .qualification/g3-bc8e408/g3-product-qualification-contract.py tests/g3-product-qualification-contract.py
           chmod +x tests/run-g1-real-db-qualification.sh tests/run-f1-real-db-qualification.sh tests/run-g2-product-qualification.sh
           chmod +x tests/run-g3-product-qualification.sh tests/g3-product-qualification-contract.py tests/component-registry-gate.py
-          echo "Qualification source local HEAD: 1103c6e5faaf361b46e144b8c3b081c707460358"
+          echo "Qualification source local HEAD: dec16fc68b06d3b990f3755e1595545b7547dd19"
 
       - name: Ensure PHP database, zip and sodium extensions
         shell: bash
