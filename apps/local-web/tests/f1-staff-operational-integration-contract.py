@@ -30,5 +30,6 @@ need(printing,"'badge'=>$context==='staff_consumption'?'مصرف پرسنل':'ف
 need(prep,'LEFT JOIN staff_consumptions sc ON sc.order_id=o.id','preparation feed still table-only')
 need(prep,"'order_context'=>(string)($order['order_context']??'table_service')",'preparation context output missing')
 need(prep,"return 'مصرف پرسنل'.($name!==''?' · '.$name:'');",'preparation staff display context missing')
+need('tests/local-f1-staff-operational-integration-selftest.php',"array_key_exists('table_id',$found)&&$found['table_id']===null",'staff preparation null-table assertion is not null-safe')
 if 'JOIN cafe_tables t ON t.id=o.table_id' in text(prep) and 'LEFT JOIN cafe_tables' not in text(prep): fail('preparation remains inner-table-only')
 print('PASS F1.5 staff operational integration contract')
