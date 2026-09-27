@@ -31,7 +31,7 @@ $appConfig=[
     'db'=>['host'=>trim((string)($db['host']??'')),'port'=>(string)($db['port']??'3306'),'name'=>trim((string)($db['name']??'')),'charset'=>'utf8mb4','user'=>trim((string)($db['user']??'')),'pass'=>(string)($db['pass']??'')],
     'installation'=>['id'=>$installationId],
     'runtime'=>['local_token'=>$localToken],
-    'integrations'=>['center'=>['base_url'=>'','secret'=>''],'accommodation'=>['base_url'=>'','secret'=>'']],
+    'integrations'=>['accommodation'=>['base_url'=>'','secret'=>'']],
 ];
 try{$core=sokna_local_bootstrap($appConfig);$pdo=$core->database();$pdo->query('SELECT 1')->fetchColumn();}catch(Throwable $e){setup_fail('database_unavailable','اتصال دیتابیس کامل نشد: '.$e->getMessage());}
 if($validate){echo json_encode(['success'=>true,'mode'=>$mode,'database'=>'ready','mutation'=>'none'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;exit(0);}
@@ -48,14 +48,14 @@ try{
         $pdo->commit();
     }
     if($mode==='recover'){
-        $recovery=setup_arg($argv,'--recovery-file');$passFile=setup_arg($argv,'--passphrase-file');if($recovery===''||!is_file($recovery))setup_fail('recovery_missing','فایل بازیابی پیدا نشد.');if($passFile===''||!is_file($passFile))setup_fail('passphrase_missing','فایل رمز بازیابی پیدا نشد.');$pass=rtrim((string)file_get_contents($passFile),"\r\n");if(strtolower(pathinfo($recovery,PATHINFO_EXTENSION))==='json'){$set=json_decode((string)file_get_contents($recovery),true);$mandatory=['runtime_machine_secret','print_agent_identity','tls_private_key','center_machine_signing_secret'];if(!is_array($set)||($set['format']??'')!=='sokna-recovery-set-v1'||array_diff($mandatory,(array)($set['excluded_machine_identity']??[])))setup_fail('recovery_contract','Recovery Set معتبر نیست.');$business=(array)($set['business_backup']??[]);$candidate=(string)($business['path']??'');if($candidate==='')setup_fail('recovery_contract','فایل Business Backup در Recovery Set مشخص نیست.');if(!preg_match('/^(?:[A-Za-z]:[\\\/]|\/)/',$candidate))$candidate=dirname($recovery).DIRECTORY_SEPARATOR.$candidate;if(!is_file($candidate)||!hash_equals(strtolower((string)($business['sha256']??'')),strtolower((string)hash_file('sha256',$candidate))))setup_fail('recovery_integrity','Business Backup داخل Recovery Set معتبر نیست.');$recovery=$candidate;}$core->businessBackup()->restoreEncryptedToEmptyTarget($recovery,$pass,0);
+        $recovery=setup_arg($argv,'--recovery-file');$passFile=setup_arg($argv,'--passphrase-file');if($recovery===''||!is_file($recovery))setup_fail('recovery_missing','فایل بازیابی پیدا نشد.');if($passFile===''||!is_file($passFile))setup_fail('passphrase_missing','فایل رمز بازیابی پیدا نشد.');$pass=rtrim((string)file_get_contents($passFile),"\r\n");if(strtolower(pathinfo($recovery,PATHINFO_EXTENSION))==='json'){$set=json_decode((string)file_get_contents($recovery),true);$mandatory=['runtime_machine_secret','print_agent_identity','tls_private_key'];if(!is_array($set)||($set['format']??'')!=='sokna-recovery-set-v1'||array_diff($mandatory,(array)($set['excluded_machine_identity']??[])))setup_fail('recovery_contract','Recovery Set معتبر نیست.');$business=(array)($set['business_backup']??[]);$candidate=(string)($business['path']??'');if($candidate==='')setup_fail('recovery_contract','فایل Business Backup در Recovery Set مشخص نیست.');if(!preg_match('/^(?:[A-Za-z]:[\\\/]|\/)/',$candidate))$candidate=dirname($recovery).DIRECTORY_SEPARATOR.$candidate;if(!is_file($candidate)||!hash_equals(strtolower((string)($business['sha256']??'')),strtolower((string)hash_file('sha256',$candidate))))setup_fail('recovery_integrity','Business Backup داخل Recovery Set معتبر نیست.');$recovery=$candidate;}$core->businessBackup()->restoreEncryptedToEmptyTarget($recovery,$pass,0);
     }
     setup_private_write($secrets.DIRECTORY_SEPARATOR.'runtime-local.token',$localToken."\n");setup_private_write($secrets.DIRECTORY_SEPARATOR.'runtime-health.token',$healthToken."\n");
     $runtime=[
         'contractVersion'=>1,'instanceId'=>'runtime-'.bin2hex(random_bytes(12)),'dataRoot'=>$runtimeDir,'healthPort'=>17621,
         'runtimeTokenFile'=>$secrets.DIRECTORY_SEPARATOR.'runtime-health.token','localTokenFile'=>$secrets.DIRECTORY_SEPARATOR.'runtime-local.token',
         'localBaseUrl'=>'https://127.0.0.1','printAgentServiceName'=>'SoknaPrintWorker','supervisePrintAgent'=>true,
-        'triggers'=>[['key'=>'inventory.order_events','intervalSeconds'=>15],['key'=>'center.user_projection','intervalSeconds'=>60],['key'=>'maintenance.health','intervalSeconds'=>60]],
+        'triggers'=>[['key'=>'inventory.order_events','intervalSeconds'=>15],['key'=>'maintenance.health','intervalSeconds'=>60]],
     ];
     setup_private_write($runtimeDir.DIRECTORY_SEPARATOR.'runtime-config.json',json_encode($runtime,JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");
     setup_private_write($configPath,setup_config_php($appConfig));setup_private_write($lockPath,json_encode(['format'=>'sokna-install-lock-v3','installation_id'=>$installationId,'created_at'=>gmdate('c')],JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT)."\n");

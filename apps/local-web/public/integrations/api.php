@@ -6,7 +6,7 @@ try{
     if(($_SERVER['REQUEST_METHOD']??'GET')==='GET'){
         $action=(string)($_GET['action']??'snapshot');
         if($action==='snapshot'){
-            $integration=$core->integrationWorkspace()->snapshot($isAdmin);$finance=$core->financeWorkspace()->snapshot();
+            $integration=$core->integrationWorkspace()->snapshot();$finance=$core->financeWorkspace()->snapshot();
             WebAction::json(['success'=>true,'snapshot'=>['integrations'=>$integration,'open_accounts'=>$finance['open_accounts'],'printing'=>$isAdmin?$core->printManagement()->snapshot():null]]);
         }
         if($action==='account')WebAction::json(['success'=>true,'account'=>$core->settlements()->account((int)($_GET['session_id']??0))]);
@@ -28,6 +28,5 @@ try{
     if($action==='print_destination_configure')WebAction::json(['success'=>true,'result'=>$core->printing()->configureDestination((string)($data['destination_key']??''),$data,$user)]);
     if($action==='print_test')WebAction::json(['success'=>true,'result'=>$core->printing()->enqueueTest((string)($data['destination_key']??''),(string)($data['request_id']??''),$user)]);
     if($action==='print_resolve')WebAction::json(['success'=>true,'result'=>$core->printing()->resolveAmbiguous((int)($data['job_id']??0),(string)($data['resolution']??''),(string)($data['reason']??''),$user)]);
-    if($action==='center_sync')WebAction::json(['success'=>true,'result'=>$core->centerIntegration()->syncProjection()]);
     WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
 }catch(\Throwable $e){if(property_exists($e,'httpStatus'))WebAction::knownFailure($e);error_log('integrations web action: '.$e->getMessage());WebAction::json(['success'=>false,'code'=>'internal_error','message'=>'عملیات یکپارچه‌سازی انجام نشد.'],500);}

@@ -15,10 +15,12 @@ final class BusinessBackupService
     private const EXCLUDED_TABLES=[
         'schema_migrations','schema_migration_statements',
         'runtime_trigger_receipts',
+        'center_projection_receipts','center_entitlement_cache',
         'print_agents','print_destinations','print_jobs','print_attempts','print_claim_requests','print_claim_reconciliations',
     ];
+    private const RETIRED_TABLES=['center_projection_receipts','center_entitlement_cache'];
     private const EMPTY_TARGET_MARKERS=['users','orders','inventory_items','expenses','settlement_records','subscriber_ledger','accommodation_transfers'];
-    private const EXCLUDED_MACHINE_IDENTITY=['runtime_machine_secret','print_agent_identity','tls_private_key','center_machine_signing_secret'];
+    private const EXCLUDED_MACHINE_IDENTITY=['runtime_machine_secret','print_agent_identity','tls_private_key'];
 
     public function __construct(
         private readonly PDO $pdo,
@@ -109,14 +111,15 @@ final class BusinessBackupService
         $sourceVersions=array_map('strval',(array)($manifest['schema_versions']??[]));
         foreach($sourceVersions as $version)if(!in_array($version,$targetVersions,true)){gzclose($gz);throw new RecoveryException('schema_incompatible','نسخه دیتابیس مقصد از پشتیبان قدیمی‌تر است.',409,['missing_version'=>$version]);}
         $tables=array_values(array_map('strval',(array)($manifest['tables']??[])));
-        $allowed=array_flip($this->businessTables());
-        foreach($tables as $table)if(!isset($allowed[$table])){gzclose($gz);throw new RecoveryException('table_not_allowed','پشتیبان شامل جدول غیرمجاز است.',422,['table'=>$table]);}
+        $allowed=array_flip($this->businessTables());$retired=array_flip(self::RETIRED_TABLES);
+        foreach($tables as $table)if(!isset($allowed[$table])&&!isset($retired[$table])){gzclose($gz);throw new RecoveryException('table_not_allowed','پشتیبان شامل جدول غیرمجاز است.',422,['table'=>$table]);}
+        $restoreTables=array_values(array_filter($tables,static fn(string $table):bool=>!isset($retired[$table])));
 
         $counts=[];$hashCtx=[];$current='';$footer=null;
         $this->pdo->beginTransaction();
         try{
             $this->pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-            foreach(array_reverse($tables) as $table)$this->pdo->exec('DELETE FROM `'.str_replace('`','``',$table).'`');
+            foreach(array_reverse($restoreTables) as $table)$this->pdo->exec('DELETE FROM `'.str_replace('`','``',$table).'`');
             while(!gzeof($gz)){
                 $raw=gzgets($gz);if($raw===false)break;$trim=trim($raw);if($trim==='')continue;
                 $entry=json_decode($trim,true,64,JSON_THROW_ON_ERROR);$kind=(string)($entry['kind']??'');
@@ -127,7 +130,7 @@ final class BusinessBackupService
                 if($kind==='row'){
                     $table=(string)($entry['table']??'');$row=$entry['value']??null;
                     if($table===''||$table!==$current||!is_array($row))throw new RecoveryException('backup_contract','ترتیب رکوردهای پشتیبان معتبر نیست.',422);
-                    hash_update($hashCtx[$table],$trim."\n");$this->insertRow($table,$row);$counts[$table]++;continue;
+                    hash_update($hashCtx[$table],$trim."\n");if(!isset($retired[$table]))$this->insertRow($table,$row);$counts[$table]++;continue;
                 }
                 if($kind==='footer'){$footer=$entry;break;}
                 throw new RecoveryException('backup_contract','رکورد ناشناخته در پشتیبان وجود دارد.',422);
@@ -149,11 +152,11 @@ final class BusinessBackupService
         }finally{gzclose($gz);}
         $this->observability->logEvent('warning','recovery.business_restored',[
             'actor_user_id'=>$actorUserId,'source_installation_id'=>$manifest['source_installation_id']??'',
-            'table_count'=>count($tables),'row_count'=>array_sum($counts),'machine_identity_reprovision_required'=>true,
+            'table_count'=>count($restoreTables),'row_count'=>array_sum(array_intersect_key($counts,array_flip($restoreTables))),'retired_tables_skipped'=>array_values(array_intersect($tables,self::RETIRED_TABLES)),'machine_identity_reprovision_required'=>true,
         ]);
         return [
             'restored'=>true,'source_installation_id'=>(string)($manifest['source_installation_id']??''),
-            'table_count'=>count($tables),'row_count'=>array_sum($counts),
+            'table_count'=>count($restoreTables),'row_count'=>array_sum(array_intersect_key($counts,array_flip($restoreTables))),'retired_tables_skipped'=>array_values(array_intersect($tables,self::RETIRED_TABLES)),
             'excluded_machine_identity'=>(array)($manifest['excluded_machine_identity']??[]),
             'machine_identity_reprovision_required'=>true,
         ];

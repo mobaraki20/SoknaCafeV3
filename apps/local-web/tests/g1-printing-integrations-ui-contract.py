@@ -14,7 +14,7 @@ for p in ['apps/local-web/public/integrations/index.php','apps/local-web/public/
     t=read(p)
     if re.search(r"['\"]\s*(SELECT|INSERT|UPDATE|DELETE)\s+",t,re.I): fail('public route contains direct SQL: '+p)
 api=read('apps/local-web/public/integrations/api.php')
-for n in ['WebAction::requireAny','WebAction::requireMutation','accommodation()->searchReservations','accommodation()->prepare','accommodation()->attemptCharge','accommodation()->attemptVoid','printing()->createAgent','printing()->configureDestination','printing()->enqueueTest','printing()->resolveAmbiguous','centerIntegration()->syncProjection']:
+for n in ['WebAction::requireAny','WebAction::requireMutation','accommodation()->searchReservations','accommodation()->prepare','accommodation()->attemptCharge','accommodation()->attemptVoid','printing()->createAgent','printing()->configureDestination','printing()->enqueueTest','printing()->resolveAmbiguous']:
     if n not in api: fail('integration API missing '+n)
 printing=read('apps/local-web/src/Domain/Printing/PrintService.php')
 for n in ['configureDestination','enqueueTest','print:test:','sokna-print-document-v2','destination_not_ready']:
@@ -28,7 +28,7 @@ workspace=read('apps/local-web/src/Domain/Integrations/IntegrationWorkspaceServi
 if 'api_key' in workspace or "integrations.center.secret" in workspace: fail('workspace leaks integration secret configuration')
 js=read('apps/local-web/public/assets/integrations-workspace.js')
 if 'innerHTML' in js: fail('integrations UI uses innerHTML')
-for n in ['X-CSRF-Token','csrf_token','reservation_search','print_destination_configure','print_test','center_sync']:
+for n in ['X-CSRF-Token','csrf_token','reservation_search','print_destination_configure','print_test']:
     if n not in js: fail('integrations JS missing '+n)
 nav=read('apps/local-web/src/UI/ProductShell.php')
 if "'/integrations/'" not in nav: fail('navigation missing integrations workspace')
@@ -36,3 +36,7 @@ index=read('apps/local-web/public/integrations/index.php')
 if 'ProductShell::start' not in index or 'data-csrf' not in index: fail('integrations page lacks canonical shell/csrf')
 if 'style=' in index: fail('integrations page introduced inline style island')
 print('PASS G1 Printing/Integrations UI contract')
+
+for p in ['apps/local-web/public/integrations/index.php','apps/local-web/public/integrations/api.php','apps/local-web/public/assets/integrations-workspace.js','apps/local-web/src/Domain/Integrations/IntegrationWorkspaceService.php']:
+    t=read(p).lower()
+    if 'center_sync' in t or 'centerintegration' in t or 'مرکز سکنا' in t: fail('retired Center integration leaked into '+p)

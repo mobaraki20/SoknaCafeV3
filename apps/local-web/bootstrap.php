@@ -55,7 +55,6 @@ require_once __DIR__ . '/src/Domain/Integrations/IntegrationException.php';
 require_once __DIR__ . '/src/Domain/Integrations/SubscriberService.php';
 require_once __DIR__ . '/src/Domain/Integrations/SubscriberAccountService.php';
 require_once __DIR__ . '/src/Domain/Integrations/AccommodationTransport.php';
-require_once __DIR__ . '/src/Domain/Integrations/CenterIntegrationService.php';
 require_once __DIR__ . '/src/Domain/Integrations/IntegrationWorkspaceService.php';
 require_once __DIR__ . '/src/Domain/Finance/SettlementException.php';
 require_once __DIR__ . '/src/Domain/Finance/SettlementService.php';

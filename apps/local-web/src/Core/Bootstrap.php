@@ -33,7 +33,6 @@ use Sokna\Local\Domain\Integrations\SubscriberService;
 use Sokna\Local\Domain\Integrations\SubscriberAccountService;
 use Sokna\Local\Domain\Integrations\AccommodationTransport;
 use Sokna\Local\Domain\Integrations\AccommodationService;
-use Sokna\Local\Domain\Integrations\CenterIntegrationService;
 use Sokna\Local\Domain\Integrations\IntegrationWorkspaceService;
 use Sokna\Local\Runtime\RuntimeTriggerService;
 use Sokna\Local\Domain\Printing\PrintService;
@@ -94,7 +93,6 @@ final class Bootstrap
     private ?SubscriberAccountService $subscriberAccounts = null;
     private ?AccommodationTransport $accommodationTransport = null;
     private ?AccommodationService $accommodation = null;
-    private ?CenterIntegrationService $centerIntegration = null;
     private ?IntegrationWorkspaceService $integrationWorkspace = null;
     private ?RuntimeTriggerService $runtimeTriggers = null;
     private ?PrintService $printing = null;
@@ -327,10 +325,6 @@ final class Bootstrap
         );
     }
 
-    public function centerIntegration(): CenterIntegrationService
-    {
-        return $this->centerIntegration ??= new CenterIntegrationService($this->database(), $this->config, $this->identityRepository());
-    }
 
     public function integrationWorkspace(): IntegrationWorkspaceService
     {
@@ -356,7 +350,6 @@ final class Bootstrap
     {
         return $this->runtimeTriggers ??= new RuntimeTriggerService($this->database(), [
             'inventory.order_events'=>fn():array=>$this->inventoryOrders()->processPending(30),
-            'center.user_projection'=>fn():array=>$this->centerIntegration()->syncProjection(),
             'maintenance.health'=>fn():array=>['ok'=>true,'checked_at'=>date(DATE_ATOM)],
         ]);
     }
