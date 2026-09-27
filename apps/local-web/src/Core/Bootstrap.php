@@ -38,6 +38,9 @@ use Sokna\Local\Domain\Supply\SupplyAccessService;
 use Sokna\Local\Domain\Supply\SupplyService;
 use Sokna\Local\Relay\DeferredReceiptService;
 use Sokna\Local\Relay\SupplyDeferredAdapter;
+use Sokna\Local\Relay\SubscriberPaymentDeferredAdapter;
+use Sokna\Local\Relay\DeferredDispatchService;
+use Sokna\Local\Relay\SettlementRealtimeAdapter;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 
 final class Bootstrap
@@ -81,6 +84,9 @@ final class Bootstrap
     private ?SupplyService $supply = null;
     private ?DeferredReceiptService $deferredReceipts = null;
     private ?SupplyDeferredAdapter $supplyDeferred = null;
+    private ?SubscriberPaymentDeferredAdapter $subscriberPaymentDeferred = null;
+    private ?DeferredDispatchService $deferredDispatch = null;
+    private ?SettlementRealtimeAdapter $settlementRealtime = null;
 
     private function __construct(
         private readonly Config $config,
@@ -331,6 +337,26 @@ final class Bootstrap
         return $this->supplyDeferred ??= new SupplyDeferredAdapter(
             $this->database(), $this->inventory(), $this->supply(), $this->supplyAccess(), $this->deferredReceipts()
         );
+    }
+
+    public function subscriberPaymentDeferred(): SubscriberPaymentDeferredAdapter
+    {
+        return $this->subscriberPaymentDeferred ??= new SubscriberPaymentDeferredAdapter(
+            $this->database(), $this->identityRepository(), $this->capabilities(), $this->subscribers(),
+            $this->financialPeriodIdentity(), $this->deferredReceipts()
+        );
+    }
+
+    public function deferredDispatch(): DeferredDispatchService
+    {
+        return $this->deferredDispatch ??= new DeferredDispatchService(
+            $this->supplyDeferred(), $this->inventoryDeferred(), $this->expenseDeferred(), $this->subscriberPaymentDeferred()
+        );
+    }
+
+    public function settlementRealtime(): SettlementRealtimeAdapter
+    {
+        return $this->settlementRealtime ??= new SettlementRealtimeAdapter($this->identityRepository(), $this->settlements());
     }
 
     public function startSession(string $cookiePath = '/', ?bool $secure = null): void

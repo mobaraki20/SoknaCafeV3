@@ -89,7 +89,7 @@ final class SubscriberService
         return $this->insertLedgerTx((int)$entry['subscriber_id'],(string)$entry['entry_type']==='invoice'?'invoice_reversal':'payment_reversal',-(int)$entry['amount_delta'],$actorUserId,(int)$entry['financial_period_id'],null,$entryId,(string)($entry['reference']??''),$reason,null,$idempotencyKey);
     }
 
-    private function balanceTx(int $subscriberId): int
+    public function balanceTx(int $subscriberId): int
     {
         $stmt=$this->pdo->prepare('SELECT balance_after FROM subscriber_ledger WHERE subscriber_id=? ORDER BY id DESC LIMIT 1 FOR UPDATE');$stmt->execute([$subscriberId]);$v=$stmt->fetchColumn();return $v===false?0:(int)$v;
     }
