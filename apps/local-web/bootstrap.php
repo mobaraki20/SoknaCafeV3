@@ -117,6 +117,7 @@ require_once __DIR__ . '/src/Relay/SettlementRealtimeAdapter.php';
 require_once __DIR__ . '/src/Relay/GuestOrderRealtimeAdapter.php';
 require_once __DIR__ . '/src/Relay/WaiterCallRealtimeAdapter.php';
 require_once __DIR__ . '/src/Relay/RealtimeDispatchService.php';
+require_once __DIR__ . '/src/Domain/PublicEdge/PublicEdgeRelayService.php';
 require_once __DIR__ . '/src/UI/SCDS.php';
 require_once __DIR__ . '/src/UI/LocalPage.php';
 require_once __DIR__ . '/src/UI/ProductShell.php';

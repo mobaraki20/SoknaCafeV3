@@ -13,6 +13,8 @@ for x in ['RealtimeDispatchService','DeferredDispatchService','/api/v1/local/rea
     need(x in relay,'relay lifecycle missing '+x)
 client=read('apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php')
 need('function postRaw' in client and 'normalizeRawResponse' in client,'queue-aware signed client response missing')
+bootloader=read('apps/local-web/bootstrap.php')
+need("/src/Domain/PublicEdge/PublicEdgeRelayService.php" in bootloader,'Local bootstrap missing PublicEdgeRelayService wiring')
 boot=read('apps/local-web/src/Core/Bootstrap.php')
 need("'public.relay_sync'" in boot and 'publicEdgeRelay()->sync()' in boot,'runtime relay trigger missing')
 for f in ['apps/local-web/src/Setup/BrowserSetupService.php','apps/local-web/tools/setup-machine.php','windows/runtime/runtime-config.example.json']:
