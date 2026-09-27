@@ -59,8 +59,10 @@ jobs:
           while IFS= read -r path; do
             [[ -z "$path" ]] || rm -f -- "$path"
           done < /tmp/g1-overlay/DELETE_PATHS.txt
+          cp .qualification/g1-427be0b/run-g1-real-db-qualification.fixed.sh tests/run-g1-real-db-qualification.sh
+          chmod +x tests/run-g1-real-db-qualification.sh
           test -x tests/run-g1-real-db-qualification.sh
-          echo "Qualification source local HEAD: 427be0b5e7ffbe1080418685f6ad7588a199ff81"
+          echo "Qualification source local HEAD: 42c647a8386e203d1456127b927757a8f132444e"
 
       - name: Ensure PHP pdo_mysql
         shell: bash
