@@ -26,7 +26,9 @@ require_once __DIR__ . '/src/Guest/GuestCompatibilityService.php';
 require_once __DIR__ . '/src/Guest/GuestPageRenderer.php';
 require_once __DIR__ . '/src/Remote/RemoteReadModelService.php';
 require_once __DIR__ . '/src/Http/RemoteReadModelHttpAdapter.php';
+require_once __DIR__ . '/src/Http/HealthHttpAdapter.php';
 require_once __DIR__ . '/src/Http/GuestCompatibilityHttpAdapter.php';
+require_once __DIR__ . '/src/Http/PublicHttpKernel.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_public_bootstrap(array $config): Bootstrap

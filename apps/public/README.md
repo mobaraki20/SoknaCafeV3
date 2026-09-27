@@ -38,3 +38,17 @@ Guest publish revisions, guest active-revision state, guest availability and rem
 
 Canonical M3 evidence: `docs/migration/M3_PUBLIC_EDGE_AUDIT_FA.md`.
 Canonical continuation: `docs/migration/CURRENT_CONTINUATION_FA.md`.
+
+## G3 deployable document root
+
+The hosting document root is **`apps/public/public/`**. The rest of the component, including `config.php`, migrations, storage and PHP source, stays outside the document root.
+
+Deployment flow:
+
+1. Upload the complete `apps/public` component to the hosting account.
+2. Copy `config.example.php` to `config.php` and set the MariaDB credentials, the paired `default_installation_id`, storage path and Local pairing secret.
+3. Point the site document root to `apps/public/public/` and enable normal front-controller rewriting (`.htaccess` is included for Apache-compatible shared hosting).
+4. Run the Public migration lifecycle through the deployment/maintenance path before accepting traffic.
+5. Verify `GET /health`, then `GET /menu`; table QR URLs use `/menu?table=<opaque-table-token>` and may include `installation=<id>` only when a host intentionally serves multiple paired installations.
+
+`/menu` is Public-owned read projection UI. Guest order/waiter writes always cross the existing realtime relay and remain subject to Local freshness, capability and canonical business revalidation. Guest media is served only by immutable SHA-256 filenames verified again before read.

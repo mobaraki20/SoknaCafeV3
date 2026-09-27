@@ -63,6 +63,23 @@ final class GuestMediaStore
         return ['status' => 201, 'body' => ['ok' => true, 'sha256' => $sha, 'deduplicated' => false]];
     }
 
+    /** @return array{path:string,mime:string}|null */
+    public function publicFile(string $installationId, string $sha, string $extension): ?array
+    {
+        $installationId = trim($installationId);
+        $sha = strtolower(trim($sha));
+        $extension = strtolower(trim($extension));
+        if ($installationId === '' || preg_match('/^[A-Za-z0-9._-]{1,96}$/D', $installationId) !== 1) return null;
+        if (preg_match('/^[a-f0-9]{64}$/D', $sha) !== 1 || preg_match('/^(jpg|png|webp|gif|svg)$/D', $extension) !== 1) return null;
+        $mime = array_search($extension, self::ALLOWED, true);
+        if (!is_string($mime)) return null;
+        $path = $this->installationDir($installationId) . DIRECTORY_SEPARATOR . $sha . '.' . $extension;
+        if (!is_file($path) || !is_readable($path)) return null;
+        $actual = hash_file('sha256', $path);
+        if (!is_string($actual) || !hash_equals($sha, $actual)) return null;
+        return ['path' => $path, 'mime' => $mime];
+    }
+
     public function verifyManifest(string $installationId, array $manifest): array
     {
         foreach ($manifest as $source => $meta) {
