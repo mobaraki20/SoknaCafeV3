@@ -551,13 +551,13 @@
       "area": "Observability / diagnostics",
       "initial_requirement": "Unified Local health/logs/diagnostics/support bundle; Public status/log surfaced; emergency limited logs",
       "legacy_evidence": "post-UI observability.php, Phase8 diagnostics",
-      "v3_current": "V3 Local Observability core and Public health exist; no unified component dashboard/support UI",
-      "status": "PARTIAL_CRITICAL",
+      "v3_current": "G2.2 unified System Diagnostics implementation complete: admin /system/ workspace aggregates Local Web/setup/data-dir, MariaDB/migration state, Runtime receipt evidence, Print Agent heartbeat/backlog/required destinations and Public config status; bounded structured logs and redacted support bundle download are implemented.",
+      "status": "G2_2_IMPLEMENTATION_COMPLETE_DB_QUALIFICATION_PENDING",
       "final_decision": "Expanded by final Local Update Center decision",
-      "required_action": "Build unified Component Health/Diagnostics view and support bundle aggregation",
+      "required_action": "Run prepared real-MariaDB observability self-test in G2.4 qualification; then upgrade A35 to PRODUCT_COMPLETE if unified diagnostics/support evidence passes.",
       "priority": "P0",
       "owner": "local-web + all components",
-      "evidence": "core primitives only",
+      "evidence": "G2.2 observability/support contract PASS; support bundle secret-redaction/retention pure self-test PASS; full Local/G1/F1/G2 non-DB regression PASS; real DB self-test prepared",
       "completion_level": "PRODUCT_OPEN",
       "required_for_product": "yes",
       "required_for_release": "yes"
@@ -854,5 +854,10 @@
     "artifact_digest": "sha256:b9768f62b6e483c52f808fbc4675ed8d535097934d215c8c873c2bf21e675654",
     "f1_product_complete": true,
     "github_override_scope": "F1.7 qualification only; ended after PASS"
+  },
+  "g2_progress": {
+    "g2_1_browser_setup": "IMPLEMENTATION_COMPLETE_DB_QUALIFICATION_PENDING",
+    "g2_2_observability_diagnostics": "IMPLEMENTATION_COMPLETE_DB_QUALIFICATION_PENDING",
+    "next": "G2.3_LOCAL_UPDATE_CENTER_UPDATER_RECOVERY"
   }
 }

@@ -41,7 +41,7 @@ final class ProductShell
             $items[]=['id'=>'subscribers','label'=>'مشتریان','href'=>'/subscribers/'];
             $items[]=['id'=>'integrations','label'=>'چاپ و اتصال‌ها','href'=>'/integrations/'];
         }
-        if((string)($user['role']??'')==='admin'){$items[]=['id'=>'catalog','label'=>'کاتالوگ','href'=>'/catalog/'];$items[]=['id'=>'admin','label'=>'مدیریت','href'=>'/admin/'];}
+        if((string)($user['role']??'')==='admin'){$items[]=['id'=>'catalog','label'=>'کاتالوگ','href'=>'/catalog/'];$items[]=['id'=>'admin','label'=>'مدیریت','href'=>'/admin/'];$items[]=['id'=>'system','label'=>'وضعیت سیستم','href'=>'/system/'];}
         return $items;
     }
 

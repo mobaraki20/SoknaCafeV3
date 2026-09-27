@@ -144,7 +144,7 @@ final class Observability
         $exact = [
             'password', 'pass', 'passwd', 'authorization', 'cookie', 'set-cookie', 'app_key', 'private_key',
             'secret', 'client_secret', 'token', 'access_token', 'refresh_token', 'bearer', 'token_hash', 'secret_key',
-            'db_pass', 'database_password', 'recovery_passphrase', 'passphrase',
+            'db_pass', 'database_password', 'recovery_passphrase', 'passphrase', 'token_hint',
         ];
         if (in_array($key, $exact, true)) return true;
         return preg_match('/(?:^|_)(?:password|passwd|secret|private_key|access_token|refresh_token|passphrase)$/', $key) === 1;

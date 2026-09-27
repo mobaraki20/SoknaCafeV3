@@ -42,6 +42,8 @@ use Sokna\Local\Http\RuntimeTriggerHttpAdapter;
 use Sokna\Local\Domain\Expenses\ExpenseService;
 use Sokna\Local\Domain\Operations\OperationsWorkspaceService;
 use Sokna\Local\Domain\Recovery\BusinessBackupService;
+use Sokna\Local\Domain\System\SupportBundleWriter;
+use Sokna\Local\Domain\System\SystemDiagnosticsService;
 use Sokna\Local\Relay\ExpenseDeferredAdapter;
 use Sokna\Local\Domain\Supply\SupplyAccessService;
 use Sokna\Local\Domain\Supply\SupplyService;
@@ -133,6 +135,8 @@ final class Bootstrap
     private ?ExpenseService $expenses = null;
     private ?OperationsWorkspaceService $operationsWorkspace = null;
     private ?BusinessBackupService $businessBackup = null;
+    private ?SupportBundleWriter $supportBundles = null;
+    private ?SystemDiagnosticsService $systemDiagnostics = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
     private ?SupplyService $supply = null;
@@ -503,6 +507,19 @@ final class Bootstrap
             $this->database(),
             $this->observability(),
             $this->config->string('installation.id','')
+        );
+    }
+
+    public function supportBundles(): SupportBundleWriter
+    {
+        return $this->supportBundles ??= new SupportBundleWriter($this->observability);
+    }
+
+    public function systemDiagnostics(): SystemDiagnosticsService
+    {
+        return $this->systemDiagnostics ??= new SystemDiagnosticsService(
+            $this->database(),$this->config,$this->observability,$this->migrations(),$this->printManagement(),$this->supportBundles(),
+            dirname(__DIR__,4),dirname(__DIR__,2)
         );
     }
 
