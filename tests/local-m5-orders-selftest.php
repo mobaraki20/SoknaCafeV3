@@ -29,7 +29,7 @@ foreach(['cafe_tables','table_sessions','orders','order_items','order_business_s
 foreach([] as $later)
     m52_assert(!in_array($later,$tables,true),"post-M5.3 domain leaked into current Local stack: {$later}");
 
-$pdo->exec("INSERT INTO settings(setting_key,setting_value) VALUES('business_day_cutoff','04:00')");
+$pdo->exec("INSERT INTO settings(setting_key,setting_value) VALUES('business_day_cutoff','04:00') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
 $clock=new BusinessClock($pdo,'Asia/Tehran');
 $a=$clock->assignment('2026-08-10 00:30:00');
 m52_assert($a['business_date']==='2026-08-09','business date cutoff drifted');
