@@ -26,6 +26,10 @@ require_once __DIR__ . '/src/Domain/Orders/StaffQuickOrderException.php';
 require_once __DIR__ . '/src/Domain/Orders/StaffQuickOrderService.php';
 require_once __DIR__ . '/src/Domain/Orders/TableDraftException.php';
 require_once __DIR__ . '/src/Domain/Orders/TableDraftService.php';
+require_once __DIR__ . '/src/Domain/Orders/OrderStaffActionException.php';
+require_once __DIR__ . '/src/Domain/Orders/OrderStaffActionService.php';
+require_once __DIR__ . '/src/Domain/Orders/WaiterCallStaffService.php';
+require_once __DIR__ . '/src/Domain/Orders/OrderWorkspaceService.php';
 require_once __DIR__ . '/src/Relay/TableDraftRealtimeAdapter.php';
 require_once __DIR__ . '/src/Domain/Preparation/PreparationAccessService.php';
 require_once __DIR__ . '/src/Domain/Preparation/PreparationException.php';
@@ -74,6 +78,7 @@ require_once __DIR__ . '/src/Relay/RealtimeDispatchService.php';
 require_once __DIR__ . '/src/UI/SCDS.php';
 require_once __DIR__ . '/src/UI/LocalPage.php';
 require_once __DIR__ . '/src/UI/ProductShell.php';
+require_once __DIR__ . '/src/UI/WebAction.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_local_bootstrap(array $config): Bootstrap

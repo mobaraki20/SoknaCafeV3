@@ -10,6 +10,27 @@ final class OrderCatalogService
 {
     public function __construct(private readonly PDO $pdo) {}
 
+    /** @return list<array<string,mixed>> */
+    public function staffCatalogRows(): array
+    {
+        $itemSchedule=self::itemScheduleSql('i');
+        $menuSchedule=self::menuScheduleSql('mcat');
+        $menuMembership="EXISTS(SELECT 1 FROM menu_items mi_cat
+            JOIN menus mcat ON mcat.id=mi_cat.menu_id
+            JOIN menu_categories mc_cat ON mc_cat.menu_id=mcat.id AND mc_cat.category_id=i.category_id
+            WHERE mi_cat.item_id=i.id AND mcat.status='active' AND ($menuSchedule))";
+        $rows=$this->pdo->query("SELECT i.id,i.name,i.price,i.preparation_station,i.sellable_kind,i.takeaway_allowed,
+            c.id category_id,c.name category_name,c.sort_order category_sort,i.sort_order
+            FROM items i JOIN categories c ON c.id=i.category_id
+            WHERE i.active=1 AND i.available=1 AND c.active=1 AND ($itemSchedule) AND ($menuMembership)
+            ORDER BY c.sort_order,c.id,i.sort_order,i.id")->fetchAll(PDO::FETCH_ASSOC);
+        return array_map(static fn(array $row):array=>[
+            'id'=>(int)$row['id'],'name'=>(string)$row['name'],'price'=>(int)$row['price'],
+            'preparation_station'=>(string)($row['preparation_station']??'other'),'sellable_kind'=>SellableKind::normalizeRead($row['sellable_kind']??null),
+            'takeaway_allowed'=>(int)($row['takeaway_allowed']??1)===1,'category_id'=>(int)$row['category_id'],'category_name'=>(string)$row['category_name'],
+        ],$rows);
+    }
+
     /** @return list<array{id:int,quantity:int,expected_price:?int,note:string,fulfillment_mode:string}> */
     public function normalizeRows(mixed $rows, bool $allowEmpty = false): array
     {

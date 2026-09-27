@@ -12,6 +12,9 @@ use Sokna\Local\Domain\Orders\GuestOrderService;
 use Sokna\Local\Domain\Orders\WaiterCallService;
 use Sokna\Local\Domain\Orders\StaffQuickOrderService;
 use Sokna\Local\Domain\Orders\TableDraftService;
+use Sokna\Local\Domain\Orders\OrderStaffActionService;
+use Sokna\Local\Domain\Orders\WaiterCallStaffService;
+use Sokna\Local\Domain\Orders\OrderWorkspaceService;
 use Sokna\Local\Relay\TableDraftRealtimeAdapter;
 use Sokna\Local\Domain\Preparation\PreparationAccessService;
 use Sokna\Local\Domain\Preparation\PreparationService;
@@ -61,6 +64,9 @@ final class Bootstrap
     private ?OrderCommitService $orders = null;
     private ?StaffQuickOrderService $staffQuickOrders = null;
     private ?TableDraftService $tableDrafts = null;
+    private ?OrderStaffActionService $orderStaffActions = null;
+    private ?WaiterCallStaffService $waiterCallStaff = null;
+    private ?OrderWorkspaceService $orderWorkspace = null;
     private ?TableDraftRealtimeAdapter $tableDraftRealtime = null;
     private ?PreparationAccessService $preparationAccess = null;
     private ?PreparationService $preparation = null;
@@ -185,6 +191,23 @@ final class Bootstrap
     public function tableDrafts(): TableDraftService
     {
         return $this->tableDrafts ??= new TableDraftService($this->database(), $this->orderCatalog(), $this->staffQuickOrders());
+    }
+
+    public function orderStaffActions(): OrderStaffActionService
+    {
+        return $this->orderStaffActions ??= new OrderStaffActionService(
+            $this->database(),$this->identityRepository(),$this->capabilities(),$this->inventoryOrders(),$this->printing()
+        );
+    }
+
+    public function waiterCallStaff(): WaiterCallStaffService
+    {
+        return $this->waiterCallStaff ??= new WaiterCallStaffService($this->database(),$this->identityRepository(),$this->capabilities());
+    }
+
+    public function orderWorkspace(): OrderWorkspaceService
+    {
+        return $this->orderWorkspace ??= new OrderWorkspaceService($this->database(),$this->identityRepository(),$this->capabilities(),$this->orderCatalog());
     }
 
     public function tableDraftRealtime(): TableDraftRealtimeAdapter
