@@ -1,0 +1,35 @@
+diff --git a/apps/local-web/database/migrations/0020_f1_staff_account.sql b/apps/local-web/database/migrations/0020_f1_staff_account.sql
+index 2f2929c..1b87f3c 100644
+--- a/apps/local-web/database/migrations/0020_f1_staff_account.sql
++++ b/apps/local-web/database/migrations/0020_f1_staff_account.sql
+@@ -2,11 +2,12 @@
+ -- Staff Account remains a dedicated ledger. Benefit is calculated before debt;
+ -- waiver is a post-debt financial event and never rewrites the consumption snapshot.
+ 
++-- MariaDB 11.4 does not allow a generated column expression to reference the
++-- consumption_id foreign-key column. Charges and charge reversals are the only account
++-- entries that carry consumption_id, so the composite unique key preserves one entry of
++-- each ledger type per consumption while keeping the ledger append-only.
+ ALTER TABLE staff_account_ledger
+     ADD COLUMN occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER idempotency_key,
+-    ADD COLUMN charge_consumption_guard BIGINT UNSIGNED GENERATED ALWAYS AS (
+-        CASE WHEN entry_type='charge' THEN consumption_id ELSE NULL END
+-    ) STORED AFTER occurred_at,
+-    ADD UNIQUE KEY uq_f14_staff_account_charge_consumption (charge_consumption_guard),
++    ADD UNIQUE KEY uq_f14_staff_account_consumption_type (consumption_id,entry_type),
+     ADD INDEX idx_f14_staff_account_personnel_occurred (personnel_id,occurred_at,id),
+     ADD INDEX idx_f14_staff_account_period_occurred (financial_period_id,occurred_at,id);
+diff --git a/apps/local-web/tests/f1-staff-account-contract.py b/apps/local-web/tests/f1-staff-account-contract.py
+index ce139d3..349aba7 100755
+--- a/apps/local-web/tests/f1-staff-account-contract.py
++++ b/apps/local-web/tests/f1-staff-account-contract.py
+@@ -17,8 +17,7 @@ boot='apps/local-web/src/Core/Bootstrap.php'
+ for p in [migration,repo,service,posting,boot,'tests/local-f1-staff-account-selftest.php']:
+     text(p)
+ need(migration,'occurred_at DATETIME','ledger occurrence timestamp missing')
+-need(migration,'charge_consumption_guard','one-charge-per-consumption guard missing')
+-need(migration,'uq_f14_staff_account_charge_consumption','charge uniqueness missing')
++need(migration,'uq_f14_staff_account_consumption_type (consumption_id,entry_type)','one-entry-type-per-consumption uniqueness missing')
+ need(repo,"['charge','payment','waiver','charge_reversal','payment_reversal','waiver_reversal']",'ledger type boundary missing')
+ need(repo,'staff_account_balance_underflow','balance underflow guard missing')
+ need(repo,'findByIdempotencyForUpdate','ledger idempotency missing')
