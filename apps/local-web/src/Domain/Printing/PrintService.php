@@ -13,7 +13,7 @@ final class PrintService
     public const LEASE_SECONDS=45;
     public const MAX_CLAIM=5;
 
-    public function __construct(private readonly PDO $pdo,private readonly IdentityRepository $identity){}
+    public function __construct(private readonly PDO $pdo,private readonly IdentityRepository $identity,private readonly PrintTemplatePackageService $templates){}
 
     public function createAgent(string $name,array $user): array
     {
@@ -51,7 +51,7 @@ final class PrintService
         }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
-    public function enqueueTest(string $destinationKey,string $requestId,array $user): array
+    public function enqueueTest(string $destinationKey,string $requestId,array $user,?int $packageId=null): array
     {
         $this->pdo->beginTransaction();
         try{
@@ -62,6 +62,7 @@ final class PrintService
             $payload=$prep
                 ?['schema'=>'sokna-print-document-v2','document_kind'=>'preparation','title'=>'کافه سکنا','badge'=>'چاپ آزمایشی','table_name'=>'تست','order_number'=>'TEST','created_at'=>date('Y-m-d H:i:s'),'sections'=>[['title'=>'آزمون','items'=>[['name'=>'اگر این متن خواناست، مسیر چاپ آماده است','quantity'=>1,'note'=>'چاپ آزمایشی سکنا']]]]]
                 :['schema'=>'sokna-print-document-v2','document_kind'=>'customer','title'=>'کافه سکنا','invoice_number'=>'TEST','created_at'=>date('Y-m-d H:i:s'),'currency'=>'تومان','sections'=>[['items'=>[['name'=>'چاپ آزمایشی سکنا','quantity'=>1,'unit_price'=>0,'line_total'=>0]]]],'subtotal'=>0,'discount'=>0,'tax'=>0,'total'=>0,'footer'=>'این برگه فقط برای آزمون مسیر چاپ است.'];
+            $payload=$packageId!==null&&$packageId>0?$this->templates->applyPackage($payload,$packageId):$this->templates->applyActive($payload);
             $job=$this->enqueueTx($prep?'preparation_test':'customer_test',$destinationKey,$payload,'print_test',$requestId,(int)$actor['id'],'print:test:'.$requestId,false);
             $this->audit('printing.test_enqueued','print_job',(int)($job['job_id']??0),(int)$actor['id'],['destination_key'=>$destinationKey,'request_id'=>$requestId]);
             $this->pdo->commit();return $job;
@@ -152,6 +153,7 @@ final class PrintService
                 'consumer_name'=>$context==='staff_consumption'?$consumer:null,'customer_note'=>$order['customer_note'],
                 'items'=>$rows,'created_at'=>(string)$order['created_at'],
             ];
+            $payload=$this->templates->applyActive($payload);
             $r=$this->enqueueTx('preparation','prep_shared',$payload,'order',(string)$orderId,$actorUserId,'prep:order:'.$orderId,false);
             return $r['job_id']===null?null:(int)$r['job_id'];
         }catch(Throwable){return null;}
@@ -164,7 +166,9 @@ final class PrintService
             $stmt=$this->pdo->prepare('SELECT id,invoice_number,invoice_snapshot_json,destination,status FROM settlement_records WHERE id=? LIMIT 1');
             $stmt->execute([$settlementId]);$row=$stmt->fetch(PDO::FETCH_ASSOC);if(!is_array($row)||(string)$row['status']!=='completed')return null;
             $snapshot=json_decode((string)$row['invoice_snapshot_json'],true);if(!is_array($snapshot))return null;
-            $payload=['document_kind'=>'customer_receipt','settlement_id'=>$settlementId,'invoice_number'=>(string)$row['invoice_number'],'settlement_destination'=>(string)$row['destination'],'invoice'=>$snapshot];
+            $items=[];foreach((array)($snapshot['items']??[]) as $line)$items[]=['name'=>(string)($line['name']??'—'),'quantity'=>(int)($line['quantity']??1),'unit_price'=>(int)($line['unit_price']??0),'line_total'=>(int)($line['line_total']??0),'note'=>$line['note']??null];
+            $payload=['schema'=>'sokna-print-document-v2','document_kind'=>'customer','settlement_id'=>$settlementId,'invoice_number'=>(string)$row['invoice_number'],'settlement_destination'=>(string)$row['destination'],'table_name'=>(string)($snapshot['table_name']??''),'created_at'=>(string)($snapshot['issued_at']??date(DATE_ATOM)),'currency'=>'تومان','sections'=>[['items'=>$items]],'subtotal'=>(int)($snapshot['subtotal']??0),'discount'=>(int)($snapshot['discount']??0),'taxable'=>(int)($snapshot['taxable']??0),'tax'=>(int)($snapshot['tax']??0),'total'=>(int)($snapshot['total']??0),'settlement_label'=>(string)$row['destination']];
+            $payload=$this->templates->applyActive($payload);
             $r=$this->enqueueTx('customer_receipt','customer_receipt',$payload,'settlement',(string)$settlementId,$actorUserId,'receipt:settlement:'.$settlementId,false);
             if($r['job_id']!==null)$this->pdo->prepare('UPDATE settlement_records SET final_print_job_id=COALESCE(final_print_job_id,?) WHERE id=?')->execute([(int)$r['job_id'],$settlementId]);
             return $r['job_id']===null?null:(int)$r['job_id'];

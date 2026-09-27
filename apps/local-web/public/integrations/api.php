@@ -26,7 +26,10 @@ try{
     if(!$isAdmin)WebAction::json(['success'=>false,'code'=>'forbidden','message'=>'این عملیات فقط برای مدیر فعال است.'],403);
     if($action==='print_agent_create')WebAction::json(['success'=>true,'result'=>$core->printing()->createAgent((string)($data['name']??''),$user)]);
     if($action==='print_destination_configure')WebAction::json(['success'=>true,'result'=>$core->printing()->configureDestination((string)($data['destination_key']??''),$data,$user)]);
-    if($action==='print_test')WebAction::json(['success'=>true,'result'=>$core->printing()->enqueueTest((string)($data['destination_key']??''),(string)($data['request_id']??''),$user)]);
+    if($action==='print_template_import')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->import((string)($data['package_json']??''),$user)]);
+    if($action==='print_template_activate')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->activate((int)($data['package_id']??0),$user)]);
+    if($action==='print_template_preview')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->preview((int)($data['package_id']??0),(string)($data['destination_key']??''),$user)]);
+    if($action==='print_test')WebAction::json(['success'=>true,'result'=>$core->printing()->enqueueTest((string)($data['destination_key']??''),(string)($data['request_id']??''),$user,isset($data['package_id'])?(int)$data['package_id']:null)]);
     if($action==='print_resolve')WebAction::json(['success'=>true,'result'=>$core->printing()->resolveAmbiguous((int)($data['job_id']??0),(string)($data['resolution']??''),(string)($data['reason']??''),$user)]);
     WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
 }catch(\Throwable $e){if(property_exists($e,'httpStatus'))WebAction::knownFailure($e);error_log('integrations web action: '.$e->getMessage());WebAction::json(['success'=>false,'code'=>'internal_error','message'=>'عملیات یکپارچه‌سازی انجام نشد.'],500);}

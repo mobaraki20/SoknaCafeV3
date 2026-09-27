@@ -66,3 +66,5 @@
 @media (max-width:760px){.sc-global-search{max-inline-size:none}.sc-command-palette{position:fixed;inset-inline:var(--sc-space-3);inset-block-start:5.5rem;max-block-size:calc(100dvh - 7rem)}}
 
 .sc-command-target{outline:3px solid var(--sc-focus);outline-offset:2px}
+
+.sc-print-preview{max-inline-size:100%;block-size:auto;margin-inline:auto;}

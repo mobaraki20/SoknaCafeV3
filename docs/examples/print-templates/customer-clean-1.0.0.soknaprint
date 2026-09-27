@@ -1,0 +1,25 @@
+{
+  "format": "sokna-print-template-package-v1",
+  "template_key": "customer-clean",
+  "name": "رسید مشتری · تمیز",
+  "version": "1.0.0",
+  "document_kind": "customer",
+  "description": "قالب نمونه برای رسید مشتری روی renderer رسمی سکنا.",
+  "template": {
+    "base_font_size": 23,
+    "title_font_size": 30,
+    "table_font_size": 28,
+    "line_spacing": 5,
+    "margin": 9,
+    "show_time": true,
+    "show_prices": true,
+    "footer": "سپاس از همراهی شما",
+    "design": {
+      "density": "compact",
+      "header_alignment": "center",
+      "separator_style": "solid",
+      "item_layout": "responsive-receipt",
+      "section_order": ["brand", "meta", "items", "summary", "settlement", "footer"]
+    }
+  }
+}

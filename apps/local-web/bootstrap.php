@@ -84,6 +84,7 @@ require_once __DIR__ . '/src/Runtime/RuntimeTriggerException.php';
 require_once __DIR__ . '/src/Runtime/RuntimeTriggerService.php';
 require_once __DIR__ . '/src/Domain/Printing/PrintException.php';
 require_once __DIR__ . '/src/Domain/Printing/PrintService.php';
+require_once __DIR__ . '/src/Domain/Printing/PrintTemplatePackageService.php';
 require_once __DIR__ . '/src/Domain/Printing/PrintManagementService.php';
 require_once __DIR__ . '/src/Http/PrintAgentV4HttpAdapter.php';
 require_once __DIR__ . '/src/Http/RuntimeTriggerHttpAdapter.php';

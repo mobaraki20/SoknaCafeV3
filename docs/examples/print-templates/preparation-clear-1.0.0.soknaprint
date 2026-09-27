@@ -1,0 +1,25 @@
+{
+  "format": "sokna-print-template-package-v1",
+  "template_key": "preparation-clear",
+  "name": "آماده‌سازی · خوانا",
+  "version": "1.0.0",
+  "document_kind": "preparation",
+  "description": "قالب نمونه فیش آماده‌سازی روی renderer رسمی سکنا.",
+  "template": {
+    "base_font_size": 25,
+    "title_font_size": 30,
+    "table_font_size": 32,
+    "line_spacing": 6,
+    "margin": 8,
+    "show_time": true,
+    "show_order_number": true,
+    "show_section_titles": true,
+    "design": {
+      "density": "compact",
+      "header_alignment": "center",
+      "separator_style": "dashed",
+      "item_layout": "two-line",
+      "section_order": ["status", "meta", "items", "notes", "footer"]
+    }
+  }
+}

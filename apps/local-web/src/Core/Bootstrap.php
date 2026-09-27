@@ -37,6 +37,7 @@ use Sokna\Local\Domain\Integrations\IntegrationWorkspaceService;
 use Sokna\Local\Runtime\RuntimeTriggerService;
 use Sokna\Local\Domain\Printing\PrintService;
 use Sokna\Local\Domain\Printing\PrintManagementService;
+use Sokna\Local\Domain\Printing\PrintTemplatePackageService;
 use Sokna\Local\Http\PrintAgentV4HttpAdapter;
 use Sokna\Local\Http\RuntimeTriggerHttpAdapter;
 use Sokna\Local\Domain\Expenses\ExpenseService;
@@ -143,6 +144,7 @@ final class Bootstrap
     private ?RuntimeTriggerService $runtimeTriggers = null;
     private ?PrintService $printing = null;
     private ?PrintManagementService $printManagement = null;
+    private ?PrintTemplatePackageService $printTemplates = null;
     private ?PrintAgentV4HttpAdapter $printAgentV4Http = null;
     private ?RuntimeTriggerHttpAdapter $runtimeTriggerHttp = null;
     private ?ExpenseService $expenses = null;
@@ -482,12 +484,17 @@ final class Bootstrap
 
     public function printing(): PrintService
     {
-        return $this->printing ??= new PrintService($this->database(), $this->identityRepository());
+        return $this->printing ??= new PrintService($this->database(), $this->identityRepository(), $this->printTemplates());
+    }
+
+    public function printTemplates(): PrintTemplatePackageService
+    {
+        return $this->printTemplates ??= new PrintTemplatePackageService($this->database());
     }
 
     public function printManagement(): PrintManagementService
     {
-        return $this->printManagement ??= new PrintManagementService($this->database());
+        return $this->printManagement ??= new PrintManagementService($this->database(), $this->printTemplates());
     }
 
     public function printAgentV4Http(): PrintAgentV4HttpAdapter
