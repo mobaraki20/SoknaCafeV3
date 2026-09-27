@@ -2,14 +2,17 @@
 declare(strict_types=1);
 namespace Sokna\Local\Domain\PublicEdge;
 use PDO;
+use Throwable;
+use Sokna\Local\Domain\Finance\SettlementService;
+use Sokna\Local\Domain\Supply\SupplyService;
 final class PublicProjectionBuilder
 {
-    public function __construct(private readonly PDO $pdo){}
+    public function __construct(private readonly PDO $pdo,private readonly SettlementService $settlements,private readonly SupplyService $supply){}
     public function installation(string $installationId): array{return ['installation_id'=>$installationId,'display_name'=>$this->setting('cafe.name','SOKNA'),'remote_enabled'=>true,'order_intake_enabled'=>$this->settingBool('orders_accepting.cafe',true)];}
     public function authProjections(): array
     {
         $rows=$this->pdo->query('SELECT id,username,password_hash,display_name,role,active,updated_at FROM users WHERE active=1 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);$out=[];
-        foreach($rows as $u){$id=(int)$u['id'];$caps=$this->caps($id);$admin=(string)$u['role']==='admin';if(!$admin&&!in_array('remote_access',$caps,true))continue;$remote=[];if($admin)$remote=['*'];else{foreach(['remote_operations'=>'operations.read','remote_preparation'=>'preparation.read','remote_inventory'=>'inventory.read','remote_inventory_cost'=>'inventory.cost.read','remote_reports'=>'reports.read','remote_deferred_context'=>'deferred.context'] as $local=>$public)if(in_array($local,$caps,true))$remote[]=$public;}
+        foreach($rows as $u){$id=(int)$u['id'];$caps=$this->caps($id);$admin=(string)$u['role']==='admin';if(!$admin&&!in_array('remote_access',$caps,true))continue;$remote=[];if($admin)$remote=['*'];else{foreach(['remote_operations'=>'operations.read','remote_preparation'=>'preparation.read','remote_inventory'=>'inventory.read','remote_inventory_cost'=>'inventory.cost.read','remote_reports'=>'reports.read','remote_deferred_context'=>'deferred.context','remote_order_actions'=>'orders.mutate','remote_preparation_actions'=>'preparation.mutate','remote_table_drafts'=>'orders.table_draft','remote_settlement'=>'finance.settle','remote_supply'=>'supply.need.defer','remote_subscriber_payments'=>'subscriber.payment.defer'] as $local=>$public)if(in_array($local,$caps,true))$remote[]=$public;if(in_array('remote_supply',$caps,true)){$remote[]='supply.manage.defer';$remote[]='deferred.context';}if(in_array('remote_subscriber_payments',$caps,true))$remote[]='deferred.context';if(in_array('remote_settlement',$caps,true))$remote[]='operations.read';$remote=array_values(array_unique($remote));}
             $areas=$this->areas($id);$out[]=['projection_id'=>'user:'.$id,'username'=>(string)$u['username'],'display_name'=>(string)$u['display_name'],'role'=>(string)$u['role'],'password_hash'=>(string)$u['password_hash'],'capabilities'=>$remote,'preparation_areas'=>$areas,'projection_version'=>max(1,(int)(strtotime((string)$u['updated_at'])?:1)),'active'=>true];}
         return $out;
     }
@@ -31,13 +34,19 @@ final class PublicProjectionBuilder
     public function remoteModels(): array
     {
         $now=gmdate('c');$models=[];
-        $models[]=$this->model('operations',['orders'=>$this->rows("SELECT o.id,o.public_code,o.status,o.total_amount,o.order_source,o.created_at,t.name table_name FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id WHERE o.status NOT IN ('cancelled','settled') ORDER BY o.id DESC LIMIT 100"),'waiter_calls'=>$this->rows("SELECT w.id,w.public_code,w.status,w.created_at,t.name table_name FROM waiter_calls w JOIN cafe_tables t ON t.id=w.table_id WHERE w.status IN ('new','accepted') ORDER BY w.id DESC LIMIT 50")],$now);
+        $models[]=$this->model('operations',['orders'=>$this->rows("SELECT o.id,o.public_code,o.status,o.total_amount,o.order_source,o.created_at,t.name table_name FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id WHERE o.status NOT IN ('cancelled','settled') ORDER BY o.id DESC LIMIT 100"),'waiter_calls'=>$this->rows("SELECT w.id,w.public_code,w.status,w.created_at,t.name table_name FROM waiter_calls w JOIN cafe_tables t ON t.id=w.table_id WHERE w.status IN ('new','accepted') ORDER BY w.id DESC LIMIT 50"),'settlement_accounts'=>$this->settlementAccounts()],$now);
         $models[]=$this->model('preparation',['tasks'=>$this->rows("SELECT oi.id order_item_id,o.public_code order_code,o.status,oi.item_name,oi.quantity,oi.preparation_station area,t.name table_name FROM order_items oi JOIN orders o ON o.id=oi.order_id LEFT JOIN cafe_tables t ON t.id=o.table_id WHERE o.status IN ('new','accepted','preparing') ORDER BY oi.id LIMIT 150"),'adjustments'=>[]],$now);
         $models[]=$this->model('inventory',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,ii.default_department,COALESCE(b.quantity_base,0) quantity_base,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")],$now);
         $models[]=$this->model('inventory_cost',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,COALESCE(b.quantity_base,0) quantity_base,b.average_unit_cost,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")],$now);
         $models[]=$this->model('reports',['today'=>['order_count'=>(int)$this->scalar("SELECT COUNT(*) FROM orders WHERE business_date=CURDATE()"),'sales_total'=>(int)$this->scalar("SELECT COALESCE(SUM(total_amount),0) FROM orders WHERE business_date=CURDATE() AND status<>'cancelled'"),'open_waiter_calls'=>(int)$this->scalar("SELECT COUNT(*) FROM waiter_calls WHERE status IN ('new','accepted')")]],$now);
-        $models[]=$this->model('deferred_context',['inventory_items'=>$this->rows("SELECT id,item_code,name,base_unit,default_department FROM inventory_items WHERE active=1 ORDER BY name LIMIT 500"),'count_drafts'=>$this->rows("SELECT id,status,created_at FROM inventory_count_sessions WHERE status='draft' ORDER BY id DESC LIMIT 50"),'subscribers'=>$this->rows("SELECT id,name,active FROM subscribers WHERE active=1 ORDER BY name LIMIT 300"),'expense_categories'=>$this->rows("SELECT category_key,name FROM expense_categories WHERE active=1 ORDER BY sort_order,category_key"),'supply_groups'=>[]],$now);
+        $models[]=$this->model('deferred_context',['inventory_items'=>$this->rows("SELECT id,item_code,name,base_unit,default_department FROM inventory_items WHERE active=1 ORDER BY name LIMIT 500"),'count_drafts'=>$this->rows("SELECT id,status,created_at FROM inventory_count_sessions WHERE status='draft' ORDER BY id DESC LIMIT 50"),'subscribers'=>$this->rows("SELECT s.id,s.name,s.active,COALESCE((SELECT l.balance_after FROM subscriber_ledger l WHERE l.subscriber_id=s.id ORDER BY l.id DESC LIMIT 1),0) balance FROM subscribers s WHERE s.active=1 ORDER BY s.name LIMIT 300"),'expense_categories'=>$this->rows("SELECT category_key,name FROM expense_categories WHERE active=1 ORDER BY sort_order,category_key"),'supply_groups'=>$this->supply->purchaseGroups()],$now);
         return $models;
+    }
+    private function settlementAccounts(): array
+    {
+        $ids=$this->pdo->query("SELECT id FROM table_sessions WHERE status IN ('active','pending') ORDER BY id DESC LIMIT 50")->fetchAll(PDO::FETCH_COLUMN)?:[];$out=[];
+        foreach($ids as $id){try{$a=$this->settlements->account((int)$id);$out[]=['session_id'=>(int)($a['session']['id']??$id),'table_name'=>(string)($a['session']['table_name']??''),'remaining_total'=>(int)($a['remaining_total']??0),'signature'=>(string)($a['signature']??'')];}catch(Throwable){}}
+        return $out;
     }
     private function model(string $key,array $payload,string $at): array{return ['format'=>'sokna-remote-read-v1','model_key'=>$key,'source_version'=>self::hash($payload),'generated_at'=>$at,'payload'=>$payload];}
     private function caps(int $id): array{$q=$this->pdo->prepare('SELECT capability FROM user_capabilities WHERE user_id=? AND enabled=1');$q->execute([$id]);return array_map('strval',$q->fetchAll(PDO::FETCH_COLUMN));}

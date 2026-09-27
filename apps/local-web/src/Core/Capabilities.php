@@ -27,6 +27,12 @@ final class Capabilities
         'remote_inventory_cost',
         'remote_reports',
         'remote_deferred_context',
+        'remote_order_actions',
+        'remote_preparation_actions',
+        'remote_table_drafts',
+        'remote_settlement',
+        'remote_supply',
+        'remote_subscriber_payments',
     ];
 
     public function __construct(private readonly IdentityRepository $repository)

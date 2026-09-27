@@ -84,6 +84,7 @@ use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
 use Sokna\Local\Domain\PublicEdge\PublicProjectionBuilder;
 use Sokna\Local\Domain\PublicEdge\PublicReenrollmentService;
 use Sokna\Local\Domain\PublicEdge\PublicEdgePublisherService;
+use Sokna\Local\Domain\PublicEdge\PublicEdgeRelayService;
 final class Bootstrap
 {
     private ?PDO $database = null;
@@ -150,6 +151,7 @@ final class Bootstrap
     private ?PublicEdgeSyncClient $publicEdgeSyncClient = null;
     private ?PublicProjectionBuilder $publicProjectionBuilder = null;
     private ?PublicEdgePublisherService $publicEdgePublisher = null;
+    private ?PublicEdgeRelayService $publicEdgeRelay = null;
     private ?PublicReenrollmentService $publicReenrollmentService = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
@@ -489,6 +491,7 @@ final class Bootstrap
             'inventory.order_events'=>fn():array=>$this->inventoryOrders()->processPending(30),
             'maintenance.health'=>fn():array=>['ok'=>true,'checked_at'=>date(DATE_ATOM)],
             'public.projection_sync'=>fn():array=>$this->publicEdgePublisher()->syncAll(),
+            'public.relay_sync'=>fn():array=>$this->publicEdgeRelay()->sync(),
         ]);
     }
 
@@ -565,13 +568,20 @@ final class Bootstrap
 
     public function publicProjectionBuilder(): PublicProjectionBuilder
     {
-        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database());
+        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply());
     }
 
     public function publicEdgePublisher(): PublicEdgePublisherService
     {
         $v=@file_get_contents(dirname(__DIR__,4).'/VERSION.txt');
         return $this->publicEdgePublisher ??= new PublicEdgePublisherService($this->database(),$this->publicEdgeSyncClient(),$this->publicProjectionBuilder(),$this->observability(),is_string($v)&&trim($v)!==''?trim($v):'unknown');
+    }
+
+    public function publicEdgeRelay(): PublicEdgeRelayService
+    {
+        return $this->publicEdgeRelay ??= new PublicEdgeRelayService(
+            $this->database(),$this->publicEdgeSyncClient(),$this->realtimeDispatch(),$this->deferredDispatch(),$this->observability()
+        );
     }
 
     public function publicReenrollment(): PublicReenrollmentService

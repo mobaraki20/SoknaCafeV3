@@ -55,7 +55,7 @@ try{
         'contractVersion'=>1,'instanceId'=>'runtime-'.bin2hex(random_bytes(12)),'dataRoot'=>$runtimeDir,'healthPort'=>17621,
         'runtimeTokenFile'=>$secrets.DIRECTORY_SEPARATOR.'runtime-health.token','localTokenFile'=>$secrets.DIRECTORY_SEPARATOR.'runtime-local.token',
         'localBaseUrl'=>'https://127.0.0.1','printAgentServiceName'=>'SoknaPrintWorker','supervisePrintAgent'=>true,
-        'triggers'=>[['key'=>'inventory.order_events','intervalSeconds'=>15],['key'=>'maintenance.health','intervalSeconds'=>60]],
+        'triggers'=>[['key'=>'inventory.order_events','intervalSeconds'=>15],['key'=>'public.relay_sync','intervalSeconds'=>5],['key'=>'public.projection_sync','intervalSeconds'=>30],['key'=>'maintenance.health','intervalSeconds'=>60]],
     ];
     setup_private_write($runtimeDir.DIRECTORY_SEPARATOR.'runtime-config.json',json_encode($runtime,JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");
     setup_private_write($configPath,setup_config_php($appConfig));setup_private_write($lockPath,json_encode(['format'=>'sokna-install-lock-v3','installation_id'=>$installationId,'created_at'=>gmdate('c')],JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT)."\n");

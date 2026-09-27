@@ -94,6 +94,21 @@ final class PublicHttpKernel
                 $result=(new RemoteReadModelHttpAdapter($this->core))->read($this->sessionToken($headers),(string)($query['model']??''));
                 return $this->json($result);
             }
+            if ($method === 'POST' && $path === '/api/staff/realtime') {
+                return $this->json((new RealtimeHttpAdapter($this->core))->enqueue($this->sessionToken($headers),$rawBody));
+            }
+            if ($method === 'GET' && $path === '/api/staff/realtime/result') {
+                return $this->json((new RealtimeHttpAdapter($this->core))->result($this->sessionToken($headers),(string)($query['request_id']??'')));
+            }
+            if ($method === 'POST' && $path === '/api/staff/deferred') {
+                return $this->json((new DeferredHttpAdapter($this->core))->enqueue($this->sessionToken($headers),$rawBody));
+            }
+            if ($method === 'GET' && $path === '/api/staff/deferred') {
+                return $this->json((new DeferredHttpAdapter($this->core))->list($this->sessionToken($headers),(int)($query['limit']??100)));
+            }
+            if ($method === 'GET' && $path === '/api/staff/deferred/result') {
+                return $this->json((new DeferredHttpAdapter($this->core))->result($this->sessionToken($headers),(string)($query['request_id']??'')));
+            }
             if ($method === 'POST' && str_starts_with($path, '/api/v1/local/')) {
                 return $this->localProjectionApi($path,$rawBody,$headers);
             }
@@ -120,6 +135,12 @@ final class PublicHttpKernel
             '/api/v1/local/heartbeat'=>(new ConnectivityHttpAdapter($this->core))->heartbeat($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             '/api/v1/local/guest/publish'=>(new GuestSyncHttpAdapter($this->core))->publish($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             '/api/v1/local/guest/availability'=>(new GuestSyncHttpAdapter($this->core))->availability($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
+            '/api/v1/local/realtime/claim'=>(new RealtimeHttpAdapter($this->core))->claim($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
+            '/api/v1/local/realtime/ack'=>(new RealtimeHttpAdapter($this->core))->ack($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
+            '/api/v1/local/deferred/claim'=>(new DeferredHttpAdapter($this->core))->claim($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
+            '/api/v1/local/deferred/ack'=>(new DeferredHttpAdapter($this->core))->ack($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
+            '/api/v1/local/deferred/reconcile'=>(new DeferredHttpAdapter($this->core))->reconcile($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
+            '/api/v1/local/deferred/period-status'=>(new DeferredHttpAdapter($this->core))->periodStatus($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             '/api/v1/local/emergency/access',
             '/api/v1/local/diagnostics',
             '/api/v1/local/update/status',
