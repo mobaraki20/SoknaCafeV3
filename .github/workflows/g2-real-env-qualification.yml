@@ -1,0 +1,136 @@
+name: G2 Real Environment Qualification
+
+on:
+  push:
+    branches:
+      - qualification/g2-real-env-e638183
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualification:
+    name: G2.4 MariaDB + PHP zip qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: "%"
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: "3306"
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+
+    steps:
+      - name: Checkout qualification branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact G2 source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Reconstruct the exact F1-qualified source c851eb4.
+          cat .qualification/g1-427be0b/part-* > /tmp/g1-overlay.b64
+          echo "ee4a9b53d1a9c06e664961e4fb7a15ad65f6d82954d6544fcef46d0d96410f8a  /tmp/g1-overlay.b64" | sha256sum -c -
+          base64 -d /tmp/g1-overlay.b64 > /tmp/g1-overlay.tar.gz
+          echo "52f89a4ed2e1c55d145d650fee47ff46fb5405d1a2ff22122798f1e2ed94580a  /tmp/g1-overlay.tar.gz" | sha256sum -c -
+          rm -rf /tmp/g1-overlay && mkdir -p /tmp/g1-overlay
+          tar -xzf /tmp/g1-overlay.tar.gz -C /tmp/g1-overlay
+          cp -a /tmp/g1-overlay/root/. ./
+          while IFS= read -r path; do
+            [[ -z "$path" ]] || rm -f -- "$path"
+          done < /tmp/g1-overlay/DELETE_PATHS.txt
+
+          cat .qualification/f1-754b49b/part-* > /tmp/f1-patch.b64
+          echo "45ad31996f6c0951071060fc2e7370bccfae35e649ae162abea8074d8e7e0708  /tmp/f1-patch.b64" | sha256sum -c -
+          base64 -d /tmp/f1-patch.b64 > /tmp/f1.patch.gz
+          echo "84d404f26258c56fb7b7081b61993ae43d5dbfcb21761d0ae7aaf30469244f1d  /tmp/f1.patch.gz" | sha256sum -c -
+          gzip -dc /tmp/f1.patch.gz > /tmp/f1.patch
+          echo "2c78492522994cf6f0d67a1a1385898cd8930dd7d8becc631cdaa219f695cc51  /tmp/f1.patch" | sha256sum -c -
+          git apply --check /tmp/f1.patch
+          git apply /tmp/f1.patch
+
+          for patch in fix-40953.patch fix-11e29a3.patch fix-db0c49b.patch fix-6b5f7e7.patch fix-c851eb4.patch; do
+            git apply --check ".qualification/f1-754b49b/$patch"
+            git apply ".qualification/f1-754b49b/$patch"
+          done
+
+          mkdir -p docs/product
+          cp .qualification/g1-427be0b/docs-product-COMPLETION_STATUS_POLICY_FA.md docs/product/COMPLETION_STATUS_POLICY_FA.md
+          cp .qualification/g1-427be0b/docs-product-WORKSPACE_CHECKPOINT_POLICY_FA.md docs/product/WORKSPACE_CHECKPOINT_POLICY_FA.md
+          cp .qualification/g1-427be0b/docs-product-CONTINUATION_STATE.json docs/product/CONTINUATION_STATE.json
+          cp .qualification/g1-427be0b/tests-component-registry-gate.py tests/component-registry-gate.py
+          cp .qualification/g1-427be0b/COMPONENTS.v2.json COMPONENTS.json
+
+          # Apply the exact local G2 delta c851eb4 -> e638183.
+          echo "1946e10549bdb4ab600ad26466bc1af02e7679ef1c60dc9a05a01e17b9d3242b  .qualification/g2-e638183/overlay.tar.gz.b64" | sha256sum -c -
+          base64 -d .qualification/g2-e638183/overlay.tar.gz.b64 > /tmp/g2-overlay.tar.gz
+          echo "0754125381f3e96c14881c14b6a73ee19e556b726f01925c62d03ed4cb93f55d  /tmp/g2-overlay.tar.gz" | sha256sum -c -
+          rm -rf /tmp/g2-overlay && mkdir -p /tmp/g2-overlay
+          tar -xzf /tmp/g2-overlay.tar.gz -C /tmp/g2-overlay
+          cp -a /tmp/g2-overlay/root/. ./
+          while IFS= read -r path; do
+            [[ -z "$path" ]] || rm -f -- "$path"
+          done < /tmp/g2-overlay/DELETE_PATHS.txt
+
+          chmod +x tests/run-g1-real-db-qualification.sh tests/run-f1-real-db-qualification.sh tests/run-g2-product-qualification.sh tests/component-registry-gate.py
+          echo "Qualification source local HEAD: e63818386eeefd8ae8056ebe1af8617b2c184d54"
+
+      - name: Ensure PHP database, zip and sodium extensions
+        shell: bash
+        run: |
+          set -euo pipefail
+          need_install=0
+          php -r 'exit(in_array("mysql", PDO::getAvailableDrivers(), true) ? 0 : 1);' || need_install=1
+          php -r 'exit(class_exists("ZipArchive") ? 0 : 1);' || need_install=1
+          if [[ "$need_install" == "1" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql php-zip
+          fi
+          php -v
+          php -r 'echo "PDO drivers: ".implode(",", PDO::getAvailableDrivers()).PHP_EOL;'
+          php -r 'echo "ZipArchive: ".(class_exists("ZipArchive")?"yes":"no").PHP_EOL;'
+          php -r 'echo "sodium: ".(extension_loaded("sodium")?"yes":"no").PHP_EOL;'
+          php -r 'exit(extension_loaded("sodium") ? 0 : 1);'
+
+      - name: Validate G2 qualification runner
+        run: python3 tests/g2-product-qualification-contract.py
+
+      - name: Run G2.4 product qualification
+        shell: bash
+        run: |
+          set -o pipefail
+          ./tests/run-g2-product-qualification.sh 2>&1 | tee g2-product-qualification.log
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g2-product-qualification-e638183
+          path: |
+            g2-product-qualification.log
+            docs/product/MASTER_CAPABILITY_MATRIX.json
+            docs/product/MASTER_CAPABILITY_MATRIX.csv
+          if-no-files-found: warn
+          retention-days: 14
