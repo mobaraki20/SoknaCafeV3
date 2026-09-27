@@ -41,6 +41,7 @@ jobs:
       SOKNA_TEST_DB_PASS: sokna
       SOKNA_TEST_DB_ROOT_USER: root
       SOKNA_TEST_DB_ROOT_PASS: root
+      SOKNA_G3_QUAL_SOURCE_COMMIT: 66728d338695f1db7aff1a077e8f060e7ad46585
 
     steps:
       - name: Checkout qualification merge ref
@@ -101,11 +102,15 @@ jobs:
           git apply --check /tmp/g3.patch
           git apply /tmp/g3.patch
 
+          echo "fcf613114bb0ba3badb2dd2e3946cce7a7f2da4795ab501ca6db50b6bdde9a98  .qualification/g3-bc8e408/fix-g3-migration-selftest.patch" | sha256sum -c -
+          git apply --check .qualification/g3-bc8e408/fix-g3-migration-selftest.patch
+          git apply .qualification/g3-bc8e408/fix-g3-migration-selftest.patch
+
           cp .qualification/g3-bc8e408/run-g3-product-qualification.sh tests/run-g3-product-qualification.sh
           cp .qualification/g3-bc8e408/g3-product-qualification-contract.py tests/g3-product-qualification-contract.py
           chmod +x tests/run-g1-real-db-qualification.sh tests/run-f1-real-db-qualification.sh tests/run-g2-product-qualification.sh
           chmod +x tests/run-g3-product-qualification.sh tests/g3-product-qualification-contract.py tests/component-registry-gate.py
-          echo "Qualification source local HEAD: bc8e40800bba4735b110af2488afe5ec1ae377f3"
+          echo "Qualification source local HEAD: 66728d338695f1db7aff1a077e8f060e7ad46585"
 
       - name: Ensure PHP database, zip and sodium extensions
         shell: bash
