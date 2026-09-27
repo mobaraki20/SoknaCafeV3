@@ -56,6 +56,10 @@ use Sokna\Local\Relay\RealtimeDispatchService;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 use Sokna\Local\Domain\Sellables\CatalogAdminService;
 use Sokna\Local\Domain\Admin\AdminControlService;
+use Sokna\Local\Domain\StaffConsumption\PersonnelRepository;
+use Sokna\Local\Domain\StaffConsumption\StaffBenefitRepository;
+use Sokna\Local\Domain\StaffConsumption\StaffAccountRepository;
+use Sokna\Local\Domain\StaffConsumption\StaffConsumptionFoundationService;
 use Sokna\Local\Search\GlobalSearchService;
 use Sokna\Local\Search\CatalogSearchProvider;
 use Sokna\Local\Search\InventorySearchProvider;
@@ -71,6 +75,10 @@ final class Bootstrap
     private ?Auth $auth = null;
     private ?Migrations $migrations = null;
     private ?AdminControlService $adminControls = null;
+    private ?PersonnelRepository $personnel = null;
+    private ?StaffBenefitRepository $staffBenefits = null;
+    private ?StaffAccountRepository $staffAccounts = null;
+    private ?StaffConsumptionFoundationService $staffConsumptionFoundation = null;
     private ?GlobalSearchService $globalSearch = null;
     private ?SellableRepository $sellables = null;
     private ?CatalogAdminService $catalogAdmin = null;
@@ -179,6 +187,28 @@ final class Bootstrap
     public function adminControls(): AdminControlService
     {
         return $this->adminControls ??= new AdminControlService($this->database(), $this->identityRepository());
+    }
+
+    public function personnel(): PersonnelRepository
+    {
+        return $this->personnel ??= new PersonnelRepository($this->database());
+    }
+
+    public function staffBenefits(): StaffBenefitRepository
+    {
+        return $this->staffBenefits ??= new StaffBenefitRepository($this->database());
+    }
+
+    public function staffAccounts(): StaffAccountRepository
+    {
+        return $this->staffAccounts ??= new StaffAccountRepository($this->database());
+    }
+
+    public function staffConsumptionFoundation(): StaffConsumptionFoundationService
+    {
+        return $this->staffConsumptionFoundation ??= new StaffConsumptionFoundationService(
+            $this->identityRepository(), $this->capabilities(), $this->personnel()
+        );
     }
 
     public function globalSearch(): GlobalSearchService

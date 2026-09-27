@@ -15,6 +15,11 @@ final class Capabilities
         'inventory_operations',
         'inventory_finalize',
         'inventory_manage',
+        'staff_consumption_self',
+        'staff_consumption_proxy',
+        'staff_benefit_manage',
+        'staff_account_manage',
+        'staff_consumption_reports',
     ];
 
     public function __construct(private readonly IdentityRepository $repository)
