@@ -27,6 +27,7 @@ require_once __DIR__ . '/src/Guest/GuestMediaStore.php';
 require_once __DIR__ . '/src/Guest/GuestPublishService.php';
 require_once __DIR__ . '/src/Guest/GuestAvailabilityService.php';
 require_once __DIR__ . '/src/Guest/GuestRuntimeService.php';
+require_once __DIR__ . '/src/Guest/GuestThemeCssService.php';
 require_once __DIR__ . '/src/Guest/GuestCompatibilityService.php';
 require_once __DIR__ . '/src/Guest/GuestPageRenderer.php';
 require_once __DIR__ . '/src/Remote/RemoteReadModelService.php';

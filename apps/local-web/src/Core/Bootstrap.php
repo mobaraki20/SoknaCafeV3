@@ -58,6 +58,8 @@ use Sokna\Local\Relay\RealtimeDispatchService;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 use Sokna\Local\Domain\Sellables\CatalogAdminService;
 use Sokna\Local\Domain\Admin\AdminControlService;
+use Sokna\Local\Domain\GuestContent\ThemePackageManager;
+use Sokna\Local\Domain\GuestContent\GuestContentService;
 use Sokna\Local\Domain\StaffConsumption\PersonnelRepository;
 use Sokna\Local\Domain\StaffConsumption\StaffBenefitRepository;
 use Sokna\Local\Domain\StaffConsumption\StaffBenefitCalculator;
@@ -148,6 +150,8 @@ final class Bootstrap
     private ?LocalUpdateService $localUpdates = null;
     private ?ComponentUpdateCenterService $updateCenter = null;
     private ?RecoveryWorkspaceService $recoveryWorkspace = null;
+    private ?ThemePackageManager $themePackages = null;
+    private ?GuestContentService $guestContent = null;
     private ?PublicEdgeSyncClient $publicEdgeSyncClient = null;
     private ?PublicProjectionBuilder $publicProjectionBuilder = null;
     private ?PublicEdgePublisherService $publicEdgePublisher = null;
@@ -561,6 +565,17 @@ final class Bootstrap
         return $this->recoveryWorkspace ??= new RecoveryWorkspaceService($this->businessBackup(),$this->observability());
     }
 
+    public function themePackages(): ThemePackageManager
+    {
+        return $this->themePackages ??= new ThemePackageManager(dirname(__DIR__,2).'/resources/guest-themes');
+    }
+
+    public function guestContent(): GuestContentService
+    {
+        $root = rtrim($this->config->requiredString('app.data_dir'), "\\/") . DIRECTORY_SEPARATOR . 'guest-media';
+        return $this->guestContent ??= new GuestContentService($this->database(),$this->identityRepository(),$this->themePackages(),$root);
+    }
+
     public function publicEdgeSyncClient(): PublicEdgeSyncClient
     {
         return $this->publicEdgeSyncClient ??= new PublicEdgeSyncClient($this->config);
@@ -568,7 +583,7 @@ final class Bootstrap
 
     public function publicProjectionBuilder(): PublicProjectionBuilder
     {
-        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply());
+        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent());
     }
 
     public function publicEdgePublisher(): PublicEdgePublisherService

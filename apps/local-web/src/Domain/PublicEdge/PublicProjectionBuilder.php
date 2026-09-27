@@ -5,9 +5,10 @@ use PDO;
 use Throwable;
 use Sokna\Local\Domain\Finance\SettlementService;
 use Sokna\Local\Domain\Supply\SupplyService;
+use Sokna\Local\Domain\GuestContent\GuestContentService;
 final class PublicProjectionBuilder
 {
-    public function __construct(private readonly PDO $pdo,private readonly ?SettlementService $settlements=null,private readonly ?SupplyService $supply=null){}
+    public function __construct(private readonly PDO $pdo,private readonly ?SettlementService $settlements=null,private readonly ?SupplyService $supply=null,private readonly ?GuestContentService $guestContent=null){}
     public function installation(string $installationId): array{return ['installation_id'=>$installationId,'display_name'=>$this->setting('cafe.name','SOKNA'),'remote_enabled'=>true,'order_intake_enabled'=>$this->settingBool('orders_accepting.cafe',true)];}
     public function authProjections(): array
     {
@@ -18,12 +19,46 @@ final class PublicProjectionBuilder
     }
     public function guestPublish(): array
     {
-        $menus=$this->pdo->query("SELECT id,menu_key,name,sort_order FROM menus WHERE status='active' ORDER BY sort_order,id")->fetchAll(PDO::FETCH_ASSOC);$menuList=[];$catalogs=[];
-        foreach($menus as $m){$menu=['menu_key'=>(string)$m['menu_key'],'name'=>(string)$m['name'],'sort_order'=>(int)$m['sort_order']];$menuList[]=$menu;$q=$this->pdo->prepare("SELECT DISTINCT c.id,c.name,mc.sort_order FROM categories c JOIN menu_categories mc ON mc.category_id=c.id WHERE mc.menu_id=? AND c.active=1 AND c.audience<>'staff' ORDER BY mc.sort_order,c.id");$q->execute([(int)$m['id']]);$cats=array_map(fn($r)=>['id'=>(int)$r['id'],'name'=>(string)$r['name'],'sort_order'=>(int)$r['sort_order']],$q->fetchAll(PDO::FETCH_ASSOC));$iq=$this->pdo->prepare("SELECT i.id,i.category_id,c.name category_name,i.name,i.description,i.price,i.available,i.image_path,i.sort_order FROM items i JOIN categories c ON c.id=i.category_id JOIN menu_items mi ON mi.item_id=i.id WHERE mi.menu_id=? AND i.active=1 AND i.staff_only=0 AND i.sellable_kind='menu_item' ORDER BY c.sort_order,i.sort_order,i.id");$iq->execute([(int)$m['id']]);$items=array_map(fn($r)=>['id'=>(int)$r['id'],'category_id'=>(int)$r['category_id'],'category_name'=>(string)$r['category_name'],'name'=>(string)$r['name'],'description'=>(string)($r['description']??''),'price'=>(int)$r['price'],'available'=>(bool)$r['available'],'image_path'=>''], $iq->fetchAll(PDO::FETCH_ASSOC));$catalogs[(string)$m['menu_key']]=['menu'=>$menu,'categories'=>$cats,'items'=>$items];}
+        $menus=$this->pdo->query("SELECT id,menu_key,name,sort_order FROM menus WHERE status='active' ORDER BY sort_order,id")->fetchAll(PDO::FETCH_ASSOC);
+        $menuList=[];$catalogs=[];$manifest=[];
+        foreach($menus as $m){
+            $menu=['menu_key'=>(string)$m['menu_key'],'name'=>(string)$m['name'],'sort_order'=>(int)$m['sort_order']];
+            $menuList[]=$menu;
+            $q=$this->pdo->prepare("SELECT DISTINCT c.id,c.name,mc.sort_order FROM categories c JOIN menu_categories mc ON mc.category_id=c.id WHERE mc.menu_id=? AND c.active=1 AND c.audience<>'staff' ORDER BY mc.sort_order,c.id");
+            $q->execute([(int)$m['id']]);
+            $cats=array_map(fn($r)=>['id'=>(int)$r['id'],'name'=>(string)$r['name'],'sort_order'=>(int)$r['sort_order']],$q->fetchAll(PDO::FETCH_ASSOC));
+            $iq=$this->pdo->prepare("SELECT i.id,i.category_id,c.name category_name,i.name,i.description,i.price,i.available,i.image_path,i.sort_order FROM items i JOIN categories c ON c.id=i.category_id JOIN menu_items mi ON mi.item_id=i.id WHERE mi.menu_id=? AND i.active=1 AND i.staff_only=0 AND i.sellable_kind='menu_item' ORDER BY c.sort_order,i.sort_order,i.id");
+            $iq->execute([(int)$m['id']]);
+            $items=[];
+            foreach($iq->fetchAll(PDO::FETCH_ASSOC) as $r){
+                $source='';
+                if($this->guestContent!==null){
+                    $resolved=$this->guestContent->publicMediaForSource((string)($r['image_path']??''));
+                    if(is_array($resolved)){
+                        $source=(string)$resolved['source'];
+                        $manifest[$source]=(array)$resolved['manifest'];
+                    }
+                }
+                $items[]=[
+                    'id'=>(int)$r['id'],'category_id'=>(int)$r['category_id'],'category_name'=>(string)$r['category_name'],
+                    'name'=>(string)$r['name'],'description'=>(string)($r['description']??''),'price'=>(int)$r['price'],
+                    'available'=>(bool)$r['available'],'image_path'=>$source,
+                ];
+            }
+            $catalogs[(string)$m['menu_key']]=['menu'=>$menu,'categories'=>$cats,'items'=>$items];
+        }
         $tables=array_map(fn($r)=>['id'=>(int)$r['id'],'name'=>(string)$r['name'],'code'=>(string)$r['code'],'token'=>(string)$r['access_token']],$this->pdo->query('SELECT id,name,code,access_token FROM cafe_tables WHERE active=1 ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC));
         $snapshot=['format'=>'sokna-guest-snapshot-v1','cafe_name'=>$this->setting('cafe.name','SOKNA'),'features'=>['table_sessions_enabled'=>true],'tables'=>$tables,'menus'=>$menuList,'catalogs'=>$catalogs];
+        if($this->guestContent!==null)$snapshot['presentation']=$this->guestContent->publishedPresentation();
         if($menuList!==[]){$first=(string)$menuList[0]['menu_key'];$snapshot['categories']=$catalogs[$first]['categories'];$snapshot['items']=$catalogs[$first]['items'];}
-        $manifest=[];$hash=self::hash(['format'=>'sokna-guest-snapshot-v1','snapshot'=>$snapshot,'media_manifest'=>$manifest]);return ['revision_id'=>'guest-'.substr($hash,0,32),'content_hash'=>$hash,'generated_at'=>gmdate('c'),'snapshot'=>$snapshot,'media_manifest'=>$manifest];
+        ksort($manifest,SORT_STRING);
+        $hash=self::hash(['format'=>'sokna-guest-snapshot-v1','snapshot'=>$snapshot,'media_manifest'=>$manifest]);
+        return ['revision_id'=>'guest-'.substr($hash,0,32),'content_hash'=>$hash,'generated_at'=>gmdate('c'),'snapshot'=>$snapshot,'media_manifest'=>$manifest];
+    }
+
+    public function guestMediaPayloads(array $manifest): array
+    {
+        return $this->guestContent?->mediaPayloads($manifest) ?? [];
     }
     public function availability(): array
     {

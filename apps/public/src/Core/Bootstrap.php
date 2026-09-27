@@ -17,6 +17,7 @@ use Sokna\PublicEdge\Guest\GuestMediaStore;
 use Sokna\PublicEdge\Guest\GuestPageRenderer;
 use Sokna\PublicEdge\Guest\GuestPublishService;
 use Sokna\PublicEdge\Guest\GuestRuntimeService;
+use Sokna\PublicEdge\Guest\GuestThemeCssService;
 use Sokna\PublicEdge\Health\PublicHealthService;
 use Sokna\PublicEdge\Realtime\RealtimeService;
 use Sokna\PublicEdge\Remote\RemoteReadModelService;
@@ -46,6 +47,7 @@ final class Bootstrap
     private ?GuestPublishService $guestPublishService = null;
     private ?GuestAvailabilityService $guestAvailabilityService = null;
     private ?GuestRuntimeService $guestRuntimeService = null;
+    private ?GuestThemeCssService $guestThemeCssService = null;
     private ?GuestCompatibilityService $guestCompatibilityService = null;
     private ?GuestPageRenderer $guestPageRenderer = null;
     private ?RemoteReadModelService $remoteReadModelService = null;
@@ -171,6 +173,11 @@ final class Bootstrap
     public function guestRuntime(): GuestRuntimeService
     {
         return $this->guestRuntimeService ??= new GuestRuntimeService($this->database());
+    }
+
+    public function guestThemeCss(): GuestThemeCssService
+    {
+        return $this->guestThemeCssService ??= new GuestThemeCssService($this->guestRuntime());
     }
 
     public function guestCompatibility(): GuestCompatibilityService

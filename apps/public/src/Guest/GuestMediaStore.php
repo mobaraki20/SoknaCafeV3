@@ -11,7 +11,6 @@ final class GuestMediaStore
         'image/png' => 'png',
         'image/webp' => 'webp',
         'image/gif' => 'gif',
-        'image/svg+xml' => 'svg',
     ];
 
     public function __construct(private readonly string $storageRoot)
@@ -70,7 +69,7 @@ final class GuestMediaStore
         $sha = strtolower(trim($sha));
         $extension = strtolower(trim($extension));
         if ($installationId === '' || preg_match('/^[A-Za-z0-9._-]{1,96}$/D', $installationId) !== 1) return null;
-        if (preg_match('/^[a-f0-9]{64}$/D', $sha) !== 1 || preg_match('/^(jpg|png|webp|gif|svg)$/D', $extension) !== 1) return null;
+        if (preg_match('/^[a-f0-9]{64}$/D', $sha) !== 1 || preg_match('/^(jpg|png|webp|gif)$/D', $extension) !== 1) return null;
         $mime = array_search($extension, self::ALLOWED, true);
         if (!is_string($mime)) return null;
         $path = $this->installationDir($installationId) . DIRECTORY_SEPARATOR . $sha . '.' . $extension;
@@ -88,7 +87,7 @@ final class GuestMediaStore
             }
             $sha = strtolower(trim((string)($meta['sha256'] ?? '')));
             $extension = strtolower(trim((string)($meta['extension'] ?? '')));
-            if (!preg_match('/^[a-f0-9]{64}$/', $sha) || !preg_match('/^(jpg|png|webp|gif|svg)$/', $extension)) {
+            if (!preg_match('/^[a-f0-9]{64}$/', $sha) || !preg_match('/^(jpg|png|webp|gif)$/', $extension)) {
                 return ['ok' => false, 'status' => 400, 'error' => 'invalid_media_manifest'];
             }
             $path = $this->installationDir($installationId) . DIRECTORY_SEPARATOR . $sha . '.' . $extension;

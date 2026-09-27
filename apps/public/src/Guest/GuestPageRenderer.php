@@ -69,6 +69,9 @@ final class GuestPageRenderer
         $waiterEndpoint = $this->safeAssetUrl((string)($endpoints['waiter_call'] ?? ''));
         $mediaBase = $this->safeAssetUrl((string)($endpoints['media_base'] ?? ''));
         $manifest = is_array($bundle['media_manifest'] ?? null) ? $bundle['media_manifest'] : [];
+        $presentation = is_array($snapshot['presentation'] ?? null) ? $snapshot['presentation'] : [];
+        $copy = is_array($presentation['copy'] ?? null) ? $presentation['copy'] : [];
+        $themeCssUrl = $this->safeAssetUrl((string)($endpoints['theme_css'] ?? ''));
 
         $html = '<!doctype html><html lang="fa" dir="rtl"><head>'
             . '<meta charset="utf-8">'
@@ -76,6 +79,7 @@ final class GuestPageRenderer
             . ($tableToken !== '' ? '<meta name="robots" content="noindex,nofollow,noarchive">' : '')
             . '<title>' . self::e($displayName) . ' | منو</title>'
             . '<link rel="stylesheet" href="' . self::e($cssUrl) . '">'
+            . ($themeCssUrl !== '' ? '<link rel="stylesheet" href="' . self::e($themeCssUrl) . '">' : '')
             . '<script defer src="' . self::e($jsUrl) . '"></script>'
             . '</head><body class="sg-body">'
             . '<div class="sg-app" data-sg-app'
@@ -86,7 +90,7 @@ final class GuestPageRenderer
 
         $html .= '<header class="sg-header"><div class="sg-brand">'
             . '<span class="sg-brand-mark" aria-hidden="true">س</span>'
-            . '<div><strong>' . self::e($displayName) . '</strong><span>منوی عمومی</span></div></div>';
+            . '<div><strong>' . self::e($displayName) . '</strong><span>' . self::e($this->copy($copy,'menu_subtitle','منوی عمومی')) . '</span></div></div>';
         if ($table !== null) {
             $tableName = trim((string)($table['name'] ?? ''));
             $html .= '<span class="sg-table-badge">' . self::e($tableName !== '' ? $tableName : 'میز') . '</span>';
@@ -94,14 +98,14 @@ final class GuestPageRenderer
         $html .= '</header>';
 
         if (($actionState['enabled'] ?? false) === true) {
-            $html .= '<div class="sg-action-state is-ready" role="status"><strong>ارتباط زنده برقرار است</strong><span>وضعیت سفارش‌گیری از کافه به‌روز است.</span></div>';
+            $html .= '<div class="sg-action-state is-ready" role="status"><strong>' . self::e($this->copy($copy,'ready_title','ارتباط زنده برقرار است')) . '</strong><span>' . self::e($this->copy($copy,'ready_body','وضعیت سفارش‌گیری از کافه به‌روز است.')) . '</span></div>';
         } else {
-            $html .= '<div class="sg-action-state is-degraded" role="status"><strong>منو در حالت فقط‌خواندنی است</strong><span>ارتباط زنده با کافه موقتاً در دسترس نیست؛ مشاهده منو ادامه دارد.</span></div>';
+            $html .= '<div class="sg-action-state is-degraded" role="status"><strong>' . self::e($this->copy($copy,'degraded_title','منو در حالت فقط‌خواندنی است')) . '</strong><span>' . self::e($this->copy($copy,'degraded_body','ارتباط زنده با کافه موقتاً در دسترس نیست؛ مشاهده منو ادامه دارد.')) . '</span></div>';
         }
 
         $html .= '<main class="sg-main"><section class="sg-search" aria-label="جست‌وجوی منو">'
-            . '<label for="sgMenuSearch">جست‌وجوی منو</label>'
-            . '<input id="sgMenuSearch" data-sg-search type="search" inputmode="search" autocomplete="off" placeholder="نام نوشیدنی یا غذا را بنویسید">'
+            . '<label for="sgMenuSearch">' . self::e($this->copy($copy,'search_label','جست‌وجوی منو')) . '</label>'
+            . '<input id="sgMenuSearch" data-sg-search type="search" inputmode="search" autocomplete="off" placeholder="' . self::e($this->copy($copy,'search_placeholder','نام نوشیدنی یا غذا را بنویسید')) . '">'
             . '</section>';
 
         if (count($menus) > 1) {
@@ -120,7 +124,7 @@ final class GuestPageRenderer
         }
 
         if ($categories === []) {
-            $html .= '<section class="sg-empty" role="status"><h1>منو هنوز آیتمی ندارد</h1><p>لطفاً کمی بعد دوباره بررسی کنید.</p></section>';
+            $html .= '<section class="sg-empty" role="status"><h1>' . self::e($this->copy($copy,'empty_title','منو هنوز آیتمی ندارد')) . '</h1><p>' . self::e($this->copy($copy,'empty_body','لطفاً کمی بعد دوباره بررسی کنید.')) . '</p></section>';
         } else {
             $html .= '<nav class="sg-category-nav" aria-label="دسته‌بندی‌های منو">';
             foreach ($categories as $category) {
@@ -143,11 +147,13 @@ final class GuestPageRenderer
                     $price = max(0, (int)($item['price'] ?? 0));
                     $available = !empty($item['available']);
                     $search = trim($name . ' ' . (string)($category['name'] ?? '') . ' ' . $description);
-                    $image = $this->mediaUrl($installationId, (string)($item['image_path'] ?? ''), $manifest, $mediaBase);
+                    $source = (string)($item['image_path'] ?? '');
+                    $image = $this->mediaUrl($installationId, $source, $manifest, $mediaBase);
+                    $imageAlt = $this->mediaAlt($source, $manifest, $name);
 
                     $html .= '<article class="sg-item' . (!$available ? ' is-unavailable' : '') . '" data-sg-item data-item-id="' . $id . '" data-search="' . self::e(self::lower($search)) . '">';
                     if ($image !== '') {
-                        $html .= '<img class="sg-item-media" src="' . self::e($image) . '" loading="lazy" decoding="async" alt="' . self::e($name) . '">';
+                        $html .= '<img class="sg-item-media" src="' . self::e($image) . '" loading="lazy" decoding="async" alt="' . self::e($imageAlt) . '">';
                     } else {
                         $html .= '<div class="sg-item-media sg-item-placeholder" aria-hidden="true">س</div>';
                     }
@@ -162,7 +168,7 @@ final class GuestPageRenderer
                             . '<button type="button" data-sg-qty-inc="' . $id . '" data-item-price="' . $price . '" data-item-name="' . self::e($name) . '" aria-label="افزودن">+</button>'
                             . '</div>';
                     } else {
-                        $status = !$available ? 'ناموجود' : ($table === null ? 'برای سفارش QR میز را اسکن کنید' : 'سفارش‌گیری موقتاً غیرفعال است');
+                        $status = !$available ? $this->copy($copy,'unavailable','ناموجود') : ($table === null ? $this->copy($copy,'scan_table','برای سفارش QR میز را اسکن کنید') : $this->copy($copy,'ordering_disabled','سفارش‌گیری موقتاً غیرفعال است'));
                         $html .= '<span class="sg-item-state">' . self::e($status) . '</span>';
                     }
                     $html .= '</div></div></article>';
@@ -172,18 +178,18 @@ final class GuestPageRenderer
             $html .= '</div>';
         }
 
-        $html .= '<div class="sg-no-results" data-sg-no-results hidden>نتیجه‌ای پیدا نشد.</div></main>';
+        $html .= '<div class="sg-no-results" data-sg-no-results hidden>' . self::e($this->copy($copy,'no_results','نتیجه‌ای پیدا نشد.')) . '</div></main>';
 
         if ($canOrder) {
             $endpointReady = $orderEndpoint !== '';
             $html .= '<aside class="sg-basket" aria-label="سبد سفارش" data-sg-basket>'
-                . '<div><span>جمع سفارش</span><strong data-sg-basket-total>۰ تومان</strong></div>'
-                . '<button type="button" data-sg-order-submit' . ($endpointReady ? '' : ' disabled') . '>ثبت سفارش</button>'
+                . '<div><span>' . self::e($this->copy($copy,'basket_total','جمع سفارش')) . '</span><strong data-sg-basket-total>۰ تومان</strong></div>'
+                . '<button type="button" data-sg-order-submit' . ($endpointReady ? '' : ' disabled') . '>' . self::e($this->copy($copy,'submit_order','ثبت سفارش')) . '</button>'
                 . '<p class="sg-inline-message" data-sg-order-message role="status" aria-live="polite"></p>'
                 . '</aside>';
         }
         if ($waiterEnabled) {
-            $html .= '<button class="sg-waiter" type="button" data-sg-waiter' . ($waiterEndpoint !== '' ? '' : ' disabled') . '>فراخوان گارسون</button>';
+            $html .= '<button class="sg-waiter" type="button" data-sg-waiter' . ($waiterEndpoint !== '' ? '' : ' disabled') . '>' . self::e($this->copy($copy,'call_waiter','فراخوان گارسون')) . '</button>';
         }
 
         $html .= '</div></body></html>';
@@ -298,13 +304,21 @@ final class GuestPageRenderer
         return null;
     }
 
+    private function mediaAlt(string $source,array $manifest,string $fallback): string
+    {
+        $meta=is_array($manifest[$source]??null)?$manifest[$source]:[];
+        $alt=trim((string)($meta['alt_text']??''));
+        if($alt===''||str_contains($alt,'<')||str_contains($alt,'>'))return $fallback;
+        return function_exists('mb_substr')?mb_substr($alt,0,180,'UTF-8'):substr($alt,0,180);
+    }
+
     private function mediaUrl(string $installationId, string $source, array $manifest, string $mediaBase): string
     {
         if ($source === '' || $mediaBase === '') return '';
         $meta = is_array($manifest[$source] ?? null) ? $manifest[$source] : [];
         $sha = strtolower((string)($meta['sha256'] ?? ''));
         $ext = strtolower((string)($meta['extension'] ?? ''));
-        if (preg_match('/^[a-f0-9]{64}$/', $sha) !== 1 || preg_match('/^(jpg|png|webp|gif|svg)$/', $ext) !== 1) return '';
+        if (preg_match('/^[a-f0-9]{64}$/', $sha) !== 1 || preg_match('/^(jpg|png|webp|gif)$/', $ext) !== 1) return '';
         return rtrim($mediaBase, '/') . '/' . rawurlencode($installationId) . '/' . $sha . '.' . $ext;
     }
 
@@ -326,6 +340,13 @@ final class GuestPageRenderer
             ],
             'body' => $html,
         ];
+    }
+
+    private function copy(array $copy,string $key,string $fallback,int $max=220): string
+    {
+        $value=trim((string)($copy[$key]??''));
+        if($value===''||str_contains($value,'<')||str_contains($value,'>'))return $fallback;
+        return function_exists('mb_substr')?mb_substr($value,0,$max,'UTF-8'):substr($value,0,$max);
     }
 
     private function safeAssetUrl(string $value): string

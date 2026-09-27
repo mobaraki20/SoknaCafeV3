@@ -46,12 +46,15 @@ final class PublicHttpKernel
             if ($method === 'GET' && $path === '/assets/scds/remote-staff.js') {
                 return $this->staticFile($this->componentRoot . '/assets/scds/remote-staff.js', 'application/javascript; charset=utf-8', 300);
             }
-            if ($method === 'GET' && preg_match('#^/media/([A-Za-z0-9._-]{1,96})/([a-f0-9]{64})\.(jpg|png|webp|gif|svg)$#D', $path, $m) === 1) {
+            if ($method === 'GET' && preg_match('#^/media/([A-Za-z0-9._-]{1,96})/([a-f0-9]{64})\.(jpg|png|webp|gif)$#D', $path, $m) === 1) {
                 $file = $this->core->guestMedia()->publicFile($m[1], $m[2], $m[3]);
                 if ($file === null) return $this->json(SafeErrors::response(404, 'media_not_found', $this->correlationId($headers)));
                 $response = $this->staticFile($file['path'], $file['mime'], 31536000, true);
-                if ($m[3] === 'svg') $response['headers']['Content-Security-Policy'] = "default-src 'none'; sandbox";
                 return $response;
+            }
+            if ($method === 'GET' && preg_match('#^/theme/([A-Za-z0-9._:-]{1,96})\.css$#D', $path, $m) === 1) {
+                $css=$this->core->guestThemeCss()->css($m[1]);
+                return $this->withSecurityHeaders($this->response(200,$css,['Content-Type'=>'text/css; charset=utf-8','Cache-Control'=>'no-store, max-age=0']));
             }
             if ($method === 'GET' && $path === '/menu') {
                 $installationId = $this->installationId($query);
@@ -59,6 +62,7 @@ final class PublicHttpKernel
                 return $this->withSecurityHeaders($this->core->guestRenderer()->render($installationId, $query, [
                     'css' => '/assets/scds/guest.css',
                     'js' => '/assets/scds/guest.js',
+                    'theme_css' => '/theme/' . rawurlencode($installationId) . '.css',
                     'create_order' => '/api/guest/order',
                     'waiter_call' => '/api/guest/waiter',
                     'media_base' => '/media',
@@ -133,6 +137,7 @@ final class PublicHttpKernel
             '/api/v1/local/auth-projections'=>(new AuthHttpAdapter($this->core))->projectionSync($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             '/api/v1/local/read-models'=>(new RemoteReadModelHttpAdapter($this->core))->sync($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             '/api/v1/local/heartbeat'=>(new ConnectivityHttpAdapter($this->core))->heartbeat($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
+            '/api/v1/local/guest/media'=>(new GuestSyncHttpAdapter($this->core))->media($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             '/api/v1/local/guest/publish'=>(new GuestSyncHttpAdapter($this->core))->publish($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             '/api/v1/local/guest/availability'=>(new GuestSyncHttpAdapter($this->core))->availability($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             '/api/v1/local/realtime/claim'=>(new RealtimeHttpAdapter($this->core))->claim($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),

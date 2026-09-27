@@ -1,0 +1,26 @@
+{
+  "format": "sokna-guest-theme-v1",
+  "theme_key": "sokna-house",
+  "name": "خانه سکنا",
+  "version": "1.0.0",
+  "description": "تم گرم و آرام سکنا با زمینه روشن، سبز زیتونی و گوشه‌های نرم.",
+  "layout": "cards",
+  "tokens": {
+    "canvas": "#F7F1E8",
+    "surface": "#FFFDF9",
+    "surface_soft": "#EFE8DC",
+    "text": "#282A25",
+    "muted": "#716E65",
+    "border": "#DED4C5",
+    "primary": "#536B56",
+    "primary_contrast": "#FFFFFF",
+    "focus": "#B06F32",
+    "ready_bg": "#EDF4ED",
+    "ready_text": "#294A31",
+    "degraded_bg": "#FFF1D7",
+    "degraded_text": "#6B4A18",
+    "radius_md": "18px",
+    "radius_lg": "28px"
+  },
+  "editable_tokens": ["canvas", "surface", "surface_soft", "primary", "focus", "radius_md", "radius_lg"]
+}

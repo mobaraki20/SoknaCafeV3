@@ -1,0 +1,26 @@
+{
+  "format": "sokna-guest-theme-v1",
+  "theme_key": "sokna-classic",
+  "name": "سکنا کلاسیک",
+  "version": "1.0.0",
+  "description": "نسخه سازگار با ظاهر پایه منوی عمومی پیش از G4.2.",
+  "layout": "cards",
+  "tokens": {
+    "canvas": "#F7F4EE",
+    "surface": "#FFFFFF",
+    "surface_soft": "#F0EEE8",
+    "text": "#202522",
+    "muted": "#687069",
+    "border": "#DEDBD3",
+    "primary": "#365B4C",
+    "primary_contrast": "#FFFFFF",
+    "focus": "#AD6B19",
+    "ready_bg": "#EDF5F0",
+    "ready_text": "#234838",
+    "degraded_bg": "#FFF5DC",
+    "degraded_text": "#654B12",
+    "radius_md": "16px",
+    "radius_lg": "24px"
+  },
+  "editable_tokens": ["canvas", "surface", "surface_soft", "primary", "focus", "radius_md", "radius_lg"]
+}

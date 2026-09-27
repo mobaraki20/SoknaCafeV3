@@ -13,18 +13,51 @@ final class PublicEdgePublisherService
     }
     public function syncAll(): array
     {
-        if(!$this->client->configured()){$this->record('all','disabled',null,null,['reason'=>'not_configured']);throw new PublicEdgeSyncException('public_not_configured','Public Edge هنوز pair نشده است.',409);}
-        $installationId=$this->client->installationId();$results=[];
+        if(!$this->client->configured()){
+            $this->record('all','disabled',null,null,['reason'=>'not_configured']);
+            throw new PublicEdgeSyncException('public_not_configured','Public Edge هنوز pair نشده است.',409);
+        }
+        $installationId=$this->client->installationId();
+        $results=[];
+        $guestPublish=$this->builder->guestPublish();
+        $mediaPayloads=$this->builder->guestMediaPayloads((array)($guestPublish['media_manifest']??[]));
+        if($mediaPayloads!==[]){
+            $mediaVersion=PublicProjectionBuilder::hash(array_map(static fn(array $m): string => (string)($m['sha256']??''),$mediaPayloads));
+            try{
+                $uploaded=0;
+                foreach($mediaPayloads as $payload){$this->client->post('/api/v1/local/guest/media',$payload);$uploaded++;}
+                $this->record('guest_media','ok',$mediaVersion,200,['uploaded'=>$uploaded]);
+                $results['guest_media']=['ok'=>true,'uploaded'=>$uploaded];
+            }catch(Throwable $e){
+                $status=$e instanceof PublicEdgeSyncException?$e->httpStatus:500;
+                $this->record('guest_media','error',$mediaVersion,$status,['code'=>$e instanceof PublicEdgeSyncException?$e->errorCode:'exception']);
+                $this->obs->logEvent('error','public.sync_failed',['channel'=>'guest_media','status'=>$status,'code'=>$e instanceof PublicEdgeSyncException?$e->errorCode:'exception']);
+                throw $e;
+            }
+        }
         $jobs=[
             'installation'=>['/api/v1/local/installation',$this->builder->installation($installationId)],
             'auth'=>['/api/v1/local/auth-projections',['projections'=>$this->builder->authProjections()]],
-            'guest_publish'=>['/api/v1/local/guest/publish',$this->builder->guestPublish()],
+            'guest_publish'=>['/api/v1/local/guest/publish',$guestPublish],
             'availability'=>['/api/v1/local/guest/availability',$this->builder->availability()],
             'read_models'=>['/api/v1/local/read-models',['models'=>$this->builder->remoteModels()]],
             'heartbeat'=>['/api/v1/local/heartbeat',['local_version'=>$this->localVersion,'runtime_status'=>'healthy','telemetry'=>['source'=>'local-web','synced_at'=>gmdate('c')]]],
         ];
-        foreach($jobs as $channel=>[$path,$payload]){$version=PublicProjectionBuilder::hash($payload);try{$r=$this->client->post($path,$payload);$this->record($channel,'ok',$version,(int)$r['status'],$r['body']);$results[$channel]=$r['body'];}catch(Throwable $e){$status=$e instanceof PublicEdgeSyncException?$e->httpStatus:500;$this->record($channel,'error',$version,$status,['code'=>$e instanceof PublicEdgeSyncException?$e->errorCode:'exception']);$this->obs->logEvent('error','public.sync_failed',['channel'=>$channel,'status'=>$status,'code'=>$e instanceof PublicEdgeSyncException?$e->errorCode:'exception']);throw $e;}}
-        $this->obs->logEvent('info','public.sync_completed',['channels'=>array_keys($results),'origin'=>$this->client->safeOrigin()]);return ['success'=>true,'synced_at'=>gmdate('c'),'channels'=>$results,'state'=>$this->snapshot()];
+        foreach($jobs as $channel=>[$path,$payload]){
+            $version=PublicProjectionBuilder::hash($payload);
+            try{
+                $r=$this->client->post($path,$payload);
+                $this->record($channel,'ok',$version,(int)$r['status'],$r['body']);
+                $results[$channel]=$r['body'];
+            }catch(Throwable $e){
+                $status=$e instanceof PublicEdgeSyncException?$e->httpStatus:500;
+                $this->record($channel,'error',$version,$status,['code'=>$e instanceof PublicEdgeSyncException?$e->errorCode:'exception']);
+                $this->obs->logEvent('error','public.sync_failed',['channel'=>$channel,'status'=>$status,'code'=>$e instanceof PublicEdgeSyncException?$e->errorCode:'exception']);
+                throw $e;
+            }
+        }
+        $this->obs->logEvent('info','public.sync_completed',['channels'=>array_keys($results),'origin'=>$this->client->safeOrigin()]);
+        return ['success'=>true,'synced_at'=>gmdate('c'),'channels'=>$results,'state'=>$this->snapshot()];
     }
 
     public function rotateEmergencyCode(): array
