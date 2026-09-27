@@ -1,0 +1,25 @@
+diff --git a/apps/local-web/src/Domain/StaffConsumption/StaffConsumptionRepository.php b/apps/local-web/src/Domain/StaffConsumption/StaffConsumptionRepository.php
+index 16c05ba..a821e3d 100644
+--- a/apps/local-web/src/Domain/StaffConsumption/StaffConsumptionRepository.php
++++ b/apps/local-web/src/Domain/StaffConsumption/StaffConsumptionRepository.php
+@@ -30,7 +30,7 @@ final class StaffConsumptionRepository
+             'INSERT INTO staff_consumptions(public_code,client_token,order_id,consumer_personnel_id,recorded_by_user_id,'.
+             'benefit_policy_id,benefit_profile_id,benefit_override_id,status,menu_value_amount,benefit_amount,discount_amount,payable_amount,'.
+             'known_cost_amount,consumer_name_snapshot,policy_snapshot_json,calculation_snapshot_json,business_date,business_shift_key) '.
+-            "VALUES(?,?,?,?,?,?,?,?, 'posted',?,?,?,?,?,?,?,?,?)"
++            "VALUES(?,?,?,?,?,?,?,?,'posted',?,?,?,?,?,?,?,?,?,?)"
+         );
+         $stmt->execute([
+             $data['public_code'],$data['client_token'],$data['order_id'],$data['consumer_personnel_id'],$data['recorded_by_user_id'],
+diff --git a/apps/local-web/tests/f1-staff-consumption-posting-contract.py b/apps/local-web/tests/f1-staff-consumption-posting-contract.py
+index 99f94d0..490c567 100755
+--- a/apps/local-web/tests/f1-staff-consumption-posting-contract.py
++++ b/apps/local-web/tests/f1-staff-consumption-posting-contract.py
+@@ -28,6 +28,7 @@ need(posting,"'staff_consumption.posted'",'posting audit missing')
+ need(posting,"'consumer_personnel_id'",'consumer identity snapshot missing')
+ need(posting,"'recorded_by_user_id'",'recorder identity snapshot missing')
+ need(posting,"'zero_payable'=>$payable===0",'zero payable result semantics missing')
++need(repo,"VALUES(?,?,?,?,?,?,?,?,'posted',?,?,?,?,?,?,?,?,?,?)",'staff consumption document insert placeholder count drifted')
+ if 'INSERT INTO staff_account_ledger' in text(posting): fail('F1.3 must not post Staff Account ledger before F1.4')
+ need(orders,"'table_service','staff_consumption'",'Order owner is not context aware')
+ need(orders,"$table===null?null:(int)$table['id']",'Order persistence cannot write non-table context')
