@@ -108,11 +108,15 @@ jobs:
           git apply --check .qualification/g3-bc8e408/fix-local-migration-regression.patch
           git apply .qualification/g3-bc8e408/fix-local-migration-regression.patch
 
+          echo "4469711e4a1dc424ed95144c7136c5e9018a82202026e458253f366b5c73f688  .qualification/g3-bc8e408/fix-g3-public-migration-selftest.patch" | sha256sum -c -
+          git apply --check .qualification/g3-bc8e408/fix-g3-public-migration-selftest.patch
+          git apply .qualification/g3-bc8e408/fix-g3-public-migration-selftest.patch
+
           cp .qualification/g3-bc8e408/run-g3-product-qualification.sh tests/run-g3-product-qualification.sh
           cp .qualification/g3-bc8e408/g3-product-qualification-contract.py tests/g3-product-qualification-contract.py
           chmod +x tests/run-g1-real-db-qualification.sh tests/run-f1-real-db-qualification.sh tests/run-g2-product-qualification.sh
           chmod +x tests/run-g3-product-qualification.sh tests/g3-product-qualification-contract.py tests/component-registry-gate.py
-          echo "Qualification source local HEAD: 92bedac95d225c45d591b086b39c39824f16b59d"
+          echo "Qualification source local HEAD: 3528338670e109e1af88a08c2757c83f13167227"
 
       - name: Ensure PHP database, zip and sodium extensions
         shell: bash
