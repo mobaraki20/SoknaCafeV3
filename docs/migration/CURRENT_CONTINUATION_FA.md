@@ -1,62 +1,78 @@
-# SOKNA Cafe V3 — Canonical Continuation
+# SOKNA V3 — Current Continuation
 
-Status: **CURRENT — PRODUCT GAP CLOSURE / PRE-RC**
-Date: 2026-09-27
+آخرین به‌روزرسانی: 2026-09-27
+وضعیت: **PRODUCT GAP CLOSURE**
+مرحله فعال بعدی: **G0 — Governance Repair**
 
-## Current correction
+## Canonical master audit
 
-Historical RC `3.0.0-rc.1` has valuable green automated core/integration evidence, but reconciliation against the initial architecture handoff R2, real dev.26, post-UI dev.39 baseline, and V3 source proves that Product Migration is incomplete. Therefore `Manual UAT next` is no longer the correct continuation.
+Audit کامل با این چهار مرجع انجام شده است:
+- Initial Architecture Handoff R2 (2026-09-18), checksum-verified;
+- real `1.36.4-dev.26` source for historical business behavior;
+- post-UI source `mobaraki20/SoknaCafe @ a46435cca57df5bd5b9770efd0bb95390528aa05` for UI/Design System and post-UI behavior;
+- current V3 source on this branch.
 
-Canonical audit: `docs/product/MASTER_PRODUCT_INTENT_AUDIT_FA.md`.
+Full durable continuation artifacts are stored in the project Library at:
 
-## Keep closed / preserve
+`/SOKNA_V3_CONTINUE_HERE__PRODUCT_GAP_CLOSURE/`
 
-- Foundation/contracts.
-- Local business/domain backend unless evidence defect.
-- Public transport/auth/relay backend unless evidence defect.
-- Windows Runtime core.
-- Print Agent core.
-- SCDS shared foundation.
+Required read order there:
+1. `00_READ_ME_FIRST_FA.md`
+2. `06_MASTER_PRODUCT_ARCHITECTURE_AUDIT_FA.md`
+3. `08_FINAL_ARCHITECTURE_DECISIONS_FA.md`
+4. `07_MASTER_CAPABILITY_MATRIX.csv` / JSON
+5. `10_EXECUTION_ROADMAP_FA.md`
+6. `09_CONTINUATION_STATE.json`
 
-## Open product work
+The original initial handoff is durably stored at:
+`/SoknaCafeV3-Handoff/00-Canonical-History/SOKNA_ARCHITECTURE_HANDOFF_STANDALONE_FINAL_R2_2026-09-18.zip`
 
-- Local product UI/workflows.
-- Local browser setup wizard.
-- Local Update Center/application updater/recovery/diagnostics.
-- Public deployable surfaces.
-- Public Emergency Console/updater.
-- Theme/Media/Publishing.
-- Notifications.
-- Printing UI/template package lifecycle.
-- Marketing/Reporting parity.
-- Infrastructure/Windows packaging revision.
+## Important correction
 
-M9/M10 automated evidence remains historical engineering evidence, but the final product gate is superseded until the approved architecture and product gaps are qualified. Manual UAT is HOLD until a new RC.
+Automated M4–M10 evidence on `911d9700755508d23e30ff94fa7464eba6cfaa43` remains valid engineering evidence, but `3.0.0-rc.1` is **not** a Final Product RC. Manual UAT is not the next stage.
 
-## Final deployment architecture
+The main gap was introduced during the clean V3 extraction: many backend/contracts were moved, while required product UI/workflows, some adapters/domains, updater/recovery surfaces and final deployment composition were not fully moved.
 
-- Infrastructure = external/independent dependency.
-- Windows Services installer = Runtime + Print Agent/service lifecycle only.
-- Prerequisite checker detects compatible dependencies and can offer verified online acquisition with progress or manual fallback; prerequisite binaries are not bundled.
-- Local Web = immutable ZIP/web package + Browser Setup Wizard; no PS1/EXE installer.
-- Public Edge = independent server deploy package.
-- Local Update Center = central component health/version/status/update visibility/orchestration.
-- Public Emergency Console = independent limited health/update/rollback/recovery path.
+## Preserve / do not restart
 
-ADR-0004 supersedes relevant ADR-0002 composition rules.
+Keep closed unless defect evidence says otherwise:
+- foundation ownership/contracts;
+- existing Local domain/core work that is green;
+- Public auth/realtime/deferred backend primitives;
+- Windows Runtime core;
+- Print Agent core;
+- SCDS shared foundation;
+- Business Backup/Restore core.
 
-## Agent rule
+## Final deployment decisions
 
-Read `COMPONENTS.json`. Work on one component/workstream at a time. Read only its owner scope plus declared read-only contracts/dependencies. Do not reconstruct the project from chat history.
+- Infrastructure is external/independent.
+- Windows Services installer owns Runtime + Print Agent/service lifecycle only.
+- Infrastructure binaries and Local Web are not bundled in that installer.
+- Missing/incompatible prerequisites may be offered as verified online download with progress or manual fallback.
+- Local Web is an independent ZIP/web package with a WordPress-like Browser Setup Wizard; no PS1/EXE installer.
+- Public Edge is an independent server deploy package.
+- Local Update Center is the normal central component health/version/status/update control surface.
+- Public Emergency Console is the independent break-glass health/update/rollback/recovery path.
+- Components may have independent versions/releases with versioned contracts and compatibility manifest.
+- Monorepo remains one repo, but agents work one explicitly registered component scope at a time.
 
-## Next order
+## No-reaudit rule
 
-1. Local Web product completion + Browser Setup.
-2. Local Update Center/updater/recovery/diagnostics.
-3. Public deployable product + Theme/Media/Publishing + Emergency Console/updater.
-4. Infrastructure/Windows packaging revision.
-5. Remaining Notifications/Printing UI/Marketing/Reporting parity.
-6. New M9/M10 gates and RC.
-7. Only then Manual UAT/fault matrix.
+Do not restart source/architecture audit from zero unless:
+1. the user provides a newer authoritative source/handoff;
+2. the canonical capability matrix has an explicit UNKNOWN requiring source inspection; or
+3. new implementation evidence contradicts the master audit.
 
-Detailed 45-row parity matrix and raw reference archives are preserved in the project Library.
+Otherwise continue directly from the active workstream.
+
+## Next — G0 Governance Repair
+
+Deliverables:
+- root machine-readable Component Registry;
+- superseding ADRs for deployment separation/update control plane;
+- completion vocabulary `CORE_COMPLETE / PRODUCT_COMPLETE / RELEASE_COMPLETE`;
+- Product Parity Gate;
+- correction of migration statuses so backend-only completion is never presented as complete product migration.
+
+After G0, continue sequentially with Local product parity, Local setup/update/control plane, Public productization/emergency updater, remaining capability parity, Windows packaging revision, new M9/M10, and only then Manual UAT.
