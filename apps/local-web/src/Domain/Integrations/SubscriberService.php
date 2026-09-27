@@ -25,9 +25,21 @@ final class SubscriberService
         $mobile=self::clip(trim((string)($data['mobile']??'')),30);
         $normalized=self::normalizeMobile($mobile);
         if($name===''||strlen($normalized)<7)throw new IntegrationException('invalid_subscriber','نام یا شماره مشتری معتبر نیست.',422);
-        $stmt=$this->pdo->prepare('INSERT INTO subscribers(name,mobile,mobile_normalized,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?,?)');
-        $stmt->execute([$name,$mobile,$normalized,(int)$actor['id'],(int)$actor['id']]);
-        return ['id'=>(int)$this->pdo->lastInsertId(),'name'=>$name,'mobile'=>$mobile,'balance'=>0];
+        $active=(bool)($data['active']??true);
+        $stmt=$this->pdo->prepare('INSERT INTO subscribers(name,mobile,mobile_normalized,active,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?,?,?)');
+        $stmt->execute([$name,$mobile,$normalized,$active?1:0,(int)$actor['id'],(int)$actor['id']]);
+        return ['id'=>(int)$this->pdo->lastInsertId(),'name'=>$name,'mobile'=>$mobile,'active'=>$active,'balance'=>0];
+    }
+
+    public function update(int $subscriberId,array $data,array $user): array
+    {
+        $actor=$this->assertAdmin($user);$name=self::clip(trim((string)($data['name']??'')),160);$mobile=self::clip(trim((string)($data['mobile']??'')),30);
+        $normalized=self::normalizeMobile($mobile);$active=(bool)($data['active']??true);
+        if($subscriberId<1||$name===''||strlen($normalized)<7)throw new IntegrationException('invalid_subscriber','نام یا شماره مشتری معتبر نیست.',422);
+        $stmt=$this->pdo->prepare('UPDATE subscribers SET name=?,mobile=?,mobile_normalized=?,active=?,updated_by_user_id=? WHERE id=?');
+        $stmt->execute([$name,$mobile,$normalized,$active?1:0,(int)$actor['id'],$subscriberId]);
+        if($stmt->rowCount()===0){$check=$this->pdo->prepare('SELECT id FROM subscribers WHERE id=?');$check->execute([$subscriberId]);if($check->fetchColumn()===false)throw new IntegrationException('subscriber_not_found','مشتری پیدا نشد.',404);}
+        return ['id'=>$subscriberId,'name'=>$name,'mobile'=>$mobile,'active'=>$active];
     }
 
     public function search(string $query,int $limit=20): array

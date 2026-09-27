@@ -33,6 +33,10 @@ final class ProductShell
         if(self::any($core,$user,['orders_floor','cashier_accounts','shift_supervision']))$items[]=['id'=>'operator','label'=>'کار روزانه','href'=>'/operator/'];
         if($core->auth()->hasCapability('orders_floor',$user))$items[]=['id'=>'staff','label'=>'سفارش سریع','href'=>'/staff/'];
         if($core->auth()->hasCapability('preparation',$user))$items[]=['id'=>'preparation','label'=>'آماده‌سازی','href'=>'/waiter/'];
+        if((string)($user['role']??'')==='admin'||$core->auth()->hasCapability('cashier_accounts',$user)){
+            $items[]=['id'=>'finance','label'=>'مالی','href'=>'/finance/'];
+            $items[]=['id'=>'subscribers','label'=>'مشتریان','href'=>'/subscribers/'];
+        }
         if((string)($user['role']??'')==='admin')$items[]=['id'=>'admin','label'=>'مدیریت','href'=>'/admin/'];
         return $items;
     }

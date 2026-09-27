@@ -26,9 +26,11 @@ use Sokna\Local\Relay\InventoryDeferredAdapter;
 use Sokna\Local\Domain\Tax\TaxService;
 use Sokna\Local\Domain\Finance\FinancialPeriodIdentityService;
 use Sokna\Local\Domain\Finance\FinancialPeriodService;
+use Sokna\Local\Domain\Finance\FinanceWorkspaceService;
 use Sokna\Local\Domain\Finance\SettlementService;
 use Sokna\Local\Domain\Finance\FinancialPeriodCloseService;
 use Sokna\Local\Domain\Integrations\SubscriberService;
+use Sokna\Local\Domain\Integrations\SubscriberAccountService;
 use Sokna\Local\Domain\Integrations\AccommodationTransport;
 use Sokna\Local\Domain\Integrations\AccommodationService;
 use Sokna\Local\Domain\Integrations\CenterIntegrationService;
@@ -78,9 +80,11 @@ final class Bootstrap
     private ?TaxService $tax = null;
     private ?FinancialPeriodIdentityService $financialPeriodIdentity = null;
     private ?FinancialPeriodService $financialPeriods = null;
+    private ?FinanceWorkspaceService $financeWorkspace = null;
     private ?SettlementService $settlements = null;
     private ?FinancialPeriodCloseService $financialPeriodClose = null;
     private ?SubscriberService $subscribers = null;
+    private ?SubscriberAccountService $subscriberAccounts = null;
     private ?AccommodationTransport $accommodationTransport = null;
     private ?AccommodationService $accommodation = null;
     private ?CenterIntegrationService $centerIntegration = null;
@@ -267,6 +271,11 @@ final class Bootstrap
         );
     }
 
+    public function financeWorkspace(): FinanceWorkspaceService
+    {
+        return $this->financeWorkspace ??= new FinanceWorkspaceService($this->database());
+    }
+
     public function settlements(): SettlementService
     {
         return $this->settlements ??= new SettlementService(
@@ -277,6 +286,13 @@ final class Bootstrap
     public function subscribers(): SubscriberService
     {
         return $this->subscribers ??= new SubscriberService($this->database(), $this->identityRepository());
+    }
+
+    public function subscriberAccounts(): SubscriberAccountService
+    {
+        return $this->subscriberAccounts ??= new SubscriberAccountService(
+            $this->database(),$this->identityRepository(),$this->financialPeriodIdentity(),$this->businessClock(),$this->subscribers()
+        );
     }
 
     public function accommodationTransport(): AccommodationTransport
