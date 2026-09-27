@@ -37,6 +37,7 @@ final class ProductShell
         if((string)($user['role']??'')==='admin'||$core->auth()->hasCapability('cashier_accounts',$user)){
             $items[]=['id'=>'finance','label'=>'مالی','href'=>'/finance/'];
             $items[]=['id'=>'subscribers','label'=>'مشتریان','href'=>'/subscribers/'];
+            $items[]=['id'=>'integrations','label'=>'چاپ و اتصال‌ها','href'=>'/integrations/'];
         }
         if((string)($user['role']??'')==='admin')$items[]=['id'=>'admin','label'=>'مدیریت','href'=>'/admin/'];
         return $items;

@@ -34,8 +34,10 @@ use Sokna\Local\Domain\Integrations\SubscriberAccountService;
 use Sokna\Local\Domain\Integrations\AccommodationTransport;
 use Sokna\Local\Domain\Integrations\AccommodationService;
 use Sokna\Local\Domain\Integrations\CenterIntegrationService;
+use Sokna\Local\Domain\Integrations\IntegrationWorkspaceService;
 use Sokna\Local\Runtime\RuntimeTriggerService;
 use Sokna\Local\Domain\Printing\PrintService;
+use Sokna\Local\Domain\Printing\PrintManagementService;
 use Sokna\Local\Http\PrintAgentV4HttpAdapter;
 use Sokna\Local\Http\RuntimeTriggerHttpAdapter;
 use Sokna\Local\Domain\Expenses\ExpenseService;
@@ -89,8 +91,10 @@ final class Bootstrap
     private ?AccommodationTransport $accommodationTransport = null;
     private ?AccommodationService $accommodation = null;
     private ?CenterIntegrationService $centerIntegration = null;
+    private ?IntegrationWorkspaceService $integrationWorkspace = null;
     private ?RuntimeTriggerService $runtimeTriggers = null;
     private ?PrintService $printing = null;
+    private ?PrintManagementService $printManagement = null;
     private ?PrintAgentV4HttpAdapter $printAgentV4Http = null;
     private ?RuntimeTriggerHttpAdapter $runtimeTriggerHttp = null;
     private ?ExpenseService $expenses = null;
@@ -314,9 +318,19 @@ final class Bootstrap
         return $this->centerIntegration ??= new CenterIntegrationService($this->database(), $this->config, $this->identityRepository());
     }
 
+    public function integrationWorkspace(): IntegrationWorkspaceService
+    {
+        return $this->integrationWorkspace ??= new IntegrationWorkspaceService($this->database(),$this->config);
+    }
+
     public function printing(): PrintService
     {
         return $this->printing ??= new PrintService($this->database(), $this->identityRepository());
+    }
+
+    public function printManagement(): PrintManagementService
+    {
+        return $this->printManagement ??= new PrintManagementService($this->database());
     }
 
     public function printAgentV4Http(): PrintAgentV4HttpAdapter

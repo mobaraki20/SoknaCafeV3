@@ -1,0 +1,31 @@
+<?php
+declare(strict_types=1);
+use Sokna\Local\UI\LocalPage;use Sokna\Local\UI\ProductShell;use Sokna\Local\UI\WebAction;
+$core=require dirname(__DIR__).'/_app.php';$user=LocalPage::requireAny($core,['cashier_accounts']);$isAdmin=(string)($user['role']??'')==='admin';$csrf=WebAction::csrfToken();
+ProductShell::start($core,$user,'چاپ و یکپارچه‌سازی','integrations','وضعیت اتصال‌ها و چاپ از ownerهای Local دیده و مدیریت می‌شود؛ اجرای دستگاه همچنان در Print Agent است.');
+?>
+<section class="sc-workspace" data-integrations-workspace data-api="/integrations/api.php" data-csrf="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>" data-admin="<?= $isAdmin?'1':'0' ?>">
+  <div class="sc-toolbar"><div class="sc-tabs" role="tablist" aria-label="چاپ و یکپارچه‌سازی"><button class="sc-tab" type="button" role="tab" aria-selected="true" data-tab="accommodation">اقامتگاه</button><?php if($isAdmin): ?><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="printing">چاپ</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="center">مرکز سکنا</button><?php endif; ?></div><button class="sc-button sc-button--secondary" type="button" data-refresh>تازه‌سازی</button></div>
+  <div class="sc-alert" role="status" aria-live="polite" data-status>در حال دریافت وضعیت…</div>
+
+  <section class="sc-work-panel" data-panel="accommodation">
+    <div class="sc-section-head"><div><h2>انتقال حساب به اقامتگاه</h2><p data-accommodation-endpoint>وضعیت اتصال در حال دریافت است.</p></div></div>
+    <div class="sc-grid"><article class="sc-card"><div class="sc-card__body sc-form"><h3>ساخت انتقال</h3><label class="sc-field"><span class="sc-field__label">حساب باز</span><select class="sc-control" data-accommodation-account></select></label><label class="sc-field"><span class="sc-field__label">جست‌وجوی رزرو</span><input class="sc-control" data-reservation-query placeholder="نام، موبایل یا کد رزرو"></label><button class="sc-button sc-button--secondary" type="button" data-reservation-search>جست‌وجو</button><div class="sc-list" data-reservation-results></div></div></article><article class="sc-card"><div class="sc-card__body sc-stack"><h3>انتقال‌های اخیر</h3><div class="sc-list" data-transfer-list></div></div></article></div>
+  </section>
+
+  <?php if($isAdmin): ?><section class="sc-work-panel" data-panel="printing" hidden>
+    <div class="sc-section-head"><div><h2>مدیریت چاپ</h2><p>Local مقصد، صف، تاریخچه و intent چاپ را مدیریت می‌کند؛ اجرای واقعی روی Print Agent است.</p></div><button class="sc-button" type="button" data-create-agent>Agent جدید</button></div>
+    <div class="sc-summary-grid"><article class="sc-card sc-metric"><span>Agent فعال</span><strong data-print-metric="agents">—</strong><small>Heartbeat و صف‌ها از Agent گزارش می‌شوند.</small></article><article class="sc-card sc-metric"><span>کار مبهم</span><strong data-print-metric="unknown">—</strong><small>نیازمند تصمیم انسانی</small></article><article class="sc-card sc-metric"><span>Backlog محلی Agent</span><strong data-print-metric="backlog">—</strong><small>جمع backlog گزارش‌شده</small></article></div>
+    <div class="sc-grid"><article class="sc-card"><div class="sc-card__body sc-stack"><h3>Agentها</h3><div class="sc-list" data-agent-list></div></div></article><article class="sc-card"><div class="sc-card__body sc-stack"><h3>مقصدهای چاپ</h3><div class="sc-list" data-destination-list></div></div></article></div>
+    <section class="sc-card"><div class="sc-card__body sc-stack"><h3>کارهای چاپ اخیر</h3><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>شناسه</th><th>مقصد</th><th>نوع</th><th>وضعیت</th><th>خطا</th><th></th></tr></thead><tbody data-print-jobs></tbody></table></div></div></section>
+  </section>
+
+  <section class="sc-work-panel" data-panel="center" hidden>
+    <div class="sc-section-head"><div><h2>مرکز سکنا</h2><p data-center-endpoint>وضعیت اتصال در حال دریافت است.</p></div><button class="sc-button" type="button" data-center-sync>ارسال projection کاربران</button></div>
+    <div class="sc-grid"><article class="sc-card"><div class="sc-card__body sc-stack"><h3>ارسال‌های اخیر</h3><div class="sc-list" data-center-projections></div></div></article><article class="sc-card"><div class="sc-card__body sc-stack"><h3>Entitlement cache</h3><div class="sc-list" data-center-entitlements></div></div></article></div>
+  </section><?php endif; ?>
+
+  <?php if($isAdmin): ?><dialog class="sc-dialog" data-dialog="destination"><form method="dialog" class="sc-card__body sc-form" data-form="destination"><h2>تنظیم مقصد چاپ</h2><input type="hidden" name="destination_key"><p class="sc-muted" data-destination-label></p><label class="sc-field"><span class="sc-field__label">Print Agent</span><select class="sc-control" name="agent_id" data-agent-select></select></label><label class="sc-field"><span class="sc-field__label">نام صف Windows</span><input class="sc-control" name="windows_queue_name" required></label><label class="sc-field"><span class="sc-field__label">نسخه چاپ</span><input class="sc-control" name="copies" type="number" min="1" max="5" value="1"></label><label class="sc-field"><span class="sc-field__label">عرض کاغذ mm</span><input class="sc-control" name="paper_width_mm" inputmode="decimal" value="80"></label><label class="sc-field"><span class="sc-field__label">عرض قابل چاپ mm</span><input class="sc-control" name="printable_width_mm" inputmode="decimal" value="72.1"></label><label class="sc-inline"><input type="checkbox" name="active" value="1"> فعال</label><div class="sc-actions"><button class="sc-button" value="submit">ذخیره</button><button class="sc-button sc-button--secondary" value="cancel">انصراف</button></div></form></dialog><?php endif; ?>
+</section>
+<script src="/assets/integrations-workspace.js" defer></script>
+<?php ProductShell::end(); ?>

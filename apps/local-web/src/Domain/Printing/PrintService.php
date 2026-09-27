@@ -31,6 +31,43 @@ final class PrintService
         }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
+
+    public function configureDestination(string $destinationKey,array $data,array $user): array
+    {
+        $this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertAdmin($user);$destinationKey=self::cut(trim($destinationKey),40);
+            $stmt=$this->pdo->prepare('SELECT * FROM print_destinations WHERE destination_key=? FOR UPDATE');$stmt->execute([$destinationKey]);$destination=$stmt->fetch(PDO::FETCH_ASSOC);
+            if(!is_array($destination))throw new PrintException('destination_not_found','مقصد چاپ پیدا نشد.',404);
+            $agentId=max(0,(int)($data['agent_id']??0));$queue=self::cut(trim((string)($data['windows_queue_name']??'')),190);$active=!empty($data['active']);
+            if($agentId>0){$a=$this->pdo->prepare('SELECT id FROM print_agents WHERE id=? AND active=1 AND retired_at IS NULL FOR UPDATE');$a->execute([$agentId]);if($a->fetchColumn()===false)throw new PrintException('agent_not_ready','Print Agent انتخاب‌شده فعال نیست.',409);}
+            if($active&&($agentId<1||$queue===''))throw new PrintException('destination_incomplete','برای فعال‌کردن مقصد چاپ، Agent و صف ویندوز را مشخص کن.',422);
+            $copies=max(1,min(5,(int)($data['copies']??1)));$paper=max(40.0,min(120.0,(float)($data['paper_width_mm']??80)));$printable=max(30.0,min($paper,(float)($data['printable_width_mm']??72.1)));
+            $layout=in_array((string)($data['layout_mode']??'combined'),['combined','separate'],true)?(string)($data['layout_mode']??'combined'):'combined';
+            $this->pdo->prepare('UPDATE print_destinations SET agent_id=?,windows_queue_name=?,active=?,copies=?,paper_width_mm=?,printable_width_mm=?,layout_mode=? WHERE destination_key=?')
+                ->execute([$agentId>0?$agentId:null,$queue!==''?$queue:null,$active?1:0,$copies,$paper,$printable,$layout,$destinationKey]);
+            $this->audit('printing.destination_configured','print_destination',0,(int)$actor['id'],['destination_key'=>$destinationKey,'agent_id'=>$agentId?:null,'queue'=>$queue?:null,'active'=>$active,'copies'=>$copies]);
+            $this->pdo->commit();return ['destination_key'=>$destinationKey,'active'=>$active,'agent_id'=>$agentId?:null,'windows_queue_name'=>$queue?:null];
+        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
+    public function enqueueTest(string $destinationKey,string $requestId,array $user): array
+    {
+        $this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertAdmin($user);$destinationKey=self::cut(trim($destinationKey),40);$requestId=self::requestId($requestId);
+            $stmt=$this->pdo->prepare('SELECT destination_type,label,active FROM print_destinations WHERE destination_key=? FOR UPDATE');$stmt->execute([$destinationKey]);$destination=$stmt->fetch(PDO::FETCH_ASSOC);
+            if(!is_array($destination)||(int)$destination['active']!==1)throw new PrintException('destination_not_ready','مقصد چاپ برای تست فعال نیست.',409);
+            $prep=(string)$destination['destination_type']==='preparation';
+            $payload=$prep
+                ?['schema'=>'sokna-print-document-v2','document_kind'=>'preparation','title'=>'کافه سکنا','badge'=>'چاپ آزمایشی','table_name'=>'تست','order_number'=>'TEST','created_at'=>date('Y-m-d H:i:s'),'sections'=>[['title'=>'آزمون','items'=>[['name'=>'اگر این متن خواناست، مسیر چاپ آماده است','quantity'=>1,'note'=>'چاپ آزمایشی سکنا']]]]]
+                :['schema'=>'sokna-print-document-v2','document_kind'=>'customer','title'=>'کافه سکنا','invoice_number'=>'TEST','created_at'=>date('Y-m-d H:i:s'),'currency'=>'تومان','sections'=>[['items'=>[['name'=>'چاپ آزمایشی سکنا','quantity'=>1,'unit_price'=>0,'line_total'=>0]]]],'subtotal'=>0,'discount'=>0,'tax'=>0,'total'=>0,'footer'=>'این برگه فقط برای آزمون مسیر چاپ است.'];
+            $job=$this->enqueueTx($prep?'preparation_test':'customer_test',$destinationKey,$payload,'print_test',$requestId,(int)$actor['id'],'print:test:'.$requestId,false);
+            $this->audit('printing.test_enqueued','print_job',(int)($job['job_id']??0),(int)$actor['id'],['destination_key'=>$destinationKey,'request_id'=>$requestId]);
+            $this->pdo->commit();return $job;
+        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
     public function authenticate(string $bearer): array
     {
         $token=trim(preg_replace('/^Bearer\s+/i','',$bearer)??'');

@@ -20,6 +20,22 @@ final class AccommodationService
         private readonly AccommodationTransport $transport,
     ) {}
 
+
+    public function searchReservations(string $query,array $user): array
+    {
+        $this->assertCashier($user);$query=self::clip(trim($query),120);if($query==='')throw new IntegrationException('query_required','نام، موبایل یا کد رزرو را وارد کن.',422);
+        $result=$this->transport->search($query);
+        if(empty($result['success']))throw new IntegrationException((string)($result['code']??'search_failed'),(string)($result['message']??'جست‌وجوی اقامتگاه انجام نشد.'),409);
+        $payload=is_array($result['payload']??null)?$result['payload']:[];$rows=$payload['data']['reservations']??$payload['reservations']??$payload['data']??[];
+        if(!is_array($rows))$rows=[];$out=[];
+        foreach($rows as $row){
+            if(!is_array($row))continue;$code=self::clip(trim((string)($row['reservation_code']??$row['code']??$row['id']??'')),80);$guest=self::clip(trim((string)($row['guest_name']??$row['guest']??$row['name']??'')),160);
+            $rooms=$row['room_names']??[];$room=self::clip(trim((string)($row['room_name']??(is_array($rooms)?implode('، ',$rooms):$rooms))),240);$phone=self::clip(trim((string)($row['phone_hint']??$row['phone']??'')),40);
+            if($code===''||$guest===''||$room==='')continue;$out[]=['reservation_code'=>$code,'guest_name'=>$guest,'room_name'=>$room,'phone_hint'=>$phone];if(count($out)>=30)break;
+        }
+        return $out;
+    }
+
     public function prepare(int $sessionId,array $reservation,array $expected,array $user): array
     {
         $actor=$this->assertCashier($user);
