@@ -823,14 +823,14 @@
       "area": "Staff Consumption / Benefits / Personnel Account",
       "initial_requirement": "Manage staff consumption benefits, employee payable balances, inventory/cost effects and auditable history with simple staff UX.",
       "legacy_evidence": "New explicitly requested capability; analysis document supplied by user; Frozen personnel identity decisions recorded in docs 13/14.",
-      "v3_current": "ADR-F1-001 frozen. F1.1–F1.6 implementation is complete. F1.7 qualification harness is now implemented and all non-DB qualification gates pass on source HEAD 8336ff1; local runtime has PHP with no PDO drivers and no MariaDB/Docker/Podman, so real MariaDB 11.4.x acceptance is environment-blocked. No product defect is currently evidenced; A52 remains PRODUCT_OPEN until the real-DB runner passes.",
-      "status": "F1_7_REAL_DB_RUNTIME_BLOCKED",
+      "v3_current": "ADR-F1-001 frozen. F1.1–F1.6 implementation complete and F1.7 real MariaDB qualification PASS. Qualified product source HEAD c851eb418a27a34579cd601d7f650b4027b14afa; GitHub Actions run 36330824258, job 108652273849, MariaDB 11.4.13-MariaDB-ubu2404. Self/proxy/zero-payable/Benefit-vs-Waiver, Staff Account, Inventory/Preparation/Printing, UI/reporting and G1 regressions all passed.",
+      "status": "F1_PRODUCT_COMPLETE_REAL_DB_PASS",
       "final_decision": "Required feature. Frozen identity/proxy/zero-payable/Benefit-vs-Waiver decisions remain. ADR-F1-001 freezes hybrid domain architecture: independent Staff Consumption/Benefit/Account authority, explicit non-table order context, operational Order projection, dedicated Staff Account Ledger, no fake table/session and no Subscriber-ledger identity reuse.",
-      "required_action": "Execute tests/run-f1-real-db-qualification.sh in an environment with PHP pdo_mysql and MariaDB 11.4.x. The runner covers G1 DB regressions, all F1.1–F1.6 DB scenarios, frozen Personnel/proxy/zero-payable/Benefit-vs-Waiver acceptance, Inventory/Preparation/Printing, and non-DB gates. Only then mark PRODUCT_COMPLETE.",
+      "required_action": "Preserve as qualified product capability. Do not reopen F1 absent real defect evidence; continue with G2 Local Setup / Observability / Update.",
       "priority": "P1",
       "owner": "local-web business authority; cross-domain integration",
-      "evidence": "F1.1–F1.6 durable checkpoints; F1.7 qualification harness contract PASS; complete non-DB qualification PASS; local real-DB attempt exits 3 with \"F1 DB qualification requires PHP pdo_mysql.\"",
-      "completion_level": "PRODUCT_OPEN",
+      "evidence": "F1.1–F1.7 durable checkpoints; real MariaDB qualification PASS on run 36330824258; job 108652273849; artifact 10934794140; qualified source c851eb418a27a34579cd601d7f650b4027b14afa; workflow transport head 414db98c43fa70dd70f2487bf71a907f7d312992; terminal \"F1 Product Qualification: PASS\".",
+      "completion_level": "PRODUCT_COMPLETE",
       "required_for_product": "yes",
       "required_for_release": "yes"
     }
@@ -841,5 +841,18 @@
     "real_mariadb_gate": "BLOCKED_ENVIRONMENT_NO_PDO_MYSQL_NO_SERVER",
     "g1_product_complete": false,
     "note": "No G1 capability was promoted to PRODUCT_COMPLETE solely from static/non-DB evidence."
+  },
+  "f1_close_audit": {
+    "qualified_source_head": "c851eb418a27a34579cd601d7f650b4027b14afa",
+    "github_actions_run_id": 36330824258,
+    "github_actions_job_id": 108652273849,
+    "workflow_transport_head": "414db98c43fa70dd70f2487bf71a907f7d312992",
+    "mariadb": "11.4.13-MariaDB-ubu2404",
+    "pdo_mysql": "PASS",
+    "terminal": "F1 Product Qualification: PASS",
+    "artifact_id": 10934794140,
+    "artifact_digest": "sha256:b9768f62b6e483c52f808fbc4675ed8d535097934d215c8c873c2bf21e675654",
+    "f1_product_complete": true,
+    "github_override_scope": "F1.7 qualification only; ended after PASS"
   }
 }
