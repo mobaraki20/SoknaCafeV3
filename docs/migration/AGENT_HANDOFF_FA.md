@@ -1,5 +1,8 @@
 # SOKNA V3 — Agent Handoff / Continuation
 
+> **HISTORICAL / SUPERSEDED CONTINUATION NOTICE (2026-09-27):** این فایل evidence تاریخی M10 است و entrypoint فعلی پروژه نیست. برای ادامه از `START_HERE.md` و `docs/migration/CURRENT_CONTINUATION_FA.md` استفاده کن. مرحلهٔ فعال فعلی G1 است و Manual UAT هنوز HOLD است.
+
+
 آخرین به‌روزرسانی: 2026-09-27
 
 این فایل مرجع ادامه‌ی پروژه در صورت تغییر چت/ایجنت است. به تاریخچه‌ی گفتگو متکی نباش؛ وضعیت زیر را از خود Git و فایل‌های repo تأیید کن.

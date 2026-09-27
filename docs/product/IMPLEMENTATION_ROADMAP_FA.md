@@ -6,8 +6,8 @@
 ## Rule
 در هر لحظه فقط یک workstream active است. هیچ workstream به دلیل gap دیگر از صفر audit نمی‌شود. Coreهای سبز فقط در صورت defect evidence باز می‌شوند.
 
-## G0 — Governance Repair — NEXT
-هدف: جلوگیری از تکرار false-completion.
+## G0 — Governance Repair — COMPLETE
+هدف: جلوگیری از تکرار false-completion. **بسته شد.**
 
 Deliverables:
 - root `COMPONENTS.json` یا معادل machine-readable؛
@@ -18,7 +18,7 @@ Deliverables:
 
 Exit: agent can be asked for one component by name and knows exact scope/tests/package/dependencies; no ambiguous `closed` state remains.
 
-## G1 — Local Web Product Parity
+## G1 — Local Web Product Parity — ACTIVE
 - migrate protected admin/operator/staff/waiter product surfaces from post-UI authority into SCDS;
 - complete missing Local realtime adapters/owners (guest order, waiter, order edit/cancel, settlement);
 - complete `subscriber.payment` deferred adapter;

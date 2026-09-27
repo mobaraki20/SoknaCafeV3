@@ -4,7 +4,7 @@ This is the canonical operational entrypoint for every human or agent.
 
 ## Current truth
 
-SOKNA V3 has strong validated backend/component foundations, but product migration is **not complete**. Current phase is `PRODUCT GAP CLOSURE`, active next workstream `G0 — Governance Repair`. Do not start from the historical `3.0.0-rc.1 / Manual UAT next` assumption.
+SOKNA V3 has strong validated backend/component foundations, but product migration is **not complete**. Current phase is `PRODUCT GAP CLOSURE`; `G0 — Governance Repair` is complete and the active workstream is `G1 — Local Web Product Parity`. Do not start from the historical `3.0.0-rc.1 / Manual UAT next` assumption.
 
 Read in this exact order:
 
@@ -14,9 +14,10 @@ Read in this exact order:
 4. `docs/product/MASTER_CAPABILITY_MATRIX.csv` or `.json`
 5. `docs/product/IMPLEMENTATION_ROADMAP_FA.md`
 6. `docs/product/CONTINUATION_STATE.json`
-7. `COMPONENTS.json`
-8. `ARCHITECTURE.md` / relevant ADRs and contracts only as needed for the active component
-9. UI/Design System authority for any user-facing work
+7. `docs/product/WORKSPACE_CHECKPOINT_POLICY_FA.md`
+8. `COMPONENTS.json`
+9. `ARCHITECTURE.md` / relevant ADRs and contracts only as needed for the active component
+10. UI/Design System authority for any user-facing work
 
 Historical M9/M10/Final Integration documents remain engineering evidence, not product-completion authority.
 

@@ -89,5 +89,10 @@
     ]
   },
   "stabilization_commit": "9c6426e",
-  "next_action": "publish stabilization delta and rerun Settlement/M7/M8/M10 CI; preserve manual UAT blockers"
+  "next_action": "publish stabilization delta and rerun Settlement/M7/M8/M10 CI; preserve manual UAT blockers",
+  "continuation_status": "historical_superseded",
+  "current_entrypoint": "START_HERE.md",
+  "current_continuation": "docs/migration/CURRENT_CONTINUATION_FA.md",
+  "active_workstream": "G1_LOCAL_WEB_PRODUCT_PARITY",
+  "manual_uat": "hold_until_new_rc_after_product_gap_closure"
 }

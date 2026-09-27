@@ -1,0 +1,31 @@
+{
+  "schema_version": 3,
+  "updated_at": "2026-09-27",
+  "project": "SOKNA Cafe V3",
+  "status": "PRODUCT_GAP_CLOSURE",
+  "completed_workstream": "G0_GOVERNANCE_REPAIR",
+  "active_workstream": "G1_LOCAL_WEB_PRODUCT_PARITY",
+  "execution_mode": "LOCAL_WORKSPACE_WITH_LIBRARY_CHECKPOINTS",
+  "github_policy": "FINAL_TRANSFER_ONLY_UNLESS_EXPLICITLY_OVERRIDDEN",
+  "library_entrypoint": "/SOKNA_V3_CONTINUE_HERE__PRODUCT_GAP_CLOSURE/00_READ_ME_FIRST_FA.md",
+  "library_ledger": "/SOKNA_V3_CONTINUE_HERE__PRODUCT_GAP_CLOSURE/12_WORKSTREAM_LEDGER.json",
+  "checkpoint_root": "/SOKNA_V3_WORKSTREAM_CHECKPOINTS",
+  "do_not_start_manual_uat": true,
+  "do_not_reaudit_from_zero": true,
+  "source_authority": {
+    "initial_handoff": "SOKNA_ARCHITECTURE_HANDOFF_STANDALONE_FINAL_R2_2026-09-18",
+    "dev26_sha256": "1a1d0723edb5cf2ebdb6e7f37925b08ca729d82ceb283089183fbca61439e4dc",
+    "post_ui_baseline": "mobaraki20/SoknaCafe@a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "v3_audited_implementation_head": "911d9700755508d23e30ff94fa7464eba6cfaa43"
+  },
+  "g0_evidence": {
+    "component_registry": "COMPONENTS.json",
+    "deployment_adr": "docs/adr/0004-deployment-and-component-lifecycle-v2.md",
+    "update_control_adr": "docs/adr/0005-update-control-plane-and-break-glass-recovery.md",
+    "completion_policy": "docs/product/COMPLETION_STATUS_POLICY_FA.md",
+    "parity_matrix": "docs/product/MASTER_CAPABILITY_MATRIX.csv",
+    "parity_gate": "tests/product-parity-gate.py",
+    "checkpoint_policy": "docs/product/WORKSPACE_CHECKPOINT_POLICY_FA.md"
+  },
+  "g1_rule": "work only in local-web owned scope plus declared read-only dependencies; checkpoint every completed subsection to Library"
+}

@@ -56,7 +56,7 @@ initial handoff checked: `SOKNA_ARCHITECTURE_HANDOFF_STANDALONE_FINAL_R2_2026-09
 - **A42 — Prerequisite acquisition**: No final UX for online acquisition  →  Implement signed/hash-locked providers, progress UI, resumable/fail-safe download policy
 - **A43 — Public deploy package**: V3 apps/public artifact contains code but lacks complete deployable document-root/control/update surfaces  →  Create hosting-ready package, config/browser/bootstrap or documented setup flow, health, emergency/update entrypoints
 - **A44 — Independent component versions/releases**: V3 ownership split exists but release candidate used one 3.0.0-rc.1 line  →  Add component versions/manifests/release compatibility and independent artifact pipelines
-- **A45 — Agent component workflow**: No root machine-readable component registry defining exact agent scope  →  Add root registry: owned paths, read-only contracts, dependencies, tests, package, updater, health, version; enforce scope gates
+- **A45 — Agent component workflow — CLOSED IN G0**: root `COMPONENTS.json` schema v2, registry gate and Library checkpoint/continuation policy now define exact agent scope and durable continuation.
 - **A46 — UI / Design System**: V3 SCDS foundation exists and gate passes; most product surfaces were not migrated  →  Migrate every protected product surface using Audit→Correct→Standardize→Migrate→Enforce and UI DoD
 - **A50 — Release qualification**: M10 validated engineering subset but not product parity  →  Rebuild M9/M10 only after all required matrix rows closed; then physical/manual UAT
 
@@ -109,7 +109,7 @@ legacy updater یک capability واقعی و بالغ بوده و post-UI baseli
 
 ## Corrected execution order — do not re-audit from zero
 
-1. **Governance Repair**: add root Component Registry; superseding ADRs; update V3 migration/status vocabulary; install Product Parity Gate.
+1. **Governance Repair — COMPLETE**: root Component Registry, superseding ADRs, completion vocabulary, migration semantics, Product Parity Gate and Library checkpoint policy are now in place.
 2. **Local Web Product Parity**: migrate protected Local UI/workflows on existing services; fill missing Local owners/adapters (waiter/realtime/subscriber deferred).
 3. **Local Install + Control Plane**: Browser Setup Wizard; unified health/diagnostics; Local Update Center; Local updater/recovery UI.
 4. **Public Edge Productization**: deployable routes/document root; remote staff surface; Local projection/publish producers; Emergency Console/updater.
@@ -136,3 +136,8 @@ A new agent MUST NOT restart architecture/source audit unless: (a) the user supp
 ## Machine-readable companion
 
 `MASTER_CAPABILITY_MATRIX.json/csv` is the detailed canonical row-by-row status. `CONTINUATION_STATE.json` gives the exact next workstream and source refs.
+
+
+## G0 closure update
+
+G0 Governance Repair is complete in the local workspace and durably checkpointed in Library. A45 is now `PRODUCT_COMPLETE`. The active workstream is G1 Local Web Product Parity. Product parity inventory currently reports 4 `PRODUCT_COMPLETE`, 45 `PRODUCT_OPEN`, and 1 `RELEASE_BLOCKED`; therefore Manual UAT remains on hold.

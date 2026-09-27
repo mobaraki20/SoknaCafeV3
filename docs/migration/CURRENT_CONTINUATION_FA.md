@@ -2,7 +2,7 @@
 
 آخرین به‌روزرسانی: 2026-09-27
 وضعیت: **PRODUCT GAP CLOSURE**
-مرحله فعال بعدی: **G0 — Governance Repair**
+مرحله فعال: **G1 — Local Web Product Parity**
 
 ## مرجع قطعی
 
@@ -67,13 +67,23 @@ Matrix مادر 50 capability دارد؛ وضعیت فعلی audit: 23 مورد 
 
 در غیر این صورت فقط همان capability/component درگیر reopen شود.
 
-## Next — G0 Governance Repair
+## G0 Governance Repair — COMPLETE
 
-هدف G0 این است که continuation ambiguity دیگر تکرار نشود:
-- تکمیل root `COMPONENTS.json` با tests/gates/package/version/updater/health برای هر component؛
-- تثبیت ADR-0004 و supersessionهای deployment/update control plane؛
-- enforce کردن vocabulary: `CORE_COMPLETE / PRODUCT_COMPLETE / RELEASE_COMPLETE`؛
-- Product Parity Gate بر اساس Matrix مادر؛
-- اصلاح statusهای migration که backend-only را `migrated` product نشان می‌دهند.
+G0 در workspace محلی بسته و checkpoint شده است:
+- `COMPONENTS.json` schema v2؛
+- ADR-0004/0005؛
+- completion vocabulary؛
+- Migration Matrix completion level؛
+- fail-closed Product Parity Gate؛
+- Library checkpoint policy/ledger.
 
-بعد از G0 به‌ترتیب G1..G7 در roadmap ادامه بده.
+## Next — G1 Local Web Product Parity
+
+G1 scope:
+- migrate protected Local admin/operator/staff/waiter surfaces using post-UI observable behavior + canonical SCDS;
+- fill only the Local missing owners/adapters identified by Master Capability Matrix;
+- preserve already-green Local business core unless evidence defect requires reopen;
+- stay inside `local-web` owned paths plus declared read-only dependencies from `COMPONENTS.json`;
+- checkpoint every completed G1 subsection to Library before continuing.
+
+After G1, continue with G2 Local Setup/Observability/Update, then G3 Public, G4 remaining parity, G5 Windows packaging, G6 release qualification and G7 manual UAT.
