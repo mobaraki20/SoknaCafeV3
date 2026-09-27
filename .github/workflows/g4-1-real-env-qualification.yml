@@ -158,11 +158,11 @@ jobs:
           git apply .qualification/g4-1-866454c-v2/fix-relay-bootstrap.patch
 
           test -f tests/run-g4-1-product-qualification.sh
-          test -f tests/g4-1-product-qualification-b4d94b7.py
+          test -f tests/g4-1-product-qualification-contract.py
           test -f tests/g4-cross-component-parity-selftest.php
-          chmod +x tests/run-g4-1-product-qualification.sh tests/g4-1-product-qualification-b4d94b7.py
+          chmod +x tests/run-g4-1-product-qualification.sh tests/g4-1-product-qualification-contract.py
           printf '%s\n' "$SOKNA_G4_1_SOURCE_COMMIT" > G4_1_SOURCE_HEAD.txt
-          python3 tests/g4-1-product-qualification-b4d94b7.py
+          python3 tests/g4-1-product-qualification-contract.py
 
       - name: Ensure PHP database, zip and sodium extensions
         shell: bash
