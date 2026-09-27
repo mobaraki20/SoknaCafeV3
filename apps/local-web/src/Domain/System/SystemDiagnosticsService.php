@@ -91,8 +91,11 @@ final class SystemDiagnosticsService
 
     private function publicStatus(): array
     {
-        $base=$this->safeOrigin((string)$this->config->get('public.base_url',''));
-        return ['status'=>$base===''?'not_configured':'configured_unprobed','base_origin'=>$base,'productization'=>'G3_PENDING','note'=>'Public Edge active probing/update is intentionally deferred until G3 productization.'];
+        $base=$this->safeOrigin((string)$this->config->get('public.base_url',''));$rows=[];
+        try{$rows=$this->pdo->query('SELECT channel,status,last_http_status,last_attempt_at,last_success_at FROM public_sync_state ORDER BY channel')->fetchAll(PDO::FETCH_ASSOC)?:[];}catch(Throwable){}
+        $latest='';$errors=0;foreach($rows as $r){if((string)($r['status']??'')==='error')$errors++;$v=(string)($r['last_success_at']??'');if($v!==''&&($latest===''||$v>$latest))$latest=$v;}
+        $configured=$base!==''&&trim((string)$this->config->get('public.shared_secret',''))!=='';
+        return ['status'=>!$configured?'not_configured':($errors>0?'attention':($latest!==''?'observed_recently':'configured_unprobed')),'base_origin'=>$base,'productization'=>'G3.2_PUBLISHER','last_sync_at'=>$latest,'sync_channels'=>$rows,'sync_error_count'=>$errors,'note'=>'Local publish/read-model/heartbeat producer is active; live Public probing/update remains G3.3-owned.'];
     }
 
     private function safeOrigin(string $value): string

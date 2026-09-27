@@ -1,0 +1,38 @@
+<?php
+declare(strict_types=1);
+namespace Sokna\Local\Domain\PublicEdge;
+use Sokna\Local\Core\Config;
+final class PublicEdgeSyncClient
+{
+    /** @var null|callable */ private $transport;
+    public function __construct(private readonly Config $config,?callable $transport=null){$this->transport=$transport;}
+    public function configured(): bool{return $this->baseUrl()!=='' && $this->secret()!=='' && $this->installationId()!=='';}
+    public function safeOrigin(): string{$u=$this->baseUrl();if($u==='')return '';$p=parse_url($u);if(!is_array($p))return '';$scheme=strtolower((string)($p['scheme']??''));$host=(string)($p['host']??'');if(!in_array($scheme,['http','https'],true)||$host==='')return '';$port=isset($p['port'])?':'.(int)$p['port']:'';return $scheme.'://'.$host.$port;}
+    public function post(string $path,array $payload): array
+    {
+        if(!$this->configured())throw new PublicEdgeSyncException('public_not_configured','Public Edge هنوز در config محلی pair نشده است.',409);
+        if(!preg_match('#^/api/v1/local/[A-Za-z0-9/_-]+$#D',$path))throw new PublicEdgeSyncException('public_path_invalid','مسیر همگام‌سازی Public معتبر نیست.');
+        $body=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);$ts=(string)time();$nonce=bin2hex(random_bytes(16));$sig=hash_hmac('sha256',$this->signatureBase('POST',$path,$ts,$nonce,$body),$this->secret());
+        $headers=['Content-Type'=>'application/json','Accept'=>'application/json','X-Sokna-Installation'=>$this->installationId(),'X-Sokna-Timestamp'=>$ts,'X-Sokna-Nonce'=>$nonce,'X-Sokna-Signature'=>$sig,'X-Correlation-ID'=>'g32-'.bin2hex(random_bytes(8))];
+        if(is_callable($this->transport)){$r=($this->transport)($this->baseUrl().$path,'POST',$headers,$body);return $this->normalizeResponse($r);}
+        $headerLines=[];foreach($headers as $k=>$v)$headerLines[]=$k.': '.$v;
+        $ctx=stream_context_create(['http'=>['method'=>'POST','header'=>implode("\r\n",$headerLines),'content'=>$body,'timeout'=>10,'ignore_errors'=>true],'ssl'=>['verify_peer'=>true,'verify_peer_name'=>true]]);
+        $raw=@file_get_contents($this->baseUrl().$path,false,$ctx);$status=0;foreach((array)($http_response_header??[]) as $line)if(preg_match('#^HTTP/\S+\s+(\d{3})#',$line,$m)){$status=(int)$m[1];break;}
+        if($raw===false&&$status===0)throw new PublicEdgeSyncException('public_unreachable','ارتباط با Public Edge برقرار نشد.',503);
+        return $this->normalizeResponse(['status'=>$status,'body'=>(string)$raw]);
+    }
+    public function installationId(): string{return trim($this->config->string('installation.id',''));}
+    private function baseUrl(): string
+    {
+        $u=rtrim(trim($this->config->string('public.base_url','')),'/');if($u==='')return '';$p=parse_url($u);if(!is_array($p))return '';$scheme=strtolower((string)($p['scheme']??''));$host=strtolower((string)($p['host']??''));if($host==='')return '';
+        if($scheme==='https')return $u;if($scheme==='http'&&in_array($host,['127.0.0.1','localhost','::1'],true))return $u;return '';
+    }
+    private function secret(): string{return trim($this->config->string('public.shared_secret',''));}
+    private function signatureBase(string $method,string $path,string $timestamp,string $nonce,string $body): string{return implode("\n",['sokna-relay-v1',strtoupper($method),'/'.ltrim($path,'/'),$timestamp,$nonce,hash('sha256',$body)]);}
+    private function normalizeResponse(array $r): array
+    {
+        $status=(int)($r['status']??0);$body=$r['body']??[];if(is_string($body)){$d=json_decode($body,true);$body=is_array($d)?$d:[];}if(!is_array($body))$body=[];
+        if($status<200||$status>=300||($body['ok']??false)!==true)throw new PublicEdgeSyncException((string)($body['error']??'public_sync_failed'),'همگام‌سازی Public Edge پذیرفته نشد.',$status?:502);
+        return ['status'=>$status,'body'=>$body];
+    }
+}

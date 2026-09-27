@@ -106,6 +106,7 @@ final class BrowserSetupService
             'db'=>['host'=>$db['host'],'port'=>$db['port'],'name'=>$db['name'],'charset'=>'utf8mb4','user'=>$db['user'],'pass'=>$db['pass']],
             'installation'=>['id'=>$installationId],
             'runtime'=>['local_token'=>$localToken],
+            'public'=>['base_url'=>'','shared_secret'=>''],
             'integrations'=>['accommodation'=>['base_url'=>'','secret'=>'']],
         ];
 

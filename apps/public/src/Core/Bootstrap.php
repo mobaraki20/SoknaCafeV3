@@ -20,6 +20,8 @@ use Sokna\PublicEdge\Guest\GuestRuntimeService;
 use Sokna\PublicEdge\Health\PublicHealthService;
 use Sokna\PublicEdge\Realtime\RealtimeService;
 use Sokna\PublicEdge\Remote\RemoteReadModelService;
+use Sokna\PublicEdge\Remote\InstallationProjectionService;
+use Sokna\PublicEdge\Remote\RemoteStaffPageRenderer;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
 
 final class Bootstrap
@@ -43,6 +45,8 @@ final class Bootstrap
     private ?GuestCompatibilityService $guestCompatibilityService = null;
     private ?GuestPageRenderer $guestPageRenderer = null;
     private ?RemoteReadModelService $remoteReadModelService = null;
+    private ?InstallationProjectionService $installationProjectionService = null;
+    private ?RemoteStaffPageRenderer $remoteStaffPageRenderer = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -179,5 +183,15 @@ final class Bootstrap
             $this->database(),
             $this->connectivity(),
         );
+    }
+
+    public function installationProjection(): InstallationProjectionService
+    {
+        return $this->installationProjectionService ??= new InstallationProjectionService($this->database());
+    }
+
+    public function remoteStaffRenderer(): RemoteStaffPageRenderer
+    {
+        return $this->remoteStaffPageRenderer ??= new RemoteStaffPageRenderer();
     }
 }

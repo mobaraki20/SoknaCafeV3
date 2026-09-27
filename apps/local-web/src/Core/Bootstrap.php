@@ -80,6 +80,9 @@ use Sokna\Local\Search\AdminSearchProvider;
 use Sokna\Local\Domain\Update\LocalUpdateService;
 use Sokna\Local\Domain\Update\ComponentUpdateCenterService;
 use Sokna\Local\Domain\Recovery\RecoveryWorkspaceService;
+use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
+use Sokna\Local\Domain\PublicEdge\PublicProjectionBuilder;
+use Sokna\Local\Domain\PublicEdge\PublicEdgePublisherService;
 final class Bootstrap
 {
     private ?PDO $database = null;
@@ -143,6 +146,9 @@ final class Bootstrap
     private ?LocalUpdateService $localUpdates = null;
     private ?ComponentUpdateCenterService $updateCenter = null;
     private ?RecoveryWorkspaceService $recoveryWorkspace = null;
+    private ?PublicEdgeSyncClient $publicEdgeSyncClient = null;
+    private ?PublicProjectionBuilder $publicProjectionBuilder = null;
+    private ?PublicEdgePublisherService $publicEdgePublisher = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
     private ?SupplyService $supply = null;
@@ -480,6 +486,7 @@ final class Bootstrap
         return $this->runtimeTriggers ??= new RuntimeTriggerService($this->database(), [
             'inventory.order_events'=>fn():array=>$this->inventoryOrders()->processPending(30),
             'maintenance.health'=>fn():array=>['ok'=>true,'checked_at'=>date(DATE_ATOM)],
+            'public.projection_sync'=>fn():array=>$this->publicEdgePublisher()->syncAll(),
         ]);
     }
 
@@ -547,6 +554,22 @@ final class Bootstrap
     public function recoveryWorkspace(): RecoveryWorkspaceService
     {
         return $this->recoveryWorkspace ??= new RecoveryWorkspaceService($this->businessBackup(),$this->observability());
+    }
+
+    public function publicEdgeSyncClient(): PublicEdgeSyncClient
+    {
+        return $this->publicEdgeSyncClient ??= new PublicEdgeSyncClient($this->config);
+    }
+
+    public function publicProjectionBuilder(): PublicProjectionBuilder
+    {
+        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database());
+    }
+
+    public function publicEdgePublisher(): PublicEdgePublisherService
+    {
+        $v=@file_get_contents(dirname(__DIR__,4).'/VERSION.txt');
+        return $this->publicEdgePublisher ??= new PublicEdgePublisherService($this->database(),$this->publicEdgeSyncClient(),$this->publicProjectionBuilder(),$this->observability(),is_string($v)&&trim($v)!==''?trim($v):'unknown');
     }
 
     public function expenseDeferred(): ExpenseDeferredAdapter

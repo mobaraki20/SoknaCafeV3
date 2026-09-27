@@ -12,6 +12,7 @@ return [
     ],
     'app' => [
         'default_installation_id' => 'CHANGE_ME_INSTALLATION_ID',
+        'cookie_secure' => true,
         // Keep storage outside the public document root whenever hosting permits.
         'storage_dir' => __DIR__ . '/storage',
     ],

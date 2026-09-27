@@ -5,7 +5,7 @@ $core=require dirname(__DIR__).'/_app.php';$user=LocalPage::requireAdmin($core);
 ProductShell::start($core,$user,'مرکز سیستم','system','سلامت، تشخیص، Update و Recovery در یک control plane؛ lifecycle owner هر component حفظ می‌شود.');
 ?>
 <section class="sc-workspace" data-system-workspace data-api="/system/api.php" data-csrf="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>">
-  <div class="sc-toolbar"><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-refresh>تازه‌سازی</button><button class="sc-button" type="button" data-support>ساخت بسته پشتیبانی</button></div></div>
+  <div class="sc-toolbar"><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-refresh>تازه‌سازی</button><button class="sc-button sc-button--secondary" type="button" data-public-sync>Sync Public</button><button class="sc-button" type="button" data-support>ساخت بسته پشتیبانی</button></div></div>
   <div class="sc-alert" role="status" aria-live="polite" data-status>در حال بررسی وضعیت سیستم…</div>
   <div class="sc-tabs" role="tablist"><button class="sc-tab" type="button" role="tab" aria-selected="true" data-tab="health">سلامت و تشخیص</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="updates">Update Center</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="recovery">Backup / Recovery</button></div>
   <div data-panel="health">

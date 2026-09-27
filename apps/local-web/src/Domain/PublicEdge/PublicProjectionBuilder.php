@@ -1,0 +1,52 @@
+<?php
+declare(strict_types=1);
+namespace Sokna\Local\Domain\PublicEdge;
+use PDO;
+final class PublicProjectionBuilder
+{
+    public function __construct(private readonly PDO $pdo){}
+    public function installation(string $installationId): array{return ['installation_id'=>$installationId,'display_name'=>$this->setting('cafe.name','SOKNA'),'remote_enabled'=>true,'order_intake_enabled'=>$this->settingBool('orders_accepting.cafe',true)];}
+    public function authProjections(): array
+    {
+        $rows=$this->pdo->query('SELECT id,username,password_hash,display_name,role,active,updated_at FROM users WHERE active=1 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);$out=[];
+        foreach($rows as $u){$id=(int)$u['id'];$caps=$this->caps($id);$admin=(string)$u['role']==='admin';if(!$admin&&!in_array('remote_access',$caps,true))continue;$remote=[];if($admin)$remote=['*'];else{foreach(['remote_operations'=>'operations.read','remote_preparation'=>'preparation.read','remote_inventory'=>'inventory.read','remote_inventory_cost'=>'inventory.cost.read','remote_reports'=>'reports.read','remote_deferred_context'=>'deferred.context'] as $local=>$public)if(in_array($local,$caps,true))$remote[]=$public;}
+            $areas=$this->areas($id);$out[]=['projection_id'=>'user:'.$id,'username'=>(string)$u['username'],'display_name'=>(string)$u['display_name'],'role'=>(string)$u['role'],'password_hash'=>(string)$u['password_hash'],'capabilities'=>$remote,'preparation_areas'=>$areas,'projection_version'=>max(1,(int)(strtotime((string)$u['updated_at'])?:1)),'active'=>true];}
+        return $out;
+    }
+    public function guestPublish(): array
+    {
+        $menus=$this->pdo->query("SELECT id,menu_key,name,sort_order FROM menus WHERE status='active' ORDER BY sort_order,id")->fetchAll(PDO::FETCH_ASSOC);$menuList=[];$catalogs=[];
+        foreach($menus as $m){$menu=['menu_key'=>(string)$m['menu_key'],'name'=>(string)$m['name'],'sort_order'=>(int)$m['sort_order']];$menuList[]=$menu;$q=$this->pdo->prepare("SELECT DISTINCT c.id,c.name,mc.sort_order FROM categories c JOIN menu_categories mc ON mc.category_id=c.id WHERE mc.menu_id=? AND c.active=1 AND c.audience<>'staff' ORDER BY mc.sort_order,c.id");$q->execute([(int)$m['id']]);$cats=array_map(fn($r)=>['id'=>(int)$r['id'],'name'=>(string)$r['name'],'sort_order'=>(int)$r['sort_order']],$q->fetchAll(PDO::FETCH_ASSOC));$iq=$this->pdo->prepare("SELECT i.id,i.category_id,c.name category_name,i.name,i.description,i.price,i.available,i.image_path,i.sort_order FROM items i JOIN categories c ON c.id=i.category_id JOIN menu_items mi ON mi.item_id=i.id WHERE mi.menu_id=? AND i.active=1 AND i.staff_only=0 AND i.sellable_kind='menu_item' ORDER BY c.sort_order,i.sort_order,i.id");$iq->execute([(int)$m['id']]);$items=array_map(fn($r)=>['id'=>(int)$r['id'],'category_id'=>(int)$r['category_id'],'category_name'=>(string)$r['category_name'],'name'=>(string)$r['name'],'description'=>(string)($r['description']??''),'price'=>(int)$r['price'],'available'=>(bool)$r['available'],'image_path'=>''], $iq->fetchAll(PDO::FETCH_ASSOC));$catalogs[(string)$m['menu_key']]=['menu'=>$menu,'categories'=>$cats,'items'=>$items];}
+        $tables=array_map(fn($r)=>['id'=>(int)$r['id'],'name'=>(string)$r['name'],'code'=>(string)$r['code'],'token'=>(string)$r['access_token']],$this->pdo->query('SELECT id,name,code,access_token FROM cafe_tables WHERE active=1 ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC));
+        $snapshot=['format'=>'sokna-guest-snapshot-v1','cafe_name'=>$this->setting('cafe.name','SOKNA'),'features'=>['table_sessions_enabled'=>true],'tables'=>$tables,'menus'=>$menuList,'catalogs'=>$catalogs];
+        if($menuList!==[]){$first=(string)$menuList[0]['menu_key'];$snapshot['categories']=$catalogs[$first]['categories'];$snapshot['items']=$catalogs[$first]['items'];}
+        $manifest=[];$hash=self::hash(['format'=>'sokna-guest-snapshot-v1','snapshot'=>$snapshot,'media_manifest'=>$manifest]);return ['revision_id'=>'guest-'.substr($hash,0,32),'content_hash'=>$hash,'generated_at'=>gmdate('c'),'snapshot'=>$snapshot,'media_manifest'=>$manifest];
+    }
+    public function availability(): array
+    {
+        $items=[];foreach($this->pdo->query("SELECT id,available FROM items WHERE active=1 AND staff_only=0 AND sellable_kind='menu_item'")->fetchAll(PDO::FETCH_ASSOC) as $r)$items[(string)$r['id']]=['available'=>(bool)$r['available']];
+        $tables=[];$q=$this->pdo->query("SELECT t.id,s.public_token,s.started_at,s.status FROM cafe_tables t LEFT JOIN table_sessions s ON s.table_id=t.id AND s.status='active' WHERE t.active=1 ORDER BY t.id");foreach($q->fetchAll(PDO::FETCH_ASSOC) as $r)$tables[(string)$r['id']]=['session'=>!empty($r['public_token'])?['token'=>(string)$r['public_token'],'started_at'=>gmdate('c',strtotime((string)$r['started_at'])),'status'=>(string)$r['status']]:null];
+        $core=['generated_at'=>gmdate('c'),'items'=>$items,'order_acceptance'=>['cafe'=>$this->settingBool('orders_accepting.cafe',true),'kitchen'=>$this->settingBool('orders_accepting.kitchen',true),'bar'=>$this->settingBool('orders_accepting.bar',true)],'waiter_enabled_table'=>$this->settingBool('waiter_call_enabled',true),'waiter_enabled_public'=>$this->settingBool('public_waiter_call_enabled',false),'tables'=>$tables];return ['version'=>self::hash($core)]+$core;
+    }
+    public function remoteModels(): array
+    {
+        $now=gmdate('c');$models=[];
+        $models[]=$this->model('operations',['orders'=>$this->rows("SELECT o.id,o.public_code,o.status,o.total_amount,o.order_source,o.created_at,t.name table_name FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id WHERE o.status NOT IN ('cancelled','settled') ORDER BY o.id DESC LIMIT 100"),'waiter_calls'=>$this->rows("SELECT w.id,w.public_code,w.status,w.created_at,t.name table_name FROM waiter_calls w JOIN cafe_tables t ON t.id=w.table_id WHERE w.status IN ('new','accepted') ORDER BY w.id DESC LIMIT 50")],$now);
+        $models[]=$this->model('preparation',['tasks'=>$this->rows("SELECT oi.id order_item_id,o.public_code order_code,o.status,oi.item_name,oi.quantity,oi.preparation_station area,t.name table_name FROM order_items oi JOIN orders o ON o.id=oi.order_id LEFT JOIN cafe_tables t ON t.id=o.table_id WHERE o.status IN ('new','accepted','preparing') ORDER BY oi.id LIMIT 150"),'adjustments'=>[]],$now);
+        $models[]=$this->model('inventory',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,ii.default_department,COALESCE(b.quantity_base,0) quantity_base,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")],$now);
+        $models[]=$this->model('inventory_cost',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,COALESCE(b.quantity_base,0) quantity_base,b.average_unit_cost,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")],$now);
+        $models[]=$this->model('reports',['today'=>['order_count'=>(int)$this->scalar("SELECT COUNT(*) FROM orders WHERE business_date=CURDATE()"),'sales_total'=>(int)$this->scalar("SELECT COALESCE(SUM(total_amount),0) FROM orders WHERE business_date=CURDATE() AND status<>'cancelled'"),'open_waiter_calls'=>(int)$this->scalar("SELECT COUNT(*) FROM waiter_calls WHERE status IN ('new','accepted')")]],$now);
+        $models[]=$this->model('deferred_context',['inventory_items'=>$this->rows("SELECT id,item_code,name,base_unit,default_department FROM inventory_items WHERE active=1 ORDER BY name LIMIT 500"),'count_drafts'=>$this->rows("SELECT id,status,created_at FROM inventory_count_sessions WHERE status='draft' ORDER BY id DESC LIMIT 50"),'subscribers'=>$this->rows("SELECT id,name,active FROM subscribers WHERE active=1 ORDER BY name LIMIT 300"),'expense_categories'=>$this->rows("SELECT category_key,name FROM expense_categories WHERE active=1 ORDER BY sort_order,category_key"),'supply_groups'=>[]],$now);
+        return $models;
+    }
+    private function model(string $key,array $payload,string $at): array{return ['format'=>'sokna-remote-read-v1','model_key'=>$key,'source_version'=>self::hash($payload),'generated_at'=>$at,'payload'=>$payload];}
+    private function caps(int $id): array{$q=$this->pdo->prepare('SELECT capability FROM user_capabilities WHERE user_id=? AND enabled=1');$q->execute([$id]);return array_map('strval',$q->fetchAll(PDO::FETCH_COLUMN));}
+    private function areas(int $id): array{$q=$this->pdo->prepare("SELECT area_key FROM user_preparation_areas WHERE user_id=? AND area_key IN ('kitchen','bar')");$q->execute([$id]);return array_map('strval',$q->fetchAll(PDO::FETCH_COLUMN));}
+    private function setting(string $k,string $d=''): string{$q=$this->pdo->prepare('SELECT setting_value FROM settings WHERE setting_key=?');$q->execute([$k]);$v=$q->fetchColumn();return $v===false?$d:(string)$v;}
+    private function settingBool(string $k,bool $d): bool{$v=strtolower(trim($this->setting($k,$d?'1':'0')));return in_array($v,['1','true','yes','on'],true);}
+    private function rows(string $sql): array{return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC)?:[];}
+    private function scalar(string $sql): mixed{return $this->pdo->query($sql)->fetchColumn();}
+    public static function hash(mixed $v): string{return hash('sha256',self::json($v));}
+    private static function json(mixed $v): string{return json_encode(self::norm($v),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRESERVE_ZERO_FRACTION|JSON_THROW_ON_ERROR);}
+    private static function norm(mixed $v): mixed{if(!is_array($v))return $v;if(array_is_list($v))return array_map([self::class,'norm'],$v);ksort($v,SORT_STRING);foreach($v as $k=>$x)$v[$k]=self::norm($x);return $v;}
+}

@@ -43,6 +43,13 @@ final class PublicSessionStore
         return $row;
     }
 
+    public function revoke(string $token): void
+    {
+        $token=trim($token);
+        if($token==='')return;
+        $this->pdo->prepare('DELETE FROM public_sessions WHERE token_hash=?')->execute([hash('sha256',$token)]);
+    }
+
     private static function decodeList(string $json): array
     {
         $decoded = json_decode($json, true);
