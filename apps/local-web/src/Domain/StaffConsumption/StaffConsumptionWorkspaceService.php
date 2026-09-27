@@ -84,10 +84,13 @@ final class StaffConsumptionWorkspaceService
                     'unit_price'=>(int)$line['unit_price'],'quantity'=>(int)$line['quantity'],
                 ],$catalogLines);
                 $quote=$this->benefits->quote($personnelId,$quoteLines,$occurredAt,$user,$runtime);
+                $payable=(int)($quote['menu_value_amount']??0)-(int)($quote['benefit_amount']??0)-(int)($quote['discount_amount']??0);
+                if($payable<0)throw new StaffConsumptionException('quote_amount_invalid','مبلغ قابل پرداخت محاسبه‌شده معتبر نیست.',500);
+                $quoteView=$quote;$quoteView['payable_amount']=$payable;
                 $this->pdo->commit();
             }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
         }catch(OrderCommitException $e){throw new StaffConsumptionException($e->errorCode,$e->getMessage(),$e->httpStatus);}
-        return ['success'=>true,'quote'=>$quote,'occurred_at'=>$occurredAt];
+        return ['success'=>true,'quote'=>$quoteView,'occurred_at'=>$occurredAt];
     }
 
     private function activePersonnel(): array
