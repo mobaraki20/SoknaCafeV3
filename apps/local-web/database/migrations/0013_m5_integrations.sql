@@ -1,4 +1,4 @@
--- M5.11 — Accommodation / Subscriber / SOKNA Center adapters.
+-- M5.11 — Accommodation / Subscriber adapters.
 -- These tables own adapter state only. Settlement remains the canonical finance owner.
 
 CREATE TABLE IF NOT EXISTS subscribers (
@@ -98,36 +98,7 @@ ALTER TABLE settlement_records
     ADD CONSTRAINT fk_m511_settlement_subscriber_ledger FOREIGN KEY (subscriber_ledger_entry_id) REFERENCES subscriber_ledger(id) ON UPDATE CASCADE ON DELETE RESTRICT,
     ADD CONSTRAINT fk_m511_settlement_accommodation_transfer FOREIGN KEY (accommodation_transfer_id) REFERENCES accommodation_transfers(id) ON UPDATE CASCADE ON DELETE RESTRICT;
 
-CREATE TABLE IF NOT EXISTS center_projection_receipts (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    source_version CHAR(64) NOT NULL,
-    user_count INT UNSIGNED NOT NULL,
-    state VARCHAR(20) NOT NULL,
-    attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
-    last_error_code VARCHAR(80) NULL,
-    last_error VARCHAR(500) NULL,
-    acknowledged_at DATETIME NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    CONSTRAINT ck_m511_center_projection_state CHECK (state IN ('pending','synced','failed')),
-    UNIQUE KEY uq_m511_center_projection_version (source_version),
-    INDEX idx_m511_center_projection_state (state,updated_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS center_entitlement_cache (
-    local_user_id INT UNSIGNED PRIMARY KEY,
-    allowed TINYINT(1) NULL,
-    remote_subject VARCHAR(120) NULL,
-    checked_at DATETIME NOT NULL,
-    expires_at DATETIME NOT NULL,
-    connection_fingerprint CHAR(64) NOT NULL,
-    last_error_code VARCHAR(80) NULL,
-    CONSTRAINT fk_m511_center_entitlement_user FOREIGN KEY (local_user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    INDEX idx_m511_center_entitlement_expiry (expires_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 INSERT INTO settings(setting_key,setting_value) VALUES
 ('module.subscribers.enabled','1'),
-('module.accommodation.enabled','0'),
-('module.center.enabled','0')
+('module.accommodation.enabled','0')
 ON DUPLICATE KEY UPDATE setting_key=VALUES(setting_key);
