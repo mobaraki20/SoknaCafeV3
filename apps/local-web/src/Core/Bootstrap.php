@@ -8,6 +8,8 @@ use PDO;
 use Sokna\Local\Domain\Orders\BusinessClock;
 use Sokna\Local\Domain\Orders\OrderCatalogService;
 use Sokna\Local\Domain\Orders\OrderCommitService;
+use Sokna\Local\Domain\Orders\GuestOrderService;
+use Sokna\Local\Domain\Orders\WaiterCallService;
 use Sokna\Local\Domain\Orders\StaffQuickOrderService;
 use Sokna\Local\Domain\Orders\TableDraftService;
 use Sokna\Local\Relay\TableDraftRealtimeAdapter;
@@ -41,6 +43,9 @@ use Sokna\Local\Relay\SupplyDeferredAdapter;
 use Sokna\Local\Relay\SubscriberPaymentDeferredAdapter;
 use Sokna\Local\Relay\DeferredDispatchService;
 use Sokna\Local\Relay\SettlementRealtimeAdapter;
+use Sokna\Local\Relay\GuestOrderRealtimeAdapter;
+use Sokna\Local\Relay\WaiterCallRealtimeAdapter;
+use Sokna\Local\Relay\RealtimeDispatchService;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 
 final class Bootstrap
@@ -87,6 +92,11 @@ final class Bootstrap
     private ?SubscriberPaymentDeferredAdapter $subscriberPaymentDeferred = null;
     private ?DeferredDispatchService $deferredDispatch = null;
     private ?SettlementRealtimeAdapter $settlementRealtime = null;
+    private ?GuestOrderService $guestOrders = null;
+    private ?WaiterCallService $waiterCalls = null;
+    private ?GuestOrderRealtimeAdapter $guestOrderRealtime = null;
+    private ?WaiterCallRealtimeAdapter $waiterCallRealtime = null;
+    private ?RealtimeDispatchService $realtimeDispatch = null;
 
     private function __construct(
         private readonly Config $config,
@@ -359,6 +369,34 @@ final class Bootstrap
         return $this->settlementRealtime ??= new SettlementRealtimeAdapter($this->identityRepository(), $this->settlements());
     }
 
+
+    public function guestOrders(): GuestOrderService
+    {
+        return $this->guestOrders ??= new GuestOrderService($this->database(), $this->businessClock(), $this->orderCatalog(), $this->orders(), $this->tax());
+    }
+
+    public function waiterCalls(): WaiterCallService
+    {
+        return $this->waiterCalls ??= new WaiterCallService($this->database(), $this->businessClock());
+    }
+
+    public function guestOrderRealtime(): GuestOrderRealtimeAdapter
+    {
+        return $this->guestOrderRealtime ??= new GuestOrderRealtimeAdapter($this->guestOrders());
+    }
+
+    public function waiterCallRealtime(): WaiterCallRealtimeAdapter
+    {
+        return $this->waiterCallRealtime ??= new WaiterCallRealtimeAdapter($this->waiterCalls());
+    }
+
+    public function realtimeDispatch(): RealtimeDispatchService
+    {
+        return $this->realtimeDispatch ??= new RealtimeDispatchService(
+            $this->guestOrderRealtime(), $this->waiterCallRealtime(), $this->settlementRealtime(),
+            $this->preparationRealtime(), $this->tableDraftRealtime()
+        );
+    }
     public function startSession(string $cookiePath = '/', ?bool $secure = null): void
     {
         Session::start($this->config, $this->observability, $cookiePath, $secure);

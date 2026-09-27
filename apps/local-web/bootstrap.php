@@ -18,6 +18,10 @@ require_once __DIR__ . '/src/Domain/Orders/BusinessClock.php';
 require_once __DIR__ . '/src/Domain/Orders/OrderCommitException.php';
 require_once __DIR__ . '/src/Domain/Orders/OrderCatalogService.php';
 require_once __DIR__ . '/src/Domain/Orders/OrderCommitService.php';
+require_once __DIR__ . '/src/Domain/Orders/GuestOrderException.php';
+require_once __DIR__ . '/src/Domain/Orders/GuestOrderService.php';
+require_once __DIR__ . '/src/Domain/Orders/WaiterCallException.php';
+require_once __DIR__ . '/src/Domain/Orders/WaiterCallService.php';
 require_once __DIR__ . '/src/Domain/Orders/StaffQuickOrderException.php';
 require_once __DIR__ . '/src/Domain/Orders/StaffQuickOrderService.php';
 require_once __DIR__ . '/src/Domain/Orders/TableDraftException.php';
@@ -64,6 +68,9 @@ require_once __DIR__ . '/src/Relay/SupplyDeferredAdapter.php';
 require_once __DIR__ . '/src/Relay/SubscriberPaymentDeferredAdapter.php';
 require_once __DIR__ . '/src/Relay/DeferredDispatchService.php';
 require_once __DIR__ . '/src/Relay/SettlementRealtimeAdapter.php';
+require_once __DIR__ . '/src/Relay/GuestOrderRealtimeAdapter.php';
+require_once __DIR__ . '/src/Relay/WaiterCallRealtimeAdapter.php';
+require_once __DIR__ . '/src/Relay/RealtimeDispatchService.php';
 require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_local_bootstrap(array $config): Bootstrap
