@@ -157,7 +157,7 @@ jobs:
           git apply --check .qualification/g4-1-866454c-v2/fix-relay-bootstrap.patch
           git apply .qualification/g4-1-866454c-v2/fix-relay-bootstrap.patch
 
-          echo "61406052a9590dc39a97b4b34e3d252d776c0cb61fa737b392b4b7dc6814e4c9  .qualification/g4-1-866454c-v2/fix-settlement-diagnostic.patch" | sha256sum -c -
+          echo "f438008ed5796bb124687bb7a1f7eb12077a2b8254387a588648774f7d839bf0  .qualification/g4-1-866454c-v2/fix-settlement-diagnostic.patch" | sha256sum -c -
           git apply --check .qualification/g4-1-866454c-v2/fix-settlement-diagnostic.patch
           git apply .qualification/g4-1-866454c-v2/fix-settlement-diagnostic.patch
 
