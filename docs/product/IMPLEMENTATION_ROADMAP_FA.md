@@ -26,12 +26,11 @@ Exit: agent can be asked for one component by name and knows exact scope/tests/p
 - Local domain UIs for Orders/Preparation/Inventory/Supply/Expenses/Tax/Finance/Subscribers/Integrations/Printing.
 
 ## G2 — Local Setup / Observability / Update
-- WordPress-like Browser Setup Wizard;
-- unified component health/log/diagnostics/support UI;
-- component status/version/compatibility model;
-- Local Update Center;
-- Local updater + stable recovery entrypoint;
-- backup/recovery/takeover UX.
+- **G2.1 Browser Setup — IMPLEMENTATION COMPLETE / REAL DB QUALIFICATION DEFERRED TO G2.4**: standalone `/setup/`, preflight, MariaDB 11.4.x test/optional create, migrations, initial admin/config, installation identity, Runtime token/config, final health, valid lock and partial-setup resume.
+- **G2.2 Observability / Diagnostics — NEXT**: unified component health/log/diagnostics/support UI and support bundle.
+- **G2.3 Local Update Center / Updater — PENDING**: component status/version/compatibility model, update orchestration, Local updater + stable recovery entrypoint.
+- **G2.4 Qualification — PENDING**: real MariaDB Browser Setup plus observability/update/recovery integration gates.
+- backup/recovery/takeover UX is integrated where owned by Local and remains coordinated with later Public/Windows workstreams.
 
 ## G3 — Public Edge Productization
 - hosting-ready deploy package and document root;

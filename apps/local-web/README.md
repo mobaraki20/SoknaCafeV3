@@ -27,3 +27,11 @@ The M2 bootstrap intentionally does **not** eager-load business domains and does
 Executable gate: `tests/local-core-contract.py` PHP-lints Local Core, runs `tests/local-core-selftest.php` and `tests/local-auth-selftest.php`, and rejects Windows Runtime/Print ownership tokens inside Local Core.
 
 Still required before M2 exit: M2-owned schema/migration bootstrap and its regression coverage, followed by a final green Local CI checkpoint recorded in the migration handoff.
+
+## G2.1 Browser Setup
+
+Local Web is installed from its web package, not from a Windows/PowerShell installer. When `config.php` or a valid `install.lock` is missing, normal Local routes redirect to `/setup/`.
+
+The browser wizard owns environment preflight, MariaDB 11.4.x connection testing/optional database creation, migrations, initial admin/cafe/table bootstrap, installation identity, Runtime token/config provisioning, final health validation and the final setup lock. `install.lock` is written only after the final health check. A config-without-valid-lock state is treated as partial and may be safely resumed after the database installation identity is verified.
+
+`tools/setup-machine.php` remains an internal/legacy automation helper while packaging is revised in G5; it is not the end-user Local Web installation surface.
