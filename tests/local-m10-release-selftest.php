@@ -38,7 +38,7 @@ m10_assert((int)$agent['agent_id']>0,'print fixture missing');
 $backup=sys_get_temp_dir().'/m10-'.bin2hex(random_bytes(5)).'.skb';$secret='M10-Strong-Recovery-Secret!';
 $created=$core->businessBackup()->createEncrypted($backup,$secret,$adminId);
 m10_assert(is_file($backup)&&filesize($backup)>100,'encrypted business backup missing');
-m10_assert((string)file_get_contents($backup, false, null, 0, 10)==="SOKNA-SKB1\n",'secure backup magic missing');
+m10_assert((string)file_get_contents($backup, false, null, 0, 11)==="SOKNA-SKB1\n",'secure backup magic missing');
 m10_assert(strpos((string)file_get_contents($backup),$uname)===false,'plaintext business identity leaked into encrypted backup');
 $manifest=$core->businessBackup()->inspectEncrypted($backup,$secret);
 m10_assert(($manifest['source_installation_id']??'')==='m10-source-installation','backup installation identity drifted');
