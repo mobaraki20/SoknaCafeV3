@@ -1,0 +1,13 @@
+diff --git a/tests/g3-remote-staff-publisher-selftest.php b/tests/g3-remote-staff-publisher-selftest.php
+index b7bc19a..682e46e 100644
+--- a/tests/g3-remote-staff-publisher-selftest.php
++++ b/tests/g3-remote-staff-publisher-selftest.php
+@@ -10,7 +10,7 @@ use Sokna\Local\Domain\PublicEdge\PublicEdgePublisherService;
+ use Sokna\PublicEdge\Http\PublicHttpKernel;
+ function g32db(bool $v,string $m):void{if(!$v)throw new RuntimeException($m);}
+ $host=(string)(getenv('SOKNA_TEST_DB_HOST')?:'127.0.0.1');$port=(string)(getenv('SOKNA_TEST_DB_PORT')?:'3306');$localName=(string)(getenv('SOKNA_TEST_DB_NAME')?:'sokna_m2');$user=(string)(getenv('SOKNA_TEST_DB_USER')?:'sokna');$pass=(string)(getenv('SOKNA_TEST_DB_PASS')?:'sokna');$rootUser=(string)(getenv('SOKNA_TEST_DB_ROOT_USER')?:'root');$rootPass=(string)(getenv('SOKNA_TEST_DB_ROOT_PASS')?:'root');$publicName=preg_replace('/[^A-Za-z0-9_]/','_',$localName).'_public_g32';
+-$root=new PDO("mysql:host={$host};port={$port};charset=utf8mb4",$rootUser,$rootPass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$root->exec("DROP DATABASE IF EXISTS `{$publicName}`");$root->exec("CREATE DATABASE `{$publicName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
++$root=new PDO("mysql:host={$host};port={$port};charset=utf8mb4",$rootUser,$rootPass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$root->exec("DROP DATABASE IF EXISTS `{$publicName}`");$root->exec("CREATE DATABASE `{$publicName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");$quotedUser=$root->quote($user);$root->exec("GRANT ALL PRIVILEGES ON `{$publicName}`.* TO {$quotedUser}@'%'");
+ $data=sys_get_temp_dir().'/sokna-g32-'.bin2hex(random_bytes(4));@mkdir($data,0700,true);$installation='g32-installation';$secret='g32-secret-'.bin2hex(random_bytes(12));
+ $localConfig=['app'=>['timezone'=>'UTC','data_dir'=>$data],'db'=>['host'=>$host,'port'=>$port,'name'=>$localName,'charset'=>'utf8mb4','user'=>$user,'pass'=>$pass],'installation'=>['id'=>$installation],'runtime'=>['local_token'=>'g32'],'public'=>['base_url'=>'http://127.0.0.1','shared_secret'=>$secret],'integrations'=>['accommodation'=>['base_url'=>'','secret'=>'']]];
+ $local=sokna_local_bootstrap($localConfig);$local->migrations()->migrate();$lp=$local->database();
