@@ -2,15 +2,14 @@
 -- ADR-F1-001: independent Staff Consumption authority with canonical Order operational projection.
 -- Existing table orders remain table_service by default. Staff consumption uses explicit non-table context.
 
+-- MariaDB 11.4 rejects a cross-column CHECK that references orders.table_id because
+-- table_id participates in an InnoDB foreign key. The canonical OrderCommitService owns
+-- the context/table/session invariant transactionally: table_service requires a real table;
+-- staff_consumption requires table_id/session_id NULL and source=staff.
 ALTER TABLE orders
     MODIFY COLUMN table_id INT UNSIGNED NULL,
     ADD COLUMN order_context VARCHAR(32) NOT NULL DEFAULT 'table_service' AFTER order_source,
-    ADD INDEX idx_f11_orders_context_created (order_context,created_at),
-    ADD CONSTRAINT ck_f11_orders_context CHECK (
-        (order_context='table_service' AND table_id IS NOT NULL)
-        OR
-        (order_context='staff_consumption' AND table_id IS NULL AND session_id IS NULL)
-    );
+    ADD INDEX idx_f11_orders_context_created (order_context,created_at);
 
 CREATE TABLE IF NOT EXISTS staff_benefit_policies (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

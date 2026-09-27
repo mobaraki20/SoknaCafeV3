@@ -22,7 +22,10 @@ for table in [
 ]:
     need(migration, f'CREATE TABLE IF NOT EXISTS {table}', f'{table} authority missing')
 need(migration, "order_context VARCHAR(32) NOT NULL DEFAULT 'table_service'", 'explicit order context missing')
-need(migration, "order_context='staff_consumption' AND table_id IS NULL AND session_id IS NULL", 'non-table order invariant missing')
+order_commit = 'apps/local-web/src/Domain/Orders/OrderCommitService.php'
+need(order_commit, "if($context==='table_service'&&($tableId??0)<1)", 'table-service context must require a real table')
+need(order_commit, "if($tableId!==null||$sessionId!==null)", 'staff-consumption context must reject table/session identity')
+need(order_commit, "if($source!=='staff'||$actorUserId<1)", 'staff-consumption context must require a staff recorder')
 need(migration, 'consumer_personnel_id INT UNSIGNED NOT NULL', 'consumer personnel identity missing')
 need(migration, 'recorded_by_user_id INT UNSIGNED NOT NULL', 'recorder user identity missing')
 need(migration, "entry_type IN ('charge','payment','waiver','charge_reversal','payment_reversal','waiver_reversal','adjustment')", 'dedicated staff ledger semantics missing')
