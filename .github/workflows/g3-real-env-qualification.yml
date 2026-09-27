@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - qualification/g3-real-env-bc8e408
+  pull_request:
+    branches:
+      - architecture/v3-foundation
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -50,7 +54,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Reconstruct the exact F1-qualified source c851eb4.
           cat .qualification/g1-427be0b/part-* > /tmp/g1-overlay.b64
           echo "ee4a9b53d1a9c06e664961e4fb7a15ad65f6d82954d6544fcef46d0d96410f8a  /tmp/g1-overlay.b64" | sha256sum -c -
           base64 -d /tmp/g1-overlay.b64 > /tmp/g1-overlay.tar.gz
@@ -82,7 +85,6 @@ jobs:
           cp .qualification/g1-427be0b/tests-component-registry-gate.py tests/component-registry-gate.py
           cp .qualification/g1-427be0b/COMPONENTS.v2.json COMPONENTS.json
 
-          # Apply the exact local G2 delta c851eb4 -> e638183.
           echo "1946e10549bdb4ab600ad26466bc1af02e7679ef1c60dc9a05a01e17b9d3242b  .qualification/g2-e638183/overlay.tar.gz.b64" | sha256sum -c -
           base64 -d .qualification/g2-e638183/overlay.tar.gz.b64 > /tmp/g2-overlay.tar.gz
           echo "0754125381f3e96c14881c14b6a73ee19e556b726f01925c62d03ed4cb93f55d  /tmp/g2-overlay.tar.gz" | sha256sum -c -
@@ -93,7 +95,6 @@ jobs:
             [[ -z "$path" ]] || rm -f -- "$path"
           done < /tmp/g2-overlay/DELETE_PATHS.txt
 
-          # Apply the exact local G3 delta e638183 -> bc8e408.
           cat .qualification/g3-bc8e408/xz-part-* > /tmp/g3.patch.xz.b64
           echo "04e49671c9c5e60d3a424012a359f8828da4451717889a9f767ba8a5c1070985  /tmp/g3.patch.xz.b64" | sha256sum -c -
           base64 -d /tmp/g3.patch.xz.b64 > /tmp/g3.patch.xz
@@ -107,7 +108,6 @@ jobs:
           cp .qualification/g3-bc8e408/g3-product-qualification-contract.py tests/g3-product-qualification-contract.py
           chmod +x tests/run-g1-real-db-qualification.sh tests/run-f1-real-db-qualification.sh tests/run-g2-product-qualification.sh
           chmod +x tests/run-g3-product-qualification.sh tests/g3-product-qualification-contract.py tests/component-registry-gate.py
-
           echo "Qualification source local HEAD: bc8e40800bba4735b110af2488afe5ec1ae377f3"
 
       - name: Ensure PHP database, zip and sodium extensions
