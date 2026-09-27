@@ -60,9 +60,10 @@ jobs:
             [[ -z "$path" ]] || rm -f -- "$path"
           done < /tmp/g1-overlay/DELETE_PATHS.txt
           cp .qualification/g1-427be0b/run-g1-real-db-qualification.fixed.sh tests/run-g1-real-db-qualification.sh
+          cp .qualification/g1-427be0b/local-m5-orders-selftest.fixed.php tests/local-m5-orders-selftest.php
           chmod +x tests/run-g1-real-db-qualification.sh
           test -x tests/run-g1-real-db-qualification.sh
-          echo "Qualification source local HEAD: 42c647a8386e203d1456127b927757a8f132444e"
+          echo "Qualification source local HEAD: 6131066622e32f73d90177022bbb064e7fae8e26"
 
       - name: Ensure PHP pdo_mysql
         shell: bash
