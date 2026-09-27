@@ -11,6 +11,7 @@ final class RemoteStaffPageRenderer
         'inventory'=>['cap'=>'inventory.read','label'=>'انبار'],
         'inventory_cost'=>['cap'=>'inventory.cost.read','label'=>'بهای انبار'],
         'reports'=>['cap'=>'reports.read','label'=>'گزارش'],
+        'notifications'=>['cap'=>'notifications.read','label'=>'اعلان‌ها'],
         'deferred_context'=>['cap'=>'deferred.context','label'=>'کار آفلاین'],
     ];
     public function login(string $installationId,string $error=''): array

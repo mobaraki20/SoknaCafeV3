@@ -26,6 +26,7 @@ final class Capabilities
         'remote_inventory',
         'remote_inventory_cost',
         'remote_reports',
+        'remote_notifications',
         'remote_deferred_context',
         'remote_order_actions',
         'remote_preparation_actions',

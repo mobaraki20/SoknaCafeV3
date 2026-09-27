@@ -72,6 +72,7 @@ final class GuestPageRenderer
         $presentation = is_array($snapshot['presentation'] ?? null) ? $snapshot['presentation'] : [];
         $copy = is_array($presentation['copy'] ?? null) ? $presentation['copy'] : [];
         $themeCssUrl = $this->safeAssetUrl((string)($endpoints['theme_css'] ?? ''));
+        $marketing = is_array($snapshot['marketing'] ?? null) ? $snapshot['marketing'] : [];
 
         $html = '<!doctype html><html lang="fa" dir="rtl"><head>'
             . '<meta charset="utf-8">'
@@ -103,7 +104,34 @@ final class GuestPageRenderer
             $html .= '<div class="sg-action-state is-degraded" role="status"><strong>' . self::e($this->copy($copy,'degraded_title','منو در حالت فقط‌خواندنی است')) . '</strong><span>' . self::e($this->copy($copy,'degraded_body','ارتباط زنده با کافه موقتاً در دسترس نیست؛ مشاهده منو ادامه دارد.')) . '</span></div>';
         }
 
-        $html .= '<main class="sg-main"><section class="sg-search" aria-label="جست‌وجوی منو">'
+        $html .= '<main class="sg-main">';
+        $campaigns = is_array($marketing['campaigns'] ?? null) ? $marketing['campaigns'] : [];
+        $events = is_array($marketing['events'] ?? null) ? $marketing['events'] : [];
+        if ($campaigns !== [] || $events !== []) {
+            $html .= '<section class="sg-marketing" aria-label="خبر و رویداد">';
+            foreach ($campaigns as $campaign) {
+                if (!is_array($campaign)) continue;
+                $headline = trim((string)($campaign['headline'] ?? ''));
+                if ($headline === '') continue;
+                $html .= '<article class="sg-promo-card"><span>خبر سکنا</span><h2>' . self::e($headline) . '</h2>';
+                $body = trim((string)($campaign['body'] ?? ''));
+                if ($body !== '') $html .= '<p>' . self::e($body) . '</p>';
+                $html .= '</article>';
+            }
+            foreach ($events as $event) {
+                if (!is_array($event)) continue;
+                $title = trim((string)($event['title'] ?? ''));
+                if ($title === '') continue;
+                $html .= '<article class="sg-promo-card sg-event-card"><span>رویداد</span><h2>' . self::e($title) . '</h2>';
+                $desc = trim((string)($event['description'] ?? ''));
+                if ($desc !== '') $html .= '<p>' . self::e($desc) . '</p>';
+                $meta = array_filter([trim((string)($event['starts_at'] ?? '')), trim((string)($event['location_label'] ?? ''))], static fn(string $v): bool => $v !== '');
+                if ($meta !== []) $html .= '<small>' . self::e(implode(' · ', $meta)) . '</small>';
+                $html .= '</article>';
+            }
+            $html .= '</section>';
+        }
+        $html .= '<section class="sg-search" aria-label="جست‌وجوی منو">'
             . '<label for="sgMenuSearch">' . self::e($this->copy($copy,'search_label','جست‌وجوی منو')) . '</label>'
             . '<input id="sgMenuSearch" data-sg-search type="search" inputmode="search" autocomplete="off" placeholder="' . self::e($this->copy($copy,'search_placeholder','نام نوشیدنی یا غذا را بنویسید')) . '">'
             . '</section>';

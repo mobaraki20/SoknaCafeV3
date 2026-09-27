@@ -1,0 +1,5 @@
+<?php
+declare(strict_types=1);
+use Sokna\Local\UI\WebAction;
+$core=require dirname(__DIR__).'/_app.php';$user=WebAction::requireAny($core,[]);if((string)($user['role']??'')!=='admin')WebAction::json(['success'=>false,'code'=>'forbidden','message'=>'فقط مدیر دسترسی دارد.'],403);
+try{if(($_SERVER['REQUEST_METHOD']??'GET')==='GET')WebAction::json(['success'=>true,'snapshot'=>$core->marketing()->snapshot()]);$d=WebAction::requireMutation();$a=(string)($d['action']??'');if($a==='campaign_save')WebAction::json(['success'=>true,'result'=>$core->marketing()->saveCampaign($d,$user)]);if($a==='event_save')WebAction::json(['success'=>true,'result'=>$core->marketing()->saveEvent($d,$user)]);WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);}catch(Throwable $e){if(property_exists($e,'httpStatus'))WebAction::knownFailure($e);error_log('marketing api: '.$e->getMessage());WebAction::json(['success'=>false,'code'=>'internal_error','message'=>'عملیات انجام نشد.'],500);}

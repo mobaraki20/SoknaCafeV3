@@ -1,6 +1,6 @@
 (()=>{'use strict';
 const buttons=[...document.querySelectorAll('[data-model]')],out=document.querySelector('[data-output]'),state=document.querySelector('[data-state]'),conn=document.querySelector('[data-connectivity]'),title=document.querySelector('[data-title]');if(!out)return;
-const labels={operations:'عملیات',preparation:'آماده‌سازی',inventory:'انبار',inventory_cost:'بهای انبار',reports:'گزارش',deferred_context:'کار آفلاین'},cache={};
+const labels={operations:'عملیات',preparation:'آماده‌سازی',inventory:'انبار',inventory_cost:'بهای انبار',reports:'گزارش',notifications:'اعلان‌ها',deferred_context:'کار آفلاین'},cache={};
 const uid=(p='r')=>`${p}-${Date.now().toString(36)}-${Math.random().toString(16).slice(2,10)}`,now=()=>new Date().toISOString(),later=(s=90)=>new Date(Date.now()+s*1000).toISOString();
 async function json(url,opt={}){const r=await fetch(url,{cache:'no-store',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...(opt.headers||{})},...opt});let j={};try{j=await r.json()}catch(_){throw new Error('invalid_response')}if(r.status===401){location.href='/staff/login';throw new Error('unauthorized')}if(!r.ok||!j.ok)throw new Error(j.error||'request_failed');return j}
 function option(select,value,label){if(!select)return;const o=document.createElement('option');o.value=String(value);o.textContent=label;select.append(o)}

@@ -335,3 +335,5 @@ html { background: var(--sg-color-canvas); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto; transition-duration: 0.01ms; animation-duration: 0.01ms; animation-iteration-count: 1; }
 }
+
+.sg-marketing{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px;margin:0 0 18px}.sg-promo-card{padding:16px;border:1px solid var(--sg-border,#e6ded4);border-radius:18px;background:var(--sg-surface,#fff);box-shadow:0 8px 26px rgba(58,42,29,.06)}.sg-promo-card>span{display:inline-block;font-size:.78rem;opacity:.7;margin-bottom:6px}.sg-promo-card h2{font-size:1.05rem;margin:0 0 8px}.sg-promo-card p{margin:0;line-height:1.8}.sg-promo-card small{display:block;margin-top:10px;opacity:.7}.sg-event-card{border-style:dashed}

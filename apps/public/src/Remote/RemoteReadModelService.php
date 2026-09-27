@@ -16,6 +16,7 @@ final class RemoteReadModelService
         'inventory' => 'inventory.read',
         'inventory_cost' => 'inventory.cost.read',
         'reports' => 'reports.read',
+        'notifications' => 'notifications.read',
         'deferred_context' => 'deferred.context',
     ];
 
@@ -121,6 +122,7 @@ final class RemoteReadModelService
         $payload = is_array($payload) ? $payload : [];
         if ($modelKey === 'preparation') $payload = $this->filterPreparation($payload, $session);
         if ($modelKey === 'deferred_context') $payload = $this->filterDeferredContext($payload, $session);
+        if ($modelKey === 'notifications') $payload = $this->filterNotifications($payload, $session);
 
         $connectivity = $this->connectivity->status($installationId, 45);
         $lastSync = strtotime((string)($row['last_sync_at'] ?? '') . ' UTC') ?: 0;
@@ -189,6 +191,16 @@ final class RemoteReadModelService
         if (!$has('inventory.count_draft.defer')) $payload['count_drafts'] = [];
         if (!$has('subscriber.payment.defer')) $payload['subscribers'] = [];
         if (!$has('expense.create.defer')) $payload['expense_categories'] = [];
+        return $payload;
+    }
+
+    private function filterNotifications(array $payload, array $session): array
+    {
+        $projectionId = trim((string)($session['projection_id'] ?? ''));
+        $rows = is_array($payload['items'] ?? null) ? $payload['items'] : [];
+        $payload['items'] = array_values(array_filter($rows, static fn(mixed $row): bool => is_array($row) && hash_equals($projectionId, (string)($row['projection_id'] ?? ''))));
+        foreach ($payload['items'] as &$row) unset($row['projection_id']);
+        unset($row);
         return $payload;
     }
 

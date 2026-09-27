@@ -60,6 +60,9 @@ use Sokna\Local\Domain\Sellables\CatalogAdminService;
 use Sokna\Local\Domain\Admin\AdminControlService;
 use Sokna\Local\Domain\GuestContent\ThemePackageManager;
 use Sokna\Local\Domain\GuestContent\GuestContentService;
+use Sokna\Local\Domain\Marketing\MarketingService;
+use Sokna\Local\Domain\Reporting\ReportingService;
+use Sokna\Local\Domain\Notifications\NotificationService;
 use Sokna\Local\Domain\StaffConsumption\PersonnelRepository;
 use Sokna\Local\Domain\StaffConsumption\StaffBenefitRepository;
 use Sokna\Local\Domain\StaffConsumption\StaffBenefitCalculator;
@@ -152,6 +155,9 @@ final class Bootstrap
     private ?RecoveryWorkspaceService $recoveryWorkspace = null;
     private ?ThemePackageManager $themePackages = null;
     private ?GuestContentService $guestContent = null;
+    private ?MarketingService $marketing = null;
+    private ?ReportingService $reporting = null;
+    private ?NotificationService $notifications = null;
     private ?PublicEdgeSyncClient $publicEdgeSyncClient = null;
     private ?PublicProjectionBuilder $publicProjectionBuilder = null;
     private ?PublicEdgePublisherService $publicEdgePublisher = null;
@@ -496,6 +502,7 @@ final class Bootstrap
             'maintenance.health'=>fn():array=>['ok'=>true,'checked_at'=>date(DATE_ATOM)],
             'public.projection_sync'=>fn():array=>$this->publicEdgePublisher()->syncAll(),
             'public.relay_sync'=>fn():array=>$this->publicEdgeRelay()->sync(),
+            'notifications.outbox'=>fn():array=>$this->notifications()->processPending(100),
         ]);
     }
 
@@ -576,6 +583,21 @@ final class Bootstrap
         return $this->guestContent ??= new GuestContentService($this->database(),$this->identityRepository(),$this->themePackages(),$root);
     }
 
+    public function marketing(): MarketingService
+    {
+        return $this->marketing ??= new MarketingService($this->database());
+    }
+
+    public function reporting(): ReportingService
+    {
+        return $this->reporting ??= new ReportingService($this->database());
+    }
+
+    public function notifications(): NotificationService
+    {
+        return $this->notifications ??= new NotificationService($this->database());
+    }
+
     public function publicEdgeSyncClient(): PublicEdgeSyncClient
     {
         return $this->publicEdgeSyncClient ??= new PublicEdgeSyncClient($this->config);
@@ -583,7 +605,7 @@ final class Bootstrap
 
     public function publicProjectionBuilder(): PublicProjectionBuilder
     {
-        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent());
+        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent(),$this->marketing(),$this->reporting(),$this->notifications());
     }
 
     public function publicEdgePublisher(): PublicEdgePublisherService
