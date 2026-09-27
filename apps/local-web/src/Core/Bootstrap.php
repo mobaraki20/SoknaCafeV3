@@ -63,6 +63,8 @@ use Sokna\Local\Domain\StaffConsumption\StaffBenefitCalculationService;
 use Sokna\Local\Domain\StaffConsumption\StaffBenefitManagementService;
 use Sokna\Local\Domain\StaffConsumption\StaffAccountRepository;
 use Sokna\Local\Domain\StaffConsumption\StaffConsumptionFoundationService;
+use Sokna\Local\Domain\StaffConsumption\StaffConsumptionRepository;
+use Sokna\Local\Domain\StaffConsumption\StaffConsumptionPostingService;
 use Sokna\Local\Search\GlobalSearchService;
 use Sokna\Local\Search\CatalogSearchProvider;
 use Sokna\Local\Search\InventorySearchProvider;
@@ -85,6 +87,8 @@ final class Bootstrap
     private ?StaffBenefitManagementService $staffBenefitManagement = null;
     private ?StaffAccountRepository $staffAccounts = null;
     private ?StaffConsumptionFoundationService $staffConsumptionFoundation = null;
+    private ?StaffConsumptionRepository $staffConsumptionRepository = null;
+    private ?StaffConsumptionPostingService $staffConsumptionPosting = null;
     private ?GlobalSearchService $globalSearch = null;
     private ?SellableRepository $sellables = null;
     private ?CatalogAdminService $catalogAdmin = null;
@@ -232,7 +236,20 @@ final class Bootstrap
     public function staffConsumptionFoundation(): StaffConsumptionFoundationService
     {
         return $this->staffConsumptionFoundation ??= new StaffConsumptionFoundationService(
-            $this->identityRepository(), $this->capabilities(), $this->personnel()
+            $this->database(), $this->identityRepository(), $this->capabilities(), $this->personnel()
+        );
+    }
+
+    public function staffConsumptionRepository(): StaffConsumptionRepository
+    {
+        return $this->staffConsumptionRepository ??= new StaffConsumptionRepository($this->database());
+    }
+
+    public function staffConsumptionPosting(): StaffConsumptionPostingService
+    {
+        return $this->staffConsumptionPosting ??= new StaffConsumptionPostingService(
+            $this->database(), $this->staffConsumptionFoundation(), $this->staffConsumptionRepository(),
+            $this->orderCatalog(), $this->staffBenefitCalculation(), $this->orders()
         );
     }
 

@@ -26,6 +26,8 @@ require_once __DIR__ . '/src/Domain/StaffConsumption/StaffBenefitCalculationServ
 require_once __DIR__ . '/src/Domain/StaffConsumption/StaffBenefitManagementService.php';
 require_once __DIR__ . '/src/Domain/StaffConsumption/StaffAccountRepository.php';
 require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionFoundationService.php';
+require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionRepository.php';
+require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionPostingService.php';
 require_once __DIR__ . '/src/Search/SearchProvider.php';
 require_once __DIR__ . '/src/Search/SearchNormalizer.php';
 require_once __DIR__ . '/src/Search/CatalogSearchProvider.php';

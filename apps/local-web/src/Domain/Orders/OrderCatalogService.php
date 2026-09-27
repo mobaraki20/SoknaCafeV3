@@ -90,6 +90,7 @@ final class OrderCatalogService
             $unit=(int)$item['price'];
             $lines[]=[
                 'item_id'=>(int)$item['id'],
+                'category_id'=>(int)$item['category_id'],
                 'item_name'=>(string)$item['name'],
                 'sellable_kind'=>SellableKind::normalizeRead($item['sellable_kind']??null),
                 'unit_price'=>$unit,
@@ -113,7 +114,7 @@ final class OrderCatalogService
             JOIN menus mcat ON mcat.id=mi_cat.menu_id
             JOIN menu_categories mc_cat ON mc_cat.menu_id=mcat.id AND mc_cat.category_id=i.category_id
             WHERE mi_cat.item_id=i.id AND mcat.status='active' AND ($menuSchedule))";
-        $stmt=$this->pdo->prepare("SELECT i.id,i.name,i.price,i.preparation_station,i.sellable_kind,i.available,i.active,i.staff_only,i.takeaway_allowed,
+        $stmt=$this->pdo->prepare("SELECT i.id,i.category_id,i.name,i.price,i.preparation_station,i.sellable_kind,i.available,i.active,i.staff_only,i.takeaway_allowed,
             COALESCE(c.active,0) category_active,COALESCE(c.audience,'guest_staff') category_audience,
             ($itemSchedule) schedule_active,($menuMembership) menu_active
             FROM items i LEFT JOIN categories c ON c.id=i.category_id

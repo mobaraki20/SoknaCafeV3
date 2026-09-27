@@ -33,6 +33,19 @@ final class PersonnelRepository
         return is_array($row) ? $row : null;
     }
 
+    public function lockActiveByLinkedUserIdTx(int $userId): ?array
+    {
+        if (!$this->pdo->inTransaction()) throw new \LogicException('Personnel lock requires an open transaction.');
+        if ($userId < 1) return null;
+        $stmt = $this->pdo->prepare(
+            'SELECT id,display_name,linked_user_id,personnel_code,job_title,active,notes ' .
+            'FROM personnel WHERE linked_user_id=? AND active=1 AND archived_at IS NULL LIMIT 1 FOR UPDATE'
+        );
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    }
+
     public function lockActiveByIdTx(int $personnelId): ?array
     {
         if (!$this->pdo->inTransaction()) throw new \LogicException('Personnel lock requires an open transaction.');
