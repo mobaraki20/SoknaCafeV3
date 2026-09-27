@@ -91,4 +91,9 @@ UI migration is not redesign permission. Preserve approved behavior/workflow/res
 
 Use `COMPONENTS.json`. Work on one component at a time. Do not re-audit the whole project.
 
-If new evidence contradicts this audit, reopen only the affected capability and dependencies. The detailed 45-row parity matrix and raw source archives are preserved in the project Library; chat history is not source of truth.
+If new evidence contradicts this audit, reopen only the affected capability and dependencies. The detailed 50-capability parity matrix and raw source archives are preserved in the project Library at `/SOKNA_V3_CONTINUE_HERE__PRODUCT_GAP_CLOSURE/`; chat history is not source of truth.
+
+
+## Detailed audit register
+
+The canonical detailed matrix contains **50 capabilities**: **23 P0, 15 P1, 10 P2, 2 P3**. These are gap-closure priorities, not a quality score for preserved core work. The full matrix (CSV/JSON), final decisions, roadmap, continuation state, and initial handoff archive are durably stored in the project Library under `/SOKNA_V3_CONTINUE_HERE__PRODUCT_GAP_CLOSURE/` and `/SoknaCafeV3-Handoff/00-Canonical-History/`.
