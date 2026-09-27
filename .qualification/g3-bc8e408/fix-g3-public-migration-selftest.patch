@@ -1,0 +1,30 @@
+diff --git a/tests/public-mysql-migration-selftest.php b/tests/public-mysql-migration-selftest.php
+index ee46ba8..b51eb06 100644
+--- a/tests/public-mysql-migration-selftest.php
++++ b/tests/public-mysql-migration-selftest.php
+@@ -27,9 +27,9 @@ $core = sokna_public_bootstrap([
+ ]);
+ 
+ $first = $core->migrations()->migrate();
+-$expectedMigrations = ['0001_m3_public_edge_core', '0002_m4_guest_public_projection'];
++$expectedMigrations = ['0001_m3_public_edge_core', '0002_m4_guest_public_projection', '0003_g3_emergency_update_takeover'];
+ if ($first !== $expectedMigrations) {
+-    public_migration_fail('First Public migration pass did not apply the expected M3+M4 migrations: ' . json_encode($first));
++    public_migration_fail('First Public migration pass did not apply the expected M3+M4+G3 migrations: ' . json_encode($first));
+ }
+ $second = $core->migrations()->migrate();
+ if ($second !== []) public_migration_fail('Second Public migration pass was not idempotent.');
+@@ -40,6 +40,7 @@ $expected = [
+     'schema_migrations', 'installations', 'auth_projections', 'public_sessions', 'realtime_requests',
+     'request_nonces', 'installation_heartbeats', 'deferred_work', 'auth_login_throttle', 'auth_security_audit',
+     'guest_publish_revisions', 'guest_active_revisions', 'guest_availability_state', 'remote_read_models',
++    'installation_pairing_secrets', 'installation_takeovers', 'public_emergency_audit',
+ ];
+ foreach ($expected as $table) {
+     if (!in_array($table, $tables, true)) public_migration_fail("Expected Public table {$table} is missing.");
+@@ -130,4 +131,4 @@ foreach ($expectedMigrations as $version) {
+     if ((int)$marker->fetchColumn() !== 1) public_migration_fail("Public migration ledger marker {$version} is missing or duplicated.");
+ }
+ 
+-fwrite(STDOUT, "Public M3+M4 MariaDB migration self-test: OK\n");
++fwrite(STDOUT, "Public M3+M4+G3 MariaDB migration self-test: OK\n");
