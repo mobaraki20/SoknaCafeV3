@@ -66,6 +66,7 @@ jobs:
           cp .qualification/g1-427be0b/docs-product-WORKSPACE_CHECKPOINT_POLICY_FA.md docs/product/WORKSPACE_CHECKPOINT_POLICY_FA.md
           cp .qualification/g1-427be0b/docs-product-CONTINUATION_STATE.json docs/product/CONTINUATION_STATE.json
           cp .qualification/g1-427be0b/tests-component-registry-gate.py tests/component-registry-gate.py
+          cp .qualification/g1-427be0b/COMPONENTS.v2.json COMPONENTS.json
           chmod +x tests/component-registry-gate.py
           chmod +x tests/run-g1-real-db-qualification.sh
           test -x tests/run-g1-real-db-qualification.sh
