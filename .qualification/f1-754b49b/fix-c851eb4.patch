@@ -1,0 +1,31 @@
+diff --git a/apps/local-web/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php b/apps/local-web/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php
+index b6c22c1..c26a383 100644
+--- a/apps/local-web/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php
++++ b/apps/local-web/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php
+@@ -84,10 +84,13 @@ final class StaffConsumptionWorkspaceService
+                     'unit_price'=>(int)$line['unit_price'],'quantity'=>(int)$line['quantity'],
+                 ],$catalogLines);
+                 $quote=$this->benefits->quote($personnelId,$quoteLines,$occurredAt,$user,$runtime);
++                $payable=(int)($quote['menu_value_amount']??0)-(int)($quote['benefit_amount']??0)-(int)($quote['discount_amount']??0);
++                if($payable<0)throw new StaffConsumptionException('quote_amount_invalid','مبلغ قابل پرداخت محاسبه‌شده معتبر نیست.',500);
++                $quoteView=$quote;$quoteView['payable_amount']=$payable;
+                 $this->pdo->commit();
+             }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+         }catch(OrderCommitException $e){throw new StaffConsumptionException($e->errorCode,$e->getMessage(),$e->httpStatus);}
+-        return ['success'=>true,'quote'=>$quote,'occurred_at'=>$occurredAt];
++        return ['success'=>true,'quote'=>$quoteView,'occurred_at'=>$occurredAt];
+     }
+ 
+     private function activePersonnel(): array
+diff --git a/apps/local-web/tests/f1-staff-ui-reporting-contract.py b/apps/local-web/tests/f1-staff-ui-reporting-contract.py
+index ec102ba..32868ed 100755
+--- a/apps/local-web/tests/f1-staff-ui-reporting-contract.py
++++ b/apps/local-web/tests/f1-staff-ui-reporting-contract.py
+@@ -40,6 +40,7 @@ need(js,"'post_self':'post_proxy'",'self/proxy consumption UI not wired')
+ need(js,"'post_self':'post_proxy'",'self/proxy consumption UI not wired')
+ need(js,"'account_payment':'account_waiver'",'waiver UI not wired separately')
+ need(js,'data-report-metric','report metric renderer missing')
++need(workspace,"$quoteView['payable_amount']=$payable",'workspace quote does not project payable_amount for UI')
+ need(js,'initialTab','initial permission-driven tab activation missing')
+ need(entry_boot,"/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php",'entry bootstrap does not load StaffConsumptionWorkspaceService')
+ need(entry_boot,"/src/Domain/StaffConsumption/StaffConsumptionReportService.php",'entry bootstrap does not load StaffConsumptionReportService')
