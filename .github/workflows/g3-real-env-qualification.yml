@@ -3,8 +3,8 @@ name: G3 Real Environment Qualification
 on:
   pull_request:
     branches:
-      - main
-    types: [opened, synchronize, reopened]
+      - qualification/g3-observer-base
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
 
 permissions:
