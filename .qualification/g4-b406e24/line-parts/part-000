@@ -1,0 +1,21 @@
+diff --git a/apps/local-web/bootstrap.php b/apps/local-web/bootstrap.php
+index b00f907..200df13 100644
+--- a/apps/local-web/bootstrap.php
++++ b/apps/local-web/bootstrap.php
+@@ -117,6 +117,7 @@ require_once __DIR__ . '/src/Relay/SettlementRealtimeAdapter.php';
+ require_once __DIR__ . '/src/Relay/GuestOrderRealtimeAdapter.php';
+ require_once __DIR__ . '/src/Relay/WaiterCallRealtimeAdapter.php';
+ require_once __DIR__ . '/src/Relay/RealtimeDispatchService.php';
++require_once __DIR__ . '/src/Domain/PublicEdge/PublicEdgeRelayService.php';
+ require_once __DIR__ . '/src/UI/SCDS.php';
+ require_once __DIR__ . '/src/UI/LocalPage.php';
+ require_once __DIR__ . '/src/UI/ProductShell.php';
+diff --git a/apps/local-web/public/assets/admin-workspace.js b/apps/local-web/public/assets/admin-workspace.js
+index 13a112b..560c1e3 100644
+--- a/apps/local-web/public/assets/admin-workspace.js
++++ b/apps/local-web/public/assets/admin-workspace.js
+@@ -3,7 +3,7 @@
+ const root=document.querySelector('[data-admin-workspace]');if(!root)return;
+ const api=root.dataset.api,csrf=root.dataset.csrf;let snap=null;
+ const $=(s,r=root)=>r.querySelector(s),$$=(s,r=root)=>[...r.querySelectorAll(s)];
+-const capLabels={orders_floor:'سفارش و میز',cashier_accounts:'صندوق و حساب',preparation:'آماده‌سازی',shift_supervision:'نظارت شیفت',inventory_view:'مشاهده انبار',inventory_cost_view:'مشاهده بهای انبار',inventory_operations:'عملیات انبار',inventory_finalize:'نهایی‌سازی انبار',inventory_manage:'مدیریت انبار',staff_consumption_self:'مصرف من',staff_consumption_proxy:'ثبت مصرف برای پرسنل',staff_benefit_manage:'مدیریت مزایای پرسنل',staff_account_manage:'مدیریت حساب پرسنل',staff_consumption_reports:'گزارش مصرف پرسنل',remote_access:'دسترسی راه‌دور',remote_operations:'راه‌دور · عملیات',remote_preparation:'راه‌دور · آماده‌سازی',remote_inventory:'راه‌دور · انبار',remote_inventory_cost:'راه‌دور · بهای انبار',remote_reports:'راه‌دور · گزارش',remote_deferred_context:'راه‌دور · کار آفلاین'};
