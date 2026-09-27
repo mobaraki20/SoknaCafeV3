@@ -1,0 +1,9 @@
+<?php
+declare(strict_types=1);
+require_once dirname(__DIR__).'/apps/local-web/src/Core/Observability.php';
+require_once dirname(__DIR__).'/apps/local-web/src/Domain/Update/LocalUpdateException.php';
+require_once dirname(__DIR__).'/apps/local-web/src/Domain/Update/LocalUpdateService.php';
+use Sokna\Local\Core\Observability;use Sokna\Local\Domain\Update\LocalUpdateService;
+function g23a(bool $ok,string $m):void{if(!$ok){fwrite(STDERR,"FAIL $m\n");exit(1);}}
+$tmp=sys_get_temp_dir().'/sokna-g23-pure-'.bin2hex(random_bytes(5));@mkdir($tmp.'/pkg',0700,true);@mkdir($tmp.'/local/public',0700,true);@mkdir($tmp.'/data',0700,true);file_put_contents($tmp.'/pkg/VERSION.txt','3.0.0-test');file_put_contents($tmp.'/local/public/local-recovery.php','<?php echo "recovery";');file_put_contents($tmp.'/compat.json',json_encode(['components'=>['local'=>['requires'=>['runtime_contract'=>'>=1.0.0 <2.0.0','print_server_protocol'=>4]]]]));file_put_contents($tmp.'/trust.json',json_encode(['signature_policy'=>'optional_until_release_qualification','ed25519_public_keys'=>[]]));
+$svc=new LocalUpdateService(new Observability($tmp.'/data'),$tmp.'/pkg',$tmp.'/local',$tmp.'/compat.json',$tmp.'/trust.json');$s=$svc->snapshot();g23a($s['current_version']==='3.0.0-test','baseline version');g23a($s['stable_recovery']['ready']===true,'stable recovery detection');$r=$svc->rotateRecoveryCode(7);g23a(preg_match('/^[A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8}$/',$r['recovery_code'])===1,'recovery code format');$token=json_decode((string)file_get_contents($tmp.'/data/lifecycle/local/recovery-token.json'),true);g23a(isset($token['hash'])&&password_verify($r['recovery_code'],$token['hash']),'recovery token hash');g23a(!str_contains((string)file_get_contents($tmp.'/data/lifecycle/local/recovery-token.json'),$r['recovery_code']),'plaintext recovery code persisted');echo "G2.3 Local update pure self-test: OK\n";

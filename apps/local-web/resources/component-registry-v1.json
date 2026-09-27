@@ -1,0 +1,46 @@
+{
+  "format": "sokna-local-component-registry-v1",
+  "schema_version": 1,
+  "components": {
+    "local-web": {
+      "package_artifact": "SoknaCafeV3-local-web-<version>.zip",
+      "version_owner": "local-web",
+      "update_owner": "local_application_updater",
+      "recovery_owner": "local_stable_recovery_entrypoint",
+      "health_surface": "local_update_center",
+      "release_model": "immutable_web_package_zip",
+      "install_model": "browser_setup_wizard",
+      "lifecycle_action": "local_owned"
+    },
+    "public-edge": {
+      "package_artifact": "SoknaCafeV3-public-edge-<version>.zip",
+      "version_owner": "public-edge",
+      "update_owner": "public_application_updater",
+      "recovery_owner": "public_emergency_console",
+      "health_surface": "public_health_plus_local_projection",
+      "release_model": "independent_server_deploy_package",
+      "install_model": "server_deploy_bootstrap",
+      "lifecycle_action": "g3_pending"
+    },
+    "windows-runtime": {
+      "package_artifact": "SoknaRuntime-<version>-win-x64",
+      "version_owner": "windows-runtime",
+      "update_owner": "windows_services_lifecycle",
+      "recovery_owner": "windows_services_repair_rollback",
+      "health_surface": "runtime_loopback_health_v1",
+      "release_model": "windows_service_component",
+      "install_model": "windows_services_installer_component",
+      "lifecycle_action": "windows_services_owner"
+    },
+    "print-agent": {
+      "package_artifact": "SoknaPrintAgent-<version>-win-x64",
+      "version_owner": "print-agent",
+      "update_owner": "windows_services_lifecycle",
+      "recovery_owner": "windows_services_repair_rollback",
+      "health_surface": "print_agent_loopback_health",
+      "release_model": "windows_service_component",
+      "install_model": "windows_services_installer_component",
+      "lifecycle_action": "windows_services_owner"
+    }
+  }
+}

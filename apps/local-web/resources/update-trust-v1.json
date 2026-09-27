@@ -1,0 +1,6 @@
+{
+  "format": "sokna-update-trust-v1",
+  "schema_version": 1,
+  "signature_policy": "optional_until_release_qualification",
+  "ed25519_public_keys": {}
+}

@@ -48,7 +48,7 @@ final class BrowserSetupService
     {
         $checks = [];
         $checks[] = $this->check('php_version', version_compare(PHP_VERSION, '8.2.0', '>='), 'PHP 8.2+', PHP_VERSION);
-        foreach (['pdo','pdo_mysql','json','mbstring','sodium','zlib','session'] as $ext) {
+        foreach (['pdo','pdo_mysql','json','mbstring','sodium','zlib','zip','session'] as $ext) {
             $checks[] = $this->check('ext_'.$ext, extension_loaded($ext), 'PHP extension '.$ext, extension_loaded($ext) ? 'available' : 'missing');
         }
         $migrationDir = $this->localWebRoot . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'migrations';

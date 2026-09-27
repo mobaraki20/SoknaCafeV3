@@ -34,6 +34,8 @@ final class SystemDiagnosticsService
             $this->check('migrations',(int)($database['pending_migrations']??1)===0,'Schema migrations current','critical'),
             $this->check('database_version',(bool)($database['mariadb_11_4']??false),'MariaDB 11.4.x','critical'),
             $this->check('print_required_destinations',(int)($print['required_unready']??0)===0,'Required print destinations ready','warning'),
+            $this->check('php_zip',class_exists(\ZipArchive::class),'PHP ZIP for Local updater','warning'),
+            $this->check('stable_recovery',is_file($this->localWebRoot.DIRECTORY_SEPARATOR.'public'.DIRECTORY_SEPARATOR.'local-recovery.php'),'Stable Local recovery entrypoint','warning'),
         ];
         $critical=count(array_filter($checks,static fn(array $c):bool=>$c['severity']==='critical'&&!$c['ok']));$warnings=count(array_filter($checks,static fn(array $c):bool=>$c['severity']==='warning'&&!$c['ok']));
         return [

@@ -77,6 +77,9 @@ use Sokna\Local\Search\FinanceSearchProvider;
 use Sokna\Local\Search\SubscriberSearchProvider;
 use Sokna\Local\Search\AdminSearchProvider;
 
+use Sokna\Local\Domain\Update\LocalUpdateService;
+use Sokna\Local\Domain\Update\ComponentUpdateCenterService;
+use Sokna\Local\Domain\Recovery\RecoveryWorkspaceService;
 final class Bootstrap
 {
     private ?PDO $database = null;
@@ -137,6 +140,9 @@ final class Bootstrap
     private ?BusinessBackupService $businessBackup = null;
     private ?SupportBundleWriter $supportBundles = null;
     private ?SystemDiagnosticsService $systemDiagnostics = null;
+    private ?LocalUpdateService $localUpdates = null;
+    private ?ComponentUpdateCenterService $updateCenter = null;
+    private ?RecoveryWorkspaceService $recoveryWorkspace = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
     private ?SupplyService $supply = null;
@@ -521,6 +527,26 @@ final class Bootstrap
             $this->database(),$this->config,$this->observability,$this->migrations(),$this->printManagement(),$this->supportBundles(),
             dirname(__DIR__,4),dirname(__DIR__,2)
         );
+    }
+
+    public function localUpdates(): LocalUpdateService
+    {
+        return $this->localUpdates ??= new LocalUpdateService(
+            $this->observability(),dirname(__DIR__,4),dirname(__DIR__,2),
+            dirname(__DIR__,2).'/resources/compatibility-v1.json',dirname(__DIR__,2).'/resources/update-trust-v1.json'
+        );
+    }
+
+    public function updateCenter(): ComponentUpdateCenterService
+    {
+        return $this->updateCenter ??= new ComponentUpdateCenterService(
+            $this->systemDiagnostics(),$this->localUpdates(),dirname(__DIR__,2).'/resources/component-registry-v1.json'
+        );
+    }
+
+    public function recoveryWorkspace(): RecoveryWorkspaceService
+    {
+        return $this->recoveryWorkspace ??= new RecoveryWorkspaceService($this->businessBackup(),$this->observability());
     }
 
     public function expenseDeferred(): ExpenseDeferredAdapter
