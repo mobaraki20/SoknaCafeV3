@@ -18,7 +18,7 @@ final class DeferredDispatchService
     {
         return match(trim((string)($envelope['kind']??''))){
             'supply.need.create','supply.status.prepare','supply.status.return','supply.receipt'=>$this->supply->dispatch($installationId,$envelope),
-            'inventory.waste','inventory.count_draft'=>$this->inventory->dispatch($envelope),
+            'inventory.waste','inventory.count_draft'=>$this->inventory->dispatch($installationId,$envelope),
             'expense.create'=>$this->expenses->dispatch($installationId,$envelope),
             'subscriber.payment'=>$this->subscriberPayments->dispatch($installationId,$envelope),
             default=>throw new IntegrationException('unsupported_kind','نوع کار Deferred پشتیبانی نمی‌شود.',422),

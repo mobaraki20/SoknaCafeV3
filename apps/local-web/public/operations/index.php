@@ -7,7 +7,7 @@ $isAdmin=(string)($user['role']??'')==='admin';$canOps=$isAdmin||$core->auth()->
 ProductShell::start($core,$user,'انبار، تأمین و هزینه‌ها','operations','موجودی، نیازهای خرید و هزینه‌های کافه از ownerهای canonical مدیریت می‌شوند.');
 ?>
 <section class="sc-workspace" data-operations-workspace data-api="/operations/api.php" data-csrf="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>" data-admin="<?= $isAdmin?'1':'0' ?>" data-can-ops="<?= $canOps?'1':'0' ?>" data-can-manage="<?= $canManage?'1':'0' ?>" data-can-finalize="<?= $canFinalize?'1':'0' ?>" data-can-buy="<?= $canBuy?'1':'0' ?>">
-  <div class="sc-toolbar"><div class="sc-tabs" role="tablist" aria-label="عملیات"><button class="sc-tab" role="tab" aria-selected="true" type="button" data-tab="inventory">انبار</button><button class="sc-tab" role="tab" aria-selected="false" type="button" data-tab="supply">تأمین و خرید</button><?php if($isAdmin): ?><button class="sc-tab" role="tab" aria-selected="false" type="button" data-tab="expenses">هزینه‌ها</button><?php endif; ?></div><button class="sc-button sc-button--secondary" type="button" data-refresh>تازه‌سازی</button></div>
+  <div class="sc-toolbar"><div class="sc-tabs" role="tablist" aria-label="عملیات"><button class="sc-tab" role="tab" aria-selected="true" type="button" data-tab="inventory">انبار</button><button class="sc-tab" role="tab" aria-selected="false" type="button" data-tab="supply">تأمین و خرید</button><?php if($isAdmin): ?><button class="sc-tab" role="tab" aria-selected="false" type="button" data-tab="expenses">هزینه‌ها</button><button class="sc-tab" role="tab" aria-selected="false" type="button" data-tab="deferred">بررسی Deferred</button><?php endif; ?></div><button class="sc-button sc-button--secondary" type="button" data-refresh>تازه‌سازی</button></div>
   <div class="sc-alert" role="status" aria-live="polite" data-status>در حال دریافت وضعیت عملیات…</div>
 
   <section class="sc-work-panel" data-panel="inventory">
@@ -23,6 +23,11 @@ ProductShell::start($core,$user,'انبار، تأمین و هزینه‌ها','
     <div class="sc-card-grid" data-supply-groups></div>
     <section class="sc-card"><div class="sc-card__body sc-stack"><h3>تحویل‌های اخیر</h3><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>زمان</th><th>کالا</th><th>مقدار</th><th>هزینه</th><th>تأمین‌کننده</th></tr></thead><tbody data-receipt-list></tbody></table></div></div></section>
   </section>
+
+  <?php if($isAdmin): ?><section class="sc-work-panel" data-panel="deferred" hidden>
+    <div class="sc-section-head"><div><h2>بررسی کارهای Deferred</h2><p>مواردی که به‌علت تغییر وضعیت Local نمی‌توانند خودکار commit شوند، این‌جا تعیین تکلیف می‌شوند و نتیجه دوباره به Public reconcile می‌شود.</p></div></div>
+    <div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>زمان</th><th>نوع</th><th>کاربر</th><th>علت</th><th>پیام</th><th>عملیات</th></tr></thead><tbody data-deferred-reviews></tbody></table></div>
+  </section><?php endif; ?>
 
   <?php if($isAdmin): ?><section class="sc-work-panel" data-panel="expenses" hidden>
     <div class="sc-section-head"><div><h2>هزینه‌های کافه</h2><p>سند هزینه حذف نمی‌شود؛ اصلاح تاریخچه با برگشت/سند جبرانی انجام می‌شود.</p></div><button class="sc-button" type="button" data-open="expense-create">ثبت هزینه</button></div>

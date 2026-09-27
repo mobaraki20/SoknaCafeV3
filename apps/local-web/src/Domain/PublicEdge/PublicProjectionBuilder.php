@@ -7,7 +7,7 @@ use Sokna\Local\Domain\Finance\SettlementService;
 use Sokna\Local\Domain\Supply\SupplyService;
 final class PublicProjectionBuilder
 {
-    public function __construct(private readonly PDO $pdo,private readonly SettlementService $settlements,private readonly SupplyService $supply){}
+    public function __construct(private readonly PDO $pdo,private readonly ?SettlementService $settlements=null,private readonly ?SupplyService $supply=null){}
     public function installation(string $installationId): array{return ['installation_id'=>$installationId,'display_name'=>$this->setting('cafe.name','SOKNA'),'remote_enabled'=>true,'order_intake_enabled'=>$this->settingBool('orders_accepting.cafe',true)];}
     public function authProjections(): array
     {
@@ -39,11 +39,12 @@ final class PublicProjectionBuilder
         $models[]=$this->model('inventory',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,ii.default_department,COALESCE(b.quantity_base,0) quantity_base,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")],$now);
         $models[]=$this->model('inventory_cost',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,COALESCE(b.quantity_base,0) quantity_base,b.average_unit_cost,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")],$now);
         $models[]=$this->model('reports',['today'=>['order_count'=>(int)$this->scalar("SELECT COUNT(*) FROM orders WHERE business_date=CURDATE()"),'sales_total'=>(int)$this->scalar("SELECT COALESCE(SUM(total_amount),0) FROM orders WHERE business_date=CURDATE() AND status<>'cancelled'"),'open_waiter_calls'=>(int)$this->scalar("SELECT COUNT(*) FROM waiter_calls WHERE status IN ('new','accepted')")]],$now);
-        $models[]=$this->model('deferred_context',['inventory_items'=>$this->rows("SELECT id,item_code,name,base_unit,default_department FROM inventory_items WHERE active=1 ORDER BY name LIMIT 500"),'count_drafts'=>$this->rows("SELECT id,status,created_at FROM inventory_count_sessions WHERE status='draft' ORDER BY id DESC LIMIT 50"),'subscribers'=>$this->rows("SELECT s.id,s.name,s.active,COALESCE((SELECT l.balance_after FROM subscriber_ledger l WHERE l.subscriber_id=s.id ORDER BY l.id DESC LIMIT 1),0) balance FROM subscribers s WHERE s.active=1 ORDER BY s.name LIMIT 300"),'expense_categories'=>$this->rows("SELECT category_key,name FROM expense_categories WHERE active=1 ORDER BY sort_order,category_key"),'supply_groups'=>$this->supply->purchaseGroups()],$now);
+        $models[]=$this->model('deferred_context',['inventory_items'=>$this->rows("SELECT id,item_code,name,base_unit,default_department FROM inventory_items WHERE active=1 ORDER BY name LIMIT 500"),'count_drafts'=>$this->rows("SELECT id,status,created_at FROM inventory_count_sessions WHERE status='draft' ORDER BY id DESC LIMIT 50"),'subscribers'=>$this->rows("SELECT s.id,s.name,s.active,COALESCE((SELECT l.balance_after FROM subscriber_ledger l WHERE l.subscriber_id=s.id ORDER BY l.id DESC LIMIT 1),0) balance FROM subscribers s WHERE s.active=1 ORDER BY s.name LIMIT 300"),'expense_categories'=>$this->rows("SELECT category_key,name FROM expense_categories WHERE active=1 ORDER BY sort_order,category_key"),'supply_groups'=>$this->supply?->purchaseGroups()??[]],$now);
         return $models;
     }
     private function settlementAccounts(): array
     {
+        if($this->settlements===null)return [];
         $ids=$this->pdo->query("SELECT id FROM table_sessions WHERE status IN ('active','pending') ORDER BY id DESC LIMIT 50")->fetchAll(PDO::FETCH_COLUMN)?:[];$out=[];
         foreach($ids as $id){try{$a=$this->settlements->account((int)$id);$out[]=['session_id'=>(int)($a['session']['id']??$id),'table_name'=>(string)($a['session']['table_name']??''),'remaining_total'=>(int)($a['remaining_total']??0),'signature'=>(string)($a['signature']??'')];}catch(Throwable){}}
         return $out;

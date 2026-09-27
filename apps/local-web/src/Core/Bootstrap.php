@@ -408,7 +408,7 @@ final class Bootstrap
 
     public function inventoryDeferred(): InventoryDeferredAdapter
     {
-        return $this->inventoryDeferred ??= new InventoryDeferredAdapter($this->database(), $this->inventory(), $this->inventoryCounts());
+        return $this->inventoryDeferred ??= new InventoryDeferredAdapter($this->database(), $this->inventory(), $this->inventoryCounts(), $this->deferredReceipts());
     }
 
     public function tax(): TaxService
