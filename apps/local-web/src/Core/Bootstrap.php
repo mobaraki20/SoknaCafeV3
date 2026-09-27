@@ -56,6 +56,12 @@ use Sokna\Local\Relay\RealtimeDispatchService;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 use Sokna\Local\Domain\Sellables\CatalogAdminService;
 use Sokna\Local\Domain\Admin\AdminControlService;
+use Sokna\Local\Search\GlobalSearchService;
+use Sokna\Local\Search\CatalogSearchProvider;
+use Sokna\Local\Search\InventorySearchProvider;
+use Sokna\Local\Search\FinanceSearchProvider;
+use Sokna\Local\Search\SubscriberSearchProvider;
+use Sokna\Local\Search\AdminSearchProvider;
 
 final class Bootstrap
 {
@@ -65,6 +71,7 @@ final class Bootstrap
     private ?Auth $auth = null;
     private ?Migrations $migrations = null;
     private ?AdminControlService $adminControls = null;
+    private ?GlobalSearchService $globalSearch = null;
     private ?SellableRepository $sellables = null;
     private ?CatalogAdminService $catalogAdmin = null;
     private ?BusinessClock $businessClock = null;
@@ -172,6 +179,17 @@ final class Bootstrap
     public function adminControls(): AdminControlService
     {
         return $this->adminControls ??= new AdminControlService($this->database(), $this->identityRepository());
+    }
+
+    public function globalSearch(): GlobalSearchService
+    {
+        return $this->globalSearch ??= new GlobalSearchService([
+            new FinanceSearchProvider($this->database(), $this->auth()),
+            new CatalogSearchProvider($this->database(), $this->auth()),
+            new InventorySearchProvider($this->database(), $this->auth()),
+            new SubscriberSearchProvider($this->database(), $this->auth()),
+            new AdminSearchProvider($this->database()),
+        ]);
     }
 
     public function sellables(): SellableRepository

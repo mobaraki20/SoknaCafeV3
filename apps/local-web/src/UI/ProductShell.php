@@ -18,12 +18,13 @@ final class ProductShell
         echo '<nav aria-label="ناوبری اصلی"><ul class="sc-shell__nav-list">';
         foreach(self::navigation($core,$user) as $item){$current=$item['id']===$active?' aria-current="page"':'';echo '<li><a class="sc-shell__nav-link"'.$current.' href="'.SCDS::e($item['href']).'"><span>'.SCDS::e($item['label']).'</span></a></li>';}
         echo '</ul></nav><div class="sc-shell__footer"><a class="sc-button sc-button--secondary" href="/logout.php">خروج از حساب</a></div></aside>';
-        echo '<main class="sc-shell__main"><header class="sc-page-head"><div><h1>'.$safeTitle.'</h1>'.($safeSubtitle!==''?'<p>'.$safeSubtitle.'</p>':'').'</div><a class="sc-button sc-button--secondary sc-page-head__home" href="/">خانه</a></header>';
+        echo '<main class="sc-shell__main"><div class="sc-global-search" data-global-search data-api="/search/api.php"><label class="sc-global-search__field"><span class="sc-global-search__label">جست‌وجوی سراسری</span><input class="sc-control sc-global-search__input" type="search" autocomplete="off" spellcheck="false" placeholder="آیتم، فاکتور، مشتری، پرسنل، تنظیمات…" aria-label="جست‌وجوی سراسری" aria-expanded="false" data-global-search-input></label><div class="sc-command-palette" role="listbox" aria-label="نتایج جست‌وجو" hidden data-global-search-results></div></div>';
+        echo '<header class="sc-page-head"><div><h1>'.$safeTitle.'</h1>'.($safeSubtitle!==''?'<p>'.$safeSubtitle.'</p>':'').'</div><a class="sc-button sc-button--secondary sc-page-head__home" href="/">خانه</a></header>';
     }
 
     public static function end(): void
     {
-        echo '</main></div><script src="/scds.php?file=scds.js" defer></script></body></html>';
+        echo '</main></div><script src="/assets/global-search.js" defer></script><script src="/scds.php?file=scds.js" defer></script></body></html>';
     }
 
     /** @return list<array{id:string,label:string,href:string}> */
