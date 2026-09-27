@@ -23,6 +23,7 @@ GLOBAL_PATHS = {
     "PROJECT_LINEAGE.md",
     "START_HERE.md",
     "README.md",
+    "COMPONENTS.json",
     "tests/validate-v3-foundation.py",
     "tests/component-impact.py",
     ".github/workflows/v3-component-gates.yml",
@@ -37,7 +38,13 @@ def main() -> None:
 
     files = [line.strip() for line in Path(args.files).read_text(encoding="utf-8").splitlines() if line.strip()]
     impact = {name: False for name in CATEGORIES}
-    global_change = any(path in GLOBAL_PATHS or path.startswith("docs/adr/") or path.startswith("tests/") for path in files)
+    global_change = any(
+        path in GLOBAL_PATHS
+        or path.startswith("docs/adr/")
+        or path.startswith("docs/product/")
+        or path.startswith("tests/")
+        for path in files
+    )
 
     for path in files:
         for name, prefixes in CATEGORIES.items():

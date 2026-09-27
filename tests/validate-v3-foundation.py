@@ -34,6 +34,12 @@ REQUIRED_FILES = [
     "docs/ui-design-system/COMPONENT_REGISTRY.json",
     "docs/ui-design-system/PRODUCT_LANGUAGE_FA.md",
     "docs/ui-design-system/LEGACY_UI_DEBT_BASELINE.json",
+    "COMPONENTS.json",
+    "docs/product/COMPLETION_STATUS_POLICY_FA.md",
+    "docs/product/MASTER_CAPABILITY_MATRIX.csv",
+    "docs/product/MASTER_CAPABILITY_MATRIX.json",
+    "tests/component-registry-gate.py",
+    "tests/product-parity-gate.py",
 ]
 
 MATRIX_HEADERS = [

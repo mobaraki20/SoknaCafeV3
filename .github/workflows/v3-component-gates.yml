@@ -68,6 +68,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate V3 ownership, lineage, SCDS and migration matrix
         run: python3 tests/validate-v3-foundation.py
+      - name: Validate machine-readable component registry
+        run: python3 tests/component-registry-gate.py
+      - name: Validate canonical Product Parity inventory
+        run: python3 tests/product-parity-gate.py --mode inventory
 
   local:
     name: Local Web gate (M2)
