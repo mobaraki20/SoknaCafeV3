@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - qualification/g3-real-env-bc8e408
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
