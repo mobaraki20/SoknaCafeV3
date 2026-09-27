@@ -37,21 +37,23 @@ if [[ ! "$server_version" =~ ^11\.4([.-]|$) ]]; then
 fi
 
 reset_db() {
-  "$PHP_BIN" -r '
-  $h=getenv("SOKNA_TEST_DB_HOST");$p=getenv("SOKNA_TEST_DB_PORT");$db=getenv("SOKNA_TEST_DB_NAME");
-  $ru=getenv("SOKNA_TEST_DB_ROOT_USER");$rp=getenv("SOKNA_TEST_DB_ROOT_PASS");
-  $u=getenv("SOKNA_TEST_DB_USER");$pw=getenv("SOKNA_TEST_DB_PASS");
-  if (!preg_match("/^[A-Za-z0-9_]+$/",$db)) { fwrite(STDERR,"unsafe db name\n"); exit(2); }
-  $pdo=new PDO("mysql:host={$h};port={$p};charset=utf8mb4",$ru,$rp,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
-  $pdo->exec("DROP DATABASE IF EXISTS `{$db}`");
-  $pdo->exec("CREATE DATABASE `{$db}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-  $qu=str_replace("'","''",$u);$qp=str_replace("'","''",$pw);
-  $pdo->exec("CREATE USER IF NOT EXISTS '{$qu}'@'%' IDENTIFIED BY '{$qp}'");
-  $pdo->exec("ALTER USER '{$qu}'@'%' IDENTIFIED BY '{$qp}'");
-  $pdo->exec("GRANT ALL PRIVILEGES ON `{$db}`.* TO '{$qu}'@'%'");
-  $pdo->exec("FLUSH PRIVILEGES");
-  '
+  "$PHP_BIN" <<'PHP'
+<?php
+$h=getenv("SOKNA_TEST_DB_HOST");$p=getenv("SOKNA_TEST_DB_PORT");$db=getenv("SOKNA_TEST_DB_NAME");
+$ru=getenv("SOKNA_TEST_DB_ROOT_USER");$rp=getenv("SOKNA_TEST_DB_ROOT_PASS");
+$u=getenv("SOKNA_TEST_DB_USER");$pw=getenv("SOKNA_TEST_DB_PASS");
+if (!preg_match("/^[A-Za-z0-9_]+$/",$db)) { fwrite(STDERR,"unsafe db name\n"); exit(2); }
+$pdo=new PDO("mysql:host={$h};port={$p};charset=utf8mb4",$ru,$rp,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+$pdo->exec("DROP DATABASE IF EXISTS `{$db}`");
+$pdo->exec("CREATE DATABASE `{$db}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+$qu=$pdo->quote($u);$qp=$pdo->quote($pw);
+$pdo->exec("CREATE USER IF NOT EXISTS {$qu}@'%' IDENTIFIED BY {$qp}");
+$pdo->exec("ALTER USER {$qu}@'%' IDENTIFIED BY {$qp}");
+$pdo->exec("GRANT ALL PRIVILEGES ON `{$db}`.* TO {$qu}@'%'");
+$pdo->exec("FLUSH PRIVILEGES");
+PHP
 }
+
 
 DB_TESTS=(
   tests/local-mysql-migration-selftest.php
