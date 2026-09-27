@@ -71,7 +71,8 @@ $proxy=$post->postForPersonnel($proxyPersonnelId,[
 f13_assert((int)$proxy['consumer_personnel_id']===$proxyPersonnelId&&(int)$proxy['recorded_by_user_id']===$managerId,'proxy consumer/recorder identity drifted');
 f13_assert((int)$proxy['payable_amount']===200000&&empty($proxy['zero_payable']),'proxy payable snapshot failed');
 $linked=$pdo->prepare('SELECT linked_user_id FROM personnel WHERE id=?');$linked->execute([$proxyPersonnelId]);f13_assert($linked->fetchColumn()===null,'proxy test personnel unexpectedly has login');
-$ledger=(int)$pdo->query('SELECT COUNT(*) FROM staff_account_ledger')->fetchColumn();f13_assert($ledger===0,'F1.3 must defer staff-account charge to F1.4');
+$ledger=(int)$pdo->query('SELECT COUNT(*) FROM staff_account_ledger')->fetchColumn();f13_assert($ledger===1,'F1.4 integration must create one payable staff-account charge and no zero-payable charge');
+f13_assert(isset($proxy['staff_account_charge_id'])&&(int)$proxy['staff_account_charge_id']>0&&(int)$proxy['staff_account_balance_after']===200000,'F1.4 staff-account charge result missing from posting');
 $lines=(int)$pdo->query('SELECT COUNT(*) FROM staff_consumption_lines')->fetchColumn();f13_assert($lines===2,'staff consumption line snapshots missing');
 $audit=(int)$pdo->query("SELECT COUNT(*) FROM audit_log WHERE action='staff_consumption.posted'")->fetchColumn();f13_assert($audit===2,'staff consumption posting audit missing or duplicated');
 

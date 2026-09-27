@@ -62,6 +62,7 @@ use Sokna\Local\Domain\StaffConsumption\StaffBenefitCalculator;
 use Sokna\Local\Domain\StaffConsumption\StaffBenefitCalculationService;
 use Sokna\Local\Domain\StaffConsumption\StaffBenefitManagementService;
 use Sokna\Local\Domain\StaffConsumption\StaffAccountRepository;
+use Sokna\Local\Domain\StaffConsumption\StaffAccountService;
 use Sokna\Local\Domain\StaffConsumption\StaffConsumptionFoundationService;
 use Sokna\Local\Domain\StaffConsumption\StaffConsumptionRepository;
 use Sokna\Local\Domain\StaffConsumption\StaffConsumptionPostingService;
@@ -86,6 +87,7 @@ final class Bootstrap
     private ?StaffBenefitCalculationService $staffBenefitCalculation = null;
     private ?StaffBenefitManagementService $staffBenefitManagement = null;
     private ?StaffAccountRepository $staffAccounts = null;
+    private ?StaffAccountService $staffAccountService = null;
     private ?StaffConsumptionFoundationService $staffConsumptionFoundation = null;
     private ?StaffConsumptionRepository $staffConsumptionRepository = null;
     private ?StaffConsumptionPostingService $staffConsumptionPosting = null;
@@ -233,6 +235,13 @@ final class Bootstrap
         return $this->staffAccounts ??= new StaffAccountRepository($this->database());
     }
 
+    public function staffAccountService(): StaffAccountService
+    {
+        return $this->staffAccountService ??= new StaffAccountService(
+            $this->database(), $this->identityRepository(), $this->capabilities(), $this->staffAccounts(), $this->financialPeriodIdentity()
+        );
+    }
+
     public function staffConsumptionFoundation(): StaffConsumptionFoundationService
     {
         return $this->staffConsumptionFoundation ??= new StaffConsumptionFoundationService(
@@ -249,7 +258,7 @@ final class Bootstrap
     {
         return $this->staffConsumptionPosting ??= new StaffConsumptionPostingService(
             $this->database(), $this->staffConsumptionFoundation(), $this->staffConsumptionRepository(),
-            $this->orderCatalog(), $this->staffBenefitCalculation(), $this->orders()
+            $this->orderCatalog(), $this->staffBenefitCalculation(), $this->orders(), $this->staffAccountService()
         );
     }
 

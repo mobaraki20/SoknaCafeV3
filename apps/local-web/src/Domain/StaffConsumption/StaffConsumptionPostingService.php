@@ -20,6 +20,7 @@ final class StaffConsumptionPostingService
         private readonly OrderCatalogService $catalog,
         private readonly StaffBenefitCalculationService $benefits,
         private readonly OrderCommitService $orders,
+        private readonly StaffAccountService $accounts,
     ) {}
 
     public function postSelf(array $data,array $user): array
@@ -145,11 +146,13 @@ final class StaffConsumptionPostingService
             ]);
         }
 
+        $charge=$this->accounts->chargeConsumptionTx($consumptionId,$actorId,$occurredAt);
         $this->audit('staff_consumption.posted','staff_consumption',$consumptionId,$actor,[
             'consumer_personnel_id'=>$personnelId,'consumer_name_snapshot'=>(string)($personnel['display_name']??''),
             'order_id'=>(int)$order['order_id'],'order_context'=>'staff_consumption','menu_value_amount'=>$menuValue,
             'benefit_amount'=>$benefit,'discount_amount'=>$discount,'payable_amount'=>$payable,'zero_payable'=>$payable===0,
             'calculation_snapshot_sha256'=>(string)($calculation['snapshot_sha256']??''),
+            'staff_account_charge_id'=>$charge['id']??null,'staff_account_balance_after'=>$charge['balance_after']??null,
         ]);
 
         return [
@@ -158,6 +161,7 @@ final class StaffConsumptionPostingService
             'recorded_by_user_id'=>$actorId,'menu_value_amount'=>$menuValue,'benefit_amount'=>$benefit,'discount_amount'=>$discount,
             'payable_amount'=>$payable,'zero_payable'=>$payable===0,'business_date'=>(string)$order['business_date'],
             'business_shift_key'=>(string)$order['business_shift_key'],'calculation_snapshot_sha256'=>(string)($calculation['snapshot_sha256']??''),
+            'staff_account_charge_id'=>$charge['id']??null,'staff_account_balance_after'=>$charge['balance_after']??null,
         ];
     }
 
@@ -175,6 +179,8 @@ final class StaffConsumptionPostingService
             'recorded_by_user_id'=>(int)$row['recorded_by_user_id'],'menu_value_amount'=>(int)$row['menu_value_amount'],
             'benefit_amount'=>(int)$row['benefit_amount'],'discount_amount'=>(int)$row['discount_amount'],'payable_amount'=>(int)$row['payable_amount'],
             'zero_payable'=>(int)$row['payable_amount']===0,'business_date'=>(string)$row['business_date'],'business_shift_key'=>(string)$row['business_shift_key'],
+            'staff_account_charge_id'=>isset($row['staff_account_charge_id'])&&$row['staff_account_charge_id']!==null?(int)$row['staff_account_charge_id']:null,
+            'staff_account_balance_after'=>isset($row['staff_account_balance_after'])&&$row['staff_account_balance_after']!==null?(int)$row['staff_account_balance_after']:null,
         ];
     }
 

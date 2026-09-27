@@ -31,7 +31,7 @@ $core = sokna_local_bootstrap([
     ],
 ]);
 
-$expected = ['0001_m2_platform_core', '0002_m5_sellables', '0003_m5_orders', '0004_m5_table_drafts', '0005_m5_preparation', '0006_m5_inventory', '0007_m5_supply', '0008_m5_deferred_receipts', '0009_m5_tax', '0010_m5_expenses', '0011_m5_financial_periods', '0012_m5_settlement', '0013_m5_integrations', '0014_m7_runtime', '0015_m8_printing', '0016_g1_guest_waiter', '0017_g1_admin_controls', '0018_g1_global_search', '0019_f1_staff_consumption_foundation'];
+$expected = ['0001_m2_platform_core', '0002_m5_sellables', '0003_m5_orders', '0004_m5_table_drafts', '0005_m5_preparation', '0006_m5_inventory', '0007_m5_supply', '0008_m5_deferred_receipts', '0009_m5_tax', '0010_m5_expenses', '0011_m5_financial_periods', '0012_m5_settlement', '0013_m5_integrations', '0014_m7_runtime', '0015_m8_printing', '0016_g1_guest_waiter', '0017_g1_admin_controls', '0018_g1_global_search', '0019_f1_staff_consumption_foundation', '0020_f1_staff_account'];
 $first = $core->migrations()->migrate();
 if ($first !== $expected) {
     mysql_migration_fail('First Local migration pass did not apply the expected ordered migration stack: ' . json_encode($first));

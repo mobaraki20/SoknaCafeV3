@@ -13,8 +13,11 @@ final class StaffConsumptionRepository
     {
         $this->requireTx();
         $stmt=$this->pdo->prepare(
-            'SELECT sc.*,o.public_code order_public_code,o.business_order_number,o.order_context,o.total_amount order_total_amount '.
-            'FROM staff_consumptions sc JOIN orders o ON o.id=sc.order_id WHERE sc.client_token=? LIMIT 1 FOR UPDATE'
+            'SELECT sc.*,o.public_code order_public_code,o.business_order_number,o.order_context,o.total_amount order_total_amount,'.
+            'sal.id staff_account_charge_id,sal.balance_after staff_account_balance_after '.
+            'FROM staff_consumptions sc JOIN orders o ON o.id=sc.order_id '.
+            "LEFT JOIN staff_account_ledger sal ON sal.consumption_id=sc.id AND sal.entry_type='charge' ".
+            'WHERE sc.client_token=? LIMIT 1 FOR UPDATE'
         );
         $stmt->execute([$clientToken]);$row=$stmt->fetch(PDO::FETCH_ASSOC);
         return is_array($row)?$row:null;
