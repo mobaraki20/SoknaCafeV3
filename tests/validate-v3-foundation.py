@@ -49,6 +49,7 @@ MATRIX_HEADERS = [
     "legacy_cleanup",
     "risk_notes",
     "status",
+    "completion_level",
 ]
 
 ALLOWED_TREATMENTS = {
@@ -61,6 +62,10 @@ ALLOWED_TREATMENTS = {
     "reference_only",
 }
 ALLOWED_STATUSES = {"inventory", "ready", "in_progress", "migrated", "blocked"}
+ALLOWED_COMPLETION_LEVELS = {
+    "INVENTORY_ONLY", "CORE_COMPLETE", "PRODUCT_OPEN", "PRODUCT_COMPLETE",
+    "RELEASE_BLOCKED", "RELEASE_COMPLETE", "SUPERSEDED", "FUTURE_ONLY"
+}
 KNOWN_OWNER_TOKENS = {
     "apps/local-web",
     "apps/public",
@@ -201,6 +206,9 @@ def validate_matrix() -> None:
             fail(f"row {index} ({scope}): invalid treatment {treatment!r}")
         if status not in ALLOWED_STATUSES:
             fail(f"row {index} ({scope}): invalid status {status!r}")
+        completion_level = row["completion_level"].strip()
+        if completion_level not in ALLOWED_COMPLETION_LEVELS:
+            fail(f"row {index} ({scope}): invalid completion_level {completion_level!r}")
 
         for field in MATRIX_HEADERS:
             if not row[field].strip():

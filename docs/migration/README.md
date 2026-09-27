@@ -42,13 +42,28 @@ For every capability:
 - `retire`: do not carry implementation forward after migration.
 - `reference_only`: keep as historical evidence, not runtime/product code.
 
-## Status vocabulary
+## Slice status vs product completion
 
-- `inventory`: classified, no implementation migration claimed.
-- `ready`: enough source/contract/test evidence exists to start a migration slice.
-- `in_progress`: implementation movement/refactor is active.
-- `migrated`: target owner exists and legacy duplicate is removed/retired for the scoped slice.
-- `blocked`: requires an explicit dependency/decision/evidence before migration.
+`status` در `MIGRATION_MATRIX.csv` فقط وضعیت تاریخی **حرکت همان migration slice** را نگه می‌دارد و دیگر authority برای ادعای Product Complete نیست:
+
+- `inventory`: slice فقط inventory شده؛
+- `ready`: slice برای حرکت آماده است؛
+- `in_progress`: migration/refactor همان slice فعال است؛
+- `migrated`: owner/contract/tests/cleanup همان **scoped slice** انجام شده؛
+- `blocked`: همان slice blocker دارد.
+
+ستون مستقل `completion_level` authority فعلی completion است و از `docs/product/COMPLETION_STATUS_POLICY_FA.md` پیروی می‌کند:
+
+- `INVENTORY_ONLY`
+- `CORE_COMPLETE`
+- `PRODUCT_OPEN`
+- `PRODUCT_COMPLETE`
+- `RELEASE_BLOCKED`
+- `RELEASE_COMPLETE`
+- `SUPERSEDED`
+- `FUTURE_ONLY`
+
+قاعدهٔ قطعی: `status=migrated` **هیچ‌وقت به‌تنهایی** به معنی `PRODUCT_COMPLETE` نیست. Backend/core slice می‌تواند migrated باشد و در عین حال `completion_level=CORE_COMPLETE` باقی بماند تا UI/workflow/integration/update/recovery لازم بسته شود.
 
 ## Authority rule
 

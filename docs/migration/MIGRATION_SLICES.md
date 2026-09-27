@@ -14,9 +14,9 @@ A capability slice is complete only when all applicable implementation requireme
 4. relevant business and SCDS behavior has executable regression coverage;
 5. duplicate legacy owner for that scoped capability is removed/retired;
 6. rollback/compatibility behavior is documented and tested at the applicable level;
-7. `MIGRATION_MATRIX.csv` is updated from `ready/in_progress` to `migrated` only with implementation evidence.
+7. historical slice `status` is updated only with scoped implementation evidence; the independent `completion_level` is updated separately under `docs/product/COMPLETION_STATUS_POLICY_FA.md`.
 
-Preparatory slices such as M1 may complete their explicit contract-extraction exit gate without falsely marking downstream capability implementations as `migrated`.
+Preparatory slices such as M1 may complete their explicit contract-extraction exit gate without falsely upgrading downstream capability completion. A slice-level `migrated` value is not a Product Complete claim.
 
 Copying files is never completion.
 
