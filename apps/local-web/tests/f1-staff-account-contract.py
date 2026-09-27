@@ -17,8 +17,7 @@ boot='apps/local-web/src/Core/Bootstrap.php'
 for p in [migration,repo,service,posting,boot,'tests/local-f1-staff-account-selftest.php']:
     text(p)
 need(migration,'occurred_at DATETIME','ledger occurrence timestamp missing')
-need(migration,'charge_consumption_guard','one-charge-per-consumption guard missing')
-need(migration,'uq_f14_staff_account_charge_consumption','charge uniqueness missing')
+need(migration,'uq_f14_staff_account_consumption_type (consumption_id,entry_type)','one-entry-type-per-consumption uniqueness missing')
 need(repo,"['charge','payment','waiver','charge_reversal','payment_reversal','waiver_reversal']",'ledger type boundary missing')
 need(repo,'staff_account_balance_underflow','balance underflow guard missing')
 need(repo,'findByIdempotencyForUpdate','ledger idempotency missing')
