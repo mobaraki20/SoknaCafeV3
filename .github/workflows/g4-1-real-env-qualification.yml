@@ -41,7 +41,7 @@ jobs:
       SOKNA_TEST_DB_PASS: sokna
       SOKNA_TEST_DB_ROOT_USER: root
       SOKNA_TEST_DB_ROOT_PASS: root
-      SOKNA_G4_1_SOURCE_COMMIT: cd30aab1f8cba63f5dc90a775e88a49e7b5ee7d7
+      SOKNA_G4_1_SOURCE_COMMIT: b4d94b7e22ab8619e9d7514824c3092a97c3501e
 
     steps:
       - name: Checkout qualification merge ref
@@ -153,12 +153,16 @@ jobs:
           git apply --check .qualification/g4-1-866454c-v2/fix-valid-order-token.patch
           git apply .qualification/g4-1-866454c-v2/fix-valid-order-token.patch
 
+          echo "0002ca2bb254500410005770614a5248e504714ba13bce07529bba8b9d9b5095  .qualification/g4-1-866454c-v2/fix-relay-bootstrap.patch" | sha256sum -c -
+          git apply --check .qualification/g4-1-866454c-v2/fix-relay-bootstrap.patch
+          git apply .qualification/g4-1-866454c-v2/fix-relay-bootstrap.patch
+
           test -f tests/run-g4-1-product-qualification.sh
-          test -f tests/g4-1-product-qualification-contract.py
+          test -f tests/g4-1-product-qualification-b4d94b7.py
           test -f tests/g4-cross-component-parity-selftest.php
-          chmod +x tests/run-g4-1-product-qualification.sh tests/g4-1-product-qualification-contract.py
+          chmod +x tests/run-g4-1-product-qualification.sh tests/g4-1-product-qualification-b4d94b7.py
           printf '%s\n' "$SOKNA_G4_1_SOURCE_COMMIT" > G4_1_SOURCE_HEAD.txt
-          python3 tests/g4-1-product-qualification-contract.py
+          python3 tests/g4-1-product-qualification-b4d94b7.py
 
       - name: Ensure PHP database, zip and sodium extensions
         shell: bash
@@ -193,7 +197,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g4-1-product-qualification-cd30aab
+          name: g4-1-product-qualification-b4d94b7
           path: |
             g4-1-product-qualification.log
             G4_1_SOURCE_HEAD.txt
