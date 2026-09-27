@@ -30,7 +30,7 @@ final class StaffConsumptionRepository
             'INSERT INTO staff_consumptions(public_code,client_token,order_id,consumer_personnel_id,recorded_by_user_id,'.
             'benefit_policy_id,benefit_profile_id,benefit_override_id,status,menu_value_amount,benefit_amount,discount_amount,payable_amount,'.
             'known_cost_amount,consumer_name_snapshot,policy_snapshot_json,calculation_snapshot_json,business_date,business_shift_key) '.
-            "VALUES(?,?,?,?,?,?,?,?, 'posted',?,?,?,?,?,?,?,?,?)"
+            "VALUES(?,?,?,?,?,?,?,?,'posted',?,?,?,?,?,?,?,?,?,?)"
         );
         $stmt->execute([
             $data['public_code'],$data['client_token'],$data['order_id'],$data['consumer_personnel_id'],$data['recorded_by_user_id'],
