@@ -1,0 +1,60 @@
+diff --git a/apps/local-web/bootstrap.php b/apps/local-web/bootstrap.php
+index 67953bc..7e40d62 100644
+--- a/apps/local-web/bootstrap.php
++++ b/apps/local-web/bootstrap.php
+@@ -25,9 +25,12 @@ require_once __DIR__ . '/src/Domain/StaffConsumption/StaffBenefitCalculator.php'
+ require_once __DIR__ . '/src/Domain/StaffConsumption/StaffBenefitCalculationService.php';
+ require_once __DIR__ . '/src/Domain/StaffConsumption/StaffBenefitManagementService.php';
+ require_once __DIR__ . '/src/Domain/StaffConsumption/StaffAccountRepository.php';
++require_once __DIR__ . '/src/Domain/StaffConsumption/StaffAccountService.php';
+ require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionFoundationService.php';
+ require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionRepository.php';
+ require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionPostingService.php';
++require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php';
++require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionReportService.php';
+ require_once __DIR__ . '/src/Search/SearchProvider.php';
+ require_once __DIR__ . '/src/Search/SearchNormalizer.php';
+ require_once __DIR__ . '/src/Search/CatalogSearchProvider.php';
+diff --git a/apps/local-web/tests/f1-staff-account-contract.py b/apps/local-web/tests/f1-staff-account-contract.py
+index 349aba7..4d73fb6 100755
+--- a/apps/local-web/tests/f1-staff-account-contract.py
++++ b/apps/local-web/tests/f1-staff-account-contract.py
+@@ -14,7 +14,8 @@ repo='apps/local-web/src/Domain/StaffConsumption/StaffAccountRepository.php'
+ service='apps/local-web/src/Domain/StaffConsumption/StaffAccountService.php'
+ posting='apps/local-web/src/Domain/StaffConsumption/StaffConsumptionPostingService.php'
+ boot='apps/local-web/src/Core/Bootstrap.php'
+-for p in [migration,repo,service,posting,boot,'tests/local-f1-staff-account-selftest.php']:
++entry_boot='apps/local-web/bootstrap.php'
++for p in [migration,repo,service,posting,boot,entry_boot,'tests/local-f1-staff-account-selftest.php']:
+     text(p)
+ need(migration,'occurred_at DATETIME','ledger occurrence timestamp missing')
+ need(migration,'uq_f14_staff_account_consumption_type (consumption_id,entry_type)','one-entry-type-per-consumption uniqueness missing')
+@@ -37,4 +38,5 @@ if 'UPDATE staff_consumptions' in text(service): fail('Staff Account must not re
+ need(posting,'chargeConsumptionTx($consumptionId,$actorId,$occurredAt)','payable charge not integrated in posting transaction')
+ need(posting,"'staff_account_charge_id'",'posting result lacks account charge evidence')
+ need(boot,'staffAccountService()','Bootstrap Staff Account service accessor missing')
++need(entry_boot,"/src/Domain/StaffConsumption/StaffAccountService.php",'entry bootstrap does not load StaffAccountService')
+ print('PASS F1.4 staff account contract')
+diff --git a/apps/local-web/tests/f1-staff-ui-reporting-contract.py b/apps/local-web/tests/f1-staff-ui-reporting-contract.py
+index 4dd351d..ec102ba 100755
+--- a/apps/local-web/tests/f1-staff-ui-reporting-contract.py
++++ b/apps/local-web/tests/f1-staff-ui-reporting-contract.py
+@@ -15,8 +15,9 @@ workspace='apps/local-web/src/Domain/StaffConsumption/StaffConsumptionWorkspaceS
+ report='apps/local-web/src/Domain/StaffConsumption/StaffConsumptionReportService.php'
+ nav='apps/local-web/src/UI/ProductShell.php'
+ boot='apps/local-web/src/Core/Bootstrap.php'
++entry_boot='apps/local-web/bootstrap.php'
+ migration='apps/local-web/database/migrations/0021_f1_staff_consumption_reporting.sql'
+-for p in [page,api,js,workspace,report,nav,boot,migration,'tests/local-f1-staff-ui-reporting-selftest.php']: text(p)
++for p in [page,api,js,workspace,report,nav,boot,entry_boot,migration,'tests/local-f1-staff-ui-reporting-selftest.php']: text(p)
+ need(nav,"'staff-consumption','label'=>'مصرف پرسنل','href'=>'/staff-consumption/'",'staff consumption is not a distinct navigation entry')
+ for token in ['مصرف من','ثبت برای پرسنل','سوابق','مزایا','حساب پرسنل','گزارش']:
+     need(page,token,'missing UI entry point: '+token)
+@@ -40,5 +41,7 @@ need(js,"'post_self':'post_proxy'",'self/proxy consumption UI not wired')
+ need(js,"'account_payment':'account_waiver'",'waiver UI not wired separately')
+ need(js,'data-report-metric','report metric renderer missing')
+ need(js,'initialTab','initial permission-driven tab activation missing')
++need(entry_boot,"/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php",'entry bootstrap does not load StaffConsumptionWorkspaceService')
++need(entry_boot,"/src/Domain/StaffConsumption/StaffConsumptionReportService.php",'entry bootstrap does not load StaffConsumptionReportService')
+ if 'subscriber_ledger' in text(report) or 'subscriber_ledger' in text(workspace): fail('Staff Consumption UI/reporting depends on Subscriber Ledger')
+ print('PASS F1.6 staff UI/reporting contract')
