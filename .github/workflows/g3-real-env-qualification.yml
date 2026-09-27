@@ -125,7 +125,6 @@ jobs:
            $localConfig=['app'=>['timezone'=>'UTC','data_dir'=>$data],'db'=>['host'=>$host,'port'=>$port,'name'=>$localName,'charset'=>'utf8mb4','user'=>$user,'pass'=>$pass],'installation'=>['id'=>$installation],'runtime'=>['local_token'=>'g32'],'public'=>['base_url'=>'http://127.0.0.1','shared_secret'=>$secret],'integrations'=>['accommodation'=>['base_url'=>'','secret'=>'']]];
            $local=sokna_local_bootstrap($localConfig);$local->migrations()->migrate();$lp=$local->database();
           PATCH
-          sed -i 's/^          //' /tmp/fix-g32-db-grant.patch
           git apply --check /tmp/fix-g32-db-grant.patch
           git apply /tmp/fix-g32-db-grant.patch
 
