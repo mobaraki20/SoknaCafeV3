@@ -1,0 +1,35 @@
+From b4d94b7e22ab8619e9d7514824c3092a97c3501e Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Sun, 27 Sep 2026 21:37:24 +0000
+Subject: [PATCH] fix(g4.1): wire public relay service into local bootstrap
+
+---
+ apps/local-web/bootstrap.php                | 1 +
+ tests/g4-cross-component-parity-contract.py | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/apps/local-web/bootstrap.php b/apps/local-web/bootstrap.php
+index b00f907..200df13 100644
+--- a/apps/local-web/bootstrap.php
++++ b/apps/local-web/bootstrap.php
+@@ -117,6 +117,7 @@ require_once __DIR__ . '/src/Relay/SettlementRealtimeAdapter.php';
+ require_once __DIR__ . '/src/Relay/GuestOrderRealtimeAdapter.php';
+ require_once __DIR__ . '/src/Relay/WaiterCallRealtimeAdapter.php';
+ require_once __DIR__ . '/src/Relay/RealtimeDispatchService.php';
++require_once __DIR__ . '/src/Domain/PublicEdge/PublicEdgeRelayService.php';
+ require_once __DIR__ . '/src/UI/SCDS.php';
+ require_once __DIR__ . '/src/UI/LocalPage.php';
+ require_once __DIR__ . '/src/UI/ProductShell.php';
+diff --git a/tests/g4-cross-component-parity-contract.py b/tests/g4-cross-component-parity-contract.py
+index 4e7f8a7..be236f6 100755
+--- a/tests/g4-cross-component-parity-contract.py
++++ b/tests/g4-cross-component-parity-contract.py
+@@ -13,6 +13,8 @@ for x in ['RealtimeDispatchService','DeferredDispatchService','/api/v1/local/rea
+     need(x in relay,'relay lifecycle missing '+x)
+ client=read('apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php')
+ need('function postRaw' in client and 'normalizeRawResponse' in client,'queue-aware signed client response missing')
++bootloader=read('apps/local-web/bootstrap.php')
++need("/src/Domain/PublicEdge/PublicEdgeRelayService.php" in bootloader,'Local bootstrap missing PublicEdgeRelayService wiring')
+ boot=read('apps/local-web/src/Core/Bootstrap.php')
+ need("'public.relay_sync'" in boot and 'publicEdgeRelay()->sync()' in boot,'runtime relay trigger missing')
+ for f in ['apps/local-web/src/Setup/BrowserSetupService.php','apps/local-web/tools/setup-machine.php','windows/runtime/runtime-config.example.json']:
