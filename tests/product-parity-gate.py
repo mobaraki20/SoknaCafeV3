@@ -22,7 +22,7 @@ ALLOWED_COMPLETION = {
     "RELEASE_BLOCKED", "RELEASE_COMPLETE", "SUPERSEDED", "FUTURE_ONLY"
 }
 ALLOWED_REQUIRED = {"yes", "no"}
-EXPECTED_PRIORITY_COUNTS = {"P0": 23, "P1": 15, "P2": 10, "P3": 2}
+EXPECTED_PRIORITY_COUNTS = {"P0": 24, "P1": 17, "P2": 9, "P3": 2}
 PRODUCT_CLOSED = {"PRODUCT_COMPLETE", "RELEASE_BLOCKED", "RELEASE_COMPLETE", "SUPERSEDED", "FUTURE_ONLY"}
 RELEASE_CLOSED = {"RELEASE_COMPLETE", "SUPERSEDED", "FUTURE_ONLY"}
 
@@ -45,12 +45,12 @@ def load_rows() -> list[dict[str,str]]:
     return rows
 
 def validate_inventory(rows: list[dict[str,str]]) -> None:
-    if len(rows) != 50:
-        fail(f"expected 50 capabilities, got {len(rows)}")
-    expected_ids = [f"A{i:02d}" for i in range(1,51)]
+    if len(rows) != 52:
+        fail(f"expected 52 capabilities, got {len(rows)}")
+    expected_ids = [f"A{i:02d}" for i in range(1,53)]
     ids = [r["id"] for r in rows]
     if ids != expected_ids:
-        fail("capability IDs must be exactly A01..A50 in order")
+        fail("capability IDs must be exactly A01..A52 in order")
     if len(ids) != len(set(ids)):
         fail("duplicate capability IDs")
     priorities = Counter(r["priority"] for r in rows)
