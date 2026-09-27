@@ -1,0 +1,24 @@
+diff --git a/apps/local-web/tests/f1-staff-operational-integration-contract.py b/apps/local-web/tests/f1-staff-operational-integration-contract.py
+index a4e8c7f..b600f9d 100755
+--- a/apps/local-web/tests/f1-staff-operational-integration-contract.py
++++ b/apps/local-web/tests/f1-staff-operational-integration-contract.py
+@@ -30,5 +30,6 @@ need(printing,"'badge'=>$context==='staff_consumption'?'مصرف پرسنل':'ف
+ need(prep,'LEFT JOIN staff_consumptions sc ON sc.order_id=o.id','preparation feed still table-only')
+ need(prep,"'order_context'=>(string)($order['order_context']??'table_service')",'preparation context output missing')
+ need(prep,"return 'مصرف پرسنل'.($name!==''?' · '.$name:'');",'preparation staff display context missing')
++need('tests/local-f1-staff-operational-integration-selftest.php',"array_key_exists('table_id',$found)&&$found['table_id']===null",'staff preparation null-table assertion is not null-safe')
+ if 'JOIN cafe_tables t ON t.id=o.table_id' in text(prep) and 'LEFT JOIN cafe_tables' not in text(prep): fail('preparation remains inner-table-only')
+ print('PASS F1.5 staff operational integration contract')
+diff --git a/tests/local-f1-staff-operational-integration-selftest.php b/tests/local-f1-staff-operational-integration-selftest.php
+index fcae6dc..b7b914d 100644
+--- a/tests/local-f1-staff-operational-integration-selftest.php
++++ b/tests/local-f1-staff-operational-integration-selftest.php
+@@ -27,7 +27,7 @@ $after=(int)$pdo->query('SELECT quantity_base FROM inventory_balances WHERE inve
+ $sc=(array)$pdo->query('SELECT known_cost_amount,order_id FROM staff_consumptions WHERE id='.(int)$post['consumption_id'])->fetch(PDO::FETCH_ASSOC);f15_assert((int)$sc['known_cost_amount']===600,'staff document cost persistence drifted');
+ $line=(array)$pdo->query('SELECT known_cost_amount,calculation_snapshot_json FROM staff_consumption_lines WHERE consumption_id='.(int)$post['consumption_id'])->fetch(PDO::FETCH_ASSOC);$lineSnap=json_decode((string)$line['calculation_snapshot_json'],true);f15_assert((int)$line['known_cost_amount']===600,'staff line known cost persistence drifted');f15_assert((int)($lineSnap['inventory_cost_snapshot']['recipe_version_id']??0)===(int)$recipe['recipe_id'],'historical recipe version missing from staff line snapshot');
+ $event=(array)$pdo->query('SELECT status,payload_json FROM inventory_order_events WHERE order_id='.(int)$post['order_id'])->fetch(PDO::FETCH_ASSOC);f15_assert((string)($event['status']??'')==='done','staff order inventory event not processed');
+-$feed=$core->preparation()->feed($prep);$found=null;foreach($feed['orders'] as $o)if((int)$o['id']===(int)$post['order_id']){$found=$o;break;}f15_assert(is_array($found),'staff consumption missing from preparation feed');f15_assert(($found['table_id']??1)===null&&(string)$found['order_context']==='staff_consumption'&&(string)$found['consumer_name']==='F15 No Login','preparation staff context drifted');f15_assert(str_contains((string)$found['table_name'],'F15 No Login'),'preparation display context lacks consumer');
++$feed=$core->preparation()->feed($prep);$found=null;foreach($feed['orders'] as $o)if((int)$o['id']===(int)$post['order_id']){$found=$o;break;}f15_assert(is_array($found),'staff consumption missing from preparation feed');f15_assert(array_key_exists('table_id',$found)&&$found['table_id']===null&&(string)$found['order_context']==='staff_consumption'&&(string)$found['consumer_name']==='F15 No Login','preparation staff context drifted');f15_assert(str_contains((string)$found['table_name'],'F15 No Login'),'preparation display context lacks consumer');
+ $claim=$core->preparation()->claim(['order_id'=>(int)$post['order_id'],'area'=>'kitchen'],$prep);f15_assert(empty($claim['duplicate']),'staff non-table preparation claim failed');
+ $job=(array)$pdo->query('SELECT payload_json FROM print_jobs WHERE id='.(int)$post['print_job_id'])->fetch(PDO::FETCH_ASSOC);$payload=json_decode((string)$job['payload_json'],true);f15_assert((string)($payload['order_context']??'')==='staff_consumption'&&(string)($payload['badge']??'')==='مصرف پرسنل'&&(string)($payload['consumer_name']??'')==='F15 No Login','staff print payload lacks explicit consumer context');
+ // Normal table-service path remains canonical and is printed immediately by OrderCommitService.
