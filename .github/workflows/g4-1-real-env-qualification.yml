@@ -41,7 +41,7 @@ jobs:
       SOKNA_TEST_DB_PASS: sokna
       SOKNA_TEST_DB_ROOT_USER: root
       SOKNA_TEST_DB_ROOT_PASS: root
-      SOKNA_G4_1_SOURCE_COMMIT: b4d94b7e22ab8619e9d7514824c3092a97c3501e
+      SOKNA_G4_1_SOURCE_COMMIT: b406e24c12aa7689020998cc3192be303c5984f8
 
     steps:
       - name: Checkout qualification merge ref
@@ -157,6 +157,10 @@ jobs:
           git apply --check .qualification/g4-1-866454c-v2/fix-relay-bootstrap.patch
           git apply .qualification/g4-1-866454c-v2/fix-relay-bootstrap.patch
 
+          echo "61406052a9590dc39a97b4b34e3d252d776c0cb61fa737b392b4b7dc6814e4c9  .qualification/g4-1-866454c-v2/fix-settlement-diagnostic.patch" | sha256sum -c -
+          git apply --check .qualification/g4-1-866454c-v2/fix-settlement-diagnostic.patch
+          git apply .qualification/g4-1-866454c-v2/fix-settlement-diagnostic.patch
+
           test -f tests/run-g4-1-product-qualification.sh
           test -f tests/g4-1-product-qualification-contract.py
           test -f tests/g4-cross-component-parity-selftest.php
@@ -197,7 +201,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g4-1-product-qualification-b4d94b7
+          name: g4-1-product-qualification-b406e24
           path: |
             g4-1-product-qualification.log
             G4_1_SOURCE_HEAD.txt
