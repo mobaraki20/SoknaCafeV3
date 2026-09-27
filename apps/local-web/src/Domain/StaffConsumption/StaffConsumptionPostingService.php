@@ -7,6 +7,8 @@ use PDO;
 use Sokna\Local\Domain\Orders\OrderCatalogService;
 use Sokna\Local\Domain\Orders\OrderCommitException;
 use Sokna\Local\Domain\Orders\OrderCommitService;
+use Sokna\Local\Domain\Inventory\InventoryOrderService;
+use Sokna\Local\Domain\Printing\PrintService;
 use Throwable;
 
 final class StaffConsumptionPostingService
@@ -21,6 +23,8 @@ final class StaffConsumptionPostingService
         private readonly StaffBenefitCalculationService $benefits,
         private readonly OrderCommitService $orders,
         private readonly StaffAccountService $accounts,
+        private readonly InventoryOrderService $inventoryOrders,
+        private readonly PrintService $printing,
     ) {}
 
     public function postSelf(array $data,array $user): array
@@ -100,6 +104,11 @@ final class StaffConsumptionPostingService
         if(count($orderLines)!==count($calcLines))throw new StaffConsumptionException('posting_line_mismatch','تعداد ردیف‌های سفارش و محاسبه مزایا هم‌خوان نیست.',500);
         foreach($orderLines as $i=>$ol)$this->assertLineMatch($ol,$calcLines[$i]??[],$i);
 
+        $inventoryRecipeSnapshot=$this->inventoryOrders->accountedRecipeSnapshotTx((int)$order['order_id']);
+        $costSummary=$this->inventoryOrders->costSummaryFromRecipeSnapshot($inventoryRecipeSnapshot);
+        $costLines=is_array($costSummary['lines']??null)?$costSummary['lines']:[];
+        $knownCost=max(0,(int)($costSummary['known_cost_amount']??0));
+
         $menuValue=(int)$calculation['menu_value_amount'];
         $benefit=(int)$calculation['benefit_amount'];
         $discount=(int)($calculation['discount_amount']??0);
@@ -127,31 +136,38 @@ final class StaffConsumptionPostingService
             'benefit_profile_id'=>isset($calculation['profile_id'])&&$calculation['profile_id']!==null?(int)$calculation['profile_id']:null,
             'benefit_override_id'=>$overrideId,
             'menu_value_amount'=>$menuValue,'benefit_amount'=>$benefit,'discount_amount'=>$discount,'payable_amount'=>$payable,
-            'consumer_name_snapshot'=>(string)($personnel['display_name']??''),'policy_snapshot_json'=>$policyJson,
+            'known_cost_amount'=>$knownCost,'consumer_name_snapshot'=>(string)($personnel['display_name']??''),'policy_snapshot_json'=>$policyJson,
             'calculation_snapshot_json'=>$calculationJson,'business_date'=>(string)$order['business_date'],'business_shift_key'=>(string)$order['business_shift_key'],
         ]);
 
         foreach($orderLines as $i=>$orderLine){
-            $calcLine=$calcLines[$i];
+            $calcLine=$calcLines[$i];$orderItemId=(int)$orderLine['order_item_id'];
+            $costLine=is_array($costLines[(string)$orderItemId]??null)?$costLines[(string)$orderItemId]:[
+                'order_item_id'=>$orderItemId,'known_cost_amount'=>0,'estimated_cost_amount'=>0,'unknown_component_count'=>0,
+                'cost_status'=>'unknown','recipe_version_id'=>null,'recipe_version_no'=>null,'components'=>[],
+            ];
             $linePayable=(int)$calcLine['menu_line_amount']-(int)$calcLine['benefit_amount']-(int)($calcLine['discount_amount']??0);
             $this->repository->insertLineTx([
-                'consumption_id'=>$consumptionId,'order_item_id'=>(int)$orderLine['order_item_id'],'item_id'=>(int)$orderLine['item_id'],
+                'consumption_id'=>$consumptionId,'order_item_id'=>$orderItemId,'item_id'=>(int)$orderLine['item_id'],
                 'item_name_snapshot'=>(string)$orderLine['item_name'],'quantity'=>(int)$orderLine['quantity'],'menu_unit_price'=>(int)$orderLine['unit_price'],
                 'menu_line_amount'=>(int)$calcLine['menu_line_amount'],'benefit_amount'=>(int)$calcLine['benefit_amount'],
                 'discount_amount'=>(int)($calcLine['discount_amount']??0),'payable_amount'=>$linePayable,
+                'known_cost_amount'=>max(0,(int)($costLine['known_cost_amount']??0)),
                 'calculation_snapshot_json'=>self::json([
                     'posting_version'=>self::POSTING_VERSION,'document_snapshot_sha256'=>(string)($calculation['snapshot_sha256']??''),
-                    'line_index'=>$i,'line'=>$calcLine,
+                    'line_index'=>$i,'line'=>$calcLine,'inventory_cost_snapshot'=>$costLine,
                 ]),
             ]);
         }
 
         $charge=$this->accounts->chargeConsumptionTx($consumptionId,$actorId,$occurredAt);
+        $printJobId=$this->printing->enqueueOrderTx((int)$order['order_id'],$actorId);
         $this->audit('staff_consumption.posted','staff_consumption',$consumptionId,$actor,[
             'consumer_personnel_id'=>$personnelId,'consumer_name_snapshot'=>(string)($personnel['display_name']??''),
             'order_id'=>(int)$order['order_id'],'order_context'=>'staff_consumption','menu_value_amount'=>$menuValue,
             'benefit_amount'=>$benefit,'discount_amount'=>$discount,'payable_amount'=>$payable,'zero_payable'=>$payable===0,
-            'calculation_snapshot_sha256'=>(string)($calculation['snapshot_sha256']??''),
+            'known_cost_amount'=>$knownCost,'inventory_cost_snapshot_version'=>(string)($costSummary['snapshot_version']??''),
+            'print_job_id'=>$printJobId,'calculation_snapshot_sha256'=>(string)($calculation['snapshot_sha256']??''),
             'staff_account_charge_id'=>$charge['id']??null,'staff_account_balance_after'=>$charge['balance_after']??null,
         ]);
 
@@ -159,8 +175,8 @@ final class StaffConsumptionPostingService
             'success'=>true,'duplicate'=>false,'consumption_id'=>$consumptionId,'public_code'=>$publicCode,
             'order_id'=>(int)$order['order_id'],'order_number'=>(int)$order['order_number'],'consumer_personnel_id'=>$personnelId,
             'recorded_by_user_id'=>$actorId,'menu_value_amount'=>$menuValue,'benefit_amount'=>$benefit,'discount_amount'=>$discount,
-            'payable_amount'=>$payable,'zero_payable'=>$payable===0,'business_date'=>(string)$order['business_date'],
-            'business_shift_key'=>(string)$order['business_shift_key'],'calculation_snapshot_sha256'=>(string)($calculation['snapshot_sha256']??''),
+            'payable_amount'=>$payable,'zero_payable'=>$payable===0,'known_cost_amount'=>$knownCost,'print_job_id'=>$printJobId,
+            'business_date'=>(string)$order['business_date'],'business_shift_key'=>(string)$order['business_shift_key'],'calculation_snapshot_sha256'=>(string)($calculation['snapshot_sha256']??''),
             'staff_account_charge_id'=>$charge['id']??null,'staff_account_balance_after'=>$charge['balance_after']??null,
         ];
     }
@@ -178,7 +194,7 @@ final class StaffConsumptionPostingService
             'order_id'=>(int)$row['order_id'],'order_number'=>(int)$row['business_order_number'],'consumer_personnel_id'=>(int)$row['consumer_personnel_id'],
             'recorded_by_user_id'=>(int)$row['recorded_by_user_id'],'menu_value_amount'=>(int)$row['menu_value_amount'],
             'benefit_amount'=>(int)$row['benefit_amount'],'discount_amount'=>(int)$row['discount_amount'],'payable_amount'=>(int)$row['payable_amount'],
-            'zero_payable'=>(int)$row['payable_amount']===0,'business_date'=>(string)$row['business_date'],'business_shift_key'=>(string)$row['business_shift_key'],
+            'known_cost_amount'=>(int)($row['known_cost_amount']??0),'zero_payable'=>(int)$row['payable_amount']===0,'business_date'=>(string)$row['business_date'],'business_shift_key'=>(string)$row['business_shift_key'],
             'staff_account_charge_id'=>isset($row['staff_account_charge_id'])&&$row['staff_account_charge_id']!==null?(int)$row['staff_account_charge_id']:null,
             'staff_account_balance_after'=>isset($row['staff_account_balance_after'])&&$row['staff_account_balance_after']!==null?(int)$row['staff_account_balance_after']:null,
         ];

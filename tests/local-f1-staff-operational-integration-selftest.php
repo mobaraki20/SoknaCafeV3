@@ -1,0 +1,37 @@
+<?php
+declare(strict_types=1);
+require_once dirname(__DIR__).'/apps/local-web/bootstrap.php';
+function f15_fail(string $m):never{fwrite(STDERR,$m.PHP_EOL);exit(1);} function f15_assert(bool $c,string $m):void{if(!$c)f15_fail($m);}
+$core=sokna_local_bootstrap(['app'=>['timezone'=>'Asia/Tehran','data_dir'=>sys_get_temp_dir().'/sokna-v3-f15-'.bin2hex(random_bytes(4))],'db'=>[
+ 'host'=>(string)(getenv('SOKNA_TEST_DB_HOST')?:'127.0.0.1'),'port'=>(string)(getenv('SOKNA_TEST_DB_PORT')?:'3306'),'name'=>(string)(getenv('SOKNA_TEST_DB_NAME')?:'sokna_m2'),'charset'=>'utf8mb4','user'=>(string)(getenv('SOKNA_TEST_DB_USER')?:'sokna'),'pass'=>(string)(getenv('SOKNA_TEST_DB_PASS')?:'sokna')]]);
+$core->migrations()->migrate();$pdo=$core->database();
+$pdo->exec("INSERT INTO settings(setting_key,setting_value) VALUES('business_day_cutoff','04:00'),('inventory_initialized','1'),('module.inventory.enabled','1'),('module.printing.enabled','1') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
+$u=$pdo->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)');
+$u->execute(['f15-manager',password_hash('x',PASSWORD_DEFAULT),'F15 Manager','operator']);$managerId=(int)$pdo->lastInsertId();
+$u->execute(['f15-prep',password_hash('x',PASSWORD_DEFAULT),'F15 Prep','operator']);$prepId=(int)$pdo->lastInsertId();
+$cap=$pdo->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)');foreach(['staff_consumption_proxy','inventory_operations','inventory_manage','orders_floor'] as $c)$cap->execute([$managerId,$c]);$cap->execute([$prepId,'preparation']);
+$pdo->prepare('INSERT INTO user_preparation_areas(user_id,area_key) VALUES(?,?)')->execute([$prepId,'kitchen']);
+$manager=$core->identityRepository()->findActiveById($managerId);$prep=$core->identityRepository()->findActiveById($prepId);f15_assert(is_array($manager)&&is_array($prep),'users missing');
+$pdo->prepare('INSERT INTO personnel(display_name,linked_user_id,personnel_code,job_title,active) VALUES(?,?,?,?,1)')->execute(['F15 No Login',null,'F15-NOLOGIN','Kitchen']);$personnelId=(int)$pdo->lastInsertId();
+$pdo->exec("INSERT INTO categories(category_key,name,audience,sort_order,active) VALUES('f15','F15','guest_staff',10,1)");$categoryId=(int)$pdo->lastInsertId();
+$pdo->exec("INSERT INTO menus(menu_key,name,status,sort_order) VALUES('f15-main','F15 Main','active',10)");$menuId=(int)$pdo->lastInsertId();$pdo->prepare('INSERT INTO menu_categories(menu_id,category_id,sort_order) VALUES(?,?,10)')->execute([$menuId,$categoryId]);
+$menuItemId=$core->sellables()->create(['category_id'=>$categoryId,'name'=>'F15 Meal','price'=>200000,'preparation_station'=>'kitchen','sellable_kind'=>'menu_item','staff_only'=>false,'takeaway_allowed'=>true]);$pdo->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$menuId,$menuItemId]);
+$inv=$core->inventory()->createItem(['item_code'=>'F15-ING','name'=>'F15 Ingredient','category'=>'ingredient','base_unit'=>'count','default_department'=>'kitchen'],$manager);$invId=(int)$inv['id'];
+$core->inventory()->recordMovement(['item_id'=>$invId,'movement_type'=>'purchase_receive','quantity_base'=>100,'total_cost_delta'=>10000,'idempotency_key'=>'f15:receive:1','occurred_at'=>'2026-09-27 10:00:00'],$manager);
+$recipe=$core->inventoryOrders()->saveRecipe($menuItemId,[['inventory_item_id'=>$invId,'quantity_base'=>2]],$manager);f15_assert((int)($recipe['recipe_id']??0)>0,'recipe missing');
+$before=(int)$pdo->query('SELECT quantity_base FROM inventory_balances WHERE inventory_item_id='.$invId)->fetchColumn();
+$pdo->exec("UPDATE print_destinations SET active=1 WHERE destination_key='prep_shared'");
+$post=$core->staffConsumptionPosting()->postForPersonnel($personnelId,['request_token'=>'f15-staff-consume-0001','occurred_at'=>'2026-09-27 12:00:00','items'=>[['id'=>$menuItemId,'quantity'=>3,'expected_price'=>200000]]],$manager);
+f15_assert((int)$post['known_cost_amount']===600,'document known cost is not from durable recipe snapshot');f15_assert((int)($post['print_job_id']??0)>0,'staff preparation print intent missing');
+$after=(int)$pdo->query('SELECT quantity_base FROM inventory_balances WHERE inventory_item_id='.$invId)->fetchColumn();f15_assert($after===$before-6,'staff consumption did not reduce inventory by recipe × quantity');
+$sc=(array)$pdo->query('SELECT known_cost_amount,order_id FROM staff_consumptions WHERE id='.(int)$post['consumption_id'])->fetch(PDO::FETCH_ASSOC);f15_assert((int)$sc['known_cost_amount']===600,'staff document cost persistence drifted');
+$line=(array)$pdo->query('SELECT known_cost_amount,calculation_snapshot_json FROM staff_consumption_lines WHERE consumption_id='.(int)$post['consumption_id'])->fetch(PDO::FETCH_ASSOC);$lineSnap=json_decode((string)$line['calculation_snapshot_json'],true);f15_assert((int)$line['known_cost_amount']===600,'staff line known cost persistence drifted');f15_assert((int)($lineSnap['inventory_cost_snapshot']['recipe_version_id']??0)===(int)$recipe['recipe_id'],'historical recipe version missing from staff line snapshot');
+$event=(array)$pdo->query('SELECT status,payload_json FROM inventory_order_events WHERE order_id='.(int)$post['order_id'])->fetch(PDO::FETCH_ASSOC);f15_assert((string)($event['status']??'')==='done','staff order inventory event not processed');
+$feed=$core->preparation()->feed($prep);$found=null;foreach($feed['orders'] as $o)if((int)$o['id']===(int)$post['order_id']){$found=$o;break;}f15_assert(is_array($found),'staff consumption missing from preparation feed');f15_assert(($found['table_id']??1)===null&&(string)$found['order_context']==='staff_consumption'&&(string)$found['consumer_name']==='F15 No Login','preparation staff context drifted');f15_assert(str_contains((string)$found['table_name'],'F15 No Login'),'preparation display context lacks consumer');
+$claim=$core->preparation()->claim(['order_id'=>(int)$post['order_id'],'area'=>'kitchen'],$prep);f15_assert(empty($claim['duplicate']),'staff non-table preparation claim failed');
+$job=(array)$pdo->query('SELECT payload_json FROM print_jobs WHERE id='.(int)$post['print_job_id'])->fetch(PDO::FETCH_ASSOC);$payload=json_decode((string)$job['payload_json'],true);f15_assert((string)($payload['order_context']??'')==='staff_consumption'&&(string)($payload['badge']??'')==='مصرف پرسنل'&&(string)($payload['consumer_name']??'')==='F15 No Login','staff print payload lacks explicit consumer context');
+// Normal table-service path remains canonical and is printed immediately by OrderCommitService.
+$pdo->exec("INSERT INTO cafe_tables(name,table_number,code,access_token,active,sort_order) VALUES('F15 Table',51,'F15T','f15-table-token',1,1)");$tableId=(int)$pdo->lastInsertId();
+$tableOrder=$core->staffQuickOrders()->commit(['table_id'=>$tableId,'expected_session_id'=>0,'request_token'=>'f15-table-order-0001','items'=>[['id'=>$menuItemId,'quantity'=>1,'expected_price'=>200000]]],$manager);
+$tableJob=(array)$pdo->query('SELECT payload_json FROM print_jobs WHERE entity_type=\'order\' AND entity_id='.(int)$tableOrder['order_id'].' LIMIT 1')->fetch(PDO::FETCH_ASSOC);$tablePayload=json_decode((string)($tableJob['payload_json']??''),true);f15_assert((string)($tablePayload['order_context']??'')==='table_service'&&(string)($tablePayload['table_name']??'')==='F15 Table','table-service print regression');
+fwrite(STDOUT,"F1.5 Staff operational integration DB self-test: OK\n");

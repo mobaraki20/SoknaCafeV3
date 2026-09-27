@@ -133,11 +133,25 @@ final class PrintService
     {
         $this->requireTx();
         try{
-            $stmt=$this->pdo->prepare('SELECT o.id,o.business_order_number,o.public_code,o.customer_note,o.created_at,t.name table_name FROM orders o JOIN cafe_tables t ON t.id=o.table_id WHERE o.id=? LIMIT 1');
+            $stmt=$this->pdo->prepare(
+                'SELECT o.id,o.business_order_number,o.public_code,o.customer_note,o.created_at,o.order_context,o.table_id,'.
+                't.name table_name,sc.consumer_personnel_id,sc.consumer_name_snapshot '.
+                'FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id LEFT JOIN staff_consumptions sc ON sc.order_id=o.id WHERE o.id=? LIMIT 1'
+            );
             $stmt->execute([$orderId]);$order=$stmt->fetch(PDO::FETCH_ASSOC);if(!is_array($order))return null;
+            $context=(string)($order['order_context']??'table_service');
+            if($context==='staff_consumption'&&(int)($order['consumer_personnel_id']??0)<1)return null;
             $items=$this->pdo->prepare("SELECT item_name,quantity,item_note,fulfillment_mode,preparation_station FROM order_items WHERE order_id=? AND quantity>0 AND preparation_station<>'none' ORDER BY id");
             $items->execute([$orderId]);$rows=$items->fetchAll(PDO::FETCH_ASSOC);if(!$rows)return null;
-            $payload=['document_kind'=>'preparation','order_id'=>$orderId,'order_number'=>(int)$order['business_order_number'],'table_name'=>(string)$order['table_name'],'customer_note'=>$order['customer_note'],'items'=>$rows,'created_at'=>(string)$order['created_at']];
+            $consumer=trim((string)($order['consumer_name_snapshot']??''));
+            $display=$context==='staff_consumption'?'پرسنل: '.($consumer!==''?$consumer:'—'):(string)($order['table_name']??'');
+            $payload=[
+                'document_kind'=>'preparation','order_id'=>$orderId,'order_number'=>(int)$order['business_order_number'],
+                'order_context'=>$context,'table_name'=>$display,'badge'=>$context==='staff_consumption'?'مصرف پرسنل':'فیش آماده‌سازی',
+                'consumer_personnel_id'=>$context==='staff_consumption'?(int)$order['consumer_personnel_id']:null,
+                'consumer_name'=>$context==='staff_consumption'?$consumer:null,'customer_note'=>$order['customer_note'],
+                'items'=>$rows,'created_at'=>(string)$order['created_at'],
+            ];
             $r=$this->enqueueTx('preparation','prep_shared',$payload,'order',(string)$orderId,$actorUserId,'prep:order:'.$orderId,false);
             return $r['job_id']===null?null:(int)$r['job_id'];
         }catch(Throwable){return null;}

@@ -120,6 +120,68 @@ final class InventoryOrderService
         return ['processed'=>$processed,'failed'=>$failed];
     }
 
+    /** Return the exact recipe/cost snapshot captured by the durable accounted event. */
+    public function accountedRecipeSnapshotTx(int $orderId): array
+    {
+        if(!$this->pdo->inTransaction())throw new \LogicException('Inventory accounted snapshot requires an open transaction.');
+        if($orderId<1)return [];
+        $stmt=$this->pdo->prepare(
+            "SELECT payload_json FROM inventory_order_events WHERE order_id=? AND event_type='accounted' ORDER BY id DESC LIMIT 1"
+        );
+        $stmt->execute([$orderId]);$json=$stmt->fetchColumn();
+        if($json===false)return [];
+        $payload=json_decode((string)$json,true);
+        return is_array($payload)&&is_array($payload['recipe_snapshot']??null)?array_values($payload['recipe_snapshot']):[];
+    }
+
+    /**
+     * Summarize the immutable Inventory recipe snapshot without re-reading current cost/recipe state.
+     * known_cost_amount includes only components whose captured cost_status was known.
+     * Estimated/unknown values remain explicit in the snapshot for reporting.
+     * @return array<string,mixed>
+     */
+    public function costSummaryFromRecipeSnapshot(array $snapshot): array
+    {
+        $knownTotal=0;$estimatedTotal=0;$unknownComponents=0;$lines=[];
+        foreach($snapshot as $row){
+            if(!is_array($row))continue;
+            $orderItemId=(int)($row['order_item_id']??0);if($orderItemId<1)continue;
+            $orderQty=max(0,(int)($row['order_quantity']??0));
+            $lineKnown=0;$lineEstimated=0;$lineUnknown=0;$components=[];
+            foreach((array)($row['components']??[]) as $component){
+                if(!is_array($component))continue;
+                $perUnit=max(0,(int)($component['quantity_base']??0));
+                $unit=$component['unit_cost_snapshot']===null?null:(float)$component['unit_cost_snapshot'];
+                $status=(string)($component['cost_status']??'unknown');
+                if(!in_array($status,['known','estimated','unknown'],true))$status='unknown';
+                $quantity=$perUnit*$orderQty;$amount=$unit===null?null:(int)round($unit*$quantity);
+                if($status==='known'&&$amount!==null)$lineKnown+=$amount;
+                elseif($amount!==null){$lineEstimated+=$amount;if($status==='unknown')$status='estimated';}
+                else $lineUnknown++;
+                $components[]=[
+                    'recipe_component_id'=>(int)($component['recipe_component_id']??0)?:null,
+                    'inventory_item_id'=>(int)($component['inventory_item_id']??0),
+                    'quantity_base_per_unit'=>$perUnit,'order_quantity'=>$orderQty,'quantity_base_total'=>$quantity,
+                    'unit_cost_snapshot'=>$unit,'cost_status'=>$status,'cost_amount_snapshot'=>$amount,
+                ];
+            }
+            $recipeVersionId=(int)($row['recipe_version_id']??0);
+            $lineStatus=$lineUnknown>0?'partial':($lineEstimated>0?'estimated':($recipeVersionId>0?'known':'unknown'));
+            $lines[(string)$orderItemId]=[
+                'order_item_id'=>$orderItemId,'menu_item_id'=>(int)($row['menu_item_id']??0),
+                'recipe_version_id'=>$recipeVersionId?:null,'recipe_version_no'=>(int)($row['recipe_version_no']??0)?:null,
+                'department'=>(string)($row['department']??'shared'),'known_cost_amount'=>$lineKnown,
+                'estimated_cost_amount'=>$lineEstimated,'unknown_component_count'=>$lineUnknown,'cost_status'=>$lineStatus,
+                'components'=>$components,
+            ];
+            $knownTotal+=$lineKnown;$estimatedTotal+=$lineEstimated;$unknownComponents+=$lineUnknown;
+        }
+        return [
+            'snapshot_version'=>'f1.5-v1','known_cost_amount'=>$knownTotal,'estimated_cost_amount'=>$estimatedTotal,
+            'unknown_component_count'=>$unknownComponents,'lines'=>$lines,
+        ];
+    }
+
     public function orderRecipeSnapshotTx(int $orderId): array
     {
         if(!$this->pdo->inTransaction())throw new \LogicException('Inventory recipe snapshot requires an open transaction.');

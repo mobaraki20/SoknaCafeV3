@@ -120,9 +120,9 @@ final class OrderCommitService
             $this->inventoryOrders->enqueueAccountedTx($orderId,(int)($actor??0));
         }
 
-        // Printing is a secondary durable intent. Queue failure never owns Order success.
-        // Non-table rendering is qualified in F1.5; Order ownership remains canonical here.
-        $this->printing->enqueueOrderTx($orderId,(int)($actor??0));
+        // Table-service printing can be emitted immediately. Staff Consumption defers
+        // printing until its authority document exists so the ticket carries the real consumer identity.
+        if($command['order_context']==='table_service')$this->printing->enqueueOrderTx($orderId,(int)($actor??0));
 
         return [
             'success'=>true,'duplicate'=>false,'order_id'=>$orderId,'order_number'=>$number,

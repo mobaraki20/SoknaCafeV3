@@ -258,7 +258,8 @@ final class Bootstrap
     {
         return $this->staffConsumptionPosting ??= new StaffConsumptionPostingService(
             $this->database(), $this->staffConsumptionFoundation(), $this->staffConsumptionRepository(),
-            $this->orderCatalog(), $this->staffBenefitCalculation(), $this->orders(), $this->staffAccountService()
+            $this->orderCatalog(), $this->staffBenefitCalculation(), $this->orders(), $this->staffAccountService(),
+            $this->inventoryOrders(), $this->printing()
         );
     }
 

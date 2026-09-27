@@ -29,8 +29,11 @@ final class PreparationService
 
         $businessDate=$this->clock->assignment()['business_date'];
         $ordersStmt=$this->pdo->prepare(
-            "SELECT o.id,o.table_id,o.status,o.business_order_number,o.business_date,o.created_at,t.name table_name
-             FROM orders o JOIN cafe_tables t ON t.id=o.table_id
+            "SELECT o.id,o.table_id,o.order_context,o.status,o.business_order_number,o.business_date,o.created_at,t.name table_name,
+                    sc.consumer_personnel_id,sc.consumer_name_snapshot
+             FROM orders o
+             LEFT JOIN cafe_tables t ON t.id=o.table_id
+             LEFT JOIN staff_consumptions sc ON sc.order_id=o.id
              WHERE o.business_date=? AND o.status IN ('accounted','completed')
              ORDER BY o.created_at,o.id"
         );
@@ -94,8 +97,11 @@ final class PreparationService
             $out[]=[
                 'id'=>$orderId,
                 'order_number'=>(int)$order['business_order_number'],
-                'table_id'=>(int)$order['table_id'],
-                'table_name'=>(string)$order['table_name'],
+                'order_context'=>(string)($order['order_context']??'table_service'),
+                'table_id'=>$order['table_id']===null?null:(int)$order['table_id'],
+                'table_name'=>$this->displayContext($order),
+                'consumer_personnel_id'=>$order['consumer_personnel_id']===null?null:(int)$order['consumer_personnel_id'],
+                'consumer_name'=>(string)($order['consumer_name_snapshot']??''),
                 'status'=>(string)$order['status'],
                 'business_date'=>(string)$order['business_date'],
                 'created_at'=>(string)$order['created_at'],
@@ -135,8 +141,10 @@ final class PreparationService
             throw new PreparationException('forbidden_area','این بخش آماده‌سازی برای حساب شما فعال نیست.',403,['area'=>$area]);
 
         $orderStmt=$this->pdo->prepare(
-            "SELECT o.id,o.status,o.table_id,t.name table_name
-             FROM orders o JOIN cafe_tables t ON t.id=o.table_id
+            "SELECT o.id,o.status,o.table_id,o.order_context,t.name table_name,sc.consumer_personnel_id,sc.consumer_name_snapshot
+             FROM orders o
+             LEFT JOIN cafe_tables t ON t.id=o.table_id
+             LEFT JOIN staff_consumptions sc ON sc.order_id=o.id
              WHERE o.id=? FOR UPDATE"
         );
         $orderStmt->execute([$orderId]);
@@ -194,13 +202,25 @@ final class PreparationService
         $upsert->execute([$orderId,$area,$actorId,$signature]);
 
         $this->audit('preparation.claimed','order',$orderId,$actor,[
-            'area'=>$area,'table_id'=>(int)$order['table_id'],'item_signature'=>$signature,
+            'area'=>$area,'order_context'=>(string)($order['order_context']??'table_service'),
+            'table_id'=>$order['table_id']===null?null:(int)$order['table_id'],
+            'consumer_personnel_id'=>$order['consumer_personnel_id']===null?null:(int)$order['consumer_personnel_id'],
+            'consumer_name'=>(string)($order['consumer_name_snapshot']??''),'item_signature'=>$signature,
         ]);
 
         return [
             'success'=>true,'duplicate'=>false,'order_id'=>$orderId,'area'=>$area,
             'claimed_by_user_id'=>$actorId,'item_signature'=>$signature,
         ];
+    }
+
+    private function displayContext(array $order): string
+    {
+        if((string)($order['order_context']??'table_service')==='staff_consumption'){
+            $name=trim((string)($order['consumer_name_snapshot']??''));
+            return 'مصرف پرسنل'.($name!==''?' · '.$name:'');
+        }
+        return (string)($order['table_name']??'');
     }
 
     private function permissionPayload(array $context): array
