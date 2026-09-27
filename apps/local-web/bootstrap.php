@@ -104,6 +104,7 @@ require_once __DIR__ . '/src/Domain/PublicEdge/PublicEdgeSyncException.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicEdgeSyncClient.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicProjectionBuilder.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicEdgePublisherService.php';
+require_once __DIR__ . '/src/Domain/PublicEdge/PublicReenrollmentService.php';
 require_once __DIR__ . '/src/Relay/ExpenseDeferredAdapter.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyException.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyAccessService.php';

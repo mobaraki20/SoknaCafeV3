@@ -52,3 +52,9 @@ Deployment flow:
 5. Verify `GET /health`, then `GET /menu`; table QR URLs use `/menu?table=<opaque-table-token>` and may include `installation=<id>` only when a host intentionally serves multiple paired installations.
 
 `/menu` is Public-owned read projection UI. Guest order/waiter writes always cross the existing realtime relay and remain subject to Local freshness, capability and canonical business revalidation. Guest media is served only by immutable SHA-256 filenames verified again before read.
+
+## G3.3 Emergency / update / takeover
+
+`public/emergency.php` is the stable break-glass entrypoint and does not use the normal Public bootstrap. Normal Public updates use `sokna-component-package-v1` packages and preserve `public/emergency.php`, `src/Emergency/**`, `config.php`, storage, and update trust state. Local Update Center can orchestrate Public verify/stage/activate/repair/rollback through the signed Local/Public owner contract; when Local is unavailable the Emergency Console performs the same Public-owned lifecycle directly.
+
+Provision `relay.secret_encryption_key_base64` with 32 random bytes encoded as base64 before using machine takeover. The Emergency Console can create a one-time A→B enrollment code. Completion atomically activates the fresh installation B, stores its pairing secret encrypted with sodium, and revokes installation A. Old A signatures are rejected after takeover.

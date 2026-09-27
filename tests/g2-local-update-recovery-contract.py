@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
-R=Path(__file__).resolve().parents[3]
+R=Path(__file__).resolve().parents[1]
 def text(p):
     q=R/p
     if not q.is_file(): raise SystemExit(f'FAIL missing {p}')
@@ -14,12 +14,12 @@ need(svc,"(string)($manifest['component']??'')!=='local'",'updater does not rest
 need(stable,'Stable, self-contained Local recovery entrypoint','stable recovery marker missing')
 if "bootstrap.php" in text(stable): raise SystemExit('FAIL stable recovery depends on application bootstrap')
 need(stable,'password_verify','stable recovery code verification missing');need(stable,"lkg_recovery_id",'stable recovery does not use LKG pointer')
-need(center,"G3-owned",'Public G3 boundary missing')
+need(center,"Public lifecycle remains Public-owned",'G3.3 Public owner boundary missing')
 for token in ['update_activate','update_repair','update_rollback','recovery_code_rotate','backup_create','backup_inspect','backup_restore']: need(api,token,'system API missing '+token)
 need(upload,'LocalPage::requireAdmin','update upload not admin-only');need(upload,'hash_equals($expected,$candidate)','update upload CSRF missing')
 for token in ['Update Center','Verify + Stage','Repair همان نسخه','Rollback به LKG','Backup / Recovery','Machine takeover']: need(page,token,'system UI missing '+token)
 need(js,"/system/update-upload.php",'update upload UI not wired');need(js,"/system/recovery-upload.php",'recovery upload UI not wired')
 need(setup,"'zip'",'Browser Setup does not require PHP zip after updater introduction')
 reg=text('apps/local-web/resources/component-registry-v1.json')
-if 'windows_services_owner' not in reg or 'g3_pending' not in reg: raise SystemExit('FAIL bundled component registry lacks owner boundaries')
+if 'windows_services_owner' not in reg or 'public_owned_via_local_orchestration' not in reg: raise SystemExit('FAIL bundled component registry lacks owner boundaries')
 print('PASS G2.3 Local Update/Recovery contract')

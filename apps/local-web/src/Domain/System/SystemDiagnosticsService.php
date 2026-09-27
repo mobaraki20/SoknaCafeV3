@@ -9,6 +9,8 @@ use Sokna\Local\Core\Migrations;
 use Sokna\Local\Core\Observability;
 use Sokna\Local\Domain\Printing\PrintManagementService;
 use Sokna\Local\Setup\BrowserSetupService;
+use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
+use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException;
 use Throwable;
 
 final class SystemDiagnosticsService
@@ -22,6 +24,7 @@ final class SystemDiagnosticsService
         private readonly SupportBundleWriter $bundles,
         private readonly string $packageRoot,
         private readonly string $localWebRoot,
+        private readonly ?PublicEdgeSyncClient $publicClient=null,
     ) {}
 
     public function snapshot(): array
@@ -41,12 +44,17 @@ final class SystemDiagnosticsService
         return [
             'generated_at'=>gmdate('c'),'summary'=>['status'=>$critical>0?'critical':($warnings>0?'warning':'ok'),'critical_count'=>$critical,'warning_count'=>$warnings],
             'checks'=>$checks,'components'=>['local_web'=>$local,'database'=>$database,'runtime'=>$runtime,'print_agent'=>$print,'public_edge'=>$public],
-            'recent_logs'=>$this->bundles->recentLogs(80),
+            'recent_logs'=>$this->mergedLogs($public),
         ];
     }
 
     public function createSupportBundle(): array{return $this->bundles->create($this->snapshot());}
     public function supportBundlePath(string $id): string{return $this->bundles->resolve($id);}
+
+    private function mergedLogs(array $public): array
+    {
+        $local=$this->bundles->recentLogs(80);foreach($local as &$r)$r['source']=$r['source']??'local';unset($r);$remote=[];foreach(array_slice((array)($public['recent_logs']??[]),0,40) as $r)if(is_array($r))$remote[]=['ts'=>(string)($r['at']??''),'level'=>'info','event'=>'public.'.(string)($r['action']??'event'),'correlation_id'=>'','source'=>'public','context'=>['installation_id'=>$r['installation_id']??null,'actor_hint'=>$r['actor_hint']??null]];return array_slice(array_merge($remote,$local),0,100);
+    }
 
     private function localStatus(): array
     {
@@ -94,8 +102,10 @@ final class SystemDiagnosticsService
         $base=$this->safeOrigin((string)$this->config->get('public.base_url',''));$rows=[];
         try{$rows=$this->pdo->query('SELECT channel,status,last_http_status,last_attempt_at,last_success_at FROM public_sync_state ORDER BY channel')->fetchAll(PDO::FETCH_ASSOC)?:[];}catch(Throwable){}
         $latest='';$errors=0;foreach($rows as $r){if((string)($r['status']??'')==='error')$errors++;$v=(string)($r['last_success_at']??'');if($v!==''&&($latest===''||$v>$latest))$latest=$v;}
-        $configured=$base!==''&&trim((string)$this->config->get('public.shared_secret',''))!=='';
-        return ['status'=>!$configured?'not_configured':($errors>0?'attention':($latest!==''?'observed_recently':'configured_unprobed')),'base_origin'=>$base,'productization'=>'G3.2_PUBLISHER','last_sync_at'=>$latest,'sync_channels'=>$rows,'sync_error_count'=>$errors,'note'=>'Local publish/read-model/heartbeat producer is active; live Public probing/update remains G3.3-owned.'];
+        $configured=$base!==''&&trim((string)$this->config->get('public.shared_secret',''))!=='';$live=null;$liveError='';
+        $diag=[];if($configured&&$this->publicClient!==null){try{$diag=$this->publicClient->diagnostics()['body'];$live=(array)($diag['health']??[]);}catch(PublicEdgeSyncException $e){$liveError=$e->errorCode;try{$live=$this->publicClient->health()['body'];}catch(Throwable){}}catch(Throwable){$liveError='public_probe_failed';}}
+        $status=!$configured?'not_configured':(is_array($live)&&($live['ok']??false)?'ok':($liveError!==''?'attention':($errors>0?'attention':($latest!==''?'observed_recently':'configured_unprobed'))));
+        return ['status'=>$status,'base_origin'=>$base,'productization'=>'G3.3_LIVE_HEALTH_EMERGENCY','last_sync_at'=>$latest,'sync_channels'=>$rows,'sync_error_count'=>$errors,'live'=>$live,'version'=>(string)($live['version']??''),'update'=>(array)($diag['update']??($live['update']??[])),'emergency_ready'=>(bool)($live['emergency_ready']??false),'recent_logs'=>(array)($diag['recent_logs']??[]),'probe_error'=>$liveError,'note'=>'Public live health, bounded emergency logs and Public-owned lifecycle are projected into Local.'];
     }
 
     private function safeOrigin(string $value): string

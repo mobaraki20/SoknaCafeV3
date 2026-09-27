@@ -23,6 +23,10 @@ use Sokna\PublicEdge\Remote\RemoteReadModelService;
 use Sokna\PublicEdge\Remote\InstallationProjectionService;
 use Sokna\PublicEdge\Remote\RemoteStaffPageRenderer;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
+use Sokna\PublicEdge\Emergency\EmergencyAccessService;
+use Sokna\PublicEdge\Emergency\PublicUpdateService;
+use Sokna\PublicEdge\Emergency\PairingSecretStore;
+use Sokna\PublicEdge\Emergency\PublicTakeoverService;
 
 final class Bootstrap
 {
@@ -47,6 +51,10 @@ final class Bootstrap
     private ?RemoteReadModelService $remoteReadModelService = null;
     private ?InstallationProjectionService $installationProjectionService = null;
     private ?RemoteStaffPageRenderer $remoteStaffPageRenderer = null;
+    private ?EmergencyAccessService $emergencyAccessService = null;
+    private ?PublicUpdateService $publicUpdateService = null;
+    private ?PairingSecretStore $pairingSecretStore = null;
+    private ?PublicTakeoverService $publicTakeoverService = null;
 
     private function __construct(private readonly Config $config)
     {
@@ -119,6 +127,7 @@ final class Bootstrap
             $this->database(),
             $secrets,
             max(30, (int)$this->config->get('relay.clock_skew_seconds', 300)),
+            $this->config->string('relay.secret_encryption_key_base64'),
         );
     }
 
@@ -139,7 +148,7 @@ final class Bootstrap
 
     public function health(): PublicHealthService
     {
-        return $this->healthService ??= new PublicHealthService($this->database());
+        return $this->healthService ??= new PublicHealthService($this->database(),dirname(__DIR__,2),$this->storageRoot());
     }
 
     public function guestMedia(): GuestMediaStore
@@ -188,6 +197,31 @@ final class Bootstrap
     public function installationProjection(): InstallationProjectionService
     {
         return $this->installationProjectionService ??= new InstallationProjectionService($this->database());
+    }
+
+    public function emergencyAccess(): EmergencyAccessService
+    {
+        return $this->emergencyAccessService ??= new EmergencyAccessService($this->storageRoot());
+    }
+
+    public function publicUpdates(): PublicUpdateService
+    {
+        return $this->publicUpdateService ??= new PublicUpdateService(dirname(__DIR__,2),$this->storageRoot(),dirname(__DIR__,2).'/resources/update-trust-v1.json',function():bool{try{return (int)$this->database()->query('SELECT 1')->fetchColumn()===1;}catch(\Throwable){return false;}});
+    }
+
+    public function pairingSecrets(): PairingSecretStore
+    {
+        return $this->pairingSecretStore ??= new PairingSecretStore($this->database(),$this->config->requiredString('relay.secret_encryption_key_base64'));
+    }
+
+    public function takeover(): PublicTakeoverService
+    {
+        return $this->publicTakeoverService ??= new PublicTakeoverService($this->database(),$this->pairingSecrets(),$this->emergencyAccess());
+    }
+
+    private function storageRoot(): string
+    {
+        $storage=trim($this->config->string('app.storage_dir'));return $storage!==''?$storage:dirname(__DIR__,2).'/storage';
     }
 
     public function remoteStaffRenderer(): RemoteStaffPageRenderer

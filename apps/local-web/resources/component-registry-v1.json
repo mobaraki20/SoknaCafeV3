@@ -20,7 +20,7 @@
       "health_surface": "public_health_plus_local_projection",
       "release_model": "independent_server_deploy_package",
       "install_model": "server_deploy_bootstrap",
-      "lifecycle_action": "g3_pending"
+      "lifecycle_action": "public_owned_via_local_orchestration"
     },
     "windows-runtime": {
       "package_artifact": "SoknaRuntime-<version>-win-x64",

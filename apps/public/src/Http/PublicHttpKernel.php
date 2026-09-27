@@ -120,6 +120,13 @@ final class PublicHttpKernel
             '/api/v1/local/heartbeat'=>(new ConnectivityHttpAdapter($this->core))->heartbeat($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             '/api/v1/local/guest/publish'=>(new GuestSyncHttpAdapter($this->core))->publish($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             '/api/v1/local/guest/availability'=>(new GuestSyncHttpAdapter($this->core))->availability($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
+            '/api/v1/local/emergency/access',
+            '/api/v1/local/diagnostics',
+            '/api/v1/local/update/status',
+            '/api/v1/local/update/stage',
+            '/api/v1/local/update/activate',
+            '/api/v1/local/update/repair',
+            '/api/v1/local/update/rollback'=>(new EmergencyLocalHttpAdapter($this->core))->handle($installationId,'POST',$path,$timestamp,$nonce,$signature,$rawBody),
             default=>SafeErrors::response(404,'route_not_found',$this->correlationId($headers)),
         };
         return $this->json($result);

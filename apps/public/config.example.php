@@ -20,6 +20,8 @@ return [
         // installation_id => shared HMAC secret provisioned by the Local pairing flow.
         'installation_secrets' => [],
         'clock_skew_seconds' => 300,
+        // 32 random bytes, base64-encoded. Used only to encrypt DB-stored re-enrollment pairing secrets.
+        'secret_encryption_key_base64' => 'CHANGE_ME_BASE64_32_BYTES',
     ],
     'auth' => [
         'session_ttl_seconds' => 28800,

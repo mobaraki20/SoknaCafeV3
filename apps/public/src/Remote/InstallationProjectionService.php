@@ -16,6 +16,7 @@ final class InstallationProjectionService
         if($installationId==='' || preg_match('/^[A-Za-z0-9._:-]{1,96}$/D',$installationId)!==1){
             throw new RuntimeException('invalid installation id');
         }
+        $revoked=$this->pdo->prepare('SELECT revoked_at FROM installations WHERE installation_id=? LIMIT 1');$revoked->execute([$installationId]);$rv=$revoked->fetchColumn();if($rv!==false&&$rv!==null&&trim((string)$rv)!=='')throw new RuntimeException('installation revoked');
         $display=trim((string)($body['display_name']??''));
         $remote=!array_key_exists('remote_enabled',$body) || !empty($body['remote_enabled']);
         $orders=!array_key_exists('order_intake_enabled',$body) || !empty($body['order_intake_enabled']);

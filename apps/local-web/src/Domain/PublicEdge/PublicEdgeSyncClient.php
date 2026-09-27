@@ -21,11 +21,26 @@ final class PublicEdgeSyncClient
         if($raw===false&&$status===0)throw new PublicEdgeSyncException('public_unreachable','ارتباط با Public Edge برقرار نشد.',503);
         return $this->normalizeResponse(['status'=>$status,'body'=>(string)$raw]);
     }
-    public function installationId(): string{return trim($this->config->string('installation.id',''));}
-    private function baseUrl(): string
+
+    public function diagnostics(): array{return $this->post('/api/v1/local/diagnostics',[]);}
+    public function health(): array
     {
-        $u=rtrim(trim($this->config->string('public.base_url','')),'/');if($u==='')return '';$p=parse_url($u);if(!is_array($p))return '';$scheme=strtolower((string)($p['scheme']??''));$host=strtolower((string)($p['host']??''));if($host==='')return '';
-        if($scheme==='https')return $u;if($scheme==='http'&&in_array($host,['127.0.0.1','localhost','::1'],true))return $u;return '';
+        $base=$this->baseUrl();if($base==='')throw new PublicEdgeSyncException('public_not_configured','Public Edge هنوز پیکربندی نشده است.',409);
+        if(is_callable($this->transport)){$r=($this->transport)($base.'/health','GET',['Accept'=>'application/json'],'');return $this->normalizeResponse($r);}
+        $ctx=stream_context_create(['http'=>['method'=>'GET','header'=>"Accept: application/json\r\n",'timeout'=>5,'ignore_errors'=>true],'ssl'=>['verify_peer'=>true,'verify_peer_name'=>true]]);$raw=@file_get_contents($base.'/health',false,$ctx);$status=0;foreach((array)($http_response_header??[]) as $line)if(preg_match('#^HTTP/\S+\s+(\d{3})#',$line,$m)){$status=(int)$m[1];break;}if($raw===false&&$status===0)throw new PublicEdgeSyncException('public_unreachable','ارتباط با Public Edge برقرار نشد.',503);return $this->normalizeResponse(['status'=>$status,'body'=>(string)$raw]);
+    }
+    public function reenroll(string $baseUrl,string $code,string $newSecret,string $displayName=''): array
+    {
+        $base=$this->normalizeBase($baseUrl);if($base==='')throw new PublicEdgeSyncException('public_url_invalid','نشانی Public معتبر نیست.',422);$payload=['new_installation_id'=>$this->installationId(),'enrollment_code'=>$code,'new_shared_secret'=>$newSecret,'display_name'=>$displayName];$body=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+        if(is_callable($this->transport)){$r=($this->transport)($base.'/emergency.php?action=reenroll','POST',['Content-Type'=>'application/json'],$body);return $this->normalizeResponse($r);}
+        $ctx=stream_context_create(['http'=>['method'=>'POST','header'=>"Content-Type: application/json\r\nAccept: application/json\r\n",'content'=>$body,'timeout'=>10,'ignore_errors'=>true],'ssl'=>['verify_peer'=>true,'verify_peer_name'=>true]]);$raw=@file_get_contents($base.'/emergency.php?action=reenroll',false,$ctx);$status=0;foreach((array)($http_response_header??[]) as $line)if(preg_match('#^HTTP/\S+\s+(\d{3})#',$line,$m)){$status=(int)$m[1];break;}if($raw===false&&$status===0)throw new PublicEdgeSyncException('public_unreachable','ارتباط با Public Edge برقرار نشد.',503);return $this->normalizeResponse(['status'=>$status,'body'=>(string)$raw]);
+    }
+
+    public function installationId(): string{return trim($this->config->string('installation.id',''));}
+    private function baseUrl(): string{return $this->normalizeBase($this->config->string('public.base_url',''));}
+    private function normalizeBase(string $u): string
+    {
+        $u=rtrim(trim($u),'/');if($u==='')return '';$p=parse_url($u);if(!is_array($p))return '';$scheme=strtolower((string)($p['scheme']??''));$host=strtolower((string)($p['host']??''));if($host==='')return '';if($scheme==='https')return $u;if($scheme==='http'&&in_array($host,['127.0.0.1','localhost','::1'],true))return $u;return '';
     }
     private function secret(): string{return trim($this->config->string('public.shared_secret',''));}
     private function signatureBase(string $method,string $path,string $timestamp,string $nonce,string $body): string{return implode("\n",['sokna-relay-v1',strtoupper($method),'/'.ltrim($path,'/'),$timestamp,$nonce,hash('sha256',$body)]);}

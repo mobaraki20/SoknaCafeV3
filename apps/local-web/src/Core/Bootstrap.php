@@ -82,6 +82,7 @@ use Sokna\Local\Domain\Update\ComponentUpdateCenterService;
 use Sokna\Local\Domain\Recovery\RecoveryWorkspaceService;
 use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
 use Sokna\Local\Domain\PublicEdge\PublicProjectionBuilder;
+use Sokna\Local\Domain\PublicEdge\PublicReenrollmentService;
 use Sokna\Local\Domain\PublicEdge\PublicEdgePublisherService;
 final class Bootstrap
 {
@@ -149,6 +150,7 @@ final class Bootstrap
     private ?PublicEdgeSyncClient $publicEdgeSyncClient = null;
     private ?PublicProjectionBuilder $publicProjectionBuilder = null;
     private ?PublicEdgePublisherService $publicEdgePublisher = null;
+    private ?PublicReenrollmentService $publicReenrollmentService = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
     private ?SupplyService $supply = null;
@@ -532,7 +534,7 @@ final class Bootstrap
     {
         return $this->systemDiagnostics ??= new SystemDiagnosticsService(
             $this->database(),$this->config,$this->observability,$this->migrations(),$this->printManagement(),$this->supportBundles(),
-            dirname(__DIR__,4),dirname(__DIR__,2)
+            dirname(__DIR__,4),dirname(__DIR__,2),$this->publicEdgeSyncClient()
         );
     }
 
@@ -570,6 +572,11 @@ final class Bootstrap
     {
         $v=@file_get_contents(dirname(__DIR__,4).'/VERSION.txt');
         return $this->publicEdgePublisher ??= new PublicEdgePublisherService($this->database(),$this->publicEdgeSyncClient(),$this->publicProjectionBuilder(),$this->observability(),is_string($v)&&trim($v)!==''?trim($v):'unknown');
+    }
+
+    public function publicReenrollment(): PublicReenrollmentService
+    {
+        return $this->publicReenrollmentService ??= new PublicReenrollmentService($this->config,$this->publicEdgeSyncClient(),dirname(__DIR__,4).'/config.php');
     }
 
     public function expenseDeferred(): ExpenseDeferredAdapter

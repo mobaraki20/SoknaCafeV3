@@ -12,6 +12,12 @@ try{
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
     if($action==='support_bundle')WebAction::json(['success'=>true,'bundle'=>$core->systemDiagnostics()->createSupportBundle()]);
     if($action==='public_sync')WebAction::json(['success'=>true,'public_sync'=>$core->publicEdgePublisher()->syncAll()]);
+    if($action==='public_emergency_code_rotate')WebAction::json(['success'=>true,'emergency'=>$core->publicEdgePublisher()->rotateEmergencyCode()]);
+    if($action==='public_update_status')WebAction::json(['success'=>true,'public_update'=>$core->publicEdgePublisher()->updateStatus()]);
+    if($action==='public_update_activate')WebAction::json(['success'=>true,'public_update'=>$core->publicEdgePublisher()->activateUpdate()]);
+    if($action==='public_update_repair')WebAction::json(['success'=>true,'public_update'=>$core->publicEdgePublisher()->repairUpdate()]);
+    if($action==='public_update_rollback')WebAction::json(['success'=>true,'public_update'=>$core->publicEdgePublisher()->rollbackUpdate()]);
+    if($action==='public_reenroll')WebAction::json(['success'=>true,'reenrollment'=>$core->publicReenrollment()->complete((string)($data['base_url']??''),(string)($data['enrollment_code']??''),(string)($data['display_name']??''),$actorId)]);
     if($action==='update_activate')WebAction::json(['success'=>true,'update_center'=>$core->localUpdates()->activateStaged($actorId)]);
     if($action==='update_repair')WebAction::json(['success'=>true,'update_center'=>$core->localUpdates()->repairStaged($actorId)]);
     if($action==='update_rollback')WebAction::json(['success'=>true,'update_center'=>$core->localUpdates()->rollback($actorId)]);
