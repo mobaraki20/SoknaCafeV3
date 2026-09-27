@@ -48,4 +48,5 @@ ProductShell::start($core,$user,'انبار، تأمین و هزینه‌ها','
   <dialog class="sc-dialog" data-dialog="expense-reverse"><form method="dialog" class="sc-card__body sc-form" data-form="expense-reverse"><h2>برگشت هزینه</h2><input type="hidden" name="expense_id"><p class="sc-muted" data-reverse-expense></p><label class="sc-field"><span class="sc-field__label">دلیل</span><textarea class="sc-control" name="reason" rows="3" required></textarea></label><div class="sc-actions"><button class="sc-button sc-button--danger" value="submit">ثبت برگشت</button><button class="sc-button sc-button--secondary" value="cancel">انصراف</button></div></form></dialog><?php endif; ?>
 </section>
 <script src="/assets/operations-workspace.js" defer></script>
+<?php if($isAdmin): ?><script src="/assets/deferred-review-workspace.js" defer></script><?php endif; ?>
 <?php ProductShell::end(); ?>
