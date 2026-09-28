@@ -36,6 +36,8 @@ require_once __DIR__ . '/src/Remote/RemoteStaffPageRenderer.php';
 require_once __DIR__ . '/src/Http/RemoteReadModelHttpAdapter.php';
 require_once __DIR__ . '/src/Http/AuthHttpAdapter.php';
 require_once __DIR__ . '/src/Http/ConnectivityHttpAdapter.php';
+require_once __DIR__ . '/src/Http/RealtimeHttpAdapter.php';
+require_once __DIR__ . '/src/Http/DeferredHttpAdapter.php';
 require_once __DIR__ . '/src/Http/GuestSyncHttpAdapter.php';
 require_once __DIR__ . '/src/Http/InstallationProjectionHttpAdapter.php';
 require_once __DIR__ . '/src/Http/HealthHttpAdapter.php';

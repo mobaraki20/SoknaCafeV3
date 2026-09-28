@@ -38,3 +38,7 @@ opsapi=read('apps/local-web/public/operations/api.php');opsjs=read('apps/local-w
 need('deferred_resolve' in opsapi and 'pendingReviews' in opsapi,'Local deferred review API missing')
 need('renderReviews' in opsjs and 'deferred_resolve' in opsjs and 'deferred-review-workspace.js' in opsindex,'Local deferred review UI missing')
 print('PASS G4.1 cross-component parity source contract')
+# Public kernel adapters must be loaded by the runtime bootstrap, not only by isolated tests.
+bootstrap=read('apps/public/bootstrap.php')
+for adapter in ['RealtimeHttpAdapter.php','DeferredHttpAdapter.php']:
+    need('/src/Http/'+adapter in bootstrap,'public bootstrap missing '+adapter)
