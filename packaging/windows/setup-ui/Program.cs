@@ -282,8 +282,8 @@ internal sealed class SetupForm : Form
     private TabPage BuildLifecycleTab()
     {
         var page = new TabPage("۲. نصب و نگهداری") { RightToLeft = RightToLeft.Yes, AutoScroll = true };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 7, RightToLeft = RightToLeft.Yes };
-        for (var i = 0; i < 7; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 8, RightToLeft = RightToLeft.Yes };
+        for (var i = 0; i < 8; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         layout.Controls.Add(InfoBox(
             "این مرحله چه کاری انجام می‌دهد؟",
@@ -330,8 +330,8 @@ internal sealed class SetupForm : Form
     private TabPage BuildDiagnosticsTab()
     {
         var page = new TabPage("۳. وضعیت و عیب‌یابی") { RightToLeft = RightToLeft.Yes, AutoScroll = true };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 5, RightToLeft = RightToLeft.Yes };
-        for (var i = 0; i < 5; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 6, RightToLeft = RightToLeft.Yes };
+        for (var i = 0; i < 6; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         layout.Controls.Add(InfoBox(
             "فقط نصب بودن سرویس کافی نیست",
