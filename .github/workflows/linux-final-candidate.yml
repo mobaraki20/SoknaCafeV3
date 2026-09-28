@@ -1,0 +1,99 @@
+name: linux final candidate
+on:
+  push:
+    branches: [transfer/v3-final-menu-041db67-helper]
+    paths: [.github/workflows/linux-final-candidate.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: 3306
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+      - name: reconstruct candidate from uploaded bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          d="${RUNNER_TEMP}/src"
+          mkdir -p "$d"
+          cd "$d"
+          git init
+          git fetch "${GITHUB_WORKSPACE}/.transfer/soknacafev3-git-041db67ba5fa.bundle" refs/heads/transfer-final-menu-041db67:refs/heads/audited
+          git checkout audited
+      - name: apply discovered audited fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/src"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('apps/local-web/src/Domain/Printing/PrintTemplatePackageService.php')
+          s=p.read_text(encoding='utf-8').replace('u.name created_by_name','u.display_name created_by_name')
+          p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('apps/public/bootstrap.php')
+          s=p.read_text(encoding='utf-8')
+          marker="require_once __DIR__ . '/src/Http/ConnectivityHttpAdapter.php';\n"
+          if 'RealtimeHttpAdapter.php' not in s:
+              s=s.replace(marker,marker+"require_once __DIR__ . '/src/Http/RealtimeHttpAdapter.php';\nrequire_once __DIR__ . '/src/Http/DeferredHttpAdapter.php';\n")
+          p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('tests/g3-remote-staff-publisher-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("fetchColumn()===6,'remote models missing'","fetchColumn()===7,'remote models missing'")
+          p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('tests/g4-cross-component-parity-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("['waiter_call_enabled','1']]","['waiter_call_enabled','1'],['module.inventory.enabled','1'],['module.supply.enabled','1'],['inventory_initialized','1'],['inventory_reconciliation_required','0']]",1)
+          p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('tests/local-f1-staff-operational-integration-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("$core->migrations()->migrate();$pdo=$core->database();","$core->migrations()->migrate();$pdo=$core->database();$businessDate=(string)$core->businessClock()->assignment()['business_date'];")
+          s=s.replace("'occurred_at'=>'2026-09-27 12:00:00'","'occurred_at'=>$businessDate.' 12:00:00'")
+          p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('tests/local-mysql-migration-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("'0022_g3_public_edge_sync', '0023_g4_guest_content_platform'];","'0022_g3_public_edge_sync', '0023_g4_guest_content_platform', '0024_g4_business_extensions', '0025_g4_print_template_packages'];")
+          s=s.replace("'guest_content_config', 'guest_media_assets', 'guest_media_derivatives', 'guest_media_references'] as $table)","'guest_content_config', 'guest_media_assets', 'guest_media_derivatives', 'guest_media_references', 'marketing_campaigns', 'marketing_events', 'notification_preferences', 'notification_push_subscriptions', 'notification_outbox', 'notification_inbox', 'print_template_packages', 'print_template_activations'] as $table)")
+          p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('tests/g4-4-print-template-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("$applied=$core->migrations()->migrate();g44db(in_array('0025_g4_print_template_packages',$applied,true),'G4.4 migration missing');$pdo=$core->database();","$core->migrations()->migrate();$pdo=$core->database();$mq=$pdo->prepare('SELECT COUNT(*) FROM schema_migrations WHERE migration=?');$mq->execute(['0025_g4_print_template_packages']);g44db((int)$mq->fetchColumn()===1,'G4.4 migration missing');")
+          p.write_text(s,encoding='utf-8',newline='\n')
+          PY
+      - name: install php extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+      - name: run full g4 qualification chain
+        shell: bash
+        run: |
+          cd "${RUNNER_TEMP}/src"
+          ./tests/run-g4-4-product-qualification.sh
