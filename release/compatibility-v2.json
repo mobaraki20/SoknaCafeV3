@@ -1,7 +1,7 @@
 {
   "components": {
     "local-web": {
-      "version": "3.0.0-g6.3-dev"
+      "version": "3.0.0-g6.4-dev"
     },
     "print-agent": {
       "version": "6.2.7"
