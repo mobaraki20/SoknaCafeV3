@@ -25,7 +25,14 @@
   "ports": {
     "apache": 80,
     "mariadb": 3306,
-    "bind_address": "127.0.0.1"
+    "bind_address": "127.0.0.1",
+    "apache_fallback_candidates": [
+      8080,
+      8081,
+      8088,
+      8000,
+      8888
+    ]
   },
   "release_lock": {
     "relative_path": "release-lock.json",
