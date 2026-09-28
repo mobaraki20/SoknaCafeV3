@@ -221,6 +221,29 @@ jobs:
             Remove-Item $oldRoot,$newRoot -Recurse -Force -ErrorAction SilentlyContinue
           }
 
+      - name: Allow orphaned Apache service with missing executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $oldRoot='E:\SOKNA-ORPHAN'
+          $targetRoot='D:\SOKNA-TARGET'
+          $missingExe=Join-Path $oldRoot 'Infrastructure\Apache\bin\httpd.exe'
+          try {
+            $old=Get-Service SoknaApache -ErrorAction SilentlyContinue
+            if($old){& sc.exe delete SoknaApache|Out-Null;$old.Dispose();Start-Sleep -Milliseconds 500}
+            New-Service -Name SoknaApache -BinaryPathName ('"'+$missingExe+'" -k runservice -n SoknaApache') -DisplayName 'SOKNA Apache orphan CI' -StartupType Manual|Out-Null
+            if(Test-Path $missingExe){throw 'Orphan fixture executable must not exist'}
+            $probe=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$targetRoot,'11.4.12') -Wait -PassThru
+            if($probe.ExitCode-ne0){throw "Orphaned Apache registration should be recoverable; got $($probe.ExitCode)"}
+            if(Test-Path $targetRoot){throw 'Orphaned Apache preflight mutated target root'}
+          }
+          finally {
+            $old=Get-Service SoknaApache -ErrorAction SilentlyContinue
+            if($old){& sc.exe delete SoknaApache|Out-Null;$old.Dispose();Start-Sleep -Milliseconds 500}
+            Remove-Item $oldRoot,$targetRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
