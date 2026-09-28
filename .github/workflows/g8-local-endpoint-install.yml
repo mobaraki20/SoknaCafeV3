@@ -139,8 +139,11 @@ jobs:
           $badPath=Join-Path $root 'runtime-bad.json'
           $bad|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $badPath -Encoding UTF8
           & $exe --config $badPath --self-test
-          if($LASTEXITCODE-eq0){throw 'Runtime accepted non-loopback Local endpoint.'}
+          $badExit=$LASTEXITCODE
+          if($badExit-eq0){throw 'Runtime accepted non-loopback Local endpoint.'}
+          $global:LASTEXITCODE=0
           Write-Host 'Runtime endpoint scenarios: PASS'
+          exit 0
       - name: Parse Windows lifecycle scripts
         shell: powershell
         run: |
