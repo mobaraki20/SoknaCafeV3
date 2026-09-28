@@ -59,6 +59,21 @@ jobs:
           git checkout audited
           test "$(git rev-parse HEAD)" = "${audited_head}"
 
+      - name: apply candidate migration qualification fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="${RUNNER_TEMP}/sokna-source"
+          cd "$source_dir"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tests/local-mysql-migration-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("'0022_g3_public_edge_sync', '0023_g4_guest_content_platform'];","'0022_g3_public_edge_sync', '0023_g4_guest_content_platform', '0024_g4_business_extensions', '0025_g4_print_template_packages'];")
+          s=s.replace("'guest_content_config', 'guest_media_assets', 'guest_media_derivatives', 'guest_media_references'] as $table)","'guest_content_config', 'guest_media_assets', 'guest_media_derivatives', 'guest_media_references', 'marketing_campaigns', 'marketing_events', 'notification_preferences', 'notification_push_subscriptions', 'notification_outbox', 'notification_inbox', 'print_template_packages', 'print_template_activations'] as $table)")
+          p.write_text(s,encoding='utf-8',newline='\n')
+          PY
+
       - name: install php db and zip extensions
         shell: bash
         run: |
@@ -90,6 +105,8 @@ jobs:
 
   windows-real-env:
     runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
     steps:
       - name: checkout helper branch
         uses: actions/checkout@v4
