@@ -1502,14 +1502,18 @@ internal sealed class MainForm : Form
             var rewriteReady=Regex.IsMatch(text, @"(?im)^\s*LoadModule\s+rewrite_module\s+modules/mod_rewrite\.so\s*$");
             var phpDll=Path.Combine(PhpPath(),"php8apache2_4.dll").Replace("\\","/");
             var phpReady=Regex.IsMatch(text, @"(?im)^\s*LoadModule\s+php_module\s+""" + Regex.Escape(phpDll) + @"""\s*$");
+            var sodiumDll=Path.Combine(PhpPath(),"libsodium.dll").Replace("\\","/");
+            var sodiumReady=File.Exists(Path.Combine(PhpPath(),"libsodium.dll")) &&
+                Regex.IsMatch(text, @"(?im)^\s*LoadFile\s+""" + Regex.Escape(sodiumDll) + @"""\s*$");
             var web=WebPublicPath().Replace("\\","/");
             var documentRootReady=Regex.IsMatch(text, @"(?im)^\s*DocumentRoot\s+""" + Regex.Escape(web) + @"""\s*$");
             var directoryReady=Regex.IsMatch(text, @"(?is)<Directory\s+""" + Regex.Escape(web) + @"""\s*>.*?AllowOverride\s+All.*?</Directory>");
             if(!rewriteReady) Log("Apache readiness: mod_rewrite is not enabled.");
             if(!phpReady) Log("Apache readiness: PHP module binding is missing or stale.");
+            if(!sodiumReady) Log("Apache readiness: PHP libsodium dependency is not explicitly loaded.");
             if(!documentRootReady) Log("Apache readiness: DocumentRoot is not Local Web public.");
             if(!directoryReady) Log("Apache readiness: Local Web directory does not allow .htaccess overrides.");
-            return rewriteReady&&phpReady&&documentRootReady&&directoryReady;
+            return rewriteReady&&phpReady&&sodiumReady&&documentRootReady&&directoryReady;
         }
         catch(Exception ex)
         {
@@ -1609,6 +1613,9 @@ internal sealed class MainForm : Form
         var a = Slash(ApachePath());
         var p = Slash(PhpPath());
         var w = Slash(WebPublicPath());
+        var sodium = Path.Combine(PhpPath(), "libsodium.dll");
+        if (!File.Exists(sodium))
+            throw new InvalidOperationException("libsodium.dll داخل بسته PHP پیدا نشد؛ sodium داخل Apache بدون این dependency قابل اتکا نیست.");
         var text = File.ReadAllText(conf, Encoding.UTF8);
         text = Regex.Replace(text, "(?im)^\\s*Define\\s+SRVROOT\\s+\\\".*?\\\"\\s*$", $"Define SRVROOT \"{a}\"");
         text = new Regex(@"(?im)^\s*Listen\s+.*$").Replace(text, $"Listen 127.0.0.1:{ApachePort()}", 1);
@@ -1629,6 +1636,7 @@ internal sealed class MainForm : Form
         text += $"""
 # BEGIN SOKNA MANAGED
 ServerName 127.0.0.1:{ApachePort()}
+LoadFile "{Slash(sodium)}"
 LoadModule php_module "{p}/php8apache2_4.dll"
 PHPIniDir "{p}"
 <FilesMatch \.php$>
@@ -2306,6 +2314,12 @@ echo json_encode($out, JSON_UNESCAPED_SLASHES);
                 diag.AppendLine($"Apache={ServiceStatus("SoknaApache")}; Port{ApachePort()}={TcpOpen(ApachePort())}");
                 diag.AppendLine($"ApacheImagePath={InfrastructureOwnershipDetector.ReadServiceImagePath("SoknaApache") ?? "<not-registered>"}");
                 diag.AppendLine($"ApacheLocalWebConfigReady={(File.Exists(apacheConf) && ApacheConfigurationReady(apacheConf))}");
+                var phpSodium=Path.Combine(PhpPath(),"ext","php_sodium.dll");
+                var sodiumRuntime=Path.Combine(PhpPath(),"libsodium.dll");
+                diag.AppendLine($"PhpSodiumExtension={phpSodium}; Exists={File.Exists(phpSodium)}; SHA256={(File.Exists(phpSodium)?Sha256(phpSodium):"<missing>")}");
+                diag.AppendLine($"PhpSodiumRuntime={sodiumRuntime}; Exists={File.Exists(sodiumRuntime)}; SHA256={(File.Exists(sodiumRuntime)?Sha256(sodiumRuntime):"<missing>")}");
+                var apacheSodium=Path.Combine(ApachePath(),"bin","libsodium.dll");
+                diag.AppendLine($"ApacheBinSodium={apacheSodium}; Exists={File.Exists(apacheSodium)}; SHA256={(File.Exists(apacheSodium)?Sha256(apacheSodium):"<missing>")}");
                 diag.AppendLine($"MariaDB={ServiceStatus("SoknaMariaDB")}; Port3306={TcpOpen(3306)}");
                 diag.AppendLine($"MariaDataPresent={MariaDataInitialized()}");
                 var ownership=InfrastructureOwnershipDetector.Detect(RootPath(),Artifact("mariadb").Version);
