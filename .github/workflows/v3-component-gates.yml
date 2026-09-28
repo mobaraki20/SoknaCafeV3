@@ -122,6 +122,9 @@ jobs:
           SOKNA_TEST_DB_USER: sokna
           SOKNA_TEST_DB_PASS: sokna
         run: php tests/local-mysql-migration-selftest.php
+      - name: Reset Local CI schema before independent clean-install scenario
+        env: *local_db_env
+        run: php tests/reset-local-test-schema.php
       - name: Validate Browser Setup + generated Windows pairing on non-default port
         env: *local_db_env
         run: php tests/local-g2-browser-setup-selftest.php
