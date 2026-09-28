@@ -31,4 +31,10 @@ for f in ('apps/public/tools/build-deploy-package.py','apps/public/tools/build-u
  s=text(f)
  if "does not match Public VERSION.txt" not in s: fail(f'{f}: explicit version mismatch fence missing')
 if 'does not match Local VERSION.txt' not in text('apps/local-web/tools/build-update-package.py'): fail('Local version mismatch fence missing')
+local_pipe=pipes['components']['local-web']
+if local_pipe.get('install_builder')!='apps/local-web/tools/build-clean-install-package.py' or not (R/local_pipe['install_builder']).is_file(): fail('Local clean-install builder missing')
+if local_pipe.get('install_artifact')!='SoknaCafeV3-local-web-install-<version>.zip': fail('Local clean-install artifact contract drift')
+clean=text(local_pipe['install_builder'])
+for token in ('sokna-local-web-clean-install-v1','document_root','public/index.php','config.php','install.lock'):
+ if token not in clean: fail('Local clean-install builder guard missing: '+token)
 print('PASS G6 component release contract')
