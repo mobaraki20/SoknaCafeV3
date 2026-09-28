@@ -42,6 +42,11 @@ jobs:
         with: {dotnet-version: '10.0.x'}
       - name: Compile prerequisites UI
         run: dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-smoke
+      - name: Exercise Local Web port selection and occupied-port detection
+        shell: pwsh
+        run: |
+          & packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe --self-test-endpoint-port
+          if($LASTEXITCODE -ne 0){ throw "Prerequisites endpoint-port self-test failed: $LASTEXITCODE" }
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
