@@ -57,7 +57,7 @@
       ],
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "apps/local-web/VERSION.txt",
-      "current_version": "3.0.0-g6.3-dev",
+      "current_version": "3.0.0-g6.4-dev",
       "artifact_pipeline": "apps/local-web/tools/build-update-package.py",
       "release_compatibility_manifest": "release/compatibility-v2.json",
       "install_package_artifact": "SoknaCafeV3-local-web-install-<version>.zip",
