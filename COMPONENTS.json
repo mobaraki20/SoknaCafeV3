@@ -56,7 +56,7 @@
       ],
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "apps/local-web/VERSION.txt",
-      "current_version": "3.0.0-g6.2-dev",
+      "current_version": "3.0.0-g6.3-dev",
       "artifact_pipeline": "apps/local-web/tools/build-update-package.py",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },
@@ -140,7 +140,7 @@
       ],
       "current_state": "CORE_COMPLETE",
       "version_source": "windows/runtime/source/Sokna.Runtime.Service.csproj#Version",
-      "current_version": "1.0.0",
+      "current_version": "1.0.1",
       "artifact_pipeline": "windows/runtime/build-component-package.ps1",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },
@@ -226,7 +226,7 @@
       ],
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "packaging/windows/WINDOWS_SERVICES_VERSION.txt",
-      "current_version": "1.0.3",
+      "current_version": "1.0.4",
       "compatibility_manifest": "packaging/windows/windows-services-compatibility-v1.json",
       "artifact_pipeline": "packaging/windows/scripts/build-installer.ps1",
       "release_compatibility_manifest": "release/compatibility-v2.json"
