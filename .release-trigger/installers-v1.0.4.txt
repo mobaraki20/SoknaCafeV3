@@ -1,0 +1,1 @@
+Publish qualified SOKNA installer assets for v1.0.4.
