@@ -9,6 +9,7 @@ def txt(p): return (R/p).read_text(encoding='utf-8')
 
 compat=json.loads(txt('packaging/windows/windows-services-compatibility-v1.json'))
 pre=json.loads(txt('platform/windows/prerequisites.json'))
+infra=json.loads(txt('platform/windows/infrastructure-prerequisites.json'))
 lock=json.loads(txt('platform/windows/release-lock.json'))
 need(compat['format']=='sokna-windows-services-compatibility-v1' and compat['schema_version']==1,'compatibility manifest format')
 need(compat['external_infrastructure']['owner']=='external' and compat['external_infrastructure']['installer_ownership'] is False,'external ownership not fenced')
@@ -26,9 +27,13 @@ need(compat['package_version']==txt('packaging/windows/WINDOWS_SERVICES_VERSION.
 need(pre['format']=='sokna-windows-prerequisites-v2' and pre['ownership']=='external','prerequisite policy format/ownership')
 need(pre['automatic_download_allowed'] is True and pre['automatic_install_allowed'] is False,'download/install policy incorrect')
 byid={x['id']:x for x in pre['items']}
-need({'php','apache','mariadb','vc_runtime'}<=set(byid),'prerequisite coverage incomplete')
-need(all(not byid[x]['blocks_windows_services'] for x in ['php','apache','mariadb']),'Local Web infrastructure must not block Windows Services')
+need(set(byid)=={'vc_runtime'},'Windows Services prerequisite surface must only contain direct service blockers')
 need(byid['vc_runtime']['blocks_windows_services'] is True,'VC runtime must block service activation until compatible')
+need(infra['format']=='sokna-infrastructure-prerequisites-v1' and infra['schema_version']==1,'independent infrastructure prerequisite contract missing')
+need(infra['automatic_download_allowed'] is True and infra['automatic_install_allowed'] is True,'infrastructure helper automation policy incorrect')
+need(infra['local_web_payload_allowed'] is False and infra['database_application_provisioning_allowed'] is False,'infrastructure helper leaks Local Web/database ownership')
+need({x['id'] for x in infra['items']}=={'php','apache','mariadb'},'infrastructure prerequisite coverage incomplete')
+need(infra['recovery']['never_initialize_existing_mariadb_data'] is True,'MariaDB preservation guard missing')
 need(lock['format']=='sokna-windows-prerequisite-lock-v1' and lock['release_frozen'] is True,'release lock not frozen')
 for a in lock['artifacts']:
     need(a['source_url'].startswith('https://'),'non-HTTPS prerequisite source')
