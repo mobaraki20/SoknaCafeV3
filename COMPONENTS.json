@@ -30,7 +30,8 @@
         "local-public-realtime",
         "local-public-deferred",
         "runtime-api",
-        "print-agent-api"
+        "print-agent-api",
+        "local-endpoint"
       ],
       "tests_gates": [
         "tests/local-core-contract.py",
@@ -116,7 +117,8 @@
         "contracts/runtime-api/**"
       ],
       "compatibility_dependencies": [
-        "runtime-api"
+        "runtime-api",
+        "local-endpoint"
       ],
       "tests_gates": [
         "tests/m7-runtime-gate.py",
@@ -156,7 +158,8 @@
         "contracts/print-agent-api/**"
       ],
       "compatibility_dependencies": [
-        "print-agent-api"
+        "print-agent-api",
+        "local-endpoint"
       ],
       "tests_gates": [
         "tests/m8-print-agent-gate.py",
@@ -201,7 +204,8 @@
       "compatibility_dependencies": [
         "windows-runtime",
         "print-agent",
-        "infrastructure-compatibility"
+        "infrastructure-compatibility",
+        "local-endpoint"
       ],
       "tests_gates": [
         "tests/m9-packaging-gate.py",
@@ -296,7 +300,7 @@
       ],
       "current_state": "VERSIONED_FROZEN_BY_DEFAULT",
       "version_source": "contracts/VERSION.txt",
-      "current_version": "0.1.0-dev",
+      "current_version": "0.1.1-dev",
       "artifact_pipeline": "release/build-contracts-package.py",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },
