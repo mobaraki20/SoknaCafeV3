@@ -45,8 +45,8 @@ jobs:
       - name: Exercise Local Web port selection and occupied-port detection
         shell: pwsh
         run: |
-          & packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe --self-test-endpoint-port
-          if($LASTEXITCODE -ne 0){ throw "Prerequisites endpoint-port self-test failed: $LASTEXITCODE" }
+          $p=Start-Process -FilePath "packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe" -ArgumentList "--self-test-endpoint-port" -Wait -PassThru -NoNewWindow
+          if($p.ExitCode -ne 0){ throw "Prerequisites endpoint-port self-test failed: $($p.ExitCode)" }
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
