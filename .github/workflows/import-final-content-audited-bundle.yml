@@ -1,0 +1,54 @@
+name: Import final content-audited V3 bundle
+
+on:
+  push:
+    branches:
+      - transfer/v3-final-content-audit-b55f9f8
+    paths:
+      - .transfer/SoknaCafeV3-git-b55f9f8081da.bundle
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@v4
+
+      - name: Verify uploaded bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE=".transfer/SoknaCafeV3-git-b55f9f8081da.bundle"
+          echo "2081988233ed2e3c0a5cfd13b62f32f673d47dd6f97bfac948f6af7784dec15c  $BUNDLE" | sha256sum -c -
+          git bundle verify "$BUNDLE"
+          test "$(git bundle list-heads "$BUNDLE" | awk '$2=="HEAD"{print $1}')" = "b55f9f8081da353c781559638b5e3c12104be416"
+
+      - name: Reconstruct audited source history
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BUNDLE="$GITHUB_WORKSPACE/.transfer/SoknaCafeV3-git-b55f9f8081da.bundle"
+          rm -rf /tmp/sokna-content-audited
+          git clone "$BUNDLE" /tmp/sokna-content-audited
+          cd /tmp/sokna-content-audited
+          EXPECTED="b55f9f8081da353c781559638b5e3c12104be416"
+          test "$(git rev-parse HEAD)" = "$EXPECTED"
+          git remote remove origin || true
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:refs/heads/transfer/v3-final-content-audited-source --force
+
+      - name: Verify pushed branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          EXPECTED="b55f9f8081da353c781559638b5e3c12104be416"
+          REMOTE_HEAD="$(git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" refs/heads/transfer/v3-final-content-audited-source | awk '{print $1}')"
+          test "$REMOTE_HEAD" = "$EXPECTED"
+          echo "FINAL_CONTENT_AUDITED_TRANSFER_PASS"
