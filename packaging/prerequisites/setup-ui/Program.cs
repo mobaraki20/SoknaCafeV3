@@ -504,9 +504,9 @@ internal sealed class MainForm : Form
         var p = Slash(PhpPath());
         var w = Slash(WebPath());
         var text = File.ReadAllText(conf, Encoding.UTF8);
-        text = Regex.Replace(text, @"(?im)^\s*Define\s+SRVROOT\s+\".*?\"\s*$", $"Define SRVROOT \"{a}\"");
-        text = Regex.Replace(text, @"(?im)^\s*Listen\s+.*$", "Listen 127.0.0.1:80", 1);
-        text = Regex.Replace(text, @"(?im)^\s*DocumentRoot\s+\".*?\"\s*$", $"DocumentRoot \"{w}\"", 1);
+        text = Regex.Replace(text, "(?im)^\\s*Define\\s+SRVROOT\\s+\\\".*?\\\"\\s*$", $"Define SRVROOT \"{a}\"");
+        text = new Regex(@"(?im)^\s*Listen\s+.*$").Replace(text, "Listen 127.0.0.1:80", 1);
+        text = new Regex("(?im)^\\s*DocumentRoot\\s+\\\".*?\\\"\\s*$").Replace(text, $"DocumentRoot \"{w}\"", 1);
         text = Regex.Replace(text, @"(?is)\r?\n# BEGIN SOKNA MANAGED.*?# END SOKNA MANAGED\r?\n?", Environment.NewLine);
         text += $"""
 # BEGIN SOKNA MANAGED
