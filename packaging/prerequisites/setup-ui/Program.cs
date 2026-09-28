@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -150,18 +151,20 @@ internal static class InfrastructureOwnershipDetector
         InspectManagedService("SoknaMariaDB","MariaDB",target,"--defaults-file",conflicts,evidence);
 
         var targetMaria=Normalize(Path.Combine(target,"Infrastructure","MariaDB"));
+        var targetMariaPresent=File.Exists(Path.Combine(targetMaria,"bin","mariadbd.exe"))||File.Exists(Path.Combine(targetMaria,"bin","mysqld.exe"));
         foreach(var product in RegisteredMariaProducts(expectedMariaVersion))
         {
             var display=product.DisplayName+(string.IsNullOrWhiteSpace(product.Version)?"":$" {product.Version}");
             if(string.IsNullOrWhiteSpace(product.InstallLocation))
             {
-                conflicts.Add($"{display} در Windows Installer ثبت است ولی InstallLocation قابل تشخیص نیست؛ نصب موازی امن نیست.");
-                evidence.Add($"WindowsInstaller: {display}; InstallLocation=<unknown>; Registry={product.RegistryPath}");
+                evidence.Add($"WindowsInstaller: {display}; InstallLocation=<unknown>; Source={product.Source}");
+                if(!targetMariaPresent)
+                    conflicts.Add($"{display} در Windows Installer ثبت است ولی InstallLocation قابل تشخیص نیست و MariaDB در Root انتخاب‌شده وجود ندارد؛ اجرای MSI می‌تواند وارد Maintenance Mode نصب دیگری شود.");
                 continue;
             }
 
             var installed=Normalize(product.InstallLocation!);
-            evidence.Add($"WindowsInstaller: {display}; InstallLocation={installed}");
+            evidence.Add($"WindowsInstaller: {display}; InstallLocation={installed}; Source={product.Source}");
             if(!PathEquals(installed,targetMaria))
                 conflicts.Add($"{display} در «{installed}» ثبت شده ولی MariaDB این Root باید در «{targetMaria}» باشد.");
         }
@@ -264,9 +267,49 @@ internal static class InfrastructureOwnershipDetector
         return i>1?Normalize(full[..i]):null;
     }
 
-    private static IEnumerable<(string DisplayName,string Version,string? InstallLocation,string RegistryPath)> RegisteredMariaProducts(string expectedVersion)
+    private const int ErrorSuccess=0;
+    private const int ErrorNoMoreItems=259;
+    private const int ErrorMoreData=234;
+
+    [DllImport("msi.dll",CharSet=CharSet.Unicode)]
+    private static extern int MsiEnumProducts(int iProductIndex,StringBuilder lpProductBuf);
+
+    [DllImport("msi.dll",CharSet=CharSet.Unicode)]
+    private static extern int MsiGetProductInfo(string szProduct,string szProperty,StringBuilder lpValueBuf,ref int pcchValueBuf);
+
+    private static string MsiProperty(string productCode,string property)
+    {
+        var size=0;
+        var probe=new StringBuilder(1);
+        var rc=MsiGetProductInfo(productCode,property,probe,ref size);
+        if(rc!=ErrorMoreData && rc!=ErrorSuccess) return "";
+        size=Math.Max(size+1,2);
+        var buffer=new StringBuilder(size);
+        rc=MsiGetProductInfo(productCode,property,buffer,ref size);
+        return rc==ErrorSuccess?buffer.ToString().Trim():"";
+    }
+
+    private static IEnumerable<(string DisplayName,string Version,string? InstallLocation,string Source)> RegisteredMariaProducts(string expectedVersion)
     {
         var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for(var i=0;;i++)
+        {
+            var code=new StringBuilder(39);
+            var rc=MsiEnumProducts(i,code);
+            if(rc==ErrorNoMoreItems) break;
+            if(rc!=ErrorSuccess) break;
+            var productCode=code.ToString();
+            var name=MsiProperty(productCode,"ProductName");
+            var version=MsiProperty(productCode,"VersionString");
+            if(name.IndexOf("MariaDB",StringComparison.OrdinalIgnoreCase)<0) continue;
+            if(!string.IsNullOrWhiteSpace(expectedVersion) && !string.Equals(version,expectedVersion,StringComparison.OrdinalIgnoreCase)) continue;
+            var location=MsiProperty(productCode,"InstallLocation");
+            var key=$"msi:{productCode}";
+            if(seen.Add(key))
+                yield return(name,version,string.IsNullOrWhiteSpace(location)?null:location,$"MSI:{productCode}");
+        }
+
         foreach(var view in new[]{RegistryView.Registry64,RegistryView.Registry32})
         {
             RegistryKey? baseKey=null;
@@ -285,7 +328,7 @@ internal static class InfrastructureOwnershipDetector
                     if(name.IndexOf("MariaDB",StringComparison.OrdinalIgnoreCase)<0) continue;
                     if(!string.IsNullOrWhiteSpace(expectedVersion) && !string.Equals(version,expectedVersion,StringComparison.OrdinalIgnoreCase)) continue;
                     var location=key.GetValue("InstallLocation")?.ToString()?.Trim();
-                    var id=$"{view}:{sub}";
+                    var id=$"registry:{view}:{sub}";
                     if(!seen.Add(id)) continue;
                     yield return(name,version,string.IsNullOrWhiteSpace(location)?null:location,$@"HKLM({view})\{UninstallPath}\{sub}");
                 }
