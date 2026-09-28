@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='sokna-m9-') as td:
     run('stage','--root',root,'--package',p2,'--compat',C)
     fail=run('activate','--root',root,'--component','runtime','--version','1.0.1','--compat',C,'--simulate-failure',ok=False)
     need(fail.returncode!=0,'simulated activation failure did not fail')
-    active=json.loads((root/'active/runtime.json').read_text()); need(active['version']=='1.0.0','failed activation did not rollback active pointer')
+    active=json.loads((root/'active/runtime.json').read_text(encoding='utf-8')); need(active['version']=='1.0.0','failed activation did not rollback active pointer')
     run('activate','--root',root,'--component','runtime','--version','1.0.1','--compat',C); run('rollback','--root',root,'--component','runtime')
     need(json.loads((root/'active/runtime.json').read_text(encoding='utf-8'))['version']=='1.0.0','manual rollback failed')
 

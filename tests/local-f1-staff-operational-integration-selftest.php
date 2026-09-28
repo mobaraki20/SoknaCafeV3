@@ -4,7 +4,7 @@ require_once dirname(__DIR__).'/apps/local-web/bootstrap.php';
 function f15_fail(string $m):never{fwrite(STDERR,$m.PHP_EOL);exit(1);} function f15_assert(bool $c,string $m):void{if(!$c)f15_fail($m);}
 $core=sokna_local_bootstrap(['app'=>['timezone'=>'Asia/Tehran','data_dir'=>sys_get_temp_dir().'/sokna-v3-f15-'.bin2hex(random_bytes(4))],'db'=>[
  'host'=>(string)(getenv('SOKNA_TEST_DB_HOST')?:'127.0.0.1'),'port'=>(string)(getenv('SOKNA_TEST_DB_PORT')?:'3306'),'name'=>(string)(getenv('SOKNA_TEST_DB_NAME')?:'sokna_m2'),'charset'=>'utf8mb4','user'=>(string)(getenv('SOKNA_TEST_DB_USER')?:'sokna'),'pass'=>(string)(getenv('SOKNA_TEST_DB_PASS')?:'sokna')]]);
-$core->migrations()->migrate();$pdo=$core->database();
+$core->migrations()->migrate();$pdo=$core->database();$businessDate=(string)$core->businessClock()->assignment()['business_date'];
 $pdo->exec("INSERT INTO settings(setting_key,setting_value) VALUES('business_day_cutoff','04:00'),('inventory_initialized','1'),('module.inventory.enabled','1'),('module.printing.enabled','1') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
 $u=$pdo->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)');
 $u->execute(['f15-manager',password_hash('x',PASSWORD_DEFAULT),'F15 Manager','operator']);$managerId=(int)$pdo->lastInsertId();
@@ -21,7 +21,7 @@ $core->inventory()->recordMovement(['item_id'=>$invId,'movement_type'=>'purchase
 $recipe=$core->inventoryOrders()->saveRecipe($menuItemId,[['inventory_item_id'=>$invId,'quantity_base'=>2]],$manager);f15_assert((int)($recipe['recipe_id']??0)>0,'recipe missing');
 $before=(int)$pdo->query('SELECT quantity_base FROM inventory_balances WHERE inventory_item_id='.$invId)->fetchColumn();
 $pdo->exec("UPDATE print_destinations SET active=1 WHERE destination_key='prep_shared'");
-$post=$core->staffConsumptionPosting()->postForPersonnel($personnelId,['request_token'=>'f15-staff-consume-0001','occurred_at'=>'2026-09-27 12:00:00','items'=>[['id'=>$menuItemId,'quantity'=>3,'expected_price'=>200000]]],$manager);
+$post=$core->staffConsumptionPosting()->postForPersonnel($personnelId,['request_token'=>'f15-staff-consume-0001','occurred_at'=>$businessDate.' 12:00:00','items'=>[['id'=>$menuItemId,'quantity'=>3,'expected_price'=>200000]]],$manager);
 f15_assert((int)$post['known_cost_amount']===600,'document known cost is not from durable recipe snapshot');f15_assert((int)($post['print_job_id']??0)>0,'staff preparation print intent missing');
 $after=(int)$pdo->query('SELECT quantity_base FROM inventory_balances WHERE inventory_item_id='.$invId)->fetchColumn();f15_assert($after===$before-6,'staff consumption did not reduce inventory by recipe × quantity');
 $sc=(array)$pdo->query('SELECT known_cost_amount,order_id FROM staff_consumptions WHERE id='.(int)$post['consumption_id'])->fetch(PDO::FETCH_ASSOC);f15_assert((int)$sc['known_cost_amount']===600,'staff document cost persistence drifted');

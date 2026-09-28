@@ -17,4 +17,5 @@ j=need('apps/local-web/public/assets/integrations-workspace.js','Import قالب
 h=need('apps/local-web/public/integrations/index.php','Import .soknaprint','data-print-template-list','sc-print-preview')
 r=need('windows/print-agent/source/src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs','base_font_size','title_font_size','table_font_size','section_order','responsive-receipt')
 if 'style=' in h: raise SystemExit('FAIL integrations page introduced inline style owner')
+if 'u.display_name created_by_name' not in s: raise SystemExit('FAIL print template snapshot must join users.display_name')
 print('PASS G4.4 print template/package source contract')

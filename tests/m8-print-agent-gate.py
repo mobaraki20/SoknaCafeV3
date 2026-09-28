@@ -10,7 +10,7 @@ src=R/'windows/print-agent/source'
 need((src/'src/Sokna.PrintAgent.Worker/WinspoolAdapter.cs').exists(),'Winspool adapter missing')
 need((src/'src/Sokna.PrintAgent.Service/LoopbackBridgeServer.cs').exists(),'loopback bridge missing')
 need((src/'src/Sokna.PrintAgent.Core/LocalQueueStore.cs').exists(),'durable local queue missing')
-text='\n'.join(p.read_text(errors='ignore') for p in src.rglob('*.cs'))
+text='\n'.join(p.read_text(encoding='utf-8',errors='ignore') for p in src.rglob('*.cs'))
 for token in ['local_receipt','recovery_hold','unknown','content_sha256','127.0.0.1']:
     need(token.lower() in text.lower(),'retained Print Agent missing '+token)
 local=(R/'apps/local-web/src/Domain/Printing/PrintService.php').read_text(encoding='utf-8')

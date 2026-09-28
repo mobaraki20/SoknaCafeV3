@@ -21,7 +21,7 @@ final class PrintTemplatePackageService
     public function snapshot(): array
     {
         $rows=$this->pdo->query(
-            "SELECT p.id,p.template_key,p.display_name,p.version,p.document_kind,p.content_sha256,p.description,p.created_at,u.name created_by_name,\n".
+            "SELECT p.id,p.template_key,p.display_name,p.version,p.document_kind,p.content_sha256,p.description,p.created_at,u.display_name created_by_name,\n".
             "       IF(a.package_id=p.id,1,0) active,a.activated_at\n".
             "FROM print_template_packages p LEFT JOIN print_template_activations a ON a.package_id=p.id AND a.document_kind=p.document_kind\n".
             "LEFT JOIN users u ON u.id=p.created_by_user_id ORDER BY p.document_kind,p.created_at DESC,p.id DESC"
