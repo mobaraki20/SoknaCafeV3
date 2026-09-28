@@ -28,8 +28,11 @@ for token in ["normalizeLocalBaseUrl","local_base_url","local_bridge_allowed_ori
     need(token in browser,f"Browser Setup endpoint/pairing implementation missing: {token}")
 need("https://127.0.0.1" not in browser,"Browser Setup retains hardcoded HTTPS endpoint")
 
+helper=(R/"apps/local-web/src/Core/LocalEndpoint.php").read_text(encoding="utf-8")
+for token in ["CANONICAL_HOST = '127.0.0.1'","MIN_PORT = 1024","fromServer","canonicalRedirectTarget"]:
+    need(token in helper,f"Local endpoint helper missing: {token}")
 api=(R/"apps/local-web/public/setup/api.php").read_text(encoding="utf-8")
-need("setup_local_base_url" in api and "127.0.0.1" in api and "SERVER_PORT" in api,"Setup API must derive actual Apache port")
+need("setup_local_base_url" in api and "LocalEndpoint::fromServer" in api,"Setup API must derive actual Apache port through canonical helper")
 js=(R/"apps/local-web/public/assets/setup-wizard.js").read_text(encoding="utf-8")
 need("location.replace(canonical.origin+'/setup/')" in js,"Browser Setup must canonicalize browser origin")
 
@@ -40,17 +43,21 @@ need("dirname(__DIR__,3)" not in recovery and "$packageRoot=dirname(__DIR__);" i
 
 runtime=(R/"windows/runtime/source/Program.cs").read_text(encoding="utf-8")
 need('LocalBaseUrl { get; init; } = ""' in runtime,"Runtime still has a hardcoded Local URL default")
-need("runtime_local_endpoint_must_be_origin" in runtime,"Runtime must validate exact loopback origin")
+need("runtime_local_endpoint_must_be_origin" in runtime and "runtime_local_endpoint_port_invalid" in runtime,"Runtime must validate exact high-port loopback origin")
 need("https://127.0.0.1" not in runtime,"Runtime source retains hardcoded old endpoint")
 
 life=(R/"packaging/windows/scripts/setup-windows-services.ps1").read_text(encoding="utf-8")
 need("Local Web URL and bridge origin must be the same origin" in life,"Windows pairing must reject endpoint drift")
 need("$uri.IsLoopback" in life and "$originUri.IsLoopback" in life,"Windows pairing must remain loopback-only")
+need("port must be between 1024 and 65535" in life,"Windows pairing must reject privileged Local Web ports")
 
 agent=(R/"windows/print-agent/source/src/Sokna.PrintAgent.Core/AgentOptions.cs").read_text(encoding="utf-8")
 need("uri.IsLoopback" in agent and 'uri.Scheme is not ("https" or "http")' in agent,"Print Agent must accept HTTP loopback with configurable port")
 bridge=(R/"windows/print-agent/source/src/Sokna.PrintAgent.Service/LocalBridgeService.cs").read_text(encoding="utf-8")
 need("GetLeftPart(UriPartial.Authority)" in bridge,"Print bridge origin must be authority-based")
+
+bootstrap=(R/"apps/local-web/src/Core/Bootstrap.php").read_text(encoding="utf-8")
+need("dirname(__DIR__,4)" not in bootstrap,"Local Bootstrap retains monorepo-root assumptions")
 
 builder=(R/"apps/local-web/tools/build-clean-install-package.py").read_text(encoding="utf-8")
 need('"document_root":"public"' in builder and '"public/index.php"' in builder,"clean-install package contract missing")
