@@ -50,7 +50,17 @@ function Read-Pairing([string]$path){
   if([string]::IsNullOrWhiteSpace($path)){return $null};$path=Full $path 'Pairing file';if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw 'Pairing file not found.'}
   $p=Get-Content -LiteralPath $path -Raw|ConvertFrom-Json
   if([string]$p.format-ne'sokna-windows-services-pairing-v1'-or[int]$p.schema_version-ne1){throw 'Pairing file format is unsupported.'}
-  $uri=$null;if(-not[Uri]::TryCreate([string]$p.local_base_url,[UriKind]::Absolute,[ref]$uri)-or-not$uri.IsLoopback){throw 'Pairing local_base_url must be loopback.'}
+  $uri=$null
+  if(-not[Uri]::TryCreate([string]$p.local_base_url,[UriKind]::Absolute,[ref]$uri)-or-not$uri.IsLoopback){throw 'Pairing local_base_url must be loopback.'}
+  if($uri.Scheme-ne'http'-and$uri.Scheme-ne'https'){throw 'Pairing local_base_url scheme must be HTTP/HTTPS.'}
+  if($uri.AbsolutePath-ne'/'-or-not[string]::IsNullOrEmpty($uri.Query)-or-not[string]::IsNullOrEmpty($uri.Fragment)-or-not[string]::IsNullOrEmpty($uri.UserInfo)){throw 'Pairing local_base_url must be an origin-only URL.'}
+  $originUri=$null
+  if(-not[Uri]::TryCreate([string]$p.local_bridge_allowed_origin,[UriKind]::Absolute,[ref]$originUri)-or-not$originUri.IsLoopback){throw 'Pairing local_bridge_allowed_origin must be loopback.'}
+  if($originUri.Scheme-ne'http'-and$originUri.Scheme-ne'https'){throw 'Pairing local_bridge_allowed_origin scheme must be HTTP/HTTPS.'}
+  if($originUri.AbsolutePath-ne'/'-or-not[string]::IsNullOrEmpty($originUri.Query)-or-not[string]::IsNullOrEmpty($originUri.Fragment)-or-not[string]::IsNullOrEmpty($originUri.UserInfo)){throw 'Pairing local_bridge_allowed_origin must be an exact origin.'}
+  $baseAuthority=$uri.GetLeftPart([UriPartial]::Authority)
+  $bridgeAuthority=$originUri.GetLeftPart([UriPartial]::Authority)
+  if(-not[string]::Equals($baseAuthority,$bridgeAuthority,[StringComparison]::OrdinalIgnoreCase)){throw 'Pairing Local Web URL and bridge origin must be the same origin.'}
   foreach($k in @('runtime_token','local_token','print_agent_token')){$v=[string]$p.$k;if($v.Length-lt32-or$v-match'^REPLACE_'){throw "Pairing secret is not production-ready: $k"}}
   return $p
 }
