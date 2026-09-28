@@ -47,7 +47,7 @@ for token in [
     'LoadModule rewrite_module modules/mod_rewrite.so','Apache mod_rewrite پیدا نشد',
     'ApacheConfigurationReady(','Local Web configuration is incomplete; repair is required',
     'apache-error.log','ApacheLocalWebConfigReady=',
-    'PhpRuntimeConfiguration.Configure(','var extDir = Path.Combine(phpPath, "ext")','php_zip.dll','ValidateApachePhpRuntimeAsync(',
+    'PhpRuntimeConfiguration.Configure(','var extDir = Path.Combine(phpPath, "ext")','matches.Count != 1','php_zip.dll','ValidateApachePhpRuntimeAsync(',
     'required_extensions=OK','DetectExistingInfrastructureRoot()','حالت «تعمیر نصب موجود» به‌صورت خودکار انتخاب شده است'
 ]:
     need(token in src,f'missing implementation guard: {token}')
