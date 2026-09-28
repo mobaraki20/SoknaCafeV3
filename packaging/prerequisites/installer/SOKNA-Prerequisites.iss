@@ -42,4 +42,4 @@ Name: "{group}\آماده‌سازی زیرساخت سکنا"; Filename: "{app}\
 Name: "{autodesktop}\آماده‌سازی زیرساخت سکنا"; Filename: "{app}\SoknaPrerequisitesSetup.exe"; IconFilename: "{app}\Sokna.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\SoknaPrerequisitesSetup.exe"; Description: "آماده‌سازی PHP، Apache و MariaDB"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\SoknaPrerequisitesSetup.exe"; Description: "آماده‌سازی PHP، Apache و MariaDB"; Flags: postinstall nowait skipifsilent runascurrentuser
