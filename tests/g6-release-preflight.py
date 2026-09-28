@@ -4,10 +4,10 @@ import json
 from pathlib import Path
 R=Path(__file__).resolve().parents[1]
 def fail(m):raise SystemExit('G6 RELEASE PREFLIGHT FAILED: '+m)
-m=json.loads((R/'docs/product/MASTER_CAPABILITY_MATRIX.json').read_text())
+m=json.loads((R/'docs/product/MASTER_CAPABILITY_MATRIX.json').read_text(encoding='utf-8'))
 if m.get('schema_version')!=4 or m.get('status')!='canonical_master_capability_matrix':fail('canonical matrix metadata invalid')
 rows=m.get('rows',[]);open_ids={r['id'] for r in rows if r['required_for_product']=='yes' and r['completion_level']=='PRODUCT_OPEN'}
-d=json.loads((R/'release/deferred-qualification-v1.json').read_text())
+d=json.loads((R/'release/deferred-qualification-v1.json').read_text(encoding='utf-8'))
 if d.get('format')!='sokna-deferred-qualification-v1':fail('deferred register format invalid')
 covered={};ids=set()
 for e in d.get('entries',[]):

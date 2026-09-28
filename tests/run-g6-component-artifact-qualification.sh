@@ -15,7 +15,7 @@ python3 release/build-portable-release.py --out "$TMP/portable" >/dev/null
 python3 - <<'PY'
 import json,os
 from pathlib import Path
-p=Path(os.environ['TMP'])/'portable/artifact-index.json';j=json.loads(p.read_text())
+p=Path(os.environ['TMP'])/'portable/artifact-index.json';j=json.loads(p.read_text(encoding='utf-8'))
 assert j['format']=='sokna-portable-release-index-v1' and len(j['artifacts'])==4
 print('Portable independent artifacts: PASS')
 PY

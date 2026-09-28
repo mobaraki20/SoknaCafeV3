@@ -15,9 +15,9 @@ def main():
  out=Path(a.out).resolve();out.mkdir(parents=True,exist_ok=True)
  head=a.source_commit or run(['git','rev-parse','HEAD'])
  versions={
-  'local-web':(R/'apps/local-web/VERSION.txt').read_text().strip(),
-  'public-edge':(R/'apps/public/VERSION.txt').read_text().strip(),
-  'shared-contracts':(R/'contracts/VERSION.txt').read_text().strip(),
+  'local-web':(R/'apps/local-web/VERSION.txt').read_text(encoding='utf-8').strip(),
+  'public-edge':(R/'apps/public/VERSION.txt').read_text(encoding='utf-8').strip(),
+  'shared-contracts':(R/'contracts/VERSION.txt').read_text(encoding='utf-8').strip(),
  }
  paths={
   'local-web':out/f"SoknaCafeV3-local-web-{versions['local-web']}.zip",

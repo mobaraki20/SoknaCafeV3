@@ -4,9 +4,9 @@ from pathlib import Path
 R=Path(__file__).resolve().parents[1]
 def need(v,m):
     if not v: print('FAIL G5 prerequisite:',m,file=sys.stderr); raise SystemExit(1)
-p=json.loads((R/'platform/windows/prerequisites.json').read_text())
-l=json.loads((R/'platform/windows/release-lock.json').read_text())
-c=json.loads((R/'platform/windows/provider-candidate.json').read_text())
+p=json.loads((R/'platform/windows/prerequisites.json').read_text(encoding='utf-8'))
+l=json.loads((R/'platform/windows/release-lock.json').read_text(encoding='utf-8'))
+c=json.loads((R/'platform/windows/provider-candidate.json').read_text(encoding='utf-8'))
 need(l['source_candidate_sha256']==hashlib.sha256((R/'platform/windows/provider-candidate.json').read_bytes()).hexdigest(),'release lock no longer binds provider candidate')
 locked={a['dependency']:a for a in l['artifacts']}
 for item in p['items']:
