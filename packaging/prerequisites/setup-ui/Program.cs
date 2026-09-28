@@ -233,7 +233,8 @@ internal static class InfrastructureOwnershipDetector
 
     internal static string? ExtractArgumentPath(string commandLine,string argument)
     {
-        var rx=new Regex(Regex.Escape(argument)+@"\s*=\s*(?:\""(?<q>[^\""]+)\""|(?<u>[^\s]+))",RegexOptions.IgnoreCase);
+        var pattern=Regex.Escape(argument)+"\\s*=\\s*(?:\\\"(?<q>[^\\\"]+)\\\"|(?<u>[^\\s]+))";
+        var rx=new Regex(pattern,RegexOptions.IgnoreCase);
         var m=rx.Match(commandLine);
         if(!m.Success) return null;
         var value=m.Groups["q"].Success?m.Groups["q"].Value:m.Groups["u"].Value;
