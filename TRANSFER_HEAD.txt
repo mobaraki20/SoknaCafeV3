@@ -1,0 +1,3 @@
+SOKNA Cafe V3 audited transfer target
+Local audited source HEAD: 029f8216d2403311e06438774acf95e6f3d0cbdc
+Do not qualify this branch until the full audited source tree/history has been transferred.
