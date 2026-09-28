@@ -23,7 +23,9 @@ for token in [
     'OperationMode.Recover','SoknaApache','SoknaMariaDB','MariaDataInitialized()',
     'existing_mariadb_data_reinitialized = false','DownloadVerifiedAsync',
     'SOKNA-Prerequisites-Support','Local Web payload is explicitly out of scope',
-    'ADDLOCAL=MYSQLSERVER,Client,SharedLibraries','REMOVE=DBInstance,DEVEL,HeidiSQL'
+    'ADDLOCAL=MYSQLSERVER,Client,SharedLibraries','REMOVE=DBInstance,DEVEL,HeidiSQL',
+    'RightToLeftLayout = false','AutoScaleMode = AutoScaleMode.Dpi','Tahoma',
+    'SOKNA", "Prerequisites", "Logs"','ShowNotice('
 ]:
     need(token in src,f'missing implementation guard: {token}')
 need('password=<redacted>' in src,'MariaDB root password is not redacted in command log')
@@ -32,5 +34,6 @@ need('apps/local-web' not in src,'prerequisites helper must not copy Local Web p
 iss=(R/'packaging/prerequisites/installer/SOKNA-Prerequisites.iss').read_text(encoding='utf-8')
 need('SOKNA-Prerequisites-Setup-{#ProductVersion}' in iss,'installer output contract missing')
 need('SoknaPrerequisitesSetup.exe' in iss,'installer does not launch prerequisites UI')
+need('runascurrentuser' in iss,'post-install prerequisites UI launch must keep elevated token')
 
 print('G7 infrastructure prerequisites gate: PASS')
