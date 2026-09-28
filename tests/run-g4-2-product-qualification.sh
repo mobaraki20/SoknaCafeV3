@@ -12,6 +12,8 @@ fail_env(){ echo "$1" >&2; exit 3; }
 command -v "$PHP_BIN" >/dev/null 2>&1 || fail_env "G4.2 qualification requires PHP."
 command -v python3 >/dev/null 2>&1 || fail_env "G4.2 qualification requires Python 3."
 command -v node >/dev/null 2>&1 || fail_env "G4.2 qualification requires Node.js for JS syntax gates."
+python3 tests/default-content-migration-contract.py
+"$PHP_BIN" tests/default-content-icon-selftest.php
 "$PHP_BIN" -r 'exit(in_array("mysql", PDO::getAvailableDrivers(), true) ? 0 : 1);' || fail_env "G4.2 qualification requires pdo_mysql."
 "$PHP_BIN" -r 'exit(extension_loaded("fileinfo") ? 0 : 1);' || fail_env "G4.2 qualification requires fileinfo."
 "$PHP_BIN" -r 'exit(extension_loaded("sodium") ? 0 : 1);' || fail_env "G4.2 qualification requires sodium."
@@ -28,6 +30,10 @@ PHP
 
 echo '==> G4.1/G3/G2 real-environment regression'
 ./tests/run-g4-1-product-qualification.sh
+
+echo '==> Audited legacy default content migration on fresh MariaDB'
+reset_db
+"$PHP_BIN" tests/default-content-real-db-selftest.php
 
 echo '==> G4.2 migration + Theme/Media/Copy + Public publish/render E2E'
 reset_db

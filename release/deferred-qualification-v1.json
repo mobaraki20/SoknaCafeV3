@@ -55,7 +55,11 @@
         "Public immutable guest publish with media integrity and rendered alt/media URL",
         "Central guest copy persistence/publish/escaped render and markup rejection",
         "Archive refusal while referenced, then unassign/archive/GC removal",
-        "Raster-only media policy across Local and Public"
+        "Raster-only media policy across Local and Public",
+        "Audited fresh-install default content seed: 3 menus / 15 categories / 128 items",
+        "Audited legacy media migration: 24 unique WebP assets, 80 category/item references, idempotent seed marker",
+        "Category icon library: 56 approved current/future icons with Local picker and Public rendering",
+        "Legacy preparation station normalization: DESSERT-MATILDA-CHEESECAKE other -> cold_bar"
       ]
     },
     {

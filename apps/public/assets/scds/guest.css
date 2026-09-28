@@ -337,3 +337,6 @@ html { background: var(--sg-color-canvas); }
 }
 
 .sg-marketing{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px;margin:0 0 18px}.sg-promo-card{padding:16px;border:1px solid var(--sg-border,#e6ded4);border-radius:18px;background:var(--sg-surface,#fff);box-shadow:0 8px 26px rgba(58,42,29,.06)}.sg-promo-card>span{display:inline-block;font-size:.78rem;opacity:.7;margin-bottom:6px}.sg-promo-card h2{font-size:1.05rem;margin:0 0 8px}.sg-promo-card p{margin:0;line-height:1.8}.sg-promo-card small{display:block;margin-top:10px;opacity:.7}.sg-event-card{border-style:dashed}
+
+/* Category visual library */
+.sg-category-nav a{display:inline-flex;align-items:center;gap:.4rem}.sg-category-icon,.sg-category-heading-icon{width:1.25rem;height:1.25rem;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}.sg-category-heading{display:flex;align-items:center;gap:.65rem;min-width:0}.sg-category-heading-icon{width:1.6rem;height:1.6rem}.sg-category-media{width:2.6rem;height:2.6rem;object-fit:cover;border-radius:.8rem;flex:0 0 auto}

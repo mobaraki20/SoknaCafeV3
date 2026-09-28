@@ -9,9 +9,10 @@ use Sokna\Local\Domain\GuestContent\GuestContentService;
 use Sokna\Local\Domain\Marketing\MarketingService;
 use Sokna\Local\Domain\Reporting\ReportingService;
 use Sokna\Local\Domain\Notifications\NotificationService;
+use Sokna\Local\Domain\Sellables\CategoryIconLibrary;
 final class PublicProjectionBuilder
 {
-    public function __construct(private readonly PDO $pdo,private readonly ?SettlementService $settlements=null,private readonly ?SupplyService $supply=null,private readonly ?GuestContentService $guestContent=null,private readonly ?MarketingService $marketing=null,private readonly ?ReportingService $reporting=null,private readonly ?NotificationService $notifications=null){}
+    public function __construct(private readonly PDO $pdo,private readonly ?SettlementService $settlements=null,private readonly ?SupplyService $supply=null,private readonly ?GuestContentService $guestContent=null,private readonly ?MarketingService $marketing=null,private readonly ?ReportingService $reporting=null,private readonly ?NotificationService $notifications=null,private readonly ?CategoryIconLibrary $categoryIcons=null){}
     public function installation(string $installationId): array{return ['installation_id'=>$installationId,'display_name'=>$this->setting('cafe.name','SOKNA'),'remote_enabled'=>true,'order_intake_enabled'=>$this->settingBool('orders_accepting.cafe',true)];}
     public function authProjections(): array
     {
@@ -27,9 +28,14 @@ final class PublicProjectionBuilder
         foreach($menus as $m){
             $menu=['menu_key'=>(string)$m['menu_key'],'name'=>(string)$m['name'],'sort_order'=>(int)$m['sort_order']];
             $menuList[]=$menu;
-            $q=$this->pdo->prepare("SELECT DISTINCT c.id,c.name,mc.sort_order FROM categories c JOIN menu_categories mc ON mc.category_id=c.id WHERE mc.menu_id=? AND c.active=1 AND c.audience<>'staff' ORDER BY mc.sort_order,c.id");
+            $q=$this->pdo->prepare("SELECT DISTINCT c.id,c.name,c.image_path,c.icon_key,mc.sort_order FROM categories c JOIN menu_categories mc ON mc.category_id=c.id WHERE mc.menu_id=? AND c.active=1 AND c.audience<>'staff_only' ORDER BY mc.sort_order,c.id");
             $q->execute([(int)$m['id']]);
-            $cats=array_map(fn($r)=>['id'=>(int)$r['id'],'name'=>(string)$r['name'],'sort_order'=>(int)$r['sort_order']],$q->fetchAll(PDO::FETCH_ASSOC));
+            $cats=[];
+            foreach($q->fetchAll(PDO::FETCH_ASSOC) as $r){
+                $source='';
+                if($this->guestContent!==null){$resolved=$this->guestContent->publicMediaForSource((string)($r['image_path']??''));if(is_array($resolved)){$source=(string)$resolved['source'];$manifest[$source]=(array)$resolved['manifest'];}}
+                $cats[]=['id'=>(int)$r['id'],'name'=>(string)$r['name'],'sort_order'=>(int)$r['sort_order'],'icon_key'=>$this->categoryIcons?->resolve((string)($r['icon_key']??''),(string)$r['name'])??'list','image_path'=>$source];
+            }
             $iq=$this->pdo->prepare("SELECT i.id,i.category_id,c.name category_name,i.name,i.description,i.price,i.available,i.image_path,i.sort_order FROM items i JOIN categories c ON c.id=i.category_id JOIN menu_items mi ON mi.item_id=i.id WHERE mi.menu_id=? AND i.active=1 AND i.staff_only=0 AND i.sellable_kind='menu_item' ORDER BY c.sort_order,i.sort_order,i.id");
             $iq->execute([(int)$m['id']]);
             $items=[];

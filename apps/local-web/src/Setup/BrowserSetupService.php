@@ -136,6 +136,9 @@ final class BrowserSetupService
                     ->execute([$adminId,$username,$installationId,json_encode(['table_count'=>$tableCount,'surface'=>'browser'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)]);
                 $pdo->commit();
             }
+            $adminId=(int)$pdo->query("SELECT id FROM users WHERE role='admin' AND active=1 ORDER BY id LIMIT 1")->fetchColumn();
+            if($adminId<1)throw new SetupException('admin_missing','مدیر فعال برای تکمیل داده اولیه پیدا نشد.',500);
+            $core->defaultContentSeeder()->seed($adminId);
             $this->provisionMachineFiles($appConfig);
             $health = $this->finalHealth($appConfig);
             $this->writePrivate($this->lockPath(), json_encode([
@@ -161,6 +164,9 @@ final class BrowserSetupService
             if ($installationId==='' || $this->setting($pdo,'installation.id')!==$installationId || (int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn()<1) {
                 throw new SetupException('resume_not_ready','Setup نیمه‌تمام هنوز به مرحله قابل نهایی‌سازی نرسیده است.',409);
             }
+            $adminId=(int)$pdo->query("SELECT id FROM users WHERE role='admin' AND active=1 ORDER BY id LIMIT 1")->fetchColumn();
+            if($adminId<1)throw new SetupException('admin_missing','مدیر فعال برای ادامه داده اولیه پیدا نشد.',500);
+            $core->defaultContentSeeder()->seed($adminId);
             $this->provisionMachineFiles($config);
             $health=$this->finalHealth($config);
             $this->writePrivate($this->lockPath(),json_encode(['format'=>'sokna-install-lock-v3','installation_id'=>$installationId,'created_at'=>gmdate('c'),'setup_surface'=>'browser-resume','health'=>$health],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");
@@ -180,8 +186,11 @@ final class BrowserSetupService
         $adminCount=(int)$pdo->query("SELECT COUNT(*) FROM users WHERE role='admin' AND active=1")->fetchColumn();
         $installationId=trim((string)($config['installation']['id']??''));
         $identityOk=$installationId!=='' && $this->setting($pdo,'installation.id')===$installationId;
-        if (!$dbOk || $applied < count($migrationFiles) || $adminCount < 1 || !$identityOk) throw new SetupException('final_health_failed','بررسی نهایی نصب کامل نشد.',500,['database'=>$dbOk,'migrations'=>$applied.'/'.count($migrationFiles),'admin'=>$adminCount,'identity'=>$identityOk]);
-        return ['database'=>'ok','migrations_applied'=>$applied,'migration_files'=>count($migrationFiles),'admin'=>'ok','installation_identity'=>'ok'];
+        $seedOk=$this->setting($pdo,'default_content.v1')==='complete';
+        $seedCounts=['menus'=>(int)$pdo->query('SELECT COUNT(*) FROM menus')->fetchColumn(),'categories'=>(int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn(),'items'=>(int)$pdo->query('SELECT COUNT(*) FROM items')->fetchColumn(),'media'=>(int)$pdo->query('SELECT COUNT(*) FROM guest_media_assets')->fetchColumn()];
+        $seedOk=$seedOk&&$seedCounts['menus']>=3&&$seedCounts['categories']>=15&&$seedCounts['items']>=128&&$seedCounts['media']>=24;
+        if (!$dbOk || $applied < count($migrationFiles) || $adminCount < 1 || !$identityOk || !$seedOk) throw new SetupException('final_health_failed','بررسی نهایی نصب کامل نشد.',500,['database'=>$dbOk,'migrations'=>$applied.'/'.count($migrationFiles),'admin'=>$adminCount,'identity'=>$identityOk,'default_content'=>$seedOk,'default_content_counts'=>$seedCounts]);
+        return ['database'=>'ok','migrations_applied'=>$applied,'migration_files'=>count($migrationFiles),'admin'=>'ok','installation_identity'=>'ok','default_content'=>'ok','default_content_counts'=>$seedCounts];
     }
 
     private function provisionMachineFiles(array $config): void

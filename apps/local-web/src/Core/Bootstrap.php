@@ -58,6 +58,8 @@ use Sokna\Local\Relay\WaiterCallRealtimeAdapter;
 use Sokna\Local\Relay\RealtimeDispatchService;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 use Sokna\Local\Domain\Sellables\CatalogAdminService;
+use Sokna\Local\Domain\Sellables\CategoryIconLibrary;
+use Sokna\Local\Domain\Sellables\DefaultContentSeeder;
 use Sokna\Local\Domain\Admin\AdminControlService;
 use Sokna\Local\Domain\GuestContent\ThemePackageManager;
 use Sokna\Local\Domain\GuestContent\GuestContentService;
@@ -114,6 +116,8 @@ final class Bootstrap
     private ?GlobalSearchService $globalSearch = null;
     private ?SellableRepository $sellables = null;
     private ?CatalogAdminService $catalogAdmin = null;
+    private ?CategoryIconLibrary $categoryIcons = null;
+    private ?DefaultContentSeeder $defaultContentSeeder = null;
     private ?BusinessClock $businessClock = null;
     private ?OrderCatalogService $orderCatalog = null;
     private ?OrderCommitService $orders = null;
@@ -330,9 +334,20 @@ final class Bootstrap
         return $this->sellables ??= new SellableRepository($this->database());
     }
 
+    public function categoryIcons(): CategoryIconLibrary
+    {
+        return $this->categoryIcons ??= new CategoryIconLibrary(dirname(__DIR__,2).'/resources/default-content/v1/category-icons.json');
+    }
+
+    public function defaultContentSeeder(): DefaultContentSeeder
+    {
+        $mediaRoot=rtrim($this->config->requiredString('app.data_dir'), "\\/") . DIRECTORY_SEPARATOR . 'guest-media';
+        return $this->defaultContentSeeder ??= new DefaultContentSeeder($this->database(),$this->categoryIcons(),dirname(__DIR__,2).'/resources/default-content/v1',$mediaRoot);
+    }
+
     public function catalogAdmin(): CatalogAdminService
     {
-        return $this->catalogAdmin ??= new CatalogAdminService($this->database(), $this->identityRepository());
+        return $this->catalogAdmin ??= new CatalogAdminService($this->database(), $this->identityRepository(), $this->categoryIcons());
     }
 
     public function businessClock(): BusinessClock
@@ -612,7 +627,7 @@ final class Bootstrap
 
     public function publicProjectionBuilder(): PublicProjectionBuilder
     {
-        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent(),$this->marketing(),$this->reporting(),$this->notifications());
+        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent(),$this->marketing(),$this->reporting(),$this->notifications(),$this->categoryIcons());
     }
 
     public function publicEdgePublisher(): PublicEdgePublisherService

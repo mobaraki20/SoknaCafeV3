@@ -79,6 +79,8 @@ final class GuestPageRenderer
             . '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
             . ($tableToken !== '' ? '<meta name="robots" content="noindex,nofollow,noarchive">' : '')
             . '<title>' . self::e($displayName) . ' | منو</title>'
+            . '<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">'
+            . '<link rel="apple-touch-icon" sizes="180x180" href="/assets/favicon-180.png">'
             . '<link rel="stylesheet" href="' . self::e($cssUrl) . '">'
             . ($themeCssUrl !== '' ? '<link rel="stylesheet" href="' . self::e($themeCssUrl) . '">' : '')
             . '<script defer src="' . self::e($jsUrl) . '"></script>'
@@ -157,14 +159,21 @@ final class GuestPageRenderer
             $html .= '<nav class="sg-category-nav" aria-label="دسته‌بندی‌های منو">';
             foreach ($categories as $category) {
                 $id = (int)($category['id'] ?? 0);
-                $html .= '<a href="#sg-category-' . $id . '">' . self::e((string)($category['name'] ?? 'دسته')) . '</a>';
+                $icon = self::categoryIcon((string)($category['icon_key'] ?? 'list'));
+                $html .= '<a href="#sg-category-' . $id . '">' . self::categoryIconSvg($icon) . '<span>' . self::e((string)($category['name'] ?? 'دسته')) . '</span></a>';
             }
             $html .= '</nav><div class="sg-catalog" data-sg-catalog>';
 
             foreach ($categories as $category) {
                 $categoryId = (int)($category['id'] ?? 0);
-                $html .= '<section class="sg-category" id="sg-category-' . $categoryId . '"><header><h2>'
-                    . self::e((string)($category['name'] ?? 'دسته')) . '</h2><span>'
+                $categoryName = (string)($category['name'] ?? 'دسته');
+                $categorySource = (string)($category['image_path'] ?? '');
+                $categoryImage = $this->mediaUrl($installationId,$categorySource,$manifest,$mediaBase);
+                $categoryVisual = $categoryImage !== ''
+                    ? '<img class="sg-category-media" src="'.self::e($categoryImage).'" loading="lazy" decoding="async" alt="">'
+                    : self::categoryIconSvg(self::categoryIcon((string)($category['icon_key'] ?? 'list')),'sg-category-heading-icon');
+                $html .= '<section class="sg-category" id="sg-category-' . $categoryId . '"><header><div class="sg-category-heading">'.$categoryVisual.'<h2>'
+                    . self::e($categoryName) . '</h2></div><span>'
                     . self::faDigits((string)count((array)($category['items'] ?? []))) . ' انتخاب</span></header>';
                 foreach ((array)($category['items'] ?? []) as $item) {
                     if (!is_array($item)) continue;
@@ -357,6 +366,8 @@ final class GuestPageRenderer
             . '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
             . ($noIndex ? '<meta name="robots" content="noindex,nofollow,noarchive">' : '')
             . '<title>' . self::e($title) . ' | سکنا</title>'
+            . '<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">'
+            . '<link rel="apple-touch-icon" sizes="180x180" href="/assets/favicon-180.png">'
             . '<link rel="stylesheet" href="' . self::e($cssUrl) . '"></head><body class="sg-body">'
             . '<main class="sg-system-state"><span class="sg-system-code">' . self::faDigits((string)$status) . '</span>'
             . '<h1>' . self::e($title) . '</h1><p>' . self::e($message) . '</p></main></body></html>';
@@ -383,6 +394,18 @@ final class GuestPageRenderer
         if ($value === '') return '';
         if (str_starts_with($value, '/') || preg_match('#^https://#i', $value) === 1) return $value;
         return '';
+    }
+
+    private static function categoryIcon(string $key): string
+    {
+        $key=trim($key);
+        return preg_match('/^[a-z0-9][a-z0-9-]{1,39}$/D',$key)===1?$key:'list';
+    }
+
+    private static function categoryIconSvg(string $key,string $class='sg-category-icon'): string
+    {
+        $key=self::categoryIcon($key);
+        return '<svg class="'.self::e($class).'" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/category-icons.svg#icon-'.self::e($key).'"></use></svg>';
     }
 
     private static function e(string $value): string

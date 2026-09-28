@@ -24,3 +24,7 @@ for x in [
 ]:
     if x not in selftest: raise SystemExit('FAIL G4.2 real-env selftest missing '+x)
 print('PASS G4.2 qualification runner contract')
+
+runner=Path('tests/run-g4-2-product-qualification.sh').read_text(encoding='utf-8')
+for x in ['tests/default-content-migration-contract.py','tests/default-content-icon-selftest.php','tests/default-content-real-db-selftest.php']:
+    if x not in runner: raise SystemExit('FAIL G4.2 runner missing '+x)

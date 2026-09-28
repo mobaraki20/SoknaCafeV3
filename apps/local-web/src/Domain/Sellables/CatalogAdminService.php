@@ -17,6 +17,7 @@ final class CatalogAdminService
     public function __construct(
         private readonly PDO $pdo,
         private readonly IdentityRepository $identity,
+        private readonly CategoryIconLibrary $icons,
     ){}
 
     public function snapshot(array $actor): array
@@ -53,9 +54,10 @@ final class CatalogAdminService
                 'sellable_kinds'=>SellableKind::labels(),
                 'stations'=>['kitchen'=>'آشپزخانه','hot_bar'=>'بار گرم','cold_bar'=>'بار سرد','none'=>'بدون آماده‌سازی'],
                 'days'=>[7=>'شنبه',1=>'یکشنبه',2=>'دوشنبه',3=>'سه‌شنبه',4=>'چهارشنبه',5=>'پنجشنبه',6=>'جمعه'],
+                'category_icons'=>$this->icons->groups(),
             ],
             'notes'=>[
-                'media'=>'Media Library/upload در G4 تکمیل می‌شود؛ Catalog image_path موجود را حفظ می‌کند و در این checkpoint حذف نمی‌کند.',
+                'media'=>'تصویر آیتم از Media Library مدیریت می‌شود؛ آیکن دسته از کتابخانه داخلی امن انتخاب می‌شود.',
                 'history'=>'Order snapshots مستقل‌اند؛ تغییر نام/قیمت/نوع آیتم، سفارش‌های گذشته را بازنویسی نمی‌کند.',
             ],
         ];
@@ -80,6 +82,7 @@ final class CatalogAdminService
         $admin=$this->assertAdmin($actor);$id=(int)($data['id']??0);$name=$this->text($data['name']??'',120);$audience=trim((string)($data['audience']??'guest_staff'));$sort=(int)($data['sort_order']??0);$active=$this->bool($data['active']??true);$icon=$this->nullableText($data['icon_key']??null,40);$menuIds=$this->intList($data['menu_ids']??[]);
         if($name==='')throw new CatalogAdminException('category_name','نام دسته‌بندی لازم است.',422);
         if(!in_array($audience,self::AUDIENCES,true))throw new CatalogAdminException('category_audience','مخاطب دسته‌بندی معتبر نیست.',422);
+        if($icon!==null&&!$this->icons->isAllowed($icon))throw new CatalogAdminException('category_icon','آیکن دسته‌بندی معتبر نیست.',422);
         $this->pdo->beginTransaction();try{
             $this->lockMenus($menuIds);
             if($id>0){$q=$this->pdo->prepare('SELECT id,category_key,name FROM categories WHERE id=? FOR UPDATE');$q->execute([$id]);if(!is_array($q->fetch(PDO::FETCH_ASSOC)))throw new CatalogAdminException('category_missing','دسته‌بندی پیدا نشد.',404);$q=$this->pdo->prepare('UPDATE categories SET name=?,audience=?,icon_key=?,sort_order=?,active=? WHERE id=?');$q->execute([$name,$audience,$icon,$sort,$active?1:0,$id]);$created=false;}
@@ -126,7 +129,7 @@ final class CatalogAdminService
     private function normalizeStation(string $station): string{if($station==='other')$station='cold_bar';if(!in_array($station,self::STATIONS,true))throw new CatalogAdminException('station_invalid','ایستگاه آماده‌سازی معتبر نیست.',422);return $station;}
     private function amount(mixed $value): int{$raw=trim(strtr((string)$value,['۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9','٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9']));if($raw===''||str_starts_with($raw,'-'))throw new CatalogAdminException('price_invalid','قیمت معتبر لازم است.',422);$s=preg_replace('/[^0-9]/','',$raw)??'';if($s==='')throw new CatalogAdminException('price_invalid','قیمت معتبر لازم است.',422);return (int)$s;}
     private function bool(mixed $value): bool{return is_bool($value)?$value:in_array(strtolower(trim((string)$value)),['1','true','yes','on'],true);}
-    private function text(mixed $value,int $max): string{return mb_substr(trim((string)$value),0,$max,'UTF-8');}
+    private function text(mixed $value,int $max): string{$v=trim((string)$value);if(function_exists('mb_substr'))return mb_substr($v,0,$max,'UTF-8');$ok=preg_match_all('/./us',$v,$m);return $ok===false?substr($v,0,$max):implode('',array_slice($m[0],0,$max));}
     private function nullableText(mixed $value,int $max): ?string{$v=$this->text($value,$max);return $v===''?null:$v;}
     private function intList(mixed $value,int $min=1,int $max=PHP_INT_MAX): array{$items=is_array($value)?$value:[];$result=[];foreach($items as $item){$n=filter_var($item,FILTER_VALIDATE_INT);if($n!==false&&$n>=$min&&$n<=$max)$result[]=(int)$n;}return array_values(array_unique($result));}
     private function audit(string $action,string $entity,int $entityId,int $actorId,array $details): void{$q=$this->pdo->prepare('SELECT display_name FROM users WHERE id=? LIMIT 1');$q->execute([$actorId]);$name=$q->fetchColumn();$this->pdo->prepare('INSERT INTO audit_log(actor_user_id,actor_display_name_snapshot,action,entity_type,entity_id,details_json) VALUES(?,?,?,?,?,?)')->execute([$actorId,$name!==false?$name:null,$action,$entity,(string)$entityId,json_encode($details,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)]);}

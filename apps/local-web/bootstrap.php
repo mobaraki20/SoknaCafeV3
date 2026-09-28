@@ -14,6 +14,8 @@ require_once __DIR__ . '/src/Core/Auth.php';
 require_once __DIR__ . '/src/Core/Migrations.php';
 require_once __DIR__ . '/src/Domain/Sellables/SellableKind.php';
 require_once __DIR__ . '/src/Domain/Sellables/SellableRepository.php';
+require_once __DIR__ . '/src/Domain/Sellables/CategoryIconLibrary.php';
+require_once __DIR__ . '/src/Domain/Sellables/DefaultContentSeeder.php';
 require_once __DIR__ . '/src/Domain/Sellables/CatalogAdminException.php';
 require_once __DIR__ . '/src/Domain/Sellables/CatalogAdminService.php';
 require_once __DIR__ . '/src/Domain/Admin/AdminControlException.php';

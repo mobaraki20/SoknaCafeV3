@@ -1,0 +1,151 @@
+{
+  "format": "sokna-default-content-provenance-v1",
+  "legacy_source": {
+    "archive_name": "Sokna-CLEAN-INSTALL-1.36.4-dev.26(1).zip",
+    "archive_sha256": "1a1d0723edb5cf2ebdb6e7f37925b08ca729d82ceb283089183fbca61439e4dc",
+    "legacy_version": "1.36.4-dev.26",
+    "default_menu_sha256": "647967a71cc0c47ea148e9cbfff9fbe92cd7b8642bb56ce560156e0f91e2beb9",
+    "category_icon_registry_source": "includes/functions.php + assets/icons/ui-sprite.svg",
+    "legacy_ui_sprite_sha256": "6b7eec7a2f6fa85253585090040597e5bb21e44174947b27bc7327a81e7d3883"
+  },
+  "migrated_baseline": {
+    "menus": 3,
+    "categories": 15,
+    "items": 128,
+    "active_items": 109,
+    "available_items": 128,
+    "staff_only_items": 3,
+    "featured_items": 8,
+    "unique_media_assets": 24,
+    "media_references": 80,
+    "category_icons": 56
+  },
+  "media": [
+    {
+      "file": "blue-mojito.webp",
+      "sha256": "ea7d3c57c1f808e4e153236a0c2631fdae625c5ac323ff5f35f242a1c60a3c94",
+      "legacy_sha256": "ea7d3c57c1f808e4e153236a0c2631fdae625c5ac323ff5f35f242a1c60a3c94"
+    },
+    {
+      "file": "burger.webp",
+      "sha256": "a88bf24637d68100550e43ca12cb5ab1fe00a05677512d79354cd8f1d5f591ac",
+      "legacy_sha256": "a88bf24637d68100550e43ca12cb5ab1fe00a05677512d79354cd8f1d5f591ac"
+    },
+    {
+      "file": "caesar-salad.webp",
+      "sha256": "a0e185bd6ea1bde5cc0b4cbbeb9b0317fa8b44e52f4359c96c7c4bc32101c11a",
+      "legacy_sha256": "a0e185bd6ea1bde5cc0b4cbbeb9b0317fa8b44e52f4359c96c7c4bc32101c11a"
+    },
+    {
+      "file": "chicken-alfredo.webp",
+      "sha256": "3dfb4b775cd6547587ab23f0a5c69d619039c83c138c9e90b7e05d4a1703f286",
+      "legacy_sha256": "3dfb4b775cd6547587ab23f0a5c69d619039c83c138c9e90b7e05d4a1703f286"
+    },
+    {
+      "file": "chicken-club-toast.webp",
+      "sha256": "ef33a15e2a73c9df40ec0442b967f2c661c0faed12e47f9d8373bb4b4daf4a17",
+      "legacy_sha256": "ef33a15e2a73c9df40ec0442b967f2c661c0faed12e47f9d8373bb4b4daf4a17"
+    },
+    {
+      "file": "chocolate-brownie.webp",
+      "sha256": "85890741785b731a33c9116660fa05bc2906731dfcdd2e8823fd6db4f910a675",
+      "legacy_sha256": "85890741785b731a33c9116660fa05bc2906731dfcdd2e8823fd6db4f910a675"
+    },
+    {
+      "file": "espresso-tahini-shake.webp",
+      "sha256": "01c4f20de4289da2a1b9eaa422df67fca5500a80847f64608291f068de3e6e46",
+      "legacy_sha256": "01c4f20de4289da2a1b9eaa422df67fca5500a80847f64608291f068de3e6e46"
+    },
+    {
+      "file": "fried-mushroom.webp",
+      "sha256": "5fe19b095098eacdf78feb52861279cea6a44c05ba94ecf061fc21183cd1ead5",
+      "legacy_sha256": "5fe19b095098eacdf78feb52861279cea6a44c05ba94ecf061fc21183cd1ead5"
+    },
+    {
+      "file": "green-mojito.webp",
+      "sha256": "3792f8c7c3bd067b6c1b0fb64cc1588ee7e31d30c85722d60e8cdafff01fd5bd",
+      "legacy_sha256": "3792f8c7c3bd067b6c1b0fb64cc1588ee7e31d30c85722d60e8cdafff01fd5bd"
+    },
+    {
+      "file": "herbal-tea.webp",
+      "sha256": "5a0ca8878948ae730a9f4c5b0c51723b2984d0f6ed78cddd2e47896cb62f80ee",
+      "legacy_sha256": "5a0ca8878948ae730a9f4c5b0c51723b2984d0f6ed78cddd2e47896cb62f80ee"
+    },
+    {
+      "file": "lemon-soda.webp",
+      "sha256": "53c5d21c562ed5ed31babd00cd95844b41db990bf01bb9c61797b1b813a5aec2",
+      "legacy_sha256": "53c5d21c562ed5ed31babd00cd95844b41db990bf01bb9c61797b1b813a5aec2"
+    },
+    {
+      "file": "lotus-shake.webp",
+      "sha256": "5297817669b2ecef0e2e4fed63ad37864c58829298f76339a9fb4e5f8fb5aee6",
+      "legacy_sha256": "5297817669b2ecef0e2e4fed63ad37864c58829298f76339a9fb4e5f8fb5aee6"
+    },
+    {
+      "file": "mango-drink.webp",
+      "sha256": "e1c487d81e22b32baf5f2225dfef5c302cbf45351755ed44b759d6071d527965",
+      "legacy_sha256": "e1c487d81e22b32baf5f2225dfef5c302cbf45351755ed44b759d6071d527965"
+    },
+    {
+      "file": "mango-smoothie.webp",
+      "sha256": "6196f1ea5ce79ec75e485390c02285c2cac26ddb43be05070cd5fb7127b15cad",
+      "legacy_sha256": "6196f1ea5ce79ec75e485390c02285c2cac26ddb43be05070cd5fb7127b15cad"
+    },
+    {
+      "file": "milkshake.webp",
+      "sha256": "cc9dcc960739cb3335affd93c42a71ca331c872b37452ba732300a38d4a4a7dc",
+      "legacy_sha256": "cc9dcc960739cb3335affd93c42a71ca331c872b37452ba732300a38d4a4a7dc"
+    },
+    {
+      "file": "red-drink.webp",
+      "sha256": "50d8bab31ba7d1462ad29918f4033531fc3c7cd3a55165ea7865a21570b57f14",
+      "legacy_sha256": "50d8bab31ba7d1462ad29918f4033531fc3c7cd3a55165ea7865a21570b57f14"
+    },
+    {
+      "file": "redjack.webp",
+      "sha256": "5c8947d0e2d0c28e7978b67e8b751bae55503d2973e67e1bf60bdece5287dd89",
+      "legacy_sha256": "5c8947d0e2d0c28e7978b67e8b751bae55503d2973e67e1bf60bdece5287dd89"
+    },
+    {
+      "file": "strawberry-shake.webp",
+      "sha256": "19e9c534b423e020d2ed098c1e38d899a8ed17a06f233833165d46045c638e43",
+      "legacy_sha256": "19e9c534b423e020d2ed098c1e38d899a8ed17a06f233833165d46045c638e43"
+    },
+    {
+      "file": "summer-sharbat.webp",
+      "sha256": "8c3920d23cc2a79746eba7dcebff6400881512e130316e3dba8ab46b024c8eef",
+      "legacy_sha256": "8c3920d23cc2a79746eba7dcebff6400881512e130316e3dba8ab46b024c8eef"
+    },
+    {
+      "file": "tahini-shake.webp",
+      "sha256": "c310dc1840d5c98b81d7f3c0ff3b8ff2f86e328f0bf43eb38c86cd4708959be5",
+      "legacy_sha256": "c310dc1840d5c98b81d7f3c0ff3b8ff2f86e328f0bf43eb38c86cd4708959be5"
+    },
+    {
+      "file": "tea-pot.webp",
+      "sha256": "12ba18784cf3d7dc79dd7fb213f36f2d26d567b2c13ebb30c8439ec2f67f8c11",
+      "legacy_sha256": "12ba18784cf3d7dc79dd7fb213f36f2d26d567b2c13ebb30c8439ec2f67f8c11"
+    },
+    {
+      "file": "vanilla-shake.webp",
+      "sha256": "661f771090c481349dac1bce157c121aa94bd54936c49e6e98f824e5d3a9a74f",
+      "legacy_sha256": "661f771090c481349dac1bce157c121aa94bd54936c49e6e98f824e5d3a9a74f"
+    },
+    {
+      "file": "vimto.webp",
+      "sha256": "c21fae2e17c36e9030d6a7c8d8c32626c17bcc3e32b755367f2bdc646da6e2d4",
+      "legacy_sha256": "c21fae2e17c36e9030d6a7c8d8c32626c17bcc3e32b755367f2bdc646da6e2d4"
+    },
+    {
+      "file": "yogurt-soup.webp",
+      "sha256": "4b27aa6aed8f539a997002e659a4238a56df53fefc6076a674dd0f0f55241b4e",
+      "legacy_sha256": "4b27aa6aed8f539a997002e659a4238a56df53fefc6076a674dd0f0f55241b4e"
+    }
+  ],
+  "exclusions": [
+    "legacy full UI sprite (only 56 category symbols retained in a scoped sprite)",
+    "legacy staff app icons",
+    "documentation gallery assets",
+    "unused 192/512 favicons because V3 has no PWA manifest using them"
+  ]
+}

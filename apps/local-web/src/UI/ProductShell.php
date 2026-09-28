@@ -12,7 +12,7 @@ final class ProductShell
         $name=SCDS::e((string)($user['display_name']??$user['username']??''));
         $safeTitle=SCDS::e($title);$safeSubtitle=SCDS::e($subtitle);
         echo '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
-        echo '<title>'.$safeTitle.' | سکنا</title><link rel="stylesheet" href="/scds.php?file=tokens.css"><link rel="stylesheet" href="/scds.php?file=components.css"></head><body>';
+        echo '<title>'.$safeTitle.' | سکنا</title><link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/favicon-180.png"><link rel="stylesheet" href="/scds.php?file=tokens.css"><link rel="stylesheet" href="/scds.php?file=components.css"></head><body>';
         echo '<div class="sc-shell"><aside class="sc-shell__nav"><a class="sc-shell__brand" href="/" aria-label="خانه سکنا"><strong>سکنا</strong><span>سامانه محلی</span></a>';
         echo '<div class="sc-shell__identity"><span>'.$name.'</span><small>'.SCDS::e(self::roleLabel((string)($user['role']??''))).'</small></div>';
         echo '<nav aria-label="ناوبری اصلی"><ul class="sc-shell__nav-list">';

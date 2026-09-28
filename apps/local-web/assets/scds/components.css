@@ -68,3 +68,6 @@
 .sc-command-target{outline:3px solid var(--sc-focus);outline-offset:2px}
 
 .sc-print-preview{max-inline-size:100%;block-size:auto;margin-inline:auto;}
+
+/* Category icon library */
+.sc-category-name{display:inline-flex;align-items:center;gap:.55rem}.sc-category-icon{width:1.35rem;height:1.35rem;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}.sc-category-icon-picker{display:grid;gap:.7rem}.sc-category-icon-group{border:1px solid var(--sc-color-border,#ddd);border-radius:.8rem;padding:.45rem .65rem}.sc-category-icon-group>summary{cursor:pointer;font-weight:700}.sc-category-icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(7.5rem,1fr));gap:.45rem;padding-top:.6rem}.sc-category-icon-choice{display:flex;align-items:center;gap:.45rem;min-height:2.7rem;border:1px solid var(--sc-color-border,#ddd);border-radius:.7rem;background:transparent;color:inherit;padding:.45rem .6rem;font:inherit;cursor:pointer}.sc-category-icon-choice[aria-pressed="true"]{outline:2px solid currentColor;outline-offset:1px}.sc-category-icon-choice .sc-category-icon{width:1.2rem;height:1.2rem}
