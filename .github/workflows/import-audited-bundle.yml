@@ -1,0 +1,53 @@
+name: Import audited V3 bundle
+
+on:
+  push:
+    branches:
+      - transfer/v3-final-audit-029f821
+    paths:
+      - .transfer/SoknaCafeV3-git-029f8216d240.bundle
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@v4
+
+      - name: Verify uploaded bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE=".transfer/SoknaCafeV3-git-029f8216d240.bundle"
+          echo "286f181726bad2e04eb14880b99d9d76cd3e6e5428a75c7cb684df10a2ed6784  $BUNDLE" | sha256sum -c -
+          git bundle verify "$BUNDLE"
+
+      - name: Reconstruct audited source branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BUNDLE="$GITHUB_WORKSPACE/.transfer/SoknaCafeV3-git-029f8216d240.bundle"
+          rm -rf /tmp/sokna-audited
+          git clone "$BUNDLE" /tmp/sokna-audited
+          cd /tmp/sokna-audited
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          EXPECTED_HEAD="029f8216d2403311e06438774acf95e6f3d0cbdc"
+          test "$ACTUAL_HEAD" = "$EXPECTED_HEAD"
+          git remote remove origin || true
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:refs/heads/transfer/v3-final-audited-source --force
+
+      - name: Verify pushed branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REMOTE_HEAD="$(git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" refs/heads/transfer/v3-final-audited-source | awk '{print $1}')"
+          test "$REMOTE_HEAD" = "029f8216d2403311e06438774acf95e6f3d0cbdc"
+          echo "AUDITED_TRANSFER_PASS"
