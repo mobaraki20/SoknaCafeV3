@@ -72,8 +72,9 @@ internal sealed class MainForm : Form
     private readonly TextBox _password = new() { UseSystemPasswordChar = true };
     private readonly TextBox _password2 = new() { UseSystemPasswordChar = true };
     private readonly CheckBox _showPassword = new() { Text = "نمایش رمز", AutoSize = true };
-    private readonly Label _paths = new() { AutoSize = true, Dock = DockStyle.Fill };
-    private readonly RichTextBox _status = new() { ReadOnly = true, Dock = DockStyle.Fill, BackColor = SystemColors.Window, BorderStyle = BorderStyle.FixedSingle };
+    private readonly Label _paths = new() { AutoSize = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.TopRight, RightToLeft = RightToLeft.Yes };
+    private readonly Label _modeHelp = new() { AutoSize = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.TopRight, RightToLeft = RightToLeft.Yes, Padding = new Padding(0, 6, 0, 8) };
+    private readonly RichTextBox _status = new() { ReadOnly = true, Dock = DockStyle.Fill, BackColor = SystemColors.Window, BorderStyle = BorderStyle.FixedSingle, RightToLeft = RightToLeft.Yes, DetectUrls = false };
     private readonly ProgressBar _progress = new() { Dock = DockStyle.Fill, Minimum = 0, Maximum = 100 };
     private readonly Label _progressText = new() { AutoSize = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleRight };
     private readonly Button _run = new() { Text = "شروع", AutoSize = true, Padding = new Padding(14, 7, 14, 7) };
@@ -83,16 +84,18 @@ internal sealed class MainForm : Form
     private readonly Button _support = new() { Text = "ساخت بسته پشتیبانی", AutoSize = true };
     private readonly Button _cancel = new() { Text = "لغو عملیات", AutoSize = true, Enabled = false };
     private string? _currentLog;
+    private readonly string _sessionLog = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOKNA", "Prerequisites", "Logs", $"ui-{DateTime.Now:yyyyMMdd-HHmmss}.log");
 
     public MainForm()
     {
         Text = "آماده‌سازی زیرساخت SOKNA";
         Width = 1120;
-        Height = 820;
-        MinimumSize = new Size(980, 720);
+        Height = 800;
+        MinimumSize = new Size(900, 650);
         StartPosition = FormStartPosition.CenterScreen;
+        AutoScaleMode = AutoScaleMode.Dpi;
         RightToLeft = RightToLeft.Yes;
-        RightToLeftLayout = true;
+        RightToLeftLayout = false;
         Font = PickFont();
         Icon = TryLoadIcon();
 
@@ -115,19 +118,22 @@ internal sealed class MainForm : Form
         _recover.CheckedChanged += (_, _) => RefreshModeHelp();
 
         Controls.Add(BuildUi());
+        Load += (_, _) => FitToWorkingArea();
+        EnsureSessionLog();
+        Log("Prerequisites UI started.");
         RefreshPathSummary();
         RefreshModeHelp();
     }
 
     private static Font PickFont()
     {
-        foreach (var name in new[] { "Vazirmatn", "Segoe UI", "Tahoma" })
+        foreach (var name in new[] { "Tahoma", "Segoe UI" })
         {
             try
             {
-                using var f = new Font(name, 10.5f);
+                using var f = new Font(name, 10.0f, FontStyle.Regular, GraphicsUnit.Point);
                 if (string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase))
-                    return new Font(name, 10.5f);
+                    return new Font(name, 10.0f, FontStyle.Regular, GraphicsUnit.Point);
             }
             catch { }
         }
@@ -146,121 +152,214 @@ internal sealed class MainForm : Form
 
     private Control BuildUi()
     {
-        var outer = new TableLayoutPanel
+        var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(24),
             ColumnCount = 1,
-            RowCount = 9,
-            AutoScroll = true
+            RowCount = 3,
+            RightToLeft = RightToLeft.Yes,
+            Padding = new Padding(0),
+            Margin = new Padding(0)
         };
-        outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 265));
-        outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var scroll = new Panel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            RightToLeft = RightToLeft.Yes,
+            Padding = new Padding(24, 20, 24, 12)
+        };
+
+        var content = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 7,
+            RightToLeft = RightToLeft.Yes,
+            Margin = new Padding(0),
+            Padding = new Padding(0)
+        };
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         var title = new Label
         {
             Text = "آماده‌سازی زیرساخت Local Web",
-            Font = new Font(Font, FontStyle.Bold),
+            Font = new Font(Font.FontFamily, 14.0f, FontStyle.Bold),
             AutoSize = true,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
             Padding = new Padding(0, 0, 0, 8)
         };
         var intro = new Label
         {
             AutoSize = true,
-            MaximumSize = new Size(1020, 0),
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.TopRight,
+            MaximumSize = new Size(1040, 0),
+            Padding = new Padding(0, 0, 0, 12),
             Text = "این ابزار فقط PHP، Apache و MariaDB را آماده می‌کند. هیچ فایل Local Web را نصب یا کپی نمی‌کند و هیچ دیتابیس کاربردی SOKNA نمی‌سازد. بعد از پایان این مرحله، بسته Local Web را جداگانه مثل WordPress داخل مسیر Web قرار می‌دهید و نصب را در مرورگر انجام می‌دهید."
         };
 
-        var modeBox = new GroupBox { Text = "حالت اجرا", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(12) };
-        var modes = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = true };
+        var modeBox = new GroupBox { Text = "حالت اجرا", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(14, 12, 14, 14), RightToLeft = RightToLeft.Yes };
+        var modes = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = true,
+            RightToLeft = RightToLeft.Yes,
+            Padding = new Padding(4)
+        };
+        foreach (var radio in new[] { _install, _repair, _recover })
+        {
+            radio.RightToLeft = RightToLeft.Yes;
+            radio.AutoSize = true;
+            radio.Margin = new Padding(16, 4, 0, 4);
+        }
         modes.Controls.AddRange([_install, _repair, _recover]);
         modeBox.Controls.Add(modes);
 
-        var pathBox = new GroupBox { Text = "مسیر زیرساخت", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(12) };
-        var pathLayout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3 };
+        var pathBox = new GroupBox { Text = "مسیر زیرساخت", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(14, 12, 14, 14), RightToLeft = RightToLeft.Yes };
+        var pathLayout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3, RowCount = 2, RightToLeft = RightToLeft.No };
         pathLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         pathLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         pathLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        pathLayout.Controls.Add(new Label { Text = "ریشه:", AutoSize = true, Anchor = AnchorStyles.Right }, 0, 0);
+        _browse.MinimumSize = new Size(105, 34);
         _root.Dock = DockStyle.Fill;
+        _root.RightToLeft = RightToLeft.No;
+        _root.TextAlign = HorizontalAlignment.Left;
+        _root.Margin = new Padding(8, 3, 8, 8);
+        var rootLabel = new Label { Text = "ریشه:", AutoSize = true, Anchor = AnchorStyles.Right, RightToLeft = RightToLeft.Yes, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(8, 8, 0, 0) };
+        pathLayout.Controls.Add(_browse, 0, 0);
         pathLayout.Controls.Add(_root, 1, 0);
-        pathLayout.Controls.Add(_browse, 2, 0);
+        pathLayout.Controls.Add(rootLabel, 2, 0);
+        _paths.Padding = new Padding(4, 2, 4, 0);
         pathLayout.Controls.Add(_paths, 0, 1);
         pathLayout.SetColumnSpan(_paths, 3);
         pathBox.Controls.Add(pathLayout);
 
-        var dbBox = new GroupBox { Text = "MariaDB — فقط برای نصب جدید", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(12) };
-        var db = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3 };
+        var dbBox = new GroupBox { Text = "MariaDB — فقط برای نصب جدید", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(14, 12, 14, 14), RightToLeft = RightToLeft.Yes };
+        var db = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3, RowCount = 3, RightToLeft = RightToLeft.No };
         db.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         db.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         db.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        db.Controls.Add(new Label { Text = "رمز root:", AutoSize = true }, 0, 0);
+        _showPassword.RightToLeft = RightToLeft.Yes;
+        _showPassword.Margin = new Padding(0, 6, 8, 0);
         _password.Dock = DockStyle.Fill;
-        db.Controls.Add(_password, 1, 0);
-        db.Controls.Add(_showPassword, 2, 0);
-        db.Controls.Add(new Label { Text = "تکرار رمز:", AutoSize = true }, 0, 1);
+        _password.RightToLeft = RightToLeft.No;
+        _password.TextAlign = HorizontalAlignment.Left;
+        _password.Margin = new Padding(8, 3, 8, 7);
         _password2.Dock = DockStyle.Fill;
+        _password2.RightToLeft = RightToLeft.No;
+        _password2.TextAlign = HorizontalAlignment.Left;
+        _password2.Margin = new Padding(8, 3, 8, 7);
+        var passLabel = new Label { Text = "رمز مدیر MariaDB:", AutoSize = true, Anchor = AnchorStyles.Right, RightToLeft = RightToLeft.Yes, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(8, 7, 0, 0) };
+        var pass2Label = new Label { Text = "تکرار رمز:", AutoSize = true, Anchor = AnchorStyles.Right, RightToLeft = RightToLeft.Yes, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(8, 7, 0, 0) };
+        db.Controls.Add(_showPassword, 0, 0);
+        db.Controls.Add(_password, 1, 0);
+        db.Controls.Add(passLabel, 2, 0);
+        db.Controls.Add(new Panel { Width = 1, Height = 1 }, 0, 1);
         db.Controls.Add(_password2, 1, 1);
-        db.SetColumnSpan(_password2, 2);
-        db.Controls.Add(new Label
+        db.Controls.Add(pass2Label, 2, 1);
+        var dbHelp = new Label
         {
-            Text = "این رمز فقط هنگام initialize اولیه MariaDB استفاده می‌شود و در log یا state ذخیره نمی‌شود. اگر Data قبلی وجود داشته باشد، Setup اجازه initialize مجدد نمی‌دهد.",
+            Text = "این رمز فقط هنگام راه‌اندازی اولیه MariaDB استفاده می‌شود و در Log یا State ذخیره نمی‌شود. اگر Data قبلی وجود داشته باشد، Setup اجازه راه‌اندازی مجدد دیتابیس را نمی‌دهد.",
             AutoSize = true,
-            MaximumSize = new Size(900, 0)
-        }, 0, 2);
-        db.SetColumnSpan(db.GetControlFromPosition(0, 2)!, 3);
+            Dock = DockStyle.Fill,
+            RightToLeft = RightToLeft.Yes,
+            TextAlign = ContentAlignment.TopRight,
+            MaximumSize = new Size(980, 0),
+            Padding = new Padding(4, 4, 4, 0)
+        };
+        db.Controls.Add(dbHelp, 0, 2);
+        db.SetColumnSpan(dbHelp, 3);
         dbBox.Controls.Add(db);
 
-        var help = new Label
-        {
-            AutoSize = true,
-            MaximumSize = new Size(1020, 0),
-            Padding = new Padding(0, 6, 0, 6),
-            Text = ""
-        };
-        help.Name = "ModeHelp";
-
-        _status.Font = new Font("Segoe UI", 9.5f);
+        var statusBox = new GroupBox { Text = "وضعیت و جزئیات", Dock = DockStyle.Top, Height = 250, Padding = new Padding(12), RightToLeft = RightToLeft.Yes };
+        _status.Font = new Font(Font.FontFamily, 9.75f, FontStyle.Regular);
         _status.RightToLeft = RightToLeft.Yes;
+        _status.WordWrap = true;
+        statusBox.Controls.Add(_status);
 
-        var progressLayout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1 };
-        progressLayout.Controls.Add(_progressText);
-        progressLayout.Controls.Add(_progress);
+        content.Controls.Add(title, 0, 0);
+        content.Controls.Add(intro, 0, 1);
+        content.Controls.Add(modeBox, 0, 2);
+        content.Controls.Add(pathBox, 0, 3);
+        content.Controls.Add(dbBox, 0, 4);
+        content.Controls.Add(_modeHelp, 0, 5);
+        content.Controls.Add(statusBox, 0, 6);
+        scroll.Controls.Add(content);
 
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = true };
+        var progressLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(24, 4, 24, 2),
+            RightToLeft = RightToLeft.Yes
+        };
+        _progressText.TextAlign = ContentAlignment.MiddleRight;
+        _progressText.Padding = new Padding(0, 0, 0, 3);
+        progressLayout.Controls.Add(_progressText, 0, 0);
+        progressLayout.Controls.Add(_progress, 0, 1);
+
+        var actions = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = true,
+            RightToLeft = RightToLeft.Yes,
+            Padding = new Padding(24, 8, 24, 14)
+        };
+        foreach (var button in new[] { _run, _analyze, _logs, _support, _cancel })
+        {
+            button.MinimumSize = new Size(118, 38);
+            button.Margin = new Padding(8, 0, 0, 0);
+        }
+        _run.MinimumSize = new Size(100, 38);
         actions.Controls.AddRange([_run, _analyze, _logs, _support, _cancel]);
 
-        outer.Controls.Add(title, 0, 0);
-        outer.Controls.Add(intro, 0, 1);
-        outer.Controls.Add(modeBox, 0, 2);
-        outer.Controls.Add(pathBox, 0, 3);
-        outer.Controls.Add(dbBox, 0, 4);
-        outer.Controls.Add(help, 0, 5);
-        outer.Controls.Add(_status, 0, 6);
-        outer.Controls.Add(progressLayout, 0, 7);
-        outer.Controls.Add(actions, 0, 8);
-        return outer;
+        root.Controls.Add(scroll, 0, 0);
+        root.Controls.Add(progressLayout, 0, 1);
+        root.Controls.Add(actions, 0, 2);
+        return root;
     }
 
     private void RefreshModeHelp()
     {
-        if (Controls.Count == 0) return;
-        var outer = Controls[0] as TableLayoutPanel;
-        var help = outer?.Controls.Cast<Control>().FirstOrDefault(x => x.Name == "ModeHelp") as Label;
-        if (help is null) return;
-        help.Text = SelectedMode() switch
+        _modeHelp.Text = SelectedMode() switch
         {
-            OperationMode.Install => "نصب جدید: پوشه‌ها ساخته می‌شوند، نسخه‌های قفل‌شده دانلود و verify می‌شوند، PHP/Apache/MariaDB آماده و دو سرویس Windows ثبت می‌شوند. اگر Data موجود پیدا شود، عملیات به‌صورت ایمن متوقف می‌شود تا از overwrite جلوگیری شود.",
-            OperationMode.Repair => "تعمیر: فایل‌های زیرساخت و تنظیمات مدیریت‌شده بررسی/ترمیم می‌شوند. Web و Data موجود حفظ می‌شوند. MariaDB موجود initialize نمی‌شود.",
-            _ => "بازیابی بعد از ویندوز: از فایل‌های باقی‌مانده روی درایو انتخاب‌شده استفاده می‌شود و سرویس‌های Windows دوباره ثبت می‌شوند. Web و Data قبلی دست‌نخورده می‌مانند."
+            OperationMode.Install => "نصب جدید: نسخه‌های تأییدشده دانلود و بررسی می‌شوند، PHP / Apache / MariaDB آماده می‌شوند و سرویس‌های ویندوز ثبت می‌شوند. اگر Data قبلی پیدا شود، عملیات برای جلوگیری از بازنویسی متوقف می‌شود.",
+            OperationMode.Repair => "تعمیر نصب موجود: فایل‌ها و تنظیمات زیرساخت بررسی و ترمیم می‌شوند. Web و Data موجود حفظ می‌شوند و MariaDB دوباره initialize نمی‌شود.",
+            _ => "بازیابی بعد از نصب مجدد ویندوز: از فایل‌ها و Data باقی‌مانده روی درایو انتخاب‌شده استفاده می‌شود و سرویس‌های ویندوز دوباره ثبت می‌شوند. Web و Data قبلی دست‌نخورده می‌مانند."
         };
+    }
+
+    private void FitToWorkingArea()
+    {
+        var work = Screen.FromControl(this).WorkingArea;
+        var width = Math.Min(1160, Math.Max(900, work.Width - 80));
+        var height = Math.Min(820, Math.Max(650, work.Height - 80));
+        Size = new Size(width, height);
+        Location = new Point(work.Left + Math.Max(0, (work.Width - Width) / 2), work.Top + Math.Max(0, (work.Height - Height) / 2));
+    }
+
+    private void EnsureSessionLog()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_sessionLog)!);
+            if (!File.Exists(_sessionLog))
+                File.WriteAllText(_sessionLog, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] SOKNA Prerequisites UI session started.{Environment.NewLine}", new UTF8Encoding(false));
+        }
+        catch { }
     }
 
     private OperationMode SelectedMode() => _recover.Checked ? OperationMode.Recover : _repair.Checked ? OperationMode.Repair : OperationMode.Install;
