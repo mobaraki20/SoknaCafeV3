@@ -87,7 +87,7 @@ internal static class PhpRuntimeConfiguration
             var ini = Path.Combine(phpPath, "php.ini");
             if (!File.Exists(ini)) return false;
             var text = File.ReadAllText(ini, Encoding.UTF8);
-            var m = Regex.Match(text, @"(?im)^\s*extension_dir\s*=\s*[\"']?(?<v>[^\"'\r\n]+)[\"']?\s*$");
+            var m = Regex.Match(text, @"(?im)^\s*extension_dir\s*=\s*[""']?(?<v>[^""'\r\n]+)[""']?\s*$");
             if (!m.Success) return false;
             var configured = m.Groups["v"].Value.Trim();
             return InfrastructureOwnershipDetector.PathEquals(configured, Path.Combine(phpPath, "ext"));
