@@ -619,12 +619,7 @@ internal sealed class MainForm : Form
             ShowNotice("بررسی Offline Kit", summary.ToString(), invalid.Count > 0);
         }
         catch (Exception ex) { ShowError(ex); }
-        finally
-        {
-            SetBusy(false, "آماده");
-            _operationCts?.Dispose();
-            _operationCts = null;
-        }
+        finally { SetBusy(false, "آماده"); }
     }
 
     private void RefreshModeHelp()
@@ -794,7 +789,12 @@ internal sealed class MainForm : Form
             Log("ERROR: " + ex);
             ShowError(ex);
         }
-        finally { SetBusy(false, "آماده"); }
+        finally
+        {
+            SetBusy(false, "آماده");
+            _operationCts?.Dispose();
+            _operationCts = null;
+        }
     }
 
     private void ValidateInputs(OperationMode mode)
@@ -1483,7 +1483,7 @@ DirectoryIndex index.php index.html
         _run.Enabled = !busy;
         _analyze.Enabled = !busy;
         _browse.Enabled = !busy;
-        _cancel.Enabled = busy;
+        _cancel.Enabled = busy && _operationCts is not null;
         _offlineFolder.Enabled = !busy;
         foreach (var button in _artifactSelectButtons.Values) button.Enabled = !busy;
         _progressText.Text = message;
