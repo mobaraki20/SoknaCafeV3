@@ -1,0 +1,224 @@
+name: Diagnose Prerequisites 1.0.9
+on:
+  push:
+    branches:
+      - diag/prerequisites-1.0.9
+permissions:
+  contents: read
+
+jobs:
+  windows-real-http-and-upgrade:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Static contract gate
+        shell: pwsh
+        run: python tests/g7-infrastructure-prerequisites-gate.py
+
+      - name: Build prerequisites UI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-smoke
+          if($LASTEXITCODE-ne0){throw "UI build failed: $LASTEXITCODE"}
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          if($v-ne'1.0.9'){throw "Unexpected version $v"}
+          $pv=([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion).Split('+')[0]
+          if($pv-ne$v){throw "ProductVersion mismatch: $pv != $v"}
+
+      - name: Download locked Apache and PHP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lock=Get-Content platform/windows/release-lock.json -Raw|ConvertFrom-Json
+          $tmp=Join-Path $env:RUNNER_TEMP 'sokna-prereq-109'
+          New-Item -ItemType Directory -Path $tmp -Force|Out-Null
+          foreach($dep in @('apache','php')){
+            $a=$lock.artifacts|Where-Object dependency -eq $dep|Select-Object -First 1
+            if(-not$a){throw "Missing $dep artifact"}
+            $out=Join-Path $tmp $a.filename
+            & curl.exe -fL --retry 3 --retry-delay 2 -o $out $a.source_url
+            if($LASTEXITCODE-ne0){throw "$dep download failed: $LASTEXITCODE"}
+            $hash=(Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($hash-ne$a.sha256.ToLowerInvariant()){throw "$dep hash mismatch"}
+            if((Get-Item $out).Length-ne[long]$a.size){throw "$dep size mismatch"}
+          }
+
+      - name: Apply the product PHP configuration to real locked PHP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lock=Get-Content platform/windows/release-lock.json -Raw|ConvertFrom-Json
+          $tmp=Join-Path $env:RUNNER_TEMP 'sokna-prereq-109'
+          $root='C:\SOKNA-PREREQ-109'
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root -Force|Out-Null
+          $phpA=$lock.artifacts|Where-Object dependency -eq 'php'|Select-Object -First 1
+          $phpDir=Join-Path $root 'Infrastructure\PHP'
+          Expand-Archive -LiteralPath (Join-Path $tmp $phpA.filename) -DestinationPath $phpDir -Force
+
+          $setupExe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $p=Start-Process -FilePath $setupExe -ArgumentList @('--qualify-php-config',$phpDir) -Wait -PassThru -NoNewWindow
+          if($p.ExitCode-ne0){throw "Product PHP config helper failed: $($p.ExitCode)"}
+
+          $ini=Join-Path $phpDir 'php.ini'
+          $expectedExt=(Join-Path $phpDir 'ext').Replace('\','/')
+          $iniText=Get-Content $ini -Raw
+          if($iniText -notmatch [regex]::Escape('extension_dir = "'+$expectedExt+'"')){throw "php.ini does not use absolute extension_dir"}
+          if($iniText -notmatch 'extension=php_zip\.dll'){throw "php_zip.dll is not enabled"}
+
+          $mods=& (Join-Path $phpDir 'php.exe') -m
+          if($LASTEXITCODE-ne0){throw "php -m failed"}
+          foreach($ext in @('PDO','pdo_mysql','json','mbstring','sodium','zlib','zip','session','fileinfo','openssl')){
+            if(-not($mods|Where-Object {$_.Trim()-ieq$ext})){throw "CLI extension missing: $ext"}
+          }
+
+      - name: Start real Apache+PHP and require Browser Setup preflight all green
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lock=Get-Content platform/windows/release-lock.json -Raw|ConvertFrom-Json
+          $tmp=Join-Path $env:RUNNER_TEMP 'sokna-prereq-109'
+          $root='C:\SOKNA-PREREQ-109'
+          $phpDir=Join-Path $root 'Infrastructure\PHP'
+          $apacheA=$lock.artifacts|Where-Object dependency -eq 'apache'|Select-Object -First 1
+          $apacheExtract=Join-Path $tmp 'apache-extract'
+          Remove-Item $apacheExtract -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath (Join-Path $tmp $apacheA.filename) -DestinationPath $apacheExtract -Force
+          $httpdSource=Get-ChildItem $apacheExtract -Filter httpd.exe -Recurse|Select-Object -First 1
+          if(-not$httpdSource){throw 'httpd.exe missing'}
+          $apacheSource=Split-Path (Split-Path $httpdSource.FullName -Parent) -Parent
+          $apacheDir=Join-Path $root 'Infrastructure\Apache'
+          New-Item -ItemType Directory -Path $apacheDir -Force|Out-Null
+          Copy-Item -Path (Join-Path $apacheSource '*') -Destination $apacheDir -Recurse -Force
+
+          $web=Join-Path $root 'Web'
+          New-Item -ItemType Directory -Path $web -Force|Out-Null
+          Copy-Item -Path 'apps/local-web/*' -Destination $web -Recurse -Force
+          Copy-Item -LiteralPath 'apps/local-web/public/.htaccess' -Destination (Join-Path $web 'public\.htaccess') -Force
+
+          $conf=Join-Path $apacheDir 'conf\httpd.conf'
+          $a=$apacheDir.Replace('\','/')
+          $p=$phpDir.Replace('\','/')
+          $w=(Join-Path $web 'public').Replace('\','/')
+          $text=Get-Content $conf -Raw
+          $text=[regex]::Replace($text,'(?im)^\s*Define\s+SRVROOT\s+\".*?\"\s*$',('Define SRVROOT "'+$a+'"'))
+          $text=[regex]::Replace($text,'(?im)^\s*Listen\s+.*$','Listen 127.0.0.1:18093',1)
+          $text=[regex]::Replace($text,'(?im)^\s*DocumentRoot\s+\".*?\"\s*$',('DocumentRoot "'+$w+'"'),1)
+          $rx=[regex]'(?im)^\s*#?\s*LoadModule\s+rewrite_module\s+modules/mod_rewrite\.so\s*$'
+          if($rx.IsMatch($text)){$text=$rx.Replace($text,'LoadModule rewrite_module modules/mod_rewrite.so',1)}
+          else{$text+="`r`nLoadModule rewrite_module modules/mod_rewrite.so`r`n"}
+          $managed=@(
+            '# BEGIN SOKNA MANAGED',
+            'ServerName 127.0.0.1:18093',
+            ('LoadModule php_module "'+$p+'/php8apache2_4.dll"'),
+            ('PHPIniDir "'+$p+'"'),
+            '<FilesMatch \.php$>',
+            '    SetHandler application/x-httpd-php',
+            '</FilesMatch>',
+            ('<Directory "'+$w+'">'),
+            '    Options Indexes FollowSymLinks',
+            '    AllowOverride All',
+            '    Require all granted',
+            '</Directory>',
+            'DirectoryIndex index.php index.html',
+            '# END SOKNA MANAGED'
+          )
+          $text+="`r`n"+($managed -join "`r`n")+"`r`n"
+          Set-Content -LiteralPath $conf -Value $text -Encoding UTF8
+
+          $httpd=Join-Path $apacheDir 'bin\httpd.exe'
+          & $httpd -t -f $conf
+          if($LASTEXITCODE-ne0){throw "Apache syntax failed: $LASTEXITCODE"}
+
+          $proc=Start-Process -FilePath $httpd -ArgumentList @('-f',$conf,'-DFOREGROUND') -PassThru -WindowStyle Hidden
+          try{
+            $ready=$false
+            for($i=0;$i-lt40;$i++){
+              Start-Sleep -Milliseconds 500
+              try{
+                $tcp=New-Object Net.Sockets.TcpClient
+                $tcp.Connect('127.0.0.1',18093);$tcp.Dispose();$ready=$true;break
+              }catch{}
+            }
+            if(-not$ready){throw 'Apache did not bind'}
+
+            $statusFile=Join-Path $env:RUNNER_TEMP 'setup-status.json'
+            $code=& curl.exe -sS -o $statusFile -w "%{http_code}" http://127.0.0.1:18093/setup/api.php?action=status
+            if($code-ne'200'){throw "Setup status HTTP $code"}
+            $j=Get-Content $statusFile -Raw|ConvertFrom-Json
+            if(-not$j.success){throw 'Setup status success=false'}
+            $required=@('ext_pdo','ext_pdo_mysql','ext_json','ext_mbstring','ext_sodium','ext_zlib','ext_zip','ext_session')
+            foreach($id in $required){
+              $c=$j.preflight.checks|Where-Object id -eq $id|Select-Object -First 1
+              if(-not$c){throw "Preflight check missing: $id"}
+              if(-not$c.ok){throw "Preflight check failed: $id current=$($c.current)"}
+            }
+            if(-not$j.preflight.ok){throw 'Browser Setup preflight not globally OK'}
+            Write-Host 'BROWSER_SETUP_PREFLIGHT=PASS'
+            $j.preflight.checks|ForEach-Object {Write-Host "$($_.id)=$($_.current):$($_.ok)"}
+          } finally {
+            if($proc -and -not$proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue}
+            $log=Join-Path $apacheDir 'logs\error.log'
+            if(Test-Path $log){Write-Host '--- APACHE ERROR LOG ---';Get-Content $log -Tail 100}
+          }
+
+      - name: Install Inno Setup and build 1.0.9 installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          choco install innosetup --yes --no-progress
+          $repo=(Resolve-Path .).Path
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $repo
+          if($LASTEXITCODE-ne0){throw "Installer build failed: $LASTEXITCODE"}
+          $setup='packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.9.exe'
+          if(-not(Test-Path $setup)){throw '1.0.9 installer missing'}
+
+      - name: Upgrade from 1.0.8 while old UI is running
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $old=Join-Path $env:RUNNER_TEMP 'SOKNA-Prerequisites-Setup-1.0.8.exe'
+          & curl.exe -fL --retry 3 -o $old 'https://github.com/mobaraki20/SoknaCafeV3/releases/download/prerequisites-v1.0.8/SOKNA-Prerequisites-Setup-1.0.8.exe'
+          if($LASTEXITCODE-ne0){throw 'Failed to download 1.0.8 release'}
+
+          $oldInstall=Start-Process -FilePath $old -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if($oldInstall.ExitCode-ne0){throw "1.0.8 seed install failed: $($oldInstall.ExitCode)"}
+
+          $installed='C:\Program Files\SOKNA Prerequisites\SoknaPrerequisitesSetup.exe'
+          if(-not(Test-Path $installed)){throw 'Installed 1.0.8 UI missing'}
+          $oldVersion=([Diagnostics.FileVersionInfo]::GetVersionInfo($installed).ProductVersion).Split('+')[0]
+          if($oldVersion-ne'1.0.8'){throw "Seed version mismatch: $oldVersion"}
+
+          $oldUi=Start-Process -FilePath $installed -PassThru
+          Start-Sleep -Seconds 3
+          if($oldUi.HasExited){throw '1.0.8 UI did not stay running for lock reproduction'}
+
+          $new=(Resolve-Path 'packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.9.exe').Path
+          $upgrade=Start-Process -FilePath $new -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if($upgrade.ExitCode-ne0){throw "1.0.9 upgrade failed: $($upgrade.ExitCode)"}
+          Start-Sleep -Seconds 2
+          $oldUi.Refresh()
+          if(-not$oldUi.HasExited){throw 'Old UI remained running after upgrade; file-lock handling failed'}
+
+          $newVersion=([Diagnostics.FileVersionInfo]::GetVersionInfo($installed).ProductVersion).Split('+')[0]
+          if($newVersion-ne'1.0.9'){throw "Installed upgrade version mismatch: $newVersion"}
+
+          $key='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{BF4DB10B-9F11-4A7A-8B02-1B090FC57B31}_is1'
+          if(-not(Test-Path $key)){throw 'Prerequisites uninstall registration missing after upgrade'}
+          $display=(Get-ItemProperty $key).DisplayVersion
+          if($display-ne'1.0.9'){throw "DisplayVersion mismatch after upgrade: $display"}
+          Write-Host 'UPGRADE_1.0.8_TO_1.0.9_WITH_OLD_UI_OPEN=PASS'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-prerequisites-1.0.9-qualified-${{ github.sha }}
+          path: |
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.9.exe
+            packaging/prerequisites/out/installer/artifact-index.json
+          if-no-files-found: error
