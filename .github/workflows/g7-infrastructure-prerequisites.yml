@@ -1,0 +1,56 @@
+name: G7 Infrastructure Prerequisites
+
+on:
+  pull_request:
+    paths:
+      - 'platform/windows/infrastructure-prerequisites.json'
+      - 'platform/windows/prerequisites.json'
+      - 'platform/windows/release-lock.json'
+      - 'packaging/prerequisites/**'
+      - 'tests/g7-infrastructure-prerequisites-gate.py'
+      - 'docs/adr/0006-independent-infrastructure-prerequisites-setup.md'
+      - 'docs/product/FINAL_ARCHITECTURE_DECISIONS_FA.md'
+      - '.github/workflows/g7-infrastructure-prerequisites.yml'
+  push:
+    branches: [main, 'architecture/**', 'migration/**', 'feat/**']
+    paths:
+      - 'platform/windows/infrastructure-prerequisites.json'
+      - 'platform/windows/prerequisites.json'
+      - 'platform/windows/release-lock.json'
+      - 'packaging/prerequisites/**'
+      - 'tests/g7-infrastructure-prerequisites-gate.py'
+      - '.github/workflows/g7-infrastructure-prerequisites.yml'
+
+permissions: {contents: read}
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/g7-infrastructure-prerequisites-gate.py
+
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+      - name: Compile prerequisites UI
+        run: dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-smoke
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Build standalone prerequisites installer
+        shell: pwsh
+        run: |
+          $root=(Resolve-Path .).Path
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $root
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-prerequisites-setup-1.0.0
+          path: |
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.0.exe
+            packaging/prerequisites/out/installer/artifact-index.json
+          if-no-files-found: error
+          retention-days: 30
