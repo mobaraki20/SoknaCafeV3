@@ -55,6 +55,7 @@ jobs:
           mkdir -p "$source_dir"
           cd "$source_dir"
           git init
+          git config core.autocrlf false
           git fetch "$bundle" "${bundle_ref}:refs/heads/audited"
           git checkout audited
           test "$(git rev-parse HEAD)" = "${audited_head}"
@@ -71,6 +72,11 @@ jobs:
           s=p.read_text(encoding='utf-8')
           s=s.replace("'0022_g3_public_edge_sync', '0023_g4_guest_content_platform'];","'0022_g3_public_edge_sync', '0023_g4_guest_content_platform', '0024_g4_business_extensions', '0025_g4_print_template_packages'];")
           s=s.replace("'guest_content_config', 'guest_media_assets', 'guest_media_derivatives', 'guest_media_references'] as $table)","'guest_content_config', 'guest_media_assets', 'guest_media_derivatives', 'guest_media_references', 'marketing_campaigns', 'marketing_events', 'notification_preferences', 'notification_push_subscriptions', 'notification_outbox', 'notification_inbox', 'print_template_packages', 'print_template_activations'] as $table)")
+          p.write_text(s,encoding='utf-8',newline='\n')
+          p=Path('tests/local-f1-staff-operational-integration-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("$core->migrations()->migrate();$pdo=$core->database();","$core->migrations()->migrate();$pdo=$core->database();$businessDate=(string)$core->businessClock()->assignment()['business_date'];",1)
+          s=s.replace("'occurred_at'=>'2026-09-27 12:00:00'","'occurred_at'=>$businessDate.' 12:00:00'",1)
           p.write_text(s,encoding='utf-8',newline='\n')
           PY
 
@@ -121,6 +127,7 @@ jobs:
           mkdir -p "$source_dir"
           cd "$source_dir"
           git init
+          git config core.autocrlf false
           git fetch "$bundle" "${bundle_ref}:refs/heads/audited"
           git checkout audited
           test "$(git rev-parse HEAD)" = "${audited_head}"
@@ -175,6 +182,7 @@ jobs:
           mkdir -p "$source_dir"
           cd "$source_dir"
           git init
+          git config core.autocrlf false
           git fetch "$bundle" "${bundle_ref}:refs/heads/audited"
           git checkout audited
           test "$(git rev-parse HEAD)" = "${audited_head}"
