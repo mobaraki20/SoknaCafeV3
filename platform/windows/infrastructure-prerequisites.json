@@ -23,10 +23,13 @@
     "mariadb": "SoknaMariaDB"
   },
   "ports": {
-    "apache": 80,
+    "apache": 18080,
     "mariadb": 3306,
     "bind_address": "127.0.0.1",
     "apache_fallback_candidates": [
+      18081,
+      18082,
+      18083,
       8080,
       8081,
       8088,
@@ -76,5 +79,14 @@
     "show_transfer_rate": true,
     "show_eta": true,
     "validate_content_length_when_available": true
+  },
+  "local_endpoint": {
+    "format": "sokna-local-endpoint-v1",
+    "network_scope": "loopback-only",
+    "canonical_host": "127.0.0.1",
+    "scheme": "http",
+    "configurable_port": true,
+    "source_of_truth_before_local_setup": "Infrastructure\\infrastructure-state.json",
+    "source_of_truth_after_local_setup": "Local Web config + generated Windows Services pairing"
   }
 }
