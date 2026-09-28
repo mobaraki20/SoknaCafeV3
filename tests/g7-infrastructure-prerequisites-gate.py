@@ -46,7 +46,9 @@ for token in [
     'stale registration; executable is missing and may be safely rebound','delete SoknaApache',
     'LoadModule rewrite_module modules/mod_rewrite.so','Apache mod_rewrite پیدا نشد',
     'ApacheConfigurationReady(','Local Web configuration is incomplete; repair is required',
-    'apache-error.log','ApacheLocalWebConfigReady='
+    'apache-error.log','ApacheLocalWebConfigReady=',
+    'extension_dir = \"{extDir}\"','php_zip.dll','ValidateApachePhpRuntimeAsync(',
+    'required_extensions=OK','DetectExistingInfrastructureRoot()','حالت «تعمیر نصب موجود» به‌صورت خودکار انتخاب شده است'
 ]:
     need(token in src,f'missing implementation guard: {token}')
 need('password=<redacted>' in src,'MariaDB root password is not redacted in command log')
@@ -60,6 +62,9 @@ iss=(R/'packaging/prerequisites/installer/SOKNA-Prerequisites.iss').read_text(en
 need('SOKNA-Prerequisites-Setup-{#ProductVersion}' in iss,'installer output contract missing')
 need('SoknaPrerequisitesSetup.exe' in iss,'installer does not launch prerequisites UI')
 need('runascurrentuser' in iss,'post-install prerequisites UI launch must keep elevated token')
+need('CloseApplications=yes' in iss and 'CloseApplicationsFilter=SoknaPrerequisitesSetup.exe' in iss,'installer upgrade must close the running prerequisites UI safely')
+need('GetInstalledVersion' in iss and 'DisplayVersion' in iss and 'InitializeSetup' in iss,'installer upgrade detection/prompt missing')
+need('ارتقا داده می‌شود' in iss,'installer upgrade UX must explicitly describe upgrade')
 
 lock=json.loads((R/'platform/windows/release-lock.json').read_text(encoding='utf-8'))
 maria=next(x for x in lock['artifacts'] if x['dependency']=='mariadb')
