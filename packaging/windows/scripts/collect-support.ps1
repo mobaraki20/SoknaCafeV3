@@ -82,7 +82,7 @@ try {
     Write-Text (Join-Path $work 'listening-ports.txt') $network
 
     if(Test-Path -LiteralPath $zip){Remove-Item -LiteralPath $zip -Force}
-    Compress-Archive -LiteralPath (Join-Path $work '*') -DestinationPath $zip -CompressionLevel Optimal
+    Compress-Archive -Path (Join-Path $work '*') -DestinationPath $zip -CompressionLevel Optimal
     Write-Host $zip
 }
 finally {
