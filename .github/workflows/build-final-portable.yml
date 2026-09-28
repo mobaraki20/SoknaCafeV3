@@ -17,7 +17,7 @@ jobs:
       - name: verify exact source
         run: test "$(git rev-parse HEAD)" = "$source_sha"
       - name: build portable release
-        run: python3 release/build-portable-release.py --out "$runner_temp/final" --source-commit "$source_sha"
+        run: python3 release/build-portable-release.py --out "$RUNNER_TEMP/final" --source-commit "$source_sha"
       - uses: actions/upload-artifact@v4
         with:
           name: final-portable-deliverables
