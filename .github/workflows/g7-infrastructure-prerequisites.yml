@@ -48,9 +48,9 @@ jobs:
           & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $root
       - uses: actions/upload-artifact@v4
         with:
-          name: sokna-prerequisites-setup-1.0.1
+          name: sokna-prerequisites-setup-1.0.2
           path: |
-            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.1.exe
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.2.exe
             packaging/prerequisites/out/installer/artifact-index.json
           if-no-files-found: error
           retention-days: 30
