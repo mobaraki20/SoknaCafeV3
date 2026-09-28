@@ -1464,6 +1464,18 @@ internal sealed class MainForm : Form
         text = Regex.Replace(text, "(?im)^\\s*Define\\s+SRVROOT\\s+\\\".*?\\\"\\s*$", $"Define SRVROOT \"{a}\"");
         text = new Regex(@"(?im)^\s*Listen\s+.*$").Replace(text, $"Listen 127.0.0.1:{ApachePort()}", 1);
         text = new Regex("(?im)^\\s*DocumentRoot\\s+\\\".*?\\\"\\s*$").Replace(text, $"DocumentRoot \"{w}\"", 1);
+
+        // Local Web ships an .htaccess that uses RewriteEngine/RewriteRule.
+        // Apache Lounge keeps mod_rewrite commented by default, which turns
+        // every request into HTTP 500 as soon as that .htaccess is present.
+        var rewriteRx=new Regex(@"(?im)^\s*#?\s*LoadModule\s+rewrite_module\s+modules/mod_rewrite\.so\s*$");
+        if(rewriteRx.IsMatch(text))
+            text=rewriteRx.Replace(text,"LoadModule rewrite_module modules/mod_rewrite.so",1);
+        else if(File.Exists(Path.Combine(ApachePath(),"modules","mod_rewrite.so")))
+            text+=Environment.NewLine+"LoadModule rewrite_module modules/mod_rewrite.so"+Environment.NewLine;
+        else
+            throw new InvalidOperationException("Apache mod_rewrite پیدا نشد؛ Local Web بدون این ماژول با HTTP 500 اجرا می‌شود.");
+
         text = Regex.Replace(text, @"(?is)\r?\n# BEGIN SOKNA MANAGED.*?# END SOKNA MANAGED\r?\n?", Environment.NewLine);
         text += $"""
 # BEGIN SOKNA MANAGED
