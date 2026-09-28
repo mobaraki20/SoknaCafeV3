@@ -570,7 +570,7 @@ final class Bootstrap
     {
         return $this->systemDiagnostics ??= new SystemDiagnosticsService(
             $this->database(),$this->config,$this->observability,$this->migrations(),$this->printManagement(),$this->supportBundles(),
-            dirname(__DIR__,4),dirname(__DIR__,2),dirname(__DIR__,2).'/VERSION.txt',$this->publicEdgeSyncClient()
+            dirname(__DIR__,2),dirname(__DIR__,2),dirname(__DIR__,2).'/VERSION.txt',$this->publicEdgeSyncClient()
         );
     }
 
@@ -645,7 +645,7 @@ final class Bootstrap
 
     public function publicReenrollment(): PublicReenrollmentService
     {
-        return $this->publicReenrollmentService ??= new PublicReenrollmentService($this->config,$this->publicEdgeSyncClient(),dirname(__DIR__,4).'/config.php');
+        return $this->publicReenrollmentService ??= new PublicReenrollmentService($this->config,$this->publicEdgeSyncClient(),dirname(__DIR__,2).'/config.php');
     }
 
     public function expenseDeferred(): ExpenseDeferredAdapter
