@@ -3,8 +3,12 @@ declare(strict_types=1);
 
 namespace Sokna\Local\Setup;
 
+require_once dirname(__DIR__).'/Core/LocalEndpoint.php';
+
 use PDO;
 use Throwable;
+use InvalidArgumentException;
+use Sokna\Local\Core\LocalEndpoint;
 
 final class BrowserSetupService
 {
@@ -69,20 +73,14 @@ final class BrowserSetupService
 
     public static function normalizeLocalBaseUrl(string $value): string
     {
-        $value=trim($value);
-        if($value==='')throw new SetupException('local_endpoint_invalid','آدرس Local Web مشخص نشده است.',422);
-        $parts=parse_url($value);
-        if(!is_array($parts))throw new SetupException('local_endpoint_invalid','آدرس Local Web معتبر نیست.',422);
-        $scheme=strtolower((string)($parts['scheme']??''));
-        $host=strtolower(trim((string)($parts['host']??''),'[]'));
-        if(!in_array($scheme,['http','https'],true))throw new SetupException('local_endpoint_invalid','Local Web فقط با HTTP/HTTPS معتبر است.',422);
-        if(!in_array($host,['127.0.0.1','localhost','::1'],true))throw new SetupException('local_endpoint_not_loopback','آدرس Local Web باید فقط روی همین کامپیوتر (loopback) باشد.',422);
-        if(isset($parts['user'])||isset($parts['pass'])||isset($parts['query'])||isset($parts['fragment']))throw new SetupException('local_endpoint_invalid','آدرس Local Web نباید credential، query یا fragment داشته باشد.',422);
-        $path=(string)($parts['path']??'');
-        if($path!==''&&$path!=='/')throw new SetupException('local_endpoint_invalid','آدرس پایه Local Web نباید path داشته باشد.',422);
-        $port=(int)($parts['port']??($scheme==='https'?443:80));
-        if($port<1||$port>65535)throw new SetupException('local_endpoint_invalid','پورت Local Web معتبر نیست.',422);
-        return $scheme.'://127.0.0.1:'.$port.'/';
+        try{return LocalEndpoint::normalize($value);}
+        catch(InvalidArgumentException $e){
+            $code=$e->getMessage()==='local_endpoint_not_loopback'?'local_endpoint_not_loopback':'local_endpoint_invalid';
+            $message=$code==='local_endpoint_not_loopback'
+                ?'آدرس Local Web باید فقط روی همین کامپیوتر (loopback) باشد.'
+                :'آدرس Local Web یا پورت انتخاب‌شده معتبر نیست.';
+            throw new SetupException($code,$message,422);
+        }
     }
 
     public function testDatabase(array $db, bool $createDatabase = false): array
@@ -130,7 +128,7 @@ final class BrowserSetupService
             'db'=>['host'=>$db['host'],'port'=>$db['port'],'name'=>$db['name'],'charset'=>'utf8mb4','user'=>$db['user'],'pass'=>$db['pass']],
             'installation'=>['id'=>$installationId],
             'runtime'=>['local_token'=>$localToken],
-            'local'=>['base_url'=>$localBaseUrl,'origin'=>rtrim($localBaseUrl,'/')],
+            'local'=>['base_url'=>$localBaseUrl,'origin'=>LocalEndpoint::origin($localBaseUrl)],
             'public'=>['base_url'=>'','shared_secret'=>''],
             'integrations'=>['accommodation'=>['base_url'=>'','secret'=>'']],
         ];
@@ -261,7 +259,7 @@ final class BrowserSetupService
             'format'=>'sokna-windows-services-pairing-v1',
             'schema_version'=>1,
             'local_base_url'=>$localBaseUrl,
-            'local_bridge_allowed_origin'=>rtrim($localBaseUrl,'/'),
+            'local_bridge_allowed_origin'=>LocalEndpoint::origin($localBaseUrl),
             'runtime_token'=>$healthToken,
             'local_token'=>$localToken,
             'print_agent_token'=>$printToken,
