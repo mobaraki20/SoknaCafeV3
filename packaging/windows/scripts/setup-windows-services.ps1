@@ -68,6 +68,32 @@ function Set-DelayedAutomatic([string]$name){
   Set-Service -Name $name -StartupType Automatic -ErrorAction Stop
   Set-ItemProperty -LiteralPath ("HKLM:\SYSTEM\CurrentControlSet\Services\"+$name) -Name DelayedAutoStart -Type DWord -Value 1 -Force
 }
+function Configure-PrintDataRoot([string]$root){
+  $root=Full $root 'Print Agent data root'
+  New-Item -ItemType Directory -Path $root,(Join-Path $root 'logs'),(Join-Path $root 'work') -Force|Out-Null
+  $key='HKLM:\SOFTWARE\Sokna\Local\PrintWorker'
+  New-Item -Path $key -Force|Out-Null
+  New-ItemProperty -Path $key -Name DataRoot -PropertyType String -Value $root -Force|Out-Null
+  $actual=[string](Get-ItemProperty -LiteralPath $key -Name DataRoot -ErrorAction Stop).DataRoot
+  if([IO.Path]::GetFullPath($actual)-cne$root){throw "Print Agent DataRoot verification failed. expected=[$root] actual=[$actual]"}
+}
+function Start-Owned([string]$name,[string]$startupFatal=''){
+  try{
+    Start-Service -Name $name -ErrorAction Stop
+    $svc=Get-Service -Name $name -ErrorAction Stop
+    try{$svc.WaitForStatus('Running',[TimeSpan]::FromSeconds(20))}finally{$svc.Dispose()}
+  }catch{
+    $detail=$_.Exception.Message
+    if(-not[string]::IsNullOrWhiteSpace($startupFatal)-and(Test-Path -LiteralPath $startupFatal -PathType Leaf)){
+      try{
+        $fatal=(Get-Content -LiteralPath $startupFatal -Raw -ErrorAction Stop).Replace([char]13,' ').Replace([char]10,' ').Trim()
+        if($fatal.Length-gt1200){$fatal=$fatal.Substring(0,1200)}
+        if($fatal){$detail+=' | startup-fatal: '+$fatal}
+      }catch{}
+    }
+    throw "Service start failed: $name. $detail"
+  }
+}
 function Write-Secret([string]$path,[string]$value){
   if([string]::IsNullOrWhiteSpace($value)-or$value.Length-lt32-or$value.Length-gt512){throw 'Pairing secret length is invalid.'}
   New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($path)) -Force|Out-Null
@@ -106,6 +132,7 @@ if([string]$compat.external_infrastructure.owner -ne 'external' -or [bool]$compa
 $runtimeSource=Join-Path $ShellRoot 'SoknaRuntimeService.exe';$printSource=Join-Path $ShellRoot 'print-worker'
 $runtimeExe=Join-Path $InstallRoot 'Runtime\SoknaRuntimeService.exe';$printRoot=Join-Path $InstallRoot 'PrintAgent';$printExe=Join-Path $printRoot 'Service\Sokna.PrintAgent.Service.exe'
 $runtimeConfig=Join-Path $DataRoot 'runtime\runtime-config.json';$runtimeToken=Join-Path $DataRoot 'runtime\runtime-token.private';$localToken=Join-Path $DataRoot 'runtime\local-token.private'
+$printDataRoot=Join-Path $DataRoot 'print-worker';$printStartupFatal=Join-Path $printDataRoot 'logs\startup-fatal.json'
 $runtimeCmd=Runtime-Command $runtimeExe $runtimeConfig;$printCmd=Print-Command $printExe
 
 if($Mode-eq'Uninstall'){
@@ -122,6 +149,7 @@ $printActual='';foreach($n in @('version','component_version','agent_version')){
 if($printActual -and $printActual -ne [string]$compat.components.'print-agent'.version){throw "Print Agent payload version mismatch: $printActual"}
 $pair=Read-Pairing $PairingFile
 New-Item -ItemType Directory -Path $InstallRoot,$DataRoot,(Join-Path $DataRoot 'runtime'),(Join-Path $DataRoot 'setup') -Force|Out-Null
+Configure-PrintDataRoot $printDataRoot
 Stop-Owned $RuntimeService $runtimeCmd;Stop-Owned $PrintService $printCmd
 New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($runtimeExe)) -Force|Out-Null
 Copy-Item -LiteralPath $runtimeSource -Destination $runtimeExe -Force
@@ -139,7 +167,8 @@ Delete-Owned $RuntimeService $runtimeCmd;Delete-Owned $PrintService $printCmd
 Create-Owned $RuntimeService $runtimeCmd 'SOKNA Runtime'
 Create-Owned $PrintService $printCmd 'SOKNA Print Worker'
 Set-DelayedAutomatic $PrintService
-if($pair -and $StartWhenPaired -eq 1){Set-DelayedAutomatic $RuntimeService;Start-Service $PrintService;Start-Service $RuntimeService}else{Start-Service $PrintService}
-$state=[ordered]@{format='sokna-windows-services-install-state-v1';package_owner='windows-services-packaging';installed_at_utc=[DateTime]::UtcNow.ToString('o');install_root=$InstallRoot;data_root=$DataRoot;paired=($null-ne$pair);runtime_service=$RuntimeService;print_service=$PrintService;external_infrastructure_mutated=$false;business_data_mutated=$false}
+Start-Owned $PrintService $printStartupFatal
+if($pair -and $StartWhenPaired -eq 1){Set-DelayedAutomatic $RuntimeService;Start-Owned $RuntimeService}
+$state=[ordered]@{format='sokna-windows-services-install-state-v1';package_owner='windows-services-packaging';installed_at_utc=[DateTime]::UtcNow.ToString('o');install_root=$InstallRoot;data_root=$DataRoot;print_data_root=$printDataRoot;paired=($null-ne$pair);runtime_service=$RuntimeService;print_service=$PrintService;external_infrastructure_mutated=$false;business_data_mutated=$false}
 $state|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $DataRoot 'setup\windows-services-state.json') -Encoding UTF8
 [ordered]@{success=$true;mode=$Mode.ToLowerInvariant();paired=($null-ne$pair);runtime_start=$(if($pair-and$StartWhenPaired -eq 1){'started'}else{'manual_waiting_for_pairing'});print_agent='started_waiting_or_configured';business_data_mutated=$false;external_infrastructure_mutated=$false}|ConvertTo-Json -Compress
