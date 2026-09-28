@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 use Sokna\Local\Setup\BrowserSetupService;
-$root=dirname(__DIR__,4);$local=dirname(__DIR__,2);
+$local=dirname(__DIR__,2);$root=$local;
 require_once $local.'/src/Setup/SetupException.php';require_once $local.'/src/Setup/BrowserSetupService.php';
 $setup=new BrowserSetupService($root,$local);if($setup->status()['installed']){header('Location: /login.php');exit;}header('Cache-Control: no-store');header('X-Content-Type-Options: nosniff');header('X-Frame-Options: DENY');header("Content-Security-Policy: default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");header('Referrer-Policy: no-referrer');
 ?><!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>راه‌اندازی سکنا</title><link rel="stylesheet" href="/scds.php?file=tokens.css"><link rel="stylesheet" href="/scds.php?file=components.css"><link rel="stylesheet" href="/assets/setup-wizard.css"></head><body><main class="sc-setup" data-setup-root>
