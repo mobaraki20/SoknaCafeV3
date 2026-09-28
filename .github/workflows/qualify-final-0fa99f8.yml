@@ -1,0 +1,177 @@
+name: qualify final source 0fa99f8
+
+on:
+  push:
+    branches:
+      - transfer/v3-final-menu-041db67-helper
+    paths:
+      - .transfer/soknacafev3-git-0fa99f837f50.bundle
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  audited_head: 0fa99f837f502fc84e24c8ef7e4d449eeeff3dcd
+  bundle_name: soknacafev3-git-0fa99f837f50.bundle
+  bundle_ref: refs/heads/transfer-final-qualified-0fa99f8
+
+jobs:
+  linux-real-env:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: 3306
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: reconstruct exact final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="${GITHUB_WORKSPACE}/.transfer/${bundle_name}"
+          source_dir="${RUNNER_TEMP}/sokna-source"
+          rm -rf "$source_dir"
+          mkdir -p "$source_dir"
+          cd "$source_dir"
+          git init
+          git config core.autocrlf false
+          git fetch "$bundle" "${bundle_ref}:refs/heads/audited"
+          git checkout audited
+          test "$(git rev-parse HEAD)" = "${audited_head}"
+
+      - name: install php db and zip extensions
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+          php -r 'exit(in_array("mysql",PDO::getAvailableDrivers(),true)&&class_exists("ZipArchive")&&extension_loaded("sodium")?0:1);'
+
+      - name: run full linux real environment chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/sokna-source"
+          mkdir -p qualification-evidence
+          ./tests/run-g4-4-product-qualification.sh 2>&1 | tee qualification-evidence/linux-real-env.log
+          python3 tests/capture-qualification-evidence.py --id DQ-G4.1 --terminal 'G4.1 Product Qualification: PASS' --log qualification-evidence/linux-real-env.log --out qualification-evidence/DQ-G4.1.json --capability A05 --capability A06 --capability A13 --capability A15 --capability A16 --source-head "${audited_head}"
+          python3 tests/capture-qualification-evidence.py --id DQ-G4.2 --terminal 'G4.2 Product Qualification: PASS' --log qualification-evidence/linux-real-env.log --out qualification-evidence/DQ-G4.2.json --capability A21 --capability A22 --capability A23 --source-head "${audited_head}"
+          python3 tests/capture-qualification-evidence.py --id DQ-G4.3 --terminal 'G4.3 Product Qualification: PASS' --log qualification-evidence/linux-real-env.log --out qualification-evidence/DQ-G4.3.json --capability A24 --capability A25 --capability A26 --source-head "${audited_head}"
+          python3 tests/capture-qualification-evidence.py --id DQ-G4.4 --terminal 'G4.4 Product Qualification: PASS' --log qualification-evidence/linux-real-env.log --out qualification-evidence/DQ-G4.4.json --capability A28 --capability A46 --source-head "${audited_head}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-0fa99f8-linux-evidence
+          path: ${{ runner.temp }}/sokna-source/qualification-evidence/
+          if-no-files-found: error
+
+  windows-real-env:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: reconstruct exact final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="$(cygpath -u "$GITHUB_WORKSPACE")/.transfer/${bundle_name}"
+          source_dir="$(cygpath -u "$RUNNER_TEMP")/sokna-source"
+          rm -rf "$source_dir"
+          mkdir -p "$source_dir"
+          cd "$source_dir"
+          git init
+          git config core.autocrlf false
+          git fetch "$bundle" "${bundle_ref}:refs/heads/audited"
+          git checkout audited
+          test "$(git rev-parse HEAD)" = "${audited_head}"
+
+      - name: ensure inno setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: run g5 windows qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$(cygpath -u "$RUNNER_TEMP")/sokna-source"
+          cd "$source_dir"
+          mkdir -p qualification-evidence
+          ./tests/run-g5-windows-packaging-qualification.sh 2>&1 | tee qualification-evidence/g5-windows.log
+          python3 tests/capture-qualification-evidence.py --id DQ-G5 --terminal 'G5 Windows Packaging Qualification: PASS' --log qualification-evidence/g5-windows.log --out qualification-evidence/DQ-G5.json --capability A40 --capability A41 --capability A42 --source-head "${audited_head}"
+
+      - name: run g6 component artifact qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$(cygpath -u "$RUNNER_TEMP")/sokna-source"
+          artifact_dir="$(cygpath -u "$RUNNER_TEMP")/g6-artifacts"
+          cd "$source_dir"
+          SOKNA_G6_ARTIFACT_DIR="$artifact_dir" ./tests/run-g6-component-artifact-qualification.sh 2>&1 | tee qualification-evidence/g6-components.log
+          python3 tests/capture-qualification-evidence.py --id DQ-G6 --terminal 'G6 Component Release Qualification: PASS' --log qualification-evidence/g6-components.log --out qualification-evidence/DQ-G6.json --capability A44 --capability A50 --source-head "${audited_head}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-0fa99f8-windows-evidence
+          path: ${{ runner.temp }}/sokna-source/qualification-evidence/
+          if-no-files-found: error
+
+  final-evidence-gate:
+    needs: [linux-real-env, windows-real-env]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: reconstruct exact final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="${GITHUB_WORKSPACE}/.transfer/${bundle_name}"
+          source_dir="${RUNNER_TEMP}/sokna-source"
+          rm -rf "$source_dir"
+          mkdir -p "$source_dir"
+          cd "$source_dir"
+          git init
+          git config core.autocrlf false
+          git fetch "$bundle" "${bundle_ref}:refs/heads/audited"
+          git checkout audited
+          test "$(git rev-parse HEAD)" = "${audited_head}"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: final-0fa99f8-*-evidence
+          path: qualification-evidence
+          merge-multiple: true
+
+      - name: run same commit final evidence gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/sokna-source"
+          "${RUNNER_TEMP}/sokna-source/tests/run-g6-final-qualification.sh" "${GITHUB_WORKSPACE}/qualification-evidence" "${audited_head}" | tee "${GITHUB_WORKSPACE}/qualification-evidence/g6-final.log"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-0fa99f8-g6-evidence
+          path: qualification-evidence/
+          if-no-files-found: error
