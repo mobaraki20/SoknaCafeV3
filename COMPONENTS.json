@@ -185,7 +185,7 @@
       ],
       "current_state": "CORE_COMPLETE",
       "version_source": "windows/print-agent/source/Directory.Build.props#SoknaAgentVersion",
-      "current_version": "6.2.6",
+      "current_version": "6.2.7",
       "artifact_pipeline": "windows/print-agent/build-component-package.ps1",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },
@@ -232,7 +232,7 @@
       ],
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "packaging/windows/WINDOWS_SERVICES_VERSION.txt",
-      "current_version": "1.0.6",
+      "current_version": "1.0.7",
       "compatibility_manifest": "packaging/windows/windows-services-compatibility-v1.json",
       "artifact_pipeline": "packaging/windows/scripts/build-installer.ps1",
       "release_compatibility_manifest": "release/compatibility-v2.json"
