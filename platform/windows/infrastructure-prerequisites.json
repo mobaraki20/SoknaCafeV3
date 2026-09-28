@@ -32,9 +32,21 @@
     "format": "sokna-windows-prerequisite-lock-v1"
   },
   "items": [
-    {"id":"php","release_lock_dependency":"php","required_for":"local-web-runtime"},
-    {"id":"apache","release_lock_dependency":"apache","required_for":"local-web-runtime"},
-    {"id":"mariadb","release_lock_dependency":"mariadb","required_for":"local-web-runtime"}
+    {
+      "id": "php",
+      "release_lock_dependency": "php",
+      "required_for": "local-web-runtime"
+    },
+    {
+      "id": "apache",
+      "release_lock_dependency": "apache",
+      "required_for": "local-web-runtime"
+    },
+    {
+      "id": "mariadb",
+      "release_lock_dependency": "mariadb",
+      "required_for": "local-web-runtime"
+    }
   ],
   "recovery": {
     "preserve_existing_web_root": true,
@@ -46,5 +58,16 @@
     "persistent_logs_under_selected_root": true,
     "support_bundle_without_secrets": true,
     "state_file": "Infrastructure\\infrastructure-state.json"
+  },
+  "offline_artifact_import_allowed": true,
+  "offline_kit_folder_allowed": true,
+  "download_behavior": {
+    "header_timeout_seconds": 7,
+    "stall_timeout_seconds": 20,
+    "resume_partial_downloads": true,
+    "show_actual_bytes": true,
+    "show_transfer_rate": true,
+    "show_eta": true,
+    "validate_content_length_when_available": true
   }
 }
