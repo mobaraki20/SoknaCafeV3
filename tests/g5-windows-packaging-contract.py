@@ -49,6 +49,10 @@ life=txt('packaging/windows/scripts/setup-windows-services.ps1')
 support=txt('packaging/windows/scripts/collect-support.ps1')
 owner=txt('packaging/windows/scripts/lifecycle-owner.ps1')
 build=txt('packaging/windows/scripts/build-installer.ps1')
+build_ui=txt('packaging/windows/scripts/build-setup-ui.ps1')
+build_host=txt('packaging/windows/scripts/build-setup-host.ps1')
+ui_proj=txt('packaging/windows/setup-ui/Sokna.SetupUi.csproj')
+host_proj=txt('packaging/windows/setup-host/Sokna.SetupHost.csproj')
 for token in ['schema_version','install_root','pairing_file','sokna-windows-services-shell-v2','SHA256.HashData','windows-services-compatibility-v1.json']:
     need(token in host,f'SetupHost missing {token}')
 for stale in ['app_root','php_exe','openssl_exe','web_server_exe','setup_config_file','recovery_file']:
@@ -84,6 +88,12 @@ need('external_infrastructure_mutated=$false' in life and 'business_data_mutated
 need('New-Service -Name' in life,'Windows service registration must use PowerShell New-Service')
 need('& $sc create' not in life and 'sc.exe" create' not in life,'fragile sc.exe create registration must not return')
 need('ImagePath verification failed' in life and 'Invoke-ScChecked' in life,'service registration/deletion diagnostics are incomplete')
+need("HKLM:\\SOFTWARE\\Sokna\\Local\\PrintWorker" in life and 'Configure-PrintDataRoot' in life,'Print Agent data root is not bound to selected SOKNA DataRoot')
+need('startup-fatal.json' in life and 'Start-Owned' in life,'Print Agent startup diagnostics are not surfaced')
+need('print-worker-data-root.txt' in support and "LogName='Application'" in support,'support bundle does not capture actual Print Agent startup evidence')
+for script,label in [(build_ui,'setup UI'),(build_host,'setup host')]:
+    need('WINDOWS_SERVICES_VERSION.txt' in script and '-p:Version=$version' in script,f'{label} build does not use package version source')
+need('<Version>1.0.4</Version>' not in ui_proj+host_proj,'stale setup executable version is hard-coded')
 need('php.exe' not in life.lower() and 'apache' not in life.lower() and 'mariadb' not in life.lower(),'service lifecycle touches external infrastructure')
 
 for legacy in [
