@@ -1,0 +1,83 @@
+name: Publish SOKNA Local Web 3.0.0-g6.3-dev
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-local-web-g6.3.yml'
+permissions:
+  contents: write
+jobs:
+  qualify-and-publish:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_SHA: d6cda655f05fce56c0ec1f44cc8ccc74253addea
+      TAG: local-web-v3.0.0-g6.3-dev
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - name: Install PHP DB and ZIP extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+      - name: Qualify Local endpoint and Browser Setup
+        run: |
+          set -euo pipefail
+          python3 tests/local-endpoint-contract.py
+          php tests/local-endpoint-selftest.php
+          php tests/local-g2-browser-setup-pure-selftest.php
+          php tests/local-g2-browser-setup-selftest.php
+      - name: Build clean install package
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < apps/local-web/VERSION.txt)"
+          test "$VERSION" = "3.0.0-g6.3-dev"
+          mkdir -p dist
+          python3 apps/local-web/tools/build-clean-install-package.py             --source apps/local-web             --source-commit "$SOURCE_SHA"             --out "dist/SoknaCafeV3-local-web-install-$VERSION.zip"
+          python3 - <<'PY'
+          import zipfile, json
+          p='dist/SoknaCafeV3-local-web-install-3.0.0-g6.3-dev.zip'
+          with zipfile.ZipFile(p) as z:
+              n=set(z.namelist())
+              assert 'public/index.php' in n
+              assert 'public/setup/index.php' in n
+              assert 'bootstrap.php' in n
+              assert 'config.php' not in n
+              assert 'install.lock' not in n
+              m=json.loads(z.read('sokna-install-manifest.json'))
+              assert m['version']=='3.0.0-g6.3-dev'
+              assert m['source_commit']=='d6cda655f05fce56c0ec1f44cc8ccc74253addea'
+              assert m['document_root']=='public'
+          print('Local Web clean install package: PASS')
+          PY
+          (cd dist && sha256sum SoknaCafeV3-local-web-install-3.0.0-g6.3-dev.zip > SHA256SUMS.txt)
+      - name: Publish GitHub Release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/SoknaCafeV3-local-web-install-3.0.0-g6.3-dev.zip dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG"               dist/SoknaCafeV3-local-web-install-3.0.0-g6.3-dev.zip               dist/SHA256SUMS.txt               --repo "$GITHUB_REPOSITORY"               --target "$SOURCE_SHA"               --title "SOKNA Local Web 3.0.0-g6.3-dev"               --notes "Direct-extract Local Web clean-install package. Qualified with Local endpoint contract, endpoint normalization, Browser Setup pure-state tests, and real MariaDB Browser Setup including pairing generation. Extract into the Web root created by SOKNA Prerequisites; Apache serves Web/public."
+          fi
