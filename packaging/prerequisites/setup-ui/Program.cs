@@ -151,9 +151,10 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(24),
             ColumnCount = 1,
-            RowCount = 8,
+            RowCount = 9,
             AutoScroll = true
         };
+        outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -236,17 +237,15 @@ internal sealed class MainForm : Form
         var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = true };
         actions.Controls.AddRange([_run, _analyze, _logs, _support, _cancel]);
 
-        outer.Controls.Add(title);
-        outer.Controls.Add(intro);
-        outer.Controls.Add(modeBox);
-        outer.Controls.Add(pathBox);
-        outer.Controls.Add(dbBox);
-        outer.Controls.Add(_status);
-        outer.Controls.Add(progressLayout);
-        outer.Controls.Add(actions);
-        outer.Tag = help;
-        outer.Controls.Add(help);
-        outer.SetChildIndex(help, 5);
+        outer.Controls.Add(title, 0, 0);
+        outer.Controls.Add(intro, 0, 1);
+        outer.Controls.Add(modeBox, 0, 2);
+        outer.Controls.Add(pathBox, 0, 3);
+        outer.Controls.Add(dbBox, 0, 4);
+        outer.Controls.Add(help, 0, 5);
+        outer.Controls.Add(_status, 0, 6);
+        outer.Controls.Add(progressLayout, 0, 7);
+        outer.Controls.Add(actions, 0, 8);
         return outer;
     }
 
