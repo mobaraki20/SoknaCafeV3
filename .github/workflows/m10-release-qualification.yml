@@ -128,9 +128,9 @@ jobs:
       - name: Upload qualified Windows Services installer
         uses: actions/upload-artifact@v4
         with:
-          name: sokna-windows-services-1.0.1-${{ github.sha }}
+          name: sokna-windows-services-1.0.2-${{ github.sha }}
           path: |
-            release/out-windows/SOKNA-Windows-Services-Setup-1.0.1.exe
+            release/out-windows/SOKNA-Windows-Services-Setup-1.0.2.exe
             release/out-windows/artifact-index.json
           if-no-files-found: error
           retention-days: 30
