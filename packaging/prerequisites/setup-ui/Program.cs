@@ -480,9 +480,10 @@ internal sealed class MainForm : Form
             SetProgress(100, "زیرساخت آماده است.");
             _status.AppendText("\n✓ زیرساخت آماده شد.\n");
             _status.AppendText($"مرحله بعد: فایل Local Web را داخل «{WebPath()}» قرار دهید و http://localhost/ را در مرورگر باز کنید.\n");
-            MessageBox.Show(this,
-                $"زیرساخت آماده شد.\n\nWeb Root:\n{WebPath()}\n\nدر مرحله بعد Local Web را جداگانه داخل این مسیر قرار دهید و http://localhost/ را باز کنید.",
-                "SOKNA", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ShowNotice(
+                "زیرساخت آماده شد",
+                $"Web Root:\n{WebPath()}\n\nدر مرحله بعد Local Web را جداگانه داخل این مسیر قرار دهید و http://localhost/ را باز کنید.",
+                false);
         }
         catch (OperationCanceledException)
         {
@@ -955,11 +956,21 @@ DirectoryIndex index.php index.html
 
     private void Log(string line)
     {
-        if (string.IsNullOrWhiteSpace(_currentLog)) return;
+        var record = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {line}{Environment.NewLine}";
+        try
+        {
+            EnsureSessionLog();
+            File.AppendAllText(_sessionLog, record, new UTF8Encoding(false));
+        }
+        catch { }
+
+        if (string.IsNullOrWhiteSpace(_currentLog) || string.Equals(_currentLog, _sessionLog, StringComparison.OrdinalIgnoreCase))
+            return;
+
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_currentLog)!);
-            File.AppendAllText(_currentLog, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {line}{Environment.NewLine}", new UTF8Encoding(false));
+            File.AppendAllText(_currentLog, record, new UTF8Encoding(false));
         }
         catch { }
     }
@@ -968,8 +979,18 @@ DirectoryIndex index.php index.html
     {
         try
         {
-            Directory.CreateDirectory(LogsPath());
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{LogsPath()}\"") { UseShellExecute = true });
+            string target;
+            try
+            {
+                Directory.CreateDirectory(LogsPath());
+                target = LogsPath();
+            }
+            catch
+            {
+                EnsureSessionLog();
+                target = Path.GetDirectoryName(_sessionLog)!;
+            }
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{target}\"") { UseShellExecute = true });
         }
         catch (Exception ex) { ShowError(ex); }
     }
@@ -985,13 +1006,16 @@ DirectoryIndex index.php index.html
             try
             {
                 if (File.Exists(StatePath())) File.Copy(StatePath(), Path.Combine(temp, "infrastructure-state.json"), true);
+                var dst = Path.Combine(temp, "logs");
+                Directory.CreateDirectory(dst);
                 if (Directory.Exists(LogsPath()))
                 {
-                    var dst = Path.Combine(temp, "logs");
-                    Directory.CreateDirectory(dst);
                     foreach (var f in Directory.GetFiles(LogsPath(), "*.log").TakeLast(20))
                         File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true);
                 }
+                EnsureSessionLog();
+                if (File.Exists(_sessionLog))
+                    File.Copy(_sessionLog, Path.Combine(dst, Path.GetFileName(_sessionLog)), true);
                 var diag = new StringBuilder();
                 diag.AppendLine("SOKNA Prerequisites support bundle");
                 diag.AppendLine("No passwords or application credentials are intentionally included.");
@@ -1002,7 +1026,7 @@ DirectoryIndex index.php index.html
                 await File.WriteAllTextAsync(Path.Combine(temp, "diagnostics.txt"), diag.ToString(), new UTF8Encoding(false));
                 var zip = Path.Combine(support, $"SOKNA-Prerequisites-Support-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
                 ZipFile.CreateFromDirectory(temp, zip, CompressionLevel.Optimal, false);
-                MessageBox.Show(this, $"بسته پشتیبانی ساخته شد:\n{zip}\n\nرمزها و credentialهای Local Web عمداً در آن قرار نگرفته‌اند.", "SOKNA", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ShowNotice("بسته پشتیبانی ساخته شد", $"{zip}\n\nرمزها و اطلاعات ورود Local Web عمداً داخل این بسته قرار نگرفته‌اند.", false);
                 Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{zip}\"") { UseShellExecute = true });
             }
             finally { SafeDelete(temp); }
@@ -1012,9 +1036,88 @@ DirectoryIndex index.php index.html
 
     private void ShowError(Exception ex)
     {
+        Log("ERROR: " + ex);
         _status.AppendText($"\nخطا: {ex.Message}\n");
-        var log = _currentLog is null ? "هنوز فایل log ساخته نشده است." : $"Log:\n{_currentLog}";
-        MessageBox.Show(this, $"{ex.Message}\n\n{log}\n\nبرای بررسی بیشتر از «ساخت بسته پشتیبانی» استفاده کنید.", "خطای آماده‌سازی زیرساخت", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        var logPath = !string.IsNullOrWhiteSpace(_currentLog) ? _currentLog : _sessionLog;
+        ShowNotice(
+            "خطای آماده‌سازی زیرساخت",
+            $"{ex.Message}\n\nفایل گزارش:\n{logPath}\n\nبرای بررسی بیشتر از «ساخت بسته پشتیبانی» استفاده کنید.",
+            true);
+    }
+
+    private void ShowNotice(string title, string message, bool isError)
+    {
+        using var dialog = new Form
+        {
+            Text = title,
+            Width = 600,
+            Height = 285,
+            MinimumSize = new Size(520, 240),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            ShowInTaskbar = false,
+            RightToLeft = RightToLeft.Yes,
+            RightToLeftLayout = false,
+            Font = Font,
+            Icon = Icon
+        };
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 2,
+            Padding = new Padding(20),
+            RightToLeft = RightToLeft.Yes
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 52));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var text = new Label
+        {
+            Text = message,
+            Dock = DockStyle.Fill,
+            AutoSize = false,
+            RightToLeft = RightToLeft.Yes,
+            TextAlign = ContentAlignment.TopRight,
+            Padding = new Padding(8, 4, 8, 4)
+        };
+        var icon = new PictureBox
+        {
+            Image = (isError ? SystemIcons.Error : SystemIcons.Information).ToBitmap(),
+            SizeMode = PictureBoxSizeMode.CenterImage,
+            Dock = DockStyle.Top,
+            Height = 48
+        };
+        var close = new Button
+        {
+            Text = "بستن",
+            AutoSize = true,
+            MinimumSize = new Size(100, 36),
+            DialogResult = DialogResult.OK
+        };
+
+        var buttons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            FlowDirection = FlowDirection.RightToLeft,
+            RightToLeft = RightToLeft.Yes
+        };
+        buttons.Controls.Add(close);
+
+        layout.Controls.Add(text, 0, 0);
+        layout.Controls.Add(icon, 1, 0);
+        layout.Controls.Add(buttons, 0, 1);
+        layout.SetColumnSpan(buttons, 2);
+        dialog.Controls.Add(layout);
+        dialog.AcceptButton = close;
+        dialog.CancelButton = close;
+        dialog.ShowDialog(this);
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
