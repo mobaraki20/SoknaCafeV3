@@ -130,6 +130,10 @@ jobs:
           $p=Start-Process -FilePath $exe -ArgumentList "--self-test-infrastructure-ownership" -Wait -PassThru
           if($p.ExitCode-ne0){throw "Prerequisites ownership parser self-test failed: $($p.ExitCode)"}
 
+      - name: Require real Apache PHP Browser Setup preflight
+        shell: pwsh
+        run: tests/g7-windows-apache-php-runtime.ps1
+
       - name: Reproduce real MariaDB cross-root registration and require safe block
         shell: pwsh
         run: |
@@ -257,6 +261,10 @@ jobs:
           $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
           $setup="packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-$v.exe"
           if(-not(Test-Path $setup)){throw "Installer not produced: $setup"}
+
+      - name: Require upgrade from previous release while old UI is running
+        shell: pwsh
+        run: tests/g7-prerequisites-upgrade.ps1
 
       - uses: actions/upload-artifact@v4
         with:
