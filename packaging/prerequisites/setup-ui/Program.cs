@@ -401,9 +401,9 @@ internal sealed class MainForm : Form
         try
         {
             _paths.Text =
-                $"زیرساخت: {InfraPath()}\n" +
-                $"داده MariaDB: {DataPath()}\n" +
-                $"Web Root برای مرحله بعد: {WebPath()}\n" +
+                $"زیرساخت: {Technical(InfraPath())}\n" +
+                $"داده MariaDB: {Technical(DataPath())}\n" +
+                $"Web Root برای مرحله بعد: {Technical(WebPath())}\n" +
                 "Local Web در این مرحله نصب نمی‌شود.";
         }
         catch { _paths.Text = "مسیر واردشده معتبر نیست."; }
@@ -437,17 +437,17 @@ internal sealed class MainForm : Form
             await Task.Run(() =>
             {
                 var sb = new StringBuilder();
-                sb.AppendLine($"Root: {RootPath()}");
+                sb.AppendLine($"مسیر اصلی: {Technical(RootPath())}");
                 sb.AppendLine($"PHP: {(File.Exists(Path.Combine(PhpPath(), "php.exe")) ? "موجود" : "پیدا نشد")}");
-                sb.AppendLine($"Apache files: {(File.Exists(Path.Combine(ApachePath(), "bin", "httpd.exe")) ? "موجود" : "پیدا نشد")}");
-                sb.AppendLine($"Apache service: {ServiceStatus("SoknaApache")}");
-                sb.AppendLine($"Apache port 80: {(TcpOpen(80) ? "پاسخ می‌دهد" : "بسته/در دسترس نیست")}");
-                sb.AppendLine($"MariaDB files: {(FindMariaServer() is not null ? "موجود" : "پیدا نشد")}");
-                sb.AppendLine($"MariaDB data: {(MariaDataInitialized() ? "موجود — preserve" : "initialize نشده")}");
-                sb.AppendLine($"MariaDB service: {ServiceStatus("SoknaMariaDB")}");
-                sb.AppendLine($"MariaDB port 3306: {(TcpOpen(3306) ? "پاسخ می‌دهد" : "بسته/در دسترس نیست")}");
-                sb.AppendLine($"Web Root: {WebPath()}");
-                if (File.Exists(StatePath())) sb.AppendLine($"State: {StatePath()}");
+                sb.AppendLine($"Apache — فایل‌ها: {(File.Exists(Path.Combine(ApachePath(), "bin", "httpd.exe")) ? "موجود" : "پیدا نشد")}");
+                sb.AppendLine($"Apache — سرویس ویندوز: {ServiceStatus("SoknaApache")}");
+                sb.AppendLine($"Apache — پورت {Technical("80")}: {(TcpOpen(80) ? "پاسخ می‌دهد" : "در دسترس نیست")}");
+                sb.AppendLine($"MariaDB — فایل‌ها: {(FindMariaServer() is not null ? "موجود" : "پیدا نشد")}");
+                sb.AppendLine($"MariaDB — Data: {(MariaDataInitialized() ? "موجود و محافظت‌شده" : "هنوز راه‌اندازی نشده")}");
+                sb.AppendLine($"MariaDB — سرویس ویندوز: {ServiceStatus("SoknaMariaDB")}");
+                sb.AppendLine($"MariaDB — پورت {Technical("3306")}: {(TcpOpen(3306) ? "پاسخ می‌دهد" : "در دسترس نیست")}");
+                sb.AppendLine($"Web Root: {Technical(WebPath())}");
+                if (File.Exists(StatePath())) sb.AppendLine($"State: {Technical(StatePath())}");
                 BeginInvoke(new Action(() => _status.Text = sb.ToString()));
             });
         }
@@ -459,9 +459,10 @@ internal sealed class MainForm : Form
     {
         try
         {
+            SetBusy(true, "در حال بررسی ورودی‌ها...");
             var mode = SelectedMode();
             ValidateInputs(mode);
-            SetBusy(true, "شروع عملیات...");
+            _progressText.Text = "شروع عملیات...";
             PreparePersistentLayout();
             StartLog(mode);
 
@@ -933,6 +934,7 @@ DirectoryIndex index.php index.html
     }
 
     private static string Slash(string p) => p.Replace('\\', '/');
+    private static string Technical(string value) => "\u200E" + value + "\u200E";
     private static string FirstLine(string s) => s.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
 
     private void SetBusy(bool busy, string message)
