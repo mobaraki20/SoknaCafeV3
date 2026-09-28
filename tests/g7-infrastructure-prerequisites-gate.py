@@ -42,7 +42,8 @@ for token in [
     'EnsureApachePortAvailableWithFallback()','CanBindLoopback(','DescribePortConflict(',
     'ServerName 127.0.0.1:{ApachePort()}','LocalWebUrl()','apache_document_root','base_url = LocalWebUrl()',
     'InfrastructureOwnershipDetector.Detect(','--self-test-infrastructure-ownership','--probe-infrastructure-ownership',
-    'cross_root_existing_installation_detected = false','WindowsInstaller:','ReadServiceImagePath('
+    'cross_root_existing_installation_detected = false','WindowsInstaller:','ReadServiceImagePath(',
+    'stale registration; executable is missing and may be safely rebound','delete SoknaApache'
 ]:
     need(token in src,f'missing implementation guard: {token}')
 need('password=<redacted>' in src,'MariaDB root password is not redacted in command log')
