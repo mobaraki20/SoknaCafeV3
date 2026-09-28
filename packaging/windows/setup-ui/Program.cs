@@ -108,6 +108,7 @@ internal sealed class SetupForm : Form
     private readonly Button _uninstall = new() { Text = "حذف سرویس‌ها", AutoSize = true };
     private readonly Button _refresh = new() { Text = "بررسی دوباره", AutoSize = true };
     private readonly Button _download = new() { Text = "دریافت فایل رسمی و تأییدشده", AutoSize = true };
+    private readonly Button _localPrereq = new() { Text = "انتخاب فایل از کامپیوتر", AutoSize = true };
     private readonly Button _cancelDownload = new() { Text = "لغو دانلود", AutoSize = true, Enabled = false };
     private readonly Button _guidance = new() { Text = "راهنمای گام‌به‌گام", AutoSize = true };
     private readonly Button _officialPage = new() { Text = "صفحه رسمی", AutoSize = true };
@@ -196,6 +197,7 @@ internal sealed class SetupForm : Form
 
         _refresh.Click += async (_, _) => await RefreshPrerequisitesAsync();
         _download.Click += async (_, _) => await DownloadSelectedAsync();
+        _localPrereq.Click += async (_, _) => await SelectLocalPrerequisiteAsync();
         _cancelDownload.Click += (_, _) => _downloadCts?.Cancel();
         _guidance.Click += (_, _) => ShowGuidance();
         _officialPage.Click += (_, _) => OpenOfficialPage();
@@ -235,7 +237,7 @@ internal sealed class SetupForm : Form
         layout.Controls.Add(_prereqs);
 
         layout.Controls.Add(_prereqHelp);
-        layout.Controls.Add(Flow(_refresh, _download, _guidance, _officialPage));
+        layout.Controls.Add(Flow(_refresh, _download, _localPrereq, _guidance, _officialPage));
         page.Controls.Add(layout);
         return page;
     }
@@ -328,6 +330,7 @@ internal sealed class SetupForm : Form
     {
         _tips.SetToolTip(_refresh, "پیش‌نیاز مستقیم سرویس‌های ویندوزی را دوباره بررسی می‌کند. هیچ تغییری ایجاد نمی‌کند.");
         _tips.SetToolTip(_download, "فایل نسخه قفل‌شده را دانلود می‌کند، اندازه و SHA-256 آن را می‌سنجد و فقط فایل را نشان می‌دهد؛ نصب خودکار انجام نمی‌شود.");
+        _tips.SetToolTip(_localPrereq, "برای حالت آفلاین همان فایل رسمی را از کامپیوتر یا فلش انتخاب می‌کند، اندازه/SHA-256 و در صورت نیاز امضای دیجیتال را بررسی و در Cache تأییدشده ذخیره می‌کند.");
         _tips.SetToolTip(_guidance, "برای مورد انتخاب‌شده یک راهنمای فارسی مرحله‌به‌مرحله نشان می‌دهد.");
         _tips.SetToolTip(_officialPage, "صفحه رسمی ارائه‌دهنده پیش‌نیاز انتخاب‌شده را در مرورگر باز می‌کند.");
         _tips.SetToolTip(_cancelDownload, "دانلود جاری را متوقف می‌کند. فایل ناقص برای ادامه دانلود در نوبت بعد نگه داشته می‌شود.");
@@ -583,6 +586,85 @@ internal sealed class SetupForm : Form
             SetBusy(false);
             _downloadCts?.Dispose();
             _downloadCts = null;
+        }
+    }
+
+    private async Task SelectLocalPrerequisiteAsync()
+    {
+        var item = SelectedItem();
+        if (item is null)
+        {
+            ShowError("ابتدا یک ردیف از پیش‌نیازها را انتخاب کنید.");
+            return;
+        }
+
+        var artifact = ArtifactFor(item);
+        if (artifact is null)
+        {
+            ShowError("برای این پیش‌نیاز فایل تأییدشده‌ای ثبت نشده است.");
+            return;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            CheckFileExists = true,
+            Multiselect = false,
+            Title = $"انتخاب فایل {item.DisplayName} — نسخه {artifact.Version}",
+            FileName = artifact.Filename,
+            Filter = $"فایل مورد انتظار ({artifact.Filename})|{artifact.Filename}|همه فایل‌ها (*.*)|*.*"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        SetBusy(true, "در حال بررسی فایل انتخاب‌شده…");
+        try
+        {
+            var info = new FileInfo(dialog.FileName);
+            if (info.Length != artifact.Size)
+                throw new InvalidOperationException($"حجم فایل انتخاب‌شده معتبر نیست. انتظار: {artifact.Size / 1024d / 1024d:0.0} MB؛ دریافت‌شده: {info.Length / 1024d / 1024d:0.0} MB.");
+
+            _progress.Value = 35;
+            _status.Text = "حجم صحیح است؛ در حال بررسی SHA-256 و امضای دیجیتال…";
+            if (!await VerifyArtifactAsync(dialog.FileName, artifact))
+                throw new InvalidOperationException("SHA-256 یا امضای دیجیتال فایل انتخاب‌شده با نسخه تأییدشده SOKNA تطبیق ندارد.");
+
+            var cache = CacheRoot();
+            Directory.CreateDirectory(cache);
+            var final = Path.Combine(cache, artifact.Filename);
+            if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(final), StringComparison.OrdinalIgnoreCase))
+            {
+                var temp = final + ".importing";
+                try
+                {
+                    File.Copy(dialog.FileName, temp, true);
+                    File.Move(temp, final, true);
+                }
+                finally
+                {
+                    try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+                }
+            }
+
+            try
+            {
+                var partial = final + ".partial";
+                if (File.Exists(partial)) File.Delete(partial);
+            }
+            catch { }
+
+            _progress.Value = 100;
+            _status.Text = "فایل آفلاین تأیید شد و برای استفاده آماده است.";
+            AppendUiLog($"LOCAL PREREQUISITE ACCEPTED {item.Id}: {artifact.Filename}");
+            ShowGuidance(item, artifact, final);
+        }
+        catch (Exception e)
+        {
+            var message = "فایل انتخاب‌شده پذیرفته نشد: " + FriendlyError(e);
+            AppendUiLog("LOCAL PREREQUISITE ERROR " + item.Id + ": " + Safe(message));
+            ShowError(message);
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 
@@ -1293,7 +1375,7 @@ internal sealed class SetupForm : Form
 
     private void SetBusy(bool busy, string? text = null, bool allowCancel = false)
     {
-        foreach (var b in new[] { _install, _repair, _uninstall, _refresh, _download, _guidance, _officialPage, _browsePairing, _refreshServices, _supportBundle })
+        foreach (var b in new[] { _install, _repair, _uninstall, _refresh, _download, _localPrereq, _guidance, _officialPage, _browsePairing, _refreshServices, _supportBundle })
             b.Enabled = !busy;
 
         _cancelDownload.Enabled = busy && allowCancel;
