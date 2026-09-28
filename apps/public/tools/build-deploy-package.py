@@ -17,10 +17,13 @@ def files(root:Path):
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('--source',default='apps/public')
-    ap.add_argument('--version',required=True)
+    ap.add_argument('--version')
     ap.add_argument('--out',required=True)
     ap.add_argument('--source-commit',default='unknown')
     args=ap.parse_args()
+    source_version=(Path(args.source).resolve()/'VERSION.txt').read_text(encoding='utf-8').strip()
+    if args.version and args.version!=source_version: raise SystemExit(f'--version {args.version} does not match Public VERSION.txt {source_version}')
+    args.version=source_version
     if re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z._+-]{0,63}',args.version) is None: raise SystemExit('invalid version')
     root=Path(args.source).resolve(); out=Path(args.out).resolve()
     if not (root/'public'/'index.php').is_file(): raise SystemExit('Public document root is incomplete')

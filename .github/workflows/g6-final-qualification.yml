@@ -1,0 +1,102 @@
+name: G6 Final Product Qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  linux-real-env:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: 3306
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP DB/ZIP extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+          php -r 'var_export(PDO::getAvailableDrivers()); echo PHP_EOL;'
+          php -r 'exit(class_exists("ZipArchive") && extension_loaded("sodium") ? 0 : 1);'
+      - name: Run G4 consolidated real environment chain
+        run: |
+          mkdir -p qualification-evidence
+          set -o pipefail
+          ./tests/run-g4-4-product-qualification.sh 2>&1 | tee qualification-evidence/g4-real-env.log
+          python3 tests/capture-qualification-evidence.py --id DQ-G4.1 --terminal 'G4.1 Product Qualification: PASS' --log qualification-evidence/g4-real-env.log --out qualification-evidence/DQ-G4.1.json --capability A05 --capability A06 --capability A13 --capability A15 --capability A16 --source-head "$GITHUB_SHA"
+          python3 tests/capture-qualification-evidence.py --id DQ-G4.2 --terminal 'G4.2 Product Qualification: PASS' --log qualification-evidence/g4-real-env.log --out qualification-evidence/DQ-G4.2.json --capability A21 --capability A22 --capability A23 --source-head "$GITHUB_SHA"
+          python3 tests/capture-qualification-evidence.py --id DQ-G4.3 --terminal 'G4.3 Product Qualification: PASS' --log qualification-evidence/g4-real-env.log --out qualification-evidence/DQ-G4.3.json --capability A24 --capability A25 --capability A26 --source-head "$GITHUB_SHA"
+          python3 tests/capture-qualification-evidence.py --id DQ-G4.4 --terminal 'G4.4 Product Qualification: PASS' --log qualification-evidence/g4-real-env.log --out qualification-evidence/DQ-G4.4.json --capability A28 --capability A46 --source-head "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g6-linux-evidence
+          path: qualification-evidence/
+          if-no-files-found: error
+
+  windows-real-env:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure Inno Setup 6
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Run G5 Windows qualification
+        shell: bash
+        run: |
+          mkdir -p qualification-evidence
+          set -o pipefail
+          ./tests/run-g5-windows-packaging-qualification.sh 2>&1 | tee qualification-evidence/g5-windows.log
+          python3 tests/capture-qualification-evidence.py --id DQ-G5 --terminal 'G5 Windows Packaging Qualification: PASS' --log qualification-evidence/g5-windows.log --out qualification-evidence/DQ-G5.json --capability A40 --capability A41 --capability A42 --source-head "$GITHUB_SHA"
+      - name: Run G6 independent component artifact qualification
+        shell: bash
+        run: |
+          set -o pipefail
+          SOKNA_G6_ARTIFACT_DIR="$RUNNER_TEMP/g6-artifacts" ./tests/run-g6-component-artifact-qualification.sh 2>&1 | tee qualification-evidence/g6-components.log
+          python3 tests/capture-qualification-evidence.py --id DQ-G6 --terminal 'G6 Component Release Qualification: PASS' --log qualification-evidence/g6-components.log --out qualification-evidence/DQ-G6.json --capability A44 --capability A50 --source-head "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g6-windows-evidence
+          path: qualification-evidence/
+          if-no-files-found: error
+
+  final-evidence-gate:
+    needs: [linux-real-env, windows-real-env]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: g6-*-evidence
+          path: qualification-evidence
+          merge-multiple: true
+      - name: Final same-commit product parity evidence gate
+        run: |
+          ./tests/run-g6-final-qualification.sh qualification-evidence "$GITHUB_SHA" | tee qualification-evidence/final.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g6-final-evidence
+          path: qualification-evidence/
+          if-no-files-found: error

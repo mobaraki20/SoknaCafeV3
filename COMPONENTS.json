@@ -15,7 +15,8 @@
     "local-web": {
       "workstreams": [
         "G1_LOCAL_WEB_PRODUCT_PARITY",
-        "G2_LOCAL_SETUP_OBSERVABILITY_UPDATE"
+        "G2_LOCAL_SETUP_OBSERVABILITY_UPDATE",
+        "G6_RELEASE_QUALIFICATION_V2"
       ],
       "owned_paths": [
         "apps/local-web/**"
@@ -53,11 +54,16 @@
         "third_party_infrastructure_lifecycle",
         "Public transport persistence"
       ],
-      "current_state": "CORE_PARTIALLY_COMPLETE_PRODUCT_OPEN"
+      "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
+      "version_source": "apps/local-web/VERSION.txt",
+      "current_version": "3.0.0-g6-dev",
+      "artifact_pipeline": "apps/local-web/tools/build-update-package.py",
+      "release_compatibility_manifest": "release/compatibility-v2.json"
     },
     "public-edge": {
       "workstreams": [
-        "G3_PUBLIC_EDGE_PRODUCTIZATION"
+        "G3_PUBLIC_EDGE_PRODUCTIZATION",
+        "G6_RELEASE_QUALIFICATION_V2"
       ],
       "owned_paths": [
         "apps/public/**"
@@ -92,11 +98,16 @@
         "full Local DB",
         "Windows services"
       ],
-      "current_state": "TRANSPORT_CORE_PARTIALLY_COMPLETE_PRODUCT_OPEN"
+      "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
+      "version_source": "apps/public/VERSION.txt",
+      "current_version": "3.0.0-g3.3-dev",
+      "artifact_pipeline": "apps/public/tools/build-deploy-package.py + apps/public/tools/build-update-package.py",
+      "release_compatibility_manifest": "release/compatibility-v2.json"
     },
     "windows-runtime": {
       "workstreams": [
-        "G5_WINDOWS_PACKAGING_REVISION"
+        "G5_WINDOWS_PACKAGING_REVISION",
+        "G6_RELEASE_QUALIFICATION_V2"
       ],
       "owned_paths": [
         "windows/runtime/**"
@@ -129,11 +140,14 @@
       ],
       "current_state": "CORE_COMPLETE",
       "version_source": "windows/runtime/source/Sokna.Runtime.Service.csproj#Version",
-      "current_version": "1.0.0"
+      "current_version": "1.0.0",
+      "artifact_pipeline": "windows/runtime/build-component-package.ps1",
+      "release_compatibility_manifest": "release/compatibility-v2.json"
     },
     "print-agent": {
       "workstreams": [
-        "G5_WINDOWS_PACKAGING_REVISION"
+        "G5_WINDOWS_PACKAGING_REVISION",
+        "G6_RELEASE_QUALIFICATION_V2"
       ],
       "owned_paths": [
         "windows/print-agent/**"
@@ -166,7 +180,9 @@
       ],
       "current_state": "CORE_COMPLETE",
       "version_source": "windows/print-agent/source/Directory.Build.props#SoknaAgentVersion",
-      "current_version": "6.2.5"
+      "current_version": "6.2.5",
+      "artifact_pipeline": "windows/print-agent/build-component-package.ps1",
+      "release_compatibility_manifest": "release/compatibility-v2.json"
     },
     "windows-services-packaging": {
       "workstreams": [
@@ -211,7 +227,9 @@
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "packaging/windows/WINDOWS_SERVICES_VERSION.txt",
       "current_version": "1.0.0",
-      "compatibility_manifest": "packaging/windows/windows-services-compatibility-v1.json"
+      "compatibility_manifest": "packaging/windows/windows-services-compatibility-v1.json",
+      "artifact_pipeline": "packaging/windows/scripts/build-installer.ps1",
+      "release_compatibility_manifest": "release/compatibility-v2.json"
     },
     "infrastructure-compatibility": {
       "workstreams": [
@@ -276,7 +294,11 @@
         "business state",
         "component runtime state"
       ],
-      "current_state": "FROZEN_BY_DEFAULT"
+      "current_state": "VERSIONED_FROZEN_BY_DEFAULT",
+      "version_source": "contracts/VERSION.txt",
+      "current_version": "0.1.0-dev",
+      "artifact_pipeline": "release/build-contracts-package.py",
+      "release_compatibility_manifest": "release/compatibility-v2.json"
     },
     "ui-design-system": {
       "workstreams": [

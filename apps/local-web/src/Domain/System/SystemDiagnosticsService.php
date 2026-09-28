@@ -24,6 +24,7 @@ final class SystemDiagnosticsService
         private readonly SupportBundleWriter $bundles,
         private readonly string $packageRoot,
         private readonly string $localWebRoot,
+        private readonly string $versionFile,
         private readonly ?PublicEdgeSyncClient $publicClient=null,
     ) {}
 
@@ -58,7 +59,7 @@ final class SystemDiagnosticsService
 
     private function localStatus(): array
     {
-        $version=$this->readTrim($this->packageRoot.DIRECTORY_SEPARATOR.'VERSION.txt');$setup=(new BrowserSetupService($this->packageRoot,$this->localWebRoot))->status();
+        $version=$this->readTrim($this->versionFile);$setup=(new BrowserSetupService($this->packageRoot,$this->localWebRoot))->status();
         $free=@disk_free_space($this->observability->dataRoot());$installation=(string)$this->config->get('installation.id','');
         return [
             'status'=>($setup['installed']??false)&&is_writable($this->observability->dataRoot())?'ok':'attention','version'=>$version!==''?$version:'unknown','php_version'=>PHP_VERSION,

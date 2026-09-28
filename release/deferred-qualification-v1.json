@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-09-28",
+  "policy": "RUN_ONCE_AS_FINAL_CONSOLIDATED_REAL_ENV_QUALIFICATION_AFTER_IMPLEMENTATION_WORKSTREAMS_COMPLETE",
+  "required_environment": [
+    "MariaDB 11.4.x",
+    "PHP with pdo_mysql",
+    "ZipArchive",
+    "sodium"
+  ],
+  "entries": [
+    {
+      "id": "DQ-G4.1",
+      "source_head": "97986ec9bf2906dbb674a582d40ea76ec92873ca",
+      "capabilities": [
+        "A05",
+        "A06",
+        "A13",
+        "A15",
+        "A16"
+      ],
+      "runner": "tests/run-g4-1-product-qualification.sh",
+      "terminal": "G4.1 Product Qualification: PASS",
+      "status": "DEFERRED",
+      "must_verify": [
+        "G2/G3 real-env regressions",
+        "Public/Local dual-DB provider-consumer E2E",
+        "realtime settlement",
+        "deferred supply",
+        "subscriber payment",
+        "manager review reconciliation",
+        "idempotency/retry safety"
+      ]
+    },
+    {
+      "id": "DQ-G4.2",
+      "source_head": "b107a6a1c65ce232eb066e0335e405aef1740d25",
+      "capabilities": [
+        "A21",
+        "A22",
+        "A23"
+      ],
+      "runner": "tests/run-g4-2-product-qualification.sh",
+      "terminal": "G4.2 Product Qualification: PASS",
+      "status": "DEFERRED",
+      "environment_attempt": {
+        "exit_code": 3,
+        "reason": "pdo_mysql unavailable in current workspace"
+      },
+      "must_verify": [
+        "G4.1/G3/G2 real-environment regression chain",
+        "Local migration 0023 on MariaDB 11.4 and idempotent migration stack",
+        "Theme draft/publish persistence and whitelist-only Public CSS rendering",
+        "Media import/dedup/derivative/reference protection/signed Public replica delivery",
+        "Public immutable guest publish with media integrity and rendered alt/media URL",
+        "Central guest copy persistence/publish/escaped render and markup rejection",
+        "Archive refusal while referenced, then unassign/archive/GC removal",
+        "Raster-only media policy across Local and Public"
+      ]
+    },
+    {
+      "id": "DQ-G4.3",
+      "source_head": "d92675321b85faf35c817af68f3253f5e91d670a",
+      "capabilities": [
+        "A24",
+        "A25",
+        "A26"
+      ],
+      "runner": "tests/run-g4-3-product-qualification.sh",
+      "terminal": "G4.3 Product Qualification: PASS",
+      "status": "DEFERRED",
+      "environment_attempt": {
+        "exit_code": 3,
+        "reason": "pdo_mysql unavailable in current workspace"
+      },
+      "must_verify": [
+        "G4.2/G4.1/G3/G2 real-environment regression chain",
+        "Local migration 0024 on MariaDB 11.4",
+        "Campaign/event persistence and Public guest exposure boundaries",
+        "Reporting SQL and bounded 366-day range on canonical finance/order data",
+        "Remote reports read-model sync",
+        "Durable notification outbox/inbox delivery and retry semantics",
+        "Push subscription registry + configured HTTPS bridge + real-device Service Worker delivery",
+        "Remote notification privacy filter per projection"
+      ]
+    },
+    {
+      "id": "DQ-G4.4",
+      "source_head": "1e7c7ed3bd2960ed3ad89725fc5dc3f5149fed4f",
+      "capabilities": [
+        "A28",
+        "A46"
+      ],
+      "runner": "tests/run-g4-4-product-qualification.sh",
+      "terminal": "G4.4 Product Qualification: PASS",
+      "status": "DEFERRED",
+      "environment_attempt": {
+        "exit_code": 3,
+        "reason": "pdo_mysql unavailable in current workspace"
+      },
+      "additional_environment": [
+        "Windows Print Agent v4 with Local Preview Bridge",
+        "configured printer or approved PDF/physical UAT target"
+      ],
+      "must_verify": [
+        "G4.3/G4.2/G4.1/G3/G2 real-environment regression chain",
+        "Migration 0025 on MariaDB 11.4",
+        "Immutable .soknaprint import/dedup/version-conflict/activation lifecycle",
+        "Active template injection into preparation and customer receipt canonical payloads",
+        "Selected-template durable Test Print path",
+        "Local Bridge /v1/preview render with pairing+origin security and bounded preview limits",
+        "Physical/Windows renderer output for preparation and customer templates",
+        "SCDS Public/G4 RTL/A11y/responsive/no-parallel-owner surface gate"
+      ]
+    },
+    {
+      "id": "DQ-G5",
+      "source_head": "23a0ec95117dfe040a5debff99970d055258ed2e",
+      "capabilities": [
+        "A40",
+        "A41",
+        "A42"
+      ],
+      "runner": "tests/run-g5-windows-packaging-qualification.sh",
+      "terminal": "G5 Windows Packaging Qualification: PASS",
+      "status": "DEFERRED",
+      "environment_attempt": {
+        "exit_code": 3,
+        "reason": "Windows PowerShell/.NET/Inno unavailable in current Workspace"
+      },
+      "additional_environment": [
+        "Windows 10/11 x64",
+        "Windows PowerShell 5.1",
+        "Inno Setup 6",
+        "dotnet SDK matching setup projects",
+        "Windows SCM",
+        "network path for frozen prerequisite download test"
+      ],
+      "must_verify": [
+        "SetupHost/UI/Inno compile and installer build",
+        "shell payload hash/version fencing for package/runtime/print versions",
+        "clean install/repair/uninstall of SoknaRuntime + SoknaPrintWorker only",
+        "paired and unpaired service start behavior",
+        "business data and external infrastructure untouched",
+        "PHP/Apache/MariaDB remain non-blocking external Local-Web prerequisites",
+        "VC runtime blocking detection",
+        "resumable download to .partial then size/SHA-256/AuthentiCode verification",
+        "HTTPS redirect policy and corrupt/hash/signature failure",
+        "manual guidance path and proof downloaded artifact is never auto-executed"
+      ]
+    },
+    {
+      "id": "DQ-G6",
+      "source_head_policy": "final_checkout_head",
+      "capabilities": [
+        "A44",
+        "A50"
+      ],
+      "runner": "tests/run-g6-component-artifact-qualification.sh",
+      "terminal": "G6 Component Release Qualification: PASS",
+      "status": "DEFERRED",
+      "additional_environment": [
+        "Windows 10/11 x64",
+        "PowerShell",
+        "dotnet SDK",
+        "Inno Setup 6",
+        "Python 3"
+      ],
+      "must_verify": [
+        "independent component-owned versions",
+        "deterministic Local/Public/Contracts package manifests",
+        "Runtime/Print Agent independent artifacts",
+        "Windows Services package compatibility binding",
+        "cross-platform evidence aggregation on one source commit",
+        "all required PRODUCT_OPEN rows covered by real qualification evidence"
+      ]
+    }
+  ],
+  "product_complete_rule": "No evidence-pending capability is PRODUCT_COMPLETE until its required final real-environment entry passes.",
+  "format": "sokna-deferred-qualification-v1"
+}

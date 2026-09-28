@@ -6,7 +6,10 @@ STABLE=('public/emergency.php','src/Emergency/','resources/update-trust-v1.json'
 def h(b): return hashlib.sha256(b).hexdigest()
 def stable(rel): return rel=='public/emergency.php' or rel.startswith('src/Emergency/') or rel=='resources/update-trust-v1.json'
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--source',default='apps/public');ap.add_argument('--version',required=True);ap.add_argument('--out',required=True);ap.add_argument('--source-commit',default='unknown');a=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument('--source',default='apps/public');ap.add_argument('--version');ap.add_argument('--out',required=True);ap.add_argument('--source-commit',default='unknown');a=ap.parse_args()
+ source_version=(Path(a.source).resolve()/'VERSION.txt').read_text(encoding='utf-8').strip()
+ if a.version and a.version!=source_version: raise SystemExit(f'--version {a.version} does not match Public VERSION.txt {source_version}')
+ a.version=source_version
  if re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z._+-]{0,63}',a.version) is None: raise SystemExit('invalid version')
  root=Path(a.source).resolve(); out=Path(a.out).resolve(); rows=[]
  for p in sorted(root.rglob('*'),key=lambda x:x.as_posix()):

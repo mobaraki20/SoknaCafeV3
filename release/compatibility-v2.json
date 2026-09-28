@@ -1,0 +1,35 @@
+{
+  "components": {
+    "local-web": {
+      "version": "3.0.0-g6-dev"
+    },
+    "print-agent": {
+      "version": "6.2.5"
+    },
+    "public-edge": {
+      "version": "3.0.0-g3.3-dev"
+    },
+    "shared-contracts": {
+      "version": "0.1.0-dev"
+    },
+    "windows-runtime": {
+      "version": "1.0.0"
+    },
+    "windows-services-packaging": {
+      "version": "1.0.0"
+    }
+  },
+  "contracts": {
+    "local-public-deferred": "0.1.0-draft",
+    "local-public-realtime": "0.1.0-draft",
+    "print-agent-api": "0.1.0-draft",
+    "runtime-api": "0.1.0-draft"
+  },
+  "format": "sokna-release-compatibility-v2",
+  "rules": [
+    "Each component version comes only from its component-owned version source.",
+    "Compatibility binds versions and contracts but never creates a monolithic product version owner.",
+    "A component artifact must reject an explicit release version that differs from its owned version source."
+  ],
+  "schema_version": 2
+}

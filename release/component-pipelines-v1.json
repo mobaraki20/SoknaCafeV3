@@ -1,0 +1,14 @@
+{
+  "format": "sokna-component-release-pipelines-v1",
+  "schema_version": 1,
+  "components": {
+    "local-web": {"version_source":"apps/local-web/VERSION.txt","builder":"apps/local-web/tools/build-update-package.py","artifact":"SoknaCafeV3-local-web-<version>.zip"},
+    "public-edge": {"version_source":"apps/public/VERSION.txt","builders":["apps/public/tools/build-deploy-package.py","apps/public/tools/build-update-package.py"],"artifact":"SoknaCafeV3-public-edge-<version>.zip"},
+    "windows-runtime": {"version_source":"windows/runtime/source/Sokna.Runtime.Service.csproj#Version","builder":"windows/runtime/build-component-package.ps1","artifact":"SoknaRuntime-<version>-win-x64.zip"},
+    "print-agent": {"version_source":"windows/print-agent/source/Directory.Build.props#SoknaAgentVersion","builder":"windows/print-agent/build-component-package.ps1","artifact":"SoknaPrintAgent-<version>-win-x64.zip"},
+    "windows-services-packaging": {"version_source":"packaging/windows/WINDOWS_SERVICES_VERSION.txt","builder":"packaging/windows/scripts/build-installer.ps1","artifact":"SOKNA-Windows-Services-Setup-<version>.exe"},
+    "shared-contracts": {"version_source":"contracts/VERSION.txt","builder":"release/build-contracts-package.py","artifact":"SoknaContracts-<version>.zip"}
+  },
+  "compatibility_manifest": "release/compatibility-v2.json",
+  "root_version_policy": "VERSION.txt is a repository evidence snapshot only and is not a component version source"
+}

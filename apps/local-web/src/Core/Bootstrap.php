@@ -555,14 +555,14 @@ final class Bootstrap
     {
         return $this->systemDiagnostics ??= new SystemDiagnosticsService(
             $this->database(),$this->config,$this->observability,$this->migrations(),$this->printManagement(),$this->supportBundles(),
-            dirname(__DIR__,4),dirname(__DIR__,2),$this->publicEdgeSyncClient()
+            dirname(__DIR__,4),dirname(__DIR__,2),dirname(__DIR__,2).'/VERSION.txt',$this->publicEdgeSyncClient()
         );
     }
 
     public function localUpdates(): LocalUpdateService
     {
         return $this->localUpdates ??= new LocalUpdateService(
-            $this->observability(),dirname(__DIR__,4),dirname(__DIR__,2),
+            $this->observability(),dirname(__DIR__,2),dirname(__DIR__,2),
             dirname(__DIR__,2).'/resources/compatibility-v1.json',dirname(__DIR__,2).'/resources/update-trust-v1.json'
         );
     }
@@ -617,7 +617,7 @@ final class Bootstrap
 
     public function publicEdgePublisher(): PublicEdgePublisherService
     {
-        $v=@file_get_contents(dirname(__DIR__,4).'/VERSION.txt');
+        $v=@file_get_contents(dirname(__DIR__,2).'/VERSION.txt');
         return $this->publicEdgePublisher ??= new PublicEdgePublisherService($this->database(),$this->publicEdgeSyncClient(),$this->publicProjectionBuilder(),$this->observability(),is_string($v)&&trim($v)!==''?trim($v):'unknown');
     }
 

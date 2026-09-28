@@ -38,7 +38,7 @@ def load_rows() -> list[dict[str,str]]:
             fail(f"CSV fields drifted: {reader.fieldnames!r}")
         rows = list(reader)
     data = json.loads(JSON_PATH.read_text(encoding="utf-8"))
-    if data.get("schema_version") != 2 or data.get("status") != "canonical_master_capability_matrix":
+    if data.get("schema_version") != 4 or data.get("status") != "canonical_master_capability_matrix":
         fail("JSON matrix metadata invalid")
     if data.get("rows") != rows:
         fail("CSV and JSON matrices differ")
