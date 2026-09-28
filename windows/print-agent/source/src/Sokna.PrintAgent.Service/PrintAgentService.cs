@@ -99,7 +99,16 @@ public sealed class PrintAgentService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if(!_mutex.WaitOne(TimeSpan.Zero))throw new InvalidOperationException("نمونه دیگری از Sokna Print Agent فعال است.");
+        try
+        {
+            if(!_mutex.WaitOne(TimeSpan.Zero))throw new InvalidOperationException("نمونه دیگری از Sokna Print Agent فعال است.");
+        }
+        catch(AbandonedMutexException e)
+        {
+            // Windows grants ownership to this thread when an abandoned mutex is observed.
+            // Treat it as recoverable residue from a crashed/terminated previous instance.
+            _log.LogWarning(e,"Recovered abandoned Sokna Print Agent singleton mutex.");
+        }
         try
         {
             await _store.InitializeAsync(stoppingToken);
