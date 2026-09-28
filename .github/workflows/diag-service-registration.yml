@@ -5,10 +5,10 @@ on:
       - diag/service-registration-1.0.4
 
 jobs:
-  reproduce:
+  reproduce-and-fix:
     runs-on: windows-latest
     steps:
-      - name: Reproduce exact sc.exe invocation
+      - name: Validate New-Service registration with SOKNA path shape
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
@@ -20,15 +20,18 @@ jobs:
           function Runtime-Command([string]$exe,[string]$config){return ((@($exe,'--config',$config)|ForEach-Object{Quote $_}) -join ' ')}
           $runtimeCmd=Runtime-Command $runtimeExe $runtimeConfig
           Write-Host "runtimeCmd=[$runtimeCmd]"
-          $sc="$env:SystemRoot\System32\sc.exe"
-          & $sc delete SoknaDiag 2>$null | Out-Null
-          Start-Sleep -Milliseconds 500
-          $out = & $sc create SoknaDiag "binPath=" $runtimeCmd "start=" demand "obj=" LocalSystem "DisplayName=" "SOKNA Diagnostic Runtime" 2>&1
+          $name='SoknaDiag'
+          $old=Get-Service -Name $name -ErrorAction SilentlyContinue
+          if($old){ & "$env:SystemRoot\System32\sc.exe" delete $name | Out-Null; $old.Dispose(); Start-Sleep -Seconds 1 }
+          New-Service -Name $name -BinaryPathName $runtimeCmd -DisplayName 'SOKNA Diagnostic Runtime' -StartupType Manual | Out-Null
+          $svc=Get-Service -Name $name -ErrorAction Stop
+          $img=[string](Get-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\$name").ImagePath
+          Write-Host "IMAGE_PATH=[$img]"
+          if($img -cne $runtimeCmd){ throw "ImagePath mismatch. expected=[$runtimeCmd] actual=[$img]" }
+          $out=& "$env:SystemRoot\System32\sc.exe" config $name start= delayed-auto 2>&1
           $code=$LASTEXITCODE
-          Write-Host "SC_CREATE_EXIT=$code"
-          $out | ForEach-Object { Write-Host "SC_CREATE_OUTPUT=$_"}
-          & $sc qc SoknaDiag
-          $qc=$LASTEXITCODE
-          Write-Host "SC_QC_EXIT=$qc"
-          & $sc delete SoknaDiag | Out-Null
-          if($code -ne 0){ throw "Exact installer service registration invocation failed with exit code $code" }
+          $out | ForEach-Object { Write-Host "SC_CONFIG_OUTPUT=$_" }
+          if($code -ne 0){ throw "delayed-auto config failed: $code" }
+          & "$env:SystemRoot\System32\sc.exe" qc $name
+          $svc.Dispose()
+          & "$env:SystemRoot\System32\sc.exe" delete $name | Out-Null
