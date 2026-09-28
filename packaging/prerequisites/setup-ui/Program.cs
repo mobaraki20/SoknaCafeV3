@@ -703,7 +703,12 @@ internal sealed class MainForm : Form
             if (!File.Exists(conf)) return;
             var text = File.ReadAllText(conf, Encoding.UTF8);
             var match = Regex.Match(text, @"(?im)^\s*Listen\s+127\.0\.0\.1:(\d+)\s*$");
-            if (!match.Success || !int.TryParse(match.Groups[1].Value, out var port) || port < 1 || port > 65535) return;
+            if (!match.Success || !int.TryParse(match.Groups[1].Value, out var port)) return;
+            if (port < (int)_apachePort.Minimum || port > (int)_apachePort.Maximum)
+            {
+                Log($"Existing Apache port {port} is outside the SOKNA Local Web allowed range; keeping default {ApachePort()} for repair/migration.");
+                return;
+            }
             _apachePort.Value = port;
         }
         catch { }
