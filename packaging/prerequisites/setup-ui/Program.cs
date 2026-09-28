@@ -350,7 +350,7 @@ internal sealed class MainForm : Form
                 sb.AppendLine($"MariaDB port 3306: {(TcpOpen(3306) ? "پاسخ می‌دهد" : "بسته/در دسترس نیست")}");
                 sb.AppendLine($"Web Root: {WebPath()}");
                 if (File.Exists(StatePath())) sb.AppendLine($"State: {StatePath()}");
-                BeginInvoke(() => _status.Text = sb.ToString());
+                BeginInvoke(new Action(() => _status.Text = sb.ToString()));
             });
         }
         catch (Exception ex) { ShowError(ex); }
@@ -406,6 +406,8 @@ internal sealed class MainForm : Form
         if (mode == OperationMode.Install && !MariaDataInitialized())
         {
             if (_password.Text.Length < 10) throw new InvalidOperationException("برای نصب جدید، رمز root ماریا‌دی‌بی حداقل ۱۰ نویسه باشد.");
+            if (_password.Text.Contains('"') || _password.Text.Contains('\r') || _password.Text.Contains('\n'))
+                throw new InvalidOperationException("رمز root نباید شامل علامت نقل‌قول یا خط جدید باشد.");
             if (_password.Text != _password2.Text) throw new InvalidOperationException("رمز و تکرار آن یکسان نیستند.");
         }
     }
@@ -506,21 +508,22 @@ internal sealed class MainForm : Form
         text = Regex.Replace(text, @"(?im)^\s*Listen\s+.*$", "Listen 127.0.0.1:80", 1);
         text = Regex.Replace(text, @"(?im)^\s*DocumentRoot\s+\".*?\"\s*$", $"DocumentRoot \"{w}\"", 1);
         text = Regex.Replace(text, @"(?is)\r?\n# BEGIN SOKNA MANAGED.*?# END SOKNA MANAGED\r?\n?", Environment.NewLine);
-        text += $@"
+        text += $"""
 # BEGIN SOKNA MANAGED
-LoadModule php_module \"{p}/php8apache2_4.dll\"
-PHPIniDir \"{p}\"
+LoadModule php_module "{p}/php8apache2_4.dll"
+PHPIniDir "{p}"
 <FilesMatch \.php$>
     SetHandler application/x-httpd-php
 </FilesMatch>
-<Directory \"{w}\">
+<Directory "{w}">
     Options Indexes FollowSymLinks
     AllowOverride All
     Require all granted
 </Directory>
 DirectoryIndex index.php index.html
 # END SOKNA MANAGED
-";
+
+""";
         File.WriteAllText(conf, text, new UTF8Encoding(false));
     }
 
@@ -685,7 +688,7 @@ DirectoryIndex index.php index.html
                     await output.WriteAsync(buf.AsMemory(0, n), ct);
                     total += n;
                     var pct = a.Size > 0 ? (int)Math.Min(100, total * 100 / a.Size) : 0;
-                    BeginInvoke(() => _progressText.Text = $"دانلود {a.Dependency}: {pct}%");
+                    BeginInvoke(new Action(() => _progressText.Text = $"دانلود {a.Dependency}: {pct}%"));
                 }
                 await output.FlushAsync(ct);
                 if (!VerifyFile(dest, a)) throw new InvalidOperationException($"فایل {a.FileName} با hash/size قفل‌شده تطبیق ندارد.");
@@ -845,7 +848,7 @@ DirectoryIndex index.php index.html
 
     private void SetProgress(int value, string text)
     {
-        if (InvokeRequired) { BeginInvoke(() => SetProgress(value, text)); return; }
+        if (InvokeRequired) { BeginInvoke(new Action(() => SetProgress(value, text))); return; }
         _progress.Value = Math.Clamp(value, 0, 100);
         _progressText.Text = text;
         _status.AppendText(text + Environment.NewLine);
