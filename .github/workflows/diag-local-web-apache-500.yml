@@ -21,7 +21,8 @@ jobs:
             $a=$lock.artifacts|Where-Object dependency -eq $dep|Select-Object -First 1
             if(-not$a){throw "Missing $dep in release lock"}
             $out=Join-Path $tmp $a.filename
-            Invoke-WebRequest -Uri $a.source_url -OutFile $out -MaximumRedirection 10
+            & curl.exe -fL --retry 3 --retry-delay 2 -o $out $a.source_url
+            if($LASTEXITCODE-ne0){throw "$dep download failed: $LASTEXITCODE"}
             $hash=(Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
             if($hash-ne$a.sha256.ToLowerInvariant()){throw "$dep SHA mismatch"}
             if((Get-Item $out).Length-ne[long]$a.size){throw "$dep size mismatch"}
