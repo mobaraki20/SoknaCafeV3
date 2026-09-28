@@ -1,0 +1,55 @@
+name: import final menu audited bundle
+
+on:
+  push:
+    branches:
+      - transfer/v3-final-menu-041db67-helper
+    paths:
+      - .transfer/soknacafev3-git-041db67ba5fa.bundle
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout helper branch
+        uses: actions/checkout@v4
+
+      - name: verify uploaded bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle=".transfer/soknacafev3-git-041db67ba5fa.bundle"
+          echo "5ed274c52f02eb1405e16e4df95e0b51ce222acd9445728cf2c48e9de523ac63  $bundle" | sha256sum -c -
+          git bundle verify "$bundle"
+          test "$(git bundle list-heads "$bundle" | awk '$2=="refs/heads/transfer-final-menu-041db67"{print $1}')" = "041db67ba5fad1f7492f9b25f3cb74d072fcca5e"
+
+      - name: reconstruct audited source history
+        shell: bash
+        env:
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bundle="$github_workspace/.transfer/soknacafev3-git-041db67ba5fa.bundle"
+          rm -rf /tmp/sokna-final-menu
+          mkdir /tmp/sokna-final-menu
+          cd /tmp/sokna-final-menu
+          git init
+          git fetch "$bundle" refs/heads/transfer-final-menu-041db67:refs/heads/transfer-final-menu-041db67
+          git checkout transfer-final-menu-041db67
+          test "$(git rev-parse refs/heads/transfer-final-menu-041db67)" = "041db67ba5fad1f7492f9b25f3cb74d072fcca5e"
+          git remote add origin "https://x-access-token:${gh_token}@github.com/${github_repository}.git"
+          git push origin refs/heads/transfer-final-menu-041db67:refs/heads/transfer/v3-final-menu-audited-source --force
+
+      - name: verify pushed branch
+        shell: bash
+        env:
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          expected="041db67ba5fad1f7492f9b25f3cb74d072fcca5e"
+          remote_head="$(git ls-remote "https://x-access-token:${gh_token}@github.com/${github_repository}.git" refs/heads/transfer/v3-final-menu-audited-source | awk '{print $1}')"
+          test "$remote_head" = "$expected"
+          echo "final menu audited transfer pass"
