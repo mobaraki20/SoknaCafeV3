@@ -107,6 +107,237 @@ internal static class LocalEndpointPortPolicy
     }
 }
 
+
+internal sealed record InfrastructureOwnershipReport(
+    string TargetRoot,
+    IReadOnlyList<string> Conflicts,
+    IReadOnlyList<string> Evidence)
+{
+    public bool HasConflict => Conflicts.Count > 0;
+
+    public string ToUserMessage(OperationMode mode)
+    {
+        var sb=new StringBuilder();
+        sb.AppendLine("یک نصب قبلی SOKNA/MariaDB خارج از Root انتخاب‌شده پیدا شد.");
+        sb.AppendLine();
+        sb.AppendLine($"Root انتخاب‌شده: {TargetRoot}");
+        foreach(var line in Conflicts) sb.AppendLine("• "+line);
+        sb.AppendLine();
+        sb.AppendLine("برای جلوگیری از split-root، تغییر ناخواسته سرویس‌ها یا ورود Windows Installer به Maintenance Mode، این عملیات قبل از هر تغییر متوقف شد.");
+        sb.AppendLine("هیچ Data یا نصب قبلی به‌صورت خودکار حذف یا منتقل نمی‌شود.");
+        sb.AppendLine();
+        sb.AppendLine(mode switch
+        {
+            OperationMode.Install => "اگر نصب قبلی را می‌خواهید، Root همان نصب را انتخاب و Repair/Recover کنید. اگر واقعاً نصب تازه روی Root جدید می‌خواهید، ابتدا از Data قبلی Backup بگیرید و نصب/registration قبلی را آگاهانه تعیین تکلیف کنید.",
+            OperationMode.Repair => "Repair باید روی همان Root نصب موجود اجرا شود. Root را به مسیر نصب قبلی تغییر دهید.",
+            _ => "Recover باید روی Root مربوط به Data/Infrastructure مورد بازیابی اجرا شود. Root را به مسیر نصب قبلی تغییر دهید."
+        });
+        return sb.ToString().Trim();
+    }
+}
+
+internal static class InfrastructureOwnershipDetector
+{
+    private const string UninstallPath=@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+
+    public static InfrastructureOwnershipReport Detect(string targetRoot,string expectedMariaVersion)
+    {
+        var target=Normalize(targetRoot);
+        var conflicts=new List<string>();
+        var evidence=new List<string>();
+
+        InspectManagedService("SoknaApache","Apache",target,null,conflicts,evidence);
+        InspectManagedService("SoknaMariaDB","MariaDB",target,"--defaults-file",conflicts,evidence);
+
+        var targetMaria=Normalize(Path.Combine(target,"Infrastructure","MariaDB"));
+        foreach(var product in RegisteredMariaProducts(expectedMariaVersion))
+        {
+            var display=product.DisplayName+(string.IsNullOrWhiteSpace(product.Version)?"":$" {product.Version}");
+            if(string.IsNullOrWhiteSpace(product.InstallLocation))
+            {
+                conflicts.Add($"{display} در Windows Installer ثبت است ولی InstallLocation قابل تشخیص نیست؛ نصب موازی امن نیست.");
+                evidence.Add($"WindowsInstaller: {display}; InstallLocation=<unknown>; Registry={product.RegistryPath}");
+                continue;
+            }
+
+            var installed=Normalize(product.InstallLocation!);
+            evidence.Add($"WindowsInstaller: {display}; InstallLocation={installed}");
+            if(!PathEquals(installed,targetMaria))
+                conflicts.Add($"{display} در «{installed}» ثبت شده ولی MariaDB این Root باید در «{targetMaria}» باشد.");
+        }
+
+        return new(target,conflicts.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),evidence.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+
+    private static void InspectManagedService(
+        string serviceName,
+        string component,
+        string targetRoot,
+        string? dataArgument,
+        List<string> conflicts,
+        List<string> evidence)
+    {
+        var image=ReadServiceImagePath(serviceName);
+        if(string.IsNullOrWhiteSpace(image)) return;
+
+        evidence.Add($"{serviceName}: ImagePath={image}");
+        var exe=ExtractExecutablePath(image!);
+        var existingRoot=exe is null?null:InferSoknaRootFromInfrastructureExecutable(exe,component);
+        if(existingRoot is null)
+        {
+            conflicts.Add($"سرویس {serviceName} وجود دارد اما Root آن از ImagePath قابل تشخیص نیست: {image}");
+        }
+        else if(!PathEquals(existingRoot,targetRoot))
+        {
+            conflicts.Add($"سرویس {serviceName} متعلق به Root «{existingRoot}» است، نه «{targetRoot}».");
+        }
+
+        if(dataArgument is not null)
+        {
+            var defaults=ExtractArgumentPath(image!,dataArgument);
+            if(!string.IsNullOrWhiteSpace(defaults))
+            {
+                evidence.Add($"{serviceName}: defaults-file={defaults}");
+                var dataRoot=InferSoknaRootFromDataPath(defaults!);
+                if(dataRoot is not null && !PathEquals(dataRoot,targetRoot))
+                    conflicts.Add($"Data سرویس {serviceName} متعلق به Root «{dataRoot}» است، نه «{targetRoot}».");
+            }
+        }
+    }
+
+    internal static string? ReadServiceImagePath(string serviceName)
+    {
+        try
+        {
+            using var key=Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceName}");
+            var raw=key?.GetValue("ImagePath")?.ToString();
+            return string.IsNullOrWhiteSpace(raw)?null:Environment.ExpandEnvironmentVariables(raw.Trim());
+        }
+        catch{return null;}
+    }
+
+    internal static string? ExtractExecutablePath(string commandLine)
+    {
+        var text=Environment.ExpandEnvironmentVariables(commandLine).Trim();
+        if(text.Length==0) return null;
+        if(text[0]=='"')
+        {
+            var end=text.IndexOf('"',1);
+            return end>1?SafeFull(text[1..end]):null;
+        }
+
+        var exe=text.IndexOf(".exe",StringComparison.OrdinalIgnoreCase);
+        if(exe<0) return null;
+        return SafeFull(text[..(exe+4)].Trim());
+    }
+
+    internal static string? ExtractArgumentPath(string commandLine,string argument)
+    {
+        var rx=new Regex(Regex.Escape(argument)+@"\s*=\s*(?:\""(?<q>[^\""]+)\""|(?<u>[^\s]+))",RegexOptions.IgnoreCase);
+        var m=rx.Match(commandLine);
+        if(!m.Success) return null;
+        var value=m.Groups["q"].Success?m.Groups["q"].Value:m.Groups["u"].Value;
+        return SafeFull(Environment.ExpandEnvironmentVariables(value));
+    }
+
+    internal static string? InferSoknaRootFromInfrastructureExecutable(string executable,string component)
+    {
+        var full=SafeFull(executable);
+        if(full is null) return null;
+        var marker=Path.DirectorySeparatorChar+"Infrastructure"+Path.DirectorySeparatorChar+component+Path.DirectorySeparatorChar;
+        var i=full.IndexOf(marker,StringComparison.OrdinalIgnoreCase);
+        return i>1?Normalize(full[..i]):null;
+    }
+
+    internal static string? InferSoknaRootFromDataPath(string path)
+    {
+        var full=SafeFull(path);
+        if(full is null) return null;
+        var marker=Path.DirectorySeparatorChar+"Data"+Path.DirectorySeparatorChar+"MariaDB"+Path.DirectorySeparatorChar;
+        var i=full.IndexOf(marker,StringComparison.OrdinalIgnoreCase);
+        if(i<0)
+        {
+            marker=Path.DirectorySeparatorChar+"Data"+Path.DirectorySeparatorChar+"MariaDB";
+            i=full.IndexOf(marker,StringComparison.OrdinalIgnoreCase);
+        }
+        return i>1?Normalize(full[..i]):null;
+    }
+
+    private static IEnumerable<(string DisplayName,string Version,string? InstallLocation,string RegistryPath)> RegisteredMariaProducts(string expectedVersion)
+    {
+        var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach(var view in new[]{RegistryView.Registry64,RegistryView.Registry32})
+        {
+            RegistryKey? baseKey=null;
+            RegistryKey? uninstall=null;
+            try
+            {
+                baseKey=RegistryKey.OpenBaseKey(RegistryHive.LocalMachine,view);
+                uninstall=baseKey.OpenSubKey(UninstallPath);
+                if(uninstall is null) continue;
+                foreach(var sub in uninstall.GetSubKeyNames())
+                {
+                    using var key=uninstall.OpenSubKey(sub);
+                    if(key is null) continue;
+                    var name=key.GetValue("DisplayName")?.ToString()?.Trim()??"";
+                    var version=key.GetValue("DisplayVersion")?.ToString()?.Trim()??"";
+                    if(name.IndexOf("MariaDB",StringComparison.OrdinalIgnoreCase)<0) continue;
+                    if(!string.IsNullOrWhiteSpace(expectedVersion) && !string.Equals(version,expectedVersion,StringComparison.OrdinalIgnoreCase)) continue;
+                    var location=key.GetValue("InstallLocation")?.ToString()?.Trim();
+                    var id=$"{view}:{sub}";
+                    if(!seen.Add(id)) continue;
+                    yield return(name,version,string.IsNullOrWhiteSpace(location)?null:location,$@"HKLM({view})\{UninstallPath}\{sub}");
+                }
+            }
+            finally
+            {
+                uninstall?.Dispose();
+                baseKey?.Dispose();
+            }
+        }
+    }
+
+    internal static bool PathEquals(string a,string b)
+    {
+        try{return string.Equals(Normalize(a),Normalize(b),StringComparison.OrdinalIgnoreCase);}
+        catch{return false;}
+    }
+
+    internal static string Normalize(string p)
+    {
+        var full=Path.GetFullPath(Environment.ExpandEnvironmentVariables(p.Trim().Trim('"')));
+        return full.TrimEnd(Path.DirectorySeparatorChar,Path.AltDirectorySeparatorChar);
+    }
+
+    private static string? SafeFull(string p)
+    {
+        try{return Normalize(p);}catch{return null;}
+    }
+
+    public static int SelfTest()
+    {
+        if(!PathEquals(@"D:\SOKNA\",@"d:\sokna")) return 31;
+        var cmd="\"D:\\SOKNA\\Infrastructure\\MariaDB\\bin\\mariadbd.exe\" --defaults-file=\"D:\\SOKNA\\Data\\MariaDB\\my.ini\"";
+        var exe=ExtractExecutablePath(cmd);
+        if(exe is null || !exe.EndsWith(@"D:\SOKNA\Infrastructure\MariaDB\bin\mariadbd.exe",StringComparison.OrdinalIgnoreCase)) return 32;
+        var defaults=ExtractArgumentPath(cmd,"--defaults-file");
+        if(defaults is null || !defaults.EndsWith(@"D:\SOKNA\Data\MariaDB\my.ini",StringComparison.OrdinalIgnoreCase)) return 33;
+        if(!PathEquals(InferSoknaRootFromInfrastructureExecutable(exe,"MariaDB")??"", @"D:\SOKNA")) return 34;
+        if(!PathEquals(InferSoknaRootFromDataPath(defaults)??"", @"D:\SOKNA")) return 35;
+        if(PathEquals(@"D:\SOKNA",@"E:\SOKNA")) return 36;
+        return 0;
+    }
+
+    public static int Probe(string targetRoot,string expectedMariaVersion)
+    {
+        var report=Detect(targetRoot,expectedMariaVersion);
+        Console.WriteLine($"TargetRoot={report.TargetRoot}");
+        foreach(var e in report.Evidence) Console.WriteLine("EVIDENCE "+e);
+        foreach(var c in report.Conflicts) Console.WriteLine("CONFLICT "+c);
+        return report.HasConflict?42:0;
+    }
+}
+
 internal static class Program
 {
     [STAThread]
@@ -114,6 +345,14 @@ internal static class Program
     {
         if (args.Any(x => string.Equals(x, "--self-test-endpoint-port", StringComparison.OrdinalIgnoreCase)))
             return LocalEndpointPortPolicy.SelfTest();
+        if (args.Any(x => string.Equals(x, "--self-test-infrastructure-ownership", StringComparison.OrdinalIgnoreCase)))
+            return InfrastructureOwnershipDetector.SelfTest();
+        var probeIndex=Array.FindIndex(args,x=>string.Equals(x,"--probe-infrastructure-ownership",StringComparison.OrdinalIgnoreCase));
+        if(probeIndex>=0)
+        {
+            if(args.Length<=probeIndex+2) return 43;
+            return InfrastructureOwnershipDetector.Probe(args[probeIndex+1],args[probeIndex+2]);
+        }
 
         ApplicationConfiguration.Initialize();
         Application.Run(new MainForm());
@@ -843,6 +1082,12 @@ internal sealed class MainForm : Form
                 sb.AppendLine($"MariaDB — Data: {(MariaDataInitialized() ? "موجود و محافظت‌شده" : "هنوز راه‌اندازی نشده")}");
                 sb.AppendLine($"MariaDB — سرویس ویندوز: {ServiceStatus("SoknaMariaDB")}");
                 sb.AppendLine($"MariaDB — پورت {Technical("3306")}: {(TcpOpen(3306) ? "پاسخ می‌دهد" : "در دسترس نیست")}");
+                var ownership=InfrastructureOwnershipDetector.Detect(RootPath(),Artifact("mariadb").Version);
+                if(ownership.HasConflict)
+                {
+                    sb.AppendLine("⚠ تداخل Root نصب موجود:");
+                    foreach(var conflict in ownership.Conflicts) sb.AppendLine("  - "+conflict);
+                }
                 sb.AppendLine($"Web Root: {Technical(WebPath())}");
                 if (File.Exists(StatePath())) sb.AppendLine($"State: {Technical(StatePath())}");
                 BeginInvoke(new Action(() => _status.Text = sb.ToString()));
@@ -862,6 +1107,13 @@ internal sealed class MainForm : Form
             SetBusy(true, "در حال بررسی ورودی‌ها...");
             var mode = SelectedMode();
             ValidateInputs(mode);
+            _progressText.Text = "Preflight مالکیت نصب موجود...";
+            var ownership=InfrastructureOwnershipDetector.Detect(RootPath(),Artifact("mariadb").Version);
+            if(ownership.HasConflict)
+            {
+                Log($"Cross-root preflight blocked operation. Target={ownership.TargetRoot}; Evidence={string.Join(" | ",ownership.Evidence)}");
+                throw new InvalidOperationException(ownership.ToUserMessage(mode));
+            }
             _progressText.Text = "شروع عملیات...";
             PreparePersistentLayout();
             StartLog(mode);
@@ -1301,7 +1553,7 @@ DirectoryIndex index.php index.html
                 local_web = new { scheme = "http", host = "127.0.0.1", port = ApachePort(), base_url = LocalWebUrl(), origin = LocalWebUrl().TrimEnd('/') },
                 mariadb = "127.0.0.1:3306"
             },
-            safeguards = new { local_web_payload_managed = false, sokna_database_managed = false, existing_mariadb_data_reinitialized = false }
+            safeguards = new { local_web_payload_managed = false, sokna_database_managed = false, existing_mariadb_data_reinitialized = false, cross_root_existing_installation_detected = false }
         };
         File.WriteAllText(StatePath(), JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
     }
@@ -1765,6 +2017,10 @@ DirectoryIndex index.php index.html
                 diag.AppendLine($"Apache={ServiceStatus("SoknaApache")}; Port80={TcpOpen(80)}");
                 diag.AppendLine($"MariaDB={ServiceStatus("SoknaMariaDB")}; Port3306={TcpOpen(3306)}");
                 diag.AppendLine($"MariaDataPresent={MariaDataInitialized()}");
+                var ownership=InfrastructureOwnershipDetector.Detect(RootPath(),Artifact("mariadb").Version);
+                diag.AppendLine($"CrossRootConflict={ownership.HasConflict}");
+                foreach(var evidence in ownership.Evidence) diag.AppendLine("OwnershipEvidence="+evidence);
+                foreach(var conflict in ownership.Conflicts) diag.AppendLine("OwnershipConflict="+conflict);
                 await File.WriteAllTextAsync(Path.Combine(temp, "diagnostics.txt"), diag.ToString(), new UTF8Encoding(false));
                 var zip = Path.Combine(support, $"SOKNA-Prerequisites-Support-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
                 ZipFile.CreateFromDirectory(temp, zip, CompressionLevel.Optimal, false);
