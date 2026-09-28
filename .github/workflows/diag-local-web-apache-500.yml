@@ -1,0 +1,127 @@
+name: Diagnose Local Web Apache 500
+on:
+  push:
+    branches:
+      - diag/local-web-apache-500
+permissions:
+  contents: read
+jobs:
+  http-smoke:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download locked Apache and PHP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lock=Get-Content platform/windows/release-lock.json -Raw|ConvertFrom-Json
+          $tmp=Join-Path $env:RUNNER_TEMP 'sokna-http-smoke'
+          New-Item -ItemType Directory -Path $tmp -Force|Out-Null
+          foreach($dep in @('apache','php')){
+            $a=$lock.artifacts|Where-Object dependency -eq $dep|Select-Object -First 1
+            if(-not$a){throw "Missing $dep in release lock"}
+            $out=Join-Path $tmp $a.filename
+            Invoke-WebRequest -Uri $a.source_url -OutFile $out -MaximumRedirection 10
+            $hash=(Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($hash-ne$a.sha256.ToLowerInvariant()){throw "$dep SHA mismatch"}
+            if((Get-Item $out).Length-ne[long]$a.size){throw "$dep size mismatch"}
+          }
+
+      - name: Build exact Apache/PHP/Local Web fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lock=Get-Content platform/windows/release-lock.json -Raw|ConvertFrom-Json
+          $tmp=Join-Path $env:RUNNER_TEMP 'sokna-http-smoke'
+          $root='C:\SOKNA-HTTP-SMOKE'
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root -Force|Out-Null
+
+          $apacheA=$lock.artifacts|Where-Object dependency -eq 'apache'|Select-Object -First 1
+          $phpA=$lock.artifacts|Where-Object dependency -eq 'php'|Select-Object -First 1
+          $apacheZip=Join-Path $tmp $apacheA.filename
+          $phpZip=Join-Path $tmp $phpA.filename
+
+          $apacheExtract=Join-Path $tmp 'apache-extract'
+          $phpDir=Join-Path $root 'Infrastructure\PHP'
+          Remove-Item $apacheExtract,$phpDir -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $apacheZip -DestinationPath $apacheExtract -Force
+          Expand-Archive -LiteralPath $phpZip -DestinationPath $phpDir -Force
+
+          $httpd=Get-ChildItem $apacheExtract -Filter httpd.exe -Recurse|Select-Object -First 1
+          if(-not$httpd){throw 'httpd.exe missing'}
+          $apacheDir=Split-Path (Split-Path $httpd.FullName -Parent) -Parent
+          $targetApache=Join-Path $root 'Infrastructure\Apache'
+          Copy-Item -Path (Join-Path $apacheDir '*') -Destination $targetApache -Recurse -Force
+
+          $web=Join-Path $root 'Web'
+          New-Item -ItemType Directory -Path $web -Force|Out-Null
+          Copy-Item -Path 'apps/local-web/*' -Destination $web -Recurse -Force
+          Copy-Item -LiteralPath 'apps/local-web/public/.htaccess' -Destination (Join-Path $web 'public\.htaccess') -Force
+
+          $ini=Join-Path $phpDir 'php.ini'
+          Copy-Item (Join-Path $phpDir 'php.ini-production') $ini -Force
+          $iniText=Get-Content $ini -Raw
+          $iniText=[regex]::Replace($iniText,'(?im)^\s*;?\s*extension_dir\s*=.*$','extension_dir = "ext"')
+          Set-Content -LiteralPath $ini -Value $iniText -Encoding UTF8
+
+          $conf=Join-Path $targetApache 'conf\httpd.conf'
+          $a=$targetApache.Replace('\','/')
+          $p=$phpDir.Replace('\','/')
+          $w=(Join-Path $web 'public').Replace('\','/')
+          $text=Get-Content $conf -Raw
+          $text=[regex]::Replace($text,'(?im)^\s*Define\s+SRVROOT\s+\".*?\"\s*$',('Define SRVROOT "'+$a+'"'))
+          $text=[regex]::Replace($text,'(?im)^\s*Listen\s+.*$','Listen 127.0.0.1:18091',1)
+          $text=[regex]::Replace($text,'(?im)^\s*DocumentRoot\s+\".*?\"\s*$',('DocumentRoot "'+$w+'"'),1)
+          $rx=[regex]'(?im)^\s*#?\s*LoadModule\s+rewrite_module\s+modules/mod_rewrite\.so\s*$'
+          if($rx.IsMatch($text)){
+            $text=$rx.Replace($text,'LoadModule rewrite_module modules/mod_rewrite.so',1)
+          }else{
+            $text+="`r`nLoadModule rewrite_module modules/mod_rewrite.so`r`n"
+          }
+          $text+="`r`n# BEGIN SOKNA MANAGED`r`nServerName 127.0.0.1:18091`r`nLoadModule php_module \"$p/php8apache2_4.dll\"`r`nPHPIniDir \"$p\"`r`n<FilesMatch \.php$>`r`n    SetHandler application/x-httpd-php`r`n</FilesMatch>`r`n<Directory \"$w\">`r`n    Options Indexes FollowSymLinks`r`n    AllowOverride All`r`n    Require all granted`r`n</Directory>`r`nDirectoryIndex index.php index.html`r`n# END SOKNA MANAGED`r`n"
+          Set-Content -LiteralPath $conf -Value $text -Encoding UTF8
+
+          $httpdExe=Join-Path $targetApache 'bin\httpd.exe'
+          & $httpdExe -t -f $conf
+          if($LASTEXITCODE-ne0){throw "Apache syntax failed: $LASTEXITCODE"}
+
+      - name: Start Apache and require Local Web setup HTTP success
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root='C:\SOKNA-HTTP-SMOKE'
+          $httpd=Join-Path $root 'Infrastructure\Apache\bin\httpd.exe'
+          $conf=Join-Path $root 'Infrastructure\Apache\conf\httpd.conf'
+          $proc=Start-Process -FilePath $httpd -ArgumentList @('-f',$conf,'-DFOREGROUND') -PassThru -WindowStyle Hidden
+          try{
+            $ok=$false
+            for($i=0;$i-lt40;$i++){
+              Start-Sleep -Milliseconds 500
+              try{
+                $tcp=New-Object Net.Sockets.TcpClient
+                $tcp.Connect('127.0.0.1',18091)
+                $tcp.Dispose();$ok=$true;break
+              }catch{}
+            }
+            if(-not$ok){throw 'Apache did not bind to 18091'}
+
+            $rootCode=& curl.exe -sS -o NUL -w "%{http_code}" http://127.0.0.1:18091/
+            Write-Host "ROOT_STATUS=$rootCode"
+            if($rootCode-ne'302'){throw "Expected root 302 to setup, got $rootCode"}
+
+            $setupFile=Join-Path $env:RUNNER_TEMP 'setup-page.html'
+            $setupCode=& curl.exe -sS -o $setupFile -w "%{http_code}" http://127.0.0.1:18091/setup/
+            Write-Host "SETUP_STATUS=$setupCode"
+            if($setupCode-ne'200'){throw "Expected setup 200, got $setupCode"}
+            $body=Get-Content $setupFile -Raw
+            if($body -notmatch 'Local Web Setup'){throw 'Setup page body missing expected marker'}
+
+            $triggerCode=& curl.exe -sS -o NUL -w "%{http_code}" http://127.0.0.1:18091/internal/runtime/v1/trigger
+            Write-Host "REWRITE_STATUS=$triggerCode"
+            if($triggerCode-eq'500'){throw 'Rewrite endpoint returned HTTP 500'}
+          } finally {
+            if($proc -and -not$proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue}
+            $log=Join-Path $root 'Infrastructure\Apache\logs\error.log'
+            if(Test-Path $log){Write-Host '--- APACHE ERROR LOG ---';Get-Content $log -Tail 100}
+          }
