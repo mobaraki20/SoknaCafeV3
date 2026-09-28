@@ -11,7 +11,7 @@
       "version_source": "windows/runtime/source/Sokna.Runtime.Service.csproj#Version"
     },
     "print-agent": {
-      "version": "6.2.5",
+      "version": "6.2.6",
       "print_server_protocol": 4,
       "loopback_protocol": 1,
       "service_name": "SoknaPrintWorker",
