@@ -25,7 +25,8 @@ for token in [
     'SOKNA-Prerequisites-Support','Local Web payload is explicitly out of scope',
     'ADDLOCAL=MYSQLSERVER,Client,SharedLibraries','REMOVE=DBInstance,DEVEL,HeidiSQL',
     'RightToLeftLayout = false','AutoScaleMode = AutoScaleMode.Dpi','Tahoma',
-    'SOKNA", "Prerequisites", "Logs"','ShowNotice('
+    'SOKNA", "Prerequisites", "Logs"','ShowNotice(',
+    'PhpReady(','ApacheReady()','StopApacheForMaintenance()','Application.ProductVersion'
 ]:
     need(token in src,f'missing implementation guard: {token}')
 need('password=<redacted>' in src,'MariaDB root password is not redacted in command log')
@@ -37,3 +38,11 @@ need('SoknaPrerequisitesSetup.exe' in iss,'installer does not launch prerequisit
 need('runascurrentuser' in iss,'post-install prerequisites UI launch must keep elevated token')
 
 print('G7 infrastructure prerequisites gate: PASS')
+
+lock=json.loads((R/'platform/windows/release-lock.json').read_text(encoding='utf-8'))
+maria=next(x for x in lock['artifacts'] if x['dependency']=='mariadb')
+need(maria['source_url']=='https://downloads.mariadb.org/rest-api/mariadb/11.4.12/mariadb-11.4.12-winx64.msi','MariaDB must use official REST download endpoint')
+need(maria['sha256']=='4d92fb5f16c0ec8d5a9fc1efdb33a377eaa712d6bce97451e151465c3041ccac','MariaDB frozen hash drift')
+version=(R/'packaging/prerequisites/VERSION.txt').read_text(encoding='utf-8').strip()
+csproj=(R/'packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj').read_text(encoding='utf-8')
+need(f'<Version>{version}</Version>' in csproj,'setup binary version must match package VERSION.txt')
