@@ -1,0 +1,83 @@
+name: Publish SOKNA Installer Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-installers-release.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: installers-v1.0.4
+      TARGET_SHA: 3ce7b87019ad1cd1815ead465522382d9d51bf7c
+      PREREQ_RUN: "36456201885"
+      WINDOWS_RUN: "36456201898"
+      WINDOWS_ARTIFACT: sokna-windows-services-1.0.4-403a9576ccc4b825b65ed31440832c824d4fc163
+    steps:
+      - name: Download qualified build artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/prereq dist/offline dist/windows dist/release
+
+          gh run download "$PREREQ_RUN" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "sokna-prerequisites-setup-1.0.4" \
+            --dir dist/prereq
+
+          gh run download "$PREREQ_RUN" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "sokna-offline-kit-template-1.0.4" \
+            --dir dist/offline
+
+          gh run download "$WINDOWS_RUN" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$WINDOWS_ARTIFACT" \
+            --dir dist/windows
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp dist/prereq/SOKNA-Prerequisites-Setup-1.0.4.exe dist/release/
+          cp dist/windows/SOKNA-Windows-Services-Setup-1.0.4.exe dist/release/
+          cp dist/prereq/artifact-index.json dist/release/SOKNA-Prerequisites-1.0.4-artifact-index.json
+          cp dist/windows/artifact-index.json dist/release/SOKNA-Windows-Services-1.0.4-artifact-index.json
+
+          (
+            cd dist/offline
+            zip -r ../release/SOKNA-Offline-Kit-Template-1.0.4.zip .
+          )
+
+          (
+            cd dist/release
+            sha256sum \
+              SOKNA-Prerequisites-Setup-1.0.4.exe \
+              SOKNA-Windows-Services-Setup-1.0.4.exe \
+              SOKNA-Offline-Kit-Template-1.0.4.zip \
+              > SHA256SUMS.txt
+          )
+
+          ls -lh dist/release
+
+      - name: Create GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/release/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/release/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$TARGET_SHA" \
+              --title "SOKNA Installers 1.0.4" \
+              --notes "Qualified installer assets for the current SOKNA Cafe installation flow. Source commit: $TARGET_SHA. Prerequisites and Windows Services installers are published as direct GitHub Release Assets to avoid slow GitHub Actions artifact downloads."
+          fi
