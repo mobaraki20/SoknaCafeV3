@@ -1,0 +1,34 @@
+name: Diagnose Windows Service Registration
+on:
+  push:
+    branches:
+      - diag/service-registration-1.0.4
+
+jobs:
+  reproduce:
+    runs-on: windows-latest
+    steps:
+      - name: Reproduce exact sc.exe invocation
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $InstallRoot='C:\Program Files\SOKNA Windows Services'
+          $DataRoot='D:\SOKNA\Data'
+          $runtimeExe=Join-Path $InstallRoot 'Runtime\SoknaRuntimeService.exe'
+          $runtimeConfig=Join-Path $DataRoot 'runtime\runtime-config.json'
+          function Quote([string]$v){if($v -notmatch '[\s"]'){return $v};return '"'+($v -replace '(\\*)"','$1$1\\"' -replace '(\\+)$','$1$1')+'"'}
+          function Runtime-Command([string]$exe,[string]$config){return ((@($exe,'--config',$config)|ForEach-Object{Quote $_}) -join ' ')}
+          $runtimeCmd=Runtime-Command $runtimeExe $runtimeConfig
+          Write-Host "runtimeCmd=[$runtimeCmd]"
+          $sc="$env:SystemRoot\System32\sc.exe"
+          & $sc delete SoknaDiag 2>$null | Out-Null
+          Start-Sleep -Milliseconds 500
+          $out = & $sc create SoknaDiag "binPath=" $runtimeCmd "start=" demand "obj=" LocalSystem "DisplayName=" "SOKNA Diagnostic Runtime" 2>&1
+          $code=$LASTEXITCODE
+          Write-Host "SC_CREATE_EXIT=$code"
+          $out | ForEach-Object { Write-Host "SC_CREATE_OUTPUT=$_"}
+          & $sc qc SoknaDiag
+          $qc=$LASTEXITCODE
+          Write-Host "SC_QC_EXIT=$qc"
+          & $sc delete SoknaDiag | Out-Null
+          if($code -ne 0){ throw "Exact installer service registration invocation failed with exit code $code" }
