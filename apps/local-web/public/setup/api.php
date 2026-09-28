@@ -31,7 +31,8 @@ try {
     if($action==='status'){
         $status=$service->status();
         $localBaseUrl=trim((string)($status['local_base_url']??''))!==''?(string)$status['local_base_url']:setup_local_base_url();
-        setup_json(['success'=>true,'csrf'=>$_SESSION['csrf'],'setup'=>$status,'preflight'=>$service->preflight(),'local_base_url'=>$localBaseUrl]);
+        $recommendedDataDir=(string)($status['recommended_data_dir']??$service->recommendedDataDir());
+        setup_json(['success'=>true,'csrf'=>$_SESSION['csrf'],'setup'=>$status,'preflight'=>$service->preflight($recommendedDataDir),'local_base_url'=>$localBaseUrl,'recommended_data_dir'=>$recommendedDataDir]);
     }
     if($_SERVER['REQUEST_METHOD']!=='POST') throw new SetupException('method_not_allowed','روش درخواست معتبر نیست.',405);
     $body=setup_body();setup_csrf($body);
