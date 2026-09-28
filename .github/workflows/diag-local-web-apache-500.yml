@@ -80,7 +80,23 @@ jobs:
           }else{
             $text+="`r`nLoadModule rewrite_module modules/mod_rewrite.so`r`n"
           }
-          $text+="`r`n# BEGIN SOKNA MANAGED`r`nServerName 127.0.0.1:18091`r`nLoadModule php_module \"$p/php8apache2_4.dll\"`r`nPHPIniDir \"$p\"`r`n<FilesMatch \.php$>`r`n    SetHandler application/x-httpd-php`r`n</FilesMatch>`r`n<Directory \"$w\">`r`n    Options Indexes FollowSymLinks`r`n    AllowOverride All`r`n    Require all granted`r`n</Directory>`r`nDirectoryIndex index.php index.html`r`n# END SOKNA MANAGED`r`n"
+          $managed=@"
+# BEGIN SOKNA MANAGED
+ServerName 127.0.0.1:18091
+LoadModule php_module "$p/php8apache2_4.dll"
+PHPIniDir "$p"
+<FilesMatch \.php$>
+    SetHandler application/x-httpd-php
+</FilesMatch>
+<Directory "$w">
+    Options Indexes FollowSymLinks
+    AllowOverride All
+    Require all granted
+</Directory>
+DirectoryIndex index.php index.html
+# END SOKNA MANAGED
+"@
+          $text+="`r`n"+$managed+"`r`n"
           Set-Content -LiteralPath $conf -Value $text -Encoding UTF8
 
           $httpdExe=Join-Path $targetApache 'bin\httpd.exe'
