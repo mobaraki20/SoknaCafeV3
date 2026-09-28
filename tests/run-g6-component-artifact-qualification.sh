@@ -6,6 +6,8 @@ command -v python3 >/dev/null 2>&1 || fail_env 'G6 component qualification requi
 python3 release/generate-compatibility-v2.py >/dev/null
 python3 tests/g6-component-release-contract.py
 python3 tests/g6-release-preflight.py
+python3 tests/m9-packaging-gate.py
+python3 tests/m10-release-qualification.py
 python3 tests/component-registry-gate.py
 python3 tests/product-parity-gate.py --mode inventory
 TMP="${SOKNA_G6_ARTIFACT_DIR:-$(mktemp -d)}"; export TMP

@@ -1,110 +1,54 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import hashlib,json,subprocess,sys,tempfile
+import json, subprocess, sys
 from pathlib import Path
 
 R=Path(__file__).resolve().parents[1]
-L=R/'packaging/tools/lifecycle.py'
-C=R/'packaging/manifests/compatibility-v1.json'
 
-def fail(m): print(m,file=sys.stderr); raise SystemExit(1)
 def need(v,m):
-    if not v: fail(m)
-def run(*args,ok=True):
-    p=subprocess.run([sys.executable,str(L),*map(str,args)],cwd=R,text=True,capture_output=True)
-    if ok and p.returncode: fail(f"command failed: {' '.join(map(str,args))}\n{p.stdout}\n{p.stderr}")
-    if not ok and p.returncode==0: fail(f"command unexpectedly succeeded: {' '.join(map(str,args))}")
-    return p
+    if not v:
+        print(m,file=sys.stderr); raise SystemExit(1)
 
-def ptr(root,comp): return json.loads((root/'active'/f'{comp}.json').read_text())['version']
-def mk_source(root,comp,version):
-    p=root/f'src-{comp}-{version}';p.mkdir();(p/'payload.txt').write_text(f'{comp}:{version}\n',encoding='utf-8');return p
+def run_py(path,*args):
+    p=subprocess.run([sys.executable,str(R/path),*args],cwd=R,text=True,capture_output=True)
+    if p.returncode:
+        print(p.stdout,p.stderr,file=sys.stderr); raise SystemExit(p.returncode)
+    return p.stdout
 
-def pkg(root,comp,version,contracts):
-    source=mk_source(root,comp,version);out=root/f'pkg-{comp}-{version}'
-    run('build','--component',comp,'--version',version,'--source',source,'--out',out,'--source-commit','m10-fixture','--contracts',json.dumps(contracts,separators=(',',':')))
-    return out
+# M10 is a final-architecture source/preflight gate. Real DB/Windows evidence is produced by G6 workflow.
+for gate in [
+    'tests/m9-packaging-gate.py',
+    'tests/g5-windows-packaging-contract.py',
+    'tests/g5-prerequisite-lock-selftest.py',
+    'tests/g6-component-release-contract.py',
+    'tests/g6-release-preflight.py',
+    'tests/component-registry-gate.py',
+]:
+    run_py(gate)
+run_py('tests/product-parity-gate.py','--mode','inventory')
 
-def contracts(comp):
-    return {
-      'local': {'runtime_contract':'1.0.0','print_server_protocol':4},
-      'public': {'local_public_contract':1},
-      'runtime': {'runtime_contract':'1.0.0'},
-      'print-agent': {'print_server_protocol':4,'loopback_protocol':1},
-      'platform': {'php_version_id':80200,'pdo_mysql':True},
-    }[comp]
+# Compatibility-v2 must bind independent component-owned versions.
+compat=json.loads((R/'release/compatibility-v2.json').read_text(encoding='utf-8'))
+need(compat.get('format')=='sokna-release-compatibility-v2','compatibility-v2 format missing')
+need(set(compat['components'])=={'local-web','public-edge','windows-runtime','print-agent','windows-services-packaging','shared-contracts'},'independent component compatibility set incomplete')
+need('monolithic' in ' '.join(compat.get('rules',[])).lower(),'compatibility rules do not fence monolithic version ownership')
 
-with tempfile.TemporaryDirectory(prefix='sokna-m10-') as td:
-    t=Path(td);root=t/'life';packages={}
-    # clean install of all independently owned components
-    for comp in ['local','public','runtime','print-agent','platform']:
-        packages[(comp,'1.0.0')]=pkg(t,comp,'1.0.0',contracts(comp))
-        run('stage','--root',root,'--package',packages[(comp,'1.0.0')],'--compat',C)
-        run('activate','--root',root,'--component',comp,'--version','1.0.0','--compat',C)
-    baseline={c:ptr(root,c) for c in ['local','public','runtime','print-agent','platform']}
-    need(set(baseline.values())=={'1.0.0'},'clean install did not activate all components')
+# Final qualification workflow must aggregate Linux/MariaDB and Windows evidence on one commit.
+workflow=(R/'.github/workflows/g6-final-qualification.yml').read_text(encoding='utf-8')
+for token in ['mariadb:11.4','windows-latest','run-g4-4-product-qualification.sh','run-g5-windows-packaging-qualification.sh','run-g6-component-artifact-qualification.sh','run-g6-final-qualification.sh']:
+    need(token in workflow,f'G6 final workflow missing {token}')
 
-    # component-only upgrades must not move unrelated active pointers.
-    for comp in ['local','public','runtime','print-agent']:
-        before={c:ptr(root,c) for c in baseline}
-        p=pkg(t,comp,'1.1.0',contracts(comp));run('stage','--root',root,'--package',p,'--compat',C);run('activate','--root',root,'--component',comp,'--version','1.1.0','--compat',C)
-        for other in before:
-            if other!=comp: need(ptr(root,other)==before[other],f'{comp}-only update moved {other}')
-        run('rollback','--root',root,'--component',comp);need(ptr(root,comp)=='1.0.0',f'{comp} rollback failed')
+# Deferred register must cover every PRODUCT_OPEN capability exactly once before real qualification.
+reg=json.loads((R/'release/deferred-qualification-v1.json').read_text(encoding='utf-8'))
+need(reg.get('format')=='sokna-deferred-qualification-v1','deferred qualification registry missing')
+rows=json.loads((R/'docs/product/MASTER_CAPABILITY_MATRIX.json').read_text(encoding='utf-8'))['rows']
+open_ids={r['id'] for r in rows if r.get('completion_level')=='PRODUCT_OPEN'}
+covered=[]
+for e in reg.get('entries',[]): covered.extend(e.get('capabilities',[]))
+need(set(covered)==open_ids,'deferred qualification coverage does not equal PRODUCT_OPEN capability set')
+need(len(covered)==len(set(covered)),'a PRODUCT_OPEN capability is covered by more than one deferred qualification entry')
 
-    # platform failed activation auto-rolls back.
-    p2=pkg(t,'platform','1.1.0',contracts('platform'));run('stage','--root',root,'--package',p2,'--compat',C)
-    run('activate','--root',root,'--component','platform','--version','1.1.0','--compat',C,'--simulate-failure',ok=False)
-    need(ptr(root,'platform')=='1.0.0','failed platform activation did not auto-rollback')
-
-    # same-version repair restores immutable payload bytes.
-    active_pkg=root/'staged'/'local'/'1.0.0';(active_pkg/'payload'/'payload.txt').write_text('corrupt\n',encoding='utf-8')
-    run('repair','--root',root,'--package',packages[('local','1.0.0')],'--compat',C)
-    need((active_pkg/'payload'/'payload.txt').read_text()=='local:1.0.0\n','same-version repair did not restore canonical package')
-
-    # incompatible contract rejects before stage/activation.
-    bad=pkg(t,'runtime','9.9.9',{'runtime_contract':'2.0.0'})
-    run('stage','--root',root,'--package',bad,'--compat',C,ok=False)
-    need(not (root/'staged'/'runtime'/'9.9.9').exists(),'incompatible package reached staged state')
-    need(ptr(root,'runtime')=='1.0.0','incompatible package moved active runtime')
-
-    # Recovery-set contract requires machine-bound identity exclusion and backup integrity.
-    business=t/'business.skb';business.write_bytes(b'cipher-fixture')
-    rec=t/'recovery.json';rec.write_text(json.dumps({
-      'format':'sokna-recovery-set-v1','created_at':'2026-09-26T00:00:00Z',
-      'business_backup':{'path':str(business),'sha256':hashlib.sha256(business.read_bytes()).hexdigest()},
-      'excluded_machine_identity':['runtime_machine_secret','print_agent_identity','tls_private_key']
-    }),encoding='utf-8')
-    run('verify-recovery',rec)
-    badrec=t/'bad-recovery.json';badrec.write_text(json.dumps({'format':'sokna-recovery-set-v1','business_backup':{'path':str(business),'sha256':'0'*64},'excluded_machine_identity':[]}),encoding='utf-8')
-    run('verify-recovery',badrec,ok=False)
-
-# release-lock must bind the exact provider candidate bytes.
-provider=R/'platform/windows/provider-candidate.json'; lock=json.loads((R/'platform/windows/release-lock.json').read_text())
-need(lock['app_version']==(R/'VERSION.txt').read_text().strip(),'release lock and VERSION.txt disagree')
-need(lock['source_candidate_sha256']==hashlib.sha256(provider.read_bytes()).hexdigest(),'release lock does not bind current provider candidate')
-need(lock.get('release_frozen') is True,'prerequisite release lock is not frozen')
-
-# no stale V2/legacy Windows layout may remain in active packaging paths.
-scan=[]
-for base in [R/'packaging/windows',R/'platform/windows']:
-    for p in base.rglob('*'):
-        if p.is_file() and p.suffix.lower() in {'.ps1','.iss','.cs','.md','.json','.template'}:
-            scan.append((p,p.read_text(encoding='utf-8',errors='ignore')))
-for p,text in scan:
-    for stale in ['runtime\\windows','installer\\windows','runtime/sokna-runtime.php','database/schema.sql']:
-        need(stale not in text,f'legacy packaging path {stale} remains in {p.relative_to(R)}')
-need((R/'platform/windows/remove-owned-services.ps1').is_file(),'owned-service uninstall cleanup is missing')
-iss=(R/'packaging/windows/installer/SOKNA.iss').read_text(encoding='utf-8')
-need('[UninstallRun]' in iss and 'remove-owned-services.ps1' in iss,'installer does not invoke owned-service cleanup')
-prepare=(R/'packaging/windows/scripts/prepare-shell-payload.ps1').read_text(encoding='utf-8')
-need("apps/local-web/" in prepare and "VERSION.txt" in prepare,'installer seed is not scoped to Local Web')
-need('apps/public/' not in prepare,'Public component leaked into Local installer seed')
-setup=(R/'platform/windows/setup-sokna.ps1').read_text(encoding='utf-8')
-need("'--config'" in setup and 'runtime-config.json' in setup,'Runtime service setup still uses legacy arguments')
-need('apps\\local-web\\public' in setup,'Apache document root is not canonical Local public root')
-
-# Automated gate must keep real-device checks explicit rather than claiming them passed.
+# Automated qualification must not pretend manual/device checks passed.
 uat=json.loads((R/'release/manual-uat-status.json').read_text(encoding='utf-8'))
 need(uat.get('format')=='sokna-manual-uat-v1','manual UAT status contract missing')
 required={'windows_clean_install','physical_thermal_printer','responsive_touch_persian_ime'}
@@ -113,4 +57,11 @@ need(required.issubset(seen),'required manual UAT checks are not declared')
 for x in uat['checks']:
     need(x.get('status') in {'pending','passed','failed'},'manual UAT has invalid status')
 
-print('M10 automated release qualification: OK')
+# ADR-0004 ownership removals must remain hard-removed.
+for legacy in [
+    'platform/windows/setup-sokna.ps1','platform/windows/configure-apache.ps1','platform/windows/provision-local-https.ps1',
+    'platform/windows/remove-owned-services.ps1','packaging/windows/scripts/deploy-seed.ps1','packaging/windows/scripts/prepare-prerequisite-bundle.ps1'
+]:
+    need(not (R/legacy).exists(),f'legacy deployment ownership implementation remains: {legacy}')
+
+print('M10 revised automated release qualification: OK')
