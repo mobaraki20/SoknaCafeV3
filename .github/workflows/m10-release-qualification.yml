@@ -149,6 +149,15 @@ jobs:
           $legacyDefault=Join-Path $env:ProgramData 'SOKNA\print-worker'
           New-Item -ItemType Directory -Path $legacyDefault -Force | Out-Null
           Set-Content -LiteralPath (Join-Path $legacyDefault 'queue.db') -Value 'intentionally-invalid-stale-default'
+
+          # Keep a handle open while another process acquires the named mutex and exits without releasing it.
+          # This reproduces the real upgrade/recovery state observed on Windows 10 LTSC.
+          $mutexName='Global\SoknaPrintAgentV6Service'
+          $keeper=New-Object System.Threading.Mutex($false,$mutexName)
+          $childScript='$m=[Threading.Mutex]::OpenExisting("Global\SoknaPrintAgentV6Service");$null=$m.WaitOne();[Environment]::Exit(0)'
+          $child=Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList '-NoProfile','-NonInteractive','-Command',$childScript -Wait -PassThru
+          if($child.ExitCode-ne0){throw "Failed to seed abandoned Print Agent mutex: $($child.ExitCode)"}
+
           try {
             & packaging/windows/scripts/setup-windows-services.ps1 -Mode Install -ShellRoot $shell -InstallRoot $install -DataRoot $data -PairingFile '' -StartWhenPaired 0
             $runtime=Get-Service -Name SoknaRuntime -ErrorAction Stop
@@ -173,14 +182,15 @@ jobs:
             Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'D:\SOKNA-CI' -Recurse -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $legacyDefault -Recurse -Force -ErrorAction SilentlyContinue
+            if($keeper){$keeper.Dispose()}
           }
 
       - name: Upload qualified Windows Services installer
         uses: actions/upload-artifact@v4
         with:
-          name: sokna-windows-services-1.0.6-${{ github.sha }}
+          name: sokna-windows-services-1.0.7-${{ github.sha }}
           path: |
-            release/out-windows/SOKNA-Windows-Services-Setup-1.0.6.exe
+            release/out-windows/SOKNA-Windows-Services-Setup-1.0.7.exe
             release/out-windows/artifact-index.json
           if-no-files-found: error
           retention-days: 30
