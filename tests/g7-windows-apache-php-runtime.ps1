@@ -68,6 +68,12 @@ $apacheDir=Join-Path $root 'Infrastructure\Apache'
 New-Item -ItemType Directory -Path $apacheDir -Force|Out-Null
 Copy-Item -Path (Join-Path $apacheSource '*') -Destination $apacheDir -Recurse -Force
 
+# Simulate an upgraded machine with a conflicting/stale DLL in Apache\bin.
+# The managed Apache config must explicitly load PHP's own libsodium.dll first.
+$wrongSodium=Join-Path $apacheDir 'bin\libsodium.dll'
+Copy-Item (Join-Path $phpDir 'libssl-3-x64.dll') $wrongSodium -Force
+if((Get-FileHash $wrongSodium).Hash -eq (Get-FileHash (Join-Path $phpDir 'libsodium.dll')).Hash){throw 'conflict fixture did not differ'}
+
 $web=Join-Path $root 'Web'
 New-Item -ItemType Directory -Path $web -Force|Out-Null
 Copy-Item -Path (Join-Path $RepoRoot 'apps\local-web\*') -Destination $web -Recurse -Force
@@ -87,6 +93,7 @@ else{$text+="`r`nLoadModule rewrite_module modules/mod_rewrite.so`r`n"}
 $managed=@(
   '# BEGIN SOKNA MANAGED',
   'ServerName 127.0.0.1:18093',
+  ('LoadFile "'+$phpForward+'/libsodium.dll"'),
   ('LoadModule php_module "'+$phpForward+'/php8apache2_4.dll"'),
   ('PHPIniDir "'+$phpForward+'"'),
   '<FilesMatch \.php$>',
