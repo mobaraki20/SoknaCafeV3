@@ -49,8 +49,15 @@ final class BrowserSetupService
             'has_config' => $hasConfig,
             'installation_id' => $installationId,
             'local_base_url' => $localBaseUrl,
+            'recommended_data_dir' => $this->recommendedDataDir(),
             'resume_available' => $state === 'partial',
         ];
+    }
+
+    public function recommendedDataDir(): string
+    {
+        $root = dirname(rtrim($this->localWebRoot, "\\/"));
+        return rtrim($root, "\\/").DIRECTORY_SEPARATOR.'Data';
     }
 
     public function preflight(string $dataDir = ''): array
