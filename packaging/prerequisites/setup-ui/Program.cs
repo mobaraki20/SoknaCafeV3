@@ -524,13 +524,22 @@ internal sealed class MainForm : Form
     private void StartLog(OperationMode mode)
     {
         _currentLog = Path.Combine(LogsPath(), $"prerequisites-{DateTime.Now:yyyyMMdd-HHmmss}.log");
-        Log($"SOKNA Prerequisites Setup 1.0.0 | {mode}");
+        Log($"SOKNA Prerequisites Setup {Application.ProductVersion} | {mode}");
     }
 
     private async Task InstallPhpAsync(CancellationToken ct)
     {
-        SetProgress(5, "PHP: دریافت و بررسی فایل رسمی...");
+        SetProgress(5, "PHP: بررسی وضعیت...");
         var a = Artifact("php");
+        if (PhpReady(a.Version))
+        {
+            Log($"PHP {a.Version} already ready; install step skipped.");
+            SetProgress(25, "PHP از قبل آماده است؛ ادامه نصب...");
+            return;
+        }
+
+        StopApacheForMaintenance();
+        SetProgress(8, "PHP: دریافت و بررسی فایل رسمی...");
         var zip = await DownloadVerifiedAsync(a, ct);
         var tmp = NewTemp("php");
         try
@@ -539,12 +548,27 @@ internal sealed class MainForm : Form
             var source = FindRootContaining(tmp, "php.exe") ?? throw new InvalidOperationException("php.exe داخل بسته پیدا نشد.");
             CopyDirectory(source, PhpPath());
             ConfigurePhp();
-            var r = RunProcess(Path.Combine(PhpPath(), "php.exe"), "-v", "-v");
-            if (r.ExitCode != 0) throw new InvalidOperationException("PHP بعد از نصب اجرا نشد: " + r.Error);
-            Log("PHP ready: " + FirstLine(r.Output));
+            if (!PhpReady(a.Version))
+                throw new InvalidOperationException("PHP بعد از نصب یا تنظیم extensionهای لازم آماده نشد.");
+            Log($"PHP {a.Version} ready.");
             SetProgress(25, "PHP آماده شد.");
         }
         finally { SafeDelete(tmp); }
+    }
+
+    private bool PhpReady(string expectedVersion)
+    {
+        var php = Path.Combine(PhpPath(), "php.exe");
+        if (!File.Exists(php)) return false;
+        var version = RunProcess(php, "-v", "-v", allowFailure: true);
+        if (version.ExitCode != 0 || !version.Output.Contains($"PHP {expectedVersion}", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var modules = RunProcess(php, "-m", "-m", allowFailure: true);
+        if (modules.ExitCode != 0) return false;
+        var loaded = modules.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return new[] { "pdo_mysql", "fileinfo", "openssl", "sodium", "mbstring" }.All(loaded.Contains);
     }
 
     private void ConfigurePhp()
@@ -572,7 +596,16 @@ internal sealed class MainForm : Form
 
     private async Task InstallApacheAsync(CancellationToken ct)
     {
-        SetProgress(30, "Apache: دریافت و آماده‌سازی...");
+        SetProgress(30, "Apache: بررسی وضعیت...");
+        if (ApacheReady())
+        {
+            Log("Apache already ready; install step skipped.");
+            SetProgress(55, "Apache از قبل آماده است؛ ادامه به MariaDB...");
+            return;
+        }
+
+        StopApacheForMaintenance();
+        SetProgress(34, "Apache: دریافت و آماده‌سازی...");
         var a = Artifact("apache");
         var zip = await DownloadVerifiedAsync(a, ct);
         var tmp = NewTemp("apache");
@@ -589,9 +622,43 @@ internal sealed class MainForm : Form
             if (syntax.ExitCode != 0) throw new InvalidOperationException("Apache config معتبر نیست: " + syntax.Error + syntax.Output);
 
             ReinstallApacheService(httpd, conf);
+            if (!WaitForPort(80, TimeSpan.FromSeconds(30)))
+                throw new InvalidOperationException("سرویس Apache ثبت شد اما روی پورت 80 پاسخ نداد.");
             SetProgress(55, "Apache و سرویس SoknaApache آماده شدند.");
         }
         finally { SafeDelete(tmp); }
+    }
+
+    private bool ApacheReady()
+    {
+        var httpd = Path.Combine(ApachePath(), "bin", "httpd.exe");
+        var conf = Path.Combine(ApachePath(), "conf", "httpd.conf");
+        if (!File.Exists(httpd) || !File.Exists(conf) || !ServiceExists("SoknaApache")) return false;
+        var syntax = RunProcess(httpd, $"-t -f \"{conf}\"", $"-t -f \"{conf}\"", allowFailure: true);
+        if (syntax.ExitCode != 0) return false;
+        if (!string.Equals(ServiceStatus("SoknaApache"), "RUNNING", StringComparison.OrdinalIgnoreCase))
+            RunProcess("sc.exe", "start SoknaApache", "start SoknaApache", allowFailure: true);
+        return WaitForPort(80, TimeSpan.FromSeconds(12));
+    }
+
+    private void StopApacheForMaintenance()
+    {
+        if (!ServiceExists("SoknaApache")) return;
+        var status = ServiceStatus("SoknaApache");
+        if (string.Equals(status, "STOPPED", StringComparison.OrdinalIgnoreCase)) return;
+        Log("Stopping SoknaApache before updating PHP/Apache files.");
+        RunProcess("sc.exe", "stop SoknaApache", "stop SoknaApache", allowFailure: true);
+        var until = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < until)
+        {
+            if (string.Equals(ServiceStatus("SoknaApache"), "STOPPED", StringComparison.OrdinalIgnoreCase))
+            {
+                Thread.Sleep(500);
+                return;
+            }
+            Thread.Sleep(500);
+        }
+        throw new InvalidOperationException("Apache برای به‌روزرسانی فایل‌ها متوقف نشد. لطفاً چند ثانیه صبر کنید و دوباره تلاش کنید.");
     }
 
     private void ConfigureApache()
@@ -931,6 +998,17 @@ DirectoryIndex index.php index.html
             return t.Wait(TimeSpan.FromMilliseconds(700)) && c.Connected;
         }
         catch { return false; }
+    }
+
+    private static bool WaitForPort(int port, TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < until)
+        {
+            if (TcpOpen(port)) return true;
+            Thread.Sleep(500);
+        }
+        return TcpOpen(port);
     }
 
     private static string Slash(string p) => p.Replace('\\', '/');
