@@ -14,7 +14,7 @@ header('X-Content-Type-Options: nosniff');
 $secure=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off');
 session_name('sokna_setup');session_set_cookie_params(['httponly'=>true,'secure'=>$secure,'samesite'=>'Strict','path'=>'/setup/']);session_start();
 $_SESSION['csrf']=$_SESSION['csrf']??bin2hex(random_bytes(24));
-$service=new BrowserSetupService(dirname(__DIR__,4),dirname(__DIR__,2));
+$localRoot=dirname(__DIR__,2);$service=new BrowserSetupService($localRoot,$localRoot);
 $action=(string)($_GET['action']??'status');
 
 function setup_json(array $payload,int $status=200): never { http_response_code($status);echo json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);exit; }
