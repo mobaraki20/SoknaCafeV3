@@ -37,6 +37,7 @@ $owned=@{
  'packaging\windows\WINDOWS_SERVICES_VERSION.txt'='WINDOWS_SERVICES_VERSION.txt';
  'packaging\windows\scripts\setup-windows-services.ps1'='setup-windows-services.ps1';
  'packaging\windows\scripts\remove-windows-services.ps1'='remove-windows-services.ps1';
+ 'packaging\windows\scripts\collect-support.ps1'='collect-support.ps1';
  'packaging\windows\Sokna.ico'='Sokna.ico'
 }
 foreach($rel in $owned.Keys){$src=Join-Path $RepoRoot $rel;if(-not(Test-Path -LiteralPath $src -PathType Leaf)){throw "Missing installer-owned source: $rel"};Copy-Item -LiteralPath $src -Destination (Join-Path $OutputRoot $owned[$rel]) -Force}
