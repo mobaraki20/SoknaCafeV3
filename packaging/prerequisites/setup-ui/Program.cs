@@ -457,6 +457,7 @@ internal sealed class MainForm : Form
     private readonly Dictionary<string, ProgressBar> _artifactProgressBars = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Button> _artifactSelectButtons = new(StringComparer.OrdinalIgnoreCase);
     private string? _currentLog;
+    private string? _detectedExistingRoot;
     private readonly string _sessionLog = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOKNA", "Prerequisites", "Logs", $"ui-{DateTime.Now:yyyyMMdd-HHmmss}.log");
 
     public MainForm()
@@ -477,7 +478,17 @@ internal sealed class MainForm : Form
         _lock = LoadJson<ReleaseLock>("release-lock.json", "فهرست نسخه‌های قفل‌شده");
         ValidateContracts();
 
-        _root.Text = DefaultRoot();
+        _detectedExistingRoot = DetectExistingInfrastructureRoot();
+        if (!string.IsNullOrWhiteSpace(_detectedExistingRoot))
+        {
+            _root.Text = _detectedExistingRoot;
+            _install.Checked = false;
+            _repair.Checked = true;
+        }
+        else
+        {
+            _root.Text = DefaultRoot();
+        }
         TryLoadExistingApachePort();
         _root.TextChanged += (_, _) => RefreshPathSummary();
         _apachePort.ValueChanged += (_, _) => RefreshPathSummary();
@@ -1002,12 +1013,15 @@ internal sealed class MainForm : Form
 
     private void RefreshModeHelp()
     {
-        _modeHelp.Text = SelectedMode() switch
+        var modeText = SelectedMode() switch
         {
             OperationMode.Install => "نصب جدید: نسخه‌های تأییدشده دانلود و بررسی می‌شوند، PHP / Apache / MariaDB آماده می‌شوند و سرویس‌های ویندوز ثبت می‌شوند. اگر Data قبلی پیدا شود، عملیات برای جلوگیری از بازنویسی متوقف می‌شود.",
             OperationMode.Repair => "تعمیر نصب موجود: فایل‌ها و تنظیمات زیرساخت بررسی و ترمیم می‌شوند. Web و Data موجود حفظ می‌شوند و MariaDB دوباره initialize نمی‌شود.",
             _ => "بازیابی بعد از نصب مجدد ویندوز: از فایل‌ها و Data باقی‌مانده روی درایو انتخاب‌شده استفاده می‌شود و سرویس‌های ویندوز دوباره ثبت می‌شوند. Web و Data قبلی دست‌نخورده می‌مانند."
         };
+        if (!string.IsNullOrWhiteSpace(_detectedExistingRoot))
+            modeText = $"نصب موجود در «{_detectedExistingRoot}» تشخیص داده شد؛ حالت «تعمیر نصب موجود» به‌صورت خودکار انتخاب شده است.\n" + modeText;
+        _modeHelp.Text = modeText;
     }
 
     private void FitToWorkingArea()
@@ -1040,6 +1054,24 @@ internal sealed class MainForm : Form
             _root.Text = d.SelectedPath;
             TryLoadExistingApachePort();
         }
+    }
+
+    private static string? DetectExistingInfrastructureRoot()
+    {
+        foreach (var (service, component) in new[] { ("SoknaMariaDB", "MariaDB"), ("SoknaApache", "Apache") })
+        {
+            try
+            {
+                var image = InfrastructureOwnershipDetector.ReadServiceImagePath(service);
+                if (string.IsNullOrWhiteSpace(image)) continue;
+                var exe = InfrastructureOwnershipDetector.ExtractExecutablePath(image);
+                if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe)) continue;
+                var root = InfrastructureOwnershipDetector.InferSoknaRootFromInfrastructureExecutable(exe, component);
+                if (!string.IsNullOrWhiteSpace(root) && Directory.Exists(root)) return root;
+            }
+            catch { }
+        }
+        return null;
     }
 
     private static string DefaultRoot()
@@ -1262,6 +1294,18 @@ internal sealed class MainForm : Form
         }
 
         StopApacheForMaintenance();
+
+        if (PhpBinaryVersionReady(a.Version))
+        {
+            Log($"PHP {a.Version} binaries already exist but configuration/extensions need reconciliation.");
+            ConfigurePhp();
+            if (!PhpReady(a.Version))
+                throw new InvalidOperationException("PHP موجود بعد از ترمیم php.ini و extensionهای لازم آماده نشد.");
+            SetProgress(25, "تنظیمات PHP موجود ترمیم شد.");
+            UpdateArtifactProgress("php", 100, "PHP موجود بدون دانلود مجدد ترمیم و آماده شد.");
+            return;
+        }
+
         SetProgress(8, "PHP: دریافت و بررسی فایل رسمی...");
         var zip = await DownloadVerifiedAsync(a, ct);
         var tmp = NewTemp("php");
@@ -1280,19 +1324,39 @@ internal sealed class MainForm : Form
         finally { SafeDelete(tmp); }
     }
 
-    private bool PhpReady(string expectedVersion)
+    private bool PhpBinaryVersionReady(string expectedVersion)
     {
         var php = Path.Combine(PhpPath(), "php.exe");
         if (!File.Exists(php)) return false;
         var version = RunProcess(php, "-v", "-v", allowFailure: true);
-        if (version.ExitCode != 0 || !version.Output.Contains($"PHP {expectedVersion}", StringComparison.OrdinalIgnoreCase))
-            return false;
+        return version.ExitCode == 0 && version.Output.Contains($"PHP {expectedVersion}", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool PhpConfigurationReady()
+    {
+        try
+        {
+            var ini = Path.Combine(PhpPath(), "php.ini");
+            if (!File.Exists(ini)) return false;
+            var text = File.ReadAllText(ini, Encoding.UTF8);
+            var m = Regex.Match(text, @"(?im)^\s*extension_dir\s*=\s*[\"']?(?<v>[^\"'\r\n]+)[\"']?\s*$");
+            if (!m.Success) return false;
+            var configured = m.Groups["v"].Value.Trim();
+            return InfrastructureOwnershipDetector.PathEquals(configured, Path.Combine(PhpPath(), "ext"));
+        }
+        catch { return false; }
+    }
+
+    private bool PhpReady(string expectedVersion)
+    {
+        if (!PhpBinaryVersionReady(expectedVersion) || !PhpConfigurationReady()) return false;
+        var php = Path.Combine(PhpPath(), "php.exe");
         var modules = RunProcess(php, "-m", "-m", allowFailure: true);
         if (modules.ExitCode != 0) return false;
         var loaded = modules.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Select(x => x.Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return new[] { "pdo_mysql", "fileinfo", "openssl", "sodium", "mbstring" }.All(loaded.Contains);
+        return new[] { "pdo", "pdo_mysql", "json", "mbstring", "sodium", "zlib", "zip", "session", "fileinfo", "openssl" }.All(loaded.Contains);
     }
 
     private void ConfigurePhp()
@@ -1306,11 +1370,17 @@ internal sealed class MainForm : Form
         }
         else BackupFile(ini);
 
+        var extDir = Slash(Path.Combine(PhpPath(), "ext"));
         var text = File.ReadAllText(ini, Encoding.UTF8);
-        text = Regex.Replace(text, @"(?im)^\s*;?\s*extension_dir\s*=.*$", "extension_dir = \"ext\"");
-        foreach (var dll in new[] { "php_fileinfo.dll", "php_mbstring.dll", "php_mysqli.dll", "php_pdo_mysql.dll", "php_openssl.dll", "php_sodium.dll" })
+        var extDirRx = new Regex(@"(?im)^\s*;?\s*extension_dir\s*=.*$");
+        if (extDirRx.IsMatch(text)) text = extDirRx.Replace(text, $"extension_dir = \"{extDir}\"", 1);
+        else text += Environment.NewLine + $"extension_dir = \"{extDir}\"";
+
+        foreach (var dll in new[] { "php_fileinfo.dll", "php_mbstring.dll", "php_mysqli.dll", "php_pdo_mysql.dll", "php_openssl.dll", "php_sodium.dll", "php_zip.dll" })
         {
-            if (!File.Exists(Path.Combine(PhpPath(), "ext", dll))) continue;
+            var dllPath = Path.Combine(PhpPath(), "ext", dll);
+            if (!File.Exists(dllPath))
+                throw new InvalidOperationException($"PHP extension DLL داخل بسته رسمی پیدا نشد: {dll}");
             var rx = new Regex(@"(?im)^\s*;?\s*extension\s*=\s*" + Regex.Escape(dll) + @"\s*$");
             if (rx.IsMatch(text)) text = rx.Replace(text, $"extension={dll}", 1);
             else text += Environment.NewLine + $"extension={dll}";
@@ -1633,7 +1703,7 @@ DirectoryIndex index.php index.html
 
         var php = RunProcess(Path.Combine(PhpPath(), "php.exe"), "-m", "-m");
         if (php.ExitCode != 0) throw new InvalidOperationException("PHP health check ناموفق بود.");
-        foreach (var ext in new[] { "pdo_mysql", "fileinfo", "openssl", "sodium", "mbstring" })
+        foreach (var ext in new[] { "pdo", "pdo_mysql", "json", "mbstring", "sodium", "zlib", "zip", "session", "fileinfo", "openssl" })
             if (!php.Output.Split('\n').Any(x => string.Equals(x.Trim(), ext, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException($"PHP extension آماده نیست: {ext}");
 
@@ -1648,7 +1718,55 @@ DirectoryIndex index.php index.html
         if (!TcpOpen(ApachePort())) throw new InvalidOperationException($"Apache روی 127.0.0.1:{ApachePort()} پاسخ نمی‌دهد. از «باز کردن لاگ‌ها» استفاده کنید.");
         if (!TcpOpen(3306)) throw new InvalidOperationException("MariaDB روی 127.0.0.1:3306 پاسخ نمی‌دهد. از «باز کردن لاگ‌ها» استفاده کنید.");
 
+        await ValidateApachePhpRuntimeAsync(ct);
+
         SetProgress(96, "Health check موفق بود.");
+    }
+
+    private async Task ValidateApachePhpRuntimeAsync(CancellationToken ct)
+    {
+        Directory.CreateDirectory(WebPublicPath());
+        var fileName = $".sokna-php-runtime-probe-{Guid.NewGuid():N}.php";
+        var probePath = Path.Combine(WebPublicPath(), fileName);
+        var required = new[] { "pdo", "pdo_mysql", "json", "mbstring", "sodium", "zlib", "zip", "session" };
+        var php = @"<?php
+header('Content-Type: application/json; charset=utf-8');
+$exts=['pdo','pdo_mysql','json','mbstring','sodium','zlib','zip','session'];
+$out=['version'=>PHP_VERSION,'ini'=>php_ini_loaded_file(),'extension_dir'=>ini_get('extension_dir'),'extensions'=>[]];
+foreach($exts as $e){$out['extensions'][$e]=extension_loaded($e);}
+echo json_encode($out, JSON_UNESCAPED_SLASHES);
+";
+        await File.WriteAllTextAsync(probePath, php, new UTF8Encoding(false), ct);
+        try
+        {
+            using var response = await _http.GetAsync(LocalWebUrl() + fileName, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"PHP داخل Apache health probe با HTTP {(int)response.StatusCode} شکست خورد: {TrimLog(body)}");
+
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            var version = root.GetProperty("version").GetString() ?? "";
+            var ini = root.GetProperty("ini").GetString() ?? "";
+            var extensionDir = root.GetProperty("extension_dir").GetString() ?? "";
+            if (!version.StartsWith(Artifact("php").Version, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"PHP داخل Apache نسخه مورد انتظار را اجرا نمی‌کند: {version}");
+            if (!InfrastructureOwnershipDetector.PathEquals(ini, Path.Combine(PhpPath(), "php.ini")))
+                throw new InvalidOperationException($"PHP داخل Apache php.ini دیگری را خوانده است: {ini}");
+            if (!InfrastructureOwnershipDetector.PathEquals(extensionDir, Path.Combine(PhpPath(), "ext")))
+                throw new InvalidOperationException($"PHP داخل Apache extension_dir نادرست دارد: {extensionDir}");
+
+            var extensions = root.GetProperty("extensions");
+            var missing = required.Where(x => !extensions.TryGetProperty(x, out var v) || v.ValueKind != JsonValueKind.True).ToArray();
+            if (missing.Length > 0)
+                throw new InvalidOperationException("PHP داخل Apache extensionهای لازم Local Web را لود نکرده است: " + string.Join(", ", missing));
+
+            Log($"Apache PHP runtime ready. Version={version}; php.ini={ini}; extension_dir={extensionDir}; required_extensions=OK");
+        }
+        finally
+        {
+            try { if (File.Exists(probePath)) File.Delete(probePath); } catch { }
+        }
     }
 
     private void WriteState(OperationMode mode)
