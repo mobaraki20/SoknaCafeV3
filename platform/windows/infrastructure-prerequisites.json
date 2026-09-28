@@ -1,0 +1,50 @@
+{
+  "format": "sokna-infrastructure-prerequisites-v1",
+  "schema_version": 1,
+  "ownership": "external-dependencies-managed-by-helper",
+  "helper_role": "install-repair-recover",
+  "automatic_download_allowed": true,
+  "automatic_install_allowed": true,
+  "local_web_payload_allowed": false,
+  "database_application_provisioning_allowed": false,
+  "default_layout": {
+    "root": "<selected-drive>:\\SOKNA",
+    "infrastructure": "Infrastructure",
+    "php": "Infrastructure\\PHP",
+    "apache": "Infrastructure\\Apache",
+    "mariadb": "Infrastructure\\MariaDB",
+    "logs": "Infrastructure\\Logs",
+    "web_root": "Web",
+    "mariadb_data": "Data\\MariaDB",
+    "backups": "Backups"
+  },
+  "services": {
+    "apache": "SoknaApache",
+    "mariadb": "SoknaMariaDB"
+  },
+  "ports": {
+    "apache": 80,
+    "mariadb": 3306,
+    "bind_address": "127.0.0.1"
+  },
+  "release_lock": {
+    "relative_path": "release-lock.json",
+    "format": "sokna-windows-prerequisite-lock-v1"
+  },
+  "items": [
+    {"id":"php","release_lock_dependency":"php","required_for":"local-web-runtime"},
+    {"id":"apache","release_lock_dependency":"apache","required_for":"local-web-runtime"},
+    {"id":"mariadb","release_lock_dependency":"mariadb","required_for":"local-web-runtime"}
+  ],
+  "recovery": {
+    "preserve_existing_web_root": true,
+    "preserve_existing_database_data": true,
+    "never_initialize_existing_mariadb_data": true,
+    "reregister_windows_services_after_os_reinstall": true
+  },
+  "support": {
+    "persistent_logs_under_selected_root": true,
+    "support_bundle_without_secrets": true,
+    "state_file": "Infrastructure\\infrastructure-state.json"
+  }
+}
