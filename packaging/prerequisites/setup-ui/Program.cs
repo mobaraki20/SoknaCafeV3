@@ -45,13 +45,79 @@ internal enum OperationMode { Install, Repair, Recover }
 
 internal sealed record ProcessResult(int ExitCode, string Output, string Error);
 
+internal static class LocalEndpointPortPolicy
+{
+    public static readonly int[] FallbackCandidates = [18081, 18082, 18083, 8080, 8081, 8088, 8000, 8888];
+
+    public static int SelectPort(int selected, Func<int, bool> canBind)
+    {
+        if (selected is < 1024 or > 65535) return 0;
+        if (canBind(selected)) return selected;
+        foreach (var candidate in FallbackCandidates)
+            if (candidate != selected && canBind(candidate)) return candidate;
+        return 0;
+    }
+
+    public static bool CanBindLoopback(int port, out string? error)
+    {
+        TcpListener? listener = null;
+        try
+        {
+            if (port is < 1024 or > 65535)
+            {
+                error = "Port outside Local Web allowed range.";
+                return false;
+            }
+            listener = new TcpListener(IPAddress.Loopback, port);
+            listener.Start();
+            error = null;
+            return true;
+        }
+        catch (SocketException ex)
+        {
+            error = $"SocketError={ex.SocketErrorCode}; NativeError={ex.ErrorCode}; {ex.Message}";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+        finally
+        {
+            try { listener?.Stop(); } catch { }
+        }
+    }
+
+    public static int SelfTest()
+    {
+        if (SelectPort(18080, p => p == 18080) != 18080) return 11;
+        if (SelectPort(18080, p => p == 18081) != 18081) return 12;
+        if (SelectPort(18080, _ => false) != 0) return 13;
+        if (SelectPort(80, _ => true) != 0) return 14;
+
+        using var occupied = new TcpListener(IPAddress.Loopback, 0);
+        occupied.Start();
+        var occupiedPort = ((IPEndPoint)occupied.LocalEndpoint).Port;
+        if (CanBindLoopback(occupiedPort, out _)) return 15;
+        occupied.Stop();
+
+        if (!CanBindLoopback(occupiedPort, out _)) return 16;
+        return 0;
+    }
+}
+
 internal static class Program
 {
     [STAThread]
-    static void Main()
+    static int Main(string[] args)
     {
+        if (args.Any(x => string.Equals(x, "--self-test-endpoint-port", StringComparison.OrdinalIgnoreCase)))
+            return LocalEndpointPortPolicy.SelfTest();
+
         ApplicationConfiguration.Initialize();
         Application.Run(new MainForm());
+        return 0;
     }
 }
 
@@ -1011,11 +1077,11 @@ internal sealed class MainForm : Form
     private void EnsureApachePortAvailableWithFallback()
     {
         var selected = ApachePort();
-        if (CanBindLoopback(selected, out _)) return;
+        if (LocalEndpointPortPolicy.CanBindLoopback(selected, out _)) return;
 
         var detail = DescribePortConflict(selected);
-        var fallback = new[] { 18081, 18082, 18083, 8080, 8081, 8088, 8000, 8888 }
-            .FirstOrDefault(p => p != selected && CanBindLoopback(p, out _));
+        var fallback = LocalEndpointPortPolicy.FallbackCandidates
+            .FirstOrDefault(p => p != selected && LocalEndpointPortPolicy.CanBindLoopback(p, out _));
 
         if (fallback > 0)
         {
@@ -1038,32 +1104,6 @@ internal sealed class MainForm : Form
         throw new InvalidOperationException(
             $"Apache نمی‌تواند روی پورت {selected} اجرا شود. {detail} " +
             "پورت Apache را آزاد کنید یا یک پورت آزاد دیگر در فیلد «پورت Apache» وارد کنید.");
-    }
-
-    private static bool CanBindLoopback(int port, out string? error)
-    {
-        TcpListener? listener = null;
-        try
-        {
-            listener = new TcpListener(IPAddress.Loopback, port);
-            listener.Start();
-            error = null;
-            return true;
-        }
-        catch (SocketException ex)
-        {
-            error = $"SocketError={ex.SocketErrorCode}; NativeError={ex.ErrorCode}; {ex.Message}";
-            return false;
-        }
-        catch (Exception ex)
-        {
-            error = ex.Message;
-            return false;
-        }
-        finally
-        {
-            try { listener?.Stop(); } catch { }
-        }
     }
 
     private string DescribePortConflict(int port)
