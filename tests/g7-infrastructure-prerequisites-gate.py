@@ -21,6 +21,8 @@ need(p['offline_artifact_import_allowed'] is True and p['offline_kit_folder_allo
 need(p['download_behavior']['header_timeout_seconds'] <= 10,'download header timeout is too slow for unreachable hosts')
 need(p['download_behavior']['show_actual_bytes'] and p['download_behavior']['show_transfer_rate'] and p['download_behavior']['show_eta'],'real-time download telemetry contract missing')
 need(p['download_behavior']['resume_partial_downloads'],'partial download resume must remain enabled')
+need(p['ports']['apache']==80,'Apache default port drift')
+need(p['ports']['apache_fallback_candidates']==[8080,8081,8088,8000,8888],'Apache fallback port contract drift')
 
 src=(R/'packaging/prerequisites/setup-ui/Program.cs').read_text(encoding='utf-8')
 for token in [
@@ -33,7 +35,9 @@ for token in [
     'PhpReady(','ApacheReady()','StopApacheForMaintenance()','Application.ProductVersion',
     'BuildArtifactSourcesBox()','SelectManualArtifactAsync(','SelectOfflineFolderAsync()',
     'DownloadArtifactResumableAsync(','ContentLength','FormatSpeed(','FormatEta(',
-    'WaitAsync(TimeSpan.FromSeconds(20)','CancelAfter(TimeSpan.FromSeconds(7))'
+    'WaitAsync(TimeSpan.FromSeconds(20)','CancelAfter(TimeSpan.FromSeconds(7))',
+    'EnsureApachePortAvailableWithFallback()','CanBindLoopback(','DescribePortConflict(',
+    'ServerName localhost:{ApachePort()}','LocalWebUrl()','apache = $"127.0.0.1:{ApachePort()}"'
 ]:
     need(token in src,f'missing implementation guard: {token}')
 need('password=<redacted>' in src,'MariaDB root password is not redacted in command log')
