@@ -2124,12 +2124,23 @@ DirectoryIndex index.php index.html
                 EnsureSessionLog();
                 if (File.Exists(_sessionLog))
                     File.Copy(_sessionLog, Path.Combine(dst, Path.GetFileName(_sessionLog)), true);
+
+                var apacheLog=Path.Combine(ApachePath(),"logs","error.log");
+                if(File.Exists(apacheLog))
+                    File.Copy(apacheLog,Path.Combine(dst,"apache-error.log"),true);
+
+                var apacheConf=Path.Combine(ApachePath(),"conf","httpd.conf");
+                if(File.Exists(apacheConf))
+                    File.Copy(apacheConf,Path.Combine(dst,"apache-httpd.conf"),true);
+
                 var diag = new StringBuilder();
                 diag.AppendLine("SOKNA Prerequisites support bundle");
                 diag.AppendLine("No passwords or application credentials are intentionally included.");
                 diag.AppendLine($"Root={RootPath()}");
                 diag.AppendLine($"Apache={ServiceStatus("SoknaApache")}; Port{ApachePort()}={TcpOpen(ApachePort())}");
                 diag.AppendLine($"ApacheImagePath={InfrastructureOwnershipDetector.ReadServiceImagePath("SoknaApache") ?? "<not-registered>"}");
+                var apacheConf=Path.Combine(ApachePath(),"conf","httpd.conf");
+                diag.AppendLine($"ApacheLocalWebConfigReady={(File.Exists(apacheConf) && ApacheConfigurationReady(apacheConf))}");
                 diag.AppendLine($"MariaDB={ServiceStatus("SoknaMariaDB")}; Port3306={TcpOpen(3306)}");
                 diag.AppendLine($"MariaDataPresent={MariaDataInitialized()}");
                 var ownership=InfrastructureOwnershipDetector.Detect(RootPath(),Artifact("mariadb").Version);
