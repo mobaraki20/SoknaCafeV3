@@ -44,7 +44,7 @@
       "dependency": "mariadb",
       "version": "11.4.12",
       "filename": "mariadb-11.4.12-winx64.msi",
-      "source_url": "https://dlm.mariadb.com/4699687/MariaDB/mariadb-11.4.12/winx64-packages/mariadb-11.4.12-winx64.msi",
+      "source_url": "https://downloads.mariadb.org/rest-api/mariadb/11.4.12/mariadb-11.4.12-winx64.msi",
       "sha256": "4d92fb5f16c0ec8d5a9fc1efdb33a377eaa712d6bce97451e151465c3041ccac",
       "size": 87056384,
       "installation": "manual-external",
@@ -52,9 +52,9 @@
         "required": false,
         "publisher_contains": ""
       },
-      "instructions_fa": "MariaDB Community Server 11.4.12 x64؛ نصب/سرویس shared و external باقی می‌ماند و ابزار setup-machine.php readiness را تأیید می‌کند.",
+      "instructions_fa": "MariaDB Community Server 11.4.12 x64؛ دریافت اصلی از REST API رسمی MariaDB انجام می‌شود و SHA-256 قفل‌شده قبل از استفاده بررسی می‌شود.",
       "fallback_urls": [
-        "https://mirrors.liquidweb.com/mariadb/mariadb-11.4.12/winx64-packages/mariadb-11.4.12-winx64.msi"
+        "https://dlm.mariadb.com/4699687/MariaDB/mariadb-11.4.12/winx64-packages/mariadb-11.4.12-winx64.msi"
       ]
     },
     {
