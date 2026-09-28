@@ -19,4 +19,4 @@ try{
     if(-not(Test-Path -LiteralPath $built -PathType Leaf)){throw 'SOKNA Setup Host executable was not produced.'}
     Copy-Item -LiteralPath $built -Destination $out -Force
 }finally{Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue}
-Write-Host "Built SOKNA Setup Host $version: $out"
+Write-Host ("Built SOKNA Setup Host {0}: {1}" -f $version,$out)
