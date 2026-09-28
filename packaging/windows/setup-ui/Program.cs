@@ -171,7 +171,7 @@ internal sealed class SetupForm : Form
         });
         header.Controls.Add(new Label
         {
-            Text = "این برنامه فقط Runtime و Print Agent سکنا را نصب و نگهداری می‌کند. PHP، Apache و MariaDB زیرساخت‌های جدا هستند و اینجا فقط بررسی و راهنمایی می‌شوند.",
+            Text = "این برنامه فقط Runtime و Print Agent سکنا را نصب و نگهداری می‌کند. زیرساخت Local Web در ابزار مستقل «SOKNA Prerequisites Setup» آماده می‌شود و در این برنامه نمایش یا مدیریت نمی‌شود.",
             AutoSize = true,
             MaximumSize = new Size(980, 0)
         });
@@ -225,7 +225,7 @@ internal sealed class SetupForm : Form
 
         layout.Controls.Add(InfoBox(
             "اول چه چیزی را باید انجام بدهم؟",
-            "موارد این جدول را بررسی کنید. فقط Microsoft Visual C++ برای نصب سرویس‌های ویندوزی الزامی است. PHP، Apache و MariaDB برای Local Web لازم‌اند و نصبشان جداست. اگر موردی آماده نیست، همان ردیف را انتخاب کنید؛ سپس «راهنمای گام‌به‌گام» یا «دریافت فایل رسمی و تأییدشده» را بزنید."
+            "این بخش فقط پیش‌نیازهای مستقیم Runtime و Print Agent را نشان می‌دهد. زیرساخت Local Web از این نصب جداست. اگر Microsoft Visual C++ آماده نیست، ردیف را انتخاب کنید و از فایل رسمی و تأییدشده یا راهنمای نصب استفاده کنید."
         ));
 
         _prereqs.Columns.Add("پیش‌نیاز", 270);
@@ -326,7 +326,7 @@ internal sealed class SetupForm : Form
 
     private void ConfigureTooltips()
     {
-        _tips.SetToolTip(_refresh, "PHP، Apache، MariaDB و Visual C++ را دوباره روی همین ویندوز بررسی می‌کند. هیچ تغییری ایجاد نمی‌کند.");
+        _tips.SetToolTip(_refresh, "پیش‌نیاز مستقیم سرویس‌های ویندوزی را دوباره بررسی می‌کند. هیچ تغییری ایجاد نمی‌کند.");
         _tips.SetToolTip(_download, "فایل نسخه قفل‌شده را دانلود می‌کند، اندازه و SHA-256 آن را می‌سنجد و فقط فایل را نشان می‌دهد؛ نصب خودکار انجام نمی‌شود.");
         _tips.SetToolTip(_guidance, "برای مورد انتخاب‌شده یک راهنمای فارسی مرحله‌به‌مرحله نشان می‌دهد.");
         _tips.SetToolTip(_officialPage, "صفحه رسمی ارائه‌دهنده پیش‌نیاز انتخاب‌شده را در مرورگر باز می‌کند.");
@@ -428,7 +428,7 @@ internal sealed class SetupForm : Form
 
             var blockers = _policy.Items.Where(x => x.BlocksWindowsServices && (!_results.TryGetValue(x.Id, out var r) || !r.Satisfied)).ToList();
             _status.Text = blockers.Count == 0
-                ? "پیش‌نیاز لازم برای سرویس‌های ویندوز آماده است. PHP، Apache و MariaDB را می‌توانید برای مرحله Local Web تکمیل کنید."
+                ? "پیش‌نیاز لازم برای سرویس‌های ویندوز آماده است. زیرساخت Local Web در ابزار مستقل Prerequisites Setup مدیریت می‌شود."
                 : "برای نصب سرویس‌های ویندوز ابتدا این مورد را آماده کنید: " + string.Join("، ", blockers.Select(x => x.DisplayName));
 
             if (_prereqs.Items.Count > 0 && _prereqs.SelectedItems.Count == 0)
@@ -993,7 +993,7 @@ internal sealed class SetupForm : Form
         var version = artifact?.Version ?? item.Detection.MinimumVersion;
         var header =
             $"این راهنما برای نسخه {version} است.\n" +
-            "SOKNA زیرساخت خارجی را خودکار نصب نمی‌کند؛ بنابراین قبل از هر مرحله می‌دانید چه تغییری قرار است روی ویندوز انجام شود.\n\n";
+            "این برنامه فقط پیش‌نیاز مستقیم Windows Services را مدیریت می‌کند. زیرساخت Local Web در ابزار مستقل Prerequisites Setup قرار دارد.\n\n";
 
         var steps = item.Id switch
         {
