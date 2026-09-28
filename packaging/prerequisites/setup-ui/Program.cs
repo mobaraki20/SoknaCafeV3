@@ -46,6 +46,73 @@ internal enum OperationMode { Install, Repair, Recover }
 
 internal sealed record ProcessResult(int ExitCode, string Output, string Error);
 
+internal static class PhpRuntimeConfiguration
+{
+    public static readonly string[] RequiredWebExtensions = ["pdo","pdo_mysql","json","mbstring","sodium","zlib","zip","session"];
+    public static readonly string[] RequiredCliExtensions = ["pdo","pdo_mysql","json","mbstring","sodium","zlib","zip","session","fileinfo","openssl"];
+    public static readonly string[] RequiredDlls = ["php_fileinfo.dll","php_mbstring.dll","php_mysqli.dll","php_pdo_mysql.dll","php_openssl.dll","php_sodium.dll","php_zip.dll"];
+
+    public static void Configure(string phpPath)
+    {
+        var ini = Path.Combine(phpPath, "php.ini");
+        if (!File.Exists(ini))
+        {
+            var source = Path.Combine(phpPath, "php.ini-production");
+            if (!File.Exists(source)) throw new InvalidOperationException("php.ini-production پیدا نشد.");
+            File.Copy(source, ini, true);
+        }
+
+        var extDir = Path.Combine(phpPath, "ext").Replace('\\','/');
+        var text = File.ReadAllText(ini, Encoding.UTF8);
+        var extDirRx = new Regex(@"(?im)^\s*;?\s*extension_dir\s*=.*$");
+        if (extDirRx.IsMatch(text)) text = extDirRx.Replace(text, $"extension_dir = \"{extDir}\"", 1);
+        else text += Environment.NewLine + $"extension_dir = \"{extDir}\"";
+
+        foreach (var dll in RequiredDlls)
+        {
+            var dllPath = Path.Combine(phpPath, "ext", dll);
+            if (!File.Exists(dllPath))
+                throw new InvalidOperationException($"PHP extension DLL داخل بسته رسمی پیدا نشد: {dll}");
+            var rx = new Regex(@"(?im)^\s*;?\s*extension\s*=\s*" + Regex.Escape(dll) + @"\s*$");
+            if (rx.IsMatch(text)) text = rx.Replace(text, $"extension={dll}", 1);
+            else text += Environment.NewLine + $"extension={dll}";
+        }
+        File.WriteAllText(ini, text, new UTF8Encoding(false));
+    }
+
+    public static bool ConfigurationReady(string phpPath)
+    {
+        try
+        {
+            var ini = Path.Combine(phpPath, "php.ini");
+            if (!File.Exists(ini)) return false;
+            var text = File.ReadAllText(ini, Encoding.UTF8);
+            var m = Regex.Match(text, @"(?im)^\s*extension_dir\s*=\s*[\"']?(?<v>[^\"'\r\n]+)[\"']?\s*$");
+            if (!m.Success) return false;
+            var configured = m.Groups["v"].Value.Trim();
+            return InfrastructureOwnershipDetector.PathEquals(configured, Path.Combine(phpPath, "ext"));
+        }
+        catch { return false; }
+    }
+
+    public static int ConfigureForQualification(string phpPath)
+    {
+        try
+        {
+            Configure(phpPath);
+            Console.WriteLine("PHP_CONFIG_READY="+ConfigurationReady(phpPath));
+            Console.WriteLine("PHP_INI="+Path.Combine(phpPath,"php.ini"));
+            Console.WriteLine("PHP_EXT_DIR="+Path.Combine(phpPath,"ext"));
+            return ConfigurationReady(phpPath)?0:71;
+        }
+        catch(Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            return 72;
+        }
+    }
+}
+
 internal static class LocalEndpointPortPolicy
 {
     public static readonly int[] FallbackCandidates = [18081, 18082, 18083, 8080, 8081, 8088, 8000, 8888];
@@ -415,6 +482,12 @@ internal static class Program
         {
             if(args.Length<=probeIndex+2) return 43;
             return InfrastructureOwnershipDetector.Probe(args[probeIndex+1],args[probeIndex+2]);
+        }
+        var phpConfigIndex=Array.FindIndex(args,x=>string.Equals(x,"--qualify-php-config",StringComparison.OrdinalIgnoreCase));
+        if(phpConfigIndex>=0)
+        {
+            if(args.Length<=phpConfigIndex+1) return 73;
+            return PhpRuntimeConfiguration.ConfigureForQualification(args[phpConfigIndex+1]);
         }
 
         ApplicationConfiguration.Initialize();
@@ -1332,20 +1405,7 @@ internal sealed class MainForm : Form
         return version.ExitCode == 0 && version.Output.Contains($"PHP {expectedVersion}", StringComparison.OrdinalIgnoreCase);
     }
 
-    private bool PhpConfigurationReady()
-    {
-        try
-        {
-            var ini = Path.Combine(PhpPath(), "php.ini");
-            if (!File.Exists(ini)) return false;
-            var text = File.ReadAllText(ini, Encoding.UTF8);
-            var m = Regex.Match(text, @"(?im)^\s*extension_dir\s*=\s*[\"']?(?<v>[^\"'\r\n]+)[\"']?\s*$");
-            if (!m.Success) return false;
-            var configured = m.Groups["v"].Value.Trim();
-            return InfrastructureOwnershipDetector.PathEquals(configured, Path.Combine(PhpPath(), "ext"));
-        }
-        catch { return false; }
-    }
+    private bool PhpConfigurationReady() => PhpRuntimeConfiguration.ConfigurationReady(PhpPath());
 
     private bool PhpReady(string expectedVersion)
     {
@@ -1356,36 +1416,14 @@ internal sealed class MainForm : Form
         var loaded = modules.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Select(x => x.Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return new[] { "pdo", "pdo_mysql", "json", "mbstring", "sodium", "zlib", "zip", "session", "fileinfo", "openssl" }.All(loaded.Contains);
+        return PhpRuntimeConfiguration.RequiredCliExtensions.All(loaded.Contains);
     }
 
     private void ConfigurePhp()
     {
         var ini = Path.Combine(PhpPath(), "php.ini");
-        if (!File.Exists(ini))
-        {
-            var source = Path.Combine(PhpPath(), "php.ini-production");
-            if (!File.Exists(source)) throw new InvalidOperationException("php.ini-production پیدا نشد.");
-            File.Copy(source, ini, true);
-        }
-        else BackupFile(ini);
-
-        var extDir = Slash(Path.Combine(PhpPath(), "ext"));
-        var text = File.ReadAllText(ini, Encoding.UTF8);
-        var extDirRx = new Regex(@"(?im)^\s*;?\s*extension_dir\s*=.*$");
-        if (extDirRx.IsMatch(text)) text = extDirRx.Replace(text, $"extension_dir = \"{extDir}\"", 1);
-        else text += Environment.NewLine + $"extension_dir = \"{extDir}\"";
-
-        foreach (var dll in new[] { "php_fileinfo.dll", "php_mbstring.dll", "php_mysqli.dll", "php_pdo_mysql.dll", "php_openssl.dll", "php_sodium.dll", "php_zip.dll" })
-        {
-            var dllPath = Path.Combine(PhpPath(), "ext", dll);
-            if (!File.Exists(dllPath))
-                throw new InvalidOperationException($"PHP extension DLL داخل بسته رسمی پیدا نشد: {dll}");
-            var rx = new Regex(@"(?im)^\s*;?\s*extension\s*=\s*" + Regex.Escape(dll) + @"\s*$");
-            if (rx.IsMatch(text)) text = rx.Replace(text, $"extension={dll}", 1);
-            else text += Environment.NewLine + $"extension={dll}";
-        }
-        File.WriteAllText(ini, text, new UTF8Encoding(false));
+        if (File.Exists(ini)) BackupFile(ini);
+        PhpRuntimeConfiguration.Configure(PhpPath());
     }
 
     private async Task InstallApacheAsync(CancellationToken ct)
@@ -1703,7 +1741,7 @@ DirectoryIndex index.php index.html
 
         var php = RunProcess(Path.Combine(PhpPath(), "php.exe"), "-m", "-m");
         if (php.ExitCode != 0) throw new InvalidOperationException("PHP health check ناموفق بود.");
-        foreach (var ext in new[] { "pdo", "pdo_mysql", "json", "mbstring", "sodium", "zlib", "zip", "session", "fileinfo", "openssl" })
+        foreach (var ext in PhpRuntimeConfiguration.RequiredCliExtensions)
             if (!php.Output.Split('\n').Any(x => string.Equals(x.Trim(), ext, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException($"PHP extension آماده نیست: {ext}");
 
@@ -1728,7 +1766,7 @@ DirectoryIndex index.php index.html
         Directory.CreateDirectory(WebPublicPath());
         var fileName = $".sokna-php-runtime-probe-{Guid.NewGuid():N}.php";
         var probePath = Path.Combine(WebPublicPath(), fileName);
-        var required = new[] { "pdo", "pdo_mysql", "json", "mbstring", "sodium", "zlib", "zip", "session" };
+        var required = PhpRuntimeConfiguration.RequiredWebExtensions;
         var php = @"<?php
 header('Content-Type: application/json; charset=utf-8');
 $exts=['pdo','pdo_mysql','json','mbstring','sodium','zlib','zip','session'];
