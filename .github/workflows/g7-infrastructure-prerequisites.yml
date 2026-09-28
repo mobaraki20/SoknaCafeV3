@@ -226,7 +226,7 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
-          $oldRoot='E:\SOKNA-ORPHAN'
+          $oldRoot='C:\SOKNA-ORPHAN-MISSING'
           $targetRoot='D:\SOKNA-TARGET'
           $missingExe=Join-Path $oldRoot 'Infrastructure\Apache\bin\httpd.exe'
           try {
