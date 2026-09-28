@@ -66,7 +66,7 @@ internal sealed class MainForm : Form
     private CancellationTokenSource? _operationCts;
 
     private readonly TextBox _root = new();
-    private readonly NumericUpDown _apachePort = new() { Minimum = 1, Maximum = 65535, Value = 80, Width = 110, TextAlign = HorizontalAlignment.Left };
+    private readonly NumericUpDown _apachePort = new() { Minimum = 1024, Maximum = 65535, Value = 18080, Width = 110, TextAlign = HorizontalAlignment.Left };
     private readonly RadioButton _install = new() { Text = "نصب جدید", Checked = true, AutoSize = true };
     private readonly RadioButton _repair = new() { Text = "تعمیر نصب موجود", AutoSize = true };
     private readonly RadioButton _recover = new() { Text = "بازیابی بعد از نصب مجدد ویندوز", AutoSize = true };
@@ -250,7 +250,7 @@ internal sealed class MainForm : Form
         _apachePort.RightToLeft = RightToLeft.No;
         _apachePort.Margin = new Padding(8, 3, 8, 7);
         var portLabel = new Label { Text = "پورت Apache:", AutoSize = true, Anchor = AnchorStyles.Right, RightToLeft = RightToLeft.Yes, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(8, 7, 0, 0) };
-        var portHint = new Label { Text = "پیش‌فرض 80 است؛ اگر این پورت توسط برنامه یا سرویس دیگری اشغال/رزرو شده باشد، Setup یک پورت آزاد جایگزین پیشنهاد می‌دهد.", AutoSize = true, Dock = DockStyle.Fill, RightToLeft = RightToLeft.Yes, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(4, 6, 4, 4) };
+        var portHint = new Label { Text = "پورت Local Web مستقل از برنامه‌های دیگر است. پیش‌فرض 18080 است؛ اگر اشغال باشد، Setup یک پورت آزاد دیگر پیشنهاد می‌دهد.", AutoSize = true, Dock = DockStyle.Fill, RightToLeft = RightToLeft.Yes, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(4, 6, 4, 4) };
         pathLayout.Controls.Add(portHint, 0, 1);
         pathLayout.Controls.Add(_apachePort, 1, 1);
         pathLayout.Controls.Add(portLabel, 2, 1);
@@ -692,9 +692,7 @@ internal sealed class MainForm : Form
 
     private int ApachePort() => (int)_apachePort.Value;
 
-    private string LocalWebUrl() => ApachePort() == 80
-        ? "http://localhost/"
-        : $"http://localhost:{ApachePort()}/";
+    private string LocalWebUrl() => $"http://127.0.0.1:{ApachePort()}/";
 
     private void TryLoadExistingApachePort()
     {
@@ -718,6 +716,7 @@ internal sealed class MainForm : Form
     private string MariaPath() => Path.Combine(InfraPath(), "MariaDB");
     private string LogsPath() => Path.Combine(InfraPath(), "Logs");
     private string WebPath() => Path.Combine(RootPath(), "Web");
+    private string WebPublicPath() => Path.Combine(WebPath(), "public");
     private string DataPath() => Path.Combine(RootPath(), "Data", "MariaDB");
     private string StatePath() => Path.Combine(InfraPath(), "infrastructure-state.json");
 
@@ -728,7 +727,8 @@ internal sealed class MainForm : Form
             _paths.Text =
                 $"زیرساخت: {Technical(InfraPath())}\n" +
                 $"داده MariaDB: {Technical(DataPath())}\n" +
-                $"Web Root برای مرحله بعد: {Technical(WebPath())}\n" +
+                $"Local Web Root: {Technical(WebPath())}\n" +
+                $"Apache DocumentRoot: {Technical(WebPublicPath())}\n" +
                 $"آدرس Local Web: {Technical(LocalWebUrl())}\n" +
                 "Local Web در این مرحله نصب نمی‌شود.";
         }
@@ -851,6 +851,7 @@ internal sealed class MainForm : Form
         Directory.CreateDirectory(InfraPath());
         Directory.CreateDirectory(LogsPath());
         Directory.CreateDirectory(WebPath());
+        Directory.CreateDirectory(WebPublicPath());
         Directory.CreateDirectory(Path.Combine(RootPath(), "Data"));
         Directory.CreateDirectory(Path.Combine(RootPath(), "Backups"));
     }
@@ -1008,14 +1009,14 @@ internal sealed class MainForm : Form
         if (CanBindLoopback(selected, out _)) return;
 
         var detail = DescribePortConflict(selected);
-        var fallback = new[] { 8080, 8081, 8088, 8000, 8888 }
+        var fallback = new[] { 18081, 18082, 18083, 8080, 8081, 8088, 8000, 8888 }
             .FirstOrDefault(p => p != selected && CanBindLoopback(p, out _));
 
         if (fallback > 0)
         {
             var answer = MessageBox.Show(
                 this,
-                $"Apache نمی‌تواند روی پورت {selected} اجرا شود.\n\n{detail}\n\nپورت {fallback} آزاد است. آیا Setup از پورت {fallback} استفاده کند؟\n\nآدرس Local Web در این حالت {($"http://localhost:{fallback}/")} خواهد بود.",
+                $"Apache نمی‌تواند روی پورت {selected} اجرا شود.\n\n{detail}\n\nپورت {fallback} آزاد است. آیا Setup از پورت {fallback} استفاده کند؟\n\nآدرس Local Web در این حالت {($"http://127.0.0.1:{fallback}/")} خواهد بود.",
                 "پورت Apache در دسترس نیست",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning,
@@ -1098,7 +1099,7 @@ internal sealed class MainForm : Form
 
         var a = Slash(ApachePath());
         var p = Slash(PhpPath());
-        var w = Slash(WebPath());
+        var w = Slash(WebPublicPath());
         var text = File.ReadAllText(conf, Encoding.UTF8);
         text = Regex.Replace(text, "(?im)^\\s*Define\\s+SRVROOT\\s+\\\".*?\\\"\\s*$", $"Define SRVROOT \"{a}\"");
         text = new Regex(@"(?im)^\s*Listen\s+.*$").Replace(text, $"Listen 127.0.0.1:{ApachePort()}", 1);
@@ -1106,7 +1107,7 @@ internal sealed class MainForm : Form
         text = Regex.Replace(text, @"(?is)\r?\n# BEGIN SOKNA MANAGED.*?# END SOKNA MANAGED\r?\n?", Environment.NewLine);
         text += $"""
 # BEGIN SOKNA MANAGED
-ServerName localhost:{ApachePort()}
+ServerName 127.0.0.1:{ApachePort()}
 LoadModule php_module "{p}/php8apache2_4.dll"
 PHPIniDir "{p}"
 <FilesMatch \.php$>
@@ -1248,9 +1249,13 @@ DirectoryIndex index.php index.html
             updated_at_utc = DateTime.UtcNow,
             last_operation = mode.ToString().ToLowerInvariant(),
             root = RootPath(),
-            paths = new { infrastructure = InfraPath(), php = PhpPath(), apache = ApachePath(), mariadb = MariaPath(), mariadb_data = DataPath(), web_root = WebPath(), logs = LogsPath() },
+            paths = new { infrastructure = InfraPath(), php = PhpPath(), apache = ApachePath(), mariadb = MariaPath(), mariadb_data = DataPath(), local_web_root = WebPath(), apache_document_root = WebPublicPath(), logs = LogsPath() },
             services = new { apache = "SoknaApache", mariadb = "SoknaMariaDB" },
-            endpoints = new { local_web = LocalWebUrl(), apache = $"127.0.0.1:{ApachePort()}", mariadb = "127.0.0.1:3306" },
+            endpoints = new
+            {
+                local_web = new { scheme = "http", host = "127.0.0.1", port = ApachePort(), base_url = LocalWebUrl(), origin = LocalWebUrl().TrimEnd('/') },
+                mariadb = "127.0.0.1:3306"
+            },
             safeguards = new { local_web_payload_managed = false, sokna_database_managed = false, existing_mariadb_data_reinitialized = false }
         };
         File.WriteAllText(StatePath(), JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
