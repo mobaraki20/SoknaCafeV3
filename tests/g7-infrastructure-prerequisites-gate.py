@@ -17,6 +17,9 @@ need(not p['local_web_payload_allowed'] and not p['database_application_provisio
 need({x['id'] for x in p['items']}=={'php','apache','mariadb'},'unexpected infrastructure dependency set')
 need(p['recovery']['never_initialize_existing_mariadb_data'],'MariaDB preservation guard missing')
 need(p['recovery']['reregister_windows_services_after_os_reinstall'],'Windows recovery service registration missing')
+need(p['recovery']['cross_root_existing_installation_requires_explicit_resolution'],'cross-root ownership resolution guard missing')
+need(p['recovery']['automatic_cross_root_migration'] is False,'cross-root migration must never be automatic')
+need(p['recovery']['preflight_before_mutation'],'ownership preflight must run before mutation')
 need(p['offline_artifact_import_allowed'] is True and p['offline_kit_folder_allowed'] is True,'offline artifact handoff contract missing')
 need(p['download_behavior']['header_timeout_seconds'] <= 10,'download header timeout is too slow for unreachable hosts')
 need(p['download_behavior']['show_actual_bytes'] and p['download_behavior']['show_transfer_rate'] and p['download_behavior']['show_eta'],'real-time download telemetry contract missing')
@@ -37,10 +40,16 @@ for token in [
     'DownloadArtifactResumableAsync(','ContentLength','FormatSpeed(','FormatEta(',
     'WaitAsync(TimeSpan.FromSeconds(20)','CancelAfter(TimeSpan.FromSeconds(7))',
     'EnsureApachePortAvailableWithFallback()','CanBindLoopback(','DescribePortConflict(',
-    'ServerName 127.0.0.1:{ApachePort()}','LocalWebUrl()','apache_document_root','base_url = LocalWebUrl()'
+    'ServerName 127.0.0.1:{ApachePort()}','LocalWebUrl()','apache_document_root','base_url = LocalWebUrl()',
+    'InfrastructureOwnershipDetector.Detect(','--self-test-infrastructure-ownership','--probe-infrastructure-ownership',
+    'cross_root_existing_installation_detected = false','WindowsInstaller:','ReadServiceImagePath('
 ]:
     need(token in src,f'missing implementation guard: {token}')
 need('password=<redacted>' in src,'MariaDB root password is not redacted in command log')
+preflight=src.find('InfrastructureOwnershipDetector.Detect(RootPath(),Artifact("mariadb").Version)')
+layout=src.find('PreparePersistentLayout();',preflight)
+need(preflight>=0 and layout>preflight,'cross-root ownership detection must happen before persistent layout mutation')
+need('automatic' not in src[src.find('ToUserMessage(OperationMode mode)'):src.find('internal static class Program')].lower() or 'هیچ Data' in src,'cross-root message must make non-destructive behavior explicit')
 need('apps/local-web' not in src,'prerequisites helper must not copy Local Web payload')
 
 iss=(R/'packaging/prerequisites/installer/SOKNA-Prerequisites.iss').read_text(encoding='utf-8')
