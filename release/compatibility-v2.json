@@ -10,7 +10,7 @@
       "version": "3.0.0-g3.5-dev"
     },
     "shared-contracts": {
-      "version": "0.1.0-dev"
+      "version": "0.1.1-dev"
     },
     "windows-runtime": {
       "version": "1.0.1"
@@ -23,7 +23,8 @@
     "local-public-deferred": "0.1.0-draft",
     "local-public-realtime": "0.1.0-draft",
     "print-agent-api": "0.1.0-draft",
-    "runtime-api": "0.1.0-draft"
+    "runtime-api": "0.1.0-draft",
+    "local-endpoint": "1.0.0"
   },
   "format": "sokna-release-compatibility-v2",
   "rules": [
