@@ -1,0 +1,54 @@
+name: Qualify Prerequisites 1.0.11 Final
+on:
+  push:
+    branches: [diag/prerequisites-1.0.11-final]
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Static G7 contract
+        shell: pwsh
+        run: python tests/g7-infrastructure-prerequisites-gate.py
+      - name: Build setup UI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-smoke
+          if($LASTEXITCODE-ne0){throw "UI build failed: $LASTEXITCODE"}
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          if($v-ne'1.0.11'){throw "Unexpected version $v"}
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $actual=([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion).Split('+')[0]
+          if($actual-ne$v){throw "ProductVersion mismatch $actual != $v"}
+      - name: Repair legacy PHP and Browser Setup through Apache
+        shell: pwsh
+        run: tests/g7-windows-apache-php-runtime.ps1
+      - name: Apache Windows Service sodium with conflicting DLL
+        shell: pwsh
+        run: tests/g7-windows-apache-service-sodium.ps1
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          choco install innosetup --yes --no-progress
+          $root=(Resolve-Path .).Path
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $root
+          if($LASTEXITCODE-ne0){throw "Installer build failed $LASTEXITCODE"}
+          if(-not(Test-Path packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.11.exe)){throw 'Installer missing'}
+      - name: Upgrade 1.0.10 to 1.0.11 with old UI open
+        shell: pwsh
+        run: tests/g7-prerequisites-upgrade.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-prerequisites-1.0.11-qualified-${{ github.sha }}
+          path: |
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.11.exe
+            packaging/prerequisites/out/installer/artifact-index.json
+          if-no-files-found: error
