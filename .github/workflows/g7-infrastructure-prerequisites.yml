@@ -134,6 +134,10 @@ jobs:
         shell: pwsh
         run: tests/g7-windows-apache-php-runtime.ps1
 
+      - name: Require Apache Windows Service sodium runtime
+        shell: pwsh
+        run: tests/g7-windows-apache-service-sodium.ps1
+
       - name: Reproduce real MariaDB cross-root registration and require safe block
         shell: pwsh
         run: |
