@@ -185,7 +185,7 @@
       ],
       "current_state": "CORE_COMPLETE",
       "version_source": "windows/print-agent/source/Directory.Build.props#SoknaAgentVersion",
-      "current_version": "6.2.5",
+      "current_version": "6.2.6",
       "artifact_pipeline": "windows/print-agent/build-component-package.ps1",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },
