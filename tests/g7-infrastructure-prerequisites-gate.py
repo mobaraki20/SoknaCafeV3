@@ -44,7 +44,9 @@ for token in [
     'InfrastructureOwnershipDetector.Detect(','--self-test-infrastructure-ownership','--probe-infrastructure-ownership',
     'cross_root_existing_installation_detected = false','WindowsInstaller:','ReadServiceImagePath(',
     'stale registration; executable is missing and may be safely rebound','delete SoknaApache',
-    'LoadModule rewrite_module modules/mod_rewrite.so','Apache mod_rewrite پیدا نشد'
+    'LoadModule rewrite_module modules/mod_rewrite.so','Apache mod_rewrite پیدا نشد',
+    'ApacheConfigurationReady(','Local Web configuration is incomplete; repair is required',
+    'apache-error.log','ApacheLocalWebConfigReady='
 ]:
     need(token in src,f'missing implementation guard: {token}')
 need('password=<redacted>' in src,'MariaDB root password is not redacted in command log')
@@ -80,3 +82,5 @@ for dep in ['php','apache','mariadb','vc_runtime']:
 need('Get-FileHash' in verify and 'Get-AuthenticodeSignature' in verify,'Offline Kit verifier must validate hash/signature')
 
 print('G7 infrastructure prerequisites gate: PASS')
+
+need('ApacheReady()' in src and 'ApacheConfigurationReady(conf)' in src,'Apache Ready check does not validate Local Web configuration')
