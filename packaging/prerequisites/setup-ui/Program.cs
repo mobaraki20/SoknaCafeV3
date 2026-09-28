@@ -66,6 +66,7 @@ internal sealed class MainForm : Form
     private CancellationTokenSource? _operationCts;
 
     private readonly TextBox _root = new();
+    private readonly NumericUpDown _apachePort = new() { Minimum = 1, Maximum = 65535, Value = 80, Width = 110, TextAlign = HorizontalAlignment.Left };
     private readonly RadioButton _install = new() { Text = "نصب جدید", Checked = true, AutoSize = true };
     private readonly RadioButton _repair = new() { Text = "تعمیر نصب موجود", AutoSize = true };
     private readonly RadioButton _recover = new() { Text = "بازیابی بعد از نصب مجدد ویندوز", AutoSize = true };
@@ -109,7 +110,9 @@ internal sealed class MainForm : Form
         ValidateContracts();
 
         _root.Text = DefaultRoot();
+        TryLoadExistingApachePort();
         _root.TextChanged += (_, _) => RefreshPathSummary();
+        _apachePort.ValueChanged += (_, _) => RefreshPathSummary();
         _browse.Click += (_, _) => BrowseRoot();
         _analyze.Click += async (_, _) => await AnalyzeAsync();
         _run.Click += async (_, _) => await RunAsync();
@@ -231,7 +234,7 @@ internal sealed class MainForm : Form
         modeBox.Controls.Add(modes);
 
         var pathBox = new GroupBox { Text = "مسیر زیرساخت", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(14, 12, 14, 14), RightToLeft = RightToLeft.Yes };
-        var pathLayout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3, RowCount = 2, RightToLeft = RightToLeft.No };
+        var pathLayout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3, RowCount = 3, RightToLeft = RightToLeft.No };
         pathLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         pathLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         pathLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -244,8 +247,15 @@ internal sealed class MainForm : Form
         pathLayout.Controls.Add(_browse, 0, 0);
         pathLayout.Controls.Add(_root, 1, 0);
         pathLayout.Controls.Add(rootLabel, 2, 0);
+        _apachePort.RightToLeft = RightToLeft.No;
+        _apachePort.Margin = new Padding(8, 3, 8, 7);
+        var portLabel = new Label { Text = "پورت Apache:", AutoSize = true, Anchor = AnchorStyles.Right, RightToLeft = RightToLeft.Yes, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(8, 7, 0, 0) };
+        var portHint = new Label { Text = "پیش‌فرض 80 است؛ اگر این پورت توسط برنامه یا سرویس دیگری اشغال/رزرو شده باشد، Setup یک پورت آزاد جایگزین پیشنهاد می‌دهد.", AutoSize = true, Dock = DockStyle.Fill, RightToLeft = RightToLeft.Yes, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(4, 6, 4, 4) };
+        pathLayout.Controls.Add(portHint, 0, 1);
+        pathLayout.Controls.Add(_apachePort, 1, 1);
+        pathLayout.Controls.Add(portLabel, 2, 1);
         _paths.Padding = new Padding(4, 2, 4, 0);
-        pathLayout.Controls.Add(_paths, 0, 1);
+        pathLayout.Controls.Add(_paths, 0, 2);
         pathLayout.SetColumnSpan(_paths, 3);
         pathBox.Controls.Add(pathLayout);
 
@@ -657,7 +667,11 @@ internal sealed class MainForm : Form
     private void BrowseRoot()
     {
         using var d = new FolderBrowserDialog { Description = "پوشه ریشه SOKNA را انتخاب کنید", SelectedPath = _root.Text, ShowNewFolderButton = true };
-        if (d.ShowDialog(this) == DialogResult.OK) _root.Text = d.SelectedPath;
+        if (d.ShowDialog(this) == DialogResult.OK)
+        {
+            _root.Text = d.SelectedPath;
+            TryLoadExistingApachePort();
+        }
     }
 
     private static string DefaultRoot()
@@ -674,6 +688,27 @@ internal sealed class MainForm : Form
         catch { }
         var root = Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\";
         return Path.Combine(root, "SOKNA");
+    }
+
+    private int ApachePort() => (int)_apachePort.Value;
+
+    private string LocalWebUrl() => ApachePort() == 80
+        ? "http://localhost/"
+        : $"http://localhost:{ApachePort()}/";
+
+    private void TryLoadExistingApachePort()
+    {
+        try
+        {
+            var root = Path.GetFullPath(Environment.ExpandEnvironmentVariables(_root.Text.Trim()));
+            var conf = Path.Combine(root, "Infrastructure", "Apache", "conf", "httpd.conf");
+            if (!File.Exists(conf)) return;
+            var text = File.ReadAllText(conf, Encoding.UTF8);
+            var match = Regex.Match(text, @"(?im)^\s*Listen\s+127\.0\.0\.1:(\d+)\s*$");
+            if (!match.Success || !int.TryParse(match.Groups[1].Value, out var port) || port < 1 || port > 65535) return;
+            _apachePort.Value = port;
+        }
+        catch { }
     }
 
     private string RootPath() => Path.GetFullPath(Environment.ExpandEnvironmentVariables(_root.Text.Trim()));
@@ -694,6 +729,7 @@ internal sealed class MainForm : Form
                 $"زیرساخت: {Technical(InfraPath())}\n" +
                 $"داده MariaDB: {Technical(DataPath())}\n" +
                 $"Web Root برای مرحله بعد: {Technical(WebPath())}\n" +
+                $"آدرس Local Web: {Technical(LocalWebUrl())}\n" +
                 "Local Web در این مرحله نصب نمی‌شود.";
         }
         catch { _paths.Text = "مسیر واردشده معتبر نیست."; }
@@ -731,7 +767,7 @@ internal sealed class MainForm : Form
                 sb.AppendLine($"PHP: {(File.Exists(Path.Combine(PhpPath(), "php.exe")) ? "موجود" : "پیدا نشد")}");
                 sb.AppendLine($"Apache — فایل‌ها: {(File.Exists(Path.Combine(ApachePath(), "bin", "httpd.exe")) ? "موجود" : "پیدا نشد")}");
                 sb.AppendLine($"Apache — سرویس ویندوز: {ServiceStatus("SoknaApache")}");
-                sb.AppendLine($"Apache — پورت {Technical("80")}: {(TcpOpen(80) ? "پاسخ می‌دهد" : "در دسترس نیست")}");
+                sb.AppendLine($"Apache — پورت {Technical(ApachePort().ToString())}: {(TcpOpen(ApachePort()) ? "پاسخ می‌دهد" : "در دسترس نیست")}");
                 sb.AppendLine($"MariaDB — فایل‌ها: {(FindMariaServer() is not null ? "موجود" : "پیدا نشد")}");
                 sb.AppendLine($"MariaDB — Data: {(MariaDataInitialized() ? "موجود و محافظت‌شده" : "هنوز راه‌اندازی نشده")}");
                 sb.AppendLine($"MariaDB — سرویس ویندوز: {ServiceStatus("SoknaMariaDB")}");
@@ -773,10 +809,10 @@ internal sealed class MainForm : Form
 
             SetProgress(100, "زیرساخت آماده است.");
             _status.AppendText("\n✓ زیرساخت آماده شد.\n");
-            _status.AppendText($"مرحله بعد: فایل Local Web را داخل «{WebPath()}» قرار دهید و http://localhost/ را در مرورگر باز کنید.\n");
+            _status.AppendText($"مرحله بعد: فایل Local Web را داخل «{WebPath()}» قرار دهید و {LocalWebUrl()} را در مرورگر باز کنید.\n");
             ShowNotice(
                 "زیرساخت آماده شد",
-                $"Web Root:\n{WebPath()}\n\nدر مرحله بعد Local Web را جداگانه داخل این مسیر قرار دهید و http://localhost/ را باز کنید.",
+                $"Web Root:\n{WebPath()}\n\nدر مرحله بعد Local Web را جداگانه داخل این مسیر قرار دهید و {LocalWebUrl()} را باز کنید.",
                 false);
         }
         catch (OperationCanceledException)
@@ -908,6 +944,7 @@ internal sealed class MainForm : Form
         }
 
         StopApacheForMaintenance();
+        EnsureApachePortAvailableWithFallback();
         SetProgress(34, "Apache: دریافت و آماده‌سازی...");
         var a = Artifact("apache");
         var zip = await DownloadVerifiedAsync(a, ct);
@@ -925,8 +962,8 @@ internal sealed class MainForm : Form
             if (syntax.ExitCode != 0) throw new InvalidOperationException("Apache config معتبر نیست: " + syntax.Error + syntax.Output);
 
             ReinstallApacheService(httpd, conf);
-            if (!WaitForPort(80, TimeSpan.FromSeconds(30)))
-                throw new InvalidOperationException("سرویس Apache ثبت شد اما روی پورت 80 پاسخ نداد.");
+            if (!WaitForPort(ApachePort(), TimeSpan.FromSeconds(30)))
+                throw new InvalidOperationException($"سرویس Apache ثبت شد اما روی پورت {ApachePort()} پاسخ نداد.");
             SetProgress(55, "Apache و سرویس SoknaApache آماده شدند.");
             UpdateArtifactProgress("apache", 100, "Apache نصب و سرویس آن آماده است.");
         }
@@ -942,7 +979,7 @@ internal sealed class MainForm : Form
         if (syntax.ExitCode != 0) return false;
         if (!string.Equals(ServiceStatus("SoknaApache"), "RUNNING", StringComparison.OrdinalIgnoreCase))
             RunProcess("sc.exe", "start SoknaApache", "start SoknaApache", allowFailure: true);
-        return WaitForPort(80, TimeSpan.FromSeconds(12));
+        return WaitForPort(ApachePort(), TimeSpan.FromSeconds(12));
     }
 
     private void StopApacheForMaintenance()
@@ -965,6 +1002,94 @@ internal sealed class MainForm : Form
         throw new InvalidOperationException("Apache برای به‌روزرسانی فایل‌ها متوقف نشد. لطفاً چند ثانیه صبر کنید و دوباره تلاش کنید.");
     }
 
+    private void EnsureApachePortAvailableWithFallback()
+    {
+        var selected = ApachePort();
+        if (CanBindLoopback(selected, out _)) return;
+
+        var detail = DescribePortConflict(selected);
+        var fallback = new[] { 8080, 8081, 8088, 8000, 8888 }
+            .FirstOrDefault(p => p != selected && CanBindLoopback(p, out _));
+
+        if (fallback > 0)
+        {
+            var answer = MessageBox.Show(
+                this,
+                $"Apache نمی‌تواند روی پورت {selected} اجرا شود.\n\n{detail}\n\nپورت {fallback} آزاد است. آیا Setup از پورت {fallback} استفاده کند؟\n\nآدرس Local Web در این حالت {($"http://localhost:{fallback}/")} خواهد بود.",
+                "پورت Apache در دسترس نیست",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button1,
+                MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
+            if (answer == DialogResult.Yes)
+            {
+                _apachePort.Value = fallback;
+                Log($"Apache port changed from {selected} to {fallback} after bind preflight.");
+                return;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Apache نمی‌تواند روی پورت {selected} اجرا شود. {detail} " +
+            "پورت Apache را آزاد کنید یا یک پورت آزاد دیگر در فیلد «پورت Apache» وارد کنید.");
+    }
+
+    private static bool CanBindLoopback(int port, out string? error)
+    {
+        TcpListener? listener = null;
+        try
+        {
+            listener = new TcpListener(IPAddress.Loopback, port);
+            listener.Start();
+            error = null;
+            return true;
+        }
+        catch (SocketException ex)
+        {
+            error = $"SocketError={ex.SocketErrorCode}; NativeError={ex.ErrorCode}; {ex.Message}";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+        finally
+        {
+            try { listener?.Stop(); } catch { }
+        }
+    }
+
+    private string DescribePortConflict(int port)
+    {
+        try
+        {
+            var netstat = RunProcess("netstat.exe", "-ano -p tcp", "-ano -p tcp", allowFailure: true);
+            foreach (var raw in netstat.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+            {
+                var line = raw.Trim();
+                if (!line.StartsWith("TCP", StringComparison.OrdinalIgnoreCase) || !line.Contains("LISTENING", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var parts = Regex.Split(line, @"\s+");
+                if (parts.Length < 5) continue;
+                var local = parts[1];
+                if (!local.EndsWith($":{port}", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!int.TryParse(parts[^1], out var pid)) continue;
+                var processName = "نامشخص";
+                try { processName = Process.GetProcessById(pid).ProcessName; } catch { }
+                if (pid == 4)
+                    return $"پورت {port} در اختیار Windows HTTP.sys/System (PID 4) است؛ معمولاً IIS یا یکی از سرویس‌های وب ویندوز از آن استفاده می‌کند.";
+                return $"پورت {port} توسط فرایند «{processName}» با PID {pid} استفاده می‌شود.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("Port owner diagnostic failed: " + ex.Message);
+        }
+
+        return $"Windows اجازه bind روی 127.0.0.1:{port} را نمی‌دهد. ممکن است پورت رزرو شده باشد یا یک سرویس سیستمی آن را در اختیار داشته باشد.";
+    }
+
     private void ConfigureApache()
     {
         var conf = Path.Combine(ApachePath(), "conf", "httpd.conf");
@@ -976,11 +1101,12 @@ internal sealed class MainForm : Form
         var w = Slash(WebPath());
         var text = File.ReadAllText(conf, Encoding.UTF8);
         text = Regex.Replace(text, "(?im)^\\s*Define\\s+SRVROOT\\s+\\\".*?\\\"\\s*$", $"Define SRVROOT \"{a}\"");
-        text = new Regex(@"(?im)^\s*Listen\s+.*$").Replace(text, "Listen 127.0.0.1:80", 1);
+        text = new Regex(@"(?im)^\s*Listen\s+.*$").Replace(text, $"Listen 127.0.0.1:{ApachePort()}", 1);
         text = new Regex("(?im)^\\s*DocumentRoot\\s+\\\".*?\\\"\\s*$").Replace(text, $"DocumentRoot \"{w}\"", 1);
         text = Regex.Replace(text, @"(?is)\r?\n# BEGIN SOKNA MANAGED.*?# END SOKNA MANAGED\r?\n?", Environment.NewLine);
         text += $"""
 # BEGIN SOKNA MANAGED
+ServerName localhost:{ApachePort()}
 LoadModule php_module "{p}/php8apache2_4.dll"
 PHPIniDir "{p}"
 <FilesMatch \.php$>
@@ -1005,10 +1131,15 @@ DirectoryIndex index.php index.html
             RunProcess("sc.exe", "stop SoknaApache", "stop SoknaApache", allowFailure: true);
             RunProcess(httpd, "-k uninstall -n \"SoknaApache\"", "-k uninstall -n \"SoknaApache\"", allowFailure: true);
         }
-        var install = RunProcess(httpd, $"-k install -n \"SoknaApache\" -f \"{conf}\"", $"-k install -n \"SoknaApache\" -f \"{conf}\"");
-        if (install.ExitCode != 0) throw new InvalidOperationException("ثبت سرویس Apache ناموفق بود: " + install.Error + install.Output);
+        var install = RunProcess(httpd, $"-k install -n \"SoknaApache\" -f \"{conf}\"", $"-k install -n \"SoknaApache\" -f \"{conf}\"", allowFailure: true);
+        if (install.ExitCode != 0 && !ServiceExists("SoknaApache"))
+            throw new InvalidOperationException("ثبت سرویس Apache ناموفق بود: " + install.Error + install.Output);
+        if (install.ExitCode != 0)
+            Log("Apache service exists but httpd -k install returned a non-zero config/start preflight result: " + TrimLog(install.Error + " " + install.Output));
         RunProcess("sc.exe", "config SoknaApache start= auto", "config SoknaApache start= auto", allowFailure: true);
-        RunProcess("sc.exe", "start SoknaApache", "start SoknaApache", allowFailure: true);
+        var start = RunProcess("sc.exe", "start SoknaApache", "start SoknaApache", allowFailure: true);
+        if (start.ExitCode != 0 && !string.Equals(ServiceStatus("SoknaApache"), "RUNNING", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"سرویس Apache ثبت شد اما شروع نشد. پورت انتخاب‌شده: {ApachePort()}. جزئیات: {TrimLog(start.Error + " " + start.Output)}");
     }
 
     private async Task InstallMariaAsync(OperationMode mode, CancellationToken ct)
@@ -1098,11 +1229,11 @@ DirectoryIndex index.php index.html
         if (!ServiceExists("SoknaMariaDB")) throw new InvalidOperationException("سرویس SoknaMariaDB ثبت نشده است.");
 
         var until = DateTime.UtcNow.AddSeconds(30);
-        while (DateTime.UtcNow < until && (!TcpOpen(80) || !TcpOpen(3306)))
+        while (DateTime.UtcNow < until && (!TcpOpen(ApachePort()) || !TcpOpen(3306)))
         {
             await Task.Delay(1000, ct);
         }
-        if (!TcpOpen(80)) throw new InvalidOperationException("Apache روی 127.0.0.1:80 پاسخ نمی‌دهد. از «باز کردن لاگ‌ها» استفاده کنید.");
+        if (!TcpOpen(ApachePort())) throw new InvalidOperationException($"Apache روی 127.0.0.1:{ApachePort()} پاسخ نمی‌دهد. از «باز کردن لاگ‌ها» استفاده کنید.");
         if (!TcpOpen(3306)) throw new InvalidOperationException("MariaDB روی 127.0.0.1:3306 پاسخ نمی‌دهد. از «باز کردن لاگ‌ها» استفاده کنید.");
 
         SetProgress(96, "Health check موفق بود.");
@@ -1119,7 +1250,7 @@ DirectoryIndex index.php index.html
             root = RootPath(),
             paths = new { infrastructure = InfraPath(), php = PhpPath(), apache = ApachePath(), mariadb = MariaPath(), mariadb_data = DataPath(), web_root = WebPath(), logs = LogsPath() },
             services = new { apache = "SoknaApache", mariadb = "SoknaMariaDB" },
-            endpoints = new { local_web = "http://localhost/", mariadb = "127.0.0.1:3306" },
+            endpoints = new { local_web = LocalWebUrl(), apache = $"127.0.0.1:{ApachePort()}", mariadb = "127.0.0.1:3306" },
             safeguards = new { local_web_payload_managed = false, sokna_database_managed = false, existing_mariadb_data_reinitialized = false }
         };
         File.WriteAllText(StatePath(), JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
