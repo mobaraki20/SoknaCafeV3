@@ -2,9 +2,11 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__,2).'/bootstrap.php';
+require_once dirname(__DIR__,2).'/src/Core/LocalEndpoint.php';
 require_once dirname(__DIR__,2).'/src/Setup/SetupException.php';
 require_once dirname(__DIR__,2).'/src/Setup/BrowserSetupService.php';
 
+use Sokna\Local\Core\LocalEndpoint;
 use Sokna\Local\Setup\BrowserSetupService;
 use Sokna\Local\Setup\SetupException;
 
@@ -21,10 +23,8 @@ function setup_json(array $payload,int $status=200): never { http_response_code(
 function setup_body(): array { $raw=file_get_contents('php://input');$v=json_decode((string)$raw,true);return is_array($v)?$v:[]; }
 function setup_csrf(array $body): void { if(!hash_equals((string)($_SESSION['csrf']??''),(string)($body['csrf']??'')))throw new SetupException('csrf_invalid','نشست Setup معتبر نیست.',403); }
 function setup_local_base_url(): string {
-    $port=(int)($_SERVER['SERVER_PORT']??0);
-    if($port<1||$port>65535)throw new SetupException('local_endpoint_invalid','پورت Local Web از وب‌سرور قابل تشخیص نیست.',500);
-    $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http';
-    return BrowserSetupService::normalizeLocalBaseUrl($scheme.'://127.0.0.1:'.$port.'/');
+    try{return LocalEndpoint::fromServer($_SERVER);}
+    catch(InvalidArgumentException){throw new SetupException('local_endpoint_invalid','پورت Local Web از وب‌سرور قابل تشخیص یا استفاده نیست.',500);}
 }
 
 try {
