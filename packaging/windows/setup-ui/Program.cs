@@ -100,6 +100,8 @@ internal sealed class SetupForm : Form
     private readonly Label _status = new() { Dock = DockStyle.Fill, AutoSize = true, Text = "آماده", TextAlign = ContentAlignment.MiddleRight };
     private readonly Label _prereqHelp = new() { Dock = DockStyle.Fill, AutoSize = true, Padding = new Padding(8), Text = "برای دیدن توضیح هر مورد، یک ردیف را انتخاب کنید." };
     private readonly Label _serviceSummary = new() { Dock = DockStyle.Fill, AutoSize = true, Padding = new Padding(8), Text = "وضعیت سرویس‌ها هنوز بررسی نشده است." };
+    private readonly Label _applicationHealth = new() { Dock = DockStyle.Fill, AutoSize = true, Padding = new Padding(8), Text = "سلامت داخلی Runtime و Print Agent هنوز بررسی نشده است." };
+    private readonly Label _lastServiceEvent = new() { Dock = DockStyle.Fill, AutoSize = true, Padding = new Padding(8), Text = "آخرین رخداد مرتبط سرویس‌ها هنوز خوانده نشده است." };
 
     private readonly Button _install = new() { Text = "نصب / به‌روزرسانی سرویس‌ها", AutoSize = true };
     private readonly Button _repair = new() { Text = "تعمیر نصب", AutoSize = true };
@@ -115,6 +117,7 @@ internal sealed class SetupForm : Form
     private readonly Button _openSetupLog = new() { Text = "آخرین گزارش نصب", AutoSize = true };
     private readonly Button _supportBundle = new() { Text = "ساخت بسته عیب‌یابی", AutoSize = true };
     private readonly Button _servicesConsole = new() { Text = "Windows Services", AutoSize = true };
+    private readonly Button _eventViewer = new() { Text = "Event Viewer", AutoSize = true };
 
     private readonly PrerequisitePolicy _policy;
     private readonly ReleaseLock _lock;
@@ -205,15 +208,18 @@ internal sealed class SetupForm : Form
         _openSetupLog.Click += (_, _) => OpenSetupLog();
         _supportBundle.Click += async (_, _) => await BuildSupportBundleAsync();
         _servicesConsole.Click += (_, _) => OpenServicesConsole();
+        _eventViewer.Click += (_, _) => OpenEventViewer();
         _prereqs.SelectedIndexChanged += (_, _) => UpdatePrerequisiteHelp();
     }
 
     private TabPage BuildPrerequisitesTab()
     {
         var page = new TabPage("۱. پیش‌نیازها") { RightToLeft = RightToLeft.Yes };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 4, RightToLeft = RightToLeft.Yes };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 6, RightToLeft = RightToLeft.Yes };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
@@ -311,7 +317,9 @@ internal sealed class SetupForm : Form
         layout.Controls.Add(_services);
 
         layout.Controls.Add(_serviceSummary);
-        layout.Controls.Add(Flow(_refreshServices, _openLogs, _openSetupLog, _supportBundle, _servicesConsole));
+        layout.Controls.Add(_applicationHealth);
+        layout.Controls.Add(_lastServiceEvent);
+        layout.Controls.Add(Flow(_refreshServices, _openLogs, _openSetupLog, _supportBundle, _servicesConsole, _eventViewer));
         page.Controls.Add(layout);
         return page;
     }
@@ -330,6 +338,7 @@ internal sealed class SetupForm : Form
         _tips.SetToolTip(_openSetupLog, "آخرین گزارش اجرای نصب/تعمیر/حذف سرویس‌ها را باز می‌کند.");
         _tips.SetToolTip(_supportBundle, "یک ZIP شامل وضعیت سرویس‌ها، رخدادهای مرتبط ویندوز و لاگ‌های غیرمحرمانه می‌سازد.");
         _tips.SetToolTip(_servicesConsole, "کنسول استاندارد Services ویندوز را باز می‌کند.");
+        _tips.SetToolTip(_eventViewer, "Event Viewer ویندوز را برای بررسی رخدادهای سیستمی باز می‌کند.");
     }
 
     private static ListView CreateRtlList() => new()
@@ -829,6 +838,10 @@ internal sealed class SetupForm : Form
                 _serviceSummary.Text = "Print Agent در حال اجرا است. Runtime هنوز Pairing نشده؛ متوقف بودن Runtime در این مرحله می‌تواند طبیعی باشد.";
             else
                 _serviceSummary.Text = "حداقل یکی از سرویس‌ها نصب است اما در وضعیت مورد انتظار اجرا نمی‌شود. «آخرین گزارش نصب» و «باز کردن لاگ‌ها» را بررسی کنید؛ در صورت نیاز بسته عیب‌یابی بسازید.";
+
+            var diagnostics = await Task.Run(() => (Health: ReadApplicationHealth(), Event: ReadLastServiceEvent()));
+            _applicationHealth.Text = diagnostics.Health;
+            _lastServiceEvent.Text = diagnostics.Event;
         }
         catch (Exception e)
         {
@@ -1143,6 +1156,119 @@ internal sealed class SetupForm : Form
     {
         try { Process.Start(new ProcessStartInfo("services.msc") { UseShellExecute = true }); } catch { }
     }
+
+    private static void OpenEventViewer()
+    {
+        try { Process.Start(new ProcessStartInfo("eventvwr.msc") { UseShellExecute = true }); } catch { }
+    }
+
+    private string ReadApplicationHealth()
+    {
+        var parts = new List<string>();
+
+        try
+        {
+            var runtimeState = Path.Combine(DataRoot(), "runtime", "state", "runtime-state.json");
+            if (File.Exists(runtimeState))
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(runtimeState));
+                var root = doc.RootElement;
+                var status = JsonString(root, "status");
+                var scheduler = JsonString(root, "scheduler_error");
+                var printStatus = JsonString(root, "print_agent_status");
+                parts.Add($"Runtime داخلی: {FaHealth(status)}" +
+                          (string.IsNullOrWhiteSpace(scheduler) ? "" : $"؛ خطای scheduler: {scheduler}") +
+                          (string.IsNullOrWhiteSpace(printStatus) ? "" : $"؛ مشاهده Print Agent: {FaHealth(printStatus)}"));
+            }
+            else
+            {
+                parts.Add("Runtime داخلی: هنوز فایل وضعیت تولید نشده است.");
+            }
+        }
+        catch (Exception e)
+        {
+            parts.Add("Runtime داخلی: خواندن وضعیت ناموفق بود (" + Safe(e.Message) + ").");
+        }
+
+        try
+        {
+            var printHealth = Path.Combine(DataRoot(), "print-worker", "health.json");
+            if (File.Exists(printHealth))
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(printHealth));
+                var root = doc.RootElement;
+                var state = JsonStringInsensitive(root, "State");
+                var transport = JsonStringInsensitive(root, "TransportState");
+                var coordinator = JsonStringInsensitive(root, "CoordinatorState");
+                var error = FirstNonEmpty(
+                    JsonStringInsensitive(root, "LastError"),
+                    JsonStringInsensitive(root, "LastTransportErrorCode"),
+                    JsonStringInsensitive(root, "LastCoordinatorErrorCode"),
+                    JsonStringInsensitive(root, "PrinterDiscoveryError"));
+                parts.Add($"Print Agent داخلی: {FaHealth(state)}؛ ارتباط: {FaHealth(transport)}؛ هماهنگ‌کننده: {FaHealth(coordinator)}" +
+                          (string.IsNullOrWhiteSpace(error) ? "" : $"؛ آخرین خطا: {error}"));
+            }
+            else
+            {
+                parts.Add("Print Agent داخلی: هنوز health.json تولید نشده است.");
+            }
+        }
+        catch (Exception e)
+        {
+            parts.Add("Print Agent داخلی: خواندن health.json ناموفق بود (" + Safe(e.Message) + ").");
+        }
+
+        return "سلامت داخلی برنامه — " + string.Join(" | ", parts);
+    }
+
+    private static string ReadLastServiceEvent()
+    {
+        try
+        {
+            var ps = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+            var script = "$e=Get-WinEvent -FilterHashtable @{LogName='System';ProviderName='Service Control Manager';StartTime=(Get-Date).AddDays(-7)} -ErrorAction SilentlyContinue | Where-Object {$_.Message -match 'SoknaRuntime|SoknaPrintWorker|SOKNA Runtime|SOKNA Print Worker'} | Select-Object -First 1; if($e){('{0:yyyy-MM-dd HH:mm:ss} | Event {1} | {2}' -f $e.TimeCreated,$e.Id,($e.Message -replace '[\r\n]+',' '))}";
+            var result = RunProcess(ps, "-NoProfile", "-NonInteractive", "-Command", script);
+            var text = Safe(result.Output);
+            return string.IsNullOrWhiteSpace(text)
+                ? "آخرین رخداد Service Control Manager — رخداد مرتبطی در ۷ روز اخیر پیدا نشد."
+                : "آخرین رخداد Service Control Manager — " + text;
+        }
+        catch (Exception e)
+        {
+            return "آخرین رخداد Service Control Manager — قابل خواندن نبود: " + Safe(e.Message);
+        }
+    }
+
+    private static string JsonString(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var value)) return "";
+        return value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : value.ToString();
+    }
+
+    private static string JsonStringInsensitive(JsonElement root, string name)
+    {
+        foreach (var p in root.EnumerateObject())
+            if (p.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                return p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() ?? "" : p.Value.ToString();
+        return "";
+    }
+
+    private static string FirstNonEmpty(params string[] values) => values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "";
+
+    private static string FaHealth(string value) => (value ?? "").Trim().ToLowerInvariant() switch
+    {
+        "running" => "سالم / در حال اجرا",
+        "healthy" => "سالم",
+        "starting" => "در حال شروع",
+        "degraded" => "دارای خطا / افت سلامت",
+        "failed" => "خطادار",
+        "stopped" => "متوقف",
+        "unknown" => "نامشخص",
+        "reconciliation_required" => "نیازمند تطبیق وضعیت",
+        "disabled" => "غیرفعال",
+        "" => "نامشخص",
+        _ => value
+    };
 
     private void BrowsePairing()
     {
