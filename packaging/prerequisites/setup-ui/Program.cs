@@ -63,7 +63,7 @@ internal sealed class MainForm : Form
     {
         Timeout = TimeSpan.FromMinutes(30)
     };
-    private readonly CancellationTokenSource _cts = new();
+    private CancellationTokenSource? _operationCts;
 
     private readonly TextBox _root = new();
     private readonly RadioButton _install = new() { Text = "نصب جدید", Checked = true, AutoSize = true };
@@ -83,6 +83,10 @@ internal sealed class MainForm : Form
     private readonly Button _logs = new() { Text = "باز کردن لاگ‌ها", AutoSize = true };
     private readonly Button _support = new() { Text = "ساخت بسته پشتیبانی", AutoSize = true };
     private readonly Button _cancel = new() { Text = "لغو عملیات", AutoSize = true, Enabled = false };
+    private readonly Button _offlineFolder = new() { Text = "انتخاب پوشه آفلاین", AutoSize = true };
+    private readonly Dictionary<string, Label> _artifactStatusLabels = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ProgressBar> _artifactProgressBars = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Button> _artifactSelectButtons = new(StringComparer.OrdinalIgnoreCase);
     private string? _currentLog;
     private readonly string _sessionLog = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOKNA", "Prerequisites", "Logs", $"ui-{DateTime.Now:yyyyMMdd-HHmmss}.log");
 
@@ -111,7 +115,8 @@ internal sealed class MainForm : Form
         _run.Click += async (_, _) => await RunAsync();
         _logs.Click += (_, _) => OpenLogs();
         _support.Click += async (_, _) => await CreateSupportBundleAsync();
-        _cancel.Click += (_, _) => _cts.Cancel();
+        _cancel.Click += (_, _) => _operationCts?.Cancel();
+        _offlineFolder.Click += async (_, _) => await SelectOfflineFolderAsync();
         _showPassword.CheckedChanged += (_, _) => _password.UseSystemPasswordChar = _password2.UseSystemPasswordChar = !_showPassword.Checked;
         _install.CheckedChanged += (_, _) => RefreshModeHelp();
         _repair.CheckedChanged += (_, _) => RefreshModeHelp();
@@ -120,9 +125,10 @@ internal sealed class MainForm : Form
         Controls.Add(BuildUi());
         Load += (_, _) => FitToWorkingArea();
         EnsureSessionLog();
-        Log("Prerequisites UI started.");
+        Log($"Prerequisites UI started. Version={Application.ProductVersion}");
         RefreshPathSummary();
         RefreshModeHelp();
+        RefreshArtifactSourceStatus();
     }
 
     private static Font PickFont()
@@ -179,7 +185,7 @@ internal sealed class MainForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            RowCount = 7,
+            RowCount = 8,
             RightToLeft = RightToLeft.Yes,
             Margin = new Padding(0),
             Padding = new Padding(0)
@@ -188,7 +194,7 @@ internal sealed class MainForm : Form
 
         var title = new Label
         {
-            Text = "آماده‌سازی زیرساخت Local Web",
+            Text = $"آماده‌سازی زیرساخت Local Web — نسخه {Application.ProductVersion}",
             Font = new Font(Font.FontFamily, 14.0f, FontStyle.Bold),
             AutoSize = true,
             Dock = DockStyle.Fill,
@@ -243,6 +249,8 @@ internal sealed class MainForm : Form
         pathLayout.SetColumnSpan(_paths, 3);
         pathBox.Controls.Add(pathLayout);
 
+        var sourcesBox = BuildArtifactSourcesBox();
+
         var dbBox = new GroupBox { Text = "MariaDB — فقط برای نصب جدید", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(14, 12, 14, 14), RightToLeft = RightToLeft.Yes };
         var db = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3, RowCount = 3, RightToLeft = RightToLeft.No };
         db.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -290,9 +298,10 @@ internal sealed class MainForm : Form
         content.Controls.Add(intro, 0, 1);
         content.Controls.Add(modeBox, 0, 2);
         content.Controls.Add(pathBox, 0, 3);
-        content.Controls.Add(dbBox, 0, 4);
-        content.Controls.Add(_modeHelp, 0, 5);
-        content.Controls.Add(statusBox, 0, 6);
+        content.Controls.Add(sourcesBox, 0, 4);
+        content.Controls.Add(dbBox, 0, 5);
+        content.Controls.Add(_modeHelp, 0, 6);
+        content.Controls.Add(statusBox, 0, 7);
         scroll.Controls.Add(content);
 
         var progressLayout = new TableLayoutPanel
@@ -330,6 +339,292 @@ internal sealed class MainForm : Form
         root.Controls.Add(progressLayout, 0, 1);
         root.Controls.Add(actions, 0, 2);
         return root;
+    }
+
+    private Control BuildArtifactSourcesBox()
+    {
+        var box = new GroupBox
+        {
+            Text = "فایل‌های پیش‌نیاز و نصب آفلاین",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            Padding = new Padding(14, 12, 14, 14),
+            RightToLeft = RightToLeft.Yes
+        };
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 5,
+            RowCount = 4,
+            RightToLeft = RightToLeft.No
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+        var kitHelp = new Label
+        {
+            Text = "اگر اینترنت در دسترس نیست، فایل‌های رسمی را از هر روش دیگری تهیه کنید و جداگانه انتخاب کنید؛ یا پوشه Offline Kit را یک‌جا به برنامه بدهید. همه فایل‌ها قبل از استفاده با اندازه و SHA-256 قفل‌شده بررسی می‌شوند.",
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            RightToLeft = RightToLeft.Yes,
+            TextAlign = ContentAlignment.TopRight,
+            MaximumSize = new Size(980, 0),
+            Padding = new Padding(4, 0, 4, 8)
+        };
+        layout.Controls.Add(_offlineFolder, 0, 0);
+        layout.Controls.Add(kitHelp, 1, 0);
+        layout.SetColumnSpan(kitHelp, 4);
+
+        var row = 1;
+        foreach (var dependency in new[] { "php", "apache", "mariadb" })
+        {
+            var artifact = Artifact(dependency);
+            var select = new Button
+            {
+                Text = "انتخاب فایل",
+                AutoSize = true,
+                MinimumSize = new Size(105, 34),
+                Margin = new Padding(4, 5, 4, 5)
+            };
+            var progress = new ProgressBar
+            {
+                Dock = DockStyle.Fill,
+                Minimum = 0,
+                Maximum = 100,
+                Margin = new Padding(8, 9, 8, 9)
+            };
+            var status = new Label
+            {
+                Text = "در انتظار بررسی",
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                RightToLeft = RightToLeft.Yes,
+                TextAlign = ContentAlignment.MiddleRight,
+                Padding = new Padding(6, 8, 6, 6)
+            };
+            var details = new Label
+            {
+                Text = $"{artifact.Version}  •  {FormatBytes(artifact.Size)}\n{artifact.FileName}",
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                RightToLeft = RightToLeft.No,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(6, 4, 6, 4)
+            };
+            var name = new Label
+            {
+                Text = DependencyDisplayName(dependency),
+                AutoSize = true,
+                Anchor = AnchorStyles.Right,
+                RightToLeft = RightToLeft.Yes,
+                TextAlign = ContentAlignment.MiddleRight,
+                Font = new Font(Font, FontStyle.Bold),
+                Padding = new Padding(8, 8, 0, 0)
+            };
+
+            _artifactSelectButtons[dependency] = select;
+            _artifactProgressBars[dependency] = progress;
+            _artifactStatusLabels[dependency] = status;
+            select.Click += async (_, _) => await SelectManualArtifactAsync(dependency, false);
+
+            layout.Controls.Add(select, 0, row);
+            layout.Controls.Add(progress, 1, row);
+            layout.Controls.Add(status, 2, row);
+            layout.Controls.Add(details, 3, row);
+            layout.Controls.Add(name, 4, row);
+            row++;
+        }
+
+        box.Controls.Add(layout);
+        return box;
+    }
+
+    private static string DependencyDisplayName(string dependency) => dependency switch
+    {
+        "php" => "PHP",
+        "apache" => "Apache",
+        "mariadb" => "MariaDB",
+        _ => dependency
+    };
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes >= 1024L * 1024L * 1024L) return $"{bytes / 1024d / 1024d / 1024d:0.00} GB";
+        if (bytes >= 1024L * 1024L) return $"{bytes / 1024d / 1024d:0.0} MB";
+        if (bytes >= 1024L) return $"{bytes / 1024d:0.0} KB";
+        return $"{bytes} B";
+    }
+
+    private static string FormatSpeed(double bytesPerSecond)
+    {
+        if (bytesPerSecond <= 0) return "—";
+        return FormatBytes((long)bytesPerSecond) + "/s";
+    }
+
+    private static string FormatEta(double seconds)
+    {
+        if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0) return "—";
+        var t = TimeSpan.FromSeconds(seconds);
+        if (t.TotalHours >= 1) return $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}";
+        return $"{t.Minutes:00}:{t.Seconds:00}";
+    }
+
+    private static string PrerequisiteCacheRoot() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOKNA", "PrerequisiteCache");
+
+    private void RefreshArtifactSourceStatus()
+    {
+        foreach (var dependency in new[] { "php", "apache", "mariadb" })
+        {
+            var artifact = Artifact(dependency);
+            var cached = Path.Combine(PrerequisiteCacheRoot(), artifact.FileName);
+            if (File.Exists(cached) && new FileInfo(cached).Length == artifact.Size)
+                UpdateArtifactProgress(dependency, 100, "فایل در Cache موجود است؛ SHA هنگام استفاده دوباره بررسی می‌شود.");
+            else
+                UpdateArtifactProgress(dependency, 0, "فایل آماده نیست؛ دانلود خودکار یا انتخاب فایل دستی.");
+        }
+    }
+
+    private void UpdateArtifactProgress(string dependency, int percent, string status)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => UpdateArtifactProgress(dependency, percent, status)));
+            return;
+        }
+
+        if (_artifactProgressBars.TryGetValue(dependency, out var progress))
+            progress.Value = Math.Clamp(percent, 0, 100);
+        if (_artifactStatusLabels.TryGetValue(dependency, out var label))
+            label.Text = status;
+    }
+
+    private async Task<string?> SelectManualArtifactAsync(string dependency, bool fallbackFromDownload)
+    {
+        var artifact = Artifact(dependency);
+        using var dialog = new OpenFileDialog
+        {
+            CheckFileExists = true,
+            Multiselect = false,
+            Title = $"انتخاب فایل {DependencyDisplayName(dependency)} — نسخه {artifact.Version}",
+            FileName = artifact.FileName,
+            Filter = $"فایل مورد انتظار ({artifact.FileName})|{artifact.FileName}|همه فایل‌ها (*.*)|*.*"
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            if (fallbackFromDownload)
+                UpdateArtifactProgress(dependency, 0, "دانلود آنلاین ناموفق بود؛ فایل دستی انتخاب نشد.");
+            return null;
+        }
+
+        return await ImportVerifiedArtifactAsync(artifact, dialog.FileName);
+    }
+
+    private async Task<string> ImportVerifiedArtifactAsync(LockedArtifact artifact, string sourcePath)
+    {
+        UpdateArtifactProgress(artifact.Dependency, 5, "در حال بررسی اندازه فایل...");
+        var info = new FileInfo(sourcePath);
+        if (!info.Exists)
+            throw new FileNotFoundException("فایل انتخاب‌شده پیدا نشد.", sourcePath);
+        if (info.Length != artifact.Size)
+        {
+            UpdateArtifactProgress(artifact.Dependency, 0, $"حجم فایل معتبر نیست؛ انتظار: {FormatBytes(artifact.Size)}");
+            throw new InvalidOperationException($"حجم فایل انتخاب‌شده برای {DependencyDisplayName(artifact.Dependency)} معتبر نیست. انتظار: {FormatBytes(artifact.Size)}؛ دریافت‌شده: {FormatBytes(info.Length)}.");
+        }
+
+        UpdateArtifactProgress(artifact.Dependency, 35, "اندازه درست است؛ در حال بررسی SHA-256...");
+        var verified = await Task.Run(() => VerifyFile(sourcePath, artifact));
+        if (!verified)
+        {
+            UpdateArtifactProgress(artifact.Dependency, 0, "SHA-256 با نسخه تأییدشده تطبیق ندارد.");
+            throw new InvalidOperationException($"فایل انتخاب‌شده برای {DependencyDisplayName(artifact.Dependency)} با SHA-256 نسخه تأییدشده تطبیق ندارد. هیچ فایلی نصب یا اجرا نشد.");
+        }
+
+        var cache = PrerequisiteCacheRoot();
+        Directory.CreateDirectory(cache);
+        var final = Path.Combine(cache, artifact.FileName);
+        var sourceFull = Path.GetFullPath(sourcePath);
+        var finalFull = Path.GetFullPath(final);
+        if (!string.Equals(sourceFull, finalFull, StringComparison.OrdinalIgnoreCase))
+        {
+            var temp = final + ".importing";
+            try
+            {
+                File.Copy(sourceFull, temp, true);
+                File.Move(temp, final, true);
+            }
+            finally
+            {
+                try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+            }
+        }
+
+        var partial = final + ".partial";
+        try { if (File.Exists(partial)) File.Delete(partial); } catch { }
+        UpdateArtifactProgress(artifact.Dependency, 100, "فایل دستی تأیید شد و آماده استفاده است.");
+        Log($"Manual artifact accepted: {artifact.Dependency}; file={artifact.FileName}; sha256={artifact.Sha256}");
+        return final;
+    }
+
+    private async Task SelectOfflineFolderAsync()
+    {
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "پوشه Offline Kit شامل فایل‌های رسمی PHP، Apache و MariaDB را انتخاب کنید.",
+            ShowNewFolderButton = false
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        SetBusy(true, "در حال بررسی پوشه آفلاین...");
+        try
+        {
+            var accepted = new List<string>();
+            var missing = new List<string>();
+            var invalid = new List<string>();
+
+            foreach (var dependency in new[] { "php", "apache", "mariadb" })
+            {
+                var artifact = Artifact(dependency);
+                UpdateArtifactProgress(dependency, 2, "در حال جست‌وجوی فایل در Offline Kit...");
+                var candidate = Directory.EnumerateFiles(dialog.SelectedPath, artifact.FileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (candidate is null)
+                {
+                    missing.Add(artifact.FileName);
+                    UpdateArtifactProgress(dependency, 0, "فایل در پوشه انتخاب‌شده پیدا نشد.");
+                    continue;
+                }
+
+                try
+                {
+                    await ImportVerifiedArtifactAsync(artifact, candidate);
+                    accepted.Add(artifact.FileName);
+                }
+                catch (Exception ex)
+                {
+                    invalid.Add($"{artifact.FileName}: {ex.Message}");
+                }
+            }
+
+            var summary = new StringBuilder();
+            summary.AppendLine($"فایل‌های تأییدشده: {accepted.Count} از 3");
+            if (accepted.Count > 0) summary.AppendLine("\nتأیید شد:\n" + string.Join("\n", accepted));
+            if (missing.Count > 0) summary.AppendLine("\nپیدا نشد:\n" + string.Join("\n", missing));
+            if (invalid.Count > 0) summary.AppendLine("\nنامعتبر:\n" + string.Join("\n", invalid));
+            ShowNotice("بررسی Offline Kit", summary.ToString(), invalid.Count > 0);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally
+        {
+            SetBusy(false, "آماده");
+            _operationCts?.Dispose();
+            _operationCts = null;
+        }
     }
 
     private void RefreshModeHelp()
@@ -459,6 +754,9 @@ internal sealed class MainForm : Form
     {
         try
         {
+            _operationCts?.Dispose();
+            _operationCts = new CancellationTokenSource();
+            var token = _operationCts.Token;
             SetBusy(true, "در حال بررسی ورودی‌ها...");
             var mode = SelectedMode();
             ValidateInputs(mode);
@@ -472,10 +770,10 @@ internal sealed class MainForm : Form
             if (mode == OperationMode.Install && MariaDataInitialized())
                 throw new InvalidOperationException("در مسیر انتخاب‌شده Data قبلی MariaDB وجود دارد. برای جلوگیری از overwrite، «تعمیر» یا «بازیابی بعد از ویندوز» را انتخاب کنید.");
 
-            await InstallPhpAsync(_cts.Token);
-            await InstallApacheAsync(_cts.Token);
-            await InstallMariaAsync(mode, _cts.Token);
-            await ValidateHealthAsync(_cts.Token);
+            await InstallPhpAsync(token);
+            await InstallApacheAsync(token);
+            await InstallMariaAsync(mode, token);
+            await ValidateHealthAsync(token);
             WriteState(mode);
 
             SetProgress(100, "زیرساخت آماده است.");
@@ -530,11 +828,13 @@ internal sealed class MainForm : Form
     private async Task InstallPhpAsync(CancellationToken ct)
     {
         SetProgress(5, "PHP: بررسی وضعیت...");
+        UpdateArtifactProgress("php", 2, "در حال بررسی نصب موجود...");
         var a = Artifact("php");
         if (PhpReady(a.Version))
         {
             Log($"PHP {a.Version} already ready; install step skipped.");
             SetProgress(25, "PHP از قبل آماده است؛ ادامه نصب...");
+            UpdateArtifactProgress("php", 100, "PHP از قبل نصب و آماده است.");
             return;
         }
 
@@ -552,6 +852,7 @@ internal sealed class MainForm : Form
                 throw new InvalidOperationException("PHP بعد از نصب یا تنظیم extensionهای لازم آماده نشد.");
             Log($"PHP {a.Version} ready.");
             SetProgress(25, "PHP آماده شد.");
+            UpdateArtifactProgress("php", 100, "PHP آماده است.");
         }
         finally { SafeDelete(tmp); }
     }
@@ -597,10 +898,12 @@ internal sealed class MainForm : Form
     private async Task InstallApacheAsync(CancellationToken ct)
     {
         SetProgress(30, "Apache: بررسی وضعیت...");
+        UpdateArtifactProgress("apache", 2, "در حال بررسی نصب و سرویس موجود...");
         if (ApacheReady())
         {
             Log("Apache already ready; install step skipped.");
             SetProgress(55, "Apache از قبل آماده است؛ ادامه به MariaDB...");
+            UpdateArtifactProgress("apache", 100, "Apache از قبل نصب، ثبت و در حال اجراست.");
             return;
         }
 
@@ -625,6 +928,7 @@ internal sealed class MainForm : Form
             if (!WaitForPort(80, TimeSpan.FromSeconds(30)))
                 throw new InvalidOperationException("سرویس Apache ثبت شد اما روی پورت 80 پاسخ نداد.");
             SetProgress(55, "Apache و سرویس SoknaApache آماده شدند.");
+            UpdateArtifactProgress("apache", 100, "Apache نصب و سرویس آن آماده است.");
         }
         finally { SafeDelete(tmp); }
     }
@@ -710,6 +1014,7 @@ DirectoryIndex index.php index.html
     private async Task InstallMariaAsync(OperationMode mode, CancellationToken ct)
     {
         SetProgress(60, "MariaDB: آماده‌سازی binary...");
+        UpdateArtifactProgress("mariadb", 2, "در حال بررسی MariaDB...");
         await EnsureMariaBinariesAsync(ct);
         var initialized = MariaDataInitialized();
 
@@ -735,6 +1040,7 @@ DirectoryIndex index.php index.html
         RunProcess("sc.exe", "config SoknaMariaDB start= auto", "config SoknaMariaDB start= auto", allowFailure: true);
         RunProcess("sc.exe", "start SoknaMariaDB", "start SoknaMariaDB", allowFailure: true);
         SetProgress(82, "MariaDB آماده شد؛ Data موجود حفظ شده است.");
+        UpdateArtifactProgress("mariadb", 100, "MariaDB و سرویس آن آماده است.");
     }
 
     private async Task EnsureMariaBinariesAsync(CancellationToken ct)
@@ -822,53 +1128,210 @@ DirectoryIndex index.php index.html
     private LockedArtifact Artifact(string dependency) =>
         _lock.Artifacts.Single(x => string.Equals(x.Dependency, dependency, StringComparison.OrdinalIgnoreCase));
 
-    private async Task<string> DownloadVerifiedAsync(LockedArtifact a, CancellationToken ct)
+    private async Task<string> DownloadVerifiedAsync(LockedArtifact artifact, CancellationToken ct)
     {
-        var cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOKNA", "PrerequisiteCache");
+        var cache = PrerequisiteCacheRoot();
         Directory.CreateDirectory(cache);
-        var dest = Path.Combine(cache, a.FileName);
-        if (File.Exists(dest) && VerifyFile(dest, a))
-        {
-            Log($"Cache hit: {a.FileName}");
-            return dest;
-        }
-        try { File.Delete(dest); } catch { }
+        var final = Path.Combine(cache, artifact.FileName);
+        var partial = final + ".partial";
 
-        var urls = new[] { a.SourceUrl }.Concat(a.FallbackUrls ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
-        Exception? last = null;
-        foreach (var url in urls)
+        if (File.Exists(final))
         {
+            UpdateArtifactProgress(artifact.Dependency, 20, "فایل Cache پیدا شد؛ در حال بررسی SHA-256...");
+            if (await Task.Run(() => VerifyFile(final, artifact), ct))
+            {
+                Log($"Cache hit verified: {artifact.FileName}");
+                UpdateArtifactProgress(artifact.Dependency, 100, "فایل Cache تأیید شد.");
+                return final;
+            }
+            Log($"Cache artifact invalid and removed: {artifact.FileName}");
+            try { File.Delete(final); } catch { }
+        }
+
+        var urls = new[] { artifact.SourceUrl }
+            .Concat(artifact.FallbackUrls ?? [])
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var failures = new List<string>();
+        for (var i = 0; i < urls.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var url = urls[i];
+            var host = new Uri(url).Host;
             try
             {
-                Log($"Download: {a.Dependency} from {url}");
-                using var req = new HttpRequestMessage(HttpMethod.Get, url);
-                using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
-                resp.EnsureSuccessStatusCode();
-                await using var input = await resp.Content.ReadAsStreamAsync(ct);
-                await using var output = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, true);
-                var buf = new byte[1024 * 256];
-                long total = 0;
-                while (true)
-                {
-                    var n = await input.ReadAsync(buf, ct);
-                    if (n <= 0) break;
-                    await output.WriteAsync(buf.AsMemory(0, n), ct);
-                    total += n;
-                    var pct = a.Size > 0 ? (int)Math.Min(100, total * 100 / a.Size) : 0;
-                    BeginInvoke(new Action(() => _progressText.Text = $"دانلود {a.Dependency}: {pct}%"));
-                }
-                await output.FlushAsync(ct);
-                if (!VerifyFile(dest, a)) throw new InvalidOperationException($"فایل {a.FileName} با hash/size قفل‌شده تطبیق ندارد.");
-                return dest;
+                UpdateArtifactProgress(artifact.Dependency, 1, $"بررسی دسترسی به منبع {i + 1} از {urls.Count}: {host}");
+                Log($"Download probe/start: {artifact.Dependency} from {url}");
+                await DownloadArtifactResumableAsync(artifact, url, partial, ct);
+
+                var file = new FileInfo(partial);
+                if (!file.Exists || file.Length != artifact.Size)
+                    throw new InvalidOperationException($"حجم نهایی دانلود صحیح نیست. انتظار: {FormatBytes(artifact.Size)}؛ دریافت‌شده: {(file.Exists ? FormatBytes(file.Length) : "0 B")}.");
+
+                UpdateArtifactProgress(artifact.Dependency, 96, "دانلود کامل شد؛ در حال بررسی SHA-256...");
+                if (!await Task.Run(() => VerifyFile(partial, artifact), ct))
+                    throw new InvalidOperationException("SHA-256 فایل دانلودشده با نسخه قفل‌شده تطبیق ندارد.");
+
+                File.Move(partial, final, true);
+                UpdateArtifactProgress(artifact.Dependency, 100, "فایل دانلود و SHA-256 تأیید شد.");
+                return final;
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                last = ex;
-                Log($"Download failed: {url} | {ex.Message}");
-                try { File.Delete(dest); } catch { }
+                UpdateArtifactProgress(artifact.Dependency, 0, "عملیات توسط کاربر لغو شد؛ فایل ناقص برای Resume نگه داشته شد.");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var message = $"{host}: {ex.Message}";
+                failures.Add(message);
+                Log($"Download source failed: {artifact.Dependency}; {message}");
+                UpdateArtifactProgress(artifact.Dependency, 0, $"منبع {i + 1} در دسترس نبود؛ {(i + 1 < urls.Count ? "در حال تلاش از منبع بعدی..." : "دانلود آنلاین ناموفق بود.")}");
             }
         }
-        throw new InvalidOperationException($"دریافت فایل رسمی {a.FileName} از همه آدرس‌های ثبت‌شده ناموفق بود.", last);
+
+        var choose = MessageBox.Show(
+            this,
+            $"دانلود آنلاین «{artifact.FileName}» از هیچ منبع تأییدشده‌ای ممکن نشد.\n\nمی‌توانید همین فایل را با مرورگر، فیلترشکن، کامپیوتر دیگر یا فلش تهیه کنید و اکنون به برنامه تحویل دهید. فایل قبل از استفاده با حجم و SHA-256 بررسی می‌شود.\n\nفایل را از کامپیوتر انتخاب می‌کنید؟",
+            "دریافت آنلاین ممکن نشد",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Information,
+            MessageBoxDefaultButton.Button1,
+            MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
+
+        if (choose == DialogResult.Yes)
+        {
+            var manual = await SelectManualArtifactAsync(artifact.Dependency, true);
+            if (!string.IsNullOrWhiteSpace(manual)) return manual;
+        }
+
+        throw new InvalidOperationException(
+            $"فایل {artifact.FileName} به‌صورت آنلاین در دسترس نبود. از بخش «فایل‌های پیش‌نیاز و نصب آفلاین» فایل دستی یا Offline Kit را انتخاب کنید. " +
+            string.Join(" | ", failures));
+    }
+
+    private async Task DownloadArtifactResumableAsync(LockedArtifact artifact, string sourceUrl, string partial, CancellationToken ct)
+    {
+        var existing = File.Exists(partial) ? new FileInfo(partial).Length : 0L;
+        if (existing < 0 || existing > artifact.Size)
+        {
+            try { File.Delete(partial); } catch { }
+            existing = 0;
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, sourceUrl);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+        if (existing > 0) request.Headers.Range = new RangeHeaderValue(existing, null);
+
+        HttpResponseMessage response;
+        using (var headerCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            headerCts.CancelAfter(TimeSpan.FromSeconds(7));
+            try
+            {
+                response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headerCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                throw new TimeoutException("سرور ظرف ۷ ثانیه پاسخ اولیه نداد.");
+            }
+        }
+
+        using (response)
+        {
+            if (response.RequestMessage?.RequestUri?.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidOperationException("مسیر دانلود از HTTPS خارج شد و برای امنیت متوقف شد.");
+
+            if (!response.IsSuccessStatusCode)
+                throw new HttpRequestException($"سرور کد {(int)response.StatusCode} ({response.ReasonPhrase}) برگرداند.", null, response.StatusCode);
+
+            if (existing > 0 && response.StatusCode != HttpStatusCode.PartialContent)
+            {
+                Log($"Server does not support resume for {artifact.Dependency}; restarting file from zero.");
+                existing = 0;
+                try { if (File.Exists(partial)) File.Delete(partial); } catch { }
+            }
+
+            var expectedTransfer = artifact.Size - existing;
+            var serverLength = response.Content.Headers.ContentLength;
+            if (serverLength.HasValue && serverLength.Value != expectedTransfer)
+                throw new InvalidOperationException($"حجم اعلام‌شده توسط سرور ({FormatBytes(serverLength.Value)}) با حجم مورد انتظار این مرحله ({FormatBytes(expectedTransfer)}) یکسان نیست.");
+
+            var mode = existing > 0 ? FileMode.Append : FileMode.Create;
+            await using var input = await response.Content.ReadAsStreamAsync(ct);
+            await using var output = new FileStream(partial, mode, FileAccess.Write, FileShare.None, 256 * 1024, true);
+
+            var buffer = new byte[256 * 1024];
+            long done = existing;
+            long sampledBytes = 0;
+            var sample = Stopwatch.StartNew();
+            double lastSpeed = 0;
+
+            UpdateDownloadUi(artifact, done, lastSpeed, serverLength);
+
+            while (true)
+            {
+                int read;
+                try
+                {
+                    read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)
+                        .AsTask()
+                        .WaitAsync(TimeSpan.FromSeconds(20), ct);
+                }
+                catch (TimeoutException)
+                {
+                    throw new TimeoutException("در ۲۰ ثانیه گذشته هیچ داده‌ای از سرور دریافت نشد.");
+                }
+
+                if (read <= 0) break;
+                await output.WriteAsync(buffer.AsMemory(0, read), ct);
+                done += read;
+                sampledBytes += read;
+
+                if (done > artifact.Size)
+                    throw new InvalidOperationException("حجم داده دریافت‌شده از اندازه نسخه تأییدشده بیشتر شد.");
+
+                if (sample.ElapsedMilliseconds >= 500)
+                {
+                    lastSpeed = sampledBytes / Math.Max(sample.Elapsed.TotalSeconds, 0.001);
+                    sampledBytes = 0;
+                    sample.Restart();
+                    UpdateDownloadUi(artifact, done, lastSpeed, serverLength);
+                }
+            }
+
+            await output.FlushAsync(ct);
+            UpdateDownloadUi(artifact, done, lastSpeed, serverLength);
+        }
+    }
+
+    private void UpdateDownloadUi(LockedArtifact artifact, long done, double bytesPerSecond, long? serverLength)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => UpdateDownloadUi(artifact, done, bytesPerSecond, serverLength)));
+            return;
+        }
+
+        var pct = artifact.Size <= 0 ? 0 : (int)Math.Clamp(done * 100L / artifact.Size, 0, 100);
+        var remaining = Math.Max(0, artifact.Size - done);
+        var eta = bytesPerSecond > 0 ? remaining / bytesPerSecond : double.NaN;
+        var server = serverLength.HasValue ? $" • حجم پاسخ سرور: {FormatBytes(serverLength.Value)}" : "";
+        var text = $"{FormatBytes(done)} / {FormatBytes(artifact.Size)} • {pct}% • {FormatSpeed(bytesPerSecond)} • باقی‌مانده {FormatEta(eta)}{server}";
+        UpdateArtifactProgress(artifact.Dependency, pct, text);
+
+        var (start, end) = artifact.Dependency switch
+        {
+            "php" => (8, 20),
+            "apache" => (34, 48),
+            "mariadb" => (60, 74),
+            _ => (0, 100)
+        };
+        _progress.Value = Math.Clamp(start + (end - start) * pct / 100, 0, 100);
+        _progressText.Text = $"{DependencyDisplayName(artifact.Dependency)} — {text}";
     }
 
     private static bool VerifyFile(string path, LockedArtifact a)
@@ -1021,6 +1484,8 @@ DirectoryIndex index.php index.html
         _analyze.Enabled = !busy;
         _browse.Enabled = !busy;
         _cancel.Enabled = busy;
+        _offlineFolder.Enabled = !busy;
+        foreach (var button in _artifactSelectButtons.Values) button.Enabled = !busy;
         _progressText.Text = message;
         UseWaitCursor = busy;
     }
@@ -1202,7 +1667,7 @@ DirectoryIndex index.php index.html
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (_cancel.Enabled) _cts.Cancel();
+        if (_cancel.Enabled) _operationCts?.Cancel();
         base.OnFormClosing(e);
     }
 }
