@@ -106,8 +106,34 @@ jobs:
           New-Item -ItemType Directory -Path $shell -Force | Out-Null
           Copy-Item packaging/windows/Sokna.ico (Join-Path $shell 'Sokna.ico')
           Set-Content (Join-Path $shell 'SoknaSetupUi.exe') 'fixture'
-          Set-Content (Join-Path $shell 'remove-owned-services.ps1') '$true'
+          Set-Content (Join-Path $shell 'remove-windows-services.ps1') '$true'
+          $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          [ordered]@{format='sokna-windows-services-shell-v2';schema_version=2;package_version=$version} |
+            ConvertTo-Json | Set-Content (Join-Path $shell 'payload-manifest.json') -Encoding UTF8
           & packaging/windows/scripts/build-installer.ps1 -ShellPayloadRoot $shell -RepoRoot $root
+
+      - name: Build qualified Windows Services release artifact
+        shell: pwsh
+        run: |
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $root 'release\out-windows'
+          $iscc=@(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not $iscc){ throw 'Inno Setup 6 ISCC.exe was not found after qualification setup.' }
+          & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          Get-ChildItem $out | Format-Table Name,Length,LastWriteTime
+
+      - name: Upload qualified Windows Services installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.1-${{ github.sha }}
+          path: |
+            release/out-windows/SOKNA-Windows-Services-Setup-1.0.1.exe
+            release/out-windows/artifact-index.json
+          if-no-files-found: error
+          retention-days: 30
 
   manual-uat-contract:
     name: Manual UAT remains explicit

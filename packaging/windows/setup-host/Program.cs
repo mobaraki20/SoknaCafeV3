@@ -125,7 +125,7 @@ internal static class Program
         var required = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "SoknaRuntimeService.exe", "SoknaSetupHost.exe", "SoknaSetupUi.exe",
-            "setup-windows-services.ps1", "remove-windows-services.ps1",
+            "setup-windows-services.ps1", "remove-windows-services.ps1", "collect-support.ps1",
             "prerequisites.json", "release-lock.json", "windows-services-compatibility-v1.json",
             "print-worker/component-manifest.json", "print-worker/Service/Sokna.PrintAgent.Service.exe",
             "print-worker/Worker/Sokna.PrintAgent.Worker.exe"
@@ -156,32 +156,61 @@ internal static class Program
 
     private static int RunLifecycle(SetupPlan plan, string planPath)
     {
-        var script = Path.Combine(Path.GetFullPath(plan.ShellRoot), "setup-windows-services.ps1");
-        RequireAbsoluteFile(script, "اسکریپت lifecycle سرویس‌ها");
-        var powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
-        RequireAbsoluteFile(powershell, "Windows PowerShell");
-        var psi = new ProcessStartInfo(powershell)
+        var logPath = Path.Combine(Path.GetFullPath(plan.DataRoot), "Logs", "windows-services-setup.log");
+        AppendSetupLog(logPath, $"{DateTimeOffset.Now:O} START mode={CanonicalMode(plan.Mode)} install_root={Path.GetFullPath(plan.InstallRoot)}");
+        try
         {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = Path.GetFullPath(plan.ShellRoot)
-        };
-        foreach (var a in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script,
-            "-Mode", CanonicalMode(plan.Mode), "-ShellRoot", Path.GetFullPath(plan.ShellRoot), "-InstallRoot", Path.GetFullPath(plan.InstallRoot),
-            "-DataRoot", Path.GetFullPath(plan.DataRoot), "-PairingFile", string.IsNullOrWhiteSpace(plan.PairingFile) ? "" : Path.GetFullPath(plan.PairingFile),
-            "-StartWhenPaired", plan.StartWhenPaired ? "1" : "0" }) psi.ArgumentList.Add(a);
-        using var process = Process.Start(psi) ?? throw new PlanException("Windows PowerShell برای lifecycle سرویس‌ها اجرا نشد.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        process.WaitForExit();
-        Task.WaitAll(stdoutTask, stderrTask);
-        if (!string.IsNullOrWhiteSpace(stdoutTask.Result)) Console.Out.Write(stdoutTask.Result);
-        if (!string.IsNullOrWhiteSpace(stderrTask.Result)) Console.Error.Write(stderrTask.Result);
-        if (process.ExitCode != 0) return process.ExitCode;
-        Console.Error.WriteLine($"SOKNA Windows Services lifecycle complete ({CanonicalMode(plan.Mode)}). Plan: {Path.GetFileName(planPath)}");
-        return 0;
+            var script = Path.Combine(Path.GetFullPath(plan.ShellRoot), "setup-windows-services.ps1");
+            RequireAbsoluteFile(script, "اسکریپت lifecycle سرویس‌ها");
+            var powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+            RequireAbsoluteFile(powershell, "Windows PowerShell");
+            var psi = new ProcessStartInfo(powershell)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                WorkingDirectory = Path.GetFullPath(plan.ShellRoot)
+            };
+            foreach (var a in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script,
+                "-Mode", CanonicalMode(plan.Mode), "-ShellRoot", Path.GetFullPath(plan.ShellRoot), "-InstallRoot", Path.GetFullPath(plan.InstallRoot),
+                "-DataRoot", Path.GetFullPath(plan.DataRoot), "-PairingFile", string.IsNullOrWhiteSpace(plan.PairingFile) ? "" : Path.GetFullPath(plan.PairingFile),
+                "-StartWhenPaired", plan.StartWhenPaired ? "1" : "0" }) psi.ArgumentList.Add(a);
+
+            using var process = Process.Start(psi) ?? throw new PlanException("Windows PowerShell برای lifecycle سرویس‌ها اجرا نشد.");
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            process.WaitForExit();
+            Task.WaitAll(stdoutTask, stderrTask);
+
+            var stdout = stdoutTask.Result;
+            var stderr = stderrTask.Result;
+            if (!string.IsNullOrWhiteSpace(stdout)) Console.Out.Write(stdout);
+            if (!string.IsNullOrWhiteSpace(stderr)) Console.Error.Write(stderr);
+
+            AppendSetupLog(logPath,
+                $"{DateTimeOffset.Now:O} END mode={CanonicalMode(plan.Mode)} exit_code={process.ExitCode}{Environment.NewLine}" +
+                $"STDOUT: {SafeMessage(stdout)}{Environment.NewLine}STDERR: {SafeMessage(stderr)}");
+
+            if (process.ExitCode != 0) return process.ExitCode;
+            Console.Error.WriteLine($"SOKNA Windows Services lifecycle complete ({CanonicalMode(plan.Mode)}). Plan: {Path.GetFileName(planPath)}");
+            return 0;
+        }
+        catch (Exception e)
+        {
+            AppendSetupLog(logPath, $"{DateTimeOffset.Now:O} ERROR mode={CanonicalMode(plan.Mode)} {SafeMessage(e.Message)}");
+            throw;
+        }
+    }
+
+    private static void AppendSetupLog(string path, string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.AppendAllText(path, message.Replace('\r', ' ').TrimEnd() + Environment.NewLine + "---" + Environment.NewLine);
+        }
+        catch { }
     }
 
     private static string CanonicalMode(string mode) => mode.Trim().ToLowerInvariant() switch

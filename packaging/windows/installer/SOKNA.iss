@@ -12,6 +12,9 @@ AppVersion={#ProductVersion}
 AppPublisher=SOKNA
 DefaultDirName={autopf}\SOKNA Windows Services
 DefaultGroupName=SOKNA
+AllowNoIcons=yes
+DisableProgramGroupPage=no
+UninstallDisplayIcon={app}\Sokna.ico
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -29,8 +32,13 @@ SetupIconFile={#SourceRoot}\Sokna.ico
 [Files]
 Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Tasks]
+Name: "startmenuicon"; Description: "ایجاد میانبر در منوی Start"; GroupDescription: "میانبرهای برنامه:"; Flags: checkedonce
+Name: "desktopicon"; Description: "ایجاد میانبر روی دسکتاپ"; GroupDescription: "میانبرهای برنامه:"; Flags: unchecked
+
 [Icons]
-Name: "{group}\مدیریت سرویس‌های سکنا"; Filename: "{app}\SoknaSetupUi.exe"; IconFilename: "{app}\Sokna.ico"
+Name: "{group}\مدیریت سرویس‌های سکنا"; Filename: "{app}\SoknaSetupUi.exe"; IconFilename: "{app}\Sokna.ico"; Tasks: startmenuicon
+Name: "{autodesktop}\مدیریت سرویس‌های سکنا"; Filename: "{app}\SoknaSetupUi.exe"; IconFilename: "{app}\Sokna.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\SoknaSetupUi.exe"; Description: "نصب یا تنظیم Runtime و Print Agent"; Flags: postinstall nowait skipifsilent
