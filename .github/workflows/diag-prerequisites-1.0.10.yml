@@ -1,0 +1,51 @@
+name: Diagnose Prerequisites 1.0.10
+on:
+  push:
+    branches:
+      - diag/prerequisites-1.0.10
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build UI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-smoke
+          if($LASTEXITCODE-ne0){throw "UI build failed: $LASTEXITCODE"}
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          if($v-ne'1.0.10'){throw "Unexpected version $v"}
+
+      - name: Reproduce legacy php.ini and require real Apache Browser Setup preflight
+        shell: pwsh
+        run: tests/g7-windows-apache-php-runtime.ps1
+
+      - name: Install Inno and build installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          choco install innosetup --yes --no-progress
+          $root=(Resolve-Path .).Path
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $root
+          if($LASTEXITCODE-ne0){throw "Installer build failed: $LASTEXITCODE"}
+          if(-not(Test-Path packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.10.exe)){throw '1.0.10 installer missing'}
+
+      - name: Upgrade from 1.0.9 with old UI open
+        shell: pwsh
+        run: tests/g7-prerequisites-upgrade.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-prerequisites-1.0.10-qualified-${{ github.sha }}
+          path: |
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.10.exe
+            packaging/prerequisites/out/installer/artifact-index.json
+          if-no-files-found: error
