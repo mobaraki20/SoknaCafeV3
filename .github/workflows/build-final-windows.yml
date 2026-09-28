@@ -1,0 +1,32 @@
+name: build final windows deliverable
+on:
+  push:
+    branches: [transfer/v3-final-qualified-0fa99f8-helper]
+    paths: [.github/workflows/build-final-windows.yml]
+permissions:
+  contents: read
+env:
+  source_sha: 0fa99f837f502fc84e24c8ef7e4d449eeeff3dcd
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      pythonutf8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0fa99f837f502fc84e24c8ef7e4d449eeeff3dcd
+      - name: verify exact source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$source_sha"
+      - name: install inno setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: build windows release
+        shell: pwsh
+        run: ./release/build-windows-release.ps1 -RepoRoot $pwd -OutputRoot "$env:runner_temp\final-windows"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-windows-deliverable
+          path: ${{ runner.temp }}\final-windows\SOKNA-Windows-Services-Setup-1.0.0.exe
+          if-no-files-found: error
