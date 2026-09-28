@@ -226,7 +226,7 @@
       ],
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "packaging/windows/WINDOWS_SERVICES_VERSION.txt",
-      "current_version": "1.0.2",
+      "current_version": "1.0.3",
       "compatibility_manifest": "packaging/windows/windows-services-compatibility-v1.json",
       "artifact_pipeline": "packaging/windows/scripts/build-installer.ps1",
       "release_compatibility_manifest": "release/compatibility-v2.json"
