@@ -94,7 +94,10 @@ try {
     if(Test-Path -LiteralPath $zip){Remove-Item -LiteralPath $zip -Force}
     Compress-Archive -Path (Join-Path $work '*') -DestinationPath $zip -CompressionLevel Optimal
     Write-Host $zip
+    $global:LASTEXITCODE=0
 }
 finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }
+$global:LASTEXITCODE=0
+exit 0
