@@ -64,9 +64,14 @@ internal static class PhpRuntimeConfiguration
 
         var extDir = Path.Combine(phpPath, "ext").Replace('\\','/');
         var text = File.ReadAllText(ini, Encoding.UTF8);
-        var extDirRx = new Regex(@"(?im)^\s*;?\s*extension_dir\s*=.*$");
-        if (extDirRx.IsMatch(text)) text = extDirRx.Replace(text, $"extension_dir = \"{extDir}\"", 1);
-        else text += Environment.NewLine + $"extension_dir = \"{extDir}\"";
+
+        // Old prerequisite versions could leave more than one extension_dir directive
+        // in an existing php.ini. PHP uses the last effective value, so replacing only
+        // the first line is not sufficient during upgrades. Canonicalize to one value.
+        var extDirRx = new Regex(@"(?im)^\s*;?\s*extension_dir\s*=.*(?:\r?\n|$)");
+        text = extDirRx.Replace(text, "");
+        if (!text.EndsWith(Environment.NewLine, StringComparison.Ordinal)) text += Environment.NewLine;
+        text += $"extension_dir = \"{extDir}\"" + Environment.NewLine;
 
         foreach (var dll in RequiredDlls)
         {
@@ -87,9 +92,9 @@ internal static class PhpRuntimeConfiguration
             var ini = Path.Combine(phpPath, "php.ini");
             if (!File.Exists(ini)) return false;
             var text = File.ReadAllText(ini, Encoding.UTF8);
-            var m = Regex.Match(text, @"(?im)^\s*extension_dir\s*=\s*[""']?(?<v>[^""'\r\n]+)[""']?\s*$");
-            if (!m.Success) return false;
-            var configured = m.Groups["v"].Value.Trim();
+            var matches = Regex.Matches(text, @"(?im)^\s*extension_dir\s*=\s*[""']?(?<v>[^""'\r\n]+)[""']?\s*$");
+            if (matches.Count != 1) return false;
+            var configured = matches[0].Groups["v"].Value.Trim();
             return InfrastructureOwnershipDetector.PathEquals(configured, Path.Combine(phpPath, "ext"));
         }
         catch { return false; }
@@ -1411,6 +1416,11 @@ internal sealed class MainForm : Form
     {
         if (!PhpBinaryVersionReady(expectedVersion) || !PhpConfigurationReady()) return false;
         var php = Path.Combine(PhpPath(), "php.exe");
+        var effectiveExtDir = RunProcess(php, "-r \"echo ini_get('extension_dir');\"", "-r <extension-dir-probe>", allowFailure: true);
+        if (effectiveExtDir.ExitCode != 0 ||
+            !InfrastructureOwnershipDetector.PathEquals(effectiveExtDir.Output.Trim(), Path.Combine(PhpPath(), "ext")))
+            return false;
+
         var modules = RunProcess(php, "-m", "-m", allowFailure: true);
         if (modules.ExitCode != 0) return false;
         var loaded = modules.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
