@@ -70,6 +70,14 @@ try {
     }
     Write-Text (Join-Path $work 'service-control-manager-events.txt') $events
 
+    $appEvents = Capture {
+        Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=(Get-Date).AddDays(-7)} -ErrorAction Stop |
+          Where-Object { $_.Message -match 'SoknaRuntime|SoknaPrintWorker|Sokna\.PrintAgent|SOKNA Print Worker' } |
+          Select-Object -First 120 TimeCreated,ProviderName,Id,LevelDisplayName,Message |
+          Format-List
+    }
+    Write-Text (Join-Path $work 'application-events.txt') $appEvents
+
     $setupState=Join-Path $DataRoot 'setup\windows-services-state.json'
     if(Test-Path -LiteralPath $setupState -PathType Leaf){Copy-Item -LiteralPath $setupState -Destination (Join-Path $work 'windows-services-state.json') -Force}
 
@@ -77,7 +85,13 @@ try {
     New-Item -ItemType Directory -Path $logsDir -Force|Out-Null
     Copy-SafeLogs (Join-Path $DataRoot 'Logs') (Join-Path $logsDir 'setup')
     Copy-SafeLogs (Join-Path $DataRoot 'runtime\state\logs') (Join-Path $logsDir 'runtime')
-    Copy-SafeLogs (Join-Path $DataRoot 'print-worker\logs') (Join-Path $logsDir 'print-worker')
+    $printDataRoot=Join-Path $DataRoot 'print-worker'
+    try{
+        $configured=[string](Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Sokna\Local\PrintWorker' -Name DataRoot -ErrorAction Stop).DataRoot
+        if(-not[string]::IsNullOrWhiteSpace($configured)){ $printDataRoot=Safe-Full $configured 'Print Agent DataRoot' }
+    }catch{}
+    Write-Text (Join-Path $work 'print-worker-data-root.txt') $printDataRoot
+    Copy-SafeLogs (Join-Path $printDataRoot 'logs') (Join-Path $logsDir 'print-worker')
 
     $runtimeState=Join-Path $DataRoot 'runtime\state\runtime-state.json'
     if(Test-Path -LiteralPath $runtimeState -PathType Leaf){Copy-Item -LiteralPath $runtimeState -Destination (Join-Path $work 'runtime-state.json') -Force}
