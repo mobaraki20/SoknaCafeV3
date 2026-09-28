@@ -85,7 +85,7 @@ jobs:
 
           p=Path('tests/g4-4-print-template-selftest.php')
           s=p.read_text(encoding='utf-8')
-          s=s.replace("$applied=$core->migrations()->migrate();g44db(in_array('0025_g4_print_template_packages',$applied,true),'G4.4 migration missing');$pdo=$core->database();","$core->migrations()->migrate();$pdo=$core->database();$mq=$pdo->prepare('SELECT COUNT(*) FROM schema_migrations WHERE migration=?');$mq->execute(['0025_g4_print_template_packages']);g44db((int)$mq->fetchColumn()===1,'G4.4 migration missing');")
+          s=s.replace("$applied=$core->migrations()->migrate();g44db(in_array('0025_g4_print_template_packages',$applied,true),'G4.4 migration missing');$pdo=$core->database();","$core->migrations()->migrate();$pdo=$core->database();$mq=$pdo->prepare('SELECT COUNT(*) FROM schema_migrations WHERE version=?');$mq->execute(['0025_g4_print_template_packages']);g44db((int)$mq->fetchColumn()===1,'G4.4 migration missing');")
           p.write_text(s,encoding='utf-8',newline='\n')
           PY
       - name: install php extensions
