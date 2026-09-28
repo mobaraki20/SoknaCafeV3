@@ -1,0 +1,36 @@
+{
+  "format": "sokna-local-endpoint-contract-v1",
+  "schema_version": 1,
+  "contract_id": "sokna-local-endpoint-v1",
+  "network_scope": "loopback-only",
+  "canonical_host": "127.0.0.1",
+  "allowed_schemes": ["http", "https"],
+  "port": {
+    "configurable": true,
+    "minimum": 1024,
+    "maximum": 65535,
+    "must_not_be_hardcoded_by_consumers": true
+  },
+  "lifecycle": {
+    "infrastructure_selects_port_before_local_web": true,
+    "browser_setup_derives_actual_apache_port": true,
+    "browser_setup_canonicalizes_host_to_127.0.0.1": true,
+    "endpoint_is_persisted_in_local_config": true,
+    "browser_setup_generates_windows_services_pairing": true
+  },
+  "consumers": {
+    "apache": "listen + document root",
+    "browser": "canonical Local Web origin",
+    "windows_runtime": "localBaseUrl",
+    "print_agent_server": "server_base_url",
+    "print_agent_bridge": "local_bridge_allowed_origin"
+  },
+  "invariants": [
+    "All consumers use the same scheme, host and port.",
+    "The endpoint is origin-only: no credentials, path beyond '/', query or fragment.",
+    "The endpoint remains loopback-only.",
+    "Changing the Apache port requires regenerating/reapplying Windows Services pairing before Runtime/Print Agent activation.",
+    "Public Edge is not required for Local endpoint operation."
+  ],
+  "test_ports": [18080, 18081, 23456]
+}
