@@ -28,7 +28,7 @@ D:\SOKNA\Backups
 Prerequisites Setup فقط MariaDB Server و Data Directory زیرساخت را آماده می‌کند.  
 **Database مربوط به SOKNA، user محدود برنامه و migrationها در Browser Setup خود Local Web ساخته می‌شوند.**
 
-بعد از آماده‌شدن زیرساخت، بسته Local Web جداگانه در `Web` Extract می‌شود و `http://localhost/` باز می‌شود.
+بعد از آماده‌شدن زیرساخت، بسته Local Web جداگانه مستقیماً داخل `Web` Extract می‌شود. Apache پوشه `Web\public` را سرو می‌کند و آدرس نهایی Local Web را Setup نمایش می‌دهد؛ نمونه پیش‌فرض `http://127.0.0.1:18080/` است.
 
 ## خطا و پشتیبانی
 
@@ -58,6 +58,6 @@ Logها در `<root>\Infrastructure\Logs` نگه‌داری می‌شوند. ن�
 
 ## تداخل پورت Apache
 
-پورت پیش‌فرض Apache برابر 80 است. قبل از ثبت/شروع سرویس، Setup امکان bind روی پورت انتخاب‌شده را بررسی می‌کند. اگر پورت توسط برنامه یا سرویس دیگری اشغال/رزرو شده باشد، نام فرایند/PID را در صورت امکان گزارش می‌کند و یک پورت آزاد از میان 8080، 8081، 8088، 8000 و 8888 پیشنهاد می‌دهد.
+پورت پیش‌فرض Local Web برابر 18080 است و به پورت 80 وابسته نیست. قبل از ثبت/شروع Apache، Setup امکان bind روی پورت انتخاب‌شده را بررسی می‌کند. اگر پورت اشغال/رزرو شده باشد، نام فرایند/PID را در صورت امکان گزارش می‌کند و یک پورت آزاد از میان 18081، 18082، 18083، 8080، 8081، 8088، 8000 و 8888 پیشنهاد می‌دهد.
 
-پورت انتخاب‌شده در تنظیم Apache و `infrastructure-state.json` ثبت می‌شود و آدرس نهایی Local Web بر همان مبنا نمایش داده می‌شود. هشدار `ServerName` نیز با تنظیم `ServerName localhost:<port>` حذف می‌شود.
+پورت انتخاب‌شده در تنظیم Apache و `infrastructure-state.json` ثبت می‌شود و آدرس نهایی Local Web بر همان مبنا نمایش داده می‌شود. هشدار `ServerName` نیز با تنظیم `ServerName 127.0.0.1:<port>` حذف می‌شود. Endpoint فقط loopback است و همان scheme/host/port بعداً توسط Browser Setup در Runtime و Print Agent Pairing ثبت می‌شود.
