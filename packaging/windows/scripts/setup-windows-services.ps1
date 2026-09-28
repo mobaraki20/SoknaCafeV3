@@ -36,9 +36,37 @@ function Stop-Owned([string]$name,[string]$expected){
   $svc=Get-Service -Name $name -ErrorAction SilentlyContinue;if(-not$svc){return}
   try{if((Service-Image $name)-cne$expected){throw "Service ownership mismatch for $name."};if($svc.Status-ne'Stopped'){Stop-Service -Name $name -ErrorAction Stop;$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))}}finally{$svc.Dispose()}
 }
+function Invoke-ScChecked([string[]]$Arguments,[string]$Action){
+  $output=@(& "$env:SystemRoot\System32\sc.exe" @Arguments 2>&1);$code=$LASTEXITCODE
+  if($code-ne0){throw "$Action failed (sc.exe exit $code): $($output -join ' | ')"}
+  return $output
+}
 function Delete-Owned([string]$name,[string]$expected){
   $svc=Get-Service -Name $name -ErrorAction SilentlyContinue;if(-not$svc){return}
-  try{if((Service-Image $name)-cne$expected){throw "Service ownership mismatch for $name."};if($svc.Status-ne'Stopped'){Stop-Service -Name $name -ErrorAction Stop;$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))}; & "$env:SystemRoot\System32\sc.exe" delete $name|Out-Null;if($LASTEXITCODE-ne0){throw "Service deletion failed: $name"}}finally{$svc.Dispose()}
+  try{
+    if((Service-Image $name)-cne$expected){throw "Service ownership mismatch for $name."}
+    if($svc.Status-ne'Stopped'){Stop-Service -Name $name -ErrorAction Stop;$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))}
+  }finally{$svc.Dispose()}
+  Invoke-ScChecked @('delete',$name) "Service deletion: $name"|Out-Null
+  for($i=0;$i-lt100;$i++){
+    $probe=Get-Service -Name $name -ErrorAction SilentlyContinue
+    if(-not$probe){return}
+    $probe.Dispose();Start-Sleep -Milliseconds 100
+  }
+  throw "Service deletion did not complete: $name"
+}
+function Create-Owned([string]$name,[string]$command,[string]$display){
+  try{
+    New-Service -Name $name -BinaryPathName $command -DisplayName $display -StartupType Manual -ErrorAction Stop|Out-Null
+  }catch{
+    throw "Service registration failed: $name. $($_.Exception.Message)"
+  }
+  $actual=Service-Image $name
+  if($actual-cne$command){throw "Service ImagePath verification failed: $name. expected=[$command] actual=[$actual]"}
+}
+function Set-DelayedAutomatic([string]$name){
+  Set-Service -Name $name -StartupType Automatic -ErrorAction Stop
+  Set-ItemProperty -LiteralPath ("HKLM:\SYSTEM\CurrentControlSet\Services\"+$name) -Name DelayedAutoStart -Type DWord -Value 1 -Force
 }
 function Write-Secret([string]$path,[string]$value){
   if([string]::IsNullOrWhiteSpace($value)-or$value.Length-lt32-or$value.Length-gt512){throw 'Pairing secret length is invalid.'}
@@ -107,14 +135,11 @@ if($pair){
   $private=Join-Path $env:TEMP ('sokna-print-pair-'+[guid]::NewGuid().ToString('N')+'.json')
   try{[ordered]@{server_base_url=[string]$pair.local_base_url;token=[string]$pair.print_agent_token;agent_name=$env:COMPUTERNAME;local_bridge_allowed_origin=[string]$pair.local_bridge_allowed_origin}|ConvertTo-Json|Set-Content -LiteralPath $private -Encoding UTF8;& $printExe --provision-file $private|Out-Null;if($LASTEXITCODE-ne0){throw 'Print Agent pairing failed.'}}finally{Remove-Item -LiteralPath $private -Force -ErrorAction SilentlyContinue}
 }
-$sc="$env:SystemRoot\System32\sc.exe"
-foreach($entry in @(@{Name=$RuntimeService;Cmd=$runtimeCmd;Display='SOKNA Runtime'},@{Name=$PrintService;Cmd=$printCmd;Display='SOKNA Print Worker'})){
-  $exists=Get-Service -Name $entry.Name -ErrorAction SilentlyContinue
-  if($exists){$exists.Dispose();& $sc config $entry.Name "binPath=" $entry.Cmd "DisplayName=" $entry.Display|Out-Null}else{& $sc create $entry.Name "binPath=" $entry.Cmd "start=" demand "obj=" LocalSystem "DisplayName=" $entry.Display|Out-Null}
-  if($LASTEXITCODE-ne0){throw "Service registration failed: $($entry.Name)"}
-}
-& $sc config $PrintService start= delayed-auto|Out-Null
-if($pair -and $StartWhenPaired -eq 1){& $sc config $RuntimeService start= delayed-auto|Out-Null;Start-Service $PrintService;Start-Service $RuntimeService}else{Start-Service $PrintService}
+Delete-Owned $RuntimeService $runtimeCmd;Delete-Owned $PrintService $printCmd
+Create-Owned $RuntimeService $runtimeCmd 'SOKNA Runtime'
+Create-Owned $PrintService $printCmd 'SOKNA Print Worker'
+Set-DelayedAutomatic $PrintService
+if($pair -and $StartWhenPaired -eq 1){Set-DelayedAutomatic $RuntimeService;Start-Service $PrintService;Start-Service $RuntimeService}else{Start-Service $PrintService}
 $state=[ordered]@{format='sokna-windows-services-install-state-v1';package_owner='windows-services-packaging';installed_at_utc=[DateTime]::UtcNow.ToString('o');install_root=$InstallRoot;data_root=$DataRoot;paired=($null-ne$pair);runtime_service=$RuntimeService;print_service=$PrintService;external_infrastructure_mutated=$false;business_data_mutated=$false}
 $state|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $DataRoot 'setup\windows-services-state.json') -Encoding UTF8
 [ordered]@{success=$true;mode=$Mode.ToLowerInvariant();paired=($null-ne$pair);runtime_start=$(if($pair-and$StartWhenPaired -eq 1){'started'}else{'manual_waiting_for_pairing'});print_agent='started_waiting_or_configured';business_data_mutated=$false;external_infrastructure_mutated=$false}|ConvertTo-Json -Compress

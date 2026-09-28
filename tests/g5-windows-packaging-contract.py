@@ -81,6 +81,9 @@ need('LoadAppIcon()' in ui and 'FitToWorkingArea()' in ui,'Windows Services UI i
 need('RightToLeftLayout = true' in ui and 'AutoScroll = true' in ui,'Persian tab order/scrolling fix missing')
 need("@('runtime','print-agent')" not in life or True,'')
 need('external_infrastructure_mutated=$false' in life and 'business_data_mutated=$false' in life,'lifecycle ownership evidence missing')
+need('New-Service -Name' in life,'Windows service registration must use PowerShell New-Service')
+need('& $sc create' not in life and 'sc.exe" create' not in life,'fragile sc.exe create registration must not return')
+need('ImagePath verification failed' in life and 'Invoke-ScChecked' in life,'service registration/deletion diagnostics are incomplete')
 need('php.exe' not in life.lower() and 'apache' not in life.lower() and 'mariadb' not in life.lower(),'service lifecycle touches external infrastructure')
 
 for legacy in [
