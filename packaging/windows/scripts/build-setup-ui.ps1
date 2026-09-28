@@ -19,4 +19,4 @@ try{
     if(-not(Test-Path -LiteralPath $built -PathType Leaf)){throw 'SOKNA Setup UI executable was not produced.'}
     Copy-Item -LiteralPath $built -Destination $out -Force
 }finally{Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue}
-Write-Host "Built SOKNA Setup UI $version: $out"
+Write-Host ("Built SOKNA Setup UI {0}: {1}" -f $version,$out)
