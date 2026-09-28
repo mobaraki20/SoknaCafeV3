@@ -128,18 +128,20 @@ internal sealed class SetupForm : Form
 
     public SetupForm()
     {
-        Text = "مدیریت سرویس‌های سکنا";
-        Width = 1080;
-        Height = 760;
-        MinimumSize = new Size(900, 640);
+        Text = $"مدیریت سرویس‌های سکنا — نسخه {Application.ProductVersion}";
+        Width = 1220;
+        Height = 840;
+        MinimumSize = new Size(900, 650);
         StartPosition = FormStartPosition.CenterScreen;
         RightToLeft = RightToLeft.Yes;
 
         // Keep the native Windows title-bar controls in their standard top-right position.
         // Internal controls are mirrored explicitly below.
         RightToLeftLayout = false;
-        Font = new Font("Segoe UI", 10F);
+        Font = PickFont();
         AutoScaleMode = AutoScaleMode.Dpi;
+        ShowIcon = true;
+        Icon = LoadAppIcon();
 
         _installRoot.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SOKNA Windows Services");
         _dataRoot.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOKNA");
@@ -148,11 +150,48 @@ internal sealed class SetupForm : Form
         ValidateContracts();
         BuildUi();
         ConfigureTooltips();
+        Load += (_, _) => FitToWorkingArea();
         Shown += async (_, _) =>
         {
             await RefreshPrerequisitesAsync();
             await RefreshServicesAsync();
         };
+    }
+
+    private static Font PickFont()
+    {
+        foreach (var name in new[] { "Tahoma", "Segoe UI" })
+        {
+            try
+            {
+                using var probe = new Font(name, 10.0f, FontStyle.Regular, GraphicsUnit.Point);
+                if (string.Equals(probe.Name, name, StringComparison.OrdinalIgnoreCase))
+                    return new Font(name, 10.0f, FontStyle.Regular, GraphicsUnit.Point);
+            }
+            catch { }
+        }
+        return SystemFonts.MessageBoxFont;
+    }
+
+    private static Icon? LoadAppIcon()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Sokna.ico");
+            return File.Exists(path) ? new Icon(path) : null;
+        }
+        catch { return null; }
+    }
+
+    private void FitToWorkingArea()
+    {
+        var work = Screen.FromControl(this).WorkingArea;
+        var width = Math.Min(1240, Math.Max(MinimumSize.Width, work.Width - 60));
+        var height = Math.Min(880, Math.Max(MinimumSize.Height, work.Height - 60));
+        Size = new Size(Math.Min(width, work.Width), Math.Min(height, work.Height));
+        Location = new Point(
+            work.Left + Math.Max(0, (work.Width - Width) / 2),
+            work.Top + Math.Max(0, (work.Height - Height) / 2));
     }
 
     private void BuildUi()
@@ -165,7 +204,7 @@ internal sealed class SetupForm : Form
         var header = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RightToLeft = RightToLeft.Yes, Padding = new Padding(0, 0, 0, 10) };
         header.Controls.Add(new Label
         {
-            Text = "مدیریت سرویس‌های سکنا",
+            Text = $"مدیریت سرویس‌های سکنا — نسخه {Application.ProductVersion}",
             AutoSize = true,
             Font = new Font(Font, FontStyle.Bold),
             Padding = new Padding(0, 0, 0, 4)
@@ -178,7 +217,7 @@ internal sealed class SetupForm : Form
         });
         root.Controls.Add(header, 0, 0);
 
-        var tabs = new TabControl { Dock = DockStyle.Fill, RightToLeft = RightToLeft.Yes };
+        var tabs = new TabControl { Dock = DockStyle.Fill, RightToLeft = RightToLeft.Yes, RightToLeftLayout = true };
         tabs.TabPages.Add(BuildPrerequisitesTab());
         tabs.TabPages.Add(BuildLifecycleTab());
         tabs.TabPages.Add(BuildDiagnosticsTab());
@@ -216,20 +255,18 @@ internal sealed class SetupForm : Form
 
     private TabPage BuildPrerequisitesTab()
     {
-        var page = new TabPage("۱. پیش‌نیازها") { RightToLeft = RightToLeft.Yes };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 6, RightToLeft = RightToLeft.Yes };
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var page = new TabPage("۱. پیش‌نیازها") { RightToLeft = RightToLeft.Yes, AutoScroll = true };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 6, RightToLeft = RightToLeft.Yes };
+        for (var i = 0; i < 6; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         layout.Controls.Add(InfoBox(
             "اول چه چیزی را باید انجام بدهم؟",
             "این بخش فقط پیش‌نیازهای مستقیم Runtime و Print Agent را نشان می‌دهد. زیرساخت Local Web از این نصب جداست. اگر Microsoft Visual C++ آماده نیست، ردیف را انتخاب کنید و از فایل رسمی و تأییدشده یا راهنمای نصب استفاده کنید."
         ));
 
+        _prereqs.Dock = DockStyle.Top;
+        _prereqs.Height = 280;
+        _prereqs.MinimumSize = new Size(0, 240);
         _prereqs.Columns.Add("پیش‌نیاز", 270);
         _prereqs.Columns.Add("مربوط به", 150);
         _prereqs.Columns.Add("وضعیت", 210);
@@ -244,15 +281,9 @@ internal sealed class SetupForm : Form
 
     private TabPage BuildLifecycleTab()
     {
-        var page = new TabPage("۲. نصب و نگهداری") { RightToLeft = RightToLeft.Yes };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 7, RightToLeft = RightToLeft.Yes };
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var page = new TabPage("۲. نصب و نگهداری") { RightToLeft = RightToLeft.Yes, AutoScroll = true };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 7, RightToLeft = RightToLeft.Yes };
+        for (var i = 0; i < 7; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         layout.Controls.Add(InfoBox(
             "این مرحله چه کاری انجام می‌دهد؟",
@@ -298,18 +329,18 @@ internal sealed class SetupForm : Form
 
     private TabPage BuildDiagnosticsTab()
     {
-        var page = new TabPage("۳. وضعیت و عیب‌یابی") { RightToLeft = RightToLeft.Yes };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 4, RightToLeft = RightToLeft.Yes };
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var page = new TabPage("۳. وضعیت و عیب‌یابی") { RightToLeft = RightToLeft.Yes, AutoScroll = true };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 5, RightToLeft = RightToLeft.Yes };
+        for (var i = 0; i < 5; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         layout.Controls.Add(InfoBox(
             "فقط نصب بودن سرویس کافی نیست",
             "در این بخش می‌بینید هر سرویس واقعاً نصب شده و در حال اجرا هست یا نه، نوع شروع آن چیست و Process ID دارد یا خیر. برای بررسی خطا می‌توانید لاگ‌ها را باز کنید یا یک بسته عیب‌یابی قابل ارسال بسازید."
         ));
 
+        _services.Dock = DockStyle.Top;
+        _services.Height = 310;
+        _services.MinimumSize = new Size(0, 260);
         _services.Columns.Add("سرویس", 250);
         _services.Columns.Add("نصب", 100);
         _services.Columns.Add("وضعیت اجرا", 170);
@@ -366,8 +397,8 @@ internal sealed class SetupForm : Form
     private static Control InfoBox(string title, string body)
     {
         var panel = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, Padding = new Padding(10), RightToLeft = RightToLeft.Yes };
-        panel.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI", 10F, FontStyle.Bold) });
-        panel.Controls.Add(new Label { Text = body, AutoSize = true, MaximumSize = new Size(980, 0), Padding = new Padding(0, 4, 0, 0) });
+        panel.Controls.Add(new Label { Text = title, AutoSize = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleRight, Font = new Font("Tahoma", 10F, FontStyle.Bold) });
+        panel.Controls.Add(new Label { Text = body, AutoSize = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.TopRight, MaximumSize = new Size(1080, 0), Padding = new Padding(0, 4, 0, 0) });
         return panel;
     }
 
@@ -386,7 +417,15 @@ internal sealed class SetupForm : Form
 
     private static FlowLayoutPanel Flow(params Control[] controls)
     {
-        var p = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, RightToLeft = RightToLeft.Yes };
+        var p = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, RightToLeft = RightToLeft.Yes, Padding = new Padding(0, 4, 0, 4) };
+        foreach (var control in controls)
+        {
+            if (control is Button button)
+            {
+                button.MinimumSize = new Size(110, 36);
+                button.Margin = new Padding(8, 3, 0, 3);
+            }
+        }
         p.Controls.AddRange(controls);
         return p;
     }
@@ -1173,16 +1212,24 @@ internal sealed class SetupForm : Form
             var ps = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
             var psi = new ProcessStartInfo(ps)
             {
-                UseShellExecute = true,
-                Verb = "runas",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 WorkingDirectory = AppContext.BaseDirectory
             };
-            foreach (var a in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-DataRoot", DataRoot(), "-OutputRoot", supportRoot })
+            foreach (var a in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-DataRoot", DataRoot(), "-OutputRoot", supportRoot })
                 psi.ArgumentList.Add(a);
 
             using var p = Process.Start(psi) ?? throw new InvalidOperationException("PowerShell برای ساخت بسته عیب‌یابی اجرا نشد.");
+            var stdoutTask = p.StandardOutput.ReadToEndAsync();
+            var stderrTask = p.StandardError.ReadToEndAsync();
             await p.WaitForExitAsync();
-            if (p.ExitCode != 0) throw new InvalidOperationException("ساخت بسته عیب‌یابی کامل نشد. کد خطا: " + p.ExitCode);
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+            AppendUiLog($"SUPPORT BUNDLE exit={p.ExitCode} stdout={Safe(stdout)} stderr={Safe(stderr)}");
+            if (p.ExitCode != 0)
+                throw new InvalidOperationException("ساخت بسته عیب‌یابی کامل نشد. " + (string.IsNullOrWhiteSpace(stderr) ? $"کد خطا: {p.ExitCode}" : FriendlyError(stderr)));
 
             var zip = new DirectoryInfo(supportRoot).GetFiles("SOKNA-Support-*.zip")
                 .OrderByDescending(x => x.LastWriteTimeUtc)
