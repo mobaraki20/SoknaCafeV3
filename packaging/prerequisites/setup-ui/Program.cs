@@ -103,7 +103,7 @@ internal sealed class MainForm : Form
         Font = PickFont();
         Icon = TryLoadIcon();
 
-        _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("SOKNA-Prerequisites", "1.0"));
+        _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("SOKNA-Prerequisites", Application.ProductVersion));
         _policy = LoadJson<InfrastructurePolicy>("infrastructure-prerequisites.json", "سیاست زیرساخت");
         _lock = LoadJson<ReleaseLock>("release-lock.json", "فهرست نسخه‌های قفل‌شده");
         ValidateContracts();
@@ -1135,6 +1135,19 @@ DirectoryIndex index.php index.html
         var final = Path.Combine(cache, artifact.FileName);
         var partial = final + ".partial";
 
+        if (File.Exists(partial) && new FileInfo(partial).Length == artifact.Size)
+        {
+            UpdateArtifactProgress(artifact.Dependency, 94, "فایل ناقص قبلی به حجم کامل رسیده؛ در حال بررسی SHA-256...");
+            if (await Task.Run(() => VerifyFile(partial, artifact), ct))
+            {
+                File.Move(partial, final, true);
+                UpdateArtifactProgress(artifact.Dependency, 100, "دانلود قبلی کامل و تأیید شد.");
+                return final;
+            }
+            try { File.Delete(partial); } catch { }
+            Log($"Completed partial artifact failed hash and was removed: {artifact.FileName}");
+        }
+
         if (File.Exists(final))
         {
             UpdateArtifactProgress(artifact.Dependency, 20, "فایل Cache پیدا شد؛ در حال بررسی SHA-256...");
@@ -1172,7 +1185,10 @@ DirectoryIndex index.php index.html
 
                 UpdateArtifactProgress(artifact.Dependency, 96, "دانلود کامل شد؛ در حال بررسی SHA-256...");
                 if (!await Task.Run(() => VerifyFile(partial, artifact), ct))
-                    throw new InvalidOperationException("SHA-256 فایل دانلودشده با نسخه قفل‌شده تطبیق ندارد.");
+                {
+                    try { File.Delete(partial); } catch { }
+                    throw new InvalidOperationException("SHA-256 فایل دانلودشده با نسخه قفل‌شده تطبیق ندارد؛ فایل ناقص/خراب حذف شد.");
+                }
 
                 File.Move(partial, final, true);
                 UpdateArtifactProgress(artifact.Dependency, 100, "فایل دانلود و SHA-256 تأیید شد.");
