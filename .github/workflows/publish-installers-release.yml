@@ -6,6 +6,11 @@ on:
       - main
     paths:
       - '.github/workflows/publish-installers-release.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.release-trigger/installers-v1.0.4.txt'
 
 permissions:
   contents: write
