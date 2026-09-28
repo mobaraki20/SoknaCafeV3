@@ -185,6 +185,17 @@ internal static class InfrastructureOwnershipDetector
 
         evidence.Add($"{serviceName}: ImagePath={image}");
         var exe=ExtractExecutablePath(image!);
+
+        // Apache has no application/business data of its own. If its SOKNA-owned
+        // service registration points to an executable that no longer exists,
+        // treat it as a recoverable orphan rather than a live cross-root owner.
+        if(string.Equals(component,"Apache",StringComparison.OrdinalIgnoreCase) &&
+           exe is not null && !File.Exists(exe))
+        {
+            evidence.Add($"{serviceName}: stale registration; executable is missing and may be safely rebound during Repair/Install.");
+            return;
+        }
+
         var existingRoot=exe is null?null:InferSoknaRootFromInfrastructureExecutable(exe,component);
         if(existingRoot is null)
         {
@@ -1480,6 +1491,14 @@ DirectoryIndex index.php index.html
         {
             RunProcess("sc.exe", "stop SoknaApache", "stop SoknaApache", allowFailure: true);
             RunProcess(httpd, "-k uninstall -n \"SoknaApache\"", "-k uninstall -n \"SoknaApache\"", allowFailure: true);
+            if(ServiceExists("SoknaApache"))
+                RunProcess("sc.exe", "delete SoknaApache", "delete SoknaApache", allowFailure: true);
+
+            var deleteUntil=DateTime.UtcNow.AddSeconds(20);
+            while(DateTime.UtcNow<deleteUntil && ServiceExists("SoknaApache"))
+                Thread.Sleep(400);
+            if(ServiceExists("SoknaApache"))
+                throw new InvalidOperationException("ثبت قدیمی سرویس SoknaApache برای بازسازی حذف نشد. چند ثانیه صبر کنید و دوباره Repair را اجرا کنید.");
         }
         var install = RunProcess(httpd, $"-k install -n \"SoknaApache\" -f \"{conf}\"", $"-k install -n \"SoknaApache\" -f \"{conf}\"", allowFailure: true);
         if (install.ExitCode != 0 && !ServiceExists("SoknaApache"))
@@ -2066,7 +2085,8 @@ DirectoryIndex index.php index.html
                 diag.AppendLine("SOKNA Prerequisites support bundle");
                 diag.AppendLine("No passwords or application credentials are intentionally included.");
                 diag.AppendLine($"Root={RootPath()}");
-                diag.AppendLine($"Apache={ServiceStatus("SoknaApache")}; Port80={TcpOpen(80)}");
+                diag.AppendLine($"Apache={ServiceStatus("SoknaApache")}; Port{ApachePort()}={TcpOpen(ApachePort())}");
+                diag.AppendLine($"ApacheImagePath={InfrastructureOwnershipDetector.ReadServiceImagePath("SoknaApache") ?? "<not-registered>"}");
                 diag.AppendLine($"MariaDB={ServiceStatus("SoknaMariaDB")}; Port3306={TcpOpen(3306)}");
                 diag.AppendLine($"MariaDataPresent={MariaDataInitialized()}");
                 var ownership=InfrastructureOwnershipDetector.Detect(RootPath(),Artifact("mariadb").Version);
