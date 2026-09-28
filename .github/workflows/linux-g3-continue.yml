@@ -1,0 +1,65 @@
+name: linux g3 continuation
+on:
+  push:
+    branches: [transfer/v3-final-menu-041db67-helper]
+    paths: [.github/workflows/linux-g3-continue.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: 3306
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+      - name: reconstruct and patch candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          d="${RUNNER_TEMP}/src"
+          mkdir -p "$d"
+          cd "$d"
+          git init
+          git fetch "${GITHUB_WORKSPACE}/.transfer/soknacafev3-git-041db67ba5fa.bundle" refs/heads/transfer-final-menu-041db67:refs/heads/audited
+          git checkout audited
+          sed -i "s/u.name created_by_name/u.display_name created_by_name/" apps/local-web/src/Domain/Printing/PrintTemplatePackageService.php
+          sed -i "s/fetchColumn()===6,'remote models missing'/fetchColumn()===7,'remote models missing'/" tests/g3-remote-staff-publisher-selftest.php
+          sed -i "s/'0022_g3_public_edge_sync', '0023_g4_guest_content_platform'];/'0022_g3_public_edge_sync', '0023_g4_guest_content_platform', '0024_g4_business_extensions', '0025_g4_print_template_packages'];/" tests/local-mysql-migration-selftest.php
+          sed -i "s/\$core->migrations()->migrate();\$pdo=\$core->database();/\$core->migrations()->migrate();\$pdo=\$core->database();\$businessDate=(string)\$core->businessClock()->assignment()['business_date'];/" tests/local-f1-staff-operational-integration-selftest.php
+          sed -i "s/'occurred_at'=>'2026-09-27 12:00:00'/'occurred_at'=>\$businessDate.' 12:00:00'/" tests/local-f1-staff-operational-integration-selftest.php
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tests/local-mysql-migration-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("'guest_content_config', 'guest_media_assets', 'guest_media_derivatives', 'guest_media_references'] as $table)","'guest_content_config', 'guest_media_assets', 'guest_media_derivatives', 'guest_media_references', 'marketing_campaigns', 'marketing_events', 'notification_preferences', 'notification_push_subscriptions', 'notification_outbox', 'notification_inbox', 'print_template_packages', 'print_template_activations'] as $table)")
+          p.write_text(s,encoding='utf-8',newline='\n')
+          PY
+      - name: install php extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+      - name: run
+        shell: bash
+        run: |
+          cd "${RUNNER_TEMP}/src"
+          ./tests/run-g4-4-product-qualification.sh
