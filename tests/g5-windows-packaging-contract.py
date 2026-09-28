@@ -46,12 +46,16 @@ for token in ['schema_version','install_root','pairing_file','sokna-windows-serv
     need(token in host,f'SetupHost missing {token}')
 for stale in ['app_root','php_exe','openssl_exe','web_server_exe','setup_config_file','recovery_file']:
     need(stale not in host.lower(),f'SetupHost still owns legacy Local field {stale}')
+need('windows-services-setup.log' in host and 'AppendSetupLog' in host,'SetupHost lifecycle logging missing')
 for token in ['RangeHeaderValue','SHA256.HashDataAsync','Get-AuthenticodeSignature','manual-external','release-lock.json','blocks_windows_services']:
     need(token in ui,f'Setup UI missing prerequisite control {token}')
+for token in ['RightToLeftLayout = true','_cancelDownload','collect-support.ps1','ReadService(','windows-services-setup.log','BuildSupportBundleAsync']:
+    need(token in ui,f'Setup UI missing Persian UX/diagnostic control {token}')
 for stale in ['admin_password','db_host','BuildSetupConfig','SoknaAppPayload.zip']:
     need(stale.lower() not in ui.lower(),f'Setup UI still owns Local setup concern {stale}')
 need('Process.Start(new ProcessStartInfo("explorer.exe"' in ui,'downloaded artifact should only be revealed, not executed')
 need('SOKNA Windows Services' in iss and 'SOKNA-Windows-Services-Setup-' in iss,'Inno identity/output not revised')
+need('[Tasks]' in iss and 'desktopicon' in iss and 'startmenuicon' in iss,'installer shortcut choices missing')
 need('https://sokna.local' not in iss and 'SoknaAppPayload' not in iss,'Inno still exposes Local Web ownership')
 need('remove-windows-services.ps1' in iss and '[UninstallRun]' in iss,'service cleanup missing')
 need("packaging\\windows\\WINDOWS_SERVICES_VERSION.txt" in build,'installer does not use Windows Services component version')
@@ -59,7 +63,7 @@ need("Join-Path $RepoRoot 'VERSION.txt'" not in build,'installer still uses root
 for forbidden in ['apps\\local-web','apps/local-web','PrerequisiteBundleRoot']:
     need(forbidden not in prepare,f'shell payload still bundles forbidden concern {forbidden}')
 need("Compress-Archive" not in prepare and "SoknaAppPayload.zip'" not in prepare.replace("@('php.exe','httpd.exe','apache.exe','mysqld.exe','mariadb.exe','SoknaAppPayload.zip')",""),'shell payload still creates Local application seed')
-for required in ['SoknaRuntimeService.exe','SoknaSetupHost.exe','SoknaSetupUi.exe','print-worker','prerequisites.json','release-lock.json']:
+for required in ['SoknaRuntimeService.exe','SoknaSetupHost.exe','SoknaSetupUi.exe','print-worker','prerequisites.json','release-lock.json','collect-support.ps1']:
     need(required in prepare,f'shell payload missing {required}')
 need('$IsWindows' not in life and "$env:OS -ne 'Windows_NT'" in life,'Windows PowerShell 5.1 OS check is unsafe')
 need("@('runtime','print-agent')" not in life or True,'')
