@@ -47,6 +47,16 @@ Logها در `<root>\Infrastructure\Logs` نگه‌داری می‌شوند. ن�
 - نصب موازی همان نسخه MariaDB در Root جدید در حالی که Windows Installer آن را در Root دیگری ثبت کرده، مجاز نیست؛ این حالت به‌جای ورود خاموش MSI به Maintenance Mode با پیام روشن متوقف می‌شود.
 
 
+## Upgrade و Repair
+
+Installer بیرونی نسخه نصب‌شده قبلی SOKNA Prerequisites را از Windows تشخیص می‌دهد. در اجرای تعاملی، اگر نسخه قبلی وجود داشته باشد، به‌جای رفتار مبهم شبیه نصب تازه، مسیر Upgrade را اعلام می‌کند و در صورت بازبودن UI قبلی آن را برای جایگزینی امن فایل‌ها می‌بندد.
+
+پس از Upgrade، اگر سرویس‌های موجود SOKNA به یک Root معتبر اشاره کنند، همان Root به‌صورت خودکار انتخاب و حالت «تعمیر نصب موجود» فعال می‌شود. Repair فقط Running بودن Apache/PHP را کافی نمی‌داند: تنظیمات Local Web، mod_rewrite، PHP handler، DocumentRoot، AllowOverride و PHP runtime واقعی از داخل Apache دوباره بررسی می‌شوند.
+
+برای PHP، Repair همه directiveهای قدیمی `extension_dir` را یکپارچه می‌کند و فقط یک مسیر مطلق نهایی به `<root>\Infrastructure\PHP\ext` باقی می‌گذارد. extensionهای `pdo_mysql`، `mbstring`، `sodium` و `zip` نیز باید هم در CLI و هم از داخل Apache قابل مشاهده باشند.
+
+Support Bundle علاوه بر state و logهای نصب، `apache-httpd.conf` و `apache-error.log` را هم برای تشخیص خطاهای HTTP/PHP جمع‌آوری می‌کند.
+
 ## نسخه و وضعیت دانلود
 
 نسخه خود Setup همیشه در عنوان پنجره نمایش داده می‌شود و همان نسخه در Log ثبت می‌شود.
