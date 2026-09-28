@@ -53,10 +53,12 @@ function Read-Pairing([string]$path){
   $uri=$null
   if(-not[Uri]::TryCreate([string]$p.local_base_url,[UriKind]::Absolute,[ref]$uri)-or-not$uri.IsLoopback){throw 'Pairing local_base_url must be loopback.'}
   if($uri.Scheme-ne'http'-and$uri.Scheme-ne'https'){throw 'Pairing local_base_url scheme must be HTTP/HTTPS.'}
+  if($uri.Port-lt1024-or$uri.Port-gt65535){throw 'Pairing local_base_url port must be between 1024 and 65535.'}
   if($uri.AbsolutePath-ne'/'-or-not[string]::IsNullOrEmpty($uri.Query)-or-not[string]::IsNullOrEmpty($uri.Fragment)-or-not[string]::IsNullOrEmpty($uri.UserInfo)){throw 'Pairing local_base_url must be an origin-only URL.'}
   $originUri=$null
   if(-not[Uri]::TryCreate([string]$p.local_bridge_allowed_origin,[UriKind]::Absolute,[ref]$originUri)-or-not$originUri.IsLoopback){throw 'Pairing local_bridge_allowed_origin must be loopback.'}
   if($originUri.Scheme-ne'http'-and$originUri.Scheme-ne'https'){throw 'Pairing local_bridge_allowed_origin scheme must be HTTP/HTTPS.'}
+  if($originUri.Port-lt1024-or$originUri.Port-gt65535){throw 'Pairing local_bridge_allowed_origin port must be between 1024 and 65535.'}
   if($originUri.AbsolutePath-ne'/'-or-not[string]::IsNullOrEmpty($originUri.Query)-or-not[string]::IsNullOrEmpty($originUri.Fragment)-or-not[string]::IsNullOrEmpty($originUri.UserInfo)){throw 'Pairing local_bridge_allowed_origin must be an exact origin.'}
   $baseAuthority=$uri.GetLeftPart([UriPartial]::Authority)
   $bridgeAuthority=$originUri.GetLeftPart([UriPartial]::Authority)
