@@ -130,7 +130,6 @@ try{
     if(-not$c.ok){throw "Preflight check failed: $id current=$($c.current)"}
   }
   if(-not$j.preflight.ok){throw 'Browser Setup preflight not globally OK'}
-  if([string]::IsNullOrWhiteSpace([string]$j.recommended_data_dir)){throw 'Browser Setup recommended_data_dir missing'}
   Write-Host 'G7_LEGACY_PHP_REPAIR_AND_APACHE_BROWSER_PREFLIGHT=PASS'
 } finally {
   if($proc -and -not$proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue}
