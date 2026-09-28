@@ -1383,10 +1383,10 @@ internal sealed class MainForm : Form
             var text=File.ReadAllText(conf);
             var rewriteReady=Regex.IsMatch(text, @"(?im)^\s*LoadModule\s+rewrite_module\s+modules/mod_rewrite\.so\s*$");
             var phpDll=Path.Combine(PhpPath(),"php8apache2_4.dll").Replace("\\","/");
-            var phpReady=Regex.IsMatch(text, @"(?im)^\s*LoadModule\s+php_module\s+\"" + Regex.Escape(phpDll) + @"\"\s*$");
+            var phpReady=Regex.IsMatch(text, @"(?im)^\s*LoadModule\s+php_module\s+""" + Regex.Escape(phpDll) + @"""\s*$");
             var web=WebPublicPath().Replace("\\","/");
-            var documentRootReady=Regex.IsMatch(text, @"(?im)^\s*DocumentRoot\s+\"" + Regex.Escape(web) + @"\"\s*$");
-            var directoryReady=Regex.IsMatch(text, @"(?is)<Directory\s+\"" + Regex.Escape(web) + @"\"\s*>.*?AllowOverride\s+All.*?</Directory>");
+            var documentRootReady=Regex.IsMatch(text, @"(?im)^\s*DocumentRoot\s+""" + Regex.Escape(web) + @"""\s*$");
+            var directoryReady=Regex.IsMatch(text, @"(?is)<Directory\s+""" + Regex.Escape(web) + @"""\s*>.*?AllowOverride\s+All.*?</Directory>");
             if(!rewriteReady) Log("Apache readiness: mod_rewrite is not enabled.");
             if(!phpReady) Log("Apache readiness: PHP module binding is missing or stale.");
             if(!documentRootReady) Log("Apache readiness: DocumentRoot is not Local Web public.");
