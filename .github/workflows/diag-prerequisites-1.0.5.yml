@@ -1,0 +1,146 @@
+name: Diagnose Prerequisites 1.0.5
+on:
+  push:
+    branches:
+      - diag/prerequisites-1.0.5
+permissions:
+  contents: read
+jobs:
+  local-handoff:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/g7-infrastructure-prerequisites-gate.py
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+      - run: |
+          set -euo pipefail
+          python3 tests/local-endpoint-contract.py
+          php tests/local-endpoint-selftest.php
+          php tests/local-g2-browser-setup-pure-selftest.php
+          php tests/local-g2-browser-setup-selftest.php
+          VERSION="$(tr -d '\r\n' < apps/local-web/VERSION.txt)"
+          mkdir -p dist
+          python3 apps/local-web/tools/build-clean-install-package.py --source apps/local-web --source-commit "$GITHUB_SHA" --out "dist/SoknaCafeV3-local-web-install-$VERSION.zip"
+
+  windows-cross-root:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+      - name: Build UI and self-tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-smoke
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          $pv=([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion).Split('+')[0]
+          if($pv-ne$v){throw "ProductVersion mismatch: $pv != $v"}
+          foreach($arg in @('--self-test-endpoint-port','--self-test-infrastructure-ownership')){
+            $p=Start-Process -FilePath $exe -ArgumentList $arg -Wait -PassThru
+            if($p.ExitCode-ne0){throw "$arg failed: $($p.ExitCode)"}
+          }
+
+      - name: Real MariaDB MSI cross-root matrix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $lock=Get-Content platform/windows/release-lock.json -Raw|ConvertFrom-Json
+          $maria=$lock.artifacts|Where-Object dependency -eq 'mariadb'|Select-Object -First 1
+          $msi=Join-Path $env:RUNNER_TEMP $maria.filename
+          Invoke-WebRequest -Uri $maria.source_url -OutFile $msi -MaximumRedirection 10
+          if((Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant()-ne$maria.sha256.ToLowerInvariant()){throw 'MariaDB SHA mismatch'}
+          if((Get-Item $msi).Length-ne[long]$maria.size){throw 'MariaDB size mismatch'}
+          $oldRoot='C:\SOKNA-OLD'
+          $newRoot='D:\SOKNA-NEW'
+          $oldMaria=Join-Path $oldRoot 'Infrastructure\MariaDB'
+          $oldData=Join-Path $oldRoot 'Data\MariaDB'
+          Remove-Item $oldRoot,$newRoot -Recurse -Force -ErrorAction SilentlyContinue
+          try {
+            $p=Start-Process msiexec.exe -ArgumentList @('/i',('"'+$msi+'"'),('INSTALLDIR="'+$oldMaria+'"'),'ADDLOCAL=MYSQLSERVER,Client,SharedLibraries','REMOVE=DBInstance,DEVEL,HeidiSQL','/qn','/norestart') -Wait -PassThru
+            if($p.ExitCode -notin 0,3010){throw "Seed MSI failed: $($p.ExitCode)"}
+            $server=Join-Path $oldMaria 'bin\mariadbd.exe'
+            if(-not(Test-Path $server)){throw "mariadbd missing at $server"}
+            New-Item -ItemType Directory -Path $oldData -Force|Out-Null
+            $ini=Join-Path $oldData 'my.ini'
+            Set-Content $ini "[mysqld]`r`ndatadir=$($oldData.Replace('\','/'))`r`n" -Encoding ASCII
+
+            $productOnly=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$newRoot,$maria.version) -Wait -PassThru
+            if($productOnly.ExitCode-ne42){throw "MSI-only cross-root must block; got $($productOnly.ExitCode)"}
+            if(Test-Path $newRoot){throw 'MSI-only preflight mutated new root'}
+
+            $sameProduct=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$oldRoot,$maria.version) -Wait -PassThru
+            if($sameProduct.ExitCode-ne0){throw "Same-root registered product should pass because binary exists; got $($sameProduct.ExitCode)"}
+
+            $binPath=('"'+$server+'" --defaults-file="'+$ini+'"')
+            New-Service -Name SoknaMariaDB -BinaryPathName $binPath -DisplayName 'SOKNA MariaDB CI' -StartupType Manual|Out-Null
+            $serviceCross=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$newRoot,$maria.version) -Wait -PassThru
+            if($serviceCross.ExitCode-ne42){throw "Service cross-root must block; got $($serviceCross.ExitCode)"}
+            $serviceSame=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$oldRoot,$maria.version) -Wait -PassThru
+            if($serviceSame.ExitCode-ne0){throw "Service same-root should pass; got $($serviceSame.ExitCode)"}
+          } finally {
+            $svc=Get-Service SoknaMariaDB -ErrorAction SilentlyContinue
+            if($svc){& sc.exe delete SoknaMariaDB|Out-Null;$svc.Dispose();Start-Sleep -Milliseconds 800}
+            $p=Start-Process msiexec.exe -ArgumentList @('/x',('"'+$msi+'"'),'/qn','/norestart') -Wait -PassThru
+            Write-Host "cleanup MSI exit=$($p.ExitCode)"
+            Remove-Item $oldRoot,$newRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Apache cross-root matrix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $oldRoot='C:\SOKNA-APACHE-OLD'
+          $newRoot='D:\SOKNA-APACHE-NEW'
+          $httpd=Join-Path $oldRoot 'Infrastructure\Apache\bin\httpd.exe'
+          New-Item -ItemType Directory -Path (Split-Path $httpd) -Force|Out-Null
+          Set-Content $httpd 'fixture'
+          try {
+            New-Service -Name SoknaApache -BinaryPathName ('"'+$httpd+'" -k runservice -n SoknaApache') -StartupType Manual|Out-Null
+            $p=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$newRoot,'11.4.12') -Wait -PassThru
+            if($p.ExitCode-ne42){throw "Apache cross-root must block; got $($p.ExitCode)"}
+            $p=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$oldRoot,'11.4.12') -Wait -PassThru
+            if($p.ExitCode-ne0){throw "Apache same-root should pass; got $($p.ExitCode)"}
+            if(Test-Path $newRoot){throw 'Apache preflight mutated new root'}
+          } finally {
+            $svc=Get-Service SoknaApache -ErrorAction SilentlyContinue
+            if($svc){& sc.exe delete SoknaApache|Out-Null;$svc.Dispose();Start-Sleep -Milliseconds 500}
+            Remove-Item $oldRoot,$newRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Build final installer
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          $root=(Resolve-Path .).Path
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $root
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          if(-not(Test-Path "packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-$v.exe")){throw 'Final installer missing'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-prerequisites-1.0.5-qualified-${{ github.sha }}
+          path: |
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.5.exe
+            packaging/prerequisites/out/installer/artifact-index.json
+          if-no-files-found: error
