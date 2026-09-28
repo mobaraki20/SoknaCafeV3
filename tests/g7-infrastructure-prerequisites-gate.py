@@ -44,7 +44,7 @@ for token in [
     'InfrastructureOwnershipDetector.Detect(','--self-test-infrastructure-ownership','--probe-infrastructure-ownership',
     'cross_root_existing_installation_detected = false','WindowsInstaller:','ReadServiceImagePath(',
     'stale registration; executable is missing and may be safely rebound','delete SoknaApache',
-    'LoadModule rewrite_module modules/mod_rewrite.so','Apache mod_rewrite پیدا نشد',
+    'LoadModule rewrite_module modules/mod_rewrite.so','LoadFile "{Slash(sodium)}"','libsodium dependency is not explicitly loaded','Apache mod_rewrite پیدا نشد',
     'ApacheConfigurationReady(','Local Web configuration is incomplete; repair is required',
     'apache-error.log','ApacheLocalWebConfigReady=',
     'PhpRuntimeConfiguration.Configure(','var extDir = Path.Combine(phpPath, "ext")','matches.Count != 1','php_zip.dll','ValidateApachePhpRuntimeAsync(',
@@ -73,6 +73,7 @@ need(upgrade_regression.exists(),'permanent prerequisites upgrade regression mis
 g7wf=(R/'.github/workflows/g7-infrastructure-prerequisites.yml').read_text(encoding='utf-8')
 need('tests/g7-windows-apache-php-runtime.ps1' in g7wf,'G7 does not run Apache/PHP Browser Setup regression')
 need('tests/g7-prerequisites-upgrade.ps1' in g7wf,'G7 does not run prerequisites upgrade regression')
+need('php.ini' in src and 'PhpSodiumRuntime=' in src and 'ApacheBinSodium=' in src,'support bundle must capture PHP/sodium diagnostics')
 
 lock=json.loads((R/'platform/windows/release-lock.json').read_text(encoding='utf-8'))
 maria=next(x for x in lock['artifacts'] if x['dependency']=='mariadb')
