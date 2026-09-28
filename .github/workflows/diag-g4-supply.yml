@@ -1,0 +1,70 @@
+name: diag g4 supply
+on:
+  push:
+    branches: [transfer/v3-final-menu-041db67-helper]
+    paths: [.github/workflows/diag-g4-supply.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: 3306
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+      - name: reconstruct and patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          d="${RUNNER_TEMP}/src"
+          mkdir -p "$d"
+          cd "$d"
+          git init
+          git fetch "${GITHUB_WORKSPACE}/.transfer/soknacafev3-git-041db67ba5fa.bundle" refs/heads/transfer-final-menu-041db67:refs/heads/audited
+          git checkout audited
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('apps/public/bootstrap.php')
+          s=p.read_text(encoding='utf-8')
+          marker="require_once __DIR__ . '/src/Http/ConnectivityHttpAdapter.php';\n"
+          if 'RealtimeHttpAdapter.php' not in s:
+              s=s.replace(marker,marker+"require_once __DIR__ . '/src/Http/RealtimeHttpAdapter.php';\nrequire_once __DIR__ . '/src/Http/DeferredHttpAdapter.php';\n")
+          p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('tests/g4-cross-component-parity-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          old="$sq=body($kernel->handle('POST','/api/staff/deferred',[],json_encode($supplyEnvelope),['Cookie'=>$cookie,'Content-Type'=>'application/json']));g41(($sq['state']??'')==='pending_sync','supply deferred was not queued');$relay->sync();$sres=body($kernel->handle('GET','/api/staff/deferred/result',['request_id'=>$supplyId],'',['Cookie'=>$cookie]));g41(($sres['state']??'')==='committed','supply deferred did not commit');"
+          new="$sq=body($kernel->handle('POST','/api/staff/deferred',[],json_encode($supplyEnvelope),['Cookie'=>$cookie,'Content-Type'=>'application/json']));g41(($sq['state']??'')==='pending_sync','supply deferred was not queued');$supplyRelay=$relay->sync();$sres=body($kernel->handle('GET','/api/staff/deferred/result',['request_id'=>$supplyId],'',['Cookie'=>$cookie]));$localReceipt=$lp->query(\"SELECT request_id,state,error_code,result_json FROM deferred_work_receipts WHERE request_id=\".$lp->quote($supplyId).\" LIMIT 1\")->fetch(PDO::FETCH_ASSOC);fwrite(STDERR,'SUPPLY_DIAG '.json_encode(['relay'=>$supplyRelay,'public'=>$sres,'local'=>$localReceipt],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL);g41(($sres['state']??'')==='committed','supply deferred did not commit');"
+          if old not in s:
+              raise SystemExit('supply sequence not found')
+          p.write_text(s.replace(old,new),encoding='utf-8',newline='\n')
+          PY
+      - name: install php extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+      - name: run g4.1
+        shell: bash
+        run: |
+          cd "${RUNNER_TEMP}/src"
+          php tests/g4-cross-component-parity-selftest.php
