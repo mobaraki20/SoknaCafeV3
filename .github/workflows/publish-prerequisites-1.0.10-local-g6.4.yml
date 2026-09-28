@@ -1,0 +1,51 @@
+name: Publish SOKNA Prerequisites 1.0.10 and Local Web g6.4
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-prerequisites-1.0.10-local-g6.4.yml'
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: "36498843282"
+      SOURCE_SHA: ee014481b31d4286fbff94f3358bf2a98d350000
+      PREREQ_ARTIFACT: sokna-prerequisites-1.0.10-qualified-ee014481b31d4286fbff94f3358bf2a98d350000
+      LOCAL_ARTIFACT: sokna-local-web-3.0.0-g6.4-dev-qualified-ee014481b31d4286fbff94f3358bf2a98d350000
+    steps:
+      - name: Download exact qualified artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist/prereq dist/local
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$PREREQ_ARTIFACT" --dir dist/prereq
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$LOCAL_ARTIFACT" --dir dist/local
+          test -f dist/prereq/SOKNA-Prerequisites-Setup-1.0.10.exe
+          test -f dist/local/SoknaCafeV3-local-web-install-3.0.0-g6.4-dev.zip
+          (cd dist/prereq && sha256sum SOKNA-Prerequisites-Setup-1.0.10.exe > SHA256SUMS.txt)
+          (cd dist/local && sha256sum SoknaCafeV3-local-web-install-3.0.0-g6.4-dev.zip > SHA256SUMS.txt)
+
+      - name: Publish Prerequisites 1.0.10
+        run: |
+          set -euo pipefail
+          TAG=prerequisites-v1.0.10
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/prereq/SOKNA-Prerequisites-Setup-1.0.10.exe dist/prereq/artifact-index.json#SOKNA-Prerequisites-1.0.10-artifact-index.json dist/prereq/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG"               dist/prereq/SOKNA-Prerequisites-Setup-1.0.10.exe               dist/prereq/artifact-index.json#SOKNA-Prerequisites-1.0.10-artifact-index.json               dist/prereq/SHA256SUMS.txt               --repo "$GITHUB_REPOSITORY"               --target "$SOURCE_SHA"               --title "SOKNA Prerequisites 1.0.10"               --notes "Repairs legacy/upgraded PHP configurations that contain multiple extension_dir directives by canonicalizing them to one absolute <root>/Infrastructure/PHP/ext value. Keeps pdo_mysql, mbstring, sodium, zip and the other required extensions visible both to CLI PHP and PHP loaded inside Apache. Upgrade 1.0.9 -> 1.0.10 was qualified while the old UI was intentionally left open. Support bundle retains Apache config/error logs and existing-install Repair selection remains enabled. The exact released artifact passed real locked PHP+Apache Browser Setup qualification."
+          fi
+
+      - name: Publish Local Web g6.4
+        run: |
+          set -euo pipefail
+          TAG=local-web-v3.0.0-g6.4-dev
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/local/SoknaCafeV3-local-web-install-3.0.0-g6.4-dev.zip dist/local/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG"               dist/local/SoknaCafeV3-local-web-install-3.0.0-g6.4-dev.zip               dist/local/SHA256SUMS.txt               --repo "$GITHUB_REPOSITORY"               --target "$SOURCE_SHA"               --title "SOKNA Local Web 3.0.0-g6.4-dev"               --notes "Browser Setup now derives the recommended Data directory from the actual Local Web install root, preflights it, fills it automatically in the wizard, and displays Windows paths correctly. Qualified with real MariaDB Browser Setup, migrations, admin creation and Windows Services pairing generation."
+          fi
