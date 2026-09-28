@@ -1,0 +1,92 @@
+name: qualify linux continuation
+
+on:
+  push:
+    branches:
+      - transfer/v3-final-menu-041db67-helper
+    paths:
+      - .github/workflows/qualify-linux-continuation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-real-env-continuation:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: 3306
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: reconstruct source
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="${GITHUB_WORKSPACE}/.transfer/soknacafev3-git-041db67ba5fa.bundle"
+          source_dir="${RUNNER_TEMP}/sokna-source"
+          rm -rf "$source_dir"
+          mkdir -p "$source_dir"
+          cd "$source_dir"
+          git init
+          git fetch "$bundle" refs/heads/transfer-final-menu-041db67:refs/heads/audited
+          git checkout audited
+          test "$(git rev-parse HEAD)" = "041db67ba5fad1f7492f9b25f3cb74d072fcca5e"
+
+      - name: apply audited candidate fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/sokna-source"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tests/local-mysql-migration-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("'0022_g3_public_edge_sync', '0023_g4_guest_content_platform'];","'0022_g3_public_edge_sync', '0023_g4_guest_content_platform', '0024_g4_business_extensions', '0025_g4_print_template_packages'];")
+          s=s.replace("'guest_content_config', 'guest_media_assets', 'guest_media_derivatives', 'guest_media_references'] as $table)","'guest_content_config', 'guest_media_assets', 'guest_media_derivatives', 'guest_media_references', 'marketing_campaigns', 'marketing_events', 'notification_preferences', 'notification_push_subscriptions', 'notification_outbox', 'notification_inbox', 'print_template_packages', 'print_template_activations'] as $table)")
+          p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('tests/local-f1-staff-operational-integration-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("$core->migrations()->migrate();$pdo=$core->database();","$core->migrations()->migrate();$pdo=$core->database();$businessDate=(string)$core->businessClock()->assignment()['business_date'];")
+          s=s.replace("'occurred_at'=>'2026-09-27 12:00:00'","'occurred_at'=>$businessDate.' 12:00:00'")
+          p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('apps/local-web/src/Domain/Printing/PrintTemplatePackageService.php')
+          s=p.read_text(encoding='utf-8').replace('u.name created_by_name','u.display_name created_by_name')
+          p.write_text(s,encoding='utf-8',newline='\n')
+          PY
+
+      - name: install php extensions
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+          php -r 'exit(in_array("mysql",PDO::getAvailableDrivers(),true)&&class_exists("ZipArchive")&&extension_loaded("sodium")?0:1);'
+
+      - name: run consolidated g4 real environment qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/sokna-source"
+          ./tests/run-g4-4-product-qualification.sh
