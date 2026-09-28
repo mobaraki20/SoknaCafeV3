@@ -106,7 +106,10 @@ jobs:
           New-Item -ItemType Directory -Path $shell -Force | Out-Null
           Copy-Item packaging/windows/Sokna.ico (Join-Path $shell 'Sokna.ico')
           Set-Content (Join-Path $shell 'SoknaSetupUi.exe') 'fixture'
-          Set-Content (Join-Path $shell 'remove-owned-services.ps1') '$true'
+          Set-Content (Join-Path $shell 'remove-windows-services.ps1') '$true'
+          $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          [ordered]@{format='sokna-windows-services-shell-v2';schema_version=2;package_version=$version} |
+            ConvertTo-Json | Set-Content (Join-Path $shell 'payload-manifest.json') -Encoding UTF8
           & packaging/windows/scripts/build-installer.ps1 -ShellPayloadRoot $shell -RepoRoot $root
 
   manual-uat-contract:
