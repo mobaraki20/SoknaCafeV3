@@ -1,44 +1,92 @@
 {
-  "format": "sokna-windows-prerequisites-v1",
-  "schema_version": 1,
-  "acquisition_policy": "preinstalled-or-release-verified-offline-bundle",
-  "automatic_download_allowed": false,
-  "php": {
-    "minimum_version_id": 80200,
-    "architecture": "x64",
-    "required_extensions": [
-      "pdo_mysql",
-      "fileinfo",
-      "openssl",
-      "sodium",
-      "mbstring"
-    ]
+  "format": "sokna-windows-prerequisites-v2",
+  "schema_version": 2,
+  "ownership": "external",
+  "installer_role": "detect-verified-acquire-manual-guidance",
+  "automatic_download_allowed": true,
+  "automatic_install_allowed": false,
+  "release_lock": {
+    "relative_path": "release-lock.json",
+    "format": "sokna-windows-prerequisite-lock-v1",
+    "required_for_download": true
   },
-  "web_server": {
-    "family": "apache",
-    "lifecycle_owner": "external",
-    "executable_names": [
-      "httpd.exe",
-      "apache.exe"
-    ],
-    "required_for_release": true
+  "cache": {
+    "default_root": "%ProgramData%\\SOKNA\\PrerequisiteCache",
+    "partial_suffix": ".partial",
+    "resume_required": true
   },
-  "openssl": {
-    "lifecycle_owner": "external",
-    "required_when_https_enabled": true,
-    "probe_argument": "version"
-  },
-  "database": {
-    "family": "mysql-mariadb",
-    "lifecycle_owner": "external",
-    "php_driver": "pdo_mysql",
-    "validation_owner": "tools/setup-machine.php"
-  },
-  "offline_bundle": {
-    "relative_cache_path": "Prerequisites",
-    "format": "sokna-windows-prerequisite-bundle-v1",
-    "automatic_install": false,
-    "shared_dependency_owner": "external",
-    "release_lock_required": true
-  }
+  "items": [
+    {
+      "id": "php",
+      "display_name": "PHP 8.2 x64 Thread Safe",
+      "required_for": "local-web",
+      "blocks_windows_services": false,
+      "detection": {
+        "type": "php",
+        "commands": [
+          "php.exe"
+        ],
+        "version_argument": "-v",
+        "minimum_version": "8.2.0",
+        "required_extensions": [
+          "pdo_mysql",
+          "fileinfo",
+          "openssl",
+          "sodium",
+          "mbstring"
+        ]
+      },
+      "release_lock_dependency": "php",
+      "manual_guidance_fa": "PHP بیرون از مالکیت SOKNA نصب می‌شود. پس از نصب، php.exe و extensionهای لازم را در Browser Setup بررسی کنید."
+    },
+    {
+      "id": "apache",
+      "display_name": "Apache HTTP Server x64",
+      "required_for": "local-web",
+      "blocks_windows_services": false,
+      "detection": {
+        "type": "command",
+        "commands": [
+          "httpd.exe",
+          "apache.exe"
+        ],
+        "version_argument": "-v",
+        "minimum_version": "2.4.0"
+      },
+      "release_lock_dependency": "apache",
+      "manual_guidance_fa": "Apache سرویس خارجی است؛ SOKNA آن را نصب، حذف یا restart نمی‌کند."
+    },
+    {
+      "id": "mariadb",
+      "display_name": "MariaDB 11.4 x64",
+      "required_for": "local-web",
+      "blocks_windows_services": false,
+      "detection": {
+        "type": "command",
+        "commands": [
+          "mariadb.exe",
+          "mysql.exe",
+          "mysqld.exe"
+        ],
+        "version_argument": "--version",
+        "minimum_version": "11.4.0"
+      },
+      "release_lock_dependency": "mariadb",
+      "manual_guidance_fa": "MariaDB سرویس خارجی است. نصب و lifecycle آن با اپراتور/فروشنده است و SOKNA فقط compatibility را بررسی می‌کند."
+    },
+    {
+      "id": "vc_runtime",
+      "display_name": "Microsoft Visual C++ x64 Runtime",
+      "required_for": "windows-services",
+      "blocks_windows_services": true,
+      "detection": {
+        "type": "registry",
+        "registry_path": "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64",
+        "value_name": "Version",
+        "minimum_version": "14.0.0"
+      },
+      "release_lock_dependency": "vc_runtime",
+      "manual_guidance_fa": "در صورت نبود Runtime، فایل hash/signature-verified را دریافت کنید و نصب را به‌صورت دستی انجام دهید."
+    }
+  ]
 }

@@ -127,7 +127,9 @@
         "Local business table writes",
         "printer spooler state"
       ],
-      "current_state": "CORE_COMPLETE"
+      "current_state": "CORE_COMPLETE",
+      "version_source": "windows/runtime/source/Sokna.Runtime.Service.csproj#Version",
+      "current_version": "1.0.0"
     },
     "print-agent": {
       "workstreams": [
@@ -162,7 +164,9 @@
         "Public/Internet control",
         "Local business tables"
       ],
-      "current_state": "CORE_COMPLETE"
+      "current_state": "CORE_COMPLETE",
+      "version_source": "windows/print-agent/source/Directory.Build.props#SoknaAgentVersion",
+      "current_version": "6.2.5"
     },
     "windows-services-packaging": {
       "workstreams": [
@@ -204,7 +208,10 @@
         "Public Edge payload",
         "third_party_prerequisite_payload"
       ],
-      "current_state": "PRODUCT_OPEN_PACKAGING_REWRITE_REQUIRED"
+      "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
+      "version_source": "packaging/windows/WINDOWS_SERVICES_VERSION.txt",
+      "current_version": "1.0.0",
+      "compatibility_manifest": "packaging/windows/windows-services-compatibility-v1.json"
     },
     "infrastructure-compatibility": {
       "workstreams": [
@@ -235,7 +242,9 @@
         "Local Web files",
         "business data"
       ],
-      "current_state": "PRODUCT_OPEN_ARCHITECTURE_REVISION_REQUIRED"
+      "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
+      "compatibility_profile_source": "platform/windows/prerequisites.json",
+      "release_lock_source": "platform/windows/release-lock.json"
     },
     "shared-contracts": {
       "workstreams": [

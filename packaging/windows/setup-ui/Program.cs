@@ -1,10 +1,75 @@
+using Microsoft.Win32;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Security.Principal;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
-using System.Windows.Forms;
+using System.Text.Json.Serialization;
 
 namespace Sokna.SetupUi;
+
+internal sealed class PrerequisitePolicy
+{
+    [JsonPropertyName("format")] public string Format { get; init; } = "";
+    [JsonPropertyName("schema_version")] public int SchemaVersion { get; init; }
+    [JsonPropertyName("ownership")] public string Ownership { get; init; } = "";
+    [JsonPropertyName("automatic_download_allowed")] public bool AutomaticDownloadAllowed { get; init; }
+    [JsonPropertyName("automatic_install_allowed")] public bool AutomaticInstallAllowed { get; init; }
+    [JsonPropertyName("items")] public List<PrerequisiteItem> Items { get; init; } = [];
+}
+
+internal sealed class PrerequisiteItem
+{
+    [JsonPropertyName("id")] public string Id { get; init; } = "";
+    [JsonPropertyName("display_name")] public string DisplayName { get; init; } = "";
+    [JsonPropertyName("required_for")] public string RequiredFor { get; init; } = "";
+    [JsonPropertyName("blocks_windows_services")] public bool BlocksWindowsServices { get; init; }
+    [JsonPropertyName("detection")] public DetectionRule Detection { get; init; } = new();
+    [JsonPropertyName("release_lock_dependency")] public string ReleaseLockDependency { get; init; } = "";
+    [JsonPropertyName("manual_guidance_fa")] public string ManualGuidanceFa { get; init; } = "";
+}
+
+internal sealed class DetectionRule
+{
+    [JsonPropertyName("type")] public string Type { get; init; } = "";
+    [JsonPropertyName("commands")] public List<string> Commands { get; init; } = [];
+    [JsonPropertyName("version_argument")] public string VersionArgument { get; init; } = "";
+    [JsonPropertyName("minimum_version")] public string MinimumVersion { get; init; } = "";
+    [JsonPropertyName("required_extensions")] public List<string> RequiredExtensions { get; init; } = [];
+    [JsonPropertyName("registry_path")] public string RegistryPath { get; init; } = "";
+    [JsonPropertyName("value_name")] public string ValueName { get; init; } = "";
+}
+
+internal sealed class ReleaseLock
+{
+    [JsonPropertyName("format")] public string Format { get; init; } = "";
+    [JsonPropertyName("schema_version")] public int SchemaVersion { get; init; }
+    [JsonPropertyName("release_frozen")] public bool ReleaseFrozen { get; init; }
+    [JsonPropertyName("artifacts")] public List<LockedArtifact> Artifacts { get; init; } = [];
+}
+
+internal sealed class LockedArtifact
+{
+    [JsonPropertyName("id")] public string Id { get; init; } = "";
+    [JsonPropertyName("dependency")] public string Dependency { get; init; } = "";
+    [JsonPropertyName("version")] public string Version { get; init; } = "";
+    [JsonPropertyName("filename")] public string Filename { get; init; } = "";
+    [JsonPropertyName("source_url")] public string SourceUrl { get; init; } = "";
+    [JsonPropertyName("sha256")] public string Sha256 { get; init; } = "";
+    [JsonPropertyName("size")] public long Size { get; init; }
+    [JsonPropertyName("installation")] public string Installation { get; init; } = "";
+    [JsonPropertyName("authenticode")] public AuthenticodePolicy Authenticode { get; init; } = new();
+    [JsonPropertyName("instructions_fa")] public string InstructionsFa { get; init; } = "";
+}
+
+internal sealed class AuthenticodePolicy
+{
+    [JsonPropertyName("required")] public bool Required { get; init; }
+    [JsonPropertyName("publisher_contains")] public string PublisherContains { get; init; } = "";
+}
+
+internal sealed record DetectionResult(bool Satisfied, string Status, string FoundPath, string FoundVersion);
 
 internal static class Program
 {
@@ -18,424 +83,245 @@ internal static class Program
 
 internal sealed class SetupForm : Form
 {
-    private readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly TextBox _appRoot = new() { Text = @"C:\SOKNA\Cafe" };
-    private readonly TextBox _dataRoot = new() { Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOKNA") };
-    private readonly TextBox _hostname = new() { Text = "sokna.local" };
-    private readonly TextBox _php = new();
-    private readonly TextBox _openssl = new();
-    private readonly TextBox _webServer = new();
-    private readonly TextBox _dbHost = new() { Text = "127.0.0.1" };
-    private readonly TextBox _dbPort = new() { Text = "3306" };
-    private readonly TextBox _dbName = new() { Text = "sokna_cafe" };
-    private readonly TextBox _dbUser = new() { Text = "sokna" };
-    private readonly TextBox _dbPass = new() { UseSystemPasswordChar = true };
-    private readonly TextBox _adminUser = new() { Text = "admin" };
-    private readonly TextBox _adminPass = new() { UseSystemPasswordChar = true };
-    private readonly TextBox _cafeName = new() { Text = "کافه سکنا" };
-    private readonly NumericUpDown _tableCount = new() { Minimum = 1, Maximum = 200, Value = 30 };
-    private readonly TextBox _recoveryFile = new();
-    private readonly TextBox _recoveryPass = new() { UseSystemPasswordChar = true };
-    private readonly Button _run = new() { Text = "بررسی و اجرا", AutoSize = true, MinimumSize = new Size(120, 44) };
-    private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(720, 0) };
-    private readonly Panel _businessPanel = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Top };
-    private readonly Panel _adminPanel = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Top };
-    private readonly Panel _recoveryPanel = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Top };
+    private static readonly JsonSerializerOptions StrictJson = new() { PropertyNameCaseInsensitive = false };
+    private readonly TextBox _installRoot = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _dataRoot = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _pairing = new() { Dock = DockStyle.Fill };
+    private readonly CheckBox _startPaired = new() { Text = "پس از Pairing سرویس Runtime نیز شروع شود", AutoSize = true, Checked = true };
+    private readonly ListView _prereqs = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, GridLines = true, MultiSelect = false };
+    private readonly ProgressBar _progress = new() { Dock = DockStyle.Fill, Minimum = 0, Maximum = 100 };
+    private readonly Label _status = new() { Dock = DockStyle.Fill, AutoSize = true, Text = "آماده" };
+    private readonly Button _install = new() { Text = "نصب / به‌روزرسانی سرویس‌ها", AutoSize = true };
+    private readonly Button _repair = new() { Text = "تعمیر سرویس‌ها", AutoSize = true };
+    private readonly Button _uninstall = new() { Text = "حذف سرویس‌ها", AutoSize = true };
+    private readonly Button _refresh = new() { Text = "بررسی دوباره پیش‌نیازها", AutoSize = true };
+    private readonly Button _download = new() { Text = "دریافت فایل تأییدشده", AutoSize = true };
+    private readonly Button _guidance = new() { Text = "راهنمای نصب دستی", AutoSize = true };
+    private readonly Button _browsePairing = new() { Text = "انتخاب…", AutoSize = true };
+    private readonly PrerequisitePolicy _policy;
+    private readonly ReleaseLock _lock;
+    private readonly Dictionary<string, DetectionResult> _results = new(StringComparer.OrdinalIgnoreCase);
 
-    internal SetupForm()
+    public SetupForm()
     {
-        Text = "راه‌اندازی سکنا";
-        RightToLeft = RightToLeft.Yes;
-        RightToLeftLayout = true;
-        StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(720, 560);
-        Size = new Size(860, 680);
-        AutoScaleMode = AutoScaleMode.Dpi;
-        Font = new Font("Segoe UI", 10F);
-
-        _mode.Items.AddRange(new object[] { "نصب جدید", "بازیابی روی رایانه جدید", "تعمیر نصب موجود" });
-        _mode.SelectedIndex = 0;
-        _php.Text = FindExecutable("php.exe");
-        _openssl.Text = FindExecutable("openssl.exe");
-        _webServer.Text = FindExecutable("httpd.exe", "apache.exe");
-
-        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(24), ColumnCount = 1, RowCount = 1 };
-        outer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        var content = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Top, Width = 740 };
-        content.Controls.Add(Title("راه‌اندازی SOKNA Cafe Local"));
-        content.Controls.Add(Help("این صفحه اطلاعات لازم برای نصب، بازیابی یا تعمیر سکنا را جمع‌آوری می‌کند. عملیات اصلی فقط پس از بررسی کامل و با اجازه مدیر ویندوز انجام می‌شود. اتصال امن محلی و Apache برای استفاده عملیاتی سکنا الزامی‌اند."));
-        content.Controls.Add(Field("حالت", _mode));
-        content.Controls.Add(PathField("پوشه برنامه (قابل تغییر)", _appRoot, true));
-        content.Controls.Add(PathField("پوشه داده (جدا از برنامه)", _dataRoot, true));
-        content.Controls.Add(Field("نام محلی", _hostname));
-        content.Controls.Add(PathField("PHP 8.2+ (x64)", _php, false, "php.exe"));
-        content.Controls.Add(PathField("OpenSSL", _openssl, false, "openssl.exe"));
-        content.Controls.Add(PathField("Apache", _webServer, false, "httpd.exe;apache.exe"));
-        var offlinePrerequisites = BuildOfflinePrerequisiteAction();
-        if (offlinePrerequisites is not null) content.Controls.Add(offlinePrerequisites);
-        content.Controls.Add(Help("پوشه داده باید خارج از پوشه برنامه باشد. سکنا Apache را پیکربندی می‌کند، اما شروع/توقف/راه‌اندازی مجدد وب‌سرور همچنان در اختیار مالک خارجی آن است. اگر پیش‌نیازی نصب نیست، از بسته آفلاین تأییدشده استفاده کنید و سپس همین بررسی را دوباره اجرا کنید."));
-
-        _businessPanel.Controls.Add(BuildBusinessPanel());
-        _adminPanel.Controls.Add(BuildAdminPanel());
-        _recoveryPanel.Controls.Add(BuildRecoveryPanel());
-        content.Controls.Add(_businessPanel);
-        content.Controls.Add(_adminPanel);
-        content.Controls.Add(_recoveryPanel);
-
-        var actions = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 16, 0, 0) };
-        var cancel = new Button { Text = "بستن", AutoSize = true, MinimumSize = new Size(96, 44) };
-        cancel.Click += (_, _) => Close();
-        _run.MinimumSize = new Size(128, 44);
-        _run.Click += async (_, _) => await ExecuteAsync();
-        actions.Controls.Add(cancel);
-        actions.Controls.Add(_run);
-        content.Controls.Add(actions);
-        content.Controls.Add(_status);
-        outer.Controls.Add(content, 0, 0);
-        Controls.Add(outer);
-
-        _mode.SelectedIndexChanged += (_, _) => RefreshMode();
-        RefreshMode();
+        Text = "SOKNA Windows Services";
+        Width = 980; Height = 700; MinimumSize = new Size(820, 600); StartPosition = FormStartPosition.CenterScreen;
+        RightToLeft = RightToLeft.Yes; RightToLeftLayout = true; Font = new Font("Segoe UI", 10F);
+        _installRoot.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SOKNA Windows Services");
+        _dataRoot.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOKNA");
+        _policy = LoadJson<PrerequisitePolicy>(Path.Combine(AppContext.BaseDirectory, "prerequisites.json"), "فایل سیاست پیش‌نیازها");
+        _lock = LoadJson<ReleaseLock>(Path.Combine(AppContext.BaseDirectory, "release-lock.json"), "release lock پیش‌نیازها");
+        ValidateContracts();
+        BuildUi();
+        Shown += async (_, _) => await RefreshPrerequisitesAsync();
     }
 
-    private Control BuildBusinessPanel()
+    private void BuildUi()
     {
-        var box = Group("پایگاه داده");
-        box.Controls.Add(Field("میزبان", _dbHost));
-        box.Controls.Add(Field("پورت", _dbPort));
-        box.Controls.Add(Field("نام پایگاه داده خالی", _dbName));
-        box.Controls.Add(Field("کاربر پایگاه داده", _dbUser));
-        box.Controls.Add(Field("رمز پایگاه داده", _dbPass));
-        return box;
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 1, RowCount = 8 };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var intro = new Label { Dock = DockStyle.Fill, AutoSize = true, Text = "این بسته فقط Runtime و Print Agent سکنا را مدیریت می‌کند. PHP، Apache و MariaDB خارج از مالکیت نصب‌کننده هستند؛ این صفحه فقط سازگاری آن‌ها را بررسی می‌کند یا فایل تأییدشده را برای نصب دستی دریافت می‌کند." };
+        root.Controls.Add(intro);
+        root.Controls.Add(LabeledRow("پوشه سرویس‌ها", _installRoot));
+        root.Controls.Add(LabeledRow("پوشه داده مشترک", _dataRoot));
+        _prereqs.Columns.Add("پیش‌نیاز", 260); _prereqs.Columns.Add("وضعیت", 240); _prereqs.Columns.Add("نسخه/مسیر", 360);
+        root.Controls.Add(_prereqs);
+        var prereqButtons = Flow(_refresh, _download, _guidance); root.Controls.Add(prereqButtons);
+        var pairRow = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 3 };
+        pairRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); pairRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); pairRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        pairRow.Controls.Add(new Label { Text = "فایل Pairing (اختیاری)", AutoSize = true, Anchor = AnchorStyles.Right }, 0, 0); pairRow.Controls.Add(_pairing, 1, 0); pairRow.Controls.Add(_browsePairing, 2, 0);
+        root.Controls.Add(pairRow);
+        var actionRow = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2 };
+        actionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); actionRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        actionRow.Controls.Add(_startPaired, 0, 0); actionRow.Controls.Add(Flow(_install, _repair, _uninstall), 1, 0); root.Controls.Add(actionRow);
+        var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2 };
+        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
+        bottom.Controls.Add(_status, 0, 0); bottom.Controls.Add(_progress, 1, 0); root.Controls.Add(bottom);
+        Controls.Add(root);
+        _refresh.Click += async (_, _) => await RefreshPrerequisitesAsync();
+        _download.Click += async (_, _) => await DownloadSelectedAsync();
+        _guidance.Click += (_, _) => ShowGuidance();
+        _browsePairing.Click += (_, _) => BrowsePairing();
+        _install.Click += async (_, _) => await RunLifecycleAsync("install");
+        _repair.Click += async (_, _) => await RunLifecycleAsync("repair");
+        _uninstall.Click += async (_, _) => await RunLifecycleAsync("uninstall");
     }
 
-    private Control BuildAdminPanel()
+    private static Control LabeledRow(string label, Control control)
     {
-        var box = Group("اطلاعات اولیه نصب جدید");
-        box.Controls.Add(Field("نام کافه", _cafeName));
-        box.Controls.Add(Field("نام کاربری مدیر", _adminUser));
-        box.Controls.Add(Field("رمز مدیر", _adminPass));
-        box.Controls.Add(Field("تعداد میز", _tableCount));
-        return box;
+        var row = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2 };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Right }, 0, 0); row.Controls.Add(control, 1, 0); return row;
     }
+    private static FlowLayoutPanel Flow(params Control[] controls) { var p = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false }; p.Controls.AddRange(controls); return p; }
 
-    private Control BuildRecoveryPanel()
+    private void ValidateContracts()
     {
-        var box = Group("بازیابی");
-        box.Controls.Add(PathField("فایل بازیابی / پشتیبان", _recoveryFile, false, "*.skb;*.zip;*.json;*.*"));
-        box.Controls.Add(Field("رمز فایل بازیابی (در صورت نیاز)", _recoveryPass));
-        return box;
-    }
-
-    private static Label Title(string text) => new() { Text = text, AutoSize = true, Font = new Font("Segoe UI", 15F, FontStyle.Bold), Margin = new Padding(0, 0, 0, 10) };
-    private static Label Help(string text) => new() { Text = text, AutoSize = true, MaximumSize = new Size(740, 0), Margin = new Padding(0, 0, 0, 16) };
-
-    private static FlowLayoutPanel Group(string title)
-    {
-        var panel = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(0, 12, 0, 8), Margin = new Padding(0) };
-        panel.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI", 11F, FontStyle.Bold) });
-        return panel;
-    }
-
-    private static Control Field(string label, Control control)
-    {
-        var row = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, Width = 700, Margin = new Padding(0, 4, 0, 4) };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        var l = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(0, 7, 0, 0) };
-        control.Width = 480;
-        control.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-        control.AccessibleName = label;
-        row.Controls.Add(l, 0, 0);
-        row.Controls.Add(control, 1, 0);
-        return row;
-    }
-
-    private static Control PathField(string label, TextBox text, bool folder, string filter = "*.*")
-    {
-        var holder = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, Width = 480 };
-        holder.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        holder.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        text.Dock = DockStyle.Fill;
-        var browse = new Button { Text = "انتخاب…", AutoSize = true, MinimumSize = new Size(88, 44) };
-        browse.Click += (_, _) =>
+        if (_policy.Format != "sokna-windows-prerequisites-v2" || _policy.SchemaVersion != 2 || _policy.Ownership != "external" || _policy.AutomaticInstallAllowed)
+            throw new InvalidOperationException("قرارداد پیش‌نیازهای Windows Services معتبر نیست.");
+        if (_lock.Format != "sokna-windows-prerequisite-lock-v1" || _lock.SchemaVersion != 1 || !_lock.ReleaseFrozen)
+            throw new InvalidOperationException("release lock پیش‌نیازها frozen و معتبر نیست.");
+        foreach (var a in _lock.Artifacts)
         {
-            if (folder)
-            {
-                using var d = new FolderBrowserDialog { SelectedPath = Directory.Exists(text.Text) ? text.Text : "" };
-                if (d.ShowDialog() == DialogResult.OK) text.Text = d.SelectedPath;
-            }
-            else
-            {
-                using var d = new OpenFileDialog { Filter = BuildFilter(filter), CheckFileExists = true };
-                if (File.Exists(text.Text)) d.FileName = text.Text;
-                if (d.ShowDialog() == DialogResult.OK) text.Text = d.FileName;
-            }
-        };
-        holder.Controls.Add(text, 0, 0);
-        holder.Controls.Add(browse, 1, 0);
-        return Field(label, holder);
+            if (!Uri.TryCreate(a.SourceUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || !IsSha(a.Sha256) || a.Size <= 0 || Path.GetFileName(a.Filename) != a.Filename || a.Installation != "manual-external")
+                throw new InvalidOperationException("یکی از artifactهای release lock معتبر نیست.");
+            if (a.Authenticode.Required && string.IsNullOrWhiteSpace(a.Authenticode.PublisherContains)) throw new InvalidOperationException("سیاست امضای artifact کامل نیست.");
+        }
     }
 
-    private static string BuildFilter(string raw)
+    private async Task RefreshPrerequisitesAsync()
     {
-        if (raw.Contains(';')) return "فایل‌های پشتیبانی|" + raw + "|همه فایل‌ها|*.*";
-        if (raw == "php.exe") return "PHP|php.exe|همه فایل‌ها|*.*";
-        if (raw == "openssl.exe") return "OpenSSL|openssl.exe|همه فایل‌ها|*.*";
-        if (raw.Contains("httpd")) return "Apache|httpd.exe;apache.exe|همه فایل‌ها|*.*";
-        return "همه فایل‌ها|*.*";
-    }
-
-    private Control? BuildOfflinePrerequisiteAction()
-    {
-        var root = Path.Combine(AppContext.BaseDirectory, "Prerequisites");
-        var manifest = Path.Combine(root, "bundle-manifest.json");
-        var verifier = Path.Combine(AppContext.BaseDirectory, "verify-prerequisite-bundle.ps1");
-        if (!Directory.Exists(root) || !File.Exists(manifest) || !File.Exists(verifier)) return null;
-        var panel = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = new Padding(0, 2, 0, 12) };
-        var open = new Button { Text = "باز کردن پیش‌نیازهای آفلاین", AutoSize = true, MinimumSize = new Size(180, 44) };
-        open.Click += async (_, _) =>
-        {
-            try
-            {
-                open.Enabled = false;
-                _status.Text = "در حال بررسی یکپارچگی بسته پیش‌نیازها…";
-                var code = await VerifyPrerequisiteBundleAsync(root, verifier);
-                if (code != 0) throw new InvalidOperationException("بسته پیش‌نیازهای آفلاین تأیید نشد؛ از فایل‌های آن استفاده نکنید.");
-                Process.Start(new ProcessStartInfo("explorer.exe", root) { UseShellExecute = true });
-                _status.Text = "بسته آفلاین تأیید شد. پیش‌نیاز لازم را نصب کنید و سپس «بررسی و اجرا» را دوباره بزنید.";
-            }
-            catch (Exception e) { _status.Text = Safe(e.Message); MessageBox.Show(this, _status.Text, "پیش‌نیازهای سکنا", MessageBoxButtons.OK, MessageBoxIcon.Error); }
-            finally { open.Enabled = true; }
-        };
-        panel.Controls.Add(open);
-        panel.Controls.Add(new Label { Text = "این بسته فقط cache تأییدشده است؛ نصب و lifecycle پیش‌نیازهای مشترک همچنان مستقل از سکناست.", AutoSize = true, MaximumSize = new Size(480, 0), Padding = new Padding(8, 9, 0, 0) });
-        return panel;
-    }
-
-    private static async Task<int> VerifyPrerequisiteBundleAsync(string root, string verifier)
-    {
-        var powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
-        RequireFile(powershell, "Windows PowerShell برای بررسی بسته پیش‌نیازها پیدا نشد.");
-        var psi = new ProcessStartInfo(powershell) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
-        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", verifier, "-BundleRoot", root }) psi.ArgumentList.Add(arg);
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException("بررسی بسته پیش‌نیازها اجرا نشد.");
-        await process.WaitForExitAsync();
-        return process.ExitCode;
-    }
-
-    private void RefreshMode()
-    {
-        var mode = SelectedMode();
-        _businessPanel.Visible = mode is "new" or "recover";
-        _adminPanel.Visible = mode == "new";
-        _recoveryPanel.Visible = mode == "recover";
-        _run.Text = mode switch { "repair" => "بررسی و تعمیر", "recover" => "بررسی و بازیابی", _ => "بررسی و نصب" };
-    }
-
-    private string SelectedMode() => _mode.SelectedIndex switch { 1 => "recover", 2 => "repair", _ => "new" };
-
-    private async Task ExecuteAsync()
-    {
-        _status.Text = "";
-        string? temp = null;
+        SetBusy(true, "در حال بررسی پیش‌نیازها…");
         try
         {
-            ValidateInputs();
-            _run.Enabled = false;
-            _status.Text = "در حال آماده‌سازی ورودی امن و اجرای بررسی‌های نصب…";
-            temp = CreatePrivateTempDirectory();
-            var mode = SelectedMode();
-            var setupConfig = "";
-            var passphraseFile = "";
-            if (mode is "new" or "recover")
+            _results.Clear(); _prereqs.Items.Clear();
+            foreach (var item in _policy.Items)
             {
-                setupConfig = Path.Combine(temp, "setup-config.json");
-                await File.WriteAllTextAsync(setupConfig, JsonSerializer.Serialize(BuildSetupConfig(mode), JsonOptions()));
-                if (mode == "recover" && !string.IsNullOrEmpty(_recoveryPass.Text))
-                {
-                    passphraseFile = Path.Combine(temp, "recovery-passphrase.txt");
-                    await File.WriteAllTextAsync(passphraseFile, _recoveryPass.Text);
-                }
+                var result = await Task.Run(() => Detect(item)); _results[item.Id] = result;
+                var row = new ListViewItem(item.DisplayName) { Tag = item.Id };
+                row.SubItems.Add(result.Status); row.SubItems.Add(string.Join(" · ", new[] { result.FoundVersion, result.FoundPath }.Where(x => !string.IsNullOrWhiteSpace(x)))); _prereqs.Items.Add(row);
             }
-            var planPath = Path.Combine(temp, "setup-plan.json");
-            var plan = new Dictionary<string, object?>
+            var blockers = _policy.Items.Where(x => x.BlocksWindowsServices && (!_results.TryGetValue(x.Id, out var r) || !r.Satisfied)).ToList();
+            _status.Text = blockers.Count == 0 ? "پیش‌نیازهای blocking سرویس‌ها آماده‌اند. موارد Local Web صرفاً اطلاع‌رسانی هستند." : "برخی پیش‌نیازهای لازم برای سرویس‌ها آماده نیستند: " + string.Join("، ", blockers.Select(x => x.DisplayName));
+        }
+        catch (Exception e) { ShowError(e.Message); }
+        finally { SetBusy(false); }
+    }
+
+    private DetectionResult Detect(PrerequisiteItem item)
+    {
+        try
+        {
+            if (item.Detection.Type == "registry") return DetectRegistry(item.Detection);
+            var exe = FindCommand(item.Detection.Commands);
+            if (string.IsNullOrWhiteSpace(exe)) return new(false, "پیدا نشد", "", "");
+            var versionOutput = RunCapture(exe, item.Detection.VersionArgument);
+            var version = ExtractVersion(versionOutput);
+            if (!VersionAtLeast(version, item.Detection.MinimumVersion)) return new(false, "نسخه قدیمی", exe, version);
+            if (item.Detection.Type == "php" && item.Detection.RequiredExtensions.Count > 0)
             {
-                ["schema_version"] = 1,
-                ["mode"] = mode,
-                ["shell_root"] = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar),
-                ["app_root"] = Path.GetFullPath(_appRoot.Text.Trim()),
-                ["data_root"] = Path.GetFullPath(_dataRoot.Text.Trim()),
-                ["php_exe"] = Path.GetFullPath(_php.Text.Trim()),
-                ["openssl_exe"] = Path.GetFullPath(_openssl.Text.Trim()),
-                ["web_server_exe"] = Path.GetFullPath(_webServer.Text.Trim()),
-                ["setup_config_file"] = setupConfig,
-                ["recovery_file"] = mode == "recover" ? Path.GetFullPath(_recoveryFile.Text.Trim()) : "",
-                ["recovery_passphrase_file"] = passphraseFile,
-                ["hostname"] = _hostname.Text.Trim().ToLowerInvariant(),
-                ["require_web_server_preflight"] = true,
-                ["skip_https"] = false,
-                ["skip_service"] = false
-            };
-            await File.WriteAllTextAsync(planPath, JsonSerializer.Serialize(plan, JsonOptions()));
-            var code = await RunSetupHostAsync(planPath);
-            _status.Text = code switch
-            {
-                0 => "عملیات با موفقیت کامل شد. برای ورود، SOKNA Cafe را از منوی Start یا Desktop باز کنید.",
-                20 => "پیکربندی سکنا آماده است، اما Apache باید توسط مالک وب‌سرور Reload یا Restart شود. سپس «تعمیر نصب موجود» را اجرا کنید تا سلامت HTTPS تأیید شود.",
-                21 => "سلامت HTTPS محلی تأیید نشد. Apache و تنظیمات سکنا را بررسی کنید و سپس «تعمیر نصب موجود» را دوباره اجرا کنید.",
-                3010 => "مرحله فعلی کامل شد و ویندوز نیاز به راه‌اندازی مجدد دارد. پس از راه‌اندازی مجدد ویندوز، همین عملیات را دوباره اجرا کنید.",
-                _ => "عملیات کامل نشد. از «گزارش پشتیبانی سکنا» بسته تشخیص را بسازید و مرحله خطا را بررسی کنید."
-            };
-            if (code == 0) MessageBox.Show(this, _status.Text, "سکنا", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            else MessageBox.Show(this, _status.Text, "سکنا", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        catch (Win32Exception e) when (e.NativeErrorCode == 1223)
-        {
-            _status.Text = "درخواست دسترسی مدیر لغو شد؛ هیچ تغییری اعمال نشد.";
-        }
-        catch (Exception e)
-        {
-            _status.Text = Safe(e.Message);
-            MessageBox.Show(this, _status.Text, "راه‌اندازی سکنا", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-        finally
-        {
-            _run.Enabled = true;
-            if (!string.IsNullOrWhiteSpace(temp)) { try { Directory.Delete(temp, true); } catch { } }
-        }
-    }
-
-    private Dictionary<string, object?> BuildSetupConfig(string mode)
-    {
-        var config = new Dictionary<string, object?>
-        {
-            ["db"] = new Dictionary<string, object?>
-            {
-                ["host"] = _dbHost.Text.Trim(), ["port"] = _dbPort.Text.Trim(), ["name"] = _dbName.Text.Trim(),
-                ["user"] = _dbUser.Text.Trim(), ["pass"] = _dbPass.Text
-            },
-            ["app_url"] = "https://" + _hostname.Text.Trim().ToLowerInvariant(),
-            ["timezone"] = "Asia/Tehran",
-            ["data_dir"] = Path.GetFullPath(_dataRoot.Text.Trim()),
-            ["local_hostname"] = _hostname.Text.Trim().ToLowerInvariant(),
-            ["relay"] = new Dictionary<string, object?> { ["enabled"] = false }
-        };
-        if (mode == "new")
-        {
-            config["admin_user"] = _adminUser.Text.Trim();
-            config["admin_password"] = _adminPass.Text;
-            config["cafe_name"] = _cafeName.Text.Trim();
-            config["table_count"] = (int)_tableCount.Value;
-        }
-        return config;
-    }
-
-    private void ValidateInputs()
-    {
-        var mode = SelectedMode();
-        if (string.IsNullOrWhiteSpace(_appRoot.Text) || !Path.IsPathFullyQualified(_appRoot.Text.Trim())) throw new InvalidOperationException("پوشه برنامه باید مسیر کامل ویندوز باشد.");
-        if (string.IsNullOrWhiteSpace(_dataRoot.Text) || !Path.IsPathFullyQualified(_dataRoot.Text.Trim())) throw new InvalidOperationException("پوشه داده باید مسیر کامل ویندوز باشد.");
-        var appRoot = Path.GetFullPath(_appRoot.Text.Trim());
-        var dataRoot = Path.GetFullPath(_dataRoot.Text.Trim());
-        if (RootsOverlap(appRoot, dataRoot)) throw new InvalidOperationException("پوشه داده باید کاملاً خارج از پوشه برنامه باشد.");
-        RequireFile(_php.Text, "فایل PHP انتخاب نشده یا وجود ندارد. اگر بسته آفلاین پیش‌نیازها در دسترس است، PHP تأییدشده را نصب کنید و دوباره بررسی کنید.");
-        RequireFile(_openssl.Text, "فایل OpenSSL انتخاب نشده یا وجود ندارد. اگر بسته آفلاین پیش‌نیازها در دسترس است، نسخه تأییدشده را نصب کنید و دوباره بررسی کنید.");
-        RequireFile(_webServer.Text, "فایل Apache انتخاب نشده یا وجود ندارد. اگر بسته آفلاین پیش‌نیازها در دسترس است، توزیع تأییدشده را نصب کنید و دوباره بررسی کنید.");
-        var host = _hostname.Text.Trim().ToLowerInvariant();
-        if (host.Length is < 1 or > 253 || host.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '.' or '-')) || host.StartsWith('.') || host.EndsWith('.') || host.Contains("..")) throw new InvalidOperationException("نام محلی سامانه معتبر نیست.");
-        if (mode is "new" or "recover")
-        {
-            if (string.IsNullOrWhiteSpace(_dbName.Text) || string.IsNullOrWhiteSpace(_dbUser.Text)) throw new InvalidOperationException("اطلاعات دیتابیس کامل نیست.");
-            if (!int.TryParse(_dbPort.Text, out var port) || port is < 1 or > 65535) throw new InvalidOperationException("پورت دیتابیس معتبر نیست.");
-        }
-        if (mode == "new")
-        {
-            if (_adminUser.Text.Trim().Length < 3) throw new InvalidOperationException("نام کاربری مدیر معتبر نیست.");
-            if (_adminPass.Text.Length < 8) throw new InvalidOperationException("رمز مدیر باید حداقل ۸ کاراکتر باشد.");
-        }
-        if (mode == "recover") RequireFile(_recoveryFile.Text, "فایل بازیابی انتخاب نشده یا وجود ندارد.");
-        var hostExe = Path.Combine(AppContext.BaseDirectory, "SoknaSetupHost.exe");
-        RequireFile(hostExe, "جزء داخلی راه‌اندازی سکنا در بسته نصب وجود ندارد.");
-    }
-
-    private static bool RootsOverlap(string left, string right)
-    {
-        static string Normalize(string value) => Path.GetFullPath(value).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var a = Normalize(left);
-        var b = Normalize(right);
-        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)) return true;
-        var aPrefix = a + Path.DirectorySeparatorChar;
-        var bPrefix = b + Path.DirectorySeparatorChar;
-        return b.StartsWith(aPrefix, StringComparison.OrdinalIgnoreCase) || a.StartsWith(bPrefix, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void RequireFile(string value, string message)
-    {
-        if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value.Trim()) || !File.Exists(value.Trim())) throw new InvalidOperationException(message);
-    }
-
-    private static async Task<int> RunSetupHostAsync(string planPath)
-    {
-        var host = Path.Combine(AppContext.BaseDirectory, "SoknaSetupHost.exe");
-        var psi = new ProcessStartInfo(host)
-        {
-            UseShellExecute = true,
-            Verb = "runas",
-            WorkingDirectory = AppContext.BaseDirectory
-        };
-        psi.ArgumentList.Add("--plan-file");
-        psi.ArgumentList.Add(planPath);
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Setup Host اجرا نشد.");
-        await process.WaitForExitAsync();
-        return process.ExitCode;
-    }
-
-    private static string CreatePrivateTempDirectory()
-    {
-        var baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SOKNA", "Setup");
-        Directory.CreateDirectory(baseDir);
-        var dir = Path.Combine(baseDir, Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        var sid = WindowsIdentity.GetCurrent().User?.Value ?? throw new InvalidOperationException("شناسه کاربر ویندوز قابل تشخیص نیست.");
-        RunIcacls(dir, "/inheritance:r");
-        RunIcacls(dir, "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", $"*{sid}:(OI)(CI)F");
-        return dir;
-    }
-
-    private static void RunIcacls(params string[] args)
-    {
-        var exe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "icacls.exe");
-        var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
-        foreach (var arg in args) psi.ArgumentList.Add(arg);
-        using var p = Process.Start(psi) ?? throw new InvalidOperationException("تنظیم دسترسی فایل‌های موقت اجرا نشد.");
-        p.WaitForExit();
-        if (p.ExitCode != 0) throw new InvalidOperationException("امکان محدودکردن دسترسی فایل‌های موقت وجود ندارد.");
-    }
-
-    private static JsonSerializerOptions JsonOptions() => new() { WriteIndented = true };
-
-    private static string FindExecutable(params string[] names)
-    {
-        var path = Environment.GetEnvironmentVariable("PATH") ?? "";
-        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            foreach (var name in names)
-            {
-                try { var candidate = Path.Combine(dir.Trim(), name); if (File.Exists(candidate)) return Path.GetFullPath(candidate); } catch { }
+                var modules = RunCapture(exe, "-m").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var missing = item.Detection.RequiredExtensions.Where(x => !modules.Contains(x)).ToList();
+                if (missing.Count > 0) return new(false, "extension ناقص: " + string.Join(", ", missing), exe, version);
             }
+            return new(true, "سازگار", exe, version);
         }
-        foreach (var candidate in new[]
-        {
-            @"C:\xampp\php\php.exe", @"C:\xampp\apache\bin\openssl.exe", @"C:\xampp\apache\bin\httpd.exe"
-        })
-            if (names.Contains(Path.GetFileName(candidate), StringComparer.OrdinalIgnoreCase) && File.Exists(candidate)) return candidate;
-        return "";
+        catch (Exception e) { return new(false, "خطای بررسی: " + Safe(e.Message), "", ""); }
     }
 
-    private static string Safe(string message)
+    private static DetectionResult DetectRegistry(DetectionRule rule)
     {
-        var value = (message ?? "").Replace('\r', ' ').Replace('\n', ' ').Trim();
-        return value.Length > 600 ? value[..600] : value;
+        foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        {
+            using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var key = baseKey.OpenSubKey(rule.RegistryPath, false); if (key is null) continue;
+            var value = Convert.ToString(key.GetValue(rule.ValueName)) ?? ""; var version = ExtractVersion(value);
+            if (VersionAtLeast(version, rule.MinimumVersion)) return new(true, "سازگار", "HKLM\\" + rule.RegistryPath, version);
+            if (!string.IsNullOrWhiteSpace(version)) return new(false, "نسخه قدیمی", "HKLM\\" + rule.RegistryPath, version);
+        }
+        return new(false, "پیدا نشد", "", "");
     }
+
+    private async Task DownloadSelectedAsync()
+    {
+        if (!_policy.AutomaticDownloadAllowed) { ShowError("دریافت آنلاین طبق policy غیرفعال است."); return; }
+        var item = SelectedItem(); if (item is null) { ShowError("ابتدا یک پیش‌نیاز را انتخاب کنید."); return; }
+        var artifact = _lock.Artifacts.SingleOrDefault(x => x.Dependency.Equals(item.ReleaseLockDependency, StringComparison.OrdinalIgnoreCase));
+        if (artifact is null) { ShowError("برای این پیش‌نیاز artifact قفل‌شده‌ای وجود ندارد."); return; }
+        SetBusy(true, "در حال دریافت فایل تأییدشده…");
+        try
+        {
+            var cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOKNA", "PrerequisiteCache"); Directory.CreateDirectory(cache);
+            var final = Path.Combine(cache, artifact.Filename); var partial = final + ".partial";
+            if (File.Exists(final) && await VerifyArtifactAsync(final, artifact)) { _status.Text = "فایل از قبل تأیید شده است: " + final; OpenExplorer(final); return; }
+            if (File.Exists(final)) File.Delete(final);
+            await DownloadResumableAsync(artifact, partial);
+            if (new FileInfo(partial).Length != artifact.Size) throw new InvalidOperationException("اندازه فایل دریافت‌شده با release lock یکسان نیست.");
+            if (!await VerifyArtifactAsync(partial, artifact)) throw new InvalidOperationException("هش یا امضای فایل دریافت‌شده معتبر نیست.");
+            File.Move(partial, final, true); _progress.Value = 100; _status.Text = "فایل تأیید شد. نصب خودکار انجام نمی‌شود: " + final; OpenExplorer(final);
+        }
+        catch (Exception e) { ShowError(e.Message); }
+        finally { SetBusy(false); }
+    }
+
+    private async Task DownloadResumableAsync(LockedArtifact artifact, string partial)
+    {
+        var existing = File.Exists(partial) ? new FileInfo(partial).Length : 0L; if (existing < 0 || existing > artifact.Size) { File.Delete(partial); existing = 0; }
+        using var handler = new HttpClientHandler { AllowAutoRedirect = true, AutomaticDecompression = DecompressionMethods.None };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(20) };
+        using var request = new HttpRequestMessage(HttpMethod.Get, artifact.SourceUrl);
+        if (existing > 0) request.Headers.Range = new RangeHeaderValue(existing, null);
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        if (response.RequestMessage?.RequestUri?.Scheme != Uri.UriSchemeHttps) throw new InvalidOperationException("redirect دانلود از HTTPS خارج شد.");
+        if (existing > 0 && response.StatusCode != HttpStatusCode.PartialContent) { existing = 0; if (File.Exists(partial)) File.Delete(partial); }
+        response.EnsureSuccessStatusCode();
+        var mode = existing > 0 ? FileMode.Append : FileMode.Create;
+        await using var input = await response.Content.ReadAsStreamAsync(); await using var output = new FileStream(partial, mode, FileAccess.Write, FileShare.None, 128 * 1024, true);
+        var buffer = new byte[128 * 1024]; long done = existing; int read;
+        while ((read = await input.ReadAsync(buffer)) > 0)
+        {
+            await output.WriteAsync(buffer.AsMemory(0, read)); done += read;
+            var pct = artifact.Size <= 0 ? 0 : (int)Math.Clamp(done * 100L / artifact.Size, 0, 100); _progress.Value = pct; _status.Text = $"دریافت {artifact.Filename}: {pct}%"; Application.DoEvents();
+            if (done > artifact.Size) throw new InvalidOperationException("حجم دانلود از اندازه frozen عبور کرد.");
+        }
+    }
+
+    private static async Task<bool> VerifyArtifactAsync(string path, LockedArtifact artifact)
+    {
+        await using var stream = File.OpenRead(path); var hash = Convert.ToHexString(await SHA256.HashDataAsync(stream)).ToLowerInvariant();
+        if (!hash.Equals(artifact.Sha256, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!artifact.Authenticode.Required) return true;
+        var ps = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+        var escaped = path.Replace("'", "''"); var publisher = artifact.Authenticode.PublisherContains.Replace("'", "''");
+        var script = $"$s=Get-AuthenticodeSignature -LiteralPath '{escaped}'; if($s.Status -ne 'Valid' -or -not $s.SignerCertificate -or $s.SignerCertificate.Subject.IndexOf('{publisher}',[StringComparison]::OrdinalIgnoreCase) -lt 0){{exit 7}}";
+        var psi = new ProcessStartInfo(ps) { UseShellExecute = false, CreateNoWindow = true }; psi.ArgumentList.Add("-NoProfile"); psi.ArgumentList.Add("-NonInteractive"); psi.ArgumentList.Add("-Command"); psi.ArgumentList.Add(script);
+        using var p = Process.Start(psi) ?? throw new InvalidOperationException("بررسی Authenticode اجرا نشد."); await p.WaitForExitAsync(); return p.ExitCode == 0;
+    }
+
+    private async Task RunLifecycleAsync(string mode)
+    {
+        if (mode != "uninstall")
+        {
+            var blockers = _policy.Items.Where(x => x.BlocksWindowsServices && (!_results.TryGetValue(x.Id, out var r) || !r.Satisfied)).ToList();
+            if (blockers.Count > 0) { ShowError("پیش از نصب سرویس‌ها این موارد باید آماده شوند: " + string.Join("، ", blockers.Select(x => x.DisplayName))); return; }
+        }
+        ValidatePath(_installRoot.Text, "پوشه سرویس‌ها"); ValidatePath(_dataRoot.Text, "پوشه داده");
+        if (!string.IsNullOrWhiteSpace(_pairing.Text) && (!Path.IsPathFullyQualified(_pairing.Text.Trim()) || !File.Exists(_pairing.Text.Trim()))) { ShowError("فایل Pairing معتبر نیست."); return; }
+        SetBusy(true, "در حال اجرای lifecycle سرویس‌ها…"); string? temp = null;
+        try
+        {
+            temp = Path.Combine(Path.GetTempPath(), "sokna-services-plan-" + Guid.NewGuid().ToString("N") + ".json");
+            var plan = new Dictionary<string, object?> { ["schema_version"] = 2, ["mode"] = mode, ["shell_root"] = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar), ["install_root"] = Path.GetFullPath(_installRoot.Text.Trim()), ["data_root"] = Path.GetFullPath(_dataRoot.Text.Trim()), ["pairing_file"] = string.IsNullOrWhiteSpace(_pairing.Text) ? "" : Path.GetFullPath(_pairing.Text.Trim()), ["start_when_paired"] = _startPaired.Checked };
+            await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(plan, new JsonSerializerOptions { WriteIndented = true }));
+            var host = Path.Combine(AppContext.BaseDirectory, "SoknaSetupHost.exe"); if (!File.Exists(host)) throw new InvalidOperationException("SoknaSetupHost.exe در بسته وجود ندارد.");
+            var psi = new ProcessStartInfo(host) { UseShellExecute = true, Verb = "runas", WorkingDirectory = AppContext.BaseDirectory }; psi.ArgumentList.Add("--plan-file"); psi.ArgumentList.Add(temp);
+            using var p = Process.Start(psi) ?? throw new InvalidOperationException("Setup Host اجرا نشد."); await p.WaitForExitAsync();
+            if (p.ExitCode != 0) throw new InvalidOperationException("عملیات با کد " + p.ExitCode + " متوقف شد. گزارش نصب را بررسی کنید.");
+            _status.Text = mode switch { "uninstall" => "سرویس‌های سکنا حذف شدند؛ داده‌ها و زیرساخت خارجی دست‌نخورده باقی ماندند.", "repair" => "سرویس‌های سکنا تعمیر شدند.", _ => "Runtime و Print Agent نصب/به‌روزرسانی شدند." };
+            MessageBox.Show(this, _status.Text, "SOKNA Windows Services", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Win32Exception e) when (e.NativeErrorCode == 1223) { _status.Text = "درخواست دسترسی مدیر لغو شد؛ تغییری اعمال نشد."; }
+        catch (Exception e) { ShowError(e.Message); }
+        finally { if (temp is not null) try { File.Delete(temp); } catch { } SetBusy(false); }
+    }
+
+    private void BrowsePairing() { using var d = new OpenFileDialog { Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*", CheckFileExists = true }; if (d.ShowDialog(this) == DialogResult.OK) _pairing.Text = d.FileName; }
+    private void ShowGuidance() { var item = SelectedItem(); if (item is null) { ShowError("ابتدا یک پیش‌نیاز را انتخاب کنید."); return; } var art = _lock.Artifacts.FirstOrDefault(x => x.Dependency.Equals(item.ReleaseLockDependency, StringComparison.OrdinalIgnoreCase)); MessageBox.Show(this, (art?.InstructionsFa ?? item.ManualGuidanceFa) + "\n\nSOKNA فایل را اجرا یا نصب نمی‌کند؛ پس از نصب دستی، «بررسی دوباره» را بزنید.", item.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information); }
+    private PrerequisiteItem? SelectedItem() { if (_prereqs.SelectedItems.Count != 1) return null; var id = Convert.ToString(_prereqs.SelectedItems[0].Tag) ?? ""; return _policy.Items.SingleOrDefault(x => x.Id == id); }
+    private void SetBusy(bool busy, string? text = null) { foreach (var b in new[] { _install, _repair, _uninstall, _refresh, _download, _guidance, _browsePairing }) b.Enabled = !busy; if (text is not null) _status.Text = text; if (!busy && _progress.Value == 100) _progress.Value = 0; }
+    private void ShowError(string message) { _status.Text = Safe(message); MessageBox.Show(this, _status.Text, "SOKNA Windows Services", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+    private static void ValidatePath(string value, string label) { if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value.Trim())) throw new InvalidOperationException(label + " باید مسیر کامل ویندوز باشد."); _ = Path.GetFullPath(value.Trim()); }
+    private static T LoadJson<T>(string path, string label) { if (!File.Exists(path)) throw new InvalidOperationException(label + " در بسته وجود ندارد."); return JsonSerializer.Deserialize<T>(File.ReadAllText(path), StrictJson) ?? throw new InvalidOperationException(label + " معتبر نیست."); }
+    private static string FindCommand(IEnumerable<string> names) { var path = Environment.GetEnvironmentVariable("PATH") ?? ""; foreach (var d in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)) foreach (var n in names) try { var p = Path.Combine(d.Trim().Trim('"'), n); if (File.Exists(p)) return Path.GetFullPath(p); } catch { } return ""; }
+    private static string RunCapture(string exe, string args) { var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true }; foreach (var a in SplitArgs(args)) psi.ArgumentList.Add(a); using var p = Process.Start(psi) ?? throw new InvalidOperationException("فرآیند بررسی اجرا نشد."); var o = p.StandardOutput.ReadToEndAsync(); var e = p.StandardError.ReadToEndAsync(); if (!p.WaitForExit(15000)) { try { p.Kill(true); } catch { } throw new InvalidOperationException("زمان بررسی پیش‌نیاز تمام شد."); } Task.WaitAll(o, e); return o.Result + "\n" + e.Result; }
+    private static IEnumerable<string> SplitArgs(string value) => string.IsNullOrWhiteSpace(value) ? [] : value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    private static string ExtractVersion(string text) { var m = System.Text.RegularExpressions.Regex.Match(text ?? "", @"(?<!\d)(\d+\.\d+(?:\.\d+){0,2})"); return m.Success ? m.Groups[1].Value : ""; }
+    private static bool VersionAtLeast(string found, string minimum) { if (!Version.TryParse(NormalizeVersion(found), out var f) || !Version.TryParse(NormalizeVersion(minimum), out var m)) return false; return f >= m; }
+    private static string NormalizeVersion(string v) { var p = (v ?? "").Split('.', StringSplitOptions.RemoveEmptyEntries).Take(4).ToList(); while (p.Count < 2) p.Add("0"); return string.Join('.', p); }
+    private static bool IsSha(string value) => (value ?? "").Length == 64 && value.All(Uri.IsHexDigit);
+    private static string Safe(string message) { var v = (message ?? "").Replace('\r', ' ').Replace('\n', ' ').Trim(); return v.Length > 700 ? v[..700] : v; }
+    private static void OpenExplorer(string path) { try { Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true }); } catch { } }
 }

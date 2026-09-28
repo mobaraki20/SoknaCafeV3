@@ -1,7 +1,7 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Security.Cryptography;
 
 namespace Sokna.SetupHost;
 
@@ -10,30 +10,27 @@ internal sealed class SetupPlan
     [JsonPropertyName("schema_version")] public int SchemaVersion { get; init; }
     [JsonPropertyName("mode")] public string Mode { get; init; } = "";
     [JsonPropertyName("shell_root")] public string ShellRoot { get; init; } = "";
-    [JsonPropertyName("app_root")] public string AppRoot { get; init; } = "";
+    [JsonPropertyName("install_root")] public string InstallRoot { get; init; } = "";
     [JsonPropertyName("data_root")] public string DataRoot { get; init; } = "";
-    [JsonPropertyName("php_exe")] public string PhpExe { get; init; } = "";
-    [JsonPropertyName("openssl_exe")] public string OpenSslExe { get; init; } = "";
-    [JsonPropertyName("web_server_exe")] public string WebServerExe { get; init; } = "";
-    [JsonPropertyName("setup_config_file")] public string SetupConfigFile { get; init; } = "";
-    [JsonPropertyName("recovery_file")] public string RecoveryFile { get; init; } = "";
-    [JsonPropertyName("recovery_passphrase_file")] public string RecoveryPassphraseFile { get; init; } = "";
-    [JsonPropertyName("hostname")] public string Hostname { get; init; } = "sokna.local";
-    [JsonPropertyName("require_web_server_preflight")] public bool RequireWebServerPreflight { get; init; } = true;
-    [JsonPropertyName("skip_https")] public bool SkipHttps { get; init; }
-    [JsonPropertyName("skip_service")] public bool SkipService { get; init; }
+    [JsonPropertyName("pairing_file")] public string PairingFile { get; init; } = "";
+    [JsonPropertyName("start_when_paired")] public bool StartWhenPaired { get; init; } = true;
 }
-
 
 internal sealed class PayloadManifest
 {
     [JsonPropertyName("format")] public string Format { get; init; } = "";
-    [JsonPropertyName("app_version")] public string AppVersion { get; init; } = "";
+    [JsonPropertyName("schema_version")] public int SchemaVersion { get; init; }
+    [JsonPropertyName("package_version")] public string PackageVersion { get; init; } = "";
     [JsonPropertyName("source_git_sha")] public string SourceGitSha { get; init; } = "";
     [JsonPropertyName("ownership")] public string Ownership { get; init; } = "";
-    [JsonPropertyName("live_app_owner")] public string LiveAppOwner { get; init; } = "";
-    [JsonPropertyName("print_worker_owner")] public string PrintWorkerOwner { get; init; } = "";
+    [JsonPropertyName("components")] public Dictionary<string, PayloadComponent> Components { get; init; } = [];
     [JsonPropertyName("files")] public List<PayloadFile> Files { get; init; } = [];
+}
+
+internal sealed class PayloadComponent
+{
+    [JsonPropertyName("version")] public string Version { get; init; } = "";
+    [JsonPropertyName("contracts")] public Dictionary<string, JsonElement> Contracts { get; init; } = [];
 }
 
 internal sealed class PayloadFile
@@ -43,9 +40,22 @@ internal sealed class PayloadFile
     [JsonPropertyName("sha256")] public string Sha256 { get; init; } = "";
 }
 
+internal sealed class CompatibilityManifest
+{
+    [JsonPropertyName("format")] public string Format { get; init; } = "";
+    [JsonPropertyName("schema_version")] public int SchemaVersion { get; init; }
+    [JsonPropertyName("components")] public Dictionary<string, CompatibilityComponent> Components { get; init; } = [];
+}
+
+internal sealed class CompatibilityComponent
+{
+    [JsonPropertyName("version")] public string Version { get; init; } = "";
+}
+
 internal static class Program
 {
     private const int UsageError = 64;
+    private static readonly JsonSerializerOptions StrictJson = new() { PropertyNameCaseInsensitive = false };
 
     public static int Main(string[] args)
     {
@@ -55,221 +65,160 @@ internal static class Program
             var planPath = ReadPlanArgument(args);
             var plan = LoadPlan(planPath);
             ValidatePlan(plan);
-            VerifyShellManifest(Path.GetFullPath(plan.ShellRoot));
-            var sessionId = Guid.NewGuid().ToString("N");
-            Console.Error.WriteLine($"SOKNA setup session: {sessionId}");
-            return RunPlan(plan, sessionId);
+            VerifyShell(Path.GetFullPath(plan.ShellRoot));
+            return RunLifecycle(plan, planPath);
         }
-        catch (PlanException e)
-        {
-            return Fail(e.Message, UsageError);
-        }
-        catch (Exception e)
-        {
-            return Fail("راه‌اندازی سکنا کامل نشد: " + SafeMessage(e.Message), 2);
-        }
+        catch (PlanException e) { return Fail(e.Message, UsageError); }
+        catch (Exception e) { return Fail("عملیات سرویس‌های سکنا کامل نشد: " + SafeMessage(e.Message), 2); }
     }
 
     private static string ReadPlanArgument(string[] args)
     {
         if (args.Length != 2 || !args[0].Equals("--plan-file", StringComparison.OrdinalIgnoreCase))
-            throw new PlanException("فایل برنامه راه‌اندازی مشخص نشده است.");
-        return RequireAbsoluteFile(args[1], "فایل برنامه راه‌اندازی");
+            throw new PlanException("فایل برنامه سرویس‌ها مشخص نشده است.");
+        return RequireAbsoluteFile(args[1], "فایل برنامه سرویس‌ها");
     }
 
     private static SetupPlan LoadPlan(string path)
     {
         var info = new FileInfo(path);
-        if (info.Length is < 2 or > 1024 * 1024) throw new PlanException("اندازه فایل برنامه راه‌اندازی معتبر نیست.");
-        var plan = JsonSerializer.Deserialize<SetupPlan>(File.ReadAllText(path), new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = false,
-            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
-        });
-        return plan ?? throw new PlanException("فایل برنامه راه‌اندازی معتبر نیست.");
+        if (info.Length is < 2 or > 256 * 1024) throw new PlanException("اندازه فایل برنامه سرویس‌ها معتبر نیست.");
+        return JsonSerializer.Deserialize<SetupPlan>(File.ReadAllText(path), StrictJson)
+            ?? throw new PlanException("فایل برنامه سرویس‌ها معتبر نیست.");
     }
 
     private static void ValidatePlan(SetupPlan p)
     {
-        if (p.SchemaVersion != 1) throw new PlanException("نسخه فایل برنامه راه‌اندازی پشتیبانی نمی‌شود.");
+        if (p.SchemaVersion != 2) throw new PlanException("نسخه فایل برنامه سرویس‌ها پشتیبانی نمی‌شود.");
         var mode = p.Mode.Trim().ToLowerInvariant();
-        if (mode is not ("new" or "recover" or "repair")) throw new PlanException("حالت راه‌اندازی معتبر نیست.");
-
-        RequireAbsoluteDirectoryOrFuture(p.ShellRoot, "پوشه نصب‌کننده");
-        RequireAbsoluteDirectoryOrFuture(p.AppRoot, "پوشه برنامه");
-        RequireAbsoluteDirectoryOrFuture(p.DataRoot, "پوشه داده");
-        RequireAbsoluteFile(p.PhpExe, "PHP");
-        if (!p.SkipHttps) RequireAbsoluteFile(p.OpenSslExe, "OpenSSL");
-        if (!string.IsNullOrWhiteSpace(p.WebServerExe)) RequireAbsoluteFile(p.WebServerExe, "وب‌سرور");
-        if (!IsSafeHostname(p.Hostname)) throw new PlanException("نام محلی سامانه معتبر نیست.");
-
-        if (mode is "new" or "recover")
-        {
-            RequireAbsoluteFile(p.SetupConfigFile, "فایل تنظیمات امن Setup");
-            if (mode == "recover")
-            {
-                RequireAbsoluteFile(p.RecoveryFile, "فایل بازیابی");
-                if (!string.IsNullOrWhiteSpace(p.RecoveryPassphraseFile)) RequireAbsoluteFile(p.RecoveryPassphraseFile, "فایل رمز بازیابی");
-            }
-        }
+        if (mode is not ("install" or "repair" or "uninstall")) throw new PlanException("حالت عملیات سرویس‌ها معتبر نیست.");
+        RequireAbsoluteDirectoryOrFuture(p.ShellRoot, "پوشه بسته نصب");
+        RequireAbsoluteDirectoryOrFuture(p.InstallRoot, "پوشه سرویس‌های سکنا");
+        RequireAbsoluteDirectoryOrFuture(p.DataRoot, "پوشه داده‌های سکنا");
+        if (!string.IsNullOrWhiteSpace(p.PairingFile)) RequireAbsoluteFile(p.PairingFile, "فایل Pairing");
     }
 
-    private static void VerifyShellManifest(string shellRoot)
+    private static void VerifyShell(string shellRoot)
     {
         var manifestPath = Path.Combine(shellRoot, "payload-manifest.json");
-        RequireAbsoluteFile(manifestPath, "مانیفست بسته نصب");
-        var manifest = JsonSerializer.Deserialize<PayloadManifest>(File.ReadAllText(manifestPath), new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = false,
-            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
-        }) ?? throw new PlanException("مانیفست بسته نصب معتبر نیست.");
-        if (manifest.Format != "sokna-windows-shell-payload-v1" || manifest.Ownership != "msi-shell-cache-only" || manifest.LiveAppOwner != "sokna-updater")
-            throw new PlanException("قرارداد مالکیت بسته نصب معتبر نیست.");
-        if (manifest.Files.Count == 0) throw new PlanException("مانیفست بسته نصب خالی است.");
+        RequireAbsoluteFile(manifestPath, "مانیفست بسته Windows Services");
+        var manifest = JsonSerializer.Deserialize<PayloadManifest>(File.ReadAllText(manifestPath), StrictJson)
+            ?? throw new PlanException("مانیفست بسته Windows Services معتبر نیست.");
+        if (manifest.Format != "sokna-windows-services-shell-v2" || manifest.SchemaVersion != 2 || manifest.Ownership != "windows-services-packaging")
+            throw new PlanException("قرارداد مالکیت بسته Windows Services معتبر نیست.");
+        if (!IsVersion(manifest.PackageVersion)) throw new PlanException("نسخه بسته Windows Services معتبر نیست.");
+        if (!manifest.Components.TryGetValue("runtime", out var runtime) || !manifest.Components.TryGetValue("print-agent", out var print))
+            throw new PlanException("نسخه اجزای Runtime/Print Agent در مانیفست موجود نیست.");
+        if (!IsVersion(runtime.Version) || !IsVersion(print.Version)) throw new PlanException("نسخه یکی از اجزای سرویس معتبر نیست.");
+        if (manifest.Files.Count == 0) throw new PlanException("مانیفست بسته خالی است.");
 
-        var root = Path.GetFullPath(shellRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var compatPath = Path.Combine(shellRoot, "windows-services-compatibility-v1.json");
+        RequireAbsoluteFile(compatPath, "مانیفست سازگاری Windows Services");
+        var compat = JsonSerializer.Deserialize<CompatibilityManifest>(File.ReadAllText(compatPath), StrictJson)
+            ?? throw new PlanException("مانیفست سازگاری Windows Services معتبر نیست.");
+        if (compat.Format != "sokna-windows-services-compatibility-v1" || compat.SchemaVersion != 1)
+            throw new PlanException("نسخه مانیفست سازگاری Windows Services پشتیبانی نمی‌شود.");
+        if (!compat.Components.TryGetValue("runtime", out var runtimeCompat) || runtimeCompat.Version != runtime.Version ||
+            !compat.Components.TryGetValue("print-agent", out var printCompat) || printCompat.Version != print.Version)
+            throw new PlanException("نسخه payload با مانیفست سازگاری یکسان نیست.");
+
+        var required = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "SoknaRuntimeService.exe", "SoknaSetupHost.exe", "SoknaSetupUi.exe",
+            "setup-windows-services.ps1", "remove-windows-services.ps1",
+            "prerequisites.json", "release-lock.json", "windows-services-compatibility-v1.json",
+            "print-worker/component-manifest.json", "print-worker/Service/Sokna.PrintAgent.Service.exe",
+            "print-worker/Worker/Sokna.PrintAgent.Worker.exe"
+        };
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var root = Path.GetFullPath(shellRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         foreach (var entry in manifest.Files)
         {
-            var rel = (entry.Path ?? "").Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
-            if (string.IsNullOrWhiteSpace(rel) || Path.IsPathFullyQualified(rel)) throw new PlanException("مسیر فایل در مانیفست معتبر نیست.");
-            var full = Path.GetFullPath(Path.Combine(shellRoot, rel));
+            var normalized = NormalizeRelative(entry.Path);
+            if (!seen.Add(normalized)) throw new PlanException("مسیر تکراری در مانیفست بسته وجود دارد.");
+            var full = Path.GetFullPath(Path.Combine(shellRoot, normalized.Replace('/', Path.DirectorySeparatorChar)));
             if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new PlanException("مسیر فایل از محدوده بسته نصب خارج شده است.");
-            if (!File.Exists(full)) throw new PlanException("یکی از فایل‌های بسته نصب موجود نیست.");
+            if (!File.Exists(full)) throw new PlanException("یکی از فایل‌های بسته نصب موجود نیست: " + normalized);
             var info = new FileInfo(full);
-            if (info.Length != entry.Size) throw new PlanException("اندازه یکی از فایل‌های بسته نصب با مانیفست سازگار نیست.");
-            var expectedHash = (entry.Sha256 ?? "").Trim().ToLowerInvariant();
-            if (expectedHash.Length != 64 || expectedHash.Any(c => !Uri.IsHexDigit(c))) throw new PlanException("هش یکی از فایل‌های بسته نصب معتبر نیست.");
+            if (info.Length != entry.Size || entry.Size < 0) throw new PlanException("اندازه یکی از فایل‌های بسته با مانیفست سازگار نیست.");
+            var expected = (entry.Sha256 ?? "").Trim().ToLowerInvariant();
+            if (expected.Length != 64 || expected.Any(c => !Uri.IsHexDigit(c))) throw new PlanException("هش ثبت‌شده در مانیفست معتبر نیست.");
             using var stream = File.OpenRead(full);
-            var actualHash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
-            if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actualHash), Convert.FromHexString(expectedHash)))
-                throw new PlanException("هش یکی از فایل‌های بسته نصب با مانیفست سازگار نیست.");
-            var normalized = Path.GetRelativePath(shellRoot, full).Replace('\\', '/');
-            if (!expected.Add(normalized)) throw new PlanException("مسیر تکراری در مانیفست بسته نصب وجود دارد.");
+            var actual = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+            if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actual), Convert.FromHexString(expected)))
+                throw new PlanException("هش یکی از فایل‌های بسته نصب معتبر نیست: " + normalized);
         }
-
-        var actual = Directory.EnumerateFiles(shellRoot, "*", SearchOption.AllDirectories)
-            .Where(f => !string.Equals(Path.GetFullPath(f), Path.GetFullPath(manifestPath), StringComparison.OrdinalIgnoreCase))
-            .Select(f => Path.GetRelativePath(shellRoot, f).Replace('\\', '/'))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (!actual.SetEquals(expected)) throw new PlanException("مجموعه فایل‌های shell با مانیفست بسته نصب یکسان نیست.");
-
-        foreach (var required in new[]
-        {
-            "deploy-seed.ps1", "collect-support.ps1", "verify-prerequisite-bundle.ps1", "setup-sokna.ps1", "setup-support.psm1", "provision-local-https.ps1", "configure-apache.ps1", "sokna-local-https.conf.template", "prerequisites.json",
-            "SoknaSetupHost.exe", "SoknaSetupUi.exe", "SoknaRuntimeService.exe", "SoknaAppPayload.zip", "print-worker/component-manifest.json"
-        })
-            if (!expected.Contains(required)) throw new PlanException("بسته نصب یکی از ownerهای اجباری را ندارد.");
+        foreach (var rel in required) if (!seen.Contains(rel.Replace('\\', '/'))) throw new PlanException("فایل ضروری در مانیفست بسته ثبت نشده است: " + rel);
+        foreach (var forbidden in new[] { "SoknaAppPayload.zip", "php.exe", "httpd.exe", "apache.exe", "mysqld.exe", "mariadb.exe" })
+            if (seen.Any(x => string.Equals(Path.GetFileName(x), forbidden, StringComparison.OrdinalIgnoreCase)))
+                throw new PlanException("بسته Windows Services شامل payload خارج از مالکیت است: " + forbidden);
     }
 
-    private static int RunPlan(SetupPlan p, string sessionId)
+    private static int RunLifecycle(SetupPlan plan, string planPath)
     {
-        var mode = p.Mode.Trim().ToLowerInvariant();
-        var shell = Path.GetFullPath(p.ShellRoot);
-        var script = mode == "repair"
-            ? Path.Combine(shell, "setup-sokna.ps1")
-            : Path.Combine(shell, "deploy-seed.ps1");
-        RequireAbsoluteFile(script, "موتور راه‌اندازی سکنا");
-
-        var ps = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
-        RequireAbsoluteFile(ps, "Windows PowerShell");
-
-        var childArgs = new List<string> { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script };
-        if (mode == "repair")
-        {
-            Add(childArgs, "-Mode", "Repair");
-            AddCommon(childArgs, p, includeSetupConfig: false);
-            Add(childArgs, "-ServiceHostExe", Path.Combine(shell, "SoknaRuntimeService.exe"));
-            Add(childArgs, "-PrintWorkerBundle", Path.Combine(shell, "print-worker"));
-        }
-        else
-        {
-            Add(childArgs, "-Mode", mode == "new" ? "New" : "Recover");
-            AddCommon(childArgs, p, includeSetupConfig: true);
-            if (mode == "recover")
-            {
-                Add(childArgs, "-RecoveryFile", p.RecoveryFile);
-                if (!string.IsNullOrWhiteSpace(p.RecoveryPassphraseFile)) Add(childArgs, "-RecoveryPassphraseFile", p.RecoveryPassphraseFile);
-            }
-        }
-
-        using var process = new Process();
-        process.StartInfo = new ProcessStartInfo(ps)
+        var script = Path.Combine(Path.GetFullPath(plan.ShellRoot), "setup-windows-services.ps1");
+        RequireAbsoluteFile(script, "اسکریپت lifecycle سرویس‌ها");
+        var powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+        RequireAbsoluteFile(powershell, "Windows PowerShell");
+        var psi = new ProcessStartInfo(powershell)
         {
             UseShellExecute = false,
+            CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            CreateNoWindow = true
+            WorkingDirectory = Path.GetFullPath(plan.ShellRoot)
         };
-        process.StartInfo.Environment["SOKNA_SETUP_SESSION_ID"] = sessionId;
-        foreach (var arg in childArgs) process.StartInfo.ArgumentList.Add(arg);
-        if (!process.Start()) return Fail("موتور راه‌اندازی اجرا نشد.", 2);
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(35 * 60 * 1000))
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            return Fail("زمان راه‌اندازی از حد مجاز گذشت. گزارش Setup را بررسی کنید.", 2);
-        }
-        Task.WaitAll(stdout, stderr);
-        if (!string.IsNullOrWhiteSpace(stdout.Result)) Console.Out.Write(stdout.Result);
-        if (!string.IsNullOrWhiteSpace(stderr.Result)) Console.Error.Write(stderr.Result);
-        return process.ExitCode;
+        foreach (var a in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script,
+            "-Mode", CanonicalMode(plan.Mode), "-ShellRoot", Path.GetFullPath(plan.ShellRoot), "-InstallRoot", Path.GetFullPath(plan.InstallRoot),
+            "-DataRoot", Path.GetFullPath(plan.DataRoot), "-PairingFile", string.IsNullOrWhiteSpace(plan.PairingFile) ? "" : Path.GetFullPath(plan.PairingFile),
+            "-StartWhenPaired", plan.StartWhenPaired ? "1" : "0" }) psi.ArgumentList.Add(a);
+        using var process = Process.Start(psi) ?? throw new PlanException("Windows PowerShell برای lifecycle سرویس‌ها اجرا نشد.");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        process.WaitForExit();
+        Task.WaitAll(stdoutTask, stderrTask);
+        if (!string.IsNullOrWhiteSpace(stdoutTask.Result)) Console.Out.Write(stdoutTask.Result);
+        if (!string.IsNullOrWhiteSpace(stderrTask.Result)) Console.Error.Write(stderrTask.Result);
+        if (process.ExitCode != 0) return process.ExitCode;
+        Console.Error.WriteLine($"SOKNA Windows Services lifecycle complete ({CanonicalMode(plan.Mode)}). Plan: {Path.GetFileName(planPath)}");
+        return 0;
     }
 
-    private static void AddCommon(List<string> args, SetupPlan p, bool includeSetupConfig)
+    private static string CanonicalMode(string mode) => mode.Trim().ToLowerInvariant() switch
     {
-        if (includeSetupConfig) Add(args, "-ShellRoot", p.ShellRoot);
-        Add(args, "-AppRoot", p.AppRoot);
-        Add(args, "-DataRoot", p.DataRoot);
-        Add(args, "-PhpExe", p.PhpExe);
-        if (includeSetupConfig) Add(args, "-SetupConfigFile", p.SetupConfigFile);
-        if (!string.IsNullOrWhiteSpace(p.OpenSslExe)) Add(args, "-OpenSslExe", p.OpenSslExe);
-        if (!string.IsNullOrWhiteSpace(p.WebServerExe)) Add(args, "-WebServerExe", p.WebServerExe);
-        Add(args, "-Hostname", p.Hostname);
-        if (p.RequireWebServerPreflight) args.Add("-RequireWebServerPreflight");
-        if (p.SkipHttps) args.Add("-SkipHttps");
-        if (p.SkipService) args.Add("-SkipService");
+        "install" => "Install", "repair" => "Repair", "uninstall" => "Uninstall", _ => throw new PlanException("حالت عملیات معتبر نیست.")
+    };
+
+    private static string NormalizeRelative(string value)
+    {
+        var rel = (value ?? "").Replace('\\', '/').Trim();
+        if (string.IsNullOrWhiteSpace(rel) || rel.StartsWith('/') || rel.Contains("../", StringComparison.Ordinal) || rel.Contains("/..", StringComparison.Ordinal) || Path.IsPathFullyQualified(rel))
+            throw new PlanException("مسیر فایل در مانیفست معتبر نیست.");
+        return rel;
     }
 
-    private static void Add(List<string> args, string name, string value)
-    {
-        args.Add(name);
-        args.Add(value);
-    }
-
-    private static bool IsSafeHostname(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > 253) return false;
-        foreach (var c in value)
-            if (!(char.IsAsciiLetterOrDigit(c) || c is '.' or '-')) return false;
-        return !value.StartsWith('.') && !value.EndsWith('.') && !value.Contains("..", StringComparison.Ordinal);
-    }
+    private static bool IsVersion(string value) => System.Text.RegularExpressions.Regex.IsMatch(value ?? "", @"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$");
 
     private static string RequireAbsoluteFile(string value, string label)
     {
-        if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value) || !File.Exists(value))
-            throw new PlanException($"{label} پیدا نشد یا مسیر آن معتبر نیست.");
-        return Path.GetFullPath(value);
+        if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value)) throw new PlanException(label + " باید مسیر کامل باشد.");
+        var full = Path.GetFullPath(value);
+        if (!File.Exists(full)) throw new PlanException(label + " وجود ندارد.");
+        return full;
     }
 
-    private static string RequireAbsoluteDirectoryOrFuture(string value, string label)
+    private static void RequireAbsoluteDirectoryOrFuture(string value, string label)
     {
-        if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value)) throw new PlanException($"{label} معتبر نیست.");
-        return Path.GetFullPath(value);
+        if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value)) throw new PlanException(label + " باید مسیر کامل باشد.");
+        _ = Path.GetFullPath(value);
     }
 
-    private static int Fail(string message, int code)
-    {
-        Console.Error.WriteLine(SafeMessage(message));
-        return code;
-    }
-
+    private static int Fail(string message, int code) { Console.Error.WriteLine(SafeMessage(message)); return code; }
     private static string SafeMessage(string message)
     {
-        var text = (message ?? "").Replace('\r', ' ').Replace('\n', ' ').Trim();
-        return text.Length > 600 ? text[..600] : text;
+        var value = (message ?? "").Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return value.Length > 700 ? value[..700] : value;
     }
-
-    private sealed class PlanException(string message) : Exception(message);
 }
+
+internal sealed class PlanException(string message) : Exception(message);

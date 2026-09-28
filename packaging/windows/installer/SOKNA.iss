@@ -5,18 +5,18 @@
   #define ProductVersion "0.0.0-dev"
 #endif
 [Setup]
-AppId={{8E19AF58-57C6-45D0-A39E-2D6C3D61D003}
-AppName=SOKNA
-UninstallDisplayName=SOKNA
+AppId={{7D6E9D44-9A2B-4D7E-8FB1-53C9375A84F1}
+AppName=SOKNA Windows Services
+UninstallDisplayName=SOKNA Windows Services
 AppVersion={#ProductVersion}
 AppPublisher=SOKNA
-DefaultDirName={autopf}\SOKNA
+DefaultDirName={autopf}\SOKNA Windows Services
 DefaultGroupName=SOKNA
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
-OutputBaseFilename=SOKNA-Setup-{#ProductVersion}
+OutputBaseFilename=SOKNA-Windows-Services-Setup-{#ProductVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -28,14 +28,12 @@ SetupIconFile={#SourceRoot}\Sokna.ico
 
 [Files]
 Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{srcexe}"; DestDir: "{app}\maintenance"; DestName: "Setup.exe"; Flags: external
 
 [Icons]
-Name: "{group}\راه‌اندازی و تعمیر سکنا"; Filename: "{app}\SoknaSetupUi.exe"; IconFilename: "{app}\Sokna.ico"
-Name: "{commondesktop}\SOKNA"; Filename: "https://sokna.local/"; IconFilename: "{app}\Sokna.ico"
+Name: "{group}\مدیریت سرویس‌های سکنا"; Filename: "{app}\SoknaSetupUi.exe"; IconFilename: "{app}\Sokna.ico"
 
 [Run]
-Filename: "{app}\SoknaSetupUi.exe"; Description: "راه‌اندازی سکنا"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\SoknaSetupUi.exe"; Description: "نصب یا تنظیم Runtime و Print Agent"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\remove-owned-services.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "SoknaOwnedServicesCleanup"
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\remove-windows-services.ps1"" -InstallRoot ""{app}"" -DataRoot ""{commonappdata}\SOKNA"""; Flags: runhidden waituntilterminated; RunOnceId: "SoknaWindowsServicesCleanup"

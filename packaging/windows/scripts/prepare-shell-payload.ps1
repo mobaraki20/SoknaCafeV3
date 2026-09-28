@@ -1,87 +1,67 @@
 param(
     [Parameter(Mandatory=$true)][string]$RepoRoot,
     [Parameter(Mandatory=$true)][string]$OutputRoot,
-    [Parameter(Mandatory=$true)][string]$ServiceHostExe,
+    [Parameter(Mandatory=$true)][string]$RuntimeServiceExe,
     [Parameter(Mandatory=$true)][string]$SetupHostExe,
     [Parameter(Mandatory=$true)][string]$SetupUiExe,
     [Parameter(Mandatory=$true)][string]$PrintWorkerBundle,
-    [string]$PrerequisiteBundleRoot = '',
-    [string]$GitSha = ''
+    [string]$GitSha=''
 )
 $ErrorActionPreference='Stop'
 $RepoRoot=[IO.Path]::GetFullPath($RepoRoot).TrimEnd('\')
 $OutputRoot=[IO.Path]::GetFullPath($OutputRoot).TrimEnd('\')
-if(Test-Path $OutputRoot){Remove-Item $OutputRoot -Recurse -Force}
+foreach($p in @($RuntimeServiceExe,$SetupHostExe,$SetupUiExe)){
+    if(-not(Test-Path -LiteralPath $p -PathType Leaf)){throw "Required built executable is missing: $p"}
+}
+if(-not(Test-Path -LiteralPath $PrintWorkerBundle -PathType Container)){throw 'Print Agent bundle root is missing.'}
+if(Test-Path -LiteralPath $OutputRoot){Remove-Item -LiteralPath $OutputRoot -Recurse -Force}
 New-Item -ItemType Directory -Path $OutputRoot -Force|Out-Null
-$version=(Get-Content (Join-Path $RepoRoot 'VERSION.txt') -Raw).Trim()
-if(-not $GitSha){try{$GitSha=(& git -C $RepoRoot rev-parse HEAD 2>$null).Trim()}catch{$GitSha='unknown'}}
+if(-not$GitSha){try{$GitSha=(& git -C $RepoRoot rev-parse HEAD 2>$null).Trim()}catch{$GitSha='unknown'}}
 
-# Installer-owned immutable shell. Do not copy config.php/install.lock/storage/uploads or a live app tree here.
-$owned=@(
-    'platform\windows\setup-sokna.ps1',
-    'platform\windows\remove-owned-services.ps1',
-    'platform\windows\setup-support.psm1',
-    'platform\windows\provision-local-https.ps1',
-    'platform\windows\configure-apache.ps1',
-    'platform\windows\sokna-local-https.conf.template',
-    'platform\windows\prerequisites.json',
-    'packaging\windows\scripts\deploy-seed.ps1',
-    'packaging\windows\scripts\collect-support.ps1',
-    'packaging\windows\scripts\verify-prerequisite-bundle.ps1',
-    'packaging\windows\Sokna.ico'
-)
-foreach($rel in $owned){
-    $src=Join-Path $RepoRoot $rel
-    if(-not(Test-Path $src -PathType Leaf)){throw "Missing installer-owned source: $rel"}
-    $dst=Join-Path $OutputRoot ([IO.Path]::GetFileName($src))
-    Copy-Item $src $dst -Force
+$packageVersion=(Get-Content -LiteralPath (Join-Path $RepoRoot 'packaging\windows\WINDOWS_SERVICES_VERSION.txt') -Raw).Trim()
+$compatPath=Join-Path $RepoRoot 'packaging\windows\windows-services-compatibility-v1.json'
+$compat=Get-Content -LiteralPath $compatPath -Raw|ConvertFrom-Json
+if([string]$compat.format-ne'sokna-windows-services-compatibility-v1'-or[int]$compat.schema_version-ne1){throw 'Windows Services compatibility manifest is invalid.'}
+$runtimeProject=[xml](Get-Content -LiteralPath (Join-Path $RepoRoot 'windows\runtime\source\Sokna.Runtime.Service.csproj') -Raw)
+$runtimeVersion=[string]$runtimeProject.Project.PropertyGroup.Version
+$printProps=[xml](Get-Content -LiteralPath (Join-Path $RepoRoot 'windows\print-agent\source\Directory.Build.props') -Raw)
+$printVersion=[string]$printProps.Project.PropertyGroup.SoknaAgentVersion
+if([string]$compat.components.runtime.version-ne$runtimeVersion){throw 'Runtime version source does not match Windows Services compatibility manifest.'}
+if([string]$compat.components.'print-agent'.version-ne$printVersion){throw 'Print Agent version source does not match Windows Services compatibility manifest.'}
+if($packageVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$'){throw 'Windows Services package version is invalid.'}
+
+$owned=@{
+ 'platform\windows\prerequisites.json'='prerequisites.json';
+ 'platform\windows\release-lock.json'='release-lock.json';
+ 'packaging\windows\windows-services-compatibility-v1.json'='windows-services-compatibility-v1.json';
+ 'packaging\windows\WINDOWS_SERVICES_VERSION.txt'='WINDOWS_SERVICES_VERSION.txt';
+ 'packaging\windows\scripts\setup-windows-services.ps1'='setup-windows-services.ps1';
+ 'packaging\windows\scripts\remove-windows-services.ps1'='remove-windows-services.ps1';
+ 'packaging\windows\Sokna.ico'='Sokna.ico'
 }
-Copy-Item $ServiceHostExe (Join-Path $OutputRoot 'SoknaRuntimeService.exe') -Force
-Copy-Item $SetupHostExe (Join-Path $OutputRoot 'SoknaSetupHost.exe') -Force
-Copy-Item $SetupUiExe (Join-Path $OutputRoot 'SoknaSetupUi.exe') -Force
-Copy-Item $PrintWorkerBundle (Join-Path $OutputRoot 'print-worker') -Recurse -Force
+foreach($rel in $owned.Keys){$src=Join-Path $RepoRoot $rel;if(-not(Test-Path -LiteralPath $src -PathType Leaf)){throw "Missing installer-owned source: $rel"};Copy-Item -LiteralPath $src -Destination (Join-Path $OutputRoot $owned[$rel]) -Force}
+Copy-Item -LiteralPath $RuntimeServiceExe -Destination (Join-Path $OutputRoot 'SoknaRuntimeService.exe') -Force
+Copy-Item -LiteralPath $SetupHostExe -Destination (Join-Path $OutputRoot 'SoknaSetupHost.exe') -Force
+Copy-Item -LiteralPath $SetupUiExe -Destination (Join-Path $OutputRoot 'SoknaSetupUi.exe') -Force
+Copy-Item -LiteralPath $PrintWorkerBundle -Destination (Join-Path $OutputRoot 'print-worker') -Recurse -Force
+foreach($rel in @('component-manifest.json','Service\Sokna.PrintAgent.Service.exe','Worker\Sokna.PrintAgent.Worker.exe')){if(-not(Test-Path -LiteralPath (Join-Path $OutputRoot ('print-worker\'+$rel)) -PathType Leaf)){throw "Print Agent bundle is incomplete: $rel"}}
 
-if(-not [string]::IsNullOrWhiteSpace($PrerequisiteBundleRoot)){
-    $PrerequisiteBundleRoot=[IO.Path]::GetFullPath($PrerequisiteBundleRoot).TrimEnd('\')
-    $verifyBundle=Join-Path $RepoRoot 'packaging\windows\scripts\verify-prerequisite-bundle.ps1'
-    & $verifyBundle -BundleRoot $PrerequisiteBundleRoot -ExpectedAppVersion $version
-    # The PowerShell verifier throws on failure; LASTEXITCODE belongs to native commands.
-    Copy-Item -LiteralPath $PrerequisiteBundleRoot -Destination (Join-Path $OutputRoot 'Prerequisites') -Recurse -Force
-}
-
-# The seed is a cache artifact for New/Recover only. MSI never installs these files into the live AppRoot.
-$seedStage=Join-Path ([IO.Path]::GetTempPath()) ('sokna-seed-'+[guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory $seedStage|Out-Null
-try{
-    # Local installer seed contains only the Local Web component plus release version.
-    # Runtime, Print Agent, Public and Platform remain independently owned deployables.
-    $tracked = @(& git -C $RepoRoot -c core.quotepath=false ls-files --cached)
-    if ($LASTEXITCODE -ne 0 -or $tracked.Count -eq 0) { throw 'Cannot enumerate tracked Local application seed files.' }
-    foreach ($relative in $tracked) {
-        if ($relative -ne 'VERSION.txt' -and -not $relative.StartsWith('apps/local-web/')) { continue }
-        if ($relative -in @('config.php','install.lock')) { continue }
-        $source = Join-Path $RepoRoot $relative
-        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Tracked Local seed source is missing: $relative" }
-        $destination = Join-Path $seedStage $relative
-        New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($destination)) -Force | Out-Null
-        Copy-Item -LiteralPath $source -Destination $destination -Force
-    }
-    $seed=Join-Path $OutputRoot 'SoknaAppPayload.zip'
-    Compress-Archive -Path (Join-Path $seedStage '*') -DestinationPath $seed -CompressionLevel Optimal
-}finally{Remove-Item $seedStage -Recurse -Force -ErrorAction SilentlyContinue}
+# A41 ownership fence: the Windows Services package must never contain Local/Public or shared infrastructure payloads.
+$forbiddenLeaf=@('php.exe','httpd.exe','apache.exe','mysqld.exe','mariadb.exe','SoknaAppPayload.zip')
+foreach($f in Get-ChildItem -LiteralPath $OutputRoot -File -Recurse){if($forbiddenLeaf -contains $f.Name){throw "Forbidden external/application payload leaked into Windows Services package: $($f.Name)"}}
 
 $files=@()
-Get-ChildItem $OutputRoot -File -Recurse|ForEach-Object{
-    $files += [ordered]@{path=$_.FullName.Substring($OutputRoot.Length+1).Replace('\','/');size=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+Get-ChildItem -LiteralPath $OutputRoot -File -Recurse|Sort-Object FullName|ForEach-Object{
+    $files += [ordered]@{path=$_.FullName.Substring($OutputRoot.Length+1).Replace('\','/');size=[long]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
 }
 $manifest=[ordered]@{
-    format='sokna-windows-shell-payload-v1';
-    app_version=$version;
-    source_git_sha=$GitSha;
-    ownership='msi-shell-cache-only';
-    live_app_owner='sokna-updater';
-    print_worker_owner='sokna-local-internal';
+    format='sokna-windows-services-shell-v2';schema_version=2;package_version=$packageVersion;source_git_sha=$GitSha;ownership='windows-services-packaging';
+    components=[ordered]@{
+      runtime=[ordered]@{version=$runtimeVersion;contracts=[ordered]@{runtime_contract=[string]$compat.components.runtime.runtime_contract}};
+      'print-agent'=[ordered]@{version=$printVersion;contracts=[ordered]@{print_server_protocol=[int]$compat.components.'print-agent'.print_server_protocol;loopback_protocol=[int]$compat.components.'print-agent'.loopback_protocol}}
+    };
+    external_infrastructure=[ordered]@{owner='external';installer_ownership=$false;prerequisites_sha256=(Get-FileHash -LiteralPath (Join-Path $OutputRoot 'prerequisites.json') -Algorithm SHA256).Hash.ToLowerInvariant();release_lock_sha256=(Get-FileHash -LiteralPath (Join-Path $OutputRoot 'release-lock.json') -Algorithm SHA256).Hash.ToLowerInvariant()};
     files=$files
 }
-$manifest|ConvertTo-Json -Depth 8|Set-Content (Join-Path $OutputRoot 'payload-manifest.json') -Encoding UTF8
-Write-Host "Prepared SOKNA installer shell payload for $version ($GitSha)"
+$manifest|ConvertTo-Json -Depth 10|Set-Content -LiteralPath (Join-Path $OutputRoot 'payload-manifest.json') -Encoding UTF8
+Write-Host "Prepared SOKNA Windows Services shell $packageVersion (Runtime $runtimeVersion / Print Agent $printVersion) at $OutputRoot"
