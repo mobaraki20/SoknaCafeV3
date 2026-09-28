@@ -1,9 +1,11 @@
 <?php
 declare(strict_types=1);
+use Sokna\Local\Core\LocalEndpoint;
 use Sokna\Local\Setup\BrowserSetupService;
 $root=dirname(__DIR__);
-require_once dirname(__DIR__).'/src/Setup/SetupException.php';
+require_once dirname(__DIR__).'/src/Core/LocalEndpoint.php';require_once dirname(__DIR__).'/src/Setup/SetupException.php';
 require_once dirname(__DIR__).'/src/Setup/BrowserSetupService.php';
+try{$canonical=LocalEndpoint::canonicalRedirectTarget($_SERVER);if($canonical!==null){header('Location: '.$canonical,302);exit;}}catch(Throwable){http_response_code(500);exit;}
 $setup=new BrowserSetupService($root,$root);
 if(!$setup->status()['installed']){header('Location: /setup/');exit;}
 $configFile=$root.DIRECTORY_SEPARATOR.'config.php';$config=require $configFile;if(!is_array($config)){http_response_code(500);exit;}
