@@ -53,6 +53,7 @@ jobs:
           if(-not$httpd){throw 'httpd.exe missing'}
           $apacheDir=Split-Path (Split-Path $httpd.FullName -Parent) -Parent
           $targetApache=Join-Path $root 'Infrastructure\Apache'
+          New-Item -ItemType Directory -Path $targetApache -Force|Out-Null
           Copy-Item -Path (Join-Path $apacheDir '*') -Destination $targetApache -Recurse -Force
 
           $web=Join-Path $root 'Web'
