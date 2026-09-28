@@ -68,6 +68,12 @@ begin
 
   if GetInstalledVersion(ExistingVersion) then
   begin
+    if WizardSilent then
+    begin
+      Result := True;
+      exit;
+    end;
+
     if CompareText(ExistingVersion, CurrentVersion) = 0 then
       PromptText :=
         'نسخه ' + ExistingVersion + ' از SOKNA Prerequisites از قبل نصب است.' + #13#10 + #13#10 +
