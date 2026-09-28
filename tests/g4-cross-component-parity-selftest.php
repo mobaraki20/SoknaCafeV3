@@ -31,7 +31,7 @@ $mkUser=function(string $username,string $role,array $caps)use($lp,$pwd):array{$
 $admin=$mkUser('g41-admin','admin',[]);
 $remote=$mkUser('g41-remote','operator',['orders_floor','cashier_accounts','inventory_operations','remote_access','remote_settlement','remote_supply','remote_subscriber_payments']);
 $lp->prepare("INSERT INTO user_preparation_areas(user_id,area_key) VALUES(?,'kitchen')")->execute([$remote['id']]);
-$settings=$lp->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');foreach([['cafe.name','G41 Cafe'],['installation.id',$installation],['orders_accepting.cafe','1'],['orders_accepting.kitchen','1'],['orders_accepting.bar','1'],['waiter_call_enabled','1']] as [$k,$v])$settings->execute([$k,$v]);
+$settings=$lp->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');foreach([['cafe.name','G41 Cafe'],['installation.id',$installation],['orders_accepting.cafe','1'],['orders_accepting.kitchen','1'],['orders_accepting.bar','1'],['waiter_call_enabled','1'],['module.inventory.enabled','1'],['module.supply.enabled','1'],['inventory_initialized','1'],['inventory_reconciliation_required','0']] as [$k,$v])$settings->execute([$k,$v]);
 
 $lp->exec("INSERT INTO categories(category_key,name,audience,sort_order,active) VALUES('g41-cat','G41','guest_staff',1,1)");$categoryId=(int)$lp->lastInsertId();
 $lp->exec("INSERT INTO menus(menu_key,name,status,sort_order) VALUES('g41-menu','G41 Menu','active',1)");$menuId=(int)$lp->lastInsertId();$lp->prepare('INSERT INTO menu_categories(menu_id,category_id,sort_order) VALUES(?,?,1)')->execute([$menuId,$categoryId]);
