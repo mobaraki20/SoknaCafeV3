@@ -7,8 +7,10 @@ on:
       - 'platform/windows/prerequisites.json'
       - 'platform/windows/release-lock.json'
       - 'packaging/prerequisites/**'
+      - 'packaging/offline/**'
       - 'tests/g7-infrastructure-prerequisites-gate.py'
       - 'docs/adr/0006-independent-infrastructure-prerequisites-setup.md'
+      - 'docs/adr/0007-offline-first-local-installation.md'
       - 'docs/product/FINAL_ARCHITECTURE_DECISIONS_FA.md'
       - '.github/workflows/g7-infrastructure-prerequisites.yml'
   push:
@@ -18,7 +20,9 @@ on:
       - 'platform/windows/prerequisites.json'
       - 'platform/windows/release-lock.json'
       - 'packaging/prerequisites/**'
+      - 'packaging/offline/**'
       - 'tests/g7-infrastructure-prerequisites-gate.py'
+      - 'docs/adr/0007-offline-first-local-installation.md'
       - '.github/workflows/g7-infrastructure-prerequisites.yml'
 
 permissions: {contents: read}
