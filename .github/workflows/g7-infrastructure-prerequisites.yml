@@ -52,9 +52,9 @@ jobs:
           & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $root
       - uses: actions/upload-artifact@v4
         with:
-          name: sokna-prerequisites-setup-1.0.3
+          name: sokna-prerequisites-setup-1.0.4
           path: |
-            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.3.exe
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.4.exe
             packaging/prerequisites/out/installer/artifact-index.json
           if-no-files-found: error
           retention-days: 30
@@ -62,9 +62,9 @@ jobs:
       - name: Upload Offline Kit template
         uses: actions/upload-artifact@v4
         with:
-          name: sokna-offline-kit-template-1.0.3
+          name: sokna-offline-kit-template-1.0.4
           path: |
-            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.3.exe
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.4.exe
             packaging/offline/README_FA.md
             packaging/offline/verify-offline-kit.ps1
             platform/windows/release-lock.json
