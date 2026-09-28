@@ -1,0 +1,42 @@
+name: Publish SOKNA Windows Services 1.0.6
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-windows-services-1.0.6.yml'
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: windows-services-v1.0.6
+      TARGET_SHA: 6262f33d2f889889a679bfe023bc4ca3c576e975
+      RUN_ID: "36472982713"
+      ARTIFACT_NAME: sokna-windows-services-1.0.6-tested-6262f33d2f889889a679bfe023bc4ca3c576e975
+    steps:
+      - name: Download qualified artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/artifact dist/release
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT_NAME" --dir dist/artifact
+          cp dist/artifact/SOKNA-Windows-Services-Setup-1.0.6.exe dist/release/
+          cp dist/artifact/artifact-index.json dist/release/SOKNA-Windows-Services-1.0.6-artifact-index.json
+          (cd dist/release && sha256sum SOKNA-Windows-Services-Setup-1.0.6.exe > SHA256SUMS.txt)
+      - name: Publish release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/release/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/release/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$TARGET_SHA" \
+              --title "SOKNA Windows Services 1.0.6" \
+              --notes "Fixes setup executable version drift and binds Print Agent DataRoot to the selected SOKNA DataRoot. Qualified on Windows Server 2022 with C:\\Program Files install root, D:\\ data root, pre-existing ProgramData print-worker directory, real service create/start/query/uninstall, and ProductVersion parity checks."
+          fi
