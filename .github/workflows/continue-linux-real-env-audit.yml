@@ -81,6 +81,13 @@ jobs:
           s=p.read_text(encoding='utf-8')
           s=s.replace("===6,'remote models missing');","===7,'remote models missing');$modelKeys=$pp->query(\"SELECT model_key FROM remote_read_models WHERE installation_id='{$installation}' ORDER BY model_key\")->fetchAll(PDO::FETCH_COLUMN);g32db($modelKeys===['deferred_context','inventory','inventory_cost','notifications','operations','preparation','reports'],'remote model set drifted');",1)
           p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('apps/public/bootstrap.php')
+          s=p.read_text(encoding='utf-8')
+          anchor="require_once __DIR__ . '/src/Http/ConnectivityHttpAdapter.php';\n"
+          if "RealtimeHttpAdapter.php" not in s:
+              s=s.replace(anchor,anchor+"require_once __DIR__ . '/src/Http/RealtimeHttpAdapter.php';\nrequire_once __DIR__ . '/src/Http/DeferredHttpAdapter.php';\n",1)
+          p.write_text(s,encoding='utf-8',newline='\n')
           PY
 
       - name: install php extensions
