@@ -1,0 +1,39 @@
+name: Publish SOKNA Prerequisites 1.0.6
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-prerequisites-1.0.6.yml'
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: prerequisites-v1.0.6
+      TARGET_SHA: 4ad2f544d483ce568fb58ce9666f8a21c82635f5
+      RUN_ID: "36490915672"
+    steps:
+      - name: Download qualified artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/prereq dist/offline dist/release
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "sokna-prerequisites-setup-1.0.6" --dir dist/prereq
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "sokna-offline-kit-template-1.0.6" --dir dist/offline
+          cp dist/prereq/SOKNA-Prerequisites-Setup-1.0.6.exe dist/release/
+          cp dist/prereq/artifact-index.json dist/release/SOKNA-Prerequisites-1.0.6-artifact-index.json
+          (cd dist/offline && zip -r ../release/SOKNA-Offline-Kit-Template-1.0.6.zip .)
+          (cd dist/release && sha256sum SOKNA-Prerequisites-Setup-1.0.6.exe SOKNA-Offline-Kit-Template-1.0.6.zip > SHA256SUMS.txt)
+      - name: Publish release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/release/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/release/*               --repo "$GITHUB_REPOSITORY"               --target "$TARGET_SHA"               --title "SOKNA Prerequisites 1.0.6"               --notes "Handles orphaned SOKNA Apache service registrations after the old root folder has been deleted. A live cross-root Apache installation is still blocked, but a SOKNA-owned service whose httpd.exe no longer exists is treated as recoverable and safely rebound during Repair/Install. MariaDB cross-root safeguards remain strict. Qualified with real MariaDB MSI cross-root matrix, live Apache cross-root block, orphaned Apache recovery preflight, Local Web handoff, G7, G8 and V3 component gates."
+          fi
