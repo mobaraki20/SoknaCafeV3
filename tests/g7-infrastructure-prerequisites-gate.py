@@ -72,6 +72,7 @@ need(runtime_regression.exists(),'permanent Apache/PHP Browser Setup regression 
 need(upgrade_regression.exists(),'permanent prerequisites upgrade regression missing')
 g7wf=(R/'.github/workflows/g7-infrastructure-prerequisites.yml').read_text(encoding='utf-8')
 need('tests/g7-windows-apache-php-runtime.ps1' in g7wf,'G7 does not run Apache/PHP Browser Setup regression')
+need('tests/g7-windows-apache-service-sodium.ps1' in g7wf,'G7 does not run Apache Windows Service sodium regression')
 need('tests/g7-prerequisites-upgrade.ps1' in g7wf,'G7 does not run prerequisites upgrade regression')
 need('php.ini' in src and 'PhpSodiumRuntime=' in src and 'ApacheBinSodium=' in src,'support bundle must capture PHP/sodium diagnostics')
 
