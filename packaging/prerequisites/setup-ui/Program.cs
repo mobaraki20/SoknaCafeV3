@@ -2307,6 +2307,10 @@ echo json_encode($out, JSON_UNESCAPED_SLASHES);
                 if(File.Exists(apacheConf))
                     File.Copy(apacheConf,Path.Combine(dst,"apache-httpd.conf"),true);
 
+                var phpIni=Path.Combine(PhpPath(),"php.ini");
+                if(File.Exists(phpIni))
+                    File.Copy(phpIni,Path.Combine(dst,"php.ini"),true);
+
                 var diag = new StringBuilder();
                 diag.AppendLine("SOKNA Prerequisites support bundle");
                 diag.AppendLine("No passwords or application credentials are intentionally included.");
