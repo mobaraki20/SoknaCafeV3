@@ -44,8 +44,6 @@ need('SOKNA-Prerequisites-Setup-{#ProductVersion}' in iss,'installer output cont
 need('SoknaPrerequisitesSetup.exe' in iss,'installer does not launch prerequisites UI')
 need('runascurrentuser' in iss,'post-install prerequisites UI launch must keep elevated token')
 
-print('G7 infrastructure prerequisites gate: PASS')
-
 lock=json.loads((R/'platform/windows/release-lock.json').read_text(encoding='utf-8'))
 maria=next(x for x in lock['artifacts'] if x['dependency']=='mariadb')
 need(maria['source_url']=='https://downloads.mariadb.org/rest-api/mariadb/11.4.12/mariadb-11.4.12-winx64.msi','MariaDB must use official REST download endpoint')
@@ -65,3 +63,5 @@ verify=offline_verify.read_text(encoding='utf-8')
 for dep in ['php','apache','mariadb','vc_runtime']:
     need(dep in verify,f'Offline Kit verifier missing {dep}')
 need('Get-FileHash' in verify and 'Get-AuthenticodeSignature' in verify,'Offline Kit verifier must validate hash/signature')
+
+print('G7 infrastructure prerequisites gate: PASS')
