@@ -1,0 +1,65 @@
+name: diag g4 settlement v2
+on:
+  push:
+    branches: [transfer/v3-final-menu-041db67-helper]
+    paths: [.github/workflows/diag-g4-settlement-v2.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: 3306
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+      - name: reconstruct source and apply candidate fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          d="${RUNNER_TEMP}/src"
+          mkdir -p "$d"
+          cd "$d"
+          git init
+          git fetch "${GITHUB_WORKSPACE}/.transfer/soknacafev3-git-041db67ba5fa.bundle" refs/heads/transfer-final-menu-041db67:refs/heads/audited
+          git checkout audited
+          sed -i "s/u.name created_by_name/u.display_name created_by_name/" apps/local-web/src/Domain/Printing/PrintTemplatePackageService.php
+          sed -i "s/fetchColumn()===6,'remote models missing'/fetchColumn()===7,'remote models missing'/" tests/g3-remote-staff-publisher-selftest.php
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('apps/public/bootstrap.php')
+          s=p.read_text(encoding='utf-8')
+          marker="require_once __DIR__ . '/src/Http/ConnectivityHttpAdapter.php';\n"
+          add="require_once __DIR__ . '/src/Http/RealtimeHttpAdapter.php';\nrequire_once __DIR__ . '/src/Http/DeferredHttpAdapter.php';\n"
+          if 'RealtimeHttpAdapter.php' not in s:
+              s=s.replace(marker,marker+add)
+          p.write_text(s,encoding='utf-8',newline='\n')
+          PY
+      - name: install php extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+      - name: run g4.1
+        shell: bash
+        run: |
+          cd "${RUNNER_TEMP}/src"
+          php tests/g4-cross-component-parity-selftest.php
