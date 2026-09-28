@@ -126,7 +126,7 @@ jobs:
             Remove-Item $oldRoot,$targetRoot -Recurse -Force -ErrorAction SilentlyContinue
           }
 
-          $orphanRoot='E:\SOKNA'
+          $orphanRoot='C:\SOKNA-ORPHAN-MISSING'
           $orphanExe=Join-Path $orphanRoot 'Infrastructure\Apache\bin\httpd.exe'
           $targetRoot='D:\SOKNA'
           try {
