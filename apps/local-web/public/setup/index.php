@@ -1,8 +1,10 @@
 <?php
 declare(strict_types=1);
+use Sokna\Local\Core\LocalEndpoint;
 use Sokna\Local\Setup\BrowserSetupService;
 $local=dirname(__DIR__,2);$root=$local;
-require_once $local.'/src/Setup/SetupException.php';require_once $local.'/src/Setup/BrowserSetupService.php';
+require_once $local.'/src/Core/LocalEndpoint.php';require_once $local.'/src/Setup/SetupException.php';require_once $local.'/src/Setup/BrowserSetupService.php';
+try{$canonical=LocalEndpoint::canonicalRedirectTarget($_SERVER);if($canonical!==null){header('Location: '.$canonical,302);exit;}}catch(Throwable){http_response_code(500);exit('Local endpoint configuration is invalid.');}
 $setup=new BrowserSetupService($root,$local);if($setup->status()['installed']){header('Location: /login.php');exit;}header('Cache-Control: no-store');header('X-Content-Type-Options: nosniff');header('X-Frame-Options: DENY');header("Content-Security-Policy: default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");header('Referrer-Policy: no-referrer');
 ?><!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>راه‌اندازی سکنا</title><link rel="stylesheet" href="/scds.php?file=tokens.css"><link rel="stylesheet" href="/scds.php?file=components.css"><link rel="stylesheet" href="/assets/setup-wizard.css"></head><body><main class="sc-setup" data-setup-root>
 <section class="sc-card sc-setup__hero"><div class="sc-card__body"><span class="sc-badge">Local Web Setup</span><h1>راه‌اندازی سکنا</h1><p>این مرحله فقط Local Web را آماده می‌کند. Apache، PHP و MariaDB پیش‌نیازهای مستقل محیط هستند.</p></div></section>
