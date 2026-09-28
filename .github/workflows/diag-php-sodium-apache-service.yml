@@ -1,0 +1,129 @@
+name: Diagnose PHP Sodium in Apache Service
+on:
+  push:
+    branches: [diag/php-sodium-apache-service]
+permissions:
+  contents: read
+
+jobs:
+  service-mode:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build setup UI
+        shell: pwsh
+        run: dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-smoke
+      - name: Download locked Apache and PHP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lock=Get-Content platform/windows/release-lock.json -Raw|ConvertFrom-Json
+          $tmp=Join-Path $env:RUNNER_TEMP 'sodium-service'
+          New-Item -ItemType Directory -Path $tmp -Force|Out-Null
+          foreach($dep in @('apache','php')){
+            $a=$lock.artifacts|Where-Object dependency -eq $dep|Select-Object -First 1
+            $out=Join-Path $tmp $a.filename
+            & curl.exe -fL --retry 3 --retry-delay 2 -o $out $a.source_url
+            if($LASTEXITCODE-ne0){throw "$dep download failed"}
+            if((Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()-ne$a.sha256.ToLowerInvariant()){throw "$dep hash mismatch"}
+          }
+      - name: Inspect sodium dependencies and build fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lock=Get-Content platform/windows/release-lock.json -Raw|ConvertFrom-Json
+          $tmp=Join-Path $env:RUNNER_TEMP 'sodium-service'
+          $root='C:\SOKNA-SODIUM-SERVICE'
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root -Force|Out-Null
+
+          $phpA=$lock.artifacts|Where-Object dependency -eq 'php'|Select-Object -First 1
+          $phpDir=Join-Path $root 'Infrastructure\PHP'
+          Expand-Archive (Join-Path $tmp $phpA.filename) $phpDir -Force
+          Write-Host '--- PHP sodium-related files ---'
+          Get-ChildItem $phpDir -Recurse | Where-Object {$_.Name -match 'sodium|crypto|ssl'} | Select-Object FullName,Length | Format-Table -AutoSize
+
+          $setup=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $p=Start-Process $setup -ArgumentList @('--qualify-php-config',$phpDir) -Wait -PassThru -NoNewWindow
+          if($p.ExitCode-ne0){throw "php config helper failed $($p.ExitCode)"}
+
+          $apacheA=$lock.artifacts|Where-Object dependency -eq 'apache'|Select-Object -First 1
+          $extract=Join-Path $tmp 'apache'
+          Expand-Archive (Join-Path $tmp $apacheA.filename) $extract -Force
+          $h=Get-ChildItem $extract -Filter httpd.exe -Recurse|Select-Object -First 1
+          $src=Split-Path (Split-Path $h.FullName -Parent) -Parent
+          $apacheDir=Join-Path $root 'Infrastructure\Apache'
+          New-Item -ItemType Directory $apacheDir -Force|Out-Null
+          Copy-Item (Join-Path $src '*') $apacheDir -Recurse -Force
+
+          $web=Join-Path $root 'Web\public'
+          New-Item -ItemType Directory $web -Force|Out-Null
+          Set-Content (Join-Path $web 'probe.php') '<?php header("Content-Type: application/json"); echo json_encode(["sodium"=>extension_loaded("sodium"),"ini"=>php_ini_loaded_file(),"extdir"=>ini_get("extension_dir")]);' -Encoding UTF8
+
+          $conf=Join-Path $apacheDir 'conf\httpd.conf'
+          $a=$apacheDir.Replace('\','/')
+          $pdir=$phpDir.Replace('\','/')
+          $w=$web.Replace('\','/')
+          $t=Get-Content $conf -Raw
+          $t=[regex]::Replace($t,'(?im)^\s*Define\s+SRVROOT\s+\".*?\"\s*$',('Define SRVROOT "'+$a+'"'))
+          $t=[regex]::Replace($t,'(?im)^\s*Listen\s+.*$','Listen 127.0.0.1:18095',1)
+          $t=[regex]::Replace($t,'(?im)^\s*DocumentRoot\s+\".*?\"\s*$',('DocumentRoot "'+$w+'"'),1)
+          $managed=@(
+            'ServerName 127.0.0.1:18095',
+            ('LoadModule php_module "'+$pdir+'/php8apache2_4.dll"'),
+            ('PHPIniDir "'+$pdir+'"'),
+            '<FilesMatch \.php$>','SetHandler application/x-httpd-php','</FilesMatch>',
+            ('<Directory "'+$w+'">'),'AllowOverride All','Require all granted','</Directory>',
+            'DirectoryIndex index.php'
+          )
+          $t+="`r`n"+($managed -join "`r`n")+"`r`n"
+          Set-Content $conf $t -Encoding UTF8
+
+          $httpd=Join-Path $apacheDir 'bin\httpd.exe'
+          & $httpd -t -f $conf
+          if($LASTEXITCODE-ne0){throw 'syntax failed'}
+          & $httpd -k install -n SoknaApache -f $conf
+          if($LASTEXITCODE-ne0){throw "service install failed $LASTEXITCODE"}
+          & sc.exe start SoknaApache
+          Start-Sleep -Seconds 3
+          Write-Host '--- SERVICE STATE ---'
+          & sc.exe qc SoknaApache
+          & sc.exe query SoknaApache
+          Write-Host '--- SERVICE HTTP PROBE BEFORE LOADFILE ---'
+          $body=& curl.exe -sS http://127.0.0.1:18095/probe.php
+          Write-Host $body
+          $j=$body|ConvertFrom-Json
+          if($j.sodium){
+            Write-Host 'SERVICE_SODIUM_ALREADY_OK=TRUE'
+            exit 0
+          }
+
+          $lib=Get-ChildItem $phpDir -Filter '*sodium*.dll' | Where-Object {$_.Name -notmatch '^php_'} | Select-Object -First 1
+          if(-not$lib){throw 'Dependent sodium runtime DLL not found in PHP root'}
+          Write-Host "DEPENDENT_SODIUM_DLL=$($lib.FullName)"
+          & sc.exe stop SoknaApache
+          Start-Sleep -Seconds 2
+          $t=Get-Content $conf -Raw
+          $load=('LoadFile "'+$lib.FullName.Replace('\','/')+'"')
+          $t=$t.Replace(('LoadModule php_module "'+$pdir+'/php8apache2_4.dll"'),$load+"`r`n"+('LoadModule php_module "'+$pdir+'/php8apache2_4.dll"'))
+          Set-Content $conf $t -Encoding UTF8
+          & $httpd -t -f $conf
+          if($LASTEXITCODE-ne0){throw 'syntax with LoadFile failed'}
+          & sc.exe start SoknaApache
+          Start-Sleep -Seconds 3
+          Write-Host '--- SERVICE HTTP PROBE AFTER LOADFILE ---'
+          $body=& curl.exe -sS http://127.0.0.1:18095/probe.php
+          Write-Host $body
+          $j=$body|ConvertFrom-Json
+          if(-not$j.sodium){throw 'sodium still unavailable in Apache service after explicit dependent DLL load'}
+          Write-Host 'SERVICE_SODIUM_WITH_EXPLICIT_LOADFILE=PASS'
+      - name: Cleanup service
+        if: always()
+        shell: pwsh
+        run: |
+          & sc.exe stop SoknaApache 2>$null
+          Start-Sleep -Seconds 1
+          & sc.exe delete SoknaApache 2>$null
