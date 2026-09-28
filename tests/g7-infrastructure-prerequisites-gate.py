@@ -66,6 +66,14 @@ need('CloseApplications=yes' in iss and 'CloseApplicationsFilter=SoknaPrerequisi
 need('GetInstalledVersion' in iss and 'DisplayVersion' in iss and 'InitializeSetup' in iss,'installer upgrade detection/prompt missing')
 need('ارتقا داده می‌شود' in iss,'installer upgrade UX must explicitly describe upgrade')
 
+runtime_regression=R/'tests/g7-windows-apache-php-runtime.ps1'
+upgrade_regression=R/'tests/g7-prerequisites-upgrade.ps1'
+need(runtime_regression.exists(),'permanent Apache/PHP Browser Setup regression missing')
+need(upgrade_regression.exists(),'permanent prerequisites upgrade regression missing')
+g7wf=(R/'.github/workflows/g7-infrastructure-prerequisites.yml').read_text(encoding='utf-8')
+need('tests/g7-windows-apache-php-runtime.ps1' in g7wf,'G7 does not run Apache/PHP Browser Setup regression')
+need('tests/g7-prerequisites-upgrade.ps1' in g7wf,'G7 does not run prerequisites upgrade regression')
+
 lock=json.loads((R/'platform/windows/release-lock.json').read_text(encoding='utf-8'))
 maria=next(x for x in lock['artifacts'] if x['dependency']=='mariadb')
 need(maria['source_url']=='https://downloads.mariadb.org/rest-api/mariadb/11.4.12/mariadb-11.4.12-winx64.msi','MariaDB must use official REST download endpoint')
