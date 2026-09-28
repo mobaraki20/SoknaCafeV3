@@ -6,6 +6,7 @@ on:
       - transfer/v3-final-menu-041db67-helper
     paths:
       - .transfer/soknacafev3-git-041db67ba5fa.bundle
+      - .github/workflows/import-final-menu-audited-bundle.yml
 
 permissions:
   contents: write
@@ -32,7 +33,7 @@ jobs:
           gh_token: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          bundle="$github_workspace/.transfer/soknacafev3-git-041db67ba5fa.bundle"
+          bundle="${GITHUB_WORKSPACE}/.transfer/soknacafev3-git-041db67ba5fa.bundle"
           rm -rf /tmp/sokna-final-menu
           mkdir /tmp/sokna-final-menu
           cd /tmp/sokna-final-menu
@@ -40,7 +41,7 @@ jobs:
           git fetch "$bundle" refs/heads/transfer-final-menu-041db67:refs/heads/transfer-final-menu-041db67
           git checkout transfer-final-menu-041db67
           test "$(git rev-parse refs/heads/transfer-final-menu-041db67)" = "041db67ba5fad1f7492f9b25f3cb74d072fcca5e"
-          git remote add origin "https://x-access-token:${gh_token}@github.com/${github_repository}.git"
+          git remote add origin "https://x-access-token:${gh_token}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin refs/heads/transfer-final-menu-041db67:refs/heads/transfer/v3-final-menu-audited-source --force
 
       - name: verify pushed branch
@@ -50,6 +51,6 @@ jobs:
         run: |
           set -euo pipefail
           expected="041db67ba5fad1f7492f9b25f3cb74d072fcca5e"
-          remote_head="$(git ls-remote "https://x-access-token:${gh_token}@github.com/${github_repository}.git" refs/heads/transfer/v3-final-menu-audited-source | awk '{print $1}')"
+          remote_head="$(git ls-remote "https://x-access-token:${gh_token}@github.com/${GITHUB_REPOSITORY}.git" refs/heads/transfer/v3-final-menu-audited-source | awk '{print $1}')"
           test "$remote_head" = "$expected"
           echo "final menu audited transfer pass"
