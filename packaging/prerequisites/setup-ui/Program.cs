@@ -303,7 +303,7 @@ internal static class InfrastructureOwnershipDetector
             var name=MsiProperty(productCode,"ProductName");
             var version=MsiProperty(productCode,"VersionString");
             if(name.IndexOf("MariaDB",StringComparison.OrdinalIgnoreCase)<0) continue;
-            if(!string.IsNullOrWhiteSpace(expectedVersion) && !string.Equals(version,expectedVersion,StringComparison.OrdinalIgnoreCase)) continue;
+            if(!string.IsNullOrWhiteSpace(expectedVersion) && !VersionMatches(version,expectedVersion)) continue;
             var location=MsiProperty(productCode,"InstallLocation");
             var key=$"msi:{productCode}";
             if(seen.Add(key))
@@ -326,7 +326,7 @@ internal static class InfrastructureOwnershipDetector
                     var name=key.GetValue("DisplayName")?.ToString()?.Trim()??"";
                     var version=key.GetValue("DisplayVersion")?.ToString()?.Trim()??"";
                     if(name.IndexOf("MariaDB",StringComparison.OrdinalIgnoreCase)<0) continue;
-                    if(!string.IsNullOrWhiteSpace(expectedVersion) && !string.Equals(version,expectedVersion,StringComparison.OrdinalIgnoreCase)) continue;
+                    if(!string.IsNullOrWhiteSpace(expectedVersion) && !VersionMatches(version,expectedVersion)) continue;
                     var location=key.GetValue("InstallLocation")?.ToString()?.Trim();
                     var id=$"registry:{view}:{sub}";
                     if(!seen.Add(id)) continue;
@@ -339,6 +339,14 @@ internal static class InfrastructureOwnershipDetector
                 baseKey?.Dispose();
             }
         }
+    }
+
+    internal static bool VersionMatches(string actual,string expected)
+    {
+        if(string.Equals(actual?.Trim(),expected?.Trim(),StringComparison.OrdinalIgnoreCase)) return true;
+        if(Version.TryParse(actual?.Trim(),out var a)&&Version.TryParse(expected?.Trim(),out var e))
+            return a.Major==e.Major&&a.Minor==e.Minor&&a.Build==e.Build;
+        return false;
     }
 
     internal static bool PathEquals(string a,string b)
