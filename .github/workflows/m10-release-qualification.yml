@@ -97,6 +97,19 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)|Out-Null
             if($errors.Count){ $errors | ForEach-Object { Write-Error ("$($_.Extent.File): $($_.Message)") }; throw "PowerShell parse failure" }
           }
+      - name: Windows PowerShell 5.1 compatibility smoke
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $bad=Get-ChildItem packaging/windows/scripts -Filter *.ps1 | Select-String -SimpleMatch 'IsPathFullyQualified'
+          if($bad){ $bad | ForEach-Object { Write-Error $_ }; throw 'Windows PowerShell 5.1-incompatible Path.IsPathFullyQualified usage found.' }
+          $data=Join-Path $env:RUNNER_TEMP 'sokna-support-data'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-support-out'
+          New-Item -ItemType Directory -Path $data,$out -Force | Out-Null
+          & packaging/windows/scripts/collect-support.ps1 -DataRoot $data -OutputRoot $out
+          $zip=Get-ChildItem -LiteralPath $out -Filter 'SOKNA-Support-*.zip' -File | Select-Object -First 1
+          if(-not $zip){ throw 'Support bundle smoke did not create a ZIP under Windows PowerShell 5.1.' }
+
       - name: Compile Inno installer source with an isolated fixture payload
         shell: pwsh
         run: |
