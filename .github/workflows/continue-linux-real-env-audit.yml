@@ -88,6 +88,11 @@ jobs:
           if "RealtimeHttpAdapter.php" not in s:
               s=s.replace(anchor,anchor+"require_once __DIR__ . '/src/Http/RealtimeHttpAdapter.php';\nrequire_once __DIR__ . '/src/Http/DeferredHttpAdapter.php';\n",1)
           p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('tests/g4-cross-component-parity-selftest.php')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("['waiter_call_enabled','1']] as [$k,$v])","['waiter_call_enabled','1'],['module.inventory.enabled','1'],['module.supply.enabled','1'],['inventory_initialized','1'],['inventory_reconciliation_required','0']] as [$k,$v])",1)
+          p.write_text(s,encoding='utf-8',newline='\n')
           PY
 
       - name: install php extensions
