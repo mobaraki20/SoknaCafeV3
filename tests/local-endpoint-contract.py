@@ -21,7 +21,7 @@ need(infra["local_endpoint"]["canonical_host"]=="127.0.0.1","Prerequisites canon
 setup=(R/"packaging/prerequisites/setup-ui/Program.cs").read_text(encoding="utf-8")
 for token in ["LocalWebUrl()","WebPublicPath()","EnsureApachePortAvailableWithFallback()","ServerName 127.0.0.1:{ApachePort()}","apache_document_root","base_url = LocalWebUrl()"]:
     need(token in setup,f"Prerequisites endpoint implementation missing: {token}")
-need('var w = Slash(WebPublicPath())' in setup and 'Replace(text, $"DocumentRoot \"{w}\"", 1)' in setup,"Apache must serve Local Web public/ directory")
+need('var w = Slash(WebPublicPath())' in setup and r'$"DocumentRoot \"{w}\""' in setup,"Apache must serve Local Web public/ directory")
 
 browser=(R/"apps/local-web/src/Setup/BrowserSetupService.php").read_text(encoding="utf-8")
 for token in ["normalizeLocalBaseUrl","local_base_url","local_bridge_allowed_origin","windows-services-pairing.json","print_agent_token"]:
