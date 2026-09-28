@@ -1,0 +1,152 @@
+name: G8 Local Endpoint Installation
+
+on:
+  pull_request:
+    paths:
+      - 'apps/local-web/**'
+      - 'windows/runtime/**'
+      - 'windows/print-agent/**'
+      - 'packaging/windows/**'
+      - 'packaging/prerequisites/**'
+      - 'platform/windows/infrastructure-prerequisites.json'
+      - 'contracts/local-endpoint-v1.json'
+      - 'tests/local-endpoint-*'
+      - 'tests/local-g2-browser-setup-*'
+      - '.github/workflows/g8-local-endpoint-install.yml'
+  push:
+    branches:
+      - 'feat/**'
+      - main
+    paths:
+      - 'apps/local-web/**'
+      - 'windows/runtime/**'
+      - 'windows/print-agent/**'
+      - 'packaging/windows/**'
+      - 'packaging/prerequisites/**'
+      - 'platform/windows/infrastructure-prerequisites.json'
+      - 'contracts/local-endpoint-v1.json'
+      - 'tests/local-endpoint-*'
+      - 'tests/local-g2-browser-setup-*'
+      - '.github/workflows/g8-local-endpoint-install.yml'
+
+permissions: {contents: read}
+
+jobs:
+  local-browser-setup:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP DB and ZIP extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+      - name: Cross-component endpoint contract
+        run: python3 tests/local-endpoint-contract.py
+      - name: Endpoint normalization scenarios
+        run: php tests/local-endpoint-selftest.php
+      - name: Browser Setup pure state
+        run: php tests/local-g2-browser-setup-pure-selftest.php
+      - name: Browser Setup real MariaDB + pairing on non-default port
+        run: php tests/local-g2-browser-setup-selftest.php
+      - name: Build direct-extract Local Web clean-install ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(cat apps/local-web/VERSION.txt | tr -d '\r\n')"
+          mkdir -p dist
+          python3 apps/local-web/tools/build-clean-install-package.py \
+            --source apps/local-web \
+            --source-commit "$GITHUB_SHA" \
+            --out "dist/SoknaCafeV3-local-web-install-${VERSION}.zip"
+          python3 - <<'PY'
+          import zipfile,glob
+          p=glob.glob('dist/SoknaCafeV3-local-web-install-*.zip')[0]
+          with zipfile.ZipFile(p) as z:
+              n=set(z.namelist())
+              assert 'public/index.php' in n
+              assert 'public/setup/index.php' in n
+              assert 'bootstrap.php' in n
+              assert 'payload/public/index.php' not in n
+              assert 'config.php' not in n
+              assert 'install.lock' not in n
+          print('Clean Local Web install ZIP layout: PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-local-web-install-${{ github.sha }}
+          path: dist/SoknaCafeV3-local-web-install-*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-endpoint:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build endpoint-aware Runtime
+        shell: pwsh
+        run: dotnet publish windows/runtime/source/Sokna.Runtime.Service.csproj -c Release -o "$env:RUNNER_TEMP\runtime"
+      - name: Runtime accepts arbitrary loopback Local Web ports and rejects non-loopback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'endpoint-runtime'
+          New-Item -ItemType Directory -Path $root -Force|Out-Null
+          $rt=Join-Path $root 'runtime.token';$lt=Join-Path $root 'local.token'
+          Set-Content -LiteralPath $rt -Value ('r'*64) -NoNewline
+          Set-Content -LiteralPath $lt -Value ('l'*64) -NoNewline
+          $exe=Join-Path $env:RUNNER_TEMP 'runtime\SoknaRuntimeService.exe'
+          foreach($port in @(18080,18081,23456)){
+            $data=Join-Path $root ("data-"+$port)
+            $cfg=[ordered]@{
+              contractVersion=1;instanceId=("runtime-test-"+$port);dataRoot=$data;healthPort=17621;
+              runtimeTokenFile=$rt;localTokenFile=$lt;localBaseUrl=("http://127.0.0.1:"+$port+"/");
+              printAgentServiceName='SoknaPrintWorker';supervisePrintAgent=$false;triggers=@()
+            }
+            $path=Join-Path $root ("runtime-"+$port+".json")
+            $cfg|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $path -Encoding UTF8
+            & $exe --config $path --self-test
+            if($LASTEXITCODE-ne0){throw "Runtime rejected loopback port $port"}
+          }
+          $bad=[ordered]@{
+            contractVersion=1;instanceId='runtime-bad-endpoint';dataRoot=(Join-Path $root 'bad');healthPort=17621;
+            runtimeTokenFile=$rt;localTokenFile=$lt;localBaseUrl='http://192.168.1.2:18080/';
+            printAgentServiceName='SoknaPrintWorker';supervisePrintAgent=$false;triggers=@()
+          }
+          $badPath=Join-Path $root 'runtime-bad.json'
+          $bad|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $badPath -Encoding UTF8
+          & $exe --config $badPath --self-test
+          if($LASTEXITCODE-eq0){throw 'Runtime accepted non-loopback Local endpoint.'}
+          Write-Host 'Runtime endpoint scenarios: PASS'
+      - name: Parse Windows lifecycle scripts
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem packaging/windows/scripts -Filter *.ps1 | ForEach-Object {
+            $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$null,[ref]$errors)
+            if($errors){$errors|ForEach-Object{Write-Error $_};throw "PowerShell parse failed: $($_.Name)"}
+          }
