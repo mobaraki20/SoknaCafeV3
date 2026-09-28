@@ -18,7 +18,10 @@
         "required": false,
         "publisher_contains": ""
       },
-      "instructions_fa": "PHP 8.2.34 x64 Thread Safe برای Apache؛ extensionهای pdo_mysql، fileinfo، openssl، sodium و mbstring باید در preflight تأیید شوند."
+      "instructions_fa": "PHP 8.2.34 x64 Thread Safe برای Apache؛ extensionهای pdo_mysql، fileinfo، openssl، sodium و mbstring باید در preflight تأیید شوند.",
+      "fallback_urls": [
+        "https://www.php.net/~windows/releases/php-8.2.34-Win32-vs16-x64.zip"
+      ]
     },
     {
       "id": "apache-2.4.68-vs18-x64",
@@ -33,7 +36,8 @@
         "required": false,
         "publisher_contains": ""
       },
-      "instructions_fa": "Apache Lounge x64؛ lifecycle همچنان external است. OpenSSL مورد نیاز SOKNA باید از bin همین Apache یا یک OpenSSL از پیش نصب‌شده و تأییدشده انتخاب شود؛ SOKNA مالک سرویس Apache نیست."
+      "instructions_fa": "Apache Lounge x64؛ lifecycle همچنان external است. OpenSSL مورد نیاز SOKNA باید از bin همین Apache یا یک OpenSSL از پیش نصب‌شده و تأییدشده انتخاب شود؛ SOKNA مالک سرویس Apache نیست.",
+      "fallback_urls": []
     },
     {
       "id": "mariadb-11.4.12-x64",
@@ -48,7 +52,10 @@
         "required": false,
         "publisher_contains": ""
       },
-      "instructions_fa": "MariaDB Community Server 11.4.12 x64؛ نصب/سرویس shared و external باقی می‌ماند و ابزار setup-machine.php readiness را تأیید می‌کند."
+      "instructions_fa": "MariaDB Community Server 11.4.12 x64؛ نصب/سرویس shared و external باقی می‌ماند و ابزار setup-machine.php readiness را تأیید می‌کند.",
+      "fallback_urls": [
+        "https://mirrors.liquidweb.com/mariadb/mariadb-11.4.12/winx64-packages/mariadb-11.4.12-winx64.msi"
+      ]
     },
     {
       "id": "vc-runtime-14.51.36247.0-x64",
@@ -63,7 +70,8 @@
         "required": true,
         "publisher_contains": "Microsoft Corporation"
       },
-      "instructions_fa": "Microsoft Visual C++ v14 x64 14.51.36247.0؛ artifact immutable فعلی Microsoft برای VS 2017–2026. Setup کاربر آن را خودکار نصب نمی‌کند و نسخه جدیدتر موجود روی سیستم نباید downgrade شود."
+      "instructions_fa": "Microsoft Visual C++ v14 x64 14.51.36247.0؛ artifact immutable فعلی Microsoft برای VS 2017–2026. Setup کاربر آن را خودکار نصب نمی‌کند و نسخه جدیدتر موجود روی سیستم نباید downgrade شود.",
+      "fallback_urls": []
     }
   ]
 }
