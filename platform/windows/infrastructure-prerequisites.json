@@ -62,7 +62,10 @@
     "preserve_existing_web_root": true,
     "preserve_existing_database_data": true,
     "never_initialize_existing_mariadb_data": true,
-    "reregister_windows_services_after_os_reinstall": true
+    "reregister_windows_services_after_os_reinstall": true,
+    "cross_root_existing_installation_requires_explicit_resolution": true,
+    "automatic_cross_root_migration": false,
+    "preflight_before_mutation": true
   },
   "support": {
     "persistent_logs_under_selected_root": true,
