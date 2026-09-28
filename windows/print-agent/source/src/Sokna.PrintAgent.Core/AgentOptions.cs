@@ -53,7 +53,7 @@ public sealed record AgentOptions
     public void Validate()
     {
         if(!Uri.TryCreate(ServerBaseUrl,UriKind.Absolute,out var uri))throw new InvalidDataException("ServerBaseUrl معتبر نیست.");
-        if(!string.IsNullOrEmpty(uri.UserInfo)||!string.IsNullOrEmpty(uri.Query)||!string.IsNullOrEmpty(uri.Fragment))throw new InvalidDataException("ServerBaseUrl نباید شامل credential، query یا fragment باشد.");
+        if(!string.IsNullOrEmpty(uri.UserInfo)||!string.IsNullOrEmpty(uri.Query)||!string.IsNullOrEmpty(uri.Fragment)||uri.AbsolutePath!="/")throw new InvalidDataException("ServerBaseUrl باید Origin دقیق و بدون credential، path، query یا fragment باشد.");
         if(RequireHttps&&uri.Scheme!="https"&&!uri.IsLoopback)throw new InvalidDataException("Production فقط HTTPS مجاز است.");
         if(uri.Scheme is not ("https" or "http"))throw new InvalidDataException("فقط HTTP/HTTPS برای ServerBaseUrl مجاز است.");
         if(ClaimBatchSize is <1 or >5)throw new InvalidDataException("ClaimBatchSize باید بین 1 و 5 باشد.");
@@ -66,7 +66,7 @@ public sealed record AgentOptions
         if(LocalBridgePort is <1024 or >65535)throw new InvalidDataException("LocalBridgePort معتبر نیست.");
         if(LocalBridgeEnabled && !string.IsNullOrWhiteSpace(LocalBridgeAllowedOrigin))
         {
-            if(!Uri.TryCreate(LocalBridgeAllowedOrigin,UriKind.Absolute,out var origin)||origin.Scheme is not ("https" or "http")||origin.AbsolutePath!="/"||!string.IsNullOrEmpty(origin.Query)||!string.IsNullOrEmpty(origin.Fragment))throw new InvalidDataException("LocalBridgeAllowedOrigin باید Origin دقیق سایت باشد.");
+            if(!Uri.TryCreate(LocalBridgeAllowedOrigin,UriKind.Absolute,out var origin)||origin.Scheme is not ("https" or "http")||origin.AbsolutePath!="/"||!string.IsNullOrEmpty(origin.UserInfo)||!string.IsNullOrEmpty(origin.Query)||!string.IsNullOrEmpty(origin.Fragment))throw new InvalidDataException("LocalBridgeAllowedOrigin باید Origin دقیق سایت باشد.");
         }
         if(PreviewMaxPendingGlobal is <1 or >16)throw new InvalidDataException("PreviewMaxPendingGlobal باید بین 1 و 16 باشد.");
         if(PreviewTimeoutSeconds is <2 or >30)throw new InvalidDataException("PreviewTimeoutSeconds باید بین 2 و 30 باشد.");
