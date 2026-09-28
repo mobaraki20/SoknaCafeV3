@@ -2139,7 +2139,6 @@ DirectoryIndex index.php index.html
                 diag.AppendLine($"Root={RootPath()}");
                 diag.AppendLine($"Apache={ServiceStatus("SoknaApache")}; Port{ApachePort()}={TcpOpen(ApachePort())}");
                 diag.AppendLine($"ApacheImagePath={InfrastructureOwnershipDetector.ReadServiceImagePath("SoknaApache") ?? "<not-registered>"}");
-                var apacheConf=Path.Combine(ApachePath(),"conf","httpd.conf");
                 diag.AppendLine($"ApacheLocalWebConfigReady={(File.Exists(apacheConf) && ApacheConfigurationReady(apacheConf))}");
                 diag.AppendLine($"MariaDB={ServiceStatus("SoknaMariaDB")}; Port3306={TcpOpen(3306)}");
                 diag.AppendLine($"MariaDataPresent={MariaDataInitialized()}");
