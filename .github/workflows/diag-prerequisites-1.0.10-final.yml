@@ -1,0 +1,120 @@
+name: Qualify Prerequisites 1.0.10 Final
+on:
+  push:
+    branches:
+      - diag/prerequisites-1.0.10-final
+permissions:
+  contents: read
+
+jobs:
+  windows-prerequisites:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Static prerequisite contract
+        shell: pwsh
+        run: python tests/g7-infrastructure-prerequisites-gate.py
+
+      - name: Build setup UI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-smoke
+          if($LASTEXITCODE-ne0){throw "UI build failed: $LASTEXITCODE"}
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          if($v-ne'1.0.10'){throw "Unexpected Prerequisites version: $v"}
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $actual=([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion).Split('+')[0]
+          if($actual-ne$v){throw "ProductVersion mismatch: $actual != $v"}
+
+      - name: Real legacy PHP repair through Apache and Browser Setup
+        shell: pwsh
+        run: tests/g7-windows-apache-php-runtime.ps1
+
+      - name: Install Inno Setup and build installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          choco install innosetup --yes --no-progress
+          $root=(Resolve-Path .).Path
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $root
+          if($LASTEXITCODE-ne0){throw "Installer build failed: $LASTEXITCODE"}
+          $setup='packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.10.exe'
+          if(-not(Test-Path $setup)){throw 'Prerequisites 1.0.10 installer missing'}
+
+      - name: Upgrade 1.0.9 to 1.0.10 with old UI open
+        shell: pwsh
+        run: tests/g7-prerequisites-upgrade.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-prerequisites-1.0.10-qualified-${{ github.sha }}
+          path: |
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.10.exe
+            packaging/prerequisites/out/installer/artifact-index.json
+          if-no-files-found: error
+
+  local-web:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP DB and ZIP extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+      - name: Qualify Browser Setup and pairing with real MariaDB
+        run: |
+          set -euo pipefail
+          python3 tests/local-endpoint-contract.py
+          php tests/local-endpoint-selftest.php
+          php tests/local-g2-browser-setup-pure-selftest.php
+          php tests/local-g2-browser-setup-selftest.php
+      - name: Build clean-install Local Web
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < apps/local-web/VERSION.txt)"
+          test "$VERSION" = "3.0.0-g6.4-dev"
+          mkdir -p dist
+          python3 apps/local-web/tools/build-clean-install-package.py             --source apps/local-web             --source-commit "$GITHUB_SHA"             --out "dist/SoknaCafeV3-local-web-install-$VERSION.zip"
+          python3 - <<'PY'
+          import zipfile,json
+          p='dist/SoknaCafeV3-local-web-install-3.0.0-g6.4-dev.zip'
+          with zipfile.ZipFile(p) as z:
+              names=set(z.namelist())
+              assert 'public/setup/index.php' in names
+              assert 'public/assets/setup-wizard.js' in names
+              assert 'src/Setup/BrowserSetupService.php' in names
+              m=json.loads(z.read('sokna-install-manifest.json'))
+              assert m['version']=='3.0.0-g6.4-dev'
+          print('LOCAL_WEB_G6_4_PACKAGE=PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-local-web-3.0.0-g6.4-dev-qualified-${{ github.sha }}
+          path: dist/SoknaCafeV3-local-web-install-3.0.0-g6.4-dev.zip
+          if-no-files-found: error
