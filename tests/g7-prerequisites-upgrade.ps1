@@ -3,11 +3,11 @@ Set-StrictMode -Version Latest
 
 $RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $current=(Get-Content (Join-Path $RepoRoot 'packaging\prerequisites\VERSION.txt') -Raw).Trim()
-if($current-ne'1.0.9'){throw "This regression currently expects 1.0.9, got $current"}
+if($current-ne'1.0.10'){throw "This regression currently expects 1.0.10, got $current"}
 $new=Join-Path $RepoRoot "packaging\prerequisites\out\installer\SOKNA-Prerequisites-Setup-$current.exe"
 if(-not(Test-Path $new)){throw "Current installer missing: $new"}
 
-$previous='1.0.8'
+$previous='1.0.9'
 $old=Join-Path $env:RUNNER_TEMP "SOKNA-Prerequisites-Setup-$previous.exe"
 $url="https://github.com/mobaraki20/SoknaCafeV3/releases/download/prerequisites-v$previous/SOKNA-Prerequisites-Setup-$previous.exe"
 & curl.exe -fL --retry 3 --retry-delay 2 -o $old $url
