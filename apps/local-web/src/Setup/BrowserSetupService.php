@@ -186,9 +186,9 @@ final class BrowserSetupService
         $adminCount=(int)$pdo->query("SELECT COUNT(*) FROM users WHERE role='admin' AND active=1")->fetchColumn();
         $installationId=trim((string)($config['installation']['id']??''));
         $identityOk=$installationId!=='' && $this->setting($pdo,'installation.id')===$installationId;
-        $seedOk=$this->setting($pdo,'default_content.v1')==='complete';
+        $seedOk=$this->setting($pdo,'default_content.v2')==='complete';
         $seedCounts=['menus'=>(int)$pdo->query('SELECT COUNT(*) FROM menus')->fetchColumn(),'categories'=>(int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn(),'items'=>(int)$pdo->query('SELECT COUNT(*) FROM items')->fetchColumn(),'media'=>(int)$pdo->query('SELECT COUNT(*) FROM guest_media_assets')->fetchColumn()];
-        $seedOk=$seedOk&&$seedCounts['menus']>=3&&$seedCounts['categories']>=15&&$seedCounts['items']>=128&&$seedCounts['media']>=24;
+        $seedOk=$seedOk&&$seedCounts['menus']>=3&&$seedCounts['categories']>=14&&$seedCounts['items']>=131&&$seedCounts['media']>=24;
         if (!$dbOk || $applied < count($migrationFiles) || $adminCount < 1 || !$identityOk || !$seedOk) throw new SetupException('final_health_failed','بررسی نهایی نصب کامل نشد.',500,['database'=>$dbOk,'migrations'=>$applied.'/'.count($migrationFiles),'admin'=>$adminCount,'identity'=>$identityOk,'default_content'=>$seedOk,'default_content_counts'=>$seedCounts]);
         return ['database'=>'ok','migrations_applied'=>$applied,'migration_files'=>count($migrationFiles),'admin'=>'ok','installation_identity'=>'ok','default_content'=>'ok','default_content_counts'=>$seedCounts];
     }

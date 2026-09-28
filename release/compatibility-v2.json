@@ -1,13 +1,13 @@
 {
   "components": {
     "local-web": {
-      "version": "3.0.0-g6.1-dev"
+      "version": "3.0.0-g6.2-dev"
     },
     "print-agent": {
       "version": "6.2.5"
     },
     "public-edge": {
-      "version": "3.0.0-g3.4-dev"
+      "version": "3.0.0-g3.5-dev"
     },
     "shared-contracts": {
       "version": "0.1.0-dev"

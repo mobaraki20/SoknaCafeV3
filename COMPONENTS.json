@@ -56,7 +56,7 @@
       ],
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "apps/local-web/VERSION.txt",
-      "current_version": "3.0.0-g6.1-dev",
+      "current_version": "3.0.0-g6.2-dev",
       "artifact_pipeline": "apps/local-web/tools/build-update-package.py",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },
@@ -100,7 +100,7 @@
       ],
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "apps/public/VERSION.txt",
-      "current_version": "3.0.0-g3.4-dev",
+      "current_version": "3.0.0-g3.5-dev",
       "artifact_pipeline": "apps/public/tools/build-deploy-package.py + apps/public/tools/build-update-package.py",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },

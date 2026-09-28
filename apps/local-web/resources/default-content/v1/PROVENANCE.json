@@ -10,15 +10,16 @@
   },
   "migrated_baseline": {
     "menus": 3,
-    "categories": 15,
-    "items": 128,
-    "active_items": 109,
-    "available_items": 128,
+    "categories": 14,
+    "items": 131,
+    "active_items": 112,
+    "available_items": 131,
     "staff_only_items": 3,
     "featured_items": 8,
     "unique_media_assets": 24,
-    "media_references": 80,
-    "category_icons": 56
+    "media_references": 81,
+    "category_icons": 56,
+    "seeded_category_icons": 14
   },
   "media": [
     {
@@ -147,5 +148,21 @@
     "legacy staff app icons",
     "documentation gallery assets",
     "unused 192/512 favicons because V3 has no PWA manifest using them"
-  ]
+  ],
+  "current_menu_source": {
+    "file_name": "Items - 1405_07_04 21_20.xlsx",
+    "sha256": "dc71b72c6dd5a57eb8352c61c1c90a66ca9dc394bfb4dc384872b53177191d09",
+    "rows": 131,
+    "categories": 14,
+    "price_conversion": "source ریال / 10 = application تومان",
+    "source_of_truth_fields": [
+      "کد",
+      "عنوان",
+      "قیمت پیش فرض",
+      "گروه کالای",
+      "فعال"
+    ],
+    "canonical_catalog_digest_sha256": "cd800ff566d65fc5591f2a6effc602059d3fe1cea2de61857191058940d64c60",
+    "category_icon_assignment_sha256": "c892ed039c58986a635c29173767a4cac1c2867a43c0014350ae872022454683"
+  }
 }

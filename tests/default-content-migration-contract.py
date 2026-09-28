@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, re
+import hashlib, json, re
 from pathlib import Path
 
 R=Path(__file__).resolve().parents[1]
@@ -18,14 +18,14 @@ need(CAT.is_file(),'catalog.json missing')
 need(ICONS.is_file(),'category-icons.json missing')
 doc=json.loads(CAT.read_text(encoding='utf-8'))
 need(len(doc.get('menus',[]))==3,'expected 3 menus')
-need(len(doc.get('categories',[]))==15,'expected 15 categories')
-need(len(doc.get('items',[]))==128,'expected 128 items')
-need(sum(int(x.get('active',1)) for x in doc['items'])==109,'expected 109 active items')
-need(sum(int(x.get('available',1)) for x in doc['items'])==128,'expected 128 available items')
+need(len(doc.get('categories',[]))==14,'expected 14 categories')
+need(len(doc.get('items',[]))==131,'expected 131 items')
+need(sum(int(x.get('active',1)) for x in doc['items'])==112,'expected 112 active items')
+need(sum(int(x.get('available',1)) for x in doc['items'])==131,'expected 131 available items')
 need(sum(int(x.get('staff_only',0)) for x in doc['items'])==3,'expected 3 staff-only items')
 need(sum(int(x.get('featured',0)) for x in doc['items'])==8,'expected 8 featured items')
-need(sum(len(set(x.get('menus',[]))) for x in doc['categories'])==32,'category membership baseline changed')
-need(sum(len(set(x.get('menus',[]))) for x in doc['items'])==282,'item membership baseline changed')
+need(sum(len(set(x.get('menus',[]))) for x in doc['categories'])==31,'category membership baseline changed')
+need(sum(len(set(x.get('menus',[]))) for x in doc['items'])==289,'item membership baseline changed')
 
 media_refs=[]
 for scope in ('categories','items'):
@@ -34,7 +34,7 @@ for scope in ('categories','items'):
         if p: media_refs.append(p)
 unique_media=sorted(set(media_refs))
 need(len(unique_media)==24,'expected 24 unique referenced menu images')
-need(len(media_refs)==80,'expected 80 category/item media references')
+need(len(media_refs)==81,'expected 81 category/item media references')
 for p in unique_media:
     m=re.fullmatch(r'assets/menu/default/([A-Za-z0-9._-]+\.webp)',p)
     need(m is not None, f'unsupported legacy image path {p}')
@@ -47,6 +47,11 @@ prov=json.loads((RES/'PROVENANCE.json').read_text(encoding='utf-8'))
 need(prov.get('format')=='sokna-default-content-provenance-v1','content provenance format mismatch')
 need(prov['legacy_source']['default_menu_sha256']=='647967a71cc0c47ea148e9cbfff9fbe92cd7b8642bb56ce560156e0f91e2beb9','legacy default menu provenance changed')
 need(prov['legacy_source']['legacy_ui_sprite_sha256']=='6b7eec7a2f6fa85253585090040597e5bb21e44174947b27bc7327a81e7d3883','legacy icon sprite provenance changed')
+need(prov.get('current_menu_source',{}).get('sha256')=='dc71b72c6dd5a57eb8352c61c1c90a66ca9dc394bfb4dc384872b53177191d09','current menu spreadsheet provenance changed')
+need(prov.get('current_menu_source',{}).get('rows')==131,'current menu source row count changed')
+canonical_items=[{'item_code':x['item_code'],'name':x['name'],'price':x['price'],'category':x['category'],'active':x['active']} for x in doc['items']]
+canonical_digest=hashlib.sha256(json.dumps(canonical_items,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+need(canonical_digest==prov['current_menu_source']['canonical_catalog_digest_sha256']=='cd800ff566d65fc5591f2a6effc602059d3fe1cea2de61857191058940d64c60','current spreadsheet-derived menu catalog digest changed')
 need(len(prov.get('media',[]))==24 and all(x.get('sha256')==x.get('legacy_sha256') for x in prov['media']),'media provenance does not prove byte-identical legacy copies')
 
 icon_doc=json.loads(ICONS.read_text(encoding='utf-8'))
@@ -56,9 +61,14 @@ keys=[i.get('key') for i in icons]
 need(len(keys)==56 and len(set(keys))==56,'expected 56 unique category icons')
 need([len(g.get('icons',[])) for g in icon_doc['groups']]==[5,13,6,22,4,6],'icon group baseline changed')
 need('list' in keys,'fallback list icon missing')
+seed_icons=[]
 for c in doc['categories']:
     k=str(c.get('icon_key') or '')
     need(k in keys,f'default category icon {k!r} missing from icon library')
+    seed_icons.append(k)
+need(len(seed_icons)==14 and len(set(seed_icons))==14,'all 14 seeded categories must have distinct icons')
+expected_category_icons={'بار گرم':'bean','چای ها':'tea','دمنوش ها':'herbal','شربت ها':'sharbat','بار سرد':'cold-drink','اسموتی':'smoothie','شیک ها':'shake','نوشیدنی':'water','کیک و دسر':'cake','فینگرفود':'sharing','خوراک':'food','غذای اصلی':'iranian-food','ترشیجات':'sauce','سرویس‌ها':'service'}
+need({c['name']:c['icon_key'] for c in doc['categories']}==expected_category_icons,'seeded category/icon assignment drifted')
 for sprite in (LOCAL_SPRITE,PUBLIC_SPRITE):
     need(sprite.is_file(),f'{sprite.relative_to(R)} missing')
     text=sprite.read_text(encoding='utf-8')
@@ -80,8 +90,8 @@ for base in [R/'apps/local-web/public/assets',R/'apps/public/assets']:
     need(not (base/'favicon-512.png').exists(),'unused favicon-512.png should not be migrated')
 
 seeder=(R/'apps/local-web/src/Domain/Sellables/DefaultContentSeeder.php').read_text(encoding='utf-8')
-need("private const MARKER_KEY = 'default_content.v1'" in seeder,'idempotent seed marker missing')
-need("count($doc['menus']) !== 3" in seeder and "count($doc['items']) !== 128" in seeder,'audited baseline fence missing')
+need("private const MARKER_KEY = 'default_content.v2'" in seeder,'idempotent seed marker missing')
+need("count($doc['menus']) !== 3" in seeder and "count($doc['categories']) !== 14" in seeder and "count($doc['items']) !== 131" in seeder,'audited baseline fence missing')
 need("count($map)!==24" in seeder,'24-image baseline fence missing')
 need("'media:'" in seeder and 'guest_media_references' in seeder,'Media Library reference integration missing')
 need("$v==='other'?'cold_bar'" in seeder,'legacy preparation station mapping missing')
@@ -94,7 +104,7 @@ need(item_line.count('?')==12,'item upsert placeholder count must be exactly twe
 setup=(R/'apps/local-web/src/Setup/BrowserSetupService.php').read_text(encoding='utf-8')
 machine=(R/'apps/local-web/tools/setup-machine.php').read_text(encoding='utf-8')
 need(setup.count('defaultContentSeeder()->seed(')>=2,'browser setup install+resume seed hooks missing')
-need("default_content.v1" in setup and "'menus'" in setup and "'media'" in setup,'browser final-health default content fence missing')
+need("default_content.v2" in setup and "'menus'" in setup and "'media'" in setup,'browser final-health default content fence missing')
 need('defaultContentSeeder()->seed(' in machine,'setup-machine seed hook missing')
 
 projection=(R/'apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php').read_text(encoding='utf-8')
@@ -109,5 +119,9 @@ need('/assets/favicon-32.png' in shell and '/assets/favicon-180.png' in shell,'L
 
 # Exact legacy edge-case mapping remains intentional and visible in the source data.
 other=[x for x in doc['items'] if x.get('preparation_station')=='other']
-need(len(other)==1 and other[0].get('item_code')=='DESSERT-MATILDA-CHEESECAKE','legacy other-station baseline changed')
-print('PASS default content migration contract: 3 menus / 15 categories / 128 items / 24 images / 56 category icons')
+need(len(other)==1 and other[0].get('item_code')=='1211','legacy other-station baseline changed')
+need(len({str(x.get('item_code')) for x in doc['items']})==131,'item codes must be unique')
+need(all(str(x.get('item_code','')).isdigit() for x in doc['items']),'current POS item codes must remain numeric')
+for code,name in [('1219','سس سزار'),('1317','سالاد حمص'),('1220','چیزکیک سن سباستین')]:
+    need(any(str(x.get('item_code'))==code and x.get('name')==name for x in doc['items']),f'new menu item missing: {code} {name}')
+print('PASS default content migration contract: 3 menus / 14 categories / 131 items / 24 images / 56 icon library / 14 distinct seeded icons')

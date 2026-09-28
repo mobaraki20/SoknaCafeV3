@@ -56,10 +56,11 @@
         "Central guest copy persistence/publish/escaped render and markup rejection",
         "Archive refusal while referenced, then unassign/archive/GC removal",
         "Raster-only media policy across Local and Public",
-        "Audited fresh-install default content seed: 3 menus / 15 categories / 128 items",
-        "Audited legacy media migration: 24 unique WebP assets, 80 category/item references, idempotent seed marker",
         "Category icon library: 56 approved current/future icons with Local picker and Public rendering",
-        "Legacy preparation station normalization: DESSERT-MATILDA-CHEESECAKE other -> cold_bar"
+        "Current spreadsheet-derived fresh-install seed: 3 menus / 14 categories / 131 items / 112 active",
+        "Audited legacy media migration retained for matching current items: 24 unique WebP assets, 81 category/item references, idempotent v2 seed marker",
+        "All 14 seeded categories use distinct approved icon keys from the 56-icon category library",
+        "Legacy preparation station normalization: item 1211 (چیز کیک ماتیلدا) other -> cold_bar"
       ]
     },
     {

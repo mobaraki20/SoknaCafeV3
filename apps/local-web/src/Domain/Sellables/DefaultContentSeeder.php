@@ -9,7 +9,7 @@ use Throwable;
 
 final class DefaultContentSeeder
 {
-    private const MARKER_KEY = 'default_content.v1';
+    private const MARKER_KEY = 'default_content.v2';
     private const MARKER_VALUE = 'complete';
 
     public function __construct(
@@ -41,7 +41,7 @@ final class DefaultContentSeeder
         $doc = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
         if (!is_array($doc)) throw new RuntimeException('Default catalog resource is invalid.');
         foreach (['menus','categories','items'] as $key) if (!is_array($doc[$key] ?? null)) throw new RuntimeException("Default catalog '$key' is invalid.");
-        if (count($doc['menus']) !== 3 || count($doc['categories']) !== 15 || count($doc['items']) !== 128) {
+        if (count($doc['menus']) !== 3 || count($doc['categories']) !== 14 || count($doc['items']) !== 131) {
             throw new RuntimeException('Default catalog counts do not match the audited legacy content baseline.');
         }
         return $doc;
@@ -132,7 +132,8 @@ final class DefaultContentSeeder
             foreach($catalog['items'] as $row){$source=trim((string)($row['image_path']??''));$iid=$itemMap[(string)($row['item_code']??'')]??0;if($source===''||$iid<1)continue;$refDelete->execute(['item',(string)$iid]);$refInsert->execute([(int)$mediaMap[$source]['media_id'],'item',(string)$iid]);$stats['media_references']++;}
 
             foreach(array_values(array_filter(array_map('strval',(array)($catalog['retired_item_codes']??[])))) as $code){$q=$this->pdo->prepare('UPDATE items SET active=0,available=0 WHERE item_code=?');$q->execute([$code]);}
-            if($actorUserId!==null&&$actorUserId>0){$q=$this->pdo->prepare('SELECT display_name FROM users WHERE id=?');$q->execute([$actorUserId]);$name=$q->fetchColumn();$this->pdo->prepare("INSERT INTO audit_log(actor_user_id,actor_display_name_snapshot,action,entity_type,entity_id,details_json) VALUES(?,?,'setup.default_content_seeded','installation','default-content-v1',?)")->execute([$actorUserId,$name!==false?$name:null,json_encode($stats,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)]);}
+            foreach(array_values(array_filter(array_map('strval',(array)($catalog['retired_category_keys']??[])))) as $key){$q=$this->pdo->prepare('UPDATE categories SET active=0 WHERE category_key=?');$q->execute([$key]);}
+            if($actorUserId!==null&&$actorUserId>0){$q=$this->pdo->prepare('SELECT display_name FROM users WHERE id=?');$q->execute([$actorUserId]);$name=$q->fetchColumn();$this->pdo->prepare("INSERT INTO audit_log(actor_user_id,actor_display_name_snapshot,action,entity_type,entity_id,details_json) VALUES(?,?,'setup.default_content_seeded','installation','default-content-v2',?)")->execute([$actorUserId,$name!==false?$name:null,json_encode($stats,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)]);}
             $this->pdo->commit();
             return $stats;
         } catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
