@@ -46,6 +46,8 @@ ui=txt('packaging/windows/setup-ui/Program.cs')
 iss=txt('packaging/windows/installer/SOKNA.iss')
 prepare=txt('packaging/windows/scripts/prepare-shell-payload.ps1')
 life=txt('packaging/windows/scripts/setup-windows-services.ps1')
+support=txt('packaging/windows/scripts/collect-support.ps1')
+owner=txt('packaging/windows/scripts/lifecycle-owner.ps1')
 build=txt('packaging/windows/scripts/build-installer.ps1')
 for token in ['schema_version','install_root','pairing_file','sokna-windows-services-shell-v2','SHA256.HashData','windows-services-compatibility-v1.json']:
     need(token in host,f'SetupHost missing {token}')
@@ -71,6 +73,12 @@ need("Compress-Archive" not in prepare and "SoknaAppPayload.zip'" not in prepare
 for required in ['SoknaRuntimeService.exe','SoknaSetupHost.exe','SoknaSetupUi.exe','print-worker','prerequisites.json','release-lock.json','collect-support.ps1']:
     need(required in prepare,f'shell payload missing {required}')
 need('$IsWindows' not in life and "$env:OS -ne 'Windows_NT'" in life,'Windows PowerShell 5.1 OS check is unsafe')
+for script_name,script in [('setup-windows-services.ps1',life),('collect-support.ps1',support),('lifecycle-owner.ps1',owner)]:
+    need('IsPathFullyQualified' not in script,f'{script_name} uses .NET API unavailable in Windows PowerShell 5.1')
+    need('Test-FullyQualifiedPath' in script,f'{script_name} missing PowerShell 5.1-compatible absolute-path validation')
+need('UseShellExecute = false' in ui and 'RedirectStandardError = true' in ui,'support bundle should run non-elevated and capture diagnostics')
+need('LoadAppIcon()' in ui and 'FitToWorkingArea()' in ui,'Windows Services UI icon/window sizing fix missing')
+need('RightToLeftLayout = true' in ui and 'AutoScroll = true' in ui,'Persian tab order/scrolling fix missing')
 need("@('runtime','print-agent')" not in life or True,'')
 need('external_infrastructure_mutated=$false' in life and 'business_data_mutated=$false' in life,'lifecycle ownership evidence missing')
 need('php.exe' not in life.lower() and 'apache' not in life.lower() and 'mariadb' not in life.lower(),'service lifecycle touches external infrastructure')
