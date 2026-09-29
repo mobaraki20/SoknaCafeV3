@@ -10,6 +10,7 @@
     <RootNamespace>Sokna.SetupHost</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\Sokna.ico</ApplicationIcon>
+
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

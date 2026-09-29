@@ -3,8 +3,12 @@ declare(strict_types=1);
 
 namespace Sokna\Local\Setup;
 
+require_once dirname(__DIR__).'/Core/LocalEndpoint.php';
+
 use PDO;
 use Throwable;
+use InvalidArgumentException;
+use Sokna\Local\Core\LocalEndpoint;
 
 final class BrowserSetupService
 {
@@ -20,10 +24,14 @@ final class BrowserSetupService
         $hasConfig = is_file($config);
         $hasLock = is_file($lock);
         $installationId = '';
+        $localBaseUrl = '';
         if ($hasConfig) {
             try {
                 $loaded = require $config;
-                if (is_array($loaded)) $installationId = trim((string)($loaded['installation']['id'] ?? ''));
+                if (is_array($loaded)) {
+                    $installationId = trim((string)($loaded['installation']['id'] ?? ''));
+                    $localBaseUrl = trim((string)($loaded['local']['base_url'] ?? ''));
+                }
             } catch (Throwable) {}
         }
         $validLock = $hasConfig && $hasLock && $this->lockMatchesInstallation($installationId);
@@ -40,8 +48,16 @@ final class BrowserSetupService
             'lock_file_present' => $hasLock,
             'has_config' => $hasConfig,
             'installation_id' => $installationId,
+            'local_base_url' => $localBaseUrl,
+            'recommended_data_dir' => $this->recommendedDataDir(),
             'resume_available' => $state === 'partial',
         ];
+    }
+
+    public function recommendedDataDir(): string
+    {
+        $root = dirname(rtrim($this->localWebRoot, "\\/"));
+        return rtrim($root, "\\/").DIRECTORY_SEPARATOR.'Data';
     }
 
     public function preflight(string $dataDir = ''): array
@@ -60,6 +76,18 @@ final class BrowserSetupService
         }
         $ok = !in_array(false, array_column($checks, 'ok'), true);
         return ['ok'=>$ok,'checks'=>$checks,'php'=>PHP_VERSION];
+    }
+
+    public static function normalizeLocalBaseUrl(string $value): string
+    {
+        try{return LocalEndpoint::normalize($value);}
+        catch(InvalidArgumentException $e){
+            $code=$e->getMessage()==='local_endpoint_not_loopback'?'local_endpoint_not_loopback':'local_endpoint_invalid';
+            $message=$code==='local_endpoint_not_loopback'
+                ?'آدرس Local Web باید فقط روی همین کامپیوتر (loopback) باشد.'
+                :'آدرس Local Web یا پورت انتخاب‌شده معتبر نیست.';
+            throw new SetupException($code,$message,422);
+        }
     }
 
     public function testDatabase(array $db, bool $createDatabase = false): array
@@ -83,6 +111,7 @@ final class BrowserSetupService
         if ($this->status()['installed']) throw new SetupException('setup_locked','نصب قبلاً نهایی شده است.',423);
         $dataDir = rtrim(trim((string)($input['data_dir'] ?? '')), "\\/");
         $timezone = trim((string)($input['timezone'] ?? 'Asia/Tehran')) ?: 'Asia/Tehran';
+        $localBaseUrl = self::normalizeLocalBaseUrl((string)($input['local_base_url'] ?? ''));
         if (!$this->isAbsolutePath($dataDir)) throw new SetupException('data_dir_invalid','مسیر داده باید کامل باشد.');
         try { new \DateTimeZone($timezone); } catch (Throwable) { throw new SetupException('timezone_invalid','منطقه زمانی معتبر نیست.'); }
         $preflight = $this->preflight($dataDir);
@@ -106,6 +135,7 @@ final class BrowserSetupService
             'db'=>['host'=>$db['host'],'port'=>$db['port'],'name'=>$db['name'],'charset'=>'utf8mb4','user'=>$db['user'],'pass'=>$db['pass']],
             'installation'=>['id'=>$installationId],
             'runtime'=>['local_token'=>$localToken],
+            'local'=>['base_url'=>$localBaseUrl,'origin'=>LocalEndpoint::origin($localBaseUrl)],
             'public'=>['base_url'=>'','shared_secret'=>''],
             'integrations'=>['accommodation'=>['base_url'=>'','secret'=>'']],
         ];
@@ -139,13 +169,13 @@ final class BrowserSetupService
             $adminId=(int)$pdo->query("SELECT id FROM users WHERE role='admin' AND active=1 ORDER BY id LIMIT 1")->fetchColumn();
             if($adminId<1)throw new SetupException('admin_missing','مدیر فعال برای تکمیل داده اولیه پیدا نشد.',500);
             $core->defaultContentSeeder()->seed($adminId);
-            $this->provisionMachineFiles($appConfig);
+            $pairingPath=$this->provisionMachineFiles($appConfig,$pdo);
             $health = $this->finalHealth($appConfig);
             $this->writePrivate($this->lockPath(), json_encode([
                 'format'=>'sokna-install-lock-v3','installation_id'=>$installationId,'created_at'=>gmdate('c'),
                 'setup_surface'=>'browser','health'=>$health,
             ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");
-            return ['success'=>true,'state'=>'installed','installation_id'=>$installationId,'health'=>$health,'next'=>'/login.php'];
+            return ['success'=>true,'state'=>'installed','installation_id'=>$installationId,'local_base_url'=>$localBaseUrl,'pairing_file'=>$pairingPath,'health'=>$health,'next'=>'/login.php'];
         } catch (Throwable $e) {
             if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
             if ($e instanceof SetupException) throw $e;
@@ -167,10 +197,10 @@ final class BrowserSetupService
             $adminId=(int)$pdo->query("SELECT id FROM users WHERE role='admin' AND active=1 ORDER BY id LIMIT 1")->fetchColumn();
             if($adminId<1)throw new SetupException('admin_missing','مدیر فعال برای ادامه داده اولیه پیدا نشد.',500);
             $core->defaultContentSeeder()->seed($adminId);
-            $this->provisionMachineFiles($config);
+            $pairingPath=$this->provisionMachineFiles($config,$pdo);
             $health=$this->finalHealth($config);
             $this->writePrivate($this->lockPath(),json_encode(['format'=>'sokna-install-lock-v3','installation_id'=>$installationId,'created_at'=>gmdate('c'),'setup_surface'=>'browser-resume','health'=>$health],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");
-            return ['success'=>true,'state'=>'installed','resumed'=>true,'installation_id'=>$installationId,'health'=>$health,'next'=>'/login.php'];
+            return ['success'=>true,'state'=>'installed','resumed'=>true,'installation_id'=>$installationId,'local_base_url'=>(string)($config['local']['base_url']??''),'pairing_file'=>$pairingPath,'health'=>$health,'next'=>'/login.php'];
         } catch (Throwable $e) {
             if ($e instanceof SetupException) throw $e;
             throw new SetupException('resume_failed','ادامه Setup کامل نشد. تنظیمات نیمه‌تمام حفظ شده است.',500);
@@ -189,21 +219,70 @@ final class BrowserSetupService
         $seedOk=$this->setting($pdo,'default_content.v2')==='complete';
         $seedCounts=['menus'=>(int)$pdo->query('SELECT COUNT(*) FROM menus')->fetchColumn(),'categories'=>(int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn(),'items'=>(int)$pdo->query('SELECT COUNT(*) FROM items')->fetchColumn(),'media'=>(int)$pdo->query('SELECT COUNT(*) FROM guest_media_assets')->fetchColumn()];
         $seedOk=$seedOk&&$seedCounts['menus']>=3&&$seedCounts['categories']>=14&&$seedCounts['items']>=131&&$seedCounts['media']>=24;
-        if (!$dbOk || $applied < count($migrationFiles) || $adminCount < 1 || !$identityOk || !$seedOk) throw new SetupException('final_health_failed','بررسی نهایی نصب کامل نشد.',500,['database'=>$dbOk,'migrations'=>$applied.'/'.count($migrationFiles),'admin'=>$adminCount,'identity'=>$identityOk,'default_content'=>$seedOk,'default_content_counts'=>$seedCounts]);
-        return ['database'=>'ok','migrations_applied'=>$applied,'migration_files'=>count($migrationFiles),'admin'=>'ok','installation_identity'=>'ok','default_content'=>'ok','default_content_counts'=>$seedCounts];
+        $localBaseUrl=self::normalizeLocalBaseUrl((string)($config['local']['base_url']??''));
+        $dataDir=rtrim((string)$config['app']['data_dir'],"\\/");
+        $pairingPath=$dataDir.DIRECTORY_SEPARATOR.'setup'.DIRECTORY_SEPARATOR.'windows-services-pairing.json';
+        $pairingOk=is_file($pairingPath)&&is_readable($pairingPath);
+        if (!$dbOk || $applied < count($migrationFiles) || $adminCount < 1 || !$identityOk || !$seedOk || !$pairingOk) throw new SetupException('final_health_failed','بررسی نهایی نصب کامل نشد.',500,['database'=>$dbOk,'migrations'=>$applied.'/'.count($migrationFiles),'admin'=>$adminCount,'identity'=>$identityOk,'default_content'=>$seedOk,'default_content_counts'=>$seedCounts,'local_base_url'=>$localBaseUrl,'windows_services_pairing'=>$pairingOk]);
+        return ['database'=>'ok','migrations_applied'=>$applied,'migration_files'=>count($migrationFiles),'admin'=>'ok','installation_identity'=>'ok','default_content'=>'ok','default_content_counts'=>$seedCounts,'local_base_url'=>$localBaseUrl,'windows_services_pairing'=>'ready'];
     }
 
-    private function provisionMachineFiles(array $config): void
+    private function provisionMachineFiles(array $config,PDO $pdo): string
     {
-        $dataDir=rtrim((string)$config['app']['data_dir'],"\\/");$secrets=$dataDir.DIRECTORY_SEPARATOR.'secrets';$runtimeDir=$dataDir.DIRECTORY_SEPARATOR.'runtime';
-        $this->ensurePrivateDir($secrets);$this->ensurePrivateDir($runtimeDir);
-        $localToken=trim((string)($config['runtime']['local_token']??''));if($localToken==='')throw new SetupException('runtime_token_missing','توکن Local Runtime موجود نیست.',500);
+        $dataDir=rtrim((string)$config['app']['data_dir'],"\\/");
+        $secrets=$dataDir.DIRECTORY_SEPARATOR.'secrets';
+        $setupDir=$dataDir.DIRECTORY_SEPARATOR.'setup';
+        $this->ensurePrivateDir($secrets);
+        $this->ensurePrivateDir($setupDir);
+
+        $localBaseUrl=self::normalizeLocalBaseUrl((string)($config['local']['base_url']??''));
+        $localToken=trim((string)($config['runtime']['local_token']??''));
+        if($localToken==='')throw new SetupException('runtime_token_missing','توکن Local Runtime موجود نیست.',500);
+
         $healthPath=$secrets.DIRECTORY_SEPARATOR.'runtime-health.token';
-        $healthToken=is_file($healthPath)?trim((string)file_get_contents($healthPath)):'';if($healthToken==='')$healthToken=bin2hex(random_bytes(32));
-        $this->writePrivate($secrets.DIRECTORY_SEPARATOR.'runtime-local.token',$localToken."\n");$this->writePrivate($healthPath,$healthToken."\n");
-        $runtime=['contractVersion'=>1,'instanceId'=>'runtime-'.bin2hex(random_bytes(12)),'dataRoot'=>$runtimeDir,'healthPort'=>17621,'runtimeTokenFile'=>$healthPath,'localTokenFile'=>$secrets.DIRECTORY_SEPARATOR.'runtime-local.token','localBaseUrl'=>'https://127.0.0.1','printAgentServiceName'=>'SoknaPrintWorker','supervisePrintAgent'=>true,'triggers'=>[['key'=>'inventory.order_events','intervalSeconds'=>15],['key'=>'public.relay_sync','intervalSeconds'=>5],['key'=>'public.projection_sync','intervalSeconds'=>30],['key'=>'notifications.outbox','intervalSeconds'=>15],['key'=>'maintenance.health','intervalSeconds'=>60]]];
-        $runtimePath=$runtimeDir.DIRECTORY_SEPARATOR.'runtime-config.json';
-        if (!is_file($runtimePath)) $this->writePrivate($runtimePath,json_encode($runtime,JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");
+        $healthToken=is_file($healthPath)?trim((string)file_get_contents($healthPath)):'';
+        if(strlen($healthToken)<32)$healthToken=bin2hex(random_bytes(32));
+        $this->writePrivate($secrets.DIRECTORY_SEPARATOR.'runtime-local.token',$localToken."\n");
+        $this->writePrivate($healthPath,$healthToken."\n");
+
+        $printTokenPath=$secrets.DIRECTORY_SEPARATOR.'print-agent.token';
+        $printToken=is_file($printTokenPath)?trim((string)file_get_contents($printTokenPath)):'';
+        if(strlen($printToken)<32||!$this->printAgentTokenExists($pdo,$printToken)){
+            $printToken=bin2hex(random_bytes(32));
+            $hash=hash('sha256',$printToken);$hint=substr($printToken,-8);
+            $pdo->prepare('INSERT INTO print_agents(name,token_hash,token_hint,active) VALUES(?,?,?,1)')
+                ->execute(['SOKNA Local Windows Agent',$hash,$hint]);
+            $this->writePrivate($printTokenPath,$printToken."\n");
+        }
+
+        $triggers=[
+            ['key'=>'inventory.order_events','intervalSeconds'=>15],
+            ['key'=>'public.relay_sync','intervalSeconds'=>5],
+            ['key'=>'public.projection_sync','intervalSeconds'=>30],
+            ['key'=>'notifications.outbox','intervalSeconds'=>15],
+            ['key'=>'maintenance.health','intervalSeconds'=>60],
+        ];
+        $pairing=[
+            'format'=>'sokna-windows-services-pairing-v1',
+            'schema_version'=>1,
+            'local_base_url'=>$localBaseUrl,
+            'local_bridge_allowed_origin'=>LocalEndpoint::origin($localBaseUrl),
+            'runtime_token'=>$healthToken,
+            'local_token'=>$localToken,
+            'print_agent_token'=>$printToken,
+            'runtime_triggers'=>$triggers,
+        ];
+        $pairingPath=$setupDir.DIRECTORY_SEPARATOR.'windows-services-pairing.json';
+        $this->writePrivate($pairingPath,json_encode($pairing,JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");
+        return $pairingPath;
+    }
+
+    private function printAgentTokenExists(PDO $pdo,string $token): bool
+    {
+        if(strlen($token)<32)return false;
+        $stmt=$pdo->prepare('SELECT id FROM print_agents WHERE token_hash=? AND active=1 AND retired_at IS NULL LIMIT 1');
+        $stmt->execute([hash('sha256',$token)]);
+        return $stmt->fetchColumn()!==false;
     }
 
     private function normalizeDb(array $db): array

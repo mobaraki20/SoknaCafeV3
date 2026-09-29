@@ -1,0 +1,95 @@
+{
+  "format": "sokna-infrastructure-prerequisites-v1",
+  "schema_version": 1,
+  "ownership": "external-dependencies-managed-by-helper",
+  "helper_role": "install-repair-recover",
+  "automatic_download_allowed": true,
+  "automatic_install_allowed": true,
+  "local_web_payload_allowed": false,
+  "database_application_provisioning_allowed": false,
+  "default_layout": {
+    "root": "<selected-drive>:\\SOKNA",
+    "infrastructure": "Infrastructure",
+    "php": "Infrastructure\\PHP",
+    "apache": "Infrastructure\\Apache",
+    "mariadb": "Infrastructure\\MariaDB",
+    "logs": "Infrastructure\\Logs",
+    "web_root": "Web",
+    "mariadb_data": "Data\\MariaDB",
+    "backups": "Backups"
+  },
+  "services": {
+    "apache": "SoknaApache",
+    "mariadb": "SoknaMariaDB"
+  },
+  "ports": {
+    "apache": 18080,
+    "mariadb": 3306,
+    "bind_address": "127.0.0.1",
+    "apache_fallback_candidates": [
+      18081,
+      18082,
+      18083,
+      8080,
+      8081,
+      8088,
+      8000,
+      8888
+    ]
+  },
+  "release_lock": {
+    "relative_path": "release-lock.json",
+    "format": "sokna-windows-prerequisite-lock-v1"
+  },
+  "items": [
+    {
+      "id": "php",
+      "release_lock_dependency": "php",
+      "required_for": "local-web-runtime"
+    },
+    {
+      "id": "apache",
+      "release_lock_dependency": "apache",
+      "required_for": "local-web-runtime"
+    },
+    {
+      "id": "mariadb",
+      "release_lock_dependency": "mariadb",
+      "required_for": "local-web-runtime"
+    }
+  ],
+  "recovery": {
+    "preserve_existing_web_root": true,
+    "preserve_existing_database_data": true,
+    "never_initialize_existing_mariadb_data": true,
+    "reregister_windows_services_after_os_reinstall": true,
+    "cross_root_existing_installation_requires_explicit_resolution": true,
+    "automatic_cross_root_migration": false,
+    "preflight_before_mutation": true
+  },
+  "support": {
+    "persistent_logs_under_selected_root": true,
+    "support_bundle_without_secrets": true,
+    "state_file": "Infrastructure\\infrastructure-state.json"
+  },
+  "offline_artifact_import_allowed": true,
+  "offline_kit_folder_allowed": true,
+  "download_behavior": {
+    "header_timeout_seconds": 7,
+    "stall_timeout_seconds": 20,
+    "resume_partial_downloads": true,
+    "show_actual_bytes": true,
+    "show_transfer_rate": true,
+    "show_eta": true,
+    "validate_content_length_when_available": true
+  },
+  "local_endpoint": {
+    "format": "sokna-local-endpoint-v1",
+    "network_scope": "loopback-only",
+    "canonical_host": "127.0.0.1",
+    "scheme": "http",
+    "configurable_port": true,
+    "source_of_truth_before_local_setup": "Infrastructure\\infrastructure-state.json",
+    "source_of_truth_after_local_setup": "Local Web config + generated Windows Services pairing"
+  }
+}

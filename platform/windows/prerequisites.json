@@ -17,64 +17,6 @@
   },
   "items": [
     {
-      "id": "php",
-      "display_name": "PHP 8.2 x64 Thread Safe",
-      "required_for": "local-web",
-      "blocks_windows_services": false,
-      "detection": {
-        "type": "php",
-        "commands": [
-          "php.exe"
-        ],
-        "version_argument": "-v",
-        "minimum_version": "8.2.0",
-        "required_extensions": [
-          "pdo_mysql",
-          "fileinfo",
-          "openssl",
-          "sodium",
-          "mbstring"
-        ]
-      },
-      "release_lock_dependency": "php",
-      "manual_guidance_fa": "PHP بیرون از مالکیت SOKNA نصب می‌شود. پس از نصب، php.exe و extensionهای لازم را در Browser Setup بررسی کنید."
-    },
-    {
-      "id": "apache",
-      "display_name": "Apache HTTP Server x64",
-      "required_for": "local-web",
-      "blocks_windows_services": false,
-      "detection": {
-        "type": "command",
-        "commands": [
-          "httpd.exe",
-          "apache.exe"
-        ],
-        "version_argument": "-v",
-        "minimum_version": "2.4.0"
-      },
-      "release_lock_dependency": "apache",
-      "manual_guidance_fa": "Apache سرویس خارجی است؛ SOKNA آن را نصب، حذف یا restart نمی‌کند."
-    },
-    {
-      "id": "mariadb",
-      "display_name": "MariaDB 11.4 x64",
-      "required_for": "local-web",
-      "blocks_windows_services": false,
-      "detection": {
-        "type": "command",
-        "commands": [
-          "mariadb.exe",
-          "mysql.exe",
-          "mysqld.exe"
-        ],
-        "version_argument": "--version",
-        "minimum_version": "11.4.0"
-      },
-      "release_lock_dependency": "mariadb",
-      "manual_guidance_fa": "MariaDB سرویس خارجی است. نصب و lifecycle آن با اپراتور/فروشنده است و SOKNA فقط compatibility را بررسی می‌کند."
-    },
-    {
       "id": "vc_runtime",
       "display_name": "Microsoft Visual C++ x64 Runtime",
       "required_for": "windows-services",

@@ -30,7 +30,8 @@
         "local-public-realtime",
         "local-public-deferred",
         "runtime-api",
-        "print-agent-api"
+        "print-agent-api",
+        "local-endpoint"
       ],
       "tests_gates": [
         "tests/local-core-contract.py",
@@ -56,9 +57,11 @@
       ],
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "apps/local-web/VERSION.txt",
-      "current_version": "3.0.0-g6.2-dev",
+      "current_version": "3.0.0-g6.4-dev",
       "artifact_pipeline": "apps/local-web/tools/build-update-package.py",
-      "release_compatibility_manifest": "release/compatibility-v2.json"
+      "release_compatibility_manifest": "release/compatibility-v2.json",
+      "install_package_artifact": "SoknaCafeV3-local-web-install-<version>.zip",
+      "install_artifact_pipeline": "apps/local-web/tools/build-clean-install-package.py"
     },
     "public-edge": {
       "workstreams": [
@@ -81,7 +84,8 @@
         "tests/public-m3-contract.py",
         "tests/public-m3-transport-contract.py",
         "tests/public-health-contract.py",
-        "tests/public-m4-schema-contract.py"
+        "tests/public-m4-schema-contract.py",
+        "tests/public-deploy-bootstrap-contract.py"
       ],
       "package_artifact": "SoknaCafeV3-public-edge-<version>.zip",
       "version_owner": "public-edge",
@@ -100,7 +104,7 @@
       ],
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "apps/public/VERSION.txt",
-      "current_version": "3.0.0-g3.5-dev",
+      "current_version": "3.0.0-g3.6-dev",
       "artifact_pipeline": "apps/public/tools/build-deploy-package.py + apps/public/tools/build-update-package.py",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },
@@ -116,7 +120,8 @@
         "contracts/runtime-api/**"
       ],
       "compatibility_dependencies": [
-        "runtime-api"
+        "runtime-api",
+        "local-endpoint"
       ],
       "tests_gates": [
         "tests/m7-runtime-gate.py",
@@ -140,7 +145,7 @@
       ],
       "current_state": "CORE_COMPLETE",
       "version_source": "windows/runtime/source/Sokna.Runtime.Service.csproj#Version",
-      "current_version": "1.0.0",
+      "current_version": "1.0.1",
       "artifact_pipeline": "windows/runtime/build-component-package.ps1",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },
@@ -156,7 +161,8 @@
         "contracts/print-agent-api/**"
       ],
       "compatibility_dependencies": [
-        "print-agent-api"
+        "print-agent-api",
+        "local-endpoint"
       ],
       "tests_gates": [
         "tests/m8-print-agent-gate.py",
@@ -180,7 +186,7 @@
       ],
       "current_state": "CORE_COMPLETE",
       "version_source": "windows/print-agent/source/Directory.Build.props#SoknaAgentVersion",
-      "current_version": "6.2.5",
+      "current_version": "6.2.7",
       "artifact_pipeline": "windows/print-agent/build-component-package.ps1",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },
@@ -201,7 +207,8 @@
       "compatibility_dependencies": [
         "windows-runtime",
         "print-agent",
-        "infrastructure-compatibility"
+        "infrastructure-compatibility",
+        "local-endpoint"
       ],
       "tests_gates": [
         "tests/m9-packaging-gate.py",
@@ -226,7 +233,7 @@
       ],
       "current_state": "IMPLEMENTATION_COMPLETE_REAL_ENV_DEFERRED",
       "version_source": "packaging/windows/WINDOWS_SERVICES_VERSION.txt",
-      "current_version": "1.0.1",
+      "current_version": "1.0.7",
       "compatibility_manifest": "packaging/windows/windows-services-compatibility-v1.json",
       "artifact_pipeline": "packaging/windows/scripts/build-installer.ps1",
       "release_compatibility_manifest": "release/compatibility-v2.json"
@@ -296,7 +303,7 @@
       ],
       "current_state": "VERSIONED_FROZEN_BY_DEFAULT",
       "version_source": "contracts/VERSION.txt",
-      "current_version": "0.1.0-dev",
+      "current_version": "0.1.1-dev",
       "artifact_pipeline": "release/build-contracts-package.py",
       "release_compatibility_manifest": "release/compatibility-v2.json"
     },

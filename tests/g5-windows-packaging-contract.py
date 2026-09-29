@@ -9,6 +9,7 @@ def txt(p): return (R/p).read_text(encoding='utf-8')
 
 compat=json.loads(txt('packaging/windows/windows-services-compatibility-v1.json'))
 pre=json.loads(txt('platform/windows/prerequisites.json'))
+infra=json.loads(txt('platform/windows/infrastructure-prerequisites.json'))
 lock=json.loads(txt('platform/windows/release-lock.json'))
 need(compat['format']=='sokna-windows-services-compatibility-v1' and compat['schema_version']==1,'compatibility manifest format')
 need(compat['external_infrastructure']['owner']=='external' and compat['external_infrastructure']['installer_ownership'] is False,'external ownership not fenced')
@@ -26,9 +27,13 @@ need(compat['package_version']==txt('packaging/windows/WINDOWS_SERVICES_VERSION.
 need(pre['format']=='sokna-windows-prerequisites-v2' and pre['ownership']=='external','prerequisite policy format/ownership')
 need(pre['automatic_download_allowed'] is True and pre['automatic_install_allowed'] is False,'download/install policy incorrect')
 byid={x['id']:x for x in pre['items']}
-need({'php','apache','mariadb','vc_runtime'}<=set(byid),'prerequisite coverage incomplete')
-need(all(not byid[x]['blocks_windows_services'] for x in ['php','apache','mariadb']),'Local Web infrastructure must not block Windows Services')
+need(set(byid)=={'vc_runtime'},'Windows Services prerequisite surface must only contain direct service blockers')
 need(byid['vc_runtime']['blocks_windows_services'] is True,'VC runtime must block service activation until compatible')
+need(infra['format']=='sokna-infrastructure-prerequisites-v1' and infra['schema_version']==1,'independent infrastructure prerequisite contract missing')
+need(infra['automatic_download_allowed'] is True and infra['automatic_install_allowed'] is True,'infrastructure helper automation policy incorrect')
+need(infra['local_web_payload_allowed'] is False and infra['database_application_provisioning_allowed'] is False,'infrastructure helper leaks Local Web/database ownership')
+need({x['id'] for x in infra['items']}=={'php','apache','mariadb'},'infrastructure prerequisite coverage incomplete')
+need(infra['recovery']['never_initialize_existing_mariadb_data'] is True,'MariaDB preservation guard missing')
 need(lock['format']=='sokna-windows-prerequisite-lock-v1' and lock['release_frozen'] is True,'release lock not frozen')
 for a in lock['artifacts']:
     need(a['source_url'].startswith('https://'),'non-HTTPS prerequisite source')
@@ -41,7 +46,13 @@ ui=txt('packaging/windows/setup-ui/Program.cs')
 iss=txt('packaging/windows/installer/SOKNA.iss')
 prepare=txt('packaging/windows/scripts/prepare-shell-payload.ps1')
 life=txt('packaging/windows/scripts/setup-windows-services.ps1')
+support=txt('packaging/windows/scripts/collect-support.ps1')
+owner=txt('packaging/windows/scripts/lifecycle-owner.ps1')
 build=txt('packaging/windows/scripts/build-installer.ps1')
+build_ui=txt('packaging/windows/scripts/build-setup-ui.ps1')
+build_host=txt('packaging/windows/scripts/build-setup-host.ps1')
+ui_proj=txt('packaging/windows/setup-ui/Sokna.SetupUi.csproj')
+host_proj=txt('packaging/windows/setup-host/Sokna.SetupHost.csproj')
 for token in ['schema_version','install_root','pairing_file','sokna-windows-services-shell-v2','SHA256.HashData','windows-services-compatibility-v1.json']:
     need(token in host,f'SetupHost missing {token}')
 for stale in ['app_root','php_exe','openssl_exe','web_server_exe','setup_config_file','recovery_file']:
@@ -66,8 +77,23 @@ need("Compress-Archive" not in prepare and "SoknaAppPayload.zip'" not in prepare
 for required in ['SoknaRuntimeService.exe','SoknaSetupHost.exe','SoknaSetupUi.exe','print-worker','prerequisites.json','release-lock.json','collect-support.ps1']:
     need(required in prepare,f'shell payload missing {required}')
 need('$IsWindows' not in life and "$env:OS -ne 'Windows_NT'" in life,'Windows PowerShell 5.1 OS check is unsafe')
+for script_name,script in [('setup-windows-services.ps1',life),('collect-support.ps1',support),('lifecycle-owner.ps1',owner)]:
+    need('IsPathFullyQualified' not in script,f'{script_name} uses .NET API unavailable in Windows PowerShell 5.1')
+    need('Test-FullyQualifiedPath' in script,f'{script_name} missing PowerShell 5.1-compatible absolute-path validation')
+need('UseShellExecute = false' in ui and 'RedirectStandardError = true' in ui,'support bundle should run non-elevated and capture diagnostics')
+need('LoadAppIcon()' in ui and 'FitToWorkingArea()' in ui,'Windows Services UI icon/window sizing fix missing')
+need('RightToLeftLayout = true' in ui and 'AutoScroll = true' in ui,'Persian tab order/scrolling fix missing')
 need("@('runtime','print-agent')" not in life or True,'')
 need('external_infrastructure_mutated=$false' in life and 'business_data_mutated=$false' in life,'lifecycle ownership evidence missing')
+need('New-Service -Name' in life,'Windows service registration must use PowerShell New-Service')
+need('& $sc create' not in life and 'sc.exe" create' not in life,'fragile sc.exe create registration must not return')
+need('ImagePath verification failed' in life and 'Invoke-ScChecked' in life,'service registration/deletion diagnostics are incomplete')
+need("HKLM:\\SOFTWARE\\Sokna\\Local\\PrintWorker" in life and 'Configure-PrintDataRoot' in life,'Print Agent data root is not bound to selected SOKNA DataRoot')
+need('startup-fatal.json' in life and 'Start-Owned' in life,'Print Agent startup diagnostics are not surfaced')
+need('print-worker-data-root.txt' in support and "LogName='Application'" in support,'support bundle does not capture actual Print Agent startup evidence')
+for script,label in [(build_ui,'setup UI'),(build_host,'setup host')]:
+    need('WINDOWS_SERVICES_VERSION.txt' in script and '-p:Version=$version' in script,f'{label} build does not use package version source')
+need('<Version>1.0.4</Version>' not in ui_proj+host_proj,'stale setup executable version is hard-coded')
 need('php.exe' not in life.lower() and 'apache' not in life.lower() and 'mariadb' not in life.lower(),'service lifecycle touches external infrastructure')
 
 for legacy in [

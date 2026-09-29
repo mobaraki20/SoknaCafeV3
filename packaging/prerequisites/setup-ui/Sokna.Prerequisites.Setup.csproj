@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWindowsForms>true</UseWindowsForms>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <AssemblyName>SoknaPrerequisitesSetup</AssemblyName>
+    <RootNamespace>Sokna.Prerequisites.Setup</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\windows\Sokna.ico</ApplicationIcon>
+    <Version>1.0.11</Version>
+    <AssemblyVersion>1.0.11.0</AssemblyVersion>
+    <FileVersion>1.0.11.0</FileVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="..\..\..\platform\windows\infrastructure-prerequisites.json" Link="infrastructure-prerequisites.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\platform\windows\release-lock.json" Link="release-lock.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\windows\Sokna.ico" Link="Sokna.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

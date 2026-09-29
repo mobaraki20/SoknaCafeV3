@@ -2,7 +2,7 @@
 declare(strict_types=1);
 /* Stable, self-contained Local recovery entrypoint. It deliberately does not load the application bootstrap. */
 header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('Cache-Control: no-store');
-$packageRoot=dirname(__DIR__,3);$configFile=$packageRoot.'/config.php';$message='';$ok=false;
+$packageRoot=dirname(__DIR__);$configFile=$packageRoot.'/config.php';$message='';$ok=false;
 function e(string $v): string{return htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
 function rr(string $p): array{$raw=@file_get_contents($p);if(!is_string($raw))return [];try{$d=json_decode($raw,true,32,JSON_THROW_ON_ERROR);return is_array($d)?$d:[];}catch(Throwable){return [];}}
 function rm_tree(string $p): void{if(!file_exists($p))return;if(is_file($p)||is_link($p)){@unlink($p);return;}$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($p,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);foreach($it as $f){$f->isDir()?@rmdir($f->getPathname()):@unlink($f->getPathname());}@rmdir($p);}

@@ -1,8 +1,8 @@
 {
   "format": "sokna-windows-services-pairing-v1",
   "schema_version": 1,
-  "local_base_url": "https://127.0.0.1",
-  "local_bridge_allowed_origin": "https://sokna.local",
+  "local_base_url": "http://127.0.0.1:18080/",
+  "local_bridge_allowed_origin": "http://127.0.0.1:18080",
   "runtime_token": "REPLACE_WITH_LOCAL_GENERATED_SECRET_AT_LEAST_32_CHARS",
   "local_token": "REPLACE_WITH_LOCAL_GENERATED_SECRET_AT_LEAST_32_CHARS",
   "print_agent_token": "REPLACE_WITH_LOCAL_GENERATED_SECRET_AT_LEAST_32_CHARS",

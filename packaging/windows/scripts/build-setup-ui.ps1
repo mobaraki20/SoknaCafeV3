@@ -5,15 +5,18 @@ param(
 )
 $ErrorActionPreference='Stop'
 $project=Join-Path $RepoRoot 'packaging\windows\setup-ui\Sokna.SetupUi.csproj'
+$version=(Get-Content (Join-Path $RepoRoot 'packaging\windows\WINDOWS_SERVICES_VERSION.txt') -Raw).Trim()
+if($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$'){throw "Unsupported Windows Services package version: $version"}
+$core=(($version -split '-')[0])+'.0'
 $out=[IO.Path]::GetFullPath($OutputPath)
 $dir=[IO.Path]::GetDirectoryName($out)
 New-Item -ItemType Directory -Path $dir -Force|Out-Null
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('sokna-setup-ui-'+[guid]::NewGuid().ToString('N'))
 try{
-    & dotnet publish $project -c $Configuration -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $temp
+    & dotnet publish $project -c $Configuration -r win-x64 --self-contained true "-p:Version=$version" "-p:AssemblyVersion=$core" "-p:FileVersion=$core" -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $temp
     if($LASTEXITCODE -ne 0){throw 'SOKNA Setup UI build failed.'}
     $built=Join-Path $temp 'SoknaSetupUi.exe'
     if(-not(Test-Path -LiteralPath $built -PathType Leaf)){throw 'SOKNA Setup UI executable was not produced.'}
     Copy-Item -LiteralPath $built -Destination $out -Force
 }finally{Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue}
-Write-Host "Built SOKNA Setup UI: $out"
+Write-Host ("Built SOKNA Setup UI {0}: {1}" -f $version,$out)

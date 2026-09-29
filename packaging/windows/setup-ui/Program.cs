@@ -108,6 +108,7 @@ internal sealed class SetupForm : Form
     private readonly Button _uninstall = new() { Text = "حذف سرویس‌ها", AutoSize = true };
     private readonly Button _refresh = new() { Text = "بررسی دوباره", AutoSize = true };
     private readonly Button _download = new() { Text = "دریافت فایل رسمی و تأییدشده", AutoSize = true };
+    private readonly Button _localPrereq = new() { Text = "انتخاب فایل از کامپیوتر", AutoSize = true };
     private readonly Button _cancelDownload = new() { Text = "لغو دانلود", AutoSize = true, Enabled = false };
     private readonly Button _guidance = new() { Text = "راهنمای گام‌به‌گام", AutoSize = true };
     private readonly Button _officialPage = new() { Text = "صفحه رسمی", AutoSize = true };
@@ -127,18 +128,20 @@ internal sealed class SetupForm : Form
 
     public SetupForm()
     {
-        Text = "مدیریت سرویس‌های سکنا";
-        Width = 1080;
-        Height = 760;
-        MinimumSize = new Size(900, 640);
+        Text = $"مدیریت سرویس‌های سکنا — نسخه {Application.ProductVersion}";
+        Width = 1220;
+        Height = 840;
+        MinimumSize = new Size(900, 650);
         StartPosition = FormStartPosition.CenterScreen;
         RightToLeft = RightToLeft.Yes;
 
         // Keep the native Windows title-bar controls in their standard top-right position.
         // Internal controls are mirrored explicitly below.
         RightToLeftLayout = false;
-        Font = new Font("Segoe UI", 10F);
+        Font = PickFont();
         AutoScaleMode = AutoScaleMode.Dpi;
+        ShowIcon = true;
+        Icon = LoadAppIcon();
 
         _installRoot.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SOKNA Windows Services");
         _dataRoot.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOKNA");
@@ -147,11 +150,48 @@ internal sealed class SetupForm : Form
         ValidateContracts();
         BuildUi();
         ConfigureTooltips();
+        Load += (_, _) => FitToWorkingArea();
         Shown += async (_, _) =>
         {
             await RefreshPrerequisitesAsync();
             await RefreshServicesAsync();
         };
+    }
+
+    private static Font PickFont()
+    {
+        foreach (var name in new[] { "Tahoma", "Segoe UI" })
+        {
+            try
+            {
+                using var probe = new Font(name, 10.0f, FontStyle.Regular, GraphicsUnit.Point);
+                if (string.Equals(probe.Name, name, StringComparison.OrdinalIgnoreCase))
+                    return new Font(name, 10.0f, FontStyle.Regular, GraphicsUnit.Point);
+            }
+            catch { }
+        }
+        return SystemFonts.MessageBoxFont;
+    }
+
+    private static Icon? LoadAppIcon()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Sokna.ico");
+            return File.Exists(path) ? new Icon(path) : null;
+        }
+        catch { return null; }
+    }
+
+    private void FitToWorkingArea()
+    {
+        var work = Screen.FromControl(this).WorkingArea;
+        var width = Math.Min(1240, Math.Max(MinimumSize.Width, work.Width - 60));
+        var height = Math.Min(880, Math.Max(MinimumSize.Height, work.Height - 60));
+        Size = new Size(Math.Min(width, work.Width), Math.Min(height, work.Height));
+        Location = new Point(
+            work.Left + Math.Max(0, (work.Width - Width) / 2),
+            work.Top + Math.Max(0, (work.Height - Height) / 2));
     }
 
     private void BuildUi()
@@ -164,20 +204,20 @@ internal sealed class SetupForm : Form
         var header = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RightToLeft = RightToLeft.Yes, Padding = new Padding(0, 0, 0, 10) };
         header.Controls.Add(new Label
         {
-            Text = "مدیریت سرویس‌های سکنا",
+            Text = $"مدیریت سرویس‌های سکنا — نسخه {Application.ProductVersion}",
             AutoSize = true,
             Font = new Font(Font, FontStyle.Bold),
             Padding = new Padding(0, 0, 0, 4)
         });
         header.Controls.Add(new Label
         {
-            Text = "این برنامه فقط Runtime و Print Agent سکنا را نصب و نگهداری می‌کند. PHP، Apache و MariaDB زیرساخت‌های جدا هستند و اینجا فقط بررسی و راهنمایی می‌شوند.",
+            Text = "این برنامه فقط Runtime و Print Agent سکنا را نصب و نگهداری می‌کند. زیرساخت Local Web در ابزار مستقل «SOKNA Prerequisites Setup» آماده می‌شود و در این برنامه نمایش یا مدیریت نمی‌شود.",
             AutoSize = true,
             MaximumSize = new Size(980, 0)
         });
         root.Controls.Add(header, 0, 0);
 
-        var tabs = new TabControl { Dock = DockStyle.Fill, RightToLeft = RightToLeft.Yes };
+        var tabs = new TabControl { Dock = DockStyle.Fill, RightToLeft = RightToLeft.Yes, RightToLeftLayout = true };
         tabs.TabPages.Add(BuildPrerequisitesTab());
         tabs.TabPages.Add(BuildLifecycleTab());
         tabs.TabPages.Add(BuildDiagnosticsTab());
@@ -196,6 +236,7 @@ internal sealed class SetupForm : Form
 
         _refresh.Click += async (_, _) => await RefreshPrerequisitesAsync();
         _download.Click += async (_, _) => await DownloadSelectedAsync();
+        _localPrereq.Click += async (_, _) => await SelectLocalPrerequisiteAsync();
         _cancelDownload.Click += (_, _) => _downloadCts?.Cancel();
         _guidance.Click += (_, _) => ShowGuidance();
         _officialPage.Click += (_, _) => OpenOfficialPage();
@@ -214,20 +255,18 @@ internal sealed class SetupForm : Form
 
     private TabPage BuildPrerequisitesTab()
     {
-        var page = new TabPage("۱. پیش‌نیازها") { RightToLeft = RightToLeft.Yes };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 6, RightToLeft = RightToLeft.Yes };
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var page = new TabPage("۱. پیش‌نیازها") { RightToLeft = RightToLeft.Yes, AutoScroll = true };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 6, RightToLeft = RightToLeft.Yes };
+        for (var i = 0; i < 6; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         layout.Controls.Add(InfoBox(
             "اول چه چیزی را باید انجام بدهم؟",
-            "موارد این جدول را بررسی کنید. فقط Microsoft Visual C++ برای نصب سرویس‌های ویندوزی الزامی است. PHP، Apache و MariaDB برای Local Web لازم‌اند و نصبشان جداست. اگر موردی آماده نیست، همان ردیف را انتخاب کنید؛ سپس «راهنمای گام‌به‌گام» یا «دریافت فایل رسمی و تأییدشده» را بزنید."
+            "این بخش فقط پیش‌نیازهای مستقیم Runtime و Print Agent را نشان می‌دهد. زیرساخت Local Web از این نصب جداست. اگر Microsoft Visual C++ آماده نیست، ردیف را انتخاب کنید و از فایل رسمی و تأییدشده یا راهنمای نصب استفاده کنید."
         ));
 
+        _prereqs.Dock = DockStyle.Top;
+        _prereqs.Height = 280;
+        _prereqs.MinimumSize = new Size(0, 240);
         _prereqs.Columns.Add("پیش‌نیاز", 270);
         _prereqs.Columns.Add("مربوط به", 150);
         _prereqs.Columns.Add("وضعیت", 210);
@@ -235,22 +274,16 @@ internal sealed class SetupForm : Form
         layout.Controls.Add(_prereqs);
 
         layout.Controls.Add(_prereqHelp);
-        layout.Controls.Add(Flow(_refresh, _download, _guidance, _officialPage));
+        layout.Controls.Add(Flow(_refresh, _download, _localPrereq, _guidance, _officialPage));
         page.Controls.Add(layout);
         return page;
     }
 
     private TabPage BuildLifecycleTab()
     {
-        var page = new TabPage("۲. نصب و نگهداری") { RightToLeft = RightToLeft.Yes };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 7, RightToLeft = RightToLeft.Yes };
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var page = new TabPage("۲. نصب و نگهداری") { RightToLeft = RightToLeft.Yes, AutoScroll = true };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 8, RightToLeft = RightToLeft.Yes };
+        for (var i = 0; i < 8; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         layout.Controls.Add(InfoBox(
             "این مرحله چه کاری انجام می‌دهد؟",
@@ -296,18 +329,18 @@ internal sealed class SetupForm : Form
 
     private TabPage BuildDiagnosticsTab()
     {
-        var page = new TabPage("۳. وضعیت و عیب‌یابی") { RightToLeft = RightToLeft.Yes };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 4, RightToLeft = RightToLeft.Yes };
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var page = new TabPage("۳. وضعیت و عیب‌یابی") { RightToLeft = RightToLeft.Yes, AutoScroll = true };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 6, RightToLeft = RightToLeft.Yes };
+        for (var i = 0; i < 6; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         layout.Controls.Add(InfoBox(
             "فقط نصب بودن سرویس کافی نیست",
             "در این بخش می‌بینید هر سرویس واقعاً نصب شده و در حال اجرا هست یا نه، نوع شروع آن چیست و Process ID دارد یا خیر. برای بررسی خطا می‌توانید لاگ‌ها را باز کنید یا یک بسته عیب‌یابی قابل ارسال بسازید."
         ));
 
+        _services.Dock = DockStyle.Top;
+        _services.Height = 310;
+        _services.MinimumSize = new Size(0, 260);
         _services.Columns.Add("سرویس", 250);
         _services.Columns.Add("نصب", 100);
         _services.Columns.Add("وضعیت اجرا", 170);
@@ -326,8 +359,9 @@ internal sealed class SetupForm : Form
 
     private void ConfigureTooltips()
     {
-        _tips.SetToolTip(_refresh, "PHP، Apache، MariaDB و Visual C++ را دوباره روی همین ویندوز بررسی می‌کند. هیچ تغییری ایجاد نمی‌کند.");
+        _tips.SetToolTip(_refresh, "پیش‌نیاز مستقیم سرویس‌های ویندوزی را دوباره بررسی می‌کند. هیچ تغییری ایجاد نمی‌کند.");
         _tips.SetToolTip(_download, "فایل نسخه قفل‌شده را دانلود می‌کند، اندازه و SHA-256 آن را می‌سنجد و فقط فایل را نشان می‌دهد؛ نصب خودکار انجام نمی‌شود.");
+        _tips.SetToolTip(_localPrereq, "برای حالت آفلاین همان فایل رسمی را از کامپیوتر یا فلش انتخاب می‌کند، اندازه/SHA-256 و در صورت نیاز امضای دیجیتال را بررسی و در Cache تأییدشده ذخیره می‌کند.");
         _tips.SetToolTip(_guidance, "برای مورد انتخاب‌شده یک راهنمای فارسی مرحله‌به‌مرحله نشان می‌دهد.");
         _tips.SetToolTip(_officialPage, "صفحه رسمی ارائه‌دهنده پیش‌نیاز انتخاب‌شده را در مرورگر باز می‌کند.");
         _tips.SetToolTip(_cancelDownload, "دانلود جاری را متوقف می‌کند. فایل ناقص برای ادامه دانلود در نوبت بعد نگه داشته می‌شود.");
@@ -363,8 +397,8 @@ internal sealed class SetupForm : Form
     private static Control InfoBox(string title, string body)
     {
         var panel = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, Padding = new Padding(10), RightToLeft = RightToLeft.Yes };
-        panel.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI", 10F, FontStyle.Bold) });
-        panel.Controls.Add(new Label { Text = body, AutoSize = true, MaximumSize = new Size(980, 0), Padding = new Padding(0, 4, 0, 0) });
+        panel.Controls.Add(new Label { Text = title, AutoSize = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleRight, Font = new Font("Tahoma", 10F, FontStyle.Bold) });
+        panel.Controls.Add(new Label { Text = body, AutoSize = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.TopRight, MaximumSize = new Size(1080, 0), Padding = new Padding(0, 4, 0, 0) });
         return panel;
     }
 
@@ -383,7 +417,15 @@ internal sealed class SetupForm : Form
 
     private static FlowLayoutPanel Flow(params Control[] controls)
     {
-        var p = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, RightToLeft = RightToLeft.Yes };
+        var p = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, RightToLeft = RightToLeft.Yes, Padding = new Padding(0, 4, 0, 4) };
+        foreach (var control in controls)
+        {
+            if (control is Button button)
+            {
+                button.MinimumSize = new Size(110, 36);
+                button.Margin = new Padding(8, 3, 0, 3);
+            }
+        }
         p.Controls.AddRange(controls);
         return p;
     }
@@ -428,7 +470,7 @@ internal sealed class SetupForm : Form
 
             var blockers = _policy.Items.Where(x => x.BlocksWindowsServices && (!_results.TryGetValue(x.Id, out var r) || !r.Satisfied)).ToList();
             _status.Text = blockers.Count == 0
-                ? "پیش‌نیاز لازم برای سرویس‌های ویندوز آماده است. PHP، Apache و MariaDB را می‌توانید برای مرحله Local Web تکمیل کنید."
+                ? "پیش‌نیاز لازم برای سرویس‌های ویندوز آماده است. زیرساخت Local Web در ابزار مستقل Prerequisites Setup مدیریت می‌شود."
                 : "برای نصب سرویس‌های ویندوز ابتدا این مورد را آماده کنید: " + string.Join("، ", blockers.Select(x => x.DisplayName));
 
             if (_prereqs.Items.Count > 0 && _prereqs.SelectedItems.Count == 0)
@@ -583,6 +625,85 @@ internal sealed class SetupForm : Form
             SetBusy(false);
             _downloadCts?.Dispose();
             _downloadCts = null;
+        }
+    }
+
+    private async Task SelectLocalPrerequisiteAsync()
+    {
+        var item = SelectedItem();
+        if (item is null)
+        {
+            ShowError("ابتدا یک ردیف از پیش‌نیازها را انتخاب کنید.");
+            return;
+        }
+
+        var artifact = ArtifactFor(item);
+        if (artifact is null)
+        {
+            ShowError("برای این پیش‌نیاز فایل تأییدشده‌ای ثبت نشده است.");
+            return;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            CheckFileExists = true,
+            Multiselect = false,
+            Title = $"انتخاب فایل {item.DisplayName} — نسخه {artifact.Version}",
+            FileName = artifact.Filename,
+            Filter = $"فایل مورد انتظار ({artifact.Filename})|{artifact.Filename}|همه فایل‌ها (*.*)|*.*"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        SetBusy(true, "در حال بررسی فایل انتخاب‌شده…");
+        try
+        {
+            var info = new FileInfo(dialog.FileName);
+            if (info.Length != artifact.Size)
+                throw new InvalidOperationException($"حجم فایل انتخاب‌شده معتبر نیست. انتظار: {artifact.Size / 1024d / 1024d:0.0} MB؛ دریافت‌شده: {info.Length / 1024d / 1024d:0.0} MB.");
+
+            _progress.Value = 35;
+            _status.Text = "حجم صحیح است؛ در حال بررسی SHA-256 و امضای دیجیتال…";
+            if (!await VerifyArtifactAsync(dialog.FileName, artifact))
+                throw new InvalidOperationException("SHA-256 یا امضای دیجیتال فایل انتخاب‌شده با نسخه تأییدشده SOKNA تطبیق ندارد.");
+
+            var cache = CacheRoot();
+            Directory.CreateDirectory(cache);
+            var final = Path.Combine(cache, artifact.Filename);
+            if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(final), StringComparison.OrdinalIgnoreCase))
+            {
+                var temp = final + ".importing";
+                try
+                {
+                    File.Copy(dialog.FileName, temp, true);
+                    File.Move(temp, final, true);
+                }
+                finally
+                {
+                    try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+                }
+            }
+
+            try
+            {
+                var partial = final + ".partial";
+                if (File.Exists(partial)) File.Delete(partial);
+            }
+            catch { }
+
+            _progress.Value = 100;
+            _status.Text = "فایل آفلاین تأیید شد و برای استفاده آماده است.";
+            AppendUiLog($"LOCAL PREREQUISITE ACCEPTED {item.Id}: {artifact.Filename}");
+            ShowGuidance(item, artifact, final);
+        }
+        catch (Exception e)
+        {
+            var message = "فایل انتخاب‌شده پذیرفته نشد: " + FriendlyError(e);
+            AppendUiLog("LOCAL PREREQUISITE ERROR " + item.Id + ": " + Safe(message));
+            ShowError(message);
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 
@@ -993,7 +1114,7 @@ internal sealed class SetupForm : Form
         var version = artifact?.Version ?? item.Detection.MinimumVersion;
         var header =
             $"این راهنما برای نسخه {version} است.\n" +
-            "SOKNA زیرساخت خارجی را خودکار نصب نمی‌کند؛ بنابراین قبل از هر مرحله می‌دانید چه تغییری قرار است روی ویندوز انجام شود.\n\n";
+            "این برنامه فقط پیش‌نیاز مستقیم Windows Services را مدیریت می‌کند. زیرساخت Local Web در ابزار مستقل Prerequisites Setup قرار دارد.\n\n";
 
         var steps = item.Id switch
         {
@@ -1091,16 +1212,24 @@ internal sealed class SetupForm : Form
             var ps = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
             var psi = new ProcessStartInfo(ps)
             {
-                UseShellExecute = true,
-                Verb = "runas",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 WorkingDirectory = AppContext.BaseDirectory
             };
-            foreach (var a in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-DataRoot", DataRoot(), "-OutputRoot", supportRoot })
+            foreach (var a in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-DataRoot", DataRoot(), "-OutputRoot", supportRoot })
                 psi.ArgumentList.Add(a);
 
             using var p = Process.Start(psi) ?? throw new InvalidOperationException("PowerShell برای ساخت بسته عیب‌یابی اجرا نشد.");
+            var stdoutTask = p.StandardOutput.ReadToEndAsync();
+            var stderrTask = p.StandardError.ReadToEndAsync();
             await p.WaitForExitAsync();
-            if (p.ExitCode != 0) throw new InvalidOperationException("ساخت بسته عیب‌یابی کامل نشد. کد خطا: " + p.ExitCode);
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+            AppendUiLog($"SUPPORT BUNDLE exit={p.ExitCode} stdout={Safe(stdout)} stderr={Safe(stderr)}");
+            if (p.ExitCode != 0)
+                throw new InvalidOperationException("ساخت بسته عیب‌یابی کامل نشد. " + (string.IsNullOrWhiteSpace(stderr) ? $"کد خطا: {p.ExitCode}" : FriendlyError(stderr)));
 
             var zip = new DirectoryInfo(supportRoot).GetFiles("SOKNA-Support-*.zip")
                 .OrderByDescending(x => x.LastWriteTimeUtc)
@@ -1293,7 +1422,7 @@ internal sealed class SetupForm : Form
 
     private void SetBusy(bool busy, string? text = null, bool allowCancel = false)
     {
-        foreach (var b in new[] { _install, _repair, _uninstall, _refresh, _download, _guidance, _officialPage, _browsePairing, _refreshServices, _supportBundle })
+        foreach (var b in new[] { _install, _repair, _uninstall, _refresh, _download, _localPrereq, _guidance, _officialPage, _browsePairing, _refreshServices, _supportBundle })
             b.Enabled = !busy;
 
         _cancelDownload.Enabled = busy && allowCancel;

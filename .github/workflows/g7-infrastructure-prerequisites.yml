@@ -1,0 +1,292 @@
+name: G7 Infrastructure Prerequisites
+
+on:
+  pull_request:
+    paths:
+      - 'platform/windows/infrastructure-prerequisites.json'
+      - 'platform/windows/prerequisites.json'
+      - 'platform/windows/release-lock.json'
+      - 'packaging/prerequisites/**'
+      - 'packaging/offline/**'
+      - 'apps/local-web/**'
+      - 'contracts/local-endpoint-v1.json'
+      - 'tests/g7-infrastructure-prerequisites-gate.py'
+      - 'tests/local-endpoint-*'
+      - 'tests/local-g2-browser-setup-*'
+      - 'docs/adr/0006-independent-infrastructure-prerequisites-setup.md'
+      - 'docs/adr/0007-offline-first-local-installation.md'
+      - 'docs/product/FINAL_ARCHITECTURE_DECISIONS_FA.md'
+      - '.github/workflows/g7-infrastructure-prerequisites.yml'
+  push:
+    branches: [main, 'architecture/**', 'migration/**', 'feat/**']
+    paths:
+      - 'platform/windows/infrastructure-prerequisites.json'
+      - 'platform/windows/prerequisites.json'
+      - 'platform/windows/release-lock.json'
+      - 'packaging/prerequisites/**'
+      - 'packaging/offline/**'
+      - 'apps/local-web/**'
+      - 'contracts/local-endpoint-v1.json'
+      - 'tests/g7-infrastructure-prerequisites-gate.py'
+      - 'tests/local-endpoint-*'
+      - 'tests/local-g2-browser-setup-*'
+      - 'docs/adr/0007-offline-first-local-installation.md'
+      - '.github/workflows/g7-infrastructure-prerequisites.yml'
+
+permissions: {contents: read}
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/g7-infrastructure-prerequisites-gate.py
+
+  local-web-handoff:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP DB and ZIP extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+      - name: Qualify Local Web handoff and pairing
+        run: |
+          set -euo pipefail
+          python3 tests/local-endpoint-contract.py
+          php tests/local-endpoint-selftest.php
+          php tests/local-g2-browser-setup-pure-selftest.php
+          php tests/local-g2-browser-setup-selftest.php
+      - name: Build direct-extract Local Web package
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < apps/local-web/VERSION.txt)"
+          mkdir -p dist
+          python3 apps/local-web/tools/build-clean-install-package.py             --source apps/local-web             --source-commit "$GITHUB_SHA"             --out "dist/SoknaCafeV3-local-web-install-$VERSION.zip"
+          python3 - <<'PY'
+          import glob,zipfile
+          p=glob.glob('dist/SoknaCafeV3-local-web-install-*.zip')[0]
+          with zipfile.ZipFile(p) as z:
+              names=set(z.namelist())
+              assert 'public/setup/index.php' in names
+              assert 'public/index.php' in names
+              assert 'config.php' not in names
+              assert 'install.lock' not in names
+          print('Local Web handoff package: PASS')
+          PY
+
+  windows-build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+
+      - id: version
+        name: Read package version
+        shell: pwsh
+        run: |
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Prerequisites version=$v"
+
+      - name: Compile prerequisites UI
+        shell: pwsh
+        run: |
+          dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-smoke
+          if($LASTEXITCODE-ne0){throw "Prerequisites UI build failed: $LASTEXITCODE"}
+          $expected=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $actual=([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion).Split('+')[0]
+          if($actual-ne$expected){throw "Setup UI ProductVersion mismatch: $actual expected $expected"}
+
+      - name: Exercise Local Web port selection and ownership parser
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $p=Start-Process -FilePath $exe -ArgumentList "--self-test-endpoint-port" -Wait -PassThru
+          if($p.ExitCode-ne0){throw "Prerequisites endpoint-port self-test failed: $($p.ExitCode)"}
+          $p=Start-Process -FilePath $exe -ArgumentList "--self-test-infrastructure-ownership" -Wait -PassThru
+          if($p.ExitCode-ne0){throw "Prerequisites ownership parser self-test failed: $($p.ExitCode)"}
+
+      - name: Require real Apache PHP Browser Setup preflight
+        shell: pwsh
+        run: tests/g7-windows-apache-php-runtime.ps1
+
+      - name: Require Apache Windows Service sodium runtime
+        shell: pwsh
+        run: tests/g7-windows-apache-service-sodium.ps1
+
+      - name: Reproduce real MariaDB cross-root registration and require safe block
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $lock=Get-Content platform/windows/release-lock.json -Raw | ConvertFrom-Json
+          $maria=$lock.artifacts | Where-Object dependency -eq 'mariadb' | Select-Object -First 1
+          if(-not$maria){throw 'MariaDB release lock missing'}
+          $msi=Join-Path $env:RUNNER_TEMP $maria.filename
+          Invoke-WebRequest -Uri $maria.source_url -OutFile $msi -MaximumRedirection 10
+          $hash=(Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($hash-ne$maria.sha256.ToLowerInvariant()){throw "MariaDB MSI hash mismatch: $hash"}
+          if((Get-Item $msi).Length-ne[long]$maria.size){throw 'MariaDB MSI size mismatch'}
+
+          $oldRoot='C:\SOKNA-OLD'
+          $newRoot='D:\SOKNA-NEW'
+          $oldMaria=Join-Path $oldRoot 'Infrastructure\MariaDB'
+          $oldData=Join-Path $oldRoot 'Data\MariaDB'
+          Remove-Item $oldRoot,$newRoot -Recurse -Force -ErrorAction SilentlyContinue
+          $svc=Get-Service SoknaMariaDB -ErrorAction SilentlyContinue
+          if($svc){
+            if($svc.Status-ne'Stopped'){Stop-Service SoknaMariaDB -Force -ErrorAction SilentlyContinue}
+            & sc.exe delete SoknaMariaDB | Out-Null
+            $svc.Dispose(); Start-Sleep -Seconds 1
+          }
+
+          try {
+            $args=@('/i',('"'+$msi+'"'),('INSTALLDIR="'+$oldMaria+'"'),'ADDLOCAL=MYSQLSERVER,Client,SharedLibraries','REMOVE=DBInstance,DEVEL,HeidiSQL','/qn','/norestart')
+            $p=Start-Process msiexec.exe -ArgumentList $args -Wait -PassThru
+            if($p.ExitCode -notin 0,3010){throw "Seed MariaDB MSI install failed: $($p.ExitCode)"}
+            $server=Join-Path $oldMaria 'bin\mariadbd.exe'
+            if(-not(Test-Path $server)){throw "Seed MariaDB binary missing: $server"}
+            New-Item -ItemType Directory -Path $oldData -Force|Out-Null
+            $ini=Join-Path $oldData 'my.ini'
+            Set-Content -LiteralPath $ini -Value "[mysqld]`r`ndatadir=$($oldData.Replace('\','/'))`r`n" -Encoding ASCII
+            $binPath=('"'+$server+'" --defaults-file="'+$ini+'"')
+            New-Service -Name SoknaMariaDB -BinaryPathName $binPath -DisplayName 'SOKNA MariaDB CI' -StartupType Manual | Out-Null
+
+            if(Test-Path $newRoot){throw 'New root unexpectedly exists before ownership preflight'}
+            $probe=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$newRoot,$maria.version) -Wait -PassThru
+            if($probe.ExitCode-ne42){throw "Cross-root probe did not block: exit $($probe.ExitCode)"}
+            if(Test-Path $newRoot){throw 'Cross-root preflight mutated the new root'}
+
+            $same=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$oldRoot,$maria.version) -Wait -PassThru
+            if($same.ExitCode-ne0){throw "Same-root ownership probe failed: exit $($same.ExitCode)"}
+
+            $svc=Get-Service SoknaMariaDB -ErrorAction Stop
+            $svc.Dispose()
+            & sc.exe delete SoknaMariaDB | Out-Null
+            Start-Sleep -Seconds 1
+
+            $productOnly=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$newRoot,$maria.version) -Wait -PassThru
+            if($productOnly.ExitCode-ne42){throw "Registered-MSI-only cross-root probe did not block: exit $($productOnly.ExitCode)"}
+            if(Test-Path $newRoot){throw 'MSI-only preflight mutated the new root'}
+          }
+          finally {
+            $svc=Get-Service SoknaMariaDB -ErrorAction SilentlyContinue
+            if($svc){
+              if($svc.Status-ne'Stopped'){Stop-Service SoknaMariaDB -Force -ErrorAction SilentlyContinue}
+              & sc.exe delete SoknaMariaDB | Out-Null
+              $svc.Dispose(); Start-Sleep -Milliseconds 500
+            }
+            $p=Start-Process msiexec.exe -ArgumentList @('/x',('"'+$msi+'"'),'/qn','/norestart') -Wait -PassThru
+            Write-Host "MariaDB cleanup MSI exit=$($p.ExitCode)"
+            Remove-Item $oldRoot,$newRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Reproduce Apache cross-root service ownership
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $oldRoot='C:\SOKNA-APACHE-OLD'
+          $newRoot='D:\SOKNA-APACHE-NEW'
+          $oldExe=Join-Path $oldRoot 'Infrastructure\Apache\bin\httpd.exe'
+          New-Item -ItemType Directory -Path (Split-Path $oldExe) -Force|Out-Null
+          Set-Content -LiteralPath $oldExe -Value 'fixture'
+          try {
+            $old=Get-Service SoknaApache -ErrorAction SilentlyContinue
+            if($old){& sc.exe delete SoknaApache|Out-Null;$old.Dispose();Start-Sleep -Milliseconds 500}
+            New-Service -Name SoknaApache -BinaryPathName ('"'+$oldExe+'" -k runservice -n SoknaApache') -DisplayName 'SOKNA Apache CI' -StartupType Manual|Out-Null
+            $probe=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$newRoot,'11.4.12') -Wait -PassThru
+            if($probe.ExitCode-ne42){throw "Apache cross-root probe did not block: $($probe.ExitCode)"}
+            if(Test-Path $newRoot){throw 'Apache ownership preflight mutated target root'}
+          }
+          finally {
+            $old=Get-Service SoknaApache -ErrorAction SilentlyContinue
+            if($old){& sc.exe delete SoknaApache|Out-Null;$old.Dispose();Start-Sleep -Milliseconds 500}
+            Remove-Item $oldRoot,$newRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Allow orphaned Apache service with missing executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $oldRoot='C:\SOKNA-ORPHAN-MISSING'
+          $targetRoot='D:\SOKNA-TARGET'
+          $missingExe=Join-Path $oldRoot 'Infrastructure\Apache\bin\httpd.exe'
+          try {
+            $old=Get-Service SoknaApache -ErrorAction SilentlyContinue
+            if($old){& sc.exe delete SoknaApache|Out-Null;$old.Dispose();Start-Sleep -Milliseconds 500}
+            New-Service -Name SoknaApache -BinaryPathName ('"'+$missingExe+'" -k runservice -n SoknaApache') -DisplayName 'SOKNA Apache orphan CI' -StartupType Manual|Out-Null
+            if(Test-Path $missingExe){throw 'Orphan fixture executable must not exist'}
+            $probe=Start-Process -FilePath $exe -ArgumentList @('--probe-infrastructure-ownership',$targetRoot,'11.4.12') -Wait -PassThru
+            if($probe.ExitCode-ne0){throw "Orphaned Apache registration should be recoverable; got $($probe.ExitCode)"}
+            if(Test-Path $targetRoot){throw 'Orphaned Apache preflight mutated target root'}
+          }
+          finally {
+            $old=Get-Service SoknaApache -ErrorAction SilentlyContinue
+            if($old){& sc.exe delete SoknaApache|Out-Null;$old.Dispose();Start-Sleep -Milliseconds 500}
+            Remove-Item $oldRoot,$targetRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build standalone prerequisites installer
+        shell: pwsh
+        run: |
+          $root=(Resolve-Path .).Path
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $root
+          if($LASTEXITCODE-ne0){throw "Prerequisites installer build failed: $LASTEXITCODE"}
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          $setup="packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-$v.exe"
+          if(-not(Test-Path $setup)){throw "Installer not produced: $setup"}
+
+      - name: Require upgrade from previous release while old UI is running
+        shell: pwsh
+        run: tests/g7-prerequisites-upgrade.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-prerequisites-setup-${{ steps.version.outputs.version }}
+          path: |
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-${{ steps.version.outputs.version }}.exe
+            packaging/prerequisites/out/installer/artifact-index.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Offline Kit template
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-offline-kit-template-${{ steps.version.outputs.version }}
+          path: |
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-${{ steps.version.outputs.version }}.exe
+            packaging/offline/README_FA.md
+            packaging/offline/verify-offline-kit.ps1
+            platform/windows/release-lock.json
+          if-no-files-found: error
+          retention-days: 30

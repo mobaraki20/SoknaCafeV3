@@ -22,13 +22,17 @@
 - **Public Edge**: deploy package مستقل برای hosting/server Public.
 
 ## D2 — Infrastructure prerequisites — FINAL
-Windows Services installer فقط prerequisite check می‌کند. Apache/PHP/MariaDB و dependency binaryهای external داخل بسته SOKNA نیستند.
+زیرساخت Local Web از Windows Services و خود Local Web جدا است.
 
-برای prerequisite missing/incompatible:
-- نمایش نام/نسخه required/current/status؛
-- option دانلود و نصب verified online با size/progress/status؛
-- hash/signature verification و fail-closed؛
-- manual install fallback با راهنمای نسخه موردنیاز.
+- **Windows Services Setup** فقط پیش‌نیازهای Runtime/Print Agent خودش را بررسی می‌کند و Apache/PHP/MariaDB را نمایش، نصب یا مدیریت نمی‌کند.
+- **SOKNA Prerequisites Setup** ابزار مستقل آماده‌سازی زیرساخت است و فقط Apache + PHP + MariaDB را از artifactهای رسمی و release-locked دریافت/verify و نصب/تعمیر/بازیابی می‌کند.
+- **Local Web** همچنان فقط ZIP مستقل است؛ Prerequisites Setup هیچ فایل Local Web را کپی، نصب یا migrate نمی‌کند.
+- مسیر نصب زیرساخت قابل انتخاب است و می‌تواند روی درایوی غیر از درایو ویندوز باشد؛ layout مرجع `<drive>:\\SOKNA\\Infrastructure`، `<drive>:\\SOKNA\\Data\\MariaDB` و `<drive>:\\SOKNA\\Web` است.
+- Binary و Data Directory ماریا‌دی‌بی جدا هستند. در Repair/Recover وجود دیتای قبلی به معنی **ممنوعیت initialize مجدد** است.
+- بعد از تعویض ویندوز، حالت Recover فایل‌های باقی‌مانده را validate می‌کند، dependencyهای وابسته به OS را دوباره برقرار و سرویس‌های `SoknaApache` و `SoknaMariaDB` را re-register می‌کند؛ Web/Data موجود حذف یا overwrite نمی‌شوند.
+- ساخت دیتابیس کاربردی SOKNA، user محدود برنامه و migrationها مالکیت **Browser Setup Wizard خود Local Web** است، نه Prerequisites Setup.
+- نصب باید log پایدار، state machine-readable، diagnostics و Support Bundle بدون secret داشته باشد.
+- مسیر دستی فقط fallback اضطراری است؛ مسیر اصلی کاربر نصب/Repair/Recover خودکار با hash verification و fail-closed است.
 
 ## D3 — Local Browser Setup — FINAL
 Local Web نصب اولیه شبیه WordPress است:

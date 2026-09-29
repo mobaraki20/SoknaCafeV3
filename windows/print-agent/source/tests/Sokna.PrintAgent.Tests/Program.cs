@@ -28,6 +28,32 @@ Check(!PrinterAutomationPolicy.IsCapable(new("PDFCreator",false,false,false,fals
 Check(PrinterAutomationPolicy.IsCapable(new("Thermal",false,false,false,false,0,"Thermal Driver","USB001")),"physical_usb_queue_automation_capable");
 Check(PrinterAutomationPolicy.IsCapable(VirtualPrinterQueues.PdfTestHealth()),"sokna_pdf_test_sink_remains_capable");
 
+foreach(var port in new[]{18080,18081,23456})
+{
+    try
+    {
+        new AgentOptions
+        {
+            ServerBaseUrl=$"http://127.0.0.1:{port}/",
+            LocalBridgeAllowedOrigin=$"http://127.0.0.1:{port}"
+        }.Validate();
+    }
+    catch(Exception)
+    {
+        failures.Add($"loopback_configurable_port_{port}");
+    }
+}
+try
+{
+    new AgentOptions
+    {
+        ServerBaseUrl="http://127.0.0.1:18080/path",
+        LocalBridgeAllowedOrigin="http://127.0.0.1:18080"
+    }.Validate();
+    failures.Add("server_base_url_origin_only");
+}
+catch(InvalidDataException) { }
+
 // G01/G02/G03: heartbeat wire omission/completeness and API field preservation.
 var heartbeatHandler=new CaptureHttpHandler(HttpStatusCode.OK,"{\"success\":true}");
 using(var heartbeatHttp=new HttpClient(heartbeatHandler))

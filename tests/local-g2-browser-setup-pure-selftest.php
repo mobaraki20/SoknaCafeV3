@@ -8,6 +8,7 @@ $tmp=sys_get_temp_dir().DIRECTORY_SEPARATOR.'sokna-g21-pure-'.bin2hex(random_byt
 $service=new BrowserSetupService($tmp,__DIR__.'/../apps/local-web');
 try{
   $s=$service->status();g21_assert($s['state']==='new'&&!$s['installed'],'new state mismatch');
+  g21_assert(isset($s['recommended_data_dir'])&&str_ends_with(str_replace('\\','/',(string)$s['recommended_data_dir']),'/Data'),'recommended data dir missing');
   $pf=$service->preflight($tmp.DIRECTORY_SEPARATOR.'data');g21_assert(isset($pf['checks'])&&count($pf['checks'])>=9,'preflight checks missing');
   $ids=array_column($pf['checks'],'id');foreach(['php_version','ext_pdo','ext_pdo_mysql','ext_mbstring','ext_sodium','migrations_readable','package_root_writable','data_dir_writable'] as $id)g21_assert(in_array($id,$ids,true),'preflight id missing '.$id);
   file_put_contents($tmp.'/config.php',"<?php return ['installation'=>['id'=>'local-test']];\n");
