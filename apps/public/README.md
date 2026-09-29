@@ -45,11 +45,17 @@ The hosting document root is **`apps/public/public/`**. The rest of the componen
 
 Deployment flow:
 
-1. Upload the complete `apps/public` component to the hosting account.
-2. Copy `config.example.php` to `config.php` and set the MariaDB credentials, the paired `default_installation_id`, storage path and Local pairing secret.
-3. Point the site document root to `apps/public/public/` and enable normal front-controller rewriting (`.htaccess` is included for Apache-compatible shared hosting).
-4. Run the Public migration lifecycle through the deployment/maintenance path before accepting traffic.
-5. Verify `GET /health`, then `GET /menu`; table QR URLs use `/menu?table=<opaque-table-token>` and may include `installation=<id>` only when a host intentionally serves multiple paired installations.
+1. Upload/extract the complete Public Edge deploy ZIP into a directory outside the public document root, for example `~/sokna-public/`.
+2. Copy `config.example.php` to `config.php` and set the MariaDB credentials, the paired `default_installation_id`, storage path and Local pairing secret. Keep `config.php` outside the public document root.
+3. Point the domain/subdomain document root to the package's `public/` directory. The included `.htaccess` provides Apache front-controller rewriting.
+4. From cPanel Terminal/SSH, run:
+   ```bash
+   php tools/deploy-bootstrap.php
+   ```
+   or pass an explicit config path with `--config=/absolute/path/config.php`. The command checks MariaDB, creates/verifies storage, runs all Public-owned migrations and performs a Public health check. It exits non-zero and prints JSON on failure.
+5. Verify `GET /health` returns `ok: true`, then continue the Local/Public pairing flow. `GET /menu` becomes useful after the Local installation has published the first guest projection.
+
+The deploy package deliberately does **not** include a generated `config.php`, database password or pairing secret. Those remain host-specific secrets.
 
 `/menu` is Public-owned read projection UI. Guest order/waiter writes always cross the existing realtime relay and remain subject to Local freshness, capability and canonical business revalidation. Guest media is served only by immutable SHA-256 filenames verified again before read.
 
