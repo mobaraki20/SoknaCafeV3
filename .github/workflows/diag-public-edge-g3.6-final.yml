@@ -1,0 +1,191 @@
+name: Qualify Public Edge g3.6 Final
+on:
+  push:
+    branches: [diag/public-edge-g3.6-final]
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_public_ci
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_NAME: sokna_public_ci
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP MariaDB extension
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql
+          php -v
+          php -m | grep -i pdo_mysql
+
+      - name: Run Public Edge contract gates
+        run: |
+          set -euo pipefail
+          python3 tests/public-m3-contract.py
+          python3 tests/public-m3-transport-contract.py
+          python3 tests/public-health-contract.py
+          python3 tests/public-m4-schema-contract.py
+          python3 tests/public-deploy-bootstrap-contract.py
+          php tests/public-g3-deploy-pure-selftest.php
+          python3 tests/public-g3-package-selftest.py
+
+      - name: Run Public Edge real MariaDB selftests
+        run: |
+          set -euo pipefail
+          php tests/public-mysql-migration-selftest.php
+          php tests/public-auth-projection-selftest.php
+          php tests/public-login-selftest.php
+          php tests/public-signed-local-request-selftest.php
+          php tests/public-auth-http-adapter-selftest.php
+          php tests/public-connectivity-selftest.php
+          php tests/public-realtime-selftest.php
+          php tests/public-deferred-selftest.php
+          php tests/public-health-selftest.php
+          php tests/public-g3-deploy-selftest.php
+          php tests/public-m4-guest-publish-selftest.php
+          php tests/public-m4-guest-runtime-selftest.php
+          php tests/public-m4-guest-renderer-selftest.php
+          php tests/public-m4-guest-compat-selftest.php
+          php tests/public-m4-remote-read-model-selftest.php
+          php tests/public-m4-failure-isolation-selftest.php
+
+      - name: Build exact deploy package
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n' < apps/public/VERSION.txt)"
+          test "$VERSION" = "3.0.0-g3.6-dev"
+          mkdir -p dist
+          python3 apps/public/tools/build-deploy-package.py             --source apps/public             --version "$VERSION"             --source-commit "$GITHUB_SHA"             --out "dist/SoknaCafeV3-public-edge-deploy-$VERSION.zip"
+          python3 - <<'PY'
+          import json,zipfile
+          p='dist/SoknaCafeV3-public-edge-deploy-3.0.0-g3.6-dev.zip'
+          with zipfile.ZipFile(p) as z:
+              names=set(z.namelist())
+              required={'manifest.json','public/index.php','public/.htaccess','config.example.php','tools/deploy-bootstrap.php','README.md','VERSION.txt'}
+              missing=required-names
+              assert not missing, missing
+              assert 'config.php' not in names
+              assert not any(n.startswith('storage/') for n in names)
+              m=json.loads(z.read('manifest.json'))
+              assert m['format']=='sokna-public-deploy-v1'
+              assert m['component']=='public-edge'
+              assert m['version']=='3.0.0-g3.6-dev'
+              assert m['document_root']=='public'
+          print('PUBLIC_DEPLOY_PACKAGE=PASS')
+          PY
+
+      - name: Install from extracted deploy artifact against real MariaDB
+        run: |
+          set -euo pipefail
+          DEPLOY="$RUNNER_TEMP/public-edge-deploy"
+          rm -rf "$DEPLOY"
+          mkdir -p "$DEPLOY"
+          unzip -q dist/SoknaCafeV3-public-edge-deploy-3.0.0-g3.6-dev.zip -d "$DEPLOY"
+          cat > "$DEPLOY/config.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          return [
+              'db' => [
+                  'host' => '127.0.0.1',
+                  'port' => '3306',
+                  'name' => 'sokna_public_ci',
+                  'charset' => 'utf8mb4',
+                  'user' => 'sokna',
+                  'pass' => 'sokna',
+              ],
+              'app' => [
+                  'default_installation_id' => 'ci-installation',
+                  'cookie_secure' => false,
+                  'storage_dir' => __DIR__ . '/storage',
+              ],
+              'relay' => [
+                  'installation_secrets' => ['ci-installation' => 'ci-shared-hmac-secret'],
+                  'clock_skew_seconds' => 300,
+                  'secret_encryption_key_base64' => 'S0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0s=',
+              ],
+              'auth' => [
+                  'session_ttl_seconds' => 28800,
+                  'failure_limit' => 5,
+                  'failure_window_seconds' => 900,
+                  'block_seconds' => 900,
+              ],
+          ];
+          PHP
+
+          php "$DEPLOY/tools/deploy-bootstrap.php" > "$RUNNER_TEMP/bootstrap-1.json"
+          cat "$RUNNER_TEMP/bootstrap-1.json"
+          python3 - <<'PY'
+          import json,os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'bootstrap-1.json')
+          d=json.load(open(p,encoding='utf-8'))
+          assert d['ok'] is True
+          assert d['version']=='3.0.0-g3.6-dev'
+          assert d['database']=='ready'
+          assert d['applied_migrations']==3
+          assert len(d['new_migrations'])==3
+          PY
+
+          php "$DEPLOY/tools/deploy-bootstrap.php" > "$RUNNER_TEMP/bootstrap-2.json"
+          python3 - <<'PY'
+          import json,os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'bootstrap-2.json')
+          d=json.load(open(p,encoding='utf-8'))
+          assert d['ok'] is True
+          assert d['applied_migrations']==3
+          assert d['new_migrations']==[]
+          PY
+          echo 'PUBLIC_DEPLOY_BOOTSTRAP_IDEMPOTENT=PASS'
+
+      - name: Serve extracted artifact and require HTTP health
+        run: |
+          set -euo pipefail
+          DEPLOY="$RUNNER_TEMP/public-edge-deploy"
+          php -S 127.0.0.1:18097 -t "$DEPLOY/public" "$DEPLOY/public/index.php" >"$RUNNER_TEMP/public-http.log" 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true; cat "$RUNNER_TEMP/public-http.log" || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18097/health >"$RUNNER_TEMP/health.json"; then break; fi
+            sleep 0.5
+          done
+          cat "$RUNNER_TEMP/health.json"
+          python3 - <<'PY'
+          import json,os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'health.json')
+          d=json.load(open(p,encoding='utf-8'))
+          assert d['ok'] is True
+          assert d['component']=='public-edge'
+          assert d['database']=='ready'
+          assert d['applied_migrations']==3
+          assert d['version']=='3.0.0-g3.6-dev'
+          PY
+          ROOT_CODE="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18097/)"
+          test "$ROOT_CODE" = "302"
+          ROBOTS_CODE="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18097/robots.txt)"
+          test "$ROBOTS_CODE" = "200"
+          echo 'PUBLIC_EDGE_EXTRACTED_ARTIFACT_HTTP=PASS'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-public-edge-3.0.0-g3.6-dev-qualified-${{ github.sha }}
+          path: dist/SoknaCafeV3-public-edge-deploy-3.0.0-g3.6-dev.zip
+          if-no-files-found: error
