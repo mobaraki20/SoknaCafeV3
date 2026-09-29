@@ -101,6 +101,9 @@ jobs:
           rm -rf "$DEPLOY"
           mkdir -p "$DEPLOY"
           unzip -q dist/SoknaCafeV3-public-edge-deploy-3.0.0-g3.6-dev.zip -d "$DEPLOY"
+
+          php -r '$pdo=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","root",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$pdo->exec("DROP DATABASE IF EXISTS sokna_public_deploy_ci");$pdo->exec("CREATE DATABASE sokna_public_deploy_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");$pdo->exec("GRANT ALL PRIVILEGES ON sokna_public_deploy_ci.* TO \"sokna\"@\"%\"");'
+
           cat > "$DEPLOY/config.php" <<'PHP'
           <?php
           declare(strict_types=1);
@@ -108,7 +111,7 @@ jobs:
               'db' => [
                   'host' => '127.0.0.1',
                   'port' => '3306',
-                  'name' => 'sokna_public_ci',
+                  'name' => 'sokna_public_deploy_ci',
                   'charset' => 'utf8mb4',
                   'user' => 'sokna',
                   'pass' => 'sokna',
