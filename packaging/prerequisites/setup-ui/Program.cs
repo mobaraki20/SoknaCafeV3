@@ -2320,10 +2320,10 @@ echo json_encode($out, JSON_UNESCAPED_SLASHES);
                 diag.AppendLine($"ApacheLocalWebConfigReady={(File.Exists(apacheConf) && ApacheConfigurationReady(apacheConf))}");
                 var phpSodium=Path.Combine(PhpPath(),"ext","php_sodium.dll");
                 var sodiumRuntime=Path.Combine(PhpPath(),"libsodium.dll");
-                diag.AppendLine($"PhpSodiumExtension={phpSodium}; Exists={File.Exists(phpSodium)}; SHA256={(File.Exists(phpSodium)?Sha256(phpSodium):"<missing>")}");
-                diag.AppendLine($"PhpSodiumRuntime={sodiumRuntime}; Exists={File.Exists(sodiumRuntime)}; SHA256={(File.Exists(sodiumRuntime)?Sha256(sodiumRuntime):"<missing>")}");
+                diag.AppendLine($"PhpSodiumExtension={phpSodium}; Exists={File.Exists(phpSodium)}; SHA256={(File.Exists(phpSodium)?FileSha256(phpSodium):"<missing>")}");
+                diag.AppendLine($"PhpSodiumRuntime={sodiumRuntime}; Exists={File.Exists(sodiumRuntime)}; SHA256={(File.Exists(sodiumRuntime)?FileSha256(sodiumRuntime):"<missing>")}");
                 var apacheSodium=Path.Combine(ApachePath(),"bin","libsodium.dll");
-                diag.AppendLine($"ApacheBinSodium={apacheSodium}; Exists={File.Exists(apacheSodium)}; SHA256={(File.Exists(apacheSodium)?Sha256(apacheSodium):"<missing>")}");
+                diag.AppendLine($"ApacheBinSodium={apacheSodium}; Exists={File.Exists(apacheSodium)}; SHA256={(File.Exists(apacheSodium)?FileSha256(apacheSodium):"<missing>")}");
                 diag.AppendLine($"MariaDB={ServiceStatus("SoknaMariaDB")}; Port3306={TcpOpen(3306)}");
                 diag.AppendLine($"MariaDataPresent={MariaDataInitialized()}");
                 var ownership=InfrastructureOwnershipDetector.Detect(RootPath(),Artifact("mariadb").Version);
@@ -2339,6 +2339,12 @@ echo json_encode($out, JSON_UNESCAPED_SLASHES);
             finally { SafeDelete(temp); }
         }
         catch (Exception ex) { ShowError(ex); }
+    }
+
+    private static string FileSha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
     private void ShowError(Exception ex)
