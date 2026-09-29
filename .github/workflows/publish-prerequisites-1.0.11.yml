@@ -1,0 +1,37 @@
+name: Publish SOKNA Prerequisites 1.0.11
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-prerequisites-1.0.11.yml'
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: prerequisites-v1.0.11
+      RUN_ID: "36500885534"
+      SOURCE_SHA: bf520e5be5b8847a1e1ff05f8a4f37ea9ad9dfc1
+      ARTIFACT: sokna-prerequisites-1.0.11-qualified-bf520e5be5b8847a1e1ff05f8a4f37ea9ad9dfc1
+    steps:
+      - name: Download exact qualified artifact
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT" --dir dist
+          test -f dist/SOKNA-Prerequisites-Setup-1.0.11.exe
+          mv dist/artifact-index.json dist/SOKNA-Prerequisites-1.0.11-artifact-index.json
+          (cd dist && sha256sum SOKNA-Prerequisites-Setup-1.0.11.exe > SHA256SUMS.txt)
+      - name: Publish release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/*               --repo "$GITHUB_REPOSITORY"               --target "$SOURCE_SHA"               --title "SOKNA Prerequisites 1.0.11"               --notes "Fixes the remaining PHP sodium failure seen on the physical upgraded installation. Apache now explicitly LoadFile's the PHP package's own libsodium.dll by absolute path before loading the PHP module, avoiding DLL search/order conflicts from stale or conflicting Apache-bin DLLs. Apache readiness requires this binding. Support bundles now include php.ini plus SHA-256 diagnostics for php_sodium.dll, PHP libsodium.dll, and any Apache-bin libsodium.dll. Qualified on Windows with legacy multi-extension_dir repair, real Apache Browser Setup, a real Apache Windows service while a deliberately conflicting libsodium.dll was placed in Apache/bin (sodium/pdo_mysql/mbstring/zip all loaded), and upgrade from 1.0.10 to 1.0.11 while the old UI remained open."
+          fi
