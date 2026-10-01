@@ -10,7 +10,7 @@
 - Uninstall/Repair داده‌ی تجاری یا زیرساخت خارجی را حذف/تغییر نمی‌دهد.
 
 ## lifecycle
-UI بومی `SoknaSetupUi.exe` سه عمل دارد: Install/Update، Repair و Uninstall. اجرای privileged از طریق `SoknaSetupHost.exe` و سپس `setup-windows-services.ps1` انجام می‌شود. Pairing file اختیاری و versioned است.
+UI بومی `SoknaSetupUi.exe` سه عمل دارد: Install/Update، Repair و Uninstall. اجرای privileged از طریق `SoknaSetupHost.exe` و سپس `setup-windows-services.ps1` انجام می‌شود. اتصال Local Web با pairing code کوتاه‌عمر و یک‌بارمصرف انجام می‌شود؛ secret در URL یا فایل عمومی Pairing قرار نمی‌گیرد.
 
 ## نسخه‌ها
 نسخه installer از `WINDOWS_SERVICES_VERSION.txt` می‌آید. نسخه Runtime از csproj خود Runtime و نسخه Print Agent از `Directory.Build.props` خود Agent خوانده می‌شود. `windows-services-compatibility-v1.json` این نسخه‌ها و contractها را به هم متصل می‌کند؛ root `VERSION.txt` منبع نسخه‌ی Windows Services نیست.
