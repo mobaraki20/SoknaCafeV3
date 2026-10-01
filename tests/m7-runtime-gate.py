@@ -15,6 +15,8 @@ need('LocalBaseUrl' in source and 'IsLoopback' in source,'Runtime Local endpoint
 need('SafeLog("runtime_started")' in source and 'SafeCode(ex)' in source,'Runtime logging is not safe-code based')
 need('Guid.NewGuid().ToString("N")' not in source,'Runtime retry correlation is not deterministic')
 need('requestId=requestId[..96]' not in source,'Runtime request id still uses collision-prone truncation')
+need('catch(HttpRequestException)' in source and 'catch(TaskCanceledException)' in source,'Runtime ambiguous transport retry fence missing')
+need('nextRun[trigger.Key]=DateTimeOffset.MinValue' in source,'Runtime definitive HTTP failure does not rotate stale trigger identity')
 endpoint=(R/'apps/local-web/public/internal/runtime/v1/trigger.php').read_text(encoding='utf-8')
 need("->handle(['Authorization'=>" in endpoint and "X-Sokna-Runtime-Contract" in endpoint,'Runtime endpoint does not pass adapter header map')
 local=(R/'apps/local-web/src/Runtime/RuntimeTriggerService.php').read_text(encoding='utf-8')
