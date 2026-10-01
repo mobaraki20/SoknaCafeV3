@@ -92,8 +92,9 @@ internal sealed class SetupForm : Form
 
     private readonly TextBox _installRoot = PathBox();
     private readonly TextBox _dataRoot = PathBox();
-    private readonly TextBox _pairing = PathBox();
-    private readonly CheckBox _startPaired = new() { Text = "بعد از Pairing، Runtime هم خودکار شروع شود", AutoSize = true, Checked = true };
+    private readonly TextBox _pairingBaseUrl = PairingTextBox("http://127.0.0.1:18080/");
+    private readonly TextBox _pairingCode = PairingTextBox();
+    private readonly CheckBox _startPaired = new() { Text = "بعد از اتصال، Runtime هم خودکار شروع شود", AutoSize = true, Checked = true };
     private readonly ListView _prereqs = CreateRtlList();
     private readonly ListView _services = CreateRtlList();
     private readonly ProgressBar _progress = new() { Dock = DockStyle.Fill, Minimum = 0, Maximum = 100 };
@@ -112,7 +113,6 @@ internal sealed class SetupForm : Form
     private readonly Button _cancelDownload = new() { Text = "لغو دانلود", AutoSize = true, Enabled = false };
     private readonly Button _guidance = new() { Text = "راهنمای گام‌به‌گام", AutoSize = true };
     private readonly Button _officialPage = new() { Text = "صفحه رسمی", AutoSize = true };
-    private readonly Button _browsePairing = new() { Text = "انتخاب فایل…", AutoSize = true };
     private readonly Button _refreshServices = new() { Text = "تازه‌سازی وضعیت", AutoSize = true };
     private readonly Button _openLogs = new() { Text = "باز کردن لاگ‌ها", AutoSize = true };
     private readonly Button _openSetupLog = new() { Text = "آخرین گزارش نصب", AutoSize = true };
@@ -240,7 +240,6 @@ internal sealed class SetupForm : Form
         _cancelDownload.Click += (_, _) => _downloadCts?.Cancel();
         _guidance.Click += (_, _) => ShowGuidance();
         _officialPage.Click += (_, _) => OpenOfficialPage();
-        _browsePairing.Click += (_, _) => BrowsePairing();
         _install.Click += async (_, _) => await RunLifecycleAsync("install");
         _repair.Click += async (_, _) => await RunLifecycleAsync("repair");
         _uninstall.Click += async (_, _) => await RunLifecycleAsync("uninstall");
@@ -282,8 +281,8 @@ internal sealed class SetupForm : Form
     private TabPage BuildLifecycleTab()
     {
         var page = new TabPage("۲. نصب و نگهداری") { RightToLeft = RightToLeft.Yes, AutoScroll = true };
-        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 8, RightToLeft = RightToLeft.Yes };
-        for (var i = 0; i < 8; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12), ColumnCount = 1, RowCount = 9, RightToLeft = RightToLeft.Yes };
+        for (var i = 0; i < 9; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         layout.Controls.Add(InfoBox(
             "این مرحله چه کاری انجام می‌دهد؟",
@@ -296,20 +295,12 @@ internal sealed class SetupForm : Form
         {
             AutoSize = true,
             Dock = DockStyle.Fill,
-            Text = "Pairing اختیاری است. اگر Local Web هنوز آماده نیست، این قسمت را خالی بگذارید؛ Print Agent نصب و اجرا می‌شود و Runtime تا زمان Pairing منتظر می‌ماند.",
+            Text = "اتصال اختیاری است. در Local Web از «پشتیبانی و نگهداری ← اتصال سرویس‌های ویندوز» یک کد کوتاه‌عمر بسازید و اینجا وارد کنید. اگر Local Web هنوز آماده نیست، کد را خالی بگذارید؛ Print Agent نصب می‌شود و Runtime تا زمان اتصال منتظر می‌ماند.",
             Padding = new Padding(4, 8, 4, 4)
         };
         layout.Controls.Add(pairHelp);
-
-        var pairRow = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 3, RightToLeft = RightToLeft.Yes };
-        pairRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        pairRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        pairRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        pairRow.Controls.Add(new Label { Text = "فایل Pairing", AutoSize = true, Anchor = AnchorStyles.Right, Padding = new Padding(0, 7, 0, 0) }, 0, 0);
-        pairRow.Controls.Add(_pairing, 1, 0);
-        pairRow.Controls.Add(_browsePairing, 2, 0);
-        layout.Controls.Add(pairRow);
-
+        layout.Controls.Add(LabeledRow("آدرس Local Web", _pairingBaseUrl, "آدرس باید روی همین دستگاه و به‌صورت loopback باشد؛ معمولاً http://127.0.0.1:18080/."));
+        layout.Controls.Add(LabeledRow("کد اتصال", _pairingCode, "کد را از صفحه پشتیبانی Local Web کپی کنید. کد حدود ۱۰ دقیقه اعتبار دارد و پس از اتصال مصرف می‌شود."));
         layout.Controls.Add(_startPaired);
 
         var actions = Flow(_install, _repair, _uninstall);
@@ -368,6 +359,8 @@ internal sealed class SetupForm : Form
         _tips.SetToolTip(_install, "Runtime و Print Agent را نصب/به‌روزرسانی می‌کند و ممکن است سرویس‌های قبلی را برای چند لحظه متوقف کند.");
         _tips.SetToolTip(_repair, "همان دو سرویس را از روی بسته نصب دوباره اعمال می‌کند. داده‌های برنامه حذف نمی‌شوند.");
         _tips.SetToolTip(_uninstall, "فقط سرویس‌های متعلق به سکنا را حذف می‌کند؛ داده‌ها و PHP/Apache/MariaDB حذف نمی‌شوند.");
+        _tips.SetToolTip(_pairingBaseUrl, "آدرس loopback همین Local Web؛ معمولاً http://127.0.0.1:18080/.");
+        _tips.SetToolTip(_pairingCode, "کد کوتاه‌عمر ساخته‌شده در صفحه پشتیبانی Local Web. این کد در لاگ نصب نوشته نمی‌شود.");
         _tips.SetToolTip(_openLogs, "پوشه لاگ‌های SOKNA در ProgramData را باز می‌کند.");
         _tips.SetToolTip(_openSetupLog, "آخرین گزارش اجرای نصب/تعمیر/حذف سرویس‌ها را باز می‌کند.");
         _tips.SetToolTip(_supportBundle, "یک ZIP شامل وضعیت سرویس‌ها، رخدادهای مرتبط ویندوز و لاگ‌های غیرمحرمانه می‌سازد.");
@@ -392,6 +385,15 @@ internal sealed class SetupForm : Form
         Dock = DockStyle.Fill,
         RightToLeft = RightToLeft.No,
         TextAlign = HorizontalAlignment.Left
+    };
+
+    private static TextBox PairingTextBox(string value = "") => new()
+    {
+        Dock = DockStyle.Fill,
+        RightToLeft = RightToLeft.No,
+        TextAlign = HorizontalAlignment.Left,
+        Text = value,
+        MaxLength = 160
     };
 
     private static Control InfoBox(string title, string body)
@@ -826,10 +828,20 @@ internal sealed class SetupForm : Form
 
         ValidatePath(_installRoot.Text, "پوشه سرویس‌ها");
         ValidatePath(_dataRoot.Text, "پوشه داده");
-        if (!string.IsNullOrWhiteSpace(_pairing.Text) && (!Path.IsPathFullyQualified(_pairing.Text.Trim()) || !File.Exists(_pairing.Text.Trim())))
+        var pairingCode=_pairingCode.Text.Trim();
+        var pairingBaseUrl=_pairingBaseUrl.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(pairingCode))
         {
-            ShowError("فایل Pairing معتبر نیست یا پیدا نشد.");
-            return;
+            if(!System.Text.RegularExpressions.Regex.IsMatch(pairingCode,"^ws1_[a-f0-9]{24}_[a-f0-9]{48}$"))
+            {
+                ShowError("کد اتصال Windows Services معتبر نیست. کد تازه‌ای از Local Web بسازید.");
+                return;
+            }
+            if(!IsLoopbackOrigin(pairingBaseUrl))
+            {
+                ShowError("آدرس Local Web باید یک origin محلی معتبر باشد؛ مانند http://127.0.0.1:18080/.");
+                return;
+            }
         }
 
         var description = mode switch
@@ -862,7 +874,9 @@ internal sealed class SetupForm : Form
                 ["shell_root"] = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar),
                 ["install_root"] = Path.GetFullPath(_installRoot.Text.Trim()),
                 ["data_root"] = Path.GetFullPath(_dataRoot.Text.Trim()),
-                ["pairing_file"] = string.IsNullOrWhiteSpace(_pairing.Text) ? "" : Path.GetFullPath(_pairing.Text.Trim()),
+                ["pairing_file"] = "",
+                ["pairing_code"] = pairingCode,
+                ["pairing_base_url"] = string.IsNullOrWhiteSpace(pairingCode) ? "" : pairingBaseUrl,
                 ["start_when_paired"] = _startPaired.Checked
             };
             await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(plan, new JsonSerializerOptions { WriteIndented = true }));
@@ -892,6 +906,7 @@ internal sealed class SetupForm : Form
                 _ => "Runtime و Print Agent نصب/به‌روزرسانی شدند."
             };
 
+            if(!string.IsNullOrWhiteSpace(pairingCode))_pairingCode.Clear();
             await RefreshServicesAsync();
             MessageBox.Show(
                 this,
@@ -1399,17 +1414,6 @@ internal sealed class SetupForm : Form
         _ => value
     };
 
-    private void BrowsePairing()
-    {
-        using var d = new OpenFileDialog
-        {
-            Filter = "فایل JSON (*.json)|*.json|همه فایل‌ها (*.*)|*.*",
-            CheckFileExists = true,
-            Title = "انتخاب فایل Pairing"
-        };
-        if (d.ShowDialog(this) == DialogResult.OK) _pairing.Text = d.FileName;
-    }
-
     private PrerequisiteItem? SelectedItem()
     {
         if (_prereqs.SelectedItems.Count != 1) return null;
@@ -1422,7 +1426,7 @@ internal sealed class SetupForm : Form
 
     private void SetBusy(bool busy, string? text = null, bool allowCancel = false)
     {
-        foreach (var b in new[] { _install, _repair, _uninstall, _refresh, _download, _localPrereq, _guidance, _officialPage, _browsePairing, _refreshServices, _supportBundle })
+        foreach (var b in new[] { _install, _repair, _uninstall, _refresh, _download, _localPrereq, _guidance, _officialPage, _refreshServices, _supportBundle })
             b.Enabled = !busy;
 
         _cancelDownload.Enabled = busy && allowCancel;
@@ -1456,6 +1460,13 @@ internal sealed class SetupForm : Form
         if (e is TaskCanceledException)
             return "زمان دانلود به پایان رسید. اتصال اینترنت را بررسی کنید و دوباره تلاش کنید؛ فایل ناقص برای ادامه دانلود نگه داشته می‌شود.";
         return $"دریافت «{artifact.Filename}» کامل نشد: {FriendlyError(e)}";
+    }
+
+    private static bool IsLoopbackOrigin(string value)
+    {
+        if(!Uri.TryCreate((value??"").Trim(),UriKind.Absolute,out var uri)||!uri.IsLoopback)return false;
+        if(uri.Scheme is not ("http" or "https")||!string.IsNullOrEmpty(uri.UserInfo)||!string.IsNullOrEmpty(uri.Query)||!string.IsNullOrEmpty(uri.Fragment)||uri.AbsolutePath!="/")return false;
+        return uri.Port is >=1024 and <=65535;
     }
 
     private static string FriendlyError(Exception e) => FriendlyError(e.Message);
