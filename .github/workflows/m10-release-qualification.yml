@@ -207,12 +207,24 @@ jobs:
             if($keeper){$keeper.Dispose()}
           }
 
+      - name: Verify qualified Windows Services installer artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          $expected=Join-Path (Resolve-Path .).Path "release\out-windows\SOKNA-Windows-Services-Setup-$version.exe"
+          if(-not(Test-Path -LiteralPath $expected -PathType Leaf)){throw "Qualified Windows Services installer missing: $expected"}
+          $index=Get-Content release/out-windows/artifact-index.json -Raw|ConvertFrom-Json
+          if([string]$index.windows_services.file-ne[IO.Path]::GetFileName($expected)){throw 'Artifact index installer filename drift.'}
+          $sha=(Get-FileHash -LiteralPath $expected -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha-ne[string]$index.windows_services.sha256){throw 'Artifact index installer SHA256 drift.'}
+
       - name: Upload qualified Windows Services installer
         uses: actions/upload-artifact@v4
         with:
-          name: sokna-windows-services-1.0.7-${{ github.sha }}
+          name: sokna-windows-services-${{ github.sha }}
           path: |
-            release/out-windows/SOKNA-Windows-Services-Setup-1.0.7.exe
+            release/out-windows/SOKNA-Windows-Services-Setup-*.exe
             release/out-windows/artifact-index.json
           if-no-files-found: error
           retention-days: 30
