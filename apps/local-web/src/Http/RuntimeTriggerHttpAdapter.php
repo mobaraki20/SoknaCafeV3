@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Sokna\Local\Http;
 use Sokna\Local\Runtime\RuntimeTriggerException;
 use Sokna\Local\Runtime\RuntimeTriggerService;
+use Throwable;
 final class RuntimeTriggerHttpAdapter
 {
     public function __construct(private readonly RuntimeTriggerService $service,private readonly string $token) {}
@@ -14,5 +15,6 @@ final class RuntimeTriggerHttpAdapter
         $data=json_decode($body,true);if(!is_array($data))return ['status'=>400,'body'=>['success'=>false,'code'=>'invalid_request']];
         try{return ['status'=>200,'body'=>$this->service->accept($data)];}
         catch(RuntimeTriggerException $e){return ['status'=>$e->httpStatus,'body'=>['success'=>false,'code'=>$e->errorCode]];}
+        catch(Throwable){return ['status'=>503,'body'=>['success'=>false,'code'=>'local_not_ready']];}
     }
 }
