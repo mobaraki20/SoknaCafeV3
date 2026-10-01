@@ -85,6 +85,8 @@ jobs:
         with: {dotnet-version: '10.0.x'}
       - name: Build Print Agent and Setup owners
         run: |
+          $ErrorActionPreference='Stop'
+          $PSNativeCommandUseErrorActionPreference=$true
           dotnet build windows/print-agent/source/Sokna.PrintWorker.slnx -c Release
           dotnet publish packaging/windows/setup-host/Sokna.SetupHost.csproj -c Release -o packaging/windows/setup-host/publish
           dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -o packaging/windows/setup-ui/publish
@@ -92,7 +94,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          & packaging/windows/setup-host/publish/SoknaSetupHost.exe --pairing-self-test
+          & .\packaging\windows\setup-host\publish\SoknaSetupHost.exe --pairing-self-test
           if($LASTEXITCODE-ne0){throw "Setup Host pairing self-test failed: $LASTEXITCODE"}
           $ps=Get-Content packaging/windows/scripts/setup-windows-services.ps1 -Raw
           foreach($needle in @('SOKNA_WINDOWS_SERVICES_PAIRING_B64','Clear-StalePairingFiles','Write-TransientPrivateJson')){
