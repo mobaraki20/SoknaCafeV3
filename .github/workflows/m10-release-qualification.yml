@@ -101,6 +101,13 @@ jobs:
             if(-not $ps.Contains($needle)){throw "Pairing handoff script contract missing: $needle"}
           }
           if($ps.Contains("Join-Path $env:TEMP ('sokna-print-pair-")){throw 'Print pairing secret still uses general TEMP.'}
+          $ui=Get-Content packaging/windows/setup-ui/Program.cs -Raw
+          foreach($needle in @('_pairingBaseUrl','_pairingCode','["pairing_code"] = pairingCode','["pairing_base_url"] = string.IsNullOrWhiteSpace(pairingCode) ? "" : pairingBaseUrl','["pairing_file"] = ""')){
+            if(-not $ui.Contains($needle)){throw "Setup UI pairing-code contract missing: $needle"}
+          }
+          foreach($legacy in @('_browsePairing','فایل Pairing')){
+            if($ui.Contains($legacy)){throw "Legacy pairing-file UI is still productized: $legacy"}
+          }
 
       - name: Parse all Windows PowerShell owners
         shell: pwsh
