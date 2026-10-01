@@ -101,8 +101,22 @@ function Write-Secret([string]$path,[string]$value){
   & icacls.exe $path /inheritance:r /grant:r 'SYSTEM:(F)' 'Administrators:(F)'|Out-Null
 }
 function Read-Pairing([string]$path){
-  if([string]::IsNullOrWhiteSpace($path)){return $null};$path=Full $path 'Pairing file';if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw 'Pairing file not found.'}
-  $p=Get-Content -LiteralPath $path -Raw|ConvertFrom-Json
+  $raw=''
+  $inline=[string]$env:SOKNA_WINDOWS_SERVICES_PAIRING_B64
+  if(-not[string]::IsNullOrWhiteSpace($inline)){
+    if(-not[string]::IsNullOrWhiteSpace($path)){throw 'Pairing file and pairing handoff cannot be used together.'}
+    try{
+      $bytes=[Convert]::FromBase64String($inline)
+      if($bytes.Length-lt32-or$bytes.Length-gt65536){throw 'Pairing handoff size is invalid.'}
+      $raw=[Text.Encoding]::UTF8.GetString($bytes)
+    }catch{throw 'Pairing handoff is invalid.'}
+    finally{$env:SOKNA_WINDOWS_SERVICES_PAIRING_B64=''}
+  }elseif(-not[string]::IsNullOrWhiteSpace($path)){
+    $path=Full $path 'Pairing file';if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw 'Pairing file not found.'}
+    $raw=Get-Content -LiteralPath $path -Raw
+  }else{return $null}
+  $p=$raw|ConvertFrom-Json
+  $raw=''
   if([string]$p.format-ne'sokna-windows-services-pairing-v1'-or[int]$p.schema_version-ne1){throw 'Pairing file format is unsupported.'}
   $uri=$null
   if(-not[Uri]::TryCreate([string]$p.local_base_url,[UriKind]::Absolute,[ref]$uri)-or-not$uri.IsLoopback){throw 'Pairing local_base_url must be loopback.'}
@@ -121,6 +135,18 @@ function Read-Pairing([string]$path){
   return $p
 }
 
+function Write-TransientPrivateJson([string]$path,[string]$json){
+  $dir=[IO.Path]::GetDirectoryName($path);New-Item -ItemType Directory -Path $dir -Force|Out-Null
+  [IO.File]::WriteAllText($path,$json,(New-Object Text.UTF8Encoding($false)))
+  & icacls.exe $path /inheritance:r /grant:r 'SYSTEM:(F)' 'Administrators:(F)'|Out-Null
+}
+function Clear-StalePairingFiles([string]$dir){
+  if(-not(Test-Path -LiteralPath $dir -PathType Container)){return}
+  Get-ChildItem -LiteralPath $dir -Filter 'sokna-print-pair-*.json' -File -ErrorAction SilentlyContinue|ForEach-Object{
+    try{if($_.LastWriteTimeUtc-lt[DateTime]::UtcNow.AddMinutes(-15)){Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue}}catch{}
+  }
+}
+
 if($env:OS -ne 'Windows_NT'){throw 'Windows services lifecycle runs on Windows only.'}
 Assert-Admin
 $ShellRoot=Full $ShellRoot 'ShellRoot';$InstallRoot=Full $InstallRoot 'InstallRoot';$DataRoot=Full $DataRoot 'DataRoot'
@@ -133,6 +159,7 @@ $runtimeSource=Join-Path $ShellRoot 'SoknaRuntimeService.exe';$printSource=Join-
 $runtimeExe=Join-Path $InstallRoot 'Runtime\SoknaRuntimeService.exe';$printRoot=Join-Path $InstallRoot 'PrintAgent';$printExe=Join-Path $printRoot 'Service\Sokna.PrintAgent.Service.exe'
 $runtimeConfig=Join-Path $DataRoot 'runtime\runtime-config.json';$runtimeToken=Join-Path $DataRoot 'runtime\runtime-token.private';$localToken=Join-Path $DataRoot 'runtime\local-token.private'
 $printDataRoot=Join-Path $DataRoot 'print-worker';$printStartupFatal=Join-Path $printDataRoot 'logs\startup-fatal.json'
+$pairingTransientRoot=Join-Path $DataRoot 'setup\transient-pairing';Clear-StalePairingFiles $pairingTransientRoot
 $runtimeCmd=Runtime-Command $runtimeExe $runtimeConfig;$printCmd=Print-Command $printExe
 
 if($Mode-eq'Uninstall'){
@@ -160,8 +187,14 @@ if($pair){
   Write-Secret $runtimeToken ([string]$pair.runtime_token);Write-Secret $localToken ([string]$pair.local_token)
   $cfg=[ordered]@{contractVersion=1;instanceId=('runtime-'+[guid]::NewGuid().ToString('N'));dataRoot=(Join-Path $DataRoot 'runtime\state');healthPort=17621;runtimeTokenFile=$runtimeToken;localTokenFile=$localToken;localBaseUrl=[string]$pair.local_base_url;printAgentServiceName=$PrintService;supervisePrintAgent=$true;triggers=@($pair.runtime_triggers)}
   $cfg|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $runtimeConfig -Encoding UTF8
-  $private=Join-Path $env:TEMP ('sokna-print-pair-'+[guid]::NewGuid().ToString('N')+'.json')
-  try{[ordered]@{server_base_url=[string]$pair.local_base_url;token=[string]$pair.print_agent_token;agent_name=$env:COMPUTERNAME;local_bridge_allowed_origin=[string]$pair.local_bridge_allowed_origin}|ConvertTo-Json|Set-Content -LiteralPath $private -Encoding UTF8;& $printExe --provision-file $private|Out-Null;if($LASTEXITCODE-ne0){throw 'Print Agent pairing failed.'}}finally{Remove-Item -LiteralPath $private -Force -ErrorAction SilentlyContinue}
+  $private=Join-Path $pairingTransientRoot ('sokna-print-pair-'+[guid]::NewGuid().ToString('N')+'.json')
+  try{
+    $printPair=[ordered]@{server_base_url=[string]$pair.local_base_url;token=[string]$pair.print_agent_token;agent_name=$env:COMPUTERNAME;local_bridge_allowed_origin=[string]$pair.local_bridge_allowed_origin}|ConvertTo-Json -Compress
+    Write-TransientPrivateJson $private $printPair
+    $printPair=''
+    & $printExe --provision-file $private|Out-Null
+    if($LASTEXITCODE-ne0){throw 'Print Agent pairing failed.'}
+  }finally{Remove-Item -LiteralPath $private -Force -ErrorAction SilentlyContinue}
 }
 Delete-Owned $RuntimeService $runtimeCmd;Delete-Owned $PrintService $printCmd
 Create-Owned $RuntimeService $runtimeCmd 'SOKNA Runtime'
