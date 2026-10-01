@@ -15,6 +15,7 @@ use Sokna\Local\Domain\Orders\TableDraftService;
 use Sokna\Local\Domain\Orders\OrderStaffActionService;
 use Sokna\Local\Domain\Orders\WaiterCallStaffService;
 use Sokna\Local\Domain\Orders\OrderWorkspaceService;
+use Sokna\Local\Domain\Orders\TableChangeService;
 use Sokna\Local\Relay\TableDraftRealtimeAdapter;
 use Sokna\Local\Domain\Preparation\PreparationAccessService;
 use Sokna\Local\Domain\Preparation\PreparationService;
@@ -35,6 +36,7 @@ use Sokna\Local\Domain\Integrations\AccommodationTransport;
 use Sokna\Local\Domain\Integrations\AccommodationService;
 use Sokna\Local\Domain\Integrations\IntegrationWorkspaceService;
 use Sokna\Local\Runtime\RuntimeTriggerService;
+use Sokna\Local\Runtime\RuntimeHealthClient;
 use Sokna\Local\Domain\Printing\PrintService;
 use Sokna\Local\Domain\Printing\PrintManagementService;
 use Sokna\Local\Domain\Printing\PrintTemplatePackageService;
@@ -45,6 +47,7 @@ use Sokna\Local\Domain\Operations\OperationsWorkspaceService;
 use Sokna\Local\Domain\Recovery\BusinessBackupService;
 use Sokna\Local\Domain\System\SupportBundleWriter;
 use Sokna\Local\Domain\System\SystemDiagnosticsService;
+use Sokna\Local\Domain\System\WindowsServicesPairingService;
 use Sokna\Local\Relay\ExpenseDeferredAdapter;
 use Sokna\Local\Domain\Supply\SupplyAccessService;
 use Sokna\Local\Domain\Supply\SupplyService;
@@ -56,11 +59,13 @@ use Sokna\Local\Relay\SettlementRealtimeAdapter;
 use Sokna\Local\Relay\GuestOrderRealtimeAdapter;
 use Sokna\Local\Relay\WaiterCallRealtimeAdapter;
 use Sokna\Local\Relay\RealtimeDispatchService;
+use Sokna\Local\Relay\StaffOrderRealtimeAdapter;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 use Sokna\Local\Domain\Sellables\CatalogAdminService;
 use Sokna\Local\Domain\Sellables\CategoryIconLibrary;
 use Sokna\Local\Domain\Sellables\DefaultContentSeeder;
 use Sokna\Local\Domain\Admin\AdminControlService;
+use Sokna\Local\Domain\Account\AccountService;
 use Sokna\Local\Domain\GuestContent\ThemePackageManager;
 use Sokna\Local\Domain\GuestContent\GuestContentService;
 use Sokna\Local\Domain\Marketing\MarketingService;
@@ -84,8 +89,10 @@ use Sokna\Local\Search\InventorySearchProvider;
 use Sokna\Local\Search\FinanceSearchProvider;
 use Sokna\Local\Search\SubscriberSearchProvider;
 use Sokna\Local\Search\AdminSearchProvider;
+use Sokna\Local\Search\NavigationSearchProvider;
 
 use Sokna\Local\Domain\Update\LocalUpdateService;
+use Sokna\Local\Domain\Update\LocalUpdateUploadService;
 use Sokna\Local\Domain\Update\ComponentUpdateCenterService;
 use Sokna\Local\Domain\Recovery\RecoveryWorkspaceService;
 use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
@@ -101,6 +108,7 @@ final class Bootstrap
     private ?Auth $auth = null;
     private ?Migrations $migrations = null;
     private ?AdminControlService $adminControls = null;
+    private ?AccountService $accountService = null;
     private ?PersonnelRepository $personnel = null;
     private ?StaffBenefitRepository $staffBenefits = null;
     private ?StaffBenefitCalculator $staffBenefitCalculator = null;
@@ -126,6 +134,7 @@ final class Bootstrap
     private ?OrderStaffActionService $orderStaffActions = null;
     private ?WaiterCallStaffService $waiterCallStaff = null;
     private ?OrderWorkspaceService $orderWorkspace = null;
+    private ?TableChangeService $tableChanges = null;
     private ?TableDraftRealtimeAdapter $tableDraftRealtime = null;
     private ?PreparationAccessService $preparationAccess = null;
     private ?PreparationService $preparation = null;
@@ -146,6 +155,7 @@ final class Bootstrap
     private ?AccommodationService $accommodation = null;
     private ?IntegrationWorkspaceService $integrationWorkspace = null;
     private ?RuntimeTriggerService $runtimeTriggers = null;
+    private ?RuntimeHealthClient $runtimeHealthClient = null;
     private ?PrintService $printing = null;
     private ?PrintManagementService $printManagement = null;
     private ?PrintTemplatePackageService $printTemplates = null;
@@ -156,7 +166,9 @@ final class Bootstrap
     private ?BusinessBackupService $businessBackup = null;
     private ?SupportBundleWriter $supportBundles = null;
     private ?SystemDiagnosticsService $systemDiagnostics = null;
+    private ?WindowsServicesPairingService $windowsServicesPairing = null;
     private ?LocalUpdateService $localUpdates = null;
+    private ?LocalUpdateUploadService $localUpdateUploads = null;
     private ?ComponentUpdateCenterService $updateCenter = null;
     private ?RecoveryWorkspaceService $recoveryWorkspace = null;
     private ?ThemePackageManager $themePackages = null;
@@ -182,6 +194,7 @@ final class Bootstrap
     private ?GuestOrderRealtimeAdapter $guestOrderRealtime = null;
     private ?WaiterCallRealtimeAdapter $waiterCallRealtime = null;
     private ?RealtimeDispatchService $realtimeDispatch = null;
+    private ?StaffOrderRealtimeAdapter $staffOrderRealtime = null;
 
     private function __construct(
         private readonly Config $config,
@@ -239,6 +252,11 @@ final class Bootstrap
     public function adminControls(): AdminControlService
     {
         return $this->adminControls ??= new AdminControlService($this->database(), $this->identityRepository());
+    }
+
+    public function account(): AccountService
+    {
+        return $this->accountService ??= new AccountService($this->database());
     }
 
     public function personnel(): PersonnelRepository
@@ -321,6 +339,7 @@ final class Bootstrap
     public function globalSearch(): GlobalSearchService
     {
         return $this->globalSearch ??= new GlobalSearchService([
+            new NavigationSearchProvider($this->auth()),
             new FinanceSearchProvider($this->database(), $this->auth()),
             new CatalogSearchProvider($this->database(), $this->auth()),
             new InventorySearchProvider($this->database(), $this->auth()),
@@ -396,6 +415,13 @@ final class Bootstrap
     public function orderWorkspace(): OrderWorkspaceService
     {
         return $this->orderWorkspace ??= new OrderWorkspaceService($this->database(),$this->identityRepository(),$this->capabilities(),$this->orderCatalog());
+    }
+
+    public function tableChanges(): TableChangeService
+    {
+        return $this->tableChanges ??= new TableChangeService(
+            $this->database(),$this->identityRepository(),$this->capabilities(),$this->observability()
+        );
     }
 
     public function tableDraftRealtime(): TableDraftRealtimeAdapter
@@ -535,6 +561,11 @@ final class Bootstrap
         );
     }
 
+    public function runtimeHealthClient(): RuntimeHealthClient
+    {
+        return $this->runtimeHealthClient ??= new RuntimeHealthClient($this->config->requiredString('app.data_dir'));
+    }
+
     public function financialPeriodClose(): FinancialPeriodCloseService
     {
         return $this->financialPeriodClose ??= new FinancialPeriodCloseService(
@@ -570,15 +601,33 @@ final class Bootstrap
     {
         return $this->systemDiagnostics ??= new SystemDiagnosticsService(
             $this->database(),$this->config,$this->observability,$this->migrations(),$this->printManagement(),$this->supportBundles(),
-            dirname(__DIR__,2),dirname(__DIR__,2),dirname(__DIR__,2).'/VERSION.txt',$this->publicEdgeSyncClient()
+            dirname(__DIR__,3),dirname(__DIR__,2),dirname(__DIR__,2).'/VERSION.txt',$this->publicEdgeSyncClient(),$this->runtimeHealthClient()
+        );
+    }
+
+    public function windowsServicesPairing(): WindowsServicesPairingService
+    {
+        return $this->windowsServicesPairing ??= new WindowsServicesPairingService(
+            $this->config,
+            $this->config->requiredString('app.data_dir'),
+            fn(string $name,array $actor): array => $this->printing()->createAgent($name,$actor),
+            function(int $agentId,int $actorId,string $reason): void { $this->printing()->retireAgent($agentId,$actorId,$reason); },
         );
     }
 
     public function localUpdates(): LocalUpdateService
     {
         return $this->localUpdates ??= new LocalUpdateService(
-            $this->observability(),dirname(__DIR__,2),dirname(__DIR__,2),
+            $this->observability(),$this->migrations(),dirname(__DIR__,2),dirname(__DIR__,2),
             dirname(__DIR__,2).'/resources/compatibility-v1.json',dirname(__DIR__,2).'/resources/update-trust-v1.json'
+        );
+    }
+
+    public function localUpdateUploads(): LocalUpdateUploadService
+    {
+        return $this->localUpdateUploads ??= new LocalUpdateUploadService(
+            $this->localUpdates()->incomingDir(),
+            fn(string $path,int $actorId): array => $this->localUpdates()->stageUploadedZip($path,$actorId)
         );
     }
 
@@ -627,7 +676,7 @@ final class Bootstrap
 
     public function publicProjectionBuilder(): PublicProjectionBuilder
     {
-        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent(),$this->marketing(),$this->reporting(),$this->notifications(),$this->categoryIcons());
+        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent(),$this->marketing(),$this->reporting(),$this->notifications(),$this->categoryIcons(),$this->orderCatalog());
     }
 
     public function publicEdgePublisher(): PublicEdgePublisherService
@@ -645,7 +694,7 @@ final class Bootstrap
 
     public function publicReenrollment(): PublicReenrollmentService
     {
-        return $this->publicReenrollmentService ??= new PublicReenrollmentService($this->config,$this->publicEdgeSyncClient(),dirname(__DIR__,2).'/config.php');
+        return $this->publicReenrollmentService ??= new PublicReenrollmentService($this->config,$this->publicEdgeSyncClient(),dirname(__DIR__,3).'/config.php');
     }
 
     public function expenseDeferred(): ExpenseDeferredAdapter
@@ -718,14 +767,19 @@ final class Bootstrap
         return $this->waiterCallRealtime ??= new WaiterCallRealtimeAdapter($this->waiterCalls());
     }
 
+    public function staffOrderRealtime(): StaffOrderRealtimeAdapter
+    {
+        return $this->staffOrderRealtime ??= new StaffOrderRealtimeAdapter($this->identityRepository(), $this->orderStaffActions());
+    }
+
     public function realtimeDispatch(): RealtimeDispatchService
     {
         return $this->realtimeDispatch ??= new RealtimeDispatchService(
             $this->guestOrderRealtime(), $this->waiterCallRealtime(), $this->settlementRealtime(),
-            $this->preparationRealtime(), $this->tableDraftRealtime()
+            $this->preparationRealtime(), $this->tableDraftRealtime(), $this->staffOrderRealtime()
         );
     }
-    public function startSession(string $cookiePath = '/', ?bool $secure = null): void
+    public function startSession(?string $cookiePath = null, ?bool $secure = null): void
     {
         Session::start($this->config, $this->observability, $cookiePath, $secure);
     }

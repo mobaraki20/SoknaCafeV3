@@ -11,6 +11,8 @@ use Sokna\Local\Domain\Printing\PrintManagementService;
 use Sokna\Local\Setup\BrowserSetupService;
 use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
 use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException;
+use Sokna\Local\Runtime\RuntimeEvidence;
+use Sokna\Local\Runtime\RuntimeHealthClient;
 use Throwable;
 
 final class SystemDiagnosticsService
@@ -26,19 +28,24 @@ final class SystemDiagnosticsService
         private readonly string $localWebRoot,
         private readonly string $versionFile,
         private readonly ?PublicEdgeSyncClient $publicClient=null,
+        private readonly ?RuntimeHealthClient $runtimeHealthClient=null,
     ) {}
 
     public function snapshot(): array
     {
         $local=$this->localStatus();$database=$this->databaseStatus();$runtime=$this->runtimeStatus();$print=$this->printStatus();$public=$this->publicStatus();
+        $uploadLimit=$this->effectiveUploadLimitBytes();
         $checks=[
             $this->check('setup_lock',(bool)($local['setup']['installed']??false),'Setup lock','critical'),
             $this->check('data_dir',(bool)($local['data_dir_writable']??false),'Data directory writable','critical'),
             $this->check('pdo_mysql',in_array('mysql',PDO::getAvailableDrivers(),true),'PDO MySQL','critical'),
             $this->check('migrations',(int)($database['pending_migrations']??1)===0,'Schema migrations current','critical'),
             $this->check('database_version',(bool)($database['mariadb_11_4']??false),'MariaDB 11.4.x','critical'),
+            $this->check('runtime_delivery',(string)($runtime['status']??'')==='observed_recently','Windows Runtime delivering Local triggers','warning'),
             $this->check('print_required_destinations',(int)($print['required_unready']??0)===0,'Required print destinations ready','warning'),
+            $this->check('public_edge_connectivity',(string)($public['status']??'')==='ok','Public Edge live sync and heartbeat','warning'),
             $this->check('php_zip',class_exists(\ZipArchive::class),'PHP ZIP for Local updater','warning'),
+            $this->check('update_chunk_transport',is_file($this->localWebRoot.DIRECTORY_SEPARATOR.'public'.DIRECTORY_SEPARATOR.'system'.DIRECTORY_SEPARATOR.'update-chunk.php'),'Chunked Local update transport','warning'),
             $this->check('stable_recovery',is_file($this->localWebRoot.DIRECTORY_SEPARATOR.'public'.DIRECTORY_SEPARATOR.'local-recovery.php'),'Stable Local recovery entrypoint','warning'),
         ];
         $critical=count(array_filter($checks,static fn(array $c):bool=>$c['severity']==='critical'&&!$c['ok']));$warnings=count(array_filter($checks,static fn(array $c):bool=>$c['severity']==='warning'&&!$c['ok']));
@@ -63,8 +70,8 @@ final class SystemDiagnosticsService
         $free=@disk_free_space($this->observability->dataRoot());$installation=(string)$this->config->get('installation.id','');
         return [
             'status'=>($setup['installed']??false)&&is_writable($this->observability->dataRoot())?'ok':'attention','version'=>$version!==''?$version:'unknown','php_version'=>PHP_VERSION,
-            'setup'=>$setup,'data_dir_writable'=>is_dir($this->observability->dataRoot())&&is_writable($this->observability->dataRoot()),'disk_free_mb'=>$free===false?null:(int)floor($free/1048576),
-            'installation_hint'=>$installation===''?'':substr(hash('sha256',$installation),0,12),
+            'setup'=>$setup,'data_dir_writable'=>is_dir($this->observability->dataRoot())&&is_writable($this->observability->dataRoot()),'disk_free_mb'=>$free===false?null:(int)floor($free/1048576),'upload_limit_bytes'=>$this->effectiveUploadLimitBytes(),
+            'installation_hint'=>$installation===''?'':substr(hash('sha256',$installation),0,12),'update_transport'=>'chunked-v1',
         ];
     }
 
@@ -79,12 +86,12 @@ final class SystemDiagnosticsService
 
     private function runtimeStatus(): array
     {
-        try{
-            $rows=$this->pdo->query("SELECT runtime_instance_id,MAX(accepted_at) last_seen,SUM(state='failed') failed_count,COUNT(*) receipt_count FROM runtime_trigger_receipts GROUP BY runtime_instance_id ORDER BY last_seen DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
-            foreach($rows as &$row){$row['failed_count']=(int)$row['failed_count'];$row['receipt_count']=(int)$row['receipt_count'];$row['age_seconds']=$this->age((string)$row['last_seen']);}unset($row);
-            $latest=$rows[0]??null;$state=$latest===null?'not_seen':(((int)($latest['age_seconds']??999999)<=3600)?'observed_recently':'observed_stale');
-            return ['status'=>$state,'contract_version'=>1,'instances'=>$rows,'note'=>'Runtime health is evidence-based from Local trigger receipts; no business payload is accepted.'];
-        }catch(Throwable){return ['status'=>'unavailable','contract_version'=>1,'instances'=>[]];}
+        $receipts=RuntimeEvidence::snapshot($this->pdo);
+        $probe=$this->runtimeHealthClient?->probe() ?? ['status'=>'not_configured','http_status'=>0,'error_code'=>'runtime_health_client_missing','health'=>null];
+        $runtime=RuntimeEvidence::combine($receipts,$probe);
+        $runtime['contract_version']=1;
+        $runtime['note']='Runtime is healthy only when the loopback /v1/health probe, real scheduler-cycle evidence, and fresh Local trigger receipts agree.';
+        return $runtime;
     }
 
     private function printStatus(): array
@@ -100,18 +107,78 @@ final class SystemDiagnosticsService
 
     private function publicStatus(): array
     {
-        $base=$this->safeOrigin((string)$this->config->get('public.base_url',''));$rows=[];
+        $baseUrl=$this->publicClient?->publicBaseUrl() ?: rtrim(trim((string)$this->config->get('public.base_url','')),'/');$base=$this->publicClient?->safeOrigin() ?: $this->safeOrigin($baseUrl);
+        $rows=[];
         try{$rows=$this->pdo->query('SELECT channel,status,last_http_status,last_attempt_at,last_success_at FROM public_sync_state ORDER BY channel')->fetchAll(PDO::FETCH_ASSOC)?:[];}catch(Throwable){}
-        $latest='';$errors=0;foreach($rows as $r){if((string)($r['status']??'')==='error')$errors++;$v=(string)($r['last_success_at']??'');if($v!==''&&($latest===''||$v>$latest))$latest=$v;}
-        $configured=$base!==''&&trim((string)$this->config->get('public.shared_secret',''))!=='';$live=null;$liveError='';
-        $diag=[];if($configured&&$this->publicClient!==null){try{$diag=$this->publicClient->diagnostics()['body'];$live=(array)($diag['health']??[]);}catch(PublicEdgeSyncException $e){$liveError=$e->errorCode;try{$live=$this->publicClient->health()['body'];}catch(Throwable){}}catch(Throwable){$liveError='public_probe_failed';}}
-        $status=!$configured?'not_configured':(is_array($live)&&($live['ok']??false)?'ok':($liveError!==''?'attention':($errors>0?'attention':($latest!==''?'observed_recently':'configured_unprobed'))));
-        return ['status'=>$status,'base_origin'=>$base,'productization'=>'G3.3_LIVE_HEALTH_EMERGENCY','last_sync_at'=>$latest,'sync_channels'=>$rows,'sync_error_count'=>$errors,'live'=>$live,'version'=>(string)($live['version']??''),'update'=>(array)($diag['update']??($live['update']??[])),'emergency_ready'=>(bool)($live['emergency_ready']??false),'recent_logs'=>(array)($diag['recent_logs']??[]),'probe_error'=>$liveError,'note'=>'Public live health, bounded emergency logs and Public-owned lifecycle are projected into Local.'];
+        $latest='';$errors=0;
+        foreach($rows as &$row){
+            if((string)($row['status']??'')==='error')$errors++;
+            $success=(string)($row['last_success_at']??'');
+            $attempt=(string)($row['last_attempt_at']??'');
+            $row['success_age_seconds']=$this->age($success);
+            $row['attempt_age_seconds']=$this->age($attempt);
+            if($success!==''&&($latest===''||$success>$latest))$latest=$success;
+        }unset($row);
+        $lastSyncAge=$this->age($latest);
+        $configured=$base!==''&&trim((string)$this->config->get('public.shared_secret',''))!=='';
+        $live=null;$liveError='';$diag=[];$connectivity=[];
+        if($configured&&$this->publicClient!==null){
+            try{
+                $diag=$this->publicClient->diagnostics()['body'];
+                $live=(array)($diag['health']??[]);
+                $connectivity=(array)($diag['connectivity']??[]);
+            }catch(PublicEdgeSyncException $e){
+                $liveError=$e->errorCode;
+                try{$live=$this->publicClient->health()['body'];}catch(Throwable){}
+            }catch(Throwable){$liveError='public_probe_failed';}
+        }
+        $remoteFresh=($connectivity['local_fresh']??null);
+        $remoteRuntime=(string)($connectivity['runtime_status']??'');
+        $heartbeatAge=$this->age((string)($connectivity['last_seen_at']??''));
+        $staleSync=$lastSyncAge!==null&&$lastSyncAge>180;
+        $healthyLive=is_array($live)&&($live['ok']??false)===true;
+        $status=!$configured?'not_configured':(
+            !$healthyLive||$liveError!==''||$errors>0||$staleSync||$remoteFresh===false
+                ?'attention'
+                :($latest!==''?'ok':'configured_unprobed')
+        );
+        return [
+            'status'=>$status,
+            'base_url'=>$baseUrl,
+            'base_origin'=>$base,
+            'productization'=>'G3.3_LIVE_HEALTH_EMERGENCY',
+            'last_sync_at'=>$latest,
+            'last_sync_age_seconds'=>$lastSyncAge,
+            'sync_channels'=>$rows,
+            'sync_error_count'=>$errors,
+            'stale_sync'=>$staleSync,
+            'live'=>$live,
+            'version'=>(string)($live['version']??''),
+            'update'=>(array)($diag['update']??($live['update']??[])),
+            'emergency_ready'=>(bool)($live['emergency_ready']??false),
+            'connectivity'=>$connectivity,
+            'edge_heartbeat_age_seconds'=>$heartbeatAge,
+            'edge_local_fresh'=>$remoteFresh,
+            'edge_runtime_status'=>$remoteRuntime,
+            'recent_logs'=>(array)($diag['recent_logs']??[]),
+            'probe_error'=>$liveError,
+            'note'=>'Public health includes Local-observed sync state plus Edge-observed heartbeat/connectivity evidence.',
+        ];
     }
 
     private function safeOrigin(string $value): string
     {
         $value=trim($value);if($value==='')return '';$parts=parse_url($value);if(!is_array($parts))return '';$scheme=strtolower((string)($parts['scheme']??''));$host=(string)($parts['host']??'');if(!in_array($scheme,['http','https'],true)||$host==='')return '';$port=isset($parts['port'])?':'.(int)$parts['port']:'';return $scheme.'://'.$host.$port;
+    }
+    private function effectiveUploadLimitBytes(): int
+    {
+        $upload=$this->iniBytes((string)ini_get('upload_max_filesize'));$post=$this->iniBytes((string)ini_get('post_max_size'));
+        if($upload<=0)return max(0,$post);if($post<=0)return $upload;return min($upload,$post);
+    }
+    private function iniBytes(string $value): int
+    {
+        $value=trim($value);if($value==='')return 0;$last=strtolower(substr($value,-1));$n=(float)$value;
+        return (int)round($n*match($last){'g'=>1073741824,'m'=>1048576,'k'=>1024,default=>1});
     }
     private function readTrim(string $path): string{$v=@file_get_contents($path);return is_string($v)?trim($v):'';}
     private function age(string $value): ?int{$ts=strtotime($value);return $ts===false?null:max(0,time()-$ts);}

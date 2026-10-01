@@ -1,29 +1,101 @@
 <?php
 declare(strict_types=1);
-use Sokna\Local\UI\LocalPage;use Sokna\Local\UI\ProductShell;use Sokna\Local\UI\WebAction;
-$core=require dirname(__DIR__).'/_app.php';$user=LocalPage::requireAdmin($core);$csrf=WebAction::csrfToken();
-ProductShell::start($core,$user,'مرکز سیستم','system','سلامت، تشخیص، Update و Recovery در یک control plane؛ lifecycle owner هر component حفظ می‌شود.');
+use Sokna\Local\UI\LocalPage;
+use Sokna\Local\UI\ProductShell;
+use Sokna\Local\UI\WebAction;
+$core=require dirname(__DIR__).'/_app.php';
+$user=LocalPage::requireAdmin($core);
+$csrf=WebAction::csrfToken();
+ProductShell::start($core,$user,'پشتیبانی و نگهداری','system','سلامت سامانه، به‌روزرسانی و پشتیبان‌گیری در یک فضای ساده و قابل‌فهم.',true);
 ?>
-<section class="sc-workspace" data-system-workspace data-api="/system/api.php" data-csrf="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>">
-  <div class="sc-toolbar"><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-refresh>تازه‌سازی</button><button class="sc-button sc-button--secondary" type="button" data-public-sync>Sync Public</button><button class="sc-button" type="button" data-support>ساخت بسته پشتیبانی</button></div></div>
-  <div class="sc-alert" role="status" aria-live="polite" data-status>در حال بررسی وضعیت سیستم…</div>
-  <div class="sc-tabs" role="tablist"><button class="sc-tab" type="button" role="tab" aria-selected="true" data-tab="health">سلامت و تشخیص</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="updates">Update Center</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="recovery">Backup / Recovery</button></div>
-  <div data-panel="health">
-    <section class="sc-card"><div class="sc-card__body"><div class="sc-section-head"><div><h2>خلاصه سلامت</h2><p>موارد بحرانی مانع اتکای عملیاتی هستند؛ هشدارها نیاز به بررسی دارند.</p></div><span class="sc-badge" data-overall>—</span></div><div class="sc-card-grid" data-checks></div></div></section>
-    <section class="sc-card-grid" data-components></section>
-    <section class="sc-card"><div class="sc-card__body"><div class="sc-section-head"><div><h2>رخدادهای اخیر</h2><p>فقط log ساخت‌یافته Local و با redaction نمایش داده می‌شود.</p></div></div><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>زمان</th><th>سطح</th><th>رخداد</th><th>Correlation</th></tr></thead><tbody data-logs></tbody></table></div></div></section>
+<section class="sc-workspace" data-system-workspace data-api="system/api.php" data-update-api="system/update-chunk.php" data-csrf="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>">
+  <div class="sc-toolbar sc-local-nav">
+    <div class="sc-tabs" role="tablist" aria-label="بخش‌های نگهداری">
+      <button class="sc-tab" type="button" role="tab" aria-selected="true" data-tab="health">سلامت سامانه</button>
+      <button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="updates">به‌روزرسانی</button>
+      <button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="recovery">پشتیبان‌گیری</button>
+    </div>
+    <div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-refresh>تازه‌سازی</button><button class="sc-button sc-button--secondary" type="button" data-public-sync>همگام‌سازی وب عمومی</button><button class="sc-button" type="button" data-support>دریافت بسته پشتیبانی</button></div>
   </div>
-  <div data-panel="updates" hidden>
-    <section class="sc-card"><div class="sc-card__body"><div class="sc-section-head"><div><h2>اجزای ثبت‌شده</h2><p>Local فقط lifecycle خودش را اجرا می‌کند؛ Runtime/Print و Public ownerهای مستقل دارند.</p></div></div><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>جزء</th><th>نسخه</th><th>سازگاری</th><th>سلامت</th><th>Update owner</th><th>عمل</th></tr></thead><tbody data-update-components></tbody></table></div></div></section>
-    <section class="sc-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h2>Local Web</h2><p>بسته immutable ZIP را verify و stage کن؛ سپس Update یا same-version Repair را اجرا کن.</p></div><span class="sc-badge" data-local-version>—</span></div><form data-update-upload class="sc-stack" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>"><label>بسته Update<input class="sc-control" type="file" name="package" accept=".zip,application/zip" required></label><button class="sc-button" type="submit">Verify + Stage</button></form><div class="sc-list-item" data-staged>بسته stage‌شده‌ای وجود ندارد.</div><div class="sc-actions"><button class="sc-button" type="button" data-activate>فعال‌سازی Update</button><button class="sc-button sc-button--secondary" type="button" data-repair>Repair همان نسخه</button><button class="sc-button sc-button--danger" type="button" data-rollback>Rollback به LKG</button></div><div class="sc-alert sc-alert--info">Signature contract در engine پیاده شده است؛ تا G6 release qualification سیاست pre-release اجازه بسته بدون signature می‌دهد. بسته دارای signature نامعتبر همیشه رد می‌شود.</div></div></section>
-    <section class="sc-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h2>Public Edge</h2><p>Local فقط بسته و action را به updater مالک Public می‌فرستد. Emergency Console مستقل باقی می‌ماند.</p></div><span class="sc-badge" data-public-version>—</span></div><form data-public-update-upload class="sc-stack" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>"><label>بسته Public Update<input class="sc-control" type="file" name="package" accept=".zip,application/zip" required></label><button class="sc-button" type="submit">Verify + Stage روی Public</button></form><div class="sc-list-item" data-public-staged>وضعیت Stage Public نامشخص است.</div><div class="sc-actions"><button class="sc-button" type="button" data-public-activate>فعال‌سازی Public</button><button class="sc-button sc-button--secondary" type="button" data-public-repair>Repair Public</button><button class="sc-button sc-button--danger" type="button" data-public-rollback>Rollback Public</button></div><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-public-emergency-code>چرخش کد Emergency</button><a class="sc-button sc-button--secondary" data-public-emergency-link href="#" target="_blank" rel="noopener">بازکردن Emergency Console</a></div><div class="sc-alert sc-alert--warning sc-hidden" data-public-emergency-secret></div></div></section>
-    <section class="sc-card"><div class="sc-card__body"><div class="sc-section-head"><div><h2>Recovery مستقل از bootstrap</h2><p>یک کد recovery بساز و خارج از برنامه نگهدار. مسیر اضطراری <code>/local-recovery.php</code> بدون bootstrap اصلی آخرین LKG را برمی‌گرداند.</p></div></div><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-recovery-code>ساخت/چرخش کد Recovery</button><a class="sc-button sc-button--secondary" href="/local-recovery.php">بازکردن Recovery</a></div><div class="sc-alert sc-alert--warning sc-hidden" data-recovery-secret></div></div></section>
+  <div class="sc-alert" role="status" aria-live="polite" data-status>در حال بررسی وضعیت سامانه…</div>
+
+  <div class="sc-system-health-stack" data-panel="health">
+    <section class="sc-data-panel sc-system-health-panel"><div class="sc-card__body">
+      <div class="sc-section-head"><div><h2>وضعیت کلی</h2><p>اگر بخشی نیاز به توجه داشته باشد، همین‌جا با توضیح قابل‌فهم نمایش داده می‌شود.</p></div><span class="sc-badge" data-overall>—</span></div>
+      <div class="sc-maintenance-grid" data-components></div>
+    </div></section>
+    <section class="sc-card sc-system-pair-card" data-public-pair-card><form class="sc-card__body sc-stack" data-public-pair-form novalidate>
+      <div class="sc-section-head"><div><h2>اتصال وب عمومی</h2><p>پس از نصب Public Edge، آدرس و کد اتصال یک‌بارمصرف را اینجا وارد کن.</p></div></div>
+      <div class="sc-form-grid sc-form-grid--2">
+        <label class="sc-field"><span class="sc-field__label">آدرس وب عمومی</span><input class="sc-control" type="url" data-public-pair-url placeholder="https://example.com" dir="ltr" required></label>
+        <label class="sc-field"><span class="sc-field__label">کد اتصال</span><input class="sc-control" data-public-pair-code autocomplete="off" dir="ltr" required></label>
+      </div>
+      <label class="sc-field"><span class="sc-field__label">نام این نصب</span><input class="sc-control" data-public-pair-name value="کافه سکنا"></label>
+      <div class="sc-actions"><button class="sc-button" type="submit" data-public-pair>اتصال وب عمومی</button></div>
+      <small class="sc-help" data-public-pair-state>پس از اتصال، همگام‌سازی اولیه به‌صورت جداگانه بررسی می‌شود.</small>
+    </form></section>
+    <section class="sc-card sc-system-pair-card" data-windows-pair-card><div class="sc-card__body sc-stack">
+      <div class="sc-section-head"><div><h2>اتصال سرویس‌های ویندوز</h2><p>برای Runtime و Print Agent یک کد کوتاه‌عمر بساز و همان کد را در برنامه نصب Windows Services وارد کن. نیازی به ساخت یا دانلود فایل JSON نیست.</p></div><span class="sc-badge" data-windows-pair-status>—</span></div>
+      <div class="sc-summary-grid">
+        <div class="sc-metric"><span>آدرس Local Web</span><strong data-windows-pair-url dir="ltr">—</strong></div>
+        <div class="sc-metric"><span>اعتبار کد</span><strong data-windows-pair-expiry>—</strong></div>
+      </div>
+      <label class="sc-field"><span class="sc-field__label">نام این دستگاه</span><input class="sc-control" data-windows-pair-name value="دستگاه اصلی سکنا" maxlength="120"><small class="sc-help">این نام برای شناسایی Print Agent در پنل استفاده می‌شود.</small></label>
+      <div class="sc-actions"><button class="sc-button" type="button" data-windows-pair-create>ساخت کد اتصال</button><button class="sc-button sc-button--secondary" type="button" data-windows-pair-cancel>لغو کد فعال</button></div>
+      <div class="sc-alert sc-alert--warning sc-secret" data-windows-pair-secret hidden>
+        <strong>کد اتصال — فقط همین حالا در برنامه نصب وارد کن:</strong>
+        <code data-windows-pair-code dir="ltr"></code>
+        <button class="sc-button sc-button--secondary" type="button" data-windows-pair-copy>کپی کد</button>
+      </div>
+      <small class="sc-help" data-windows-pair-help>کد حدود ۱۰ دقیقه اعتبار دارد و پس از اتصال موفق مصرف می‌شود. Secretهای Runtime و Print Agent در صفحه یا فایل دانلودی نمایش داده نمی‌شوند.</small>
+    </div></section>
+    <section class="sc-data-panel sc-system-checks-panel"><div class="sc-card__body"><div class="sc-section-head"><div><h2>بررسی‌های ضروری</h2><p>مواردی که برای کار عادی سامانه لازم‌اند.</p></div></div><div class="sc-card-grid" data-checks></div></div></section>
   </div>
-  <div data-panel="recovery" hidden>
-    <section class="sc-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h2>Business Backup</h2><p>داده کسب‌وکار رمزنگاری می‌شود؛ identityهای ماشین داخل backup نیستند.</p></div></div><label>رمز Backup<input class="sc-control" type="password" minlength="12" data-backup-pass autocomplete="new-password"></label><div class="sc-actions"><button class="sc-button" type="button" data-backup-create>ساخت Backup رمزنگاری‌شده</button></div><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>فایل</th><th>حجم</th><th>SHA256</th><th>عمل</th></tr></thead><tbody data-backups></tbody></table></div></div></section>
-    <section class="sc-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h2>بازیابی Backup</h2><p>Restore فقط روی نصب/DB خالی پذیرفته می‌شود. بعد از restore، machine identity باید دوباره provision شود.</p></div></div><form data-recovery-upload class="sc-stack" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>"><label>فایل SKBF<input class="sc-control" type="file" name="backup" required></label><button class="sc-button sc-button--secondary" type="submit">آپلود Backup</button></form><label>شناسه Backup برای Inspect/Restore<input class="sc-control" data-restore-id placeholder="uploaded-..."></label><label>رمز Backup<input class="sc-control" type="password" data-restore-pass autocomplete="off"></label><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-backup-inspect>بررسی Backup</button><button class="sc-button sc-button--danger" type="button" data-backup-restore>Restore روی مقصد خالی</button></div><pre class="sc-code sc-hidden" data-backup-manifest></pre><div class="sc-alert sc-alert--info"><strong>Machine takeover:</strong> پس از Restore روی ماشین جدید، از Emergency Console برای ساخت کد A→B و از فرم Re-enrollment همین صفحه برای revoke ماشین قبلی استفاده کن.</div></div></section>
-    <section class="sc-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h2>Machine takeover / Re-enrollment</h2><p>روی ماشین جدید، installation identity تازه را با کد one-time ساخته‌شده در Public Emergency فعال کن. پس از موفقیت، secret جدید Public به‌صورت اتمیک در config محلی ثبت می‌شود.</p></div></div><label>Public base URL<input class="sc-control" data-reenroll-url placeholder="https://public.example.com"></label><label>کد Re-enrollment<input class="sc-control" data-reenroll-code autocomplete="off"></label><label>نام نمایشی اختیاری<input class="sc-control" data-reenroll-name></label><div class="sc-list-item">Installation جدید این ماشین: <code data-local-installation-id><?= htmlspecialchars((string)$core->config()->get('installation.id',''),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?></code></div><button class="sc-button sc-button--danger" type="button" data-public-reenroll>تکمیل A→B و revoke ماشین قبلی</button></div></section>
+
+  <div class="sc-system-split-grid" data-panel="updates" hidden>
+    <section class="sc-card sc-system-operation-card"><div class="sc-card__body sc-stack">
+      <div class="sc-section-head"><div><h2>به‌روزرسانی سامانه محلی</h2><p>فایل به‌روزرسانی را انتخاب کن؛ سامانه آن را قطعه‌قطعه بارگذاری و قبل از نصب کامل بررسی می‌کند.</p></div><span class="sc-badge sc-version-badge" data-local-current-version aria-label="نسخه نصب‌شده">—</span></div>
+      <form data-update-upload class="sc-stack" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>"><label class="sc-field"><span class="sc-field__label">فایل به‌روزرسانی</span><input class="sc-control" type="file" name="package" accept=".zip,application/zip" required></label><div class="sc-actions"><button class="sc-button" type="submit">بررسی فایل</button></div></form>
+      <div class="sc-alert sc-event-feedback sc-alert--info" role="status" aria-live="polite" data-local-update-feedback hidden></div>
+      <div class="sc-list-item" data-staged>فایلی برای نصب آماده نشده است.</div>
+      <div class="sc-actions"><button class="sc-button" type="button" data-activate>نصب به‌روزرسانی</button><button class="sc-button sc-button--secondary" type="button" data-repair>ترمیم نصب فعلی</button><button class="sc-button sc-button--danger" type="button" data-rollback>بازگشت به آخرین وضعیت سالم</button></div>
+    </div></section>
+
+    <section class="sc-card sc-system-operation-card"><div class="sc-card__body sc-stack">
+      <div class="sc-section-head"><div><h2>به‌روزرسانی وب عمومی</h2><p>فایل وب عمومی را انتخاب کن و عملیات لازم را از همین‌جا انجام بده.</p></div><span class="sc-badge sc-version-badge" data-public-current-version aria-label="نسخه نصب‌شده وب عمومی">—</span></div>
+      <form data-public-update-upload class="sc-stack" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>"><label class="sc-field"><span class="sc-field__label">فایل به‌روزرسانی وب عمومی</span><input class="sc-control" type="file" name="package" accept=".zip,application/zip" required></label><div class="sc-actions"><button class="sc-button" type="submit">بررسی فایل</button></div></form>
+      <div class="sc-alert sc-event-feedback sc-alert--info" role="status" aria-live="polite" data-public-update-feedback hidden></div>
+      <div class="sc-list-item" data-public-staged>فایلی برای نصب آماده نشده است.</div>
+      <div class="sc-actions"><button class="sc-button" type="button" data-public-activate>نصب به‌روزرسانی</button><button class="sc-button sc-button--secondary" type="button" data-public-repair>ترمیم وب عمومی</button><button class="sc-button sc-button--danger" type="button" data-public-rollback>بازگشت به آخرین وضعیت سالم</button></div>
+      <details class="sc-disclosure"><summary>دسترسی اضطراری وب عمومی</summary><div class="sc-stack sc-details-body"><p class="sc-muted">این بخش فقط زمانی استفاده می‌شود که دسترسی عادی به وب عمومی ممکن نباشد.</p><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-public-emergency-code>ساخت کد دسترسی اضطراری</button><a class="sc-button sc-button--secondary" data-public-emergency-link aria-disabled="true" tabindex="-1" target="_blank" rel="noopener">باز کردن صفحه اضطراری</a></div><div class="sc-alert sc-alert--warning sc-hidden sc-secret" data-public-emergency-secret></div></div></details>
+    </div></section>
+  </div>
+
+  <div class="sc-system-recovery-grid" data-panel="recovery" hidden>
+    <section class="sc-card sc-system-operation-card sc-system-backup-card"><div class="sc-card__body sc-stack">
+      <div class="sc-section-head"><div><h2>ساخت نسخه پشتیبان</h2><p>اطلاعات کسب‌وکار در یک فایل رمزگذاری‌شده ذخیره می‌شود.</p></div></div>
+      <label class="sc-field"><span class="sc-field__label">رمز فایل پشتیبان</span><input class="sc-control" type="password" minlength="12" data-backup-pass autocomplete="new-password"><small class="sc-help">حداقل ۱۲ نویسه؛ این رمز برای بازیابی لازم است.</small></label>
+      <div class="sc-actions"><button class="sc-button" type="button" data-backup-create>ساخت و دانلود نسخه پشتیبان</button></div>
+      <div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>نسخه پشتیبان</th><th>حجم</th><th>عمل</th></tr></thead><tbody data-backups></tbody></table></div>
+    </div></section>
+
+    <section class="sc-card sc-system-operation-card"><div class="sc-card__body sc-stack">
+      <div class="sc-section-head"><div><h2>بازیابی از فایل پشتیبان</h2><p>برای جلوگیری از بازنویسی اطلاعات، بازیابی فقط روی نصب خالی انجام می‌شود.</p></div></div>
+      <form data-recovery-upload class="sc-stack" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>"><label class="sc-field"><span class="sc-field__label">فایل پشتیبان</span><input class="sc-control" type="file" name="backup" required></label><div class="sc-actions"><button class="sc-button sc-button--secondary" type="submit">انتخاب فایل برای بازیابی</button></div></form>
+      <input type="hidden" data-restore-id>
+      <label class="sc-field"><span class="sc-field__label">رمز فایل پشتیبان</span><input class="sc-control" type="password" data-restore-pass autocomplete="off"></label>
+      <div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-backup-inspect>بررسی فایل</button><button class="sc-button sc-button--danger" type="button" data-backup-restore>بازیابی اطلاعات</button></div>
+      <div class="sc-alert sc-alert--info sc-hidden" data-backup-manifest></div>
+    </div></section>
+
+    <section class="sc-card sc-system-operation-card sc-system-transfer-card"><div class="sc-card__body sc-stack">
+      <div class="sc-section-head"><div><h2>انتقال به دستگاه جدید</h2><p>اگر سامانه را روی دستگاه دیگری بازیابی کرده‌ای، اتصال وب عمومی را از این بخش دوباره برقرار کن.</p></div></div>
+      <label class="sc-field"><span class="sc-field__label">آدرس وب عمومی</span><input class="sc-control" type="url" data-reenroll-url placeholder="https://example.com"></label>
+      <label class="sc-field"><span class="sc-field__label">کد انتقال</span><input class="sc-control" data-reenroll-code autocomplete="off" dir="ltr"></label>
+      <label class="sc-field"><span class="sc-field__label">نام این دستگاه</span><input class="sc-control" data-reenroll-name placeholder="مثلاً صندوق اصلی"></label>
+      <div class="sc-actions"><button class="sc-button sc-button--danger" type="button" data-public-reenroll>تکمیل انتقال</button></div>
+    </div></section>
   </div>
 </section>
-<script src="/assets/system-diagnostics.js" defer></script>
+<script src="<?=ProductShell::asset('assets/system-diagnostics.js')?>" defer></script>
 <?php ProductShell::end(); ?>
