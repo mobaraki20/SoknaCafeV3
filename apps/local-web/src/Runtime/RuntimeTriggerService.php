@@ -20,8 +20,8 @@ final class RuntimeTriggerService
             $stmt=$this->pdo->prepare('SELECT * FROM runtime_trigger_receipts WHERE request_id=? LIMIT 1 FOR UPDATE');$stmt->execute([$normalized['request_id']]);$existing=$stmt->fetch(PDO::FETCH_ASSOC);
             if(is_array($existing)){
                 if(!hash_equals((string)$existing['request_hash'],$hash))throw new RuntimeTriggerException('request_id_conflict','شناسه Runtime قبلاً برای درخواست دیگری استفاده شده است.',409);
-                $result=json_decode((string)$existing['result_json'],true);$this->pdo->commit();
-                return ['success'=>true,'accepted'=>true,'deduplicated'=>true,'trigger_key'=>(string)$existing['trigger_key'],'accepted_at'=>(string)$existing['accepted_at'],'correlation_id'=>(string)$existing['correlation_id'],'state'=>(string)$existing['state'],'result'=>is_array($result)?$result:[]];
+                $this->pdo->commit();
+                return $this->response(true,(string)$existing['trigger_key'],(string)$existing['accepted_at'],(string)$existing['correlation_id']);
             }
             $handler=$this->handlers[$normalized['trigger_key']]??null;if(!is_callable($handler))throw new RuntimeTriggerException('unsupported_trigger','این trigger در Local ثبت نشده است.',404);
             $requestedAtDb=(new DateTimeImmutable($normalized['requested_at']))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
@@ -34,8 +34,15 @@ final class RuntimeTriggerService
             $this->pdo->prepare('UPDATE runtime_trigger_receipts SET state=?,result_json=? WHERE id=?')->execute([$state,$json,$receiptId]);
             $acceptedAt=(string)$this->pdo->query("SELECT accepted_at FROM runtime_trigger_receipts WHERE id={$receiptId}")->fetchColumn();
             $this->pdo->commit();
-            return ['success'=>true,'accepted'=>true,'deduplicated'=>false,'trigger_key'=>$normalized['trigger_key'],'accepted_at'=>$acceptedAt,'correlation_id'=>$normalized['correlation_id'],'state'=>$state,'result'=>$result];
+            return $this->response(false,$normalized['trigger_key'],$acceptedAt,$normalized['correlation_id']);
         }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
+    private function response(bool $deduplicated,string $triggerKey,string $acceptedAt,string $correlationId): array
+    {
+        if(trim($acceptedAt)==='')throw new \RuntimeException('runtime_receipt_timestamp_missing');
+        $accepted=(new DateTimeImmutable($acceptedAt))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:sP');
+        return ['success'=>true,'accepted'=>true,'deduplicated'=>$deduplicated,'trigger_key'=>$triggerKey,'accepted_at'=>$accepted,'correlation_id'=>$correlationId];
     }
 
     private function validate(array $request): array
