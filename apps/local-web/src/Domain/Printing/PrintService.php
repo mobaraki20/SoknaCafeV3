@@ -32,6 +32,20 @@ final class PrintService
     }
 
 
+    public function retireAgent(int $agentId,int $actorId,string $reason='pairing_canceled'): void
+    {
+        if($agentId<1)return;$reason=self::cut(trim($reason),80);if($reason==='')$reason='retired';
+        $this->pdo->beginTransaction();
+        try{
+            $stmt=$this->pdo->prepare('SELECT id,name,active,retired_at FROM print_agents WHERE id=? FOR UPDATE');$stmt->execute([$agentId]);$row=$stmt->fetch(PDO::FETCH_ASSOC);
+            if(!is_array($row)){ $this->pdo->commit(); return; }
+            if((int)($row['active']??0)===1||empty($row['retired_at']))$this->pdo->prepare('UPDATE print_agents SET active=0,retired_at=COALESCE(retired_at,NOW()) WHERE id=?')->execute([$agentId]);
+            $this->audit('printing.agent_retired','print_agent',$agentId,max(0,$actorId),['name'=>(string)($row['name']??''),'reason'=>$reason]);
+            $this->pdo->commit();
+        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
+
     public function configureDestination(string $destinationKey,array $data,array $user): array
     {
         $this->pdo->beginTransaction();
