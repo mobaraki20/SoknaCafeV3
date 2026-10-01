@@ -88,6 +88,18 @@ jobs:
           dotnet build windows/print-agent/source/Sokna.PrintWorker.slnx -c Release
           dotnet publish packaging/windows/setup-host/Sokna.SetupHost.csproj -c Release -o packaging/windows/setup-host/publish
           dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -o packaging/windows/setup-ui/publish
+      - name: Windows Services pairing handoff self-test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & packaging/windows/setup-host/publish/SoknaSetupHost.exe --pairing-self-test
+          if($LASTEXITCODE-ne0){throw "Setup Host pairing self-test failed: $LASTEXITCODE"}
+          $ps=Get-Content packaging/windows/scripts/setup-windows-services.ps1 -Raw
+          foreach($needle in @('SOKNA_WINDOWS_SERVICES_PAIRING_B64','Clear-StalePairingFiles','Write-TransientPrivateJson')){
+            if(-not $ps.Contains($needle)){throw "Pairing handoff script contract missing: $needle"}
+          }
+          if($ps.Contains("Join-Path $env:TEMP ('sokna-print-pair-")){throw 'Print pairing secret still uses general TEMP.'}
+
       - name: Parse all Windows PowerShell owners
         shell: pwsh
         run: |
