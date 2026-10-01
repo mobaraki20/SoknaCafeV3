@@ -34,6 +34,16 @@ $pdo->prepare("INSERT INTO cafe_tables(name,table_number,code,access_token,activ
     ->execute([bin2hex(random_bytes(24))]);
 $agent=$core->printing()->createAgent('M10 machine agent',$admin);
 m10_assert((int)$agent['agent_id']>0,'print fixture missing');
+$pairingAgent=$core->printing()->createAgent('M10 pairing temporary agent',$admin);
+$pairingAgentId=(int)$pairingAgent['agent_id'];m10_assert($pairingAgentId>0,'pairing print agent fixture missing');
+$core->printing()->retireAgent($pairingAgentId,$adminId,'pairing_canceled');
+$pairRow=$pdo->query('SELECT active,retired_at FROM print_agents WHERE id='.$pairingAgentId)->fetch(PDO::FETCH_ASSOC);
+m10_assert(is_array($pairRow)&&(int)$pairRow['active']===0&&!empty($pairRow['retired_at']),'temporary pairing Print Agent was not retired');
+$pairAudit=$pdo->query("SELECT COUNT(*) FROM audit_log WHERE action='printing.agent_retired' AND entity_type='print_agent' AND entity_id='".$pairingAgentId."'")->fetchColumn();
+m10_assert((int)$pairAudit===1,'pairing Print Agent retirement audit missing');
+$core->printing()->retireAgent($pairingAgentId,$adminId,'pairing_canceled');
+$pairRow2=$pdo->query('SELECT active,retired_at FROM print_agents WHERE id='.$pairingAgentId)->fetch(PDO::FETCH_ASSOC);
+m10_assert(is_array($pairRow2)&&(int)$pairRow2['active']===0&&!empty($pairRow2['retired_at']),'repeated pairing agent retirement reactivated agent');
 
 $backup=sys_get_temp_dir().'/m10-'.bin2hex(random_bytes(5)).'.skb';$secret='M10-Strong-Recovery-Secret!';
 $created=$core->businessBackup()->createEncrypted($backup,$secret,$adminId);
