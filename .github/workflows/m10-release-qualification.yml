@@ -169,7 +169,8 @@ jobs:
           $mutexName='Global\SoknaPrintAgentV6Service'
           $keeper=New-Object System.Threading.Mutex($false,$mutexName)
           $childScript='$m=[Threading.Mutex]::OpenExisting("Global\SoknaPrintAgentV6Service");$null=$m.WaitOne();[Environment]::Exit(0)'
-          $child=Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList '-NoProfile','-NonInteractive','-Command',$childScript -Wait -PassThru
+          $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childScript))
+          $child=Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand',$encoded -Wait -PassThru
           if($child.ExitCode-ne0){throw "Failed to seed abandoned Print Agent mutex: $($child.ExitCode)"}
 
           try {
