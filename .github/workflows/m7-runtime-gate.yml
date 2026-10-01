@@ -33,3 +33,4 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
       - run: dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release
+      - run: dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
