@@ -195,7 +195,10 @@ internal sealed class PairingSelfTestHandler(string expectedCode) : HttpMessageH
 {
     public List<string> Actions { get; } = [];
     public bool CodeAppearedInUri { get; private set; }
-    protected override HttpResponseMessage Send(HttpRequestMessage request,CancellationToken cancellationToken)
+    protected override HttpResponseMessage Send(HttpRequestMessage request,CancellationToken cancellationToken)=>Handle(request,cancellationToken);
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken)=>Task.FromResult(Handle(request,cancellationToken));
+
+    private HttpResponseMessage Handle(HttpRequestMessage request,CancellationToken cancellationToken)
     {
         if(request.RequestUri is null||request.RequestUri.AbsolutePath!="/internal/windows-services/v1/pairing.php")throw new InvalidOperationException("pairing_selftest_path");
         if(request.RequestUri.ToString().Contains(expectedCode,StringComparison.Ordinal))CodeAppearedInUri=true;
