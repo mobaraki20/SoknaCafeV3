@@ -13,10 +13,10 @@
       "version": "0.1.1-dev"
     },
     "windows-runtime": {
-      "version": "1.0.1"
+      "version": "1.0.2"
     },
     "windows-services-packaging": {
-      "version": "1.0.7"
+      "version": "1.0.8"
     }
   },
   "contracts": {
