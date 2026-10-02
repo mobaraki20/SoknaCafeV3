@@ -31,6 +31,21 @@ final class PrintService
         }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
+    public function prepareAgentTokenRotation(int $agentId,array $user): array
+    {
+        if($agentId<1)throw new PrintException('invalid_rotation','Print Agent معتبر نیست.',422);
+        $this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertAdmin($user);
+            $stmt=$this->pdo->prepare('SELECT id,name,active,retired_at FROM print_agents WHERE id=? FOR UPDATE');$stmt->execute([$agentId]);$row=$stmt->fetch(PDO::FETCH_ASSOC);
+            if(!is_array($row)||(int)($row['active']??0)!==1||!empty($row['retired_at']))throw new PrintException('agent_not_active','Print Agent فعال پیدا نشد.',404);
+            $token=bin2hex(random_bytes(32));$hint=substr($token,-8);
+            $this->audit('printing.agent_token_rotation_prepared','print_agent',$agentId,(int)$actor['id'],['name'=>(string)($row['name']??''),'token_hint'=>$hint]);
+            $this->pdo->commit();
+            return ['agent_id'=>$agentId,'name'=>(string)($row['name']??''),'token'=>$token,'token_hint'=>$hint];
+        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
     public function commitAgentTokenRotation(int $agentId,string $token,int $actorId): array
     {
         $token=trim($token);
