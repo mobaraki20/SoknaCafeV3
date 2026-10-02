@@ -17,6 +17,7 @@ require_once __DIR__ . '/src/Security/SignedLocalRequestVerifier.php';
 require_once __DIR__ . '/src/Emergency/PublicUpdateException.php';
 require_once __DIR__ . '/src/Emergency/EmergencyAccessService.php';
 require_once __DIR__ . '/src/Emergency/PairingSecretStore.php';
+require_once __DIR__ . '/src/Emergency/PublicInitialPairingService.php';
 require_once __DIR__ . '/src/Emergency/PublicTakeoverService.php';
 require_once __DIR__ . '/src/Emergency/PublicUpdateService.php';
 require_once __DIR__ . '/src/Connectivity/ConnectivityService.php';
