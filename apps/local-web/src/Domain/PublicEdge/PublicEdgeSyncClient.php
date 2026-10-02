@@ -7,6 +7,7 @@ final class PublicEdgeSyncClient
     /** @var null|callable */ private $transport;
     public function __construct(private readonly Config $config,?callable $transport=null){$this->transport=$transport;}
     public function configured(): bool{return $this->baseUrl()!=='' && $this->secret()!=='' && $this->installationId()!=='';}
+    public function publicBaseUrl(): string{return $this->baseUrl();}
     public function safeOrigin(): string{$u=$this->baseUrl();if($u==='')return '';$p=parse_url($u);if(!is_array($p))return '';$scheme=strtolower((string)($p['scheme']??''));$host=(string)($p['host']??'');if(!in_array($scheme,['http','https'],true)||$host==='')return '';$port=isset($p['port'])?':'.(int)$p['port']:'';return $scheme.'://'.$host.$port;}
     public function post(string $path,array $payload): array
     {
