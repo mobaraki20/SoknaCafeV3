@@ -22,14 +22,16 @@ final class PublicHttpKernel
         $method = strtoupper(trim($method));
         $path = $this->normalizePath($path);
         if ($path === '') return $this->json(SafeErrors::response(400, 'invalid_path'));
+        $path = PublicPath::strip($this->basePath(), $path);
+        if ($path === '') return $this->json(SafeErrors::response(404, 'route_not_found'));
 
         try {
             if ($method === 'GET' && $path === '/') {
                 $suffix = $query === [] ? '' : '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
-                return $this->response(302, '', ['Location' => '/menu' . $suffix, 'Cache-Control' => 'no-store', 'Content-Type' => 'text/plain; charset=utf-8']);
+                return $this->response(302, '', ['Location' => $this->url('/menu') . $suffix, 'Cache-Control' => 'no-store', 'Content-Type' => 'text/plain; charset=utf-8']);
             }
             if ($method === 'GET' && $path === '/robots.txt') {
-                return $this->response(200, "User-agent: *\nDisallow: /api/\nDisallow: /emergency/\n", ['Content-Type' => 'text/plain; charset=utf-8', 'Cache-Control' => 'public, max-age=3600']);
+                return $this->response(200, "User-agent: *\nDisallow: ".$this->url("/api/")."\nDisallow: ".$this->url("/emergency/")."\n", ['Content-Type' => 'text/plain; charset=utf-8', 'Cache-Control' => 'public, max-age=3600']);
             }
             if ($method === 'GET' && $path === '/health') {
                 $result = (new HealthHttpAdapter($this->core))->status($this->correlationId($headers));
@@ -62,6 +64,21 @@ final class PublicHttpKernel
             if ($method === 'GET' && $path === '/assets/scds/remote-staff.js') {
                 return $this->staticFile($this->componentRoot . '/assets/scds/remote-staff.js', 'application/javascript; charset=utf-8', 300);
             }
+            if ($method === 'GET' && $path === '/assets/scds/staff-pwa.js') {
+                return $this->staticFile($this->componentRoot . '/assets/scds/staff-pwa.js', 'application/javascript; charset=utf-8', 300);
+            }
+            if ($method === 'GET' && in_array($path, ['/assets/favicon-180.png','/assets/favicon-192.png','/assets/favicon-512.png'], true)) {
+                return $this->staticFile($this->componentRoot . $path, 'image/png', 86400, true);
+            }
+            if ($method === 'GET' && $path === '/staff.webmanifest') {
+                return $this->staticFile($this->componentRoot . '/staff.webmanifest', 'application/manifest+json; charset=utf-8', 0);
+            }
+            if ($method === 'GET' && $path === '/staff-sw.js') {
+                $response=$this->staticFile($this->componentRoot . '/staff-sw.js', 'application/javascript; charset=utf-8', 0);
+                $response['headers']['Cache-Control']='no-store, max-age=0, must-revalidate';
+                $response['headers']['Service-Worker-Allowed']=$this->cookiePath();
+                return $response;
+            }
             if ($method === 'GET' && preg_match('#^/media/([A-Za-z0-9._-]{1,96})/([a-f0-9]{64})\.(jpg|png|webp|gif)$#D', $path, $m) === 1) {
                 $file = $this->core->guestMedia()->publicFile($m[1], $m[2], $m[3]);
                 if ($file === null) return $this->json(SafeErrors::response(404, 'media_not_found', $this->correlationId($headers)));
@@ -76,12 +93,17 @@ final class PublicHttpKernel
                 $installationId = $this->installationId($query);
                 if ($installationId === '') return $this->json(SafeErrors::response(404, 'installation_not_found', $this->correlationId($headers)));
                 return $this->withSecurityHeaders($this->core->guestRenderer()->render($installationId, $query, [
-                    'css' => '/assets/scds/guest.css',
-                    'js' => '/assets/scds/guest.js',
-                    'theme_css' => '/theme/' . rawurlencode($installationId) . '.css',
-                    'create_order' => '/api/guest/order',
-                    'waiter_call' => '/api/guest/waiter',
-                    'media_base' => '/media',
+                    'css' => $this->url('/assets/scds/guest.css'),
+                    'js' => $this->url('/assets/scds/guest.js'),
+                    'theme_css' => $this->url('/theme/' . rawurlencode($installationId) . '.css'),
+                    'create_order' => $this->url('/api/guest/order'),
+                    'orders' => $this->url('/api/guest/orders'),
+                    'order_quote' => $this->url('/api/guest/order/quote'),
+                    'order_status' => $this->url('/api/guest/order/status'),
+                    'table_context' => $this->url('/api/guest/table/context'),
+                    'waiter_call' => $this->url('/api/guest/waiter'),
+                    'metric' => $this->url('/api/guest/metric'),
+                    'media_base' => $this->url('/media'),
                 ]));
             }
 
@@ -99,20 +121,26 @@ final class PublicHttpKernel
                     $response=$this->core->remoteStaffRenderer()->login($installationId,$msg);$response['status']=(int)($result['status']??401);return $this->withSecurityHeaders($response);
                 }
                 $cookie=$this->sessionCookie((string)$result['token'],(int)($result['expires_in']??28800));
-                return $this->withSecurityHeaders($this->response(303,'',['Location'=>'/staff','Set-Cookie'=>$cookie,'Cache-Control'=>'no-store','Content-Type'=>'text/plain; charset=utf-8']));
+                return $this->withSecurityHeaders($this->response(303,'',['Location'=>$this->url('/staff'),'Set-Cookie'=>$cookie,'Cache-Control'=>'no-store','Content-Type'=>'text/plain; charset=utf-8']));
             }
             if ($method === 'POST' && $path === '/staff/logout') {
-                $token=$this->sessionToken($headers);$this->core->publicSessions()->revoke($token);
-                return $this->withSecurityHeaders($this->response(303,'',['Location'=>'/staff/login','Set-Cookie'=>$this->sessionCookie('',0),'Cache-Control'=>'no-store','Content-Type'=>'text/plain; charset=utf-8']));
+                $token=$this->sessionToken($headers);if($token!==''){$this->core->staffPush()->deactivateSession($token);$this->core->publicSessions()->revoke($token);}
+                return $this->withSecurityHeaders($this->response(303,'',['Location'=>$this->url('/staff/login'),'Set-Cookie'=>$this->sessionCookie('',0),'Cache-Control'=>'no-store','Content-Type'=>'text/plain; charset=utf-8']));
             }
             if ($method === 'GET' && $path === '/staff') {
                 $session=$this->core->publicSessions()->resolve($this->sessionToken($headers));
-                if(!is_array($session))return $this->withSecurityHeaders($this->response(302,'',['Location'=>'/staff/login','Cache-Control'=>'no-store','Content-Type'=>'text/plain; charset=utf-8']));
+                if(!is_array($session))return $this->withSecurityHeaders($this->response(302,'',['Location'=>$this->url('/staff/login'),'Cache-Control'=>'no-store','Content-Type'=>'text/plain; charset=utf-8']));
                 return $this->withSecurityHeaders($this->core->remoteStaffRenderer()->dashboard($session));
             }
             if ($method === 'GET' && $path === '/api/staff/read') {
                 $result=(new RemoteReadModelHttpAdapter($this->core))->read($this->sessionToken($headers),(string)($query['model']??''));
                 return $this->json($result);
+            }
+            if ($method === 'GET' && $path === '/api/staff/push') {
+                return $this->json((new StaffPushHttpAdapter($this->core))->snapshot($this->sessionToken($headers)));
+            }
+            if ($method === 'POST' && $path === '/api/staff/push') {
+                return $this->json((new StaffPushHttpAdapter($this->core))->mutate($this->sessionToken($headers),$rawBody,$this->header($headers,'User-Agent')));
             }
             if ($method === 'POST' && $path === '/api/staff/realtime') {
                 return $this->json((new RealtimeHttpAdapter($this->core))->enqueue($this->sessionToken($headers),$rawBody));
@@ -186,7 +214,7 @@ final class PublicHttpKernel
     }
     private function sessionCookie(string $token,int $ttl): string
     {
-        $parts=['sokna_staff='.rawurlencode($token),'Path=/','HttpOnly','SameSite=Strict'];if($ttl<=0)$parts[]='Max-Age=0';else $parts[]='Max-Age='.$ttl;
+        $parts=['sokna_staff='.rawurlencode($token),'Path='.$this->cookiePath(),'HttpOnly','SameSite=Strict'];if($ttl<=0)$parts[]='Max-Age=0';else $parts[]='Max-Age='.$ttl;
         if(strtolower((string)$this->core->config()->get('app.cookie_secure','1'))!=='0')$parts[]='Secure';return implode('; ',$parts);
     }
 
@@ -229,6 +257,21 @@ final class PublicHttpKernel
         if (str_contains($decoded, '..') || str_contains($decoded, '\\')) return '';
         $decoded = '/' . ltrim($decoded, '/');
         return $decoded !== '/' ? rtrim($decoded, '/') : '/';
+    }
+
+    private function basePath(): string
+    {
+        return PublicPath::normalizeBasePath($this->core->config()->string('app.base_path'));
+    }
+
+    private function url(string $path): string
+    {
+        return PublicPath::prefix($this->basePath(), $path);
+    }
+
+    private function cookiePath(): string
+    {
+        $base=$this->basePath();return $base===''?'/':$base.'/';
     }
 
     private function correlationId(array $headers): ?string
