@@ -1,13 +1,13 @@
 {
   "components": {
     "local-web": {
-      "version": "3.0.0-g6.2-workspace.42-ui-convergence-q3-uat"
+      "version": "3.0.0-g6.2-workspace.43-media-standard-q3-uat"
     },
     "print-agent": {
       "version": "6.2.7"
     },
     "public-edge": {
-      "version": "3.0.0-g3.6-uat.1"
+      "version": "3.0.0-g3.7-browser-setup-uat.1"
     },
     "shared-contracts": {
       "version": "0.1.1-dev"
