@@ -150,6 +150,8 @@ final class PublicSetupService
 
     public function resume(bool $secureTransport=true,string $host=''): array
     {
+        $current=$this->status();
+        if(($current['installed']??false)===true)throw new SetupException('already_installed','Public Edge قبلاً نصب شده است.',409);
         if(!is_file($this->configPath))throw new SetupException('config_missing','config.php برای ادامه Setup پیدا نشد.',409);
         $config=$this->loadConfig();
         $storage=trim((string)($config['app']['storage_dir']??''));if($storage==='')$storage=$this->defaultStorageDir();
