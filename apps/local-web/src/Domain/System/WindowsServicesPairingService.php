@@ -14,12 +14,14 @@ final class WindowsServicesPairingService
     private const TTL_SECONDS=600;
     private const RETAIN_TERMINAL_SECONDS=604800;
 
-    /** @param Closure(string,array):array $createAgent @param Closure(int,int,string):void $retireAgent */
+    /** @param Closure(string,array):array $createAgent @param Closure(int,int,string):void $retireAgent @param Closure(int,array):array $prepareAgentRotation @param Closure(int,string,int):array $commitAgentRotation */
     public function __construct(
         private readonly Config $config,
         private readonly string $dataRoot,
         private readonly Closure $createAgent,
         private readonly Closure $retireAgent,
+        private readonly Closure $prepareAgentRotation,
+        private readonly Closure $commitAgentRotation,
     ) {}
 
     public function create(array $actor,string $displayName=''): array
@@ -37,7 +39,7 @@ final class WindowsServicesPairingService
             $idHex=bin2hex(random_bytes(12));$pairingId='wsp-'.$idHex;$code='ws1_'.$idHex.'_'.bin2hex(random_bytes(24));$now=time();
             $sealed=$this->seal($bundle);
             $ticket=[
-                'format'=>self::FORMAT,'schema_version'=>1,'pairing_id'=>$pairingId,'code_hash'=>hash('sha256',$code),
+                'format'=>self::FORMAT,'schema_version'=>1,'mode'=>'initial','pairing_id'=>$pairingId,'code_hash'=>hash('sha256',$code),
                 'state'=>'issued','created_at'=>gmdate('c',$now),'created_at_unix_ms'=>$this->nextCreatedMs(),'expires_at'=>gmdate('c',$now+self::TTL_SECONDS),
                 'actor_user_id'=>$actorId,'display_name'=>$displayName,'print_agent_id'=>$agentId,'local_base_url'=>$bundle['local_base_url'],
                 'exchange_count'=>0,'exchanged_at'=>null,'confirmed_at'=>null,'canceled_at'=>null,
@@ -49,6 +51,27 @@ final class WindowsServicesPairingService
             if(is_array($agent)&&($agent['agent_id']??0)>0){try{($this->retireAgent)((int)$agent['agent_id'],$actorId,'pairing_create_failed');}catch(Throwable){}}
             throw $e;
         }
+    }
+
+    public function createRotation(array $actor,int $agentId,string $displayName=''): array
+    {
+        $this->assertAdmin($actor);$this->cleanup();$this->supersedeOutstanding();
+        $prepared=($this->prepareAgentRotation)($agentId,$actor);
+        $resolvedId=max(0,(int)($prepared['agent_id']??0));$printToken=trim((string)($prepared['token']??''));
+        if($resolvedId<1||$resolvedId!==$agentId||strlen($printToken)<32)throw new WindowsServicesPairingException('print_agent_rotation_failed','آماده‌سازی چرخش توکن Print Agent کامل نشد.',500);
+        $displayName=trim($displayName);if($displayName==='')$displayName=(string)($prepared['name']??'Windows Services');
+        $displayName=$this->cut($displayName,120);$actorId=(int)($actor['id']??0);
+        $bundle=$this->buildBundle($printToken);
+        $idHex=bin2hex(random_bytes(12));$pairingId='wsp-'.$idHex;$code='ws1_'.$idHex.'_'.bin2hex(random_bytes(24));$now=time();$sealed=$this->seal($bundle);
+        $ticket=[
+            'format'=>self::FORMAT,'schema_version'=>1,'mode'=>'token_rotation','pairing_id'=>$pairingId,'code_hash'=>hash('sha256',$code),
+            'state'=>'issued','created_at'=>gmdate('c',$now),'created_at_unix_ms'=>$this->nextCreatedMs(),'expires_at'=>gmdate('c',$now+self::TTL_SECONDS),
+            'actor_user_id'=>$actorId,'display_name'=>$displayName,'print_agent_id'=>$resolvedId,'local_base_url'=>$bundle['local_base_url'],
+            'exchange_count'=>0,'exchanged_at'=>null,'confirmed_at'=>null,'canceled_at'=>null,
+            'bundle_nonce'=>$sealed['nonce'],'bundle_ciphertext'=>$sealed['ciphertext'],
+        ];
+        $this->writeTicket($idHex,$ticket);
+        return $this->publicTicket($ticket)+['pairing_code'=>$code,'ttl_seconds'=>self::TTL_SECONDS];
     }
 
     public function status(): array
@@ -78,6 +101,11 @@ final class WindowsServicesPairingService
         if($state==='confirmed')return ['pairing_id'=>(string)$ticket['pairing_id'],'confirmed'=>true,'idempotent'=>true];
         if(in_array($state,['canceled','expired','superseded'],true))throw new WindowsServicesPairingException('pairing_unavailable','این کد دیگر قابل استفاده نیست.',410);
         if($state!=='exchanged')throw new WindowsServicesPairingException('pairing_exchange_required','ابتدا بسته اتصال باید دریافت شود.',409);
+        if((string)($ticket['mode']??'initial')==='token_rotation'){
+            $bundle=$this->openBundle($ticket);$printToken=trim((string)($bundle['print_agent_token']??''));$agentId=max(0,(int)($ticket['print_agent_id']??0));$actorId=max(0,(int)($ticket['actor_user_id']??0));
+            if($agentId<1||strlen($printToken)<32)throw new WindowsServicesPairingException('pairing_bundle_corrupt','بسته چرخش توکن معتبر نیست.',500);
+            ($this->commitAgentRotation)($agentId,$printToken,$actorId);
+        }
         $ticket['state']='confirmed';$ticket['confirmed_at']=gmdate('c');unset($ticket['bundle_nonce'],$ticket['bundle_ciphertext']);
         $this->writeTicket($this->idHex($ticket),$ticket);
         return ['pairing_id'=>(string)$ticket['pairing_id'],'confirmed'=>true,'idempotent'=>false];
@@ -166,13 +194,14 @@ final class WindowsServicesPairingService
 
     private function retireTicketAgent(array $ticket,string $reason): void
     {
+        if((string)($ticket['mode']??'initial')!=='initial')return;
         $agentId=max(0,(int)($ticket['print_agent_id']??0));if($agentId<1)return;($this->retireAgent)($agentId,max(0,(int)($ticket['actor_user_id']??0)),$reason);
     }
 
     private function publicTicket(array $ticket): array
     {
         $expires=(string)($ticket['expires_at']??'');$ts=strtotime($expires);$state=(string)($ticket['state']??'not_created');
-        return ['pairing_id'=>(string)($ticket['pairing_id']??''),'state'=>$state,'active'=>in_array($state,['issued','exchanged'],true)&&!$this->isExpired($ticket),'created_at'=>(string)($ticket['created_at']??''),'expires_at'=>$expires,'seconds_remaining'=>$ts===false?0:max(0,$ts-time()),'exchanged_at'=>$ticket['exchanged_at']??null,'confirmed_at'=>$ticket['confirmed_at']??null,'canceled_at'=>$ticket['canceled_at']??null,'display_name'=>(string)($ticket['display_name']??''),'local_base_url'=>(string)($ticket['local_base_url']??'')];
+        return ['pairing_id'=>(string)($ticket['pairing_id']??''),'mode'=>(string)($ticket['mode']??'initial'),'print_agent_id'=>max(0,(int)($ticket['print_agent_id']??0)),'state'=>$state,'active'=>in_array($state,['issued','exchanged'],true)&&!$this->isExpired($ticket),'created_at'=>(string)($ticket['created_at']??''),'expires_at'=>$expires,'seconds_remaining'=>$ts===false?0:max(0,$ts-time()),'exchanged_at'=>$ticket['exchanged_at']??null,'confirmed_at'=>$ticket['confirmed_at']??null,'canceled_at'=>$ticket['canceled_at']??null,'display_name'=>(string)($ticket['display_name']??''),'local_base_url'=>(string)($ticket['local_base_url']??'')];
     }
 
     private function canonicalLoopback(string $value): array
