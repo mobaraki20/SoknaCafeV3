@@ -7,12 +7,14 @@ $user=WebAction::requireAny($core,['orders_floor','cashier_accounts','shift_supe
 try{
     if(($_SERVER['REQUEST_METHOD']??'GET')==='GET'){
         $action=(string)($_GET['action']??'snapshot');
-        if($action!=='snapshot')WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
-        WebAction::json($core->orderWorkspace()->operatorSnapshot($user));
+        if($action==='snapshot')WebAction::json($core->orderWorkspace()->operatorSnapshot($user));
+        if($action==='account')WebAction::json($core->orderWorkspace()->tableAccount((int)($_GET['table_id']??0),$user));
+        WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
     }
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
     if($action==='order_status')WebAction::json($core->orderStaffActions()->changeStatus($data,$user));
     if($action==='waiter_status')WebAction::json($core->waiterCallStaff()->changeStatus($data,$user));
+    if($action==='table_move')WebAction::json($core->tableChanges()->move($data,$user));
     WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
 }catch(\Throwable $e){
     if(property_exists($e,'httpStatus'))WebAction::knownFailure($e);

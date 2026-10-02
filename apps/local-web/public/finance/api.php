@@ -7,10 +7,12 @@ try{
         $action=(string)($_GET['action']??'snapshot');
         if($action==='snapshot')WebAction::json(['success'=>true,'snapshot'=>$core->financeWorkspace()->snapshot()]);
         if($action==='account')WebAction::json(['success'=>true,'account'=>$core->settlements()->account((int)($_GET['session_id']??0))]);
+        if($action==='settlement')WebAction::json(['success'=>true,'settlement'=>$core->financeWorkspace()->settlementDetail((int)($_GET['id']??0))]);
         WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
     }
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
     if($action==='discount')WebAction::json(['success'=>true,'result'=>$core->settlements()->setDiscount((int)($data['session_id']??0),isset($data['discount_type'])?(string)$data['discount_type']:null,(int)($data['discount_value']??0),$user)]);
+    if($action==='complimentary')WebAction::json(['success'=>true,'result'=>$core->settlements()->setComplimentary((int)($data['session_id']??0),(bool)($data['enabled']??true),$user)]);
     if($action==='settle')WebAction::json(['success'=>true,'result'=>$core->settlements()->settle($data,$user)]);
     if($action==='reverse')WebAction::json(['success'=>true,'result'=>$core->settlements()->reverse((int)($data['settlement_id']??0),(string)($data['reason']??''),(string)($data['request_id']??''),$user,false)]);
     if((string)($user['role']??'')!=='admin')WebAction::json(['success'=>false,'code'=>'forbidden','message'=>'این عملیات فقط برای مدیر فعال است.'],403);

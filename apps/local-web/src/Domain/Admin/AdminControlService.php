@@ -26,7 +26,7 @@ final class AdminControlService
     public function snapshot(array $user): array
     {
         $this->assertAdmin($user);
-        $users=$this->pdo->query('SELECT id,username,display_name,role,active,created_at,updated_at FROM users ORDER BY role DESC,active DESC,display_name,id')->fetchAll(PDO::FETCH_ASSOC);
+        $users=$this->pdo->query('SELECT u.id,u.username,u.display_name,u.role,u.active,u.created_at,u.updated_at,CASE WHEN rc.user_id IS NULL THEN 0 ELSE 1 END remote_credential_configured FROM users u LEFT JOIN remote_user_credentials rc ON rc.user_id=u.id ORDER BY u.role DESC,u.active DESC,u.display_name,u.id')->fetchAll(PDO::FETCH_ASSOC);
         $capRows=$this->pdo->query('SELECT user_id,capability,enabled FROM user_capabilities ORDER BY user_id,capability')->fetchAll(PDO::FETCH_ASSOC);
         $areaRows=$this->pdo->query('SELECT user_id,area_key FROM user_preparation_areas ORDER BY user_id,area_key')->fetchAll(PDO::FETCH_ASSOC);
         $capMap=[];$areaMap=[];
@@ -41,7 +41,8 @@ final class AdminControlService
             "SELECT t.id,t.name,t.table_number,t.zone_label,t.code,t.access_token,t.previous_access_token,t.qr_rotated_at,t.qr_rotated_by_user_id,t.active,t.sort_order,EXISTS(SELECT 1 FROM table_sessions s WHERE s.table_id=t.id AND s.status IN('active','pending')) has_live_session FROM cafe_tables t ORDER BY COALESCE(t.zone_label,''),t.table_number,t.id"
         )->fetchAll(PDO::FETCH_ASSOC);
         $settings=[
-            'cafe_name'=>$this->setting('cafe.name','SOKNA'),
+            'cafe_name'=>$this->setting('cafe.name','سکنا'),
+            'brand_subtitle'=>$this->setting('brand.subtitle','سامانه مدیریت کافه'),
             'business_day_cutoff'=>$this->setting('business_day_cutoff','04:00'),
             'waiter_call_enabled'=>$this->settingBool('waiter_call_enabled',true),
         ];
@@ -57,30 +58,37 @@ final class AdminControlService
     public function saveUser(array $data,array $actor): array
     {
         $admin=$this->assertAdmin($actor);$id=(int)($data['id']??0);
-        $username=$this->text($data['username']??'',80);$display=$this->text($data['display_name']??'',120);$password=(string)($data['password']??'');$active=$this->bool($data['active']??true);
+        $username=$this->text($data['username']??'',80);$display=$this->text($data['display_name']??'',120);$password=(string)($data['password']??'');$remotePassword=(string)($data['remote_password']??'');$removeRemoteCredential=$this->bool($data['remote_password_remove']??false);$active=$this->bool($data['active']??true);
         if($username===''||$display==='')throw new AdminControlException('user_required','نام و اطلاعات ورود را کامل کن.',422);
         $caps=$this->stringList($data['capabilities']??[],Capabilities::DEFINITIONS);
         $areas=$this->stringList($data['preparation_areas']??[],['kitchen','bar']);
         $this->pdo->beginTransaction();
         try{
-            $existing=null;
-            if($id>0){$st=$this->pdo->prepare('SELECT id,username,display_name,role,active FROM users WHERE id=? FOR UPDATE');$st->execute([$id]);$existing=$st->fetch(PDO::FETCH_ASSOC);if(!is_array($existing))throw new AdminControlException('user_not_found','حساب پیدا نشد.',404);}
+            $existing=null;$remoteCredentialExists=false;
+            if($id>0){$st=$this->pdo->prepare('SELECT id,username,display_name,role,active FROM users WHERE id=? FOR UPDATE');$st->execute([$id]);$existing=$st->fetch(PDO::FETCH_ASSOC);if(!is_array($existing))throw new AdminControlException('user_not_found','حساب پیدا نشد.',404);$rc=$this->pdo->prepare('SELECT user_id FROM remote_user_credentials WHERE user_id=? FOR UPDATE');$rc->execute([$id]);$remoteCredentialExists=(bool)$rc->fetchColumn();}
             $role=(string)($existing['role']??'operator');
             if($id===(int)$admin['id']&&!$active)throw new AdminControlException('self_deactivate','حسابی که با آن وارد شده‌ای نباید غیرفعال شود.',409);
             if($role==='admin'){$caps=Capabilities::DEFINITIONS;$areas=['kitchen','bar'];$active=true;}
             if($active&&$role!=='admin'&&$caps===[])throw new AdminControlException('capability_required','برای حساب فعال حداقل یک دسترسی انتخاب کن.',422);
             if(in_array('preparation',$caps,true)&&$areas===[])throw new AdminControlException('preparation_area_required','برای آماده‌سازی، آشپزخانه، بار یا هر دو را انتخاب کن.',422);
-            if($id===0&&strlen($password)<8)throw new AdminControlException('password_short','برای حساب تازه رمز حداقل ۸ کاراکتری لازم است.',422);
-            if($id>0&&$password!==''&&strlen($password)<8)throw new AdminControlException('password_short','رمز تازه حداقل ۸ کاراکتر باشد.',422);
+            if($id===0&&strlen($password)<8)throw new AdminControlException('password_short','برای حساب تازه رمز محلی حداقل ۸ کاراکتری لازم است.',422);
+            if($id>0&&$password!==''&&strlen($password)<8)throw new AdminControlException('password_short','رمز محلی تازه حداقل ۸ کاراکتر باشد.',422);
+            if($remotePassword!==''&&strlen($remotePassword)<12)throw new AdminControlException('remote_password_short','رمز دسترسی راه‌دور حداقل ۱۲ کاراکتر باشد.',422);
+            if($removeRemoteCredential&&$remotePassword!=='')throw new AdminControlException('remote_password_conflict','برای رمز راه‌دور، تغییر و لغو را هم‌زمان انتخاب نکن.',422);
+            $remoteAccessRequested=$role!=='admin'&&in_array('remote_access',$caps,true);
+            if($removeRemoteCredential&&$remoteAccessRequested)throw new AdminControlException('remote_credential_required','برای لغو رمز راه‌دور، ابتدا دسترسی «دسترسی راه‌دور» را از این حساب بردار.',409);
+            if($remoteAccessRequested&&!$remoteCredentialExists&&$remotePassword==='')throw new AdminControlException('remote_credential_required','برای فعال‌کردن دسترسی راه‌دور، یک رمز مستقل راه‌دور حداقل ۱۲ کاراکتری تعیین کن.',422);
             if($id>0){
                 if($password!==''){$q=$this->pdo->prepare('UPDATE users SET username=?,display_name=?,active=?,password_hash=? WHERE id=?');$q->execute([$username,$display,$active?1:0,password_hash($password,PASSWORD_DEFAULT),$id]);}
                 else{$q=$this->pdo->prepare('UPDATE users SET username=?,display_name=?,active=? WHERE id=?');$q->execute([$username,$display,$active?1:0,$id]);}
             }else{$q=$this->pdo->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'operator',?)");$q->execute([$username,password_hash($password,PASSWORD_DEFAULT),$display,$active?1:0]);$id=(int)$this->pdo->lastInsertId();}
+            if($removeRemoteCredential){$this->pdo->prepare('DELETE FROM remote_user_credentials WHERE user_id=?')->execute([$id]);$remoteCredentialExists=false;}
+            elseif($remotePassword!==''){$remoteHash=password_hash($remotePassword,PASSWORD_DEFAULT);$q=$this->pdo->prepare('INSERT INTO remote_user_credentials(user_id,password_hash,credential_version) VALUES(?,?,1) ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash),credential_version=credential_version+1,updated_at=CURRENT_TIMESTAMP');$q->execute([$id,$remoteHash]);$remoteCredentialExists=true;}
             $up=$this->pdo->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,?) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled)');
             foreach(Capabilities::DEFINITIONS as $cap)$up->execute([$id,$cap,in_array($cap,$caps,true)?1:0]);
             $this->pdo->prepare('DELETE FROM user_preparation_areas WHERE user_id=?')->execute([$id]);
             if(in_array('preparation',$caps,true)){$ins=$this->pdo->prepare('INSERT INTO user_preparation_areas(user_id,area_key) VALUES(?,?)');foreach($areas as $area)$ins->execute([$id,$area]);}
-            $this->audit('user.access_updated','user',(string)$id,(int)$admin['id'],['created'=>$existing===null,'active'=>$active,'capabilities'=>$caps,'preparation_areas'=>$areas,'password_changed'=>$password!=='']);
+            $this->audit('user.access_updated','user',(string)$id,(int)$admin['id'],['created'=>$existing===null,'active'=>$active,'capabilities'=>$caps,'preparation_areas'=>$areas,'local_password_changed'=>$password!=='','remote_password_changed'=>$remotePassword!=='','remote_password_removed'=>$removeRemoteCredential,'remote_credential_configured'=>$remoteCredentialExists]);
             $this->pdo->commit();return ['id'=>$id];
         }catch(PDOException $e){if($this->pdo->inTransaction())$this->pdo->rollBack();if((int)($e->errorInfo[1]??0)===1062)throw new AdminControlException('username_exists','نام کاربری تکراری است.',409);throw $e;}catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
@@ -100,8 +108,8 @@ final class AdminControlService
 
     public function saveSettings(array $data,array $actor): array
     {
-        $admin=$this->assertAdmin($actor);$name=$this->text($data['cafe_name']??'',120);$cutoff=trim((string)($data['business_day_cutoff']??''));if($name==='')throw new AdminControlException('cafe_name','نام مجموعه لازم است.',422);if(!preg_match('/^(?:[01]\\d|2[0-3]):[0-5]\\d$/',$cutoff))throw new AdminControlException('cutoff','ساعت شروع روز کاری معتبر نیست.',422);$waiter=$this->bool($data['waiter_call_enabled']??true);
-        $this->pdo->beginTransaction();try{$up=$this->pdo->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');foreach(['cafe.name'=>$name,'business_day_cutoff'=>$cutoff,'waiter_call_enabled'=>$waiter?'1':'0'] as $k=>$v)$up->execute([$k,$v]);$this->audit('settings.local_updated','setting','local',(int)$admin['id'],['cafe_name'=>$name,'business_day_cutoff'=>$cutoff,'waiter_call_enabled'=>$waiter]);$this->pdo->commit();return ['saved'=>true];}catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+        $admin=$this->assertAdmin($actor);$name=$this->text($data['cafe_name']??'',120);$subtitle=$this->text($data['brand_subtitle']??'',120);$cutoff=trim((string)($data['business_day_cutoff']??''));if($name==='')throw new AdminControlException('cafe_name','نام مجموعه لازم است.',422);if($subtitle==='')$subtitle='سامانه مدیریت کافه';if(!preg_match('/^(?:[01]\\d|2[0-3]):[0-5]\\d$/',$cutoff))throw new AdminControlException('cutoff','ساعت شروع روز کاری معتبر نیست.',422);$waiter=$this->bool($data['waiter_call_enabled']??true);
+        $this->pdo->beginTransaction();try{$up=$this->pdo->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');foreach(['cafe.name'=>$name,'brand.subtitle'=>$subtitle,'business_day_cutoff'=>$cutoff,'waiter_call_enabled'=>$waiter?'1':'0'] as $k=>$v)$up->execute([$k,$v]);$this->audit('settings.local_updated','setting','local',(int)$admin['id'],['cafe_name'=>$name,'brand_subtitle'=>$subtitle,'business_day_cutoff'=>$cutoff,'waiter_call_enabled'=>$waiter]);$this->pdo->commit();return ['saved'=>true];}catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
     public function setModule(string $key,bool $enabled,array $actor): array

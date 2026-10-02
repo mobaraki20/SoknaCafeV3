@@ -13,6 +13,7 @@ final class RealtimeDispatchService
         private readonly SettlementRealtimeAdapter $settlement,
         private readonly PreparationRealtimeAdapter $preparation,
         private readonly TableDraftRealtimeAdapter $tableDrafts,
+        private readonly StaffOrderRealtimeAdapter $staffOrders,
     ) {}
 
     public function dispatch(array $envelope): array
@@ -21,6 +22,7 @@ final class RealtimeDispatchService
         if(in_array($kind,['guest_order.submit','guest_order.quote','guest_order.list','guest_order.status','guest_table.context','order.edit','order.cancel'],true))return $this->guestOrders->dispatch($envelope);
         if(in_array($kind,['waiter_call.create','waiter_call.status','waiter_call.cancel'],true))return $this->waiterCalls->dispatch($envelope);
         if($kind==='settlement.commit')return $this->settlement->dispatch($envelope);
+        if($kind==='order.staff_status')return $this->staffOrders->dispatch($envelope);
         if($kind==='preparation.mutate')return $this->preparation->dispatch($envelope);
         if(str_starts_with($kind,'table_draft.'))return $this->tableDrafts->dispatch($envelope);
         throw new RuntimeException('Realtime operation is not owned by Local dispatcher.');

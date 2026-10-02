@@ -10,15 +10,16 @@ use Sokna\Local\Domain\Marketing\MarketingService;
 use Sokna\Local\Domain\Reporting\ReportingService;
 use Sokna\Local\Domain\Notifications\NotificationService;
 use Sokna\Local\Domain\Sellables\CategoryIconLibrary;
+use Sokna\Local\Domain\Orders\OrderCatalogService;
 final class PublicProjectionBuilder
 {
-    public function __construct(private readonly PDO $pdo,private readonly ?SettlementService $settlements=null,private readonly ?SupplyService $supply=null,private readonly ?GuestContentService $guestContent=null,private readonly ?MarketingService $marketing=null,private readonly ?ReportingService $reporting=null,private readonly ?NotificationService $notifications=null,private readonly ?CategoryIconLibrary $categoryIcons=null){}
+    public function __construct(private readonly PDO $pdo,private readonly ?SettlementService $settlements=null,private readonly ?SupplyService $supply=null,private readonly ?GuestContentService $guestContent=null,private readonly ?MarketingService $marketing=null,private readonly ?ReportingService $reporting=null,private readonly ?NotificationService $notifications=null,private readonly ?CategoryIconLibrary $categoryIcons=null,private readonly ?OrderCatalogService $orderCatalog=null){}
     public function installation(string $installationId): array{return ['installation_id'=>$installationId,'display_name'=>$this->setting('cafe.name','SOKNA'),'remote_enabled'=>true,'order_intake_enabled'=>$this->settingBool('orders_accepting.cafe',true)];}
     public function authProjections(): array
     {
-        $rows=$this->pdo->query('SELECT id,username,password_hash,display_name,role,active,updated_at FROM users WHERE active=1 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);$out=[];
-        foreach($rows as $u){$id=(int)$u['id'];$caps=$this->caps($id);$admin=(string)$u['role']==='admin';if(!$admin&&!in_array('remote_access',$caps,true))continue;$remote=[];if($admin)$remote=['*'];else{foreach(['remote_operations'=>'operations.read','remote_preparation'=>'preparation.read','remote_inventory'=>'inventory.read','remote_inventory_cost'=>'inventory.cost.read','remote_reports'=>'reports.read','remote_notifications'=>'notifications.read','remote_deferred_context'=>'deferred.context','remote_order_actions'=>'orders.mutate','remote_preparation_actions'=>'preparation.mutate','remote_table_drafts'=>'orders.table_draft','remote_settlement'=>'finance.settle','remote_supply'=>'supply.need.defer','remote_subscriber_payments'=>'subscriber.payment.defer'] as $local=>$public)if(in_array($local,$caps,true))$remote[]=$public;if(in_array('remote_supply',$caps,true)){$remote[]='supply.manage.defer';$remote[]='deferred.context';}if(in_array('remote_subscriber_payments',$caps,true))$remote[]='deferred.context';if(in_array('remote_settlement',$caps,true))$remote[]='operations.read';$remote=array_values(array_unique($remote));}
-            $areas=$this->areas($id);$out[]=['projection_id'=>'user:'.$id,'username'=>(string)$u['username'],'display_name'=>(string)$u['display_name'],'role'=>(string)$u['role'],'password_hash'=>(string)$u['password_hash'],'capabilities'=>$remote,'preparation_areas'=>$areas,'projection_version'=>max(1,(int)(strtotime((string)$u['updated_at'])?:1)),'active'=>true];}
+        $rows=$this->pdo->query('SELECT u.id,u.username,u.display_name,u.role,u.active,u.updated_at,rc.password_hash remote_password_hash,rc.credential_version,rc.updated_at remote_credential_updated_at FROM users u LEFT JOIN remote_user_credentials rc ON rc.user_id=u.id WHERE u.active=1 ORDER BY u.id')->fetchAll(PDO::FETCH_ASSOC);$out=[];
+        foreach($rows as $u){$id=(int)$u['id'];$remotePasswordHash=trim((string)($u['remote_password_hash']??''));if($remotePasswordHash==='')continue;$caps=$this->caps($id);$admin=(string)$u['role']==='admin';if(!$admin&&!in_array('remote_access',$caps,true))continue;$remote=[];if($admin)$remote=['*'];else{foreach(['remote_operations'=>'operations.read','remote_preparation'=>'preparation.read','remote_inventory'=>'inventory.read','remote_inventory_cost'=>'inventory.cost.read','remote_reports'=>'reports.read','remote_notifications'=>'notifications.read','remote_deferred_context'=>'deferred.context','remote_settlement'=>'finance.settle','remote_supply'=>'supply.need.defer','remote_subscriber_payments'=>'subscriber.payment.defer'] as $local=>$public)if(in_array($local,$caps,true))$remote[]=$public;if(in_array('remote_table_drafts',$caps,true)&&in_array('orders_floor',$caps,true))$remote[]='orders.table_draft';if(in_array('remote_order_actions',$caps,true)&&in_array('orders_floor',$caps,true)){$remote[]='orders.mutate';$remote[]='operations.read';}if(in_array('remote_preparation_actions',$caps,true)&&in_array('preparation',$caps,true)){$remote[]='preparation.mutate';$remote[]='preparation.read';}if(in_array('remote_supply',$caps,true)){$remote[]='supply.manage.defer';$remote[]='deferred.context';}if(in_array('remote_subscriber_payments',$caps,true))$remote[]='deferred.context';if(in_array('remote_settlement',$caps,true))$remote[]='operations.read';$remote=array_values(array_unique($remote));}
+            $areas=$this->areas($id);$projectionVersion=max(1,(int)(strtotime((string)$u['updated_at'])?:1),(int)(strtotime((string)($u['remote_credential_updated_at']??''))?:1));$out[]=['projection_id'=>'user:'.$id,'username'=>(string)$u['username'],'display_name'=>(string)$u['display_name'],'role'=>(string)$u['role'],'password_hash'=>$remotePasswordHash,'capabilities'=>$remote,'preparation_areas'=>$areas,'projection_version'=>$projectionVersion,'active'=>true];}
         return $out;
     }
     public function guestPublish(): array
@@ -36,7 +37,7 @@ final class PublicProjectionBuilder
                 if($this->guestContent!==null){$resolved=$this->guestContent->publicMediaForSource((string)($r['image_path']??''));if(is_array($resolved)){$source=(string)$resolved['source'];$manifest[$source]=(array)$resolved['manifest'];}}
                 $cats[]=['id'=>(int)$r['id'],'name'=>(string)$r['name'],'sort_order'=>(int)$r['sort_order'],'icon_key'=>$this->categoryIcons?->resolve((string)($r['icon_key']??''),(string)$r['name'])??'list','image_path'=>$source];
             }
-            $iq=$this->pdo->prepare("SELECT i.id,i.category_id,c.name category_name,i.name,i.description,i.price,i.available,i.image_path,i.sort_order FROM items i JOIN categories c ON c.id=i.category_id JOIN menu_items mi ON mi.item_id=i.id WHERE mi.menu_id=? AND i.active=1 AND i.staff_only=0 AND i.sellable_kind='menu_item' ORDER BY c.sort_order,i.sort_order,i.id");
+            $iq=$this->pdo->prepare("SELECT i.id,i.category_id,c.name category_name,i.name,i.description,i.price,i.available,i.featured,i.takeaway_allowed,i.preparation_station,i.suggested_item_id,i.image_path,i.sort_order FROM items i JOIN categories c ON c.id=i.category_id JOIN menu_items mi ON mi.item_id=i.id WHERE mi.menu_id=? AND i.active=1 AND i.staff_only=0 AND i.sellable_kind='menu_item' ORDER BY c.sort_order,i.sort_order,i.id");
             $iq->execute([(int)$m['id']]);
             $items=[];
             foreach($iq->fetchAll(PDO::FETCH_ASSOC) as $r){
@@ -51,7 +52,9 @@ final class PublicProjectionBuilder
                 $items[]=[
                     'id'=>(int)$r['id'],'category_id'=>(int)$r['category_id'],'category_name'=>(string)$r['category_name'],
                     'name'=>(string)$r['name'],'description'=>(string)($r['description']??''),'price'=>(int)$r['price'],
-                    'available'=>(bool)$r['available'],'image_path'=>$source,
+                    'available'=>(bool)$r['available'],'featured'=>(bool)($r['featured']??false),
+                    'takeaway_allowed'=>(bool)($r['takeaway_allowed']??true),'preparation_station'=>(string)($r['preparation_station']??'other'),
+                    'suggested_item_id'=>$r['suggested_item_id']!==null?(int)$r['suggested_item_id']:null,'image_path'=>$source,
                 ];
             }
             $catalogs[(string)$m['menu_key']]=['menu'=>$menu,'categories'=>$cats,'items'=>$items];
@@ -80,13 +83,31 @@ final class PublicProjectionBuilder
     {
         $now=gmdate('c');$models=[];
         $models[]=$this->model('operations',['orders'=>$this->rows("SELECT o.id,o.public_code,o.status,o.total_amount,o.order_source,o.created_at,t.name table_name FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id WHERE o.status NOT IN ('cancelled','settled') ORDER BY o.id DESC LIMIT 100"),'waiter_calls'=>$this->rows("SELECT w.id,w.public_code,w.status,w.created_at,t.name table_name FROM waiter_calls w JOIN cafe_tables t ON t.id=w.table_id WHERE w.status IN ('new','accepted') ORDER BY w.id DESC LIMIT 50"),'settlement_accounts'=>$this->settlementAccounts()],$now);
-        $models[]=$this->model('preparation',['tasks'=>$this->rows("SELECT oi.id order_item_id,o.public_code order_code,o.status,oi.item_name,oi.quantity,oi.preparation_station area,t.name table_name FROM order_items oi JOIN orders o ON o.id=oi.order_id LEFT JOIN cafe_tables t ON t.id=o.table_id WHERE o.status IN ('new','accepted','preparing') ORDER BY oi.id LIMIT 150"),'adjustments'=>[]],$now);
+        $models[]=$this->model('preparation',['tasks'=>$this->rows("SELECT o.id order_id,oi.id order_item_id,o.public_code order_code,o.business_order_number order_number,o.status,oi.item_name,oi.quantity,CASE WHEN oi.preparation_station='kitchen' THEN 'kitchen' WHEN oi.preparation_station='none' THEN NULL ELSE 'bar' END area,t.name table_name FROM order_items oi JOIN orders o ON o.id=oi.order_id LEFT JOIN cafe_tables t ON t.id=o.table_id WHERE o.status IN ('accounted','completed') AND oi.quantity>0 AND oi.preparation_station<>'none' ORDER BY o.created_at,o.id,oi.id LIMIT 150"),'adjustments'=>[]],$now);
         $models[]=$this->model('inventory',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,ii.default_department,COALESCE(b.quantity_base,0) quantity_base,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")],$now);
         $models[]=$this->model('inventory_cost',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,COALESCE(b.quantity_base,0) quantity_base,b.average_unit_cost,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")],$now);
         $models[]=$this->model('reports',$this->reporting?->remoteSummary()??['today'=>['order_count'=>(int)$this->scalar("SELECT COUNT(*) FROM orders WHERE business_date=CURDATE()"),'sales_total'=>(int)$this->scalar("SELECT COALESCE(SUM(total_amount),0) FROM orders WHERE business_date=CURDATE() AND status<>'cancelled'")]],$now);
         $models[]=$this->model('notifications',['items'=>$this->notifications?->remoteRows()??[]],$now);
         $models[]=$this->model('deferred_context',['inventory_items'=>$this->rows("SELECT id,item_code,name,base_unit,default_department FROM inventory_items WHERE active=1 ORDER BY name LIMIT 500"),'count_drafts'=>$this->rows("SELECT id,status,created_at FROM inventory_count_sessions WHERE status='draft' ORDER BY id DESC LIMIT 50"),'subscribers'=>$this->rows("SELECT s.id,s.name,s.active,COALESCE((SELECT l.balance_after FROM subscriber_ledger l WHERE l.subscriber_id=s.id ORDER BY l.id DESC LIMIT 1),0) balance FROM subscribers s WHERE s.active=1 ORDER BY s.name LIMIT 300"),'expense_categories'=>$this->rows("SELECT category_key,name FROM expense_categories WHERE active=1 ORDER BY sort_order,category_key"),'supply_groups'=>$this->supply?->purchaseGroups()??[]],$now);
+        $models[]=$this->model('table_draft_context',['tables'=>$this->tableDraftTables(),'catalog'=>$this->orderCatalog?->staffCatalogRows()??[],'catalog_groups'=>$this->orderCatalog?->staffCatalogGroups()??[]],$now);
         return $models;
+    }
+    private function tableDraftTables(): array
+    {
+        $sql="SELECT t.id,t.name,t.table_number,t.sort_order,t.zone_label,
+            s.id session_id,s.status session_status,s.started_at,
+            COALESCE((SELECT SUM(o.total_amount) FROM orders o WHERE o.session_id=s.id AND o.status='accounted'),0) account_total,
+            COALESCE((SELECT COUNT(*) FROM orders o WHERE o.session_id=s.id AND o.status IN('pending_approval','new')),0) pending_order_count
+            FROM cafe_tables t
+            LEFT JOIN table_sessions s ON s.id=(SELECT s2.id FROM table_sessions s2 WHERE s2.table_id=t.id AND s2.status IN('active','pending') ORDER BY FIELD(s2.status,'active','pending'),s2.id DESC LIMIT 1)
+            WHERE t.active=1 ORDER BY t.sort_order,t.table_number,t.id";
+        return array_map(static fn(array $r):array=>[
+            'id'=>(int)$r['id'],'name'=>(string)$r['name'],'table_number'=>(int)$r['table_number'],
+            'sort_order'=>(int)$r['sort_order'],'zone_label'=>(string)($r['zone_label']??''),
+            'session_id'=>(int)($r['session_id']??0),'session_status'=>(string)($r['session_status']??''),
+            'started_at'=>(string)($r['started_at']??''),'account_total'=>(int)$r['account_total'],
+            'pending_order_count'=>(int)$r['pending_order_count'],
+        ],$this->rows($sql));
     }
     private function settlementAccounts(): array
     {
