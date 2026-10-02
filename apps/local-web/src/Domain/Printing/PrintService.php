@@ -10,6 +10,8 @@ use Throwable;
 final class PrintService
 {
     public const PROTOCOL_VERSION=4;
+    public const MINIMUM_AGENT_VERSION='6.2.5';
+    public const RECOMMENDED_AGENT_VERSION='6.2.7';
     public const LEASE_SECONDS=45;
     public const MAX_CLAIM=5;
 
@@ -128,8 +130,8 @@ final class PrintService
     public function probe(array $agent,string $agentVersion): array
     {
         return [
-            'success'=>true,'protocol_version'=>self::PROTOCOL_VERSION,'minimum_agent_version'=>'6.2.5',
-            'recommended_agent_version'=>'6.2.5','server_time'=>gmdate('c'),
+            'success'=>true,'protocol_version'=>self::PROTOCOL_VERSION,'minimum_agent_version'=>self::MINIMUM_AGENT_VERSION,
+            'recommended_agent_version'=>self::RECOMMENDED_AGENT_VERSION,'server_time'=>gmdate('c'),
             'destinations'=>$this->destinationsForAgent((int)$agent['id']),
             'capabilities'=>['durable_claim','durable_accept','attempt_status','submission_fence','unknown_resolution','local_wake_v1','preview_bridge_v1'],
             'agent_version'=>$agentVersion,
