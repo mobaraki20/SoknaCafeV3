@@ -46,8 +46,8 @@ need("new URL(result.local_base_url)" in js and "location.replace(canonical.orig
 
 app=(R/"apps/local-web/public/_app.php").read_text(encoding="utf-8")
 recovery=(R/"apps/local-web/public/local-recovery.php").read_text(encoding="utf-8")
-need("dirname(__DIR__,3)" not in app and "$root=dirname(__DIR__);" in app,"Local app still assumes monorepo root")
-need("dirname(__DIR__,3)" not in recovery and "$packageRoot=dirname(__DIR__);" in recovery,"Recovery still assumes monorepo root")
+need("dirname(__DIR__,3)" not in app and "$local=dirname(__DIR__);$root=dirname($local);" in app and "$configFile=$root.DIRECTORY_SEPARATOR.'config.php'" in app,"Local app package/data root layout drifted")
+need("dirname(__DIR__,3)" not in recovery and "$packageRoot=dirname(__DIR__,2)" in recovery,"Recovery package/data root layout drifted")
 
 runtime=(R/"windows/runtime/source/Program.cs").read_text(encoding="utf-8")
 need('LocalBaseUrl { get; init; } = ""' in runtime,"Runtime still has a hardcoded Local URL default")
