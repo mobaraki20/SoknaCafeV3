@@ -19,7 +19,7 @@ for token in ['update_activate','update_repair','update_rollback','recovery_code
 need(upload,'LocalPage::requireAdmin','update upload not admin-only');need(upload,'hash_equals($expected,$candidate)','update upload CSRF missing')
 for token in ['data-panel="updates"','data-update-upload','data-activate','data-repair','data-rollback','data-panel="recovery"','data-backup-create','data-recovery-upload','data-backup-inspect','data-backup-restore','data-public-reenroll']:
     need(page,token,'system UI missing stable hook '+token)
-need(js,"/system/update-upload.php",'update upload UI not wired');need(js,"/system/recovery-upload.php",'recovery upload UI not wired')
+need(js,"/system/update-chunk.php",'chunked update upload UI not wired');need(js,"uploadLocalPackage",'chunked update upload orchestration missing');need(js,"/system/recovery-upload.php",'recovery upload UI not wired')
 need(setup,"'zip'",'Browser Setup does not require PHP zip after updater introduction')
 reg=text('apps/local-web/resources/component-registry-v1.json')
 if 'windows_services_owner' not in reg or 'public_owned_via_local_orchestration' not in reg: raise SystemExit('FAIL bundled component registry lacks owner boundaries')
