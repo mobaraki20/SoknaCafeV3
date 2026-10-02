@@ -44,11 +44,21 @@ for cid,version in owned.items():
 # Core Bootstrap imports must be reachable from the explicit no-autoloader entry bootstrap.
 core_boot=(R/'apps/local-web/src/Core/Bootstrap.php').read_text(encoding='utf-8')
 entry=(R/'apps/local-web/bootstrap.php').read_text(encoding='utf-8')
-uses=re.findall(r'^use\\s+(Sokna\\\\Local\\\\[^;]+);',core_boot,re.M)
-required=set(re.findall(r"require_once __DIR__ \\. '/src/([^']+)\\.php';",entry))
+uses=[]
+for line in core_boot.splitlines():
+    line=line.strip()
+    if line.startswith('use Sokna\\Local\\') and line.endswith(';'):
+        uses.append(line[4:-1])
+required=set()
+prefix="require_once __DIR__ . '/src/"
+suffix=".php';"
+for line in entry.splitlines():
+    line=line.strip()
+    if line.startswith(prefix) and line.endswith(suffix):
+        required.add(line[len(prefix):-len(suffix)])
 missing=[]
 for fqcn in uses:
-    rel=fqcn.replace('Sokna\\\\Local\\\\','').replace('\\\\','/')
+    rel=fqcn.removeprefix('Sokna\\Local\\').replace('\\','/')
     if (R/'apps/local-web/src'/f'{rel}.php').is_file() and rel not in required:
         missing.append(rel)
 if missing: fail('entry bootstrap missing Core Bootstrap dependencies: '+','.join(sorted(missing)))
