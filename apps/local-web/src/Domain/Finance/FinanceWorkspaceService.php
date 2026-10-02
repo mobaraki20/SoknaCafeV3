@@ -59,7 +59,7 @@ final class FinanceWorkspaceService
         return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function recentSettlements(int $limit=40): array
+    public function recentSettlements(int $limit=100): array
     {
         $limit=max(1,min(100,$limit));
         $sql="SELECT sr.id,sr.invoice_number,sr.destination,sr.table_name_snapshot,sr.subtotal,sr.discount,sr.tax_amount,sr.total,
@@ -68,6 +68,41 @@ final class FinanceWorkspaceService
              FROM settlement_records sr LEFT JOIN users u ON u.id=sr.actor_user_id
              ORDER BY sr.id DESC LIMIT {$limit}";
         return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function settlementDetail(int $settlementId): array
+    {
+        if($settlementId<1)throw new SettlementException('invalid_settlement','سند مالی معتبر نیست.',422);
+        $stmt=$this->pdo->prepare(
+            "SELECT sr.*,fp.title period_title,u.display_name actor_name,sl.subscriber_id,sub.name subscriber_name,
+                    at.reservation_code,at.guest_name_snapshot accommodation_guest,at.room_name_snapshot accommodation_room,
+                    original.invoice_number original_invoice_number,reversal.invoice_number reversal_invoice_number
+             FROM settlement_records sr
+             LEFT JOIN financial_periods fp ON fp.id=sr.financial_period_id
+             LEFT JOIN users u ON u.id=sr.actor_user_id
+             LEFT JOIN subscriber_ledger sl ON sl.id=sr.subscriber_ledger_entry_id
+             LEFT JOIN subscribers sub ON sub.id=sl.subscriber_id
+             LEFT JOIN accommodation_transfers at ON at.id=sr.accommodation_transfer_id
+             LEFT JOIN settlement_records original ON original.id=sr.reverses_settlement_id
+             LEFT JOIN settlement_records reversal ON reversal.reverses_settlement_id=sr.id AND reversal.status='reversal'
+             WHERE sr.id=? LIMIT 1"
+        );
+        $stmt->execute([$settlementId]);$record=$stmt->fetch(PDO::FETCH_ASSOC);
+        if(!is_array($record))throw new SettlementException('settlement_not_found','سند مالی پیدا نشد.',404);
+        $snapshot=json_decode((string)($record['invoice_snapshot_json']??''),true);
+        if(!is_array($snapshot))$snapshot=[];
+        $items=[];
+        foreach((array)($snapshot['items']??[]) as $item){
+            if(!is_array($item))continue;
+            $items[]=[
+                'name'=>(string)($item['name']??''),'note'=>(string)($item['note']??''),
+                'quantity'=>(int)($item['quantity']??0),'unit_price'=>(int)($item['unit_price']??0),
+                'line_total'=>(int)($item['line_total']??0),'line_discount'=>(int)($item['line_discount']??0),
+                'tax_amount'=>(int)($item['tax_amount']??0),'line_final'=>(int)($item['line_final']??($item['line_total']??0)),
+            ];
+        }
+        unset($record['invoice_snapshot_json'],$record['request_fingerprint']);
+        return ['record'=>$record,'snapshot'=>$snapshot,'items'=>$items];
     }
 
     public function taxSnapshot(): array

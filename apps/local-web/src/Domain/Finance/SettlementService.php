@@ -43,43 +43,80 @@ final class SettlementService
         $this->pdo->beginTransaction();
         try{
             $actor=$this->assertCashier($user);
-            $session=$this->lockSession($sessionId);
-            if(!in_array((string)$session['status'],['active','pending'],true))
-                throw new SettlementStateConflict('session_closed','این حساب دیگر قابل تغییر نیست.',409);
-            if($this->hasActiveItemizedTx($sessionId))
-                throw new SettlementStateConflict('itemized_locked','پس از شروع پرداخت جداگانه، تخفیف حساب قابل تغییر نیست.',409);
-
-            $subtotal=$this->confirmedSubtotalTx($sessionId);
-            $type=$type===null||trim($type)===''?null:trim($type);
-            if($type!==null&&!in_array($type,['percent','fixed'],true))
-                throw new SettlementException('invalid_discount','نوع تخفیف معتبر نیست.',422);
-            $value=max(0,$value);
-            if($type==='percent'&&$value>100)
-                throw new SettlementException('invalid_discount','درصد تخفیف نمی‌تواند بیشتر از صد باشد.',422);
-            if($type==='fixed'&&$value>$subtotal)
-                throw new SettlementException('invalid_discount','تخفیف ثابت نمی‌تواند بیشتر از جمع فاکتور باشد.',422);
-            if($type===null)$value=0;
-            $amount=self::discountAmount($subtotal,$type,$value);
-
-            $this->pdo->prepare(
-                'INSERT INTO invoice_discount_audit(session_id,previous_type,previous_value,previous_amount,new_type,new_value,new_amount,subtotal,actor_user_id)
-                 VALUES(?,?,?,?,?,?,?,?,?)'
-            )->execute([
-                $sessionId,$session['discount_type']??null,(int)($session['discount_value']??0),(int)($session['discount_amount']??0),
-                $type,$value,$amount,$subtotal,(int)$actor['id']
-            ]);
-            $this->pdo->prepare(
-                'UPDATE table_sessions SET discount_type=?,discount_value=?,discount_amount=?,discount_by_user_id=?,discount_updated_at=NOW() WHERE id=?'
-            )->execute([$type,$value,$amount,(int)$actor['id'],$sessionId]);
-            $this->audit('settlement.discount_updated','table_session',$sessionId,(int)$actor['id'],[
-                'discount_type'=>$type,'discount_value'=>$value,'discount_amount'=>$amount,'subtotal'=>$subtotal
-            ]);
+            $result=$this->applyDiscountTx($sessionId,$type,$value,$actor,'settlement.discount_updated',[]);
             $this->pdo->commit();
-            return ['session_id'=>$sessionId,'discount_type'=>$type,'discount_value'=>$value,'discount_amount'=>$amount];
+            return $result;
         }catch(Throwable $e){
             if($this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Complimentary is a first-class account action, but intentionally reuses the canonical
+     * discount calculation/storage contract: 100% percent discount means a fully complimentary bill.
+     * The dedicated audit action preserves the business meaning without adding a second money owner.
+     */
+    public function setComplimentary(int $sessionId,bool $enabled,array $user): array
+    {
+        $this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertCashier($user);
+            $result=$this->applyDiscountTx(
+                $sessionId,
+                $enabled?'percent':null,
+                $enabled?100:0,
+                $actor,
+                'settlement.complimentary_updated',
+                ['complimentary'=>$enabled]
+            );
+            $this->pdo->commit();
+            return $result+['complimentary'=>$enabled];
+        }catch(Throwable $e){
+            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    private function applyDiscountTx(int $sessionId,?string $type,int $value,array $actor,string $auditAction,array $auditExtra): array
+    {
+        $session=$this->lockSession($sessionId);
+        if(!in_array((string)$session['status'],['active','pending'],true))
+            throw new SettlementStateConflict('session_closed','این حساب دیگر قابل تغییر نیست.',409);
+        if($this->hasActiveItemizedTx($sessionId))
+            throw new SettlementStateConflict('itemized_locked','پس از شروع پرداخت جداگانه، تخفیف حساب قابل تغییر نیست.',409);
+
+        $subtotal=$this->confirmedSubtotalTx($sessionId);
+        $type=$type===null||trim($type)===''?null:trim($type);
+        if($type!==null&&!in_array($type,['percent','fixed'],true))
+            throw new SettlementException('invalid_discount','نوع تخفیف معتبر نیست.',422);
+        $value=max(0,$value);
+        if($type==='percent'&&$value>100)
+            throw new SettlementException('invalid_discount','درصد تخفیف نمی‌تواند بیشتر از صد باشد.',422);
+        if($type==='fixed'&&$value>$subtotal)
+            throw new SettlementException('invalid_discount','تخفیف ثابت نمی‌تواند بیشتر از جمع فاکتور باشد.',422);
+        if($type===null)$value=0;
+        $amount=self::discountAmount($subtotal,$type,$value);
+
+        $this->pdo->prepare(
+            'INSERT INTO invoice_discount_audit(session_id,previous_type,previous_value,previous_amount,new_type,new_value,new_amount,subtotal,actor_user_id)
+             VALUES(?,?,?,?,?,?,?,?,?)'
+        )->execute([
+            $sessionId,$session['discount_type']??null,(int)($session['discount_value']??0),(int)($session['discount_amount']??0),
+            $type,$value,$amount,$subtotal,(int)$actor['id']
+        ]);
+        $this->pdo->prepare(
+            'UPDATE table_sessions SET discount_type=?,discount_value=?,discount_amount=?,discount_by_user_id=?,discount_updated_at=NOW() WHERE id=?'
+        )->execute([$type,$value,$amount,(int)$actor['id'],$sessionId]);
+        $complimentary=$type==='percent'&&$value===100;
+        $this->audit($auditAction,'table_session',$sessionId,(int)$actor['id'],[
+            'discount_type'=>$type,'discount_value'=>$value,'discount_amount'=>$amount,'subtotal'=>$subtotal,
+            'complimentary'=>$complimentary
+        ]+$auditExtra);
+        return [
+            'session_id'=>$sessionId,'discount_type'=>$type,'discount_value'=>$value,'discount_amount'=>$amount,
+            'complimentary'=>$complimentary
+        ];
     }
 
     public function settle(array $data,array $user): array
@@ -477,6 +514,7 @@ final class SettlementService
             'remaining_tax'=>max(0,(int)$calculated['tax']-$paidTax),
             'remaining_total'=>max(0,(int)$calculated['total']-$paidTotal),
             'receipt_count'=>(int)($paidTotals['receipt_count']??0),'signature'=>$signature,
+            'is_complimentary'=>(string)($session['discount_type']??'')==='percent'&&(int)($session['discount_value']??0)===100,
         ];
     }
 
@@ -555,6 +593,7 @@ final class SettlementService
             'account_discount'=>(int)$account['discount'],'account_total'=>(int)$account['total'],
             'paid_before'=>(int)$account['paid_total'],'subtotal'=>(int)$review['subtotal'],
             'discount'=>(int)$review['discount'],'total'=>(int)$review['total'],
+            'complimentary'=>(bool)($account['is_complimentary']??false),
             'remaining_after'=>(int)$review['remaining_total'],'items'=>$items
         ];
         if($taxAware)$snapshot += [
