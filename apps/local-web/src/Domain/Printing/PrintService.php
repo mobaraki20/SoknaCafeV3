@@ -31,6 +31,23 @@ final class PrintService
         }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
+    public function commitAgentTokenRotation(int $agentId,string $token,int $actorId): array
+    {
+        $token=trim($token);
+        if($agentId<1||strlen($token)<32)throw new PrintException('invalid_rotation','اطلاعات چرخش توکن معتبر نیست.',422);
+        $this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertAdmin(['id'=>$actorId]);
+            $stmt=$this->pdo->prepare('SELECT id,name,active,retired_at,token_hash FROM print_agents WHERE id=? FOR UPDATE');$stmt->execute([$agentId]);$row=$stmt->fetch(PDO::FETCH_ASSOC);
+            if(!is_array($row)||(int)($row['active']??0)!==1||!empty($row['retired_at']))throw new PrintException('agent_not_active','Print Agent فعال پیدا نشد.',404);
+            $hash=hash('sha256',$token);$hint=substr($token,-8);$idempotent=hash_equals((string)$row['token_hash'],$hash);
+            if(!$idempotent)$this->pdo->prepare('UPDATE print_agents SET token_hash=?,token_hint=?,last_error=NULL WHERE id=?')->execute([$hash,$hint,$agentId]);
+            $this->audit('printing.agent_token_rotated','print_agent',$agentId,(int)$actor['id'],['name'=>(string)($row['name']??''),'token_hint'=>$hint,'idempotent'=>$idempotent]);
+            $this->pdo->commit();
+            return ['agent_id'=>$agentId,'token_hint'=>$hint,'idempotent'=>$idempotent];
+        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
 
     public function retireAgent(int $agentId,int $actorId,string $reason='pairing_canceled'): void
     {
