@@ -7,7 +7,7 @@ def text(p):
     return q.read_text(encoding='utf-8')
 def need(p,n,msg):
     if n not in text(p): raise SystemExit('FAIL '+msg)
-svc='apps/local-web/src/Domain/Update/LocalUpdateService.php'; center='apps/local-web/src/Domain/Update/ComponentUpdateCenterService.php'; recovery='apps/local-web/src/Domain/Recovery/RecoveryWorkspaceService.php'; stable='apps/local-web/public/local-recovery.php'; api='apps/local-web/public/system/api.php'; page='apps/local-web/public/system/index.php'; upload='apps/local-web/public/system/update-upload.php'; js='apps/local-web/public/assets/system-diagnostics.js'; setup='apps/local-web/src/Setup/BrowserSetupService.php'
+svc='apps/local-web/src/Domain/Update/LocalUpdateService.php'; center='apps/local-web/src/Domain/Update/ComponentUpdateCenterService.php'; recovery='apps/local-web/src/Domain/Recovery/RecoveryWorkspaceService.php'; stable='apps/local-web/public/local-recovery.php'; api='apps/local-web/public/system/api.php'; page='apps/local-web/public/system/index.php'; upload='apps/local-web/public/system/update-chunk.php'; js='apps/local-web/public/assets/system-diagnostics.js'; setup='apps/local-web/src/Setup/BrowserSetupService.php'
 for p in [svc,center,recovery,stable,api,page,upload,js,setup,'apps/local-web/resources/component-registry-v1.json','apps/local-web/resources/compatibility-v1.json','apps/local-web/resources/update-trust-v1.json','tests/local-g2-update-lifecycle-pure-selftest.php','tests/local-g2-update-lifecycle-selftest.php']: text(p)
 for token in ["sokna-component-package-v1","immutable_version_conflict","createRecoveryPoint","rollback_auto","verifySignature","bad_signature","same_version_requires_repair","stable_recovery"]: need(svc,token,'local updater missing '+token)
 need(svc,"(string)($manifest['component']??'')!=='local'",'updater does not restrict package to Local owner')
@@ -16,9 +16,9 @@ if "bootstrap.php" in text(stable): raise SystemExit('FAIL stable recovery depen
 need(stable,'password_verify','stable recovery code verification missing');need(stable,"lkg_recovery_id",'stable recovery does not use LKG pointer')
 need(center,"Public lifecycle remains Public-owned",'G3.3 Public owner boundary missing')
 for token in ['update_activate','update_repair','update_rollback','recovery_code_rotate','backup_create','backup_inspect','backup_restore']: need(api,token,'system API missing '+token)
-need(upload,'LocalPage::requireAdmin','update upload not admin-only');need(upload,'hash_equals($expected,$candidate)','update upload CSRF missing')
+need(upload,'WebAction::requireAny($core,[])','chunked update upload not authenticated');need(upload,'WebAction::requireMutation()','chunked update POST mutation/CSRF guard missing');need(upload,'WebAction::requireCsrfHeader()','chunked update PUT CSRF header guard missing')
 for token in ['data-update-upload','data-activate','data-repair','data-rollback','data-backup-create','data-recovery-upload','data-backup-inspect','data-backup-restore','data-public-reenroll']: need(page,token,'system UI missing control '+token)
-need(js,"/system/update-upload.php",'update upload UI not wired');need(js,"/system/recovery-upload.php",'recovery upload UI not wired')
+need(js,"/system/update-chunk.php",'chunked update upload UI not wired');need(js,'uploadLocalPackage','chunked update upload orchestration missing');need(js,"/system/recovery-upload.php",'recovery upload UI not wired')
 need(setup,"'zip'",'Browser Setup does not require PHP zip after updater introduction')
 reg=text('apps/local-web/resources/component-registry-v1.json')
 if 'windows_services_owner' not in reg or 'public_owned_via_local_orchestration' not in reg: raise SystemExit('FAIL bundled component registry lacks owner boundaries')
