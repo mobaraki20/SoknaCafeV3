@@ -38,7 +38,7 @@ jobs:
       - name: Install PHP DB/ZIP extensions
         run: |
           sudo apt-get update
-          sudo apt-get install -y php-mysql php-zip
+          sudo apt-get install -y php-mysql php-zip php-gd
           php -r 'var_export(PDO::getAvailableDrivers()); echo PHP_EOL;'
           php -r 'exit(class_exists("ZipArchive") && extension_loaded("sodium") ? 0 : 1);'
       - name: Run G4 consolidated real environment chain
