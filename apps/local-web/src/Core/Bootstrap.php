@@ -612,6 +612,8 @@ final class Bootstrap
             $this->config->requiredString('app.data_dir'),
             fn(string $name,array $actor): array => $this->printing()->createAgent($name,$actor),
             function(int $agentId,int $actorId,string $reason): void { $this->printing()->retireAgent($agentId,$actorId,$reason); },
+            fn(int $agentId,array $actor): array => $this->printing()->prepareAgentTokenRotation($agentId,$actor),
+            fn(int $agentId,string $token,int $actorId): array => $this->printing()->commitAgentTokenRotation($agentId,$token,$actorId),
         );
     }
 
