@@ -8,8 +8,12 @@ $root=dirname(__DIR__,2);
 require_once $root.'/bootstrap.php';
 $configPath=trim((string)(getenv('SOKNA_PUBLIC_CONFIG')?:($root.'/config.php')));
 
+$trustProxy=(string)(getenv('SOKNA_PUBLIC_TRUST_PROXY_HEADERS')?:'')==='1';
 $forwarded=strtolower(trim(explode(',',(string)($_SERVER['HTTP_X_FORWARDED_PROTO']??''))[0]??''));
-$secure=(!empty($_SERVER['HTTPS'])&&strtolower((string)$_SERVER['HTTPS'])!=='off')||$forwarded==='https';
+$serverSecure=(!empty($_SERVER['HTTPS'])&&strtolower((string)$_SERVER['HTTPS'])!=='off')
+    || strtolower((string)($_SERVER['REQUEST_SCHEME']??''))==='https'
+    || (int)($_SERVER['SERVER_PORT']??0)===443;
+$secure=$serverSecure||($trustProxy&&$forwarded==='https');
 session_set_cookie_params(['httponly'=>true,'secure'=>$secure,'samesite'=>'Strict','path'=>'/setup/']);
 session_start();
 if(!isset($_SESSION['sokna_public_setup_csrf']))$_SESSION['sokna_public_setup_csrf']=bin2hex(random_bytes(24));
