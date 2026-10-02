@@ -49,3 +49,17 @@ jobs:
           php -r 'exit(class_exists("ZipArchive") && extension_loaded("sodium") ? 0 : 1);'
       - name: P6 same-head Linux regression
         run: bash ./tests/run-p6-linux-regression.sh
+
+  windows-integrated:
+    name: Windows Runtime / Print / Installer regression
+    needs: linux-integrated
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+      - name: P6 same-head Windows regression
+        shell: pwsh
+        run: ./tests/run-p6-windows-regression.ps1
