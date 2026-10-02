@@ -88,6 +88,7 @@ final class PublicSetupService
         $current=$this->status();
         if(($current['installed']??false)===true)throw new SetupException('already_installed','Public Edge قبلاً نصب شده است.',409);
         if(($current['state']??'')==='inconsistent')throw new SetupException('setup_inconsistent','install.lock وجود دارد اما config.php معتبر پیدا نشد.',409);
+        if(($current['state']??'')==='partial')throw new SetupException('setup_partial','یک نصب نیمه‌تمام وجود دارد؛ به‌جای نصب جدید از «ادامه نصب» استفاده کن.',409);
 
         $storage=trim((string)($data['storage_dir']??''));if($storage==='')$storage=$this->defaultStorageDir();
         $preflight=$this->preflight($storage,$secureTransport,$host);
