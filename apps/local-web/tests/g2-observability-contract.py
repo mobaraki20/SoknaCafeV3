@@ -37,5 +37,6 @@ need(runtime_evidence,'runtime_trigger_receipts','Runtime receipt evidence sourc
 need(svc,'heartbeat_age_seconds','Print heartbeat health missing')
 need(js,"action:'support_bundle'",'support bundle UI action missing')
 need(entry,"/src/Domain/System/SupportBundleWriter.php",'entry bootstrap support bundle require missing')
+need(entry,"/src/Runtime/RuntimeEvidence.php",'entry bootstrap RuntimeEvidence require missing')
 need(entry,"/src/Domain/System/SystemDiagnosticsService.php",'entry bootstrap diagnostics require missing')
 print('PASS G2.2 observability/support contract')
