@@ -9,7 +9,7 @@ header("Content-Security-Policy: default-src 'self'; style-src 'unsafe-inline'; 
 header('Referrer-Policy: no-referrer');
 
 $root = dirname(__DIR__);
-$configPath = $root . '/config.php';
+$configPath = trim((string)(getenv('SOKNA_PUBLIC_CONFIG') ?: ($root . '/config.php')));
 require_once $root . '/bootstrap.php';
 
 $service = new \Sokna\PublicEdge\Setup\PublicSetupService($root, $configPath);
