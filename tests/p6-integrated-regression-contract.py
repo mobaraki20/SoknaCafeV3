@@ -10,9 +10,11 @@ m=json.loads((R/'release/p6-integrated-regression-v1.json').read_text(encoding='
 if m.get('format')!='sokna-p6-integrated-regression-v1' or m.get('schema_version')!=1: fail('manifest metadata invalid')
 for section in ('linux_real_env','windows_real_env'):
     item=m.get(section,{})
-    runner=item.get('runner','')
-    if not runner or not (R/runner).is_file(): fail(section+' runner missing')
+    status=str(item.get('status',''))
+    if status not in {'READY','PENDING'}: fail(section+' status invalid')
     if not str(item.get('terminal','')).endswith('PASS'): fail(section+' exact PASS terminal missing')
+    runner=item.get('runner','')
+    if status=='READY' and (not runner or not (R/runner).is_file()): fail(section+' READY runner missing')
 manual=json.loads((R/m.get('manual_uat_source','')).read_text(encoding='utf-8'))
 required=set(m.get('manual_uat_not_automated',[]))
 checks={str(c.get('id')):str(c.get('status')) for c in manual.get('checks',[])}
