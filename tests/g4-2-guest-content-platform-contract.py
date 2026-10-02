@@ -35,3 +35,8 @@ print('G4.2 Guest Content Platform contract: PASS')
 
 setup=need('apps/local-web/src/Setup/BrowserSetupService.php',"'gd'",'GD WebP support')
 prereq=need('packaging/prerequisites/setup-ui/Program.cs','php_gd.dll','"gd"')
+
+need('apps/local-web/src/Domain/GuestContent/GuestContentService.php','MAX_MEDIA_PIXELS = 24_000_000','media decoded pixel guard missing')
+need('packaging/prerequisites/setup-ui/Program.cs','upload_max_filesize = 8M','PHP upload limit does not match media contract')
+need('packaging/prerequisites/setup-ui/Program.cs','post_max_size = 10M','PHP POST limit does not support 8 MB media')
+need('packaging/prerequisites/setup-ui/Program.cs','memory_limit = 384M','PHP memory limit does not support media processing contract')
