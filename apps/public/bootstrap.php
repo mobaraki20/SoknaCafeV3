@@ -19,6 +19,8 @@ require_once __DIR__ . '/src/Emergency/EmergencyAccessService.php';
 require_once __DIR__ . '/src/Emergency/PairingSecretStore.php';
 require_once __DIR__ . '/src/Emergency/PublicTakeoverService.php';
 require_once __DIR__ . '/src/Emergency/PublicUpdateService.php';
+require_once __DIR__ . '/src/Setup/PublicInitialPairingService.php';
+require_once __DIR__ . '/src/Setup/PublicSetupService.php';
 require_once __DIR__ . '/src/Connectivity/ConnectivityService.php';
 require_once __DIR__ . '/src/Realtime/RealtimeService.php';
 require_once __DIR__ . '/src/Deferred/DeferredService.php';
