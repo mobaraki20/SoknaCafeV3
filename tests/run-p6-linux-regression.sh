@@ -18,7 +18,19 @@ export SOKNA_TEST_DB_PASS="${SOKNA_TEST_DB_PASS:-sokna}"
 export SOKNA_TEST_DB_ROOT_USER="${SOKNA_TEST_DB_ROOT_USER:-root}"
 export SOKNA_TEST_DB_ROOT_PASS="${SOKNA_TEST_DB_ROOT_PASS:-root}"
 
+reset_local_db(){
+  "$PHP_BIN" -r '
+    $host=(string)getenv("SOKNA_TEST_DB_HOST");$port=(string)getenv("SOKNA_TEST_DB_PORT");$name=(string)getenv("SOKNA_TEST_DB_NAME");
+    $user=(string)getenv("SOKNA_TEST_DB_ROOT_USER");$pass=(string)getenv("SOKNA_TEST_DB_ROOT_PASS");
+    if(preg_match("/^[A-Za-z0-9_]+$/D",$name)!==1){fwrite(STDERR,"Unsafe P6 database name.\n");exit(2);}
+    $pdo=new PDO("mysql:host=".$host.";port=".$port.";charset=utf8mb4",$user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+    $pdo->exec("DROP DATABASE IF EXISTS `".$name."`");
+    $pdo->exec("CREATE DATABASE `".$name."` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+  '
+}
+
 ./tests/run-g4-4-product-qualification.sh
+reset_local_db
 "$PHP_BIN" tests/local-mysql-migration-selftest.php
 "$PHP_BIN" tests/local-m7-runtime-trigger-selftest.php
 "$PHP_BIN" tests/local-m8-printing-selftest.php
