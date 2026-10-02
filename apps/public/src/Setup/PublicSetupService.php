@@ -94,7 +94,7 @@ final class PublicSetupService
             'pdo_mysql' => extension_loaded('pdo_mysql'),
             'sodium' => extension_loaded('sodium'),
             'zip' => class_exists(\ZipArchive::class),
-            'config_writable' => is_writable($this->componentRoot),
+            'config_writable' => is_dir(dirname($this->configPath)) && is_writable(dirname($this->configPath)),
         ];
     }
 
