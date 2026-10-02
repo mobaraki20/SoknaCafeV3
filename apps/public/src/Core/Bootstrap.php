@@ -27,6 +27,7 @@ use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
 use Sokna\PublicEdge\Emergency\EmergencyAccessService;
 use Sokna\PublicEdge\Emergency\PublicUpdateService;
 use Sokna\PublicEdge\Emergency\PairingSecretStore;
+use Sokna\PublicEdge\Emergency\PublicInitialPairingService;
 use Sokna\PublicEdge\Emergency\PublicTakeoverService;
 
 final class Bootstrap
@@ -56,6 +57,7 @@ final class Bootstrap
     private ?EmergencyAccessService $emergencyAccessService = null;
     private ?PublicUpdateService $publicUpdateService = null;
     private ?PairingSecretStore $pairingSecretStore = null;
+    private ?PublicInitialPairingService $publicInitialPairingService = null;
     private ?PublicTakeoverService $publicTakeoverService = null;
 
     private function __construct(private readonly Config $config)
@@ -219,6 +221,16 @@ final class Bootstrap
     public function pairingSecrets(): PairingSecretStore
     {
         return $this->pairingSecretStore ??= new PairingSecretStore($this->database(),$this->config->requiredString('relay.secret_encryption_key_base64'));
+    }
+
+    public function initialPairing(): PublicInitialPairingService
+    {
+        return $this->publicInitialPairingService ??= new PublicInitialPairingService(
+            $this->database(),
+            $this->pairingSecrets(),
+            $this->emergencyAccess(),
+            $this->config->string('relay.initial_pairing_code'),
+        );
     }
 
     public function takeover(): PublicTakeoverService
