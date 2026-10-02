@@ -8,6 +8,7 @@ use Sokna\Local\Core\Config;
 use Sokna\Local\Core\Migrations;
 use Sokna\Local\Core\Observability;
 use Sokna\Local\Domain\Printing\PrintManagementService;
+use Sokna\Local\Domain\Printing\PrintService;
 use Sokna\Local\Setup\BrowserSetupService;
 use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
 use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException;
@@ -97,12 +98,12 @@ final class SystemDiagnosticsService
     private function printStatus(): array
     {
         try{
-            $snap=$this->printing->snapshot();$agents=(array)($snap['agents']??[]);$destinations=(array)($snap['destinations']??[]);$active=0;$stale=0;$backlog=0;
-            foreach($agents as &$a){$a['heartbeat_age_seconds']=$this->age((string)($a['last_heartbeat_at']??''));if((int)($a['active']??0)===1){$active++;if($a['heartbeat_age_seconds']===null||$a['heartbeat_age_seconds']>180)$stale++;}$backlog+=max(0,(int)($a['local_backlog_count']??0));}unset($a);
+            $snap=$this->printing->snapshot();$agents=(array)($snap['agents']??[]);$destinations=(array)($snap['destinations']??[]);$active=0;$stale=0;$backlog=0;$incompatible=0;
+            foreach($agents as &$a){$a['heartbeat_age_seconds']=$this->age((string)($a['last_heartbeat_at']??''));$version=trim((string)($a['agent_version']??''));$a['minimum_supported_version']=PrintService::MINIMUM_AGENT_VERSION;$a['version_compatible']=$version!==''&&version_compare($version,PrintService::MINIMUM_AGENT_VERSION,'>=');if((int)($a['active']??0)===1){$active++;if($a['heartbeat_age_seconds']===null||$a['heartbeat_age_seconds']>180)$stale++;if($version!==''&&!$a['version_compatible'])$incompatible++;}$backlog+=max(0,(int)($a['local_backlog_count']??0));}unset($a);
             $agentIds=[];foreach($agents as $a)if((int)($a['active']??0)===1&&($a['heartbeat_age_seconds']??999999)<=180)$agentIds[(int)$a['id']]=true;
             $requiredUnready=0;foreach($destinations as $d)if((int)($d['active']??0)===1&&(int)($d['required_for_operation']??0)===1&&!isset($agentIds[(int)($d['agent_id']??0)]))$requiredUnready++;
-            return ['status'=>$requiredUnready>0||$stale>0?'attention':'ok','protocol_version'=>4,'active_agents'=>$active,'stale_agents'=>$stale,'required_unready'=>$requiredUnready,'local_backlog_count'=>$backlog,'agents'=>$agents,'destinations'=>$destinations,'recent_jobs'=>(array)($snap['recent_jobs']??[])];
-        }catch(Throwable){return ['status'=>'unavailable','protocol_version'=>4,'active_agents'=>0,'stale_agents'=>0,'required_unready'=>0,'local_backlog_count'=>0,'agents'=>[],'destinations'=>[],'recent_jobs'=>[]];}
+            return ['status'=>$requiredUnready>0||$stale>0||$incompatible>0?'attention':'ok','protocol_version'=>PrintService::PROTOCOL_VERSION,'minimum_agent_version'=>PrintService::MINIMUM_AGENT_VERSION,'recommended_agent_version'=>PrintService::RECOMMENDED_AGENT_VERSION,'active_agents'=>$active,'stale_agents'=>$stale,'incompatible_agents'=>$incompatible,'required_unready'=>$requiredUnready,'local_backlog_count'=>$backlog,'agents'=>$agents,'destinations'=>$destinations,'recent_jobs'=>(array)($snap['recent_jobs']??[])];
+        }catch(Throwable){return ['status'=>'unavailable','protocol_version'=>PrintService::PROTOCOL_VERSION,'minimum_agent_version'=>PrintService::MINIMUM_AGENT_VERSION,'recommended_agent_version'=>PrintService::RECOMMENDED_AGENT_VERSION,'active_agents'=>0,'stale_agents'=>0,'incompatible_agents'=>0,'required_unready'=>0,'local_backlog_count'=>0,'agents'=>[],'destinations'=>[],'recent_jobs'=>[]];}
     }
 
     private function publicStatus(): array
