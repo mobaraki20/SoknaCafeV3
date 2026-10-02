@@ -90,6 +90,7 @@ require_once __DIR__ . '/src/Domain/Integrations/AccommodationService.php';
 require_once __DIR__ . '/src/Runtime/RuntimeTriggerException.php';
 require_once __DIR__ . '/src/Runtime/RuntimeTriggerService.php';
 require_once __DIR__ . '/src/Runtime/RuntimeHealthClient.php';
+require_once __DIR__ . '/src/Runtime/RuntimeEvidence.php';
 require_once __DIR__ . '/src/Domain/Printing/PrintException.php';
 require_once __DIR__ . '/src/Domain/Printing/PrintService.php';
 require_once __DIR__ . '/src/Domain/Printing/PrintTemplatePackageService.php';
