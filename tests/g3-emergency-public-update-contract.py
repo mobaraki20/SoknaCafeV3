@@ -16,6 +16,7 @@ for f in files:
 need('apps/public/public/emergency.php',"require_once $root.'/src/Emergency/PublicUpdateService.php'",'Emergency console is not bootstrap-independent')
 if "require_once $root.'/bootstrap.php'" in text('apps/public/public/emergency.php'): raise SystemExit('FAIL Emergency console depends on normal Public bootstrap')
 for token in ["'public/emergency.php'","'src/Emergency/'","'resources/update-trust-v1.json'"]: need('apps/public/src/Emergency/PublicUpdateService.php',token,'stable emergency path not protected: '+token)
+need('apps/public/src/Emergency/PublicUpdateService.php',"$rel==='install.lock'",'Public updater does not preserve browser setup install.lock')
 need('apps/public/src/Emergency/PublicUpdateService.php',"'component']??'')!=='public-edge'",'Public updater package component boundary missing')
 need('apps/public/src/Emergency/PublicUpdateService.php',"'local_public_contract'",'Public update compatibility contract missing')
 need('apps/public/src/Emergency/PublicTakeoverService.php',"revoked_at=UTC_TIMESTAMP()",'old installation is not atomically revoked')
