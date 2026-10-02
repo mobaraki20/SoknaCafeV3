@@ -227,7 +227,7 @@ final class PublicSetupService
 
     private function quoteIdentifier(string $name): string{$q=chr(96);return $q.str_replace($q,$q.$q,$name).$q;}
     private function defaultStorageDir(): string{return $this->componentRoot.DIRECTORY_SEPARATOR.'storage';}
-    private function lockPath(): string{return $this->componentRoot.DIRECTORY_SEPARATOR.'install.lock';}
+    private function lockPath(): string{return dirname($this->configPath).DIRECTORY_SEPARATOR.'install.lock';}
     private function componentVersion(): string{$p=$this->componentRoot.DIRECTORY_SEPARATOR.'VERSION.txt';return is_file($p)?trim((string)file_get_contents($p)):'unknown';}
     private function pairingCode(): string{return 'PUB-'.implode('-',str_split(strtoupper(bin2hex(random_bytes(24))),8));}
     private function configPhp(array $config): string{return "<?php\ndeclare(strict_types=1);\nreturn ".var_export($config,true).";\n";}
@@ -263,6 +263,6 @@ final class PublicSetupService
     }
 
     private function normalizePath(string $path): string{return rtrim(str_replace(['\\','/'],DIRECTORY_SEPARATOR,$path),DIRECTORY_SEPARATOR);}
-    private function stripPort(string $host): string{$host=trim($host);if(str_starts_with($host,'[')&&str_contains($host,']'))return trim($host,'[]');return preg_replace('/:\d+$/','',$host)??$host;}
+    private function stripPort(string $host): string{$host=trim($host);if(preg_match('/^\[([^\]]+)\](?::\d+)?$/D',$host,$m)===1)return $m[1];return preg_replace('/:\d+$/','',$host)??$host;}
     private function check(string $id,bool $ok,string $label,string $current): array{return compact('id','ok','label','current');}
 }
