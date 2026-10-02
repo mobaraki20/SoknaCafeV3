@@ -37,3 +37,14 @@ jobs:
         run: dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
       - working-directory: windows/print-agent/source
         run: dotnet run --project tests/Sokna.PrintAgent.ContractAcceptance/Sokna.PrintAgent.ContractAcceptance.csproj -c Release -- --case A18 --results "$env:RUNNER_TEMP\sokna-print-contract"
+      - name: Credential repair and restart reconciliation acceptance
+        working-directory: windows/print-agent/source
+        run: |
+          dotnet run --project tests/Sokna.PrintAgent.TransportAcceptance/Sokna.PrintAgent.TransportAcceptance.csproj -c Release -- --case A06 --results "$env:RUNNER_TEMP\sokna-print-a06"
+          dotnet run --project tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case A12 --results "$env:RUNNER_TEMP\sokna-print-a12"
+      - name: Windows submission-fence crash recovery acceptance
+        working-directory: windows/print-agent/source
+        run: |
+          dotnet run --project tests/Sokna.PrintAgent.WindowsFaultAcceptance/Sokna.PrintAgent.WindowsFaultAcceptance.csproj -c Release -- --case A25 --results "$env:RUNNER_TEMP\sokna-print-a25"
+          dotnet run --project tests/Sokna.PrintAgent.WindowsFaultAcceptance/Sokna.PrintAgent.WindowsFaultAcceptance.csproj -c Release -- --case A26 --results "$env:RUNNER_TEMP\sokna-print-a26"
+          dotnet run --project tests/Sokna.PrintAgent.WindowsFaultAcceptance/Sokna.PrintAgent.WindowsFaultAcceptance.csproj -c Release -- --case A27 --results "$env:RUNNER_TEMP\sokna-print-a27"
