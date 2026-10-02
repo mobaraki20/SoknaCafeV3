@@ -36,6 +36,7 @@ reset_local_db
 "$PHP_BIN" tests/local-m8-printing-selftest.php
 "$PHP_BIN" tests/local-m10-release-selftest.php
 "$PHP_BIN" tests/local-g2-support-bundle-pure-selftest.php
+"$PHP_BIN" tests/local-g3-public-reenroll-pure-selftest.php
 python3 apps/local-web/tests/g2-observability-contract.py
 python3 tests/m7-runtime-gate.py
 python3 tests/m8-print-agent-gate.py
