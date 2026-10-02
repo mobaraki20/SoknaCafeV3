@@ -39,6 +39,9 @@ $status=$setup->status();
 gsetup(($status['state']??'')==='fresh'&&($status['installed']??true)===false,'fresh setup state missing');
 $pre=$setup->preflight($storage,true,'public.example.test');
 gsetup(($pre['ok']??false)===true,'preflight did not pass on supported test environment');
+$insecure=$setup->preflight($storage,false,'localhost');
+$httpsChecks=array_values(array_filter((array)($insecure['checks']??[]),static fn(array $x): bool => ($x['id']??'')==='https'));
+gsetup(($insecure['ok']??true)===false&&isset($httpsChecks[0])&&($httpsChecks[0]['ok']??true)===false,'Host header could bypass Public Setup HTTPS requirement');
 
 $input=['host'=>$host,'port'=>$port,'name'=>$db,'user'=>$user,'pass'=>$pass];
 $installed=$setup->installNew(['storage_dir'=>$storage,'db'=>$input,'create_database'=>true],true,'public.example.test');
