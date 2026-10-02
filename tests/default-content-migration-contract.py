@@ -9,6 +9,8 @@ CAT=RES/'catalog.json'
 ICONS=RES/'category-icons.json'
 LOCAL_SPRITE=R/'apps/local-web/public/assets/category-icons.svg'
 PUBLIC_SPRITE=R/'apps/public/assets/category-icons.svg'
+LOCAL_UI_SPRITE=R/'apps/local-web/public/assets/ui-sprite.svg'
+LOCAL_JALALI=R/'apps/local-web/public/assets/jalali-fields.js'
 
 def need(ok: bool, msg: str):
     if not ok:
@@ -77,8 +79,15 @@ for sprite in (LOCAL_SPRITE,PUBLIC_SPRITE):
 need(LOCAL_SPRITE.read_bytes()==PUBLIC_SPRITE.read_bytes(),'Local/Public category sprite bytes differ')
 
 # Only assets actually consumed by V3 are carried forward.
+# Local ui-sprite is now an active product UI dependency: Jalali date/time controls
+# resolve calendar/clock icons from it. Public Edge still must not carry this Local-only asset.
+need(LOCAL_UI_SPRITE.is_file() and LOCAL_UI_SPRITE.stat().st_size>0,'Local UI sprite required by Jalali controls is missing')
+jalali=LOCAL_JALALI.read_text(encoding='utf-8')
+need("assetPath('/assets/ui-sprite.svg')" in jalali,'Jalali controls no longer bind the Local UI sprite')
+ui_ids=set(re.findall(r'<symbol\s+id="icon-([a-z0-9-]+)"',LOCAL_UI_SPRITE.read_text(encoding='utf-8')))
+need({'calendar','clock'} <= ui_ids,'Local UI sprite lacks calendar/clock symbols required by Jalali controls')
 for banned in [
-    R/'apps/local-web/public/assets/ui-sprite.svg', R/'apps/public/assets/ui-sprite.svg',
+    R/'apps/public/assets/ui-sprite.svg',
     R/'apps/local-web/public/assets/staff-192.png', R/'apps/local-web/public/assets/staff-512.png',
     R/'apps/public/assets/staff-192.png', R/'apps/public/assets/staff-512.png',
 ]:
