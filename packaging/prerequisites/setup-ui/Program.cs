@@ -993,6 +993,9 @@ internal sealed class MainForm : Form
 
         var text = File.ReadAllText(ini, Encoding.UTF8);
         text = Regex.Replace(text, @"(?im)^\s*;?\s*extension_dir\s*=.*$", "extension_dir = \"ext\"");
+        text = Regex.Replace(text, @"(?im)^\s*;?\s*upload_max_filesize\s*=.*$", "upload_max_filesize = 8M");
+        text = Regex.Replace(text, @"(?im)^\s*;?\s*post_max_size\s*=.*$", "post_max_size = 10M");
+        text = Regex.Replace(text, @"(?im)^\s*;?\s*memory_limit\s*=.*$", "memory_limit = 384M");
         foreach (var dll in new[] { "php_fileinfo.dll", "php_mbstring.dll", "php_mysqli.dll", "php_pdo_mysql.dll", "php_openssl.dll", "php_sodium.dll", "php_gd.dll" })
         {
             if (!File.Exists(Path.Combine(PhpPath(), "ext", dll))) continue;
