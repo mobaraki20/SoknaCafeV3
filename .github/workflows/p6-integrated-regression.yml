@@ -1,0 +1,51 @@
+name: P6 Integrated Regression
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'windows/**'
+      - 'platform/**'
+      - 'packaging/**'
+      - 'contracts/**'
+      - 'release/**'
+      - 'tests/**'
+      - 'COMPONENTS.json'
+      - 'VERSION.txt'
+      - '.github/workflows/p6-integrated-regression.yml'
+
+permissions: {contents: read}
+
+jobs:
+  linux-integrated:
+    name: Linux / MariaDB cross-component regression
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports: ['3306:3306']
+        options: --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot" --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP DB/ZIP extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+          php -r 'exit(class_exists("ZipArchive") && extension_loaded("sodium") ? 0 : 1);'
+      - name: P6 same-head Linux regression
+        run: ./tests/run-p6-linux-regression.sh
