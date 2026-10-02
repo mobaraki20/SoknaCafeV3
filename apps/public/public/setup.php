@@ -10,19 +10,7 @@ header('Referrer-Policy: no-referrer');
 
 $root = dirname(__DIR__);
 $configPath = $root . '/config.php';
-require_once $root . '/src/Core/Config.php';
-require_once $root . '/src/Core/Database.php';
-require_once $root . '/src/Core/Migrations.php';
-require_once $root . '/src/Core/SafeErrors.php';
-require_once $root . '/src/Core/CanonicalJson.php';
-require_once $root . '/src/Emergency/PublicUpdateException.php';
-require_once $root . '/src/Emergency/EmergencyAccessService.php';
-require_once $root . '/src/Emergency/PairingSecretStore.php';
-require_once $root . '/src/Emergency/PublicTakeoverService.php';
-require_once $root . '/src/Emergency/PublicUpdateService.php';
-require_once $root . '/src/Setup/PublicInitialPairingService.php';
-require_once $root . '/src/Setup/PublicSetupService.php';
-require_once $root . '/src/Core/Bootstrap.php';
+require_once $root . '/bootstrap.php';
 
 $service = new \Sokna\PublicEdge\Setup\PublicSetupService($root, $configPath);
 $preflight = $service->preflight();
