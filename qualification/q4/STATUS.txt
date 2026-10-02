@@ -1,0 +1,2 @@
+Preparing real-environment Q4 push registration qualification.
+Canonical product source remains Library/Workspace checkpoint Q4_CONNECTIVITY_MOBILE_PWA_PUSH.
