@@ -8,7 +8,7 @@ def need(path,*terms):
         if term not in text: fail(f'{path}: missing {term}')
     return text
 mig=need('apps/local-web/database/migrations/0023_g4_guest_content_platform.sql','guest_content_config','guest_media_assets','guest_media_derivatives','guest_media_references','published_revision')
-service=need('apps/local-web/src/Domain/GuestContent/GuestContentService.php','saveThemeDraft','saveCopyDraft','publishDraft','importUpload','assignMediaToItem','garbageCollect','publicMediaForSource','mediaPayloads')
+service=need('apps/local-web/src/Domain/GuestContent/GuestContentService.php','saveThemeDraft','saveCopyDraft','publishDraft','importUpload','assignMediaToItem','garbageCollect','publicMediaForSource','mediaPayloads','gd-center-crop-640-webp84',"'extension'=>'webp'","'width'=>$target","'height'=>$target")
 manager=need('apps/local-web/src/Domain/GuestContent/ThemePackageManager.php','sokna-guest-theme-v1','theme_package_forbidden_file','editable_tokens','fingerprint')
 need('apps/local-web/public/guest-content/index.php','data-theme-form','data-copy-form','data-upload-form','data-media-list','data-item-media')
 need('apps/local-web/public/guest-content/api.php',"theme_save","copy_save","media_assign","media_gc","publish")
@@ -32,3 +32,6 @@ if 'eval(' in manager or 'include ' in manager or 'require ' in manager: fail('T
 if '<style' in renderer or ' style=' in renderer: fail('Guest renderer introduced inline style ownership')
 if "image_path'=>'" not in builder and "'image_path'=>$source" not in builder: fail('Guest publish does not project media source')
 print('G4.2 Guest Content Platform contract: PASS')
+
+setup=need('apps/local-web/src/Setup/BrowserSetupService.php',"'gd'",'GD WebP support')
+prereq=need('packaging/prerequisites/setup-ui/Program.cs','php_gd.dll','"gd"')
