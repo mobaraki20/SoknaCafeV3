@@ -18,11 +18,13 @@ final class RemoteReadModelService
         'reports' => 'reports.read',
         'notifications' => 'notifications.read',
         'deferred_context' => 'deferred.context',
+        'table_draft_context' => 'orders.table_draft',
     ];
 
     public function __construct(
         private readonly PDO $pdo,
         private readonly ConnectivityService $connectivity,
+        private readonly ?StaffPushService $staffPush = null,
     ) {
     }
 
@@ -36,6 +38,7 @@ final class RemoteReadModelService
 
         $synced = 0;
         $unchanged = 0;
+        $notificationPayloads = [];
         $this->pdo->beginTransaction();
         try {
             foreach ($models as $model) {
@@ -90,11 +93,17 @@ final class RemoteReadModelService
                     gmdate('Y-m-d H:i:s', $generatedTs),
                 ]);
                 $synced++;
+                if ($modelKey === 'notifications') $notificationPayloads[] = $payload;
             }
             $this->pdo->commit();
         } catch (Throwable $e) {
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
             throw $e;
+        }
+
+        if ($this->staffPush !== null) {
+            foreach ($notificationPayloads as $payload) $this->staffPush->queueProjectedNotifications($installationId, $payload);
+            if ($notificationPayloads !== []) $this->staffPush->processPending(50, $installationId);
         }
 
         return ['status' => 200, 'body' => ['ok' => true, 'synced' => $synced, 'unchanged' => $unchanged]];
