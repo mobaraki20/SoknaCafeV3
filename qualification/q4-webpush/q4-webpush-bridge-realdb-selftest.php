@@ -6,6 +6,7 @@ use Sokna\Local\Core\Migrations as LocalMigrations;
 use Sokna\Local\Domain\Notifications\NotificationService;
 use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
 use Sokna\PublicEdge\Core\Migrations as PublicMigrations;
+use Sokna\PublicEdge\Http\PublicPath;
 use Sokna\PublicEdge\Push\PushKeyStore;
 use Sokna\PublicEdge\Push\WebPushService;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
@@ -21,7 +22,7 @@ foreach([
  $local.'/src/Core/Config.php',$local.'/src/Core/Migrations.php',
  $local.'/src/Domain/PublicEdge/PublicEdgeSyncException.php',$local.'/src/Domain/PublicEdge/PublicEdgeSyncClient.php',
  $local.'/src/Domain/Notifications/NotificationException.php',$local.'/src/Domain/Notifications/NotificationService.php',
- $public.'/src/Core/Migrations.php',$public.'/src/Security/SignedLocalRequestVerifier.php',
+ $public.'/src/Core/Migrations.php',$public.'/src/Http/PublicPath.php',$public.'/src/Security/SignedLocalRequestVerifier.php',
  $public.'/src/Push/PushKeyStore.php',$public.'/src/Push/WebPushService.php',
 ] as $f) require_once $f;
 function ev(string $k,string $d=''): string {$v=getenv($k);return $v===false?$d:$v;}
@@ -36,7 +37,7 @@ try{
  $verifier=new SignedLocalRequestVerifier($pp,[$installation=>$secret],300,'');
  $keys=new PushKeyStore($tmp);$httpStatus=201;$sent=[];
  $webpush=new WebPushService($keys,'https://public.example.test',function(string $endpoint,array $headers,string $body)use(&$httpStatus,&$sent){$sent[]=['endpoint'=>$endpoint,'headers'=>$headers,'body'=>$body,'status'=>$httpStatus];return ['status'=>$httpStatus,'body'=>''];});
- $transport=function(string $url,string $method,array $headers,string $body)use($verifier,$webpush){$path=(string)parse_url($url,PHP_URL_PATH);$v=$verifier->verify((string)($headers['X-Sokna-Installation']??''),$method,$path,(string)($headers['X-Sokna-Timestamp']??''),(string)($headers['X-Sokna-Nonce']??''),$body,(string)($headers['X-Sokna-Signature']??''));if(($v['ok']??false)!==true)return ['status'=>(int)$v['status'],'body'=>json_encode(['ok'=>false,'error'=>$v['error']])];if($path==='/api/v1/local/push/config')return ['status'=>200,'body'=>json_encode(['ok'=>true,'push'=>$webpush->publicConfig()])];if($path==='/api/v1/local/push/deliver'){$p=json_decode($body,true);$r=$webpush->deliver((array)($p['notification']??[]),(array)($p['subscriptions']??[]),(string)($p['idempotency_key']??''));return ['status'=>200,'body'=>json_encode($r)];}return ['status'=>404,'body'=>json_encode(['ok'=>false,'error'=>'not_found'])];};
+ $transport=function(string $url,string $method,array $headers,string $body)use($verifier,$webpush){$externalPath=(string)parse_url($url,PHP_URL_PATH);$path=PublicPath::strip('/public',$externalPath);if($path==='')return ['status'=>404,'body'=>json_encode(['ok'=>false,'error'=>'route_not_found'])];$v=$verifier->verify((string)($headers['X-Sokna-Installation']??''),$method,$path,(string)($headers['X-Sokna-Timestamp']??''),(string)($headers['X-Sokna-Nonce']??''),$body,(string)($headers['X-Sokna-Signature']??''));if(($v['ok']??false)!==true)return ['status'=>(int)$v['status'],'body'=>json_encode(['ok'=>false,'error'=>$v['error']])];if($path==='/api/v1/local/push/config')return ['status'=>200,'body'=>json_encode(['ok'=>true,'push'=>$webpush->publicConfig()])];if($path==='/api/v1/local/push/deliver'){$p=json_decode($body,true);$r=$webpush->deliver((array)($p['notification']??[]),(array)($p['subscriptions']??[]),(string)($p['idempotency_key']??''));return ['status'=>200,'body'=>json_encode($r)];}return ['status'=>404,'body'=>json_encode(['ok'=>false,'error'=>'not_found'])];};
  $cfg=LocalConfig::fromArray(['installation'=>['id'=>$installation],'public'=>['base_url'=>'https://public.example.test/public','shared_secret'=>$secret]]);$client=new PublicEdgeSyncClient($cfg,$transport);$notifications=new NotificationService($lp,$client);$user=['id'=>$uid,'role'=>'operator'];
  $pushCfg=$notifications->remotePushConfig();ck(($pushCfg['bridge_configured']??false)===true&&strlen((string)$pushCfg['vapid_public_key'])>80,'Local reads VAPID public key through signed Public channel');
  ck((int)$pp->query('SELECT COUNT(*) FROM request_nonces')->fetchColumn()===1,'Public HMAC verifier persists anti-replay nonce');
