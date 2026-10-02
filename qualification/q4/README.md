@@ -1,0 +1,1 @@
+Q4 temporary qualification branch. Canonical Local/Public release sources remain workspace/Library-first; this branch exists only to run real-environment qualification for the Q4 push registration path against repository CI. Do not use as product source-of-truth.
