@@ -39,6 +39,21 @@ final class PublicEdgeSyncClient
         if(is_callable($this->transport)){$r=($this->transport)($base.'/health','GET',['Accept'=>'application/json'],'');return $this->normalizeResponse($r);}
         $ctx=stream_context_create(['http'=>['method'=>'GET','header'=>"Accept: application/json\r\n",'timeout'=>5,'ignore_errors'=>true],'ssl'=>['verify_peer'=>true,'verify_peer_name'=>true]]);$raw=@file_get_contents($base.'/health',false,$ctx);$status=0;foreach((array)($http_response_header??[]) as $line)if(preg_match('#^HTTP/\S+\s+(\d{3})#',$line,$m)){$status=(int)$m[1];break;}if($raw===false&&$status===0)throw new PublicEdgeSyncException('public_unreachable','ارتباط با Public Edge برقرار نشد.',503);return $this->normalizeResponse(['status'=>$status,'body'=>(string)$raw]);
     }
+    public function initialPair(string $baseUrl,string $code,string $newSecret,string $displayName=''): array
+    {
+        $base=$this->normalizeBase($baseUrl);if($base==='')throw new PublicEdgeSyncException('public_url_invalid','نشانی Public معتبر نیست.',422);
+        $installationId=$this->installationId();if($installationId==='')throw new PublicEdgeSyncException('installation_id_missing','شناسه نصب Local موجود نیست.',500);
+        $code=trim($code);if($code==='')throw new PublicEdgeSyncException('pairing_code_required','کد اتصال وب عمومی لازم است.',422);
+        if(strlen($newSecret)<32)throw new PublicEdgeSyncException('shared_secret_weak','Secret اتصال وب عمومی معتبر نیست.',500);
+        $payload=['installation_id'=>$installationId,'pairing_code'=>$code,'new_shared_secret'=>$newSecret,'display_name'=>$displayName];
+        $body=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+        if(is_callable($this->transport)){$r=($this->transport)($base.'/api/v1/pairing/initial','POST',['Content-Type'=>'application/json','Accept'=>'application/json'],$body);return $this->normalizeResponse($r);}
+        $ctx=stream_context_create(['http'=>['method'=>'POST','header'=>"Content-Type: application/json\r\nAccept: application/json\r\n",'content'=>$body,'timeout'=>10,'ignore_errors'=>true],'ssl'=>['verify_peer'=>true,'verify_peer_name'=>true]]);
+        $raw=@file_get_contents($base.'/api/v1/pairing/initial',false,$ctx);$status=0;foreach((array)($http_response_header??[]) as $line)if(preg_match('#^HTTP/\S+\s+(\d{3})#',$line,$m)){$status=(int)$m[1];break;}
+        if($raw===false&&$status===0)throw new PublicEdgeSyncException('public_unreachable','ارتباط با Public Edge برقرار نشد.',503);
+        return $this->normalizeResponse(['status'=>$status,'body'=>(string)$raw]);
+    }
+
     public function reenroll(string $baseUrl,string $code,string $newSecret,string $displayName=''): array
     {
         $base=$this->normalizeBase($baseUrl);if($base==='')throw new PublicEdgeSyncException('public_url_invalid','نشانی Public معتبر نیست.',422);$payload=['new_installation_id'=>$this->installationId(),'enrollment_code'=>$code,'new_shared_secret'=>$newSecret,'display_name'=>$displayName];$body=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
