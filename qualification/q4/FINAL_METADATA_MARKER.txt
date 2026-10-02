@@ -1,0 +1,1 @@
+This branch is qualification-only. No release source should be taken from it.
