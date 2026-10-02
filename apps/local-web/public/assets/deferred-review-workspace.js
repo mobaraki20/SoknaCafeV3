@@ -3,6 +3,7 @@
 const root=document.querySelector('[data-operations-workspace]');
 const body=document.querySelector('[data-deferred-reviews]');
 if(!root||!body||root.dataset.admin!=='1')return;
+const L=window.SoknaLocale||{humanDigits:v=>String(v??'').replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[Number(d)]),dateTime:v=>String(v??'')};
 const api=root.dataset.api;
 const csrf=root.dataset.csrf;
 const status=document.querySelector('[data-status]');
@@ -41,7 +42,7 @@ function renderReviews(rows){
   if(!rows.length){
     const row=document.createElement('tr');
     const td=document.createElement('td');
-    td.colSpan=6;
+    td.colSpan=5;
     td.textContent='موردی برای بررسی وجود ندارد.';
     row.append(td);
     body.append(row);
@@ -49,10 +50,9 @@ function renderReviews(rows){
   }
   for(const review of rows){
     const row=document.createElement('tr');
-    cell(row,'زمان',review.created_at);
-    cell(row,'نوع',review.kind);
+    cell(row,'زمان',L.dateTime(review.created_at));
+    cell(row,'نوع','عملیات نیازمند بررسی');
     cell(row,'کاربر',review.actor_name||'—');
-    cell(row,'علت',review.reason_code);
     cell(row,'پیام',review.message||'—');
     const actionsCell=document.createElement('td');
     actionsCell.dataset.label='عملیات';
@@ -68,11 +68,11 @@ function renderReviews(rows){
   }
 }
 async function resolveReview(review,decision){
-  const title=decision==='approve'?'دلیل تأیید را ثبت کن:':'دلیل رد را ثبت کن:';
-  const reason=window.prompt(title,'بررسی مدیر');
+  const title=decision==='approve'?'تأیید مورد':'رد مورد';
+  const reason=await SoknaUI.prompt(title,{label:'دلیل تصمیم',value:'بررسی مدیر'});
   if(!reason)return;
   try{
-    setStatus('در حال ثبت تصمیم Deferred…');
+    setStatus('در حال ثبت تصمیم…');
     await jsonRequest(api,{
       method:'POST',
       headers:{'Accept':'application/json','Content-Type':'application/json','X-CSRF-Token':csrf},
@@ -86,7 +86,7 @@ async function resolveReview(review,decision){
       })
     });
     await loadReviews();
-    setStatus('مورد Deferred تعیین تکلیف شد و برای reconcile آماده است.');
+    setStatus('تصمیم ثبت شد.');
   }catch(error){
     setStatus(error.message,true);
   }
