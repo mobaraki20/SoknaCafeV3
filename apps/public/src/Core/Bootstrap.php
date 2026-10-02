@@ -23,6 +23,7 @@ use Sokna\PublicEdge\Realtime\RealtimeService;
 use Sokna\PublicEdge\Remote\RemoteReadModelService;
 use Sokna\PublicEdge\Remote\InstallationProjectionService;
 use Sokna\PublicEdge\Remote\RemoteStaffPageRenderer;
+use Sokna\PublicEdge\Remote\StaffPushService;
 use Sokna\PublicEdge\Security\SignedLocalRequestVerifier;
 use Sokna\PublicEdge\Emergency\EmergencyAccessService;
 use Sokna\PublicEdge\Emergency\PublicUpdateService;
@@ -54,6 +55,7 @@ final class Bootstrap
     private ?RemoteReadModelService $remoteReadModelService = null;
     private ?InstallationProjectionService $installationProjectionService = null;
     private ?RemoteStaffPageRenderer $remoteStaffPageRenderer = null;
+    private ?StaffPushService $staffPushService = null;
     private ?EmergencyAccessService $emergencyAccessService = null;
     private ?PublicUpdateService $publicUpdateService = null;
     private ?PairingSecretStore $pairingSecretStore = null;
@@ -200,7 +202,13 @@ final class Bootstrap
         return $this->remoteReadModelService ??= new RemoteReadModelService(
             $this->database(),
             $this->connectivity(),
+            $this->staffPush(),
         );
+    }
+
+    public function staffPush(): StaffPushService
+    {
+        return $this->staffPushService ??= new StaffPushService($this->database(), $this->config);
     }
 
     public function installationProjection(): InstallationProjectionService
@@ -245,6 +253,6 @@ final class Bootstrap
 
     public function remoteStaffRenderer(): RemoteStaffPageRenderer
     {
-        return $this->remoteStaffPageRenderer ??= new RemoteStaffPageRenderer();
+        return $this->remoteStaffPageRenderer ??= new RemoteStaffPageRenderer($this->config->string('app.base_path'));
     }
 }
