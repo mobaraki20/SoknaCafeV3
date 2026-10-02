@@ -1,0 +1,73 @@
+name: Final UAT Prerequisites Package
+
+on:
+  pull_request:
+    branches:
+      - work/q3-p6-integrated-regression-20261002
+    paths:
+      - '.github/workflows/final-uat-prerequisites.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-prerequisites:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout frozen P6 source
+        uses: actions/checkout@v4
+        with:
+          ref: 054c0913d6e55108952bd80b5902434adc82b192
+          fetch-depth: 1
+
+      - name: Verify frozen source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $head=(git rev-parse HEAD).Trim()
+          if($head-ne'054c0913d6e55108952bd80b5902434adc82b192'){throw "Unexpected source HEAD: $head"}
+          python tests/g7-infrastructure-prerequisites-gate.py
+          if($LASTEXITCODE-ne0){throw 'G7 prerequisites gate failed.'}
+
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+
+      - name: Ensure Inno Setup 6
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build exact frozen prerequisites installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-final-uat-prerequisites'
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $root -OutputRoot $out
+          if($LASTEXITCODE-ne0){throw 'Prerequisites installer build failed.'}
+          $indexPath=Join-Path $out 'installer\artifact-index.json'
+          $index=Get-Content $indexPath -Raw|ConvertFrom-Json
+          $exe=Join-Path $out ('installer\'+[string]$index.file)
+          if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Prerequisites installer missing.'}
+          $sha=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha-ne[string]$index.sha256){throw 'Prerequisites installer SHA256 mismatch.'}
+          [ordered]@{
+            format='sokna-final-uat-prerequisites-handoff-v1'
+            schema_version=1
+            source_commit='054c0913d6e55108952bd80b5902434adc82b192'
+            version=[string]$index.version
+            file=[string]$index.file
+            sha256=$sha
+            size_bytes=(Get-Item -LiteralPath $exe).Length
+          }|ConvertTo-Json|Set-Content (Join-Path $out 'installer\uat-prerequisites-index.json') -Encoding UTF8
+
+      - name: Upload final UAT prerequisites package
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-final-uat-prerequisites-054c0913d6e55108952bd80b5902434adc82b192
+          path: |
+            ${{ runner.temp }}/sokna-final-uat-prerequisites/installer/SOKNA-Prerequisites-Setup-*.exe
+            ${{ runner.temp }}/sokna-final-uat-prerequisites/installer/artifact-index.json
+            ${{ runner.temp }}/sokna-final-uat-prerequisites/installer/uat-prerequisites-index.json
+          if-no-files-found: error
+          retention-days: 30
