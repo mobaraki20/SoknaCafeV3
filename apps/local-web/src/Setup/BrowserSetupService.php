@@ -57,9 +57,11 @@ final class BrowserSetupService
     {
         $checks = [];
         $checks[] = $this->check('php_version', version_compare(PHP_VERSION, '8.2.0', '>='), 'PHP 8.2+', PHP_VERSION);
-        foreach (['pdo','pdo_mysql','json','mbstring','sodium','zlib','zip','session'] as $ext) {
+        foreach (['pdo','pdo_mysql','json','mbstring','sodium','zlib','zip','session','gd'] as $ext) {
             $checks[] = $this->check('ext_'.$ext, extension_loaded($ext), 'PHP extension '.$ext, extension_loaded($ext) ? 'available' : 'missing');
         }
+        $webpOk = extension_loaded('gd') && function_exists('imagewebp') && function_exists('imagecreatefromwebp');
+        $checks[] = $this->check('gd_webp', $webpOk, 'GD WebP support', $webpOk ? 'available' : 'missing');
         $migrationDir = $this->localWebRoot . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'migrations';
         $checks[] = $this->check('migrations_readable', is_dir($migrationDir) && is_readable($migrationDir), 'Migration catalog', (is_dir($migrationDir) && is_readable($migrationDir)) ? 'available' : 'missing');
         $packageWritable=is_dir($this->packageRoot) && is_writable($this->packageRoot);$checks[] = $this->check('package_root_writable', $packageWritable, 'Package root writable', $packageWritable ? 'writable' : 'not_writable');

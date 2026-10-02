@@ -4,6 +4,8 @@ declare(strict_types=1);
 use Sokna\PublicEdge\Core\Bootstrap;
 
 require_once __DIR__ . '/src/Core/Config.php';
+require_once __DIR__ . '/src/Setup/SetupException.php';
+require_once __DIR__ . '/src/Setup/PublicSetupService.php';
 require_once __DIR__ . '/src/Core/Database.php';
 require_once __DIR__ . '/src/Core/Migrations.php';
 require_once __DIR__ . '/src/Core/SafeErrors.php';

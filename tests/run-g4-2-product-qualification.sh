@@ -17,6 +17,7 @@ python3 tests/default-content-migration-contract.py
 "$PHP_BIN" -r 'exit(in_array("mysql", PDO::getAvailableDrivers(), true) ? 0 : 1);' || fail_env "G4.2 qualification requires pdo_mysql."
 "$PHP_BIN" -r 'exit(extension_loaded("fileinfo") ? 0 : 1);' || fail_env "G4.2 qualification requires fileinfo."
 "$PHP_BIN" -r 'exit(extension_loaded("sodium") ? 0 : 1);' || fail_env "G4.2 qualification requires sodium."
+"$PHP_BIN" -r 'exit(extension_loaded("gd") && function_exists("imagewebp") ? 0 : 1);' || fail_env "G4.2 qualification requires GD WebP."
 export SOKNA_TEST_DB_HOST="$DB_HOST" SOKNA_TEST_DB_PORT="$DB_PORT" SOKNA_TEST_DB_NAME="$DB_NAME" SOKNA_TEST_DB_USER="$DB_USER" SOKNA_TEST_DB_PASS="$DB_PASS" SOKNA_TEST_DB_ROOT_USER="$ROOT_USER" SOKNA_TEST_DB_ROOT_PASS="$ROOT_PASS"
 server="$($PHP_BIN -r '$p=new PDO("mysql:host=".getenv("SOKNA_TEST_DB_HOST").";port=".getenv("SOKNA_TEST_DB_PORT").";charset=utf8mb4",getenv("SOKNA_TEST_DB_ROOT_USER"),getenv("SOKNA_TEST_DB_ROOT_PASS"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);echo $p->query("SELECT VERSION()")->fetchColumn();')"
 echo "MariaDB server: $server"

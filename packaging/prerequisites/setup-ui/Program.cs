@@ -977,7 +977,7 @@ internal sealed class MainForm : Form
         var loaded = modules.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Select(x => x.Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return new[] { "pdo_mysql", "fileinfo", "openssl", "sodium", "mbstring" }.All(loaded.Contains);
+        return new[] { "pdo_mysql", "fileinfo", "openssl", "sodium", "mbstring", "gd" }.All(loaded.Contains);
     }
 
     private void ConfigurePhp()
@@ -993,7 +993,10 @@ internal sealed class MainForm : Form
 
         var text = File.ReadAllText(ini, Encoding.UTF8);
         text = Regex.Replace(text, @"(?im)^\s*;?\s*extension_dir\s*=.*$", "extension_dir = \"ext\"");
-        foreach (var dll in new[] { "php_fileinfo.dll", "php_mbstring.dll", "php_mysqli.dll", "php_pdo_mysql.dll", "php_openssl.dll", "php_sodium.dll" })
+        text = Regex.Replace(text, @"(?im)^\s*;?\s*upload_max_filesize\s*=.*$", "upload_max_filesize = 8M");
+        text = Regex.Replace(text, @"(?im)^\s*;?\s*post_max_size\s*=.*$", "post_max_size = 10M");
+        text = Regex.Replace(text, @"(?im)^\s*;?\s*memory_limit\s*=.*$", "memory_limit = 384M");
+        foreach (var dll in new[] { "php_fileinfo.dll", "php_mbstring.dll", "php_mysqli.dll", "php_pdo_mysql.dll", "php_openssl.dll", "php_sodium.dll", "php_gd.dll" })
         {
             if (!File.Exists(Path.Combine(PhpPath(), "ext", dll))) continue;
             var rx = new Regex(@"(?im)^\s*;?\s*extension\s*=\s*" + Regex.Escape(dll) + @"\s*$");
@@ -1267,7 +1270,7 @@ DirectoryIndex index.php index.html
 
         var php = RunProcess(Path.Combine(PhpPath(), "php.exe"), "-m", "-m");
         if (php.ExitCode != 0) throw new InvalidOperationException("PHP health check ناموفق بود.");
-        foreach (var ext in new[] { "pdo_mysql", "fileinfo", "openssl", "sodium", "mbstring" })
+        foreach (var ext in new[] { "pdo_mysql", "fileinfo", "openssl", "sodium", "mbstring", "gd" })
             if (!php.Output.Split('\n').Any(x => string.Equals(x.Trim(), ext, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException($"PHP extension آماده نیست: {ext}");
 

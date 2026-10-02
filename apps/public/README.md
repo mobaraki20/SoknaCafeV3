@@ -45,9 +45,12 @@ The hosting document root is **`apps/public/public/`**. The rest of the componen
 
 Deployment flow:
 
-1. Upload the complete `apps/public` component to the hosting account.
-2. Copy `config.example.php` to `config.php` and set the MariaDB credentials, the paired `default_installation_id`, storage path and Local pairing secret.
-3. Point the site document root to `apps/public/public/` and enable normal front-controller rewriting (`.htaccess` is included for Apache-compatible shared hosting).
+1. Upload/extract the complete Public deploy package on the hosting account.
+2. Point the site document root to the package `public/` directory. `.htaccess` is included for Apache-compatible shared hosting.
+3. Open the Public site in a browser. When `config.php` is absent, normal page requests redirect to `/setup/`.
+4. The Browser Setup performs PHP/storage preflight, tests the database credentials, optionally creates the database when the hosting account permits it, writes `config.php` atomically, runs the complete migration catalog, validates final health and writes `install.lock`.
+5. Setup generates the one-time Public pairing code. Enter the shown Public URL + pairing code in Local Web → System Status → Public connection. No manual migration, default installation ID, encryption key or shared secret editing is required.
+6. Public Setup requires HTTPS. If HTTPS is terminated by a trusted reverse proxy and PHP does not see HTTPS directly, set `SOKNA_PUBLIC_TRUST_PROXY_HEADERS=1`; forwarded protocol headers are ignored by default. `config.php`, storage and `install.lock` remain outside the document root.
 4. Run the Public migration lifecycle through the deployment/maintenance path before accepting traffic.
 5. Verify `GET /health`, then `GET /menu`; table QR URLs use `/menu?table=<opaque-table-token>` and may include `installation=<id>` only when a host intentionally serves multiple paired installations.
 

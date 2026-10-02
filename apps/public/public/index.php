@@ -12,6 +12,16 @@ $configPath = trim((string)(getenv('SOKNA_PUBLIC_CONFIG') ?: ($componentRoot . '
 
 try {
     if (!is_file($configPath) || !is_readable($configPath)) {
+        $method=strtoupper((string)($_SERVER['REQUEST_METHOD']??'GET'));
+        $requestPath=(string)(parse_url((string)($_SERVER['REQUEST_URI']??'/'),PHP_URL_PATH)?:'/');
+        $isPageRequest=in_array($method,['GET','HEAD'],true)
+            && !str_starts_with($requestPath,'/api/')
+            && $requestPath!=='/health';
+        if($isPageRequest){
+            header('Cache-Control: no-store, max-age=0');
+            header('Location: /setup/',true,302);
+            exit;
+        }
         $result = SafeErrors::response(503, 'public_not_configured');
     } else {
         $config = require $configPath;

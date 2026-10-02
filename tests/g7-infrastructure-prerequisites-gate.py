@@ -37,7 +37,7 @@ for token in [
     'DownloadArtifactResumableAsync(','ContentLength','FormatSpeed(','FormatEta(',
     'WaitAsync(TimeSpan.FromSeconds(20)','CancelAfter(TimeSpan.FromSeconds(7))',
     'EnsureApachePortAvailableWithFallback()','CanBindLoopback(','DescribePortConflict(',
-    'ServerName 127.0.0.1:{ApachePort()}','LocalWebUrl()','apache_document_root','base_url = LocalWebUrl()'
+    'ServerName 127.0.0.1:{ApachePort()}','LocalWebUrl()','apache_document_root','base_url = LocalWebUrl()','php_gd.dll','"gd"'
 ]:
     need(token in src,f'missing implementation guard: {token}')
 need('password=<redacted>' in src,'MariaDB root password is not redacted in command log')

@@ -11,7 +11,7 @@ return [
         'pass' => 'CHANGE_ME',
     ],
     'app' => [
-        'default_installation_id' => 'CHANGE_ME_INSTALLATION_ID',
+        'default_installation_id' => '', // Browser Setup leaves this empty; active paired installation is resolved from DB.
         'cookie_secure' => true,
         // Keep storage outside the public document root whenever hosting permits.
         'storage_dir' => __DIR__ . '/storage',
@@ -20,7 +20,7 @@ return [
         // installation_id => shared HMAC secret provisioned by the Local pairing flow.
         'installation_secrets' => [],
         // One-time bootstrap code used only before the first active Local installation is paired.
-        // Use a random value of at least 16 characters, transmit it only over HTTPS, then rotate/remove it after pairing.
+        // Browser Setup generates this one-time pairing code. It is accepted only before the first active installation is paired.
         'initial_pairing_code' => 'CHANGE_ME_ONE_TIME_PAIRING_CODE',
         'clock_skew_seconds' => 300,
         // 32 random bytes, base64-encoded. Used only to encrypt DB-stored re-enrollment pairing secrets.

@@ -29,7 +29,7 @@ final class PublicHttpKernel
                 return $this->response(302, '', ['Location' => '/menu' . $suffix, 'Cache-Control' => 'no-store', 'Content-Type' => 'text/plain; charset=utf-8']);
             }
             if ($method === 'GET' && $path === '/robots.txt') {
-                return $this->response(200, "User-agent: *\nDisallow: /api/\nDisallow: /emergency/\n", ['Content-Type' => 'text/plain; charset=utf-8', 'Cache-Control' => 'public, max-age=3600']);
+                return $this->response(200, "User-agent: *\nDisallow: /api/\nDisallow: /emergency/\nDisallow: /setup/\n", ['Content-Type' => 'text/plain; charset=utf-8', 'Cache-Control' => 'public, max-age=3600']);
             }
             if ($method === 'GET' && $path === '/health') {
                 $result = (new HealthHttpAdapter($this->core))->status($this->correlationId($headers));
@@ -92,7 +92,7 @@ final class PublicHttpKernel
             if ($method === 'POST' && $path === '/staff/login') {
                 $form=$this->formPayload($rawBody,$headers);
                 $installationId=trim((string)($form['installation_id']??''));
-                if($installationId==='')$installationId=trim($this->core->config()->string('app.default_installation_id'));
+                if($installationId==='')$installationId=$this->core->defaultInstallationId();
                 $result=$this->core->loginService()->login($installationId,(string)($form['username']??''),(string)($form['password']??''),$this->header($headers,'X-Forwarded-For')?:$this->header($headers,'X-Real-IP'),$this->correlationId($headers)??'');
                 if(($result['ok']??false)!==true){
                     $msg=($result['error']??'')==='too_many_attempts'?'تلاش‌های ورود بیش از حد بوده؛ کمی بعد دوباره امتحان کنید.':'نام کاربری یا رمز عبور درست نیست.';
@@ -194,7 +194,7 @@ final class PublicHttpKernel
     {
         $payload = json_decode($rawBody, true);
         $installationId = is_array($payload) ? trim((string)($payload['installation_id'] ?? '')) : '';
-        if ($installationId === '') $installationId = trim($this->core->config()->string('app.default_installation_id'));
+        if ($installationId === '') $installationId = $this->core->defaultInstallationId();
         if ($installationId === '' || preg_match('/^[A-Za-z0-9._:-]{1,96}$/D', $installationId) !== 1) {
             return $this->json(SafeErrors::response(400, 'invalid_installation', $this->correlationId($headers)));
         }
@@ -216,7 +216,7 @@ final class PublicHttpKernel
     private function installationId(array $query): string
     {
         $candidate = trim((string)($query['installation'] ?? ''));
-        if ($candidate === '') $candidate = trim($this->core->config()->string('app.default_installation_id'));
+        if ($candidate === '') $candidate = $this->core->defaultInstallationId();
         if ($candidate === '' || preg_match('/^[A-Za-z0-9._:-]{1,96}$/D', $candidate) !== 1) return '';
         return $candidate;
     }

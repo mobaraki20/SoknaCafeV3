@@ -36,6 +36,7 @@ PUBLIC_DB_TESTS=(
 for t in "${PUBLIC_DB_TESTS[@]}"; do echo "==> $t"; reset_db; "$PHP_BIN" "$t"; done
 
 echo '==> G3.1 deploy/guest real DB'; reset_db; "$PHP_BIN" tests/public-g3-deploy-selftest.php
+echo '==> G3.1 browser setup clean install/pairing'; reset_db; "$PHP_BIN" tests/public-g3-browser-setup-selftest.php
 echo '==> G3.2 remote staff/publisher real DB'; reset_db; "$PHP_BIN" tests/g3-remote-staff-publisher-selftest.php
 echo '==> G3.3 emergency/update/takeover real DB'; reset_db; "$PHP_BIN" tests/public-g3-emergency-update-takeover-selftest.php
 

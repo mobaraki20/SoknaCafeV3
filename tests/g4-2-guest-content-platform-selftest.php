@@ -109,15 +109,26 @@ try {
 }
 g42($markupRejected, 'Guest copy accepted markup');
 
-$png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true);
-g42(is_string($png), 'PNG fixture decode failed');
+if (!extension_loaded('gd') || !function_exists('imagewebp')) throw new RuntimeException('G4.2 requires GD WebP support');
+$fixture = imagecreatetruecolor(900, 600);
+$bg = imagecolorallocate($fixture, 245, 240, 230);
+$accent = imagecolorallocate($fixture, 120, 70, 40);
+imagefilledrectangle($fixture, 0, 0, 899, 599, $bg);
+imagefilledellipse($fixture, 450, 300, 280, 280, $accent);
 $uploadPath = $data . '/g42.png';
-file_put_contents($uploadPath, $png);
+imagepng($fixture, $uploadPath, 6);
+imagedestroy($fixture);
 $imported = $content->importUpload($uploadPath, 'g42.png', 'تصویر لاته G42', $admin);
 $mediaKey = (string)($imported['media_key'] ?? '');
 g42($mediaKey !== '', 'Media import did not return a media key');
 $dedupe = $content->importUpload($uploadPath, 'same.png', 'نسخه تکراری', $admin);
 g42(($dedupe['deduplicated'] ?? false) === true && ($dedupe['media_key'] ?? '') === $mediaKey, 'Media content-addressed deduplication failed');
+$derivative = $lp->query("SELECT mime,extension,width_px,height_px,processor,byte_size FROM guest_media_derivatives WHERE variant_key='guest-card' AND media_id=(SELECT id FROM guest_media_assets WHERE media_key=".$lp->quote($mediaKey).")")->fetch(PDO::FETCH_ASSOC);
+g42(is_array($derivative), 'Standard guest-card derivative missing');
+g42(($derivative['mime'] ?? '') === 'image/webp' && ($derivative['extension'] ?? '') === 'webp', 'Guest-card derivative is not WebP');
+g42((int)($derivative['width_px'] ?? 0) === 640 && (int)($derivative['height_px'] ?? 0) === 640, 'Guest-card derivative is not 640x640');
+g42(($derivative['processor'] ?? '') === 'gd-center-crop-640-webp84', 'Guest-card processor contract mismatch');
+
 $content->assignMediaToItem($itemId, $mediaKey, $admin);
 $imagePath = (string)$lp->query("SELECT image_path FROM items WHERE id={$itemId}")->fetchColumn();
 g42($imagePath === 'media:' . $mediaKey, 'Media reference was not attached to item');
@@ -165,7 +176,7 @@ $meta = array_values($manifest)[0];
 g42((string)($meta['alt_text'] ?? '') === 'تصویر لاته G42', 'Published media alt text missing');
 $sha = (string)($meta['sha256'] ?? '');
 $ext = (string)($meta['extension'] ?? '');
-g42($sha !== '' && $ext === 'png', 'Published media metadata invalid');
+g42($sha !== '' && $ext === 'webp', 'Published media metadata is not standardized WebP');
 
 $mediaResponse = $kernel->handle('GET', "/media/{$installation}/{$sha}.{$ext}");
 g42((int)$mediaResponse['status'] === 200 && is_file((string)($mediaResponse['file_path'] ?? '')), 'Public media replica is not readable');
