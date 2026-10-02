@@ -41,4 +41,16 @@ for cid,version in owned.items():
     if str(components.get(cid,{}).get('current_version',''))!=version: fail(f'{cid} COMPONENTS version drift')
     if str(compat.get(cid,{}).get('version',''))!=version: fail(f'{cid} compatibility version drift')
 
+# Core Bootstrap imports must be reachable from the explicit no-autoloader entry bootstrap.
+core_boot=(R/'apps/local-web/src/Core/Bootstrap.php').read_text(encoding='utf-8')
+entry=(R/'apps/local-web/bootstrap.php').read_text(encoding='utf-8')
+uses=re.findall(r'^use\\s+(Sokna\\\\Local\\\\[^;]+);',core_boot,re.M)
+required=set(re.findall(r"require_once __DIR__ \\. '/src/([^']+)\\.php';",entry))
+missing=[]
+for fqcn in uses:
+    rel=fqcn.replace('Sokna\\\\Local\\\\','').replace('\\\\','/')
+    if (R/'apps/local-web/src'/f'{rel}.php').is_file() and rel not in required:
+        missing.append(rel)
+if missing: fail('entry bootstrap missing Core Bootstrap dependencies: '+','.join(sorted(missing)))
+
 print('PASS P6 integrated regression contract')
