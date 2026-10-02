@@ -2,6 +2,8 @@ name: G6 Final Product Qualification
 
 on:
   workflow_dispatch:
+  push:
+    branches: ['work/q3-p6-integrated-qualification-*']
   pull_request:
     branches: [ main ]
 
