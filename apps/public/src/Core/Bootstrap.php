@@ -79,6 +79,18 @@ final class Bootstrap
         return $this->database ??= Database::connect($this->config);
     }
 
+    public function defaultInstallationId(): string
+    {
+        $configured=trim($this->config->string('app.default_installation_id'));
+        if($configured!==''&&!str_starts_with($configured,'CHANGE_ME_')&&preg_match('/^[A-Za-z0-9._:-]{1,96}$/D',$configured)===1)return $configured;
+        try{
+            $value=$this->database()->query("SELECT installation_id FROM installations WHERE active=1 AND revoked_at IS NULL ORDER BY updated_at DESC LIMIT 1")->fetchColumn();
+            $value=is_string($value)?trim($value):'';
+            return preg_match('/^[A-Za-z0-9._:-]{1,96}$/D',$value)===1?$value:'';
+        }catch(\Throwable){return '';}
+    }
+
+
     public function migrations(): Migrations
     {
         $directory = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'migrations';
