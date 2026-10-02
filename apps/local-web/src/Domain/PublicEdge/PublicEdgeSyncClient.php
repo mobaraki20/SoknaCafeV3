@@ -7,8 +7,8 @@ final class PublicEdgeSyncClient
     /** @var null|callable */ private $transport;
     public function __construct(private readonly Config $config,?callable $transport=null){$this->transport=$transport;}
     public function configured(): bool{return $this->baseUrl()!=='' && $this->secret()!=='' && $this->installationId()!=='';}
-    public function publicBaseUrl(): string{return $this->baseUrl();}
-    public function safeOrigin(): string{$u=$this->baseUrl();if($u==='')return '';$p=parse_url($u);if(!is_array($p))return '';$scheme=strtolower((string)($p['scheme']??''));$host=(string)($p['host']??'');if(!in_array($scheme,['http','https'],true)||$host==='')return '';$port=isset($p['port'])?':'.(int)$p['port']:'';return $scheme.'://'.$host.$port;}
+    public function publicBaseUrl(): string{return $this->safePublicBase($this->config->string('public.base_url',''));}
+    public function safeOrigin(): string{$u=$this->publicBaseUrl();if($u==='')return '';$p=parse_url($u);if(!is_array($p))return '';$scheme=strtolower((string)($p['scheme']??''));$host=(string)($p['host']??'');if(!in_array($scheme,['http','https'],true)||$host==='')return '';$displayHost=str_contains($host,':')?'['.$host.']':$host;$port=isset($p['port'])?':'.(int)$p['port']:'';return $scheme.'://'.$displayHost.$port;}
     public function post(string $path,array $payload): array
     {
         $response=$this->postRaw($path,$payload);
@@ -50,7 +50,14 @@ final class PublicEdgeSyncClient
     private function baseUrl(): string{return $this->normalizeBase($this->config->string('public.base_url',''));}
     private function normalizeBase(string $u): string
     {
-        $u=rtrim(trim($u),'/');if($u==='')return '';$p=parse_url($u);if(!is_array($p))return '';$scheme=strtolower((string)($p['scheme']??''));$host=strtolower((string)($p['host']??''));if($host==='')return '';if($scheme==='https')return $u;if($scheme==='http'&&in_array($host,['127.0.0.1','localhost','::1'],true))return $u;return '';
+        $raw=trim($u);if($raw==='')return '';$p=parse_url($raw);if(!is_array($p)||isset($p['user'])||isset($p['pass'])||isset($p['query'])||isset($p['fragment']))return '';
+        $safe=$this->safePublicBase($raw);if($safe==='')return '';$scheme=strtolower((string)($p['scheme']??''));$host=strtolower((string)($p['host']??''));if($scheme==='https')return $safe;if($scheme==='http'&&in_array($host,['127.0.0.1','localhost','::1'],true))return $safe;return '';
+    }
+    private function safePublicBase(string $u): string
+    {
+        $p=parse_url(trim($u));if(!is_array($p))return '';$scheme=strtolower((string)($p['scheme']??''));$host=strtolower((string)($p['host']??''));if(!in_array($scheme,['http','https'],true)||$host==='')return '';
+        $displayHost=str_contains($host,':')?'['.$host.']':$host;$port=isset($p['port'])?':'.(int)$p['port']:'';$path=(string)($p['path']??'');$path=$path===''||$path==='/'?'':'/'.trim($path,'/');
+        return $scheme.'://'.$displayHost.$port.$path;
     }
     private function secret(): string{return trim($this->config->string('public.shared_secret',''));}
     private function signatureBase(string $method,string $path,string $timestamp,string $nonce,string $body): string{return implode("\n",['sokna-relay-v1',strtoupper($method),'/'.ltrim($path,'/'),$timestamp,$nonce,hash('sha256',$body)]);}
