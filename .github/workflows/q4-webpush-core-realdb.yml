@@ -1,0 +1,59 @@
+name: Q4 WebPush Core Real DB Qualification
+
+on:
+  pull_request:
+    paths:
+      - 'apps/local-web/src/Domain/Notifications/NotificationService.php'
+      - 'apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php'
+      - 'apps/public/src/Push/**'
+      - 'apps/tests/q4-webpush-*.php'
+      - '.github/workflows/q4-webpush-core-realdb.yml'
+  workflow_dispatch:
+
+permissions: {contents: read}
+
+jobs:
+  q4-webpush-core-realdb:
+    name: Q4 WebPush Core / MariaDB
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+        ports: ['3306:3306']
+        options: --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot" --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP MySQL extension
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql
+          php -r 'exit(extension_loaded("pdo_mysql") && extension_loaded("openssl") ? 0 : 1);'
+      - name: Exact workspace identity gate
+        run: |
+          test "$(git hash-object apps/local-web/src/Domain/Notifications/NotificationService.php)" = "b153dc65cd6e71162e9e0bc8fd462bcffde20da9"
+          test "$(git hash-object apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php)" = "5d87eecccfbdd61491cd45a9d57ef38337659c46"
+          test "$(git hash-object apps/public/src/Push/PushKeyStore.php)" = "505f060253adbcf5079818d4e49164e271ef3568"
+          test "$(git hash-object apps/public/src/Push/WebPushService.php)" = "71f24bdf7758b8173389bd8f6dc62a28e52ee3db"
+          test "$(git hash-object apps/tests/q4-webpush-crypto-selftest.php)" = "da1d36419cc02d0a2c7f760172a5dfbc61a5f043"
+          test "$(git hash-object apps/tests/q4-webpush-bridge-realdb-selftest.php)" = "0ce1396ccabe19ddfd238381efacf90cc6235aea"
+          echo Q4_WEBPUSH_EXACT_WORKSPACE_IDENTITY_PASS
+      - name: Syntax gate
+        run: |
+          php -l apps/public/src/Push/PushKeyStore.php
+          php -l apps/public/src/Push/WebPushService.php
+          php -l apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+          php -l apps/local-web/src/Domain/Notifications/NotificationService.php
+          php -l apps/tests/q4-webpush-crypto-selftest.php
+          php -l apps/tests/q4-webpush-bridge-realdb-selftest.php
+      - name: WebPush crypto / VAPID selftest
+        run: php apps/tests/q4-webpush-crypto-selftest.php
+      - name: WebPush bridge / MariaDB E2E
+        run: php apps/tests/q4-webpush-bridge-realdb-selftest.php
