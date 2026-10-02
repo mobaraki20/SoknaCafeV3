@@ -55,6 +55,10 @@ gsetup(($config['app']['storage_dir']??'')===$storage,'storage path was not pers
 $key=base64_decode((string)($config['relay']['secret_encryption_key_base64']??''),true);
 gsetup(is_string($key)&&strlen($key)===32,'secret encryption key is not 32 random bytes');
 gsetup(hash_equals($pairing,(string)($config['relay']['initial_pairing_code']??'')),'pairing code was not persisted for initial handshake');
+$resumeClosed=false;
+try{$setup->resume(true,'public.example.test');}
+catch(\Sokna\PublicEdge\Setup\SetupException $e){$resumeClosed=$e->errorCode==='already_installed';}
+gsetup($resumeClosed,'resume could re-expose pairing code after install lock');
 
 $core=sokna_public_bootstrap($config);
 $pdo=$core->database();
