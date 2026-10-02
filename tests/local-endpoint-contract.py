@@ -24,9 +24,17 @@ for token in ["LocalWebUrl()","WebPublicPath()","EnsureApachePortAvailableWithFa
 need('var w = Slash(WebPublicPath())' in setup and r'$"DocumentRoot \"{w}\""' in setup,"Apache must serve Local Web public/ directory")
 
 browser=(R/"apps/local-web/src/Setup/BrowserSetupService.php").read_text(encoding="utf-8")
-for token in ["normalizeLocalBaseUrl","local_base_url","local_bridge_allowed_origin","windows-services-pairing.json","print_agent_token"]:
-    need(token in browser,f"Browser Setup endpoint/pairing implementation missing: {token}")
+for token in ["normalizeLocalBaseUrl","local_base_url","LocalEndpoint::normalize","LocalEndpoint::fromServer"]:
+    need(token in browser,f"Browser Setup endpoint implementation missing: {token}")
 need("https://127.0.0.1" not in browser,"Browser Setup retains hardcoded HTTPS endpoint")
+need("windows-services-pairing.json" not in browser and "print_agent_token" not in browser,"Browser Setup must not restore legacy plaintext/file Pairing ownership")
+
+pairing=(R/"apps/local-web/src/Domain/System/WindowsServicesPairingService.php").read_text(encoding="utf-8")
+for token in ["sokna-windows-services-pairing-v1","local_base_url","local_bridge_allowed_origin","print_agent_token","runtime_triggers","pairing_code"]:
+    need(token in pairing,f"Windows Services one-time Pairing service missing: {token}")
+pairing_api=(R/"apps/local-web/public/internal/windows-services/v1/pairing.php").read_text(encoding="utf-8")
+for token in ["HTTP_X_SOKNA_WINDOWS_SERVICES_PAIRING","REMOTE_ADDR","pairing_code"]:
+    need(token in pairing_api,f"Windows Services Pairing endpoint fence missing: {token}")
 
 helper=(R/"apps/local-web/src/Core/LocalEndpoint.php").read_text(encoding="utf-8")
 for token in ["CANONICAL_HOST = '127.0.0.1'","MIN_PORT = 1024","fromServer","canonicalRedirectTarget"]:
@@ -34,7 +42,7 @@ for token in ["CANONICAL_HOST = '127.0.0.1'","MIN_PORT = 1024","fromServer","can
 api=(R/"apps/local-web/public/setup/api.php").read_text(encoding="utf-8")
 need("setup_local_base_url" in api and "LocalEndpoint::fromServer" in api,"Setup API must derive actual Apache port through canonical helper")
 js=(R/"apps/local-web/public/assets/setup-wizard.js").read_text(encoding="utf-8")
-need("location.replace(canonical.origin+'/setup/')" in js,"Browser Setup must canonicalize browser origin")
+need("new URL(result.local_base_url)" in js and "location.replace(canonical.origin+appPath('/setup/'))" in js,"Browser Setup must canonicalize browser origin")
 
 app=(R/"apps/local-web/public/_app.php").read_text(encoding="utf-8")
 recovery=(R/"apps/local-web/public/local-recovery.php").read_text(encoding="utf-8")
