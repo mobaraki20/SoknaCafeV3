@@ -12,6 +12,10 @@ $configPath = trim((string)(getenv('SOKNA_PUBLIC_CONFIG') ?: ($componentRoot . '
 
 try {
     if (!is_file($configPath) || !is_readable($configPath)) {
+        $path=(string)(parse_url((string)($_SERVER['REQUEST_URI']??'/'),PHP_URL_PATH)?:'/');
+        if(($_SERVER['REQUEST_METHOD']??'GET')==='GET'&&($path==='/'||$path==='')){
+            http_response_code(302);header('Location: /setup.php');header('Cache-Control: no-store');exit;
+        }
         $result = SafeErrors::response(503, 'public_not_configured');
     } else {
         $config = require $configPath;
