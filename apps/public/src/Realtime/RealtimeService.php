@@ -13,8 +13,9 @@ final class RealtimeService
     private const KINDS = [
         'guest_order.submit', 'guest_order.quote', 'guest_order.list', 'guest_order.status', 'guest_table.context',
         'waiter_call.create', 'waiter_call.status', 'waiter_call.cancel',
-        'order.edit', 'order.cancel', 'settlement.commit', 'preparation.mutate',
+        'order.edit', 'order.cancel', 'order.staff_status', 'settlement.commit', 'preparation.mutate',
         'table_draft.get', 'table_draft.create', 'table_draft.edit', 'table_draft.finalize', 'table_draft.cancel',
+        'notification.push.subscribe', 'notification.push.unsubscribe',
     ];
     private const GUEST_KINDS = [
         'guest_order.submit', 'guest_order.quote', 'guest_order.list', 'guest_order.status', 'guest_table.context',
@@ -32,6 +33,7 @@ final class RealtimeService
         'waiter_call.cancel' => 'guest.waiter_call.create',
         'order.edit' => 'orders.mutate',
         'order.cancel' => 'orders.mutate',
+        'order.staff_status' => 'orders.mutate',
         'settlement.commit' => 'finance.settle',
         'preparation.mutate' => 'preparation.mutate',
         'table_draft.get' => 'orders.table_draft',
@@ -39,6 +41,8 @@ final class RealtimeService
         'table_draft.edit' => 'orders.table_draft',
         'table_draft.finalize' => 'orders.table_draft',
         'table_draft.cancel' => 'orders.table_draft',
+        'notification.push.subscribe' => 'notifications.push',
+        'notification.push.unsubscribe' => 'notifications.push',
     ];
 
     public function __construct(private readonly PDO $pdo, private readonly ConnectivityService $connectivity)
@@ -62,6 +66,9 @@ final class RealtimeService
         }
 
         $kind = (string)$envelope['kind'];
+        if (in_array($kind, self::GUEST_KINDS, true)) {
+            return $this->error(403, 'guest_route_required');
+        }
         $flags = $this->installationFlags($installationId);
         if ($flags === null || !$flags['active'] || !$flags['remote_enabled']) {
             return $this->error(409, 'remote_disabled');
@@ -73,7 +80,7 @@ final class RealtimeService
         if (!in_array('*', $capabilities, true) && !in_array($requiredCapability, $capabilities, true)) {
             return $this->error(403, 'forbidden');
         }
-        if (str_starts_with($kind, 'table_draft.')) {
+        if (str_starts_with($kind, 'table_draft.') || str_starts_with($kind, 'notification.push.')) {
             $connectivity = $this->connectivity->status($installationId, 45);
             if (($connectivity['local_fresh'] ?? false) !== true) {
                 return ['status' => 503, 'body' => ['ok' => false, 'error' => 'local_unavailable', 'connectivity' => $connectivity]];
