@@ -36,12 +36,14 @@ PUBLIC_DB_TESTS=(
 for t in "${PUBLIC_DB_TESTS[@]}"; do echo "==> $t"; reset_db; "$PHP_BIN" "$t"; done
 
 echo '==> G3.1 deploy/guest real DB'; reset_db; "$PHP_BIN" tests/public-g3-deploy-selftest.php
+echo '==> G3.1 initial Public setup/pairing real DB'; "$PHP_BIN" tests/public-g3-initial-pairing-selftest.php
+echo '==> G3.1 Local initial pairing transport/config pure test'; "$PHP_BIN" tests/local-g3-public-reenroll-pure-selftest.php
 echo '==> G3.2 remote staff/publisher real DB'; reset_db; "$PHP_BIN" tests/g3-remote-staff-publisher-selftest.php
 echo '==> G3.3 emergency/update/takeover real DB'; reset_db; "$PHP_BIN" tests/public-g3-emergency-update-takeover-selftest.php
 
 echo '==> G4.1 cross-component provider/consumer E2E'; reset_db; "$PHP_BIN" tests/g4-cross-component-parity-selftest.php
 python3 tests/g4-cross-component-parity-contract.py
 python3 tests/product-parity-gate.py --mode inventory
-find apps/local-web/src apps/local-web/public apps/public/src -type f -name '*.php' -print0 | xargs -0 -n1 "$PHP_BIN" -l >/dev/null
+find apps/local-web/src apps/local-web/public apps/public/src apps/public/public -type f -name '*.php' -print0 | xargs -0 -n1 "$PHP_BIN" -l >/dev/null
 find apps/local-web/public/assets apps/public/assets -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 printf 'G4.1 Product Qualification: PASS\n'
