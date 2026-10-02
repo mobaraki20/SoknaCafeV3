@@ -413,43 +413,80 @@ final class GuestContentService
 
     private function createGuestCard(string $sourcePath, string $mediaKey, string $mime, string $extension, int $width, int $height): array
     {
-        $targetWidth = min(960, $width);
-        $targetHeight = max(1, (int)round($height * ($targetWidth / max(1,$width))));
-        $rel = 'derived/' . $mediaKey . '/guest-card.' . $extension;
-        $dst = $this->path($rel);
-        $this->ensureDir(dirname($dst));
-        $processor = 'passthrough';
-        $outWidth = $width;
-        $outHeight = $height;
-        $resized = false;
-        if ($width > 960 && function_exists('imagecreatetruecolor')) {
-            $src = match ($mime) {
-                'image/jpeg' => function_exists('imagecreatefromjpeg') ? @imagecreatefromjpeg($sourcePath) : false,
-                'image/png' => function_exists('imagecreatefrompng') ? @imagecreatefrompng($sourcePath) : false,
-                'image/webp' => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($sourcePath) : false,
+        if (!extension_loaded('gd') || !function_exists('imagecreatetruecolor') || !function_exists('imagewebp')) {
+            throw new GuestContentException('media_processor_unavailable','پردازش استاندارد تصویر فعال نیست؛ افزونه GD با پشتیبانی WebP لازم است.',503);
+        }
+
+        $src = match ($mime) {
+            'image/jpeg' => function_exists('imagecreatefromjpeg') ? @imagecreatefromjpeg($sourcePath) : false,
+            'image/png' => function_exists('imagecreatefrompng') ? @imagecreatefrompng($sourcePath) : false,
+            'image/webp' => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($sourcePath) : false,
+            'image/gif' => function_exists('imagecreatefromgif') ? @imagecreatefromgif($sourcePath) : false,
+            default => false,
+        };
+        if ($src === false) {
+            throw new GuestContentException('media_decode_failed','خواندن تصویر برای ساخت نسخه استاندارد منو انجام نشد.',422);
+        }
+
+        if ($mime === 'image/jpeg' && function_exists('exif_read_data')) {
+            $exif = @exif_read_data($sourcePath);
+            $orientation = is_array($exif) ? (int)($exif['Orientation'] ?? 1) : 1;
+            $rotated = match ($orientation) {
+                3 => @imagerotate($src, 180, 0),
+                6 => @imagerotate($src, -90, 0),
+                8 => @imagerotate($src, 90, 0),
                 default => false,
             };
-            if ($src !== false) {
-                $canvas = imagecreatetruecolor($targetWidth,$targetHeight);
-                if ($mime === 'image/png' || $mime === 'image/webp') {
-                    imagealphablending($canvas,false); imagesavealpha($canvas,true);
-                }
-                imagecopyresampled($canvas,$src,0,0,0,0,$targetWidth,$targetHeight,$width,$height);
-                $resized = match ($mime) {
-                    'image/jpeg' => imagejpeg($canvas,$dst,86),
-                    'image/png' => imagepng($canvas,$dst,6),
-                    'image/webp' => imagewebp($canvas,$dst,84),
-                    default => false,
-                };
-                imagedestroy($canvas); imagedestroy($src);
-                if ($resized) { $processor='gd-fit-960'; $outWidth=$targetWidth; $outHeight=$targetHeight; }
+            if ($rotated !== false) {
+                imagedestroy($src);
+                $src = $rotated;
             }
         }
-        if (!$resized && !copy($sourcePath,$dst)) throw new GuestContentException('media_derivative','ساخت نسخه انتشار تصویر انجام نشد.',500);
+
+        $sourceWidth = imagesx($src);
+        $sourceHeight = imagesy($src);
+        if ($sourceWidth < 1 || $sourceHeight < 1) {
+            imagedestroy($src);
+            throw new GuestContentException('media_invalid_image','ابعاد تصویر معتبر نیست.',422);
+        }
+
+        $target = 640;
+        $crop = min($sourceWidth, $sourceHeight);
+        $sourceX = (int)floor(($sourceWidth - $crop) / 2);
+        $sourceY = (int)floor(($sourceHeight - $crop) / 2);
+        $canvas = imagecreatetruecolor($target, $target);
+        if ($canvas === false) {
+            imagedestroy($src);
+            throw new GuestContentException('media_processor_unavailable','حافظه لازم برای پردازش تصویر در دسترس نیست.',503);
+        }
+
+        $white = imagecolorallocate($canvas, 255, 255, 255);
+        imagefilledrectangle($canvas, 0, 0, $target, $target, $white);
+        imagealphablending($canvas, true);
+        if (!imagecopyresampled($canvas,$src,0,0,$sourceX,$sourceY,$target,$target,$crop,$crop)) {
+            imagedestroy($canvas); imagedestroy($src);
+            throw new GuestContentException('media_derivative','ساخت نسخه استاندارد تصویر انجام نشد.',500);
+        }
+
+        $rel = 'derived/' . $mediaKey . '/guest-card.webp';
+        $dst = $this->path($rel);
+        $this->ensureDir(dirname($dst));
+        $ok = imagewebp($canvas,$dst,84);
+        imagedestroy($canvas); imagedestroy($src);
+        if (!$ok || !is_file($dst)) throw new GuestContentException('media_derivative','ساخت نسخه WebP تصویر انجام نشد.',500);
         @chmod($dst,0640);
         $sha = hash_file('sha256',$dst);
         if (!is_string($sha)) throw new GuestContentException('media_derivative_hash','خواندن نسخه انتشار تصویر انجام نشد.',500);
-        return ['sha256'=>$sha,'mime'=>$mime,'extension'=>$extension,'byte_size'=>(int)filesize($dst),'width'=>$outWidth,'height'=>$outHeight,'relpath'=>$rel,'processor'=>$processor];
+        return [
+            'sha256'=>$sha,
+            'mime'=>'image/webp',
+            'extension'=>'webp',
+            'byte_size'=>(int)filesize($dst),
+            'width'=>$target,
+            'height'=>$target,
+            'relpath'=>$rel,
+            'processor'=>'gd-center-crop-640-webp84',
+        ];
     }
 
     private function assertAdmin(array $user): array
