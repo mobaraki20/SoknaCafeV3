@@ -63,6 +63,7 @@ require_once __DIR__ . '/src/Domain/Orders/OrderWorkspaceService.php';
 require_once __DIR__ . '/src/Domain/Orders/TableChangeException.php';
 require_once __DIR__ . '/src/Domain/Orders/TableChangeService.php';
 require_once __DIR__ . '/src/Relay/TableDraftRealtimeAdapter.php';
+require_once __DIR__ . '/src/Relay/StaffOrderRealtimeAdapter.php';
 require_once __DIR__ . '/src/Domain/Preparation/PreparationAccessService.php';
 require_once __DIR__ . '/src/Domain/Preparation/PreparationException.php';
 require_once __DIR__ . '/src/Domain/Preparation/PreparationService.php';
