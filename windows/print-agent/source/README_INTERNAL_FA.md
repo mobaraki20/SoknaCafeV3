@@ -1,18 +1,24 @@
-# SOKNA Local — Internal Print Worker
+# SOKNA Windows — Print Agent
 
-این پوشه Source of Truth مؤلفه چاپ داخلی SOKNA Local است.
+این پوشه Source of Truth سرویس مستقل Print Agent در معماری V3 است.
 
 ## مبنا
-- کد عملیاتی از سورس واقعی Sokna Print Agent `6.2.5` که Owner پروژه ارائه کرده استخراج شده است.
-- SHA-256 آرشیو مبنا در `PROVENANCE.json` ثبت شده است.
-- state machine، SQLite durable queue، retry/reconciliation، renderer و Winspool به‌جای بازنویسی از همان مبنای بالغ حفظ شده‌اند.
+- state machine عملیاتی از lineage بالغ Sokna Print Agent `6.2.5` حفظ و تا نسخه فعلی `6.2.7` سخت‌سازی شده است.
+- provenance مبنای مهاجرت در `PROVENANCE.json` ثبت شده است.
+- SQLite durable queue، retry/reconciliation، renderer، submission fence و Winspool به‌جای بازنویسی از همان مبنا حفظ شده‌اند.
 
-## تفاوت معماری قطعی
-- این مؤلفه **محصول نصب‌شونده جداگانه نیست**.
-- `Setup` و `Control` مستقل upstream عمداً وارد این Source of Truth نشده‌اند.
-- Build/Package/Install/Repair/Recovery این Worker فقط تحت SOKNA Local انجام می‌شود.
-- UI مدیریتی کاربر همان Surface فارسی `چاپ و پرینترها` در SOKNA Local است.
-- نام‌های فنی قدیمی `Sokna.PrintAgent.*` در namespace/API داخلی فعلاً برای حفظ compatibility و کاهش ریسک state-machine باقی مانده‌اند؛ این نام‌ها Design/Deployment authority نیستند.
+## مالکیت معماری قطعی
+- مالک اجرای فیزیکی چاپ، durable receipt/submission state و تعامل با spooler مؤلفه `windows/print-agent` است.
+- Print Agent یک Windows service مستقل از Local Web است؛ Local Web فقط business print intent، document content، مقصدها و Print API v4 را مالک است.
+- Windows Runtime می‌تواند lifecycle سرویس را supervise کند، اما state machine چاپ را تکرار نمی‌کند.
+- نصب/repair این مؤلفه در بسته Windows Services محصول هماهنگ می‌شود؛ این موضوع استقلال runtime/service آن از Local Web را تغییر نمی‌دهد.
+- namespaceهای فنی `Sokna.PrintAgent.*` قرارداد داخلی همین مؤلفه‌اند و authority استقرار آن `windows/print-agent` است.
 
 ## داده پایدار
-مسیر canonical جدید Worker زیر Data Root خود SOKNA است (`<SOKNA_DATA_DIR>/print-worker`). Resolver برای مهاجرت امن، registry قدیمی PrintAgent را نیز به‌صورت fallback می‌خواند تا queue/config/secret موجود بدون تصمیم صریح دور ریخته نشوند.
+مسیر canonical داده زیر Data Root سکنا است (`<SOKNA_DATA_DIR>/print-worker`). Resolver برای مهاجرت امن registry قدیمی PrintAgent را نیز به‌صورت fallback می‌خواند تا queue/config/secret موجود بدون تصمیم صریح دور ریخته نشوند.
+
+## P5 سخت‌سازی
+- تغییر `secret.dat` به‌صورت hot-reload تشخیص داده می‌شود و credential جدید فقط پس از probe احراز هویت‌شده فعال می‌شود.
+- Local Web rotation را با pairing ticket کوتاه‌عمر stage می‌کند و hash جدید همان `agent_id` فقط در confirm نهایی commit می‌شود.
+- Agent حداقل نسخه اعلام‌شده توسط Local Web را enforce می‌کند تا rollback ناسازگار متوقف شود.
+- M8 CI علاوه بر build/unit/contract، سناریوهای credential repair، restart reconciliation و Windows submission-fence crash recovery را اجرا می‌کند.
