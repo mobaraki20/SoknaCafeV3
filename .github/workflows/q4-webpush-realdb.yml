@@ -35,8 +35,32 @@ jobs:
           php -r 'exit(extension_loaded("pdo_mysql") && extension_loaded("openssl") ? 0 : 1);'
       - name: Restore exact Q4 WebPush canonical overlay
         run: |
-          test "$(sha256sum qualification/q4-webpush/q4-webpush-source-overlay.tar.xz | awk '{print $1}')" = "8c6a048f75d942539147e1ffb0c825b3b9db89e97851267f76bffb59b3d5fa08"
+          sha256sum qualification/q4-webpush/q4-webpush-source-overlay.tar.xz
+          xz -t qualification/q4-webpush/q4-webpush-source-overlay.tar.xz
           tar -xJf qualification/q4-webpush/q4-webpush-source-overlay.tar.xz
+          cat >/tmp/q4-overlay.sha256 <<'EOF'
+          578d09a3d3f7ce39db4fa0d5f6a9f57ab6f778a4118f4c25a4aa68ae168d7208  apps/local-web/src/Core/Bootstrap.php
+          4fc27a0f7e1fec6c4e7a4aa095a3cfe2fb95de00e9a97144e8845adfff558ab1  apps/local-web/src/Core/Capabilities.php
+          0c0eb71bf63f9f8e9a749bdf7e71640c169d95d2ed47926ba710c8b5da315bf1  apps/local-web/src/Core/Config.php
+          85514188a757fc77a86fe61e327329e9fee770ac768aefddacad80424d53d943  apps/local-web/src/Core/IdentityRepository.php
+          7de8796fb88d81a6dbfb282d7fa642ae4419e0ae2bb1679e1c2670061c964e2a  apps/local-web/src/Core/Migrations.php
+          528a9a92fa21c45d8f61dddc865346e3bd2bb4cda80b96a24e8770b9310f5009  apps/local-web/src/Core/PdoIdentityRepository.php
+          b5ac78244652a52c6930197f460500e56751279ec5201c5528b9785a63964e8a  apps/local-web/src/Domain/Notifications/NotificationException.php
+          a2d7f95031ad17ff4eab84d8fc7703405baf3c6843a974daff579e426e42d3d8  apps/local-web/src/Domain/Notifications/NotificationService.php
+          be282b87446b59d3f0b00319c53a47a7e0a207e8314e08469d69d0b32ff0bf64  apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+          1649e96a30e613ae57f7f7246d0e3570c0055a946e71ace34c8f8f73b235d7a6  apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncException.php
+          9bd26cc3790a1f8234ca0c2de613de9bf2bc34a09fa75a29758052b93e0068ab  apps/local-web/src/Relay/NotificationPushRealtimeAdapter.php
+          754125c98b1f81c734399632a1ff48736ffce9eb82d692ed2341aeb9e0039173  apps/public/src/Connectivity/ConnectivityService.php
+          d84cbc3d7c43c4237277850c9c0c2ebe46ed021336af1175a5373e66adc9b1e8  apps/public/src/Core/Bootstrap.php
+          17e62bb0739a9d9d37c64cf4c56ea44ccdadc05203df92a5d287b714a418af0e  apps/public/src/Core/Migrations.php
+          b215412035361afc54a6ccb656fa88050cc62d4328a8d0b0e94fb8f721fc728a  apps/public/src/Http/PublicHttpKernel.php
+          7d3afd938388e086a7cbcb91cd27a096d9ee00aa47b7960d45bf005e3b34cb4b  apps/public/src/Http/PushHttpAdapter.php
+          fbd45eadd3c1f34c60ee3e6b62f5d0a950eea9f362df395ee449ed65329182c6  apps/public/src/Push/PushKeyStore.php
+          bde6412bd514b53cbc31277133adfbe5e8578605219955cc3ed2b88570d1c02a  apps/public/src/Push/WebPushService.php
+          b8b59fee3867a0ac2db3f8f4e4223950d3d8e7d672e56a18893f8149352f1198  apps/public/src/Realtime/RealtimeService.php
+          EOF
+          sed -i 's/^          //' /tmp/q4-overlay.sha256
+          sha256sum -c /tmp/q4-overlay.sha256
       - name: Syntax gate
         run: |
           php -l apps/public/src/Push/PushKeyStore.php
