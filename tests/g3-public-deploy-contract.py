@@ -50,6 +50,8 @@ for token in ['preflight(','testDatabase(','installNew(','resume(','sokna-public
     need(setup_service,token,f'Public setup service missing {token}')
 need(setup_index,'data-public-setup','Public setup page contract missing')
 need(setup_api,"action==='install_new'",'Public setup API install owner missing')
+need(setup_api,"SOKNA_PUBLIC_TRUST_PROXY_HEADERS",'Public setup proxy trust is not explicit')
+need(setup_service,"$this->check('https',$secureTransport",'Public setup HTTPS preflight is not hard-required')
 need(setup_js,"data-action=\"install\"",'Public setup browser flow missing install action')
 if Path(f'{root}/public/config.php').exists(): fail('config.php must never live under Public document root')
 if Path(f'{root}/public/storage').exists(): fail('storage must never live under Public document root')
