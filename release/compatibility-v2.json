@@ -1,7 +1,7 @@
 {
   "components": {
     "local-web": {
-      "version": "3.0.0-g6.2-workspace.40-ui-convergence-q3-p4"
+      "version": "3.0.0-g6.2-workspace.41-ui-convergence-q3-p6"
     },
     "print-agent": {
       "version": "6.2.7"
