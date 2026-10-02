@@ -1,32 +1,201 @@
+@layer scds, route, product;
+
+/* B2.1 Typography: one canonical Persian UI face. The binary is fetched once by
+   the Local server and cached outside the replaceable Web payload. */
+@font-face{font-family:"Vazirmatn";src:url("font.php?family=vazirmatn&v=33.003") format("woff2");font-style:normal;font-weight:100 900;font-display:swap}
+
 :root{
   color-scheme:light;
-  --sc-font:"Vazirmatn",system-ui,sans-serif;
-  --sc-bg:#f7f5f1;
-  --sc-surface:#ffffff;
-  --sc-surface-subtle:#f1eee8;
-  --sc-text:#211f1b;
-  --sc-muted:#716b62;
-  --sc-border:#d8d2c8;
-  --sc-accent:#176b5b;
-  --sc-accent-strong:#0f5548;
-  --sc-danger:#a43c32;
-  --sc-warning:#8a5a00;
-  --sc-success:#176b5b;
-  --sc-focus:#185caa;
+  --sc-font:"Vazirmatn","Noto Sans Arabic",Tahoma,"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,Arial,sans-serif;
+
+  /* semantic color tokens */
+  --sc-bg:#f5f3ee;
+  --sc-surface:#fffdfa;
+  --sc-surface-raised:#ffffff;
+  --sc-surface-subtle:#f0eee8;
+  --sc-surface-hover:#ebe9e2;
+  --sc-surface-selected:#e6efe9;
+  --sc-text:#1f2522;
+  --sc-text-strong:#111613;
+  --sc-muted:#69716c;
+  --sc-muted-strong:#505a54;
+  --sc-border:#d9d7d0;
+  --sc-border-strong:#aaa89f;
+  --sc-accent:#35624f;
+  --sc-accent-hover:#294e3f;
+  --sc-accent-strong:#193a2e;
+  --sc-accent-soft:#e5efe9;
+  --sc-on-accent:#ffffff;
+  --sc-sidebar:#173b30;
+  --sc-sidebar-raised:#20493c;
+  --sc-sidebar-text:#f3f8f5;
+  --sc-sidebar-muted:#b8ccc2;
+  --sc-sidebar-line:rgb(255 255 255 / .1);
+  --sc-sidebar-soft:rgb(255 255 255 / .08);
+  --sc-sidebar-faint:rgb(255 255 255 / .04);
+  --sc-sidebar-hover:rgb(255 255 255 / .075);
+  --sc-sidebar-scroll:rgb(255 255 255 / .2);
+  --sc-sidebar-active-bg:#ffffff;
+  --sc-sidebar-active-text:#183f35;
+  --sc-highlight:#e7b95f;
+  --sc-warm:#9b6842;
+  --sc-warm-soft:#f8f2e7;
+  --sc-danger:#a63f36;
+  --sc-on-danger:#ffffff;
+  --sc-danger-soft:#fae9e7;
+  --sc-warning:#955f16;
+  --sc-warning-soft:#fbf0dc;
+  --sc-success:#2f715b;
+  --sc-success-soft:#e4f1eb;
+  --sc-info:#2d6774;
+  --sc-info-soft:#e5f0f3;
+  --sc-focus:#2e6d78;
+  --sc-overlay:rgb(15 22 19 / .52);
+
+  /* typography */
+  --sc-text-xs:.75rem;
+  --sc-text-sm:.8125rem;
+  --sc-text-md:.9375rem;
+  --sc-text-lg:1.0625rem;
+  --sc-text-xl:1.25rem;
+  --sc-text-2xl:1.5rem;
+  --sc-leading-tight:1.4;
+  --sc-leading-normal:1.7;
+  --sc-leading-relaxed:1.9;
+
+  /* 8px-based spacing with half steps */
+  --sc-space-0:0;
+  --sc-space-1:.25rem;  /* 4 */
+  --sc-space-2:.5rem;   /* 8 */
+  --sc-space-3:.75rem;  /* 12 */
+  --sc-space-4:1rem;    /* 16 */
+  --sc-space-5:1.25rem; /* 20 */
+  --sc-space-6:1.5rem;  /* 24 */
+  --sc-space-8:2rem;    /* 32 */
+  --sc-space-10:2.5rem; /* 40 */
+  --sc-space-12:3rem;   /* 48 */
+  --sc-gap-copy:var(--sc-space-1);
+  --sc-gap-control:var(--sc-space-3);
+  --sc-gap-section:var(--sc-space-4);
+  --sc-gap-page:var(--sc-space-6);
+
+  /* shape and interaction */
   --sc-radius-sm:.5rem;
-  --sc-radius-md:.8rem;
-  --sc-radius-lg:1.1rem;
-  --sc-space-1:.25rem;
-  --sc-space-2:.5rem;
-  --sc-space-3:.75rem;
-  --sc-space-4:1rem;
-  --sc-space-5:1.5rem;
-  --sc-space-6:2rem;
-  --sc-shadow:0 .4rem 1.4rem rgb(32 29 25 / .08);
+  --sc-radius-md:.75rem;
+  --sc-radius-lg:1rem;
+  --sc-radius-xl:1.5rem;
+  --sc-control-height:40px;
+  --sc-control-height-touch:44px;
+  --sc-control-height-compact:32px;
+  --sc-control-radius:10px;
+  --sc-control-pad-inline:12px;
+  /* DS hardening: stable form slots and scan rhythm. */
+  --sc-field-label-slot:1.35rem;
+  --sc-field-gap:.5rem;
+  --sc-field-helper-gap:.25rem;
+  --sc-scan-row-min:52px;
+  --sc-scan-row-target-max:62px;
+  --sc-context-chip-height:24px;
+  --sc-focus-ring-width:2px;
+  --sc-focus-ring-offset:2px;
+  --sc-disabled-opacity:.5;
+  --sc-touch-height:44px;
+  --sc-border-width:1px;
+  --sc-shadow:0 1px 2px rgb(18 25 21 / .04),0 8px 24px rgb(18 25 21 / .06);
+  --sc-shadow-raised:0 2px 4px rgb(18 25 21 / .06),0 18px 42px rgb(18 25 21 / .12);
+  --sc-content-max:1520px;
+  --sc-transition:160ms cubic-bezier(.2,.8,.2,1);
 }
+
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --sc-bg:#101512;
+  --sc-surface:#171d19;
+  --sc-surface-raised:#1c231f;
+  --sc-surface-subtle:#202823;
+  --sc-surface-hover:#27312b;
+  --sc-surface-selected:#20352c;
+  --sc-text:#e9efeb;
+  --sc-text-strong:#f7faf8;
+  --sc-muted:#a9b4ad;
+  --sc-muted-strong:#c3ccc7;
+  --sc-border:#323c36;
+  --sc-border-strong:#536159;
+  --sc-accent:#7eb29a;
+  --sc-accent-hover:#93c2ab;
+  --sc-accent-strong:#b6d7c6;
+  --sc-accent-soft:#21382e;
+  --sc-on-accent:#0f1713;
+  --sc-sidebar:#111d18;
+  --sc-sidebar-raised:#192b23;
+  --sc-sidebar-text:#edf5f0;
+  --sc-sidebar-muted:#9fb9ac;
+  --sc-sidebar-line:rgb(255 255 255 / .1);
+  --sc-sidebar-soft:rgb(255 255 255 / .08);
+  --sc-sidebar-faint:rgb(255 255 255 / .04);
+  --sc-sidebar-hover:rgb(255 255 255 / .075);
+  --sc-sidebar-scroll:rgb(255 255 255 / .2);
+  --sc-sidebar-active-bg:#263a32;
+  --sc-sidebar-active-text:#edf5f0;
+  --sc-highlight:#e4ba68;
+  --sc-warm:#d1a173;
+  --sc-warm-soft:#33291f;
+  --sc-danger:#eb867e;
+  --sc-on-danger:#1c1110;
+  --sc-danger-soft:#3b2421;
+  --sc-warning:#e4b15e;
+  --sc-warning-soft:#3b3020;
+  --sc-success:#83c0a7;
+  --sc-success-soft:#1e352c;
+  --sc-info:#83bcc8;
+  --sc-info-soft:#1d3339;
+  --sc-focus:#8bc4d0;
+  --sc-overlay:rgb(0 0 0 / .7);
+  --sc-shadow:0 1px 2px rgb(0 0 0 / .25),0 10px 28px rgb(0 0 0 / .2);
+  --sc-shadow-raised:0 3px 6px rgb(0 0 0 / .28),0 22px 48px rgb(0 0 0 / .34);
+}
+
 *,*::before,*::after{box-sizing:border-box}
-html{font-family:var(--sc-font);background:var(--sc-bg);color:var(--sc-text)}
-body{margin:0;direction:rtl;text-align:start}
-:focus-visible{outline:.2rem solid var(--sc-focus);outline-offset:.18rem}
+html{font-family:var(--sc-font);background:var(--sc-bg);color:var(--sc-text);font-synthesis:none;scrollbar-gutter:stable}
+body{margin:0;direction:rtl;text-align:start;background:var(--sc-bg);color:var(--sc-text);font-size:var(--sc-text-md);line-height:var(--sc-leading-normal);text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit}
+button,a,input,select,textarea{touch-action:manipulation}
+a{color:inherit}
+:focus-visible{outline:var(--sc-focus-ring-width) solid color-mix(in srgb,var(--sc-focus) 72%,transparent);outline-offset:var(--sc-focus-ring-offset)}
+::selection{background:var(--sc-accent-soft);color:var(--sc-text-strong)}
 [hidden]{display:none}
+[dir="ltr"],.sc-ltr{direction:ltr;text-align:left;unicode-bidi:isolate}
+[data-bidi],bdi{unicode-bidi:isolate}
+/* B2.5 — Human-facing numerals are Persian; canonical identifiers stay Latin/LTR. */
+.sc-number,.sc-money,.sc-metric,.sc-percent,[data-human-number]{font-variant-numeric:tabular-nums;unicode-bidi:isolate}
+.sc-canonical-id,.canonical-id,[data-canonical-id]{direction:ltr;text-align:left;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+.sc-phone,[data-phone]{display:inline-block;direction:ltr;text-align:left;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+input[inputmode="numeric"],input[inputmode="decimal"],input[type="tel"]{font-variant-numeric:tabular-nums}
+.sr-only{position:absolute;inline-size:1px;block-size:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto;animation-duration:.001ms;animation-iteration-count:1;transition-duration:.001ms}}
+
+/* D2.3 — Product design-system consolidation.
+   Shared page grammar extracted from the approved prototype and D2.1/D2.2. */
+:root{
+  --sc-page-radius:14px;
+  --sc-panel-radius:14px;
+  --sc-compact-radius:10px;
+  --sc-page-header-pad-block:10px;
+  --sc-page-header-pad-inline:14px;
+  --sc-panel-head-pad-block:12px;
+  --sc-panel-head-pad-inline:14px;
+  --sc-panel-body-pad:14px;
+  --sc-page-title-size:1.25rem;
+  --sc-page-copy-size:.75rem;
+  --sc-section-title-size:.9375rem;
+  --sc-section-copy-size:.6875rem;
+  --sc-data-title-size:.75rem;
+  --sc-data-meta-size:.6875rem;
+  --sc-page-rule:color-mix(in srgb,var(--sc-border) 92%,transparent);
+  --sc-panel-shadow:0 1px 2px rgb(18 25 21 / .025),0 8px 22px rgb(18 25 21 / .045);
+  --sc-state-accent-width:3px;
+  --sc-kpi-icon-size:42px;
+}
+:root[data-theme="dark"]{
+  --sc-panel-shadow:0 1px 2px rgb(0 0 0 / .18),0 10px 26px rgb(0 0 0 / .18);
+}
