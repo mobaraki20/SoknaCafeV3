@@ -5,6 +5,8 @@ namespace Sokna\Local\Setup;
 
 use PDO;
 use Throwable;
+use InvalidArgumentException;
+use Sokna\Local\Core\LocalEndpoint;
 use Sokna\Local\UI\FontRuntime;
 
 final class BrowserSetupService
@@ -78,6 +80,18 @@ final class BrowserSetupService
         return ['ok'=>$ok,'checks'=>$checks,'php'=>PHP_VERSION];
     }
 
+    public static function normalizeLocalBaseUrl(string $value): string
+    {
+        try { return LocalEndpoint::normalize($value); }
+        catch (InvalidArgumentException $e) {
+            $code=$e->getMessage()==='local_endpoint_not_loopback'?'local_endpoint_not_loopback':'local_endpoint_invalid';
+            $message=$code==='local_endpoint_not_loopback'
+                ?'آدرس Local Web باید فقط روی همین کامپیوتر (loopback) باشد.'
+                :'آدرس Local Web یا پورت انتخاب‌شده معتبر نیست.';
+            throw new SetupException($code,$message,422);
+        }
+    }
+
     public function testDatabase(array $db, bool $createDatabase = false): array
     {
         $db = $this->normalizeDb($db);
@@ -102,6 +116,7 @@ final class BrowserSetupService
         if ($status['state'] === 'existing') throw new SetupException('existing_install_choice_required','نصب قبلی پیدا شد. ابتدا مشخص کن نصب موجود ادامه داده شود یا نصب جدید شروع شود.',409);
         $dataDir = rtrim(trim((string)($input['data_dir'] ?? '')), "\\/");
         $timezone = trim((string)($input['timezone'] ?? 'Asia/Tehran')) ?: 'Asia/Tehran';
+        $localBaseUrl = self::normalizeLocalBaseUrl((string)($input['local_base_url'] ?? ''));
         if (!$this->isAbsolutePath($dataDir)) throw new SetupException('data_dir_invalid','مسیر داده باید کامل باشد.');
         try { new \DateTimeZone($timezone); } catch (Throwable) { throw new SetupException('timezone_invalid','منطقه زمانی معتبر نیست.'); }
         $preflight = $this->preflight($dataDir);
@@ -124,7 +139,7 @@ final class BrowserSetupService
             'app'=>['timezone'=>$timezone,'data_dir'=>$dataDir,'session_lifetime'=>43200],
             'db'=>['host'=>$db['host'],'port'=>$db['port'],'name'=>$db['name'],'charset'=>'utf8mb4','user'=>$db['user'],'pass'=>$db['pass']],
             'installation'=>['id'=>$installationId],
-            'runtime'=>['local_token'=>$localToken,'local_base_url'=>$this->localBaseUrl()],
+            'runtime'=>['local_token'=>$localToken,'local_base_url'=>$localBaseUrl],
             'public'=>['base_url'=>'','shared_secret'=>''],
             'integrations'=>['accommodation'=>['base_url'=>'','secret'=>'']],
         ];
@@ -346,26 +361,19 @@ final class BrowserSetupService
                 if(is_array($state)){
                     $endpoint=(array)($state['endpoints']['local_web']??[]);
                     foreach([(string)($endpoint['origin']??''),(string)($endpoint['base_url']??'')] as $candidate){
-                        $validated=$this->validateLoopbackUrl($candidate);if($validated!=='')return $validated;
+                        try { return LocalEndpoint::normalize($candidate); } catch (InvalidArgumentException) {}
                     }
                 }
             }catch(Throwable){}
         }
-        $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http';
-        $host=trim((string)($_SERVER['HTTP_HOST']??''));
-        if(preg_match('/^(?:127\\.0\\.0\\.1|localhost)(?::([0-9]{1,5}))?$/i',$host,$m)===1){
-            $port=isset($m[1])?(int)$m[1]:($scheme==='https'?443:80);
-            if($port>=1&&$port<=65535)return $scheme.'://'.$host;
-        }
-        return 'http://127.0.0.1:18080';
+        try { return LocalEndpoint::fromServer($_SERVER); }
+        catch (InvalidArgumentException) { return 'http://127.0.0.1:18080/'; }
     }
 
     private function validateLoopbackUrl(string $value): string
     {
-        $value=rtrim(trim($value),'/');if($value==='')return '';$parts=parse_url($value);if(!is_array($parts))return '';
-        $scheme=strtolower((string)($parts['scheme']??''));$host=strtolower((string)($parts['host']??''));$port=isset($parts['port'])?(int)$parts['port']:($scheme==='https'?443:80);
-        if(!in_array($scheme,['http','https'],true)||!in_array($host,['127.0.0.1','localhost'],true)||$port<1||$port>65535)return '';
-        return $scheme.'://'.$host.(isset($parts['port'])?':'.$port:'');
+        try { return rtrim(LocalEndpoint::normalize($value),'/'); }
+        catch (InvalidArgumentException) { return ''; }
     }
 
     private function adoptLegacyRootFilesIfNeeded(): void
