@@ -36,7 +36,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y php-mysql
           php -r 'exit(extension_loaded("pdo_mysql") && extension_loaded("openssl") ? 0 : 1);'
-          mariadb --host=127.0.0.1 --port=3306 --user=root --password=root -e 'SELECT VERSION();'
       - name: Exact workspace identity gate
         run: |
           test "$(git hash-object apps/local-web/src/Domain/Notifications/NotificationService.php)" = "b153dc65cd6e71162e9e0bc8fd462bcffde20da9"
