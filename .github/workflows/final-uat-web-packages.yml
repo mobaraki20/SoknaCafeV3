@@ -1,0 +1,162 @@
+name: Final UAT Handoff Packages
+
+on:
+  pull_request:
+    branches:
+      - work/q3-p6-integrated-regression-20261002
+    paths:
+      - '.github/workflows/final-uat-web-packages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-web-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout frozen P6 source
+        uses: actions/checkout@v4
+        with:
+          ref: 054c0913d6e55108952bd80b5902434adc82b192
+          fetch-depth: 1
+
+      - name: Verify frozen source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "054c0913d6e55108952bd80b5902434adc82b192"
+          python3 tests/g6-component-release-contract.py
+          python3 tests/g6-release-preflight.py
+          python3 tests/component-registry-gate.py
+
+      - name: Build final web handoff packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/sokna-final-uat-web"
+          mkdir -p "$OUT"
+
+          LOCAL_VERSION="$(tr -d '\r\n' < apps/local-web/VERSION.txt)"
+          PUBLIC_VERSION="$(tr -d '\r\n' < apps/public/VERSION.txt)"
+
+          python3 apps/local-web/tools/build-clean-install-package.py             --out "$OUT/SoknaCafeV3-local-web-$LOCAL_VERSION-clean-install.zip"             --source-commit "054c0913d6e55108952bd80b5902434adc82b192"
+
+          python3 apps/local-web/tools/build-update-package.py             --out "$OUT/SoknaCafeV3-local-web-$LOCAL_VERSION-update.zip"             --source-commit "054c0913d6e55108952bd80b5902434adc82b192"
+
+          python3 apps/public/tools/build-deploy-package.py             --out "$OUT/SoknaCafeV3-public-edge-$PUBLIC_VERSION-deploy.zip"             --source-commit "054c0913d6e55108952bd80b5902434adc82b192"
+
+          python3 apps/public/tools/build-update-package.py             --out "$OUT/SoknaCafeV3-public-edge-$PUBLIC_VERSION-update.zip"             --source-commit "054c0913d6e55108952bd80b5902434adc82b192"
+
+          cp release/compatibility-v2.json "$OUT/compatibility-v2.json"
+          cp release/manual-uat-status.json "$OUT/manual-uat-status.json"
+
+          OUT="$OUT" SOURCE_COMMIT="054c0913d6e55108952bd80b5902434adc82b192" python3 - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+
+          out=Path(os.environ["OUT"])
+          source=os.environ["SOURCE_COMMIT"]
+          rows=[]
+          for p in sorted(out.glob("*.zip")):
+              digest=hashlib.sha256(p.read_bytes()).hexdigest()
+              with zipfile.ZipFile(p) as z:
+                  names=set(z.namelist())
+                  manifest_name="sokna-install-manifest.json" if "sokna-install-manifest.json" in names else "manifest.json"
+                  manifest=json.loads(z.read(manifest_name))
+              if manifest.get("source_commit") != source:
+                  raise SystemExit(f"{p.name}: source_commit mismatch")
+              rows.append({
+                  "file":p.name,
+                  "size_bytes":p.stat().st_size,
+                  "sha256":digest,
+                  "component":manifest.get("component","local-web" if "local-web" in p.name else "public-edge"),
+                  "version":manifest.get("version",""),
+                  "format":manifest.get("format",""),
+                  "source_commit":manifest.get("source_commit",""),
+              })
+          if len(rows) != 4:
+              raise SystemExit(f"expected 4 web packages, got {len(rows)}")
+          idx={
+              "format":"sokna-final-uat-web-handoff-v1",
+              "schema_version":1,
+              "source_commit":source,
+              "artifacts":rows,
+          }
+          (out/"artifact-index.json").write_text(json.dumps(idx,ensure_ascii=False,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+          (out/"SHA256SUMS.txt").write_text("".join(f"{r['sha256']}  {r['file']}\n" for r in rows),encoding="utf-8")
+          print(json.dumps(idx,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload final UAT web packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-final-uat-web-packages-054c0913d6e55108952bd80b5902434adc82b192
+          path: ${{ runner.temp }}/sokna-final-uat-web/
+          if-no-files-found: error
+          retention-days: 30
+
+
+  build-windows-package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout frozen P6 source
+        uses: actions/checkout@v4
+        with:
+          ref: 054c0913d6e55108952bd80b5902434adc82b192
+          fetch-depth: 1
+
+      - name: Verify frozen source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $head=(git rev-parse HEAD).Trim()
+          if($head-ne'054c0913d6e55108952bd80b5902434adc82b192'){throw "Unexpected source HEAD: $head"}
+
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+
+      - name: Ensure Inno Setup 6
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build exact frozen Windows Services installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-final-uat-windows'
+          $iscc=@(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not $iscc){throw 'Inno Setup 6 ISCC.exe was not found.'}
+          & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          $index=Get-Content (Join-Path $out 'artifact-index.json') -Raw | ConvertFrom-Json
+          if([string]$index.source_commit-ne'054c0913d6e55108952bd80b5902434adc82b192'){throw "Windows artifact source_commit mismatch: $($index.source_commit)"}
+          $exe=Join-Path $out ([string]$index.windows_services.file)
+          if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Windows installer missing after release build.'}
+          $sha=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha-ne[string]$index.windows_services.sha256){throw 'Windows installer SHA256 mismatch.'}
+          [ordered]@{
+            format='sokna-final-uat-windows-handoff-v1'
+            schema_version=1
+            source_commit=[string]$index.source_commit
+            file=[IO.Path]::GetFileName($exe)
+            sha256=$sha
+            size_bytes=(Get-Item -LiteralPath $exe).Length
+          } | ConvertTo-Json | Set-Content (Join-Path $out 'uat-windows-index.json') -Encoding UTF8
+
+      - name: Upload final UAT Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-final-uat-windows-054c0913d6e55108952bd80b5902434adc82b192
+          path: |
+            ${{ runner.temp }}/sokna-final-uat-windows/SOKNA-Windows-Services-Setup-*.exe
+            ${{ runner.temp }}/sokna-final-uat-windows/artifact-index.json
+            ${{ runner.temp }}/sokna-final-uat-windows/uat-windows-index.json
+          if-no-files-found: error
+          retention-days: 30
