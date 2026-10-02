@@ -58,8 +58,7 @@ final class PublicSetupService
         $checks[]=$this->check('config_writable',$this->pathCanBeCreated(dirname($this->configPath)),'Config directory writable',$this->pathCanBeCreated(dirname($this->configPath))?'writable':'not_writable');
         $checks[]=$this->check('storage_writable',$this->pathCanBeCreated($storageDir),'Storage directory writable',$this->pathCanBeCreated($storageDir)?'writable':'not_writable');
         $checks[]=$this->check('config_private',$this->configOutsideDocumentRoot(),'Config outside document root',$this->configOutsideDocumentRoot()?'safe':'unsafe');
-        $loopback=in_array(strtolower($this->stripPort($host)),['127.0.0.1','localhost','::1'],true);
-        $checks[]=$this->check('https',$secureTransport||$loopback,'HTTPS transport',($secureTransport||$loopback)?'secure':'required');
+        $checks[]=$this->check('https',$secureTransport,'HTTPS transport',$secureTransport?'secure':'required');
         $ok=!in_array(false,array_column($checks,'ok'),true);
         return ['ok'=>$ok,'checks'=>$checks,'storage_dir'=>$storageDir];
     }
