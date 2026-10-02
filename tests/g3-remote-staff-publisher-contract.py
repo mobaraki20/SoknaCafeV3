@@ -28,9 +28,17 @@ need('apps/public/src/Auth/PublicSessionStore.php','function revoke','remote log
 need('apps/local-web/src/Core/Capabilities.php',"'remote_access'",'explicit remote access capability missing')
 need('apps/local-web/src/Core/Capabilities.php',"'remote_inventory_cost'",'remote cost capability missing')
 need('apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php',"if(!$admin&&!in_array('remote_access',$caps,true))continue",'non-admin remote access is not explicit/fail-closed')
-need('apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php',"'password_hash'=>(string)$u['password_hash']",'auth projection must use existing hash only')
-if "'password'=>" in text('apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php'):
-    raise SystemExit('FAIL plaintext password projection found')
+need('apps/local-web/database/migrations/0026_q3_remote_credentials.sql','remote_user_credentials','independent remote credential table missing')
+need('apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php',"remote_password_hash",'auth projection must use independent remote credential hash')
+need('apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php',"'remote_table_drafts'",'remote table draft capability missing')
+need('apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php',"'remote_order_actions'",'remote order action capability missing')
+need('apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php',"'remote_preparation_actions'",'remote preparation action capability missing')
+need('apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php',"'table_draft_context'",'table draft context projection missing')
+builder=text('apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php')
+if "'password'=>" in builder or "u.password_hash" in builder:
+    raise SystemExit('FAIL Local/plaintext password projection found')
+need('apps/local-web/src/Relay/RealtimeDispatchService.php',"'order.staff_status'",'remote staff order status dispatch missing')
+need('apps/public/src/Remote/RemoteReadModelService.php',"'table_draft_context' => 'orders.table_draft'",'Public table draft context capability missing')
 need('apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php',"'sokna-relay-v1'",'signed relay contract missing')
 need('apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php',"verify_peer'=>true",'TLS verification missing')
 need('apps/local-web/src/Domain/PublicEdge/PublicEdgePublisherService.php',"'public.projection_sync'",'') if False else None
