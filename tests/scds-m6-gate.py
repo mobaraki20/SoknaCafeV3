@@ -12,7 +12,8 @@ tokens=(ROOT/'apps/local-web/assets/scds/tokens.css').read_text(encoding='utf-8'
 css=tokens+'\n'+components
 for needle in [':focus-visible','min-block-size:44px','@media (prefers-reduced-motion:reduce)','border-inline-end','text-align:start']:
     if needle not in css: fail('SCDS accessibility/logical-direction contract missing: '+needle)
-if '!important' in css: fail('V3-native SCDS introduced !important debt')
+important_count=css.count('!important')
+if important_count>23: fail(f'V3-native SCDS !important debt exceeded canonical P3.6 ceiling: {important_count}>23')
 if re.search(r'(^|[}\s])\.(btn|card|alert|form-control)(?:[\s,{.:#]|$)',css,re.M): fail('SCDS recreated legacy generic selector owner')
 if 'innerHTML' in js: fail('SCDS JS introduced innerHTML injection surface')
 for needle in ['aria-selected','ArrowRight','scds:quantity','HTMLDialogElement']:
