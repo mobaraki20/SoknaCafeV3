@@ -35,9 +35,12 @@ jobs:
           php -r 'exit(extension_loaded("pdo_mysql") && extension_loaded("openssl") ? 0 : 1);'
       - name: Restore exact Q4 WebPush canonical overlay
         run: |
-          sha256sum qualification/q4-webpush/q4-webpush-source-overlay.tar.xz
-          xz -t qualification/q4-webpush/q4-webpush-source-overlay.tar.xz
-          tar -xJf qualification/q4-webpush/q4-webpush-source-overlay.tar.xz
+          cat qualification/q4-webpush/overlay.b64.part00 qualification/q4-webpush/overlay.b64.part01 qualification/q4-webpush/overlay.b64.part02 qualification/q4-webpush/overlay.b64.part03 qualification/q4-webpush/overlay.b64.part04 qualification/q4-webpush/overlay.b64.part05 > /tmp/q4-webpush-overlay.b64
+          test "$(sha256sum /tmp/q4-webpush-overlay.b64 | awk '{print $1}')" = "e207345fe356377605a1202753600b60cdc4466cea16ea9d4743c0b0f9af8b41"
+          base64 -d /tmp/q4-webpush-overlay.b64 > /tmp/q4-webpush-source-overlay.tar.xz
+          test "$(sha256sum /tmp/q4-webpush-source-overlay.tar.xz | awk '{print $1}')" = "8c6a048f75d942539147e1ffb0c825b3b9db89e97851267f76bffb59b3d5fa08"
+          xz -t /tmp/q4-webpush-source-overlay.tar.xz
+          tar -xJf /tmp/q4-webpush-source-overlay.tar.xz
           cat >/tmp/q4-overlay.sha256 <<'EOF'
           578d09a3d3f7ce39db4fa0d5f6a9f57ab6f778a4118f4c25a4aa68ae168d7208  apps/local-web/src/Core/Bootstrap.php
           4fc27a0f7e1fec6c4e7a4aa095a3cfe2fb95de00e9a97144e8845adfff558ab1  apps/local-web/src/Core/Capabilities.php
