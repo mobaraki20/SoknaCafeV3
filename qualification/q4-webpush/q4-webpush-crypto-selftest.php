@@ -1,0 +1,24 @@
+<?php
+declare(strict_types=1);
+$root=dirname(__DIR__,2);
+$public=is_dir($root.'/public')?$root.'/public':$root.'/apps/public';
+require_once $public.'/src/Push/PushKeyStore.php';
+require_once $public.'/src/Push/WebPushService.php';
+use Sokna\PublicEdge\Push\PushKeyStore;use Sokna\PublicEdge\Push\WebPushService;
+function ok(bool $c,string $m):void{if(!$c)throw new RuntimeException('ASSERT '.$m);echo "PASS {$m}\n";}
+function pubRaw(OpenSSLAsymmetricKey $k):string{$d=openssl_pkey_get_details($k);$e=$d['ec']??[];return "\x04".$e['x'].$e['y'];}
+function rawPem(string $raw):string{$der=hex2bin('3059301306072a8648ce3d020106082a8648ce3d030107034200').$raw;return "-----BEGIN PUBLIC KEY-----\n".chunk_split(base64_encode($der),64,"\n")."-----END PUBLIC KEY-----\n";}
+function extractK(string $salt,string $ikm):string{return hash_hmac('sha256',$ikm,$salt,true);}function expand(string $prk,string $info,int $len):string{$o='';$t='';for($i=1;strlen($o)<$len;$i++){$t=hash_hmac('sha256',$t.$info.chr($i),$prk,true);$o.=$t;}return substr($o,0,$len);}function b64d(string $v):string{$r=PushKeyStore::b64urlDecode($v);if(!is_string($r))throw new RuntimeException('b64');return $r;}
+function joseDer(string $raw):string{$r=substr($raw,0,32);$s=substr($raw,32,32);$enc=function(string $v):string{$v=ltrim($v,"\0");if($v===''||(ord($v[0])&0x80))$v="\0".$v;return "\x02".chr(strlen($v)).$v;};$body=$enc($r).$enc($s);return "\x30".chr(strlen($body)).$body;}
+$dir=sys_get_temp_dir().'/sokna-q4-vapid-'.bin2hex(random_bytes(4));mkdir($dir,0700,true);$store=new PushKeyStore($dir);
+$statuses=[201,410];$seen=[];$service=new WebPushService($store,'https://public.example.test',function($endpoint,$headers,$body)use(&$statuses,&$seen){$seen[]=[$endpoint,$headers,strlen($body)];return ['status'=>array_shift($statuses),'body'=>''];});
+$client=openssl_pkey_new(['private_key_type'=>OPENSSL_KEYTYPE_EC,'curve_name'=>'prime256v1']);$clientRaw=pubRaw($client);$auth=random_bytes(16);$sub=['endpoint'=>'https://fcm.googleapis.com/fcm/send/test-token','keys'=>['p256dh'=>PushKeyStore::b64url($clientRaw),'auth'=>PushKeyStore::b64url($auth)]];
+$payload=['title'=>'آزمون سکنا','body'=>'پیام واقعی Web Push','url'=>'/staff/','tag'=>'abc'];$req=$service->buildRequest($sub,$payload,'idem-1');
+ok(($req['headers']['Content-Encoding']??'')==='aes128gcm','aes128gcm content encoding');ok(str_starts_with($req['headers']['Authorization']??'','vapid t='),'VAPID authorization header');ok(strlen($req['body'])>102,'encrypted body framed');
+$bin=$req['body'];$salt=substr($bin,0,16);$rs=unpack('N',substr($bin,16,4))[1];$idlen=ord($bin[20]);$serverRaw=substr($bin,21,$idlen);$cipherTag=substr($bin,21+$idlen);ok($rs===4096&&$idlen===65,'RFC8188 record header');
+$serverKey=openssl_pkey_get_public(rawPem($serverRaw));$shared=openssl_pkey_derive($serverKey,$client,32);$prkKey=extractK($auth,$shared);$ikm=expand($prkKey,"WebPush: info\0".$clientRaw.$serverRaw,32);$prk=extractK($salt,$ikm);$cek=expand($prk,"Content-Encoding: aes128gcm\0",16);$nonce=expand($prk,"Content-Encoding: nonce\0",12);$tag=substr($cipherTag,-16);$cipher=substr($cipherTag,0,-16);$plain=openssl_decrypt($cipher,'aes-128-gcm',$cek,OPENSSL_RAW_DATA,$nonce,$tag,'');ok(is_string($plain)&&str_ends_with($plain,"\x02"),'client decrypts Web Push payload');$decoded=json_decode(substr($plain,0,-1),true);ok($decoded===$payload,'decrypted payload exact identity');
+$authHeader=$req['headers']['Authorization'];preg_match('/^vapid t=([^,]+), k=(.+)$/',$authHeader,$m);$jwt=$m[1]??'';$pub=$m[2]??'';[$h,$p,$sig]=explode('.',$jwt);$claims=json_decode(b64d($p),true);ok(($claims['aud']??'')==='https://fcm.googleapis.com','VAPID audience is endpoint origin');ok(($claims['sub']??'')==='https://public.example.test','VAPID subject is Public origin');ok(($claims['exp']??0)>time()&&($claims['exp']??0)<=time()+43260,'VAPID expiry bounded');$verify=openssl_verify($h.'.'.$p,joseDer(b64d($sig)),openssl_pkey_get_public(rawPem(b64d($pub))),OPENSSL_ALGO_SHA256);ok($verify===1,'VAPID ES256 signature verifies');
+$result=$service->deliver(['title'=>'t','body'=>'b','url'=>'/staff/'],[$sub,$sub],'idem-2');ok($result['delivered']===1&&count($result['gone_endpoint_hashes'])===1&&$result['attempted']===2,'delivery classifies success and expired subscription');
+try{$service->buildRequest(['endpoint'=>'https://127.0.0.1/push','keys'=>$sub['keys']],$payload);throw new RuntimeException('SSRF accepted');}catch(RuntimeException $e){ok(str_contains($e->getMessage(),'not allowed')||str_contains($e->getMessage(),'invalid'),'private/IP push endpoint rejected');}
+try{$service->buildRequest(['endpoint'=>'https://evil.example/push','keys'=>$sub['keys']],$payload);throw new RuntimeException('unknown provider accepted');}catch(RuntimeException $e){ok(str_contains($e->getMessage(),'not allowed'),'unknown Push provider rejected');}
+echo "Q4_WEBPUSH_CRYPTO_SELFTEST_PASS\n";

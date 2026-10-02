@@ -1,0 +1,52 @@
+name: Q4 WebPush Bridge Real DB Qualification
+
+on:
+  pull_request:
+    paths:
+      - 'qualification/q4-webpush/**'
+      - '.github/workflows/q4-webpush-realdb.yml'
+  workflow_dispatch:
+
+permissions: {contents: read}
+
+jobs:
+  q4-webpush-realdb:
+    name: Q4 WebPush Bridge / MariaDB
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+        ports: ['3306:3306']
+        options: --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot" --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP MySQL extension
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql
+          php -r 'exit(extension_loaded("pdo_mysql") && extension_loaded("openssl") ? 0 : 1);'
+      - name: Restore exact Q4 WebPush canonical overlay
+        run: |
+          test "$(sha256sum qualification/q4-webpush/q4-webpush-source-overlay.tar.xz | awk '{print $1}')" = "8c6a048f75d942539147e1ffb0c825b3b9db89e97851267f76bffb59b3d5fa08"
+          tar -xJf qualification/q4-webpush/q4-webpush-source-overlay.tar.xz
+      - name: Syntax gate
+        run: |
+          php -l apps/public/src/Push/PushKeyStore.php
+          php -l apps/public/src/Push/WebPushService.php
+          php -l apps/public/src/Http/PushHttpAdapter.php
+          php -l apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+          php -l apps/local-web/src/Domain/Notifications/NotificationService.php
+          php -l qualification/q4-webpush/q4-webpush-crypto-selftest.php
+          php -l qualification/q4-webpush/q4-webpush-bridge-realdb-selftest.php
+      - name: WebPush crypto / VAPID selftest
+        run: php qualification/q4-webpush/q4-webpush-crypto-selftest.php
+      - name: WebPush bridge / MariaDB E2E
+        run: php qualification/q4-webpush/q4-webpush-bridge-realdb-selftest.php
