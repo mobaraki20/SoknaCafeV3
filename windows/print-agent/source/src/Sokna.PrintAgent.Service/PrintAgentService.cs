@@ -293,6 +293,7 @@ public sealed class PrintAgentService : BackgroundService
     private static void ValidateProbe(ProbeResponse probe)
     {
         if(!probe.Success||probe.ProtocolVersion!=4)throw new InvalidOperationException("Print API v4 آماده نیست.");
+        AgentVersionCompatibility.EnsureSupported(AgentVersion,probe.MinimumAgentVersion);
         if(!string.IsNullOrWhiteSpace(probe.ServerTime)&&!HasExplicitOffset(probe.ServerTime))
             throw new InvalidDataException("server_time باید ISO-8601 با offset صریح باشد.");
     }
