@@ -1,0 +1,31 @@
+{
+  "format": "sokna-p6-integrated-regression-v1",
+  "schema_version": 1,
+  "policy": "All automated P6 regression evidence must come from one source commit. Physical-device UAT remains explicit and separate.",
+  "linux_real_env": {
+    "runner": "tests/run-p6-linux-regression.sh",
+    "terminal": "P6 Linux Integrated Regression: PASS",
+    "covers": [
+      "Local/Public dual-DB product regression chain",
+      "Runtime Local trigger ownership",
+      "Print Agent Local durable owner and token-rotation regression",
+      "M10 lifecycle/recovery contracts",
+      "unified diagnostics/support-bundle contract and redaction"
+    ]
+  },
+  "windows_real_env": {
+    "runner": "tests/run-p6-windows-regression.ps1",
+    "terminal": "P6 Windows Integrated Regression: PASS",
+    "covers": [
+      "Runtime build and health self-test",
+      "Print Agent deep recovery acceptance",
+      "Windows Services pairing and installer lifecycle"
+    ]
+  },
+  "manual_uat_source": "release/manual-uat-status.json",
+  "manual_uat_not_automated": [
+    "windows_clean_install",
+    "physical_thermal_printer",
+    "responsive_touch_persian_ime"
+  ]
+}
