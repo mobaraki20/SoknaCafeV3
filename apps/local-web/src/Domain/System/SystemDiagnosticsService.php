@@ -44,6 +44,7 @@ final class SystemDiagnosticsService
             $this->check('database_version',(bool)($database['mariadb_11_4']??false),'MariaDB 11.4.x','critical'),
             $this->check('runtime_delivery',(string)($runtime['status']??'')==='observed_recently','Windows Runtime delivering Local triggers','warning'),
             $this->check('print_required_destinations',(int)($print['required_unready']??0)===0,'Required print destinations ready','warning'),
+            $this->check('print_agent_version_compatibility',(int)($print['incompatible_agents']??0)===0,'Print Agent version compatible','warning'),
             $this->check('public_edge_connectivity',(string)($public['status']??'')==='ok','Public Edge live sync and heartbeat','warning'),
             $this->check('php_zip',class_exists(\ZipArchive::class),'PHP ZIP for Local updater','warning'),
             $this->check('update_chunk_transport',is_file($this->localWebRoot.DIRECTORY_SEPARATOR.'public'.DIRECTORY_SEPARATOR.'system'.DIRECTORY_SEPARATOR.'update-chunk.php'),'Chunked Local update transport','warning'),
