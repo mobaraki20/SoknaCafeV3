@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'qualification/q4-webpush/**'
+      - 'apps/public/src/Security/SignedLocalRequestVerifier.php'
       - '.github/workflows/q4-webpush-realdb.yml'
   workflow_dispatch:
 
@@ -41,6 +42,15 @@ jobs:
           test "$(sha256sum /tmp/q4-webpush-source-overlay.tar.xz | awk '{print $1}')" = "8c6a048f75d942539147e1ffb0c825b3b9db89e97851267f76bffb59b3d5fa08"
           xz -t /tmp/q4-webpush-source-overlay.tar.xz
           tar -xJf /tmp/q4-webpush-source-overlay.tar.xz
+          cat qualification/q4-webpush/migrations.b64.part00 qualification/q4-webpush/migrations.b64.part01 qualification/q4-webpush/migrations.b64.part02 qualification/q4-webpush/migrations.b64.part03 > /tmp/q4-migrations-overlay.b64
+          test "$(sha256sum /tmp/q4-migrations-overlay.b64 | awk '{print $1}')" = "c0be128973aa1c744f2fcf09ed49ed201475835a64d8691b2193c250ec46a932"
+          base64 -d /tmp/q4-migrations-overlay.b64 > /tmp/q4-migrations-overlay.tar.xz
+          test "$(sha256sum /tmp/q4-migrations-overlay.tar.xz | awk '{print $1}')" = "7453c43491e73e209dd1717bbd2d741e369f10d0b016f34721d8e2a0dbdbd357"
+          xz -t /tmp/q4-migrations-overlay.tar.xz
+          tar -xJf /tmp/q4-migrations-overlay.tar.xz
+          test "$(find apps/local-web/database/migrations -maxdepth 1 -type f | wc -l)" = "26"
+          test "$(find apps/public/database/migrations -maxdepth 1 -type f | wc -l)" = "3"
+          test "$(sha256sum apps/public/src/Security/SignedLocalRequestVerifier.php | awk '{print $1}')" = "d4aaf24801092ef825a345a0eaefded25e9e030e7e976087f55ab4b330608c0d"
           cat >/tmp/q4-overlay.sha256 <<'EOF'
           578d09a3d3f7ce39db4fa0d5f6a9f57ab6f778a4118f4c25a4aa68ae168d7208  apps/local-web/src/Core/Bootstrap.php
           4fc27a0f7e1fec6c4e7a4aa095a3cfe2fb95de00e9a97144e8845adfff558ab1  apps/local-web/src/Core/Capabilities.php
@@ -69,6 +79,7 @@ jobs:
           php -l apps/public/src/Push/PushKeyStore.php
           php -l apps/public/src/Push/WebPushService.php
           php -l apps/public/src/Http/PushHttpAdapter.php
+          php -l apps/public/src/Security/SignedLocalRequestVerifier.php
           php -l apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php
           php -l apps/local-web/src/Domain/Notifications/NotificationService.php
           php -l qualification/q4-webpush/q4-webpush-crypto-selftest.php
