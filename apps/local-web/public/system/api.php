@@ -13,6 +13,7 @@ try{
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
     if($action==='support_bundle')WebAction::json(['success'=>true,'bundle'=>$core->systemDiagnostics()->createSupportBundle()]);
     if($action==='windows_services_pairing_create')WebAction::json(['success'=>true,'windows_services_pairing'=>$core->windowsServicesPairing()->create($user,(string)($data['display_name']??''))]);
+    if($action==='windows_services_print_token_rotation_create')WebAction::json(['success'=>true,'windows_services_pairing'=>$core->windowsServicesPairing()->createRotation($user,(int)($data['agent_id']??0),(string)($data['display_name']??''))]);
     if($action==='windows_services_pairing_cancel')WebAction::json(['success'=>true,'windows_services_pairing'=>$core->windowsServicesPairing()->cancelActive($user)]);
     if($action==='public_sync')WebAction::json(['success'=>true,'public_sync'=>$core->publicEdgePublisher()->syncAll()]);
     if($action==='public_emergency_code_rotate')WebAction::json(['success'=>true,'emergency'=>$core->publicEdgePublisher()->rotateEmergencyCode()]);
