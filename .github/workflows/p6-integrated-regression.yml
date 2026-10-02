@@ -45,7 +45,7 @@ jobs:
       - name: Install PHP DB/ZIP extensions
         run: |
           sudo apt-get update
-          sudo apt-get install -y php-mysql php-zip
+          sudo apt-get install -y php-mysql php-zip php-gd
           php -r 'exit(class_exists("ZipArchive") && extension_loaded("sodium") ? 0 : 1);'
       - name: P6 same-head Linux regression
         run: bash ./tests/run-p6-linux-regression.sh
