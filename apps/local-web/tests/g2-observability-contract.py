@@ -29,6 +29,8 @@ need(svc,"'local_web'=>$local,'database'=>$database,'runtime'=>$runtime,'print_a
 need(svc,"'productization'=>'G3.3_LIVE_HEALTH_EMERGENCY'",'Public live-health projection phase missing')
 need(svc,"'base_origin'=>$base",'Public status does not use origin-only projection')
 need(svc,"$this->publicClient->diagnostics()",'G3.3 signed Public diagnostics projection missing')
+need(svc,"$this->publicClient?->publicBaseUrl()",'Public diagnostics base URL accessor not wired')
+need('apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php','public function publicBaseUrl(): string','Public Edge client base URL accessor missing')
 need(svc,"PDO::getAvailableDrivers()",'PDO MySQL health check missing')
 need(svc,"$this->migrations->appliedVersions()",'migration drift health check missing')
 need(svc,'RuntimeEvidence::snapshot($this->pdo)','Runtime evidence snapshot owner not wired into diagnostics')
