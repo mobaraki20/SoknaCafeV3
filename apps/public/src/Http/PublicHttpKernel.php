@@ -5,6 +5,7 @@ namespace Sokna\PublicEdge\Http;
 
 use Sokna\PublicEdge\Core\Bootstrap;
 use Sokna\PublicEdge\Core\SafeErrors;
+use Sokna\PublicEdge\Emergency\PublicUpdateException;
 use Throwable;
 
 final class PublicHttpKernel
@@ -33,6 +34,21 @@ final class PublicHttpKernel
             if ($method === 'GET' && $path === '/health') {
                 $result = (new HealthHttpAdapter($this->core))->status($this->correlationId($headers));
                 return $this->json($result);
+            }
+            if ($method === 'POST' && $path === '/api/v1/pairing/initial') {
+                $payload=json_decode($rawBody,true);
+                if(!is_array($payload))return $this->json(SafeErrors::response(400,'invalid_json',$this->correlationId($headers)));
+                try{
+                    $paired=$this->core->initialPairing()->complete(
+                        trim((string)($payload['installation_id']??'')),
+                        (string)($payload['pairing_code']??''),
+                        (string)($payload['new_shared_secret']??''),
+                        (string)($payload['display_name']??'')
+                    );
+                    return $this->json(['status'=>200,'body'=>$paired]);
+                }catch(PublicUpdateException $e){
+                    return $this->json(SafeErrors::response($e->httpStatus,$e->errorCode,$this->correlationId($headers)));
+                }
             }
             if ($method === 'GET' && $path === '/assets/scds/guest.css') {
                 return $this->staticFile($this->componentRoot . '/assets/scds/guest.css', 'text/css; charset=utf-8', 300);
