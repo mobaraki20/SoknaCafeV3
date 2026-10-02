@@ -60,7 +60,7 @@ jobs:
       - name: Install PHP DB and ZIP extensions
         run: |
           sudo apt-get update
-          sudo apt-get install -y php-mysql php-zip
+          sudo apt-get install -y php-mysql php-zip php-gd
       - name: Cross-component endpoint contract
         run: python3 tests/local-endpoint-contract.py
       - name: Endpoint normalization scenarios
