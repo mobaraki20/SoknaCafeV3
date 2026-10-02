@@ -42,6 +42,10 @@ ProductShell::start($core,$user,'پشتیبانی و نگهداری','system','�
       </div>
       <label class="sc-field"><span class="sc-field__label">نام این دستگاه</span><input class="sc-control" data-windows-pair-name value="دستگاه اصلی سکنا" maxlength="120"><small class="sc-help">این نام برای شناسایی Print Agent در پنل استفاده می‌شود.</small></label>
       <div class="sc-actions"><button class="sc-button" type="button" data-windows-pair-create>ساخت کد اتصال</button><button class="sc-button sc-button--secondary" type="button" data-windows-pair-cancel>لغو کد فعال</button></div>
+      <div class="sc-form-grid sc-form-grid--2">
+        <label class="sc-field"><span class="sc-field__label">Print Agent برای تعویض توکن</span><select class="sc-control" data-windows-token-agent><option value="">Agent فعالی پیدا نشد</option></select><small class="sc-help">توکن همان Agent عوض می‌شود؛ شناسه و مقصدهای چاپ حفظ می‌شوند.</small></label>
+        <div class="sc-field"><span class="sc-field__label">امنیت اتصال چاپ</span><button class="sc-button sc-button--secondary" type="button" data-windows-token-rotate>ساخت کد تعویض توکن</button><small class="sc-help">کد را در برنامه نصب Windows Services وارد کن؛ توکن قبلی فقط بعد از تأیید نصب باطل می‌شود.</small></div>
+      </div>
       <div class="sc-alert sc-alert--warning sc-secret" data-windows-pair-secret hidden>
         <strong>کد اتصال — فقط همین حالا در برنامه نصب وارد کن:</strong>
         <code data-windows-pair-code dir="ltr"></code>
