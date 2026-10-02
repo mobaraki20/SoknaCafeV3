@@ -10,6 +10,7 @@ use Throwable;
 final class GuestContentService
 {
     private const MAX_MEDIA_BYTES = 8 * 1024 * 1024;
+    private const MAX_MEDIA_PIXELS = 24_000_000;
     private const MEDIA_MIME = [
         'image/jpeg' => 'jpg',
         'image/png' => 'png',
@@ -178,6 +179,10 @@ final class GuestContentService
         $dimensions = @getimagesize($tmpPath);
         if (!is_array($dimensions) || (int)($dimensions[0] ?? 0) < 1 || (int)($dimensions[1] ?? 0) < 1) {
             throw new GuestContentException('media_invalid_image','فایل انتخاب‌شده تصویر معتبر نیست.',422);
+        }
+        $width=(int)$dimensions[0];$height=(int)$dimensions[1];
+        if($width > 0 && $height > 0 && $width > intdiv(self::MAX_MEDIA_PIXELS,$height)){
+            throw new GuestContentException('media_dimensions','ابعاد تصویر بیش از حد بزرگ است؛ تصویر ورودی باید حداکثر ۲۴ مگاپیکسل باشد.',413,['max_pixels'=>self::MAX_MEDIA_PIXELS]);
         }
         $sha = hash_file('sha256', $tmpPath);
         if (!is_string($sha)) throw new GuestContentException('media_hash','خواندن تصویر کامل نشد.',500);
