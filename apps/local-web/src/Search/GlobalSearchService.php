@@ -14,7 +14,7 @@ final class GlobalSearchService
         $query=SearchNormalizer::normalize($raw);$limit=max(1,min(20,$limit));
         if(SearchNormalizer::length($query)<2)return ['query'=>$query,'results'=>[],'count'=>0,'min_length'=>2];
         if(SearchNormalizer::length($query)>80)$query=function_exists('mb_substr')?mb_substr($query,0,80,'UTF-8'):substr($query,0,80);
-        $all=[];$perProvider=4;
+        $all=[];$perProvider=6;
         foreach($this->providers as $provider)foreach($provider->search($query,$user,$perProvider) as $result)$all[]=$result;
         usort($all,static fn(array $a,array $b)=>((int)($b['score']??0)<=>((int)($a['score']??0)))?:strcmp((string)($a['title']??''),(string)($b['title']??'')));
         $seen=[];$out=[];
