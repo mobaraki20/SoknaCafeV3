@@ -10,7 +10,7 @@ final class LocalPage
     public static function user(Bootstrap $core): array
     {
         $user=$core->auth()->currentUser();
-        if($user===null){header('Location: /login.php');exit;}
+        if($user===null){header('Location: '.LocalUrl::path('/login.php'));exit;}
         return $user;
     }
 
@@ -33,8 +33,8 @@ final class LocalPage
     public static function forbidden(): never
     {
         http_response_code(403);
-        echo '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>دسترسی محدود | سکنا</title><link rel="stylesheet" href="/scds.php?file=tokens.css"><link rel="stylesheet" href="/scds.php?file=components.css"></head><body>';
-        echo SCDS::systemState('دسترسی محدود است.','این حساب اجازه ورود به این بخش را ندارد.','<a class="sc-button sc-button--secondary" href="/">بازگشت</a>');
+        echo '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><base href="'.SCDS::e(LocalUrl::baseHref()).'"><title>دسترسی محدود | سکنا</title><link rel="stylesheet" href="'.SCDS::e(AssetUrl::scds('tokens.css')).'"><link rel="stylesheet" href="'.SCDS::e(AssetUrl::scds('components.css')).'"></head><body>';
+        echo SCDS::systemState('دسترسی محدود است.','این حساب اجازه ورود به این بخش را ندارد.','<a class="sc-button sc-button--secondary" href="'.SCDS::e(LocalUrl::path('/')).'">بازگشت</a>');
         echo '</body></html>';
         exit;
     }
