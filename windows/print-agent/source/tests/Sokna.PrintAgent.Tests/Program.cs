@@ -226,6 +226,10 @@ Check(failedOutcomeAfterRestart?.Status==PrintOutcomeStatus.Failed,"failed_outco
 Check(failedOutboxAfterRestart.DeliveryState==ReportDeliveryState.ReconciliationRequired,"quarantined_delivery_state_survives_restart");
 Check(failedWire?.Status=="failed"&&failedWire.SpoolerJobId is null,"quarantined_failed_never_becomes_submitted");
 Check(await afterQuarantineRestart.HasPendingReportAsync(1003),"quarantined_report_still_counts_as_durable_evidence");
+Check(AgentVersionCompatibility.IsSupported("6.2.7","6.2.5"),"version_negotiation_current_agent_meets_server_minimum");
+Check(!AgentVersionCompatibility.IsSupported("6.2.4","6.2.5"),"version_negotiation_blocks_unsafe_rollback_below_server_minimum");
+Check(AgentVersionCompatibility.IsSupported("6.2.7+build.1","6.2.5"),"version_negotiation_accepts_semver_build_metadata");
+Check(!AgentVersionCompatibility.IsSupported("not-a-version","6.2.5"),"version_negotiation_rejects_malformed_agent_version");
 
 var authClaim=MakeClaim(1004,4,"lease-d");
 var authJob=await afterQuarantineRestart.PersistReservedAsync(authClaim,"receipt-0004","server-a");
