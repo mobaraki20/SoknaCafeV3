@@ -7,7 +7,7 @@ header('Cache-Control: no-store, max-age=0');
 header('X-Content-Type-Options: nosniff');
 
 $root = dirname(__DIR__);
-$configPath = $root . '/config.php';
+$configPath = trim((string)(getenv('SOKNA_PUBLIC_CONFIG') ?: ($root . '/config.php')));
 
 function setup_pair_reply(int $status, array $body): never
 {
