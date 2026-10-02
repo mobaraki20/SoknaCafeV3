@@ -1,16 +1,16 @@
 <?php
 declare(strict_types=1);
 namespace Sokna\Local\Domain\Notifications;
-use PDO;use Throwable;
+use PDO;use Throwable;use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
 final class NotificationService
 {
-    public function __construct(private readonly PDO $pdo){}
+    public function __construct(private readonly PDO $pdo,private readonly ?PublicEdgeSyncClient $publicClient=null){}
     public function snapshot(array $user): array
     {
         $uid=$this->uid($user);$this->ensurePreference($uid);$q=$this->pdo->prepare('SELECT in_app_enabled,push_enabled,updated_at FROM notification_preferences WHERE user_id=?');$q->execute([$uid]);$pref=$q->fetch(PDO::FETCH_ASSOC)?:[];
         $q=$this->pdo->prepare('SELECT id,title,body,target_url,read_at,created_at FROM notification_inbox WHERE user_id=? ORDER BY id DESC LIMIT 100');$q->execute([$uid]);$items=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
         $q=$this->pdo->prepare('SELECT COUNT(*) FROM notification_push_subscriptions WHERE user_id=? AND active=1');$q->execute([$uid]);
-        return ['preferences'=>$pref,'items'=>$items,'unread'=>count(array_filter($items,fn($r)=>empty($r['read_at']))),'push'=>['subscriptions'=>(int)$q->fetchColumn(),'vapid_public_key'=>$this->setting('notifications.vapid_public_key'),'bridge_configured'=>$this->setting('notifications.push_bridge_url')!=='']];
+        $push=$this->remotePushConfig();$push['subscriptions']=(int)$q->fetchColumn();return ['preferences'=>$pref,'items'=>$items,'unread'=>count(array_filter($items,fn($r)=>empty($r['read_at']))),'push'=>$push];
     }
     public function savePreferences(array $input,array $user): array{$uid=$this->uid($user);$q=$this->pdo->prepare('INSERT INTO notification_preferences(user_id,in_app_enabled,push_enabled) VALUES(?,?,?) ON DUPLICATE KEY UPDATE in_app_enabled=VALUES(in_app_enabled),push_enabled=VALUES(push_enabled)');$q->execute([$uid,!empty($input['in_app_enabled'])?1:0,!empty($input['push_enabled'])?1:0]);return $this->snapshot($user)['preferences'];}
     public function registerPush(array $subscription,array $user): array
@@ -34,10 +34,20 @@ final class NotificationService
         return ['processed'=>count($rows),'delivered'=>$done,'skipped'=>$skipped,'failed'=>$failed];
     }
     public function remoteRows(): array{return $this->pdo->query("SELECT CONCAT('user:',i.user_id) projection_id,i.id,i.title,i.body,i.target_url,i.read_at,i.created_at FROM notification_inbox i WHERE i.created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 30 DAY) ORDER BY i.id DESC LIMIT 500")->fetchAll(PDO::FETCH_ASSOC)?:[];}
-    public function remotePushConfig(): array{return ['vapid_public_key'=>$this->setting('notifications.vapid_public_key'),'bridge_configured'=>$this->setting('notifications.push_bridge_url')!==''];}
+    public function remotePushConfig(): array
+    {
+        if(!$this->publicClient?->configured())return ['vapid_public_key'=>'','bridge_configured'=>false];
+        try{$response=$this->publicClient->pushConfig();$push=is_array($response['body']['push']??null)?$response['body']['push']:[];$key=trim((string)($push['vapid_public_key']??''));return ['vapid_public_key'=>$key,'bridge_configured'=>$key!==''&&($push['bridge_configured']??false)===true];}
+        catch(Throwable){return ['vapid_public_key'=>'','bridge_configured'=>false];}
+    }
     private function deliverPush(array $r): string
     {
-        $bridge=$this->setting('notifications.push_bridge_url');if($bridge===''||!str_starts_with(strtolower($bridge),'https://'))return 'skipped';$q=$this->pdo->prepare('SELECT endpoint_url,p256dh_key,auth_secret FROM notification_push_subscriptions WHERE user_id=? AND active=1 ORDER BY id');$q->execute([(int)$r['user_id']]);$subs=$q->fetchAll(PDO::FETCH_ASSOC)?:[];if($subs===[])return 'skipped';$token=$this->setting('notifications.push_bridge_token');$payload=['notification'=>['title'=>(string)$r['title'],'body'=>(string)$r['body'],'url'=>(string)($r['target_url']??'/')],'subscriptions'=>$subs,'idempotency_key'=>(string)$r['idempotency_key']];$headers="Content-Type: application/json\r\n".($token!==''?'Authorization: Bearer '.$token."\r\n":'');$ctx=stream_context_create(['http'=>['method'=>'POST','header'=>$headers,'content'=>json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'timeout'=>5,'ignore_errors'=>true]]);$result=@file_get_contents($bridge,false,$ctx);$status=0;foreach($http_response_header??[] as $h)if(preg_match('/^HTTP\/\S+\s+(\d{3})/',$h,$m))$status=(int)$m[1];if($result===false||$status<200||$status>=300)throw new NotificationException('push_bridge_failed','Push bridge delivery failed.',503);return 'delivered';
+        if(!$this->publicClient?->configured())return 'skipped';
+        $q=$this->pdo->prepare('SELECT endpoint_hash,endpoint_url,p256dh_key,auth_secret FROM notification_push_subscriptions WHERE user_id=? AND active=1 ORDER BY id');$q->execute([(int)$r['user_id']]);$subs=$q->fetchAll(PDO::FETCH_ASSOC)?:[];if($subs===[])return 'skipped';
+        $payload=['notification'=>['title'=>(string)$r['title'],'body'=>(string)$r['body'],'url'=>(string)($r['target_url']??'/')],'subscriptions'=>array_map(fn($s)=>['endpoint'=>(string)$s['endpoint_url'],'keys'=>['p256dh'=>(string)$s['p256dh_key'],'auth'=>(string)$s['auth_secret']]],$subs),'idempotency_key'=>(string)$r['idempotency_key']];
+        $response=$this->publicClient->deliverPush($payload);$body=is_array($response['body']??null)?$response['body']:[];
+        foreach((array)($body['gone_endpoint_hashes']??[]) as $hash)if(is_string($hash)&&preg_match('/^[a-f0-9]{64}$/D',$hash))$this->pdo->prepare('UPDATE notification_push_subscriptions SET active=0 WHERE user_id=? AND endpoint_hash=?')->execute([(int)$r['user_id'],$hash]);
+        return (int)($body['delivered']??0)>0?'delivered':'skipped';
     }
     private function delivered(int $id): void{$this->pdo->prepare("UPDATE notification_outbox SET state='delivered',delivered_at=UTC_TIMESTAMP(),last_error=NULL WHERE id=?")->execute([$id]);}
     private function ensurePreference(int $uid): void{$this->pdo->prepare('INSERT IGNORE INTO notification_preferences(user_id,in_app_enabled,push_enabled) VALUES(?,1,0)')->execute([$uid]);}
