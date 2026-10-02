@@ -22,7 +22,7 @@
       "Print Agent deep recovery acceptance",
       "Windows Services pairing and installer lifecycle"
     ],
-    "status": "PENDING"
+    "status": "READY"
   },
   "manual_uat_source": "release/manual-uat-status.json",
   "manual_uat_not_automated": [
