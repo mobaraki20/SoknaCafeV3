@@ -29,7 +29,7 @@ final class PublicHttpKernel
                 return $this->response(302, '', ['Location' => '/menu' . $suffix, 'Cache-Control' => 'no-store', 'Content-Type' => 'text/plain; charset=utf-8']);
             }
             if ($method === 'GET' && $path === '/robots.txt') {
-                return $this->response(200, "User-agent: *\nDisallow: /api/\nDisallow: /emergency/\n", ['Content-Type' => 'text/plain; charset=utf-8', 'Cache-Control' => 'public, max-age=3600']);
+                return $this->response(200, "User-agent: *\nDisallow: /api/\nDisallow: /emergency/\nDisallow: /setup/\n", ['Content-Type' => 'text/plain; charset=utf-8', 'Cache-Control' => 'public, max-age=3600']);
             }
             if ($method === 'GET' && $path === '/health') {
                 $result = (new HealthHttpAdapter($this->core))->status($this->correlationId($headers));
