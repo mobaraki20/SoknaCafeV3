@@ -2,6 +2,7 @@
 declare(strict_types=1);
 namespace Sokna\Local\Domain\Update;
 use Sokna\Local\Core\Observability;
+use Sokna\Local\Core\Migrations;
 use Throwable;
 use ZipArchive;
 
@@ -9,10 +10,13 @@ final class LocalUpdateService
 {
     private const FORMAT='sokna-component-package-v1';
     private const STATE_FORMAT='sokna-local-update-state-v1';
+    private const BINDING_NAME='.sokna-installation.json';
+    private const BINDING_FORMAT='sokna-local-installation-binding-v1';
     private const MAX_FILES=12000;
     private const MAX_EXPANDED=536870912;
     public function __construct(
         private readonly Observability $observability,
+        private readonly Migrations $migrations,
         private readonly string $packageRoot,
         private readonly string $localWebRoot,
         private readonly string $compatibilityFile,
@@ -32,7 +36,7 @@ final class LocalUpdateService
 
     public function stageUploadedZip(string $zipPath,int $actorId=0): array
     {
-        $meta=$this->verifyZip($zipPath);$version=(string)$meta['manifest']['version'];$hash=hash_file('sha256',$zipPath);
+        $meta=$this->verifyZip($zipPath);$manifest=(array)$meta['manifest'];$version=(string)$manifest['version'];$this->assertCompatible($manifest);$dbPreflight=$this->assertMigrationLineage($manifest);$hash=hash_file('sha256',$zipPath);
         $target=$this->root().'/staged/'.$version;
         if(is_dir($target)){
             $existing=$this->readJson($target.'/package.json');
@@ -46,7 +50,7 @@ final class LocalUpdateService
             $this->verifyDirectory($tmp.'/payload',(array)$meta['manifest']['files']);
             if(!@rename($tmp,$target)){ $this->removeTree($tmp); throw new LocalUpdateException('stage_failed','Stage بسته کامل نشد.',500); }
         }
-        $s=$this->state();$s['staged']=['version'=>$version,'package_sha256'=>$hash,'source_commit'=>(string)$meta['manifest']['source_commit'],'signature_status'=>$meta['signature_status'],'staged_at'=>gmdate('c')];
+        $s=$this->state();$s['staged']=['version'=>$version,'package_sha256'=>$hash,'source_commit'=>(string)$manifest['source_commit'],'signature_status'=>$meta['signature_status'],'database_preflight'=>$dbPreflight,'staged_at'=>gmdate('c')];
         $this->event($s,'stage',$version,$actorId,['package_sha256'=>$hash]);$this->save($s);
         $this->observability->logEvent('warning','update.local_staged',['version'=>$version,'actor_user_id'=>$actorId,'package_sha256'=>$hash,'signature_status'=>$meta['signature_status']]);
         return $s['staged'];
@@ -57,20 +61,20 @@ final class LocalUpdateService
         $s=$this->state();$staged=(array)($s['staged']??[]);$version=(string)($staged['version']??'');if($version==='')throw new LocalUpdateException('nothing_staged','بسته‌ای برای فعال‌سازی آماده نیست.',409);
         $dir=$this->root().'/staged/'.$version;$manifest=$this->readJson($dir.'/manifest.json');$this->assertCompatible($manifest);$this->verifyDirectory($dir.'/payload',(array)($manifest['files']??[]));
         if($version===$this->currentVersion())throw new LocalUpdateException('same_version_requires_repair','برای نسخه فعلی از Repair استفاده کن.',409,['version'=>$version]);
-        $recovery=$this->createRecoveryPoint($actorId,'before_activate_'.$version);$old=$this->currentVersion();
-        try{$this->deployPayload($dir.'/payload');$this->healthCheck();}
-        catch(Throwable $e){$this->restoreRecoveryPoint((string)$recovery['id']);$this->event($s,'rollback_auto',$version,$actorId,['error'=>'activation_health_failed']);$this->save($s);throw new LocalUpdateException('activation_failed','فعال‌سازی ناموفق بود و نسخه قبلی خودکار برگردانده شد.',500);}
+        $this->assertMigrationLineage($manifest);$recovery=$this->createRecoveryPoint($actorId,'before_activate_'.$version);$old=$this->currentVersion();$applied=[];
+        try{$this->deployPayload($dir.'/payload');$applied=$this->migrateAndVerify();$this->healthCheck();}
+        catch(Throwable $e){$this->restoreRecoveryPoint((string)$recovery['id']);$this->event($s,'rollback_auto',$version,$actorId,['error'=>'activation_health_failed','forward_migrations'=>$applied]);$this->save($s);throw new LocalUpdateException('activation_failed','فعال‌سازی ناموفق بود و فایل‌های نسخه قبلی خودکار برگردانده شدند. اگر migration جدیدی اجرا شده باشد، ساختار دیتابیس به‌صورت forward-compatible حفظ می‌شود.',500,['forward_migrations'=>$applied]);}
         $s=$this->state();$s['previous_version']=$old;$s['active_version']=$version;$s['lkg_recovery_id']=(string)$recovery['id'];$s['staged']=null;
-        $this->event($s,'activate',$version,$actorId,['previous'=>$old,'recovery_id'=>$recovery['id']]);$this->save($s);$this->observability->logEvent('warning','update.local_activated',['version'=>$version,'previous'=>$old,'actor_user_id'=>$actorId,'recovery_id'=>$recovery['id']]);
+        $this->event($s,'activate',$version,$actorId,['previous'=>$old,'recovery_id'=>$recovery['id'],'migrations'=>$applied]);$this->save($s);$this->observability->logEvent('warning','update.local_activated',['version'=>$version,'previous'=>$old,'actor_user_id'=>$actorId,'recovery_id'=>$recovery['id']]);
         return $this->snapshot();
     }
 
     public function repairStaged(int $actorId=0): array
     {
         $s=$this->state();$version=(string)(($s['staged']??[])['version']??'');if($version===''||$version!==$this->currentVersion())throw new LocalUpdateException('repair_requires_same_version','Repair فقط برای بسته stage‌شده همان نسخه فعال مجاز است.',409);
-        $dir=$this->root().'/staged/'.$version;$this->verifyDirectory($dir.'/payload',(array)$this->readJson($dir.'/manifest.json')['files']);$recovery=$this->createRecoveryPoint($actorId,'before_repair_'.$version);
-        try{$this->deployPayload($dir.'/payload');$this->healthCheck();}catch(Throwable){$this->restoreRecoveryPoint((string)$recovery['id']);throw new LocalUpdateException('repair_failed','Repair ناموفق بود و نسخه قبلی برگردانده شد.',500);}
-        $s=$this->state();$s['staged']=null;$s['lkg_recovery_id']=(string)$recovery['id'];$this->event($s,'repair',$version,$actorId,['recovery_id'=>$recovery['id']]);$this->save($s);$this->observability->logEvent('warning','update.local_repaired',['version'=>$version,'actor_user_id'=>$actorId]);return $this->snapshot();
+        $dir=$this->root().'/staged/'.$version;$manifest=$this->readJson($dir.'/manifest.json');$this->verifyDirectory($dir.'/payload',(array)$manifest['files']);$this->assertMigrationLineage($manifest);$recovery=$this->createRecoveryPoint($actorId,'before_repair_'.$version);$applied=[];
+        try{$this->deployPayload($dir.'/payload');$applied=$this->migrateAndVerify();$this->healthCheck();}catch(Throwable){$this->restoreRecoveryPoint((string)$recovery['id']);throw new LocalUpdateException('repair_failed','Repair ناموفق بود و فایل‌های نسخه قبلی برگردانده شدند.',500,['forward_migrations'=>$applied]);}
+        $s=$this->state();$s['staged']=null;$s['lkg_recovery_id']=(string)$recovery['id'];$this->event($s,'repair',$version,$actorId,['recovery_id'=>$recovery['id'],'migrations'=>$applied]);$this->save($s);$this->observability->logEvent('warning','update.local_repaired',['version'=>$version,'actor_user_id'=>$actorId]);return $this->snapshot();
     }
 
     public function rollback(int $actorId=0): array
@@ -102,6 +106,7 @@ final class LocalUpdateService
             $actual=[];for($i=0;$i<$z->numFiles;$i++){$name=(string)$z->getNameIndex($i);if($name==='manifest.json'||$name==='signature.json'||str_ends_with($name,'/'))continue;if(!str_starts_with($name,'payload/'))throw new LocalUpdateException('unexpected_entry','فایل خارج از payload داخل بسته وجود دارد.',422,['entry'=>$name]);$rel=$this->safeRelative(substr($name,8));if(isset($actual[$rel]))throw new LocalUpdateException('duplicate_entry','مسیر تکراری در ZIP مجاز نیست.',422,['file'=>$rel]);$actual[$rel]=true;}
             if(array_keys($expected)!==array_keys(array_intersect_key($expected,$actual))||count($actual)!==count($expected))throw new LocalUpdateException('payload_set_mismatch','فهرست payload با manifest یکسان نیست.',422);
             foreach($expected as $rel=>[$size,$hash]){$stream=$z->getStream('payload/'.$rel);if(!is_resource($stream))throw new LocalUpdateException('missing_file','فایل اعلام‌شده در payload نیست.',422,['file'=>$rel]);$ctx=hash_init('sha256');$read=0;while(!feof($stream)){$buf=fread($stream,1048576);if($buf===false)break;$read+=strlen($buf);hash_update($ctx,$buf);}fclose($stream);if($read!==$size||!hash_equals($hash,hash_final($ctx)))throw new LocalUpdateException('hash_mismatch','هش یکی از فایل‌های بسته معتبر نیست.',422,['file'=>$rel]);}
+            $updaterContract=(int)($manifest['updater_contract']??0);if($updaterContract<2&&$version!==$this->currentVersion())throw new LocalUpdateException('upgrade_contract_missing','این بسته برای ارتقای مستقیم با updater فعلی قرارداد لازم را ندارد.',409);if($updaterContract>=2)UpdateMigrationPolicy::assertManifestMatchesFiles($manifest,$files);
             $this->assertCompatible($manifest);$signature=$this->verifySignature($z,$raw);return ['manifest'=>$manifest,'signature_status'=>$signature];
         }catch(LocalUpdateException $e){throw $e;}catch(Throwable){throw new LocalUpdateException('package_invalid','ساختار بسته update معتبر نیست.',422);}finally{$z->close();}
     }
@@ -116,16 +121,181 @@ final class LocalUpdateService
     private function extractPayload(string $zipPath,string $target,array $files): void
     { $z=new ZipArchive();$z->open($zipPath);try{foreach($files as $e){$rel=$this->safeRelative((string)$e['path']);$dst=$target.'/'.$rel;$this->mkdir(dirname($dst));$in=$z->getStream('payload/'.$rel);$out=fopen($dst,'wb');if(!is_resource($in)||!is_resource($out))throw new LocalUpdateException('extract_failed','استخراج بسته کامل نشد.',500);stream_copy_to_stream($in,$out);fclose($in);fclose($out);}}finally{$z->close();}}
     private function assertCompatible(array $manifest): void
-    { $compat=$this->readJson($this->compatibilityFile);$req=(array)(($compat['components']['local']??[])['requires']??[]);$contracts=(array)($manifest['contracts']??[]);foreach($req as $k=>$want){if(in_array($k,['php_version_id','pdo_mysql'],true))continue;if(!array_key_exists($k,$contracts))throw new LocalUpdateException('missing_contract','قرارداد موردنیاز بسته وجود ندارد.',422,['contract'=>$k]);$actual=$contracts[$k];if(is_int($want)&&(int)$actual!==$want)throw new LocalUpdateException('incompatible_contract','نسخه قرارداد سازگار نیست.',409,['contract'=>$k]);if(is_string($want)&&str_starts_with($want,'>=')){if((string)explode('.',(string)$actual)[0]!=='1')throw new LocalUpdateException('incompatible_contract','نسخه قرارداد سازگار نیست.',409,['contract'=>$k]);}} }
+    { $compat=$this->readJson($this->compatibilityFile);$line=(string)($compat['release_line']??'');$incomingLine=(string)(($manifest['upgrade']??[])['release_line']??'');if((int)($manifest['updater_contract']??0)>=2&&($line===''||$incomingLine!==$line))throw new LocalUpdateException('incompatible_release_line','این بسته متعلق به خط انتشار سازگار با نصب فعلی نیست.',409);$req=(array)(($compat['components']['local']??[])['requires']??[]);$contracts=(array)($manifest['contracts']??[]);foreach($req as $k=>$want){if(in_array($k,['php_version_id','pdo_mysql'],true))continue;if(!array_key_exists($k,$contracts))throw new LocalUpdateException('missing_contract','قرارداد موردنیاز بسته وجود ندارد.',422,['contract'=>$k]);$actual=$contracts[$k];if(is_int($want)&&(int)$actual!==$want)throw new LocalUpdateException('incompatible_contract','نسخه قرارداد سازگار نیست.',409,['contract'=>$k]);if(is_string($want)&&str_starts_with($want,'>=')){if((string)explode('.',(string)$actual)[0]!=='1')throw new LocalUpdateException('incompatible_contract','نسخه قرارداد سازگار نیست.',409,['contract'=>$k]);}} }
+
+    private function assertMigrationLineage(array $manifest): array
+    {
+        if((int)($manifest['updater_contract']??0)<2)return ['policy'=>'legacy-same-version','applied_count'=>0,'incoming_count'=>0,'pending_count'=>0];
+        try{$incoming=UpdateMigrationPolicy::catalogFromManifest($manifest);$applied=$this->migrations->appliedVersions();$stats=UpdateMigrationPolicy::assertInstalledLineage($applied,$incoming,$this->packageRoot.'/database/migrations');return ['policy'=>UpdateMigrationPolicy::POLICY]+$stats;}
+        catch(LocalUpdateException $e){throw $e;}catch(Throwable $e){throw new LocalUpdateException('database_preflight_failed','بررسی سازگاری دیتابیس قبل از نصب کامل نشد.',503);}
+    }
+
+    /** @return list<string> */
+    private function migrateAndVerify(): array
+    {
+        try{$applied=$this->migrations->migrate();$catalog=array_keys($this->migrations->catalog());$done=$this->migrations->appliedVersions();$pending=array_values(array_diff($catalog,$done));if($pending!==[])throw new LocalUpdateException('migration_incomplete','ساختار دیتابیس بعد از به‌روزرسانی کامل نشد.',500,['pending'=>$pending]);return $applied;}
+        catch(LocalUpdateException $e){throw $e;}catch(Throwable $e){throw new LocalUpdateException('migration_failed','اجرای تغییرات دیتابیس نسخه جدید کامل نشد.',500,['cause'=>get_class($e)]);}
+    }
 
     private function createRecoveryPoint(int $actorId,string $reason): array
     { $id=gmdate('Ymd-His').'-'.bin2hex(random_bytes(4));$dir=$this->root().'/recovery-points/'.$id;$this->copyTree($this->localWebRoot,$dir.'/payload');$files=$this->hashTree($dir.'/payload');$meta=['format'=>'sokna-local-recovery-point-v1','id'=>$id,'version'=>$this->currentVersion(),'created_at'=>gmdate('c'),'reason'=>$reason,'actor_user_id'=>$actorId,'files'=>$files];$this->writeJson($dir.'/manifest.json',$meta);return $meta; }
     private function restoreRecoveryPoint(string $id): array
     { if(!preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{8}$/',$id))throw new LocalUpdateException('invalid_recovery_id','شناسه نقطه بازگشت معتبر نیست.',422);$dir=$this->root().'/recovery-points/'.$id;$m=$this->readJson($dir.'/manifest.json');if(($m['format']??'')!=='sokna-local-recovery-point-v1')throw new LocalUpdateException('recovery_missing','نقطه بازگشت معتبر نیست.',404);$this->verifyDirectory($dir.'/payload',(array)$m['files']);$this->deployPayload($dir.'/payload');$this->healthCheck();return $m; }
     private function deployPayload(string $source): void
-    { $parent=dirname($this->localWebRoot);$candidate=$parent.'/.sokna-candidate-'.bin2hex(random_bytes(4));$old=$parent.'/.sokna-old-'.bin2hex(random_bytes(4));$this->copyTree($source,$candidate);$stable=$this->localWebRoot.'/public/local-recovery.php';if(is_file($stable)){@mkdir($candidate.'/public',0755,true);copy($stable,$candidate.'/public/local-recovery.php');}if(!@rename($this->localWebRoot,$old)){ $this->removeTree($candidate);throw new LocalUpdateException('activate_swap_failed','جابه‌جایی نسخه فعلی ممکن نشد.',500);}if(!@rename($candidate,$this->localWebRoot)){@rename($old,$this->localWebRoot);$this->removeTree($candidate);throw new LocalUpdateException('activate_swap_failed','فعال‌سازی نسخه جدید ممکن نشد.',500);} $this->removeTree($old); }
+    {
+        // The Local Web updates itself while Apache/PHP is serving files from
+        // $localWebRoot. Renaming the live root works on many Unix systems but
+        // fails reliably on Windows because the active directory/file handles
+        // cannot be moved. Deploy in-place instead and rely on the recovery
+        // point created before every activate/repair for transactional rollback.
+        //
+        // Stale-file removal is intentionally based only on the previous
+        // managed-file inventory. On the first migration from the legacy
+        // root-swap updater there is no inventory, so unknown/machine-local
+        // files are preserved rather than guessed and deleted.
+        if(!is_dir($source))throw new LocalUpdateException('payload_missing','Payload نسخه برای استقرار پیدا نشد.',500);
+
+        $newFiles=$this->relativeFileSet($source);
+        // The installation binding is machine-local state. It must never be
+        // owned by an update payload or recovery snapshot.
+        unset($newFiles[self::BINDING_NAME]);
+        $managedPath=$this->root().'/managed-files.json';
+        $managed=$this->readJson($managedPath);
+        $oldFiles=[];
+        foreach((array)($managed['files']??[]) as $rel){
+            if(is_string($rel)&&$rel!==''&&!in_array($rel,['config.php','install.lock','public/local-recovery.php',self::BINDING_NAME],true))$oldFiles[$rel]=true;
+        }
+
+        // Write/replace new managed files. PHP source files are no longer open
+        // after parsing, so Windows permits overwriting them even though this
+        // request itself is running from the same application tree.
+        foreach(array_keys($newFiles) as $rel){
+            $from=$source.'/'.$rel;$to=$this->localWebRoot.'/'.$rel;$this->mkdir(dirname($to));
+            if(!@copy($from,$to))throw new LocalUpdateException('copy_failed','کپی فایل lifecycle ناموفق بود.',500,['file'=>$rel]);
+        }
+
+        // Remove only files that a previous successful in-place deployment
+        // explicitly owned and that no longer exist in the new payload.
+        foreach(array_keys($oldFiles) as $rel){
+            if(isset($newFiles[$rel]))continue;
+            $target=$this->localWebRoot.'/'.$rel;
+            if(is_file($target)||is_link($target))@unlink($target);
+        }
+        $this->removeEmptyDirectories($this->localWebRoot);
+
+        $this->writeJson($managedPath,[
+            'format'=>'sokna-local-managed-files-v1',
+            'schema_version'=>1,
+            'updated_at'=>gmdate('c'),
+            'files'=>array_keys($newFiles),
+        ]);
+        $this->refreshInstallationBinding();
+    }
+
+    private function refreshInstallationBinding(): void
+    {
+        $root=dirname(rtrim($this->localWebRoot,'/\\'));
+        $configPath=$root.DIRECTORY_SEPARATOR.'config.php';
+        $lockPath=$root.DIRECTORY_SEPARATOR.'install.lock';
+        if(!is_file($configPath)||!is_file($lockPath))return;
+        try{
+            $config=require $configPath;
+            if(!is_array($config))return;
+            $installationId=trim((string)($config['installation']['id']??''));
+            if($installationId==='')return;
+            $raw=@file_get_contents($lockPath);
+            $lock=is_string($raw)?json_decode($raw,true,32,JSON_THROW_ON_ERROR):null;
+            if(!is_array($lock)||($lock['format']??'')!=='sokna-install-lock-v3'||!hash_equals($installationId,trim((string)($lock['installation_id']??''))))return;
+            $this->writeJson($this->localWebRoot.DIRECTORY_SEPARATOR.self::BINDING_NAME,[
+                'format'=>self::BINDING_FORMAT,
+                'installation_id'=>$installationId,
+                'bound_at'=>gmdate('c'),
+                'source'=>'local-update',
+            ]);
+        }catch(Throwable $e){
+            throw new LocalUpdateException('installation_binding_failed','اتصال نسخه جدید به نصب موجود کامل نشد و فعال‌سازی متوقف شد.',500);
+        }
+    }
+
+    private function relativeFileSet(string $root): array
+    {
+        $files=[];$prefixLen=strlen(rtrim($root,'/\\'))+1;
+        $it=new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root,\FilesystemIterator::SKIP_DOTS));
+        foreach($it as $f)if($f->isFile()){
+            $rel=str_replace('\\','/',substr($f->getPathname(),$prefixLen));
+            $files[$this->safeRelative($rel)]=true;
+        }
+        ksort($files,SORT_STRING);return $files;
+    }
+
+    private function removeEmptyDirectories(string $root): void
+    {
+        if(!is_dir($root))return;
+        $it=new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root,\FilesystemIterator::SKIP_DOTS),\RecursiveIteratorIterator::CHILD_FIRST);
+        foreach($it as $f)if($f->isDir())@rmdir($f->getPathname());
+    }
     private function healthCheck(): void
-    { foreach(['bootstrap.php','public/_app.php','public/index.php','public/local-recovery.php'] as $rel)if(!is_file($this->localWebRoot.'/'.$rel))throw new LocalUpdateException('health_failed','فایل حیاتی نسخه جدید وجود ندارد.',500,['file'=>$rel]);if(PHP_BINARY!==''){foreach(['bootstrap.php','public/_app.php','public/index.php','public/local-recovery.php'] as $rel){$cmd=escapeshellarg(PHP_BINARY).' -l '.escapeshellarg($this->localWebRoot.'/'.$rel).' 2>&1';exec($cmd,$out,$code);if($code!==0)throw new LocalUpdateException('health_failed','PHP syntax health check ناموفق بود.',500,['file'=>$rel]);}} }
+    {
+        $critical=['bootstrap.php','public/_app.php','public/index.php','public/local-recovery.php'];
+        foreach($critical as $rel)if(!is_file($this->localWebRoot.'/'.$rel))
+            throw new LocalUpdateException('health_failed','فایل حیاتی نسخه جدید وجود ندارد.',500,['file'=>$rel]);
+
+        // PHP_BINARY is not a reliable CLI path under Apache/mod_php on Windows:
+        // it can resolve to the Apache executable. Resolve the real PHP CLI from
+        // the SOKNA infrastructure root / loaded php.ini / PHP_BINDIR instead.
+        $cli=$this->resolvePhpCli();
+        if($cli!==null){
+            foreach($critical as $rel){
+                $out=[];$code=0;
+                $cmd=escapeshellarg($cli).' -l '.escapeshellarg($this->localWebRoot.'/'.$rel).' 2>&1';
+                exec($cmd,$out,$code);
+                if($code!==0)throw new LocalUpdateException(
+                    'health_failed',
+                    'PHP syntax health check ناموفق بود.',
+                    500,
+                    ['file'=>$rel,'php_cli'=>$cli,'lint_output'=>substr(implode("\n",$out),0,1200)]
+                );
+            }
+        }
+    }
+
+    private function resolvePhpCli(): ?string
+    {
+        $candidates=[];
+        $env=trim((string)(getenv('SOKNA_PHP_CLI')?:''));
+        if($env!=='')$candidates[]=$env;
+
+        // Supported Windows layout: <SOKNA_ROOT>\Infrastructure\PHP\php.exe
+        $soknaRoot=dirname(rtrim($this->localWebRoot,'/\\'));
+        $candidates[]=$soknaRoot.DIRECTORY_SEPARATOR.'Infrastructure'.DIRECTORY_SEPARATOR.'PHP'.DIRECTORY_SEPARATOR.'php.exe';
+        $candidates[]=$soknaRoot.DIRECTORY_SEPARATOR.'Infrastructure'.DIRECTORY_SEPARATOR.'PHP'.DIRECTORY_SEPARATOR.'php';
+
+        $ini=php_ini_loaded_file();
+        if(is_string($ini)&&$ini!==''){
+            $dir=dirname($ini);
+            $candidates[]=$dir.DIRECTORY_SEPARATOR.'php.exe';
+            $candidates[]=$dir.DIRECTORY_SEPARATOR.'php';
+        }
+        if(defined('PHP_BINDIR')&&is_string(PHP_BINDIR)&&PHP_BINDIR!==''){
+            $candidates[]=PHP_BINDIR.DIRECTORY_SEPARATOR.'php.exe';
+            $candidates[]=PHP_BINDIR.DIRECTORY_SEPARATOR.'php';
+        }
+
+        // Only trust PHP_BINARY when it actually names a PHP executable.
+        if(defined('PHP_BINARY')&&is_string(PHP_BINARY)&&PHP_BINARY!==''){
+            $base=strtolower(basename(PHP_BINARY));
+            if(in_array($base,['php','php.exe','php-cgi','php-cgi.exe'],true))$candidates[]=PHP_BINARY;
+        }
+
+        $seen=[];
+        foreach($candidates as $candidate){
+            $candidate=trim((string)$candidate);
+            if($candidate===''||isset($seen[strtolower($candidate)]))continue;
+            $seen[strtolower($candidate)]=true;
+            if(is_file($candidate))return $candidate;
+        }
+        return null;
+    }
 
     private function verifyDirectory(string $root,array $files): void
     { $expected=[];foreach($files as $e){$rel=$this->safeRelative((string)($e['path']??''));$expected[$rel]=true;$p=$root.'/'.$rel;if(!is_file($p)||(int)filesize($p)!==(int)$e['size']||!hash_equals(strtolower((string)$e['sha256']),strtolower((string)hash_file('sha256',$p))))throw new LocalUpdateException('staged_integrity_failed','یکپارچگی Stage معتبر نیست.',422,['file'=>$rel]);}$actual=[];$it=new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root,\FilesystemIterator::SKIP_DOTS));foreach($it as $f)if($f->isFile())$actual[str_replace('\\','/',substr($f->getPathname(),strlen($root)+1))]=true;if(count($actual)!==count($expected)||array_diff_key($actual,$expected)||array_diff_key($expected,$actual))throw new LocalUpdateException('payload_set_mismatch','مجموعه فایل‌های Stage تغییر کرده است.',422); }

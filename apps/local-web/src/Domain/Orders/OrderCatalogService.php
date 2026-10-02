@@ -31,6 +31,55 @@ final class OrderCatalogService
         ],$rows);
     }
 
+    /**
+     * Canonical main ordering groups. `menus` owns the top level; categories/items
+     * are only memberships inside an active menu. Item details stay in
+     * staffCatalogRows() so this read model remains small and additive.
+     *
+     * @return list<array{id:int,menu_key:string,name:string,sort_order:int,categories:list<array{id:int,name:string,icon_key:string,sort_order:int,item_ids:list<int>}>>}
+     */
+    public function staffCatalogGroups(): array
+    {
+        $itemSchedule=self::itemScheduleSql('i');
+        $menuSchedule=self::menuScheduleSql('m');
+        $rows=$this->pdo->query("SELECT
+            m.id menu_id,m.menu_key,m.name menu_name,m.sort_order menu_sort,
+            c.id category_id,c.name category_name,c.icon_key,mc.sort_order category_sort,
+            i.id item_id,i.sort_order item_sort
+            FROM menus m
+            JOIN menu_categories mc ON mc.menu_id=m.id
+            JOIN categories c ON c.id=mc.category_id
+            JOIN menu_items mi ON mi.menu_id=m.id
+            JOIN items i ON i.id=mi.item_id AND i.category_id=c.id
+            WHERE m.status='active' AND ($menuSchedule)
+              AND c.active=1 AND i.active=1 AND i.available=1 AND ($itemSchedule)
+            ORDER BY m.sort_order,m.id,mc.sort_order,c.id,i.sort_order,i.id")->fetchAll(PDO::FETCH_ASSOC);
+
+        $groups=[];$groupIndex=[];$categoryIndex=[];
+        foreach($rows as $row){
+            $menuId=(int)$row['menu_id'];$categoryId=(int)$row['category_id'];
+            if(!isset($groupIndex[$menuId])){
+                $groupIndex[$menuId]=count($groups);
+                $groups[]=[
+                    'id'=>$menuId,'menu_key'=>(string)$row['menu_key'],'name'=>(string)$row['menu_name'],
+                    'sort_order'=>(int)$row['menu_sort'],'categories'=>[],
+                ];
+                $categoryIndex[$menuId]=[];
+            }
+            $g=$groupIndex[$menuId];
+            if(!isset($categoryIndex[$menuId][$categoryId])){
+                $categoryIndex[$menuId][$categoryId]=count($groups[$g]['categories']);
+                $groups[$g]['categories'][]=[
+                    'id'=>$categoryId,'name'=>(string)$row['category_name'],'icon_key'=>(string)($row['icon_key']??''),
+                    'sort_order'=>(int)$row['category_sort'],'item_ids'=>[],
+                ];
+            }
+            $c=$categoryIndex[$menuId][$categoryId];
+            $groups[$g]['categories'][$c]['item_ids'][]=(int)$row['item_id'];
+        }
+        return $groups;
+    }
+
     /** @return list<array{id:int,quantity:int,expected_price:?int,note:string,fulfillment_mode:string}> */
     public function normalizeRows(mixed $rows, bool $allowEmpty = false): array
     {

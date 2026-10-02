@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Sokna\Local\Domain\PublicEdge;
 use PDO;
 use Sokna\Local\Core\Observability;
+use Sokna\Local\Runtime\RuntimeEvidence;
 use Throwable;
 final class PublicEdgePublisherService
 {
@@ -35,13 +36,25 @@ final class PublicEdgePublisherService
                 throw $e;
             }
         }
+        $runtime=RuntimeEvidence::snapshot($this->pdo);
         $jobs=[
             'installation'=>['/api/v1/local/installation',$this->builder->installation($installationId)],
             'auth'=>['/api/v1/local/auth-projections',['projections'=>$this->builder->authProjections()]],
             'guest_publish'=>['/api/v1/local/guest/publish',$guestPublish],
             'availability'=>['/api/v1/local/guest/availability',$this->builder->availability()],
             'read_models'=>['/api/v1/local/read-models',['models'=>$this->builder->remoteModels()]],
-            'heartbeat'=>['/api/v1/local/heartbeat',['local_version'=>$this->localVersion,'runtime_status'=>'healthy','telemetry'=>['source'=>'local-web','synced_at'=>gmdate('c')]]],
+            'heartbeat'=>['/api/v1/local/heartbeat',[
+                'local_version'=>$this->localVersion,
+                'runtime_status'=>(string)($runtime['status']??'unavailable'),
+                'telemetry'=>[
+                    'source'=>'local-web',
+                    'synced_at'=>gmdate('c'),
+                    'runtime_last_seen_at'=>(string)($runtime['last_seen_at']??''),
+                    'runtime_age_seconds'=>$runtime['age_seconds']??null,
+                    'runtime_recent_failed_count'=>(int)($runtime['recent_failed_count']??0),
+                    'runtime_unresolved_failure'=>(bool)($runtime['unresolved_failure']??false),
+                ],
+            ]],
         ];
         foreach($jobs as $channel=>[$path,$payload]){
             $version=PublicProjectionBuilder::hash($payload);
@@ -62,7 +75,7 @@ final class PublicEdgePublisherService
 
     public function rotateEmergencyCode(): array
     {
-        $plain=strtoupper(implode('-',str_split(bin2hex(random_bytes(12)),8)));$hash=password_hash($plain,PASSWORD_DEFAULT);$r=$this->client->post('/api/v1/local/emergency/access',['password_hash'=>$hash]);$this->record('emergency_access','ok',hash('sha256',$hash),(int)$r['status'],['rotated'=>true]);$this->obs->logEvent('warning','public.emergency_access_rotated',['origin'=>$this->client->safeOrigin()]);return ['emergency_code'=>$plain,'emergency_url'=>$this->client->safeOrigin().'/emergency.php'];
+        $plain=strtoupper(implode('-',str_split(bin2hex(random_bytes(12)),8)));$hash=password_hash($plain,PASSWORD_DEFAULT);$r=$this->client->post('/api/v1/local/emergency/access',['password_hash'=>$hash]);$this->record('emergency_access','ok',hash('sha256',$hash),(int)$r['status'],['rotated'=>true]);$this->obs->logEvent('warning','public.emergency_access_rotated',['origin'=>$this->client->safeOrigin()]);return ['emergency_code'=>$plain,'emergency_url'=>$this->client->publicBaseUrl().'/emergency.php'];
     }
     public function updateStatus(): array{return $this->client->post('/api/v1/local/update/status',[])['body'];}
     public function stageUpdate(string $zipPath): array
