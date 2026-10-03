@@ -25,7 +25,11 @@ for token in required:
     assert token in v2, token
 
 compat = (ROOT / 'packaging/prerequisites/setup-ui/UiCompatibilityPatch.cs').read_text(encoding='utf-8')
-for token in ['_root', '_apachePort', 'MinimumSize = new Size(360, 30)', 'MinimumSize = new Size(110, 28)', 'NormalizeVersionText']:
+for token in [
+    '_root', '_apachePort', 'MinimumSize = new Size(360, 30)',
+    'MinimumSize = new Size(110, 28)', 'NormalizeVersionText',
+    'StabilizeMiddleColumn', 'SizeType.Absolute', 'table.SizeChanged += Resize'
+]:
     assert token in compat, token
 
 iss = (ROOT / 'packaging/prerequisites/installer/SOKNA-Prerequisites.iss').read_text(encoding='utf-8')
