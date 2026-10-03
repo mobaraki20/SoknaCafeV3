@@ -72,6 +72,18 @@ internal static class SelfServiceContractSelfTest
             var missingFindings = (List<SelfServiceFinding>)method.Invoke(null, new object[] { healthy with { Print = Service("SoknaPrintWorker", installed: false) } })!;
             if (!missingFindings.Any(finding => finding.Code == "WS-SVC-MISSING-001" && finding.Remediation == SelfServiceRemediation.Repair))
                 failures.Add("service-missing remediation is not Repair");
+
+            // Regression: WinForms/GDI may draw U+2066/U+2069 isolate controls as visible glyphs.
+            // Presentation must never leave those controls in user-visible strings.
+            using var bidiProbe = new Form();
+            var bidiLabel = new Label { Text = "اتصال به Local Web و Runtime" };
+            bidiProbe.Controls.Add(bidiLabel);
+            SelfServiceDashboardUx.RefreshPresentation(bidiProbe);
+            if (SelfServiceDashboardUx.ContainsUnsupportedBidiIsolate(bidiLabel.Text))
+                failures.Add("unsupported U+2066/U+2069 bidi isolate leaked into a visible control");
+            if (!string.Equals(SelfServiceDashboardUx.RemoveIsolation(bidiLabel.Text), "اتصال به Local Web و Runtime", StringComparison.Ordinal))
+                failures.Add("bidi presentation changed the underlying user-visible text");
+            report.AppendLine("bidi-winforms-safe: " + (SelfServiceDashboardUx.ContainsUnsupportedBidiIsolate(bidiLabel.Text) ? "FAIL" : "PASS"));
         }
         catch (Exception exception)
         {
