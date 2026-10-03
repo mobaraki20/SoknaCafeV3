@@ -12,6 +12,8 @@ internal static class DashboardCompactnessPatch
 {
     private static readonly ConditionalWeakTable<Form, object> Applied = new();
     private static readonly IMessageFilter Filter = new RetryFilter();
+    private const int HeaderHeight = 68;
+    private const int FooterHeight = 58;
 
     [ModuleInitializer]
     internal static void Initialize()
@@ -59,8 +61,6 @@ internal static class DashboardCompactnessPatch
         overview.SuspendLayout();
         try
         {
-            // The form itself must never negotiate a scrollable client area. The dashboard
-            // owns the available client rectangle and its middle row absorbs resizing.
             form.AutoScroll = false;
             form.Padding = Padding.Empty;
 
@@ -71,15 +71,6 @@ internal static class DashboardCompactnessPatch
             dashboard.Dock = DockStyle.Fill;
             dashboard.Margin = Padding.Empty;
             dashboard.GrowStyle = TableLayoutPanelGrowStyle.FixedSize;
-            if (dashboard.RowStyles.Count >= 3)
-            {
-                dashboard.RowStyles[0].SizeType = SizeType.Absolute;
-                dashboard.RowStyles[0].Height = 68;
-                dashboard.RowStyles[1].SizeType = SizeType.Percent;
-                dashboard.RowStyles[1].Height = 100;
-                dashboard.RowStyles[2].SizeType = SizeType.Absolute;
-                dashboard.RowStyles[2].Height = 58;
-            }
 
             header.AutoSize = false;
             header.MinimumSize = Size.Empty;
@@ -152,12 +143,34 @@ internal static class DashboardCompactnessPatch
                 button.Margin = new Padding(5, 0, 0, 0);
             }
 
+            void PinRowsToClientHeight()
+            {
+                if (dashboard.RowStyles.Count < 3) return;
+                var available = Math.Max(0, dashboard.ClientSize.Height);
+                var middle = Math.Max(180, available - HeaderHeight - FooterHeight);
+
+                dashboard.RowStyles[0].SizeType = SizeType.Absolute;
+                dashboard.RowStyles[0].Height = HeaderHeight;
+                dashboard.RowStyles[1].SizeType = SizeType.Absolute;
+                dashboard.RowStyles[1].Height = middle;
+                dashboard.RowStyles[2].SizeType = SizeType.Absolute;
+                dashboard.RowStyles[2].Height = FooterHeight;
+
+                dashboard.PerformLayout();
+                footer.PerformLayout();
+            }
+
+            dashboard.SizeChanged += (_, _) => PinRowsToClientHeight();
+            form.ClientSizeChanged += (_, _) => PinRowsToClientHeight();
+
             overview.PerformLayout();
             actions.PerformLayout();
             footer.PerformLayout();
             tabs.PerformLayout();
             header.PerformLayout();
             dashboard.PerformLayout();
+            form.PerformLayout();
+            PinRowsToClientHeight();
             form.PerformLayout();
             form.Invalidate(true);
             form.Update();
