@@ -61,15 +61,18 @@ internal static class SelfServiceBootstrap
         Application.Idle += (_, _) => AttachOpenForms();
     }
 
+    internal static void AttachOnce(Form form)
+    {
+        if (!string.Equals(form.GetType().Name, "PersianDashboardFormV2", StringComparison.Ordinal)) return;
+        if (Attached.TryGetValue(form, out _)) return;
+        Attached.Add(form, new object());
+        SelfServiceDashboardUx.Attach(form);
+    }
+
     private static void AttachOpenForms()
     {
         foreach (Form form in Application.OpenForms)
-        {
-            if (!string.Equals(form.GetType().Name, "PersianDashboardFormV2", StringComparison.Ordinal)) continue;
-            if (Attached.TryGetValue(form, out _)) continue;
-            Attached.Add(form, new object());
-            SelfServiceDashboardUx.Attach(form);
-        }
+            AttachOnce(form);
     }
 }
 
@@ -91,30 +94,24 @@ internal static class SelfServiceDashboardUx
     internal static void Attach(Form owner)
     {
         ReplaceSupportButton(owner);
-        NormalizeBidi(owner);
+        foreach (Control control in Descendants<Control>(owner))
+        {
+            if (control is TextBoxBase) continue;
+            control.TextChanged += (_, _) => NormalizeControlText(control);
+        }
+        RefreshPresentation(owner);
+    }
 
-        var timer = new System.Windows.Forms.Timer { Interval = 900 };
-        timer.Tick += (_, _) =>
-        {
-            if (owner.IsDisposed)
-            {
-                timer.Stop();
-                timer.Dispose();
-                return;
-            }
-            NormalizeBidi(owner);
-            ImproveFailureHint(owner);
-        };
-        owner.FormClosed += (_, _) =>
-        {
-            timer.Stop();
-            timer.Dispose();
-        };
-        timer.Start();
+    internal static void RefreshPresentation(Form owner)
+    {
+        foreach (Control control in Descendants<Control>(owner))
+            NormalizeControlText(control);
     }
 
     private static void ReplaceSupportButton(Form owner)
     {
+        if (Descendants<Button>(owner).Any(button => string.Equals(button.Name, "selfServiceDiagnosticButton", StringComparison.Ordinal))) return;
+
         var oldButton = Descendants<Button>(owner)
             .FirstOrDefault(button => string.Equals(RemoveIsolation(button.Text), "بسته عیب‌یابی", StringComparison.Ordinal));
         if (oldButton?.Parent is not FlowLayoutPanel flow) return;
@@ -146,26 +143,19 @@ internal static class SelfServiceDashboardUx
         flow.Controls.SetChildIndex(diagnosticButton, index);
     }
 
-    private static void ImproveFailureHint(Form owner)
+    private static void NormalizeControlText(Control control)
     {
-        foreach (var label in Descendants<Label>(owner))
-        {
-            var plain = RemoveIsolation(label.Text);
-            if (string.Equals(plain, "عملیات کامل نشد.", StringComparison.Ordinal))
-                label.Text = "عملیات کامل نشد؛ برای علت و راه‌حل، «عیب‌یابی» را اجرا کنید.";
-            else if (string.Equals(plain, "بررسی وضعیت کامل نشد.", StringComparison.Ordinal))
-                label.Text = "بررسی وضعیت کامل نشد؛ «عیب‌یابی» را اجرا کنید.";
-        }
-    }
+        if (control is TextBoxBase || string.IsNullOrWhiteSpace(control.Text)) return;
 
-    private static void NormalizeBidi(Control owner)
-    {
-        foreach (Control control in Descendants<Control>(owner))
-        {
-            if (control is TextBoxBase) continue;
-            if (string.IsNullOrWhiteSpace(control.Text)) continue;
-            control.Text = IsolateTechnicalTokens(RemoveIsolation(control.Text));
-        }
+        var plain = RemoveIsolation(control.Text);
+        if (string.Equals(plain, "عملیات کامل نشد.", StringComparison.Ordinal))
+            plain = "عملیات کامل نشد؛ برای علت و راه‌حل، «عیب‌یابی» را اجرا کنید.";
+        else if (string.Equals(plain, "بررسی وضعیت کامل نشد.", StringComparison.Ordinal))
+            plain = "بررسی وضعیت کامل نشد؛ «عیب‌یابی» را اجرا کنید.";
+
+        var normalized = IsolateTechnicalTokens(plain);
+        if (!string.Equals(control.Text, normalized, StringComparison.Ordinal))
+            control.Text = normalized;
     }
 
     private static string IsolateTechnicalTokens(string text)
