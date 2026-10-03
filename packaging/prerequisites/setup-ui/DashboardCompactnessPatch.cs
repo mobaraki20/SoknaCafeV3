@@ -147,6 +147,7 @@ internal static class DashboardCompactnessPatch
             }
 
             form.ClientSizeChanged += (_, _) => MaintainGeometry(form, force: true);
+            AttachQualificationCapture(form, dashboard);
             MaintainGeometry(form, force: true);
             return true;
         }
@@ -198,6 +199,42 @@ internal static class DashboardCompactnessPatch
         {
             dashboard.ResumeLayout(true);
         }
+    }
+
+    private static void AttachQualificationCapture(Form form, TableLayoutPanel dashboard)
+    {
+        var args = Environment.GetCommandLineArgs();
+        var renderIndex = Array.FindIndex(args, x => x.Equals("--render-prerequisites-ui", StringComparison.OrdinalIgnoreCase));
+        if (renderIndex < 0 || args.Length <= renderIndex + 1) return;
+        var output = args[renderIndex + 1];
+        if (string.IsNullOrWhiteSpace(output)) return;
+
+        // UiQualification.Render historically created a ClientSize bitmap and then called
+        // Form.DrawToBitmap. WinForms includes the non-client title bar in that draw, so the
+        // bottom of the client area was cropped by roughly the caption height. The qualified
+        // evidence must therefore capture the dashboard client itself. This hook runs only
+        // for the explicit render command and overwrites the temporary form capture after it
+        // has been written, just before the form actually closes.
+        form.FormClosing += (_, _) =>
+        {
+            try
+            {
+                MaintainGeometry(form, force: true);
+                dashboard.PerformLayout();
+                dashboard.Refresh();
+                var width = Math.Max(1, dashboard.ClientSize.Width);
+                var height = Math.Max(1, dashboard.ClientSize.Height);
+                using var bitmap = new Bitmap(width, height);
+                dashboard.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
+                bitmap.Save(output, System.Drawing.Imaging.ImageFormat.Png);
+            }
+            catch
+            {
+                // Preserve the renderer's original evidence if client capture fails; the
+                // workflow size/visual gates will still reject a broken image.
+            }
+        };
     }
 
     private static void RelaxContainerMinimums(Control root)
