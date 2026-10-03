@@ -109,6 +109,16 @@ UI باید بعد از ساخت، محل فایل را واضح به کاربر
 - auto-fix فقط برای start serviceها اجرا شود و پس از آن diagnostics دوباره اجرا شود.
 - screenshot واقعی Dashboard باید BiDi صحیح و متن بدون clipping داشته باشد.
 
-## 8) اصل انتشار
+## 8) سازگاری Harness با Windows PowerShell 5.1
+
+تمام scriptهای qualification که با `powershell.exe` اجرا می‌شوند باید فقط از APIهایی استفاده کنند که روی Windows PowerShell 5.1/.NET Framework موجودند.
+
+Regression rule ثبت‌شده از 1.0.11:
+
+- استفاده از overload دوپارامتری `.Contains(string, StringComparison)` در PowerShell 5.1 ممنوع است؛ در تست‌ها برای مقایسه ordinal از `.IndexOf(needle, [StringComparison]::Ordinal) -ge 0` استفاده شود.
+- parser PASS به‌تنهایی سازگاری runtime API را ثابت نمی‌کند؛ helperهای test harness نیز باید روی runner واقعی اجرا شوند.
+- failure مربوط به harness نباید باعث تغییر بی‌دلیل کد محصول شود.
+
+## 9) اصل انتشار
 
 GitHub Actions محیط توسعه نیست. تمام تغییرات Self-Service روی `work/...` جمع می‌شوند؛ بعد یک candidate واحد به qualification می‌رود. Release فقط از همان artifact qualified منتشر می‌شود.
