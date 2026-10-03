@@ -28,7 +28,8 @@ compat = (ROOT / 'packaging/prerequisites/setup-ui/UiCompatibilityPatch.cs').rea
 for token in [
     '_root', '_apachePort', 'MinimumSize = new Size(360, 30)',
     'MinimumSize = new Size(110, 28)', 'NormalizeVersionText',
-    'StabilizeMiddleColumn', 'SizeType.Absolute', 'table.SizeChanged += Resize'
+    'StabilizeMiddleColumn', 'SizeType.Absolute', 'table.SizeChanged += Resize',
+    'Application.AddMessageFilter', 'ApplyWhenPumpingFilter', 'ApplyOpenForms'
 ]:
     assert token in compat, token
 
