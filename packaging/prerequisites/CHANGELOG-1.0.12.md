@@ -22,6 +22,7 @@ Only the Prerequisites manager, its installer/build path, prerequisite-specific 
 - Static v2 gate, runtime self-test, UI audit/screenshot hooks and installer lifecycle regression were added.
 - Candidate GitHub Actions workflow is manual-only (`workflow_dispatch`) so push-by-push development does not consume Windows qualification runs.
 - Durable engineering playbook and Persian product standard added.
+- Manual review of the first qualified screenshots found two presentation defects that the automated gate did not catch: commit metadata was appended to the displayed ProductVersion and legacy percent-column technical fields collapsed under mirrored RTL layout. ProductVersion is now pinned to semantic `1.0.12`, and a presentation-only compatibility patch enforces practical minimum widths for Root, Apache port and MariaDB password fields without changing infrastructure logic or Data.
 
 ## Explicit non-goals / invariants preserved
 
@@ -34,4 +35,4 @@ Only the Prerequisites manager, its installer/build path, prerequisite-specific 
 
 ## Qualification status
 
-This file describes the work candidate. It is not a release declaration. The candidate must pass `.github/workflows/prerequisites-1.0.12-candidate.yml` and its real Windows/UI/installer gates before it can be frozen or published.
+The first candidate run passed all automated gates, but its screenshots were rejected manually because of the two UI defects above. A final candidate qualification must therefore be run from the post-fix commit and its screenshots must be reviewed again before freeze or publication.
