@@ -102,11 +102,15 @@ internal static class DashboardCompactnessPatch
                 button.Margin = new Padding(5, 0, 0, 0);
             }
 
-            // Detach the three live regions before disposing the TableLayout shell.
+            // Re-parent only the three live regions. Keep the old TableLayout alive but
+            // hidden; disposing it during the renderer's Show/DoEvents cycle can break
+            // WinForms paint ownership even after its visible children were detached.
             dashboard.Controls.Remove(header);
             dashboard.Controls.Remove(tabs);
             dashboard.Controls.Remove(footer);
-            form.Controls.Remove(dashboard);
+            dashboard.Visible = false;
+            dashboard.Dock = DockStyle.None;
+            dashboard.Bounds = Rectangle.Empty;
 
             var shell = new Panel
             {
@@ -139,17 +143,14 @@ internal static class DashboardCompactnessPatch
             tabs.Margin = Padding.Empty;
             content.Controls.Add(tabs);
 
-            // Docking is deterministic here: top and bottom reserve their pixels,
-            // then the content host receives the remaining client rectangle.
             shell.Controls.Add(content);
             shell.Controls.Add(footer);
             shell.Controls.Add(header);
             header.BringToFront();
             footer.BringToFront();
 
-            form.Controls.Clear();
             form.Controls.Add(shell);
-            dashboard.Dispose();
+            shell.BringToFront();
 
             overview.PerformLayout();
             footer.PerformLayout();
@@ -157,6 +158,8 @@ internal static class DashboardCompactnessPatch
             content.PerformLayout();
             shell.PerformLayout();
             form.PerformLayout();
+            form.Invalidate(true);
+            form.Update();
             return true;
         }
         finally
@@ -164,7 +167,7 @@ internal static class DashboardCompactnessPatch
             overview.ResumeLayout(true);
             actions.ResumeLayout(true);
             footer.ResumeLayout(true);
-            if (!dashboard.IsDisposed) dashboard.ResumeLayout(true);
+            dashboard.ResumeLayout(false);
             form.ResumeLayout(true);
         }
     }
