@@ -1,0 +1,92 @@
+name: Publish Qualified Windows Services 1.0.9
+
+on:
+  push:
+    branches:
+      - release/windows-services-1.0.9
+    paths:
+      - '.github/workflows/publish-qualified-windows-services-1.0.9.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-qualified:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@v4
+
+      - name: Download previously qualified artifact
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $run='37085688134'
+          $artifact='sokna-windows-services-1.0.9-qualified-ba2f9fcbe654c53c6f53929e21067250c1ab5c1a'
+          $out=Join-Path (Resolve-Path .).Path 'release-publish-assets'
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          gh run download $run --repo $env:GITHUB_REPOSITORY --name $artifact --dir $out
+          if($LASTEXITCODE -ne 0){throw 'Qualified artifact download failed.'}
+          foreach($name in @('SOKNA-Windows-Services-Setup-1.0.9.exe','SOKNA-Windows-Services-1.0.9-artifact-index.json','SHA256SUMS.txt')){
+            if(-not(Test-Path -LiteralPath (Join-Path $out $name) -PathType Leaf)){throw "Qualified artifact file missing: $name"}
+          }
+
+      - name: Verify qualified checksums
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=(Resolve-Path 'release-publish-assets').Path
+          $expected=@{}
+          foreach($line in Get-Content -LiteralPath (Join-Path $out 'SHA256SUMS.txt')){
+            if($line -match '^([0-9a-fA-F]{64})\s+(.+)$'){$expected[$matches[2]]=$matches[1].ToLowerInvariant()}
+          }
+          foreach($name in @('SOKNA-Windows-Services-Setup-1.0.9.exe','SOKNA-Windows-Services-1.0.9-artifact-index.json')){
+            if(-not$expected.ContainsKey($name)){throw "Checksum entry missing: $name"}
+            $actual=(Get-FileHash -LiteralPath (Join-Path $out $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($actual -ne $expected[$name]){throw "Checksum mismatch: $name"}
+          }
+          Write-Host 'Qualified artifact checksums: PASS'
+
+      - name: Publish GitHub Release from qualified artifact
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='windows-services-v1.0.9'
+          $target='ba2f9fcbe654c53c6f53929e21067250c1ab5c1a'
+          $title='SOKNA Windows Services 1.0.9'
+          $out=(Resolve-Path 'release-publish-assets').Path
+          $assets=@(
+            (Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.9.exe'),
+            (Join-Path $out 'SOKNA-Windows-Services-1.0.9-artifact-index.json'),
+            (Join-Path $out 'SHA256SUMS.txt')
+          )
+          cmd /c "gh release view $tag --repo $env:GITHUB_REPOSITORY >nul 2>nul"
+          $exists=($LASTEXITCODE -eq 0)
+          if($exists){
+            gh release upload $tag @assets --clobber --repo $env:GITHUB_REPOSITORY
+            if($LASTEXITCODE -ne 0){throw 'Release asset upload failed.'}
+          }else{
+            gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $target --title $title --notes-file 'packaging/windows/WINDOWS_SERVICES_1.0.9_NOTES_FA.md'
+            if($LASTEXITCODE -ne 0){throw 'GitHub Release creation failed.'}
+          }
+
+      - name: Verify published release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $json=gh release view windows-services-v1.0.9 --repo $env:GITHUB_REPOSITORY --json tagName,name,isDraft,isPrerelease,assets,targetCommitish | ConvertFrom-Json
+          if($LASTEXITCODE -ne 0){throw 'Published release lookup failed.'}
+          if($json.tagName -ne 'windows-services-v1.0.9' -or $json.isDraft -or $json.isPrerelease){throw 'Published release metadata is invalid.'}
+          $names=@($json.assets|ForEach-Object{$_.name})
+          foreach($name in @('SOKNA-Windows-Services-Setup-1.0.9.exe','SOKNA-Windows-Services-1.0.9-artifact-index.json','SHA256SUMS.txt')){
+            if($names -notcontains $name){throw "Published release asset missing: $name"}
+          }
+          Write-Host 'SOKNA Windows Services 1.0.9 publication verified.'
