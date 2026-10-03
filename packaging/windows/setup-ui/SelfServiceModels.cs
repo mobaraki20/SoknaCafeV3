@@ -78,8 +78,13 @@ internal static class SelfServiceBootstrap
 
 internal static class SelfServiceDashboardUx
 {
-    private const char Lri = '\u2066';
-    private const char Pdi = '\u2069';
+    // WinForms/GDI TextRenderer does not reliably render Unicode isolate controls
+    // U+2066 (LRI) / U+2069 (PDI) as zero-width controls with all font stacks.
+    // Use the older, widely supported LRM around short LTR technical tokens instead.
+    private const char Lrm = '\u200e';
+    private const char LegacyLri = '\u2066';
+    private const char LegacyPdi = '\u2069';
+
     private static readonly string[] TechnicalTokens =
     {
         "Local Web",
@@ -153,22 +158,26 @@ internal static class SelfServiceDashboardUx
         else if (string.Equals(plain, "بررسی وضعیت کامل نشد.", StringComparison.Ordinal))
             plain = "بررسی وضعیت کامل نشد؛ «عیب‌یابی» را اجرا کنید.";
 
-        var normalized = IsolateTechnicalTokens(plain);
+        var normalized = MarkTechnicalTokens(plain);
         if (!string.Equals(control.Text, normalized, StringComparison.Ordinal))
             control.Text = normalized;
     }
 
-    private static string IsolateTechnicalTokens(string text)
+    private static string MarkTechnicalTokens(string text)
     {
         var result = text;
         foreach (var token in TechnicalTokens)
-            result = result.Replace(token, $"{Lri}{token}{Pdi}", StringComparison.Ordinal);
+            result = result.Replace(token, $"{Lrm}{token}{Lrm}", StringComparison.Ordinal);
         return result;
     }
 
     internal static string RemoveIsolation(string text) => text
-        .Replace(Lri.ToString(), "", StringComparison.Ordinal)
-        .Replace(Pdi.ToString(), "", StringComparison.Ordinal);
+        .Replace(Lrm.ToString(), "", StringComparison.Ordinal)
+        .Replace(LegacyLri.ToString(), "", StringComparison.Ordinal)
+        .Replace(LegacyPdi.ToString(), "", StringComparison.Ordinal);
+
+    internal static bool ContainsUnsupportedBidiIsolate(string text) =>
+        text.IndexOf(LegacyLri) >= 0 || text.IndexOf(LegacyPdi) >= 0;
 
     internal static IEnumerable<T> Descendants<T>(Control root) where T : Control
     {
