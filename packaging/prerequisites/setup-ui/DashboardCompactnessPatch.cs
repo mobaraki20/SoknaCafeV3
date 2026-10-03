@@ -5,8 +5,8 @@ namespace Sokna.Prerequisites.Setup;
 /// <summary>
 /// Final compactness guard for the Prerequisites dashboard.
 /// The qualification target is an outer 960x650 WinForms window (about 944x611 client area).
-/// Header/footer are pinned with Dock.Top/Dock.Bottom so WinForms cannot sacrifice the
-/// operation footer when a tab reports a larger minimum height.
+/// Header/content/footer use deterministic bounds instead of Dock ordering so WinForms
+/// cannot hide the fixed regions behind the fill content at small sizes.
 /// Presentation-only: no infrastructure state or lifecycle behavior is changed.
 /// </summary>
 internal static class DashboardCompactnessPatch
@@ -14,6 +14,8 @@ internal static class DashboardCompactnessPatch
     private static readonly ConditionalWeakTable<Form, object> Applied = new();
     private static readonly IMessageFilter Filter = new RetryFilter();
     private static readonly Color Canvas = Color.FromArgb(246, 246, 243);
+    private const int HeaderHeight = 68;
+    private const int FooterHeight = 54;
 
     [ModuleInitializer]
     internal static void Initialize()
@@ -59,8 +61,6 @@ internal static class DashboardCompactnessPatch
         overview.SuspendLayout();
         try
         {
-            // The legacy explanatory row duplicates the compact mode summary below.
-            // Removing it gives the path controls useful space without hiding behavior.
             if (overview.RowStyles.Count >= 4)
             {
                 var redundantHelp = overview.GetControlFromPosition(0, 1);
@@ -74,13 +74,15 @@ internal static class DashboardCompactnessPatch
 
             header.Padding = new Padding(18, 7, 18, 6);
             header.AutoSize = false;
-            header.Height = 68;
             header.MinimumSize = Size.Empty;
+            header.Dock = DockStyle.None;
+            header.Margin = Padding.Empty;
 
             footer.Padding = new Padding(14, 1, 14, 1);
             footer.AutoSize = false;
-            footer.Height = 54;
             footer.MinimumSize = Size.Empty;
+            footer.Dock = DockStyle.None;
+            footer.Margin = Padding.Empty;
             if (footer.RowStyles.Count >= 3)
             {
                 footer.RowStyles[0].SizeType = SizeType.Absolute;
@@ -102,9 +104,6 @@ internal static class DashboardCompactnessPatch
                 button.Margin = new Padding(5, 0, 0, 0);
             }
 
-            // Re-parent only the three live regions. Keep the old TableLayout alive but
-            // hidden; disposing it during the renderer's Show/DoEvents cycle can break
-            // WinForms paint ownership even after its visible children were detached.
             dashboard.Controls.Remove(header);
             dashboard.Controls.Remove(tabs);
             dashboard.Controls.Remove(footer);
@@ -124,40 +123,54 @@ internal static class DashboardCompactnessPatch
             var content = new Panel
             {
                 Name = "SoknaPrerequisitesContentHost",
-                Dock = DockStyle.Fill,
+                Dock = DockStyle.None,
                 BackColor = Canvas,
                 Padding = new Padding(14, 5, 14, 2),
                 Margin = Padding.Empty,
                 AutoScroll = false
             };
 
-            header.Dock = DockStyle.Top;
-            header.Height = 68;
-            header.Margin = Padding.Empty;
-
-            footer.Dock = DockStyle.Bottom;
-            footer.Height = 54;
-            footer.Margin = Padding.Empty;
-
             tabs.Dock = DockStyle.Fill;
             tabs.Margin = Padding.Empty;
             content.Controls.Add(tabs);
 
             shell.Controls.Add(content);
-            shell.Controls.Add(footer);
             shell.Controls.Add(header);
-            header.BringToFront();
-            footer.BringToFront();
-
+            shell.Controls.Add(footer);
             form.Controls.Add(shell);
             shell.BringToFront();
 
+            void LayoutShell()
+            {
+                var width = Math.Max(0, shell.ClientSize.Width);
+                var height = Math.Max(0, shell.ClientSize.Height);
+                var footerY = Math.Max(HeaderHeight, height - FooterHeight);
+                var contentHeight = Math.Max(0, footerY - HeaderHeight);
+
+                header.SetBounds(0, 0, width, Math.Min(HeaderHeight, height));
+                content.SetBounds(0, HeaderHeight, width, contentHeight);
+                footer.SetBounds(0, footerY, width, Math.Min(FooterHeight, Math.Max(0, height - footerY)));
+
+                header.Visible = true;
+                content.Visible = true;
+                footer.Visible = true;
+                header.BringToFront();
+                footer.BringToFront();
+
+                header.PerformLayout();
+                content.PerformLayout();
+                footer.PerformLayout();
+                actions.PerformLayout();
+            }
+
+            shell.SizeChanged += (_, _) => LayoutShell();
+            form.ClientSizeChanged += (_, _) => LayoutShell();
+
             overview.PerformLayout();
-            footer.PerformLayout();
-            actions.PerformLayout();
-            content.PerformLayout();
+            LayoutShell();
             shell.PerformLayout();
             form.PerformLayout();
+            LayoutShell();
             form.Invalidate(true);
             form.Update();
             return true;
