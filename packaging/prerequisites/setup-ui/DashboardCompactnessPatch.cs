@@ -54,6 +54,7 @@ internal static class DashboardCompactnessPatch
         dashboard.SuspendLayout();
         footer.SuspendLayout();
         actions.SuspendLayout();
+        overview.SuspendLayout();
         try
         {
             // 68 + 54 leaves materially more height for the tab content than the
@@ -70,12 +71,16 @@ internal static class DashboardCompactnessPatch
             header.Padding = new Padding(18, 7, 18, 6);
             tabs.Margin = new Padding(14, 5, 14, 2);
 
-            // Overview text is explanatory, not a second status console. Keep it
-            // compact so the actual path/port controls receive the useful space.
+            // BuildOverview already has a compact bottom mode summary. The legacy
+            // explanatory paragraph above the path section duplicates that information
+            // and was the remaining minimum-height pressure at 960x650. Collapse only
+            // that row; detailed explanations remain in the dedicated tabs/diagnostics.
             if (overview.RowStyles.Count >= 4)
             {
+                var redundantHelp = overview.GetControlFromPosition(0, 1);
+                if (redundantHelp is not null) redundantHelp.Visible = false;
                 overview.RowStyles[1].SizeType = SizeType.Absolute;
-                overview.RowStyles[1].Height = 44;
+                overview.RowStyles[1].Height = 0;
                 overview.RowStyles[3].SizeType = SizeType.Absolute;
                 overview.RowStyles[3].Height = 26;
             }
@@ -102,6 +107,7 @@ internal static class DashboardCompactnessPatch
                 button.Margin = new Padding(5, 0, 0, 0);
             }
 
+            overview.PerformLayout();
             dashboard.PerformLayout();
             footer.PerformLayout();
             actions.PerformLayout();
@@ -110,6 +116,7 @@ internal static class DashboardCompactnessPatch
         }
         finally
         {
+            overview.ResumeLayout(true);
             actions.ResumeLayout(true);
             footer.ResumeLayout(true);
             dashboard.ResumeLayout(true);
