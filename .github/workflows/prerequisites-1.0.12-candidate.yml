@@ -79,6 +79,7 @@ jobs:
           $changed=@(git diff --name-only $baseline HEAD)
           $allowed=@(
             'packaging/prerequisites/setup-ui/UiCompatibilityPatch.cs',
+            'packaging/prerequisites/setup-ui/DashboardCompactnessPatch.cs',
             'tests/prerequisites-v2-contract.py',
             '.github/workflows/prerequisites-1.0.12-candidate.yml',
             'packaging/prerequisites/CHANGELOG-1.0.12.md',
