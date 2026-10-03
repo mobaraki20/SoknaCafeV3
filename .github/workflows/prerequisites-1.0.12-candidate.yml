@@ -62,9 +62,22 @@ jobs:
             if($p.ExitCode-ne0){throw "UI audit ${w}x${h} failed: $($p.ExitCode)"}
             $png=Join-Path $shots "prerequisites-${w}x${h}.png"
             $p=Start-Process -FilePath $exe -ArgumentList @('--render-prerequisites-ui',$png,"$w","$h") -Wait -PassThru
-            if($p.ExitCode-ne0){throw "UI render ${w}x${h} failed: $($p.ExitCode)"}
+            if($p.ExitCode-ne0){
+              $bytes=if(Test-Path $png){(Get-Item $png).Length}else{0}
+              Write-Host "UI render evidence: ${w}x${h}; exit=$($p.ExitCode); bytes=$bytes"
+              throw "UI render ${w}x${h} failed: $($p.ExitCode)"
+            }
             if((Get-Item $png).Length-lt20000){throw "UI screenshot is suspiciously small: $png"}
           }
+
+      - name: Preserve UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-prerequisites-1.0.12-ui-evidence-${{ github.sha }}
+          path: packaging/prerequisites/qualification/screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify inherited core runtime evidence
         shell: pwsh
