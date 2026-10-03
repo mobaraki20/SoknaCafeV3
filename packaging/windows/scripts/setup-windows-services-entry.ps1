@@ -32,6 +32,12 @@ if($Mode-ne'Uninstall'-and(Test-Path -LiteralPath $statePath -PathType Leaf)){
     $previousPairingLifecycle=[string]$previous.pairing_lifecycle
   }catch{}
 }
+if($previousPaired-and[string]::IsNullOrWhiteSpace($previousLocalBaseUrl)-and(Test-Path -LiteralPath $runtimeConfig -PathType Leaf)){
+  try{
+    $previousRuntimeConfig=Get-Content -LiteralPath $runtimeConfig -Raw|ConvertFrom-Json
+    $previousLocalBaseUrl=[string]$previousRuntimeConfig.localBaseUrl
+  }catch{}
+}
 
 & $core -Mode $Mode -ShellRoot $ShellRoot -InstallRoot $InstallRoot -DataRoot $DataRoot -PairingFile $PairingFile -StartWhenPaired $StartWhenPaired
 
