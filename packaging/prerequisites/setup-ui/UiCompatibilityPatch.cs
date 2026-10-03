@@ -21,8 +21,6 @@ internal static class UiCompatibilityPatch
     [ModuleInitializer]
     internal static void Initialize()
     {
-        // Production reaches Idle through Application.Run. Qualification uses Show +
-        // DoEvents. Keep both paths so screenshot evidence exercises the same shell.
         Application.Idle += (_, _) => ApplyOpenForms();
         Application.AddMessageFilter(MessageFilter);
     }
@@ -63,6 +61,7 @@ internal static class UiCompatibilityPatch
         var sourcesBox = FindGroup(form, "فایل‌های پیش‌نیاز");
         var dbBox = FindGroup(form, "MariaDB");
         var statusBox = FindGroup(form, "وضعیت و جزئیات");
+        var paths = Field<Label>(form, "_paths");
         var modeHelp = Field<Label>(form, "_modeHelp");
         var progress = Field<ProgressBar>(form, "_progress");
         var progressText = Field<Label>(form, "_progressText");
@@ -76,12 +75,12 @@ internal static class UiCompatibilityPatch
         var recover = Field<RadioButton>(form, "_recover");
         var diagnostics = Descendants(form).OfType<Button>().FirstOrDefault(x => x.Name == "SoknaDiagnosticsButton");
 
-        if (modeBox is null || pathBox is null || sourcesBox is null || dbBox is null || statusBox is null ||
+        if (modeBox is null || pathBox is null || sourcesBox is null || dbBox is null || statusBox is null || paths is null ||
             modeHelp is null || progress is null || progressText is null || run is null || analyze is null || logs is null ||
             support is null || cancel is null || install is null || repair is null || recover is null)
             return;
 
-        foreach (var control in new Control[] { modeBox, pathBox, sourcesBox, dbBox, statusBox, modeHelp, progress, progressText, run, analyze, logs, support, cancel })
+        foreach (var control in new Control[] { modeBox, pathBox, sourcesBox, dbBox, statusBox, paths, modeHelp, progress, progressText, run, analyze, logs, support, cancel })
             Detach(control);
         if (diagnostics is not null) Detach(diagnostics);
 
@@ -104,9 +103,9 @@ internal static class UiCompatibilityPatch
             RightToLeft = RightToLeft.Yes,
             AutoScroll = false
         };
-        dashboard.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
+        dashboard.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
         dashboard.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        dashboard.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+        dashboard.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
 
         dashboard.Controls.Add(BuildHeader(), 0, 0);
 
@@ -117,19 +116,19 @@ internal static class UiCompatibilityPatch
             RightToLeft = RightToLeft.Yes,
             RightToLeftLayout = true,
             Padding = new Point(16, 6),
-            Margin = new Padding(18, 10, 18, 6),
+            Margin = new Padding(16, 8, 16, 4),
             Appearance = TabAppearance.Normal
         };
 
         var overviewTab = NewTab("وضعیت و اجرا", "SoknaOverviewTab");
         var sourcesTab = NewTab("فایل‌های پیش‌نیاز", "SoknaSourcesTab");
-        var databaseTab = NewTab("نصب جدید / MariaDB", "SoknaDatabaseTab");
+        var databaseTab = NewTab("نصب جدید (MariaDB)", "SoknaDatabaseTab");
         var detailsTab = NewTab("جزئیات و گزارش", "SoknaDetailsTab");
 
         BuildOverview(overviewTab, modeBox, modeHelp, pathBox, install, repair, recover, databaseTab, tabs);
         BuildSources(sourcesTab, sourcesBox);
         BuildDatabase(databaseTab, dbBox);
-        BuildDetails(detailsTab, statusBox);
+        BuildDetails(detailsTab, statusBox, paths);
 
         tabs.TabPages.AddRange([overviewTab, sourcesTab, databaseTab, detailsTab]);
         tabs.SelectedTab = overviewTab;
@@ -150,7 +149,7 @@ internal static class UiCompatibilityPatch
             BackColor = Brand,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(22, 14, 22, 12),
+            Padding = new Padding(20, 11, 20, 9),
             RightToLeft = RightToLeft.Yes,
             Margin = Padding.Empty
         };
@@ -164,17 +163,17 @@ internal static class UiCompatibilityPatch
             AutoSize = true,
             Dock = DockStyle.Fill,
             ForeColor = Color.White,
-            Font = new Font(UiFontFamily(), 15.5f, FontStyle.Bold),
+            Font = new Font(UiFontFamily(), 15.0f, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleRight,
             RightToLeft = RightToLeft.Yes
         };
         var subtitle = new Label
         {
-            Text = "PHP • Apache • MariaDB — زیرساخت Local Web",
+            Text = "زیرساخت محلی (Local Web) — PHP • Apache • MariaDB",
             AutoSize = true,
             Dock = DockStyle.Fill,
             ForeColor = Color.FromArgb(221, 238, 236),
-            Font = new Font(UiFontFamily(), 9.5f, FontStyle.Regular),
+            Font = new Font(UiFontFamily(), 9.2f, FontStyle.Regular),
             TextAlign = ContentAlignment.MiddleRight,
             RightToLeft = RightToLeft.Yes
         };
@@ -186,13 +185,13 @@ internal static class UiCompatibilityPatch
             Name = "SoknaVersionBadge",
             Text = $"نسخه {SemanticVersion()}",
             AutoSize = false,
-            Size = new Size(104, 38),
+            Size = new Size(104, 36),
             BackColor = Color.White,
             ForeColor = Brand,
-            Font = new Font(UiFontFamily(), 9.5f, FontStyle.Bold),
+            Font = new Font(UiFontFamily(), 9.3f, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleCenter,
             Anchor = AnchorStyles.Left | AnchorStyles.Top,
-            Margin = new Padding(18, 6, 0, 0),
+            Margin = new Padding(16, 5, 0, 0),
             RightToLeft = RightToLeft.Yes
         };
 
@@ -210,20 +209,20 @@ internal static class UiCompatibilityPatch
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 4,
-            Padding = new Padding(14, 10, 14, 10),
+            Padding = new Padding(14, 8, 14, 8),
             BackColor = Surface,
             AutoScroll = false,
             RightToLeft = RightToLeft.Yes
         };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
 
         modeBox.Dock = DockStyle.Top;
         modeBox.AutoSize = true;
-        modeBox.Padding = new Padding(12, 10, 12, 10);
-        modeBox.Margin = new Padding(0, 0, 0, 6);
+        modeBox.Padding = new Padding(12, 8, 12, 8);
+        modeBox.Margin = new Padding(0, 0, 0, 5);
         layout.Controls.Add(modeBox, 0, 0);
 
         modeHelp.Dock = DockStyle.Fill;
@@ -231,7 +230,7 @@ internal static class UiCompatibilityPatch
         modeHelp.AutoEllipsis = true;
         modeHelp.TextAlign = ContentAlignment.TopRight;
         modeHelp.ForeColor = Muted;
-        modeHelp.Padding = new Padding(4, 4, 4, 2);
+        modeHelp.Padding = new Padding(4, 3, 4, 1);
         modeHelp.Margin = Padding.Empty;
         layout.Controls.Add(modeHelp, 0, 1);
 
@@ -247,9 +246,10 @@ internal static class UiCompatibilityPatch
             AutoSize = false,
             TextAlign = ContentAlignment.MiddleRight,
             RightToLeft = RightToLeft.Yes,
-            Font = new Font(UiFontFamily(), 9.3f, FontStyle.Bold),
+            Font = new Font(UiFontFamily(), 9.2f, FontStyle.Bold),
             ForeColor = Brand,
-            Padding = new Padding(4, 0, 4, 0)
+            Padding = new Padding(4, 0, 4, 0),
+            AutoEllipsis = true
         };
         layout.Controls.Add(state, 0, 3);
 
@@ -259,7 +259,7 @@ internal static class UiCompatibilityPatch
                 ? "بازیابی انتخاب شده است؛ فایل‌ها و Data موجود حفظ می‌شوند و سرویس‌ها دوباره ثبت می‌شوند."
                 : repair.Checked
                     ? "تعمیر نصب موجود انتخاب شده است؛ Web و MariaDB Data حذف یا initialize نمی‌شوند."
-                    : "نصب جدید انتخاب شده است؛ برای تعریف رمز اولیه MariaDB از تب «نصب جدید / MariaDB» استفاده کنید.";
+                    : "نصب جدید انتخاب شده است؛ رمز اولیه MariaDB را در تب «نصب جدید (MariaDB)» تعریف کنید.";
             databaseTab.Enabled = install.Checked;
             if (!databaseTab.Enabled && tabs.SelectedTab == databaseTab) tabs.SelectedIndex = 0;
         }
@@ -273,7 +273,7 @@ internal static class UiCompatibilityPatch
 
     private static void BuildSources(TabPage page, GroupBox sourcesBox)
     {
-        var host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 12, 14, 12), BackColor = Surface, AutoScroll = false };
+        var host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 10, 14, 10), BackColor = Surface, AutoScroll = false };
         sourcesBox.Dock = DockStyle.Fill;
         sourcesBox.AutoSize = false;
         sourcesBox.Margin = Padding.Empty;
@@ -288,7 +288,7 @@ internal static class UiCompatibilityPatch
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 2,
-            Padding = new Padding(14, 12, 14, 12),
+            Padding = new Padding(14, 10, 14, 10),
             BackColor = Surface,
             AutoScroll = false,
             RightToLeft = RightToLeft.Yes
@@ -303,7 +303,7 @@ internal static class UiCompatibilityPatch
             RightToLeft = RightToLeft.Yes,
             TextAlign = ContentAlignment.TopRight,
             ForeColor = Muted,
-            Padding = new Padding(4, 0, 4, 10)
+            Padding = new Padding(4, 0, 4, 8)
         };
         dbBox.Dock = DockStyle.Top;
         dbBox.AutoSize = true;
@@ -313,14 +313,42 @@ internal static class UiCompatibilityPatch
         page.Controls.Add(layout);
     }
 
-    private static void BuildDetails(TabPage page, GroupBox statusBox)
+    private static void BuildDetails(TabPage page, GroupBox statusBox, Label paths)
     {
-        var host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 12, 14, 12), BackColor = Surface, AutoScroll = false };
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(14, 10, 14, 10),
+            BackColor = Surface,
+            AutoScroll = false,
+            RightToLeft = RightToLeft.Yes
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var pathDetails = new GroupBox
+        {
+            Text = "مسیرها و Endpoint",
+            Dock = DockStyle.Fill,
+            Padding = new Padding(12, 10, 12, 8),
+            RightToLeft = RightToLeft.Yes,
+            Margin = new Padding(0, 0, 0, 7)
+        };
+        paths.Dock = DockStyle.Fill;
+        paths.AutoSize = false;
+        paths.RightToLeft = RightToLeft.Yes;
+        paths.TextAlign = ContentAlignment.TopRight;
+        paths.Padding = new Padding(2);
+        pathDetails.Controls.Add(paths);
+
         statusBox.Dock = DockStyle.Fill;
         statusBox.AutoSize = false;
         statusBox.Margin = Padding.Empty;
-        host.Controls.Add(statusBox);
-        page.Controls.Add(host);
+        layout.Controls.Add(pathDetails, 0, 0);
+        layout.Controls.Add(statusBox, 0, 1);
+        page.Controls.Add(layout);
     }
 
     private static Control BuildFooter(ProgressBar progress, Label progressText, Button run, Button analyze,
@@ -332,14 +360,14 @@ internal static class UiCompatibilityPatch
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 3,
-            Padding = new Padding(18, 5, 18, 8),
+            Padding = new Padding(16, 2, 16, 3),
             BackColor = Color.White,
             RightToLeft = RightToLeft.Yes,
             Margin = Padding.Empty,
             AutoScroll = false
         };
-        footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
         footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 14));
+        footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 10));
         footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         progressText.Dock = DockStyle.Fill;
@@ -350,7 +378,7 @@ internal static class UiCompatibilityPatch
         footer.Controls.Add(progressText, 0, 0);
 
         progress.Dock = DockStyle.Fill;
-        progress.Margin = new Padding(0, 1, 0, 1);
+        progress.Margin = Padding.Empty;
         footer.Controls.Add(progress, 0, 1);
 
         var actions = new FlowLayoutPanel
@@ -360,7 +388,7 @@ internal static class UiCompatibilityPatch
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
             RightToLeft = RightToLeft.Yes,
-            Padding = new Padding(0, 5, 0, 0),
+            Padding = new Padding(0, 2, 0, 0),
             Margin = Padding.Empty,
             AutoScroll = false
         };
@@ -385,10 +413,10 @@ internal static class UiCompatibilityPatch
     private static void StyleAction(Button button, bool primary = false, bool danger = false)
     {
         button.AutoSize = false;
-        button.Height = 34;
-        button.Width = button.Name == "SoknaDiagnosticsButton" ? 142 : 116;
-        button.MinimumSize = new Size(button.Width, 34);
-        button.Margin = new Padding(7, 0, 0, 0);
+        button.Height = 30;
+        button.Width = button.Name == "SoknaDiagnosticsButton" ? 138 : 112;
+        button.MinimumSize = new Size(button.Width, 30);
+        button.Margin = new Padding(6, 0, 0, 0);
         button.Padding = Padding.Empty;
         button.FlatStyle = FlatStyle.Flat;
         button.FlatAppearance.BorderSize = 1;
@@ -426,7 +454,7 @@ internal static class UiCompatibilityPatch
         group.SuspendLayout();
         group.Controls.Clear();
         group.AutoSize = true;
-        group.Padding = new Padding(16, 16, 16, 14);
+        group.Padding = new Padding(16, 16, 16, 12);
 
         var layout = new TableLayoutPanel
         {
@@ -434,18 +462,16 @@ internal static class UiCompatibilityPatch
             Dock = DockStyle.Fill,
             AutoSize = false,
             ColumnCount = 1,
-            RowCount = 7,
+            RowCount = 5,
             RightToLeft = RightToLeft.Yes,
             Margin = Padding.Empty,
             Padding = Padding.Empty
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 23));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 39));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 23));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 2));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         layout.Controls.Add(FieldLabel("مسیر ریشه زیرساخت"), 0, 0);
@@ -456,7 +482,7 @@ internal static class UiCompatibilityPatch
             ColumnCount = 2,
             RowCount = 1,
             RightToLeft = RightToLeft.No,
-            Margin = new Padding(0, 2, 0, 5)
+            Margin = new Padding(0, 2, 0, 4)
         };
         rootRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         rootRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
@@ -481,13 +507,13 @@ internal static class UiCompatibilityPatch
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             RightToLeft = RightToLeft.No,
-            Margin = new Padding(0, 2, 0, 2),
+            Margin = new Padding(0, 2, 0, 1),
             AutoScroll = false
         };
         port.AutoSize = false;
         port.Width = 150;
-        port.Height = 30;
-        port.MinimumSize = new Size(130, 30);
+        port.Height = 29;
+        port.MinimumSize = new Size(130, 29);
         port.RightToLeft = RightToLeft.No;
         port.Margin = Padding.Empty;
         portRow.Controls.Add(port);
@@ -495,23 +521,16 @@ internal static class UiCompatibilityPatch
 
         var hint = new Label
         {
-            Text = "پورت پیش‌فرض 18080 است. اگر اشغال باشد، Setup یک پورت آزاد loopback پیشنهاد می‌دهد.",
+            Text = "پورت پیش‌فرض 18080 است. اگر اشغال باشد، Setup یک پورت آزاد loopback پیشنهاد می‌دهد. مسیرها و Endpoint کامل در تب «جزئیات و گزارش» دیده می‌شوند.",
             AutoSize = false,
             Dock = DockStyle.Fill,
             RightToLeft = RightToLeft.Yes,
-            TextAlign = ContentAlignment.MiddleRight,
+            TextAlign = ContentAlignment.TopRight,
             ForeColor = Muted,
-            AutoEllipsis = true
+            AutoEllipsis = true,
+            Padding = new Padding(0, 4, 0, 0)
         };
         layout.Controls.Add(hint, 0, 4);
-
-        paths.Dock = DockStyle.Fill;
-        paths.AutoSize = false;
-        paths.RightToLeft = RightToLeft.Yes;
-        paths.TextAlign = ContentAlignment.TopRight;
-        paths.Padding = new Padding(0, 4, 0, 0);
-        layout.Controls.Add(paths, 0, 5);
-        layout.Controls.Add(new Panel { Height = 2, Dock = DockStyle.Fill }, 0, 6);
 
         group.Controls.Add(layout);
         group.ResumeLayout(true);
