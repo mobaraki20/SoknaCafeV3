@@ -1,0 +1,37 @@
+# SOKNA Prerequisites 1.0.12 — Work Candidate
+
+Baseline: `diag/prerequisites-1.0.11-final`
+Working branch: `work/prerequisites-self-service-1.0.12-20261003`
+
+## Scope
+
+Only the Prerequisites manager, its installer/build path, prerequisite-specific policy, tests, qualification workflow, and documentation are changed. Local Web, Public Edge, and Windows Runtime/Print Agent behavior are not modified.
+
+## Implemented
+
+- Manager version moved to 1.0.12.
+- New `ProgramV2` startup layer preserves existing CLI contracts while hardening UI/diagnostics.
+- Top-level RTL layout hardening and Persian-font preference/fallback added; technical input fields remain LTR.
+- Stable self-service diagnostic codes (`PRQ-*`) added for root/state/PHP/Apache/MariaDB/Data/port/UAC.
+- Safe remediation is restricted to starting SOKNA-owned services, enriching state provenance, and selecting a free loopback port in the existing UI.
+- Advanced Support Bundle v2 added with service query/config, relevant process/port evidence, SCM events, state/log/config collection, and secret-pattern redaction.
+- Existing infrastructure state is enriched atomically with manager version, policy/release-lock fingerprints, and expected/detected component versions.
+- Outer Inno installer now distinguishes same-version repair, upgrade, and newer-installed downgrade; downgrade is blocked before Silent Mode bypass.
+- Build artifact index upgraded to v2 with source commit, release-lock hash, infrastructure-policy hash, UI hash, size and installer SHA-256.
+- Self-service policy contract added at `platform/windows/prerequisites-self-service-v1.json`.
+- Static v2 gate, runtime self-test, UI audit/screenshot hooks and installer lifecycle regression were added.
+- Candidate GitHub Actions workflow is manual-only (`workflow_dispatch`) so push-by-push development does not consume Windows qualification runs.
+- Durable engineering playbook and Persian product standard added.
+
+## Explicit non-goals / invariants preserved
+
+- No Local Web payload installation was moved into Prerequisites.
+- No SOKNA application database/user/migration provisioning was moved into Prerequisites.
+- No Public Edge behavior was changed.
+- No Windows Services pairing behavior was changed.
+- Existing MariaDB Data must never be deleted or reinitialized by repair/recovery.
+- Automatic cross-root migration remains forbidden.
+
+## Qualification status
+
+This file describes the work candidate. It is not a release declaration. The candidate must pass `.github/workflows/prerequisites-1.0.12-candidate.yml` and its real Windows/UI/installer gates before it can be frozen or published.
