@@ -34,10 +34,15 @@ internal static class DashboardLayoutSelfTest
                 using var form = new PersianDashboardFormV2 { RightToLeftLayout = true };
                 form.StartPosition = FormStartPosition.Manual;
                 form.Location = new Point(20, 20);
-                form.ClientSize = size;
                 form.CreateControl();
+                form.Show();
+                Application.DoEvents();
+
+                form.ClientSize = size;
                 form.ApplyLayoutTestScenario();
                 ForceLayout(form);
+                form.Refresh();
+                Application.DoEvents();
 
                 var problems = new List<string>();
                 Inspect(form, "form", problems);
@@ -47,12 +52,17 @@ internal static class DashboardLayoutSelfTest
                 if (!form.Font.Name.Contains("Vazirmatn", StringComparison.OrdinalIgnoreCase)) problems.Add($"Persian UI font is not active: {form.Font.Name}");
                 if (FindScrollableAutoScroll(form).Any()) problems.Add("A visible child control has AutoScroll enabled.");
 
+                using var bitmap = new Bitmap(size.Width, size.Height);
+                var surface = form.Controls.Count > 0 ? form.Controls[0] : form;
+                surface.DrawToBitmap(bitmap, new Rectangle(Point.Empty, size));
+                if (!HasExpectedVisualContent(bitmap)) problems.Add("Rendered dashboard screenshot is visually empty or missing the SOKNA brand header.");
+
                 var report = Path.Combine(outputRoot, $"layout-{size.Width}x{size.Height}.txt");
                 File.WriteAllLines(report, problems.Count == 0 ? new[] { "PASS" } : problems);
-
-                using var bitmap = new Bitmap(size.Width, size.Height);
-                form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, size));
                 bitmap.Save(Path.Combine(outputRoot, $"layout-{size.Width}x{size.Height}.png"), ImageFormat.Png);
+
+                form.Hide();
+                Application.DoEvents();
 
                 if (problems.Count > 0)
                 {
@@ -68,6 +78,22 @@ internal static class DashboardLayoutSelfTest
             Console.Error.WriteLine(exception.ToString());
             return 10;
         }
+    }
+
+    private static bool HasExpectedVisualContent(Bitmap bitmap)
+    {
+        var brand = Color.FromArgb(20, 91, 84).ToArgb();
+        var sampled = 0;
+        var brandSamples = 0;
+        for (var y = 0; y < bitmap.Height; y += 4)
+        {
+            for (var x = 0; x < bitmap.Width; x += 4)
+            {
+                sampled++;
+                if (bitmap.GetPixel(x, y).ToArgb() == brand) brandSamples++;
+            }
+        }
+        return brandSamples >= Math.Max(20, sampled / 100);
     }
 
     private static void ForceLayout(Control root)

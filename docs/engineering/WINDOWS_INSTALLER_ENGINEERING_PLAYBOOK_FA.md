@@ -83,6 +83,7 @@ UI installer ابزار مهندسی خام نیست؛ باید محصول نه�
 - `AutoScroll` روی فرم اصلی و panelهای اصلی ممنوع است؛ اطلاعات ثانویه در dialog جزئیات یا log باز شود.
 - در اندازه‌های هدف حداقل `960x600`, `1100x660`, `1280x720` نباید overflow یا scrollbar افقی/عمودی ایجاد شود.
 - layout self-test باید screenshot و report تولید کند.
+- **وجود فایل PNG به‌تنهایی PASS نیست.** screenshot باید واقعاً محتوای UI را render کرده باشد؛ gate باید حداقل وجود سطح برند/محتوای مورد انتظار را بررسی کند و قبل از Release خود screenshot نیز بصری بررسی شود.
 - action اصلی باید بر اساس state باشد: نصب، به‌روزرسانی، تعمیر یا اتصال؛ کاربر نباید از روی حدس mode را انتخاب کند.
 - Pairing در UI action جداگانه است و متن باید صریحاً بگوید reinstall انجام نمی‌شود.
 
@@ -106,7 +107,7 @@ if ($process.ExitCode -ne 0) { throw "UI self-test failed: $($process.ExitCode)"
 1. PowerShell 5.1 parser برای scriptهای بسته.
 2. Build Runtime + Print Agent + Setup Host + Setup UI + Inno installer.
 3. ProductVersion/FileVersion درست و بدون SHA suffix.
-4. Persian UI layout gate + screenshot؛ بدون AutoScroll/overflow و با RTL/font صحیح.
+4. Persian UI layout gate + screenshot؛ بدون AutoScroll/overflow، با RTL/font صحیح و با اثبات non-blank render.
 5. Fresh install واقعی.
 6. Print Worker در حال اجرا بعد از install.
 7. حداقل دو Repair متوالی در حالی که Print Worker قبل از Repair زنده است؛ `e_sqlite3.dll` سالم و بدون staging residue.
@@ -144,7 +145,10 @@ if ($process.ExitCode -ne 0) { throw "UI self-test failed: $($process.ExitCode)"
 6. چند اصلاح مرتبط در work branch جمع شود.
 7. فقط یک candidate جدید به qualification فرستاده شود.
 
-مثال واقعی: layout self-test در 1.0.10 PASS می‌شد اما workflow به‌دلیل اجرای WinExe با `&` و اتکا به `$LASTEXITCODE` زودتر fail می‌کرد. این failure مربوط به harness بود، نه layout؛ راه درست `Start-Process -Wait -PassThru` است.
+دو مثال واقعی از 1.0.10:
+
+- layout self-test PASS می‌شد اما workflow به‌دلیل اجرای WinExe با `&` و اتکا به `$LASTEXITCODE` زودتر fail می‌کرد. این failure مربوط به harness بود، نه layout؛ راه درست `Start-Process -Wait -PassThru` است.
+- بعد از PASS شدن layout gate، PNGهای تولیدشده عملاً فقط client background/title bar را نشان می‌دادند. بنابراین «فایل screenshot موجود است» معیار کافی نیست. self-test باید فرم را render کند، سطح client واقعی را capture کند و non-blank/brand-content check داشته باشد؛ سپس screenshot واقعی نیز قبل از Release بازبینی شود.
 
 ## 9) مرز تغییرات
 
