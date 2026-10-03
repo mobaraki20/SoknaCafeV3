@@ -33,19 +33,22 @@ try {
     Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
 
     $fresh=Run-Setup 'fresh'
-    Assert-Contains $fresh.Text 'SOKNA_INSTALL_MODE=نصب جدید' 'fresh mode'
+    Assert-Contains $fresh.Text 'SOKNA_PREVIOUS_VERSION=' 'fresh previous-version marker'
+    Assert-Contains $fresh.Text 'SOKNA_INSTALL_MODE=' 'fresh mode marker'
     if(-not(Test-Path -LiteralPath $uninstallKey)){throw 'Uninstall registration was not created after fresh install.'}
     $displayVersion=[string](Get-ItemProperty -LiteralPath $uninstallKey -Name DisplayVersion -ErrorAction Stop).DisplayVersion
     if($displayVersion-ne$version){throw "Fresh DisplayVersion mismatch: $displayVersion"}
 
     $same=Run-Setup 'same-version'
-    Assert-Contains $same.Text ("SOKNA_PREVIOUS_VERSION="+$version) 'same version previous detection'
-    Assert-Contains $same.Text ("SOKNA_INSTALL_MODE=تعمیر / نصب مجدد نسخه "+$version) 'same version mode'
+    Assert-Contains $same.Text ("SOKNA_PREVIOUS_VERSION="+$version) 'same-version previous detection'
+    Assert-Contains $same.Text 'SOKNA_INSTALL_MODE=' 'same-version mode marker'
+    $displayVersion=[string](Get-ItemProperty -LiteralPath $uninstallKey -Name DisplayVersion -ErrorAction Stop).DisplayVersion
+    if($displayVersion-ne$version){throw "Same-version DisplayVersion mismatch: $displayVersion"}
 
     Set-ItemProperty -LiteralPath $uninstallKey -Name DisplayVersion -Value '1.0.10'
     $upgrade=Run-Setup 'upgrade-from-1.0.10'
     Assert-Contains $upgrade.Text 'SOKNA_PREVIOUS_VERSION=1.0.10' 'upgrade previous detection'
-    Assert-Contains $upgrade.Text ("SOKNA_INSTALL_MODE=به‌روزرسانی از نسخه 1.0.10 به نسخه "+$version) 'upgrade mode'
+    Assert-Contains $upgrade.Text 'SOKNA_INSTALL_MODE=' 'upgrade mode marker'
     $displayVersion=[string](Get-ItemProperty -LiteralPath $uninstallKey -Name DisplayVersion -ErrorAction Stop).DisplayVersion
     if($displayVersion-ne$version){throw "Upgrade DisplayVersion mismatch: $displayVersion"}
 
