@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "source_commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+  "vectors": [
+    {
+      "id": "df-claim-default-lease",
+      "operation": "local_claim",
+      "input": {},
+      "expected": {"normalized_lease_seconds": 30}
+    },
+    {
+      "id": "df-claim-low-clamp",
+      "operation": "local_claim",
+      "input": {"lease_seconds": 1},
+      "expected": {"normalized_lease_seconds": 10}
+    },
+    {
+      "id": "df-claim-high-clamp",
+      "operation": "local_claim",
+      "input": {"lease_seconds": 999},
+      "expected": {"normalized_lease_seconds": 120}
+    },
+    {
+      "id": "df-ack-invalid-nonterminal-state",
+      "operation": "local_ack",
+      "input": {"request_id": "d1", "lease_token": "abc", "state": "pending_sync"},
+      "expected": {"http": 400, "error": "invalid_ack"}
+    },
+    {
+      "id": "df-ack-terminal-dedupe",
+      "operation": "local_ack",
+      "precondition": {"stored_state": "committed"},
+      "input": {"request_id": "d1", "lease_token": "irrelevant-after-terminal", "state": "committed"},
+      "expected": {"http": 200, "ok": true, "state": "committed", "deduplicated": true}
+    },
+    {
+      "id": "df-ack-terminal-state-conflict",
+      "operation": "local_ack",
+      "precondition": {"stored_state": "rejected"},
+      "input": {"request_id": "d1", "lease_token": "irrelevant-after-terminal", "state": "committed"},
+      "expected": {"http": 409, "error": "terminal_state_conflict", "state": "rejected"}
+    },
+    {
+      "id": "df-ack-lease-conflict",
+      "operation": "local_ack",
+      "precondition": {"stored_state": "pending_sync", "lease_matches": false},
+      "input": {"request_id": "d1", "lease_token": "wrong", "state": "committed"},
+      "expected": {"http": 409, "error": "lease_conflict", "state": "pending_sync"}
+    },
+    {
+      "id": "df-reconcile-idempotent-target",
+      "operation": "local_reconcile",
+      "precondition": {"stored_state": "committed"},
+      "input": {"request_id": "d1", "state": "committed"},
+      "expected": {"http": 200, "ok": true, "state": "committed", "deduplicated": true}
+    },
+    {
+      "id": "df-reconcile-needs-review-to-commit",
+      "operation": "local_reconcile",
+      "precondition": {"stored_state": "needs_review"},
+      "input": {"request_id": "d1", "state": "committed"},
+      "expected": {"http": 200, "ok": true, "state": "committed", "deduplicated": false}
+    },
+    {
+      "id": "df-reconcile-invalid-source-state",
+      "operation": "local_reconcile",
+      "precondition": {"stored_state": "pending_sync"},
+      "input": {"request_id": "d1", "state": "rejected"},
+      "expected": {"http": 409, "error": "state_conflict", "state": "pending_sync"}
+    },
+    {
+      "id": "df-period-invalid-order",
+      "operation": "local_period_status",
+      "input": {"from_date": "2026-09-26", "to_date": "2026-09-25"},
+      "expected": {"http": 400, "error": "invalid_period"}
+    },
+    {
+      "id": "df-period-blocking-formula",
+      "operation": "local_period_status",
+      "precondition": {"counts": {"pending_sync": 2, "committed": 5, "needs_review": 3, "rejected": 1}},
+      "input": {"from_date": "2026-09-01", "to_date": "2026-09-30"},
+      "expected": {"http": 200, "blocking": 5}
+    },
+    {
+      "id": "df-result-request-id-required",
+      "operation": "remote_result",
+      "input": {"request_id": ""},
+      "expected": {"http": 400, "error": "request_id_required"}
+    },
+    {
+      "id": "df-result-shape",
+      "operation": "remote_result",
+      "precondition": {"actor_access": true},
+      "input": {"request_id": "d1"},
+      "expected": {"http": 200, "required_fields": ["ok", "request_id", "kind", "actor_projection_id", "state", "occurred_at", "result", "error_code", "created_at", "updated_at"]}
+    }
+  ]
+}

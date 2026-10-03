@@ -1,0 +1,126 @@
+name: M10 Release Qualification
+
+on:
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'windows/**'
+      - 'platform/**'
+      - 'packaging/**'
+      - 'contracts/**'
+      - 'release/**'
+      - 'VERSION.txt'
+      - 'tests/m10-release-qualification.py'
+      - 'tests/local-m10-release-selftest.php'
+      - '.github/workflows/m10-release-qualification.yml'
+  push:
+    branches: [main, 'architecture/**', 'migration/**']
+    paths:
+      - 'apps/**'
+      - 'windows/**'
+      - 'platform/**'
+      - 'packaging/**'
+      - 'contracts/**'
+      - 'release/**'
+      - 'VERSION.txt'
+      - 'tests/m10-release-qualification.py'
+      - 'tests/local-m10-release-selftest.php'
+      - '.github/workflows/m10-release-qualification.yml'
+
+permissions: {contents: read}
+
+jobs:
+  automated-qualification:
+    name: Automated lifecycle + recovery / MariaDB
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Install PDO MySQL when needed
+        run: if ! php -m | grep -qi '^pdo_mysql$'; then sudo apt-get update && sudo apt-get install -y php-mysql; fi
+      - name: Validate migration stack
+        env: &db
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m2
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: root
+        run: php tests/local-mysql-migration-selftest.php
+      - name: M10 component lifecycle qualification
+        run: python3 tests/m10-release-qualification.py
+      - name: M10 secure backup, takeover and crash-safe migration qualification
+        env: *db
+        run: php tests/local-m10-release-selftest.php
+      - name: Re-run mature component contracts
+        run: |
+          python3 tests/scds-m6-gate.py
+          python3 tests/m7-runtime-gate.py
+          python3 tests/m8-print-agent-gate.py
+          python3 tests/m9-packaging-gate.py
+          python3 tests/runtime-print-v1-contract.py
+          python3 tests/runtime-print-contract-audit.py
+
+  windows-build-and-installer-source:
+    name: Windows owners + installer source
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Build Runtime
+        run: dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+      - name: Build Print Agent and Setup owners
+        run: |
+          dotnet build windows/print-agent/source/Sokna.PrintWorker.slnx -c Release
+          dotnet publish packaging/windows/setup-host/Sokna.SetupHost.csproj -c Release -o packaging/windows/setup-host/publish
+          dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -o packaging/windows/setup-ui/publish
+      - name: Parse all Windows PowerShell owners
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem platform/windows,packaging/windows -Recurse -Filter *.ps1 | ForEach-Object {
+            $tokens=$null;$errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)|Out-Null
+            if($errors.Count){ $errors | ForEach-Object { Write-Error ("$($_.Extent.File): $($_.Message)") }; throw "PowerShell parse failure" }
+          }
+      - name: Compile Inno installer source with an isolated fixture payload
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $env:RUNNER_TEMP 'sokna-shell-fixture'
+          New-Item -ItemType Directory -Path $shell -Force | Out-Null
+          Copy-Item packaging/windows/Sokna.ico (Join-Path $shell 'Sokna.ico')
+          Set-Content (Join-Path $shell 'SoknaSetupUi.exe') 'fixture'
+          Set-Content (Join-Path $shell 'remove-owned-services.ps1') '$true'
+          & packaging/windows/scripts/build-installer.ps1 -ShellPayloadRoot $shell -RepoRoot $root
+
+  manual-uat-contract:
+    name: Manual UAT remains explicit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate explicit manual-UAT blockers
+        run: |
+          python3 - <<'PY'
+          import json
+          x=json.load(open('release/manual-uat-status.json',encoding='utf-8'))
+          req={'windows_clean_install','physical_thermal_printer','responsive_touch_persian_ime'}
+          assert req <= {c['id'] for c in x['checks']}
+          assert all(c['status'] in {'pending','passed','failed'} for c in x['checks'])
+          print('Manual UAT contract recorded; CI does not fabricate physical-device PASS evidence.')
+          PY

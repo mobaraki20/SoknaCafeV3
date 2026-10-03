@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "status": "foundation",
+  "contracts": [
+    {
+      "id": "local-public-realtime",
+      "version": "0.1.0-draft",
+      "producer_owners": ["apps/local-web", "apps/public"],
+      "consumer_owners": ["apps/local-web", "apps/public"],
+      "trust_boundary": "authenticated signed Local/Public relay",
+      "state_machine": "realtime_local_required",
+      "compatibility": "draft-no-stability-claim",
+      "spec": "contracts/local-public-realtime/README.md",
+      "wire_spec": "contracts/local-public-realtime/wire-v1.json",
+      "operation_schema": "contracts/local-public-realtime/operation-schemas-v1.json",
+      "compatibility_vectors": "contracts/local-public-realtime/compatibility-vectors-v1.json",
+      "wire_evidence": "extracted-from-dev39-implementation",
+      "regression_gates": ["tests/relay-wire-contract.py", "tests/relay-operation-contract.py"]
+    },
+    {
+      "id": "local-public-deferred",
+      "version": "0.1.0-draft",
+      "producer_owners": ["apps/local-web", "apps/public"],
+      "consumer_owners": ["apps/local-web", "apps/public"],
+      "trust_boundary": "authenticated deferred-safe Local/Public reconciliation",
+      "state_machine": "deferred_safe_separate_from_realtime",
+      "compatibility": "draft-no-stability-claim",
+      "spec": "contracts/local-public-deferred/README.md",
+      "wire_spec": "contracts/local-public-deferred/wire-v1.json",
+      "operation_schema": "contracts/local-public-deferred/operation-schemas-v1.json",
+      "compatibility_vectors": "contracts/local-public-deferred/compatibility-vectors-v1.json",
+      "wire_evidence": "extracted-from-dev39-implementation",
+      "regression_gates": ["tests/relay-wire-contract.py", "tests/relay-operation-contract.py"]
+    },
+    {
+      "id": "runtime-api",
+      "version": "0.1.0-draft",
+      "producer_owners": ["windows/runtime", "apps/local-web"],
+      "consumer_owners": ["apps/local-web", "windows/runtime"],
+      "trust_boundary": "loopback-only machine-authenticated bidirectional Runtime/Local boundary",
+      "state_machine": "os_integration_supervision_only",
+      "compatibility": "draft-no-stability-claim",
+      "compatibility_basis": "new V3 versioned contract informed by historical CLI/state/SCM evidence; no historical Runtime HTTP compatibility claim",
+      "spec": "contracts/runtime-api/README.md",
+      "historical_audit": "contracts/runtime-api/historical-audit-v1.json",
+      "v3_contract": "contracts/runtime-api/contract-v1.json",
+      "compatibility_vectors": "contracts/runtime-api/compatibility-vectors-v1.json",
+      "wire_evidence": "historical-cli-state-scm-audited-no-stable-http-api",
+      "adr": "docs/adr/0001-runtime-local-contract-direction.md",
+      "regression_gates": ["tests/runtime-print-contract-audit.py", "tests/runtime-print-v1-contract.py"]
+    },
+    {
+      "id": "print-agent-api",
+      "version": "0.1.0-draft",
+      "producer_owners": ["apps/local-web", "windows/print-agent"],
+      "consumer_owners": ["windows/print-agent", "apps/local-web", "windows/runtime"],
+      "trust_boundary": "authenticated Local/Print Agent server boundary plus paired loopback browser bridge",
+      "state_machine": "durable_print_submission_and_spooler_execution",
+      "compatibility": "draft-no-stability-claim",
+      "compatibility_basis": "retain proven Print API v4 server and loopback v1 safety semantics while V3 implementation/deployment ownership is migrated",
+      "spec": "contracts/print-agent-api/README.md",
+      "historical_audit": "contracts/print-agent-api/historical-audit-v1.json",
+      "server_wire": "contracts/print-agent-api/server-wire-v4.json",
+      "loopback_wire": "contracts/print-agent-api/loopback-v1.json",
+      "compatibility_vectors": "contracts/print-agent-api/compatibility-vectors-v4.json",
+      "wire_evidence": "historical-print-api-v4-and-loopback-bridge-audited",
+      "regression_gates": ["tests/runtime-print-contract-audit.py", "tests/runtime-print-v1-contract.py"]
+    }
+  ],
+  "rules": [
+    "Realtime and deferred-safe state machines are distinct contracts and must never be merged.",
+    "Runtime API must not expose business mutations or Local DB writes.",
+    "Historical Runtime has no stable HTTP API; the V3 Runtime/Local contract is new/versioned and constrained by audited CLI/state/SCM semantics.",
+    "Runtime trigger requests are allowlisted scheduling intents only; they never carry executable/shell/SQL/business payloads.",
+    "Public/Internet never directly controls Windows Runtime.",
+    "Print Agent API preserves Print Agent ownership of durable submission/spooler/device state and retains the mature accept/start/report submission fence.",
+    "Print loopback wake/preview is separate from durable print submission and cannot become an alternate business/print authority.",
+    "Extracted legacy wire evidence is regression input, not an automatic promise that every historical endpoint path remains identical forever.",
+    "Draft contract versions are boundary declarations and M1 executable evidence, not claims that producer/consumer implementations are already migrated or release-qualified."
+  ]
+}

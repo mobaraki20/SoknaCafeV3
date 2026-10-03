@@ -1,0 +1,73 @@
+name: M5 Expenses Gate
+
+on:
+  pull_request:
+    paths:
+      - 'apps/local-web/**'
+      - 'apps/public/src/Deferred/**'
+      - 'tests/local-m5-expenses-selftest.php'
+      - 'tests/local-mysql-migration-selftest.php'
+      - 'docs/migration/M5_EXPENSES_AUDIT_FA.md'
+      - '.github/workflows/m5-expenses-gate.yml'
+  push:
+    branches:
+      - main
+      - 'architecture/**'
+      - 'migration/**'
+    paths:
+      - 'apps/local-web/**'
+      - 'apps/public/src/Deferred/**'
+      - 'tests/local-m5-expenses-selftest.php'
+      - 'tests/local-mysql-migration-selftest.php'
+      - 'docs/migration/M5_EXPENSES_AUDIT_FA.md'
+      - '.github/workflows/m5-expenses-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  expenses:
+    name: Expenses + Period Identity + Deferred / MariaDB
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PDO MySQL is available
+        run: |
+          if ! php -m | grep -qi '^pdo_mysql$'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+      - name: Syntax-check M5.8 owners
+        run: |
+          php -l apps/local-web/src/Domain/Expenses/ExpenseException.php
+          php -l apps/local-web/src/Domain/Finance/FinancialPeriodException.php
+          php -l apps/local-web/src/Domain/Finance/FinancialPeriodIdentityService.php
+          php -l apps/local-web/src/Domain/Expenses/ExpenseService.php
+          php -l apps/local-web/src/Relay/DeferredReceiptService.php
+          php -l apps/local-web/src/Relay/ExpenseDeferredAdapter.php
+      - name: Validate ordered Local migration stack
+        env: &db
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m2
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/local-mysql-migration-selftest.php
+      - name: Validate Expenses and closed-period Deferred semantics
+        env: *db
+        run: php tests/local-m5-expenses-selftest.php

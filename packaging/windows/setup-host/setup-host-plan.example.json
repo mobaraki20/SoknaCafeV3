@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "mode": "new",
+  "shell_root": "C:\\Program Files\\SOKNA\\Cafe Local\\Installer",
+  "app_root": "C:\\SOKNA\\Cafe",
+  "data_root": "C:\\ProgramData\\SOKNA",
+  "php_exe": "C:\\path\\to\\php.exe",
+  "openssl_exe": "C:\\path\\to\\openssl.exe",
+  "web_server_exe": "C:\\path\\to\\httpd.exe",
+  "setup_config_file": "C:\\secure\\setup-config.json",
+  "recovery_file": "",
+  "recovery_passphrase_file": "",
+  "hostname": "sokna.local",
+  "require_web_server_preflight": true,
+  "skip_https": false,
+  "skip_service": false
+}

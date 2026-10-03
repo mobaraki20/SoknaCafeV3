@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "status": "historical_surface_audited_no_stable_http_api",
+  "source": {
+    "repository": "mobaraki20/SoknaCafe",
+    "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "files": [
+      "runtime/sokna-runtime.php",
+      "includes/runtime.php",
+      "runtime/windows/SoknaRuntimeService.cs",
+      "runtime/README_FA.md"
+    ]
+  },
+  "finding": {
+    "stable_http_api_present": false,
+    "proven_external_surfaces": ["cli", "state_file", "windows_scm_service_host"],
+    "migration_rule": "V3 Runtime HTTP/IPC contract is new design work constrained by proven semantics; it must not be presented as a legacy HTTP compatibility surface."
+  },
+  "cli": {
+    "entrypoint": "runtime/sokna-runtime.php",
+    "options": {
+      "--once": "run one scheduler iteration and exit",
+      "--self-check": "emit JSON self-check and exit 0 on ok or 2 on failure",
+      "--health-json": "emit current runtime state JSON; if absent emit format + not_started",
+      "--max-seconds=N": "bound runtime duration to non-negative integer seconds"
+    },
+    "self_check_shape": ["ok", "checks", "data_root", "local_hostname"],
+    "self_check_exit_codes": {"ok": 0, "failed": 2},
+    "runtime_failure_exit_code": 2
+  },
+  "state_file": {
+    "format": "sokna-local-runtime-v1",
+    "base_fields": ["format", "version", "pid", "hostname", "local_hostname", "started_at", "last_seen_at", "status", "workers"],
+    "statuses_observed": ["starting", "running", "degraded", "maintenance_paused", "stopped", "failed"],
+    "worker_result_fields": ["last_run_at", "exit_code", "timed_out", "duration_ms", "healthy", "message"],
+    "health_snapshot": {
+      "fields": ["available", "healthy", "status", "stale", "last_seen_at", "version", "workers"],
+      "healthy_statuses_when_fresh": ["running", "maintenance_paused"],
+      "default_stale_seconds": 20
+    }
+  },
+  "windows_service_host": {
+    "service_name": "SoknaRuntime",
+    "required_configuration": ["php", "app-root", "data-root"],
+    "self_test_switch": "--self-test",
+    "child": "php runtime/sokna-runtime.php",
+    "environment": {"SOKNA_DATA_DIR": "data-root"},
+    "monitor_interval_seconds": 5,
+    "restart_rule": "restart child when missing/exited unless service is stopping",
+    "stop_rule": "stop process tree; failure to stop is fatal for repair continuation"
+  },
+  "historical_worker_registry": [
+    "push", "printing", "inventory", "backup", "relay", "relay_projection", "remote_read_models", "deferred_sync", "center_projection", "guest_availability"
+  ],
+  "v3_ownership_correction": {
+    "runtime_owner": "windows/runtime",
+    "allowed": ["service supervision", "worker scheduling/triggers", "health", "diagnostics", "approved OS integration"],
+    "forbidden": ["business policy", "business mutation ownership", "direct Local business-table writes", "Print Agent spooler/device state machine"],
+    "worker_registry_note": "Historical process launching is evidence of supervision cadence only; each business worker/domain remains owned by Local or its explicit V3 component.",
+    "print_note": "Historical printing entry in the Runtime registry does not transfer Print Agent ownership to Runtime in V3."
+  },
+  "next_contract_work": [
+    "choose versioned local transport only after consumer requirements are audited",
+    "define machine-bound authentication and secret rotation",
+    "define health/diagnostic schema by adapting proven state-file semantics",
+    "define supervision commands without exposing business mutations",
+    "add compatibility vectors for service lifecycle and health semantics"
+  ]
+}

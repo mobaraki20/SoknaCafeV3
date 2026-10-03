@@ -1,0 +1,22 @@
+name: M9 Packaging Gate
+on:
+  pull_request:
+    paths: ['packaging/**','platform/**','tests/m9-packaging-gate.py','.github/workflows/m9-packaging-gate.yml']
+  push:
+    branches: [main,'architecture/**','migration/**']
+    paths: ['packaging/**','platform/**','tests/m9-packaging-gate.py','.github/workflows/m9-packaging-gate.yml']
+permissions: {contents: read}
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/m9-packaging-gate.py
+  windows-setup-source:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+      - run: dotnet publish packaging/windows/setup-host/Sokna.SetupHost.csproj -c Release -o packaging/windows/setup-host/publish
+      - run: dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -o packaging/windows/setup-ui/publish

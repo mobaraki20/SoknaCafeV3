@@ -1,0 +1,15 @@
+{
+  "contractVersion": 1,
+  "instanceId": "runtime-machine-001",
+  "dataRoot": "C:\\ProgramData\\SOKNA\\Runtime",
+  "healthPort": 17621,
+  "runtimeTokenFile": "C:\\ProgramData\\SOKNA\\Secrets\\runtime-health.token",
+  "localTokenFile": "C:\\ProgramData\\SOKNA\\Secrets\\runtime-local.token",
+  "localBaseUrl": "https://127.0.0.1",
+  "printAgentServiceName": "SoknaPrintAgent",
+  "supervisePrintAgent": true,
+  "triggers": [
+    {"key":"inventory.order_events","intervalSeconds":15},
+    {"key":"center.user_projection","intervalSeconds":60}
+  ]
+}

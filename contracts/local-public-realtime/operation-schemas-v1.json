@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "status": "extracted_legacy_wire_contract_for_v3_compatibility",
+  "source": {
+    "repository": "mobaraki20/SoknaCafe",
+    "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "files": {
+      "local_claim": "public_edge/api/v1/local/claim.php",
+      "local_ack": "public_edge/api/v1/local/ack.php",
+      "remote_result": "public_edge/api/v1/realtime/result.php"
+    }
+  },
+  "operations": {
+    "local_claim": {
+      "method": "POST",
+      "historical_path": "/api/v1/local/claim.php",
+      "auth": "signed_local",
+      "request": {
+        "transport": "json_object",
+        "required": [],
+        "properties": {
+          "lease_seconds": {
+            "required": false,
+            "legacy_normalization": "PHP integer cast, then clamp to 5..60",
+            "default": 20,
+            "minimum_after_normalization": 5,
+            "maximum_after_normalization": 60
+          }
+        },
+        "additional_properties": "ignored_by_historical_endpoint"
+      },
+      "success": {
+        "http": 200,
+        "required_fields": ["ok", "request", "lease_token", "lease_seconds"],
+        "constants": {"ok": true},
+        "field_rules": {
+          "request": "stored request envelope object",
+          "lease_token": "48 lowercase/uppercase-insensitive hexadecimal characters representing 24 random bytes",
+          "lease_seconds": "normalized integer 5..60"
+        }
+      },
+      "errors": {
+        "404": {"error": "empty_queue"},
+        "409": {"error": "remote_disabled"}
+      },
+      "state_effect": "eligible queued or expired-lease claimed request becomes claimed; SHA256(lease_token) is stored"
+    },
+    "local_ack": {
+      "method": "POST",
+      "historical_path": "/api/v1/local/ack.php",
+      "auth": "signed_local",
+      "request": {
+        "transport": "json_object",
+        "required": ["request_id", "lease_token", "state"],
+        "properties": {
+          "request_id": {"normalization": "trimmed string", "must_be_non_empty": true},
+          "lease_token": {"normalization": "string", "must_be_non_empty": true},
+          "state": {"enum": ["committed", "rejected", "expired", "cancelled", "unknown_review"]},
+          "result": {"normalization": "array/object value retained when PHP is_array; otherwise {}"},
+          "error_code": {"normalization": "string; historical endpoint does not truncate"}
+        },
+        "additional_properties": "ignored_by_historical_endpoint"
+      },
+      "success": {
+        "http": 200,
+        "required_fields": ["ok", "state", "deduplicated"],
+        "constants": {"ok": true},
+        "dedupe_rule": "if stored state is already terminal, return stored state with deduplicated=true and do not rewrite result/error"
+      },
+      "errors": {
+        "400": {"error": "invalid_ack"},
+        "404": {"error": "not_found"},
+        "409": {"error": "lease_conflict"}
+      },
+      "lease_rule": "non-terminal row must be claimed and SHA256(provided lease_token) must match stored lease_token_hash"
+    },
+    "remote_result": {
+      "method": "GET",
+      "historical_path": "/api/v1/realtime/result.php",
+      "auth": "public_session",
+      "request": {
+        "transport": "query",
+        "required": ["request_id"],
+        "properties": {
+          "request_id": {"normalization": "trimmed string", "must_be_non_empty": true}
+        }
+      },
+      "success": {
+        "http": 200,
+        "required_fields": ["ok", "state", "terminal", "result", "error_code", "updated_at"],
+        "constants": {"ok": true},
+        "field_rules": {
+          "state": "stored realtime state string",
+          "terminal": "boolean from sokna_relay_is_terminal(state)",
+          "result": "decoded result_json; may be null if empty/invalid historical storage",
+          "error_code": "stored string or empty string",
+          "updated_at": "stored timestamp string"
+        }
+      },
+      "errors": {
+        "400": {"error": "request_id_required"},
+        "403": {"error": "forbidden"},
+        "404": {"error": "not_found"}
+      },
+      "access_rule": "session projection_id must equal actor_projection_id unless session has wildcard capability *"
+    }
+  },
+  "compatibility_note": "These schemas describe proven dev39 behavior. Final V3 canonical endpoints may tighten input types only through an explicit compatibility decision and executable migration tests."
+}

@@ -1,0 +1,67 @@
+name: M5 Sellables Gate
+
+on:
+  pull_request:
+    paths:
+      - 'apps/local-web/**'
+      - 'tests/local-mysql-migration-selftest.php'
+      - 'tests/local-m5-sellables-selftest.php'
+      - 'docs/migration/M5_SELLABLES_AUDIT_FA.md'
+      - '.github/workflows/m5-sellables-gate.yml'
+  push:
+    branches:
+      - main
+      - 'architecture/**'
+      - 'migration/**'
+    paths:
+      - 'apps/local-web/**'
+      - 'tests/local-mysql-migration-selftest.php'
+      - 'tests/local-m5-sellables-selftest.php'
+      - 'docs/migration/M5_SELLABLES_AUDIT_FA.md'
+      - '.github/workflows/m5-sellables-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sellables:
+    name: Explicit Sellables / MariaDB
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Local ownership/bootstrap contract
+        run: python3 tests/local-core-contract.py
+      - name: Ensure PDO MySQL is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -qi '^pdo_mysql$'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+      - name: Validate ordered Local migration stack
+        env: &local_db_env
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m2
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/local-mysql-migration-selftest.php
+      - name: Validate explicit Sellables semantics and scope
+        env: *local_db_env
+        run: php tests/local-m5-sellables-selftest.php

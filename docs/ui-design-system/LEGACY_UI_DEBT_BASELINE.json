@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "type": "historical_source_migration_ceiling",
+  "design_system_id": "SCDS-CANONICAL-2026-R1",
+  "source": {
+    "repository": "mobaraki20/SoknaCafe",
+    "captured_from": "phase/8b-windows-setup snapshot",
+    "version": "1.36.4-dev.38",
+    "captured_at": "2026-09-24"
+  },
+  "policy": "ratchet_down_only_during_legacy_migration",
+  "metrics": {
+    "css_files": 14,
+    "css_lines": 5043,
+    "important_count_max": 284,
+    "direct_hex_colors_max": 1474,
+    "direct_rgb_functions_max": 238,
+    "media_queries_max": 234,
+    "unique_media_conditions_max": 63,
+    "physical_direction_properties_max": 46,
+    "inline_style_attributes_max": 45,
+    "style_blocks_max": 18
+  },
+  "v3_policy": [
+    "These values describe historical debt, not acceptable V3 target values.",
+    "V3-native code must not consume these ceilings as permission to introduce debt.",
+    "When legacy UI is imported temporarily, relevant debt must be inventoried and ratcheted downward as canonical owners replace it.",
+    "A migration slice is incomplete if it leaves a new parallel owner or unexplained style island.",
+    "Any exception that increases a measured legacy debt dimension requires an explicit reviewed V3 decision."
+  ]
+}

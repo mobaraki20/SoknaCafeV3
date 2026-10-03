@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "contract_id": "sokna-runtime-local-v1",
+  "vectors": [
+    {
+      "id": "runtime-health-running",
+      "interface": "local_to_runtime_health",
+      "response": {
+        "success": true,
+        "contract_version": 1,
+        "runtime_version": "0.1.0",
+        "instance_id": "runtime-instance-001",
+        "status": "running",
+        "started_at": "2026-09-26T01:00:00Z",
+        "last_seen_at": "2026-09-26T01:00:05Z",
+        "capabilities": ["health", "local_trigger_v1", "print_agent_supervision"],
+        "scheduler": {"healthy": true, "last_cycle_at": "2026-09-26T01:00:04Z", "last_error_code": null},
+        "supervised_components": {"print-agent": {"status": "running", "last_seen_at": "2026-09-26T01:00:04Z", "version": "6.2.5", "error_code": null}}
+      },
+      "expected": {"valid": true}
+    },
+    {
+      "id": "runtime-health-no-business-fields",
+      "interface": "local_to_runtime_health",
+      "response_extra": {"order_id": 123, "settlement_total": 9000},
+      "expected": {"valid": false, "reason": "additional_properties_forbidden"}
+    },
+    {
+      "id": "runtime-trigger-first-accept",
+      "interface": "runtime_to_local_trigger",
+      "request": {
+        "request_id": "trg-20260926-0001",
+        "runtime_instance_id": "runtime-instance-001",
+        "trigger_key": "backup",
+        "requested_at": "2026-09-26T01:02:00Z",
+        "correlation_id": "corr-20260926-0001"
+      },
+      "expected_response": {"success": true, "accepted": true, "deduplicated": false}
+    },
+    {
+      "id": "runtime-trigger-retry-deduplicates",
+      "interface": "runtime_to_local_trigger",
+      "precondition": {"same_request_id_already_accepted": true, "same_body": true},
+      "request": {
+        "request_id": "trg-20260926-0001",
+        "runtime_instance_id": "runtime-instance-001",
+        "trigger_key": "backup",
+        "requested_at": "2026-09-26T01:02:00Z",
+        "correlation_id": "corr-20260926-0001"
+      },
+      "expected_response": {"success": true, "accepted": true, "deduplicated": true}
+    },
+    {
+      "id": "runtime-trigger-request-id-conflict",
+      "interface": "runtime_to_local_trigger",
+      "precondition": {"same_request_id_already_accepted": true, "same_body": false},
+      "request": {
+        "request_id": "trg-20260926-0001",
+        "runtime_instance_id": "runtime-instance-001",
+        "trigger_key": "relay",
+        "requested_at": "2026-09-26T01:02:00Z",
+        "correlation_id": "corr-20260926-0001"
+      },
+      "expected": {"http": 409, "error": "request_id_conflict"}
+    },
+    {
+      "id": "runtime-trigger-arbitrary-command-rejected",
+      "interface": "runtime_to_local_trigger",
+      "request": {
+        "request_id": "trg-20260926-0002",
+        "runtime_instance_id": "runtime-instance-001",
+        "trigger_key": "backup",
+        "requested_at": "2026-09-26T01:03:00Z",
+        "correlation_id": "corr-20260926-0002",
+        "command": "powershell.exe"
+      },
+      "expected": {"valid": false, "reason": "additional_properties_forbidden"}
+    },
+    {
+      "id": "runtime-trigger-business-payload-rejected",
+      "interface": "runtime_to_local_trigger",
+      "request": {
+        "request_id": "trg-20260926-0003",
+        "runtime_instance_id": "runtime-instance-001",
+        "trigger_key": "inventory",
+        "requested_at": "2026-09-26T01:04:00Z",
+        "correlation_id": "corr-20260926-0003",
+        "business_payload": {"item_id": 42, "delta": -1}
+      },
+      "expected": {"valid": false, "reason": "additional_properties_forbidden"}
+    },
+    {
+      "id": "runtime-trigger-printing-owner-rejected",
+      "interface": "runtime_to_local_trigger",
+      "request": {
+        "request_id": "trg-20260926-0004",
+        "runtime_instance_id": "runtime-instance-001",
+        "trigger_key": "printing",
+        "requested_at": "2026-09-26T01:05:00Z",
+        "correlation_id": "corr-20260926-0004"
+      },
+      "expected": {"http": 404, "error": "unsupported_trigger", "ownership_reason": "windows/print-agent owns durable print execution"}
+    },
+    {
+      "id": "runtime-public-direct-control-rejected",
+      "interface": "local_to_runtime_health",
+      "caller": "apps/public",
+      "network": "internet",
+      "expected": {"allowed": false}
+    }
+  ]
+}

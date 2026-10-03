@@ -1,0 +1,273 @@
+name: V3 Component Gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'architecture/**'
+      - 'migration/**'
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Classify component impact
+    runs-on: ubuntu-latest
+    outputs:
+      any: ${{ steps.impact.outputs.any }}
+      global: ${{ steps.impact.outputs.global }}
+      local: ${{ steps.impact.outputs.local }}
+      public: ${{ steps.impact.outputs.public }}
+      runtime: ${{ steps.impact.outputs.runtime }}
+      print: ${{ steps.impact.outputs.print }}
+      platform: ${{ steps.impact.outputs.platform }}
+      contracts: ${{ steps.impact.outputs.contracts }}
+      packaging: ${{ steps.impact.outputs.packaging }}
+      migration: ${{ steps.impact.outputs.migration }}
+      ui: ${{ steps.impact.outputs.ui }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine changed paths
+        id: diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            BASE_SHA="$PR_BASE_SHA"
+            HEAD_SHA="$PR_HEAD_SHA"
+          else
+            BASE_SHA="$PUSH_BEFORE_SHA"
+            HEAD_SHA="$CURRENT_SHA"
+            if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+              BASE_SHA="$(git rev-list --max-parents=0 "$HEAD_SHA" | tail -n 1)"
+            fi
+          fi
+          echo "base=$BASE_SHA"
+          echo "head=$HEAD_SHA"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-files.txt
+          cat changed-files.txt
+      - name: Map paths to V3 owners
+        id: impact
+        run: python3 tests/component-impact.py --files changed-files.txt --github-output "$GITHUB_OUTPUT"
+
+  foundation:
+    name: Foundation contract
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate V3 ownership, lineage, SCDS and migration matrix
+        run: python3 tests/validate-v3-foundation.py
+
+  local:
+    name: Local Web gate (M2)
+    needs: [changes, foundation]
+    if: needs.changes.outputs.local == 'true'
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/validate-v3-foundation.py --component local
+      - name: Validate M2 Local Core ownership and executable bootstrap
+        run: python3 tests/local-core-contract.py
+      - name: Ensure PDO MySQL is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -qi '^pdo_mysql$'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+      - name: Validate M2 migrations against real MariaDB
+        env:
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m2
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/local-mysql-migration-selftest.php
+
+  public:
+    name: Public Edge gate (M3/M4)
+    needs: [changes, foundation]
+    if: needs.changes.outputs.public == 'true'
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m3
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/validate-v3-foundation.py --component public
+      - name: Validate M3 Public persistence/auth/security/http contracts
+        run: python3 tests/public-m3-contract.py
+      - name: Validate M3 Realtime/Deferred transport ownership contracts
+        run: python3 tests/public-m3-transport-contract.py
+      - name: Validate M3 Public health/safe-error contract
+        run: python3 tests/public-health-contract.py
+      - name: Validate M4 Guest/Public projection schema ownership
+        run: python3 tests/public-m4-schema-contract.py
+      - name: Ensure PDO MySQL is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -qi '^pdo_mysql$'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+      - name: Validate M3/M4 Public migrations against real MariaDB
+        env: &public_db_env
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m3
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/public-mysql-migration-selftest.php
+      - name: Validate M4 signed Guest media/publish/availability ownership
+        env: *public_db_env
+        run: php tests/public-m4-guest-publish-selftest.php
+      - name: Validate M4 Guest runtime degraded-state projection
+        env: *public_db_env
+        run: php tests/public-m4-guest-runtime-selftest.php
+      - name: Validate M4 Remote Read Model sync/read/filter capability scope
+        env: *public_db_env
+        run: php tests/public-m4-remote-read-model-selftest.php
+      - name: Validate M4 Guest compatibility adapters reuse M3 Realtime
+        env: *public_db_env
+        run: php tests/public-m4-guest-compat-selftest.php
+      - name: Validate M3 authoritative auth projection sync
+        env: *public_db_env
+        run: php tests/public-auth-projection-selftest.php
+      - name: Validate M3 login, session revocation, throttling and auth audit
+        env: *public_db_env
+        run: php tests/public-login-selftest.php
+      - name: Validate M3 signed Local HMAC and durable replay guard
+        env: *public_db_env
+        run: php tests/public-signed-local-request-selftest.php
+      - name: Validate M3 auth HTTP adapters
+        env: *public_db_env
+        run: php tests/public-auth-http-adapter-selftest.php
+      - name: Validate M3 heartbeat/connectivity transport
+        env: *public_db_env
+        run: php tests/public-connectivity-selftest.php
+      - name: Validate M3 Realtime producer/consumer transport
+        env: *public_db_env
+        run: php tests/public-realtime-selftest.php
+      - name: Validate M3 Deferred-safe producer/consumer transport
+        env: *public_db_env
+        run: php tests/public-deferred-selftest.php
+      - name: Validate M3 Public health and safe-error behavior
+        env: *public_db_env
+        run: php tests/public-health-selftest.php
+
+  runtime:
+    name: Windows Runtime gate (M7)
+    needs: [changes, foundation]
+    if: needs.changes.outputs.runtime == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/validate-v3-foundation.py --component runtime
+      - run: python3 tests/m7-runtime-gate.py
+
+  print:
+    name: Print Agent gate (M8)
+    needs: [changes, foundation]
+    if: needs.changes.outputs.print == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/validate-v3-foundation.py --component print
+      - run: python3 tests/m8-print-agent-gate.py
+
+  platform:
+    name: Platform gate (M9/M10)
+    needs: [changes, foundation]
+    if: needs.changes.outputs.platform == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/validate-v3-foundation.py --component platform
+      - run: python3 tests/m9-packaging-gate.py
+      - run: python3 tests/m10-release-qualification.py
+
+  contracts:
+    name: Contracts gate (foundation stage)
+    needs: [changes, foundation]
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/validate-v3-foundation.py --component contracts
+      - name: Validate extracted Local/Public relay wire semantics
+        run: python3 tests/relay-wire-contract.py
+      - name: Validate relay operation schemas and compatibility vectors
+        run: python3 tests/relay-operation-contract.py
+      - name: Validate Runtime and Print Agent historical ownership audit
+        run: python3 tests/runtime-print-contract-audit.py
+      - name: Validate Runtime v1 and retained Print Agent v4 contracts
+        run: python3 tests/runtime-print-v1-contract.py
+
+  packaging:
+    name: Packaging gate (M9/M10)
+    needs: [changes, foundation]
+    if: needs.changes.outputs.packaging == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/validate-v3-foundation.py --component packaging
+      - run: python3 tests/m9-packaging-gate.py
+      - run: python3 tests/m10-release-qualification.py
+
+  migration:
+    name: Migration inventory gate
+    needs: [changes, foundation]
+    if: needs.changes.outputs.migration == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/validate-v3-foundation.py --component migration
+
+  ui:
+    name: SCDS authority gate
+    needs: [changes, foundation]
+    if: needs.changes.outputs.ui == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/validate-v3-foundation.py --component ui

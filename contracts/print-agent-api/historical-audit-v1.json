@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "status": "historical_print_surfaces_audited_for_v3_extraction",
+  "source": {
+    "repository": "mobaraki20/SoknaCafe",
+    "commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+    "files": [
+      "print-agent/v4/api.php",
+      "includes/print_agent_api.php",
+      "runtime/print-worker/source/src/Sokna.PrintAgent.Service/LocalBridgeService.cs",
+      "runtime/print-worker/source/src/Sokna.PrintAgent.Service/LoopbackBridgeServer.cs",
+      "runtime/print-worker/source/src/Sokna.PrintAgent.Service/PrintAgentService.cs"
+    ]
+  },
+  "server_api_v4": {
+    "protocol_version": 4,
+    "transport": "HTTPS POST application/json; localhost is the historical HTTPS exception",
+    "authentication": "Authorization: Bearer <agent token>; server stores SHA256(token) and requires active agent",
+    "max_request_bytes": 262144,
+    "request_id": {
+      "source": "body request_id or X-Request-ID fallback",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,79}$"
+    },
+    "lease_seconds": 45,
+    "max_attempts": 5,
+    "actions": ["probe", "heartbeat", "claim_reconcile", "claim", "attempt_status", "renew", "accept", "start", "report"],
+    "probe_capabilities": [
+      "durable_claim", "durable_claim_snapshot_v1", "claim_conflict_rekey_v1", "durable_accept",
+      "attempt_status", "submission_fence", "attempt_history", "unknown_resolution", "content_sha256",
+      "manual_failover", "retry_cycles", "utc_wire_time", "local_wake_v1", "preview_bridge_v1"
+    ],
+    "mutation_request_fingerprints": {
+      "claim": ["request_id", "agent_version", "protocol_version", "limit", "ready_destination_keys"],
+      "accept": ["request_id", "agent_version", "protocol_version", "attempt_id", "lease_token", "local_receipt_id", "content_sha256"],
+      "renew": ["request_id", "agent_version", "protocol_version", "attempt_id", "lease_token"],
+      "start": ["request_id", "agent_version", "protocol_version", "attempt_id", "lease_token"],
+      "report": ["request_id", "agent_version", "protocol_version", "attempt_id", "lease_token", "local_receipt_id", "status", "spooler_job_id", "retryable", "error_code", "error_message"]
+    },
+    "terminal_attempt_states": ["submitted", "failed", "unknown", "recovery_hold", "cancelled", "expired"],
+    "important_semantics": [
+      "request_id reuse across another attempt is rejected",
+      "same request_id with a different mutation body is rejected as request_body_conflict",
+      "claimed destination snapshot is immutable evidence; missing/corrupt snapshot fails closed",
+      "accept binds durable local_receipt_id and content_sha256 before print execution",
+      "start is idempotent when already started and otherwise requires claimed state",
+      "report accepts submitted|failed|unknown|recovery_hold and requires matching local receipt",
+      "server identity/scope binding prevents backlog from silently moving to another server"
+    ]
+  },
+  "loopback_bridge_v1": {
+    "bind": "127.0.0.1 only",
+    "methods": ["POST", "OPTIONS"],
+    "authentication": "exact Origin match plus X-Sokna-Bridge-Pairing fixed-time comparison",
+    "pairing": "24 random bytes encoded as 48 lowercase hex on first creation; stored under ProgramData and reloadable by file rotation",
+    "content_type": "application/json",
+    "max_header_bytes": 16384,
+    "default_max_body_bytes": 8192,
+    "preview_max_body_bytes": 262144,
+    "max_connections": 24,
+    "busy_response": {"http": 503, "json": {"success": false, "code": "bridge_busy"}},
+    "routes": {
+      "/v1/wake": {
+        "type": "print.wake",
+        "protocol_version": 1,
+        "required": ["type", "protocol_version", "request_id", "job_ids", "expires_at"],
+        "request_id_length": [8, 96],
+        "job_ids_count": [1, 50],
+        "job_id_rule": "positive int64",
+        "expiry_rule": "explicit timezone offset; not older than 5 seconds and not beyond 2 minutes",
+        "replay_rule": "request_id retained in in-memory replay map until expires_at; duplicate returns idempotent=true",
+        "success": {"success": true, "accepted": true}
+      },
+      "/v1/preview": {
+        "type": "print.preview",
+        "protocol_version": 1,
+        "required": ["type", "protocol_version", "revision", "session_id", "payload_json", "paper_width_mm", "printable_width_mm"],
+        "optional": ["dpi", "dpi_x", "dpi_y"],
+        "revision_rule": "positive int64",
+        "session_id_length": [8, 96],
+        "default_dpi": 203,
+        "success_fields": ["success", "revision", "session_id", "image_base64", "width", "height", "dpi", "dpi_x", "dpi_y", "png_sha256", "renderer_version", "font_family", "bundled_font"],
+        "known_errors": {
+          "422": ["preview_limits_invalid", "preview_raster_budget_exceeded", "preview_output_size_exceeded", "preview_metadata_mismatch"],
+          "429": ["preview_busy"],
+          "409": ["preview_superseded", "preview_cancelled"],
+          "504": ["preview_timeout"]
+        }
+      }
+    }
+  },
+  "v3_ownership_correction": {
+    "print_owner": "windows/print-agent",
+    "runtime_relationship": "Runtime may supervise Print Agent service lifecycle only",
+    "local_relationship": "Local owns business print intent/document meaning and submits through a versioned contract",
+    "preserve": ["durable submission fence", "attempt lifecycle", "idempotency", "server-scope binding", "device/spooler execution", "diagnostics", "wake/preview semantics where still required"],
+    "do_not_preserve_as_authority": ["dev39 packaging statement that Print Worker is an internal Local component"],
+    "forbidden": ["Print Agent business-validity decisions", "Runtime duplicate spooler state machine", "printing failure rolling back unrelated committed business state"]
+  },
+  "next_contract_work": [
+    "extract exact action request/response schemas for the subset retained by V3",
+    "decide whether wake/preview remain a browser-to-agent loopback subprotocol or become internal adapters",
+    "define V3 submission envelope and document payload version around proven accept/start/report fence semantics",
+    "map historical attempt/spooler states to V3 without weakening unknown/recovery_hold behavior",
+    "add compatibility vectors and physical-printer UAT requirements"
+  ]
+}

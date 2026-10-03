@@ -1,0 +1,21 @@
+<Solution>
+  <Project Path="src/Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj" />
+  <Project Path="src/Sokna.PrintAgent.Runtime/Sokna.PrintAgent.Runtime.csproj" />
+  <Project Path="src/Sokna.PrintAgent.Service/Sokna.PrintAgent.Service.csproj" />
+  <Project Path="src/Sokna.PrintAgent.Worker/Sokna.PrintAgent.Worker.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.Worker.Tests/Sokna.PrintAgent.Worker.Tests.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.Acceptance/Sokna.PrintAgent.Acceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.TransportAcceptance/Sokna.PrintAgent.TransportAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.ContractAcceptance/Sokna.PrintAgent.ContractAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.SubprocessFixture/Sokna.PrintAgent.SubprocessFixture.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.WindowsFaultAcceptance/Sokna.PrintAgent.WindowsFaultAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.CleanupAcceptance/Sokna.PrintAgent.CleanupAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.RealApiIntegration/Sokna.PrintAgent.RealApiIntegration.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.BridgeRuntimeAcceptance/Sokna.PrintAgent.BridgeRuntimeAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.BridgeAcceptance/Sokna.PrintAgent.BridgeAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.BridgeSecurityAcceptance/Sokna.PrintAgent.BridgeSecurityAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.BridgeLoadAcceptance/Sokna.PrintAgent.BridgeLoadAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.PreviewAcceptance/Sokna.PrintAgent.PreviewAcceptance.csproj" />
+</Solution>

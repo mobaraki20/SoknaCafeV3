@@ -1,0 +1,35 @@
+name: M7 Runtime Gate
+on:
+  pull_request:
+    paths: ['windows/runtime/**','contracts/runtime-api/**','apps/local-web/src/Runtime/**','apps/local-web/src/Http/RuntimeTriggerHttpAdapter.php','apps/local-web/database/migrations/0014_m7_runtime.sql','tests/m7-runtime-gate.py','tests/local-m7-runtime-trigger-selftest.php','.github/workflows/m7-runtime-gate.yml']
+  push:
+    branches: [main,'architecture/**','migration/**']
+    paths: ['windows/runtime/**','contracts/runtime-api/**','apps/local-web/src/Runtime/**','apps/local-web/src/Http/RuntimeTriggerHttpAdapter.php','apps/local-web/database/migrations/0014_m7_runtime.sql','tests/m7-runtime-gate.py','tests/local-m7-runtime-trigger-selftest.php','.github/workflows/m7-runtime-gate.yml']
+permissions: {contents: read}
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/m7-runtime-gate.py
+      - run: php -l apps/local-web/src/Runtime/RuntimeTriggerService.php && php -l apps/local-web/src/Http/RuntimeTriggerHttpAdapter.php
+  local-trigger:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env: {MARIADB_DATABASE: sokna_m2, MARIADB_USER: sokna, MARIADB_PASSWORD: sokna, MARIADB_ROOT_PASSWORD: root}
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - run: if ! php -m | grep -qi '^pdo_mysql$'; then sudo apt-get update && sudo apt-get install -y php-mysql; fi
+      - env: {SOKNA_TEST_DB_HOST: 127.0.0.1, SOKNA_TEST_DB_PORT: '3306', SOKNA_TEST_DB_NAME: sokna_m2, SOKNA_TEST_DB_USER: sokna, SOKNA_TEST_DB_PASS: sokna}
+        run: php tests/local-mysql-migration-selftest.php && php tests/local-m7-runtime-trigger-selftest.php
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - run: dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release

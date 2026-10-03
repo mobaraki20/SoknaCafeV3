@@ -1,0 +1,103 @@
+name: M4 Failure Isolation Gate
+
+on:
+  pull_request:
+    paths:
+      - 'apps/local-web/**'
+      - 'apps/public/**'
+      - 'tests/local-mysql-migration-selftest.php'
+      - 'tests/public-m4-failure-isolation-selftest.php'
+      - 'docs/migration/**'
+      - '.github/workflows/m4-failure-isolation-gate.yml'
+  push:
+    branches:
+      - main
+      - 'architecture/**'
+      - 'migration/**'
+    paths:
+      - 'apps/local-web/**'
+      - 'apps/public/**'
+      - 'tests/local-mysql-migration-selftest.php'
+      - 'tests/public-m4-failure-isolation-selftest.php'
+      - 'docs/migration/**'
+      - '.github/workflows/m4-failure-isolation-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  local-without-public:
+    name: Local remains operational without Public
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Local ownership/bootstrap contract
+        run: python3 tests/local-core-contract.py
+      - name: Ensure PDO MySQL is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -qi '^pdo_mysql$'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+      - name: Boot and migrate Local with no Public service or Public configuration
+        env:
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m2
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/local-mysql-migration-selftest.php
+
+  public-safe-degrade:
+    name: Public degrades safely when Local or sync is unavailable
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m3
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PDO MySQL is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -qi '^pdo_mysql$'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+      - name: Validate Local-down and Internet/sync-loss read-only behavior
+        env:
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m3
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: php tests/public-m4-failure-isolation-selftest.php

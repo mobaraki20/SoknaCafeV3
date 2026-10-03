@@ -1,0 +1,7 @@
+{
+  "format": "sokna-component-package-schema-v1",
+  "required": ["format","schema_version","component","version","source_commit","files","contracts"],
+  "component_enum": ["local","public","runtime","print-agent","platform"],
+  "file_entry": {"required": ["path","size","sha256"]},
+  "immutability": "Every file is content-addressed by SHA-256; activation consumes only a verified staged package."
+}

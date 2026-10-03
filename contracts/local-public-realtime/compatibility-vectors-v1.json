@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "source_commit": "a46435cca57df5bd5b9770efd0bb95390528aa05",
+  "vectors": [
+    {
+      "id": "rt-claim-default-lease",
+      "operation": "local_claim",
+      "input": {},
+      "expected": {"normalized_lease_seconds": 20}
+    },
+    {
+      "id": "rt-claim-low-clamp",
+      "operation": "local_claim",
+      "input": {"lease_seconds": 1},
+      "expected": {"normalized_lease_seconds": 5}
+    },
+    {
+      "id": "rt-claim-high-clamp",
+      "operation": "local_claim",
+      "input": {"lease_seconds": 999},
+      "expected": {"normalized_lease_seconds": 60}
+    },
+    {
+      "id": "rt-ack-invalid-missing-request",
+      "operation": "local_ack",
+      "input": {"lease_token": "abc", "state": "committed"},
+      "expected": {"http": 400, "error": "invalid_ack"}
+    },
+    {
+      "id": "rt-ack-invalid-nonterminal-state",
+      "operation": "local_ack",
+      "input": {"request_id": "r1", "lease_token": "abc", "state": "claimed"},
+      "expected": {"http": 400, "error": "invalid_ack"}
+    },
+    {
+      "id": "rt-ack-terminal-dedupe-preserves-stored-state",
+      "operation": "local_ack",
+      "precondition": {"stored_state": "rejected"},
+      "input": {"request_id": "r1", "lease_token": "irrelevant-after-terminal", "state": "committed", "result": {"new": true}},
+      "expected": {"http": 200, "ok": true, "state": "rejected", "deduplicated": true, "stored_result_rewritten": false}
+    },
+    {
+      "id": "rt-ack-lease-conflict",
+      "operation": "local_ack",
+      "precondition": {"stored_state": "claimed", "lease_matches": false},
+      "input": {"request_id": "r1", "lease_token": "wrong", "state": "committed"},
+      "expected": {"http": 409, "error": "lease_conflict"}
+    },
+    {
+      "id": "rt-result-request-id-required",
+      "operation": "remote_result",
+      "input": {"request_id": ""},
+      "expected": {"http": 400, "error": "request_id_required"}
+    },
+    {
+      "id": "rt-result-terminal-shape",
+      "operation": "remote_result",
+      "precondition": {"stored_state": "committed", "actor_access": true},
+      "input": {"request_id": "r1"},
+      "expected": {"http": 200, "required_fields": ["ok", "state", "terminal", "result", "error_code", "updated_at"], "terminal": true}
+    }
+  ]
+}

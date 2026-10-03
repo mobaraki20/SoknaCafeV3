@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "protocol_version": 4,
+  "vectors": [
+    {
+      "id": "print-probe-contract",
+      "action": "probe",
+      "request": {"agent_version": "6.2.5", "protocol_version": 4},
+      "expected": {"success": true, "protocol_version": 4, "required_fields": ["minimum_agent_version", "recommended_agent_version", "destinations"]}
+    },
+    {
+      "id": "print-claim-empty-ready-list-means-not-ready",
+      "action": "claim",
+      "request": {"request_id": "claim-20260926-01", "agent_version": "6.2.5", "protocol_version": 4, "limit": 3, "ready_destination_keys": []},
+      "expected": {"valid": true, "semantic": "no destination declared ready; server must not infer readiness"}
+    },
+    {
+      "id": "print-claim-exact-retry-idempotent",
+      "action": "claim",
+      "precondition": {"same_request_id_already_processed": true, "same_fingerprint": true},
+      "request": {"request_id": "claim-20260926-02", "agent_version": "6.2.5", "protocol_version": 4, "limit": 3, "ready_destination_keys": ["receipt-main"]},
+      "expected": {"success": true, "idempotent": true}
+    },
+    {
+      "id": "print-claim-conflict-needs-reconcile",
+      "action": "claim",
+      "precondition": {"same_claim_identity_has_mismatched_local_evidence": true},
+      "expected": {"silent_rebind_allowed": false, "next_operation": "claim_reconcile"}
+    },
+    {
+      "id": "print-accept-binds-fence",
+      "action": "accept",
+      "request": {
+        "request_id": "accept-20260926-01",
+        "agent_version": "6.2.5",
+        "protocol_version": 4,
+        "attempt_id": 101,
+        "lease_token": "lease-token-example",
+        "local_receipt_id": "r-0123456789abcdef0123456789abcdef",
+        "content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      },
+      "expected": {"success": true, "status": "claimed", "physical_execution_before_accept_allowed": false}
+    },
+    {
+      "id": "print-accept-request-body-conflict",
+      "action": "accept",
+      "precondition": {"same_request_id_already_processed": true, "same_body": false},
+      "expected": {"http": 409, "code": "request_body_conflict"}
+    },
+    {
+      "id": "print-start-exact-replay",
+      "action": "start",
+      "precondition": {"attempt_state": "started", "same_request_id": true, "same_body": true},
+      "expected": {"success": true, "status": "started", "idempotent": true}
+    },
+    {
+      "id": "print-start-terminal-state-does-not-restart",
+      "action": "start",
+      "precondition": {"attempt_state": "unknown"},
+      "expected": {"automatic_restart_allowed": false}
+    },
+    {
+      "id": "print-report-submitted",
+      "action": "report",
+      "request": {
+        "request_id": "report-20260926-01",
+        "agent_version": "6.2.5",
+        "protocol_version": 4,
+        "attempt_id": 101,
+        "lease_token": "lease-token-example",
+        "local_receipt_id": "r-0123456789abcdef0123456789abcdef",
+        "status": "submitted",
+        "spooler_job_id": "spool-55",
+        "retryable": false,
+        "error_code": null,
+        "error_message": null
+      },
+      "expected": {"valid": true}
+    },
+    {
+      "id": "print-report-ambiguous-unknown-is-durable",
+      "action": "report",
+      "request_status": "unknown",
+      "expected": {"terminal_attempt_state": true, "automatic_reprint_allowed": false, "may_require_human_resolution": true}
+    },
+    {
+      "id": "print-report-recovery-hold-is-durable",
+      "action": "report",
+      "request_status": "recovery_hold",
+      "expected": {"terminal_attempt_state": true, "automatic_reprint_allowed": false, "requires_explicit_resolution": true}
+    },
+    {
+      "id": "print-attempt-status-active-state",
+      "action": "attempt_status",
+      "response": {"success": true, "attempt_id": 101, "job_id": 88, "attempt_state": "claimed", "job_state": "claimed", "receipt_matches": true, "next_action": "start", "terminal": false, "requires_human_resolution": false, "lease_expires_at": "2026-09-26T01:15:00Z", "server_time": "2026-09-26T01:14:30Z"},
+      "expected": {"valid": true}
+    },
+    {
+      "id": "print-attempt-status-active-cannot-be-terminal",
+      "action": "attempt_status",
+      "response": {"attempt_state": "claimed", "next_action": "start", "terminal": true},
+      "expected": {"valid": false, "code": "attempt_status_terminal_flag_mismatch"}
+    },
+    {
+      "id": "print-loopback-wake-replay",
+      "route": "/v1/wake",
+      "precondition": {"same_request_id_seen_before_expiry": true},
+      "expected": {"success": true, "accepted": true, "idempotent": true, "duplicate_durable_claim": false}
+    },
+    {
+      "id": "print-loopback-preview-not-submission",
+      "route": "/v1/preview",
+      "expected": {"creates_durable_attempt": false, "changes_business_order": false}
+    }
+  ]
+}

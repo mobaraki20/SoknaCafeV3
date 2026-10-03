@@ -1,0 +1,39 @@
+name: M8 Print Agent Gate
+on:
+  pull_request:
+    paths: ['windows/print-agent/**','contracts/print-agent-api/**','apps/local-web/**','tests/m8-print-agent-gate.py','tests/local-m8-printing-selftest.php','.github/workflows/m8-print-agent-gate.yml']
+  push:
+    branches: [main,'architecture/**','migration/**']
+    paths: ['windows/print-agent/**','contracts/print-agent-api/**','apps/local-web/**','tests/m8-print-agent-gate.py','tests/local-m8-printing-selftest.php','.github/workflows/m8-print-agent-gate.yml']
+permissions: {contents: read}
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/m8-print-agent-gate.py
+  local-print-owner:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env: {MARIADB_DATABASE: sokna_m2, MARIADB_USER: sokna, MARIADB_PASSWORD: sokna, MARIADB_ROOT_PASSWORD: root}
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - run: if ! php -m | grep -qi '^pdo_mysql$'; then sudo apt-get update && sudo apt-get install -y php-mysql; fi
+      - env: {SOKNA_TEST_DB_HOST: 127.0.0.1, SOKNA_TEST_DB_PORT: '3306', SOKNA_TEST_DB_NAME: sokna_m2, SOKNA_TEST_DB_USER: sokna, SOKNA_TEST_DB_PASS: sokna}
+        run: php tests/local-mysql-migration-selftest.php && php tests/local-m8-printing-selftest.php
+  windows-agent:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+      - working-directory: windows/print-agent/source
+        run: dotnet build Sokna.PrintWorker.slnx -c Release
+      - working-directory: windows/print-agent/source
+        run: dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
+      - working-directory: windows/print-agent/source
+        run: dotnet run --project tests/Sokna.PrintAgent.ContractAcceptance/Sokna.PrintAgent.ContractAcceptance.csproj -c Release -- --case A18 --results "$env:RUNNER_TEMP\sokna-print-contract"

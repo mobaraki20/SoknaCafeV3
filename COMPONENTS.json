@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "status": "canonical_component_scope_registry",
+  "date": "2026-09-27",
+  "rules": {
+    "one_active_workstream": true,
+    "contracts_default": "read_only_versioned",
+    "closed_core_reopen": "evidence_defect_or_explicit_contract_change_only",
+    "chat_history_source_of_truth": false
+  },
+  "components": {
+    "local-web": {
+      "owned_paths": [
+        "apps/local-web/**"
+      ],
+      "read_only_dependencies": [
+        "contracts/**",
+        "docs/ui-design-system/**"
+      ],
+      "current_core_status": "backend_keep_product_surface_open",
+      "release_model": "immutable_web_package_zip",
+      "install_model": "browser_setup_wizard",
+      "update_owner": "local_application_updater",
+      "health_surface": "local_update_center",
+      "must_not_own": [
+        "Windows SCM",
+        "Winspool",
+        "third_party_infrastructure_lifecycle"
+      ]
+    },
+    "public-edge": {
+      "owned_paths": [
+        "apps/public/**"
+      ],
+      "read_only_dependencies": [
+        "contracts/local-public-*/**",
+        "docs/ui-design-system/**"
+      ],
+      "current_core_status": "transport_backend_keep_product_surface_open",
+      "release_model": "independent_server_deploy_package",
+      "update_owner": "public_application_updater",
+      "health_surface": "public_emergency_console_and_local_projection",
+      "must_not_own": [
+        "canonical Local business state",
+        "full Local DB",
+        "Windows services"
+      ]
+    },
+    "windows-runtime": {
+      "owned_paths": [
+        "windows/runtime/**"
+      ],
+      "read_only_dependencies": [
+        "contracts/runtime-api/**"
+      ],
+      "current_core_status": "closed_defect_only",
+      "release_model": "windows_service_component",
+      "must_not_own": [
+        "business rules",
+        "Local business table writes",
+        "printer spooler state"
+      ]
+    },
+    "print-agent": {
+      "owned_paths": [
+        "windows/print-agent/**"
+      ],
+      "read_only_dependencies": [
+        "contracts/print-agent-api/**"
+      ],
+      "current_core_status": "closed_defect_only",
+      "release_model": "windows_service_component",
+      "must_not_own": [
+        "business print intent",
+        "Public/Internet control"
+      ]
+    },
+    "windows-services-packaging": {
+      "owned_paths": [
+        "packaging/windows/**",
+        "platform/windows/**"
+      ],
+      "read_only_dependencies": [
+        "windows/runtime/**",
+        "windows/print-agent/**",
+        "contracts/**"
+      ],
+      "current_core_status": "reopen_packaging_only",
+      "release_model": "native_windows_installer_runtime_plus_print",
+      "prerequisite_model": "detect_verified_online_acquire_or_manual_fallback_no_bundled_third_party_payload",
+      "must_not_own": [
+        "Local Web payload",
+        "Local business data",
+        "Public Edge payload"
+      ]
+    },
+    "shared-contracts": {
+      "owned_paths": [
+        "contracts/**"
+      ],
+      "current_core_status": "frozen_by_default",
+      "change_rule": "declare provider_consumer_impact_and_run_all_affected_gates"
+    },
+    "ui-design-system": {
+      "owned_paths": [
+        "apps/local-web/assets/scds/**",
+        "apps/local-web/src/UI/**",
+        "docs/ui-design-system/**"
+      ],
+      "current_core_status": "canonical_foundation_keep_progressive_consumers_open",
+      "authority": "SCDS-CANONICAL-2026-R1",
+      "change_rule": "no_parallel_generic_owner; approved observable behavior preserved unless explicitly redesigned"
+    }
+  }
+}

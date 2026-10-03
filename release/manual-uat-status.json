@@ -1,0 +1,11 @@
+{
+  "format": "sokna-manual-uat-v1",
+  "schema_version": 1,
+  "release_line": "3.0.0-rc.1",
+  "policy": "These checks require real target hardware/OS interaction and cannot be auto-promoted to passed by CI.",
+  "checks": [
+    {"id":"windows_clean_install","status":"pending","evidence":"","required_for":"production_release"},
+    {"id":"physical_thermal_printer","status":"pending","evidence":"","required_for":"production_release"},
+    {"id":"responsive_touch_persian_ime","status":"pending","evidence":"","required_for":"production_release"}
+  ]
+}
