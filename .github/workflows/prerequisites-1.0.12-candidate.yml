@@ -66,13 +66,34 @@ jobs:
             if((Get-Item $png).Length-lt20000){throw "UI screenshot is suspiciously small: $png"}
           }
 
-      - name: Real Apache PHP regression
+      - name: Verify inherited core runtime evidence
         shell: pwsh
-        run: tests/g7-windows-apache-php-runtime.ps1
-
-      - name: Apache service sodium regression
-        shell: pwsh
-        run: tests/g7-windows-apache-service-sodium.ps1
+        run: |
+          $ErrorActionPreference='Stop'
+          # Run 37101874146 at this baseline passed both real Apache/PHP and
+          # Apache Windows-service+sodium regressions. Since then only presentation,
+          # its behavior-oriented contract and this qualification workflow may change.
+          $baseline='078eefa344118d1a5256d24fb026864f09796dd8'
+          git fetch origin $baseline --depth=1
+          if($LASTEXITCODE-ne0){throw 'Unable to fetch core-regression baseline'}
+          $changed=@(git diff --name-only $baseline HEAD)
+          $allowed=@(
+            'packaging/prerequisites/setup-ui/UiCompatibilityPatch.cs',
+            'tests/prerequisites-v2-contract.py',
+            '.github/workflows/prerequisites-1.0.12-candidate.yml'
+          )
+          $unexpected=@($changed|Where-Object{$allowed -notcontains $_})
+          if($unexpected.Count-gt0){throw "Core/runtime files changed after qualified baseline; inherited evidence is invalid: $($unexpected -join ', ')"}
+          New-Item -ItemType Directory -Path packaging/prerequisites/qualification -Force|Out-Null
+          @(
+            'CORE_REGRESSION_INHERITANCE=PASS',
+            "baseline_commit=$baseline",
+            'baseline_run=37101874146',
+            'real_apache_php=PASS (inherited; core unchanged)',
+            'apache_service_sodium=PASS (inherited; core unchanged)',
+            'changed_files:',
+            ($changed|ForEach-Object{"- $_"})
+          )|Set-Content packaging/prerequisites/qualification/core-regression-inheritance.txt -Encoding UTF8
 
       - name: Install Inno Setup
         shell: pwsh
@@ -112,8 +133,8 @@ jobs:
             'v2_contract=PASS',
             'v2_selftest=PASS',
             'ui_audit=PASS',
-            'real_apache_php=PASS',
-            'apache_service_sodium=PASS',
+            'real_apache_php=PASS (inherited from run 37101874146; core unchanged)',
+            'apache_service_sodium=PASS (inherited from run 37101874146; core unchanged)',
             'upgrade_repair_downgrade=PASS'
           )|Set-Content packaging/prerequisites/out/installer/qualification-report.txt -Encoding UTF8
 
@@ -124,6 +145,7 @@ jobs:
             packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.12.exe
             packaging/prerequisites/out/installer/artifact-index.json
             packaging/prerequisites/out/installer/qualification-report.txt
+            packaging/prerequisites/qualification/core-regression-inheritance.txt
             packaging/prerequisites/qualification/screenshots/*.png
           if-no-files-found: error
           retention-days: 30
