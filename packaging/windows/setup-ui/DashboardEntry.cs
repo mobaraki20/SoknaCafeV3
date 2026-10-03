@@ -16,7 +16,7 @@ internal static class DashboardEntry
             return DashboardLayoutSelfTest.Run(output);
         }
 
-        Application.Run(new PersianDashboardForm());
+        Application.Run(new PersianDashboardFormV2());
         return 0;
     }
 }
@@ -28,14 +28,16 @@ internal static class DashboardLayoutSelfTest
         try
         {
             Directory.CreateDirectory(outputRoot);
-            foreach (var size in new[] { new Size(980, 620), new Size(1120, 680), new Size(1280, 720) })
+            foreach (var size in new[] { new Size(960, 600), new Size(1100, 660), new Size(1280, 720) })
             {
-                using var form = new PersianDashboardForm();
+                using var form = new PersianDashboardFormV2();
                 form.StartPosition = FormStartPosition.Manual;
                 form.Location = new Point(20, 20);
                 form.ClientSize = size;
                 form.CreateControl();
+                form.ApplyLayoutTestScenario();
                 ForceLayout(form);
+
                 var problems = new List<string>();
                 Inspect(form, "form", problems);
                 if (form.AutoScroll) problems.Add("Main form AutoScroll must be false.");
@@ -57,9 +59,9 @@ internal static class DashboardLayoutSelfTest
             Console.WriteLine("SOKNA Windows Services Persian dashboard layout self-test PASS");
             return 0;
         }
-        catch (Exception e)
+        catch (Exception exception)
         {
-            Console.Error.WriteLine(e.ToString());
+            Console.Error.WriteLine(exception.ToString());
             return 10;
         }
     }
