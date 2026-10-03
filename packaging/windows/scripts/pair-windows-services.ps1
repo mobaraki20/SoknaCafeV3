@@ -10,30 +10,43 @@ function Assert-Admin {
     $principal=New-Object Security.Principal.WindowsPrincipal($id)
     if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Administrator elevation is required.'}
 }
+function Test-FullyQualifiedPath([string]$path){
+    if([string]::IsNullOrWhiteSpace($path)){return $false}
+    try{
+        $root=[IO.Path]::GetPathRoot($path)
+        if([string]::IsNullOrWhiteSpace($root)){return $false}
+        if($root -match '^[A-Za-z]:[\\/]'){return $true}
+        if($root.StartsWith('\\')){return $true}
+    }catch{return $false}
+    return $false
+}
 function Full([string]$path,[string]$label){
-    if([string]::IsNullOrWhiteSpace($path)-or-not[IO.Path]::IsPathFullyQualified($path)){throw "$label must be an absolute path."}
+    if(-not(Test-FullyQualifiedPath $path)){throw "$label must be an absolute path."}
     return [IO.Path]::GetFullPath($path)
 }
 function Is-LoopbackOrigin([string]$value){
+    if($null-eq$value){$value=''}
     $uri=$null
-    if(-not[Uri]::TryCreate(($value??'').Trim(),[UriKind]::Absolute,[ref]$uri)){return $false}
+    if(-not[Uri]::TryCreate($value.Trim(),[UriKind]::Absolute,[ref]$uri)){return $false}
     if(-not$uri.IsLoopback){return $false}
     if($uri.Scheme-ne'http'-and$uri.Scheme-ne'https'){return $false}
     if($uri.Port-lt1024-or$uri.Port-gt65535){return $false}
-    if($uri.AbsolutePath-ne'/'-or$uri.Query-or$uri.Fragment-or$uri.UserInfo){return $false}
+    if($uri.AbsolutePath-ne'/'-or-not[string]::IsNullOrEmpty($uri.Query)-or-not[string]::IsNullOrEmpty($uri.Fragment)-or-not[string]::IsNullOrEmpty($uri.UserInfo)){return $false}
     return $true
 }
 function Service-Image([string]$name){
     try{return [string](Get-ItemProperty -LiteralPath ("HKLM:\SYSTEM\CurrentControlSet\Services\"+$name) -ErrorAction Stop).ImagePath}catch{return ''}
 }
 function Normalize-CommandPath([string]$command){
-    $value=($command??'').Trim()
+    if($null-eq$command){$command=''}
+    $value=$command.Trim()
     if($value.StartsWith('"')){
         $end=$value.IndexOf('"',1)
         if($end-gt1){return $value.Substring(1,$end-1)}
     }
     $space=$value.IndexOf(' ')
-    return $(if($space-gt0){$value.Substring(0,$space)}else{$value})
+    if($space-gt0){return $value.Substring(0,$space)}
+    return $value
 }
 function Stop-ServiceSafe([string]$name){
     $svc=Get-Service -Name $name -ErrorAction SilentlyContinue
@@ -46,9 +59,13 @@ function Stop-ServiceSafe([string]$name){
     }finally{$svc.Dispose()}
 }
 function Start-ServiceSafe([string]$name){
-    Start-Service -Name $name -ErrorAction Stop
     $svc=Get-Service -Name $name -ErrorAction Stop
-    try{$svc.WaitForStatus('Running',[TimeSpan]::FromSeconds(20))}finally{$svc.Dispose()}
+    try{
+        if($svc.Status-ne'Running'){
+            Start-Service -Name $name -ErrorAction Stop
+            $svc.WaitForStatus('Running',[TimeSpan]::FromSeconds(20))
+        }
+    }finally{$svc.Dispose()}
 }
 function Write-Secret([string]$path,[string]$value){
     if([string]::IsNullOrWhiteSpace($value)-or$value.Length-lt32-or$value.Length-gt512){throw 'Pairing secret length is invalid.'}
@@ -62,15 +79,15 @@ function Write-PrivateJson([string]$path,[string]$json){
     & icacls.exe $path /inheritance:r /grant:r 'SYSTEM:(F)' 'Administrators:(F)'|Out-Null
 }
 function Read-BytesOrNull([string]$path){if(Test-Path -LiteralPath $path -PathType Leaf){return [IO.File]::ReadAllBytes($path)};return $null}
-function Restore-Bytes([string]$path,[byte[]]$bytes){
+function Restore-Bytes([string]$path,$bytes){
     if($null-eq$bytes){Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue;return}
     New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($path)) -Force|Out-Null
-    [IO.File]::WriteAllBytes($path,$bytes)
+    [IO.File]::WriteAllBytes($path,[byte[]]$bytes)
 }
 function Post-Pairing([Uri]$endpoint,[string]$action,[string]$code){
     $body=@{action=$action;pairing_code=$code}|ConvertTo-Json -Compress
     $headers=@{'X-Sokna-Windows-Services-Pairing'='1'}
-    try{return Invoke-RestMethod -Method Post -Uri $endpoint -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 12 -UseBasicParsing}
+    try{return Invoke-RestMethod -Method Post -Uri $endpoint -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 12}
     catch{throw "Local Web pairing request failed ($action): $($_.Exception.Message)"}
 }
 function Validate-Bundle($bundle,[Uri]$baseUri){
@@ -128,10 +145,13 @@ New-Item -ItemType Directory -Path $runtimeDir,$transientRoot,(Split-Path -Paren
 $backupConfig=Read-BytesOrNull $runtimeConfig
 $backupRuntimeToken=Read-BytesOrNull $runtimeToken
 $backupLocalToken=Read-BytesOrNull $localToken
-$runtimeWasRunning=(Get-Service -Name $RuntimeService -ErrorAction Stop).Status-eq'Running'
-$printWasRunning=(Get-Service -Name $PrintService -ErrorAction Stop).Status-eq'Running'
+$backupState=Read-BytesOrNull $statePath
+$runtimeServiceProbe=Get-Service -Name $RuntimeService -ErrorAction Stop
+try{$runtimeWasRunning=$runtimeServiceProbe.Status-eq'Running'}finally{$runtimeServiceProbe.Dispose()}
+$printServiceProbe=Get-Service -Name $PrintService -ErrorAction Stop
+try{$printWasRunning=$printServiceProbe.Status-eq'Running'}finally{$printServiceProbe.Dispose()}
 $baseUri=[Uri]$baseUrl
-$endpoint=[Uri]::new($baseUri,'internal/windows-services/v1/pairing.php')
+$endpoint=New-Object Uri($baseUri,'internal/windows-services/v1/pairing.php')
 $exchanged=$false
 $private=''
 try{
@@ -181,8 +201,14 @@ try{
     if($startWhenPaired){Set-DelayedAuto $RuntimeService;Start-ServiceSafe $RuntimeService}
 
     $packageVersion=''
-    $versionPath=Join-Path $InstallRoot 'WINDOWS_SERVICES_VERSION.txt'
-    if(Test-Path -LiteralPath $versionPath -PathType Leaf){$packageVersion=(Get-Content -LiteralPath $versionPath -Raw).Trim()}
+    $manifestPath=Join-Path $InstallRoot 'payload-manifest.json'
+    if(Test-Path -LiteralPath $manifestPath -PathType Leaf){
+        try{$packageVersion=([string](Get-Content -LiteralPath $manifestPath -Raw|ConvertFrom-Json).package_version).Trim()}catch{}
+    }
+    if(-not$packageVersion){
+        $versionPath=Join-Path $InstallRoot 'WINDOWS_SERVICES_VERSION.txt'
+        if(Test-Path -LiteralPath $versionPath -PathType Leaf){$packageVersion=(Get-Content -LiteralPath $versionPath -Raw).Trim()}
+    }
     $state=[ordered]@{}
     if(Test-Path -LiteralPath $statePath -PathType Leaf){
         try{(Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json).PSObject.Properties|ForEach-Object{$state[$_.Name]=$_.Value}}catch{}
@@ -209,10 +235,12 @@ try{
     [ordered]@{success=$true;mode='pair';paired=$true;pairing_lifecycle='independent-v1';service_reinstall=$false;payload_replacement=$false;runtime_started=$startWhenPaired;print_agent_started=$true}|ConvertTo-Json -Compress
 }
 catch{
-    try{Restore-Bytes $runtimeConfig $backupConfig;Restore-Bytes $runtimeToken $backupRuntimeToken;Restore-Bytes $localToken $backupLocalToken}catch{}
+    try{Stop-ServiceSafe $RuntimeService}catch{}
+    try{Stop-ServiceSafe $PrintService}catch{}
+    try{Restore-Bytes $runtimeConfig $backupConfig;Restore-Bytes $runtimeToken $backupRuntimeToken;Restore-Bytes $localToken $backupLocalToken;Restore-Bytes $statePath $backupState}catch{}
     if($exchanged){try{Post-Pairing $endpoint 'cancel' $code|Out-Null}catch{}}
-    try{if($printWasRunning-and(Get-Service -Name $PrintService -ErrorAction SilentlyContinue).Status-ne'Running'){Start-ServiceSafe $PrintService}}catch{}
-    try{if($runtimeWasRunning-and(Get-Service -Name $RuntimeService -ErrorAction SilentlyContinue).Status-ne'Running'){Start-ServiceSafe $RuntimeService}}catch{}
+    try{if($printWasRunning){Start-ServiceSafe $PrintService}}catch{}
+    try{if($runtimeWasRunning){Start-ServiceSafe $RuntimeService}}catch{}
     throw
 }
 finally{
