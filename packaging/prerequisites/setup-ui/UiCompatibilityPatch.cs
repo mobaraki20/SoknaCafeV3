@@ -6,12 +6,13 @@ namespace Sokna.Prerequisites.Setup;
 /// <summary>
 /// WinForms can collapse percent-column technical inputs when a legacy TableLayoutPanel
 /// is hosted by a mirrored top-level form. Keep the Persian top-level RTL behavior while
-/// enforcing practical minimum widths for the existing LTR technical islands.
+/// enforcing practical responsive widths for the existing LTR technical islands.
 /// This is intentionally presentation-only and never mutates infrastructure state/data.
 /// </summary>
 internal static class UiCompatibilityPatch
 {
     private static readonly ConditionalWeakTable<Form, object> Applied = new();
+    private static readonly ConditionalWeakTable<TableLayoutPanel, object> StabilizedTables = new();
 
     [ModuleInitializer]
     internal static void Initialize()
@@ -36,6 +37,7 @@ internal static class UiCompatibilityPatch
             root.AutoSize = false;
             root.Height = Math.Max(root.Height, 30);
             root.RightToLeft = RightToLeft.No;
+            StabilizeMiddleColumn(root, minWidth: 360, reservedWidth: 245, maxWidth: 760);
         }
 
         var port = Field<NumericUpDown>(form, "_apachePort");
@@ -54,9 +56,43 @@ internal static class UiCompatibilityPatch
             password.AutoSize = false;
             password.Height = Math.Max(password.Height, 30);
             password.RightToLeft = RightToLeft.No;
+            StabilizeMiddleColumn(password, minWidth: 300, reservedWidth: 245, maxWidth: 760);
         }
 
         NormalizeVersionText(form);
+    }
+
+    /// <summary>
+    /// Mirrored WinForms TableLayoutPanel can resolve a Percent middle column to almost
+    /// zero when AutoSize children occupy both outer columns. Convert only that technical
+    /// middle column to a responsive absolute width derived from the live client width.
+    /// The calculation is repeated after resize and deliberately leaves room for the
+    /// Persian label/action columns on both sides.
+    /// </summary>
+    private static void StabilizeMiddleColumn(Control field, int minWidth, int reservedWidth, int maxWidth)
+    {
+        if (field.Parent is not TableLayoutPanel table || table.ColumnCount < 3 || table.ColumnStyles.Count < 2) return;
+
+        if (!StabilizedTables.TryGetValue(table, out _))
+        {
+            void Resize(object? _, EventArgs __)
+            {
+                var usable = table.ClientSize.Width - reservedWidth;
+                var width = Math.Clamp(usable, minWidth, maxWidth);
+                var middle = table.ColumnStyles[1];
+                middle.SizeType = SizeType.Absolute;
+                middle.Width = width;
+                table.PerformLayout();
+            }
+
+            table.SizeChanged += Resize;
+            table.HandleCreated += Resize;
+            StabilizedTables.Add(table, new object());
+            Resize(null, EventArgs.Empty);
+        }
+
+        field.Dock = DockStyle.Fill;
+        field.MinimumSize = new Size(minWidth, field.MinimumSize.Height);
     }
 
     private static void NormalizeVersionText(Control control)
