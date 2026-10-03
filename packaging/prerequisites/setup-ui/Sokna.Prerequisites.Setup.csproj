@@ -21,6 +21,7 @@
   <ItemGroup>
     <Content Include="..\..\..\platform\windows\infrastructure-prerequisites.json" Link="infrastructure-prerequisites.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\platform\windows\release-lock.json" Link="release-lock.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\platform\windows\prerequisites-self-service-v1.json" Link="prerequisites-self-service-v1.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\windows\Sokna.ico" Link="Sokna.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
