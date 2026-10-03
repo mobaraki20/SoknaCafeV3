@@ -84,6 +84,8 @@ begin
     PreviousVersionComparison := CompareInstalledToCurrent(PreviousInstalledVersion);
     if PreviousVersionComparison > 0 then
     begin
+      InstallModeText := 'BLOCK_DOWNGRADE ' + PreviousInstalledVersion + ' > {#ProductVersion}';
+      Log('SOKNA_INSTALL_MODE=' + InstallModeText);
       SuppressibleMsgBox(
         'نسخه ' + PreviousInstalledVersion + ' از SOKNA Windows Services روی این سیستم نصب است و از این بسته ({#ProductVersion}) جدیدتر است.' + #13#10 + #13#10 +
         'برای جلوگیری از Downgrade، نصب متوقف شد.',
@@ -98,6 +100,8 @@ begin
       InstallModeText := 'تعمیر / نصب مجدد نسخه {#ProductVersion}';
   end;
 
+  Log('SOKNA_PREVIOUS_VERSION=' + PreviousInstalledVersion);
+  Log('SOKNA_INSTALL_MODE=' + InstallModeText);
   Result := True;
 end;
 
