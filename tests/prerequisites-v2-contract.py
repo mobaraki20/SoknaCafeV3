@@ -9,6 +9,7 @@ assert version == '1.0.12', version
 csproj = (ROOT / 'packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj').read_text(encoding='utf-8')
 assert '<StartupObject>Sokna.Prerequisites.Setup.ProgramV2</StartupObject>' in csproj
 assert '<Version>1.0.12</Version>' in csproj
+assert '<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>' in csproj
 assert 'prerequisites-self-service-v1.json' in csproj
 
 v2 = (ROOT / 'packaging/prerequisites/setup-ui/PrerequisitesV2.cs').read_text(encoding='utf-8')
@@ -22,9 +23,10 @@ required = [
 ]
 for token in required:
     assert token in v2, token
-for forbidden in ['\u2066', '\u2067', '\u2068', '\u2069']:
-    # Literal escapes are acceptable only in the guard declaration, never in UI strings.
-    pass
+
+compat = (ROOT / 'packaging/prerequisites/setup-ui/UiCompatibilityPatch.cs').read_text(encoding='utf-8')
+for token in ['_root', '_apachePort', 'MinimumSize = new Size(360, 30)', 'MinimumSize = new Size(110, 28)', 'NormalizeVersionText']:
+    assert token in compat, token
 
 iss = (ROOT / 'packaging/prerequisites/installer/SOKNA-Prerequisites.iss').read_text(encoding='utf-8')
 assert 'CompareSoknaVersion' in iss
