@@ -25,7 +25,7 @@ function Run-Setup([string]$name,[switch]$ExpectBlocked){
 }
 
 function Assert-Contains([string]$text,[string]$needle,[string]$label){
-    if(-not$text.Contains($needle,[StringComparison]::Ordinal)){throw "$label missing expected text: $needle"}
+    if($text.IndexOf($needle,[StringComparison]::Ordinal)-lt0){throw "$label missing expected text: $needle"}
 }
 
 try {
