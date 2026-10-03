@@ -5,13 +5,15 @@ namespace Sokna.Prerequisites.Setup;
 /// <summary>
 /// Final compactness guard for the Prerequisites dashboard.
 /// The qualification target is an outer 960x650 WinForms window (about 944x611 client area).
-/// Keep the primary actions fully visible without adding vertical/horizontal scrolling.
+/// Header/footer are pinned with Dock.Top/Dock.Bottom so WinForms cannot sacrifice the
+/// operation footer when a tab reports a larger minimum height.
 /// Presentation-only: no infrastructure state or lifecycle behavior is changed.
 /// </summary>
 internal static class DashboardCompactnessPatch
 {
     private static readonly ConditionalWeakTable<Form, object> Applied = new();
     private static readonly IMessageFilter Filter = new RetryFilter();
+    private static readonly Color Canvas = Color.FromArgb(246, 246, 243);
 
     [ModuleInitializer]
     internal static void Initialize()
@@ -57,24 +59,8 @@ internal static class DashboardCompactnessPatch
         overview.SuspendLayout();
         try
         {
-            // 68 + 54 leaves materially more height for the tab content than the
-            // previous 80 + 72 shell, while preserving a clear branded header and
-            // always-visible operation controls.
-            if (dashboard.RowStyles.Count >= 3)
-            {
-                dashboard.RowStyles[0].SizeType = SizeType.Absolute;
-                dashboard.RowStyles[0].Height = 68;
-                dashboard.RowStyles[2].SizeType = SizeType.Absolute;
-                dashboard.RowStyles[2].Height = 54;
-            }
-
-            header.Padding = new Padding(18, 7, 18, 6);
-            tabs.Margin = new Padding(14, 5, 14, 2);
-
-            // BuildOverview already has a compact bottom mode summary. The legacy
-            // explanatory paragraph above the path section duplicates that information
-            // and was the remaining minimum-height pressure at 960x650. Collapse only
-            // that row; detailed explanations remain in the dedicated tabs/diagnostics.
+            // The legacy explanatory row duplicates the compact mode summary below.
+            // Removing it gives the path controls useful space without hiding behavior.
             if (overview.RowStyles.Count >= 4)
             {
                 var redundantHelp = overview.GetControlFromPosition(0, 1);
@@ -86,7 +72,15 @@ internal static class DashboardCompactnessPatch
             }
             overview.Padding = new Padding(12, 6, 12, 6);
 
+            header.Padding = new Padding(18, 7, 18, 6);
+            header.AutoSize = false;
+            header.Height = 68;
+            header.MinimumSize = Size.Empty;
+
             footer.Padding = new Padding(14, 1, 14, 1);
+            footer.AutoSize = false;
+            footer.Height = 54;
+            footer.MinimumSize = Size.Empty;
             if (footer.RowStyles.Count >= 3)
             {
                 footer.RowStyles[0].SizeType = SizeType.Absolute;
@@ -99,6 +93,7 @@ internal static class DashboardCompactnessPatch
 
             actions.Padding = new Padding(0, 1, 0, 0);
             actions.Margin = Padding.Empty;
+            actions.AutoSize = false;
             foreach (var button in actions.Controls.OfType<Button>())
             {
                 button.AutoSize = false;
@@ -107,10 +102,60 @@ internal static class DashboardCompactnessPatch
                 button.Margin = new Padding(5, 0, 0, 0);
             }
 
+            // Detach the three live regions before disposing the TableLayout shell.
+            dashboard.Controls.Remove(header);
+            dashboard.Controls.Remove(tabs);
+            dashboard.Controls.Remove(footer);
+            form.Controls.Remove(dashboard);
+
+            var shell = new Panel
+            {
+                Name = "SoknaPrerequisitesPinnedShell",
+                Dock = DockStyle.Fill,
+                BackColor = Canvas,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                AutoScroll = false
+            };
+            var content = new Panel
+            {
+                Name = "SoknaPrerequisitesContentHost",
+                Dock = DockStyle.Fill,
+                BackColor = Canvas,
+                Padding = new Padding(14, 5, 14, 2),
+                Margin = Padding.Empty,
+                AutoScroll = false
+            };
+
+            header.Dock = DockStyle.Top;
+            header.Height = 68;
+            header.Margin = Padding.Empty;
+
+            footer.Dock = DockStyle.Bottom;
+            footer.Height = 54;
+            footer.Margin = Padding.Empty;
+
+            tabs.Dock = DockStyle.Fill;
+            tabs.Margin = Padding.Empty;
+            content.Controls.Add(tabs);
+
+            // Docking is deterministic here: top and bottom reserve their pixels,
+            // then the content host receives the remaining client rectangle.
+            shell.Controls.Add(content);
+            shell.Controls.Add(footer);
+            shell.Controls.Add(header);
+            header.BringToFront();
+            footer.BringToFront();
+
+            form.Controls.Clear();
+            form.Controls.Add(shell);
+            dashboard.Dispose();
+
             overview.PerformLayout();
-            dashboard.PerformLayout();
             footer.PerformLayout();
             actions.PerformLayout();
+            content.PerformLayout();
+            shell.PerformLayout();
             form.PerformLayout();
             return true;
         }
@@ -119,7 +164,7 @@ internal static class DashboardCompactnessPatch
             overview.ResumeLayout(true);
             actions.ResumeLayout(true);
             footer.ResumeLayout(true);
-            dashboard.ResumeLayout(true);
+            if (!dashboard.IsDisposed) dashboard.ResumeLayout(true);
             form.ResumeLayout(true);
         }
     }
