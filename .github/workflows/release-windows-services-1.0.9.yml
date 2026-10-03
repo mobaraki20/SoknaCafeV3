@@ -93,7 +93,12 @@ jobs:
           $install='C:\Program Files\SOKNA Windows Services 1.0.9 CI'
           $data='D:\SOKNA-Windows-1.0.9-CI\Data'
           $support='D:\SOKNA-Windows-1.0.9-CI\Support'
+          $diag=Join-Path $root 'release\qualification-diagnostics'
+          New-Item -ItemType Directory -Path $diag -Force|Out-Null
+          $transcript=Join-Path $diag 'lifecycle-transcript.txt'
+          try { Start-Transcript -LiteralPath $transcript -Force | Out-Null } catch {}
           try {
+            Write-Host 'PHASE=install'
             & packaging/windows/scripts/setup-windows-services.ps1 -Mode Install -ShellRoot $shell -InstallRoot $install -DataRoot $data -PairingFile '' -StartWhenPaired 0
             $svc=Get-Service SoknaPrintWorker -ErrorAction Stop
             try{if($svc.Status-ne'Running'){throw "Print Worker not running after install: $($svc.Status)"}}finally{$svc.Dispose()}
@@ -102,7 +107,7 @@ jobs:
             if(-not(Test-Path -LiteralPath $sqlite -PathType Leaf)){throw 'e_sqlite3.dll missing after install.'}
 
             for($i=1;$i-le2;$i++){
-              Write-Host "Repair pass $i while installed Print Worker is live"
+              Write-Host "PHASE=repair-$i"
               $before=Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'" -ErrorAction Stop
               if([uint32]$before.ProcessId-le0){throw "Print Worker PID missing before repair pass $i"}
               Write-Host "Pre-repair PID=$($before.ProcessId)"
@@ -114,14 +119,17 @@ jobs:
               if($residue.Count-gt0){throw "Staging residue remains after repair pass $i: $($residue.FullName -join ', ')"}
             }
 
+            Write-Host 'PHASE=state-validation'
             $state=Get-Content -LiteralPath (Join-Path $data 'setup\windows-services-state.json') -Raw|ConvertFrom-Json
             if([string]$state.shutdown_proof-ne'service-status+process-exit'){throw 'Shutdown proof marker missing from install state.'}
             if([string]$state.payload_replacement-ne'transactional-print-agent'){throw 'Transactional payload marker missing from install state.'}
 
+            Write-Host 'PHASE=support-bundle'
             New-Item -ItemType Directory -Path $support -Force|Out-Null
             & packaging/windows/scripts/collect-support.ps1 -DataRoot $data -OutputRoot $support
             $zip=Get-ChildItem -LiteralPath $support -Filter 'SOKNA-Support-*.zip' -File|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1
             if(-not$zip){throw 'Support Bundle was not created.'}
+            Copy-Item -LiteralPath $zip.FullName -Destination (Join-Path $diag $zip.Name) -Force
             $extract=Join-Path $env:TEMP ('sokna-support-check-'+[guid]::NewGuid().ToString('N'))
             try{
               Expand-Archive -LiteralPath $zip.FullName -DestinationPath $extract -Force
@@ -133,11 +141,28 @@ jobs:
             } finally {
               Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction SilentlyContinue
             }
+            Set-Content -LiteralPath (Join-Path $diag 'qualification-success.txt') -Value 'PASS' -Encoding UTF8
+          } catch {
+            ($_ | Format-List * -Force | Out-String -Width 300) | Set-Content -LiteralPath (Join-Path $diag 'exception.txt') -Encoding UTF8
+            ($_.ScriptStackTrace | Out-String -Width 300) | Set-Content -LiteralPath (Join-Path $diag 'script-stack.txt') -Encoding UTF8
+            try { Get-CimInstance Win32_Service -Filter "Name='SoknaRuntime' OR Name='SoknaPrintWorker'" | Format-List * | Out-String -Width 300 | Set-Content -LiteralPath (Join-Path $diag 'services-after-failure.txt') -Encoding UTF8 } catch {}
+            try { if(Test-Path -LiteralPath $install){Get-ChildItem -LiteralPath $install -Recurse -Force -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTimeUtc | Format-Table -AutoSize | Out-String -Width 300 | Set-Content -LiteralPath (Join-Path $diag 'install-tree-after-failure.txt') -Encoding UTF8} } catch {}
+            try { if(Test-Path -LiteralPath $data){Get-ChildItem -LiteralPath $data -Recurse -Force -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTimeUtc | Format-Table -AutoSize | Out-String -Width 300 | Set-Content -LiteralPath (Join-Path $diag 'data-tree-after-failure.txt') -Encoding UTF8} } catch {}
+            throw
           } finally {
+            try { Stop-Transcript | Out-Null } catch {}
             try { & packaging/windows/scripts/setup-windows-services.ps1 -Mode Uninstall -ShellRoot $shell -InstallRoot $install -DataRoot $data -PairingFile '' -StartWhenPaired 0 } catch { Write-Warning $_ }
             Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'D:\SOKNA-Windows-1.0.9-CI' -Recurse -Force -ErrorAction SilentlyContinue
           }
+
+      - name: Upload lifecycle diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.9-failure-${{ github.sha }}
+          path: release/qualification-diagnostics
+          if-no-files-found: warn
 
       - name: Verify uninstall residue
         shell: powershell
