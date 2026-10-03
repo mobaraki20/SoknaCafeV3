@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: release-windows-services-1.0.9
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   qualify-and-release:
