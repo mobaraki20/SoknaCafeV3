@@ -1,0 +1,104 @@
+name: Publish Windows Services 1.0.11
+
+on:
+  push:
+    branches:
+      - release/windows-services-1.0.11
+    paths:
+      - '.github/workflows/publish-windows-services-1.0.11.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-qualified:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@v4
+
+      - name: Download qualified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p qualified
+          gh run download 37097540067 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name 'sokna-windows-services-1.0.11-qualified-5764ab0d8d9169d76447c27d2398da524889e24a' \
+            --dir qualified
+
+      - name: Verify exact qualified artifact
+        run: |
+          set -euo pipefail
+          installer='qualified/out-windows-1.0.11/SOKNA-Windows-Services-Setup-1.0.11.exe'
+          index='qualified/out-windows-1.0.11/artifact-index.json'
+          expected='2725a8d24e91ce1ed130513c9c7afbfd393367a7bdf8b687b3bf31f19dff5f83'
+          test -f "$installer"
+          test -f "$index"
+          actual="$(sha256sum "$installer" | awk '{print $1}')"
+          test "$actual" = "$expected"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('qualified/out-windows-1.0.11/artifact-index.json')
+          data=json.loads(p.read_text(encoding='utf-8-sig'))
+          assert data['source_commit']=='5764ab0d8d9169d76447c27d2398da524889e24a', data['source_commit']
+          assert data['windows_services']['sha256']=='2725a8d24e91ce1ed130513c9c7afbfd393367a7bdf8b687b3bf31f19dff5f83'
+          assert data['windows_services']['file']=='SOKNA-Windows-Services-Setup-1.0.11.exe'
+          print('Qualified provenance: PASS')
+          PY
+          mkdir -p publish
+          cp "$installer" publish/
+          cp "$index" publish/SOKNA-Windows-Services-1.0.11-artifact-index.json
+          printf '%s  %s\n' "$expected" 'SOKNA-Windows-Services-Setup-1.0.11.exe' > publish/SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='windows-services-v1.0.11'
+          target='5764ab0d8d9169d76447c27d2398da524889e24a'
+          assets=(
+            'publish/SOKNA-Windows-Services-Setup-1.0.11.exe'
+            'publish/SOKNA-Windows-Services-1.0.11-artifact-index.json'
+            'publish/SHA256SUMS.txt'
+          )
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$target" \
+              --title 'SOKNA Windows Services 1.0.11' \
+              --notes-file 'packaging/windows/WINDOWS_SERVICES_1.0.11_NOTES_FA.md'
+          fi
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view windows-services-v1.0.11 \
+            --repo "$GITHUB_REPOSITORY" \
+            --json tagName,name,isDraft,isPrerelease,targetCommitish,assets > release.json
+          python3 - <<'PY'
+          import json
+          data=json.load(open('release.json', encoding='utf-8'))
+          assert data['tagName']=='windows-services-v1.0.11'
+          assert data['name']=='SOKNA Windows Services 1.0.11'
+          assert data['isDraft'] is False
+          assert data['isPrerelease'] is False
+          names={a['name'] for a in data['assets']}
+          required={
+            'SOKNA-Windows-Services-Setup-1.0.11.exe',
+            'SOKNA-Windows-Services-1.0.11-artifact-index.json',
+            'SHA256SUMS.txt'
+          }
+          missing=required-names
+          assert not missing, missing
+          print('Release publication verification: PASS')
+          PY
