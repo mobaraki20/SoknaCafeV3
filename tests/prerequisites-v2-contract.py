@@ -24,18 +24,21 @@ required = [
 for token in required:
     assert token in v2, token
 
-# Keep this contract behavior-oriented. Do not pin exact pixel values or obsolete
-# implementation details; screenshot/audit qualification owns geometry validation.
+# Keep this contract behavior-oriented. Runtime screenshot review owns exact geometry.
 compat = (ROOT / 'packaging/prerequisites/setup-ui/UiCompatibilityPatch.cs').read_text(encoding='utf-8')
 for token in [
     '_root', '_apachePort', '_password', '_password2',
     'RebuildPathAndPort', 'RebuildMariaDbCredentials',
     'SoknaResponsivePathLayout', 'SoknaResponsiveMariaLayout',
-    'RightToLeft = RightToLeft.No', 'NormalizeVersionText',
+    'SoknaPrerequisitesDashboard', 'SoknaPrerequisitesTabs',
+    'SoknaOverviewTab', 'SoknaSourcesTab', 'SoknaDatabaseTab', 'SoknaDetailsTab',
+    'SoknaPrerequisitesHeader', 'SoknaPrerequisitesFooter', 'SoknaFooterActions',
+    'AutoScroll = false', 'RightToLeft = RightToLeft.No', 'NormalizeVersionText',
     'Application.AddMessageFilter', 'ApplyWhenPumpingFilter', 'ApplyOpenForms'
 ]:
     assert token in compat, token
 assert 'StabilizeMiddleColumn' not in compat
+assert 'SoknaPrerequisitesDashboard' in compat and 'TabControl' in compat
 
 iss = (ROOT / 'packaging/prerequisites/installer/SOKNA-Prerequisites.iss').read_text(encoding='utf-8')
 assert 'CompareSoknaVersion' in iss
