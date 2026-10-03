@@ -78,8 +78,12 @@ internal static class DashboardLayoutPolicy
         if (root.GetControlFromPosition(0, 0) is TableLayoutPanel header)
         {
             header.Margin = Padding.Empty;
+            header.RowStyles.Clear();
+            header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             if (header.GetControlFromPosition(0, 0) is TableLayoutPanel titles && titles.RowStyles.Count >= 2)
             {
+                titles.AutoSize = false;
+                titles.MinimumSize = Size.Empty;
                 titles.RowStyles[0].SizeType = SizeType.Percent;
                 titles.RowStyles[0].Height = 100;
                 titles.RowStyles[1].SizeType = SizeType.Absolute;
@@ -100,8 +104,23 @@ internal static class DashboardLayoutPolicy
             content.ColumnStyles[1].Width = 45;
         }
 
+        TableLayoutPanel? footerLayout = null;
         if (root.GetControlFromPosition(0, 3) is TableLayoutPanel footer)
+        {
+            footerLayout = footer;
             footer.Padding = new Padding(2, 3, 2, 0);
+            footer.RowStyles.Clear();
+            footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            if (footer.ColumnStyles.Count >= 3)
+            {
+                footer.ColumnStyles[0].SizeType = SizeType.Percent;
+                footer.ColumnStyles[0].Width = 100;
+                footer.ColumnStyles[1].SizeType = SizeType.Absolute;
+                footer.ColumnStyles[1].Width = 120;
+                footer.ColumnStyles[2].SizeType = SizeType.Absolute;
+                footer.ColumnStyles[2].Width = 390;
+            }
+        }
 
         foreach (var flow in Descendants<FlowLayoutPanel>(form))
         {
@@ -111,6 +130,19 @@ internal static class DashboardLayoutPolicy
             flow.Dock = DockStyle.Fill;
             flow.MinimumSize = new Size(0, 42);
             flow.Margin = Padding.Empty;
+        }
+
+        if (footerLayout?.GetControlFromPosition(2, 0) is FlowLayoutPanel footerActions)
+        {
+            footerActions.WrapContents = false;
+            footerActions.MinimumSize = Size.Empty;
+            footerActions.FlowDirection = FlowDirection.RightToLeft;
+        }
+
+        if (footerLayout?.GetControlFromPosition(0, 0) is Label footerStatus)
+        {
+            footerStatus.AutoSize = false;
+            footerStatus.Dock = DockStyle.Fill;
         }
 
         foreach (var table in Descendants<TableLayoutPanel>(form))
