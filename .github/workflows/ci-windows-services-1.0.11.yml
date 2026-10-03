@@ -1,0 +1,192 @@
+name: CI Windows Services 1.0.11
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - qualify/windows-services-1.0.11
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-windows-services-1.0.11
+  cancel-in-progress: true
+
+jobs:
+  build-and-qualify:
+    runs-on: windows-2022
+    timeout-minutes: 50
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Parse Windows PowerShell 5.1 scripts
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $all=@()
+          foreach($path in @(
+            'packaging\windows\scripts\setup-windows-services.ps1',
+            'packaging\windows\scripts\setup-windows-services-entry.ps1',
+            'packaging\windows\scripts\pair-windows-services.ps1',
+            'packaging\windows\scripts\collect-support.ps1',
+            'packaging\windows\scripts\prepare-shell-payload.ps1',
+            'packaging\windows\tests\qualify-pairing-current.ps1',
+            'packaging\windows\tests\qualify-installer-awareness.ps1'
+          )){
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path).Path,[ref]$tokens,[ref]$errors)
+            foreach($e in @($errors)){$all += ($path+':'+$e.Extent.StartLineNumber+':'+$e.Extent.StartColumnNumber+' '+$e.Message+' :: '+$e.Extent.Text)}
+          }
+          if($all.Count -gt 0){$all|ForEach-Object{Write-Host $_};throw 'PowerShell syntax gate failed.'}
+          Write-Host 'PowerShell 5.1 parser: PASS'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows Services 1.0.11
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if($version -ne '1.0.11'){throw "Unexpected version: $version"}
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $root 'release\out-windows-1.0.11'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not$iscc){throw 'ISCC missing'}
+          & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          foreach($required in @(
+            'SOKNA-Windows-Services-Setup-1.0.11.exe',
+            'SoknaSetupUi.exe',
+            'SoknaSetupHost.exe',
+            'shell\SoknaSetupUi.exe',
+            'shell\pair-windows-services.ps1',
+            'shell\setup-windows-services.ps1',
+            'shell\setup-windows-services-core.ps1',
+            'shell\collect-support.ps1',
+            'shell\payload-manifest.json'
+          )){
+            if(-not(Test-Path -LiteralPath (Join-Path $out $required))){throw "Build output missing: $required"}
+          }
+          $ui=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $out 'SoknaSetupUi.exe'))
+          if([string]$ui.ProductVersion -ne '1.0.11'){throw "UI ProductVersion mismatch: $($ui.ProductVersion)"}
+          Write-Host 'Windows Services 1.0.11 build: PASS'
+
+      - name: Gate self-service diagnostic contract
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $ui=Join-Path $root 'release\out-windows-1.0.11\shell\SoknaSetupUi.exe'
+          $report=Join-Path $root 'release\self-service-1.0.11.txt'
+          $process=Start-Process -FilePath $ui -ArgumentList @('--self-service-self-test',$report) -Wait -PassThru
+          if($process.ExitCode-ne0){throw "Self-service contract self-test failed: $($process.ExitCode)"}
+          if(-not(Test-Path -LiteralPath $report -PathType Leaf)){throw 'Self-service report missing.'}
+          $text=Get-Content -LiteralPath $report -Raw
+          if(-not$text.Contains('PASS')){throw 'Self-service report is not PASS.'}
+          foreach($code in @('WS-HEALTH-OK','WS-SVC-PRINT-STOPPED-001','WS-SVC-RUNTIME-STOPPED-001','WS-SVC-MISSING-001','WS-FILE-PRINT-001','WS-PREREQ-VC-001','WS-STATE-001','WS-VERSION-001','WS-DATA-ROOT-001','WS-PAIR-001','WS-LOCAL-OFFLINE-001')){
+            if(-not$text.Contains($code)){throw "Self-service scenario missing: $code"}
+          }
+
+      - name: Gate real WinForms layout and capture screenshots
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $root 'release\out-windows-1.0.11\shell'
+          $shots=Join-Path $root 'release\ui-layout-1.0.11'
+          $ui=Join-Path $shell 'SoknaSetupUi.exe'
+          $process=Start-Process -FilePath $ui -ArgumentList @('--layout-self-test',$shots) -Wait -PassThru
+          if($process.ExitCode-ne0){throw "Dashboard layout self-test failed: $($process.ExitCode)"}
+          foreach($name in @('layout-960x600.txt','layout-1100x660.txt','layout-1280x720.txt','layout-960x600.png','layout-1100x660.png','layout-1280x720.png')){
+            if(-not(Test-Path -LiteralPath (Join-Path $shots $name) -PathType Leaf)){throw "Layout artifact missing: $name"}
+          }
+          foreach($report in Get-ChildItem -LiteralPath $shots -Filter '*.txt'){
+            if((Get-Content -LiteralPath $report.FullName -Raw).Trim()-ne'PASS'){throw "Layout report is not PASS: $($report.Name)"}
+          }
+
+      - name: Qualify installer version awareness
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $installer=Join-Path $root 'release\out-windows-1.0.11\SOKNA-Windows-Services-Setup-1.0.11.exe'
+          $diag=Join-Path $root 'release\installer-awareness-1.0.11'
+          & packaging/windows/tests/qualify-installer-awareness.ps1 -InstallerPath $installer -DiagnosticsRoot $diag
+
+      - name: Run install and repeated repair qualification
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $root 'release\out-windows-1.0.11\shell'
+          $diag=Join-Path $root 'release\qualification-1.0.11'
+          & packaging/windows/tests/qualify-release-1.0.9.ps1 -ShellRoot $shell -DiagnosticsRoot $diag
+
+      - name: Verify packaged version state stamping
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $root 'release\out-windows-1.0.11\shell'
+          $testRoot=Join-Path $env:RUNNER_TEMP 'sokna-version-stamp-1.0.11'
+          $installRoot=Join-Path $env:ProgramFiles 'SOKNA Windows Services Stamp CI'
+          $dataRoot=Join-Path $testRoot 'Data'
+          try {
+            & (Join-Path $shell 'setup-windows-services.ps1') -Mode Install -ShellRoot $shell -InstallRoot $installRoot -DataRoot $dataRoot -PairingFile '' -StartWhenPaired 0
+            $state=Get-Content -LiteralPath (Join-Path $dataRoot 'setup\windows-services-state.json') -Raw|ConvertFrom-Json
+            if([string]$state.package_version -ne '1.0.11'){throw "Package version was not stamped: $($state.package_version)"}
+          } finally {
+            try { & (Join-Path $shell 'setup-windows-services.ps1') -Mode Uninstall -ShellRoot $shell -InstallRoot $installRoot -DataRoot $dataRoot -PairingFile '' -StartWhenPaired 0 } catch {}
+            Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Qualify independent Local Web pairing
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $root 'release\out-windows-1.0.11\shell'
+          $diag=Join-Path $root 'release\pairing-qualification-1.0.11'
+          & packaging/windows/tests/qualify-pairing-current.ps1 -ShellRoot $shell -DiagnosticsRoot $diag
+
+      - name: Upload qualification diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.11-failure-${{ github.sha }}
+          path: |
+            release/self-service-1.0.11.txt
+            release/ui-layout-1.0.11
+            release/installer-awareness-1.0.11
+            release/qualification-1.0.11
+            release/pairing-qualification-1.0.11
+          if-no-files-found: ignore
+
+      - name: Upload qualified candidate and evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.11-qualified-${{ github.sha }}
+          path: |
+            release/out-windows-1.0.11/SOKNA-Windows-Services-Setup-1.0.11.exe
+            release/out-windows-1.0.11/artifact-index.json
+            release/self-service-1.0.11.txt
+            release/ui-layout-1.0.11
+            release/installer-awareness-1.0.11
+            release/qualification-1.0.11
+            release/pairing-qualification-1.0.11
+          if-no-files-found: error
