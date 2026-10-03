@@ -18,6 +18,7 @@ internal static class DashboardEntry
 
         using var form = new PersianDashboardFormV2 { RightToLeftLayout = true };
         DashboardLayoutPolicy.Attach(form);
+        SelfServiceBootstrap.AttachOnce(form);
         Application.Run(form);
         return 0;
     }
@@ -97,7 +98,7 @@ internal static class DashboardLayoutPolicy
 
                 foreach (var label in titles.Controls.OfType<Label>())
                 {
-                    if (label.Text.Contains("Runtime و Print Agent", StringComparison.Ordinal))
+                    if (SelfServiceDashboardUx.RemoveIsolation(label.Text).Contains("Runtime و Print Agent", StringComparison.Ordinal))
                     {
                         label.Visible = false;
                         continue;
@@ -227,10 +228,11 @@ internal static class DashboardLayoutPolicy
             var available = label.Parent.ClientSize.Width - label.Parent.Padding.Horizontal;
             if (available <= 80) continue;
 
+            var plain = SelfServiceDashboardUx.RemoveIsolation(label.Text);
             if (label.MaximumSize.Width > 0 ||
-                label.Text.Contains("پیش‌نیاز", StringComparison.Ordinal) ||
-                label.Text.Contains("Windows Services", StringComparison.Ordinal) ||
-                label.Text.Contains("کد کوتاه", StringComparison.Ordinal))
+                plain.Contains("پیش‌نیاز", StringComparison.Ordinal) ||
+                plain.Contains("Windows Services", StringComparison.Ordinal) ||
+                plain.Contains("کد کوتاه", StringComparison.Ordinal))
             {
                 label.MaximumSize = new Size(Math.Max(80, available), 0);
             }
@@ -264,6 +266,7 @@ internal static class DashboardLayoutSelfTest
             {
                 using var form = new PersianDashboardFormV2 { RightToLeftLayout = true };
                 DashboardLayoutPolicy.Attach(form);
+                SelfServiceBootstrap.AttachOnce(form);
                 form.StartPosition = FormStartPosition.Manual;
                 form.Location = new Point(20, 20);
                 form.CreateControl();
@@ -272,6 +275,7 @@ internal static class DashboardLayoutSelfTest
 
                 form.ClientSize = size;
                 form.ApplyLayoutTestScenario();
+                SelfServiceDashboardUx.RefreshPresentation(form);
                 DashboardLayoutPolicy.Reflow(form);
                 form.Refresh();
                 Application.DoEvents();
@@ -283,6 +287,13 @@ internal static class DashboardLayoutSelfTest
                 if (!form.RightToLeftLayout) problems.Add("Main form RightToLeftLayout must be true.");
                 if (!form.Font.Name.Contains("Vazirmatn", StringComparison.OrdinalIgnoreCase)) problems.Add($"Persian UI font is not active: {form.Font.Name}");
                 if (FindScrollableAutoScroll(form).Any()) problems.Add("A visible child control has AutoScroll enabled.");
+
+                var diagnosticButton = SelfServiceDashboardUx.Descendants<Button>(form)
+                    .FirstOrDefault(button => button.Visible && string.Equals(button.Name, "selfServiceDiagnosticButton", StringComparison.Ordinal));
+                if (diagnosticButton is null || SelfServiceDashboardUx.RemoveIsolation(diagnosticButton.Text) != "عیب‌یابی")
+                    problems.Add("User-facing diagnostic button is missing from the dashboard.");
+                if (SelfServiceDashboardUx.Descendants<Button>(form).Any(button => button.Visible && SelfServiceDashboardUx.RemoveIsolation(button.Text) == "بسته عیب‌یابی"))
+                    problems.Add("Legacy support-bundle button is still visible instead of the self-service diagnostic entry point.");
 
                 using var bitmap = new Bitmap(size.Width, size.Height);
                 var surface = form.Controls.Count > 0 ? form.Controls[0] : form;
@@ -337,6 +348,15 @@ internal static class DashboardLayoutSelfTest
             var childPath = path + "/" + name;
             if (child.Left < -2 || child.Top < -2 || child.Right > parent.ClientSize.Width + 2 || child.Bottom > parent.ClientSize.Height + 2)
                 problems.Add($"Overflow {childPath}: bounds={child.Bounds} parent={parent.ClientSize}");
+
+            if (child is Button button && !string.IsNullOrWhiteSpace(button.Text))
+            {
+                var plain = SelfServiceDashboardUx.RemoveIsolation(button.Text);
+                var measured = TextRenderer.MeasureText(plain, button.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+                if (measured.Width + button.Padding.Horizontal + 6 > button.ClientSize.Width)
+                    problems.Add($"Button text clipping {childPath}: text={plain}, required={measured.Width + button.Padding.Horizontal + 6}, actual={button.ClientSize.Width}");
+            }
+
             Inspect(child, childPath, problems);
         }
     }
