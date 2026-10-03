@@ -5,7 +5,8 @@ namespace Sokna.Prerequisites.Setup;
 /// <summary>
 /// Final compactness guard for the Prerequisites dashboard.
 /// Keeps the existing dashboard tree intact and sizes it from the real Form client rectangle.
-/// The qualification target is an outer 960x650 WinForms window with no main-page scroll.
+/// The guard is idempotent and reasserts geometry only when WinForms legacy preferred-size
+/// negotiation moves the dashboard/footer away from the qualified bounds.
 /// Presentation-only: no infrastructure state, lifecycle behavior or event handlers change.
 /// </summary>
 internal static class DashboardCompactnessPatch
@@ -18,7 +19,7 @@ internal static class DashboardCompactnessPatch
     [ModuleInitializer]
     internal static void Initialize()
     {
-        Application.Idle += (_, _) => ApplyOpenForms();
+        Application.Idle += (_, _) => MaintainOpenForms();
         Application.AddMessageFilter(Filter);
     }
 
@@ -26,22 +27,26 @@ internal static class DashboardCompactnessPatch
     {
         public bool PreFilterMessage(ref Message m)
         {
-            ApplyOpenForms();
+            MaintainOpenForms();
             return false;
         }
     }
 
-    private static void ApplyOpenForms()
+    private static void MaintainOpenForms()
     {
         foreach (Form form in Application.OpenForms)
         {
-            if (form.GetType() != typeof(MainForm) || Applied.TryGetValue(form, out _)) continue;
-            if (!TryApply(form)) continue;
-            Applied.Add(form, new object());
+            if (form.GetType() != typeof(MainForm)) continue;
+            if (!Applied.TryGetValue(form, out _))
+            {
+                if (!Prepare(form)) continue;
+                Applied.Add(form, new object());
+            }
+            MaintainGeometry(form);
         }
     }
 
-    private static bool TryApply(Form form)
+    private static bool Prepare(Form form)
     {
         var dashboard = Find<TableLayoutPanel>(form, "SoknaPrerequisitesDashboard");
         var header = Find<TableLayoutPanel>(form, "SoknaPrerequisitesHeader");
@@ -64,15 +69,12 @@ internal static class DashboardCompactnessPatch
             form.AutoScroll = false;
             form.Padding = Padding.Empty;
 
-            // Do not let legacy preferred sizes make the root TableLayout larger than the
-            // actual Form client area. The root stays the same control tree, but its bounds
-            // are now sourced from Form.ClientRectangle instead of Dock negotiation.
             dashboard.AutoSize = false;
             dashboard.AutoScroll = false;
             dashboard.MinimumSize = Size.Empty;
             dashboard.MaximumSize = Size.Empty;
             dashboard.Dock = DockStyle.None;
-            dashboard.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            dashboard.Anchor = AnchorStyles.None;
             dashboard.Margin = Padding.Empty;
             dashboard.GrowStyle = TableLayoutPanelGrowStyle.FixedSize;
 
@@ -144,39 +146,8 @@ internal static class DashboardCompactnessPatch
                 button.Margin = new Padding(5, 0, 0, 0);
             }
 
-            void PinDashboardToForm()
-            {
-                var width = Math.Max(0, form.ClientSize.Width);
-                var height = Math.Max(0, form.ClientSize.Height);
-                dashboard.SetBounds(0, 0, width, height);
-
-                if (dashboard.RowStyles.Count >= 3)
-                {
-                    var middle = Math.Max(180, height - HeaderHeight - FooterHeight);
-                    dashboard.RowStyles[0].SizeType = SizeType.Absolute;
-                    dashboard.RowStyles[0].Height = HeaderHeight;
-                    dashboard.RowStyles[1].SizeType = SizeType.Absolute;
-                    dashboard.RowStyles[1].Height = middle;
-                    dashboard.RowStyles[2].SizeType = SizeType.Absolute;
-                    dashboard.RowStyles[2].Height = FooterHeight;
-                }
-
-                dashboard.PerformLayout();
-                footer.PerformLayout();
-            }
-
-            form.ClientSizeChanged += (_, _) => PinDashboardToForm();
-
-            overview.PerformLayout();
-            actions.PerformLayout();
-            footer.PerformLayout();
-            tabs.PerformLayout();
-            header.PerformLayout();
-            PinDashboardToForm();
-            form.PerformLayout();
-            PinDashboardToForm();
-            form.Invalidate(true);
-            form.Update();
+            form.ClientSizeChanged += (_, _) => MaintainGeometry(form, force: true);
+            MaintainGeometry(form, force: true);
             return true;
         }
         finally
@@ -188,6 +159,44 @@ internal static class DashboardCompactnessPatch
             header.ResumeLayout(true);
             dashboard.ResumeLayout(true);
             form.ResumeLayout(true);
+        }
+    }
+
+    private static void MaintainGeometry(Form form, bool force = false)
+    {
+        if (form.IsDisposed) return;
+        var dashboard = Find<TableLayoutPanel>(form, "SoknaPrerequisitesDashboard");
+        var footer = Find<TableLayoutPanel>(form, "SoknaPrerequisitesFooter");
+        if (dashboard is null || footer is null || dashboard.RowStyles.Count < 3) return;
+
+        var width = Math.Max(0, form.ClientSize.Width);
+        var height = Math.Max(0, form.ClientSize.Height);
+        var middle = Math.Max(180, height - HeaderHeight - FooterHeight);
+        var targetBounds = new Rectangle(0, 0, width, height);
+
+        var mismatch = force || dashboard.Bounds != targetBounds ||
+                       dashboard.RowStyles[0].SizeType != SizeType.Absolute || Math.Abs(dashboard.RowStyles[0].Height - HeaderHeight) > 0.1f ||
+                       dashboard.RowStyles[1].SizeType != SizeType.Absolute || Math.Abs(dashboard.RowStyles[1].Height - middle) > 0.1f ||
+                       dashboard.RowStyles[2].SizeType != SizeType.Absolute || Math.Abs(dashboard.RowStyles[2].Height - FooterHeight) > 0.1f ||
+                       footer.Bottom > height || footer.Height < FooterHeight - 2;
+        if (!mismatch) return;
+
+        dashboard.SuspendLayout();
+        try
+        {
+            dashboard.SetBounds(0, 0, width, height);
+            dashboard.RowStyles[0].SizeType = SizeType.Absolute;
+            dashboard.RowStyles[0].Height = HeaderHeight;
+            dashboard.RowStyles[1].SizeType = SizeType.Absolute;
+            dashboard.RowStyles[1].Height = middle;
+            dashboard.RowStyles[2].SizeType = SizeType.Absolute;
+            dashboard.RowStyles[2].Height = FooterHeight;
+            dashboard.PerformLayout();
+            footer.PerformLayout();
+        }
+        finally
+        {
+            dashboard.ResumeLayout(true);
         }
     }
 
