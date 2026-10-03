@@ -4,7 +4,7 @@ namespace Sokna.Prerequisites.Setup;
 
 /// <summary>
 /// Final compactness guard for the Prerequisites dashboard.
-/// Keeps the existing dashboard tree intact and only relaxes legacy minimum-size pressure.
+/// Keeps the existing dashboard tree intact and sizes it from the real Form client rectangle.
 /// The qualification target is an outer 960x650 WinForms window with no main-page scroll.
 /// Presentation-only: no infrastructure state, lifecycle behavior or event handlers change.
 /// </summary>
@@ -64,11 +64,15 @@ internal static class DashboardCompactnessPatch
             form.AutoScroll = false;
             form.Padding = Padding.Empty;
 
+            // Do not let legacy preferred sizes make the root TableLayout larger than the
+            // actual Form client area. The root stays the same control tree, but its bounds
+            // are now sourced from Form.ClientRectangle instead of Dock negotiation.
             dashboard.AutoSize = false;
             dashboard.AutoScroll = false;
             dashboard.MinimumSize = Size.Empty;
             dashboard.MaximumSize = Size.Empty;
-            dashboard.Dock = DockStyle.Fill;
+            dashboard.Dock = DockStyle.None;
+            dashboard.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             dashboard.Margin = Padding.Empty;
             dashboard.GrowStyle = TableLayoutPanelGrowStyle.FixedSize;
 
@@ -92,9 +96,6 @@ internal static class DashboardCompactnessPatch
                 RelaxContainerMinimums(page);
             }
 
-            // The long explanatory label duplicates the compact mode summary and is the
-            // main legacy height pressure on 960x650. Keep behavior/status, remove only
-            // the duplicated prose row from the primary dashboard.
             overview.AutoScroll = false;
             overview.MinimumSize = Size.Empty;
             overview.MaximumSize = Size.Empty;
@@ -143,35 +144,37 @@ internal static class DashboardCompactnessPatch
                 button.Margin = new Padding(5, 0, 0, 0);
             }
 
-            void PinRowsToClientHeight()
+            void PinDashboardToForm()
             {
-                if (dashboard.RowStyles.Count < 3) return;
-                var available = Math.Max(0, dashboard.ClientSize.Height);
-                var middle = Math.Max(180, available - HeaderHeight - FooterHeight);
+                var width = Math.Max(0, form.ClientSize.Width);
+                var height = Math.Max(0, form.ClientSize.Height);
+                dashboard.SetBounds(0, 0, width, height);
 
-                dashboard.RowStyles[0].SizeType = SizeType.Absolute;
-                dashboard.RowStyles[0].Height = HeaderHeight;
-                dashboard.RowStyles[1].SizeType = SizeType.Absolute;
-                dashboard.RowStyles[1].Height = middle;
-                dashboard.RowStyles[2].SizeType = SizeType.Absolute;
-                dashboard.RowStyles[2].Height = FooterHeight;
+                if (dashboard.RowStyles.Count >= 3)
+                {
+                    var middle = Math.Max(180, height - HeaderHeight - FooterHeight);
+                    dashboard.RowStyles[0].SizeType = SizeType.Absolute;
+                    dashboard.RowStyles[0].Height = HeaderHeight;
+                    dashboard.RowStyles[1].SizeType = SizeType.Absolute;
+                    dashboard.RowStyles[1].Height = middle;
+                    dashboard.RowStyles[2].SizeType = SizeType.Absolute;
+                    dashboard.RowStyles[2].Height = FooterHeight;
+                }
 
                 dashboard.PerformLayout();
                 footer.PerformLayout();
             }
 
-            dashboard.SizeChanged += (_, _) => PinRowsToClientHeight();
-            form.ClientSizeChanged += (_, _) => PinRowsToClientHeight();
+            form.ClientSizeChanged += (_, _) => PinDashboardToForm();
 
             overview.PerformLayout();
             actions.PerformLayout();
             footer.PerformLayout();
             tabs.PerformLayout();
             header.PerformLayout();
-            dashboard.PerformLayout();
+            PinDashboardToForm();
             form.PerformLayout();
-            PinRowsToClientHeight();
-            form.PerformLayout();
+            PinDashboardToForm();
             form.Invalidate(true);
             form.Update();
             return true;
