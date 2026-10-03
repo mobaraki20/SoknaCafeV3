@@ -9,5 +9,6 @@ This file marks the source submitted to the Windows-only release gate.
 - Local Web changed: no
 - Public Edge changed: no
 - Infrastructure ownership changed: no
+- Qualification source branch: `release/windows-services-1.0.9`
 
 The GitHub Release must be created only by the gated `Release Windows Services 1.0.9` workflow after all qualification steps pass.
