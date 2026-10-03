@@ -1,9 +1,6 @@
 name: Qualify Prerequisites 1.0.12 Candidate
 
 on:
-  push:
-    branches:
-      - work/prerequisites-self-service-1.0.12-20261003
   workflow_dispatch:
 
 permissions:
