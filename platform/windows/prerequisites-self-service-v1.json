@@ -1,0 +1,85 @@
+{
+  "format": "sokna-prerequisites-self-service-v1",
+  "schema_version": 1,
+  "manager": {
+    "product": "SOKNA Prerequisites",
+    "version_source": "packaging/prerequisites/VERSION.txt",
+    "modes": ["install", "repair", "recover"],
+    "downgrade_policy": "block",
+    "silent_downgrade_policy": "block"
+  },
+  "ui": {
+    "language": "fa",
+    "rtl_layout_required": true,
+    "preferred_fonts": ["Vazirmatn", "Tahoma", "Segoe UI"],
+    "technical_values_ltr": true,
+    "forbidden_bidi_controls": ["U+2066", "U+2067", "U+2068", "U+2069"],
+    "diagnostics_center_required": true,
+    "qualification_sizes": ["960x650", "1100x660", "1280x720"]
+  },
+  "diagnostics": {
+    "stable_code_prefix": "PRQ-",
+    "categories": ["ROOT", "STATE", "PHP", "APACHE", "MARIA", "DATA", "PORT", "UAC"],
+    "finding_fields": ["code", "severity", "title", "detail", "action"],
+    "safe_remediation_only": true
+  },
+  "safe_remediation": {
+    "allowed": [
+      "start_sokna_apache",
+      "start_sokna_mariadb_when_existing_data_is_preserved",
+      "enrich_state_provenance",
+      "select_free_loopback_port_in_ui"
+    ],
+    "forbidden": [
+      "delete_mariadb_data",
+      "reinitialize_existing_mariadb_data",
+      "automatic_cross_root_migration",
+      "delete_other_root_registration",
+      "reset_application_database"
+    ]
+  },
+  "state": {
+    "path": "Infrastructure\\infrastructure-state.json",
+    "atomic_write_required": true,
+    "required_provenance": [
+      "setup_version",
+      "release_lock_sha256",
+      "infrastructure_policy_sha256",
+      "components"
+    ],
+    "secrets_allowed": false
+  },
+  "support_bundle": {
+    "version": 2,
+    "secrets_allowed": false,
+    "redaction_required": true,
+    "required_diagnostics": [
+      "stable_findings",
+      "service_queryex",
+      "service_qc",
+      "relevant_listening_ports",
+      "relevant_processes",
+      "service_control_manager_events",
+      "state",
+      "recent_logs",
+      "apache_config",
+      "php_config"
+    ]
+  },
+  "release": {
+    "artifact_index_format": "sokna-prerequisites-artifact-v2",
+    "qualified_artifact_rebuild_for_release": false,
+    "required_provenance": [
+      "source_commit",
+      "release_lock_sha256",
+      "infrastructure_policy_sha256",
+      "setup_ui_sha256"
+    ]
+  },
+  "ownership_boundaries": {
+    "local_web_payload_managed": false,
+    "application_database_managed": false,
+    "public_edge_managed": false,
+    "windows_runtime_pairing_managed": false
+  }
+}
