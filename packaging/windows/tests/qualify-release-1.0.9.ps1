@@ -67,17 +67,17 @@ try {
         Write-Host "PHASE=repair-$pass"
         $before=Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'" -ErrorAction Stop
         if($before.State -ne 'Running' -or [uint32]$before.ProcessId -le 0){
-            throw "Print Worker must be live before repair pass $pass: state=$($before.State) pid=$($before.ProcessId)"
+            throw "Print Worker must be live before repair pass ${pass}: state=$($before.State) pid=$($before.ProcessId)"
         }
         Write-Host "Pre-repair PID=$($before.ProcessId)"
         & $setupScript -Mode Repair -ShellRoot $ShellRoot -InstallRoot $installRoot -DataRoot $dataRoot -PairingFile '' -StartWhenPaired 0
         $after=Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'" -ErrorAction Stop
         if($after.State -ne 'Running' -or [uint32]$after.ProcessId -le 0){
-            throw "Print Worker unhealthy after repair pass $pass: state=$($after.State) pid=$($after.ProcessId)"
+            throw "Print Worker unhealthy after repair pass ${pass}: state=$($after.State) pid=$($after.ProcessId)"
         }
         if(-not(Test-Path -LiteralPath $sqlite -PathType Leaf)){throw "e_sqlite3.dll missing after repair pass $pass"}
         $incoming=@(Get-ChildItem -LiteralPath $installRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'PrintAgent.__incoming.*' })
-        if($incoming.Count -gt 0){throw "Print Agent staging residue after repair pass $pass: $($incoming.FullName -join ', ')"}
+        if($incoming.Count -gt 0){throw "Print Agent staging residue after repair pass ${pass}: $($incoming.FullName -join ', ')"}
     }
 
     Write-Host 'PHASE=state-validation'
