@@ -9,8 +9,12 @@
     <PublishTrimmed>false</PublishTrimmed>
     <AssemblyName>SoknaSetupUi</AssemblyName>
     <RootNamespace>Sokna.SetupUi</RootNamespace>
+    <StartupObject>Sokna.SetupUi.ModernProgram</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>..\Sokna.ico</ApplicationIcon>
+    <ApplicationIcon>$(MSBuildProjectDirectory)\..\Sokna.ico</ApplicationIcon>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <AssemblyTitle>SOKNA Windows Services</AssemblyTitle>
+    <Product>SOKNA Windows Services</Product>
 
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
