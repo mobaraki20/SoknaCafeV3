@@ -78,18 +78,45 @@ internal static class DashboardLayoutPolicy
         if (root.GetControlFromPosition(0, 0) is TableLayoutPanel header)
         {
             header.Margin = Padding.Empty;
+            header.Padding = new Padding(18, 6, 18, 6);
+            header.AutoSize = false;
             header.RowStyles.Clear();
             header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
             if (header.GetControlFromPosition(0, 0) is TableLayoutPanel titles && titles.RowStyles.Count >= 2)
             {
                 titles.AutoSize = false;
+                titles.Dock = DockStyle.Fill;
+                titles.Margin = Padding.Empty;
                 titles.MinimumSize = Size.Empty;
+                titles.MaximumSize = Size.Empty;
                 titles.RowStyles[0].SizeType = SizeType.Percent;
                 titles.RowStyles[0].Height = 100;
                 titles.RowStyles[1].SizeType = SizeType.Absolute;
                 titles.RowStyles[1].Height = 0;
-                foreach (var subtitle in titles.Controls.OfType<Label>().Where(label => label.Text.Contains("Runtime و Print Agent", StringComparison.Ordinal)))
-                    subtitle.Visible = false;
+
+                foreach (var label in titles.Controls.OfType<Label>())
+                {
+                    if (label.Text.Contains("Runtime و Print Agent", StringComparison.Ordinal))
+                    {
+                        label.Visible = false;
+                        continue;
+                    }
+
+                    label.AutoSize = false;
+                    label.Dock = DockStyle.Fill;
+                    label.TextAlign = ContentAlignment.MiddleRight;
+                    label.Margin = Padding.Empty;
+                }
+            }
+
+            if (header.GetControlFromPosition(1, 0) is Label version)
+            {
+                version.AutoSize = false;
+                version.Size = new Size(72, 36);
+                version.MinimumSize = new Size(72, 36);
+                version.MaximumSize = new Size(72, 36);
+                version.TextAlign = ContentAlignment.MiddleCenter;
             }
         }
 
@@ -108,15 +135,17 @@ internal static class DashboardLayoutPolicy
         if (root.GetControlFromPosition(0, 3) is TableLayoutPanel footer)
         {
             footerLayout = footer;
-            footer.Padding = new Padding(2, 3, 2, 0);
+            footer.AutoSize = false;
+            footer.Padding = new Padding(2, 4, 2, 2);
             footer.RowStyles.Clear();
             footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
             if (footer.ColumnStyles.Count >= 3)
             {
                 footer.ColumnStyles[0].SizeType = SizeType.Percent;
                 footer.ColumnStyles[0].Width = 100;
                 footer.ColumnStyles[1].SizeType = SizeType.Absolute;
-                footer.ColumnStyles[1].Width = 120;
+                footer.ColumnStyles[1].Width = 110;
                 footer.ColumnStyles[2].SizeType = SizeType.Absolute;
                 footer.ColumnStyles[2].Width = 390;
             }
@@ -126,23 +155,44 @@ internal static class DashboardLayoutPolicy
         {
             flow.AutoScroll = false;
             flow.AutoSize = false;
-            flow.WrapContents = true;
+            flow.WrapContents = false;
             flow.Dock = DockStyle.Fill;
-            flow.MinimumSize = new Size(0, 42);
+            flow.MinimumSize = Size.Empty;
             flow.Margin = Padding.Empty;
         }
 
         if (footerLayout?.GetControlFromPosition(2, 0) is FlowLayoutPanel footerActions)
         {
+            footerActions.AutoSize = false;
             footerActions.WrapContents = false;
             footerActions.MinimumSize = Size.Empty;
             footerActions.FlowDirection = FlowDirection.RightToLeft;
+            footerActions.Padding = new Padding(0, 2, 0, 0);
+            footerActions.Margin = Padding.Empty;
+            footerActions.Dock = DockStyle.Fill;
+
+            foreach (var button in footerActions.Controls.OfType<Button>())
+            {
+                button.AutoSize = false;
+                button.Size = new Size(92, 36);
+                button.MinimumSize = new Size(92, 36);
+                button.MaximumSize = new Size(92, 36);
+                button.Margin = new Padding(4, 0, 0, 0);
+            }
         }
 
         if (footerLayout?.GetControlFromPosition(0, 0) is Label footerStatus)
         {
             footerStatus.AutoSize = false;
             footerStatus.Dock = DockStyle.Fill;
+            footerStatus.Margin = Padding.Empty;
+            footerStatus.TextAlign = ContentAlignment.MiddleRight;
+        }
+
+        if (footerLayout?.GetControlFromPosition(1, 0) is ProgressBar progress)
+        {
+            progress.Dock = DockStyle.Fill;
+            progress.Margin = new Padding(6, 7, 6, 7);
         }
 
         foreach (var table in Descendants<TableLayoutPanel>(form))
