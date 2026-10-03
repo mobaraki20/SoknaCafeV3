@@ -1,0 +1,119 @@
+name: Publish Qualified Prerequisites 1.0.12
+
+on:
+  push:
+    branches:
+      - publish/prerequisites-1.0.12
+    paths:
+      - '.github/workflows/publish-prerequisites-1.0.12.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-qualified:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - name: Download exact qualified artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $headers=@{
+            Authorization="Bearer $env:GH_TOKEN"
+            Accept='application/vnd.github+json'
+            'X-GitHub-Api-Version'='2022-11-28'
+          }
+          $uri="https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/11275512380/zip"
+          Invoke-WebRequest -Headers $headers -Uri $uri -OutFile qualified.zip -MaximumRedirection 5
+          Expand-Archive -LiteralPath qualified.zip -DestinationPath qualified -Force
+
+      - name: Verify provenance and checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $expectedCommit='c968394a355f0681580488d9c9fddae096bbff34'
+          $expectedSha='a246f870c557dea3cc42d87e4d25e2e809ce6fcb12ee890e43aa0ca29f7c0847'
+          $exe=Get-ChildItem qualified -Recurse -File -Filter 'SOKNA-Prerequisites-Setup-1.0.12.exe' | Select-Object -First 1
+          $index=Get-ChildItem qualified -Recurse -File -Filter 'artifact-index.json' | Select-Object -First 1
+          $report=Get-ChildItem qualified -Recurse -File -Filter 'qualification-report.txt' | Select-Object -First 1
+          if(-not$exe -or -not$index -or -not$report){throw 'Qualified artifact is incomplete.'}
+          $meta=Get-Content -LiteralPath $index.FullName -Raw | ConvertFrom-Json
+          if($meta.version -ne '1.0.12'){throw "Version mismatch: $($meta.version)"}
+          if($meta.source_commit -ne $expectedCommit){throw "Source commit mismatch: $($meta.source_commit)"}
+          if($meta.sha256 -ne $expectedSha){throw "Artifact-index SHA mismatch: $($meta.sha256)"}
+          $actual=(Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actual -ne $expectedSha){throw "Installer SHA mismatch: $actual"}
+          if([int64]$meta.size_bytes -ne $exe.Length){throw 'Installer size mismatch.'}
+          if((Get-Content -LiteralPath $report.FullName -Raw) -notmatch [regex]::Escape("source_commit=$expectedCommit")){throw 'Qualification report source commit mismatch.'}
+          New-Item -ItemType Directory -Path release-assets -Force | Out-Null
+          Copy-Item -LiteralPath $exe.FullName -Destination 'release-assets/SOKNA-Prerequisites-Setup-1.0.12.exe'
+          Copy-Item -LiteralPath $index.FullName -Destination 'release-assets/SOKNA-Prerequisites-1.0.12-artifact-index.json'
+          Copy-Item -LiteralPath $report.FullName -Destination 'release-assets/qualification-report.txt'
+          $indexSha=(Get-FileHash -LiteralPath 'release-assets/SOKNA-Prerequisites-1.0.12-artifact-index.json' -Algorithm SHA256).Hash.ToLowerInvariant()
+          @(
+            "$expectedSha  SOKNA-Prerequisites-Setup-1.0.12.exe",
+            "$indexSha  SOKNA-Prerequisites-1.0.12-artifact-index.json"
+          ) | Set-Content -LiteralPath 'release-assets/SHA256SUMS.txt' -Encoding ascii
+          Write-Host 'Qualified artifact provenance/checksum verification: PASS'
+
+      - name: Publish exact qualified release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='prerequisites-v1.0.12'
+          $target='c968394a355f0681580488d9c9fddae096bbff34'
+          $assets=@(
+            'release-assets/SOKNA-Prerequisites-Setup-1.0.12.exe',
+            'release-assets/SOKNA-Prerequisites-1.0.12-artifact-index.json',
+            'release-assets/SHA256SUMS.txt',
+            'release-assets/qualification-report.txt'
+          )
+          cmd /c "gh release view $tag --repo $env:GITHUB_REPOSITORY >nul 2>nul"
+          $exists=($LASTEXITCODE -eq 0)
+          if($exists){
+            gh release upload $tag @assets --clobber --repo $env:GITHUB_REPOSITORY
+            if($LASTEXITCODE -ne 0){throw 'Release asset upload failed.'}
+          } else {
+            $notes=@'
+          SOKNA Prerequisites 1.0.12
+
+          Qualified Windows prerequisites manager for PHP, Apache and MariaDB.
+
+          Highlights:
+          - installation-aware Fresh / Same / Upgrade / Newer-installed handling with downgrade protection, including silent mode
+          - Persian RTL dashboard and self-service diagnostics with stable PRQ-* error codes and safe remediation actions
+          - Support Bundle v2 with secret redaction and richer service/process/port evidence
+          - atomic state enrichment with setup version, component versions and provenance hashes
+          - compact dashboard qualified at 960x650, 1100x660 and 1280x720 with no main-window scrolling
+          - upgrade/repair/downgrade lifecycle qualification and inherited real Apache/PHP + Apache-service/sodium regression evidence
+
+          Qualified source commit: c968394a355f0681580488d9c9fddae096bbff34
+          Qualification run: 37126378866
+          Installer SHA256: a246f870c557dea3cc42d87e4d25e2e809ce6fcb12ee890e43aa0ca29f7c0847
+          '@
+            $notes | Set-Content -LiteralPath release-notes.txt -Encoding utf8
+            gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $target --title 'SOKNA Prerequisites 1.0.12' --notes-file release-notes.txt
+            if($LASTEXITCODE -ne 0){throw 'GitHub Release creation failed.'}
+          }
+
+      - name: Verify published release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $json=gh release view prerequisites-v1.0.12 --repo $env:GITHUB_REPOSITORY --json tagName,name,isDraft,isPrerelease,assets,targetCommitish | ConvertFrom-Json
+          if($LASTEXITCODE -ne 0){throw 'Published release lookup failed.'}
+          if($json.tagName -ne 'prerequisites-v1.0.12' -or $json.isDraft -or $json.isPrerelease){throw 'Published release metadata is invalid.'}
+          if($json.targetCommitish -ne 'c968394a355f0681580488d9c9fddae096bbff34'){throw "Target commit mismatch: $($json.targetCommitish)"}
+          $names=@($json.assets | ForEach-Object {$_.name})
+          foreach($name in @('SOKNA-Prerequisites-Setup-1.0.12.exe','SOKNA-Prerequisites-1.0.12-artifact-index.json','SHA256SUMS.txt','qualification-report.txt')){
+            if($names -notcontains $name){throw "Published release asset missing: $name"}
+          }
+          Write-Host 'SOKNA Prerequisites 1.0.12 publication verified.'
