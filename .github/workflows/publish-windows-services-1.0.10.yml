@@ -1,0 +1,111 @@
+name: Publish Windows Services 1.0.10
+
+on:
+  push:
+    branches:
+      - release/windows-services-1.0.10
+    paths:
+      - '.github/workflows/publish-windows-services-1.0.10.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-qualified:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@v4
+
+      - name: Download exact qualified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p publish
+          gh run download 37092471539 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name 'sokna-windows-services-1.0.10-candidate-3ef0aca5ca4f428506cd1300cc60024e93892c64' \
+            --dir publish
+
+      - name: Verify provenance and checksum
+        run: |
+          set -euo pipefail
+          installer='publish/out-windows-1.0.10/SOKNA-Windows-Services-Setup-1.0.10.exe'
+          index='publish/out-windows-1.0.10/artifact-index.json'
+          test -f "$installer"
+          test -f "$index"
+          source_commit="$(jq -r '.source_commit' "$index")"
+          expected="$(jq -r '.windows_services.sha256' "$index")"
+          actual="$(sha256sum "$installer" | awk '{print $1}')"
+          test "$source_commit" = '3ef0aca5ca4f428506cd1300cc60024e93892c64'
+          test "$expected" = '423dc108c1e627431f2f9aa4c90281ca16b9a58c7de52f0f155d9df96a3abd52'
+          test "$actual" = "$expected"
+          cp "$index" 'publish/SOKNA-Windows-Services-1.0.10-artifact-index.json'
+          printf '%s  %s\n' "$actual" 'SOKNA-Windows-Services-Setup-1.0.10.exe' > publish/SHA256SUMS.txt
+          cp "$installer" publish/SOKNA-Windows-Services-Setup-1.0.10.exe
+
+      - name: Prepare release notes
+        run: |
+          cat > publish/RELEASE_NOTES_FA.md <<'EOF'
+          # SOKNA Windows Services 1.0.10
+
+          نسخه 1.0.10 بسته Windows Services شامل Dashboard فارسی وضعیت‌محور، تشخیص نصب/ارتقا/تعمیر، Pairing مستقل با Local Web و حفظ Pairing در Repair/Upgrade است.
+
+          این Release از همان artifact تأییدشده‌ی Windows qualification منتشر شده و rebuild نشده است.
+
+          Qualification:
+          - source commit: `3ef0aca5ca4f428506cd1300cc60024e93892c64`
+          - workflow run: `37092471539`
+          - Fresh Install: PASS
+          - دو Repair متوالی با Print Worker فعال: PASS
+          - package version state: PASS
+          - independent Pairing بدون reinstall/payload replacement: PASS
+          - Persian RTL layout و screenshot واقعی در 960×600، 1100×660 و 1280×720: PASS
+          - Support Bundle / uninstall: PASS
+          - installer SHA-256: `423dc108c1e627431f2f9aa4c90281ca16b9a58c7de52f0f155d9df96a3abd52`
+
+          Local Web، Public Edge و Prerequisites در این Release تغییر نکرده‌اند.
+          EOF
+
+      - name: Publish exact qualified installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='windows-services-v1.0.10'
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" \
+              publish/SOKNA-Windows-Services-Setup-1.0.10.exe \
+              publish/SOKNA-Windows-Services-1.0.10-artifact-index.json \
+              publish/SHA256SUMS.txt \
+              --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" \
+              publish/SOKNA-Windows-Services-Setup-1.0.10.exe \
+              publish/SOKNA-Windows-Services-1.0.10-artifact-index.json \
+              publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target '3ef0aca5ca4f428506cd1300cc60024e93892c64' \
+              --title 'SOKNA Windows Services 1.0.10' \
+              --notes-file publish/RELEASE_NOTES_FA.md
+          fi
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          json="$(gh release view windows-services-v1.0.10 --repo "$GITHUB_REPOSITORY" --json tagName,name,isDraft,isPrerelease,assets,targetCommitish)"
+          test "$(jq -r '.tagName' <<<"$json")" = 'windows-services-v1.0.10'
+          test "$(jq -r '.isDraft' <<<"$json")" = 'false'
+          test "$(jq -r '.isPrerelease' <<<"$json")" = 'false'
+          for name in \
+            SOKNA-Windows-Services-Setup-1.0.10.exe \
+            SOKNA-Windows-Services-1.0.10-artifact-index.json \
+            SHA256SUMS.txt; do
+            jq -e --arg n "$name" '.assets | any(.name == $n)' <<<"$json" >/dev/null
+          done
+          echo 'SOKNA Windows Services 1.0.10 release verification: PASS'
