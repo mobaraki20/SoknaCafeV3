@@ -16,7 +16,8 @@ internal static class DashboardEntry
             return DashboardLayoutSelfTest.Run(output);
         }
 
-        Application.Run(new PersianDashboardFormV2());
+        using var form = new PersianDashboardFormV2 { RightToLeftLayout = true };
+        Application.Run(form);
         return 0;
     }
 }
@@ -30,7 +31,7 @@ internal static class DashboardLayoutSelfTest
             Directory.CreateDirectory(outputRoot);
             foreach (var size in new[] { new Size(960, 600), new Size(1100, 660), new Size(1280, 720) })
             {
-                using var form = new PersianDashboardFormV2();
+                using var form = new PersianDashboardFormV2 { RightToLeftLayout = true };
                 form.StartPosition = FormStartPosition.Manual;
                 form.Location = new Point(20, 20);
                 form.ClientSize = size;
@@ -41,6 +42,9 @@ internal static class DashboardLayoutSelfTest
                 var problems = new List<string>();
                 Inspect(form, "form", problems);
                 if (form.AutoScroll) problems.Add("Main form AutoScroll must be false.");
+                if (form.RightToLeft != RightToLeft.Yes) problems.Add("Main form RightToLeft must be Yes.");
+                if (!form.RightToLeftLayout) problems.Add("Main form RightToLeftLayout must be true.");
+                if (!form.Font.Name.Contains("Vazirmatn", StringComparison.OrdinalIgnoreCase)) problems.Add($"Persian UI font is not active: {form.Font.Name}");
                 if (FindScrollableAutoScroll(form).Any()) problems.Add("A visible child control has AutoScroll enabled.");
 
                 var report = Path.Combine(outputRoot, $"layout-{size.Width}x{size.Height}.txt");

@@ -1,9 +1,10 @@
 name: CI Windows Services 1.0.10
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - work/windows-services-1.0.10-ui-pairing
+      - qualify/windows-services-1.0.10
 
 permissions:
   contents: read
@@ -88,8 +89,9 @@ jobs:
           $root=(Resolve-Path .).Path
           $shell=Join-Path $root 'release\out-windows-1.0.10\shell'
           $shots=Join-Path $root 'release\ui-layout-1.0.10'
-          & (Join-Path $shell 'SoknaSetupUi.exe') --layout-self-test $shots
-          if($LASTEXITCODE-ne0){throw "Dashboard layout self-test failed: $LASTEXITCODE"}
+          $ui=Join-Path $shell 'SoknaSetupUi.exe'
+          $process=Start-Process -FilePath $ui -ArgumentList @('--layout-self-test',$shots) -Wait -PassThru
+          if($process.ExitCode-ne0){throw "Dashboard layout self-test failed: $($process.ExitCode)"}
           foreach($name in @('layout-960x600.txt','layout-1100x660.txt','layout-1280x720.txt','layout-960x600.png','layout-1100x660.png','layout-1280x720.png')){
             if(-not(Test-Path -LiteralPath (Join-Path $shots $name) -PathType Leaf)){throw "Layout artifact missing: $name"}
           }
@@ -134,7 +136,19 @@ jobs:
           $diag=Join-Path $root 'release\pairing-qualification-1.0.10'
           & packaging/windows/tests/qualify-pairing-1.0.10.ps1 -ShellRoot $shell -DiagnosticsRoot $diag
 
+      - name: Upload qualification diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.10-failure-${{ github.sha }}
+          path: |
+            release/ui-layout-1.0.10
+            release/qualification-1.0.10
+            release/pairing-qualification-1.0.10
+          if-no-files-found: ignore
+
       - name: Upload candidate build and visual evidence
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: sokna-windows-services-1.0.10-candidate-${{ github.sha }}
