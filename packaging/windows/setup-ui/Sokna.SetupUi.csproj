@@ -9,7 +9,7 @@
     <PublishTrimmed>false</PublishTrimmed>
     <AssemblyName>SoknaSetupUi</AssemblyName>
     <RootNamespace>Sokna.SetupUi</RootNamespace>
-    <StartupObject>Sokna.SetupUi.ModernProgram</StartupObject>
+    <StartupObject>Sokna.SetupUi.DashboardProgram</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>$(MSBuildProjectDirectory)\..\Sokna.ico</ApplicationIcon>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
