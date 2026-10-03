@@ -16,7 +16,7 @@ internal static class DashboardEntry
             return DashboardLayoutSelfTest.Run(output);
         }
 
-        Application.Run(new DashboardForm());
+        Application.Run(new PersianDashboardForm());
         return 0;
     }
 }
@@ -30,7 +30,7 @@ internal static class DashboardLayoutSelfTest
             Directory.CreateDirectory(outputRoot);
             foreach (var size in new[] { new Size(980, 620), new Size(1120, 680), new Size(1280, 720) })
             {
-                using var form = new DashboardForm();
+                using var form = new PersianDashboardForm();
                 form.StartPosition = FormStartPosition.Manual;
                 form.Location = new Point(20, 20);
                 form.ClientSize = size;
@@ -54,7 +54,7 @@ internal static class DashboardLayoutSelfTest
                     return 9;
                 }
             }
-            Console.WriteLine("SOKNA Windows Services dashboard layout self-test PASS");
+            Console.WriteLine("SOKNA Windows Services Persian dashboard layout self-test PASS");
             return 0;
         }
         catch (Exception e)
