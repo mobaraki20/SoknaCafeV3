@@ -90,7 +90,7 @@ jobs:
           $shots=Join-Path $root 'release\ui-layout-1.0.10'
           & (Join-Path $shell 'SoknaSetupUi.exe') --layout-self-test $shots
           if($LASTEXITCODE-ne0){throw "Dashboard layout self-test failed: $LASTEXITCODE"}
-          foreach($name in @('layout-980x620.txt','layout-1120x680.txt','layout-1280x720.txt','layout-980x620.png','layout-1120x680.png','layout-1280x720.png')){
+          foreach($name in @('layout-960x600.txt','layout-1100x660.txt','layout-1280x720.txt','layout-960x600.png','layout-1100x660.png','layout-1280x720.png')){
             if(-not(Test-Path -LiteralPath (Join-Path $shots $name) -PathType Leaf)){throw "Layout artifact missing: $name"}
           }
           foreach($report in Get-ChildItem -LiteralPath $shots -Filter '*.txt'){
