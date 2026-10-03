@@ -13,19 +13,36 @@ internal static class UiCompatibilityPatch
 {
     private static readonly ConditionalWeakTable<Form, object> Applied = new();
     private static readonly ConditionalWeakTable<TableLayoutPanel, object> StabilizedTables = new();
+    private static readonly IMessageFilter MessageFilter = new ApplyWhenPumpingFilter();
 
     [ModuleInitializer]
     internal static void Initialize()
     {
-        Application.Idle += (_, _) =>
+        // The real application has Application.Run and therefore reaches Idle. The
+        // qualification renderer intentionally uses Show + DoEvents instead. Register
+        // both hooks so the exact same presentation patch is exercised in production
+        // and in screenshot evidence.
+        Application.Idle += (_, _) => ApplyOpenForms();
+        Application.AddMessageFilter(MessageFilter);
+    }
+
+    private static void ApplyOpenForms()
+    {
+        foreach (Form form in Application.OpenForms)
         {
-            foreach (Form form in Application.OpenForms)
-            {
-                if (form.GetType() != typeof(MainForm) || Applied.TryGetValue(form, out _)) continue;
-                Apply(form);
-                Applied.Add(form, new object());
-            }
-        };
+            if (form.GetType() != typeof(MainForm) || Applied.TryGetValue(form, out _)) continue;
+            Apply(form);
+            Applied.Add(form, new object());
+        }
+    }
+
+    private sealed class ApplyWhenPumpingFilter : IMessageFilter
+    {
+        public bool PreFilterMessage(ref Message m)
+        {
+            ApplyOpenForms();
+            return false;
+        }
     }
 
     private static void Apply(Form form)
