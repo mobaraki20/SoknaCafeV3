@@ -24,14 +24,18 @@ required = [
 for token in required:
     assert token in v2, token
 
+# Keep this contract behavior-oriented. Do not pin exact pixel values or obsolete
+# implementation details; screenshot/audit qualification owns geometry validation.
 compat = (ROOT / 'packaging/prerequisites/setup-ui/UiCompatibilityPatch.cs').read_text(encoding='utf-8')
 for token in [
-    '_root', '_apachePort', 'MinimumSize = new Size(360, 30)',
-    'MinimumSize = new Size(110, 28)', 'NormalizeVersionText',
-    'StabilizeMiddleColumn', 'SizeType.Absolute', 'table.SizeChanged += Resize',
+    '_root', '_apachePort', '_password', '_password2',
+    'RebuildPathAndPort', 'RebuildMariaDbCredentials',
+    'SoknaResponsivePathLayout', 'SoknaResponsiveMariaLayout',
+    'RightToLeft = RightToLeft.No', 'NormalizeVersionText',
     'Application.AddMessageFilter', 'ApplyWhenPumpingFilter', 'ApplyOpenForms'
 ]:
     assert token in compat, token
+assert 'StabilizeMiddleColumn' not in compat
 
 iss = (ROOT / 'packaging/prerequisites/installer/SOKNA-Prerequisites.iss').read_text(encoding='utf-8')
 assert 'CompareSoknaVersion' in iss
