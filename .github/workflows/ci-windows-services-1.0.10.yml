@@ -30,7 +30,8 @@ jobs:
             'packaging\windows\scripts\setup-windows-services-entry.ps1',
             'packaging\windows\scripts\pair-windows-services.ps1',
             'packaging\windows\scripts\collect-support.ps1',
-            'packaging\windows\scripts\prepare-shell-payload.ps1'
+            'packaging\windows\scripts\prepare-shell-payload.ps1',
+            'packaging\windows\tests\qualify-pairing-1.0.10.ps1'
           )){
             $tokens=$null;$errors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path).Path,[ref]$tokens,[ref]$errors)
@@ -80,7 +81,23 @@ jobs:
           if([string]$ui.ProductVersion -ne '1.0.10'){throw "UI ProductVersion mismatch: $($ui.ProductVersion)"}
           Write-Host 'Windows Services 1.0.10 build: PASS'
 
-      - name: Run existing install and repair qualification
+      - name: Gate real WinForms layout and capture screenshots
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $root 'release\out-windows-1.0.10\shell'
+          $shots=Join-Path $root 'release\ui-layout-1.0.10'
+          & (Join-Path $shell 'SoknaSetupUi.exe') --layout-self-test $shots
+          if($LASTEXITCODE-ne0){throw "Dashboard layout self-test failed: $LASTEXITCODE"}
+          foreach($name in @('layout-980x620.txt','layout-1120x680.txt','layout-1280x720.txt','layout-980x620.png','layout-1120x680.png','layout-1280x720.png')){
+            if(-not(Test-Path -LiteralPath (Join-Path $shots $name) -PathType Leaf)){throw "Layout artifact missing: $name"}
+          }
+          foreach($report in Get-ChildItem -LiteralPath $shots -Filter '*.txt'){
+            if((Get-Content -LiteralPath $report.FullName -Raw).Trim()-ne'PASS'){throw "Layout report is not PASS: $($report.Name)"}
+          }
+
+      - name: Run install and repeated repair qualification
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
@@ -108,7 +125,16 @@ jobs:
             Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
           }
 
-      - name: Upload candidate build
+      - name: Qualify independent Local Web pairing
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $root 'release\out-windows-1.0.10\shell'
+          $diag=Join-Path $root 'release\pairing-qualification-1.0.10'
+          & packaging/windows/tests/qualify-pairing-1.0.10.ps1 -ShellRoot $shell -DiagnosticsRoot $diag
+
+      - name: Upload candidate build and visual evidence
         uses: actions/upload-artifact@v4
         with:
           name: sokna-windows-services-1.0.10-candidate-${{ github.sha }}
@@ -116,4 +142,6 @@ jobs:
             release/out-windows-1.0.10/SOKNA-Windows-Services-Setup-1.0.10.exe
             release/out-windows-1.0.10/artifact-index.json
             release/qualification-1.0.10
+            release/pairing-qualification-1.0.10
+            release/ui-layout-1.0.10
           if-no-files-found: error
