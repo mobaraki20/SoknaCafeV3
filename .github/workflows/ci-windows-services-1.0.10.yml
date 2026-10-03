@@ -1,0 +1,119 @@
+name: CI Windows Services 1.0.10
+
+on:
+  push:
+    branches:
+      - work/windows-services-1.0.10-ui-pairing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-windows-services-1.0.10
+  cancel-in-progress: true
+
+jobs:
+  build-and-qualify:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Parse Windows PowerShell 5.1 scripts
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $all=@()
+          foreach($path in @(
+            'packaging\windows\scripts\setup-windows-services.ps1',
+            'packaging\windows\scripts\setup-windows-services-entry.ps1',
+            'packaging\windows\scripts\pair-windows-services.ps1',
+            'packaging\windows\scripts\collect-support.ps1',
+            'packaging\windows\scripts\prepare-shell-payload.ps1'
+          )){
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path).Path,[ref]$tokens,[ref]$errors)
+            foreach($e in @($errors)){$all += ($path+':'+$e.Extent.StartLineNumber+':'+$e.Extent.StartColumnNumber+' '+$e.Message+' :: '+$e.Extent.Text)}
+          }
+          if($all.Count -gt 0){$all|ForEach-Object{Write-Host $_};throw 'PowerShell syntax gate failed.'}
+          Write-Host 'PowerShell 5.1 parser: PASS'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows Services 1.0.10
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if($version -ne '1.0.10'){throw "Unexpected version: $version"}
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $root 'release\out-windows-1.0.10'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not$iscc){throw 'ISCC missing'}
+          & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          foreach($required in @(
+            'SOKNA-Windows-Services-Setup-1.0.10.exe',
+            'SoknaSetupUi.exe',
+            'SoknaSetupHost.exe',
+            'shell\pair-windows-services.ps1',
+            'shell\setup-windows-services.ps1',
+            'shell\setup-windows-services-core.ps1',
+            'shell\collect-support.ps1',
+            'shell\payload-manifest.json'
+          )){
+            if(-not(Test-Path -LiteralPath (Join-Path $out $required))){throw "Build output missing: $required"}
+          }
+          $ui=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $out 'SoknaSetupUi.exe'))
+          if([string]$ui.ProductVersion -ne '1.0.10'){throw "UI ProductVersion mismatch: $($ui.ProductVersion)"}
+          Write-Host 'Windows Services 1.0.10 build: PASS'
+
+      - name: Run existing install and repair qualification
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $root 'release\out-windows-1.0.10\shell'
+          $diag=Join-Path $root 'release\qualification-1.0.10'
+          & packaging/windows/tests/qualify-release-1.0.9.ps1 -ShellRoot $shell -DiagnosticsRoot $diag
+
+      - name: Verify packaged version state stamping
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $root 'release\out-windows-1.0.10\shell'
+          $testRoot=Join-Path $env:RUNNER_TEMP 'sokna-version-stamp-1.0.10'
+          $installRoot=Join-Path $env:ProgramFiles 'SOKNA Windows Services Stamp CI'
+          $dataRoot=Join-Path $testRoot 'Data'
+          try {
+            & (Join-Path $shell 'setup-windows-services.ps1') -Mode Install -ShellRoot $shell -InstallRoot $installRoot -DataRoot $dataRoot -PairingFile '' -StartWhenPaired 0
+            $state=Get-Content -LiteralPath (Join-Path $dataRoot 'setup\windows-services-state.json') -Raw|ConvertFrom-Json
+            if([string]$state.package_version -ne '1.0.10'){throw "Package version was not stamped: $($state.package_version)"}
+          } finally {
+            try { & (Join-Path $shell 'setup-windows-services.ps1') -Mode Uninstall -ShellRoot $shell -InstallRoot $installRoot -DataRoot $dataRoot -PairingFile '' -StartWhenPaired 0 } catch {}
+            Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload candidate build
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.10-candidate-${{ github.sha }}
+          path: |
+            release/out-windows-1.0.10/SOKNA-Windows-Services-Setup-1.0.10.exe
+            release/out-windows-1.0.10/artifact-index.json
+            release/qualification-1.0.10
+          if-no-files-found: error
