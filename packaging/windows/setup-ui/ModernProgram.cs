@@ -336,7 +336,7 @@ internal static class ModernTheme
                 if (!string.IsNullOrWhiteSpace(raw))
                 {
                     var pieces = raw.Split('.', StringSplitOptions.RemoveEmptyEntries);
-                    if (pieces.Length >= 3) return string.Join('.', pieces.Take(3));
+                    if (pieces.Length >= 3) return string.Join(".", pieces.Take(3));
                     return raw;
                 }
             }
@@ -367,7 +367,7 @@ internal static class TaskbarIdentity
 {
     private const uint WmSetIcon = 0x0080;
     private static readonly IntPtr IconSmall = IntPtr.Zero;
-    private static readonly IntPtr IconBig = new(1);
+    private static readonly IntPtr IconBig = new IntPtr(1);
 
     public static void Apply()
     {
