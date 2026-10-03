@@ -69,6 +69,10 @@ jobs:
           )
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title 'SOKNA Windows Services 1.0.11' \
+              --notes-file 'packaging/windows/WINDOWS_SERVICES_1.0.11_NOTES_FA.md'
           else
             gh release create "$tag" "${assets[@]}" \
               --repo "$GITHUB_REPOSITORY" \
@@ -84,7 +88,7 @@ jobs:
           set -euo pipefail
           gh release view windows-services-v1.0.11 \
             --repo "$GITHUB_REPOSITORY" \
-            --json tagName,name,isDraft,isPrerelease,targetCommitish,assets > release.json
+            --json tagName,name,isDraft,isPrerelease,targetCommitish,body,assets > release.json
           python3 - <<'PY'
           import json
           data=json.load(open('release.json', encoding='utf-8'))
@@ -92,6 +96,11 @@ jobs:
           assert data['name']=='SOKNA Windows Services 1.0.11'
           assert data['isDraft'] is False
           assert data['isPrerelease'] is False
+          assert data['targetCommitish']=='5764ab0d8d9169d76447c27d2398da524889e24a'
+          body=data.get('body') or ''
+          assert 'LRI/PDI' in body
+          assert 'LRM (U+200E)' in body
+          assert 'عبارت‌های فنی انگلیسی داخل متن فارسی با Unicode BiDi isolation نمایش داده می‌شوند.' not in body
           names={a['name'] for a in data['assets']}
           required={
             'SOKNA-Windows-Services-Setup-1.0.11.exe',
