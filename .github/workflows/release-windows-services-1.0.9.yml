@@ -20,6 +20,39 @@ jobs:
       - name: Checkout exact release source
         uses: actions/checkout@v4
 
+      - name: Parse Windows release PowerShell
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $diag=Join-Path (Resolve-Path .).Path 'release\parser-diagnostics.txt'
+          $all=@()
+          foreach($path in @(
+            'packaging\windows\scripts\setup-windows-services.ps1',
+            'packaging\windows\scripts\collect-support.ps1',
+            'packaging\windows\tests\qualify-release-1.0.9.ps1'
+          )){
+            $tokens=$null
+            $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path).Path,[ref]$tokens,[ref]$errors)
+            foreach($e in @($errors)){
+              $all += ($path + ':' + $e.Extent.StartLineNumber + ':' + $e.Extent.StartColumnNumber + ' ' + $e.Message + ' :: ' + $e.Extent.Text)
+            }
+          }
+          if($all.Count -gt 0){
+            $all | Set-Content -LiteralPath $diag -Encoding UTF8
+            $all | ForEach-Object { Write-Host $_ }
+            throw 'PowerShell syntax gate failed.'
+          }
+          Set-Content -LiteralPath $diag -Value 'PASS' -Encoding UTF8
+
+      - name: Upload parser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.9-parser-${{ github.sha }}
+          path: release/parser-diagnostics.txt
+          if-no-files-found: error
+
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
