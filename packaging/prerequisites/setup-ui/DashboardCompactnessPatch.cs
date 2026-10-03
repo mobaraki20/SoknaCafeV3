@@ -5,8 +5,8 @@ namespace Sokna.Prerequisites.Setup;
 /// <summary>
 /// Final compactness guard for the Prerequisites dashboard.
 /// The qualification target is an outer 960x650 WinForms window (about 944x611 client area).
-/// Header/content/footer use deterministic bounds instead of Dock ordering so WinForms
-/// cannot hide the fixed regions behind the fill content at small sizes.
+/// Header/content/footer use deterministic bounds instead of legacy TableLayout minimums.
+/// Existing buttons and event handlers are re-parented, never recreated.
 /// Presentation-only: no infrastructure state or lifecycle behavior is changed.
 /// </summary>
 internal static class DashboardCompactnessPatch
@@ -15,7 +15,7 @@ internal static class DashboardCompactnessPatch
     private static readonly IMessageFilter Filter = new RetryFilter();
     private static readonly Color Canvas = Color.FromArgb(246, 246, 243);
     private const int HeaderHeight = 68;
-    private const int FooterHeight = 54;
+    private const int FooterHeight = 58;
 
     [ModuleInitializer]
     internal static void Initialize()
@@ -48,15 +48,20 @@ internal static class DashboardCompactnessPatch
         var dashboard = Find<TableLayoutPanel>(form, "SoknaPrerequisitesDashboard");
         var header = Find<TableLayoutPanel>(form, "SoknaPrerequisitesHeader");
         var tabs = Find<TabControl>(form, "SoknaPrerequisitesTabs");
-        var footer = Find<TableLayoutPanel>(form, "SoknaPrerequisitesFooter");
+        var legacyFooter = Find<TableLayoutPanel>(form, "SoknaPrerequisitesFooter");
         var actions = Find<FlowLayoutPanel>(form, "SoknaFooterActions");
         var overview = Find<TableLayoutPanel>(form, "SoknaOverviewLayout");
-        if (dashboard is null || header is null || tabs is null || footer is null || actions is null || overview is null)
+        if (dashboard is null || header is null || tabs is null || legacyFooter is null || actions is null || overview is null)
             return false;
+
+        var progressText = legacyFooter.Controls.OfType<Label>().FirstOrDefault();
+        var progress = legacyFooter.Controls.OfType<ProgressBar>().FirstOrDefault();
+        var buttons = actions.Controls.OfType<Button>().ToArray();
+        if (progressText is null || progress is null || buttons.Length == 0) return false;
 
         form.SuspendLayout();
         dashboard.SuspendLayout();
-        footer.SuspendLayout();
+        legacyFooter.SuspendLayout();
         actions.SuspendLayout();
         overview.SuspendLayout();
         try
@@ -78,38 +83,20 @@ internal static class DashboardCompactnessPatch
             header.Dock = DockStyle.None;
             header.Margin = Padding.Empty;
 
-            footer.Padding = new Padding(14, 1, 14, 1);
-            footer.AutoSize = false;
-            footer.MinimumSize = Size.Empty;
-            footer.Dock = DockStyle.None;
-            footer.Margin = Padding.Empty;
-            if (footer.RowStyles.Count >= 3)
-            {
-                footer.RowStyles[0].SizeType = SizeType.Absolute;
-                footer.RowStyles[0].Height = 11;
-                footer.RowStyles[1].SizeType = SizeType.Absolute;
-                footer.RowStyles[1].Height = 7;
-                footer.RowStyles[2].SizeType = SizeType.Percent;
-                footer.RowStyles[2].Height = 100;
-            }
-
-            actions.Padding = new Padding(0, 1, 0, 0);
-            actions.Margin = Padding.Empty;
-            actions.AutoSize = false;
-            foreach (var button in actions.Controls.OfType<Button>())
-            {
-                button.AutoSize = false;
-                button.Height = 28;
-                button.MinimumSize = new Size(button.MinimumSize.Width, 28);
-                button.Margin = new Padding(5, 0, 0, 0);
-            }
+            // Detach the live footer controls from the legacy TableLayout. Their existing
+            // click/cancel/log/support handlers remain attached because the controls
+            // themselves are reused.
+            legacyFooter.Controls.Remove(progressText);
+            legacyFooter.Controls.Remove(progress);
+            foreach (var button in buttons) actions.Controls.Remove(button);
 
             dashboard.Controls.Remove(header);
             dashboard.Controls.Remove(tabs);
-            dashboard.Controls.Remove(footer);
+            dashboard.Controls.Remove(legacyFooter);
             dashboard.Visible = false;
             dashboard.Dock = DockStyle.None;
             dashboard.Bounds = Rectangle.Empty;
+            legacyFooter.Visible = false;
 
             var shell = new Panel
             {
@@ -129,14 +116,44 @@ internal static class DashboardCompactnessPatch
                 Margin = Padding.Empty,
                 AutoScroll = false
             };
+            var compactFooter = new Panel
+            {
+                Name = "SoknaPrerequisitesCompactFooter",
+                Dock = DockStyle.None,
+                BackColor = Color.White,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                AutoScroll = false
+            };
 
             tabs.Dock = DockStyle.Fill;
             tabs.Margin = Padding.Empty;
             content.Controls.Add(tabs);
 
+            progressText.AutoSize = false;
+            progressText.Dock = DockStyle.None;
+            progressText.TextAlign = ContentAlignment.MiddleRight;
+            progressText.Margin = Padding.Empty;
+
+            progress.AutoSize = false;
+            progress.Dock = DockStyle.None;
+            progress.Margin = Padding.Empty;
+
+            compactFooter.Controls.Add(progressText);
+            compactFooter.Controls.Add(progress);
+            foreach (var button in buttons)
+            {
+                button.AutoSize = false;
+                button.Dock = DockStyle.None;
+                button.Height = 28;
+                button.MinimumSize = new Size(0, 0);
+                button.Margin = Padding.Empty;
+                compactFooter.Controls.Add(button);
+            }
+
             shell.Controls.Add(content);
             shell.Controls.Add(header);
-            shell.Controls.Add(footer);
+            shell.Controls.Add(compactFooter);
             form.Controls.Add(shell);
             shell.BringToFront();
 
@@ -149,18 +166,32 @@ internal static class DashboardCompactnessPatch
 
                 header.SetBounds(0, 0, width, Math.Min(HeaderHeight, height));
                 content.SetBounds(0, HeaderHeight, width, contentHeight);
-                footer.SetBounds(0, footerY, width, Math.Min(FooterHeight, Math.Max(0, height - footerY)));
+                compactFooter.SetBounds(0, footerY, width, Math.Min(FooterHeight, Math.Max(0, height - footerY)));
+
+                var innerWidth = Math.Max(0, width - 28);
+                progressText.SetBounds(14, 1, innerWidth, 12);
+                progress.SetBounds(14, 15, innerWidth, 7);
+
+                var x = width - 14;
+                foreach (var button in buttons)
+                {
+                    var buttonWidth = string.Equals(button.Name, "SoknaDiagnosticsButton", StringComparison.Ordinal)
+                        ? 138
+                        : Math.Clamp(button.Width > 0 ? button.Width : 112, 100, 118);
+                    x -= buttonWidth;
+                    button.SetBounds(Math.Max(14, x), 27, buttonWidth, 28);
+                    x -= 5;
+                }
 
                 header.Visible = true;
                 content.Visible = true;
-                footer.Visible = true;
+                compactFooter.Visible = true;
                 header.BringToFront();
-                footer.BringToFront();
+                compactFooter.BringToFront();
 
                 header.PerformLayout();
                 content.PerformLayout();
-                footer.PerformLayout();
-                actions.PerformLayout();
+                compactFooter.PerformLayout();
             }
 
             shell.SizeChanged += (_, _) => LayoutShell();
@@ -178,8 +209,8 @@ internal static class DashboardCompactnessPatch
         finally
         {
             overview.ResumeLayout(true);
-            actions.ResumeLayout(true);
-            footer.ResumeLayout(true);
+            actions.ResumeLayout(false);
+            legacyFooter.ResumeLayout(false);
             dashboard.ResumeLayout(false);
             form.ResumeLayout(true);
         }
