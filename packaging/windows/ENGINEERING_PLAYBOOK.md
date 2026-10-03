@@ -1,7 +1,10 @@
 # Windows Services Engineering Playbook
 
-منبع دائمی قواعد ساخت، تست، qualification و انتشار Installer سرویس‌های ویندوز:
+منابع دائمی قبل از هر تغییر جدید روی Windows Services:
 
-`docs/engineering/WINDOWS_INSTALLER_ENGINEERING_PLAYBOOK_FA.md`
+1. قواعد ساخت، تست، qualification و انتشار:
+   `docs/engineering/WINDOWS_INSTALLER_ENGINEERING_PLAYBOOK_FA.md`
+2. قواعد تجربه کاربر، تشخیص نصب، عیب‌یابی بدون AI و remediation:
+   `docs/engineering/WINDOWS_SERVICES_SELF_SERVICE_STANDARD_FA.md`
 
-قبل از هر تغییر جدید روی Windows Services این سند باید خوانده شود.
+هر دو سند باید قبل از شروع کار خوانده شوند.
