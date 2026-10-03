@@ -104,19 +104,39 @@ try {
     if([string]$state.package_version-ne'1.0.10'){throw "Pairing state package version mismatch: $($state.package_version)"}
     if([string]$state.local_base_url-ne"http://127.0.0.1:$port/"){throw 'Pairing state Local Web URL mismatch.'}
 
-    $runtimeCfg=Get-Content -LiteralPath (Join-Path $dataRoot 'runtime\runtime-config.json') -Raw|ConvertFrom-Json
+    $runtimeCfgPath=Join-Path $dataRoot 'runtime\runtime-config.json'
+    $runtimeCfg=Get-Content -LiteralPath $runtimeCfgPath -Raw|ConvertFrom-Json
     if([string]$runtimeCfg.localBaseUrl-ne"http://127.0.0.1:$port/"){throw 'Runtime pairing configuration mismatch.'}
     foreach($secret in @('runtime\runtime-token.private','runtime\local-token.private')){
         $path=Join-Path $dataRoot $secret
         if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "Pairing secret missing: $secret"}
     }
 
+    $runtimeConfigHashBeforeRepair=Hash $runtimeCfgPath
+    $runtimeTokenHashBeforeRepair=Hash (Join-Path $dataRoot 'runtime\runtime-token.private')
+    $localTokenHashBeforeRepair=Hash (Join-Path $dataRoot 'runtime\local-token.private')
+
+    Write-Host 'PAIR PHASE=repair-preserves-existing-pairing'
+    & $setupScript -Mode Repair -ShellRoot $ShellRoot -InstallRoot $installRoot -DataRoot $dataRoot -PairingFile '' -StartWhenPaired 0
+
+    $stateAfterRepair=Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json
+    if(-not[bool]$stateAfterRepair.paired){throw 'Repair cleared existing pairing state.'}
+    if(-not[bool]$stateAfterRepair.pairing_preserved_during_lifecycle){throw 'Repair did not record pairing preservation.'}
+    if([string]$stateAfterRepair.local_base_url-ne"http://127.0.0.1:$port/"){throw 'Repair changed preserved Local Web URL.'}
+    if([string]$stateAfterRepair.package_version-ne'1.0.10'){throw 'Repair lost current package version.'}
+    if((Hash $runtimeCfgPath)-ne$runtimeConfigHashBeforeRepair){throw 'Repair changed existing Runtime pairing configuration.'}
+    if((Hash (Join-Path $dataRoot 'runtime\runtime-token.private'))-ne$runtimeTokenHashBeforeRepair){throw 'Repair changed Runtime token.'}
+    if((Hash (Join-Path $dataRoot 'runtime\local-token.private'))-ne$localTokenHashBeforeRepair){throw 'Repair changed Local token.'}
+    $runtimeAfterRepair=Get-CimInstance Win32_Service -Filter "Name='SoknaRuntime'" -ErrorAction Stop
+    if($runtimeAfterRepair.State-ne'Running'-or[uint32]$runtimeAfterRepair.ProcessId-le0){throw "Runtime not restored after paired repair: state=$($runtimeAfterRepair.State) pid=$($runtimeAfterRepair.ProcessId)"}
+
     Start-Sleep -Milliseconds 300
     $actions=@(Get-Content -LiteralPath $events -ErrorAction SilentlyContinue)
     if($actions.Count-lt2-or$actions[0]-ne'exchange'-or$actions[1]-ne'confirm'){throw "Unexpected pairing server actions: $($actions -join ', ')"}
+    if($actions.Count-ne2){throw "Repair unexpectedly contacted Local Web pairing endpoint: $($actions -join ', ')"}
     Capture-Diagnostics 'pairing-actions.txt' ($actions -join [Environment]::NewLine)
     Set-Content -LiteralPath (Join-Path $DiagnosticsRoot 'pairing-success.txt') -Value 'PASS' -Encoding UTF8
-    Write-Host 'WINDOWS SERVICES INDEPENDENT PAIRING QUALIFICATION: PASS'
+    Write-Host 'WINDOWS SERVICES INDEPENDENT PAIRING + PRESERVATION QUALIFICATION: PASS'
 }
 catch {
     Capture-Diagnostics 'pairing-exception.txt' ($_|Format-List * -Force)
