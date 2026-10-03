@@ -36,6 +36,7 @@ $owned=@{
  'packaging\windows\windows-services-compatibility-v1.json'='windows-services-compatibility-v1.json';
  'packaging\windows\WINDOWS_SERVICES_VERSION.txt'='WINDOWS_SERVICES_VERSION.txt';
  'packaging\windows\scripts\setup-windows-services.ps1'='setup-windows-services.ps1';
+ 'packaging\windows\scripts\pair-windows-services.ps1'='pair-windows-services.ps1';
  'packaging\windows\scripts\remove-windows-services.ps1'='remove-windows-services.ps1';
  'packaging\windows\scripts\collect-support.ps1'='collect-support.ps1';
  'packaging\windows\Sokna.ico'='Sokna.ico'
