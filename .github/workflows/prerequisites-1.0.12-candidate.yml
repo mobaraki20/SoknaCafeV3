@@ -71,8 +71,8 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           # Run 37101874146 at this baseline passed both real Apache/PHP and
-          # Apache Windows-service+sodium regressions. Since then only presentation,
-          # its behavior-oriented contract and this qualification workflow may change.
+          # Apache Windows-service+sodium regressions. Only presentation, its contract,
+          # qualification workflow, changelog and engineering documentation may differ.
           $baseline='078eefa344118d1a5256d24fb026864f09796dd8'
           git fetch origin $baseline --depth=1
           if($LASTEXITCODE-ne0){throw 'Unable to fetch core-regression baseline'}
@@ -80,7 +80,11 @@ jobs:
           $allowed=@(
             'packaging/prerequisites/setup-ui/UiCompatibilityPatch.cs',
             'tests/prerequisites-v2-contract.py',
-            '.github/workflows/prerequisites-1.0.12-candidate.yml'
+            '.github/workflows/prerequisites-1.0.12-candidate.yml',
+            'packaging/prerequisites/CHANGELOG-1.0.12.md',
+            'packaging/prerequisites/PREREQUISITES_UI_STANDARD_1_0_12_FA.md',
+            'packaging/prerequisites/QUALIFICATION_UI_ACCEPTANCE_1_0_12_FA.md',
+            'docs/engineering/PREREQUISITES_INSTALLER_ENGINEERING_PLAYBOOK_1_0_12_FA.md'
           )
           $unexpected=@($changed|Where-Object{$allowed -notcontains $_})
           if($unexpected.Count-gt0){throw "Core/runtime files changed after qualified baseline; inherited evidence is invalid: $($unexpected -join ', ')"}
