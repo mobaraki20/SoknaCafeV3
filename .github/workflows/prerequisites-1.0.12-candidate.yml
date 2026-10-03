@@ -1,0 +1,126 @@
+name: Qualify Prerequisites 1.0.12 Candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-candidate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Static legacy and v2 contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python tests/g7-infrastructure-prerequisites-gate.py
+          if($LASTEXITCODE-ne0){throw 'Legacy G7 contract failed'}
+          python tests/prerequisites-v2-contract.py
+          if($LASTEXITCODE-ne0){throw 'Prerequisites v2 contract failed'}
+
+      - name: Publish hardened manager
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-smoke
+          if($LASTEXITCODE-ne0){throw 'Prerequisites UI build failed'}
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $expected=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          $actual=([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion).Split('+')[0]
+          if($actual-ne$expected){throw "ProductVersion mismatch: $actual != $expected"}
+          $p=Start-Process -FilePath $exe -ArgumentList '--self-test-prerequisites-v2' -Wait -PassThru
+          if($p.ExitCode-ne0){throw "V2 self-test failed: $($p.ExitCode)"}
+          $p=Start-Process -FilePath $exe -ArgumentList '--self-test-endpoint-port' -Wait -PassThru
+          if($p.ExitCode-ne0){throw "Endpoint self-test failed: $($p.ExitCode)"}
+          $p=Start-Process -FilePath $exe -ArgumentList '--self-test-infrastructure-ownership' -Wait -PassThru
+          if($p.ExitCode-ne0){throw "Ownership self-test failed: $($p.ExitCode)"}
+
+      - name: UI layout audit and screenshots
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(Resolve-Path packaging/prerequisites/out-smoke/SoknaPrerequisitesSetup.exe).Path
+          $shots=Join-Path $PWD 'packaging\prerequisites\qualification\screenshots'
+          New-Item -ItemType Directory -Path $shots -Force|Out-Null
+          foreach($size in @(@(960,650),@(1100,660),@(1280,720))){
+            $w=$size[0];$h=$size[1]
+            $p=Start-Process -FilePath $exe -ArgumentList @('--audit-prerequisites-ui',"$w","$h") -Wait -PassThru
+            if($p.ExitCode-ne0){throw "UI audit ${w}x${h} failed: $($p.ExitCode)"}
+            $png=Join-Path $shots "prerequisites-${w}x${h}.png"
+            $p=Start-Process -FilePath $exe -ArgumentList @('--render-prerequisites-ui',$png,"$w","$h") -Wait -PassThru
+            if($p.ExitCode-ne0){throw "UI render ${w}x${h} failed: $($p.ExitCode)"}
+            if((Get-Item $png).Length-lt20000){throw "UI screenshot is suspiciously small: $png"}
+          }
+
+      - name: Real Apache PHP regression
+        shell: pwsh
+        run: tests/g7-windows-apache-php-runtime.ps1
+
+      - name: Apache service sodium regression
+        shell: pwsh
+        run: tests/g7-windows-apache-service-sodium.ps1
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build standalone candidate
+        shell: pwsh
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          $ErrorActionPreference='Stop'
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot (Resolve-Path .).Path
+          if($LASTEXITCODE-ne0){throw 'Installer build failed'}
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          $setup="packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-$v.exe"
+          if(-not(Test-Path $setup)){throw "Installer missing: $setup"}
+          $index=Get-Content packaging/prerequisites/out/installer/artifact-index.json -Raw|ConvertFrom-Json
+          if($index.source_commit-ne'${{ github.sha }}'){throw "Artifact source commit mismatch: $($index.source_commit)"}
+
+      - name: Installer upgrade repair downgrade lifecycle
+        shell: pwsh
+        run: tests/prerequisites-v2-installer-lifecycle.ps1
+
+      - name: Write qualification report
+        shell: pwsh
+        run: |
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          $index=Get-Content packaging/prerequisites/out/installer/artifact-index.json -Raw|ConvertFrom-Json
+          @(
+            'SOKNA Prerequisites candidate qualification',
+            "version=$v",
+            "source_commit=${{ github.sha }}",
+            "installer_sha256=$($index.sha256)",
+            "release_lock_sha256=$($index.release_lock_sha256)",
+            "infrastructure_policy_sha256=$($index.infrastructure_policy_sha256)",
+            'legacy_g7_contract=PASS',
+            'v2_contract=PASS',
+            'v2_selftest=PASS',
+            'ui_audit=PASS',
+            'real_apache_php=PASS',
+            'apache_service_sodium=PASS',
+            'upgrade_repair_downgrade=PASS'
+          )|Set-Content packaging/prerequisites/out/installer/qualification-report.txt -Encoding UTF8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-prerequisites-1.0.12-candidate-${{ github.sha }}
+          path: |
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.12.exe
+            packaging/prerequisites/out/installer/artifact-index.json
+            packaging/prerequisites/out/installer/qualification-report.txt
+            packaging/prerequisites/qualification/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
