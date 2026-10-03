@@ -1,0 +1,212 @@
+name: Release Windows Services 1.0.9
+
+on:
+  push:
+    branches:
+      - release/windows-services-1.0.9
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows-services-1.0.9
+  cancel-in-progress: false
+
+jobs:
+  qualify-and-release:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress -y
+
+      - name: Validate release scope and version
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if($version-ne'1.0.9'){throw "Unexpected Windows Services version: $version"}
+          if(-not(Test-Path packaging/windows/WINDOWS_SERVICES_1.0.9_NOTES_FA.md)){throw 'Final release notes missing.'}
+          Write-Host "Windows Services release version: $version"
+
+      - name: Build exact Windows release
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $root 'release\out-windows-1.0.9'
+          $iscc=@(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not$iscc){throw 'ISCC missing'}
+          & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          $installer=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.9.exe'
+          $index=Join-Path $out 'artifact-index.json'
+          if(-not(Test-Path -LiteralPath $installer -PathType Leaf)){throw 'Final installer missing.'}
+          if(-not(Test-Path -LiteralPath $index -PathType Leaf)){throw 'Artifact index missing.'}
+
+      - name: Verify package, versions, icon inputs and shell ownership
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=(Resolve-Path 'release\out-windows-1.0.9').Path
+          $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          foreach($name in @('SoknaSetupUi.exe','SoknaSetupHost.exe')){
+            $path=Join-Path $out $name
+            if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "Missing $name"}
+            $info=[Diagnostics.FileVersionInfo]::GetVersionInfo($path)
+            $pv=[string]$info.ProductVersion
+            $fv=[string]$info.FileVersion
+            Write-Host "$name ProductVersion=[$pv] FileVersion=[$fv]"
+            if($pv-ne$version){throw "$name ProductVersion mismatch: [$pv] expected [$version]"}
+            if($pv.Contains('+')){throw "$name ProductVersion still contains source revision suffix: $pv"}
+          }
+          foreach($required in @('Sokna.ico','collect-support.ps1','setup-windows-services.ps1','windows-services-compatibility-v1.json')){
+            if(-not(Test-Path -LiteralPath (Join-Path $out ('shell\'+$required)))){throw "Shell payload missing: $required"}
+          }
+          $forbidden=@('php.exe','httpd.exe','apache.exe','mysqld.exe','mariadb.exe','SoknaAppPayload.zip')
+          foreach($leaf in $forbidden){
+            if(Get-ChildItem -LiteralPath (Join-Path $out 'shell') -Recurse -File -Filter $leaf -ErrorAction SilentlyContinue){throw "Forbidden non-Windows payload leaked into package: $leaf"}
+          }
+
+      - name: Qualify install and repeated repair against live Print Worker
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $root 'release\out-windows-1.0.9\shell'
+          $install='C:\Program Files\SOKNA Windows Services 1.0.9 CI'
+          $data='D:\SOKNA-Windows-1.0.9-CI\Data'
+          $support='D:\SOKNA-Windows-1.0.9-CI\Support'
+          try {
+            & packaging/windows/scripts/setup-windows-services.ps1 -Mode Install -ShellRoot $shell -InstallRoot $install -DataRoot $data -PairingFile '' -StartWhenPaired 0
+            $svc=Get-Service SoknaPrintWorker -ErrorAction Stop
+            try{if($svc.Status-ne'Running'){throw "Print Worker not running after install: $($svc.Status)"}}finally{$svc.Dispose()}
+
+            $sqlite=Join-Path $install 'PrintAgent\Service\e_sqlite3.dll'
+            if(-not(Test-Path -LiteralPath $sqlite -PathType Leaf)){throw 'e_sqlite3.dll missing after install.'}
+
+            for($i=1;$i-le2;$i++){
+              Write-Host "Repair pass $i while installed Print Worker is live"
+              $before=Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'" -ErrorAction Stop
+              if([uint32]$before.ProcessId-le0){throw "Print Worker PID missing before repair pass $i"}
+              Write-Host "Pre-repair PID=$($before.ProcessId)"
+              & packaging/windows/scripts/setup-windows-services.ps1 -Mode Repair -ShellRoot $shell -InstallRoot $install -DataRoot $data -PairingFile '' -StartWhenPaired 0
+              $after=Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'" -ErrorAction Stop
+              if($after.State-ne'Running'-or[uint32]$after.ProcessId-le0){throw "Print Worker unhealthy after repair pass $i: state=$($after.State) pid=$($after.ProcessId)"}
+              if(-not(Test-Path -LiteralPath $sqlite -PathType Leaf)){throw "e_sqlite3.dll missing after repair pass $i"}
+              $residue=@(Get-ChildItem -LiteralPath $install -Directory -ErrorAction SilentlyContinue|Where-Object{$_.Name -like 'PrintAgent.__incoming.*'})
+              if($residue.Count-gt0){throw "Staging residue remains after repair pass $i: $($residue.FullName -join ', ')"}
+            }
+
+            $state=Get-Content -LiteralPath (Join-Path $data 'setup\windows-services-state.json') -Raw|ConvertFrom-Json
+            if([string]$state.shutdown_proof-ne'service-status+process-exit'){throw 'Shutdown proof marker missing from install state.'}
+            if([string]$state.payload_replacement-ne'transactional-print-agent'){throw 'Transactional payload marker missing from install state.'}
+
+            New-Item -ItemType Directory -Path $support -Force|Out-Null
+            & packaging/windows/scripts/collect-support.ps1 -DataRoot $data -OutputRoot $support
+            $zip=Get-ChildItem -LiteralPath $support -Filter 'SOKNA-Support-*.zip' -File|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1
+            if(-not$zip){throw 'Support Bundle was not created.'}
+            $extract=Join-Path $env:TEMP ('sokna-support-check-'+[guid]::NewGuid().ToString('N'))
+            try{
+              Expand-Archive -LiteralPath $zip.FullName -DestinationPath $extract -Force
+              $summary=Get-Content -LiteralPath (Join-Path $extract 'summary.json') -Raw|ConvertFrom-Json
+              if([string]$summary.format-ne'sokna-windows-support-v2'){throw "Unexpected support bundle format: $($summary.format)"}
+              foreach($relative in @('file-locks\restart-manager-locks.txt','file-locks\tasklist-e_sqlite3.txt','file-locks\target-files.txt')){
+                if(-not(Test-Path -LiteralPath (Join-Path $extract $relative) -PathType Leaf)){throw "Support Bundle diagnostic missing: $relative"}
+              }
+            } finally {
+              Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          } finally {
+            try { & packaging/windows/scripts/setup-windows-services.ps1 -Mode Uninstall -ShellRoot $shell -InstallRoot $install -DataRoot $data -PairingFile '' -StartWhenPaired 0 } catch { Write-Warning $_ }
+            Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'D:\SOKNA-Windows-1.0.9-CI' -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Verify uninstall residue
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($name in @('SoknaRuntime','SoknaPrintWorker')){
+            if(Get-Service -Name $name -ErrorAction SilentlyContinue){throw "Service still registered after qualification cleanup: $name"}
+          }
+
+      - name: Prepare release assets and checksums
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=(Resolve-Path 'release\out-windows-1.0.9').Path
+          $installer=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.9.exe'
+          $index=Join-Path $out 'artifact-index.json'
+          $namedIndex=Join-Path $out 'SOKNA-Windows-Services-1.0.9-artifact-index.json'
+          Copy-Item -LiteralPath $index -Destination $namedIndex -Force
+          $hashes=@()
+          foreach($path in @($installer,$namedIndex)){
+            $h=Get-FileHash -LiteralPath $path -Algorithm SHA256
+            $hashes += ($h.Hash.ToLowerInvariant()+'  '+[IO.Path]::GetFileName($path))
+          }
+          [IO.File]::WriteAllLines((Join-Path $out 'SHA256SUMS.txt'),$hashes,(New-Object Text.UTF8Encoding($false)))
+          Get-Content (Join-Path $out 'SHA256SUMS.txt')
+
+      - name: Upload qualified workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.9-qualified-${{ github.sha }}
+          path: |
+            release/out-windows-1.0.9/SOKNA-Windows-Services-Setup-1.0.9.exe
+            release/out-windows-1.0.9/SOKNA-Windows-Services-1.0.9-artifact-index.json
+            release/out-windows-1.0.9/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='windows-services-v1.0.9'
+          $title='SOKNA Windows Services 1.0.9'
+          $out=(Resolve-Path 'release\out-windows-1.0.9').Path
+          $assets=@(
+            (Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.9.exe'),
+            (Join-Path $out 'SOKNA-Windows-Services-1.0.9-artifact-index.json'),
+            (Join-Path $out 'SHA256SUMS.txt')
+          )
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if($LASTEXITCODE-eq0){
+            gh release upload $tag @assets --clobber --repo $env:GITHUB_REPOSITORY
+            if($LASTEXITCODE-ne0){throw 'Release asset upload failed.'}
+          }else{
+            gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $title --notes-file 'packaging/windows/WINDOWS_SERVICES_1.0.9_NOTES_FA.md'
+            if($LASTEXITCODE-ne0){throw 'GitHub Release creation failed.'}
+          }
+
+      - name: Verify published release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $json=gh release view windows-services-v1.0.9 --repo $env:GITHUB_REPOSITORY --json tagName,name,isDraft,isPrerelease,assets | ConvertFrom-Json
+          if($json.tagName-ne'windows-services-v1.0.9'-or$json.isDraft-or$json.isPrerelease){throw 'Published release metadata is invalid.'}
+          $names=@($json.assets|ForEach-Object{$_.name})
+          foreach($name in @('SOKNA-Windows-Services-Setup-1.0.9.exe','SOKNA-Windows-Services-1.0.9-artifact-index.json','SHA256SUMS.txt')){
+            if($names-notcontains$name){throw "Published release asset missing: $name"}
+          }
+          Write-Host 'SOKNA Windows Services 1.0.9 publication verified.'
