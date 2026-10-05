@@ -1,0 +1,143 @@
+name: Qualify Prerequisites 1.0.13 MariaDB Wizard Hotfix
+
+on:
+  push:
+    branches:
+      - hotfix/prerequisites-1.0.13-mariadb-wizard
+    paths:
+      - '.github/workflows/prerequisites-1.0.13-hotfix.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-hotfix:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Static hotfix contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $v=(Get-Content packaging/prerequisites/VERSION.txt -Raw).Trim()
+          if($v-ne'1.0.13'){throw "Expected 1.0.13, got $v"}
+          $proj=Get-Content packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -Raw
+          if($proj-notmatch 'ProgramV3'){throw 'ProgramV3 is not the startup object'}
+          $hotfix=Get-Content packaging/prerequisites/setup-ui/PrerequisitesHotfixV3.cs -Raw
+          if($hotfix-match [regex]::Escape('maria*d.exe')){throw 'Broad MariaDB executable wildcard is forbidden in hotfix path'}
+          if($hotfix-notmatch 'mariadbd\.exe' -or $hotfix-notmatch 'mysqld\.exe'){throw 'Exact MariaDB server names are missing'}
+          if($hotfix-match 'Timer\s*\{\s*Interval\s*=\s*5000'){throw 'Recurring five-second enrichment timer returned'}
+          if($hotfix-notmatch 'mariadb-upgrade-wizard\.exe'){throw 'Regression decoy is missing from locator self-test'}
+          Write-Host 'STATIC_MARIADB_WIZARD_HOTFIX=PASS'
+
+      - name: Publish manager
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj -c Release -o packaging/prerequisites/out-hotfix
+          if($LASTEXITCODE-ne0){throw "Manager build failed: $LASTEXITCODE"}
+          $exe=(Resolve-Path packaging/prerequisites/out-hotfix/SoknaPrerequisitesSetup.exe).Path
+          $actual=([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion).Split('+')[0]
+          if($actual-ne'1.0.13'){throw "ProductVersion mismatch: $actual"}
+
+      - name: MariaDB exact server locator regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(Resolve-Path packaging/prerequisites/out-hotfix/SoknaPrerequisitesSetup.exe).Path
+          $p=Start-Process -FilePath $exe -ArgumentList '--self-test-mariadb-server-locator' -Wait -PassThru
+          if($p.ExitCode-ne0){throw "MariaDB server locator self-test failed: $($p.ExitCode)"}
+          Write-Host 'MARIADB_UPGRADE_WIZARD_NOT_SELECTED=PASS'
+
+      - name: Existing v2 self-test remains green
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(Resolve-Path packaging/prerequisites/out-hotfix/SoknaPrerequisitesSetup.exe).Path
+          $p=Start-Process -FilePath $exe -ArgumentList '--self-test-prerequisites-v2' -Wait -PassThru
+          if($p.ExitCode-ne0){throw "Prerequisites v2 self-test failed: $($p.ExitCode)"}
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build 1.0.13 installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot $root
+          if($LASTEXITCODE-ne0){throw "Installer build failed: $LASTEXITCODE"}
+          $installer='packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.13.exe'
+          if(-not(Test-Path $installer)){throw '1.0.13 installer missing'}
+          $index='packaging/prerequisites/out/installer/artifact-index.json'
+          if(-not(Test-Path $index)){throw 'artifact-index.json missing'}
+          $meta=Get-Content $index -Raw | ConvertFrom-Json
+          if($meta.version-ne'1.0.13'){throw "Artifact version mismatch: $($meta.version)"}
+          if($meta.source_commit-ne$env:GITHUB_SHA){throw "Source commit mismatch: $($meta.source_commit) != $env:GITHUB_SHA"}
+
+      - name: Upgrade 1.0.12 to 1.0.13, repair, block downgrade
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $old="$env:RUNNER_TEMP\SOKNA-Prerequisites-Setup-1.0.12.exe"
+          curl.exe -fL --retry 3 --retry-delay 2 -o $old 'https://github.com/mobaraki20/SoknaCafeV3/releases/download/prerequisites-v1.0.12/SOKNA-Prerequisites-Setup-1.0.12.exe'
+          if($LASTEXITCODE-ne0){throw 'Failed to download 1.0.12 release'}
+          $new=(Resolve-Path 'packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.13.exe').Path
+          function Invoke-Setup([string]$path){ Start-Process -FilePath $path -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru }
+          function Installed-Version {
+            $key='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{BF4DB10B-9F11-4A7A-8B02-1B090FC57B31}_is1'
+            if(-not(Test-Path $key)){return ''}
+            [string](Get-ItemProperty $key).DisplayVersion
+          }
+          $uninstall='C:\Program Files\SOKNA Prerequisites\unins000.exe'
+          try {
+            $p=Invoke-Setup $old
+            if($p.ExitCode-ne0 -or (Installed-Version)-ne'1.0.12'){throw 'Seed 1.0.12 install failed'}
+            $p=Invoke-Setup $new
+            if($p.ExitCode-ne0 -or (Installed-Version)-ne'1.0.13'){throw 'Upgrade to 1.0.13 failed'}
+            $installed='C:\Program Files\SOKNA Prerequisites\SoknaPrerequisitesSetup.exe'
+            $pv=([Diagnostics.FileVersionInfo]::GetVersionInfo($installed).ProductVersion).Split('+')[0]
+            if($pv-ne'1.0.13'){throw "Installed manager ProductVersion mismatch: $pv"}
+            $p=Invoke-Setup $new
+            if($p.ExitCode-ne0 -or (Installed-Version)-ne'1.0.13'){throw 'Same-version repair failed'}
+            $down=Invoke-Setup $old
+            if($down.ExitCode-eq0){throw 'Silent downgrade 1.0.13 -> 1.0.12 unexpectedly succeeded'}
+            if((Installed-Version)-ne'1.0.13'){throw 'Downgrade guard mutated installed version'}
+            Write-Host 'PREREQUISITES_1_0_13_LIFECYCLE=PASS'
+          }
+          finally {
+            if(Test-Path $uninstall){ Start-Process -FilePath $uninstall -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait | Out-Null }
+          }
+
+      - name: Qualification report
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path 'packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.13.exe').Path
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          @(
+            'status=PASS',
+            'version=1.0.13',
+            "source_commit=$env:GITHUB_SHA",
+            "installer_sha256=$sha",
+            'mariadb_locator=exact-name-only',
+            'mariadb_upgrade_wizard_decoy=PASS',
+            'recurring_dependency_probe=disabled',
+            'upgrade_1.0.12_to_1.0.13=PASS',
+            'same_version_repair=PASS',
+            'silent_downgrade_block=PASS'
+          ) | Set-Content packaging/prerequisites/out/installer/qualification-report-1.0.13.txt -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-prerequisites-1.0.13-qualified-${{ github.sha }}
+          path: |
+            packaging/prerequisites/out/installer/SOKNA-Prerequisites-Setup-1.0.13.exe
+            packaging/prerequisites/out/installer/artifact-index.json
+            packaging/prerequisites/out/installer/qualification-report-1.0.13.txt
+          if-no-files-found: error
