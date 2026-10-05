@@ -39,7 +39,7 @@ The infrastructure version is separate from the manager version. PHP/Apache/Mari
 
 ## UI contract
 
-The 1.0.12 hardened entry point is `ProgramV2`. The existing 1.0.11 `MainForm` remains the infrastructure engine/UI baseline; the hardening layer adds RTL layout enforcement, preferred Persian font fallback, stable diagnostics, safe remediation, state provenance, support bundle v2, and screenshot/audit hooks.
+The hardened entry point from 1.0.13 onward is `ProgramV3`. The existing infrastructure engine/UI baseline remains unchanged; the hardening layer owns RTL layout enforcement, diagnostics integration, provenance enrichment, support tooling and safety guards.
 
 Required rules:
 
@@ -51,7 +51,7 @@ Required rules:
 
 ## State contract
 
-The core state remains `Infrastructure\infrastructure-state.json`. The 1.0.12 hardening layer enriches it with:
+The core state remains `Infrastructure\infrastructure-state.json`. The hardening layer enriches it with:
 
 - `setup_version`
 - `release_lock_sha256`
@@ -61,6 +61,18 @@ The core state remains `Infrastructure\infrastructure-state.json`. The 1.0.12 ha
 - `state_write_mode=atomic-replace`
 
 State enrichment is best-effort and must never make infrastructure operations fail. Writes use same-directory temporary-file replacement and never include credentials.
+
+### MariaDB executable-selection invariant
+
+Only the actual server executable may be used for version probing or server-health classification:
+
+1. Prefer exactly `MariaDB\bin\mariadbd.exe`.
+2. If absent, allow exactly `MariaDB\bin\mysqld.exe` as the legacy/server fallback.
+3. Never discover the server with wildcard patterns such as `maria*d.exe`.
+4. Never execute helper/GUI binaries such as `mariadb-upgrade-wizard.exe` for metadata, diagnostics or version probing.
+5. Provenance/version enrichment must not poll dependency executables on a recurring UI timer. It runs only at bounded lifecycle points such as form shown/closed or explicit user diagnostics.
+
+Regression origin: Prerequisites 1.0.12 used `maria*d.exe`; on the real MariaDB package that pattern could select MariaDB Upgrade Wizard. Because state enrichment ran every five seconds, the wizard repeatedly opened and made the manager appear hung. This failure mode must have an explicit locator self-test in every subsequent Prerequisites candidate.
 
 ## Diagnostics and support
 
@@ -72,33 +84,32 @@ Support bundle v2 includes stable findings, `sc queryex`, `sc qc`, relevant list
 
 Do not use GitHub Actions as the iterative development loop.
 
-1. Make coherent changes on a dedicated `work/prerequisites-*` branch.
+1. Make coherent changes on a dedicated `work/prerequisites-*` or focused `hotfix/prerequisites-*` branch.
 2. Run/inspect static contracts locally or by source review.
-3. Only when the candidate is coherent, manually dispatch the candidate qualification workflow.
+3. Only when the candidate is coherent, run one focused Windows qualification.
 4. Fix the candidate as a batch if qualification finds issues.
-5. Qualification must produce one installer, artifact index, report, and UI screenshots tied to one source commit.
+5. Qualification must produce one installer, artifact index/report and any required evidence tied to one source commit.
 6. A release must publish the exact qualified artifact; do not rebuild the installer for release.
 
 ## Candidate qualification
 
-The 1.0.12 candidate workflow is `.github/workflows/prerequisites-1.0.12-candidate.yml` and is `workflow_dispatch` only.
-
 Required gates include:
 
-- legacy G7 static contract
-- self-service v2 static contract
+- legacy G7 static contract where relevant
+- self-service contract
 - .NET publish and ProductVersion match
-- v2 runtime self-test
+- runtime self-tests
+- **MariaDB exact server-locator self-test with Upgrade Wizard present as a decoy**
 - endpoint and ownership self-tests
-- UI audit + screenshots at 960x650, 1100x660, 1280x720
-- real Apache/PHP regression
-- Apache Windows service sodium regression
+- UI audit/screenshots when presentation changes
+- real Apache/PHP regression when infrastructure code changes
+- Apache Windows service sodium regression when PHP/Apache binding changes
 - Inno build with artifact provenance
-- upgrade from 1.0.11
+- upgrade from the previous released manager
 - same-version repair refresh
 - silent downgrade block
 
-## Lessons carried forward from Windows Services
+## Lessons carried forward from Windows Services and Prerequisites
 
 - A Windows service reporting `Stopped` is not by itself proof that every owned process/file mapping is released; replacement paths must be lifecycle-aware.
 - UI screenshots must be rendered from the real executable, not inferred from source.
@@ -106,3 +117,5 @@ Required gates include:
 - A passing document or manifest is not evidence that runtime behavior passed; qualification must exercise the behavior.
 - Record source commit and policy fingerprints in built artifacts.
 - Support bundles should make the next failure diagnosable without repeated trial-and-error.
+- Never infer an executable role from a broad filename wildcard when a dependency ships multiple GUI/helper tools beside its server binary.
+- Background metadata refresh must never launch arbitrary dependency executables repeatedly.
