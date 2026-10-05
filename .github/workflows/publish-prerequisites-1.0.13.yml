@@ -1,0 +1,111 @@
+name: Publish Qualified Prerequisites 1.0.13
+
+on:
+  push:
+    branches:
+      - publish/prerequisites-1.0.13
+    paths:
+      - '.github/workflows/publish-prerequisites-1.0.13.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-qualified:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - name: Download exact qualified artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $headers=@{
+            Authorization="Bearer $env:GH_TOKEN"
+            Accept='application/vnd.github+json'
+            'X-GitHub-Api-Version'='2022-11-28'
+          }
+          $uri="https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/11325361479/zip"
+          Invoke-WebRequest -Headers $headers -Uri $uri -OutFile qualified.zip -MaximumRedirection 5
+          Expand-Archive -LiteralPath qualified.zip -DestinationPath qualified -Force
+
+      - name: Verify provenance and checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $expectedCommit='1f2e649de28cc7b356538ce438ec4af7aca4f3ea'
+          $expectedSha='4c0a608250dbd4d57a4ff46a4b4bc095f6f54f854d2a310c77b21ef2453fd048'
+          $exe=Get-ChildItem qualified -Recurse -File -Filter 'SOKNA-Prerequisites-Setup-1.0.13.exe' | Select-Object -First 1
+          $index=Get-ChildItem qualified -Recurse -File -Filter 'artifact-index.json' | Select-Object -First 1
+          $report=Get-ChildItem qualified -Recurse -File -Filter 'qualification-report-1.0.13.txt' | Select-Object -First 1
+          if(-not$exe -or -not$index -or -not$report){throw 'Qualified artifact is incomplete.'}
+          $meta=Get-Content -LiteralPath $index.FullName -Raw | ConvertFrom-Json
+          if($meta.version -ne '1.0.13'){throw "Version mismatch: $($meta.version)"}
+          if($meta.source_commit -ne $expectedCommit){throw "Source commit mismatch: $($meta.source_commit)"}
+          if($meta.sha256 -ne $expectedSha){throw "Artifact-index SHA mismatch: $($meta.sha256)"}
+          $actual=(Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actual -ne $expectedSha){throw "Installer SHA mismatch: $actual"}
+          if([int64]$meta.size_bytes -ne $exe.Length){throw 'Installer size mismatch.'}
+          $reportText=Get-Content -LiteralPath $report.FullName -Raw
+          if($reportText -notmatch 'mariadb_upgrade_wizard_decoy=PASS'){throw 'MariaDB wizard regression proof missing.'}
+          if($reportText -notmatch 'recurring_dependency_probe=disabled'){throw 'Recurring probe guard proof missing.'}
+          New-Item -ItemType Directory -Path release-assets -Force | Out-Null
+          Copy-Item -LiteralPath $exe.FullName -Destination 'release-assets/SOKNA-Prerequisites-Setup-1.0.13.exe'
+          Copy-Item -LiteralPath $index.FullName -Destination 'release-assets/SOKNA-Prerequisites-1.0.13-artifact-index.json'
+          Copy-Item -LiteralPath $report.FullName -Destination 'release-assets/qualification-report-1.0.13.txt'
+          $indexSha=(Get-FileHash -LiteralPath 'release-assets/SOKNA-Prerequisites-1.0.13-artifact-index.json' -Algorithm SHA256).Hash.ToLowerInvariant()
+          @(
+            "$expectedSha  SOKNA-Prerequisites-Setup-1.0.13.exe",
+            "$indexSha  SOKNA-Prerequisites-1.0.13-artifact-index.json"
+          ) | Set-Content -LiteralPath 'release-assets/SHA256SUMS.txt' -Encoding ascii
+
+      - name: Publish exact qualified release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='prerequisites-v1.0.13'
+          $target='1f2e649de28cc7b356538ce438ec4af7aca4f3ea'
+          $assets=@(
+            'release-assets/SOKNA-Prerequisites-Setup-1.0.13.exe',
+            'release-assets/SOKNA-Prerequisites-1.0.13-artifact-index.json',
+            'release-assets/SHA256SUMS.txt',
+            'release-assets/qualification-report-1.0.13.txt'
+          )
+          $notes=@'
+          SOKNA Prerequisites 1.0.13
+
+          Hotfix for the repeated MariaDB Upgrade Wizard popup introduced by 1.0.12.
+
+          - MariaDB server detection now accepts only mariadbd.exe or mysqld.exe.
+          - Helper/GUI tools such as mariadb-upgrade-wizard.exe are never used for version probing.
+          - Recurring five-second dependency executable probing has been removed from the production UI path.
+          - Regression qualification deliberately places MariaDB Upgrade Wizard as a decoy and verifies it is not selected.
+          - Upgrade 1.0.12 -> 1.0.13, same-version repair and silent downgrade protection all passed.
+
+          Qualified source commit: 1f2e649de28cc7b356538ce438ec4af7aca4f3ea
+          Qualification run: 37261818633
+          Installer SHA256: 4c0a608250dbd4d57a4ff46a4b4bc095f6f54f854d2a310c77b21ef2453fd048
+          '@
+          $notes | Set-Content release-notes.txt -Encoding utf8
+          gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $target --title 'SOKNA Prerequisites 1.0.13' --notes-file release-notes.txt
+          if($LASTEXITCODE-ne0){throw 'GitHub Release creation failed.'}
+
+      - name: Verify published release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $json=gh release view prerequisites-v1.0.13 --repo $env:GITHUB_REPOSITORY --json tagName,name,isDraft,isPrerelease,assets,targetCommitish | ConvertFrom-Json
+          if($LASTEXITCODE-ne0){throw 'Published release lookup failed.'}
+          if($json.tagName-ne'prerequisites-v1.0.13' -or $json.isDraft -or $json.isPrerelease){throw 'Published release metadata invalid.'}
+          if($json.targetCommitish-ne'1f2e649de28cc7b356538ce438ec4af7aca4f3ea'){throw "Target commit mismatch: $($json.targetCommitish)"}
+          $names=@($json.assets | ForEach-Object {$_.name})
+          foreach($name in @('SOKNA-Prerequisites-Setup-1.0.13.exe','SOKNA-Prerequisites-1.0.13-artifact-index.json','SHA256SUMS.txt','qualification-report-1.0.13.txt')){
+            if($names -notcontains $name){throw "Published asset missing: $name"}
+          }
+          Write-Host 'SOKNA Prerequisites 1.0.13 publication verified.'
