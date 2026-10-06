@@ -11,7 +11,7 @@
       "version_source": "windows/runtime/source/Sokna.Runtime.Service.csproj#Version"
     },
     "print-agent": {
-      "version": "6.2.7",
+      "version": "6.2.8",
       "print_server_protocol": 4,
       "loopback_protocol": 1,
       "service_name": "SoknaPrintWorker",
@@ -32,7 +32,7 @@
     "mariadb",
     "business-data"
   ],
-  "package_version": "1.0.8",
+  "package_version": "1.0.12",
   "activation_rule": "verify-shell-hashes-and-component-versions-before-service-mutation",
   "lifecycle_ownership": {
     "windows_services": [
