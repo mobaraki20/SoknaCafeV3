@@ -119,7 +119,12 @@
           "renderer_owner": "ReceiptRenderer",
           "pdf_writer": "ReceiptPdfWriter",
           "preview_default_format": "pdf"
-        }
+        },
+        "advertised_capabilities": [
+          "wake_v1",
+          "preview_png_v1",
+          "preview_pdf_v1"
+        ]
       },
       "semantics": [
         "capability negotiation is authoritative; callers must not infer preview support from agent_version",
