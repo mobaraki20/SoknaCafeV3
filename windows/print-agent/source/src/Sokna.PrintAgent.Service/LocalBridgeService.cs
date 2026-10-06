@@ -251,6 +251,11 @@ public sealed class LocalBridgeService : BackgroundService
                 await HandlePreviewAsync(response,root,options,serviceToken);
                 return response;
             }
+            if(request.Path=="/v1/capabilities")
+            {
+                HandleCapabilities(response,root);
+                return response;
+            }
             response.StatusCode=404;
             return response;
         }
@@ -300,6 +305,26 @@ public sealed class LocalBridgeService : BackgroundService
         await Task.CompletedTask;
     }
 
+    private static void HandleCapabilities(BridgeHttpResponse response,JsonElement root)
+    {
+        if(!TryString(root,"type",out var type)||type!="print.capabilities"||!TryInt32(root,"protocol_version",out var version)||version!=1)
+        {
+            response.StatusCode=422;
+            return;
+        }
+        SetJson(response,new
+        {
+            success=true,
+            protocol_version=1,
+            agent_version=AgentVersionInfo.Current,
+            capabilities=new[]{"wake_v1","preview_png_v1","preview_pdf_v1"},
+            preview_formats=new[]{"png","pdf"},
+            preview_default_format="pdf",
+            renderer_owner="ReceiptRenderer",
+            pdf_writer="ReceiptPdfWriter"
+        });
+    }
+
     private async Task HandlePreviewAsync(BridgeHttpResponse response,JsonElement root,AgentOptions options,CancellationToken ct)
     {
         if(!TryString(root,"type",out var type)||type!="print.preview"||!TryInt32(root,"protocol_version",out var version)||version!=1){response.StatusCode=422;return;}
@@ -309,9 +334,12 @@ public sealed class LocalBridgeService : BackgroundService
         if(!TryDouble(root,"paper_width_mm",out var paper)){response.StatusCode=422;return;}
         if(!TryDouble(root,"printable_width_mm",out var printable)){response.StatusCode=422;return;}
 
+        var outputFormat=TryString(root,"output_format",out var requestedOutput)?requestedOutput.Trim().ToLowerInvariant():"png";
+        if(outputFormat is not ("png" or "pdf")){response.StatusCode=422;return;}
         var legacyDpi=TryInt32(root,"dpi",out var dpi)?dpi:203;
         var dpiX=TryInt32(root,"dpi_x",out var requestedDpiX)?requestedDpiX:legacyDpi;
         var dpiY=TryInt32(root,"dpi_y",out var requestedDpiY)?requestedDpiY:legacyDpi;
+        if(outputFormat=="pdf"&&dpiX!=dpiY){response.StatusCode=422;return;}
         var limits=new PreviewSafetyLimits(
             options.PreviewMaxPayloadBytes,
             options.PreviewMaxTextCharacters,
@@ -339,29 +367,56 @@ public sealed class LocalBridgeService : BackgroundService
             dpiY,
             limits,
             TimeSpan.FromSeconds(options.PreviewTimeoutSeconds),
-            TimeSpan.FromMilliseconds(options.PreviewExitProofTimeoutMilliseconds));
+            TimeSpan.FromMilliseconds(options.PreviewExitProofTimeoutMilliseconds),
+            outputFormat);
         var result=await _previewScheduler.SubmitAsync(request,ct);
         if(ct.IsCancellationRequested)throw new OperationCanceledException(ct);
 
         switch(result.Status)
         {
             case PreviewScheduleStatus.Completed when result.Render is { } render:
-                SetJson(response,new
+                if(render.OutputFormat=="pdf")
                 {
-                    success=true,
-                    revision,
-                    session_id=sessionId,
-                    image_base64=Convert.ToBase64String(render.ImageBytes),
-                    width=render.Width,
-                    height=render.Height,
-                    dpi=render.DpiX,
-                    dpi_x=render.DpiX,
-                    dpi_y=render.DpiY,
-                    png_sha256=render.PngSha256,
-                    renderer_version=render.RendererVersion,
-                    font_family=render.FontFamily,
-                    bundled_font=render.BundledFont
-                });
+                    SetJson(response,new
+                    {
+                        success=true,
+                        revision,
+                        session_id=sessionId,
+                        output_format="pdf",
+                        content_type="application/pdf",
+                        pdf_base64=Convert.ToBase64String(render.OutputBytes),
+                        width=render.Width,
+                        height=render.Height,
+                        dpi=render.DpiX,
+                        dpi_x=render.DpiX,
+                        dpi_y=render.DpiY,
+                        pdf_sha256=render.PdfSha256,
+                        renderer_version=render.RendererVersion,
+                        font_family=render.FontFamily,
+                        bundled_font=render.BundledFont
+                    });
+                }
+                else
+                {
+                    SetJson(response,new
+                    {
+                        success=true,
+                        revision,
+                        session_id=sessionId,
+                        output_format="png",
+                        content_type="image/png",
+                        image_base64=Convert.ToBase64String(render.OutputBytes),
+                        width=render.Width,
+                        height=render.Height,
+                        dpi=render.DpiX,
+                        dpi_x=render.DpiX,
+                        dpi_y=render.DpiY,
+                        png_sha256=render.PngSha256,
+                        renderer_version=render.RendererVersion,
+                        font_family=render.FontFamily,
+                        bundled_font=render.BundledFont
+                    });
+                }
                 return;
             case PreviewScheduleStatus.Busy:
                 response.Headers["Retry-After"]="1";

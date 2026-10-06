@@ -37,9 +37,10 @@ public sealed class SystemPreviewExecutor : IPreviewExecutor
         if((long)metrics.WidthPixels*rendererStagingHeight>limits.MaxPixelArea)
             return PreviewScheduleResult.Failed(request,"preview_raster_budget_exceeded");
 
+        var outputFormat=NormalizeOutputFormat(request.OutputFormat);
         var id=Guid.NewGuid().ToString("N");
         var inputPath=Path.Combine(_paths.WorkPath,$"preview-{id}.json");
-        var outputPath=Path.Combine(_paths.WorkPath,$"preview-{id}.png");
+        var outputPath=Path.Combine(_paths.WorkPath,$"preview-{id}.{outputFormat}");
         var worker=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"..","Worker","Sokna.PrintAgent.Worker.exe"));
         var input=new PreviewWorkerInput(
             request.PayloadJson,
@@ -48,6 +49,7 @@ public sealed class SystemPreviewExecutor : IPreviewExecutor
             request.DpiX,
             request.DpiY,
             outputPath,
+            outputFormat,
             limits.MaxPayloadBytes,
             limits.MaxTextCharacters,
             limits.MaxItems,
@@ -109,7 +111,8 @@ public sealed class SystemPreviewExecutor : IPreviewExecutor
                 return PreviewScheduleResult.Failed(request,"preview_metadata_mismatch");
 
             var actualHash=Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-            if(!string.Equals(actualHash,meta.PngSha256,StringComparison.OrdinalIgnoreCase))
+            if(!string.Equals(outputFormat,NormalizeOutputFormat(meta.OutputFormat),StringComparison.Ordinal)||
+               !string.Equals(actualHash,meta.OutputSha256,StringComparison.OrdinalIgnoreCase))
                 return PreviewScheduleResult.Failed(request,"preview_hash_mismatch");
 
             _log.Info("render_completed",$"preview session={Short(request.SessionId)}; revision={request.Revision}; width={meta.Width}; height={meta.Height}");
@@ -124,7 +127,9 @@ public sealed class SystemPreviewExecutor : IPreviewExecutor
                     actualHash,
                     meta.RendererVersion,
                     meta.FontFamily,
-                    meta.BundledFont));
+                    meta.BundledFont,
+                    outputFormat,
+                    outputFormat=="pdf"?"application/pdf":"image/png"));
         }
         finally
         {
@@ -160,6 +165,13 @@ public sealed class SystemPreviewExecutor : IPreviewExecutor
         _=>"preview_worker_failed"
     };
 
+    private static string NormalizeOutputFormat(string? value)
+    {
+        var format=string.IsNullOrWhiteSpace(value)?"png":value.Trim().ToLowerInvariant();
+        if(format is not ("png" or "pdf"))throw new InvalidDataException("Preview output_format پشتیبانی نمی‌شود.");
+        return format;
+    }
+
     private static string Short(string value)=>value.Length<=12?value:value[..12];
     private static string Safe(string? value)=>SafeLogText.Sanitize(value,300);
 
@@ -170,6 +182,7 @@ public sealed class SystemPreviewExecutor : IPreviewExecutor
         int DpiX,
         int DpiY,
         string OutputPath,
+        string OutputFormat,
         int MaxPayloadBytes,
         int MaxTextCharacters,
         int MaxItems,
@@ -183,8 +196,10 @@ public sealed class SystemPreviewExecutor : IPreviewExecutor
         int Height,
         int DpiX,
         int DpiY,
-        string PngSha256,
+        string OutputSha256,
         string RendererVersion,
         string FontFamily,
-        bool BundledFont);
+        bool BundledFont,
+        string OutputFormat="png",
+        string ContentType="image/png");
 }

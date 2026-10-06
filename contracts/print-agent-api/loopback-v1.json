@@ -86,6 +86,47 @@
         "actual durable jobs are still claimed through the server Print API contract"
       ]
     },
+    "/v1/capabilities": {
+      "request": {
+        "required": [
+          "type",
+          "protocol_version"
+        ],
+        "properties": {
+          "type": {
+            "const": "print.capabilities"
+          },
+          "protocol_version": {
+            "const": 1
+          }
+        },
+        "additional_properties": "ignored for forward compatibility"
+      },
+      "success": {
+        "required": [
+          "success",
+          "protocol_version",
+          "agent_version",
+          "capabilities",
+          "preview_formats",
+          "preview_default_format",
+          "renderer_owner",
+          "pdf_writer"
+        ],
+        "constants": {
+          "success": true,
+          "protocol_version": 1,
+          "renderer_owner": "ReceiptRenderer",
+          "pdf_writer": "ReceiptPdfWriter",
+          "preview_default_format": "pdf"
+        }
+      },
+      "semantics": [
+        "capability negotiation is authoritative; callers must not infer preview support from agent_version",
+        "legacy bridges without this route are treated as png-only by Local Web",
+        "preview_formats advertises device-local preview formats only and does not grant business authorization"
+      ]
+    },
     "/v1/preview": {
       "request": {
         "required": [
@@ -100,7 +141,8 @@
         "optional": [
           "dpi",
           "dpi_x",
-          "dpi_y"
+          "dpi_y",
+          "output_format"
         ],
         "properties": {
           "type": {
@@ -137,27 +179,68 @@
           "dpi_y": {
             "type": "integer",
             "default_from": "dpi"
+          },
+          "output_format": {
+            "type": "string",
+            "enum": [
+              "png",
+              "pdf"
+            ],
+            "default": "png",
+            "semantics": "pdf and png are rendered from the same ReceiptRenderer raster; pdf wraps that raster through ReceiptPdfWriter"
           }
         }
       },
       "success": {
-        "required": [
-          "success",
-          "revision",
-          "session_id",
-          "image_base64",
-          "width",
-          "height",
-          "dpi",
-          "dpi_x",
-          "dpi_y",
-          "png_sha256",
-          "renderer_version",
-          "font_family",
-          "bundled_font"
-        ],
-        "constants": {
-          "success": true
+        "variants": {
+          "png": {
+            "required": [
+              "success",
+              "revision",
+              "session_id",
+              "output_format",
+              "content_type",
+              "image_base64",
+              "width",
+              "height",
+              "dpi",
+              "dpi_x",
+              "dpi_y",
+              "png_sha256",
+              "renderer_version",
+              "font_family",
+              "bundled_font"
+            ],
+            "constants": {
+              "success": true,
+              "output_format": "png",
+              "content_type": "image/png"
+            }
+          },
+          "pdf": {
+            "required": [
+              "success",
+              "revision",
+              "session_id",
+              "output_format",
+              "content_type",
+              "pdf_base64",
+              "width",
+              "height",
+              "dpi",
+              "dpi_x",
+              "dpi_y",
+              "pdf_sha256",
+              "renderer_version",
+              "font_family",
+              "bundled_font"
+            ],
+            "constants": {
+              "success": true,
+              "output_format": "pdf",
+              "content_type": "application/pdf"
+            }
+          }
         }
       },
       "errors": {
@@ -181,7 +264,8 @@
       "semantics": [
         "preview is bounded by configured payload/text/item/height/pixel/output budgets",
         "newer revisions may supersede older work",
-        "preview rendering does not create/accept/start/report a durable print attempt"
+        "preview rendering does not create/accept/start/report a durable print attempt",
+        "pdf preview uses the same ReceiptRenderer raster as physical printing and PdfTestSink; it does not require a physical printer or create a durable print attempt"
       ]
     }
   },

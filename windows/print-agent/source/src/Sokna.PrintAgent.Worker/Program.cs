@@ -35,15 +35,28 @@ if(args.Length==2&&args[0]=="--preview")
         if(bitmap.Height>requestedLimits.MaxHeightPixels||(long)bitmap.Width*bitmap.Height>requestedLimits.MaxPixelArea)
             throw new InvalidDataException("Preview output geometry از سقف مجاز عبور کرده است.");
 
+        var outputFormat=NormalizeOutputFormat(preview.OutputFormat);
+        if(outputFormat=="pdf"&&preview.DpiX!=preview.DpiY)
+            throw new InvalidDataException("Preview PDF به DPI یکسان افقی/عمودی نیاز دارد.");
         var directory=Path.GetDirectoryName(preview.OutputPath)??throw new InvalidDataException("Preview output path معتبر نیست.");
         Directory.CreateDirectory(directory);
         var tmp=preview.OutputPath+"."+Guid.NewGuid().ToString("N")+".tmp";
         try
         {
-            bitmap.Save(tmp,ImageFormat.Png);
-            var tmpInfo=new FileInfo(tmp);
-            if(tmpInfo.Length<8||tmpInfo.Length>requestedLimits.MaxOutputBytes)
-                throw new InvalidDataException("Preview PNG از سقف اندازه خروجی مجاز عبور کرده است.");
+            if(outputFormat=="pdf")
+            {
+                var pdf=ReceiptPdfWriter.Build(bitmap,preview.PaperWidthMm,preview.PrintableWidthMm,1,preview.DpiX);
+                if(pdf.Length<8||pdf.Length>requestedLimits.MaxOutputBytes)
+                    throw new InvalidDataException("Preview PDF از سقف اندازه خروجی مجاز عبور کرده است.");
+                await File.WriteAllBytesAsync(tmp,pdf);
+            }
+            else
+            {
+                bitmap.Save(tmp,ImageFormat.Png);
+                var tmpInfo=new FileInfo(tmp);
+                if(tmpInfo.Length<8||tmpInfo.Length>requestedLimits.MaxOutputBytes)
+                    throw new InvalidDataException("Preview PNG از سقف اندازه خروجی مجاز عبور کرده است.");
+            }
             File.Move(tmp,preview.OutputPath,true);
         }
         finally
@@ -51,18 +64,20 @@ if(args.Length==2&&args[0]=="--preview")
             try{if(File.Exists(tmp))File.Delete(tmp);}catch{}
         }
 
-        var png=await File.ReadAllBytesAsync(preview.OutputPath);
-        if(png.Length>requestedLimits.MaxOutputBytes)throw new InvalidDataException("Preview PNG از سقف اندازه خروجی مجاز عبور کرده است.");
+        var output=await File.ReadAllBytesAsync(preview.OutputPath);
+        if(output.Length>requestedLimits.MaxOutputBytes)throw new InvalidDataException("Preview output از سقف اندازه خروجی مجاز عبور کرده است.");
         var meta=new PreviewResult(
             true,
             bitmap.Width,
             bitmap.Height,
             preview.DpiX,
             preview.DpiY,
-            Convert.ToHexString(SHA256.HashData(png)).ToLowerInvariant(),
+            Convert.ToHexString(SHA256.HashData(output)).ToLowerInvariant(),
             AgentVersionInfo.Current,
             ReceiptRenderer.ActiveFontFamily,
-            ReceiptRenderer.UsesBundledFont);
+            ReceiptRenderer.UsesBundledFont,
+            outputFormat,
+            outputFormat=="pdf"?"application/pdf":"image/png");
         Console.Out.Write(JsonSerializer.Serialize(meta,AgentOptions.JsonOptions()));
         return 0;
     }
@@ -116,6 +131,12 @@ catch(Exception e)
     Console.Error.WriteLine(e.GetType().Name+": "+Safe(e.Message));return 70;
 }
 static string Safe(string s)=>s.Length>400?s[..400]:s;
+static string NormalizeOutputFormat(string? value)
+{
+    var format=string.IsNullOrWhiteSpace(value)?"png":value.Trim().ToLowerInvariant();
+    if(format is not ("png" or "pdf"))throw new InvalidDataException("Preview output_format پشتیبانی نمی‌شود.");
+    return format;
+}
 
 sealed record PreviewInput(
     string PayloadJson,
@@ -124,10 +145,12 @@ sealed record PreviewInput(
     int DpiX,
     int DpiY,
     string OutputPath,
+    string? OutputFormat="png",
     int MaxPayloadBytes=240000,
     int MaxTextCharacters=100000,
     int MaxItems=500,
     int MaxHeightPixels=24000,
     long MaxPixelArea=24000000,
     int MaxOutputBytes=2000000);
-sealed record PreviewResult(bool Success,int Width,int Height,int DpiX,int DpiY,string PngSha256,string RendererVersion,string FontFamily,bool BundledFont);
+
+sealed record PreviewResult(bool Success,int Width,int Height,int DpiX,int DpiY,string OutputSha256,string RendererVersion,string FontFamily,bool BundledFont,string OutputFormat="png",string ContentType="image/png");

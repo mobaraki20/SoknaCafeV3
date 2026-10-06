@@ -22,18 +22,26 @@ public sealed record PreviewWorkRequest(
     int DpiY,
     PreviewSafetyLimits SafetyLimits,
     TimeSpan ExecutionTimeout,
-    TimeSpan ExitProofTimeout);
+    TimeSpan ExitProofTimeout,
+    string OutputFormat="png");
 
 public sealed record PreviewRenderData(
-    byte[] ImageBytes,
+    byte[] OutputBytes,
     int Width,
     int Height,
     int DpiX,
     int DpiY,
-    string PngSha256,
+    string OutputSha256,
     string RendererVersion,
     string FontFamily,
-    bool BundledFont);
+    bool BundledFont,
+    string OutputFormat="png",
+    string ContentType="image/png")
+{
+    public byte[] ImageBytes=>OutputBytes;
+    public string PngSha256=>OutputFormat=="png"?OutputSha256:string.Empty;
+    public string PdfSha256=>OutputFormat=="pdf"?OutputSha256:string.Empty;
+}
 
 public sealed record PreviewScheduleResult(
     PreviewScheduleStatus Status,

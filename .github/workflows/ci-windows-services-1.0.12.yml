@@ -1,0 +1,139 @@
+name: CI Windows Services 1.0.12
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/windows-services-1.0.12-pdf-preview-capabilities
+      - qualify/windows-services-1.0.12
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-windows-services-1.0.12-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-qualify:
+    runs-on: windows-2022
+    timeout-minutes: 55
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify component/package versions and Runtime immutability
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $pkg=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if($pkg-ne'1.0.12'){throw "Unexpected Windows Services version: $pkg"}
+          [xml]$agent=Get-Content windows/print-agent/source/Directory.Build.props -Raw
+          $agentVersion=[string]$agent.Project.PropertyGroup.SoknaAgentVersion
+          if($agentVersion-ne'6.2.8'){throw "Unexpected Print Agent version: $agentVersion"}
+          [xml]$runtime=Get-Content windows/runtime/source/Sokna.Runtime.Service.csproj -Raw
+          $runtimeVersion=[string]$runtime.Project.PropertyGroup.Version
+          if($runtimeVersion-ne'1.0.2'){throw "Unexpected Runtime version: $runtimeVersion"}
+          git fetch origin release/windows-services-1.0.11 --depth=1
+          $runtimeDiff=git diff --name-only FETCH_HEAD...HEAD -- windows/runtime
+          if($runtimeDiff){$runtimeDiff|ForEach-Object{Write-Host $_};throw 'Runtime source changed in a Print-Agent-only release.'}
+          Write-Host 'Versions + Runtime immutability: PASS'
+
+      - name: Gate PDF preview capability contract
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $contract=Get-Content contracts/print-agent-api/loopback-v1.json -Raw
+          $bridge=Get-Content windows/print-agent/source/src/Sokna.PrintAgent.Service/LocalBridgeService.cs -Raw
+          $scheduler=Get-Content windows/print-agent/source/src/Sokna.PrintAgent.Service/PreviewScheduler.cs -Raw
+          $executor=Get-Content windows/print-agent/source/src/Sokna.PrintAgent.Service/SystemPreviewExecutor.cs -Raw
+          $worker=Get-Content windows/print-agent/source/src/Sokna.PrintAgent.Worker/Program.cs -Raw
+          foreach($needle in @('/v1/capabilities','preview_pdf_v1','preview_formats','output_format')){if(-not$contract.Contains($needle)){throw "Contract missing: $needle"}}
+          foreach($needle in @('/v1/capabilities','print.capabilities','preview_pdf_v1','output_format','pdf_base64')){if(-not$bridge.Contains($needle)){throw "Bridge missing: $needle"}}
+          foreach($needle in @('OutputFormat','PdfSha256')){if(-not$scheduler.Contains($needle)){throw "Scheduler missing: $needle"}}
+          foreach($needle in @('OutputFormat','application/pdf','preview_hash_mismatch')){if(-not$executor.Contains($needle)){throw "Executor missing: $needle"}}
+          foreach($needle in @('ReceiptPdfWriter.Build','application/pdf','OutputFormat')){if(-not$worker.Contains($needle)){throw "Worker missing: $needle"}}
+          if($bridge.Contains('AgentVersionCompatibility.EnsureSupported') -and $bridge.Contains('preview_pdf_v1')){Write-Host 'Capability route is independent of server minimum-version gate.'}
+          Write-Host 'PDF preview capability contract: PASS'
+
+      - name: Build Print Agent
+        working-directory: windows/print-agent/source
+        shell: powershell
+        run: dotnet build Sokna.PrintWorker.slnx -c Release
+
+      - name: Run Print Agent regression tests
+        working-directory: windows/print-agent/source
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
+          foreach($case in @('A35','A37','A38','A47')){
+            $dir=Join-Path $env:RUNNER_TEMP ("sokna-preview-"+$case)
+            dotnet run --project tests/Sokna.PrintAgent.PreviewAcceptance/Sokna.PrintAgent.PreviewAcceptance.csproj -c Release -- --case $case --results $dir
+            if($LASTEXITCODE-ne0){throw "Preview acceptance failed: $case"}
+          }
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows Services 1.0.12
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $root 'release\out-windows-1.0.12'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not$iscc){throw 'ISCC missing'}
+          & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          $setup=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.12.exe'
+          if(-not(Test-Path -LiteralPath $setup -PathType Leaf)){throw 'Windows Services 1.0.12 installer missing.'}
+          $ui=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $out 'SoknaSetupUi.exe'))
+          if([string]$ui.ProductVersion-ne'1.0.12'){throw "Setup UI ProductVersion mismatch: $($ui.ProductVersion)"}
+          $index=Get-Content (Join-Path $out 'artifact-index.json') -Raw|ConvertFrom-Json
+          if([string]$index.print_agent.version-ne'6.2.8'){throw "Print Agent artifact version mismatch: $($index.print_agent.version)"}
+          if([string]$index.runtime.version-ne'1.0.2'){throw "Runtime artifact version mismatch: $($index.runtime.version)"}
+          if([string]$index.windows_services.file-ne'SOKNA-Windows-Services-Setup-1.0.12.exe'){throw 'Windows Services artifact index mismatch.'}
+          Write-Host 'Windows Services 1.0.12 build: PASS'
+
+      - name: Qualify installer awareness
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $installer=Join-Path $root 'release\out-windows-1.0.12\SOKNA-Windows-Services-Setup-1.0.12.exe'
+          $diag=Join-Path $root 'release\installer-awareness-1.0.12'
+          & packaging/windows/tests/qualify-installer-awareness.ps1 -InstallerPath $installer -DiagnosticsRoot $diag
+
+      - name: Upload qualification diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.12-failure-${{ github.sha }}
+          path: |
+            release/installer-awareness-1.0.12
+            release/out-windows-1.0.12/artifact-index.json
+          if-no-files-found: ignore
+
+      - name: Upload qualified candidate
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.12-qualified-${{ github.sha }}
+          path: |
+            release/out-windows-1.0.12/SOKNA-Windows-Services-Setup-1.0.12.exe
+            release/out-windows-1.0.12/artifact-index.json
+            release/installer-awareness-1.0.12
+          if-no-files-found: error
