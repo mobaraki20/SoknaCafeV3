@@ -77,7 +77,7 @@ internal static class ReceiptRenderer
         }
         private void DrawMeta(JsonElement root,bool prep)
         {
-            var parts=new List<string>();var table=Get(root,"table_name","");if(table.Length>0)parts.Add(table);
+            var parts=new List<string>();var table=Get(root,"table_name","");if(table.Length>0)parts.Add(FaDigits(table));
             var number=prep?Get(root,"order_number",""):Get(root,"invoice_number",Get(root,"badge",""));if(number.Length>0&&(prep?_showOrder:true))parts.Add((prep?"سفارش ":"")+FaDigits(number));
             if(_showTime){var date=Get(root,"display_date",Get(root,"created_at",""));if(date.Length>0)parts.Add(FaDigits(date));}if(parts.Count>0)Text(string.Join(" · ",parts),Math.Max(15,_base-5),true,StringAlignment.Center,3);
             if(_showActor){var actor=Get(root,"actor_name","");if(actor.Length>0)Text("ثبت‌کننده: "+actor,Math.Max(13,_base-7),false,StringAlignment.Center,2);}
@@ -145,7 +145,7 @@ internal static class ReceiptRenderer
         }
         private void DrawCell(string text,int x,int y,int width,Font font,StringAlignment alignment,int height=0){using var format=Rtl(alignment);_g.DrawString(text,font,Brushes.Black,new RectangleF(x,y,width,height>0?height:Py(34)),format);}
         private void Rule(){Y+=_gap;using var pen=new Pen(Color.Black,Math.Max(1,Py(_separatorStyle=="minimal"?1:2)));if(_separatorStyle=="dashed")pen.DashStyle=DashStyle.Dash;_g.DrawLine(pen,_marginX,Y,_width-_marginX,Y);Y+=_gap*2;}
-        private void Hairline(){using var pen=new Pen(Color.Black,Math.Max(1,Py(1))){DashStyle=DashStyle.Dot};_g.DrawLine(pen,_marginX,Y,_width-_marginX,Y);Y+=Math.Max(Py(2),_gap);}
+        private void Hairline(){var width=Math.Max(1,Py(_separatorStyle=="minimal"?1:2));using var pen=new Pen(Color.Black,width);if(_separatorStyle=="minimal")pen.DashStyle=DashStyle.Dot;else if(_separatorStyle=="dashed")pen.DashStyle=DashStyle.Dash;_g.DrawLine(pen,_marginX,Y,_width-_marginX,Y);Y+=Math.Max(Py(2),_gap);}
         private Font MakeFont(int logicalSize,bool bold)=>ReceiptRenderer.Font((float)(logicalSize*_scaleY),bold);private int Px(int logicalPixels)=>Math.Max(1,(int)Math.Round(logicalPixels*_scaleX));private int Py(int logicalPixels)=>Math.Max(1,(int)Math.Round(logicalPixels*_scaleY));private string Label(string key,string fallback)=>_labels.TryGetValue(key,out var value)&&value.Length>0?value:fallback;
     }
 
