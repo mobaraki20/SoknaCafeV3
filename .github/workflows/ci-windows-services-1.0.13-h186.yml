@@ -1,0 +1,239 @@
+name: CI Windows Services 1.0.13 H186
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/windows-services-1.0.13-h186-receipt-renderer
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-windows-services-1.0.13-h186-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-qualify:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout qualified 1.0.12 lineage
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Apply and commit H186 receipt renderer release source
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $baseCommit='6d8941b958373deefe0560125e823a8c0ec88684'
+          $receipt='windows/print-agent/source/src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs'
+          $baseHash=(Get-FileHash $receipt -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($baseHash-ne'ecd766374e0448c625688c5490e9edd818b36fe400a96206a082ea334df4dec6'){throw "Unexpected ReceiptRenderer base: $baseHash"}
+
+          $utf8=New-Object System.Text.UTF8Encoding($false)
+          $text=[IO.File]::ReadAllText((Resolve-Path $receipt))
+          $oldMeta='var parts=new List<string>();var table=Get(root,"table_name","");if(table.Length>0)parts.Add(table);'
+          $newMeta='var parts=new List<string>();var table=Get(root,"table_name","");if(table.Length>0)parts.Add(FaDigits(table));'
+          if(-not$text.Contains($oldMeta)){throw 'H186 table digit patch point missing'}
+          $text=$text.Replace($oldMeta,$newMeta)
+          $oldHair='private void Hairline(){using var pen=new Pen(Color.Black,Math.Max(1,Py(1))){DashStyle=DashStyle.Dot};_g.DrawLine(pen,_marginX,Y,_width-_marginX,Y);Y+=Math.Max(Py(2),_gap);}'
+          $newHair='private void Hairline(){var width=Math.Max(1,Py(_separatorStyle=="minimal"?1:2));using var pen=new Pen(Color.Black,width);if(_separatorStyle=="minimal")pen.DashStyle=DashStyle.Dot;else if(_separatorStyle=="dashed")pen.DashStyle=DashStyle.Dash;_g.DrawLine(pen,_marginX,Y,_width-_marginX,Y);Y+=Math.Max(Py(2),_gap);}'
+          if(-not$text.Contains($oldHair)){throw 'H186 separator patch point missing'}
+          $text=$text.Replace($oldHair,$newHair)
+          [IO.File]::WriteAllText((Resolve-Path $receipt),$text,$utf8)
+          $targetHash=(Get-FileHash $receipt -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($targetHash-ne'0e8cc19464a39287af5db1b264eb180b522cfd29d909b3d0f848e3ed34018be6'){throw "Unexpected H186 ReceiptRenderer target: $targetHash"}
+
+          $props='windows/print-agent/source/Directory.Build.props'
+          $p=[IO.File]::ReadAllText((Resolve-Path $props))
+          if(-not$p.Contains('<SoknaAgentVersion>6.2.8</SoknaAgentVersion>')){throw 'Print Agent 6.2.8 base version missing'}
+          $p=$p.Replace('<SoknaAgentVersion>6.2.8</SoknaAgentVersion>','<SoknaAgentVersion>6.2.9</SoknaAgentVersion>')
+          [IO.File]::WriteAllText((Resolve-Path $props),$p,$utf8)
+
+          $pkgVersion='packaging/windows/WINDOWS_SERVICES_VERSION.txt'
+          if(([IO.File]::ReadAllText((Resolve-Path $pkgVersion))).Trim()-ne'1.0.12'){throw 'Windows Services 1.0.12 base version missing'}
+          [IO.File]::WriteAllText((Resolve-Path $pkgVersion),"1.0.13`n",$utf8)
+
+          $compat='packaging/windows/windows-services-compatibility-v1.json'
+          $c=[IO.File]::ReadAllText((Resolve-Path $compat))
+          if(-not$c.Contains('"version": "6.2.8"')){throw 'Compatibility manifest Print Agent base missing'}
+          if(-not$c.Contains('"package_version": "1.0.12"')){throw 'Compatibility manifest package base missing'}
+          $c=$c.Replace('"version": "6.2.8"','"version": "6.2.9"').Replace('"package_version": "1.0.12"','"package_version": "1.0.13"')
+          [IO.File]::WriteAllText((Resolve-Path $compat),$c,$utf8)
+
+          $notes='packaging/windows/WINDOWS_SERVICES_1.0.13_NOTES_FA.md'
+          $noteText=@'
+          # SOKNA Windows Services 1.0.13 — H186 Receipt Renderer
+
+          - Windows Services: 1.0.13
+          - Print Agent: 6.2.9
+          - Runtime: 1.0.2 (unchanged)
+          - Base qualified lineage: Windows Services 1.0.12 / Print Agent 6.2.8, commit 6d8941b958373deefe0560125e823a8c0ec88684.
+          - Customer receipt item separators now honor separator_style. The normal solid style uses a thermal-safe effective two-logical-pixel rule instead of the old dotted 1px hairline.
+          - Table display text normalizes Latin digits to Persian digits.
+          - No Runtime behavior/source change is included in this release.
+          - Physical thermal-printer verification remains an installed-environment UAT check and is not fabricated by CI.
+          '@
+          [IO.File]::WriteAllText((Join-Path (Resolve-Path .) $notes),$noteText.TrimStart()+"`n",$utf8)
+
+          git config user.name 'SOKNA Windows Qualification'
+          git config user.email 'windows-qualification@local.invalid'
+          git add -- $receipt $props $pkgVersion $compat $notes
+          $changed=@(git diff --cached --name-only)
+          $expected=@($compat,$pkgVersion,$notes,$props,$receipt)|Sort-Object
+          $actual=@($changed)|Sort-Object
+          if(($actual -join "`n")-ne($expected -join "`n")){Write-Host ($actual -join "`n");throw 'Unexpected H186 source delta'}
+          git commit -m 'fix(windows): H186 receipt renderer 1.0.13 [skip ci]'
+          git push origin HEAD:${{ github.ref_name }}
+          $head=(git rev-parse HEAD).Trim()
+          "SOURCE_COMMIT=$head" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Committed H186 Windows source: $head"
+
+      - name: Verify release identity and source scope
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $pkg=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if($pkg-ne'1.0.13'){throw "Unexpected Windows Services version: $pkg"}
+          [xml]$agent=Get-Content windows/print-agent/source/Directory.Build.props -Raw
+          $agentVersion=[string]$agent.Project.PropertyGroup.SoknaAgentVersion
+          if($agentVersion-ne'6.2.9'){throw "Unexpected Print Agent version: $agentVersion"}
+          [xml]$runtime=Get-Content windows/runtime/source/Sokna.Runtime.Service.csproj -Raw
+          $runtimeVersion=[string]$runtime.Project.PropertyGroup.Version
+          if($runtimeVersion-ne'1.0.2'){throw "Unexpected Runtime version: $runtimeVersion"}
+          $runtimeDiff=@(git diff 6d8941b958373deefe0560125e823a8c0ec88684...HEAD -- windows/runtime)
+          if($runtimeDiff.Count-ne0){$runtimeDiff|ForEach-Object{Write-Host $_};throw 'Runtime changed in Print-Agent-only release'}
+          $receipt='windows/print-agent/source/src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs'
+          $hash=(Get-FileHash $receipt -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($hash-ne'0e8cc19464a39287af5db1b264eb180b522cfd29d909b3d0f848e3ed34018be6'){throw 'ReceiptRenderer H186 overlay identity mismatch'}
+          $renderer=Get-Content $receipt -Raw
+          foreach($needle in @('parts.Add(FaDigits(table))','_separatorStyle=="minimal"?1:2','else if(_separatorStyle=="dashed")pen.DashStyle=DashStyle.Dash')){if(-not$renderer.Contains($needle)){throw "H186 renderer gate missing: $needle"}}
+          Write-Host 'Release identity + H186 renderer source scope: PASS'
+
+      - name: Gate inherited PDF preview capability contract
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $contract=Get-Content contracts/print-agent-api/loopback-v1.json -Raw
+          $bridge=Get-Content windows/print-agent/source/src/Sokna.PrintAgent.Service/LocalBridgeService.cs -Raw
+          $scheduler=Get-Content windows/print-agent/source/src/Sokna.PrintAgent.Service/PreviewScheduler.cs -Raw
+          $executor=Get-Content windows/print-agent/source/src/Sokna.PrintAgent.Service/SystemPreviewExecutor.cs -Raw
+          $worker=Get-Content windows/print-agent/source/src/Sokna.PrintAgent.Worker/Program.cs -Raw
+          foreach($needle in @('/v1/capabilities','preview_pdf_v1','preview_formats','output_format')){if(-not$contract.Contains($needle)){throw "Contract missing: $needle"}}
+          foreach($needle in @('/v1/capabilities','print.capabilities','preview_pdf_v1','output_format','pdf_base64')){if(-not$bridge.Contains($needle)){throw "Bridge missing: $needle"}}
+          foreach($needle in @('OutputFormat','PdfSha256')){if(-not$scheduler.Contains($needle)){throw "Scheduler missing: $needle"}}
+          foreach($needle in @('OutputFormat','application/pdf','preview_hash_mismatch')){if(-not$executor.Contains($needle)){throw "Executor missing: $needle"}}
+          foreach($needle in @('ReceiptPdfWriter.Build','application/pdf','OutputFormat')){if(-not$worker.Contains($needle)){throw "Worker missing: $needle"}}
+          Write-Host 'Inherited PDF preview capability contract: PASS'
+
+      - name: Build Print Agent 6.2.9
+        working-directory: windows/print-agent/source
+        shell: powershell
+        run: dotnet build Sokna.PrintWorker.slnx -c Release
+
+      - name: Run Print Agent regression tests
+        working-directory: windows/print-agent/source
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
+          foreach($case in @('A35','A37','A38','A47')){
+            $dir=Join-Path $env:RUNNER_TEMP ("sokna-h186-preview-"+$case)
+            dotnet run --project tests/Sokna.PrintAgent.PreviewAcceptance/Sokna.PrintAgent.PreviewAcceptance.csproj -c Release -- --case $case --results $dir
+            if($LASTEXITCODE-ne0){throw "Preview acceptance failed: $case"}
+          }
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows Services 1.0.13
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $root 'release\out-windows-1.0.13'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not$iscc){throw 'ISCC missing'}
+          & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          $setup=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.13.exe'
+          if(-not(Test-Path -LiteralPath $setup -PathType Leaf)){throw 'Windows Services 1.0.13 installer missing'}
+          $ui=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $out 'SoknaSetupUi.exe'))
+          if([string]$ui.ProductVersion-ne'1.0.13'){throw "Setup UI ProductVersion mismatch: $($ui.ProductVersion)"}
+          $index=Get-Content (Join-Path $out 'artifact-index.json') -Raw|ConvertFrom-Json
+          if([string]$index.source_commit-ne$env:SOURCE_COMMIT){throw 'Artifact source_commit mismatch'}
+          if([string]$index.print_agent.version-ne'6.2.9'){throw "Print Agent artifact version mismatch: $($index.print_agent.version)"}
+          if([string]$index.runtime.version-ne'1.0.2'){throw "Runtime artifact version mismatch: $($index.runtime.version)"}
+          if([string]$index.windows_services.file-ne'SOKNA-Windows-Services-Setup-1.0.13.exe'){throw 'Windows Services artifact index mismatch'}
+          $printZip=Join-Path $out 'print\SoknaPrintAgent-6.2.9-win-x64.zip'
+          if(-not(Test-Path $printZip)){throw 'Print Agent 6.2.9 component ZIP missing'}
+          Write-Host 'Windows Services 1.0.13 build: PASS'
+
+      - name: Qualify installer awareness
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $installer=Join-Path $root 'release\out-windows-1.0.13\SOKNA-Windows-Services-Setup-1.0.13.exe'
+          $diag=Join-Path $root 'release\installer-awareness-1.0.13'
+          & packaging/windows/tests/qualify-installer-awareness.ps1 -InstallerPath $installer -DiagnosticsRoot $diag
+
+      - name: Write H186 qualification proof
+        if: success()
+        shell: powershell
+        run: |
+          $out='release\out-windows-1.0.13'
+          $setup=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.13.exe'
+          $agent=Join-Path $out 'print\SoknaPrintAgent-6.2.9-win-x64.zip'
+          $lines=@(
+            'SOKNA Windows Services 1.0.13 / Print Agent 6.2.9 — H186 BUILD QUALIFICATION',
+            "source_commit=$env:SOURCE_COMMIT",
+            'base_commit=6d8941b958373deefe0560125e823a8c0ec88684',
+            'receipt_renderer_sha256=0e8cc19464a39287af5db1b264eb180b522cfd29d909b3d0f848e3ed34018be6',
+            ('installer_sha256='+(Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()),
+            ('print_agent_zip_sha256='+(Get-FileHash $agent -Algorithm SHA256).Hash.ToLowerInvariant()),
+            'runtime_version=1.0.2 unchanged',
+            'dotnet_build=PASS',
+            'print_agent_regression=PASS',
+            'preview_A35_A37_A38_A47=PASS',
+            'installer_build=PASS',
+            'installer_awareness=PASS',
+            'physical_thermal_printer_uat=PENDING_REAL_HARDWARE'
+          )
+          $lines|Set-Content (Join-Path $out 'H186_WINDOWS_1.0.13_QUALIFICATION.txt') -Encoding utf8
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.13-h186-failure
+          path: |
+            release/installer-awareness-1.0.13
+            release/out-windows-1.0.13/artifact-index.json
+          if-no-files-found: ignore
+
+      - name: Upload qualified Windows candidate
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-1.0.13-h186-qualified
+          path: |
+            release/out-windows-1.0.13/SOKNA-Windows-Services-Setup-1.0.13.exe
+            release/out-windows-1.0.13/print/SoknaPrintAgent-6.2.9-win-x64.zip
+            release/out-windows-1.0.13/artifact-index.json
+            release/out-windows-1.0.13/H186_WINDOWS_1.0.13_QUALIFICATION.txt
+            release/installer-awareness-1.0.13
+            packaging/windows/WINDOWS_SERVICES_1.0.13_NOTES_FA.md
+          if-no-files-found: error
