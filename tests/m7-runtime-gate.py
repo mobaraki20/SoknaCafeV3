@@ -7,7 +7,7 @@ contract=json.loads((R/'contracts/runtime-api/contract-v1.json').read_text(encod
 need(contract['status']=='m7-implemented-contract','Runtime contract not promoted at M7')
 need(contract['contract_version']=='1.0.0','Runtime contract not stable v1')
 source=(R/'windows/runtime/source/Program.cs').read_text(encoding='utf-8')
-for token in ['127.0.0.1','/v1/health','Authorization','X-Sokna-Runtime-Contract','FixedEquals','ServiceController','SendTrigger','SecretFile.Read','runtime-state.json','SHA256.HashData','scheduledAt.ToUnixTimeSeconds()','SendTrigger(trigger.Key,due)']:
+for token in ['127.0.0.1','/v1/health','Authorization','X-Sokna-Runtime-Contract','FixedEquals','ServiceController','SendTrigger','SecretFile.Read','runtime-state.json','SHA256.HashData','scheduledAt.ToUnixTimeSeconds()','RuntimeSchedulerPolicy.TickMilliseconds','public.relay_sync','CompleteAmbiguousFailure','CompleteDefinitiveFailure','PrintSupervisionLoop','--scheduler-self-test']:
     need(token in source,'Runtime implementation missing '+token)
 for forbidden in ['INSERT INTO','UPDATE orders','inventory_movements','settlement_records','ProcessStartInfo("powershell','cmd.exe']:
     need(forbidden not in source,'Runtime absorbed forbidden business/arbitrary-command behavior: '+forbidden)
@@ -15,11 +15,15 @@ need('LocalBaseUrl' in source and 'IsLoopback' in source,'Runtime Local endpoint
 need('SafeLog("runtime_started")' in source and 'SafeCode(ex)' in source,'Runtime logging is not safe-code based')
 need('Guid.NewGuid().ToString("N")' not in source,'Runtime retry correlation is not deterministic')
 need('requestId=requestId[..96]' not in source,'Runtime request id still uses collision-prone truncation')
-need('catch(HttpRequestException)' in source and 'catch(TaskCanceledException)' in source,'Runtime ambiguous transport retry fence missing')
-need('nextRun[trigger.Key]=DateTimeOffset.MinValue' in source,'Runtime definitive HTTP failure does not rotate stale trigger identity')
+need('catch(HttpRequestException' in source and 'catch(TaskCanceledException' in source,'Runtime ambiguous transport retry fence missing')
+need('NextRunAt=DateTimeOffset.MinValue' in source,'Runtime definitive HTTP failure does not rotate stale trigger identity')
+need('AllowsFastCadence(trigger.Key)' in source and 'Math.Max(1,trigger.IntervalSeconds)' in source,'Runtime fast cadence allowlist/floor missing')
+need('Math.Max(5,trigger.IntervalSeconds)' in source,'Runtime normal trigger safety floor missing')
+need('TickMilliseconds=100' in source,'Runtime scheduler tick is not fast enough for one-second cadence')
 need('last_cycle_at=DateTimeOffset.UtcNow' not in source,'Runtime health fabricates scheduler last_cycle_at from probe time')
 need('runtime_version="1.0.0"' not in source,'Runtime health still hardcodes runtime_version')
 need('RuntimeHealthModel.Build' in source and 'schedulerLastCycle' in source,'Runtime health state model missing')
+need('configured_interval_seconds' in source and 'effective_interval_seconds' in source and 'consecutive_failures' in source,'Runtime trigger cadence health missing')
 need('MapServiceStatus' in source and 'status.ToString().ToLowerInvariant()' not in source,'Runtime Print supervision leaks raw Windows service states')
 need('print_agent_supervision_failed' in source,'Runtime Print supervision error evidence missing')
 need('--health-self-test' in source,'Runtime health behavior self-test entry point missing')
