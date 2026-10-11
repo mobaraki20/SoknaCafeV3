@@ -54,7 +54,8 @@ jobs:
           [xml]$agent=Get-Content windows/print-agent/source/Directory.Build.props -Raw
           if([string]$agent.Project.PropertyGroup.SoknaAgentVersion-ne'6.2.9'){throw 'Print Agent version changed unexpectedly'}
           $ui=Get-Content packaging/windows/setup-ui/PersianDashboardV2.cs -Raw -Encoding UTF8
-          if($ui -match '[ÙØÛ]' -or $ui.Contains('â€¢') -or $ui.Contains('â€”')){throw 'Mojibake marker remains in Persian dashboard source'}
+          $badChars=@([char]0x00D8,[char]0x00D9,[char]0x00DB,[char]0x00E2,[char]0x00C3)
+          foreach($bad in $badChars){if($ui.Contains([string]$bad)){throw "Mojibake marker U+$([int]$bad).ToString('X4') remains in Persian dashboard source"}}
           $needles=@('"قابل تشخیص نیست"','"نصب نشده"','"نسخه نامشخص"','$"نسخه {version}"','$"نصب شده • {versionText} • {(running ? "در حال اجرا" : "متوقف")}"','ReadServiceBinaryVersion(RuntimeService)','ReadServiceBinaryVersion(PrintService)')
           foreach($needle in $needles){if(-not$ui.Contains($needle)){throw "Encoding/version visibility contract missing: $needle"}}
           Write-Host "Windows Services 1.0.15 frozen source contract: PASS ($head)"
