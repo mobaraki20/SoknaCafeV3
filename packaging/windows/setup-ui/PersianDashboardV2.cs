@@ -630,7 +630,7 @@ internal sealed class PersianDashboardFormV2 : Form
 
         _runtimeDetail.Text = ComponentStatus(state.RuntimeInstalled, state.RuntimeRunning, state.RuntimeVersion);
         _printDetail.Text = ComponentStatus(state.PrintInstalled, state.PrintRunning, state.PrintAgentVersion);
-        _versionDetail.Text = string.IsNullOrWhiteSpace(state.InstalledVersion) ? "Ù‚Ø§Ø¨Ù„ ØªØ´Ø®ÛŒØµ Ù†ÛŒØ³Øª" : state.InstalledVersion;
+        _versionDetail.Text = string.IsNullOrWhiteSpace(state.InstalledVersion) ? "قابل تشخیص نیست" : state.InstalledVersion;
         _versionDetail.RightToLeft = RightToLeft.No;
         _connectionDetail.Text = state.Paired ? "متصل" : "متصل نیست";
 
@@ -957,9 +957,9 @@ internal sealed class PersianDashboardFormV2 : Form
 
     private static string ComponentStatus(bool installed, bool running, string version)
     {
-        if (!installed) return "Ù†ØµØ¨ Ù†Ø´Ø¯Ù‡";
-        var versionText = string.IsNullOrWhiteSpace(version) ? "Ù†Ø³Ø®Ù‡ Ù†Ø§Ù…Ø´Ø®Øµ" : $"Ù†Ø³Ø®Ù‡ {version}";
-        return $"Ù†ØµØ¨ Ø´Ø¯Ù‡ â€¢ {versionText} â€¢ {(running ? "Ø¯Ø± Ø­Ø§Ù„ Ø§Ø¬Ø±Ø§" : "Ù…ØªÙˆÙ‚Ù")}";
+        if (!installed) return "نصب نشده";
+        var versionText = string.IsNullOrWhiteSpace(version) ? "نسخه نامشخص" : $"نسخه {version}";
+        return $"نصب شده • {versionText} • {(running ? "در حال اجرا" : "متوقف")}";
     }
     private string ReadInstalledVersion(bool anyInstalled)
     {
