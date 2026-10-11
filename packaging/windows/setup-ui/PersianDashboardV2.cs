@@ -22,8 +22,10 @@ internal sealed record WindowsDashboardState(
     string InstalledVersion,
     bool RuntimeInstalled,
     bool RuntimeRunning,
+    string RuntimeVersion,
     bool PrintInstalled,
     bool PrintRunning,
+    string PrintAgentVersion,
     bool Paired,
     string LocalBaseUrl,
     bool PrerequisiteReady,
@@ -319,7 +321,7 @@ internal sealed class PersianDashboardFormV2 : Form
         for (var i = 0; i < 4; i++) details.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
         AddDetail(details, 0, "Runtime", _runtimeDetail);
         AddDetail(details, 1, "Print Agent", _printDetail);
-        AddDetail(details, 2, "نسخه نصب‌شده", _versionDetail);
+        AddDetail(details, 2, "Windows Services", _versionDetail);
         AddDetail(details, 3, "اتصال", _connectionDetail);
         return details;
     }
@@ -543,6 +545,8 @@ internal sealed class PersianDashboardFormV2 : Form
         var print = ReadService(PrintService);
         var anyInstalled = runtime.Installed || print.Installed;
         var installedVersion = ReadInstalledVersion(anyInstalled);
+        var runtimeVersion = ReadServiceBinaryVersion(RuntimeService);
+        var printAgentVersion = ReadServiceBinaryVersion(PrintService);
 
         var paired = false;
         var localBaseUrl = "";
@@ -579,8 +583,10 @@ internal sealed class PersianDashboardFormV2 : Form
             installedVersion,
             runtime.Installed,
             runtime.Running,
+            runtimeVersion,
             print.Installed,
             print.Running,
+            printAgentVersion,
             paired,
             localBaseUrl,
             prerequisite.Ready,
@@ -622,13 +628,9 @@ internal sealed class PersianDashboardFormV2 : Form
             ? GoodColor
             : state.RuntimeInstalled && state.PrintInstalled ? WarningColor : MutedColor;
 
-        _runtimeDetail.Text = state.RuntimeInstalled
-            ? state.RuntimeRunning ? "نصب شده • در حال اجرا" : "نصب شده • متوقف"
-            : "نصب نشده";
-        _printDetail.Text = state.PrintInstalled
-            ? state.PrintRunning ? "نصب شده • در حال اجرا" : "نصب شده • متوقف"
-            : "نصب نشده";
-        _versionDetail.Text = string.IsNullOrWhiteSpace(state.InstalledVersion) ? "قابل تشخیص نیست" : state.InstalledVersion;
+        _runtimeDetail.Text = ComponentStatus(state.RuntimeInstalled, state.RuntimeRunning, state.RuntimeVersion);
+        _printDetail.Text = ComponentStatus(state.PrintInstalled, state.PrintRunning, state.PrintAgentVersion);
+        _versionDetail.Text = string.IsNullOrWhiteSpace(state.InstalledVersion) ? "Ù‚Ø§Ø¨Ù„ ØªØ´Ø®ÛŒØµ Ù†ÛŒØ³Øª" : state.InstalledVersion;
         _versionDetail.RightToLeft = RightToLeft.No;
         _connectionDetail.Text = state.Paired ? "متصل" : "متصل نیست";
 
@@ -694,8 +696,10 @@ internal sealed class PersianDashboardFormV2 : Form
             "1.0.9",
             true,
             true,
+            "1.0.2",
             true,
             true,
+            "6.2.9",
             true,
             "http://127.0.0.1:18080/",
             true,
@@ -937,6 +941,26 @@ internal sealed class PersianDashboardFormV2 : Form
         }
     }
 
+    private static string ReadServiceBinaryVersion(string serviceName)
+    {
+        try
+        {
+            var image = ReadServiceImage(serviceName);
+            var executable = Environment.ExpandEnvironmentVariables(ExtractExecutablePath(image));
+            if (string.IsNullOrWhiteSpace(executable) || !File.Exists(executable)) return "";
+            var info = FileVersionInfo.GetVersionInfo(executable);
+            var raw = !string.IsNullOrWhiteSpace(info.ProductVersion) ? info.ProductVersion : info.FileVersion;
+            return string.IsNullOrWhiteSpace(raw) ? "" : NormalizeVersion(raw);
+        }
+        catch { return ""; }
+    }
+
+    private static string ComponentStatus(bool installed, bool running, string version)
+    {
+        if (!installed) return "Ù†ØµØ¨ Ù†Ø´Ø¯Ù‡";
+        var versionText = string.IsNullOrWhiteSpace(version) ? "Ù†Ø³Ø®Ù‡ Ù†Ø§Ù…Ø´Ø®Øµ" : $"Ù†Ø³Ø®Ù‡ {version}";
+        return $"Ù†ØµØ¨ Ø´Ø¯Ù‡ â€¢ {versionText} â€¢ {(running ? "Ø¯Ø± Ø­Ø§Ù„ Ø§Ø¬Ø±Ø§" : "Ù…ØªÙˆÙ‚Ù")}";
+    }
     private string ReadInstalledVersion(bool anyInstalled)
     {
         var statePath = Path.Combine(_dataRoot, "setup", "windows-services-state.json");
