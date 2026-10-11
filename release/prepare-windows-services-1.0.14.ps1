@@ -8,6 +8,11 @@ function Replace-Once([string]$old,[string]$new,[string]$label){
     if($count-ne1){throw "$label patch point count=$count"}
     $script:text=$script:text.Replace($old,$new)
 }
+function Replace-Regex-Once([string]$pattern,[string]$replacement,[string]$label){
+    $matches=[regex]::Matches($script:text,$pattern,[Text.RegularExpressions.RegexOptions]::Multiline -bor [Text.RegularExpressions.RegexOptions]::Singleline)
+    if($matches.Count-ne1){throw "$label patch point count=$($matches.Count)"}
+    $script:text=[regex]::Replace($script:text,$pattern,[Text.RegularExpressions.MatchEvaluator]{param($m)$replacement},[Text.RegularExpressions.RegexOptions]::Multiline -bor [Text.RegularExpressions.RegexOptions]::Singleline)
+}
 
 Replace-Once @'
 internal sealed record WindowsDashboardState(
@@ -37,7 +42,7 @@ internal sealed record WindowsDashboardState(
     string PrerequisiteVersion);
 '@ 'state-record'
 
-Replace-Once '        AddDetail(details, 2, "نسخه نصب‌شده", _versionDetail);' '        AddDetail(details, 2, "Windows Services", _versionDetail);' 'windows-services-label'
+Replace-Regex-Once '(?m)^\s*AddDetail\(details,\s*2,\s*"[^"]+",\s*_versionDetail\);\s*$' '        AddDetail(details, 2, "Windows Services", _versionDetail);' 'windows-services-label'
 
 Replace-Once @'
         var anyInstalled = runtime.Installed || print.Installed;
@@ -65,19 +70,9 @@ Replace-Once @'
             paired,
 '@ 'state-constructor'
 
-Replace-Once @'
-        _runtimeDetail.Text = state.RuntimeInstalled
-            ? state.RuntimeRunning ? "نصب شده • در حال اجرا" : "نصب شده • متوقف"
-            : "نصب نشده";
-        _printDetail.Text = state.PrintInstalled
-            ? state.PrintRunning ? "نصب شده • در حال اجرا" : "نصب شده • متوقف"
-            : "نصب نشده";
-        _versionDetail.Text = string.IsNullOrWhiteSpace(state.InstalledVersion) ? "قابل تشخیص نیست" : state.InstalledVersion;
-'@ @'
-        _runtimeDetail.Text = ComponentStatus(state.RuntimeInstalled, state.RuntimeRunning, state.RuntimeVersion);
-        _printDetail.Text = ComponentStatus(state.PrintInstalled, state.PrintRunning, state.PrintAgentVersion);
-        _versionDetail.Text = string.IsNullOrWhiteSpace(state.InstalledVersion) ? "قابل تشخیص نیست" : state.InstalledVersion;
-'@ 'render-component-versions'
+$renderPattern='(?s)        _runtimeDetail\.Text = state\.RuntimeInstalled.*?        _versionDetail\.Text = string\.IsNullOrWhiteSpace\(state\.InstalledVersion\) \?.*?;\r?\n'
+$renderReplacement="        _runtimeDetail.Text = ComponentStatus(state.RuntimeInstalled, state.RuntimeRunning, state.RuntimeVersion);`r`n        _printDetail.Text = ComponentStatus(state.PrintInstalled, state.PrintRunning, state.PrintAgentVersion);`r`n        _versionDetail.Text = string.IsNullOrWhiteSpace(state.InstalledVersion) ? \"قابل تشخیص نیست\" : state.InstalledVersion;`r`n"
+Replace-Regex-Once $renderPattern $renderReplacement 'render-component-versions'
 
 Replace-Once @'
             true,
