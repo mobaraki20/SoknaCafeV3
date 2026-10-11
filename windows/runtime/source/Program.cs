@@ -76,6 +76,9 @@ internal static class RuntimeSchedulerPolicy
         if(!relay.TryStart(t0.AddMilliseconds(2100),out var retry)||retry!=second)throw new InvalidOperationException("runtime_scheduler_retry_identity_invalid");
         relay.CompleteDefinitiveFailure(t0.AddMilliseconds(2150),"local_trigger_failed_503");
         if(relay.NextRunAt!=DateTimeOffset.MinValue)throw new InvalidOperationException("runtime_scheduler_definitive_failure_identity_not_rotated");
+        if(relay.TryStart(t0.AddMilliseconds(4149),out _))throw new InvalidOperationException("runtime_scheduler_definitive_backoff_invalid");
+        if(relay.NextRunAt!=DateTimeOffset.MinValue)throw new InvalidOperationException("runtime_scheduler_definitive_identity_assigned_before_backoff");
+        if(!relay.TryStart(t0.AddMilliseconds(4150),out var rotated)||rotated!=t0.AddMilliseconds(4150)||rotated.ToUnixTimeSeconds()==second.ToUnixTimeSeconds())throw new InvalidOperationException("runtime_scheduler_definitive_identity_rotation_invalid");
         foreach(var seconds in new[]{15,30,60})if(RuntimeSchedulerPolicy.EffectiveIntervalSeconds(new ScheduledTrigger("maintenance.test",seconds))!=seconds)throw new InvalidOperationException("runtime_scheduler_slow_cadence_changed");
         if(RuntimeSchedulerPolicy.EffectiveIntervalSeconds(new ScheduledTrigger("custom.fast",1))!=5)throw new InvalidOperationException("runtime_scheduler_fast_allowlist_bypass");
         if(TickMilliseconds>100)throw new InvalidOperationException("runtime_scheduler_tick_too_slow");
@@ -99,8 +102,8 @@ internal sealed class RuntimeTriggerState
     {
         scheduledAt=DateTimeOffset.MinValue;
         if(InFlight)return false;
-        if(NextRunAt==DateTimeOffset.MinValue)NextRunAt=now;
         if(RetryNotBefore.HasValue&&now<RetryNotBefore.Value)return false;
+        if(NextRunAt==DateTimeOffset.MinValue)NextRunAt=now;
         if(now<NextRunAt)return false;
         InFlight=true;LastStartedAt=now;scheduledAt=NextRunAt;return true;
     }
