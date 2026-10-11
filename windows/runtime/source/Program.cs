@@ -53,7 +53,7 @@ internal static class RuntimeSchedulerPolicy
     public const int TickMilliseconds=100;
     private const int MaxBackoffSeconds=30;
     public static bool AllowsFastCadence(string key)=>string.Equals(key,"public.relay_sync",StringComparison.Ordinal);
-    public static int EffectiveIntervalSeconds(ScheduledTrigger trigger)=>AllowsFastCadence(trigger.Key)?Math.Max(1,trigger.IntervalSeconds):Math.Max(5,trigger.IntervalSeconds);
+    public static int EffectiveIntervalSeconds(ScheduledTrigger trigger)=>AllowsFastCadence(trigger.Key)?(trigger.IntervalSeconds==5?1:Math.Max(1,trigger.IntervalSeconds)):Math.Max(5,trigger.IntervalSeconds);
     public static TimeSpan FailureBackoff(int effectiveIntervalSeconds,int consecutiveFailures)
     {
         var exponent=Math.Min(5,Math.Max(0,consecutiveFailures-1));
@@ -63,8 +63,9 @@ internal static class RuntimeSchedulerPolicy
     public static void SelfTest()
     {
         var relay=new RuntimeTriggerState(new ScheduledTrigger("public.relay_sync",1));
+        var legacyRelay=new RuntimeTriggerState(new ScheduledTrigger("public.relay_sync",5));
         var t0=new DateTimeOffset(2026,10,12,0,0,0,TimeSpan.Zero);
-        if(relay.EffectiveIntervalSeconds!=1)throw new InvalidOperationException("runtime_scheduler_fast_cadence_invalid");
+        if(relay.EffectiveIntervalSeconds!=1||legacyRelay.EffectiveIntervalSeconds!=1)throw new InvalidOperationException("runtime_scheduler_fast_cadence_invalid");
         if(!relay.TryStart(t0,out var first)||first!=t0)throw new InvalidOperationException("runtime_scheduler_first_due_invalid");
         if(relay.TryStart(t0.AddMilliseconds(10),out _))throw new InvalidOperationException("runtime_scheduler_overlap_allowed");
         relay.CompleteSuccess(t0.AddMilliseconds(50));
