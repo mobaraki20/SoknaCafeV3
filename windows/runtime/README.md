@@ -11,3 +11,16 @@ Expected flow:
 `Runtime -> versioned Local worker/API -> business logic -> Local DB`
 
 Runtime contracts are loopback/machine-bound by default. No Public/Internet endpoint may directly control Windows services.
+
+## Scheduler policy
+
+- `public.relay_sync` is the only v1 trigger explicitly allowed to use a fast cadence below five seconds. Its supported minimum is one second.
+- Other/custom triggers retain the historical five-second safety floor when configured below five seconds; normal 15/30/60-second intervals are not accelerated.
+- Scheduler scan tick is 100 ms so a healthy one-second relay lane is normally dispatched close to its configured cadence.
+- Every trigger has an independent lane. A lane never overlaps itself, while a slow/failing trigger does not block unrelated trigger lanes.
+- Ambiguous transport failures retry the same scheduled identity after bounded exponential backoff. Definitive Local HTTP failures rotate the scheduled identity before retrying.
+- Retry backoff is bounded to 30 seconds and there is no catch-up/runaway loop after a slow handler.
+- Print Agent supervision runs on a separate Runtime loop so Windows service recovery cannot stall trigger scheduling.
+- `/v1/health` and `runtime-state.json` expose configured/effective cadence, last start/completion, next due time, in-flight state, consecutive failures and last trigger error.
+
+Existing installations are reconciled by the Windows Services installer: the legacy default `public.relay_sync=5` is migrated to `1` while unrelated/custom trigger configuration is preserved. Runtime configuration is loaded again on the normal service restart performed by Install/Repair.
