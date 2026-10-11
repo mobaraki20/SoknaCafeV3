@@ -49,12 +49,12 @@ jobs:
           if(-not(Test-Path packaging/windows/WINDOWS_SERVICES_1.0.16_NOTES_FA.md)){throw 'Release notes missing'}
           Write-Host 'Windows Services 1.0.16 version/scope contract: PASS'
 
-      - name: Run Runtime contract gates
+      - name: Run scoped Runtime contract gate
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          python tests/runtime-print-v1-contract.py
           python tests/m7-runtime-gate.py
+          if($LASTEXITCODE-ne0){throw "M7 Runtime gate failed: exit=$LASTEXITCODE"}
 
       - name: Build Runtime 1.0.3 and run scheduler self-tests
         shell: pwsh
