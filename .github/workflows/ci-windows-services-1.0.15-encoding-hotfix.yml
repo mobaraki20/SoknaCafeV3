@@ -1,0 +1,212 @@
+name: CI Windows Services 1.0.15 Persian Encoding Hotfix
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/windows-services-1.0.15-encoding-fix
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-windows-services-1.0.15-encoding-hotfix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-qualify-publish:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Apply and freeze 1.0.15 Persian encoding hotfix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & packaging/windows/patch-1.0.15-encoding.ps1
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $changes=(git status --porcelain)
+          if($changes){
+            git add packaging/windows/WINDOWS_SERVICES_VERSION.txt packaging/windows/setup-ui/PersianDashboardV2.cs
+            git commit -m 'fix(windows): correct Persian component status encoding'
+            git push origin HEAD:work/windows-services-1.0.15-encoding-fix
+          }
+          $head=(git rev-parse HEAD).Trim()
+          "SOURCE_COMMIT=$head" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $pkg=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if($pkg-ne'1.0.15'){throw "Unexpected Windows Services version: $pkg"}
+          [xml]$runtime=Get-Content windows/runtime/source/Sokna.Runtime.Service.csproj -Raw
+          if([string]$runtime.Project.PropertyGroup.Version-ne'1.0.2'){throw 'Runtime version changed unexpectedly'}
+          [xml]$agent=Get-Content windows/print-agent/source/Directory.Build.props -Raw
+          if([string]$agent.Project.PropertyGroup.SoknaAgentVersion-ne'6.2.9'){throw 'Print Agent version changed unexpectedly'}
+          $ui=Get-Content packaging/windows/setup-ui/PersianDashboardV2.cs -Raw -Encoding UTF8
+          if($ui -match '[ÙØÛ]' -or $ui.Contains('â€¢') -or $ui.Contains('â€”')){throw 'Mojibake marker remains in Persian dashboard source'}
+          $needles=@('"قابل تشخیص نیست"','"نصب نشده"','"نسخه نامشخص"','$"نسخه {version}"','$"نصب شده • {versionText} • {(running ? "در حال اجرا" : "متوقف")}"','ReadServiceBinaryVersion(RuntimeService)','ReadServiceBinaryVersion(PrintService)')
+          foreach($needle in $needles){if(-not$ui.Contains($needle)){throw "Encoding/version visibility contract missing: $needle"}}
+          Write-Host "Windows Services 1.0.15 frozen source contract: PASS ($head)"
+
+      - name: Build Runtime 1.0.2
+        shell: pwsh
+        run: dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release
+
+      - name: Build and test Print Agent 6.2.9
+        working-directory: windows/print-agent/source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build Sokna.PrintWorker.slnx -c Release
+          dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows Services 1.0.15
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $root 'release\out-windows-1.0.15'
+          $candidates=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")
+          $iscc=$candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not$iscc){throw 'ISCC missing'}
+          & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          $setup=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.15.exe'
+          if(-not(Test-Path -LiteralPath $setup -PathType Leaf)){throw 'Windows Services 1.0.15 installer missing'}
+          $setupUi=Join-Path $out 'SoknaSetupUi.exe'
+          $uiInfo=[Diagnostics.FileVersionInfo]::GetVersionInfo($setupUi)
+          if([string]$uiInfo.ProductVersion-ne'1.0.15'){throw "Setup UI version mismatch: $($uiInfo.ProductVersion)"}
+          $index=Get-Content (Join-Path $out 'artifact-index.json') -Raw|ConvertFrom-Json
+          if([string]$index.source_commit-ne$env:SOURCE_COMMIT){throw "artifact source commit mismatch: $($index.source_commit) != $env:SOURCE_COMMIT"}
+          if([string]$index.runtime.version-ne'1.0.2'){throw 'runtime artifact version mismatch'}
+          if([string]$index.print_agent.version-ne'6.2.9'){throw 'print agent artifact version mismatch'}
+          if([string]$index.windows_services.file-ne'SOKNA-Windows-Services-Setup-1.0.15.exe'){throw 'Windows Services artifact index mismatch'}
+          Write-Host 'Windows Services 1.0.15 build: PASS'
+
+      - name: Run Setup UI real-shell layout and Persian-text self-test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $shell='release\out-windows-1.0.15\shell'
+          $ui=(Resolve-Path (Join-Path $shell 'SoknaSetupUi.exe')).Path
+          $font=Join-Path $shell 'print-worker\Worker\Fonts\Vazirmatn-Regular.ttf'
+          if(-not(Test-Path -LiteralPath $font -PathType Leaf)){throw 'Shell Vazirmatn font missing'}
+          $diag=Join-Path $env:RUNNER_TEMP 'sokna-1.0.15-layout'
+          $process=Start-Process -FilePath $ui -ArgumentList @('--layout-self-test',$diag) -Wait -PassThru
+          if($process.ExitCode-ne0){throw "Setup UI layout self-test failed: exit=$($process.ExitCode)"}
+          $results=@(Get-ChildItem $diag -Filter 'layout-*.txt')
+          if($results.Count-eq0){throw 'Layout self-test produced no evidence'}
+          $results | ForEach-Object { if((Get-Content $_.FullName -Raw).Trim()-ne'PASS'){throw "Layout failed: $($_.Name)"} }
+          Write-Host "Setup UI real-shell layout: PASS files=$($results.Count)"
+
+      - name: Qualify installer awareness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $installer=(Resolve-Path 'release\out-windows-1.0.15\SOKNA-Windows-Services-Setup-1.0.15.exe').Path
+          $diag=Join-Path (Resolve-Path .) 'release\installer-awareness-1.0.15'
+          & packaging/windows/tests/qualify-installer-awareness.ps1 -InstallerPath $installer -DiagnosticsRoot $diag
+
+      - name: Freeze 1.0.15 final release kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=(Resolve-Path 'release\out-windows-1.0.15').Path
+          $installer=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.15.exe'
+          $runtimeZip=Get-ChildItem (Join-Path $out 'runtime') -Filter 'SoknaRuntime-1.0.2-win-x64.zip' | Select-Object -First 1
+          $printZip=Get-ChildItem (Join-Path $out 'print') -Filter 'SoknaPrintAgent-6.2.9-win-x64.zip' | Select-Object -First 1
+          if(-not$runtimeZip-or-not$printZip){throw 'component artifacts missing'}
+          $qualification=Join-Path $out 'WINDOWS_SERVICES_1.0.15_QUALIFICATION.txt'
+          $lines=@(
+            'SOKNA Windows Services 1.0.15 — FINAL HOTFIX QUALIFICATION',
+            "source_commit=$env:SOURCE_COMMIT",
+            'windows_services_version=1.0.15',
+            'runtime_version=1.0.2 unchanged',
+            'print_agent_version=6.2.9 unchanged',
+            'persian_component_status_encoding=PASS',
+            'mojibake_source_gate=PASS',
+            'component_version_visibility=PASS',
+            'version_source=installed_service_executable_metadata',
+            'runtime_build=PASS',
+            'print_agent_build_regression=PASS',
+            'setup_ui_real_shell_layout=PASS',
+            'installer_build=PASS',
+            'installer_awareness=PASS',
+            ('installer_sha256='+(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()),
+            ('runtime_zip_sha256='+(Get-FileHash $runtimeZip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()),
+            ('print_agent_zip_sha256='+(Get-FileHash $printZip.FullName -Algorithm SHA256).Hash.ToLowerInvariant())
+          )
+          $lines | Set-Content $qualification -Encoding utf8
+          Copy-Item 'packaging\windows\WINDOWS_SERVICES_1.0.15_NOTES_FA.md' (Join-Path $out 'WINDOWS_SERVICES_1.0.15_NOTES_FA.md') -Force
+          $hashes=Join-Path $out 'SHA256SUMS-FINAL.txt'
+          $files=@($installer,$runtimeZip.FullName,$printZip.FullName,(Join-Path $out 'artifact-index.json'),$qualification,(Join-Path $out 'WINDOWS_SERVICES_1.0.15_NOTES_FA.md'))
+          $hashLines=@(); foreach($file in $files){$hashLines += "$( (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+          $hashLines | Set-Content $hashes -Encoding utf8
+          $kit=Join-Path $out 'SOKNA-Windows-Services-1.0.15-FINAL-Release-Kit.zip'
+          if(Test-Path $kit){Remove-Item $kit -Force}
+          Compress-Archive -Path $installer,$runtimeZip.FullName,$printZip.FullName,(Join-Path $out 'artifact-index.json'),$qualification,(Join-Path $out 'WINDOWS_SERVICES_1.0.15_NOTES_FA.md'),$hashes -DestinationPath $kit -CompressionLevel Optimal
+
+      - name: Publish GitHub Release windows-services-v1.0.15
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=(Resolve-Path 'release\out-windows-1.0.15').Path
+          $tag='windows-services-v1.0.15'
+          $assets=@(
+            (Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.15.exe'),
+            (Join-Path $out 'SOKNA-Windows-Services-1.0.15-FINAL-Release-Kit.zip'),
+            (Join-Path $out 'WINDOWS_SERVICES_1.0.15_QUALIFICATION.txt'),
+            (Join-Path $out 'WINDOWS_SERVICES_1.0.15_NOTES_FA.md'),
+            (Join-Path $out 'SHA256SUMS-FINAL.txt')
+          )
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if($LASTEXITCODE-eq0){
+            gh release upload $tag @assets --repo $env:GITHUB_REPOSITORY --clobber
+          } else {
+            gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_COMMIT --title 'SOKNA Windows Services 1.0.15' --notes-file (Join-Path $out 'WINDOWS_SERVICES_1.0.15_NOTES_FA.md')
+          }
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,name,isDraft,isPrerelease,targetCommitish,url
+
+      - name: Upload Windows Services 1.0.15 installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Windows-Services-1.0.15-Installer
+          if-no-files-found: error
+          retention-days: 90
+          path: release/out-windows-1.0.15/SOKNA-Windows-Services-Setup-1.0.15.exe
+
+      - name: Upload Windows Services 1.0.15 release kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Windows-Services-1.0.15-Release-Kit
+          if-no-files-found: error
+          retention-days: 90
+          path: release/out-windows-1.0.15/SOKNA-Windows-Services-1.0.15-FINAL-Release-Kit.zip
+
+      - name: Upload Windows Services 1.0.15 metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Windows-Services-1.0.15-Metadata
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            release/out-windows-1.0.15/artifact-index.json
+            release/out-windows-1.0.15/WINDOWS_SERVICES_1.0.15_QUALIFICATION.txt
+            release/out-windows-1.0.15/WINDOWS_SERVICES_1.0.15_NOTES_FA.md
+            release/out-windows-1.0.15/SHA256SUMS-FINAL.txt
