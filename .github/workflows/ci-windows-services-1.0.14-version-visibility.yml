@@ -7,7 +7,7 @@ on:
       - work/windows-services-1.0.14-component-version-visibility
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-windows-services-1.0.14-version-visibility-${{ github.ref }}
@@ -32,22 +32,12 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Prepare and commit Windows Services 1.0.14 source
+      - name: Verify frozen 1.0.14 source identity and component-version contract
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          & release/prepare-windows-services-1.0.14.ps1
-          git config user.name 'SOKNA Windows Qualification'
-          git config user.email 'windows-qualification@local.invalid'
-          git commit -m 'feat(windows): show installed component versions in 1.0.14 [skip ci]'
-          git push origin HEAD:${{ github.ref_name }}
           $head=(git rev-parse HEAD).Trim()
           "SOURCE_COMMIT=$head" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Verify release identity and component-version contract
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
           $pkg=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
           if($pkg-ne'1.0.14'){throw "Unexpected Windows Services version: $pkg"}
           [xml]$runtime=Get-Content windows/runtime/source/Sokna.Runtime.Service.csproj -Raw
@@ -57,7 +47,7 @@ jobs:
           $d=Get-Content packaging/windows/setup-ui/PersianDashboardV2.cs -Raw
           $needles=@('string RuntimeVersion','string PrintAgentVersion','ReadServiceBinaryVersion(RuntimeService)','ReadServiceBinaryVersion(PrintService)','Environment.ExpandEnvironmentVariables(ExtractExecutablePath(image))','FileVersionInfo.GetVersionInfo(executable)','ComponentStatus(state.RuntimeInstalled, state.RuntimeRunning, state.RuntimeVersion)','ComponentStatus(state.PrintInstalled, state.PrintRunning, state.PrintAgentVersion)','AddDetail(details, 2, "Windows Services", _versionDetail)')
           foreach($needle in $needles){if(-not$d.Contains($needle)){throw "Version visibility contract missing: $needle"}}
-          Write-Host 'Windows Services 1.0.14 component version contract: PASS'
+          Write-Host "Windows Services 1.0.14 frozen source contract: PASS ($head)"
 
       - name: Build Runtime 1.0.2
         shell: powershell
@@ -86,25 +76,32 @@ jobs:
           if(-not$iscc){throw 'ISCC missing'}
           & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
           $setup=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.14.exe'
-          if(-not(Test-Path $setup)){throw 'Windows Services 1.0.14 installer missing'}
+          if(-not(Test-Path -LiteralPath $setup -PathType Leaf)){throw 'Windows Services 1.0.14 installer missing'}
           $ui=Join-Path $out 'SoknaSetupUi.exe'
           $uiInfo=[Diagnostics.FileVersionInfo]::GetVersionInfo($ui)
           if([string]$uiInfo.ProductVersion-ne'1.0.14'){throw "Setup UI version mismatch: $($uiInfo.ProductVersion)"}
           $index=Get-Content (Join-Path $out 'artifact-index.json') -Raw|ConvertFrom-Json
-          if([string]$index.source_commit-ne$env:SOURCE_COMMIT){throw 'artifact source commit mismatch'}
+          if([string]$index.source_commit-ne$env:SOURCE_COMMIT){throw "artifact source commit mismatch: $($index.source_commit) != $env:SOURCE_COMMIT"}
           if([string]$index.runtime.version-ne'1.0.2'){throw 'runtime artifact version mismatch'}
           if([string]$index.print_agent.version-ne'6.2.9'){throw 'print agent artifact version mismatch'}
+          if([string]$index.windows_services.file-ne'SOKNA-Windows-Services-Setup-1.0.14.exe'){throw 'Windows Services artifact index mismatch'}
           Write-Host 'Windows Services 1.0.14 build: PASS'
 
-      - name: Run Setup UI layout self-test
+      - name: Run Setup UI layout self-test from real shell payload
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $ui=(Resolve-Path 'release\out-windows-1.0.14\SoknaSetupUi.exe').Path
+          $shell='release\out-windows-1.0.14\shell'
+          $ui=(Resolve-Path (Join-Path $shell 'SoknaSetupUi.exe')).Path
+          $font=Join-Path $shell 'print-worker\Worker\Fonts\Vazirmatn-Regular.ttf'
+          if(-not(Test-Path -LiteralPath $font -PathType Leaf)){throw 'Shell Vazirmatn font missing'}
           $diag=Join-Path $env:RUNNER_TEMP 'sokna-1.0.14-layout'
           & $ui --layout-self-test $diag
           if($LASTEXITCODE-ne0){throw 'Setup UI layout self-test failed'}
-          Get-ChildItem $diag -Filter 'layout-*.txt' | ForEach-Object { if((Get-Content $_.FullName -Raw).Trim()-ne'PASS'){throw "Layout failed: $($_.Name)"} }
+          $results=@(Get-ChildItem $diag -Filter 'layout-*.txt')
+          if($results.Count-eq0){throw 'Layout self-test produced no evidence'}
+          $results | ForEach-Object { if((Get-Content $_.FullName -Raw).Trim()-ne'PASS'){throw "Layout failed: $($_.Name)"} }
+          Write-Host "Setup UI real-shell layout: PASS files=$($results.Count)"
 
       - name: Qualify installer awareness
         shell: powershell
@@ -124,7 +121,24 @@ jobs:
           $printZip=Get-ChildItem (Join-Path $out 'print') -Filter 'SoknaPrintAgent-6.2.9-win-x64.zip' | Select-Object -First 1
           if(-not$runtimeZip-or-not$printZip){throw 'component artifacts missing'}
           $qualification=Join-Path $out 'WINDOWS_SERVICES_1.0.14_QUALIFICATION.txt'
-          $lines=@('SOKNA Windows Services 1.0.14 — FINAL BUILD QUALIFICATION',"source_commit=$env:SOURCE_COMMIT",'windows_services_version=1.0.14','runtime_version=1.0.2 unchanged','print_agent_version=6.2.9 unchanged','component_version_visibility=PASS','version_source=installed_service_executable_metadata','protocol_contract_not_used_as_software_version=PASS','runtime_build=PASS','print_agent_build_regression=PASS','setup_ui_layout=PASS','installer_build=PASS','installer_awareness=PASS',('installer_sha256='+(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()),('runtime_zip_sha256='+(Get-FileHash $runtimeZip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()),('print_agent_zip_sha256='+(Get-FileHash $printZip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()))
+          $lines=@(
+            'SOKNA Windows Services 1.0.14 — FINAL BUILD QUALIFICATION',
+            "source_commit=$env:SOURCE_COMMIT",
+            'windows_services_version=1.0.14',
+            'runtime_version=1.0.2 unchanged',
+            'print_agent_version=6.2.9 unchanged',
+            'component_version_visibility=PASS',
+            'version_source=installed_service_executable_metadata',
+            'protocol_contract_not_used_as_software_version=PASS',
+            'runtime_build=PASS',
+            'print_agent_build_regression=PASS',
+            'setup_ui_real_shell_layout=PASS',
+            'installer_build=PASS',
+            'installer_awareness=PASS',
+            ('installer_sha256='+(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()),
+            ('runtime_zip_sha256='+(Get-FileHash $runtimeZip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()),
+            ('print_agent_zip_sha256='+(Get-FileHash $printZip.FullName -Algorithm SHA256).Hash.ToLowerInvariant())
+          )
           $lines | Set-Content $qualification -Encoding utf8
           Copy-Item 'packaging\windows\WINDOWS_SERVICES_1.0.14_NOTES_FA.md' (Join-Path $out 'WINDOWS_SERVICES_1.0.14_NOTES_FA.md') -Force
           $hashes=Join-Path $out 'SHA256SUMS-FINAL.txt'
