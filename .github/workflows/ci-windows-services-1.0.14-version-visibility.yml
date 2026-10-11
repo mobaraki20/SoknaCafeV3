@@ -96,8 +96,8 @@ jobs:
           $font=Join-Path $shell 'print-worker\Worker\Fonts\Vazirmatn-Regular.ttf'
           if(-not(Test-Path -LiteralPath $font -PathType Leaf)){throw 'Shell Vazirmatn font missing'}
           $diag=Join-Path $env:RUNNER_TEMP 'sokna-1.0.14-layout'
-          & $ui --layout-self-test $diag
-          if($LASTEXITCODE-ne0){throw 'Setup UI layout self-test failed'}
+          $process=Start-Process -FilePath $ui -ArgumentList @('--layout-self-test',$diag) -Wait -PassThru
+          if($process.ExitCode-ne0){throw "Setup UI layout self-test failed: exit=$($process.ExitCode)"}
           $results=@(Get-ChildItem $diag -Filter 'layout-*.txt')
           if($results.Count-eq0){throw 'Layout self-test produced no evidence'}
           $results | ForEach-Object { if((Get-Content $_.FullName -Raw).Trim()-ne'PASS'){throw "Layout failed: $($_.Name)"} }
