@@ -15,7 +15,7 @@
     },
     {
       "key": "public.relay_sync",
-      "intervalSeconds": 5
+      "intervalSeconds": 1
     },
     {
       "key": "public.projection_sync",
