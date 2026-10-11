@@ -5,26 +5,30 @@ $sourcePath = Join-Path $repoRoot 'packaging\windows\setup-ui\PersianDashboardV2
 $versionPath = Join-Path $repoRoot 'packaging\windows\WINDOWS_SERVICES_VERSION.txt'
 
 $text = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
-$replacements = [ordered]@{
-    '"Ù‚Ø§Ø¨Ù„ ØªØ´Ø®ÛŒØµ Ù†ÛŒØ³Øª"' = '"قابل تشخیص نیست"'
-    '"Ù†ØµØ¨ Ù†Ø´Ø¯Ù‡"' = '"نصب نشده"'
-    '"Ù†Ø³Ø®Ù‡ Ù†Ø§Ù…Ø´Ø®Øµ"' = '"نسخه نامشخص"'
-    '$"Ù†Ø³Ø®Ù‡ {version}"' = '$"نسخه {version}"'
-    '$"Ù†ØµØ¨ Ø´Ø¯Ù‡ â€¢ {versionText} â€¢ {(running ? "Ø¯Ø± Ø­Ø§Ù„ Ø§Ø¬Ø±Ø§" : "Ù…ØªÙˆÙ‚Ù")}"' = '$"نصب شده • {versionText} • {(running ? "در حال اجرا" : "متوقف")}"'
-}
 
-foreach ($entry in $replacements.GetEnumerator()) {
-    if ($text.Contains($entry.Key)) {
-        $text = $text.Replace($entry.Key, $entry.Value)
+$versionPattern = '_versionDetail\.Text = string\.IsNullOrWhiteSpace\(state\.InstalledVersion\) \? .*? : state\.InstalledVersion;'
+$versionReplacement = '_versionDetail.Text = string.IsNullOrWhiteSpace(state.InstalledVersion) ? "قابل تشخیص نیست" : state.InstalledVersion;'
+$text = [regex]::Replace($text, $versionPattern, $versionReplacement)
+
+$componentPattern = '(?s)    private static string ComponentStatus\(bool installed, bool running, string version\)\s*\{.*?\r?\n    \}\r?\n    private string ReadInstalledVersion'
+$componentReplacement = @'
+    private static string ComponentStatus(bool installed, bool running, string version)
+    {
+        if (!installed) return "نصب نشده";
+        var versionText = string.IsNullOrWhiteSpace(version) ? "نسخه نامشخص" : $"نسخه {version}";
+        return $"نصب شده • {versionText} • {(running ? "در حال اجرا" : "متوقف")}";
     }
-}
+    private string ReadInstalledVersion
+'@
+$text = [regex]::Replace($text, $componentPattern, $componentReplacement)
 
 Set-Content -LiteralPath $sourcePath -Value $text -Encoding UTF8 -NoNewline
 Set-Content -LiteralPath $versionPath -Value "1.0.15`n" -Encoding ASCII -NoNewline
 
 $final = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
-if ($final -match '[ÙØÛ]' -or $final.Contains('â€¢') -or $final.Contains('â€”')) {
-    throw 'Mojibake marker remains in PersianDashboardV2.cs after hotfix.'
+$badChars = @([char]0x00D8, [char]0x00D9, [char]0x00DB, [char]0x00E2, [char]0x00C3)
+foreach ($bad in $badChars) {
+    if ($final.Contains([string]$bad)) { throw "Mojibake marker U+$([int]$bad).ToString('X4') remains in PersianDashboardV2.cs after hotfix." }
 }
 
 $required = @(
