@@ -1,0 +1,71 @@
+name: Publish Windows Services 1.0.14 Final Release
+
+on:
+  push:
+    branches:
+      - publish/windows-services-1.0.14-final-release
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+
+      - name: Download qualified artifacts from final run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/installer dist/release-kit dist/metadata
+          gh run download 38125522230 -R "$GITHUB_REPOSITORY" -n SOKNA-Windows-Services-1.0.14-Installer -D dist/installer
+          gh run download 38125522230 -R "$GITHUB_REPOSITORY" -n SOKNA-Windows-Services-1.0.14-Release-Kit -D dist/release-kit
+          gh run download 38125522230 -R "$GITHUB_REPOSITORY" -n SOKNA-Windows-Services-1.0.14-Metadata -D dist/metadata
+          test -f dist/installer/SOKNA-Windows-Services-Setup-1.0.14.exe
+          test -f dist/release-kit/SOKNA-Windows-Services-1.0.14-FINAL-Release-Kit.zip
+          test -f dist/metadata/WINDOWS_SERVICES_1.0.14_QUALIFICATION.txt
+          test -f dist/metadata/WINDOWS_SERVICES_1.0.14_NOTES_FA.md
+          test -f dist/metadata/SHA256SUMS-FINAL.txt
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG='windows-services-v1.0.14'
+          TARGET='5fc87b93e4b850d05007fc7b27688b0c9fe2517c'
+          TITLE='SOKNA Windows Services 1.0.14'
+          NOTES='dist/metadata/WINDOWS_SERVICES_1.0.14_NOTES_FA.md'
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" \
+              dist/installer/SOKNA-Windows-Services-Setup-1.0.14.exe \
+              dist/release-kit/SOKNA-Windows-Services-1.0.14-FINAL-Release-Kit.zip \
+              dist/metadata/WINDOWS_SERVICES_1.0.14_QUALIFICATION.txt \
+              dist/metadata/WINDOWS_SERVICES_1.0.14_NOTES_FA.md \
+              dist/metadata/SHA256SUMS-FINAL.txt \
+              --clobber -R "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --title "$TITLE" --notes-file "$NOTES" --latest
+          else
+            gh release create "$TAG" \
+              dist/installer/SOKNA-Windows-Services-Setup-1.0.14.exe \
+              dist/release-kit/SOKNA-Windows-Services-1.0.14-FINAL-Release-Kit.zip \
+              dist/metadata/WINDOWS_SERVICES_1.0.14_QUALIFICATION.txt \
+              dist/metadata/WINDOWS_SERVICES_1.0.14_NOTES_FA.md \
+              dist/metadata/SHA256SUMS-FINAL.txt \
+              -R "$GITHUB_REPOSITORY" \
+              --target "$TARGET" \
+              --title "$TITLE" \
+              --notes-file "$NOTES" \
+              --latest
+          fi
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view windows-services-v1.0.14 -R "$GITHUB_REPOSITORY" --json tagName,name,isDraft,isPrerelease,url,targetCommitish,assets
