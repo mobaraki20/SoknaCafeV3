@@ -9,9 +9,11 @@ function Replace-Once([string]$old,[string]$new,[string]$label){
     $script:text=$script:text.Replace($old,$new)
 }
 function Replace-Regex-Once([string]$pattern,[string]$replacement,[string]$label){
-    $matches=[regex]::Matches($script:text,$pattern,[Text.RegularExpressions.RegexOptions]::Multiline -bor [Text.RegularExpressions.RegexOptions]::Singleline)
+    $options=[Text.RegularExpressions.RegexOptions]::Multiline -bor [Text.RegularExpressions.RegexOptions]::Singleline
+    $matches=[regex]::Matches($script:text,$pattern,$options)
     if($matches.Count-ne1){throw "$label patch point count=$($matches.Count)"}
-    $script:text=[regex]::Replace($script:text,$pattern,[Text.RegularExpressions.MatchEvaluator]{param($m)$replacement},[Text.RegularExpressions.RegexOptions]::Multiline -bor [Text.RegularExpressions.RegexOptions]::Singleline)
+    $match=$matches[0]
+    $script:text=$script:text.Substring(0,$match.Index)+$replacement+$script:text.Substring($match.Index+$match.Length)
 }
 
 Replace-Once @'
@@ -71,7 +73,12 @@ Replace-Once @'
 '@ 'state-constructor'
 
 $renderPattern='(?s)        _runtimeDetail\.Text = state\.RuntimeInstalled.*?        _versionDetail\.Text = string\.IsNullOrWhiteSpace\(state\.InstalledVersion\) \?.*?;\r?\n'
-$renderReplacement="        _runtimeDetail.Text = ComponentStatus(state.RuntimeInstalled, state.RuntimeRunning, state.RuntimeVersion);`r`n        _printDetail.Text = ComponentStatus(state.PrintInstalled, state.PrintRunning, state.PrintAgentVersion);`r`n        _versionDetail.Text = string.IsNullOrWhiteSpace(state.InstalledVersion) ? \"قابل تشخیص نیست\" : state.InstalledVersion;`r`n"
+$renderReplacement=@'
+        _runtimeDetail.Text = ComponentStatus(state.RuntimeInstalled, state.RuntimeRunning, state.RuntimeVersion);
+        _printDetail.Text = ComponentStatus(state.PrintInstalled, state.PrintRunning, state.PrintAgentVersion);
+        _versionDetail.Text = string.IsNullOrWhiteSpace(state.InstalledVersion) ? "قابل تشخیص نیست" : state.InstalledVersion;
+'@
+$renderReplacement += "`r`n"
 Replace-Regex-Once $renderPattern $renderReplacement 'render-component-versions'
 
 Replace-Once @'
