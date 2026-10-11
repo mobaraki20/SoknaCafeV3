@@ -149,17 +149,29 @@ jobs:
           if(Test-Path $kit){Remove-Item $kit -Force}
           Compress-Archive -Path $installer,$runtimeZip.FullName,$printZip.FullName,(Join-Path $out 'artifact-index.json'),$qualification,(Join-Path $out 'WINDOWS_SERVICES_1.0.14_NOTES_FA.md'),$hashes -DestinationPath $kit -CompressionLevel Optimal
 
-      - name: Upload final Windows Services 1.0.14
+      - name: Upload Windows Services 1.0.14 installer
         uses: actions/upload-artifact@v4
         with:
-          name: SOKNA-Windows-Services-1.0.14-FINAL
+          name: SOKNA-Windows-Services-1.0.14-Installer
+          if-no-files-found: error
+          retention-days: 90
+          path: release/out-windows-1.0.14/SOKNA-Windows-Services-Setup-1.0.14.exe
+
+      - name: Upload Windows Services 1.0.14 release kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Windows-Services-1.0.14-Release-Kit
+          if-no-files-found: error
+          retention-days: 90
+          path: release/out-windows-1.0.14/SOKNA-Windows-Services-1.0.14-FINAL-Release-Kit.zip
+
+      - name: Upload Windows Services 1.0.14 metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Windows-Services-1.0.14-Metadata
           if-no-files-found: error
           retention-days: 90
           path: |
-            release/out-windows-1.0.14/SOKNA-Windows-Services-Setup-1.0.14.exe
-            release/out-windows-1.0.14/SOKNA-Windows-Services-1.0.14-FINAL-Release-Kit.zip
-            release/out-windows-1.0.14/runtime/SoknaRuntime-1.0.2-win-x64.zip
-            release/out-windows-1.0.14/print/SoknaPrintAgent-6.2.9-win-x64.zip
             release/out-windows-1.0.14/artifact-index.json
             release/out-windows-1.0.14/WINDOWS_SERVICES_1.0.14_QUALIFICATION.txt
             release/out-windows-1.0.14/WINDOWS_SERVICES_1.0.14_NOTES_FA.md
