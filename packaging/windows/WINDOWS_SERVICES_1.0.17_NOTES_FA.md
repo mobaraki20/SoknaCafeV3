@@ -16,6 +16,7 @@
 - retryهای transient همان scheduled/request identity را حفظ می‌کنند؛ failureهای definitive هویت بعدی را rotate می‌کنند.
 - خطای authentication حداقل ۱۲۰ ثانیه و compatibility حداقل ۶۰ ثانیه policy-block می‌شود تا Runtime endpoint معیوب را پشت سر هم نکوبد.
 - Runtime Health همچنان configured/effective cadence، next run، in-flight، failure count و last error را گزارش می‌کند.
+- در qualification واقعی Windows مشخص شد self-test قدیمیِ scheduler زمان backoff ثابت فرض می‌کرد و با jitter جدید ناسازگار بود؛ self-test اصلاح شد تا از `RetryNotBefore` واقعی استفاده کند. این اصلاح رفتار production Runtime را تغییر نمی‌دهد و فقط test contract را با policy جدید همسو می‌کند.
 
 ## ارتقا
 
