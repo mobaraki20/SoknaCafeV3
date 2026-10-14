@@ -1,0 +1,256 @@
+name: CI Windows Services 1.0.17 Runtime Resilience
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/windows-services-1.0.17-runtime-resilience
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-windows-services-1.0.17-runtime-resilience-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-qualify-publish:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: windows-2022
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify release scope and H308 patch provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base='fbc2d63910ecb95b790b15b97448feecb113bacd'
+          git merge-base --is-ancestor $base HEAD
+          if($LASTEXITCODE-ne0){throw 'Pinned Windows Services 1.0.16 base is not an ancestor'}
+          $pkg=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if($pkg-ne'1.0.17'){throw "Unexpected Windows Services version: $pkg"}
+          [xml]$runtime=Get-Content windows/runtime/source/Sokna.Runtime.Service.csproj -Raw
+          if([string]$runtime.Project.PropertyGroup.Version-ne'1.0.5'){throw 'Runtime version must be 1.0.5'}
+          [xml]$agent=Get-Content windows/print-agent/source/Directory.Build.props -Raw
+          if([string]$agent.Project.PropertyGroup.SoknaAgentVersion-ne'6.2.9'){throw 'Print Agent changed outside scope'}
+          $compat=Get-Content packaging/windows/windows-services-compatibility-v1.json -Raw|ConvertFrom-Json
+          if([string]$compat.package_version-ne'1.0.17'){throw 'Compatibility package version mismatch'}
+          if([string]$compat.components.runtime.version-ne'1.0.5'){throw 'Compatibility Runtime version mismatch'}
+          if([string]$compat.components.'print-agent'.version-ne'6.2.9'){throw 'Compatibility Print Agent drift'}
+          if(-not(Test-Path packaging/windows/WINDOWS_SERVICES_1.0.17_NOTES_FA.md)){throw '1.0.17 release notes missing'}
+          $p1=(Get-FileHash windows/runtime/patches/1.0.5/ARCH05-deadline.patch -Algorithm SHA256).Hash.ToLowerInvariant()
+          $p2=(Get-FileHash windows/runtime/patches/1.0.5/ARCH06-transport-resilience.patch -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($p1-ne'bce05f6d34f7088a5f35c8170d47647f38ed6c9df51b1d75ea037b3a135c0207'){throw "ARCH05 patch hash mismatch: $p1"}
+          if($p2-ne'df68adbcd29544925ebc555120d878d29ee820b51492c6e34406c80974ab8ca2'){throw "ARCH06 patch hash mismatch: $p2"}
+          $programBlob=(git rev-parse HEAD:windows/runtime/source/Program.cs).Trim()
+          $source=Get-Content windows/runtime/source/Program.cs -Raw
+          if($programBlob-eq'27df01520c49a964e922f56db01a21e3dafdafe8'){
+            'RUNTIME_PATCH_REQUIRED=1'|Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }elseif($source.Contains('RetryBudgetMaxAttempts=6')-and$source.Contains('TriggerBudgetMilliseconds')-and$source.Contains('RuntimeTriggerHttpException')){
+            'RUNTIME_PATCH_REQUIRED=0'|Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }else{throw "Unexpected Runtime Program.cs lineage: $programBlob"}
+          Write-Host 'Windows Services 1.0.17 scope/provenance preflight: PASS'
+
+      - name: Materialize Runtime 1.0.5 patch chain
+        if: env.RUNTIME_PATCH_REQUIRED == '1'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git apply --check windows/runtime/patches/1.0.5/ARCH05-deadline.patch
+          git apply windows/runtime/patches/1.0.5/ARCH05-deadline.patch
+          git apply --check windows/runtime/patches/1.0.5/ARCH06-transport-resilience.patch
+          git apply windows/runtime/patches/1.0.5/ARCH06-transport-resilience.patch
+          git diff --check
+          Write-Host 'Runtime 1.0.5 patch chain materialized: PASS'
+
+      - name: Run Runtime 1.0.5 source contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python tests/m7-runtime-gate.py
+          if($LASTEXITCODE-ne0){throw "M7 Runtime gate failed: exit=$LASTEXITCODE"}
+          python tests/runtime-1.0.5-resilience-gate.py
+          if($LASTEXITCODE-ne0){throw "Runtime 1.0.5 resilience gate failed: exit=$LASTEXITCODE"}
+
+      - name: Commit materialized Runtime source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dirty=(git status --porcelain -- windows/runtime/source/Program.cs)
+          if($dirty){
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add windows/runtime/source/Program.cs
+            git commit -m 'feat(runtime): materialize Runtime 1.0.5 resilience source [skip ci]'
+            git push origin HEAD:work/windows-services-1.0.17-runtime-resilience
+          }
+          $releaseCommit=(git rev-parse HEAD).Trim()
+          "RELEASE_COMMIT=$releaseCommit"|Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PATCHED_PROGRAM_SHA256=$((Get-FileHash windows/runtime/source/Program.cs -Algorithm SHA256).Hash.ToLowerInvariant())"|Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Release source commit: $releaseCommit"
+
+      - name: Build Runtime 1.0.5 and run self-tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --scheduler-self-test
+
+      - name: Build and regression-test unchanged Print Agent 6.2.9
+        working-directory: windows/print-agent/source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build Sokna.PrintWorker.slnx -c Release
+          dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows Services 1.0.17 release artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $root 'release\out-windows-1.0.17'
+          $candidates=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")
+          $iscc=$candidates|Where-Object{$_-and(Test-Path -LiteralPath $_ -PathType Leaf)}|Select-Object -First 1
+          if(-not$iscc){throw 'ISCC missing'}
+          & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          $setup=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.17.exe'
+          if(-not(Test-Path -LiteralPath $setup -PathType Leaf)){throw 'Windows Services 1.0.17 installer missing'}
+          $index=Get-Content (Join-Path $out 'artifact-index.json') -Raw|ConvertFrom-Json
+          if([string]$index.source_commit-ne$env:RELEASE_COMMIT){throw "artifact source commit mismatch: $($index.source_commit) != $env:RELEASE_COMMIT"}
+          if([string]$index.runtime.version-ne'1.0.5'){throw 'runtime artifact version mismatch'}
+          if([string]$index.print_agent.version-ne'6.2.9'){throw 'print agent artifact version mismatch'}
+          if([string]$index.windows_services.file-ne'SOKNA-Windows-Services-Setup-1.0.17.exe'){throw 'Windows Services artifact index mismatch'}
+          Write-Host 'Windows Services 1.0.17 build: PASS'
+
+      - name: Qualify Runtime 1.0.5 latency and transport resilience
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=(Resolve-Path 'release\out-windows-1.0.17').Path
+          $runtime=(Resolve-Path (Join-Path $out 'shell\SoknaRuntimeService.exe')).Path
+          $result=& tests/windows-runtime-resilience-1.0.5.ps1 -RuntimeExe $runtime
+          $result|Tee-Object -FilePath (Join-Path $out 'RUNTIME_1.0.5_RESILIENCE_QUALIFICATION.json')
+          $parsed=$result|ConvertFrom-Json
+          if([string]$parsed.result-ne'PASS'){throw 'Runtime 1.0.5 resilience qualification failed'}
+
+      - name: Qualify installer awareness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $installer=(Resolve-Path 'release\out-windows-1.0.17\SOKNA-Windows-Services-Setup-1.0.17.exe').Path
+          $diag=Join-Path (Resolve-Path .) 'release\installer-awareness-1.0.17'
+          & packaging/windows/tests/qualify-installer-awareness.ps1 -InstallerPath $installer -DiagnosticsRoot $diag
+
+      - name: Freeze final qualification and hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=(Resolve-Path 'release\out-windows-1.0.17').Path
+          $installer=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.17.exe'
+          $runtimeZip=Get-ChildItem (Join-Path $out 'runtime') -Filter 'SoknaRuntime-1.0.5-win-x64.zip'|Select-Object -First 1
+          $printZip=Get-ChildItem (Join-Path $out 'print') -Filter 'SoknaPrintAgent-6.2.9-win-x64.zip'|Select-Object -First 1
+          if(-not$runtimeZip-or-not$printZip){throw 'component artifacts missing'}
+          $resilience=Join-Path $out 'RUNTIME_1.0.5_RESILIENCE_QUALIFICATION.json'
+          $notes=Join-Path $out 'WINDOWS_SERVICES_1.0.17_NOTES_FA.md'
+          Copy-Item 'packaging\windows\WINDOWS_SERVICES_1.0.17_NOTES_FA.md' $notes -Force
+          $prov=Join-Path $out 'RUNTIME_1.0.5_PROVENANCE.json'
+          [ordered]@{
+            format='sokna-runtime-release-provenance-v1';
+            release_commit=$env:RELEASE_COMMIT;
+            base_commit='fbc2d63910ecb95b790b15b97448feecb113bacd';
+            base_program_blob='27df01520c49a964e922f56db01a21e3dafdafe8';
+            arch05_patch_sha256='bce05f6d34f7088a5f35c8170d47647f38ed6c9df51b1d75ea037b3a135c0207';
+            arch06_patch_sha256='df68adbcd29544925ebc555120d878d29ee820b51492c6e34406c80974ab8ca2';
+            patched_program_sha256=$env:PATCHED_PROGRAM_SHA256;
+            runtime_version='1.0.5';windows_services_version='1.0.17';print_agent_version='6.2.9'
+          }|ConvertTo-Json -Depth 6|Set-Content $prov -Encoding utf8
+          $qualification=Join-Path $out 'WINDOWS_SERVICES_1.0.17_QUALIFICATION.txt'
+          @(
+            'SOKNA Windows Services 1.0.17 — FINAL QUALIFICATION',
+            "source_commit=$env:RELEASE_COMMIT",
+            'windows_services_version=1.0.17',
+            'runtime_version=1.0.5',
+            'print_agent_version=6.2.9 unchanged',
+            'h308_patch_provenance=PASS',
+            'runtime_contract_gates=PASS',
+            'runtime_health_self_test=PASS',
+            'runtime_scheduler_self_test=PASS',
+            'relay_effective_cadence_legacy_5_to_1=PASS',
+            'relay_real_timing=PASS',
+            'slow_trigger_failure_isolation=PASS',
+            'per_trigger_no_overlap=PASS',
+            'domain_4xx_identity_rotation=PASS',
+            'overload_503_identity_preservation=PASS',
+            'ambiguous_transport_identity_preservation=PASS',
+            'retry_after=PASS',
+            'trigger_deadline_4500ms=PASS',
+            'deadline_payload=PASS',
+            'print_agent_regression=PASS',
+            'installer_build=PASS',
+            'installer_awareness=PASS',
+            ('installer_sha256='+(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()),
+            ('runtime_zip_sha256='+(Get-FileHash $runtimeZip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()),
+            ('print_agent_zip_sha256='+(Get-FileHash $printZip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()),
+            ('patched_program_sha256='+$env:PATCHED_PROGRAM_SHA256)
+          )|Set-Content $qualification -Encoding utf8
+          $hashes=Join-Path $out 'SHA256SUMS-FINAL.txt'
+          $files=@($installer,$runtimeZip.FullName,$printZip.FullName,(Join-Path $out 'artifact-index.json'),$qualification,$notes,$resilience,$prov)
+          $hashLines=@();foreach($file in $files){$hashLines+="$( (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"};$hashLines|Set-Content $hashes -Encoding utf8
+          $kit=Join-Path $out 'SOKNA-Windows-Services-1.0.17-FINAL-Release-Kit.zip'
+          if(Test-Path $kit){Remove-Item $kit -Force}
+          Compress-Archive -Path $installer,$runtimeZip.FullName,$printZip.FullName,(Join-Path $out 'artifact-index.json'),$qualification,$notes,$resilience,$prov,$hashes -DestinationPath $kit -CompressionLevel Optimal
+
+      - name: Publish GitHub Release windows-services-v1.0.17
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=(Resolve-Path 'release\out-windows-1.0.17').Path
+          $tag='windows-services-v1.0.17'
+          $assets=@(
+            (Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.17.exe'),
+            (Join-Path $out 'SOKNA-Windows-Services-1.0.17-FINAL-Release-Kit.zip'),
+            (Join-Path $out 'WINDOWS_SERVICES_1.0.17_QUALIFICATION.txt'),
+            (Join-Path $out 'RUNTIME_1.0.5_RESILIENCE_QUALIFICATION.json'),
+            (Join-Path $out 'RUNTIME_1.0.5_PROVENANCE.json'),
+            (Join-Path $out 'WINDOWS_SERVICES_1.0.17_NOTES_FA.md'),
+            (Join-Path $out 'SHA256SUMS-FINAL.txt')
+          )
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if($LASTEXITCODE-eq0){gh release upload $tag @assets --repo $env:GITHUB_REPOSITORY --clobber}
+          else{gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --title 'SOKNA Windows Services 1.0.17' --notes-file (Join-Path $out 'WINDOWS_SERVICES_1.0.17_NOTES_FA.md')}
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,name,isDraft,isPrerelease,targetCommitish,url
+
+      - name: Upload Windows Services 1.0.17 release kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Windows-Services-1.0.17-Release-Kit
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            release/out-windows-1.0.17/SOKNA-Windows-Services-Setup-1.0.17.exe
+            release/out-windows-1.0.17/SOKNA-Windows-Services-1.0.17-FINAL-Release-Kit.zip
+            release/out-windows-1.0.17/WINDOWS_SERVICES_1.0.17_QUALIFICATION.txt
+            release/out-windows-1.0.17/RUNTIME_1.0.5_RESILIENCE_QUALIFICATION.json
+            release/out-windows-1.0.17/RUNTIME_1.0.5_PROVENANCE.json
+            release/out-windows-1.0.17/SHA256SUMS-FINAL.txt
