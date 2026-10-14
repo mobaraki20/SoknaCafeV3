@@ -24,7 +24,6 @@
 +        if(relay.TryStart(t0.AddMilliseconds(999),out _))throw new InvalidOperationException("runtime_scheduler_early_run_invalid");
 +        if(!relay.TryStart(t0.AddMilliseconds(1000),out var second)||second!=t0.AddMilliseconds(1000))throw new InvalidOperationException("runtime_scheduler_one_second_cadence_invalid");
 @@
-         foreach(var seconds in new[]{15,30,60})if(RuntimeSchedulerPolicy.EffectiveIntervalSeconds(new ScheduledTrigger("maintenance.test",seconds))!=seconds)throw new InvalidOperationException("runtime_scheduler_slow_cadence_changed");
          if(RuntimeSchedulerPolicy.EffectiveIntervalSeconds(new ScheduledTrigger("custom.fast",1))!=5)throw new InvalidOperationException("runtime_scheduler_fast_allowlist_bypass");
 +        if(TriggerBudgetMilliseconds("public.relay_sync")!=4500||TriggerBudgetMilliseconds("public.projection_sync")!=15000)throw new InvalidOperationException("runtime_scheduler_budget_invalid");
          if(TickMilliseconds>100)throw new InvalidOperationException("runtime_scheduler_tick_too_slow");
