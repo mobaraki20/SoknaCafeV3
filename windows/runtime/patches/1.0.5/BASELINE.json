@@ -1,0 +1,12 @@
+{
+  "component": "windows-runtime",
+  "repository": "mobaraki20/SoknaCafeV3",
+  "base_release_branch": "release/windows-services-1.0.16",
+  "base_commit": "fbc2d63910ecb95b790b15b97448feecb113bacd",
+  "base_version": "1.0.3",
+  "program_cs_blob_sha": "27df01520c49a964e922f56db01a21e3dafdafe8",
+  "csproj_blob_sha": "028f6081f4706c7c371216047b3cc7ceb0abd76d",
+  "candidate_version": "1.0.5",
+  "patch_chain": ["ARCH05-deadline.patch", "ARCH06-transport-resilience.patch"],
+  "scope": "ARCH-05 deadline + ARCH-06 failure classification/backoff/jitter/retry budget"
+}
