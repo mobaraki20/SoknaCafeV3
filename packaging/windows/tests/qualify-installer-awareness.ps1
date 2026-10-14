@@ -70,3 +70,8 @@ finally {
     if(Test-Path -LiteralPath $uninstallKey){Remove-Item -LiteralPath $uninstallKey -Recurse -Force -ErrorAction SilentlyContinue}
     Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# This PowerShell qualification reports failures through terminating exceptions.
+# Do not let an unrelated native-process exit code inherited from the caller turn
+# a successful qualification into a false failure in the workflow wrapper.
+$global:LASTEXITCODE=0
