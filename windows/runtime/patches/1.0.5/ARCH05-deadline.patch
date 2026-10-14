@@ -1,0 +1,71 @@
+--- a/windows/runtime/source/Program.cs
++++ b/windows/runtime/source/Program.cs
+@@
+ internal static class RuntimeSchedulerPolicy
+ {
+     public const int TickMilliseconds=100;
+     private const int MaxBackoffSeconds=30;
+     public static bool AllowsFastCadence(string key)=>string.Equals(key,"public.relay_sync",StringComparison.Ordinal);
+     public static int EffectiveIntervalSeconds(ScheduledTrigger trigger)=>AllowsFastCadence(trigger.Key)?(trigger.IntervalSeconds==5?1:Math.Max(1,trigger.IntervalSeconds)):Math.Max(5,trigger.IntervalSeconds);
++    public static int TriggerBudgetMilliseconds(string key)=>key switch
++    {
++        "public.relay_sync"=>4500,
++        "public.projection_sync"=>15000,
++        "inventory.order_events"=>8000,
++        "notifications.outbox"=>8000,
++        "maintenance.health"=>10000,
++        _=>10000,
++    };
+@@
+-        relay.CompleteSuccess(t0.AddMilliseconds(50));
+-        if(relay.TryStart(t0.AddMilliseconds(999),out _))throw new InvalidOperationException("runtime_scheduler_early_run_invalid");
+-        if(!relay.TryStart(t0.AddMilliseconds(1050),out var second)||second!=t0.AddMilliseconds(1050))throw new InvalidOperationException("runtime_scheduler_one_second_cadence_invalid");
++        relay.CompleteSuccess(t0.AddMilliseconds(50),first);
++        if(relay.TryStart(t0.AddMilliseconds(999),out _))throw new InvalidOperationException("runtime_scheduler_early_run_invalid");
++        if(!relay.TryStart(t0.AddMilliseconds(1000),out var second)||second!=t0.AddMilliseconds(1000))throw new InvalidOperationException("runtime_scheduler_one_second_cadence_invalid");
+@@
+         foreach(var seconds in new[]{15,30,60})if(RuntimeSchedulerPolicy.EffectiveIntervalSeconds(new ScheduledTrigger("maintenance.test",seconds))!=seconds)throw new InvalidOperationException("runtime_scheduler_slow_cadence_changed");
+         if(RuntimeSchedulerPolicy.EffectiveIntervalSeconds(new ScheduledTrigger("custom.fast",1))!=5)throw new InvalidOperationException("runtime_scheduler_fast_allowlist_bypass");
++        if(TriggerBudgetMilliseconds("public.relay_sync")!=4500||TriggerBudgetMilliseconds("public.projection_sync")!=15000)throw new InvalidOperationException("runtime_scheduler_budget_invalid");
+         if(TickMilliseconds>100)throw new InvalidOperationException("runtime_scheduler_tick_too_slow");
+     }
+ }
+@@
+-    public void CompleteSuccess(DateTimeOffset completedAt)
++    public void CompleteSuccess(DateTimeOffset completedAt,DateTimeOffset scheduledAt)
+     {
+-        LastCompletedAt=completedAt;LastErrorCode=null;ConsecutiveFailures=0;RetryNotBefore=null;NextRunAt=completedAt.AddSeconds(EffectiveIntervalSeconds);InFlight=false;InFlightTask=null;
++        LastCompletedAt=completedAt;LastErrorCode=null;ConsecutiveFailures=0;RetryNotBefore=null;
++        var cadenceNext=scheduledAt.AddSeconds(EffectiveIntervalSeconds);
++        NextRunAt=cadenceNext>completedAt?cadenceNext:completedAt;
++        InFlight=false;InFlightTask=null;
+     }
+@@
+ internal sealed class RuntimeEngine : IDisposable
+ {
+     private readonly RuntimeOptions options; private readonly string runtimeToken; private readonly string localToken;
+-    private readonly HttpClient http=new(new HttpClientHandler{ServerCertificateCustomValidationCallback=(m,c,ch,e)=>e==System.Net.Security.SslPolicyErrors.None});
++    private readonly HttpClient http=new(new HttpClientHandler{ServerCertificateCustomValidationCallback=(m,c,ch,e)=>e==System.Net.Security.SslPolicyErrors.None}){Timeout=Timeout.InfiniteTimeSpan};
+@@
+     private async Task ExecuteTrigger(RuntimeTriggerState state,DateTimeOffset scheduledAt)
+     {
++        var budgetMs=RuntimeSchedulerPolicy.TriggerBudgetMilliseconds(state.Trigger.Key);
++        using var deadlineCts=CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
++        deadlineCts.CancelAfter(budgetMs);
+         try
+         {
+-            await SendTrigger(state.Trigger.Key,scheduledAt);
+-            lock(stateGate)state.CompleteSuccess(DateTimeOffset.UtcNow);
++            await SendTrigger(state.Trigger.Key,scheduledAt,budgetMs,deadlineCts.Token);
++            lock(stateGate)state.CompleteSuccess(DateTimeOffset.UtcNow,scheduledAt);
+         }
+@@
+-        catch(TaskCanceledException ex) when(!stop.IsCancellationRequested)
++        catch(TaskCanceledException) when(!stop.IsCancellationRequested&&deadlineCts.IsCancellationRequested)
+         {
+-            var code=SafeCode(ex);lock(stateGate)state.CompleteAmbiguousFailure(DateTimeOffset.UtcNow,code);SafeLog("trigger_error "+state.Trigger.Key+" "+code);
++            const string code="trigger_deadline_exceeded";lock(stateGate)state.CompleteAmbiguousFailure(DateTimeOffset.UtcNow,code);SafeLog("trigger_error "+state.Trigger.Key+" "+code);
+         }
+@@
+-    private async Task SendTrigger(string key,DateTimeOffset scheduledAt){var identity=$"{options.InstanceId}|{key}|{scheduledAt.ToUnixTimeSeconds()}";var digest=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();var requestId="rt-"+digest[..48];var correlationId="corr-"+digest[48..];var body=JsonSerializer.Serialize(new{request_id=requestId,runtime_instance_id=options.InstanceId,trigger_key=key,requested_at=scheduledAt,correlation_id=correlationId});using var req=new HttpRequestMessage(HttpMethod.Post,new Uri(new Uri(options.LocalBaseUrl),"/internal/runtime/v1/trigger"));req.Headers.Authorization=new AuthenticationHeaderValue("Bearer",localToken);req.Headers.Add("X-Sokna-Runtime-Contract","1");req.Content=new StringContent(body,Encoding.UTF8,"application/json");using var response=await http.SendAsync(req,stop.Token);if((int)response.StatusCode==426)throw new InvalidOperationException("local_contract_upgrade_required");if(!response.IsSuccessStatusCode)throw new InvalidOperationException("local_trigger_failed_"+(int)response.StatusCode);}
++    private async Task SendTrigger(string key,DateTimeOffset scheduledAt,int budgetMs,CancellationToken cancellationToken){var identity=$"{options.InstanceId}|{key}|{scheduledAt.ToUnixTimeSeconds()}";var digest=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();var requestId="rt-"+digest[..48];var correlationId="corr-"+digest[48..];var deadlineAt=DateTimeOffset.UtcNow.AddMilliseconds(budgetMs);var body=JsonSerializer.Serialize(new{request_id=requestId,runtime_instance_id=options.InstanceId,trigger_key=key,requested_at=scheduledAt,correlation_id=correlationId,budget_ms=budgetMs,deadline_at=deadlineAt});using var req=new HttpRequestMessage(HttpMethod.Post,new Uri(new Uri(options.LocalBaseUrl),"/internal/runtime/v1/trigger"));req.Headers.Authorization=new AuthenticationHeaderValue("Bearer",localToken);req.Headers.Add("X-Sokna-Runtime-Contract","1");req.Content=new StringContent(body,Encoding.UTF8,"application/json");using var response=await http.SendAsync(req,cancellationToken);if((int)response.StatusCode==426)throw new InvalidOperationException("local_contract_upgrade_required");if(!response.IsSuccessStatusCode)throw new InvalidOperationException("local_trigger_failed_"+(int)response.StatusCode);}
