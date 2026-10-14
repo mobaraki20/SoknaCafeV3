@@ -1,0 +1,132 @@
+--- a/windows/runtime/source/Program.cs
++++ b/windows/runtime/source/Program.cs
+@@
+ internal sealed record RuntimeSchedulerHealth(bool healthy,DateTimeOffset? last_cycle_at,string? last_error_code,int tick_milliseconds);
+ internal sealed record RuntimeTriggerHealth(int configured_interval_seconds,int effective_interval_seconds,DateTimeOffset? last_started_at,DateTimeOffset? last_completed_at,DateTimeOffset? next_run_at,bool in_flight,int consecutive_failures,string? last_error_code);
+ internal sealed record RuntimeComponentHealth(string status,DateTimeOffset? last_seen_at,string? version,string? error_code);
++internal sealed class RuntimeTriggerHttpException(int statusCode,string failureClass,int retryAfterSeconds)
++    : Exception("local_trigger_failed_"+statusCode)
++{
++    public int StatusCode { get; }=statusCode;
++    public string FailureClass { get; }=failureClass;
++    public int RetryAfterSeconds { get; }=retryAfterSeconds;
++}
+ internal sealed record RuntimeHealthSnapshot(bool success,int contract_version,string runtime_version,string instance_id,string status,DateTimeOffset started_at,DateTimeOffset last_seen_at,string[] capabilities,RuntimeSchedulerHealth scheduler,Dictionary<string,RuntimeTriggerHealth> triggers,Dictionary<string,RuntimeComponentHealth> supervised_components);
+@@
+ internal static class RuntimeSchedulerPolicy
+ {
+     public const int TickMilliseconds=100;
+-    private const int MaxBackoffSeconds=30;
++    public const int RetryBudgetMaxAttempts=6;
++    public const int RetryBudgetWindowSeconds=60;
++    private const int MaxBackoffSeconds=120;
+@@
+-    public static TimeSpan FailureBackoff(int effectiveIntervalSeconds,int consecutiveFailures)
++    public static TimeSpan FailureBackoff(int effectiveIntervalSeconds,int consecutiveFailures,string jitterKey="",int retryAfterSeconds=0)
+     {
+         var exponent=Math.Min(5,Math.Max(0,consecutiveFailures-1));
+         var exponential=1<<exponent;
+-        return TimeSpan.FromSeconds(Math.Min(MaxBackoffSeconds,Math.Max(effectiveIntervalSeconds,exponential)));
++        var seconds=Math.Min(MaxBackoffSeconds,Math.Max(Math.Max(effectiveIntervalSeconds,exponential),Math.Max(0,retryAfterSeconds)));
++        var jitterWindowMs=Math.Min(1000,Math.Max(100,seconds*250));
++        var seed=System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(jitterKey+"|"+consecutiveFailures));
++        var jitterMs=(int)(BitConverter.ToUInt32(seed,0)%(uint)(jitterWindowMs+1));
++        return TimeSpan.FromMilliseconds(Math.Min(MaxBackoffSeconds*1000,seconds*1000+jitterMs));
+     }
+@@
+         foreach(var seconds in new[]{15,30,60})if(RuntimeSchedulerPolicy.EffectiveIntervalSeconds(new ScheduledTrigger("maintenance.test",seconds))!=seconds)throw new InvalidOperationException("runtime_scheduler_slow_cadence_changed");
+         if(RuntimeSchedulerPolicy.EffectiveIntervalSeconds(new ScheduledTrigger("custom.fast",1))!=5)throw new InvalidOperationException("runtime_scheduler_fast_allowlist_bypass");
+         if(TriggerBudgetMilliseconds("public.relay_sync")!=4500||TriggerBudgetMilliseconds("public.projection_sync")!=15000)throw new InvalidOperationException("runtime_scheduler_budget_invalid");
++        var retryAfter=FailureBackoff(1,1,"runtime-selftest",17);if(retryAfter<TimeSpan.FromSeconds(17)||retryAfter>TimeSpan.FromSeconds(18.001))throw new InvalidOperationException("runtime_scheduler_retry_after_invalid");
++        var budget=new RuntimeTriggerState(new ScheduledTrigger("public.relay_sync",1));
++        for(var i=0;i<RetryBudgetMaxAttempts;i++)budget.CompleteAmbiguousFailure(t0.AddSeconds(i),"httprequestexception","budget-selftest");
++        if(!budget.RetryNotBefore.HasValue||budget.RetryNotBefore.Value<t0.AddSeconds(RetryBudgetWindowSeconds))throw new InvalidOperationException("runtime_scheduler_retry_budget_invalid");
+         if(TickMilliseconds>100)throw new InvalidOperationException("runtime_scheduler_tick_too_slow");
+     }
+ }
+@@
+     public DateTimeOffset? LastCompletedAt { get; private set; }
+     public int ConsecutiveFailures { get; private set; }
+     public string? LastErrorCode { get; private set; }
++    private DateTimeOffset RetryWindowStartedAt { get; set; }=DateTimeOffset.MinValue;
++    private int RetryAttemptsInWindow { get; set; }
+@@
+     public void CompleteSuccess(DateTimeOffset completedAt,DateTimeOffset scheduledAt)
+     {
+-        LastCompletedAt=completedAt;LastErrorCode=null;ConsecutiveFailures=0;RetryNotBefore=null;
++        LastCompletedAt=completedAt;LastErrorCode=null;ConsecutiveFailures=0;RetryNotBefore=null;RetryWindowStartedAt=DateTimeOffset.MinValue;RetryAttemptsInWindow=0;
+         var cadenceNext=scheduledAt.AddSeconds(EffectiveIntervalSeconds);
+         NextRunAt=cadenceNext>completedAt?cadenceNext:completedAt;
+         InFlight=false;InFlightTask=null;
+     }
+-    public void CompleteAmbiguousFailure(DateTimeOffset failedAt,string code)
++    public void CompleteAmbiguousFailure(DateTimeOffset failedAt,string code,string jitterKey="",int retryAfterSeconds=0)
+     {
+-        LastCompletedAt=failedAt;LastErrorCode=code;ConsecutiveFailures++;RetryNotBefore=failedAt.Add(RuntimeSchedulerPolicy.FailureBackoff(EffectiveIntervalSeconds,ConsecutiveFailures));InFlight=false;InFlightTask=null;
++        LastCompletedAt=failedAt;LastErrorCode=code;ConsecutiveFailures++;
++        if(RetryWindowStartedAt==DateTimeOffset.MinValue||failedAt-RetryWindowStartedAt>=TimeSpan.FromSeconds(RuntimeSchedulerPolicy.RetryBudgetWindowSeconds)){RetryWindowStartedAt=failedAt;RetryAttemptsInWindow=0;}
++        RetryAttemptsInWindow++;
++        var backoff=RuntimeSchedulerPolicy.FailureBackoff(EffectiveIntervalSeconds,ConsecutiveFailures,jitterKey,retryAfterSeconds);
++        if(RetryAttemptsInWindow>=RuntimeSchedulerPolicy.RetryBudgetMaxAttempts){var windowEnd=RetryWindowStartedAt.AddSeconds(RuntimeSchedulerPolicy.RetryBudgetWindowSeconds);if(windowEnd>failedAt&&windowEnd-failedAt>backoff)backoff=windowEnd-failedAt;}
++        RetryNotBefore=failedAt.Add(backoff);InFlight=false;InFlightTask=null;
+     }
+-    public void CompleteDefinitiveFailure(DateTimeOffset failedAt,string code)
++    public void CompletePolicyBlockedFailure(DateTimeOffset failedAt,string code,int minimumSeconds,string jitterKey="",int retryAfterSeconds=0)
++    {
++        LastCompletedAt=failedAt;LastErrorCode=code;ConsecutiveFailures++;
++        var delay=RuntimeSchedulerPolicy.FailureBackoff(Math.Max(1,minimumSeconds),ConsecutiveFailures,jitterKey,Math.Max(minimumSeconds,retryAfterSeconds));
++        RetryNotBefore=failedAt.Add(delay);InFlight=false;InFlightTask=null;
++    }
++    public void CompleteDefinitiveFailure(DateTimeOffset failedAt,string code,string jitterKey="")
+     {
+-        LastCompletedAt=failedAt;LastErrorCode=code;ConsecutiveFailures++;NextRunAt=DateTimeOffset.MinValue;RetryNotBefore=failedAt.Add(RuntimeSchedulerPolicy.FailureBackoff(EffectiveIntervalSeconds,ConsecutiveFailures));InFlight=false;InFlightTask=null;
++        LastCompletedAt=failedAt;LastErrorCode=code;ConsecutiveFailures++;NextRunAt=DateTimeOffset.MinValue;RetryNotBefore=failedAt.Add(RuntimeSchedulerPolicy.FailureBackoff(Math.Max(5,EffectiveIntervalSeconds),ConsecutiveFailures,jitterKey));InFlight=false;InFlightTask=null;
+     }
+     public void CompleteCancellation(){InFlight=false;InFlightTask=null;}
+-    public RuntimeTriggerHealth Snapshot()=>new(Trigger.IntervalSeconds,EffectiveIntervalSeconds,LastStartedAt,LastCompletedAt,NextRunAt==DateTimeOffset.MinValue?null:NextRunAt,InFlight,ConsecutiveFailures,LastErrorCode);
++    public RuntimeTriggerHealth Snapshot(){DateTimeOffset? next=NextRunAt==DateTimeOffset.MinValue?null:NextRunAt;if(RetryNotBefore.HasValue&&(!next.HasValue||RetryNotBefore.Value>next.Value))next=RetryNotBefore;return new(Trigger.IntervalSeconds,EffectiveIntervalSeconds,LastStartedAt,LastCompletedAt,next,InFlight,ConsecutiveFailures,LastErrorCode);}
+ }
+@@
+     private async Task ExecuteTrigger(RuntimeTriggerState state,DateTimeOffset scheduledAt)
+     {
+         var budgetMs=RuntimeSchedulerPolicy.TriggerBudgetMilliseconds(state.Trigger.Key);
++        var retryKey=options.InstanceId+"|"+state.Trigger.Key+"|"+scheduledAt.ToUnixTimeMilliseconds();
+         using var deadlineCts=CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
+         deadlineCts.CancelAfter(budgetMs);
+         try
+@@
+             await SendTrigger(state.Trigger.Key,scheduledAt,budgetMs,deadlineCts.Token);
+             lock(stateGate)state.CompleteSuccess(DateTimeOffset.UtcNow,scheduledAt);
+         }
++        catch(RuntimeTriggerHttpException ex)
++        {
++            var code=ex.Message;
++            lock(stateGate)
++            {
++                if(ex.FailureClass is "overload" or "transport")state.CompleteAmbiguousFailure(DateTimeOffset.UtcNow,code,retryKey,ex.RetryAfterSeconds);
++                else if(ex.FailureClass=="authentication")state.CompletePolicyBlockedFailure(DateTimeOffset.UtcNow,code,120,retryKey,ex.RetryAfterSeconds);
++                else if(ex.FailureClass=="compatibility")state.CompletePolicyBlockedFailure(DateTimeOffset.UtcNow,code,60,retryKey,ex.RetryAfterSeconds);
++                else state.CompleteDefinitiveFailure(DateTimeOffset.UtcNow,code,retryKey);
++            }
++            SafeLog("trigger_error "+state.Trigger.Key+" "+code+" class="+ex.FailureClass+" retry_after="+ex.RetryAfterSeconds);
++        }
+         catch(HttpRequestException ex)
+         {
+-            var code=SafeCode(ex);lock(stateGate)state.CompleteAmbiguousFailure(DateTimeOffset.UtcNow,code);SafeLog("trigger_error "+state.Trigger.Key+" "+code);
++            var code=SafeCode(ex);lock(stateGate)state.CompleteAmbiguousFailure(DateTimeOffset.UtcNow,code,retryKey);SafeLog("trigger_error "+state.Trigger.Key+" "+code+" class=transport");
+         }
+         catch(TaskCanceledException) when(!stop.IsCancellationRequested&&deadlineCts.IsCancellationRequested)
+         {
+-            const string code="trigger_deadline_exceeded";lock(stateGate)state.CompleteAmbiguousFailure(DateTimeOffset.UtcNow,code);SafeLog("trigger_error "+state.Trigger.Key+" "+code);
++            const string code="trigger_deadline_exceeded";lock(stateGate)state.CompleteAmbiguousFailure(DateTimeOffset.UtcNow,code,retryKey);SafeLog("trigger_error "+state.Trigger.Key+" "+code+" class=transport");
+@@
+         catch(Exception ex)
+         {
+-            var code=SafeCode(ex);lock(stateGate)state.CompleteDefinitiveFailure(DateTimeOffset.UtcNow,code);SafeLog("trigger_error "+state.Trigger.Key+" "+code);
++            var code=SafeCode(ex);lock(stateGate)state.CompleteDefinitiveFailure(DateTimeOffset.UtcNow,code,retryKey);SafeLog("trigger_error "+state.Trigger.Key+" "+code);
+         }
+     }
+-    private async Task SendTrigger(string key,DateTimeOffset scheduledAt,int budgetMs,CancellationToken cancellationToken){var identity=$"{options.InstanceId}|{key}|{scheduledAt.ToUnixTimeSeconds()}";var digest=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();var requestId="rt-"+digest[..48];var correlationId="corr-"+digest[48..];var deadlineAt=DateTimeOffset.UtcNow.AddMilliseconds(budgetMs);var body=JsonSerializer.Serialize(new{request_id=requestId,runtime_instance_id=options.InstanceId,trigger_key=key,requested_at=scheduledAt,correlation_id=correlationId,budget_ms=budgetMs,deadline_at=deadlineAt});using var req=new HttpRequestMessage(HttpMethod.Post,new Uri(new Uri(options.LocalBaseUrl),"/internal/runtime/v1/trigger"));req.Headers.Authorization=new AuthenticationHeaderValue("Bearer",localToken);req.Headers.Add("X-Sokna-Runtime-Contract","1");req.Content=new StringContent(body,Encoding.UTF8,"application/json");using var response=await http.SendAsync(req,cancellationToken);if((int)response.StatusCode==426)throw new InvalidOperationException("local_contract_upgrade_required");if(!response.IsSuccessStatusCode)throw new InvalidOperationException("local_trigger_failed_"+(int)response.StatusCode);}
++    private async Task SendTrigger(string key,DateTimeOffset scheduledAt,int budgetMs,CancellationToken cancellationToken){var identity=$"{options.InstanceId}|{key}|{scheduledAt.ToUnixTimeSeconds()}";var digest=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();var requestId="rt-"+digest[..48];var correlationId="corr-"+digest[48..];var deadlineAt=DateTimeOffset.UtcNow.AddMilliseconds(budgetMs);var body=JsonSerializer.Serialize(new{request_id=requestId,runtime_instance_id=options.InstanceId,trigger_key=key,requested_at=scheduledAt,correlation_id=correlationId,budget_ms=budgetMs,deadline_at=deadlineAt});using var req=new HttpRequestMessage(HttpMethod.Post,new Uri(new Uri(options.LocalBaseUrl),"/internal/runtime/v1/trigger"));req.Headers.Authorization=new AuthenticationHeaderValue("Bearer",localToken);req.Headers.Add("X-Sokna-Runtime-Contract","1");req.Content=new StringContent(body,Encoding.UTF8,"application/json");using var response=await http.SendAsync(req,cancellationToken);if(!response.IsSuccessStatusCode){var status=(int)response.StatusCode;throw new RuntimeTriggerHttpException(status,LocalFailureClass(status),RetryAfterSeconds(response));}}
++    private static string LocalFailureClass(int status)=>status switch{429 or 502 or 503 or 504 or 408=>"overload",401 or 403=>"authentication",426=>"compatibility",_ when status>=500=>"overload",_=>"domain"};
++    private static int RetryAfterSeconds(HttpResponseMessage response){var retry=response.Headers.RetryAfter;if(retry?.Delta is TimeSpan delta)return Math.Clamp((int)Math.Ceiling(delta.TotalSeconds),0,300);if(retry?.Date is DateTimeOffset date)return Math.Clamp((int)Math.Ceiling((date-DateTimeOffset.UtcNow).TotalSeconds),0,300);return 0;}
