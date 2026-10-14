@@ -56,6 +56,7 @@ jobs:
           if($p1-ne'bce05f6d34f7088a5f35c8170d47647f38ed6c9df51b1d75ea037b3a135c0207'){throw "ARCH05 patch hash mismatch: $p1"}
           if($p2-ne'df68adbcd29544925ebc555120d878d29ee820b51492c6e34406c80974ab8ca2'){throw "ARCH06 patch hash mismatch: $p2"}
           $programBlob=(git rev-parse HEAD:windows/runtime/source/Program.cs).Trim()
+          if($LASTEXITCODE-ne0){throw 'Unable to resolve Runtime Program.cs blob'}
           $source=Get-Content windows/runtime/source/Program.cs -Raw
           if($programBlob-eq'27df01520c49a964e922f56db01a21e3dafdafe8'){
             'RUNTIME_PATCH_REQUIRED=1'|Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -69,11 +70,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          git apply --check windows/runtime/patches/1.0.5/ARCH05-deadline.patch
-          git apply windows/runtime/patches/1.0.5/ARCH05-deadline.patch
-          git apply --check windows/runtime/patches/1.0.5/ARCH06-transport-resilience.patch
-          git apply windows/runtime/patches/1.0.5/ARCH06-transport-resilience.patch
+          python windows/runtime/patches/1.0.5/apply_patch_chain.py `
+            --source windows/runtime/source/Program.cs `
+            --base-blob-sha 27df01520c49a964e922f56db01a21e3dafdafe8 `
+            --arch05 windows/runtime/patches/1.0.5/ARCH05-deadline.patch `
+            --arch05-sha256 bce05f6d34f7088a5f35c8170d47647f38ed6c9df51b1d75ea037b3a135c0207 `
+            --arch06 windows/runtime/patches/1.0.5/ARCH06-transport-resilience.patch `
+            --arch06-sha256 df68adbcd29544925ebc555120d878d29ee820b51492c6e34406c80974ab8ca2
+          if($LASTEXITCODE-ne0){throw "H308 patch materialization failed: exit=$LASTEXITCODE"}
           git diff --check
+          if($LASTEXITCODE-ne0){throw 'Materialized Runtime source failed git diff --check'}
           Write-Host 'Runtime 1.0.5 patch chain materialized: PASS'
 
       - name: Run Runtime 1.0.5 source contracts
@@ -95,9 +101,12 @@ jobs:
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add windows/runtime/source/Program.cs
             git commit -m 'feat(runtime): materialize Runtime 1.0.5 resilience source [skip ci]'
+            if($LASTEXITCODE-ne0){throw 'Unable to commit materialized Runtime source'}
             git push origin HEAD:work/windows-services-1.0.17-runtime-resilience
+            if($LASTEXITCODE-ne0){throw 'Unable to push materialized Runtime source'}
           }
           $releaseCommit=(git rev-parse HEAD).Trim()
+          if($LASTEXITCODE-ne0){throw 'Unable to resolve release source commit'}
           "RELEASE_COMMIT=$releaseCommit"|Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "PATCHED_PROGRAM_SHA256=$((Get-FileHash windows/runtime/source/Program.cs -Algorithm SHA256).Hash.ToLowerInvariant())"|Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Release source commit: $releaseCommit"
@@ -107,8 +116,11 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Runtime build failed'}
           dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
+          if($LASTEXITCODE-ne0){throw 'Runtime health self-test failed'}
           dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --scheduler-self-test
+          if($LASTEXITCODE-ne0){throw 'Runtime scheduler self-test failed'}
 
       - name: Build and regression-test unchanged Print Agent 6.2.9
         working-directory: windows/print-agent/source
@@ -116,7 +128,9 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           dotnet build Sokna.PrintWorker.slnx -c Release
+          if($LASTEXITCODE-ne0){throw 'Print Agent build failed'}
           dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Print Agent regression tests failed'}
 
       - name: Install Inno Setup
         shell: pwsh
@@ -132,6 +146,7 @@ jobs:
           $iscc=$candidates|Where-Object{$_-and(Test-Path -LiteralPath $_ -PathType Leaf)}|Select-Object -First 1
           if(-not$iscc){throw 'ISCC missing'}
           & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          if($LASTEXITCODE-ne0){throw 'Windows release build script failed'}
           $setup=Join-Path $out 'SOKNA-Windows-Services-Setup-1.0.17.exe'
           if(-not(Test-Path -LiteralPath $setup -PathType Leaf)){throw 'Windows Services 1.0.17 installer missing'}
           $index=Get-Content (Join-Path $out 'artifact-index.json') -Raw|ConvertFrom-Json
@@ -148,6 +163,7 @@ jobs:
           $out=(Resolve-Path 'release\out-windows-1.0.17').Path
           $runtime=(Resolve-Path (Join-Path $out 'shell\SoknaRuntimeService.exe')).Path
           $result=& tests/windows-runtime-resilience-1.0.5.ps1 -RuntimeExe $runtime
+          if($LASTEXITCODE-ne0){throw 'Runtime 1.0.5 executable resilience qualification failed'}
           $result|Tee-Object -FilePath (Join-Path $out 'RUNTIME_1.0.5_RESILIENCE_QUALIFICATION.json')
           $parsed=$result|ConvertFrom-Json
           if([string]$parsed.result-ne'PASS'){throw 'Runtime 1.0.5 resilience qualification failed'}
@@ -159,6 +175,7 @@ jobs:
           $installer=(Resolve-Path 'release\out-windows-1.0.17\SOKNA-Windows-Services-Setup-1.0.17.exe').Path
           $diag=Join-Path (Resolve-Path .) 'release\installer-awareness-1.0.17'
           & packaging/windows/tests/qualify-installer-awareness.ps1 -InstallerPath $installer -DiagnosticsRoot $diag
+          if($LASTEXITCODE-ne0){throw 'Installer awareness qualification failed'}
 
       - name: Freeze final qualification and hashes
         shell: pwsh
@@ -237,9 +254,15 @@ jobs:
             (Join-Path $out 'SHA256SUMS-FINAL.txt')
           )
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if($LASTEXITCODE-eq0){gh release upload $tag @assets --repo $env:GITHUB_REPOSITORY --clobber}
-          else{gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --title 'SOKNA Windows Services 1.0.17' --notes-file (Join-Path $out 'WINDOWS_SERVICES_1.0.17_NOTES_FA.md')}
+          if($LASTEXITCODE-eq0){
+            gh release upload $tag @assets --repo $env:GITHUB_REPOSITORY --clobber
+            if($LASTEXITCODE-ne0){throw 'GitHub release asset upload failed'}
+          }else{
+            gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --title 'SOKNA Windows Services 1.0.17' --notes-file (Join-Path $out 'WINDOWS_SERVICES_1.0.17_NOTES_FA.md')
+            if($LASTEXITCODE-ne0){throw 'GitHub release creation failed'}
+          }
           gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,name,isDraft,isPrerelease,targetCommitish,url
+          if($LASTEXITCODE-ne0){throw 'Unable to verify GitHub release'}
 
       - name: Upload Windows Services 1.0.17 release kit
         uses: actions/upload-artifact@v4
