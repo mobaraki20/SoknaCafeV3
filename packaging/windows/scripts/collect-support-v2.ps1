@@ -4,7 +4,12 @@ param(
   [ValidateRange(1,10)][int]$InstallerTransactions=5
 )
 $ErrorActionPreference='Stop'
-function Full([string]$p,[string]$label){if([string]::IsNullOrWhiteSpace($p)-or-not[IO.Path]::IsPathFullyQualified($p)){throw "$label must be absolute."};[IO.Path]::GetFullPath($p)}
+function Full([string]$p,[string]$label){
+  if([string]::IsNullOrWhiteSpace($p)){throw "$label must be absolute."}
+  try{$root=[IO.Path]::GetPathRoot($p);$full=[IO.Path]::GetFullPath($p)}catch{throw "$label must be an absolute valid path."}
+  if([string]::IsNullOrWhiteSpace($root)-or-not(($root-match'^[A-Za-z]:[\\/]')-or$root.StartsWith('\\'))){throw "$label must be absolute."}
+  return $full
+}
 function Redact([string]$v){if($null-eq$v){return ''};$v=$v-replace'(?i)ws1_[a-f0-9]{24}_[a-f0-9]{48}','[PAIRING_CODE_REDACTED]';$v=$v-replace'(?i)(token|secret|credential|password)(\s*[:=]\s*)[^\s,;\}\]]+','$1$2[REDACTED]';$v}
 function WriteText([string]$p,[string]$v){[IO.File]::WriteAllText($p,(Redact $v),(New-Object Text.UTF8Encoding($false)))}
 function Capture([scriptblock]$b){try{Redact ((& $b 2>&1|Out-String -Width 260).TrimEnd())}catch{"ERROR: "+(Redact $_.Exception.Message)}}
@@ -18,7 +23,7 @@ function CopySafeTextTree([string]$src,[string]$dst){
 $DataRoot=Full $DataRoot 'DataRoot';$OutputRoot=Full $OutputRoot 'OutputRoot';New-Item -ItemType Directory -Path $OutputRoot -Force|Out-Null
 $stamp=(Get-Date).ToString('yyyyMMdd-HHmmss');$work=Join-Path $env:TEMP ("SOKNA-Support-v2-$stamp-"+[guid]::NewGuid().ToString('N'));New-Item -ItemType Directory -Path $work -Force|Out-Null
 $zip=Join-Path $OutputRoot "SOKNA-Support-v2-$stamp.zip"
-try{
+try {
   $core=Join-Path $PSScriptRoot 'collect-support-core.ps1'
   if(Test-Path $core -PathType Leaf){
     $legacy=Join-Path $work '_legacy-out';New-Item -ItemType Directory -Path $legacy -Force|Out-Null
