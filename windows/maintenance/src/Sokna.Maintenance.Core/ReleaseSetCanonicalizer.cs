@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 
 namespace Sokna.Maintenance.Core;
@@ -7,7 +6,7 @@ public static class ReleaseSetCanonicalizer
 {
     public static byte[] CanonicalBytesWithBlankSignatureValue(ReadOnlySpan<byte> manifestUtf8)
     {
-        using var document = JsonDocument.Parse(manifestUtf8);
+        using var document = JsonDocument.Parse(manifestUtf8.ToArray());
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false }))
         {
