@@ -33,6 +33,11 @@ CloseApplications=no
 RestartApplications=no
 SetupIconFile={#SourceRoot}\Sokna.ico
 
+[InstallDelete]
+; Remove target-payload locations used by package 1.0.x. Installed Runtime/PrintAgent/Maintenance roots are deliberately untouched.
+Type: files; Name: "{app}\SoknaRuntimeService.exe"
+Type: filesandordirs; Name: "{app}\print-worker"
+
 [Files]
 Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
