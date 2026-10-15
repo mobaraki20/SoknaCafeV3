@@ -119,14 +119,15 @@ jobs:
           $plan=[ordered]@{format='sokna-windows-install-plan-v3';schema_version=3;transaction_id=$tx;correlation_id=$corr;setup_session_id=$session;created_at_utc=[DateTime]::UtcNow.ToString('o');mode='install';shell_root=$shell;install_root=$install;data_root=$data;package_version='1.1.0';components=$rows}
           $planPath=Join-Path $txdir 'update-plan.json';$plan|ConvertTo-Json -Depth 8|Set-Content $planPath -Encoding utf8
           $p=Start-Process -FilePath (Join-Path $shell 'SoknaSetupHost.exe') -ArgumentList @('--plan-file',('"'+$planPath+'"')) -Wait -PassThru -NoNewWindow
-          if($p.ExitCode-ne0){$sys=Join-Path $env:ProgramData "SOKNA\Installer\logs\$tx";if(Test-Path $sys){Get-ChildItem $sys -File|ForEach-Object{Write-Host "--- $($_.Name)";if($_.Extension-in@('.log','.json','.jsonl','.txt')){Get-Content $_.FullName -Raw|Write-Host}}};throw "Maintenance-only lifecycle failed: $($p.ExitCode)"}
+          $systemTx=Join-Path $data "Installer\logs\$tx"
+          if($p.ExitCode-ne0){if(Test-Path $systemTx){Get-ChildItem $systemTx -File|ForEach-Object{Write-Host "--- $($_.Name)";if($_.Extension-in@('.log','.json','.jsonl','.txt')){Get-Content $_.FullName -Raw|Write-Host}}};throw "Maintenance-only lifecycle failed: $($p.ExitCode)"}
           $after=[ordered]@{
             runtime_hash=(Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant();runtime_time=(Get-Item $runtime).LastWriteTimeUtc.ToString('o');runtime_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaRuntime)|Out-String);
             print_hash=(Get-FileHash $print -Algorithm SHA256).Hash.ToLowerInvariant();print_time=(Get-Item $print).LastWriteTimeUtc.ToString('o');print_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaPrintWorker)|Out-String)
           }
           foreach($k in @('runtime_hash','runtime_time','runtime_qc','print_hash','print_time','print_qc')){if($before[$k]-ne$after[$k]){throw "KEEP component changed unexpectedly: $k"}}
           $ms=Get-Service SoknaMaintenanceSupervisor -ErrorAction Stop;if($ms.Status-ne'Running'){throw "Maintenance Supervisor not running: $($ms.Status)"}
-          $systemTx=Join-Path $env:ProgramData "SOKNA\Installer\logs\$tx";$events=Get-Content (Join-Path $systemTx 'system-events.jsonl') -Raw
+          $events=Get-Content (Join-Path $systemTx 'system-events.jsonl') -Raw
           foreach($id in @('runtime','print-agent')){if($events-notmatch('"component":"'+[regex]::Escape($id)+'"[^\r\n]+"result":"kept"')){throw "KEEP evidence missing for $id"}}
           $before|ConvertTo-Json -Depth 4|Set-Content out/selective-before.json -Encoding utf8;$after|ConvertTo-Json -Depth 4|Set-Content out/selective-after.json -Encoding utf8
           Copy-Item (Join-Path $systemTx 'install-result.json') out/selective-install-result.json -Force
