@@ -136,6 +136,9 @@ internal static class DashboardUiPolish
             .Replace("سلامت سرویس‌ها", "وضعیت سرویس‌ها", StringComparison.Ordinal)
             .Replace("سلامت", "وضعیت سرویس", StringComparison.Ordinal);
 
+        if (normalized.StartsWith("Windows Services ", StringComparison.Ordinal))
+            normalized = "Windows Services " + Application.ProductVersion;
+
         if (string.Equals(normalized, "فعال", StringComparison.Ordinal))
             normalized = "در حال اجرا";
 
