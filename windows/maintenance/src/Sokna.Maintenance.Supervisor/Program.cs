@@ -343,11 +343,18 @@ app.Lifetime.ApplicationStarted.Register(() =>
         ReadOnlyP1: false,
         WrittenAtUtc: DateTimeOffset.UtcNow);
     AtomicFile.WriteJson(paths.DescriptorPath, descriptor);
+
+    // AtomicFile reconciles the descriptor ACL after replacing control-plane.json.
+    // Refresh the in-memory evidence so staging remains fail-closed if that reconcile failed.
+    if (File.Exists(paths.WebAdapterAclEvidencePath))
+        aclEvidence = AtomicFile.ReadJson<WebAdapterAclEvidence>(paths.WebAdapterAclEvidencePath);
+
     journal.Append("supervisor.ready", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?>
     {
         ["base_url"] = descriptor.BaseUrl,
         ["p2b_staging_only"] = true,
-        ["web_adapter_acl_state"] = aclEvidence.State
+        ["web_adapter_acl_state"] = aclEvidence.State,
+        ["web_adapter_descriptor_read"] = aclEvidence.DescriptorReadGranted
     });
 });
 
@@ -383,7 +390,7 @@ static async Task WriteEnvelope(HttpContext context, int statusCode, bool ok, st
 static string VersionText()
 {
     var assembly = Assembly.GetExecutingAssembly();
-    return assembly.GetName().Version?.ToString(3) ?? "0.2.0";
+    return assembly.GetName().Version?.ToString(3) ?? "0.2.1";
 }
 
 static object InspectCurrentProcess()
