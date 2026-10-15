@@ -40,7 +40,7 @@ internal static class DashboardEntryV4
                 form.PerformLayout();
                 Application.DoEvents();
                 var errors = LayoutAudit(form).ToList();
-                var subtitle = Desc(form).OfType<Label>().FirstOrDefault(x => x.Text.Contains("Runtime، Print و Maintenance", StringComparison.Ordinal));
+                var subtitle = Desc(form).OfType<Label>().FirstOrDefault(x => x.Text.Contains("سه سرویس اصلی سکنا", StringComparison.Ordinal));
                 if (subtitle is null || !subtitle.Visible || subtitle.ClientSize.Height < 10)
                     errors.Add("header-subtitle-not-visible");
                 File.WriteAllLines(Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.txt"), errors.Count == 0 ? ["PASS"] : errors);
