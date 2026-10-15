@@ -25,6 +25,15 @@ public static class AtomicFile
         }
 
         File.Move(temp, path, overwrite: true);
+
+        // control-plane.json is atomically replaced, so its ACL must be reconciled after
+        // every write. This keeps the Web adapter identity grant bound to the new file
+        // instead of assuming an ACL survives File.Move replacement semantics.
+        if (Path.GetFileName(path).Equals("control-plane.json", StringComparison.OrdinalIgnoreCase))
+        {
+            var paths = new MaintenancePaths(directory);
+            WebAdapterAclProvisioner.ReconcileDescriptorAccess(paths);
+        }
     }
 
     public static T ReadJson<T>(string path)
