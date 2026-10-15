@@ -58,9 +58,9 @@ internal sealed class ComponentPlanDialog : Form
 
         root.Controls.Add(new Label { AutoSize = true, Text = "برنامه تغییرات این نصب", Font = SetupPalette.Font(16f, FontStyle.Bold), ForeColor = SetupPalette.BrandDark, Margin = new Padding(0, 0, 0, 4) }, 0, 0);
         var description = plan.IsBlocked
-            ? "یکی از اجزا با این release سازگار نیست. تا رفع وضعیت مسدود، هیچ تغییری اعمال نمی‌شود."
+            ? "یکی از اجزا با این نسخه سازگار نیست. تا رفع وضعیت مسدود، هیچ تغییری اعمال نمی‌شود."
             : plan.HasMutation ? "فقط اجزایی که در ستون «اقدام» مشخص شده‌اند تغییر می‌کنند؛ اجزای «بدون تغییر» متوقف یا جایگزین نمی‌شوند."
-            : "همه اجزای نصب‌شده با release هدف یکسان هستند و تغییری لازم نیست.";
+            : "همه اجزای نصب‌شده با نسخه هدف یکسان هستند و تغییری لازم نیست.";
         root.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(820, 0), Text = description, ForeColor = plan.IsBlocked ? SetupPalette.Danger : SetupPalette.Muted, Margin = new Padding(0, 0, 0, 14) }, 0, 1);
         root.Controls.Add(BuildTable(), 0, 2);
         root.Controls.Add(BuildFooter(), 0, 3);
@@ -77,7 +77,7 @@ internal sealed class ComponentPlanDialog : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        string[] headers = ["جزء", "نسخه فعلی", "نسخه هدف", "سلامت", "اقدام"];
+        string[] headers = ["جزء", "نسخه فعلی", "نسخه هدف", "وضعیت سرویس", "اقدام"];
         for (var c = 0; c < headers.Length; c++) grid.Controls.Add(Cell(headers[c], true, SetupPalette.Muted), c, 0);
         var row = 1;
         foreach (var item in plan.PrimaryRows)
@@ -86,7 +86,7 @@ internal sealed class ComponentPlanDialog : Form
             grid.Controls.Add(Cell(item.DisplayName, false, SetupPalette.Text, FontStyle.Bold), 0, row);
             grid.Controls.Add(Cell(item.CurrentVersion, false, SetupPalette.Text, rtl: false), 1, row);
             grid.Controls.Add(Cell(item.TargetVersion, false, SetupPalette.Text, rtl: false), 2, row);
-            grid.Controls.Add(Cell(item.HealthText, false, HealthColor(item.Health)), 3, row);
+            grid.Controls.Add(Cell(item.HealthText == "فعال" ? "در حال اجرا" : item.HealthText, false, HealthColor(item.Health)), 3, row);
             grid.Controls.Add(Cell(item.ActionText, false, ActionColor(item.Action), FontStyle.Bold), 4, row);
             row++;
         }
@@ -131,6 +131,7 @@ internal sealed class InstallerResultDialog : Form
 {
     internal InstallerResultDialog(bool success, string title, string summary, string diagnosticId, string failedComponent = "", string failedPhase = "", bool rollbackComplete = false, bool rebootRequired = false)
     {
+        summary = Normalize(summary);
         Text = success ? "نتیجه عملیات" : "عملیات کامل نشد";
         StartPosition = FormStartPosition.CenterParent;
         BackColor = SetupPalette.Canvas; ForeColor = SetupPalette.Text; RightToLeft = RightToLeft.Yes; RightToLeftLayout = true;
@@ -143,9 +144,9 @@ internal sealed class InstallerResultDialog : Form
         details.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150)); details.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (var i = 0; i < 5; i++) details.RowStyles.Add(new RowStyle(SizeType.Percent, 20));
         Add(details, 0, "شناسه عیب‌یابی", diagnosticId, false);
-        Add(details, 1, "جزء", string.IsNullOrWhiteSpace(failedComponent) ? "—" : failedComponent, true);
-        Add(details, 2, "مرحله", string.IsNullOrWhiteSpace(failedPhase) ? "—" : failedPhase, true);
-        Add(details, 3, "Rollback", success ? "لازم نبود" : rollbackComplete ? "کامل شد" : "نیاز به بررسی", true);
+        Add(details, 1, "جزء", success ? "لازم نیست" : string.IsNullOrWhiteSpace(failedComponent) ? "—" : failedComponent, true);
+        Add(details, 2, "مرحله", success ? "لازم نیست" : string.IsNullOrWhiteSpace(failedPhase) ? "—" : failedPhase, true);
+        Add(details, 3, "بازگشت تغییرات", success ? "لازم نبود" : rollbackComplete ? "کامل شد" : "نیاز به بررسی", true);
         Add(details, 4, "راه‌اندازی مجدد", rebootRequired ? "لازم است" : "لازم نیست", true);
         root.Controls.Add(details, 0, 2);
         var hint = new Label { AutoSize = true, MaximumSize = new Size(600, 0), Text = success ? "وضعیت اجزا دوباره بررسی می‌شود." : "برای بررسی دقیق، «عیب‌یابی» را از Dashboard اجرا کنید؛ نیازی به CMD یا PowerShell نیست.", ForeColor = SetupPalette.Muted, Margin = new Padding(0, 12, 0, 10) };
@@ -153,6 +154,13 @@ internal sealed class InstallerResultDialog : Form
         var ok = new Button { Text = "بستن", DialogResult = DialogResult.OK, AutoSize = true, MinimumSize = new Size(96, 36), Anchor = AnchorStyles.Left, FlatStyle = FlatStyle.Flat, BackColor = SetupPalette.Brand, ForeColor = Color.White };
         ok.FlatAppearance.BorderSize = 0; root.Controls.Add(ok, 0, 4); AcceptButton = ok; Controls.Add(root);
     }
+
+    private static string Normalize(string value) => (value ?? "")
+        .Replace("componentهای", "اجزای", StringComparison.Ordinal)
+        .Replace("componentها", "اجزا", StringComparison.Ordinal)
+        .Replace("component", "جزء", StringComparison.Ordinal)
+        .Replace("health check", "بررسی سلامت", StringComparison.OrdinalIgnoreCase)
+        .Replace("Running", "در حال اجرا", StringComparison.OrdinalIgnoreCase);
 
     private static void Add(TableLayoutPanel t, int row, string caption, string value, bool rtl)
     {
