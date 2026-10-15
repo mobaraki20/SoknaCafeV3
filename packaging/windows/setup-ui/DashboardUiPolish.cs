@@ -48,6 +48,44 @@ internal static class DashboardUiPolish
                 }
             }
 
+            if (table.RowCount == 5 && table.ColumnCount == 1 && table.Controls.OfType<Label>().Count() >= 3 && table.Controls.OfType<FlowLayoutPanel>().Any())
+            {
+                table.AutoSize = false;
+                table.Dock = DockStyle.Fill;
+                table.MinimumSize = Size.Empty;
+                table.MaximumSize = Size.Empty;
+                table.RowStyles.Clear();
+                table.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+                table.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+                table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+                table.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+                table.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+
+                foreach (var label in table.Controls.OfType<Label>())
+                {
+                    label.AutoSize = false;
+                    label.Dock = DockStyle.Fill;
+                    label.MaximumSize = Size.Empty;
+                    label.TextAlign = ContentAlignment.MiddleRight;
+                    label.Margin = Padding.Empty;
+                }
+                foreach (var flow in table.Controls.OfType<FlowLayoutPanel>())
+                {
+                    flow.AutoSize = false;
+                    flow.Dock = DockStyle.Fill;
+                    flow.WrapContents = false;
+                    flow.MinimumSize = Size.Empty;
+                    flow.MaximumSize = Size.Empty;
+                    flow.Margin = Padding.Empty;
+                }
+                foreach (var panel in table.Controls.OfType<Panel>())
+                {
+                    panel.Dock = DockStyle.Fill;
+                    panel.MinimumSize = Size.Empty;
+                    panel.MaximumSize = Size.Empty;
+                }
+            }
+
             if (table.RowCount == 2 && table.ColumnCount == 1 && table.Controls.OfType<TextBox>().Any())
             {
                 table.AutoSize = false;
@@ -78,6 +116,7 @@ internal static class DashboardUiPolish
             title.TextAlign = ContentAlignment.BottomRight;
             title.Margin = Padding.Empty;
 
+            subtitle.Text = "نصب، وضعیت و عیب‌یابی سه سرویس اصلی سکنا";
             subtitle.AutoSize = false;
             subtitle.Dock = DockStyle.Fill;
             subtitle.TextAlign = ContentAlignment.TopRight;
