@@ -36,9 +36,11 @@ foreach($rel in $owned.Keys){$src=Join-Path $RepoRoot $rel;if(-not(Test-Path $sr
 
 # Windows PowerShell 5.1 treats BOM-less UTF-8 source as the active ANSI code page. Normalize every
 # packaged PowerShell entrypoint to UTF-8 with BOM so diagnostics/evidence strings survive exactly.
+# The em-dash is used only as an empty/sentinel display value, so keep packaged scripts ASCII-safe for it.
 $utf8Bom=New-Object Text.UTF8Encoding($true)
 foreach($ps1 in Get-ChildItem $OutputRoot -Filter '*.ps1' -File){
   $raw=[IO.File]::ReadAllText($ps1.FullName,[Text.Encoding]::UTF8)
+  $raw=$raw.Replace([char]0x2014,'-')
   [IO.File]::WriteAllText($ps1.FullName,$raw,$utf8Bom)
 }
 
