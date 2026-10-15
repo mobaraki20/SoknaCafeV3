@@ -13,10 +13,19 @@ public sealed class ReleaseSetVerifierStager
     public const string SignatureAlgorithm = "ecdsa-p256-sha256";
     private const long MaxManifestBytes = 2 * 1024 * 1024;
     private const int MaxArtifacts = 512;
+    private const long MaxDeclaredArtifactBytes = 16L * 1024 * 1024 * 1024;
     private static readonly Regex KeyIdPattern = new("^[A-Za-z0-9._-]{1,64}$", RegexOptions.CultureInvariant);
     private static readonly HashSet<string> ReleaseTypes = new(StringComparer.Ordinal)
     {
         "public_only", "local_only", "paired", "windows_components_only", "updater_only", "recovery_forward"
+    };
+    private static readonly HashSet<string> GuestPublicMutationPolicies = new(StringComparer.Ordinal)
+    {
+        "allow", "queue", "read_only", "block"
+    };
+    private static readonly HashSet<string> LocalMutationPolicies = new(StringComparer.Ordinal)
+    {
+        "allow", "drain_then_block", "block"
     };
 
     private readonly MaintenancePaths _paths;
@@ -25,6 +34,7 @@ public sealed class ReleaseSetVerifierStager
 
     public StagedReleaseReceipt VerifyAndStage(string packagePath, InstalledReleaseIdentity installed)
     {
+        ArgumentNullException.ThrowIfNull(installed);
         packagePath = Path.GetFullPath(packagePath);
         if (!File.Exists(packagePath)) throw new FileNotFoundException("Release Set package was not found.", packagePath);
         Directory.CreateDirectory(_paths.UpdateRoot);
@@ -84,8 +94,11 @@ public sealed class ReleaseSetVerifierStager
         {
             if (!File.Exists(receiptPath)) throw new InvalidDataException("Existing Release Set stage is incomplete and requires operator inspection.");
             var receipt = AtomicFile.ReadJson<StagedReleaseReceipt>(receiptPath);
-            if (receipt.ReleaseSetId != manifest.ReleaseSetId || receipt.Sequence != manifest.Sequence || receipt.ManifestSha256 != manifestSha256 || receipt.PackageSha256 != packageSha256)
-                throw new InvalidDataException("Existing Release Set stage identity does not match this package.");
+            if (receipt.ReleaseSetId != manifest.ReleaseSetId || receipt.Sequence != manifest.Sequence ||
+                receipt.ManifestSha256 != manifestSha256 || receipt.PackageSha256 != packageSha256 ||
+                receipt.ActivationPerformed || receipt.DatabaseMutationPerformed ||
+                !receipt.SignatureVerified || !receipt.ArtifactIntegrityVerified || !receipt.PreflightIdentityMatch)
+                throw new InvalidDataException("Existing Release Set stage identity/evidence does not match this package.");
             PersistSequenceState(manifest, manifestSha256);
             return receipt;
         }
@@ -152,8 +165,12 @@ public sealed class ReleaseSetVerifierStager
         var result = new Dictionary<string, ZipArchiveEntry>(StringComparer.Ordinal);
         foreach (var entry in archive.Entries)
         {
+            if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
+            {
+                _ = NormalizeRelativePath(entry.FullName.TrimEnd('/', '\\'));
+                continue;
+            }
             var normalized = NormalizeRelativePath(entry.FullName);
-            if (entry.FullName.EndsWith('/', StringComparison.Ordinal) || entry.FullName.EndsWith('\\')) continue;
             if (!result.TryAdd(normalized, entry)) throw new InvalidDataException($"Duplicate archive entry: {normalized}.");
         }
         return result;
@@ -163,8 +180,8 @@ public sealed class ReleaseSetVerifierStager
     {
         if (manifest.Format != Format || manifest.SchemaVersion != SchemaVersion)
             throw new InvalidDataException("Unsupported Release Set format/schema.");
-        if (manifest.Status.Contains("DESIGN", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("Design-only Release Set manifests cannot be staged.");
+        if (string.IsNullOrWhiteSpace(manifest.Status) || manifest.Status.Contains("DESIGN", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Design/empty Release Set status cannot be staged.");
         if (string.IsNullOrWhiteSpace(manifest.ReleaseSetId) || manifest.ReleaseSetId.Length > 128)
             throw new InvalidDataException("release_set_id is invalid.");
         if (manifest.Sequence <= 0) throw new InvalidDataException("Release Set sequence must be positive.");
@@ -173,21 +190,42 @@ public sealed class ReleaseSetVerifierStager
         var now = DateTimeOffset.UtcNow;
         if (manifest.CreatedAt > now.AddMinutes(5)) throw new InvalidDataException("Release Set creation time is in the future.");
         if (manifest.ExpiresAt <= now) throw new InvalidDataException("Release Set has expired.");
-        if (manifest.Signature.Algorithm != SignatureAlgorithm || !KeyIdPattern.IsMatch(manifest.Signature.KeyId) || string.IsNullOrWhiteSpace(manifest.Signature.Value))
+        if (manifest.Signature is null || manifest.Signature.Algorithm != SignatureAlgorithm ||
+            !KeyIdPattern.IsMatch(manifest.Signature.KeyId ?? string.Empty) || string.IsNullOrWhiteSpace(manifest.Signature.Value))
             throw new InvalidDataException("Release Set signature metadata is invalid.");
+        if (manifest.Requirements is null || manifest.Artifacts is null || manifest.SupportedBaselines is null ||
+            manifest.InstallPlan is null || manifest.Compatibility is null || manifest.MutationPolicy is null ||
+            manifest.Database is null || manifest.Recovery is null || manifest.Qualification is null || manifest.PreUpdateBackupPolicy is null)
+            throw new InvalidDataException("Release Set is missing required contract sections.");
+        if (manifest.Targets.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ||
+            manifest.DependencyGraph.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            throw new InvalidDataException("Release Set targets/dependency graph are required.");
         if (manifest.Artifacts.Count is < 1 or > MaxArtifacts) throw new InvalidDataException("Release Set artifact count is invalid.");
         if (manifest.SupportedBaselines.Length == 0 && manifest.ReleaseType is "local_only" or "public_only" or "paired" or "recovery_forward")
             throw new InvalidDataException("Release Set requires at least one exact supported baseline.");
+        if (manifest.InstallPlan.Length == 0 || manifest.InstallPlan[0].Phase != "preflight" || manifest.InstallPlan[0].Mutation)
+            throw new InvalidDataException("Release Set install plan must begin with non-mutating preflight.");
+        if (manifest.InstallPlan.Any(static step => string.IsNullOrWhiteSpace(step.Phase) || string.IsNullOrWhiteSpace(step.Component)))
+            throw new InvalidDataException("Release Set install plan contains an invalid step.");
+        if (!GuestPublicMutationPolicies.Contains(manifest.MutationPolicy.Guest) ||
+            !GuestPublicMutationPolicies.Contains(manifest.MutationPolicy.StaffPublic) ||
+            !LocalMutationPolicies.Contains(manifest.MutationPolicy.Local))
+            throw new InvalidDataException("Release Set mutation policy contains an unsupported value.");
         if (manifest.PreUpdateBackupPolicy.OnFailure != "reject_pre_mutation")
             throw new InvalidDataException("Pre-update backup failure policy must reject before mutation.");
-        if (manifest.Database.Local.RollbackAfterBoundary != "forbidden" || manifest.Database.Public.RollbackAfterBoundary != "forbidden")
+        if (manifest.PreUpdateBackupPolicy.RecentLocalVerifiedMaxAgeSeconds is <= 0)
+            throw new InvalidDataException("recent_local_verified_max_age_seconds must be positive when specified.");
+        if (manifest.Database.Local is null || manifest.Database.Public is null ||
+            manifest.Database.Local.RollbackAfterBoundary != "forbidden" || manifest.Database.Public.RollbackAfterBoundary != "forbidden")
             throw new InvalidDataException("Rollback after DB forward boundary must be forbidden.");
         if (manifest.Recovery.PostDb != "retain_target_updater_forward_recovery_only")
             throw new InvalidDataException("Post-DB recovery policy is incompatible with H328.");
-        if (manifest.Recovery.DisasterRestore != "authority_epoch_reenrollment_required" ||
+        if (manifest.Recovery.PreDb != "rollback_or_discard_allowed" ||
+            manifest.Recovery.BusinessBackupRestore != "clean_target_only" ||
+            manifest.Recovery.DisasterRestore != "authority_epoch_reenrollment_required" ||
             manifest.Recovery.MachineIdentity != "fresh_reprovision_required" ||
             manifest.Recovery.PublicReenrollment != "credential_rotation_and_authority_epoch_required")
-            throw new InvalidDataException("Restore authority fencing policy is incompatible with Maintenance V4.");
+            throw new InvalidDataException("Release Set recovery/restore policy is incompatible with Maintenance V4.");
         ValidateForInstallGate(manifest);
         ValidateMinimumVersion(installed.MaintenanceSupervisorVersion, manifest.Requirements.MaintenanceSupervisorMin, "Maintenance Supervisor");
         ValidateMinimumVersion(installed.UpdateEngineVersion, manifest.Requirements.UpdateEngineMin, "Update Engine");
@@ -221,9 +259,10 @@ public sealed class ReleaseSetVerifierStager
     private static bool ExactIdentity(ReleaseComponentIdentity? expected, ReleaseComponentIdentity? actual)
     {
         if (expected is null || actual is null) return false;
+        var authorityPolicyOk = string.IsNullOrWhiteSpace(expected.AuthorityEpochPolicy) || expected.AuthorityEpochPolicy == actual.AuthorityEpochPolicy;
         return expected.ReleaseId == actual.ReleaseId && expected.Version == actual.Version &&
                expected.ManagedTreeSha256.Equals(actual.ManagedTreeSha256, StringComparison.OrdinalIgnoreCase) &&
-               expected.SchemaFingerprint == actual.SchemaFingerprint && expected.MigrationHead == actual.MigrationHead;
+               expected.SchemaFingerprint == actual.SchemaFingerprint && expected.MigrationHead == actual.MigrationHead && authorityPolicyOk;
     }
 
     private static void ValidateMinimumVersion(string actual, string? minimum, string label)
@@ -260,12 +299,17 @@ public sealed class ReleaseSetVerifierStager
     private static void ValidateArchiveAgainstArtifacts(Dictionary<string, ZipArchiveEntry> entries, Dictionary<string, ReleaseArtifact> artifacts)
     {
         var expectedPaths = new HashSet<string>(StringComparer.Ordinal) { "release-set.json" };
+        long declaredTotal = 0;
         foreach (var pair in artifacts)
         {
-            var artifact = pair.Value;
+            var artifact = pair.Value ?? throw new InvalidDataException($"Artifact record is null: {pair.Key}.");
+            if (string.IsNullOrWhiteSpace(pair.Key) || string.IsNullOrWhiteSpace(artifact.Component) || string.IsNullOrWhiteSpace(artifact.Kind))
+                throw new InvalidDataException("Artifact identity/component/kind is invalid.");
             var normalized = NormalizeRelativePath(artifact.Path);
             if (!expectedPaths.Add(normalized)) throw new InvalidDataException("Two artifact records resolve to the same package path.");
             if (artifact.SizeBytes < 0 || !IsSha256(artifact.Sha256)) throw new InvalidDataException($"Artifact metadata is invalid: {pair.Key}.");
+            checked { declaredTotal += artifact.SizeBytes; }
+            if (declaredTotal > MaxDeclaredArtifactBytes) throw new InvalidDataException("Release Set declared artifact size exceeds P2A safety limit.");
             if (!entries.TryGetValue(normalized, out var entry)) throw new InvalidDataException($"Declared artifact is missing: {pair.Key}.");
             if (entry.Length != artifact.SizeBytes) throw new InvalidDataException($"Artifact size mismatch: {pair.Key}.");
             using var input = entry.Open();
@@ -301,7 +345,7 @@ public sealed class ReleaseSetVerifierStager
     {
         if (string.IsNullOrWhiteSpace(value)) throw new InvalidDataException("Archive path is empty.");
         var replaced = value.Replace('\\', '/');
-        if (replaced.StartsWith('/', StringComparison.Ordinal) || replaced.Contains(':', StringComparison.Ordinal))
+        if (replaced.StartsWith('/') || replaced.Contains(':'))
             throw new InvalidDataException("Archive path must be relative.");
         var parts = replaced.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0 || parts.Any(static p => p is "." or "..")) throw new InvalidDataException("Archive path traversal is forbidden.");
