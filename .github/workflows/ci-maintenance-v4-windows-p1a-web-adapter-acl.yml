@@ -1,0 +1,151 @@
+name: CI Maintenance V4 Windows P1A Web Adapter ACL
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p1a-web-adapter-acl
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-maintenance-v4-windows-p1a-acl-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-p1a:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact P1 parent and Windows-only scope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base='01558cc3220092dd857e5d196c2157c00c5de390'
+          git merge-base --is-ancestor $base HEAD
+          if($LASTEXITCODE-ne0){throw 'Qualified Windows P1 baseline is not an ancestor.'}
+          $changed=@(git diff --name-only "$base..HEAD")
+          foreach($path in $changed){
+            if($path -eq '.github/workflows/ci-maintenance-v4-windows-p1a-web-adapter-acl.yml'){continue}
+            if($path.StartsWith('windows/maintenance/')){continue}
+            throw "P1A changed a path outside Windows Maintenance scope: $path"
+          }
+          Write-Host 'P1 baseline/scope: PASS'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10 for inherited Print Agent regression
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build P1A Supervisor and Recovery Console
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'P1A Supervisor build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'P1A Recovery Console build failed.'}
+
+      - name: Publish P1A self-contained executables
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out/p1a/supervisor,out/p1a/recovery -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/p1a/supervisor
+          if($LASTEXITCODE-ne0){throw 'P1A Supervisor publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/p1a/recovery
+          if($LASTEXITCODE-ne0){throw 'P1A Recovery Console publish failed.'}
+
+      - name: Re-run inherited P1 runtime and SCM qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $supervisor=(Resolve-Path 'out/p1a/supervisor/SoknaMaintenanceSupervisor.exe').Path
+          $recovery=(Resolve-Path 'out/p1a/recovery/SoknaMaintenanceRecoveryConsole.exe').Path
+          $result=& windows/maintenance/tests/p1-qualification.ps1 -SupervisorExe $supervisor -RecoveryConsoleExe $recovery
+          if($LASTEXITCODE-ne0){throw "Inherited P1 qualification failed: exit=$LASTEXITCODE"}
+          $result|Tee-Object -FilePath out/p1a/P1_REGRESSION_QUALIFICATION.json
+          if([string](($result|ConvertFrom-Json).result)-ne'PASS'){throw 'Inherited P1 result is not PASS.'}
+
+      - name: Run P1A Web adapter identity and ACL qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $supervisor=(Resolve-Path 'out/p1a/supervisor/SoknaMaintenanceSupervisor.exe').Path
+          $result=& windows/maintenance/tests/p1a-web-adapter-acl-qualification.ps1 -SupervisorExe $supervisor
+          if($LASTEXITCODE-ne0){throw "P1A ACL qualification failed: exit=$LASTEXITCODE"}
+          $result|Tee-Object -FilePath out/p1a/P1A_ACL_QUALIFICATION.json
+          $parsed=$result|ConvertFrom-Json
+          if([string]$parsed.result-ne'PASS'){throw 'P1A ACL result is not PASS.'}
+          $global:LASTEXITCODE=0
+
+      - name: Regression-build inherited Runtime 1.0.5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Inherited Runtime build failed.'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
+          if($LASTEXITCODE-ne0){throw 'Inherited Runtime health self-test failed.'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --scheduler-self-test
+          if($LASTEXITCODE-ne0){throw 'Inherited Runtime scheduler self-test failed.'}
+
+      - name: Regression-build inherited Print Agent 6.2.9
+        working-directory: windows/print-agent/source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build Sokna.PrintWorker.slnx -c Release
+          if($LASTEXITCODE-ne0){throw 'Inherited Print Agent build failed.'}
+          dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Inherited Print Agent regression failed.'}
+
+      - name: Freeze P1A provenance and hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $head=(git rev-parse HEAD).Trim()
+          [ordered]@{
+            format='sokna-maintenance-v4-windows-p1a-web-adapter-acl-provenance-v1'
+            source_commit=$head
+            exact_p1_parent='01558cc3220092dd857e5d196c2157c00c5de390'
+            maintenance_control_protocol='1.0'
+            supervisor_version='0.1.1'
+            recovery_console_version='0.1.1'
+            apache_service='SoknaApache'
+            supported_setup_identity='LocalSystem'
+            php_execution_contract='mod_php_in_soknaapache_service_token'
+            evidence_tier='windows-2022-ci-scm-and-acl-not-real-cafe-host'
+            real_cafe_host_uat=$false
+            application_db_mutation='not-implemented-p1a'
+          }|ConvertTo-Json -Depth 6|Set-Content out/p1a/P1A_PROVENANCE.json -Encoding utf8
+          $files=@(
+            'out/p1a/P1_REGRESSION_QUALIFICATION.json',
+            'out/p1a/P1A_ACL_QUALIFICATION.json',
+            'out/p1a/P1A_PROVENANCE.json',
+            'out/p1a/supervisor/SoknaMaintenanceSupervisor.exe',
+            'out/p1a/recovery/SoknaMaintenanceRecoveryConsole.exe'
+          )
+          $lines=foreach($file in $files){"$((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant())  $file"}
+          $lines|Set-Content out/p1a/SHA256SUMS.txt -Encoding utf8
+
+      - name: Upload P1A qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-windows-p1a-web-adapter-acl-evidence
+          path: |
+            out/p1a/P1_REGRESSION_QUALIFICATION.json
+            out/p1a/P1A_ACL_QUALIFICATION.json
+            out/p1a/P1A_PROVENANCE.json
+            out/p1a/SHA256SUMS.txt
+          if-no-files-found: error
