@@ -33,15 +33,15 @@ $owned=@{
  'packaging\windows\Sokna.ico'='Sokna.ico'
 }
 foreach($rel in $owned.Keys){$src=Join-Path $RepoRoot $rel;if(-not(Test-Path $src -PathType Leaf)){throw "Installer-owned source missing: $rel"};Copy-Item $src (Join-Path $OutputRoot $owned[$rel]) -Force}
-Copy-Item $RuntimeServiceExe (Join-Path $OutputRoot 'SoknaRuntimeService.exe') -Force
+$payload=Join-Path $OutputRoot '_payload';New-Item -ItemType Directory -Path (Join-Path $payload 'runtime'),(Join-Path $payload 'maintenance\app'),(Join-Path $payload 'maintenance\recovery') -Force|Out-Null
+Copy-Item $RuntimeServiceExe (Join-Path $payload 'runtime\SoknaRuntimeService.exe') -Force
 Copy-Item $SetupHostExe (Join-Path $OutputRoot 'SoknaSetupHost.exe') -Force
 Copy-Item $SetupUiExe (Join-Path $OutputRoot 'SoknaSetupUi.exe') -Force
-Copy-Item $PrintWorkerBundle (Join-Path $OutputRoot 'print-worker') -Recurse -Force
-New-Item -ItemType Directory -Path (Join-Path $OutputRoot 'maintenance\app'),(Join-Path $OutputRoot 'maintenance\recovery') -Force|Out-Null
-Copy-Item (Join-Path $MaintenanceAppBundle '*') (Join-Path $OutputRoot 'maintenance\app') -Recurse -Force
-Copy-Item (Join-Path $MaintenanceRecoveryBundle '*') (Join-Path $OutputRoot 'maintenance\recovery') -Recurse -Force
+Copy-Item $PrintWorkerBundle (Join-Path $payload 'print-worker') -Recurse -Force
+Copy-Item (Join-Path $MaintenanceAppBundle '*') (Join-Path $payload 'maintenance\app') -Recurse -Force
+Copy-Item (Join-Path $MaintenanceRecoveryBundle '*') (Join-Path $payload 'maintenance\recovery') -Recurse -Force
 
-$required=@('SoknaRuntimeService.exe','print-worker\Service\Sokna.PrintAgent.Service.exe','print-worker\Worker\Sokna.PrintAgent.Worker.exe','maintenance\app\SoknaMaintenanceSupervisor.exe','maintenance\app\SoknaMaintenanceUpdateEngine.exe','maintenance\recovery\SoknaMaintenanceRecoveryConsole.exe','SoknaSetupHost.exe','SoknaSetupUi.exe','collect-support-core.ps1','collect-support-v2.ps1')
+$required=@('_payload\runtime\SoknaRuntimeService.exe','_payload\print-worker\Service\Sokna.PrintAgent.Service.exe','_payload\print-worker\Worker\Sokna.PrintAgent.Worker.exe','_payload\maintenance\app\SoknaMaintenanceSupervisor.exe','_payload\maintenance\app\SoknaMaintenanceUpdateEngine.exe','_payload\maintenance\recovery\SoknaMaintenanceRecoveryConsole.exe','SoknaSetupHost.exe','SoknaSetupUi.exe','collect-support-core.ps1','collect-support-v2.ps1')
 foreach($rel in $required){if(-not(Test-Path (Join-Path $OutputRoot $rel) -PathType Leaf)){throw "Unified shell missing: $rel"}}
 $forbidden=@('php.exe','httpd.exe','apache.exe','mysqld.exe','mariadb.exe','SoknaAppPayload.zip');foreach($f in Get-ChildItem $OutputRoot -File -Recurse){if($forbidden -contains $f.Name){throw "Forbidden payload leaked into Windows Services package: $($f.Name)"}}
 
