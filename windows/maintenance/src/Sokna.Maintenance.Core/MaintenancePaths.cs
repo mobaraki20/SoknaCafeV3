@@ -10,6 +10,10 @@ public sealed record MaintenancePaths(string DataRoot)
     public string WebAdapterKeyPath => Path.Combine(SecretsRoot, "web-adapter.key");
     public string RecoveryConsoleKeyPath => Path.Combine(SecretsRoot, "recovery-console.key");
     public string UpdateRoot => Path.Combine(DataRoot, "update");
+    public string InboxRoot => Path.Combine(UpdateRoot, "inbox");
+    public string OperationsRoot => Path.Combine(DataRoot, "operations");
+    public string InstalledReleaseIdentityPath => Path.Combine(DataRoot, "installed-release-identity.json");
+    public string WebAdapterAclEvidencePath => Path.Combine(DataRoot, "web-adapter-acl.json");
     public string StagingRoot => Path.Combine(DataRoot, "staging", "release-sets");
     public string TrustRoot => Path.Combine(DataRoot, "trust");
     public string ReleaseSigningTrustRoot => Path.Combine(TrustRoot, "release-signing");
