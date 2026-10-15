@@ -1,0 +1,138 @@
+name: CI Maintenance V4 Windows P1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p1-supervisor
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-maintenance-v4-windows-p1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-p1:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify frozen parent and source scope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base='bdb753db850b2f3d89fe3f451baa4ee9a7fae8ee'
+          git merge-base --is-ancestor $base HEAD
+          if($LASTEXITCODE-ne0){throw 'Frozen Windows Services 1.0.17 parent is not an ancestor.'}
+          $changed=@(git diff --name-only "$base..HEAD")
+          foreach($path in $changed){
+            if($path -eq '.github/workflows/ci-maintenance-v4-windows-p1.yml'){continue}
+            if($path.StartsWith('windows/maintenance/')){continue}
+            throw "P1 changed a path outside Windows Maintenance scope: $path"
+          }
+          if(-not($changed|Where-Object{$_ -eq 'windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs'})){throw 'Supervisor executable source is missing.'}
+          if(-not($changed|Where-Object{$_ -eq 'windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Program.cs'})){throw 'Recovery Console executable source is missing.'}
+          Write-Host 'Frozen parent/scope: PASS'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10 for inherited Print Agent regression
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build Maintenance P1
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Maintenance Supervisor build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Maintenance Recovery Console build failed.'}
+
+      - name: Publish Maintenance P1 self-contained Windows executables
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out/p1/supervisor,out/p1/recovery -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/p1/supervisor
+          if($LASTEXITCODE-ne0){throw 'Supervisor publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/p1/recovery
+          if($LASTEXITCODE-ne0){throw 'Recovery Console publish failed.'}
+
+      - name: Run Windows P1 runtime and SCM qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $supervisor=(Resolve-Path 'out/p1/supervisor/SoknaMaintenanceSupervisor.exe').Path
+          $recovery=(Resolve-Path 'out/p1/recovery/SoknaMaintenanceRecoveryConsole.exe').Path
+          $result=& windows/maintenance/tests/p1-qualification.ps1 -SupervisorExe $supervisor -RecoveryConsoleExe $recovery
+          if($LASTEXITCODE-ne0){throw "P1 qualification script failed: exit=$LASTEXITCODE"}
+          $result|Tee-Object -FilePath out/p1/P1_QUALIFICATION.json
+          $parsed=$result|ConvertFrom-Json
+          if([string]$parsed.result-ne'PASS'){throw 'P1 qualification result is not PASS.'}
+
+      - name: Regression-build inherited Runtime 1.0.5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Inherited Runtime build failed.'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
+          if($LASTEXITCODE-ne0){throw 'Inherited Runtime health self-test failed.'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --scheduler-self-test
+          if($LASTEXITCODE-ne0){throw 'Inherited Runtime scheduler self-test failed.'}
+
+      - name: Regression-build inherited Print Agent 6.2.9
+        working-directory: windows/print-agent/source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build Sokna.PrintWorker.slnx -c Release
+          if($LASTEXITCODE-ne0){throw 'Inherited Print Agent build failed.'}
+          dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Inherited Print Agent regression failed.'}
+
+      - name: Freeze P1 provenance and hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $head=(git rev-parse HEAD).Trim()
+          [ordered]@{
+            format='sokna-maintenance-v4-windows-p1-provenance-v1'
+            source_commit=$head
+            frozen_parent='bdb753db850b2f3d89fe3f451baa4ee9a7fae8ee'
+            maintenance_control_protocol='1.0'
+            supervisor_version='0.1.0'
+            recovery_console_version='0.1.0'
+            default_loopback_port=17631
+            service_name='SoknaMaintenanceSupervisor'
+            evidence_tier='windows-2022-ci-runtime-and-scm-not-real-cafe-host'
+            application_db_mutation='not-implemented-p1'
+          }|ConvertTo-Json -Depth 6|Set-Content out/p1/P1_PROVENANCE.json -Encoding utf8
+          $files=@(
+            'out/p1/P1_QUALIFICATION.json',
+            'out/p1/P1_PROVENANCE.json',
+            'out/p1/supervisor/SoknaMaintenanceSupervisor.exe',
+            'out/p1/recovery/SoknaMaintenanceRecoveryConsole.exe'
+          )
+          $lines=foreach($file in $files){"$((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant())  $file"}
+          $lines|Set-Content out/p1/SHA256SUMS.txt -Encoding utf8
+
+      - name: Upload P1 qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-windows-p1-evidence
+          path: |
+            out/p1/P1_QUALIFICATION.json
+            out/p1/P1_PROVENANCE.json
+            out/p1/SHA256SUMS.txt
+          if-no-files-found: error
