@@ -12,7 +12,7 @@ $manifestPath=Join-Path $ShellPayloadRoot 'payload-manifest.json'
 if(-not(Test-Path $manifestPath -PathType Leaf)){throw 'Unified shell payload manifest is missing.'}
 $manifest=Get-Content $manifestPath -Raw|ConvertFrom-Json
 if([string]$manifest.format-ne'sokna-windows-services-shell-v3'-or[int]$manifest.schema_version-ne3-or[string]$manifest.package_version-ne$version){throw 'Unified shell payload format/version mismatch.'}
-foreach($required in @('SoknaSetupUi.exe','SoknaSetupHost.exe','windows-services-component-manifest-v2.json','setup-windows-components-v5.ps1','_payload\runtime\SoknaRuntimeService.exe','_payload\print-worker\Service\Sokna.PrintAgent.Service.exe','_payload\maintenance\app\SoknaMaintenanceSupervisor.exe')){if(-not(Test-Path (Join-Path $ShellPayloadRoot $required) -PathType Leaf)){throw "Unified shell file missing: $required"}}
+foreach($required in @('SoknaSetupUi.exe','SoknaSetupHost.exe','windows-services-component-manifest-v2.json','setup-windows-components-v4.ps1','_payload\runtime\SoknaRuntimeService.exe','_payload\print-worker\Service\Sokna.PrintAgent.Service.exe','_payload\maintenance\app\SoknaMaintenanceSupervisor.exe')){if(-not(Test-Path (Join-Path $ShellPayloadRoot $required) -PathType Leaf)){throw "Unified shell file missing: $required"}}
 
 if(-not$IsccExe){
   $candidates=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")
