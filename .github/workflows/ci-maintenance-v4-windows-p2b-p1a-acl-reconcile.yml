@@ -1,0 +1,207 @@
+name: CI Maintenance V4 Windows P2B P1A ACL Reconcile
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p2b-p1a-acl-reconcile
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-maintenance-v4-windows-p2b-p1a-acl-reconcile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-reconciled-child:
+    runs-on: windows-2022
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact P2B parent and constrained forward-port scope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p2b='f6a4dc3020957c618372f107a4d2eb0e7281d8e9'
+          git merge-base --is-ancestor $p2b HEAD
+          if($LASTEXITCODE-ne0){throw 'Current P2B head is not an ancestor.'}
+          $allowed=@(
+            '.github/workflows/ci-maintenance-v4-windows-p2b-p1a-acl-reconcile.yml',
+            'windows/maintenance/src/Sokna.Maintenance.Core/AtomicFile.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/SecretStore.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/WebAdapterAclProvisioner.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj',
+            'windows/maintenance/tests/p1a-web-adapter-acl-qualification.ps1',
+            'windows/maintenance/tests/p2b-qualification.ps1'
+          )
+          $changed=@(git diff --name-only "$p2b..HEAD")
+          foreach($path in $changed){if($allowed -notcontains $path){throw "Unexpected forward-port path: $path"}}
+          foreach($required in @(
+            'windows/maintenance/src/Sokna.Maintenance.Core/AtomicFile.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/SecretStore.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/WebAdapterAclProvisioner.cs',
+            'windows/maintenance/tests/p1a-web-adapter-acl-qualification.ps1',
+            'windows/maintenance/tests/p2b-qualification.ps1'
+          )){if($changed -notcontains $required){throw "Required reconcile path missing: $required"}}
+          Write-Host 'P2B child/scope: PASS'
+
+      - name: Prove P2B staging and idempotency implementation files remain byte-identical
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p2b='f6a4dc3020957c618372f107a4d2eb0e7281d8e9'
+          $critical=@(
+            'windows/maintenance/src/Sokna.Maintenance.Core/HmacProtocol.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/MaintenanceOperationStore.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/ReleaseSetCanonicalizer.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/ReleaseSetModels.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/ReleaseSetVerifierStager.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/SupervisorUpdateStagingCoordinator.cs',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj',
+            'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Program.cs'
+          )
+          foreach($path in $critical){
+            $before=(git rev-parse "$p2b`:$path").Trim()
+            $after=(git rev-parse "HEAD`:$path").Trim()
+            if($before-ne$after){throw "P2B critical implementation changed unexpectedly: $path"}
+          }
+          Write-Host 'P2B staging/idempotency implementation identity: PASS'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10 for Print Agent regression
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build reconciled Maintenance components
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Supervisor build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Update Engine build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Recovery Console build failed.'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'P2 fixture build failed.'}
+
+      - name: Publish Supervisor Update Engine Recovery Console and fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out/reconcile/app,out/reconcile/recovery,out/reconcile/fixture -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/reconcile/app
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/reconcile/app
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/reconcile/recovery
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/reconcile/fixture
+          foreach($file in @('out/reconcile/app/SoknaMaintenanceSupervisor.exe','out/reconcile/app/SoknaMaintenanceUpdateEngine.exe','out/reconcile/recovery/SoknaMaintenanceRecoveryConsole.exe','out/reconcile/fixture/Sokna.Maintenance.P2Fixture.exe')){if(-not(Test-Path $file)){throw "Published file missing: $file"}}
+
+      - name: Run final P1A Web Adapter ACL identity and descriptor reconciliation qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $supervisor=(Resolve-Path out/reconcile/app/SoknaMaintenanceSupervisor.exe).Path
+          $result=& windows/maintenance/tests/p1a-web-adapter-acl-qualification.ps1 -SupervisorExe $supervisor
+          if($LASTEXITCODE-ne0){throw "P1A ACL qualification failed: exit=$LASTEXITCODE"}
+          $result|Tee-Object -FilePath out/reconcile/P1A_ACL_QUALIFICATION.json
+          $parsed=$result|ConvertFrom-Json
+          if([string]$parsed.result-ne'PASS'){throw 'P1A ACL result is not PASS.'}
+          $global:LASTEXITCODE=0
+
+      - name: Re-run P2B authenticated staging idempotency and restart qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $supervisor=(Resolve-Path out/reconcile/app/SoknaMaintenanceSupervisor.exe).Path
+          $fixture=(Resolve-Path out/reconcile/fixture/Sokna.Maintenance.P2Fixture.exe).Path
+          $result=& windows/maintenance/tests/p2b-qualification.ps1 -SupervisorExe $supervisor -FixtureExe $fixture
+          if($LASTEXITCODE-ne0){throw "P2B qualification failed: exit=$LASTEXITCODE"}
+          $result|Tee-Object -FilePath out/reconcile/P2B_QUALIFICATION.json
+          $parsed=$result|ConvertFrom-Json
+          if([string]$parsed.result-ne'PASS'){throw 'P2B qualification result is not PASS.'}
+          $global:LASTEXITCODE=0
+
+      - name: Regression Runtime 1.0.5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Runtime build failed.'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
+          if($LASTEXITCODE-ne0){throw 'Runtime health self-test failed.'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --scheduler-self-test
+          if($LASTEXITCODE-ne0){throw 'Runtime scheduler self-test failed.'}
+
+      - name: Regression Print Agent 6.2.9
+        working-directory: windows/print-agent/source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build Sokna.PrintWorker.slnx -c Release
+          if($LASTEXITCODE-ne0){throw 'Print Agent build failed.'}
+          dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Print Agent regression failed.'}
+
+      - name: Freeze reconciled provenance and hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $head=(git rev-parse HEAD).Trim()
+          $tree=(git rev-parse HEAD^{tree}).Trim()
+          [ordered]@{
+            format='sokna-maintenance-v4-windows-p2b-p1a-acl-reconcile-provenance-v1'
+            source_commit=$head
+            source_tree=$tree
+            p2b_parent='f6a4dc3020957c618372f107a4d2eb0e7281d8e9'
+            p1a_policy_source='68aa695233205d104a8cecc7ea520071d4f31682'
+            supervisor_version='0.2.1'
+            maintenance_core_version='0.1.1'
+            recovery_console_version='0.1.1'
+            update_engine_version='0.2.0'
+            maintenance_control_protocol='1.0'
+            p2b_stage_only=$true
+            idempotency_preserved=$true
+            activation=$false
+            database_mutation=$false
+            final_web_adapter_identity_policy='LocalSystem_or_exact_NT_SERVICE_SoknaApache_only'
+            key_hardening='SYSTEM_Administrators_then_exact_web_grant'
+            control_plane_acl_reconcile='after_every_atomic_replace'
+            runtime_regression='1.0.5'
+            print_agent_regression='6.2.9'
+            evidence_tier='windows-2022-ci-not-real-cafe-host'
+            real_cafe_host_uat=$false
+          }|ConvertTo-Json -Depth 6|Set-Content out/reconcile/RECONCILE_PROVENANCE.json -Encoding utf8
+          $files=@(
+            'out/reconcile/P1A_ACL_QUALIFICATION.json',
+            'out/reconcile/P2B_QUALIFICATION.json',
+            'out/reconcile/RECONCILE_PROVENANCE.json',
+            'out/reconcile/app/SoknaMaintenanceSupervisor.exe',
+            'out/reconcile/app/SoknaMaintenanceUpdateEngine.exe',
+            'out/reconcile/recovery/SoknaMaintenanceRecoveryConsole.exe'
+          )
+          $lines=foreach($file in $files){"$((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant())  $file"}
+          $lines|Set-Content out/reconcile/SHA256SUMS.txt -Encoding utf8
+
+      - name: Upload reconciled qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-windows-p2b-p1a-acl-reconcile-evidence
+          path: |
+            out/reconcile/P1A_ACL_QUALIFICATION.json
+            out/reconcile/P2B_QUALIFICATION.json
+            out/reconcile/RECONCILE_PROVENANCE.json
+            out/reconcile/SHA256SUMS.txt
+          if-no-files-found: error
