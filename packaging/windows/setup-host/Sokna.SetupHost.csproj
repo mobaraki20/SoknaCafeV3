@@ -8,10 +8,13 @@
     <PublishTrimmed>false</PublishTrimmed>
     <AssemblyName>SoknaSetupHost</AssemblyName>
     <RootNamespace>Sokna.SetupHost</RootNamespace>
+    <StartupObject>Sokna.SetupHost.ProgramV4</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\Sokna.ico</ApplicationIcon>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
