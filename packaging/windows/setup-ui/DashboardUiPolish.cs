@@ -22,8 +22,43 @@ internal static class DashboardUiPolish
                 button.Text = "عیب‌یابی";
         }
 
+        foreach (var label in Descendants<Label>(form))
+        {
+            NormalizeLabel(label);
+            label.TextChanged += (_, _) => NormalizeLabel(label);
+        }
+
         foreach (var table in Descendants<TableLayoutPanel>(form))
         {
+            if (table.RowCount == 1 && table.ColumnCount == 2 && table.BackColor == SetupPalette.Brand)
+            {
+                table.RowStyles.Clear();
+                table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            }
+
+            if (table.RowCount == 1 && table.ColumnCount == 3 && table.Controls.OfType<Panel>().Count() == 3)
+            {
+                table.RowStyles.Clear();
+                table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+                foreach (var panel in table.Controls.OfType<Panel>())
+                {
+                    panel.Dock = DockStyle.Fill;
+                    panel.MinimumSize = Size.Empty;
+                    panel.MaximumSize = Size.Empty;
+                }
+            }
+
+            if (table.RowCount == 2 && table.ColumnCount == 1 && table.Controls.OfType<TextBox>().Any())
+            {
+                table.AutoSize = false;
+                table.Dock = DockStyle.Top;
+                table.Height = 48;
+                table.MinimumSize = new Size(0, 48);
+                table.RowStyles.Clear();
+                table.RowStyles.Add(new RowStyle(SizeType.Absolute, 17));
+                table.RowStyles.Add(new RowStyle(SizeType.Absolute, 31));
+            }
+
             if (table.RowCount != 2 || table.ColumnCount != 1) continue;
             var labels = table.Controls.OfType<Label>().ToArray();
             var title = labels.FirstOrDefault(x => string.Equals(x.Text, "سرویس‌های ویندوز سکنا", StringComparison.Ordinal));
@@ -32,6 +67,8 @@ internal static class DashboardUiPolish
 
             table.AutoSize = false;
             table.Dock = DockStyle.Fill;
+            table.MinimumSize = Size.Empty;
+            table.MaximumSize = Size.Empty;
             table.RowStyles.Clear();
             table.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
             table.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
@@ -47,8 +84,18 @@ internal static class DashboardUiPolish
             subtitle.Margin = Padding.Empty;
             subtitle.Visible = true;
             subtitle.BringToFront();
-            break;
         }
+    }
+
+    private static void NormalizeLabel(Label label)
+    {
+        var text = label.Text;
+        var normalized = text
+            .Replace("componentها", "اجزا", StringComparison.Ordinal)
+            .Replace("componentهای", "اجزای", StringComparison.Ordinal)
+            .Replace("هر component", "هر جزء", StringComparison.Ordinal);
+        if (!string.Equals(text, normalized, StringComparison.Ordinal))
+            label.Text = normalized;
     }
 
     private static IEnumerable<T> Descendants<T>(Control root) where T : Control
