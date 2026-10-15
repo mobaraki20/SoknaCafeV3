@@ -27,6 +27,7 @@ internal static class DashboardUiPolish
             NormalizeLabel(label);
             label.TextChanged += (_, _) => NormalizeLabel(label);
         }
+        AttachDynamicNormalization(form);
 
         foreach (var table in Descendants<TableLayoutPanel>(form))
         {
@@ -124,6 +125,21 @@ internal static class DashboardUiPolish
             subtitle.Visible = true;
             subtitle.BringToFront();
         }
+    }
+
+    private static void AttachDynamicNormalization(Control root)
+    {
+        root.ControlAdded += (_, eventArgs) =>
+        {
+            if (eventArgs.Control is Label label)
+            {
+                NormalizeLabel(label);
+                label.TextChanged += (_, _) => NormalizeLabel(label);
+            }
+            AttachDynamicNormalization(eventArgs.Control);
+        };
+        foreach (Control child in root.Controls)
+            AttachDynamicNormalization(child);
     }
 
     private static void NormalizeLabel(Label label)
