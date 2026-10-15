@@ -28,6 +28,7 @@ $owned=@{
  'packaging\windows\WINDOWS_SERVICES_VERSION.txt'='WINDOWS_SERVICES_VERSION.txt';
  'packaging\windows\scripts\setup-windows-components-v4.ps1'='setup-windows-components-v4.ps1';
  'packaging\windows\scripts\pair-windows-services.ps1'='pair-windows-services.ps1';
+ 'packaging\windows\scripts\collect-support.ps1'='collect-support-core.ps1';
  'packaging\windows\scripts\collect-support-v2.ps1'='collect-support-v2.ps1';
  'packaging\windows\Sokna.ico'='Sokna.ico'
 }
@@ -40,11 +41,10 @@ New-Item -ItemType Directory -Path (Join-Path $OutputRoot 'maintenance\app'),(Jo
 Copy-Item (Join-Path $MaintenanceAppBundle '*') (Join-Path $OutputRoot 'maintenance\app') -Recurse -Force
 Copy-Item (Join-Path $MaintenanceRecoveryBundle '*') (Join-Path $OutputRoot 'maintenance\recovery') -Recurse -Force
 
-$required=@('SoknaRuntimeService.exe','print-worker\Service\Sokna.PrintAgent.Service.exe','print-worker\Worker\Sokna.PrintAgent.Worker.exe','maintenance\app\SoknaMaintenanceSupervisor.exe','maintenance\app\SoknaMaintenanceUpdateEngine.exe','maintenance\recovery\SoknaMaintenanceRecoveryConsole.exe','SoknaSetupHost.exe','SoknaSetupUi.exe')
+$required=@('SoknaRuntimeService.exe','print-worker\Service\Sokna.PrintAgent.Service.exe','print-worker\Worker\Sokna.PrintAgent.Worker.exe','maintenance\app\SoknaMaintenanceSupervisor.exe','maintenance\app\SoknaMaintenanceUpdateEngine.exe','maintenance\recovery\SoknaMaintenanceRecoveryConsole.exe','SoknaSetupHost.exe','SoknaSetupUi.exe','collect-support-core.ps1','collect-support-v2.ps1')
 foreach($rel in $required){if(-not(Test-Path (Join-Path $OutputRoot $rel) -PathType Leaf)){throw "Unified shell missing: $rel"}}
-$forbidden=@('php.exe','httpd.exe','apache.exe','mysqld.exe','mariadb.exe','SoknaAppPayload.zip');foreach($f in Get-ChildItem $OutputRoot -File -Recurse){if($forbidden -contains $f.Name){throw "Forbidden payload leaked into Windows package: $($f.Name)"}}
+$forbidden=@('php.exe','httpd.exe','apache.exe','mysqld.exe','mariadb.exe','SoknaAppPayload.zip');foreach($f in Get-ChildItem $OutputRoot -File -Recurse){if($forbidden -contains $f.Name){throw "Forbidden payload leaked into Windows Services package: $($f.Name)"}}
 
-# Verify source-of-version identities against the binding manifest.
 $runtime=[string](([xml](Get-Content (Join-Path $RepoRoot 'windows\runtime\source\Sokna.Runtime.Service.csproj') -Raw)).Project.PropertyGroup.Version)
 $print=[string](([xml](Get-Content (Join-Path $RepoRoot 'windows\print-agent\source\Directory.Build.props') -Raw)).Project.PropertyGroup.SoknaAgentVersion)
 $super=[string](([xml](Get-Content (Join-Path $RepoRoot 'windows\maintenance\src\Sokna.Maintenance.Supervisor\Sokna.Maintenance.Supervisor.csproj') -Raw)).Project.PropertyGroup.Version)
