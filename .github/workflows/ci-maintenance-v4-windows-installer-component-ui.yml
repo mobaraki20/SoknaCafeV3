@@ -71,7 +71,13 @@ jobs:
           $ui=$fixtureExe
           $screenRoot=(Resolve-Path out/ui-screenshots).Path
           $p=Start-Process -FilePath $ui -ArgumentList @('--layout-self-test',('"'+$screenRoot+'"')) -Wait -PassThru
-          if($p.ExitCode-ne0){throw "Layout self-test failed: $($p.ExitCode)"}
+          if($p.ExitCode-ne0){
+            Get-ChildItem out/ui-screenshots -Filter '*.txt' -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "--- $($_.Name)"
+              Get-Content $_.FullName -Raw | Write-Host
+            }
+            throw "Layout self-test failed: $($p.ExitCode)"
+          }
           $reports=Get-ChildItem out/ui-screenshots -Filter '*.txt'
           foreach($report in $reports){$raw=Get-Content $report.FullName -Raw;if($raw.Trim()-ne'PASS'){throw "Layout report failed: $($report.Name) / $raw"}}
           if(@(Get-ChildItem out/ui-screenshots -Filter '*.png').Count-lt5){throw 'Expected screenshot evidence missing.'}
@@ -89,6 +95,7 @@ jobs:
           $head=(git rev-parse HEAD).Trim();$tree=(git rev-parse 'HEAD^{tree}').Trim()
           [ordered]@{format='sokna-installer-ui-qualification-v1';source_commit=$head;source_tree=$tree;package_version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim();screenshots=@(Get-ChildItem out/ui-screenshots -Filter '*.png'|Select-Object -ExpandProperty Name);evidence_tier='windows-2022-ci-not-real-cafe-host';real_host_uat=$false}|ConvertTo-Json -Depth 6|Set-Content out/ui-screenshots/QUALIFICATION.json -Encoding utf8
       - name: Upload UI screenshot evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: maintenance-v4-installer-ui-screenshots
