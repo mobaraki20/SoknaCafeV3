@@ -50,7 +50,25 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           New-Item -ItemType Directory -Path out/ui-screenshots -Force|Out-Null
-          $ui=(Resolve-Path out/setup-ui/SoknaSetupUi.exe).Path
+
+          # The dashboard performs a normal component refresh when first painted. Give that refresh a
+          # deterministic shell so a headless screenshot run cannot open an error MessageBox and hang.
+          $uiRoot=(Resolve-Path out/setup-ui).Path
+          Copy-Item packaging/windows/windows-services-component-manifest-v2.json (Join-Path $uiRoot 'windows-services-component-manifest-v2.json') -Force
+          $fixtureExe=(Resolve-Path out/setup-ui/SoknaSetupUi.exe).Path
+          foreach($rel in @(
+            '_payload/runtime/SoknaRuntimeService.exe',
+            '_payload/print-worker/Service/Sokna.PrintAgent.Service.exe',
+            '_payload/maintenance/app/SoknaMaintenanceSupervisor.exe',
+            '_payload/maintenance/app/SoknaMaintenanceUpdateEngine.exe',
+            '_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe'
+          )){
+            $target=Join-Path $uiRoot ($rel.Replace('/','\'))
+            New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($target)) -Force|Out-Null
+            Copy-Item $fixtureExe $target -Force
+          }
+
+          $ui=$fixtureExe
           $screenRoot=(Resolve-Path out/ui-screenshots).Path
           $p=Start-Process -FilePath $ui -ArgumentList @('--layout-self-test',('"'+$screenRoot+'"')) -Wait -PassThru
           if($p.ExitCode-ne0){throw "Layout self-test failed: $($p.ExitCode)"}
