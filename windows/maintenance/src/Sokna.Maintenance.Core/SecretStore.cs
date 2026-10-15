@@ -12,11 +12,18 @@ public sealed class SecretStore
     public void EnsureKeys()
     {
         Directory.CreateDirectory(_paths.SecretsRoot);
+
+        // Harden the directory before creating or validating any key so a new key is
+        // never transiently exposed through inherited/broad ACLs.
         ApplyAdminOnlyDirectoryAcl(_paths.SecretsRoot);
         EnsureKey(_paths.WebAdapterKeyPath);
         EnsureKey(_paths.RecoveryConsoleKeyPath);
         ApplyAdminOnlyFileAcl(_paths.WebAdapterKeyPath);
         ApplyAdminOnlyFileAcl(_paths.RecoveryConsoleKeyPath);
+
+        // Restore only the exact qualified Web adapter access after the admin/SYSTEM
+        // hardening pass. Unqualified identities remain fail-closed.
+        WebAdapterAclProvisioner.TryProvision(_paths);
     }
 
     public byte[] LoadKey(string keyId)
@@ -52,13 +59,21 @@ public sealed class SecretStore
     private static void ApplyAdminOnlyDirectoryAcl(string path)
     {
         if (!OperatingSystem.IsWindows()) return;
-        RunIcacls(path, "/inheritance:r", "/grant:r", "SYSTEM:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F");
+        RunIcacls(path,
+            "/inheritance:r",
+            "/grant:r",
+            "SYSTEM:(OI)(CI)F",
+            "*S-1-5-32-544:(OI)(CI)F");
     }
 
     private static void ApplyAdminOnlyFileAcl(string path)
     {
         if (!OperatingSystem.IsWindows()) return;
-        RunIcacls(path, "/inheritance:r", "/grant:r", "SYSTEM:F", "*S-1-5-32-544:F");
+        RunIcacls(path,
+            "/inheritance:r",
+            "/grant:r",
+            "SYSTEM:F",
+            "*S-1-5-32-544:F");
     }
 
     private static void RunIcacls(string path, params string[] arguments)
@@ -77,9 +92,13 @@ public sealed class SecretStore
         if (!process.WaitForExit(10000))
         {
             try { process.Kill(entireProcessTree: true); } catch { }
-            throw new InvalidOperationException("icacls.exe timed out while securing maintenance secrets.");
+            throw new InvalidOperationException("icacls.exe timed out while securing Maintenance secrets.");
         }
         if (process.ExitCode != 0)
-            throw new InvalidOperationException("Unable to secure maintenance secret ACL: " + process.StandardError.ReadToEnd());
+        {
+            var error = process.StandardError.ReadToEnd();
+            var output = process.StandardOutput.ReadToEnd();
+            throw new InvalidOperationException("Unable to secure Maintenance secret ACL: " + error + output);
+        }
     }
 }
