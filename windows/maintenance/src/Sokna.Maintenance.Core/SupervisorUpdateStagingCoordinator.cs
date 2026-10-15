@@ -5,7 +5,8 @@ using System.Text.Json.Serialization;
 namespace Sokna.Maintenance.Core;
 
 public sealed record StageUpdateRequest(
-    [property: JsonPropertyName("package_ref")] string PackageRef);
+    [property: JsonPropertyName("package_ref")] string PackageRef,
+    [property: JsonPropertyName("operator_id")] string OperatorId);
 
 public sealed record StageUpdateResult(
     [property: JsonPropertyName("operation")] MaintenanceOperation Operation,
@@ -29,11 +30,12 @@ public sealed class SupervisorUpdateStagingCoordinator
         _engineExecutable = Path.GetFullPath(engineExecutable);
     }
 
-    public StageUpdateResult Stage(string packageRef, string idempotencyKey)
+    public StageUpdateResult Stage(string packageRef, string operatorId, string idempotencyKey)
     {
         packageRef = NormalizePackageRef(packageRef);
-        var requestHash = MaintenanceOperationStore.CanonicalRequestHash("update.stage", packageRef);
-        var (operation, created) = _operations.GetOrCreate(idempotencyKey, requestHash, "update.stage", packageRef);
+        operatorId = NormalizeOperatorId(operatorId);
+        var requestHash = MaintenanceOperationStore.CanonicalRequestHash("update.stage", packageRef, operatorId);
+        var (operation, created) = _operations.GetOrCreate(idempotencyKey, requestHash, "update.stage", packageRef, operatorId);
         if (operation.State == "staged") return new(operation, created, Reconciled: !created);
         if (operation.State is "failed_pre_mutation" or "rejected_pre_mutation")
             return new(operation, created, Reconciled: !created);
@@ -145,6 +147,7 @@ public sealed class SupervisorUpdateStagingCoordinator
         {
             ["operation_id"] = operation.OperationId,
             ["operation_type"] = operation.OperationType,
+            ["operator_id"] = operation.OperatorId,
             ["state"] = operation.State,
             ["package_ref"] = operation.PackageRef,
             ["attempt_count"] = operation.AttemptCount,
@@ -160,6 +163,13 @@ public sealed class SupervisorUpdateStagingCoordinator
         if (!string.Equals(fileName, value, StringComparison.Ordinal) || !value.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
             value.Any(static c => !(char.IsLetterOrDigit(c) || c is '-' or '_' or '.')))
             throw new InvalidDataException("package_ref must be a simple ZIP filename in the Supervisor inbox.");
+        return value;
+    }
+
+    private static string NormalizeOperatorId(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 128 || value.Any(static c => !(char.IsLetterOrDigit(c) || c is '-' or '_' or '.' or ':')))
+            throw new InvalidDataException("operator_id is invalid.");
         return value;
     }
 }
