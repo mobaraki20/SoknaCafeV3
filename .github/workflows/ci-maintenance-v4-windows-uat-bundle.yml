@@ -1,0 +1,325 @@
+name: CI Maintenance V4 Windows UAT Bundle
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p2b-p1a-uat-bundle
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-maintenance-v4-windows-uat-bundle-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-qualify-uat-bundle:
+    runs-on: windows-2022
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact reconciled product source and UAT-only diff
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $product='61f881a0d68ab978de2e3435d37d759c4f07b4b4'
+          $tree=(git rev-parse "$product^{tree}").Trim()
+          if($tree-ne'c59308634ddfc57ed114d316610cdfd2a1c62d7c'){throw "Unexpected product tree: $tree"}
+          git merge-base --is-ancestor $product HEAD
+          if($LASTEXITCODE-ne0){throw 'Exact reconciled product commit is not an ancestor.'}
+          $changed=@(git diff --name-only "$product..HEAD")
+          foreach($path in $changed){
+            if($path -ne '.github/workflows/ci-maintenance-v4-windows-uat-bundle.yml' -and -not $path.StartsWith('windows/maintenance/uat/')){
+              throw "Non-UAT source changed relative to exact product commit: $path"
+            }
+          }
+          if($changed.Count-lt4){throw 'Expected UAT tooling diff is incomplete.'}
+          Write-Host "Exact product source preserved: $product / $tree"
+
+      - name: Parse UAT PowerShell scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($file in Get-ChildItem windows/maintenance/uat -Filter *.ps1 -File){
+            [scriptblock]::Create((Get-Content -Raw -LiteralPath $file.FullName))|Out-Null
+            Write-Host "Parsed: $($file.Name)"
+          }
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10 for Print Agent regression
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Python for deterministic ZIP
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Build and publish exact Maintenance product binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force -Path out/publish/app,out/publish/recovery,out/bundle/app,out/bundle/recovery,out/bundle/scripts|Out-Null
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Supervisor build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Update Engine build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Recovery Console build failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/publish/app
+          if($LASTEXITCODE-ne0){throw 'Supervisor publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/publish/app
+          if($LASTEXITCODE-ne0){throw 'Update Engine publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/publish/recovery
+          if($LASTEXITCODE-ne0){throw 'Recovery Console publish failed.'}
+          Copy-Item out/publish/app/* out/bundle/app -Recurse -Force
+          Copy-Item out/publish/recovery/* out/bundle/recovery -Recurse -Force
+          Copy-Item windows/maintenance/uat/*.ps1 out/bundle/scripts -Force
+          Copy-Item windows/maintenance/uat/README_FA.md out/bundle/README_FA.md -Force
+
+      - name: Require exact previously-qualified executable hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $expected=[ordered]@{
+            'out/bundle/app/SoknaMaintenanceSupervisor.exe'='012b337c16e24fc20d35fdde9ada0cddfd6e26a5703f59b840b6f6e52e0a7b88'
+            'out/bundle/app/SoknaMaintenanceUpdateEngine.exe'='726b4ccf82cbe57e53b0226f7f60d52bbbfd28c174d900e8cfeeaf7e61633f65'
+            'out/bundle/recovery/SoknaMaintenanceRecoveryConsole.exe'='c5b826b8429170647271b6dd39c94f283bec04e306aee0f7fed694a1a0c10928'
+          }
+          $result=[ordered]@{}
+          foreach($item in $expected.GetEnumerator()){
+            $actual=(Get-FileHash $item.Key -Algorithm SHA256).Hash.ToLowerInvariant()
+            $result[$item.Key]=[ordered]@{expected=$item.Value;actual=$actual;match=($actual-eq$item.Value)}
+            if($actual-ne$item.Value){throw "Previously-qualified executable hash mismatch: $($item.Key)"}
+          }
+          $result|ConvertTo-Json -Depth 6|Set-Content out/EXACT_BINARY_HASH_MATCH.json -Encoding utf8
+
+      - name: Re-run P1A ACL and P2B staging qualifications on bundle binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'P2 fixture build failed.'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release -r win-x64 --self-contained true -o out/p2fixture
+          if($LASTEXITCODE-ne0){throw 'P2 fixture publish failed.'}
+          $supervisor=(Resolve-Path out/bundle/app/SoknaMaintenanceSupervisor.exe).Path
+          $fixture=(Resolve-Path out/p2fixture/Sokna.Maintenance.P2Fixture.exe).Path
+          $p1=& windows/maintenance/tests/p1a-web-adapter-acl-qualification.ps1 -SupervisorExe $supervisor
+          if($LASTEXITCODE-ne0){throw "P1A qualification failed: exit=$LASTEXITCODE"}
+          $p1|Tee-Object -FilePath out/P1A_ACL_QUALIFICATION.json
+          if([string](($p1|ConvertFrom-Json).result)-ne'PASS'){throw 'P1A result is not PASS.'}
+          $global:LASTEXITCODE=0
+          $p2=& windows/maintenance/tests/p2b-qualification.ps1 -SupervisorExe $supervisor -FixtureExe $fixture
+          if($LASTEXITCODE-ne0){throw "P2B qualification failed: exit=$LASTEXITCODE"}
+          $p2|Tee-Object -FilePath out/P2B_QUALIFICATION.json
+          if([string](($p2|ConvertFrom-Json).result)-ne'PASS'){throw 'P2B result is not PASS.'}
+          $global:LASTEXITCODE=0
+
+      - name: Regression Runtime 1.0.5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Runtime build failed.'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
+          if($LASTEXITCODE-ne0){throw 'Runtime health self-test failed.'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --scheduler-self-test
+          if($LASTEXITCODE-ne0){throw 'Runtime scheduler self-test failed.'}
+
+      - name: Regression Print Agent 6.2.9
+        working-directory: windows/print-agent/source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build Sokna.PrintWorker.slnx -c Release
+          if($LASTEXITCODE-ne0){throw 'Print Agent build failed.'}
+          dotnet run --project tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Print Agent regression failed.'}
+
+      - name: Create bundle provenance and manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $head=(git rev-parse HEAD).Trim()
+          $headTree=(git rev-parse 'HEAD^{tree}').Trim()
+          [ordered]@{
+            format='sokna-maintenance-v4-windows-uat-bundle-provenance-v1'
+            built_at_utc=[DateTimeOffset]::UtcNow.ToString('O')
+            repository='mobaraki20/SoknaCafeV3'
+            product_source_commit='61f881a0d68ab978de2e3435d37d759c4f07b4b4'
+            product_source_tree='c59308634ddfc57ed114d316610cdfd2a1c62d7c'
+            uat_tooling_commit=$head
+            uat_tooling_tree=$headTree
+            supervisor_version='0.2.1'
+            maintenance_core_version='0.1.1'
+            recovery_console_version='0.1.1'
+            update_engine_version='0.2.0'
+            protocol='1.0'
+            runtime_regression='1.0.5'
+            print_agent_regression='6.2.9'
+            production_release=$false
+            real_cafe_host_uat=$false
+            local_public_source_mutated=$false
+            exact_prior_ci_binary_hashes_required=$true
+          }|ConvertTo-Json -Depth 8|Set-Content out/bundle/PROVENANCE.json -Encoding utf8
+
+          $files=@(Get-ChildItem out/bundle -Recurse -File|Where-Object{$_.Name-notin@('BUNDLE_MANIFEST.json','SHA256SUMS.txt')}|Sort-Object FullName)
+          $entries=foreach($file in $files){
+            $rel=[IO.Path]::GetRelativePath((Resolve-Path out/bundle).Path,$file.FullName).Replace('\','/')
+            [ordered]@{path=$rel;sha256=(Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant();size_bytes=$file.Length}
+          }
+          [ordered]@{
+            format='sokna-maintenance-v4-windows-uat-bundle-manifest-v1'
+            product_source_commit='61f881a0d68ab978de2e3435d37d759c4f07b4b4'
+            product_source_tree='c59308634ddfc57ed114d316610cdfd2a1c62d7c'
+            uat_only=$true
+            production_release=$false
+            files=@($entries)
+          }|ConvertTo-Json -Depth 8|Set-Content out/bundle/BUNDLE_MANIFEST.json -Encoding utf8
+
+          $sumFiles=@(Get-ChildItem out/bundle -Recurse -File|Where-Object{$_.Name-ne'SHA256SUMS.txt'}|Sort-Object FullName)
+          $lines=foreach($file in $sumFiles){
+            $rel=[IO.Path]::GetRelativePath((Resolve-Path out/bundle).Path,$file.FullName).Replace('\','/')
+            "$((Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $rel"
+          }
+          $lines|Set-Content out/bundle/SHA256SUMS.txt -Encoding ascii
+
+      - name: Real SCM install/capture/uninstall smoke on Windows Server 2022
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $serviceName='SoknaMaintenanceSupervisor'
+          if(Get-Service -Name $serviceName -ErrorAction SilentlyContinue){throw 'Runner unexpectedly already has SoknaMaintenanceSupervisor.'}
+          $apacheReg='HKLM:\SYSTEM\CurrentControlSet\Services\SoknaApache'
+          if(Test-Path $apacheReg){throw 'Runner unexpectedly already has SoknaApache fixture/service.'}
+          New-Item -Path $apacheReg -Force|Out-Null
+          New-ItemProperty -Path $apacheReg -Name ObjectName -PropertyType String -Value 'LocalSystem' -Force|Out-Null
+          New-ItemProperty -Path $apacheReg -Name ImagePath -PropertyType ExpandString -Value '"C:\SoknaUatFixture\httpd.exe" -k runservice -n "SoknaApache"' -Force|Out-Null
+          $installRoot='C:\SoknaMaintenanceV4-UAT-CI'
+          $captureRoot='C:\SoknaMaintenanceV4-UAT-Evidence-CI'
+          try{
+            $install=& out/bundle/scripts/Install-MaintenanceV4-UAT.ps1 -InstallRoot $installRoot
+            $install|Tee-Object -FilePath out/UAT_INSTALL_RESULT.json
+            $parsedInstall=$install|ConvertFrom-Json
+            if([string]$parsedInstall.result-ne'PASS'){throw 'UAT installer did not return PASS.'}
+            if([string]$parsedInstall.web_adapter_acl_state-ne'ready'){throw "UAT installer did not reach ACL ready: $($parsedInstall.web_adapter_acl_state)"}
+
+            $capture=& out/bundle/scripts/Capture-MaintenanceV4-UAT.ps1 -InstallRoot $installRoot -OutputRoot $captureRoot
+            $capture|Tee-Object -FilePath out/UAT_CAPTURE_RESULT.json
+            $parsedCapture=$capture|ConvertFrom-Json
+            if([string]$parsedCapture.result-eq'FAIL'){throw 'UAT capture detected a security failure.'}
+            if([string]$parsedCapture.unprivileged_key_denial-eq'FAIL'){throw 'Unprivileged process could read web-adapter.key.'}
+
+            $keyPath=Join-Path $env:ProgramData 'SOKNA\Maintenance\secrets\web-adapter.key'
+            if(-not(Test-Path $keyPath)){throw 'Runtime web-adapter.key was not created.'}
+            $secret=(Get-Content -Raw $keyPath).Trim()
+            foreach($file in Get-ChildItem out/bundle -Recurse -File){
+              if($file.Extension-eq'.key'){throw "Secret/key file included in UAT bundle: $($file.FullName)"}
+              if($file.Length-lt10MB){
+                $text=$null
+                try{$text=Get-Content -Raw -LiteralPath $file.FullName -ErrorAction Stop}catch{}
+                if($null-ne$text -and $text.Contains($secret)){throw "Runtime key leaked into bundle file: $($file.FullName)"}
+              }
+            }
+            foreach($file in Get-ChildItem $captureRoot -Recurse -File -ErrorAction SilentlyContinue){
+              if($file.Extension-eq'.key'){throw "Secret/key file included in capture evidence: $($file.FullName)"}
+              $text=$null
+              try{$text=Get-Content -Raw -LiteralPath $file.FullName -ErrorAction Stop}catch{}
+              if($null-ne$text -and $text.Contains($secret)){throw "Runtime key leaked into capture evidence: $($file.FullName)"}
+            }
+          }
+          finally{
+            try{
+              if(Test-Path out/bundle/scripts/Uninstall-MaintenanceV4-UAT.ps1){
+                $uninstall=& out/bundle/scripts/Uninstall-MaintenanceV4-UAT.ps1 -InstallRoot $installRoot
+                $uninstall|Tee-Object -FilePath out/UAT_UNINSTALL_RESULT.json
+              }
+            }catch{Write-Host "Uninstall cleanup warning: $($_.Exception.Message)"}
+            if(Test-Path $apacheReg){Remove-Item $apacheReg -Recurse -Force}
+          }
+          if(Get-Service -Name $serviceName -ErrorAction SilentlyContinue){throw 'UAT Supervisor service remains after uninstall.'}
+          if(Test-Path $installRoot){throw 'UAT install root remains after uninstall.'}
+
+      - name: Build deterministic UAT ZIP twice
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $python=@'
+          import pathlib, zipfile, sys
+          src=pathlib.Path(sys.argv[1])
+          out=pathlib.Path(sys.argv[2])
+          fixed=(2026,10,15,0,0,0)
+          with zipfile.ZipFile(out,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for p in sorted(x for x in src.rglob('*') if x.is_file()):
+                  rel=p.relative_to(src).as_posix()
+                  info=zipfile.ZipInfo(rel,fixed)
+                  info.compress_type=zipfile.ZIP_DEFLATED
+                  info.external_attr=(0o644 & 0xFFFF)<<16
+                  with p.open('rb') as f:
+                      z.writestr(info,f.read(),compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+          '@
+          $python|Set-Content out/make_zip.py -Encoding ascii
+          python out/make_zip.py out/bundle out/SOKNA-MaintenanceV4-Windows-UAT-61f881a.zip
+          python out/make_zip.py out/bundle out/SOKNA-MaintenanceV4-Windows-UAT-61f881a-rebuild.zip
+          $a=(Get-FileHash out/SOKNA-MaintenanceV4-Windows-UAT-61f881a.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $b=(Get-FileHash out/SOKNA-MaintenanceV4-Windows-UAT-61f881a-rebuild.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($a-ne$b){throw 'Deterministic UAT ZIP rebuild mismatch.'}
+          "$a  SOKNA-MaintenanceV4-Windows-UAT-61f881a.zip"|Set-Content out/UAT_BUNDLE_SHA256.txt -Encoding ascii
+
+      - name: Freeze UAT bundle qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $capture=Get-Content -Raw out/UAT_CAPTURE_RESULT.json|ConvertFrom-Json
+          $zipHash=((Get-Content -Raw out/UAT_BUNDLE_SHA256.txt).Split(' ')[0]).Trim()
+          [ordered]@{
+            format='sokna-maintenance-v4-windows-uat-bundle-qualification-v1'
+            result='PASS'
+            runner='windows-2022'
+            product_source_commit='61f881a0d68ab978de2e3435d37d759c4f07b4b4'
+            product_source_tree='c59308634ddfc57ed114d316610cdfd2a1c62d7c'
+            uat_tooling_commit=(git rev-parse HEAD).Trim()
+            product_source_unchanged=$true
+            exact_previous_ci_binary_hash_match=$true
+            p1a_acl_qualification='PASS'
+            p2b_staging_qualification='PASS'
+            runtime_1_0_5_regression='PASS'
+            print_agent_6_2_9_regression='PASS'
+            powershell_parse='PASS'
+            scm_install_start='PASS'
+            acl_ready_with_local_system_fixture='PASS'
+            unprivileged_key_denial_ci=[string]$capture.unprivileged_key_denial
+            secret_leak_scan='PASS'
+            scm_uninstall='PASS'
+            deterministic_zip='PASS'
+            bundle_sha256=$zipHash
+            production_release=$false
+            real_cafe_host_uat=$false
+          }|ConvertTo-Json -Depth 8|Set-Content out/UAT_BUNDLE_QUALIFICATION.json -Encoding utf8
+
+      - name: Upload installable UAT bundle and qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-windows-realhost-uat-bundle-61f881a
+          path: |
+            out/SOKNA-MaintenanceV4-Windows-UAT-61f881a.zip
+            out/UAT_BUNDLE_SHA256.txt
+            out/UAT_BUNDLE_QUALIFICATION.json
+            out/EXACT_BINARY_HASH_MATCH.json
+            out/P1A_ACL_QUALIFICATION.json
+            out/P2B_QUALIFICATION.json
+            out/UAT_INSTALL_RESULT.json
+            out/UAT_CAPTURE_RESULT.json
+            out/UAT_UNINSTALL_RESULT.json
+            out/bundle/PROVENANCE.json
+            out/bundle/BUNDLE_MANIFEST.json
+            out/bundle/SHA256SUMS.txt
+          if-no-files-found: error
