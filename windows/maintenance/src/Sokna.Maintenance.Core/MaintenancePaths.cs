@@ -9,6 +9,12 @@ public sealed record MaintenancePaths(string DataRoot)
     public string DescriptorPath => Path.Combine(DataRoot, "control-plane.json");
     public string WebAdapterKeyPath => Path.Combine(SecretsRoot, "web-adapter.key");
     public string RecoveryConsoleKeyPath => Path.Combine(SecretsRoot, "recovery-console.key");
+    public string UpdateRoot => Path.Combine(DataRoot, "update");
+    public string StagingRoot => Path.Combine(DataRoot, "staging", "release-sets");
+    public string TrustRoot => Path.Combine(DataRoot, "trust");
+    public string ReleaseSigningTrustRoot => Path.Combine(TrustRoot, "release-signing");
+    public string UpdateStageLockPath => Path.Combine(UpdateRoot, "stage.lock");
+    public string ReleaseSequenceStatePath => Path.Combine(UpdateRoot, "release-sequence.json");
 
     public static string DefaultDataRoot()
     {
