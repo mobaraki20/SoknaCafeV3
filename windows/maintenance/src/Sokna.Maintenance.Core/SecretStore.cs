@@ -17,6 +17,7 @@ public sealed class SecretStore
         ApplyAdminOnlyDirectoryAcl(_paths.SecretsRoot);
         ApplyAdminOnlyFileAcl(_paths.WebAdapterKeyPath);
         ApplyAdminOnlyFileAcl(_paths.RecoveryConsoleKeyPath);
+        WebAdapterAclProvisioner.TryProvision(_paths);
     }
 
     public byte[] LoadKey(string keyId)
