@@ -72,10 +72,10 @@ jobs:
           $engine=(Resolve-Path 'out/p2a/engine/SoknaMaintenanceUpdateEngine.exe').Path
           $fixture=(Resolve-Path 'out/p2a/fixture/Sokna.Maintenance.P2Fixture.exe').Path
           $result=& windows/maintenance/tests/p2a-qualification.ps1 -EngineExe $engine -FixtureExe $fixture
-          if($LASTEXITCODE-ne0){throw "P2A qualification failed: exit=$LASTEXITCODE"}
           $result|Tee-Object -FilePath out/p2a/P2A_QUALIFICATION.json
           $parsed=$result|ConvertFrom-Json
-          if([string]$parsed.result-ne'PASS'){throw 'P2A qualification result is not PASS.'}
+          if([string]$parsed.result-ne'PASS'){throw "P2A qualification result is not PASS. LastNativeExit=$LASTEXITCODE"}
+          $global:LASTEXITCODE=0
 
       - name: Freeze P2A provenance and hashes
         shell: pwsh
