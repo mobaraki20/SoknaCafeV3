@@ -35,6 +35,10 @@ If a newer ADR explicitly supersedes a rule here, the ADR wins and this file mus
 18. UI screenshot tests must exercise the real executable entrypoint, render real painted UI, avoid environment-dependent auto-refresh/modal hangs, and be visually reviewed after automated geometry checks.
 19. Maintenance loopback/ACL security remains fail-closed: no broad Users/Everyone grants, web adapter cannot read recovery key, browser never receives HMAC secrets/auth material.
 20. Diagnostics should reconstruct a cross-component timeline and Support Bundle collection should remain usable when Local Web / Apache / PHP is down.
+21. Lifecycle-visible executable version identity must remain semantic and comparable to the component manifest. Do not put engineering lineage such as `4.0.0-p2b-*` into `ProductVersion/InformationalVersion` when the lifecycle version is `0.2.1`; source/branch/commit provenance belongs in the package manifest and frozen qualification evidence.
+22. GUI-started privileged helpers must not expose implementation consoles. Setup hosts should be `WinExe`; PowerShell diagnostics/pairing launched from the GUI must hide their console window while preserving logs and exit codes.
+23. Any C#/PInvoke compiled dynamically by Windows PowerShell `Add-Type` must be qualified on the oldest supported Windows/PS5.1 host. Ambiguous framework type names (for example `FILETIME`) must be fully qualified.
+24. `RUNNING` from SCM means the service process is running, not that the product function is healthy. UI must label process/service state separately from functional health unless an actual health contract was probed.
 
 ## Host evidence classification
 
@@ -80,6 +84,10 @@ Do not use Force to bypass an unexplained baseline mismatch.
 | Unrelated components could be touched | package-level update mindset | per-component plan; true KEEP |
 | Rebuild hash differed from prior CI | rebuild assumed reproducible | freeze/promote qualified artifact |
 | Same-name service mutation risk | weak ImagePath ownership check | exact parsed/canonical owned-root check |
+| Maintenance installed successfully but UI marked it newer/incompatible | `ProductVersion` carried engineering lineage `4.0.0-*` while manifest lifecycle target was `0.2.1` | lifecycle-visible Product/InformationalVersion must be semantic; provenance stored separately |
+| Setup/diagnostics exposed black/blue console windows | privileged helper built/launched as console process | WinExe for GUI helpers; hidden PowerShell console for GUI actions |
+| Restart Manager diagnostics failed on real Windows 10 | `FILETIME` was ambiguous in PS5.1 `Add-Type` C# | fully qualify interop framework types; real-host/PS5.1 compile gate |
+| Dashboard said service was healthy although Print protocol probes were failing | SCM RUNNING was presented as functional health | separate service state from application health contracts |
 
 ## Required review checklist
 
@@ -89,6 +97,7 @@ Before declaring a Windows change engineering-qualified, explicitly answer:
 - Did package/component versions change correctly and independently?
 - Does it run on the actual supported Windows PowerShell/.NET environment?
 - Are path APIs, cmdlet parameters and encoding compatible with PS5.1 where required?
+- Do lifecycle-visible `ProductVersion`/`FileVersion` values agree semantically with the component manifest?
 - Does `KEEP` remain zero-mutation?
 - Are service ownership and process-exit boundaries verified?
 - Are update/repair/rollback paths fail-closed?
@@ -96,6 +105,7 @@ Before declaring a Windows change engineering-qualified, explicitly answer:
 - Can failure be reconstructed from evidence without repeatedly interrogating the machine?
 - Are secrets excluded?
 - Does Support Bundle work without Local Web?
+- Do GUI actions avoid visible helper consoles?
 - If UI changed, were final-entrypoint screenshots generated and visually reviewed?
 - Are Home and Cafe evidence kept separate?
 - Is exact source commit/tree + artifact digest frozen?
