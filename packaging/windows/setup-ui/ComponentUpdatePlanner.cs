@@ -201,9 +201,29 @@ internal static class ComponentUpdatePlanner
 
     private static int CompareVersions(string current, string target)
     {
-        if (!Version.TryParse(NormalizeVersion(current), out var a)) return -1;
-        if (!Version.TryParse(NormalizeVersion(target), out var b)) return -1;
-        return a.CompareTo(b);
+        if (!TryParseComparableVersion(current, out var a)) return -1;
+        if (!TryParseComparableVersion(target, out var b)) return -1;
+        for (var i = 0; i < 4; i++)
+        {
+            var cmp = a[i].CompareTo(b[i]);
+            if (cmp != 0) return cmp;
+        }
+        return 0;
+    }
+
+    private static bool TryParseComparableVersion(string value, out int[] parts)
+    {
+        parts = new int[4];
+        var normalized = NormalizeVersion(value);
+        if (string.IsNullOrWhiteSpace(normalized)) return false;
+        var tokens = normalized.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length is < 1 or > 4) return false;
+        for (var i = 0; i < tokens.Length; i++)
+        {
+            if (!int.TryParse(tokens[i], out var parsed) || parsed < 0) return false;
+            parts[i] = parsed;
+        }
+        return true;
     }
 
     private static string NormalizeVersion(string value)
@@ -211,6 +231,24 @@ internal static class ComponentUpdatePlanner
         value = (value ?? "").Trim();
         var cut = value.IndexOfAny(['-', '+']);
         return cut >= 0 ? value[..cut] : value;
+    }
+
+    internal static void AssertVersionContract()
+    {
+        static void Expect(string current, string target, int expected)
+        {
+            var actual = Math.Sign(CompareVersions(current, target));
+            if (actual != Math.Sign(expected))
+                throw new InvalidOperationException($"component_version_contract:{current}:{target}:expected={expected}:actual={actual}");
+        }
+
+        Expect("1.0.5.0", "1.0.5", 0);
+        Expect("6.2.9.0", "6.2.9", 0);
+        Expect("0.2.1.0", "0.2.1", 0);
+        Expect("1.0.5.1", "1.0.5", 1);
+        Expect("1.0.4.9", "1.0.5", -1);
+        Expect("1.0.5+build.42", "1.0.5", 0);
+        Expect("1.0.5-beta", "1.0.5", 0);
     }
 
     // Lifecycle comparison must use the executable FileVersion. ProductVersion can carry
