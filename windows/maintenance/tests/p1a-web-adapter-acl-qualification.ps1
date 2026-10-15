@@ -6,6 +6,20 @@ Set-StrictMode -Version Latest
 
 function Assert([bool]$Condition,[string]$Message){if(-not$Condition){throw $Message}}
 function Wait-File([string]$Path,[int]$Seconds=20){$d=[DateTime]::UtcNow.AddSeconds($Seconds);while([DateTime]::UtcNow-lt$d){if(Test-Path -LiteralPath $Path -PathType Leaf){return};Start-Sleep -Milliseconds 150};throw "Timed out waiting for $Path"}
+function Wait-AclReady([string]$Path,[int]$Seconds=20){
+  $d=[DateTime]::UtcNow.AddSeconds($Seconds)
+  while([DateTime]::UtcNow-lt$d){
+    if(Test-Path -LiteralPath $Path -PathType Leaf){
+      try{
+        $e=Get-Content -LiteralPath $Path -Raw|ConvertFrom-Json
+        if(([string]$e.state-eq'ready') -and [bool]$e.descriptor_read_granted){return $e}
+      }catch{}
+    }
+    Start-Sleep -Milliseconds 100
+  }
+  $last=if(Test-Path -LiteralPath $Path){Get-Content -LiteralPath $Path -Raw}else{'<missing>'}
+  throw "Timed out waiting for reconciled Web adapter ACL evidence: $last"
+}
 function Stop-P($p){if($p){try{if(-not$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue;$p.WaitForExit(5000)|Out-Null}}catch{}}}
 function Invoke-SignedGet([string]$BaseUrl,[string]$KeyPath,[string]$Path){
   $key=[Convert]::FromBase64String((Get-Content -LiteralPath $KeyPath -Raw).Trim())
@@ -73,8 +87,7 @@ try {
   $p=Start-Process -FilePath $SupervisorExe -ArgumentList @('--data-root',$root,'--port','17633') -PassThru -WindowStyle Hidden
   Wait-File (Join-Path $root 'web-adapter-acl.json')
   Wait-File (Join-Path $root 'control-plane.json')
-  $evidence=Get-Content -LiteralPath (Join-Path $root 'web-adapter-acl.json') -Raw|ConvertFrom-Json
-  Assert ([string]$evidence.state-eq'ready') "Web adapter ACL not ready: $($evidence|ConvertTo-Json -Compress)"
+  $evidence=Wait-AclReady (Join-Path $root 'web-adapter-acl.json')
   Assert ([string]$evidence.service_name-eq'SoknaApache') 'Wrong Apache service name.'
   Assert ([string]$evidence.service_account-eq'LocalSystem') 'Resolved service account mismatch.'
   Assert ([string]$evidence.service_sid-eq'S-1-5-18') 'Resolved LocalSystem SID mismatch.'
@@ -109,7 +122,7 @@ try {
   Stop-P $p;$p=$null
   $p=Start-Process -FilePath $SupervisorExe -ArgumentList @('--data-root',$root,'--port','17633') -PassThru -WindowStyle Hidden
   Wait-File $descriptor
-  $evidence2=Get-Content -LiteralPath (Join-Path $root 'web-adapter-acl.json') -Raw|ConvertFrom-Json
+  $evidence2=Wait-AclReady (Join-Path $root 'web-adapter-acl.json')
   Assert ([string]$evidence2.state-eq'ready') 'Supervisor restart lost Web adapter ACL readiness.'
   Assert ([bool]$evidence2.descriptor_read_granted) 'Supervisor restart did not re-qualify descriptor ACL.'
   $afterRestart=Invoke-SignedGet $base $webKey '/v1/health'
