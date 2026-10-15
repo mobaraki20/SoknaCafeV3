@@ -1,0 +1,163 @@
+name: CI Maintenance V4 Windows Installer Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-installer-component-ui
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-maintenance-v4-windows-installer-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-and-lifecycle:
+    runs-on: windows-2022
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish Runtime Print Maintenance Setup UI and Host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out/runtime,out/print-worker/Service,out/print-worker/Worker,out/maintenance/app,out/maintenance/recovery,out/setup-ui,out/setup-host -Force|Out-Null
+          dotnet publish windows/runtime/source/Sokna.Runtime.Service.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/runtime
+          if($LASTEXITCODE-ne0){throw 'Runtime publish failed.'}
+          dotnet publish windows/print-agent/source/src/Sokna.PrintAgent.Service/Sokna.PrintAgent.Service.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/print-worker/Service
+          if($LASTEXITCODE-ne0){throw 'Print Service publish failed.'}
+          dotnet publish windows/print-agent/source/src/Sokna.PrintAgent.Worker/Sokna.PrintAgent.Worker.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/print-worker/Worker
+          if($LASTEXITCODE-ne0){throw 'Print Worker publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/maintenance/app
+          if($LASTEXITCODE-ne0){throw 'Maintenance Supervisor publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/maintenance/app
+          if($LASTEXITCODE-ne0){throw 'Maintenance Update Engine publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/maintenance/recovery
+          if($LASTEXITCODE-ne0){throw 'Maintenance Recovery Console publish failed.'}
+          dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/setup-ui
+          if($LASTEXITCODE-ne0){throw 'Setup UI publish failed.'}
+          dotnet publish packaging/windows/setup-host/Sokna.SetupHost.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/setup-host
+          if($LASTEXITCODE-ne0){throw 'Setup Host publish failed.'}
+
+      - name: Prepare unified Windows Services shell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./packaging/windows/scripts/prepare-shell-payload-v4.ps1 `
+            -RepoRoot $PWD.Path `
+            -OutputRoot (Join-Path $PWD 'out/shell') `
+            -RuntimeServiceExe (Join-Path $PWD 'out/runtime/SoknaRuntimeService.exe') `
+            -SetupHostExe (Join-Path $PWD 'out/setup-host/SoknaSetupHost.exe') `
+            -SetupUiExe (Join-Path $PWD 'out/setup-ui/SoknaSetupUi.exe') `
+            -PrintWorkerBundle (Join-Path $PWD 'out/print-worker') `
+            -MaintenanceAppBundle (Join-Path $PWD 'out/maintenance/app') `
+            -MaintenanceRecoveryBundle (Join-Path $PWD 'out/maintenance/recovery') `
+            -GitSha '${{ github.sha }}'
+          $m=Get-Content out/shell/payload-manifest.json -Raw|ConvertFrom-Json
+          if($m.format-ne'sokna-windows-services-shell-v3'-or$m.package_version-ne'1.1.0'){throw 'Shell manifest mismatch.'}
+          if(@($m.components).Count-ne5){throw 'Expected five versioned logical/subordinate components.'}
+
+      - name: Build final pre-UAC logged installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_-and(Test-Path $_ -PathType Leaf)}|Select-Object -First 1
+          if(-not$iscc){throw 'Inno Setup 6 is not present on the Windows runner.'}
+          ./packaging/windows/scripts/build-installer-v4.ps1 -ShellPayloadRoot (Join-Path $PWD 'out/shell') -RepoRoot $PWD.Path -IsccExe $iscc
+          $setup='packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.0.exe'
+          if(-not(Test-Path $setup -PathType Leaf)){throw 'Final bootstrap installer missing.'}
+          $build=Get-Content packaging/windows/installer/out-v4/INSTALLER_BUILD.json -Raw|ConvertFrom-Json
+          if(-not$build.bootstrap_pre_elevation_logging){throw 'Pre-elevation logging flag missing.'}
+          if((Get-Item $setup).Length -le (Get-Item "packaging/windows/installer/out-v4/core/SOKNA-Windows-Services-Core-1.1.0.exe").Length){throw 'Bootstrap does not appear to contain the elevated core.'}
+
+      - name: Qualify Maintenance-only selective lifecycle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $shell=(Resolve-Path out/shell).Path
+          $install=(Join-Path $PWD 'out/qual-install');$data=(Join-Path $PWD 'out/qual-data')
+          New-Item -ItemType Directory -Path $install,$data,(Join-Path $data 'runtime'),(Join-Path $data 'setup') -Force|Out-Null
+          Copy-Item (Join-Path $shell '_payload/runtime') (Join-Path $install 'Runtime') -Recurse -Force
+          Copy-Item (Join-Path $shell '_payload/print-worker') (Join-Path $install 'PrintAgent') -Recurse -Force
+          Copy-Item windows/runtime/runtime-config.example.json (Join-Path $data 'runtime/runtime-config.json') -Force
+          [ordered]@{format='sokna-windows-services-install-state-v2';paired=$false;local_base_url=''}|ConvertTo-Json|Set-Content (Join-Path $data 'setup/windows-services-state.json') -Encoding utf8
+          $runtime=(Join-Path $install 'Runtime/SoknaRuntimeService.exe');$print=(Join-Path $install 'PrintAgent/Service/Sokna.PrintAgent.Service.exe')
+          & "$env:SystemRoot\System32\sc.exe" create SoknaRuntime binPath= ('"'+$runtime+'" --config "'+(Join-Path $data 'runtime/runtime-config.json')+'"') start= demand | Out-Null
+          if($LASTEXITCODE-ne0){throw 'Fixture Runtime service registration failed.'}
+          & "$env:SystemRoot\System32\sc.exe" create SoknaPrintWorker binPath= ('"'+$print+'"') start= auto | Out-Null
+          if($LASTEXITCODE-ne0){throw 'Fixture Print service registration failed.'}
+          $before=[ordered]@{
+            runtime_hash=(Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant();
+            runtime_time=(Get-Item $runtime).LastWriteTimeUtc.ToString('o');
+            runtime_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaRuntime)|Out-String);
+            print_hash=(Get-FileHash $print -Algorithm SHA256).Hash.ToLowerInvariant();
+            print_time=(Get-Item $print).LastWriteTimeUtc.ToString('o');
+            print_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaPrintWorker)|Out-String)
+          }
+          $manifest=Get-Content (Join-Path $shell 'windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
+          $rows=@()
+          foreach($c in $manifest.components){
+            $target=Join-Path $shell (([string]$c.payload_primary).Replace('/','\'))
+            $installed=Join-Path $install (([string]$c.installed_primary).Replace('/','\'))
+            $action=if([bool]$c.primary-and([string]$c.component_id-in@('runtime','print-agent'))){'KEEP'}else{'INSTALL'}
+            $rows += [ordered]@{component_id=[string]$c.component_id;primary=[bool]$c.primary;current_version=$(if(Test-Path $installed){[string]$c.version}else{'—'});target_version=[string]$c.version;health='unknown';update_state=$(if($action-eq'KEEP'){'up_to_date'}else{'install_required'});action=$action;reason='ci-maintenance-only-qualification';installed_sha256=$(if(Test-Path $installed){(Get-FileHash $installed -Algorithm SHA256).Hash.ToLowerInvariant()}else{''});target_sha256=(Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant();service_name=[string]$c.service_name;transaction_group=[string]$c.transaction_group}
+          }
+          $tx='ins-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')+'-'+[guid]::NewGuid().ToString('N').Substring(0,10);$corr='corr-'+[guid]::NewGuid().ToString('N');$session='ui-'+[guid]::NewGuid().ToString('N')
+          $txdir=Join-Path $env:LOCALAPPDATA "SOKNA\Installer\logs\$tx";New-Item -ItemType Directory -Path $txdir -Force|Out-Null
+          $plan=[ordered]@{format='sokna-windows-install-plan-v3';schema_version=3;transaction_id=$tx;correlation_id=$corr;setup_session_id=$session;created_at_utc=[DateTime]::UtcNow.ToString('o');mode='install';shell_root=$shell;install_root=$install;data_root=$data;package_version='1.1.0';components=$rows}
+          $planPath=Join-Path $txdir 'update-plan.json';$plan|ConvertTo-Json -Depth 8|Set-Content $planPath -Encoding utf8
+          $p=Start-Process -FilePath (Join-Path $shell 'SoknaSetupHost.exe') -ArgumentList @('--plan-file',('"'+$planPath+'"')) -Wait -PassThru -NoNewWindow
+          if($p.ExitCode-ne0){$sys=Join-Path $env:ProgramData "SOKNA\Installer\logs\$tx";if(Test-Path $sys){Get-ChildItem $sys -File|ForEach-Object{Write-Host "--- $($_.Name)";if($_.Extension-in@('.log','.json','.jsonl','.txt')){Get-Content $_.FullName -Raw|Write-Host}}};throw "Maintenance-only lifecycle failed: $($p.ExitCode)"}
+          $after=[ordered]@{
+            runtime_hash=(Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant();runtime_time=(Get-Item $runtime).LastWriteTimeUtc.ToString('o');runtime_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaRuntime)|Out-String);
+            print_hash=(Get-FileHash $print -Algorithm SHA256).Hash.ToLowerInvariant();print_time=(Get-Item $print).LastWriteTimeUtc.ToString('o');print_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaPrintWorker)|Out-String)
+          }
+          foreach($k in @('runtime_hash','runtime_time','runtime_qc','print_hash','print_time','print_qc')){if($before[$k]-ne$after[$k]){throw "KEEP component changed unexpectedly: $k"}}
+          $ms=Get-Service SoknaMaintenanceSupervisor -ErrorAction Stop;if($ms.Status-ne'Running'){throw "Maintenance Supervisor not running: $($ms.Status)"}
+          $systemTx=Join-Path $env:ProgramData "SOKNA\Installer\logs\$tx";$events=Get-Content (Join-Path $systemTx 'system-events.jsonl') -Raw
+          foreach($id in @('runtime','print-agent')){if($events-notmatch('"component":"'+[regex]::Escape($id)+'"[^\r\n]+"result":"kept"')){throw "KEEP evidence missing for $id"}}
+          $before|ConvertTo-Json -Depth 4|Set-Content out/selective-before.json -Encoding utf8;$after|ConvertTo-Json -Depth 4|Set-Content out/selective-after.json -Encoding utf8
+          Copy-Item (Join-Path $systemTx 'install-result.json') out/selective-install-result.json -Force
+          Copy-Item (Join-Path $systemTx 'system-events.jsonl') out/selective-system-events.jsonl -Force
+
+      - name: Cleanup qualification services
+        if: always()
+        shell: pwsh
+        run: |
+          foreach($name in @('SoknaMaintenanceSupervisor','SoknaPrintWorker','SoknaRuntime')){
+            try{Stop-Service $name -Force -ErrorAction SilentlyContinue}catch{}
+            & "$env:SystemRoot\System32\sc.exe" delete $name 2>$null | Out-Null
+          }
+
+      - name: Freeze package qualification evidence
+        shell: pwsh
+        run: |
+          $head=(git rev-parse HEAD).Trim();$tree=(git rev-parse 'HEAD^{tree}').Trim();$build=Get-Content packaging/windows/installer/out-v4/INSTALLER_BUILD.json -Raw|ConvertFrom-Json
+          [ordered]@{format='sokna-windows-installer-package-qualification-v1';source_commit=$head;source_tree=$tree;package_version='1.1.0';installer_sha256=$build.distributable_sha256;runtime_version='1.0.5';print_version='6.2.9';maintenance_supervisor='0.2.1';update_engine='0.2.0';recovery_console='0.1.1';maintenance_only_keep_runtime_print=$true;evidence_tier='windows-2022-ci-not-real-cafe-host';real_host_uat=$false;activation=$false;database_mutation=$false}|ConvertTo-Json -Depth 6|Set-Content out/PACKAGE_QUALIFICATION.json -Encoding utf8
+
+      - name: Upload installer and lifecycle evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-windows-installer-1.1.0-engineering-candidate
+          path: |
+            packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.0.exe
+            packaging/windows/installer/out-v4/INSTALLER_BUILD.json
+            out/shell/payload-manifest.json
+            out/selective-before.json
+            out/selective-after.json
+            out/selective-install-result.json
+            out/selective-system-events.jsonl
+            out/PACKAGE_QUALIFICATION.json
+          if-no-files-found: error
