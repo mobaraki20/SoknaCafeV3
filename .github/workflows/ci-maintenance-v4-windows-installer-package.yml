@@ -127,8 +127,12 @@ jobs:
           }
           foreach($k in @('runtime_hash','runtime_time','runtime_qc','print_hash','print_time','print_qc')){if($before[$k]-ne$after[$k]){throw "KEEP component changed unexpectedly: $k"}}
           $ms=Get-Service SoknaMaintenanceSupervisor -ErrorAction Stop;if($ms.Status-ne'Running'){throw "Maintenance Supervisor not running: $($ms.Status)"}
-          $events=Get-Content (Join-Path $systemTx 'system-events.jsonl') -Raw
-          foreach($id in @('runtime','print-agent')){if($events-notmatch('"component":"'+[regex]::Escape($id)+'"[^\r\n]+"result":"kept"')){throw "KEEP evidence missing for $id"}}
+          $eventRows=@(Get-Content (Join-Path $systemTx 'system-events.jsonl') | Where-Object{-not[string]::IsNullOrWhiteSpace($_)} | ForEach-Object{$_|ConvertFrom-Json})
+          foreach($id in @('runtime','print-agent')){
+            $keep=@($eventRows|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq$id-and$_.result-eq'kept'})|Select-Object -First 1
+            if(-not$keep){throw "KEEP evidence missing for $id"}
+            if([string]$keep.data.action-ne'KEEP'-or[string]$keep.data.proof-ne'no_stop_no_copy_no_registration_no_restart'){throw "KEEP proof invalid for $id"}
+          }
           $before|ConvertTo-Json -Depth 4|Set-Content out/selective-before.json -Encoding utf8;$after|ConvertTo-Json -Depth 4|Set-Content out/selective-after.json -Encoding utf8
           Copy-Item (Join-Path $systemTx 'install-result.json') out/selective-install-result.json -Force
           Copy-Item (Join-Path $systemTx 'system-events.jsonl') out/selective-system-events.jsonl -Force
