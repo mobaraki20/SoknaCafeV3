@@ -26,5 +26,7 @@
     <Compile Remove="Program.cs" />
     <Compile Remove="ModernProgram.cs" />
     <Compile Remove="PersianDashboard.cs" />
+    <Compile Remove="PersianDashboardV2.cs" />
+    <Compile Remove="DashboardEntry.cs" />
   </ItemGroup>
 </Project>
