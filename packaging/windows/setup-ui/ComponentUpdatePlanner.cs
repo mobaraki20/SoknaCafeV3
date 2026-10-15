@@ -1,0 +1,284 @@
+using Microsoft.Win32;
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text.Json;
+
+namespace Sokna.SetupUi;
+
+internal enum ComponentAction { Keep, Install, Update, Repair, Blocked, PendingRestart, NoActionOptional }
+internal enum ComponentHealth { Healthy, Starting, Degraded, Failed, Stopped, Unknown }
+
+internal sealed record ComponentPlanRow(
+    string ComponentId,
+    string DisplayName,
+    string Kind,
+    bool Primary,
+    bool Required,
+    string? ParentComponent,
+    string CurrentVersion,
+    string TargetVersion,
+    ComponentHealth Health,
+    string HealthText,
+    string UpdateState,
+    ComponentAction Action,
+    string ActionText,
+    string Reason,
+    string InstalledPrimary,
+    string TargetPrimary,
+    string InstalledSha256,
+    string TargetSha256,
+    string ServiceName,
+    string ServiceState,
+    bool RegistrationHealthy,
+    string TransactionGroup);
+
+internal sealed record ComponentPlanSnapshot(
+    string PackageVersion,
+    DateTimeOffset VerifiedAtUtc,
+    IReadOnlyList<ComponentPlanRow> Rows)
+{
+    internal bool IsBlocked => Rows.Any(x => x.Action == ComponentAction.Blocked);
+    internal bool HasMutation => Rows.Any(x => x.Action is ComponentAction.Install or ComponentAction.Update or ComponentAction.Repair);
+    internal IReadOnlyList<ComponentPlanRow> PrimaryRows => Rows.Where(x => x.Primary).ToArray();
+}
+
+internal static class ComponentUpdatePlanner
+{
+    internal const string ManifestFileName = "windows-services-component-manifest-v2.json";
+
+    internal static ComponentPlanSnapshot Build(string shellRoot, string installRoot, string dataRoot, bool forceRepair = false)
+    {
+        shellRoot = Path.GetFullPath(shellRoot);
+        installRoot = Path.GetFullPath(installRoot);
+        dataRoot = Path.GetFullPath(dataRoot);
+        var manifestPath = Path.Combine(shellRoot, ManifestFileName);
+        if (!File.Exists(manifestPath)) throw new InvalidOperationException("مانیفست componentهای Windows Services پیدا نشد.");
+        using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
+        var root = doc.RootElement;
+        if (root.GetProperty("format").GetString() != "sokna-windows-component-manifest-v2" || root.GetProperty("schema_version").GetInt32() != 2)
+            throw new InvalidOperationException("نسخه مانیفست componentها پشتیبانی نمی‌شود.");
+        var packageVersion = root.GetProperty("package_version").GetString() ?? "";
+        var paired = ReadPaired(dataRoot);
+        var rows = new List<ComponentPlanRow>();
+        foreach (var c in root.GetProperty("components").EnumerateArray())
+            rows.Add(BuildRow(c, shellRoot, installRoot, dataRoot, paired, forceRepair));
+
+        foreach (var row in rows.Where(r => r.Required && !r.Primary && r.ParentComponent is not null))
+        {
+            var parentIndex = rows.FindIndex(r => r.ComponentId == row.ParentComponent);
+            if (parentIndex < 0) continue;
+            var parent = rows[parentIndex];
+            if (row.Action == ComponentAction.Blocked && parent.Action != ComponentAction.Blocked)
+                rows[parentIndex] = parent with { Action = ComponentAction.Blocked, ActionText = "مسدود", UpdateState = "blocked_incompatible", Reason = $"وابستگی {row.DisplayName} قابل تأیید نیست." };
+            else if (row.Action is ComponentAction.Install or ComponentAction.Update or ComponentAction.Repair && parent.Action == ComponentAction.Keep)
+                rows[parentIndex] = parent with { Action = ComponentAction.Repair, ActionText = "تعمیر", UpdateState = "repair_required", Reason = $"یکی از اجزای داخلی Maintenance ({row.DisplayName}) نیاز به همگام‌سازی دارد." };
+        }
+        return new ComponentPlanSnapshot(packageVersion, DateTimeOffset.UtcNow, rows);
+    }
+
+    private static ComponentPlanRow BuildRow(JsonElement c, string shellRoot, string installRoot, string dataRoot, bool paired, bool forceRepair)
+    {
+        var id = S(c, "component_id");
+        var display = S(c, "display_name_fa");
+        var kind = S(c, "kind");
+        var primary = B(c, "primary");
+        var required = B(c, "required");
+        var parent = c.TryGetProperty("parent_component", out var p) ? p.GetString() : null;
+        var targetVersion = S(c, "version");
+        var serviceName = c.TryGetProperty("service_name", out var sn) ? sn.GetString() ?? "" : "";
+        var payloadRel = S(c, "payload_primary").Replace('/', Path.DirectorySeparatorChar);
+        var installedRel = S(c, "installed_primary").Replace('/', Path.DirectorySeparatorChar);
+        var group = c.TryGetProperty("transaction_group", out var tg) ? tg.GetString() ?? id : id;
+        var targetPath = Path.GetFullPath(Path.Combine(shellRoot, payloadRel));
+        var installedPath = Path.GetFullPath(Path.Combine(installRoot, installedRel));
+        if (!IsUnder(targetPath, shellRoot) || !IsUnder(installedPath, installRoot)) throw new InvalidOperationException("مسیر component خارج از مرز بسته است.");
+        var targetHash = HashIfExists(targetPath);
+        var installedHash = HashIfExists(installedPath);
+        var currentVersion = FileVersion(installedPath);
+        var service = string.IsNullOrWhiteSpace(serviceName) ? new ServiceProbe(false, "n/a", "") : ProbeService(serviceName);
+        var installed = File.Exists(installedPath) && (string.IsNullOrWhiteSpace(serviceName) || service.Installed);
+        var registrationHealthy = string.IsNullOrWhiteSpace(serviceName) || RegistrationMatches(id, service.ImagePath, installedPath, dataRoot);
+        var health = HealthFor(id, installed, service.State, paired, kind);
+        var healthText = HealthText(id, health, paired, kind);
+
+        ComponentAction action;
+        string state;
+        string reason;
+        if (!File.Exists(targetPath) || string.IsNullOrWhiteSpace(targetHash))
+        {
+            action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = "فایل هدف component داخل بسته قابل تأیید نیست.";
+        }
+        else if (!installed)
+        {
+            action = required ? ComponentAction.Install : ComponentAction.NoActionOptional;
+            state = required ? "install_required" : "not_installed_optional";
+            reason = required ? "این component روی سیستم نصب نیست." : "component اختیاری نصب نشده است.";
+        }
+        else
+        {
+            var cmp = CompareVersions(currentVersion, targetVersion);
+            if (cmp > 0)
+            {
+                action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = $"نسخه نصب‌شده {currentVersion} از نسخه هدف {targetVersion} جدیدتر است؛ downgrade خودکار مجاز نیست.";
+            }
+            else if (cmp < 0)
+            {
+                action = ComponentAction.Update; state = "required_update"; reason = $"نسخه {currentVersion} باید به {targetVersion} ارتقا یابد.";
+            }
+            else if (!string.Equals(installedHash, targetHash, StringComparison.OrdinalIgnoreCase))
+            {
+                action = ComponentAction.Repair; state = "repair_required"; reason = "نسخه یکسان است اما fingerprint فایل اجرایی با release هدف یکسان نیست.";
+            }
+            else if (!registrationHealthy)
+            {
+                action = ComponentAction.Repair; state = "repair_required"; reason = "ثبت Windows Service با قرارداد release یکسان نیست.";
+            }
+            else if (forceRepair)
+            {
+                action = ComponentAction.Repair; state = "repair_required"; reason = "تعمیر صریح توسط کاربر درخواست شده است.";
+            }
+            else
+            {
+                action = ComponentAction.Keep; state = "up_to_date"; reason = "نسخه، fingerprint و ثبت service با release هدف یکسان است.";
+            }
+        }
+        return new ComponentPlanRow(id, display, kind, primary, required, parent, currentVersion, targetVersion, health, healthText, state, action, ActionText(action), reason,
+            installedPath, targetPath, installedHash, targetHash, serviceName, service.State, registrationHealthy, group);
+    }
+
+    private static bool ReadPaired(string dataRoot)
+    {
+        try
+        {
+            var path = Path.Combine(dataRoot, "setup", "windows-services-state.json");
+            if (!File.Exists(path)) return false;
+            using var d = JsonDocument.Parse(File.ReadAllText(path));
+            return d.RootElement.TryGetProperty("paired", out var p) && p.ValueKind == JsonValueKind.True;
+        }
+        catch { return false; }
+    }
+
+    private static ComponentHealth HealthFor(string id, bool installed, string state, bool paired, string kind)
+    {
+        if (!installed) return ComponentHealth.Unknown;
+        if (kind != "service") return ComponentHealth.Healthy;
+        if (state.Equals("RUNNING", StringComparison.OrdinalIgnoreCase)) return ComponentHealth.Healthy;
+        if (state.Equals("START_PENDING", StringComparison.OrdinalIgnoreCase)) return ComponentHealth.Starting;
+        if (state.Equals("STOPPED", StringComparison.OrdinalIgnoreCase))
+            return id == "runtime" && !paired ? ComponentHealth.Stopped : ComponentHealth.Stopped;
+        return string.IsNullOrWhiteSpace(state) ? ComponentHealth.Unknown : ComponentHealth.Degraded;
+    }
+
+    private static string HealthText(string id, ComponentHealth h, bool paired, string kind)
+    {
+        if (kind != "service") return "آماده";
+        return h switch
+        {
+            ComponentHealth.Healthy => "فعال",
+            ComponentHealth.Starting => "در حال شروع",
+            ComponentHealth.Stopped when id == "runtime" && !paired => "آماده اتصال",
+            ComponentHealth.Stopped => "متوقف",
+            ComponentHealth.Degraded => "نیاز به بررسی",
+            ComponentHealth.Failed => "خطا",
+            _ => "نامشخص"
+        };
+    }
+
+    private static string ActionText(ComponentAction a) => a switch
+    {
+        ComponentAction.Keep => "بدون تغییر",
+        ComponentAction.Install => "نصب",
+        ComponentAction.Update => "به‌روزرسانی",
+        ComponentAction.Repair => "تعمیر",
+        ComponentAction.Blocked => "مسدود",
+        ComponentAction.PendingRestart => "نیازمند راه‌اندازی مجدد",
+        _ => "بدون اقدام"
+    };
+
+    private static int CompareVersions(string current, string target)
+    {
+        if (!Version.TryParse(NormalizeVersion(current), out var a)) return -1;
+        if (!Version.TryParse(NormalizeVersion(target), out var b)) return -1;
+        return a.CompareTo(b);
+    }
+
+    private static string NormalizeVersion(string value)
+    {
+        value = (value ?? "").Trim();
+        var cut = value.IndexOfAny(['-', '+']);
+        return cut >= 0 ? value[..cut] : value;
+    }
+
+    private static string FileVersion(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return "—";
+            var v = FileVersionInfo.GetVersionInfo(path).ProductVersion ?? FileVersionInfo.GetVersionInfo(path).FileVersion ?? "";
+            var cut = v.IndexOf('+');
+            return (cut >= 0 ? v[..cut] : v).Trim();
+        }
+        catch { return "نامشخص"; }
+    }
+
+    private static string HashIfExists(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return "";
+            using var s = File.OpenRead(path);
+            return Convert.ToHexString(SHA256.HashData(s)).ToLowerInvariant();
+        }
+        catch { return ""; }
+    }
+
+    private static bool RegistrationMatches(string id, string imagePath, string installedExe, string dataRoot)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath)) return false;
+        var normalized = imagePath.Trim();
+        if (!normalized.Contains(installedExe, StringComparison.OrdinalIgnoreCase)) return false;
+        if (id == "runtime")
+        {
+            var cfg = Path.Combine(dataRoot, "runtime", "runtime-config.json");
+            return normalized.Contains("--config", StringComparison.OrdinalIgnoreCase) && normalized.Contains(cfg, StringComparison.OrdinalIgnoreCase);
+        }
+        return true;
+    }
+
+    private sealed record ServiceProbe(bool Installed, string State, string ImagePath);
+    private static ServiceProbe ProbeService(string name)
+    {
+        var image = "";
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{name}");
+            if (key is null) return new(false, "", "");
+            image = Convert.ToString(key.GetValue("ImagePath")) ?? "";
+        }
+        catch { return new(false, "", ""); }
+        var state = "UNKNOWN";
+        try
+        {
+            var psi = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "sc.exe"), $"query \"{name}\"")
+            { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            using var p = Process.Start(psi);
+            if (p is not null)
+            {
+                var text = p.StandardOutput.ReadToEnd(); p.WaitForExit(2500);
+                if (text.Contains("RUNNING", StringComparison.OrdinalIgnoreCase)) state = "RUNNING";
+                else if (text.Contains("START_PENDING", StringComparison.OrdinalIgnoreCase)) state = "START_PENDING";
+                else if (text.Contains("STOPPED", StringComparison.OrdinalIgnoreCase)) state = "STOPPED";
+            }
+        }
+        catch { }
+        return new(true, state, image);
+    }
+
+    private static bool IsUnder(string path, string root)
+    {
+        root = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase);
+    }
+    private static string S(JsonElement e, string name) => e.GetProperty(name).GetString() ?? "";
+    private static bool B(JsonElement e, string name) => e.GetProperty(name).GetBoolean();
+}
