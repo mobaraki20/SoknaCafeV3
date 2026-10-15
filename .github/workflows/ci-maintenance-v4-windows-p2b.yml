@@ -1,0 +1,120 @@
+name: CI Maintenance V4 Windows P2B
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p2b-supervisor-staging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-maintenance-v4-windows-p2b-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-p2b:
+    runs-on: windows-2022
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify qualified P2A parent and Windows-only scope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base='6506bb6abaeba1957d84b1c95fe235e784b15cf0'
+          git merge-base --is-ancestor $base HEAD
+          if($LASTEXITCODE-ne0){throw 'Qualified P2A commit is not an ancestor.'}
+          $changed=@(git diff --name-only "$base..HEAD")
+          foreach($path in $changed){
+            if($path -eq '.github/workflows/ci-maintenance-v4-windows-p2b.yml'){continue}
+            if($path.StartsWith('windows/maintenance/')){continue}
+            throw "P2B changed a path outside Windows Maintenance scope: $path"
+          }
+          Write-Host 'P2B parent/scope: PASS'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build Supervisor Update Engine Recovery Console and fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'P2B Supervisor build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'P2B Update Engine build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Inherited Recovery Console build failed.'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'P2 fixture build failed.'}
+
+      - name: Publish colocated Supervisor and versioned Update Engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out/p2b/app,out/p2b/fixture -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/p2b/app
+          if($LASTEXITCODE-ne0){throw 'Supervisor publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/p2b/app
+          if($LASTEXITCODE-ne0){throw 'Update Engine publish failed.'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/p2b/fixture
+          if($LASTEXITCODE-ne0){throw 'Fixture publish failed.'}
+          if(-not(Test-Path out/p2b/app/SoknaMaintenanceSupervisor.exe)){throw 'Supervisor executable missing.'}
+          if(-not(Test-Path out/p2b/app/SoknaMaintenanceUpdateEngine.exe)){throw 'Update Engine executable missing beside Supervisor.'}
+
+      - name: Run P2B authenticated staging and ACL qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $supervisor=(Resolve-Path out/p2b/app/SoknaMaintenanceSupervisor.exe).Path
+          $fixture=(Resolve-Path out/p2b/fixture/Sokna.Maintenance.P2Fixture.exe).Path
+          $result=& windows/maintenance/tests/p2b-qualification.ps1 -SupervisorExe $supervisor -FixtureExe $fixture
+          $result|Tee-Object -FilePath out/p2b/P2B_QUALIFICATION.json
+          $parsed=$result|ConvertFrom-Json
+          if([string]$parsed.result-ne'PASS'){throw "P2B qualification result is not PASS. LastNativeExit=$LASTEXITCODE"}
+          $global:LASTEXITCODE=0
+
+      - name: Freeze P2B provenance and hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $head=(git rev-parse HEAD).Trim()
+          [ordered]@{
+            format='sokna-maintenance-v4-windows-p2b-provenance-v1'
+            source_commit=$head
+            qualified_p2a_parent='6506bb6abaeba1957d84b1c95fe235e784b15cf0'
+            supervisor_version='0.2.0'
+            update_engine_version='0.2.0'
+            maintenance_control_protocol='1.0'
+            normal_web_mutation='stage_only'
+            exact_web_service_acl='implemented'
+            activation=$false
+            database_mutation=$false
+            apache_restart=$false
+            evidence_tier='windows-2022-ci-runtime-not-real-cafe-host'
+          }|ConvertTo-Json -Depth 6|Set-Content out/p2b/P2B_PROVENANCE.json -Encoding utf8
+          $files=@(
+            'out/p2b/P2B_QUALIFICATION.json',
+            'out/p2b/P2B_PROVENANCE.json',
+            'out/p2b/app/SoknaMaintenanceSupervisor.exe',
+            'out/p2b/app/SoknaMaintenanceUpdateEngine.exe'
+          )
+          $lines=foreach($file in $files){"$((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant())  $file"}
+          $lines|Set-Content out/p2b/SHA256SUMS.txt -Encoding utf8
+
+      - name: Upload P2B qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-windows-p2b-evidence
+          path: |
+            out/p2b/P2B_QUALIFICATION.json
+            out/p2b/P2B_PROVENANCE.json
+            out/p2b/SHA256SUMS.txt
+          if-no-files-found: error
