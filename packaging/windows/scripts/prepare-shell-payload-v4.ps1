@@ -26,7 +26,7 @@ $owned=@{
  'platform\windows\release-lock.json'='release-lock.json';
  'packaging\windows\windows-services-component-manifest-v2.json'='windows-services-component-manifest-v2.json';
  'packaging\windows\WINDOWS_SERVICES_VERSION.txt'='WINDOWS_SERVICES_VERSION.txt';
- 'packaging\windows\scripts\setup-windows-components-v4.ps1'='setup-windows-components-v4.ps1';
+ 'packaging\windows\scripts\setup-windows-components-v5.ps1'='setup-windows-components-v4.ps1';
  'packaging\windows\scripts\pair-windows-services.ps1'='pair-windows-services.ps1';
  'packaging\windows\scripts\collect-support.ps1'='collect-support-core.ps1';
  'packaging\windows\scripts\collect-support-v2.ps1'='collect-support-v2.ps1';
@@ -41,7 +41,7 @@ Copy-Item $PrintWorkerBundle (Join-Path $payload 'print-worker') -Recurse -Force
 Copy-Item (Join-Path $MaintenanceAppBundle '*') (Join-Path $payload 'maintenance\app') -Recurse -Force
 Copy-Item (Join-Path $MaintenanceRecoveryBundle '*') (Join-Path $payload 'maintenance\recovery') -Recurse -Force
 
-$required=@('_payload\runtime\SoknaRuntimeService.exe','_payload\print-worker\Service\Sokna.PrintAgent.Service.exe','_payload\print-worker\Worker\Sokna.PrintAgent.Worker.exe','_payload\maintenance\app\SoknaMaintenanceSupervisor.exe','_payload\maintenance\app\SoknaMaintenanceUpdateEngine.exe','_payload\maintenance\recovery\SoknaMaintenanceRecoveryConsole.exe','SoknaSetupHost.exe','SoknaSetupUi.exe','collect-support-core.ps1','collect-support-v2.ps1')
+$required=@('_payload\runtime\SoknaRuntimeService.exe','_payload\print-worker\Service\Sokna.PrintAgent.Service.exe','_payload\print-worker\Worker\Sokna.PrintAgent.Worker.exe','_payload\maintenance\app\SoknaMaintenanceSupervisor.exe','_payload\maintenance\app\SoknaMaintenanceUpdateEngine.exe','_payload\maintenance\recovery\SoknaMaintenanceRecoveryConsole.exe','SoknaSetupHost.exe','SoknaSetupUi.exe','setup-windows-components-v4.ps1','collect-support-core.ps1','collect-support-v2.ps1')
 foreach($rel in $required){if(-not(Test-Path (Join-Path $OutputRoot $rel) -PathType Leaf)){throw "Unified shell missing: $rel"}}
 $forbidden=@('php.exe','httpd.exe','apache.exe','mysqld.exe','mariadb.exe','SoknaAppPayload.zip');foreach($f in Get-ChildItem $OutputRoot -File -Recurse){if($forbidden -contains $f.Name){throw "Forbidden payload leaked into Windows Services package: $($f.Name)"}}
 
