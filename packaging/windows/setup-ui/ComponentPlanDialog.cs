@@ -76,6 +76,7 @@ internal sealed class ComponentPlanDialog : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22));
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         string[] headers = ["جزء", "نسخه فعلی", "نسخه هدف", "سلامت", "اقدام"];
         for (var c = 0; c < headers.Length; c++) grid.Controls.Add(Cell(headers[c], true, SetupPalette.Muted), c, 0);
         var row = 1;
@@ -140,13 +141,14 @@ internal sealed class InstallerResultDialog : Form
         root.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(600, 0), Text = summary, ForeColor = SetupPalette.Text, Margin = new Padding(0, 8, 0, 14) }, 0, 1);
         var details = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 5, BackColor = SetupPalette.Surface, Padding = new Padding(14), Margin = new Padding(0), CellBorderStyle = TableLayoutPanelCellBorderStyle.Single };
         details.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150)); details.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (var i = 0; i < 5; i++) details.RowStyles.Add(new RowStyle(SizeType.Percent, 20));
         Add(details, 0, "شناسه عیب‌یابی", diagnosticId, false);
         Add(details, 1, "جزء", string.IsNullOrWhiteSpace(failedComponent) ? "—" : failedComponent, true);
         Add(details, 2, "مرحله", string.IsNullOrWhiteSpace(failedPhase) ? "—" : failedPhase, true);
         Add(details, 3, "Rollback", success ? "لازم نبود" : rollbackComplete ? "کامل شد" : "نیاز به بررسی", true);
         Add(details, 4, "راه‌اندازی مجدد", rebootRequired ? "لازم است" : "لازم نیست", true);
         root.Controls.Add(details, 0, 2);
-        var hint = new Label { AutoSize = true, MaximumSize = new Size(600, 0), Text = success ? "وضعیت componentها دوباره بررسی می‌شود." : "برای بررسی دقیق، «بسته عیب‌یابی» را از Dashboard بسازید؛ اجرای CMD یا PowerShell لازم نیست.", ForeColor = SetupPalette.Muted, Margin = new Padding(0, 12, 0, 10) };
+        var hint = new Label { AutoSize = true, MaximumSize = new Size(600, 0), Text = success ? "وضعیت اجزا دوباره بررسی می‌شود." : "برای بررسی دقیق، «عیب‌یابی» را از Dashboard اجرا کنید؛ نیازی به CMD یا PowerShell نیست.", ForeColor = SetupPalette.Muted, Margin = new Padding(0, 12, 0, 10) };
         root.Controls.Add(hint, 0, 3);
         var ok = new Button { Text = "بستن", DialogResult = DialogResult.OK, AutoSize = true, MinimumSize = new Size(96, 36), Anchor = AnchorStyles.Left, FlatStyle = FlatStyle.Flat, BackColor = SetupPalette.Brand, ForeColor = Color.White };
         ok.FlatAppearance.BorderSize = 0; root.Controls.Add(ok, 0, 4); AcceptButton = ok; Controls.Add(root);
@@ -154,7 +156,7 @@ internal sealed class InstallerResultDialog : Form
 
     private static void Add(TableLayoutPanel t, int row, string caption, string value, bool rtl)
     {
-        t.Controls.Add(new Label { Dock = DockStyle.Fill, Text = caption, TextAlign = ContentAlignment.MiddleRight, ForeColor = SetupPalette.Muted, Padding = new Padding(5) }, 0, row);
+        t.Controls.Add(new Label { Dock = DockStyle.Fill, Text = caption, TextAlign = ContentAlignment.MiddleRight, ForeColor = SetupPalette.Muted, Padding = new Padding(5), AutoEllipsis = true }, 0, row);
         t.Controls.Add(new Label { Dock = DockStyle.Fill, Text = value, TextAlign = ContentAlignment.MiddleRight, RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No, ForeColor = SetupPalette.Text, Font = SetupPalette.Font(9.5f, FontStyle.Bold), Padding = new Padding(5), AutoEllipsis = true }, 1, row);
     }
 }
