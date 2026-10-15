@@ -35,12 +35,31 @@ One monorepo, independently releasable components, explicit contracts. Work on o
 
 ## Final deployment decision
 
-`docs/adr/0004-deployment-and-component-lifecycle-v2.md` supersedes the old unified Windows composition where relevant:
+`docs/adr/0004-deployment-and-component-lifecycle-v2.md` supersedes the old unified Local-Web/Platform composition where relevant:
 - Local Web: ZIP + Browser Setup Wizard; no PS1/EXE installer.
-- Windows Services: Runtime + Print Agent only.
 - Infrastructure prerequisites: detect / verified online acquire / manual fallback; not bundled.
 - Public Edge: independent deploy package.
 - Local Update Center + Public Emergency Console are required product surfaces.
+
+For SOKNA-owned Windows components, the newer accepted decision is:
+
+`docs/adr/0009-maintenance-v4-windows-services-composition.md`
+
+ADR-0009 supersedes ADR-0004 **only** where ADR-0004 listed the Windows Services installer as Runtime + Print Agent only. The unified Windows Services lifecycle now owns these primary logical components:
+
+- Runtime (`SoknaRuntime`)
+- Print Agent (`SoknaPrintWorker`)
+- Maintenance Supervisor (`SoknaMaintenanceSupervisor`)
+
+Maintenance Update Engine and Recovery Console are versioned subordinate Maintenance components; they are not additional permanent services by default. Local Web and third-party infrastructure remain outside the Windows Services payload as defined by ADR-0004.
+
+### Mandatory Windows engineering reading
+
+Before changing anything under or affecting `windows/**`, `platform/windows/**`, `packaging/windows/**`, Windows prerequisites, Windows services, installer/lifecycle code, ACLs, diagnostics, recovery tooling or Windows CI, every human/agent **must** read:
+
+`docs/windows/WINDOWS_ENGINEERING_REQUIRED_READING.md`
+
+This file records reusable failure lessons and hard compatibility/lifecycle guardrails. When a new Windows defect reveals a reusable lesson, update it in the same engineering block.
 
 ## Completion language
 
