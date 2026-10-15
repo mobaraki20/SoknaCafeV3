@@ -4,6 +4,26 @@ param(
   [ValidateRange(1,10)][int]$InstallerTransactions=5
 )
 $ErrorActionPreference='Stop'
+
+# Diagnostics are launched elevated from the GUI. Hide the console immediately so the
+# user sees only the SOKNA progress UI. Failure to hide must never block evidence collection.
+try {
+  if(-not('SoknaSupport.ConsoleWindow' -as [type])){
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace SoknaSupport {
+  public static class ConsoleWindow {
+    [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  }
+}
+'@ -Language CSharp -ErrorAction Stop
+  }
+  $console=[SoknaSupport.ConsoleWindow]::GetConsoleWindow()
+  if($console-ne[IntPtr]::Zero){[void][SoknaSupport.ConsoleWindow]::ShowWindow($console,0)}
+}catch{}
+
 function Full([string]$p,[string]$label){
   if([string]::IsNullOrWhiteSpace($p)){throw "$label must be absolute."}
   try{$root=[IO.Path]::GetPathRoot($p);$full=[IO.Path]::GetFullPath($p)}catch{throw "$label must be an absolute valid path."}
