@@ -14,6 +14,8 @@ public static class HmacProtocol
     public const string HeaderKeyId = "X-Sokna-Key-Id";
     public const string HeaderBodySha256 = "X-Sokna-Body-SHA256";
     public const string HeaderSignature = "X-Sokna-Signature";
+    public const string HeaderIdempotencyKey = "X-Sokna-Idempotency-Key";
+    public const int MaxSignedBodyBytes = 1024 * 1024;
     public static readonly TimeSpan AllowedClockSkew = TimeSpan.FromSeconds(90);
 
     public static string BodySha256(ReadOnlySpan<byte> body) => Convert.ToHexString(SHA256.HashData(body)).ToLowerInvariant();
@@ -45,20 +47,33 @@ public static class HmacProtocol
         => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out timestamp);
 
     public static HttpRequestMessage CreateSignedGet(Uri baseUri, string relativePath, string keyId, byte[] key, string? nonce = null, string? timestamp = null)
+        => CreateSignedRequest(HttpMethod.Get, baseUri, relativePath, keyId, key, ReadOnlyMemory<byte>.Empty, null, nonce, timestamp);
+
+    public static HttpRequestMessage CreateSignedJson(Uri baseUri, string relativePath, string keyId, byte[] key, ReadOnlyMemory<byte> utf8Json, string idempotencyKey, string? nonce = null, string? timestamp = null)
+        => CreateSignedRequest(HttpMethod.Post, baseUri, relativePath, keyId, key, utf8Json, idempotencyKey, nonce, timestamp);
+
+    private static HttpRequestMessage CreateSignedRequest(HttpMethod method, Uri baseUri, string relativePath, string keyId, byte[] key, ReadOnlyMemory<byte> body, string? idempotencyKey, string? nonce, string? timestamp)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, new Uri(baseUri, relativePath));
+        if (body.Length > MaxSignedBodyBytes) throw new InvalidDataException("Signed maintenance request body exceeds protocol limit.");
+        var request = new HttpRequestMessage(method, new Uri(baseUri, relativePath));
         var ts = timestamp ?? DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
         var n = nonce ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-        var bodyHash = BodySha256(ReadOnlySpan<byte>.Empty);
+        var bodyHash = BodySha256(body.Span);
         var pathAndQuery = request.RequestUri!.PathAndQuery;
-        var canonical = BuildCanonical("GET", pathAndQuery, Protocol, ts, n, bodyHash);
+        var canonical = BuildCanonical(method.Method, pathAndQuery, Protocol, ts, n, bodyHash);
         request.Headers.TryAddWithoutValidation(HeaderProtocol, Protocol);
         request.Headers.TryAddWithoutValidation(HeaderTimestamp, ts);
         request.Headers.TryAddWithoutValidation(HeaderNonce, n);
         request.Headers.TryAddWithoutValidation(HeaderKeyId, keyId);
         request.Headers.TryAddWithoutValidation(HeaderBodySha256, bodyHash);
         request.Headers.TryAddWithoutValidation(HeaderSignature, Sign(key, canonical));
+        if (!string.IsNullOrWhiteSpace(idempotencyKey)) request.Headers.TryAddWithoutValidation(HeaderIdempotencyKey, idempotencyKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        if (body.Length > 0)
+        {
+            request.Content = new ByteArrayContent(body.ToArray());
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+        }
         return request;
     }
 }
