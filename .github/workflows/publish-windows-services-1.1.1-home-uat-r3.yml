@@ -1,0 +1,110 @@
+name: Publish Windows Services 1.1.1 Home UAT R3 Pre-release
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-installer-component-ui
+    paths:
+      - .github/workflows/publish-windows-services-1.1.1-home-uat-r3.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact qualified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir artifact
+          gh run download 38734748047 \
+            --repo mobaraki20/SoknaCafeV3 \
+            --name maintenance-v4-windows-installer-1.1.1-engineering-candidate \
+            --dir artifact
+          find artifact -maxdepth 5 -type f -printf '%p\n'
+
+      - name: Locate installer and verify qualified identity
+        id: installer
+        run: |
+          set -euo pipefail
+          exe="$(find artifact -type f -name 'SOKNA-Windows-Services-Setup-1.1.1.exe' -print -quit)"
+          test -n "$exe"
+          sha="$(sha256sum "$exe" | awk '{print $1}')"
+          size="$(stat -c%s "$exe")"
+          test "$sha" = 'dc830283bad9e9251703f6c927c1a063ffe91eef725f38a7f7ceea7f05389c60'
+          test "$size" = '337918208'
+          echo "path=$exe" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+
+      - name: Publish exact artifact as prerelease R3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTALLER: ${{ steps.installer.outputs.path }}
+          SHA256: ${{ steps.installer.outputs.sha256 }}
+          SIZE: ${{ steps.installer.outputs.size }}
+        run: |
+          set -euo pipefail
+          tag='windows-services-1.1.1-home-uat-r3'
+          target='44aad1481a9f9123c89261c1175851395e9237d3'
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          cat > "$notes_file" <<EOF
+          ## SOKNA Windows Services 1.1.1 — Home UAT Revision 3
+
+          **PRE-RELEASE / HOME UAT ONLY — NOT PRODUCTION / NOT FINAL**
+
+          Exact qualified source commit: \`$target\`
+          Exact package/lifecycle CI: run \`38734748047\` — PASS
+          Exact UI/screenshot CI: run \`38734748132\` — PASS
+
+          This R3 release **promotes the exact already-qualified CI artifact**. It is not a rebuild.
+
+          Additional engineering hardening over the previous 1.1.1 candidate includes:
+          - semantic file-version trailing-zero normalization/guards,
+          - Windows PowerShell 5.1-safe diagnostic evidence encoding,
+          - exact-head UI screenshot review with no remaining actionable visual finding,
+          - retained per-component selective lifecycle proof for Runtime/Print KEEP.
+
+          Installer SHA256: \`$SHA256\`
+          Installer size: \`$SIZE\` bytes
+
+          Runtime \`1.0.5\` / Print Agent \`6.2.9\` / Maintenance Supervisor \`0.2.1\` / Update Engine \`0.2.0\` / Recovery Console \`0.1.1\`.
+
+          Status: ENGINEERING QUALIFIED HARDENING CANDIDATE / HOME RETEST PENDING / NOT CAFE UAT / NOT PRODUCTION.
+          EOF
+
+          if gh release view "$tag" --repo mobaraki20/SoknaCafeV3 >/dev/null 2>&1; then
+            gh release upload "$tag" "$INSTALLER" --repo mobaraki20/SoknaCafeV3 --clobber
+            gh release edit "$tag" --repo mobaraki20/SoknaCafeV3 --prerelease --title 'SOKNA Windows Services 1.1.1 — Home UAT R3' --notes-file "$notes_file"
+          else
+            gh release create "$tag" "$INSTALLER" \
+              --repo mobaraki20/SoknaCafeV3 \
+              --target "$target" \
+              --title 'SOKNA Windows Services 1.1.1 — Home UAT R3' \
+              --notes-file "$notes_file" \
+              --prerelease
+          fi
+
+      - name: Verify published asset is still the qualified binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='windows-services-1.1.1-home-uat-r3'
+          mkdir verify
+          gh release download "$tag" \
+            --repo mobaraki20/SoknaCafeV3 \
+            --pattern 'SOKNA-Windows-Services-Setup-1.1.1.exe' \
+            --dir verify
+          exe='verify/SOKNA-Windows-Services-Setup-1.1.1.exe'
+          test -f "$exe"
+          sha="$(sha256sum "$exe" | awk '{print $1}')"
+          size="$(stat -c%s "$exe")"
+          test "$sha" = 'dc830283bad9e9251703f6c927c1a063ffe91eef725f38a7f7ceea7f05389c60'
+          test "$size" = '337918208'
+          gh release view "$tag" --repo mobaraki20/SoknaCafeV3 --json tagName,isPrerelease,targetCommitish,assets,url
