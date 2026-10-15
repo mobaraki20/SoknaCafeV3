@@ -9,7 +9,15 @@ function Full([string]$p,[string]$label){
   return $full
 }
 function Safe([string]$v){$v=([string]$v-replace'[\r\n\0]',' ').Trim();$v=$v-replace'(?i)ws1_[a-f0-9]{24}_[a-f0-9]{48}','[PAIRING_CODE_REDACTED]';$v=$v-replace'(?i)(token|secret|credential|password)(\s*[:=]\s*)[^\s,;\}\]]+','$1$2[REDACTED]';if($v.Length-gt1200){$v=$v.Substring(0,1200)};$v}
-function Sha([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+function Sha([string]$p){
+  if(-not(Test-Path -LiteralPath $p -PathType Leaf)){return ''}
+  $stream=[IO.File]::OpenRead($p)
+  try{
+    $hasher=[Security.Cryptography.SHA256]::Create()
+    try{$bytes=$hasher.ComputeHash($stream)}finally{$hasher.Dispose()}
+  }finally{$stream.Dispose()}
+  return (([BitConverter]::ToString($bytes))-replace'-','').ToLowerInvariant()
+}
 function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($p).ProductVersion;if(-not$v){$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion};if($v){return ([string]$v).Split('+')[0]};''}
 function Compare-Version([string]$a,[string]$b){$va=$null;$vb=$null;if(-not[Version]::TryParse(([string]$a).Split('-')[0],[ref]$va)){return -1};if(-not[Version]::TryParse(([string]$b).Split('-')[0],[ref]$vb)){return -1};$va.CompareTo($vb)}
 function Prop($o,[string]$n,$default=$null){if($null-ne$o-and$o.PSObject.Properties.Name-contains$n){return $o.$n};$default}
