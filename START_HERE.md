@@ -50,4 +50,12 @@ Read `ARCHITECTURE.md`, `PROJECT_LINEAGE.md`, the target component README, and r
 - tests required,
 - rollback behavior.
 
+### Windows work has an additional mandatory reading gate
+
+Before changing anything under or affecting `windows/**`, `platform/windows/**`, `packaging/windows/**`, Windows prerequisites, Windows installers, Windows services, ACLs, diagnostics, recovery tooling, or Windows CI, you **must** also read:
+
+`docs/windows/WINDOWS_ENGINEERING_REQUIRED_READING.md`
+
+This is not optional. It records hard-won compatibility, lifecycle, installer, logging, security, UI-test, packaging, and real-host evidence rules discovered during SOKNA Windows engineering. When a new Windows failure reveals a reusable lesson, update that document in the same change so the failure is not repeated by another component or future agent.
+
 If ownership is unclear, stop implementation and add or update an ADR first.
