@@ -160,7 +160,8 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $head=(git rev-parse HEAD).Trim()
-          $tree=(git rev-parse HEAD^{tree}).Trim()
+          $tree=(git rev-parse 'HEAD^{tree}').Trim()
+          if($LASTEXITCODE-ne0 -or -not $tree){throw 'Unable to resolve source tree SHA.'}
           [ordered]@{
             format='sokna-maintenance-v4-windows-p2b-p1a-acl-reconcile-provenance-v1'
             source_commit=$head
