@@ -97,7 +97,8 @@ internal static class ComponentUpdatePlanner
         var currentVersion = FileVersion(installedPath);
         var service = string.IsNullOrWhiteSpace(serviceName) ? new ServiceProbe(false, "n/a", "") : ProbeService(serviceName);
         var installed = File.Exists(installedPath) && (string.IsNullOrWhiteSpace(serviceName) || service.Installed);
-        var registrationHealthy = string.IsNullOrWhiteSpace(serviceName) || RegistrationMatches(id, service.ImagePath, installedPath, dataRoot);
+        var unsafeServiceOwnership = !string.IsNullOrWhiteSpace(serviceName) && service.Installed && !ServiceImageOwnedByInstallRoot(service.ImagePath, installRoot);
+        var registrationHealthy = string.IsNullOrWhiteSpace(serviceName) || (!unsafeServiceOwnership && RegistrationMatches(id, service.ImagePath, installedPath, dataRoot));
         var health = HealthFor(id, installed, service.State, paired, kind);
         var healthText = HealthText(id, health, paired, kind);
 
@@ -107,6 +108,10 @@ internal static class ComponentUpdatePlanner
         if (!File.Exists(targetPath) || string.IsNullOrWhiteSpace(targetHash))
         {
             action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = "فایل هدف component داخل بسته قابل تأیید نیست.";
+        }
+        else if (unsafeServiceOwnership)
+        {
+            action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = "ImagePath سرویس خارج از محدوده مالکیت Windows Services سکنا است؛ تغییر خودکار برای جلوگیری از دست‌زدن به سرویس نامطمئن مسدود شد.";
         }
         else if (!installed)
         {
@@ -164,8 +169,7 @@ internal static class ComponentUpdatePlanner
         if (kind != "service") return ComponentHealth.Healthy;
         if (state.Equals("RUNNING", StringComparison.OrdinalIgnoreCase)) return ComponentHealth.Healthy;
         if (state.Equals("START_PENDING", StringComparison.OrdinalIgnoreCase)) return ComponentHealth.Starting;
-        if (state.Equals("STOPPED", StringComparison.OrdinalIgnoreCase))
-            return id == "runtime" && !paired ? ComponentHealth.Stopped : ComponentHealth.Stopped;
+        if (state.Equals("STOPPED", StringComparison.OrdinalIgnoreCase)) return ComponentHealth.Stopped;
         return string.IsNullOrWhiteSpace(state) ? ComponentHealth.Unknown : ComponentHealth.Degraded;
     }
 
@@ -230,6 +234,13 @@ internal static class ComponentUpdatePlanner
             return Convert.ToHexString(SHA256.HashData(s)).ToLowerInvariant();
         }
         catch { return ""; }
+    }
+
+    private static bool ServiceImageOwnedByInstallRoot(string imagePath, string installRoot)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath)) return false;
+        var root = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return imagePath.IndexOf(root, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static bool RegistrationMatches(string id, string imagePath, string installedExe, string dataRoot)
