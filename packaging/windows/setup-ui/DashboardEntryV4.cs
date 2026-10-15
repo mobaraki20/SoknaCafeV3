@@ -35,14 +35,17 @@ internal static class DashboardEntryV4
                 using var form = new WindowsServicesDashboardV3(null) { ClientSize = size, StartPosition = FormStartPosition.Manual, Location = new Point(20, 20) };
                 DashboardUiPolish.Apply(form);
                 form.Show();
-                Application.DoEvents();
+                WaitForDashboardIdle(form);
                 form.ApplyTestPlan(plan);
                 form.PerformLayout();
                 Application.DoEvents();
-                var errors = LayoutAudit(form).ToArray();
-                File.WriteAllLines(Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.txt"), errors.Length == 0 ? ["PASS"] : errors);
+                var errors = LayoutAudit(form).ToList();
+                var subtitle = Desc(form).OfType<Label>().FirstOrDefault(x => x.Text.Contains("Runtime، Print و Maintenance", StringComparison.Ordinal));
+                if (subtitle is null || !subtitle.Visible || subtitle.ClientSize.Height < 10)
+                    errors.Add("header-subtitle-not-visible");
+                File.WriteAllLines(Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.txt"), errors.Count == 0 ? ["PASS"] : errors);
                 CapturePainted(form, Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.png"), 800);
-                if (errors.Length > 0) throw new InvalidOperationException(string.Join(" | ", errors));
+                if (errors.Count > 0) throw new InvalidOperationException(string.Join(" | ", errors));
                 form.Hide();
             }
 
@@ -85,12 +88,29 @@ internal static class DashboardEntryV4
         }
     }
 
+    private static void WaitForDashboardIdle(Form form)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            Application.DoEvents();
+            var busy = Desc(form).OfType<ProgressBar>().Any(x => x.Visible);
+            if (!busy) return;
+            Thread.Sleep(25);
+        }
+        throw new InvalidOperationException("dashboard-initial-refresh-timeout");
+    }
+
     private static IEnumerable<string> LayoutAudit(Control root)
     {
         foreach (Control c in Desc(root))
         {
             if (!c.Visible) continue;
             if (c.Bounds.Width < 0 || c.Bounds.Height < 0) yield return $"invalid-bounds:{c.Name}:{c.Bounds}";
+            if (c.Parent is not null && (c.Left < -2 || c.Top < -2 || c.Right > c.Parent.ClientSize.Width + 2 || c.Bottom > c.Parent.ClientSize.Height + 2))
+                yield return $"overflow:{c.GetType().Name}:{c.Text}:{c.Bounds}:parent={c.Parent.ClientSize}";
+            if (c is Button or CheckBox or TextBox or Label && (c.ClientSize.Width <= 2 || c.ClientSize.Height <= 2))
+                yield return $"collapsed:{c.GetType().Name}:{c.Text}:{c.ClientSize}";
             if (c is Button b && (b.ClientSize.Width + 2 < b.PreferredSize.Width || b.ClientSize.Height + 2 < b.PreferredSize.Height))
                 yield return $"button-clipped:{b.Text}:{b.ClientSize}:{b.PreferredSize}";
             if (c is Label l && !l.AutoSize && !l.AutoEllipsis && l.PreferredSize.Height > l.ClientSize.Height + 3)
