@@ -64,7 +64,7 @@ jobs:
           $script=Get-Content packaging/windows/scripts/setup-windows-components-v5.ps1 -Raw
           foreach($needle in @("Action-eq'KEEP'","no_stop_no_copy_no_registration_no_restart","SoknaMaintenanceSupervisor","rollback_started","install-result.json","service_image_outside_owned_root")){if(-not$script.Contains($needle)){throw "Lifecycle policy marker missing: $needle"}}
           $support=Get-Content packaging/windows/scripts/collect-support-v2.ps1 -Raw
-          foreach($needle in @('Installer\\logs','SoknaMaintenanceSupervisor','PAIRING_CODE_REDACTED')){if(-not$support.Contains($needle)){throw "Support policy marker missing: $needle"}}
+          foreach($needle in @('Installer\logs','SoknaMaintenanceSupervisor','PAIRING_CODE_REDACTED')){if(-not$support.Contains($needle)){throw "Support policy marker missing: $needle"}}
       - name: Freeze first-pass UI evidence
         shell: pwsh
         run: |
