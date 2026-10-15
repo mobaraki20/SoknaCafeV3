@@ -2,10 +2,13 @@ using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Sokna.Maintenance.Core;
 
 const int DefaultPort = 17631;
 const string ServiceName = "SoknaMaintenanceSupervisor";
+const string SignedBodyItem = "sokna.signed_body";
+const string AuthKeyItem = "sokna.auth_key_id";
 
 var dataRoot = MaintenancePaths.DefaultDataRoot();
 var port = DefaultPort;
@@ -22,24 +25,29 @@ for (var i = 0; i < args.Length; i++)
 }
 
 if (port is < 1024 or > 65535)
-{
     throw new InvalidOperationException("Maintenance Supervisor port must be between 1024 and 65535.");
-}
 
 var paths = new MaintenancePaths(dataRoot);
 Directory.CreateDirectory(paths.DataRoot);
+Directory.CreateDirectory(paths.InboxRoot);
+Directory.CreateDirectory(paths.OperationsRoot);
 using var instanceLock = SingleInstanceLock.Acquire(paths.LockPath);
 var secrets = new SecretStore(paths);
 secrets.EnsureKeys();
+var aclEvidence = WebAdapterAclProvisioner.TryProvision(paths);
 var stateStore = new SupervisorStateStore(paths);
 var state = stateStore.LoadOrCreate();
 stateStore.Save(state);
 var journal = new DurableJournal(paths.JournalPath);
+var operations = new MaintenanceOperationStore(paths);
+var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
+var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
 journal.Append("supervisor.starting", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?>
 {
     ["pid"] = Environment.ProcessId,
     ["port"] = port,
-    ["read_only_p1"] = true
+    ["p2b_staging_only"] = true,
+    ["web_adapter_acl_state"] = aclEvidence.State
 });
 var replayCache = new ReplayCache();
 
@@ -56,9 +64,11 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if (!HttpMethods.IsGet(context.Request.Method))
+    var isStageMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/update/stage", StringComparison.Ordinal);
+    if (!HttpMethods.IsGet(context.Request.Method) && !isStageMutation)
     {
-        await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "read_only_p1", "READ_ONLY_P1", false, new { allowed_methods = new[] { "GET" } });
+        await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "staging_only_p2b", "P2B_STAGING_ONLY", false,
+            new { allowed_methods = new[] { "GET", "POST /v1/update/stage" }, activation_enabled = false, database_mutation_enabled = false });
         return;
     }
 
@@ -66,6 +76,38 @@ app.Use(async (context, next) =>
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "LOOPBACK_REQUIRED", false, new { });
         return;
+    }
+
+    if (context.Request.ContentLength is > HmacProtocol.MaxSignedBodyBytes)
+    {
+        await WriteEnvelope(context, StatusCodes.Status413PayloadTooLarge, false, "rejected", "SIGNED_BODY_TOO_LARGE", false, new { max_bytes = HmacProtocol.MaxSignedBodyBytes });
+        return;
+    }
+
+    byte[] bodyBytes;
+    if (HttpMethods.IsGet(context.Request.Method))
+    {
+        bodyBytes = Array.Empty<byte>();
+    }
+    else
+    {
+        context.Request.EnableBuffering(bufferThreshold: 64 * 1024, bufferLimit: HmacProtocol.MaxSignedBodyBytes + 1L);
+        using var memory = new MemoryStream();
+        var buffer = new byte[64 * 1024];
+        while (true)
+        {
+            var read = await context.Request.Body.ReadAsync(buffer);
+            if (read == 0) break;
+            await memory.WriteAsync(buffer.AsMemory(0, read));
+            if (memory.Length > HmacProtocol.MaxSignedBodyBytes)
+            {
+                await WriteEnvelope(context, StatusCodes.Status413PayloadTooLarge, false, "rejected", "SIGNED_BODY_TOO_LARGE", false, new { max_bytes = HmacProtocol.MaxSignedBodyBytes });
+                return;
+            }
+        }
+        bodyBytes = memory.ToArray();
+        context.Request.Body.Position = 0;
+        context.Items[SignedBodyItem] = bodyBytes;
     }
 
     if (!TrySingleHeader(context, HmacProtocol.HeaderProtocol, out var protocol) || protocol != HmacProtocol.Protocol ||
@@ -79,20 +121,33 @@ app.Use(async (context, next) =>
         return;
     }
 
+    if (isStageMutation && keyId != "web-adapter")
+    {
+        await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
+        return;
+    }
+
+    if (isStageMutation && aclEvidence.State != "ready")
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "acl_pending", "WEB_ADAPTER_ACL_PENDING", false,
+            new { acl_state = aclEvidence.State, service_name = aclEvidence.ServiceName });
+        return;
+    }
+
     if (!HmacProtocol.TryParseTimestamp(timestampText, out var timestamp) || (DateTimeOffset.UtcNow - timestamp).Duration() > HmacProtocol.AllowedClockSkew)
     {
         await WriteEnvelope(context, StatusCodes.Status401Unauthorized, false, "unauthorized", "AUTH_TIMESTAMP_INVALID", false, new { });
         return;
     }
 
-    if (nonce.Length is < 16 or > 128 || nonce.Any(ch => !(char.IsAsciiHexDigit(ch))))
+    if (nonce.Length is < 16 or > 128 || nonce.Any(ch => !char.IsAsciiHexDigit(ch)))
     {
         await WriteEnvelope(context, StatusCodes.Status401Unauthorized, false, "unauthorized", "AUTH_NONCE_INVALID", false, new { });
         return;
     }
 
-    var emptyBodyHash = HmacProtocol.BodySha256(ReadOnlySpan<byte>.Empty);
-    if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(emptyBodyHash), TryHex(bodyHash, out var suppliedBodyHash) ? suppliedBodyHash : Array.Empty<byte>()))
+    var actualBodyHash = HmacProtocol.BodySha256(bodyBytes);
+    if (!HmacProtocol.FixedTimeEqualsHex(actualBodyHash, bodyHash))
     {
         await WriteEnvelope(context, StatusCodes.Status401Unauthorized, false, "unauthorized", "AUTH_BODY_HASH_INVALID", false, new { });
         return;
@@ -123,6 +178,7 @@ app.Use(async (context, next) =>
         return;
     }
 
+    context.Items[AuthKeyItem] = keyId;
     await next();
 });
 
@@ -137,8 +193,12 @@ app.MapGet("/v1/health", async context =>
         journal_sequence = journal.LastSequence,
         process_id = Environment.ProcessId,
         loopback_only = true,
-        read_only_p1 = true,
-        web_dependency = "none"
+        staging_mutation_enabled = true,
+        activation_enabled = false,
+        database_mutation_enabled = false,
+        web_adapter_acl_state = aclEvidence.State,
+        web_adapter_service_account = aclEvidence.ServiceAccount,
+        web_dependency = "none_for_recovery_console"
     });
 });
 
@@ -148,16 +208,11 @@ app.MapGet("/v1/status", async context =>
     await WriteEnvelope(context, StatusCodes.Status200OK, true, current.RecoveryRequired ? "recovery_required" : "ready", "OK", current.RecoveryRequired, new
     {
         authoritative_state = current,
-        active_operation = (object?)null,
-        local_release = new
-        {
-            binding_state = current.LocalReleaseBindingState,
-            release_id = (string?)null,
-            version = (string?)null,
-            managed_tree_sha256 = (string?)null,
-            schema_migration_head = (string?)null
-        },
-        read_only_p1 = true
+        local_release_identity_bound = File.Exists(paths.InstalledReleaseIdentityPath),
+        inbox_path = paths.InboxRoot,
+        web_adapter_acl = aclEvidence,
+        activation_enabled = false,
+        database_mutation_enabled = false
     });
 });
 
@@ -166,24 +221,92 @@ app.MapGet("/v1/components", async context =>
     var components = new[]
     {
         InspectCurrentProcess(),
+        InspectExecutable("maintenance-update-engine", updateEnginePath),
         InspectService("SoknaRuntime"),
         InspectService("SoknaPrintWorker")
     };
     await WriteEnvelope(context, StatusCodes.Status200OK, true, "ready", "OK", false, new { components });
 });
 
+app.MapGet("/v1/operations/{operationId}", async context =>
+{
+    var operationId = context.Request.RouteValues["operationId"]?.ToString() ?? string.Empty;
+    var operation = operations.Get(operationId);
+    if (operation is null)
+    {
+        await WriteEnvelope(context, StatusCodes.Status404NotFound, false, "not_found", "OPERATION_NOT_FOUND", false, new { });
+        return;
+    }
+    await WriteEnvelope(context, StatusCodes.Status200OK, true, operation.State, "OK", false, operation, operation.OperationId);
+});
+
+app.MapGet("/v1/operations/by-idempotency/{key}", async context =>
+{
+    try
+    {
+        var key = context.Request.RouteValues["key"]?.ToString() ?? string.Empty;
+        var operation = operations.GetByIdempotencyKey(key);
+        if (operation is null)
+        {
+            await WriteEnvelope(context, StatusCodes.Status404NotFound, false, "not_found", "OPERATION_NOT_FOUND", false, new { });
+            return;
+        }
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, operation.State, "OK", false, operation, operation.OperationId);
+    }
+    catch (InvalidDataException ex)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "IDEMPOTENCY_KEY_INVALID", false, new { error = ex.Message });
+    }
+});
+
 app.MapGet("/v1/operations/active", async context =>
 {
-    await WriteEnvelope(context, StatusCodes.Status200OK, true, "idle", "OK", false, new { operation = (object?)null, mutations_enabled = false });
+    await WriteEnvelope(context, StatusCodes.Status200OK, true, "idle_or_query_by_id", "OK", false, new
+    {
+        query_by_operation_id = "/v1/operations/{operation_id}",
+        query_by_idempotency = "/v1/operations/by-idempotency/{key}",
+        activation_enabled = false,
+        database_mutation_enabled = false
+    });
+});
+
+app.MapPost("/v1/update/stage", async context =>
+{
+    if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var idempotencyKey))
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "IDEMPOTENCY_KEY_REQUIRED", false, new { });
+        return;
+    }
+
+    try
+    {
+        var body = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<StageUpdateRequest>(body, AtomicFile.JsonOptions)
+                      ?? throw new InvalidDataException("Stage request body is empty.");
+        var result = stagingCoordinator.Stage(request.PackageRef, request.OperatorId, idempotencyKey);
+        var operation = result.Operation;
+        var success = operation.State == "staged";
+        var statusCode = success ? StatusCodes.Status200OK : operation.State == "running" || operation.State == "accepted" ? StatusCodes.Status202Accepted : StatusCodes.Status422UnprocessableEntity;
+        await WriteEnvelope(context, statusCode, success, operation.State, operation.ResultCode ?? (success ? "STAGED" : "OPERATION_RECORDED"), false,
+            new { operation, result.Created, result.Reconciled, activation_enabled = false, database_mutation_enabled = false }, operation.OperationId);
+    }
+    catch (JsonException ex)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "REQUEST_JSON_INVALID", false, new { error = ex.Message });
+    }
+    catch (InvalidDataException ex)
+    {
+        var code = ex.Message.Contains("Idempotency key was already used", StringComparison.Ordinal) ? "IDEMPOTENCY_CONFLICT" : "REQUEST_INVALID";
+        var status = code == "IDEMPOTENCY_CONFLICT" ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest;
+        await WriteEnvelope(context, status, false, "rejected", code, false, new { error = ex.Message });
+    }
 });
 
 app.MapGet("/v1/backups", async context =>
 {
-    await WriteEnvelope(context, StatusCodes.Status200OK, true, "not_implemented_p1", "P1_READ_ONLY", false, new
+    await WriteEnvelope(context, StatusCodes.Status200OK, true, "not_implemented_yet", "BACKUP_ENGINE_PENDING", false, new
     {
-        local_backups = Array.Empty<object>(),
-        remote_transfer = (object?)null,
-        protection_state = "not_implemented_p1"
+        local_backups = Array.Empty<object>(), remote_transfer = (object?)null, protection_state = "not_implemented_yet"
     });
 });
 
@@ -193,7 +316,7 @@ app.MapGet("/v1/recovery", async context =>
     await WriteEnvelope(context, StatusCodes.Status200OK, true, current.RecoveryRequired ? "recovery_required" : "ready", "OK", current.RecoveryRequired, new
     {
         recovery_required = current.RecoveryRequired,
-        safe_actions = new[] { "inspect_status", "inspect_components", "inspect_journal_head" },
+        safe_actions = new[] { "inspect_status", "inspect_components", "inspect_journal_head", "inspect_operation" },
         mutation_actions_enabled = false,
         web_required = false
     });
@@ -217,10 +340,15 @@ app.Lifetime.ApplicationStarted.Register(() =>
         Readiness: "ready",
         AuthScheme: "sokna-hmac-sha256-v1",
         SupportedKeyIds: new[] { "web-adapter", "recovery-console" },
-        ReadOnlyP1: true,
+        ReadOnlyP1: false,
         WrittenAtUtc: DateTimeOffset.UtcNow);
     AtomicFile.WriteJson(paths.DescriptorPath, descriptor);
-    journal.Append("supervisor.ready", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?> { ["base_url"] = descriptor.BaseUrl });
+    journal.Append("supervisor.ready", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?>
+    {
+        ["base_url"] = descriptor.BaseUrl,
+        ["p2b_staging_only"] = true,
+        ["web_adapter_acl_state"] = aclEvidence.State
+    });
 });
 
 app.Lifetime.ApplicationStopping.Register(() =>
@@ -232,7 +360,6 @@ app.Lifetime.ApplicationStopping.Register(() =>
     }
     catch
     {
-        // Shutdown must continue even if final observability cleanup fails.
     }
 });
 
@@ -246,59 +373,41 @@ static bool TrySingleHeader(HttpContext context, string name, out string value)
     return !string.IsNullOrWhiteSpace(value);
 }
 
-static bool TryHex(string value, out byte[] bytes)
-{
-    try
-    {
-        bytes = Convert.FromHexString(value);
-        return true;
-    }
-    catch (FormatException)
-    {
-        bytes = Array.Empty<byte>();
-        return false;
-    }
-}
-
-static async Task WriteEnvelope(HttpContext context, int statusCode, bool ok, string state, string code, bool requiresRecoveryConsole, object data)
+static async Task WriteEnvelope(HttpContext context, int statusCode, bool ok, string state, string code, bool requiresRecoveryConsole, object data, string? operationId = null)
 {
     context.Response.StatusCode = statusCode;
     context.Response.ContentType = "application/json; charset=utf-8";
-    await context.Response.WriteAsJsonAsync(new ApiEnvelope(ok, HmacProtocol.Protocol, null, state, code, false, requiresRecoveryConsole, data));
+    await context.Response.WriteAsJsonAsync(new ApiEnvelope(ok, HmacProtocol.Protocol, operationId, state, code, false, requiresRecoveryConsole, data));
 }
 
 static string VersionText()
 {
     var assembly = Assembly.GetExecutingAssembly();
-    return assembly.GetName().Version?.ToString(3) ?? "0.1.0";
+    return assembly.GetName().Version?.ToString(3) ?? "0.2.0";
 }
 
 static object InspectCurrentProcess()
 {
     using var process = Process.GetCurrentProcess();
-    return new
-    {
-        component = "maintenance-supervisor",
-        service_name = ServiceName,
-        present = true,
-        state = "running",
-        version = VersionText(),
-        process_id = process.Id
-    };
+    return new { component = "maintenance-supervisor", service_name = ServiceName, present = true, state = "running", version = VersionText(), process_id = process.Id };
+}
+
+static object InspectExecutable(string component, string executable)
+{
+    if (!File.Exists(executable)) return new { component, service_name = (string?)null, present = false, state = "not_installed", version = (string?)null, process_id = (int?)null };
+    var info = FileVersionInfo.GetVersionInfo(executable);
+    return new { component, service_name = (string?)null, present = true, state = "available", version = info.ProductVersion ?? info.FileVersion, process_id = (int?)null };
 }
 
 static object InspectService(string serviceName)
 {
     if (!OperatingSystem.IsWindows())
-    {
         return new { component = serviceName, service_name = serviceName, present = false, state = "unsupported_platform", version = (string?)null, process_id = (int?)null };
-    }
 
     try
     {
         using var service = new System.ServiceProcess.ServiceController(serviceName);
         var stateText = service.Status.ToString().ToLowerInvariant();
-        string? executable = null;
         string? version = null;
         try
         {
@@ -306,15 +415,13 @@ static object InspectService(string serviceName)
             var image = key?.GetValue("ImagePath") as string;
             if (!string.IsNullOrWhiteSpace(image))
             {
-                executable = ExtractExecutable(image);
+                var executable = ExtractExecutable(image);
                 if (File.Exists(executable)) version = FileVersionInfo.GetVersionInfo(executable).ProductVersion;
             }
         }
         catch
         {
-            // Component presence/state remains useful even when metadata cannot be read.
         }
-
         return new { component = serviceName, service_name = serviceName, present = true, state = stateText, version, process_id = (int?)null };
     }
     catch (InvalidOperationException)
@@ -331,7 +438,6 @@ static string ExtractExecutable(string imagePath)
         var end = text.IndexOf('"', 1);
         if (end > 1) return text[1..end];
     }
-
     var exe = text.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
     return exe >= 0 ? text[..(exe + 4)].Trim() : text.Split(' ', 2)[0];
 }
