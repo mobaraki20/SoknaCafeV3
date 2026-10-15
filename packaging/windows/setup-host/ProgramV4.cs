@@ -92,7 +92,9 @@ internal static class ProgramV4
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var c in p.components)
         {
-            if (!Regex.IsMatch(c.component_id ?? "", "^[a-z][a-z0-9-]{1,63}$") || !ids.Add(c.component_id)) throw new HostPlanException("شناسه component تکراری یا نامعتبر است.");
+            var componentId = c.component_id ?? "";
+            if (!Regex.IsMatch(componentId, "^[a-z][a-z0-9-]{1,63}$") || !ids.Add(componentId)) throw new HostPlanException("شناسه component تکراری یا نامعتبر است.");
+            c.component_id = componentId;
             if (c.action is not ("KEEP" or "INSTALL" or "UPDATE" or "REPAIR" or "BLOCKED" or "PENDINGRESTART" or "PENDING_RESTART" or "NOACTIONOPTIONAL" or "NO_ACTION_OPTIONAL")) throw new HostPlanException("اقدام component معتبر نیست: " + c.component_id);
             if (c.action == "BLOCKED") throw new HostPlanException("برنامه شامل component مسدود است: " + c.component_id);
             if (!string.IsNullOrEmpty(c.target_sha256) && !Regex.IsMatch(c.target_sha256, "^[a-f0-9]{64}$")) throw new HostPlanException("هش هدف component معتبر نیست: " + c.component_id);
