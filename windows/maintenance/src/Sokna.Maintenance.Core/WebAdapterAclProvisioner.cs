@@ -87,16 +87,28 @@ public static class WebAdapterAclProvisioner
         }
     }
 
+    public static WebAdapterAclEvidence? ReconcileDescriptorAccess(MaintenancePaths paths)
+    {
+        if (!File.Exists(paths.WebAdapterAclEvidencePath)) return null;
+        var evidence = AtomicFile.ReadJson<WebAdapterAclEvidence>(paths.WebAdapterAclEvidencePath);
+        return ApplyDescriptorAccess(paths, evidence);
+    }
+
     public static WebAdapterAclEvidence ApplyDescriptorAccess(MaintenancePaths paths, WebAdapterAclEvidence evidence)
     {
-        if (!OperatingSystem.IsWindows() || evidence.State != "ready") return evidence;
+        if (!OperatingSystem.IsWindows()) return evidence;
 
         try
         {
             if (!File.Exists(paths.DescriptorPath))
                 throw new FileNotFoundException("Maintenance control-plane descriptor does not exist.", paths.DescriptorPath);
 
-            HardenDescriptor(paths.DescriptorPath, evidence.ServiceSid);
+            var descriptorSid = evidence.State == "ready" ? evidence.ServiceSid : null;
+            HardenDescriptor(paths.DescriptorPath, descriptorSid);
+
+            if (evidence.State != "ready")
+                return evidence;
+
             var updated = evidence with
             {
                 DescriptorReadGranted = true,
