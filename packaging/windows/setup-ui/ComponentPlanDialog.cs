@@ -132,6 +132,8 @@ internal sealed class InstallerResultDialog : Form
     internal InstallerResultDialog(bool success, string title, string summary, string diagnosticId, string failedComponent = "", string failedPhase = "", bool rollbackComplete = false, bool rebootRequired = false)
     {
         summary = Normalize(summary);
+        failedComponent = Normalize(failedComponent);
+        failedPhase = Normalize(failedPhase);
         Text = success ? "نتیجه عملیات" : "عملیات کامل نشد";
         StartPosition = FormStartPosition.CenterParent;
         BackColor = SetupPalette.Canvas; ForeColor = SetupPalette.Text; RightToLeft = RightToLeft.Yes; RightToLeftLayout = true;
@@ -149,7 +151,7 @@ internal sealed class InstallerResultDialog : Form
         Add(details, 3, "بازگشت تغییرات", success ? "لازم نبود" : rollbackComplete ? "کامل شد" : "نیاز به بررسی", true);
         Add(details, 4, "راه‌اندازی مجدد", rebootRequired ? "لازم است" : "لازم نیست", true);
         root.Controls.Add(details, 0, 2);
-        var hint = new Label { AutoSize = true, MaximumSize = new Size(600, 0), Text = success ? "وضعیت اجزا دوباره بررسی می‌شود." : "برای بررسی دقیق، «عیب‌یابی» را از Dashboard اجرا کنید؛ نیازی به CMD یا PowerShell نیست.", ForeColor = SetupPalette.Muted, Margin = new Padding(0, 12, 0, 10) };
+        var hint = new Label { AutoSize = true, MaximumSize = new Size(600, 0), Text = success ? "وضعیت اجزا دوباره بررسی می‌شود." : "برای بررسی دقیق، «عیب‌یابی» را از صفحه مدیریت اجرا کنید؛ نیازی به خط فرمان نیست.", ForeColor = SetupPalette.Muted, Margin = new Padding(0, 12, 0, 10) };
         root.Controls.Add(hint, 0, 3);
         var ok = new Button { Text = "بستن", DialogResult = DialogResult.OK, AutoSize = true, MinimumSize = new Size(96, 36), Anchor = AnchorStyles.Left, FlatStyle = FlatStyle.Flat, BackColor = SetupPalette.Brand, ForeColor = Color.White };
         ok.FlatAppearance.BorderSize = 0; root.Controls.Add(ok, 0, 4); AcceptButton = ok; Controls.Add(root);
@@ -159,7 +161,13 @@ internal sealed class InstallerResultDialog : Form
         .Replace("componentهای", "اجزای", StringComparison.Ordinal)
         .Replace("componentها", "اجزا", StringComparison.Ordinal)
         .Replace("component", "جزء", StringComparison.Ordinal)
+        .Replace("Health verification", "بررسی سلامت", StringComparison.OrdinalIgnoreCase)
         .Replace("health check", "بررسی سلامت", StringComparison.OrdinalIgnoreCase)
+        .Replace("Preflight", "بررسی اولیه", StringComparison.OrdinalIgnoreCase)
+        .Replace("Setup Host", "اجرای نصب", StringComparison.OrdinalIgnoreCase)
+        .Replace("Lifecycle", "اجرای تغییرات", StringComparison.OrdinalIgnoreCase)
+        .Replace("Bootstrap", "راه‌اندازی اولیه", StringComparison.OrdinalIgnoreCase)
+        .Replace("Result", "نتیجه", StringComparison.OrdinalIgnoreCase)
         .Replace("Running", "در حال اجرا", StringComparison.OrdinalIgnoreCase);
 
     private static void Add(TableLayoutPanel t, int row, string caption, string value, bool rtl)
