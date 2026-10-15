@@ -13,6 +13,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Sokna.Maintenance.Core\Sokna.Maintenance.Core.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
   </ItemGroup>
 </Project>
