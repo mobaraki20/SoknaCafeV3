@@ -5,6 +5,25 @@ $ErrorActionPreference='Stop'
 $RuntimeService='SoknaRuntime'
 $PrintService='SoknaPrintWorker'
 
+# This script is launched elevated from the Windows Services GUI. Keep the implementation
+# console hidden; all user-visible status belongs to the Dashboard and logs remain intact.
+try {
+    if(-not('SoknaSupport.ConsoleWindow' -as [type])){
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace SoknaSupport {
+  public static class ConsoleWindow {
+    [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  }
+}
+'@ -Language CSharp -ErrorAction Stop
+    }
+    $console=[SoknaSupport.ConsoleWindow]::GetConsoleWindow()
+    if($console-ne[IntPtr]::Zero){[void][SoknaSupport.ConsoleWindow]::ShowWindow($console,0)}
+}catch{}
+
 function Assert-Admin {
     $id=[Security.Principal.WindowsIdentity]::GetCurrent()
     $principal=New-Object Security.Principal.WindowsPrincipal($id)
