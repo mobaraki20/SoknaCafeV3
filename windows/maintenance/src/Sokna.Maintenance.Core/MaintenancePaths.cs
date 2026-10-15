@@ -7,6 +7,7 @@ public sealed record MaintenancePaths(string DataRoot)
     public string StatePath => Path.Combine(DataRoot, "supervisor-state.json");
     public string LockPath => Path.Combine(DataRoot, "supervisor.lock");
     public string DescriptorPath => Path.Combine(DataRoot, "control-plane.json");
+    public string WebAdapterAclEvidencePath => Path.Combine(DataRoot, "web-adapter-acl.json");
     public string WebAdapterKeyPath => Path.Combine(SecretsRoot, "web-adapter.key");
     public string RecoveryConsoleKeyPath => Path.Combine(SecretsRoot, "recovery-console.key");
 
