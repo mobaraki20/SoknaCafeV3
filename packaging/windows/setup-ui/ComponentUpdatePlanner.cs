@@ -52,11 +52,11 @@ internal static class ComponentUpdatePlanner
         installRoot = Path.GetFullPath(installRoot);
         dataRoot = Path.GetFullPath(dataRoot);
         var manifestPath = Path.Combine(shellRoot, ManifestFileName);
-        if (!File.Exists(manifestPath)) throw new InvalidOperationException("مانیفست componentهای Windows Services پیدا نشد.");
+        if (!File.Exists(manifestPath)) throw new InvalidOperationException("مانیفست اجزای Windows Services پیدا نشد.");
         using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
         var root = doc.RootElement;
         if (root.GetProperty("format").GetString() != "sokna-windows-component-manifest-v2" || root.GetProperty("schema_version").GetInt32() != 2)
-            throw new InvalidOperationException("نسخه مانیفست componentها پشتیبانی نمی‌شود.");
+            throw new InvalidOperationException("نسخه مانیفست اجزا پشتیبانی نمی‌شود.");
         var packageVersion = root.GetProperty("package_version").GetString() ?? "";
         var paired = ReadPaired(dataRoot);
         var rows = new List<ComponentPlanRow>();
@@ -91,10 +91,10 @@ internal static class ComponentUpdatePlanner
         var group = c.TryGetProperty("transaction_group", out var tg) ? tg.GetString() ?? id : id;
         var targetPath = Path.GetFullPath(Path.Combine(shellRoot, payloadRel));
         var installedPath = Path.GetFullPath(Path.Combine(installRoot, installedRel));
-        if (!IsUnder(targetPath, shellRoot) || !IsUnder(installedPath, installRoot)) throw new InvalidOperationException("مسیر component خارج از مرز بسته است.");
+        if (!IsUnder(targetPath, shellRoot) || !IsUnder(installedPath, installRoot)) throw new InvalidOperationException("مسیر جزء خارج از مرز بسته است.");
         var targetHash = HashIfExists(targetPath);
         var installedHash = HashIfExists(installedPath);
-        var currentVersion = FileVersion(installedPath);
+        var currentVersion = LifecycleFileVersion(installedPath);
         var service = string.IsNullOrWhiteSpace(serviceName) ? new ServiceProbe(false, "n/a", "") : ProbeService(serviceName);
         var installed = File.Exists(installedPath) && (string.IsNullOrWhiteSpace(serviceName) || service.Installed);
         var unsafeServiceOwnership = !string.IsNullOrWhiteSpace(serviceName) && service.Installed && !ServiceImageOwnedByInstallRoot(service.ImagePath, installRoot);
@@ -107,7 +107,7 @@ internal static class ComponentUpdatePlanner
         string reason;
         if (!File.Exists(targetPath) || string.IsNullOrWhiteSpace(targetHash))
         {
-            action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = "فایل هدف component داخل بسته قابل تأیید نیست.";
+            action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = "فایل هدف جزء داخل بسته قابل تأیید نیست.";
         }
         else if (unsafeServiceOwnership)
         {
@@ -117,7 +117,7 @@ internal static class ComponentUpdatePlanner
         {
             action = required ? ComponentAction.Install : ComponentAction.NoActionOptional;
             state = required ? "install_required" : "not_installed_optional";
-            reason = required ? "این component روی سیستم نصب نیست." : "component اختیاری نصب نشده است.";
+            reason = required ? "این جزء روی سیستم نصب نیست." : "جزء اختیاری نصب نشده است.";
         }
         else
         {
@@ -213,14 +213,19 @@ internal static class ComponentUpdatePlanner
         return cut >= 0 ? value[..cut] : value;
     }
 
-    private static string FileVersion(string path)
+    // Lifecycle comparison must use the executable FileVersion. ProductVersion can carry
+    // informational/provenance text in older builds and must never turn engineering lineage
+    // into a fake semantic upgrade/downgrade decision.
+    private static string LifecycleFileVersion(string path)
     {
         try
         {
             if (!File.Exists(path)) return "—";
-            var v = FileVersionInfo.GetVersionInfo(path).ProductVersion ?? FileVersionInfo.GetVersionInfo(path).FileVersion ?? "";
-            var cut = v.IndexOf('+');
-            return (cut >= 0 ? v[..cut] : v).Trim();
+            var info = FileVersionInfo.GetVersionInfo(path);
+            var raw = info.FileVersion ?? "";
+            if (string.IsNullOrWhiteSpace(raw)) raw = info.ProductVersion ?? "";
+            var normalized = NormalizeVersion(raw);
+            return string.IsNullOrWhiteSpace(normalized) ? "نامشخص" : normalized;
         }
         catch { return "نامشخص"; }
     }
