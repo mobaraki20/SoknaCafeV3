@@ -33,6 +33,15 @@ $owned=@{
  'packaging\windows\Sokna.ico'='Sokna.ico'
 }
 foreach($rel in $owned.Keys){$src=Join-Path $RepoRoot $rel;if(-not(Test-Path $src -PathType Leaf)){throw "Installer-owned source missing: $rel"};Copy-Item $src (Join-Path $OutputRoot $owned[$rel]) -Force}
+
+# Windows PowerShell 5.1 treats BOM-less UTF-8 source as the active ANSI code page. Normalize every
+# packaged PowerShell entrypoint to UTF-8 with BOM so diagnostics/evidence strings survive exactly.
+$utf8Bom=New-Object Text.UTF8Encoding($true)
+foreach($ps1 in Get-ChildItem $OutputRoot -Filter '*.ps1' -File){
+  $raw=[IO.File]::ReadAllText($ps1.FullName,[Text.Encoding]::UTF8)
+  [IO.File]::WriteAllText($ps1.FullName,$raw,$utf8Bom)
+}
+
 $payload=Join-Path $OutputRoot '_payload';New-Item -ItemType Directory -Path (Join-Path $payload 'runtime'),(Join-Path $payload 'maintenance\app'),(Join-Path $payload 'maintenance\recovery') -Force|Out-Null
 Copy-Item $RuntimeServiceExe (Join-Path $payload 'runtime\SoknaRuntimeService.exe') -Force
 Copy-Item $SetupHostExe (Join-Path $OutputRoot 'SoknaSetupHost.exe') -Force
