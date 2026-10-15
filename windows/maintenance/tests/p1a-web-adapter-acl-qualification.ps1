@@ -76,7 +76,7 @@ $fakeHttpd=Join-Path $apacheRoot 'httpd.exe'
 Copy-Item -LiteralPath "$env:SystemRoot\System32\cmd.exe" -Destination $fakeHttpd
 $binPath='"'+$fakeHttpd+'" -k runservice -n "SoknaApache"'
 $p=$null
-$probeUser='SoknaAclProbe'+([guid]::NewGuid().ToString('N').Substring(0,8))
+$probeUser='SkAcl'+([guid]::NewGuid().ToString('N').Substring(0,8))
 $probePassword='S0kna!'+([guid]::NewGuid().ToString('N'))+'aA9'
 try {
   New-Service -Name $serviceName -BinaryPathName $binPath -DisplayName 'SOKNA Apache Identity Fixture' -StartupType Manual|Out-Null
