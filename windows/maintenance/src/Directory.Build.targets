@@ -1,0 +1,7 @@
+<Project>
+  <!-- Lifecycle-visible ProductVersion must remain semantic and match Version/FileVersion.
+       Engineering provenance belongs in package manifests/source_git_sha, not in ProductVersion. -->
+  <PropertyGroup>
+    <InformationalVersion>$(Version)</InformationalVersion>
+  </PropertyGroup>
+</Project>
