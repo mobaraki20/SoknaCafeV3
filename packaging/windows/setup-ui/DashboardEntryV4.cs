@@ -25,51 +25,61 @@ internal static class DashboardEntryV4
     private static int RunLayoutSelfTest(string output)
     {
         Directory.CreateDirectory(output);
-        var plan = TestFixtures.UpgradePlan();
-        foreach (var size in new[] { new Size(960, 600), new Size(1100, 660), new Size(1280, 720) })
+        try
         {
-            using var form = new WindowsServicesDashboardV3(null) { ClientSize = size, StartPosition = FormStartPosition.Manual, Location = new Point(20, 20) };
-            form.Show();
-            Application.DoEvents();
-            form.ApplyTestPlan(plan);
-            form.PerformLayout();
-            Application.DoEvents();
-            var errors = LayoutAudit(form).ToArray();
-            File.WriteAllLines(Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.txt"), errors.Length == 0 ? ["PASS"] : errors);
-            CapturePainted(form, Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.png"), 800);
-            if (errors.Length > 0) throw new InvalidOperationException(string.Join(" | ", errors));
-            form.Hide();
-        }
+            var plan = TestFixtures.UpgradePlan();
+            foreach (var size in new[] { new Size(960, 600), new Size(1100, 660), new Size(1280, 720) })
+            {
+                using var form = new WindowsServicesDashboardV3(null) { ClientSize = size, StartPosition = FormStartPosition.Manual, Location = new Point(20, 20) };
+                form.Show();
+                Application.DoEvents();
+                form.ApplyTestPlan(plan);
+                form.PerformLayout();
+                Application.DoEvents();
+                var errors = LayoutAudit(form).ToArray();
+                File.WriteAllLines(Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.txt"), errors.Length == 0 ? ["PASS"] : errors);
+                CapturePainted(form, Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.png"), 800);
+                if (errors.Length > 0) throw new InvalidOperationException(string.Join(" | ", errors));
+                form.Hide();
+            }
 
-        using (var dialog = new ComponentPlanDialog(plan) { StartPosition = FormStartPosition.Manual, Location = new Point(30, 30) })
+            using (var dialog = new ComponentPlanDialog(plan) { StartPosition = FormStartPosition.Manual, Location = new Point(30, 30) })
+            {
+                dialog.Show();
+                Application.DoEvents();
+                dialog.PerformLayout();
+                Application.DoEvents();
+                var errors = LayoutAudit(dialog).ToArray();
+                File.WriteAllLines(Path.Combine(output, "component-plan.txt"), errors.Length == 0 ? ["PASS"] : errors);
+                CapturePainted(dialog, Path.Combine(output, "component-plan.png"), 25);
+                if (errors.Length > 0) throw new InvalidOperationException(string.Join(" | ", errors));
+                dialog.Hide();
+            }
+
+            using (var result = new InstallerResultDialog(false, "Maintenance راه‌اندازی نشد", "ثبت سرویس انجام شد اما health check در زمان مجاز به وضعیت Running نرسید.", "ins-20261015T120000Z-abc123def0", "Maintenance", "Health verification", true, false)
+            { StartPosition = FormStartPosition.Manual, Location = new Point(40, 40) })
+            {
+                result.Show();
+                Application.DoEvents();
+                result.PerformLayout();
+                Application.DoEvents();
+                var errors = LayoutAudit(result).ToArray();
+                File.WriteAllLines(Path.Combine(output, "failure-result.txt"), errors.Length == 0 ? ["PASS"] : errors);
+                CapturePainted(result, Path.Combine(output, "failure-result.png"), 25);
+                if (errors.Length > 0) throw new InvalidOperationException(string.Join(" | ", errors));
+                result.Hide();
+            }
+
+            File.WriteAllText(Path.Combine(output, "layout-self-test.txt"), "PASS");
+            Console.WriteLine("SOKNA Dashboard V4 painted-layout self-test PASS");
+            return 0;
+        }
+        catch (Exception exception)
         {
-            dialog.Show();
-            Application.DoEvents();
-            dialog.PerformLayout();
-            Application.DoEvents();
-            var errors = LayoutAudit(dialog).ToArray();
-            File.WriteAllLines(Path.Combine(output, "component-plan.txt"), errors.Length == 0 ? ["PASS"] : errors);
-            CapturePainted(dialog, Path.Combine(output, "component-plan.png"), 25);
-            if (errors.Length > 0) throw new InvalidOperationException(string.Join(" | ", errors));
-            dialog.Hide();
+            var diagnostic = exception.GetType().FullName + Environment.NewLine + exception.Message + Environment.NewLine + exception.StackTrace;
+            try { File.WriteAllText(Path.Combine(output, "layout-self-test-exception.txt"), diagnostic); } catch { }
+            return 11;
         }
-
-        using (var result = new InstallerResultDialog(false, "Maintenance راه‌اندازی نشد", "ثبت سرویس انجام شد اما health check در زمان مجاز به وضعیت Running نرسید.", "ins-20261015T120000Z-abc123def0", "Maintenance", "Health verification", true, false)
-        { StartPosition = FormStartPosition.Manual, Location = new Point(40, 40) })
-        {
-            result.Show();
-            Application.DoEvents();
-            result.PerformLayout();
-            Application.DoEvents();
-            var errors = LayoutAudit(result).ToArray();
-            File.WriteAllLines(Path.Combine(output, "failure-result.txt"), errors.Length == 0 ? ["PASS"] : errors);
-            CapturePainted(result, Path.Combine(output, "failure-result.png"), 25);
-            if (errors.Length > 0) throw new InvalidOperationException(string.Join(" | ", errors));
-            result.Hide();
-        }
-
-        Console.WriteLine("SOKNA Dashboard V4 painted-layout self-test PASS");
-        return 0;
     }
 
     private static IEnumerable<string> LayoutAudit(Control root)
