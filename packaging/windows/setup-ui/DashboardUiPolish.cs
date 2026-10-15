@@ -132,7 +132,17 @@ internal static class DashboardUiPolish
         var normalized = text
             .Replace("componentها", "اجزا", StringComparison.Ordinal)
             .Replace("componentهای", "اجزای", StringComparison.Ordinal)
-            .Replace("هر component", "هر جزء", StringComparison.Ordinal);
+            .Replace("هر component", "هر جزء", StringComparison.Ordinal)
+            .Replace("سلامت سرویس‌ها", "وضعیت سرویس‌ها", StringComparison.Ordinal)
+            .Replace("سلامت", "وضعیت سرویس", StringComparison.Ordinal);
+
+        if (string.Equals(normalized, "فعال", StringComparison.Ordinal))
+            normalized = "در حال اجرا";
+
+        var parts = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 4 && parts[1] == "از" && parts[3] == "آماده" && int.TryParse(parts[0], out _) && int.TryParse(parts[2], out _))
+            normalized = $"{parts[0]} از {parts[2]} در حال اجرا";
+
         if (!string.Equals(text, normalized, StringComparison.Ordinal))
             label.Text = normalized;
     }
