@@ -2,7 +2,12 @@ param([Parameter(Mandatory=$true)][string]$PlanFile)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
-function Full([string]$p,[string]$label){if([string]::IsNullOrWhiteSpace($p)-or-not[IO.Path]::IsPathFullyQualified($p)){throw "$label must be absolute."};[IO.Path]::GetFullPath($p)}
+function Full([string]$p,[string]$label){
+  if([string]::IsNullOrWhiteSpace($p)){throw "$label must be absolute."}
+  try{$root=[IO.Path]::GetPathRoot($p);$full=[IO.Path]::GetFullPath($p)}catch{throw "$label must be an absolute valid path."}
+  if([string]::IsNullOrWhiteSpace($root)-or-not(($root-match'^[A-Za-z]:[\\/]')-or$root.StartsWith('\\'))){throw "$label must be absolute."}
+  return $full
+}
 function Safe([string]$v){$v=([string]$v-replace'[\r\n\0]',' ').Trim();$v=$v-replace'(?i)ws1_[a-f0-9]{24}_[a-f0-9]{48}','[PAIRING_CODE_REDACTED]';$v=$v-replace'(?i)(token|secret|credential|password)(\s*[:=]\s*)[^\s,;\}\]]+','$1$2[REDACTED]';if($v.Length-gt1200){$v=$v.Substring(0,1200)};$v}
 function Sha([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($p).ProductVersion;if(-not$v){$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion};if($v){return ([string]$v).Split('+')[0]};''}
