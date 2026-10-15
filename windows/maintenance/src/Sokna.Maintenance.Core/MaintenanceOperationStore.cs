@@ -11,6 +11,7 @@ public sealed record MaintenanceOperation(
     [property: JsonPropertyName("idempotency_key")] string IdempotencyKey,
     [property: JsonPropertyName("canonical_request_sha256")] string CanonicalRequestSha256,
     [property: JsonPropertyName("operation_type")] string OperationType,
+    [property: JsonPropertyName("operator_id")] string OperatorId,
     [property: JsonPropertyName("state")] string State,
     [property: JsonPropertyName("package_ref")] string PackageRef,
     [property: JsonPropertyName("created_at_utc")] DateTimeOffset CreatedAtUtc,
@@ -33,15 +34,16 @@ public sealed class MaintenanceOperationStore
         Directory.CreateDirectory(_paths.OperationsRoot);
     }
 
-    public static string CanonicalRequestHash(string operationType, string packageRef)
+    public static string CanonicalRequestHash(string operationType, string packageRef, string operatorId)
     {
-        var canonical = $"{operationType.Trim().ToLowerInvariant()}\n{packageRef.Trim()}";
+        var canonical = $"{operationType.Trim().ToLowerInvariant()}\n{packageRef.Trim()}\n{operatorId.Trim()}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
     }
 
-    public (MaintenanceOperation Operation, bool Created) GetOrCreate(string idempotencyKey, string requestHash, string operationType, string packageRef)
+    public (MaintenanceOperation Operation, bool Created) GetOrCreate(string idempotencyKey, string requestHash, string operationType, string packageRef, string operatorId)
     {
         ValidateIdempotencyKey(idempotencyKey);
+        ValidateOperatorId(operatorId);
         lock (_sync)
         {
             var indexPath = IndexPath(idempotencyKey);
@@ -49,7 +51,7 @@ public sealed class MaintenanceOperationStore
             {
                 var operationId = File.ReadAllText(indexPath).Trim();
                 var existing = Get(operationId) ?? throw new InvalidDataException("Idempotency index points to a missing maintenance operation.");
-                if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(existing.CanonicalRequestSha256), Convert.FromHexString(requestHash)))
+                if (!FixedHashEquals(existing.CanonicalRequestSha256, requestHash))
                     throw new InvalidDataException("Idempotency key was already used for a different maintenance request.");
                 return (existing, false);
             }
@@ -57,7 +59,7 @@ public sealed class MaintenanceOperationStore
             var now = DateTimeOffset.UtcNow;
             var operation = new MaintenanceOperation(
                 "sokna-maintenance-operation-v1", 1, Guid.NewGuid().ToString("N"), idempotencyKey, requestHash,
-                operationType, "accepted", packageRef, now, now, 0, null, null, null, false, false);
+                operationType, operatorId, "accepted", packageRef, now, now, 0, null, null, null, false, false);
             AtomicFile.WriteJson(OperationPath(operation.OperationId), operation);
             AtomicWriteText(indexPath, operation.OperationId + Environment.NewLine);
             return (operation, true);
@@ -87,7 +89,7 @@ public sealed class MaintenanceOperationStore
         lock (_sync)
         {
             var current = Get(operation.OperationId) ?? throw new InvalidDataException("Maintenance operation disappeared during execution.");
-            if (current.CanonicalRequestSha256 != operation.CanonicalRequestSha256 || current.IdempotencyKey != operation.IdempotencyKey)
+            if (!FixedHashEquals(current.CanonicalRequestSha256, operation.CanonicalRequestSha256) || current.IdempotencyKey != operation.IdempotencyKey)
                 throw new InvalidDataException("Maintenance operation identity changed unexpectedly.");
             var updated = current with
             {
@@ -117,13 +119,32 @@ public sealed class MaintenanceOperationStore
         if (!IsSafeToken(key, 128)) throw new InvalidDataException("Idempotency key is invalid.");
     }
 
+    private static void ValidateOperatorId(string value)
+    {
+        if (!IsSafeToken(value, 128)) throw new InvalidDataException("operator_id is invalid.");
+    }
+
     private static bool IsSafeToken(string value, int maxLength)
-        => !string.IsNullOrWhiteSpace(value) && value.Length <= maxLength && value.All(static c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.');
+        => !string.IsNullOrWhiteSpace(value) && value.Length <= maxLength && value.All(static c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' or ':');
+
+    private static bool FixedHashEquals(string left, string right)
+    {
+        try
+        {
+            var a = Convert.FromHexString(left);
+            var b = Convert.FromHexString(right);
+            return a.Length == b.Length && CryptographicOperations.FixedTimeEquals(a, b);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
 
     private static void ValidateStored(MaintenanceOperation operation)
     {
         if (operation.Format != "sokna-maintenance-operation-v1" || operation.SchemaVersion != 1 ||
-            !IsSafeToken(operation.OperationId, 64) || !IsSafeToken(operation.IdempotencyKey, 128) ||
+            !IsSafeToken(operation.OperationId, 64) || !IsSafeToken(operation.IdempotencyKey, 128) || !IsSafeToken(operation.OperatorId, 128) ||
             operation.CanonicalRequestSha256.Length != 64 || operation.ActivationPerformed || operation.DatabaseMutationPerformed)
             throw new InvalidDataException("Maintenance operation record is invalid or incompatible with P2B staging-only policy.");
     }
