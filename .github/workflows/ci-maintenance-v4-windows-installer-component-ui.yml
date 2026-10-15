@@ -32,22 +32,28 @@ jobs:
           dotnet build packaging/windows/setup-host/Sokna.SetupHost.csproj -c Release
           if($LASTEXITCODE-ne0){throw 'Setup Host build failed.'}
           dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/setup-ui
+          if($LASTEXITCODE-ne0){throw 'Setup UI publish failed.'}
           dotnet publish packaging/windows/setup-host/Sokna.SetupHost.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/setup-host
+          if($LASTEXITCODE-ne0){throw 'Setup Host publish failed.'}
       - name: Planner and Host self-tests
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          & out/setup-ui/SoknaSetupUi.exe --planner-self-test
-          if($LASTEXITCODE-ne0){throw 'Planner self-test failed.'}
-          & out/setup-host/SoknaSetupHost.exe --host-self-test
-          if($LASTEXITCODE-ne0){throw 'Host self-test failed.'}
+          $ui=(Resolve-Path out/setup-ui/SoknaSetupUi.exe).Path
+          $hostExe=(Resolve-Path out/setup-host/SoknaSetupHost.exe).Path
+          $p=Start-Process -FilePath $ui -ArgumentList '--planner-self-test' -Wait -PassThru
+          if($p.ExitCode-ne0){throw "Planner self-test failed: $($p.ExitCode)"}
+          $p=Start-Process -FilePath $hostExe -ArgumentList '--host-self-test' -Wait -PassThru -NoNewWindow
+          if($p.ExitCode-ne0){throw "Host self-test failed: $($p.ExitCode)"}
       - name: Render WinForms screenshot qualification set
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           New-Item -ItemType Directory -Path out/ui-screenshots -Force|Out-Null
-          & out/setup-ui/SoknaSetupUi.exe --layout-self-test (Resolve-Path out/ui-screenshots).Path
-          if($LASTEXITCODE-ne0){throw 'Layout self-test failed.'}
+          $ui=(Resolve-Path out/setup-ui/SoknaSetupUi.exe).Path
+          $screenRoot=(Resolve-Path out/ui-screenshots).Path
+          $p=Start-Process -FilePath $ui -ArgumentList @('--layout-self-test',('"'+$screenRoot+'"')) -Wait -PassThru
+          if($p.ExitCode-ne0){throw "Layout self-test failed: $($p.ExitCode)"}
           $reports=Get-ChildItem out/ui-screenshots -Filter '*.txt'
           foreach($report in $reports){$raw=Get-Content $report.FullName -Raw;if($raw.Trim()-ne'PASS'){throw "Layout report failed: $($report.Name) / $raw"}}
           if(@(Get-ChildItem out/ui-screenshots -Filter '*.png').Count-lt5){throw 'Expected screenshot evidence missing.'}
@@ -55,8 +61,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $script=Get-Content packaging/windows/scripts/setup-windows-components-v4.ps1 -Raw
-          foreach($needle in @("action-eq'KEEP'","no_stop_no_copy_no_registration_no_restart","SoknaMaintenanceSupervisor","rollback_started","install-result.json")){if(-not$script.Contains($needle)){throw "Lifecycle policy marker missing: $needle"}}
+          $script=Get-Content packaging/windows/scripts/setup-windows-components-v5.ps1 -Raw
+          foreach($needle in @("Action-eq'KEEP'","no_stop_no_copy_no_registration_no_restart","SoknaMaintenanceSupervisor","rollback_started","install-result.json","service_image_outside_owned_root")){if(-not$script.Contains($needle)){throw "Lifecycle policy marker missing: $needle"}}
           $support=Get-Content packaging/windows/scripts/collect-support-v2.ps1 -Raw
           foreach($needle in @('Installer\\logs','SoknaMaintenanceSupervisor','PAIRING_CODE_REDACTED')){if(-not$support.Contains($needle)){throw "Support policy marker missing: $needle"}}
       - name: Freeze first-pass UI evidence
