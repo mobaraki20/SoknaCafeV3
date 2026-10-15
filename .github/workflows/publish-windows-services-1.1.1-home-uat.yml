@@ -1,0 +1,97 @@
+name: Publish Windows Services 1.1.1 Home UAT Pre-release
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-installer-component-ui
+    paths:
+      - .github/workflows/publish-windows-services-1.1.1-home-uat.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact qualified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir artifact
+          gh run download 38700386139 \
+            --repo mobaraki20/SoknaCafeV3 \
+            --name maintenance-v4-windows-installer-1.1.1-engineering-candidate \
+            --dir artifact
+          find artifact -maxdepth 5 -type f -printf '%p\n'
+
+      - name: Locate installer and verify identity
+        id: installer
+        run: |
+          set -euo pipefail
+          exe="$(find artifact -type f -name 'SOKNA-Windows-Services-Setup-1.1.1.exe' -print -quit)"
+          test -n "$exe"
+          sha="$(sha256sum "$exe" | awk '{print $1}')"
+          size="$(stat -c%s "$exe")"
+          echo "path=$exe" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+          echo "Installer: $exe"
+          echo "SHA256: $sha"
+          echo "Size: $size"
+
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTALLER: ${{ steps.installer.outputs.path }}
+          SHA256: ${{ steps.installer.outputs.sha256 }}
+          SIZE: ${{ steps.installer.outputs.size }}
+        run: |
+          set -euo pipefail
+          tag='windows-services-1.1.1-home-uat'
+          target='dd8df66a2fd5f91269e21319cf629076371f97d6'
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          cat > "$notes_file" <<EOF
+          ## SOKNA Windows Services 1.1.1 — Home UAT
+
+          **PRE-RELEASE / HOME UAT ONLY — NOT PRODUCTION / NOT FINAL**
+
+          Qualified source commit: \`$target\`
+          Package CI: run \`38700386139\` — PASS
+          UI CI: run \`38700386135\` — PASS
+
+          This build contains the Home UAT fixes for:
+          - hidden Setup Host lifecycle execution (no visible console window),
+          - semantic component version identity for Maintenance,
+          - Windows PowerShell 5.1 Restart Manager diagnostics compatibility,
+          - corrected Windows service-state wording and localized result details.
+
+          Installer SHA256: \`$SHA256\`
+          Installer size: \`$SIZE\` bytes
+
+          This pre-release does not represent Cafe Real-Host UAT or Production approval.
+          EOF
+
+          if gh release view "$tag" --repo mobaraki20/SoknaCafeV3 >/dev/null 2>&1; then
+            gh release upload "$tag" "$INSTALLER" --repo mobaraki20/SoknaCafeV3 --clobber
+            gh release edit "$tag" --repo mobaraki20/SoknaCafeV3 --prerelease --title 'SOKNA Windows Services 1.1.1 — Home UAT' --notes-file "$notes_file"
+          else
+            gh release create "$tag" "$INSTALLER" \
+              --repo mobaraki20/SoknaCafeV3 \
+              --target "$target" \
+              --title 'SOKNA Windows Services 1.1.1 — Home UAT' \
+              --notes-file "$notes_file" \
+              --prerelease
+          fi
+
+      - name: Verify release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view windows-services-1.1.1-home-uat \
+            --repo mobaraki20/SoknaCafeV3 \
+            --json tagName,isPrerelease,assets,url
