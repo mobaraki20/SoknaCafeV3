@@ -18,7 +18,9 @@ internal static class DashboardEntryV4
             return 0;
         }
         var telemetry = InstallerTelemetry.Start();
-        Application.Run(new WindowsServicesDashboardV3(telemetry));
+        using var form = new WindowsServicesDashboardV3(telemetry);
+        DashboardUiPolish.Apply(form);
+        Application.Run(form);
         return 0;
     }
 
@@ -31,6 +33,7 @@ internal static class DashboardEntryV4
             foreach (var size in new[] { new Size(960, 600), new Size(1100, 660), new Size(1280, 720) })
             {
                 using var form = new WindowsServicesDashboardV3(null) { ClientSize = size, StartPosition = FormStartPosition.Manual, Location = new Point(20, 20) };
+                DashboardUiPolish.Apply(form);
                 form.Show();
                 Application.DoEvents();
                 form.ApplyTestPlan(plan);
@@ -109,9 +112,10 @@ internal static class DashboardEntryV4
     {
         form.Refresh();
         Application.DoEvents();
-        var size = form.ClientSize;
+        var surface = form.Controls.Count > 0 ? form.Controls[0] : form;
+        var size = surface.ClientSize;
         using var bmp = new Bitmap(Math.Max(1, size.Width), Math.Max(1, size.Height), PixelFormat.Format32bppArgb);
-        form.DrawToBitmap(bmp, new Rectangle(Point.Empty, size));
+        surface.DrawToBitmap(bmp, new Rectangle(Point.Empty, size));
 
         var brand = SetupPalette.Brand;
         var brandPixels = 0;
