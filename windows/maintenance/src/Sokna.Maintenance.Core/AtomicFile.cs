@@ -25,6 +25,12 @@ public static class AtomicFile
         }
 
         File.Move(temp, path, overwrite: true);
+
+        if (Path.GetFileName(path).Equals("control-plane.json", StringComparison.OrdinalIgnoreCase))
+        {
+            var paths = new MaintenancePaths(directory);
+            WebAdapterAclProvisioner.ReconcileDescriptorAccess(paths);
+        }
     }
 
     public static T ReadJson<T>(string path)
