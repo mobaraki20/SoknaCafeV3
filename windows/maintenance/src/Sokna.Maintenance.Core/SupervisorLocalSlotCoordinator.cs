@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -7,12 +9,83 @@ namespace Sokna.Maintenance.Core;
 public sealed record LocalSlotHomeCycleRequest(
     [property: JsonPropertyName("expected_build")] string ExpectedBuild,
     [property: JsonPropertyName("expected_managed_files")] int ExpectedManagedFiles,
+    [property: JsonPropertyName("expected_managed_tree_sha256")] string ExpectedManagedTreeSha256,
     [property: JsonPropertyName("operator_id")] string OperatorId);
 
 public sealed record LocalSlotOperationResult(
     [property: JsonPropertyName("operation")] MaintenanceOperation Operation,
     [property: JsonPropertyName("created")] bool Created,
     [property: JsonPropertyName("reconciled")] bool Reconciled);
+
+public static class LocalManagedTreeAttestation
+{
+    public static string Compute(string webRoot, int expectedManagedFiles)
+    {
+        webRoot = Path.GetFullPath(webRoot);
+        var inventoryPath = Path.Combine(webRoot, "resources", "local-managed-files-v1.json");
+        if (!File.Exists(inventoryPath)) throw new FileNotFoundException("Current release managed inventory is missing.", inventoryPath);
+        using var document = JsonDocument.Parse(File.ReadAllBytes(inventoryPath));
+        var root = document.RootElement;
+        if (!root.TryGetProperty("format", out var format) || format.GetString() != "sokna-local-managed-files-v1")
+            throw new InvalidDataException("Managed inventory format is invalid.");
+        if (!root.TryGetProperty("files", out var files) || files.ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException("Managed inventory files array is invalid.");
+
+        var normalized = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in files.EnumerateArray())
+        {
+            var rel = (item.GetString() ?? string.Empty).Replace('\\', '/').TrimStart('/');
+            if (string.IsNullOrWhiteSpace(rel) || Path.IsPathRooted(rel) || rel.Split('/').Any(static part => part is "" or "." or ".."))
+                throw new InvalidDataException("Managed inventory contains an unsafe relative path.");
+            if (!seen.Add(rel)) throw new InvalidDataException($"Managed inventory contains a duplicate path: {rel}");
+            normalized.Add(rel);
+        }
+        if (normalized.Count != expectedManagedFiles)
+            throw new InvalidDataException($"Managed inventory count mismatch. Expected {expectedManagedFiles}, found {normalized.Count}.");
+
+        using var aggregate = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var rel in normalized.OrderBy(static value => value, StringComparer.Ordinal))
+        {
+            var fullPath = Path.Combine(webRoot, rel.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(fullPath)) throw new FileNotFoundException($"Managed Local file is missing: {rel}", fullPath);
+            var fileHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(fullPath))).ToLowerInvariant();
+            aggregate.AppendData(Encoding.UTF8.GetBytes(rel + "\0" + fileHash + "\n"));
+        }
+        return Convert.ToHexString(aggregate.GetHashAndReset()).ToLowerInvariant();
+    }
+
+    public static string RequireExact(string webRoot, int expectedManagedFiles, string expectedSha256)
+    {
+        expectedSha256 = NormalizeSha256(expectedSha256);
+        var actual = Compute(webRoot, expectedManagedFiles);
+        if (!FixedTimeHexEquals(actual, expectedSha256))
+            throw new InvalidDataException($"Managed Local tree digest mismatch. Expected {expectedSha256}, found {actual}.");
+        return actual;
+    }
+
+    public static string NormalizeSha256(string value)
+    {
+        value = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (value.Length != 64 || value.Any(static c => !char.IsAsciiHexDigit(c)))
+            throw new InvalidDataException("expected_managed_tree_sha256 is invalid.");
+        return value;
+    }
+
+    private static bool FixedTimeHexEquals(string left, string right)
+    {
+        try
+        {
+            var a = Convert.FromHexString(left);
+            var b = Convert.FromHexString(right);
+            return a.Length == b.Length && CryptographicOperations.FixedTimeEquals(a, b);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+}
 
 public sealed class SupervisorLocalSlotCoordinator
 {
@@ -36,13 +109,14 @@ public sealed class SupervisorLocalSlotCoordinator
         _engineExecutable = Path.GetFullPath(engineExecutable);
     }
 
-    public LocalSlotOperationResult RunHomeCycle(string expectedBuild, int expectedManagedFiles, string operatorId, string idempotencyKey)
+    public LocalSlotOperationResult RunHomeCycle(string expectedBuild, int expectedManagedFiles, string expectedManagedTreeSha256, string operatorId, string idempotencyKey)
     {
         expectedBuild = NormalizeBuild(expectedBuild);
+        expectedManagedTreeSha256 = LocalManagedTreeAttestation.NormalizeSha256(expectedManagedTreeSha256);
         operatorId = NormalizeOperatorId(operatorId);
         if (expectedManagedFiles < 1 || expectedManagedFiles > 20_000) throw new InvalidDataException("expected_managed_files is invalid.");
 
-        var requestRef = $"phase3-local-slots:{expectedBuild}:{expectedManagedFiles}";
+        var requestRef = $"phase3-local-slots:{expectedBuild}:{expectedManagedFiles}:{expectedManagedTreeSha256}";
         var requestHash = MaintenanceOperationStore.CanonicalRequestHash("update.local-slot-home-cycle", requestRef, operatorId);
         var (operation, created) = _operations.GetOrCreate(idempotencyKey, requestHash, "update.local-slot-home-cycle", requestRef, operatorId);
         if (operation.State == "committed") return new(operation, created, Reconciled: !created);
@@ -70,6 +144,8 @@ public sealed class SupervisorLocalSlotCoordinator
         start.ArgumentList.Add(expectedBuild);
         start.ArgumentList.Add("--expected-managed-files");
         start.ArgumentList.Add(expectedManagedFiles.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        start.ArgumentList.Add("--expected-managed-tree-sha256");
+        start.ArgumentList.Add(expectedManagedTreeSha256);
         start.ArgumentList.Add("--data-root");
         start.ArgumentList.Add(_paths.DataRoot);
 
@@ -134,7 +210,9 @@ public sealed class SupervisorLocalSlotCoordinator
             if (!root.TryGetProperty("ok", out var ok) || !ok.GetBoolean() ||
                 !root.TryGetProperty("phase", out var phase) || phase.GetString() != "COMMITTED" ||
                 !root.TryGetProperty("activation_performed", out var activation) || !activation.GetBoolean() ||
-                !root.TryGetProperty("database_mutation_performed", out var db) || db.GetBoolean())
+                !root.TryGetProperty("database_mutation_performed", out var db) || db.GetBoolean() ||
+                !root.TryGetProperty("managed_tree_sha256", out var tree) ||
+                !string.Equals(tree.GetString(), expectedManagedTreeSha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Update Engine returned an invalid Phase 3 success envelope.");
             if (!File.Exists(_paths.LocalSlotStatePath)) throw new InvalidDataException("Phase 3 committed without durable Local-slot state.");
             var state = AtomicFile.ReadJson<LocalSlotPhase3State>(_paths.LocalSlotStatePath);
@@ -145,7 +223,7 @@ public sealed class SupervisorLocalSlotCoordinator
                 operation,
                 "committed",
                 "LOCAL_SLOT_PHASE3_COMMITTED",
-                "Local Web converted to release slots and same-build A/B/A activation passed.",
+                $"Local Web converted to release slots and same-build A/B/A activation passed; managed_tree={expectedManagedTreeSha256}.",
                 _paths.LocalSlotStatePath,
                 activationPerformed: true,
                 databaseMutationPerformed: false);
