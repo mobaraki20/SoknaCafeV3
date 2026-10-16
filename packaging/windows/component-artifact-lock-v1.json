@@ -16,6 +16,13 @@
       "source_package": "1.1.0",
       "source_run": 38691845253,
       "source_artifact": 11952382275
+    },
+    "maintenance-recovery-console": {
+      "version": "0.1.1",
+      "primary_sha256": "85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9",
+      "source_package": "1.1.0",
+      "source_run": 38691845253,
+      "source_artifact": 11952382275
     }
   }
 }
