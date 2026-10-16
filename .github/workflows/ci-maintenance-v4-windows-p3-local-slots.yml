@@ -1,0 +1,181 @@
+name: CI Maintenance V4 Windows P3 Local Slots
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-local-slots
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-maintenance-v4-windows-p3-local-slots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-p3-local-slots:
+    runs-on: windows-2022
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact frozen parent and constrained Phase 3 scope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base='8411fafca10b9a5288cf3235f1a228414392f82b'
+          git merge-base --is-ancestor $base HEAD
+          if($LASTEXITCODE-ne0){throw 'Frozen Windows baseline is not an ancestor.'}
+          $allowed=@(
+            '.github/workflows/ci-maintenance-v4-windows-p3-local-slots.yml',
+            'windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotManager.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/MaintenancePaths.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/MaintenanceOperationStore.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.Core/SupervisorLocalSlotCoordinator.cs',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj',
+            'windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Sokna.Maintenance.P3HomeUat.csproj',
+            'windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/app.manifest',
+            'windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Program.cs'
+          )
+          $changed=@(git diff --name-only "$base..HEAD")
+          foreach($path in $changed){if($allowed -notcontains $path){throw "Unexpected Phase 3 path: $path"}}
+          foreach($required in @(
+            'windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotManager.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/SupervisorLocalSlotCoordinator.cs',
+            'windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Program.cs'
+          )){if($changed -notcontains $required){throw "Required Phase 3 path missing: $required"}}
+          $webChanges=@($changed|Where-Object { $_ -like 'apps/local-web/*' -or $_ -like 'apps/public/*' })
+          if($webChanges.Count-ne0){throw "Web/Public business source changed in Phase 3: $($webChanges -join ', ')"}
+          Write-Host 'Frozen parent/scope: PASS'
+
+      - name: Static Phase 3 safety contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $files=@(
+            'windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotManager.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/SupervisorLocalSlotCoordinator.cs',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs'
+          )
+          $text=($files|ForEach-Object { Get-Content $_ -Raw }) -join "`n"
+          if($text -match '(?i)[A-Z]:\\SOKNA\\'){throw 'Hard-coded SOKNA install drive/root found in Phase 3 production code.'}
+          $local=Get-Content 'windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotManager.cs' -Raw
+          foreach($needle in @('SoknaApache','Process.GetProcessesByName','Directory.ResolveLinkTarget','mklink','ROLLED_BACK','RECOVERY_REQUIRED','X-Sokna-Build','X-Sokna-Runtime')){
+            if($local -notmatch [regex]::Escape($needle)){throw "Required Local-slot safety primitive missing: $needle"}
+          }
+          $engine=Get-Content 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs' -Raw
+          if($engine -notmatch 'database_mutation_performed\s*=\s*false'){throw 'Update Engine no-DB evidence missing.'}
+          if($engine -notmatch 'public_mutation_performed\s*=\s*false'){throw 'Update Engine no-Public evidence missing.'}
+          if($engine -notmatch 'windows_reboot_required\s*=\s*false'){throw 'Update Engine no-reboot evidence missing.'}
+          $supervisor=Get-Content 'windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs' -Raw
+          if($supervisor -match '(?i)shutdown\.exe|Restart-Computer|InitiateSystemShutdown|ExitWindowsEx'){throw 'Windows reboot primitive found in Supervisor.'}
+          Write-Host 'Static safety contracts: PASS'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build Phase 3 components
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Maintenance Core build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Update Engine build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Supervisor build failed.'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Recovery Console build failed.'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'P2 fixture build failed.'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Sokna.Maintenance.P3HomeUat.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'P3 Home UAT launcher build failed.'}
+
+      - name: Verify Update Engine command surface
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $engine='windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.exe'
+          if(-not(Test-Path $engine)){throw 'Built Update Engine executable missing.'}
+          $help=& $engine --help | Out-String
+          foreach($command in @('verify-stage','local-slot-inspect','local-slot-home-cycle','local-slot-activate')){
+            if($help -notmatch [regex]::Escape($command)){throw "Update Engine command missing: $command"}
+          }
+          Write-Host 'Update Engine command surface: PASS'
+
+      - name: Publish P3 Windows artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out/p3/app,out/p3/recovery,out/p3/uat -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/p3/app
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/p3/app
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o out/p3/recovery
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Sokna.Maintenance.P3HomeUat.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out/p3/uat
+          foreach($file in @('out/p3/app/SoknaMaintenanceSupervisor.exe','out/p3/app/SoknaMaintenanceUpdateEngine.exe','out/p3/recovery/SoknaMaintenanceRecoveryConsole.exe','out/p3/uat/SOKNA-Phase3-Home-UAT.exe')){if(-not(Test-Path $file)){throw "Published file missing: $file"}}
+
+      - name: Re-run P1A ACL qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $supervisor=(Resolve-Path out/p3/app/SoknaMaintenanceSupervisor.exe).Path
+          $result=& windows/maintenance/tests/p1a-web-adapter-acl-qualification.ps1 -SupervisorExe $supervisor
+          if($LASTEXITCODE-ne0){throw "P1A ACL qualification failed: exit=$LASTEXITCODE"}
+          $result|Tee-Object -FilePath out/p3/P1A_ACL_QUALIFICATION.json
+          $global:LASTEXITCODE=0
+
+      - name: Re-run P2B staging/idempotency regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $supervisor=(Resolve-Path out/p3/app/SoknaMaintenanceSupervisor.exe).Path
+          $fixture=(Resolve-Path 'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/bin/Release/net8.0-windows/Sokna.Maintenance.P2Fixture.exe').Path
+          $result=& windows/maintenance/tests/p2b-qualification.ps1 -SupervisorExe $supervisor -FixtureExe $fixture
+          if($LASTEXITCODE-ne0){throw "P2B staging regression failed: exit=$LASTEXITCODE"}
+          $result|Tee-Object -FilePath out/p3/P2B_STAGING_REGRESSION.json
+          $global:LASTEXITCODE=0
+
+      - name: Freeze Phase 3 provenance and hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $head=(git rev-parse HEAD).Trim()
+          $tree=(git rev-parse 'HEAD^{tree}').Trim()
+          [ordered]@{
+            format='sokna-maintenance-v4-windows-p3-local-slots-provenance-v1'
+            source_commit=$head
+            source_tree=$tree
+            frozen_parent='8411fafca10b9a5288cf3235f1a228414392f82b'
+            supervisor_version='0.3.0'
+            maintenance_core_version='0.2.0'
+            update_engine_version='0.3.0'
+            local_target='3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory'
+            local_managed_files=497
+            activation=$true
+            database_mutation=$false
+            public_mutation=$false
+            windows_reboot=$false
+            real_home_uat='PENDING'
+          }|ConvertTo-Json -Depth 8 | Set-Content out/p3/PROVENANCE.json -Encoding utf8
+          Get-ChildItem out/p3 -File -Recurse | Sort-Object FullName | ForEach-Object {
+            $h=Get-FileHash $_.FullName -Algorithm SHA256
+            "{0}  {1}" -f $h.Hash.ToLowerInvariant(),($_.FullName.Substring((Resolve-Path out/p3).Path.Length+1).Replace('\\','/'))
+          } | Set-Content out/p3/SHA256SUMS.txt -Encoding ascii
+
+      - name: Upload Phase 3 engineering artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-p3-local-slots-${{ github.sha }}
+          path: out/p3
+          if-no-files-found: error
+          retention-days: 14
