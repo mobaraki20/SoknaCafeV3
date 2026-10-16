@@ -1,0 +1,47 @@
+name: CI Maintenance V4 Windows P3 Compact Delivery
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r2
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  compact-delivery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download exact qualified R2 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-Phase3-Qualification-Bundle-R2
+          path: source-artifact
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 38979405854
+
+      - name: Verify exact inner qualification ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find source-artifact -type f -name 'SOKNA-Phase3-Qualification-Bundle-R2.zip' -print)
+          test "${#files[@]}" -eq 1
+          test -s "${files[0]}"
+          mkdir -p delivery
+          cp "${files[0]}" delivery/SOKNA-Phase3-Qualification-Bundle-R2.zip
+          sha256sum delivery/SOKNA-Phase3-Qualification-Bundle-R2.zip | tee delivery/SHA256SUMS.txt
+
+      - name: Upload compact qualified delivery
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Phase3-Qualification-Bundle-R2-Compact
+          path: |
+            delivery/SOKNA-Phase3-Qualification-Bundle-R2.zip
+            delivery/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
