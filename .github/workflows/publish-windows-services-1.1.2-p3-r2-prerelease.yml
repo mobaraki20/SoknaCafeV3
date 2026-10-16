@@ -1,0 +1,125 @@
+name: Publish Windows Services 1.1.2 P3 R2 Pre-release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r2
+    paths:
+      - .github/workflows/publish-windows-services-1.1.2-p3-r2-prerelease.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-prerelease:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: windows-services-1.1.2-p3-r2
+      TARGET_SHA: e5e4c93b8b8506358b5e019762aca0c2b031a18b
+      SOURCE_RUN: '38979979225'
+      QUALIFIED_INSTALLER_SHA256: 8b0100dea27a569c2beb0c0d11db47fa5d3195f99cf38768722636d1ecb12a0d
+    steps:
+      - name: Download exact compact qualified artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-Phase3-Qualification-Bundle-R2-Compact
+          path: qualified
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 38979979225
+
+      - name: Verify and unpack exact qualified bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle='qualified/SOKNA-Phase3-Qualification-Bundle-R2.zip'
+          test -s "$bundle"
+          (cd qualified && sha256sum -c SHA256SUMS.txt)
+          mkdir -p release-assets/unpacked
+          unzip -q "$bundle" -d release-assets/unpacked
+          test -s release-assets/unpacked/SOKNA-Windows-Services-Setup-1.1.2.exe
+          test -s release-assets/unpacked/SOKNA-Phase3-Qualification.exe
+          test -s release-assets/unpacked/P3_QUALIFICATION_R2.json
+          test -s release-assets/unpacked/SHA256SUMS.txt
+          test -s release-assets/unpacked/README.txt
+          actual="$(sha256sum release-assets/unpacked/SOKNA-Windows-Services-Setup-1.1.2.exe | awk '{print $1}')"
+          test "$actual" = "$QUALIFIED_INSTALLER_SHA256"
+          cp "$bundle" release-assets/SOKNA-Phase3-Qualification-Bundle-R2.zip
+          cp qualified/SHA256SUMS.txt release-assets/BUNDLE_SHA256.txt
+          cp release-assets/unpacked/SOKNA-Windows-Services-Setup-1.1.2.exe release-assets/
+          cp release-assets/unpacked/SOKNA-Phase3-Qualification.exe release-assets/
+          cp release-assets/unpacked/P3_QUALIFICATION_R2.json release-assets/
+          cp release-assets/unpacked/SHA256SUMS.txt release-assets/ASSET_SHA256SUMS.txt
+
+      - name: Create or update GitHub pre-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'EOF'
+          ## SOKNA Windows Services 1.1.2 — Phase 3 Qualification R2
+
+          **PRE-RELEASE / REAL TEST-HOST QUALIFICATION — NOT CAFE PRODUCTION YET**
+
+          This release promotes the exact already-qualified artifacts; it is not a rebuild.
+
+          Qualified source commit: `e5e4c93b8b8506358b5e019762aca0c2b031a18b`
+          Phase 3 source baseline: `1a58608f30c5496ff53fd382a7e81070adb6ebaf`
+          Qualification CI run: `38979405854` — PASS
+          Compact delivery run: `38979979225` — PASS
+
+          Components:
+          - Windows Services package: `1.1.2`
+          - Runtime: `1.0.5`
+          - Print Agent: `6.2.9`
+          - Maintenance Supervisor: `0.3.0`
+          - Update Engine: `0.3.0`
+          - Recovery Console: `0.1.1`
+          - SetupHost plan-v3: `3.0.0`
+
+          Qualification evidence:
+          - Runtime and Print Agent: KEEP
+          - KEEP proof: `no_stop_no_copy_no_registration_no_restart`
+          - DB mutation: false
+          - Public mutation: false
+          - Windows reboot: false
+          - Production installer SHA256: `8b0100dea27a569c2beb0c0d11db47fa5d3195f99cf38768722636d1ecb12a0d`
+
+          Test-host order:
+          1. Run `SOKNA-Windows-Services-Setup-1.1.2.exe`.
+          2. Runtime 1.0.5 and Print Agent 6.2.9 must show KEEP/up-to-date. If either shows UPDATE/REPAIR/BLOCKED, stop and collect diagnostics.
+          3. Maintenance should move to Supervisor 0.3.0 / Update Engine 0.3.0.
+          4. Run `SOKNA-Phase3-Qualification.exe` as administrator only after Maintenance is healthy.
+          5. The qualification launcher is locked to exact Local 231ai / 497 managed files / canonical managed-tree digest.
+
+          The Windows Services installer is the common production mechanism for test and Cafe. The qualification launcher is temporary; Cafe will only need a one-time baseline-specific Legacy-to-Slots migration bridge after this test-host qualification passes.
+          EOF
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title 'SOKNA Windows Services 1.1.2 — Phase 3 Qualification R2' --notes-file release-notes.md --prerelease
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$TARGET_SHA" --title 'SOKNA Windows Services 1.1.2 — Phase 3 Qualification R2' --notes-file release-notes.md --prerelease
+          fi
+
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            release-assets/SOKNA-Windows-Services-Setup-1.1.2.exe \
+            release-assets/SOKNA-Phase3-Qualification.exe \
+            release-assets/SOKNA-Phase3-Qualification-Bundle-R2.zip \
+            release-assets/P3_QUALIFICATION_R2.json \
+            release-assets/ASSET_SHA256SUMS.txt \
+            release-assets/BUNDLE_SHA256.txt
+
+      - name: Verify published release and assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,isPrerelease,tagName,targetCommitish,assets > release.json
+          jq -e '.isPrerelease == true' release.json >/dev/null
+          jq -e '.tagName == "windows-services-1.1.2-p3-r2"' release.json >/dev/null
+          jq -e '[.assets[].name] | index("SOKNA-Windows-Services-Setup-1.1.2.exe") != null' release.json >/dev/null
+          jq -e '[.assets[].name] | index("SOKNA-Phase3-Qualification.exe") != null' release.json >/dev/null
+          jq -e '[.assets[].name] | index("SOKNA-Phase3-Qualification-Bundle-R2.zip") != null' release.json >/dev/null
+          cat release.json
