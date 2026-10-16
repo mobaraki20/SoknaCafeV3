@@ -35,3 +35,31 @@ public sealed record MaintenancePaths(string DataRoot)
         return Path.Combine(common, "SOKNA", "Maintenance");
     }
 }
+
+public static class Phase3HomeReleaseContract
+{
+    public const string Build = "3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory";
+    public const int ManagedFiles = 497;
+    public const string ManagedTreeSha256 = "b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a";
+
+    public static string RequireCanonicalManagedTree(string expectedBuild, int expectedManagedFiles)
+    {
+        if (!string.Equals(expectedBuild, Build, StringComparison.Ordinal) || expectedManagedFiles != ManagedFiles)
+            throw new InvalidDataException("Phase 3 Home cycle is allowlisted only for the exact qualified 231ai release identity.");
+        return ManagedTreeSha256;
+    }
+}
+
+public static class SupervisorLocalSlotCoordinatorHomeExtensions
+{
+    public static LocalSlotOperationResult RunHomeCycle(
+        this SupervisorLocalSlotCoordinator coordinator,
+        string expectedBuild,
+        int expectedManagedFiles,
+        string operatorId,
+        string idempotencyKey)
+    {
+        var canonicalTree = Phase3HomeReleaseContract.RequireCanonicalManagedTree(expectedBuild, expectedManagedFiles);
+        return coordinator.RunHomeCycle(expectedBuild, expectedManagedFiles, canonicalTree, operatorId, idempotencyKey);
+    }
+}
