@@ -162,9 +162,20 @@ public sealed class LocalSlotManager
                 RequireHttpHealth(expectedBuild);
                 state = Event(state, events, "HTTP_HEALTHY", "slot A");
             }
-            catch
+            catch (Exception conversionError)
             {
-                TryRestorePhysicalWeb(layout.WebRoot, physicalBackup);
+                try
+                {
+                    RestorePhysicalWebAndRequireHealth(layout.WebRoot, physicalBackup, expectedBuild);
+                    state = state with { ActiveSlot = null, PreviousSlot = slotA };
+                    state = Event(state, events, "ROLLED_BACK", conversionError.Message);
+                }
+                catch (Exception rollbackError)
+                {
+                    state = state with { RecoveryRequired = true };
+                    state = Event(state, events, "RECOVERY_REQUIRED", rollbackError.Message);
+                    throw new AggregateException("Initial Local slot conversion failed and physical-Web rollback health could not be proven.", conversionError, rollbackError);
+                }
                 throw;
             }
         }
@@ -542,27 +553,27 @@ public sealed class LocalSlotManager
         if (!Directory.Exists(slot)) throw new DirectoryNotFoundException("Local slot target does not exist.");
     }
 
-    private static void TryRestorePhysicalWeb(string webRoot, string physicalBackup)
+    private void RestorePhysicalWebAndRequireHealth(string webRoot, string physicalBackup, string expectedBuild)
     {
-        try
+        if (Directory.Exists(webRoot))
         {
-            if (Directory.Exists(webRoot))
+            var attrs = File.GetAttributes(webRoot);
+            if ((attrs & FileAttributes.ReparsePoint) != 0)
             {
-                var attrs = File.GetAttributes(webRoot);
-                if ((attrs & FileAttributes.ReparsePoint) != 0) Directory.Delete(webRoot, false);
+                Directory.Delete(webRoot, false);
             }
-            if (!Directory.Exists(webRoot) && Directory.Exists(physicalBackup)) Directory.Move(physicalBackup, webRoot);
-            using var service = new ServiceController(ApacheServiceName);
-            service.Refresh();
-            if (service.Status != ServiceControllerStatus.Running)
+            else if (!PathsEqual(webRoot, physicalBackup))
             {
-                if (service.Status != ServiceControllerStatus.StartPending) service.Start();
-                service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(35));
+                throw new IOException("Cannot restore physical Web because stable Web path is occupied by a non-junction directory.");
             }
         }
-        catch
+        if (!Directory.Exists(webRoot))
         {
+            if (!Directory.Exists(physicalBackup)) throw new DirectoryNotFoundException("Physical Web backup is unavailable for rollback.");
+            Directory.Move(physicalBackup, webRoot);
         }
+        StartApache();
+        RequireHttpHealth(expectedBuild);
     }
 
     private LocalSlotPhase3State NewState(LocalInstallLayout layout, string expectedBuild, string slotRoot, string slotA, string slotB, string? activeSlot, string? previousSlot, string? physicalBackup, List<LocalSlotPhase3Event> events, string phase, bool recoveryRequired)
