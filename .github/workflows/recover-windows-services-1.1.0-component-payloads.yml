@@ -1,0 +1,99 @@
+name: Recover Windows Services 1.1.0 Canonical Component Payloads
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+    paths:
+      - .github/workflows/recover-windows-services-1.1.0-component-payloads.yml
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  recover:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Download exact historical 1.1.0 qualified artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: maintenance-v4-windows-installer-1.1.0-engineering-candidate
+          path: historical
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 38691845253
+
+      - name: Capture embedded elevated Inno core without installing components
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=Get-ChildItem historical -Recurse -Filter 'SOKNA-Windows-Services-Setup-1.1.0.exe' -File|Select-Object -First 1
+          if(-not$setup){throw 'Historical 1.1.0 setup not found.'}
+          $expectedSetup='0f686363b7e4e6b0182900f69237d8f316f890d3ce2ba75a79b4c8e13d6ff977'
+          $actualSetup=(Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actualSetup-ne$expectedSetup){throw "Historical setup SHA mismatch: $actualSetup"}
+
+          $tempBase=Join-Path $env:TEMP 'SOKNA\Installer'
+          if(Test-Path $tempBase){Remove-Item $tempBase -Recurse -Force -ErrorAction SilentlyContinue}
+          New-Item -ItemType Directory -Path $tempBase -Force|Out-Null
+          $captured=Join-Path $PWD 'historical-core-1.1.0.exe'
+          $outer=Start-Process -FilePath $setup.FullName -PassThru
+          $deadline=[DateTime]::UtcNow.AddSeconds(90)
+          $candidate=$null
+          while([DateTime]::UtcNow-lt$deadline){
+            $candidate=Get-ChildItem $tempBase -Recurse -Filter 'SOKNA-Windows-Services-Core.exe' -File -ErrorAction SilentlyContinue|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1
+            if($candidate){
+              try{
+                $s1=$candidate.Length;Start-Sleep -Milliseconds 500;$candidate.Refresh();$s2=$candidate.Length
+                if($s1-gt 1000000-and$s1-eq$s2){Copy-Item $candidate.FullName $captured -Force;break}
+              }catch{}
+            }
+            Start-Sleep -Milliseconds 200
+          }
+          try{Stop-Process -Id $outer.Id -Force -ErrorAction SilentlyContinue}catch{}
+          Get-CimInstance Win32_Process|Where-Object{$_.Name-like'SOKNA-Windows-Services-Core*'}|ForEach-Object{try{Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue}catch{}}
+          if(-not(Test-Path $captured -PathType Leaf)){throw 'Could not capture embedded historical core installer.'}
+          Write-Host "Captured historical core: $((Get-FileHash $captured -Algorithm SHA256).Hash.ToLowerInvariant())"
+
+      - name: Expand historical shell to isolated runner directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $core=(Resolve-Path 'historical-core-1.1.0.exe').Path
+          $root=Join-Path $PWD 'historical-shell-1.1.0'
+          New-Item -ItemType Directory -Path $root -Force|Out-Null
+          $args=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$root+'"'),('/LOG="'+(Join-Path $PWD 'historical-core-install.log')+'"'))
+          $p=Start-Process -FilePath $core -ArgumentList $args -Wait -PassThru
+          if($p.ExitCode-ne0){if(Test-Path 'historical-core-install.log'){Get-Content 'historical-core-install.log' -Raw|Write-Host};throw "Historical core extraction/install failed: $($p.ExitCode)"}
+          if(-not(Test-Path (Join-Path $root '_payload\runtime\SoknaRuntimeService.exe') -PathType Leaf)){throw 'Historical Runtime payload missing.'}
+          if(-not(Test-Path (Join-Path $root '_payload\print-worker\Service\Sokna.PrintAgent.Service.exe') -PathType Leaf)){throw 'Historical Print payload missing.'}
+
+      - name: Verify canonical Home hashes and freeze carry-forward payloads
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'historical-shell-1.1.0').Path
+          $runtime=Join-Path $root '_payload\runtime\SoknaRuntimeService.exe'
+          $print=Join-Path $root '_payload\print-worker\Service\Sokna.PrintAgent.Service.exe'
+          $runtimeSha=(Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant()
+          $printSha=(Get-FileHash $print -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($runtimeSha-ne'26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd'){throw "Runtime canonical SHA mismatch: $runtimeSha"}
+          if($printSha-ne'99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4'){throw "Print canonical SHA mismatch: $printSha"}
+          New-Item -ItemType Directory -Path carry-forward/runtime,carry-forward/print-worker -Force|Out-Null
+          Copy-Item (Join-Path $root '_payload\runtime\*') carry-forward/runtime -Recurse -Force
+          Copy-Item (Join-Path $root '_payload\print-worker\*') carry-forward/print-worker -Recurse -Force
+          $files=Get-ChildItem carry-forward -Recurse -File|ForEach-Object{[ordered]@{path=$_.FullName.Substring((Resolve-Path carry-forward).Path.Length+1).Replace('\','/');size=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}}
+          [ordered]@{format='sokna-windows-component-carry-forward-v1';source_package='1.1.0';source_run=38691845253;source_artifact=11952382275;source_installer_sha256='0f686363b7e4e6b0182900f69237d8f316f890d3ce2ba75a79b4c8e13d6ff977';runtime_version='1.0.5';runtime_primary_sha256=$runtimeSha;print_version='6.2.9';print_primary_sha256=$printSha;files=@($files)}|ConvertTo-Json -Depth 8|Set-Content carry-forward/CARRY_FORWARD_PROVENANCE.json -Encoding utf8
+          Write-Host 'Historical 1.1.0 canonical Runtime/Print payload recovery: PASS'
+
+      - name: Upload exact carry-forward component payloads
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-services-1.1.0-canonical-runtime-print-carry-forward
+          path: carry-forward
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
