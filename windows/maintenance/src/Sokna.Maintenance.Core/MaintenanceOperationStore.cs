@@ -84,7 +84,15 @@ public sealed class MaintenanceOperationStore
         return Get(File.ReadAllText(path).Trim());
     }
 
-    public MaintenanceOperation Update(MaintenanceOperation operation, string state, string? resultCode = null, string? resultMessage = null, string? stageReceiptPath = null, bool incrementAttempt = false)
+    public MaintenanceOperation Update(
+        MaintenanceOperation operation,
+        string state,
+        string? resultCode = null,
+        string? resultMessage = null,
+        string? stageReceiptPath = null,
+        bool incrementAttempt = false,
+        bool? activationPerformed = null,
+        bool? databaseMutationPerformed = null)
     {
         lock (_sync)
         {
@@ -99,8 +107,8 @@ public sealed class MaintenanceOperationStore
                 ResultCode = resultCode,
                 ResultMessage = resultMessage,
                 StageReceiptPath = stageReceiptPath,
-                ActivationPerformed = false,
-                DatabaseMutationPerformed = false
+                ActivationPerformed = activationPerformed ?? current.ActivationPerformed,
+                DatabaseMutationPerformed = databaseMutationPerformed ?? current.DatabaseMutationPerformed
             };
             AtomicFile.WriteJson(OperationPath(updated.OperationId), updated);
             return updated;
@@ -145,8 +153,8 @@ public sealed class MaintenanceOperationStore
     {
         if (operation.Format != "sokna-maintenance-operation-v1" || operation.SchemaVersion != 1 ||
             !IsSafeToken(operation.OperationId, 64) || !IsSafeToken(operation.IdempotencyKey, 128) || !IsSafeToken(operation.OperatorId, 128) ||
-            operation.CanonicalRequestSha256.Length != 64 || operation.ActivationPerformed || operation.DatabaseMutationPerformed)
-            throw new InvalidDataException("Maintenance operation record is invalid or incompatible with P2B staging-only policy.");
+            operation.CanonicalRequestSha256.Length != 64)
+            throw new InvalidDataException("Maintenance operation record is invalid.");
     }
 
     private static void AtomicWriteText(string path, string text)
