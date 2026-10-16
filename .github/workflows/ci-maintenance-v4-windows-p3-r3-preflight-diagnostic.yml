@@ -1,0 +1,84 @@
+name: CI Maintenance V4 Windows P3 R3 Preflight Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+    paths:
+      - .github/workflows/ci-maintenance-v4-windows-p3-r3-preflight-diagnostic.yml
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: windows-2022
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download exact recovered Home baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-services-1.1.0-canonical-components-r3-baseline
+          path: recovered
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 38982932863
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Instrument qualification harness only
+        shell: pwsh
+        run: |
+          $p='packaging/windows/qualification/qualify-p3-r3-real-home.ps1'
+          $t=Get-Content $p -Raw
+          $old='$proc=Start-Process -FilePath $hostExe -ArgumentList @(''--plan-file'',(''\"''+$planPath+''\"'')) -Wait -PassThru -NoNewWindow'
+          $new='$hostStdout=Join-Path $txdir ''setup-host-stdout.txt''; $hostStderr=Join-Path $txdir ''setup-host-stderr.txt''; $proc=Start-Process -FilePath $hostExe -ArgumentList @(''--plan-file'',(''\"''+$planPath+''\"'')) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $hostStdout -RedirectStandardError $hostStderr'
+          if(-not$t.Contains($old)){throw 'Start-Process instrumentation anchor not found.'}
+          $t=$t.Replace($old,$new)
+          $old2='if($proc.ExitCode-ne0){throw "Real Home-baseline lifecycle failed: $($proc.ExitCode)"}'
+          $new2='if($proc.ExitCode-ne0){Write-Host "--- SETUP HOST STDOUT ---";if(Test-Path $hostStdout){Get-Content $hostStdout -Raw|Write-Host};Write-Host "--- SETUP HOST STDERR ---";if(Test-Path $hostStderr){Get-Content $hostStderr -Raw|Write-Host};throw "Real Home-baseline lifecycle failed: $($proc.ExitCode)"}'
+          if(-not$t.Contains($old2)){throw 'Exit instrumentation anchor not found.'}
+          $t=$t.Replace($old2,$new2)
+          $t=$t.Replace('$systemTx=Join-Path $data "Installer\logs\$tx"','$systemTx=$txdir')
+          Set-Content $p $t -Encoding utf8
+
+      - name: Run instrumented exact-baseline qualification
+        id: diag
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          ./packaging/windows/qualification/qualify-p3-r3-real-home.ps1 -RecoveredRoot (Resolve-Path recovered).Path -RepoRoot $PWD.Path
+
+      - name: Collect preflight evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $dst='out/preflight-diagnostic';New-Item -ItemType Directory -Path $dst -Force|Out-Null
+          $src=Join-Path $env:LOCALAPPDATA 'SOKNA\Installer\logs'
+          if(Test-Path $src){Copy-Item $src (Join-Path $dst 'installer-logs') -Recurse -Force}
+          Get-ChildItem $dst -Recurse -File -ErrorAction SilentlyContinue|ForEach-Object{Write-Host "--- $($_.FullName)";Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue|Write-Host}
+
+      - name: Upload preflight diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-P3-R3-PREFLIGHT-DIAGNOSTIC
+          path: out/preflight-diagnostic
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Preserve diagnostic failure state
+        if: steps.diag.outcome != 'success'
+        shell: pwsh
+        run: throw 'Expected diagnostic run captured a qualification failure.'
