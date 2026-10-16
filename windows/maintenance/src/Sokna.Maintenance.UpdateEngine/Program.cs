@@ -6,9 +6,9 @@ if (args.Length == 0 || args[0] is "--help" or "-h")
 {
     Console.WriteLine("SOKNA Maintenance Update Engine 0.3.0 (P3 Local slots; DB mutation disabled)");
     Console.WriteLine("verify-stage --package <zip> --identity <json> [--data-root <path>]");
-    Console.WriteLine("local-slot-inspect --expected-build <id> --expected-managed-files <n> [--data-root <path>]");
-    Console.WriteLine("local-slot-home-cycle --expected-build <id> --expected-managed-files <n> [--data-root <path>]");
-    Console.WriteLine("local-slot-activate --slot <path> --expected-build <id> --expected-managed-files <n> [--data-root <path>]");
+    Console.WriteLine("local-slot-inspect --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
+    Console.WriteLine("local-slot-home-cycle --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
+    Console.WriteLine("local-slot-activate --slot <path> --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
     return;
 }
 
@@ -30,6 +30,8 @@ if (command == "verify-stage")
 RequireOption(options, "--expected-build", out var expectedBuild);
 if (!options.TryGetValue("--expected-managed-files", out var countText) || !int.TryParse(countText, out var expectedManagedFiles) || expectedManagedFiles < 1)
     throw new InvalidDataException("--expected-managed-files must be a positive integer.");
+RequireOption(options, "--expected-managed-tree-sha256", out var expectedManagedTreeSha256);
+expectedManagedTreeSha256 = LocalManagedTreeAttestation.NormalizeSha256(expectedManagedTreeSha256);
 
 var slots = new LocalSlotManager(paths);
 try
@@ -39,12 +41,14 @@ try
         case "local-slot-inspect":
         {
             var layout = slots.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
+            var managedTree = LocalManagedTreeAttestation.RequireExact(layout.WebRoot, expectedManagedFiles, expectedManagedTreeSha256);
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
                 engine_version = "0.3.0",
                 phase = "INSPECTED",
                 layout,
+                managed_tree_sha256 = managedTree,
                 activation_performed = false,
                 database_mutation_performed = false,
                 public_mutation_performed = false,
@@ -54,13 +58,19 @@ try
         }
         case "local-slot-home-cycle":
         {
+            var layout = slots.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
+            var managedTree = LocalManagedTreeAttestation.RequireExact(layout.WebRoot, expectedManagedFiles, expectedManagedTreeSha256);
             var result = slots.ConvertAndCycleSameBuild(expectedBuild, expectedManagedFiles);
+            var finalLayout = slots.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
+            var finalTree = LocalManagedTreeAttestation.RequireExact(finalLayout.WebRoot, expectedManagedFiles, expectedManagedTreeSha256);
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
                 engine_version = "0.3.0",
                 phase = "COMMITTED",
                 result,
+                managed_tree_sha256 = finalTree,
+                pre_activation_managed_tree_sha256 = managedTree,
                 activation_performed = true,
                 database_mutation_performed = false,
                 public_mutation_performed = false,
@@ -71,13 +81,18 @@ try
         case "local-slot-activate":
         {
             RequireOption(options, "--slot", out var targetSlot);
+            var targetTree = LocalManagedTreeAttestation.RequireExact(targetSlot, expectedManagedFiles, expectedManagedTreeSha256);
             var state = slots.ActivateSlot(targetSlot, expectedBuild, expectedManagedFiles);
+            var finalLayout = slots.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
+            var finalTree = LocalManagedTreeAttestation.RequireExact(finalLayout.WebRoot, expectedManagedFiles, expectedManagedTreeSha256);
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
                 engine_version = "0.3.0",
                 phase = state.Phase,
                 state,
+                managed_tree_sha256 = finalTree,
+                target_managed_tree_sha256 = targetTree,
                 activation_performed = true,
                 database_mutation_performed = false,
                 public_mutation_performed = false,
@@ -102,6 +117,7 @@ catch (Exception ex) when (ex is InvalidDataException or IOException or Unauthor
         database_mutation_performed = false,
         public_mutation_performed = false,
         windows_reboot_required = false,
+        expected_managed_tree_sha256 = expectedManagedTreeSha256,
         state_path = paths.LocalSlotStatePath
     }, AtomicFile.JsonOptions));
     Environment.ExitCode = 3;
