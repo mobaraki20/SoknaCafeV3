@@ -1,3 +1,5 @@
+global using TimeoutException = System.TimeoutException;
+
 namespace Sokna.Maintenance.Core;
 
 public sealed record MaintenancePaths(string DataRoot)
