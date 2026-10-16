@@ -31,6 +31,7 @@ var paths = new MaintenancePaths(dataRoot);
 Directory.CreateDirectory(paths.DataRoot);
 Directory.CreateDirectory(paths.InboxRoot);
 Directory.CreateDirectory(paths.OperationsRoot);
+Directory.CreateDirectory(paths.LocalSlotStateRoot);
 using var instanceLock = SingleInstanceLock.Acquire(paths.LockPath);
 var secrets = new SecretStore(paths);
 secrets.EnsureKeys();
@@ -42,11 +43,13 @@ var journal = new DurableJournal(paths.JournalPath);
 var operations = new MaintenanceOperationStore(paths);
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
 var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
+var localSlotCoordinator = new SupervisorLocalSlotCoordinator(paths, operations, journal, state, updateEnginePath);
 journal.Append("supervisor.starting", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?>
 {
     ["pid"] = Environment.ProcessId,
     ["port"] = port,
-    ["p2b_staging_only"] = true,
+    ["p3_local_slots_enabled"] = true,
+    ["database_mutation_enabled"] = false,
     ["web_adapter_acl_state"] = aclEvidence.State
 });
 var replayCache = new ReplayCache();
@@ -65,10 +68,12 @@ app.Use(async (context, next) =>
     }
 
     var isStageMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/update/stage", StringComparison.Ordinal);
-    if (!HttpMethods.IsGet(context.Request.Method) && !isStageMutation)
+    var isLocalSlotMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/home-cycle", StringComparison.Ordinal);
+    var isMutation = isStageMutation || isLocalSlotMutation;
+    if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
-        await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "staging_only_p2b", "P2B_STAGING_ONLY", false,
-            new { allowed_methods = new[] { "GET", "POST /v1/update/stage" }, activation_enabled = false, database_mutation_enabled = false });
+        await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
+            new { allowed_methods = new[] { "GET", "POST /v1/update/stage", "POST /v1/local-slots/home-cycle" }, activation_enabled = true, database_mutation_enabled = false });
         return;
     }
 
@@ -126,8 +131,13 @@ app.Use(async (context, next) =>
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
     }
+    if (isLocalSlotMutation && keyId is not ("web-adapter" or "recovery-console"))
+    {
+        await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "LOCAL_SLOT_AUTHORITY_REQUIRED", false, new { });
+        return;
+    }
 
-    if (isStageMutation && aclEvidence.State != "ready")
+    if ((isStageMutation || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "acl_pending", "WEB_ADAPTER_ACL_PENDING", false,
             new { acl_state = aclEvidence.State, service_name = aclEvidence.ServiceName });
@@ -194,7 +204,8 @@ app.MapGet("/v1/health", async context =>
         process_id = Environment.ProcessId,
         loopback_only = true,
         staging_mutation_enabled = true,
-        activation_enabled = false,
+        activation_enabled = true,
+        local_slot_phase = "p3",
         database_mutation_enabled = false,
         web_adapter_acl_state = aclEvidence.State,
         web_adapter_service_account = aclEvidence.ServiceAccount,
@@ -205,13 +216,16 @@ app.MapGet("/v1/health", async context =>
 app.MapGet("/v1/status", async context =>
 {
     var current = AtomicFile.ReadJson<SupervisorState>(paths.StatePath);
+    object? localSlots = null;
+    try { if (File.Exists(paths.LocalSlotStatePath)) localSlots = AtomicFile.ReadJson<LocalSlotPhase3State>(paths.LocalSlotStatePath); } catch { }
     await WriteEnvelope(context, StatusCodes.Status200OK, true, current.RecoveryRequired ? "recovery_required" : "ready", "OK", current.RecoveryRequired, new
     {
         authoritative_state = current,
         local_release_identity_bound = File.Exists(paths.InstalledReleaseIdentityPath),
+        local_slots = localSlots,
         inbox_path = paths.InboxRoot,
         web_adapter_acl = aclEvidence,
-        activation_enabled = false,
+        activation_enabled = true,
         database_mutation_enabled = false
     });
 });
@@ -237,7 +251,7 @@ app.MapGet("/v1/operations/{operationId}", async context =>
         await WriteEnvelope(context, StatusCodes.Status404NotFound, false, "not_found", "OPERATION_NOT_FOUND", false, new { });
         return;
     }
-    await WriteEnvelope(context, StatusCodes.Status200OK, true, operation.State, "OK", false, operation, operation.OperationId);
+    await WriteEnvelope(context, StatusCodes.Status200OK, true, operation.State, "OK", operation.State == "recovery_required", operation, operation.OperationId);
 });
 
 app.MapGet("/v1/operations/by-idempotency/{key}", async context =>
@@ -251,7 +265,7 @@ app.MapGet("/v1/operations/by-idempotency/{key}", async context =>
             await WriteEnvelope(context, StatusCodes.Status404NotFound, false, "not_found", "OPERATION_NOT_FOUND", false, new { });
             return;
         }
-        await WriteEnvelope(context, StatusCodes.Status200OK, true, operation.State, "OK", false, operation, operation.OperationId);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, operation.State, "OK", operation.State == "recovery_required", operation, operation.OperationId);
     }
     catch (InvalidDataException ex)
     {
@@ -265,7 +279,7 @@ app.MapGet("/v1/operations/active", async context =>
     {
         query_by_operation_id = "/v1/operations/{operation_id}",
         query_by_idempotency = "/v1/operations/by-idempotency/{key}",
-        activation_enabled = false,
+        activation_enabled = true,
         database_mutation_enabled = false
     });
 });
@@ -286,9 +300,41 @@ app.MapPost("/v1/update/stage", async context =>
         var result = stagingCoordinator.Stage(request.PackageRef, request.OperatorId, idempotencyKey);
         var operation = result.Operation;
         var success = operation.State == "staged";
-        var statusCode = success ? StatusCodes.Status200OK : operation.State == "running" || operation.State == "accepted" ? StatusCodes.Status202Accepted : StatusCodes.Status422UnprocessableEntity;
+        var statusCode = success ? StatusCodes.Status200OK : operation.State is "running" or "accepted" ? StatusCodes.Status202Accepted : StatusCodes.Status422UnprocessableEntity;
         await WriteEnvelope(context, statusCode, success, operation.State, operation.ResultCode ?? (success ? "STAGED" : "OPERATION_RECORDED"), false,
-            new { operation, result.Created, result.Reconciled, activation_enabled = false, database_mutation_enabled = false }, operation.OperationId);
+            new { operation, result.Created, result.Reconciled, activation_enabled = true, database_mutation_enabled = false }, operation.OperationId);
+    }
+    catch (JsonException ex)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "REQUEST_JSON_INVALID", false, new { error = ex.Message });
+    }
+    catch (InvalidDataException ex)
+    {
+        var code = ex.Message.Contains("Idempotency key was already used", StringComparison.Ordinal) ? "IDEMPOTENCY_CONFLICT" : "REQUEST_INVALID";
+        var status = code == "IDEMPOTENCY_CONFLICT" ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest;
+        await WriteEnvelope(context, status, false, "rejected", code, false, new { error = ex.Message });
+    }
+});
+
+app.MapPost("/v1/local-slots/home-cycle", async context =>
+{
+    if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var idempotencyKey))
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "IDEMPOTENCY_KEY_REQUIRED", false, new { });
+        return;
+    }
+    try
+    {
+        var body = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<LocalSlotHomeCycleRequest>(body, AtomicFile.JsonOptions)
+                      ?? throw new InvalidDataException("Local-slot request body is empty.");
+        var result = localSlotCoordinator.RunHomeCycle(request.ExpectedBuild, request.ExpectedManagedFiles, request.OperatorId, idempotencyKey);
+        var operation = result.Operation;
+        var success = operation.State == "committed";
+        var recoveryRequired = operation.State == "recovery_required";
+        var statusCode = success ? StatusCodes.Status200OK : recoveryRequired ? StatusCodes.Status503ServiceUnavailable : operation.State is "running" or "accepted" ? StatusCodes.Status202Accepted : StatusCodes.Status422UnprocessableEntity;
+        await WriteEnvelope(context, statusCode, success, operation.State, operation.ResultCode ?? (success ? "LOCAL_SLOT_PHASE3_COMMITTED" : "OPERATION_RECORDED"), recoveryRequired,
+            new { operation, result.Created, result.Reconciled, activation_enabled = true, database_mutation_enabled = false, public_mutation_enabled = false, windows_reboot_required = false }, operation.OperationId);
     }
     catch (JsonException ex)
     {
@@ -313,11 +359,16 @@ app.MapGet("/v1/backups", async context =>
 app.MapGet("/v1/recovery", async context =>
 {
     var current = AtomicFile.ReadJson<SupervisorState>(paths.StatePath);
-    await WriteEnvelope(context, StatusCodes.Status200OK, true, current.RecoveryRequired ? "recovery_required" : "ready", "OK", current.RecoveryRequired, new
+    var slotRecovery = false;
+    try { if (File.Exists(paths.LocalSlotStatePath)) slotRecovery = AtomicFile.ReadJson<LocalSlotPhase3State>(paths.LocalSlotStatePath).RecoveryRequired; } catch { slotRecovery = true; }
+    var recoveryRequired = current.RecoveryRequired || slotRecovery;
+    await WriteEnvelope(context, StatusCodes.Status200OK, true, recoveryRequired ? "recovery_required" : "ready", "OK", recoveryRequired, new
     {
-        recovery_required = current.RecoveryRequired,
+        recovery_required = recoveryRequired,
         safe_actions = new[] { "inspect_status", "inspect_components", "inspect_journal_head", "inspect_operation" },
-        mutation_actions_enabled = false,
+        mutation_actions_enabled = true,
+        mutation_scope = "phase3_local_slots_only",
+        database_mutation_enabled = false,
         web_required = false
     });
 });
@@ -344,15 +395,14 @@ app.Lifetime.ApplicationStarted.Register(() =>
         WrittenAtUtc: DateTimeOffset.UtcNow);
     AtomicFile.WriteJson(paths.DescriptorPath, descriptor);
 
-    // AtomicFile reconciles the descriptor ACL after replacing control-plane.json.
-    // Refresh the in-memory evidence so staging remains fail-closed if that reconcile failed.
     if (File.Exists(paths.WebAdapterAclEvidencePath))
         aclEvidence = AtomicFile.ReadJson<WebAdapterAclEvidence>(paths.WebAdapterAclEvidencePath);
 
     journal.Append("supervisor.ready", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?>
     {
         ["base_url"] = descriptor.BaseUrl,
-        ["p2b_staging_only"] = true,
+        ["p3_local_slots_enabled"] = true,
+        ["database_mutation_enabled"] = false,
         ["web_adapter_acl_state"] = aclEvidence.State,
         ["web_adapter_descriptor_read"] = aclEvidence.DescriptorReadGranted
     });
@@ -390,7 +440,7 @@ static async Task WriteEnvelope(HttpContext context, int statusCode, bool ok, st
 static string VersionText()
 {
     var assembly = Assembly.GetExecutingAssembly();
-    return assembly.GetName().Version?.ToString(3) ?? "0.2.1";
+    return assembly.GetName().Version?.ToString(3) ?? "0.3.0";
 }
 
 static object InspectCurrentProcess()
