@@ -19,6 +19,8 @@ public sealed record MaintenancePaths(string DataRoot)
     public string ReleaseSigningTrustRoot => Path.Combine(TrustRoot, "release-signing");
     public string UpdateStageLockPath => Path.Combine(UpdateRoot, "stage.lock");
     public string ReleaseSequenceStatePath => Path.Combine(UpdateRoot, "release-sequence.json");
+    public string LocalSlotStateRoot => Path.Combine(DataRoot, "local-slots");
+    public string LocalSlotStatePath => Path.Combine(LocalSlotStateRoot, "phase3-state.json");
 
     public static string DefaultDataRoot()
     {
