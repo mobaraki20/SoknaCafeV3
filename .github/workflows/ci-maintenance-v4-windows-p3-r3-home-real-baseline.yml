@@ -1,0 +1,228 @@
+name: CI Maintenance V4 Windows P3 R3 Real Home Baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: p3-r3-real-home-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: windows-2022
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify R3 scope package identity and artifact-lock policy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $parent='e5e4c93b8b8506358b5e019762aca0c2b031a18b'
+          git merge-base --is-ancestor $parent HEAD
+          if($LASTEXITCODE-ne0){throw 'R3 must descend from exact qualified R2 source.'}
+          if((Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()-ne'1.1.3'){throw 'Package version must be 1.1.3.'}
+          $manifest=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          if([string]$manifest.package_version-ne'1.1.3'){throw 'Manifest package version mismatch.'}
+          $lock=Get-Content packaging/windows/component-artifact-lock-v1.json -Raw|ConvertFrom-Json
+          if([string]$lock.format-ne'sokna-windows-component-artifact-lock-v1'){throw 'Artifact lock format mismatch.'}
+          if([string]$lock.components.runtime.version-ne'1.0.5'-or[string]$lock.components.runtime.primary_sha256-ne'26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd'){throw 'Runtime artifact lock mismatch.'}
+          if([string]$lock.components.'print-agent'.version-ne'6.2.9'-or[string]$lock.components.'print-agent'.primary_sha256-ne'99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4'){throw 'Print artifact lock mismatch.'}
+          if([string]$lock.components.'maintenance-recovery-console'.version-ne'0.1.1'-or[string]$lock.components.'maintenance-recovery-console'.primary_sha256-ne'85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'){throw 'Recovery Console artifact lock mismatch.'}
+          Write-Host 'R3 scope/package/artifact-lock: PASS'
+
+      - name: Download exact recovered 1.1.0 Home baseline components
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-services-1.1.0-canonical-components-r3-baseline
+          path: recovered
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 38982932863
+
+      - name: Verify recovered bytes before any build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $runtime='recovered/runtime/SoknaRuntimeService.exe'
+          $print='recovered/print-worker/Service/Sokna.PrintAgent.Service.exe'
+          $recovery='recovered/baseline-maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe'
+          $oldSupervisor='recovered/baseline-maintenance/app/SoknaMaintenanceSupervisor.exe'
+          foreach($p in @($runtime,$print,$recovery,$oldSupervisor)){if(-not(Test-Path $p-PathType Leaf)){throw "Recovered file missing: $p"}}
+          if((Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant()-ne'26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd'){throw 'Recovered Runtime drift.'}
+          if((Get-FileHash $print -Algorithm SHA256).Hash.ToLowerInvariant()-ne'99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4'){throw 'Recovered Print drift.'}
+          if((Get-FileHash $recovery -Algorithm SHA256).Hash.ToLowerInvariant()-ne'85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'){throw 'Recovered Recovery Console drift.'}
+          if((Get-FileHash $oldSupervisor -Algorithm SHA256).Hash.ToLowerInvariant()-ne'afe538d1c51e276ecc55f442add6dc6c48272aea187e898e0b012630b73787e2'){throw 'Recovered Supervisor baseline drift.'}
+          Write-Host 'Recovered real Home baseline byte identities: PASS'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish only changed/versioned Maintenance and packaging surfaces
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out/maintenance/app,out/setup-ui,out/setup-host,out/p3-uat -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/maintenance/app
+          if($LASTEXITCODE-ne0){throw 'Supervisor publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/maintenance/app
+          if($LASTEXITCODE-ne0){throw 'Update Engine publish failed.'}
+          dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/setup-ui
+          if($LASTEXITCODE-ne0){throw 'Setup UI publish failed.'}
+          dotnet publish packaging/windows/setup-host-v3/Sokna.SetupHostV3.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/setup-host
+          if($LASTEXITCODE-ne0){throw 'SetupHost v3 publish failed.'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Sokna.Maintenance.P3HomeUat.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out/p3-uat
+          if($LASTEXITCODE-ne0){throw 'P3 qualification launcher publish failed.'}
+          if(Test-Path out/runtime -or Test-Path out/print-worker){throw 'R3 must not rebuild Runtime or Print.'}
+
+      - name: Prepare shell using canonical carry-forward bytes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./packaging/windows/scripts/prepare-shell-payload-v4.ps1 `
+            -RepoRoot $PWD.Path `
+            -OutputRoot (Join-Path $PWD 'out/shell') `
+            -RuntimeServiceExe (Join-Path $PWD 'recovered/runtime/SoknaRuntimeService.exe') `
+            -SetupHostExe (Join-Path $PWD 'out/setup-host/SoknaSetupHost.exe') `
+            -SetupUiExe (Join-Path $PWD 'out/setup-ui/SoknaSetupUi.exe') `
+            -PrintWorkerBundle (Join-Path $PWD 'recovered/print-worker') `
+            -MaintenanceAppBundle (Join-Path $PWD 'out/maintenance/app') `
+            -MaintenanceRecoveryBundle (Join-Path $PWD 'recovered/baseline-maintenance/recovery') `
+            -GitSha '${{ github.sha }}'
+          $m=Get-Content out/shell/payload-manifest.json -Raw|ConvertFrom-Json
+          if([string]$m.package_version-ne'1.1.3'){throw 'Shell version mismatch.'}
+          $checks=@{
+            'out/shell/_payload/runtime/SoknaRuntimeService.exe'='26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd';
+            'out/shell/_payload/print-worker/Service/Sokna.PrintAgent.Service.exe'='99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4';
+            'out/shell/_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe'='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'
+          }
+          foreach($p in $checks.Keys){$h=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant();if($h-ne$checks[$p]){throw "Artifact-lock target mismatch: $p / $h"}}
+          Write-Host 'Canonical target carry-forward: PASS'
+
+      - name: Build real Home-baseline planner fixture and execute actual ComponentUpdatePlanner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $install=Join-Path $PWD 'out/home-baseline-install';$data=Join-Path $PWD 'out/home-baseline-data';$shell=(Resolve-Path out/shell).Path
+          New-Item -ItemType Directory -Path $install,$data,(Join-Path $data 'runtime'),(Join-Path $data 'setup') -Force|Out-Null
+          Copy-Item recovered/runtime (Join-Path $install 'Runtime') -Recurse -Force
+          Copy-Item recovered/print-worker (Join-Path $install 'PrintAgent') -Recurse -Force
+          New-Item -ItemType Directory -Path (Join-Path $install 'Maintenance') -Force|Out-Null
+          Copy-Item recovered/baseline-maintenance/app (Join-Path $install 'Maintenance/App') -Recurse -Force
+          Copy-Item recovered/baseline-maintenance/recovery (Join-Path $install 'Maintenance/Recovery') -Recurse -Force
+          Copy-Item windows/runtime/runtime-config.example.json (Join-Path $data 'runtime/runtime-config.json') -Force
+          [ordered]@{format='sokna-windows-services-install-state-v2';paired=$false;local_base_url=''}|ConvertTo-Json|Set-Content (Join-Path $data 'setup/windows-services-state.json') -Encoding utf8
+          $runtime=(Resolve-Path (Join-Path $install 'Runtime/SoknaRuntimeService.exe')).Path
+          $print=(Resolve-Path (Join-Path $install 'PrintAgent/Service/Sokna.PrintAgent.Service.exe')).Path
+          $maintenance=(Resolve-Path (Join-Path $install 'Maintenance/App/SoknaMaintenanceSupervisor.exe')).Path
+          & "$env:SystemRoot\System32\sc.exe" create SoknaRuntime binPath= ('"'+$runtime+'" --config "'+(Join-Path $data 'runtime/runtime-config.json')+'"') start= demand|Out-Null;if($LASTEXITCODE-ne0){throw 'Runtime fixture registration failed.'}
+          & "$env:SystemRoot\System32\sc.exe" create SoknaPrintWorker binPath= ('"'+$print+'"') start= auto|Out-Null;if($LASTEXITCODE-ne0){throw 'Print fixture registration failed.'}
+          & "$env:SystemRoot\System32\sc.exe" create SoknaMaintenanceSupervisor binPath= ('"'+$maintenance+'"') start= auto|Out-Null;if($LASTEXITCODE-ne0){throw 'Maintenance fixture registration failed.'}
+
+          New-Item -ItemType Directory -Path out/planner-harness -Force|Out-Null
+          @'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+            <ItemGroup><Compile Include="..\..\packaging\windows\setup-ui\ComponentUpdatePlanner.cs" Link="ComponentUpdatePlanner.cs" /></ItemGroup>
+          </Project>
+          '@|Set-Content out/planner-harness/PlannerHarness.csproj -Encoding utf8
+          @'
+          using System.Text.Json;
+          namespace Sokna.SetupUi;
+          internal static class Harness {
+            static int Main(string[] a) {
+              var p=ComponentUpdatePlanner.Build(a[0],a[1],a[2]);
+              var d=p.Rows.ToDictionary(x=>x.ComponentId,StringComparer.Ordinal);
+              void Need(string id,ComponentAction action){if(!d.TryGetValue(id,out var r)||r.Action!=action)throw new Exception($"{id}: expected {action}, got {r?.Action} / {r?.Reason}");}
+              Need("runtime",ComponentAction.Keep);Need("print-agent",ComponentAction.Keep);Need("maintenance",ComponentAction.Update);Need("maintenance-update-engine",ComponentAction.Update);Need("maintenance-recovery-console",ComponentAction.Keep);
+              var dto=p.Rows.Select(r=>new{component_id=r.ComponentId,primary=r.Primary,current_version=r.CurrentVersion,target_version=r.TargetVersion,health=r.Health.ToString(),update_state=r.UpdateState,action=r.Action.ToString().ToUpperInvariant(),reason=r.Reason,installed_sha256=r.InstalledSha256,target_sha256=r.TargetSha256,service_name=r.ServiceName,transaction_group=r.TransactionGroup}).ToArray();
+              File.WriteAllText(a[3],JsonSerializer.Serialize(dto,new JsonSerializerOptions{WriteIndented=true}));
+              Console.WriteLine("REAL COMPONENT PLANNER HOME BASELINE: PASS");return 0;
+            }
+          }
+          '@|Set-Content out/planner-harness/Program.cs -Encoding utf8
+          dotnet run --project out/planner-harness/PlannerHarness.csproj -c Release -- $shell $install $data (Join-Path $PWD 'out/real-home-plan-rows.json')
+          if($LASTEXITCODE-ne0){throw 'Actual ComponentUpdatePlanner Home-baseline gate failed.'}
+          Get-Content out/real-home-plan-rows.json -Raw|Write-Host
+
+      - name: Execute component lifecycle from actual planner result and prove KEEP immutability
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $shell=(Resolve-Path out/shell).Path;$install=(Resolve-Path out/home-baseline-install).Path;$data=(Resolve-Path out/home-baseline-data).Path
+          $runtime=Join-Path $install 'Runtime/SoknaRuntimeService.exe';$print=Join-Path $install 'PrintAgent/Service/Sokna.PrintAgent.Service.exe';$recovery=Join-Path $install 'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe'
+          $before=[ordered]@{runtime_hash=(Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant();runtime_time=(Get-Item $runtime).LastWriteTimeUtc.ToString('o');runtime_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaRuntime)|Out-String);print_hash=(Get-FileHash $print -Algorithm SHA256).Hash.ToLowerInvariant();print_time=(Get-Item $print).LastWriteTimeUtc.ToString('o');print_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaPrintWorker)|Out-String);recovery_hash=(Get-FileHash $recovery -Algorithm SHA256).Hash.ToLowerInvariant();recovery_time=(Get-Item $recovery).LastWriteTimeUtc.ToString('o')}
+          $rows=Get-Content out/real-home-plan-rows.json -Raw|ConvertFrom-Json
+          $tx='ins-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')+'-'+[guid]::NewGuid().ToString('N').Substring(0,10)
+          $plan=[ordered]@{format='sokna-windows-install-plan-v3';schema_version=3;transaction_id=$tx;correlation_id='corr-'+[guid]::NewGuid().ToString('N');setup_session_id='ui-'+[guid]::NewGuid().ToString('N');created_at_utc=[DateTime]::UtcNow.ToString('o');mode='install';shell_root=$shell;install_root=$install;data_root=$data;package_version='1.1.3';components=@($rows)}
+          $txdir=Join-Path $env:LOCALAPPDATA "SOKNA\Installer\logs\$tx";New-Item -ItemType Directory -Path $txdir -Force|Out-Null;$planPath=Join-Path $txdir 'update-plan.json';$plan|ConvertTo-Json -Depth 10|Set-Content $planPath -Encoding utf8
+          $p=Start-Process -FilePath (Join-Path $shell 'SoknaSetupHost.exe') -ArgumentList @('--plan-file',('"'+$planPath+'"')) -Wait -PassThru -NoNewWindow
+          if($p.ExitCode-ne0){throw "Real Home-baseline lifecycle failed: $($p.ExitCode)"}
+          $after=[ordered]@{runtime_hash=(Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant();runtime_time=(Get-Item $runtime).LastWriteTimeUtc.ToString('o');runtime_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaRuntime)|Out-String);print_hash=(Get-FileHash $print -Algorithm SHA256).Hash.ToLowerInvariant();print_time=(Get-Item $print).LastWriteTimeUtc.ToString('o');print_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaPrintWorker)|Out-String);recovery_hash=(Get-FileHash $recovery -Algorithm SHA256).Hash.ToLowerInvariant();recovery_time=(Get-Item $recovery).LastWriteTimeUtc.ToString('o')}
+          foreach($k in $before.Keys){if($before[$k]-ne$after[$k]){throw "KEEP component mutated: $k"}}
+          $newSupervisor=Join-Path $install 'Maintenance/App/SoknaMaintenanceSupervisor.exe';$newEngine=Join-Path $install 'Maintenance/App/SoknaMaintenanceUpdateEngine.exe'
+          $sv=[Diagnostics.FileVersionInfo]::GetVersionInfo($newSupervisor).FileVersion;$ev=[Diagnostics.FileVersionInfo]::GetVersionInfo($newEngine).FileVersion
+          if(-not$sv.StartsWith('0.3.0')-or-not$ev.StartsWith('0.3.0')){throw "Maintenance target versions not applied: $sv / $ev"}
+          $systemTx=Join-Path $data "Installer\logs\$tx";$events=@(Get-Content (Join-Path $systemTx 'system-events.jsonl')|Where-Object{$_}|ForEach-Object{$_|ConvertFrom-Json})
+          foreach($id in @('runtime','print-agent','maintenance-recovery-console')){$row=@($events|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq$id-and$_.result-eq'kept'})|Select-Object -First 1;if(-not$row-or[string]$row.data.proof-ne'no_stop_no_copy_no_registration_no_restart'){throw "KEEP proof missing/invalid: $id"}}
+          $before|ConvertTo-Json -Depth 4|Set-Content out/r3-before.json -Encoding utf8;$after|ConvertTo-Json -Depth 4|Set-Content out/r3-after.json -Encoding utf8
+          Copy-Item (Join-Path $systemTx 'install-result.json') out/r3-install-result.json -Force;Copy-Item (Join-Path $systemTx 'system-events.jsonl') out/r3-system-events.jsonl -Force
+          Write-Host 'R3 real Home-baseline lifecycle KEEP/UPDATE proof: PASS'
+
+      - name: Build Windows Services 1.1.3 installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_-and(Test-Path $_-PathType Leaf)}|Select-Object -First 1
+          if(-not$iscc){throw 'Inno Setup not found.'}
+          ./packaging/windows/scripts/build-installer-v4.ps1 -ShellPayloadRoot (Join-Path $PWD 'out/shell') -RepoRoot $PWD.Path -IsccExe $iscc
+          $setup='packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.3.exe';if(-not(Test-Path $setup-PathType Leaf)){throw 'R3 installer missing.'}
+          $sha=(Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant();Write-Host "R3_INSTALLER_SHA256=$sha";Set-Content out/R3_INSTALLER_SHA256.txt $sha -Encoding ascii
+
+      - name: Freeze qualification evidence and bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup='packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.3.exe';$setupSha=(Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          [ordered]@{format='sokna-windows-p3-r3-home-baseline-qualification-v1';source_commit=(git rev-parse HEAD).Trim();package_version='1.1.3';recovered_baseline_run=38982932863;recovered_baseline_artifact=12082430274;runtime_version='1.0.5';runtime_target_sha256='26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd';print_version='6.2.9';print_target_sha256='99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4';maintenance_supervisor='0.3.0';update_engine='0.3.0';recovery_console='0.1.1';recovery_console_target_sha256='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9';actual_planner_gate='runtime KEEP / print KEEP / maintenance UPDATE / update-engine UPDATE / recovery KEEP';keep_proof='no_stop_no_copy_no_registration_no_restart';db_mutation=$false;public_mutation=$false;windows_reboot=$false;installer_sha256=$setupSha}|ConvertTo-Json -Depth 8|Set-Content out/P3_R3_QUALIFICATION.json -Encoding utf8
+          New-Item -ItemType Directory -Path out/delivery -Force|Out-Null;Copy-Item $setup out/delivery/;Copy-Item out/p3-uat/Sokna.Maintenance.P3HomeUat.exe out/delivery/SOKNA-Phase3-Qualification.exe;Copy-Item out/P3_R3_QUALIFICATION.json,out/R3_INSTALLER_SHA256.txt,out/real-home-plan-rows.json,out/r3-install-result.json,out/r3-system-events.jsonl out/delivery/
+          Get-ChildItem out/delivery -File|ForEach-Object{"$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"}|Set-Content out/delivery/SHA256SUMS.txt -Encoding ascii
+          Compress-Archive -Path out/delivery/* -DestinationPath out/SOKNA-Phase3-Qualification-Bundle-R3.zip -CompressionLevel Optimal
+
+      - name: Cleanup qualification services
+        if: always()
+        shell: pwsh
+        run: |
+          foreach($name in @('SoknaMaintenanceSupervisor','SoknaPrintWorker','SoknaRuntime')){try{Stop-Service $name -Force -ErrorAction SilentlyContinue}catch{};& "$env:SystemRoot\System32\sc.exe" delete $name 2>$null|Out-Null}
+
+      - name: Upload exact R3 qualified delivery
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Phase3-Qualification-Bundle-R3
+          path: |
+            out/delivery
+            out/SOKNA-Phase3-Qualification-Bundle-R3.zip
+            out/P3_R3_QUALIFICATION.json
+            out/real-home-plan-rows.json
+            out/r3-before.json
+            out/r3-after.json
+            out/r3-install-result.json
+            out/r3-system-events.jsonl
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
