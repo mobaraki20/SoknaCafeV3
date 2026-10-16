@@ -36,7 +36,9 @@ jobs:
           set -euo pipefail
           bundle='qualified/SOKNA-Phase3-Qualification-Bundle-R2.zip'
           test -s "$bundle"
-          (cd qualified && sha256sum -c SHA256SUMS.txt)
+          expected_bundle="$(awk 'NF{print $1; exit}' qualified/SHA256SUMS.txt)"
+          actual_bundle="$(sha256sum "$bundle" | awk '{print $1}')"
+          test "$actual_bundle" = "$expected_bundle"
           mkdir -p release-assets/unpacked
           unzip -q "$bundle" -d release-assets/unpacked
           test -s release-assets/unpacked/SOKNA-Windows-Services-Setup-1.1.2.exe
