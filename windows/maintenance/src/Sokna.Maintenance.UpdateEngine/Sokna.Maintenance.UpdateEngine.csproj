@@ -6,10 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>SoknaMaintenanceUpdateEngine</AssemblyName>
-    <Version>0.2.0</Version>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
-    <FileVersion>0.2.0.0</FileVersion>
-    <InformationalVersion>4.0.0-p2a</InformationalVersion>
+    <Version>0.3.0</Version>
+    <AssemblyVersion>0.3.0.0</AssemblyVersion>
+    <FileVersion>0.3.0.0</FileVersion>
+    <InformationalVersion>4.0.0-p3-local-slots</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Sokna.Maintenance.Core\Sokna.Maintenance.Core.csproj" />
