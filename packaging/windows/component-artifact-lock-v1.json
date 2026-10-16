@@ -1,0 +1,21 @@
+{
+  "format": "sokna-windows-component-artifact-lock-v1",
+  "schema_version": 1,
+  "policy": "unchanged component version must reuse the exact previously-qualified artifact bytes or bump the component version",
+  "components": {
+    "runtime": {
+      "version": "1.0.5",
+      "primary_sha256": "26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd",
+      "source_package": "1.1.0",
+      "source_run": 38691845253,
+      "source_artifact": 11952382275
+    },
+    "print-agent": {
+      "version": "6.2.9",
+      "primary_sha256": "99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4",
+      "source_package": "1.1.0",
+      "source_run": 38691845253,
+      "source_artifact": 11952382275
+    }
+  }
+}
