@@ -5,6 +5,7 @@ using Sokna.Maintenance.Core;
 
 const string ExpectedBuild = "3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory";
 const int ExpectedManagedFiles = 497;
+const string ExpectedManagedTreeSha256 = "b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a";
 const string IdempotencyKey = "home-p3-231ai-r1";
 
 Application.EnableVisualStyles();
@@ -31,7 +32,9 @@ try
         throw new InvalidDataException("Maintenance Supervisor base URL is not loopback-only.");
 
     var key = new SecretStore(paths).LoadKey("recovery-console");
-    var body = JsonSerializer.SerializeToUtf8Bytes(new LocalSlotHomeCycleRequest(ExpectedBuild, ExpectedManagedFiles, "home-uat"), AtomicFile.JsonOptions);
+    var body = JsonSerializer.SerializeToUtf8Bytes(
+        new LocalSlotHomeCycleRequest(ExpectedBuild, ExpectedManagedFiles, ExpectedManagedTreeSha256, "home-uat"),
+        AtomicFile.JsonOptions);
     using var request = HmacProtocol.CreateSignedJson(baseUri, "v1/local-slots/home-cycle", "recovery-console", key, body, IdempotencyKey);
     using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false };
     using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(5) };
@@ -80,6 +83,7 @@ catch (Exception ex)
         error = ex.ToString(),
         expected_build = ExpectedBuild,
         expected_managed_files = ExpectedManagedFiles,
+        expected_managed_tree_sha256 = ExpectedManagedTreeSha256,
         database_mutation_performed = false,
         public_mutation_performed = false,
         windows_reboot_required = false,
