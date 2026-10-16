@@ -1,0 +1,103 @@
+name: CI Maintenance V4 Windows P3 R3 Real Home V3
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+    paths:
+      - .github/workflows/ci-maintenance-v4-windows-p3-r3-real-home-v3.yml
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: p3-r3-real-home-v3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: windows-2022
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download exact recovered 1.1.0 Home baseline components
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-services-1.1.0-canonical-components-r3-baseline
+          path: recovered
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 38982932863
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Qualify R3 against exact recovered Home baseline
+        id: qualify
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          ./packaging/windows/qualification/qualify-p3-r3-real-home.ps1 -RecoveredRoot (Resolve-Path recovered).Path -RepoRoot $PWD.Path
+
+      - name: Collect transaction diagnostics even on failure
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Continue'
+          $dst=Join-Path $PWD 'out/failure-evidence'
+          New-Item -ItemType Directory -Path $dst -Force|Out-Null
+          $localLogs=Join-Path $env:LOCALAPPDATA 'SOKNA\Installer\logs'
+          if(Test-Path $localLogs){Copy-Item $localLogs (Join-Path $dst 'user-installer-logs') -Recurse -Force}
+          $systemLogs=Join-Path $PWD 'out\home-baseline-data\Installer\logs'
+          if(Test-Path $systemLogs){Copy-Item $systemLogs (Join-Path $dst 'system-installer-logs') -Recurse -Force}
+          Get-ChildItem $dst -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "--- $($_.FullName)"
+            if($_.Extension -in @('.json','.jsonl','.txt','.log')){Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue | Write-Host}
+          }
+
+      - name: Upload R3 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-P3-R3-REAL-HOME-DIAGNOSTICS
+          path: |
+            out/failure-evidence
+            out/real-home-plan-rows.json
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 30
+
+      - name: Fail if qualification failed
+        if: steps.qualify.outcome != 'success'
+        shell: pwsh
+        run: throw 'R3 real-Home qualification failed; diagnostics uploaded.'
+
+      - name: Upload exact R3 qualified delivery
+        if: steps.qualify.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Phase3-Qualification-Bundle-R3
+          path: |
+            out/delivery
+            out/SOKNA-Phase3-Qualification-Bundle-R3.zip
+            out/P3_R3_QUALIFICATION.json
+            out/real-home-plan-rows.json
+            out/r3-before.json
+            out/r3-after.json
+            out/r3-install-result.json
+            out/r3-system-events.jsonl
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
