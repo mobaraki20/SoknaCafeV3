@@ -1,0 +1,239 @@
+name: CI Maintenance V4 Windows P3 Qualification R2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r2
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-maintenance-v4-windows-p3-qualification-r2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-p3-bundle:
+    runs-on: windows-2022
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify frozen source and constrained packaging delta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p3='1a58608f30c5496ff53fd382a7e81070adb6ebaf'
+          git merge-base --is-ancestor $p3 HEAD
+          if($LASTEXITCODE-ne0){throw 'Qualified P3 source is not an ancestor.'}
+          $allowed=@(
+            '.github/workflows/ci-maintenance-v4-windows-p3-home-package.yml',
+            '.github/workflows/ci-maintenance-v4-windows-p3-qualification-r2.yml',
+            'packaging/windows/WINDOWS_SERVICES_VERSION.txt',
+            'packaging/windows/windows-services-component-manifest-v2.json',
+            'packaging/windows/setup-ui/Sokna.SetupUi.csproj',
+            'packaging/windows/setup-host-v3/Program.cs',
+            'packaging/windows/setup-host-v3/Sokna.SetupHostV3.csproj',
+            'packaging/windows/setup-host-v3/app.manifest'
+          )
+          $changed=@(git diff --name-only "$p3..HEAD")
+          foreach($path in $changed){if($allowed -notcontains $path){throw "Unexpected P3 qualification delta: $path"}}
+          if((Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()-ne'1.1.2'){throw 'Package version must be 1.1.2.'}
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          if([string]$m.package_version-ne'1.1.2'){throw 'Component manifest package version mismatch.'}
+          $v=@{};foreach($c in $m.components){$v[[string]$c.component_id]=[string]$c.version}
+          if($v.runtime-ne'1.0.5'-or$v.'print-agent'-ne'6.2.9'-or$v.maintenance-ne'0.3.0'-or$v.'maintenance-update-engine'-ne'0.3.0'-or$v.'maintenance-recovery-console'-ne'0.1.1'){throw 'Component version contract mismatch.'}
+          Write-Host 'Frozen source / qualification scope: PASS'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish production components UI plan-v3 host and qualification launcher
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out/runtime,out/print-worker/Service,out/print-worker/Worker,out/maintenance/app,out/maintenance/recovery,out/setup-ui,out/setup-host,out/p3-uat -Force|Out-Null
+          dotnet publish windows/runtime/source/Sokna.Runtime.Service.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/runtime
+          if($LASTEXITCODE-ne0){throw 'Runtime publish failed.'}
+          dotnet publish windows/print-agent/source/src/Sokna.PrintAgent.Service/Sokna.PrintAgent.Service.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/print-worker/Service
+          if($LASTEXITCODE-ne0){throw 'Print Service publish failed.'}
+          dotnet publish windows/print-agent/source/src/Sokna.PrintAgent.Worker/Sokna.PrintAgent.Worker.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/print-worker/Worker
+          if($LASTEXITCODE-ne0){throw 'Print Worker publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/maintenance/app
+          if($LASTEXITCODE-ne0){throw 'Maintenance Supervisor publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/maintenance/app
+          if($LASTEXITCODE-ne0){throw 'Maintenance Update Engine publish failed.'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/maintenance/recovery
+          if($LASTEXITCODE-ne0){throw 'Maintenance Recovery Console publish failed.'}
+          dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/setup-ui
+          if($LASTEXITCODE-ne0){throw 'Setup UI publish failed.'}
+          dotnet publish packaging/windows/setup-host-v3/Sokna.SetupHostV3.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/setup-host
+          if($LASTEXITCODE-ne0){throw 'Setup Host v3 publish failed.'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Sokna.Maintenance.P3HomeUat.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out/p3-uat
+          if($LASTEXITCODE-ne0){throw 'Phase 3 qualification launcher publish failed.'}
+
+      - name: Verify version surfaces and qualification attestation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $expected=@{
+            'out/runtime/SoknaRuntimeService.exe'='1.0.5';
+            'out/maintenance/app/SoknaMaintenanceSupervisor.exe'='0.3.0';
+            'out/maintenance/app/SoknaMaintenanceUpdateEngine.exe'='0.3.0';
+            'out/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe'='0.1.1';
+            'out/setup-ui/SoknaSetupUi.exe'='1.1.2';
+            'out/setup-host/SoknaSetupHost.exe'='3.0.0'
+          }
+          foreach($rel in $expected.Keys){
+            if(-not(Test-Path $rel -PathType Leaf)){throw "Missing executable: $rel"}
+            $info=[Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $rel).Path)
+            if(-not([string]$info.ProductVersion).StartsWith($expected[$rel],[StringComparison]::Ordinal)){throw "ProductVersion mismatch: $rel / $($info.ProductVersion)"}
+          }
+          $source=Get-Content windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Program.cs -Raw
+          foreach($needle in @('3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory','ExpectedManagedFiles = 497','b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a','recovery-console','v1/local-slots/home-cycle')){
+            if($source-notmatch[regex]::Escape($needle)){throw "Phase 3 attestation missing: $needle"}
+          }
+          Write-Host 'Version surfaces / attestation: PASS'
+
+      - name: Prepare unified production Windows Services 1.1.2 shell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./packaging/windows/scripts/prepare-shell-payload-v4.ps1 `
+            -RepoRoot $PWD.Path `
+            -OutputRoot (Join-Path $PWD 'out/shell') `
+            -RuntimeServiceExe (Join-Path $PWD 'out/runtime/SoknaRuntimeService.exe') `
+            -SetupHostExe (Join-Path $PWD 'out/setup-host/SoknaSetupHost.exe') `
+            -SetupUiExe (Join-Path $PWD 'out/setup-ui/SoknaSetupUi.exe') `
+            -PrintWorkerBundle (Join-Path $PWD 'out/print-worker') `
+            -MaintenanceAppBundle (Join-Path $PWD 'out/maintenance/app') `
+            -MaintenanceRecoveryBundle (Join-Path $PWD 'out/maintenance/recovery') `
+            -GitSha '${{ github.sha }}'
+          $m=Get-Content out/shell/payload-manifest.json -Raw|ConvertFrom-Json
+          if($m.format-ne'sokna-windows-services-shell-v3'-or$m.package_version-ne'1.1.2'){throw 'Shell manifest mismatch.'}
+          $life='out/shell/setup-windows-components-v4.ps1'
+          $row=@($m.files|Where-Object{[string]$_.path-eq'setup-windows-components-v4.ps1'})|Select-Object -First 1
+          if(-not$row){throw 'Lifecycle script missing from shell manifest.'}
+          if((Get-FileHash $life -Algorithm SHA256).Hash.ToLowerInvariant()-ne[string]$row.sha256){throw 'Lifecycle script hash mismatch after shell preparation.'}
+          Write-Host 'Production shell / lifecycle attestation: PASS'
+
+      - name: Build common production installer 1.1.2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_-and(Test-Path $_ -PathType Leaf)}|Select-Object -First 1
+          if(-not$iscc){throw 'Inno Setup 6 is not present.'}
+          ./packaging/windows/scripts/build-installer-v4.ps1 -ShellPayloadRoot (Join-Path $PWD 'out/shell') -RepoRoot $PWD.Path -IsccExe $iscc
+          $setup='packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.2.exe'
+          if(-not(Test-Path $setup -PathType Leaf)){throw 'Production installer missing.'}
+          $build=Get-Content packaging/windows/installer/out-v4/INSTALLER_BUILD.json -Raw|ConvertFrom-Json
+          if([string]$build.package_version-ne'1.1.2'-or-not[bool]$build.bootstrap_pre_elevation_logging){throw 'Installer metadata mismatch.'}
+          Write-Host ('Production installer SHA256='+(Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant())
+
+      - name: Qualify Maintenance-only lifecycle and prove Runtime Print KEEP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $shell=(Resolve-Path out/shell).Path
+          $install=(Join-Path $PWD 'out/qual-install');$data=(Join-Path $PWD 'out/qual-data')
+          New-Item -ItemType Directory -Path $install,$data,(Join-Path $data 'runtime'),(Join-Path $data 'setup') -Force|Out-Null
+          Copy-Item (Join-Path $shell '_payload/runtime') (Join-Path $install 'Runtime') -Recurse -Force
+          Copy-Item (Join-Path $shell '_payload/print-worker') (Join-Path $install 'PrintAgent') -Recurse -Force
+          Copy-Item windows/runtime/runtime-config.example.json (Join-Path $data 'runtime/runtime-config.json') -Force
+          [ordered]@{format='sokna-windows-services-install-state-v2';paired=$false;local_base_url=''}|ConvertTo-Json|Set-Content (Join-Path $data 'setup/windows-services-state.json') -Encoding utf8
+          $runtime=(Join-Path $install 'Runtime/SoknaRuntimeService.exe');$print=(Join-Path $install 'PrintAgent/Service/Sokna.PrintAgent.Service.exe')
+          & "$env:SystemRoot\System32\sc.exe" create SoknaRuntime binPath= ('"'+$runtime+'" --config "'+(Join-Path $data 'runtime/runtime-config.json')+'"') start= demand | Out-Null
+          if($LASTEXITCODE-ne0){throw 'Fixture Runtime service registration failed.'}
+          & "$env:SystemRoot\System32\sc.exe" create SoknaPrintWorker binPath= ('"'+$print+'"') start= auto | Out-Null
+          if($LASTEXITCODE-ne0){throw 'Fixture Print service registration failed.'}
+          $before=[ordered]@{
+            runtime_hash=(Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant();runtime_time=(Get-Item $runtime).LastWriteTimeUtc.ToString('o');runtime_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaRuntime)|Out-String);
+            print_hash=(Get-FileHash $print -Algorithm SHA256).Hash.ToLowerInvariant();print_time=(Get-Item $print).LastWriteTimeUtc.ToString('o');print_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaPrintWorker)|Out-String)
+          }
+          $manifest=Get-Content (Join-Path $shell 'windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
+          $rows=@()
+          foreach($c in $manifest.components){
+            $target=Join-Path $shell (([string]$c.payload_primary).Replace('/','\'));$installed=Join-Path $install (([string]$c.installed_primary).Replace('/','\'))
+            $action=if([bool]$c.primary-and([string]$c.component_id-in@('runtime','print-agent'))){'KEEP'}else{'INSTALL'}
+            $rows += [ordered]@{component_id=[string]$c.component_id;primary=[bool]$c.primary;current_version=$(if(Test-Path $installed){[string]$c.version}else{'-'});target_version=[string]$c.version;health='unknown';update_state=$(if($action-eq'KEEP'){'up_to_date'}else{'install_required'});action=$action;reason='p3-qualification-maintenance-only';installed_sha256=$(if(Test-Path $installed){(Get-FileHash $installed -Algorithm SHA256).Hash.ToLowerInvariant()}else{''});target_sha256=(Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant();service_name=[string]$c.service_name;transaction_group=[string]$c.transaction_group}
+          }
+          $tx='ins-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')+'-'+[guid]::NewGuid().ToString('N').Substring(0,10);$corr='corr-'+[guid]::NewGuid().ToString('N');$session='ui-'+[guid]::NewGuid().ToString('N')
+          $txdir=Join-Path $env:LOCALAPPDATA "SOKNA\Installer\logs\$tx";New-Item -ItemType Directory -Path $txdir -Force|Out-Null
+          $plan=[ordered]@{format='sokna-windows-install-plan-v3';schema_version=3;transaction_id=$tx;correlation_id=$corr;setup_session_id=$session;created_at_utc=[DateTime]::UtcNow.ToString('o');mode='install';shell_root=$shell;install_root=$install;data_root=$data;package_version='1.1.2';components=$rows}
+          $planPath=Join-Path $txdir 'update-plan.json';$plan|ConvertTo-Json -Depth 8|Set-Content $planPath -Encoding utf8
+          $p=Start-Process -FilePath (Join-Path $shell 'SoknaSetupHost.exe') -ArgumentList @('--plan-file',('"'+$planPath+'"')) -Wait -PassThru
+          if($p.ExitCode-ne0){Get-ChildItem $txdir -File|ForEach-Object{Write-Host "--- $($_.Name)";if($_.Extension-in@('.log','.json','.jsonl','.txt')){Get-Content $_.FullName -Raw|Write-Host}};throw "Maintenance-only lifecycle failed: $($p.ExitCode)"}
+          $resultPath=Join-Path $txdir 'install-result.json';$eventsPath=Join-Path $txdir 'system-events.jsonl'
+          if(-not(Test-Path $resultPath)-or-not(Test-Path $eventsPath)){throw 'Lifecycle evidence missing beside plan.'}
+          $result=Get-Content $resultPath -Raw|ConvertFrom-Json
+          if([string]$result.status-ne'completed'-or[int]$result.exit_code-ne0-or[bool]$result.reboot_required){throw 'Lifecycle result did not close cleanly.'}
+          $after=[ordered]@{
+            runtime_hash=(Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant();runtime_time=(Get-Item $runtime).LastWriteTimeUtc.ToString('o');runtime_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaRuntime)|Out-String);
+            print_hash=(Get-FileHash $print -Algorithm SHA256).Hash.ToLowerInvariant();print_time=(Get-Item $print).LastWriteTimeUtc.ToString('o');print_qc=((& "$env:SystemRoot\System32\sc.exe" qc SoknaPrintWorker)|Out-String)
+          }
+          foreach($k in @('runtime_hash','runtime_time','runtime_qc','print_hash','print_time','print_qc')){if($before[$k]-ne$after[$k]){throw "KEEP component changed unexpectedly: $k"}}
+          $ms=Get-Service SoknaMaintenanceSupervisor -ErrorAction Stop;if($ms.Status-ne'Running'){throw "Maintenance Supervisor not running: $($ms.Status)"}
+          $super=Join-Path $install 'Maintenance/App/SoknaMaintenanceSupervisor.exe';$engine=Join-Path $install 'Maintenance/App/SoknaMaintenanceUpdateEngine.exe'
+          if(-not(Test-Path $super)-or-not(Test-Path $engine)){throw 'Maintenance P3 binaries not installed.'}
+          $sv=[Diagnostics.FileVersionInfo]::GetVersionInfo($super).ProductVersion;$ev=[Diagnostics.FileVersionInfo]::GetVersionInfo($engine).ProductVersion
+          if(-not([string]$sv).StartsWith('0.3.0')-or-not([string]$ev).StartsWith('0.3.0')){throw "Maintenance P3 version mismatch: supervisor=$sv engine=$ev"}
+          $eventRows=@(Get-Content $eventsPath|Where-Object{-not[string]::IsNullOrWhiteSpace($_)}|ForEach-Object{$_|ConvertFrom-Json})
+          foreach($id in @('runtime','print-agent')){
+            $keep=@($eventRows|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq$id-and$_.result-eq'kept'})|Select-Object -First 1
+            if(-not$keep){throw "KEEP evidence missing for $id"}
+            if([string]$keep.data.action-ne'KEEP'-or[string]$keep.data.proof-ne'no_stop_no_copy_no_registration_no_restart'){throw "KEEP proof invalid for $id"}
+          }
+          [ordered]@{format='sokna-p3-qualification-r2-v1';result='PASS';package_version='1.1.2';runtime='KEEP';print_agent='KEEP';maintenance='0.3.0';update_engine='0.3.0';proof='no_stop_no_copy_no_registration_no_restart';database_mutation=$false;public_mutation=$false;windows_reboot=$false;source_p3='1a58608f30c5496ff53fd382a7e81070adb6ebaf';package_sha='${{ github.sha }}'}|ConvertTo-Json -Depth 5|Set-Content out/P3_QUALIFICATION_R2.json -Encoding utf8
+          Write-Host 'Maintenance-only / Runtime+Print KEEP qualification: PASS'
+
+      - name: Build Phase 3 qualification bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $bundle='out/SOKNA-Phase3-Qualification-Bundle-R2';New-Item -ItemType Directory -Path $bundle -Force|Out-Null
+          Copy-Item 'packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.2.exe' (Join-Path $bundle 'SOKNA-Windows-Services-Setup-1.1.2.exe') -Force
+          Copy-Item 'out/p3-uat/SOKNA-Phase3-Home-UAT.exe' (Join-Path $bundle 'SOKNA-Phase3-Qualification.exe') -Force
+          Copy-Item 'out/P3_QUALIFICATION_R2.json' (Join-Path $bundle 'P3_QUALIFICATION_R2.json') -Force
+          $readme=@'
+          SOKNA Phase 3 Qualification Bundle R2
+
+          Purpose:
+          - The Windows Services installer is the common production package, not a Home-specific installer.
+          - The Qualification launcher is temporary and is used only to prove Local side-by-side release-slot conversion / A-B-A activation on the test host.
+
+          Test-host order:
+          1) Run SOKNA-Windows-Services-Setup-1.1.2.exe.
+          2) In its component plan, Runtime 1.0.5 and Print Agent 6.2.9 must be KEEP/up-to-date. If either is UPDATE/REPAIR/BLOCKED, stop and collect diagnostics; do not continue for Phase 3 qualification.
+          3) Maintenance must move to Supervisor 0.3.0 / Update Engine 0.3.0. No Windows reboot is expected.
+          4) After Maintenance is healthy, run SOKNA-Phase3-Qualification.exe as administrator.
+          5) The qualification launcher is locked to exact Local 231ai, 497 managed files, and the canonical managed-tree digest. It does not mutate DB or Public.
+          6) After the cycle, collect the new Support Bundle and the Phase 3 result/evidence.
+
+          Production direction after PASS:
+          - Same Maintenance/Windows Services mechanism for test and Cafe.
+          - Cafe gets only a one-time baseline-specific Legacy-to-Slots migration bridge; it does not get a separate updater architecture.
+          '@
+          Set-Content (Join-Path $bundle 'README.txt') $readme -Encoding utf8
+          $hashes=Get-ChildItem $bundle -File|Sort-Object Name|ForEach-Object{"$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"}
+          Set-Content (Join-Path $bundle 'SHA256SUMS.txt') $hashes -Encoding ascii
+          Compress-Archive -Path (Join-Path $bundle '*') -DestinationPath 'out/SOKNA-Phase3-Qualification-Bundle-R2.zip' -Force
+
+      - name: Upload Phase 3 qualification bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Phase3-Qualification-Bundle-R2
+          path: |
+            out/SOKNA-Phase3-Qualification-Bundle-R2.zip
+            out/SOKNA-Phase3-Qualification-Bundle-R2/**
+          if-no-files-found: error
+          retention-days: 30
