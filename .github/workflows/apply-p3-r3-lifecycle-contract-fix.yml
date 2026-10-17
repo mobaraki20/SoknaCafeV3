@@ -1,0 +1,87 @@
+name: Apply P3 R3 Lifecycle Contract Fix
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+    paths:
+      - .github/workflows/apply-p3-r3-lifecycle-contract-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: work/maintenance-v4-windows-p3-home-package-r3
+      - name: Reconcile privileged registration contract and preflight evidence
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('packaging/windows/scripts/setup-windows-components-v5.ps1')
+          s=p.read_text(encoding='utf-8')
+          marker="function Simple-Cmd([string]$exe){Quote $exe}\n"
+          insert="""function Registration-Matches([string]$id,[string]$image,[string]$installed,[string]$dataRoot){
+  if([string]::IsNullOrWhiteSpace($image)){return $false}
+  $normalized=$image.Trim()
+  if($normalized.IndexOf($installed,[StringComparison]::OrdinalIgnoreCase)-lt0){return $false}
+  if($id-eq'runtime'){
+    $cfg=Join-Path $dataRoot 'runtime\\runtime-config.json'
+    return $normalized.IndexOf('--config',[StringComparison]::OrdinalIgnoreCase)-ge0-and$normalized.IndexOf($cfg,[StringComparison]::OrdinalIgnoreCase)-ge0
+  }
+  return $true
+}
+"""
+          if 'function Registration-Matches' not in s:
+              if marker not in s: raise SystemExit('Simple-Cmd marker missing')
+              s=s.replace(marker, marker+insert, 1)
+          old="if([string]$svc.ImagePath-cne$expected){$action='REPAIR';$reason='service_registration_drift'}"
+          new="if(-not(Registration-Matches $id ([string]$svc.ImagePath) $installed $DataRoot)){$action='REPAIR';$reason='service_registration_drift'}"
+          if old in s:
+              s=s.replace(old,new,1)
+          elif new not in s:
+              raise SystemExit('registration comparison marker missing')
+          start="$script:Resolved=@($manifest.components|ForEach-Object{Resolve-One $_})"
+          start_new="$script:Resolved=@()\ntry{\n  $script:Resolved=@($manifest.components|ForEach-Object{Resolve-One $_})"
+          if start in s:
+              s=s.replace(start,start_new,1)
+          elif start_new not in s:
+              raise SystemExit('preflight start marker missing')
+          event="Event 'installed_component_inventory_built' 'completed' @{components=@($script:Resolved|ForEach-Object{@{id=$_.Id;version=$_.CurrentVersion;action=$_.Action;reason=$_.Reason}})}"
+          event_new="""}catch{
+  $msg=Safe $_.Exception.Message
+  $CurrentComponent='—';$CurrentPhase='Preflight'
+  Event 'preflight_failed' 'failed' @{error=$msg}
+  Finish 'failed' 2 $msg $false $false
+  Write-Error $msg
+  exit 2
+}
+"""+event
+          if event in s and "Event 'preflight_failed'" not in s:
+              s=s.replace(event,event_new,1)
+          elif "Event 'preflight_failed'" not in s:
+              raise SystemExit('inventory event marker missing')
+          p.write_text(s,encoding='utf-8',newline='\n')
+          print('Lifecycle contract reconciliation patch applied.')
+      - name: Verify constrained patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "function Registration-Matches" packaging/windows/scripts/setup-windows-components-v5.ps1
+          grep -F "Event 'preflight_failed' 'failed'" packaging/windows/scripts/setup-windows-components-v5.ps1
+          if grep -Fq "ImagePath-cne" packaging/windows/scripts/setup-windows-components-v5.ps1; then echo 'legacy case-sensitive comparison remains'; exit 1; fi
+          git diff --check
+          git diff -- packaging/windows/scripts/setup-windows-components-v5.ps1
+      - name: Commit source fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packaging/windows/scripts/setup-windows-components-v5.ps1
+          git commit -m 'fix(maintenance): reconcile privileged planner registration contract'
+          git push origin HEAD:work/maintenance-v4-windows-p3-home-package-r3
