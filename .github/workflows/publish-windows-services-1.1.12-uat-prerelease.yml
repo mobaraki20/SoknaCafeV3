@@ -1,0 +1,91 @@
+name: Publish Windows Services 1.1.12 UAT Pre-release
+
+on:
+  push:
+    branches:
+      - work/windows-services-1.1.12-recovery-contract
+    paths:
+      - .github/workflows/publish-windows-services-1.1.12-uat-prerelease.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact qualified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/12109808732/zip" > qualified.zip
+          unzip -q qualified.zip -d qualified
+          src="qualified/packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.12.exe"
+          test -f "$src"
+          cp "$src" SOKNA-Windows-Services-Setup-1.1.12-QUALIFIED.exe
+          cp qualified/out-1112/QUALIFICATION_1.1.12.json QUALIFICATION_1.1.12.json
+          cp qualified/out-1112/CORE_VERIFICATION_1.1.12.json CORE_VERIFICATION_1.1.12.json
+
+      - name: Verify exact installer identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha="c2e33559b502285f58dd9d20d8f41056f3944091190cd4cc6f49c499c98fc293"
+          expected_size="243364019"
+          actual_sha="$(sha256sum SOKNA-Windows-Services-Setup-1.1.12-QUALIFIED.exe | awk '{print $1}')"
+          actual_size="$(stat -c %s SOKNA-Windows-Services-Setup-1.1.12-QUALIFIED.exe)"
+          test "$actual_sha" = "$expected_sha"
+          test "$actual_size" = "$expected_size"
+          printf '%s  %s\n' "$actual_sha" "SOKNA-Windows-Services-Setup-1.1.12-QUALIFIED.exe" > SHA256SUMS.txt
+
+      - name: Create GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="windows-services-1.1.12-uat"
+          target="d84ee09711879dff903c220b046d332d91e98b8e"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refusing to replace it."
+            exit 1
+          fi
+          cat > RELEASE_NOTES.md <<'EOF'
+          SOKNA Windows Services 1.1.12 — UAT pre-release
+
+          Engineering-qualified candidate for real-host UAT.
+
+          Qualified source commit: d84ee09711879dff903c220b046d332d91e98b8e
+          Qualification run: 39057537925
+          Qualified artifact: 12109808732
+
+          Installer SHA-256: c2e33559b502285f58dd9d20d8f41056f3944091190cd4cc6f49c499c98fc293
+          Installer size: 243364019 bytes
+
+          Key UAT fix:
+          - resolves the real Cafe 1.1.11 failure: Maintenance subordinate fingerprint mismatch: maintenance-recovery-console
+          - Planner and privileged Executor now use one symmetric compatible-fingerprint contract
+          - released Cafe Recovery 0.1.1 fingerprint 368ea590... is KEEP
+          - canonical Recovery 0.1.1 fingerprint 85989bc8... is KEEP
+          - unknown Recovery fingerprints remain fail-closed and Recovery is not mutated
+          - packaged symmetric Recovery contract regression gate passed
+          - packaged painted-startup regression passed with Windows Services 1.1.12 badge
+          - Runtime 1.0.5 KEEP
+          - Print 6.2.9 KEEP
+          - Maintenance 0.3.6
+          - Recovery 0.1.1 KEEP
+          - no reboot required
+
+          This is a pre-release for real-host UAT, not yet production-approved.
+          EOF
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$target" \
+            --title "SOKNA Windows Services 1.1.12 — UAT" \
+            --notes-file RELEASE_NOTES.md \
+            --prerelease \
+            SOKNA-Windows-Services-Setup-1.1.12-QUALIFIED.exe \
+            SHA256SUMS.txt \
+            QUALIFICATION_1.1.12.json \
+            CORE_VERIFICATION_1.1.12.json
