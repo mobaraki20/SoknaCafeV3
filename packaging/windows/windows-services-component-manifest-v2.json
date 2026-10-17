@@ -2,7 +2,7 @@
   "format": "sokna-windows-component-manifest-v2",
   "schema_version": 2,
   "package_component": "windows-services-packaging",
-  "package_version": "1.1.6",
+  "package_version": "1.1.7",
   "planner_contract": "1.0",
   "components": [
     {
@@ -41,7 +41,7 @@
       "kind": "service",
       "primary": true,
       "required": true,
-      "version": "0.3.4",
+      "version": "0.3.5",
       "service_name": "SoknaMaintenanceSupervisor",
       "payload_primary": "_payload/maintenance/app/SoknaMaintenanceSupervisor.exe",
       "installed_primary": "Maintenance/App/SoknaMaintenanceSupervisor.exe",
@@ -51,7 +51,7 @@
       "dependencies": [
         {
           "component_id": "maintenance-update-engine",
-          "version": "0.3.4"
+          "version": "0.3.5"
         },
         {
           "component_id": "maintenance-recovery-console",
@@ -66,7 +66,7 @@
       "primary": false,
       "required": true,
       "parent_component": "maintenance",
-      "version": "0.3.4",
+      "version": "0.3.5",
       "payload_primary": "_payload/maintenance/app/SoknaMaintenanceUpdateEngine.exe",
       "installed_primary": "Maintenance/App/SoknaMaintenanceUpdateEngine.exe",
       "restart_scope": "process",
