@@ -1,0 +1,38 @@
+name: Apply R7 worker options
+
+on:
+  push:
+    branches: [work/maintenance-v4-r7-reliability-reset]
+    paths: [.github/workflows/apply-r7-worker-options.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/maintenance-v4-r7-reliability-reset
+          fetch-depth: 0
+      - name: Register default policy
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs')
+          s=p.read_text(encoding='utf-8')
+          old='builder.Services.AddSingleton(state);\nbuilder.Services.AddHostedService<LocalSlotAdoptionWorker>();\n'
+          new='builder.Services.AddSingleton(state);\nbuilder.Services.AddSingleton(LocalSlotAdoptionWorkerOptions.Default);\nbuilder.Services.AddHostedService<LocalSlotAdoptionWorker>();\n'
+          if s.count(old)!=1: raise SystemExit('worker options anchor mismatch')
+          p.write_text(s.replace(old,new,1),encoding='utf-8',newline='\n')
+      - name: Commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs
+          git diff --cached --check
+          git commit -m "feat(maintenance): register bounded Local adoption policy"
+          git push origin HEAD:work/maintenance-v4-r7-reliability-reset
