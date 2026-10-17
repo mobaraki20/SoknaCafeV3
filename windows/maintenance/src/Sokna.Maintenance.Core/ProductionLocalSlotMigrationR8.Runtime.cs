@@ -59,7 +59,9 @@ public sealed partial class ProductionLocalSlotMigrationBridge
                 var build = response.Headers.TryGetValues("X-Sokna-Build", out var builds) ? builds.SingleOrDefault() : null;
                 var runtime = response.Headers.TryGetValues("X-Sokna-Runtime", out var runtimes) ? runtimes.SingleOrDefault() : null;
                 if (response.IsSuccessStatusCode && string.Equals(build, expectedBuild, StringComparison.Ordinal) && string.Equals(runtime, "php-ready", StringComparison.Ordinal)) return;
-                last = new InvalidDataException($"HTTP health mismatch at '{baseUri}'. status={(int)response.StatusCode}, build='{build}', runtime='{runtime}'.");
+                var redirect = response.Headers.Location?.ToString();
+                if (redirect?.Length > 160) redirect = redirect[..160];
+                last = new InvalidDataException($"HTTP health mismatch at '{baseUri}'. status={(int)response.StatusCode}, location='{redirect}', build='{build}', runtime='{runtime}'.");
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidDataException)
             {
