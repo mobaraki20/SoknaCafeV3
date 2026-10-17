@@ -1,0 +1,14 @@
+{
+  "format": "sokna-local-slot-bootstrap-contract-v1",
+  "schema_version": 1,
+  "entries": [
+    {
+      "build": "3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory",
+      "managed_files": 497,
+      "managed_tree_sha256": "b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a"
+    }
+  ],
+  "database_mutation": false,
+  "public_mutation": false,
+  "windows_reboot_required": false
+}
