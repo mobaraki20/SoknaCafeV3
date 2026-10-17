@@ -22,41 +22,21 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - name: Apply deterministic source patch
-        id: patch
-        continue-on-error: true
         shell: pwsh
         run: |
-          $ErrorActionPreference='Continue'
-          $log='r8-patch-diagnostic.txt'
-          "repo=$PWD" | Set-Content -LiteralPath $log -Encoding utf8
-          "python=$((Get-Command python -ErrorAction SilentlyContinue).Source)" | Add-Content -LiteralPath $log -Encoding utf8
-          python windows/maintenance/qualification/apply-r8-reconcile-hardening.py *>> $log
-          $code=$LASTEXITCODE
-          "exit_code=$code" | Add-Content -LiteralPath $log -Encoding utf8
-          "coord_exists=$(Test-Path windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs)" | Add-Content -LiteralPath $log -Encoding utf8
-          "queue_exists=$(Test-Path windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotAdoptionQueue.cs)" | Add-Content -LiteralPath $log -Encoding utf8
-          git diff -- windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotAdoptionQueue.cs *>> $log
-          if($code-ne0){exit $code}
-      - name: Upload patch diagnostic
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: r8-reconcile-patch-diagnostic
-          path: r8-patch-diagnostic.txt
-          if-no-files-found: error
-          retention-days: 1
+          $ErrorActionPreference='Stop'
+          python windows/maintenance/qualification/apply-r8-reconcile-hardening.py
+          if($LASTEXITCODE-ne0){throw 'R8 reconcile patcher failed'}
       - name: Verify patch diff
-        if: steps.patch.outcome == 'success'
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           git diff --check
-          $diff=git diff -- windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotAdoptionQueue.cs
-          $diff | Write-Host
-          if($diff -notmatch 'RequireProductionSlotPath'){throw 'Sibling-slot reconcile guard missing'}
-          if($diff -notmatch 'active-slot state does not match'){throw 'Active-slot identity guard missing'}
+          $diffText=(git diff -- windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotAdoptionQueue.cs | Out-String)
+          $diffText | Write-Host
+          if($diffText -notmatch 'RequireProductionSlotPath'){throw 'Sibling-slot reconcile guard missing'}
+          if($diffText -notmatch 'active-slot state does not match'){throw 'Active-slot identity guard missing'}
       - name: Build and regression test
-        if: steps.patch.outcome == 'success'
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -69,7 +49,6 @@ jobs:
           dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release --no-build
           if($LASTEXITCODE-ne0){throw 'Reliability harness failed'}
       - name: Commit hardened reconcile guards
-        if: steps.patch.outcome == 'success'
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -78,7 +57,3 @@ jobs:
           git add windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotAdoptionQueue.cs
           git commit -m 'fix(maintenance): reject legacy nested slots during reconcile'
           git push origin HEAD:work/maintenance-v4-r8-php-slot-root
-      - name: Fail if patch failed
-        if: steps.patch.outcome != 'success'
-        shell: pwsh
-        run: throw 'R8 reconcile source patch did not apply; see diagnostic artifact.'
