@@ -4,7 +4,7 @@ using Sokna.Maintenance.Core;
 
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
-    Console.WriteLine("SOKNA Maintenance Update Engine 0.3.4 (R7 durable Local adoption bridge; DB mutation disabled)");
+    Console.WriteLine("SOKNA Maintenance Update Engine 0.3.5 (R8 sibling-release Local adoption bridge; DB mutation disabled)");
     Console.WriteLine("verify-stage --package <zip> --identity <json> [--data-root <path>]");
     Console.WriteLine("local-slot-inspect --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
     Console.WriteLine("local-slot-migrate --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
@@ -37,7 +37,7 @@ if (command == "local-slot-recover")
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             ok = result.Ok,
-            engine_version = "0.3.4",
+            engine_version = "0.3.5",
             phase = result.Phase,
             result,
             managed_tree_sha256 = result.ManagedTreeSha256,
@@ -53,7 +53,7 @@ if (command == "local-slot-recover")
         Console.Error.WriteLine(JsonSerializer.Serialize(new
         {
             ok = false,
-            engine_version = "0.3.4",
+            engine_version = "0.3.5",
             phase = "RECOVERY_FAILED",
             code = "LOCAL_SLOT_RECOVERY_FAILED",
             error = ex.Message,
@@ -88,7 +88,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.4",
+                engine_version = "0.3.5",
                 phase = "INSPECTED",
                 layout,
                 managed_tree_sha256 = managedTree,
@@ -107,7 +107,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = result.Ok,
-                engine_version = "0.3.4",
+                engine_version = "0.3.5",
                 phase = result.Phase,
                 result,
                 managed_tree_sha256 = result.ManagedTreeSha256,
@@ -130,7 +130,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.4",
+                engine_version = "0.3.5",
                 phase = "COMMITTED",
                 result,
                 managed_tree_sha256 = finalTree,
@@ -152,7 +152,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.4",
+                engine_version = "0.3.5",
                 phase = state.Phase,
                 state,
                 managed_tree_sha256 = finalTree,
@@ -173,7 +173,7 @@ catch (Exception ex) when (ex is InvalidDataException or IOException or Unauthor
     Console.Error.WriteLine(JsonSerializer.Serialize(new
     {
         ok = false,
-        engine_version = "0.3.4",
+        engine_version = "0.3.5",
         phase = "FAILED",
         code = command == "local-slot-migrate" ? "LOCAL_SLOT_MIGRATION_FAILED" : "LOCAL_SLOT_PHASE3_FAILED",
         error = ex.Message,
@@ -226,7 +226,7 @@ static void RunVerifyStage(string package, string identity, MaintenancePaths pat
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             ok = true,
-            engine_version = "0.3.4",
+            engine_version = "0.3.5",
             phase = "STAGED",
             release_set_id = receipt.ReleaseSetId,
             sequence = receipt.Sequence,
@@ -240,7 +240,7 @@ static void RunVerifyStage(string package, string identity, MaintenancePaths pat
         Console.Error.WriteLine(JsonSerializer.Serialize(new
         {
             ok = false,
-            engine_version = "0.3.4",
+            engine_version = "0.3.5",
             phase = "REJECTED_PRE_MUTATION",
             code = "RELEASE_SET_REJECTED",
             error = ex.Message,
