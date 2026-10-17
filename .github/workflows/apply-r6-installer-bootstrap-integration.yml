@@ -1,0 +1,107 @@
+name: Apply R6 Installer Bootstrap Integration
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-production-local-migration-bridge-r6
+    paths:
+      - .github/workflows/apply-r6-installer-bootstrap-integration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply deterministic packaging integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          from pathlib import Path
+          root=Path('.')
+
+          p=root/'packaging/windows/scripts/prepare-shell-payload-v4.ps1'
+          t=p.read_text(encoding='utf-8-sig')
+          anchor=" 'packaging\\windows\\windows-services-component-manifest-v2.json'='windows-services-component-manifest-v2.json';\n"
+          addition=anchor+" 'packaging\\windows\\local-slot-bootstrap-contract-v1.json'='local-slot-bootstrap-contract-v1.json';\n 'packaging\\windows\\scripts\\bootstrap-local-slot-r6.ps1'='bootstrap-local-slot-r6.ps1';\n"
+          if "bootstrap-local-slot-r6.ps1" not in t:
+              if anchor not in t: raise SystemExit('prepare-shell owned anchor missing')
+              t=t.replace(anchor,addition,1)
+          old="'setup-windows-components-v4.ps1','collect-support-core.ps1','collect-support-v2.ps1')"
+          new="'setup-windows-components-v4.ps1','bootstrap-local-slot-r6.ps1','local-slot-bootstrap-contract-v1.json','collect-support-core.ps1','collect-support-v2.ps1')"
+          if old in t: t=t.replace(old,new,1)
+          elif new not in t: raise SystemExit('prepare-shell required-list anchor missing')
+          p.write_text(t,encoding='utf-8')
+
+          p=root/'packaging/windows/scripts/setup-windows-components-v5.ps1'
+          t=p.read_text(encoding='utf-8-sig')
+          old="WriteJson $statePath $state;Event 'transaction_commit_completed' 'completed';Finish 'completed' 0 'Windows Services component plan completed successfully.' $false $false;exit 0"
+          new=r'''WriteJson $statePath $state;Event 'windows_component_commit_completed' 'completed'
+ $CurrentComponent='local-web-layout';$CurrentPhase='Post-commit migration bootstrap'
+ $bootstrap=Join-Path $ShellRoot 'bootstrap-local-slot-r6.ps1';$bootstrapEvidence=Join-Path $TxDir 'local-slot-bootstrap.json';$bootstrapExit=20
+ try{
+   if(-not(Test-Path $bootstrap -PathType Leaf)){throw 'R6 Local slot bootstrap entrypoint is missing from the qualified shell.'}
+   $ps51=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+   if(-not(Test-Path $ps51 -PathType Leaf)){throw 'Windows PowerShell 5.1 executable is unavailable for the R6 bootstrap.'}
+   $bp=Start-Process $ps51 -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$bootstrap+'"'),'-PlanFile',('"'+$PlanFile+'"')) -WindowStyle Hidden -Wait -PassThru
+   $bootstrapExit=[int]$bp.ExitCode
+ }catch{
+   Event 'local_slot_bootstrap_failed' 'failed' @{error=(Safe $_.Exception.Message);windows_components_committed=$true;windows_rollback_performed=$false}
+   Finish 'failed' 3 'Windows Services was updated, but the Local layout migration bootstrap could not start. Maintenance remains updated so recovery stays available.' $false $false
+   exit 3
+ }
+ $be=$null;if(Test-Path $bootstrapEvidence){try{$be=Get-Content $bootstrapEvidence -Raw|ConvertFrom-Json}catch{}}
+ if($bootstrapExit-ne0){
+   Event 'local_slot_bootstrap_failed' 'failed' @{exit_code=$bootstrapExit;status=$(if($be){[string]$be.status}else{'unknown'});code=$(if($be){[string]$be.code}else{'BOOTSTRAP_FAILED'});operation_id=$(if($be-and$be.PSObject.Properties.Name-contains'operation_id'){[string]$be.operation_id}else{''});windows_components_committed=$true;windows_rollback_performed=$false}
+   Finish 'failed' 3 'Windows Services was updated, but the Local layout migration did not complete. Maintenance remains updated so recovery stays available.' $false $false
+   exit 3
+ }
+ Event 'local_slot_bootstrap_completed' 'completed' @{status=$(if($be){[string]$be.status}else{'completed'});code=$(if($be){[string]$be.code}else{'OK'});operation_id=$(if($be-and$be.PSObject.Properties.Name-contains'operation_id'){[string]$be.operation_id}else{''});windows_components_committed=$true}
+ $CurrentComponent='-';$CurrentPhase='Commit';Event 'transaction_commit_completed' 'completed';Finish 'completed' 0 'Windows Services component plan completed; eligible Local slot migration bootstrap also completed or was safely skipped.' $false $false;exit 0'''
+          if old not in t:
+              if 'local_slot_bootstrap_completed' not in t: raise SystemExit('setup lifecycle commit anchor missing')
+          else:
+              t=t.replace(old,new,1)
+          p.write_text(t,encoding='utf-8')
+          '@ | python -
+
+      - name: PowerShell 5.1 parse gate
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($p in @('packaging/windows/scripts/bootstrap-local-slot-r6.ps1','packaging/windows/scripts/setup-windows-components-v5.ps1','packaging/windows/scripts/prepare-shell-payload-v4.ps1')){
+            $tokens=$null;$errors=$null
+            [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors)
+            if($errors.Count){$errors|ForEach-Object{Write-Error $_.Message};throw "PS5.1 parse failed: $p"}
+          }
+          Write-Host 'PS5.1 parse: PASS'
+
+      - name: Contract and ownership assertions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $contract=Get-Content packaging/windows/local-slot-bootstrap-contract-v1.json -Raw|ConvertFrom-Json
+          if($contract.entries.Count-ne1-or$contract.entries[0].build-ne'3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory'-or[int]$contract.entries[0].managed_files-ne497-or$contract.entries[0].managed_tree_sha256-ne'b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a'){throw 'R6 bootstrap identity contract mismatch'}
+          $boot=Get-Content packaging/windows/scripts/bootstrap-local-slot-r6.ps1 -Raw
+          foreach($token in @('/v1/local-slots/migrate','X-Sokna-Maintenance-Protocol','X-Sokna-Signature','web-adapter','SUPERVISOR_DESCRIPTOR_UNAVAILABLE','LOCAL_BASELINE_NOT_ALLOWLISTED')){if(-not$boot.Contains($token)){throw "bootstrap token missing: $token"}}
+          if($boot.Contains('SoknaMaintenanceUpdateEngine.exe')){throw 'bootstrap must not bypass Supervisor by launching Update Engine directly'}
+          $life=Get-Content packaging/windows/scripts/setup-windows-components-v5.ps1 -Raw
+          if(-not$life.Contains('windows_component_commit_completed')-or-not$life.Contains('windows_rollback_performed=$false')){throw 'post-commit no-Windows-rollback boundary missing'}
+          Write-Host 'R6 bootstrap ownership/commit-boundary assertions: PASS'
+
+      - name: Commit integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packaging/windows/scripts/prepare-shell-payload-v4.ps1 packaging/windows/scripts/setup-windows-components-v5.ps1
+          if(-not(git diff --cached --quiet)){
+            git commit -m 'feat(installer): invoke R6 Local migration after Windows commit'
+            git push origin HEAD
+          }
