@@ -24,157 +24,130 @@ foreach (var test in tests)
 }
 Console.WriteLine($"R7_RELIABILITY_HARNESS_PASS={passed}/{tests.Count}");
 
-static Task NoRequestIsIdle()
+static async Task NoRequestIsIdle()
 {
     using var env = TestEnv.Create();
     var fake = new FakeCoordinator();
     var worker = env.Worker(fake);
-    return Run(async () =>
-    {
-        await worker.ProcessOnce(CancellationToken.None);
-        Assert(fake.Calls.Count == 0, "No request must not invoke migration.");
-        Assert(env.Queue.LoadStatus() is null, "No request must not create status.");
-    });
+    await worker.ProcessOnce(CancellationToken.None);
+    Assert(fake.Calls.Count == 0, "No request must not invoke migration.");
+    Assert(env.Queue.LoadStatus() is null, "No request must not create status.");
 }
 
-static Task PreMutationFailureSchedulesRetry()
+static async Task PreMutationFailureSchedulesRetry()
 {
     using var env = TestEnv.Create();
     env.WriteRequest();
     var fake = new FakeCoordinator(Op("failed", false, "PRECHECK_TRANSIENT"));
     var worker = env.Worker(fake);
-    return Run(async () =>
-    {
-        await worker.ProcessOnce(CancellationToken.None);
-        var status = Require(env.Queue.LoadStatus());
-        Assert(status.State == "retry_wait", "Pre-mutation failure should schedule retry.");
-        Assert(status.AttemptCount == 1, "First failure should record attempt 1.");
-        Assert(status.ActivationPerformed == false, "Retryable failure cannot claim activation.");
-        Assert(status.NextAttemptAtUtc is not null, "Retry must be durable with next attempt timestamp.");
-        Assert(fake.Calls.Count == 1, "Exactly one migration call expected.");
-    });
+    await worker.ProcessOnce(CancellationToken.None);
+    var status = Require(env.Queue.LoadStatus());
+    Assert(status.State == "retry_wait", "Pre-mutation failure should schedule retry.");
+    Assert(status.AttemptCount == 1, "First failure should record attempt 1.");
+    Assert(status.ActivationPerformed == false, "Retryable failure cannot claim activation.");
+    Assert(status.NextAttemptAtUtc is not null, "Retry must be durable with next attempt timestamp.");
+    Assert(fake.Calls.Count == 1, "Exactly one migration call expected.");
 }
 
-static Task RestartResumesDueRetry()
+static async Task RestartResumesDueRetry()
 {
     using var env = TestEnv.Create();
     var request = env.WriteRequest();
     var first = new FakeCoordinator(Op("failed", false, "TEMPORARY"));
     var worker1 = env.Worker(first);
-    return Run(async () =>
-    {
-        await worker1.ProcessOnce(CancellationToken.None);
-        env.Queue.MarkRetry(request, 1, "op-first", "TEMPORARY", "due now", DateTimeOffset.UtcNow.AddSeconds(-1));
+    await worker1.ProcessOnce(CancellationToken.None);
+    env.Queue.MarkRetry(request, 1, "op-first", "TEMPORARY", "due now", DateTimeOffset.UtcNow.AddSeconds(-1));
 
-        var second = new FakeCoordinator(Op("committed", true, "LOCAL_SLOT_MIGRATION_COMMITTED"));
-        var reconstructedQueue = new LocalSlotAdoptionQueue(env.Paths);
-        var worker2 = env.Worker(second, reconstructedQueue);
-        await worker2.ProcessOnce(CancellationToken.None);
+    var second = new FakeCoordinator(Op("committed", true, "LOCAL_SLOT_MIGRATION_COMMITTED"));
+    var reconstructedQueue = new LocalSlotAdoptionQueue(env.Paths);
+    var worker2 = env.Worker(second, reconstructedQueue);
+    await worker2.ProcessOnce(CancellationToken.None);
 
-        var status = Require(reconstructedQueue.LoadStatus());
-        Assert(status.State == "committed", "Restarted worker should resume and commit due retry.");
-        Assert(status.AttemptCount == 2, "Resumed attempt should be attempt 2.");
-        Assert(second.Calls.Single().IdempotencyKey.EndsWith("-a2", StringComparison.Ordinal), "Retry must use a fresh durable idempotency key.");
-    });
+    var status = Require(reconstructedQueue.LoadStatus());
+    Assert(status.State == "committed", "Restarted worker should resume and commit due retry.");
+    Assert(status.AttemptCount == 2, "Resumed attempt should be attempt 2.");
+    Assert(second.Calls.Single().IdempotencyKey.EndsWith("-a2", StringComparison.Ordinal), "Retry must use a fresh durable idempotency key.");
 }
 
-static Task CommitIsTerminal()
+static async Task CommitIsTerminal()
 {
     using var env = TestEnv.Create();
     env.WriteRequest();
     var fake = new FakeCoordinator(Op("committed", true, "COMMITTED"));
     var worker = env.Worker(fake);
-    return Run(async () =>
-    {
-        await worker.ProcessOnce(CancellationToken.None);
-        await worker.ProcessOnce(CancellationToken.None);
-        var status = Require(env.Queue.LoadStatus());
-        Assert(status.State == "committed", "Commit must be terminal.");
-        Assert(fake.Calls.Count == 1, "Committed request must never execute twice.");
-    });
+    await worker.ProcessOnce(CancellationToken.None);
+    await worker.ProcessOnce(CancellationToken.None);
+    var status = Require(env.Queue.LoadStatus());
+    Assert(status.State == "committed", "Commit must be terminal.");
+    Assert(fake.Calls.Count == 1, "Committed request must never execute twice.");
 }
 
-static Task ActivationFailureNeverRetries()
+static async Task ActivationFailureNeverRetries()
 {
     using var env = TestEnv.Create();
     env.WriteRequest();
     var fake = new FakeCoordinator(Op("failed", true, "POST_SWITCH_ROLLBACK_OK"));
     var worker = env.Worker(fake);
-    return Run(async () =>
-    {
-        await worker.ProcessOnce(CancellationToken.None);
-        var status = Require(env.Queue.LoadStatus());
-        Assert(status.State == "failed_terminal", "Any activation attempt must stop unattended retries.");
-        Assert(status.ActivationPerformed, "Activation evidence must remain durable.");
-        await worker.ProcessOnce(CancellationToken.None);
-        Assert(fake.Calls.Count == 1, "Activated failure must not auto retry.");
-    });
+    await worker.ProcessOnce(CancellationToken.None);
+    var status = Require(env.Queue.LoadStatus());
+    Assert(status.State == "failed_terminal", "Any activation attempt must stop unattended retries.");
+    Assert(status.ActivationPerformed, "Activation evidence must remain durable.");
+    await worker.ProcessOnce(CancellationToken.None);
+    Assert(fake.Calls.Count == 1, "Activated failure must not auto retry.");
 }
 
-static Task RecoveryRequiredNeverRetries()
+static async Task RecoveryRequiredNeverRetries()
 {
     using var env = TestEnv.Create();
     env.WriteRequest();
     var fake = new FakeCoordinator(Op("recovery_required", true, "LOCAL_SLOT_RECOVERY_REQUIRED"));
     var worker = env.Worker(fake);
-    return Run(async () =>
-    {
-        await worker.ProcessOnce(CancellationToken.None);
-        var status = Require(env.Queue.LoadStatus());
-        Assert(status.State == "recovery_required", "Recovery-required state must be explicit and terminal for auto worker.");
-        await worker.ProcessOnce(CancellationToken.None);
-        Assert(fake.Calls.Count == 1, "Recovery-required request must not auto retry.");
-    });
+    await worker.ProcessOnce(CancellationToken.None);
+    var status = Require(env.Queue.LoadStatus());
+    Assert(status.State == "recovery_required", "Recovery-required state must be explicit and terminal for auto worker.");
+    await worker.ProcessOnce(CancellationToken.None);
+    Assert(fake.Calls.Count == 1, "Recovery-required request must not auto retry.");
 }
 
-static Task CoordinatorExceptionIsRetryable()
+static async Task CoordinatorExceptionIsRetryable()
 {
     using var env = TestEnv.Create();
     env.WriteRequest();
     var fake = new FakeCoordinator(new IOException("injected pre-mutation coordinator outage"));
     var worker = env.Worker(fake);
-    return Run(async () =>
-    {
-        await worker.ProcessOnce(CancellationToken.None);
-        var status = Require(env.Queue.LoadStatus());
-        Assert(status.State == "retry_wait", "Coordinator outage before activation should be retryable.");
-        Assert(status.LastCode == "LOCAL_ADOPTION_SUPERVISOR_ERROR", "Exception should be normalized to stable code.");
-    });
+    await worker.ProcessOnce(CancellationToken.None);
+    var status = Require(env.Queue.LoadStatus());
+    Assert(status.State == "retry_wait", "Coordinator outage before activation should be retryable.");
+    Assert(status.LastCode == "LOCAL_ADOPTION_SUPERVISOR_ERROR", "Exception should be normalized to stable code.");
 }
 
-static Task RetryBudgetIsBounded()
+static async Task RetryBudgetIsBounded()
 {
     using var env = TestEnv.Create(maxAttempts: 2);
     var request = env.WriteRequest();
     var fake = new FakeCoordinator(Op("failed", false, "TRANSIENT"), Op("failed", false, "TRANSIENT"));
     var worker = env.Worker(fake);
-    return Run(async () =>
-    {
-        await worker.ProcessOnce(CancellationToken.None);
-        env.Queue.MarkRetry(request, 1, "op-1", "TRANSIENT", "due", DateTimeOffset.UtcNow.AddSeconds(-1));
-        await worker.ProcessOnce(CancellationToken.None);
-        var status = Require(env.Queue.LoadStatus());
-        Assert(status.State == "failed_terminal", "Final allowed failed attempt should close bounded retry budget.");
-        Assert(status.AttemptCount == 2, "Retry budget should stop at configured attempt count.");
-        await worker.ProcessOnce(CancellationToken.None);
-        Assert(fake.Calls.Count == 2, "Terminal retry budget must not execute again.");
-    });
+    await worker.ProcessOnce(CancellationToken.None);
+    env.Queue.MarkRetry(request, 1, "op-1", "TRANSIENT", "due", DateTimeOffset.UtcNow.AddSeconds(-1));
+    await worker.ProcessOnce(CancellationToken.None);
+    var status = Require(env.Queue.LoadStatus());
+    Assert(status.State == "failed_terminal", "Final allowed failed attempt should close bounded retry budget.");
+    Assert(status.AttemptCount == 2, "Retry budget should stop at configured attempt count.");
+    await worker.ProcessOnce(CancellationToken.None);
+    Assert(fake.Calls.Count == 2, "Terminal retry budget must not execute again.");
 }
 
-static Task DurableStatusSurvivesReconstruction()
+static async Task DurableStatusSurvivesReconstruction()
 {
     using var env = TestEnv.Create();
     env.WriteRequest();
     var fake = new FakeCoordinator(Op("failed", false, "TEMP"));
     var worker = env.Worker(fake);
-    return Run(async () =>
-    {
-        await worker.ProcessOnce(CancellationToken.None);
-        var before = Require(env.Queue.LoadStatus());
-        var after = Require(new LocalSlotAdoptionQueue(env.Paths).LoadStatus());
-        Assert(after.RequestId == before.RequestId && after.State == before.State && after.AttemptCount == before.AttemptCount,
-            "Status must survive process/queue reconstruction.");
-    });
+    await worker.ProcessOnce(CancellationToken.None);
+    var before = Require(env.Queue.LoadStatus());
+    var after = Require(new LocalSlotAdoptionQueue(env.Paths).LoadStatus());
+    Assert(after.RequestId == before.RequestId && after.State == before.State && after.AttemptCount == before.AttemptCount,
+        "Status must survive process/queue reconstruction.");
 }
 
 static Task RequestIdentityConflictFailsClosed()
@@ -183,14 +156,11 @@ static Task RequestIdentityConflictFailsClosed()
     var request = env.WriteRequest();
     env.Queue.EnsurePending(request);
     var conflicting = request with { RequestId = "adopt-conflicting-request" };
-    return Run(() =>
-    {
-        var threw = false;
-        try { env.Queue.EnsurePending(conflicting); }
-        catch (InvalidDataException) { threw = true; }
-        Assert(threw, "Different request identity must not overwrite existing durable status.");
-        return Task.CompletedTask;
-    });
+    var threw = false;
+    try { env.Queue.EnsurePending(conflicting); }
+    catch (InvalidDataException) { threw = true; }
+    Assert(threw, "Different request identity must not overwrite existing durable status.");
+    return Task.CompletedTask;
 }
 
 static MaintenanceOperation Op(string state, bool activation, string code)
@@ -202,7 +172,6 @@ static MaintenanceOperation Op(string state, bool activation, string code)
         1, code, code, null, activation, false);
 }
 
-static async Task Run(Func<Task> action) => await action();
 static T Require<T>(T? value) where T : class => value ?? throw new InvalidOperationException("Expected non-null value.");
 static void Assert(bool condition, string message)
 {
