@@ -1,0 +1,18 @@
+name: Working cross-version Local slot contract
+on:
+  push:
+    branches: [work/windows-services-cross-version-slot-contract]
+  workflow_dispatch:
+jobs:
+  windows-core-contract:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile Maintenance Core with warnings as errors
+        run: dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj --configuration Release --nologo
+      - name: Build and run cross-version contract harness
+        run: dotnet run --project windows/maintenance/tests/Sokna.CrossVersion.Contract/Sokna.CrossVersion.Contract.csproj --configuration Release
