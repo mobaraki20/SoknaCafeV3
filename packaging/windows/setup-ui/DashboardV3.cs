@@ -128,7 +128,7 @@ internal sealed class WindowsServicesDashboardV3 : Form
         var titles = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = SetupPalette.Brand };
         titles.Controls.Add(new Label { AutoSize = true, Text = "سرویس‌های ویندوز سکنا", ForeColor = Color.White, Font = SetupPalette.Font(16f, FontStyle.Bold), Anchor = AnchorStyles.Right }, 0, 0);
         titles.Controls.Add(new Label { AutoSize = true, Text = "Runtime، Print و Maintenance — نصب، وضعیت و عیب‌یابی", ForeColor = Color.FromArgb(221, 239, 236), Font = SetupPalette.Font(9.1f), Anchor = AnchorStyles.Right }, 0, 1);
-        var badge = new Label { AutoSize = true, Text = "Windows Services 1.1.0", RightToLeft = RightToLeft.No, ForeColor = SetupPalette.BrandDark, BackColor = Color.White, Padding = new Padding(10, 5, 10, 5), Anchor = AnchorStyles.None, Font = SetupPalette.Font(9f, FontStyle.Bold) };
+        var badge = new Label { AutoSize = true, Text = DashboardPackageVersionBinder.BadgeText(shellRoot), RightToLeft = RightToLeft.No, ForeColor = SetupPalette.BrandDark, BackColor = Color.White, Padding = new Padding(10, 5, 10, 5), Anchor = AnchorStyles.None, Font = SetupPalette.Font(9f, FontStyle.Bold) };
         p.Controls.Add(titles, 0, 0); p.Controls.Add(badge, 1, 0); return p;
     }
 
