@@ -1,0 +1,55 @@
+name: CI Maintenance V4 R8 Source
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r8-php-slot-root
+    paths:
+      - 'windows/maintenance/**'
+      - '.github/workflows/ci-maintenance-v4-r8-source.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build R8 Maintenance Core Supervisor Engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Core build failed'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Supervisor build failed'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Update Engine build failed'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.ProductionBridgeHarness/Sokna.Maintenance.ProductionBridgeHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Production bridge harness build failed'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'R7 reliability harness build failed'}
+      - name: Run durable adoption regression harness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release --no-build
+          if($LASTEXITCODE-ne0){throw 'Durable adoption regression harness failed'}
+      - name: Enforce R8 production sibling-slot contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $core = Get-Content -LiteralPath 'windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigrationR8.Core.cs' -Raw
+          $migrate = Get-Content -LiteralPath 'windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigrationR8.Migrate.cs' -Raw
+          $staging = Get-Content -LiteralPath 'windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigrationR8.Staging.cs' -Raw
+          if($core -notmatch 'ReleaseSlotPrefix\s*=\s*"Web\.release\."'){throw 'R8 sibling release prefix contract missing'}
+          if($migrate -match 'Path\.Combine\([^\r\n]*"LocalWeb"[^\r\n]*"releases"'){throw 'R8 production migration still builds nested LocalWeb/releases active slots'}
+          if($migrate -notmatch 'RequireProductionSlotPath'){throw 'R8 activation path gate missing'}
+          if($staging -notmatch 'VerifyMachineLocalOverlay'){throw 'R8 machine-local overlay equality gate missing'}
+          if($staging -match 'if\s*\(Directory\.Exists\(targetSlot\)\)\s*return'){throw 'R8 stale target slot reuse remains'}
+          Write-Host 'R8 source sibling-slot contract: PASS'
