@@ -1,0 +1,45 @@
+name: Apply Maintenance V4 R8 Version Envelope
+
+on:
+  push:
+    branches: [work/maintenance-v4-r8-php-slot-root]
+    paths:
+      - 'windows/maintenance/qualification/apply-r8-version-envelope.py'
+      - '.github/workflows/apply-maintenance-v4-r8-version-envelope.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply deterministic Update Engine envelope bump
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python windows/maintenance/qualification/apply-r8-version-envelope.py
+          if($LASTEXITCODE-ne0){throw 'R8 version envelope patch failed'}
+          git diff --check
+          $diff=(git diff -- windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs | Out-String)
+          if($diff -notmatch '0\.3\.5'){throw '0.3.5 envelope not present in diff'}
+          if($diff -notmatch 'R8 sibling-release Local adoption bridge'){throw 'R8 help marker missing from diff'}
+      - name: Build Update Engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Update Engine build failed'}
+      - name: Commit R8 envelope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'sokna-maintenance-ci'
+          git config user.email 'actions@users.noreply.github.com'
+          git add windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs
+          git commit -m 'release(maintenance): expose R8 engine identity 0.3.5'
+          git push origin HEAD:work/maintenance-v4-r8-php-slot-root
