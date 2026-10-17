@@ -24,7 +24,9 @@ function ServiceSnapshot([string]$name){
 }
 
 $core=Join-Path $PSScriptRoot 'collect-support-v2-core.ps1'
+$technician=Join-Path $PSScriptRoot 'write-technician-report-v1.ps1'
 if(-not(Test-Path -LiteralPath $core -PathType Leaf)){throw 'Support Bundle v2 core collector is missing.'}
+if(-not(Test-Path -LiteralPath $technician -PathType Leaf)){throw 'Technician report generator is missing.'}
 $before=Get-Date
 & $core -DataRoot $DataRoot -OutputRoot $OutputRoot -InstallerTransactions $InstallerTransactions 6>$null | Out-Null
 $zip=Get-ChildItem -LiteralPath $OutputRoot -Filter 'SOKNA-Support-v2-*.zip' -File|Where-Object{$_.LastWriteTime-ge$before.AddSeconds(-2)}|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1
@@ -49,6 +51,11 @@ try{
     }catch{}
   }
 
+  & $technician -BundleRoot $temp 6>$null | Out-Null
+  if(-not(Test-Path -LiteralPath (Join-Path $temp 'TECHNICIAN-SUMMARY.txt') -PathType Leaf)){throw 'Technician summary was not generated.'}
+  if(-not(Test-Path -LiteralPath (Join-Path $temp 'TECHNICIAN-REPORT.html') -PathType Leaf)){throw 'Technician HTML report was not generated.'}
+  if(-not(Test-Path -LiteralPath (Join-Path $temp 'technician-findings.json') -PathType Leaf)){throw 'Technician findings JSON was not generated.'}
+
   $manifestPath=Join-Path $temp 'bundle-manifest.json'
   if(Test-Path -LiteralPath $manifestPath){Remove-Item -LiteralPath $manifestPath -Force}
   $entries=@()
@@ -56,10 +63,10 @@ try{
     $rel=$_.FullName.Substring($temp.Length+1).Replace('\','/')
     $entries+=([ordered]@{path=$rel;size=[int64]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()})
   }
-  WriteJson $manifestPath ([ordered]@{format='sokna-support-bundle-manifest-v1';created_at_utc=[DateTime]::UtcNow.ToString('o');collector_extension='legacy-print-agent-v1';entries=$entries})
+  WriteJson $manifestPath ([ordered]@{format='sokna-support-bundle-manifest-v1';created_at_utc=[DateTime]::UtcNow.ToString('o');collector_extension='windows-services-diagnostics-v2';technician_report='sokna-technician-findings-v1';entries=$entries})
 
   $leaks=@()
-  Get-ChildItem $temp -File -Recurse|Where-Object{$_.Extension -in @('.json','.jsonl','.log','.txt')}|ForEach-Object{
+  Get-ChildItem $temp -File -Recurse|Where-Object{$_.Extension -in @('.json','.jsonl','.log','.txt','.html')}|ForEach-Object{
     try{$raw=Get-Content -LiteralPath $_.FullName -Raw -ErrorAction Stop;if($raw-match'(?i)ws1_[a-f0-9]{24}_[a-f0-9]{48}'){$leaks+=$_.FullName};if($raw-match'(?i)(password|passwd|pwd|token|secret|credential)\s*[:=]\s*(?!\[REDACTED\])\S+'){$leaks+=$_.FullName}}catch{}
   }
   if($leaks.Count-gt0){throw ('Support bundle secret-canary scan failed: '+(($leaks|Select-Object -Unique)-join', '))}
