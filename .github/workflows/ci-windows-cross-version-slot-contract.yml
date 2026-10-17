@@ -18,3 +18,22 @@ jobs:
         run: dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj --configuration Release --nologo
       - name: Build and run cross-version contract harness
         run: dotnet run --project windows/maintenance/tests/Sokna.CrossVersion.Contract/Sokna.CrossVersion.Contract.csproj --configuration Release
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Verify Windows physical junction resolver on real Windows runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP "SoknaJunctionParity"
+          $slot = Join-Path $root "Web.release.231ai-b0e252b62b80"
+          $web = Join-Path $root "Web"
+          New-Item -ItemType Directory -Path $slot -Force | Out-Null
+          if (Test-Path $web) { Remove-Item $web -Force }
+          cmd.exe /c "mklink /J `"$web`" `"$slot`""
+          if ($LASTEXITCODE -ne 0) { throw 'mklink /J failed' }
+          $native = [System.IO.Directory]::ResolveLinkTarget($web, $true)
+          Write-Output "DotNet junction target: $($native.FullName)"
+          if (-not [string]::Equals([System.IO.Path]::GetFullPath($native.FullName), [System.IO.Path]::GetFullPath($slot), [StringComparison]::OrdinalIgnoreCase)) { throw 'DotNet junction resolution mismatch' }
+          go run ./windows/maintenance/tests/GoJunctionProbe/main.go "$web" "$slot"
