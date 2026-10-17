@@ -9,6 +9,7 @@ on:
       - 'windows/maintenance/tests/Sokna.Maintenance.FakeApache/**'
       - 'windows/maintenance/tests/Sokna.Maintenance.ProductionBridgeHarness/**'
       - 'windows/maintenance/qualification/r7-supervisor-process-integration.ps1'
+      - 'windows/maintenance/qualification/r7-supervisor-crash-recovery-integration.ps1'
       - '.github/workflows/ci-maintenance-v4-r7-supervisor-process.yml'
 
 permissions:
@@ -17,7 +18,7 @@ permissions:
 jobs:
   process:
     runs-on: windows-2022
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -49,10 +50,23 @@ jobs:
             -WorkspaceRoot (Join-Path $PWD 'out-r7/process-integration')
           if($LASTEXITCODE-ne0){throw 'R7 Supervisor process integration failed'}
 
+      - name: Real Supervisor engine-crash and signed-recovery integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./windows/maintenance/qualification/r7-supervisor-crash-recovery-integration.ps1 `
+            -SupervisorExe (Resolve-Path out-r7/supervisor/SoknaMaintenanceSupervisor.exe).Path `
+            -FakeApacheExe (Resolve-Path out-r7/fake-apache/httpd.exe).Path `
+            -HarnessExe (Resolve-Path out-r7/bridge-harness/SoknaMaintenanceProductionBridgeHarness.exe).Path `
+            -WorkspaceRoot (Join-Path $PWD 'out-r7/crash-recovery-integration')
+          if($LASTEXITCODE-ne0){throw 'R7 Supervisor crash/recovery integration failed'}
+
       - name: Upload process integration evidence
         uses: actions/upload-artifact@v4
         with:
           name: maintenance-v4-r7-supervisor-process-evidence
-          path: out-r7/process-integration/R7_SUPERVISOR_PROCESS_INTEGRATION.json
+          path: |
+            out-r7/process-integration/R7_SUPERVISOR_PROCESS_INTEGRATION.json
+            out-r7/crash-recovery-integration/R7_SUPERVISOR_CRASH_RECOVERY_INTEGRATION.json
           if-no-files-found: error
           retention-days: 30
