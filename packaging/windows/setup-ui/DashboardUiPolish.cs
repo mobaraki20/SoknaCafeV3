@@ -16,20 +16,20 @@ internal static class DashboardUiPolish
             root.RowStyles[4].Height = 46;
         }
 
-        foreach (var button in Descendants<Button>(form))
+        foreach (var button in Descendants<Button>(form).ToArray())
         {
             if (string.Equals(button.Text, "بسته عیب‌یابی", StringComparison.Ordinal))
                 button.Text = "عیب‌یابی";
         }
 
-        foreach (var label in Descendants<Label>(form))
+        foreach (var label in Descendants<Label>(form).ToArray())
         {
             NormalizeLabel(label);
             label.TextChanged += (_, _) => NormalizeLabel(label);
         }
         AttachDynamicNormalization(form);
 
-        foreach (var table in Descendants<TableLayoutPanel>(form))
+        foreach (var table in Descendants<TableLayoutPanel>(form).ToArray())
         {
             if (table.RowCount == 1 && table.ColumnCount == 2 && table.BackColor == SetupPalette.Brand)
             {
@@ -41,7 +41,7 @@ internal static class DashboardUiPolish
             {
                 table.RowStyles.Clear();
                 table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-                foreach (var panel in table.Controls.OfType<Panel>())
+                foreach (var panel in table.Controls.OfType<Panel>().ToArray())
                 {
                     panel.Dock = DockStyle.Fill;
                     panel.MinimumSize = Size.Empty;
@@ -62,7 +62,7 @@ internal static class DashboardUiPolish
                 table.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
                 table.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
 
-                foreach (var label in table.Controls.OfType<Label>())
+                foreach (var label in table.Controls.OfType<Label>().ToArray())
                 {
                     label.AutoSize = false;
                     label.Dock = DockStyle.Fill;
@@ -70,7 +70,7 @@ internal static class DashboardUiPolish
                     label.TextAlign = ContentAlignment.MiddleRight;
                     label.Margin = Padding.Empty;
                 }
-                foreach (var flow in table.Controls.OfType<FlowLayoutPanel>())
+                foreach (var flow in table.Controls.OfType<FlowLayoutPanel>().ToArray())
                 {
                     flow.AutoSize = false;
                     flow.Dock = DockStyle.Fill;
@@ -79,7 +79,7 @@ internal static class DashboardUiPolish
                     flow.MaximumSize = Size.Empty;
                     flow.Margin = Padding.Empty;
                 }
-                foreach (var panel in table.Controls.OfType<Panel>())
+                foreach (var panel in table.Controls.OfType<Panel>().ToArray())
                 {
                     panel.Dock = DockStyle.Fill;
                     panel.MinimumSize = Size.Empty;
@@ -138,7 +138,8 @@ internal static class DashboardUiPolish
             }
             AttachDynamicNormalization(eventArgs.Control);
         };
-        foreach (Control child in root.Controls)
+        var children = root.Controls.Cast<Control>().ToArray();
+        foreach (var child in children)
             AttachDynamicNormalization(child);
     }
 
@@ -152,8 +153,8 @@ internal static class DashboardUiPolish
             .Replace("سلامت سرویس‌ها", "وضعیت سرویس‌ها", StringComparison.Ordinal)
             .Replace("سلامت", "وضعیت سرویس", StringComparison.Ordinal);
 
-        if (normalized.StartsWith("Windows Services ", StringComparison.Ordinal))
-            normalized = "Windows Services " + Application.ProductVersion;
+        // Package identity is owned by the canonical component manifest. Never rewrite
+        // the Windows Services badge from Application.ProductVersion/FileVersion.
 
         if (string.Equals(normalized, "فعال", StringComparison.Ordinal))
             normalized = "در حال اجرا";
@@ -168,7 +169,8 @@ internal static class DashboardUiPolish
 
     private static IEnumerable<T> Descendants<T>(Control root) where T : Control
     {
-        foreach (Control child in root.Controls)
+        var children = root.Controls.Cast<Control>().ToArray();
+        foreach (var child in children)
         {
             if (child is T typed) yield return typed;
             foreach (var nested in Descendants<T>(child)) yield return nested;
