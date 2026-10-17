@@ -1,0 +1,131 @@
+name: Apply Maintenance V4 R8 Reconcile Hardening
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r8-php-slot-root
+    paths:
+      - '.github/workflows/ci-maintenance-v4-r8-reconcile-hardening.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Patch reconcile guards
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $coord='windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs'
+          $queue='windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotAdoptionQueue.cs'
+          $c=Get-Content -LiteralPath $coord -Raw
+          $old=@'
+            LocalManagedTreeAttestation.RequireExact(state.StableWebRoot, expectedManagedFiles, expectedManagedTreeSha256);
+            if (!StableWebIsJunction(state.StableWebRoot)) throw new InvalidDataException("Committed Local migration did not leave the stable Web root as a junction.");
+
+            operation = _operations.Update(
+'@
+          $new=@'
+            LocalManagedTreeAttestation.RequireExact(state.StableWebRoot, expectedManagedFiles, expectedManagedTreeSha256);
+            if (!StableWebIsJunction(state.StableWebRoot)) throw new InvalidDataException("Committed Local migration did not leave the stable Web root as a junction.");
+            var committedTarget = Directory.ResolveLinkTarget(state.StableWebRoot, returnFinalTarget: true)?.FullName;
+            ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(committedTarget, state.PackageRoot);
+            if (string.IsNullOrWhiteSpace(state.ActiveSlot) ||
+                !string.Equals(Path.GetFullPath(committedTarget!), Path.GetFullPath(state.ActiveSlot), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Committed Local migration active-slot state does not match the stable Web junction target.");
+
+            operation = _operations.Update(
+'@
+          if(-not $c.Contains($old)){throw 'Coordinator committed-envelope patch anchor not found'}
+          $c=$c.Replace($old,$new)
+          $old2=@'
+            if (!Directory.Exists(state.StableWebRoot)) return false;
+            if (!StableWebIsJunction(state.StableWebRoot)) return false;
+            LocalManagedTreeAttestation.RequireExact(state.StableWebRoot, expectedManagedFiles, expectedManagedTreeSha256);
+            detail = $"Durable Local migration state and active junction were reconciled successfully; phase={state.Phase}.";
+'@
+          $new2=@'
+            if (!Directory.Exists(state.StableWebRoot)) return false;
+            if (!StableWebIsJunction(state.StableWebRoot)) return false;
+            var activeTarget = Directory.ResolveLinkTarget(state.StableWebRoot, returnFinalTarget: true)?.FullName;
+            ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(activeTarget, state.PackageRoot);
+            if (string.IsNullOrWhiteSpace(state.ActiveSlot) ||
+                !string.Equals(Path.GetFullPath(activeTarget!), Path.GetFullPath(state.ActiveSlot), StringComparison.OrdinalIgnoreCase))
+            {
+                detail = "Durable Local migration active-slot state does not match the stable Web junction target.";
+                return false;
+            }
+            LocalManagedTreeAttestation.RequireExact(state.StableWebRoot, expectedManagedFiles, expectedManagedTreeSha256);
+            detail = $"Durable Local migration state and active sibling-release junction were reconciled successfully; phase={state.Phase}.";
+'@
+          if(-not $c.Contains($old2)){throw 'Coordinator ready-layout patch anchor not found'}
+          $c=$c.Replace($old2,$new2)
+          Set-Content -LiteralPath $coord -Value $c -Encoding utf8
+
+          $q=Get-Content -LiteralPath $queue -Raw
+          $qold=@'
+            if (!Directory.Exists(migrationState.StableWebRoot) ||
+                (File.GetAttributes(migrationState.StableWebRoot) & FileAttributes.ReparsePoint) == 0)
+                return status;
+            LocalManagedTreeAttestation.RequireExact(
+'@
+          $qnew=@'
+            if (!Directory.Exists(migrationState.StableWebRoot) ||
+                (File.GetAttributes(migrationState.StableWebRoot) & FileAttributes.ReparsePoint) == 0)
+                return status;
+            try
+            {
+                var activeTarget = Directory.ResolveLinkTarget(migrationState.StableWebRoot, returnFinalTarget: true)?.FullName;
+                ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(activeTarget, migrationState.PackageRoot);
+                if (string.IsNullOrWhiteSpace(migrationState.ActiveSlot) ||
+                    !string.Equals(Path.GetFullPath(activeTarget!), Path.GetFullPath(migrationState.ActiveSlot), StringComparison.OrdinalIgnoreCase))
+                    return status;
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                return status;
+            }
+            LocalManagedTreeAttestation.RequireExact(
+'@
+          if(-not $q.Contains($qold)){throw 'Adoption queue reconcile patch anchor not found'}
+          $q=$q.Replace($qold,$qnew)
+          Set-Content -LiteralPath $queue -Value $q -Encoding utf8
+      - name: Verify exact hardening diff
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git diff --check
+          $diff=git diff -- windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotAdoptionQueue.cs
+          $diff | Write-Host
+          if($diff -notmatch 'RequireProductionSlotPath'){throw 'Sibling-slot reconcile guard missing from diff'}
+          if($diff -notmatch 'active-slot state does not match'){throw 'Active-slot/junction identity guard missing from diff'}
+      - name: Build and regression test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Supervisor build failed'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Update Engine build failed'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Reliability harness build failed'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release --no-build
+          if($LASTEXITCODE-ne0){throw 'Reliability harness failed'}
+      - name: Commit hardened reconcile guards
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'sokna-maintenance-ci'
+          git config user.email 'actions@users.noreply.github.com'
+          git add windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotAdoptionQueue.cs
+          git commit -m 'fix(maintenance): reject legacy nested slots during reconcile'
+          git push origin HEAD:work/maintenance-v4-r8-php-slot-root
