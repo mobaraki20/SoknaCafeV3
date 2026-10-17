@@ -1,0 +1,73 @@
+name: Apply P3 R3 Recovery KEEP Assertion Fix
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+    paths:
+      - .github/workflows/apply-p3-r3-recovery-keep-assertion-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: work/maintenance-v4-windows-p3-home-package-r3
+      - name: Reconcile Recovery Console KEEP assertion with subordinate lifecycle evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('packaging/windows/qualification/qualify-p3-r3-real-home.ps1')
+          s=p.read_text(encoding='utf-8')
+          old="""  foreach($id in @('runtime','print-agent','maintenance-recovery-console')){
+    $row=@($events|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq$id-and$_.result-eq'kept'})|Select-Object -First 1
+    if(-not$row){throw \"KEEP evidence missing: $id\"}
+    if([string]$row.data.action-ne'KEEP'-or[string]$row.data.proof-ne'no_stop_no_copy_no_registration_no_restart'){throw \"KEEP proof invalid: $id\"}
+  }
+"""
+          new="""  foreach($id in @('runtime','print-agent')){
+    $row=@($events|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq$id-and$_.result-eq'kept'})|Select-Object -First 1
+    if(-not$row){throw \"KEEP evidence missing: $id\"}
+    if([string]$row.data.action-ne'KEEP'-or[string]$row.data.proof-ne'no_stop_no_copy_no_registration_no_restart'){throw \"KEEP proof invalid: $id\"}
+  }
+  $recoveryEvent=@($events|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq'maintenance-recovery-console'-and[string]$_.data.action-eq'KEEP'})|Select-Object -First 1
+  if(-not$recoveryEvent){throw 'KEEP evidence missing: maintenance-recovery-console'}
+  if([string]$recoveryEvent.data.after_sha256-ne$expectedRecovery){throw 'Recovery Console KEEP hash evidence invalid.'}
+  if([string]$recoveryEvent.result-notin@('completed','kept')){throw \"Recovery Console KEEP result invalid: $([string]$recoveryEvent.result)\"}
+"""
+          if old not in s:
+              if '$recoveryEvent=' in s:
+                  print('Recovery KEEP assertion already reconciled.')
+              else:
+                  raise SystemExit('KEEP assertion marker missing')
+          else:
+              s=s.replace(old,new,1)
+              p.write_text(s,encoding='utf-8',newline='\n')
+              print('Recovery Console subordinate KEEP assertion reconciled.')
+          PY
+      - name: Verify harness safety remains strict
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "foreach(\$id in @('runtime','print-agent'))" packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+          grep -F "no_stop_no_copy_no_registration_no_restart" packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+          grep -F '$recoveryEvent=' packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+          grep -F "Recovery Console KEEP hash evidence invalid." packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+          git diff --check
+      - name: Commit harness fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'test(maintenance): verify subordinate recovery KEEP by byte identity'
+          git push origin HEAD:work/maintenance-v4-windows-p3-home-package-r3
