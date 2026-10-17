@@ -14,8 +14,12 @@ function Full([string]$p){[IO.Path]::GetFullPath($p).TrimEnd('\')}
 $RepoRoot=Full $RepoRoot;$OutputRoot=Full $OutputRoot
 $coreBuilder=Join-Path $RepoRoot 'packaging\windows\scripts\prepare-shell-payload-v4.ps1'
 if(-not(Test-Path -LiteralPath $coreBuilder -PathType Leaf)){throw 'Qualified shell builder v4 is missing.'}
+
+# This is an in-process PowerShell script invocation. Do not inspect $LASTEXITCODE here: that variable
+# belongs to the most recently executed native process and may legally contain a stale non-zero value
+# even when the PowerShell script completed successfully. ErrorActionPreference=Stop + thrown exceptions
+# are the authoritative failure contract for this call.
 & $coreBuilder -RepoRoot $RepoRoot -OutputRoot $OutputRoot -RuntimeServiceExe $RuntimeServiceExe -SetupHostExe $SetupHostExe -SetupUiExe $SetupUiExe -PrintWorkerBundle $PrintWorkerBundle -MaintenanceAppBundle $MaintenanceAppBundle -MaintenanceRecoveryBundle $MaintenanceRecoveryBundle -GitSha $GitSha
-if($LASTEXITCODE-ne0){throw 'Qualified shell builder v4 failed.'}
 
 $legacyEntry=Join-Path $OutputRoot 'setup-windows-components-v4.ps1'
 $coreEntry=Join-Path $OutputRoot 'setup-windows-components-core-v5.ps1'
