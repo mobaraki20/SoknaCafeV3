@@ -16,17 +16,25 @@ $base=Join-Path $RepoRoot 'packaging\windows\scripts\prepare-shell-payload-v8.ps
 if(-not(Test-Path -LiteralPath $base -PathType Leaf)){throw 'R8 shell composer is missing.'}
 & $base -RepoRoot $RepoRoot -OutputRoot $OutputRoot -RuntimeServiceExe $RuntimeServiceExe -SetupHostExe $SetupHostExe -SetupUiExe $SetupUiExe -PrintWorkerBundle $PrintWorkerBundle -MaintenanceAppBundle $MaintenanceAppBundle -MaintenanceRecoveryBundle $MaintenanceRecoveryBundle -GitSha $GitSha
 
-# R8 core predates the independent Recovery lifecycle rule. Patch only the exact explicit-repair
-# promotion in the composed shell so a healthy Recovery Console remains KEEP in repair mode.
-# Real Recovery drift is still rejected by both Planner and the core recovery mutation guard.
+# R8 core predates the independent Recovery lifecycle rule. Patch only exact known contracts
+# in the composed shell. A healthy or manifest-declared compatible Recovery Console remains
+# KEEP; unknown Recovery drift is still rejected before privileged mutation.
 $corePath=Join-Path $OutputRoot 'setup-windows-components-core-v5.ps1'
 if(-not(Test-Path -LiteralPath $corePath -PathType Leaf)){throw 'Qualified Windows component lifecycle core is missing from composed shell.'}
 $coreRaw=[IO.File]::ReadAllText($corePath,[Text.Encoding]::UTF8)
+
 $oldCoreLine="if([string]`$plan.mode-eq'repair'-and`$action-eq'KEEP'){`$action='REPAIR';`$reason='explicit_repair'}"
 $newCoreLine="if([string]`$plan.mode-eq'repair'-and`$action-eq'KEEP'-and`$id-ne'maintenance-recovery-console'){`$action='REPAIR';`$reason='explicit_repair'}"
 if(-not$coreRaw.Contains($oldCoreLine)){throw 'Expected R8 explicit-repair core contract was not found; refusing an unbounded core rewrite.'}
 if(([regex]::Matches($coreRaw,[regex]::Escape($oldCoreLine))).Count-ne1){throw 'Expected exactly one R8 explicit-repair core contract occurrence.'}
 $coreRaw=$coreRaw.Replace($oldCoreLine,$newCoreLine)
+
+$oldHashDrift="elseif(`$ih-ne`$targetHash){`$action='REPAIR';`$reason='hash_drift'}"
+$newHashDrift="elseif(`$ih-ne`$targetHash){`$accepted=@(Prop `$m 'accepted_installed_sha256' `$null);`$compatible=@(`$accepted|Where-Object{[string]`$_-eq`$ih}).Count-gt0;if(`$compatible){`$action='KEEP';`$reason='accepted_legacy_fingerprint'}else{`$action='REPAIR';`$reason='hash_drift'}}"
+if(-not$coreRaw.Contains($oldHashDrift)){throw 'Expected R8 hash-drift core contract was not found; refusing an unbounded core rewrite.'}
+if(([regex]::Matches($coreRaw,[regex]::Escape($oldHashDrift))).Count-ne1){throw 'Expected exactly one R8 hash-drift core contract occurrence.'}
+$coreRaw=$coreRaw.Replace($oldHashDrift,$newHashDrift)
+
 [IO.File]::WriteAllText($corePath,$coreRaw,(New-Object Text.UTF8Encoding($true)))
 
 $setupSource=Join-Path $RepoRoot 'packaging\windows\scripts\setup-windows-components-v9.ps1'
@@ -53,4 +61,4 @@ Get-ChildItem $OutputRoot -File -Recurse|Where-Object{$_.FullName-ne$payloadMani
 }
 $payloadManifest.files=$files
 $payloadManifest|ConvertTo-Json -Depth 14|Set-Content -LiteralPath $payloadManifestPath -Encoding UTF8
-Write-Host 'Prepared Windows Services shell: Recovery-safe repair contract + guarded legacy Print migration + technician diagnostics.'
+Write-Host 'Prepared Windows Services shell: compatible Recovery KEEP + guarded legacy Print migration + technician diagnostics.'
