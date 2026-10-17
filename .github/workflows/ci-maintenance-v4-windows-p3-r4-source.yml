@@ -27,7 +27,7 @@ jobs:
           $base='0e42a481550eb34d0e7e08c52151b2844ca32524'
           git merge-base --is-ancestor $base HEAD
           if($LASTEXITCODE-ne0){throw 'R4 is not descended from the exact R3 qualified source.'}
-          $changed=@(git diff --name-only $base..HEAD | Where-Object {$_ -notmatch '^\.github/' -and $_ -notmatch '^packaging/windows/qualification/apply-p3-r4-source-fix\.py$'})
+          $changed=@(git diff --name-only "${base}..HEAD" | Where-Object {$_ -notmatch '^\.github/' -and $_ -notmatch '^packaging/windows/qualification/apply-p3-r4-source-fix\.py$'})
           $allowed=@(
             'windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotManager.cs',
             'windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj',
@@ -37,6 +37,7 @@ jobs:
             'windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Program.cs'
           )
           foreach($p in $changed){if($allowed-notcontains$p){throw "Unexpected product-source delta: $p"}}
+          if($LASTEXITCODE-ne0){throw 'Unable to enumerate R4 source delta.'}
           Write-Host 'R4 scope/lineage: PASS'
 
       - name: Setup .NET 8
