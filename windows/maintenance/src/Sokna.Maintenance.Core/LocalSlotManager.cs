@@ -14,6 +14,7 @@ public sealed record LocalInstallLayout(
     [property: JsonPropertyName("document_root")] string DocumentRoot,
     [property: JsonPropertyName("apache_executable")] string ApacheExecutable,
     [property: JsonPropertyName("apache_config")] string ApacheConfig,
+    [property: JsonPropertyName("health_url")] string HealthUrl,
     [property: JsonPropertyName("build")] string Build,
     [property: JsonPropertyName("managed_file_count")] int ManagedFileCount,
     [property: JsonPropertyName("web_is_reparse_point")] bool WebIsReparsePoint,
@@ -60,6 +61,12 @@ public sealed class LocalSlotManager
 {
     public const string ApacheServiceName = "SoknaApache";
     private const string InventoryRelativePath = "resources\\local-managed-files-v1.json";
+    private static readonly string[] MachineLocalOverlayPaths =
+    {
+        ".sokna-installation.json",
+        "public\\local-recovery.php",
+        "public\\local-update-runner.php"
+    };
     private readonly MaintenancePaths _paths;
     private readonly TimeSpan _serviceTimeout;
     private readonly TimeSpan _healthTimeout;
@@ -80,6 +87,7 @@ public sealed class LocalSlotManager
         var apacheExecutable = DiscoverServiceExecutable(ApacheServiceName);
         var (apacheRoot, apacheConfig) = DiscoverApacheConfig(apacheExecutable);
         var documentRoot = DiscoverDocumentRoot(apacheConfig, apacheRoot);
+        var healthUrl = DiscoverHealthUrl(apacheConfig, apacheRoot);
         if (!string.Equals(Path.GetFileName(documentRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)), "public", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("SoknaApache DocumentRoot must end in the Local Web public directory.");
 
@@ -107,7 +115,7 @@ public sealed class LocalSlotManager
             activeTarget = resolved is null ? null : Path.GetFullPath(resolved.FullName);
         }
 
-        return new LocalInstallLayout(packageRoot, webRoot, documentRoot, apacheExecutable, apacheConfig, build, managed.Count, isReparse, activeTarget);
+        return new LocalInstallLayout(packageRoot, webRoot, documentRoot, apacheExecutable, apacheConfig, healthUrl, build, managed.Count, isReparse, activeTarget);
     }
 
     public LocalSlotHomeCycleResult ConvertAndCycleSameBuild(string expectedBuild, int expectedManagedFileCount)
@@ -134,6 +142,8 @@ public sealed class LocalSlotManager
 
         VerifyCurrentManagedTree(layout.WebRoot, managedFiles);
         state = Event(state, events, "BASELINE_VERIFIED");
+        RequireHttpHealth(expectedBuild, layout.HealthUrl);
+        state = Event(state, events, "BASELINE_HTTP_HEALTHY", layout.HealthUrl);
 
         CaptureMachineBinding(layout.WebRoot, persistentRoot);
         StageSlot(layout.WebRoot, slotA, managedFiles, persistentRoot);
@@ -159,14 +169,14 @@ public sealed class LocalSlotManager
                 state = state with { PreviousSlot = previousSlot, ActiveSlot = activeSlot };
                 state = Event(state, events, "POINTER_SWITCHED", "physical Web -> slot A");
                 StartApache();
-                RequireHttpHealth(expectedBuild);
+                RequireHttpHealth(expectedBuild, layout.HealthUrl);
                 state = Event(state, events, "HTTP_HEALTHY", "slot A");
             }
             catch (Exception conversionError)
             {
                 try
                 {
-                    RestorePhysicalWebAndRequireHealth(layout.WebRoot, physicalBackup, expectedBuild);
+                    RestorePhysicalWebAndRequireHealth(layout.WebRoot, physicalBackup, expectedBuild, layout.HealthUrl);
                     state = state with { ActiveSlot = null, PreviousSlot = slotA };
                     state = Event(state, events, "ROLLED_BACK", conversionError.Message);
                 }
@@ -219,7 +229,7 @@ public sealed class LocalSlotManager
         if (PathsEqual(previous, targetSlot))
         {
             updated = Event(state with { ActiveSlot = targetSlot, PreviousSlot = previous }, events, "ACTIVATION_NOOP", targetSlot);
-            RequireHttpHealth(expectedBuild);
+            RequireHttpHealth(expectedBuild, layout.HealthUrl);
             return;
         }
 
@@ -232,7 +242,7 @@ public sealed class LocalSlotManager
             updated = updated with { ActiveSlot = targetSlot, PreviousSlot = previous };
             updated = Event(updated, events, "POINTER_SWITCHED", targetSlot);
             StartApache();
-            RequireHttpHealth(expectedBuild);
+            RequireHttpHealth(expectedBuild, layout.HealthUrl);
             updated = Event(updated, events, "HTTP_HEALTHY", targetSlot);
         }
         catch (Exception activationError)
@@ -243,7 +253,7 @@ public sealed class LocalSlotManager
                 if (Directory.Exists(layout.WebRoot)) RemoveJunction(layout.WebRoot);
                 CreateJunction(layout.WebRoot, previous);
                 StartApache();
-                RequireHttpHealth(expectedBuild);
+                RequireHttpHealth(expectedBuild, layout.HealthUrl);
                 updated = updated with { ActiveSlot = previous, PreviousSlot = targetSlot };
                 updated = Event(updated, events, "ROLLED_BACK", activationError.Message);
             }
@@ -268,8 +278,14 @@ public sealed class LocalSlotManager
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(source, target, overwrite: true);
         }
-        var bindingSource = Path.Combine(persistentRoot, ".sokna-installation.json");
-        if (File.Exists(bindingSource)) File.Copy(bindingSource, Path.Combine(slot, ".sokna-installation.json"), overwrite: true);
+        foreach (var rel in MachineLocalOverlayPaths)
+        {
+            var source = Path.Combine(persistentRoot, rel);
+            if (!File.Exists(source)) continue;
+            var target = Path.Combine(slot, rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(source, target, overwrite: true);
+        }
     }
 
     private static void CaptureMachineBinding(string webRoot, string persistentRoot)
@@ -277,7 +293,14 @@ public sealed class LocalSlotManager
         var binding = Path.Combine(webRoot, ".sokna-installation.json");
         if (!File.Exists(binding)) throw new InvalidDataException("Machine-local installation binding is missing before slot conversion.");
         Directory.CreateDirectory(persistentRoot);
-        File.Copy(binding, Path.Combine(persistentRoot, ".sokna-installation.json"), overwrite: true);
+        foreach (var rel in MachineLocalOverlayPaths)
+        {
+            var source = Path.Combine(webRoot, rel);
+            if (!File.Exists(source)) continue;
+            var target = Path.Combine(persistentRoot, rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(source, target, overwrite: true);
+        }
     }
 
     private static void VerifySlot(string slot, string sourceRoot, IReadOnlyList<string> managedFiles, string expectedBuild)
@@ -368,8 +391,10 @@ public sealed class LocalSlotManager
         }
     }
 
-    private void RequireHttpHealth(string expectedBuild)
+    private void RequireHttpHealth(string expectedBuild, string healthUrl)
     {
+        if (!Uri.TryCreate(healthUrl, UriKind.Absolute, out var baseUri) || baseUri.Scheme != Uri.UriSchemeHttp || !baseUri.IsLoopback)
+            throw new InvalidDataException("Local health URL must be absolute loopback HTTP.");
         var deadline = DateTimeOffset.UtcNow + _healthTimeout;
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
@@ -378,13 +403,14 @@ public sealed class LocalSlotManager
             {
                 using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false };
                 using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(4) };
-                using var request = new HttpRequestMessage(HttpMethod.Get, "http://127.0.0.1:18080/login.php?p3=" + Guid.NewGuid().ToString("N"));
+                var builder = new UriBuilder(baseUri) { Query = "p3=" + Guid.NewGuid().ToString("N") };
+                using var request = new HttpRequestMessage(HttpMethod.Get, builder.Uri);
                 request.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true, NoStore = true };
                 using var response = client.Send(request);
                 var build = response.Headers.TryGetValues("X-Sokna-Build", out var builds) ? builds.SingleOrDefault() : null;
                 var runtime = response.Headers.TryGetValues("X-Sokna-Runtime", out var runtimes) ? runtimes.SingleOrDefault() : null;
-                if (string.Equals(build, expectedBuild, StringComparison.Ordinal) && string.Equals(runtime, "php-ready", StringComparison.Ordinal)) return;
-                last = new InvalidDataException($"HTTP health identity mismatch. build='{build}', runtime='{runtime}'.");
+                if (response.IsSuccessStatusCode && string.Equals(build, expectedBuild, StringComparison.Ordinal) && string.Equals(runtime, "php-ready", StringComparison.Ordinal)) return;
+                last = new InvalidDataException($"HTTP health mismatch at '{baseUri}'. status={(int)response.StatusCode}, build='{build}', runtime='{runtime}'.");
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidDataException)
             {
@@ -392,7 +418,7 @@ public sealed class LocalSlotManager
             }
             Thread.Sleep(250);
         }
-        throw new InvalidDataException("Target Local HTTP health was not proven within the Phase 3 timeout.", last);
+        throw new InvalidDataException($"Target Local HTTP health was not proven at '{baseUri}' within the Phase 3 timeout. Last: {last?.Message ?? "no response"}", last);
     }
 
     private static bool AnyProcessUsingExecutable(string executable)
@@ -573,6 +599,54 @@ public sealed class LocalSlotManager
         return ParseSingleDocumentRoot(mainText, apacheRoot, "Apache main configuration");
     }
 
+    private static string DiscoverHealthUrl(string apacheConfig, string apacheRoot)
+    {
+        const string beginMarker = "# BEGIN SOKNA LOCAL MANAGED INCLUDE v1";
+        const string endMarker = "# END SOKNA LOCAL MANAGED INCLUDE v1";
+        const string managedHeader = "# SOKNA-MANAGED-APACHE-VHOST v1";
+
+        var mainText = File.ReadAllText(apacheConfig);
+        var selectedText = mainText;
+        var beginCount = Regex.Matches(mainText, Regex.Escape(beginMarker), RegexOptions.CultureInvariant).Count;
+        var endCount = Regex.Matches(mainText, Regex.Escape(endMarker), RegexOptions.CultureInvariant).Count;
+        if (beginCount != endCount || beginCount > 1)
+            throw new InvalidDataException("Apache main configuration contains an ambiguous SOKNA managed include block.");
+
+        if (beginCount == 1)
+        {
+            var block = Regex.Match(mainText, Regex.Escape(beginMarker) + "(?<body>.*?)" + Regex.Escape(endMarker), RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            if (!block.Success) throw new InvalidDataException("SOKNA managed Apache include block could not be parsed for health discovery.");
+            var includeMatches = Regex.Matches(block.Groups["body"].Value, "(?im)^\\s*Include\\s+\\\"?([^\\\"\\r\\n]+)\\\"?\\s*$", RegexOptions.CultureInvariant);
+            if (includeMatches.Count != 1) throw new InvalidDataException("SOKNA managed Apache include block must contain exactly one Include directive for health discovery.");
+            var includeRaw = includeMatches[0].Groups[1].Value.Trim()
+                .Replace("${SRVROOT}", apacheRoot, StringComparison.OrdinalIgnoreCase)
+                .Replace('/', Path.DirectorySeparatorChar);
+            var includePath = Path.IsPathFullyQualified(includeRaw)
+                ? Path.GetFullPath(includeRaw)
+                : Path.GetFullPath(Path.Combine(apacheRoot, includeRaw));
+            RequireFile(includePath, "SOKNA managed Apache include file is missing for health discovery.");
+            selectedText = File.ReadAllText(includePath);
+            if (!selectedText.TrimStart().StartsWith(managedHeader, StringComparison.Ordinal))
+                throw new InvalidDataException("Resolved Apache include is not owned by SOKNA for health discovery.");
+        }
+
+        var ports = new HashSet<int>();
+        foreach (Match match in Regex.Matches(selectedText, @"(?im)<VirtualHost\s+(?:\*|127\.0\.0\.1|localhost):(?<port>\d{2,5})\s*>", RegexOptions.CultureInvariant))
+        {
+            if (int.TryParse(match.Groups["port"].Value, out var port) && port is > 0 and <= 65535) ports.Add(port);
+        }
+        if (ports.Count == 0)
+        {
+            foreach (Match match in Regex.Matches(selectedText, @"(?im)^\s*Listen\s+(?:(?:127\.0\.0\.1|localhost):)?(?<port>\d{2,5})\s*$", RegexOptions.CultureInvariant))
+            {
+                if (int.TryParse(match.Groups["port"].Value, out var port) && port is > 0 and <= 65535) ports.Add(port);
+            }
+        }
+        if (ports.Count != 1)
+            throw new InvalidDataException($"SoknaApache Local health port could not be resolved unambiguously; candidates={string.Join(',', ports.OrderBy(static p => p))}.");
+        return $"http://127.0.0.1:{ports.Single()}/login.php";
+    }
+
     private static string ParseSingleDocumentRoot(string text, string apacheRoot, string sourceName)
     {
         var matches = Regex.Matches(
@@ -656,7 +730,7 @@ public sealed class LocalSlotManager
         if (!Directory.Exists(slot)) throw new DirectoryNotFoundException("Local slot target does not exist.");
     }
 
-    private void RestorePhysicalWebAndRequireHealth(string webRoot, string physicalBackup, string expectedBuild)
+    private void RestorePhysicalWebAndRequireHealth(string webRoot, string physicalBackup, string expectedBuild, string healthUrl)
     {
         if (Directory.Exists(webRoot))
         {
@@ -676,7 +750,7 @@ public sealed class LocalSlotManager
             Directory.Move(physicalBackup, webRoot);
         }
         StartApache();
-        RequireHttpHealth(expectedBuild);
+        RequireHttpHealth(expectedBuild, healthUrl);
     }
 
     private LocalSlotPhase3State NewState(LocalInstallLayout layout, string expectedBuild, string slotRoot, string slotA, string slotB, string? activeSlot, string? previousSlot, string? physicalBackup, List<LocalSlotPhase3Event> events, string phase, bool recoveryRequired)

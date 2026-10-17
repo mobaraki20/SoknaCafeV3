@@ -4,7 +4,7 @@ using Sokna.Maintenance.Core;
 
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
-    Console.WriteLine("SOKNA Maintenance Update Engine 0.3.1 (P3 R4 Local slots; DB mutation disabled)");
+    Console.WriteLine("SOKNA Maintenance Update Engine 0.3.2 (P3 R5 health/recovery hardening; DB mutation disabled)");
     Console.WriteLine("verify-stage --package <zip> --identity <json> [--data-root <path>]");
     Console.WriteLine("local-slot-inspect --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
     Console.WriteLine("local-slot-home-cycle --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
@@ -46,7 +46,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.1",
+                engine_version = "0.3.2",
                 phase = "INSPECTED",
                 layout,
                 managed_tree_sha256 = managedTree,
@@ -67,7 +67,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.1",
+                engine_version = "0.3.2",
                 phase = "COMMITTED",
                 result,
                 managed_tree_sha256 = finalTree,
@@ -89,7 +89,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.1",
+                engine_version = "0.3.2",
                 phase = state.Phase,
                 state,
                 managed_tree_sha256 = finalTree,
@@ -110,7 +110,7 @@ catch (Exception ex) when (ex is InvalidDataException or IOException or Unauthor
     Console.Error.WriteLine(JsonSerializer.Serialize(new
     {
         ok = false,
-        engine_version = "0.3.1",
+        engine_version = "0.3.2",
         phase = "FAILED",
         code = "LOCAL_SLOT_PHASE3_FAILED",
         error = ex.Message,
@@ -162,7 +162,7 @@ static void RunVerifyStage(string package, string identity, MaintenancePaths pat
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             ok = true,
-            engine_version = "0.3.1",
+            engine_version = "0.3.2",
             phase = "STAGED",
             release_set_id = receipt.ReleaseSetId,
             sequence = receipt.Sequence,
@@ -176,7 +176,7 @@ static void RunVerifyStage(string package, string identity, MaintenancePaths pat
         Console.Error.WriteLine(JsonSerializer.Serialize(new
         {
             ok = false,
-            engine_version = "0.3.1",
+            engine_version = "0.3.2",
             phase = "REJECTED_PRE_MUTATION",
             code = "RELEASE_SET_REJECTED",
             error = ex.Message,
