@@ -1,0 +1,101 @@
+name: CI Maintenance V4 R6 Production Bridge Source
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-production-local-migration-bridge-r6
+    paths:
+      - windows/maintenance/qualification/apply-r6-production-bridge.py
+      - .github/workflows/ci-maintenance-v4-r6-production-bridge-source.yml
+
+permissions:
+  contents: write
+
+jobs:
+  qualify-and-commit:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Assert exact R5 qualified parent lineage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git merge-base --is-ancestor ba5ec72e4c57bbc65259a903656756b23d6e784a HEAD
+          if($LASTEXITCODE -ne 0){ throw 'R6 must descend from exact qualified R5 package/source commit.' }
+
+      - name: Apply R6 production bridge patch
+        shell: pwsh
+        run: python windows/maintenance/qualification/apply-r6-production-bridge.py
+
+      - name: R6 source contract assertions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $core=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigration.cs -Raw
+          $coord=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs -Raw
+          $eng=Get-Content windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs -Raw
+          $sup=Get-Content windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs -Raw
+          foreach($needle in @(
+            'BASELINE_HTTP_HEALTHY',
+            'PHYSICAL_WEB_BACKED_UP',
+            'POINTER_SWITCHED',
+            'ROLLED_BACK',
+            'RECOVERY_REQUIRED',
+            'LEGACY_PHASE3_STATE_ARCHIVED',
+            'database_mutation_performed',
+            'public_mutation_performed',
+            'windows_reboot_required'
+          )){ if(-not $core.Contains($needle)){ throw "Production bridge contract missing: $needle" } }
+          if(-not $core.Contains('StopApacheAndProveExit(state.ApacheExecutable)')){ throw 'Recovery is not independent from Local Web discovery.' }
+          if(-not $coord.Contains('update.local-slot-migrate') -or -not $coord.Contains('update.local-slot-recover')){ throw 'Supervisor production coordinator operations missing.' }
+          if(-not $eng.Contains('local-slot-migrate') -or -not $eng.Contains('local-slot-recover')){ throw 'Update Engine production commands missing.' }
+          if(-not $sup.Contains('/v1/local-slots/migrate') -or -not $sup.Contains('/v1/local-slots/recover')){ throw 'Supervisor production endpoints missing.' }
+          if(-not $sup.Contains('RECOVERY_CONSOLE_KEY_REQUIRED')){ throw 'Recovery-console-only mutation guard missing.' }
+
+      - name: Build R6 Maintenance components
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj -c Release
+          if($LASTEXITCODE -ne 0){ throw 'Maintenance Core build failed.' }
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE -ne 0){ throw 'Update Engine build failed.' }
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE -ne 0){ throw 'Supervisor build failed.' }
+
+      - name: Verify semantic component versions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $core=[Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path windows/maintenance/src/Sokna.Maintenance.Core/bin/Release/net8.0-windows/SoknaMaintenanceCore.dll)).FileVersion
+          $eng=[Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll)).FileVersion
+          $sup=[Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path windows/maintenance/src/Sokna.Maintenance.Supervisor/bin/Release/net8.0-windows/SoknaMaintenanceSupervisor.dll)).FileVersion
+          if(-not $core.StartsWith('0.2.2')){ throw "Core version mismatch: $core" }
+          if(-not $eng.StartsWith('0.3.3')){ throw "Engine version mismatch: $eng" }
+          if(-not $sup.StartsWith('0.3.3')){ throw "Supervisor version mismatch: $sup" }
+
+      - name: Commit qualified product source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add `
+            windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigration.cs `
+            windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs `
+            windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj `
+            windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs `
+            windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj `
+            windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs `
+            windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'feat(maintenance): production Local slot migration bridge R6'
+            git push origin HEAD
+          }
