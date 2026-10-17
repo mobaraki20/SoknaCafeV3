@@ -18,7 +18,7 @@ function Sha([string]$p){
   }finally{$stream.Dispose()}
   return (([BitConverter]::ToString($bytes))-replace'-','').ToLowerInvariant()
 }
-function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($p).ProductVersion;if(-not$v){$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion};if($v){return ([string]$v).Split('+')[0]};''}
+function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$info=[Diagnostics.FileVersionInfo]::GetVersionInfo($p);$v=$info.FileVersion;if(-not$v){$v=$info.ProductVersion};if($v){return ([string]$v).Split('+')[0]};''}
 function Compare-Version([string]$a,[string]$b){$va=$null;$vb=$null;if(-not[Version]::TryParse(([string]$a).Split('-')[0],[ref]$va)){return -1};if(-not[Version]::TryParse(([string]$b).Split('-')[0],[ref]$vb)){return -1};$va.CompareTo($vb)}
 function Prop($o,[string]$n,$default=$null){if($null-ne$o-and$o.PSObject.Properties.Name-contains$n){return $o.$n};$default}
 function Service-Info([string]$name){
