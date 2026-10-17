@@ -2,8 +2,8 @@
   "format": "sokna-windows-component-manifest-v2",
   "schema_version": 2,
   "package_component": "windows-services-packaging",
-  "package_version": "1.1.9",
-  "planner_contract": "1.0",
+  "package_version": "1.1.10",
+  "planner_contract": "1.1",
   "components": [
     {
       "component_id": "runtime",
@@ -99,6 +99,8 @@
     "required_missing_component": "INSTALL",
     "keep_mutation_allowed": false,
     "keep_restart_allowed": false,
-    "required_component_deselection_allowed": false
+    "required_component_deselection_allowed": false,
+    "recovery_console_mutation_requires_dedicated_lifecycle": true,
+    "privileged_preflight_before_legacy_print_mutation": true
   }
 }
