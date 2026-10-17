@@ -9,11 +9,14 @@ function Sha([string]$Path){return (Get-FileHash -LiteralPath $Path -Algorithm S
 
 $CorePath=(Resolve-Path -LiteralPath $CorePath).Path
 $SourceManifest=(Resolve-Path -LiteralPath $SourceManifest).Path
+$source=Get-Content -LiteralPath $SourceManifest -Raw|ConvertFrom-Json
+$expectedPackageVersion=[string]$source.package_version
+if([string]::IsNullOrWhiteSpace($expectedPackageVersion)){throw 'Source payload manifest package_version is missing'}
 $evidenceParent=Split-Path -Parent $EvidencePath
 if($evidenceParent){New-Item -ItemType Directory -Path $evidenceParent -Force|Out-Null}
 $tempRoot=if($env:RUNNER_TEMP){$env:RUNNER_TEMP}else{[IO.Path]::GetTempPath()}
-$dest=Join-Path $tempRoot ('sokna-r8-core-verify-'+[guid]::NewGuid().ToString('N'))
-$log=Join-Path $tempRoot ('sokna-r8-core-verify-'+[guid]::NewGuid().ToString('N')+'.log')
+$dest=Join-Path $tempRoot ('sokna-core-verify-'+[guid]::NewGuid().ToString('N'))
+$log=Join-Path $tempRoot ('sokna-core-verify-'+[guid]::NewGuid().ToString('N')+'.log')
 New-Item -ItemType Directory -Path $dest -Force|Out-Null
 
 try{
@@ -26,7 +29,7 @@ try{
   if((Sha $SourceManifest)-ne(Sha $installedManifest)){throw 'Installed payload-manifest.json differs from composed shell manifest'}
 
   $manifest=Get-Content -LiteralPath $installedManifest -Raw|ConvertFrom-Json
-  if([string]$manifest.package_version-ne'1.1.7'){throw 'Installed R8 payload manifest package version mismatch'}
+  if([string]$manifest.package_version-ne$expectedPackageVersion){throw "Installed payload manifest package version mismatch. Expected $expectedPackageVersion, found $([string]$manifest.package_version)"}
   $verified=0
   foreach($entry in @($manifest.files)){
     $relative=([string]$entry.path).Replace('/','\')
@@ -47,21 +50,22 @@ try{
 
   foreach($required in @('queue-local-slot-adoption-r8.ps1','setup-windows-components-core-v5.ps1','local-slot-bootstrap-contract-v1.json')){
     $requiredPath=Join-Path $dest $required
-    if(-not(Test-Path -LiteralPath $requiredPath -PathType Leaf)){throw "Installed R8 core missing: $required"}
+    if(-not(Test-Path -LiteralPath $requiredPath -PathType Leaf)){throw "Installed core missing: $required"}
   }
-  if(Test-Path -LiteralPath (Join-Path $dest 'queue-local-slot-adoption-r7.ps1') -PathType Leaf){throw 'R7 adoption queue leaked into compiled R8 core'}
+  if(Test-Path -LiteralPath (Join-Path $dest 'queue-local-slot-adoption-r7.ps1') -PathType Leaf){throw 'R7 adoption queue leaked into compiled core'}
 
   [ordered]@{
-    format='sokna-r8-compiled-core-verification-v1'
+    format='sokna-compiled-core-verification-v2'
+    package_version=$expectedPackageVersion
     verified_manifest_files=$verified
     core_exit_code=$process.ExitCode
     manifest_sha256=Sha $installedManifest
     generated_at_utc=[DateTime]::UtcNow.ToString('o')
   }|ConvertTo-Json|Set-Content -LiteralPath $EvidencePath -Encoding utf8
-  Write-Host "R8 compiled core full-manifest verification: PASS ($verified files)"
+  Write-Host "Compiled core full-manifest verification: PASS ($verified files, package $expectedPackageVersion)"
 }
 catch{
-  Write-Host "R8_COMPILED_CORE_VERIFY_ERROR=$($_.Exception.Message)"
+  Write-Host "COMPILED_CORE_VERIFY_ERROR=$($_.Exception.Message)"
   if(Test-Path -LiteralPath $log -PathType Leaf){Write-Host '--- INNO CORE LOG (tail) ---';Get-Content -LiteralPath $log -Tail 250|ForEach-Object{Write-Host $_}}
   if(Test-Path -LiteralPath $dest -PathType Container){Write-Host '--- ISOLATED INSTALL FILES (first 200) ---';Get-ChildItem -LiteralPath $dest -File -Recurse|Select-Object -First 200 FullName,Length|Format-Table -AutoSize|Out-String|Write-Host}
   throw
