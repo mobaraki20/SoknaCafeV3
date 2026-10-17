@@ -1,0 +1,154 @@
+name: CI Maintenance V4 R8 Real Windows Reliability
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r8-php-slot-root
+    paths:
+      - '.github/workflows/ci-maintenance-v4-r8-real-windows-reliability.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reliability:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      PRODUCT_SHA: d11e615ba85d986926dc3219c884ce63c5bfd04d
+    steps:
+      - name: Checkout exact qualified R8 product source
+        uses: actions/checkout@v4
+        with:
+          ref: d11e615ba85d986926dc3219c884ce63c5bfd04d
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Prove exact source identity and R8 slot contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $head=(git rev-parse HEAD).Trim()
+          if($head-ne$env:PRODUCT_SHA){throw "Wrong product source: $head"}
+          $core=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigrationR8.Core.cs -Raw
+          $migrate=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigrationR8.Migrate.cs -Raw
+          $coord=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs -Raw
+          $queue=Get-Content packaging/windows/scripts/queue-local-slot-adoption-r8.ps1 -Raw
+          if($core-notmatch'ReleaseSlotPrefix\s*=\s*"Web\.release\."'){throw 'R8 sibling release prefix missing'}
+          if($migrate-match'Path\.Combine\([^\r\n]*"LocalWeb"[^\r\n]*"releases"'){throw 'Legacy nested production release path remains'}
+          if($core-notmatch'RequireProductionSlotPath'-or$coord-notmatch'RequireProductionSlotPath'){throw 'Production sibling-slot guard missing'}
+          foreach($forbidden in @('control-plane.json','web-adapter.key','X-Sokna-Signature','/v1/local-slots/migrate')){if($queue.Contains($forbidden)){throw "R8 queue has forbidden synchronous transport dependency: $forbidden"}}
+          Write-Host "Exact R8 product source/contract: PASS $head"
+
+      - name: Build real Windows fixtures and R8 harnesses
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out-r8/supervisor,out-r8/fake-apache,out-r8/bridge-harness -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r8/supervisor
+          if($LASTEXITCODE-ne0){throw 'Supervisor publish failed'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r8/supervisor
+          if($LASTEXITCODE-ne0){throw 'Update Engine publish failed'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.FakeApache/Sokna.Maintenance.FakeApache.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r8/fake-apache
+          if($LASTEXITCODE-ne0){throw 'Fake Apache publish failed'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.ProductionBridgeHarness/Sokna.Maintenance.ProductionBridgeHarness.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r8/bridge-harness
+          if($LASTEXITCODE-ne0){throw 'Production bridge harness publish failed'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Durable adoption state-machine harness build failed'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.R8SlotPathHarness/Sokna.Maintenance.R8SlotPathHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'R8 slot-path harness build failed'}
+
+      - name: Durable adoption and PHP-root unit/regression gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release --no-build
+          if($LASTEXITCODE-ne0){throw 'Durable adoption state-machine gate failed'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R8SlotPathHarness/Sokna.Maintenance.R8SlotPathHarness.csproj -c Release --no-build
+          if($LASTEXITCODE-ne0){throw 'R8 sibling-slot/PHP-root gate failed'}
+
+      - name: 20-cycle real Windows R8 bridge and queue regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./windows/maintenance/qualification/r7-reliability-matrix.ps1 `
+            -HarnessExe (Resolve-Path out-r8/bridge-harness/SoknaMaintenanceProductionBridgeHarness.exe).Path `
+            -FakeApacheExe (Resolve-Path out-r8/fake-apache/httpd.exe).Path `
+            -QueueScript (Resolve-Path packaging/windows/scripts/queue-local-slot-adoption-r8.ps1).Path `
+            -WorkspaceRoot (Join-Path $PWD 'out-r8/reliability-matrix')
+          if($LASTEXITCODE-ne0){throw 'R8 real Windows 20-cycle reliability matrix failed'}
+          $ev=Get-Content out-r8/reliability-matrix/R7_RELIABILITY_MATRIX.json -Raw|ConvertFrom-Json
+          if([int]$ev.production_bridge_cycles-ne20-or-not[bool]$ev.all_cycles_passed-or-not[bool]$ev.durable_queue_regressions_passed){throw 'R8 20-cycle evidence is incomplete'}
+          Copy-Item out-r8/reliability-matrix/R7_RELIABILITY_MATRIX.json out-r8/R8_REAL_WINDOWS_20_CYCLE_REGRESSION.json -Force
+
+      - name: Real Supervisor startup and restart-resume on R8 source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./windows/maintenance/qualification/r7-supervisor-process-integration.ps1 `
+            -SupervisorExe (Resolve-Path out-r8/supervisor/SoknaMaintenanceSupervisor.exe).Path `
+            -FakeApacheExe (Resolve-Path out-r8/fake-apache/httpd.exe).Path `
+            -HarnessExe (Resolve-Path out-r8/bridge-harness/SoknaMaintenanceProductionBridgeHarness.exe).Path `
+            -WorkspaceRoot (Join-Path $PWD 'out-r8/process-integration')
+          if($LASTEXITCODE-ne0){throw 'R8 Supervisor restart-resume integration failed'}
+
+      - name: Real Supervisor Engine-crash and signed-recovery on R8 source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./windows/maintenance/qualification/r7-supervisor-crash-recovery-integration.ps1 `
+            -SupervisorExe (Resolve-Path out-r8/supervisor/SoknaMaintenanceSupervisor.exe).Path `
+            -FakeApacheExe (Resolve-Path out-r8/fake-apache/httpd.exe).Path `
+            -HarnessExe (Resolve-Path out-r8/bridge-harness/SoknaMaintenanceProductionBridgeHarness.exe).Path `
+            -WorkspaceRoot (Join-Path $PWD 'out-r8/crash-recovery-integration')
+          if($LASTEXITCODE-ne0){throw 'R8 Supervisor crash/recovery integration failed'}
+
+      - name: Prove post-run R8 sibling namespace in real Windows evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $all=Get-ChildItem out-r8 -Filter migration-state.json -Recurse -File -ErrorAction SilentlyContinue
+          if(-not$all){throw 'No real Windows migration state evidence found'}
+          $committed=0
+          foreach($file in $all){
+            try{$s=Get-Content $file.FullName -Raw|ConvertFrom-Json}catch{continue}
+            if([string]$s.phase-eq'COMMITTED'){
+              $slot=[string]$s.active_slot
+              if([string]::IsNullOrWhiteSpace($slot)){continue}
+              $name=[IO.Path]::GetFileName($slot.TrimEnd('\','/'))
+              if(-not$name.StartsWith('Web.release.',[StringComparison]::OrdinalIgnoreCase)){throw "Committed real-Windows evidence used non-R8 slot: $slot"}
+              if($slot-match'(?i)[\\/]LocalWeb[\\/]releases[\\/]'){throw "Committed evidence used legacy nested slot: $slot"}
+              $committed++
+            }
+          }
+          if($committed-lt1){throw 'No committed R8 sibling-slot evidence found'}
+          [ordered]@{
+            format='sokna-r8-real-windows-reliability-summary-v1';
+            product_git_sha=$env:PRODUCT_SHA;
+            r8_sibling_slot_contract=$true;
+            durable_state_machine=$true;
+            real_windows_bridge_cycles=20;
+            supervisor_restart_resume=$true;
+            engine_crash_recovery=$true;
+            committed_sibling_slot_evidence_count=$committed;
+            database_mutation_performed=$false;
+            public_mutation_performed=$false;
+            windows_reboot_required=$false;
+            completed_at_utc=[DateTime]::UtcNow.ToString('o')
+          }|ConvertTo-Json -Depth 6|Set-Content out-r8/R8_REAL_WINDOWS_RELIABILITY_SUMMARY.json -Encoding utf8
+          Write-Host "R8 real-Windows reliability: PASS; committed sibling-slot evidence=$committed"
+
+      - name: Upload R8 real Windows reliability evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-r8-real-windows-reliability-evidence
+          path: |
+            out-r8/R8_REAL_WINDOWS_RELIABILITY_SUMMARY.json
+            out-r8/R8_REAL_WINDOWS_20_CYCLE_REGRESSION.json
+            out-r8/process-integration/R7_SUPERVISOR_PROCESS_INTEGRATION.json
+            out-r8/crash-recovery-integration/R7_SUPERVISOR_CRASH_RECOVERY_INTEGRATION.json
+          if-no-files-found: error
+          retention-days: 30
