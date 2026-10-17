@@ -1,0 +1,80 @@
+name: CI Maintenance V4 R7 Reliability Matrix
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r7-reliability-reset
+    paths:
+      - 'windows/maintenance/src/**'
+      - 'windows/maintenance/tests/**'
+      - 'windows/maintenance/qualification/r7-reliability-matrix.ps1'
+      - 'packaging/windows/scripts/queue-local-slot-adoption-r7.ps1'
+      - '.github/workflows/ci-maintenance-v4-r7-reliability-matrix.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build real Windows fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out-r7/fake-apache/bin,out-r7/bridge-harness -Force|Out-Null
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.FakeApache/Sokna.Maintenance.FakeApache.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r7/fake-apache/bin
+          if($LASTEXITCODE-ne0){throw 'Fake Apache publish failed'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.ProductionBridgeHarness/Sokna.Maintenance.ProductionBridgeHarness.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r7/bridge-harness
+          if($LASTEXITCODE-ne0){throw 'Production bridge harness publish failed'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'R7 durable worker harness build failed'}
+
+      - name: Durable Supervisor worker state-machine gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release --no-build
+          if($LASTEXITCODE-ne0){throw 'R7 durable worker state-machine gate failed'}
+
+      - name: 20-cycle real Windows bridge and bootstrap regression matrix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./windows/maintenance/qualification/r7-reliability-matrix.ps1 `
+            -HarnessExe (Resolve-Path out-r7/bridge-harness/SoknaMaintenanceProductionBridgeHarness.exe).Path `
+            -FakeApacheExe (Resolve-Path out-r7/fake-apache/bin/httpd.exe).Path `
+            -QueueScript (Resolve-Path packaging/windows/scripts/queue-local-slot-adoption-r7.ps1).Path `
+            -WorkspaceRoot (Join-Path $PWD 'out-r7/matrix')
+          if($LASTEXITCODE-ne0){throw 'R7 real Windows reliability matrix failed'}
+
+      - name: Prove update-domain isolation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $bridge=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigration.cs -Raw
+          $coord=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs -Raw
+          $worker=Get-Content windows/maintenance/src/Sokna.Maintenance.Supervisor/LocalSlotAdoptionWorker.cs -Raw
+          foreach($name in @('SoknaRuntime','SoknaPrintWorker')){
+            if($bridge.Contains($name)-or$coord.Contains($name)-or$worker.Contains($name)){throw "Local adoption lifecycle illegally references unrelated service: $name"}
+          }
+          if(-not$bridge.Contains('SoknaApache')){throw 'Local bridge does not explicitly scope service lifecycle to SoknaApache'}
+          $queue=Get-Content packaging/windows/scripts/queue-local-slot-adoption-r7.ps1 -Raw
+          foreach($forbidden in @('web-adapter.key','X-Sokna-Signature','/v1/local-slots/migrate')){
+            if($queue.Contains($forbidden)){throw "Installer queue helper contains forbidden synchronous mutation transport: $forbidden"}
+          }
+          Write-Host 'R7 update-domain isolation: PASS'
+
+      - name: Upload reliability evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-r7-reliability-evidence
+          path: out-r7/matrix/R7_RELIABILITY_MATRIX.json
+          if-no-files-found: error
+          retention-days: 30
