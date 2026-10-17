@@ -147,6 +147,18 @@ internal static class ComponentUpdatePlanner
                 action = ComponentAction.Keep; state = "up_to_date"; reason = "نسخه، fingerprint و ثبت service با release هدف یکسان است.";
             }
         }
+
+        // Recovery Console is deliberately outside the mutable Maintenance App lifecycle.
+        // Surface this as a planner block rather than advertising REPAIR/INSTALL/UPDATE that
+        // the elevated executor must later refuse. This keeps planner and executor contracts
+        // identical and guarantees the UI stops before any service/file mutation.
+        if (id == "maintenance-recovery-console" && action is ComponentAction.Install or ComponentAction.Update or ComponentAction.Repair)
+        {
+            action = ComponentAction.Blocked;
+            state = "blocked_recovery_lifecycle";
+            reason = "Recovery Console نیازمند چرخه مستقل Recovery است؛ این بسته قبل از هرگونه تغییر متوقف می‌شود.";
+        }
+
         return new ComponentPlanRow(id, display, kind, primary, required, parent, currentVersion, targetVersion, health, healthText, state, action, ActionText(action), reason,
             installedPath, targetPath, installedHash, targetHash, serviceName, service.State, registrationHealthy, group);
     }
