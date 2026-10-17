@@ -1,0 +1,112 @@
+name: Promote Windows Services 1.1.3 P3 R3
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/promote-windows-services-1.1.3-p3-r3.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  promote:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Download exact qualified R3 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-Phase3-Qualification-Bundle-R3
+          path: qualified
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 38986792659
+
+      - name: Verify exact qualified payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $expectedHead='0e42a481550eb34d0e7e08c52151b2844ca32524'
+          $expectedInstaller='4b5e47a4edac72a1adc5363457ace21cb55e4b18b293518568e82044b214bbd2'
+
+          $installer=Get-ChildItem qualified -Recurse -Filter 'SOKNA-Windows-Services-Setup-1.1.3.exe' -File | Select-Object -First 1
+          $launcher=Get-ChildItem qualified -Recurse -Filter 'SOKNA-Phase3-Qualification.exe' -File | Select-Object -First 1
+          $bundle=Get-ChildItem qualified -Recurse -Filter 'SOKNA-Phase3-Qualification-Bundle-R3.zip' -File | Select-Object -First 1
+          $evidence=Get-ChildItem qualified -Recurse -Filter 'P3_R3_QUALIFICATION.json' -File | Select-Object -First 1
+          $sums=Get-ChildItem qualified -Recurse -Filter 'SHA256SUMS.txt' -File | Select-Object -First 1
+          foreach($x in @($installer,$launcher,$bundle,$evidence,$sums)){if(-not$x){throw 'Required qualified release asset missing.'}}
+
+          $installerSha=(Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($installerSha-ne$expectedInstaller){throw "Installer SHA mismatch: $installerSha"}
+          $q=Get-Content $evidence.FullName -Raw | ConvertFrom-Json
+          if([string]$q.source_commit-ne$expectedHead){throw "Qualified source commit mismatch: $($q.source_commit)"}
+          if([string]$q.package_version-ne'1.1.3'){throw 'Qualified package version mismatch.'}
+          if([string]$q.runtime_version-ne'1.0.5'-or[string]$q.print_version-ne'6.2.9'){throw 'Runtime/Print version contract mismatch.'}
+          if([string]$q.maintenance_supervisor-ne'0.3.0'-or[string]$q.update_engine-ne'0.3.0'-or[string]$q.recovery_console-ne'0.1.1'){throw 'Maintenance version contract mismatch.'}
+          if([bool]$q.database_mutation-or[bool]$q.public_mutation-or[bool]$q.windows_reboot){throw 'Forbidden mutation/reboot flag detected.'}
+
+          $release=Join-Path $PWD 'release-assets'
+          New-Item -ItemType Directory -Path $release -Force|Out-Null
+          Copy-Item $installer.FullName (Join-Path $release $installer.Name) -Force
+          Copy-Item $launcher.FullName (Join-Path $release $launcher.Name) -Force
+          Copy-Item $bundle.FullName (Join-Path $release $bundle.Name) -Force
+          Copy-Item $evidence.FullName (Join-Path $release $evidence.Name) -Force
+          Copy-Item $sums.FullName (Join-Path $release $sums.Name) -Force
+          $plan=Get-ChildItem qualified -Recurse -Filter 'real-home-plan-rows.json' -File|Select-Object -First 1
+          $result=Get-ChildItem qualified -Recurse -Filter 'r3-install-result.json' -File|Select-Object -First 1
+          $events=Get-ChildItem qualified -Recurse -Filter 'r3-system-events.jsonl' -File|Select-Object -First 1
+          foreach($x in @($plan,$result,$events)){if($x){Copy-Item $x.FullName (Join-Path $release $x.Name) -Force}}
+          Write-Host "QUALIFIED_INSTALLER_SHA256=$installerSha"
+          Write-Host 'Qualified R3 payload verification: PASS'
+
+      - name: Create GitHub Pre-release from qualified artifact only
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='windows-services-1.1.3-p3-r3'
+          $target='0e42a481550eb34d0e7e08c52151b2844ca32524'
+          $existing = gh release view $tag --repo mobaraki20/SoknaCafeV3 2>$null
+          if($LASTEXITCODE-eq0){throw "Release already exists: $tag"}
+          $assets=Get-ChildItem release-assets -File | ForEach-Object {$_.FullName}
+          if($assets.Count-lt5){throw 'Release asset set is incomplete.'}
+          $notes=@'
+SOKNA Maintenance V4 — Phase 3 R3 pre-release for controlled real-host qualification.
+
+Qualified source: 0e42a481550eb34d0e7e08c52151b2844ca32524
+Qualified CI run: 38986792659
+Qualified artifact: 12083591636
+Windows Services: 1.1.3
+Runtime: 1.0.5 (canonical carry-forward / KEEP)
+Print Agent: 6.2.9 (canonical carry-forward / KEEP)
+Maintenance Supervisor: 0.3.0 (UPDATE)
+Update Engine: 0.3.0 (UPDATE)
+Recovery Console: 0.1.1 (canonical carry-forward / KEEP)
+DB mutation: false
+Public mutation: false
+Windows reboot: false
+
+Installer SHA256:
+4b5e47a4edac72a1adc5363457ace21cb55e4b18b293518568e82044b214bbd2
+
+This is a pre-release for the Home real-host Phase 3 qualification. It is not yet a Cafe production release.
+'@
+          gh release create $tag @assets --repo mobaraki20/SoknaCafeV3 --target $target --title 'SOKNA Windows Services 1.1.3 — Phase 3 R3' --notes $notes --prerelease
+
+      - name: Verify published release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $json=gh release view windows-services-1.1.3-p3-r3 --repo mobaraki20/SoknaCafeV3 --json isPrerelease,tagName,targetCommitish,assets | ConvertFrom-Json
+          if(-not[bool]$json.isPrerelease){throw 'Published release is not a pre-release.'}
+          if([string]$json.tagName-ne'windows-services-1.1.3-p3-r3'){throw 'Published tag mismatch.'}
+          $names=@($json.assets|ForEach-Object{$_.name})
+          foreach($required in @('SOKNA-Windows-Services-Setup-1.1.3.exe','SOKNA-Phase3-Qualification.exe','SOKNA-Phase3-Qualification-Bundle-R3.zip','P3_R3_QUALIFICATION.json','SHA256SUMS.txt')){if($names-notcontains$required){throw "Published asset missing: $required"}}
+          Write-Host 'GitHub Pre-release promotion: PASS'
