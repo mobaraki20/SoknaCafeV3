@@ -5,6 +5,7 @@ on:
     branches: [work/maintenance-v4-r8-php-slot-root]
     paths:
       - '.github/workflows/ci-maintenance-v4-r8-reconcile-hardening.yml'
+      - 'windows/maintenance/qualification/apply-r8-reconcile-hardening.py'
 
 permissions:
   contents: write
