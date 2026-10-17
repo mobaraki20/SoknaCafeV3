@@ -1,103 +1,16 @@
-name: Publish Windows Services 1.1.10 Cafe UAT Pre-release
+name: Publish Windows Services 1.1.10 Cafe UAT Pre-release (frozen)
 
 on:
-  push:
-    branches:
-      - work/windows-services-unified-installer-diagnostics
-    paths:
-      - .github/workflows/publish-windows-services-1.1.10-cafe-uat-prerelease.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 jobs:
-  publish:
+  frozen:
     runs-on: windows-2022
     steps:
-      - name: Download exact qualified candidate
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-services-1.1.10-qualified-candidate
-          path: release
-          github-token: ${{ github.token }}
-          repository: mobaraki20/SoknaCafeV3
-          run-id: 39046453258
-
-      - name: Verify exact installer identity
+      - name: Superseded publisher
         shell: pwsh
         run: |
-          $ErrorActionPreference='Stop'
-          $installer='release/packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.10.exe'
-          if(-not(Test-Path -LiteralPath $installer -PathType Leaf)){throw 'Qualified 1.1.10 installer is missing from artifact.'}
-          $f=Get-Item -LiteralPath $installer
-          $sha=(Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-          if($f.Length-ne243366067){throw "Installer size mismatch: $($f.Length)"}
-          if($sha-ne'5ef03430d5c135a9efb985e50c92ef765ddf739622c2a844422425841e403d79'){throw "Installer SHA256 mismatch: $sha"}
-          @(
-            "$sha  SOKNA-Windows-Services-Setup-1.1.10.exe"
-          ) | Set-Content -LiteralPath 'release/SHA256SUMS.txt' -Encoding ascii
-
-      - name: Prepare release assets
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          New-Item -ItemType Directory -Path 'release-assets' -Force | Out-Null
-          Copy-Item 'release/packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.10.exe' 'release-assets/' -Force
-          Copy-Item 'release/packaging/windows/installer/out-v4/INSTALLER_BUILD.json' 'release-assets/' -Force
-          Copy-Item 'release/out-1110/QUALIFICATION_1.1.10.json' 'release-assets/' -Force
-          Copy-Item 'release/out-1110/CORE_VERIFICATION_1.1.10.json' 'release-assets/' -Force
-          Copy-Item 'release/SHA256SUMS.txt' 'release-assets/' -Force
-
-      - name: Publish GitHub pre-release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: windows-services-1.1.10-cafe-uat
-          TARGET_SHA: 8302d69d391ff9260fb850a9fdb9e33d3a7301dc
-        run: |
-          $ErrorActionPreference='Stop'
-          $notes=@'
-          SOKNA Windows Services 1.1.10 — Unified Installer — Cafe UAT
-
-          PRE-RELEASE / CAFE UAT ONLY. Not yet production-approved.
-
-          Qualified source commit: 8302d69d391ff9260fb850a9fdb9e33d3a7301dc
-          Qualification run: 39046453258 (SUCCESS)
-
-          Components:
-          - Windows Services package 1.1.10
-          - Maintenance Supervisor / Update Engine 0.3.6
-          - Runtime 1.0.5 canonical KEEP
-          - Print Agent 6.2.9 canonical KEEP
-          - Recovery Console 0.1.1 canonical KEEP
-
-          Key 1.1.10 qualification changes:
-          - Recovery Console drift is blocked before privileged mutation instead of becoming an executable REPAIR.
-          - Privileged preflight runs before the legacy Print service is quiesced.
-          - General legacy SoknaPrintAgent6 migration is preserved with rollback and new-worker stability verification.
-          - Explicit Repair keeps a healthy Recovery Console unchanged.
-          - Support Bundle adds TECHNICIAN-SUMMARY.txt, TECHNICIAN-REPORT.html and technician-findings.json.
-          - Runtime / Print / Recovery canonical KEEP payload hashes remain locked.
-
-          Engineering qualification covered build, R7/R8 reliability, Planner/Executor preflight contract, legacy Print migration, technician-report synthetic test, PowerShell 5.1 parsing, canonical KEEP hashes, final shell verification, Supervisor smoke, installer build and compiled Core verification.
-
-          Installer SHA-256: 5ef03430d5c135a9efb985e50c92ef765ddf739622c2a844422425841e403d79
-          Installer size: 243366067 bytes
-
-          Install on the Cafe host only as the current real-host UAT candidate. After installation, capture a fresh Support Bundle before treating this build as production-qualified.
-          '@
-          $notesPath='release-notes-1.1.10.md'
-          [IO.File]::WriteAllText($notesPath,$notes,(New-Object Text.UTF8Encoding($false)))
-          gh release create $env:TAG `
-            'release-assets/SOKNA-Windows-Services-Setup-1.1.10.exe' `
-            'release-assets/INSTALLER_BUILD.json' `
-            'release-assets/QUALIFICATION_1.1.10.json' `
-            'release-assets/CORE_VERIFICATION_1.1.10.json' `
-            'release-assets/SHA256SUMS.txt' `
-            --repo $env:GITHUB_REPOSITORY `
-            --target $env:TARGET_SHA `
-            --title 'SOKNA Windows Services 1.1.10 — Unified Installer — Cafe UAT' `
-            --notes-file $notesPath `
-            --prerelease
-          if($LASTEXITCODE-ne0){throw 'GitHub pre-release creation failed.'}
+          Write-Host 'The 1.1.10 Cafe UAT pre-release is frozen and must not be republished from newer branch state.'
