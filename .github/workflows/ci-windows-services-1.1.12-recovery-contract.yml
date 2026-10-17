@@ -1,0 +1,253 @@
+name: Windows Services 1.1.12 Recovery Contract Qualification
+
+on:
+  push:
+    branches:
+      - work/windows-services-1.1.12-recovery-contract
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  qualify:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Lock package and stable component identities
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $package=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if($package-ne'1.1.12'){throw "Expected package 1.1.12, got $package"}
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          if($m.package_version-ne'1.1.12'){throw 'Manifest package version must be 1.1.12'}
+          if($m.planner_contract-ne'1.1'){throw 'Planner contract must remain 1.1'}
+          $by=@{};foreach($c in $m.components){$by[[string]$c.component_id]=$c}
+          if($by.runtime.version-ne'1.0.5'){throw 'Runtime must remain 1.0.5 KEEP'}
+          if($by.'print-agent'.version-ne'6.2.9'){throw 'Print must remain 6.2.9 KEEP'}
+          if($by.maintenance.version-ne'0.3.6'-or$by.'maintenance-update-engine'.version-ne'0.3.6'){throw 'Maintenance must remain 0.3.6'}
+          if($by.'maintenance-recovery-console'.version-ne'0.1.1'){throw 'Recovery must remain 0.1.1 KEEP'}
+          $accepted=@($by.'maintenance-recovery-console'.accepted_installed_sha256)
+          $legacy='368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd'
+          $canonical='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'
+          if($legacy-notin$accepted-or$canonical-notin$accepted){throw 'Released Recovery fingerprints are not both in the manifest contract'}
+          if($accepted.Count-ne2){throw 'Recovery compatibility set must contain exactly the two released 0.1.1 fingerprints'}
+          $ui=Get-Content packaging/windows/setup-ui/Sokna.SetupUi.csproj -Raw
+          foreach($required in @('<Version>1.1.12</Version>','<FileVersion>1.1.12.0</FileVersion>','<AssemblyVersion>1.1.12.0</AssemblyVersion>')){if(-not$ui.Contains($required)){throw "Setup UI metadata missing: $required"}}
+
+      - name: Source contract for real Cafe failure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $composer=Get-Content packaging/windows/scripts/prepare-shell-payload-v9.ps1 -Raw
+          foreach($required in @('Compatible-Fingerprint','accepted_installed_sha256','oldSubordinateKeep','newSubordinateKeep','refusing an unbounded executor rewrite')){if(-not$composer.Contains($required)){throw "Executor compatibility contract missing: $required"}}
+          $planner=Get-Content packaging/windows/setup-ui/ComponentUpdatePlanner.cs -Raw
+          foreach($required in @('IsAcceptedInstalledFingerprint','accepted_installed_sha256','up_to_date_compatible_fingerprint')){if(-not$planner.Contains($required)){throw "Planner compatibility contract missing: $required"}}
+          $binder=Get-Content packaging/windows/setup-ui/DashboardPackageVersionBinder.cs -Raw
+          foreach($forbidden in @('ModuleInitializer','Application.Idle','Application.OpenForms')){if($binder.Contains($forbidden)){throw "Live UI binder regression remains: $forbidden"}}
+          $polish=Get-Content packaging/windows/setup-ui/DashboardUiPolish.cs -Raw
+          foreach($forbidden in @('Application.ProductVersion','Application.OpenForms')){if($polish.Contains($forbidden)){throw "Stale/live UI rewrite remains: $forbidden"}}
+
+      - name: Windows PowerShell 5.1 parser gate
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $paths=@(
+            'packaging/windows/scripts/setup-windows-components-v9.ps1',
+            'packaging/windows/scripts/collect-support-v3.ps1',
+            'packaging/windows/scripts/write-technician-report-v1.ps1',
+            'packaging/windows/scripts/prepare-shell-payload-v9.ps1',
+            'packaging/windows/scripts/setup-windows-components-v5.ps1',
+            'packaging/windows/scripts/queue-local-slot-adoption-r8.ps1',
+            'packaging/windows/scripts/build-installer-v4.ps1',
+            'packaging/windows/scripts/verify-r8-compiled-core.ps1')
+          foreach($p in $paths){$tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors);if($errors.Count){$errors|ForEach-Object{Write-Host $_.Message};throw "PS5.1 parse failed: $p"}}
+
+      - name: Build package-owned binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($p in @(
+            'windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj',
+            'packaging/windows/setup-ui/Sokna.SetupUi.csproj',
+            'packaging/windows/setup-host-v3/Sokna.SetupHostV3.csproj')){
+            dotnet build $p -c Release
+            if($LASTEXITCODE-ne0){throw "Build failed: $p"}
+          }
+
+      - name: Inherited R7 and R8 reliability gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'R7 reliability harness failed'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R8SlotPathHarness/Sokna.Maintenance.R8SlotPathHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'R8 sibling slot harness failed'}
+
+      - name: Preserve privileged preflight legacy Print and technician contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=Get-Content packaging/windows/scripts/setup-windows-components-v9.ps1 -Raw
+          foreach($required in @('Assert-PlanPreflight','PRIVILEGED_PREFLIGHT_RECOVERY_LIFECYCLE_REQUIRED','SoknaPrintAgent6','LEGACY_PRINT_IMAGE_UNRECOGNIZED','new_print_stability_verified','Restore-Legacy')){if(-not$setup.Contains($required)){throw "Lifecycle contract missing: $required"}}
+          $preflight=$setup.IndexOf('try{Assert-PlanPreflight}')
+          $legacy=$setup.IndexOf('Get-LegacySnapshot;Quiesce-Legacy')
+          if($preflight-lt0-or$legacy-lt0-or$preflight-ge$legacy){throw 'Legacy Print can be mutated before privileged preflight'}
+          $report=Get-Content packaging/windows/scripts/write-technician-report-v1.ps1 -Raw
+          foreach($required in @('TECHNICIAN-SUMMARY.txt','TECHNICIAN-REPORT.html','technician-findings.json')){if(-not$report.Contains($required)){throw "Technician report output missing: $required"}}
+
+      - name: Download canonical KEEP payloads
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-services-1.1.0-canonical-components-r3-baseline
+          path: recovered
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 38982932863
+
+      - name: Prove canonical KEEP payload hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Sha([string]$p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+          $checks=@{
+            'recovered/runtime/SoknaRuntimeService.exe'='26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd';
+            'recovered/print-worker/Service/Sokna.PrintAgent.Service.exe'='99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4';
+            'recovered/baseline-maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe'='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'
+          }
+          foreach($p in $checks.Keys){if((Sha $p)-ne$checks[$p]){throw "Canonical KEEP drift: $p"}}
+
+      - name: Publish changed package executables
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $PWD 'out-1112'
+          New-Item -ItemType Directory -Path "$out/maintenance/app","$out/setup-ui","$out/setup-host" -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/maintenance/app"
+          if($LASTEXITCODE-ne0){throw 'Supervisor publish failed'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/maintenance/app"
+          if($LASTEXITCODE-ne0){throw 'Update Engine publish failed'}
+          dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/setup-ui"
+          if($LASTEXITCODE-ne0){throw 'Setup UI publish failed'}
+          dotnet publish packaging/windows/setup-host-v3/Sokna.SetupHostV3.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/setup-host"
+          if($LASTEXITCODE-ne0){throw 'Setup Host publish failed'}
+
+      - name: Compose general 1.1.12 shell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $PWD 'out-1112'
+          ./packaging/windows/scripts/prepare-shell-payload-v9.ps1 `
+            -RepoRoot $PWD.Path -OutputRoot "$out/shell" `
+            -RuntimeServiceExe (Resolve-Path recovered/runtime/SoknaRuntimeService.exe).Path `
+            -SetupHostExe "$out/setup-host/SoknaSetupHost.exe" `
+            -SetupUiExe "$out/setup-ui/SoknaSetupUi.exe" `
+            -PrintWorkerBundle (Resolve-Path recovered/print-worker).Path `
+            -MaintenanceAppBundle "$out/maintenance/app" `
+            -MaintenanceRecoveryBundle (Resolve-Path recovered/baseline-maintenance/recovery).Path `
+            -GitSha $env:GITHUB_SHA
+
+      - name: Prove symmetric Recovery contract in packaged executor
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $shell=(Resolve-Path 'out-1112/shell').Path
+          $m=Get-Content (Join-Path $shell 'windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
+          $r=@($m.components|Where-Object component_id -eq 'maintenance-recovery-console')|Select-Object -First 1
+          $legacy='368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd'
+          $canonical='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'
+          $unknown=('f'*64)
+          function Compatible([string]$actual,[string]$target,$component){if($actual-eq$target){return $true};return @($component.accepted_installed_sha256|Where-Object{[string]$_-eq$actual}).Count-gt0}
+          if(-not(Compatible $legacy $canonical $r)){throw 'Real Cafe released Recovery fingerprint is not compatible'}
+          if(-not(Compatible $canonical $canonical $r)){throw 'Canonical Recovery fingerprint is not compatible'}
+          if(Compatible $unknown $canonical $r){throw 'Unknown Recovery fingerprint was incorrectly accepted'}
+          $core=Get-Content (Join-Path $shell 'setup-windows-components-core-v5.ps1') -Raw
+          foreach($required in @('function Compatible-Fingerprint','if(Compatible-Fingerprint $m $ih $targetHash)','if(-not(Compatible-Fingerprint $componentManifest $installedHash $r.TargetHash))','compatible_fingerprint=($installedHash-ne$r.TargetHash)')){if(-not$core.Contains($required)){throw "Packaged executor symmetry missing: $required"}}
+          if($core.Contains("if($r.Action-eq'KEEP'){$CurrentPhase='No mutation';if((Sha $r.InstalledPath)-ne$r.TargetHash)")){throw 'Old target-only subordinate KEEP verifier survived composition'}
+          $tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseFile((Join-Path $shell 'setup-windows-components-core-v5.ps1'),[ref]$tokens,[ref]$errors);if($errors.Count){$errors|ForEach-Object{Write-Host $_.Message};throw 'Packaged executor does not parse in Windows PowerShell 5.1'}
+
+      - name: Run packaged painted startup and version regression
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference='Stop'
+          $shell=(Resolve-Path 'out-1112/shell').Path
+          $ui=Join-Path $shell 'SoknaSetupUi.exe'
+          $layout=Join-Path $PWD 'out-1112/ui-layout'
+          New-Item -ItemType Directory -Path $layout -Force|Out-Null
+          $p=Start-Process -FilePath $ui -ArgumentList @('--layout-self-test',$layout) -PassThru
+          if(-not$p.WaitForExit(90000)){try{Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}catch{};throw 'Packaged Setup UI startup self-test timed out'}
+          if($p.ExitCode-ne0){$detail='';$ex=Join-Path $layout 'layout-self-test-exception.txt';if(Test-Path $ex){$detail=Get-Content $ex -Raw};throw "Packaged Setup UI startup self-test failed: $detail"}
+          $result=Get-Content (Join-Path $layout 'layout-self-test.txt') -Raw
+          if($result-notmatch'(?m)^PASS\s*$'){throw 'Painted startup test did not record PASS'}
+          if($result-notmatch'BADGE=Windows Services 1\.1\.12'){throw "Painted badge is not canonical 1.1.12: $result"}
+          if(Test-Path (Join-Path $layout 'layout-self-test-exception.txt')){throw 'Startup exception evidence exists despite zero exit'}
+          $info=[Diagnostics.FileVersionInfo]::GetVersionInfo($ui)
+          if(([string]$info.FileVersion)-notlike'1.1.12*'-or([string]$info.ProductVersion)-notlike'1.1.12*'){throw 'Setup UI version metadata is stale'}
+
+      - name: Verify final shell and KEEP bytes
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $shell=(Resolve-Path 'out-1112/shell').Path
+          $m=Get-Content (Join-Path $shell 'windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
+          if($m.package_version-ne'1.1.12'){throw 'Final shell package mismatch'}
+          foreach($p in Get-ChildItem $shell -Filter '*.ps1' -File -Recurse){$tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseFile($p.FullName,[ref]$tokens,[ref]$errors);if($errors.Count){throw "Packaged PS5.1 parse failed: $($p.FullName)"}}
+          function Sha([string]$p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+          if((Sha "$shell/_payload/runtime/SoknaRuntimeService.exe")-ne'26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd'){throw 'Runtime KEEP changed'}
+          if((Sha "$shell/_payload/print-worker/Service/Sokna.PrintAgent.Service.exe")-ne'99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4'){throw 'Print KEEP changed'}
+          if((Sha "$shell/_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe")-ne'85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'){throw 'Recovery KEEP changed'}
+
+      - name: Smoke-start Supervisor
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $PWD 'out-1112/supervisor-smoke-data'
+          $exe=(Resolve-Path 'out-1112/shell/_payload/maintenance/app/SoknaMaintenanceSupervisor.exe').Path
+          $p=Start-Process $exe -ArgumentList @('--data-root',$root,'--port','18732') -PassThru -WindowStyle Hidden
+          try{$deadline=[DateTime]::UtcNow.AddSeconds(20);$ready=$false;while([DateTime]::UtcNow-lt$deadline){if($p.HasExited){throw "Supervisor exited early: $($p.ExitCode)"};if(Test-Path (Join-Path $root 'control-plane.json')){$ready=$true;break};Start-Sleep -Milliseconds 250};if(-not$ready){throw 'Supervisor startup smoke timeout'}}finally{try{Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}catch{}}
+
+      - name: Build Windows Services 1.1.12 installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./packaging/windows/scripts/build-installer-v4.ps1 -ShellPayloadRoot (Resolve-Path 'out-1112/shell').Path -RepoRoot $PWD.Path
+          $installer='packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.12.exe'
+          if(-not(Test-Path $installer)){throw '1.1.12 installer missing'}
+          $f=Get-Item $installer
+          [ordered]@{format='sokna-windows-services-1.1.12-recovery-contract-v1';source_git_sha=$env:GITHUB_SHA;package_version='1.1.12';maintenance_version='0.3.6';runtime_version='1.0.5';print_version='6.2.9';recovery_version='0.1.1';real_cafe_recovery_hash='368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd';symmetric_executor_contract=$true;painted_startup_test=$true;canonical_badge='Windows Services 1.1.12';manual_reboot_required=$false;installer_size_bytes=[long]$f.Length;installer_sha256=(Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant();generated_at_utc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json -Depth 8|Set-Content 'out-1112/QUALIFICATION_1.1.12.json' -Encoding utf8
+
+      - name: Verify built Core payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./packaging/windows/scripts/verify-r8-compiled-core.ps1 -CorePath 'packaging/windows/installer/out-v4/core/SOKNA-Windows-Services-Core-1.1.12.exe' -SourceManifest 'out-1112/shell/payload-manifest.json' -EvidencePath 'out-1112/CORE_VERIFICATION_1.1.12.json'
+
+      - name: Upload 1.1.12 qualified candidate and painted evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-services-1.1.12-qualified-candidate
+          path: |
+            packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.12.exe
+            packaging/windows/installer/out-v4/INSTALLER_BUILD.json
+            out-1112/QUALIFICATION_1.1.12.json
+            out-1112/CORE_VERIFICATION_1.1.12.json
+            out-1112/ui-layout/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
