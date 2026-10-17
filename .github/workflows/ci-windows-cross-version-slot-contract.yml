@@ -2,6 +2,8 @@ name: Working cross-version Local slot contract
 on:
   push:
     branches: [work/windows-services-cross-version-slot-contract]
+  pull_request:
+    branches: [work/windows-services-1.1.12-recovery-contract]
   workflow_dispatch:
 jobs:
   windows-core-contract:
