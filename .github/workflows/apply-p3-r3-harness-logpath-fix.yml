@@ -1,0 +1,52 @@
+name: Apply P3 R3 Harness Log Path Fix
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+    paths:
+      - .github/workflows/apply-p3-r3-harness-logpath-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: work/maintenance-v4-windows-p3-home-package-r3
+      - name: Use transaction directory as qualification evidence source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('packaging/windows/qualification/qualify-p3-r3-real-home.ps1')
+          s=p.read_text(encoding='utf-8')
+          old="$systemTx=Join-Path $data \"Installer\\logs\\$tx\""
+          new="$systemTx=$txdir"
+          if old in s:
+              s=s.replace(old,new,1)
+          elif new not in s:
+              raise SystemExit('qualification evidence path marker missing')
+          p.write_text(s,encoding='utf-8',newline='\n')
+          PY
+      - name: Verify constrained harness-only patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F '$systemTx=$txdir' packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+          git diff --check
+          git diff -- packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+      - name: Commit harness fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+          git commit -m 'test(maintenance): read R3 lifecycle evidence from transaction directory'
+          git push origin HEAD:work/maintenance-v4-windows-p3-home-package-r3
