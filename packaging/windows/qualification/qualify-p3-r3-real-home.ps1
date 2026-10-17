@@ -195,11 +195,15 @@ internal static class Harness {
   $eventPath=Join-Path $systemTx 'system-events.jsonl'
   RequireFile $eventPath
   $events=@(Get-Content $eventPath|Where-Object{-not[string]::IsNullOrWhiteSpace($_)}|ForEach-Object{$_|ConvertFrom-Json})
-  foreach($id in @('runtime','print-agent','maintenance-recovery-console')){
+  foreach($id in @('runtime','print-agent')){
     $row=@($events|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq$id-and$_.result-eq'kept'})|Select-Object -First 1
     if(-not$row){throw "KEEP evidence missing: $id"}
     if([string]$row.data.action-ne'KEEP'-or[string]$row.data.proof-ne'no_stop_no_copy_no_registration_no_restart'){throw "KEEP proof invalid: $id"}
   }
+  $recoveryEvent=@($events|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq'maintenance-recovery-console'-and[string]$_.data.action-eq'KEEP'})|Select-Object -First 1
+  if(-not$recoveryEvent){throw 'KEEP evidence missing: maintenance-recovery-console'}
+  if([string]$recoveryEvent.data.after_sha256-ne$expectedRecovery){throw 'Recovery Console KEEP hash evidence invalid.'}
+  if([string]$recoveryEvent.result-notin@('completed','kept')){throw "Recovery Console KEEP result invalid: $([string]$recoveryEvent.result)"}
   $before|ConvertTo-Json -Depth 4|Set-Content (Join-Path $out 'r3-before.json') -Encoding utf8
   $after|ConvertTo-Json -Depth 4|Set-Content (Join-Path $out 'r3-after.json') -Encoding utf8
   Copy-Item (Join-Path $systemTx 'install-result.json') (Join-Path $out 'r3-install-result.json') -Force
