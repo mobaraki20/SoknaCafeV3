@@ -20,7 +20,7 @@ switch (command)
         var paths = new MaintenancePaths(Path.GetFullPath(args[1]));
         var count = int.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture);
         var checkpoint = BuildCheckpoint(args[5], null);
-        var bridge = new ProductionLocalSlotMigrationBridge(paths, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(8), checkpoint);
+        var bridge = new ProductionLocalSlotSiblingMigrationBridge(paths, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(8), checkpoint);
         var result = bridge.Migrate(args[2], count, args[4]);
         Console.WriteLine(JsonSerializer.Serialize(result, AtomicFile.JsonOptions));
         break;
@@ -28,7 +28,7 @@ switch (command)
     case "recover":
     {
         if (args.Length != 2) throw new InvalidDataException("recover <data-root>");
-        var bridge = new ProductionLocalSlotMigrationBridge(new MaintenancePaths(Path.GetFullPath(args[1])), TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(8));
+        var bridge = new ProductionLocalSlotSiblingMigrationBridge(new MaintenancePaths(Path.GetFullPath(args[1])), TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(8));
         var result = bridge.Recover();
         Console.WriteLine(JsonSerializer.Serialize(result, AtomicFile.JsonOptions));
         break;
@@ -53,7 +53,7 @@ switch (command)
         var faultFile = Path.Combine(paths.LocalSlotStateRoot, "test-engine-fault.txt");
         var fault = File.Exists(faultFile) ? File.ReadAllText(faultFile).Trim() : "none";
         var checkpoint = BuildCheckpoint(fault, faultFile);
-        var bridge = new ProductionLocalSlotMigrationBridge(paths, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(8), checkpoint);
+        var bridge = new ProductionLocalSlotSiblingMigrationBridge(paths, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(8), checkpoint);
         var result = bridge.Migrate(build, count, sha256);
         Console.WriteLine(JsonSerializer.Serialize(new
         {
@@ -74,7 +74,7 @@ switch (command)
     {
         var options = ParseOptions(args.Skip(1).ToArray());
         Require(options, "--data-root", out var dataRoot);
-        var bridge = new ProductionLocalSlotMigrationBridge(new MaintenancePaths(Path.GetFullPath(dataRoot)), TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(8));
+        var bridge = new ProductionLocalSlotSiblingMigrationBridge(new MaintenancePaths(Path.GetFullPath(dataRoot)), TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(8));
         var result = bridge.Recover();
         Console.WriteLine(JsonSerializer.Serialize(new
         {
