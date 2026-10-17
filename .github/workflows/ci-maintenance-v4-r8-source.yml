@@ -34,12 +34,16 @@ jobs:
           if($LASTEXITCODE-ne0){throw 'Production bridge harness build failed'}
           dotnet build windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release
           if($LASTEXITCODE-ne0){throw 'R7 reliability harness build failed'}
-      - name: Run durable adoption regression harness
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.R8SlotPathHarness/Sokna.Maintenance.R8SlotPathHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'R8 slot path harness build failed'}
+      - name: Run durable adoption regression harnesses
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release --no-build
           if($LASTEXITCODE-ne0){throw 'Durable adoption regression harness failed'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R8SlotPathHarness/Sokna.Maintenance.R8SlotPathHarness.csproj -c Release --no-build
+          if($LASTEXITCODE-ne0){throw 'R8 sibling-slot/PHP-root harness failed'}
       - name: Enforce R8 production sibling-slot contract
         shell: pwsh
         run: |
@@ -47,9 +51,13 @@ jobs:
           $core = Get-Content -LiteralPath 'windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigrationR8.Core.cs' -Raw
           $migrate = Get-Content -LiteralPath 'windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigrationR8.Migrate.cs' -Raw
           $staging = Get-Content -LiteralPath 'windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigrationR8.Staging.cs' -Raw
+          $coord = Get-Content -LiteralPath 'windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs' -Raw
+          $queue = Get-Content -LiteralPath 'windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotAdoptionQueue.cs' -Raw
           if($core -notmatch 'ReleaseSlotPrefix\s*=\s*"Web\.release\."'){throw 'R8 sibling release prefix contract missing'}
           if($migrate -match 'Path\.Combine\([^\r\n]*"LocalWeb"[^\r\n]*"releases"'){throw 'R8 production migration still builds nested LocalWeb/releases active slots'}
           if($migrate -notmatch 'RequireProductionSlotPath'){throw 'R8 activation path gate missing'}
           if($staging -notmatch 'VerifyMachineLocalOverlay'){throw 'R8 machine-local overlay equality gate missing'}
           if($staging -match 'if\s*\(Directory\.Exists\(targetSlot\)\)\s*return'){throw 'R8 stale target slot reuse remains'}
+          if($coord -notmatch 'RequireProductionSlotPath'){throw 'R8 Supervisor reconcile sibling-slot gate missing'}
+          if($queue -notmatch 'RequireProductionSlotPath'){throw 'R8 adoption recovery sibling-slot gate missing'}
           Write-Host 'R8 source sibling-slot contract: PASS'
