@@ -38,13 +38,13 @@ internal static class DashboardEntryV4
             {
                 using var form = new WindowsServicesDashboardV3(null) { ClientSize = size };
                 DashboardUiPolish.Apply(form);
-                form.CreateControl();
+                CreateControlTree(form);
 
                 // Exercise the real Render path directly. Render removes and adds component
                 // controls dynamically, reproducing the exact collection-mutation surface
                 // without triggering Shown/RefreshAsync or environment-dependent MessageBox UI.
                 form.ApplyTestPlan(plan);
-                form.PerformLayout();
+                PerformLayoutTree(form);
                 Application.DoEvents();
 
                 var errors = LayoutAudit(form).ToList();
@@ -68,8 +68,8 @@ internal static class DashboardEntryV4
 
             using (var dialog = new ComponentPlanDialog(plan))
             {
-                dialog.CreateControl();
-                dialog.PerformLayout();
+                CreateControlTree(dialog);
+                PerformLayoutTree(dialog);
                 Application.DoEvents();
                 var errors = LayoutAudit(dialog).ToArray();
                 File.WriteAllLines(Path.Combine(output, "component-plan.txt"), errors.Length == 0 ? ["PASS"] : errors);
@@ -79,8 +79,8 @@ internal static class DashboardEntryV4
 
             using (var result = new InstallerResultDialog(false, "Maintenance راه‌اندازی نشد", "ثبت سرویس انجام شد اما health check در زمان مجاز به وضعیت Running نرسید.", "ins-20261015T120000Z-abc123def0", "Maintenance", "Health verification", true, false))
             {
-                result.CreateControl();
-                result.PerformLayout();
+                CreateControlTree(result);
+                PerformLayoutTree(result);
                 Application.DoEvents();
                 var errors = LayoutAudit(result).ToArray();
                 File.WriteAllLines(Path.Combine(output, "failure-result.txt"), errors.Length == 0 ? ["PASS"] : errors);
@@ -98,6 +98,20 @@ internal static class DashboardEntryV4
             try { File.WriteAllText(Path.Combine(output, "layout-self-test-exception.txt"), diagnostic); } catch { }
             return 11;
         }
+    }
+
+    private static void CreateControlTree(Control root)
+    {
+        root.CreateControl();
+        var children = root.Controls.Cast<Control>().ToArray();
+        foreach (var child in children) CreateControlTree(child);
+    }
+
+    private static void PerformLayoutTree(Control root)
+    {
+        var children = root.Controls.Cast<Control>().ToArray();
+        foreach (var child in children) PerformLayoutTree(child);
+        root.PerformLayout();
     }
 
     private static IEnumerable<string> LayoutAudit(Control root)
@@ -130,12 +144,12 @@ internal static class DashboardEntryV4
 
     private static void CapturePainted(Form form, string path, int minimumBrandPixels)
     {
+        PerformLayoutTree(form);
         form.Refresh();
         Application.DoEvents();
-        var surface = form.Controls.Count > 0 ? form.Controls[0] : form;
-        var size = surface.ClientSize;
+        var size = form.ClientSize;
         using var bmp = new Bitmap(Math.Max(1, size.Width), Math.Max(1, size.Height), PixelFormat.Format32bppArgb);
-        surface.DrawToBitmap(bmp, new Rectangle(Point.Empty, size));
+        form.DrawToBitmap(bmp, new Rectangle(Point.Empty, size));
 
         var brand = SetupPalette.Brand;
         var brandPixels = 0;
