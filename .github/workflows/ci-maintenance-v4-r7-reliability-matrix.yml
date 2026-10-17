@@ -1,4 +1,5 @@
 name: CI Maintenance V4 R7 Reliability Matrix
+# Qualification-only gate. This workflow never packages, publishes, or deploys a user release.
 
 on:
   push:
