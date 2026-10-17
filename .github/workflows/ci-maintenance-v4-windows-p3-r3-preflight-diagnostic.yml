@@ -41,17 +41,36 @@ jobs:
         shell: pwsh
         run: |
           $p='packaging/windows/qualification/qualify-p3-r3-real-home.ps1'
-          $t=Get-Content $p -Raw
-          $old='$proc=Start-Process -FilePath $hostExe -ArgumentList @(''--plan-file'',(''\"''+$planPath+''\"'')) -Wait -PassThru -NoNewWindow'
-          $new='$hostStdout=Join-Path $txdir ''setup-host-stdout.txt''; $hostStderr=Join-Path $txdir ''setup-host-stderr.txt''; $proc=Start-Process -FilePath $hostExe -ArgumentList @(''--plan-file'',(''\"''+$planPath+''\"'')) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $hostStdout -RedirectStandardError $hostStderr'
-          if(-not$t.Contains($old)){throw 'Start-Process instrumentation anchor not found.'}
-          $t=$t.Replace($old,$new)
-          $old2='if($proc.ExitCode-ne0){throw "Real Home-baseline lifecycle failed: $($proc.ExitCode)"}'
-          $new2='if($proc.ExitCode-ne0){Write-Host "--- SETUP HOST STDOUT ---";if(Test-Path $hostStdout){Get-Content $hostStdout -Raw|Write-Host};Write-Host "--- SETUP HOST STDERR ---";if(Test-Path $hostStderr){Get-Content $hostStderr -Raw|Write-Host};throw "Real Home-baseline lifecycle failed: $($proc.ExitCode)"}'
-          if(-not$t.Contains($old2)){throw 'Exit instrumentation anchor not found.'}
-          $t=$t.Replace($old2,$new2)
-          $t=$t.Replace('$systemTx=Join-Path $data "Installer\logs\$tx"','$systemTx=$txdir')
-          Set-Content $p $t -Encoding utf8
+          $lines=Get-Content $p
+          $seenStart=$false;$seenExit=$false;$seenSystemTx=$false
+          $patched=foreach($line in $lines){
+            if($line -match '^\s*\$proc=Start-Process -FilePath \$hostExe '){
+              $seenStart=$true
+              '  $hostStdout=Join-Path $txdir ''setup-host-stdout.txt'''
+              '  $hostStderr=Join-Path $txdir ''setup-host-stderr.txt'''
+              '  $proc=Start-Process -FilePath $hostExe -ArgumentList @(''--plan-file'',(''"''+$planPath+''"'')) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $hostStdout -RedirectStandardError $hostStderr'
+            }
+            elseif($line -match '^\s*if\(\$proc\.ExitCode-ne0\)\{throw "Real Home-baseline lifecycle failed:'){ 
+              $seenExit=$true
+              '  if($proc.ExitCode-ne0){'
+              '    Write-Host ''--- SETUP HOST STDOUT ---'''
+              '    if(Test-Path $hostStdout){Get-Content $hostStdout -Raw|Write-Host}'
+              '    Write-Host ''--- SETUP HOST STDERR ---'''
+              '    if(Test-Path $hostStderr){Get-Content $hostStderr -Raw|Write-Host}'
+              '    throw "Real Home-baseline lifecycle failed: $($proc.ExitCode)"'
+              '  }'
+            }
+            elseif($line -match '^\s*\$systemTx=Join-Path \$data '){
+              $seenSystemTx=$true
+              '  $systemTx=$txdir'
+            }
+            else{$line}
+          }
+          if(-not$seenStart){throw 'Start-Process instrumentation line not found.'}
+          if(-not$seenExit){throw 'Exit instrumentation line not found.'}
+          if(-not$seenSystemTx){throw 'systemTx instrumentation line not found.'}
+          $patched|Set-Content $p -Encoding utf8
+          Write-Host 'Diagnostic instrumentation: PASS'
 
       - name: Run instrumented exact-baseline qualification
         id: diag
