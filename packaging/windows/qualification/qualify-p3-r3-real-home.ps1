@@ -239,7 +239,7 @@ internal static class Harness {
   $delivery=Join-Path $out 'delivery'
   New-Item -ItemType Directory -Path $delivery -Force|Out-Null
   Copy-Item $setup $delivery
-  $launcher=Join-Path $out 'p3-uat\Sokna.Maintenance.P3HomeUat.exe'
+  $launcher=Join-Path $out 'p3-uat\SOKNA-Phase3-Home-UAT.exe'
   RequireFile $launcher
   Copy-Item $launcher (Join-Path $delivery 'SOKNA-Phase3-Qualification.exe') -Force
   foreach($name in @('P3_R3_QUALIFICATION.json','R3_INSTALLER_SHA256.txt','real-home-plan-rows.json','r3-install-result.json','r3-system-events.jsonl')){Copy-Item (Join-Path $out $name) $delivery -Force}
