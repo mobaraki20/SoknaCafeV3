@@ -1,0 +1,109 @@
+name: Publish Windows Services 1.1.7 R8 Home UAT
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r8-php-slot-root
+    paths:
+      - '.github/workflows/publish-windows-services-1.1.7-r8-home-uat.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: windows-services-1.1.7-r8-home-uat
+      PRODUCT_SHA: d11e615ba85d986926dc3219c884ce63c5bfd04d
+      QUALIFICATION_RUN_ID: '39009933128'
+      EXPECTED_SHA256: 162bdb12cfc9d55f90cfae3671870528adf3f48be8ea28092f9a26925108fbfa
+      EXPECTED_SIZE: '243337395'
+    steps:
+      - name: Download exact qualified R8 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-services-1.1.7-r8-qualified-candidate
+          path: candidate
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 39009933128
+
+      - name: Verify exact qualified bytes and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe="$(find candidate -type f -name 'SOKNA-Windows-Services-Setup-1.1.7.exe' -print -quit)"
+          qual="$(find candidate -type f -name 'R8_PACKAGE_QUALIFICATION.json' -print -quit)"
+          core="$(find candidate -type f -name 'R8_COMPILED_CORE_VERIFICATION.json' -print -quit)"
+          build="$(find candidate -type f -name 'INSTALLER_BUILD.json' -print -quit)"
+          test -n "$exe" && test -n "$qual" && test -n "$core" && test -n "$build"
+          sha="$(sha256sum "$exe" | awk '{print $1}')"
+          size="$(stat -c%s "$exe")"
+          test "$sha" = "$EXPECTED_SHA256"
+          test "$size" = "$EXPECTED_SIZE"
+          test "$(jq -r '.package_version' "$qual")" = '1.1.7'
+          test "$(jq -r '.source_git_sha' "$qual")" = "$PRODUCT_SHA"
+          test "$(jq -r '.php_junction_root_regression_gated' "$qual")" = 'true'
+          test "$(jq -r '.sibling_release_namespace' "$qual")" = 'Web.release.*'
+          test "$(jq -r '.verified_manifest_files' "$core")" = '29'
+          test "$(jq -r '.core_exit_code' "$core")" = '0'
+          test "$(jq -r '.source_git_sha' "$build")" = "$PRODUCT_SHA"
+          cp "$exe" SOKNA-Windows-Services-Setup-1.1.7-R8-QUALIFIED.exe
+          cp "$qual" R8_PACKAGE_QUALIFICATION.json
+          cp "$core" R8_COMPILED_CORE_VERIFICATION.json
+          cp "$build" INSTALLER_BUILD.json
+          printf '%s  %s\n' "$sha" 'SOKNA-Windows-Services-Setup-1.1.7-R8-QUALIFIED.exe' > SHA256SUMS.txt
+          echo "Verified exact qualification run $QUALIFICATION_RUN_ID / product $PRODUCT_SHA"
+
+      - name: Publish immutable Home UAT prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > notes.md <<'EOF'
+          SOKNA Windows Services 1.1.7 — Maintenance V4 R8 — Home UAT
+
+          PRE-RELEASE / HOME UAT ONLY. Not yet Cafe production-approved.
+
+          Qualified product commit: d11e615ba85d986926dc3219c884ce63c5bfd04d
+          Qualification run: 39009933128
+
+          Components:
+          - Windows Services package 1.1.7
+          - Maintenance Supervisor / Update Engine 0.3.5
+          - Runtime 1.0.5 canonical KEEP
+          - Print Agent 6.2.9 canonical KEEP
+          - Recovery Console 0.1.1 canonical KEEP
+
+          R8 closes the real-Home PHP/junction-root regression by using package-root sibling releases (`Web.release.*`) while keeping stable `Web` as the junction. It also refreshes/verifies machine-local overlays and narrowly archives only the proven legacy ROLLED_BACK physical-Web state before durable Supervisor-owned adoption.
+
+          Package qualification includes R7 durable-adoption reliability regression, R8 PHP-root/sibling-slot regression, safe-retry/reconcile guards, PowerShell 5.1 parsing, canonical KEEP hashes, exact R8 queue composition, Supervisor startup smoke, installer build/size gate, isolated Core install, and full 29/29 manifest size+SHA verification.
+
+          Installer SHA-256: 162bdb12cfc9d55f90cfae3671870528adf3f48be8ea28092f9a26925108fbfa
+          Installer size: 243337395 bytes
+
+          Do not use superseded 1.1.6 R7 for Home UAT.
+          EOF
+
+          if gh release view "$TAG" --repo mobaraki20/SoknaCafeV3 >/dev/null 2>&1; then
+            test "$(gh api "repos/mobaraki20/SoknaCafeV3/releases/tags/$TAG" --jq '.prerelease')" = 'true'
+            existing="$(gh api "repos/mobaraki20/SoknaCafeV3/releases/tags/$TAG" --jq '.target_commitish')"
+            test "$existing" = "$PRODUCT_SHA" || { echo "Existing release target mismatch: $existing"; exit 1; }
+            gh release upload "$TAG" SOKNA-Windows-Services-Setup-1.1.7-R8-QUALIFIED.exe R8_PACKAGE_QUALIFICATION.json R8_COMPILED_CORE_VERIFICATION.json INSTALLER_BUILD.json SHA256SUMS.txt --repo mobaraki20/SoknaCafeV3 --clobber
+          else
+            gh release create "$TAG" SOKNA-Windows-Services-Setup-1.1.7-R8-QUALIFIED.exe R8_PACKAGE_QUALIFICATION.json R8_COMPILED_CORE_VERIFICATION.json INSTALLER_BUILD.json SHA256SUMS.txt --repo mobaraki20/SoknaCafeV3 --target "$PRODUCT_SHA" --title 'SOKNA Windows Services 1.1.7 — Maintenance V4 R8 — Home UAT' --notes-file notes.md --prerelease
+          fi
+
+      - name: Verify published prerelease asset digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          json="$(gh api "repos/mobaraki20/SoknaCafeV3/releases/tags/$TAG")"
+          test "$(jq -r '.prerelease' <<<"$json")" = 'true'
+          test "$(jq -r '.draft' <<<"$json")" = 'false'
+          digest="$(jq -r '.assets[] | select(.name=="SOKNA-Windows-Services-Setup-1.1.7-R8-QUALIFIED.exe") | .digest' <<<"$json")"
+          test "$digest" = "sha256:$EXPECTED_SHA256"
+          echo "R8_HOME_UAT_PRERELEASE_VERIFIED=$TAG"
