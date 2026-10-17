@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ServiceProcess;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -74,8 +75,73 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
             return new(operation, created, Reconciled: !created);
         }
 
+        var migrationStatePath = Path.Combine(_paths.LocalSlotStateRoot, "migration-state.json");
+        var priorAssessment = AssessDurableMigrationState(migrationStatePath, expectedBuild, expectedManagedFiles, expectedManagedTreeSha256);
+        if (priorAssessment.Error is not null)
+        {
+            operation = _operations.Update(
+                operation,
+                "recovery_required",
+                "LOCAL_SLOT_DURABLE_STATE_UNSAFE",
+                priorAssessment.Error,
+                File.Exists(migrationStatePath) ? migrationStatePath : null,
+                activationPerformed: priorAssessment.ActivationMayHaveOccurred,
+                databaseMutationPerformed: false);
+            Journal("update.local_slot_migration.recovery_required", operation);
+            return new(operation, created, Reconciled: !created);
+        }
+
+        if (priorAssessment.State is { } prior && !IsCommittedPhase(prior.Phase))
+        {
+            if (prior.RecoveryRequired)
+            {
+                operation = _operations.Update(
+                    operation,
+                    "recovery_required",
+                    "LOCAL_SLOT_PRIOR_RECOVERY_REQUIRED",
+                    $"Prior Local migration state requires recovery before retry; phase={prior.Phase}.",
+                    migrationStatePath,
+                    activationPerformed: prior.ActivationPerformed,
+                    databaseMutationPerformed: false);
+                Journal("update.local_slot_migration.recovery_required", operation);
+                return new(operation, created, Reconciled: !created);
+            }
+
+            if (prior.ActivationPerformed || StableWebIsJunction(prior.StableWebRoot))
+            {
+                operation = _operations.Update(
+                    operation,
+                    "failed",
+                    "LOCAL_SLOT_PRIOR_ACTIVATION_OBSERVED",
+                    $"A prior interrupted Local migration reached or may have reached pointer activation; unattended retry is forbidden. phase={prior.Phase}.",
+                    migrationStatePath,
+                    activationPerformed: true,
+                    databaseMutationPerformed: false);
+                Journal("update.local_slot_migration.failed_after_activation", operation);
+                return new(operation, created, Reconciled: !created);
+            }
+
+            var reconciled = TryRecoverPreActivationInterruption(prior, out var reconciliationDetail);
+            if (!reconciled)
+            {
+                operation = _operations.Update(
+                    operation,
+                    "recovery_required",
+                    "LOCAL_SLOT_PREVIOUS_ATTEMPT_RECOVERY_FAILED",
+                    reconciliationDetail,
+                    migrationStatePath,
+                    activationPerformed: false,
+                    databaseMutationPerformed: false);
+                Journal("update.local_slot_migration.recovery_required", operation);
+                return new(operation, created, Reconciled: !created);
+            }
+
+            Journal("update.local_slot_migration.pre_activation_reconciled", operation);
+        }
+
         operation = _operations.Update(operation, "running", incrementAttempt: true);
         Journal("update.local_slot_migration.running", operation);
+        var executionStartedAtUtc = DateTimeOffset.UtcNow;
         var execution = ExecuteEngine(new[]
         {
             "local-slot-migrate",
@@ -92,30 +158,119 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
             return new(operation, created, Reconciled: !created);
         }
 
-        var migrationStatePath = Path.Combine(_paths.LocalSlotStateRoot, "migration-state.json");
         if (execution.ExitCode != 0)
         {
-            var activationPerformed = TryReadBool(execution.Detail, "activation_performed");
-            var recoveryRequired = false;
-            try
+            var assessment = AssessDurableMigrationState(migrationStatePath, expectedBuild, expectedManagedFiles, expectedManagedTreeSha256);
+            var stateFromThisAttempt = assessment.State is { } candidate && candidate.UpdatedAtUtc >= executionStartedAtUtc.AddSeconds(-1);
+
+            if (assessment.Error is not null)
             {
-                if (File.Exists(migrationStatePath))
-                    recoveryRequired = AtomicFile.ReadJson<ProductionLocalSlotMigrationState>(migrationStatePath).RecoveryRequired;
+                operation = _operations.Update(
+                    operation,
+                    "recovery_required",
+                    "LOCAL_SLOT_DURABLE_STATE_UNSAFE",
+                    $"{execution.Code}: {execution.Detail} Durable state: {assessment.Error}",
+                    File.Exists(migrationStatePath) ? migrationStatePath : null,
+                    activationPerformed: assessment.ActivationMayHaveOccurred,
+                    databaseMutationPerformed: false);
+                Journal("update.local_slot_migration.recovery_required", operation);
+                return new(operation, created, Reconciled: !created);
             }
-            catch
+
+            if (assessment.State is { } failedState && stateFromThisAttempt)
             {
-                recoveryRequired = true;
+                if (failedState.RecoveryRequired)
+                {
+                    operation = _operations.Update(
+                        operation,
+                        "recovery_required",
+                        "LOCAL_SLOT_MIGRATION_RECOVERY_REQUIRED",
+                        execution.Detail,
+                        migrationStatePath,
+                        activationPerformed: failedState.ActivationPerformed,
+                        databaseMutationPerformed: false);
+                    Journal("update.local_slot_migration.recovery_required", operation);
+                    return new(operation, created, Reconciled: !created);
+                }
+
+                if (failedState.ActivationPerformed || StableWebIsJunction(failedState.StableWebRoot))
+                {
+                    operation = _operations.Update(
+                        operation,
+                        "failed",
+                        "LOCAL_SLOT_MIGRATION_FAILED_AFTER_ACTIVATION",
+                        execution.Detail,
+                        migrationStatePath,
+                        activationPerformed: true,
+                        databaseMutationPerformed: false);
+                    Journal("update.local_slot_migration.failed_after_activation", operation);
+                    return new(operation, created, Reconciled: !created);
+                }
+
+                if (!IsCommittedPhase(failedState.Phase))
+                {
+                    var recovered = TryRecoverPreActivationInterruption(failedState, out var recoveryDetail);
+                    if (!recovered)
+                    {
+                        operation = _operations.Update(
+                            operation,
+                            "recovery_required",
+                            "LOCAL_SLOT_INTERRUPTED_RECOVERY_FAILED",
+                            $"{execution.Detail} Recovery: {recoveryDetail}",
+                            migrationStatePath,
+                            activationPerformed: false,
+                            databaseMutationPerformed: false);
+                        Journal("update.local_slot_migration.recovery_required", operation);
+                        return new(operation, created, Reconciled: !created);
+                    }
+
+                    operation = _operations.Update(
+                        operation,
+                        "failed",
+                        "LOCAL_SLOT_MIGRATION_INTERRUPTED_RECOVERED",
+                        $"Migration failed before activation and durable recovery restored a safe Local layout. Engine: {execution.Detail}",
+                        migrationStatePath,
+                        activationPerformed: false,
+                        databaseMutationPerformed: false);
+                    Journal("update.local_slot_migration.failed", operation);
+                    return new(operation, created, Reconciled: !created);
+                }
+
+                operation = _operations.Update(
+                    operation,
+                    "recovery_required",
+                    "UPDATE_ENGINE_EXITED_AFTER_DURABLE_COMMIT",
+                    execution.Detail,
+                    migrationStatePath,
+                    activationPerformed: failedState.ActivationPerformed,
+                    databaseMutationPerformed: false);
+                Journal("update.local_slot_migration.recovery_required", operation);
+                return new(operation, created, Reconciled: !created);
+            }
+
+            if (execution.Code == "UPDATE_ENGINE_TIMEOUT")
+            {
+                operation = _operations.Update(
+                    operation,
+                    "recovery_required",
+                    "UPDATE_ENGINE_TIMEOUT_STATE_UNPROVEN",
+                    execution.Detail,
+                    File.Exists(migrationStatePath) ? migrationStatePath : null,
+                    activationPerformed: false,
+                    databaseMutationPerformed: false);
+                Journal("update.local_slot_migration.recovery_required", operation);
+                return new(operation, created, Reconciled: !created);
             }
 
             operation = _operations.Update(
                 operation,
-                recoveryRequired ? "recovery_required" : "failed",
-                recoveryRequired ? "LOCAL_SLOT_MIGRATION_RECOVERY_REQUIRED" : "LOCAL_SLOT_MIGRATION_FAILED",
+                "failed",
+                execution.Code == "OK" ? "LOCAL_SLOT_MIGRATION_FAILED_PRE_ACTIVATION" : execution.Code,
                 execution.Detail,
                 File.Exists(migrationStatePath) ? migrationStatePath : null,
-                activationPerformed: activationPerformed,
+                activationPerformed: false,
                 databaseMutationPerformed: false);
-            Journal(recoveryRequired ? "update.local_slot_migration.recovery_required" : "update.local_slot_migration.failed", operation);
+            Journal("update.local_slot_migration.failed", operation);
             return new(operation, created, Reconciled: !created);
         }
 
@@ -194,6 +349,17 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
 
         operation = _operations.Update(operation, "running", incrementAttempt: true);
         Journal("update.local_slot_recovery.running", operation);
+        try
+        {
+            PrimeApacheForRecovery(state);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or System.ComponentModel.Win32Exception)
+        {
+            operation = _operations.Update(operation, "failed", "LOCAL_SLOT_RECOVERY_SERVICE_PRIME_FAILED", ex.Message, migrationStatePath, activationPerformed: state.ActivationPerformed, databaseMutationPerformed: false);
+            Journal("update.local_slot_recovery.failed", operation);
+            return new(operation, created, Reconciled: !created);
+        }
+
         var execution = ExecuteEngine(new[] { "local-slot-recover", "--data-root", _paths.DataRoot }, timeoutMs: 180_000);
         if (!execution.Started || execution.ExitCode != 0)
         {
@@ -203,7 +369,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 execution.Started ? "LOCAL_SLOT_RECOVERY_FAILED" : execution.Code,
                 execution.Detail,
                 migrationStatePath,
-                activationPerformed: true,
+                activationPerformed: state.ActivationPerformed,
                 databaseMutationPerformed: false);
             Journal("update.local_slot_recovery.failed", operation);
             return new(operation, created, Reconciled: !created);
@@ -226,17 +392,120 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 "LOCAL_SLOT_RECOVERY_COMMITTED",
                 "Production Local slot recovery/reconciliation completed without DB/Public mutation.",
                 migrationStatePath,
-                activationPerformed: true,
+                activationPerformed: state.ActivationPerformed,
                 databaseMutationPerformed: false);
             Journal("update.local_slot_recovery.committed", operation);
             return new(operation, created, Reconciled: !created);
         }
         catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException)
         {
-            operation = _operations.Update(operation, "failed", "UPDATE_ENGINE_RESULT_INVALID", ex.Message, migrationStatePath, activationPerformed: true, databaseMutationPerformed: false);
+            operation = _operations.Update(operation, "failed", "UPDATE_ENGINE_RESULT_INVALID", ex.Message, migrationStatePath, activationPerformed: state.ActivationPerformed, databaseMutationPerformed: false);
             Journal("update.local_slot_recovery.failed", operation);
             return new(operation, created, Reconciled: !created);
         }
+    }
+
+    private bool TryRecoverPreActivationInterruption(ProductionLocalSlotMigrationState state, out string detail)
+    {
+        detail = string.Empty;
+        if (state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot))
+        {
+            detail = "Durable or filesystem evidence indicates pointer activation; automatic recovery-for-retry is forbidden.";
+            return false;
+        }
+
+        try
+        {
+            PrimeApacheForRecovery(state);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or System.ComponentModel.Win32Exception)
+        {
+            detail = "Unable to prime SoknaApache for pre-activation recovery: " + ex.Message;
+            return false;
+        }
+
+        var recovery = ExecuteEngine(new[] { "local-slot-recover", "--data-root", _paths.DataRoot }, timeoutMs: 180_000);
+        if (!recovery.Started || recovery.ExitCode != 0)
+        {
+            detail = recovery.Detail;
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(recovery.Stdout);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("ok", out var ok) || !ok.GetBoolean() ||
+                !root.TryGetProperty("recovery_required", out var recoveryRequired) || recoveryRequired.GetBoolean() ||
+                !root.TryGetProperty("database_mutation_performed", out var db) || db.GetBoolean() ||
+                !root.TryGetProperty("public_mutation_performed", out var pub) || pub.GetBoolean() ||
+                !root.TryGetProperty("windows_reboot_required", out var reboot) || reboot.GetBoolean())
+            {
+                detail = "Update Engine returned an invalid pre-activation recovery envelope.";
+                return false;
+            }
+            detail = "Durable pre-activation interruption reconciled successfully.";
+            return true;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException)
+        {
+            detail = ex.Message;
+            return false;
+        }
+    }
+
+    private static DurableMigrationAssessment AssessDurableMigrationState(
+        string migrationStatePath,
+        string expectedBuild,
+        int expectedManagedFiles,
+        string expectedManagedTreeSha256)
+    {
+        if (!File.Exists(migrationStatePath)) return new(null, null, false);
+        try
+        {
+            var state = AtomicFile.ReadJson<ProductionLocalSlotMigrationState>(migrationStatePath);
+            var identityMatches = string.Equals(state.ExpectedBuild, expectedBuild, StringComparison.Ordinal) &&
+                                  state.ExpectedManagedFiles == expectedManagedFiles &&
+                                  string.Equals(state.ExpectedManagedTreeSha256, expectedManagedTreeSha256, StringComparison.OrdinalIgnoreCase);
+            if (!identityMatches)
+            {
+                if (IsCommittedPhase(state.Phase)) return new(null, null, false);
+                return new(null, "A non-terminal durable Local migration state belongs to a different request.", state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot));
+            }
+            if (state.DatabaseMutationPerformed || state.PublicMutationPerformed || state.WindowsRebootRequired)
+                return new(state, "Durable Local migration state violates the no-DB/no-Public/no-reboot bridge contract.", state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot));
+            return new(state, null, state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
+        {
+            return new(null, "Durable Local migration state could not be trusted: " + ex.Message, true);
+        }
+    }
+
+    private static bool IsCommittedPhase(string phase)
+        => phase is "COMMITTED" or "ALREADY_MIGRATED" or "RECOVERED_TO_VERIFIED_SLOT" or "RECOVERED_TO_PHYSICAL_WEB";
+
+    private static bool StableWebIsJunction(string stableWebRoot)
+    {
+        try
+        {
+            if (!Directory.Exists(stableWebRoot)) return false;
+            return (File.GetAttributes(stableWebRoot) & FileAttributes.ReparsePoint) != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void PrimeApacheForRecovery(ProductionLocalSlotMigrationState state)
+    {
+        if (!Directory.Exists(state.StableWebRoot)) return;
+        using var service = new ServiceController(LocalSlotManager.ApacheServiceName);
+        service.Refresh();
+        if (service.Status == ServiceControllerStatus.Running) return;
+        if (service.Status != ServiceControllerStatus.StartPending) service.Start();
+        service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(35));
     }
 
     private EngineExecution ExecuteEngine(IReadOnlyList<string> arguments, int timeoutMs)
@@ -260,7 +529,13 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
             if (!process.WaitForExit(timeoutMs))
             {
                 try { process.Kill(entireProcessTree: true); } catch { }
-                return new(false, -1, string.Empty, "Update Engine exceeded the production migration timeout.", "UPDATE_ENGINE_TIMEOUT");
+                try { process.WaitForExit(5_000); } catch { }
+                var timeoutStdout = stdoutTask.IsCompleted ? stdoutTask.GetAwaiter().GetResult() : string.Empty;
+                var timeoutStderr = stderrTask.IsCompleted ? stderrTask.GetAwaiter().GetResult() : string.Empty;
+                var evidence = string.IsNullOrWhiteSpace(timeoutStderr) ? timeoutStdout : timeoutStderr;
+                if (evidence.Length > 5000) evidence = evidence[..5000];
+                var detail = "Update Engine exceeded the production migration timeout." + (string.IsNullOrWhiteSpace(evidence) ? string.Empty : " Evidence: " + evidence.Trim());
+                return new(true, -1, timeoutStdout, detail, "UPDATE_ENGINE_TIMEOUT");
             }
             var stdout = stdoutTask.GetAwaiter().GetResult();
             var stderr = stderrTask.GetAwaiter().GetResult();
@@ -288,19 +563,6 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
             ["migration_state_path"] = Path.Combine(_paths.LocalSlotStateRoot, "migration-state.json")
         });
 
-    private static bool TryReadBool(string json, string name)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            return document.RootElement.TryGetProperty(name, out var value) && value.GetBoolean();
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static string NormalizeBuild(string value)
     {
         value = (value ?? string.Empty).Trim();
@@ -316,5 +578,6 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         return value;
     }
 
+    private sealed record DurableMigrationAssessment(ProductionLocalSlotMigrationState? State, string? Error, bool ActivationMayHaveOccurred);
     private sealed record EngineExecution(bool Started, int ExitCode, string Stdout, string Detail, string Code);
 }
