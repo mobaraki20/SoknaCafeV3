@@ -1,4 +1,5 @@
 name: Publish Windows Services 1.1.4 R5 Pre-release
+# Promotion trigger for exact qualified R5 artifact; no rebuild.
 
 on:
   push:
