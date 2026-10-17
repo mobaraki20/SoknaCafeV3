@@ -1,0 +1,48 @@
+name: Apply P3 R3 Launcher Name Fix
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+    paths:
+      - .github/workflows/apply-p3-r3-launcher-name-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: work/maintenance-v4-windows-p3-home-package-r3
+      - name: Fix qualification launcher output filename
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('packaging/windows/qualification/qualify-p3-r3-real-home.ps1')
+          s=p.read_text(encoding='utf-8')
+          old="$launcher=Join-Path $out 'p3-uat\\Sokna.Maintenance.P3HomeUat.exe'"
+          new="$launcher=Join-Path $out 'p3-uat\\SOKNA-Phase3-Home-UAT.exe'"
+          if old in s:
+              s=s.replace(old,new,1)
+              p.write_text(s,encoding='utf-8',newline='\n')
+          elif new not in s:
+              raise SystemExit('launcher marker missing')
+          PY
+          grep -F "SOKNA-Phase3-Home-UAT.exe" packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+          git diff --check
+      - name: Commit harness fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'test(maintenance): use published Phase 3 launcher filename'
+          git push origin HEAD:work/maintenance-v4-windows-p3-home-package-r3
