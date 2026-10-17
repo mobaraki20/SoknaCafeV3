@@ -1,0 +1,40 @@
+name: Apply WS 1.1.11 direct canonical badge source patch
+
+on:
+  push:
+    branches:
+      - work/windows-services-unified-installer-diagnostics
+    paths:
+      - .github/workflows/apply-ws1111-direct-canonical-badge.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/windows-services-unified-installer-diagnostics
+          fetch-depth: 0
+      - name: Replace stale badge fallback with canonical manifest binding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $path='packaging/windows/setup-ui/DashboardV3.cs'
+          $raw=[IO.File]::ReadAllText($path,[Text.Encoding]::UTF8)
+          $old='Text = "Windows Services 1.1.0"'
+          $new='Text = DashboardPackageVersionBinder.BadgeText(shellRoot)'
+          $count=([regex]::Matches($raw,[regex]::Escape($old))).Count
+          if($count-ne1){throw "Expected exactly one stale badge fallback, found $count"}
+          $raw=$raw.Replace($old,$new)
+          if($raw.Contains('Windows Services 1.1.0')){throw 'Stale 1.1.0 badge literal remains'}
+          [IO.File]::WriteAllText($path,$raw,(New-Object Text.UTF8Encoding($false)))
+          git diff --check
+          git diff -- $path
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- $path
+          git commit -m 'Bind dashboard badge directly to canonical package manifest'
+          git push origin HEAD:work/windows-services-unified-installer-diagnostics
