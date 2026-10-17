@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Sokna.Maintenance.Core;
+using Sokna.Maintenance.Supervisor;
 
 const int DefaultPort = 17631;
 const string ServiceName = "SoknaMaintenanceSupervisor";
@@ -32,6 +33,7 @@ Directory.CreateDirectory(paths.DataRoot);
 Directory.CreateDirectory(paths.InboxRoot);
 Directory.CreateDirectory(paths.OperationsRoot);
 Directory.CreateDirectory(paths.LocalSlotStateRoot);
+Directory.CreateDirectory(paths.BootstrapRoot);
 using var instanceLock = SingleInstanceLock.Acquire(paths.LockPath);
 var secrets = new SecretStore(paths);
 secrets.EnsureKeys();
@@ -45,6 +47,7 @@ var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceU
 var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
 var localSlotCoordinator = new SupervisorLocalSlotCoordinator(paths, operations, journal, state, updateEnginePath);
 var productionMigrationCoordinator = new SupervisorProductionMigrationCoordinator(paths, operations, journal, state, updateEnginePath);
+var adoptionQueue = new LocalSlotAdoptionQueue(paths);
 journal.Append("supervisor.starting", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?>
 {
     ["pid"] = Environment.ProcessId,
@@ -58,6 +61,11 @@ var replayCache = new ReplayCache();
 var builder = WebApplication.CreateSlimBuilder(args);
 builder.Host.UseWindowsService(options => options.ServiceName = ServiceName);
 builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+builder.Services.AddSingleton(adoptionQueue);
+builder.Services.AddSingleton(productionMigrationCoordinator);
+builder.Services.AddSingleton(journal);
+builder.Services.AddSingleton(state);
+builder.Services.AddHostedService<LocalSlotAdoptionWorker>();
 var app = builder.Build();
 
 app.Use(async (context, next) =>
@@ -218,7 +226,7 @@ app.MapGet("/v1/health", async context =>
         loopback_only = true,
         staging_mutation_enabled = true,
         activation_enabled = true,
-        local_slot_phase = "production_bridge_r6",
+        local_slot_phase = "production_bridge_r7_durable_adoption",
         database_mutation_enabled = false,
         web_adapter_acl_state = aclEvidence.State,
         web_adapter_service_account = aclEvidence.ServiceAccount,
@@ -230,12 +238,15 @@ app.MapGet("/v1/status", async context =>
 {
     var current = AtomicFile.ReadJson<SupervisorState>(paths.StatePath);
     object? localSlots = null;
+    object? localAdoption = null;
     try { if (File.Exists(paths.LocalSlotStatePath)) localSlots = AtomicFile.ReadJson<LocalSlotPhase3State>(paths.LocalSlotStatePath); } catch { }
+    try { localAdoption = adoptionQueue.LoadStatus(); } catch { }
     await WriteEnvelope(context, StatusCodes.Status200OK, true, current.RecoveryRequired ? "recovery_required" : "ready", "OK", current.RecoveryRequired, new
     {
         authoritative_state = current,
         local_release_identity_bound = File.Exists(paths.InstalledReleaseIdentityPath),
         local_slots = localSlots,
+        local_adoption = localAdoption,
         inbox_path = paths.InboxRoot,
         web_adapter_acl = aclEvidence,
         activation_enabled = true,
