@@ -215,6 +215,13 @@ app.Use(async (context, next) =>
     await next();
 });
 
+// Signed, read-only capability negotiation. No unimplemented route is advertised.
+app.MapGet("/v1/updates/capabilities", async context =>
+{
+    var capability = UnifiedUpdaterCapabilities.Current();
+    await WriteEnvelope(context, StatusCodes.Status200OK, true, "foundation_required", capability.BlockingCode, false, capability);
+});
+
 app.MapGet("/v1/health", async context =>
 {
     await WriteEnvelope(context, StatusCodes.Status200OK, true, "ready", "OK", false, new
