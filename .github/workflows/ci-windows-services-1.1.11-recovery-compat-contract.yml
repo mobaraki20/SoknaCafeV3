@@ -1,0 +1,45 @@
+name: Windows Services 1.1.11 Recovery Compatibility Contract
+
+on:
+  push:
+    branches:
+      - work/windows-services-unified-installer-diagnostics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-contract:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify released Recovery fingerprints and planner KEEP contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $legacy='368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd'
+          $canonical='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          if($m.package_version-ne'1.1.11'){throw 'Recovery compatibility gate must run only for package 1.1.11'}
+          $r=@($m.components|Where-Object component_id -eq 'maintenance-recovery-console')|Select-Object -First 1
+          if($null-eq$r){throw 'Recovery component missing'}
+          if($r.version-ne'0.1.1'){throw 'Recovery semantic version drifted'}
+          $accepted=@($r.accepted_installed_sha256)
+          if($legacy-notin$accepted){throw 'Cafe released Recovery 0.1.1 fingerprint is not accepted'}
+          if($canonical-notin$accepted){throw 'Canonical Recovery 0.1.1 fingerprint is not accepted'}
+          if($accepted.Count-ne(@($accepted|Select-Object -Unique)).Count){throw 'Duplicate Recovery compatibility fingerprints'}
+          foreach($h in $accepted){if(([string]$h)-notmatch'^[a-f0-9]{64}$'){throw "Invalid accepted Recovery SHA: $h"}}
+
+          $planner=Get-Content packaging/windows/setup-ui/ComponentUpdatePlanner.cs -Raw
+          foreach($required in @('IsAcceptedInstalledFingerprint','up_to_date_compatible_fingerprint','compatibleInstalledHash')){if(-not$planner.Contains($required)){throw "Planner compatibility contract missing: $required"}}
+          $composer=Get-Content packaging/windows/scripts/prepare-shell-payload-v9.ps1 -Raw
+          foreach($required in @('accepted_installed_sha256','accepted_legacy_fingerprint','Expected R8 hash-drift core contract')){if(-not$composer.Contains($required)){throw "Privileged core compatibility patch missing: $required"}}
+
+      - name: PowerShell 5.1 parse compatibility composer
+        shell: powershell
+        run: |
+          $tokens=$null;$errors=$null
+          [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'packaging/windows/scripts/prepare-shell-payload-v9.ps1'),[ref]$tokens,[ref]$errors)
+          if($errors.Count){$errors|ForEach-Object{Write-Host $_.Message};throw 'Recovery compatibility composer does not parse in Windows PowerShell 5.1'}
