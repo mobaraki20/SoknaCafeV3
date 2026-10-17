@@ -308,6 +308,11 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 throw new InvalidDataException("Durable production migration state violates commit invariants.");
             LocalManagedTreeAttestation.RequireExact(state.StableWebRoot, expectedManagedFiles, expectedManagedTreeSha256);
             if (!StableWebIsJunction(state.StableWebRoot)) throw new InvalidDataException("Committed Local migration did not leave the stable Web root as a junction.");
+            var committedTarget = Directory.ResolveLinkTarget(state.StableWebRoot, returnFinalTarget: true)?.FullName;
+            ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(committedTarget, state.PackageRoot);
+            if (string.IsNullOrWhiteSpace(state.ActiveSlot) ||
+                !string.Equals(Path.GetFullPath(committedTarget!), Path.GetFullPath(state.ActiveSlot), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Committed Local migration active-slot state does not match the stable Web junction target.");
 
             operation = _operations.Update(
                 operation,
@@ -525,8 +530,16 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         {
             if (!Directory.Exists(state.StableWebRoot)) return false;
             if (!StableWebIsJunction(state.StableWebRoot)) return false;
+            var activeTarget = Directory.ResolveLinkTarget(state.StableWebRoot, returnFinalTarget: true)?.FullName;
+            ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(activeTarget, state.PackageRoot);
+            if (string.IsNullOrWhiteSpace(state.ActiveSlot) ||
+                !string.Equals(Path.GetFullPath(activeTarget!), Path.GetFullPath(state.ActiveSlot), StringComparison.OrdinalIgnoreCase))
+            {
+                detail = "Durable Local migration active-slot state does not match the stable Web junction target.";
+                return false;
+            }
             LocalManagedTreeAttestation.RequireExact(state.StableWebRoot, expectedManagedFiles, expectedManagedTreeSha256);
-            detail = $"Durable Local migration state and active junction were reconciled successfully; phase={state.Phase}.";
+            detail = $"Durable Local migration state and active sibling-release junction were reconciled successfully; phase={state.Phase}.";
             return true;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)

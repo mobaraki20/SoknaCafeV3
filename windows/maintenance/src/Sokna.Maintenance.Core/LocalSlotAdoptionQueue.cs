@@ -156,6 +156,18 @@ public sealed class LocalSlotAdoptionQueue
             if (!Directory.Exists(migrationState.StableWebRoot) ||
                 (File.GetAttributes(migrationState.StableWebRoot) & FileAttributes.ReparsePoint) == 0)
                 return status;
+            try
+            {
+                var activeTarget = Directory.ResolveLinkTarget(migrationState.StableWebRoot, returnFinalTarget: true)?.FullName;
+                ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(activeTarget, migrationState.PackageRoot);
+                if (string.IsNullOrWhiteSpace(migrationState.ActiveSlot) ||
+                    !string.Equals(Path.GetFullPath(activeTarget!), Path.GetFullPath(migrationState.ActiveSlot), StringComparison.OrdinalIgnoreCase))
+                    return status;
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                return status;
+            }
             LocalManagedTreeAttestation.RequireExact(
                 migrationState.StableWebRoot,
                 request.ExpectedManagedFiles,
