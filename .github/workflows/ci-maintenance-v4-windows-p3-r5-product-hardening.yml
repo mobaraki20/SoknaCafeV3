@@ -1,0 +1,108 @@
+name: CI Maintenance V4 Windows P3 R5 Product Hardening
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-product-hardening-r5
+    paths:
+      - packaging/windows/qualification/apply-p3-r5-product-hardening.py
+      - .github/workflows/ci-maintenance-v4-windows-p3-r5-product-hardening.yml
+      - windows/maintenance/**
+
+permissions:
+  contents: write
+
+jobs:
+  qualify-and-commit:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Apply R5 patch when source is still R4
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $engine='windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj'
+          $text=Get-Content $engine -Raw
+          if($text -match '<Version>0\.3\.1</Version>'){
+            python packaging/windows/qualification/apply-p3-r5-product-hardening.py
+          } elseif($text -notmatch '<Version>0\.3\.2</Version>') {
+            throw 'Unexpected Maintenance engine version before R5 qualification.'
+          }
+
+      - name: R5 source invariants
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotManager.cs'
+          $t=Get-Content $p -Raw
+          foreach($needle in @(
+            'BASELINE_HTTP_HEALTHY',
+            'DiscoverHealthUrl(apacheConfig, apacheRoot)',
+            'health_url',
+            'public\\local-recovery.php',
+            'public\\local-update-runner.php',
+            'Target Local HTTP health was not proven at'
+          )){if(-not $t.Contains($needle)){throw "Missing R5 invariant: $needle"}}
+          if($t.Contains('http://127.0.0.1:18080/login.php?p3=')){throw 'Hard-coded Phase 3 health URL remains.'}
+          $baseline=$t.IndexOf('BASELINE_HTTP_HEALTHY')
+          $firstStop=$t.IndexOf('StopApacheAndProveExit(layout.ApacheExecutable)', $baseline)
+          if($baseline -lt 0 -or $firstStop -lt 0 -or $baseline -gt $firstStop){throw 'Baseline HTTP proof must precede first activation stop.'}
+          Write-Host 'R5 source invariants: PASS'
+
+      - name: Build Maintenance R5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj -c Release
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+
+      - name: Contract test dynamic Apache port and machine-local overlays
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $h=Join-Path $PWD 'out/r5-contract'; New-Item -ItemType Directory $h -Force|Out-Null
+          @'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+            <ItemGroup><ProjectReference Include="..\..\windows\maintenance\src\Sokna.Maintenance.Core\Sokna.Maintenance.Core.csproj" /></ItemGroup>
+          </Project>
+          '@ | Set-Content (Join-Path $h 'Harness.csproj') -Encoding utf8
+          @'
+          using System.Reflection;
+          using Sokna.Maintenance.Core;
+          var root=Path.Combine(Path.GetTempPath(),"sokna-r5-"+Guid.NewGuid().ToString("N"));
+          var apache=Path.Combine(root,"Apache24"); var conf=Path.Combine(apache,"conf");
+          var web=Path.Combine(root,"pkg","Web"); var pub=Path.Combine(web,"public");
+          Directory.CreateDirectory(conf); Directory.CreateDirectory(pub);
+          var inc=Path.Combine(conf,"sokna-local.conf");
+          File.WriteAllText(inc,"# SOKNA-MANAGED-APACHE-VHOST v1\n<VirtualHost *:18123>\nDocumentRoot \""+pub.Replace('\\','/')+"\"\n</VirtualHost>\n");
+          File.WriteAllText(Path.Combine(conf,"httpd.conf"),"# BEGIN SOKNA LOCAL MANAGED INCLUDE v1\nInclude \""+inc.Replace('\\','/')+"\"\n# END SOKNA LOCAL MANAGED INCLUDE v1\n");
+          var t=typeof(LocalSlotManager);
+          var health=t.GetMethod("DiscoverHealthUrl",BindingFlags.NonPublic|BindingFlags.Static) ?? throw new Exception("health resolver missing");
+          var url=(string)health.Invoke(null,new object[]{Path.Combine(conf,"httpd.conf"),apache})!;
+          if(url!="http://127.0.0.1:18123/login.php") throw new Exception("dynamic port discovery failed: "+url);
+          Console.WriteLine("R5_DYNAMIC_PORT_PASS");
+          '@ | Set-Content (Join-Path $h 'Program.cs') -Encoding utf8
+          dotnet run --project (Join-Path $h 'Harness.csproj') -c Release
+
+      - name: Commit qualified product source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotManager.cs `
+                  windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj `
+                  windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs `
+                  windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj `
+                  windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj
+          if(-not (git diff --cached --quiet)){git commit -m 'fix(maintenance): harden slot health and baseline recovery'; git push origin HEAD}
