@@ -46,6 +46,16 @@ function Owned([string]$image,[string]$root){
 function Quote([string]$v){'"'+$v.Replace('"','\"')+'"'}
 function Runtime-Cmd([string]$exe,[string]$cfg){(Quote $exe)+' --config '+(Quote $cfg)}
 function Simple-Cmd([string]$exe){Quote $exe}
+function Registration-Matches([string]$id,[string]$image,[string]$installed,[string]$dataRoot){
+  if([string]::IsNullOrWhiteSpace($image)){return $false}
+  $normalized=$image.Trim()
+  if($normalized.IndexOf($installed,[StringComparison]::OrdinalIgnoreCase)-lt0){return $false}
+  if($id-eq'runtime'){
+    $cfg=Join-Path $dataRoot 'runtime\runtime-config.json'
+    return $normalized.IndexOf('--config',[StringComparison]::OrdinalIgnoreCase)-ge0-and$normalized.IndexOf($cfg,[StringComparison]::OrdinalIgnoreCase)-ge0
+  }
+  return $true
+}
 function Wait-ProcessExit([uint32]$processId,[int]$seconds,[string]$label){
   if($processId-le0){return}
   $deadline=[DateTime]::UtcNow.AddSeconds($seconds)
@@ -117,13 +127,23 @@ function Resolve-One($m){
   $id=[string]$m.component_id;$target=Join-Path $ShellRoot (([string]$m.payload_primary).Replace('/','\'));$installed=Join-Path $InstallRoot (([string]$m.installed_primary).Replace('/','\'));$svcName=[string](Prop $m 'service_name' '');$svc=$(if($svcName){Service-Info $svcName}else{[pscustomobject]@{Installed=(Test-Path $installed);State='n/a';ImagePath='';WasRunning=$false;ProcessId=[uint32]0}});$targetHash=Sha $target;if(-not$targetHash){throw "Target payload missing: $id"};$ih=Sha $installed;$current=VersionOf $installed;$exists=(Test-Path $installed -PathType Leaf)-and($(if($svcName){[bool]$svc.Installed}else{$true}));$action='KEEP';$reason='verified'
   if($svcName-and[bool]$svc.Installed-and-not(Owned ([string]$svc.ImagePath) $InstallRoot)){$action='BLOCKED';$reason='service_image_outside_owned_root'}
   elseif(-not$exists){$action='INSTALL';$reason='missing'}
-  else{$cmp=Compare-Version $current ([string]$m.version);if($cmp-gt0){$action='BLOCKED';$reason='installed_newer'}elseif($cmp-lt0){$action='UPDATE';$reason='version_older'}elseif($ih-ne$targetHash){$action='REPAIR';$reason='hash_drift'};if($svcName-and$action-eq'KEEP'){$expected=$(if($id-eq'runtime'){Runtime-Cmd $installed (Join-Path $DataRoot 'runtime\runtime-config.json')}else{Simple-Cmd $installed});if([string]$svc.ImagePath-cne$expected){$action='REPAIR';$reason='service_registration_drift'}}}
+  else{$cmp=Compare-Version $current ([string]$m.version);if($cmp-gt0){$action='BLOCKED';$reason='installed_newer'}elseif($cmp-lt0){$action='UPDATE';$reason='version_older'}elseif($ih-ne$targetHash){$action='REPAIR';$reason='hash_drift'};if($svcName-and$action-eq'KEEP'){$expected=$(if($id-eq'runtime'){Runtime-Cmd $installed (Join-Path $DataRoot 'runtime\runtime-config.json')}else{Simple-Cmd $installed});if(-not(Registration-Matches $id ([string]$svc.ImagePath) $installed $DataRoot)){$action='REPAIR';$reason='service_registration_drift'}}}
   if([string]$plan.mode-eq'repair'-and$action-eq'KEEP'){$action='REPAIR';$reason='explicit_repair'}
   [pscustomobject]@{Id=$id;Primary=[bool]$m.primary;Parent=[string](Prop $m 'parent_component' '');TargetVersion=[string]$m.version;CurrentVersion=$(if($current){$current}else{'—'});Action=$action;Reason=$reason;TargetPath=$target;InstalledPath=$installed;TargetHash=$targetHash;InstalledHash=$ih;ServiceName=$svcName;Service=$svc;Group=[string]$m.transaction_group}
 }
-$script:Resolved=@($manifest.components|ForEach-Object{Resolve-One $_})
+$script:Resolved=@()
+try{
+  $script:Resolved=@($manifest.components|ForEach-Object{Resolve-One $_})
 foreach($child in @($script:Resolved|Where-Object{-not$_.Primary-and$_.Parent})){if($child.Action-eq'BLOCKED'){$p=@($script:Resolved|Where-Object{$_.Id-eq$child.Parent})[0];$p.Action='BLOCKED';$p.Reason='subordinate_blocked'}elseif($child.Action-in@('INSTALL','UPDATE','REPAIR')){$p=@($script:Resolved|Where-Object{$_.Id-eq$child.Parent})[0];if($p.Action-eq'KEEP'){$p.Action='REPAIR';$p.Reason='subordinate_requires_sync'}}}
 foreach($r in $script:Resolved){if($r.Action-eq'BLOCKED'){throw "Unsafe component state: $($r.Id) / $($r.Reason)"};$u=@($plan.components|Where-Object{[string]$_.component_id-eq$r.Id})|Select-Object -First 1;if(-not$u){throw "Component absent from UI plan: $($r.Id)"};if(([string]$u.action).Replace('_','')-ne([string]$r.Action).Replace('_','')){throw "Component plan changed after elevation: $($r.Id), UI=$($u.action), privileged=$($r.Action)"};if([string]$u.target_sha256-ne$r.TargetHash){throw "Target fingerprint changed after elevation: $($r.Id)"}}
+}catch{
+  $msg=Safe $_.Exception.Message
+  $CurrentComponent='—';$CurrentPhase='Preflight'
+  Event 'preflight_failed' 'failed' @{error=$msg}
+  Finish 'failed' 2 $msg $false $false
+  Write-Error $msg
+  exit 2
+}
 Event 'installed_component_inventory_built' 'completed' @{components=@($script:Resolved|ForEach-Object{@{id=$_.Id;version=$_.CurrentVersion;action=$_.Action;reason=$_.Reason}})}
 
 $runtimeRoot=Join-Path $InstallRoot 'Runtime';$runtimeExe=Join-Path $runtimeRoot 'SoknaRuntimeService.exe';$runtimeCfg=Join-Path $DataRoot 'runtime\runtime-config.json';$printRoot=Join-Path $InstallRoot 'PrintAgent';$printExe=Join-Path $printRoot 'Service\Sokna.PrintAgent.Service.exe';$maintRoot=Join-Path $InstallRoot 'Maintenance';$maintExe=Join-Path $maintRoot 'App\SoknaMaintenanceSupervisor.exe'
