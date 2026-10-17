@@ -4,7 +4,7 @@ using Sokna.Maintenance.Core;
 
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
-    Console.WriteLine("SOKNA Maintenance Update Engine 0.3.0 (P3 Local slots; DB mutation disabled)");
+    Console.WriteLine("SOKNA Maintenance Update Engine 0.3.1 (P3 R4 Local slots; DB mutation disabled)");
     Console.WriteLine("verify-stage --package <zip> --identity <json> [--data-root <path>]");
     Console.WriteLine("local-slot-inspect --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
     Console.WriteLine("local-slot-home-cycle --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
@@ -34,6 +34,7 @@ RequireOption(options, "--expected-managed-tree-sha256", out var expectedManaged
 expectedManagedTreeSha256 = LocalManagedTreeAttestation.NormalizeSha256(expectedManagedTreeSha256);
 
 var slots = new LocalSlotManager(paths);
+var attemptStartedAtUtc = DateTimeOffset.UtcNow;
 try
 {
     switch (command)
@@ -45,7 +46,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.0",
+                engine_version = "0.3.1",
                 phase = "INSPECTED",
                 layout,
                 managed_tree_sha256 = managedTree,
@@ -66,7 +67,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.0",
+                engine_version = "0.3.1",
                 phase = "COMMITTED",
                 result,
                 managed_tree_sha256 = finalTree,
@@ -88,7 +89,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.0",
+                engine_version = "0.3.1",
                 phase = state.Phase,
                 state,
                 managed_tree_sha256 = finalTree,
@@ -109,11 +110,11 @@ catch (Exception ex) when (ex is InvalidDataException or IOException or Unauthor
     Console.Error.WriteLine(JsonSerializer.Serialize(new
     {
         ok = false,
-        engine_version = "0.3.0",
+        engine_version = "0.3.1",
         phase = "FAILED",
         code = "LOCAL_SLOT_PHASE3_FAILED",
         error = ex.Message,
-        activation_performed = command is "local-slot-home-cycle" or "local-slot-activate",
+        activation_performed = ActivationPerformedInAttempt(paths.LocalSlotStatePath, attemptStartedAtUtc),
         database_mutation_performed = false,
         public_mutation_performed = false,
         windows_reboot_required = false,
@@ -121,6 +122,22 @@ catch (Exception ex) when (ex is InvalidDataException or IOException or Unauthor
         state_path = paths.LocalSlotStatePath
     }, AtomicFile.JsonOptions));
     Environment.ExitCode = 3;
+}
+
+static bool ActivationPerformedInAttempt(string statePath, DateTimeOffset attemptStartedAtUtc)
+{
+    try
+    {
+        if (!File.Exists(statePath)) return false;
+        var state = AtomicFile.ReadJson<LocalSlotPhase3State>(statePath);
+        return state.Events.Any(entry =>
+            entry.AtUtc >= attemptStartedAtUtc &&
+            string.Equals(entry.State, "POINTER_SWITCHED", StringComparison.Ordinal));
+    }
+    catch
+    {
+        return false;
+    }
 }
 
 static void RunVerifyStage(string package, string identity, MaintenancePaths paths)
@@ -145,7 +162,7 @@ static void RunVerifyStage(string package, string identity, MaintenancePaths pat
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             ok = true,
-            engine_version = "0.3.0",
+            engine_version = "0.3.1",
             phase = "STAGED",
             release_set_id = receipt.ReleaseSetId,
             sequence = receipt.Sequence,
@@ -159,7 +176,7 @@ static void RunVerifyStage(string package, string identity, MaintenancePaths pat
         Console.Error.WriteLine(JsonSerializer.Serialize(new
         {
             ok = false,
-            engine_version = "0.3.0",
+            engine_version = "0.3.1",
             phase = "REJECTED_PRE_MUTATION",
             code = "RELEASE_SET_REJECTED",
             error = ex.Message,

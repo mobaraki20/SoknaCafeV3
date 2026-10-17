@@ -6,7 +6,7 @@ using Sokna.Maintenance.Core;
 const string ExpectedBuild = "3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory";
 const int ExpectedManagedFiles = 497;
 const string ExpectedManagedTreeSha256 = "b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a";
-const string IdempotencyKey = "home-p3-231ai-r1";
+const string IdempotencyKey = "home-p3-231ai-r2";
 
 Application.EnableVisualStyles();
 Application.SetCompatibleTextRenderingDefault(false);

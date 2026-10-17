@@ -443,9 +443,16 @@ public sealed class LocalSlotManager
 
     private static (string ApacheRoot, string ConfigPath) DiscoverApacheConfig(string apacheExecutable)
     {
-        var inferredRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(apacheExecutable)!, ".."));
-        string? httpdRoot = null;
-        string? config = null;
+        apacheExecutable = Path.GetFullPath(apacheExecutable);
+        var executableDirectory = Path.GetDirectoryName(apacheExecutable)
+                                  ?? throw new InvalidDataException("SoknaApache executable has no parent directory.");
+        var adjacentRoot = string.Equals(Path.GetFileName(executableDirectory), "bin", StringComparison.OrdinalIgnoreCase)
+            ? Path.GetFullPath(Directory.GetParent(executableDirectory)?.FullName
+                               ?? throw new InvalidDataException("SoknaApache bin directory has no parent."))
+            : Path.GetFullPath(Path.Combine(executableDirectory, ".."));
+
+        string? reportedRootText = null;
+        string? configText = null;
         try
         {
             var psi = new ProcessStartInfo
@@ -462,21 +469,58 @@ public sealed class LocalSlotManager
             {
                 var stdout = process.StandardOutput.ReadToEnd();
                 var stderr = process.StandardError.ReadToEnd();
-                process.WaitForExit(10_000);
+                if (!process.WaitForExit(10_000))
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { }
+                    throw new TimeoutException("SoknaApache -V probe timed out.");
+                }
                 var text = stdout + "\n" + stderr;
-                httpdRoot = ExtractApacheDefine(text, "HTTPD_ROOT");
-                config = ExtractApacheDefine(text, "SERVER_CONFIG_FILE");
+                reportedRootText = ExtractApacheDefine(text, "HTTPD_ROOT");
+                configText = ExtractApacheDefine(text, "SERVER_CONFIG_FILE");
             }
         }
-        catch
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or TimeoutException)
         {
+            // The service ImagePath remains the trusted ownership anchor. A failed -V probe
+            // may use only the executable-adjacent Apache root; there is no global search.
         }
-        var apacheRoot = string.IsNullOrWhiteSpace(httpdRoot) ? inferredRoot : Path.GetFullPath(httpdRoot);
-        var configPath = string.IsNullOrWhiteSpace(config) ? Path.Combine(apacheRoot, "conf", "httpd.conf") : config;
-        if (!Path.IsPathRooted(configPath)) configPath = Path.Combine(apacheRoot, configPath);
-        configPath = Path.GetFullPath(configPath);
-        RequireFile(configPath, "SoknaApache configuration file could not be resolved.");
-        return (apacheRoot, configPath);
+
+        var reportedRoot = !string.IsNullOrWhiteSpace(reportedRootText) && Path.IsPathFullyQualified(reportedRootText)
+            ? Path.GetFullPath(reportedRootText)
+            : null;
+        var configValue = string.IsNullOrWhiteSpace(configText) ? Path.Combine("conf", "httpd.conf") : configText.Trim();
+
+        if (Path.IsPathFullyQualified(configValue))
+        {
+            var absoluteConfig = Path.GetFullPath(configValue);
+            RequireFile(absoluteConfig, "SoknaApache configuration file could not be resolved.");
+            var selectedRoot = reportedRoot is not null && IsPathUnder(absoluteConfig, reportedRoot)
+                ? reportedRoot
+                : adjacentRoot;
+            return (selectedRoot, absoluteConfig);
+        }
+
+        if (Path.IsPathRooted(configValue))
+            throw new InvalidDataException("SoknaApache configuration path is rooted but not fully qualified.");
+
+        var candidates = new List<(string Root, string Config, string Source)>();
+        if (reportedRoot is not null)
+            candidates.Add((reportedRoot, Path.GetFullPath(Path.Combine(reportedRoot, configValue)), "reported"));
+        if (reportedRoot is null || !PathsEqual(reportedRoot, adjacentRoot))
+            candidates.Add((adjacentRoot, Path.GetFullPath(Path.Combine(adjacentRoot, configValue)), "executable-adjacent"));
+
+        var existing = candidates.Where(static candidate => File.Exists(candidate.Config)).ToList();
+        if (existing.Count == 0)
+            throw new FileNotFoundException("SoknaApache configuration file could not be resolved.", candidates.LastOrDefault().Config);
+
+        var distinctConfigs = existing.Select(static candidate => candidate.Config)
+                                      .Distinct(StringComparer.OrdinalIgnoreCase)
+                                      .ToArray();
+        if (distinctConfigs.Length > 1)
+            throw new InvalidDataException("SoknaApache configuration ownership is ambiguous between compiled and executable-adjacent roots.");
+
+        var selected = existing[0];
+        return (selected.Root, selected.Config);
     }
 
     private static string? ExtractApacheDefine(string text, string name)
@@ -487,19 +531,78 @@ public sealed class LocalSlotManager
 
     private static string DiscoverDocumentRoot(string apacheConfig, string apacheRoot)
     {
-        foreach (var raw in File.ReadLines(apacheConfig))
+        const string beginMarker = "# BEGIN SOKNA LOCAL MANAGED INCLUDE v1";
+        const string endMarker = "# END SOKNA LOCAL MANAGED INCLUDE v1";
+        const string managedHeader = "# SOKNA-MANAGED-APACHE-VHOST v1";
+
+        var mainText = File.ReadAllText(apacheConfig);
+        var beginCount = Regex.Matches(mainText, Regex.Escape(beginMarker), RegexOptions.CultureInvariant).Count;
+        var endCount = Regex.Matches(mainText, Regex.Escape(endMarker), RegexOptions.CultureInvariant).Count;
+        if (beginCount != endCount || beginCount > 1)
+            throw new InvalidDataException("Apache main configuration contains an ambiguous SOKNA managed include block.");
+
+        if (beginCount == 1)
         {
-            var line = raw.Trim();
-            if (line.Length == 0 || line.StartsWith('#')) continue;
-            var match = Regex.Match(line, "^DocumentRoot\\s+\"?([^\"]+)\"?\\s*$", RegexOptions.IgnoreCase);
-            if (!match.Success) continue;
-            var path = match.Groups[1].Value.Trim().Replace("${SRVROOT}", apacheRoot, StringComparison.OrdinalIgnoreCase);
-            if (!Path.IsPathRooted(path)) path = Path.Combine(apacheRoot, path);
-            path = Path.GetFullPath(path.Replace('/', Path.DirectorySeparatorChar));
-            if (!Directory.Exists(path)) throw new InvalidDataException($"Apache DocumentRoot does not exist: {path}");
-            return path;
+            var block = Regex.Match(
+                mainText,
+                Regex.Escape(beginMarker) + "(?<body>.*?)" + Regex.Escape(endMarker),
+                RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            if (!block.Success) throw new InvalidDataException("SOKNA managed Apache include block could not be parsed.");
+
+            var includeMatches = Regex.Matches(
+                block.Groups["body"].Value,
+                "(?im)^\\s*Include\\s+\\\"?([^\\\"\\r\\n]+)\\\"?\\s*$",
+                RegexOptions.CultureInvariant);
+            if (includeMatches.Count != 1)
+                throw new InvalidDataException("SOKNA managed Apache include block must contain exactly one Include directive.");
+
+            var includeRaw = includeMatches[0].Groups[1].Value.Trim()
+                                           .Replace("${SRVROOT}", apacheRoot, StringComparison.OrdinalIgnoreCase)
+                                           .Replace('/', Path.DirectorySeparatorChar);
+            var includePath = Path.IsPathFullyQualified(includeRaw)
+                ? Path.GetFullPath(includeRaw)
+                : Path.GetFullPath(Path.Combine(apacheRoot, includeRaw));
+            RequireFile(includePath, "SOKNA managed Apache include file is missing.");
+
+            var includeText = File.ReadAllText(includePath);
+            if (!includeText.TrimStart().StartsWith(managedHeader, StringComparison.Ordinal))
+                throw new InvalidDataException("Resolved Apache include is not owned by SOKNA.");
+            return ParseSingleDocumentRoot(includeText, apacheRoot, "SOKNA managed Apache include");
         }
-        throw new InvalidDataException("Apache DocumentRoot was not found in the resolved configuration.");
+
+        return ParseSingleDocumentRoot(mainText, apacheRoot, "Apache main configuration");
+    }
+
+    private static string ParseSingleDocumentRoot(string text, string apacheRoot, string sourceName)
+    {
+        var matches = Regex.Matches(
+            text,
+            "(?im)^\\s*DocumentRoot\\s+\\\"?([^\\\"\\r\\n]+)\\\"?\\s*$",
+            RegexOptions.CultureInvariant);
+        if (matches.Count == 0) throw new InvalidDataException($"Apache DocumentRoot was not found in the {sourceName}.");
+        var resolved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match match in matches)
+        {
+            var raw = match.Groups[1].Value.Trim()
+                           .Replace("${SRVROOT}", apacheRoot, StringComparison.OrdinalIgnoreCase)
+                           .Replace('/', Path.DirectorySeparatorChar);
+            var path = Path.IsPathFullyQualified(raw)
+                ? Path.GetFullPath(raw)
+                : Path.GetFullPath(Path.Combine(apacheRoot, raw));
+            resolved.Add(path);
+        }
+        if (resolved.Count != 1) throw new InvalidDataException($"Apache DocumentRoot is ambiguous in the {sourceName}.");
+        var documentRoot = resolved.Single();
+        if (!Directory.Exists(documentRoot)) throw new InvalidDataException($"Apache DocumentRoot does not exist: {documentRoot}");
+        return documentRoot;
+    }
+
+    private static bool IsPathUnder(string path, string root)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                       + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void CreateJunction(string linkPath, string targetPath)
