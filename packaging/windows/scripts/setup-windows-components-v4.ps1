@@ -2,11 +2,33 @@ param([Parameter(Mandatory=$true)][string]$PlanFile)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
-function Full([string]$p,[string]$label){if([string]::IsNullOrWhiteSpace($p)-or-not[IO.Path]::IsPathFullyQualified($p)){throw "$label must be absolute."};[IO.Path]::GetFullPath($p)}
+function Full([string]$p,[string]$label){
+  if([string]::IsNullOrWhiteSpace($p)){throw "$label must be absolute."}
+  if($p-notmatch'^(?:[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+)'){throw "$label must be absolute."}
+  [IO.Path]::GetFullPath($p)
+}
 function Safe([string]$v){$v=($v-replace'[\r\n\0]',' ').Trim();$v=$v-replace'(?i)ws1_[a-f0-9]{24}_[a-f0-9]{48}','[PAIRING_CODE_REDACTED]';$v=$v-replace'(?i)(token|secret|credential|password)(\s*[:=]\s*)[^\s,;\}\]]+','$1$2[REDACTED]';if($v.Length-gt1200){$v=$v.Substring(0,1200)};$v}
-function Sha([string]$p){if(-not(Test-Path -LiteralPath $p -PathType Leaf)){return ''};(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
-function VersionOf([string]$p){if(-not(Test-Path -LiteralPath $p -PathType Leaf)){return ''};$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($p).ProductVersion;if(-not$v){$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion};if($v){return ([string]$v).Split('+')[0]};''}
-function Compare-Version([string]$a,[string]$b){$aa=$a.Split('-')[0];$bb=$b.Split('-')[0];$va=$null;$vb=$null;if(-not[Version]::TryParse($aa,[ref]$va)){return -1};if(-not[Version]::TryParse($bb,[ref]$vb)){return -1};$va.CompareTo($vb)}
+function Sha([string]$p){
+  if(-not(Test-Path -LiteralPath $p -PathType Leaf)){return ''}
+  $stream=[IO.File]::OpenRead($p)
+  try{
+    $algorithm=[Security.Cryptography.SHA256]::Create()
+    try{$bytes=$algorithm.ComputeHash($stream);return ([BitConverter]::ToString($bytes)).Replace('-','').ToLowerInvariant()}
+    finally{$algorithm.Dispose()}
+  }finally{$stream.Dispose()}
+}
+function VersionOf([string]$p){if(-not(Test-Path -LiteralPath $p -PathType Leaf)){return ''};$info=[Diagnostics.FileVersionInfo]::GetVersionInfo($p);$v=$info.FileVersion;if(-not$v){$v=$info.ProductVersion};if($v){return ([string]$v).Split('+')[0]};''}
+function Normalize-Version4([string]$v){
+  if([string]::IsNullOrWhiteSpace($v)){return ''}
+  $base=([string]$v).Trim().Split('+')[0].Split('-')[0]
+  $tokens=@($base.Split('.')|Where-Object{$_-ne''})
+  if($tokens.Count-lt1-or$tokens.Count-gt4){return ''}
+  $parts=New-Object Collections.Generic.List[string]
+  foreach($token in $tokens){if($token-notmatch'^\d+$'){return ''};$parts.Add(([int]$token).ToString())}
+  while($parts.Count-lt4){$parts.Add('0')}
+  $parts -join '.'
+}
+function Compare-Version([string]$a,[string]$b){$aa=Normalize-Version4 $a;$bb=Normalize-Version4 $b;if(-not$aa-or-not$bb){return -1};([Version]$aa).CompareTo([Version]$bb)}
 function Service-Info([string]$name){
   $key="HKLM:\SYSTEM\CurrentControlSet\Services\$name";if(-not(Test-Path -LiteralPath $key)){return [pscustomobject]@{Installed=$false;State='';ImagePath='';StartMode='';WasRunning=$false}}
   $image=[string](Get-ItemProperty -LiteralPath $key -Name ImagePath -ErrorAction SilentlyContinue).ImagePath
