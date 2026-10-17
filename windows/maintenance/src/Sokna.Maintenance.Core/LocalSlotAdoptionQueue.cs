@@ -126,18 +126,8 @@ public sealed class LocalSlotAdoptionQueue
         bool activationPerformed)
         => Write(request, "failed_terminal", attemptCount, operationId, code, message, null, activationPerformed);
 
-    public LocalSlotAdoptionStatus? ReconcileVerifiedRecovery(
-        ProductionLocalSlotMigrationState migrationState,
-        MaintenanceOperation recoveryOperation)
+    public LocalSlotAdoptionStatus? TryReconcileVerifiedRecovery()
     {
-        if (!string.Equals(migrationState.Phase, "RECOVERED_TO_VERIFIED_SLOT", StringComparison.Ordinal) ||
-            migrationState.RecoveryRequired ||
-            migrationState.DatabaseMutationPerformed ||
-            migrationState.PublicMutationPerformed ||
-            migrationState.WindowsRebootRequired ||
-            !migrationState.ActivationPerformed)
-            return LoadStatus();
-
         lock (_sync)
         {
             if (!File.Exists(_paths.LocalSlotAdoptionRequestPath) || !File.Exists(_paths.LocalSlotAdoptionStatusPath)) return null;
@@ -145,20 +135,37 @@ public sealed class LocalSlotAdoptionQueue
             var status = AtomicFile.ReadJson<LocalSlotAdoptionStatus>(_paths.LocalSlotAdoptionStatusPath);
             Validate(request);
             Validate(status);
-
             if (!string.Equals(status.RequestId, request.RequestId, StringComparison.Ordinal))
                 throw new InvalidDataException("Local adoption request/status identity diverged during recovery reconciliation.");
             if (status.State is not ("recovery_required" or "failed_terminal")) return status;
+
+            var migrationStatePath = Path.Combine(_paths.LocalSlotStateRoot, "migration-state.json");
+            if (!File.Exists(migrationStatePath)) return status;
+            var migrationState = AtomicFile.ReadJson<ProductionLocalSlotMigrationState>(migrationStatePath);
+            if (!string.Equals(migrationState.Phase, "RECOVERED_TO_VERIFIED_SLOT", StringComparison.Ordinal) ||
+                migrationState.RecoveryRequired ||
+                migrationState.DatabaseMutationPerformed ||
+                migrationState.PublicMutationPerformed ||
+                migrationState.WindowsRebootRequired ||
+                !migrationState.ActivationPerformed)
+                return status;
             if (!string.Equals(request.ExpectedBuild, migrationState.ExpectedBuild, StringComparison.Ordinal) ||
                 request.ExpectedManagedFiles != migrationState.ExpectedManagedFiles ||
                 !string.Equals(request.ExpectedManagedTreeSha256, migrationState.ExpectedManagedTreeSha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Recovered Local slot identity does not match the durable adoption request.");
+            if (!Directory.Exists(migrationState.StableWebRoot) ||
+                (File.GetAttributes(migrationState.StableWebRoot) & FileAttributes.ReparsePoint) == 0)
+                return status;
+            LocalManagedTreeAttestation.RequireExact(
+                migrationState.StableWebRoot,
+                request.ExpectedManagedFiles,
+                request.ExpectedManagedTreeSha256);
 
             var reconciled = NewStatus(
                 request.RequestId,
                 "committed",
                 status.AttemptCount,
-                recoveryOperation.OperationId,
+                status.LastOperationId,
                 "LOCAL_ADOPTION_RECOVERY_COMMITTED",
                 "Recovery restored and verified the requested active Local release slot.",
                 null,
