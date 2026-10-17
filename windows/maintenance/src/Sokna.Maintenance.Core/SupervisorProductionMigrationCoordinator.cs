@@ -91,7 +91,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
             return new(operation, created, Reconciled: !created);
         }
 
-        if (priorAssessment.State is { } prior && !IsCommittedPhase(prior.Phase))
+        if (priorAssessment.State is { } prior)
         {
             if (prior.RecoveryRequired)
             {
@@ -101,47 +101,63 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                     "LOCAL_SLOT_PRIOR_RECOVERY_REQUIRED",
                     $"Prior Local migration state requires recovery before retry; phase={prior.Phase}.",
                     migrationStatePath,
-                    activationPerformed: prior.ActivationPerformed,
+                    activationPerformed: prior.ActivationPerformed || StableWebIsJunction(prior.StableWebRoot),
                     databaseMutationPerformed: false);
                 Journal("update.local_slot_migration.recovery_required", operation);
                 return new(operation, created, Reconciled: !created);
+            }
+
+            if (IsLayoutReadyPhase(prior.Phase) && TryVerifyReadyLayout(prior, expectedManagedFiles, expectedManagedTreeSha256, out var readyDetail))
+            {
+                operation = _operations.Update(
+                    operation,
+                    "committed",
+                    "LOCAL_SLOT_LAYOUT_RECONCILED_FROM_DURABLE_STATE",
+                    readyDetail,
+                    migrationStatePath,
+                    activationPerformed: true,
+                    databaseMutationPerformed: false);
+                Journal("update.local_slot_migration.committed", operation);
+                return new(operation, created, Reconciled: true);
             }
 
             if (prior.ActivationPerformed || StableWebIsJunction(prior.StableWebRoot))
             {
                 operation = _operations.Update(
                     operation,
-                    "failed",
-                    "LOCAL_SLOT_PRIOR_ACTIVATION_OBSERVED",
+                    "recovery_required",
+                    "LOCAL_SLOT_PRIOR_ACTIVATION_UNCERTAIN",
                     $"A prior interrupted Local migration reached or may have reached pointer activation; unattended retry is forbidden. phase={prior.Phase}.",
                     migrationStatePath,
                     activationPerformed: true,
-                    databaseMutationPerformed: false);
-                Journal("update.local_slot_migration.failed_after_activation", operation);
-                return new(operation, created, Reconciled: !created);
-            }
-
-            var reconciled = TryRecoverPreActivationInterruption(prior, out var reconciliationDetail);
-            if (!reconciled)
-            {
-                operation = _operations.Update(
-                    operation,
-                    "recovery_required",
-                    "LOCAL_SLOT_PREVIOUS_ATTEMPT_RECOVERY_FAILED",
-                    reconciliationDetail,
-                    migrationStatePath,
-                    activationPerformed: false,
                     databaseMutationPerformed: false);
                 Journal("update.local_slot_migration.recovery_required", operation);
                 return new(operation, created, Reconciled: !created);
             }
 
-            Journal("update.local_slot_migration.pre_activation_reconciled", operation);
+            if (!IsRecoveredPhysicalPhase(prior.Phase))
+            {
+                var reconciled = TryRecoverPreActivationInterruption(prior, out var reconciliationDetail);
+                if (!reconciled)
+                {
+                    operation = _operations.Update(
+                        operation,
+                        "recovery_required",
+                        "LOCAL_SLOT_PREVIOUS_ATTEMPT_RECOVERY_FAILED",
+                        reconciliationDetail,
+                        migrationStatePath,
+                        activationPerformed: false,
+                        databaseMutationPerformed: false);
+                    Journal("update.local_slot_migration.recovery_required", operation);
+                    return new(operation, created, Reconciled: !created);
+                }
+
+                Journal("update.local_slot_migration.pre_activation_reconciled", operation);
+            }
         }
 
         operation = _operations.Update(operation, "running", incrementAttempt: true);
         Journal("update.local_slot_migration.running", operation);
-        var executionStartedAtUtc = DateTimeOffset.UtcNow;
         var execution = ExecuteEngine(new[]
         {
             "local-slot-migrate",
@@ -161,8 +177,6 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         if (execution.ExitCode != 0)
         {
             var assessment = AssessDurableMigrationState(migrationStatePath, expectedBuild, expectedManagedFiles, expectedManagedTreeSha256);
-            var stateFromThisAttempt = assessment.State is { } candidate && candidate.UpdatedAtUtc >= executionStartedAtUtc.AddSeconds(-1);
-
             if (assessment.Error is not null)
             {
                 operation = _operations.Update(
@@ -177,7 +191,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 return new(operation, created, Reconciled: !created);
             }
 
-            if (assessment.State is { } failedState && stateFromThisAttempt)
+            if (assessment.State is { } failedState)
             {
                 if (failedState.RecoveryRequired)
                 {
@@ -187,64 +201,64 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                         "LOCAL_SLOT_MIGRATION_RECOVERY_REQUIRED",
                         execution.Detail,
                         migrationStatePath,
-                        activationPerformed: failedState.ActivationPerformed,
+                        activationPerformed: failedState.ActivationPerformed || StableWebIsJunction(failedState.StableWebRoot),
                         databaseMutationPerformed: false);
                     Journal("update.local_slot_migration.recovery_required", operation);
                     return new(operation, created, Reconciled: !created);
+                }
+
+                if (IsLayoutReadyPhase(failedState.Phase) && TryVerifyReadyLayout(failedState, expectedManagedFiles, expectedManagedTreeSha256, out var committedDetail))
+                {
+                    operation = _operations.Update(
+                        operation,
+                        "committed",
+                        "LOCAL_SLOT_COMMIT_RECONCILED_AFTER_ENGINE_EXIT",
+                        committedDetail,
+                        migrationStatePath,
+                        activationPerformed: true,
+                        databaseMutationPerformed: false);
+                    Journal("update.local_slot_migration.committed", operation);
+                    return new(operation, created, Reconciled: true);
                 }
 
                 if (failedState.ActivationPerformed || StableWebIsJunction(failedState.StableWebRoot))
                 {
                     operation = _operations.Update(
                         operation,
-                        "failed",
+                        "recovery_required",
                         "LOCAL_SLOT_MIGRATION_FAILED_AFTER_ACTIVATION",
                         execution.Detail,
                         migrationStatePath,
                         activationPerformed: true,
                         databaseMutationPerformed: false);
-                    Journal("update.local_slot_migration.failed_after_activation", operation);
+                    Journal("update.local_slot_migration.recovery_required", operation);
                     return new(operation, created, Reconciled: !created);
                 }
 
-                if (!IsCommittedPhase(failedState.Phase))
+                var recovered = TryRecoverPreActivationInterruption(failedState, out var recoveryDetail);
+                if (!recovered)
                 {
-                    var recovered = TryRecoverPreActivationInterruption(failedState, out var recoveryDetail);
-                    if (!recovered)
-                    {
-                        operation = _operations.Update(
-                            operation,
-                            "recovery_required",
-                            "LOCAL_SLOT_INTERRUPTED_RECOVERY_FAILED",
-                            $"{execution.Detail} Recovery: {recoveryDetail}",
-                            migrationStatePath,
-                            activationPerformed: false,
-                            databaseMutationPerformed: false);
-                        Journal("update.local_slot_migration.recovery_required", operation);
-                        return new(operation, created, Reconciled: !created);
-                    }
-
                     operation = _operations.Update(
                         operation,
-                        "failed",
-                        "LOCAL_SLOT_MIGRATION_INTERRUPTED_RECOVERED",
-                        $"Migration failed before activation and durable recovery restored a safe Local layout. Engine: {execution.Detail}",
+                        "recovery_required",
+                        "LOCAL_SLOT_INTERRUPTED_RECOVERY_FAILED",
+                        $"{execution.Detail} Recovery: {recoveryDetail}",
                         migrationStatePath,
                         activationPerformed: false,
                         databaseMutationPerformed: false);
-                    Journal("update.local_slot_migration.failed", operation);
+                    Journal("update.local_slot_migration.recovery_required", operation);
                     return new(operation, created, Reconciled: !created);
                 }
 
                 operation = _operations.Update(
                     operation,
-                    "recovery_required",
-                    "UPDATE_ENGINE_EXITED_AFTER_DURABLE_COMMIT",
-                    execution.Detail,
+                    "failed",
+                    "LOCAL_SLOT_MIGRATION_INTERRUPTED_RECOVERED",
+                    $"Migration failed before activation and durable recovery restored a safe Local layout. Engine: {execution.Detail}",
                     migrationStatePath,
-                    activationPerformed: failedState.ActivationPerformed,
+                    activationPerformed: false,
                     databaseMutationPerformed: false);
-                Journal("update.local_slot_migration.recovery_required", operation);
+                Journal("update.local_slot_migration.failed", operation);
                 return new(operation, created, Reconciled: !created);
             }
 
@@ -267,7 +281,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 "failed",
                 execution.Code == "OK" ? "LOCAL_SLOT_MIGRATION_FAILED_PRE_ACTIVATION" : execution.Code,
                 execution.Detail,
-                File.Exists(migrationStatePath) ? migrationStatePath : null,
+                null,
                 activationPerformed: false,
                 databaseMutationPerformed: false);
             Journal("update.local_slot_migration.failed", operation);
@@ -292,20 +306,21 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
             if (state.RecoveryRequired || state.DatabaseMutationPerformed || state.PublicMutationPerformed || state.WindowsRebootRequired ||
                 state.Phase is not ("COMMITTED" or "ALREADY_MIGRATED"))
                 throw new InvalidDataException("Durable production migration state violates commit invariants.");
+            LocalManagedTreeAttestation.RequireExact(state.StableWebRoot, expectedManagedFiles, expectedManagedTreeSha256);
+            if (!StableWebIsJunction(state.StableWebRoot)) throw new InvalidDataException("Committed Local migration did not leave the stable Web root as a junction.");
 
-            var activationPerformed = root.TryGetProperty("activation_performed", out var activation) && activation.GetBoolean();
             operation = _operations.Update(
                 operation,
                 "committed",
                 phase == "ALREADY_MIGRATED" ? "LOCAL_SLOT_LAYOUT_ALREADY_READY" : "LOCAL_SLOT_MIGRATION_COMMITTED",
                 $"Production Local slot migration committed; managed_tree={expectedManagedTreeSha256}.",
                 migrationStatePath,
-                activationPerformed: activationPerformed,
+                activationPerformed: true,
                 databaseMutationPerformed: false);
             Journal("update.local_slot_migration.committed", operation);
             return new(operation, created, Reconciled: !created);
         }
-        catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException)
+        catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException or UnauthorizedAccessException)
         {
             operation = _operations.Update(
                 operation,
@@ -313,7 +328,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 "UPDATE_ENGINE_RESULT_INVALID",
                 ex.Message,
                 File.Exists(migrationStatePath) ? migrationStatePath : null,
-                activationPerformed: true,
+                activationPerformed: File.Exists(migrationStatePath),
                 databaseMutationPerformed: false);
             Journal("update.local_slot_migration.recovery_required", operation);
             return new(operation, created, Reconciled: !created);
@@ -355,7 +370,14 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or System.ComponentModel.Win32Exception)
         {
-            operation = _operations.Update(operation, "failed", "LOCAL_SLOT_RECOVERY_SERVICE_PRIME_FAILED", ex.Message, migrationStatePath, activationPerformed: state.ActivationPerformed, databaseMutationPerformed: false);
+            operation = _operations.Update(
+                operation,
+                "failed",
+                "LOCAL_SLOT_RECOVERY_SERVICE_PRIME_FAILED",
+                ex.Message,
+                migrationStatePath,
+                activationPerformed: state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot),
+                databaseMutationPerformed: false);
             Journal("update.local_slot_recovery.failed", operation);
             return new(operation, created, Reconciled: !created);
         }
@@ -365,13 +387,13 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         {
             operation = _operations.Update(
                 operation,
-                "failed",
+                execution.Code == "UPDATE_ENGINE_TIMEOUT" ? "recovery_required" : "failed",
                 execution.Started ? "LOCAL_SLOT_RECOVERY_FAILED" : execution.Code,
                 execution.Detail,
                 migrationStatePath,
-                activationPerformed: state.ActivationPerformed,
+                activationPerformed: state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot),
                 databaseMutationPerformed: false);
-            Journal("update.local_slot_recovery.failed", operation);
+            Journal(execution.Code == "UPDATE_ENGINE_TIMEOUT" ? "update.local_slot_recovery.recovery_required" : "update.local_slot_recovery.failed", operation);
             return new(operation, created, Reconciled: !created);
         }
 
@@ -392,14 +414,21 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 "LOCAL_SLOT_RECOVERY_COMMITTED",
                 "Production Local slot recovery/reconciliation completed without DB/Public mutation.",
                 migrationStatePath,
-                activationPerformed: state.ActivationPerformed,
+                activationPerformed: state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot),
                 databaseMutationPerformed: false);
             Journal("update.local_slot_recovery.committed", operation);
             return new(operation, created, Reconciled: !created);
         }
         catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException)
         {
-            operation = _operations.Update(operation, "failed", "UPDATE_ENGINE_RESULT_INVALID", ex.Message, migrationStatePath, activationPerformed: state.ActivationPerformed, databaseMutationPerformed: false);
+            operation = _operations.Update(
+                operation,
+                "failed",
+                "UPDATE_ENGINE_RESULT_INVALID",
+                ex.Message,
+                migrationStatePath,
+                activationPerformed: state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot),
+                databaseMutationPerformed: false);
             Journal("update.local_slot_recovery.failed", operation);
             return new(operation, created, Reconciled: !created);
         }
@@ -444,6 +473,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 detail = "Update Engine returned an invalid pre-activation recovery envelope.";
                 return false;
             }
+
             detail = "Durable pre-activation interruption reconciled successfully.";
             return true;
         }
@@ -469,11 +499,13 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                                   string.Equals(state.ExpectedManagedTreeSha256, expectedManagedTreeSha256, StringComparison.OrdinalIgnoreCase);
             if (!identityMatches)
             {
-                if (IsCommittedPhase(state.Phase)) return new(null, null, false);
+                if (IsLayoutReadyPhase(state.Phase) || IsRecoveredPhysicalPhase(state.Phase)) return new(null, null, false);
                 return new(null, "A non-terminal durable Local migration state belongs to a different request.", state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot));
             }
+
             if (state.DatabaseMutationPerformed || state.PublicMutationPerformed || state.WindowsRebootRequired)
                 return new(state, "Durable Local migration state violates the no-DB/no-Public/no-reboot bridge contract.", state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot));
+
             return new(state, null, state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot));
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
@@ -482,8 +514,33 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         }
     }
 
-    private static bool IsCommittedPhase(string phase)
-        => phase is "COMMITTED" or "ALREADY_MIGRATED" or "RECOVERED_TO_VERIFIED_SLOT" or "RECOVERED_TO_PHYSICAL_WEB";
+    private static bool TryVerifyReadyLayout(
+        ProductionLocalSlotMigrationState state,
+        int expectedManagedFiles,
+        string expectedManagedTreeSha256,
+        out string detail)
+    {
+        detail = string.Empty;
+        try
+        {
+            if (!Directory.Exists(state.StableWebRoot)) return false;
+            if (!StableWebIsJunction(state.StableWebRoot)) return false;
+            LocalManagedTreeAttestation.RequireExact(state.StableWebRoot, expectedManagedFiles, expectedManagedTreeSha256);
+            detail = $"Durable Local migration state and active junction were reconciled successfully; phase={state.Phase}.";
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            detail = ex.Message;
+            return false;
+        }
+    }
+
+    private static bool IsLayoutReadyPhase(string phase)
+        => phase is "COMMITTED" or "ALREADY_MIGRATED" or "RECOVERED_TO_VERIFIED_SLOT";
+
+    private static bool IsRecoveredPhysicalPhase(string phase)
+        => phase == "RECOVERED_TO_PHYSICAL_WEB";
 
     private static bool StableWebIsJunction(string stableWebRoot)
     {
@@ -534,14 +591,15 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 var timeoutStderr = stderrTask.IsCompleted ? stderrTask.GetAwaiter().GetResult() : string.Empty;
                 var evidence = string.IsNullOrWhiteSpace(timeoutStderr) ? timeoutStdout : timeoutStderr;
                 if (evidence.Length > 5000) evidence = evidence[..5000];
-                var detail = "Update Engine exceeded the production migration timeout." + (string.IsNullOrWhiteSpace(evidence) ? string.Empty : " Evidence: " + evidence.Trim());
-                return new(true, -1, timeoutStdout, detail, "UPDATE_ENGINE_TIMEOUT");
+                var timeoutDetail = "Update Engine exceeded the production migration timeout." + (string.IsNullOrWhiteSpace(evidence) ? string.Empty : " Evidence: " + evidence.Trim());
+                return new(true, -1, timeoutStdout, timeoutDetail, "UPDATE_ENGINE_TIMEOUT");
             }
+
             var stdout = stdoutTask.GetAwaiter().GetResult();
             var stderr = stderrTask.GetAwaiter().GetResult();
-            var detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-            if (detail.Length > 6000) detail = detail[..6000];
-            return new(true, process.ExitCode, stdout, detail.Trim(), "OK");
+            var resultDetail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+            if (resultDetail.Length > 6000) resultDetail = resultDetail[..6000];
+            return new(true, process.ExitCode, stdout, resultDetail.Trim(), "OK");
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {
