@@ -126,6 +126,48 @@ public sealed class LocalSlotAdoptionQueue
         bool activationPerformed)
         => Write(request, "failed_terminal", attemptCount, operationId, code, message, null, activationPerformed);
 
+    public LocalSlotAdoptionStatus? ReconcileVerifiedRecovery(
+        ProductionLocalSlotMigrationState migrationState,
+        MaintenanceOperation recoveryOperation)
+    {
+        if (!string.Equals(migrationState.Phase, "RECOVERED_TO_VERIFIED_SLOT", StringComparison.Ordinal) ||
+            migrationState.RecoveryRequired ||
+            migrationState.DatabaseMutationPerformed ||
+            migrationState.PublicMutationPerformed ||
+            migrationState.WindowsRebootRequired ||
+            !migrationState.ActivationPerformed)
+            return LoadStatus();
+
+        lock (_sync)
+        {
+            if (!File.Exists(_paths.LocalSlotAdoptionRequestPath) || !File.Exists(_paths.LocalSlotAdoptionStatusPath)) return null;
+            var request = AtomicFile.ReadJson<LocalSlotAdoptionRequest>(_paths.LocalSlotAdoptionRequestPath);
+            var status = AtomicFile.ReadJson<LocalSlotAdoptionStatus>(_paths.LocalSlotAdoptionStatusPath);
+            Validate(request);
+            Validate(status);
+
+            if (!string.Equals(status.RequestId, request.RequestId, StringComparison.Ordinal))
+                throw new InvalidDataException("Local adoption request/status identity diverged during recovery reconciliation.");
+            if (status.State is not ("recovery_required" or "failed_terminal")) return status;
+            if (!string.Equals(request.ExpectedBuild, migrationState.ExpectedBuild, StringComparison.Ordinal) ||
+                request.ExpectedManagedFiles != migrationState.ExpectedManagedFiles ||
+                !string.Equals(request.ExpectedManagedTreeSha256, migrationState.ExpectedManagedTreeSha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Recovered Local slot identity does not match the durable adoption request.");
+
+            var reconciled = NewStatus(
+                request.RequestId,
+                "committed",
+                status.AttemptCount,
+                recoveryOperation.OperationId,
+                "LOCAL_ADOPTION_RECOVERY_COMMITTED",
+                "Recovery restored and verified the requested active Local release slot.",
+                null,
+                true);
+            AtomicFile.WriteJson(_paths.LocalSlotAdoptionStatusPath, reconciled);
+            return reconciled;
+        }
+    }
+
     public static bool IsTerminal(string state)
         => state is "committed" or "recovery_required" or "failed_terminal";
 
