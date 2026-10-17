@@ -35,6 +35,19 @@ if(-not$coreRaw.Contains($oldHashDrift)){throw 'Expected R8 hash-drift core cont
 if(([regex]::Matches($coreRaw,[regex]::Escape($oldHashDrift))).Count-ne1){throw 'Expected exactly one R8 hash-drift core contract occurrence.'}
 $coreRaw=$coreRaw.Replace($oldHashDrift,$newHashDrift)
 
+# 1.1.12: the executor must honor the same released-fingerprint KEEP contract as Resolve-One.
+# 1.1.11 accepted the legacy Recovery fingerprint while resolving the plan, but the later
+# subordinate no-mutation verifier compared only with TargetHash and rejected that same KEEP.
+$oldSubordinateKeep=@'
+if($r.Action-eq'KEEP'){$CurrentPhase='No mutation';if((Sha $r.InstalledPath)-ne$r.TargetHash){throw "Maintenance subordinate fingerprint mismatch: $($r.Id)"};Event 'component_action_completed' 'kept' @{action='KEEP';proof='no_stop_no_copy_no_registration_no_restart';after_sha256=(Sha $r.InstalledPath)};continue}
+'@.Trim()
+$newSubordinateKeep=@'
+if($r.Action-eq'KEEP'){$CurrentPhase='No mutation';$installedHash=Sha $r.InstalledPath;$componentManifest=@($manifest.components|Where-Object{[string]$_.component_id-eq[string]$r.Id})|Select-Object -First 1;$accepted=@(Prop $componentManifest 'accepted_installed_sha256' $null);$compatible=($installedHash-eq$r.TargetHash)-or(@($accepted|Where-Object{[string]$_-eq$installedHash}).Count-gt0);if(-not$compatible){throw "Maintenance subordinate fingerprint mismatch: $($r.Id)"};Event 'component_action_completed' 'kept' @{action='KEEP';proof='no_stop_no_copy_no_registration_no_restart';after_sha256=$installedHash;compatible_fingerprint=($installedHash-ne$r.TargetHash)};continue}
+'@.Trim()
+if(-not$coreRaw.Contains($oldSubordinateKeep)){throw 'Expected R8 subordinate KEEP verifier was not found; refusing an unbounded executor rewrite.'}
+if(([regex]::Matches($coreRaw,[regex]::Escape($oldSubordinateKeep))).Count-ne1){throw 'Expected exactly one R8 subordinate KEEP verifier occurrence.'}
+$coreRaw=$coreRaw.Replace($oldSubordinateKeep,$newSubordinateKeep)
+
 [IO.File]::WriteAllText($corePath,$coreRaw,(New-Object Text.UTF8Encoding($true)))
 
 $setupSource=Join-Path $RepoRoot 'packaging\windows\scripts\setup-windows-components-v9.ps1'
@@ -61,4 +74,4 @@ Get-ChildItem $OutputRoot -File -Recurse|Where-Object{$_.FullName-ne$payloadMani
 }
 $payloadManifest.files=$files
 $payloadManifest|ConvertTo-Json -Depth 14|Set-Content -LiteralPath $payloadManifestPath -Encoding UTF8
-Write-Host 'Prepared Windows Services shell: compatible Recovery KEEP + guarded legacy Print migration + technician diagnostics.'
+Write-Host 'Prepared Windows Services shell: symmetric compatible Recovery KEEP + guarded legacy Print migration + technician diagnostics.'
