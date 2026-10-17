@@ -2,6 +2,7 @@ name: CI Maintenance V4 Windows P3 R3 Real Home V3
 # Manual qualification trigger after privileged semantic version comparison reconciliation.
 # Final harness trigger after transaction-evidence path reconciliation.
 # Exact-head trigger after true Recovery KEEP / Maintenance App boundary fix.
+# Final exact-head trigger after qualification launcher filename reconciliation.
 
 on:
   workflow_dispatch:
