@@ -156,8 +156,8 @@ internal static class DashboardUiPolish
             .Replace("سلامت سرویس‌ها", "وضعیت سرویس‌ها", StringComparison.Ordinal)
             .Replace("سلامت", "وضعیت سرویس", StringComparison.Ordinal);
 
-        // Package identity is owned by the canonical component manifest. Never rewrite
-        // the Windows Services badge from Application.ProductVersion/FileVersion.
+        // Package identity is owned by the canonical component manifest and must never
+        // be rewritten from executable metadata or another process-level version source.
 
         if (string.Equals(normalized, "فعال", StringComparison.Ordinal))
             normalized = "در حال اجرا";
