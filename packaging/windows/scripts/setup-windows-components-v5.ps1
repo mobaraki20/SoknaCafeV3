@@ -19,7 +19,20 @@ function Sha([string]$p){
   return (([BitConverter]::ToString($bytes))-replace'-','').ToLowerInvariant()
 }
 function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$info=[Diagnostics.FileVersionInfo]::GetVersionInfo($p);$v=$info.FileVersion;if(-not$v){$v=$info.ProductVersion};if($v){return ([string]$v).Split('+')[0]};''}
-function Compare-Version([string]$a,[string]$b){$va=$null;$vb=$null;if(-not[Version]::TryParse(([string]$a).Split('-')[0],[ref]$va)){return -1};if(-not[Version]::TryParse(([string]$b).Split('-')[0],[ref]$vb)){return -1};$va.CompareTo($vb)}
+function Compare-Version([string]$a,[string]$b){
+  function Parts([string]$v){
+    $base=([string]$v).Split('+')[0].Split('-')[0].Trim()
+    $tokens=@($base.Split('.')|Where-Object{$_-ne''})
+    if($tokens.Count-lt1-or$tokens.Count-gt4){return $null}
+    $parts=@(0,0,0,0)
+    for($i=0;$i-lt$tokens.Count;$i++){$n=0;if(-not[int]::TryParse($tokens[$i],[ref]$n)-or$n-lt0){return $null};$parts[$i]=$n}
+    return ,$parts
+  }
+  $pa=Parts $a;$pb=Parts $b
+  if($null-eq$pa-or$null-eq$pb){return -1}
+  for($i=0;$i-lt4;$i++){if($pa[$i]-gt$pb[$i]){return 1};if($pa[$i]-lt$pb[$i]){return -1}}
+  return 0
+}
 function Prop($o,[string]$n,$default=$null){if($null-ne$o-and$o.PSObject.Properties.Name-contains$n){return $o.$n};$default}
 function Service-Info([string]$name){
   $key="HKLM:\SYSTEM\CurrentControlSet\Services\$name"
