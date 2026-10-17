@@ -24,7 +24,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputBaseFilename=SOKNA-Windows-Services-Core-{#ProductVersion}
-Compression=lzma2
+Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 SetupLogging=yes
@@ -94,7 +94,7 @@ begin
       SuppressibleMsgBox('نسخه ' + PreviousInstalledVersion + ' از Windows Services سکنا روی این سیستم نصب است و از این بسته جدیدتر است.' + #13#10 + #13#10 + 'برای جلوگیری از Downgrade، نصب متوقف شد.', mbCriticalError, MB_OK, IDOK);
       Result := False; Exit;
     end;
-    if PreviousVersionComparison < 0 then InstallModeText := 'به‌روزرسانی پوسته از ' + PreviousInstalledVersion + ' به {#ProductVersion}' else InstallModeText := 'بازاعمال پوسته نسخه {#ProductVersion}';
+    if PreviousVersionComparison < 0 then InstallModeText := 'به‌روزرسانی سرویس‌های ویندوزی از ' + PreviousInstalledVersion + ' به {#ProductVersion}' else InstallModeText := 'بازاعمال سرویس‌های ویندوزی نسخه {#ProductVersion}';
   end;
   Log('SOKNA_PREVIOUS_VERSION=' + PreviousInstalledVersion); Log('SOKNA_INSTALL_MODE=' + InstallModeText); Result := True;
 end;
@@ -104,13 +104,13 @@ begin
   WizardForm.Caption := 'سکنا | ' + InstallModeText;
   if PreviousInstalledVersion = '' then begin
     WizardForm.WelcomeLabel1.Caption := 'نصب SOKNA Windows Services {#ProductVersion}';
-    WizardForm.WelcomeLabel2.Caption := 'پوسته مدیریت یکپارچه Runtime، Print و Maintenance نصب می‌شود.' + #13#10 + #13#10 + 'پس از کپی امن فایل‌ها، Dashboard باز می‌شود و قبل از هر تغییر سرویس، وضعیت هر component را جداگانه بررسی می‌کند.';
+    WizardForm.WelcomeLabel2.Caption := 'اجزای Runtime، Print و Maintenance سرویس‌های ویندوزی سوکنا نصب می‌شوند.' + #13#10 + #13#10 + 'پس از کپی امن فایل‌ها، Dashboard باز می‌شود و قبل از هر تغییر سرویس، وضعیت هر component را جداگانه بررسی می‌کند.';
   end else if PreviousVersionComparison < 0 then begin
-    WizardForm.WelcomeLabel1.Caption := 'به‌روزرسانی SOKNA Windows Services';
-    WizardForm.WelcomeLabel2.Caption := 'نسخه پوسته ' + PreviousInstalledVersion + ' اکنون نصب است و به {#ProductVersion} ارتقا می‌یابد.' + #13#10 + #13#10 + 'این مرحله به‌تنهایی همه سرویس‌ها را restart نمی‌کند؛ Dashboard برنامه دقیق componentها را مشخص می‌کند.';
+    WizardForm.WelcomeLabel1.Caption := 'به‌روزرسانی سرویس‌های ویندوزی سوکنا';
+    WizardForm.WelcomeLabel2.Caption := 'نسخه ' + PreviousInstalledVersion + ' از SOKNA Windows Services اکنون نصب است و به {#ProductVersion} ارتقا می‌یابد.' + #13#10 + #13#10 + 'این مرحله به‌تنهایی همه سرویس‌ها را restart نمی‌کند؛ Dashboard برنامه دقیق componentها را مشخص می‌کند.';
   end else begin
     WizardForm.WelcomeLabel1.Caption := 'SOKNA Windows Services {#ProductVersion} از قبل نصب است';
-    WizardForm.WelcomeLabel2.Caption := 'فایل‌های پوسته مدیریت بازاعمال می‌شوند. وضعیت Runtime، Print و Maintenance پس از بازشدن Dashboard به‌صورت مستقل بررسی خواهد شد.';
+    WizardForm.WelcomeLabel2.Caption := 'فایل‌های مدیریتی SOKNA Windows Services بازاعمال می‌شوند. وضعیت Runtime، Print و Maintenance پس از بازشدن Dashboard به‌صورت مستقل بررسی خواهد شد.';
   end;
 end;
 
