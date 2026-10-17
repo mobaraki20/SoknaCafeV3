@@ -1,0 +1,226 @@
+name: CI Maintenance V4 P3 R4 Home One-Time
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r4
+    paths:
+      - .github/workflows/ci-maintenance-v4-windows-p3-r4-home-once.yml
+      - windows/maintenance/**
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build changed Maintenance components
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj -c Release
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Sokna.Maintenance.P3HomeUat.csproj -c Release
+
+      - name: Regression - relocated Apache plus managed include
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $src=Join-Path $PWD 'out/fake-apache-src'; New-Item -ItemType Directory $src -Force|Out-Null
+          @'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+              <RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained>
+              <PublishSingleFile>true</PublishSingleFile><ImplicitUsings>enable</ImplicitUsings>
+            </PropertyGroup>
+          </Project>
+          '@ | Set-Content (Join-Path $src 'FakeApache.csproj') -Encoding utf8
+          @'
+          var root=Environment.GetEnvironmentVariable("FAKE_COMPILED_ROOT") ?? throw new Exception("FAKE_COMPILED_ROOT missing");
+          Console.WriteLine("Server version: Apache/2.4-test");
+          Console.WriteLine($" -D HTTPD_ROOT=\"{root}\"");
+          Console.WriteLine(" -D SERVER_CONFIG_FILE=\"conf/httpd.conf\"");
+          '@ | Set-Content (Join-Path $src 'Program.cs') -Encoding utf8
+          dotnet publish (Join-Path $src 'FakeApache.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/fake
+
+          $actual=Join-Path $PWD 'out/apache-actual'; $compiled=Join-Path $PWD 'out/apache-compiled'
+          $bin=Join-Path $actual 'bin'; $conf=Join-Path $actual 'conf'; $public=Join-Path $PWD 'out/package/Web/public'
+          New-Item -ItemType Directory -Path $bin,$conf,$public,(Join-Path $compiled 'conf') -Force|Out-Null
+          Copy-Item out/fake/FakeApache.exe (Join-Path $bin 'httpd.exe') -Force
+          $include=Join-Path $conf 'sokna-local.conf'
+          @"
+          # SOKNA-MANAGED-APACHE-VHOST v1
+          <VirtualHost *:18080>
+            DocumentRoot "$($public.Replace('\','/'))"
+          </VirtualHost>
+          "@ | Set-Content $include -Encoding utf8
+          @"
+          DocumentRoot "C:/unused/default"
+          # BEGIN SOKNA LOCAL MANAGED INCLUDE v1
+          Include "$($include.Replace('\','/'))"
+          # END SOKNA LOCAL MANAGED INCLUDE v1
+          "@ | Set-Content (Join-Path $conf 'httpd.conf') -Encoding utf8
+          $env:FAKE_COMPILED_ROOT=$compiled
+
+          $h=Join-Path $PWD 'out/harness'; New-Item -ItemType Directory $h -Force|Out-Null
+          @'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+            <ItemGroup><ProjectReference Include="..\..\windows\maintenance\src\Sokna.Maintenance.Core\Sokna.Maintenance.Core.csproj" /></ItemGroup>
+          </Project>
+          '@ | Set-Content (Join-Path $h 'Harness.csproj') -Encoding utf8
+          @'
+          using System.Reflection;
+          using Sokna.Maintenance.Core;
+          var t=typeof(LocalSlotManager);
+          var cfg=t.GetMethod("DiscoverApacheConfig",BindingFlags.NonPublic|BindingFlags.Static)!;
+          var doc=t.GetMethod("DiscoverDocumentRoot",BindingFlags.NonPublic|BindingFlags.Static)!;
+          var tuple=((string ApacheRoot,string ConfigPath))cfg.Invoke(null,new object[]{Environment.GetEnvironmentVariable("FAKE_HTTPD")!})!;
+          var expectedConfig=Path.GetFullPath(Environment.GetEnvironmentVariable("EXPECTED_CONFIG")!);
+          if(!string.Equals(Path.GetFullPath(tuple.ConfigPath),expectedConfig,StringComparison.OrdinalIgnoreCase)) throw new Exception("Relocated Apache config not selected.");
+          var actualDoc=(string)doc.Invoke(null,new object[]{tuple.ConfigPath,tuple.ApacheRoot})!;
+          var expectedDoc=Path.GetFullPath(Environment.GetEnvironmentVariable("EXPECTED_DOCROOT")!);
+          if(!string.Equals(Path.GetFullPath(actualDoc),expectedDoc,StringComparison.OrdinalIgnoreCase)) throw new Exception("Managed include DocumentRoot mismatch.");
+          Console.WriteLine("R4_APACHE_DISCOVERY_PASS");
+          '@ | Set-Content (Join-Path $h 'Program.cs') -Encoding utf8
+          $env:FAKE_HTTPD=Join-Path $bin 'httpd.exe'; $env:EXPECTED_CONFIG=Join-Path $conf 'httpd.conf'; $env:EXPECTED_DOCROOT=$public
+          dotnet run --project (Join-Path $h 'Harness.csproj') -c Release
+
+      - name: Regression - preflight failure must not report activation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out/preflight-engine
+          $data=Join-Path $PWD 'out/no-service-data'; New-Item -ItemType Directory $data -Force|Out-Null
+          $sha='b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a'
+          $stdout=Join-Path $PWD 'out/engine-out.txt'; $stderr=Join-Path $PWD 'out/engine-err.txt'
+          $p=Start-Process out/preflight-engine/SoknaMaintenanceUpdateEngine.exe -ArgumentList @('local-slot-home-cycle','--expected-build','3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory','--expected-managed-files','497','--expected-managed-tree-sha256',$sha,'--data-root',$data) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if($p.ExitCode-eq0){throw 'Preflight unexpectedly succeeded without SoknaApache.'}
+          $text=((Get-Content $stderr -Raw -ErrorAction SilentlyContinue)+(Get-Content $stdout -Raw -ErrorAction SilentlyContinue)).Trim()
+          $json=$text|ConvertFrom-Json
+          if([bool]$json.activation_performed){throw 'Preflight failure incorrectly reported activation_performed=true.'}
+          if([bool]$json.database_mutation_performed-or[bool]$json.public_mutation_performed-or[bool]$json.windows_reboot_required){throw 'Forbidden mutation flag present.'}
+          Write-Host 'R4_PREMUTATION_BOOKKEEPING_PASS'
+
+      - name: Publish one-time Home payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $PWD 'out/home-r4'; New-Item -ItemType Directory $out -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $out
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $out
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Sokna.Maintenance.P3HomeUat.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o $out
+          $sup=Join-Path $out 'SoknaMaintenanceSupervisor.exe'; $eng=Join-Path $out 'SoknaMaintenanceUpdateEngine.exe'; $uat=Join-Path $out 'SOKNA-Phase3-Home-UAT.exe'
+          foreach($p in @($sup,$eng,$uat)){if(-not(Test-Path $p -PathType Leaf)){throw "Missing published payload: $p"}}
+          [ordered]@{
+            format='sokna-home-r4-one-time-v1';source_sha=(git rev-parse HEAD).Trim();created_at_utc=[DateTime]::UtcNow.ToString('o');
+            supervisor_sha256=(Get-FileHash $sup -Algorithm SHA256).Hash.ToLowerInvariant();
+            engine_sha256=(Get-FileHash $eng -Algorithm SHA256).Hash.ToLowerInvariant();
+            uat_sha256=(Get-FileHash $uat -Algorithm SHA256).Hash.ToLowerInvariant();
+            expected_supervisor_version='0.3.1.0';expected_engine_version='0.3.1.0';runtime_mutation=$false;print_mutation=$false;database_mutation=$false;public_mutation=$false;windows_reboot=$false
+          }|ConvertTo-Json|Set-Content (Join-Path $out 'manifest.json') -Encoding utf8
+
+          @'
+          param()
+          $ErrorActionPreference='Stop'
+          function Fail([string]$m){Write-Host "ERROR: $m" -ForegroundColor Red; throw $m}
+          $principal=New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+          if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
+            $args='-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'"'
+            Start-Process powershell.exe -ArgumentList $args -Verb RunAs
+            exit
+          }
+          $root=Split-Path -Parent $PSCommandPath
+          $manifest=Get-Content (Join-Path $root 'manifest.json') -Raw|ConvertFrom-Json
+          $svc='SoknaMaintenanceSupervisor'
+          $reg="HKLM:\SYSTEM\CurrentControlSet\Services\$svc"
+          if(-not(Test-Path $reg)){Fail 'SoknaMaintenanceSupervisor service is not installed.'}
+          $image=((Get-ItemProperty $reg).ImagePath).Trim()
+          if($image.StartsWith('"')){$m=[regex]::Match($image,'^"([^"]+)"');if(-not$m.Success){Fail 'Maintenance service ImagePath is invalid.'};$installed=$m.Groups[1].Value}else{$installed=($image -split '\s+')[0]}
+          $installed=[IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($installed))
+          if(-not(Test-Path $installed -PathType Leaf)){Fail "Installed Supervisor not found: $installed"}
+          $app=Split-Path -Parent $installed
+          $engine=Join-Path $app 'SoknaMaintenanceUpdateEngine.exe'
+          if(-not(Test-Path $engine -PathType Leaf)){Fail "Installed Update Engine not found: $engine"}
+          $newSup=Join-Path $root 'SoknaMaintenanceSupervisor.exe'; $newEng=Join-Path $root 'SoknaMaintenanceUpdateEngine.exe'
+          foreach($p in @($newSup,$newEng)){if(-not(Test-Path $p -PathType Leaf)){Fail "Payload missing: $p"}}
+          if((Get-FileHash $newSup -Algorithm SHA256).Hash.ToLowerInvariant()-ne[string]$manifest.supervisor_sha256){Fail 'Supervisor payload hash mismatch.'}
+          if((Get-FileHash $newEng -Algorithm SHA256).Hash.ToLowerInvariant()-ne[string]$manifest.engine_sha256){Fail 'Update Engine payload hash mismatch.'}
+          $currentSup=[Diagnostics.FileVersionInfo]::GetVersionInfo($installed).FileVersion
+          $currentEng=[Diagnostics.FileVersionInfo]::GetVersionInfo($engine).FileVersion
+          if($currentSup -notin @('0.3.0.0','0.3.1.0')){Fail "Unexpected installed Supervisor version: $currentSup"}
+          if($currentEng -notin @('0.3.0.0','0.3.1.0')){Fail "Unexpected installed Engine version: $currentEng"}
+          $targetAlready=((Get-FileHash $installed -Algorithm SHA256).Hash.ToLowerInvariant()-eq[string]$manifest.supervisor_sha256) -and ((Get-FileHash $engine -Algorithm SHA256).Hash.ToLowerInvariant()-eq[string]$manifest.engine_sha256)
+          $backup=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) ('SOKNA\Maintenance\R4HomeBackup\'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))
+          New-Item -ItemType Directory $backup -Force|Out-Null
+          if(-not$targetAlready){
+            Copy-Item $installed (Join-Path $backup 'SoknaMaintenanceSupervisor.exe') -Force
+            Copy-Item $engine (Join-Path $backup 'SoknaMaintenanceUpdateEngine.exe') -Force
+            $pid=0; $q=(& "$env:SystemRoot\System32\sc.exe" queryex $svc)|Out-String; $mm=[regex]::Match($q,'PID\s*:\s*(\d+)');if($mm.Success){$pid=[int]$mm.Groups[1].Value}
+            Stop-Service $svc -Force -ErrorAction Stop
+            (Get-Service $svc).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(30))
+            if($pid-gt0){$sw=[Diagnostics.Stopwatch]::StartNew();while($sw.Elapsed.TotalSeconds-lt15 -and (Get-Process -Id $pid -ErrorAction SilentlyContinue)){Start-Sleep -Milliseconds 250};if(Get-Process -Id $pid -ErrorAction SilentlyContinue){Fail 'Old Maintenance process did not exit; no files were replaced.'}}
+            $stageSup=$installed+'.r4new';$stageEng=$engine+'.r4new'
+            Copy-Item $newSup $stageSup -Force;Copy-Item $newEng $stageEng -Force
+            try{
+              [IO.File]::Replace($stageSup,$installed,$null,$true)
+              [IO.File]::Replace($stageEng,$engine,$null,$true)
+              Start-Service $svc
+              (Get-Service $svc).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running,[TimeSpan]::FromSeconds(30))
+            }catch{
+              try{Stop-Service $svc -Force -ErrorAction SilentlyContinue}catch{}
+              Copy-Item (Join-Path $backup 'SoknaMaintenanceSupervisor.exe') $installed -Force
+              Copy-Item (Join-Path $backup 'SoknaMaintenanceUpdateEngine.exe') $engine -Force
+              try{Start-Service $svc}catch{}
+              Fail ('R4 patch failed and previous Maintenance binaries were restored. '+$_.Exception.Message)
+            }finally{Remove-Item $stageSup,$stageEng -Force -ErrorAction SilentlyContinue}
+          }
+          if((Get-FileHash $installed -Algorithm SHA256).Hash.ToLowerInvariant()-ne[string]$manifest.supervisor_sha256){Fail 'Installed Supervisor attestation failed.'}
+          if((Get-FileHash $engine -Algorithm SHA256).Hash.ToLowerInvariant()-ne[string]$manifest.engine_sha256){Fail 'Installed Engine attestation failed.'}
+          $s=Get-Service $svc;if($s.Status-ne'Running'){Fail 'Maintenance Supervisor is not running after R4 patch.'}
+          Write-Host 'Maintenance R4 patch PASS. Runtime/Print were not touched.' -ForegroundColor Green
+          $uat=Join-Path $root 'SOKNA-Phase3-Home-UAT.exe'
+          if(-not(Test-Path $uat -PathType Leaf)){Fail 'Qualification launcher missing.'}
+          $p=Start-Process $uat -Wait -PassThru
+          Write-Host "Qualification exit code: $($p.ExitCode)"
+          exit $p.ExitCode
+          '@ | Set-Content (Join-Path $out 'Apply-Home-R4.ps1') -Encoding utf8
+
+          @'
+          @echo off
+          cd /d "%~dp0"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Apply-Home-R4.ps1"
+          echo.
+          echo Exit code: %ERRORLEVEL%
+          pause
+          '@ | Set-Content (Join-Path $out 'RUN-HOME-R4.cmd') -Encoding ascii
+          @'
+          SOKNA Phase 3 Home R4 - one-time qualification bundle
+          -----------------------------------------------------
+          1) Close the old Qualification window if it is still open.
+          2) Double-click RUN-HOME-R4.cmd and accept UAC.
+          3) The script patches ONLY Maintenance Supervisor + Update Engine, then runs the one-time Phase 3 Qualification.
+          4) Runtime and Print Agent are never stopped/copied/restarted by this bundle.
+          5) No DB/Public mutation and no Windows reboot are part of this bundle.
+          '@ | Set-Content (Join-Path $out 'README_FIRST.txt') -Encoding utf8
+          Get-ChildItem $out -File|ForEach-Object{"$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"}|Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
+          Compress-Archive -Path (Join-Path $out '*') -DestinationPath out/SOKNA-Home-R4-OneTime.zip -CompressionLevel Optimal -Force
+
+      - name: Upload one-time Home bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Home-R4-OneTime
+          path: out/SOKNA-Home-R4-OneTime.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
