@@ -1,0 +1,51 @@
+name: Apply R7 Supervisor adoption worker
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r7-reliability-reset
+    paths:
+      - .github/workflows/apply-r7-supervisor-adoption-worker.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/maintenance-v4-r7-reliability-reset
+          fetch-depth: 0
+      - name: Patch Supervisor composition
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs')
+          s=p.read_text(encoding='utf-8')
+          def one(old,new):
+              global s
+              if old not in s:
+                  raise SystemExit('patch anchor missing: '+old[:100])
+              if s.count(old)!=1:
+                  raise SystemExit('patch anchor not unique: '+old[:100])
+              s=s.replace(old,new,1)
+          one('using Sokna.Maintenance.Core;\n', 'using Sokna.Maintenance.Core;\nusing Sokna.Maintenance.Supervisor;\n')
+          one('Directory.CreateDirectory(paths.LocalSlotStateRoot);\n', 'Directory.CreateDirectory(paths.LocalSlotStateRoot);\nDirectory.CreateDirectory(paths.BootstrapRoot);\n')
+          one('var productionMigrationCoordinator = new SupervisorProductionMigrationCoordinator(paths, operations, journal, state, updateEnginePath);\n', 'var productionMigrationCoordinator = new SupervisorProductionMigrationCoordinator(paths, operations, journal, state, updateEnginePath);\nvar adoptionQueue = new LocalSlotAdoptionQueue(paths);\n')
+          one('builder.WebHost.UseUrls($"http://127.0.0.1:{port}");\nvar app = builder.Build();\n', 'builder.WebHost.UseUrls($"http://127.0.0.1:{port}");\nbuilder.Services.AddSingleton(adoptionQueue);\nbuilder.Services.AddSingleton(productionMigrationCoordinator);\nbuilder.Services.AddSingleton(journal);\nbuilder.Services.AddSingleton(state);\nbuilder.Services.AddHostedService<LocalSlotAdoptionWorker>();\nvar app = builder.Build();\n')
+          one('local_slot_phase = "production_bridge_r6",', 'local_slot_phase = "production_bridge_r7_durable_adoption",')
+          one('    object? localSlots = null;\n    try { if (File.Exists(paths.LocalSlotStatePath)) localSlots = AtomicFile.ReadJson<LocalSlotPhase3State>(paths.LocalSlotStatePath); } catch { }\n', '    object? localSlots = null;\n    object? localAdoption = null;\n    try { if (File.Exists(paths.LocalSlotStatePath)) localSlots = AtomicFile.ReadJson<LocalSlotPhase3State>(paths.LocalSlotStatePath); } catch { }\n    try { localAdoption = adoptionQueue.LoadStatus(); } catch { }\n')
+          one('        local_slots = localSlots,\n        inbox_path = paths.InboxRoot,', '        local_slots = localSlots,\n        local_adoption = localAdoption,\n        inbox_path = paths.InboxRoot,')
+          p.write_text(s,encoding='utf-8',newline='\n')
+      - name: Commit exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs
+          git diff --cached --check
+          git commit -m "feat(maintenance): resume durable Local adoption in Supervisor"
+          git push origin HEAD:work/maintenance-v4-r7-reliability-reset
