@@ -4,9 +4,13 @@ namespace Sokna.SetupUi;
 
 internal static class DashboardPackageVersionBinder
 {
+    private const string ExpectedManifestFileName = "windows-services-component-manifest-v2.json";
+
     internal static string ReadCanonicalPackageVersion(string shellRoot)
     {
-        var manifestPath = Path.Combine(Path.GetFullPath(shellRoot), ComponentUpdatePlanner.ManifestFileName);
+        if (!string.Equals(ComponentUpdatePlanner.ManifestFileName, ExpectedManifestFileName, StringComparison.Ordinal))
+            return "unknown";
+        var manifestPath = Path.Combine(Path.GetFullPath(shellRoot), ExpectedManifestFileName);
         if (!File.Exists(manifestPath)) return "unknown";
         try
         {
