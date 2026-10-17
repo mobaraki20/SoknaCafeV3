@@ -1,0 +1,230 @@
+name: CI Windows Services 1.1.5 R6 Production
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-production-local-migration-bridge-r6
+    paths:
+      - packaging/windows/qualification/apply-windows-services-1.1.5-r6.py
+      - .github/workflows/ci-windows-services-1.1.5-r6-production.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: windows-2022
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Freeze R6 product source lineage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $product='65330eebdb179075228f4f96422ceb8abdee1e4a'
+          git merge-base --is-ancestor $product HEAD
+          if($LASTEXITCODE-ne0){throw 'R6 qualified product source is not an ancestor of this package build.'}
+          $changed=@(git diff --name-only "$product..HEAD" -- windows/maintenance/src windows/maintenance/tests)
+          if($changed.Count-ne0){throw "Product source changed after failure-matrix qualification: $($changed -join ', ')"}
+          Write-Host "R6_PRODUCT_SOURCE=$product"
+
+      - name: Apply 1.1.5 package metadata
+        shell: pwsh
+        run: |
+          $v=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if($v -eq '1.1.4'){python packaging/windows/qualification/apply-windows-services-1.1.5-r6.py}
+          elseif($v -ne '1.1.5'){throw "Unexpected package version: $v"}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Download canonical unchanged components
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-services-1.1.0-canonical-components-r3-baseline
+          path: recovered
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 38982932863
+
+      - name: Qualify component contract and canonical KEEP bytes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Sha($p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+          $expectedRuntime='26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd'
+          $expectedPrint='99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4'
+          $expectedRecovery='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          if($m.package_version-ne'1.1.5'){throw 'manifest package version mismatch'}
+          $by=@{};foreach($c in $m.components){$by[$c.component_id]=$c}
+          if($by.runtime.version-ne'1.0.5'-or$by.'print-agent'.version-ne'6.2.9'-or$by.maintenance.version-ne'0.3.3'-or$by.'maintenance-update-engine'.version-ne'0.3.3'-or$by.'maintenance-recovery-console'.version-ne'0.1.1'){throw 'component version contract mismatch'}
+          $runtime='recovered/runtime/SoknaRuntimeService.exe';$print='recovered/print-worker/Service/Sokna.PrintAgent.Service.exe';$recovery='recovered/baseline-maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe'
+          if((Sha $runtime)-ne$expectedRuntime){throw 'canonical Runtime drift'}
+          if((Sha $print)-ne$expectedPrint){throw 'canonical Print drift'}
+          if((Sha $recovery)-ne$expectedRecovery){throw 'canonical Recovery drift'}
+          Write-Host 'R6 canonical KEEP component lock: PASS'
+
+      - name: Publish R6 Maintenance and installer shell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $PWD 'out-r6-production'
+          New-Item -ItemType Directory -Path "$out/maintenance/app","$out/setup-ui","$out/setup-host" -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/maintenance/app"
+          if($LASTEXITCODE-ne0){throw 'Supervisor publish failed'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/maintenance/app"
+          if($LASTEXITCODE-ne0){throw 'Update Engine publish failed'}
+          dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$out/setup-ui"
+          if($LASTEXITCODE-ne0){throw 'Setup UI publish failed'}
+          dotnet publish packaging/windows/setup-host-v3/Sokna.SetupHostV3.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/setup-host"
+          if($LASTEXITCODE-ne0){throw 'Setup Host publish failed'}
+          ./packaging/windows/scripts/prepare-shell-payload-v4.ps1 `
+            -RepoRoot $PWD.Path -OutputRoot "$out/shell" `
+            -RuntimeServiceExe (Resolve-Path recovered/runtime/SoknaRuntimeService.exe).Path `
+            -SetupHostExe "$out/setup-host/SoknaSetupHost.exe" `
+            -SetupUiExe "$out/setup-ui/SoknaSetupUi.exe" `
+            -PrintWorkerBundle (Resolve-Path recovered/print-worker).Path `
+            -MaintenanceAppBundle "$out/maintenance/app" `
+            -MaintenanceRecoveryBundle (Resolve-Path recovered/baseline-maintenance/recovery).Path `
+            -GitSha '65330eebdb179075228f4f96422ceb8abdee1e4a'
+          if($LASTEXITCODE-ne0){throw 'shell preparation failed'}
+
+      - name: Verify R6 target shell and bridge surfaces
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Sha($p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+          $shell='out-r6-production/shell'
+          $checks=@{
+            "$shell/_payload/runtime/SoknaRuntimeService.exe"='26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd';
+            "$shell/_payload/print-worker/Service/Sokna.PrintAgent.Service.exe"='99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4';
+            "$shell/_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe"='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'
+          }
+          foreach($p in $checks.Keys){if((Sha $p)-ne$checks[$p]){throw "KEEP payload drift: $p"}}
+          $sv=[Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path "$shell/_payload/maintenance/app/SoknaMaintenanceSupervisor.exe")).FileVersion
+          $ev=[Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path "$shell/_payload/maintenance/app/SoknaMaintenanceUpdateEngine.exe")).FileVersion
+          if(-not$sv.StartsWith('0.3.3')-or-not$ev.StartsWith('0.3.3')){throw "R6 Maintenance version mismatch: $sv / $ev"}
+          $pm=Get-Content "$shell/payload-manifest.json" -Raw|ConvertFrom-Json
+          if($pm.package_version-ne'1.1.5'){throw 'shell package version mismatch'}
+          $sup=Get-Content windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs -Raw
+          $eng=Get-Content windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs -Raw
+          if(-not$sup.Contains('/v1/local-slots/migrate')-or-not$sup.Contains('/v1/local-slots/recover')){throw 'production migration Supervisor endpoints missing'}
+          if(-not$eng.Contains('local-slot-migrate')-or-not$eng.Contains('local-slot-recover')){throw 'production migration Update Engine commands missing'}
+          Write-Host 'R6 target shell/bridge surfaces: PASS'
+
+      - name: Build actual installed R5 0.3.2 baseline fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git worktree add --detach out-r6-production/r5-src ba5ec72e4c57bbc65259a903656756b23d6e784a
+          dotnet publish out-r6-production/r5-src/windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r6-production/r5-maintenance/app
+          dotnet publish out-r6-production/r5-src/windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r6-production/r5-maintenance/app
+          $sv=[Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path out-r6-production/r5-maintenance/app/SoknaMaintenanceSupervisor.exe)).FileVersion
+          $ev=[Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path out-r6-production/r5-maintenance/app/SoknaMaintenanceUpdateEngine.exe)).FileVersion
+          if(-not$sv.StartsWith('0.3.2')-or-not$ev.StartsWith('0.3.2')){throw "R5 baseline fixture mismatch: $sv / $ev"}
+
+      - name: Planner and real lifecycle gate 0.3.2 to 0.3.3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Sha($p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+          function CleanupSvc($n){try{Stop-Service $n -Force -ErrorAction SilentlyContinue}catch{};& "$env:SystemRoot/System32/sc.exe" delete $n *> $null;$global:LASTEXITCODE=0}
+          foreach($n in @('SoknaMaintenanceSupervisor','SoknaPrintWorker','SoknaRuntime')){CleanupSvc $n}
+          $out=(Resolve-Path out-r6-production).Path;$shell=Join-Path $out 'shell';$install=Join-Path $out 'fixture-install';$data=Join-Path $out 'fixture-data'
+          New-Item -ItemType Directory -Path $install,$data,"$data/runtime","$data/setup","$install/Maintenance/App","$install/Maintenance/Recovery" -Force|Out-Null
+          Copy-Item recovered/runtime "$install/Runtime" -Recurse -Force
+          Copy-Item recovered/print-worker "$install/PrintAgent" -Recurse -Force
+          Copy-Item out-r6-production/r5-maintenance/app/* "$install/Maintenance/App" -Force
+          Copy-Item recovered/baseline-maintenance/recovery/* "$install/Maintenance/Recovery" -Force
+          Copy-Item windows/runtime/runtime-config.example.json "$data/runtime/runtime-config.json" -Force
+          @{format='sokna-windows-services-install-state-v2';paired=$false;local_base_url=''}|ConvertTo-Json|Set-Content "$data/setup/windows-services-state.json" -Encoding utf8
+          $rt=(Resolve-Path "$install/Runtime/SoknaRuntimeService.exe").Path;$pr=(Resolve-Path "$install/PrintAgent/Service/Sokna.PrintAgent.Service.exe").Path;$ms=(Resolve-Path "$install/Maintenance/App/SoknaMaintenanceSupervisor.exe").Path;$rc=(Resolve-Path "$install/Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe").Path;$cfg=(Resolve-Path "$data/runtime/runtime-config.json").Path
+          & "$env:SystemRoot/System32/sc.exe" create SoknaRuntime binPath= ('"'+$rt+'" --config "'+$cfg+'"') start= demand|Out-Null;if($LASTEXITCODE-ne0){throw 'runtime registration failed'}
+          & "$env:SystemRoot/System32/sc.exe" create SoknaPrintWorker binPath= ('"'+$pr+'"') start= auto|Out-Null;if($LASTEXITCODE-ne0){throw 'print registration failed'}
+          & "$env:SystemRoot/System32/sc.exe" create SoknaMaintenanceSupervisor binPath= ('"'+$ms+'"') start= auto|Out-Null;if($LASTEXITCODE-ne0){throw 'maintenance registration failed'}
+          $h=Join-Path $out 'planner';New-Item -ItemType Directory $h -Force|Out-Null
+          @'
+          <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><Compile Include="..\..\packaging\windows\setup-ui\ComponentUpdatePlanner.cs" Link="ComponentUpdatePlanner.cs" /></ItemGroup></Project>
+          '@|Set-Content "$h/Planner.csproj" -Encoding utf8
+          @'
+          using System.Text.Json; namespace Sokna.SetupUi; internal static class X { static int Main(string[] a){var p=ComponentUpdatePlanner.Build(a[0],a[1],a[2]);var d=p.Rows.ToDictionary(x=>x.ComponentId,StringComparer.Ordinal);void N(string id,ComponentAction z){if(!d.TryGetValue(id,out var r)||r.Action!=z)throw new Exception($"{id}: expected {z}, got {r?.Action}/{r?.Reason}");}N("runtime",ComponentAction.Keep);N("print-agent",ComponentAction.Keep);N("maintenance",ComponentAction.Update);N("maintenance-update-engine",ComponentAction.Update);N("maintenance-recovery-console",ComponentAction.Keep);File.WriteAllText(a[3],JsonSerializer.Serialize(p.Rows.Select(r=>new{component_id=r.ComponentId,primary=r.Primary,current_version=r.CurrentVersion,target_version=r.TargetVersion,health=r.Health.ToString(),update_state=r.UpdateState,action=r.Action.ToString().ToUpperInvariant(),reason=r.Reason,installed_sha256=r.InstalledSha256,target_sha256=r.TargetSha256,service_name=r.ServiceName,transaction_group=r.TransactionGroup}),new JsonSerializerOptions{WriteIndented=true}));return 0;}}
+          '@|Set-Content "$h/Program.cs" -Encoding utf8
+          $rows=Join-Path $out 'plan-rows.json';dotnet run --project "$h/Planner.csproj" -c Release -- $shell $install $data $rows;if($LASTEXITCODE-ne0){throw 'planner gate failed'}
+          $before=@{runtime_hash=Sha $rt;runtime_time=(Get-Item $rt).LastWriteTimeUtc.ToString('o');print_hash=Sha $pr;print_time=(Get-Item $pr).LastWriteTimeUtc.ToString('o');recovery_hash=Sha $rc;recovery_time=(Get-Item $rc).LastWriteTimeUtc.ToString('o')}
+          $tx='r6-'+[guid]::NewGuid().ToString('N');$txdir=Join-Path $env:LOCALAPPDATA "SOKNA/Installer/logs/$tx";New-Item -ItemType Directory $txdir -Force|Out-Null
+          $plan=@{format='sokna-windows-install-plan-v3';schema_version=3;transaction_id=$tx;correlation_id='corr-'+[guid]::NewGuid().ToString('N');setup_session_id='ui-'+[guid]::NewGuid().ToString('N');created_at_utc=[DateTime]::UtcNow.ToString('o');mode='install';shell_root=$shell;install_root=$install;data_root=$data;package_version='1.1.5';components=@(Get-Content $rows -Raw|ConvertFrom-Json)}
+          $planPath=Join-Path $txdir 'update-plan.json';$plan|ConvertTo-Json -Depth 10|Set-Content $planPath -Encoding utf8
+          $proc=Start-Process "$shell/SoknaSetupHost.exe" -ArgumentList @('--plan-file',('"'+$planPath+'"')) -Wait -PassThru -NoNewWindow
+          if($proc.ExitCode-ne0){Get-ChildItem $txdir -File|%{Write-Host "---$($_.Name)";Get-Content $_ -Raw|Write-Host};throw "lifecycle failed: $($proc.ExitCode)"}
+          $after=@{runtime_hash=Sha $rt;runtime_time=(Get-Item $rt).LastWriteTimeUtc.ToString('o');print_hash=Sha $pr;print_time=(Get-Item $pr).LastWriteTimeUtc.ToString('o');recovery_hash=Sha $rc;recovery_time=(Get-Item $rc).LastWriteTimeUtc.ToString('o')}
+          foreach($k in $before.Keys){if($before[$k]-ne$after[$k]){throw "KEEP mutation: $k"}}
+          $sv=[Diagnostics.FileVersionInfo]::GetVersionInfo($ms).FileVersion;$ev=[Diagnostics.FileVersionInfo]::GetVersionInfo("$install/Maintenance/App/SoknaMaintenanceUpdateEngine.exe").FileVersion
+          if(-not$sv.StartsWith('0.3.3')-or-not$ev.StartsWith('0.3.3')){throw "R6 Maintenance target not applied: $sv / $ev"}
+          $events=@(Get-Content "$txdir/system-events.jsonl"|?{$_}|%{$_|ConvertFrom-Json})
+          foreach($id in @('runtime','print-agent')){$row=@($events|?{$_.event_name-eq'component_action_completed'-and$_.component-eq$id-and$_.result-eq'kept'})|Select -First 1;if(-not$row-or$row.data.proof-ne'no_stop_no_copy_no_registration_no_restart'){throw "KEEP proof invalid: $id"}}
+          $rr=@($events|?{$_.event_name-eq'component_action_completed'-and$_.component-eq'maintenance-recovery-console'-and$_.data.action-eq'KEEP'})|Select -First 1;if(-not$rr){throw 'Recovery KEEP evidence missing'}
+          Copy-Item "$txdir/install-result.json" "$out/install-result.json";Copy-Item "$txdir/system-events.jsonl" "$out/system-events.jsonl"
+          $before|ConvertTo-Json|Set-Content "$out/before.json";$after|ConvertTo-Json|Set-Content "$out/after.json"
+          foreach($n in @('SoknaMaintenanceSupervisor','SoknaPrintWorker','SoknaRuntime')){CleanupSvc $n}
+          Write-Host 'R6 real planner/lifecycle 0.3.2 -> 0.3.3: PASS'
+
+      - name: Build production installer 1.1.5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=@("${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe","$env:ProgramFiles/Inno Setup 6/ISCC.exe")|?{$_ -and(Test-Path $_)}|Select -First 1
+          if(-not$iscc){throw 'Inno Setup 6 missing'}
+          ./packaging/windows/scripts/build-installer-v4.ps1 -ShellPayloadRoot (Resolve-Path out-r6-production/shell).Path -RepoRoot $PWD.Path -IsccExe $iscc
+          if($LASTEXITCODE-ne0){throw 'installer build failed'}
+          $exe='packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.5.exe'
+          if(-not(Test-Path $exe)){throw 'installer missing'}
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $delivery='out-r6-production/delivery';New-Item -ItemType Directory $delivery -Force|Out-Null;Copy-Item $exe $delivery
+          [ordered]@{
+            format='sokna-windows-services-r6-production-qualification-v1';
+            product_source_commit='65330eebdb179075228f4f96422ceb8abdee1e4a';
+            failure_matrix_run=38995204758;
+            package_version='1.1.5';runtime='1.0.5';print_agent='6.2.9';maintenance='0.3.3';update_engine='0.3.3';recovery_console='0.1.1';
+            planner='Runtime KEEP / Print KEEP / Maintenance UPDATE / Engine UPDATE / Recovery KEEP';
+            keep_proof='no_stop_no_copy_no_registration_no_restart';
+            production_local_migration_bridge=$true;
+            baseline_http_before_mutation=$true;
+            exact_managed_tree_attestation=$true;
+            idempotent_rerun=$true;
+            web_down_recovery=$true;
+            automatic_activation_rollback=$true;
+            crash_after_physical_move_recovery=$true;
+            unrelated_runtime_print_mutation=$false;
+            database_mutation=$false;public_mutation=$false;windows_reboot=$false;
+            installer_sha256=$sha
+          }|ConvertTo-Json -Depth 6|Set-Content "$delivery/R6_QUALIFICATION.json" -Encoding utf8
+          Copy-Item out-r6-production/plan-rows.json,out-r6-production/install-result.json,out-r6-production/system-events.jsonl $delivery
+          Get-ChildItem $delivery -File|%{"$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"}|Set-Content "$delivery/SHA256SUMS.txt" -Encoding ascii
+          Write-Host "R6_INSTALLER_SHA256=$sha"
+
+      - name: Commit qualified 1.1.5 package metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packaging/windows/WINDOWS_SERVICES_VERSION.txt packaging/windows/windows-services-component-manifest-v2.json packaging/windows/setup-ui/Sokna.SetupUi.csproj
+          if(-not(git diff --cached --quiet)){git commit -m 'release(windows): qualify Windows Services 1.1.5 R6';git push origin HEAD}
+
+      - name: Upload qualified production installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Windows-Services-1.1.5-R6-Qualified
+          path: out-r6-production/delivery
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
