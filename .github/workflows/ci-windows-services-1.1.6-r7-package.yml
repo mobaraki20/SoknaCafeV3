@@ -1,0 +1,263 @@
+name: CI Windows Services 1.1.6 R7 Package
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r7-reliability-reset
+    paths:
+      - 'windows/maintenance/src/**'
+      - 'packaging/windows/WINDOWS_SERVICES_VERSION.txt'
+      - 'packaging/windows/windows-services-component-manifest-v2.json'
+      - 'packaging/windows/installer/SOKNA-v4.iss'
+      - 'packaging/windows/installer-bootstrap/**'
+      - 'packaging/windows/setup-ui/**'
+      - 'packaging/windows/setup-host-v3/**'
+      - 'packaging/windows/scripts/build-installer-v4.ps1'
+      - 'packaging/windows/scripts/prepare-shell-payload-v4.ps1'
+      - 'packaging/windows/scripts/prepare-shell-payload-v6.ps1'
+      - 'packaging/windows/scripts/setup-windows-components-v5.ps1'
+      - 'packaging/windows/scripts/setup-windows-components-v7.ps1'
+      - 'packaging/windows/scripts/queue-local-slot-adoption-r7.ps1'
+      - 'packaging/windows/local-slot-bootstrap-contract-v1.json'
+      - '.github/workflows/ci-windows-services-1.1.6-r7-package.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  qualify-package:
+    runs-on: windows-2022
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Lock R7 package and component identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $package=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if($package-ne'1.1.6'){throw "R7 package version must be 1.1.6, got $package"}
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          $by=@{};foreach($c in $m.components){$by[[string]$c.component_id]=$c}
+          if($m.package_version-ne'1.1.6'-or$by.runtime.version-ne'1.0.5'-or$by.'print-agent'.version-ne'6.2.9'-or$by.maintenance.version-ne'0.3.4'-or$by.'maintenance-update-engine'.version-ne'0.3.4'-or$by.'maintenance-recovery-console'.version-ne'0.1.1'){throw 'R7 package/component identity mismatch'}
+          $sup=[xml](Get-Content windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -Raw)
+          $eng=[xml](Get-Content windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -Raw)
+          if([string]$sup.Project.PropertyGroup.Version-ne'0.3.4'-or[string]$eng.Project.PropertyGroup.Version-ne'0.3.4'){throw 'Lifecycle-visible Maintenance source version mismatch'}
+          if([string]$sup.Project.PropertyGroup.InformationalVersion-ne'0.3.4'-or[string]$eng.Project.PropertyGroup.InformationalVersion-ne'0.3.4'){throw 'Lifecycle-visible informational version must remain semantic'}
+          Write-Host 'R7 package/component identity: PASS'
+
+      - name: Guard user wording and safe size strategy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iss=Get-Content packaging/windows/installer/SOKNA-v4.iss -Raw
+          foreach($bad in @('به‌روزرسانی پوسته','بازاعمال پوسته','نسخه پوسته','فایل‌های پوسته','Maintenance Shell Update')){if($iss.Contains($bad)){throw "Obsolete user-facing shell wording remains: $bad"}}
+          foreach($required in @('به‌روزرسانی سرویس‌های ویندوزی','بازاعمال سرویس‌های ویندوزی','Compression=lzma2/ultra64','SolidCompression=yes')){if(-not$iss.Contains($required)){throw "Required R7 installer wording/compression contract missing: $required"}}
+          $active=@(
+            'packaging/windows/scripts/build-installer-v4.ps1',
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj',
+            'packaging/windows/setup-ui/Sokna.SetupUi.csproj',
+            'packaging/windows/setup-host-v3/Sokna.SetupHostV3.csproj'
+          )
+          foreach($p in $active){$raw=Get-Content $p -Raw;if($raw-match'PublishTrimmed\s*=\s*true|<PublishTrimmed>true</PublishTrimmed>'){throw "Unsafe trimming is forbidden in R7 package path: $p"}}
+          $builder=Get-Content packaging/windows/scripts/build-installer-v4.ps1 -Raw
+          if(-not$builder.Contains('-p:EnableCompressionInSingleFile=true')){throw 'Bootstrap single-file compression is not enabled'}
+          Write-Host 'R7 wording and safe compression strategy: PASS'
+
+      - name: PS5.1 parser gate for exact packaged lifecycle scripts
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($p in @(
+            'packaging/windows/scripts/setup-windows-components-v5.ps1',
+            'packaging/windows/scripts/setup-windows-components-v7.ps1',
+            'packaging/windows/scripts/queue-local-slot-adoption-r7.ps1',
+            'packaging/windows/scripts/prepare-shell-payload-v4.ps1',
+            'packaging/windows/scripts/prepare-shell-payload-v6.ps1',
+            'packaging/windows/scripts/build-installer-v4.ps1')){
+            $tokens=$null;$errors=$null
+            [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors)
+            if($errors.Count){$errors|ForEach-Object{Write-Host $_.Message};throw "Windows PowerShell 5.1 parse failed: $p"}
+          }
+          Write-Host 'PS5.1 exact package parser gate: PASS'
+
+      - name: Download exact canonical KEEP component payloads
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-services-1.1.0-canonical-components-r3-baseline
+          path: recovered
+          github-token: ${{ github.token }}
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 38982932863
+
+      - name: Prove canonical KEEP bytes before composition
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Sha([string]$p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+          $checks=@{
+            'recovered/runtime/SoknaRuntimeService.exe'='26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd';
+            'recovered/print-worker/Service/Sokna.PrintAgent.Service.exe'='99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4';
+            'recovered/baseline-maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe'='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'
+          }
+          foreach($p in $checks.Keys){if((Sha $p)-ne$checks[$p]){throw "Canonical KEEP drift: $p"}}
+          Write-Host 'Runtime 1.0.5 / Print 6.2.9 / Recovery 0.1.1 canonical KEEP bytes: PASS'
+
+      - name: Publish only changed R7 and package-owned executables with safe single-file compression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $PWD 'out-r7-package'
+          New-Item -ItemType Directory -Path "$out/maintenance/app","$out/setup-ui","$out/setup-host" -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/maintenance/app"
+          if($LASTEXITCODE-ne0){throw 'R7 Supervisor publish failed'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/maintenance/app"
+          if($LASTEXITCODE-ne0){throw 'R7 Update Engine publish failed'}
+          dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/setup-ui"
+          if($LASTEXITCODE-ne0){throw 'Setup UI publish failed'}
+          dotnet publish packaging/windows/setup-host-v3/Sokna.SetupHostV3.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/setup-host"
+          if($LASTEXITCODE-ne0){throw 'Setup Host publish failed'}
+          Write-Host 'R7 changed/package-owned executable publish: PASS'
+
+      - name: Compose R7 durable-adoption shell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $PWD 'out-r7-package'
+          ./packaging/windows/scripts/prepare-shell-payload-v6.ps1 `
+            -RepoRoot $PWD.Path -OutputRoot "$out/shell" `
+            -RuntimeServiceExe (Resolve-Path recovered/runtime/SoknaRuntimeService.exe).Path `
+            -SetupHostExe "$out/setup-host/SoknaSetupHost.exe" `
+            -SetupUiExe "$out/setup-ui/SoknaSetupUi.exe" `
+            -PrintWorkerBundle (Resolve-Path recovered/print-worker).Path `
+            -MaintenanceAppBundle "$out/maintenance/app" `
+            -MaintenanceRecoveryBundle (Resolve-Path recovered/baseline-maintenance/recovery).Path `
+            -GitSha $env:GITHUB_SHA
+          if($LASTEXITCODE-ne0){throw 'R7 shell composition failed'}
+
+      - name: Verify shell identity, KEEP bytes and R7 transaction boundary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Sha([string]$p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+          $shell='out-r7-package/shell'
+          $checks=@{
+            "$shell/_payload/runtime/SoknaRuntimeService.exe"='26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd';
+            "$shell/_payload/print-worker/Service/Sokna.PrintAgent.Service.exe"='99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4';
+            "$shell/_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe"='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'
+          }
+          foreach($p in $checks.Keys){if((Sha $p)-ne$checks[$p]){throw "Composed KEEP payload drift: $p"}}
+          $sv=[Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path "$shell/_payload/maintenance/app/SoknaMaintenanceSupervisor.exe")).FileVersion
+          $ev=[Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path "$shell/_payload/maintenance/app/SoknaMaintenanceUpdateEngine.exe")).FileVersion
+          if(-not$sv.StartsWith('0.3.4')-or-not$ev.StartsWith('0.3.4')){throw "R7 Maintenance binary version mismatch: $sv / $ev"}
+          $wrapper=Get-Content "$shell/setup-windows-components-v4.ps1" -Raw
+          $queue=Get-Content "$shell/queue-local-slot-adoption-r7.ps1" -Raw
+          if(-not$wrapper.Contains('Windows component transaction has already committed')-and-not$wrapper.Contains('Windows component transaction has already')){throw 'R7 wrapper transaction-boundary contract missing'}
+          foreach($forbidden in @('control-plane.json','web-adapter.key','X-Sokna-Signature','/v1/local-slots/migrate')){if($queue.Contains($forbidden)){throw "R7 queue regressed to synchronous bootstrap transport: $forbidden"}}
+          $pm=Get-Content "$shell/payload-manifest.json" -Raw|ConvertFrom-Json
+          if($pm.package_version-ne'1.1.6'){throw 'R7 shell manifest package version mismatch'}
+          Write-Host 'R7 shell identity / KEEP / transaction boundary: PASS'
+
+      - name: Smoke-start compressed Supervisor executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $PWD 'out-r7-package/supervisor-smoke-data'
+          $exe=(Resolve-Path 'out-r7-package/shell/_payload/maintenance/app/SoknaMaintenanceSupervisor.exe').Path
+          $p=Start-Process $exe -ArgumentList @('--data-root',('"'+$root+'"'),'--port','18731') -PassThru -WindowStyle Hidden
+          try{
+            $deadline=[DateTime]::UtcNow.AddSeconds(20);$ready=$false
+            while([DateTime]::UtcNow-lt$deadline){
+              if($p.HasExited){throw "Compressed Supervisor exited early: $($p.ExitCode)"}
+              if(Test-Path (Join-Path $root 'control-plane.json') -PathType Leaf){$ready=$true;break}
+              Start-Sleep -Milliseconds 250
+            }
+            if(-not$ready){throw 'Compressed Supervisor did not reach descriptor startup smoke gate'}
+          } finally { try{Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}catch{} }
+          Write-Host 'Compressed Supervisor startup smoke: PASS'
+
+      - name: Build compressed 1.1.6 installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./packaging/windows/scripts/build-installer-v4.ps1 -ShellPayloadRoot (Resolve-Path 'out-r7-package/shell').Path -RepoRoot $PWD.Path
+          if($LASTEXITCODE-ne0){throw 'R7 installer build failed'}
+
+      - name: Size gate against released R6 and record breakdown
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $previous=[long]337893632
+          $installer=Get-Item 'packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.6.exe'
+          $build=Get-Content 'packaging/windows/installer/out-v4/INSTALLER_BUILD.json' -Raw|ConvertFrom-Json
+          $current=[long]$installer.Length
+          if($current-ge$previous){throw "R7 package did not reduce size. R6=$previous R7=$current"}
+          $saved=$previous-$current
+          $pct=[Math]::Round(($saved*100.0)/$previous,2)
+          $shell='out-r7-package/shell'
+          $rows=@()
+          foreach($item in @(
+            @{name='runtime';path="$shell/_payload/runtime/SoknaRuntimeService.exe"},
+            @{name='print-service';path="$shell/_payload/print-worker/Service/Sokna.PrintAgent.Service.exe"},
+            @{name='maintenance-supervisor';path="$shell/_payload/maintenance/app/SoknaMaintenanceSupervisor.exe"},
+            @{name='maintenance-engine';path="$shell/_payload/maintenance/app/SoknaMaintenanceUpdateEngine.exe"},
+            @{name='recovery-console';path="$shell/_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe"},
+            @{name='setup-ui';path="$shell/SoknaSetupUi.exe"},
+            @{name='setup-host';path="$shell/SoknaSetupHost.exe"})){
+            $f=Get-Item $item.path;$rows += [ordered]@{name=$item.name;size_bytes=[long]$f.Length;sha256=(Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+          }
+          [ordered]@{
+            format='sokna-windows-services-r7-package-qualification-v1';
+            package_version='1.1.6';source_git_sha=$env:GITHUB_SHA;
+            prior_r6_size_bytes=$previous;r7_size_bytes=$current;saved_bytes=$saved;reduction_percent=$pct;
+            installer_sha256=(Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant();
+            core_size_bytes=[long]$build.embedded_core_size_bytes;shell_payload_size_bytes=[long]$build.shell_payload_size_bytes;
+            runtime_print_recovery_carried_forward_exact=$true;publish_trimmed=$false;single_file_compression=$true;inno_compression='lzma2/ultra64+solid';
+            components=$rows;generated_at_utc=[DateTime]::UtcNow.ToString('o')
+          }|ConvertTo-Json -Depth 8|Set-Content 'out-r7-package/R7_PACKAGE_QUALIFICATION.json' -Encoding utf8
+          Write-Host "R6_BYTES=$previous"
+          Write-Host "R7_BYTES=$current"
+          Write-Host "SAVED_BYTES=$saved"
+          Write-Host "REDUCTION_PERCENT=$pct"
+
+      - name: Expand built core and verify packaged bytes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Sha([string]$p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+          $core=(Resolve-Path 'packaging/windows/installer/out-v4/core/SOKNA-Windows-Services-Core-1.1.6.exe').Path
+          $dest=Join-Path $PWD 'out-r7-package/expanded-core'
+          $log=Join-Path $PWD 'out-r7-package/core-expand.log'
+          $p=Start-Process $core -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$dest+'"'),('/LOG="'+$log+'"')) -Wait -PassThru
+          if($p.ExitCode-ne0){throw "Core expansion failed: $($p.ExitCode)"}
+          $checks=@{
+            "$dest/_payload/runtime/SoknaRuntimeService.exe"='26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd';
+            "$dest/_payload/print-worker/Service/Sokna.PrintAgent.Service.exe"='99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4';
+            "$dest/_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe"='85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9'
+          }
+          foreach($path in $checks.Keys){if((Sha $path)-ne$checks[$path]){throw "Expanded core KEEP drift: $path"}}
+          foreach($required in @('queue-local-slot-adoption-r7.ps1','setup-windows-components-core-v5.ps1','local-slot-bootstrap-contract-v1.json')){if(-not(Test-Path (Join-Path $dest $required)-PathType Leaf){throw "Expanded R7 core missing: $required"}}
+          Write-Host 'Expanded installer packaged-byte verification: PASS'
+
+      - name: Upload R7 package candidate and qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-services-1.1.6-r7-qualified-candidate
+          path: |
+            packaging/windows/installer/out-v4/SOKNA-Windows-Services-Setup-1.1.6.exe
+            packaging/windows/installer/out-v4/INSTALLER_BUILD.json
+            out-r7-package/R7_PACKAGE_QUALIFICATION.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
