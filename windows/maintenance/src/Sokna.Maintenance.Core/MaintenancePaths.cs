@@ -23,6 +23,9 @@ public sealed record MaintenancePaths(string DataRoot)
     public string ReleaseSequenceStatePath => Path.Combine(UpdateRoot, "release-sequence.json");
     public string LocalSlotStateRoot => Path.Combine(DataRoot, "local-slots");
     public string LocalSlotStatePath => Path.Combine(LocalSlotStateRoot, "phase3-state.json");
+    public string BootstrapRoot => Path.Combine(DataRoot, "bootstrap");
+    public string LocalSlotAdoptionRequestPath => Path.Combine(BootstrapRoot, "local-slot-adoption-request.json");
+    public string LocalSlotAdoptionStatusPath => Path.Combine(BootstrapRoot, "local-slot-adoption-status.json");
 
     public static string DefaultDataRoot()
     {
