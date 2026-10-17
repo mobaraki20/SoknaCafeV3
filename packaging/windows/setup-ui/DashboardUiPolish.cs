@@ -134,12 +134,13 @@ internal static class DashboardUiPolish
     {
         root.ControlAdded += (_, eventArgs) =>
         {
-            if (eventArgs.Control is Label label)
+            if (eventArgs.Control is not Control added) return;
+            if (added is Label label)
             {
                 NormalizeLabel(label);
                 label.TextChanged += (_, _) => NormalizeLabel(label);
             }
-            AttachDynamicNormalization(eventArgs.Control);
+            AttachDynamicNormalization(added);
         };
         var children = root.Controls.Cast<Control>().ToArray();
         foreach (var child in children)
