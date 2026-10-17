@@ -1,0 +1,132 @@
+name: CI Maintenance V4 R8 Home Legacy State Transition
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r8-php-slot-root
+    paths:
+      - '.github/workflows/ci-maintenance-v4-r8-home-legacy-state-transition.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  home-transition:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    env:
+      PRODUCT_SHA: d11e615ba85d986926dc3219c884ce63c5bfd04d
+    steps:
+      - name: Checkout exact qualified R8 product source
+        uses: actions/checkout@v4
+        with:
+          ref: d11e615ba85d986926dc3219c884ce63c5bfd04d
+
+      - name: Real Windows safe legacy-state archival and fail-closed regression
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Set-StrictMode -Version Latest
+          $head=(git rev-parse HEAD).Trim()
+          if($head-ne$env:PRODUCT_SHA){throw "Wrong product source: $head"}
+          $queue=(Resolve-Path 'packaging/windows/scripts/queue-local-slot-adoption-r8.ps1').Path
+          $common=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)
+          $maint=Join-Path $common 'SOKNA\Maintenance'
+          $slotRoot=Join-Path $maint 'local-slots'
+          $bootstrap=Join-Path $maint 'bootstrap'
+          $state=Join-Path $slotRoot 'migration-state.json'
+          $request=Join-Path $bootstrap 'local-slot-adoption-request.json'
+          $status=Join-Path $bootstrap 'local-slot-adoption-status.json'
+          $work=Join-Path $env:RUNNER_TEMP ('sokna-r8-home-transition-'+[guid]::NewGuid().ToString('N'))
+          $package=Join-Path $work 'SOKNA'
+          $web=Join-Path $package 'Web'
+          $infra=Join-Path $package 'Infrastructure\Apache24\bin'
+          $shell=Join-Path $work 'shell'
+          $tx=Join-Path $work 'tx'
+          $build='3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory'
+          $tree='b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a'
+          $count=497
+
+          function Clean-Service {
+            try{Stop-Service SoknaApache -Force -ErrorAction SilentlyContinue}catch{}
+            & "$env:SystemRoot\System32\sc.exe" delete SoknaApache *> $null
+            $global:LASTEXITCODE=0
+            Start-Sleep -Milliseconds 300
+          }
+          function Clean-State {
+            foreach($p in @($request,$status,$state)){if(Test-Path $p){Remove-Item $p -Force -ErrorAction SilentlyContinue}}
+            if(Test-Path (Join-Path $slotRoot 'history')){Remove-Item (Join-Path $slotRoot 'history') -Recurse -Force -ErrorAction SilentlyContinue}
+          }
+          function Write-Legacy([bool]$recovery,[string]$packageRoot,[string]$webRoot){
+            New-Item -ItemType Directory -Path $slotRoot -Force|Out-Null
+            [ordered]@{
+              format='sokna-local-slot-migration-state-v1';schema_version=1;phase='ROLLED_BACK';recovery_required=$recovery;
+              database_mutation_performed=$false;public_mutation_performed=$false;windows_reboot_required=$false;
+              expected_build=$build;expected_managed_files=$count;expected_managed_tree_sha256=$tree;
+              package_root=$packageRoot;stable_web_root=$webRoot;activation_performed=$true
+            }|ConvertTo-Json -Depth 8|Set-Content $state -Encoding UTF8
+          }
+          try {
+            Clean-Service;Clean-State
+            New-Item -ItemType Directory -Path $web,$infra,$shell,$tx -Force|Out-Null
+            Copy-Item "$env:SystemRoot\System32\cmd.exe" (Join-Path $infra 'httpd.exe') -Force
+            Set-Content (Join-Path $web 'VERSION.txt') $build -Encoding ASCII
+            $exe=(Resolve-Path (Join-Path $infra 'httpd.exe')).Path
+            & "$env:SystemRoot\System32\sc.exe" create SoknaApache binPath= ('"'+$exe+'"') start= demand | Out-Null
+            if($LASTEXITCODE-ne0){throw 'Fixture SoknaApache service creation failed'}
+
+            [ordered]@{format='sokna-local-slot-bootstrap-contract-v1';schema_version=1;database_mutation=$false;public_mutation=$false;windows_reboot_required=$false;entries=@([ordered]@{build=$build;managed_files=$count;managed_tree_sha256=$tree})}|ConvertTo-Json -Depth 8|Set-Content (Join-Path $shell 'local-slot-bootstrap-contract-v1.json') -Encoding UTF8
+            $plan=Join-Path $tx 'install-plan.json'
+            [ordered]@{format='sokna-windows-install-plan-v3';schema_version=3;transaction_id='r8-home-safe';correlation_id='r8-home-safe';setup_session_id='r8-home-safe';package_version='1.1.7';shell_root=$shell}|ConvertTo-Json -Depth 6|Set-Content $plan -Encoding UTF8
+
+            # SAFE exact real-Home shape: archive old ROLLED_BACK state and queue once.
+            Write-Legacy $false $package $web
+            & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $queue -PlanFile $plan
+            if($LASTEXITCODE-ne0){throw 'Safe Home-state queue invocation failed'}
+            if(Test-Path $state){throw 'Safe ROLLED_BACK state was not archived'}
+            if(-not(Test-Path $request -PathType Leaf)){throw 'R8 durable adoption request was not created'}
+            $archives=@(Get-ChildItem (Join-Path $slotRoot 'history') -Filter 'migration-state-r8-superseded-*.json' -File -ErrorAction SilentlyContinue)
+            if($archives.Count-ne1){throw "Expected exactly one archived legacy state, got $($archives.Count)"}
+            $q=Get-Content $request -Raw|ConvertFrom-Json
+            if($q.expected_build-ne$build-or[int]$q.expected_managed_files-ne$count-or$q.expected_managed_tree_sha256-ne$tree-or$q.source_package_version-ne'1.1.7'){throw 'Queued identity mismatch'}
+            $first=[IO.File]::ReadAllBytes($request)
+
+            # Repeated installer/adoption queue call is a no-op on the same request.
+            & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $queue -PlanFile $plan
+            if($LASTEXITCODE-ne0){throw 'Repeated R8 queue invocation failed'}
+            $second=[IO.File]::ReadAllBytes($request)
+            if([Convert]::ToBase64String($first)-ne[Convert]::ToBase64String($second)){throw 'Repeated invocation rewrote durable request'}
+            if(@(Get-ChildItem (Join-Path $slotRoot 'history') -Filter 'migration-state-r8-superseded-*.json' -File).Count-ne1){throw 'Repeated invocation duplicated legacy archive'}
+
+            # UNSAFE legacy state: must stay untouched and must not create a request.
+            Remove-Item $request -Force
+            $beforeArchiveCount=@(Get-ChildItem (Join-Path $slotRoot 'history') -Filter 'migration-state-r8-superseded-*.json' -File).Count
+            Write-Legacy $true $package $web
+            & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $queue -PlanFile $plan
+            if($LASTEXITCODE-ne0){throw 'Unsafe-state fail-closed helper should return safely after Windows commit'}
+            if(-not(Test-Path $state -PathType Leaf)){throw 'Unsafe migration state was modified/archived'}
+            if(Test-Path $request){throw 'Unsafe migration state incorrectly produced an adoption request'}
+            $afterArchiveCount=@(Get-ChildItem (Join-Path $slotRoot 'history') -Filter 'migration-state-r8-superseded-*.json' -File).Count
+            if($afterArchiveCount-ne$beforeArchiveCount){throw 'Unsafe state changed archive history'}
+
+            [ordered]@{
+              format='sokna-r8-home-legacy-state-transition-v1';product_git_sha=$env:PRODUCT_SHA;
+              safe_rolled_back_state_archived_once=$true;durable_request_queued=$true;repeated_invocation_idempotent=$true;
+              unsafe_state_fail_closed=$true;database_mutation_performed=$false;public_mutation_performed=$false;windows_reboot_required=$false;
+              completed_at_utc=[DateTime]::UtcNow.ToString('o')
+            }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $work 'R8_HOME_LEGACY_STATE_TRANSITION.json') -Encoding UTF8
+            Copy-Item (Join-Path $work 'R8_HOME_LEGACY_STATE_TRANSITION.json') "$env:GITHUB_WORKSPACE\R8_HOME_LEGACY_STATE_TRANSITION.json" -Force
+            Write-Host 'R8 exact Home legacy-state transition: PASS'
+          }
+          finally {
+            Clean-Service
+            foreach($p in @($request,$status,$state)){if(Test-Path $p){Remove-Item $p -Force -ErrorAction SilentlyContinue}}
+          }
+
+      - name: Upload exact Home-transition evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-r8-home-legacy-state-transition-evidence
+          path: R8_HOME_LEGACY_STATE_TRANSITION.json
+          if-no-files-found: error
+          retention-days: 30
