@@ -1,0 +1,230 @@
+name: CI Maintenance V4 R6 Production Bridge Failure Matrix
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-production-local-migration-bridge-r6
+    paths:
+      - windows/maintenance/qualification/apply-r6-production-bridge-hardening.py
+      - .github/workflows/ci-maintenance-v4-r6-production-bridge-failure-matrix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  failure-matrix:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Apply R6 idempotency/crash-recovery hardening
+        shell: pwsh
+        run: python windows/maintenance/qualification/apply-r6-production-bridge-hardening.py
+
+      - name: Build product and Windows fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj -c Release
+          if($LASTEXITCODE -ne 0){ throw 'Core build failed.' }
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE -ne 0){ throw 'Engine build failed.' }
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE -ne 0){ throw 'Supervisor build failed.' }
+          New-Item -ItemType Directory -Path out-r6/fake-apache/bin,out-r6/harness -Force | Out-Null
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.FakeApache/Sokna.Maintenance.FakeApache.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r6/fake-apache/bin
+          if($LASTEXITCODE -ne 0){ throw 'Fake Apache publish failed.' }
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.ProductionBridgeHarness/Sokna.Maintenance.ProductionBridgeHarness.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r6/harness
+          if($LASTEXITCODE -ne 0){ throw 'Bridge harness publish failed.' }
+
+      - name: Production bridge real Windows failure matrix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $harness=(Resolve-Path out-r6/harness/SoknaMaintenanceProductionBridgeHarness.exe).Path
+          $fakeExe=(Resolve-Path out-r6/fake-apache/bin/httpd.exe).Path
+          $fixtureRoot=Join-Path $PWD 'out-r6/fixtures'
+          New-Item -ItemType Directory -Path $fixtureRoot -Force|Out-Null
+
+          function Remove-SoknaApache {
+            try { Stop-Service SoknaApache -Force -ErrorAction SilentlyContinue } catch {}
+            & "$env:SystemRoot/System32/sc.exe" delete SoknaApache *> $null
+            $global:LASTEXITCODE=0
+            for($i=0;$i-lt40;$i++){
+              & "$env:SystemRoot/System32/sc.exe" query SoknaApache *> $null
+              if($LASTEXITCODE-ne0){$global:LASTEXITCODE=0;return}
+              Start-Sleep -Milliseconds 250
+            }
+            throw 'SoknaApache test service could not be deleted.'
+          }
+
+          function Assert-PhysicalWeb([string]$web){
+            if(-not(Test-Path $web -PathType Container)){throw "Physical Web missing: $web"}
+            $item=Get-Item $web -Force
+            if(($item.Attributes-band[IO.FileAttributes]::ReparsePoint)-ne0){throw "Expected physical Web, found reparse point: $web"}
+          }
+
+          function Assert-JunctionWeb([string]$web){
+            if(-not(Test-Path $web -PathType Container)){throw "Stable Web missing: $web"}
+            $item=Get-Item $web -Force
+            if(($item.Attributes-band[IO.FileAttributes]::ReparsePoint)-eq0){throw "Expected Web junction: $web"}
+          }
+
+          function New-Fixture([string]$name,[int]$port){
+            Remove-SoknaApache
+            $root=Join-Path $fixtureRoot $name
+            if(Test-Path $root){Remove-Item $root -Recurse -Force}
+            $package=Join-Path $root 'SOKNA'
+            $web=Join-Path $package 'Web'
+            $public=Join-Path $web 'public'
+            $resources=Join-Path $web 'resources'
+            $data=Join-Path $root 'maintenance-data'
+            $apache=Join-Path $root 'Apache24'
+            New-Item -ItemType Directory -Path $public,$resources,$data,(Join-Path $apache 'bin'),(Join-Path $apache 'conf') -Force|Out-Null
+            Copy-Item $fakeExe (Join-Path $apache 'bin/httpd.exe') -Force
+
+            $build='3.0.0-g6.2-workspace.999z-r6-production-bridge-fixture'
+            Set-Content (Join-Path $web 'VERSION.txt') $build -Encoding ascii
+            Set-Content (Join-Path $web 'app.txt') 'fixture-app' -Encoding ascii
+            Set-Content (Join-Path $public 'login.php') '<?php // fixture ?>' -Encoding ascii
+            Set-Content (Join-Path $web '.sokna-installation.json') '{"installation_id":"fixture-installation"}' -Encoding ascii
+            Set-Content (Join-Path $public 'local-recovery.php') '<?php // recovery ?>' -Encoding ascii
+            Set-Content (Join-Path $public 'local-update-runner.php') '<?php // update ?>' -Encoding ascii
+            Set-Content (Join-Path $package 'config.php') '<?php // persistent config ?>' -Encoding ascii
+            Set-Content (Join-Path $package 'install.lock') 'fixture-lock' -Encoding ascii
+            [ordered]@{format='sokna-local-managed-files-v1';schema_version=1;files=@('VERSION.txt','app.txt','public/login.php','resources/local-managed-files-v1.json')} | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $resources 'local-managed-files-v1.json') -Encoding utf8
+
+            $slashPublic=$public.Replace('\','/')
+            $slashInclude=(Join-Path $apache 'conf/sokna-local.conf').Replace('\','/')
+            @"
+          ServerRoot "$($apache.Replace('\','/'))"
+          # BEGIN SOKNA LOCAL MANAGED INCLUDE v1
+          Include "$slashInclude"
+          # END SOKNA LOCAL MANAGED INCLUDE v1
+          "@ | Set-Content (Join-Path $apache 'conf/httpd.conf') -Encoding ascii
+            @"
+          # SOKNA-MANAGED-APACHE-VHOST v1
+          <VirtualHost *:$port>
+              DocumentRoot "$slashPublic"
+          </VirtualHost>
+          "@ | Set-Content (Join-Path $apache 'conf/sokna-local.conf') -Encoding ascii
+
+            $httpd=(Resolve-Path (Join-Path $apache 'bin/httpd.exe')).Path
+            & "$env:SystemRoot/System32/sc.exe" create SoknaApache binPath= ('"'+$httpd+'"') start= demand | Out-Null
+            if($LASTEXITCODE-ne0){throw 'SoknaApache fixture registration failed.'}
+            Start-Service SoknaApache
+            (Get-Service SoknaApache).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running,[TimeSpan]::FromSeconds(10))
+            $digest=(& $harness digest $web 4).Trim()
+            if($LASTEXITCODE-ne0-or$digest.Length-ne64){throw 'Fixture managed-tree digest failed.'}
+            return [pscustomobject]@{Root=$root;Package=$package;Web=$web;Data=$data;Apache=$apache;Build=$build;Digest=$digest;Port=$port}
+          }
+
+          try {
+            Write-Host '=== CASE 1: healthy physical Web -> production slot migration ==='
+            $f=New-Fixture 'success' 18181
+            $legacy=Join-Path $f.Data 'local-slots/phase3-state.json'
+            New-Item -ItemType Directory -Path (Split-Path $legacy -Parent) -Force|Out-Null
+            Set-Content $legacy '{"historical":"phase3","recovery_required":true}' -Encoding ascii
+            $json=& $harness migrate $f.Data $f.Build 4 $f.Digest none
+            if($LASTEXITCODE-ne0){throw 'Production migration success case failed.'}
+            $r=$json|ConvertFrom-Json
+            if(-not$r.ok-or$r.phase-ne'COMMITTED'-or$r.database_mutation_performed-or$r.public_mutation_performed-or$r.windows_reboot_required-or$r.recovery_required){throw 'Success envelope invariants failed.'}
+            Assert-JunctionWeb $f.Web
+            if((Get-Service SoknaApache).Status-ne'Running'){throw 'Apache is not running after migration.'}
+            $statePath=Join-Path $f.Data 'local-slots/migration-state.json'
+            $s=Get-Content $statePath -Raw|ConvertFrom-Json
+            if($s.phase-ne'COMMITTED'-or$s.recovery_required-or-not$s.physical_web_backup-or-not(Test-Path $s.physical_web_backup)){throw 'Committed durable migration state invalid.'}
+            if(Test-Path $legacy){throw 'Legacy Phase3 state was not archived.'}
+            if(-not(Get-ChildItem (Join-Path $f.Data 'local-slots/history') -Filter 'phase3-state-*.json' -ErrorAction SilentlyContinue)){throw 'Legacy Phase3 history evidence missing.'}
+            $backupBefore=[string]$s.physical_web_backup
+
+            Write-Host '=== CASE 2: idempotent rerun preserves physical backup evidence ==='
+            $json2=& $harness migrate $f.Data $f.Build 4 $f.Digest none
+            if($LASTEXITCODE-ne0){throw 'Idempotent production migration rerun failed.'}
+            $s2=Get-Content $statePath -Raw|ConvertFrom-Json
+            if([string]$s2.physical_web_backup-ne$backupBefore){throw 'Idempotent rerun lost physical backup reference.'}
+            Assert-JunctionWeb $f.Web
+
+            Write-Host '=== CASE 3: Web missing + Apache stopped -> recovery without Local Web ==='
+            Stop-Service SoknaApache -Force
+            (Get-Service SoknaApache).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(10))
+            [IO.Directory]::Delete($f.Web,$false)
+            if(Test-Path $f.Web){throw 'Failed to remove stable Web junction for recovery test.'}
+            $recoveryJson=& $harness recover $f.Data
+            if($LASTEXITCODE-ne0){throw 'Web-down production recovery failed.'}
+            $rr=$recoveryJson|ConvertFrom-Json
+            if(-not$rr.ok-or$rr.recovery_required-or$rr.database_mutation_performed-or$rr.public_mutation_performed-or$rr.windows_reboot_required){throw 'Recovery envelope invariants failed.'}
+            Assert-PhysicalWeb $f.Web
+            if((Get-Service SoknaApache).Status-ne'Running'){throw 'Apache is not running after Web-down recovery.'}
+
+            Write-Host '=== CASE 4: injected post-pointer failure -> automatic rollback ==='
+            $f=New-Fixture 'rollback' 18182
+            & $harness migrate $f.Data $f.Build 4 $f.Digest 'throw:after_pointer_switch' *> (Join-Path $f.Root 'expected-failure.txt')
+            $failureCode=$LASTEXITCODE; $global:LASTEXITCODE=0
+            if($failureCode-eq0){throw 'Injected activation failure unexpectedly succeeded.'}
+            Assert-PhysicalWeb $f.Web
+            $s=Get-Content (Join-Path $f.Data 'local-slots/migration-state.json') -Raw|ConvertFrom-Json
+            if($s.phase-ne'ROLLED_BACK'-or$s.recovery_required){throw 'Automatic rollback state invalid.'}
+            if((Get-Service SoknaApache).Status-ne'Running'){throw 'Apache is not running after automatic rollback.'}
+
+            Write-Host '=== CASE 5: abrupt death after physical move -> durable next-run recovery ==='
+            $f=New-Fixture 'crash-recovery' 18183
+            & $harness migrate $f.Data $f.Build 4 $f.Digest 'failfast:after_physical_move' *> (Join-Path $f.Root 'expected-crash.txt')
+            $crashCode=$LASTEXITCODE; $global:LASTEXITCODE=0
+            if($crashCode-eq0){throw 'Abrupt-death fixture unexpectedly succeeded.'}
+            if(Test-Path $f.Web){throw 'Abrupt-death fixture should leave stable Web absent after physical move.'}
+            $s=Get-Content (Join-Path $f.Data 'local-slots/migration-state.json') -Raw|ConvertFrom-Json
+            if($s.phase-ne'PHYSICAL_WEB_BACKED_UP'-or-not(Test-Path $s.physical_web_backup)){throw 'Crash durable state/backup evidence invalid.'}
+            $recover=& $harness recover $f.Data
+            if($LASTEXITCODE-ne0){throw 'Crash recovery failed.'}
+            Assert-PhysicalWeb $f.Web
+            if((Get-Service SoknaApache).Status-ne'Running'){throw 'Apache is not running after crash recovery.'}
+
+            Write-Host '=== CASE 6: unhealthy baseline -> zero activation ==='
+            $f=New-Fixture 'baseline-unhealthy' 18184
+            Stop-Service SoknaApache -Force
+            (Get-Service SoknaApache).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(10))
+            & $harness migrate $f.Data $f.Build 4 $f.Digest none *> (Join-Path $f.Root 'expected-preflight-failure.txt')
+            $preflightCode=$LASTEXITCODE; $global:LASTEXITCODE=0
+            if($preflightCode-eq0){throw 'Unhealthy baseline unexpectedly migrated.'}
+            Assert-PhysicalWeb $f.Web
+            if(Test-Path (Join-Path $f.Data 'local-slots/migration-state.json')){throw 'Unhealthy baseline created migration state before health proof.'}
+            if(Test-Path (Join-Path $f.Package 'LocalWeb/pre-slot')){
+              $backups=@(Get-ChildItem (Join-Path $f.Package 'LocalWeb/pre-slot') -Directory -ErrorAction SilentlyContinue)
+              if($backups.Count-ne0){throw 'Unhealthy baseline created a physical backup.'}
+            }
+
+            Write-Host 'R6 PRODUCTION LOCAL MIGRATION FAILURE MATRIX: PASS'
+          }
+          finally {
+            Remove-SoknaApache
+          }
+
+      - name: Prove unrelated Windows components are outside bridge lifecycle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $bridge=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigration.cs -Raw
+          $coord=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs -Raw
+          foreach($name in @('SoknaRuntime','SoknaPrintWorker')){
+            if($bridge.Contains($name)-or$coord.Contains($name)){throw "Production bridge illegally references unrelated service: $name"}
+          }
+          if(-not$bridge.Contains('SoknaApache')){throw 'Production bridge does not explicitly scope lifecycle to SoknaApache.'}
+
+      - name: Commit failure-matrix-qualified hardening
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add windows/maintenance/src/Sokna.Maintenance.Core/ProductionLocalSlotMigration.cs
+          if(-not(git diff --cached --quiet)){
+            git commit -m 'fix(maintenance): harden production Local migration idempotency and recovery'
+            git push origin HEAD
+          }
