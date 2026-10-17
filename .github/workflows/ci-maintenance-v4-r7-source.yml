@@ -35,6 +35,14 @@ jobs:
           if($LASTEXITCODE-ne0){throw 'Update Engine build failed'}
           dotnet build windows/maintenance/tests/Sokna.Maintenance.ProductionBridgeHarness/Sokna.Maintenance.ProductionBridgeHarness.csproj -c Release
           if($LASTEXITCODE-ne0){throw 'Production bridge harness build failed'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'R7 reliability harness build failed'}
+      - name: Run R7 durable adoption harness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release --no-build
+          if($LASTEXITCODE-ne0){throw 'R7 reliability harness failed'}
       - name: Windows PowerShell 5.1 parser gate
         shell: powershell
         run: |
@@ -48,4 +56,4 @@ jobs:
             [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors)
             if($errors.Count){$errors|ForEach-Object{Write-Host $_.Message};throw "PS5.1 parse failed: $p"}
           }
-          Write-Host 'R7 source + PS5.1 parser gate: PASS'
+          Write-Host 'R7 source + durable adoption harness + PS5.1 parser gate: PASS'
