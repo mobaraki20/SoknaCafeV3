@@ -125,7 +125,7 @@ try{
   $request.Headers.Add('X-Sokna-Idempotency-Key',$idempotency)
   $request.ContentLength=$bodyBytes.Length
   $stream=$request.GetRequestStream();try{$stream.Write($bodyBytes,0,$bodyBytes.Length)}finally{$stream.Dispose()}
-  try{$response=$request.GetResponse()}catch[Net.WebException]{if($_.Exception.Response){$response=$_.Exception.Response}else{throw}}
+  try{$response=$request.GetResponse()}catch [Net.WebException]{if($_.Exception.Response){$response=$_.Exception.Response}else{throw}}
   $status=[int]$response.StatusCode
   $reader=New-Object IO.StreamReader($response.GetResponseStream(),[Text.Encoding]::UTF8)
   try{$responseText=$reader.ReadToEnd()}finally{$reader.Dispose();$response.Dispose()}
