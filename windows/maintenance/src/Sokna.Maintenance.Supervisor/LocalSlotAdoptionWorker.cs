@@ -94,7 +94,24 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
         if (request is null) return;
 
         var status = _queue.EnsurePending(request);
-        if (LocalSlotAdoptionQueue.IsTerminal(status.State)) return;
+        if (LocalSlotAdoptionQueue.IsTerminal(status.State))
+        {
+            if (status.State is "recovery_required" or "failed_terminal")
+            {
+                var reconciled = _queue.TryReconcileVerifiedRecovery();
+                if (reconciled is { State: "committed" })
+                {
+                    Journal("update.local_adoption.recovery_reconciled", new Dictionary<string, object?>
+                    {
+                        ["request_id"] = request.RequestId,
+                        ["attempt_count"] = reconciled.AttemptCount,
+                        ["result_code"] = reconciled.LastCode,
+                        ["activation_performed"] = true
+                    });
+                }
+            }
+            return;
+        }
         if (status.State == "retry_wait" && status.NextAttemptAtUtc is { } next && next > DateTimeOffset.UtcNow) return;
 
         var attempt = checked(status.AttemptCount + 1);
