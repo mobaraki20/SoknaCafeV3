@@ -1,0 +1,64 @@
+name: Apply P3 R3 Lifecycle Version Contract Fix
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+    paths:
+      - .github/workflows/apply-p3-r3-lifecycle-version-contract-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: work/maintenance-v4-windows-p3-home-package-r3
+      - name: Reconcile privileged semantic version source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('packaging/windows/scripts/setup-windows-components-v5.ps1')
+          s=p.read_text(encoding='utf-8')
+          old="function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($p).ProductVersion;if(-not$v){$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion};if($v){return ([string]$v).Split('+')[0]};''}"
+          new="function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$info=[Diagnostics.FileVersionInfo]::GetVersionInfo($p);$v=$info.FileVersion;if(-not$v){$v=$info.ProductVersion};if($v){return ([string]$v).Split('+')[0]};''}"
+          if old not in s:
+              if new in s:
+                  print('Version contract already reconciled.')
+              else:
+                  raise SystemExit('VersionOf marker missing')
+          else:
+              s=s.replace(old,new,1)
+              p.write_text(s,encoding='utf-8',newline='\n')
+              print('Privileged FileVersion-first contract applied.')
+          PY
+      - name: Verify constrained patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'function VersionOf' packaging/windows/scripts/setup-windows-components-v5.ps1
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('packaging/windows/scripts/setup-windows-components-v5.ps1').read_text(encoding='utf-8')
+          line=next(x for x in s.splitlines() if x.startswith('function VersionOf'))
+          if line.find('.FileVersion') < 0 or line.find('.ProductVersion') < 0 or line.find('.FileVersion') > line.find('.ProductVersion'):
+              raise SystemExit('FileVersion-first lifecycle contract not present')
+          PY
+          git diff --check
+          git diff -- packaging/windows/scripts/setup-windows-components-v5.ps1
+      - name: Commit source fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packaging/windows/scripts/setup-windows-components-v5.ps1
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'fix(maintenance): use FileVersion for privileged lifecycle planning'
+          git push origin HEAD:work/maintenance-v4-windows-p3-home-package-r3
