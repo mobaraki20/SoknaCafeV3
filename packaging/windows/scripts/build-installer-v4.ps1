@@ -32,7 +32,7 @@ $core=Get-ChildItem $coreOut -Filter "SOKNA-Windows-Services-Core-$version.exe" 
 if(-not$core){throw 'Elevated core installer executable was not produced.'}
 $corePath=$core.FullName
 $project=Join-Path $RepoRoot 'packaging\windows\installer-bootstrap\Sokna.InstallerBootstrap.csproj'
-& dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true "-p:CoreInstallerPath=$corePath" -o $bootstrapOut
+& dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false "-p:CoreInstallerPath=$corePath" -o $bootstrapOut
 if($LASTEXITCODE-ne0){throw 'Pre-elevation installer bootstrap publish failed.'}
 $raw=Join-Path $bootstrapOut 'SOKNA-Windows-Services-Setup.exe'
 if(-not(Test-Path $raw -PathType Leaf)){throw 'Pre-elevation setup executable was not produced.'}
@@ -40,17 +40,23 @@ $final=Join-Path $out "SOKNA-Windows-Services-Setup-$version.exe"
 Move-Item $raw $final -Force
 $sha=(Get-FileHash $final -Algorithm SHA256).Hash.ToLowerInvariant()
 $coreSha=(Get-FileHash $corePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$shellBytes=[long](Get-ChildItem $ShellPayloadRoot -Recurse -File|Measure-Object Length -Sum).Sum
 [ordered]@{
   format='sokna-windows-services-installer-v4-build';
   package_version=$version;
   distributable=[IO.Path]::GetFileName($final);
   distributable_sha256=$sha;
+  distributable_size_bytes=[long](Get-Item $final).Length;
   bootstrap_pre_elevation_logging=$true;
+  bootstrap_single_file_compression=$true;
   embedded_core=[IO.Path]::GetFileName($corePath);
   embedded_core_sha256=$coreSha;
+  embedded_core_size_bytes=[long](Get-Item $corePath).Length;
+  shell_payload_size_bytes=$shellBytes;
   shell_manifest_sha256=(Get-FileHash $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant();
   source_git_sha=$(try{(& git -C $RepoRoot rev-parse HEAD).Trim()}catch{'unknown'});
   generated_at_utc=[DateTime]::UtcNow.ToString('o')
 }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $out 'INSTALLER_BUILD.json') -Encoding UTF8
 Write-Host "SOKNA Windows Services installer v4 complete: $final"
 Write-Host "SHA256=$sha"
+Write-Host "SIZE_BYTES=$((Get-Item $final).Length)"
