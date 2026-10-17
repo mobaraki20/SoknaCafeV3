@@ -1,0 +1,31 @@
+name: Windows Services 1.1.11 Badge Source Contract
+
+on:
+  push:
+    branches:
+      - work/windows-services-unified-installer-diagnostics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  badge-source-contract:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require direct canonical manifest badge with no stale release literal
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $path='packaging/windows/setup-ui/DashboardV3.cs'
+          $raw=Get-Content -LiteralPath $path -Raw
+          $required='Text = DashboardPackageVersionBinder.BadgeText(shellRoot)'
+          if(-not$raw.Contains($required)){throw 'Dashboard badge is not bound directly to canonical manifest'}
+          foreach($stale in @('Windows Services 1.1.0','Windows Services 1.1.6')){
+            if($raw.Contains($stale)){throw "Stale dashboard package badge literal remains: $stale"}
+          }
+          $entry=Get-Content -LiteralPath 'packaging/windows/setup-ui/DashboardEntryV4.cs' -Raw
+          if(-not$entry.Contains('package-badge-mismatch')){throw 'Painted badge mismatch gate missing'}
+          if(-not$entry.Contains('BADGE=')){throw 'Painted badge evidence missing'}
+          Write-Host 'Direct canonical badge source contract PASS'
