@@ -1,0 +1,58 @@
+name: CI Maintenance V4 R7 Supervisor Process
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r7-reliability-reset
+    paths:
+      - 'windows/maintenance/src/**'
+      - 'windows/maintenance/tests/Sokna.Maintenance.FakeApache/**'
+      - 'windows/maintenance/tests/Sokna.Maintenance.ProductionBridgeHarness/**'
+      - 'windows/maintenance/qualification/r7-supervisor-process-integration.ps1'
+      - '.github/workflows/ci-maintenance-v4-r7-supervisor-process.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  process:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish real Supervisor Engine and fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path out-r7/supervisor,out-r7/fake-apache,out-r7/bridge-harness -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r7/supervisor
+          if($LASTEXITCODE-ne0){throw 'Supervisor publish failed'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r7/supervisor
+          if($LASTEXITCODE-ne0){throw 'Update Engine publish failed'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.FakeApache/Sokna.Maintenance.FakeApache.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r7/fake-apache
+          if($LASTEXITCODE-ne0){throw 'Fake Apache publish failed'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.ProductionBridgeHarness/Sokna.Maintenance.ProductionBridgeHarness.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o out-r7/bridge-harness
+          if($LASTEXITCODE-ne0){throw 'Bridge harness publish failed'}
+
+      - name: Real Supervisor startup and restart-resume integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./windows/maintenance/qualification/r7-supervisor-process-integration.ps1 `
+            -SupervisorExe (Resolve-Path out-r7/supervisor/SoknaMaintenanceSupervisor.exe).Path `
+            -FakeApacheExe (Resolve-Path out-r7/fake-apache/httpd.exe).Path `
+            -HarnessExe (Resolve-Path out-r7/bridge-harness/SoknaMaintenanceProductionBridgeHarness.exe).Path `
+            -WorkspaceRoot (Join-Path $PWD 'out-r7/process-integration')
+          if($LASTEXITCODE-ne0){throw 'R7 Supervisor process integration failed'}
+
+      - name: Upload process integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-r7-supervisor-process-evidence
+          path: out-r7/process-integration/R7_SUPERVISOR_PROCESS_INTEGRATION.json
+          if-no-files-found: error
+          retention-days: 30
