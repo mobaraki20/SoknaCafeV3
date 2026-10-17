@@ -1,0 +1,51 @@
+name: CI Maintenance V4 R7 Source
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r7-reliability-reset
+    paths:
+      - 'windows/maintenance/**'
+      - 'packaging/windows/scripts/setup-windows-components-v7.ps1'
+      - 'packaging/windows/scripts/queue-local-slot-adoption-r7.ps1'
+      - 'packaging/windows/scripts/prepare-shell-payload-v6.ps1'
+      - '.github/workflows/ci-maintenance-v4-r7-source.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Maintenance Core Supervisor Engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Core build failed'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Supervisor build failed'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Update Engine build failed'}
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.ProductionBridgeHarness/Sokna.Maintenance.ProductionBridgeHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'Production bridge harness build failed'}
+      - name: Windows PowerShell 5.1 parser gate
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($p in @(
+            'packaging/windows/scripts/setup-windows-components-v7.ps1',
+            'packaging/windows/scripts/queue-local-slot-adoption-r7.ps1',
+            'packaging/windows/scripts/prepare-shell-payload-v6.ps1'
+          )){
+            $tokens=$null;$errors=$null
+            [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors)
+            if($errors.Count){$errors|ForEach-Object{Write-Host $_.Message};throw "PS5.1 parse failed: $p"}
+          }
+          Write-Host 'R7 source + PS5.1 parser gate: PASS'
