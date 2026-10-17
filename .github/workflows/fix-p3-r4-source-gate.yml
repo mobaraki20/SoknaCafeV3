@@ -1,0 +1,36 @@
+name: Fix P3 R4 Source Gate
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r4
+    paths:
+      - .github/workflows/fix-p3-r4-source-gate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/maintenance-v4-windows-p3-home-package-r4
+          fetch-depth: 0
+      - name: Patch exact scope expression
+        shell: pwsh
+        run: |
+          $p='.github/workflows/ci-maintenance-v4-windows-p3-r4-source.yml'
+          $t=Get-Content $p -Raw
+          $old='$changed=@(git diff --name-only $base..HEAD | Where-Object'
+          $new='$changed=@(git diff --name-only "${base}..HEAD" | Where-Object'
+          if(-not$t.Contains($old)){throw 'Scope expression anchor not found.'}
+          $t=$t.Replace($old,$new)
+          Set-Content $p $t -Encoding utf8
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $p
+          git diff --cached --check
+          git commit -m 'ci(maintenance): fix R4 scope range parsing'
+          git push origin HEAD:work/maintenance-v4-windows-p3-home-package-r4
