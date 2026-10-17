@@ -1,18 +1,9 @@
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 namespace Sokna.SetupUi;
 
 internal static class DashboardPackageVersionBinder
 {
-    private static bool applied;
-
-    [ModuleInitializer]
-    internal static void Initialize()
-    {
-        Application.Idle += OnIdle;
-    }
-
     internal static string ReadCanonicalPackageVersion(string shellRoot)
     {
         var manifestPath = Path.Combine(Path.GetFullPath(shellRoot), ComponentUpdatePlanner.ManifestFileName);
@@ -22,7 +13,8 @@ internal static class DashboardPackageVersionBinder
             using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
             var root = doc.RootElement;
             if (root.GetProperty("format").GetString() != "sokna-windows-component-manifest-v2") return "unknown";
-            return root.GetProperty("package_version").GetString() ?? "unknown";
+            var version = root.GetProperty("package_version").GetString();
+            return string.IsNullOrWhiteSpace(version) ? "unknown" : version.Trim();
         }
         catch
         {
@@ -30,34 +22,27 @@ internal static class DashboardPackageVersionBinder
         }
     }
 
+    internal static string BadgeText(string shellRoot)
+        => "Windows Services " + ReadCanonicalPackageVersion(shellRoot);
+
     internal static bool Apply(Control root, string packageVersion)
     {
+        var labels = Descendants(root).OfType<Label>().ToArray();
         var changed = false;
-        foreach (var label in Descendants(root).OfType<Label>())
+        foreach (var label in labels)
         {
             if (!label.Text.StartsWith("Windows Services ", StringComparison.Ordinal)) continue;
-            label.Text = "Windows Services " + packageVersion;
+            var target = "Windows Services " + packageVersion;
+            if (!string.Equals(label.Text, target, StringComparison.Ordinal)) label.Text = target;
             changed = true;
         }
         return changed;
     }
 
-    private static void OnIdle(object? sender, EventArgs e)
-    {
-        if (applied) return;
-        var version = ReadCanonicalPackageVersion(AppContext.BaseDirectory);
-        foreach (Form form in Application.OpenForms)
-        {
-            if (!Apply(form, version)) continue;
-            applied = true;
-            Application.Idle -= OnIdle;
-            break;
-        }
-    }
-
     private static IEnumerable<Control> Descendants(Control root)
     {
-        foreach (Control child in root.Controls)
+        var children = root.Controls.Cast<Control>().ToArray();
+        foreach (var child in children)
         {
             yield return child;
             foreach (var nested in Descendants(child)) yield return nested;
