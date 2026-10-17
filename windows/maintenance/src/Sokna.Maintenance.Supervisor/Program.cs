@@ -66,6 +66,7 @@ builder.Services.AddSingleton(productionMigrationCoordinator);
 builder.Services.AddSingleton<IProductionLocalSlotMigrationCoordinator>(productionMigrationCoordinator);
 builder.Services.AddSingleton(journal);
 builder.Services.AddSingleton(state);
+builder.Services.AddSingleton(LocalSlotAdoptionWorkerOptions.Default);
 builder.Services.AddHostedService<LocalSlotAdoptionWorker>();
 var app = builder.Build();
 
