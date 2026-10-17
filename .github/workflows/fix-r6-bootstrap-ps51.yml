@@ -1,0 +1,41 @@
+name: Fix R6 Bootstrap PS51
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-production-local-migration-bridge-r6
+    paths:
+      - .github/workflows/fix-r6-bootstrap-ps51.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fix typed catch and validate PS51 parser
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='packaging/windows/scripts/bootstrap-local-slot-r6.ps1'
+          $t=Get-Content -LiteralPath $p -Raw
+          $t=$t.Replace('catch[Net.WebException]','catch [Net.WebException]')
+          Set-Content -LiteralPath $p -Value $t -Encoding UTF8
+          $tokens=$null;$errors=$null
+          [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors)
+          if($errors.Count){$errors|ForEach-Object{Write-Host $_.Message};throw 'bootstrap PS5.1 parse still fails'}
+          $trigger='.github/workflows/ci-windows-services-1.1.5-r6-final-bootstrap.yml'
+          Add-Content -LiteralPath $trigger -Value "`n# retrigger after PS5.1 bootstrap parser fix"
+      - name: Commit fix and retrigger final qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packaging/windows/scripts/bootstrap-local-slot-r6.ps1 .github/workflows/ci-windows-services-1.1.5-r6-final-bootstrap.yml
+          git commit -m 'fix(installer): make R6 bootstrap PS5.1 typed catch compatible'
+          git push origin HEAD
