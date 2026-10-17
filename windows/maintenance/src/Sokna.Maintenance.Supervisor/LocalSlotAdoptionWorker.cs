@@ -3,37 +3,59 @@ using Sokna.Maintenance.Core;
 
 namespace Sokna.Maintenance.Supervisor;
 
+public sealed record LocalSlotAdoptionWorkerOptions(
+    int MaxAutomaticAttempts,
+    TimeSpan StartupDelay,
+    TimeSpan IdleDelay,
+    IReadOnlyList<TimeSpan> RetryDelays)
+{
+    public static LocalSlotAdoptionWorkerOptions Default { get; } = new(
+        MaxAutomaticAttempts: 8,
+        StartupDelay: TimeSpan.FromSeconds(1),
+        IdleDelay: TimeSpan.FromSeconds(3),
+        RetryDelays:
+        [
+            TimeSpan.FromSeconds(2),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromSeconds(20),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromMinutes(1),
+            TimeSpan.FromMinutes(2),
+            TimeSpan.FromMinutes(5)
+        ]);
+
+    public void Validate()
+    {
+        if (MaxAutomaticAttempts is < 1 or > 100) throw new InvalidDataException("Local adoption max automatic attempts is invalid.");
+        if (StartupDelay < TimeSpan.Zero || StartupDelay > TimeSpan.FromMinutes(5)) throw new InvalidDataException("Local adoption startup delay is invalid.");
+        if (IdleDelay < TimeSpan.FromMilliseconds(10) || IdleDelay > TimeSpan.FromMinutes(5)) throw new InvalidDataException("Local adoption idle delay is invalid.");
+        if (RetryDelays.Count == 0 || RetryDelays.Any(static d => d < TimeSpan.Zero || d > TimeSpan.FromHours(1)))
+            throw new InvalidDataException("Local adoption retry delay policy is invalid.");
+    }
+}
+
 public sealed class LocalSlotAdoptionWorker : BackgroundService
 {
-    private const int MaxAutomaticAttempts = 8;
-    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan[] RetryDelays =
-    [
-        TimeSpan.FromSeconds(2),
-        TimeSpan.FromSeconds(5),
-        TimeSpan.FromSeconds(10),
-        TimeSpan.FromSeconds(20),
-        TimeSpan.FromSeconds(30),
-        TimeSpan.FromMinutes(1),
-        TimeSpan.FromMinutes(2),
-        TimeSpan.FromMinutes(5)
-    ];
-
     private readonly LocalSlotAdoptionQueue _queue;
     private readonly IProductionLocalSlotMigrationCoordinator _coordinator;
     private readonly DurableJournal _journal;
     private readonly SupervisorState _supervisorState;
+    private readonly LocalSlotAdoptionWorkerOptions _options;
 
     public LocalSlotAdoptionWorker(
         LocalSlotAdoptionQueue queue,
         IProductionLocalSlotMigrationCoordinator coordinator,
         DurableJournal journal,
-        SupervisorState supervisorState)
+        SupervisorState supervisorState,
+        LocalSlotAdoptionWorkerOptions options)
     {
         _queue = queue;
         _coordinator = coordinator;
         _journal = journal;
         _supervisorState = supervisorState;
+        _options = options;
+        _options.Validate();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -41,7 +63,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
         // The worker is deliberately independent of the loopback HTTP listener. A persisted bootstrap
         // request is owned by Supervisor itself and must survive installer exit, browser closure and
         // Supervisor restarts. The first short delay avoids contending with service-start housekeeping.
-        await Delay(TimeSpan.FromSeconds(1), stoppingToken);
+        await Delay(_options.StartupDelay, stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -61,7 +83,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
                 });
             }
 
-            await Delay(IdleDelay, stoppingToken);
+            await Delay(_options.IdleDelay, stoppingToken);
         }
     }
 
@@ -76,7 +98,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
         if (status.State == "retry_wait" && status.NextAttemptAtUtc is { } next && next > DateTimeOffset.UtcNow) return;
 
         var attempt = checked(status.AttemptCount + 1);
-        if (attempt > MaxAutomaticAttempts)
+        if (attempt > _options.MaxAutomaticAttempts)
         {
             _queue.MarkFailedTerminal(
                 request,
@@ -182,7 +204,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
         bool activationPerformed,
         CancellationToken stoppingToken)
     {
-        if (activationPerformed || attempt >= MaxAutomaticAttempts)
+        if (activationPerformed || attempt >= _options.MaxAutomaticAttempts)
         {
             _queue.MarkFailedTerminal(request, attempt, operationId, code, message, activationPerformed);
             Journal("update.local_adoption.failed_terminal", new Dictionary<string, object?>
@@ -196,7 +218,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
             return;
         }
 
-        var delay = RetryDelays[Math.Min(attempt - 1, RetryDelays.Length - 1)];
+        var delay = _options.RetryDelays[Math.Min(attempt - 1, _options.RetryDelays.Count - 1)];
         var next = DateTimeOffset.UtcNow.Add(delay);
         _queue.MarkRetry(request, attempt, operationId, code, message, next);
         Journal("update.local_adoption.retry_scheduled", new Dictionary<string, object?>
@@ -207,7 +229,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
             ["result_code"] = code,
             ["next_attempt_at_utc"] = next
         });
-        await Delay(TimeSpan.FromMilliseconds(50), stoppingToken);
+        await Delay(TimeSpan.FromMilliseconds(10), stoppingToken);
     }
 
     private void Journal(string eventType, IReadOnlyDictionary<string, object?> data)
