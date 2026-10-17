@@ -2,15 +2,19 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Sokna.Maintenance.Core;
 
+const string EngineVersion = "0.3.6";
+
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
-    Console.WriteLine("SOKNA Maintenance Update Engine 0.3.5 (R8 sibling-release Local adoption bridge; DB mutation disabled)");
+    Console.WriteLine($"SOKNA Maintenance Update Engine {EngineVersion} (R8 sibling-release routine activation; DB mutation disabled)");
     Console.WriteLine("verify-stage --package <zip> --identity <json> [--data-root <path>]");
     Console.WriteLine("local-slot-inspect --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
     Console.WriteLine("local-slot-migrate --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
     Console.WriteLine("local-slot-recover [--data-root <path>]");
-    Console.WriteLine("local-slot-home-cycle --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>] (engineering legacy)");
-    Console.WriteLine("local-slot-activate --slot <path> --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
+    Console.WriteLine("local-slot-home-cycle --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
+    Console.WriteLine("local-slot-stage --source <path> --current-build <id> --current-managed-files <n> --current-managed-tree-sha256 <sha256> --target-build <id> --target-managed-files <n> --target-managed-tree-sha256 <sha256> [--data-root <path>]");
+    Console.WriteLine("local-slot-activate --slot <path> --current-build <id> --current-managed-files <n> --current-managed-tree-sha256 <sha256> --target-build <id> --target-managed-files <n> --target-managed-tree-sha256 <sha256> [--data-root <path>]");
+    Console.WriteLine("local-slot-recover-routine [--data-root <path>]");
     return;
 }
 
@@ -20,6 +24,7 @@ var dataRoot = options.TryGetValue("--data-root", out var dataRootText)
     ? Path.GetFullPath(dataRootText)
     : MaintenancePaths.DefaultDataRoot();
 var paths = new MaintenancePaths(dataRoot);
+var bridge = new ProductionLocalSlotMigrationBridge(paths);
 
 if (command == "verify-stage")
 {
@@ -31,64 +36,30 @@ if (command == "verify-stage")
 
 if (command == "local-slot-recover")
 {
-    try
-    {
-        var result = new ProductionLocalSlotMigrationBridge(paths).Recover();
-        Console.WriteLine(JsonSerializer.Serialize(new
-        {
-            ok = result.Ok,
-            engine_version = "0.3.5",
-            phase = result.Phase,
-            result,
-            managed_tree_sha256 = result.ManagedTreeSha256,
-            activation_performed = result.ActivationPerformed,
-            database_mutation_performed = false,
-            public_mutation_performed = false,
-            windows_reboot_required = false,
-            recovery_required = result.RecoveryRequired
-        }, AtomicFile.JsonOptions));
-    }
-    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or TimeoutException or AggregateException or System.ComponentModel.Win32Exception or InvalidOperationException)
-    {
-        Console.Error.WriteLine(JsonSerializer.Serialize(new
-        {
-            ok = false,
-            engine_version = "0.3.5",
-            phase = "RECOVERY_FAILED",
-            code = "LOCAL_SLOT_RECOVERY_FAILED",
-            error = ex.Message,
-            activation_performed = true,
-            database_mutation_performed = false,
-            public_mutation_performed = false,
-            windows_reboot_required = false,
-            recovery_required = true,
-            state_path = Path.Combine(paths.LocalSlotStateRoot, "migration-state.json")
-        }, AtomicFile.JsonOptions));
-        Environment.ExitCode = 4;
-    }
+    RunRecovery(() => bridge.Recover(), "LOCAL_SLOT_RECOVERY_FAILED", Path.Combine(paths.LocalSlotStateRoot, "migration-state.json"));
     return;
 }
 
-RequireOption(options, "--expected-build", out var expectedBuild);
-if (!options.TryGetValue("--expected-managed-files", out var countText) || !int.TryParse(countText, out var expectedManagedFiles) || expectedManagedFiles < 1)
-    throw new InvalidDataException("--expected-managed-files must be a positive integer.");
-RequireOption(options, "--expected-managed-tree-sha256", out var expectedManagedTreeSha256);
-expectedManagedTreeSha256 = LocalManagedTreeAttestation.NormalizeSha256(expectedManagedTreeSha256);
+if (command == "local-slot-recover-routine")
+{
+    RunRoutineRecovery(() => bridge.RecoverRoutine(), "LOCAL_SLOT_ROUTINE_RECOVERY_FAILED", bridge.RoutineStatePath);
+    return;
+}
 
-var slots = new LocalSlotManager(paths);
-var attemptStartedAtUtc = DateTimeOffset.UtcNow;
 try
 {
     switch (command)
     {
         case "local-slot-inspect":
         {
+            ReadExpected(options, out var expectedBuild, out var expectedManagedFiles, out var expectedManagedTreeSha256);
+            var slots = new LocalSlotManager(paths);
             var layout = slots.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
             var managedTree = LocalManagedTreeAttestation.RequireExact(layout.WebRoot, expectedManagedFiles, expectedManagedTreeSha256);
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.5",
+                engine_version = EngineVersion,
                 phase = "INSPECTED",
                 layout,
                 managed_tree_sha256 = managedTree,
@@ -101,13 +72,15 @@ try
         }
         case "local-slot-migrate":
         {
+            ReadExpected(options, out var expectedBuild, out var expectedManagedFiles, out var expectedManagedTreeSha256);
+            var slots = new LocalSlotManager(paths);
             var layout = slots.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
             var managedTree = LocalManagedTreeAttestation.RequireExact(layout.WebRoot, expectedManagedFiles, expectedManagedTreeSha256);
-            var result = new ProductionLocalSlotMigrationBridge(paths).Migrate(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256);
+            var result = bridge.Migrate(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256);
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = result.Ok,
-                engine_version = "0.3.5",
+                engine_version = EngineVersion,
                 phase = result.Phase,
                 result,
                 managed_tree_sha256 = result.ManagedTreeSha256,
@@ -122,20 +95,37 @@ try
         }
         case "local-slot-home-cycle":
         {
-            var layout = slots.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
-            var managedTree = LocalManagedTreeAttestation.RequireExact(layout.WebRoot, expectedManagedFiles, expectedManagedTreeSha256);
-            var result = slots.ConvertAndCycleSameBuild(expectedBuild, expectedManagedFiles);
-            var finalLayout = slots.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
-            var finalTree = LocalManagedTreeAttestation.RequireExact(finalLayout.WebRoot, expectedManagedFiles, expectedManagedTreeSha256);
+            ReadExpected(options, out var expectedBuild, out var expectedManagedFiles, out var expectedManagedTreeSha256);
+            var result = bridge.CycleRoutineSameBuild(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256);
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                ok = result.Ok,
+                engine_version = EngineVersion,
+                phase = result.Phase,
+                result,
+                managed_tree_sha256 = result.ManagedTreeSha256,
+                activation_performed = result.ActivationPerformed,
+                database_mutation_performed = false,
+                public_mutation_performed = false,
+                windows_reboot_required = false,
+                recovery_required = result.RecoveryRequired
+            }, AtomicFile.JsonOptions));
+            break;
+        }
+        case "local-slot-stage":
+        {
+            RequireOption(options, "--source", out var source);
+            ReadRoutineIdentity(options, out var currentBuild, out var currentCount, out var currentTree, out var targetBuild, out var targetCount, out var targetTree);
+            var targetSlot = bridge.StageRoutineSiblingRelease(source, currentBuild, currentCount, currentTree, targetBuild, targetCount, targetTree);
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.5",
-                phase = "COMMITTED",
-                result,
-                managed_tree_sha256 = finalTree,
-                pre_activation_managed_tree_sha256 = managedTree,
-                activation_performed = true,
+                engine_version = EngineVersion,
+                phase = "STAGED",
+                target_slot = targetSlot,
+                target_build = targetBuild,
+                target_managed_tree_sha256 = targetTree,
+                activation_performed = false,
                 database_mutation_performed = false,
                 public_mutation_performed = false,
                 windows_reboot_required = false
@@ -145,22 +135,20 @@ try
         case "local-slot-activate":
         {
             RequireOption(options, "--slot", out var targetSlot);
-            var targetTree = LocalManagedTreeAttestation.RequireExact(targetSlot, expectedManagedFiles, expectedManagedTreeSha256);
-            var state = slots.ActivateSlot(targetSlot, expectedBuild, expectedManagedFiles);
-            var finalLayout = slots.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
-            var finalTree = LocalManagedTreeAttestation.RequireExact(finalLayout.WebRoot, expectedManagedFiles, expectedManagedTreeSha256);
+            ReadRoutineIdentity(options, out var currentBuild, out var currentCount, out var currentTree, out var targetBuild, out var targetCount, out var targetTree);
+            var result = bridge.ActivateRoutineSiblingRelease(targetSlot, currentBuild, currentCount, currentTree, targetBuild, targetCount, targetTree);
             Console.WriteLine(JsonSerializer.Serialize(new
             {
-                ok = true,
-                engine_version = "0.3.5",
-                phase = state.Phase,
-                state,
-                managed_tree_sha256 = finalTree,
-                target_managed_tree_sha256 = targetTree,
-                activation_performed = true,
+                ok = result.Ok,
+                engine_version = EngineVersion,
+                phase = result.Phase,
+                result,
+                managed_tree_sha256 = result.ManagedTreeSha256,
+                activation_performed = result.ActivationPerformed,
                 database_mutation_performed = false,
                 public_mutation_performed = false,
-                windows_reboot_required = false
+                windows_reboot_required = false,
+                recovery_required = result.RecoveryRequired
             }, AtomicFile.JsonOptions));
             break;
         }
@@ -173,38 +161,105 @@ catch (Exception ex) when (ex is InvalidDataException or IOException or Unauthor
     Console.Error.WriteLine(JsonSerializer.Serialize(new
     {
         ok = false,
-        engine_version = "0.3.5",
+        engine_version = EngineVersion,
         phase = "FAILED",
-        code = command == "local-slot-migrate" ? "LOCAL_SLOT_MIGRATION_FAILED" : "LOCAL_SLOT_PHASE3_FAILED",
+        code = command switch
+        {
+            "local-slot-migrate" => "LOCAL_SLOT_MIGRATION_FAILED",
+            "local-slot-stage" => "LOCAL_SLOT_ROUTINE_STAGE_FAILED",
+            "local-slot-activate" or "local-slot-home-cycle" => "LOCAL_SLOT_ROUTINE_ACTIVATION_FAILED",
+            _ => "LOCAL_SLOT_OPERATION_FAILED"
+        },
         error = ex.Message,
-        activation_performed = ActivationPerformedInAttempt(paths.LocalSlotStatePath, attemptStartedAtUtc),
         database_mutation_performed = false,
         public_mutation_performed = false,
         windows_reboot_required = false,
-        expected_managed_tree_sha256 = expectedManagedTreeSha256,
-        state_path = Path.Combine(paths.LocalSlotStateRoot, "migration-state.json")
+        migration_state_path = Path.Combine(paths.LocalSlotStateRoot, "migration-state.json"),
+        routine_state_path = bridge.RoutineStatePath
     }, AtomicFile.JsonOptions));
     Environment.ExitCode = 3;
 }
 
-static bool ActivationPerformedInAttempt(string legacyStatePath, DateTimeOffset attemptStartedAtUtc)
+void RunRecovery(Func<ProductionLocalSlotMigrationResult> action, string code, string statePath)
 {
     try
     {
-        var statePath = Path.Combine(Path.GetDirectoryName(legacyStatePath) ?? string.Empty, "migration-state.json");
-        if (!File.Exists(statePath)) return false;
-        var state = AtomicFile.ReadJson<ProductionLocalSlotMigrationState>(statePath);
-        return state.ActivationPerformed && state.Events.Any(entry =>
-            entry.AtUtc >= attemptStartedAtUtc &&
-            string.Equals(entry.State, "POINTER_SWITCHED", StringComparison.Ordinal));
+        var result = action();
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            ok = result.Ok,
+            engine_version = EngineVersion,
+            phase = result.Phase,
+            result,
+            managed_tree_sha256 = result.ManagedTreeSha256,
+            activation_performed = result.ActivationPerformed,
+            database_mutation_performed = false,
+            public_mutation_performed = false,
+            windows_reboot_required = false,
+            recovery_required = result.RecoveryRequired
+        }, AtomicFile.JsonOptions));
     }
-    catch
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or TimeoutException or AggregateException or System.ComponentModel.Win32Exception or InvalidOperationException)
     {
-        return false;
+        Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, engine_version = EngineVersion, phase = "RECOVERY_FAILED", code, error = ex.Message, database_mutation_performed = false, public_mutation_performed = false, windows_reboot_required = false, recovery_required = true, state_path = statePath }, AtomicFile.JsonOptions));
+        Environment.ExitCode = 4;
     }
 }
 
-static void RunVerifyStage(string package, string identity, MaintenancePaths paths)
+void RunRoutineRecovery(Func<RoutineLocalSlotResult> action, string code, string statePath)
+{
+    try
+    {
+        var result = action();
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            ok = result.Ok,
+            engine_version = EngineVersion,
+            phase = result.Phase,
+            result,
+            managed_tree_sha256 = result.ManagedTreeSha256,
+            activation_performed = result.ActivationPerformed,
+            database_mutation_performed = false,
+            public_mutation_performed = false,
+            windows_reboot_required = false,
+            recovery_required = result.RecoveryRequired
+        }, AtomicFile.JsonOptions));
+    }
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or TimeoutException or AggregateException or System.ComponentModel.Win32Exception or InvalidOperationException)
+    {
+        Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, engine_version = EngineVersion, phase = "RECOVERY_FAILED", code, error = ex.Message, database_mutation_performed = false, public_mutation_performed = false, windows_reboot_required = false, recovery_required = true, state_path = statePath }, AtomicFile.JsonOptions));
+        Environment.ExitCode = 4;
+    }
+}
+
+static void ReadExpected(IReadOnlyDictionary<string, string> options, out string build, out int count, out string tree)
+{
+    RequireOption(options, "--expected-build", out build);
+    count = ReadPositiveInt(options, "--expected-managed-files");
+    RequireOption(options, "--expected-managed-tree-sha256", out tree);
+    tree = LocalManagedTreeAttestation.NormalizeSha256(tree);
+}
+
+static void ReadRoutineIdentity(IReadOnlyDictionary<string, string> options, out string currentBuild, out int currentCount, out string currentTree, out string targetBuild, out int targetCount, out string targetTree)
+{
+    RequireOption(options, "--current-build", out currentBuild);
+    currentCount = ReadPositiveInt(options, "--current-managed-files");
+    RequireOption(options, "--current-managed-tree-sha256", out currentTree);
+    currentTree = LocalManagedTreeAttestation.NormalizeSha256(currentTree);
+    RequireOption(options, "--target-build", out targetBuild);
+    targetCount = ReadPositiveInt(options, "--target-managed-files");
+    RequireOption(options, "--target-managed-tree-sha256", out targetTree);
+    targetTree = LocalManagedTreeAttestation.NormalizeSha256(targetTree);
+}
+
+static int ReadPositiveInt(IReadOnlyDictionary<string, string> options, string key)
+{
+    if (!options.TryGetValue(key, out var text) || !int.TryParse(text, out var value) || value < 1)
+        throw new InvalidDataException($"{key} must be a positive integer.");
+    return value;
+}
+
+void RunVerifyStage(string package, string identity, MaintenancePaths paths)
 {
     var identityPath = Path.GetFullPath(identity);
     if (!File.Exists(identityPath)) throw new FileNotFoundException("Installed identity file was not found.", identityPath);
@@ -223,30 +278,11 @@ static void RunVerifyStage(string package, string identity, MaintenancePaths pat
     try
     {
         var receipt = engine.VerifyAndStage(package, installed);
-        Console.WriteLine(JsonSerializer.Serialize(new
-        {
-            ok = true,
-            engine_version = "0.3.5",
-            phase = "STAGED",
-            release_set_id = receipt.ReleaseSetId,
-            sequence = receipt.Sequence,
-            receipt,
-            activation_performed = false,
-            database_mutation_performed = false
-        }, AtomicFile.JsonOptions));
+        Console.WriteLine(JsonSerializer.Serialize(new { ok = true, engine_version = EngineVersion, phase = "STAGED", release_set_id = receipt.ReleaseSetId, sequence = receipt.Sequence, receipt, activation_performed = false, database_mutation_performed = false }, AtomicFile.JsonOptions));
     }
     catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or CryptographicException)
     {
-        Console.Error.WriteLine(JsonSerializer.Serialize(new
-        {
-            ok = false,
-            engine_version = "0.3.5",
-            phase = "REJECTED_PRE_MUTATION",
-            code = "RELEASE_SET_REJECTED",
-            error = ex.Message,
-            activation_performed = false,
-            database_mutation_performed = false
-        }, AtomicFile.JsonOptions));
+        Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, engine_version = EngineVersion, phase = "REJECTED_PRE_MUTATION", code = "RELEASE_SET_REJECTED", error = ex.Message, activation_performed = false, database_mutation_performed = false }, AtomicFile.JsonOptions));
         Environment.ExitCode = 2;
     }
 }
