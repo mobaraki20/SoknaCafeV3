@@ -1,0 +1,39 @@
+name: CI PS5.1 MariaDB Recovery Parse
+
+on:
+  push:
+    branches:
+      - test/ps51-mariadb-recovery-20261017
+    paths:
+      - 'qualification/tmp/01-RECOVER-SOKNA-MARIADB.ps1'
+      - '.github/workflows/ci-ps51-mariadb-recovery-parse.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  parse:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse exact script with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $path=(Resolve-Path 'qualification/tmp/01-RECOVER-SOKNA-MARIADB.ps1').Path
+          $tokens=$null
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors.Count -gt 0){
+            $errors | ForEach-Object { Write-Host $_.ToString() }
+            throw "PS5.1 parse failed with $($errors.Count) error(s)."
+          }
+          $sha=[System.Security.Cryptography.SHA256]::Create()
+          try {
+            $stream=[IO.File]::OpenRead($path)
+            try {$hash=([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-','').ToLowerInvariant()}
+            finally {$stream.Dispose()}
+          } finally {$sha.Dispose()}
+          if($hash -ne '8e761dd7f9992a625faf5fbc2014b9e9ef74bfa836cd3155158e2483cc7c82e6'){throw "Unexpected script SHA: $hash"}
+          Write-Host "PS51_PARSE_PASS sha256=$hash"
