@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -54,6 +55,50 @@ internal sealed class RoutineLocalLifecycle
         var dataRoot = Path.GetFullPath(output);
         var lifeRoot = Path.Combine(dataRoot, "lifecycle", "local");
         return lifeRoot;
+    }
+
+    public static void RequireTargetSetupBoot(string packageRoot, string targetSlot)
+    {
+        var php = FindPhpCli(Path.Combine(packageRoot, "Infrastructure"));
+        const string script = "require $argv[2].DIRECTORY_SEPARATOR.'src'.DIRECTORY_SEPARATOR.'Setup'.DIRECTORY_SEPARATOR.'BrowserSetupService.php';"
+            + @"$s=(new \Sokna\Local\Setup\BrowserSetupService($argv[1],$argv[2]))->status();"
+            + "if(empty($s['installed'])||empty($s['binding_current']))exit(72);echo 'ready';";
+        RunPhp(php, new[] { "-r", script, packageRoot, targetSlot }, "Target Local browser setup preflight");
+        foreach (var rel in new[] { Path.Combine("public", "local-recovery.php"), Path.Combine("public", "local-update-runner.php") })
+        {
+            var path=Path.Combine(targetSlot,rel);
+            if (File.Exists(path)) RunPhp(php, new[] { "-l", path }, "Machine-local PHP syntax preflight");
+        }
+    }
+
+    public static void RequireUnchangedMigrationCatalog(string currentRoot, string targetSlot)
+    {
+        var current = Path.Combine(currentRoot, "database", "migrations");
+        var target = Path.Combine(targetSlot, "database", "migrations");
+        if (!Directory.Exists(current) || !Directory.Exists(target))
+            throw new InvalidDataException("Local migration catalogs are missing.");
+        var original = Directory.EnumerateFiles(current, "*.sql", SearchOption.TopDirectoryOnly)
+            .ToDictionary(path => Path.GetFileName(path) ?? throw new InvalidDataException("Invalid migration filename."), StringComparer.Ordinal);
+        var candidate = Directory.EnumerateFiles(target, "*.sql", SearchOption.TopDirectoryOnly)
+            .ToDictionary(path => Path.GetFileName(path) ?? throw new InvalidDataException("Invalid migration filename."), StringComparer.Ordinal);
+        if (original.Count==0 || original.Count!=candidate.Count || original.Keys.Except(candidate.Keys,StringComparer.Ordinal).Any())
+            throw new InvalidDataException("Cross-version code-only Local activation cannot change migration catalog membership.");
+        foreach (var name in original.Keys)
+        {
+            var source=SHA256.HashData(File.ReadAllBytes(original[name]));
+            var next=SHA256.HashData(File.ReadAllBytes(candidate[name]));
+            if (!source.SequenceEqual(next))
+                throw new InvalidDataException("Cross-version code-only Local activation cannot change an existing migration.");
+        }
+    }
+
+    private static void RunPhp(string php, IReadOnlyList<string> args, string what)
+    {
+        var psi=new ProcessStartInfo(php){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
+        foreach(var a in args)psi.ArgumentList.Add(a);
+        using var p=Process.Start(psi) ?? throw new InvalidOperationException(what+" could not start.");
+        if (!p.WaitForExit(8000)) {p.Kill(entireProcessTree:true);throw new TimeoutException(what+" timed out.");}
+        if (p.ExitCode!=0)throw new InvalidDataException(what+" failed (status "+p.ExitCode+").");
     }
 
     private static string FindPhpCli(string infrastructureRoot)
