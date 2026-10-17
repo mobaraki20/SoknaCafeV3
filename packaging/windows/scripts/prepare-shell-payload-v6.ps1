@@ -53,4 +53,7 @@ Get-ChildItem $OutputRoot -File -Recurse|Where-Object{$_.FullName-ne$payloadMani
 $payloadManifest.files=$files
 $payloadManifest|ConvertTo-Json -Depth 14|Set-Content -LiteralPath $payloadManifestPath -Encoding UTF8
 
+# Preserve compatibility with older callers that incorrectly inspect LASTEXITCODE after invoking this
+# PowerShell script. All real failures above are exception-driven, so a successful return normalizes it.
+$global:LASTEXITCODE=0
 Write-Host 'Prepared R7 shell integration: Windows transaction remains authoritative; Local layout adoption is durable Supervisor-owned work.'
