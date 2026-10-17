@@ -101,6 +101,8 @@ public sealed partial class ProductionLocalSlotMigrationBridge
         StageProductionSlot(sourceRoot, targetSlot, managed, persistentRoot, archiveRoot);
         RoutineLocalBinding.PrepareTarget(persistentRoot, targetSlot, layout.PackageRoot, currentBuild, targetBuild);
         VerifyStagedSlot(targetSlot, persistentRoot, targetBuild, targetManagedFiles, targetManagedTreeSha256);
+        RoutineLocalLifecycle.RequireTargetSetupBoot(layout.PackageRoot, targetSlot);
+        RoutineLocalLifecycle.RequireUnchangedMigrationCatalog(layout.WebRoot, targetSlot);
         RequireProductionSlotPath(targetSlot, layout.PackageRoot);
         return targetSlot;
     }
@@ -137,6 +139,8 @@ public sealed partial class ProductionLocalSlotMigrationBridge
         RefreshRoutineMachineLocalOverlay(targetSlot, persistentRoot);
         RoutineLocalBinding.PrepareTarget(persistentRoot, targetSlot, layout.PackageRoot, currentBuild, targetBuild);
         VerifyStagedSlot(targetSlot, persistentRoot, targetBuild, targetManagedFiles, targetManagedTreeSha256);
+        RoutineLocalLifecycle.RequireTargetSetupBoot(layout.PackageRoot, targetSlot);
+        RoutineLocalLifecycle.RequireUnchangedMigrationCatalog(layout.WebRoot, targetSlot);
 
         var events = new List<RoutineLocalSlotEvent>();
         var state = new RoutineLocalSlotState(
@@ -217,6 +221,13 @@ public sealed partial class ProductionLocalSlotMigrationBridge
         var state = AtomicFile.ReadJson<RoutineLocalSlotState>(RoutineStatePath);
         if (state.DatabaseMutationPerformed || state.PublicMutationPerformed)
             throw new InvalidDataException("Automatic routine code recovery is forbidden after database/Public mutation.");
+        if (state.Phase == "COMMITTED" &&
+            !string.Equals(state.CurrentBuild, state.TargetBuild, StringComparison.Ordinal))
+            throw new InvalidDataException("A committed cross-version Local release requires explicit versioned rollback, not interrupted-transaction recovery.");
+        if (!string.Equals(state.CurrentBuild, state.TargetBuild, StringComparison.Ordinal) &&
+            state.Phase != "READY_TO_ACTIVATE" &&
+            !File.Exists(Path.Combine(_paths.LocalSlotStateRoot, "routine-local-lifecycle-before.json")))
+            throw new InvalidDataException("Interrupted cross-version recovery has no Local lifecycle rollback evidence.");
         RequireProductionSlotPath(state.PreviousSlot, state.PackageRoot);
 
         var events = state.Events.ToList();
