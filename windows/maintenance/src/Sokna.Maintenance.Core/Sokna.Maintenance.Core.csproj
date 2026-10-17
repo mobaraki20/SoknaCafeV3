@@ -11,6 +11,9 @@
     <InformationalVersion>0.2.3</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="ProductionLocalSlotMigration.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
   </ItemGroup>
 </Project>
