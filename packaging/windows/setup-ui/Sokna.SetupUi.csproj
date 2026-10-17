@@ -6,6 +6,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
     <AssemblyName>SoknaSetupUi</AssemblyName>
     <RootNamespace>Sokna.SetupUi</RootNamespace>
@@ -15,9 +16,9 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyTitle>SOKNA Windows Services</AssemblyTitle>
     <Product>SOKNA Windows Services</Product>
-    <Version>1.1.5</Version>
-    <FileVersion>1.1.5.0</FileVersion>
-    <AssemblyVersion>1.1.5.0</AssemblyVersion>
+    <Version>1.1.6</Version>
+    <FileVersion>1.1.6.0</FileVersion>
+    <AssemblyVersion>1.1.6.0</AssemblyVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
