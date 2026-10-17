@@ -70,13 +70,19 @@ public sealed class ProductionLocalSlotMigrationBridge
     private readonly LocalSlotManager _discovery;
     private readonly TimeSpan _serviceTimeout;
     private readonly TimeSpan _healthTimeout;
+    private readonly Action<string>? _checkpoint;
 
-    public ProductionLocalSlotMigrationBridge(MaintenancePaths paths, TimeSpan? serviceTimeout = null, TimeSpan? healthTimeout = null)
+    public ProductionLocalSlotMigrationBridge(
+        MaintenancePaths paths,
+        TimeSpan? serviceTimeout = null,
+        TimeSpan? healthTimeout = null,
+        Action<string>? checkpoint = null)
     {
         _paths = paths;
         _discovery = new LocalSlotManager(paths, serviceTimeout, healthTimeout);
         _serviceTimeout = serviceTimeout ?? TimeSpan.FromSeconds(35);
         _healthTimeout = healthTimeout ?? TimeSpan.FromSeconds(35);
+        _checkpoint = checkpoint;
     }
 
     public string StatePath => Path.Combine(_paths.LocalSlotStateRoot, "migration-state.json");
@@ -103,10 +109,33 @@ public sealed class ProductionLocalSlotMigrationBridge
         Directory.CreateDirectory(_paths.LocalSlotStateRoot);
 
         var targetSlot = Path.Combine(releaseRoot, BuildProductionSlotName(expectedBuild, expectedManagedTreeSha256));
+        var priorPhysicalBackup = (string?)null;
+        var priorPreviousSlot = (string?)null;
+        try
+        {
+            if (File.Exists(StatePath))
+            {
+                var prior = AtomicFile.ReadJson<ProductionLocalSlotMigrationState>(StatePath);
+                if (string.Equals(prior.ExpectedBuild, expectedBuild, StringComparison.Ordinal) &&
+                    prior.ExpectedManagedFiles == expectedManagedFiles &&
+                    string.Equals(prior.ExpectedManagedTreeSha256, expectedManagedTreeSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    priorPhysicalBackup = prior.PhysicalWebBackup;
+                    priorPreviousSlot = prior.PreviousSlot;
+                }
+            }
+        }
+        catch
+        {
+            // A malformed prior production state must not be silently trusted. The new
+            // migration attempt will establish fresh state from the verified baseline.
+        }
+
         var events = new List<ProductionLocalSlotMigrationEvent>();
-        var state = NewState(layout, expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, releaseRoot, targetSlot, events);
+        var state = NewState(layout, expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, releaseRoot, targetSlot, priorPhysicalBackup, priorPreviousSlot, events);
         state = Event(state, events, "BASELINE_VERIFIED", $"tree={actualTree}");
         state = Event(state, events, "BASELINE_HTTP_HEALTHY", layout.HealthUrl);
+        Checkpoint("after_baseline_health");
 
         ArchiveLegacyPhase3State(events);
         state = SaveWithEvents(state, events);
@@ -121,7 +150,7 @@ public sealed class ProductionLocalSlotMigrationBridge
             {
                 TargetSlot = activeSlot,
                 ActiveSlot = activeSlot,
-                PreviousSlot = activeSlot,
+                PreviousSlot = state.PreviousSlot ?? activeSlot,
                 ActivationPerformed = false,
                 RecoveryRequired = false
             };
@@ -135,6 +164,7 @@ public sealed class ProductionLocalSlotMigrationBridge
         StageProductionSlot(layout.WebRoot, targetSlot, managedFiles, persistentRoot);
         VerifyStagedSlot(targetSlot, expectedBuild, expectedManagedFiles, expectedManagedTreeSha256);
         state = Event(state, events, "SLOT_STAGED_VERIFIED", targetSlot);
+        Checkpoint("after_slot_staged");
 
         var physicalBackup = Path.Combine(preSlotRoot, "physical-web-" + DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssfffZ"));
         state = state with { PhysicalWebBackup = physicalBackup };
@@ -142,11 +172,13 @@ public sealed class ProductionLocalSlotMigrationBridge
 
         StopApacheAndProveExit(layout.ApacheExecutable);
         state = Event(state, events, "APACHE_STOPPED", "production migration");
+        Checkpoint("after_apache_stop");
 
         try
         {
             Directory.Move(layout.WebRoot, physicalBackup);
             state = Event(state, events, "PHYSICAL_WEB_BACKED_UP", physicalBackup);
+            Checkpoint("after_physical_move");
 
             CreateJunction(layout.WebRoot, targetSlot);
             state = state with
@@ -156,9 +188,11 @@ public sealed class ProductionLocalSlotMigrationBridge
                 ActivationPerformed = true
             };
             state = Event(state, events, "POINTER_SWITCHED", targetSlot);
+            Checkpoint("after_pointer_switch");
 
             StartApache();
             state = Event(state, events, "APACHE_STARTED", targetSlot);
+            Checkpoint("after_apache_start");
             RequireHttpHealth(expectedBuild, layout.HealthUrl);
             var finalLayout = _discovery.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
             RequireSlotUnderRoot(finalLayout.ActiveSlotTarget, releaseRoot);
@@ -518,6 +552,8 @@ public sealed class ProductionLocalSlotMigrationBridge
         string expectedManagedTreeSha256,
         string releaseRoot,
         string targetSlot,
+        string? priorPhysicalBackup,
+        string? priorPreviousSlot,
         List<ProductionLocalSlotMigrationEvent> events)
     {
         events.Add(new ProductionLocalSlotMigrationEvent("DISCOVERED", DateTimeOffset.UtcNow));
@@ -534,9 +570,9 @@ public sealed class ProductionLocalSlotMigrationBridge
             layout.HealthUrl,
             releaseRoot,
             targetSlot,
-            null,
+            priorPhysicalBackup,
             layout.ActiveSlotTarget,
-            null,
+            priorPreviousSlot,
             false,
             false,
             false,
@@ -596,6 +632,11 @@ public sealed class ProductionLocalSlotMigrationBridge
         if (string.IsNullOrWhiteSpace(token)) token = "local";
         token = Regex.Replace(token.ToLowerInvariant(), "[^a-z0-9._-]", "-");
         return $"{token}-{treeSha256[..12]}";
+    }
+
+    private void Checkpoint(string name)
+    {
+        _checkpoint?.Invoke(name);
     }
 
     private static void ValidateManagedCount(int count)
