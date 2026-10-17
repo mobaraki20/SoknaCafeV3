@@ -39,6 +39,12 @@ If a newer ADR explicitly supersedes a rule here, the ADR wins and this file mus
 22. GUI-started privileged helpers must not expose implementation consoles. Setup hosts should be `WinExe`; PowerShell diagnostics/pairing launched from the GUI must hide their console window while preserving logs and exit codes.
 23. Any C#/PInvoke compiled dynamically by Windows PowerShell `Add-Type` must be qualified on the oldest supported Windows/PS5.1 host. Ambiguous framework type names (for example `FILETIME`) must be fully qualified.
 24. `RUNNING` from SCM means the service process is running, not that the product function is healthy. UI must label process/service state separately from functional health unless an actual health contract was probed.
+25. One mutation domain has one transaction owner. Windows Services installation, Local Web adoption/update, database migration and Public deployment are distinct mutation domains unless an explicit ADR defines a shared transaction.
+26. A committed transaction MUST NOT synchronously execute a second mutation domain and then relabel the first transaction as failed. Post-commit cross-domain work must be durable, separately observable and owned by the target domain's state machine.
+27. Persisted descriptor/file existence is not readiness. A stale `control-plane.json`, old port file, PID file or cached health result MUST NOT be accepted as proof that the current process generation is ready. Prefer eliminating synchronous readiness coupling; when readiness is necessary, probe a fresh generation-bound contract.
+28. Installer/UI lifetime is not update lifetime. Mutation intent that must survive installer exit, browser closure, process restart or Local Web outage must be persisted outside the mutable application tree and resumed by the privileged lifecycle owner.
+29. User-host canaries are validation, not deterministic updater qualification. Before offering a new updater architecture to Home or Cafe, run a repeated Windows fault matrix of at least 20 completed activation/failure/rollback/recovery cycles and retain machine-readable evidence. Source build PASS alone is insufficient.
+30. Automatic retry is mutation-aware and bounded. Pre-mutation transient failures may retry; once activation occurred, unattended retries stop unless an explicit recovery state machine proves that repeating activation is safe.
 
 ## Host evidence classification
 
@@ -88,12 +94,21 @@ Do not use Force to bypass an unexplained baseline mismatch.
 | Setup/diagnostics exposed black/blue console windows | privileged helper built/launched as console process | WinExe for GUI helpers; hidden PowerShell console for GUI actions |
 | Restart Manager diagnostics failed on real Windows 10 | `FILETIME` was ambiguous in PS5.1 `Add-Type` C# | fully qualify interop framework types; real-host/PS5.1 compile gate |
 | Dashboard said service was healthy although Print protocol probes were failing | SCM RUNNING was presented as functional health | separate service state from application health contracts |
+| Windows Services update committed but R6 installer later reported generic failure | installer synchronously invoked Local adoption as a second post-commit mutation domain | one transaction owner per domain; installer only persists durable Local adoption intent |
+| R6 bootstrap could race a newly restarted Supervisor | stale descriptor existence + SCM RUNNING were treated as enough readiness | durable Supervisor-owned work; never use persisted descriptor existence as current-generation readiness |
+| Real host became the primary updater debugger | deterministic fault/recovery matrix was incomplete before user-visible release | >=20-cycle Windows reliability matrix before a new updater architecture reaches Home/Cafe |
 
 ## Required review checklist
 
 Before declaring a Windows change engineering-qualified, explicitly answer:
 
 - Which logical component owns it?
+- Which mutation domain owns the transaction and durable state?
+- Does any committed transaction synchronously invoke another mutation domain?
+- Can the operation survive installer/UI exit and owner-process restart without user intervention?
+- Is every readiness claim current-generation evidence rather than persisted-file existence or SCM state?
+- Are retries bounded and prohibited after activation unless recovery explicitly authorizes them?
+- For updater architecture changes, did the >=20-cycle Windows fault/recovery matrix PASS with retained evidence before user-host UAT?
 - Did package/component versions change correctly and independently?
 - Does it run on the actual supported Windows PowerShell/.NET environment?
 - Are path APIs, cmdlet parameters and encoding compatible with PS5.1 where required?
