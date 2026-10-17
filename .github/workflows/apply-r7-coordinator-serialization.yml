@@ -1,0 +1,59 @@
+name: Apply R7 migration coordinator serialization
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-r7-reliability-reset
+    paths:
+      - .github/workflows/apply-r7-coordinator-serialization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/maintenance-v4-r7-reliability-reset
+          fetch-depth: 0
+      - name: Patch coordinator and DI contract
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p=Path('windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs')
+          s=p.read_text(encoding='utf-8')
+          def one(old,new):
+              global s
+              if s.count(old)!=1:
+                  raise SystemExit(f'coordinator anchor count {s.count(old)}: {old[:100]}')
+              s=s.replace(old,new,1)
+          one('public sealed class SupervisorProductionMigrationCoordinator\n{', 'public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalSlotMigrationCoordinator\n{')
+          one('    private readonly string _engineExecutable;\n', '    private readonly string _engineExecutable;\n    private readonly object _executionSync = new();\n')
+          old='''    public LocalSlotOperationResult Migrate(\n        string expectedBuild,\n        int expectedManagedFiles,\n        string expectedManagedTreeSha256,\n        string operatorId,\n        string idempotencyKey)\n    {\n'''
+          new='''    public LocalSlotOperationResult Migrate(\n        string expectedBuild,\n        int expectedManagedFiles,\n        string expectedManagedTreeSha256,\n        string operatorId,\n        string idempotencyKey)\n    {\n        lock (_executionSync)\n        {\n            return MigrateCore(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, operatorId, idempotencyKey);\n        }\n    }\n\n    private LocalSlotOperationResult MigrateCore(\n        string expectedBuild,\n        int expectedManagedFiles,\n        string expectedManagedTreeSha256,\n        string operatorId,\n        string idempotencyKey)\n    {\n'''
+          one(old,new)
+          old='''    public LocalSlotOperationResult Recover(string operatorId, string idempotencyKey)\n    {\n'''
+          new='''    public LocalSlotOperationResult Recover(string operatorId, string idempotencyKey)\n    {\n        lock (_executionSync)\n        {\n            return RecoverCore(operatorId, idempotencyKey);\n        }\n    }\n\n    private LocalSlotOperationResult RecoverCore(string operatorId, string idempotencyKey)\n    {\n'''
+          one(old,new)
+          p.write_text(s,encoding='utf-8',newline='\n')
+
+          p=Path('windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs')
+          s=p.read_text(encoding='utf-8')
+          old='builder.Services.AddSingleton(productionMigrationCoordinator);\n'
+          new='builder.Services.AddSingleton(productionMigrationCoordinator);\nbuilder.Services.AddSingleton<IProductionLocalSlotMigrationCoordinator>(productionMigrationCoordinator);\n'
+          if s.count(old)!=1: raise SystemExit('Program coordinator DI anchor mismatch')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8',newline='\n')
+      - name: Commit exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add windows/maintenance/src/Sokna.Maintenance.Core/SupervisorProductionMigrationCoordinator.cs windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs
+          git diff --cached --check
+          git commit -m "feat(maintenance): serialize migration and recovery authority"
+          git push origin HEAD:work/maintenance-v4-r7-reliability-reset
