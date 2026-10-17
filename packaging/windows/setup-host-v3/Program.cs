@@ -148,6 +148,8 @@ internal static class Program
             FileName = powershell,
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
             WorkingDirectory = Path.GetDirectoryName(planPath) ?? Environment.CurrentDirectory
         };
         psi.ArgumentList.Add("-NoLogo");
@@ -160,10 +162,19 @@ internal static class Program
         psi.ArgumentList.Add("-PlanFile");
         psi.ArgumentList.Add(planPath);
         using var process = Process.Start(psi) ?? throw new HostPlanException("Lifecycle process شروع نشد.");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(15 * 60 * 1000))
         {
             try { process.Kill(entireProcessTree: true); } catch { }
             throw new HostPlanException("Lifecycle process بیش از زمان مجاز طول کشید.");
+        }
+        var stdout = stdoutTask.GetAwaiter().GetResult();
+        var stderr = stderrTask.GetAwaiter().GetResult();
+        if (process.ExitCode != 0)
+        {
+            var detail = !string.IsNullOrWhiteSpace(stderr) ? stderr : stdout;
+            _ = Fail($"Lifecycle process با کد {process.ExitCode} متوقف شد. {Safe(detail)}", process.ExitCode, planPath);
         }
         return process.ExitCode;
     }
