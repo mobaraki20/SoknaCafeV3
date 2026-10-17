@@ -1,0 +1,93 @@
+name: Apply R3 Maintenance App Boundary Fix
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+    paths:
+      - .github/workflows/apply-r3-maintenance-app-boundary-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch lifecycle so Recovery KEEP is true no-mutation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('packaging/windows/scripts/setup-windows-components-v5.ps1')
+          text = p.read_text(encoding='utf-8-sig')
+
+          old = "$maintRoot=Join-Path $InstallRoot 'Maintenance';$maintExe=Join-Path $maintRoot 'App\\SoknaMaintenanceSupervisor.exe'"
+          new = "$maintRoot=Join-Path $InstallRoot 'Maintenance';$maintApp=Join-Path $maintRoot 'App';$maintRecovery=Join-Path $maintRoot 'Recovery';$maintExe=Join-Path $maintApp 'SoknaMaintenanceSupervisor.exe'"
+          if text.count(old) != 1:
+              raise SystemExit(f'maintenance root anchor count != 1: {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          lines = text.splitlines()
+          apply_count = 0
+          child_count = 0
+          reconcile_count = 0
+          out = []
+          for line in lines:
+              if line.startswith('function ApplyMaintenance($r){'):
+                  apply_count += 1
+                  out.append("function ApplyMaintenance($r){$script:CurrentComponent='maintenance';SaveSnap 'maintenance' $maintApp 'SoknaMaintenanceSupervisor';$Applied.Add('maintenance');$script:CurrentPhase='Service stop';Event 'component_action_started' 'started' @{action=$r.Action};if((Service-Info 'SoknaMaintenanceSupervisor').Installed){Stop-Svc 'SoknaMaintenanceSupervisor' $maintApp};$script:CurrentPhase='Files';$source=(Split-Path $r.TargetPath -Parent);Copy-TreeAtomic $source $maintApp;if((Sha $maintExe)-ne$r.TargetHash){throw 'Maintenance hash verification failed.'};$script:CurrentPhase='Service registration';Delete-Svc 'SoknaMaintenanceSupervisor' $maintApp;Create-Svc 'SoknaMaintenanceSupervisor' (Simple-Cmd $maintExe) 'SOKNA Maintenance Supervisor' $true;$script:CurrentPhase='Health verification';Start-Svc 'SoknaMaintenanceSupervisor';Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $maintExe);shutdown_proof='service-status+process-exit+owned-process-exit'}}")
+              elif line.startswith("foreach($r in $script:Resolved){if($r.Action-eq'BLOCKED')"):
+                  reconcile_count += 1
+                  out.append("$recoveryMutation=@($script:Resolved|Where-Object{$_.Id-eq'maintenance-recovery-console'-and$_.Action-ne'KEEP'})|Select-Object -First 1")
+                  out.append("if($recoveryMutation){throw 'Recovery Console mutation requires a dedicated recovery lifecycle; refusing to mutate Maintenance App.'}")
+                  out.append(line)
+              elif line.startswith(" foreach($r in @($script:Resolved|Where-Object{-not$_.Primary-and$_.Parent-eq'maintenance'})){"):
+                  child_count += 1
+                  out.extend([
+                      " foreach($r in @($script:Resolved|Where-Object{-not$_.Primary-and$_.Parent-eq'maintenance'})){",
+                      "   $CurrentComponent=$r.Id",
+                      "   if($r.Action-eq'KEEP'){$CurrentPhase='No mutation';if((Sha $r.InstalledPath)-ne$r.TargetHash){throw \"Maintenance subordinate fingerprint mismatch: $($r.Id)\"};Event 'component_action_completed' 'kept' @{action='KEEP';proof='no_stop_no_copy_no_registration_no_restart';after_sha256=(Sha $r.InstalledPath)};continue}",
+                      "   $CurrentPhase='Health verification'",
+                      "   if((Sha $r.InstalledPath)-ne$r.TargetHash){throw \"Maintenance subordinate fingerprint mismatch: $($r.Id)\"}",
+                      "   Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $r.InstalledPath)}",
+                      " }",
+                  ])
+              else:
+                  out.append(line)
+
+          if apply_count != 1:
+              raise SystemExit(f'ApplyMaintenance anchor count != 1: {apply_count}')
+          if reconcile_count != 1:
+              raise SystemExit(f'preflight reconciliation anchor count != 1: {reconcile_count}')
+          if child_count != 1:
+              raise SystemExit(f'maintenance child loop anchor count != 1: {child_count}')
+
+          result = '\n'.join(out) + '\n'
+          required = [
+              "SaveSnap 'maintenance' $maintApp 'SoknaMaintenanceSupervisor'",
+              "Stop-Svc 'SoknaMaintenanceSupervisor' $maintApp",
+              "Copy-TreeAtomic $source $maintApp",
+              "Delete-Svc 'SoknaMaintenanceSupervisor' $maintApp",
+              "component_action_completed' 'kept' @{action='KEEP';proof='no_stop_no_copy_no_registration_no_restart'",
+              "Recovery Console mutation requires a dedicated recovery lifecycle",
+          ]
+          for needle in required:
+              if needle not in result:
+                  raise SystemExit(f'missing required patched contract: {needle}')
+          p.write_text(result, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- packaging/windows/scripts/setup-windows-components-v5.ps1
+      - name: Commit lifecycle boundary fix
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packaging/windows/scripts/setup-windows-components-v5.ps1
+          git diff --cached --quiet && { echo 'No patch produced'; exit 1; }
+          git commit -m 'fix(maintenance): preserve Recovery Console on App updates'
+          git push origin HEAD:work/maintenance-v4-windows-p3-home-package-r3
