@@ -13,13 +13,14 @@ public sealed record ProductionLocalSlotMigrationRequest(
 public sealed record ProductionLocalSlotRecoveryRequest(
     [property: JsonPropertyName("operator_id")] string OperatorId);
 
-public sealed class SupervisorProductionMigrationCoordinator
+public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalSlotMigrationCoordinator
 {
     private readonly MaintenancePaths _paths;
     private readonly MaintenanceOperationStore _operations;
     private readonly DurableJournal _journal;
     private readonly SupervisorState _supervisorState;
     private readonly string _engineExecutable;
+    private readonly object _executionSync = new();
 
     public SupervisorProductionMigrationCoordinator(
         MaintenancePaths paths,
@@ -36,6 +37,19 @@ public sealed class SupervisorProductionMigrationCoordinator
     }
 
     public LocalSlotOperationResult Migrate(
+        string expectedBuild,
+        int expectedManagedFiles,
+        string expectedManagedTreeSha256,
+        string operatorId,
+        string idempotencyKey)
+    {
+        lock (_executionSync)
+        {
+            return MigrateCore(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, operatorId, idempotencyKey);
+        }
+    }
+
+    private LocalSlotOperationResult MigrateCore(
         string expectedBuild,
         int expectedManagedFiles,
         string expectedManagedTreeSha256,
@@ -152,6 +166,14 @@ public sealed class SupervisorProductionMigrationCoordinator
     }
 
     public LocalSlotOperationResult Recover(string operatorId, string idempotencyKey)
+    {
+        lock (_executionSync)
+        {
+            return RecoverCore(operatorId, idempotencyKey);
+        }
+    }
+
+    private LocalSlotOperationResult RecoverCore(string operatorId, string idempotencyKey)
     {
         operatorId = NormalizeOperatorId(operatorId);
         var migrationStatePath = Path.Combine(_paths.LocalSlotStateRoot, "migration-state.json");
