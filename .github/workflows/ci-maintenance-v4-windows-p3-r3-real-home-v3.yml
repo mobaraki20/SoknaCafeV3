@@ -6,6 +6,16 @@ on:
     branches:
       - work/maintenance-v4-windows-p3-home-package-r3
     paths:
+      - packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+      - packaging/windows/component-artifact-lock-v1.json
+      - packaging/windows/WINDOWS_SERVICES_VERSION.txt
+      - packaging/windows/windows-services-component-manifest-v2.json
+      - packaging/windows/setup-ui/**
+      - packaging/windows/setup-host-v3/**
+      - packaging/windows/scripts/**
+      - packaging/windows/installer/**
+      - packaging/windows/installer-bootstrap/**
+      - windows/maintenance/**
       - .github/workflows/ci-maintenance-v4-windows-p3-r3-real-home-v3.yml
 
 permissions:
