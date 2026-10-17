@@ -3,7 +3,7 @@ using Sokna.Maintenance.Core;
 
 namespace Sokna.Maintenance.Supervisor;
 
-internal sealed class LocalSlotAdoptionWorker : BackgroundService
+public sealed class LocalSlotAdoptionWorker : BackgroundService
 {
     private const int MaxAutomaticAttempts = 8;
     private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(3);
@@ -20,13 +20,13 @@ internal sealed class LocalSlotAdoptionWorker : BackgroundService
     ];
 
     private readonly LocalSlotAdoptionQueue _queue;
-    private readonly SupervisorProductionMigrationCoordinator _coordinator;
+    private readonly IProductionLocalSlotMigrationCoordinator _coordinator;
     private readonly DurableJournal _journal;
     private readonly SupervisorState _supervisorState;
 
     public LocalSlotAdoptionWorker(
         LocalSlotAdoptionQueue queue,
-        SupervisorProductionMigrationCoordinator coordinator,
+        IProductionLocalSlotMigrationCoordinator coordinator,
         DurableJournal journal,
         SupervisorState supervisorState)
     {
@@ -65,7 +65,7 @@ internal sealed class LocalSlotAdoptionWorker : BackgroundService
         }
     }
 
-    internal async Task ProcessOnce(CancellationToken stoppingToken)
+    public async Task ProcessOnce(CancellationToken stoppingToken)
     {
         stoppingToken.ThrowIfCancellationRequested();
         var request = _queue.LoadRequest();
