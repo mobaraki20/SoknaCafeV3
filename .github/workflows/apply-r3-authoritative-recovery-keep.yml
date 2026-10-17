@@ -1,0 +1,133 @@
+name: Apply Authoritative R3 Recovery KEEP Contract
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r3
+    paths:
+      - .github/workflows/apply-r3-authoritative-recovery-keep.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: work/maintenance-v4-windows-p3-home-package-r3
+
+      - name: Verify checkout is still branch head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin work/maintenance-v4-windows-p3-home-package-r3
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/work/maintenance-v4-windows-p3-home-package-r3)" || { echo 'Branch advanced before patch; fail closed.'; exit 9; }
+
+      - name: Apply source boundary and strict qualifier atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # 1) Product lifecycle: mutate Maintenance/App only; Recovery KEEP is true no-mutation.
+          p = Path('packaging/windows/scripts/setup-windows-components-v5.ps1')
+          text = p.read_text(encoding='utf-8-sig')
+
+          root_old = "$maintRoot=Join-Path $InstallRoot 'Maintenance';$maintExe=Join-Path $maintRoot 'App\\SoknaMaintenanceSupervisor.exe'"
+          root_new = "$maintRoot=Join-Path $InstallRoot 'Maintenance';$maintApp=Join-Path $maintRoot 'App';$maintRecovery=Join-Path $maintRoot 'Recovery';$maintExe=Join-Path $maintApp 'SoknaMaintenanceSupervisor.exe'"
+          if text.count(root_old) != 1:
+              raise SystemExit(f'maintenance root anchor count != 1: {text.count(root_old)}')
+          text = text.replace(root_old, root_new, 1)
+
+          lines = text.splitlines()
+          out = []
+          apply_count = child_count = reconcile_count = 0
+          for line in lines:
+              if line.startswith('function ApplyMaintenance($r){'):
+                  apply_count += 1
+                  out.append("function ApplyMaintenance($r){$script:CurrentComponent='maintenance';SaveSnap 'maintenance' $maintApp 'SoknaMaintenanceSupervisor';$Applied.Add('maintenance');$script:CurrentPhase='Service stop';Event 'component_action_started' 'started' @{action=$r.Action};if((Service-Info 'SoknaMaintenanceSupervisor').Installed){Stop-Svc 'SoknaMaintenanceSupervisor' $maintApp};$script:CurrentPhase='Files';$source=(Split-Path $r.TargetPath -Parent);Copy-TreeAtomic $source $maintApp;if((Sha $maintExe)-ne$r.TargetHash){throw 'Maintenance hash verification failed.'};$script:CurrentPhase='Service registration';Delete-Svc 'SoknaMaintenanceSupervisor' $maintApp;Create-Svc 'SoknaMaintenanceSupervisor' (Simple-Cmd $maintExe) 'SOKNA Maintenance Supervisor' $true;$script:CurrentPhase='Health verification';Start-Svc 'SoknaMaintenanceSupervisor';Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $maintExe);shutdown_proof='service-status+process-exit+owned-process-exit'}}")
+              elif line.startswith("foreach($r in $script:Resolved){if($r.Action-eq'BLOCKED')"):
+                  reconcile_count += 1
+                  out.append("$recoveryMutation=@($script:Resolved|Where-Object{$_.Id-eq'maintenance-recovery-console'-and$_.Action-ne'KEEP'})|Select-Object -First 1")
+                  out.append("if($recoveryMutation){throw 'Recovery Console mutation requires a dedicated recovery lifecycle; refusing to mutate Maintenance App.'}")
+                  out.append(line)
+              elif line.startswith(" foreach($r in @($script:Resolved|Where-Object{-not$_.Primary-and$_.Parent-eq'maintenance'})){"):
+                  child_count += 1
+                  out.extend([
+                      " foreach($r in @($script:Resolved|Where-Object{-not$_.Primary-and$_.Parent-eq'maintenance'})){",
+                      "   $CurrentComponent=$r.Id",
+                      "   if($r.Action-eq'KEEP'){$CurrentPhase='No mutation';if((Sha $r.InstalledPath)-ne$r.TargetHash){throw \"Maintenance subordinate fingerprint mismatch: $($r.Id)\"};Event 'component_action_completed' 'kept' @{action='KEEP';proof='no_stop_no_copy_no_registration_no_restart';after_sha256=(Sha $r.InstalledPath)};continue}",
+                      "   $CurrentPhase='Health verification'",
+                      "   if((Sha $r.InstalledPath)-ne$r.TargetHash){throw \"Maintenance subordinate fingerprint mismatch: $($r.Id)\"}",
+                      "   Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $r.InstalledPath)}",
+                      " }",
+                  ])
+              else:
+                  out.append(line)
+          if (apply_count, reconcile_count, child_count) != (1, 1, 1):
+              raise SystemExit(f'lifecycle anchor counts invalid: apply={apply_count}, reconcile={reconcile_count}, child={child_count}')
+          source = '\n'.join(out) + '\n'
+          for needle in [
+              "SaveSnap 'maintenance' $maintApp 'SoknaMaintenanceSupervisor'",
+              "Stop-Svc 'SoknaMaintenanceSupervisor' $maintApp",
+              "Copy-TreeAtomic $source $maintApp",
+              "Delete-Svc 'SoknaMaintenanceSupervisor' $maintApp",
+              "result='kept'", # harmless sentinel below is checked via exact event text separately
+          ]:
+              if needle == "result='kept'":
+                  continue
+              if needle not in source:
+                  raise SystemExit(f'missing lifecycle contract: {needle}')
+          if "Event 'component_action_completed' 'kept' @{action='KEEP';proof='no_stop_no_copy_no_registration_no_restart'" not in source:
+              raise SystemExit('strict subordinate KEEP event missing')
+          p.write_text(source, encoding='utf-8', newline='\n')
+
+          # 2) Qualification: do not accept completed/copy as Recovery KEEP.
+          q = Path('packaging/windows/qualification/qualify-p3-r3-real-home.ps1')
+          qs = q.read_text(encoding='utf-8-sig')
+          weak = """  foreach($id in @('runtime','print-agent')){
+    $row=@($events|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq$id-and$_.result-eq'kept'})|Select-Object -First 1
+    if(-not$row){throw \"KEEP evidence missing: $id\"}
+    if([string]$row.data.action-ne'KEEP'-or[string]$row.data.proof-ne'no_stop_no_copy_no_registration_no_restart'){throw \"KEEP proof invalid: $id\"}
+  }
+  $recoveryEvent=@($events|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq'maintenance-recovery-console'-and[string]$_.data.action-eq'KEEP'})|Select-Object -First 1
+  if(-not$recoveryEvent){throw 'KEEP evidence missing: maintenance-recovery-console'}
+  if([string]$recoveryEvent.data.after_sha256-ne$expectedRecovery){throw 'Recovery Console KEEP hash evidence invalid.'}
+  if([string]$recoveryEvent.result-notin@('completed','kept')){throw \"Recovery Console KEEP result invalid: $([string]$recoveryEvent.result)\"}
+"""
+          strict = """  foreach($id in @('runtime','print-agent','maintenance-recovery-console')){
+    $row=@($events|Where-Object{$_.event_name-eq'component_action_completed'-and$_.component-eq$id-and$_.result-eq'kept'})|Select-Object -First 1
+    if(-not$row){throw \"KEEP evidence missing: $id\"}
+    if([string]$row.data.action-ne'KEEP'-or[string]$row.data.proof-ne'no_stop_no_copy_no_registration_no_restart'){throw \"KEEP proof invalid: $id\"}
+    if($id-eq'maintenance-recovery-console'-and[string]$row.data.after_sha256-ne$expectedRecovery){throw 'Recovery Console KEEP hash evidence invalid.'}
+  }
+"""
+          if weak not in qs:
+              raise SystemExit('weakened Recovery assertion block not found exactly; refusing blind patch')
+          qs = qs.replace(weak, strict, 1)
+          if "result-notin@('completed','kept')" in qs:
+              raise SystemExit('weak Recovery result acceptance still present')
+          if "@('runtime','print-agent','maintenance-recovery-console')" not in qs:
+              raise SystemExit('strict Recovery KEEP loop missing')
+          q.write_text(qs, encoding='utf-8', newline='\n')
+          PY
+
+          git diff --check
+          git diff -- packaging/windows/scripts/setup-windows-components-v5.ps1 packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+
+      - name: Commit only if remote parent is unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packaging/windows/scripts/setup-windows-components-v5.ps1 packaging/windows/qualification/qualify-p3-r3-real-home.ps1
+          git diff --cached --quiet && { echo 'No authoritative patch produced'; exit 1; }
+          git commit -m 'fix(maintenance): enforce true Recovery KEEP boundary'
+          git fetch origin work/maintenance-v4-windows-p3-home-package-r3
+          test "$(git rev-parse HEAD^)" = "$(git rev-parse origin/work/maintenance-v4-windows-p3-home-package-r3)" || { echo 'Remote branch advanced during patch; refusing non-fast-forward push.'; exit 10; }
+          git push origin HEAD:work/maintenance-v4-windows-p3-home-package-r3
