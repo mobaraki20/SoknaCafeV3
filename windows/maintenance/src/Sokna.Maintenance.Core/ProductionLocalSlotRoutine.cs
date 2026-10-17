@@ -85,6 +85,7 @@ public sealed partial class ProductionLocalSlotMigrationBridge
         var archiveRoot = Path.Combine(layout.PackageRoot, "LocalWeb", "pre-slot");
         Directory.CreateDirectory(persistentRoot);
         Directory.CreateDirectory(archiveRoot);
+        RoutineLocalBinding.RequireCurrent(layout.WebRoot, layout.PackageRoot, currentBuild);
         CaptureMachineLocalFiles(layout.WebRoot, persistentRoot);
 
         var targetSlot = BuildProductionSlotPath(layout.PackageRoot, targetBuild, targetManagedTreeSha256);
@@ -98,6 +99,7 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             throw new InvalidDataException("Routine Local staging target must be inactive.");
 
         StageProductionSlot(sourceRoot, targetSlot, managed, persistentRoot, archiveRoot);
+        RoutineLocalBinding.PrepareTarget(persistentRoot, targetSlot, layout.PackageRoot, currentBuild, targetBuild);
         VerifyStagedSlot(targetSlot, persistentRoot, targetBuild, targetManagedFiles, targetManagedTreeSha256);
         RequireProductionSlotPath(targetSlot, layout.PackageRoot);
         return targetSlot;
@@ -129,8 +131,11 @@ public sealed partial class ProductionLocalSlotMigrationBridge
         RequireProductionSlotPath(targetSlot, layout.PackageRoot);
 
         var persistentRoot = Path.Combine(layout.PackageRoot, "LocalWeb", "persistent");
+        var lifecycle = RoutineLocalLifecycle.Open(layout.PackageRoot, _paths.LocalSlotStateRoot, currentBuild);
+        RoutineLocalBinding.RequireCurrent(layout.WebRoot, layout.PackageRoot, currentBuild);
         CaptureMachineLocalFiles(layout.WebRoot, persistentRoot);
         RefreshRoutineMachineLocalOverlay(targetSlot, persistentRoot);
+        RoutineLocalBinding.PrepareTarget(persistentRoot, targetSlot, layout.PackageRoot, currentBuild, targetBuild);
         VerifyStagedSlot(targetSlot, persistentRoot, targetBuild, targetManagedFiles, targetManagedTreeSha256);
 
         var events = new List<RoutineLocalSlotEvent>();
@@ -151,7 +156,9 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             return RoutineResult(state, targetSlot, targetBuild, targetManagedTreeSha256);
         }
 
-        StopApacheAndProveExit(layout.ApacheExecutable);
+        lifecycle.SaveRollbackEvidence();
+        try { StopApacheAndProveExit(layout.ApacheExecutable); }
+        catch { lifecycle.Complete(); throw; }
         state = RoutineEvent(state, events, "APACHE_STOPPED", targetSlot);
         try
         {
@@ -167,9 +174,12 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             if (!PathsEqual(finalLayout.ActiveSlotTarget!, targetSlot)) throw new InvalidDataException("Routine Local activation resolved to an unexpected sibling release.");
             var finalTree = LocalManagedTreeAttestation.RequireExact(finalLayout.WebRoot, targetManagedFiles, targetManagedTreeSha256);
             VerifyMachineLocalOverlay(finalLayout.WebRoot, persistentRoot);
+            lifecycle.Commit(targetBuild, targetSlot, targetManagedFiles);
+            state = RoutineEvent(state, events, "LOCAL_LIFECYCLE_RECONCILED", targetBuild);
             state = state with { RecoveryRequired = false };
             state = RoutineEvent(state, events, "HTTP_HEALTHY", layout.HealthUrl);
             state = RoutineEvent(state, events, "COMMITTED", finalTree);
+            lifecycle.Complete();
             return RoutineResult(state, targetSlot, targetBuild, finalTree);
         }
         catch (Exception activationError)
@@ -180,6 +190,7 @@ public sealed partial class ProductionLocalSlotMigrationBridge
                 if (Directory.Exists(layout.WebRoot)) RemoveJunction(layout.WebRoot);
                 RequireProductionSlotPath(previousSlot, layout.PackageRoot);
                 CreateJunction(layout.WebRoot, previousSlot);
+                lifecycle.Restore();
                 StartApache();
                 RequireHttpHealth(currentBuild, layout.HealthUrl);
                 var restored = _discovery.DiscoverAndVerify(currentBuild, currentManagedFiles);
@@ -188,6 +199,7 @@ public sealed partial class ProductionLocalSlotMigrationBridge
                 LocalManagedTreeAttestation.RequireExact(restored.WebRoot, currentManagedFiles, currentManagedTreeSha256);
                 state = state with { RecoveryRequired = false, ActivationPerformed = true };
                 state = RoutineEvent(state, events, "ROLLED_BACK", activationError.Message);
+                lifecycle.Complete();
             }
             catch (Exception rollbackError)
             {
@@ -215,8 +227,10 @@ public sealed partial class ProductionLocalSlotMigrationBridge
                 var resolved = Directory.ResolveLinkTarget(state.StableWebRoot, returnFinalTarget: true)?.FullName;
                 if (!string.IsNullOrWhiteSpace(resolved) && PathsEqual(resolved, state.PreviousSlot))
                 {
+                    RoutineLocalLifecycle.RestoreCrashBackup(state.PackageRoot, _paths.LocalSlotStateRoot, state.CurrentBuild);
                     RequireHttpHealth(state.CurrentBuild, state.HealthUrl);
                     LocalManagedTreeAttestation.RequireExact(state.StableWebRoot, state.CurrentManagedFiles, state.CurrentManagedTreeSha256);
+                    RoutineLocalLifecycle.CompleteCrashBackup(_paths.LocalSlotStateRoot);
                     state = state with { RecoveryRequired = false };
                     state = RoutineEvent(state, events, "RECOVERED_TO_PREVIOUS_SLOT", state.PreviousSlot);
                     return RoutineResult(state, state.PreviousSlot, state.CurrentBuild, state.CurrentManagedTreeSha256);
@@ -233,8 +247,10 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             RemoveJunction(state.StableWebRoot);
         }
         CreateJunction(state.StableWebRoot, state.PreviousSlot);
+        RoutineLocalLifecycle.RestoreCrashBackup(state.PackageRoot, _paths.LocalSlotStateRoot, state.CurrentBuild);
         StartApache();
         RequireHttpHealth(state.CurrentBuild, state.HealthUrl);
+        RoutineLocalLifecycle.CompleteCrashBackup(_paths.LocalSlotStateRoot);
         var restored = _discovery.DiscoverAndVerify(state.CurrentBuild, state.CurrentManagedFiles);
         if (!restored.WebIsReparsePoint || !PathsEqual(restored.ActiveSlotTarget!, state.PreviousSlot))
             throw new InvalidDataException("Routine recovery did not restore the previous sibling release.");
