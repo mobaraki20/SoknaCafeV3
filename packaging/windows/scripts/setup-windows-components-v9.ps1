@@ -9,6 +9,29 @@ function Add-Event([string]$name,[string]$result,$data=$null){
   $row=[ordered]@{format='sokna-installer-event-v1';at_utc=[DateTime]::UtcNow.ToString('o');transaction_id=$Tx;correlation_id=$Corr;setup_session_id=$Session;event_name=$name;result=$result;component='legacy-print-migration';phase=$Phase;data=$data}
   Add-Content -LiteralPath $Events -Value ($row|ConvertTo-Json -Compress -Depth 8) -Encoding UTF8
 }
+function Assert-PlanPreflight {
+  if([string]$plan.mode-eq'uninstall'){Add-Event 'privileged_plan_preflight_completed' 'completed' @{mode='uninstall';mutations_validated=0};return}
+  $rows=@($plan.components)
+  if($rows.Count-eq0){throw 'PRIVILEGED_PREFLIGHT_EMPTY_COMPONENT_PLAN'}
+  $seen=@{}
+  foreach($row in $rows){
+    $id=[string]$row.component_id
+    if([string]::IsNullOrWhiteSpace($id)){throw 'PRIVILEGED_PREFLIGHT_COMPONENT_ID_MISSING'}
+    if($seen.ContainsKey($id)){throw ('PRIVILEGED_PREFLIGHT_DUPLICATE_COMPONENT: '+$id)}
+    $seen[$id]=$true
+    $action=([string]$row.action).Trim().ToUpperInvariant().Replace('_','')
+    if($action-notin@('KEEP','INSTALL','UPDATE','REPAIR','BLOCKED','NOACTIONOPTIONAL','PENDINGRESTART')){throw ('PRIVILEGED_PREFLIGHT_ACTION_UNSUPPORTED: '+$id+' / '+$action)}
+    if($action-eq'BLOCKED'){throw ('PRIVILEGED_PREFLIGHT_COMPONENT_BLOCKED: '+$id)}
+    if($id-eq'maintenance-recovery-console'-and$action-ne'KEEP'){
+      throw ('PRIVILEGED_PREFLIGHT_RECOVERY_LIFECYCLE_REQUIRED: '+$action)
+    }
+    if($action-in@('INSTALL','UPDATE','REPAIR','KEEP')){
+      $sha=([string]$row.target_sha256).Trim().ToLowerInvariant()
+      if($sha-notmatch'^[a-f0-9]{64}$'){throw ('PRIVILEGED_PREFLIGHT_TARGET_SHA_INVALID: '+$id)}
+    }
+  }
+  Add-Event 'privileged_plan_preflight_completed' 'completed' @{mode=[string]$plan.mode;components=$rows.Count;recovery_console_mutation=$false}
+}
 function Service-Exe([string]$image){
   if([string]::IsNullOrWhiteSpace($image)){return ''}
   if($image-match'^\s*"([^"]+\.exe)"'){return [string]$Matches[1]}
@@ -114,7 +137,9 @@ $core=Join-Path $ShellRoot 'setup-windows-components-core-v5.ps1';$queue=Join-Pa
 $ps51=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 if(-not(Test-Path -LiteralPath $ps51 -PathType Leaf)){throw 'Windows PowerShell 5.1 executable is unavailable.'}
 if(-not(Test-Path -LiteralPath $core -PathType Leaf)){throw 'Qualified Windows component lifecycle core is missing.'}
-$Phase='Preflight';$LegacyTouched=$false;$LegacySnapshot=$null
+$Phase='Privileged plan preflight';$LegacyTouched=$false;$LegacySnapshot=$null
+try{Assert-PlanPreflight}catch{Add-Event 'privileged_plan_preflight_failed' 'failed' @{error=(Safe $_.Exception.Message);mutation_started=$false};throw}
+$Phase='Legacy print preflight'
 try{$LegacySnapshot=Get-LegacySnapshot;Quiesce-Legacy $LegacySnapshot}catch{Add-Event 'legacy_print_preflight_failed' 'failed' @{error=(Safe $_.Exception.Message)};throw}
 
 $coreProcess=$null
