@@ -1,0 +1,181 @@
+name: CI Maintenance V4 Windows P3 R4 Source
+
+on:
+  push:
+    branches:
+      - work/maintenance-v4-windows-p3-home-package-r4
+    paths:
+      - windows/maintenance/**
+      - .github/workflows/ci-maintenance-v4-windows-p3-r4-source.yml
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scope and exact-parent safety
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base='0e42a481550eb34d0e7e08c52151b2844ca32524'
+          git merge-base --is-ancestor $base HEAD
+          if($LASTEXITCODE-ne0){throw 'R4 is not descended from the exact R3 qualified source.'}
+          $changed=@(git diff --name-only $base..HEAD | Where-Object {$_ -notmatch '^\.github/' -and $_ -notmatch '^packaging/windows/qualification/apply-p3-r4-source-fix\.py$'})
+          $allowed=@(
+            'windows/maintenance/src/Sokna.Maintenance.Core/LocalSlotManager.cs',
+            'windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj',
+            'windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Program.cs'
+          )
+          foreach($p in $changed){if($allowed-notcontains$p){throw "Unexpected product-source delta: $p"}}
+          Write-Host 'R4 scope/lineage: PASS'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build Core Engine Supervisor and UAT launcher
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj -c Release
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Sokna.Maintenance.P3HomeUat.csproj -c Release
+
+      - name: Build relocated fake Apache
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=Join-Path $PWD 'out/fake-apache-src'
+          New-Item -ItemType Directory -Path $p -Force|Out-Null
+          @'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained><PublishSingleFile>true</PublishSingleFile></PropertyGroup>
+          </Project>
+          '@ | Set-Content (Join-Path $p 'FakeApache.csproj') -Encoding utf8
+          @'
+          var root=Environment.GetEnvironmentVariable("FAKE_COMPILED_ROOT") ?? throw new Exception("FAKE_COMPILED_ROOT missing");
+          Console.WriteLine("Server version: Apache/2.4-test");
+          Console.WriteLine($" -D HTTPD_ROOT=\"{root}\"");
+          Console.WriteLine(" -D SERVER_CONFIG_FILE=\"conf/httpd.conf\"");
+          '@ | Set-Content (Join-Path $p 'Program.cs') -Encoding utf8
+          dotnet publish (Join-Path $p 'FakeApache.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/fake-apache-publish
+
+      - name: Qualify relocated Apache config and SOKNA managed include
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $actual=Join-Path $PWD 'out/apache-actual'
+          $compiled=Join-Path $PWD 'out/apache-compiled'
+          $bin=Join-Path $actual 'bin'
+          $conf=Join-Path $actual 'conf'
+          $public=Join-Path $PWD 'out/package/Web/public'
+          New-Item -ItemType Directory -Path $bin,$conf,$public,(Join-Path $compiled 'conf') -Force|Out-Null
+          Copy-Item out/fake-apache-publish/FakeApache.exe (Join-Path $bin 'httpd.exe') -Force
+          $include=Join-Path $conf 'sokna-local.conf'
+          @"
+          # SOKNA-MANAGED-APACHE-VHOST v1
+          <VirtualHost *:18080>
+            DocumentRoot "$($public.Replace('\','/'))"
+          </VirtualHost>
+          "@ | Set-Content $include -Encoding utf8
+          @"
+          # default Apache root deliberately does not own SOKNA
+          DocumentRoot "C:/unused/default"
+          # BEGIN SOKNA LOCAL MANAGED INCLUDE v1
+          Include "$($include.Replace('\','/'))"
+          # END SOKNA LOCAL MANAGED INCLUDE v1
+          "@ | Set-Content (Join-Path $conf 'httpd.conf') -Encoding utf8
+          $env:FAKE_COMPILED_ROOT=$compiled
+
+          $h=Join-Path $PWD 'out/resolver-harness'
+          New-Item -ItemType Directory -Path $h -Force|Out-Null
+          @'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework></PropertyGroup>
+            <ItemGroup><ProjectReference Include="..\..\windows\maintenance\src\Sokna.Maintenance.Core\Sokna.Maintenance.Core.csproj" /></ItemGroup>
+          </Project>
+          '@ | Set-Content (Join-Path $h 'Harness.csproj') -Encoding utf8
+          @'
+          using System.Reflection;
+          using Sokna.Maintenance.Core;
+          var type=typeof(LocalSlotManager);
+          var cfg=type.GetMethod("DiscoverApacheConfig",BindingFlags.NonPublic|BindingFlags.Static) ?? throw new Exception("DiscoverApacheConfig missing");
+          var doc=type.GetMethod("DiscoverDocumentRoot",BindingFlags.NonPublic|BindingFlags.Static) ?? throw new Exception("DiscoverDocumentRoot missing");
+          var exe=Environment.GetEnvironmentVariable("FAKE_HTTPD")!;
+          var expectedConfig=Path.GetFullPath(Environment.GetEnvironmentVariable("EXPECTED_CONFIG")!);
+          var expectedDoc=Path.GetFullPath(Environment.GetEnvironmentVariable("EXPECTED_DOCROOT")!);
+          var tuple=((string ApacheRoot,string ConfigPath))cfg.Invoke(null,new object[]{exe})!;
+          if(!string.Equals(Path.GetFullPath(tuple.ConfigPath),expectedConfig,StringComparison.OrdinalIgnoreCase)) throw new Exception($"Adjacent config not selected: {tuple.ConfigPath}");
+          var actualDoc=(string)doc.Invoke(null,new object[]{tuple.ConfigPath,tuple.ApacheRoot})!;
+          if(!string.Equals(Path.GetFullPath(actualDoc),expectedDoc,StringComparison.OrdinalIgnoreCase)) throw new Exception($"Managed include DocumentRoot mismatch: {actualDoc}");
+          Console.WriteLine("RELOCATED_APACHE_AND_MANAGED_INCLUDE_PASS");
+          '@ | Set-Content (Join-Path $h 'Program.cs') -Encoding utf8
+          $env:FAKE_HTTPD=Join-Path $bin 'httpd.exe'
+          $env:EXPECTED_CONFIG=Join-Path $conf 'httpd.conf'
+          $env:EXPECTED_DOCROOT=$public
+          dotnet run --project (Join-Path $h 'Harness.csproj') -c Release
+
+      - name: Qualify ambiguity fail-closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $compiled=Join-Path $PWD 'out/apache-compiled'
+          $compiledConfig=Join-Path $compiled 'conf/httpd.conf'
+          Set-Content $compiledConfig 'DocumentRoot "C:/ambiguous"' -Encoding utf8
+          $env:FAKE_COMPILED_ROOT=$compiled
+          $env:FAKE_HTTPD=Join-Path $PWD 'out/apache-actual/bin/httpd.exe'
+          $h=Join-Path $PWD 'out/ambiguity-harness'
+          New-Item -ItemType Directory -Path $h -Force|Out-Null
+          @'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework></PropertyGroup>
+            <ItemGroup><ProjectReference Include="..\..\windows\maintenance\src\Sokna.Maintenance.Core\Sokna.Maintenance.Core.csproj" /></ItemGroup>
+          </Project>
+          '@ | Set-Content (Join-Path $h 'Harness.csproj') -Encoding utf8
+          @'
+          using System.Reflection;
+          using Sokna.Maintenance.Core;
+          var m=typeof(LocalSlotManager).GetMethod("DiscoverApacheConfig",BindingFlags.NonPublic|BindingFlags.Static)!;
+          try { _=m.Invoke(null,new object[]{Environment.GetEnvironmentVariable("FAKE_HTTPD")!}); throw new Exception("Ambiguous roots were accepted."); }
+          catch(TargetInvocationException ex) when(ex.InnerException is InvalidDataException && ex.InnerException.Message.Contains("ambiguous",StringComparison.OrdinalIgnoreCase)) { Console.WriteLine("AMBIGUITY_FAIL_CLOSED_PASS"); }
+          '@ | Set-Content (Join-Path $h 'Program.cs') -Encoding utf8
+          dotnet run --project (Join-Path $h 'Harness.csproj') -c Release
+
+      - name: Qualify preflight failure reports no activation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/engine
+          $data=Join-Path $PWD 'out/no-service-data'
+          New-Item -ItemType Directory -Path $data -Force|Out-Null
+          $sha='b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a'
+          $stdout=Join-Path $PWD 'out/engine-out.txt'; $stderr=Join-Path $PWD 'out/engine-err.txt'
+          $p=Start-Process out/engine/SoknaMaintenanceUpdateEngine.exe -ArgumentList @('local-slot-home-cycle','--expected-build','3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory','--expected-managed-files','497','--expected-managed-tree-sha256',$sha,'--data-root',$data) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if($p.ExitCode-eq0){throw 'No-service preflight unexpectedly succeeded.'}
+          $text=((Get-Content $stderr -Raw -ErrorAction SilentlyContinue)+(Get-Content $stdout -Raw -ErrorAction SilentlyContinue)).Trim()
+          $json=$text|ConvertFrom-Json
+          if([bool]$json.activation_performed){throw 'Preflight failure incorrectly reported activation_performed=true.'}
+          if([bool]$json.database_mutation_performed-or[bool]$json.public_mutation_performed-or[bool]$json.windows_reboot_required){throw 'Forbidden mutation flag in preflight failure.'}
+          Write-Host 'PREMUTATION_FAILURE_ACTIVATION_FALSE_PASS'
+
+      - name: Static launcher retry and version gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $launcher=Get-Content windows/maintenance/tests/Sokna.Maintenance.P3HomeUat/Program.cs -Raw
+          if(-not$launcher.Contains('home-p3-231ai-r2')){throw 'R4 retry idempotency key missing.'}
+          if((Get-Content windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -Raw)-notmatch '<Version>0\.3\.1</Version>'){throw 'Engine 0.3.1 missing.'}
+          if((Get-Content windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -Raw)-notmatch '<Version>0\.3\.1</Version>'){throw 'Supervisor 0.3.1 missing.'}
+          Write-Host 'R4 SOURCE QUALIFICATION: PASS'
