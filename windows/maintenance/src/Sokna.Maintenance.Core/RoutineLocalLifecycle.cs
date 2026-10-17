@@ -13,7 +13,6 @@ internal sealed class RoutineLocalLifecycle
     private readonly string _currentBuild;
     private readonly byte[] _stateBefore;
     private readonly byte[]? _managedBefore;
-    private bool _mutated;
     private readonly string _backupPath;
 
     private RoutineLocalLifecycle(string statePath, string managedPath, string currentBuild, string backupPath)
@@ -132,7 +131,6 @@ internal sealed class RoutineLocalLifecycle
         var managed = new JsonObject { ["format"]="sokna-local-managed-files-v1",
             ["schema_version"]=1,["updated_at"]=DateTimeOffset.UtcNow.ToString("O"),
             ["files"]=files.DeepClone() };
-        _mutated=true;
         AtomicWrite(_statePath,JsonSerializer.SerializeToUtf8Bytes(state));
         AtomicWrite(_managedPath,JsonSerializer.SerializeToUtf8Bytes(managed));
         var after=ReadObject(File.ReadAllBytes(_statePath));
@@ -153,7 +151,6 @@ internal sealed class RoutineLocalLifecycle
         AtomicWrite(_statePath,Convert.FromBase64String((string?)proof["state_base64"]??""));
         if ((string?)proof["managed_base64"] is string m) AtomicWrite(_managedPath,Convert.FromBase64String(m));
         else if (File.Exists(_managedPath))File.Delete(_managedPath);
-        _mutated=false;
     }
 
     public void Complete() { if (File.Exists(_backupPath)) File.Delete(_backupPath); }
