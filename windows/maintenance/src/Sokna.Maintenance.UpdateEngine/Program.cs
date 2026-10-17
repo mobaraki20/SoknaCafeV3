@@ -4,10 +4,12 @@ using Sokna.Maintenance.Core;
 
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
-    Console.WriteLine("SOKNA Maintenance Update Engine 0.3.2 (P3 R5 health/recovery hardening; DB mutation disabled)");
+    Console.WriteLine("SOKNA Maintenance Update Engine 0.3.3 (R6 production Local migration bridge; DB mutation disabled)");
     Console.WriteLine("verify-stage --package <zip> --identity <json> [--data-root <path>]");
     Console.WriteLine("local-slot-inspect --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
-    Console.WriteLine("local-slot-home-cycle --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
+    Console.WriteLine("local-slot-migrate --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
+    Console.WriteLine("local-slot-recover [--data-root <path>]");
+    Console.WriteLine("local-slot-home-cycle --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>] (engineering legacy)");
     Console.WriteLine("local-slot-activate --slot <path> --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
     return;
 }
@@ -24,6 +26,46 @@ if (command == "verify-stage")
     RequireOption(options, "--package", out var package);
     RequireOption(options, "--identity", out var identity);
     RunVerifyStage(package, identity, paths);
+    return;
+}
+
+if (command == "local-slot-recover")
+{
+    try
+    {
+        var result = new ProductionLocalSlotMigrationBridge(paths).Recover();
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            ok = result.Ok,
+            engine_version = "0.3.3",
+            phase = result.Phase,
+            result,
+            managed_tree_sha256 = result.ManagedTreeSha256,
+            activation_performed = result.ActivationPerformed,
+            database_mutation_performed = false,
+            public_mutation_performed = false,
+            windows_reboot_required = false,
+            recovery_required = result.RecoveryRequired
+        }, AtomicFile.JsonOptions));
+    }
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or TimeoutException or AggregateException or System.ComponentModel.Win32Exception or InvalidOperationException)
+    {
+        Console.Error.WriteLine(JsonSerializer.Serialize(new
+        {
+            ok = false,
+            engine_version = "0.3.3",
+            phase = "RECOVERY_FAILED",
+            code = "LOCAL_SLOT_RECOVERY_FAILED",
+            error = ex.Message,
+            activation_performed = true,
+            database_mutation_performed = false,
+            public_mutation_performed = false,
+            windows_reboot_required = false,
+            recovery_required = true,
+            state_path = Path.Combine(paths.LocalSlotStateRoot, "migration-state.json")
+        }, AtomicFile.JsonOptions));
+        Environment.ExitCode = 4;
+    }
     return;
 }
 
@@ -46,7 +88,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.2",
+                engine_version = "0.3.3",
                 phase = "INSPECTED",
                 layout,
                 managed_tree_sha256 = managedTree,
@@ -54,6 +96,27 @@ try
                 database_mutation_performed = false,
                 public_mutation_performed = false,
                 windows_reboot_required = false
+            }, AtomicFile.JsonOptions));
+            break;
+        }
+        case "local-slot-migrate":
+        {
+            var layout = slots.DiscoverAndVerify(expectedBuild, expectedManagedFiles);
+            var managedTree = LocalManagedTreeAttestation.RequireExact(layout.WebRoot, expectedManagedFiles, expectedManagedTreeSha256);
+            var result = new ProductionLocalSlotMigrationBridge(paths).Migrate(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256);
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                ok = result.Ok,
+                engine_version = "0.3.3",
+                phase = result.Phase,
+                result,
+                managed_tree_sha256 = result.ManagedTreeSha256,
+                pre_activation_managed_tree_sha256 = managedTree,
+                activation_performed = result.ActivationPerformed,
+                database_mutation_performed = false,
+                public_mutation_performed = false,
+                windows_reboot_required = false,
+                recovery_required = result.RecoveryRequired
             }, AtomicFile.JsonOptions));
             break;
         }
@@ -67,7 +130,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.2",
+                engine_version = "0.3.3",
                 phase = "COMMITTED",
                 result,
                 managed_tree_sha256 = finalTree,
@@ -89,7 +152,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = "0.3.2",
+                engine_version = "0.3.3",
                 phase = state.Phase,
                 state,
                 managed_tree_sha256 = finalTree,
@@ -110,9 +173,9 @@ catch (Exception ex) when (ex is InvalidDataException or IOException or Unauthor
     Console.Error.WriteLine(JsonSerializer.Serialize(new
     {
         ok = false,
-        engine_version = "0.3.2",
+        engine_version = "0.3.3",
         phase = "FAILED",
-        code = "LOCAL_SLOT_PHASE3_FAILED",
+        code = command == "local-slot-migrate" ? "LOCAL_SLOT_MIGRATION_FAILED" : "LOCAL_SLOT_PHASE3_FAILED",
         error = ex.Message,
         activation_performed = ActivationPerformedInAttempt(paths.LocalSlotStatePath, attemptStartedAtUtc),
         database_mutation_performed = false,
@@ -162,7 +225,7 @@ static void RunVerifyStage(string package, string identity, MaintenancePaths pat
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             ok = true,
-            engine_version = "0.3.2",
+            engine_version = "0.3.3",
             phase = "STAGED",
             release_set_id = receipt.ReleaseSetId,
             sequence = receipt.Sequence,
@@ -176,7 +239,7 @@ static void RunVerifyStage(string package, string identity, MaintenancePaths pat
         Console.Error.WriteLine(JsonSerializer.Serialize(new
         {
             ok = false,
-            engine_version = "0.3.2",
+            engine_version = "0.3.3",
             phase = "REJECTED_PRE_MUTATION",
             code = "RELEASE_SET_REJECTED",
             error = ex.Message,

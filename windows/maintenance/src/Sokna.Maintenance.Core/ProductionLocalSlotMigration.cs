@@ -21,6 +21,8 @@ public sealed record ProductionLocalSlotMigrationState(
     [property: JsonPropertyName("expected_managed_tree_sha256")] string ExpectedManagedTreeSha256,
     [property: JsonPropertyName("package_root")] string PackageRoot,
     [property: JsonPropertyName("stable_web_root")] string StableWebRoot,
+    [property: JsonPropertyName("apache_executable")] string ApacheExecutable,
+    [property: JsonPropertyName("health_url")] string HealthUrl,
     [property: JsonPropertyName("release_root")] string ReleaseRoot,
     [property: JsonPropertyName("target_slot")] string TargetSlot,
     [property: JsonPropertyName("physical_web_backup")] string? PhysicalWebBackup,
@@ -202,35 +204,40 @@ public sealed class ProductionLocalSlotMigrationBridge
             throw new InvalidDataException("Automatic code-layout recovery is forbidden after database/Public mutation.");
 
         var events = state.Events.ToList();
-        var layout = _discovery.DiscoverAndVerify(state.ExpectedBuild, state.ExpectedManagedFiles);
-        var currentTree = LocalManagedTreeAttestation.RequireExact(layout.WebRoot, state.ExpectedManagedFiles, state.ExpectedManagedTreeSha256);
 
-        // If the current stable Web is already healthy, recovery is reconciliation only.
-        try
+        // Recovery must not require Local Web to be healthy. If the stable entry is present
+        // and healthy, reconcile state without mutation; otherwise restore from durable
+        // physical-Web backup using Apache/health facts captured before activation.
+        if (Directory.Exists(state.StableWebRoot))
         {
-            RequireHttpHealth(state.ExpectedBuild, layout.HealthUrl);
-            state = state with { RecoveryRequired = false };
-            state = Event(state, events, layout.WebIsReparsePoint ? "RECOVERED_TO_VERIFIED_SLOT" : "RECOVERED_TO_PHYSICAL_WEB", layout.WebRoot);
-            return Result(state, currentTree);
-        }
-        catch (InvalidDataException)
-        {
-            // Continue into deterministic physical-Web restoration below.
+            try
+            {
+                var currentLayout = _discovery.DiscoverAndVerify(state.ExpectedBuild, state.ExpectedManagedFiles);
+                var currentTree = LocalManagedTreeAttestation.RequireExact(currentLayout.WebRoot, state.ExpectedManagedFiles, state.ExpectedManagedTreeSha256);
+                RequireHttpHealth(state.ExpectedBuild, currentLayout.HealthUrl);
+                state = state with { RecoveryRequired = false, ActiveSlot = currentLayout.ActiveSlotTarget };
+                state = Event(state, events, currentLayout.WebIsReparsePoint ? "RECOVERED_TO_VERIFIED_SLOT" : "RECOVERED_TO_PHYSICAL_WEB", currentLayout.WebRoot);
+                return Result(state, currentTree);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                state = Event(state, events, "RECOVERY_CURRENT_LAYOUT_UNHEALTHY", ex.Message);
+            }
         }
 
         var backup = state.PhysicalWebBackup;
         if (string.IsNullOrWhiteSpace(backup) || !Directory.Exists(backup))
             throw new DirectoryNotFoundException("Production Local migration physical-Web backup is unavailable for recovery.");
 
-        StopApacheAndProveExit(layout.ApacheExecutable);
+        StopApacheAndProveExit(state.ApacheExecutable);
         state = Event(state, events, "RECOVERY_APACHE_STOPPED", backup);
 
-        if (Directory.Exists(layout.WebRoot))
+        if (Directory.Exists(state.StableWebRoot))
         {
-            var attributes = File.GetAttributes(layout.WebRoot);
+            var attributes = File.GetAttributes(state.StableWebRoot);
             if ((attributes & FileAttributes.ReparsePoint) != 0)
             {
-                RemoveJunction(layout.WebRoot);
+                RemoveJunction(state.StableWebRoot);
             }
             else
             {
@@ -238,9 +245,9 @@ public sealed class ProductionLocalSlotMigrationBridge
             }
         }
 
-        Directory.Move(backup, layout.WebRoot);
+        Directory.Move(backup, state.StableWebRoot);
         StartApache();
-        RequireHttpHealth(state.ExpectedBuild, layout.HealthUrl);
+        RequireHttpHealth(state.ExpectedBuild, state.HealthUrl);
         var restoredLayout = _discovery.DiscoverAndVerify(state.ExpectedBuild, state.ExpectedManagedFiles);
         if (restoredLayout.WebIsReparsePoint) throw new InvalidDataException("Recovery expected a physical Web directory but found a reparse point.");
         var restoredTree = LocalManagedTreeAttestation.RequireExact(restoredLayout.WebRoot, state.ExpectedManagedFiles, state.ExpectedManagedTreeSha256);
@@ -523,6 +530,8 @@ public sealed class ProductionLocalSlotMigrationBridge
             expectedManagedTreeSha256,
             layout.PackageRoot,
             layout.WebRoot,
+            layout.ApacheExecutable,
+            layout.HealthUrl,
             releaseRoot,
             targetSlot,
             null,

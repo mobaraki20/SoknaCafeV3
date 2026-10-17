@@ -44,11 +44,12 @@ var operations = new MaintenanceOperationStore(paths);
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
 var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
 var localSlotCoordinator = new SupervisorLocalSlotCoordinator(paths, operations, journal, state, updateEnginePath);
+var productionMigrationCoordinator = new SupervisorProductionMigrationCoordinator(paths, operations, journal, state, updateEnginePath);
 journal.Append("supervisor.starting", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?>
 {
     ["pid"] = Environment.ProcessId,
     ["port"] = port,
-    ["p3_local_slots_enabled"] = true,
+    ["production_local_slot_migration_enabled"] = true,
     ["database_mutation_enabled"] = false,
     ["web_adapter_acl_state"] = aclEvidence.State
 });
@@ -69,11 +70,13 @@ app.Use(async (context, next) =>
 
     var isStageMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/update/stage", StringComparison.Ordinal);
     var isLocalSlotMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/home-cycle", StringComparison.Ordinal);
-    var isMutation = isStageMutation || isLocalSlotMutation;
+    var isProductionMigration = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/migrate", StringComparison.Ordinal);
+    var isProductionRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/recover", StringComparison.Ordinal);
+    var isMutation = isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
-            new { allowed_methods = new[] { "GET", "POST /v1/update/stage", "POST /v1/local-slots/home-cycle" }, activation_enabled = true, database_mutation_enabled = false });
+            new { allowed_methods = new[] { "GET", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = true, database_mutation_enabled = false });
         return;
     }
 
@@ -136,8 +139,18 @@ app.Use(async (context, next) =>
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "LOCAL_SLOT_AUTHORITY_REQUIRED", false, new { });
         return;
     }
+    if (isProductionMigration && keyId != "web-adapter")
+    {
+        await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
+        return;
+    }
+    if (isProductionRecovery && keyId != "recovery-console")
+    {
+        await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "RECOVERY_CONSOLE_KEY_REQUIRED", true, new { });
+        return;
+    }
 
-    if ((isStageMutation || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
+    if ((isStageMutation || isProductionMigration || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "acl_pending", "WEB_ADAPTER_ACL_PENDING", false,
             new { acl_state = aclEvidence.State, service_name = aclEvidence.ServiceName });
@@ -205,7 +218,7 @@ app.MapGet("/v1/health", async context =>
         loopback_only = true,
         staging_mutation_enabled = true,
         activation_enabled = true,
-        local_slot_phase = "p3",
+        local_slot_phase = "production_bridge_r6",
         database_mutation_enabled = false,
         web_adapter_acl_state = aclEvidence.State,
         web_adapter_service_account = aclEvidence.ServiceAccount,
@@ -316,6 +329,65 @@ app.MapPost("/v1/update/stage", async context =>
     }
 });
 
+app.MapPost("/v1/local-slots/migrate", async context =>
+{
+    if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var idempotencyKey))
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "IDEMPOTENCY_KEY_REQUIRED", false, new { });
+        return;
+    }
+    try
+    {
+        var body = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<ProductionLocalSlotMigrationRequest>(body, AtomicFile.JsonOptions)
+                      ?? throw new InvalidDataException("Production migration request body is empty.");
+        var result = productionMigrationCoordinator.Migrate(request.ExpectedBuild, request.ExpectedManagedFiles, request.ExpectedManagedTreeSha256, request.OperatorId, idempotencyKey);
+        var operation = result.Operation;
+        var success = operation.State == "committed";
+        var recoveryRequired = operation.State == "recovery_required";
+        var statusCode = success ? StatusCodes.Status200OK : recoveryRequired ? StatusCodes.Status503ServiceUnavailable : operation.State is "running" or "accepted" ? StatusCodes.Status202Accepted : StatusCodes.Status422UnprocessableEntity;
+        await WriteEnvelope(context, statusCode, success, operation.State, operation.ResultCode ?? (success ? "LOCAL_SLOT_MIGRATION_COMMITTED" : "OPERATION_RECORDED"), recoveryRequired,
+            new { operation, result.Created, result.Reconciled, production_migration = true, database_mutation_enabled = false, public_mutation_enabled = false, windows_reboot_required = false }, operation.OperationId);
+    }
+    catch (JsonException ex)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "REQUEST_JSON_INVALID", false, new { error = ex.Message });
+    }
+    catch (InvalidDataException ex)
+    {
+        var code = ex.Message.Contains("Idempotency key was already used", StringComparison.Ordinal) ? "IDEMPOTENCY_CONFLICT" : "REQUEST_INVALID";
+        await WriteEnvelope(context, code == "IDEMPOTENCY_CONFLICT" ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest, false, "rejected", code, false, new { error = ex.Message });
+    }
+});
+
+app.MapPost("/v1/local-slots/recover", async context =>
+{
+    if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var idempotencyKey))
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "IDEMPOTENCY_KEY_REQUIRED", true, new { });
+        return;
+    }
+    try
+    {
+        var body = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<ProductionLocalSlotRecoveryRequest>(body, AtomicFile.JsonOptions)
+                      ?? throw new InvalidDataException("Production recovery request body is empty.");
+        var result = productionMigrationCoordinator.Recover(request.OperatorId, idempotencyKey);
+        var operation = result.Operation;
+        var success = operation.State == "committed";
+        await WriteEnvelope(context, success ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable, success, operation.State, operation.ResultCode ?? "LOCAL_SLOT_RECOVERY_FAILED", !success,
+            new { operation, result.Created, result.Reconciled, production_recovery = true, database_mutation_enabled = false, public_mutation_enabled = false, windows_reboot_required = false }, operation.OperationId);
+    }
+    catch (JsonException ex)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "REQUEST_JSON_INVALID", true, new { error = ex.Message });
+    }
+    catch (InvalidDataException ex)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "REQUEST_INVALID", true, new { error = ex.Message });
+    }
+});
+
 app.MapPost("/v1/local-slots/home-cycle", async context =>
 {
     if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var idempotencyKey))
@@ -360,7 +432,13 @@ app.MapGet("/v1/recovery", async context =>
 {
     var current = AtomicFile.ReadJson<SupervisorState>(paths.StatePath);
     var slotRecovery = false;
-    try { if (File.Exists(paths.LocalSlotStatePath)) slotRecovery = AtomicFile.ReadJson<LocalSlotPhase3State>(paths.LocalSlotStatePath).RecoveryRequired; } catch { slotRecovery = true; }
+    var productionStatePath = Path.Combine(paths.LocalSlotStateRoot, "migration-state.json");
+    try
+    {
+        if (File.Exists(productionStatePath)) slotRecovery = AtomicFile.ReadJson<ProductionLocalSlotMigrationState>(productionStatePath).RecoveryRequired;
+        else if (File.Exists(paths.LocalSlotStatePath)) slotRecovery = AtomicFile.ReadJson<LocalSlotPhase3State>(paths.LocalSlotStatePath).RecoveryRequired;
+    }
+    catch { slotRecovery = true; }
     var recoveryRequired = current.RecoveryRequired || slotRecovery;
     await WriteEnvelope(context, StatusCodes.Status200OK, true, recoveryRequired ? "recovery_required" : "ready", "OK", recoveryRequired, new
     {
@@ -401,7 +479,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
     journal.Append("supervisor.ready", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?>
     {
         ["base_url"] = descriptor.BaseUrl,
-        ["p3_local_slots_enabled"] = true,
+        ["production_local_slot_migration_enabled"] = true,
         ["database_mutation_enabled"] = false,
         ["web_adapter_acl_state"] = aclEvidence.State,
         ["web_adapter_descriptor_read"] = aclEvidence.DescriptorReadGranted
