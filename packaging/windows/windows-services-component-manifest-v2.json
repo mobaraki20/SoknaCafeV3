@@ -84,6 +84,10 @@
       "version": "0.1.1",
       "payload_primary": "_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe",
       "installed_primary": "Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe",
+      "accepted_installed_sha256": [
+        "368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd",
+        "85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9"
+      ],
       "restart_scope": "process",
       "transaction_group": "maintenance",
       "health_policy": "on_demand_independent_from_local_web",
@@ -92,7 +96,7 @@
   ],
   "rules": {
     "version_only_is_sufficient": false,
-    "same_version_hash_drift": "REPAIR",
+    "same_version_hash_drift": "REPAIR_UNLESS_ACCEPTED_FINGERPRINT",
     "service_registration_drift": "REPAIR",
     "unsafe_service_image_outside_owned_root": "BLOCKED",
     "unsupported_newer_component": "BLOCKED",
