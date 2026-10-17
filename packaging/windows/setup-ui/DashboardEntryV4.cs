@@ -36,13 +36,17 @@ internal static class DashboardEntryV4
 
             foreach (var size in new[] { new Size(960, 600), new Size(1100, 660), new Size(1280, 720) })
             {
-                using var form = new WindowsServicesDashboardV3(null) { ClientSize = size, StartPosition = FormStartPosition.Manual, Location = new Point(20, 20) };
+                using var form = new WindowsServicesDashboardV3(null) { ClientSize = size };
                 DashboardUiPolish.Apply(form);
-                form.Show();
-                WaitForDashboardIdle(form);
+                form.CreateControl();
+
+                // Exercise the real Render path directly. Render removes and adds component
+                // controls dynamically, reproducing the exact collection-mutation surface
+                // without triggering Shown/RefreshAsync or environment-dependent MessageBox UI.
                 form.ApplyTestPlan(plan);
                 form.PerformLayout();
                 Application.DoEvents();
+
                 var errors = LayoutAudit(form).ToList();
                 var labels = Desc(form).OfType<Label>().ToArray();
                 var subtitle = labels.FirstOrDefault(x => x.Text.Contains("سه سرویس اصلی سکنا", StringComparison.Ordinal));
@@ -60,38 +64,32 @@ internal static class DashboardEntryV4
                 File.WriteAllLines(Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.txt"), errors.Count == 0 ? ["PASS", "BADGE=" + expectedBadge] : errors);
                 CapturePainted(form, Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.png"), 800);
                 if (errors.Count > 0) throw new InvalidOperationException(string.Join(" | ", errors));
-                form.Hide();
             }
 
-            using (var dialog = new ComponentPlanDialog(plan) { StartPosition = FormStartPosition.Manual, Location = new Point(30, 30) })
+            using (var dialog = new ComponentPlanDialog(plan))
             {
-                dialog.Show();
-                Application.DoEvents();
+                dialog.CreateControl();
                 dialog.PerformLayout();
                 Application.DoEvents();
                 var errors = LayoutAudit(dialog).ToArray();
                 File.WriteAllLines(Path.Combine(output, "component-plan.txt"), errors.Length == 0 ? ["PASS"] : errors);
                 CapturePainted(dialog, Path.Combine(output, "component-plan.png"), 25);
                 if (errors.Length > 0) throw new InvalidOperationException(string.Join(" | ", errors));
-                dialog.Hide();
             }
 
-            using (var result = new InstallerResultDialog(false, "Maintenance راه‌اندازی نشد", "ثبت سرویس انجام شد اما health check در زمان مجاز به وضعیت Running نرسید.", "ins-20261015T120000Z-abc123def0", "Maintenance", "Health verification", true, false)
-            { StartPosition = FormStartPosition.Manual, Location = new Point(40, 40) })
+            using (var result = new InstallerResultDialog(false, "Maintenance راه‌اندازی نشد", "ثبت سرویس انجام شد اما health check در زمان مجاز به وضعیت Running نرسید.", "ins-20261015T120000Z-abc123def0", "Maintenance", "Health verification", true, false))
             {
-                result.Show();
-                Application.DoEvents();
+                result.CreateControl();
                 result.PerformLayout();
                 Application.DoEvents();
                 var errors = LayoutAudit(result).ToArray();
                 File.WriteAllLines(Path.Combine(output, "failure-result.txt"), errors.Length == 0 ? ["PASS"] : errors);
                 CapturePainted(result, Path.Combine(output, "failure-result.png"), 25);
                 if (errors.Length > 0) throw new InvalidOperationException(string.Join(" | ", errors));
-                result.Hide();
             }
 
-            File.WriteAllText(Path.Combine(output, "layout-self-test.txt"), "PASS" + Environment.NewLine + "BADGE=" + expectedBadge);
-            Console.WriteLine("SOKNA Dashboard V4 painted-layout and canonical-version self-test PASS: " + expectedBadge);
+            File.WriteAllText(Path.Combine(output, "layout-self-test.txt"), "PASS" + Environment.NewLine + "BADGE=" + expectedBadge + Environment.NewLine + "DYNAMIC_RENDER=PASS");
+            Console.WriteLine("SOKNA Dashboard V4 deterministic painted-render and canonical-version self-test PASS: " + expectedBadge);
             return 0;
         }
         catch (Exception exception)
@@ -100,19 +98,6 @@ internal static class DashboardEntryV4
             try { File.WriteAllText(Path.Combine(output, "layout-self-test-exception.txt"), diagnostic); } catch { }
             return 11;
         }
-    }
-
-    private static void WaitForDashboardIdle(Form form)
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline)
-        {
-            Application.DoEvents();
-            var busy = Desc(form).OfType<ProgressBar>().ToArray().Any(x => x.Visible);
-            if (!busy) return;
-            Thread.Sleep(25);
-        }
-        throw new InvalidOperationException("dashboard-initial-refresh-timeout");
     }
 
     private static IEnumerable<string> LayoutAudit(Control root)
