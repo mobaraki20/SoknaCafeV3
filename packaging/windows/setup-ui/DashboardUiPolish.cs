@@ -22,8 +22,11 @@ internal static class DashboardUiPolish
                 button.Text = "عیب‌یابی";
         }
 
+        var canonicalBadge = DashboardPackageVersionBinder.BadgeText(AppContext.BaseDirectory);
         foreach (var label in Descendants<Label>(form).ToArray())
         {
+            if (label.Text.StartsWith("Windows Services ", StringComparison.Ordinal))
+                label.Text = canonicalBadge;
             NormalizeLabel(label);
             label.TextChanged += (_, _) => NormalizeLabel(label);
         }
