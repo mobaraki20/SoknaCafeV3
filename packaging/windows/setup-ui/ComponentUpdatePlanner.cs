@@ -94,6 +94,7 @@ internal static class ComponentUpdatePlanner
         if (!IsUnder(targetPath, shellRoot) || !IsUnder(installedPath, installRoot)) throw new InvalidOperationException("مسیر جزء خارج از مرز بسته است.");
         var targetHash = HashIfExists(targetPath);
         var installedHash = HashIfExists(installedPath);
+        var compatibleInstalledHash = IsAcceptedInstalledFingerprint(c, installedHash);
         var currentVersion = LifecycleFileVersion(installedPath);
         var service = string.IsNullOrWhiteSpace(serviceName) ? new ServiceProbe(false, "n/a", "") : ProbeService(serviceName);
         var installed = File.Exists(installedPath) && (string.IsNullOrWhiteSpace(serviceName) || service.Installed);
@@ -130,6 +131,10 @@ internal static class ComponentUpdatePlanner
             {
                 action = ComponentAction.Update; state = "required_update"; reason = $"نسخه {currentVersion} باید به {targetVersion} ارتقا یابد.";
             }
+            else if (!string.Equals(installedHash, targetHash, StringComparison.OrdinalIgnoreCase) && compatibleInstalledHash)
+            {
+                action = ComponentAction.Keep; state = "up_to_date_compatible_fingerprint"; reason = "نسخه و fingerprint نصب‌شده در فهرست سازگاری رسمی همین release قرار دارد؛ این جزء بدون تغییر نگه داشته می‌شود.";
+            }
             else if (!string.Equals(installedHash, targetHash, StringComparison.OrdinalIgnoreCase))
             {
                 action = ComponentAction.Repair; state = "repair_required"; reason = "نسخه یکسان است اما fingerprint فایل اجرایی با release هدف یکسان نیست.";
@@ -149,9 +154,8 @@ internal static class ComponentUpdatePlanner
         }
 
         // Recovery Console is deliberately outside the mutable Maintenance App lifecycle.
-        // Surface real Recovery drift as a planner block rather than advertising a mutation
-        // that the elevated executor must later refuse. A healthy Recovery stays KEEP even
-        // during an explicit repair of the other Windows Services components.
+        // Known released 0.1.1 fingerprints can be declared compatible by the signed package
+        // manifest and remain KEEP. Any unknown drift is blocked before privileged mutation.
         if (id == "maintenance-recovery-console" && action is ComponentAction.Install or ComponentAction.Update or ComponentAction.Repair)
         {
             action = ComponentAction.Blocked;
@@ -161,6 +165,18 @@ internal static class ComponentUpdatePlanner
 
         return new ComponentPlanRow(id, display, kind, primary, required, parent, currentVersion, targetVersion, health, healthText, state, action, ActionText(action), reason,
             installedPath, targetPath, installedHash, targetHash, serviceName, service.State, registrationHealthy, group);
+    }
+
+    private static bool IsAcceptedInstalledFingerprint(JsonElement component, string installedHash)
+    {
+        if (string.IsNullOrWhiteSpace(installedHash)) return false;
+        if (!component.TryGetProperty("accepted_installed_sha256", out var accepted) || accepted.ValueKind != JsonValueKind.Array) return false;
+        foreach (var item in accepted.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String) continue;
+            if (string.Equals(item.GetString(), installedHash, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
     }
 
     private static bool ReadPaired(string dataRoot)
