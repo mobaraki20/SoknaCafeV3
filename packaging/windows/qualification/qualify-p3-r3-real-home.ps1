@@ -191,7 +191,7 @@ internal static class Harness {
   $sv=[Diagnostics.FileVersionInfo]::GetVersionInfo($newSupervisor).FileVersion
   $ev=[Diagnostics.FileVersionInfo]::GetVersionInfo($newEngine).FileVersion
   if(-not$sv.StartsWith('0.3.0')-or-not$ev.StartsWith('0.3.0')){throw "Maintenance versions not applied: $sv / $ev"}
-  $systemTx=Join-Path $data "Installer\logs\$tx"
+  $systemTx=$txdir
   $eventPath=Join-Path $systemTx 'system-events.jsonl'
   RequireFile $eventPath
   $events=@(Get-Content $eventPath|Where-Object{-not[string]::IsNullOrWhiteSpace($_)}|ForEach-Object{$_|ConvertFrom-Json})
