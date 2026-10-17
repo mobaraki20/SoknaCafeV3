@@ -30,6 +30,10 @@ internal static class DashboardEntryV4
         try
         {
             var plan = TestFixtures.UpgradePlan();
+            var expectedBadge = DashboardPackageVersionBinder.BadgeText(AppContext.BaseDirectory);
+            if (expectedBadge.EndsWith(" unknown", StringComparison.Ordinal))
+                throw new InvalidOperationException("package-manifest-unavailable-for-painted-self-test");
+
             foreach (var size in new[] { new Size(960, 600), new Size(1100, 660), new Size(1280, 720) })
             {
                 using var form = new WindowsServicesDashboardV3(null) { ClientSize = size, StartPosition = FormStartPosition.Manual, Location = new Point(20, 20) };
@@ -40,10 +44,20 @@ internal static class DashboardEntryV4
                 form.PerformLayout();
                 Application.DoEvents();
                 var errors = LayoutAudit(form).ToList();
-                var subtitle = Desc(form).OfType<Label>().FirstOrDefault(x => x.Text.Contains("سه سرویس اصلی سکنا", StringComparison.Ordinal));
+                var labels = Desc(form).OfType<Label>().ToArray();
+                var subtitle = labels.FirstOrDefault(x => x.Text.Contains("سه سرویس اصلی سکنا", StringComparison.Ordinal));
                 if (subtitle is null || !subtitle.Visible || subtitle.ClientSize.Height < 10)
                     errors.Add("header-subtitle-not-visible");
-                File.WriteAllLines(Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.txt"), errors.Count == 0 ? ["PASS"] : errors);
+
+                var badge = labels.FirstOrDefault(x => x.Text.StartsWith("Windows Services ", StringComparison.Ordinal));
+                if (badge is null)
+                    errors.Add("package-badge-missing");
+                else if (!string.Equals(badge.Text, expectedBadge, StringComparison.Ordinal))
+                    errors.Add($"package-badge-mismatch:expected={expectedBadge}:actual={badge.Text}");
+                if (labels.Any(x => string.Equals(x.Text, "Windows Services 1.1.6", StringComparison.Ordinal)))
+                    errors.Add("stale-package-badge-1.1.6-painted");
+
+                File.WriteAllLines(Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.txt"), errors.Count == 0 ? ["PASS", "BADGE=" + expectedBadge] : errors);
                 CapturePainted(form, Path.Combine(output, $"dashboard-{size.Width}x{size.Height}.png"), 800);
                 if (errors.Count > 0) throw new InvalidOperationException(string.Join(" | ", errors));
                 form.Hide();
@@ -76,8 +90,8 @@ internal static class DashboardEntryV4
                 result.Hide();
             }
 
-            File.WriteAllText(Path.Combine(output, "layout-self-test.txt"), "PASS");
-            Console.WriteLine("SOKNA Dashboard V4 painted-layout self-test PASS");
+            File.WriteAllText(Path.Combine(output, "layout-self-test.txt"), "PASS" + Environment.NewLine + "BADGE=" + expectedBadge);
+            Console.WriteLine("SOKNA Dashboard V4 painted-layout and canonical-version self-test PASS: " + expectedBadge);
             return 0;
         }
         catch (Exception exception)
@@ -94,7 +108,7 @@ internal static class DashboardEntryV4
         while (DateTime.UtcNow < deadline)
         {
             Application.DoEvents();
-            var busy = Desc(form).OfType<ProgressBar>().Any(x => x.Visible);
+            var busy = Desc(form).OfType<ProgressBar>().ToArray().Any(x => x.Visible);
             if (!busy) return;
             Thread.Sleep(25);
         }
@@ -103,7 +117,7 @@ internal static class DashboardEntryV4
 
     private static IEnumerable<string> LayoutAudit(Control root)
     {
-        foreach (Control c in Desc(root))
+        foreach (var c in Desc(root).ToArray())
         {
             if (!c.Visible) continue;
             if (c.Bounds.Width < 0 || c.Bounds.Height < 0) yield return $"invalid-bounds:{c.Name}:{c.Bounds}";
@@ -121,7 +135,8 @@ internal static class DashboardEntryV4
 
     private static IEnumerable<Control> Desc(Control root)
     {
-        foreach (Control c in root.Controls)
+        var children = root.Controls.Cast<Control>().ToArray();
+        foreach (var c in children)
         {
             yield return c;
             foreach (var d in Desc(c)) yield return d;
