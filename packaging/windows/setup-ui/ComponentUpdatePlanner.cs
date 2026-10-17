@@ -138,7 +138,7 @@ internal static class ComponentUpdatePlanner
             {
                 action = ComponentAction.Repair; state = "repair_required"; reason = "ثبت Windows Service با قرارداد release یکسان نیست.";
             }
-            else if (forceRepair)
+            else if (forceRepair && id != "maintenance-recovery-console")
             {
                 action = ComponentAction.Repair; state = "repair_required"; reason = "تعمیر صریح توسط کاربر درخواست شده است.";
             }
@@ -149,9 +149,9 @@ internal static class ComponentUpdatePlanner
         }
 
         // Recovery Console is deliberately outside the mutable Maintenance App lifecycle.
-        // Surface this as a planner block rather than advertising REPAIR/INSTALL/UPDATE that
-        // the elevated executor must later refuse. This keeps planner and executor contracts
-        // identical and guarantees the UI stops before any service/file mutation.
+        // Surface real Recovery drift as a planner block rather than advertising a mutation
+        // that the elevated executor must later refuse. A healthy Recovery stays KEEP even
+        // during an explicit repair of the other Windows Services components.
         if (id == "maintenance-recovery-console" && action is ComponentAction.Install or ComponentAction.Update or ComponentAction.Repair)
         {
             action = ComponentAction.Blocked;
