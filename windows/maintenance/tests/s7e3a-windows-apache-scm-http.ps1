@@ -117,7 +117,18 @@ LogLevel warn
   $winSvc = Get-CimInstance -ClassName Win32_Service -Filter "Name='$serviceName'"
   Assert ($null -ne $winSvc -and $winSvc.PathName.Contains($httpd)) 'SCM_SERVICE_NOT_FIXTURE_BOUND'
   Start-Service -Name $serviceName
-  Assert (AwaitHttp $port 'old-ci') 'OLD_HTTP_NOT_READY'
+  if (-not (AwaitHttp $port 'old-ci')) {
+    Write-Host ('S7E3A_DIAG_SCM_STATUS=' + (Get-Service -Name $serviceName).Status)
+    Write-Host ('S7E3A_DIAG_HTTP=' + [string](HttpContent $port))
+    try {
+      $probe = Invoke-WebRequest -Uri "http://127.0.0.1:$port/health.txt" -UseBasicParsing -TimeoutSec 3
+      Write-Host ('S7E3A_DIAG_HTTP_STATUS=' + $probe.StatusCode)
+    } catch { Write-Host ('S7E3A_DIAG_HTTP_ERROR=' + $_.Exception.GetType().Name) }
+    if (Test-Path -LiteralPath $errorLog) {
+      Get-Content -LiteralPath $errorLog -Tail 35 | ForEach-Object { Write-Host ('S7E3A_APACHE_ERROR: '+$_) }
+    } else { Write-Host 'S7E3A_APACHE_ERROR_LOG_MISSING' }
+    throw 'S7E3A_OLD_HTTP_NOT_READY'
+  }
   Stop-Service -Name $serviceName
   Assert (AwaitDown $port) 'HTTP_REMAINED_UP_AFTER_STOP'
   Assert ((Get-Service -Name $serviceName).Status -eq 'Stopped') 'SCM_STOP_NOT_OBSERVED'
