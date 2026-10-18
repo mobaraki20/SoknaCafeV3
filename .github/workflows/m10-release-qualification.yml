@@ -80,7 +80,10 @@ jobs:
           python3 windows/maintenance/tests/s7e2a-real-apache-http-ci.py
       - name: F1-S7E2B real MariaDB DDL crash and encrypted independent backup/restore lab
         env:
-          <<: *db
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: root
           SOKNA_MARIADB_CI_ONLY: '1'
         run: |
           python3 windows/maintenance/tests/s7e2b-mariadb-forward-crash-ci.py
