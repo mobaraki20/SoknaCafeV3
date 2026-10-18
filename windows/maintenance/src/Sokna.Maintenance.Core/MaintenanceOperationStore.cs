@@ -84,6 +84,36 @@ public sealed class MaintenanceOperationStore
         return Get(File.ReadAllText(path).Trim());
     }
 
+    /// <summary>
+    /// Read-only bounded view of durable operations. Corrupt evidence must be
+    /// surfaced as an error, never silently interpreted as an idle updater.
+    /// </summary>
+    public IReadOnlyList<MaintenanceOperation> ListRecent(int max = 30)
+    {
+        if (max is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(max));
+        lock (_sync)
+        {
+            var paths = Directory.EnumerateFiles(_paths.OperationsRoot, "op-*.json", SearchOption.TopDirectoryOnly).ToArray();
+            if (paths.Length > 20_000) throw new InvalidDataException("Maintenance operation history exceeds the safe inspection limit.");
+            var result = new List<MaintenanceOperation>(paths.Length);
+            foreach (var path in paths)
+            {
+                // Do not ignore malformed records: the status would be misleading.
+                var operation = AtomicFile.ReadJson<MaintenanceOperation>(path);
+                ValidateStored(operation);
+                result.Add(operation);
+            }
+            return result.OrderByDescending(static o => o.UpdatedAtUtc)
+                .ThenByDescending(static o => o.OperationId, StringComparer.Ordinal)
+                .Take(max).ToArray();
+        }
+    }
+
+    public IReadOnlyList<MaintenanceOperation> ListActive()
+        => ListRecent(100)
+            .Where(static o => o.State is "accepted" or "running" or "activating" or "recovering")
+            .ToArray();
+
     public MaintenanceOperation Update(
         MaintenanceOperation operation,
         string state,
