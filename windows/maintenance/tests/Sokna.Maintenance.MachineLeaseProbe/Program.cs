@@ -1,6 +1,91 @@
 using Sokna.Maintenance.Core;
 using System.Diagnostics;
 
+// F1-S7C2 isolated file-system fixture. It does NOT claim real-host
+// Apache/PHP/MariaDB qualification; that is separately required by Supervisor.
+if (args.Length == 2 && args[0] == "inactive-sibling-writer")
+{
+    var dir = Path.GetFullPath(args[1]);
+    var package = Path.Combine(dir, "Package");
+    var active = Path.Combine(package, "Web.release.active");
+    var stable = Path.Combine(package, "Web");
+    var persistent = Path.Combine(package, "LocalWeb", "persistent");
+    var source = Path.Combine(dir, "private-source");
+    var target = Path.Combine(package, "Web.release.test-incoming");
+    var baseline = "3.0.0-test-baseline";
+    var next = "3.0.0-test-target";
+    Directory.CreateDirectory(active);
+    Directory.CreateDirectory(persistent);
+    Directory.CreateDirectory(Path.Combine(source, "public"));
+    Directory.CreateDirectory(Path.Combine(source, "resources"));
+    File.WriteAllText(Path.Combine(package, "install.lock"),
+        System.Text.Json.JsonSerializer.Serialize(new {
+            format = "sokna-install-lock-v3", installation_id = "isolated-test-install-123" }));
+    var binding = System.Text.Json.JsonSerializer.Serialize(new {
+        format = "sokna-local-installation-binding-v1",
+        installation_id = "isolated-test-install-123",
+        web_version = baseline });
+    File.WriteAllText(Path.Combine(active, ".sokna-installation.json"), binding);
+    File.WriteAllText(Path.Combine(persistent, ".sokna-installation.json"), binding);
+    Directory.CreateDirectory(Path.Combine(persistent, "public"));
+    File.WriteAllText(Path.Combine(persistent, "public", "local-recovery.php"),
+        "<?php echo 'recovery'; ?>");
+    File.WriteAllText(Path.Combine(source, "VERSION.txt"), next);
+    File.WriteAllText(Path.Combine(source, "public", "index.php"),
+        "<?php echo 'inactive'; ?>");
+    File.WriteAllText(Path.Combine(source, "resources", "local-managed-files-v1.json"),
+        System.Text.Json.JsonSerializer.Serialize(new {
+            format = "sokna-local-managed-files-v1",
+            files = new[] { "VERSION.txt", "public/index.php",
+                "resources/local-managed-files-v1.json" } }));
+    var cmd = new ProcessStartInfo("cmd.exe") {
+        UseShellExecute = false, CreateNoWindow = true,
+        RedirectStandardError = true, RedirectStandardOutput = true };
+    cmd.ArgumentList.Add("/c"); cmd.ArgumentList.Add("mklink");
+    cmd.ArgumentList.Add("/J"); cmd.ArgumentList.Add(stable); cmd.ArgumentList.Add(active);
+    using (var proc = Process.Start(cmd) ?? throw new Exception("Junction fixture failed")) {
+        if (!proc.WaitForExit(10000) || proc.ExitCode != 0)
+            throw new InvalidDataException("Junction fixture was not created.");
+    }
+    var stableLink = Directory.ResolveLinkTarget(stable, returnFinalTarget:true)?.FullName
+        ?? throw new InvalidDataException("Stable fixture link missing.");
+    var originalPersistent = File.ReadAllBytes(Path.Combine(persistent,
+        ".sokna-installation.json"));
+    var expectedTree = LocalManagedTreeAttestation.Compute(source, 3);
+    ProductionInactiveLocalSlotWriter.CopyToNewSibling(
+        source, target, package, stable, baseline, next, 3, expectedTree);
+    if (!File.Exists(Path.Combine(target, "public", "index.php")) ||
+        !File.Exists(Path.Combine(target, ".sokna-installation.json")))
+        throw new InvalidDataException("Inactive sibling missing verified target files");
+    LocalManagedTreeAttestation.RequireExact(target, 3, expectedTree);
+    RoutineLocalBinding.RequireTarget(persistent, target, package, next);
+    if (Directory.ResolveLinkTarget(stable, returnFinalTarget:true)?.FullName != stableLink ||
+        !File.ReadAllBytes(Path.Combine(persistent, ".sokna-installation.json"))
+            .SequenceEqual(originalPersistent))
+        throw new InvalidDataException("Private sibling writer altered active/persistent");
+    bool duplicateRejected = false;
+    try { ProductionInactiveLocalSlotWriter.CopyToNewSibling(
+        source, target, package, stable, baseline, next, 3, expectedTree); }
+    catch (InvalidDataException) { duplicateRejected = true; }
+    if (!duplicateRejected) throw new InvalidDataException("Existing sibling overwritten");
+    File.AppendAllText(Path.Combine(source,"public","index.php"),"tampered");
+    bool tamperRejected = false;
+    try { ProductionInactiveLocalSlotWriter.CopyToNewSibling(
+        source, target + ".another", package, stable, baseline, next, 3, expectedTree); }
+    catch (InvalidDataException) { tamperRejected = true; }
+    if (!tamperRejected) throw new InvalidDataException("Corrupt source accepted");
+    if (Directory.Exists(target + ".another"))
+        throw new InvalidDataException("Tampered input wrote a partial sibling");
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new {
+        format = "sokna-inactive-sibling-writer-test-v1",
+        result = "PASS", inactive_copy_created = true, verified_binding = true,
+        active_junction_unchanged = true, persistent_binding_unchanged = true,
+        existing_sibling_not_overwritten = true, corrupt_source_rejected_pre_mutation = true,
+        production_host_qualification = false, apache_mutation = false,
+        database_mutation = false, public_mutation = false }));
+    return 0;
+}
+
 // Inject a durable in-flight legacy migration into an isolated test data root.
 // On the next Supervisor startup, the parent-death reconciler must quarantine it.
 if (args.Length == 2 && args[0] == "seed-interrupted-migration")
