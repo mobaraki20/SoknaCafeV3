@@ -518,20 +518,27 @@ public sealed class LocalSlotManager
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true
+                RedirectStandardError = true,
+                RedirectStandardInput = true
             };
             psi.ArgumentList.Add("-V");
             using var process = Process.Start(psi);
             if (process is not null)
             {
-                var stdout = process.StandardOutput.ReadToEnd();
-                var stderr = process.StandardError.ReadToEnd();
-                if (!process.WaitForExit(10_000))
+                // Never synchronously ReadToEnd BEFORE WaitForExit: a malformed
+                // service ImagePath (e.g. interactive cmd.exe -V) can hang the
+                // entire signed Supervisor request without honoring timeout.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
+                process.StandardInput.Close();
+                if (!process.WaitForExit(4_000))
                 {
                     try { process.Kill(entireProcessTree: true); } catch { }
                     throw new TimeoutException("SoknaApache -V probe timed out.");
                 }
-                var text = stdout + "\n" + stderr;
+                if (!Task.WhenAll(stdoutTask, stderrTask).Wait(1_000))
+                    throw new TimeoutException("SoknaApache -V output stream did not close.");
+                var text = stdoutTask.Result + "\n" + stderrTask.Result;
                 reportedRootText = ExtractApacheDefine(text, "HTTPD_ROOT");
                 configText = ExtractApacheDefine(text, "SERVER_CONFIG_FILE");
             }
