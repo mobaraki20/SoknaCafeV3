@@ -18,8 +18,10 @@ public sealed class SecretStore
         ApplyAdminOnlyDirectoryAcl(_paths.SecretsRoot);
         EnsureKey(_paths.WebAdapterKeyPath);
         EnsureKey(_paths.RecoveryConsoleKeyPath);
+        EnsureKey(_paths.EngineDelegationKeyPath);
         ApplyAdminOnlyFileAcl(_paths.WebAdapterKeyPath);
         ApplyAdminOnlyFileAcl(_paths.RecoveryConsoleKeyPath);
+        ApplyAdminOnlyFileAcl(_paths.EngineDelegationKeyPath);
 
         // Restore only the exact qualified Web adapter access after the admin/SYSTEM
         // hardening pass. Unqualified identities remain fail-closed.
@@ -32,6 +34,7 @@ public sealed class SecretStore
         {
             "web-adapter" => _paths.WebAdapterKeyPath,
             "recovery-console" => _paths.RecoveryConsoleKeyPath,
+            "engine-delegation" => _paths.EngineDelegationKeyPath,
             _ => throw new InvalidOperationException("Unknown maintenance key id.")
         };
 
