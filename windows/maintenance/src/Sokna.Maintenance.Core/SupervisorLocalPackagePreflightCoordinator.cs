@@ -55,7 +55,7 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
             // Existing operations must not be overlooked because they are older
             // than the last 100 receipts. Damaged journal evidence fails closed.
             var prior = _operations.GetByIdempotencyKey(idempotencyKey);
-            if (prior is null && _operations.ListActive().Count != 0)
+            if (_operations.ListBlocking().Any(op => prior is null || op.OperationId != prior.OperationId || op.State == "recovery_required"))
                 throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
 
             var hash = MaintenanceOperationStore.CanonicalRequestHash(
