@@ -1,7 +1,7 @@
 name: SOKNA HA2C2A Separate MariaDB Anchor Lab
 on:
   push:
-    branches: [test/ha2c2a-anchor-ci]
+    branches: [test/ha2c2a-separate-anchor-ci]
   workflow_dispatch:
 permissions:
   contents: read
