@@ -103,8 +103,11 @@ public static class EngineDelegationPermit
         return p.ParentPid;
     }
 
-    public static void RequireParentAndMachineLease(MaintenancePaths paths, int parentPid, long parentStartTicks)
+    public static void RequireParentAndMachineLease(MaintenancePaths paths, int parentPid, long parentStartTicks,
+        string expectedOwner = Owner)
     {
+        if (expectedOwner != Owner && expectedOwner != LocalCodeCutoverWriteAheadJournal.Owner)
+            throw new InvalidDataException(RejectedCode);
         using var parent = Process.GetProcessById(parentPid);
         if (parent.HasExited || parent.StartTime.ToUniversalTime().Ticks != parentStartTicks)
             throw new InvalidDataException(RejectedCode);
@@ -119,7 +122,7 @@ public static class EngineDelegationPermit
                    FileShare.ReadWrite, 4096, FileOptions.None))
         using (var reader = new StreamReader(read, Encoding.UTF8))
             evidence = reader.ReadToEnd();
-        if (!evidence.Contains($"owner={Owner};pid={parentPid};", StringComparison.Ordinal))
+        if (!evidence.Contains($"owner={expectedOwner};pid={parentPid};", StringComparison.Ordinal))
             throw new InvalidDataException(RejectedCode);
         // A stale lease file is never enough: opening a competing writer must
         // be denied by Windows while the Supervisor keeps its live handle.
