@@ -1,6 +1,14 @@
 using Sokna.Maintenance.Core;
 using System.Diagnostics;
 
+// F1-S7D5A: actual read-only Engine + OS Job delegated permit.
+if (args.Length == 4 && args[0] == "s7d5a-cutover-delegation")
+    return CutoverDelegationWindowsProbe.Run(args[1], args[2], args[3]);
+if (args.Length == 4 && args[0] == "s7d5a-owner")
+    return CutoverDelegationWindowsProbe.Owner(args[1], args[2], args[3]);
+if (args.Length == 5 && args[0] == "s7d5a-child")
+    return CutoverDelegationWindowsProbe.Child(args[1], args[2], args[3], args[4]);
+
 // F1-S7D4B: signed canonical Stage generated under P2D Windows CI.
 if (args.Length == 3 && args[0] == "s7d4b-canonical-signed-stage")
     return CanonicalStageSealProbe.Run(args[1], args[2]);
