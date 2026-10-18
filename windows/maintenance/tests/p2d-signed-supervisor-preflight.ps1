@@ -150,7 +150,35 @@ try {
   Assert ($stageState.Code -eq 200 -and $stageState.Data.data.state -eq 'staged') 'Staged state lost after restart'
   $capsAfter=Signed 'GET' '/v1/updates/capabilities' 'web-adapter' $null
   Assert ($capsAfter.Code -eq 200 -and -not[bool]$capsAfter.Data.data.panel_update_ready) 'Stage falsely enabled Activate'
-  [ordered]@{format='sokna-f1-p2d-signed-stage-v2';result='PASS';preflight_operation_id=$approvedId;stage_operation_id=$stageId;preflight_restart=$true;preflight_tamper_rejected=$true;stage_restarted=$true;legacy_stage_disabled=$true;no_activation=$true;no_db_mutation=$true;panel_ready=$false}|ConvertTo-Json
+  # F1-S3 deterministic power-loss fixture: the stage receipt and anti-rollback
+  # high-water mark already exist, but the operation's terminal commit was lost.
+  # Supervisor MUST NOT infer Stage success or repeat any mutation.
+  $beforeSequenceHash=(Get-FileHash -LiteralPath (Join-Path $root 'update/release-sequence.json') -Algorithm SHA256).Hash
+  $beforeStageReceiptHash=(Get-FileHash -LiteralPath (Join-Path ([string]$stage.Data.data.receipt.stage_root) 'stage-receipt.json') -Algorithm SHA256).Hash
+  Stop-S $p;$p=$null
+  $opFile=Join-Path $root ('operations/op-'+$stageId+'.json')
+  $storedOp=Get-Content -LiteralPath $opFile -Raw | ConvertFrom-Json
+  $storedOp.state='running'
+  $storedOp.result_code='STAGE_RUNNING'
+  $storedOp | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $opFile -Encoding utf8
+  $p=Start-S
+  $halted=Signed 'GET' ('/v1/operations/'+$stageId) 'web-adapter' $null
+  Assert ($halted.Code -eq 200 -and $halted.Data.data.state -eq 'recovery_required' -and $halted.Data.data.result_code -eq 'STAGE_INTERRUPTED_OUTCOME_UNPROVEN') 'Restart did not quarantine interrupted Stage'
+  $recovery=Signed 'GET' '/v1/local-updates/recovery-status' 'web-adapter' $null
+  Assert ($recovery.Code -eq 200 -and [bool]$recovery.Data.data.blocked) 'Recovery status reported idle after interrupted Stage'
+  Assert ($recovery.Data.data.stageRecoveryRequiredIds -contains $stageId) 'Recovery status omitted halted Stage id'
+  Assert (-not[bool]$recovery.Data.data.panelUpdateReady -and -not[bool]$recovery.Data.data.automaticRestageEnabled) 'Recovery status falsely allowed update'
+  $stageAfterCrash=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' $stageBody 'p2d-stage-valid'
+  Assert ($stageAfterCrash.Code -eq 503 -and $stageAfterCrash.Data.data.operation.state -eq 'recovery_required') 'Halted Stage was silently restaged'
+  $newPreflight=Signed 'POST' '/v1/local-updates/preflight' 'web-adapter' $body 'p2d-after-interrupt'
+  Assert ($newPreflight.Code -eq 409 -and $newPreflight.Data.code -eq 'UPDATER_OPERATION_BUSY') 'Unresolved Stage allowed a new Preflight'
+  Assert ((Get-FileHash -LiteralPath (Join-Path $root 'update/release-sequence.json') -Algorithm SHA256).Hash -eq $beforeSequenceHash) 'Restart mutated anti-rollback state'
+  Assert ((Get-FileHash -LiteralPath (Join-Path ([string]$stage.Data.data.receipt.stage_root) 'stage-receipt.json') -Algorithm SHA256).Hash -eq $beforeStageReceiptHash) 'Restart rewrote staged receipt'
+  Stop-S $p;$p=$null
+  $p=Start-S
+  $stillHalted=Signed 'GET' ('/v1/operations/'+$stageId) 'web-adapter' $null
+  Assert ($stillHalted.Data.data.state -eq 'recovery_required') 'Second restart cleared recovery barrier'
+  [ordered]@{format='sokna-f1-p2d-signed-stage-v3-restart-quarantine';result='PASS';preflight_operation_id=$approvedId;stage_operation_id=$stageId;stage_restarted=$true;interrupted_stage_quarantined=$true;unattended_restage_forbidden=$true;new_preflight_blocked=$true;sequence_preserved=$true;no_activation=$true;no_db_mutation=$true;panel_ready=$false}|ConvertTo-Json
 }
 finally {
   Stop-S $p
