@@ -44,6 +44,7 @@ stateStore.Save(state);
 var journal = new DurableJournal(paths.JournalPath);
 var operations = new MaintenanceOperationStore(paths);
 var stageRestartReconciler = new SupervisorStageRestartReconciler(operations, journal, state);
+var localStageRecoveryCoordinator = new SupervisorLocalStageRecoveryCoordinator(paths, operations, journal, state);
 // No listening/regular update writes until interrupted Stage evidence is quarantined.
 _ = stageRestartReconciler.ReconcileStoppedProcess();
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
@@ -85,15 +86,16 @@ app.Use(async (context, next) =>
 
     var isLocalPackagePreflight = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/preflight", StringComparison.Ordinal);
     var isLocalReleaseStage = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/stage", StringComparison.Ordinal);
+    var isLocalStageRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/reconcile-stage", StringComparison.Ordinal);
     var isStageMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/update/stage", StringComparison.Ordinal);
     var isLocalSlotMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/home-cycle", StringComparison.Ordinal);
     var isProductionMigration = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/migrate", StringComparison.Ordinal);
     var isProductionRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/recover", StringComparison.Ordinal);
-    var isMutation = isLocalPackagePreflight || isLocalReleaseStage || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
+    var isMutation = isLocalPackagePreflight || isLocalReleaseStage || isLocalStageRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
-            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = true, database_mutation_enabled = false });
+            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/reconcile-stage", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = true, database_mutation_enabled = false });
         return;
     }
 
@@ -161,7 +163,7 @@ app.Use(async (context, next) =>
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
     }
-    if (isProductionRecovery && keyId != "recovery-console")
+    if ((isLocalStageRecovery || isProductionRecovery) && keyId != "recovery-console")
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "RECOVERY_CONSOLE_KEY_REQUIRED", true, new { });
         return;
@@ -478,6 +480,46 @@ app.MapPost("/v1/local-updates/preflight", async context =>
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable,
             false, "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE",
             false, new { last_error_type = ex.GetType().Name });
+    }
+});
+
+// Recovery-console only: full signed package, Stage bytes and sequence evidence
+// re-verified. NEVER reruns Stage, activates a slot or changes a database.
+app.MapPost("/v1/local-updates/reconcile-stage", async context =>
+{
+    try
+    {
+        var body = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<LocalStageRecoveryRequest>(body, AtomicFile.JsonOptions)
+            ?? throw new InvalidDataException("Recovery request body is empty.");
+        var result = localStageRecoveryCoordinator.Reconcile(request.StageOperationId, request.OperatorId);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, "staged",
+            result.Recovered ? "STAGE_RECOVERED_FROM_VERIFIED_EVIDENCE" : "STAGE_EVIDENCE_ALREADY_RECONCILED",
+            false, new { result.Operation, result.Recovered, result.Reconciled, result.StageReceipt,
+                activation_performed = false, database_mutation_performed = false,
+                automatic_restage = false, panel_update_ready = false }, result.Operation.OperationId);
+    }
+    catch (JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "REQUEST_JSON_INVALID", true, new { });
+    }
+    catch (InvalidOperationException ex) when (ex.Message == "UPDATER_OPERATION_BUSY")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", "UPDATER_OPERATION_BUSY", true, new { });
+    }
+    catch (InvalidDataException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false,
+            "recovery_required", "STAGE_RECOVERY_EVIDENCE_UNPROVEN", true,
+            new { activation_performed = false, panel_update_ready = false });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException or InvalidOperationException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "STAGE_RECOVERY_EVIDENCE_UNAVAILABLE", true,
+            new { last_error_type = ex.GetType().Name, panel_update_ready = false });
     }
 });
 
