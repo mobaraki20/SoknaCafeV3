@@ -317,21 +317,35 @@ app.MapGet("/v1/components", async context =>
 
 app.MapGet("/v1/operations/{operationId}", async context =>
 {
-    var operationId = context.Request.RouteValues["operationId"]?.ToString() ?? string.Empty;
-    var operation = operations.Get(operationId);
-    if (operation is null)
+    try
     {
-        await WriteEnvelope(context, StatusCodes.Status404NotFound, false, "not_found", "OPERATION_NOT_FOUND", false, new { });
-        return;
+        var operationId = context.Request.RouteValues["operationId"]?.ToString() ?? string.Empty;
+        var operation = operations.Get(operationId);
+        if (operation is null)
+        {
+            await WriteEnvelope(context, StatusCodes.Status404NotFound, false, "not_found", "OPERATION_NOT_FOUND", false, new { });
+            return;
+        }
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, operation.State, "OK", operation.State == "recovery_required", operation, operation.OperationId);
     }
-    await WriteEnvelope(context, StatusCodes.Status200OK, true, operation.State, "OK", operation.State == "recovery_required", operation, operation.OperationId);
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE", false,
+            new { last_error_type = ex.GetType().Name });
+    }
 });
 
 app.MapGet("/v1/operations/by-idempotency/{key}", async context =>
 {
+    var key = context.Request.RouteValues["key"]?.ToString() ?? string.Empty;
+    if (!MaintenanceOperationStore.IsValidIdempotencyKey(key))
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "IDEMPOTENCY_KEY_INVALID", false, new { });
+        return;
+    }
     try
     {
-        var key = context.Request.RouteValues["key"]?.ToString() ?? string.Empty;
         var operation = operations.GetByIdempotencyKey(key);
         if (operation is null)
         {
@@ -340,9 +354,11 @@ app.MapGet("/v1/operations/by-idempotency/{key}", async context =>
         }
         await WriteEnvelope(context, StatusCodes.Status200OK, true, operation.State, "OK", operation.State == "recovery_required", operation, operation.OperationId);
     }
-    catch (InvalidDataException ex)
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or JsonException)
     {
-        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "IDEMPOTENCY_KEY_INVALID", false, new { error = ex.Message });
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE", false,
+            new { last_error_type = ex.GetType().Name });
     }
 });
 
