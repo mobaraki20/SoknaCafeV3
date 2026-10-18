@@ -1,6 +1,10 @@
 using Sokna.Maintenance.Core;
 using System.Diagnostics;
 
+// F1-S7D4A: evidence-only HMAC fixture with non-executable one-use witness.
+if (args.Length == 2 && args[0] == "code-cutover-evidence-witness")
+    return CutoverEvidenceWitnessProbe.Run(args[1]);
+
 // F1-S7D3: hard-kill a disposable CI worker and inspect real NTFS junctions.
 // All commands fail outside GitHub Windows RUNNER_TEMP and fixture marker.
 if (args.Length == 2 && args[0] == "s7d3-windows-crash")
