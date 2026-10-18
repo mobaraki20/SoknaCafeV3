@@ -74,7 +74,7 @@ Assert (-not (Get-Service -Name 'SoknaApache' -ErrorAction SilentlyContinue)) 'R
 
 try {
   # Version is pinned; package installation is runner-scoped, no default Apache service.
-  & choco install apache-httpd --version=2.4.55 -y --no-progress --params "'/installLocation:$install /port:$port /noService'"
+  & choco install apache-httpd --version=2.4.55 --force -y --no-progress --params "'/installLocation:$install /port:$port /noService'"
   Assert ($LASTEXITCODE -eq 0) 'CHOCOLATEY_APACHE_INSTALL_FAILED'
   $exe = @(Get-ChildItem -LiteralPath $install -Recurse -File -Filter httpd.exe | Where-Object { $_.Directory.Name -eq 'bin' } | Select-Object -First 1)
   Assert ($exe.Count -eq 1) 'APACHE_HTTPD_BINARY_MISSING'
