@@ -51,7 +51,7 @@ public sealed class SupervisorLocalReleaseStageCoordinator
         {
             // Detect broken durable evidence or conflicting operations BEFORE mutation.
             var prior = _operations.GetByIdempotencyKey(idempotencyKey);
-            var active = _operations.ListActive();
+            var active = _operations.ListBlocking();
             if (active.Any(op => prior is null || op.OperationId != prior.OperationId))
                 throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
             if (prior is not null && prior.State is "accepted" or "running")
