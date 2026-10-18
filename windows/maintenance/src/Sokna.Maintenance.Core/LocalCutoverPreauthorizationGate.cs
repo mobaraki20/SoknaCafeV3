@@ -99,7 +99,8 @@ public sealed class LocalCutoverPreauthorizationGate
                 Path.GetFullPath(_paths.DataRoot).ToUpperInvariant())))
             throw new InvalidDataException(Rejected);
         var marker = Path.Combine(root, permitId + ".consumed");
-        if (File.Exists(marker) || IsReparse(marker)) throw new InvalidDataException(Rejected);
+        if (File.Exists(marker))
+            throw new InvalidDataException(Rejected);
         try
         {
             using var stream = new FileStream(marker, FileMode.CreateNew, FileAccess.Write,
