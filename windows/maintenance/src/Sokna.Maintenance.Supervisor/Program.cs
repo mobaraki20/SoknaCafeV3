@@ -222,6 +222,46 @@ app.MapGet("/v1/updates/capabilities", async context =>
     await WriteEnvelope(context, StatusCodes.Status200OK, true, "foundation_required", capability.BlockingCode, false, capability);
 });
 
+// Signed, non-mutating R8 slot inspection. This cannot approve package activation.
+app.MapGet("/v1/local-slots/current", async context =>
+{
+    try
+    {
+        var layout = new LocalSlotManager(paths).InspectCurrent();
+        if (!layout.WebIsReparsePoint || string.IsNullOrWhiteSpace(layout.ActiveSlotTarget))
+        {
+            await WriteEnvelope(context, StatusCodes.Status409Conflict, false, "blocked", "LEGACY_SLOT_LAYOUT", false,
+                new { current_build = layout.Build, junction_verified = false, http_health_verified = false });
+            return;
+        }
+        var target = Path.GetFullPath(layout.ActiveSlotTarget);
+        var parent = Path.GetDirectoryName(target);
+        var leaf = Path.GetFileName(target);
+        if (!string.Equals(parent, layout.PackageRoot, StringComparison.OrdinalIgnoreCase) ||
+            !leaf.StartsWith("Web.release.", StringComparison.OrdinalIgnoreCase))
+        {
+            await WriteEnvelope(context, StatusCodes.Status409Conflict, false, "blocked", "JUNCTION_TARGET_UNEXPECTED", false,
+                new { current_build = layout.Build, junction_verified = false, http_health_verified = false });
+            return;
+        }
+        var tree = LocalManagedTreeAttestation.Compute(layout.WebRoot, layout.ManagedFileCount);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, "layout_verified", "OK", false,
+            new { current_build = layout.Build, managed_files = layout.ManagedFileCount,
+                  managed_tree_sha256 = tree, stable_web_root = layout.WebRoot,
+                  active_release = target, junction_verified = true,
+                  http_health_verified = false, db_verified = false });
+    }
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or
+        System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
+    {
+        journal.Append("local_slot.inspect.failed", state.InstanceId, state.InstallGeneration,
+            new Dictionary<string, object?> { ["reason_code"] = "LOCAL_SLOT_INSPECTION_FAILED",
+                ["error_type"] = ex.GetType().Name });
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "unavailable", "LOCAL_SLOT_INSPECTION_FAILED", false,
+            new { junction_verified = false, http_health_verified = false });
+    }
+});
+
 app.MapGet("/v1/health", async context =>
 {
     await WriteEnvelope(context, StatusCodes.Status200OK, true, "ready", "OK", false, new
