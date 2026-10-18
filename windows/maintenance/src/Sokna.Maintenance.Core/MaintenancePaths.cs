@@ -16,6 +16,7 @@ public sealed record MaintenancePaths(string DataRoot)
     public string ActivationPlansRoot => Path.Combine(UpdateRoot, "activation-plans");
     public string InactiveLocalCandidatesRoot => Path.Combine(UpdateRoot, "inactive-local-candidates");
     public string InactiveLocalSlotPromotionRoot => Path.Combine(UpdateRoot, "inactive-slot-promotions");
+    public string CodeCutoverJournalRoot => Path.Combine(UpdateRoot, "code-cutover-journal");
     public string UpdateRoot => Path.Combine(DataRoot, "update");
     public string InboxRoot => Path.Combine(UpdateRoot, "inbox");
     public string OperationsRoot => Path.Combine(DataRoot, "operations");
