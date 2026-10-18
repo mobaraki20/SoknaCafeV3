@@ -18,6 +18,46 @@ jobs:
         run: dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj --configuration Release --nologo
       - name: Compile signed Maintenance Supervisor HTTP API with warnings as errors
         run: dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj --configuration Release --nologo
+      - name: Test signed Supervisor HTTP capabilities and replay rejection
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'SoknaF1Http'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $dll = Join-Path (Get-Location) 'windows/maintenance/src/Sokna.Maintenance.Supervisor/bin/Release/net8.0-windows/SoknaMaintenanceSupervisor.dll'
+          $port = 18573
+          $p = Start-Process dotnet -ArgumentList @($dll,'--data-root',$root,'--port',$port) -PassThru
+          try {
+            $uri = "http://127.0.0.1:$port/v1/updates/capabilities"
+            $ready = $false
+            for($i=0; $i -lt 40; $i++) {
+              if($p.HasExited) { throw 'Supervisor exited prematurely' }
+              try {
+                $unauth = Invoke-WebRequest $uri -SkipHttpErrorCheck -TimeoutSec 1
+                if($unauth.StatusCode -eq 401) { $ready = $true; break }
+              } catch {}
+              Start-Sleep -Milliseconds 250
+            }
+            if(!$ready) { throw 'Supervisor did not reject unsigned request' }
+            $key = [Convert]::FromBase64String((Get-Content (Join-Path $root 'secrets/web-adapter.key') -Raw).Trim())
+            if($key.Length -ne 32) { throw 'Invalid test HMAC key' }
+            $ts = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+            $nonce = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(16)).ToLowerInvariant()
+            $digest = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+            $canonical = ('GET','/v1/updates/capabilities','1.0',$ts,$nonce,$digest) -join [char]10
+            $mac = [Security.Cryptography.HMACSHA256]::new($key)
+            try { $sig = [Convert]::ToHexString($mac.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))).ToLowerInvariant() } finally { $mac.Dispose() }
+            $headers = @{'X-Sokna-Maintenance-Protocol'='1.0';'X-Sokna-Timestamp'=$ts;'X-Sokna-Nonce'=$nonce;'X-Sokna-Key-Id'='web-adapter';'X-Sokna-Body-SHA256'=$digest;'X-Sokna-Signature'=$sig}
+            $ok = Invoke-WebRequest $uri -Headers $headers -SkipHttpErrorCheck -TimeoutSec 4
+            $obj = $ok.Content | ConvertFrom-Json -AsHashtable
+            if($ok.StatusCode -ne 200 -or $obj.ok -ne $true -or $obj.data.panel_update_ready -ne $false -or $obj.data.blocking_code -ne 'FOUNDATION_UPDATE_REQUIRED') { throw 'False-ready or invalid signed capabilities response' }
+            $replay = Invoke-WebRequest $uri -Headers $headers -SkipHttpErrorCheck -TimeoutSec 4
+            $obj2 = $replay.Content | ConvertFrom-Json -AsHashtable
+            if($replay.StatusCode -ne 409 -or $obj2.code -ne 'AUTH_REPLAY') { throw 'HMAC replay not rejected' }
+            Write-Output 'SUPERVISOR_SIGNED_HTTP_AUTH_CAPABILITY_REPLAY_PASS'
+          } finally {
+            if($p -and !$p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          }
       - name: Build and run cross-version contract harness
         run: dotnet run --project windows/maintenance/tests/Sokna.CrossVersion.Contract/Sokna.CrossVersion.Contract.csproj --configuration Release
 
