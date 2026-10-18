@@ -138,7 +138,7 @@ try {
   Assert ($stageRetry.Code -eq 200 -and $stageRetry.Data.operation_id -eq $stageId -and [bool]$stageRetry.Data.data.reconciled) 'Stage retry not idempotent'
   $secondPreflight=Signed 'POST' '/v1/local-updates/preflight' 'web-adapter' $body 'p2d-second-qualified'
   Assert ($secondPreflight.Code -eq 200) 'Second valid preflight failed'
-  $secondId=[string]$secondPreflight.operation_id
+  $secondId=[string]$secondPreflight.Data.operation_id
   Assert ($secondId -ne $approvedId) 'Different preflight requests collapsed into one operation'
   $stageConflict=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' ([ordered]@{preflight_operation_id=$secondId;operator_id='user:test'}) 'p2d-stage-valid'
   Assert ($stageConflict.Code -eq 409 -and $stageConflict.Data.code -eq 'IDEMPOTENCY_CONFLICT') 'Stage allowed key reuse for different valid preflight'
