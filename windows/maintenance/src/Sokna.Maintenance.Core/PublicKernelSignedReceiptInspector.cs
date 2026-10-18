@@ -65,7 +65,8 @@ public static class PublicKernelSignedReceiptInspector
     private static readonly TimeSpan MaxClockSkew = TimeSpan.FromSeconds(10);
     private const int MaxReceiptBytes = 64 * 1024;
 
-    // OpenSSL/PHP emits ASN.1 DER ECDSA P-256 signatures. P1363 is NOT\n    // interoperable with that PHP wire contract; require explicit DER.\n    // Matches the documented kernel's signed bytes. Canonical serialization
+    // OpenSSL/PHP emits ASN.1 DER ECDSA P-256 signatures. P1363 is NOT
+    // interoperable with that PHP wire contract; require explicit DER.\n    // Matches the documented kernel's signed bytes. Canonical serialization
     // is a *versioned protocol* and must be agreed by the independent Public
     // owner before production integration.
     public static byte[] CanonicalSignedBytes(PublicKernelSignedObservation receipt) =>
