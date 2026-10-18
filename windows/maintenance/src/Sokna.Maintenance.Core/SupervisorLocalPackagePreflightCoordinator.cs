@@ -34,7 +34,6 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
     private readonly MaintenanceOperationStore _operations;
     private readonly DurableJournal _journal;
     private readonly SupervisorState _state;
-    private readonly object _sync = new();
 
     public SupervisorLocalPackagePreflightCoordinator(
         MaintenancePaths paths, MaintenanceOperationStore operations,
@@ -51,7 +50,7 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
     {
         packageRef = RequirePackageRef(packageRef);
         operatorId = RequireOperatorId(operatorId);
-        lock (_sync)
+        lock (LocalUpdateOperationGate.Sync)
         {
             // Existing operations must not be overlooked because they are older
             // than the last 100 receipts. Damaged journal evidence fails closed.
