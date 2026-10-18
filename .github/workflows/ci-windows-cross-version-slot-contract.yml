@@ -23,6 +23,11 @@ jobs:
           dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj --configuration Release --nologo
           dotnet build windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj --configuration Release --nologo
           dotnet build windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/Sokna.Maintenance.MachineLeaseProbe.csproj --configuration Release --nologo
+      - name: Verify suspended Windows Job child is killed on parent crash
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/windows-job-process-death.ps1 `
+            -ProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll'
       - name: Verify independent machine lease, direct Engine collision and OS crash cleanup
         shell: pwsh
         run: |
