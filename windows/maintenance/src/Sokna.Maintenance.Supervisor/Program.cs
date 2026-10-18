@@ -478,8 +478,7 @@ app.MapPost("/v1/local-updates/prepare-inactive-slot", async context =>
     }
     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
         System.Security.Cryptography.CryptographicException or
-        System.ComponentModel.Win32Exception ||
-        ex is InvalidOperationException && ex.Message == MachineMutationLease.UnavailableCode)
+        System.ComponentModel.Win32Exception or InvalidOperationException)
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
             "evidence_unavailable", "INACTIVE_SLOT_PREPARE_UNAVAILABLE", true,
