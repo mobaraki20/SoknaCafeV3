@@ -23,7 +23,7 @@ services:
       SOKNA_HA2B_DB_PORT: "3306"
       SOKNA_HA2B_DB_USER: sokna_lab
       SOKNA_HA2B_DB_PASS: ${SOKNA_LAB_PASSWORD:?Set a unique disposable lab-only password}
-    command: ["/bin/sh", "-ec", "php tests/run_real_mariadb.php && php tests/real_mariadb_crash_matrix.php"]
+    command: ["/bin/sh", "-ec", "php tests/run_real_mariadb.php && php tests/real_mariadb_crash_matrix.php && php tests/run_ha2c1_real_db.php"]
     depends_on:
       database:
         condition: service_healthy
