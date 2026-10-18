@@ -30,6 +30,9 @@ if (args.Length == 2 && args[0] == "inactive-sibling-writer")
     Directory.CreateDirectory(Path.Combine(persistent, "public"));
     File.WriteAllText(Path.Combine(persistent, "public", "local-recovery.php"),
         "<?php echo 'recovery'; ?>");
+    Directory.CreateDirectory(Path.Combine(active, "public"));
+    File.Copy(Path.Combine(persistent, "public", "local-recovery.php"),
+        Path.Combine(active, "public", "local-recovery.php"));
     File.WriteAllText(Path.Combine(source, "VERSION.txt"), next);
     File.WriteAllText(Path.Combine(source, "public", "index.php"),
         "<?php echo 'inactive'; ?>");
@@ -76,11 +79,21 @@ if (args.Length == 2 && args[0] == "inactive-sibling-writer")
     if (!tamperRejected) throw new InvalidDataException("Corrupt source accepted");
     if (Directory.Exists(target + ".another"))
         throw new InvalidDataException("Tampered input wrote a partial sibling");
+    File.WriteAllText(Path.Combine(source, "public", "index.php"),
+        "<?php echo 'inactive'; ?>");
+    File.AppendAllText(Path.Combine(persistent, "public", "local-recovery.php"), "drift");
+    var driftRejected = false;
+    try { ProductionInactiveLocalSlotWriter.CopyToNewSibling(
+        source, target + ".drift", package, stable, baseline, next, 3, expectedTree); }
+    catch (InvalidDataException) { driftRejected = true; }
+    if (!driftRejected || Directory.Exists(target + ".drift"))
+        throw new InvalidDataException("Stale machine-local persistent code copied into sibling");
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new {
         format = "sokna-inactive-sibling-writer-test-v1",
         result = "PASS", inactive_copy_created = true, verified_binding = true,
         active_junction_unchanged = true, persistent_binding_unchanged = true,
         existing_sibling_not_overwritten = true, corrupt_source_rejected_pre_mutation = true,
+        stale_machine_overlay_rejected = true,
         production_host_qualification = false, apache_mutation = false,
         database_mutation = false, public_mutation = false }));
     return 0;
