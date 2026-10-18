@@ -20,7 +20,7 @@ try{
       $text=Get-Content $stdout -Raw
       if($text -match 'JOB_BOUND_CHILD ([0-9]+)'){
         $childPid=[int]$Matches[1]
-        if((Test-Path $heartbeat) -and ((Get-Content $heartbeat).Count -ge 4)){break}
+        if((Test-Path $heartbeat) -and (@(Get-Content -LiteralPath $heartbeat).Count -ge 4)){break}
       }
     }
     Start-Sleep -Milliseconds 110
