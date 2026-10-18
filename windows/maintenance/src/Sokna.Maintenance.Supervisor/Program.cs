@@ -45,6 +45,7 @@ var journal = new DurableJournal(paths.JournalPath);
 var operations = new MaintenanceOperationStore(paths);
 var stageRestartReconciler = new SupervisorStageRestartReconciler(operations, journal, state);
 var localStageRecoveryCoordinator = new SupervisorLocalStageRecoveryCoordinator(paths, operations, journal, state);
+var localActivationPlanCoordinator = new SupervisorLocalActivationPlanCoordinator(paths, operations, localStageRecoveryCoordinator, journal, state);
 // No listening/regular update writes until interrupted Stage evidence is quarantined.
 _ = stageRestartReconciler.ReconcileStoppedProcess();
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
@@ -87,16 +88,17 @@ app.Use(async (context, next) =>
 
     var isLocalPackagePreflight = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/preflight", StringComparison.Ordinal);
     var isLocalReleaseStage = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/stage", StringComparison.Ordinal);
+    var isLocalActivationPlan = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/activation-plan", StringComparison.Ordinal);
     var isLocalStageRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/reconcile-stage", StringComparison.Ordinal);
     var isStageMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/update/stage", StringComparison.Ordinal);
     var isLocalSlotMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/home-cycle", StringComparison.Ordinal);
     var isProductionMigration = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/migrate", StringComparison.Ordinal);
     var isProductionRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/recover", StringComparison.Ordinal);
-    var isMutation = isLocalPackagePreflight || isLocalReleaseStage || isLocalStageRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
+    var isMutation = isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isLocalStageRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
-            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/reconcile-stage", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
+            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/activation-plan", "POST /v1/local-updates/reconcile-stage", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
         return;
     }
 
@@ -149,7 +151,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalPackagePreflight || isLocalReleaseStage || isStageMutation) && keyId != "web-adapter")
+    if ((isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isStageMutation) && keyId != "web-adapter")
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
@@ -170,7 +172,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalPackagePreflight || isLocalReleaseStage || isStageMutation || isProductionMigration || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
+    if ((isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isStageMutation || isProductionMigration || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "acl_pending", "WEB_ADAPTER_ACL_PENDING", false,
             new { acl_state = aclEvidence.State, service_name = aclEvidence.ServiceName });
@@ -275,6 +277,59 @@ app.MapGet("/v1/local-updates/activation-readiness/{stageOperationId}", async co
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
             "evidence_unavailable", "ACTIVATION_EVIDENCE_UNAVAILABLE", true,
             new { panel_update_ready = false, activation_allowed = false, last_error_type = ex.GetType().Name });
+    }
+});
+
+// Signed metadata-only dry-run. No Activate route is enabled.
+app.MapPost("/v1/local-updates/activation-plan", async context =>
+{
+    if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var idempotencyKey))
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "IDEMPOTENCY_KEY_REQUIRED", false, new { });
+        return;
+    }
+    try
+    {
+        var body = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<LocalActivationPlanRequest>(body, AtomicFile.JsonOptions)
+            ?? throw new InvalidDataException("Activation dry-run request was empty.");
+        var outcome = localActivationPlanCoordinator.Create(
+            request.StageOperationId, request.OperatorId, idempotencyKey);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, "planned_blocked",
+            "ACTIVATION_DRY_RUN_BLOCKED", false,
+            new { outcome.Plan, outcome.Created, outcome.Reconciled,
+                dry_run_only = true, activation_allowed = false,
+                panel_update_ready = false, activation_performed = false,
+                database_mutation_performed = false, public_mutation_performed = false },
+            outcome.Plan.PlanId);
+    }
+    catch (JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "REQUEST_JSON_INVALID", false, new { });
+    }
+    catch (InvalidOperationException ex) when (ex.Message is
+        "UPDATER_OPERATION_BUSY" or "ACTIVATION_PLAN_IDEMPOTENCY_CONFLICT" or
+        "ACTIVATION_PLAN_BASELINE_CHANGED" or "ACTIVATION_PLAN_RECONCILIATION_REQUIRED")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", ex.Message, true,
+            new { dry_run_only = true, panel_update_ready = false });
+    }
+    catch (InvalidDataException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false,
+            "rejected", "ACTIVATION_PLAN_EVIDENCE_UNPROVEN", false,
+            new { dry_run_only = true, panel_update_ready = false });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+        System.Security.Cryptography.CryptographicException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "ACTIVATION_PLAN_STORAGE_UNAVAILABLE", true,
+            new { dry_run_only = true, panel_update_ready = false,
+                last_error_type = ex.GetType().Name });
     }
 });
 
