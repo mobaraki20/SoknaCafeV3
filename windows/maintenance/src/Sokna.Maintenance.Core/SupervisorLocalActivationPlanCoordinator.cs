@@ -167,6 +167,43 @@ public sealed class SupervisorLocalActivationPlanCoordinator
         }
     }
 
+    /// <summary>
+    /// Reopen a committed dry-run after browser/adapter or Supervisor restart.
+    /// A plan is NEVER an activation permit, and stale Stage/baseline evidence
+    /// must not be presented as a current snapshot.
+    /// </summary>
+    public LocalActivationDryRunPlan Inspect(string planId)
+    {
+        if (planId is not { Length: 32 } || !planId.All(char.IsAsciiHexDigit))
+            throw new InvalidDataException("ACTIVATION_PLAN_ID_INVALID");
+        lock (LocalUpdateOperationGate.Sync)
+        {
+            var file = PlanPath(planId);
+            var marker = MarkerPath(planId);
+            if (!File.Exists(file) || !File.Exists(marker))
+                throw new InvalidDataException("ACTIVATION_PLAN_NOT_COMMITTED");
+            var plan = ReadCommitted(planId, file, marker);
+            if (_operations.ListBlocking().Count != 0)
+                throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
+            var stage = _operations.Get(plan.StageOperationId)
+                ?? throw new InvalidDataException("ACTIVATION_PLAN_STAGE_UNPROVEN");
+            if (stage.OperationType != "update.local-stage" ||
+                stage.State != "staged" || stage.OperatorId != plan.OperatorId ||
+                stage.StageReceiptPath is null)
+                throw new InvalidDataException("ACTIVATION_PLAN_STAGE_UNPROVEN");
+            var current = _stageInspector.InspectActivationReadiness(plan.StageOperationId);
+            if (!current.StageEvidenceVerified ||
+                !string.Equals(current.ReleaseSetId, plan.ReleaseSetId, StringComparison.Ordinal) ||
+                current.Sequence != plan.ReleaseSequence ||
+                !string.Equals(Sha256File(stage.StageReceiptPath), plan.StageReceiptSha256,
+                    StringComparison.Ordinal) ||
+                !string.Equals(Sha256File(_paths.InstalledReleaseIdentityPath),
+                    plan.InstalledIdentitySha256, StringComparison.Ordinal))
+                throw new InvalidDataException("ACTIVATION_PLAN_EVIDENCE_CHANGED");
+            return plan;
+        }
+    }
+
     private LocalActivationDryRunPlan ReadCommitted(string id, string file, string marker)
     {
         if (IsReparse(file) || IsReparse(marker))
