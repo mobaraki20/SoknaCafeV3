@@ -189,6 +189,20 @@ try {
     [bool]$delegatedResult.parent_death_kills_job_bound_child -and
     -not[bool]$delegatedResult.execution_authorized -and
     -not[bool]$delegatedResult.panel_update_ready) 'Delegated Engine claimed activation authority'
+  # F1-S7D5B: exact signed Stage -> one-use scoped Engine permission ->
+  # real NTFS junction switch ONLY under isolated Windows runner temp.
+  # Kill child at both rename-gap and post-swap/pre-WAL-observation boundaries.
+  $lab=@(& dotnet $LeaseProbeDll 's7d5b-lab-ntfs-switch' $root $stageId $EngineDll 2>&1)
+  Assert ($LASTEXITCODE -eq 0) ('Scoped NTFS cutover lab failed: '+($lab -join [Environment]::NewLine))
+  $labResult=($lab -join [Environment]::NewLine)|ConvertFrom-Json
+  Assert ($labResult.result -eq 'PASS' -and
+    [bool]$labResult.physical_ntfs_junction_switched -and
+    [bool]$labResult.gap_crash_quarantined -and
+    [bool]$labResult.target_switched_pre_observation_crash_quarantined -and
+    -not[bool]$labResult.panel_update_ready -and
+    -not[bool]$labResult.real_apache_http_tested -and
+    -not[bool]$labResult.real_mariadb_tested) 'Disposable switch exercise claimed real activation'
+
   # F1-S7B immutable dry-run plan. A fully valid Stage still cannot
   # authorize Apache, database, Public or release activation.
   $planBody=[ordered]@{stage_operation_id=$stageId;operator_id='user:test'}
