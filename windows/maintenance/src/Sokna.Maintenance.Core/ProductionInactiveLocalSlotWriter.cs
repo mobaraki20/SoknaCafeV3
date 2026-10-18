@@ -81,8 +81,18 @@ public static class ProductionInactiveLocalSlotWriter
         foreach (var rel in Overlay)
         {
             var local = Path.Combine(persistent, rel);
-            if (File.Exists(local) && HasReparse(local))
+            var live = Path.Combine(active, rel);
+            if (File.Exists(local) && HasReparse(local) ||
+                File.Exists(live) && HasReparse(live))
                 throw new InvalidDataException("INACTIVE_SLOT_OVERLAY_REPARSE_FORBIDDEN");
+            if (rel == ".sokna-installation.json") continue; // Target binding is intentionally version-specific.
+            // A stale persistent overlay must NOT be silently copied into a
+            // new production sibling while the active machine code differs.
+            if (File.Exists(local) != File.Exists(live) ||
+                File.Exists(local) && !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                    System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(local)),
+                    System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(live))))
+                throw new InvalidDataException("INACTIVE_SLOT_PERSISTENT_OVERLAY_DRIFT");
         }
         Directory.CreateDirectory(incoming);
         foreach (var rel in relativeFiles)
