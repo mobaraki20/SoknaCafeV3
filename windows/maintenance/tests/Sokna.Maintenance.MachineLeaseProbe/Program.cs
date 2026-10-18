@@ -17,8 +17,8 @@ if (args.Length == 2 && args[0] == "code-cutover-wal")
         File.ReadAllBytes(Path.Combine(oldSlot, "VERSION.txt"))));
     var newHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
         File.ReadAllBytes(Path.Combine(nextSlot, "VERSION.txt"))));
-    var paths = new MaintenancePaths(Path.Combine(root, "maintenance"));
-    var journal = new LocalCodeCutoverWriteAheadJournal(paths);
+    var cutoverPaths = new MaintenancePaths(Path.Combine(root, "maintenance"));
+    var journal = new LocalCodeCutoverWriteAheadJournal(cutoverPaths);
     var id = new string('a', 32);
     var stage = new string('b', 32);
     var hash = new string('c', 64);
@@ -27,11 +27,11 @@ if (args.Length == 2 && args[0] == "code-cutover-wal")
     catch (InvalidOperationException ex) when (ex.Message ==
         "CUTOVER_SUPERVISOR_MACHINE_LEASE_REQUIRED") { denied = true; }
     if (!denied) throw new InvalidDataException("Unauthorized WAL created.");
-    using var lease = MachineMutationLease.Acquire(paths, LocalCodeCutoverWriteAheadJournal.Owner);
+    using var lease = MachineMutationLease.Acquire(cutoverPaths, LocalCodeCutoverWriteAheadJournal.Owner);
     var first = journal.Begin(lease, id, stage, oldSlot, nextSlot, hash);
     if (first.Sequence != 1 || !first.DryRunOnly || first.ExecutionAuthorized)
         throw new InvalidDataException("Initial intent was not fail-closed.");
-    var recovered = new LocalCodeCutoverWriteAheadJournal(paths);
+    var recovered = new LocalCodeCutoverWriteAheadJournal(cutoverPaths);
     var previous = recovered.Classify(id, oldSlot);
     if (previous.Decision != "VERIFY_PREVIOUS_HTTP_AND_SCHEMA_BEFORE_RESUME" ||
         previous.ActivationAllowed || previous.AutomaticRollbackAllowed)
@@ -57,7 +57,7 @@ if (args.Length == 2 && args[0] == "code-cutover-wal")
     // Pre-DB rollback is an EXPLICIT audited intent, not a permitted
     // automatic filesystem rollback. An interrupted rollback remains blocked.
     recovered.Advance(lease, id, "pre_db_rollback_intent", hash);
-    var rollbackCrash = new LocalCodeCutoverWriteAheadJournal(paths).Classify(id, nextSlot);
+    var rollbackCrash = new LocalCodeCutoverWriteAheadJournal(cutoverPaths).Classify(id, nextSlot);
     if (rollbackCrash.AutomaticRollbackAllowed || rollbackCrash.ActivationAllowed)
         throw new InvalidDataException("Interrupted rollback was considered successful.");
     recovered.Advance(lease, id, "previous_pointer_observed", hash);
@@ -73,7 +73,7 @@ if (args.Length == 2 && args[0] == "code-cutover-wal")
         "pointer_switch_observed", "target_http_observed",
         "db_forward_intent"
     }) recovered.Advance(lease, forwardId, phase, hash);
-    var intentUnproven = new LocalCodeCutoverWriteAheadJournal(paths).Classify(forwardId, oldSlot);
+    var intentUnproven = new LocalCodeCutoverWriteAheadJournal(cutoverPaths).Classify(forwardId, oldSlot);
     if (!intentUnproven.DatabaseForwardOnly || intentUnproven.AutomaticRollbackAllowed)
         throw new InvalidDataException("Unproven DB intent permitted automatic old-code rollback.");
     var forwardIntentRollbackDenied = false;
@@ -83,7 +83,7 @@ if (args.Length == 2 && args[0] == "code-cutover-wal")
     if (!forwardIntentRollbackDenied)
         throw new InvalidDataException("DB forward intent accepted pre-DB rollback.");
     recovered.Advance(lease, forwardId, "db_forward_committed", hash);
-    var forward = new LocalCodeCutoverWriteAheadJournal(paths).Classify(forwardId, oldSlot);
+    var forward = new LocalCodeCutoverWriteAheadJournal(cutoverPaths).Classify(forwardId, oldSlot);
     if (!forward.DatabaseForwardOnly || forward.Decision != "FORWARD_ONLY_RECOVERY_REQUIRED" ||
         forward.AutomaticRollbackAllowed)
         throw new InvalidDataException("Forward DB boundary allowed old-code rollback.");
@@ -95,14 +95,14 @@ if (args.Length == 2 && args[0] == "code-cutover-wal")
     recovered.Advance(lease, forwardId, "forward_recovery_required", hash);
     if (!recovered.Classify(forwardId, nextSlot).DatabaseForwardOnly)
         throw new InvalidDataException("Forward-only state lost after restart.");
-    var recordFile = Path.Combine(paths.CodeCutoverJournalRoot, id, "events.jsonl");
+    var recordFile = Path.Combine(cutoverPaths.CodeCutoverJournalRoot, id, "events.jsonl");
     File.AppendAllText(recordFile, "{\"broken\":true\n");
     var tamperedDenied = false;
     try { recovered.ReadVerified(id); }
     catch (InvalidDataException) { tamperedDenied = true; }
     if (!tamperedDenied) throw new InvalidDataException("Truncated WAL event was accepted.");
     var incompleteId = new string('e', 32);
-    Directory.CreateDirectory(Path.Combine(paths.CodeCutoverJournalRoot, incompleteId));
+    Directory.CreateDirectory(Path.Combine(cutoverPaths.CodeCutoverJournalRoot, incompleteId));
     var incompleteDenied = false;
     try { recovered.Begin(lease, incompleteId, stage, oldSlot, nextSlot, hash); }
     catch (InvalidOperationException ex) when (ex.Message ==
