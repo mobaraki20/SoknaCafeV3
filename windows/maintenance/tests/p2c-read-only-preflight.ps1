@@ -109,3 +109,5 @@ $checks.Add('same_sequence_collision_read_only_rejection')
   sequence_changed=$false
   production_qualification=$false
 } | ConvertTo-Json -Depth 6
+# Reset the native exit code from the last expected rejection fixture.
+exit 0
