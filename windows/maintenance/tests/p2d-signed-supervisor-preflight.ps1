@@ -194,6 +194,9 @@ try {
   $dryFile=Join-Path $root ('update/activation-plans/plan-'+$dryId+'.json')
   $dryMarker=Join-Path $root ('update/activation-plans/plan-'+$dryId+'.committed')
   Assert ((Test-Path -LiteralPath $dryFile) -and (Test-Path -LiteralPath $dryMarker)) 'Dry-run plan and committed marker were not durable'
+  $planStatusPath='/v1/local-updates/activation-plans/'+$dryId
+  $firstQuery=Signed 'GET' $planStatusPath 'web-adapter' $null
+  Assert ($firstQuery.Code -eq 200 -and $firstQuery.Data.data.plan.plan_id -eq $dryId -and -not[bool]$firstQuery.Data.data.plan.activation_allowed) 'Committed plan cannot be queried independently'
   $originalDry=[IO.File]::ReadAllBytes($dryFile)
   $originalMarker=[IO.File]::ReadAllBytes($dryMarker)
   $dryHash=(Get-FileHash -LiteralPath $dryFile -Algorithm SHA256).Hash
@@ -209,6 +212,8 @@ try {
   Remove-Item -LiteralPath $dryMarker -Force
   $crashPlan=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' $planBody 'p2d-activation-plan'
   Assert ($crashPlan.Code -eq 409 -and $crashPlan.Data.code -eq 'ACTIVATION_PLAN_RECONCILIATION_REQUIRED') 'Missing commit marker was silently repaired'
+  $missingCommitQuery=Signed 'GET' $planStatusPath 'web-adapter' $null
+  Assert ($missingCommitQuery.Code -eq 422 -and $missingCommitQuery.Data.code -eq 'ACTIVATION_PLAN_EVIDENCE_UNPROVEN') 'Incomplete plan was exposed through the status API'
   [IO.File]::WriteAllBytes($dryMarker,$originalMarker)
   $forgedOperator=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' ([ordered]@{stage_operation_id=$stageId;operator_id='other:operator'}) 'p2d-activation-plan'
   Assert ($forgedOperator.Code -eq 422) 'Another operator reused a qualified Stage'
@@ -358,6 +363,8 @@ try {
   Assert ($afterRecoveredRestart.Code -eq 200 -and $afterRecoveredRestart.Data.data.state -eq 'staged') 'Durably reconciled Stage did not survive restart'
   $afterPlanRestart=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' $planBody 'p2d-activation-plan'
   Assert ($afterPlanRestart.Code -eq 200 -and [bool]$afterPlanRestart.Data.data.reconciled -and -not[bool]$afterPlanRestart.Data.data.plan.activation_allowed) 'Immutable dry-run plan was lost or mutated after Supervisor restart'
+  $reopenedPlan=Signed 'GET' $planStatusPath 'web-adapter' $null
+  Assert ($reopenedPlan.Code -eq 200 -and $reopenedPlan.Data.data.plan.plan_id -eq $dryId -and -not[bool]$reopenedPlan.Data.data.plan.activation_allowed) 'Plan status not durable across Supervisor restart'
   $afterReconcileAssessment=Signed 'GET' $readinessPath 'web-adapter' $null
   Assert ($afterReconcileAssessment.Code -eq 200 -and -not[bool]$afterReconcileAssessment.Data.data.activation_allowed -and [bool]$afterReconcileAssessment.Data.data.stage_evidence_verified) 'Recovery produced false install permission'
   $statusAfterRecovery=Signed 'GET' '/v1/local-updates/recovery-status' 'web-adapter' $null
