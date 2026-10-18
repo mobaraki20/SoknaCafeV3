@@ -158,6 +158,16 @@ try {
   Assert (-not[bool]$stage.Data.data.receipt.activation_performed -and -not[bool]$stage.Data.data.receipt.database_mutation_performed) 'Stage mutated app or database'
   Assert ((Test-Path -LiteralPath (Join-Path $root 'update/release-sequence.json'))) 'Stage did not commit monotonic sequence'
   Assert (Test-Path -LiteralPath (Join-Path ([string]$stage.Data.data.receipt.stage_root) 'stage-receipt.json')) 'Stage receipt not durable'
+  $readinessPath='/v1/local-updates/activation-readiness/'+$stageId
+  $assessment=Signed 'GET' $readinessPath 'web-adapter' $null
+  Assert ($assessment.Code -eq 200 -and $assessment.Data.code -eq 'FOUNDATION_UPDATE_REQUIRED') 'Readiness did not give a fail-closed result'
+  Assert ([bool]$assessment.Data.data.stage_evidence_verified -and -not[bool]$assessment.Data.data.activation_allowed -and -not[bool]$assessment.Data.data.panel_update_ready) 'Stage readiness confused valid Stage with approved Activate'
+  Assert ($assessment.Data.data.blockers -contains 'RELEASE_NOT_QUALIFIED_FOR_INSTALL') 'Non-installable signed fixture was approved'
+  Assert ($assessment.Data.data.blockers -contains 'BACKUP_POLICY_NOT_INSTALL_QUALIFIED') 'Missing backup policy approval not reported'
+  Assert ($assessment.Data.data.blockers -contains 'MARIADB_SCHEMA_AND_CONSISTENCY_NOT_ATTESTED') 'MariaDB proof not reported'
+  Assert (-not[bool]$assessment.Data.data.activation_performed -and -not[bool]$assessment.Data.data.database_mutation_performed) 'Readiness mutated running system'
+  $unknownReadiness=Signed 'GET' '/v1/local-updates/activation-readiness/00000000000000000000000000000000' 'web-adapter' $null
+  Assert ($unknownReadiness.Code -eq 422 -and $unknownReadiness.Data.code -eq 'ACTIVATION_STAGE_EVIDENCE_UNPROVEN') 'Missing Stage produced false activation readiness'
   $stageRetry=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' $stageBody 'p2d-stage-valid'
   Assert ($stageRetry.Code -eq 200 -and $stageRetry.Data.operation_id -eq $stageId -and [bool]$stageRetry.Data.data.reconciled) 'Stage retry not idempotent'
   $secondPreflight=Signed 'POST' '/v1/local-updates/preflight' 'web-adapter' $body 'p2d-second-qualified'
@@ -267,6 +277,8 @@ try {
   Assert ($unproven.Code -eq 422 -and $unproven.Data.code -eq 'STAGE_RECOVERY_EVIDENCE_UNPROVEN') ('Corrupt Stage was accepted: '+($unproven.Data|ConvertTo-Json -Depth 5))
   $quarantined=Signed 'GET' ('/v1/operations/'+$stageId) 'web-adapter' $null
   Assert ($quarantined.Data.data.state -eq 'recovery_required') 'Tampering cleared recovery barrier'
+  $duringQuarantine=Signed 'GET' $readinessPath 'web-adapter' $null
+  Assert ($duringQuarantine.Code -eq 422 -and $duringQuarantine.Data.code -eq 'ACTIVATION_STAGE_EVIDENCE_UNPROVEN') 'Interrupted/corrupt Stage received activation readiness'
   [IO.File]::WriteAllBytes($artifactFile,$artifactBytes)
 
   $seqPath=Join-Path $root 'update/release-sequence.json'
@@ -289,6 +301,8 @@ try {
   $p=Start-S
   $afterRecoveredRestart=Signed 'GET' ('/v1/operations/'+$stageId) 'web-adapter' $null
   Assert ($afterRecoveredRestart.Code -eq 200 -and $afterRecoveredRestart.Data.data.state -eq 'staged') 'Durably reconciled Stage did not survive restart'
+  $afterReconcileAssessment=Signed 'GET' $readinessPath 'web-adapter' $null
+  Assert ($afterReconcileAssessment.Code -eq 200 -and -not[bool]$afterReconcileAssessment.Data.data.activation_allowed -and [bool]$afterReconcileAssessment.Data.data.stage_evidence_verified) 'Recovery produced false install permission'
   $statusAfterRecovery=Signed 'GET' '/v1/local-updates/recovery-status' 'web-adapter' $null
   Assert ($statusAfterRecovery.Code -eq 200 -and -not[bool]$statusAfterRecovery.Data.data.blocked) 'Successful Stage evidence reconciliation left a false busy state'
   $finalCaps=Signed 'GET' '/v1/updates/capabilities' 'web-adapter' $null
