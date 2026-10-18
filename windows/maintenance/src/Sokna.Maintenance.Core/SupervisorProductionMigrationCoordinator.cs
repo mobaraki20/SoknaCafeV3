@@ -44,9 +44,13 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         string operatorId,
         string idempotencyKey)
     {
-        lock (_executionSync)
+        lock (LocalUpdateOperationGate.Sync)
         {
-            return MigrateCore(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, operatorId, idempotencyKey);
+            LocalUpdateOperationGate.RequireNoPendingMutation(_operations);
+            lock (_executionSync)
+            {
+                return MigrateCore(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, operatorId, idempotencyKey);
+            }
         }
     }
 
@@ -342,9 +346,13 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
 
     public LocalSlotOperationResult Recover(string operatorId, string idempotencyKey)
     {
-        lock (_executionSync)
+        lock (LocalUpdateOperationGate.Sync)
         {
-            return RecoverCore(operatorId, idempotencyKey);
+            LocalUpdateOperationGate.RequireLegacySlotRecoveryOnly(_operations);
+            lock (_executionSync)
+            {
+                return RecoverCore(operatorId, idempotencyKey);
+            }
         }
     }
 
