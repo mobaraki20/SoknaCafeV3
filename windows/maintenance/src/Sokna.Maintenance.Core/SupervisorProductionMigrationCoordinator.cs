@@ -241,7 +241,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                     return new(operation, created, Reconciled: !created);
                 }
 
-                var recovered = TryRecoverPreActivationInterruption(failedState, out var recoveryDetail);
+                var recovered = TryRecoverPreActivationInterruption(failedState, machineLease, operation.OperationId, out var recoveryDetail);
                 if (!recovered)
                 {
                     operation = _operations.Update(
