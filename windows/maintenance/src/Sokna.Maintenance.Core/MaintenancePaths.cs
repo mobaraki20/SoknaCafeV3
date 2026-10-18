@@ -11,6 +11,8 @@ public sealed record MaintenancePaths(string DataRoot)
     public string DescriptorPath => Path.Combine(DataRoot, "control-plane.json");
     public string WebAdapterKeyPath => Path.Combine(SecretsRoot, "web-adapter.key");
     public string RecoveryConsoleKeyPath => Path.Combine(SecretsRoot, "recovery-console.key");
+    public string EngineDelegationKeyPath => Path.Combine(SecretsRoot, "engine-delegation.key");
+    public string EngineDelegationsRoot => Path.Combine(UpdateRoot, "delegations");
     public string UpdateRoot => Path.Combine(DataRoot, "update");
     public string InboxRoot => Path.Combine(UpdateRoot, "inbox");
     public string OperationsRoot => Path.Combine(DataRoot, "operations");
