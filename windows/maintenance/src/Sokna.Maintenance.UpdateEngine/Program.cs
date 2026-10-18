@@ -8,6 +8,7 @@ if (args.Length == 0 || args[0] is "--help" or "-h")
 {
     Console.WriteLine($"SOKNA Maintenance Update Engine {EngineVersion} (R8 sibling-release routine activation; DB mutation disabled)");
     Console.WriteLine("verify-only --package <zip> --identity <json> [--data-root <path>] (read-only; no stage or sequence mutation)");
+    Console.WriteLine("cutover-attest --transaction-id <id> --stage-operation-id <id> --data-root <path> --delegation-id <id> (Supervisor-delegated read-only evidence only)");
     Console.WriteLine("verify-stage --package <zip> --identity <json> [--data-root <path>]");
     Console.WriteLine("local-slot-inspect --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
     Console.WriteLine("local-slot-migrate --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
@@ -25,6 +26,52 @@ var dataRoot = options.TryGetValue("--data-root", out var dataRootText)
     ? Path.GetFullPath(dataRootText)
     : MaintenancePaths.DefaultDataRoot();
 var paths = new MaintenancePaths(dataRoot);
+
+// F1-S7D5A: separate non-mutating command using an exact signed,
+// one-use Supervisor->Engine permit. It does NOT authorize cutover.
+if (command == "cutover-attest")
+{
+    if (args.Length != 9 || args[^2] != "--delegation-id")
+    {
+        Console.Error.WriteLine(JsonSerializer.Serialize(new {
+            ok = false, code = CutoverEngineAttestationPermit.Required,
+            activation_performed = false, database_mutation_performed = false }));
+        Environment.ExitCode = 75;
+        return;
+    }
+    try
+    {
+        RequireOption(options, "--transaction-id", out var transactionId);
+        RequireOption(options, "--stage-operation-id", out var stageId);
+        var permit = CutoverEngineAttestationPermit.Consume(paths, args[^1],
+            transactionId, stageId, args[..^2]);
+        Console.WriteLine(JsonSerializer.Serialize(new {
+            ok = true,
+            phase = "DELEGATED_SIGNED_STAGE_ATTESTED_READ_ONLY",
+            transaction_id = permit.TransactionId,
+            stage_operation_id = permit.StageOperationId,
+            release_set_id = permit.ReleaseSetId,
+            sequence = permit.Sequence,
+            evidence_only = true,
+            execution_authorized = false,
+            activation_performed = false, database_mutation_performed = false,
+            public_mutation_performed = false, panel_update_ready = false
+        }));
+        return;
+    }
+    catch (Exception ex) when (ex is InvalidDataException or IOException or
+        UnauthorizedAccessException or CryptographicException or InvalidOperationException
+        or ArgumentException or System.ComponentModel.Win32Exception)
+    {
+        Console.Error.WriteLine(JsonSerializer.Serialize(new {
+            ok = false, code = CutoverEngineAttestationPermit.Rejected,
+            error_type = ex.GetType().Name, activation_performed = false,
+            database_mutation_performed = false, panel_update_ready = false
+        }));
+        Environment.ExitCode = 75;
+        return;
+    }
+}
 
 // Mutating Engine execution is delegated by a live Supervisor that retains
 // the machine lease. Engine cannot acquire the lease or self-authorize a CLI
