@@ -405,6 +405,15 @@ try {
   $prepared=Signed 'POST' '/v1/local-updates/prepare-inactive' 'web-adapter' $candidateRequest 'p2d-inactive-ready'
   Assert ($prepared.Code -eq 200 -and $prepared.Data.code -eq 'PRIVATE_LOCAL_CANDIDATE_NOT_INSTALLABLE' -and [bool]$prepared.Data.data.created) ('Valid inactive ZIP was not prepared: '+($prepared.Data|ConvertTo-Json -Depth 6))
   $preparedReceipt=$prepared.Data.data.receipt
+  # The generic CI Windows runner is NOT an installed SoknaApache host.
+  # It must NEVER claim successful physical slot preparation based on a
+  # valid private candidate without real host discovery and health.
+  $noHostSlot=Signed 'POST' '/v1/local-updates/prepare-inactive-slot' 'web-adapter' ([ordered]@{
+    stage_operation_id=$siblingId;operator_id='user:test'
+    private_candidate_idempotency_key='p2d-inactive-ready'
+  }) 'p2d-inactive-real-slot'
+  Assert ($noHostSlot.Code -eq 503 -and $noHostSlot.Data.code -eq 'INACTIVE_SLOT_PREPARE_UNAVAILABLE') 'Supervisor falsely prepared a live Local slot without Apache'
+  Assert (-not(Test-Path -LiteralPath (Join-Path $root 'update/inactive-slot-promotions'))) 'No-host sibling preparation wrote commit evidence'
   Assert (-not[bool]$preparedReceipt.promotion_qualified -and -not[bool]$preparedReceipt.activation_performed -and -not[bool]$preparedReceipt.database_mutation_performed -and -not[bool]$preparedReceipt.public_mutation_performed) 'Private candidate falsely authorized installation or Public'
   $candidateWeb=[string]$preparedReceipt.candidate_root
   Assert ((Test-Path (Join-Path $candidateWeb 'public/index.php')) -and (Test-Path (Join-Path $candidateWeb 'VERSION.txt'))) 'Inactive prepared tree missing required files'
