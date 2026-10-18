@@ -39,6 +39,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
 {
     private readonly LocalSlotAdoptionQueue _queue;
     private readonly IProductionLocalSlotMigrationCoordinator _coordinator;
+    private readonly MaintenanceOperationStore _operations;
     private readonly DurableJournal _journal;
     private readonly SupervisorState _supervisorState;
     private readonly LocalSlotAdoptionWorkerOptions _options;
@@ -46,12 +47,14 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
     public LocalSlotAdoptionWorker(
         LocalSlotAdoptionQueue queue,
         IProductionLocalSlotMigrationCoordinator coordinator,
+        MaintenanceOperationStore operations,
         DurableJournal journal,
         SupervisorState supervisorState,
         LocalSlotAdoptionWorkerOptions options)
     {
         _queue = queue;
         _coordinator = coordinator;
+        _operations = operations;
         _journal = journal;
         _supervisorState = supervisorState;
         _options = options;
@@ -87,11 +90,29 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
         }
     }
 
-    public async Task ProcessOnce(CancellationToken stoppingToken)
+    // All queue/operation state transitions and Migrate itself are synchronous,
+    // so hold the same gate for the entire unit of work. Never await while
+    // holding a Monitor: a continuation may resume on a different thread.
+    public Task ProcessOnce(CancellationToken stoppingToken)
+    {
+        lock (LocalUpdateOperationGate.Sync)
+        {
+            ProcessOnceUnderSharedGate(stoppingToken);
+        }
+        return Task.CompletedTask;
+    }
+
+    private void ProcessOnceUnderSharedGate(CancellationToken stoppingToken)
     {
         stoppingToken.ThrowIfCancellationRequested();
         var request = _queue.LoadRequest();
         if (request is null) return;
+
+        // Stage recovery, or any other unfinished slot operation, must not
+        // exhaust Bootstrap's automatic retry budget. Defer without writing a
+        // pending/running status, consuming an attempt or starting Migration.
+        // Fail closed if the ledger cannot be inspected.
+        if (_operations.ListBlocking().Count != 0) return;
 
         var status = _queue.EnsurePending(request);
         if (LocalSlotAdoptionQueue.IsTerminal(status.State))
@@ -154,7 +175,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
         {
-            await ScheduleRetryOrFail(request, attempt, null, "LOCAL_ADOPTION_SUPERVISOR_ERROR", ex.Message, activationPerformed: false, stoppingToken);
+            ScheduleRetryOrFail(request, attempt, null, "LOCAL_ADOPTION_SUPERVISOR_ERROR", ex.Message, activationPerformed: false, stoppingToken);
             return;
         }
 
@@ -202,7 +223,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
             return;
         }
 
-        await ScheduleRetryOrFail(
+        ScheduleRetryOrFail(
             request,
             attempt,
             operation.OperationId,
@@ -212,7 +233,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
             stoppingToken);
     }
 
-    private async Task ScheduleRetryOrFail(
+    private void ScheduleRetryOrFail(
         LocalSlotAdoptionRequest request,
         int attempt,
         string? operationId,
@@ -246,7 +267,7 @@ public sealed class LocalSlotAdoptionWorker : BackgroundService
             ["result_code"] = code,
             ["next_attempt_at_utc"] = next
         });
-        await Delay(TimeSpan.FromMilliseconds(10), stoppingToken);
+        stoppingToken.ThrowIfCancellationRequested();
     }
 
     private void Journal(string eventType, IReadOnlyDictionary<string, object?> data)
