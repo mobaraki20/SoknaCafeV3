@@ -57,11 +57,10 @@ internal static class CutoverEvidenceWitnessProbe
         var tamperId = gate.Issue(lease, tx);
         var tamperFile = Path.Combine(paths.CodeCutoverJournalRoot,
             "_preauthorization_evidence", tamperId + ".json");
-        File.AppendAllText(tamperFile, "\n");
-        // Whitespace does not change parsed signed fields; alter real bytes.
-        var original = File.ReadAllText(tamperFile);
-        File.WriteAllText(tamperFile, original.Replace("\"dry_run_only\":true",
-            "\"dry_run_only\":false", StringComparison.Ordinal));
+        var tamperedJson = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(tamperFile))
+            ?? throw new InvalidDataException("S7D4A_TAMPER_FIXTURE_MISSING");
+        tamperedJson["stage_receipt_sha256"] = new string('f', 64);
+        File.WriteAllText(tamperFile, tamperedJson.ToJsonString());
         Denied(() => gate.InspectAndBurn(lease, tamperId, tx), "tampered signature/evidence");
 
         var stageChangedId = gate.Issue(lease, tx);
