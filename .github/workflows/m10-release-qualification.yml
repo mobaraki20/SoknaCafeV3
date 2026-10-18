@@ -87,6 +87,9 @@ jobs:
           SOKNA_MARIADB_CI_ONLY: '1'
         run: |
           python3 windows/maintenance/tests/s7e2b-mariadb-forward-crash-ci.py
+      - name: F1-S7E4 fail-closed custody and Public-pair negative contract matrix (synthetic only)
+        run: |
+          python3 windows/maintenance/tests/s7e4-security-paired-dryrun-ci.py
       - name: Re-run mature component contracts
         run: |
           python3 tests/scds-m6-gate.py
