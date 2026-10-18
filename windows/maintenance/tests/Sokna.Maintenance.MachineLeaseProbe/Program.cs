@@ -1,6 +1,11 @@
 using Sokna.Maintenance.Core;
 using System.Diagnostics;
 
+// F1-S7E5A: real loopback HTTP transport + pinned Public ECDSA receipt,
+// isolated CI mock server; NEVER a real Public mutation or installation.
+if (args.Length == 1 && args[0] == "s7e5a-public-kernel-wire")
+    return PublicKernelWireAttestationProbe.Run();
+
 // F1-S7D5B: physical NTFS cutover in signed disposable CI fixtures only.
 if(args.Length==4 && args[0]=="s7d5b-lab-ntfs-switch")
     return LabNtfsSwitchWindowsProbe.Run(args[1],args[2],args[3]);
