@@ -1,0 +1,7 @@
+FROM php:8.4-cli-bookworm
+RUN docker-php-ext-install pdo_mysql
+WORKDIR /opt/sokna-ha2c2b-lab
+COPY ./source ./source
+COPY ./tests ./tests
+COPY ./results ./results
+CMD ["php", "tests/run_issuer_consumer_lab.php"]
