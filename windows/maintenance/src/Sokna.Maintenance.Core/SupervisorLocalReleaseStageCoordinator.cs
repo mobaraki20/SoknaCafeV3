@@ -49,6 +49,9 @@ public sealed class SupervisorLocalReleaseStageCoordinator
 
         lock (LocalUpdateOperationGate.Sync)
         {
+            // The machine file-handle gate serializes this canonical Stage
+            // against independently running Windows Update Engine/Installer.
+            using var machineLease = MachineMutationLease.Acquire(_paths, "supervisor-local-stage");
             // Detect broken durable evidence or conflicting operations BEFORE mutation.
             var prior = _operations.GetByIdempotencyKey(idempotencyKey);
             var active = _operations.ListBlocking();
