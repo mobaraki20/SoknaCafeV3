@@ -26,6 +26,7 @@ public sealed class WindowsJobChildProcess : IDisposable
     private const uint HandleFlagInherit = 0x00000001;
     private readonly Process _process;
     private readonly IntPtr _job;
+    private readonly IntPtr _nativeProcessHandle;
     private readonly AnonymousPipeServerStream _stdout;
     private readonly AnonymousPipeServerStream _stderr;
     private readonly AnonymousPipeServerStream _stdin;
@@ -33,12 +34,13 @@ public sealed class WindowsJobChildProcess : IDisposable
 
     public int ProcessId => _process.Id;
 
-    private WindowsJobChildProcess(Process process, IntPtr job,
+    private WindowsJobChildProcess(Process process, IntPtr job, IntPtr nativeProcessHandle,
         AnonymousPipeServerStream stdout, AnonymousPipeServerStream stderr,
         AnonymousPipeServerStream stdin)
     {
         _process = process;
         _job = job;
+        _nativeProcessHandle = nativeProcessHandle;
         _stdout = stdout;
         _stderr = stderr;
         _stdin = stdin;
@@ -123,7 +125,12 @@ public sealed class WindowsJobChildProcess : IDisposable
             // Child stdin must see EOF if it tries to read.
             stdin.Dispose();
 
-            return new WindowsJobChildProcess(process, job, stdout, stderr, stdin);
+            // Transfer the original CreateProcessW handle to the owner. Unlike
+            // Process.GetProcessById, it remains valid AFTER the child exits.
+            var owned = new WindowsJobChildProcess(process, job, info.Process,
+                stdout, stderr, stdin);
+            info.Process = IntPtr.Zero;
+            return owned;
         }
         catch
         {
@@ -166,7 +173,7 @@ public sealed class WindowsJobChildProcess : IDisposable
         int exitCode = -1;
         if (finished)
         {
-            if (!GetExitCodeProcess(_process.Handle, out var nativeExitCode))
+            if (!GetExitCodeProcess(_nativeProcessHandle, out var nativeExitCode))
                 throw new Win32Exception(Marshal.GetLastWin32Error(),
                     "Unable to read a Job-bound child exit status.");
             exitCode = unchecked((int)nativeExitCode);
@@ -204,6 +211,7 @@ public sealed class WindowsJobChildProcess : IDisposable
     {
         if (_disposed)
         {
+            CloseHandle(_nativeProcessHandle);
             _process.Dispose();
             _stdout.Dispose();
             _stderr.Dispose();
@@ -212,6 +220,7 @@ public sealed class WindowsJobChildProcess : IDisposable
         }
         _disposed = true;
         CloseHandle(_job);
+        CloseHandle(_nativeProcessHandle);
         _process.Dispose();
         _stdout.Dispose();
         _stderr.Dispose();
