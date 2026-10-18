@@ -161,6 +161,28 @@ try {
   # F1-S7B immutable dry-run plan. A fully valid Stage still cannot
   # authorize Apache, database, Public or release activation.
   $planBody=[ordered]@{stage_operation_id=$stageId;operator_id='user:test'}
+  $planLockHolder=Start-Process dotnet -ArgumentList @($LeaseProbeDll,'hold',$root,'30000') -PassThru
+  try {
+    $planLockUntil=[DateTime]::UtcNow.AddSeconds(10)
+    $planLockHeld=$false
+    while([DateTime]::UtcNow -lt $planLockUntil){
+      Assert (-not$planLockHolder.HasExited) 'Plan lock holder exited unexpectedly'
+      $planLockFile=Join-Path $root 'update/machine-mutation.lock'
+      if(Test-Path $planLockFile){
+        try{
+          if((Get-Content -LiteralPath $planLockFile -Raw).Contains('owner=test-owner-A')){$planLockHeld=$true;break}
+        }catch{}
+      }
+      Start-Sleep -Milliseconds 80
+    }
+    Assert $planLockHeld 'Independent machine lease for dry-run conflict not acquired'
+    $blockedPlan=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' $planBody 'p2d-plan-contended'
+    Assert ($blockedPlan.Code -eq 409 -and $blockedPlan.Data.code -eq 'MACHINE_MUTATION_LEASE_BUSY') 'Activation snapshot ignored concurrent OS mutator'
+    Assert (-not(Test-Path -LiteralPath (Join-Path $root 'update/activation-plans'))) 'Blocked dry-run wrote transaction metadata'
+  } finally {
+    if(-not$planLockHolder.HasExited){Stop-Process -Id $planLockHolder.Id -Force -ErrorAction SilentlyContinue}
+    $planLockHolder.WaitForExit(5000)|Out-Null
+  }
   $dry=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' $planBody 'p2d-activation-plan'
   Assert ($dry.Code -eq 200 -and $dry.Data.code -eq 'ACTIVATION_DRY_RUN_BLOCKED' -and [bool]$dry.Data.data.created) ('Dry-run plan failed: '+($dry.Data|ConvertTo-Json -Depth 7))
   $dryPlan=$dry.Data.data.plan
