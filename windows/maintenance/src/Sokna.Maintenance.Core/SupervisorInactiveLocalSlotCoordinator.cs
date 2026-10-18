@@ -3,6 +3,11 @@ using System.Text.Json.Serialization;
 
 namespace Sokna.Maintenance.Core;
 
+public sealed record InactiveLocalSlotRequest(
+    [property: JsonPropertyName("stage_operation_id")] string StageOperationId,
+    [property: JsonPropertyName("operator_id")] string OperatorId,
+    [property: JsonPropertyName("private_candidate_idempotency_key")] string PrivateCandidateIdempotencyKey);
+
 public sealed record InactiveLocalSlotReceipt(
     [property: JsonPropertyName("format")] string Format,
     [property: JsonPropertyName("schema_version")] int SchemaVersion,
