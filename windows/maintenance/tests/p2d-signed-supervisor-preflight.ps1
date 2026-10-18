@@ -136,8 +136,12 @@ try {
   Assert (Test-Path -LiteralPath (Join-Path ([string]$stage.Data.data.receipt.stage_root) 'stage-receipt.json')) 'Stage receipt not durable'
   $stageRetry=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' $stageBody 'p2d-stage-valid'
   Assert ($stageRetry.Code -eq 200 -and $stageRetry.Data.operation_id -eq $stageId -and [bool]$stageRetry.Data.data.reconciled) 'Stage retry not idempotent'
-  $stageConflict=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' ([ordered]@{preflight_operation_id=$id;operator_id='user:test'}) 'p2d-stage-valid'
-  Assert ($stageConflict.Code -ne 200) 'Stage reused idempotency key for a different preflight'
+  $secondPreflight=Signed 'POST' '/v1/local-updates/preflight' 'web-adapter' $body 'p2d-second-qualified'
+  Assert ($secondPreflight.Code -eq 200) 'Second valid preflight failed'
+  $secondId=[string]$secondPreflight.operation_id
+  Assert ($secondId -ne $approvedId) 'Different preflight requests collapsed into one operation'
+  $stageConflict=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' ([ordered]@{preflight_operation_id=$secondId;operator_id='user:test'}) 'p2d-stage-valid'
+  Assert ($stageConflict.Code -eq 409 -and $stageConflict.Data.code -eq 'IDEMPOTENCY_CONFLICT') 'Stage allowed key reuse for different valid preflight'
   Stop-S $p;$p=$null
   $p=Start-S
   $afterRestart=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' $stageBody 'p2d-stage-valid'
