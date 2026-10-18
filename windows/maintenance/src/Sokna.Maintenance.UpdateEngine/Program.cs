@@ -25,6 +25,30 @@ var dataRoot = options.TryGetValue("--data-root", out var dataRootText)
     ? Path.GetFullPath(dataRootText)
     : MaintenancePaths.DefaultDataRoot();
 var paths = new MaintenancePaths(dataRoot);
+
+// The standalone Update Engine must take the same OS lease as canonical Stage.
+// Read-only inspection does not take the mutation lease. This serializes legacy
+// CLI execution but does NOT yet establish Supervisor-issued authorization.
+MachineMutationLease? acquiredMutationLease = null;
+try
+{
+    if (command is "verify-stage" or "local-slot-migrate" or "local-slot-recover"
+        or "local-slot-home-cycle" or "local-slot-stage" or "local-slot-activate"
+        or "local-slot-recover-routine")
+        acquiredMutationLease = MachineMutationLease.Acquire(paths, "update-engine-legacy-cli");
+}
+catch (InvalidOperationException ex) when (ex.Message is
+    MachineMutationLease.ConflictCode or MachineMutationLease.UnavailableCode)
+{
+    Console.Error.WriteLine(JsonSerializer.Serialize(new
+    {
+        ok = false, phase = "BLOCKED_PRE_MUTATION", code = ex.Message,
+        activation_performed = false, database_mutation_performed = false
+    }, AtomicFile.JsonOptions));
+    Environment.ExitCode = 75;
+    return;
+}
+using var mutationLease = acquiredMutationLease;
 var bridge = new ProductionLocalSlotMigrationBridge(paths);
 
 if (command == "verify-only")
