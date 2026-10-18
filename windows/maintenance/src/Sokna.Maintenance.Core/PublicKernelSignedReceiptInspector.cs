@@ -65,7 +65,7 @@ public static class PublicKernelSignedReceiptInspector
     private static readonly TimeSpan MaxClockSkew = TimeSpan.FromSeconds(10);
     private const int MaxReceiptBytes = 64 * 1024;
 
-    // Matches the documented kernel's signed bytes. Canonical serialization
+    // OpenSSL/PHP emits ASN.1 DER ECDSA P-256 signatures. P1363 is NOT\n    // interoperable with that PHP wire contract; require explicit DER.\n    // Matches the documented kernel's signed bytes. Canonical serialization
     // is a *versioned protocol* and must be agreed by the independent Public
     // owner before production integration.
     public static byte[] CanonicalSignedBytes(PublicKernelSignedObservation receipt) =>
@@ -113,7 +113,7 @@ public static class PublicKernelSignedReceiptInspector
                 key.KeySize != 256 ||
                 !key.VerifyData(CanonicalSignedBytes(receipt),
                     Convert.FromBase64String(receipt.Signature),
-                    HashAlgorithmName.SHA256))
+                    HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence))
                 throw new InvalidDataException(Rejected);
         }
         catch (Exception ex) when (ex is CryptographicException or FormatException
@@ -211,6 +211,6 @@ public static class PublicKernelSignedReceiptInspector
     {
         if (string.IsNullOrEmpty(value) || value.Length > 256) return false;
         return Convert.TryFromBase64String(value,
-            new Span<byte>(new byte[256]), out var length) && length is 64 or 70 or 71 or 72;
+            new Span<byte>(new byte[256]), out var length) && length is >= 68 and <= 72;
     }
 }
