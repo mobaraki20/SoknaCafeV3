@@ -111,6 +111,15 @@ public sealed class SupervisorLocalSlotCoordinator
 
     public LocalSlotOperationResult RunHomeCycle(string expectedBuild, int expectedManagedFiles, string expectedManagedTreeSha256, string operatorId, string idempotencyKey)
     {
+        lock (LocalUpdateOperationGate.Sync)
+        {
+            LocalUpdateOperationGate.RequireNoPendingMutation(_operations);
+            return RunHomeCycleCore(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, operatorId, idempotencyKey);
+        }
+    }
+
+    private LocalSlotOperationResult RunHomeCycleCore(string expectedBuild, int expectedManagedFiles, string expectedManagedTreeSha256, string operatorId, string idempotencyKey)
+    {
         expectedBuild = NormalizeBuild(expectedBuild);
         expectedManagedTreeSha256 = LocalManagedTreeAttestation.NormalizeSha256(expectedManagedTreeSha256);
         operatorId = NormalizeOperatorId(operatorId);
