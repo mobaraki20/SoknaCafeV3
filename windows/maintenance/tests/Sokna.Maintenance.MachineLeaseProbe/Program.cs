@@ -1,4 +1,5 @@
 using Sokna.Maintenance.Core;
+using System.Diagnostics;
 
 // Inject a durable in-flight legacy migration into an isolated test data root.
 // On the next Supervisor startup, the parent-death reconciler must quarantine it.
@@ -28,6 +29,32 @@ if (args.Length == 2 && args[0] == "job-child")
     }
     return 0;
 }
+// Timeout qualification: disposing a live job kills the child before the
+// issuer returns a terminal outcome. No production Engine command is needed.
+if (args.Length == 2 && args[0] == "job-timeout")
+{
+    var root = Path.GetFullPath(args[1]);
+    Directory.CreateDirectory(root);
+    var dotnetExe = Environment.ProcessPath
+        ?? throw new InvalidOperationException("dotnet host path unavailable.");
+    var selfDll = System.Reflection.Assembly.GetExecutingAssembly().Location;
+    using var child = WindowsJobChildProcess.Start(dotnetExe,
+        new[] { selfDll, "job-child", Path.Combine(root, "timeout-heartbeat.txt") }, root);
+    var childPid = child.ProcessId;
+    var result = child.WaitAndCapture(900);
+    if (result.Finished) throw new InvalidDataException("Unbounded child unexpectedly completed.");
+    for (var n = 0; n < 50; n++)
+    {
+        if (Process.GetProcesses().All(p => p.Id != childPid))
+        {
+            Console.WriteLine("JOB_TIMEOUT_KILLED_CHILD " + childPid);
+            return 0;
+        }
+        Thread.Sleep(100);
+    }
+    throw new InvalidDataException("Timed-out child remained running after Job close.");
+}
+
 if (args.Length == 3 && args[0] == "job-holder" && int.TryParse(args[2], out var jobHoldMs) &&
     jobHoldMs is >= 0 and <= 60000)
 {
