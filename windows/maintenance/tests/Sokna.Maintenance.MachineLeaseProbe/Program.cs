@@ -1,6 +1,10 @@
 using Sokna.Maintenance.Core;
 using System.Diagnostics;
 
+// F1-S7D4B: signed canonical Stage generated under P2D Windows CI.
+if (args.Length == 3 && args[0] == "s7d4b-canonical-signed-stage")
+    return CanonicalStageSealProbe.Run(args[1], args[2]);
+
 // F1-S7D4A: evidence-only HMAC fixture with non-executable one-use witness.
 if (args.Length == 2 && args[0] == "code-cutover-evidence-witness")
     return CutoverEvidenceWitnessProbe.Run(args[1]);
