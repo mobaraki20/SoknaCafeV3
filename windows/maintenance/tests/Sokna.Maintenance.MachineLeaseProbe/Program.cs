@@ -1,6 +1,10 @@
 using Sokna.Maintenance.Core;
 using System.Diagnostics;
 
+// F1-S7D5B: physical NTFS cutover in signed disposable CI fixtures only.
+if(args.Length==4 && args[0]=="s7d5b-lab-ntfs-switch")
+    return LabNtfsSwitchWindowsProbe.Run(args[1],args[2],args[3]);
+
 // F1-S7D5A: actual read-only Engine + OS Job delegated permit.
 if (args.Length == 4 && args[0] == "s7d5a-cutover-delegation")
     return CutoverDelegationWindowsProbe.Run(args[1], args[2], args[3]);
