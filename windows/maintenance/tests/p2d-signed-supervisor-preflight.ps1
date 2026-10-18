@@ -76,7 +76,7 @@ try {
   $forbidden=Signed 'POST' '/v1/local-updates/preflight' 'recovery-console' $body 'recovery-not-allowed'
   Assert ($forbidden.Code -eq 403) 'Recovery key gained ordinary preflight authority'
   $missing=Signed 'POST' '/v1/local-updates/preflight' 'web-adapter' $body
-  Assert ($missing.Code -eq 400 -and $missing.Data.code -eq 'IDEMPOTENCY_KEY_REQUIRED') 'Missing idempotency accepted'
+  Assert ($missing.Code -eq 400 -and $missing.Data.code -eq 'IDEMPOTENCY_KEY_REQUIRED') ('Missing idempotency response: HTTP '+$missing.Code+' '+($missing.Data | ConvertTo-Json -Depth 8 -Compress))
   $traversal=Signed 'POST' '/v1/local-updates/preflight' 'web-adapter' ([ordered]@{package_ref='../bad.zip';operator_id='user:test'}) 'unsafe-path'
   Assert ($traversal.Code -eq 400) 'Traversal path accepted'
   $good=Signed 'POST' '/v1/local-updates/preflight' 'web-adapter' $body 'p2d-valid-001'
