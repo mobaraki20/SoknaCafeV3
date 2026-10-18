@@ -1,4 +1,4 @@
-param([string]$SupervisorDll,[string]$FixtureDll,[string]$LeaseProbeDll)
+param([string]$SupervisorDll,[string]$FixtureDll,[string]$LeaseProbeDll,[string]$EngineDll)
 $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
 Set-StrictMode -Version Latest
@@ -6,6 +6,7 @@ function Assert([bool]$Ok,[string]$Reason) { if(-not $Ok){throw $Reason} }
 $SupervisorDll=(Resolve-Path -LiteralPath $SupervisorDll).Path
 $FixtureDll=(Resolve-Path -LiteralPath $FixtureDll).Path
 $LeaseProbeDll=(Resolve-Path -LiteralPath $LeaseProbeDll).Path
+$EngineDll=(Resolve-Path -LiteralPath $EngineDll).Path
 $root=Join-Path $env:RUNNER_TEMP ('sokna-f1-p2d-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root -Force|Out-Null
 $output=@(& dotnet $FixtureDll --root $root --variant valid --sequence 110 2>&1)
@@ -177,6 +178,17 @@ try {
   $sealResult=($sealProbe -join [Environment]::NewLine)|ConvertFrom-Json
   Assert ($sealResult.result -eq 'PASS' -and [bool]$sealResult.canonical_signed_stage_verified -and
           -not[bool]$sealResult.execution_authorized -and -not[bool]$sealResult.panel_update_ready) 'Canonical Stage evidence seal incorrectly authorized activation'
+  # F1-S7D5A: independent actual Engine child consumes a strictly
+  # read-only Supervisor cutover permit; Job parent hard-kill must stop
+  # held children. Signed Stage is checked again in the separate process.
+  $delegated=@(& dotnet $LeaseProbeDll 's7d5a-cutover-delegation' $root $stageId $EngineDll 2>&1)
+  Assert ($LASTEXITCODE -eq 0) ('Delegated Engine/Job fixture failed: '+($delegated -join [Environment]::NewLine))
+  $delegatedResult=($delegated -join [Environment]::NewLine)|ConvertFrom-Json
+  Assert ($delegatedResult.result -eq 'PASS' -and
+    [bool]$delegatedResult.canonical_signed_stage_reverified_in_independent_engine -and
+    [bool]$delegatedResult.parent_death_kills_job_bound_child -and
+    -not[bool]$delegatedResult.execution_authorized -and
+    -not[bool]$delegatedResult.panel_update_ready) 'Delegated Engine claimed activation authority'
   # F1-S7B immutable dry-run plan. A fully valid Stage still cannot
   # authorize Apache, database, Public or release activation.
   $planBody=[ordered]@{stage_operation_id=$stageId;operator_id='user:test'}
