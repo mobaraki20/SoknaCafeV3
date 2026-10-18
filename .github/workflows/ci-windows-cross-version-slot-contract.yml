@@ -28,6 +28,12 @@ jobs:
           & ./windows/maintenance/tests/p2c-read-only-preflight.ps1 `
             -EngineDll 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll' `
             -FixtureDll 'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/bin/Release/net8.0-windows/Sokna.Maintenance.P2Fixture.dll'
+      - name: Test signed durable Supervisor preflight and restart/tamper no-mutation boundary
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/p2d-signed-supervisor-preflight.ps1 `
+            -SupervisorDll 'windows/maintenance/src/Sokna.Maintenance.Supervisor/bin/Release/net8.0-windows/SoknaMaintenanceSupervisor.dll' `
+            -FixtureDll 'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/bin/Release/net8.0-windows/Sokna.Maintenance.P2Fixture.dll'
       - name: Test signed Supervisor HTTP capabilities and replay rejection
         shell: pwsh
         run: |
