@@ -178,7 +178,53 @@ try {
   $p=Start-S
   $stillHalted=Signed 'GET' ('/v1/operations/'+$stageId) 'web-adapter' $null
   Assert ($stillHalted.Data.data.state -eq 'recovery_required') 'Second restart cleared recovery barrier'
-  [ordered]@{format='sokna-f1-p2d-signed-stage-v3-restart-quarantine';result='PASS';preflight_operation_id=$approvedId;stage_operation_id=$stageId;stage_restarted=$true;interrupted_stage_quarantined=$true;unattended_restage_forbidden=$true;new_preflight_blocked=$true;sequence_preserved=$true;no_activation=$true;no_db_mutation=$true;panel_ready=$false}|ConvertTo-Json
+  # F1-S3 manual Recovery Console: first prove tampered stage and anti-rollback
+  # evidence can NEVER turn a quarantined operation green.
+  $recoveryBody=[ordered]@{stage_operation_id=$stageId;operator_id='recovery:operator'}
+  $wrongRecoveryKey=Signed 'POST' '/v1/local-updates/reconcile-stage' 'web-adapter' $recoveryBody
+  Assert ($wrongRecoveryKey.Code -eq 403 -and $wrongRecoveryKey.Data.code -eq 'RECOVERY_CONSOLE_KEY_REQUIRED') 'Web adapter gained Recovery Console privilege'
+  $stageRoot=[string]$stage.Data.data.receipt.stage_root
+  $manifest=Get-Content -LiteralPath (Join-Path $stageRoot 'release-set.json') -Raw | ConvertFrom-Json
+  $artifact=$manifest.artifacts.PSObject.Properties | Select-Object -First 1
+  $relative=[string]$artifact.Value.path
+  $artifactFile=Join-Path $stageRoot ($relative.Replace('/',[IO.Path]::DirectorySeparatorChar))
+  Assert (Test-Path -LiteralPath $artifactFile) 'Stage artifact fixture missing'
+  [byte[]]$artifactBytes=[IO.File]::ReadAllBytes($artifactFile)
+  Assert ($artifactBytes.Length -gt 0) 'Fixture artifact unexpectedly empty'
+  [byte[]]$brokenArtifact=[byte[]]$artifactBytes.Clone()
+  $brokenArtifact[0]=$brokenArtifact[0] -bxor 1
+  [IO.File]::WriteAllBytes($artifactFile,$brokenArtifact)
+  $unproven=Signed 'POST' '/v1/local-updates/reconcile-stage' 'recovery-console' $recoveryBody
+  Assert ($unproven.Code -eq 422 -and $unproven.Data.code -eq 'STAGE_RECOVERY_EVIDENCE_UNPROVEN') ('Corrupt Stage was accepted: '+($unproven.Data|ConvertTo-Json -Depth 5))
+  $quarantined=Signed 'GET' ('/v1/operations/'+$stageId) 'web-adapter' $null
+  Assert ($quarantined.Data.data.state -eq 'recovery_required') 'Tampering cleared recovery barrier'
+  [IO.File]::WriteAllBytes($artifactFile,$artifactBytes)
+
+  $seqPath=Join-Path $root 'update/release-sequence.json'
+  $originalSequence=Get-Content -LiteralPath $seqPath -Raw
+  $badSequence=$originalSequence | ConvertFrom-Json
+  $badSequence.highest_sequence=[long]$badSequence.highest_sequence+1
+  $badSequence | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $seqPath -Encoding utf8
+  $badHighwater=Signed 'POST' '/v1/local-updates/reconcile-stage' 'recovery-console' $recoveryBody
+  Assert ($badHighwater.Code -eq 422) 'Advanced anti-rollback mark falsely approved Stage recovery'
+  Set-Content -LiteralPath $seqPath -Value $originalSequence -Encoding utf8 -NoNewline
+
+  $goodRecovery=Signed 'POST' '/v1/local-updates/reconcile-stage' 'recovery-console' $recoveryBody
+  Assert ($goodRecovery.Code -eq 200 -and $goodRecovery.Data.code -eq 'STAGE_RECOVERED_FROM_VERIFIED_EVIDENCE') ('Qualified Stage could not reconcile: '+($goodRecovery.Data | ConvertTo-Json -Depth 8))
+  Assert ($goodRecovery.Data.data.operation.state -eq 'staged' -and [bool]$goodRecovery.Data.data.recovered) 'Verified recovery did not commit a durable staged status'
+  Assert ((Get-FileHash -LiteralPath $seqPath -Algorithm SHA256).Hash -eq $beforeSequenceHash) 'Recovery changed anti-rollback sequence'
+  Assert ((Get-FileHash -LiteralPath (Join-Path $stageRoot 'stage-receipt.json') -Algorithm SHA256).Hash -eq $beforeStageReceiptHash) 'Recovery changed Stage receipt'
+  $againRecovery=Signed 'POST' '/v1/local-updates/reconcile-stage' 'recovery-console' $recoveryBody
+  Assert ($againRecovery.Code -eq 200 -and [bool]$againRecovery.Data.data.reconciled) 'Recovery Console retry was not idempotent'
+  Stop-S $p;$p=$null
+  $p=Start-S
+  $afterRecoveredRestart=Signed 'GET' ('/v1/operations/'+$stageId) 'web-adapter' $null
+  Assert ($afterRecoveredRestart.Code -eq 200 -and $afterRecoveredRestart.Data.data.state -eq 'staged') 'Durably reconciled Stage did not survive restart'
+  $statusAfterRecovery=Signed 'GET' '/v1/local-updates/recovery-status' 'web-adapter' $null
+  Assert ($statusAfterRecovery.Code -eq 200 -and -not[bool]$statusAfterRecovery.Data.data.blocked) 'Successful Stage evidence reconciliation left a false busy state'
+  $finalCaps=Signed 'GET' '/v1/updates/capabilities' 'web-adapter' $null
+  Assert (-not[bool]$finalCaps.Data.data.panel_update_ready) 'Recovery prematurely enabled panel update'
+  [ordered]@{format='sokna-f1-s3-manual-stage-evidence-recovery-v1';result='PASS';preflight_operation_id=$approvedId;stage_operation_id=$stageId;interrupted_stage_quarantined=$true;corrupt_stage_rejected=$true;advanced_highwater_rejected=$true;recovery_console_only=$true;explicit_stage_reconciled=$true;no_restage=$true;no_activation=$true;no_db_mutation=$true;panel_ready=$false}|ConvertTo-Json
 }
 finally {
   Stop-S $p
