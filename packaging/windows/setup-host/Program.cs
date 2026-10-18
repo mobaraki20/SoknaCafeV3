@@ -226,7 +226,25 @@ internal static class Program
         try
         {
             if (!OperatingSystem.IsWindows()) return Fail("این برنامه فقط روی ویندوز قابل اجرا است.", 2);
-            if(args.Length==1&&args[0].Equals("--pairing-self-test",StringComparison.OrdinalIgnoreCase)){PairingClient.SelfTest();Console.WriteLine("Sokna Setup Host pairing self-test PASS");return 0;}
+            if(args.Length==1&&args[0].Equals("--pairing-self-test",StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    PairingClient.SelfTest();
+                    Console.WriteLine("Sokna Setup Host pairing self-test PASS");
+                    return 0;
+                }
+                catch(Exception error)
+                {
+                    // ASCII-only and deliberately no pairing secrets, source
+                    // URLs, or request bodies in CI diagnostics.
+                    Console.Error.WriteLine("PAIRING_SELF_TEST_FAILED exception_type=" +
+                        error.GetType().Name + " reason=" +
+                        (error.Message.StartsWith("pairing_selftest_",StringComparison.Ordinal)
+                            ? error.Message : "unexpected_pairing_exception"));
+                    return 2;
+                }
+            }
             var planPath = ReadPlanArgument(args);
             var plan = LoadPlan(planPath);
             ValidatePlan(plan);
