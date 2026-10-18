@@ -111,7 +111,14 @@ public static class EngineDelegationPermit
         var lockPath = paths.MachineMutationLockPath;
         if (!File.Exists(lockPath) || IsReparse(lockPath))
             throw new InvalidDataException(RejectedCode);
-        var evidence = File.ReadAllText(lockPath);
+        // Holder uses FileAccess.ReadWrite/FileShare.Read. A read-only inspector
+        // must itself permit the existing writer; File.ReadAllText uses
+        // FileShare.Read and fails on Windows with an active write handle.
+        string evidence;
+        using (var read = new FileStream(lockPath, FileMode.Open, FileAccess.Read,
+                   FileShare.ReadWrite, 4096, FileOptions.None))
+        using (var reader = new StreamReader(read, Encoding.UTF8))
+            evidence = reader.ReadToEnd();
         if (!evidence.Contains($"owner={Owner};pid={parentPid};", StringComparison.Ordinal))
             throw new InvalidDataException(RejectedCode);
         // A stale lease file is never enough: opening a competing writer must
