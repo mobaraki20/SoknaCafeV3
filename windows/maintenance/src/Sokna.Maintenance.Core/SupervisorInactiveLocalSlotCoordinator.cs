@@ -155,7 +155,7 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
                     !string.Equals(File.ReadAllText(marker).Trim(), Hash(receiptPath),
                         StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("INACTIVE_SLOT_EVIDENCE_CONFLICT");
-                VerifyTarget(target, persistent, layout, old, lifecycle);
+                VerifyTarget(target, persistent, layout, old, lifecycle, manager);
                 return new(old, Created: false, Reconciled: true);
             }
 
@@ -197,7 +197,7 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
             Directory.CreateDirectory(evidenceRoot);
             AtomicFile.WriteJson(receiptPath, receipt);
             File.WriteAllText(marker, Hash(receiptPath) + "\n");
-            VerifyTarget(target, persistent, layout, receipt, lifecycle);
+            VerifyTarget(target, persistent, layout, receipt, lifecycle, manager);
             _journal.Append("update.local_inactive_slot.committed",
                 _state.InstanceId, _state.InstallGeneration,
                 new Dictionary<string, object?> {
@@ -211,7 +211,7 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
 
     private static void VerifyTarget(string target, string persistent,
         LocalInstallLayout layout, InactiveLocalSlotReceipt receipt,
-        RoutineLocalLifecycle lifecycle)
+        RoutineLocalLifecycle lifecycle, LocalSlotManager manager)
     {
         ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(
             target, layout.PackageRoot);
@@ -222,11 +222,7 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
         RoutineLocalLifecycle.RequireUnchangedMigrationCatalog(layout.WebRoot, target);
         RoutineLocalLifecycle.RequireTargetSetupBoot(layout.PackageRoot, target);
         lifecycle.RequireIdle();
-        RequireUnchangedActive(new LocalSlotManager(new MaintenancePaths(
-            // Only used for service discovery; the data root is not a caller input.
-            Path.GetFullPath(Path.Combine(Environment.GetFolderPath(
-                Environment.SpecialFolder.CommonApplicationData), "SOKNA", "Maintenance")))),
-            receipt.PreviousActiveSlot, layout.Build);
+        RequireUnchangedActive(manager, receipt.PreviousActiveSlot, layout.Build);
     }
 
     private static void RequireUnchangedActive(LocalSlotManager manager,
