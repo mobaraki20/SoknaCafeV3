@@ -43,6 +43,9 @@ var state = stateStore.LoadOrCreate();
 stateStore.Save(state);
 var journal = new DurableJournal(paths.JournalPath);
 var operations = new MaintenanceOperationStore(paths);
+var stageRestartReconciler = new SupervisorStageRestartReconciler(operations, journal, state);
+// No listening/regular update writes until interrupted Stage evidence is quarantined.
+_ = stageRestartReconciler.ReconcileStoppedProcess();
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
 var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
 var localPackagePreflightCoordinator = new SupervisorLocalPackagePreflightCoordinator(paths, operations, journal, state);
@@ -217,6 +220,27 @@ app.Use(async (context, next) =>
 
     context.Items[AuthKeyItem] = keyId;
     await next();
+});
+
+// Read-only signed recovery inspection. A durable recovery_required flag never
+// means idle and must not permit fresh Stage or Preflight operations.
+app.MapGet("/v1/local-updates/recovery-status", async context =>
+{
+    try
+    {
+        var status = stageRestartReconciler.Inspect();
+        await WriteEnvelope(context, StatusCodes.Status200OK, true,
+            status.Blocked ? "blocked" : "idle",
+            status.StageRecoveryRequiredIds.Length > 0
+                ? "STAGE_RECOVERY_REQUIRED" : "OK",
+            status.StageRecoveryRequiredIds.Length > 0, status);
+    }
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE", false,
+            new { last_error_type = ex.GetType().Name, panel_update_ready = false });
+    }
 });
 
 // Signed, read-only capability negotiation. No unimplemented route is advertised.
