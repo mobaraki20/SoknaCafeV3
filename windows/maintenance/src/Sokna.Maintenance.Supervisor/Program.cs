@@ -310,6 +310,15 @@ app.MapPost("/v1/local-updates/activation-plan", async context =>
             "rejected", "REQUEST_JSON_INVALID", false, new { });
     }
     catch (InvalidOperationException ex) when (ex.Message is
+        MachineMutationLease.ConflictCode or MachineMutationLease.UnavailableCode)
+    {
+        var unavailable = ex.Message == MachineMutationLease.UnavailableCode;
+        await WriteEnvelope(context,
+            unavailable ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status409Conflict,
+            false, "blocked", ex.Message, true,
+            new { dry_run_only = true, panel_update_ready = false });
+    }
+    catch (InvalidOperationException ex) when (ex.Message is
         "UPDATER_OPERATION_BUSY" or "ACTIVATION_PLAN_IDEMPOTENCY_CONFLICT" or
         "ACTIVATION_PLAN_BASELINE_CHANGED" or "ACTIVATION_PLAN_RECONCILIATION_REQUIRED")
     {
