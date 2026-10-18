@@ -48,7 +48,7 @@ internal static class Program
             var tmpDir = Path.Combine(Path.GetTempPath(), "SOKNA", "Installer", tx);
             Directory.CreateDirectory(tmpDir);
             var core = Path.Combine(tmpDir, "SOKNA-Windows-Services-Core.exe");
-            using (var source = Assembly.GetExecutingAssembly().GetManifestResourceStream("SoknaCoreInstaller") ?? throw new InvalidOperationException("Core installer resource is missing."))
+            using (var source = Assembly.GetExecutingAssembly().GetManifestResourceStream("WindowsServicesInstallerPayload") ?? throw new InvalidOperationException("Core installer resource is missing."))
             using (var target = new FileStream(core, FileMode.Create, FileAccess.Write, FileShare.None)) source.CopyTo(target);
             Ev("core_installer_extracted", "completed", new { size = new FileInfo(core).Length });
 
