@@ -158,6 +158,39 @@ try {
   Assert (-not[bool]$stage.Data.data.receipt.activation_performed -and -not[bool]$stage.Data.data.receipt.database_mutation_performed) 'Stage mutated app or database'
   Assert ((Test-Path -LiteralPath (Join-Path $root 'update/release-sequence.json'))) 'Stage did not commit monotonic sequence'
   Assert (Test-Path -LiteralPath (Join-Path ([string]$stage.Data.data.receipt.stage_root) 'stage-receipt.json')) 'Stage receipt not durable'
+  # F1-S7B immutable dry-run plan. A fully valid Stage still cannot
+  # authorize Apache, database, Public or release activation.
+  $planBody=[ordered]@{stage_operation_id=$stageId;operator_id='user:test'}
+  $dry=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' $planBody 'p2d-activation-plan'
+  Assert ($dry.Code -eq 200 -and $dry.Data.code -eq 'ACTIVATION_DRY_RUN_BLOCKED' -and [bool]$dry.Data.data.created) ('Dry-run plan failed: '+($dry.Data|ConvertTo-Json -Depth 7))
+  $dryPlan=$dry.Data.data.plan
+  Assert ([bool]$dryPlan.dry_run_only -and -not[bool]$dryPlan.activation_allowed -and -not[bool]$dryPlan.activation_performed -and -not[bool]$dryPlan.database_mutation_performed -and -not[bool]$dryPlan.public_mutation_performed) 'Dry-run accidentally authorized a mutation'
+  Assert ($dryPlan.public_execution_owner -eq 'public-maintenance-kernel' -and -not[bool]$dryPlan.public_release_included -and -not[bool]$dryPlan.paired_compatibility_qualified) 'Windows updater claimed ownership of Public deployment'
+  Assert ($dryPlan.blockers -contains 'PUBLIC_PAIR_PROTOCOL_COMPATIBILITY_NOT_ATTESTED') 'Plan omitted compatibility gate'
+  Assert ($dryPlan.steps.Count -ge 6 -and @($dryPlan.steps | Where-Object { $_.executable }).Count -eq 0) 'Dry-run contains executable steps'
+  $dryId=[string]$dryPlan.plan_id
+  $dryFile=Join-Path $root ('update/activation-plans/plan-'+$dryId+'.json')
+  $dryMarker=Join-Path $root ('update/activation-plans/plan-'+$dryId+'.committed')
+  Assert ((Test-Path -LiteralPath $dryFile) -and (Test-Path -LiteralPath $dryMarker)) 'Dry-run plan and committed marker were not durable'
+  $originalDry=[IO.File]::ReadAllBytes($dryFile)
+  $originalMarker=[IO.File]::ReadAllBytes($dryMarker)
+  $dryHash=(Get-FileHash -LiteralPath $dryFile -Algorithm SHA256).Hash
+  $repeatDry=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' $planBody 'p2d-activation-plan'
+  Assert ($repeatDry.Code -eq 200 -and -not[bool]$repeatDry.Data.data.created -and [bool]$repeatDry.Data.data.reconciled -and $repeatDry.Data.data.plan.plan_id -eq $dryId) 'Dry-run idempotency retry was not stable'
+  Assert ((Get-FileHash -LiteralPath $dryFile -Algorithm SHA256).Hash -eq $dryHash) 'Dry-run idempotent retry rewrote immutable evidence'
+  $tamperPlan=Get-Content -LiteralPath $dryFile -Raw|ConvertFrom-Json
+  $tamperPlan.activation_allowed=$true
+  $tamperPlan|ConvertTo-Json -Depth 20|Set-Content -LiteralPath $dryFile -Encoding utf8
+  $tamperedPlan=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' $planBody 'p2d-activation-plan'
+  Assert ($tamperedPlan.Code -eq 422 -and $tamperedPlan.Data.code -eq 'ACTIVATION_PLAN_EVIDENCE_UNPROVEN') 'Tampered immutable plan was accepted'
+  [IO.File]::WriteAllBytes($dryFile,$originalDry)
+  Remove-Item -LiteralPath $dryMarker -Force
+  $crashPlan=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' $planBody 'p2d-activation-plan'
+  Assert ($crashPlan.Code -eq 409 -and $crashPlan.Data.code -eq 'ACTIVATION_PLAN_RECONCILIATION_REQUIRED') 'Missing commit marker was silently repaired'
+  [IO.File]::WriteAllBytes($dryMarker,$originalMarker)
+  $forgedOperator=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' ([ordered]@{stage_operation_id=$stageId;operator_id='other:operator'}) 'p2d-activation-plan'
+  Assert ($forgedOperator.Code -eq 422) 'Another operator reused a qualified Stage'
+
   $readinessPath='/v1/local-updates/activation-readiness/'+$stageId
   $assessment=Signed 'GET' $readinessPath 'web-adapter' $null
   Assert ($assessment.Code -eq 200 -and $assessment.Data.code -eq 'FOUNDATION_UPDATE_REQUIRED') 'Readiness did not give a fail-closed result'
@@ -301,6 +334,8 @@ try {
   $p=Start-S
   $afterRecoveredRestart=Signed 'GET' ('/v1/operations/'+$stageId) 'web-adapter' $null
   Assert ($afterRecoveredRestart.Code -eq 200 -and $afterRecoveredRestart.Data.data.state -eq 'staged') 'Durably reconciled Stage did not survive restart'
+  $afterPlanRestart=Signed 'POST' '/v1/local-updates/activation-plan' 'web-adapter' $planBody 'p2d-activation-plan'
+  Assert ($afterPlanRestart.Code -eq 200 -and [bool]$afterPlanRestart.Data.data.reconciled -and -not[bool]$afterPlanRestart.Data.data.plan.activation_allowed) 'Immutable dry-run plan was lost or mutated after Supervisor restart'
   $afterReconcileAssessment=Signed 'GET' $readinessPath 'web-adapter' $null
   Assert ($afterReconcileAssessment.Code -eq 200 -and -not[bool]$afterReconcileAssessment.Data.data.activation_allowed -and [bool]$afterReconcileAssessment.Data.data.stage_evidence_verified) 'Recovery produced false install permission'
   $statusAfterRecovery=Signed 'GET' '/v1/local-updates/recovery-status' 'web-adapter' $null
