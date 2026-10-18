@@ -68,6 +68,7 @@ var builder = WebApplication.CreateSlimBuilder(args);
 builder.Host.UseWindowsService(options => options.ServiceName = ServiceName);
 builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 builder.Services.AddSingleton(adoptionQueue);
+builder.Services.AddSingleton(operations);
 builder.Services.AddSingleton(productionMigrationCoordinator);
 builder.Services.AddSingleton<IProductionLocalSlotMigrationCoordinator>(productionMigrationCoordinator);
 builder.Services.AddSingleton(journal);
