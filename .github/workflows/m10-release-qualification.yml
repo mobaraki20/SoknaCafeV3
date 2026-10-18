@@ -63,6 +63,12 @@ jobs:
       - name: M10 secure backup, takeover and crash-safe migration qualification
         env: *db
         run: php tests/local-m10-release-selftest.php
+      - name: F1-S7E1 isolated MariaDB consistent backup, verified restore and forward schema guard
+        env: *db
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mariadb-client
+          bash windows/maintenance/tests/s7e1-disposable-mariadb-restore-drill.sh
       - name: Re-run mature component contracts
         run: |
           python3 tests/scds-m6-gate.py
