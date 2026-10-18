@@ -221,3 +221,16 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & ./windows/maintenance/tests/s7e3a-windows-apache-scm-http.ps1
           if ($LASTEXITCODE -ne 0) { throw 'S7E3A real Windows Apache SCM test failed' }
+
+  s7e4b-windows-dpapi-recovery:
+    name: F1-S7E4B DPAPI and independent Recovery File cryptographic primitive lab
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify protected local key, ciphertext-only bundle and recovery-key separation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./windows/maintenance/tests/s7e4-windows-dpapi-recovery-key-ci.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'S7E4B Windows cryptographic primitive fixture failed' }
