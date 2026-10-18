@@ -18,6 +18,16 @@ jobs:
         run: dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj --configuration Release --nologo
       - name: Compile signed Maintenance Supervisor HTTP API with warnings as errors
         run: dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj --configuration Release --nologo
+      - name: Compile Update Engine and signed Release Set fixture
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj --configuration Release --nologo
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj --configuration Release --nologo
+      - name: Prove signed package verify-only never creates stage or changes sequence
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/p2c-read-only-preflight.ps1 `
+            -EngineDll 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll' `
+            -FixtureDll 'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/bin/Release/net8.0-windows/Sokna.Maintenance.P2Fixture.dll'
       - name: Test signed Supervisor HTTP capabilities and replay rejection
         shell: pwsh
         run: |
