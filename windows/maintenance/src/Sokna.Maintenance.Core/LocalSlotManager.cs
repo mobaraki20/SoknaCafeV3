@@ -78,6 +78,29 @@ public sealed class LocalSlotManager
         _healthTimeout = healthTimeout ?? TimeSpan.FromSeconds(35);
     }
 
+    /// <summary>
+    /// Native Windows authoritative, non-mutating discovery for panel diagnostics.
+    /// ResolveLinkTarget handles Windows directory junctions, unlike Go EvalSymlinks.
+    /// HTTP readiness and DB readiness are separate gates; they are NOT implied here.
+    /// </summary>
+    public LocalInstallLayout InspectCurrent()
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Local slot inspection is Windows-only.");
+        var apacheExecutable = DiscoverServiceExecutable(ApacheServiceName);
+        var (apacheRoot, apacheConfig) = DiscoverApacheConfig(apacheExecutable);
+        var documentRoot = DiscoverDocumentRoot(apacheConfig, apacheRoot);
+        if (!string.Equals(Path.GetFileName(documentRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+            "public", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Apache DocumentRoot is not the expected Local public directory.");
+        var webRoot = Path.GetFullPath(Path.GetDirectoryName(documentRoot) ??
+            throw new InvalidDataException("Apache DocumentRoot has no parent."));
+        var buildPath = Path.Combine(webRoot, "VERSION.txt");
+        RequireFile(buildPath, "Local VERSION.txt is missing.");
+        var build = File.ReadAllText(buildPath).Trim();
+        var managedCount = ReadManagedFiles(webRoot).Count;
+        return DiscoverAndVerify(build, managedCount);
+    }
+
     public LocalInstallLayout DiscoverAndVerify(string expectedBuild, int expectedManagedFileCount)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Local slot activation is Windows-only.");
