@@ -8,6 +8,7 @@ var root = string.Empty;
 var variant = "valid";
 long sequence = 1;
 string? releaseId = null;
+var seedStage = false;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -16,6 +17,7 @@ for (var i = 0; i < args.Length; i++)
         case "--variant" when i + 1 < args.Length: variant = args[++i]; break;
         case "--sequence" when i + 1 < args.Length && long.TryParse(args[++i], out var parsed): sequence = parsed; break;
         case "--release-id" when i + 1 < args.Length: releaseId = args[++i]; break;
+        case "--seed-stage": seedStage = true; break;
         default: throw new InvalidOperationException($"Unknown or incomplete argument: {args[i]}.");
     }
 }
@@ -116,12 +118,23 @@ using (var archive = ZipFile.Open(packagePath, ZipArchiveMode.Create))
     }
 }
 
+// Only the isolated signed-fixture executable may seed a Stage directly.
+// The shipped Update Engine still REQUIRES a Supervisor-issued permit.
+StagedReleaseReceipt? seededStage = null;
+if (seedStage)
+{
+    if (variant != "valid") throw new InvalidDataException("Only valid fixture Stage can be seeded.");
+    var fixturePaths = new MaintenancePaths(root);
+    seededStage = new ReleaseSetVerifierStager(fixturePaths).VerifyAndStage(packagePath, identity);
+}
+
 Console.WriteLine(JsonSerializer.Serialize(new
 {
     package = packagePath,
     identity = identityPath,
     data_root = root,
     trust_key = Path.Combine(trustRoot, "test-key.spki.pem"),
+    seeded_stage = seededStage,
     variant,
     sequence,
     release_set_id = releaseId
