@@ -62,6 +62,21 @@ jobs:
           catch { $blocked=$true }
           if(-not $blocked){throw 'Read-only collector accepted remote URL'}
           Write-Host 'HOME_LEGACY_READONLY_PREFLIGHT_FIXTURE_PASS'
+      - name: Smoke Home read-only collector under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $folder=Join-Path $env:TEMP ('SoknaHomePs51-'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Force -Path (Join-Path $folder 'Web') | Out-Null
+          Set-Content -LiteralPath (Join-Path $folder 'Web/VERSION.txt') -Value '3.0.0-fixture-ps51'
+          $doc=(& ./windows/maintenance/tests/home-host-readonly-preflight.ps1 -PackageRoot $folder | Out-String) | ConvertFrom-Json
+          if($doc.format -ne 'sokna-home-host-readonly-evidence-v1' -or
+             $doc.web.version -ne '3.0.0-fixture-ps51' -or
+             $doc.activation_allowed -or $doc.upgrade_permitted -or
+             -not $doc.no_mutation_performed){
+            throw 'Windows PowerShell 5.1 legacy Home read-only capture failed'
+          }
+          Write-Host 'HOME_LEGACY_READONLY_POWERSHELL51_PASS'
       - name: Verify independent machine lease, direct Engine collision and OS crash cleanup
         shell: pwsh
         run: |
