@@ -13,7 +13,10 @@ function HttpContent([int] $port) {
   try {
     $response = Invoke-WebRequest -Uri "http://127.0.0.1:$port/health.txt" -UseBasicParsing -TimeoutSec 2
     if ([int]$response.StatusCode -ne 200) { return $null }
-    return ([string]$response.Content).Trim()
+    $body = if ($response.Content -is [byte[]]) {
+      [Text.Encoding]::UTF8.GetString([byte[]]$response.Content)
+    } else { [string]$response.Content }
+    return $body.Trim()
   } catch { return $null }
 }
 function AwaitHttp([int] $port, [string] $expected, [int] $seconds = 15) {
