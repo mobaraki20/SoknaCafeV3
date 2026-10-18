@@ -1,7 +1,7 @@
 using Sokna.Maintenance.Core;
 using System.Diagnostics;
 
-// F1-S7D1 isolated durable cutover/WAL fault injection. NO live Apache,
+// F1-S7D2: synthetic stop/start, pointer and DB intent boundaries only.\n// This harness must never touch installed services or the active Web junction.\nif (args.Length == 2 && args[0] == "code-cutover-simulation")\n    return SyntheticLocalCutoverSimulator.Run(args[1]);\n\n// F1-S7D1 isolated durable cutover/WAL fault injection. NO live Apache,
 // MariaDB or stable Web junction mutations.
 if (args.Length == 2 && args[0] == "code-cutover-wal")
 {
