@@ -573,6 +573,18 @@ app.MapPost("/v1/local-updates/stage", async context =>
         await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
             "rejected", "REQUEST_JSON_INVALID", false, new { });
     }
+    catch (InvalidOperationException ex) when (ex.Message == MachineMutationLease.ConflictCode)
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", MachineMutationLease.ConflictCode, false,
+            new { panel_update_ready = false, stage_performed = false });
+    }
+    catch (InvalidOperationException ex) when (ex.Message == MachineMutationLease.UnavailableCode)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", MachineMutationLease.UnavailableCode, false,
+            new { panel_update_ready = false, stage_performed = false });
+    }
     catch (InvalidOperationException ex) when (ex.Message == "UPDATER_OPERATION_BUSY")
     {
         await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
