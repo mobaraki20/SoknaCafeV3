@@ -208,3 +208,16 @@ jobs:
           Write-Output "DotNet junction target: $($native.FullName)"
           if (-not [string]::Equals([System.IO.Path]::GetFullPath($native.FullName), [System.IO.Path]::GetFullPath($slot), [StringComparison]::OrdinalIgnoreCase)) { throw 'DotNet junction resolution mismatch' }
           go run ./windows/maintenance/tests/GoJunctionProbe/main.go "$web" "$slot"
+
+  s7e3a-windows-real-apache:
+    name: F1-S7E3A real isolated Windows Apache SCM and HTTP
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real Apache SCM service, loopback readiness, crashed service and junction gap
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./windows/maintenance/tests/s7e3a-windows-apache-scm-http.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'S7E3A real Windows Apache SCM test failed' }
