@@ -71,8 +71,18 @@ if (args.Length == 2 && args[0] == "code-cutover-wal")
     foreach (var phase in new[] {
         "apache_stop_intent", "apache_stop_observed", "pointer_switch_intent",
         "pointer_switch_observed", "target_http_observed",
-        "db_forward_intent", "db_forward_committed"
+        "db_forward_intent"
     }) recovered.Advance(lease, forwardId, phase, hash);
+    var intentUnproven = new LocalCodeCutoverWriteAheadJournal(paths).Classify(forwardId, oldSlot);
+    if (!intentUnproven.DatabaseForwardOnly || intentUnproven.AutomaticRollbackAllowed)
+        throw new InvalidDataException("Unproven DB intent permitted automatic old-code rollback.");
+    var forwardIntentRollbackDenied = false;
+    try { recovered.Advance(lease, forwardId, "pre_db_rollback_intent", hash); }
+    catch (InvalidOperationException ex) when (ex.Message ==
+        "CUTOVER_JOURNAL_ILLEGAL_TRANSITION") { forwardIntentRollbackDenied = true; }
+    if (!forwardIntentRollbackDenied)
+        throw new InvalidDataException("DB forward intent accepted pre-DB rollback.");
+    recovered.Advance(lease, forwardId, "db_forward_committed", hash);
     var forward = new LocalCodeCutoverWriteAheadJournal(paths).Classify(forwardId, oldSlot);
     if (!forward.DatabaseForwardOnly || forward.Decision != "FORWARD_ONLY_RECOVERY_REQUIRED" ||
         forward.AutomaticRollbackAllowed)
@@ -109,6 +119,7 @@ if (args.Length == 2 && args[0] == "code-cutover-wal")
         idempotent_second_begin_denied = true, illegal_transition_denied = true,
         pre_db_crash_requires_reconciliation = true,
         pre_db_rollback_explicit_only = true,
+        db_forward_intent_fail_closed = true,
         post_db_rollback_forbidden = true, forward_only_after_restart = true,
         corrupt_record_denied = true, interrupted_new_journal_quarantined = true,
         active_and_target_slots_unchanged = true,
