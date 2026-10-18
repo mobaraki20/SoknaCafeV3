@@ -192,6 +192,31 @@ try {
   Assert ($legacyHome.Code -eq 409 -and $legacyHome.Data.code -eq 'UPDATER_OPERATION_BUSY') 'Legacy home-cycle bypassed Stage quarantine'
   $activeWhileRecovering=Signed 'GET' '/v1/operations/active' 'web-adapter' $null
   Assert ($activeWhileRecovering.Code -eq 200 -and $activeWhileRecovering.Data.state -eq 'recovery_required' -and [bool]$activeWhileRecovering.Data.data.requires_recovery -and $activeWhileRecovering.Data.data.blocking_count -ge 1) 'Active endpoint hid durable recovery blocker'
+  # Bootstrap Adoption Worker is an independent background mutation owner.
+  # A queued adoption must NOT consume an attempt while Stage is quarantined.
+  $adoptionRequestPath=Join-Path $root 'bootstrap/local-slot-adoption-request.json'
+  $adoptionStatusPath=Join-Path $root 'bootstrap/local-slot-adoption-status.json'
+  [ordered]@{
+    format='sokna-local-slot-adoption-request-v1';schema_version=1
+    request_id='p2d-background-gate';expected_build='3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory'
+    expected_managed_files=497;expected_managed_tree_sha256='b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a'
+    source_package_version='fixture-1.1.0';created_at_utc=[DateTimeOffset]::UtcNow.ToString('O')
+  } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $adoptionRequestPath -Encoding utf8
+  [ordered]@{
+    format='sokna-local-slot-adoption-status-v1';schema_version=1
+    request_id='p2d-background-gate';state='pending';attempt_count=2
+    last_operation_id=$null;last_code=$null;last_message=$null;next_attempt_at_utc=$null
+    activation_performed=$false;database_mutation_performed=$false;public_mutation_performed=$false
+    windows_reboot_required=$false;updated_at_utc=[DateTimeOffset]::UtcNow.ToString('O')
+  } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $adoptionStatusPath -Encoding utf8
+  $statusBefore=(Get-FileHash -LiteralPath $adoptionStatusPath -Algorithm SHA256).Hash
+  Start-Sleep -Seconds 7
+  $statusAfter=(Get-FileHash -LiteralPath $adoptionStatusPath -Algorithm SHA256).Hash
+  Assert ($statusBefore -eq $statusAfter) 'Bootstrap Worker mutated/consumed attempt while Stage recovery was pending'
+  $stalledAdoption=Get-Content -LiteralPath $adoptionStatusPath -Raw | ConvertFrom-Json
+  Assert ($stalledAdoption.state -eq 'pending' -and $stalledAdoption.attempt_count -eq 2) 'Bootstrap Worker burned retry budget behind shared gate'
+  Remove-Item -LiteralPath $adoptionRequestPath -Force
+  Remove-Item -LiteralPath $adoptionStatusPath -Force
   Assert ((Get-FileHash -LiteralPath (Join-Path $root 'update/release-sequence.json') -Algorithm SHA256).Hash -eq $beforeSequenceHash) 'Restart mutated anti-rollback state'
   Assert ((Get-FileHash -LiteralPath (Join-Path ([string]$stage.Data.data.receipt.stage_root) 'stage-receipt.json') -Algorithm SHA256).Hash -eq $beforeStageReceiptHash) 'Restart rewrote staged receipt'
   Stop-S $p;$p=$null
