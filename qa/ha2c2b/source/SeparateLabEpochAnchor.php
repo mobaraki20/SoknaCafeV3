@@ -7,7 +7,7 @@ declare(strict_types=1);
 final class SeparateLabEpochAnchor {
     private PDO $db;
     public function __construct(PDO $db) {
-        if (PHP_SAPI!=='cli' || getenv('SOKNA_HA2B_DISPOSABLE_CONFIRM')!=='YES_DISPOSABLE_NO_PRODUCTION') throw new RuntimeException('LAB_ONLY');
+        if (!in_array(PHP_SAPI,['cli','cli-server'],true) || getenv('SOKNA_HA2B_DISPOSABLE_CONFIRM')!=='YES_DISPOSABLE_NO_PRODUCTION') throw new RuntimeException('LAB_ONLY');
         if ($db->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql') throw new RuntimeException('MYSQL_REQUIRED');
         $name=(string)$db->query('SELECT DATABASE()')->fetchColumn();
         if (!preg_match('/^sokna_ha2_anchor_[a-f0-9]{8,16}$/D',$name)) throw new RuntimeException('SEPARATE_LAB_ANCHOR_DB_ONLY');
