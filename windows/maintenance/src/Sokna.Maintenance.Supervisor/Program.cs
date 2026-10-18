@@ -48,6 +48,7 @@ var localStageRecoveryCoordinator = new SupervisorLocalStageRecoveryCoordinator(
 var localActivationPlanCoordinator = new SupervisorLocalActivationPlanCoordinator(paths, operations, localStageRecoveryCoordinator, journal, state);
 var inactiveCandidateCoordinator = new SupervisorInactiveLocalCandidateCoordinator(paths, operations, localStageRecoveryCoordinator, journal, state);
 var inactiveSlotCoordinator = new SupervisorInactiveLocalSlotCoordinator(paths, operations, inactiveCandidateCoordinator, journal, state);
+var inactiveHostInspector = new InactiveLocalHostReadinessInspector(paths, operations);
 // No listening/regular update writes until interrupted Stage evidence is quarantined.
 _ = stageRestartReconciler.ReconcileStoppedProcess();
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
@@ -483,6 +484,27 @@ app.MapPost("/v1/local-updates/prepare-inactive-slot", async context =>
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
             "evidence_unavailable", "INACTIVE_SLOT_PREPARE_UNAVAILABLE", true,
             new { error_type = ex.GetType().Name, activation_allowed = false });
+    }
+});
+
+// F1-S7C3: read-only host UAT preflight. Never authorizes an update,
+// does not mutate Apache, MariaDB, active slot or Public deployment.
+app.MapGet("/v1/local-updates/inactive-host-readiness", async context =>
+{
+    try
+    {
+        var result = inactiveHostInspector.Inspect();
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, "not_ready",
+            "HOST_UAT_AND_RELEASE_GATES_REQUIRED", false, result);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+        InvalidDataException or System.Security.Cryptography.CryptographicException or
+        System.ComponentModel.Win32Exception or InvalidOperationException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "LOCAL_HOST_EVIDENCE_UNAVAILABLE", true,
+            new { panel_update_ready = false, activation_allowed = false,
+                last_error_type = ex.GetType().Name });
     }
 });
 
