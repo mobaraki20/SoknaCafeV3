@@ -42,7 +42,9 @@ try{
   $after=(Get-Item -LiteralPath $heartbeat).Length
   Start-Sleep -Milliseconds 600
   Assert ((Get-Item -LiteralPath $heartbeat).Length -eq $after) 'Orphan heartbeat kept mutating after parent crash'
-  [ordered]@{format='sokna-windows-job-parent-death-v1';result='PASS';child_suspended_until_job_assignment=$true;child_started_after_resume=$true;parent_forced_exit=$true;job_closure_killed_child=$true;heartbeat_stopped=$true;no_orphan_process=$true}|ConvertTo-Json
+  $timeoutResult=@(& dotnet $ProbeDll job-timeout (Join-Path $root 'timeout') 2>&1)
+  Assert ($LASTEXITCODE -eq 0 -and ($timeoutResult -join ' ').Contains('JOB_TIMEOUT_KILLED_CHILD')) ('Timed-out Job left a child alive: '+($timeoutResult -join ' '))
+  [ordered]@{format='sokna-windows-job-parent-death-v1';result='PASS';timeout_kills_child=$true;child_suspended_until_job_assignment=$true;child_started_after_resume=$true;parent_forced_exit=$true;job_closure_killed_child=$true;heartbeat_stopped=$true;no_orphan_process=$true}|ConvertTo-Json
 }finally{
   if($null-ne$p -and -not$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
 }
