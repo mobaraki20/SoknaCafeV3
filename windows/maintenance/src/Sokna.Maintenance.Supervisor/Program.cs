@@ -358,7 +358,7 @@ app.MapGet("/v1/operations/active", async context =>
                   query_by_idempotency = "/v1/operations/by-idempotency/{key}",
                   history_url = "/v1/operations/recent" });
     }
-    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or JsonException)
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
             "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE", false,
@@ -375,7 +375,7 @@ app.MapGet("/v1/operations/recent", async context =>
             "history", "OK", false, new { operations = history, total_returned = history.Count,
                historical_failures_are_not_current_health = true });
     }
-    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or JsonException)
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
             "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE", false,
