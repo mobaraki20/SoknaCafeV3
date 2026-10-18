@@ -21,7 +21,8 @@ public sealed record MaintenanceOperation(
     [property: JsonPropertyName("result_message")] string? ResultMessage,
     [property: JsonPropertyName("stage_receipt_path")] string? StageReceiptPath,
     [property: JsonPropertyName("activation_performed")] bool ActivationPerformed,
-    [property: JsonPropertyName("database_mutation_performed")] bool DatabaseMutationPerformed);
+    [property: JsonPropertyName("database_mutation_performed")] bool DatabaseMutationPerformed,
+    [property: JsonPropertyName("preflight_receipt_path")] string? PreflightReceiptPath = null);
 
 public sealed class MaintenanceOperationStore
 {
@@ -131,7 +132,8 @@ public sealed class MaintenanceOperationStore
         string? stageReceiptPath = null,
         bool incrementAttempt = false,
         bool? activationPerformed = null,
-        bool? databaseMutationPerformed = null)
+        bool? databaseMutationPerformed = null,
+        string? preflightReceiptPath = null)
     {
         lock (_sync)
         {
@@ -147,7 +149,8 @@ public sealed class MaintenanceOperationStore
                 ResultMessage = resultMessage,
                 StageReceiptPath = stageReceiptPath,
                 ActivationPerformed = activationPerformed ?? current.ActivationPerformed,
-                DatabaseMutationPerformed = databaseMutationPerformed ?? current.DatabaseMutationPerformed
+                DatabaseMutationPerformed = databaseMutationPerformed ?? current.DatabaseMutationPerformed,
+                PreflightReceiptPath = preflightReceiptPath ?? current.PreflightReceiptPath
             };
             AtomicFile.WriteJson(OperationPath(updated.OperationId), updated);
             return updated;
