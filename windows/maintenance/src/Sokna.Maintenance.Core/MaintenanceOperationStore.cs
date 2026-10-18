@@ -72,7 +72,7 @@ public sealed class MaintenanceOperationStore
         var path = OperationPath(operationId);
         if (!File.Exists(path)) return null;
         var operation = AtomicFile.ReadJson<MaintenanceOperation>(path);
-        ValidateStored(operation);
+        ValidateStored(operation, operationId);
         return operation;
     }
 
@@ -81,7 +81,9 @@ public sealed class MaintenanceOperationStore
         ValidateIdempotencyKey(idempotencyKey);
         var path = IndexPath(idempotencyKey);
         if (!File.Exists(path)) return null;
-        return Get(File.ReadAllText(path).Trim());
+        var operationId = File.ReadAllText(path).Trim();
+        if (!IsSafeToken(operationId, 64)) throw new InvalidDataException("Idempotency index contains an invalid operation id.");
+        return Get(operationId) ?? throw new InvalidDataException("Idempotency index points to a missing maintenance operation.");
     }
 
     /// <summary>
@@ -100,7 +102,7 @@ public sealed class MaintenanceOperationStore
             foreach (var path in paths)
             {
                 var operation = AtomicFile.ReadJson<MaintenanceOperation>(path);
-                ValidateStored(operation);
+                ValidateStored(operation, Path.GetFileNameWithoutExtension(path)[3..]);
                 result.Add(operation);
             }
             return result;
@@ -159,9 +161,11 @@ public sealed class MaintenanceOperationStore
         return Path.Combine(_paths.OperationsRoot, "idem-" + hash + ".txt");
     }
 
+    public static bool IsValidIdempotencyKey(string? key) => IsSafeToken(key, 128);
+
     private static void ValidateIdempotencyKey(string key)
     {
-        if (!IsSafeToken(key, 128)) throw new InvalidDataException("Idempotency key is invalid.");
+        if (!IsValidIdempotencyKey(key)) throw new InvalidDataException("Idempotency key is invalid.");
     }
 
     private static void ValidateOperatorId(string value)
@@ -169,7 +173,7 @@ public sealed class MaintenanceOperationStore
         if (!IsSafeToken(value, 128)) throw new InvalidDataException("operator_id is invalid.");
     }
 
-    private static bool IsSafeToken(string value, int maxLength)
+    private static bool IsSafeToken(string? value, int maxLength)
         => !string.IsNullOrWhiteSpace(value) && value.Length <= maxLength && value.All(static c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' or ':');
 
     private static bool FixedHashEquals(string left, string right)
@@ -186,13 +190,25 @@ public sealed class MaintenanceOperationStore
         }
     }
 
-    private static void ValidateStored(MaintenanceOperation operation)
+    private static void ValidateStored(MaintenanceOperation? operation, string expectedOperationId)
     {
-        if (operation.Format != "sokna-maintenance-operation-v1" || operation.SchemaVersion != 1 ||
-            !IsSafeToken(operation.OperationId, 64) || !IsSafeToken(operation.IdempotencyKey, 128) || !IsSafeToken(operation.OperatorId, 128) ||
-            operation.CanonicalRequestSha256.Length != 64)
-            throw new InvalidDataException("Maintenance operation record is invalid.");
+        // A well-formed JSON document can still be truncated, contain null required
+        // properties, or describe a different operation from its durable filename.
+        // All of these are corrupt evidence; never interpret them as updater idle.
+        if (operation is null || operation.Format != "sokna-maintenance-operation-v1" || operation.SchemaVersion != 1 ||
+            !IsSafeToken(operation.OperationId, 64) ||
+            !string.Equals(operation.OperationId, expectedOperationId, StringComparison.Ordinal) ||
+            !IsSafeToken(operation.IdempotencyKey, 128) || !IsSafeToken(operation.OperatorId, 128) ||
+            !IsSafeToken(operation.OperationType, 128) || !IsSafeToken(operation.State, 64) ||
+            string.IsNullOrWhiteSpace(operation.PackageRef) || operation.PackageRef.Length > 4096 ||
+            !IsSha256(operation.CanonicalRequestSha256) ||
+            operation.AttemptCount < 0 || operation.UpdatedAtUtc < operation.CreatedAtUtc)
+            throw new InvalidDataException("Maintenance operation record is invalid or does not match its durable identity.");
     }
+
+    private static bool IsSha256(string? value)
+        => value is { Length: 64 } &&
+           value.All(static c => c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F');
 
     private static void AtomicWriteText(string path, string text)
     {
