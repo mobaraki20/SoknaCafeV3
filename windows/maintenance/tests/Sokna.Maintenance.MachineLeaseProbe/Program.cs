@@ -1,5 +1,20 @@
 using Sokna.Maintenance.Core;
 
+// Isolated qualification issuer: NOT shipped with the Engine or Installer.
+if (args.Length == 3 && args[0] == "permit" &&
+    int.TryParse(args[2], out var permitHoldMs) && permitHoldMs is >= 0 and <= 60000)
+{
+    var paths = new MaintenancePaths(Path.GetFullPath(args[1]));
+    new SecretStore(paths).EnsureKeys();
+    using var lease = MachineMutationLease.Acquire(paths, EngineDelegationPermit.Owner);
+    var exactArgs = new[] { "local-slot-migrate", "--data-root", paths.DataRoot };
+    var permitId = EngineDelegationPermit.Issue(paths, lease, new string('a', 32), exactArgs);
+    Console.WriteLine("ENGINE_PERMIT_ISSUED " + permitId);
+    Console.Out.Flush();
+    if (permitHoldMs > 0) Thread.Sleep(permitHoldMs);
+    return 0;
+}
+
 if (args.Length != 3 ||
     args[0] is not ("hold" or "try") ||
     !int.TryParse(args[2], out var holdMs) || holdMs is < 0 or > 30000)
