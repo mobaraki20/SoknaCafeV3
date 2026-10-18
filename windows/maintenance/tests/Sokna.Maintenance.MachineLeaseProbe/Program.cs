@@ -1,6 +1,15 @@
 using Sokna.Maintenance.Core;
 using System.Diagnostics;
 
+// F1-S7D3: hard-kill a disposable CI worker and inspect real NTFS junctions.
+// All commands fail outside GitHub Windows RUNNER_TEMP and fixture marker.
+if (args.Length == 2 && args[0] == "s7d3-windows-crash")
+    return IsolatedWindowsCutoverProcessProbe.Run(args[1]);
+if (args.Length == 4 && args[0] == "s7d3-worker")
+    return IsolatedWindowsCutoverProcessProbe.Worker(args[1], args[2], args[3]);
+if (args.Length == 4 && args[0] == "s7d3-mock-apache")
+    return IsolatedWindowsCutoverProcessProbe.MockApache(args[1], args[2], args[3]);
+
 // F1-S7D2: synthetic stop/start, pointer and DB intent boundaries only.
 // This harness must never touch installed services or the active Web junction.
 if (args.Length == 2 && args[0] == "code-cutover-simulation")
