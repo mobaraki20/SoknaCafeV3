@@ -29,7 +29,7 @@ try {
   # The directly invoked legacy engine must fail BEFORE validating the
   # rest of this intentionally incomplete mutating command.
   $engineBlocked=@(& dotnet $EngineDll local-slot-migrate --data-root $root 2>&1)
-  Assert ($LASTEXITCODE -eq 75 -and ($engineBlocked -join ' ').Contains('MACHINE_MUTATION_LEASE_BUSY')) 'Direct mutating Update Engine bypassed OS lease'
+  Assert ($LASTEXITCODE -eq 75 -and ($engineBlocked -join ' ').Contains('ENGINE_DELEGATION_REQUIRED')) 'Direct mutating Update Engine bypassed Supervisor authorization'
   $inspection=@(& dotnet $EngineDll local-slot-inspect --data-root $root 2>&1)
   Assert ($LASTEXITCODE -ne 75) 'Read-only engine inspection wrongly requires machine mutation lease'
 
