@@ -1,10 +1,11 @@
-param([string]$SupervisorDll,[string]$FixtureDll)
+param([string]$SupervisorDll,[string]$FixtureDll,[string]$LeaseProbeDll)
 $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
 Set-StrictMode -Version Latest
 function Assert([bool]$Ok,[string]$Reason) { if(-not $Ok){throw $Reason} }
 $SupervisorDll=(Resolve-Path -LiteralPath $SupervisorDll).Path
 $FixtureDll=(Resolve-Path -LiteralPath $FixtureDll).Path
+$LeaseProbeDll=(Resolve-Path -LiteralPath $LeaseProbeDll).Path
 $root=Join-Path $env:RUNNER_TEMP ('sokna-f1-p2d-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root -Force|Out-Null
 $output=@(& dotnet $FixtureDll --root $root --variant valid --sequence 110 2>&1)
@@ -127,6 +128,29 @@ try {
   $wrongActor=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' ([ordered]@{preflight_operation_id=$approvedId;operator_id='user:other'}) 'p2d-stage-wrong-actor'
   Assert ($wrongActor.Code -eq 422) 'Stage allowed wrong operator'
   $stageBody=[ordered]@{preflight_operation_id=$approvedId;operator_id='user:test'}
+  # An independent process holding the machine lease must prevent canonical
+  # Stage BEFORE any operation or anti-rollback state is written.
+  $externalHolder=Start-Process dotnet -ArgumentList @($LeaseProbeDll,'hold',$root,'30000') -PassThru
+  try {
+    $until=[DateTime]::UtcNow.AddSeconds(10)
+    $held=$false
+    while([DateTime]::UtcNow -lt $until){
+      Assert (-not$externalHolder.HasExited) 'External lease holder exited unexpectedly'
+      $gatePath=Join-Path $root 'update/machine-mutation.lock'
+      if(Test-Path -LiteralPath $gatePath){
+        try{if((Get-Content -LiteralPath $gatePath -Raw).Contains('owner=test-owner-A')){$held=$true;break}}catch{}
+      }
+      Start-Sleep -Milliseconds 80
+    }
+    Assert $held 'Could not obtain external machine mutation lease'
+    $stageBlocked=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' $stageBody 'p2d-external-machine-gate'
+    Assert ($stageBlocked.Code -eq 409 -and $stageBlocked.Data.code -eq 'MACHINE_MUTATION_LEASE_BUSY') 'Signed Supervisor Stage bypassed live machine-wide lease'
+    Assert (-not(Test-Path -LiteralPath (Join-Path $root 'update/release-sequence.json'))) 'Blocked Stage advanced anti-rollback state'
+  }
+  finally {
+    if(-not$externalHolder.HasExited){Stop-Process -Id $externalHolder.Id -Force -ErrorAction SilentlyContinue}
+    $externalHolder.WaitForExit(5000) | Out-Null
+  }
   $stage=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' $stageBody 'p2d-stage-valid'
   Assert ($stage.Code -eq 200 -and $stage.Data.data.operation.state -eq 'staged') ('Canonical Stage failed: '+($stage.Data|ConvertTo-Json -Depth 8))
   $stageId=[string]$stage.Data.operation_id
