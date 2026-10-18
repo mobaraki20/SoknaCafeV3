@@ -90,6 +90,296 @@ jobs:
       - name: F1-S7E4 fail-closed custody and Public-pair negative contract matrix (synthetic only)
         run: |
           python3 windows/maintenance/tests/s7e4-security-paired-dryrun-ci.py
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: F1-S7E5B actual PHP OpenSSL DER receipt and independent .NET verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -qi '^openssl
+        run: |
+          python3 tests/scds-m6-gate.py
+          python3 tests/m7-runtime-gate.py
+          python3 tests/m8-print-agent-gate.py
+          python3 tests/m9-packaging-gate.py
+          python3 tests/runtime-print-v1-contract.py
+          python3 tests/runtime-print-contract-audit.py
+
+  windows-build-and-installer-source:
+    name: Windows owners + installer source
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Build Runtime
+        run: dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+      - name: Build Print Agent and Setup owners
+        run: |
+          $ErrorActionPreference='Stop'
+          $PSNativeCommandUseErrorActionPreference=$true
+          dotnet build windows/print-agent/source/Sokna.PrintWorker.slnx -c Release
+          dotnet publish packaging/windows/setup-host/Sokna.SetupHost.csproj -c Release -o packaging/windows/setup-host/publish
+          dotnet publish packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -o packaging/windows/setup-ui/publish
+      - name: Windows Services pairing handoff self-test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          # Setup Host is WinExe, not console Exe: PowerShell's LASTEXITCODE
+          # can be null even when the process prints PASS and returns zero.
+          # Track the actual process ExitCode and evidence instead.
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-setup-pairing-selftest.stdout'
+          $err=Join-Path $env:RUNNER_TEMP 'sokna-setup-pairing-selftest.stderr'
+          $exe=(Resolve-Path '.\packaging\windows\setup-host\publish\SoknaSetupHost.exe').Path
+          $proc=Start-Process -FilePath $exe -ArgumentList '--pairing-self-test' -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          $stdout=Get-Content -LiteralPath $out -Raw -ErrorAction SilentlyContinue
+          $stderr=Get-Content -LiteralPath $err -Raw -ErrorAction SilentlyContinue
+          if($proc.ExitCode -ne 0 -or -not $stdout.Contains('SOKNA Setup Host v4 pairing self-test PASS')){
+            # Never print pairing secrets; selftest diagnostics contain only
+            # English reason codes and exception type.
+            if($stderr -match 'PAIRING_SELF_TEST_FAILED[^\r\n]*'){Write-Host $Matches[0]}
+            throw "Setup Host pairing self-test failed or missing PASS, exit=$($proc.ExitCode)"
+          }
+          $ps=Get-Content packaging/windows/scripts/setup-windows-services.ps1 -Raw
+          foreach($needle in @('SOKNA_WINDOWS_SERVICES_PAIRING_B64','Clear-StalePairingFiles','Write-TransientPrivateJson')){
+            if(-not $ps.Contains($needle)){throw "Pairing handoff script contract missing: $needle"}
+          }
+          if($ps.Contains("Join-Path $env:TEMP ('sokna-print-pair-")){throw 'Print pairing secret still uses general TEMP.'}
+          $ui=Get-Content packaging/windows/setup-ui/Program.cs -Raw
+          foreach($needle in @('_pairingBaseUrl','_pairingCode','["pairing_code"] = pairingCode','["pairing_base_url"] = string.IsNullOrWhiteSpace(pairingCode) ? "" : pairingBaseUrl','["pairing_file"] = ""')){
+            if(-not $ui.Contains($needle)){throw "Setup UI pairing-code contract missing: $needle"}
+          }
+          foreach($legacy in @('_browsePairing','فایل Pairing')){
+            if($ui.Contains($legacy)){throw "Legacy pairing-file UI is still productized: $legacy"}
+          }
+
+      - name: Parse all Windows PowerShell owners
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem platform/windows,packaging/windows -Recurse -Filter *.ps1 | ForEach-Object {
+            $tokens=$null;$errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)|Out-Null
+            if($errors.Count){ $errors | ForEach-Object { Write-Error ("$($_.Extent.File): $($_.Message)") }; throw "PowerShell parse failure" }
+          }
+      - name: Windows PowerShell 5.1 compatibility smoke
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $bad=Get-ChildItem packaging/windows/scripts -Filter *.ps1 | Select-String -SimpleMatch 'IsPathFullyQualified'
+          if($bad){ $bad | ForEach-Object { Write-Error $_ }; throw 'Windows PowerShell 5.1-incompatible Path.IsPathFullyQualified usage found.' }
+          $data=Join-Path $env:RUNNER_TEMP 'sokna-support-data'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-support-out'
+          New-Item -ItemType Directory -Path $data,$out -Force | Out-Null
+          & packaging/windows/scripts/collect-support.ps1 -DataRoot $data -OutputRoot $out
+          $zip=Get-ChildItem -LiteralPath $out -Filter 'SOKNA-Support-*.zip' -File | Select-Object -First 1
+          if(-not $zip){ throw 'Support bundle smoke did not create a ZIP under Windows PowerShell 5.1.' }
+
+      - name: Compile Inno installer source with an isolated fixture payload
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $env:RUNNER_TEMP 'sokna-shell-fixture'
+          New-Item -ItemType Directory -Path $shell -Force | Out-Null
+          Copy-Item packaging/windows/Sokna.ico (Join-Path $shell 'Sokna.ico')
+          Set-Content (Join-Path $shell 'SoknaSetupUi.exe') 'fixture'
+          Set-Content (Join-Path $shell 'remove-windows-services.ps1') '$true'
+          $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          [ordered]@{format='sokna-windows-services-shell-v2';schema_version=2;package_version=$version} |
+            ConvertTo-Json | Set-Content (Join-Path $shell 'payload-manifest.json') -Encoding UTF8
+          & packaging/windows/scripts/build-installer.ps1 -ShellPayloadRoot $shell -RepoRoot $root
+
+      - name: Build qualified Windows Services release artifact
+        shell: pwsh
+        run: |
+          $root=(Resolve-Path .).Path
+          $out=Join-Path $root 'release\out-windows'
+          $iscc=@(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not $iscc){ throw 'Inno Setup 6 ISCC.exe was not found after qualification setup.' }
+          & release/build-windows-release.ps1 -RepoRoot $root -OutputRoot $out -IsccExe $iscc
+          Get-ChildItem $out | Format-Table Name,Length,LastWriteTime
+
+      - name: Real Windows SCM lifecycle smoke
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path .).Path
+          $shell=Join-Path $root 'release\out-windows\shell'
+          $install='C:\Program Files\SOKNA Windows Services CI'
+          $data='D:\SOKNA-CI\Data'
+          $legacyDefault=Join-Path $env:ProgramData 'SOKNA\print-worker'
+          New-Item -ItemType Directory -Path $legacyDefault -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $legacyDefault 'queue.db') -Value 'intentionally-invalid-stale-default'
+
+          # Keep a handle open while another process acquires the named mutex and exits without releasing it.
+          # This reproduces the real upgrade/recovery state observed on Windows 10 LTSC.
+          $mutexName='Global\SoknaPrintAgentV6Service'
+          $keeper=New-Object System.Threading.Mutex($false,$mutexName)
+          $childScript='$m=[Threading.Mutex]::OpenExisting("Global\SoknaPrintAgentV6Service");$null=$m.WaitOne();[Environment]::Exit(0)'
+          $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childScript))
+          $child=Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand',$encoded -Wait -PassThru
+          if($child.ExitCode-ne0){throw "Failed to seed abandoned Print Agent mutex: $($child.ExitCode)"}
+
+          try {
+            & packaging/windows/scripts/setup-windows-services.ps1 -Mode Install -ShellRoot $shell -InstallRoot $install -DataRoot $data -PairingFile '' -StartWhenPaired 0
+            $runtime=Get-Service -Name SoknaRuntime -ErrorAction Stop
+            $print=Get-Service -Name SoknaPrintWorker -ErrorAction Stop
+            $runtime.Dispose();$print.Dispose()
+            $expectedExe=Join-Path $install 'Runtime\SoknaRuntimeService.exe'
+            $expectedCfg=Join-Path $data 'runtime\runtime-config.json'
+            $actualRuntime=[string](Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\SoknaRuntime').ImagePath
+            if(-not $actualRuntime.StartsWith('"')){throw "Runtime ImagePath executable is not quoted: [$actualRuntime]"}
+            if(-not $actualRuntime.Contains($expectedExe)){throw "Runtime ImagePath missing executable: [$actualRuntime]"}
+            if(-not $actualRuntime.Contains($expectedCfg)){throw "Runtime ImagePath missing config path: [$actualRuntime]"}
+            $expectedPrintRoot=Join-Path $data 'print-worker'
+            $actualPrintRoot=[string](Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Sokna\Local\PrintWorker' -Name DataRoot).DataRoot
+            if([IO.Path]::GetFullPath($actualPrintRoot)-cne[IO.Path]::GetFullPath($expectedPrintRoot)){throw "Print Agent DataRoot mismatch: [$actualPrintRoot]"}
+            $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+            foreach($exe in @((Join-Path $root 'release\out-windows\SoknaSetupUi.exe'),(Join-Path $root 'release\out-windows\SoknaSetupHost.exe'))){
+              $pv=([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion).Split('+')[0]
+              if($pv-ne$version){throw "Setup executable ProductVersion mismatch: $exe => $pv expected $version"}
+            }
+          } finally {
+            try { & packaging/windows/scripts/setup-windows-services.ps1 -Mode Uninstall -ShellRoot $shell -InstallRoot $install -DataRoot $data -PairingFile '' -StartWhenPaired 0 } catch { Write-Warning $_ }
+            Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'D:\SOKNA-CI' -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $legacyDefault -Recurse -Force -ErrorAction SilentlyContinue
+            if($keeper){$keeper.Dispose()}
+          }
+
+      - name: Verify qualified Windows Services installer artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          $expected=Join-Path (Resolve-Path .).Path "release\out-windows\SOKNA-Windows-Services-Setup-$version.exe"
+          if(-not(Test-Path -LiteralPath $expected -PathType Leaf)){throw "Qualified Windows Services installer missing: $expected"}
+          $index=Get-Content release/out-windows/artifact-index.json -Raw|ConvertFrom-Json
+          if([string]$index.windows_services.file-ne[IO.Path]::GetFileName($expected)){throw 'Artifact index installer filename drift.'}
+          $sha=(Get-FileHash -LiteralPath $expected -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha-ne[string]$index.windows_services.sha256){throw 'Artifact index installer SHA256 drift.'}
+
+      - name: Upload qualified Windows Services installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-${{ github.sha }}
+          path: |
+            release/out-windows/SOKNA-Windows-Services-Setup-*.exe
+            release/out-windows/artifact-index.json
+          if-no-files-found: error
+          retention-days: 30
+
+  manual-uat-contract:
+    name: Manual UAT remains explicit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate explicit manual-UAT blockers
+        run: |
+          python3 - <<'PY'
+          import json
+          x=json.load(open('release/manual-uat-status.json',encoding='utf-8'))
+          req={'windows_clean_install','physical_thermal_printer','responsive_touch_persian_ime'}
+          assert req <= {c['id'] for c in x['checks']}
+          assert all(c['status'] in {'pending','passed','failed'} for c in x['checks'])
+          print('Manual UAT contract recorded; CI does not fabricate physical-device PASS evidence.')
+          PY
+
+  # F1-S7E3B: Two distinct GitHub-hosted VMs, never a shared container,
+  # transport encrypted TEST data via GitHub artifacts (off-runner boundary).
+  # The disposable test private key is a separate fixture artifact: this
+  # DOES NOT qualify production KMS/key isolation or offsite retention.
+  s7e3b_offhost_export:
+    name: F1-S7E3B encrypt and export MariaDB fixture
+    runs-on: ubuntu-latest
+    outputs:
+      backup_sha256: ${{ steps.lab_export.outputs.backup_sha256 }}
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install scoped MariaDB client
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mariadb-client
+      - name: Encrypt signed fixture on source runner
+        id: lab_export
+        env: &s7e3b_env
+          SOKNA_S7E3B_CI_ONLY: '1'
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: root
+          SOKNA_ARTIFACT_OUTPUT: ${{ runner.temp }}/sokna-s7e3b-export
+        run: bash windows/maintenance/tests/s7e3b-offhost-artifact.sh export
+      - uses: actions/upload-artifact@v4
+        with:
+          name: s7e3b-ci-encrypted-backup
+          path: ${{ runner.temp }}/sokna-s7e3b-export/backup/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: s7e3b-ci-test-only-key
+          path: ${{ runner.temp }}/sokna-s7e3b-export/test-only-key/
+          if-no-files-found: error
+          retention-days: 1
+
+  s7e3b_offhost_restore:
+    name: F1-S7E3B independent runner encrypted restore and corruption denial
+    needs: s7e3b_offhost_export
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install independent restore runner MariaDB client
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mariadb-client
+      - uses: actions/download-artifact@v4
+        with:
+          name: s7e3b-ci-encrypted-backup
+          path: ${{ runner.temp }}/sokna-s7e3b-import/backup
+      - uses: actions/download-artifact@v4
+        with:
+          name: s7e3b-ci-test-only-key
+          path: ${{ runner.temp }}/sokna-s7e3b-import/test-only-key
+      - name: Independently verify cipher/signature, corruption denial and MariaDB restore
+        env:
+          SOKNA_S7E3B_CI_ONLY: '1'
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: root
+          SOKNA_ARTIFACT_INPUT: ${{ runner.temp }}/sokna-s7e3b-import
+          SOKNA_EXPECTED_BACKUP_SHA256: ${{ needs.s7e3b_offhost_export.outputs.backup_sha256 }}
+        run: bash windows/maintenance/tests/s7e3b-offhost-artifact.sh restore
+; then
+            echo 'S7E5B_PHP_OPENSSL_REQUIRED' >&2
+            exit 1
+          fi
+          fixture="$(mktemp -d "$RUNNER_TEMP/sokna-public-php-der-XXXXXXXX")"
+          trap 'rm -rf "$fixture"' EXIT
+          php windows/maintenance/tests/s7e5b-php-openssl-public-fixture.php "$fixture"
+          dotnet run --project windows/maintenance/tests/PublicKernelPhpInteropProbe/PublicKernelPhpInteropProbe.csproj --configuration Release -- "$fixture" "$fixture/receipt.json" "$fixture/signed-bytes.bin"
       - name: Re-run mature component contracts
         run: |
           python3 tests/scds-m6-gate.py
