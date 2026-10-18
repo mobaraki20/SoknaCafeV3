@@ -129,9 +129,10 @@ public static class EngineDelegationPermit
                 FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
             throw new InvalidDataException(RejectedCode);
         }
-        catch (IOException)
+        catch (IOException ex) when ((ex.HResult & 0xFFFF) is 32 or 33)
         {
-            // Sharing violation: owner still holds its OS handle.
+            // Win32 ERROR_SHARING_VIOLATION / ERROR_LOCK_VIOLATION.
+            // All other I/O failures are NOT proof of a live parent lease.
         }
     }
 
