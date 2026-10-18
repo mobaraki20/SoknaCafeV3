@@ -44,6 +44,11 @@ public sealed class LocalCodeCutoverWriteAheadJournal
 {
     public const string Format = "sokna-local-cutover-wal-v1";
     public const string Owner = "supervisor-code-cutover";
+    // AtomicFile.JsonOptions is indented; JSONL records MUST be single-line.
+    private static readonly JsonSerializerOptions LineJson = new(AtomicFile.JsonOptions)
+    {
+        WriteIndented = false
+    };
     private readonly MaintenancePaths _paths;
 
     public LocalCodeCutoverWriteAheadJournal(MaintenancePaths paths) => _paths = paths;
@@ -101,7 +106,7 @@ public sealed class LocalCodeCutoverWriteAheadJournal
             FileShare.None, 4096, FileOptions.WriteThrough);
         // Never append after a partially written/tampered/corrupt record.
         stream.Seek(0, SeekOrigin.End);
-        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(next, AtomicFile.JsonOptions) + "\n");
+        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(next, LineJson) + "\n");
         stream.Write(bytes);
         stream.Flush(flushToDisk: true);
         return next;
@@ -216,7 +221,7 @@ public sealed class LocalCodeCutoverWriteAheadJournal
     {
         using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write,
             FileShare.None, 4096, FileOptions.WriteThrough);
-        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(item, AtomicFile.JsonOptions) + "\n");
+        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(item, LineJson) + "\n");
         stream.Write(bytes);
         stream.Flush(flushToDisk: true);
     }
@@ -231,7 +236,7 @@ public sealed class LocalCodeCutoverWriteAheadJournal
     }
     private static string HashEvent(LocalCutoverJournalEvent e)
     {
-        var canonical = JsonSerializer.Serialize(e with { EventSha256 = "" }, AtomicFile.JsonOptions);
+        var canonical = JsonSerializer.Serialize(e with { EventSha256 = "" }, LineJson);
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
     }
     private static bool ValidHash(string? value) =>
