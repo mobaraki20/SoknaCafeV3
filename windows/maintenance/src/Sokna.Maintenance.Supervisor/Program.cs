@@ -46,6 +46,7 @@ var operations = new MaintenanceOperationStore(paths);
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
 var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
 var localPackagePreflightCoordinator = new SupervisorLocalPackagePreflightCoordinator(paths, operations, journal, state);
+var localReleaseStageCoordinator = new SupervisorLocalReleaseStageCoordinator(paths, operations, journal, state);
 var localSlotCoordinator = new SupervisorLocalSlotCoordinator(paths, operations, journal, state, updateEnginePath);
 var productionMigrationCoordinator = new SupervisorProductionMigrationCoordinator(paths, operations, journal, state, updateEnginePath);
 var adoptionQueue = new LocalSlotAdoptionQueue(paths);
@@ -80,15 +81,16 @@ app.Use(async (context, next) =>
     }
 
     var isLocalPackagePreflight = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/preflight", StringComparison.Ordinal);
+    var isLocalReleaseStage = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/stage", StringComparison.Ordinal);
     var isStageMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/update/stage", StringComparison.Ordinal);
     var isLocalSlotMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/home-cycle", StringComparison.Ordinal);
     var isProductionMigration = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/migrate", StringComparison.Ordinal);
     var isProductionRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/recover", StringComparison.Ordinal);
-    var isMutation = isLocalPackagePreflight || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
+    var isMutation = isLocalPackagePreflight || isLocalReleaseStage || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
-            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = true, database_mutation_enabled = false });
+            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = true, database_mutation_enabled = false });
         return;
     }
 
@@ -141,7 +143,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalPackagePreflight || isStageMutation) && keyId != "web-adapter")
+    if ((isLocalPackagePreflight || isLocalReleaseStage || isStageMutation) && keyId != "web-adapter")
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
@@ -162,7 +164,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalPackagePreflight || isStageMutation || isProductionMigration || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
+    if ((isLocalPackagePreflight || isLocalReleaseStage || isStageMutation || isProductionMigration || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "acl_pending", "WEB_ADAPTER_ACL_PENDING", false,
             new { acl_state = aclEvidence.State, service_name = aclEvidence.ServiceName });
@@ -455,35 +457,75 @@ app.MapPost("/v1/local-updates/preflight", async context =>
     }
 });
 
+// Legacy P2B stage route is explicitly retired from the ordinary operator path.
+// It previously accepted a ZIP without a completed versioned Local preflight.
 app.MapPost("/v1/update/stage", async context =>
+{
+    await WriteEnvelope(context, StatusCodes.Status410Gone, false, "retired",
+        "LEGACY_STAGE_ROUTE_DISABLED", false,
+        new { canonical_path = "/v1/local-updates/stage",
+              preflight_operation_id_required = true, panel_update_ready = false });
+});
+
+// Canonical F1-S2 Stage: signed + durable Preflight ID required. No activation.
+app.MapPost("/v1/local-updates/stage", async context =>
 {
     if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var idempotencyKey))
     {
         await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "IDEMPOTENCY_KEY_REQUIRED", false, new { });
         return;
     }
-
     try
     {
         var body = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
-        var request = JsonSerializer.Deserialize<StageUpdateRequest>(body, AtomicFile.JsonOptions)
-                      ?? throw new InvalidDataException("Stage request body is empty.");
-        var result = stagingCoordinator.Stage(request.PackageRef, request.OperatorId, idempotencyKey);
-        var operation = result.Operation;
-        var success = operation.State == "staged";
-        var statusCode = success ? StatusCodes.Status200OK : operation.State is "running" or "accepted" ? StatusCodes.Status202Accepted : StatusCodes.Status422UnprocessableEntity;
-        await WriteEnvelope(context, statusCode, success, operation.State, operation.ResultCode ?? (success ? "STAGED" : "OPERATION_RECORDED"), false,
-            new { operation, result.Created, result.Reconciled, activation_enabled = true, database_mutation_enabled = false }, operation.OperationId);
+        var request = JsonSerializer.Deserialize<LocalReleaseStageRequest>(body, AtomicFile.JsonOptions)
+            ?? throw new InvalidDataException("Stage request body is empty.");
+        var result = localReleaseStageCoordinator.Stage(
+            request.PreflightOperationId, request.OperatorId, idempotencyKey);
+        var success = result.Operation.State == "staged" && result.Receipt is not null;
+        var needsRecovery = result.Operation.State == "recovery_required";
+        await WriteEnvelope(context,
+            success ? StatusCodes.Status200OK :
+                needsRecovery ? StatusCodes.Status503ServiceUnavailable :
+                StatusCodes.Status422UnprocessableEntity,
+            success, result.Operation.State,
+            result.Operation.ResultCode ?? "STAGE_NOT_VERIFIED", needsRecovery,
+            new { result.Operation, result.PreflightOperationId, result.Receipt,
+                  result.Created, result.Reconciled,
+                  stage_performed = success, activation_enabled = false,
+                  panel_update_ready = false, database_mutation_performed = false },
+            result.Operation.OperationId);
     }
-    catch (JsonException ex)
+    catch (JsonException)
     {
-        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "REQUEST_JSON_INVALID", false, new { error = ex.Message });
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "REQUEST_JSON_INVALID", false, new { });
     }
-    catch (InvalidDataException ex)
+    catch (InvalidOperationException ex) when (ex.Message == "UPDATER_OPERATION_BUSY")
     {
-        var code = ex.Message.Contains("Idempotency key was already used", StringComparison.Ordinal) ? "IDEMPOTENCY_CONFLICT" : "REQUEST_INVALID";
-        var status = code == "IDEMPOTENCY_CONFLICT" ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest;
-        await WriteEnvelope(context, status, false, "rejected", code, false, new { error = ex.Message });
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", "UPDATER_OPERATION_BUSY", false, new { });
+    }
+    catch (InvalidOperationException ex) when (ex.Message == "UPDATER_OPERATION_RECONCILIATION_REQUIRED")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", "STAGE_OPERATION_RECONCILIATION_REQUIRED", true, new { });
+    }
+    catch (InvalidDataException ex) when (ex.Message.Contains("Idempotency key was already used", StringComparison.Ordinal))
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "rejected", "IDEMPOTENCY_CONFLICT", false, new { });
+    }
+    catch (InvalidDataException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity,
+            false, "rejected", "STAGE_PREFLIGHT_BINDING_REJECTED", false, new { });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable,
+            false, "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE",
+            false, new { last_error_type = ex.GetType().Name });
     }
 });
 
