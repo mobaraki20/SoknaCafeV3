@@ -172,6 +172,26 @@ try {
   Assert ($stageAfterCrash.Code -eq 503 -and $stageAfterCrash.Data.data.operation.state -eq 'recovery_required') 'Halted Stage was silently restaged'
   $newPreflight=Signed 'POST' '/v1/local-updates/preflight' 'web-adapter' $body 'p2d-after-interrupt'
   Assert ($newPreflight.Code -eq 409 -and $newPreflight.Data.code -eq 'UPDATER_OPERATION_BUSY') 'Unresolved Stage allowed a new Preflight'
+  # F1-S4: none of the pre-Foundation slot owners may cross the common gate
+  # while a canonical Stage is quarantined.
+  $legacyMigration=Signed 'POST' '/v1/local-slots/migrate' 'web-adapter' ([ordered]@{
+    expected_build='3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory'
+    expected_managed_files=497
+    expected_managed_tree_sha256='b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a'
+    operator_id='user:test'
+  }) 'p2d-legacy-migrate-during-stage'
+  Assert ($legacyMigration.Code -eq 409 -and $legacyMigration.Data.code -eq 'UPDATER_OPERATION_BUSY') ('Legacy migration bypassed Stage quarantine: '+($legacyMigration.Data|ConvertTo-Json -Depth 4))
+  $legacyRecovery=Signed 'POST' '/v1/local-slots/recover' 'recovery-console' ([ordered]@{operator_id='recovery:test'}) 'p2d-legacy-recover-during-stage'
+  Assert ($legacyRecovery.Code -eq 409 -and $legacyRecovery.Data.code -eq 'UPDATER_OPERATION_BUSY') 'Legacy recovery bypassed Stage quarantine'
+  $legacyHome=Signed 'POST' '/v1/local-slots/home-cycle' 'web-adapter' ([ordered]@{
+    expected_build='3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory'
+    expected_managed_files=497
+    expected_managed_tree_sha256='b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a'
+    operator_id='user:test'
+  }) 'p2d-legacy-home-during-stage'
+  Assert ($legacyHome.Code -eq 409 -and $legacyHome.Data.code -eq 'UPDATER_OPERATION_BUSY') 'Legacy home-cycle bypassed Stage quarantine'
+  $activeWhileRecovering=Signed 'GET' '/v1/operations/active' 'web-adapter' $null
+  Assert ($activeWhileRecovering.Code -eq 200 -and $activeWhileRecovering.Data.state -eq 'recovery_required' -and [bool]$activeWhileRecovering.Data.data.requires_recovery -and $activeWhileRecovering.Data.data.blocking_count -ge 1) 'Active endpoint hid durable recovery blocker'
   Assert ((Get-FileHash -LiteralPath (Join-Path $root 'update/release-sequence.json') -Algorithm SHA256).Hash -eq $beforeSequenceHash) 'Restart mutated anti-rollback state'
   Assert ((Get-FileHash -LiteralPath (Join-Path ([string]$stage.Data.data.receipt.stage_root) 'stage-receipt.json') -Algorithm SHA256).Hash -eq $beforeStageReceiptHash) 'Restart rewrote staged receipt'
   Stop-S $p;$p=$null
