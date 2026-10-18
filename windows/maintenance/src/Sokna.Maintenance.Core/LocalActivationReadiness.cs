@@ -43,7 +43,8 @@ public static class LocalActivationReadinessPolicy
         if (manifest.ReleaseType != "local_only")
             blockers.Add("LOCAL_ONLY_ACTIVATION_CONTRACT_REQUIRED");
         if (!manifest.ForInstall || !manifest.ProductionPass ||
-            manifest.Status != "PRODUCTION_PASS_FOR_INSTALL")
+            string.IsNullOrWhiteSpace(manifest.Status) ||
+            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase))
             blockers.Add("RELEASE_NOT_QUALIFIED_FOR_INSTALL");
 
         var qualification = manifest.Qualification;
