@@ -591,44 +591,29 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
 
     private EngineExecution ExecuteEngine(IReadOnlyList<string> arguments, int timeoutMs, MachineMutationLease machineLease, string operationId)
     {
-        var start = new ProcessStartInfo
-        {
-            FileName = _engineExecutable,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = AppContext.BaseDirectory
-        };
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
-
         try
         {
-            var permitId = EngineDelegationPermit.Issue(_paths, machineLease, operationId, arguments);
-            start.ArgumentList.Add("--delegation-id");
-            start.ArgumentList.Add(permitId);
-            using var process = Process.Start(start) ?? throw new InvalidOperationException("Unable to start Update Engine.");
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(timeoutMs))
+            var permit = EngineDelegationPermit.Issue(_paths, machineLease, operationId, arguments);
+            var permittedArguments = arguments.Concat(new[] { "--delegation-id", permit }).ToArray();
+            // Child cannot execute before it belongs to KILL_ON_JOB_CLOSE:
+            // CreateProcess(CREATE_SUSPENDED) -> AssignProcessToJobObject -> ResumeThread.
+            using var child = WindowsJobChildProcess.Start(_engineExecutable,
+                permittedArguments, AppContext.BaseDirectory);
+            var result = child.WaitAndCapture(timeoutMs);
+            if (!result.Finished)
             {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                try { process.WaitForExit(5_000); } catch { }
-                var timeoutStdout = stdoutTask.IsCompleted ? stdoutTask.GetAwaiter().GetResult() : string.Empty;
-                var timeoutStderr = stderrTask.IsCompleted ? stderrTask.GetAwaiter().GetResult() : string.Empty;
-                var evidence = string.IsNullOrWhiteSpace(timeoutStderr) ? timeoutStdout : timeoutStderr;
+                var evidence = string.IsNullOrWhiteSpace(result.Stderr) ? result.Stdout : result.Stderr;
                 if (evidence.Length > 5000) evidence = evidence[..5000];
-                var timeoutDetail = "Update Engine exceeded the production migration timeout." + (string.IsNullOrWhiteSpace(evidence) ? string.Empty : " Evidence: " + evidence.Trim());
-                return new(true, -1, timeoutStdout, timeoutDetail, "UPDATE_ENGINE_TIMEOUT");
+                return new(true, -1, result.Stdout,
+                    "Update Engine exceeded timeout. Job child and descendants terminated. " + evidence.Trim(),
+                    "UPDATE_ENGINE_TIMEOUT");
             }
-
-            var stdout = stdoutTask.GetAwaiter().GetResult();
-            var stderr = stderrTask.GetAwaiter().GetResult();
-            var resultDetail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-            if (resultDetail.Length > 6000) resultDetail = resultDetail[..6000];
-            return new(true, process.ExitCode, stdout, resultDetail.Trim(), "OK");
+            var detail = string.IsNullOrWhiteSpace(result.Stderr) ? result.Stdout : result.Stderr;
+            if (detail.Length > 6000) detail = detail[..6000];
+            return new(true, result.ExitCode, result.Stdout, detail.Trim(), "OK");
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        catch (Exception ex) when (ex is InvalidOperationException or
+            System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException or PlatformNotSupportedException)
         {
             return new(false, -1, string.Empty, ex.Message, "UPDATE_ENGINE_START_FAILED");
         }
