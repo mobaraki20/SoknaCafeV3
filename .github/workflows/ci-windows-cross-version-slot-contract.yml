@@ -28,6 +28,12 @@ jobs:
         run: |
           & ./windows/maintenance/tests/windows-job-process-death.ps1 `
             -ProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll'
+      - name: Qualify isolated inactive Local sibling filecopy, target binding and unchanged active pointer
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            inactive-sibling-writer (Join-Path $env:RUNNER_TEMP ('sokna-sibling-writer-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'Inactive sibling writer regression failed' }
       - name: Verify independent machine lease, direct Engine collision and OS crash cleanup
         shell: pwsh
         run: |
