@@ -170,6 +170,13 @@ try {
   Assert (-not[bool]$stage.Data.data.receipt.activation_performed -and -not[bool]$stage.Data.data.receipt.database_mutation_performed) 'Stage mutated app or database'
   Assert ((Test-Path -LiteralPath (Join-Path $root 'update/release-sequence.json'))) 'Stage did not commit monotonic sequence'
   Assert (Test-Path -LiteralPath (Join-Path ([string]$stage.Data.data.receipt.stage_root) 'stage-receipt.json')) 'Stage receipt not durable'
+  # F1-S7D4B: examine a REAL signed canonical Stage, not the synthetic
+  # S7D4A receipt. Dedicated probe must not write a release or mutate DB.
+  $sealProbe=@(& dotnet $LeaseProbeDll 's7d4b-canonical-signed-stage' $root $stageId 2>&1)
+  Assert ($LASTEXITCODE -eq 0) ('Signed Stage evidence seal failed: '+($sealProbe -join [Environment]::NewLine))
+  $sealResult=($sealProbe -join [Environment]::NewLine)|ConvertFrom-Json
+  Assert ($sealResult.result -eq 'PASS' -and [bool]$sealResult.canonical_signed_stage_verified -and
+          -not[bool]$sealResult.execution_authorized -and -not[bool]$sealResult.panel_update_ready) 'Canonical Stage evidence seal incorrectly authorized activation'
   # F1-S7B immutable dry-run plan. A fully valid Stage still cannot
   # authorize Apache, database, Public or release activation.
   $planBody=[ordered]@{stage_operation_id=$stageId;operator_id='user:test'}
