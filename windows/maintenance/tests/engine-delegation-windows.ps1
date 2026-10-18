@@ -64,7 +64,17 @@ try {
   $third=Start-Issuer $root
   $foreign=@(& dotnet $EngineDll local-slot-migrate --data-root $otherRoot --delegation-id $third.Id 2>&1)
   Assert ($LASTEXITCODE -eq 75 -and ($foreign -join ' ').Contains('ENGINE_DELEGATION_REJECTED')) 'Cross-installation permit accepted'
-  [ordered]@{format='sokna-engine-delegation-windows-v1';result='PASS';direct_cli_denied=$true;exact_argv_binding=$true;forged_hmac_denied=$true;permit_consumed_once=$true;replay_denied=$true;dead_parent_denied=$true;cross_installation_denied=$true;no_successful_business_mutation=$true}|ConvertTo-Json
+  # Prove actual wall-clock expiry while the issuing parent is alive and
+  # still owns its machine lease. No test-only shorter TTL is added to production.
+  Stop-Process -Id $third.Process.Id -Force -ErrorAction SilentlyContinue
+  $third.Process.WaitForExit(5000)|Out-Null
+  $fourth=Start-Issuer $root 60000
+  Start-Sleep -Seconds 47
+  Assert (-not$fourth.Process.HasExited) 'Expiry test parent died before the permit TTL'
+  $expired=@(& dotnet $EngineDll local-slot-migrate --data-root $root --delegation-id $fourth.Id 2>&1)
+  Assert ($LASTEXITCODE -eq 75 -and ($expired -join ' ').Contains('ENGINE_DELEGATION_REJECTED')) 'Expired one-use permit was accepted while its parent remained alive'
+  Assert (-not(Test-Path -LiteralPath (Join-Path $root ('update/delegations/'+$fourth.Id+'.consumed')))) 'Expired permit was consumed'
+  [ordered]@{format='sokna-engine-delegation-windows-v1';result='PASS';direct_cli_denied=$true;exact_argv_binding=$true;forged_hmac_denied=$true;permit_consumed_once=$true;replay_denied=$true;dead_parent_denied=$true;cross_installation_denied=$true;expired_permit_denied=$true;no_successful_business_mutation=$true}|ConvertTo-Json
 }
 finally {
   foreach($p in $parents){
