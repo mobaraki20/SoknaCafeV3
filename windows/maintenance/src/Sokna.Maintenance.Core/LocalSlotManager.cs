@@ -101,6 +101,14 @@ public sealed class LocalSlotManager
         return DiscoverAndVerify(build, managedCount);
     }
 
+    /// <summary>Read-only real-host Apache and installed version health gate.</summary>
+    public LocalInstallLayout InspectHealthyCurrent()
+    {
+        var layout = InspectCurrent();
+        RequireHttpHealth(layout.Build, layout.HealthUrl);
+        return layout;
+    }
+
     public LocalInstallLayout DiscoverAndVerify(string expectedBuild, int expectedManagedFileCount)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Local slot activation is Windows-only.");
