@@ -38,14 +38,56 @@ var identityPath = Path.Combine(root, "identity.json");
 AtomicFile.WriteJson(identityPath, identity);
 
 var payload = Encoding.UTF8.GetBytes("SOKNA Maintenance V4 P2A deterministic fixture payload\n");
+var siblingFixture = variant is "sibling-ready" or "sibling-zip-traversal" or "sibling-zip-overlay" or "sibling-corrupt-tree";
+var siblingVersion = "3.0.0-test-sibling-111";
+var siblingTree = "";
+var siblingCount = 3;
+if (siblingFixture)
+{
+    var source = Path.Combine(root, "fixture-local-web");
+    Directory.CreateDirectory(Path.Combine(source, "public"));
+    Directory.CreateDirectory(Path.Combine(source, "resources"));
+    File.WriteAllText(Path.Combine(source, "VERSION.txt"), siblingVersion, Encoding.UTF8);
+    File.WriteAllText(Path.Combine(source, "public", "index.php"), "<?php echo 'private-candidate'; ?>\n", Encoding.UTF8);
+    File.WriteAllText(Path.Combine(source, "resources", "local-managed-files-v1.json"),
+        JsonSerializer.Serialize(new { format = "sokna-local-managed-files-v1", files = new[] {
+            "VERSION.txt", "public/index.php", "resources/local-managed-files-v1.json" } }, AtomicFile.JsonOptions));
+    siblingTree = LocalManagedTreeAttestation.Compute(source, siblingCount);
+    if (variant == "sibling-corrupt-tree") siblingTree = new string('f', 64);
+    var nestedPath = Path.Combine(root, "inner-local-web.zip");
+    using (var inner = ZipFile.Open(nestedPath, ZipArchiveMode.Create))
+    {
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var entry = inner.CreateEntry(Path.GetRelativePath(source, file).Replace('\\', '/'));
+            using var input = File.OpenRead(file);
+            using var output = entry.Open();
+            input.CopyTo(output);
+        }
+        if (variant == "sibling-zip-traversal")
+        {
+            var traversal = inner.CreateEntry("../escape.php");
+            using var output = new StreamWriter(traversal.Open());
+            output.Write("unsafe");
+        }
+        if (variant == "sibling-zip-overlay")
+        {
+            var overlay = inner.CreateEntry(".sokna-installation.json");
+            using var output = new StreamWriter(overlay.Open());
+            output.Write("{}");
+        }
+    }
+    payload = File.ReadAllBytes(nestedPath);
+}
 var declaredPayload = payload;
-var artifactPath = variant == "path-traversal" ? "../escape.bin" : "artifacts/local/payload.bin";
+var artifactPath = variant == "path-traversal" ? "../escape.bin" :
+    siblingFixture ? "artifacts/local/web-release.zip" : "artifacts/local/payload.bin";
 var artifact = new ReleaseArtifact(
     artifactPath,
     Convert.ToHexString(SHA256.HashData(declaredPayload)).ToLowerInvariant(),
     declaredPayload.LongLength,
     "local-web",
-    "payload");
+    siblingFixture ? "web-tree-zip-v1" : "payload");
 var now = DateTimeOffset.UtcNow;
 var created = variant == "expired" ? now.AddHours(-2) : now.AddMinutes(-1);
 var expires = variant == "expired" ? now.AddHours(-1) : now.AddHours(2);
@@ -70,7 +112,10 @@ var manifest = new ReleaseSetManifest(
     new ReleaseSetSignature(ReleaseSetVerifierStager.SignatureAlgorithm, "test-key", string.Empty),
     new ReleaseSetRequirements("0.1.0", "0.2.0", null, null),
     new[] { new ReleaseBaseline(baseline, null) },
-    emptyObject,
+    siblingFixture
+        ? JsonSerializer.SerializeToElement(new { local = new {
+            version = siblingVersion, managed_tree_sha256 = siblingTree, managed_files = siblingCount } })
+        : emptyObject,
     new Dictionary<string, ReleaseArtifact>(StringComparer.Ordinal) { ["local_payload"] = artifact },
     emptyArray,
     new[] { new InstallPlanStep("preflight", "all", false), new InstallPlanStep("stage", "local-web", false) },
