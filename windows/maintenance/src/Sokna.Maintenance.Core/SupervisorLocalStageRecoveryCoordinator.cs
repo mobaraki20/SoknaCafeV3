@@ -23,8 +23,8 @@ public sealed class SupervisorLocalStageRecoveryCoordinator
 {
     private readonly MaintenancePaths _paths;
     private readonly MaintenanceOperationStore _operations;
-    private readonly DurableJournal _journal;
-    private readonly SupervisorState _state;
+    private readonly DurableJournal? _journal;
+    private readonly SupervisorState? _state;
 
     public SupervisorLocalStageRecoveryCoordinator(
         MaintenancePaths paths, MaintenanceOperationStore operations,
@@ -36,8 +36,31 @@ public sealed class SupervisorLocalStageRecoveryCoordinator
         _state = state;
     }
 
+    // F1-S7D4B: reuse the exact recovery-console signed Stage provenance
+    // inspection without furnishing an operation executor or recovery writer.
+    // The private instance has no journal/state so its Reconcile fails closed.
+    private SupervisorLocalStageRecoveryCoordinator(
+        MaintenancePaths paths, MaintenanceOperationStore operations)
+    {
+        _paths = paths;
+        _operations = operations;
+        _journal = null;
+        _state = null;
+    }
+
+    public static LocalActivationReadiness InspectSignedStageReadOnly(
+        MaintenancePaths paths, string stageOperationId)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        return new SupervisorLocalStageRecoveryCoordinator(
+            paths, new MaintenanceOperationStore(paths))
+            .InspectActivationReadiness(stageOperationId);
+    }
+
     public LocalStageRecoveryOutcome Reconcile(string operationId, string operatorId)
     {
+        if (_journal is null || _state is null)
+            throw new InvalidOperationException("UPDATER_READ_ONLY_INSPECTOR_CANNOT_RECOVER");
         if (string.IsNullOrWhiteSpace(operationId) || operationId.Length != 32 ||
             !operationId.All(char.IsAsciiHexDigit))
             throw new InvalidDataException("stage_operation_id is invalid.");
