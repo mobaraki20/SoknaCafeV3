@@ -162,7 +162,7 @@ public static class PublicKernelSignedReceiptInspector
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken).ConfigureAwait(false);
             if (response.StatusCode != HttpStatusCode.OK ||
-                response.Headers.CacheControl is { NoStore: false } ||
+                response.Headers.CacheControl?.NoStore != true ||
                 response.Content.Headers.ContentLength is > MaxReceiptBytes)
                 throw new InvalidDataException(Rejected);
             await using var body = await response.Content.ReadAsStreamAsync(cancellationToken)
@@ -189,9 +189,14 @@ public static class PublicKernelSignedReceiptInspector
 
     private static bool AllowedEndpoint(Uri uri)
     {
+        // Bind to the existing Public-owned stable entrypoint, but keep the
+        // optional /public/ subfolder (or other configured base path) free.
+        // The release-attest ACTION is a proposed Public-owner addition;
+        // it is NOT implemented by current Public maintenance.php.
         if (!uri.IsAbsoluteUri || !string.IsNullOrEmpty(uri.UserInfo) ||
-            !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) ||
-            uri.AbsolutePath != "/v1/maintenance/attest")
+            uri.Query != "?action=release-attest" ||
+            !string.IsNullOrEmpty(uri.Fragment) ||
+            !uri.AbsolutePath.EndsWith("/maintenance.php", StringComparison.Ordinal))
             return false;
         if (uri.Scheme == Uri.UriSchemeHttps) return true;
         return uri.Scheme == Uri.UriSchemeHttp &&
