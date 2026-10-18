@@ -13,6 +13,7 @@ public sealed record MaintenancePaths(string DataRoot)
     public string RecoveryConsoleKeyPath => Path.Combine(SecretsRoot, "recovery-console.key");
     public string EngineDelegationKeyPath => Path.Combine(SecretsRoot, "engine-delegation.key");
     public string EngineDelegationsRoot => Path.Combine(UpdateRoot, "delegations");
+    public string ActivationPlansRoot => Path.Combine(UpdateRoot, "activation-plans");
     public string UpdateRoot => Path.Combine(DataRoot, "update");
     public string InboxRoot => Path.Combine(UpdateRoot, "inbox");
     public string OperationsRoot => Path.Combine(DataRoot, "operations");
