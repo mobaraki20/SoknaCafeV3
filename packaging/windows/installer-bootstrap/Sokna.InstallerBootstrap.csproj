@@ -17,6 +17,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup Condition="'$(CoreInstallerPath)' != ''">
-    <EmbeddedResource Include="$(CoreInstallerPath)" LogicalName="SoknaCoreInstaller" />
+    <EmbeddedResource Include="$(CoreInstallerPath)" LogicalName="WindowsServicesInstallerPayload" />
   </ItemGroup>
 </Project>
