@@ -34,6 +34,34 @@ jobs:
           & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
             inactive-sibling-writer (Join-Path $env:RUNNER_TEMP ('sokna-sibling-writer-'+[guid]::NewGuid().ToString('N')))
           if ($LASTEXITCODE -ne 0) { throw 'Inactive sibling writer regression failed' }
+      - name: Qualify legacy-Home standalone read-only collector (no new Supervisor API)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $fixture=Join-Path $env:RUNNER_TEMP ('SoknaReadOnlyHome-'+[guid]::NewGuid().ToString('N'))
+          $web=Join-Path $fixture 'Web'
+          $resources=Join-Path $web 'resources'
+          New-Item -ItemType Directory -Force -Path $resources | Out-Null
+          Set-Content -LiteralPath (Join-Path $web 'VERSION.txt') -Value '3.0.0-test-version' -Encoding UTF8
+          [ordered]@{format='sokna-local-managed-files-v1';files=@('VERSION.txt','resources/local-managed-files-v1.json')} |
+            ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $resources 'local-managed-files-v1.json') -Encoding UTF8
+          $oldSha=(Get-FileHash -LiteralPath (Join-Path $web 'VERSION.txt') -Algorithm SHA256).Hash
+          $result=@(& ./windows/maintenance/tests/home-host-readonly-preflight.ps1 -PackageRoot $fixture)
+          $json=($result -join [Environment]::NewLine)|ConvertFrom-Json
+          if ($json.format -ne 'sokna-home-host-readonly-evidence-v1' -or
+              -not $json.no_mutation_performed -or $json.upgrade_permitted -or
+              $json.activation_allowed -or $json.real_host_uat_complete -or
+              $json.new_supervisor_api_invoked -or $json.active_managed_tree_qualified -or
+              $json.web.version -ne '3.0.0-test-version') {
+            throw 'Legacy Home read-only collector fabricated readiness or misread baseline'
+          }
+          $newSha=(Get-FileHash -LiteralPath (Join-Path $web 'VERSION.txt') -Algorithm SHA256).Hash
+          if($oldSha -ne $newSha){throw 'Read-only collector changed Local version evidence'}
+          $blocked=$false
+          try { & ./windows/maintenance/tests/home-host-readonly-preflight.ps1 -PackageRoot $fixture -LocalUrl 'https://example.org/login.php' | Out-Null }
+          catch { $blocked=$true }
+          if(-not $blocked){throw 'Read-only collector accepted remote URL'}
+          Write-Host 'HOME_LEGACY_READONLY_PREFLIGHT_FIXTURE_PASS'
       - name: Verify independent machine lease, direct Engine collision and OS crash cleanup
         shell: pwsh
         run: |
