@@ -293,7 +293,19 @@ try {
   Assert ($statusAfterRecovery.Code -eq 200 -and -not[bool]$statusAfterRecovery.Data.data.blocked) 'Successful Stage evidence reconciliation left a false busy state'
   $finalCaps=Signed 'GET' '/v1/updates/capabilities' 'web-adapter' $null
   Assert (-not[bool]$finalCaps.Data.data.panel_update_ready) 'Recovery prematurely enabled panel update'
-  [ordered]@{format='sokna-f1-s3-manual-stage-evidence-recovery-v1';result='PASS';preflight_operation_id=$approvedId;stage_operation_id=$stageId;interrupted_stage_quarantined=$true;corrupt_stage_rejected=$true;advanced_highwater_rejected=$true;recovery_console_only=$true;explicit_stage_reconciled=$true;no_restage=$true;no_activation=$true;no_db_mutation=$true;panel_ready=$false}|ConvertTo-Json
+  # F1-S6C: a machine Job child may die mid-migration. Startup must NOT
+  # treat its durable running operation as success or as an idle updater.
+  $seedOutput=@(& dotnet $LeaseProbeDll seed-interrupted-migration $root 2>&1)
+  Assert ($LASTEXITCODE -eq 0 -and (($seedOutput -join ' ') -match 'INTERRUPTED_MIGRATION_OPERATION ([0-9a-f]{32})')) ('Could not seed crashed migration: '+($seedOutput -join ' '))
+  $interruptedMigrationId=[string]$Matches[1]
+  Stop-S $p;$p=$null
+  $p=Start-S
+  $quarantinedMigration=Signed 'GET' ('/v1/operations/'+$interruptedMigrationId) 'web-adapter' $null
+  Assert ($quarantinedMigration.Code -eq 200 -and $quarantinedMigration.Data.data.state -eq 'recovery_required' -and $quarantinedMigration.Data.data.result_code -eq 'SLOT_ENGINE_PARENT_INTERRUPTED_OUTCOME_UNPROVEN') 'Crashed Engine operation was not quarantined on Supervisor restart'
+  $busyMigration=Signed 'GET' '/v1/operations/active' 'web-adapter' $null
+  Assert ($busyMigration.Data.data.requires_recovery -and $busyMigration.Data.data.blocking_count -ge 1) 'Crashed migration was falsely reported idle'
+  Assert ((Get-FileHash -LiteralPath $seqPath -Algorithm SHA256).Hash -eq $beforeSequenceHash) 'Migration startup quarantine unexpectedly wrote anti-rollback state'
+  [ordered]@{format='sokna-f1-s3-manual-stage-evidence-recovery-v1';result='PASS';preflight_operation_id=$approvedId;stage_operation_id=$stageId;interrupted_stage_quarantined=$true;corrupt_stage_rejected=$true;advanced_highwater_rejected=$true;recovery_console_only=$true;explicit_stage_reconciled=$true;legacy_running_crash_quarantined=$true;no_restage=$true;no_activation=$true;no_db_mutation=$true;panel_ready=$false}|ConvertTo-Json
 }
 finally {
   Stop-S $p
