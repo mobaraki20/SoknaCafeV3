@@ -126,6 +126,10 @@ public static class CutoverLabSwitch
     private static Observed Observe(MaintenancePaths paths,string tx,string stage,
         string name,string mode,IReadOnlyList<string> args)
     {
+        if ((name=="success" && mode!="success") ||
+            (name=="gap" && mode!="pause-after-old") ||
+            (name=="target" && mode!="pause-after-new"))
+            throw new InvalidDataException(Rejected);
         var l = SafeLayout(paths,tx,name);
         var expected=ExactArgs(tx,stage,paths.DataRoot,name,mode);
         if(args.Count!=expected.Length || !args.SequenceEqual(expected,StringComparer.Ordinal))
