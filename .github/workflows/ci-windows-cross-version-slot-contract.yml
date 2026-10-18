@@ -232,5 +232,5 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & ./windows/maintenance/tests/s7e4-windows-dpapi-recovery-key-ci.ps1
+          & pwsh -NoProfile -File ./windows/maintenance/tests/s7e4-windows-dpapi-recovery-key-ci.ps1
           if ($LASTEXITCODE -ne 0) { throw 'S7E4B Windows cryptographic primitive fixture failed' }
