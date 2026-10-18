@@ -45,6 +45,10 @@ internal static class CutoverEvidenceWitnessProbe
         using var lease = MachineMutationLease.Acquire(paths,
             LocalCodeCutoverWriteAheadJournal.Owner);
         journal.Begin(lease, tx, operation.OperationId, old, target, installedHash);
+        // F1-S7D4B: the NEW canonical signed-Stage seal must never accept
+        // S7D4A's deliberately synthetic, unsigned fixture as Stage proof.
+        Denied(() => new LocalCutoverCanonicalStageSealGate(paths).Issue(lease, tx),
+            "unsigned/synthetic Stage elevated into canonical signed evidence");
         var gate = new LocalCutoverPreauthorizationGate(paths);
         var witness = gate.Issue(lease, tx);
         var result = gate.InspectAndBurn(lease, witness, tx);
@@ -98,6 +102,7 @@ internal static class CutoverEvidenceWitnessProbe
             wal_phase_drift_rejected = true,
             lease_required = true,
             release_stage_signed_provenance_tested = false,
+            synthetic_stage_rejected_by_canonical_gate = true,
             test_stage_is_synthetic = true,
             execution_authorized = false,
             panel_update_ready = false,
