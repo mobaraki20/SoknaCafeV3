@@ -12,8 +12,10 @@ function New-Root([string]$Name) {
   New-Item -ItemType Directory -Path $p -Force | Out-Null
   return $p
 }
-function New-Fixture([string]$Root,[string]$Variant,[long]$Sequence) {
-  $output = @(& dotnet $FixtureDll --root $Root --variant $Variant --sequence ([string]$Sequence) 2>&1)
+function New-Fixture([string]$Root,[string]$Variant,[long]$Sequence,[bool]$SeedStage=$false) {
+  $fixtureArgs = @('--root',$Root,'--variant',$Variant,'--sequence',([string]$Sequence))
+  if($SeedStage){$fixtureArgs += '--seed-stage'}
+  $output = @(& dotnet $FixtureDll @fixtureArgs 2>&1)
   Assert ($LASTEXITCODE -eq 0) ("Fixture creation failed: " + ($output -join ' '))
   return (($output -join [Environment]::NewLine) | ConvertFrom-Json)
 }
@@ -79,12 +81,12 @@ Assert-NoMutation $root 'identity-drift'
 $checks.Add('exact_baseline_mismatch_no_mutation')
 
 $root=New-Root 'sequence-monotonic'
-$f=New-Fixture $root 'valid' 200
-$stage=Verify $f 'verify-stage'
-Assert ($stage.Exit -eq 0) ('Existing stage setup failed: ' + $stage.Raw)
+$f=New-Fixture $root 'valid' 200 $true
+$stageReceiptObject=$f.seeded_stage
+Assert ($null -ne $stageReceiptObject) 'Isolated signed fixture failed to seed a Stage'
 $sequencePath=Join-Path $root 'update/release-sequence.json'
 $before=(Get-FileHash -LiteralPath $sequencePath -Algorithm SHA256).Hash
-$stageRoot=[string]$stage.Data.receipt.stage_root
+$stageRoot=[string]$stageReceiptObject.stage_root
 $stageReceipt=Join-Path $stageRoot 'stage-receipt.json'
 $receiptBefore=(Get-FileHash -LiteralPath $stageReceipt -Algorithm SHA256).Hash
 $older=New-Fixture $root 'valid' 199
