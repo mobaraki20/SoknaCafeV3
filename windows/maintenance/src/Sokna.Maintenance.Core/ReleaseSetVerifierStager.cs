@@ -2,23 +2,24 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace Sokna.Maintenance.Core;
 
 public sealed record ReleaseSetPreflightResult(
-    string ReleaseSetId,
-    long Sequence,
-    string ReleaseType,
-    string PackageSha256,
-    string ManifestSha256,
-    bool SignatureVerified,
-    bool ArtifactIntegrityVerified,
-    bool ExactBaselineVerified,
-    bool ActivationPerformed,
-    bool DatabaseMutationPerformed,
-    bool StagePerformed,
-    bool PanelActivationReady);
+    [property: JsonPropertyName("release_set_id")] string ReleaseSetId,
+    [property: JsonPropertyName("sequence")] long Sequence,
+    [property: JsonPropertyName("release_type")] string ReleaseType,
+    [property: JsonPropertyName("package_sha256")] string PackageSha256,
+    [property: JsonPropertyName("manifest_sha256")] string ManifestSha256,
+    [property: JsonPropertyName("signature_verified")] bool SignatureVerified,
+    [property: JsonPropertyName("artifact_integrity_verified")] bool ArtifactIntegrityVerified,
+    [property: JsonPropertyName("exact_baseline_verified")] bool? ExactBaselineVerified,
+    [property: JsonPropertyName("activation_performed")] bool ActivationPerformed,
+    [property: JsonPropertyName("database_mutation_performed")] bool DatabaseMutationPerformed,
+    [property: JsonPropertyName("stage_performed")] bool StagePerformed,
+    [property: JsonPropertyName("panel_activation_ready")] bool PanelActivationReady);
 
 public sealed class ReleaseSetVerifierStager
 {
@@ -111,7 +112,8 @@ public sealed class ReleaseSetVerifierStager
 
         return new ReleaseSetPreflightResult(
             manifest.ReleaseSetId, manifest.Sequence, manifest.ReleaseType,
-            packageHash, manifestHash, true, true, true,
+            packageHash, manifestHash, true, true,
+            manifest.ReleaseType is "windows_components_only" or "updater_only" ? null : true,
             ActivationPerformed: false, DatabaseMutationPerformed: false,
             StagePerformed: false, PanelActivationReady: false);
     }
