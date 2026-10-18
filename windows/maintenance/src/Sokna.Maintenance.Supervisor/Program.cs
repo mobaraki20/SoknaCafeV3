@@ -342,6 +342,40 @@ app.MapPost("/v1/local-updates/activation-plan", async context =>
     }
 });
 
+// Signed read-only retrieval after caller/browser or Supervisor restart.
+// Re-checks the committed plan and its exact signed Stage/installed baseline.
+app.MapGet("/v1/local-updates/activation-plans/{planId}", async context =>
+{
+    try
+    {
+        var id = context.Request.RouteValues["planId"] as string ?? "";
+        var plan = localActivationPlanCoordinator.Inspect(id);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, "planned_blocked",
+            "ACTIVATION_DRY_RUN_BLOCKED", false,
+            new { plan, panel_update_ready = false, activation_allowed = false });
+    }
+    catch (InvalidOperationException ex) when (ex.Message == "UPDATER_OPERATION_BUSY")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", "UPDATER_OPERATION_BUSY", true,
+            new { panel_update_ready = false, activation_allowed = false });
+    }
+    catch (InvalidDataException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false,
+            "rejected", "ACTIVATION_PLAN_EVIDENCE_UNPROVEN", false,
+            new { panel_update_ready = false, activation_allowed = false });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+        System.Security.Cryptography.CryptographicException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "ACTIVATION_PLAN_STORAGE_UNAVAILABLE", true,
+            new { panel_update_ready = false, activation_allowed = false,
+                last_error_type = ex.GetType().Name });
+    }
+});
+
 // Signed, read-only capability negotiation. No unimplemented route is advertised.
 app.MapGet("/v1/updates/capabilities", async context =>
 {
