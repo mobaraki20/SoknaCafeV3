@@ -110,7 +110,43 @@ try {
   $after=Signed 'GET' ('/v1/operations/'+$id) 'web-adapter' $null
   Assert ($after.Data.data.state -eq 'rejected_pre_mutation') 'Stale durable result not revoked'
   No-Stage
-  [ordered]@{format='sokna-f1-p2d-signed-preflight-v1';result='PASS';operation_id=$id;no_stage=$true;no_sequence_update=$true;restart_reconciled=$true;tamper_rejected=$true;panel_ready=$false}|ConvertTo-Json
+
+  # F1-S2: Stage cannot be invoked without a verified Preflight operation.
+  $unqualified=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' ([ordered]@{preflight_operation_id='00000000000000000000000000000000';operator_id='user:test'}) 'p2d-unqualified'
+  Assert ($unqualified.Code -eq 422) 'Stage accepted unqualified Preflight ID'
+  $legacy=Signed 'POST' '/v1/update/stage' 'web-adapter' ([ordered]@{package_ref=$ref;operator_id='user:test'}) 'p2d-legacy-stage'
+  Assert ($legacy.Code -eq 410 -and $legacy.Data.code -eq 'LEGACY_STAGE_ROUTE_DISABLED') 'Legacy bypass route is still active'
+  No-Stage
+
+  # Restore the original byte-identical signed package, preflight it under a
+  # new durable operation ID, then Stage only that exact approved release.
+  Copy-Item -LiteralPath $f.package -Destination $package -Force
+  $fresh=Signed 'POST' '/v1/local-updates/preflight' 'web-adapter' $body 'p2d-for-stage'
+  Assert ($fresh.Code -eq 200 -and $fresh.Data.data.operation.state -eq 'verified') 'Fresh preflight failed'
+  $approvedId=[string]$fresh.Data.operation_id
+  $wrongActor=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' ([ordered]@{preflight_operation_id=$approvedId;operator_id='user:other'}) 'p2d-stage-wrong-actor'
+  Assert ($wrongActor.Code -eq 422) 'Stage allowed wrong operator'
+  $stageBody=[ordered]@{preflight_operation_id=$approvedId;operator_id='user:test'}
+  $stage=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' $stageBody 'p2d-stage-valid'
+  Assert ($stage.Code -eq 200 -and $stage.Data.data.operation.state -eq 'staged') ('Canonical Stage failed: '+($stage.Data|ConvertTo-Json -Depth 8))
+  $stageId=[string]$stage.Data.operation_id
+  Assert ([bool]$stage.Data.data.receipt.signature_verified -and [bool]$stage.Data.data.receipt.artifact_integrity_verified) 'Staged receipt lacks signature/hash evidence'
+  Assert (-not[bool]$stage.Data.data.receipt.activation_performed -and -not[bool]$stage.Data.data.receipt.database_mutation_performed) 'Stage mutated app or database'
+  Assert ((Test-Path -LiteralPath (Join-Path $root 'update/release-sequence.json'))) 'Stage did not commit monotonic sequence'
+  Assert (Test-Path -LiteralPath (Join-Path ([string]$stage.Data.data.receipt.stage_root) 'stage-receipt.json')) 'Stage receipt not durable'
+  $stageRetry=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' $stageBody 'p2d-stage-valid'
+  Assert ($stageRetry.Code -eq 200 -and $stageRetry.Data.operation_id -eq $stageId -and [bool]$stageRetry.Data.data.reconciled) 'Stage retry not idempotent'
+  $stageConflict=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' ([ordered]@{preflight_operation_id=$id;operator_id='user:test'}) 'p2d-stage-valid'
+  Assert ($stageConflict.Code -ne 200) 'Stage reused idempotency key for a different preflight'
+  Stop-S $p;$p=$null
+  $p=Start-S
+  $afterRestart=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' $stageBody 'p2d-stage-valid'
+  Assert ($afterRestart.Code -eq 200 -and $afterRestart.Data.operation_id -eq $stageId) 'Restart Stage lost durable identity'
+  $stageState=Signed 'GET' ('/v1/operations/'+$stageId) 'web-adapter' $null
+  Assert ($stageState.Code -eq 200 -and $stageState.Data.data.state -eq 'staged') 'Staged state lost after restart'
+  $capsAfter=Signed 'GET' '/v1/updates/capabilities' 'web-adapter' $null
+  Assert ($capsAfter.Code -eq 200 -and -not[bool]$capsAfter.Data.data.panel_update_ready) 'Stage falsely enabled Activate'
+  [ordered]@{format='sokna-f1-p2d-signed-stage-v2';result='PASS';preflight_operation_id=$approvedId;stage_operation_id=$stageId;preflight_restart=$true;preflight_tamper_rejected=$true;stage_restarted=$true;legacy_stage_disabled=$true;no_activation=$true;no_db_mutation=$true;panel_ready=$false}|ConvertTo-Json
 }
 finally {
   Stop-S $p
