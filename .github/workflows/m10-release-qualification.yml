@@ -69,6 +69,15 @@ jobs:
           sudo apt-get update -qq
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mariadb-client
           bash windows/maintenance/tests/s7e1-disposable-mariadb-restore-drill.sh
+      - name: F1-S7E2A real Apache HTTP lifecycle and fail-closed pointer gap (Linux disposable)
+        env:
+          SOKNA_APACHE_CI_ONLY: '1'
+        run: |
+          if ! command -v apache2 >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq apache2
+          fi
+          python3 windows/maintenance/tests/s7e2a-real-apache-http-ci.py
       - name: Re-run mature component contracts
         run: |
           python3 tests/scds-m6-gate.py
