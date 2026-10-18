@@ -281,3 +281,84 @@ jobs:
           assert all(c['status'] in {'pending','passed','failed'} for c in x['checks'])
           print('Manual UAT contract recorded; CI does not fabricate physical-device PASS evidence.')
           PY
+
+  # F1-S7E3B: Two distinct GitHub-hosted VMs, never a shared container,
+  # transport encrypted TEST data via GitHub artifacts (off-runner boundary).
+  # The disposable test private key is a separate fixture artifact: this
+  # DOES NOT qualify production KMS/key isolation or offsite retention.
+  s7e3b_offhost_export:
+    name: F1-S7E3B encrypt and export MariaDB fixture
+    runs-on: ubuntu-latest
+    outputs:
+      backup_sha256: ${{ steps.lab_export.outputs.backup_sha256 }}
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install scoped MariaDB client
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mariadb-client
+      - name: Encrypt signed fixture on source runner
+        id: lab_export
+        env: &s7e3b_env
+          SOKNA_S7E3B_CI_ONLY: '1'
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: root
+          SOKNA_ARTIFACT_OUTPUT: ${{ runner.temp }}/sokna-s7e3b-export
+        run: bash windows/maintenance/tests/s7e3b-offhost-artifact.sh export
+      - uses: actions/upload-artifact@v4
+        with:
+          name: s7e3b-ci-encrypted-backup
+          path: ${{ runner.temp }}/sokna-s7e3b-export/backup/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: s7e3b-ci-test-only-key
+          path: ${{ runner.temp }}/sokna-s7e3b-export/test-only-key/
+          if-no-files-found: error
+          retention-days: 1
+
+  s7e3b_offhost_restore:
+    name: F1-S7E3B independent runner encrypted restore and corruption denial
+    needs: s7e3b_offhost_export
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install independent restore runner MariaDB client
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mariadb-client
+      - uses: actions/download-artifact@v4
+        with:
+          name: s7e3b-ci-encrypted-backup
+          path: ${{ runner.temp }}/sokna-s7e3b-import/backup
+      - uses: actions/download-artifact@v4
+        with:
+          name: s7e3b-ci-test-only-key
+          path: ${{ runner.temp }}/sokna-s7e3b-import/test-only-key
+      - name: Independently verify cipher/signature, corruption denial and MariaDB restore
+        env:
+          SOKNA_S7E3B_CI_ONLY: '1'
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: root
+          SOKNA_ARTIFACT_INPUT: ${{ runner.temp }}/sokna-s7e3b-import
+          SOKNA_EXPECTED_BACKUP_SHA256: ${{ needs.s7e3b_offhost_export.outputs.backup_sha256 }}
+        run: bash windows/maintenance/tests/s7e3b-offhost-artifact.sh restore
