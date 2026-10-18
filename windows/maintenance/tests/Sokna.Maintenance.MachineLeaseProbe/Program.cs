@@ -4,11 +4,11 @@ using Sokna.Maintenance.Core;
 if (args.Length == 3 && args[0] == "permit" &&
     int.TryParse(args[2], out var permitHoldMs) && permitHoldMs is >= 0 and <= 60000)
 {
-    var paths = new MaintenancePaths(Path.GetFullPath(args[1]));
-    new SecretStore(paths).EnsureKeys();
-    using var lease = MachineMutationLease.Acquire(paths, EngineDelegationPermit.Owner);
-    var exactArgs = new[] { "local-slot-migrate", "--data-root", paths.DataRoot };
-    var permitId = EngineDelegationPermit.Issue(paths, lease, new string('a', 32), exactArgs);
+    var permitPaths = new MaintenancePaths(Path.GetFullPath(args[1]));
+    new SecretStore(permitPaths).EnsureKeys();
+    using var lease = MachineMutationLease.Acquire(permitPaths, EngineDelegationPermit.Owner);
+    var exactArgs = new[] { "local-slot-migrate", "--data-root", permitPaths.DataRoot };
+    var permitId = EngineDelegationPermit.Issue(permitPaths, lease, new string('a', 32), exactArgs);
     Console.WriteLine("ENGINE_PERMIT_ISSUED " + permitId);
     Console.Out.Flush();
     if (permitHoldMs > 0) Thread.Sleep(permitHoldMs);
