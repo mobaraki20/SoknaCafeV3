@@ -348,13 +348,39 @@ app.MapGet("/v1/operations/by-idempotency/{key}", async context =>
 
 app.MapGet("/v1/operations/active", async context =>
 {
-    await WriteEnvelope(context, StatusCodes.Status200OK, true, "idle_or_query_by_id", "OK", false, new
+    try
     {
-        query_by_operation_id = "/v1/operations/{operation_id}",
-        query_by_idempotency = "/v1/operations/by-idempotency/{key}",
-        activation_enabled = true,
-        database_mutation_enabled = false
-    });
+        var active = operations.ListActive();
+        await WriteEnvelope(context, StatusCodes.Status200OK, true,
+            active.Count == 0 ? "idle" : "in_progress", "OK", false,
+            new { active_operations = active, active_count = active.Count,
+                  query_by_operation_id = "/v1/operations/{operation_id}",
+                  query_by_idempotency = "/v1/operations/by-idempotency/{key}",
+                  history_url = "/v1/operations/recent" });
+    }
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE", false,
+            new { active_count = (int?)null, last_error_type = ex.GetType().Name });
+    }
+});
+
+app.MapGet("/v1/operations/recent", async context =>
+{
+    try
+    {
+        var history = operations.ListRecent(30);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true,
+            "history", "OK", false, new { operations = history, total_returned = history.Count,
+               historical_failures_are_not_current_health = true });
+    }
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE", false,
+            new { last_error_type = ex.GetType().Name });
+    }
 });
 
 app.MapPost("/v1/update/stage", async context =>
