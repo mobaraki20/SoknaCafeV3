@@ -204,6 +204,5 @@ public sealed class InactiveLocalHostReadinessInspector
             InvalidOperationException or TimeoutException or JsonException or
             Win32Exception or System.Security.Cryptography.CryptographicException or
             System.Security.SecurityException or ArgumentException or
-            System.ServiceProcess.ServiceProcessTimeoutException or
             System.Net.Http.HttpRequestException or System.Net.Sockets.SocketException;
 }
