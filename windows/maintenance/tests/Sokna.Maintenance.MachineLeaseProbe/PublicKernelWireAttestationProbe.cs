@@ -41,7 +41,7 @@ internal static class PublicKernelWireAttestationProbe
                     detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
                 var first = await reader.ReadLineAsync(cts.Token);
                 Check(first is not null &&
-                    first.StartsWith("GET /v1/maintenance/attest HTTP/1.", StringComparison.Ordinal),
+                    first.StartsWith("GET /public/maintenance.php?action=release-attest HTTP/1.", StringComparison.Ordinal),
                     "unexpected HTTP route");
                 string? nonce = null;
                 string? requestId = null;
@@ -64,7 +64,7 @@ internal static class PublicKernelWireAttestationProbe
                 await net.WriteAsync(body, cts.Token);
                 await net.FlushAsync(cts.Token);
             }, cts.Token);
-            var endpoint = new Uri($"http://127.0.0.1:{port}/v1/maintenance/attest");
+            var endpoint = new Uri($"http://127.0.0.1:{port}/public/maintenance.php?action=release-attest");
             var proof = PublicKernelSignedReceiptInspector.ProbeAsync(
                 endpoint, pinnedSpki, KeyId, Installation, 7, cts.Token)
                 .GetAwaiter().GetResult();
@@ -132,11 +132,11 @@ internal static class PublicKernelWireAttestationProbe
             Installation, 7, now), "unapproved key rotation");
 
         Reject(() => PublicKernelSignedReceiptInspector.ProbeAsync(
-            new Uri("http://example.com/v1/maintenance/attest"),
+            new Uri("http://example.com/public/maintenance.php?action=release-attest"),
             pinnedSpki, KeyId, Installation, 7).GetAwaiter().GetResult(),
             "remote HTTP downgrade");
         Reject(() => PublicKernelSignedReceiptInspector.ProbeAsync(
-            new Uri("https://example.com/untrusted/health"),
+            new Uri("https://example.com/public/health?action=release-attest"),
             pinnedSpki, KeyId, Installation, 7).GetAwaiter().GetResult(),
             "business/cached health endpoint");
 
