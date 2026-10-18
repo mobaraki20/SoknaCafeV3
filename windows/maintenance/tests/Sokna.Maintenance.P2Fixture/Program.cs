@@ -54,7 +54,8 @@ if (siblingFixture)
             "VERSION.txt", "public/index.php", "resources/local-managed-files-v1.json" } }, AtomicFile.JsonOptions));
     siblingTree = LocalManagedTreeAttestation.Compute(source, siblingCount);
     if (variant == "sibling-corrupt-tree") siblingTree = new string('f', 64);
-    var nestedPath = Path.Combine(root, "inner-local-web.zip");
+    var nestedPath = Path.Combine(root, "inner-local-web-" + sequence + "-" + variant + ".zip");
+    if (File.Exists(nestedPath)) File.Delete(nestedPath);
     using (var inner = ZipFile.Open(nestedPath, ZipArchiveMode.Create))
     {
         foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
