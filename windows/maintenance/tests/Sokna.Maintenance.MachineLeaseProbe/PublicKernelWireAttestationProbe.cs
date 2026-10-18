@@ -175,7 +175,7 @@ internal static class PublicKernelWireAttestationProbe
         PublicKernelSignedObservation observation)
     {
         var data = PublicKernelSignedReceiptInspector.CanonicalSignedBytes(observation);
-        var sig = key.SignData(data, HashAlgorithmName.SHA256);
+        var sig = key.SignData(data, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
         return observation with {Signature=Convert.ToBase64String(sig)};
     }
     private static void Check(bool condition, string reason)
