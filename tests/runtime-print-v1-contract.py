@@ -78,7 +78,13 @@ def main() -> None:
     check(loopback["network"]["max_connections"] == 24, "Print loopback connection bound drifted")
     check(loopback["network"]["default_max_body_bytes"] == 8192, "Print loopback default body bound drifted")
     check(loopback["network"]["preview_max_body_bytes"] == 262144, "Print preview body bound drifted")
-    check(set(loopback["routes"]) == {"/v1/wake", "/v1/preview"}, "Print loopback route surface drifted")
+    check(set(loopback["routes"]) == {"/v1/wake", "/v1/preview", "/v1/capabilities"}, "Print loopback route surface drifted")
+    capabilities = loopback["routes"]["/v1/capabilities"]
+    check(capabilities["request"]["properties"]["type"]["const"] == "print.capabilities", "Print capability negotiation type drifted")
+    check(capabilities["request"]["properties"]["protocol_version"]["const"] == 1, "Print capability negotiation protocol drifted")
+    check(capabilities["success"]["constants"]["renderer_owner"] == "ReceiptRenderer" and capabilities["success"]["constants"]["pdf_writer"] == "ReceiptPdfWriter", "Print capability renderer provenance drifted")
+    check(set(capabilities["success"]["advertised_capabilities"]) == {"wake_v1", "preview_png_v1", "preview_pdf_v1"}, "Print capability list drifted")
+    check(any("does not grant business authorization" in x for x in capabilities["semantics"]), "Print capabilities must never grant business authorization")
     wake = loopback["routes"]["/v1/wake"]
     check(wake["request"]["properties"]["job_ids"]["max_items"] == 50, "Print wake job bound drifted")
     check(any("nudge only" in x for x in wake["semantics"]), "Print wake must remain non-authoritative")
