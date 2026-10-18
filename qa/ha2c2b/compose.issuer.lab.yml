@@ -1,0 +1,71 @@
+services:
+  database:
+    image: mariadb:11.4
+    environment:
+      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+      MARIADB_DATABASE: sokna_ha2_lab_abcdef12
+      MARIADB_USER: sokna_lab
+      MARIADB_PASSWORD: ${SOKNA_LAB_PASSWORD:?lab password required}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 35
+    networks: [consumer_zone]
+  anchor:
+    image: mariadb:11.4
+    environment:
+      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+      MARIADB_DATABASE: sokna_ha2_anchor_abcdef12
+      MARIADB_USER: sokna_anchor_lab
+      MARIADB_PASSWORD: ${SOKNA_ANCHOR_LAB_PASSWORD:?anchor password required}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 35
+    networks: [issuer_zone]
+  issuer:
+    build:
+      context: .
+      dockerfile: Dockerfile.issuer.lab
+    environment:
+      SOKNA_HA2B_DISPOSABLE_CONFIRM: YES_DISPOSABLE_NO_PRODUCTION
+      SOKNA_ISSUER_TEST_TOKEN: ${SOKNA_ISSUER_TEST_TOKEN:?test token required}
+      SOKNA_HA2C_ANCHOR_DB_HOST: anchor
+      SOKNA_HA2C_ANCHOR_DB_NAME: sokna_ha2_anchor_abcdef12
+      SOKNA_HA2C_ANCHOR_DB_USER: sokna_anchor_lab
+      SOKNA_HA2C_ANCHOR_DB_PASS: ${SOKNA_ANCHOR_LAB_PASSWORD:?anchor password required}
+    command: ["php", "source/issuer_entry.php"]
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/public') === false ? 1 : 0);"]
+      interval: 2s
+      timeout: 4s
+      retries: 30
+    depends_on:
+      anchor:
+        condition: service_healthy
+    networks: [issuer_zone, consumer_zone]
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.issuer.lab
+    environment:
+      SOKNA_HA2B_DISPOSABLE_CONFIRM: YES_DISPOSABLE_NO_PRODUCTION
+      SOKNA_ISSUER_TEST_TOKEN: ${SOKNA_ISSUER_TEST_TOKEN:?test token required}
+      SOKNA_HA2B_DB_HOST: database
+      SOKNA_HA2B_DB_NAME: sokna_ha2_lab_abcdef12
+      SOKNA_HA2B_DB_USER: sokna_lab
+      SOKNA_HA2B_DB_PASS: ${SOKNA_LAB_PASSWORD:?lab password required}
+    command: ["php", "tests/run_issuer_consumer_lab.php"]
+    depends_on:
+      issuer:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    networks: [consumer_zone]
+networks:
+  consumer_zone:
+    internal: true
+  issuer_zone:
+    internal: true
