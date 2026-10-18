@@ -1,0 +1,36 @@
+name: SOKNA HA2C2A Separate MariaDB Anchor Lab
+on:
+  push:
+    branches: [test/ha2c2a-anchor-ci]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sokna-ha2c2a-lab-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  evidence-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: qa/ha2b2b
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint verifier and lab harness
+        run: |
+          php -l source/InstalledStateEvidenceVerifier.php
+          php -l tests/run_ha2c1_real_db.php
+          php -l source/SeparateLabEpochAnchor.php
+          php -l tests/run_ha2c2_real_anchor.php
+          docker compose version
+      - name: Run real MariaDB transaction, crash, evidence and independent anchor suites
+        run: bash ./run_disposable_lab.sh
+      - name: Upload sanitized real DB lab evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-ha2c2a-anchor-lab-evidence
+          path: qa/ha2b2b/ci-artifacts/*.json
+          if-no-files-found: warn
+          retention-days: 7
