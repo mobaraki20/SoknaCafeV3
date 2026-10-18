@@ -159,9 +159,23 @@ public sealed class WindowsJobChildProcess : IDisposable
             _disposed = true;
             try { _process.WaitForExit(5000); } catch { }
         }
+        // CreateProcessW launched the process, so this managed Process was
+        // attached via GetProcessById, not Process.Start. Process.ExitCode
+        // throws InvalidOperationException for attached processes on .NET.
+        // Read the OS exit status directly from the existing process handle.
+        int exitCode = -1;
+        if (finished)
+        {
+            if (!GetExitCodeProcess(_process.Handle, out var nativeExitCode))
+                throw new Win32Exception(Marshal.GetLastWin32Error(),
+                    "Unable to read a Job-bound child exit status.");
+            exitCode = unchecked((int)nativeExitCode);
+            if (!Task.WhenAll(stdoutTask, stderrTask).Wait(TimeSpan.FromSeconds(5)))
+                throw new TimeoutException("Job-bound child output pipes did not close after process exit.");
+        }
         var stdout = stdoutTask.IsCompleted ? stdoutTask.GetAwaiter().GetResult() : string.Empty;
         var stderr = stderrTask.IsCompleted ? stderrTask.GetAwaiter().GetResult() : string.Empty;
-        return new WindowsJobChildOutcome(finished, finished ? _process.ExitCode : -1, stdout, stderr, ProcessId);
+        return new WindowsJobChildOutcome(finished, exitCode, stdout, stderr, ProcessId);
     }
 
     private static string Quote(string argument)
@@ -296,6 +310,9 @@ public sealed class WindowsJobChildProcess : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr handle);
