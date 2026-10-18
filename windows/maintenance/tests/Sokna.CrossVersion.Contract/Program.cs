@@ -80,5 +80,29 @@ try {
  File.WriteAllText(Path.Combine(historyPaths.OperationsRoot,"op-corrupt-fixture.json"),"{bad-json");
  try { _ = store.ListActive(); throw new InvalidOperationException("corrupt evidence falsely accepted"); }
  catch(JsonException) { Console.WriteLine("PASS corrupt durable operation evidence rejects fake idle"); }
+ File.Delete(Path.Combine(historyPaths.OperationsRoot,"op-corrupt-fixture.json"));
+ var anchorPath=Path.Combine(historyPaths.OperationsRoot,"op-"+first.OperationId+".json");
+ var originalReceipt=File.ReadAllText(anchorPath);
+ // A syntactically valid but partial receipt must also reject fake idle.
+ var missingHash=JsonNode.Parse(originalReceipt)!.AsObject();
+ missingHash["canonical_request_sha256"]=null;
+ File.WriteAllText(anchorPath,missingHash.ToJsonString());
+ ExpectBlocked(()=>{ _=store.ListActive(); },"partial operation missing required hash");
+ ExpectBlocked(()=>{ _=store.Get(first.OperationId); },"single operation lookup rejects missing hash");
+ File.WriteAllText(anchorPath,originalReceipt);
+ // The durable filename must agree with operation_id; do not trust a mismatched JSON claim.
+ var foreignReceipt=JsonNode.Parse(originalReceipt)!.AsObject();
+ foreignReceipt["operation_id"]="different-operation-id";
+ File.WriteAllText(anchorPath,foreignReceipt.ToJsonString());
+ ExpectBlocked(()=>{ _=store.ListActive(); },"durable filename and JSON operation id mismatch");
+ File.WriteAllText(anchorPath,originalReceipt);
+ Check(store.ListActive().Any(op=>op.OperationId==first.OperationId),"valid evidence readable after restoring receipt");
+ // A dangling index is corrupt durable evidence, never an ordinary 404.
+ var idemHash=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(anchorKey))).ToLowerInvariant();
+ var idemPath=Path.Combine(historyPaths.OperationsRoot,"idem-"+idemHash+".txt");
+ File.WriteAllText(idemPath,"missing-durable-op");
+ ExpectBlocked(()=>{ _=store.GetByIdempotencyKey(anchorKey); },"dangling idempotency index");
+ Check(!MaintenanceOperationStore.IsValidIdempotencyKey("../bad") &&
+       MaintenanceOperationStore.IsValidIdempotencyKey(anchorKey),"idempotency key format guard");
  Console.WriteLine("WINDOWS_CROSS_VERSION_CONTRACT_PASS");
 } finally { try {Directory.Delete(baseDir,recursive:true);}catch {} }
