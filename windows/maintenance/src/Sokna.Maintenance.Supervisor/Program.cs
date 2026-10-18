@@ -47,6 +47,7 @@ var stageRestartReconciler = new SupervisorStageRestartReconciler(operations, jo
 var localStageRecoveryCoordinator = new SupervisorLocalStageRecoveryCoordinator(paths, operations, journal, state);
 var localActivationPlanCoordinator = new SupervisorLocalActivationPlanCoordinator(paths, operations, localStageRecoveryCoordinator, journal, state);
 var inactiveCandidateCoordinator = new SupervisorInactiveLocalCandidateCoordinator(paths, operations, localStageRecoveryCoordinator, journal, state);
+var inactiveSlotCoordinator = new SupervisorInactiveLocalSlotCoordinator(paths, operations, inactiveCandidateCoordinator, journal, state);
 // No listening/regular update writes until interrupted Stage evidence is quarantined.
 _ = stageRestartReconciler.ReconcileStoppedProcess();
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
@@ -91,16 +92,17 @@ app.Use(async (context, next) =>
     var isLocalReleaseStage = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/stage", StringComparison.Ordinal);
     var isLocalActivationPlan = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/activation-plan", StringComparison.Ordinal);
     var isInactiveCandidate = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/prepare-inactive", StringComparison.Ordinal);
+    var isInactiveSlot = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/prepare-inactive-slot", StringComparison.Ordinal);
     var isLocalStageRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/reconcile-stage", StringComparison.Ordinal);
     var isStageMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/update/stage", StringComparison.Ordinal);
     var isLocalSlotMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/home-cycle", StringComparison.Ordinal);
     var isProductionMigration = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/migrate", StringComparison.Ordinal);
     var isProductionRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/recover", StringComparison.Ordinal);
-    var isMutation = isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isLocalStageRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
+    var isMutation = isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
-            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/activation-plan", "POST /v1/local-updates/prepare-inactive", "POST /v1/local-updates/reconcile-stage", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
+            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/activation-plan", "POST /v1/local-updates/prepare-inactive", "POST /v1/local-updates/prepare-inactive-slot", "POST /v1/local-updates/reconcile-stage", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
         return;
     }
 
@@ -153,7 +155,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isStageMutation) && keyId != "web-adapter")
+    if ((isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isStageMutation) && keyId != "web-adapter")
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
@@ -427,6 +429,61 @@ app.MapPost("/v1/local-updates/prepare-inactive", async context =>
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
             "evidence_unavailable", "INACTIVE_LOCAL_EVIDENCE_UNAVAILABLE", true,
             new { error_type = ex.GetType().Name, promotion_qualified = false });
+    }
+});
+
+// F1-S7C2: prepare a verified Local Web sibling on the real Apache host.
+// Must retain stable active junction, machine persistent, DB and Public.
+app.MapPost("/v1/local-updates/prepare-inactive-slot", async context =>
+{
+    if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var idempotencyKey))
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "IDEMPOTENCY_KEY_REQUIRED", false, new { });
+        return;
+    }
+    try
+    {
+        var body = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<InactiveLocalSlotRequest>(
+            body, AtomicFile.JsonOptions)
+            ?? throw new InvalidDataException("Inactive Local slot request missing.");
+        var result = inactiveSlotCoordinator.Prepare(request.StageOperationId,
+            request.OperatorId, idempotencyKey, request.PrivateCandidateIdempotencyKey);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, "inactive_slot_prepared",
+            "INACTIVE_LOCAL_SLOT_NOT_ACTIVATABLE", false,
+            new { result.Receipt, result.Created, result.Reconciled,
+                activation_allowed = false, panel_update_ready = false,
+                database_mutation_performed = false, public_mutation_performed = false });
+    }
+    catch (JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "REQUEST_JSON_INVALID", false, new { });
+    }
+    catch (InvalidOperationException ex) when (ex.Message is
+        "UPDATER_OPERATION_BUSY" or "INACTIVE_SLOT_RECOVERY_REQUIRED" or
+        "INACTIVE_SLOT_EVIDENCE_CONFLICT" or MachineMutationLease.ConflictCode or
+        "INACTIVE_CANDIDATE_RECONCILIATION_REQUIRED" or
+        "INACTIVE_CANDIDATE_CONFLICT_OR_TAMPER")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", ex.Message, true, new { activation_allowed = false });
+    }
+    catch (InvalidDataException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false,
+            "rejected", "INACTIVE_SLOT_HOST_OR_SOURCE_UNQUALIFIED", false,
+            new { activation_allowed = false, panel_update_ready = false });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+        System.Security.Cryptography.CryptographicException or
+        System.ComponentModel.Win32Exception ||
+        ex is InvalidOperationException && ex.Message == MachineMutationLease.UnavailableCode)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "INACTIVE_SLOT_PREPARE_UNAVAILABLE", true,
+            new { error_type = ex.GetType().Name, activation_allowed = false });
     }
 });
 
