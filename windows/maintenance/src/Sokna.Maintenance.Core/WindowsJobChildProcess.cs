@@ -20,7 +20,7 @@ public sealed class WindowsJobChildProcess : IDisposable
     private const uint CreateSuspended = 0x00000004;
     private const uint CreateNoWindow = 0x08000000;
     private const uint StartfUseStdHandles = 0x00000100;
-    private const uint JobObjectExtendedLimitInformation = 9;
+    private const uint ExtendedLimitInformationClass = 9;
     private const uint JobObjectLimitKillOnJobClose = 0x00002000;
     private const uint Infinite = 0xffffffff;
     private const uint HandleFlagInherit = 0x00000001;
@@ -87,7 +87,7 @@ public sealed class WindowsJobChildProcess : IDisposable
             try
             {
                 Marshal.StructureToPtr(limits, memory, false);
-                if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, memory, (uint)length))
+                if (!SetInformationJobObject(job, ExtendedLimitInformationClass, memory, (uint)length))
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot configure kill-on-close job.");
             }
             finally { Marshal.FreeHGlobal(memory); }
