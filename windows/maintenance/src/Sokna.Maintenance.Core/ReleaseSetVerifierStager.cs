@@ -6,6 +6,20 @@ using System.Text.RegularExpressions;
 
 namespace Sokna.Maintenance.Core;
 
+public sealed record ReleaseSetPreflightResult(
+    string ReleaseSetId,
+    long Sequence,
+    string ReleaseType,
+    string PackageSha256,
+    string ManifestSha256,
+    bool SignatureVerified,
+    bool ArtifactIntegrityVerified,
+    bool ExactBaselineVerified,
+    bool ActivationPerformed,
+    bool DatabaseMutationPerformed,
+    bool StagePerformed,
+    bool PanelActivationReady);
+
 public sealed class ReleaseSetVerifierStager
 {
     public const string Format = "sokna-maintenance-release-set-v2.1";
@@ -31,6 +45,76 @@ public sealed class ReleaseSetVerifierStager
     private readonly MaintenancePaths _paths;
 
     public ReleaseSetVerifierStager(MaintenancePaths paths) => _paths = paths;
+
+    /// <summary>
+    /// Fully authenticate a Release Set without creating directories, a stage receipt,
+    /// an operation record, an anti-rollback high-water mark, or touching the active Web.
+    /// This result is ephemeral inspection evidence, NOT permission to activate.
+    /// VerifyAndStage independently rechecks all inputs to close the inspection-to-stage gap.
+    /// </summary>
+    public ReleaseSetPreflightResult VerifyOnly(string packagePath, InstalledReleaseIdentity installed)
+    {
+        ArgumentNullException.ThrowIfNull(installed);
+        packagePath = Path.GetFullPath(packagePath);
+        if (!File.Exists(packagePath))
+            throw new FileNotFoundException("Release Set package was not found.", packagePath);
+
+        var packageHash = HashFile(packagePath);
+        using var archive = ZipFile.OpenRead(packagePath);
+        var entries = IndexArchive(archive);
+        if (!entries.TryGetValue("release-set.json", out var manifestEntry))
+            throw new InvalidDataException("Release Set package is missing release-set.json.");
+        if (manifestEntry.Length > MaxManifestBytes)
+            throw new InvalidDataException("Release Set manifest exceeds the maximum size.");
+
+        byte[] manifestBytes;
+        using (var source = manifestEntry.Open())
+        using (var buffer = new MemoryStream())
+        {
+            var chunk = new byte[64 * 1024];
+            int read;
+            while ((read = source.Read(chunk)) > 0)
+            {
+                if (buffer.Length + read > MaxManifestBytes)
+                    throw new InvalidDataException("Release Set manifest exceeds the maximum size.");
+                buffer.Write(chunk, 0, read);
+            }
+            manifestBytes = buffer.ToArray();
+        }
+
+        ReleaseSetManifest manifest;
+        try
+        {
+            manifest = JsonSerializer.Deserialize<ReleaseSetManifest>(manifestBytes, AtomicFile.JsonOptions)
+                ?? throw new InvalidDataException("Release Set manifest is empty.");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException("Release Set manifest JSON is invalid.", ex);
+        }
+
+        ValidateManifest(manifest, installed);
+        var canonical = ReleaseSetCanonicalizer.CanonicalBytesWithBlankSignatureValue(manifestBytes);
+        var manifestHash = ReleaseSetCanonicalizer.Sha256Hex(canonical);
+        VerifySignature(manifest, canonical);
+        ValidateArchiveAgainstArtifacts(entries, manifest.Artifacts);
+        var previous = LoadSequenceState();
+        if (previous is not null)
+        {
+            if (manifest.Sequence < previous.HighestSequence)
+                throw new InvalidDataException("Release Set sequence is lower than the anti-rollback high-water mark.");
+            if (manifest.Sequence == previous.HighestSequence &&
+                (!string.Equals(manifest.ReleaseSetId, previous.ReleaseSetId, StringComparison.Ordinal) ||
+                 !string.Equals(manifestHash, previous.ManifestSha256, StringComparison.Ordinal)))
+                throw new InvalidDataException("Release Set sequence collides with a different previously staged release.");
+        }
+
+        return new ReleaseSetPreflightResult(
+            manifest.ReleaseSetId, manifest.Sequence, manifest.ReleaseType,
+            packageHash, manifestHash, true, true, true,
+            ActivationPerformed: false, DatabaseMutationPerformed: false,
+            StagePerformed: false, PanelActivationReady: false);
+    }
 
     public StagedReleaseReceipt VerifyAndStage(string packagePath, InstalledReleaseIdentity installed)
     {
