@@ -56,7 +56,7 @@ internal static class PublicKernelWireAttestationProbe
                 }
                 Check(nonce is {Length:32} && requestId is {Length:32},
                     "no challenge/request on independent HTTP server");
-                observed = Sign(signing, Make(nonce, requestId));
+                observed = Sign(signing, Make(nonce ?? throw new InvalidDataException("S7E5A_NONCE_MISSING"),\n                    requestId ?? throw new InvalidDataException("S7E5A_REQUEST_ID_MISSING")));
                 var body = JsonSerializer.SerializeToUtf8Bytes(observed);
                 var header = Encoding.ASCII.GetBytes(
                     $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
