@@ -57,5 +57,28 @@ try {
        !caps.LocalRoutine.Preflight && !caps.LocalRoutine.Stage &&
        !caps.LocalRoutine.Activate && !caps.LocalRoutine.Recover,
        "unimplemented ordinary Local update never advertised ready");
+ // An older active operation must not disappear merely because there are >100 newer receipts.
+ var historyPaths = new MaintenancePaths(Path.Combine(baseDir, "operation-history"));
+ var store = new MaintenanceOperationStore(historyPaths);
+ var anchorKey = "f1-active-operator:001";
+ var requestType = "update.local-preflight";
+ var actor = "user:1";
+ var activeRef = "home-231ai";
+ var hash = MaintenanceOperationStore.CanonicalRequestHash(requestType, activeRef, actor);
+ var first = store.GetOrCreate(anchorKey, hash, requestType, activeRef, actor).Operation;
+ for(var i=0; i<121; i++)
+ {
+     var idem = "f1-history-receipt-" + i.ToString("D4");
+     var target = "history-" + i.ToString("D4");
+     var h = MaintenanceOperationStore.CanonicalRequestHash(requestType, target, actor);
+     var op = store.GetOrCreate(idem, h, requestType, target, actor).Operation;
+     store.Update(op,"committed","OK","Historical completed operation");
+ }
+ Check(store.ListActive().Any(op => op.OperationId == first.OperationId),
+       "old active operation remains visible beyond latest 100 receipts");
+ Check(store.ListRecent(30).Count == 30,"bounded recent history 30");
+ File.WriteAllText(Path.Combine(historyPaths.OperationsRoot,"op-corrupt-fixture.json"),"{bad-json");
+ try { _ = store.ListActive(); throw new InvalidOperationException("corrupt evidence falsely accepted"); }
+ catch(JsonException) { Console.WriteLine("PASS corrupt durable operation evidence rejects fake idle"); }
  Console.WriteLine("WINDOWS_CROSS_VERSION_CONTRACT_PASS");
 } finally { try {Directory.Delete(baseDir,recursive:true);}catch {} }
