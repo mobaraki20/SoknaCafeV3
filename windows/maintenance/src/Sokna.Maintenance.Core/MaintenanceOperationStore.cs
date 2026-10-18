@@ -124,6 +124,23 @@ public sealed class MaintenanceOperationStore
             .OrderBy(static o => o.CreatedAtUtc)
             .ToArray();
 
+    /// <summary>
+    /// Recovery required is NOT idle: it blocks another updater mutation even
+    /// though it is not an in-flight process. Scan the entire durable history.
+    /// </summary>
+    public IReadOnlyList<MaintenanceOperation> ListBlocking()
+        => LoadAllOperations()
+            .Where(static o => o.State is "accepted" or "running" or "activating" or "recovering" or "recovery_required")
+            .OrderBy(static o => o.CreatedAtUtc)
+            .ToArray();
+
+    public IReadOnlyList<MaintenanceOperation> ListInterruptedLocalStages()
+        => LoadAllOperations()
+            .Where(static o => o.OperationType is "update.local-stage" or "update.stage" &&
+                o.State is "accepted" or "running")
+            .OrderBy(static o => o.CreatedAtUtc)
+            .ToArray();
+
     public MaintenanceOperation Update(
         MaintenanceOperation operation,
         string state,
