@@ -34,6 +34,12 @@ jobs:
           & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
             code-cutover-wal (Join-Path $env:RUNNER_TEMP ('sokna-cutover-wal-'+[guid]::NewGuid().ToString('N')))
           if ($LASTEXITCODE -ne 0) { throw 'S7D1 cutover WAL fault injection failed' }
+      - name: F1-S7D2 artificial cutover and crash boundary matrix (NO real host mutation)
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            code-cutover-simulation (Join-Path $env:RUNNER_TEMP ('sokna-s7d2-simulator-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'F1-S7D2 synthetic cutover simulation failed' }
       - name: Qualify isolated inactive Local sibling filecopy, target binding and unchanged active pointer
         shell: pwsh
         run: |
