@@ -11,9 +11,17 @@ namespace Sokna.Maintenance.Core;
 public sealed class MachineMutationLease : IDisposable
 {
     private readonly FileStream _stream;
+    public string Owner { get; }
+    public int ProcessId { get; }
+    public bool IsDisposed { get; private set; }
     public const string ConflictCode = "MACHINE_MUTATION_LEASE_BUSY";
     public const string UnavailableCode = "MACHINE_MUTATION_LEASE_UNAVAILABLE";
-    private MachineMutationLease(FileStream stream) => _stream = stream;
+    private MachineMutationLease(FileStream stream, string owner)
+    {
+        _stream = stream;
+        Owner = owner;
+        ProcessId = Environment.ProcessId;
+    }
 
     public static MachineMutationLease Acquire(MaintenancePaths paths, string owner)
     {
@@ -42,7 +50,7 @@ public sealed class MachineMutationLease : IDisposable
                 var bytes = Encoding.UTF8.GetBytes(evidence);
                 stream.Write(bytes);
                 stream.Flush(flushToDisk: true);
-                return new MachineMutationLease(stream);
+                return new MachineMutationLease(stream, owner);
             }
             catch
             {
@@ -60,5 +68,9 @@ public sealed class MachineMutationLease : IDisposable
         }
     }
 
-    public void Dispose() => _stream.Dispose();
+    public void Dispose()
+    {
+        IsDisposed = true;
+        _stream.Dispose();
+    }
 }
