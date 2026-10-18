@@ -114,11 +114,12 @@ public sealed class SupervisorLocalSlotCoordinator
         lock (LocalUpdateOperationGate.Sync)
         {
             LocalUpdateOperationGate.RequireNoPendingMutation(_operations);
-            return RunHomeCycleCore(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, operatorId, idempotencyKey);
+            using var machineLease = MachineMutationLease.Acquire(_paths, EngineDelegationPermit.Owner);
+            return RunHomeCycleCore(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, operatorId, idempotencyKey, machineLease);
         }
     }
 
-    private LocalSlotOperationResult RunHomeCycleCore(string expectedBuild, int expectedManagedFiles, string expectedManagedTreeSha256, string operatorId, string idempotencyKey)
+    private LocalSlotOperationResult RunHomeCycleCore(string expectedBuild, int expectedManagedFiles, string expectedManagedTreeSha256, string operatorId, string idempotencyKey, MachineMutationLease machineLease)
     {
         expectedBuild = NormalizeBuild(expectedBuild);
         expectedManagedTreeSha256 = LocalManagedTreeAttestation.NormalizeSha256(expectedManagedTreeSha256);
@@ -163,6 +164,10 @@ public sealed class SupervisorLocalSlotCoordinator
         int exitCode;
         try
         {
+            var exactArguments = start.ArgumentList.ToArray();
+            var permitId = EngineDelegationPermit.Issue(_paths, machineLease, operation.OperationId, exactArguments);
+            start.ArgumentList.Add("--delegation-id");
+            start.ArgumentList.Add(permitId);
             using var process = Process.Start(start) ?? throw new InvalidOperationException("Unable to start Update Engine.");
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
