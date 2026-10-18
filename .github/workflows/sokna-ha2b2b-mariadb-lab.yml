@@ -1,0 +1,38 @@
+name: SOKNA HA2B2B Disposable MariaDB Proof
+on:
+  push:
+    branches:
+      - test/ha2b2b-mariadb-ci-20261019
+    paths:
+      - .github/workflows/sokna-ha2b2b-mariadb-lab.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sokna-ha2b2b-disposable-lab-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  disposable-mariadb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: qa/ha2b2b
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Docker and test layout
+        run: |
+          docker compose version
+          php -l source/PdoMariaDbLabReleaseJournalV2.php
+          php -l tests/run_real_mariadb.php
+          php -l tests/real_mariadb_crash_matrix.php
+      - name: Run true disposable MariaDB transaction and crash tests
+        run: bash ./run_disposable_lab.sh
+      - name: Upload sanitized DB evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-ha2b2b-mariadb-evidence
+          path: qa/ha2b2b/ci-artifacts/*.json
+          if-no-files-found: warn
+          retention-days: 7
