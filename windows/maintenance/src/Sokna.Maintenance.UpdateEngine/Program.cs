@@ -7,6 +7,7 @@ const string EngineVersion = "0.3.6";
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
     Console.WriteLine($"SOKNA Maintenance Update Engine {EngineVersion} (R8 sibling-release routine activation; DB mutation disabled)");
+    Console.WriteLine("verify-only --package <zip> --identity <json> [--data-root <path>] (read-only; no stage or sequence mutation)");
     Console.WriteLine("verify-stage --package <zip> --identity <json> [--data-root <path>]");
     Console.WriteLine("local-slot-inspect --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
     Console.WriteLine("local-slot-migrate --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256> [--data-root <path>]");
@@ -25,6 +26,14 @@ var dataRoot = options.TryGetValue("--data-root", out var dataRootText)
     : MaintenancePaths.DefaultDataRoot();
 var paths = new MaintenancePaths(dataRoot);
 var bridge = new ProductionLocalSlotMigrationBridge(paths);
+
+if (command == "verify-only")
+{
+    RequireOption(options, "--package", out var package);
+    RequireOption(options, "--identity", out var identity);
+    RunVerifyOnly(package, identity, paths);
+    return;
+}
 
 if (command == "verify-stage")
 {
@@ -259,21 +268,64 @@ static int ReadPositiveInt(IReadOnlyDictionary<string, string> options, string k
     return value;
 }
 
-void RunVerifyStage(string package, string identity, MaintenancePaths paths)
+void RunVerifyOnly(string package, string identity, MaintenancePaths paths)
 {
-    var identityPath = Path.GetFullPath(identity);
-    if (!File.Exists(identityPath)) throw new FileNotFoundException("Installed identity file was not found.", identityPath);
-    InstalledReleaseIdentity installed;
     try
     {
-        installed = JsonSerializer.Deserialize<InstalledReleaseIdentity>(File.ReadAllBytes(identityPath), AtomicFile.JsonOptions)
-                    ?? throw new InvalidDataException("Installed identity document is empty.");
+        // No directory creation, lock acquisition, anti-rollback commit or staging.
+        // This validates the current bytes only; a future stage must independently
+        // authenticate the package and installed identity again.
+        var installed = ReadInstalledIdentity(identity);
+        var receipt = new ReleaseSetVerifierStager(paths).VerifyOnly(package, installed);
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            ok = true,
+            engine_version = EngineVersion,
+            phase = "VERIFIED_READ_ONLY",
+            code = "PACKAGE_INTEGRITY_VERIFIED",
+            receipt,
+            installation_allowed = false,
+            stage_performed = false,
+            activation_performed = false,
+            database_mutation_performed = false
+        }, AtomicFile.JsonOptions));
+    }
+    catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or CryptographicException or JsonException)
+    {
+        Console.Error.WriteLine(JsonSerializer.Serialize(new
+        {
+            ok = false,
+            engine_version = EngineVersion,
+            phase = "REJECTED_READ_ONLY",
+            code = "PACKAGE_PREFLIGHT_REJECTED",
+            error = ex.Message,
+            installation_allowed = false,
+            stage_performed = false,
+            activation_performed = false,
+            database_mutation_performed = false
+        }, AtomicFile.JsonOptions));
+        Environment.ExitCode = 2;
+    }
+}
+
+InstalledReleaseIdentity ReadInstalledIdentity(string identity)
+{
+    var path = Path.GetFullPath(identity);
+    if (!File.Exists(path)) throw new FileNotFoundException("Installed identity file was not found.", path);
+    try
+    {
+        return JsonSerializer.Deserialize<InstalledReleaseIdentity>(File.ReadAllBytes(path), AtomicFile.JsonOptions)
+               ?? throw new InvalidDataException("Installed identity document is empty.");
     }
     catch (JsonException ex)
     {
         throw new InvalidDataException("Installed identity JSON is invalid.", ex);
     }
+}
 
+void RunVerifyStage(string package, string identity, MaintenancePaths paths)
+{
+    var installed = ReadInstalledIdentity(identity);
     var engine = new ReleaseSetVerifierStager(paths);
     try
     {
