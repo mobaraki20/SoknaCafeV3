@@ -371,6 +371,71 @@ try {
   Assert ($statusAfterRecovery.Code -eq 200 -and -not[bool]$statusAfterRecovery.Data.data.blocked) 'Successful Stage evidence reconciliation left a false busy state'
   $finalCaps=Signed 'GET' '/v1/updates/capabilities' 'web-adapter' $null
   Assert (-not[bool]$finalCaps.Data.data.panel_update_ready) 'Recovery prematurely enabled panel update'
+  # F1-S7C: generic signed payload.bin MUST NOT be accepted as a Local Web tree.
+  $genericRejected=Signed 'POST' '/v1/local-updates/prepare-inactive' 'web-adapter' ([ordered]@{
+    stage_operation_id=$stageId;operator_id='user:test'
+  }) 'p2d-generic-local-payload'
+  Assert ($genericRejected.Code -eq 422 -and $genericRejected.Data.code -eq 'INACTIVE_LOCAL_PAYLOAD_UNQUALIFIED') 'Generic local payload gained Web promotion eligibility'
+  Assert (-not(Test-Path -LiteralPath (Join-Path $root 'update/inactive-local-candidates'))) 'Generic signed bytes created an inactive candidate'
+
+  function SignedSibling([string]$variant,[int]$sequence,[string]$keySuffix){
+    $generated=@(& dotnet $FixtureDll --root $root --variant $variant --sequence "$sequence" 2>&1)
+    Assert ($LASTEXITCODE -eq 0) ('Nested signed fixture failed: '+($generated -join ' '))
+    $pkg=($generated -join [Environment]::NewLine)|ConvertFrom-Json
+    $name=[IO.Path]::GetFileName([string]$pkg.package)
+    Copy-Item -LiteralPath ([string]$pkg.package) -Destination (Join-Path $inbox $name) -Force
+    $pre=Signed 'POST' '/v1/local-updates/preflight' 'web-adapter' ([ordered]@{
+      package_ref=$name;operator_id='user:test'
+    }) ('p2d-sibling-pre-'+$keySuffix)
+    Assert ($pre.Code -eq 200 -and $pre.Data.data.operation.state -eq 'verified') ('Nested signed Preflight failed: '+($pre.Data|ConvertTo-Json -Depth 5))
+    $candidateStage=Signed 'POST' '/v1/local-updates/stage' 'web-adapter' ([ordered]@{
+      preflight_operation_id=[string]$pre.Data.data.operation.operation_id;operator_id='user:test'
+    }) ('p2d-sibling-stage-'+$keySuffix)
+    Assert ($candidateStage.Code -eq 200 -and $candidateStage.Data.data.operation.state -eq 'staged') ('Nested signed Stage failed: '+($candidateStage.Data|ConvertTo-Json -Depth 5))
+    return [string]$candidateStage.Data.data.operation.operation_id
+  }
+
+  $siblingId=SignedSibling 'sibling-ready' 111 'ready'
+  $candidateRequest=[ordered]@{stage_operation_id=$siblingId;operator_id='user:test'}
+  $candidateRoot=Join-Path $root 'update/inactive-local-candidates'
+  New-Item -ItemType Directory -Force -Path (Join-Path $candidateRoot ('local-'+$siblingId+'.__incoming.aborted-test'))|Out-Null
+  $aborted=Signed 'POST' '/v1/local-updates/prepare-inactive' 'web-adapter' $candidateRequest 'p2d-inactive-ready'
+  Assert ($aborted.Code -eq 409 -and $aborted.Data.code -eq 'INACTIVE_CANDIDATE_RECONCILIATION_REQUIRED') 'Interrupted extraction was silently cleaned/retried'
+  Remove-Item -LiteralPath (Join-Path $candidateRoot ('local-'+$siblingId+'.__incoming.aborted-test')) -Recurse -Force
+  $prepared=Signed 'POST' '/v1/local-updates/prepare-inactive' 'web-adapter' $candidateRequest 'p2d-inactive-ready'
+  Assert ($prepared.Code -eq 200 -and $prepared.Data.code -eq 'PRIVATE_LOCAL_CANDIDATE_NOT_INSTALLABLE' -and [bool]$prepared.Data.data.created) ('Valid inactive ZIP was not prepared: '+($prepared.Data|ConvertTo-Json -Depth 6))
+  $preparedReceipt=$prepared.Data.data.receipt
+  Assert (-not[bool]$preparedReceipt.promotion_qualified -and -not[bool]$preparedReceipt.activation_performed -and -not[bool]$preparedReceipt.database_mutation_performed -and -not[bool]$preparedReceipt.public_mutation_performed) 'Private candidate falsely authorized installation or Public'
+  $candidateWeb=[string]$preparedReceipt.candidate_root
+  Assert ((Test-Path (Join-Path $candidateWeb 'public/index.php')) -and (Test-Path (Join-Path $candidateWeb 'VERSION.txt'))) 'Inactive prepared tree missing required files'
+  $candidateSha=(Get-FileHash -LiteralPath (Join-Path $candidateWeb 'public/index.php') -Algorithm SHA256).Hash
+  $candidateAgain=Signed 'POST' '/v1/local-updates/prepare-inactive' 'web-adapter' $candidateRequest 'p2d-inactive-ready'
+  Assert ($candidateAgain.Code -eq 200 -and -not[bool]$candidateAgain.Data.data.created -and [bool]$candidateAgain.Data.data.reconciled) 'Prepared candidate was silently overwritten or non-idempotent'
+  $candidateFile=Join-Path $candidateWeb 'public/index.php'
+  $candidateBytes=[IO.File]::ReadAllBytes($candidateFile)
+  [IO.File]::WriteAllText($candidateFile,'tampered')
+  $tamperedCandidate=Signed 'POST' '/v1/local-updates/prepare-inactive' 'web-adapter' $candidateRequest 'p2d-inactive-ready'
+  Assert ($tamperedCandidate.Code -eq 422 -and $tamperedCandidate.Data.code -eq 'INACTIVE_LOCAL_PAYLOAD_UNQUALIFIED') 'Tampered candidate passed full tree attestation'
+  [IO.File]::WriteAllBytes($candidateFile,$candidateBytes)
+  Assert ((Get-FileHash -LiteralPath $candidateFile -Algorithm SHA256).Hash -eq $candidateSha) 'Could not restore private fixture'
+  $otherKeyCandidate=Signed 'POST' '/v1/local-updates/prepare-inactive' 'web-adapter' $candidateRequest 'p2d-inactive-conflict'
+  Assert ($otherKeyCandidate.Code -eq 409 -and $otherKeyCandidate.Data.code -eq 'INACTIVE_CANDIDATE_CONFLICT_OR_TAMPER') 'Second idempotency key silently took ownership'
+
+  foreach($case in @(
+    @{name='sibling-zip-traversal';seq=112;key='traversal'},
+    @{name='sibling-zip-overlay';seq=113;key='overlay'},
+    @{name='sibling-corrupt-tree';seq=114;key='tree'}))
+  {
+    $badId=SignedSibling $case.name ([int]$case.seq) ([string]$case.key)
+    $bad=Signed 'POST' '/v1/local-updates/prepare-inactive' 'web-adapter' ([ordered]@{
+      stage_operation_id=$badId;operator_id='user:test'
+    }) ('p2d-bad-private-'+$case.key)
+    Assert ($bad.Code -eq 422 -and $bad.Data.code -eq 'INACTIVE_LOCAL_PAYLOAD_UNQUALIFIED') ('Unsafe signed candidate accepted: '+$case.name)
+  }
+  Assert (-not[bool]$finalCaps.Data.data.panel_update_ready) 'Private preparation enabled release'
+  # Reset the comparison baseline: preparing additional signed Release Sets
+  # advances only the Stage anti-rollback high water mark by design.
+  $beforeSequenceHash=(Get-FileHash -LiteralPath $seqPath -Algorithm SHA256).Hash
   # F1-S6C: a machine Job child may die mid-migration. Startup must NOT
   # treat its durable running operation as success or as an idle updater.
   $seedOutput=@(& dotnet $LeaseProbeDll seed-interrupted-migration $root 2>&1)
