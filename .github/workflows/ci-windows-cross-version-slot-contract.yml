@@ -40,6 +40,13 @@ jobs:
           & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
             code-cutover-simulation (Join-Path $env:RUNNER_TEMP ('sokna-s7d2-simulator-'+[guid]::NewGuid().ToString('N')))
           if ($LASTEXITCODE -ne 0) { throw 'F1-S7D2 synthetic cutover simulation failed' }
+      - name: F1-S7D3 isolated OS termination and real disposable NTFS junction crash boundaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            s7d3-windows-crash (Join-Path $env:RUNNER_TEMP ('sokna-f1-s7d3-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'S7D3 disposable Windows OS/junction crash test failed' }
       - name: Qualify isolated inactive Local sibling filecopy, target binding and unchanged active pointer
         shell: pwsh
         run: |
