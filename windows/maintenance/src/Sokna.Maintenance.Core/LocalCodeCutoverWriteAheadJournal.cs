@@ -67,7 +67,7 @@ public sealed class LocalCodeCutoverWriteAheadJournal
         ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(previous, parent);
         ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(target, parent);
 
-        var root = SafeJournalRoot();
+        var root = SafeJournalRoot(create: true);
         var directory = Path.Combine(root, transactionId);
         if (Directory.Exists(directory) || File.Exists(directory))
             throw new InvalidOperationException("CUTOVER_JOURNAL_ALREADY_EXISTS_OR_INTERRUPTED");
@@ -178,7 +178,10 @@ public sealed class LocalCodeCutoverWriteAheadJournal
                 observed = "target";
             else observed = "unexpected";
         }
-        var forwardOnly = last.Phase is "db_forward_committed" or "forward_recovery_required" or "committed";
+        // A crash after the DB mutation INTENT leaves its effects unproven.
+        // Classify even this boundary as forward-only until independent DB evidence.
+        var forwardOnly = last.Phase is "db_forward_intent" or "db_forward_committed" or
+            "forward_recovery_required" or "committed";
         var decision = forwardOnly ? "FORWARD_ONLY_RECOVERY_REQUIRED"
             : observed == "previous" ? "VERIFY_PREVIOUS_HTTP_AND_SCHEMA_BEFORE_RESUME"
             : observed == "target" ? "PRE_DB_TARGET_STATE_REQUIRES_RECONCILIATION"
@@ -188,12 +191,14 @@ public sealed class LocalCodeCutoverWriteAheadJournal
             AutomaticRollbackAllowed: false, ActivationAllowed: false, PanelUpdateReady: false);
     }
 
-    private string SafeJournalRoot()
+    private string SafeJournalRoot(bool create = false)
     {
         var root = Path.GetFullPath(_paths.CodeCutoverJournalRoot);
         if (Directory.Exists(root) && (File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("CUTOVER_JOURNAL_REPARSE_ROOT");
-        Directory.CreateDirectory(root);
+        if (create) Directory.CreateDirectory(root);
+        if (!Directory.Exists(root))
+            throw new InvalidDataException("CUTOVER_JOURNAL_NOT_FOUND");
         return root;
     }
 
@@ -257,7 +262,6 @@ public sealed class LocalCodeCutoverWriteAheadJournal
         ("pointer_switch_intent", "pre_db_rollback_intent") => true,
         ("pointer_switch_observed", "pre_db_rollback_intent") => true,
         ("target_http_observed", "pre_db_rollback_intent") => true,
-        ("db_forward_intent", "pre_db_rollback_intent") => true,
         ("pre_db_rollback_intent", "previous_pointer_observed") => true,
         ("previous_pointer_observed", "previous_http_observed") => true,
         _ => false
