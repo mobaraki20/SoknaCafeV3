@@ -1,5 +1,21 @@
 using Sokna.Maintenance.Core;
 
+// Inject a durable in-flight legacy migration into an isolated test data root.
+// On the next Supervisor startup, the parent-death reconciler must quarantine it.
+if (args.Length == 2 && args[0] == "seed-interrupted-migration")
+{
+    var p = new MaintenancePaths(Path.GetFullPath(args[1]));
+    var store = new MaintenanceOperationStore(p);
+    var key = "test-job-crash-" + Guid.NewGuid().ToString("N");
+    var request = "test-job-interruption";
+    var actor = "user:job-fixture";
+    var hash = MaintenanceOperationStore.CanonicalRequestHash("update.local-slot-migrate", request, actor);
+    var (operation, _) = store.GetOrCreate(key, hash, "update.local-slot-migrate", request, actor);
+    operation = store.Update(operation, "running", "TEST_JOB_CHILD_RUNNING", incrementAttempt: true);
+    Console.WriteLine("INTERRUPTED_MIGRATION_OPERATION " + operation.OperationId);
+    return 0;
+}
+
 // F1-S6C OS process-death fixture: heartbeat process must not survive
 // killing a parent that exclusively holds its kill-on-close Windows Job.
 if (args.Length == 2 && args[0] == "job-child")
