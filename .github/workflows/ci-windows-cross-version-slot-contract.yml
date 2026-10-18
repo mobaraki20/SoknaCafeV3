@@ -40,6 +40,12 @@ jobs:
           & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
             code-cutover-simulation (Join-Path $env:RUNNER_TEMP ('sokna-s7d2-simulator-'+[guid]::NewGuid().ToString('N')))
           if ($LASTEXITCODE -ne 0) { throw 'F1-S7D2 synthetic cutover simulation failed' }
+      - name: F1-S7D4A evidence-only HMAC binding, tamper and one-time denial on disposable Windows
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            code-cutover-evidence-witness (Join-Path $env:RUNNER_TEMP ('sokna-f1-s7d4a-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'F1-S7D4A signed evidence-only witness gate failed' }
       - name: F1-S7D3 isolated OS termination and real disposable NTFS junction crash boundaries
         shell: pwsh
         run: |
