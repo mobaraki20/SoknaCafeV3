@@ -76,7 +76,7 @@ internal static class CanonicalStageSealProbe
             ?? throw new InvalidDataException("S7D4B_STAGE_RECEIPT_MISSING");
         var bytesBefore = File.ReadAllBytes(receiptPath);
         try {
-            File.AppendAllText(receiptPath, "unsafe");
+            File.AppendAllText(receiptPath, " "); // Valid JSON, byte-distinct signed receipt.
             Denied(() => gate.InspectAndBurn(lease, stageChangedId, tx),
                 "stage-receipt-tamper");
         }
