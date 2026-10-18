@@ -1,0 +1,33 @@
+services:
+  database:
+    image: mariadb:11.4
+    environment:
+      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+      MARIADB_DATABASE: sokna_ha2_lab_abcdef12
+      MARIADB_USER: sokna_lab
+      MARIADB_PASSWORD: ${SOKNA_LAB_PASSWORD:?Set a unique disposable lab-only password}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 35
+    networks: [lab_only]
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.lab
+    environment:
+      SOKNA_HA2B_DISPOSABLE_CONFIRM: YES_DISPOSABLE_NO_PRODUCTION
+      SOKNA_HA2B_DB_NAME: sokna_ha2_lab_abcdef12
+      SOKNA_HA2B_DB_HOST: database
+      SOKNA_HA2B_DB_PORT: "3306"
+      SOKNA_HA2B_DB_USER: sokna_lab
+      SOKNA_HA2B_DB_PASS: ${SOKNA_LAB_PASSWORD:?Set a unique disposable lab-only password}
+    command: ["/bin/sh", "-ec", "php tests/run_real_mariadb.php && php tests/real_mariadb_crash_matrix.php"]
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [lab_only]
+networks:
+  lab_only:
+    internal: true
