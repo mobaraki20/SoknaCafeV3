@@ -27,7 +27,7 @@ if(Test-Path $out){Remove-Item $out -Recurse -Force}
 New-Item -ItemType Directory -Path $coreOut,$bootstrapOut -Force|Out-Null
 $iss=Join-Path $RepoRoot 'packaging\windows\installer\SOKNA-v4.iss'
 & $IsccExe "/DSourceRoot=$ShellPayloadRoot" "/DProductVersion=$version" "/O$coreOut" $iss
-if($LASTEXITCODE-ne0){throw 'Elevated SOKNA core installer build failed.'}
+if($LASTEXITCODE-ne0){throw 'Elevated Windows Services installer build failed.'}
 $core=Get-ChildItem $coreOut -Filter "SOKNA-Windows-Services-Core-$version.exe" -File|Select-Object -First 1
 if(-not$core){throw 'Elevated core installer executable was not produced.'}
 $corePath=$core.FullName
