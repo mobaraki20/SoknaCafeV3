@@ -69,9 +69,9 @@ try {
  for(var i=0; i<121; i++)
  {
      var idem = "f1-history-receipt-" + i.ToString("D4");
-     var target = "history-" + i.ToString("D4");
-     var h = MaintenanceOperationStore.CanonicalRequestHash(requestType, target, actor);
-     var op = store.GetOrCreate(idem, h, requestType, target, actor).Operation;
+     var historyRef = "history-" + i.ToString("D4");
+     var h = MaintenanceOperationStore.CanonicalRequestHash(requestType, historyRef, actor);
+     var op = store.GetOrCreate(idem, h, requestType, historyRef, actor).Operation;
      store.Update(op,"committed","OK","Historical completed operation");
  }
  Check(store.ListActive().Any(op => op.OperationId == first.OperationId),
