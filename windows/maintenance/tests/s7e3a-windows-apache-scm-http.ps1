@@ -115,7 +115,7 @@ LogLevel warn
   $serviceInstalled = $true
   # Service must bind only to this disposable fixture config and ephemeral port.
   $winSvc = Get-CimInstance -ClassName Win32_Service -Filter "Name='$serviceName'"
-  Assert ($null -ne $winSvc -and $winSvc.PathName.Contains($conf)) 'SCM_SERVICE_NOT_FIXTURE_BOUND'
+  Assert ($null -ne $winSvc -and $winSvc.PathName.Contains($httpd)) 'SCM_SERVICE_NOT_FIXTURE_BOUND'
   Start-Service -Name $serviceName
   Assert (AwaitHttp $port 'old-ci') 'OLD_HTTP_NOT_READY'
   Stop-Service -Name $serviceName
