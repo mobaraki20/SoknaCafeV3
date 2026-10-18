@@ -147,14 +147,16 @@ def run():
         candidate = start_httpd(root, candidate_conf)
         children.append(candidate)
         wait_http(candidate_port, "new", new_hash, candidate)
-        hard_stop(candidate)
-        check(not health(candidate_port, "new", new_hash), "DEAD_SERVER_STILL_HEALTHY")
-        # Wrong/corrupted release must not pass health as an install-ready target.
+        # A running, independently hosted real candidate with modified bytes
+        # must fail the exact hash check even though it still returns HTTP 200.
         new_health = new / "__sokna_health.json"
         original = new_health.read_bytes()
         new_health.write_bytes(original + b" ")
-        check(not health(port, "new", new_hash), "PRE_SWITCH_CORRUPTION_ACCEPTED")
+        check(not health(candidate_port, "new", new_hash), "TAMPERED_CANDIDATE_HEALTH_ACCEPTED")
         new_health.write_bytes(original)
+        wait_http(candidate_port, "new", new_hash, candidate)
+        hard_stop(candidate)
+        check(not health(candidate_port, "new", new_hash), "DEAD_SERVER_STILL_HEALTHY")
         # A real pointer change impacts Apache HTTP without fake status flags.
         pointer(active, new)
         wait_http(port, "new", new_hash, a)
