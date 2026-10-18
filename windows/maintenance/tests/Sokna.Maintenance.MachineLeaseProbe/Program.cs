@@ -2,9 +2,9 @@ using Sokna.Maintenance.Core;
 
 // F1-S6C OS process-death fixture: heartbeat process must not survive
 // killing a parent that exclusively holds its kill-on-close Windows Job.
-if (args.Length == 3 && args[0] == "job-child")
+if (args.Length == 2 && args[0] == "job-child")
 {
-    var heartbeat = Path.GetFullPath(args[2]);
+    var heartbeat = Path.GetFullPath(args[1]);
     for (var n = 0; n < 300; n++)
     {
         File.AppendAllText(heartbeat, $"{Environment.ProcessId}:{n}\n");
@@ -12,12 +12,14 @@ if (args.Length == 3 && args[0] == "job-child")
     }
     return 0;
 }
-if (args.Length == 4 && args[0] == "job-holder" && int.TryParse(args[3], out var jobHoldMs) &&
+if (args.Length == 3 && args[0] == "job-holder" && int.TryParse(args[2], out var jobHoldMs) &&
     jobHoldMs is >= 0 and <= 60000)
 {
     var dotnetExe = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "dotnet.exe");
-    var selfDll = Path.GetFullPath(args[1]);
-    var root = Path.GetFullPath(args[2]);
+    var selfDll = Path.GetFullPath(typeof(EngineDelegationPermit).Assembly.Location);
+    // Resolve the probe assembly rather than the referenced Core assembly.
+    selfDll = Path.GetFullPath(System.Reflection.Assembly.GetExecutingAssembly().Location);
+    var root = Path.GetFullPath(args[1]);
     Directory.CreateDirectory(root);
     using var child = WindowsJobChildProcess.Start(dotnetExe,
         new[] { selfDll, "job-child", Path.Combine(root, "heartbeat.txt") }, root);
