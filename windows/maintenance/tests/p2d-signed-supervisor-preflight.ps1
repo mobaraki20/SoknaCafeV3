@@ -47,7 +47,11 @@ function Stop-S($p) {
   }
 }
 function Signed([string]$Method,[string]$Route,[string]$KeyId,[object]$Body,[string]$Idem=''){
-  $bytes=if($null -eq $Body){[byte[]]::new(0)}else{[Text.Encoding]::UTF8.GetBytes(($Body|ConvertTo-Json -Compress -Depth 8))}
+  [byte[]]$bytes=[byte[]]::new(0)
+  if($null -ne $Body) {
+    $json=$Body|ConvertTo-Json -Compress -Depth 8
+    $bytes=[Text.Encoding]::UTF8.GetBytes($json)
+  }
   $timestamp=[DateTimeOffset]::UtcNow.ToString('O',[Globalization.CultureInfo]::InvariantCulture)
   $nonce=[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(16)).ToLowerInvariant()
   $digest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
