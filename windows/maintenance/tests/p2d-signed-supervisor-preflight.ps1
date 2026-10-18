@@ -75,6 +75,18 @@ function No-Stage {
 $p=$null
 try {
   $p=Start-S
+  # F1-S7C3: a fake or unqualified Apache registration must never
+  # produce a false safe-host/activation permission. This probe is read-only.
+  $identityBefore=(Get-FileHash -LiteralPath (Join-Path $root 'installed-release-identity.json') -Algorithm SHA256).Hash
+  $hostReadiness=Signed 'GET' '/v1/local-updates/inactive-host-readiness' 'web-adapter' $null
+  Assert ($hostReadiness.Code -eq 200 -and $hostReadiness.Data.code -eq 'HOST_UAT_AND_RELEASE_GATES_REQUIRED') 'Signed host readiness unavailable'
+  $host=$hostReadiness.Data.data
+  Assert (-not[bool]$host.apache_discovery_and_http_healthy -and -not[bool]$host.active_junction_qualified -and -not[bool]$host.host_preparation_preconditions_met) 'Fake SoknaApache passed real-host qualification'
+  Assert (-not[bool]$host.real_host_uat_performed -and -not[bool]$host.backup_qualified -and -not[bool]$host.database_qualified -and -not[bool]$host.public_pair_qualified) 'Read-only preflight fabricated external qualification'
+  Assert (-not[bool]$host.activation_allowed -and -not[bool]$host.panel_update_ready -and -not[bool]$host.activation_performed -and -not[bool]$host.database_mutation_performed -and -not[bool]$host.public_mutation_performed) 'Read-only host inspector changed mutating flags'
+  Assert ($host.blockers -contains 'SOKNA_APACHE_DISCOVERY_OR_HEALTH_UNPROVEN' -and $host.blockers -contains 'REAL_HOST_UAT_EVIDENCE_REQUIRED') 'Missing host failure evidence'
+  Assert ((Get-FileHash -LiteralPath (Join-Path $root 'installed-release-identity.json') -Algorithm SHA256).Hash -eq $identityBefore) 'Read-only readiness changed installed version'
+  Assert (-not(Test-Path -LiteralPath (Join-Path $root 'update/release-sequence.json'))) 'Host readiness changed anti-rollback state'
   $unsigned=Invoke-WebRequest ($base+'/v1/local-updates/preflight') -Method POST -Body '{}' -ContentType 'application/json' -SkipHttpErrorCheck
   Assert ([int]$unsigned.StatusCode -eq 401) 'Unsigned POST accepted'
   $body=[ordered]@{package_ref=$ref;operator_id='user:test'}
