@@ -29,6 +29,12 @@ jobs:
           & ./windows/maintenance/tests/machine-mutation-lease-windows.ps1 `
             -ProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
             -EngineDll 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll'
+      - name: Verify exact signed delegated Engine permit and fail-closed independent execution
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/engine-delegation-windows.ps1 `
+            -ProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            -EngineDll 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll'
       - name: Prove signed package verify-only never creates stage or changes sequence
         shell: pwsh
         run: |
