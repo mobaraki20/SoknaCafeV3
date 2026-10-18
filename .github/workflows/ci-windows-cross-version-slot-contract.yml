@@ -22,6 +22,13 @@ jobs:
         run: |
           dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj --configuration Release --nologo
           dotnet build windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj --configuration Release --nologo
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/Sokna.Maintenance.MachineLeaseProbe.csproj --configuration Release --nologo
+      - name: Verify independent machine lease, direct Engine collision and OS crash cleanup
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/machine-mutation-lease-windows.ps1 `
+            -ProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            -EngineDll 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll'
       - name: Prove signed package verify-only never creates stage or changes sequence
         shell: pwsh
         run: |
@@ -33,7 +40,8 @@ jobs:
         run: |
           & ./windows/maintenance/tests/p2d-signed-supervisor-preflight.ps1 `
             -SupervisorDll 'windows/maintenance/src/Sokna.Maintenance.Supervisor/bin/Release/net8.0-windows/SoknaMaintenanceSupervisor.dll' `
-            -FixtureDll 'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/bin/Release/net8.0-windows/Sokna.Maintenance.P2Fixture.dll'
+            -FixtureDll 'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/bin/Release/net8.0-windows/Sokna.Maintenance.P2Fixture.dll' `
+            -LeaseProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll'
       - name: Test signed Supervisor HTTP capabilities and replay rejection
         shell: pwsh
         run: |
