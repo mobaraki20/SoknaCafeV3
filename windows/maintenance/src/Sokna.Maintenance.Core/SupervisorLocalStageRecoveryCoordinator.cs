@@ -84,6 +84,38 @@ public sealed class SupervisorLocalStageRecoveryCoordinator
         }
     }
 
+    /// <summary>
+    /// Inspect an already-staged package using the same full provenance and
+    /// staged artifact re-hash required for manual recovery. NO state changes.
+    /// This does not grant approval to activate a release.
+    /// </summary>
+    public LocalActivationReadiness InspectActivationReadiness(string operationId)
+    {
+        if (string.IsNullOrWhiteSpace(operationId) || operationId.Length != 32 ||
+            !operationId.All(char.IsAsciiHexDigit))
+            throw new InvalidDataException("Stage operation ID is invalid.");
+        lock (LocalUpdateOperationGate.Sync)
+        {
+            var operation = _operations.Get(operationId)
+                ?? throw new InvalidDataException("Stage operation not found.");
+            if (operation.OperationType != "update.local-stage" ||
+                operation.State != "staged" ||
+                operation.ActivationPerformed || operation.DatabaseMutationPerformed)
+                throw new InvalidDataException("Only a completed canonical Local Stage may be inspected.");
+            if (_operations.ListBlocking().Count != 0)
+                throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
+
+            var receipt = VerifyCompleteEvidence(operation);
+            var stagedManifestPath = Path.Combine(receipt.StageRoot, "release-set.json");
+            if (!File.Exists(stagedManifestPath) ||
+                (File.GetAttributes(stagedManifestPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Staged manifest evidence is unsafe.");
+            var manifest = AtomicFile.ReadJson<ReleaseSetManifest>(stagedManifestPath)
+                ?? throw new InvalidDataException("Staged manifest is unreadable.");
+            return LocalActivationReadinessPolicy.Assess(manifest, receipt, fullyVerifiedStage: true);
+        }
+    }
+
     private StagedReleaseReceipt VerifyCompleteEvidence(MaintenanceOperation operation)
     {
         var preflightReceiptPath = operation.PreflightReceiptPath;
