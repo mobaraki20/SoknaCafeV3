@@ -96,7 +96,7 @@ app.Use(async (context, next) =>
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
-            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/reconcile-stage", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = true, database_mutation_enabled = false });
+            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/reconcile-stage", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
         return;
     }
 
@@ -243,6 +243,38 @@ app.MapGet("/v1/local-updates/recovery-status", async context =>
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
             "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE", false,
             new { last_error_type = ex.GetType().Name, panel_update_ready = false });
+    }
+});
+
+// F1-S7A read-only activation eligibility inspection. It re-verifies every
+// Stage artifact and refuses activation until independently qualified services,
+// backups, DB and the durable switch/rollback contract exist.
+app.MapGet("/v1/local-updates/activation-readiness/{stageOperationId}", async context =>
+{
+    try
+    {
+        var id = context.Request.RouteValues["stageOperationId"] as string ?? "";
+        var assessment = localStageRecoveryCoordinator.InspectActivationReadiness(id);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, "not_ready",
+            "FOUNDATION_UPDATE_REQUIRED", false, assessment);
+    }
+    catch (InvalidOperationException ex) when (ex.Message == "UPDATER_OPERATION_BUSY")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false, "blocked",
+            "UPDATER_OPERATION_BUSY", true, new { panel_update_ready = false, activation_allowed = false });
+    }
+    catch (InvalidDataException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false, "rejected",
+            "ACTIVATION_STAGE_EVIDENCE_UNPROVEN", false,
+            new { panel_update_ready = false, activation_allowed = false });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+        JsonException or System.Security.Cryptography.CryptographicException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "ACTIVATION_EVIDENCE_UNAVAILABLE", true,
+            new { panel_update_ready = false, activation_allowed = false, last_error_type = ex.GetType().Name });
     }
 });
 
