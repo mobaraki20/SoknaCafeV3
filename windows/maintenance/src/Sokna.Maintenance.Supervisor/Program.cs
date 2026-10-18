@@ -397,9 +397,14 @@ app.MapGet("/v1/operations/active", async context =>
     try
     {
         var active = operations.ListActive();
+        var blocking = operations.ListBlocking();
+        var requiresRecovery = blocking.Any(static o => o.State == "recovery_required");
         await WriteEnvelope(context, StatusCodes.Status200OK, true,
-            active.Count == 0 ? "idle" : "in_progress", "OK", false,
+            requiresRecovery ? "recovery_required" : active.Count == 0 ? "idle" : "in_progress",
+            requiresRecovery ? "UPDATER_RECOVERY_REQUIRED" : "OK", requiresRecovery,
             new { active_operations = active, active_count = active.Count,
+                  blocking_operations = blocking, blocking_count = blocking.Count,
+                  requires_recovery = requiresRecovery, panel_update_ready = false,
                   query_by_operation_id = "/v1/operations/{operation_id}",
                   query_by_idempotency = "/v1/operations/by-idempotency/{key}",
                   history_url = "/v1/operations/recent" });
@@ -615,6 +620,12 @@ app.MapPost("/v1/local-slots/migrate", async context =>
         await WriteEnvelope(context, statusCode, success, operation.State, operation.ResultCode ?? (success ? "LOCAL_SLOT_MIGRATION_COMMITTED" : "OPERATION_RECORDED"), recoveryRequired,
             new { operation, result.Created, result.Reconciled, production_migration = true, database_mutation_enabled = false, public_mutation_enabled = false, windows_reboot_required = false }, operation.OperationId);
     }
+    catch (InvalidOperationException ex) when (ex.Message == "UPDATER_OPERATION_BUSY")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false, "blocked",
+            "UPDATER_OPERATION_BUSY", true,
+            new { panel_update_ready = false, activation_enabled = false });
+    }
     catch (JsonException ex)
     {
         await WriteEnvelope(context, StatusCodes.Status400BadRequest, false, "rejected", "REQUEST_JSON_INVALID", false, new { error = ex.Message });
@@ -643,6 +654,12 @@ app.MapPost("/v1/local-slots/recover", async context =>
         var success = operation.State == "committed";
         await WriteEnvelope(context, success ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable, success, operation.State, operation.ResultCode ?? "LOCAL_SLOT_RECOVERY_FAILED", !success,
             new { operation, result.Created, result.Reconciled, production_recovery = true, database_mutation_enabled = false, public_mutation_enabled = false, windows_reboot_required = false }, operation.OperationId);
+    }
+    catch (InvalidOperationException ex) when (ex.Message == "UPDATER_OPERATION_BUSY")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false, "blocked",
+            "UPDATER_OPERATION_BUSY", true,
+            new { panel_update_ready = false, activation_enabled = false });
     }
     catch (JsonException ex)
     {
@@ -673,6 +690,12 @@ app.MapPost("/v1/local-slots/home-cycle", async context =>
         var statusCode = success ? StatusCodes.Status200OK : recoveryRequired ? StatusCodes.Status503ServiceUnavailable : operation.State is "running" or "accepted" ? StatusCodes.Status202Accepted : StatusCodes.Status422UnprocessableEntity;
         await WriteEnvelope(context, statusCode, success, operation.State, operation.ResultCode ?? (success ? "LOCAL_SLOT_PHASE3_COMMITTED" : "OPERATION_RECORDED"), recoveryRequired,
             new { operation, result.Created, result.Reconciled, activation_enabled = true, database_mutation_enabled = false, public_mutation_enabled = false, windows_reboot_required = false }, operation.OperationId);
+    }
+    catch (InvalidOperationException ex) when (ex.Message == "UPDATER_OPERATION_BUSY")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false, "blocked",
+            "UPDATER_OPERATION_BUSY", true,
+            new { panel_update_ready = false, activation_enabled = false });
     }
     catch (JsonException ex)
     {
