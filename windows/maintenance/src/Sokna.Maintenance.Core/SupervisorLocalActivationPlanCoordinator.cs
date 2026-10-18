@@ -85,6 +85,9 @@ public sealed class SupervisorLocalActivationPlanCoordinator
 
         lock (LocalUpdateOperationGate.Sync)
         {
+            // Inspect the exact installed baseline and write the immutable
+            // snapshot while independent Engine/Setup Host mutations are fenced.
+            using var machineLease = MachineMutationLease.Acquire(_paths, "supervisor-activation-dryrun");
             if (_operations.ListBlocking().Count != 0)
                 throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
             var stage = _operations.Get(stageOperationId)
