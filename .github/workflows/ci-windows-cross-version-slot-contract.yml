@@ -54,7 +54,26 @@ jobs:
             $replay = Invoke-WebRequest $uri -Headers $headers -SkipHttpErrorCheck -TimeoutSec 4
             $obj2 = $replay.Content | ConvertFrom-Json -AsHashtable
             if($replay.StatusCode -ne 409 -or $obj2.code -ne 'AUTH_REPLAY') { throw 'HMAC replay not rejected' }
-            Write-Output 'SUPERVISOR_SIGNED_HTTP_AUTH_CAPABILITY_REPLAY_PASS'
+            # A corrupt durable operation must not become "idle", 404, or an unclassified 500.
+            [IO.File]::WriteAllText((Join-Path $root 'operations/op-corrupt-http.json'), '{}')
+            $idempotencyKey = 'http-corrupt-index'
+            $idempotencyHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($idempotencyKey))).ToLowerInvariant()
+            [IO.File]::WriteAllText((Join-Path $root "operations/idem-$idempotencyHash.txt"), 'corrupt-http')
+            foreach($resource in @('/v1/operations/active', '/v1/operations/recent', '/v1/operations/corrupt-http', "/v1/operations/by-idempotency/$idempotencyKey")) {
+              $now = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+              $freshNonce = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(16)).ToLowerInvariant()
+              $canonicalGet = ('GET', $resource, '1.0', $now, $freshNonce, $digest) -join [char]10
+              $checkMac = [Security.Cryptography.HMACSHA256]::new($key)
+              try { $checkSig = [Convert]::ToHexString($checkMac.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonicalGet))).ToLowerInvariant() } finally { $checkMac.Dispose() }
+              $freshHeaders = $headers.Clone()
+              $freshHeaders['X-Sokna-Timestamp'] = $now
+              $freshHeaders['X-Sokna-Nonce'] = $freshNonce
+              $freshHeaders['X-Sokna-Signature'] = $checkSig
+              $checkResponse = Invoke-WebRequest ("http://127.0.0.1:$port" + $resource) -Headers $freshHeaders -SkipHttpErrorCheck -TimeoutSec 4
+              $checkResult = $checkResponse.Content | ConvertFrom-Json -AsHashtable
+              if($checkResponse.StatusCode -ne 503 -or $checkResult.code -ne 'OPERATION_EVIDENCE_UNAVAILABLE') { throw "Invalid corrupt-evidence response for $resource" }
+            }
+            Write-Output 'SUPERVISOR_SIGNED_HTTP_AUTH_AND_CORRUPT_EVIDENCE_PASS'
           } finally {
             if($p -and !$p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
           }
