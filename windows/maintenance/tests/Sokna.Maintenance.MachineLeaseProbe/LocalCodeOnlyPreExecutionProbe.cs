@@ -50,6 +50,41 @@ internal static class LocalCodeOnlyPreExecutionProbe
             denied++;
         }
 
+        // Signed target (not the locally rehashed sibling receipt) must bind
+        // exact version, managed tree and file count before an Engine permit.
+        JsonElement Signed(string version, string treeHash, int fileCount) =>
+            JsonSerializer.SerializeToElement(new {
+                local = new { version, managed_tree_sha256 = treeHash,
+                    managed_files = fileCount }
+            });
+        var goodSigned = Signed(receipt.TargetVersion, receipt.TargetTreeSha256,
+            receipt.TargetManagedFiles);
+        SupervisorLocalCodeOnlyPreExecution.RequireExactSignedTarget(goodSigned, receipt);
+        accepted++;
+        void DenySigned(JsonElement candidate)
+        {
+            var rejected = false;
+            try { SupervisorLocalCodeOnlyPreExecution.RequireExactSignedTarget(candidate, receipt); }
+            catch (InvalidDataException ex) when
+                (ex.Message == "CODE_ONLY_SIGNED_TARGET_MISMATCH") { rejected = true; }
+            Check(rejected, "mismatched locally re-signed target accepted as release target");
+            denied++;
+        }
+        DenySigned(Signed("3.0.0.231aq", target, 3));
+        DenySigned(Signed(receipt.TargetVersion, hash, 3));
+        DenySigned(Signed(receipt.TargetVersion, target, 4));
+        DenySigned(Signed(receipt.TargetVersion, target, 0));
+        DenySigned(JsonSerializer.SerializeToElement(new { @public = new { version = receipt.TargetVersion } }));
+        DenySigned(JsonSerializer.SerializeToElement(new { local = new {
+            version = receipt.TargetVersion, managed_tree_sha256 = target,
+            managed_files = "3" } }));
+        DenySigned(JsonSerializer.SerializeToElement(new { local = new {
+            version = receipt.TargetVersion, managed_tree_sha256 = "wrong",
+            managed_files = 3 } }));
+        DenySigned(JsonSerializer.SerializeToElement(new { local = new {
+            version = (string?)null, managed_tree_sha256 = target,
+            managed_files = 3 } }));
+
         Accept(receipt);
         Deny(null);
         Deny(receipt with {StageOperationId = "dddddddddddddddddddddddddddddddd"});
@@ -74,6 +109,7 @@ internal static class LocalCodeOnlyPreExecutionProbe
             format = "sokna-maintenance-local-code-only-pre-execution-test-v1",
             result = "PASS", allowed_receipts = accepted, rejected_cases = denied,
             stage_operator_release_and_installed_hash_required = true,
+            exact_signed_target_version_tree_filecount_required = true,
             activation_performed = false, database_mutation_performed = false,
             public_mutation_performed = false, real_host_uat = false,
             execution_authorized = false, panel_update_ready = false
