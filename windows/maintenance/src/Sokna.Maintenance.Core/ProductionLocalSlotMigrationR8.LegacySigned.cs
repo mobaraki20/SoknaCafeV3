@@ -164,4 +164,79 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             throw;
         }
     }
+    /// <summary>
+    /// Recovery Console only, after exclusive supervisor lease and one-use
+    /// Engine delegation. Never called from normal local-web HMAC credentials.
+    /// Restores ONLY the old physical Web and byte-exact lifecycle identity.
+    /// </summary>
+    public ProductionLocalSlotMigrationResult RecoverSignedLegacy()
+    {
+        if (!File.Exists(StatePath))
+            throw new InvalidDataException("LEGACY_RECOVERY_STATE_MISSING");
+        var state = AtomicFile.ReadJson<ProductionLocalSlotMigrationState>(StatePath);
+        if (state.Format != "sokna-local-slot-migration-state-v1" ||
+            state.SchemaVersion != 1 || state.DatabaseMutationPerformed ||
+            state.PublicMutationPerformed || state.WindowsRebootRequired ||
+            state.Phase is "COMMITTED" or "ROLLED_BACK" or "RECOVERED_TO_PHYSICAL_WEB")
+            throw new InvalidDataException("LEGACY_RECOVERY_NOT_INTERRUPTED");
+        if (string.IsNullOrWhiteSpace(state.PhysicalWebBackup))
+            throw new InvalidDataException("LEGACY_PHYSICAL_BACKUP_UNAVAILABLE");
+        var package = Path.GetFullPath(state.PackageRoot);
+        var stable = Path.GetFullPath(state.StableWebRoot);
+        var backup = Path.GetFullPath(state.PhysicalWebBackup);
+        var expectedStable = Path.Combine(package, "Web");
+        var expectedPrefix = Path.Combine(package, "LocalWeb", "pre-slot")
+            + Path.DirectorySeparatorChar;
+        if (!PathsEqual(stable, expectedStable) ||
+            !backup.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase) ||
+            !Path.GetFileName(backup).StartsWith("physical-web-", StringComparison.Ordinal))
+            throw new InvalidDataException("LEGACY_RECOVERY_PATH_UNQUALIFIED");
+
+        var pinnedBuild = state.ExpectedBuild;
+        // Validate COMPLETE crash proof before touching any service/pointer.
+        RoutineLocalLifecycle.RequireCrashRollbackEvidence(package,
+            _paths.LocalSlotStateRoot, pinnedBuild, _paths.InstalledReleaseIdentityPath);
+        var history = state.Events.ToList();
+        state = Event(state, history, "RECOVERY_INTENT", "restore physical Legacy Web");
+        try
+        {
+            StopApacheAndProveExit(state.ApacheExecutable);
+            if (Directory.Exists(stable))
+            {
+                if ((File.GetAttributes(stable) & FileAttributes.ReparsePoint) != 0)
+                    RemoveJunction(stable);
+                else if (Directory.Exists(backup))
+                    throw new InvalidDataException(
+                        "LEGACY_RECOVERY_PHYSICAL_WEB_AND_BACKUP_BOTH_PRESENT");
+            }
+            if (!Directory.Exists(stable))
+            {
+                if (!Directory.Exists(backup))
+                    throw new DirectoryNotFoundException("LEGACY_RECOVERY_BACKUP_MISSING");
+                Directory.Move(backup, stable);
+            }
+            RoutineLocalLifecycle.RestoreCrashBackup(package,
+                _paths.LocalSlotStateRoot, pinnedBuild, _paths.InstalledReleaseIdentityPath);
+            StartApache();
+            RequireHttpHealth(pinnedBuild, state.HealthUrl);
+            var old = _discovery.InspectLegacyPhysicalCurrent();
+            var tree = LegacyLocalBaselineAttestation.RequireExactPhysicalWeb(old.WebRoot);
+            if (old.Build != pinnedBuild ||
+                tree.ManagedFiles != state.ExpectedManagedFiles ||
+                tree.ManagedTreeSha256 != state.ExpectedManagedTreeSha256)
+                throw new InvalidDataException("LEGACY_RECOVERY_BASELINE_DRIFT");
+            state = state with { ActiveSlot = null, PreviousSlot = state.TargetSlot,
+                RecoveryRequired = false };
+            state = Event(state, history, "RECOVERED_TO_PHYSICAL_WEB", tree.ManagedTreeSha256);
+            RoutineLocalLifecycle.CompleteCrashBackup(_paths.LocalSlotStateRoot);
+            return Result(state, tree.ManagedTreeSha256);
+        }
+        catch (Exception ex)
+        {
+            state = state with { RecoveryRequired = true };
+            Event(state, history, "RECOVERY_REQUIRED", ex.GetType().Name);
+            throw;
+        }
+    }
+
 }
