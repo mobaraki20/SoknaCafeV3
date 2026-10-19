@@ -180,6 +180,35 @@ jobs:
             $replay = Invoke-WebRequest $uri -Headers $headers -SkipHttpErrorCheck -TimeoutSec 4
             $obj2 = $replay.Content | ConvertFrom-Json -AsHashtable
             if($replay.StatusCode -ne 409 -or $obj2.code -ne 'AUTH_REPLAY') { throw 'HMAC replay not rejected' }
+            # Signed Local activation requires a REAL signed Stage; Web key
+            # may NEVER invoke code-only recovery or replay the same nonce.
+            $stagePath='/v1/local-updates/activate-code-only'
+            $stageBody='{"stage_operation_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","operator_id":"user:1"}'
+            $stageBytes=[Text.Encoding]::UTF8.GetBytes($stageBody)
+            $stageHash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stageBytes)).ToLowerInvariant()
+            $stageTs=[DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+            $stageNonce=[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(16)).ToLowerInvariant()
+            $stageCanonical=('POST',$stagePath,'1.0',$stageTs,$stageNonce,$stageHash) -join [char]10
+            $stageMac=[Security.Cryptography.HMACSHA256]::new($key)
+            try { $stageSig=[Convert]::ToHexString($stageMac.ComputeHash([Text.Encoding]::UTF8.GetBytes($stageCanonical))).ToLowerInvariant() }
+            finally { $stageMac.Dispose() }
+            $stageHeaders=$headers.Clone()
+            $stageHeaders['X-Sokna-Timestamp']=$stageTs
+            $stageHeaders['X-Sokna-Nonce']=$stageNonce
+            $stageHeaders['X-Sokna-Body-SHA256']=$stageHash
+            $stageHeaders['X-Sokna-Signature']=$stageSig
+            $stageHeaders['X-Sokna-Idempotency-Key']='code-only-negative-stage-proof'
+            $stageResp=Invoke-WebRequest "http://127.0.0.1:$port$stagePath" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
+            $stageData=$stageResp.Content|ConvertFrom-Json -AsHashtable
+            if($stageResp.StatusCode -ne 422 -or $stageData.code -ne 'CODE_ONLY_SIGNED_STAGE_OR_SLOT_UNPROVEN') { throw 'Nonexistent signed Stage reached Local activation' }
+            $replay=Invoke-WebRequest "http://127.0.0.1:$port$stagePath" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
+            $replayData=$replay.Content|ConvertFrom-Json -AsHashtable
+            if($replay.StatusCode -ne 409 -or $replayData.code -ne 'AUTH_REPLAY') { throw 'Local activate accepted HMAC replay nonce' }
+            $wrongRecovery=Invoke-WebRequest "http://127.0.0.1:$port/v1/local-updates/recover-code-only" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
+            $wrongData=$wrongRecovery.Content|ConvertFrom-Json -AsHashtable
+            if($wrongRecovery.StatusCode -ne 403 -or $wrongData.code -ne 'RECOVERY_CONSOLE_KEY_REQUIRED') { throw 'Local Web key gained recovery-console privileges' }
+            if(@(Get-ChildItem (Join-Path $root 'operations') -Filter 'op-*.json' -ErrorAction SilentlyContinue).Count -ne 0) { throw 'Rejected Local activation created a durable mutation operation' }
+            Write-Host 'LOCAL_CODE_ONLY_SIGNED_ENDPOINTS_FAIL_CLOSED_PASS'
             # A corrupt durable operation must not become "idle", 404, or an unclassified 500.
             [IO.File]::WriteAllText((Join-Path $root 'operations/op-corrupt-http.json'), '{}')
             $idempotencyKey = 'http-corrupt-index'
