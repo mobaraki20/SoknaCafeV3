@@ -146,7 +146,7 @@ public sealed partial class ProductionLocalSlotMigrationBridge
                 // Maintenance identity. Keep target and physical backup
                 // evidence until the old HTTP health is independently proven.
                 lifecycle.Restore();
-                RestorePhysicalWebAndRequireHealth(layout, backup, currentBuild,
+                RestoreLegacyPhysicalWebAndRequireHealth(layout, backup, currentBuild,
                     prior.ManagedFiles, prior.ManagedTreeSha256);
                 state = state with { RecoveryRequired = false, ActivationPerformed = true,
                     ActiveSlot = null, PreviousSlot = targetSlot };
@@ -237,6 +237,39 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             Event(state, history, "RECOVERY_REQUIRED", ex.GetType().Name);
             throw;
         }
+    }
+
+    // H300 physical-Web baseline has NO local-managed-files-v1.json.
+    // The generic R8 recovery verifier would always reject a healthy 231ag
+    // rollback. Independently prove the original H300 inventory instead.
+    private void RestoreLegacyPhysicalWebAndRequireHealth(
+        LocalInstallLayout original, string physicalBackup,
+        string originalBuild, int expectedCount, string expectedTree)
+    {
+        try { StopApacheAndProveExit(original.ApacheExecutable); }
+        catch { /* ambiguous stop: physical state is inspected below */ }
+
+        if (Directory.Exists(original.WebRoot))
+        {
+            if ((File.GetAttributes(original.WebRoot) & FileAttributes.ReparsePoint) != 0)
+                RemoveJunction(original.WebRoot);
+            else if (!PathsEqual(original.WebRoot, physicalBackup))
+                throw new InvalidDataException("LEGACY_ROLLBACK_STABLE_PHYSICAL_PATH_OCCUPIED");
+        }
+        if (!Directory.Exists(original.WebRoot))
+        {
+            if (!Directory.Exists(physicalBackup))
+                throw new DirectoryNotFoundException("LEGACY_ROLLBACK_PHYSICAL_BACKUP_MISSING");
+            Directory.Move(physicalBackup, original.WebRoot);
+        }
+        StartApache();
+        RequireHttpHealth(originalBuild, original.HealthUrl);
+        var restored = _discovery.InspectLegacyPhysicalCurrent();
+        var attested = LegacyLocalBaselineAttestation.RequireExactPhysicalWeb(restored.WebRoot);
+        if (restored.WebIsReparsePoint || restored.Build != originalBuild ||
+            attested.ManagedFiles != expectedCount ||
+            attested.ManagedTreeSha256 != expectedTree)
+            throw new InvalidDataException("LEGACY_ROLLBACK_OLD_H300_TREE_UNPROVEN");
     }
 
 }
