@@ -122,7 +122,7 @@ if (command == "cutover-attest")
 // command. The one-use permit must match every argument byte-for-byte.
 if (command is "verify-stage" or "local-slot-migrate" or "local-slot-recover"
     or "local-slot-home-cycle" or "local-slot-stage" or "local-slot-activate"
-    or "local-slot-activate-qualified" or "local-slot-recover-routine")
+    or "local-slot-activate-qualified" or "local-slot-recover-routine" or "local-slot-activate-qualified-legacy")
 {
     if (args.Length < 4 || args[^2] != "--delegation-id")
     {
@@ -286,6 +286,36 @@ try
             }, AtomicFile.JsonOptions));
             break;
         }
+        // The first physical-Web -> R8 transition uses the SAME delegated,
+        // signed Supervisor/UpdateEngine transaction. Direct CLI calls without
+        // the one-use Supervisor delegation token are rejected above.
+        case "local-slot-activate-qualified-legacy":
+        {
+            RequireOption(options, "--source", out var source);
+            RequireOption(options, "--current-build", out var currentBuild);
+            RequireOption(options, "--target-build", out var targetBuild);
+            RequireOption(options, "--target-managed-files", out var targetCountText);
+            RequireOption(options, "--target-managed-tree-sha256", out var targetTree);
+            RequireOption(options, "--release-set-id", out var releaseId);
+            if (!int.TryParse(targetCountText, out var targetCount) ||
+                targetCount is < 1 or > 20000)
+                throw new InvalidDataException("LEGACY_TARGET_MANAGED_COUNT_INVALID");
+            var result = bridge.MigrateSignedLegacy(
+                currentBuild, targetBuild, source, targetCount, targetTree, releaseId);
+            Console.WriteLine(JsonSerializer.Serialize(new {
+                ok = result.Ok,
+                engine_version = EngineVersion,
+                phase = result.Phase,
+                result,
+                managed_tree_sha256 = result.ManagedTreeSha256,
+                activation_performed = result.ActivationPerformed,
+                database_mutation_performed = false,
+                public_mutation_performed = false,
+                windows_reboot_required = false,
+                recovery_required = result.RecoveryRequired
+            }, AtomicFile.JsonOptions));
+            break;
+        }
         case "local-slot-activate":
         case "local-slot-activate-qualified":
         {
@@ -326,7 +356,7 @@ catch (Exception ex) when (ex is InvalidDataException or IOException or Unauthor
         {
             "local-slot-migrate" => "LOCAL_SLOT_MIGRATION_FAILED",
             "local-slot-stage" => "LOCAL_SLOT_ROUTINE_STAGE_FAILED",
-            "local-slot-activate" or "local-slot-activate-qualified" or "local-slot-home-cycle" => "LOCAL_SLOT_ROUTINE_ACTIVATION_FAILED",
+            "local-slot-activate" or "local-slot-activate-qualified" or "local-slot-activate-qualified-legacy" or "local-slot-home-cycle" => "LOCAL_SLOT_ROUTINE_ACTIVATION_FAILED",
             _ => "LOCAL_SLOT_OPERATION_FAILED"
         },
         error = ex.Message,
