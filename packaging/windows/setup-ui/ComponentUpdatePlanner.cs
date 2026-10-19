@@ -58,6 +58,27 @@ internal static class ComponentUpdatePlanner
         if (root.GetProperty("format").GetString() != "sokna-windows-component-manifest-v2" || root.GetProperty("schema_version").GetInt32() != 2)
             throw new InvalidOperationException("نسخه مانیفست اجزا پشتیبانی نمی‌شود.");
         var packageVersion = root.GetProperty("package_version").GetString() ?? "";
+        // A label from a new installer cannot authorize an old payload.
+        // Fail closed if the actual unified shell manifest, component plan,
+        // and compiled dashboard disagree (RC1 legacy-shell regression).
+        var shellProofPath = Path.Combine(shellRoot, "payload-manifest.json");
+        if (!File.Exists(shellProofPath))
+            throw new InvalidOperationException("بستهٔ نصب کامل نیست؛ Manifest یکپارچه وجود ندارد.");
+        using (var proofDoc = JsonDocument.Parse(File.ReadAllText(shellProofPath)))
+        {
+            var proof = proofDoc.RootElement;
+            if (proof.GetProperty("format").GetString() != "sokna-windows-services-shell-v3" ||
+                proof.GetProperty("schema_version").GetInt32() != 3 ||
+                proof.GetProperty("package_version").GetString() != packageVersion ||
+                root.GetProperty("components").GetArrayLength() != 5 ||
+                proof.GetProperty("components").GetArrayLength() != 5)
+                throw new InvalidOperationException("بستهٔ نصب با نسخهٔ اجزا یکسان نیست؛ عملیات متوقف شد.");
+        }
+        var shellUiPath = Path.Combine(shellRoot, "SoknaSetupUi.exe");
+        if (!File.Exists(shellUiPath) ||
+            !string.Equals(NormalizeVersion(FileVersionInfo.GetVersionInfo(shellUiPath).ProductVersion ?? ""),
+                packageVersion, StringComparison.Ordinal))
+            throw new InvalidOperationException("نسخهٔ رابط نصب با نسخهٔ Manifest هم‌خوانی ندارد.");
         var paired = ReadPaired(dataRoot);
         var rows = new List<ComponentPlanRow>();
         foreach (var c in root.GetProperty("components").EnumerateArray())
@@ -291,6 +312,10 @@ internal static class ComponentUpdatePlanner
             var raw = info.FileVersion ?? "";
             if (string.IsNullOrWhiteSpace(raw)) raw = info.ProductVersion ?? "";
             var normalized = NormalizeVersion(raw);
+            // FileVersion 1.0.5.0 is the same release as manifest 1.0.5.
+            // Show the three-part product version, without changing comparison.
+            if (normalized.Split('.').Length == 4 && normalized.EndsWith(".0", StringComparison.Ordinal))
+                normalized = normalized[..^2];
             return string.IsNullOrWhiteSpace(normalized) ? "نامشخص" : normalized;
         }
         catch { return "نامشخص"; }
