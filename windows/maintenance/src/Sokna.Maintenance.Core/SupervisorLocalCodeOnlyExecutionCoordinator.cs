@@ -262,12 +262,10 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
         if (before.Local is null || before.Local.Version != physical.Build)
             throw new InvalidDataException("LEGACY_INSTALLED_IDENTITY_MISMATCH");
 
-        // Use the SAME signed package->private candidate preparation as R8.
-        // Its bounded extraction rehashes every ZIP entry and the signed
-        // manifest. No external source path is accepted from the operator.
-        var candidate = _legacyCandidate.Prepare(stageId, operatorId,
-            "legacy-candidate-" + stageId);
-        var payload = candidate.Receipt;
+        // A previous signed prepare-inactive POST must have already prepared
+        // this exact candidate. Here we independently read and rehash it;
+        // acquiring another machine lease inside Activate would deadlock.
+        var payload = _legacyCandidate.InspectExisting(stageId, operatorId);
         if (payload.TargetVersion == physical.Build ||
             !payload.ActiveSlotUnchanged || payload.PromotionQualified ||
             payload.ActivationPerformed || payload.DatabaseMutationPerformed ||
