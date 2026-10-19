@@ -218,7 +218,11 @@ internal sealed class WindowsServicesDashboardV3 : Form
 
     private void Render(ComponentPlanSnapshot p)
     {
-        packageState.Text = p.IsBlocked ? "نیاز به بررسی" : p.HasMutation ? "تغییر لازم است" : "به‌روز"; packageState.ForeColor = p.IsBlocked ? SetupPalette.Danger : p.HasMutation ? SetupPalette.Warning : SetupPalette.Good;
+        var committedVersion = ReadCommittedFoundationVersion();
+        packageState.Text = "نصب " + committedVersion + " → بسته " + p.PackageVersion;
+        packageState.ForeColor = p.IsBlocked ? SetupPalette.Danger :
+            (!string.Equals(committedVersion, p.PackageVersion, StringComparison.Ordinal) || p.HasMutation)
+                ? SetupPalette.Warning : SetupPalette.Good;
         var prim = p.PrimaryRows; var running = prim.Count(x => x.Health == ComponentHealth.Healthy); serviceState.Text = $"{running} از {prim.Count} آماده"; serviceState.ForeColor = running == prim.Count ? SetupPalette.Good : SetupPalette.Warning;
         var paired = ReadPaired(); connectionState.Text = paired ? "متصل" : "متصل نیست"; connectionState.ForeColor = paired ? SetupPalette.Good : SetupPalette.Warning;
         while (componentRows.Controls.Count > 4) componentRows.Controls.RemoveAt(componentRows.Controls.Count - 1);
@@ -308,6 +312,26 @@ internal sealed class WindowsServicesDashboardV3 : Form
             using var d = JsonDocument.Parse(File.ReadAllText(p)); var r = d.RootElement; return (Get(r, "summary", "عملیات کامل نشد."), Get(r, "failed_component", "—"), Get(r, "failed_phase", "—"), Bool(r, "rollback_complete"), Bool(r, "reboot_required"));
         }
         catch { return ("نتیجه ساختاریافته قابل خواندن نبود؛ لاگ transaction را بررسی کنید.", "—", "Result", false, false); }
+    }
+
+    private string ReadCommittedFoundationVersion()
+    {
+        // This is NOT Windows Uninstall.DisplayVersion: Inno updates that registry
+        // label before the privileged component transaction has committed.
+        // Only the Windows Services durable lifecycle state proves completion.
+        try
+        {
+            var path = Path.Combine(dataRoot, "setup", "windows-services-state.json");
+            if (!File.Exists(path)) return "نامشخص";
+            using var state = JsonDocument.Parse(File.ReadAllText(path));
+            var root = state.RootElement;
+            var format = root.TryGetProperty("format", out var fmt) ? fmt.GetString() : "";
+            if (format is not ("sokna-windows-services-install-state-v1" or "sokna-windows-services-install-state-v2"))
+                return "نامشخص";
+            var committed = root.TryGetProperty("package_version", out var v) ? v.GetString() : null;
+            return string.IsNullOrWhiteSpace(committed) ? "نامشخص" : committed.Trim();
+        }
+        catch { return "نامشخص"; }
     }
 
     private bool ReadPaired() { try { var p = Path.Combine(dataRoot, "setup", "windows-services-state.json"); if (!File.Exists(p)) return false; using var d = JsonDocument.Parse(File.ReadAllText(p)); return d.RootElement.TryGetProperty("paired", out var x) && x.ValueKind == JsonValueKind.True; } catch { return false; } }
