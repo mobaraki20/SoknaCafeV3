@@ -53,7 +53,7 @@ try {
  catch(TargetInvocationException ex) when(ex.InnerException is InvalidDataException) {Console.WriteLine("PASS busy Local rejected");}
  var caps = UnifiedUpdaterCapabilities.Current();
  Check(caps.Format=="sokna-unified-updater-capabilities-v1" && caps.SchemaVersion==1, "capability schema v1");
- Check(!caps.PanelUpdateReady && caps.BlockingCode=="FOUNDATION_UPDATE_REQUIRED" &&
+ Check(!caps.PanelUpdateReady && caps.BlockingCode=="LOCAL_CROSS_VERSION_UAT_REQUIRED" &&
        !caps.LocalRoutine.Preflight && !caps.LocalRoutine.Stage &&
        !caps.LocalRoutine.Activate && !caps.LocalRoutine.Recover,
        "unimplemented ordinary Local update never advertised ready");
