@@ -15,8 +15,8 @@ if([string]::IsNullOrWhiteSpace($expectedPackageVersion)){throw 'Source payload 
 $evidenceParent=Split-Path -Parent $EvidencePath
 if($evidenceParent){New-Item -ItemType Directory -Path $evidenceParent -Force|Out-Null}
 $tempRoot=if($env:RUNNER_TEMP){$env:RUNNER_TEMP}else{[IO.Path]::GetTempPath()}
-$dest=Join-Path $tempRoot ('sokna-core-verify-'+[guid]::NewGuid().ToString('N'))
-$log=Join-Path $tempRoot ('sokna-core-verify-'+[guid]::NewGuid().ToString('N')+'.log')
+$dest=Join-Path $tempRoot ('windows-services-verify-'+[guid]::NewGuid().ToString('N'))
+$log=Join-Path $tempRoot ('windows-services-verify-'+[guid]::NewGuid().ToString('N')+'.log')
 New-Item -ItemType Directory -Path $dest -Force|Out-Null
 
 try{

@@ -8,6 +8,7 @@ var root = string.Empty;
 var variant = "valid";
 long sequence = 1;
 string? releaseId = null;
+var seedStage = false;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -16,10 +17,24 @@ for (var i = 0; i < args.Length; i++)
         case "--variant" when i + 1 < args.Length: variant = args[++i]; break;
         case "--sequence" when i + 1 < args.Length && long.TryParse(args[++i], out var parsed): sequence = parsed; break;
         case "--release-id" when i + 1 < args.Length: releaseId = args[++i]; break;
+        case "--seed-stage": seedStage = true; break;
         default: throw new InvalidOperationException($"Unknown or incomplete argument: {args[i]}.");
     }
 }
 if (string.IsNullOrWhiteSpace(root)) throw new InvalidOperationException("--root is required.");
+if (variant is "for-install-local-synthetic" or "for-install-local-no-db-synthetic" or "for-install-paired-synthetic")
+{
+    // These self-asserted fixture qualification flags MUST NOT be written to
+    // an installed SOKNA data root or used with a production trust anchor.
+    var runnerTemp = Environment.GetEnvironmentVariable("RUNNER_TEMP");
+    var inDisposableCi = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.Ordinal) &&
+        string.Equals(Environment.GetEnvironmentVariable("RUNNER_OS"), "Windows", StringComparison.Ordinal) &&
+        !string.IsNullOrWhiteSpace(runnerTemp) &&
+        Path.GetFullPath(root).StartsWith(Path.GetFullPath(runnerTemp).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    if (!inDisposableCi)
+        throw new InvalidOperationException("SYNTHETIC_INSTALL_QUALIFICATION_CI_ONLY");
+}
+
 Directory.CreateDirectory(root);
 releaseId ??= $"release-test-{sequence}";
 
@@ -36,18 +51,62 @@ var identityPath = Path.Combine(root, "identity.json");
 AtomicFile.WriteJson(identityPath, identity);
 
 var payload = Encoding.UTF8.GetBytes("SOKNA Maintenance V4 P2A deterministic fixture payload\n");
+var siblingFixture = variant is "sibling-ready" or "sibling-zip-traversal" or "sibling-zip-overlay" or "sibling-corrupt-tree";
+var siblingVersion = "3.0.0-test-sibling-111";
+var siblingTree = "";
+var siblingCount = 3;
+if (siblingFixture)
+{
+    var source = Path.Combine(root, "fixture-local-web");
+    Directory.CreateDirectory(Path.Combine(source, "public"));
+    Directory.CreateDirectory(Path.Combine(source, "resources"));
+    File.WriteAllText(Path.Combine(source, "VERSION.txt"), siblingVersion, Encoding.UTF8);
+    File.WriteAllText(Path.Combine(source, "public", "index.php"), "<?php echo 'private-candidate'; ?>\n", Encoding.UTF8);
+    File.WriteAllText(Path.Combine(source, "resources", "local-managed-files-v1.json"),
+        JsonSerializer.Serialize(new { format = "sokna-local-managed-files-v1", files = new[] {
+            "VERSION.txt", "public/index.php", "resources/local-managed-files-v1.json" } }, AtomicFile.JsonOptions));
+    siblingTree = LocalManagedTreeAttestation.Compute(source, siblingCount);
+    if (variant == "sibling-corrupt-tree") siblingTree = new string('f', 64);
+    var nestedPath = Path.Combine(root, "inner-local-web-" + sequence + "-" + variant + ".zip");
+    if (File.Exists(nestedPath)) File.Delete(nestedPath);
+    using (var inner = ZipFile.Open(nestedPath, ZipArchiveMode.Create))
+    {
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var entry = inner.CreateEntry(Path.GetRelativePath(source, file).Replace('\\', '/'));
+            using var input = File.OpenRead(file);
+            using var output = entry.Open();
+            input.CopyTo(output);
+        }
+        if (variant == "sibling-zip-traversal")
+        {
+            var traversal = inner.CreateEntry("../escape.php");
+            using var output = new StreamWriter(traversal.Open());
+            output.Write("unsafe");
+        }
+        if (variant == "sibling-zip-overlay")
+        {
+            var overlay = inner.CreateEntry(".sokna-installation.json");
+            using var output = new StreamWriter(overlay.Open());
+            output.Write("{}");
+        }
+    }
+    payload = File.ReadAllBytes(nestedPath);
+}
 var declaredPayload = payload;
-var artifactPath = variant == "path-traversal" ? "../escape.bin" : "artifacts/local/payload.bin";
+var artifactPath = variant == "path-traversal" ? "../escape.bin" :
+    siblingFixture ? "artifacts/local/web-release.zip" : "artifacts/local/payload.bin";
 var artifact = new ReleaseArtifact(
     artifactPath,
     Convert.ToHexString(SHA256.HashData(declaredPayload)).ToLowerInvariant(),
     declaredPayload.LongLength,
     "local-web",
-    "payload");
+    siblingFixture ? "web-tree-zip-v1" : "payload");
 var now = DateTimeOffset.UtcNow;
 var created = variant == "expired" ? now.AddHours(-2) : now.AddMinutes(-1);
 var expires = variant == "expired" ? now.AddHours(-1) : now.AddHours(2);
-var forInstall = variant == "for-install-unqualified";
+var syntheticLocal = variant is "for-install-local-synthetic" or "for-install-local-no-db-synthetic" or "for-install-paired-synthetic";
+var forInstall = variant == "for-install-unqualified" || syntheticLocal;
 var format = variant == "design-draft" ? "sokna-maintenance-release-set-v2.1-draft" : ReleaseSetVerifierStager.Format;
 var schema = variant == "design-draft" ? "2.1-design" : ReleaseSetVerifierStager.SchemaVersion;
 var status = variant == "design-draft" ? "DESIGN_ONLY_NOT_FOR_INSTALL" : "ENGINEERING_TEST_NOT_FOR_INSTALL";
@@ -60,15 +119,18 @@ var manifest = new ReleaseSetManifest(
     status,
     releaseId,
     sequence,
-    "local_only",
+    variant == "for-install-paired-synthetic" ? "paired" : "local_only",
     created,
     expires,
     forInstall,
-    false,
+    syntheticLocal,
     new ReleaseSetSignature(ReleaseSetVerifierStager.SignatureAlgorithm, "test-key", string.Empty),
     new ReleaseSetRequirements("0.1.0", "0.2.0", null, null),
     new[] { new ReleaseBaseline(baseline, null) },
-    emptyObject,
+    siblingFixture
+        ? JsonSerializer.SerializeToElement(new { local = new {
+            version = siblingVersion, managed_tree_sha256 = siblingTree, managed_files = siblingCount } })
+        : emptyObject,
     new Dictionary<string, ReleaseArtifact>(StringComparer.Ordinal) { ["local_payload"] = artifact },
     emptyArray,
     new[] { new InstallPlanStep("preflight", "all", false), new InstallPlanStep("stage", "local-web", false) },
@@ -84,7 +146,11 @@ var manifest = new ReleaseSetManifest(
         "clean_target_only",
         "fresh_reprovision_required",
         "credential_rotation_and_authority_epoch_required"),
-    new ReleaseQualification("", false, false, false, false, false, false, false, false, 80),
+    syntheticLocal
+        ? new ReleaseQualification("CI-SYNTHETIC-NOT-PRODUCTION", true,
+            variant != "for-install-local-no-db-synthetic", false,
+            true, true, true, false, false, 80)
+        : new ReleaseQualification("", false, false, false, false, false, false, false, false, 80),
     new PreUpdateBackupPolicy(false, null, false, false, "reject_pre_mutation"));
 
 var unsignedBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, AtomicFile.JsonOptions);
@@ -116,12 +182,23 @@ using (var archive = ZipFile.Open(packagePath, ZipArchiveMode.Create))
     }
 }
 
+// Only the isolated signed-fixture executable may seed a Stage directly.
+// The shipped Update Engine still REQUIRES a Supervisor-issued permit.
+StagedReleaseReceipt? seededStage = null;
+if (seedStage)
+{
+    if (variant != "valid") throw new InvalidDataException("Only valid fixture Stage can be seeded.");
+    var fixturePaths = new MaintenancePaths(root);
+    seededStage = new ReleaseSetVerifierStager(fixturePaths).VerifyAndStage(packagePath, identity);
+}
+
 Console.WriteLine(JsonSerializer.Serialize(new
 {
     package = packagePath,
     identity = identityPath,
     data_root = root,
     trust_key = Path.Combine(trustRoot, "test-key.spki.pem"),
+    seeded_stage = seededStage,
     variant,
     sequence,
     release_set_id = releaseId

@@ -46,6 +46,25 @@ internal static class ProgramV4
         try
         {
             if (!OperatingSystem.IsWindows()) return FailConsole("این برنامه فقط روی ویندوز قابل اجرا است.", 2);
+            if (args.Length == 1 && args[0].Equals("--pairing-self-test", StringComparison.OrdinalIgnoreCase))
+            {
+                // The csproj StartupObject is ProgramV4. Running a Pairing
+                // self-test must NOT fall through to setup plan parsing.
+                try
+                {
+                    PairingClient.SelfTest();
+                    Console.WriteLine("SOKNA Setup Host v4 pairing self-test PASS");
+                    return 0;
+                }
+                catch (Exception error)
+                {
+                    // ASCII diagnostic only: never log a pairing code/secret.
+                    Console.Error.WriteLine("PAIRING_SELF_TEST_FAILED type=" + error.GetType().Name +
+                        " reason=" + (error.Message.StartsWith("pairing_selftest_", StringComparison.Ordinal)
+                            ? error.Message : "unexpected_pairing_exception"));
+                    return 2;
+                }
+            }
             if (args.Length == 1 && args[0].Equals("--host-self-test", StringComparison.OrdinalIgnoreCase)) { SelfTest(); Console.WriteLine("SOKNA Setup Host v4 self-test PASS"); return 0; }
             var sourcePlanPath = ReadPlanArgument(args);
             var plan = LoadAndValidate(sourcePlanPath);

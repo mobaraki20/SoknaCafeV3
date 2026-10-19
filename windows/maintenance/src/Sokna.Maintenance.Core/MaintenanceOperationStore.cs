@@ -21,7 +21,8 @@ public sealed record MaintenanceOperation(
     [property: JsonPropertyName("result_message")] string? ResultMessage,
     [property: JsonPropertyName("stage_receipt_path")] string? StageReceiptPath,
     [property: JsonPropertyName("activation_performed")] bool ActivationPerformed,
-    [property: JsonPropertyName("database_mutation_performed")] bool DatabaseMutationPerformed);
+    [property: JsonPropertyName("database_mutation_performed")] bool DatabaseMutationPerformed,
+    [property: JsonPropertyName("preflight_receipt_path")] string? PreflightReceiptPath = null);
 
 public sealed class MaintenanceOperationStore
 {
@@ -72,7 +73,7 @@ public sealed class MaintenanceOperationStore
         var path = OperationPath(operationId);
         if (!File.Exists(path)) return null;
         var operation = AtomicFile.ReadJson<MaintenanceOperation>(path);
-        ValidateStored(operation);
+        ValidateStored(operation, operationId);
         return operation;
     }
 
@@ -81,8 +82,64 @@ public sealed class MaintenanceOperationStore
         ValidateIdempotencyKey(idempotencyKey);
         var path = IndexPath(idempotencyKey);
         if (!File.Exists(path)) return null;
-        return Get(File.ReadAllText(path).Trim());
+        var operationId = File.ReadAllText(path).Trim();
+        if (!IsSafeToken(operationId, 64)) throw new InvalidDataException("Idempotency index contains an invalid operation id.");
+        return Get(operationId) ?? throw new InvalidDataException("Idempotency index points to a missing maintenance operation.");
     }
+
+    /// <summary>
+    /// Do not interpret corrupt or missing operation evidence as an idle updater.
+    /// ListActive scans the whole bounded journal, NOT just the latest page.
+    /// </summary>
+    private IReadOnlyList<MaintenanceOperation> LoadAllOperations()
+    {
+        lock (_sync)
+        {
+            var paths = Directory.EnumerateFiles(_paths.OperationsRoot, "op-*.json",
+                SearchOption.TopDirectoryOnly).ToArray();
+            if (paths.Length > 20_000)
+                throw new InvalidDataException("Maintenance operation history exceeds the safe inspection limit.");
+            var result = new List<MaintenanceOperation>(paths.Length);
+            foreach (var path in paths)
+            {
+                var operation = AtomicFile.ReadJson<MaintenanceOperation>(path);
+                ValidateStored(operation, Path.GetFileNameWithoutExtension(path)[3..]);
+                result.Add(operation);
+            }
+            return result;
+        }
+    }
+
+    public IReadOnlyList<MaintenanceOperation> ListRecent(int max = 30)
+    {
+        if (max is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(max));
+        return LoadAllOperations().OrderByDescending(static o => o.UpdatedAtUtc)
+            .ThenByDescending(static o => o.OperationId, StringComparer.Ordinal)
+            .Take(max).ToArray();
+    }
+
+    public IReadOnlyList<MaintenanceOperation> ListActive()
+        => LoadAllOperations()
+            .Where(static o => o.State is "accepted" or "running" or "activating" or "recovering")
+            .OrderBy(static o => o.CreatedAtUtc)
+            .ToArray();
+
+    /// <summary>
+    /// Recovery required is NOT idle: it blocks another updater mutation even
+    /// though it is not an in-flight process. Scan the entire durable history.
+    /// </summary>
+    public IReadOnlyList<MaintenanceOperation> ListBlocking()
+        => LoadAllOperations()
+            .Where(static o => o.State is "accepted" or "running" or "activating" or "recovering" or "recovery_required")
+            .OrderBy(static o => o.CreatedAtUtc)
+            .ToArray();
+
+    public IReadOnlyList<MaintenanceOperation> ListInterruptedLocalStages()
+        => LoadAllOperations()
+            .Where(static o => o.OperationType is "update.local-stage" or "update.stage" &&
+                o.State is "accepted" or "running")
+            .OrderBy(static o => o.CreatedAtUtc)
+            .ToArray();
 
     public MaintenanceOperation Update(
         MaintenanceOperation operation,
@@ -92,7 +149,8 @@ public sealed class MaintenanceOperationStore
         string? stageReceiptPath = null,
         bool incrementAttempt = false,
         bool? activationPerformed = null,
-        bool? databaseMutationPerformed = null)
+        bool? databaseMutationPerformed = null,
+        string? preflightReceiptPath = null)
     {
         lock (_sync)
         {
@@ -108,7 +166,8 @@ public sealed class MaintenanceOperationStore
                 ResultMessage = resultMessage,
                 StageReceiptPath = stageReceiptPath,
                 ActivationPerformed = activationPerformed ?? current.ActivationPerformed,
-                DatabaseMutationPerformed = databaseMutationPerformed ?? current.DatabaseMutationPerformed
+                DatabaseMutationPerformed = databaseMutationPerformed ?? current.DatabaseMutationPerformed,
+                PreflightReceiptPath = preflightReceiptPath ?? current.PreflightReceiptPath
             };
             AtomicFile.WriteJson(OperationPath(updated.OperationId), updated);
             return updated;
@@ -122,9 +181,11 @@ public sealed class MaintenanceOperationStore
         return Path.Combine(_paths.OperationsRoot, "idem-" + hash + ".txt");
     }
 
+    public static bool IsValidIdempotencyKey(string? key) => IsSafeToken(key, 128);
+
     private static void ValidateIdempotencyKey(string key)
     {
-        if (!IsSafeToken(key, 128)) throw new InvalidDataException("Idempotency key is invalid.");
+        if (!IsValidIdempotencyKey(key)) throw new InvalidDataException("Idempotency key is invalid.");
     }
 
     private static void ValidateOperatorId(string value)
@@ -132,7 +193,7 @@ public sealed class MaintenanceOperationStore
         if (!IsSafeToken(value, 128)) throw new InvalidDataException("operator_id is invalid.");
     }
 
-    private static bool IsSafeToken(string value, int maxLength)
+    private static bool IsSafeToken(string? value, int maxLength)
         => !string.IsNullOrWhiteSpace(value) && value.Length <= maxLength && value.All(static c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' or ':');
 
     private static bool FixedHashEquals(string left, string right)
@@ -149,13 +210,25 @@ public sealed class MaintenanceOperationStore
         }
     }
 
-    private static void ValidateStored(MaintenanceOperation operation)
+    private static void ValidateStored(MaintenanceOperation? operation, string expectedOperationId)
     {
-        if (operation.Format != "sokna-maintenance-operation-v1" || operation.SchemaVersion != 1 ||
-            !IsSafeToken(operation.OperationId, 64) || !IsSafeToken(operation.IdempotencyKey, 128) || !IsSafeToken(operation.OperatorId, 128) ||
-            operation.CanonicalRequestSha256.Length != 64)
-            throw new InvalidDataException("Maintenance operation record is invalid.");
+        // A well-formed JSON document can still be truncated, contain null required
+        // properties, or describe a different operation from its durable filename.
+        // All of these are corrupt evidence; never interpret them as updater idle.
+        if (operation is null || operation.Format != "sokna-maintenance-operation-v1" || operation.SchemaVersion != 1 ||
+            !IsSafeToken(operation.OperationId, 64) ||
+            !string.Equals(operation.OperationId, expectedOperationId, StringComparison.Ordinal) ||
+            !IsSafeToken(operation.IdempotencyKey, 128) || !IsSafeToken(operation.OperatorId, 128) ||
+            !IsSafeToken(operation.OperationType, 128) || !IsSafeToken(operation.State, 64) ||
+            string.IsNullOrWhiteSpace(operation.PackageRef) || operation.PackageRef.Length > 4096 ||
+            !IsSha256(operation.CanonicalRequestSha256) ||
+            operation.AttemptCount < 0 || operation.UpdatedAtUtc < operation.CreatedAtUtc)
+            throw new InvalidDataException("Maintenance operation record is invalid or does not match its durable identity.");
     }
+
+    private static bool IsSha256(string? value)
+        => value is { Length: 64 } &&
+           value.All(static c => c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F');
 
     private static void AtomicWriteText(string path, string text)
     {

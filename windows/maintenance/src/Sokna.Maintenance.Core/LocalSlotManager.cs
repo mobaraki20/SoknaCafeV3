@@ -78,6 +78,66 @@ public sealed class LocalSlotManager
         _healthTimeout = healthTimeout ?? TimeSpan.FromSeconds(35);
     }
 
+    /// <summary>
+    /// Native Windows authoritative, non-mutating discovery for panel diagnostics.
+    /// ResolveLinkTarget handles Windows directory junctions, unlike Go EvalSymlinks.
+    /// HTTP readiness and DB readiness are separate gates; they are NOT implied here.
+    /// </summary>
+    public LocalInstallLayout InspectCurrent()
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Local slot inspection is Windows-only.");
+        var apacheExecutable = DiscoverServiceExecutable(ApacheServiceName);
+        var (apacheRoot, apacheConfig) = DiscoverApacheConfig(apacheExecutable);
+        var documentRoot = DiscoverDocumentRoot(apacheConfig, apacheRoot);
+        if (!string.Equals(Path.GetFileName(documentRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+            "public", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Apache DocumentRoot is not the expected Local public directory.");
+        var webRoot = Path.GetFullPath(Path.GetDirectoryName(documentRoot) ??
+            throw new InvalidDataException("Apache DocumentRoot has no parent."));
+        var buildPath = Path.Combine(webRoot, "VERSION.txt");
+        RequireFile(buildPath, "Local VERSION.txt is missing.");
+        var build = File.ReadAllText(buildPath).Trim();
+        var managedCount = ReadManagedFiles(webRoot).Count;
+        return DiscoverAndVerify(build, managedCount);
+    }
+
+    /// <summary>
+    /// Read-only discovery for a physical H300 Local Web, BEFORE R8 adoption.
+    /// Does not relax the normal R8/junction inventory validation, so legacy
+    /// installs cannot accidentally enter Stage or Activate.
+    /// </summary>
+    public LocalInstallLayout InspectLegacyPhysicalCurrent()
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Windows-only legacy inspection.");
+        var apache = DiscoverServiceExecutable(ApacheServiceName);
+        var (apacheRoot, config) = DiscoverApacheConfig(apache);
+        var docRoot = DiscoverDocumentRoot(config, apacheRoot);
+        if (!string.Equals(Path.GetFileName(docRoot.TrimEnd(Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar)), "public", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("LEGACY_APACHE_DOCUMENT_ROOT_INVALID");
+        var web = Path.GetFullPath(Path.GetDirectoryName(docRoot)
+            ?? throw new InvalidDataException("LEGACY_WEB_ROOT_MISSING"));
+        if ((File.GetAttributes(web) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("LEGACY_WEB_ALREADY_JUNCTION");
+        var package = Path.GetFullPath(Path.GetDirectoryName(web)
+            ?? throw new InvalidDataException("LEGACY_PACKAGE_ROOT_MISSING"));
+        RequireFile(Path.Combine(package, "config.php"), "LEGACY_CONFIG_MISSING");
+        RequireFile(Path.Combine(package, "install.lock"), "LEGACY_LOCK_MISSING");
+        var assessed = LegacyLocalBaselineAttestation.RequireExactPhysicalWeb(web);
+        RoutineLocalBinding.RequireCurrent(web, package, assessed.Build);
+        return new LocalInstallLayout(package, web, docRoot, apache,
+            config, DiscoverHealthUrl(config, apacheRoot), assessed.Build,
+            assessed.ManagedFiles, false, null);
+    }
+
+    /// <summary>Read-only real-host Apache and installed version health gate.</summary>
+    public LocalInstallLayout InspectHealthyCurrent()
+    {
+        var layout = InspectCurrent();
+        RequireHttpHealth(layout.Build, layout.HealthUrl);
+        return layout;
+    }
+
     public LocalInstallLayout DiscoverAndVerify(string expectedBuild, int expectedManagedFileCount)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Local slot activation is Windows-only.");
@@ -487,20 +547,27 @@ public sealed class LocalSlotManager
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true
+                RedirectStandardError = true,
+                RedirectStandardInput = true
             };
             psi.ArgumentList.Add("-V");
             using var process = Process.Start(psi);
             if (process is not null)
             {
-                var stdout = process.StandardOutput.ReadToEnd();
-                var stderr = process.StandardError.ReadToEnd();
-                if (!process.WaitForExit(10_000))
+                // Never synchronously ReadToEnd BEFORE WaitForExit: a malformed
+                // service ImagePath (e.g. interactive cmd.exe -V) can hang the
+                // entire signed Supervisor request without honoring timeout.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
+                process.StandardInput.Close();
+                if (!process.WaitForExit(4_000))
                 {
                     try { process.Kill(entireProcessTree: true); } catch { }
                     throw new TimeoutException("SoknaApache -V probe timed out.");
                 }
-                var text = stdout + "\n" + stderr;
+                if (!Task.WhenAll(stdoutTask, stderrTask).Wait(1_000))
+                    throw new TimeoutException("SoknaApache -V output stream did not close.");
+                var text = stdoutTask.Result + "\n" + stderrTask.Result;
                 reportedRootText = ExtractApacheDefine(text, "HTTPD_ROOT");
                 configText = ExtractApacheDefine(text, "SERVER_CONFIG_FILE");
             }

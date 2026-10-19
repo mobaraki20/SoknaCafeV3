@@ -63,6 +63,45 @@ jobs:
       - name: M10 secure backup, takeover and crash-safe migration qualification
         env: *db
         run: php tests/local-m10-release-selftest.php
+      - name: F1-S7E1 isolated MariaDB consistent backup, verified restore and forward schema guard
+        env: *db
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mariadb-client
+          bash windows/maintenance/tests/s7e1-disposable-mariadb-restore-drill.sh
+      - name: F1-S7E2A real Apache HTTP lifecycle and fail-closed pointer gap (Linux disposable)
+        env:
+          SOKNA_APACHE_CI_ONLY: '1'
+        run: |
+          if ! command -v apache2 >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq apache2
+          fi
+          python3 windows/maintenance/tests/s7e2a-real-apache-http-ci.py
+      - name: F1-S7E2B real MariaDB DDL crash and encrypted independent backup/restore lab
+        env:
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: root
+          SOKNA_MARIADB_CI_ONLY: '1'
+        run: |
+          python3 windows/maintenance/tests/s7e2b-mariadb-forward-crash-ci.py
+      - name: F1-S7E4 fail-closed custody and Public-pair negative contract matrix (synthetic only)
+        run: |
+          python3 windows/maintenance/tests/s7e4-security-paired-dryrun-ci.py
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: F1-S7E5B actual PHP OpenSSL DER receipt and independent .NET verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -r 'if (!extension_loaded("openssl")) { exit(1); }'
+          fixture="$(mktemp -d "$RUNNER_TEMP/sokna-public-php-der-XXXXXXXX")"
+          trap 'rm -rf "$fixture"' EXIT
+          php windows/maintenance/tests/s7e5b-php-openssl-public-fixture.php "$fixture"
+          dotnet run --project windows/maintenance/tests/PublicKernelPhpInteropProbe/PublicKernelPhpInteropProbe.csproj --configuration Release -- "$fixture" "$fixture/receipt.json" "$fixture/signed-bytes.bin"
       - name: Re-run mature component contracts
         run: |
           python3 tests/scds-m6-gate.py
@@ -94,8 +133,21 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          & .\packaging\windows\setup-host\publish\SoknaSetupHost.exe --pairing-self-test
-          if($LASTEXITCODE-ne0){throw "Setup Host pairing self-test failed: $LASTEXITCODE"}
+          # Setup Host is WinExe, not console Exe: PowerShell's LASTEXITCODE
+          # can be null even when the process prints PASS and returns zero.
+          # Track the actual process ExitCode and evidence instead.
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-setup-pairing-selftest.stdout'
+          $err=Join-Path $env:RUNNER_TEMP 'sokna-setup-pairing-selftest.stderr'
+          $exe=(Resolve-Path '.\packaging\windows\setup-host\publish\SoknaSetupHost.exe').Path
+          $proc=Start-Process -FilePath $exe -ArgumentList '--pairing-self-test' -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          $stdout=Get-Content -LiteralPath $out -Raw -ErrorAction SilentlyContinue
+          $stderr=Get-Content -LiteralPath $err -Raw -ErrorAction SilentlyContinue
+          if($proc.ExitCode -ne 0 -or -not $stdout.Contains('SOKNA Setup Host v4 pairing self-test PASS')){
+            # Never print pairing secrets; selftest diagnostics contain only
+            # English reason codes and exception type.
+            if($stderr -match 'PAIRING_SELF_TEST_FAILED[^\r\n]*'){Write-Host $Matches[0]}
+            throw "Setup Host pairing self-test failed or missing PASS, exit=$($proc.ExitCode)"
+          }
           $ps=Get-Content packaging/windows/scripts/setup-windows-services.ps1 -Raw
           foreach($needle in @('SOKNA_WINDOWS_SERVICES_PAIRING_B64','Clear-StalePairingFiles','Write-TransientPrivateJson')){
             if(-not $ps.Contains($needle)){throw "Pairing handoff script contract missing: $needle"}
@@ -244,3 +296,84 @@ jobs:
           assert all(c['status'] in {'pending','passed','failed'} for c in x['checks'])
           print('Manual UAT contract recorded; CI does not fabricate physical-device PASS evidence.')
           PY
+
+  # F1-S7E3B: Two distinct GitHub-hosted VMs, never a shared container,
+  # transport encrypted TEST data via GitHub artifacts (off-runner boundary).
+  # The disposable test private key is a separate fixture artifact: this
+  # DOES NOT qualify production KMS/key isolation or offsite retention.
+  s7e3b_offhost_export:
+    name: F1-S7E3B encrypt and export MariaDB fixture
+    runs-on: ubuntu-latest
+    outputs:
+      backup_sha256: ${{ steps.lab_export.outputs.backup_sha256 }}
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install scoped MariaDB client
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mariadb-client
+      - name: Encrypt signed fixture on source runner
+        id: lab_export
+        env: &s7e3b_env
+          SOKNA_S7E3B_CI_ONLY: '1'
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: root
+          SOKNA_ARTIFACT_OUTPUT: ${{ runner.temp }}/sokna-s7e3b-export
+        run: bash windows/maintenance/tests/s7e3b-offhost-artifact.sh export
+      - uses: actions/upload-artifact@v4
+        with:
+          name: s7e3b-ci-encrypted-backup
+          path: ${{ runner.temp }}/sokna-s7e3b-export/backup/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: s7e3b-ci-test-only-key
+          path: ${{ runner.temp }}/sokna-s7e3b-export/test-only-key/
+          if-no-files-found: error
+          retention-days: 1
+
+  s7e3b_offhost_restore:
+    name: F1-S7E3B independent runner encrypted restore and corruption denial
+    needs: s7e3b_offhost_export
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install independent restore runner MariaDB client
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mariadb-client
+      - uses: actions/download-artifact@v4
+        with:
+          name: s7e3b-ci-encrypted-backup
+          path: ${{ runner.temp }}/sokna-s7e3b-import/backup
+      - uses: actions/download-artifact@v4
+        with:
+          name: s7e3b-ci-test-only-key
+          path: ${{ runner.temp }}/sokna-s7e3b-import/test-only-key
+      - name: Independently verify cipher/signature, corruption denial and MariaDB restore
+        env:
+          SOKNA_S7E3B_CI_ONLY: '1'
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: root
+          SOKNA_ARTIFACT_INPUT: ${{ runner.temp }}/sokna-s7e3b-import
+          SOKNA_EXPECTED_BACKUP_SHA256: ${{ needs.s7e3b_offhost_export.outputs.backup_sha256 }}
+        run: bash windows/maintenance/tests/s7e3b-offhost-artifact.sh restore

@@ -1,0 +1,296 @@
+name: Working cross-version Local slot contract
+on:
+  push:
+    branches: [work/windows-services-cross-version-slot-contract]
+  pull_request:
+    branches: [work/windows-services-1.1.12-recovery-contract]
+  workflow_dispatch:
+jobs:
+  windows-core-contract:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile Maintenance Core with warnings as errors
+        run: dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj --configuration Release --nologo
+      - name: Verify exact historical H300 baseline recognition with corruption denials
+        run: dotnet run --project windows/maintenance/tests/Sokna.Maintenance.LegacyBaselineHarness/Sokna.Maintenance.LegacyBaselineHarness.csproj --configuration Release --nologo
+      - name: Compile signed Maintenance Supervisor HTTP API with warnings as errors
+        run: dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj --configuration Release --nologo
+      - name: Compile Update Engine and signed Release Set fixture
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj --configuration Release --nologo
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj --configuration Release --nologo
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/Sokna.Maintenance.MachineLeaseProbe.csproj --configuration Release --nologo
+      - name: F1-S7E5A pinned Public Kernel ECDSA receipt over disposable Windows loopback HTTP
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' s7e5a-public-kernel-wire
+          if ($LASTEXITCODE -ne 0) { throw 'F1-S7E5A independent Public receipt wire contract failed' }
+      - name: Verify suspended Windows Job child is killed on parent crash
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/windows-job-process-death.ps1 `
+            -ProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll'
+      - name: Prove Local code-only signed-stage and inactive receipt binding is fail-closed
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' code-only-pre-execution
+          if ($LASTEXITCODE -ne 0) { throw 'Code-only receipt binding pre-execution verification failed' }
+      - name: Verify S7D1 durable cutover write-ahead journal and fail-closed crash model
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            code-cutover-wal (Join-Path $env:RUNNER_TEMP ('sokna-cutover-wal-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'S7D1 cutover WAL fault injection failed' }
+      - name: Reject prior incomplete routine cutover before real Engine activation
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            routine-state-safety (Join-Path $env:RUNNER_TEMP ('sokna-routine-state-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'Existing routine activation state could be overwritten or mis-recovered' }
+      - name: F1-S7D2 artificial cutover and crash boundary matrix (NO real host mutation)
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            code-cutover-simulation (Join-Path $env:RUNNER_TEMP ('sokna-s7d2-simulator-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'F1-S7D2 synthetic cutover simulation failed' }
+      - name: F1-S7D4A evidence-only HMAC binding, tamper and one-time denial on disposable Windows
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            code-cutover-evidence-witness (Join-Path $env:RUNNER_TEMP ('sokna-f1-s7d4a-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'F1-S7D4A signed evidence-only witness gate failed' }
+      - name: F1-S7D3 isolated OS termination and real disposable NTFS junction crash boundaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            s7d3-windows-crash (Join-Path $env:RUNNER_TEMP ('sokna-f1-s7d3-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'S7D3 disposable Windows OS/junction crash test failed' }
+      - name: Qualify isolated inactive Local sibling filecopy, target binding and unchanged active pointer
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            inactive-sibling-writer (Join-Path $env:RUNNER_TEMP ('sokna-sibling-writer-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'Inactive sibling writer regression failed' }
+      - name: Qualify legacy-Home standalone read-only collector (no new Supervisor API)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $fixture=Join-Path $env:RUNNER_TEMP ('SoknaReadOnlyHome-'+[guid]::NewGuid().ToString('N'))
+          $web=Join-Path $fixture 'Web'
+          $resources=Join-Path $web 'resources'
+          New-Item -ItemType Directory -Force -Path $resources | Out-Null
+          Set-Content -LiteralPath (Join-Path $web 'VERSION.txt') -Value '3.0.0-test-version' -Encoding UTF8
+          [ordered]@{format='sokna-local-managed-files-v1';files=@('VERSION.txt','resources/local-managed-files-v1.json')} |
+            ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $resources 'local-managed-files-v1.json') -Encoding UTF8
+          $oldSha=(Get-FileHash -LiteralPath (Join-Path $web 'VERSION.txt') -Algorithm SHA256).Hash
+          $result=@(& ./windows/maintenance/tests/home-host-readonly-preflight.ps1 -PackageRoot $fixture)
+          $json=($result -join [Environment]::NewLine)|ConvertFrom-Json
+          if ($json.format -ne 'sokna-home-host-readonly-evidence-v1' -or
+              -not $json.no_mutation_performed -or $json.upgrade_permitted -or
+              $json.activation_allowed -or $json.real_host_uat_complete -or
+              $json.new_supervisor_api_invoked -or $json.active_managed_tree_qualified -or
+              $json.web.version -ne '3.0.0-test-version') {
+            throw 'Legacy Home read-only collector fabricated readiness or misread baseline'
+          }
+          $newSha=(Get-FileHash -LiteralPath (Join-Path $web 'VERSION.txt') -Algorithm SHA256).Hash
+          if($oldSha -ne $newSha){throw 'Read-only collector changed Local version evidence'}
+          $blocked=$false
+          try { & ./windows/maintenance/tests/home-host-readonly-preflight.ps1 -PackageRoot $fixture -LocalUrl 'https://example.org/login.php' | Out-Null }
+          catch { $blocked=$true }
+          if(-not $blocked){throw 'Read-only collector accepted remote URL'}
+          Write-Host 'HOME_LEGACY_READONLY_PREFLIGHT_FIXTURE_PASS'
+      - name: Smoke Home read-only collector under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $folder=Join-Path $env:TEMP ('SoknaHomePs51-'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Force -Path (Join-Path $folder 'Web') | Out-Null
+          Set-Content -LiteralPath (Join-Path $folder 'Web/VERSION.txt') -Value '3.0.0-fixture-ps51'
+          $doc=(& ./windows/maintenance/tests/home-host-readonly-preflight.ps1 -PackageRoot $folder | Out-String) | ConvertFrom-Json
+          if($doc.format -ne 'sokna-home-host-readonly-evidence-v1' -or
+             $doc.web.version -ne '3.0.0-fixture-ps51' -or
+             $doc.activation_allowed -or $doc.upgrade_permitted -or
+             -not $doc.no_mutation_performed){
+            throw 'Windows PowerShell 5.1 legacy Home read-only capture failed'
+          }
+          Write-Host 'HOME_LEGACY_READONLY_POWERSHELL51_PASS'
+      - name: Verify independent machine lease, direct Engine collision and OS crash cleanup
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/machine-mutation-lease-windows.ps1 `
+            -ProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            -EngineDll 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll'
+      - name: Verify exact signed delegated Engine permit and fail-closed independent execution
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/engine-delegation-windows.ps1 `
+            -ProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            -EngineDll 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll'
+      - name: Prove signed package verify-only never creates stage or changes sequence
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/p2c-read-only-preflight.ps1 `
+            -EngineDll 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll' `
+            -FixtureDll 'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/bin/Release/net8.0-windows/Sokna.Maintenance.P2Fixture.dll'
+      - name: Test signed durable Supervisor preflight and restart/tamper no-mutation boundary
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/p2d-signed-supervisor-preflight.ps1 `
+            -SupervisorDll 'windows/maintenance/src/Sokna.Maintenance.Supervisor/bin/Release/net8.0-windows/SoknaMaintenanceSupervisor.dll' `
+            -FixtureDll 'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/bin/Release/net8.0-windows/Sokna.Maintenance.P2Fixture.dll' `
+            -LeaseProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            -EngineDll 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll'
+      - name: Test signed Supervisor HTTP capabilities and replay rejection
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'SoknaF1Http'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $dll = Join-Path (Get-Location) 'windows/maintenance/src/Sokna.Maintenance.Supervisor/bin/Release/net8.0-windows/SoknaMaintenanceSupervisor.dll'
+          $port = 18573
+          $p = Start-Process dotnet -ArgumentList @($dll,'--data-root',$root,'--port',$port) -PassThru
+          try {
+            $uri = "http://127.0.0.1:$port/v1/updates/capabilities"
+            $ready = $false
+            for($i=0; $i -lt 40; $i++) {
+              if($p.HasExited) { throw 'Supervisor exited prematurely' }
+              try {
+                $unauth = Invoke-WebRequest $uri -SkipHttpErrorCheck -TimeoutSec 1
+                if($unauth.StatusCode -eq 401) { $ready = $true; break }
+              } catch {}
+              Start-Sleep -Milliseconds 250
+            }
+            if(!$ready) { throw 'Supervisor did not reject unsigned request' }
+            $key = [Convert]::FromBase64String((Get-Content (Join-Path $root 'secrets/web-adapter.key') -Raw).Trim())
+            if($key.Length -ne 32) { throw 'Invalid test HMAC key' }
+            $ts = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+            $nonce = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(16)).ToLowerInvariant()
+            $digest = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+            $canonical = ('GET','/v1/updates/capabilities','1.0',$ts,$nonce,$digest) -join [char]10
+            $mac = [Security.Cryptography.HMACSHA256]::new($key)
+            try { $sig = [Convert]::ToHexString($mac.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))).ToLowerInvariant() } finally { $mac.Dispose() }
+            $headers = @{'X-Sokna-Maintenance-Protocol'='1.0';'X-Sokna-Timestamp'=$ts;'X-Sokna-Nonce'=$nonce;'X-Sokna-Key-Id'='web-adapter';'X-Sokna-Body-SHA256'=$digest;'X-Sokna-Signature'=$sig}
+            $ok = Invoke-WebRequest $uri -Headers $headers -SkipHttpErrorCheck -TimeoutSec 4
+            $obj = $ok.Content | ConvertFrom-Json -AsHashtable
+            if($ok.StatusCode -ne 200 -or $obj.ok -ne $true -or $obj.data.panel_update_ready -ne $false -or $obj.data.blocking_code -ne 'LOCAL_CROSS_VERSION_UAT_REQUIRED') { throw 'False-ready or invalid signed capabilities response' }
+            $replay = Invoke-WebRequest $uri -Headers $headers -SkipHttpErrorCheck -TimeoutSec 4
+            $obj2 = $replay.Content | ConvertFrom-Json -AsHashtable
+            if($replay.StatusCode -ne 409 -or $obj2.code -ne 'AUTH_REPLAY') { throw 'HMAC replay not rejected' }
+            # Signed Local activation requires a REAL signed Stage; Web key
+            # may NEVER invoke code-only recovery or replay the same nonce.
+            $stagePath='/v1/local-updates/activate-code-only'
+            $stageBody='{"stage_operation_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","operator_id":"user:1"}'
+            $stageBytes=[Text.Encoding]::UTF8.GetBytes($stageBody)
+            $stageHash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stageBytes)).ToLowerInvariant()
+            $stageTs=[DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+            $stageNonce=[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(16)).ToLowerInvariant()
+            $stageCanonical=('POST',$stagePath,'1.0',$stageTs,$stageNonce,$stageHash) -join [char]10
+            $stageMac=[Security.Cryptography.HMACSHA256]::new($key)
+            try { $stageSig=[Convert]::ToHexString($stageMac.ComputeHash([Text.Encoding]::UTF8.GetBytes($stageCanonical))).ToLowerInvariant() }
+            finally { $stageMac.Dispose() }
+            $stageHeaders=$headers.Clone()
+            $stageHeaders['X-Sokna-Timestamp']=$stageTs
+            $stageHeaders['X-Sokna-Nonce']=$stageNonce
+            $stageHeaders['X-Sokna-Body-SHA256']=$stageHash
+            $stageHeaders['X-Sokna-Signature']=$stageSig
+            $stageHeaders['X-Sokna-Idempotency-Key']='code-only-negative-stage-proof'
+            $stageResp=Invoke-WebRequest "http://127.0.0.1:$port$stagePath" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
+            $stageData=$stageResp.Content|ConvertFrom-Json -AsHashtable
+            Write-Host ("CODE_ONLY_NEGATIVE_STAGE_RESULT status={0} code={1} state={2}" -f $stageResp.StatusCode, $stageData.code, $stageData.status)
+            # CI lacks a real SoknaApache service identity, so the server MUST
+            # reject POST before Stage inspection. When ACL is ready on an
+            # installed Windows fixture, Stage-not-found must instead be 422.
+            $aclBlocked=($stageResp.StatusCode -eq 503 -and $stageData.code -eq 'WEB_ADAPTER_ACL_PENDING')
+            $stageRejected=($stageResp.StatusCode -eq 422 -and $stageData.code -eq 'CODE_ONLY_SIGNED_STAGE_OR_SLOT_UNPROVEN')
+            if(!$aclBlocked -and !$stageRejected) { throw "Nonexistent signed Stage returned unexpected result (status=$($stageResp.StatusCode);code=$($stageData.code))" }
+            $replay=Invoke-WebRequest "http://127.0.0.1:$port$stagePath" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
+            $replayData=$replay.Content|ConvertFrom-Json -AsHashtable
+            if($stageRejected) {
+              if($replay.StatusCode -ne 409 -or $replayData.code -ne 'AUTH_REPLAY') { throw 'Local activate accepted HMAC replay nonce' }
+            } else {
+              # ACL is checked ahead of nonce consumption: both calls MUST
+              # fail closed; do NOT claim the route's nonce gate was tested.
+              if($replay.StatusCode -ne 503 -or $replayData.code -ne 'WEB_ADAPTER_ACL_PENDING') { throw 'Pending Apache ACL permitted replayed Local activation' }
+            }
+            Write-Host ("CODE_ONLY_POST_GATE_PASS mode={0}" -f $(if($aclBlocked){'acl_pending_denied'}else{'signed_stage_denied_and_replay_rejected'}))
+            $wrongRecovery=Invoke-WebRequest "http://127.0.0.1:$port/v1/local-updates/recover-code-only" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
+            $wrongData=$wrongRecovery.Content|ConvertFrom-Json -AsHashtable
+            if($wrongRecovery.StatusCode -ne 403 -or $wrongData.code -ne 'RECOVERY_CONSOLE_KEY_REQUIRED') { throw 'Local Web key gained recovery-console privileges' }
+            if(@(Get-ChildItem (Join-Path $root 'operations') -Filter 'op-*.json' -ErrorAction SilentlyContinue).Count -ne 0) { throw 'Rejected Local activation created a durable mutation operation' }
+            Write-Host 'LOCAL_CODE_ONLY_SIGNED_ENDPOINTS_FAIL_CLOSED_PASS'
+            # A corrupt durable operation must not become "idle", 404, or an unclassified 500.
+            [IO.File]::WriteAllText((Join-Path $root 'operations/op-corrupt-http.json'), '{}')
+            $idempotencyKey = 'http-corrupt-index'
+            $idempotencyHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($idempotencyKey))).ToLowerInvariant()
+            [IO.File]::WriteAllText((Join-Path $root "operations/idem-$idempotencyHash.txt"), 'corrupt-http')
+            foreach($resource in @('/v1/operations/active', '/v1/operations/recent', '/v1/operations/corrupt-http', "/v1/operations/by-idempotency/$idempotencyKey")) {
+              $now = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+              $freshNonce = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(16)).ToLowerInvariant()
+              $canonicalGet = ('GET', $resource, '1.0', $now, $freshNonce, $digest) -join [char]10
+              $checkMac = [Security.Cryptography.HMACSHA256]::new($key)
+              try { $checkSig = [Convert]::ToHexString($checkMac.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonicalGet))).ToLowerInvariant() } finally { $checkMac.Dispose() }
+              $freshHeaders = $headers.Clone()
+              $freshHeaders['X-Sokna-Timestamp'] = $now
+              $freshHeaders['X-Sokna-Nonce'] = $freshNonce
+              $freshHeaders['X-Sokna-Signature'] = $checkSig
+              $checkResponse = Invoke-WebRequest ("http://127.0.0.1:$port" + $resource) -Headers $freshHeaders -SkipHttpErrorCheck -TimeoutSec 4
+              $checkResult = $checkResponse.Content | ConvertFrom-Json -AsHashtable
+              if($checkResponse.StatusCode -ne 503 -or $checkResult.code -ne 'OPERATION_EVIDENCE_UNAVAILABLE') { throw "Invalid corrupt-evidence response for $resource" }
+            }
+            Write-Output 'SUPERVISOR_SIGNED_HTTP_AUTH_AND_CORRUPT_EVIDENCE_PASS'
+          } finally {
+            if($p -and !$p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - name: Build and run cross-version contract harness
+        run: dotnet run --project windows/maintenance/tests/Sokna.CrossVersion.Contract/Sokna.CrossVersion.Contract.csproj --configuration Release
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Verify Windows physical junction resolver on real Windows runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP "SoknaJunctionParity"
+          $slot = Join-Path $root "Web.release.231ai-b0e252b62b80"
+          $web = Join-Path $root "Web"
+          New-Item -ItemType Directory -Path $slot -Force | Out-Null
+          if (Test-Path $web) { Remove-Item $web -Force }
+          cmd.exe /c "mklink /J `"$web`" `"$slot`""
+          if ($LASTEXITCODE -ne 0) { throw 'mklink /J failed' }
+          $native = [System.IO.Directory]::ResolveLinkTarget($web, $true)
+          Write-Output "DotNet junction target: $($native.FullName)"
+          if (-not [string]::Equals([System.IO.Path]::GetFullPath($native.FullName), [System.IO.Path]::GetFullPath($slot), [StringComparison]::OrdinalIgnoreCase)) { throw 'DotNet junction resolution mismatch' }
+          go run ./windows/maintenance/tests/GoJunctionProbe/main.go "$web" "$slot"
+
+  s7e3a-windows-real-apache:
+    name: F1-S7E3A real isolated Windows Apache SCM and HTTP
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real Apache SCM service, loopback readiness, crashed service and junction gap
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./windows/maintenance/tests/s7e3a-windows-apache-scm-http.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'S7E3A real Windows Apache SCM test failed' }
+
+  s7e4b-windows-dpapi-recovery:
+    name: F1-S7E4B DPAPI and independent Recovery File cryptographic primitive lab
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify protected local key, ciphertext-only bundle and recovery-key separation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & pwsh -NoProfile -File ./windows/maintenance/tests/s7e4-windows-dpapi-recovery-key-ci.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'S7E4B Windows cryptographic primitive fixture failed' }

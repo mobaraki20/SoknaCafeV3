@@ -226,7 +226,25 @@ internal static class Program
         try
         {
             if (!OperatingSystem.IsWindows()) return Fail("این برنامه فقط روی ویندوز قابل اجرا است.", 2);
-            if(args.Length==1&&args[0].Equals("--pairing-self-test",StringComparison.OrdinalIgnoreCase)){PairingClient.SelfTest();Console.WriteLine("Sokna Setup Host pairing self-test PASS");return 0;}
+            if(args.Length==1&&args[0].Equals("--pairing-self-test",StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    PairingClient.SelfTest();
+                    Console.WriteLine("Sokna Setup Host pairing self-test PASS");
+                    return 0;
+                }
+                catch(Exception error)
+                {
+                    // ASCII-only and deliberately no pairing secrets, source
+                    // URLs, or request bodies in CI diagnostics.
+                    Console.Error.WriteLine("PAIRING_SELF_TEST_FAILED exception_type=" +
+                        error.GetType().Name + " reason=" +
+                        (error.Message.StartsWith("pairing_selftest_",StringComparison.Ordinal)
+                            ? error.Message : "unexpected_pairing_exception"));
+                    return 2;
+                }
+            }
             var planPath = ReadPlanArgument(args);
             var plan = LoadPlan(planPath);
             ValidatePlan(plan);
@@ -327,6 +345,11 @@ internal static class Program
 
     private static int RunLifecycle(SetupPlan plan, string planPath)
     {
+        // Initial install without a Maintenance authority remains independent.
+        // When a Maintenance installation exists, Windows Services updates,
+        // repair and removal must not overlap a signed Local Stage.
+        // No wait/steal of a live OS lease: conflict fails before pairing or mutation.
+        using var machineLease = AcquireMaintenanceMachineLeaseIfBound();
         var logPath = Path.Combine(Path.GetFullPath(plan.DataRoot), "Logs", "windows-services-setup.log");
         var pairingByCode=!string.IsNullOrWhiteSpace(plan.PairingCode);
         AppendSetupLog(logPath, $"{DateTimeOffset.Now:O} START mode={CanonicalMode(plan.Mode)} install_root={Path.GetFullPath(plan.InstallRoot)} pairing_mode={(pairingByCode?"code":(!string.IsNullOrWhiteSpace(plan.PairingFile)?"legacy_file":"none"))}");
@@ -397,6 +420,49 @@ internal static class Program
             File.AppendAllText(path, message.Replace('\r', ' ').TrimEnd() + Environment.NewLine + "---" + Environment.NewLine);
         }
         catch { }
+    }
+
+    private static IDisposable? AcquireMaintenanceMachineLeaseIfBound()
+    {
+        var common = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+        if (string.IsNullOrWhiteSpace(common)) throw new PlanException("Machine maintenance root is unavailable.");
+        var root = Path.GetFullPath(Path.Combine(common, "SOKNA", "Maintenance", "update"));
+        var maintenanceRoot = Path.GetFullPath(Path.Combine(common, "SOKNA", "Maintenance"));
+        if (!Directory.Exists(maintenanceRoot)) return null;
+        try
+        {
+            if ((File.GetAttributes(maintenanceRoot) & FileAttributes.ReparsePoint) != 0)
+                throw new PlanException("Maintenance root must not be a reparse point.");
+            Directory.CreateDirectory(root);
+            var lockPath = Path.Combine(root, "machine-mutation.lock");
+            if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0 ||
+                (File.Exists(lockPath) && (File.GetAttributes(lockPath) & FileAttributes.ReparsePoint) != 0))
+                throw new PlanException("Maintenance lease is not a trusted path.");
+            var handle = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite,
+                FileShare.Read, 4096, FileOptions.WriteThrough);
+            try
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes(
+                    $"format=sokna-machine-mutation-lease-v1;owner=windows-services-setup-host;pid={Environment.ProcessId};started_utc={DateTimeOffset.UtcNow:O}\\n");
+                handle.SetLength(0);
+                handle.Write(bytes);
+                handle.Flush(flushToDisk: true);
+                return handle;
+            }
+            catch
+            {
+                handle.Dispose();
+                throw;
+            }
+        }
+        catch (IOException ex)
+        {
+            throw new PlanException("MACHINE_MUTATION_LEASE_BUSY: " + ex.GetType().Name);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            throw new PlanException("MACHINE_MUTATION_LEASE_UNAVAILABLE: " + ex.GetType().Name);
+        }
     }
 
     private static string CanonicalMode(string mode) => mode.Trim().ToLowerInvariant() switch

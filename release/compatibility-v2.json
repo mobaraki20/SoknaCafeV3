@@ -4,7 +4,7 @@
       "version": "3.0.0-g6.2-workspace.42-ui-convergence-q3-uat"
     },
     "print-agent": {
-      "version": "6.2.7"
+      "version": "6.2.9"
     },
     "public-edge": {
       "version": "3.0.0-g3.6-uat.1"
@@ -13,10 +13,10 @@
       "version": "0.1.1-dev"
     },
     "windows-runtime": {
-      "version": "1.0.2"
+      "version": "1.0.5"
     },
     "windows-services-packaging": {
-      "version": "1.0.8"
+      "version": "1.1.14"
     }
   },
   "contracts": {

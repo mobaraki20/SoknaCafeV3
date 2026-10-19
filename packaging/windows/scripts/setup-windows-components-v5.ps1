@@ -18,7 +18,7 @@ function Sha([string]$p){
   }finally{$stream.Dispose()}
   return (([BitConverter]::ToString($bytes))-replace'-','').ToLowerInvariant()
 }
-function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$info=[Diagnostics.FileVersionInfo]::GetVersionInfo($p);$v=$info.FileVersion;if(-not$v){$v=$info.ProductVersion};if($v){return ([string]$v).Split('+')[0]};''}
+function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$info=[Diagnostics.FileVersionInfo]::GetVersionInfo($p);$v=$info.FileVersion;if(-not$v){$v=$info.ProductVersion};if($v){$base=([string]$v).Split('+')[0];if($base-match'^\d+\.\d+\.\d+\.0$'){$base=$base.Substring(0,$base.Length-2)};return $base};''}
 function Compare-Version([string]$a,[string]$b){
   function Parts([string]$v){
     $base=([string]$v).Split('+')[0].Split('-')[0].Trim()
@@ -105,7 +105,31 @@ function Stop-Svc([string]$name,[string]$ownedRoot){
   if(-not$probe.Installed){if(-not[string]::IsNullOrWhiteSpace($ownedRoot)){Wait-OwnedProcessesExit $ownedRoot 1 $true};return}
   $processId=[uint32]$probe.ProcessId
   $svc=Get-Service $name -ErrorAction Stop
-  try{if($svc.Status-ne'Stopped'){Stop-Service $name -ErrorAction Stop;$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))}}finally{$svc.Dispose()}
+  try{
+    if($svc.Status-ne'Stopped'){
+      try{
+        if($svc.Status-ne'StopPending'){Stop-Service -Name $name -ErrorAction Stop}
+        $svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
+      }catch{
+        $scmError=Safe ([string]$_.Exception.Message)
+        $errorType=$_.Exception.GetType().Name
+        $svc.Refresh()
+        if($svc.Status-eq'StopPending'){
+          try{$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(15))}catch{$svc.Refresh()}
+        }
+        $svc.Refresh()
+        if($svc.Status-ne'Stopped'){
+          Event 'service_stop_rejected' 'failed' @{
+            service=$name;service_state=[string]$svc.Status;
+            can_stop=[bool]$svc.CanStop;pid=$processId;
+            error_type=$errorType;scm_error=$scmError
+          }
+          throw "SERVICE_STOP_REJECTED: $name status=$($svc.Status) pid=$processId error_type=$errorType; $scmError"
+        }
+        Event 'service_stop_reconciled' 'completed' @{service=$name;pid=$processId;scm_error=$scmError}
+      }
+    }
+  }finally{$svc.Dispose()}
   Wait-ProcessExit $processId 15 $name
   if(-not[string]::IsNullOrWhiteSpace($ownedRoot)){Wait-OwnedProcessesExit $ownedRoot 15 $true}
 }
@@ -130,7 +154,7 @@ $ShellRoot=Full ([string]$plan.shell_root) 'ShellRoot';$InstallRoot=Full ([strin
 $TxDir=[IO.Path]::GetDirectoryName($PlanFile);$Events=Join-Path $TxDir 'system-events.jsonl';$Result=Join-Path $TxDir 'install-result.json';$Backup=Join-Path $TxDir 'rollback';New-Item -ItemType Directory -Path $Backup -Force|Out-Null
 $CurrentComponent='—';$CurrentPhase='Preflight';$Applied=New-Object Collections.Generic.List[string];$Snapshots=@{}
 function Event([string]$name,[string]$result,$data=$null){$row=[ordered]@{format='sokna-installer-event-v1';at_utc=[DateTime]::UtcNow.ToString('o');transaction_id=$Tx;correlation_id=$Corr;setup_session_id=$Session;event_name=$name;result=$result;component=$CurrentComponent;phase=$CurrentPhase;data=$data};Add-Content $Events ($row|ConvertTo-Json -Compress -Depth 8) -Encoding UTF8}
-function Finish([string]$status,[int]$code,[string]$summary,[bool]$rollback,[bool]$reboot){WriteJson $Result ([ordered]@{format='sokna-install-result-v1';transaction_id=$Tx;correlation_id=$Corr;completed_at_utc=[DateTime]::UtcNow.ToString('o');status=$status;exit_code=$code;summary=(Safe $summary);failed_component=$(if($status-eq'completed'){'—'}else{$CurrentComponent});failed_phase=$(if($status-eq'completed'){'—'}else{$CurrentPhase});rollback_complete=$rollback;reboot_required=$reboot;components=@($script:Resolved|ForEach-Object{[ordered]@{component_id=$_.Id;action=$_.Action;current_version=$_.CurrentVersion;target_version=$_.TargetVersion;before_sha256=$_.InstalledHash;target_sha256=$_.TargetHash}})})}
+function Finish([string]$status,[int]$code,[string]$summary,[bool]$rollback,[bool]$reboot,[string]$originalComponent='',[string]$originalPhase=''){WriteJson $Result ([ordered]@{format='sokna-install-result-v1';transaction_id=$Tx;correlation_id=$Corr;completed_at_utc=[DateTime]::UtcNow.ToString('o');status=$status;exit_code=$code;summary=(Safe $summary);failed_component=$(if($status-eq'completed'){'—'}elseif($originalComponent){$originalComponent}else{$CurrentComponent});failed_phase=$(if($status-eq'completed'){'—'}elseif($originalPhase){$originalPhase}else{$CurrentPhase});rollback_complete=$rollback;reboot_required=$reboot;components=@($script:Resolved|ForEach-Object{[ordered]@{component_id=$_.Id;action=$_.Action;current_version=$_.CurrentVersion;target_version=$_.TargetVersion;before_sha256=$_.InstalledHash;target_sha256=$_.TargetHash}})})}
 
 $manifest=Get-Content (Join-Path $ShellRoot 'windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
 if([string]$manifest.format-ne'sokna-windows-component-manifest-v2'-or[int]$manifest.schema_version-ne2-or[string]$manifest.package_version-ne[string]$plan.package_version){throw 'Component manifest mismatch.'}
@@ -180,4 +204,4 @@ try{
    Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $r.InstalledPath)}
  }
  $CurrentComponent='—';$CurrentPhase='Commit';New-Item -ItemType Directory -Path (Join-Path $DataRoot 'setup') -Force|Out-Null;$state=[ordered]@{format='sokna-windows-services-install-state-v2';package_owner='windows-services-packaging';package_version=[string]$plan.package_version;installed_at_utc=[DateTime]::UtcNow.ToString('o');install_root=$InstallRoot;data_root=$DataRoot;paired=$paired;local_base_url=[string](Prop $oldState 'local_base_url' '');paired_at_utc=[string](Prop $oldState 'paired_at_utc' '');pairing_lifecycle=[string](Prop $oldState 'pairing_lifecycle' '');runtime_service='SoknaRuntime';print_service='SoknaPrintWorker';maintenance_service='SoknaMaintenanceSupervisor';component_actions=@($script:Resolved|Where-Object{$_.Primary}|ForEach-Object{@{component_id=$_.Id;action=$_.Action;version=$_.TargetVersion;sha256=(Sha $_.InstalledPath)}});shutdown_proof='per-mutated-component:service-status+process-exit+owned-process-exit';external_infrastructure_mutated=$false;business_data_mutated=$false;transaction_id=$Tx};WriteJson $statePath $state;Event 'transaction_commit_completed' 'completed';Finish 'completed' 0 'Windows Services component plan completed successfully.' $false $false;exit 0
-}catch{$msg=Safe $_.Exception.Message;Event 'component_action_failed' 'failed' @{error=$msg};$rb=Rollback;Finish 'failed' 2 $msg $rb $false;Write-Error $msg;exit 2}
+}catch{$failedId=[string]$CurrentComponent;$failedStage=[string]$CurrentPhase;$msg=Safe $_.Exception.Message;Event 'component_action_failed' 'failed' @{error=$msg};$rb=Rollback;Finish 'failed' 2 $msg $rb $false $failedId $failedStage;Write-Error $msg;exit 2}

@@ -27,17 +27,19 @@ if(Test-Path $out){Remove-Item $out -Recurse -Force}
 New-Item -ItemType Directory -Path $coreOut,$bootstrapOut -Force|Out-Null
 $iss=Join-Path $RepoRoot 'packaging\windows\installer\SOKNA-v4.iss'
 & $IsccExe "/DSourceRoot=$ShellPayloadRoot" "/DProductVersion=$version" "/O$coreOut" $iss
-if($LASTEXITCODE-ne0){throw 'Elevated SOKNA core installer build failed.'}
+if($LASTEXITCODE-ne0){throw 'Elevated Windows Services installer build failed.'}
 $core=Get-ChildItem $coreOut -Filter "SOKNA-Windows-Services-Core-$version.exe" -File|Select-Object -First 1
 if(-not$core){throw 'Elevated core installer executable was not produced.'}
 $corePath=$core.FullName
 $project=Join-Path $RepoRoot 'packaging\windows\installer-bootstrap\Sokna.InstallerBootstrap.csproj'
-& dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false "-p:CoreInstallerPath=$corePath" -o $bootstrapOut
+& dotnet publish $project -c Release -r win-x64 --self-contained true "-p:Version=$version" "-p:AssemblyVersion=$version.0" "-p:FileVersion=$version.0" "-p:InformationalVersion=$version" -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false "-p:CoreInstallerPath=$corePath" -o $bootstrapOut
 if($LASTEXITCODE-ne0){throw 'Pre-elevation installer bootstrap publish failed.'}
 $raw=Join-Path $bootstrapOut 'SOKNA-Windows-Services-Setup.exe'
 if(-not(Test-Path $raw -PathType Leaf)){throw 'Pre-elevation setup executable was not produced.'}
 $final=Join-Path $out "SOKNA-Windows-Services-Setup-$version.exe"
 Move-Item $raw $final -Force
+$fileVersion=[string]([Diagnostics.FileVersionInfo]::GetVersionInfo($final).FileVersion)
+if($fileVersion-ne($version+'.0')){throw "BLOCK_DISTRIBUTION: bootstrap EXE FileVersion mismatch $fileVersion vs $version.0"}
 $sha=(Get-FileHash $final -Algorithm SHA256).Hash.ToLowerInvariant()
 $coreSha=(Get-FileHash $corePath -Algorithm SHA256).Hash.ToLowerInvariant()
 $shellBytes=[long](Get-ChildItem $ShellPayloadRoot -Recurse -File|Measure-Object Length -Sum).Sum

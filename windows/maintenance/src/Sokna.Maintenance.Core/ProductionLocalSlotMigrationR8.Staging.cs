@@ -172,7 +172,14 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             var targetExists = File.Exists(target);
             if (sourceExists != targetExists)
                 throw new InvalidDataException($"Machine-local overlay presence mismatch for '{rel}'.");
-            if (sourceExists && !FilesEqual(source, target))
+            if (rel == ".sokna-installation.json")
+            {
+                var packageRoot = Path.GetDirectoryName(Path.GetFullPath(slotRoot))
+                    ?? throw new InvalidDataException("Routine Local slot has no package root.");
+                var expectedBuild = File.ReadAllText(Path.Combine(slotRoot, "VERSION.txt")).Trim();
+                RoutineLocalBinding.RequireTarget(persistentRoot, slotRoot, packageRoot, expectedBuild);
+            }
+            else if (sourceExists && !FilesEqual(source, target))
                 throw new InvalidDataException($"Machine-local overlay hash mismatch for '{rel}'.");
         }
         if (!File.Exists(Path.Combine(slotRoot, ".sokna-installation.json")))

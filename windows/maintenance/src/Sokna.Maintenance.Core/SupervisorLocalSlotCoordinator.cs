@@ -111,6 +111,16 @@ public sealed class SupervisorLocalSlotCoordinator
 
     public LocalSlotOperationResult RunHomeCycle(string expectedBuild, int expectedManagedFiles, string expectedManagedTreeSha256, string operatorId, string idempotencyKey)
     {
+        lock (LocalUpdateOperationGate.Sync)
+        {
+            LocalUpdateOperationGate.RequireNoPendingMutation(_operations);
+            using var machineLease = MachineMutationLease.Acquire(_paths, EngineDelegationPermit.Owner);
+            return RunHomeCycleCore(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, operatorId, idempotencyKey, machineLease);
+        }
+    }
+
+    private LocalSlotOperationResult RunHomeCycleCore(string expectedBuild, int expectedManagedFiles, string expectedManagedTreeSha256, string operatorId, string idempotencyKey, MachineMutationLease machineLease)
+    {
         expectedBuild = NormalizeBuild(expectedBuild);
         expectedManagedTreeSha256 = LocalManagedTreeAttestation.NormalizeSha256(expectedManagedTreeSha256);
         operatorId = NormalizeOperatorId(operatorId);
@@ -130,48 +140,51 @@ public sealed class SupervisorLocalSlotCoordinator
 
         operation = _operations.Update(operation, "running", incrementAttempt: true);
         Journal("update.local_slot.running", operation);
-        var start = new ProcessStartInfo
+        var engineArguments = new[]
         {
-            FileName = _engineExecutable,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = AppContext.BaseDirectory
+            "local-slot-home-cycle",
+            "--expected-build", expectedBuild,
+            "--expected-managed-files", expectedManagedFiles.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "--expected-managed-tree-sha256", expectedManagedTreeSha256,
+            "--data-root", _paths.DataRoot
         };
-        start.ArgumentList.Add("local-slot-home-cycle");
-        start.ArgumentList.Add("--expected-build");
-        start.ArgumentList.Add(expectedBuild);
-        start.ArgumentList.Add("--expected-managed-files");
-        start.ArgumentList.Add(expectedManagedFiles.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        start.ArgumentList.Add("--expected-managed-tree-sha256");
-        start.ArgumentList.Add(expectedManagedTreeSha256);
-        start.ArgumentList.Add("--data-root");
-        start.ArgumentList.Add(_paths.DataRoot);
-
         string stdout;
         string stderr;
         int exitCode;
         try
         {
-            using var process = Process.Start(start) ?? throw new InvalidOperationException("Unable to start Update Engine.");
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(240_000))
+            var permitId = EngineDelegationPermit.Issue(_paths, machineLease,
+                operation.OperationId, engineArguments);
+            var exactArguments = engineArguments.Concat(new[] { "--delegation-id", permitId }).ToArray();
+            using var child = WindowsJobChildProcess.Start(_engineExecutable,
+                exactArguments, AppContext.BaseDirectory);
+            var result = child.WaitAndCapture(240_000);
+            if (!result.Finished)
             {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                operation = _operations.Update(operation, "failed", "UPDATE_ENGINE_TIMEOUT", "Phase 3 Local-slot operation exceeded the execution timeout.");
-                Journal("update.local_slot.failed", operation);
+                // A timed-out Engine may have reached pointer activation.
+                // Never claim a clean retry without inspecting durable state.
+                operation = _operations.Update(operation, "recovery_required",
+                    "UPDATE_ENGINE_TIMEOUT_STATE_UNPROVEN",
+                    "Phase 3 Local-slot Job expired; child and descendants were terminated. Slot activation status unproven.",
+                    File.Exists(_paths.LocalSlotStatePath) ? _paths.LocalSlotStatePath : null,
+                    activationPerformed: File.Exists(_paths.LocalSlotStatePath),
+                    databaseMutationPerformed: false);
+                Journal("update.local_slot.recovery_required", operation);
                 return new(operation, created, Reconciled: !created);
             }
-            stdout = stdoutTask.GetAwaiter().GetResult();
-            stderr = stderrTask.GetAwaiter().GetResult();
-            exitCode = process.ExitCode;
+            stdout = result.Stdout;
+            stderr = result.Stderr;
+            exitCode = result.ExitCode;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        catch (Exception ex) when (ex is InvalidOperationException or
+            System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
         {
-            operation = _operations.Update(operation, "failed", "UPDATE_ENGINE_START_FAILED", ex.Message);
-            Journal("update.local_slot.failed", operation);
+            operation = _operations.Update(operation, "recovery_required",
+                "UPDATE_ENGINE_JOB_START_UNPROVEN", ex.Message,
+                File.Exists(_paths.LocalSlotStatePath) ? _paths.LocalSlotStatePath : null,
+                activationPerformed: File.Exists(_paths.LocalSlotStatePath),
+                databaseMutationPerformed: false);
+            Journal("update.local_slot.recovery_required", operation);
             return new(operation, created, Reconciled: !created);
         }
 

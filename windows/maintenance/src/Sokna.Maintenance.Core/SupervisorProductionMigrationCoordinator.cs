@@ -44,9 +44,14 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         string operatorId,
         string idempotencyKey)
     {
-        lock (_executionSync)
+        lock (LocalUpdateOperationGate.Sync)
         {
-            return MigrateCore(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, operatorId, idempotencyKey);
+            LocalUpdateOperationGate.RequireNoPendingMutation(_operations);
+            using var machineLease = MachineMutationLease.Acquire(_paths, EngineDelegationPermit.Owner);
+            lock (_executionSync)
+            {
+                return MigrateCore(expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, operatorId, idempotencyKey, machineLease);
+            }
         }
     }
 
@@ -55,7 +60,8 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         int expectedManagedFiles,
         string expectedManagedTreeSha256,
         string operatorId,
-        string idempotencyKey)
+        string idempotencyKey,
+        MachineMutationLease machineLease)
     {
         expectedBuild = NormalizeBuild(expectedBuild);
         if (expectedManagedFiles is < 1 or > 20_000) throw new InvalidDataException("expected_managed_files is invalid.");
@@ -137,7 +143,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
 
             if (!IsRecoveredPhysicalPhase(prior.Phase))
             {
-                var reconciled = TryRecoverPreActivationInterruption(prior, out var reconciliationDetail);
+                var reconciled = TryRecoverPreActivationInterruption(prior, machineLease, operation.OperationId, out var reconciliationDetail);
                 if (!reconciled)
                 {
                     operation = _operations.Update(
@@ -165,7 +171,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
             "--expected-managed-files", expectedManagedFiles.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "--expected-managed-tree-sha256", expectedManagedTreeSha256,
             "--data-root", _paths.DataRoot
-        }, timeoutMs: 180_000);
+        }, timeoutMs: 180_000, machineLease, operation.OperationId);
 
         if (!execution.Started)
         {
@@ -235,7 +241,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                     return new(operation, created, Reconciled: !created);
                 }
 
-                var recovered = TryRecoverPreActivationInterruption(failedState, out var recoveryDetail);
+                var recovered = TryRecoverPreActivationInterruption(failedState, machineLease, operation.OperationId, out var recoveryDetail);
                 if (!recovered)
                 {
                     operation = _operations.Update(
@@ -342,13 +348,18 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
 
     public LocalSlotOperationResult Recover(string operatorId, string idempotencyKey)
     {
-        lock (_executionSync)
+        lock (LocalUpdateOperationGate.Sync)
         {
-            return RecoverCore(operatorId, idempotencyKey);
+            LocalUpdateOperationGate.RequireLegacySlotRecoveryOnly(_operations);
+            using var machineLease = MachineMutationLease.Acquire(_paths, EngineDelegationPermit.Owner);
+            lock (_executionSync)
+            {
+                return RecoverCore(operatorId, idempotencyKey, machineLease);
+            }
         }
     }
 
-    private LocalSlotOperationResult RecoverCore(string operatorId, string idempotencyKey)
+    private LocalSlotOperationResult RecoverCore(string operatorId, string idempotencyKey, MachineMutationLease machineLease)
     {
         operatorId = NormalizeOperatorId(operatorId);
         var migrationStatePath = Path.Combine(_paths.LocalSlotStateRoot, "migration-state.json");
@@ -387,7 +398,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
             return new(operation, created, Reconciled: !created);
         }
 
-        var execution = ExecuteEngine(new[] { "local-slot-recover", "--data-root", _paths.DataRoot }, timeoutMs: 180_000);
+        var execution = ExecuteEngine(new[] { "local-slot-recover", "--data-root", _paths.DataRoot }, timeoutMs: 180_000, machineLease, operation.OperationId);
         if (!execution.Started || execution.ExitCode != 0)
         {
             operation = _operations.Update(
@@ -439,7 +450,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         }
     }
 
-    private bool TryRecoverPreActivationInterruption(ProductionLocalSlotMigrationState state, out string detail)
+    private bool TryRecoverPreActivationInterruption(ProductionLocalSlotMigrationState state, MachineMutationLease machineLease, string operationId, out string detail)
     {
         detail = string.Empty;
         if (state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot))
@@ -458,7 +469,7 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
             return false;
         }
 
-        var recovery = ExecuteEngine(new[] { "local-slot-recover", "--data-root", _paths.DataRoot }, timeoutMs: 180_000);
+        var recovery = ExecuteEngine(new[] { "local-slot-recover", "--data-root", _paths.DataRoot }, timeoutMs: 180_000, machineLease, operationId);
         if (!recovery.Started || recovery.ExitCode != 0)
         {
             detail = recovery.Detail;
@@ -578,43 +589,31 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(35));
     }
 
-    private EngineExecution ExecuteEngine(IReadOnlyList<string> arguments, int timeoutMs)
+    private EngineExecution ExecuteEngine(IReadOnlyList<string> arguments, int timeoutMs, MachineMutationLease machineLease, string operationId)
     {
-        var start = new ProcessStartInfo
-        {
-            FileName = _engineExecutable,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = AppContext.BaseDirectory
-        };
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
-
         try
         {
-            using var process = Process.Start(start) ?? throw new InvalidOperationException("Unable to start Update Engine.");
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(timeoutMs))
+            var permit = EngineDelegationPermit.Issue(_paths, machineLease, operationId, arguments);
+            var permittedArguments = arguments.Concat(new[] { "--delegation-id", permit }).ToArray();
+            // Child cannot execute before it belongs to KILL_ON_JOB_CLOSE:
+            // CreateProcess(CREATE_SUSPENDED) -> AssignProcessToJobObject -> ResumeThread.
+            using var child = WindowsJobChildProcess.Start(_engineExecutable,
+                permittedArguments, AppContext.BaseDirectory);
+            var result = child.WaitAndCapture(timeoutMs);
+            if (!result.Finished)
             {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                try { process.WaitForExit(5_000); } catch { }
-                var timeoutStdout = stdoutTask.IsCompleted ? stdoutTask.GetAwaiter().GetResult() : string.Empty;
-                var timeoutStderr = stderrTask.IsCompleted ? stderrTask.GetAwaiter().GetResult() : string.Empty;
-                var evidence = string.IsNullOrWhiteSpace(timeoutStderr) ? timeoutStdout : timeoutStderr;
+                var evidence = string.IsNullOrWhiteSpace(result.Stderr) ? result.Stdout : result.Stderr;
                 if (evidence.Length > 5000) evidence = evidence[..5000];
-                var timeoutDetail = "Update Engine exceeded the production migration timeout." + (string.IsNullOrWhiteSpace(evidence) ? string.Empty : " Evidence: " + evidence.Trim());
-                return new(true, -1, timeoutStdout, timeoutDetail, "UPDATE_ENGINE_TIMEOUT");
+                return new(true, -1, result.Stdout,
+                    "Update Engine exceeded timeout. Job child and descendants terminated. " + evidence.Trim(),
+                    "UPDATE_ENGINE_TIMEOUT");
             }
-
-            var stdout = stdoutTask.GetAwaiter().GetResult();
-            var stderr = stderrTask.GetAwaiter().GetResult();
-            var resultDetail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-            if (resultDetail.Length > 6000) resultDetail = resultDetail[..6000];
-            return new(true, process.ExitCode, stdout, resultDetail.Trim(), "OK");
+            var detail = string.IsNullOrWhiteSpace(result.Stderr) ? result.Stdout : result.Stderr;
+            if (detail.Length > 6000) detail = detail[..6000];
+            return new(true, result.ExitCode, result.Stdout, detail.Trim(), "OK");
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        catch (Exception ex) when (ex is InvalidOperationException or
+            System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException or PlatformNotSupportedException)
         {
             return new(false, -1, string.Empty, ex.Message, "UPDATE_ENGINE_START_FAILED");
         }

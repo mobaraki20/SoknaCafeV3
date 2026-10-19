@@ -2,9 +2,24 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace Sokna.Maintenance.Core;
+
+public sealed record ReleaseSetPreflightResult(
+    [property: JsonPropertyName("release_set_id")] string ReleaseSetId,
+    [property: JsonPropertyName("sequence")] long Sequence,
+    [property: JsonPropertyName("release_type")] string ReleaseType,
+    [property: JsonPropertyName("package_sha256")] string PackageSha256,
+    [property: JsonPropertyName("manifest_sha256")] string ManifestSha256,
+    [property: JsonPropertyName("signature_verified")] bool SignatureVerified,
+    [property: JsonPropertyName("artifact_integrity_verified")] bool ArtifactIntegrityVerified,
+    [property: JsonPropertyName("exact_baseline_verified")] bool? ExactBaselineVerified,
+    [property: JsonPropertyName("activation_performed")] bool ActivationPerformed,
+    [property: JsonPropertyName("database_mutation_performed")] bool DatabaseMutationPerformed,
+    [property: JsonPropertyName("stage_performed")] bool StagePerformed,
+    [property: JsonPropertyName("panel_activation_ready")] bool PanelActivationReady);
 
 public sealed class ReleaseSetVerifierStager
 {
@@ -31,6 +46,77 @@ public sealed class ReleaseSetVerifierStager
     private readonly MaintenancePaths _paths;
 
     public ReleaseSetVerifierStager(MaintenancePaths paths) => _paths = paths;
+
+    /// <summary>
+    /// Fully authenticate a Release Set without creating directories, a stage receipt,
+    /// an operation record, an anti-rollback high-water mark, or touching the active Web.
+    /// This result is ephemeral inspection evidence, NOT permission to activate.
+    /// VerifyAndStage independently rechecks all inputs to close the inspection-to-stage gap.
+    /// </summary>
+    public ReleaseSetPreflightResult VerifyOnly(string packagePath, InstalledReleaseIdentity installed)
+    {
+        ArgumentNullException.ThrowIfNull(installed);
+        packagePath = Path.GetFullPath(packagePath);
+        if (!File.Exists(packagePath))
+            throw new FileNotFoundException("Release Set package was not found.", packagePath);
+
+        var packageHash = HashFile(packagePath);
+        using var archive = ZipFile.OpenRead(packagePath);
+        var entries = IndexArchive(archive);
+        if (!entries.TryGetValue("release-set.json", out var manifestEntry))
+            throw new InvalidDataException("Release Set package is missing release-set.json.");
+        if (manifestEntry.Length > MaxManifestBytes)
+            throw new InvalidDataException("Release Set manifest exceeds the maximum size.");
+
+        byte[] manifestBytes;
+        using (var source = manifestEntry.Open())
+        using (var buffer = new MemoryStream())
+        {
+            var chunk = new byte[64 * 1024];
+            int read;
+            while ((read = source.Read(chunk)) > 0)
+            {
+                if (buffer.Length + read > MaxManifestBytes)
+                    throw new InvalidDataException("Release Set manifest exceeds the maximum size.");
+                buffer.Write(chunk, 0, read);
+            }
+            manifestBytes = buffer.ToArray();
+        }
+
+        ReleaseSetManifest manifest;
+        try
+        {
+            manifest = JsonSerializer.Deserialize<ReleaseSetManifest>(manifestBytes, AtomicFile.JsonOptions)
+                ?? throw new InvalidDataException("Release Set manifest is empty.");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException("Release Set manifest JSON is invalid.", ex);
+        }
+
+        ValidateManifest(manifest, installed);
+        var canonical = ReleaseSetCanonicalizer.CanonicalBytesWithBlankSignatureValue(manifestBytes);
+        var manifestHash = ReleaseSetCanonicalizer.Sha256Hex(canonical);
+        VerifySignature(manifest, canonical);
+        ValidateArchiveAgainstArtifacts(entries, manifest.Artifacts);
+        var previous = LoadSequenceState();
+        if (previous is not null)
+        {
+            if (manifest.Sequence < previous.HighestSequence)
+                throw new InvalidDataException("Release Set sequence is lower than the anti-rollback high-water mark.");
+            if (manifest.Sequence == previous.HighestSequence &&
+                (!string.Equals(manifest.ReleaseSetId, previous.ReleaseSetId, StringComparison.Ordinal) ||
+                 !string.Equals(manifestHash, previous.ManifestSha256, StringComparison.Ordinal)))
+                throw new InvalidDataException("Release Set sequence collides with a different previously staged release.");
+        }
+
+        return new ReleaseSetPreflightResult(
+            manifest.ReleaseSetId, manifest.Sequence, manifest.ReleaseType,
+            packageHash, manifestHash, true, true,
+            manifest.ReleaseType is "windows_components_only" or "updater_only" ? null : true,
+            ActivationPerformed: false, DatabaseMutationPerformed: false,
+            StagePerformed: false, PanelActivationReady: false);
+    }
 
     public StagedReleaseReceipt VerifyAndStage(string packagePath, InstalledReleaseIdentity installed)
     {
@@ -235,14 +321,7 @@ public sealed class ReleaseSetVerifierStager
     }
 
     private static void ValidateForInstallGate(ReleaseSetManifest manifest)
-    {
-        if (!manifest.ForInstall) return;
-        var q = manifest.Qualification;
-        if (!manifest.ProductionPass || string.IsNullOrWhiteSpace(q.FailureMatrixId) || q.FailureMatrixCasesRequired < 80 ||
-            !q.RealWindows || !q.RealMariaDb || !q.RealPublicHost || !q.Canary || !q.RecoveryConsoleWebDown ||
-            !q.BusinessBackupConsistencyRealMariaDb || !q.RemoteVaultRealHost || !q.CleanMachineRemoteRestore)
-            throw new InvalidDataException("for_install=true is forbidden until every binding real-host qualification gate passes.");
-    }
+        => ReleaseInstallQualificationGate.Require(manifest);
 
     private static bool MatchesAnyBaseline(ReleaseSetManifest manifest, InstalledReleaseIdentity installed)
     {

@@ -2,7 +2,7 @@
   "format": "sokna-windows-component-manifest-v2",
   "schema_version": 2,
   "package_component": "windows-services-packaging",
-  "package_version": "1.1.12",
+  "package_version": "1.1.14",
   "planner_contract": "1.1",
   "components": [
     {
@@ -18,7 +18,10 @@
       "restart_scope": "service",
       "transaction_group": "runtime",
       "health_policy": "running_when_paired_or_manual_when_unpaired",
-      "dependencies": []
+      "dependencies": [],
+      "accepted_installed_sha256": [
+        "26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd"
+      ]
     },
     {
       "component_id": "print-agent",
@@ -33,7 +36,10 @@
       "restart_scope": "service",
       "transaction_group": "print-agent",
       "health_policy": "running",
-      "dependencies": []
+      "dependencies": [],
+      "accepted_installed_sha256": [
+        "99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4"
+      ]
     },
     {
       "component_id": "maintenance",
@@ -41,7 +47,7 @@
       "kind": "service",
       "primary": true,
       "required": true,
-      "version": "0.3.6",
+      "version": "0.3.7",
       "service_name": "SoknaMaintenanceSupervisor",
       "payload_primary": "_payload/maintenance/app/SoknaMaintenanceSupervisor.exe",
       "installed_primary": "Maintenance/App/SoknaMaintenanceSupervisor.exe",
@@ -66,7 +72,7 @@
       "primary": false,
       "required": true,
       "parent_component": "maintenance",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "payload_primary": "_payload/maintenance/app/SoknaMaintenanceUpdateEngine.exe",
       "installed_primary": "Maintenance/App/SoknaMaintenanceUpdateEngine.exe",
       "restart_scope": "process",
@@ -81,7 +87,7 @@
       "primary": false,
       "required": true,
       "parent_component": "maintenance",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "payload_primary": "_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe",
       "installed_primary": "Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe",
       "accepted_installed_sha256": [

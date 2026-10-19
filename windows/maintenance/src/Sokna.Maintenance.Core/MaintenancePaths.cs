@@ -11,6 +11,12 @@ public sealed record MaintenancePaths(string DataRoot)
     public string DescriptorPath => Path.Combine(DataRoot, "control-plane.json");
     public string WebAdapterKeyPath => Path.Combine(SecretsRoot, "web-adapter.key");
     public string RecoveryConsoleKeyPath => Path.Combine(SecretsRoot, "recovery-console.key");
+    public string EngineDelegationKeyPath => Path.Combine(SecretsRoot, "engine-delegation.key");
+    public string EngineDelegationsRoot => Path.Combine(UpdateRoot, "delegations");
+    public string ActivationPlansRoot => Path.Combine(UpdateRoot, "activation-plans");
+    public string InactiveLocalCandidatesRoot => Path.Combine(UpdateRoot, "inactive-local-candidates");
+    public string InactiveLocalSlotPromotionRoot => Path.Combine(UpdateRoot, "inactive-slot-promotions");
+    public string CodeCutoverJournalRoot => Path.Combine(UpdateRoot, "code-cutover-journal");
     public string UpdateRoot => Path.Combine(DataRoot, "update");
     public string InboxRoot => Path.Combine(UpdateRoot, "inbox");
     public string OperationsRoot => Path.Combine(DataRoot, "operations");
@@ -20,6 +26,7 @@ public sealed record MaintenancePaths(string DataRoot)
     public string TrustRoot => Path.Combine(DataRoot, "trust");
     public string ReleaseSigningTrustRoot => Path.Combine(TrustRoot, "release-signing");
     public string UpdateStageLockPath => Path.Combine(UpdateRoot, "stage.lock");
+    public string MachineMutationLockPath => Path.Combine(UpdateRoot, "machine-mutation.lock");
     public string ReleaseSequenceStatePath => Path.Combine(UpdateRoot, "release-sequence.json");
     public string LocalSlotStateRoot => Path.Combine(DataRoot, "local-slots");
     public string LocalSlotStatePath => Path.Combine(LocalSlotStateRoot, "phase3-state.json");
