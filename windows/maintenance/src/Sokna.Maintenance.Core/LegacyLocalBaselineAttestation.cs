@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Sokna.Maintenance.LegacyBaselineHarness")]
 
 namespace Sokna.Maintenance.Core;
 
@@ -51,7 +54,29 @@ public static class LegacyLocalBaselineAttestation
         var build = File.ReadAllText(versionFile, Encoding.UTF8).Trim();
         var pinned = Trusted.SingleOrDefault(p => string.Equals(p.Build, build, StringComparison.Ordinal))
             ?? throw new InvalidDataException("LEGACY_BASELINE_BUILD_NOT_QUALIFIED");
+        return RequireAgainstPinned(root, build, pinned);
+    }
 
+    // Test only: this has NO signed Stage/Activate authorization and is never
+    // called by Supervisor. It allows tiny positive fixture tests without
+    // copying customer data or a full 231ag distribution into this repo.
+    internal static Assessment RequireFixture(string webRoot, string expectedBuild,
+        int count, string inventorySha256, string treeSha256)
+    {
+        var root = Path.GetFullPath(webRoot);
+        if (!Directory.Exists(root) || IsReparse(root))
+            throw new InvalidDataException("LEGACY_PHYSICAL_WEB_REQUIRED");
+        var versionFile = Path.Combine(root, "VERSION.txt");
+        RequirePlainFile(root, versionFile);
+        var build = File.ReadAllText(versionFile, Encoding.UTF8).Trim();
+        if (!string.Equals(build, expectedBuild, StringComparison.Ordinal))
+            throw new InvalidDataException("LEGACY_BASELINE_BUILD_NOT_QUALIFIED");
+        return RequireAgainstPinned(root, build,
+            new Pinned(expectedBuild, count, inventorySha256, treeSha256));
+    }
+
+    private static Assessment RequireAgainstPinned(string root, string build, Pinned pinned)
+    {
         var inventoryFile = Path.Combine(root, "resources", "H300_MANAGED_FILES.json");
         RequirePlainFile(root, inventoryFile);
         var inventoryBytes = File.ReadAllBytes(inventoryFile);
