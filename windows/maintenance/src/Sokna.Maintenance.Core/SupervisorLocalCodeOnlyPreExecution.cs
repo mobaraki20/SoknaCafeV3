@@ -16,6 +16,7 @@ public sealed record LocalCodeOnlyPreExecutionEvidence(
     [property: JsonPropertyName("target_slot")] string TargetSlot,
     [property: JsonPropertyName("target_version")] string TargetVersion,
     [property: JsonPropertyName("target_managed_tree_sha256")] string TargetTreeSha256,
+    [property: JsonPropertyName("target_managed_files")] int TargetManagedFiles,
     [property: JsonPropertyName("signed_stage_verified")] bool SignedStageVerified,
     [property: JsonPropertyName("physical_sibling_verified")] bool PhysicalSiblingVerified,
     [property: JsonPropertyName("unchanged_migrations_verified")] bool UnchangedMigrationsVerified,
@@ -136,7 +137,7 @@ public sealed class SupervisorLocalCodeOnlyPreExecution
 
         return new LocalCodeOnlyPreExecutionEvidence(
             stageOperationId, signed.ReleaseSetId, oldSlot, target,
-            receipt.TargetVersion, receipt.TargetTreeSha256,
+            receipt.TargetVersion, receipt.TargetTreeSha256, receipt.TargetManagedFiles,
             SignedStageVerified: true, PhysicalSiblingVerified: true,
             UnchangedMigrationsVerified: true, ExecutionAuthorized: false,
             PanelUpdateReady: false);
