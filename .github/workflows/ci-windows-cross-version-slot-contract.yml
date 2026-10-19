@@ -200,7 +200,8 @@ jobs:
             $stageHeaders['X-Sokna-Idempotency-Key']='code-only-negative-stage-proof'
             $stageResp=Invoke-WebRequest "http://127.0.0.1:$port$stagePath" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
             $stageData=$stageResp.Content|ConvertFrom-Json -AsHashtable
-            if($stageResp.StatusCode -ne 422 -or $stageData.code -ne 'CODE_ONLY_SIGNED_STAGE_OR_SLOT_UNPROVEN') { throw 'Nonexistent signed Stage reached Local activation' }
+            Write-Host ("CODE_ONLY_NEGATIVE_STAGE_RESULT status={0} code={1} state={2}" -f $stageResp.StatusCode, $stageData.code, $stageData.status)
+            if($stageResp.StatusCode -ne 422 -or $stageData.code -ne 'CODE_ONLY_SIGNED_STAGE_OR_SLOT_UNPROVEN') { throw "Nonexistent signed Stage returned unexpected result (status=$($stageResp.StatusCode);code=$($stageData.code))" }
             $replay=Invoke-WebRequest "http://127.0.0.1:$port$stagePath" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
             $replayData=$replay.Content|ConvertFrom-Json -AsHashtable
             if($replay.StatusCode -ne 409 -or $replayData.code -ne 'AUTH_REPLAY') { throw 'Local activate accepted HMAC replay nonce' }
