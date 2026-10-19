@@ -13,7 +13,8 @@ public static class UnifiedUpdaterCapabilities
         new LocalRoutineActions(false, false, false, false),
         false,
         "FOUNDATION_UPDATE_REQUIRED",
-        "Cross-version Local updater is not enabled from the ordinary panel in this build.");
+        "Cross-version Local updater is not enabled from the ordinary panel in this build.",
+        true); // Transport-only availability; NOT an installability claim.
 }
 
 public sealed record LocalRoutineActions(
@@ -29,4 +30,5 @@ public sealed record UnifiedUpdaterCapabilitiesResult(
     [property: JsonPropertyName("local_routine")] LocalRoutineActions LocalRoutine,
     [property: JsonPropertyName("panel_update_ready")] bool PanelUpdateReady,
     [property: JsonPropertyName("blocking_code")] string BlockingCode,
-    [property: JsonPropertyName("detail")] string Detail);
+    [property: JsonPropertyName("detail")] string Detail,
+    [property: JsonPropertyName("inbox_transport_available")] bool InboxTransportAvailable);
