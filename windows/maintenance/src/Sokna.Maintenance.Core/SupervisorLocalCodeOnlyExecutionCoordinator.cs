@@ -165,6 +165,54 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                 InvalidOperationException or JsonException or
                 System.ComponentModel.Win32Exception or UnauthorizedAccessException)
             {
+                // A routine may have ALREADY performed a controlled rollback
+                // after an injected health failure. Read the terminal durable
+                // state AND the actual old Apache/Local/Maintenance identity;
+                // do not strand a cleanly recovered cafe in recovery_required.
+                try
+                {
+                    var routinePath = Path.Combine(_paths.LocalSlotStateRoot,
+                        "routine-state.json");
+                    if (File.Exists(routinePath))
+                    {
+                        var routine = AtomicFile.ReadJson<RoutineLocalSlotState>(routinePath);
+                        if (routine.Phase == "ROLLED_BACK" &&
+                            !routine.RecoveryRequired &&
+                            routine.MaintenanceIdentityCommitExpected &&
+                            routine.CurrentBuild == identity.Local.Version &&
+                            string.Equals(routine.PreviousSlot, verified.PreviousSlot,
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            var liveOld = new LocalSlotManager(_paths).InspectHealthyCurrent();
+                            var restoredIdentity = AtomicFile.ReadJson<InstalledReleaseIdentity>(
+                                _paths.InstalledReleaseIdentityPath);
+                            if (string.Equals(liveOld.ActiveSlotTarget, verified.PreviousSlot,
+                                    StringComparison.OrdinalIgnoreCase) &&
+                                liveOld.Build == identity.Local.Version &&
+                                restoredIdentity.Local is not null &&
+                                restoredIdentity.Local.Version == identity.Local.Version &&
+                                restoredIdentity.Local.ReleaseId == identity.Local.ReleaseId &&
+                                restoredIdentity.Local.ManagedTreeSha256 == identity.Local.ManagedTreeSha256)
+                            {
+                                LocalManagedTreeAttestation.RequireExact(liveOld.WebRoot,
+                                    currentCount, identity.Local.ManagedTreeSha256);
+                                operation = _operations.Update(operation, "failed",
+                                    "CODE_ONLY_ENGINE_ROLLED_BACK_VERIFIED",
+                                    "Engine failed but previous Local release was safely restored.",
+                                    routinePath, activationPerformed: true,
+                                    databaseMutationPerformed: false);
+                                Journal("update.local_code_only.safe_rollback_verified", operation);
+                                return new(operation, created, false);
+                            }
+                        }
+                    }
+                }
+                catch (Exception checkError) when (checkError is IOException or
+                    InvalidDataException or InvalidOperationException or JsonException or
+                    UnauthorizedAccessException)
+                {
+                    // No proof means the ambiguous installation stays blocked.
+                }
                 // Never claim failure was pre-mutation after Engine dispatch:
                 // a timeout or crash might have already switched Web.
                 operation = _operations.Update(operation, "recovery_required",
