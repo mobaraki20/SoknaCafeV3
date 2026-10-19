@@ -39,6 +39,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Syntax check and capture universal read-only inventory tool
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $file=(Resolve-Path 'release/diagnostics/SOKNA-Windows-ReadOnly-Inventory.ps1').Path
+          $tokens=$null;$errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile($file,[ref]$tokens,[ref]$errors)|Out-Null
+          if(@($errors).Count){throw 'Read-only Windows inventory PowerShell parse failed.'}
+          $dest=Join-Path $env:RUNNER_TEMP 'sokna-readonly-inventory'
+          New-Item -ItemType Directory -Path $dest -Force|Out-Null
+          Copy-Item -LiteralPath $file -Destination (Join-Path $dest 'SOKNA-Windows-ReadOnly-Inventory.ps1')
+          Copy-Item -LiteralPath 'release/diagnostics/RUN_READONLY.cmd' -Destination (Join-Path $dest 'RUN_READONLY.cmd')
+          & $file
+          if(-not(Test-Path -LiteralPath $dest)){throw 'Inventory fixture capture missing.'}
+          Write-Host 'PASS: universal inventory parsed and executed without installer on Windows runner.'
+
       - name: Resolve manual inputs or approved source-controlled release request
         id: request
         shell: pwsh
@@ -183,7 +199,19 @@ jobs:
             'Canary upgrade path have been explicitly qualified.'
             'Do not deploy to the live cafe before successful Home UAT.'
             'Local/Public are separately updated; this release updates Windows Services only.'
+            'Included read-only inventory ZIP can safely report installed Foundation versions before any installation.'
           ) | Set-Content (Join-Path $out 'PRERELEASE_NOTES.md') -Encoding utf8
+
+      - name: Package one-click read-only inventory alongside installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dest=(Resolve-Path 'release/out-windows').Path
+          $src=Join-Path $env:RUNNER_TEMP 'sokna-readonly-inventory'
+          foreach($f in @('RUN_READONLY.cmd','SOKNA-Windows-ReadOnly-Inventory.ps1')){
+            if(-not(Test-Path -LiteralPath (Join-Path $src $f) -PathType Leaf)){throw "Diagnostic source missing: $f"}
+          }
+          Compress-Archive -LiteralPath (Join-Path $src 'RUN_READONLY.cmd'),(Join-Path $src 'SOKNA-Windows-ReadOnly-Inventory.ps1') -DestinationPath (Join-Path $dest 'SOKNA-Windows-ReadOnly-Inventory.zip') -Force
 
       - name: Publish GitHub release assets with a new RC tag
         shell: pwsh
@@ -203,7 +231,8 @@ jobs:
           $out=(Resolve-Path 'release/out-windows').Path
           $index=Get-Content (Join-Path $out 'artifact-index.json') -Raw | ConvertFrom-Json
           $exe=Join-Path $out ([string]$index.windows_services.file)
-          & gh release create $env:RELEASE_TAG $exe (Join-Path $out 'artifact-index.json') `
+          & gh release create $env:RELEASE_TAG $exe (Join-Path $out 'SOKNA-Windows-ReadOnly-Inventory.zip') `
+            (Join-Path $out 'artifact-index.json') `
             (Join-Path $out 'SHA256SUMS.txt') `
             --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA `
             --prerelease --latest=false `
