@@ -4,5 +4,5 @@
   "source_sha": "feef2da43e1906fe1a061cbc58eae3f5681ad9fd",
   "release_tag": "windows-services-v1.1.12-rc.1",
   "confirmation": "PUBLISH_CANARY_PRERELEASE",
-  "distribution_retry": "corrected_pr_head_ci_validation_2026_10_19"
+  "distribution_retry": "read_only_inventory_and_parent_history_fixed"
 }
