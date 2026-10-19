@@ -298,6 +298,15 @@ internal static class ComponentUpdatePlanner
         Expect("1.0.4.9", "1.0.5", -1);
         Expect("1.0.5+build.42", "1.0.5", 0);
         Expect("1.0.5-beta", "1.0.5", 0);
+
+        // The compatible-fingerprint allowlist must be exact. A byte-different
+        // 1.0.5/6.2.9 binary is NOT silently accepted as KEEP.
+        const string accepted = "26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd";
+        using var knownDocument = JsonDocument.Parse("{\"accepted_installed_sha256\":[\"" + accepted + "\"]}");
+        if (!IsAcceptedInstalledFingerprint(knownDocument.RootElement, accepted) ||
+            IsAcceptedInstalledFingerprint(knownDocument.RootElement, new string('0', 64)) ||
+            IsAcceptedInstalledFingerprint(knownDocument.RootElement, ""))
+            throw new InvalidOperationException("component_fingerprint_allowlist_contract");
     }
 
     // Lifecycle comparison must use the executable FileVersion. ProductVersion can carry
