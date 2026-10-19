@@ -152,7 +152,7 @@ internal static class ComponentUpdatePlanner
             {
                 action = ComponentAction.Update; state = "required_update"; reason = $"نسخه {currentVersion} باید به {targetVersion} ارتقا یابد.";
             }
-            else if (!string.Equals(installedHash, targetHash, StringComparison.OrdinalIgnoreCase) && compatibleInstalledHash)
+            else if (!string.Equals(installedHash, targetHash, StringComparison.OrdinalIgnoreCase) && compatibleInstalledHash && registrationHealthy)
             {
                 action = ComponentAction.Keep; state = "up_to_date_compatible_fingerprint"; reason = "نسخه و fingerprint نصب‌شده در فهرست سازگاری رسمی همین release قرار دارد؛ این جزء بدون تغییر نگه داشته می‌شود.";
             }
