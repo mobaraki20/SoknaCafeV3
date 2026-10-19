@@ -12,8 +12,8 @@ public static class UnifiedUpdaterCapabilities
         Format, 1, "signed_supervisor_hmac_v1",
         new LocalRoutineActions(false, false, false, false),
         false,
-        "FOUNDATION_UPDATE_REQUIRED",
-        "Cross-version Local updater is not enabled from the ordinary panel in this build.",
+        "LOCAL_CROSS_VERSION_UAT_REQUIRED",
+        "Windows Foundation is installed, but Local cross-version Stage/Activate and recovery have not passed real-host UAT. Signed inbox transport alone does not authorize activation.",
         true); // Transport-only availability; NOT an installability claim.
 }
 
