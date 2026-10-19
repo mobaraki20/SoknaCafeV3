@@ -134,6 +134,56 @@ if (args.Length == 2 && args[0] == "code-cutover-wal")
     recovered.Advance(lease, forwardId, "forward_recovery_required", hash);
     if (!recovered.Classify(forwardId, nextSlot).DatabaseForwardOnly)
         throw new InvalidDataException("Forward-only state lost after restart.");
+    // Code-only upgrade: no invented db_forward_intent or MariaDB commit.
+    // WAL remains evidence-only; even terminal state cannot authorize a
+    // real host install without independent post-switch re-attestation.
+    var codeOnlyId = new string('f', 32);
+    recovered.Begin(lease, codeOnlyId, stage, oldSlot, nextSlot, hash);
+    foreach (var phase in new[] {
+        "apache_stop_intent", "apache_stop_observed", "pointer_switch_intent",
+        "pointer_switch_observed", "target_http_observed",
+        "code_only_lifecycle_intent"
+    }) recovered.Advance(lease, codeOnlyId, phase, hash);
+    var codeOnlyCrash = new LocalCodeCutoverWriteAheadJournal(cutoverPaths)
+        .Classify(codeOnlyId, nextSlot);
+    if (codeOnlyCrash.DatabaseForwardOnly || codeOnlyCrash.ActivationAllowed ||
+        codeOnlyCrash.PanelUpdateReady || codeOnlyCrash.AutomaticRollbackAllowed)
+        throw new InvalidDataException("Interrupted code-only lifecycle became installable or DB-forward.");
+    var wrongDbBranchDenied = false;
+    try { recovered.Advance(lease, codeOnlyId, "db_forward_intent", hash); }
+    catch (InvalidOperationException ex) when
+        (ex.Message == "CUTOVER_JOURNAL_ILLEGAL_TRANSITION") { wrongDbBranchDenied = true; }
+    if (!wrongDbBranchDenied)
+        throw new InvalidDataException("Code-only lifecycle accepted a DB-forward branch.");
+    recovered.Advance(lease, codeOnlyId, "code_only_lifecycle_observed", hash);
+    var skippedCommitDenied = false;
+    try { recovered.Advance(lease, codeOnlyId, "committed", hash); }
+    catch (InvalidOperationException ex) when
+        (ex.Message == "CUTOVER_JOURNAL_ILLEGAL_TRANSITION") { skippedCommitDenied = true; }
+    if (!skippedCommitDenied)
+        throw new InvalidDataException("Code-only flow claimed a DB-forward commit.");
+    recovered.Advance(lease, codeOnlyId, "code_only_committed", hash);
+    var finishedCodeOnly = new LocalCodeCutoverWriteAheadJournal(cutoverPaths)
+        .Classify(codeOnlyId, nextSlot);
+    if (finishedCodeOnly.DatabaseForwardOnly || finishedCodeOnly.ActivationAllowed ||
+        finishedCodeOnly.AutomaticRollbackAllowed || finishedCodeOnly.PanelUpdateReady ||
+        finishedCodeOnly.Decision != "CODE_ONLY_COMMIT_REQUIRES_LIVE_REATTESTATION")
+        throw new InvalidDataException("Code-only terminal WAL fabricated live installation.");
+    var crossBranchDenied = false;
+    try { recovered.Advance(lease, codeOnlyId, "db_forward_intent", hash); }
+    catch (InvalidOperationException ex) when
+        (ex.Message == "CUTOVER_JOURNAL_ILLEGAL_TRANSITION") { crossBranchDenied = true; }
+    if (!crossBranchDenied)
+        throw new InvalidDataException("Committed code-only flow accepted a DB mutation.");
+    var dbCommitsBypassDenied = false;
+    try { recovered.Advance(lease, forwardId, "code_only_committed", hash); }
+    catch (InvalidOperationException ex) when
+        (ex.Message == "CUTOVER_JOURNAL_ILLEGAL_TRANSITION") { dbCommitsBypassDenied = true; }
+    if (!dbCommitsBypassDenied)
+        throw new InvalidDataException("DB forward branch bypassed its commit proof.");
+    if (new LocalCodeCutoverWriteAheadJournal(cutoverPaths)
+        .ReadVerified(codeOnlyId).Phase != "code_only_committed")
+        throw new InvalidDataException("Restart lost the verified code-only WAL terminal phase.");
     var recordFile = Path.Combine(cutoverPaths.CodeCutoverJournalRoot, id, "events.jsonl");
     File.AppendAllText(recordFile, "{\"broken\":true\n");
     var tamperedDenied = false;
@@ -162,6 +212,9 @@ if (args.Length == 2 && args[0] == "code-cutover-wal")
         post_db_rollback_forbidden = true, forward_only_after_restart = true,
         corrupt_record_denied = true, interrupted_new_journal_quarantined = true,
         active_and_target_slots_unchanged = true,
+        code_only_wal_branch_distinct_from_db_forward = true,
+        code_only_terminal_requires_live_reattestation = true,
+        code_only_cross_branch_and_false_commit_denied = true,
         activation_allowed = false, real_host_uat = false,
         apache_mutation = false, database_mutation = false, public_mutation = false
     }));
