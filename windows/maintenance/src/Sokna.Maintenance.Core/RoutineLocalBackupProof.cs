@@ -8,7 +8,8 @@ namespace Sokna.Maintenance.Core;
 public static class RoutineLocalBackupProof
 {
     public static void ValidateSnapshot(string backupPath, string previousBuild,
-        string expectedStatePath, string expectedManagedPath)
+        string expectedStatePath, string expectedManagedPath,
+        string? expectedIdentityPath = null)
     {
         if (!File.Exists(backupPath) ||
             (File.GetAttributes(backupPath) & FileAttributes.ReparsePoint) != 0 ||
@@ -35,6 +36,25 @@ public static class RoutineLocalBackupProof
             if (state is null || (string?)state["format"] != "sokna-local-update-state-v1" ||
                 (string?)state["active_version"] != previousBuild)
                 throw new InvalidDataException("ROUTINE_ROLLBACK_EVIDENCE_STATE_MISMATCH");
+            if (expectedIdentityPath is not null)
+            {
+                if (!Path.IsPathFullyQualified(expectedIdentityPath) ||
+                    (string?)proof["installed_identity_path"] != expectedIdentityPath ||
+                    (string?)proof["installed_identity_base64"] is not string encodedIdentity)
+                    throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_BACKUP_UNAVAILABLE");
+                byte[] rawIdentity;
+                try { rawIdentity = Convert.FromBase64String(encodedIdentity); }
+                catch (FormatException ex) { throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_BACKUP_CORRUPT", ex); }
+                if (rawIdentity.Length is <= 0 or > 100_000)
+                    throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_BACKUP_CORRUPT");
+                var original = JsonSerializer.Deserialize<InstalledReleaseIdentity>(
+                    rawIdentity, AtomicFile.JsonOptions);
+                if (original?.Local is null || original.Local.Version != previousBuild)
+                    throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_BACKUP_MISMATCH");
+            }
+            else if (proof["installed_identity_path"] is not null ||
+                proof["installed_identity_base64"] is not null)
+                throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_BACKUP_UNEXPECTED");
             if ((string?)proof["managed_base64"] is string encodedManaged)
             {
                 byte[] rawManaged;
