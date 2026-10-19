@@ -153,7 +153,7 @@ public static class EngineDelegationPermit
             throw new InvalidDataException(RejectedCode);
         if (arguments[0] is not ("verify-stage" or "local-slot-migrate" or "local-slot-recover"
             or "local-slot-home-cycle" or "local-slot-stage" or "local-slot-activate"
-            or "local-slot-recover-routine"))
+            or "local-slot-activate-qualified" or "local-slot-recover-routine"))
             throw new InvalidDataException(RejectedCode);
     }
 
