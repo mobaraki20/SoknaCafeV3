@@ -29,15 +29,20 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
     private readonly DurableJournal _journal;
     private readonly SupervisorState _state;
     private readonly string _engineExecutable;
+    private readonly SupervisorInactiveLocalCandidateCoordinator _legacyCandidate;
+    private readonly SupervisorLocalStageRecoveryCoordinator _signedStage;
 
     public SupervisorLocalCodeOnlyExecutionCoordinator(
         MaintenancePaths paths, MaintenanceOperationStore operations,
         SupervisorLocalCodeOnlyPreExecution proof, DurableJournal journal,
-        SupervisorState state, string engineExecutable)
+        SupervisorState state, string engineExecutable,
+        SupervisorInactiveLocalCandidateCoordinator legacyCandidate,
+        SupervisorLocalStageRecoveryCoordinator signedStage)
     {
         _paths = paths; _operations = operations; _proof = proof;
         _journal = journal; _state = state;
         _engineExecutable = Path.GetFullPath(engineExecutable);
+        _legacyCandidate=legacyCandidate; _signedStage=signedStage;
     }
 
     public LocalCodeOnlyExecutionOutcome Activate(
@@ -64,6 +69,22 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             if (stage.OperationType != "update.local-stage" ||
                 stage.State != "staged" || stage.OperatorId != operatorId)
                 throw new InvalidDataException("CODE_ONLY_STAGE_OPERATOR_MISMATCH");
+
+            // A legacy physical Web is handled by the FIRST-SLOT branch of the
+            // SAME signed Supervisor activation route, never by a Go installer
+            // or a PHP active-Web overwrite.
+            try
+            {
+                var physical = new LocalSlotManager(_paths).InspectLegacyPhysicalCurrent();
+                return ActivateVerifiedLegacyPhysical(stageId, operatorId, idempotencyKey,
+                    operationType, requestHash, physical, lease);
+            }
+            catch (InvalidDataException ex) when (
+                ex.Message is "LEGACY_WEB_ALREADY_JUNCTION" or
+                "LEGACY_PHYSICAL_WEB_REQUIRED")
+            {
+                // Existing R8 installations use the previous production path.
+            }
 
             // Repeat full signature, manifest target and physical slot proof
             // UNDER the live machine mutation lease immediately before Engine.
@@ -224,6 +245,168 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             }
         }
     }
+
+    private LocalCodeOnlyExecutionOutcome ActivateVerifiedLegacyPhysical(
+        string stageId, string operatorId, string idempotencyKey,
+        string operationType, string requestHash, LocalInstallLayout physical,
+        MachineMutationLease lease)
+    {
+        // This inspection cryptographically re-verifies the original signed
+        // Local-only release, the durable Stage and installed baseline.
+        var qualified = _signedStage.InspectActivationReadiness(stageId);
+        if (!qualified.StageEvidenceVerified || qualified.ReleaseType != "local_only" ||
+            qualified.ActivationAllowed || qualified.PanelUpdateReady)
+            throw new InvalidDataException("LEGACY_SIGNED_STAGE_NOT_QUALIFIED");
+        var before = AtomicFile.ReadJson<InstalledReleaseIdentity>(
+            _paths.InstalledReleaseIdentityPath);
+        if (before.Local is null || before.Local.Version != physical.Build)
+            throw new InvalidDataException("LEGACY_INSTALLED_IDENTITY_MISMATCH");
+
+        // Use the SAME signed package->private candidate preparation as R8.
+        // Its bounded extraction rehashes every ZIP entry and the signed
+        // manifest. No external source path is accepted from the operator.
+        var candidate = _legacyCandidate.Prepare(stageId, operatorId,
+            "legacy-candidate-" + stageId);
+        var payload = candidate.Receipt;
+        if (payload.TargetVersion == physical.Build ||
+            !payload.ActiveSlotUnchanged || payload.PromotionQualified ||
+            payload.ActivationPerformed || payload.DatabaseMutationPerformed ||
+            payload.PublicMutationPerformed ||
+            !string.Equals(payload.ReleaseSetId, qualified.ReleaseSetId,
+                StringComparison.Ordinal) ||
+            !string.Equals(payload.InstalledIdentitySha256,
+                Sha256File(_paths.InstalledReleaseIdentityPath),
+                StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("LEGACY_CANDIDATE_NOT_SIGNED");
+
+        LegacyLocalBaselineAttestation.RequireExactPhysicalWeb(physical.WebRoot);
+        RoutineLocalBinding.RequireCurrent(physical.WebRoot, physical.PackageRoot,
+            physical.Build);
+        RoutineLocalLifecycle.RequireUnchangedMigrationCatalog(
+            physical.WebRoot, payload.CandidateRoot);
+        if (!File.Exists(_engineExecutable))
+            throw new InvalidDataException("LEGACY_UPDATE_ENGINE_UNAVAILABLE");
+
+        var (operation, created) = _operations.GetOrCreate(
+            idempotencyKey, requestHash, operationType, stageId, operatorId);
+        operation = _operations.Update(operation, "activating",
+            "LEGACY_FIRST_SLOT_INTENT",
+            "Signed Legacy->R8 cutover durable intent, before Apache mutation.",
+            incrementAttempt: true, activationPerformed: false,
+            databaseMutationPerformed: false);
+        Journal("update.legacy_first_slot.activate_intent", operation);
+
+        var args = new[] {
+            "local-slot-activate-qualified-legacy",
+            "--source", payload.CandidateRoot,
+            "--current-build", physical.Build,
+            "--target-build", payload.TargetVersion,
+            "--target-managed-files",
+                payload.TargetManagedFiles.ToString(CultureInfo.InvariantCulture),
+            "--target-managed-tree-sha256", payload.TargetManagedTreeSha256,
+            "--release-set-id", payload.ReleaseSetId,
+            "--data-root", _paths.DataRoot
+        };
+        try
+        {
+            var permit = EngineDelegationPermit.Issue(_paths, lease,
+                operation.OperationId, args);
+            using var child = WindowsJobChildProcess.Start(_engineExecutable,
+                args.Concat(new[] { "--delegation-id", permit }).ToArray(),
+                AppContext.BaseDirectory);
+            var result = child.WaitAndCapture(240_000);
+            if (!result.Finished || result.ExitCode != 0)
+                throw new InvalidOperationException(
+                    result.Finished ? "LEGACY_ENGINE_FAILED" :
+                    "LEGACY_ENGINE_TIMEOUT_RECOVERY_REQUIRED");
+
+            using var envelope = JsonDocument.Parse(result.Stdout);
+            var output = envelope.RootElement;
+            if (!output.TryGetProperty("ok", out var success) ||
+                !success.GetBoolean() ||
+                !output.TryGetProperty("phase", out var phase) ||
+                phase.GetString() != "COMMITTED" ||
+                !output.TryGetProperty("database_mutation_performed", out var db) ||
+                db.GetBoolean() ||
+                !output.TryGetProperty("public_mutation_performed", out var pub) ||
+                pub.GetBoolean())
+                throw new InvalidDataException("LEGACY_ENGINE_ENVELOPE_UNPROVEN");
+
+            // Never trust Engine stdout alone. Re-read physical OS layout,
+            // current HTTP build, managed tree and installed signed identity.
+            var active = new LocalSlotManager(_paths).InspectHealthyCurrent();
+            var final = AtomicFile.ReadJson<InstalledReleaseIdentity>(
+                _paths.InstalledReleaseIdentityPath);
+            if (!active.WebIsReparsePoint ||
+                active.Build != payload.TargetVersion ||
+                final.Local is null ||
+                final.Local.Version != payload.TargetVersion ||
+                final.Local.ReleaseId != payload.ReleaseSetId ||
+                !string.Equals(final.Local.ManagedTreeSha256,
+                    payload.TargetManagedTreeSha256,
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("LEGACY_FINAL_INSTALLED_IDENTITY_UNPROVEN");
+            LocalManagedTreeAttestation.RequireExact(active.WebRoot,
+                payload.TargetManagedFiles, payload.TargetManagedTreeSha256);
+
+            operation = _operations.Update(operation, "committed",
+                "LEGACY_FIRST_SLOT_VERIFIED",
+                "Signed Local target, HTTP, physical junction and installed identity verified.",
+                activationPerformed: true, databaseMutationPerformed: false);
+            Journal("update.legacy_first_slot.committed", operation);
+            return new(operation, created, false);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or
+            InvalidOperationException or JsonException or
+            System.ComponentModel.Win32Exception or UnauthorizedAccessException or
+            TimeoutException)
+        {
+            try
+            {
+                var statePath = Path.Combine(_paths.LocalSlotStateRoot, "migration-state.json");
+                if (File.Exists(statePath))
+                {
+                    var state = AtomicFile.ReadJson<ProductionLocalSlotMigrationState>(statePath);
+                    if (!state.RecoveryRequired && state.Phase is
+                        ("ROLLED_BACK" or "STOP_FAILED_BASELINE_HEALTHY"))
+                    {
+                        var old = new LocalSlotManager(_paths).InspectLegacyPhysicalCurrent();
+                        var now = AtomicFile.ReadJson<InstalledReleaseIdentity>(
+                            _paths.InstalledReleaseIdentityPath);
+                        var attested = LegacyLocalBaselineAttestation
+                            .RequireExactPhysicalWeb(old.WebRoot);
+                        if (old.Build == physical.Build &&
+                            attested.ExactBaselineVerified &&
+                            now.Local is not null &&
+                            now.Local.Version == before.Local.Version &&
+                            now.Local.ReleaseId == before.Local.ReleaseId &&
+                            now.Local.ManagedTreeSha256 == before.Local.ManagedTreeSha256)
+                        {
+                            operation = _operations.Update(operation, "failed",
+                                "LEGACY_OLD_PHYSICAL_WEB_RESTORED",
+                                "Original Legacy Web, HTTP and Local identity restored.",
+                                statePath, activationPerformed: state.ActivationPerformed,
+                                databaseMutationPerformed: false);
+                            Journal("update.legacy_first_slot.rollback_verified", operation);
+                            return new(operation, created, false);
+                        }
+                    }
+                }
+            }
+            catch (Exception) { /* Unproven recovery remains blocked. */ }
+
+            operation = _operations.Update(operation, "recovery_required",
+                "LEGACY_ACTIVATION_OUTCOME_UNPROVEN", ex.Message,
+                Path.Combine(_paths.LocalSlotStateRoot, "migration-state.json"),
+                activationPerformed: true, databaseMutationPerformed: false);
+            Journal("update.legacy_first_slot.recovery_required", operation);
+            return new(operation, created, false);
+        }
+    }
+
+    private static string Sha256File(string path)
+        => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            File.ReadAllBytes(path))).ToLowerInvariant();
 
     public LocalCodeOnlyExecutionOutcome Recover(
         string activationOperationId, string operatorId, string idempotencyKey)
