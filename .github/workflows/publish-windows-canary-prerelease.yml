@@ -110,20 +110,36 @@ jobs:
           $required=@('V3 Component Gates','M10 Release Qualification',
             'G8 Local Endpoint Installation','Working cross-version Local slot contract',
             'M9 Packaging Gate','P6 Integrated Regression')
-          $all=@()
-          foreach($page in 1,2,3){
-            $uri="repos/$env:GITHUB_REPOSITORY/actions/runs?head_sha=$env:SOURCE_SHA&per_page=100&page=$page"
+          # Pull-request Actions may build a synthetic merge SHA, not the
+          # tested source branch SHA. Confirm exact PR head and linked CI.
+          $prs=@(& gh api "repos/$env:GITHUB_REPOSITORY/pulls?state=open&per_page=100" | ConvertFrom-Json)
+          if($LASTEXITCODE -ne 0){throw 'Unable to fetch pull request source identity.'}
+          $matches=@($prs | Where-Object {
+            $_.head.sha -ceq $env:SOURCE_SHA -and
+            $_.head.repo.full_name -ceq $env:GITHUB_REPOSITORY
+          })
+          if($matches.Count -ne 1){throw 'Source SHA is not the unique current head of an open repository PR.'}
+          $pr=$matches[0]
+          $runs=@()
+          for($page=1;$page -le 4;$page++){
+            $uri="repos/$env:GITHUB_REPOSITORY/actions/runs?event=pull_request&branch=$([uri]::EscapeDataString([string]$pr.head.ref))&per_page=100&page=$page"
             $response=(& gh api $uri | ConvertFrom-Json)
-            if($LASTEXITCODE -ne 0){throw 'Could not retrieve exact source CI evidence.'}
-            $all+=@($response.workflow_runs)
+            if($LASTEXITCODE -ne 0){throw 'Could not retrieve PR CI workflow runs.'}
+            foreach($run in @($response.workflow_runs)){
+              $linked=@($run.pull_requests | Where-Object {
+                $_.number -eq $pr.number -and $_.head.sha -ceq $env:SOURCE_SHA
+              })
+              if($linked.Count -gt 0 -and $run.conclusion -ceq 'success' -and
+                 $run.status -ceq 'completed'){$runs+=,$run}
+            }
             if(@($response.workflow_runs).Count -lt 100){break}
           }
           foreach($check in $required){
-            $passed=@($all | Where-Object { $_.name -ceq $check -and
-              $_.head_sha -ceq $env:SOURCE_SHA -and $_.conclusion -ceq 'success' })
-            if($passed.Count -eq 0){throw "Missing passing CI for exact SHA: $check"}
+            if(@($runs | Where-Object {$_.name -ceq $check}).Count -lt 1){
+              throw "Missing successful pull_request CI for exact PR head SHA: $check"
+            }
           }
-          Write-Host 'PASS: six CI workflows for exact source SHA.'
+          Write-Host "PASS: six CI workflows for PR #$($pr.number) at $env:SOURCE_SHA."
 
       - uses: actions/checkout@v4
         with:
