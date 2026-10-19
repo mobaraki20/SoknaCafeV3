@@ -261,7 +261,10 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
         if (manifest.ReleaseType != "local_only" ||
             !manifest.ForInstall || !manifest.ProductionPass ||
             string.IsNullOrWhiteSpace(manifest.Status) ||
-            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase))
+            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase) ||
+            manifest.Status.Contains("ENGINEERING", StringComparison.OrdinalIgnoreCase) ||
+            manifest.Status.Contains("SOURCE_ONLY", StringComparison.OrdinalIgnoreCase) ||
+            manifest.Status.Contains("DESIGN", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("LEGACY_RELEASE_NOT_QUALIFIED_FOR_INSTALL");
         ReleaseInstallQualificationGate.Require(manifest);
     }
