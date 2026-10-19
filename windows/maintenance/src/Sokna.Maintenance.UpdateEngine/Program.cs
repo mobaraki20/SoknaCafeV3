@@ -122,7 +122,7 @@ if (command == "cutover-attest")
 // command. The one-use permit must match every argument byte-for-byte.
 if (command is "verify-stage" or "local-slot-migrate" or "local-slot-recover"
     or "local-slot-home-cycle" or "local-slot-stage" or "local-slot-activate"
-    or "local-slot-recover-routine")
+    or "local-slot-activate-qualified" or "local-slot-recover-routine")
 {
     if (args.Length < 4 || args[^2] != "--delegation-id")
     {
@@ -287,10 +287,15 @@ try
             break;
         }
         case "local-slot-activate":
+        case "local-slot-activate-qualified":
         {
             RequireOption(options, "--slot", out var targetSlot);
             ReadRoutineIdentity(options, out var currentBuild, out var currentCount, out var currentTree, out var targetBuild, out var targetCount, out var targetTree);
-            var result = bridge.ActivateRoutineSiblingRelease(targetSlot, currentBuild, currentCount, currentTree, targetBuild, targetCount, targetTree);
+            string? signedReleaseSetId = null;
+            if (command == "local-slot-activate-qualified")
+                RequireOption(options, "--release-set-id", out signedReleaseSetId);
+            var result = bridge.ActivateRoutineSiblingRelease(targetSlot, currentBuild, currentCount, currentTree,
+                targetBuild, targetCount, targetTree, signedReleaseSetId);
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = result.Ok,
@@ -321,7 +326,7 @@ catch (Exception ex) when (ex is InvalidDataException or IOException or Unauthor
         {
             "local-slot-migrate" => "LOCAL_SLOT_MIGRATION_FAILED",
             "local-slot-stage" => "LOCAL_SLOT_ROUTINE_STAGE_FAILED",
-            "local-slot-activate" or "local-slot-home-cycle" => "LOCAL_SLOT_ROUTINE_ACTIVATION_FAILED",
+            "local-slot-activate" or "local-slot-activate-qualified" or "local-slot-home-cycle" => "LOCAL_SLOT_ROUTINE_ACTIVATION_FAILED",
             _ => "LOCAL_SLOT_OPERATION_FAILED"
         },
         error = ex.Message,
