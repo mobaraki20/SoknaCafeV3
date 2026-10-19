@@ -85,7 +85,20 @@ $versionPath=Join-Path $webRoot 'VERSION.txt'
 if(-not(Test-Path -LiteralPath $versionPath -PathType Leaf)){Evidence 'skipped' 'LOCAL_VERSION_UNAVAILABLE' 'Local VERSION.txt is unavailable.';exit 0}
 $currentBuild=(Get-Content -LiteralPath $versionPath -Raw).Trim()
 $entry=@($contract.entries|Where-Object{[string]$_.build-eq$currentBuild})|Select-Object -First 1
-if(-not$entry){Evidence 'skipped' 'LOCAL_BASELINE_NOT_ALLOWLISTED' ("Current Local build is outside this adoption contract: "+$currentBuild);exit 0}
+if(-not$entry){
+  # Legacy physical-Web installations may use the older H300 managed
+  # inventory, which the R8 same-build adoption engine cannot attest.
+  # Recognize them WITHOUT adding an unsafe mutation allowlist entry.
+  $legacy=Join-Path $webRoot 'resources\H300_MANAGED_FILES.json'
+  $r8=Join-Path $webRoot 'resources\local-managed-files-v1.json'
+  if((Test-Path -LiteralPath $legacy -PathType Leaf)-and
+     (-not(Test-Path -LiteralPath $r8 -PathType Leaf))){
+    Evidence 'skipped' 'LOCAL_LEGACY_LAYOUT_TRANSITION_REQUIRED' ("Legacy Local managed-inventory layout needs separately qualified source-to-slots transition before R8 adoption: "+$currentBuild)
+    exit 0
+  }
+  Evidence 'skipped' 'LOCAL_BASELINE_NOT_ALLOWLISTED' ("Current Local build is outside this adoption contract: "+$currentBuild)
+  exit 0
+}
 
 $common=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)
 $maintenanceRoot=Join-Path $common 'SOKNA\Maintenance'
