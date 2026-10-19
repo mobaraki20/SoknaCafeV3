@@ -194,6 +194,8 @@ jobs:
           $out=(Resolve-Path 'release/out-windows').Path
           $index=Get-Content (Join-Path $out 'artifact-index.json') -Raw | ConvertFrom-Json
           $version=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          if([string]$index.format -cne 'sokna-windows-release-index-v2' -or [int]$index.component_count -ne 5 -or [string]$index.installer_kind -cne 'unified-v4-bootstrap') { throw 'Incomplete Windows Services package refused.' }
+
           if([string]$index.source_commit -cne $env:SOURCE_SHA){throw 'Built source commit drift.'}
           $name=[string]$index.windows_services.file
           if($name -cne "SOKNA-Windows-Services-Setup-$version.exe"){throw 'Unexpected installer name.'}
