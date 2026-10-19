@@ -1,0 +1,7 @@
+{
+  "format": "sokna-windows-canary-request-v1",
+  "scope": "windows-services-only",
+  "source_sha": "f602c259a0a6cfcc6ef2cc15af941d2d30edbe07",
+  "release_tag": "windows-services-v1.1.12-rc.2",
+  "confirmation": "PUBLISH_CANARY_PRERELEASE"
+}
