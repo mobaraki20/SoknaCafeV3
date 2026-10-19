@@ -45,6 +45,26 @@ $componentManifest=Get-Content -LiteralPath (Join-Path $unifiedShell 'windows-se
 $version=(Get-Content -LiteralPath (Join-Path $RepoRoot 'packaging\windows\WINDOWS_SERVICES_VERSION.txt') -Raw).Trim()
 if([string]$manifest.format-ne'sokna-windows-services-shell-v3'-or[int]$manifest.schema_version-ne3-or[string]$manifest.package_version-ne$version-or[string]$componentManifest.package_version-ne$version){throw 'BLOCK_DISTRIBUTION: V4 shell/package/manifest version mismatch.'}
 if(@($manifest.components).Count-ne5-or@($componentManifest.components).Count-ne5){throw 'BLOCK_DISTRIBUTION: expected all five Windows components.'}
+
+# Regression from real 1.1.7 -> 1.1.12 RC2 host UAT:
+# Do not manufacture a repair of unchanged, correctly registered 1.0.5/6.2.9
+# service binaries that were shipped by an earlier qualified Windows package.
+# Strict exact SHA allowlisting is universal; a different hash still repairs.
+if($version-eq'1.1.13'){
+  $previous=[ordered]@{
+    'runtime'=[ordered]@{version='1.0.5';sha='26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd'}
+    'print-agent'=[ordered]@{version='6.2.9';sha='99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4'}
+  }
+  foreach($entry in $previous.GetEnumerator()){
+    $c=@($componentManifest.components|Where-Object{[string]$_.component_id-eq$entry.Key})
+    if($c.Count-ne1-or[string]$c[0].version-ne[string]$entry.Value.version){
+      throw "BLOCK_DISTRIBUTION: baseline version contract drift for $($entry.Key)"
+    }
+    if(@($c[0].accepted_installed_sha256|Where-Object{[string]$_-eq[string]$entry.Value.sha}).Count-ne1){
+      throw "BLOCK_DISTRIBUTION: official 1.1.7 KEEP fingerprint missing for $($entry.Key)"
+    }
+  }
+}
 $expected=@('runtime','print-agent','maintenance','maintenance-update-engine','maintenance-recovery-console')
 foreach($id in $expected){
   $row=@($componentManifest.components|Where-Object{[string]$_.component_id-eq$id})
