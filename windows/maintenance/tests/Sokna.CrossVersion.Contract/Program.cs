@@ -155,6 +155,21 @@ try {
  ReleaseInstallQualificationGate.Require(policyManifest with
      {ReleaseType="paired",Qualification=fullProof});
  Check(true,"fully qualified paired policy accepted");
+ // A signed Stage can still be an engineering SOURCE artifact, and MUST
+ // not be mistaken for an operator-authorized first Legacy install.
+ ExpectBlocked(()=>SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
+     policyManifest with {ForInstall=false, ProductionPass=false, Status="SOURCE_ONLY"}),
+     "legacy signed source-only release cannot activate");
+ ExpectBlocked(()=>SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
+     policyManifest with {Status="ENGINEERING_CANDIDATE"}),
+     "legacy engineering-status release cannot activate");
+ ExpectBlocked(()=>SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
+     policyManifest with {ProductionPass=false, Status="QUALIFIED_FOR_INSTALL"}),
+     "legacy release without production pass cannot activate");
+ SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
+     policyManifest with {Status="QUALIFIED_FOR_INSTALL"});
+ Check(true,"legacy qualified Local-only release permission proven");
+
  ReleaseInstallQualificationGate.Require(policyManifest with
      {ForInstall=false,ProductionPass=false,Qualification=localProof});
  Check(true,"source-only policy stays separate from production authorization");
