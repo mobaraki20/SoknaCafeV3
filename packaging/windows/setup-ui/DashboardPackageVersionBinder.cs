@@ -27,7 +27,7 @@ internal static class DashboardPackageVersionBinder
     }
 
     internal static string BadgeText(string shellRoot)
-        => "Windows Services " + ReadCanonicalPackageVersion(shellRoot);
+        => "Windows Services | بسته " + ReadCanonicalPackageVersion(shellRoot);
 
     internal static bool Apply(Control root, string packageVersion)
     {
@@ -36,7 +36,7 @@ internal static class DashboardPackageVersionBinder
         foreach (var label in labels)
         {
             if (!label.Text.StartsWith("Windows Services ", StringComparison.Ordinal)) continue;
-            var target = "Windows Services " + packageVersion;
+            var target = "Windows Services | بسته " + packageVersion;
             if (!string.Equals(label.Text, target, StringComparison.Ordinal)) label.Text = target;
             changed = true;
         }
