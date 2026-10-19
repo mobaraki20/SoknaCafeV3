@@ -61,6 +61,30 @@ Assert-ReadOnly $r 'signed baseline exact' $true
 Assert-NoMutation $root 'signed baseline exact'
 $checks.Add('valid_signature_artifacts_baseline_without_mutation')
 
+# Synthetic, ephemeral CI signing key and fabricated qualification flags
+# verify code policy only; never represent real qualification or installability.
+$root=New-Root 'scoped-local-synthetic'
+$f=New-Fixture $root 'for-install-local-synthetic' 104
+$r=Verify $f
+Assert-ReadOnly $r 'local-only scoped signed policy' $true
+Assert-NoMutation $root 'local-only scoped signed policy'
+$checks.Add('signed_local_only_policy_public_qualifications_not_required')
+
+$root=New-Root 'scoped-local-db-blocked'
+$f=New-Fixture $root 'for-install-local-no-db-synthetic' 105
+$r=Verify $f
+Assert-ReadOnly $r 'local-only missing database proof' $false
+Assert-NoMutation $root 'local-only missing database proof'
+$checks.Add('signed_local_only_missing_database_proof_blocked')
+
+$root=New-Root 'scoped-paired-blocked'
+$f=New-Fixture $root 'for-install-paired-synthetic' 106
+$r=Verify $f
+Assert-ReadOnly $r 'paired cannot reuse local-only proof' $false
+Assert-NoMutation $root 'paired cannot reuse local-only proof'
+$checks.Add('signed_paired_release_missing_public_proof_blocked')
+
+
 foreach($variant in @('bad-signature','bad-artifact','expired','unexpected-entry','path-traversal','design-draft','for-install-unqualified')) {
   $root=New-Root $variant
   $f=New-Fixture $root $variant 101
