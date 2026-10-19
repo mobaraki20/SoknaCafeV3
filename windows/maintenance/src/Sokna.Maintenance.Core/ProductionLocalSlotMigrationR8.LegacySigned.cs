@@ -11,7 +11,7 @@ public sealed partial class ProductionLocalSlotMigrationBridge
     /// private candidate provenance, operator, idempotency and mutation lease.
     /// It is not exposed as an unrestricted CLI, PHP fallback, or panel action.
     /// </summary>
-    internal ProductionLocalSlotMigrationResult MigrateSignedLegacy(
+    public ProductionLocalSlotMigrationResult MigrateSignedLegacy(
         string currentBuild, string targetBuild, string verifiedCandidateRoot,
         int targetManagedFiles, string targetTreeSha256, string signedReleaseSetId)
     {
