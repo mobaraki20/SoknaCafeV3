@@ -42,10 +42,12 @@ public static class RoutineLocalBackupProof
                 catch (FormatException ex) { throw new InvalidDataException("ROUTINE_ROLLBACK_EVIDENCE_CORRUPT", ex); }
                 if (rawManaged.Length is <= 0 or > 4_000_000)
                     throw new InvalidDataException("ROUTINE_ROLLBACK_EVIDENCE_CORRUPT");
+                // Rollback restores the PREVIOUS Local bytes, which may
+                // use a legacy managed-files shape. Require valid JSON object
+                // and preserve its exact bytes; don't impose a target-version
+                // schema on historical recovery evidence.
                 var managed = JsonNode.Parse(rawManaged) as JsonObject;
-                if (managed is null ||
-                    (string?)managed["format"] != "sokna-local-managed-files-v1" ||
-                    managed["files"] is not JsonArray)
+                if (managed is null)
                     throw new InvalidDataException("ROUTINE_ROLLBACK_EVIDENCE_MANAGED_MISMATCH");
             }
         }
