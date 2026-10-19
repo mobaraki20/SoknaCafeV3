@@ -15,16 +15,42 @@ internal sealed class RoutineLocalLifecycle
     private readonly byte[] _stateBefore;
     private readonly byte[]? _managedBefore;
     private readonly string _backupPath;
+    private readonly string? _maintenanceIdentityPath;
+    private readonly byte[]? _maintenanceIdentityBefore;
+    private readonly string? _targetReleaseSetId;
+    private readonly string? _targetManagedTreeSha256;
 
-    private RoutineLocalLifecycle(string statePath, string managedPath, string currentBuild, string backupPath)
+    private RoutineLocalLifecycle(string statePath, string managedPath, string currentBuild,
+        string backupPath, MaintenancePaths? maintenancePaths, string? signedReleaseSetId,
+        string? targetTreeSha256)
     {
         _statePath = statePath; _managedPath = managedPath; _currentBuild = currentBuild; _backupPath = backupPath;
         _stateBefore = File.ReadAllBytes(statePath);
         _managedBefore = File.Exists(managedPath) ? File.ReadAllBytes(managedPath) : null;
+        if (signedReleaseSetId is not null)
+        {
+            if (maintenancePaths is null || string.IsNullOrWhiteSpace(signedReleaseSetId) ||
+                signedReleaseSetId.Length > 180 || signedReleaseSetId.Any(char.IsControl) ||
+                targetTreeSha256 is null)
+                throw new InvalidDataException("ROUTINE_SIGNED_RELEASE_IDENTITY_INVALID");
+            _maintenanceIdentityPath = Path.GetFullPath(maintenancePaths.InstalledReleaseIdentityPath);
+            if (!File.Exists(_maintenanceIdentityPath) ||
+                (File.GetAttributes(_maintenanceIdentityPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_UNAVAILABLE");
+            _maintenanceIdentityBefore = File.ReadAllBytes(_maintenanceIdentityPath);
+            var installed = AtomicFile.ReadJson<InstalledReleaseIdentity>(_maintenanceIdentityPath);
+            if (installed.Local is null || installed.Local.Version != currentBuild)
+                throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_BASELINE_MISMATCH");
+            _targetReleaseSetId = signedReleaseSetId;
+            _targetManagedTreeSha256 =
+                LocalManagedTreeAttestation.NormalizeSha256(targetTreeSha256);
+        }
         RequireIdle();
     }
 
-    public static RoutineLocalLifecycle Open(string packageRoot, string evidenceRoot, string currentBuild)
+    public static RoutineLocalLifecycle Open(string packageRoot, string evidenceRoot, string currentBuild,
+        MaintenancePaths? maintenancePaths = null, string? signedReleaseSetId = null,
+        string? targetTreeSha256 = null)
     {
         var lifeRoot = ResolveLifecycleRoot(packageRoot);
         if (File.Exists(Path.Combine(lifeRoot, "recovery-required.json")))
@@ -33,7 +59,8 @@ internal sealed class RoutineLocalLifecycle
         if (File.Exists(backupPath))
             throw new InvalidDataException("Prior routine lifecycle rollback evidence still exists; inspect/recover before a new activation.");
         return new RoutineLocalLifecycle(Path.Combine(lifeRoot, "state.json"),
-            Path.Combine(lifeRoot, "managed-files.json"), currentBuild, backupPath);
+            Path.Combine(lifeRoot, "managed-files.json"), currentBuild, backupPath,
+            maintenancePaths, signedReleaseSetId, targetTreeSha256);
     }
 
     private static string ResolveLifecycleRoot(string packageRoot)
@@ -149,7 +176,10 @@ internal sealed class RoutineLocalLifecycle
         var proof = new JsonObject { ["format"]="sokna-routine-local-lifecycle-backup-v1",
             ["active_build"]=_currentBuild, ["state_path"]=_statePath, ["managed_path"]=_managedPath,
             ["state_base64"]=Convert.ToBase64String(_stateBefore),
-            ["managed_base64"]=_managedBefore == null ? null : Convert.ToBase64String(_managedBefore) };
+            ["managed_base64"]=_managedBefore == null ? null : Convert.ToBase64String(_managedBefore),
+            ["installed_identity_path"]=_maintenanceIdentityPath,
+            ["installed_identity_base64"]=_maintenanceIdentityBefore == null
+                ? null : Convert.ToBase64String(_maintenanceIdentityBefore) };
         AtomicWrite(_backupPath,JsonSerializer.SerializeToUtf8Bytes(proof));
     }
 
@@ -181,6 +211,29 @@ internal sealed class RoutineLocalLifecycle
         var after=ReadObject(File.ReadAllBytes(_statePath));
         if ((string?)after["active_version"]!=targetBuild)
             throw new InvalidDataException("Local lifecycle target was not committed.");
+        if (_maintenanceIdentityPath is not null)
+        {
+            if (_maintenanceIdentityBefore is null || _targetReleaseSetId is null ||
+                _targetManagedTreeSha256 is null ||
+                !CryptographicOperations.FixedTimeEquals(
+                    SHA256.HashData(File.ReadAllBytes(_maintenanceIdentityPath)),
+                    SHA256.HashData(_maintenanceIdentityBefore)))
+                throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_CHANGED_DURING_CUTOVER");
+            var installed = AtomicFile.ReadJson<InstalledReleaseIdentity>(_maintenanceIdentityPath);
+            if (installed.Local is null || installed.Local.Version != _currentBuild)
+                throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_BASELINE_MISMATCH");
+            var targetIdentity = installed with { Local = installed.Local with {
+                ReleaseId = _targetReleaseSetId,
+                Version = targetBuild,
+                ManagedTreeSha256 = _targetManagedTreeSha256
+            } };
+            AtomicFile.WriteJson(_maintenanceIdentityPath, targetIdentity);
+            var observed = AtomicFile.ReadJson<InstalledReleaseIdentity>(_maintenanceIdentityPath);
+            if (observed.Local is null || observed.Local.Version != targetBuild ||
+                observed.Local.ReleaseId != _targetReleaseSetId ||
+                observed.Local.ManagedTreeSha256 != _targetManagedTreeSha256)
+                throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_READBACK_FAILED");
+        }
     }
 
     public void Restore()
@@ -189,7 +242,7 @@ internal sealed class RoutineLocalLifecycle
         // Validate both snapshots BEFORE rewriting either lifecycle file,
         // including in the same-process rollback on failed activation.
         RoutineLocalBackupProof.ValidateSnapshot(_backupPath, _currentBuild,
-            _statePath, _managedPath);
+            _statePath, _managedPath, _maintenanceIdentityPath);
         // This rollback evidence is written before the pointer is switched;
         // it remains usable after a process crash/restart.
         var proof=ReadObject(File.ReadAllBytes(_backupPath));
@@ -200,11 +253,15 @@ internal sealed class RoutineLocalLifecycle
         AtomicWrite(_statePath,Convert.FromBase64String((string?)proof["state_base64"]??""));
         if ((string?)proof["managed_base64"] is string m) AtomicWrite(_managedPath,Convert.FromBase64String(m));
         else if (File.Exists(_managedPath))File.Delete(_managedPath);
+        if (_maintenanceIdentityPath is not null)
+            AtomicWrite(_maintenanceIdentityPath, _maintenanceIdentityBefore
+                ?? throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_ROLLBACK_UNAVAILABLE"));
     }
 
     public void Complete() { if (File.Exists(_backupPath)) File.Delete(_backupPath); }
 
-    public static void RestoreCrashBackup(string packageRoot, string evidenceRoot, string expectedPreviousBuild)
+    public static void RestoreCrashBackup(string packageRoot, string evidenceRoot,
+        string expectedPreviousBuild, string? installedIdentityPath = null)
     {
         var backupPath = Path.Combine(evidenceRoot, "routine-local-lifecycle-before.json");
         if (!File.Exists(backupPath)) return;
@@ -212,22 +269,26 @@ internal sealed class RoutineLocalLifecycle
         var statePath = Path.Combine(lifeRoot, "state.json");
         var managedPath = Path.Combine(lifeRoot, "managed-files.json");
         RoutineLocalBackupProof.ValidateSnapshot(backupPath, expectedPreviousBuild,
-            statePath, managedPath);
+            statePath, managedPath, installedIdentityPath);
         var proof = ReadObject(File.ReadAllBytes(backupPath));
         AtomicWrite(statePath, Convert.FromBase64String((string?)proof["state_base64"] ?? ""));
         if ((string?)proof["managed_base64"] is string managed) AtomicWrite(managedPath, Convert.FromBase64String(managed));
         else if (File.Exists(managedPath)) File.Delete(managedPath);
+        if (installedIdentityPath is not null)
+            AtomicWrite(installedIdentityPath,
+                Convert.FromBase64String((string?)proof["installed_identity_base64"]
+                    ?? throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_ROLLBACK_UNAVAILABLE")));
     }
 
     // Recovery must validate the entire snapshot before Apache or Web changes.
     public static void RequireCrashRollbackEvidence(string packageRoot,
-        string evidenceRoot, string expectedPreviousBuild)
+        string evidenceRoot, string expectedPreviousBuild, string? installedIdentityPath = null)
     {
         var lifeRoot = ResolveLifecycleRoot(packageRoot);
         RoutineLocalBackupProof.ValidateSnapshot(
             Path.Combine(evidenceRoot, "routine-local-lifecycle-before.json"),
             expectedPreviousBuild, Path.Combine(lifeRoot, "state.json"),
-            Path.Combine(lifeRoot, "managed-files.json"));
+            Path.Combine(lifeRoot, "managed-files.json"), installedIdentityPath);
     }
 
     public static void CompleteCrashBackup(string evidenceRoot)
