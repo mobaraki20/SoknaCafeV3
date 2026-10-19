@@ -31,6 +31,11 @@ internal static class RoutineLocalStateSafetyProbe
             try { action(); return false; }
             catch (InvalidOperationException) { return true; }
         }
+        bool DeniesInvalid(Action action)
+        {
+            try { action(); return false; }
+            catch (InvalidDataException) { return true; }
+        }
         void Require(bool value, string reason)
         {
             if (!value) throw new InvalidDataException("ROUTINE_STATE_GUARD_FAILED: " + reason);
@@ -83,12 +88,59 @@ internal static class RoutineLocalStateSafetyProbe
         Require(Denies(() => ProductionLocalSlotMigrationBridge.RoutineLocalSlotSafety
             .RequirePreviousSettled(paths, pkg, stable, nextSlot, "new")),
             "corrupt prior receipt overwritten");
+        // Read-only preflight of bytes used by RecoverRoutine: truncated,
+        // unrelated or corrupt evidence must be rejected before Web mutation.
+        var lifeStatePath = Path.Combine(root, "state.json");
+        var managedPath = Path.Combine(root, "managed-files.json");
+        var validState = JsonSerializer.SerializeToUtf8Bytes(new {
+            format = "sokna-local-update-state-v1", active_version = "old"
+        });
+        var validManaged = JsonSerializer.SerializeToUtf8Bytes(new {
+            format = "sokna-local-managed-files-v1",
+            files = new[] { "VERSION.txt" }
+        });
+        var rollbackPath = Path.Combine(paths.LocalSlotStateRoot,
+            "routine-local-lifecycle-before.json");
+        void Backup(string version, string stateBase64, string managedBase64)
+        {
+            File.WriteAllBytes(rollbackPath, JsonSerializer.SerializeToUtf8Bytes(new {
+                format = "sokna-routine-local-lifecycle-backup-v1",
+                active_build = version, state_path = lifeStatePath,
+                managed_path = managedPath, state_base64 = stateBase64,
+                managed_base64 = managedBase64
+            }));
+        }
+        Backup("old", Convert.ToBase64String(validState),
+            Convert.ToBase64String(validManaged));
+        RoutineLocalBackupProof.ValidateSnapshot(rollbackPath, "old",
+            lifeStatePath, managedPath);
+        Backup("wrong", Convert.ToBase64String(validState),
+            Convert.ToBase64String(validManaged));
+        Require(DeniesInvalid(() => RoutineLocalBackupProof.ValidateSnapshot(
+            rollbackPath, "old", lifeStatePath, managedPath)),
+            "unrelated rollback snapshot accepted");
+        Backup("old", "not base64", Convert.ToBase64String(validManaged));
+        Require(DeniesInvalid(() => RoutineLocalBackupProof.ValidateSnapshot(
+            rollbackPath, "old", lifeStatePath, managedPath)),
+            "corrupt lifecycle base64 accepted");
+        Backup("old", Convert.ToBase64String(validState), "not base64");
+        Require(DeniesInvalid(() => RoutineLocalBackupProof.ValidateSnapshot(
+            rollbackPath, "old", lifeStatePath, managedPath)),
+            "corrupt managed inventory base64 accepted");
+        Backup("old", Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(
+            new { format="sokna-local-update-state-v1",active_version="other" })),
+            Convert.ToBase64String(validManaged));
+        Require(DeniesInvalid(() => RoutineLocalBackupProof.ValidateSnapshot(
+            rollbackPath, "old", lifeStatePath, managedPath)),
+            "wrong active build in backup accepted");
+
         Console.WriteLine(JsonSerializer.Serialize(new {
             result = "PASS",
             real_engine_guard = true,
             failed_or_interrupted_overwrite_denied = true,
             recovered_state_can_reenter = true,
             terminal_recovery_denied = true,
+            rollback_backup_corruption_denied = true,
             actual_installed_host_mutated = false,
             panel_update_ready = false
         }));
