@@ -131,6 +131,10 @@ public sealed partial class ProductionLocalSlotMigrationBridge
         LocalManagedTreeAttestation.RequireExact(layout.WebRoot, currentManagedFiles, currentManagedTreeSha256);
         RequireHttpHealth(currentBuild, layout.HealthUrl);
         RequireProductionSlotPath(targetSlot, layout.PackageRoot);
+        // Never overwrite an interrupted or mismatched durable activation.
+        // This is the actual routine Engine path, not a UI-only guard.
+        RoutineLocalSlotSafety.RequirePreviousSettled(_paths, layout.PackageRoot,
+            layout.WebRoot, previousSlot, currentBuild);
 
         var persistentRoot = Path.Combine(layout.PackageRoot, "LocalWeb", "persistent");
         var lifecycle = RoutineLocalLifecycle.Open(layout.PackageRoot, _paths.LocalSlotStateRoot, currentBuild);
@@ -160,12 +164,21 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             return RoutineResult(state, targetSlot, targetBuild, targetManagedTreeSha256);
         }
 
+        // Persist intent BEFORE touching Apache. Unknown stop outcome remains
+        // recoverable and must not erase the lifecycle rollback proof.
+        state = RoutineEvent(state, events, "APACHE_STOP_INTENT", layout.ApacheExecutable);
         lifecycle.SaveRollbackEvidence();
         try { StopApacheAndProveExit(layout.ApacheExecutable); }
-        catch { lifecycle.Complete(); throw; }
+        catch
+        {
+            state = state with { RecoveryRequired = true };
+            state = RoutineEvent(state, events, "RECOVERY_REQUIRED", "APACHE_STOP_OUTCOME_UNPROVEN");
+            throw;
+        }
         state = RoutineEvent(state, events, "APACHE_STOPPED", targetSlot);
         try
         {
+            state = RoutineEvent(state, events, "POINTER_SWITCH_INTENT", targetSlot);
             RemoveJunction(layout.WebRoot);
             CreateJunction(layout.WebRoot, targetSlot);
             state = state with { ActivationPerformed = true };
@@ -178,6 +191,7 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             if (!PathsEqual(finalLayout.ActiveSlotTarget!, targetSlot)) throw new InvalidDataException("Routine Local activation resolved to an unexpected sibling release.");
             var finalTree = LocalManagedTreeAttestation.RequireExact(finalLayout.WebRoot, targetManagedFiles, targetManagedTreeSha256);
             VerifyMachineLocalOverlay(finalLayout.WebRoot, persistentRoot);
+            state = RoutineEvent(state, events, "LOCAL_LIFECYCLE_COMMIT_INTENT", targetBuild);
             lifecycle.Commit(targetBuild, targetSlot, targetManagedFiles);
             state = RoutineEvent(state, events, "LOCAL_LIFECYCLE_RECONCILED", targetBuild);
             state = state with { RecoveryRequired = false };
@@ -188,6 +202,7 @@ public sealed partial class ProductionLocalSlotMigrationBridge
         }
         catch (Exception activationError)
         {
+            state = RoutineEvent(state, events, "PRE_DB_ROLLBACK_INTENT", activationError.GetType().Name);
             try
             {
                 StopApacheAndProveExit(layout.ApacheExecutable);
@@ -219,6 +234,7 @@ public sealed partial class ProductionLocalSlotMigrationBridge
     {
         if (!File.Exists(RoutineStatePath)) throw new FileNotFoundException("Routine Local activation state is unavailable.", RoutineStatePath);
         var state = AtomicFile.ReadJson<RoutineLocalSlotState>(RoutineStatePath);
+        RoutineLocalSlotSafety.RequireInterruptedForRecovery(state);
         if (state.DatabaseMutationPerformed || state.PublicMutationPerformed)
             throw new InvalidDataException("Automatic routine code recovery is forbidden after database/Public mutation.");
         if (state.Phase == "COMMITTED" &&
@@ -287,6 +303,72 @@ public sealed partial class ProductionLocalSlotMigrationBridge
         _ = ActivateRoutineSiblingRelease(alternate, expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, expectedBuild, expectedManagedFiles, expectedManagedTreeSha256);
         return ActivateRoutineSiblingRelease(original, expectedBuild, expectedManagedFiles, expectedManagedTreeSha256, expectedBuild, expectedManagedFiles, expectedManagedTreeSha256);
     }
+
+/// <summary>
+/// The routine code-only Engine has a durable state file which belongs to the
+/// installation, not an individual browser request. Never start a second
+/// cutover on top of an unresolved or mismatched prior one.
+/// </summary>
+public static class RoutineLocalSlotSafety
+{
+    public const string Unresolved = "LOCAL_SLOT_ROUTINE_PRIOR_OPERATION_UNRESOLVED";
+
+    public static void RequirePreviousSettled(MaintenancePaths paths, string packageRoot,
+        string stableWebRoot, string observedActiveSlot, string observedBuild)
+    {
+        var path = Path.Combine(paths.LocalSlotStateRoot, "routine-state.json");
+        if (!File.Exists(path)) return;
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidOperationException(Unresolved);
+        RoutineLocalSlotState state;
+        try { state = AtomicFile.ReadJson<RoutineLocalSlotState>(path); }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or
+            System.Text.Json.JsonException or UnauthorizedAccessException)
+        { throw new InvalidOperationException(Unresolved, ex); }
+        if (state is null || state.Format != "sokna-local-slot-routine-state-v1" ||
+            state.SchemaVersion != 1 || state.RecoveryRequired ||
+            state.DatabaseMutationPerformed || state.PublicMutationPerformed ||
+            state.WindowsRebootRequired || state.Events is null ||
+            state.Events.Count == 0 || state.Events[^1].State != state.Phase ||
+            !Same(state.PackageRoot, packageRoot) || !Same(state.StableWebRoot, stableWebRoot))
+            throw new InvalidOperationException(Unresolved);
+
+        var expectedSlot = state.Phase switch
+        {
+            "COMMITTED" or "ACTIVATION_NOOP" => state.TargetSlot,
+            "ROLLED_BACK" or "RECOVERED_TO_PREVIOUS_SLOT" => state.PreviousSlot,
+            _ => throw new InvalidOperationException(Unresolved)
+        };
+        var expectedBuild = state.Phase is "COMMITTED" or "ACTIVATION_NOOP"
+            ? state.TargetBuild : state.CurrentBuild;
+        if (!Same(expectedSlot, observedActiveSlot) ||
+            !string.Equals(expectedBuild, observedBuild, StringComparison.Ordinal) ||
+            !Directory.Exists(expectedSlot))
+            throw new InvalidOperationException(Unresolved);
+        try { ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(
+            expectedSlot, packageRoot); }
+        catch (Exception ex) when (ex is InvalidDataException or ArgumentException)
+        { throw new InvalidOperationException(Unresolved, ex); }
+    }
+
+    public static void RequireInterruptedForRecovery(RoutineLocalSlotState state)
+    {
+        if (state is null || state.Format != "sokna-local-slot-routine-state-v1" ||
+            state.SchemaVersion != 1 || state.DatabaseMutationPerformed ||
+            state.PublicMutationPerformed || state.WindowsRebootRequired ||
+            state.Phase is "COMMITTED" or "ACTIVATION_NOOP" or "ROLLED_BACK" or
+                "RECOVERED_TO_PREVIOUS_SLOT" ||
+            state.Events is null || state.Events.Count == 0 ||
+            state.Events[^1].State != state.Phase)
+            throw new InvalidOperationException("LOCAL_SLOT_ROUTINE_NOT_AN_INTERRUPTED_OPERATION");
+    }
+
+    private static bool Same(string a, string b) =>
+        !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b) &&
+        string.Equals(Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar),
+            Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar),
+            StringComparison.OrdinalIgnoreCase);
+}
 
     private static void RefreshRoutineMachineLocalOverlay(string targetSlot, string persistentRoot)
     {
