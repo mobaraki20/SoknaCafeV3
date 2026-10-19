@@ -515,6 +515,68 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
         }
     }
 
+    private LocalCodeOnlyExecutionOutcome RecoverVerifiedLegacy(
+        MaintenanceOperation activation, string activationId, string actor,
+        string idem, string operationType, string requestHash, MachineMutationLease lease)
+    {
+        var path=Path.Combine(_paths.LocalSlotStateRoot,"migration-state.json");
+        if(!File.Exists(path))
+            throw new InvalidDataException("LEGACY_RECOVERY_STATE_MISSING");
+        var state=AtomicFile.ReadJson<ProductionLocalSlotMigrationState>(path);
+        if(state.Format!="sokna-local-slot-migration-state-v1" ||
+           state.DatabaseMutationPerformed || state.PublicMutationPerformed ||
+           state.Phase is "COMMITTED" or "ROLLED_BACK" or "RECOVERED_TO_PHYSICAL_WEB")
+            throw new InvalidDataException("LEGACY_RECOVERY_NOT_INTERRUPTED");
+        RoutineLocalLifecycle.RequireCrashRollbackEvidence(state.PackageRoot,
+            _paths.LocalSlotStateRoot,state.ExpectedBuild,
+            _paths.InstalledReleaseIdentityPath);
+        var (op,created)=_operations.GetOrCreate(idem,requestHash,
+            operationType,activationId,actor);
+        op=_operations.Update(op,"recovering","LEGACY_RECOVERY_INTENT",
+            "Signed Recovery Console physical-Web restoration.",
+            incrementAttempt:true,databaseMutationPerformed:false);
+        Journal("update.legacy.recovery_intent",op);
+        try
+        {
+            var args=new[]{"local-slot-recover-qualified-legacy","--data-root",_paths.DataRoot};
+            var token=EngineDelegationPermit.Issue(_paths,lease,op.OperationId,args);
+            using var child=WindowsJobChildProcess.Start(_engineExecutable,
+                args.Concat(new[]{"--delegation-id",token}).ToArray(),
+                AppContext.BaseDirectory);
+            var execution=child.WaitAndCapture(240_000);
+            if(!execution.Finished || execution.ExitCode!=0)
+                throw new InvalidOperationException("LEGACY_RECOVERY_ENGINE_FAILED");
+            using var json=JsonDocument.Parse(execution.Stdout);
+            if(!json.RootElement.TryGetProperty("phase",out var phase) ||
+               phase.GetString()!="RECOVERED_TO_PHYSICAL_WEB")
+                throw new InvalidDataException("LEGACY_RECOVERY_ENVELOPE_MISMATCH");
+            var live=new LocalSlotManager(_paths).InspectLegacyPhysicalCurrent();
+            var proof=LegacyLocalBaselineAttestation.RequireExactPhysicalWeb(live.WebRoot);
+            var identity=AtomicFile.ReadJson<InstalledReleaseIdentity>(
+                _paths.InstalledReleaseIdentityPath);
+            if(live.WebIsReparsePoint || proof.Build!=state.ExpectedBuild ||
+               identity.Local?.Version!=state.ExpectedBuild)
+                throw new InvalidDataException("LEGACY_RECOVERY_HOST_UNPROVEN");
+            activation=_operations.Update(activation,"failed",
+                "LEGACY_PHYSICAL_WEB_RESTORED","Verified original host restored.",
+                activationPerformed:true,databaseMutationPerformed:false);
+            op=_operations.Update(op,"committed","LEGACY_RECOVERY_VERIFIED",
+                "Original physical Web and Local identity verified.",
+                activationPerformed:true,databaseMutationPerformed:false);
+            Journal("update.legacy.recovery_verified",op);
+            return new(op,created,false);
+        }
+        catch(Exception ex) when(ex is IOException or InvalidDataException or
+            InvalidOperationException or UnauthorizedAccessException or JsonException)
+        {
+            op=_operations.Update(op,"recovery_required",
+                "LEGACY_RECOVERY_OUTCOME_UNPROVEN",ex.Message,path,
+                activationPerformed:true,databaseMutationPerformed:false);
+            Journal("update.legacy.recovery_unproven",op);
+            return new(op,created,false);
+        }
+    }
+
     private static void RequireRequest(string id, string actor, string key)
     {
         if (id is not {Length: 32} || !id.All(char.IsAsciiHexDigit) ||
