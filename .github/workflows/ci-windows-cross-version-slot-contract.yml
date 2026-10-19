@@ -39,6 +39,12 @@ jobs:
           & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
             code-cutover-wal (Join-Path $env:RUNNER_TEMP ('sokna-cutover-wal-'+[guid]::NewGuid().ToString('N')))
           if ($LASTEXITCODE -ne 0) { throw 'S7D1 cutover WAL fault injection failed' }
+      - name: Reject prior incomplete routine cutover before real Engine activation
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            routine-state-safety (Join-Path $env:RUNNER_TEMP ('sokna-routine-state-'+[guid]::NewGuid().ToString('N')))
+          if ($LASTEXITCODE -ne 0) { throw 'Existing routine activation state could be overwritten or mis-recovered' }
       - name: F1-S7D2 artificial cutover and crash boundary matrix (NO real host mutation)
         shell: pwsh
         run: |
