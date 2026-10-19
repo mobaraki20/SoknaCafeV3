@@ -20,11 +20,14 @@ internal static class SyntheticLocalCutoverSimulator
             RunCrashAtEveryBoundary(Path.Combine(root, $"crash-{cut + 1:00}"), cut);
         foreach (var fault in new[] { "apache-stop", "pointer-swap", "apache-start", "target-health" })
             RunFailedAction(Path.Combine(root, $"fault-{fault}"), fault);
+        for (var boundary = 0; boundary < 3; boundary++)
+            RunCodeOnlyBoundary(Path.Combine(root, $"code-only-{boundary:00}"), boundary);
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             format = "sokna-s7d2-isolated-cutover-simulation-v1",
             result = "PASS",
             crash_boundary_cases = 13,
+            code_only_no_sql_recovery_boundaries = 3,
             injected_action_failures = 4,
             fake_apache_only = true,
             synthetic_pointer_only = true,
@@ -141,6 +144,55 @@ internal static class SyntheticLocalCutoverSimulator
         }
         Check(host.SlotHash("old") == oldHash && host.SlotHash("new") == newHash,
             "A synthetic test modified an immutable code slot");
+    }
+
+    private static void RunCodeOnlyBoundary(string root, int boundary)
+    {
+        var host = new FakeHost(root);
+        host.Seed();
+        var oldHash = host.SlotHash("old");
+        var targetHash = host.SlotHash("new");
+        var paths = new MaintenancePaths(Path.Combine(root, "maintenance"));
+        using var lease = MachineMutationLease.Acquire(paths, LocalCodeCutoverWriteAheadJournal.Owner);
+        var wal = new LocalCodeCutoverWriteAheadJournal(paths);
+        const string id = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        wal.Begin(lease, id, StageId, host.OldSlot, host.NewSlot, InstalledHash);
+        wal.Advance(lease, id, "apache_stop_intent", host.Evidence());
+        host.StopApache();
+        wal.Advance(lease, id, "apache_stop_observed", host.Evidence());
+        wal.Advance(lease, id, "pointer_switch_intent", host.Evidence());
+        host.SwitchPointer("new");
+        wal.Advance(lease, id, "pointer_switch_observed", host.Evidence());
+        host.StartApache();
+        wal.Advance(lease, id, "target_http_observed", host.Evidence());
+
+        // No schema mutation or fake DB event is needed for code-only Local
+        // releases. Simulate the three new durable boundaries and restart
+        // the journal reader independently at each interruption.
+        var phases = new[] {
+            "code_only_lifecycle_intent",
+            "code_only_lifecycle_observed",
+            "code_only_committed"
+        };
+        for (var i = 0; i <= boundary; i++)
+            wal.Advance(lease, id, phases[i], host.Evidence());
+
+        var restored = new LocalCodeCutoverWriteAheadJournal(paths);
+        var read = restored.ReadVerified(id);
+        var decision = restored.Classify(id, host.NewSlot);
+        Check(read.Phase == phases[boundary] && !decision.DatabaseForwardOnly &&
+              !decision.AutomaticRollbackAllowed && !decision.ActivationAllowed &&
+              !decision.PanelUpdateReady,
+            "Code-only journal incorrectly committed SQL or authorized a real update");
+        if (boundary == 2)
+            Check(decision.Decision == "CODE_ONLY_COMMIT_REQUIRES_LIVE_REATTESTATION",
+                "Code-only terminal event skipped independent live validation");
+        else
+            Check(decision.Decision == "PRE_DB_TARGET_STATE_REQUIRES_RECONCILIATION",
+                "Interrupted code-only lifecycle was falsely marked healthy");
+        Check(host.Schema() == 1 && host.Pointer() == "new" && host.IsApacheRunning &&
+              host.SlotHash("old") == oldHash && host.SlotHash("new") == targetHash,
+              "Code-only scenario changed SQL or modified immutable release bytes");
     }
 
     private static void RunFailedAction(string root, string fault)
