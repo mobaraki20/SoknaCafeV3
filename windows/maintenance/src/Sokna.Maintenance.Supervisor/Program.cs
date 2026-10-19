@@ -682,6 +682,42 @@ app.MapGet("/v1/updates/capabilities", async context =>
     await WriteEnvelope(context, StatusCodes.Status200OK, true, "foundation_required", capability.BlockingCode, false, capability);
 });
 
+// Signed, read-only LEGACY physical-Web baseline recognition in the existing
+// Update Center. This is deliberately not Stage, migration or Activate.
+// It confirms a qualified old H300 tree without relaxing any R8 slot guards.
+app.MapGet("/v1/local-slots/legacy-assessment", async context =>
+{
+    try
+    {
+        var layout = new LocalSlotManager(paths).InspectLegacyPhysicalCurrent();
+        var assessed = LegacyLocalBaselineAttestation.RequireExactPhysicalWeb(layout.WebRoot);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true,
+            "legacy_baseline_verified", "LOCAL_LEGACY_LAYOUT_TRANSITION_REQUIRED",
+            false, assessed);
+    }
+    catch (InvalidDataException ex)
+    {
+        // A nonmatching/corrupt host is NOT allowed to create or activate a slot.
+        var code = ex.Message is
+            ("LEGACY_PHYSICAL_WEB_REQUIRED" or "LEGACY_WEB_ALREADY_JUNCTION")
+                ? "LOCAL_NOT_LEGACY_PHYSICAL_LAYOUT"
+                : "LOCAL_LEGACY_BASELINE_NOT_QUALIFIED";
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", code, false,
+            new { legacy_baseline_verified = false, activation_allowed = false,
+                  panel_update_ready = false, reason = ex.Message });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+        JsonException or System.ComponentModel.Win32Exception or
+        InvalidOperationException or PlatformNotSupportedException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "LOCAL_LEGACY_EVIDENCE_UNAVAILABLE", false,
+            new { legacy_baseline_verified = false, activation_allowed = false,
+                  panel_update_ready = false, error_type = ex.GetType().Name });
+    }
+});
+
 // Signed, non-mutating R8 slot inspection. This cannot approve package activation.
 app.MapGet("/v1/local-slots/current", async context =>
 {
