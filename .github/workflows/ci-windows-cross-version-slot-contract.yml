@@ -16,6 +16,8 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Compile Maintenance Core with warnings as errors
         run: dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj --configuration Release --nologo
+      - name: Verify exact historical H300 baseline recognition with corruption denials
+        run: dotnet run --project windows/maintenance/tests/Sokna.Maintenance.LegacyBaselineHarness/Sokna.Maintenance.LegacyBaselineHarness.csproj --configuration Release --nologo
       - name: Compile signed Maintenance Supervisor HTTP API with warnings as errors
         run: dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj --configuration Release --nologo
       - name: Compile Update Engine and signed Release Set fixture
