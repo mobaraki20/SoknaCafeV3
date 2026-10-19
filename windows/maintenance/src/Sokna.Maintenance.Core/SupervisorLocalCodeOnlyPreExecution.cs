@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Sokna.Maintenance.Core;
@@ -71,6 +72,24 @@ public sealed class SupervisorLocalCodeOnlyPreExecution
         var installedHash = Sha(_paths.InstalledReleaseIdentityPath);
         RequireExactReceipt(receipt, stageOperationId, stage.OperatorId,
             signed.ReleaseSetId, installedHash);
+        // The physical receipt and its marker are locally writable evidence;
+        // neither is a signed declaration of the intended target version/tree.
+        // Rebind *every* target byte to the signed manifest already attested
+        // by the Stage inspector before accepting the inactive sibling.
+        var stageReceiptPath = Path.GetFullPath(stage.StageReceiptPath
+            ?? throw new InvalidDataException("CODE_ONLY_SIGNED_STAGE_NOT_QUALIFIED"));
+        var stageReceiptSha = Sha(stageReceiptPath);
+        var stageReceipt = AtomicFile.ReadJson<StagedReleaseReceipt>(stageReceiptPath);
+        var manifestPath = Path.Combine(stageReceipt.StageRoot, "release-set.json");
+        if (!File.Exists(manifestPath) || Reparse(manifestPath))
+            throw new InvalidDataException("CODE_ONLY_SIGNED_TARGET_MISSING");
+        var signedManifestSha = Sha(manifestPath);
+        var manifest = AtomicFile.ReadJson<ReleaseSetManifest>(manifestPath);
+        if (manifest.ReleaseType != "local_only" ||
+            manifest.ReleaseSetId != signed.ReleaseSetId ||
+            stageReceipt.ReleaseSetId != signed.ReleaseSetId)
+            throw new InvalidDataException("CODE_ONLY_SIGNED_TARGET_MISMATCH");
+        RequireExactSignedTarget(manifest.Targets, receipt);
 
         // Physical readback must be from the authoritative Apache layout.
         // No installation mutations or Web/Windows service stop/start.
@@ -110,6 +129,8 @@ public sealed class SupervisorLocalCodeOnlyPreExecution
         RoutineLocalLifecycle.RequireUnchangedMigrationCatalog(layout.WebRoot, target);
         RoutineLocalLifecycle.RequireTargetSetupBoot(packageRoot, target);
         if (Sha(_paths.InstalledReleaseIdentityPath) != installedHash ||
+            Sha(stageReceiptPath) != stageReceiptSha ||
+            Sha(manifestPath) != signedManifestSha ||
             Sha(receiptPath) != receiptHash)
             throw new InvalidDataException("CODE_ONLY_EVIDENCE_CHANGED_DURING_INSPECTION");
 
@@ -119,6 +140,30 @@ public sealed class SupervisorLocalCodeOnlyPreExecution
             SignedStageVerified: true, PhysicalSiblingVerified: true,
             UnchangedMigrationsVerified: true, ExecutionAuthorized: false,
             PanelUpdateReady: false);
+    }
+
+    /// <summary>
+    /// Bind the inactive sibling receipt to the EXACT signed Local target,
+    /// not just the release-set label and locally recomputable receipt hash.
+    /// Pure check: does not enable mutation or grant an activation permit.
+    /// </summary>
+    public static void RequireExactSignedTarget(JsonElement targets, InactiveLocalSlotReceipt receipt)
+    {
+        if (targets.ValueKind != JsonValueKind.Object ||
+            !targets.TryGetProperty("local", out var local) ||
+            local.ValueKind != JsonValueKind.Object ||
+            !local.TryGetProperty("version", out var version) ||
+            version.ValueKind != JsonValueKind.String ||
+            !local.TryGetProperty("managed_tree_sha256", out var tree) ||
+            tree.ValueKind != JsonValueKind.String ||
+            !local.TryGetProperty("managed_files", out var count) ||
+            count.ValueKind != JsonValueKind.Number ||
+            !count.TryGetInt32(out var files) ||
+            files is < 1 or > 20000 ||
+            !string.Equals(version.GetString(), receipt.TargetVersion, StringComparison.Ordinal) ||
+            !FixedHash(tree.GetString(), receipt.TargetTreeSha256) ||
+            files != receipt.TargetManagedFiles)
+            throw new InvalidDataException("CODE_ONLY_SIGNED_TARGET_MISMATCH");
     }
 
     public static void RequireExactReceipt(InactiveLocalSlotReceipt? r,
