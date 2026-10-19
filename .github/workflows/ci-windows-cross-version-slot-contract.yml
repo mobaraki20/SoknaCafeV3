@@ -201,10 +201,22 @@ jobs:
             $stageResp=Invoke-WebRequest "http://127.0.0.1:$port$stagePath" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
             $stageData=$stageResp.Content|ConvertFrom-Json -AsHashtable
             Write-Host ("CODE_ONLY_NEGATIVE_STAGE_RESULT status={0} code={1} state={2}" -f $stageResp.StatusCode, $stageData.code, $stageData.status)
-            if($stageResp.StatusCode -ne 422 -or $stageData.code -ne 'CODE_ONLY_SIGNED_STAGE_OR_SLOT_UNPROVEN') { throw "Nonexistent signed Stage returned unexpected result (status=$($stageResp.StatusCode);code=$($stageData.code))" }
+            # CI lacks a real SoknaApache service identity, so the server MUST
+            # reject POST before Stage inspection. When ACL is ready on an
+            # installed Windows fixture, Stage-not-found must instead be 422.
+            $aclBlocked=($stageResp.StatusCode -eq 503 -and $stageData.code -eq 'WEB_ADAPTER_ACL_PENDING')
+            $stageRejected=($stageResp.StatusCode -eq 422 -and $stageData.code -eq 'CODE_ONLY_SIGNED_STAGE_OR_SLOT_UNPROVEN')
+            if(!$aclBlocked -and !$stageRejected) { throw "Nonexistent signed Stage returned unexpected result (status=$($stageResp.StatusCode);code=$($stageData.code))" }
             $replay=Invoke-WebRequest "http://127.0.0.1:$port$stagePath" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
             $replayData=$replay.Content|ConvertFrom-Json -AsHashtable
-            if($replay.StatusCode -ne 409 -or $replayData.code -ne 'AUTH_REPLAY') { throw 'Local activate accepted HMAC replay nonce' }
+            if($stageRejected) {
+              if($replay.StatusCode -ne 409 -or $replayData.code -ne 'AUTH_REPLAY') { throw 'Local activate accepted HMAC replay nonce' }
+            } else {
+              # ACL is checked ahead of nonce consumption: both calls MUST
+              # fail closed; do NOT claim the route's nonce gate was tested.
+              if($replay.StatusCode -ne 503 -or $replayData.code -ne 'WEB_ADAPTER_ACL_PENDING') { throw 'Pending Apache ACL permitted replayed Local activation' }
+            }
+            Write-Host ("CODE_ONLY_POST_GATE_PASS mode={0}" -f $(if($aclBlocked){'acl_pending_denied'}else{'signed_stage_denied_and_replay_rejected'}))
             $wrongRecovery=Invoke-WebRequest "http://127.0.0.1:$port/v1/local-updates/recover-code-only" -Method Post -Body $stageBytes -ContentType 'application/json' -Headers $stageHeaders -SkipHttpErrorCheck -TimeoutSec 10
             $wrongData=$wrongRecovery.Content|ConvertFrom-Json -AsHashtable
             if($wrongRecovery.StatusCode -ne 403 -or $wrongData.code -ne 'RECOVERY_CONSOLE_KEY_REQUIRED') { throw 'Local Web key gained recovery-console privileges' }
