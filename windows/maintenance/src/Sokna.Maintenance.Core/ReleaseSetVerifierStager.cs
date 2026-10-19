@@ -321,14 +321,7 @@ public sealed class ReleaseSetVerifierStager
     }
 
     private static void ValidateForInstallGate(ReleaseSetManifest manifest)
-    {
-        if (!manifest.ForInstall) return;
-        var q = manifest.Qualification;
-        if (!manifest.ProductionPass || string.IsNullOrWhiteSpace(q.FailureMatrixId) || q.FailureMatrixCasesRequired < 80 ||
-            !q.RealWindows || !q.RealMariaDb || !q.RealPublicHost || !q.Canary || !q.RecoveryConsoleWebDown ||
-            !q.BusinessBackupConsistencyRealMariaDb || !q.RemoteVaultRealHost || !q.CleanMachineRemoteRestore)
-            throw new InvalidDataException("for_install=true is forbidden until every binding real-host qualification gate passes.");
-    }
+        => ReleaseInstallQualificationGate.Require(manifest);
 
     private static bool MatchesAnyBaseline(ReleaseSetManifest manifest, InstalledReleaseIdentity installed)
     {
