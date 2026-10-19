@@ -122,7 +122,7 @@ if (command == "cutover-attest")
 // command. The one-use permit must match every argument byte-for-byte.
 if (command is "verify-stage" or "local-slot-migrate" or "local-slot-recover"
     or "local-slot-home-cycle" or "local-slot-stage" or "local-slot-activate"
-    or "local-slot-activate-qualified" or "local-slot-recover-routine" or "local-slot-activate-qualified-legacy")
+    or "local-slot-activate-qualified" or "local-slot-recover-routine" or "local-slot-activate-qualified-legacy" or "local-slot-recover-qualified-legacy")
 {
     if (args.Length < 4 || args[^2] != "--delegation-id")
     {
@@ -289,6 +289,23 @@ try
         // The first physical-Web -> R8 transition uses the SAME delegated,
         // signed Supervisor/UpdateEngine transaction. Direct CLI calls without
         // the one-use Supervisor delegation token are rejected above.
+        case "local-slot-recover-qualified-legacy":
+        {
+            var result = bridge.RecoverSignedLegacy();
+            Console.WriteLine(JsonSerializer.Serialize(new {
+                ok = result.Ok,
+                engine_version = EngineVersion,
+                phase = result.Phase,
+                result,
+                managed_tree_sha256 = result.ManagedTreeSha256,
+                activation_performed = result.ActivationPerformed,
+                database_mutation_performed = false,
+                public_mutation_performed = false,
+                windows_reboot_required = false,
+                recovery_required = result.RecoveryRequired
+            }, AtomicFile.JsonOptions));
+            break;
+        }
         case "local-slot-activate-qualified-legacy":
         {
             RequireOption(options, "--source", out var source);
