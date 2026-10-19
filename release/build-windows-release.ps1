@@ -52,7 +52,38 @@ foreach($id in $expected){
   $payload=Join-Path $unifiedShell (([string]$row[0].payload_primary).Replace('/','\'))
   if(-not(Test-Path -LiteralPath $payload -PathType Leaf)){throw "BLOCK_DISTRIBUTION: missing executable $id"}
   $actualVersion=([Diagnostics.FileVersionInfo]::GetVersionInfo($payload).FileVersion)
-  $actualVersion=([string]$actualVersion).TrimEnd('0').TrimEnd('.')
+  $actualVersion=[regex]::Replace([string]$actualVersion,'[.]0
+  if([string]::IsNullOrWhiteSpace($actualVersion)){$actualVersion='0'}
+  if($actualVersion-ne[string]$row[0].version){throw "BLOCK_DISTRIBUTION: $id compiled version $actualVersion differs from manifest $($row[0].version)"}
+}
+if(-not(Test-Path -LiteralPath (Join-Path $unifiedShell 'setup-windows-components-core-v5.ps1'))){throw 'BLOCK_DISTRIBUTION: independent Recovery protection missing from unified shell.'}
+
+& (Join-Path $RepoRoot 'packaging\windows\scripts\build-installer-v4.ps1') -RepoRoot $RepoRoot -ShellPayloadRoot $unifiedShell -IsccExe $IsccExe
+if($LASTEXITCODE-ne0){throw 'BLOCK_DISTRIBUTION: full V4 bootstrap build failed.'}
+$v4Build=Get-Content -LiteralPath (Join-Path $RepoRoot 'packaging\windows\installer\out-v4\INSTALLER_BUILD.json') -Raw|ConvertFrom-Json
+if([string]$v4Build.package_version-ne$version-or[string]$v4Build.source_git_sha-ne$sha){throw 'BLOCK_DISTRIBUTION: V4 installer package source identity mismatch.'}
+$v4Setup=Join-Path $RepoRoot ('packaging\windows\installer\out-v4\'+[string]$v4Build.distributable)
+if(-not(Test-Path -LiteralPath $v4Setup -PathType Leaf)){throw 'BLOCK_DISTRIBUTION: V4 installer missing.'}
+Copy-Item -LiteralPath $v4Setup -Destination (Join-Path $OutputRoot ([IO.Path]::GetFileName($v4Setup))) -Force
+$dist=Join-Path $OutputRoot ([IO.Path]::GetFileName($v4Setup))
+if((Get-FileHash -LiteralPath $dist -Algorithm SHA256).Hash.ToLowerInvariant()-ne[string]$v4Build.distributable_sha256){throw 'BLOCK_DISTRIBUTION: V4 bootstrap installer fingerprint mismatch.'}
+# Fail closed: do not leave the legacy installer under the distributable wildcard.
+if($setup.Name-ne[IO.Path]::GetFileName($v4Setup)){
+  Remove-Item -LiteralPath (Join-Path $OutputRoot $setup.Name) -Force
+}
+[ordered]@{
+  format='sokna-windows-release-index-v2';schema_version=2;source_commit=$sha;
+  package_version=$version;source_shell='sokna-windows-services-shell-v3';
+  component_count=5;installer_kind='unified-v4-bootstrap';
+  runtime=(Get-Content (Join-Path $runtimeOut 'runtime-artifact.json') -Raw|ConvertFrom-Json);
+  print_agent=(Get-Content (Join-Path $printOut 'print-agent-artifact.json') -Raw|ConvertFrom-Json);
+  windows_services=[ordered]@{file=[IO.Path]::GetFileName($dist);sha256=(Get-FileHash $dist -Algorithm SHA256).Hash.ToLowerInvariant()};
+  component_manifest_sha256=(Get-FileHash (Join-Path $unifiedShell 'windows-services-component-manifest-v2.json') -Algorithm SHA256).Hash.ToLowerInvariant();
+  shell_manifest_sha256=(Get-FileHash (Join-Path $unifiedShell 'payload-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+}|ConvertTo-Json -Depth 8|Set-Content (Join-Path $OutputRoot 'artifact-index.json') -Encoding UTF8
+
+Write-Host 'SOKNA Windows release artifacts: PASS'
+,'')
   if([string]::IsNullOrWhiteSpace($actualVersion)){$actualVersion='0'}
   if($actualVersion-ne[string]$row[0].version){throw "BLOCK_DISTRIBUTION: $id compiled version $actualVersion differs from manifest $($row[0].version)"}
 }
