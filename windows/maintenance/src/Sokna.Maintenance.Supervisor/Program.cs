@@ -54,6 +54,8 @@ var inactiveHostInspector = new InactiveLocalHostReadinessInspector(paths, opera
 // No listening/regular update writes until interrupted Stage evidence is quarantined.
 _ = stageRestartReconciler.ReconcileStoppedProcess();
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
+var codeOnlyExecution = new SupervisorLocalCodeOnlyExecutionCoordinator(
+    paths, operations, codeOnlyPreExecution, journal, state, updateEnginePath);
 var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
 var localPackagePreflightCoordinator = new SupervisorLocalPackagePreflightCoordinator(paths, operations, journal, state);
 var localReleaseStageCoordinator = new SupervisorLocalReleaseStageCoordinator(paths, operations, journal, state);
@@ -97,15 +99,17 @@ app.Use(async (context, next) =>
     var isInactiveCandidate = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/prepare-inactive", StringComparison.Ordinal);
     var isInactiveSlot = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/prepare-inactive-slot", StringComparison.Ordinal);
     var isLocalStageRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/reconcile-stage", StringComparison.Ordinal);
+    var isLocalCodeOnlyActivation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/activate-code-only", StringComparison.Ordinal);
+    var isLocalCodeOnlyRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/recover-code-only", StringComparison.Ordinal);
     var isStageMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/update/stage", StringComparison.Ordinal);
     var isLocalSlotMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/home-cycle", StringComparison.Ordinal);
     var isProductionMigration = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/migrate", StringComparison.Ordinal);
     var isProductionRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/recover", StringComparison.Ordinal);
-    var isMutation = isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
+    var isMutation = isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isLocalCodeOnlyActivation || isLocalCodeOnlyRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
-            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/activation-plan", "POST /v1/local-updates/prepare-inactive", "POST /v1/local-updates/prepare-inactive-slot", "POST /v1/local-updates/reconcile-stage", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
+            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/activation-plan", "POST /v1/local-updates/prepare-inactive", "POST /v1/local-updates/prepare-inactive-slot", "POST /v1/local-updates/reconcile-stage", "POST /v1/local-updates/activate-code-only", "POST /v1/local-updates/recover-code-only", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
         return;
     }
 
@@ -158,7 +162,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isStageMutation) && keyId != "web-adapter")
+    if ((isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalCodeOnlyActivation || isStageMutation) && keyId != "web-adapter")
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
@@ -173,13 +177,13 @@ app.Use(async (context, next) =>
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
     }
-    if ((isLocalStageRecovery || isProductionRecovery) && keyId != "recovery-console")
+    if ((isLocalStageRecovery || isLocalCodeOnlyRecovery || isProductionRecovery) && keyId != "recovery-console")
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "RECOVERY_CONSOLE_KEY_REQUIRED", true, new { });
         return;
     }
 
-    if ((isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isStageMutation || isProductionMigration || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
+    if ((isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isLocalCodeOnlyActivation || isStageMutation || isProductionMigration || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "acl_pending", "WEB_ADAPTER_ACL_PENDING", false,
             new { acl_state = aclEvidence.State, service_name = aclEvidence.ServiceName });
@@ -420,6 +424,125 @@ app.MapGet("/v1/local-updates/activation-plans/{planId}", async context =>
             "evidence_unavailable", "ACTIVATION_PLAN_STORAGE_UNAVAILABLE", true,
             new { panel_update_ready = false, activation_allowed = false,
                 last_error_type = ex.GetType().Name });
+    }
+});
+
+// Signed, idempotent Local code-only activation. The HTTP request contains
+// ONLY Stage ID + operator; Supervisor derives and reattests the exact physical
+// slot from the original signed Release Set. Windows Services updater/Public
+// are never part of this operation.
+app.MapPost("/v1/local-updates/activate-code-only", async context =>
+{
+    if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var key))
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "IDEMPOTENCY_KEY_REQUIRED", false, new { });
+        return;
+    }
+    try
+    {
+        var bytes = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<LocalCodeOnlyActivationRequest>(
+            bytes, AtomicFile.JsonOptions)
+            ?? throw new InvalidDataException("Local activation request is empty.");
+        var result = codeOnlyExecution.Activate(request.StageOperationId,
+            request.OperatorId, key);
+        var phase = result.Operation.State;
+        await WriteEnvelope(context,
+            phase == "committed" ? StatusCodes.Status200OK :
+            phase == "recovery_required" ? StatusCodes.Status503ServiceUnavailable :
+            StatusCodes.Status409Conflict,
+            phase == "committed", phase,
+            result.Operation.ResultCode ?? "CODE_ONLY_OPERATION_UNPROVEN",
+            phase == "recovery_required",
+            new { result.Operation, result.Created, result.Reconciled,
+                panel_update_ready = false,
+                database_mutation_performed = false, public_mutation_performed = false },
+            result.Operation.OperationId);
+    }
+    catch (JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "REQUEST_JSON_INVALID", false, new { });
+    }
+    catch (InvalidOperationException ex) when (ex.Message is
+        "UPDATER_OPERATION_BUSY" or MachineMutationLease.ConflictCode or
+        "CODE_ONLY_IDEMPOTENCY_CONFLICT")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", ex.Message, true, new { panel_update_ready = false });
+    }
+    catch (InvalidDataException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false,
+            "rejected", "CODE_ONLY_SIGNED_STAGE_OR_SLOT_UNPROVEN",
+            false, new { panel_update_ready = false });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+        System.Security.Cryptography.CryptographicException ||
+        ex is InvalidOperationException && ex.Message == MachineMutationLease.UnavailableCode)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "unavailable", "CODE_ONLY_EXECUTION_EVIDENCE_UNAVAILABLE", true,
+            new { error_type = ex.GetType().Name, panel_update_ready = false });
+    }
+});
+
+// Recovery is a separate, signed RECOVERY-CONSOLE operation and cannot be
+// invoked from the normal Web adapter. No new update attempt while unproven.
+app.MapPost("/v1/local-updates/recover-code-only", async context =>
+{
+    if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var key))
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "IDEMPOTENCY_KEY_REQUIRED", false, new { });
+        return;
+    }
+    try
+    {
+        var bytes = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<LocalCodeOnlyRecoveryRequest>(
+            bytes, AtomicFile.JsonOptions)
+            ?? throw new InvalidDataException("Local recovery request is empty.");
+        var result = codeOnlyExecution.Recover(request.ActivationOperationId,
+            request.OperatorId, key);
+        var phase = result.Operation.State;
+        await WriteEnvelope(context,
+            phase == "committed" ? StatusCodes.Status200OK :
+            StatusCodes.Status503ServiceUnavailable,
+            phase == "committed", phase,
+            result.Operation.ResultCode ?? "CODE_ONLY_RECOVERY_UNPROVEN",
+            phase != "committed",
+            new { result.Operation, result.Created, result.Reconciled,
+                panel_update_ready = false, database_mutation_performed = false,
+                public_mutation_performed = false },
+            result.Operation.OperationId);
+    }
+    catch (JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "REQUEST_JSON_INVALID", false, new { });
+    }
+    catch (InvalidOperationException ex) when (ex.Message is
+        "UPDATER_OPERATION_BUSY" or MachineMutationLease.ConflictCode or
+        "CODE_ONLY_IDEMPOTENCY_CONFLICT")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", ex.Message, true, new { panel_update_ready = false });
+    }
+    catch (InvalidDataException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false,
+            "rejected", "CODE_ONLY_RECOVERY_PROOF_INVALID",
+            false, new { panel_update_ready = false });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+        System.Security.Cryptography.CryptographicException ||
+        ex is InvalidOperationException && ex.Message == MachineMutationLease.UnavailableCode)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "unavailable", "CODE_ONLY_RECOVERY_EVIDENCE_UNAVAILABLE", true,
+            new { error_type = ex.GetType().Name, panel_update_ready = false });
     }
 });
 
