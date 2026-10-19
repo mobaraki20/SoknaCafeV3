@@ -245,9 +245,13 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             var activation = _operations.Get(activationOperationId)
                 ?? throw new InvalidDataException("CODE_ONLY_ACTIVATION_NOT_FOUND");
             if (activation.OperationType != "update.local-code-only-activate" ||
-                activation.State != "recovery_required" ||
+                activation.State is not ("recovery_required" or "activating") ||
                 activation.OperatorId != operatorId)
                 throw new InvalidDataException("CODE_ONLY_RECOVERY_NOT_AUTHORIZED");
+            // After a hard Supervisor/Engine process kill the persistent
+            // operation remains 'activating', not 'recovery_required'. The
+            // exclusive machine lease plus a verified interrupted routine
+            // snapshot permit RECOVERY, never another Activate attempt.
             // No simultaneous foreign updater operation, and no blind retry.
             if (_operations.ListBlocking().Any(o =>
                 o.OperationId != activationOperationId))
