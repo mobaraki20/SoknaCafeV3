@@ -245,6 +245,16 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             !File.Exists(Path.Combine(_paths.LocalSlotStateRoot, "routine-local-lifecycle-before.json")))
             throw new InvalidDataException("Interrupted cross-version recovery has no Local lifecycle rollback evidence.");
         RequireProductionSlotPath(state.PreviousSlot, state.PackageRoot);
+        // Read-only validation BEFORE potentially stopping Apache or moving
+        // the live Web junction. Missing/invalid rollback evidence is not a
+        // reason to try an unproven recovery.
+        var backupPath = Path.Combine(_paths.LocalSlotStateRoot,
+            "routine-local-lifecycle-before.json");
+        if (File.Exists(backupPath))
+            RoutineLocalLifecycle.RequireCrashRollbackEvidence(state.PackageRoot,
+                _paths.LocalSlotStateRoot, state.CurrentBuild);
+        else if (state.Phase != "READY_TO_ACTIVATE")
+            throw new InvalidDataException("ROUTINE_ROLLBACK_EVIDENCE_UNAVAILABLE");
 
         var events = state.Events.ToList();
         try
