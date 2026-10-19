@@ -214,7 +214,7 @@ jobs:
             ''
             'Universal installer for independent SOKNA installations.'
             'PRE-RELEASE: Downloadability and passing CI do NOT authorize installation.'
-            'IMPORTANT: Windows Services 1.1.12 RC1 was MISPACKAGED using the legacy shell; do not install RC1.'
+            'IMPORTANT: Windows Services 1.1.12 RC1 and RC2 failed qualification/Home UAT; do not install either release.'
             'Run only after the installed baseline, backups, rollback and real-host'
             'Canary upgrade path have been explicitly qualified.'
             'Do not deploy to the live cafe before successful Home UAT.'
