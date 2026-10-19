@@ -18,7 +18,7 @@ function Sha([string]$p){
   }finally{$stream.Dispose()}
   return (([BitConverter]::ToString($bytes))-replace'-','').ToLowerInvariant()
 }
-function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$info=[Diagnostics.FileVersionInfo]::GetVersionInfo($p);$v=$info.FileVersion;if(-not$v){$v=$info.ProductVersion};if($v){return ([string]$v).Split('+')[0]};''}
+function VersionOf([string]$p){if(-not(Test-Path $p -PathType Leaf)){return ''};$info=[Diagnostics.FileVersionInfo]::GetVersionInfo($p);$v=$info.FileVersion;if(-not$v){$v=$info.ProductVersion};if($v){$base=([string]$v).Split('+')[0];if($base-match'^\d+\.\d+\.\d+\.0$'){$base=$base.Substring(0,$base.Length-2)};return $base};''}
 function Compare-Version([string]$a,[string]$b){
   function Parts([string]$v){
     $base=([string]$v).Split('+')[0].Split('-')[0].Trim()
