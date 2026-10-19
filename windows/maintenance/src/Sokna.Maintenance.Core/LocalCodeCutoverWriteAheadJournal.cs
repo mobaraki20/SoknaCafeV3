@@ -187,7 +187,13 @@ public sealed class LocalCodeCutoverWriteAheadJournal
         // Classify even this boundary as forward-only until independent DB evidence.
         var forwardOnly = last.Phase is "db_forward_intent" or "db_forward_committed" or
             "forward_recovery_required" or "committed";
+        // A code-only release has NO DB-forward intent. Even its terminal WAL
+        // receipt is evidence of an intended transition, never live installed
+        // state proof: the caller must independently reattest HTTP, binding,
+        // Local lifecycle, active pointer and unchanged migration head.
+        var codeOnlyTerminal = last.Phase == "code_only_committed";
         var decision = forwardOnly ? "FORWARD_ONLY_RECOVERY_REQUIRED"
+            : codeOnlyTerminal ? "CODE_ONLY_COMMIT_REQUIRES_LIVE_REATTESTATION"
             : observed == "previous" ? "VERIFY_PREVIOUS_HTTP_AND_SCHEMA_BEFORE_RESUME"
             : observed == "target" ? "PRE_DB_TARGET_STATE_REQUIRES_RECONCILIATION"
             : "UNKNOWN_POINTER_RECOVERY_REQUIRED";
@@ -258,6 +264,14 @@ public sealed class LocalCodeCutoverWriteAheadJournal
         ("pointer_switch_intent", "pointer_switch_observed") => true,
         ("pointer_switch_observed", "target_http_observed") => true,
         ("target_http_observed", "db_forward_intent") => true,
+        // A code-only upgrade (for example Local 231ai -> 231ap) MUST NOT
+        // fabricate a DB mutation to reach a terminal state. This is a
+        // separate, irreversible branch of the WAL state machine.
+        // Each observed phase requires its own independently captured proof;
+        // the journal itself never authorizes execution or success.
+        ("target_http_observed", "code_only_lifecycle_intent") => true,
+        ("code_only_lifecycle_intent", "code_only_lifecycle_observed") => true,
+        ("code_only_lifecycle_observed", "code_only_committed") => true,
         ("db_forward_intent", "db_forward_committed") => true,
         ("db_forward_committed", "committed") => true,
         ("db_forward_committed", "forward_recovery_required") => true,
