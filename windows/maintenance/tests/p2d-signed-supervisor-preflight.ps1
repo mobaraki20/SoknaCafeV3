@@ -76,6 +76,55 @@ function No-Stage {
 $p=$null
 try {
   $p=Start-S
+  # Source-only signed Web -> Windows Inbox transport. This must never
+  # activate Apache, mutate MariaDB or claim a trusted release signature.
+  [byte[]]$uploadBytes=[IO.File]::ReadAllBytes($f.package)
+  Assert ($uploadBytes.Length -ge 128) 'Inbox fixture ZIP unexpectedly short'
+  $uploadHash=(Get-FileHash -LiteralPath $f.package -Algorithm SHA256).Hash.ToLowerInvariant()
+  $uploadId=[guid]::NewGuid().ToString('N')
+  $uploadActor='user:test'
+  function ChunkRequest([int]$offset,[byte[]]$chunk,[string]$actor=$uploadActor,[string]$hash=$uploadHash){
+    return [ordered]@{upload_id=$uploadId;operator_id=$actor;expected_sha256=$hash;
+      total_bytes=[long]$uploadBytes.Length;offset=[long]$offset;
+      chunk_base64=[Convert]::ToBase64String($chunk)}
+  }
+  function SliceBytes([int]$start,[int]$size){
+    $chunk=[byte[]]::new($size)
+    [Array]::Copy($uploadBytes,$start,$chunk,0,$size)
+    return ,$chunk
+  }
+  $partSize=[Math]::Min(196608,[Math]::Max(1,[int]($uploadBytes.Length / 2)))
+  $firstBytes=SliceBytes 0 $partSize
+  $first=Signed 'POST' '/v1/local-updates/inbox-chunk' 'web-adapter' (ChunkRequest 0 $firstBytes)
+  Assert ($first.Code -eq 200 -and -not[bool]$first.Data.data.complete -and
+          [long]$first.Data.data.received_bytes -eq $partSize) 'Signed Inbox first chunk failed'
+  $wrongActor=Signed 'POST' '/v1/local-updates/inbox-chunk' 'web-adapter' (ChunkRequest 0 $firstBytes 'user:other')
+  Assert ($wrongActor.Code -eq 422 -and $wrongActor.Data.code -eq 'INBOX_UPLOAD_IDENTITY_CONFLICT') 'Inbox actor collision accepted'
+  $wrongKey=Signed 'POST' '/v1/local-updates/inbox-chunk' 'recovery-console' (ChunkRequest 0 $firstBytes)
+  Assert ($wrongKey.Code -eq 403) 'Recovery key permitted Inbox upload'
+  $repeat=Signed 'POST' '/v1/local-updates/inbox-chunk' 'web-adapter' (ChunkRequest 0 $firstBytes)
+  Assert ($repeat.Code -eq 200 -and [long]$repeat.Data.data.received_bytes -eq $partSize) 'Identical Inbox chunk replay corrupted offset'
+  $tampered=[byte[]]$firstBytes.Clone();$tampered[0]=$tampered[0] -bxor 8
+  $reject=Signed 'POST' '/v1/local-updates/inbox-chunk' 'web-adapter' (ChunkRequest 0 $tampered)
+  Assert ($reject.Code -eq 422 -and $reject.Data.code -eq 'INBOX_UPLOAD_CHUNK_MISMATCH') 'Changed Inbox chunk replay was accepted'
+  $offset=$partSize
+  while($offset -lt $uploadBytes.Length){
+    $len=[Math]::Min(196608,$uploadBytes.Length-$offset)
+    $chunk=SliceBytes $offset $len
+    $next=Signed 'POST' '/v1/local-updates/inbox-chunk' 'web-adapter' (ChunkRequest $offset $chunk)
+    Assert ($next.Code -eq 200) ('Signed Inbox chunk offset failed '+$offset)
+    $offset += $len
+  }
+  Assert ([bool]$next.Data.data.complete -and [bool]$next.Data.data.content_sha256_verified -and
+          -not[bool]$next.Data.data.release_signature_verified -and
+          -not[bool]$next.Data.data.panel_update_ready) 'Inbox falsely qualified signature or panel'
+  Assert ([string]$next.Data.data.package_ref -eq ($uploadHash+'.zip')) 'Inbox content address mismatch'
+  $uploaded=Join-Path $inbox ($uploadHash+'.zip')
+  Assert ((Get-FileHash -LiteralPath $uploaded -Algorithm SHA256).Hash.ToLowerInvariant() -eq $uploadHash) 'Inbox completed bytes changed'
+  Assert (-not(Test-Path -LiteralPath (Join-Path $root 'update/release-sequence.json'))) 'Inbox advanced antirollback sequence'
+  Assert (-not(Test-Path -LiteralPath (Join-Path $root 'staging/release-sets'))) 'Inbox performed trusted Stage'
+  Write-Host 'PASS signed content-addressed Inbox chunks + replay/actor/ACL/zero-activation'
+
   # F1-S7C3: a fake or unqualified Apache registration must never
   # produce a false safe-host/activation permission. This probe is read-only.
   $identityBefore=(Get-FileHash -LiteralPath (Join-Path $root 'installed-release-identity.json') -Algorithm SHA256).Hash
