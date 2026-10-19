@@ -81,13 +81,13 @@ $checks=[ordered]@{
   supervisor_installed=($services['SoknaMaintenanceSupervisor'].installed -eq $true)
   supervisor_binary_identified=($services['SoknaMaintenanceSupervisor'].binary_exists -eq $true)
   complete_installer_version_identified=($installState.package_version -ne $null -or $uninstall.Count -gt 0)
-  any_unresolved_observation=($services.Values | Where-Object {$_.observation_error}).Count -gt 0
+  any_unresolved_observation=(@($services.Values | Where-Object {$_.observation_error}).Count -gt 0)
 }
 $document=[ordered]@{
  format='sokna-windows-universal-readonly-inventory-v1';schema_version=1
  collected_at_utc=[DateTime]::UtcNow.ToString('o')
  machine_type='independent_single_site';source='Windows SCM, executable metadata and Windows installation registry'
- os_caption=if($os){[string]$os.Caption}else{'unavailable'}
+ os_caption=$(if($os){[string]$os.Caption}else{'unavailable'})
  services=$services;installed_products=$uninstall;install_state=$installState
  checks=$checks;no_mutation_performed=$true
  installation_authorized=$false;real_host_upgrade_uat_complete=$false
