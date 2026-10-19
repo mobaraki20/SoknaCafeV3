@@ -58,6 +58,7 @@ var codeOnlyExecution = new SupervisorLocalCodeOnlyExecutionCoordinator(
     paths, operations, codeOnlyPreExecution, journal, state, updateEnginePath);
 var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
 var localPackagePreflightCoordinator = new SupervisorLocalPackagePreflightCoordinator(paths, operations, journal, state);
+var localInboxUpload = new LocalInboxUploadCoordinator(paths);
 var localReleaseStageCoordinator = new SupervisorLocalReleaseStageCoordinator(paths, operations, journal, state);
 var localSlotCoordinator = new SupervisorLocalSlotCoordinator(paths, operations, journal, state, updateEnginePath);
 var productionMigrationCoordinator = new SupervisorProductionMigrationCoordinator(paths, operations, journal, state, updateEnginePath);
@@ -93,6 +94,7 @@ app.Use(async (context, next) =>
         return;
     }
 
+    var isLocalInboxChunk = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/inbox-chunk", StringComparison.Ordinal);
     var isLocalPackagePreflight = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/preflight", StringComparison.Ordinal);
     var isLocalReleaseStage = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/stage", StringComparison.Ordinal);
     var isLocalActivationPlan = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/activation-plan", StringComparison.Ordinal);
@@ -105,11 +107,11 @@ app.Use(async (context, next) =>
     var isLocalSlotMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/home-cycle", StringComparison.Ordinal);
     var isProductionMigration = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/migrate", StringComparison.Ordinal);
     var isProductionRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/recover", StringComparison.Ordinal);
-    var isMutation = isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isLocalCodeOnlyActivation || isLocalCodeOnlyRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
+    var isMutation = isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isLocalCodeOnlyActivation || isLocalCodeOnlyRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
-            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/activation-plan", "POST /v1/local-updates/prepare-inactive", "POST /v1/local-updates/prepare-inactive-slot", "POST /v1/local-updates/reconcile-stage", "POST /v1/local-updates/activate-code-only", "POST /v1/local-updates/recover-code-only", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
+            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/inbox-chunk", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/activation-plan", "POST /v1/local-updates/prepare-inactive", "POST /v1/local-updates/prepare-inactive-slot", "POST /v1/local-updates/reconcile-stage", "POST /v1/local-updates/activate-code-only", "POST /v1/local-updates/recover-code-only", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
         return;
     }
 
@@ -162,7 +164,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalCodeOnlyActivation || isStageMutation) && keyId != "web-adapter")
+    if ((isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalCodeOnlyActivation || isStageMutation) && keyId != "web-adapter")
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
@@ -183,7 +185,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isLocalCodeOnlyActivation || isStageMutation || isProductionMigration || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
+    if ((isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isLocalCodeOnlyActivation || isStageMutation || isProductionMigration || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "acl_pending", "WEB_ADAPTER_ACL_PENDING", false,
             new { acl_state = aclEvidence.State, service_name = aclEvidence.ServiceName });
@@ -859,6 +861,47 @@ app.MapGet("/v1/operations/recent", async context =>
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
             "evidence_unavailable", "OPERATION_EVIDENCE_UNAVAILABLE", false,
             new { last_error_type = ex.GetType().Name });
+    }
+});
+
+// Signed, Web-adapter-only transport into Windows-owned content-addressed
+// Inbox. An uploaded ZIP is NOT yet a signed Stage or an authorized install.
+// No arbitrary filesystem path from the HTTP request is ever accepted.
+app.MapPost("/v1/local-updates/inbox-chunk", async context =>
+{
+    try
+    {
+        var body = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<LocalInboxChunkRequest>(body, AtomicFile.JsonOptions)
+            ?? throw new InvalidDataException("INBOX_UPLOAD_REQUEST_INVALID");
+        var outcome = localInboxUpload.Append(request);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true,
+            outcome.Complete ? "uploaded_untrusted" : "uploading",
+            outcome.Complete ? "INBOX_CONTENT_HASH_VERIFIED" : "INBOX_CHUNK_ACCEPTED",
+            false, outcome);
+    }
+    catch (JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "INBOX_CHUNK_JSON_INVALID", false, new { });
+    }
+    catch (InvalidOperationException ex) when (ex.Message == MachineMutationLease.ConflictCode)
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", MachineMutationLease.ConflictCode, false, new { });
+    }
+    catch (InvalidDataException ex)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false,
+            "rejected", ex.Message.StartsWith("INBOX_", StringComparison.Ordinal)
+                ? ex.Message : "INBOX_UPLOAD_VALIDATION_FAILED", false, new { });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException ||
+        ex is InvalidOperationException && ex.Message == MachineMutationLease.UnavailableCode)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "unavailable", "INBOX_UPLOAD_STORAGE_UNAVAILABLE", false,
+            new { error_type = ex.GetType().Name });
     }
 });
 
