@@ -437,6 +437,9 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             if (_operations.ListBlocking().Any(o =>
                 o.OperationId != activationOperationId))
                 throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
+            if (activation.ResultCode?.StartsWith("LEGACY_", StringComparison.Ordinal) == true)
+                return RecoverVerifiedLegacy(activation, activationOperationId,
+                    operatorId, idempotencyKey, operationType, requestHash, lease);
             var routineStatePath = Path.Combine(_paths.LocalSlotStateRoot,
                 "routine-state.json");
             if (!File.Exists(routineStatePath))
