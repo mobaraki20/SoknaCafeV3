@@ -186,6 +186,10 @@ internal sealed class RoutineLocalLifecycle
     public void Restore()
     {
         if (!File.Exists(_backupPath)) return;
+        // Validate both snapshots BEFORE rewriting either lifecycle file,
+        // including in the same-process rollback on failed activation.
+        RoutineLocalBackupProof.ValidateSnapshot(_backupPath, _currentBuild,
+            _statePath, _managedPath);
         // This rollback evidence is written before the pointer is switched;
         // it remains usable after a process crash/restart.
         var proof=ReadObject(File.ReadAllBytes(_backupPath));
