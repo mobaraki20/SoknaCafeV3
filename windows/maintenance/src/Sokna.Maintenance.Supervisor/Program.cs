@@ -55,7 +55,8 @@ var inactiveHostInspector = new InactiveLocalHostReadinessInspector(paths, opera
 _ = stageRestartReconciler.ReconcileStoppedProcess();
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
 var codeOnlyExecution = new SupervisorLocalCodeOnlyExecutionCoordinator(
-    paths, operations, codeOnlyPreExecution, journal, state, updateEnginePath);
+    paths, operations, codeOnlyPreExecution, journal, state, updateEnginePath,
+    inactiveCandidateCoordinator, localStageRecoveryCoordinator);
 var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
 var localPackagePreflightCoordinator = new SupervisorLocalPackagePreflightCoordinator(paths, operations, journal, state);
 var localInboxUpload = new LocalInboxUploadCoordinator(paths);
