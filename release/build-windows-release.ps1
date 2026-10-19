@@ -50,7 +50,7 @@ if(@($manifest.components).Count-ne5-or@($componentManifest.components).Count-ne
 # Do not manufacture a repair of unchanged, correctly registered 1.0.5/6.2.9
 # service binaries that were shipped by an earlier qualified Windows package.
 # Strict exact SHA allowlisting is universal; a different hash still repairs.
-if($version-eq'1.1.13'){
+if($version-eq'1.1.14'){
   $previous=[ordered]@{
     'runtime'=[ordered]@{version='1.0.5';sha='26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd'}
     'print-agent'=[ordered]@{version='6.2.9';sha='99565602163463e9bce0ca6b33933411635db87a03acaf03340d2a56d9c85ff4'}
