@@ -246,15 +246,18 @@ public sealed partial class ProductionLocalSlotMigrationBridge
         LocalInstallLayout original, string physicalBackup,
         string originalBuild, int expectedCount, string expectedTree)
     {
-        try { StopApacheAndProveExit(original.ApacheExecutable); }
-        catch { /* ambiguous stop: physical state is inspected below */ }
+        // Never manipulate a junction or physical Web unless SCM stop was
+        // independently proven. A refused stop leaves recovery_required.
+        StopApacheAndProveExit(original.ApacheExecutable);
 
         if (Directory.Exists(original.WebRoot))
         {
             if ((File.GetAttributes(original.WebRoot) & FileAttributes.ReparsePoint) != 0)
                 RemoveJunction(original.WebRoot);
-            else if (!PathsEqual(original.WebRoot, physicalBackup))
-                throw new InvalidDataException("LEGACY_ROLLBACK_STABLE_PHYSICAL_PATH_OCCUPIED");
+            else if (Directory.Exists(physicalBackup))
+                throw new InvalidDataException("LEGACY_ROLLBACK_TWO_PHYSICAL_COPIES_UNPROVEN");
+            // The move may have failed before changing the old physical Web.
+            // In that case keep it in place and verify its full H300 tree.
         }
         if (!Directory.Exists(original.WebRoot))
         {
