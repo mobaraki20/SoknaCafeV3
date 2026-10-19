@@ -33,6 +33,11 @@ jobs:
         run: |
           & ./windows/maintenance/tests/windows-job-process-death.ps1 `
             -ProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll'
+      - name: Prove Local code-only signed-stage and inactive receipt binding is fail-closed
+        shell: pwsh
+        run: |
+          & dotnet 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' code-only-pre-execution
+          if ($LASTEXITCODE -ne 0) { throw 'Code-only receipt binding pre-execution verification failed' }
       - name: Verify S7D1 durable cutover write-ahead journal and fail-closed crash model
         shell: pwsh
         run: |
