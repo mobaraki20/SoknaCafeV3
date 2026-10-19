@@ -94,7 +94,7 @@ begin
       SuppressibleMsgBox('نسخه ' + PreviousInstalledVersion + ' از Windows Services سکنا روی این سیستم نصب است و از این بسته جدیدتر است.' + #13#10 + #13#10 + 'برای جلوگیری از Downgrade، نصب متوقف شد.', mbCriticalError, MB_OK, IDOK);
       Result := False; Exit;
     end;
-    if PreviousVersionComparison < 0 then InstallModeText := 'به‌روزرسانی سرویس‌های ویندوزی از ' + PreviousInstalledVersion + ' به {#ProductVersion}' else InstallModeText := 'بازاعمال سرویس‌های ویندوزی نسخه {#ProductVersion}';
+    if PreviousVersionComparison < 0 then InstallModeText := 'آماده‌سازی بسته {#ProductVersion}؛ نسخهٔ عملیاتی در Dashboard بررسی می‌شود' else InstallModeText := 'بررسی اجزای بسته {#ProductVersion}';
   end;
   Log('SOKNA_PREVIOUS_VERSION=' + PreviousInstalledVersion); Log('SOKNA_INSTALL_MODE=' + InstallModeText); Result := True;
 end;
@@ -107,10 +107,10 @@ begin
     WizardForm.WelcomeLabel2.Caption := 'اجزای Runtime، Print و Maintenance سرویس‌های ویندوزی سوکنا نصب می‌شوند.' + #13#10 + #13#10 + 'پس از کپی امن فایل‌ها، Dashboard باز می‌شود و قبل از هر تغییر سرویس، وضعیت هر component را جداگانه بررسی می‌کند.';
   end else if PreviousVersionComparison < 0 then begin
     WizardForm.WelcomeLabel1.Caption := 'به‌روزرسانی سرویس‌های ویندوزی سوکنا';
-    WizardForm.WelcomeLabel2.Caption := 'نسخه ' + PreviousInstalledVersion + ' از SOKNA Windows Services اکنون نصب است و به {#ProductVersion} ارتقا می‌یابد.' + #13#10 + #13#10 + 'این مرحله به‌تنهایی همه سرویس‌ها را restart نمی‌کند؛ Dashboard برنامه دقیق componentها را مشخص می‌کند.';
+    WizardForm.WelcomeLabel2.Caption := 'رجیستری ویندوز آخرین بستهٔ کپی‌شده را ' + PreviousInstalledVersion + ' نشان می‌دهد؛ این شماره اثبات نصب موفق نیست.' + #13#10 + #13#10 + 'نسخهٔ عملیاتی و برنامهٔ تغییر هر سرویس در Dashboard از وضعیت قطعی Lifecycle بررسی می‌شود.';
   end else begin
-    WizardForm.WelcomeLabel1.Caption := 'SOKNA Windows Services {#ProductVersion} از قبل نصب است';
-    WizardForm.WelcomeLabel2.Caption := 'فایل‌های مدیریتی SOKNA Windows Services بازاعمال می‌شوند. وضعیت Runtime، Print و Maintenance پس از بازشدن Dashboard به‌صورت مستقل بررسی خواهد شد.';
+    WizardForm.WelcomeLabel1.Caption := 'بررسی بستهٔ Windows Services {#ProductVersion}';
+    WizardForm.WelcomeLabel2.Caption := 'شمارهٔ ثبت‌شده در رجیستری ممکن است متعلق به تلاش نصب ناموفق باشد. Dashboard نسخهٔ قطعی و وضعیت Runtime، Print و Maintenance را مستقلاً بررسی می‌کند.';
   end;
 end;
 
