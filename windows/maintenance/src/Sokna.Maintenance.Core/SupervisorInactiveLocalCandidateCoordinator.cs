@@ -189,6 +189,69 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
         }
     }
 
+    /// <summary>
+    /// Read-only verification of a previously prepared PRIVATE candidate,
+    /// under the caller's existing machine lease. Does NOT call Prepare and
+    /// does NOT attempt a second lease acquisition during Activate.
+    /// </summary>
+    public InactiveLocalCandidateReceipt InspectExisting(string stageId, string actor)
+    {
+        if (stageId is not { Length: 32 } || !stageId.All(char.IsAsciiHexDigit))
+            throw new InvalidDataException("INACTIVE_CANDIDATE_STAGE_ID_INVALID");
+        var stage = _operations.Get(stageId)
+            ?? throw new InvalidDataException("INACTIVE_CANDIDATE_SIGNED_STAGE_MISSING");
+        if (stage.OperatorId != actor || stage.OperationType != "update.local-stage" ||
+            stage.State != "staged" || stage.ActivationPerformed ||
+            stage.DatabaseMutationPerformed || stage.StageReceiptPath is null)
+            throw new InvalidDataException("INACTIVE_CANDIDATE_STAGE_NOT_STAGED");
+        var signed = _inspector.InspectActivationReadiness(stageId);
+        if (!signed.StageEvidenceVerified || signed.ReleaseType != "local_only")
+            throw new InvalidDataException("INACTIVE_CANDIDATE_SIGNATURE_UNPROVEN");
+
+        var receiptRoot = Path.GetFullPath(Path.Combine(
+            _paths.InactiveLocalCandidatesRoot, "local-" + stageId));
+        var receiptPath = Path.Combine(receiptRoot, "candidate-receipt.json");
+        if (!File.Exists(receiptPath) || IsReparse(receiptRoot) ||
+            IsReparse(receiptPath))
+            throw new InvalidDataException("INACTIVE_CANDIDATE_PREPARE_REQUIRED");
+        var receipt = AtomicFile.ReadJson<InactiveLocalCandidateReceipt>(receiptPath);
+        var source = Path.Combine(receiptRoot, "source-web");
+        if (receipt.Format != "sokna-private-inactive-local-candidate-v1" ||
+            receipt.SchemaVersion != 1 || receipt.StageOperationId != stageId ||
+            receipt.OperatorId != actor ||
+            receipt.ReleaseSetId != signed.ReleaseSetId ||
+            receipt.Sequence != signed.Sequence ||
+            !receipt.ActiveSlotUnchanged || receipt.PromotionQualified ||
+            receipt.ActivationPerformed || receipt.DatabaseMutationPerformed ||
+            receipt.PublicMutationPerformed ||
+            receipt.CandidateRoot != source ||
+            !string.Equals(receipt.StageReceiptSha256,
+                Sha256File(stage.StageReceiptPath), StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(receipt.InstalledIdentitySha256,
+                Sha256File(_paths.InstalledReleaseIdentityPath),
+                StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("INACTIVE_CANDIDATE_RECEIPT_TAMPERED");
+
+        var stageReceipt = AtomicFile.ReadJson<StagedReleaseReceipt>(stage.StageReceiptPath);
+        var manifest = AtomicFile.ReadJson<ReleaseSetManifest>(
+            Path.Combine(stageReceipt.StageRoot, "release-set.json"));
+        if (manifest.ReleaseType != "local_only" ||
+            manifest.ReleaseSetId != signed.ReleaseSetId ||
+            !manifest.Targets.TryGetProperty("local", out var target) ||
+            target.ValueKind != JsonValueKind.Object ||
+            !target.TryGetProperty("version", out var v) ||
+            v.GetString() != receipt.TargetVersion ||
+            !target.TryGetProperty("managed_tree_sha256", out var t) ||
+            !string.Equals(t.GetString(), receipt.TargetManagedTreeSha256,
+                StringComparison.OrdinalIgnoreCase) ||
+            !target.TryGetProperty("managed_files", out var n) ||
+            !n.TryGetInt32(out var count) || count != receipt.TargetManagedFiles)
+            throw new InvalidDataException("INACTIVE_CANDIDATE_SIGNED_TARGET_DRIFT");
+        ValidateCandidateTree(source, receipt.TargetVersion,
+            receipt.TargetManagedTreeSha256, receipt.TargetManagedFiles);
+        return receipt;
+    }
+
     private static void RequireExisting(InactiveLocalCandidateReceipt receipt,
         string id, string actor, string idem, ReleaseArtifact artifact, string stageSha,
         string installedSha, string version, string tree, int count, string candidate)
