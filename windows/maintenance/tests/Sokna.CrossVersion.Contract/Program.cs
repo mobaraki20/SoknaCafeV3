@@ -104,5 +104,59 @@ try {
  ExpectBlocked(()=>{ _=store.GetByIdempotencyKey(anchorKey); },"dangling idempotency index");
  Check(!MaintenanceOperationStore.IsValidIdempotencyKey("../bad") &&
        MaintenanceOperationStore.IsValidIdempotencyKey(anchorKey),"idempotency key format guard");
+
+ // Each customer's installation uses the SAME component release contract:
+ // qualification is scoped to what the release mutates, not a named machine.
+ // Synthetic qualification proofs here exercise policy logic only, not real UAT.
+ var localProof = new ReleaseQualification(
+     "matrix:local-test", true, true, false, true, true, true,
+     false, false, 80);
+ var requirements = new ReleaseSetRequirements(null, null, null, null);
+ var policyManifest = new ReleaseSetManifest(
+     ReleaseSetVerifierStager.Format, ReleaseSetVerifierStager.SchemaVersion,
+     "engineering", "synthetic-local-policy", 1, "local_only",
+     DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1),
+     true, true, new ReleaseSetSignature("ecdsa-p256-sha256","fixture","fixture"),
+     requirements, Array.Empty<ReleaseBaseline>(), default,
+     new Dictionary<string, ReleaseArtifact>(), default,
+     Array.Empty<InstallPlanStep>(), null!, null!, null!, null!,
+     localProof, null!);
+ ReleaseInstallQualificationGate.Require(policyManifest);
+ Check(true,"local-only qualification does not require unrelated Public host/vault");
+ ExpectBlocked(()=>ReleaseInstallQualificationGate.Require(policyManifest with
+     {Qualification=localProof with {RealMariaDb=false}}),
+     "local-only missing real MariaDB");
+ ExpectBlocked(()=>ReleaseInstallQualificationGate.Require(policyManifest with
+     {Qualification=localProof with {RealWindows=false}}),
+     "local-only missing real Windows");
+ ExpectBlocked(()=>ReleaseInstallQualificationGate.Require(policyManifest with
+     {Qualification=localProof with {BusinessBackupConsistencyRealMariaDb=false}}),
+     "local-only missing verified business backup");
+ ExpectBlocked(()=>ReleaseInstallQualificationGate.Require(policyManifest with
+     {Qualification=localProof with {RecoveryConsoleWebDown=false}}),
+     "local-only missing web-down recovery");
+ ExpectBlocked(()=>ReleaseInstallQualificationGate.Require(policyManifest with
+     {Qualification=localProof with {Canary=false}}),
+     "local-only missing canary");
+ ExpectBlocked(()=>ReleaseInstallQualificationGate.Require(policyManifest with
+     {Qualification=localProof with {FailureMatrixCasesRequired=79}}),
+     "local-only insufficient failure matrix");
+ ExpectBlocked(()=>ReleaseInstallQualificationGate.Require(policyManifest with
+     {ProductionPass=false}),
+     "local-only without production pass");
+ ExpectBlocked(()=>ReleaseInstallQualificationGate.Require(policyManifest with
+     {ReleaseType="paired"}),
+     "paired release cannot bypass Public gates");
+ ExpectBlocked(()=>ReleaseInstallQualificationGate.Require(policyManifest with
+     {ReleaseType="public_only"}),
+     "Public-only release cannot reuse Local-only proof");
+ var fullProof = localProof with
+     {RealPublicHost=true,RemoteVaultRealHost=true,CleanMachineRemoteRestore=true};
+ ReleaseInstallQualificationGate.Require(policyManifest with
+     {ReleaseType="paired",Qualification=fullProof});
+ Check(true,"fully qualified paired policy accepted");
+ ReleaseInstallQualificationGate.Require(policyManifest with
+     {ForInstall=false,ProductionPass=false,Qualification=localProof});
+ Check(true,"source-only policy stays separate from production authorization");
  Console.WriteLine("WINDOWS_CROSS_VERSION_CONTRACT_PASS");
 } finally { try {Directory.Delete(baseDir,recursive:true);}catch {} }
