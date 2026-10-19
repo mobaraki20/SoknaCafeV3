@@ -48,6 +48,8 @@ var localStageRecoveryCoordinator = new SupervisorLocalStageRecoveryCoordinator(
 var localActivationPlanCoordinator = new SupervisorLocalActivationPlanCoordinator(paths, operations, localStageRecoveryCoordinator, journal, state);
 var inactiveCandidateCoordinator = new SupervisorInactiveLocalCandidateCoordinator(paths, operations, localStageRecoveryCoordinator, journal, state);
 var inactiveSlotCoordinator = new SupervisorInactiveLocalSlotCoordinator(paths, operations, inactiveCandidateCoordinator, journal, state);
+var codeOnlyPreExecution = new SupervisorLocalCodeOnlyPreExecution(
+    paths, operations, localStageRecoveryCoordinator);
 var inactiveHostInspector = new InactiveLocalHostReadinessInspector(paths, operations);
 // No listening/regular update writes until interrupted Stage evidence is quarantined.
 _ = stageRestartReconciler.ReconcileStoppedProcess();
@@ -344,6 +346,46 @@ app.MapPost("/v1/local-updates/activation-plan", async context =>
             "evidence_unavailable", "ACTIVATION_PLAN_STORAGE_UNAVAILABLE", true,
             new { dry_run_only = true, panel_update_ready = false,
                 last_error_type = ex.GetType().Name });
+    }
+});
+
+// Read-only exact proof that an already prepared physical Local sibling
+// belongs to the signed Stage and the currently installed Local baseline.
+// This endpoint does NOT stop Apache or authorize the Update Engine.
+app.MapGet("/v1/local-updates/code-only-pre-execution/{stageOperationId}", async context =>
+{
+    try
+    {
+        var stageId = context.Request.RouteValues["stageOperationId"] as string ?? "";
+        var evidence = codeOnlyPreExecution.Inspect(stageId);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true,
+            "evidence_verified_not_executable", "CODE_ONLY_CUTOVER_EXECUTOR_NOT_ENABLED",
+            false, new { evidence, activation_allowed = false,
+                execution_authorized = false, panel_update_ready = false,
+                activation_performed = false, database_mutation_performed = false,
+                public_mutation_performed = false });
+    }
+    catch (InvalidOperationException ex) when (
+        ex.Message == "UPDATER_OPERATION_BUSY")
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", "UPDATER_OPERATION_BUSY", true,
+            new { activation_allowed = false, panel_update_ready = false });
+    }
+    catch (Exception ex) when (ex is InvalidDataException or
+        FileNotFoundException or DirectoryNotFoundException or JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false,
+            "evidence_unproven", "CODE_ONLY_CUTOVER_EVIDENCE_UNPROVEN",
+            false, new { activation_allowed = false, panel_update_ready = false });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+        or System.Security.Cryptography.CryptographicException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable,
+            false, "evidence_unavailable", "CODE_ONLY_CUTOVER_EVIDENCE_UNAVAILABLE",
+            true, new { activation_allowed = false, panel_update_ready = false,
+                error_type = ex.GetType().Name });
     }
 });
 
