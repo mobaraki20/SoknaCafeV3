@@ -35,6 +35,11 @@ if (args.Length == 4 && args[0] == "s7d3-worker")
 if (args.Length == 4 && args[0] == "s7d3-mock-apache")
     return IsolatedWindowsCutoverProcessProbe.MockApache(args[1], args[2], args[3]);
 
+// The REAL routine code-only Engine must reject interrupted durable state
+// before another activation can overwrite its recovery evidence.
+if (args.Length == 2 && args[0] == "routine-state-safety")
+    return RoutineLocalStateSafetyProbe.Run(args[1]);
+
 // F1-S7D2: synthetic stop/start, pointer and DB intent boundaries only.
 // This harness must never touch installed services or the active Web junction.
 if (args.Length == 2 && args[0] == "code-cutover-simulation")
