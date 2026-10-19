@@ -158,5 +158,15 @@ try {
  ReleaseInstallQualificationGate.Require(policyManifest with
      {ForInstall=false,ProductionPass=false,Qualification=localProof});
  Check(true,"source-only policy stays separate from production authorization");
+ // First-time Legacy transition uses the SAME delegated UpdateEngine.
+ // Without a signed release identity or durable recovery state it must be
+ // rejected BEFORE any Apache service call or directory mutation.
+ var legacyPaths=new MaintenancePaths(Path.Combine(baseDir,"legacy-first-slot"));
+ var legacyBridge=new ProductionLocalSlotMigrationBridge(legacyPaths);
+ ExpectBlocked(()=>legacyBridge.MigrateSignedLegacy(
+     oldBuild,newBuild,target,2,new string('0',64),""),
+     "legacy first-slot requires signed release provenance");
+ ExpectBlocked(()=>legacyBridge.RecoverSignedLegacy(),
+     "legacy recovery refuses missing durable state");
  Console.WriteLine("WINDOWS_CROSS_VERSION_CONTRACT_PASS");
 } finally { try {Directory.Delete(baseDir,recursive:true);}catch {} }
