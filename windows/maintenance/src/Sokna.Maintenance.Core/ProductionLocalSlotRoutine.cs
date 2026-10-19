@@ -29,7 +29,8 @@ public sealed record RoutineLocalSlotState(
     [property: JsonPropertyName("windows_reboot_required")] bool WindowsRebootRequired,
     [property: JsonPropertyName("recovery_required")] bool RecoveryRequired,
     [property: JsonPropertyName("updated_at_utc")] DateTimeOffset UpdatedAtUtc,
-    [property: JsonPropertyName("events")] IReadOnlyList<RoutineLocalSlotEvent> Events);
+    [property: JsonPropertyName("events")] IReadOnlyList<RoutineLocalSlotEvent> Events,
+    [property: JsonPropertyName("maintenance_identity_commit_expected")] bool MaintenanceIdentityCommitExpected = false);
 
 public sealed record RoutineLocalSlotResult(
     [property: JsonPropertyName("ok")] bool Ok,
@@ -114,7 +115,8 @@ public sealed partial class ProductionLocalSlotMigrationBridge
         string currentManagedTreeSha256,
         string targetBuild,
         int targetManagedFiles,
-        string targetManagedTreeSha256)
+        string targetManagedTreeSha256,
+        string? signedReleaseSetId = null)
     {
         currentBuild = NormalizeBuild(currentBuild);
         targetBuild = NormalizeBuild(targetBuild);
@@ -137,7 +139,9 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             layout.WebRoot, previousSlot, currentBuild);
 
         var persistentRoot = Path.Combine(layout.PackageRoot, "LocalWeb", "persistent");
-        var lifecycle = RoutineLocalLifecycle.Open(layout.PackageRoot, _paths.LocalSlotStateRoot, currentBuild);
+        var lifecycle = RoutineLocalLifecycle.Open(layout.PackageRoot, _paths.LocalSlotStateRoot,
+            currentBuild, signedReleaseSetId is null ? null : _paths,
+            signedReleaseSetId, targetManagedTreeSha256);
         RoutineLocalBinding.RequireCurrent(layout.WebRoot, layout.PackageRoot, currentBuild);
         CaptureMachineLocalFiles(layout.WebRoot, persistentRoot);
         RefreshRoutineMachineLocalOverlay(targetSlot, persistentRoot);
@@ -153,7 +157,8 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             previousSlot, targetSlot,
             currentBuild, currentManagedFiles, currentManagedTreeSha256,
             targetBuild, targetManagedFiles, targetManagedTreeSha256,
-            false, false, false, false, false, DateTimeOffset.UtcNow, events);
+            false, false, false, false, false, DateTimeOffset.UtcNow, events,
+            MaintenanceIdentityCommitExpected: signedReleaseSetId is not null);
         state = RoutineEvent(state, events, "READY_TO_ACTIVATE", $"{previousSlot} -> {targetSlot}");
 
         if (PathsEqual(previousSlot, targetSlot))
@@ -252,7 +257,8 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             "routine-local-lifecycle-before.json");
         if (File.Exists(backupPath))
             RoutineLocalLifecycle.RequireCrashRollbackEvidence(state.PackageRoot,
-                _paths.LocalSlotStateRoot, state.CurrentBuild);
+                _paths.LocalSlotStateRoot, state.CurrentBuild,
+                state.MaintenanceIdentityCommitExpected ? _paths.InstalledReleaseIdentityPath : null);
         else if (state.Phase != "READY_TO_ACTIVATE")
             throw new InvalidDataException("ROUTINE_ROLLBACK_EVIDENCE_UNAVAILABLE");
 
@@ -264,7 +270,8 @@ public sealed partial class ProductionLocalSlotMigrationBridge
                 var resolved = Directory.ResolveLinkTarget(state.StableWebRoot, returnFinalTarget: true)?.FullName;
                 if (!string.IsNullOrWhiteSpace(resolved) && PathsEqual(resolved, state.PreviousSlot))
                 {
-                    RoutineLocalLifecycle.RestoreCrashBackup(state.PackageRoot, _paths.LocalSlotStateRoot, state.CurrentBuild);
+                    RoutineLocalLifecycle.RestoreCrashBackup(state.PackageRoot, _paths.LocalSlotStateRoot, state.CurrentBuild,
+                        state.MaintenanceIdentityCommitExpected ? _paths.InstalledReleaseIdentityPath : null);
                     RequireHttpHealth(state.CurrentBuild, state.HealthUrl);
                     LocalManagedTreeAttestation.RequireExact(state.StableWebRoot, state.CurrentManagedFiles, state.CurrentManagedTreeSha256);
                     RoutineLocalLifecycle.CompleteCrashBackup(_paths.LocalSlotStateRoot);
