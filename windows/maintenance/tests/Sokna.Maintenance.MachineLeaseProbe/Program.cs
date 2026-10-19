@@ -40,6 +40,10 @@ if (args.Length == 4 && args[0] == "s7d3-mock-apache")
 if (args.Length == 2 && args[0] == "routine-state-safety")
     return RoutineLocalStateSafetyProbe.Run(args[1]);
 
+// Read-only exact installation/stage/sibling receipt proof (no cutover).
+if (args.Length == 1 && args[0] == "code-only-pre-execution")
+    return LocalCodeOnlyPreExecutionProbe.Run();
+
 // F1-S7D2: synthetic stop/start, pointer and DB intent boundaries only.
 // This harness must never touch installed services or the active Web junction.
 if (args.Length == 2 && args[0] == "code-cutover-simulation")
