@@ -105,7 +105,27 @@ function Stop-Svc([string]$name,[string]$ownedRoot){
   if(-not$probe.Installed){if(-not[string]::IsNullOrWhiteSpace($ownedRoot)){Wait-OwnedProcessesExit $ownedRoot 1 $true};return}
   $processId=[uint32]$probe.ProcessId
   $svc=Get-Service $name -ErrorAction Stop
-  try{if($svc.Status-ne'Stopped'){Stop-Service $name -ErrorAction Stop;$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))}}finally{$svc.Dispose()}
+  try{
+    if($svc.Status-ne'Stopped'){
+      try{
+        if($svc.Status-ne'StopPending'){Stop-Service -Name $name -ErrorAction Stop}
+        $svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
+      }catch{
+        $scmError=Safe ([string]$_.Exception.Message)
+        $errorType=$_.Exception.GetType().Name
+        $svc.Refresh()
+        if($svc.Status-ne'Stopped'){
+          Event 'service_stop_rejected' 'failed' @{
+            service=$name;service_state=[string]$svc.Status;
+            can_stop=[bool]$svc.CanStop;pid=$processId;
+            error_type=$errorType;scm_error=$scmError
+          }
+          throw "SERVICE_STOP_REJECTED: $name status=$($svc.Status) pid=$processId error_type=$errorType; $scmError"
+        }
+        Event 'service_stop_reconciled' 'completed' @{service=$name;pid=$processId;scm_error=$scmError}
+      }
+    }
+  }finally{$svc.Dispose()}
   Wait-ProcessExit $processId 15 $name
   if(-not[string]::IsNullOrWhiteSpace($ownedRoot)){Wait-OwnedProcessesExit $ownedRoot 15 $true}
 }
