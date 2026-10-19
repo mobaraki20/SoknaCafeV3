@@ -204,18 +204,26 @@ internal sealed class RoutineLocalLifecycle
     {
         var backupPath = Path.Combine(evidenceRoot, "routine-local-lifecycle-before.json");
         if (!File.Exists(backupPath)) return;
-        var proof = ReadObject(File.ReadAllBytes(backupPath));
-        if ((string?)proof["format"] != "sokna-routine-local-lifecycle-backup-v1" ||
-            (string?)proof["active_build"] != expectedPreviousBuild)
-            throw new InvalidDataException("Routine lifecycle backup does not match requested previous build.");
         var lifeRoot = ResolveLifecycleRoot(packageRoot);
         var statePath = Path.Combine(lifeRoot, "state.json");
         var managedPath = Path.Combine(lifeRoot, "managed-files.json");
-        if ((string?)proof["state_path"] != statePath || (string?)proof["managed_path"] != managedPath)
-            throw new InvalidDataException("Routine lifecycle rollback paths are not authoritative.");
+        RoutineLocalBackupProof.ValidateSnapshot(backupPath, expectedPreviousBuild,
+            statePath, managedPath);
+        var proof = ReadObject(File.ReadAllBytes(backupPath));
         AtomicWrite(statePath, Convert.FromBase64String((string?)proof["state_base64"] ?? ""));
         if ((string?)proof["managed_base64"] is string managed) AtomicWrite(managedPath, Convert.FromBase64String(managed));
         else if (File.Exists(managedPath)) File.Delete(managedPath);
+    }
+
+    // Recovery must validate the entire snapshot before Apache or Web changes.
+    public static void RequireCrashRollbackEvidence(string packageRoot,
+        string evidenceRoot, string expectedPreviousBuild)
+    {
+        var lifeRoot = ResolveLifecycleRoot(packageRoot);
+        RoutineLocalBackupProof.ValidateSnapshot(
+            Path.Combine(evidenceRoot, "routine-local-lifecycle-before.json"),
+            expectedPreviousBuild, Path.Combine(lifeRoot, "state.json"),
+            Path.Combine(lifeRoot, "managed-files.json"));
     }
 
     public static void CompleteCrashBackup(string evidenceRoot)
