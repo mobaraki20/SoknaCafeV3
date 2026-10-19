@@ -76,12 +76,38 @@ Assert (-not (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)) 'SE
 Assert (-not (Get-Service -Name 'SoknaApache' -ErrorAction SilentlyContinue)) 'REAL_SOKNA_APACHE_FOUND_ON_RUNNER'
 
 try {
-  # Version is pinned; package installation is runner-scoped, no default Apache service.
-  & choco install apache-httpd --version=2.4.55 --force -y --no-progress --params "'/installLocation:$install /port:$port /noService'"
-  Assert ($LASTEXITCODE -eq 0) 'CHOCOLATEY_APACHE_INSTALL_FAILED'
-  $exe = @(Get-ChildItem -LiteralPath $install -Recurse -File -Filter httpd.exe | Where-Object { $_.Directory.Name -eq 'bin' } | Select-Object -First 1)
-  Assert ($exe.Count -eq 1) 'APACHE_HTTPD_BINARY_MISSING'
-  $httpd = $exe[0].FullName
+  # This CI VM sometimes has Chocolatey Apache already installed. Never
+  # force-download the exact same package when its existing binary and modules
+  # can serve the wholly disposable, separately named service/config fixture.
+  # This does not attach to or alter any actual SOKNA service.
+  $candidateRoots=@('C:\tools\Apache24','C:\tools\apache','C:\ProgramData\chocolatey\lib\apache-httpd')
+  foreach($candidateRoot in $candidateRoots){
+    if(-not(Test-Path -LiteralPath $candidateRoot -PathType Container)){continue}
+    $matches=@(Get-ChildItem -LiteralPath $candidateRoot -Recurse -File -Filter 'httpd.exe' -ErrorAction SilentlyContinue |
+      Where-Object {$_.Directory.Name -eq 'bin'})
+    foreach($candidate in $matches){
+      $candidateApacheRoot=Split-Path -Parent (Split-Path -Parent $candidate.FullName)
+      if((Test-Path -LiteralPath (Join-Path $candidateApacheRoot 'modules\mod_authz_core.so') -PathType Leaf)-and
+         (Test-Path -LiteralPath (Join-Path $candidateApacheRoot 'modules\mod_dir.so') -PathType Leaf)){
+        $httpd=$candidate.FullName;break
+      }
+    }
+    if($httpd){break}
+  }
+  if(-not$httpd){
+    for($attempt=1;$attempt-le3;$attempt++){
+      & choco install apache-httpd --version=2.4.55 --force -y --no-progress --params "'/installLocation:$install /port:$port /noService'"
+      if($LASTEXITCODE -eq 0){break}
+      if($attempt-lt3){Start-Sleep -Seconds 6}
+    }
+    Assert ($LASTEXITCODE -eq 0) 'CHOCOLATEY_APACHE_INSTALL_FAILED'
+    $exe = @(Get-ChildItem -LiteralPath $install -Recurse -File -Filter httpd.exe |
+      Where-Object {$_.Directory.Name -eq 'bin'} | Select-Object -First 1)
+    Assert ($exe.Count -eq 1) 'APACHE_HTTPD_BINARY_MISSING'
+    $httpd = $exe[0].FullName
+  } else {
+    Write-Host "S7E3A: using existing verified Apache binary with CI-only service: $httpd"
+  }
   $apacheRoot = Split-Path -Parent (Split-Path -Parent $httpd)
   foreach ($module in @('mod_authz_core.so','mod_dir.so')) {
     Assert (Test-Path -LiteralPath (Join-Path $apacheRoot ('modules\' + $module))) ('APACHE_MODULE_MISSING_' + $module)
