@@ -22,6 +22,19 @@ for (var i = 0; i < args.Length; i++)
     }
 }
 if (string.IsNullOrWhiteSpace(root)) throw new InvalidOperationException("--root is required.");
+if (variant is "for-install-local-synthetic" or "for-install-local-no-db-synthetic" or "for-install-paired-synthetic")
+{
+    // These self-asserted fixture qualification flags MUST NOT be written to
+    // an installed SOKNA data root or used with a production trust anchor.
+    var runnerTemp = Environment.GetEnvironmentVariable("RUNNER_TEMP");
+    var inDisposableCi = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.Ordinal) &&
+        string.Equals(Environment.GetEnvironmentVariable("RUNNER_OS"), "Windows", StringComparison.Ordinal) &&
+        !string.IsNullOrWhiteSpace(runnerTemp) &&
+        Path.GetFullPath(root).StartsWith(Path.GetFullPath(runnerTemp).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    if (!inDisposableCi)
+        throw new InvalidOperationException("SYNTHETIC_INSTALL_QUALIFICATION_CI_ONLY");
+}
+
 Directory.CreateDirectory(root);
 releaseId ??= $"release-test-{sequence}";
 
@@ -92,7 +105,8 @@ var artifact = new ReleaseArtifact(
 var now = DateTimeOffset.UtcNow;
 var created = variant == "expired" ? now.AddHours(-2) : now.AddMinutes(-1);
 var expires = variant == "expired" ? now.AddHours(-1) : now.AddHours(2);
-var forInstall = variant == "for-install-unqualified";
+var syntheticLocal = variant is "for-install-local-synthetic" or "for-install-local-no-db-synthetic" or "for-install-paired-synthetic";
+var forInstall = variant == "for-install-unqualified" || syntheticLocal;
 var format = variant == "design-draft" ? "sokna-maintenance-release-set-v2.1-draft" : ReleaseSetVerifierStager.Format;
 var schema = variant == "design-draft" ? "2.1-design" : ReleaseSetVerifierStager.SchemaVersion;
 var status = variant == "design-draft" ? "DESIGN_ONLY_NOT_FOR_INSTALL" : "ENGINEERING_TEST_NOT_FOR_INSTALL";
@@ -105,11 +119,11 @@ var manifest = new ReleaseSetManifest(
     status,
     releaseId,
     sequence,
-    "local_only",
+    variant == "for-install-paired-synthetic" ? "paired" : "local_only",
     created,
     expires,
     forInstall,
-    false,
+    syntheticLocal,
     new ReleaseSetSignature(ReleaseSetVerifierStager.SignatureAlgorithm, "test-key", string.Empty),
     new ReleaseSetRequirements("0.1.0", "0.2.0", null, null),
     new[] { new ReleaseBaseline(baseline, null) },
@@ -132,7 +146,11 @@ var manifest = new ReleaseSetManifest(
         "clean_target_only",
         "fresh_reprovision_required",
         "credential_rotation_and_authority_epoch_required"),
-    new ReleaseQualification("", false, false, false, false, false, false, false, false, 80),
+    syntheticLocal
+        ? new ReleaseQualification("CI-SYNTHETIC-NOT-PRODUCTION", true,
+            variant != "for-install-local-no-db-synthetic", false,
+            true, true, true, false, false, 80)
+        : new ReleaseQualification("", false, false, false, false, false, false, false, false, 80),
     new PreUpdateBackupPolicy(false, null, false, false, "reject_pre_mutation"));
 
 var unsignedBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, AtomicFile.JsonOptions);
