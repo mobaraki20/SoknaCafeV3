@@ -235,6 +235,13 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
         var stageReceipt = AtomicFile.ReadJson<StagedReleaseReceipt>(stage.StageReceiptPath);
         var manifest = AtomicFile.ReadJson<ReleaseSetManifest>(
             Path.Combine(stageReceipt.StageRoot, "release-set.json"));
+        // An authenticated Stage is not an install permit. Engineering-only
+        // signed release sets MUST NOT be promoted to the active Web.
+        if (!manifest.ForInstall || !manifest.ProductionPass ||
+            string.IsNullOrWhiteSpace(manifest.Status) ||
+            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("LEGACY_RELEASE_NOT_QUALIFIED_FOR_INSTALL");
+        ReleaseInstallQualificationGate.Require(manifest);
         if (manifest.ReleaseType != "local_only" ||
             manifest.ReleaseSetId != signed.ReleaseSetId ||
             !manifest.Targets.TryGetProperty("local", out var target) ||
