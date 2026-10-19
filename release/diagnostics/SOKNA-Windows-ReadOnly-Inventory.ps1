@@ -65,7 +65,7 @@ try {
       $statePath=Join-Path $dataRoot 'setup\windows-services-state.json'
       if(Test-Path -LiteralPath $statePath -PathType Leaf){
         $st=Get-Content -LiteralPath $statePath -Raw -ErrorAction Stop|ConvertFrom-Json
-        if([string]$st.format -eq 'sokna-windows-services-install-state-v2'){
+        if([string]$st.format -in @('sokna-windows-services-install-state-v1','sokna-windows-services-install-state-v2')){
           $installState.present=$true
           $installState.package_version=[string]$st.package_version
           $installState.installed_at_utc=[string]$st.installed_at_utc
@@ -81,7 +81,7 @@ $checks=[ordered]@{
   supervisor_installed=($services['SoknaMaintenanceSupervisor'].installed -eq $true)
   supervisor_binary_identified=($services['SoknaMaintenanceSupervisor'].binary_exists -eq $true)
   complete_installer_version_identified=($installState.package_version -ne $null -or $uninstall.Count -gt 0)
-  any_unresolved_observation=(@($services.Values | Where-Object {$_.observation_error}).Count -gt 0)
+  any_unresolved_observation=(@($services.Values | Where-Object {$_.observation_error}).Count -gt 0 -or $null -ne $installState.observation_error)
 }
 $document=[ordered]@{
  format='sokna-windows-universal-readonly-inventory-v1';schema_version=1
