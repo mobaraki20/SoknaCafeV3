@@ -29,7 +29,7 @@ jobs:
           [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $s), [ref]$tokens, [ref]$errors)
           if ($errors.Count) { $errors | ForEach-Object { Write-Error $_.Message }; throw 'PowerShell 5.1 parse failed' }
           & $s
-          if ($LASTEXITCODE -ne 0) { throw 'Enrolment returned nonzero' }
+          if (-not $?) { throw 'Enrolment returned nonzero' }
           $root=Join-Path $env:ProgramData 'SOKNA\Maintenance'
           $p=Join-Path $root 'release-issuer\cafe-local-uat-issuer-v1.json'
           $r=Get-Content $p -Raw|ConvertFrom-Json
