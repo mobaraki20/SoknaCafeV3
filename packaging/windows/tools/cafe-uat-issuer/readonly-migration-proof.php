@@ -1,0 +1,28 @@
+<?php
+if ($argc < 3) exit(65);
+$root=$argv[1];$web=$argv[2];
+if (!is_file($root.DIRECTORY_SEPARATOR.'config.php') || !is_file($root.DIRECTORY_SEPARATOR.'install.lock')) exit(66);
+$config=require $root.DIRECTORY_SEPARATOR.'config.php';
+if (!is_array($config)) exit(67);
+require_once $web.'/src/Setup/BrowserSetupService.php';
+$status=(new \Sokna\Local\Setup\BrowserSetupService($root,$web))->status();
+if (($status['installed']??false)!==true || ($status['binding_current']??false)!==true) exit(68);
+require_once $web.'/src/Core/Config.php';
+require_once $web.'/src/Core/Database.php';
+require_once $web.'/src/Core/Migrations.php';
+$c=\Sokna\Local\Core\Config::fromArray($config);
+$pdo=\Sokna\Local\Core\Database::connect($c);
+$mgr=new \Sokna\Local\Core\Migrations($pdo,$web.'/database/migrations');
+$catalog=$mgr->catalog();$applied=$mgr->appliedVersions();$keys=array_keys($catalog);
+sort($keys,SORT_STRING);sort($applied,SORT_STRING);
+if (count($keys)!==70 || count($applied)!==70 || $keys!==$applied) exit(69);
+$lines=[];foreach ($keys as $v) $lines[]=$v."\0".hash_file('sha256',$catalog[$v]);
+$head=end($applied);
+$fingerprint='migration-ledger-sha256-v1:'.hash('sha256',implode("\n",$lines)."\n");
+$dataDir=(string)($config['app']['data_dir']??'');
+if ($dataDir==='') exit(70);
+$life=$dataDir.DIRECTORY_SEPARATOR.'update'.DIRECTORY_SEPARATOR.'state.json';
+if (!is_file($life)) exit(71);
+$state=json_decode((string)file_get_contents($life),true);
+if (!is_array($state) || ($state['active_version']??'')!==trim((string)file_get_contents($web.'/VERSION.txt'))) exit(72);
+echo json_encode(['ok'=>true,'migration_count'=>count($applied),'migration_head'=>$head,'schema_fingerprint'=>$fingerprint,'local_lifecycle_bound'=>true],JSON_UNESCAPED_SLASHES),"\n";
