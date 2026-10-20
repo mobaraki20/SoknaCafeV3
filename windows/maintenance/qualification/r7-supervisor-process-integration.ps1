@@ -78,11 +78,17 @@ function New-Fixture([string]$name,[int]$apachePort){
   Set-Content (Join-Path $web 'VERSION.txt') $build -Encoding ascii
   Set-Content (Join-Path $web 'app.txt') 'fixture-app' -Encoding ascii
   Set-Content (Join-Path $public 'login.php') '<?php // fixture ?>' -Encoding ascii
-  Set-Content (Join-Path $web '.sokna-installation.json') '{"installation_id":"fixture-process-integration"}' -Encoding ascii
+  # R8 routine Local binding requires the exact installation lock identity
+  # and current Web build. Old R7 fixtures with a bare ID are invalid now.
+  [ordered]@{format='sokna-local-installation-binding-v1';
+    installation_id='fixture-process-integration';web_version=$build;
+    bound_at='2026-10-20T00:00:00Z';source='disposable-r7-test'} |
+    ConvertTo-Json -Compress | Set-Content (Join-Path $web '.sokna-installation.json') -Encoding utf8
   Set-Content (Join-Path $public 'local-recovery.php') '<?php // recovery ?>' -Encoding ascii
   Set-Content (Join-Path $public 'local-update-runner.php') '<?php // update ?>' -Encoding ascii
   Set-Content (Join-Path $package 'config.php') '<?php // persistent config ?>' -Encoding ascii
-  Set-Content (Join-Path $package 'install.lock') 'fixture-lock' -Encoding ascii
+  [ordered]@{format='sokna-install-lock-v3';installation_id='fixture-process-integration'} |
+    ConvertTo-Json -Compress | Set-Content (Join-Path $package 'install.lock') -Encoding utf8
   [ordered]@{format='sokna-local-managed-files-v1';schema_version=1;files=@('VERSION.txt','app.txt','public/login.php','resources/local-managed-files-v1.json')}|ConvertTo-Json -Depth 4|Set-Content (Join-Path $resources 'local-managed-files-v1.json') -Encoding utf8
 
   $slashPublic=$public.Replace('\','/')
