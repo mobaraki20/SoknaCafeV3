@@ -131,6 +131,41 @@ try{
   Assert ($afterRestart.Status -eq 200 -and $afterRestart.Body.data.state -eq 'failed') 'RESTART_LOST_DURABLE_RESULT'
   $afterCapabilities=Signed 'GET' '/v1/updates/capabilities' 'web-adapter' $null
   Assert (-not[bool]$afterCapabilities.Body.data.panel_update_ready) 'POST_RESTART_FALSE_READY'
+  # A durable accepted intent could be committed just before the signed
+  # endpoint signals Worker. Simulate losing ONLY the in-process notification:
+  # a CI-only external process reserves the exact known synthetic Stage in
+  # the same disposable ledger while Supervisor stays alive.
+  # This is NOT an alternate install endpoint or a bypass to active Web.
+  $lostSignal=@(& dotnet $SeedHarnessDll --reserve-http-denial $root $stageId 'user:ci' 'p26-durable-no-notify')
+  Assert ($LASTEXITCODE -eq 0 -and $lostSignal.Count -eq 1 -and
+    [string]$lostSignal[0] -match '^[a-f0-9]{32}
+}
+finally{
+  Stop-Supervisor $server
+  if($regCreated -and (Test-Path $reg)){Remove-Item -LiteralPath $reg -Recurse -Force}
+  if((Test-Path $root) -and ($root -like (Join-Path $env:RUNNER_TEMP 'SoknaP26SignedHttp-*'))){
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+) 'UNSIGNALED_RESERVATION_NOT_PERSISTED'
+  $lostId=[string]$lostSignal[0]
+  $lostFinal=$null
+  for($i=0;$i -lt 85;$i++){
+    $check=Signed 'GET' ('/v1/operations/'+$lostId) 'web-adapter' $null
+    Assert ($check.Status -eq 200 -and $check.Body.data.operation_id -eq $lostId) 'LOST_SIGNAL_DURABLE_OPERATION_MISSING'
+    if($check.Body.data.state -in @('failed','committed','recovery_required')){$lostFinal=$check;break}
+    Start-Sleep -Milliseconds 200
+  }
+  Assert ($null -ne $lostFinal -and $lostFinal.Body.data.state -eq 'failed' -and
+    -not[bool]$lostFinal.Body.data.activation_performed) 'UNSIGNALED_OPERATION_STUCK_OR_FALSE_SUCCESS'
+  $lostByKey=Signed 'GET' '/v1/operations/by-idempotency/p26-durable-no-notify' 'web-adapter' $null
+  Assert ($lostByKey.Status -eq 200 -and
+    $lostByKey.Body.data.operation_id -eq $lostId -and
+    $lostByKey.Body.data.attempt_count -eq 0) 'UNSIGNALED_RESERVATION_RETRIED_ENGINE'
+  $noSecondInstall=Signed 'GET' '/v1/operations/active' 'web-adapter' $null
+  Assert ($noSecondInstall.Status -eq 200 -and
+    $noSecondInstall.Body.data.blocking_count -eq 0) 'UNSIGNALED_RESERVATION_DID_NOT_TERMINATE'
+  Write-Host 'P26_LOST_WORKER_SIGNAL_RECOVERED_FROM_DURABLE_LEDGER_PASS'
   Write-Host ('P26_SIGNED_HTTP_202_WORKER_POLL_SAFE_DENIAL_PASS elapsed_ms='+[math]::Round($timer.Elapsed.TotalMilliseconds))
 }
 finally{
