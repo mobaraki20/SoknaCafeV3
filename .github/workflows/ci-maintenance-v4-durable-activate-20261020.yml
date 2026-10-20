@@ -4,6 +4,7 @@ on:
     branches:
       - work/windows-maintenance-v4-durable-activate-20261020
       - work/windows-117-local-activation-self-block-fix-20261021
+      - release/windows-services-1.1.18-local-activation-fix-20261021
   workflow_dispatch:
 permissions:
   contents: read
