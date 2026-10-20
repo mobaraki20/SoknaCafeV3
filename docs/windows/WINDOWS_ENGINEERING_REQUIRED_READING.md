@@ -46,6 +46,8 @@ If a newer ADR explicitly supersedes a rule here, the ADR wins and this file mus
 29. User-host canaries are validation, not deterministic updater qualification. Before offering a new updater architecture to Home or Cafe, run a repeated Windows fault matrix of at least 20 completed activation/failure/rollback/recovery cycles and retain machine-readable evidence. Source build PASS alone is insufficient.
 30. Automatic retry is mutation-aware and bounded. Pre-mutation transient failures may retry; once activation occurred, unattended retries stop unless an explicit recovery state machine proves that repeating activation is safe.
 
+**Runtime business-outcome lesson (2026-10-20):** A Local trigger HTTP 200 means delivery was accepted, not that its handler succeeded. Consume `worker_completed`, `worker_success`, and safe `worker_error_code` separately; preserve request-id idempotency on incomplete results and do not replay business mutations merely because a downstream WAN operation failed. Validate both Local and Runtime halves before host deployment.
+
 ## Host evidence classification
 
 Every host-side evidence set should record:
