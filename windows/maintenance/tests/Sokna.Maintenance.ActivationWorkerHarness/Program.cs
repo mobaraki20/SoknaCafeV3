@@ -82,6 +82,30 @@ try
     Require(operations.ListBlocking().Count == 1,
         "accepted intent must block all other mutations");
 
+    // A durable reservation is a machine-wide blocker for everyone ELSE.
+    // Its own signed Stage reinspection must be allowed before Engine intent.
+    Require(IsBusy(() => LocalUpdateOperationGate.RequireStageInspection(
+        operations, stage)), "read-only inspection bypassed active reservation");
+    LocalUpdateOperationGate.RequireStageInspection(
+        operations, stage, accepted.Operation.OperationId);
+    Require(IsBusy(() => LocalUpdateOperationGate.RequireStageInspection(
+        operations, stage with { OperatorId = "foreign-actor" },
+        accepted.Operation.OperationId)), "foreign actor inherited activation allowance");
+    Require(IsBusy(() => LocalUpdateOperationGate.RequireStageInspection(
+        operations, stage with { OperationId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+        accepted.Operation.OperationId)), "foreign Stage inherited activation allowance");
+
+    var foreignHash = MaintenanceOperationStore.CanonicalRequestHash(
+        "update.local-stage", "source-foreign", "operator-foreign");
+    var (foreign, _) = operations.GetOrCreate("foreign-blocking-operation",
+        foreignHash, "update.local-stage", "source-foreign", "operator-foreign");
+    Require(IsBusy(() => LocalUpdateOperationGate.RequireStageInspection(
+        operations, stage, accepted.Operation.OperationId)),
+        "another active update was bypassed by owning reservation");
+    operations.Update(foreign, "failed");
+    LocalUpdateOperationGate.RequireStageInspection(
+        operations, stage, accepted.Operation.OperationId);
+
     var replay = coordinator.ReserveActivation(
         stage.OperationId, "operator-test", "activation-key-one");
     Require(!replay.Created && replay.Reconciled &&
@@ -124,11 +148,17 @@ try
     // After Engine-start intent, loss of Supervisor must ALWAYS require recovery.
     operations.Update(accepted2.Operation, "activating",
         "CODE_ONLY_ENGINE_START_INTENT", incrementAttempt: true);
+    Require(IsBusy(() => LocalUpdateOperationGate.RequireStageInspection(
+        operations, stage, accepted2.Operation.OperationId)),
+        "already-dispatched Engine intent reused inspection exemption");
     Require(coordinator.QuarantineInterruptedActivations() == 1,
         "startup failed to identify interrupted engine intent");
     var crashed = operations.Get(accepted2.Operation.OperationId)!;
     Require(crashed.State == "recovery_required",
         "interrupted Engine intent was not fail-closed");
+    Require(IsBusy(() => LocalUpdateOperationGate.RequireStageInspection(
+        operations, stage, accepted2.Operation.OperationId)),
+        "recovery-required operation reused inspection exemption");
     Require(operations.ListBlocking().Count == 1,
         "unproven Engine outcome must block another update");
     Require(coordinator.QuarantineInterruptedActivations() == 0,
@@ -150,6 +180,15 @@ finally
 {
     try { Directory.Delete(directory, true); }
     catch { /* temporary fixture may remain locked only if test already failed */ }
+}
+
+static bool IsBusy(Action action)
+{
+    try { action(); return false; }
+    catch (InvalidOperationException ex) when (ex.Message == "UPDATER_OPERATION_BUSY")
+    {
+        return true;
+    }
 }
 
 static void Require(bool condition, string error)

@@ -194,7 +194,7 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
     /// under the caller's existing machine lease. Does NOT call Prepare and
     /// does NOT attempt a second lease acquisition during Activate.
     /// </summary>
-    public InactiveLocalCandidateReceipt InspectExisting(string stageId, string actor)
+    public InactiveLocalCandidateReceipt InspectExisting(string stageId, string actor, string? ownActivationOperationId = null)
     {
         if (stageId is not { Length: 32 } || !stageId.All(char.IsAsciiHexDigit))
             throw new InvalidDataException("INACTIVE_CANDIDATE_STAGE_ID_INVALID");
@@ -204,7 +204,7 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
             stage.State != "staged" || stage.ActivationPerformed ||
             stage.DatabaseMutationPerformed || stage.StageReceiptPath is null)
             throw new InvalidDataException("INACTIVE_CANDIDATE_STAGE_NOT_STAGED");
-        var signed = _inspector.InspectActivationReadiness(stageId);
+        var signed = _inspector.InspectActivationReadiness(stageId, ownActivationOperationId);
         if (!signed.StageEvidenceVerified || signed.ReleaseType != "local_only")
             throw new InvalidDataException("INACTIVE_CANDIDATE_SIGNATURE_UNPROVEN");
 
