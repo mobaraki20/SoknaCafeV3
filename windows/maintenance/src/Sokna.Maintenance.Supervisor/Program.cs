@@ -57,6 +57,7 @@ var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceU
 var codeOnlyExecution = new SupervisorLocalCodeOnlyExecutionCoordinator(
     paths, operations, codeOnlyPreExecution, journal, state, updateEnginePath,
     inactiveCandidateCoordinator, localStageRecoveryCoordinator);
+_ = codeOnlyExecution.QuarantineInterruptedActivations(); // Durable, fail-closed startup reconciliation.
 var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
 var localPackagePreflightCoordinator = new SupervisorLocalPackagePreflightCoordinator(paths, operations, journal, state);
 var localInboxUpload = new LocalInboxUploadCoordinator(paths);
@@ -448,20 +449,53 @@ app.MapPost("/v1/local-updates/activate-code-only", async context =>
         var request = JsonSerializer.Deserialize<LocalCodeOnlyActivationRequest>(
             bytes, AtomicFile.JsonOptions)
             ?? throw new InvalidDataException("Local activation request is empty.");
-        var result = codeOnlyExecution.Activate(request.StageOperationId,
-            request.OperatorId, key);
-        var phase = result.Operation.State;
+        // Persist a machine-wide blocking operation BEFORE acknowledging HTTP.
+        // The Engine may take 240s, while Local's signed transport has a
+        // shorter timeout; never bind completion to this request's lifetime.
+        var reservation = codeOnlyExecution.ReserveActivation(
+            request.StageOperationId, request.OperatorId, key);
+        if (reservation.Created)
+        {
+            var durableOperationId = reservation.Operation.OperationId;
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    _ = codeOnlyExecution.ExecuteReservedActivation(
+                        request.StageOperationId, request.OperatorId, key);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(
+                        "Local background activation requires quarantine: " +
+                        ex.GetType().Name);
+                    try { codeOnlyExecution.QuarantineActivationFailure(durableOperationId); }
+                    catch (Exception evidenceError)
+                    {
+                        Console.Error.WriteLine(
+                            "Local activation evidence quarantine failed: " +
+                            evidenceError.GetType().Name);
+                    }
+                }
+            });
+        }
+        var phase = reservation.Operation.State;
+        var pending = phase is "accepted" or "running" or "activating";
         await WriteEnvelope(context,
+            pending ? StatusCodes.Status202Accepted :
             phase == "committed" ? StatusCodes.Status200OK :
             phase == "recovery_required" ? StatusCodes.Status503ServiceUnavailable :
             StatusCodes.Status409Conflict,
-            phase == "committed", phase,
-            result.Operation.ResultCode ?? "CODE_ONLY_OPERATION_UNPROVEN",
+            pending || phase == "committed", phase,
+            pending ? "CODE_ONLY_DURABLE_OPERATION_ACCEPTED" :
+                reservation.Operation.ResultCode ?? "CODE_ONLY_OPERATION_UNPROVEN",
             phase == "recovery_required",
-            new { result.Operation, result.Created, result.Reconciled,
-                panel_update_ready = false,
+            new { reservation.Operation, reservation.Created, reservation.Reconciled,
+                completion_requires_operation_poll = pending,
+                poll_path = "/v1/operations/" + reservation.Operation.OperationId,
+                panel_update_ready = false, activation_committed = phase == "committed",
                 database_mutation_performed = false, public_mutation_performed = false },
-            result.Operation.OperationId);
+            reservation.Operation.OperationId);
     }
     catch (JsonException)
     {
