@@ -45,7 +45,10 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
         _legacyCandidate=legacyCandidate; _signedStage=signedStage;
     }
 
-    public LocalCodeOnlyExecutionOutcome Activate(
+    // Persist an idempotent, machine-wide blocking intent before the HTTP
+    // adapter acknowledges the request. This does not dispatch Engine or
+    // change Web. A replay returns the SAME operation without starting work.
+    public LocalCodeOnlyExecutionOutcome ReserveActivation(
         string stageId, string operatorId, string idempotencyKey)
     {
         RequireRequest(stageId, operatorId, idempotencyKey);
@@ -59,10 +62,52 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             if (prior is not null)
             {
                 RequireSameRequest(prior, operationType, stageId, operatorId, requestHash);
-                // An interrupted activation is NEVER retried by repeating POST.
                 return new(prior, false, true);
             }
             if (_operations.ListBlocking().Count != 0)
+                throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
+            var stage = _operations.Get(stageId)
+                ?? throw new InvalidDataException("CODE_ONLY_SIGNED_STAGE_NOT_FOUND");
+            if (stage.OperationType != "update.local-stage" ||
+                stage.State != "staged" || stage.OperatorId != operatorId)
+                throw new InvalidDataException("CODE_ONLY_STAGE_OPERATOR_MISMATCH");
+            var (operation, created) = _operations.GetOrCreate(idempotencyKey,
+                requestHash, operationType, stageId, operatorId);
+            Journal("update.local_code_only.accepted_for_worker", operation);
+            return new(operation, created, false);
+        }
+    }
+
+    // Invoked only for the newly persisted reservation, never for replay.
+    public LocalCodeOnlyExecutionOutcome ExecuteReservedActivation(
+        string stageId, string operatorId, string idempotencyKey)
+        => ActivateCore(stageId, operatorId, idempotencyKey, reserved: true);
+
+    // Existing engine-internal synchronous primitive is retained.
+    public LocalCodeOnlyExecutionOutcome Activate(
+        string stageId, string operatorId, string idempotencyKey)
+        => ActivateCore(stageId, operatorId, idempotencyKey, reserved: false);
+
+    private LocalCodeOnlyExecutionOutcome ActivateCore(
+        string stageId, string operatorId, string idempotencyKey, bool reserved)
+    {
+        RequireRequest(stageId, operatorId, idempotencyKey);
+        lock (LocalUpdateOperationGate.Sync)
+        {
+            using var lease = MachineMutationLease.Acquire(_paths, EngineDelegationPermit.Owner);
+            const string operationType = "update.local-code-only-activate";
+            var requestHash = MaintenanceOperationStore.CanonicalRequestHash(
+                operationType, stageId, operatorId);
+            var prior = _operations.GetByIdempotencyKey(idempotencyKey);
+            if (prior is not null)
+            {
+                RequireSameRequest(prior, operationType, stageId, operatorId, requestHash);
+                if (!reserved || prior.State != "accepted" || prior.AttemptCount != 0)
+                    return new(prior, false, true);
+            }
+            else if (reserved)
+                throw new InvalidDataException("CODE_ONLY_RESERVED_INTENT_MISSING");
+            if (_operations.ListBlocking().Any(o => o.OperationId != prior?.OperationId))
                 throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
             var stage = _operations.Get(stageId)
                 ?? throw new InvalidDataException("CODE_ONLY_SIGNED_STAGE_NOT_FOUND");
@@ -399,6 +444,46 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                 activationPerformed: true, databaseMutationPerformed: false);
             Journal("update.legacy_first_slot.recovery_required", operation);
             return new(operation, created, false);
+        }
+    }
+
+    // Only a durable accepted intent can be safely classified as a
+    // pre-mutation failure. After Engine intent any unknown outcome is
+    // quarantined, never blindly re-dispatched on an HTTP retry.
+    public void QuarantineActivationFailure(string operationId)
+    {
+        lock (LocalUpdateOperationGate.Sync)
+        {
+            var operation = _operations.Get(operationId)
+                ?? throw new InvalidDataException("CODE_ONLY_OPERATION_MISSING");
+            if (operation.OperationType != "update.local-code-only-activate")
+                throw new InvalidDataException("CODE_ONLY_OPERATION_TYPE_MISMATCH");
+            if (operation.State is not ("accepted" or "activating" or "running"))
+                return;
+            var unproven = operation.State != "accepted";
+            var updated = _operations.Update(operation,
+                unproven ? "recovery_required" : "failed",
+                unproven ? "CODE_ONLY_INTERRUPTED_REQUIRES_VERIFICATION" :
+                    "CODE_ONLY_PREEXECUTION_FAILED",
+                unproven ? "Activation outcome requires Recovery Console verification." :
+                    "Activation did not enter Engine execution.",
+                activationPerformed: unproven || operation.ActivationPerformed);
+            Journal("update.local_code_only.worker_quarantined", updated);
+        }
+    }
+
+    // Called before the HTTP listener starts after a Supervisor restart.
+    // A previously accepted/activating operation must NOT silently become
+    // available for another activation attempt.
+    public int QuarantineInterruptedActivations()
+    {
+        lock (LocalUpdateOperationGate.Sync)
+        {
+            var pending = _operations.ListActive().Where(
+                o => o.OperationType == "update.local-code-only-activate").ToArray();
+            foreach (var operation in pending)
+                QuarantineActivationFailure(operation.OperationId);
+            return pending.Length;
         }
     }
 
