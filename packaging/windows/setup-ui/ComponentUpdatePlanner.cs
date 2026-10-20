@@ -84,7 +84,15 @@ internal static class ComponentUpdatePlanner
         foreach (var c in root.GetProperty("components").EnumerateArray())
             rows.Add(BuildRow(c, shellRoot, installRoot, dataRoot, paired, forceRepair));
 
-        foreach (var row in rows.Where(r => r.Required && !r.Primary && r.ParentComponent is not null))
+        PromoteDependentActions(rows);
+        return new ComponentPlanSnapshot(packageVersion, DateTimeOffset.UtcNow, rows);
+    }
+
+    // Snapshot child rows first: assigning a new parent record invalidates List<T>'s
+    // enumerator, including the LINQ Where enumerator used by the old dashboard.
+    internal static void PromoteDependentActions(List<ComponentPlanRow> rows)
+    {
+        foreach (var row in rows.Where(r => r.Required && !r.Primary && r.ParentComponent is not null).ToArray())
         {
             var parentIndex = rows.FindIndex(r => r.ComponentId == row.ParentComponent);
             if (parentIndex < 0) continue;
@@ -94,8 +102,17 @@ internal static class ComponentUpdatePlanner
             else if (row.Action is ComponentAction.Install or ComponentAction.Update or ComponentAction.Repair && parent.Action == ComponentAction.Keep)
                 rows[parentIndex] = parent with { Action = ComponentAction.Repair, ActionText = "تعمیر", UpdateState = "repair_required", Reason = $"یکی از اجزای داخلی Maintenance ({row.DisplayName}) نیاز به همگام‌سازی دارد." };
         }
-        return new ComponentPlanSnapshot(packageVersion, DateTimeOffset.UtcNow, rows);
     }
+
+    // Recovery is frozen in the independent lifecycle: only an exact, released
+    // 0.1.1 binary allowlisted by SHA256 can remain installed under a 0.1.2
+    // package. Do not claim its installed version changed or copy a new binary.
+    internal static bool CanKeepFrozenRecovery(string id, string currentVersion, string targetVersion,
+        bool acceptedFingerprint, bool registrationHealthy) =>
+        id == "maintenance-recovery-console" &&
+        string.Equals(currentVersion, "0.1.1", StringComparison.Ordinal) &&
+        CompareVersions(currentVersion, targetVersion) < 0 &&
+        acceptedFingerprint && registrationHealthy;
 
     private static ComponentPlanRow BuildRow(JsonElement c, string shellRoot, string installRoot, string dataRoot, bool paired, bool forceRepair)
     {
@@ -147,6 +164,11 @@ internal static class ComponentUpdatePlanner
             if (cmp > 0)
             {
                 action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = $"نسخه نصب‌شده {currentVersion} از نسخه هدف {targetVersion} جدیدتر است؛ downgrade خودکار مجاز نیست.";
+            }
+            else if (CanKeepFrozenRecovery(id, currentVersion, targetVersion, compatibleInstalledHash, registrationHealthy))
+            {
+                action = ComponentAction.Keep; state = "compatible_frozen_recovery";
+                reason = $"Recovery Console نصب‌شده {currentVersion} با اثرانگشت رسمی تأیید شد؛ بدون تغییر باقی می‌ماند (نسخه بسته {targetVersion}).";
             }
             else if (cmp < 0)
             {
