@@ -1,0 +1,62 @@
+name: Home V4 Local231ap preflight (signing and identity fail-closed)
+on:
+  push:
+    branches: [work/windows-home-local-231ap-v4-preflight-20261021]
+    paths: [.github/workflows/ci-home-local-231ap-v4-preflight.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-on-windows:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse home UAT scripts with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='packaging/windows/tools/home-uat-issuer'
+          $scripts=@('Register-Home-Test-Issuer.ps1','Register-Verified-HomeLocal231ap-Identity.ps1')
+          foreach($n in $scripts) {
+            $errors=$null;$tokens=$null
+            [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path (Join-Path $p $n)),[ref]$tokens,[ref]$errors)
+            if($errors.Count) { throw "PS5.1 syntax error: $n" }
+          }
+          $issuer=Get-Content (Join-Path $p $scripts[0]) -Raw
+          $id=Get-Content (Join-Path $p $scripts[1]) -Raw
+          if($issuer -match 'cafe-local-uat' -or $id -match 'cafe-local-uat') { throw 'Cafe/Home issuer paths were mixed' }
+          if($id -notmatch '231ap-connections-device-lifecycle-closure') { throw 'Home baseline drift' }
+          if($id -notmatch "ExpectedTree = '04fbce2d6a98042a05b023da8cd5ce0463365a621103a02214c68cb5a5331f7c'") { throw 'Home managed tree drift' }
+          if($id -notmatch "ExpectedMigrations = 70") { throw 'Home migrations drift' }
+          Write-Host 'HOME_POWER_SHELL5_1_PARSE_AND_BASELINE_PASS'
+      - name: Create and reuse isolated nonexportable Home signing key
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $s='packaging/windows/tools/home-uat-issuer/Register-Home-Test-Issuer.ps1'
+          & $s
+          if (-not $?) { throw 'Home issuer enrollment failed' }
+          $p=Join-Path $env:ProgramData 'SOKNA\Maintenance\release-issuer\home-local-uat-issuer-v1.json'
+          $before=Get-Content $p -Raw|ConvertFrom-Json
+          if ($before.mode -ne 'TEST_ONLY_NO_PRODUCTION_QUALIFICATION' -or $before.private_key_exported -ne $false) { throw 'Unsafe Home key metadata' }
+          if ($before.key_id -notmatch '^home-local-uat-[0-9a-f]{20}$') { throw 'Wrong HOME key ID' }
+          $public=Join-Path $env:ProgramData ('SOKNA\Maintenance\trust\release-signing\'+$before.key_id+'.spki.pem')
+          $body=Get-Content $public -Raw
+          if ($body -notmatch 'BEGIN PUBLIC KEY' -or $body -match 'PRIVATE KEY') { throw 'Wrong public trust content' }
+          & $s
+          if (-not $?) { throw 'Home key rerun failed' }
+          $after=Get-Content $p -Raw|ConvertFrom-Json
+          if ($after.key_id -ne $before.key_id -or $after.certificate_thumbprint -ne $before.certificate_thumbprint) { throw 'Key was recreated on second run' }
+          Write-Host 'HOME_NONEXPORTABLE_SIGNER_AND_REUSE_PASS'
+      - name: Verify Local identity registration refuses unqualified host
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $s='packaging/windows/tools/home-uat-issuer/Register-Verified-HomeLocal231ap-Identity.ps1'
+          $failedClosed=$false
+          try { & $s | Out-Null } catch { $failedClosed=$true; Write-Host ('Expected rejection: '+$_.Exception.Message) }
+          if(-not $failedClosed){throw 'Unqualified host was unexpectedly accepted'}
+          $id=Join-Path $env:ProgramData 'SOKNA\Maintenance\installed-release-identity.json'
+          if(Test-Path $id){throw 'Identity was created without valid installed Local proof'}
+          Write-Host 'HOME_IDENTITY_FAIL_CLOSED_NO_HOST_PASS'
