@@ -137,7 +137,14 @@ public sealed class LocalSlotAdoptionQueue
             Validate(status);
             if (!string.Equals(status.RequestId, request.RequestId, StringComparison.Ordinal))
                 throw new InvalidDataException("Local adoption request/status identity diverged during recovery reconciliation.");
-            if (status.State is not ("recovery_required" or "failed_terminal")) return status;
+            // A signed Recovery Console operation may have committed the
+            // queue before Supervisor was killed while closing the original
+            // recovery_required migration ledger entry. Reattest the FULL
+            // physical evidence on that replay, never trust status alone.
+            var alreadyReconciled = status.State == "committed" &&
+                status.LastCode == "LOCAL_ADOPTION_RECOVERY_COMMITTED";
+            if (status.State is not ("recovery_required" or "failed_terminal") &&
+                !alreadyReconciled) return status;
 
             var migrationStatePath = Path.Combine(_paths.LocalSlotStateRoot, "migration-state.json");
             if (!File.Exists(migrationStatePath)) return status;
@@ -172,6 +179,7 @@ public sealed class LocalSlotAdoptionQueue
                 migrationState.StableWebRoot,
                 request.ExpectedManagedFiles,
                 request.ExpectedManagedTreeSha256);
+            if (alreadyReconciled) return status; // readback proved again
 
             var reconciled = NewStatus(
                 request.RequestId,
