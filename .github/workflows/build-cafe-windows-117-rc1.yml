@@ -74,7 +74,7 @@ jobs:
           $p=Start-Process -FilePath $ui -ArgumentList '--planner-self-test' -Wait -PassThru
           if($p.ExitCode-ne0){throw "Planner regression failed: $($p.ExitCode)"}
           $core=Get-Content (Join-Path $out 'unified-shell-v4/setup-windows-components-core-v5.ps1') -Raw
-          foreach($needle in @('accepted_frozen_recovery_011',"\$current-eq'0.1.1'",'Compatible-Fingerprint')){
+          foreach($needle in @('accepted_frozen_recovery_011','$current-eq''0.1.1''','Compatible-Fingerprint')){
             if(-not $core.Contains($needle)){throw "Recovery privileged compatibility marker missing: $needle"}
           }
           $wrapper=Get-Content (Join-Path $out 'unified-shell-v4/setup-windows-components-v4.ps1') -Raw
