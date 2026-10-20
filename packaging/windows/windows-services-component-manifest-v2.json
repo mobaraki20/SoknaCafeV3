@@ -2,7 +2,7 @@
   "format": "sokna-windows-component-manifest-v2",
   "schema_version": 2,
   "package_component": "windows-services-packaging",
-  "package_version": "1.1.14",
+  "package_version": "1.1.16",
   "planner_contract": "1.1",
   "components": [
     {
@@ -11,7 +11,7 @@
       "kind": "service",
       "primary": true,
       "required": true,
-      "version": "1.0.5",
+      "version": "1.0.6",
       "service_name": "SoknaRuntime",
       "payload_primary": "_payload/runtime/SoknaRuntimeService.exe",
       "installed_primary": "Runtime/SoknaRuntimeService.exe",
@@ -57,11 +57,11 @@
       "dependencies": [
         {
           "component_id": "maintenance-update-engine",
-          "version": "0.3.6"
+          "version": "0.3.7"
         },
         {
           "component_id": "maintenance-recovery-console",
-          "version": "0.1.1"
+          "version": "0.1.2"
         }
       ]
     },

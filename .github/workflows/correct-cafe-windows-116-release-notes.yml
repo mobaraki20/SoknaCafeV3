@@ -1,0 +1,46 @@
+name: Correct Cafe Windows 1.1.16 release notes
+on:
+  push:
+    branches: [work/windows-services-1.1.16-cafe-panel-canary-20261020]
+    paths: [.github/workflows/correct-cafe-windows-116-release-notes.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  notes-only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Correct ONLY the text of the already qualified prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='windows-services-v1.1.16-rc.1'
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null
+          cat > RELEASE_NOTES.md <<'EOF'
+          SOKNA Windows Services 1.1.16-rc.1 — Cafe TEST UAT only.
+
+          Exact installer build source commit: 78809be8f56d58b4708540bf917ddc5606b5d24f
+          Windows qualification/build/release: https://github.com/mobaraki20/SoknaCafeV3/actions/runs/39466718217 — SUCCESS.
+
+          This candidate combines the qualified Maintenance V4 signed Local Update Center plumbing of PR25/PR26 with the released Runtime 1.0.6 changes from 1.1.15-rc.2.
+
+          Component versions compiled and manifest-checked by installer build:
+          - Windows package: 1.1.16
+          - Runtime: 1.0.6
+          - Print Agent: 6.2.9
+          - Maintenance Supervisor: 0.3.7
+          - Maintenance Update Engine: 0.3.7
+          - Maintenance Recovery Console: 0.1.2
+
+          Intended test host: Cafe, whose real Local was migrated 231ag to slot-based 231ap, as evidenced by exact post-install Engine inspection.
+          This Windows EXE updates Windows components only; it does NOT install a newer Local Web or Public version.
+          The Cafe installed Windows package must be checked after setup from canonical installed component state; a UI badge is not authoritative if it disagrees.
+          Local Update Center still requires a separately trusted, correctly signed Local release set and real-host UAT. panel_update_ready=false is not bypassed by installing Windows alone.
+          Do not blindly repeat setup on failure. Capture installer result and technician bundle.
+          This is a pre-release for Cafe test UAT and is NOT production-approved.
+          EOF
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file RELEASE_NOTES.md
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body -q '.body' | grep -q 'Maintenance Supervisor: 0.3.7'
+          echo 'CAFE_116_RELEASE_NOTES_CORRECTED_PASS'

@@ -1,0 +1,95 @@
+name: Windows Services 1.1.16 RC1 Cafe Panel UAT
+on:
+  push:
+    branches: [work/windows-services-1.1.16-cafe-panel-canary-20261020]
+    paths: [.github/workflows/build-cafe-windows-116-rc1.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  qualify:
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check Home component baselines
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw | ConvertFrom-Json
+          $v=@{};foreach($c in $m.components){$v[[string]$c.component_id]=[string]$c.version}
+          if($m.package_version -ne '1.1.16' -or $m.components.Count -ne 5){throw 'Package contract changed'}
+          if($v.runtime -ne '1.0.6' -or $v.'print-agent' -ne '6.2.9'){throw 'Runtime or Print version mismatch'}
+          if($v.maintenance -ne '0.3.7' -or $v.'maintenance-update-engine' -ne '0.3.7' -or $v.'maintenance-recovery-console' -ne '0.1.2'){throw 'Maintenance panel version mismatch'}
+          $rc=@($m.components | Where-Object component_id -eq 'maintenance-recovery-console')[0]
+          foreach($hash in @('368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd','85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9')){
+            if($hash -notin @($rc.accepted_installed_sha256)){throw 'Released Home Recovery KEEP fingerprint absent'}
+          }
+      - name: Build and self-test Runtime
+        shell: pwsh
+        run: |
+          dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --nologo
+          if($LASTEXITCODE -ne 0){throw 'Build failed'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --scheduler-self-test
+          if($LASTEXITCODE -ne 0){throw 'Scheduler test failed'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
+          if($LASTEXITCODE -ne 0){throw 'Health test failed'}
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if($LASTEXITCODE -ne 0){throw 'Inno Setup installation failed'}
+      - name: Build complete V4 Windows installer
+        shell: pwsh
+        timeout-minutes: 48
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-116-rc1'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+          if(-not $iscc){throw 'ISCC missing'}
+          & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot $out -IsccExe $iscc
+          if($LASTEXITCODE -ne 0){throw 'Installer build failed'}
+          $idx=Get-Content "$out/artifact-index.json" -Raw|ConvertFrom-Json
+          if($idx.package_version -ne '1.1.16' -or $idx.component_count -ne 5 -or $idx.runtime.version -ne '1.0.6' -or $idx.installer_kind -ne 'unified-v4-bootstrap'){throw 'Package index mismatch'}
+          $exe=Join-Path $out ([string]$idx.windows_services.file)
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha -ne $idx.windows_services.sha256){throw 'Artifact digest mismatch'}
+          if([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion -ne '1.1.16.0'){throw 'Installer version metadata mismatch'}
+          "$sha  $([IO.Path]::GetFileName($exe))" | Set-Content "$out/SHA256SUMS.txt" -Encoding ASCII
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-services-116-rc1-home-uat
+          path: |
+            ${{ runner.temp }}/sokna-windows-116-rc1/SOKNA-Windows-Services-Setup-1.1.16.exe
+            ${{ runner.temp }}/sokna-windows-116-rc1/SHA256SUMS.txt
+            ${{ runner.temp }}/sokna-windows-116-rc1/artifact-index.json
+          if-no-files-found: error
+      - name: Publish qualified Cafe Panel UAT pre-release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag='windows-services-v1.1.16-rc.1'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-116-rc1'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if($LASTEXITCODE -eq 0){throw 'Existing release; refusing overwrite'}
+          @'
+          Windows Services 1.1.16-rc.1 — Cafe Panel UAT only.
+          Built from exact Windows 1.1.13-rc.1 installed family.
+          Runtime 1.0.5 -> 1.0.6: truthful worker business outcomes.
+          Print 6.2.9, Maintenance 0.3.6, Update Engine 0.3.6 and Recovery 0.1.1 remain at their installed Home component versions.
+          Cafe Recovery 0.1.2 known fingerprints retained.
+          Build/packaging and Runtime self-tests PASS on GitHub Windows.
+          Windows Cafe test-host UAT is PENDING; panel_update_ready=false until a signed real-host update proves success.
+          Not authorized for production use.
+          '@ | Set-Content "$out/RELEASE_NOTES.md" -Encoding UTF8
+          gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'SOKNA Windows Services 1.1.16-rc.1 — Cafe Panel UAT' --notes-file "$out/RELEASE_NOTES.md" --prerelease "$out/SOKNA-Windows-Services-Setup-1.1.16.exe" "$out/SHA256SUMS.txt" "$out/artifact-index.json"
+          if($LASTEXITCODE -ne 0){throw 'Pre-release creation failed'}
