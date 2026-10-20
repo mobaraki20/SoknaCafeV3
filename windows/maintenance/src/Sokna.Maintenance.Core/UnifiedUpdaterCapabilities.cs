@@ -10,7 +10,11 @@ public static class UnifiedUpdaterCapabilities
 
     public static UnifiedUpdaterCapabilitiesResult Current() => new(
         Format, 1, "signed_supervisor_hmac_v1",
-        new LocalRoutineActions(false, false, false, false),
+        // Signed HMAC routes are implemented; advertise their presence
+        // truthfully. This is NOT permission to mutate installed Local.
+        // HTTP actions enforce signed Stage, host/backup/identity and
+        // one-use Engine permit on every request.
+        new LocalRoutineActions(true, true, true, false),
         false,
         "LOCAL_CROSS_VERSION_UAT_REQUIRED",
         "Windows Foundation is installed, but Local cross-version Stage/Activate and recovery have not passed real-host UAT. Signed inbox transport alone does not authorize activation.",
