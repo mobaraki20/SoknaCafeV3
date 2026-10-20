@@ -1,0 +1,32 @@
+name: Maintenance V4 durable activation engineering
+on:
+  push:
+    branches:
+      - work/windows-maintenance-v4-durable-activate-20261020
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  durable-activation:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile Core and Supervisor including managed activation worker
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release --nologo -warnaserror
+          if ($LASTEXITCODE -ne 0) { throw 'Supervisor or durable worker compile failed' }
+      - name: Verify persistent reservation idempotency, restart quarantine and conflict
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.ActivationWorkerHarness/Sokna.Maintenance.ActivationWorkerHarness.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Durable activation contract failed' }
+      - name: Compile existing Update Engine
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Existing Engine regression' }
