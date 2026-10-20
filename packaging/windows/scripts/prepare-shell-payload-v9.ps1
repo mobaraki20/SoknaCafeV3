@@ -41,6 +41,13 @@ if(-not$coreRaw.Contains($oldHashDrift)){throw 'Expected R8 hash-drift core cont
 if(([regex]::Matches($coreRaw,[regex]::Escape($oldHashDrift))).Count-ne1){throw 'Expected exactly one R8 hash-drift core contract occurrence.'}
 $coreRaw=$coreRaw.Replace($oldHashDrift,$newHashDrift)
 
+# Keep released, SHA256-allowlisted Recovery Console 0.1.1 under the separately
+# frozen Recovery lifecycle. Unknown versions/hashes remain fail-closed.
+$oldVersionOlder="elseif(`$cmp-lt0){`$action='UPDATE';`$reason='version_older'}"
+$newVersionOlder="elseif(`$cmp-lt0){if(`$id-eq'maintenance-recovery-console'-and`$current-eq'0.1.1'-and(Compatible-Fingerprint `$m `$ih `$targetHash)){`$action='KEEP';`$reason='accepted_frozen_recovery_011'}else{`$action='UPDATE';`$reason='version_older'}}"
+if(([regex]::Matches($coreRaw,[regex]::Escape($oldVersionOlder))).Count-ne1){throw 'Expected exactly one Recovery version-older contract; refusing unsafe shell rewrite.'}
+$coreRaw=$coreRaw.Replace($oldVersionOlder,$newVersionOlder)
+
 $oldSubordinateKeep=@'
 if($r.Action-eq'KEEP'){$CurrentPhase='No mutation';if((Sha $r.InstalledPath)-ne$r.TargetHash){throw "Maintenance subordinate fingerprint mismatch: $($r.Id)"};Event 'component_action_completed' 'kept' @{action='KEEP';proof='no_stop_no_copy_no_registration_no_restart';after_sha256=(Sha $r.InstalledPath)};continue}
 '@.Trim()
