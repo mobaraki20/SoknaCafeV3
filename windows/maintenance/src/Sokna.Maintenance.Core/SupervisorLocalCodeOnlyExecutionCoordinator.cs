@@ -122,7 +122,7 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             {
                 var physical = new LocalSlotManager(_paths).InspectLegacyPhysicalCurrent();
                 return ActivateVerifiedLegacyPhysical(stageId, operatorId, idempotencyKey,
-                    operationType, requestHash, physical, lease);
+                    operationType, requestHash, physical, lease, prior?.OperationId);
             }
             catch (InvalidDataException ex) when (
                 ex.Message is "LEGACY_WEB_ALREADY_JUNCTION" or
@@ -133,7 +133,7 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
 
             // Repeat full signature, manifest target and physical slot proof
             // UNDER the live machine mutation lease immediately before Engine.
-            var verified = _proof.Inspect(stageId);
+            var verified = _proof.Inspect(stageId, prior?.OperationId);
             if (!verified.SignedStageVerified || !verified.PhysicalSiblingVerified ||
                 !verified.UnchangedMigrationsVerified || verified.ExecutionAuthorized ||
                 verified.PanelUpdateReady)
@@ -294,11 +294,11 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
     private LocalCodeOnlyExecutionOutcome ActivateVerifiedLegacyPhysical(
         string stageId, string operatorId, string idempotencyKey,
         string operationType, string requestHash, LocalInstallLayout physical,
-        MachineMutationLease lease)
+        MachineMutationLease lease, string? ownActivationOperationId)
     {
         // This inspection cryptographically re-verifies the original signed
         // Local-only release, the durable Stage and installed baseline.
-        var qualified = _signedStage.InspectActivationReadiness(stageId);
+        var qualified = _signedStage.InspectActivationReadiness(stageId, ownActivationOperationId);
         if (!qualified.StageEvidenceVerified || qualified.ReleaseType != "local_only" ||
             qualified.ActivationAllowed || qualified.PanelUpdateReady)
             throw new InvalidDataException("LEGACY_SIGNED_STAGE_NOT_QUALIFIED");
@@ -310,7 +310,7 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
         // A previous signed prepare-inactive POST must have already prepared
         // this exact candidate. Here we independently read and rehash it;
         // acquiring another machine lease inside Activate would deadlock.
-        var payload = _legacyCandidate.InspectExisting(stageId, operatorId);
+        var payload = _legacyCandidate.InspectExisting(stageId, operatorId, ownActivationOperationId);
         if (payload.TargetVersion == physical.Build ||
             !payload.ActiveSlotUnchanged || payload.PromotionQualified ||
             payload.ActivationPerformed || payload.DatabaseMutationPerformed ||
