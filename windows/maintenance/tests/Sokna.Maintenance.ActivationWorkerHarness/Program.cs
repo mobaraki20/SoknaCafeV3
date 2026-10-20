@@ -1,10 +1,25 @@
 using Sokna.Maintenance.Core;
 
+// CI-only mutation of throwaway test data: never operate on a real SOKNA root.
+static MaintenancePaths DisposableCiPaths(string dataRoot)
+{
+    var temp = Environment.GetEnvironmentVariable("RUNNER_TEMP");
+    if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true" ||
+        Environment.GetEnvironmentVariable("RUNNER_OS") != "Windows" ||
+        string.IsNullOrEmpty(temp))
+        throw new InvalidOperationException("CI_DISPOSABLE_ROOT_REQUIRED");
+    var path = Path.GetFullPath(dataRoot);
+    if (!path.StartsWith(Path.GetFullPath(temp).TrimEnd(Path.DirectorySeparatorChar)
+            + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        throw new InvalidOperationException("CI_ROOT_MUST_BE_UNDER_RUNNER_TEMP");
+    return new MaintenancePaths(path);
+}
+
 // This command writes ONLY synthetic staged-operation metadata to a disposable
 // test directory. It is NOT a signed Release Set and cannot install Local.
 if (args.Length == 2 && args[0] == "--seed-http-denial")
 {
-    var paths = new MaintenancePaths(Path.GetFullPath(args[1]));
+    var paths = DisposableCiPaths(args[1]);
     var ledger = new MaintenanceOperationStore(paths);
     var actor = "user:ci";
     var sourceRef = "synthetic-denial-stage-only";
@@ -14,6 +29,28 @@ if (args.Length == 2 && args[0] == "--seed-http-denial")
         kind, sourceRef, actor);
     var persisted = ledger.Update(seed, "staged");
     Console.WriteLine(persisted.OperationId);
+    return;
+}
+
+// Inject only a PERSISTENT reservation (never Engine execution) while a
+// disposable Supervisor is already listening. Do NOT send the in-memory worker
+// notification. The hosted worker's ledger timeout must discover this intent.
+if (args.Length == 5 && args[0] == "--reserve-http-denial")
+{
+    var paths = DisposableCiPaths(args[1]);
+    var stageId = args[2];
+    var actor = args[3];
+    var idem = args[4];
+    var ledger = new MaintenanceOperationStore(paths);
+    var journal = new DurableJournal(paths.JournalPath);
+    var state = new SupervisorStateStore(paths).LoadOrCreate();
+    var coordinator = new SupervisorLocalCodeOnlyExecutionCoordinator(
+        paths, ledger, null!, journal, state,
+        Path.Combine(paths.DataRoot, "NO_ENGINE_IN_CI.exe"), null!, null!);
+    var accepted = coordinator.ReserveActivation(stageId, actor, idem);
+    if (!accepted.Created || accepted.Operation.State != "accepted")
+        throw new InvalidOperationException("CI_LOST_SIGNAL_RESERVATION_NOT_ACCEPTED");
+    Console.WriteLine(accepted.Operation.OperationId);
     return;
 }
 
