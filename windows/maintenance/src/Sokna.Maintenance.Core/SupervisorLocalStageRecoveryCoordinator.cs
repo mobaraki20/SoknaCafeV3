@@ -112,7 +112,7 @@ public sealed class SupervisorLocalStageRecoveryCoordinator
     /// staged artifact re-hash required for manual recovery. NO state changes.
     /// This does not grant approval to activate a release.
     /// </summary>
-    public LocalActivationReadiness InspectActivationReadiness(string operationId)
+    public LocalActivationReadiness InspectActivationReadiness(string operationId, string? ownActivationOperationId = null)
     {
         if (string.IsNullOrWhiteSpace(operationId) || operationId.Length != 32 ||
             !operationId.All(char.IsAsciiHexDigit))
@@ -125,8 +125,8 @@ public sealed class SupervisorLocalStageRecoveryCoordinator
                 operation.State != "staged" ||
                 operation.ActivationPerformed || operation.DatabaseMutationPerformed)
                 throw new InvalidDataException("Only a completed canonical Local Stage may be inspected.");
-            if (_operations.ListBlocking().Count != 0)
-                throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
+            LocalUpdateOperationGate.RequireStageInspection(
+                _operations, operation, ownActivationOperationId);
 
             var receipt = VerifyCompleteEvidence(operation);
             var stagedManifestPath = Path.Combine(receipt.StageRoot, "release-set.json");
