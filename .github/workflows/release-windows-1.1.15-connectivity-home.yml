@@ -1,0 +1,121 @@
+name: Windows Services 1.1.15 Home Connectivity UAT Release
+
+on:
+  push:
+    branches:
+      - work/windows-services-1.1.15-connectivity-home-uat
+    paths:
+      - .github/workflows/release-windows-1.1.15-connectivity-home.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-services-115-connectivity-home
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Assert exact UAT package contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if((Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim() -ne '1.1.15'){throw 'Package version must be 1.1.15'}
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw | ConvertFrom-Json
+          $versions=@{}; foreach($row in $m.components){$versions[[string]$row.component_id]=[string]$row.version}
+          if($m.package_version -ne '1.1.15' -or $m.components.Count -ne 5){throw 'Invalid package manifest'}
+          if($versions['runtime'] -ne '1.0.6' -or $versions['print-agent'] -ne '6.2.9'){throw 'Unexpected Runtime/Print versions'}
+          if($versions['maintenance'] -ne '0.3.7' -or $versions['maintenance-update-engine'] -ne '0.3.7'){throw 'Maintenance baseline changed'}
+          if($versions['maintenance-recovery-console'] -ne '0.1.2'){throw 'Recovery baseline changed'}
+          $project=Get-Content windows/runtime/source/Sokna.Runtime.Service.csproj -Raw
+          if($project -notmatch '<Version>1\.0\.6</Version>'){throw 'Runtime file identity missing'}
+          if((Get-Content windows/runtime/source/Program.cs -Raw) -notmatch 'local_trigger_outcome_missing'){throw 'P0 Runtime contract missing'}
+          $compat=Get-Content packaging/windows/windows-services-compatibility-v1.json -Raw|ConvertFrom-Json
+          if($compat.package_version -ne '1.1.15' -or $compat.components.runtime.version -ne '1.0.6'){throw 'Compatibility matrix does not match'}
+      - name: Runtime source build and contract self-tests
+        shell: pwsh
+        run: |
+          dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --nologo
+          if($LASTEXITCODE -ne 0){throw 'Runtime build failed'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --scheduler-self-test
+          if($LASTEXITCODE -ne 0){throw 'Runtime scheduler contract failed'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
+          if($LASTEXITCODE -ne 0){throw 'Runtime health contract failed'}
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if($LASTEXITCODE -ne 0){throw 'Inno Setup installation failed'}
+      - name: Build full authoritative 5-component Windows V4 installer
+        shell: pwsh
+        timeout-minutes: 48
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-115'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+          if(-not $iscc){throw 'ISCC.exe missing'}
+          & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot $out -IsccExe $iscc
+          if($LASTEXITCODE -ne 0){throw 'Full package build failed'}
+          $idx=Get-Content "$out/artifact-index.json" -Raw|ConvertFrom-Json
+          if($idx.package_version -ne '1.1.15' -or $idx.component_count -ne 5 -or $idx.installer_kind -ne 'unified-v4-bootstrap'){throw 'Not authoritative five-component V4 package'}
+          if($idx.runtime.version -ne '1.0.6'){throw "Wrong Runtime binary $($idx.runtime.version)"}
+          $exe=Join-Path $out ([string]$idx.windows_services.file)
+          if(-not(Test-Path $exe)){throw 'Installer output missing'}
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha -ne $idx.windows_services.sha256){throw 'Installer checksum mismatch'}
+          $info=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+          if([string]$info.FileVersion -ne '1.1.15.0'){throw "Installer FileVersion mismatch: $($info.FileVersion)"}
+          $rec=Get-Content "$out/unified-shell-v4/windows-services-component-manifest-v2.json" -Raw|ConvertFrom-Json
+          $r=@($rec.components|Where-Object component_id -eq 'runtime')[0]
+          if($r.version -ne '1.0.6'){throw 'Installer embedded runtime manifest mismatch'}
+          "$sha  $([IO.Path]::GetFileName($exe))" | Out-File -FilePath "$out/SHA256SUMS.txt" -Encoding ascii
+          Copy-Item "$out/SHA256SUMS.txt" "$out/INSTALLER_SHA256SUMS.txt"
+      - name: Save engineering artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-services-115-home-uat-installer
+          path: |
+            ${{ runner.temp }}/sokna-windows-115/SOKNA-Windows-Services-Setup-1.1.15.exe
+            ${{ runner.temp }}/sokna-windows-115/SHA256SUMS.txt
+            ${{ runner.temp }}/sokna-windows-115/artifact-index.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Publish pre-release only after full package verification
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='windows-services-v1.1.15-rc.1'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-115'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if($LASTEXITCODE -eq 0){throw 'Refusing to replace existing release'}
+          @'
+          SOKNA Windows Services 1.1.15-rc.1 — HOME UAT ONLY.
+
+          Baseline: Windows Services 1.1.14 source (includes Maintenance 0.3.7).
+          Changed: Runtime 1.0.5 -> 1.0.6 with truthful Local business-result handling.
+          Unchanged service: Print Agent 6.2.9.
+          Other component versions preserved from 1.1.14 source, including Recovery 0.1.2.
+          Source: isolated branch work/windows-services-1.1.15-connectivity-home-uat.
+
+          Qualification: GitHub Windows build + Runtime scheduler and health self-tests + complete 5-component installer hash/version gates.
+          Real Windows 10 Home host UAT, network fault injection, rollback, and Cafe qualification remain PENDING.
+          Not authorized for Cafe or production rollout.
+          This installer does NOT modify Local Web, Public Edge, MySQL data, or user passwords.
+          '@ | Set-Content "$out/RELEASE_NOTES.md" -Encoding UTF8
+          gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "SOKNA Windows Services 1.1.15-rc.1 — Connectivity Home UAT" --notes-file "$out/RELEASE_NOTES.md" --prerelease "$out/SOKNA-Windows-Services-Setup-1.1.15.exe" "$out/SHA256SUMS.txt" "$out/artifact-index.json"
+          if($LASTEXITCODE -ne 0){throw 'GitHub prerelease creation failed'}
