@@ -372,5 +372,29 @@ internal static class ComponentPlannerSelfTest
         if (p.PrimaryRows.Count != 3) throw new InvalidOperationException("planner_primary_count");
         if (p.PrimaryRows[0].Action != ComponentAction.Keep || p.PrimaryRows[1].Action != ComponentAction.Keep || p.PrimaryRows[2].Action != ComponentAction.Install) throw new InvalidOperationException("planner_action_contract");
         if (!p.HasMutation || p.IsBlocked) throw new InvalidOperationException("planner_summary_contract");
+        // Reproduces the real Cafe startup error: changing the Maintenance parent
+        // record while enumerating dependent children used to invalidate List<T>.
+        var dependentRows = TestFixtures.UpgradePlan().Rows.ToList();
+        dependentRows[2] = dependentRows[2] with { Action = ComponentAction.Keep };
+        ComponentUpdatePlanner.PromoteDependentActions(dependentRows);
+        if (dependentRows[2].Action != ComponentAction.Repair)
+            throw new InvalidOperationException("planner_dependent_repair_enumeration");
+
+        var blockedRows = TestFixtures.UpgradePlan().Rows.ToList();
+        blockedRows[2] = blockedRows[2] with { Action = ComponentAction.Keep };
+        blockedRows[4] = blockedRows[4] with { Action = ComponentAction.Blocked };
+        ComponentUpdatePlanner.PromoteDependentActions(blockedRows);
+        if (blockedRows[2].Action != ComponentAction.Blocked)
+            throw new InvalidOperationException("planner_dependent_blocked_enumeration");
+
+        // Recovery Console 0.1.1 may only be kept with an exact allowlisted
+        // installed SHA256 and the expected independent lifecycle version.
+        if (!ComponentUpdatePlanner.CanKeepFrozenRecovery("maintenance-recovery-console", "0.1.1", "0.1.2", true, true) ||
+            ComponentUpdatePlanner.CanKeepFrozenRecovery("maintenance-recovery-console", "0.1.1", "0.1.2", false, true) ||
+            ComponentUpdatePlanner.CanKeepFrozenRecovery("maintenance-recovery-console", "0.1.1", "0.1.2", true, false) ||
+            ComponentUpdatePlanner.CanKeepFrozenRecovery("maintenance-recovery-console", "0.1.0", "0.1.2", true, true) ||
+            ComponentUpdatePlanner.CanKeepFrozenRecovery("runtime", "0.1.1", "0.1.2", true, true) ||
+            ComponentUpdatePlanner.CanKeepFrozenRecovery("maintenance-recovery-console", "0.1.1", "0.1.1", true, true))
+            throw new InvalidOperationException("planner_frozen_recovery_allowlist_contract");
     }
 }
