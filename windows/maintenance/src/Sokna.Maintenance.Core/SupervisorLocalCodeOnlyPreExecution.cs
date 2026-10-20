@@ -38,7 +38,7 @@ public sealed class SupervisorLocalCodeOnlyPreExecution
         _stages = stages;
     }
 
-    public LocalCodeOnlyPreExecutionEvidence Inspect(string stageOperationId)
+    public LocalCodeOnlyPreExecutionEvidence Inspect(string stageOperationId, string? ownActivationOperationId = null)
     {
         if (stageOperationId is not {Length: 32} ||
             !stageOperationId.All(char.IsAsciiHexDigit))
@@ -51,7 +51,7 @@ public sealed class SupervisorLocalCodeOnlyPreExecution
 
         // Re-verify full signed Preflight, signed manifest, package bytes and
         // installed baseline, rather than trusting a UI claim or stage flag.
-        var signed = _stages.InspectActivationReadiness(stageOperationId);
+        var signed = _stages.InspectActivationReadiness(stageOperationId, ownActivationOperationId);
         if (!signed.StageEvidenceVerified || signed.ReleaseType != "local_only")
             throw new InvalidDataException("CODE_ONLY_SIGNED_STAGE_NOT_QUALIFIED");
 
