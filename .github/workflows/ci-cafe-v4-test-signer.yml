@@ -1,0 +1,47 @@
+name: Cafe V4 UAT Signing Enrollment - Windows PowerShell Contract
+on:
+  push:
+    branches: [work/windows-maintenance-v4-cafe-uat-signing-enrollment-20261020]
+    paths:
+      - .github/workflows/ci-cafe-v4-test-signer.yml
+      - packaging/windows/tools/cafe-uat-issuer/Register-Cafe-Test-Issuer.ps1
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sign-and-reuse:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require Administrator and Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $who = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+          if (-not $who.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Runner is not elevated' }
+          if ($PSVersionTable.PSVersion.Major -ne 5) { throw 'Require Windows PowerShell 5.1' }
+      - name: Parse and execute one-time enrolment without private-key export
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $s = 'packaging/windows/tools/cafe-uat-issuer/Register-Cafe-Test-Issuer.ps1'
+          $tokens = $null; $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $s), [ref]$tokens, [ref]$errors)
+          if ($errors.Count) { $errors | ForEach-Object { Write-Error $_.Message }; throw 'PowerShell 5.1 parse failed' }
+          & $s
+          if ($LASTEXITCODE -ne 0) { throw 'Enrolment returned nonzero' }
+          $root=Join-Path $env:ProgramData 'SOKNA\Maintenance'
+          $p=Join-Path $root 'release-issuer\cafe-local-uat-issuer-v1.json'
+          $r=Get-Content $p -Raw|ConvertFrom-Json
+          if ($r.mode -ne 'TEST_ONLY_NO_PRODUCTION_QUALIFICATION' -or $r.private_key_exported -ne $false) { throw 'Unsafe issuer state' }
+          $trust=Join-Path $root ('trust\release-signing\'+$r.key_id+'.spki.pem')
+          if (-not (Test-Path $trust)) { throw 'Public trust was not installed' }
+          $pem=Get-Content $trust -Raw
+          if ($pem -notmatch 'BEGIN PUBLIC KEY' -or $pem -match 'PRIVATE KEY') { throw 'Public trust PEM incorrect' }
+          $cert=@(Get-ChildItem Cert:\LocalMachine\My|Where-Object Thumbprint -eq $r.certificate_thumbprint)
+          if ($cert.Count -ne 1 -or -not $cert[0].HasPrivateKey) { throw 'Non-exportable private key unavailable' }
+          # Repeat must NOT generate another signing key.
+          & $s
+          $r2=Get-Content $p -Raw|ConvertFrom-Json
+          if ($r2.key_id -ne $r.key_id -or $r2.certificate_thumbprint -ne $r.certificate_thumbprint) { throw 'Idempotent reuse failed' }
+          Write-Host 'CAFE_SIGNING_ENROLLMENT_AND_REUSE_PASS'
