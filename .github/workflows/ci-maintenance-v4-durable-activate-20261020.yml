@@ -72,3 +72,67 @@ jobs:
         run: |
           & ./windows/maintenance/tests/s7e3a-windows-apache-scm-http.ps1
           if($LASTEXITCODE -ne 0){throw 'Existing Windows Apache/NTFS crash regression failed'}
+
+  windows-positive-bootstrap-crash:
+    # Existing R7 real Supervisor process/Bootstrap regression, not a
+    # signed routine code-only activation and not production Home UAT.
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Enforce disposable Windows service fixture boundary
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+              -not $env:RUNNER_TEMP -or -not (Test-Path $env:RUNNER_TEMP)) {
+            throw 'BOOTSTRAP_ONLY_DISPOSABLE_WINDOWS_RUNNER'
+          }
+          if (Get-Service -Name SoknaApache -ErrorAction SilentlyContinue) {
+            throw 'REFUSE_TO_TOUCH_EXISTING_SOKNA_APACHE'
+          }
+      - name: Publish original Supervisor Engine and existing FakeApache/Bridge harnesses
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-v4-r7-regression-binaries'
+          New-Item -ItemType Directory -Path "$out/supervisor","$out/fake-apache","$out/bridge-harness" -Force | Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/supervisor"
+          if($LASTEXITCODE -ne 0){throw 'Supervisor publish failed'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/supervisor"
+          if($LASTEXITCODE -ne 0){throw 'Update Engine publish failed'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.FakeApache/Sokna.Maintenance.FakeApache.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/fake-apache"
+          if($LASTEXITCODE -ne 0){throw 'FakeApache publish failed'}
+          dotnet publish windows/maintenance/tests/Sokna.Maintenance.ProductionBridgeHarness/Sokna.Maintenance.ProductionBridgeHarness.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$out/bridge-harness"
+          if($LASTEXITCODE -ne 0){throw 'Bridge harness publish failed'}
+      - name: Reuse R7 positive durable Supervisor startup/adoption/restart test
+        shell: pwsh
+        run: |
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-v4-r7-regression-binaries'
+          & ./windows/maintenance/qualification/r7-supervisor-process-integration.ps1 `
+            -SupervisorExe (Join-Path $out 'supervisor/SoknaMaintenanceSupervisor.exe') `
+            -FakeApacheExe (Join-Path $out 'fake-apache/httpd.exe') `
+            -HarnessExe (Join-Path $out 'bridge-harness/SoknaMaintenanceProductionBridgeHarness.exe') `
+            -WorkspaceRoot (Join-Path $env:RUNNER_TEMP 'sokna-v4-r7-process')
+          if($LASTEXITCODE -ne 0){throw 'Existing R7 positive Supervisor test failed'}
+      - name: Reuse R7 supervised crash and recovery integration
+        shell: pwsh
+        run: |
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-v4-r7-regression-binaries'
+          & ./windows/maintenance/qualification/r7-supervisor-crash-recovery-integration.ps1 `
+            -SupervisorExe (Join-Path $out 'supervisor/SoknaMaintenanceSupervisor.exe') `
+            -FakeApacheExe (Join-Path $out 'fake-apache/httpd.exe') `
+            -HarnessExe (Join-Path $out 'bridge-harness/SoknaMaintenanceProductionBridgeHarness.exe') `
+            -WorkspaceRoot (Join-Path $env:RUNNER_TEMP 'sokna-v4-r7-crash')
+          if($LASTEXITCODE -ne 0){throw 'Existing R7 crash/recovery integration failed'}
+      - name: Preserve positive Supervisor regression evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-v4-pr26-positive-bootstrap-proof
+          path: |
+            ${{ runner.temp }}/sokna-v4-r7-process/R7_SUPERVISOR_PROCESS_INTEGRATION.json
+            ${{ runner.temp }}/sokna-v4-r7-crash/R7_SUPERVISOR_CRASH_RECOVERY_INTEGRATION.json
+          if-no-files-found: error
+          retention-days: 30
