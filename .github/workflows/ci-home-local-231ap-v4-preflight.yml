@@ -17,7 +17,7 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $p='packaging/windows/tools/home-uat-issuer'
-          $scripts=@('Register-Home-Test-Issuer.ps1','Register-Verified-HomeLocal231ap-Identity.ps1')
+          $scripts=@('Register-Home-Test-Issuer.ps1','Register-Verified-HomeLocal231ap-Identity.ps1','Combine-Public-Home-Reports.ps1')
           foreach($n in $scripts) {
             $errors=$null;$tokens=$null
             [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path (Join-Path $p $n)),[ref]$tokens,[ref]$errors)
@@ -60,3 +60,30 @@ jobs:
           $id=Join-Path $env:ProgramData 'SOKNA\Maintenance\installed-release-identity.json'
           if(Test-Path $id){throw 'Identity was created without valid installed Local proof'}
           Write-Host 'HOME_IDENTITY_FAIL_CLOSED_NO_HOST_PASS'
+      - name: Merge two synthetic public-only Home receipts as a single upload
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $desk=[Environment]::GetFolderPath('DesktopDirectory')
+          $temp=Join-Path $env:TEMP ('sokna-home-merge-test-'+[guid]::NewGuid().ToString('N'))
+          New-Item -Path $temp -ItemType Directory -Force | Out-Null
+          try {
+            $tr=Join-Path $temp 'public-enrollment-result.json'
+            $id=Join-Path $temp 'public-identity-result.json'
+            Set-Content -LiteralPath $tr -Value '{"status":"SUCCESS_TEST_SIGNING_TRUST_ENROLLED"}' -Encoding utf8
+            Set-Content -LiteralPath $id -Value '{"status":"SUCCESS_VERIFIED_LOCAL_IDENTITY_BOUND"}' -Encoding utf8
+            $a=Join-Path $desk 'SOKNA-Home-V4-Trust-Enrollment-ci-test.zip'
+            $b=Join-Path $desk 'SOKNA-Home-Local231ap-Identity-Bound-ci-test.zip'
+            Compress-Archive -LiteralPath $tr -DestinationPath $a -Force
+            Compress-Archive -LiteralPath $id -DestinationPath $b -Force
+            & 'packaging/windows/tools/home-uat-issuer/Combine-Public-Home-Reports.ps1'
+            if (-not $?) { throw 'Home report combination failed' }
+            $result=Get-ChildItem -LiteralPath $desk -Filter 'SOKNA-Home-V4-Local-Preflight-Results-*.zip' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if (-not $result) { throw 'Home combined ZIP missing' }
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $archive=[IO.Compression.ZipFile]::OpenRead($result.FullName)
+            try {
+              if ($archive.Entries.Count -ne 2) { throw 'Expected exactly two nested public reports' }
+            } finally { $archive.Dispose() }
+            Write-Host 'HOME_ONE_ZIP_REPORT_PASS'
+          } finally { Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue }
