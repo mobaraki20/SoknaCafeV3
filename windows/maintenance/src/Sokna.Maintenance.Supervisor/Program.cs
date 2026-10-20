@@ -65,6 +65,8 @@ var localReleaseStageCoordinator = new SupervisorLocalReleaseStageCoordinator(pa
 var localSlotCoordinator = new SupervisorLocalSlotCoordinator(paths, operations, journal, state, updateEnginePath);
 var productionMigrationCoordinator = new SupervisorProductionMigrationCoordinator(paths, operations, journal, state, updateEnginePath);
 var adoptionQueue = new LocalSlotAdoptionQueue(paths);
+var codeOnlyActivationWorker = new LocalCodeOnlyActivationWorker(
+    codeOnlyExecution, operations);
 journal.Append("supervisor.starting", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?>
 {
     ["pid"] = Environment.ProcessId,
@@ -86,6 +88,9 @@ builder.Services.AddSingleton(journal);
 builder.Services.AddSingleton(state);
 builder.Services.AddSingleton(LocalSlotAdoptionWorkerOptions.Default);
 builder.Services.AddHostedService<LocalSlotAdoptionWorker>();
+builder.Services.AddSingleton(codeOnlyActivationWorker);
+builder.Services.AddHostedService(provider =>
+    provider.GetRequiredService<LocalCodeOnlyActivationWorker>());
 var app = builder.Build();
 
 app.Use(async (context, next) =>
@@ -455,30 +460,7 @@ app.MapPost("/v1/local-updates/activate-code-only", async context =>
         var reservation = codeOnlyExecution.ReserveActivation(
             request.StageOperationId, request.OperatorId, key);
         if (reservation.Created)
-        {
-            var durableOperationId = reservation.Operation.OperationId;
-            _ = Task.Run(() =>
-            {
-                try
-                {
-                    _ = codeOnlyExecution.ExecuteReservedActivation(
-                        request.StageOperationId, request.OperatorId, key);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine(
-                        "Local background activation requires quarantine: " +
-                        ex.GetType().Name);
-                    try { codeOnlyExecution.QuarantineActivationFailure(durableOperationId); }
-                    catch (Exception evidenceError)
-                    {
-                        Console.Error.WriteLine(
-                            "Local activation evidence quarantine failed: " +
-                            evidenceError.GetType().Name);
-                    }
-                }
-            });
-        }
+            codeOnlyActivationWorker.NotifyAccepted();
         var phase = reservation.Operation.State;
         var pending = phase is "accepted" or "running" or "activating";
         await WriteEnvelope(context,
