@@ -15,6 +15,11 @@ public sealed class LocalCodeOnlyActivationWorker : BackgroundService
     private readonly SupervisorLocalCodeOnlyExecutionCoordinator _coordinator;
     private readonly MaintenanceOperationStore _operations;
     private readonly SemaphoreSlim _wake = new(0, 1);
+    // Persisting a reservation and signalling the hosted worker are two
+    // separate operations. If the signal is lost but Supervisor stays alive,
+    // bounded ledger inspection must discover the durable accepted intent.
+    // A process restart is different: startup quarantine runs before hosting.
+    private static readonly TimeSpan LostSignalRecoveryInterval = TimeSpan.FromSeconds(5);
 
     public LocalCodeOnlyActivationWorker(
         SupervisorLocalCodeOnlyExecutionCoordinator coordinator,
@@ -36,7 +41,12 @@ public sealed class LocalCodeOnlyActivationWorker : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                await _wake.WaitAsync(stoppingToken);
+                // Fast path: a signed HTTP POST signals immediately.
+                // Safety path: a lost notification cannot strand a durable
+                // reservation forever in the SAME running Supervisor.
+                // Timed out waits check only persisted operations; no package
+                // path, unsigned request, or retry permission is inferred.
+                await _wake.WaitAsync(LostSignalRecoveryInterval, stoppingToken);
                 // Any active operation except the current accepted reservation
                 // already blocks another mutation in the core coordinator.
                 // Never infer queued work from a stale HTTP response.
