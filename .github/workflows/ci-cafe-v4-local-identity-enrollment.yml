@@ -1,0 +1,51 @@
+name: Cafe V4 Local 231ap Identity Enrollment source contract
+on:
+  push:
+    branches: [work/windows-maintenance-v4-cafe-uat-signing-enrollment-20261020]
+    paths:
+      - packaging/windows/tools/cafe-uat-issuer/Register-Verified-Local231ap-Identity.ps1
+      - packaging/windows/tools/cafe-uat-issuer/readonly-migration-proof.php
+      - .github/workflows/ci-cafe-v4-local-identity-enrollment.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-powershell-source:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse exact script using Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $script='packaging/windows/tools/cafe-uat-issuer/Register-Verified-Local231ap-Identity.ps1'
+          $tokens=$null;$errors=$null
+          [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors)
+          if($errors.Count){$errors|ForEach-Object{Write-Host $_.Message};throw 'PS 5.1 parser rejected identity enrollment source'}
+          $s=Get-Content -LiteralPath $script -Raw
+          foreach($must in @('04fbce2d6a98042a05b023da8cd5ce0463365a621103a02214c68cb5a5331f7c','sokna-v3-connections-device-lifecycle-closure-20261017','installed-release-identity.json','->appliedVersions()','Read-only PHP/DB installation proof','Test-Path -LiteralPath $dest','File]::Move($temp, $dest)','package_for_install = $false','database_mutation = $false')){
+            if(-not $s.Contains($must)){throw ('Missing exact safe enrollment proof: '+$must)}
+          }
+          foreach($banned in @('Set-Service ','Stop-Service ','Start-Service ','New-Service ','DROP DATABASE','INSERT INTO schema_migrations','Export-PfxCertificate','-KeyExportPolicy Exportable','Remove-Item -LiteralPath $dest')){
+            if($s.Contains($banned)){throw ('Forbidden test identity mutation pattern: '+$banned)}
+          }
+          Write-Host 'CAFE_LOCAL_IDENTITY_PS51_CONTRACT_PASS (source only; host test not performed)'
+  php-embedded-readonly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint read-only migration verifier and forbid mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          p=packaging/windows/tools/cafe-uat-issuer/readonly-migration-proof.php
+          php -l "$p"
+          python3 - <<'PY'
+          import pathlib
+          p=pathlib.Path('packaging/windows/tools/cafe-uat-issuer/readonly-migration-proof.php').read_text()
+          assert 'schema_migrations' not in p or 'migrate()' not in p
+          for bad in ['->migrate()', 'DELETE FROM', 'UPDATE schema_migrations', 'INSERT INTO schema_migrations', 'DROP TABLE']:
+              assert bad not in p, bad
+          assert 'appliedVersions()' in p and 'catalog()' in p and 'binding_current' in p
+          print('CAFE_LOCAL_IDENTITY_PHP_READONLY_LINT_PASS')
+          PY
