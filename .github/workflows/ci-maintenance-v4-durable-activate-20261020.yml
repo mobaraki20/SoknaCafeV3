@@ -25,6 +25,13 @@ jobs:
         run: |
           dotnet run --project windows/maintenance/tests/Sokna.Maintenance.ActivationWorkerHarness/Sokna.Maintenance.ActivationWorkerHarness.csproj -c Release --nologo
           if ($LASTEXITCODE -ne 0) { throw 'Durable activation contract failed' }
+      - name: Prove signed HTTP 202, durable operation polling, managed worker and safe denial
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/p26-signed-activate-http-denial.ps1 `
+            -SupervisorDll 'windows/maintenance/src/Sokna.Maintenance.Supervisor/bin/Release/net8.0-windows/SoknaMaintenanceSupervisor.dll' `
+            -SeedHarnessDll 'windows/maintenance/tests/Sokna.Maintenance.ActivationWorkerHarness/bin/Release/net8.0-windows/Sokna.Maintenance.ActivationWorkerHarness.dll'
+          if ($LASTEXITCODE -ne 0) { throw 'Signed async activation HTTP contract failed' }
       - name: Compile existing Update Engine
         shell: pwsh
         run: |
