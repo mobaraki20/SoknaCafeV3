@@ -37,3 +37,38 @@ jobs:
         run: |
           dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release --nologo
           if ($LASTEXITCODE -ne 0) { throw 'Existing Engine regression' }
+
+  windows-existing-stage-apache:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build exact existing signed-stage fixture, Supervisor, Engine and lease probe
+        shell: pwsh
+        run: |
+          foreach($project in @(
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj',
+            'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj',
+            'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/Sokna.Maintenance.MachineLeaseProbe.csproj'
+          )){
+            dotnet build $project --configuration Release --nologo -warnaserror
+            if($LASTEXITCODE -ne 0){throw "Build failed: $project"}
+          }
+      - name: Run existing authenticated Release Set Inbox Preflight Stage and recovery fixture
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/p2d-signed-supervisor-preflight.ps1 `
+            -SupervisorDll 'windows/maintenance/src/Sokna.Maintenance.Supervisor/bin/Release/net8.0-windows/SoknaMaintenanceSupervisor.dll' `
+            -FixtureDll 'windows/maintenance/tests/Sokna.Maintenance.P2Fixture/bin/Release/net8.0-windows/Sokna.Maintenance.P2Fixture.dll' `
+            -LeaseProbeDll 'windows/maintenance/tests/Sokna.Maintenance.MachineLeaseProbe/bin/Release/net8.0-windows/Sokna.Maintenance.MachineLeaseProbe.dll' `
+            -EngineDll 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll'
+          if($LASTEXITCODE -ne 0){throw 'Existing signed stage/recovery regression failed'}
+      - name: Run existing disposable REAL Apache Windows SCM NTFS junction crash regression
+        shell: pwsh
+        run: |
+          & ./windows/maintenance/tests/s7e3a-windows-apache-scm-http.ps1
+          if($LASTEXITCODE -ne 0){throw 'Existing Windows Apache/NTFS crash regression failed'}
