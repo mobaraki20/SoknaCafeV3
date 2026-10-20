@@ -1,0 +1,31 @@
+name: P0 Windows Runtime business outcome engineering
+on:
+  push:
+    branches:
+      - work/windows-runtime-business-outcome-p0-20261020
+    paths:
+      - windows/runtime/source/**
+      - .github/workflows/ci-runtime-business-outcome-p0.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-contract:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Runtime 1.0.5
+        shell: pwsh
+        run: dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --nologo
+      - name: Scheduler + business outcome contract self-test
+        shell: pwsh
+        run: dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --scheduler-self-test
+      - name: Runtime health model self-test
+        shell: pwsh
+        run: dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
