@@ -1,5 +1,22 @@
 using Sokna.Maintenance.Core;
 
+// This command writes ONLY synthetic staged-operation metadata to a disposable
+// test directory. It is NOT a signed Release Set and cannot install Local.
+if (args.Length == 2 && args[0] == "--seed-http-denial")
+{
+    var paths = new MaintenancePaths(Path.GetFullPath(args[1]));
+    var ledger = new MaintenanceOperationStore(paths);
+    var actor = "user:ci";
+    var sourceRef = "synthetic-denial-stage-only";
+    var kind = "update.local-stage";
+    var hash = MaintenanceOperationStore.CanonicalRequestHash(kind, sourceRef, actor);
+    var (seed, _) = ledger.GetOrCreate("p26-http-denial-stage", hash,
+        kind, sourceRef, actor);
+    var persisted = ledger.Update(seed, "staged");
+    Console.WriteLine(persisted.OperationId);
+    return;
+}
+
 var directory = Path.Combine(Path.GetTempPath(), "SoknaV4DurableActivate-" + Guid.NewGuid().ToString("N"));
 try
 {
