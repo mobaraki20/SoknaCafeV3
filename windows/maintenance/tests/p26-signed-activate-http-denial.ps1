@@ -131,23 +131,11 @@ try{
   Assert ($afterRestart.Status -eq 200 -and $afterRestart.Body.data.state -eq 'failed') 'RESTART_LOST_DURABLE_RESULT'
   $afterCapabilities=Signed 'GET' '/v1/updates/capabilities' 'web-adapter' $null
   Assert (-not[bool]$afterCapabilities.Body.data.panel_update_ready) 'POST_RESTART_FALSE_READY'
-  # A durable accepted intent could be committed just before the signed
-  # endpoint signals Worker. Simulate losing ONLY the in-process notification:
-  # a CI-only external process reserves the exact known synthetic Stage in
-  # the same disposable ledger while Supervisor stays alive.
-  # This is NOT an alternate install endpoint or a bypass to active Web.
+  # Simulate a lost in-process Worker notification after the durable write.
+  # Only a CI fixture can reserve a synthetic Stage without the HTTP signal.
   $lostSignal=@(& dotnet $SeedHarnessDll --reserve-http-denial $root $stageId 'user:ci' 'p26-durable-no-notify')
   Assert ($LASTEXITCODE -eq 0 -and $lostSignal.Count -eq 1 -and
-    [string]$lostSignal[0] -match '^[a-f0-9]{32}
-}
-finally{
-  Stop-Supervisor $server
-  if($regCreated -and (Test-Path $reg)){Remove-Item -LiteralPath $reg -Recurse -Force}
-  if((Test-Path $root) -and ($root -like (Join-Path $env:RUNNER_TEMP 'SoknaP26SignedHttp-*'))){
-    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
-  }
-}
-) 'UNSIGNALED_RESERVATION_NOT_PERSISTED'
+    [string]$lostSignal[0] -match '^[a-f0-9]{32}$') 'UNSIGNALED_RESERVATION_NOT_PERSISTED'
   $lostId=[string]$lostSignal[0]
   $lostFinal=$null
   for($i=0;$i -lt 85;$i++){
