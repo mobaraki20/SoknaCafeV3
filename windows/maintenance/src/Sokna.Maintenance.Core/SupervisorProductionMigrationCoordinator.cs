@@ -368,7 +368,11 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
         var requestRef = $"production-local-slot-recovery:{state.ExpectedBuild}:{state.UpdatedAtUtc:O}";
         var requestHash = MaintenanceOperationStore.CanonicalRequestHash("update.local-slot-recover", requestRef, operatorId);
         var (operation, created) = _operations.GetOrCreate(idempotencyKey, requestHash, "update.local-slot-recover", requestRef, operatorId);
-        if (operation.State == "committed") return new(operation, created, Reconciled: !created);
+        if (operation.State == "committed")
+        {
+            TryReconcileBootstrapAfterSignedRecovery(operation);
+            return new(operation, created, Reconciled: !created);
+        }
         if (operation.State == "failed") return new(operation, created, Reconciled: !created);
 
         if (!File.Exists(_engineExecutable))
@@ -433,6 +437,10 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 activationPerformed: state.ActivationPerformed || StableWebIsJunction(state.StableWebRoot),
                 databaseMutationPerformed: false);
             Journal("update.local_slot_recovery.committed", operation);
+            // A signed and PHYSICALLY verified recovery must also settle the
+            // exact Bootstrap migration's durable recovery_required blocker.
+            // Never do this on an unauthenticated operation or Engine failure.
+            TryReconcileBootstrapAfterSignedRecovery(operation);
             return new(operation, created, Reconciled: !created);
         }
         catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException)
@@ -447,6 +455,83 @@ public sealed class SupervisorProductionMigrationCoordinator : IProductionLocalS
                 databaseMutationPerformed: false);
             Journal("update.local_slot_recovery.failed", operation);
             return new(operation, created, Reconciled: !created);
+        }
+    }
+
+    /// <summary>
+    /// The Recovery Console operation has already COMMITTED (signed HMAC
+    /// authority, completed Engine response). Reuse the existing Bootstrap
+    /// queue's full NTFS junction + managed-tree readback, then and ONLY THEN
+    /// settle its exact original migration blocker. No blind retry, no new
+    /// Engine invocation, no Public or database mutation.
+    ///
+    /// Crash safe: if the queue was committed but the original operation was
+    /// not yet settled, the committed-recovery idempotency path reruns the
+    /// same physical attestation and completes the ledger transition.
+    /// </summary>
+    private void TryReconcileBootstrapAfterSignedRecovery(
+        MaintenanceOperation signedRecovery)
+    {
+        try
+        {
+            if (signedRecovery.OperationType != "update.local-slot-recover" ||
+                signedRecovery.State != "committed" ||
+                signedRecovery.ResultCode != "LOCAL_SLOT_RECOVERY_COMMITTED")
+                throw new InvalidDataException("BOOTSTRAP_RECOVERY_AUTHORITY_UNPROVEN");
+
+            var queue = new LocalSlotAdoptionQueue(_paths);
+            var status = queue.LoadStatus();
+            var request = queue.LoadRequest();
+            if (status is null || request is null || status.RequestId != request.RequestId ||
+                status.State is not ("recovery_required" or "committed") ||
+                status.LastOperationId is null)
+                return; // No Bootstrap queue owned by this recovery.
+
+            var migration = _operations.Get(status.LastOperationId)
+                ?? throw new InvalidDataException("BOOTSTRAP_MIGRATION_OPERATION_MISSING");
+            var expectedRef = $"production-local-slot-migration:{request.ExpectedBuild}:" +
+                $"{request.ExpectedManagedFiles}:{request.ExpectedManagedTreeSha256}";
+            var expectedHash = MaintenanceOperationStore.CanonicalRequestHash(
+                "update.local-slot-migrate", expectedRef, "supervisor-bootstrap");
+            if (migration.OperationType != "update.local-slot-migrate" ||
+                migration.OperatorId != "supervisor-bootstrap" ||
+                migration.PackageRef != expectedRef ||
+                migration.CanonicalRequestSha256 != expectedHash ||
+                migration.State is not ("recovery_required" or "committed") ||
+                !migration.ActivationPerformed || migration.DatabaseMutationPerformed)
+                throw new InvalidDataException("BOOTSTRAP_RECOVERY_MIGRATION_IDENTITY_UNPROVEN");
+
+            if (_operations.ListBlocking().Any(o => o.OperationId != migration.OperationId))
+                throw new InvalidOperationException("BOOTSTRAP_RECOVERY_FOREIGN_BLOCKER");
+
+            // All evidence is replay-checked even if queue was previously
+            // committed. A reported success alone cannot settle the ledger.
+            var proof = queue.TryReconcileVerifiedRecovery();
+            if (proof is not { State: "committed",
+                LastCode: "LOCAL_ADOPTION_RECOVERY_COMMITTED" } ||
+                proof.LastOperationId != migration.OperationId)
+                throw new InvalidDataException("BOOTSTRAP_RECOVERY_PHYSICAL_PROOF_UNAVAILABLE");
+
+            if (migration.State == "recovery_required")
+            {
+                var closed = _operations.Update(migration, "committed",
+                    "LOCAL_SLOT_SIGNED_RECOVERY_RECONCILED",
+                    "Original bootstrap migration reconciled after signed Recovery Console " +
+                    "and independent live Local slot/tree attestation.",
+                    activationPerformed: true, databaseMutationPerformed: false);
+                Journal("update.local_adoption.signed_recovery_reconciled", closed);
+            }
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or
+            InvalidOperationException or UnauthorizedAccessException or JsonException)
+        {
+            // The signed recovery operation is already committed; never
+            // rewrite it as failed. Original recovery_required evidence stays
+            // blocking until independently reconciled or manually inspected.
+            _journal.Append("update.local_adoption.signed_recovery_reconcile_blocked",
+                _supervisorState.InstanceId, _supervisorState.InstallGeneration,
+                new Dictionary<string, object?> { ["recovery_operation_id"] = signedRecovery.OperationId,
+                    ["error_code"] = error.GetType().Name });
         }
     }
 

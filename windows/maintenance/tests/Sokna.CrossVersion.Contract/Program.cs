@@ -54,9 +54,10 @@ try {
  var caps = UnifiedUpdaterCapabilities.Current();
  Check(caps.Format=="sokna-unified-updater-capabilities-v1" && caps.SchemaVersion==1, "capability schema v1");
  Check(!caps.PanelUpdateReady && caps.BlockingCode=="LOCAL_CROSS_VERSION_UAT_REQUIRED" &&
-       !caps.LocalRoutine.Preflight && !caps.LocalRoutine.Stage &&
-       !caps.LocalRoutine.Activate && !caps.LocalRoutine.Recover,
-       "unimplemented ordinary Local update never advertised ready");
+       caps.LocalRoutine.Preflight && caps.LocalRoutine.Stage &&
+       caps.LocalRoutine.Activate && !caps.LocalRoutine.Recover &&
+       caps.InboxTransportAvailable,
+       "implemented signed verbs exposed, but no unconditional install authority");
  // An older active operation must not disappear merely because there are >100 newer receipts.
  var historyPaths = new MaintenancePaths(Path.Combine(baseDir, "operation-history"));
  var store = new MaintenanceOperationStore(historyPaths);
