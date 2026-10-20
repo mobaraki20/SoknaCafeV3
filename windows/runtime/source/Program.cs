@@ -42,6 +42,50 @@ internal sealed class RuntimeTriggerHttpException(int statusCode,string failureC
     public string FailureClass { get; }=failureClass;
     public int RetryAfterSeconds { get; }=retryAfterSeconds;
 }
+// HTTP 2xx acknowledges delivery, not business success. Never include exception text
+// or untrusted response body in Runtime health/logs.
+internal sealed record RuntimeTriggerOutcome(bool WorkerCompleted,bool WorkerSuccess,string ErrorCode)
+{
+    public static RuntimeTriggerOutcome Parse(string json)
+    {
+        if(string.IsNullOrWhiteSpace(json)||json.Length>65536)throw new InvalidOperationException("local_trigger_outcome_invalid");
+        using var document=JsonDocument.Parse(json);
+        var obj=document.RootElement;
+        if(obj.ValueKind!=JsonValueKind.Object||!RequiredBool(obj,"accepted",false)||!RequiredBool(obj,"delivery_accepted",true))
+            throw new InvalidOperationException("local_trigger_delivery_not_accepted");
+        if(!TryBool(obj,"worker_completed",out var completed)||!TryBool(obj,"worker_success",out var successful))
+            throw new InvalidOperationException("local_trigger_outcome_missing");
+        var error=obj.TryGetProperty("worker_error_code",out var code)&&code.ValueKind==JsonValueKind.String?code.GetString()??"":"";
+        if(successful&&!completed)throw new InvalidOperationException("local_trigger_outcome_invalid");
+        if(!System.Text.RegularExpressions.Regex.IsMatch(error,"^[a-zA-Z0-9_.-]{0,80}$"))error="business_operation_failed";
+        return new RuntimeTriggerOutcome(completed,successful,successful?"":string.IsNullOrEmpty(error)?"business_operation_failed":error);
+    }
+    private static bool TryBool(JsonElement source,string name,out bool value)
+    {
+        value=false;
+        if(!source.TryGetProperty(name,out var prop))return false;
+        if(prop.ValueKind==JsonValueKind.True){value=true;return true;}
+        if(prop.ValueKind==JsonValueKind.False){return true;}
+        return false;
+    }
+    private static bool RequiredBool(JsonElement source,string name,bool missingMeansTrue=true)
+    {
+        if(!source.TryGetProperty(name,out var prop))return missingMeansTrue;
+        return prop.ValueKind==JsonValueKind.True;
+    }
+    public static void SelfTest()
+    {
+        var good=Parse("{\"accepted\":true,\"delivery_accepted\":true,\"worker_completed\":true,\"worker_success\":true}");
+        if(!good.WorkerCompleted||!good.WorkerSuccess)throw new InvalidOperationException("runtime_outcome_success_test_failed");
+        var failed=Parse("{\"accepted\":true,\"worker_completed\":true,\"worker_success\":false,\"worker_error_code\":\"public_unreachable\"}");
+        if(failed.WorkerSuccess||failed.ErrorCode!="public_unreachable")throw new InvalidOperationException("runtime_outcome_business_test_failed");
+        var pending=Parse("{\"accepted\":true,\"worker_completed\":false,\"worker_success\":false}");
+        if(pending.WorkerCompleted||pending.WorkerSuccess)throw new InvalidOperationException("runtime_outcome_pending_test_failed");
+        try{Parse("{\"accepted\":true}");throw new InvalidOperationException("runtime_outcome_missing_accepted");}
+        catch(InvalidOperationException ex) when(ex.Message=="local_trigger_outcome_missing"){}
+    }
+}
+
 internal sealed record RuntimeHealthSnapshot(bool success,int contract_version,string runtime_version,string instance_id,string status,DateTimeOffset started_at,DateTimeOffset last_seen_at,string[] capabilities,RuntimeSchedulerHealth scheduler,Dictionary<string,RuntimeTriggerHealth> triggers,Dictionary<string,RuntimeComponentHealth> supervised_components);
 
 internal static class RuntimeVersionInfo
@@ -107,6 +151,14 @@ internal static class RuntimeSchedulerPolicy
         foreach(var seconds in new[]{15,30,60})if(RuntimeSchedulerPolicy.EffectiveIntervalSeconds(new ScheduledTrigger("maintenance.test",seconds))!=seconds)throw new InvalidOperationException("runtime_scheduler_slow_cadence_changed");
         if(RuntimeSchedulerPolicy.EffectiveIntervalSeconds(new ScheduledTrigger("custom.fast",1))!=5)throw new InvalidOperationException("runtime_scheduler_fast_allowlist_bypass");
         if(TriggerBudgetMilliseconds("public.relay_sync")!=4500||TriggerBudgetMilliseconds("public.projection_sync")!=15000)throw new InvalidOperationException("runtime_scheduler_budget_invalid");
+        var business=new RuntimeTriggerState(new ScheduledTrigger("public.relay_sync",1));
+        if(!business.TryStart(t0,out var bizDue))throw new InvalidOperationException("runtime_business_due_missing");
+        business.CompleteBusinessFailure(t0.AddMilliseconds(10),bizDue,"public_unreachable");
+        if(business.LastErrorCode!="public_unreachable"||business.ConsecutiveFailures!=1||business.NextRunAt!=t0.AddSeconds(1))throw new InvalidOperationException("runtime_business_health_invalid");
+        if(!business.TryStart(t0.AddSeconds(1),out var nextBizDue)||nextBizDue==bizDue)throw new InvalidOperationException("runtime_business_retry_identity_must_rotate");
+        business.CompleteSuccess(t0.AddSeconds(1).AddMilliseconds(10),nextBizDue);
+        if(business.LastErrorCode is not null||business.ConsecutiveFailures!=0)throw new InvalidOperationException("runtime_business_recovery_invalid");
+        RuntimeTriggerOutcome.SelfTest();
         var retryAfter=FailureBackoff(1,1,"runtime-selftest",17);if(retryAfter<TimeSpan.FromSeconds(17)||retryAfter>TimeSpan.FromSeconds(18.001))throw new InvalidOperationException("runtime_scheduler_retry_after_invalid");
         var budget=new RuntimeTriggerState(new ScheduledTrigger("public.relay_sync",1));
         for(var i=0;i<RetryBudgetMaxAttempts;i++)budget.CompleteAmbiguousFailure(t0.AddSeconds(i),"httprequestexception","budget-selftest");
@@ -142,6 +194,17 @@ internal sealed class RuntimeTriggerState
     public void CompleteSuccess(DateTimeOffset completedAt,DateTimeOffset scheduledAt)
     {
         LastCompletedAt=completedAt;LastErrorCode=null;ConsecutiveFailures=0;RetryNotBefore=null;RetryWindowStartedAt=DateTimeOffset.MinValue;RetryAttemptsInWindow=0;
+        var cadenceNext=scheduledAt.AddSeconds(EffectiveIntervalSeconds);
+        NextRunAt=cadenceNext>completedAt?cadenceNext:completedAt;
+        InFlight=false;InFlightTask=null;
+    }
+    // The Local handler ran and returned a business failure. Do not replay its durable
+    // request id; the next scheduled intent gets a new id, with Local's own WAN breaker
+    // controlling outbound load.
+    public void CompleteBusinessFailure(DateTimeOffset completedAt,DateTimeOffset scheduledAt,string errorCode)
+    {
+        LastCompletedAt=completedAt;LastErrorCode=errorCode;ConsecutiveFailures++;
+        RetryNotBefore=null;RetryWindowStartedAt=DateTimeOffset.MinValue;RetryAttemptsInWindow=0;
         var cadenceNext=scheduledAt.AddSeconds(EffectiveIntervalSeconds);
         NextRunAt=cadenceNext>completedAt?cadenceNext:completedAt;
         InFlight=false;InFlightTask=null;
@@ -258,8 +321,24 @@ internal sealed class RuntimeEngine : IDisposable
         deadlineCts.CancelAfter(budgetMs);
         try
         {
-            await SendTrigger(state.Trigger.Key,scheduledAt,budgetMs,deadlineCts.Token);
-            lock(stateGate)state.CompleteSuccess(DateTimeOffset.UtcNow,scheduledAt);
+            var outcome=await SendTrigger(state.Trigger.Key,scheduledAt,budgetMs,deadlineCts.Token);
+            if(!outcome.WorkerCompleted)
+            {
+                // Delivery was accepted, but the previous request may still be executing.
+                // Reuse the same idempotency key after bounded backoff, not a new intent.
+                lock(stateGate)state.CompleteAmbiguousFailure(DateTimeOffset.UtcNow,"local_worker_pending",retryKey);
+            }
+            else if(!outcome.WorkerSuccess)
+            {
+                bool log;
+                lock(stateGate)
+                {
+                    state.CompleteBusinessFailure(DateTimeOffset.UtcNow,scheduledAt,outcome.ErrorCode);
+                    log=state.ConsecutiveFailures==1||state.ConsecutiveFailures%30==0;
+                }
+                if(log)SafeLog("trigger_business_error "+state.Trigger.Key+" "+outcome.ErrorCode);
+            }
+            else lock(stateGate)state.CompleteSuccess(DateTimeOffset.UtcNow,scheduledAt);
         }
         catch(RuntimeTriggerHttpException ex)
         {
@@ -290,7 +369,26 @@ internal sealed class RuntimeEngine : IDisposable
             var code=SafeCode(ex);lock(stateGate)state.CompleteDefinitiveFailure(DateTimeOffset.UtcNow,code,retryKey);SafeLog("trigger_error "+state.Trigger.Key+" "+code);
         }
     }
-    private async Task SendTrigger(string key,DateTimeOffset scheduledAt,int budgetMs,CancellationToken cancellationToken){var identity=$"{options.InstanceId}|{key}|{scheduledAt.ToUnixTimeSeconds()}";var digest=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();var requestId="rt-"+digest[..48];var correlationId="corr-"+digest[48..];var deadlineAt=DateTimeOffset.UtcNow.AddMilliseconds(budgetMs);var body=JsonSerializer.Serialize(new{request_id=requestId,runtime_instance_id=options.InstanceId,trigger_key=key,requested_at=scheduledAt,correlation_id=correlationId,budget_ms=budgetMs,deadline_at=deadlineAt});using var req=new HttpRequestMessage(HttpMethod.Post,new Uri(new Uri(options.LocalBaseUrl),"/internal/runtime/v1/trigger"));req.Headers.Authorization=new AuthenticationHeaderValue("Bearer",localToken);req.Headers.Add("X-Sokna-Runtime-Contract","1");req.Content=new StringContent(body,Encoding.UTF8,"application/json");using var response=await http.SendAsync(req,cancellationToken);if(!response.IsSuccessStatusCode){var status=(int)response.StatusCode;throw new RuntimeTriggerHttpException(status,LocalFailureClass(status),RetryAfterSeconds(response));}}
+    private async Task<RuntimeTriggerOutcome> SendTrigger(string key,DateTimeOffset scheduledAt,int budgetMs,CancellationToken cancellationToken)
+    {
+        var identity=$"{options.InstanceId}|{key}|{scheduledAt.ToUnixTimeSeconds()}";
+        var digest=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();
+        var requestId="rt-"+digest[..48];var correlationId="corr-"+digest[48..];
+        var deadlineAt=DateTimeOffset.UtcNow.AddMilliseconds(budgetMs);
+        var body=JsonSerializer.Serialize(new{request_id=requestId,runtime_instance_id=options.InstanceId,trigger_key=key,requested_at=scheduledAt,correlation_id=correlationId,budget_ms=budgetMs,deadline_at=deadlineAt});
+        using var req=new HttpRequestMessage(HttpMethod.Post,new Uri(new Uri(options.LocalBaseUrl),"/internal/runtime/v1/trigger"));
+        req.Headers.Authorization=new AuthenticationHeaderValue("Bearer",localToken);
+        req.Headers.Add("X-Sokna-Runtime-Contract","1");
+        req.Content=new StringContent(body,Encoding.UTF8,"application/json");
+        using var response=await http.SendAsync(req,cancellationToken);
+        if(!response.IsSuccessStatusCode)
+        {
+            var status=(int)response.StatusCode;
+            throw new RuntimeTriggerHttpException(status,LocalFailureClass(status),RetryAfterSeconds(response));
+        }
+        var reply=await response.Content.ReadAsStringAsync(cancellationToken);
+        return RuntimeTriggerOutcome.Parse(reply);
+    }
     private static string LocalFailureClass(int status)=>status switch{429 or 502 or 503 or 504 or 408=>"overload",401 or 403=>"authentication",426=>"compatibility",_ when status>=500=>"overload",_=>"domain"};
     private static int RetryAfterSeconds(HttpResponseMessage response){var retry=response.Headers.RetryAfter;if(retry?.Delta is TimeSpan delta)return Math.Clamp((int)Math.Ceiling(delta.TotalSeconds),0,300);if(retry?.Date is DateTimeOffset date)return Math.Clamp((int)Math.Ceiling((date-DateTimeOffset.UtcNow).TotalSeconds),0,300);return 0;}
     private async Task PrintSupervisionLoop(){while(!stop.IsCancellationRequested){SupervisePrintAgent();await Task.Delay(TimeSpan.FromSeconds(2),stop.Token).ContinueWith(_=>{});}}
