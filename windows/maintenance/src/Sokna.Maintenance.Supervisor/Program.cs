@@ -51,6 +51,7 @@ var inactiveSlotCoordinator = new SupervisorInactiveLocalSlotCoordinator(paths, 
 var codeOnlyPreExecution = new SupervisorLocalCodeOnlyPreExecution(
     paths, operations, localStageRecoveryCoordinator);
 var inactiveHostInspector = new InactiveLocalHostReadinessInspector(paths, operations);
+var legacySlotReconciler = new SupervisorLegacySlotReconciler(paths, operations, journal, state);
 // No listening/regular update writes until interrupted Stage evidence is quarantined.
 _ = stageRestartReconciler.ReconcileStoppedProcess();
 var updateEnginePath = Path.Combine(AppContext.BaseDirectory, "SoknaMaintenanceUpdateEngine.exe");
@@ -58,6 +59,16 @@ var codeOnlyExecution = new SupervisorLocalCodeOnlyExecutionCoordinator(
     paths, operations, codeOnlyPreExecution, journal, state, updateEnginePath,
     inactiveCandidateCoordinator, localStageRecoveryCoordinator);
 _ = codeOnlyExecution.QuarantineInterruptedActivations(); // Durable, fail-closed startup reconciliation.
+// Reconcile only with a genuinely newer committed migration and live host proof.
+// On any ambiguity retain the original recovery_required blocker.
+try { _ = legacySlotReconciler.Reconcile(); }
+catch (Exception ex) when (ex is IOException or InvalidDataException or
+    UnauthorizedAccessException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
+{
+    journal.Append("update.local_slot.legacy_reconcile_blocked", state.InstanceId,
+        state.InstallGeneration, new Dictionary<string, object?>
+        { ["error_type"] = ex.GetType().Name, ["blocking_records_preserved"] = true });
+}
 var stagingCoordinator = new SupervisorUpdateStagingCoordinator(paths, operations, journal, state, updateEnginePath);
 var localPackagePreflightCoordinator = new SupervisorLocalPackagePreflightCoordinator(paths, operations, journal, state);
 var localInboxUpload = new LocalInboxUploadCoordinator(paths);
@@ -1159,6 +1170,17 @@ app.MapPost("/v1/local-slots/migrate", async context =>
         var result = productionMigrationCoordinator.Migrate(request.ExpectedBuild, request.ExpectedManagedFiles, request.ExpectedManagedTreeSha256, request.OperatorId, idempotencyKey);
         var operation = result.Operation;
         var success = operation.State == "committed";
+        if (success)
+        {
+            try { _ = legacySlotReconciler.Reconcile(); }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or
+                UnauthorizedAccessException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
+            {
+                journal.Append("update.local_slot.legacy_reconcile_blocked", state.InstanceId,
+                    state.InstallGeneration, new Dictionary<string, object?>
+                    { ["error_type"] = ex.GetType().Name, ["blocking_records_preserved"] = true });
+            }
+        }
         var recoveryRequired = operation.State == "recovery_required";
         var statusCode = success ? StatusCodes.Status200OK : recoveryRequired ? StatusCodes.Status503ServiceUnavailable : operation.State is "running" or "accepted" ? StatusCodes.Status202Accepted : StatusCodes.Status422UnprocessableEntity;
         await WriteEnvelope(context, statusCode, success, operation.State, operation.ResultCode ?? (success ? "LOCAL_SLOT_MIGRATION_COMMITTED" : "OPERATION_RECORDED"), recoveryRequired,
