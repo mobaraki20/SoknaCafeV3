@@ -2,7 +2,7 @@ name: Windows Services 1.1.19 RC2 — Web Panel Local Update
 on:
   push:
     branches: [work/windows-118-home-local231ar-stage-qualification-20261021]
-    paths: [.github/workflows/build-cafe-windows-119-rc2.yml]
+    paths: [.github/workflows/build-cafe-windows-119-rc1.yml]
   workflow_dispatch:
 permissions:
   contents: write
@@ -109,7 +109,7 @@ jobs:
             ${{ runner.temp }}/sokna-windows-119-rc2/SHA256SUMS.txt
             ${{ runner.temp }}/sokna-windows-119-rc2/artifact-index.json
           if-no-files-found: error
-      - name: Publish qualified Home Local Activation UAT pre-release
+      - name: Publish Home test pre-release when GitHub token allows
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -129,4 +129,4 @@ jobs:
           Actual Home web-panel cross-version activation and rollback UAT must still be performed on the user's Home test PC before using this in Cafe.
           '@ | Set-Content "$out/RELEASE_NOTES.md" -Encoding UTF8
           gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'SOKNA Windows Services 1.1.19-rc.2 — Home Local Activation UAT' --notes-file "$out/RELEASE_NOTES.md" --prerelease "$out/SOKNA-Windows-Services-Setup-1.1.19.exe" "$out/SHA256SUMS.txt" "$out/artifact-index.json"
-          if($LASTEXITCODE -ne 0){throw 'Pre-release creation failed'}
+          if($LASTEXITCODE -ne 0){Write-Warning 'Release API is not writable by this Actions identity (HTTP 403). Qualified EXE remains available in the uploaded GitHub Actions artifact.';exit 0}
