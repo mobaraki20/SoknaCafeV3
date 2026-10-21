@@ -64,6 +64,14 @@ try
     }
     catch (InvalidDataException ex) when (ex.Message == "PUBLISHER_TRUST_PIN_CONFLICT") { }
     Console.WriteLine("TAMPERED_LOCAL_TRUST_REJECTED_PASS");
+    using (var swappedSigner = ECDsa.Create(ECCurve.NamedCurves.nistP256))
+    {
+        File.WriteAllText(pinnedPath, swappedSigner.ExportSubjectPublicKeyInfoPem());
+    }
+    ExpectReject(zip, rejectedRoot, mismatched, "Installed release identity does not match any exact supported baseline.");
+    var compatible = new InstalledReleaseIdentity(first, null, "0.3.10", "0.3.10", null, null);
+    ExpectReject(zip, rejectedRoot, compatible, "PUBLISHER_TRUST_PUBLIC_KEY_PIN_MISMATCH");
+    Console.WriteLine("SWAPPED_VALID_P256_KEY_REJECTED_BY_RUNTIME_VERIFIER_PASS");
 
     var untrustedRoot = new MaintenancePaths(Path.Combine(tempRoot, "untrusted"));
     Directory.CreateDirectory(untrustedRoot.ReleaseSigningTrustRoot);
