@@ -101,8 +101,16 @@ jobs:
           $plan=Start-Process -FilePath $ui -ArgumentList '--planner-self-test' -Wait -PassThru
           if ($plan.ExitCode -ne 0){throw "Windows component planner self-test failed $($plan.ExitCode)"}
           $manifestPath=Join-Path $out 'unified-shell-v4/windows-services-component-manifest-v2.json'
-          $fingerprint=Start-Process -FilePath $ui -ArgumentList @('--fingerprint-self-test', ('"'+$manifestPath+'"')) -Wait -PassThru
-          if ($fingerprint.ExitCode -ne 0){throw 'Real Home Maintenance 0.3.10 fingerprint KEEP self-test failed'}
+          $fingerprint=Start-Process -FilePath $ui -ArgumentList @('--fingerprint-self-test', ('"'+$manifestPath+'"')) -PassThru
+          if (-not $fingerprint.WaitForExit(15000)) {
+            Stop-Process -Id $fingerprint.Id -Force -ErrorAction SilentlyContinue
+            throw 'Fingerprint self-test did not exit in 15 seconds (possible GUI path)'
+          }
+          if ($fingerprint.ExitCode -ne 0) {
+            $err=Join-Path $env:TEMP 'sokna-fingerprint-selftest-error.txt'
+            if (Test-Path -LiteralPath $err) { Get-Content -LiteralPath $err -Tail 30 | Out-Host }
+            throw "Real Home Maintenance 0.3.10 fingerprint KEEP self-test failed with exit $($fingerprint.ExitCode)"
+          }
           $shell=Get-Content (Join-Path $out 'unified-shell-v4/windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
           $installed=@{};foreach($c in $shell.components){$installed[[string]$c.component_id]=[string]$c.version}
           if ($installed.maintenance -ne '0.3.10' -or $installed.'maintenance-update-engine' -ne '0.3.10'){throw 'Installer shipping older maintenance'}
