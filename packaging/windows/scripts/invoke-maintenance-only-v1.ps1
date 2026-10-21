@@ -1,6 +1,18 @@
 param([Parameter(Mandatory=$true)][string]$PayloadRoot)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+# Persist safe diagnostic context for Inno's hidden Windows PowerShell 5.1 process.
+# No keys, HMAC signatures or package bytes are written.
+trap {
+  try{
+    $logRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA\\setup'
+    New-Item -ItemType Directory -Path $logRoot -Force|Out-Null
+    $errorText=([string]$_.Exception.Message -replace '[\\r\\n\\0]',' ').Trim()
+    if($errorText.Length-gt800){$errorText=$errorText.Substring(0,800)}
+    [IO.File]::WriteAllText((Join-Path $logRoot 'maintenance-only-last-error.txt'),('at_utc='+[DateTime]::UtcNow.ToString('o')+"`n"+'code='+$errorText),[Text.UTF8Encoding]::new($false))
+  }catch{}
+  exit 2
+}
 function Fail([string]$v){throw ('MAINTENANCE_ONLY_PRECHECK: '+$v)}
 function Hex([string]$file){(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()}
 function Version([string]$file) {
