@@ -243,6 +243,7 @@ final class MaintenanceV4PanelService
         if(!preg_match('#^/v1/[a-z0-9/-]+$#D',$path))
             throw new LocalUpdateException('maintenance_path_invalid','مسیر داخلی نامعتبر است.',500);
         [$base,$key]=$this->endpoint();
+        $url=rtrim($base,'/').$path;
         $body=$method==='GET'?'':json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
         if(strlen($body)>1048576)
             throw new LocalUpdateException('maintenance_request_large','درخواست داخلی بیش از حد مجاز است.',413);
@@ -258,12 +259,12 @@ final class MaintenanceV4PanelService
         ];
         if($idem!=='')$headers[]='X-Sokna-Idempotency-Key: '.$idem;
         if($method==='POST')$headers[]='Content-Type: application/json; charset=utf-8';
-        if($this->sender!==null)$response=($this->sender)($method,$base.$path,$headers,$body,$timeout);
+        if($this->sender!==null)$response=($this->sender)($method,$url,$headers,$body,$timeout);
         else{
             if(!function_exists('curl_init'))
                 throw new LocalUpdateException('maintenance_transport_unavailable',
                     'ارتباط داخلی PHP با Maintenance در دسترس نیست.',503);
-            $curl=curl_init($base.$path);
+            $curl=curl_init($url);
             if($curl===false)
                 throw new LocalUpdateException('maintenance_transport_unavailable','اتصال داخلی ممکن نیست.',503);
             try{
