@@ -35,7 +35,6 @@ if (variant is "for-install-local-synthetic" or "for-install-local-no-db-synthet
 {
     // These self-asserted fixture qualification flags MUST NOT be written to
     // an installed SOKNA data root or used with a production trust anchor.
-    var runnerTemp = Environment.GetEnvironmentVariable("RUNNER_TEMP");
     var inDisposableCi = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.Ordinal) &&
         string.Equals(Environment.GetEnvironmentVariable("RUNNER_OS"), "Windows", StringComparison.Ordinal) &&
         !string.IsNullOrWhiteSpace(runnerTemp) &&
