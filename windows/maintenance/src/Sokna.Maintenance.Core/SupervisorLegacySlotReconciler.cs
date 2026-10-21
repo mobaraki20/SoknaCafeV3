@@ -63,6 +63,7 @@ public sealed class SupervisorLegacySlotReconciler
                 !SamePath(migration.PackageRoot, layout.PackageRoot) ||
                 !SamePath(migration.StableWebRoot, layout.WebRoot) ||
                 !SamePath(migration.ActiveSlot, layout.ActiveSlotTarget) ||
+                migration.Events is null ||
                 !migration.Events.Any(e => e.State == "COMMITTED" &&
                     e.AtUtc <= migration.UpdatedAtUtc))
                 throw new InvalidDataException("LEGACY_SLOT_RECONCILE_MIGRATION_STATE_UNPROVEN");
@@ -133,18 +134,34 @@ public sealed class SupervisorLegacySlotReconciler
                 "update.local-slot-migrate", newer.PackageRef, newer.OperatorId) &&
             migration.Phase == "COMMITTED" && !migration.RecoveryRequired &&
             !migration.DatabaseMutationPerformed && !migration.PublicMutationPerformed &&
+            migration.Events is not null &&
             migration.Events.Any(e => e.State == "COMMITTED" &&
                 e.AtUtc > old.CreatedAtUtc && e.AtUtc <= migration.UpdatedAtUtc);
     }
 
-    private static bool EqualHash(string? a, string? b) =>
-        a is not null && b is not null && a.Length == 64 &&
-        b.Length == 64 && CryptographicOperations.FixedTimeEquals(
+    private static bool EqualHash(string? a, string? b)
+    {
+        if (a is not { Length: 64 } || b is not { Length: 64 } ||
+            !a.All(char.IsAsciiHexDigit) || !b.All(char.IsAsciiHexDigit))
+            return false;
+        return CryptographicOperations.FixedTimeEquals(
             Convert.FromHexString(a), Convert.FromHexString(b));
-    private static bool SamePath(string? a, string? b) =>
-        !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b) &&
-        string.Equals(Path.GetFullPath(a), Path.GetFullPath(b),
-            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool SamePath(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+        try
+        {
+            return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException
+            or PathTooLongException)
+        {
+            return false;
+        }
+    }
 }
 
 public sealed record LegacySlotReconciliationReceipt(
