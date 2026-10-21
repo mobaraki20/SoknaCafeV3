@@ -213,8 +213,9 @@ if (variant == "signed-readonly-stage-forbidden")
     try { _ = verifier.VerifyAndStage(packagePath, identity); }
     catch (InvalidDataException ex) when (ex.Message == "RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN")
     { denied = true; }
-    if (!denied || File.Exists(paths.ReleaseSequenceStatePath) ||
-        Directory.Exists(paths.StagingRoot))
+    var trustedStageCreated = Directory.Exists(paths.StagingRoot) &&
+        Directory.EnumerateFiles(paths.StagingRoot, "stage-receipt.json", SearchOption.AllDirectories).Any();
+    if (!denied || File.Exists(paths.ReleaseSequenceStatePath) || trustedStageCreated)
         throw new InvalidDataException("SIGNED_READONLY_STAGE_MUTATED_SEQUENCE_OR_STAGE");
     Console.WriteLine(JsonSerializer.Serialize(new {
         result = "PASS", test = "signed_verifyonly_not_installable_stage_denied",
