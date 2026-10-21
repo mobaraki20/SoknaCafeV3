@@ -97,7 +97,7 @@ jobs:
           if ($fileVersion -ne '1.1.21.0'){throw "Wrong installer FileVersion $fileVersion"}
           $ui=Join-Path $out 'SoknaSetupUi.exe'
           if (-not (Test-Path $ui)){throw 'Setup UI missing'}
-          if ([Diagnostics.FileVersionInfo]::GetVersionInfo($ui).ProductVersion -notmatch '^1\.1\.20'){throw 'UI version mismatch'}
+          if ([Diagnostics.FileVersionInfo]::GetVersionInfo($ui).ProductVersion -notmatch '^1\.1\.21'){throw 'UI version mismatch'}
           $plan=Start-Process -FilePath $ui -ArgumentList '--planner-self-test' -Wait -PassThru
           if ($plan.ExitCode -ne 0){throw "Windows component planner self-test failed $($plan.ExitCode)"}
           $manifestPath=Join-Path $out 'unified-shell-v4/windows-services-component-manifest-v2.json'
