@@ -3,6 +3,13 @@ on:
   push:
     branches:
       - release/v4-keyless-1122-20261022
+  pull_request:
+    paths:
+      - .github/workflows/build-windows-122-keyless-local.yml
+      - windows/maintenance/src/**
+      - packaging/windows/**
+      - release/compatibility-v2.json
+      - COMPONENTS.json
   workflow_dispatch:
 
 permissions:
