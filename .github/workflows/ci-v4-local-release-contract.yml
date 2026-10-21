@@ -1,0 +1,22 @@
+name: V4 Local Release Contract (source-only)
+on:
+  push:
+    branches:
+      - fix/v4-local-release-contract-prepublish-20261021
+  pull_request:
+    paths:
+      - packaging/windows/qualification/verify-local-release-contract-v21.py
+      - packaging/windows/qualification/test_verify_local_release_contract_v21.py
+      - .github/workflows/ci-v4-local-release-contract.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run unsigned structural fixtures (NOT installation qualification)
+        run: python3 packaging/windows/qualification/test_verify_local_release_contract_v21.py
