@@ -13,6 +13,11 @@ internal static class DashboardEntryV3
         Application.SetCompatibleTextRenderingDefault(false);
         if (args.Length == 2 && args[0].Equals("--layout-self-test", StringComparison.OrdinalIgnoreCase))
             return RunLayoutSelfTest(Path.GetFullPath(args[1]));
+        if (args.Length == 2 && args[0].Equals("--fingerprint-self-test", StringComparison.OrdinalIgnoreCase))
+        {
+            ComponentPlannerSelfTest.FingerprintRun(args[1]);
+            return 0;
+        }
         if (args.Length == 1 && args[0].Equals("--planner-self-test", StringComparison.OrdinalIgnoreCase))
         {
             ComponentPlannerSelfTest.Run();
@@ -371,6 +376,33 @@ internal static class TestFixtures
 
 internal static class ComponentPlannerSelfTest
 {
+    // Test the REAL manifest consumed by Windows Setup UI against the exact
+    // standalone 0.3.10 pair verified on the Home host by the elevated
+    // installer. The previous self-test never checked this KEEP path.
+    internal static void FingerprintRun(string manifestPath)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
+        var root = doc.RootElement;
+        if (root.GetProperty("package_version").GetString() != "1.1.21")
+            throw new InvalidOperationException("fingerprint_package_version");
+        var versions = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["maintenance"] = "261f169eccb1208d3fbcb2e4e5302daa2dc516e75852cbedd2a706926abacf6a",
+            ["maintenance-update-engine"] = "809f1f7be3882999699cbfcb17329dba9d59b32bf4e4785a73a91731d8f107fd"
+        };
+        foreach (var item in root.GetProperty("components").EnumerateArray())
+        {
+            var id = item.GetProperty("component_id").GetString() ?? "";
+            if (!versions.TryGetValue(id, out var observed)) continue;
+            if (item.GetProperty("version").GetString() != "0.3.10" ||
+                !ComponentUpdatePlanner.IsAcceptedInstalledFingerprint(item, observed) ||
+                ComponentUpdatePlanner.IsAcceptedInstalledFingerprint(item, new string('f', 64)) ||
+                ComponentUpdatePlanner.IsAcceptedInstalledFingerprint(item, observed[..63] + "0"))
+                throw new InvalidOperationException("fingerprint_bounded_keep_" + id);
+            versions.Remove(id);
+        }
+        if (versions.Count != 0) throw new InvalidOperationException("fingerprint_missing_component");
+    }
     internal static void Run()
     {
         var p = TestFixtures.UpgradePlan();
