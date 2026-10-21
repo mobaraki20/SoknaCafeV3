@@ -10,7 +10,7 @@ $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($core,[ref]$tokens,[ref]$errors)
 if($errors.Count){throw ('Privileged PowerShell parse failed: '+(($errors|ForEach-Object Message)-join '; '))}
 $functions=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst]},$true))
-foreach($name in @('Prop','Sha','VersionOf','Service-Exe','Owned','Registration-Matches','Verified-IndependentMaintenancePair','Compatible-Fingerprint')){
+foreach($name in @('Prop','Sha','VersionOf','Service-Exe','Owned','Registration-Matches','Verified-IndependentMaintenancePair','Can-ReconcileIndependentMaintenancePlan','Compatible-Fingerprint')){
   $fn=@($functions|Where-Object Name -eq $name)
   if($fn.Count-ne1){throw ('Missing/duplicate privileged function '+$name)}
   Invoke-Expression $fn[0].Extent.Text
@@ -53,8 +53,30 @@ $otherTarget='0'*64
 Save-Receipt
 Expect (Compatible-Fingerprint $mSupervisor $supervisorHash $otherTarget) $true 'valid supervisor receipt'
 Expect (Compatible-Fingerprint $mEngine $engineHash $otherTarget) $true 'valid engine receipt'
+# Actual Home UAT discrepancy: non-elevated UI sees REPAIR, elevated
+# executor verifies the independent receipt and selects KEEP.
+$uSupervisor=[pscustomobject]@{component_id='maintenance';action='REPAIR';current_version='0.3.10';target_version='0.3.10';installed_sha256=$supervisorHash;target_sha256=$otherTarget}
+$rSupervisor=[pscustomobject]@{Id='maintenance';Action='KEEP';CurrentVersion='0.3.10';TargetVersion='0.3.10';InstalledHash=$supervisorHash;TargetHash=$otherTarget}
+$uEngine=[pscustomobject]@{component_id='maintenance-update-engine';action='REPAIR';current_version='0.3.10';target_version='0.3.10';installed_sha256=$engineHash;target_sha256=$otherTarget}
+$rEngine=[pscustomobject]@{Id='maintenance-update-engine';Action='KEEP';CurrentVersion='0.3.10';TargetVersion='0.3.10';InstalledHash=$engineHash;TargetHash=$otherTarget}
+Expect (Can-ReconcileIndependentMaintenancePlan $uSupervisor $rSupervisor $mSupervisor 'install') $true 'real host supervisor REPAIR-to-KEEP'
+Expect (Can-ReconcileIndependentMaintenancePlan $uEngine $rEngine $mEngine 'install') $true 'real host engine REPAIR-to-KEEP'
+Expect (Can-ReconcileIndependentMaintenancePlan $uSupervisor $rSupervisor $mSupervisor 'repair') $false 'manual repair cannot be suppressed'
+$uSupervisor.action='UPDATE'
+Expect (Can-ReconcileIndependentMaintenancePlan $uSupervisor $rSupervisor $mSupervisor 'install') $false 'UI UPDATE never reconciled'
+$uSupervisor.action='REPAIR'
+$uSupervisor.installed_sha256='f'*64
+Expect (Can-ReconcileIndependentMaintenancePlan $uSupervisor $rSupervisor $mSupervisor 'install') $false 'installed hash changed after UI plan'
+$uSupervisor.installed_sha256=$supervisorHash
+$rSupervisor.Action='REPAIR'
+Expect (Can-ReconcileIndependentMaintenancePlan $uSupervisor $rSupervisor $mSupervisor 'install') $false 'privileged REPAIR cannot be masked'
+$rSupervisor.Action='KEEP'
+$rSupervisor.CurrentVersion='0.3.11'
+Expect (Can-ReconcileIndependentMaintenancePlan $uSupervisor $rSupervisor $mSupervisor 'install') $false 'future Maintenance cannot be bypassed'
+$rSupervisor.CurrentVersion='0.3.10'
 $receipt.engine_sha256='f'*64
 Save-Receipt
+Expect (Can-ReconcileIndependentMaintenancePlan $uSupervisor $rSupervisor $mSupervisor 'install') $false 'tampered receipt cannot reconcile'
 Expect (Compatible-Fingerprint $mSupervisor $supervisorHash $otherTarget) $false 'tampered sibling hash supervisor'
 Expect (Compatible-Fingerprint $mEngine $engineHash $otherTarget) $false 'tampered sibling hash engine'
 $receipt.engine_sha256=$engineHash
@@ -76,4 +98,5 @@ $script:MockServiceImage='"'+$supervisor+'"'
 Expect (Compatible-Fingerprint ([pscustomobject]@{component_id='runtime';version='0.3.10'}) $supervisorHash $otherTarget) $false 'unrelated component'
 Remove-Item $receiptPath -Force
 Expect (Compatible-Fingerprint $mSupervisor $supervisorHash $otherTarget) $false 'missing receipt'
+Expect (Can-ReconcileIndependentMaintenancePlan $uSupervisor $rSupervisor $mSupervisor 'install') $false 'missing receipt cannot reconcile'
 Write-Host 'Privileged V4 independent Maintenance 0.3.10: real EXE + valid/tampered/missing receipt and service state PASS'
