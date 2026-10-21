@@ -1,12 +1,16 @@
-name: Maintenance V4 Protected Publisher Source Tests
+name: Maintenance V4 Universal Publisher and Trust Bootstrap (synthetic only)
 on:
   push:
     branches:
       - work/v4-local-publisher-secure-automation-20261021
+      - fix/v4-universal-publisher-trust-auto-bootstrap-20261022
   pull_request:
     paths:
       - windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/**
       - windows/maintenance/tools/Sokna.Maintenance.HostPortabilityHarness/**
+      - windows/maintenance/src/Sokna.Maintenance.Core/PublisherTrustBootstrap.cs
+      - windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj
+      - windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs
       - .github/workflows/ci-v4-local-publisher-source.yml
   workflow_dispatch:
 
@@ -21,14 +25,46 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - name: Build issuer against existing Maintenance Core
-        run: dotnet build windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/Sokna.Maintenance.ReleasePublisher.csproj --configuration Debug
-      - name: Build independent-host verifier (real Core, synthetic fixtures)
-        run: dotnet build windows/maintenance/tools/Sokna.Maintenance.HostPortabilityHarness/Sokna.Maintenance.HostPortabilityHarness.csproj --configuration Debug
-      - name: Ephemeral CI-only P256 verification / negative gates
+      - name: Generate ONE EPHEMERAL CI publisher identity (never a production key)
         shell: pwsh
         run: |
           python -m pip install --disable-pip-version-check cryptography==46.0.4
+          @'
+          import os
+          from pathlib import Path
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.asymmetric import ec
+          root=Path(os.environ["RUNNER_TEMP"])
+          key=ec.generate_private_key(ec.SECP256R1())
+          (root/"publisher-private-ci.pem").write_bytes(key.private_bytes(
+              serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))
+          (root/"publisher-public-ci.spki.pem").write_bytes(key.public_key().public_bytes(
+              serialization.Encoding.PEM,serialization.PublicFormat.SubjectPublicKeyInfo))
+          print("ephemeral public/private fixture saved ONLY to runner temp")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Synthetic P256 fixture setup failed' }
+          "SOKNA_TEST_EPHEMERAL_PRIVATE_KEY_PATH=$env:RUNNER_TEMP\publisher-private-ci.pem" >> $env:GITHUB_ENV
+      - name: Compile existing Maintenance Supervisor with embedded publisher PUBLIC key
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Debug "-p:SoknaPublisherSpkiPem=$env:RUNNER_TEMP\publisher-public-ci.spki.pem"
+          if ($LASTEXITCODE -ne 0) { throw 'Supervisor publisher public bootstrap compile failed' }
+      - name: Build issuer (same canonicalizer as Supervisor)
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/Sokna.Maintenance.ReleasePublisher.csproj -c Debug "-p:SoknaPublisherSpkiPem=$env:RUNNER_TEMP\publisher-public-ci.spki.pem"
+          if ($LASTEXITCODE -ne 0) { throw 'Publisher compile failed' }
+      - name: Build independent-host verifier (real Core, synthetic host roots)
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/tools/Sokna.Maintenance.HostPortabilityHarness/Sokna.Maintenance.HostPortabilityHarness.csproj -c Debug "-p:SoknaPublisherSpkiPem=$env:RUNNER_TEMP\publisher-public-ci.spki.pem"
+          if ($LASTEXITCODE -ne 0) { throw 'Portability harness compile failed' }
+      - name: Test same ZIP across 4 unrelated hosts, auto-bootstrap and tamper refusal
+        shell: pwsh
+        run: |
           python windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/test_ephemeral_publisher.py
-      - name: Source-only gate; publishing remains disabled
-        run: echo "NO PUBLISH; NO TRUST ENROLLMENT; REAL WINDOWS CAFE UAT NOT PERFORMED"
+          if ($LASTEXITCODE -ne 0) { throw 'Universal trust/bootstrap/issuer fixture failed' }
+      - name: Synthetic only, no public/private key published or host mutated
+        shell: pwsh
+        run: |
+          Write-Host 'SYNTHETIC PASS only; NO real publisher keys, installable ZIP or machine UAT'
