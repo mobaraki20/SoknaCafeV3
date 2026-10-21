@@ -177,7 +177,7 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
                 AtomicFile.WriteJson(receiptPath, receipt);
                 operation = _operations.Update(operation, "verified",
                     "PACKAGE_INTEGRITY_VERIFIED",
-                    "Signed package and installed baseline verified; activation NOT authorized.",
+                    "Operator-uploaded package, hashes and installed baseline verified; activation NOT authorized.",
                     preflightReceiptPath: receiptPath);
                 Journal("update.local_preflight.verified", operation);
                 return new(operation, created, !created, receipt);
