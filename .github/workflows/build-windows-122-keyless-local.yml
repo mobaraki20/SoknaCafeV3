@@ -1,8 +1,5 @@
 name: Windows Services 1.1.22 Keyless Local - universal pre-release
 on:
-  push:
-    branches:
-      - release/v4-keyless-1122-20261022
   pull_request:
     paths:
       - .github/workflows/build-windows-122-keyless-local.yml
