@@ -125,7 +125,7 @@ try {
       $r=([string]$rel).Replace('\','/')
       if([string]::IsNullOrWhiteSpace($r)-or
          $r.StartsWith('/')-or
-         $r-match'(^|/)(\.\.?|)(/|$)'-or
+         $r-match'(^|/)\.\.?(?:/|$)'-or
          $r.Contains(':')-or
          -not$seen.Add($r)){throw 'Unsafe or duplicated managed file path.'}
       $file=Join-Path $webRoot ($r.Replace('/','\'))
