@@ -67,29 +67,15 @@ public sealed class SupervisorLegacySlotReconciler
                     e.AtUtc <= migration.UpdatedAtUtc))
                 throw new InvalidDataException("LEGACY_SLOT_RECONCILE_MIGRATION_STATE_UNPROVEN");
 
-            var all = _operations.ListRecent(100); // only for diagnostics; proof lookup below scans all
-            _ = all;
             var commits = _operations.ListCommittedLocalMigrations();
             var resolved = new List<MaintenanceOperation>();
             foreach (var old in candidates)
             {
                 // Require a later successfully committed Supervisor migration,
                 // not merely an external installer success message.
-                var newer = commits.Where(op =>
-                    op.CreatedAtUtc > old.CreatedAtUtc &&
-                    op.UpdatedAtUtc >= migration.UpdatedAtUtc &&
-                    op.StageReceiptPath is not null &&
-                    SamePath(op.StageReceiptPath, path) &&
-                    op.ResultCode is ("LOCAL_SLOT_MIGRATION_COMMITTED" or
-                        "LOCAL_SLOT_LAYOUT_ALREADY_READY" or
-                        "LOCAL_SLOT_COMMIT_RECONCILED_AFTER_ENGINE_EXIT") &&
-                    op.PackageRef == $"production-local-slot-migration:{migration.ExpectedBuild}:" +
-                        $"{migration.ExpectedManagedFiles}:{migration.ExpectedManagedTreeSha256}" &&
-                    op.CanonicalRequestSha256 == MaintenanceOperationStore.CanonicalRequestHash(
-                        "update.local-slot-migrate", op.PackageRef, op.OperatorId))
-                    .OrderByDescending(static op => op.UpdatedAtUtc).FirstOrDefault();
-                if (newer is null ||
-                    !migration.Events.Any(e => e.State == "COMMITTED" && e.AtUtc > old.CreatedAtUtc))
+                var newer = commits.FirstOrDefault(op =>
+                    SupersessionProven(old, op, migration, path));
+                if (newer is null)
                     continue;
 
                 var receipt = new LegacySlotReconciliationReceipt(
@@ -122,6 +108,33 @@ public sealed class SupervisorLegacySlotReconciler
             }
             return resolved;
         }
+    }
+
+    // Pure evidence-policy gate. The caller must additionally inspect live
+    // Apache HTTP, actual junction, signed baseline identity and managed tree.
+    public static bool SupersessionProven(MaintenanceOperation old,
+        MaintenanceOperation newer, ProductionLocalSlotMigrationState migration,
+        string migrationStatePath)
+    {
+        return old.OperationType == "update.local-slot-home-cycle" &&
+            old.State == "recovery_required" && !old.DatabaseMutationPerformed &&
+            newer.OperationType == "update.local-slot-migrate" &&
+            newer.State == "committed" && !newer.DatabaseMutationPerformed &&
+            newer.CreatedAtUtc > old.CreatedAtUtc &&
+            newer.UpdatedAtUtc >= migration.UpdatedAtUtc &&
+            newer.StageReceiptPath is not null &&
+            SamePath(newer.StageReceiptPath, migrationStatePath) &&
+            newer.ResultCode is ("LOCAL_SLOT_MIGRATION_COMMITTED" or
+                "LOCAL_SLOT_LAYOUT_ALREADY_READY" or
+                "LOCAL_SLOT_COMMIT_RECONCILED_AFTER_ENGINE_EXIT") &&
+            newer.PackageRef == $"production-local-slot-migration:{migration.ExpectedBuild}:" +
+                $"{migration.ExpectedManagedFiles}:{migration.ExpectedManagedTreeSha256}" &&
+            newer.CanonicalRequestSha256 == MaintenanceOperationStore.CanonicalRequestHash(
+                "update.local-slot-migrate", newer.PackageRef, newer.OperatorId) &&
+            migration.Phase == "COMMITTED" && !migration.RecoveryRequired &&
+            !migration.DatabaseMutationPerformed && !migration.PublicMutationPerformed &&
+            migration.Events.Any(e => e.State == "COMMITTED" &&
+                e.AtUtc > old.CreatedAtUtc && e.AtUtc <= migration.UpdatedAtUtc);
     }
 
     private static bool EqualHash(string? a, string? b) =>
