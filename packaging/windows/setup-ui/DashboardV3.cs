@@ -234,6 +234,11 @@ internal sealed class WindowsServicesDashboardV3 : Form
         primary.Text = prim.Any(x => x.Action == ComponentAction.Install) ? "نصب اجزای لازم" : "اجرای به‌روزرسانی";
         if (p.IsBlocked) { actionTitle.Text = "ادامه نصب ایمن نیست"; actionText.Text = "حداقل یک component ناسازگار یا جدیدتر از release هدف تشخیص داده شد. هیچ mutation انجام نمی‌شود."; }
         else if (p.HasMutation) { actionTitle.Text = "برنامه تغییرات آماده است"; actionText.Text = "قبل از اجرا، برنامه دقیق هر component نمایش داده می‌شود. اجزای سالم بدون توقف و جایگزینی باقی می‌مانند."; }
+        else if (p.Rows.Any(x => x.UpdateState == "independent_newer_compatible"))
+        {
+            actionTitle.Text = "Maintenance مستقل به‌روز است";
+            actionText.Text = "نسخه 0.3.10 با رسید نصب مستقل، هش دو جزء و سلامت سرویس تأیید شده و بدون تغییر باقی می‌ماند.";
+        }
         else { actionTitle.Text = "همه اجزا با release هدف یکسان‌اند"; actionText.Text = "نسخه، fingerprint و ثبت سرویس‌ها بررسی شده است. در صورت مشکل عملیاتی می‌توانید تعمیر نصب یا بسته عیب‌یابی را اجرا کنید."; }
         var vc = ReadVcRuntime(); prereqText.Text = vc.ready ? $"پیش‌نیاز ویندوز آماده است • Visual C++ {vc.version}" : "پیش‌نیاز Visual C++ آماده نیست؛ mutation مسدود می‌شود."; prereqText.ForeColor = vc.ready ? SetupPalette.Good : SetupPalette.Danger;
         pair.Enabled = !p.IsBlocked && prim.All(x => x.CurrentVersion != "—"); localUrl.Enabled = pair.Enabled; pairingCode.Enabled = pair.Enabled; startRuntime.Enabled = pair.Enabled;
