@@ -5,6 +5,9 @@ on:
       - fix/windows-panel-independent-maintenance-0310-20261021
     paths:
       - .github/workflows/build-windows-120-home-uat.yml
+      - COMPONENTS.json
+      - release/compatibility-v2.json
+      - packaging/windows/windows-services-component-manifest-v2.json
   workflow_dispatch:
 permissions:
   contents: write
@@ -64,7 +67,7 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-120-rc1'
-          $iscc=@("$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
           if (-not $iscc){$iscc=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'}
           if (-not (Test-Path -LiteralPath $iscc)){throw 'Inno Setup compiler missing'}
           & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot $out -IsccExe $iscc
