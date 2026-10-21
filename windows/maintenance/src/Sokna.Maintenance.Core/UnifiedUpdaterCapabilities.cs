@@ -22,8 +22,9 @@ public static class UnifiedUpdaterCapabilities
             ? "LOCAL_RECOVERY_REQUIRED"
             : blocking.Count != 0
                 ? "LOCAL_OPERATION_IN_PROGRESS"
-                : host.Blockers.Contains("INSTALLED_LOCAL_IDENTITY_OR_TREE_MISMATCH",
-                    StringComparer.Ordinal)
+                : host.ApacheDiscoveryAndHttpHealthy && host.ActiveJunctionQualified &&
+                    host.Blockers.Contains("INSTALLED_LOCAL_IDENTITY_OR_TREE_MISMATCH",
+                        StringComparer.Ordinal)
                     ? "LOCAL_INSTALLED_IDENTITY_REBIND_REQUIRED"
                     : !host.HostPreparationPreconditionsMet
                         ? "LOCAL_HOST_PRECONDITIONS_UNPROVEN"
