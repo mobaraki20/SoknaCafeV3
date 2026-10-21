@@ -34,7 +34,7 @@ def main():
                       "real_windows":True,"real_mariadb":True,"canary":True,"recovery_console_web_down":True,
                       "business_backup_consistency_real_mariadb":True},
                   "supported_baselines":[{"local":dict(identity,release_id="ci-source",version="3.0.0.ci-test-source"),"public":None}],
-                  "targets":{"local":dict(identity,managed_files":len(files))},
+                  "targets":{"local":dict(identity,managed_files=len(files))},
                   "artifacts":{"local-web":{"path":"artifacts/local/web.zip","sha256":sha(payload),"size_bytes":len(payload),
                                              "component":"local-web","kind":"web-tree-zip-v1"}},
                   "signature":{"algorithm":"ecdsa-p256-sha256","key_id":"ci-ephemeral-"+sha(spki)[:20],"value":""}}
