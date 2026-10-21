@@ -14,7 +14,14 @@ trap {
   exit 2
 }
 function Fail([string]$v){throw ('MAINTENANCE_ONLY_PRECHECK: '+$v)}
-function Hex([string]$file){(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()}
+function Hex([string]$file){
+ $fs=[IO.File]::OpenRead($file)
+ try{
+  $sha=[Security.Cryptography.SHA256]::Create()
+  try{$bytes=$sha.ComputeHash($fs)}finally{$sha.Dispose()}
+ }finally{$fs.Dispose()}
+ return (([BitConverter]::ToString($bytes))-replace'-','').ToLowerInvariant()
+}
 function Version([string]$file) {
  if(-not(Test-Path -LiteralPath $file -PathType Leaf)){Fail "Missing installed file."}
  $v=[string]([Diagnostics.FileVersionInfo]::GetVersionInfo($file).FileVersion)
