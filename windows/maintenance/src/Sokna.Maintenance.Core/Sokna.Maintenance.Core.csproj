@@ -16,18 +16,6 @@
   <ItemGroup>
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
   </ItemGroup>
-  <!-- Publisher PUBLIC SPKI is embedded into the installed binary during
-       authenticated Windows Services packaging. No key material is read from
-       the selected Local ZIP. No private key is ever placed here. -->
-  <Target Name="ValidateSoknaPublisherPublicKey" BeforeTargets="CoreCompile"
-          Condition="'$(SoknaPublisherSpkiPem)' != ''">
-    <Error Condition="!Exists('$(SoknaPublisherSpkiPem)')"
-           Text="PROTECTED_PUBLISHER_PUBLIC_KEY_RESOURCE_MISSING" />
-  </Target>
-  <ItemGroup Condition="'$(SoknaPublisherSpkiPem)' != ''">
-    <EmbeddedResource Include="$(SoknaPublisherSpkiPem)"
-                      LogicalName="Sokna.Maintenance.Core.publisher.spki.pem" />
-  </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="../../../../apps/local-web/public/local-recovery.php"
                       LogicalName="Sokna.Maintenance.Core.StableLocalRecoveryPhp" />
