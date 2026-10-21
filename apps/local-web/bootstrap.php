@@ -112,6 +112,7 @@ require_once __DIR__ . '/src/Domain/System/WindowsServicesPairingService.php';
 require_once __DIR__ . '/src/Domain/Update/LocalUpdateException.php';
 require_once __DIR__ . '/src/Domain/Update/UpdateMigrationPolicy.php';
 require_once __DIR__ . '/src/Domain/Update/LocalUpdateService.php';
+require_once __DIR__ . '/src/Domain/Update/MaintenanceV4PanelService.php';
 require_once __DIR__ . '/src/Domain/Update/LocalUpdateUploadService.php';
 require_once __DIR__ . '/src/Domain/Update/ComponentUpdateCenterService.php';
 require_once __DIR__ . '/src/Domain/Recovery/RecoveryWorkspaceService.php';
