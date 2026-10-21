@@ -23,7 +23,9 @@ def main():
         with zipfile.ZipFile(web,"w") as z:
             for k,v in files.items():z.writestr(k,v)
         payload=web.read_bytes()
-        signer=ec.generate_private_key(ec.SECP256R1())
+        key_path=os.environ.get("SOKNA_TEST_EPHEMERAL_PRIVATE_KEY_PATH","")
+        signer=(serialization.load_pem_private_key(pathlib.Path(key_path).read_bytes(),password=None)
+                if key_path else ec.generate_private_key(ec.SECP256R1()))
         pem=signer.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption())
         spki=signer.public_key().public_bytes(serialization.Encoding.DER,serialization.PublicFormat.SubjectPublicKeyInfo)
         identity={"release_id":"ci-target","version":"3.0.0.ci-test-target","managed_tree_sha256":tree,
@@ -40,7 +42,7 @@ def main():
                   "targets":{"local":dict(identity,managed_files=len(files))},
                   "artifacts":{"local-web":{"path":"artifacts/local/web.zip","sha256":sha(payload),"size_bytes":len(payload),
                                              "component":"local-web","kind":"web-tree-zip-v1"}},
-                  "signature":{"algorithm":"ecdsa-p256-sha256","key_id":"ci-ephemeral-"+sha(spki)[:20],"value":""}}
+                  "signature":{"algorithm":"ecdsa-p256-sha256","key_id":"sokna-rel-"+sha(spki)[:20],"value":""}}
         now=datetime.datetime.now(datetime.timezone.utc)
         manifest.update({
             "created_at":now.isoformat().replace("+00:00","Z"),
@@ -98,6 +100,7 @@ def main():
         assert "INDEPENDENT_HOST_BASELINE_1_REPLICA_1_PASS" in portability.stdout
         assert "INCOMPATIBLE_HOST_FAIL_CLOSED_PASS" in portability.stdout
         assert "NO_PREPROVISIONED_TRUST_FAIL_CLOSED_PASS" in portability.stdout
+        assert "TAMPERED_LOCAL_TRUST_REJECTED_PASS" in portability.stdout
         print("POSITIVE_SAME_ZIP_INDEPENDENT_HOSTS_AND_NEGATIVE_HOST_GATES_PASS")
         out.unlink()
         manifest["supported_baselines"].append(manifest["supported_baselines"][0].copy())
@@ -123,5 +126,5 @@ def main():
         invalid=invoke(mf,web,rf,out,pem)
         assert invalid.returncode!=0 and not out.exists()
         print("NEGATIVE_UNBOUND_RECEIPT_PASS")
-        print("7/7 synthetic release/signature/portability checks passed; live Windows UAT NOT RUN")
+        print("7/7 synthetic issuer/portable bootstrap checks passed; no real-host UAT claimed")
 if __name__=="__main__":main()
