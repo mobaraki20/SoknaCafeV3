@@ -706,8 +706,23 @@ app.MapGet("/v1/local-updates/inactive-host-readiness", async context =>
 // Signed, read-only capability negotiation. No unimplemented route is advertised.
 app.MapGet("/v1/updates/capabilities", async context =>
 {
-    var capability = UnifiedUpdaterCapabilities.Current();
-    await WriteEnvelope(context, StatusCodes.Status200OK, true, "foundation_required", capability.BlockingCode, false, capability);
+    try
+    {
+        var host = inactiveHostInspector.Inspect();
+        var blocking = operations.ListBlocking();
+        var capability = UnifiedUpdaterCapabilities.Current(host, blocking);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true,
+            capability.PanelUpdateReady ? "ready" : "blocked",
+            capability.BlockingCode, blocking.Any(o => o.State == "recovery_required"),
+            capability);
+    }
+    catch (Exception ex) when (ex is IOException or InvalidDataException or
+        UnauthorizedAccessException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "LOCAL_CAPABILITY_EVIDENCE_UNAVAILABLE", true,
+            new { error_type = ex.GetType().Name, panel_update_ready = false });
+    }
 });
 
 // Signed, read-only LEGACY physical-Web baseline recognition in the existing
