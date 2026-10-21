@@ -1,0 +1,125 @@
+name: Windows Services 1.1.20 Home UAT pre-release
+on:
+  push:
+    branches:
+      - fix/windows-panel-independent-maintenance-0310-20261021
+    paths:
+      - .github/workflows/build-windows-120-home-uat.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: windows-services-120-home-uat
+  cancel-in-progress: false
+jobs:
+  qualify-build-publish:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact component ownership and whole-repo M10 source gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/g6-component-release-contract.py
+          if ($LASTEXITCODE -ne 0) { throw 'G6 exact owned versions failed' }
+          python tests/m10-release-qualification.py
+          if ($LASTEXITCODE -ne 0) { throw 'M10 qualification failed' }
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          if ($m.package_version -ne '1.1.20' -or @($m.components).Count -ne 5) { throw 'Windows shell manifest mismatch' }
+          $versions=@{};foreach($c in $m.components){$versions[[string]$c.component_id]=[string]$c.version}
+          if ($versions.runtime -ne '1.0.6' -or $versions.'print-agent' -ne '6.2.9' -or $versions.maintenance -ne '0.3.10' -or $versions.'maintenance-update-engine' -ne '0.3.10' -or $versions.'maintenance-recovery-console' -ne '0.1.2') { throw 'Unqualified component version or out-of-scope version mutation' }
+          $p=Get-Content packaging/windows/setup-ui/ComponentUpdatePlanner.cs -Raw
+          if (-not $p.Contains('!forceRepair && cmp >= 0 && IsVerifiedIndependentMaintenancePair') -or -not $p.Contains('if (cmp > 0 && !keepIndependentMaintenance)')) { throw 'Standalone keep / anti-downgrade guard missing' }
+          foreach($sha in @('8e05a5deee806bc89cf8f1e8ec1b642d1acf6fae37da12ab0ecb78467132d1f3','7b071b71bcd38c2abcb26bceaf0a3593f2acb1dfbebf2599117aca6d9ce7e456')) {
+            $r=@($m.components|Where-Object component_id -eq 'runtime')[0]
+            if ($sha -notin @($r.accepted_installed_sha256)){throw 'Previously accepted Runtime KEEP hash missing'}
+          }
+          Write-Host 'Small-cafe version and no-unneeded-restart contract: PASS'
+      - name: Signed activation, reserved-stage and worker regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.ActivationWorkerHarness/Sokna.Maintenance.ActivationWorkerHarness.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Maintenance lifecycle regression failed' }
+      - name: Install existing Inno Setup dependency
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+      - name: Build existing five-component V4 release (not a new updater)
+        shell: pwsh
+        timeout-minutes: 55
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-120-rc1'
+          $iscc=@("$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+          if (-not $iscc){$iscc=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'}
+          if (-not (Test-Path -LiteralPath $iscc)){throw 'Inno Setup compiler missing'}
+          & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot $out -IsccExe $iscc
+          if ($LASTEXITCODE -ne 0) { throw 'Existing V4 release builder failed' }
+      - name: Verify final release, hashes, metadata and real planner self-test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-120-rc1'
+          $idx=Get-Content (Join-Path $out 'artifact-index.json') -Raw|ConvertFrom-Json
+          if ($idx.package_version -ne '1.1.20' -or $idx.component_count -ne 5 -or $idx.installer_kind -ne 'unified-v4-bootstrap' -or $idx.runtime.version -ne '1.0.6'){throw 'Release index mismatch'}
+          $exe=Join-Path $out ([string]$idx.windows_services.file)
+          if (-not (Test-Path $exe) -or [IO.Path]::GetFileName($exe) -ne 'SOKNA-Windows-Services-Setup-1.1.20.exe'){throw 'Final EXE missing/wrong name'}
+          $hash=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne $idx.windows_services.sha256){throw 'Distribution digest mismatch'}
+          $fileVersion=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion
+          if ($fileVersion -ne '1.1.20.0'){throw "Wrong installer FileVersion $fileVersion"}
+          $ui=Join-Path $out 'SoknaSetupUi.exe'
+          if (-not (Test-Path $ui)){throw 'Setup UI missing'}
+          if ([Diagnostics.FileVersionInfo]::GetVersionInfo($ui).ProductVersion -notmatch '^1\.1\.20'){throw 'UI version mismatch'}
+          $plan=Start-Process -FilePath $ui -ArgumentList '--planner-self-test' -Wait -PassThru
+          if ($plan.ExitCode -ne 0){throw "Windows component planner self-test failed $($plan.ExitCode)"}
+          $shell=Get-Content (Join-Path $out 'unified-shell-v4/windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
+          $installed=@{};foreach($c in $shell.components){$installed[[string]$c.component_id]=[string]$c.version}
+          if ($installed.maintenance -ne '0.3.10' -or $installed.'maintenance-update-engine' -ne '0.3.10'){throw 'Installer shipping older maintenance'}
+          "$hash  $([IO.Path]::GetFileName($exe))" | Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ASCII
+          Write-Host 'Final real Windows 1.1.20 V4 installer, hashes and planner: PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-services-120-rc1-home-uat
+          path: |
+            ${{ runner.temp }}/sokna-windows-120-rc1/SOKNA-Windows-Services-Setup-1.1.20.exe
+            ${{ runner.temp }}/sokna-windows-120-rc1/SHA256SUMS.txt
+            ${{ runner.temp }}/sokna-windows-120-rc1/artifact-index.json
+          if-no-files-found: error
+      - name: Publish immutable prerelease only after all gates passed
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='windows-services-v1.1.20-rc.1'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-120-rc1'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0){throw 'Refuse overwrite: pre-release tag already exists'}
+          $notes=@(
+            'SOKNA Windows Services 1.1.20-rc.1 — HOME TEST pre-release (not Cafe production approved).',
+            'Existing Maintenance V4 engine unchanged. Shell manifest aligned with actual Maintenance Supervisor and Engine 0.3.10.',
+            'The new panel KEEP policy recognizes a verified standalone Maintenance 0.3.10 receipt/service/hash even if its binary hash differs from the shell payload; missing/mismatched proof fails closed.',
+            'Runtime 1.0.6, Print 6.2.9, Recovery Console 0.1.2: no source version change; healthy installed components must be kept.',
+            'Existing V4 one-click installer, no additional updater or Local/Public payload.',
+            'Automated G6/M10, Maintenance activation harness, Windows planner, five-component package identity and SHA256 qualified before publication.',
+            'Windows 10 Home real-host installation and through-panel Local/Public update/rollback remain REQUIRED UAT. Do not deploy on operational Cafe until confirmed.'
+          )
+          $notes|Set-Content (Join-Path $out 'RELEASE_NOTES.md') -Encoding UTF8
+          gh release create $tag (Join-Path $out 'SOKNA-Windows-Services-Setup-1.1.20.exe') (Join-Path $out 'SHA256SUMS.txt') (Join-Path $out 'artifact-index.json') --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'SOKNA Windows Services 1.1.20-rc.1 — Home UAT' --notes-file (Join-Path $out 'RELEASE_NOTES.md') --prerelease
+          if ($LASTEXITCODE -ne 0){throw 'Pre-release GitHub publish failed'}
+          Write-Host "PUBLISHED: $tag"
