@@ -11,6 +11,7 @@ on:
       - packaging/windows/scripts/prepare-shell-payload-v9.ps1
       - packaging/windows/tests/independent-maintenance-pair-0310.ps1
       - packaging/windows/scripts/setup-windows-components-v5.ps1
+      - packaging/windows/setup-ui/DashboardEntryV4.cs
   workflow_dispatch:
 permissions:
   contents: write
@@ -46,6 +47,8 @@ jobs:
           if ($m.package_version -ne '1.1.21' -or @($m.components).Count -ne 5) { throw 'Windows shell manifest mismatch' }
           $versions=@{};foreach($c in $m.components){$versions[[string]$c.component_id]=[string]$c.version}
           if ($versions.runtime -ne '1.0.6' -or $versions.'print-agent' -ne '6.2.9' -or $versions.maintenance -ne '0.3.10' -or $versions.'maintenance-update-engine' -ne '0.3.10' -or $versions.'maintenance-recovery-console' -ne '0.1.2') { throw 'Unqualified component version or out-of-scope version mutation' }
+          $v4=Get-Content packaging/windows/setup-ui/DashboardEntryV4.cs -Raw
+          if (-not $v4.Contains('--fingerprint-self-test')) { throw 'Fingerprint self-test not wired into actual V4 entrypoint' }
           $p=Get-Content packaging/windows/setup-ui/ComponentUpdatePlanner.cs -Raw
           if (-not $p.Contains('!forceRepair && cmp >= 0 && IsVerifiedIndependentMaintenancePair') -or -not $p.Contains('if (cmp > 0 && !keepIndependentMaintenance)')) { throw 'Standalone keep / anti-downgrade guard missing' }
           foreach($sha in @('8e05a5deee806bc89cf8f1e8ec1b642d1acf6fae37da12ab0ecb78467132d1f3','7b071b71bcd38c2abcb26bceaf0a3593f2acb1dfbebf2599117aca6d9ce7e456')) {
