@@ -166,7 +166,7 @@ internal static class ComponentUpdatePlanner
             // verifying the exact scoped-install receipt, both executables,
             // and the running owned Supervisor service. All other downgrades
             // remain blocked.
-            var keepIndependentMaintenance = cmp > 0 && IsVerifiedIndependentMaintenancePair(
+            var keepIndependentMaintenance = !forceRepair && cmp >= 0 && IsVerifiedIndependentMaintenancePair(
                 id, currentVersion, installedHash, registrationHealthy, installRoot, dataRoot);
             if (cmp > 0 && !keepIndependentMaintenance)
             {
@@ -174,7 +174,7 @@ internal static class ComponentUpdatePlanner
             }
             else if (keepIndependentMaintenance)
             {
-                action = ComponentAction.Keep; state = "independent_newer_compatible";
+                action = ComponentAction.Keep; state = "independent_compatible_keep";
                 reason = $"Maintenance مستقل {currentVersion} با رسید نصب و سلامت هر دو جزء تأیید شد؛ بدون جایگزینی باقی می‌ماند.";
             }
             else if (CanKeepFrozenRecovery(id, currentVersion, targetVersion, compatibleInstalledHash, registrationHealthy))
