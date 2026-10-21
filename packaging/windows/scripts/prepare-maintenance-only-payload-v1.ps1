@@ -41,7 +41,7 @@ foreach($c in $manifest.components){
  $c.payload_primary=([string]$c.payload_primary).Replace('_payload/','')
 }
 [IO.File]::WriteAllText((Join-Path $OutputRoot 'windows-services-component-manifest-v2.json'),($manifest|ConvertTo-Json -Depth 12),[Text.UTF8Encoding]::new($false))
-foreach($name in @('invoke-maintenance-only-v1.ps1','setup-windows-components-maintenance-v1.ps1')){
+foreach($name in @('invoke-maintenance-only-v1.ps1','setup-windows-components-maintenance-v1.ps1','maintenance-signed-health-v1.ps1')){
  $src=Join-Path $RepoRoot ('packaging\windows\scripts\'+$name)
  $txt=[IO.File]::ReadAllText($src,[Text.Encoding]::UTF8)
  [IO.File]::WriteAllText((Join-Path $OutputRoot $name),$txt,[Text.UTF8Encoding]::new($true))
