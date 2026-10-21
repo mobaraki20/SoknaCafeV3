@@ -86,6 +86,17 @@ try
         preflight.ArtifactIntegrityVerified && preflight.ExactBaselineVerified == true &&
         !preflight.SignedInstallIntent, "operator provenance without any signature");
     Console.WriteLine("PASS operator-uploaded unsigned Local, expired/test flags ignored");
+    // A valid operator-authorized Local Stage must remain installable all
+    // the way to inactive candidate promotion; the old publisher failure
+    // matrix/production flag must not reappear as a downstream blocker.
+    var parsed = JsonSerializer.Deserialize<ReleaseSetManifest>(manifestBytes,
+        AtomicFile.JsonOptions) ?? throw new InvalidDataException("TEST_MANIFEST_PARSE_FAILED");
+    SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
+        parsed, operatorAuthorized: true);
+    ExpectReject(() =>
+        SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
+            parsed, operatorAuthorized: false));
+    Console.WriteLine("PASS downstream Local candidate qualification without issuer flags");
     var staged = inspector.VerifyAndStage(uploaded, installed);
     Check(staged.OperatorAuthorized && !staged.SignatureVerified &&
         staged.ArtifactIntegrityVerified && staged.PreflightIdentityMatch,
