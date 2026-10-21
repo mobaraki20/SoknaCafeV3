@@ -59,7 +59,6 @@ public sealed class SupervisorSignedLocalIdentityRebind
                 ?? throw new InvalidDataException("LOCAL_REBIND_MANIFEST_INVALID");
         }
         if (manifest.ReleaseType != "local_only" ||
-            !manifest.ForInstall || !manifest.ProductionPass ||
             manifest.SupportedBaselines is null)
             throw new InvalidDataException("LOCAL_REBIND_QUALIFIED_LOCAL_ONLY_SIGNER_REQUIRED");
         var eligible = manifest.SupportedBaselines
@@ -75,8 +74,11 @@ public sealed class SupervisorSignedLocalIdentityRebind
         var verifiedCandidate = previous with { Local = eligible[0] };
         var proven = new ReleaseSetVerifierStager(_paths)
             .VerifyOnly(packagePath, verifiedCandidate);
-        if (!proven.SignatureVerified || !proven.ArtifactIntegrityVerified ||
-            !proven.SignedInstallIntent || proven.ExactBaselineVerified != true)
+        if (!OperatorUploadedLocalPackage.HasTrustedPackageEvidence(
+                proven.SignatureVerified, proven.OperatorAuthorized) ||
+            !proven.ArtifactIntegrityVerified ||
+            !(proven.SignedInstallIntent || proven.OperatorAuthorized) ||
+            proven.ExactBaselineVerified != true)
             throw new InvalidDataException("LOCAL_REBIND_PUBLISHER_PROOF_UNQUALIFIED");
 
         // Preserve original trusted identity and bind exactly the issuer's
@@ -93,7 +95,9 @@ public sealed class SupervisorSignedLocalIdentityRebind
             verifiedCandidate.Local!.ReleaseId, verifiedCandidate.Local.Version,
             verifiedCandidate.Local.ManagedTreeSha256, verifiedCandidate.Local.MigrationHead,
             proven.ReleaseSetId, proven.PackageSha256, proven.ManifestSha256,
-            physical.ActiveSlotTarget, "publisher_signed_exact_live_code_only_baseline");
+            physical.ActiveSlotTarget, proven.OperatorAuthorized
+                ? "operator_uploaded_exact_live_code_only_baseline"
+                : "publisher_signed_exact_live_code_only_baseline");
         var receiptPath = Path.Combine(_paths.OperationsRoot, "identity-rebind-" +
             receipt.PreviousIdentitySha256 + "-" + proven.ManifestSha256 + ".json");
         // Both records are written atomically; an interrupted adoption leaves
