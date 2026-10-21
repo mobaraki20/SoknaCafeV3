@@ -90,8 +90,9 @@ jobs:
           try{
             [IO.File]::AppendAllText($file,'TAMPER')
             $ps=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
-            & $ps -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Resolve-Path './new/packaging/windows/scripts/invoke-maintenance-only-v1.ps1') -PayloadRoot $out 2>&1|Out-Null
-            if($LASTEXITCODE -eq 0){throw 'Tampered package accepted'}
+            $fileName=(Resolve-Path './new/packaging/windows/scripts/invoke-maintenance-only-v1.ps1').Path
+            $p=Start-Process -FilePath $ps -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$fileName+'"'),'-PayloadRoot',('"'+$out+'"')) -Wait -PassThru -WindowStyle Hidden
+            if($p.ExitCode -eq 0){throw 'Tampered package accepted'}
           }finally{[IO.File]::WriteAllBytes($file,$original)}
       - name: Real SCM service upgrade smoke 0.3.9 -> 0.3.10
         shell: pwsh
