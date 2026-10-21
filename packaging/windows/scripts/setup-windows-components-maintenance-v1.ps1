@@ -207,18 +207,8 @@ function Rollback(){Event 'rollback_started' 'started';$ok=$true;for($i=$Applied
 function ApplyRuntime($r){$script:CurrentComponent='runtime';SaveSnap 'runtime' $runtimeRoot 'SoknaRuntime';$Applied.Add('runtime');$script:CurrentPhase='Service stop';Event 'component_action_started' 'started' @{action=$r.Action};if((Service-Info 'SoknaRuntime').Installed){Stop-Svc 'SoknaRuntime' $runtimeRoot};$script:CurrentPhase='Files';New-Item -ItemType Directory -Path $runtimeRoot -Force|Out-Null;Copy-Item $r.TargetPath $runtimeExe -Force;if((Sha $runtimeExe)-ne$r.TargetHash){throw 'Runtime hash verification failed.'};$script:CurrentPhase='Service registration';Delete-Svc 'SoknaRuntime' $runtimeRoot;Create-Svc 'SoknaRuntime' (Runtime-Cmd $runtimeExe $runtimeCfg) 'SOKNA Runtime' $paired;if($paired){$script:CurrentPhase='Health verification';Start-Svc 'SoknaRuntime'};Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $runtimeExe);shutdown_proof='service-status+process-exit+owned-process-exit'}}
 function ApplyPrint($r){$script:CurrentComponent='print-agent';SaveSnap 'print-agent' $printRoot 'SoknaPrintWorker';$Applied.Add('print-agent');$script:CurrentPhase='Service stop';Event 'component_action_started' 'started' @{action=$r.Action};if((Service-Info 'SoknaPrintWorker').Installed){Stop-Svc 'SoknaPrintWorker' $printRoot};$script:CurrentPhase='Files';$source=(Split-Path (Split-Path $r.TargetPath -Parent) -Parent);Copy-TreeAtomic $source $printRoot;if((Sha $printExe)-ne$r.TargetHash){throw 'Print Agent hash verification failed.'};$script:CurrentPhase='Service registration';Delete-Svc 'SoknaPrintWorker' $printRoot;Create-Svc 'SoknaPrintWorker' (Simple-Cmd $printExe) 'SOKNA Print Worker' $true;$script:CurrentPhase='Health verification';Start-Svc 'SoknaPrintWorker';Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $printExe);shutdown_proof='service-status+process-exit+owned-process-exit'}}
 function Assert-MaintenanceHttpHealth {
-  $good=$false
-  for($i=0;$i-lt40;$i++){
-    try{
-      $url='http://127.0.0.1:17631/v1/health'
-      $response=Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 3 -UseBasicParsing
-      if([bool]$response.ok -and [string]$response.data.supervisor_version-eq'0.3.10'){
-        $good=$true;break
-      }
-    }catch{}
-    Start-Sleep -Milliseconds 500
-  }
-  if(-not$good){throw 'MAINTENANCE_HEALTH_VERSION_UNVERIFIED'}
+ . (Join-Path $ShellRoot 'maintenance-signed-health-v1.ps1')
+ Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.10' -Attempts 40
 }
 function ApplyMaintenance($r){$script:CurrentComponent='maintenance';SaveSnap 'maintenance' $maintApp 'SoknaMaintenanceSupervisor';$Applied.Add('maintenance');$script:CurrentPhase='Service stop';Event 'component_action_started' 'started' @{action=$r.Action};if((Service-Info 'SoknaMaintenanceSupervisor').Installed){Stop-Svc 'SoknaMaintenanceSupervisor' $maintApp};$script:CurrentPhase='Files';$source=(Split-Path $r.TargetPath -Parent);Copy-TreeAtomic $source $maintApp;if((Sha $maintExe)-ne$r.TargetHash){throw 'Maintenance hash verification failed.'};$script:CurrentPhase='Health verification';Start-Svc 'SoknaMaintenanceSupervisor';Assert-MaintenanceHttpHealth;Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $maintExe);shutdown_proof='service-status+process-exit+owned-process-exit'}}
 
