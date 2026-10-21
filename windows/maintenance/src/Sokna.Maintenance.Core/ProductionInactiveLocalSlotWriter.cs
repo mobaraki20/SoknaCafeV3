@@ -78,6 +78,11 @@ public static class ProductionInactiveLocalSlotWriter
 
         RoutineLocalBinding.RequireCurrent(active, root, currentBuild);
         RoutineLocalBinding.RequireTarget(persistent, active, root, currentBuild);
+        // Both absent was previously treated as a matching overlay. A cutover
+        // without a stable emergency entrypoint is not a qualified cutover.
+        if (!File.Exists(Path.Combine(persistent, "public", "local-recovery.php")) ||
+            !File.Exists(Path.Combine(active, "public", "local-recovery.php")))
+            throw new InvalidDataException("INACTIVE_SLOT_STABLE_RECOVERY_MISSING");
         foreach (var rel in Overlay)
         {
             var local = Path.Combine(persistent, rel);
