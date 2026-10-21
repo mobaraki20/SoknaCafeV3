@@ -127,13 +127,18 @@ if (variant == "legacy-reconcile-policy")
     var healthyHost = host with {
         InstalledIdentityAndTreeQualified = true,
         HostPreparationPreconditionsMet = true,
-        Blockers = new[] { "REAL_HOST_UAT_EVIDENCE_REQUIRED" }
+        ActivationAllowed = true,
+        PanelUpdateReady = true,
+        Blockers = Array.Empty<string>()
     };
-    var withoutUat = UnifiedUpdaterCapabilities.Current(healthyHost,
+    var readyForSignedAttempt = UnifiedUpdaterCapabilities.Current(healthyHost,
         Array.Empty<MaintenanceOperation>());
-    Need(!withoutUat.PanelUpdateReady &&
-        withoutUat.BlockingCode == "LOCAL_CROSS_VERSION_UAT_REQUIRED",
-        "CLEARING_LEGACY_BLOCKER_MUST_NOT_FAKE_PANEL_UAT");
+    Need(readyForSignedAttempt.PanelUpdateReady &&
+        readyForSignedAttempt.BlockingCode == "" &&
+        readyForSignedAttempt.LocalRoutine.Activate &&
+        !healthyHost.BackupQualified && !healthyHost.DatabaseQualified &&
+        !healthyHost.RealHostUatPerformed,
+        "LIVE_HOST_MUST_ALLOW_SIGNED_ATTEMPT_WITH_TRANSACTION_SCOPED_BACKUP");
     Console.WriteLine(JsonSerializer.Serialize(new {
         result = "PASS", legacy_audited = true, next_update_admitted = true,
         fail_closed_variants = 7
