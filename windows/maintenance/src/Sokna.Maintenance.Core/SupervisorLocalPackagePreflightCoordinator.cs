@@ -92,8 +92,43 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
 
                 // Validates the signed manifest, artifact hashes, exact baseline
                 // and anti-rollback state WITHOUT persisting a stage or sequence.
-                var verified = new ReleaseSetVerifierStager(_paths)
-                    .VerifyOnly(package, installed);
+                ReleaseSetPreflightResult verified;
+                try
+                {
+                    verified = new ReleaseSetVerifierStager(_paths)
+                        .VerifyOnly(package, installed);
+                }
+                catch (InvalidDataException ex) when (ex.Message ==
+                    "Installed release identity does not match any exact supported baseline.")
+                {
+                    // External code-only install changed the physical Local
+                    // version but the trusted Maintenance baseline is stale.
+                    // Only an issuer-signed, install-qualified next Release Set
+                    // can supply the exact new identity. No user version input.
+                    using var lease = MachineMutationLease.Acquire(
+                        _paths, "supervisor-local-identity-rebind");
+                    var receipt = new SupervisorSignedLocalIdentityRebind(_paths)
+                        .AdoptForNextRelease(package, installed);
+                    if (receipt is null)
+                        throw new InvalidDataException("LOCAL_IDENTITY_REBIND_NOT_APPLICABLE");
+                    _journal.Append("update.local_identity.signed_rebound",
+                        _state.InstanceId, _state.InstallGeneration,
+                        new Dictionary<string, object?>
+                        {
+                            ["operation_id"] = operation.OperationId,
+                            ["signed_release_set_id"] = receipt.SignedReleaseSetId,
+                            ["signed_package_sha256"] = receipt.SignedPackageSha256,
+                            ["previous_identity_sha256"] = receipt.PreviousIdentitySha256,
+                            ["adopted_managed_tree_sha256"] = receipt.AdoptedManagedTreeSha256,
+                            ["database_mutation_performed"] = false
+                        });
+                    identityBytes = File.ReadAllBytes(_paths.InstalledReleaseIdentityPath);
+                    identityHash = Sha256(identityBytes);
+                    installed = AtomicFile.ReadJson<InstalledReleaseIdentity>(
+                        _paths.InstalledReleaseIdentityPath);
+                    verified = new ReleaseSetVerifierStager(_paths)
+                        .VerifyOnly(package, installed);
+                }
                 using var opened = File.OpenRead(package);
                 var packageAfter = Sha256(opened);
                 var identityAfter = Sha256(File.ReadAllBytes(_paths.InstalledReleaseIdentityPath));
