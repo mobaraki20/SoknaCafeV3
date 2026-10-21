@@ -1,0 +1,45 @@
+name: Windows 1.1.19 — Home Local 231as adoption qualification
+on:
+  push:
+    branches: [work/windows119-home231as-adoption-qualification-20261021]
+    paths:
+      - packaging/windows/local-slot-bootstrap-contract-v1.json
+      - packaging/windows/scripts/queue-local-slot-adoption-r8.ps1
+      - .github/workflows/ci-windows119-231as-adoption.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  static-home-adoption:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact known Local build, inventory and tree-only allowlist
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $contract=Get-Content packaging/windows/local-slot-bootstrap-contract-v1.json -Raw|ConvertFrom-Json
+          if($contract.format -ne 'sokna-local-slot-bootstrap-contract-v1' -or $contract.schema_version -ne 1 -or $contract.database_mutation -or $contract.public_mutation){throw 'Unsafe adoption contract'}
+          $expected='3.0.0-g6.2-workspace.231as-connectivity-relay-ack-home-uat'
+          $entry=@($contract.entries|Where-Object build -eq $expected)
+          if($entry.Count -ne 1 -or $entry[0].managed_files -ne 509 -or $entry[0].managed_tree_sha256 -ne 'd67561b5cc72d0e8003c2497c2af26dcdb3f7c5a893aa4eccaa462924c49f77f'){throw 'Local 231as known source identity mismatch'}
+          if(@($contract.entries|Where-Object build -like '*231at*').Count -ne 0){throw 'Unknown Local build silently allowlisted'}
+          $path='packaging/windows/scripts/queue-local-slot-adoption-r8.ps1'
+          $tokens=$null;$errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count -gt 0){throw ('Queue PowerShell syntax invalid: '+(($errors|ForEach-Object Message)-join '; '))}
+          $script=Get-Content $path -Raw
+          foreach($guard in @('LOCAL_MANAGED_TREE_HASH_MISMATCH','LOCAL_R8_ALREADY_PRESENT_SIGNED_REBIND_REQUIRED','LEGACY_MIGRATION_STATE_UNSAFE')){
+            if(-not $script.Contains($guard)){throw "Adoption safety guard missing: $guard"}
+          }
+          Write-Host 'Local 231as source contract, strict installed tree proof, R8 skip and signed handoff: PASS'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Preserve Maintenance signed preflight and build compatibility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release --nologo -warnaserror
+          if($LASTEXITCODE -ne 0){throw 'Existing Maintenance Supervisor compatibility failed'}
