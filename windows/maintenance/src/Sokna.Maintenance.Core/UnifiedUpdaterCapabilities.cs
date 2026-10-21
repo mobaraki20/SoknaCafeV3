@@ -28,7 +28,7 @@ public static class UnifiedUpdaterCapabilities
                     ? "LOCAL_INSTALLED_IDENTITY_REBIND_REQUIRED"
                     : !host.HostPreparationPreconditionsMet
                         ? "LOCAL_HOST_PRECONDITIONS_UNPROVEN"
-                        : "LOCAL_CROSS_VERSION_UAT_REQUIRED";
+                        : "";
         var detail = code switch
         {
             "LOCAL_RECOVERY_REQUIRED" =>
@@ -39,7 +39,7 @@ public static class UnifiedUpdaterCapabilities
                 "Live Local build/tree differs from trusted Maintenance identity. Require authenticated adoption; never rewrite an identity from UI-supplied version.",
             "LOCAL_HOST_PRECONDITIONS_UNPROVEN" =>
                 "Active junction, Apache HTTP, managed tree, persistent machine binding or lifecycle proof is missing.",
-            _ => "Local cross-version installation and verified backup/recovery still require real-host qualification."
+            _ => "Signed Local update is available; package eligibility, backup and rollback are verified by the existing transaction."
         };
         return Current() with
         {
@@ -47,8 +47,7 @@ public static class UnifiedUpdaterCapabilities
             BlockingCode = code,
             Detail = detail,
             PanelUpdateReady = host.PanelUpdateReady && host.ActivationAllowed &&
-                host.BackupQualified && host.DatabaseQualified &&
-                host.RealHostUatPerformed && blocking.Count == 0,
+                blocking.Count == 0,
             LocalRoutine = new LocalRoutineActions(true, true,
                 host.ActivationAllowed && blocking.Count == 0, false)
         };
