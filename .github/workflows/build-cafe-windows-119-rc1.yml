@@ -1,4 +1,4 @@
-name: Windows Services 1.1.19 RC2 — Web Panel Local Update
+name: Windows Services 1.1.19 RC3 — Web Panel Local Update
 on:
   push:
     branches: [work/windows-118-home-local231ar-stage-qualification-20261021]
@@ -70,7 +70,7 @@ jobs:
         timeout-minutes: 48
         run: |
           $ErrorActionPreference='Stop'
-          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-119-rc2'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-119-rc3'
           $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
           if(-not $iscc){throw 'ISCC missing'}
           & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot $out -IsccExe $iscc
@@ -86,7 +86,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-119-rc2'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-119-rc3'
           $ui=Join-Path $out 'SoknaSetupUi.exe'
           if(-not(Test-Path -LiteralPath $ui)){throw 'Release UI is missing'}
           $p=Start-Process -FilePath $ui -ArgumentList '--planner-self-test' -Wait -PassThru
@@ -103,23 +103,23 @@ jobs:
           Write-Host 'Planner regression, immutable Recovery guard and privileged parity: PASS'
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-services-119-rc2-home-local-activation-uat
+          name: windows-services-119-rc3-home-local-activation-uat
           path: |
-            ${{ runner.temp }}/sokna-windows-119-rc2/SOKNA-Windows-Services-Setup-1.1.19.exe
-            ${{ runner.temp }}/sokna-windows-119-rc2/SHA256SUMS.txt
-            ${{ runner.temp }}/sokna-windows-119-rc2/artifact-index.json
+            ${{ runner.temp }}/sokna-windows-119-rc3/SOKNA-Windows-Services-Setup-1.1.19.exe
+            ${{ runner.temp }}/sokna-windows-119-rc3/SHA256SUMS.txt
+            ${{ runner.temp }}/sokna-windows-119-rc3/artifact-index.json
           if-no-files-found: error
       - name: Publish Home test pre-release when GitHub token allows
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag='windows-services-v1.1.19-rc.2'
-          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-119-rc2'
+          $tag='windows-services-v1.1.19-rc.3'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-119-rc3'
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if($LASTEXITCODE -eq 0){throw 'Existing release; refusing overwrite'}
           @'
-          Windows Services 1.1.19-rc.2 — Home Local Web Update Panel test candidate.
+          Windows Services 1.1.19-rc.3 — Home Local Web Update Panel test candidate.
           Maintenance Supervisor + Update Engine 0.3.9: web panel eligibility now follows independently inspected healthy Local machine state, rather than an unconditional never-ready UAT placeholder.
           Obsolete 2026-10-17 home-cycle recovery can be settled only against a later committed R8 migration and current signed Local baseline/healthy Apache slot. Other pending operations are not bypassed.
           Signed ZIP upload, Preflight, Stage and durable Activate reuse existing Maintenance V4 engine; verified backup/recovery remains transaction-scoped.
@@ -128,5 +128,5 @@ jobs:
           Qualification includes Windows build, signed-stage negative/positive tests, activation/reservation regression, installer planner and package digests.
           Actual Home web-panel cross-version activation and rollback UAT must still be performed on the user's Home test PC before using this in Cafe.
           '@ | Set-Content "$out/RELEASE_NOTES.md" -Encoding UTF8
-          gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'SOKNA Windows Services 1.1.19-rc.2 — Home Local Activation UAT' --notes-file "$out/RELEASE_NOTES.md" --prerelease "$out/SOKNA-Windows-Services-Setup-1.1.19.exe" "$out/SHA256SUMS.txt" "$out/artifact-index.json"
+          gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'SOKNA Windows Services 1.1.19-rc.3 — Home Local Activation UAT' --notes-file "$out/RELEASE_NOTES.md" --prerelease "$out/SOKNA-Windows-Services-Setup-1.1.19.exe" "$out/SHA256SUMS.txt" "$out/artifact-index.json"
           if($LASTEXITCODE -ne 0){Write-Warning 'Release API is not writable by this Actions identity (HTTP 403). Qualified EXE remains available in the uploaded GitHub Actions artifact.';exit 0}
