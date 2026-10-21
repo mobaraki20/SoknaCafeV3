@@ -57,17 +57,18 @@ public sealed class SupervisorLegacySlotReconciler
             if (migration.Phase != "COMMITTED" || migration.RecoveryRequired ||
                 migration.DatabaseMutationPerformed || migration.PublicMutationPerformed ||
                 migration.WindowsRebootRequired ||
-                migration.ExpectedBuild != layout.Build ||
-                migration.ExpectedManagedFiles != layout.ManagedFileCount ||
-                !EqualHash(migration.ExpectedManagedTreeSha256, tree) ||
                 !SamePath(migration.PackageRoot, layout.PackageRoot) ||
                 !SamePath(migration.StableWebRoot, layout.WebRoot) ||
-                !SamePath(migration.ActiveSlot, layout.ActiveSlotTarget) ||
                 migration.Events is null ||
                 !migration.Events.Any(e => e.State == "COMMITTED" &&
                     e.AtUtc <= migration.UpdatedAtUtc))
                 throw new InvalidDataException("LEGACY_SLOT_RECONCILE_MIGRATION_STATE_UNPROVEN");
 
+            // A later independently installed Local version can occupy a newer
+            // R8 sibling. The migration receipt still proves the obsolete
+            // recovery was superseded by the earlier committed R8 migration;
+            // the CURRENT version/tree are separately attested against the
+            // trusted installed identity above (including signed rebind).
             var commits = _operations.ListCommittedLocalMigrations();
             var resolved = new List<MaintenanceOperation>();
             foreach (var old in candidates)
@@ -84,7 +85,7 @@ public sealed class SupervisorLegacySlotReconciler
                     old.OperationId, old.State, old.ResultCode, old.ResultMessage,
                     newer.OperationId, newer.UpdatedAtUtc, migration.UpdatedAtUtc,
                     layout.Build, layout.ActiveSlotTarget, tree, DateTimeOffset.UtcNow,
-                    "verified_newer_committed_migration_live_junction_apache_identity_and_tree");
+                    "verified_committed_r8_migration_and_current_signed_local_identity_tree");
                 // Write evidence first. A crash before the operation transition
                 // keeps the blocker intact; retry is safe and idempotent.
                 AtomicFile.WriteJson(Path.Combine(_paths.OperationsRoot,
