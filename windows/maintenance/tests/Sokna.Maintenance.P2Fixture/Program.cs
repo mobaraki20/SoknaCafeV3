@@ -109,6 +109,31 @@ if (variant == "legacy-reconcile-policy")
         MaintenanceOperationStore.CanonicalRequestHash("update.local-package-preflight",
             "next.zip", "ci"), "update.local-package-preflight", "next.zip", "ci");
     Need(next.State == "accepted", "NEXT_UPDATE_MUST_BE_ADMISSIBLE");
+    var host = new InactiveLocalHostReadiness(
+        "sokna-inactive-local-host-readiness-v1", 1, DateTimeOffset.UtcNow,
+        build, true, true, false, true, true, true, true, false,
+        new[] { "INSTALLED_LOCAL_IDENTITY_OR_TREE_MISMATCH" },
+        false, false, false, false, false, false, false, false, false);
+    var blockedPanel = UnifiedUpdaterCapabilities.Current(host, new[] {
+        old with { State = "recovery_required" } });
+    Need(!blockedPanel.PanelUpdateReady &&
+        blockedPanel.BlockingCode == "LOCAL_RECOVERY_REQUIRED" &&
+        !blockedPanel.LocalRoutine.Activate, "UNRESOLVED_RECOVERY_PANEL_MUST_BLOCK");
+    var identityDriftPanel = UnifiedUpdaterCapabilities.Current(host,
+        Array.Empty<MaintenanceOperation>());
+    Need(!identityDriftPanel.PanelUpdateReady &&
+        identityDriftPanel.BlockingCode == "LOCAL_INSTALLED_IDENTITY_REBIND_REQUIRED",
+        "STALE_231AR_IDENTITY_MUST_NOT_APPEAR_READY");
+    var healthyHost = host with {
+        InstalledIdentityAndTreeQualified = true,
+        HostPreparationPreconditionsMet = true,
+        Blockers = new[] { "REAL_HOST_UAT_EVIDENCE_REQUIRED" }
+    };
+    var withoutUat = UnifiedUpdaterCapabilities.Current(healthyHost,
+        Array.Empty<MaintenanceOperation>());
+    Need(!withoutUat.PanelUpdateReady &&
+        withoutUat.BlockingCode == "LOCAL_CROSS_VERSION_UAT_REQUIRED",
+        "CLEARING_LEGACY_BLOCKER_MUST_NOT_FAKE_PANEL_UAT");
     Console.WriteLine(JsonSerializer.Serialize(new {
         result = "PASS", legacy_audited = true, next_update_admitted = true,
         fail_closed_variants = 7
