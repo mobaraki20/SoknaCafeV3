@@ -207,7 +207,8 @@ if (variant == "signed-readonly-stage-forbidden")
     var verifier = new ReleaseSetVerifierStager(paths);
     var inspected = verifier.VerifyOnly(packagePath, identity);
     if (!inspected.SignatureVerified || !inspected.ArtifactIntegrityVerified ||
-        inspected.ExactBaselineVerified != true || inspected.StagePerformed)
+        inspected.ExactBaselineVerified != true || inspected.StagePerformed ||
+        inspected.SignedInstallIntent)
         throw new InvalidDataException("SIGNED_READONLY_PREFLIGHT_INVALID");
     var denied = false;
     try { _ = verifier.VerifyAndStage(packagePath, identity); }
