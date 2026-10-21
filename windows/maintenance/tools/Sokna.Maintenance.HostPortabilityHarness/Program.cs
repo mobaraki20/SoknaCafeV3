@@ -50,22 +50,22 @@ try
     File.WriteAllText(Path.Combine(rejectedRoot.ReleaseSigningTrustRoot,
         manifest.Signature.KeyId + ".spki.pem"), publicPem);
     var mismatched = new InstalledReleaseIdentity(wrong, null, "0.3.10", "0.3.10", null, null);
-    ExpectReject(rejectedRoot, mismatched, "Installed release identity does not match any exact supported baseline.");
+    ExpectReject(zip, rejectedRoot, mismatched, "Installed release identity does not match any exact supported baseline.");
     Console.WriteLine("INCOMPATIBLE_HOST_FAIL_CLOSED_PASS");
 
     var untrustedRoot = new MaintenancePaths(Path.Combine(tempRoot, "untrusted"));
     Directory.CreateDirectory(untrustedRoot.ReleaseSigningTrustRoot);
     var validIdentity = new InstalledReleaseIdentity(first, null, "0.3.10", "0.3.10", null, null);
-    ExpectReject(untrustedRoot, validIdentity, "Release signing key is not trusted on this machine.");
+    ExpectReject(zip, untrustedRoot, validIdentity, "Release signing key is not trusted on this machine.");
     Console.WriteLine("NO_PREPROVISIONED_TRUST_FAIL_CLOSED_PASS");
 }
 finally { if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true); }
 
-static void ExpectReject(MaintenancePaths paths, InstalledReleaseIdentity installed, string expected)
+static void ExpectReject(string packagePath, MaintenancePaths paths, InstalledReleaseIdentity installed, string expected)
 {
     try
     {
-        _ = new ReleaseSetVerifierStager(paths).VerifyOnly(Path.GetFullPath(args[0]), installed);
+        _ = new ReleaseSetVerifierStager(paths).VerifyOnly(packagePath, installed);
         throw new InvalidDataException("PORTABILITY_FAILURE_NOT_REJECTED");
     }
     catch (InvalidDataException ex) when (ex.Message == expected) { }
