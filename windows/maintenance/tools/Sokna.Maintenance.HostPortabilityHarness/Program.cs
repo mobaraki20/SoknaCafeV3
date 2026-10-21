@@ -31,8 +31,12 @@ try
         for (var replica = 0; replica < 2; replica++)
         {
             var paths = new MaintenancePaths(Path.Combine(tempRoot, "machine-" + n + "-" + replica));
-            Directory.CreateDirectory(paths.ReleaseSigningTrustRoot);
-            File.WriteAllText(Path.Combine(paths.ReleaseSigningTrustRoot, manifest.Signature.KeyId + ".spki.pem"), publicPem);
+            var trust = PublisherTrustBootstrap.EnsureEmbedded(paths);
+            if (trust.KeyId != manifest.Signature.KeyId ||
+                trust.State != "pinned_from_installer")
+                throw new InvalidDataException("PORTABILITY_EMBEDDED_TRUST_NOT_PROVISIONED");
+            if (PublisherTrustBootstrap.EnsureEmbedded(paths).State != "already_pinned")
+                throw new InvalidDataException("PORTABILITY_IDEMPOTENCY_FAILED");
             var installed = new InstalledReleaseIdentity(
                 baseline, null, "0.3.10", "0.3.10", null, null);
             var result = new ReleaseSetVerifierStager(paths).VerifyOnly(zip, installed);
@@ -46,12 +50,20 @@ try
     var first = manifest.SupportedBaselines[0].Local!;
     var wrong = first with { ManagedTreeSha256 = new string('0', 64) };
     var rejectedRoot = new MaintenancePaths(Path.Combine(tempRoot, "incompatible"));
-    Directory.CreateDirectory(rejectedRoot.ReleaseSigningTrustRoot);
-    File.WriteAllText(Path.Combine(rejectedRoot.ReleaseSigningTrustRoot,
-        manifest.Signature.KeyId + ".spki.pem"), publicPem);
+    _ = PublisherTrustBootstrap.EnsureEmbedded(rejectedRoot);
     var mismatched = new InstalledReleaseIdentity(wrong, null, "0.3.10", "0.3.10", null, null);
     ExpectReject(zip, rejectedRoot, mismatched, "Installed release identity does not match any exact supported baseline.");
     Console.WriteLine("INCOMPATIBLE_HOST_FAIL_CLOSED_PASS");
+    var pinnedPath = Path.Combine(rejectedRoot.ReleaseSigningTrustRoot,
+        manifest.Signature.KeyId + ".spki.pem");
+    File.WriteAllText(pinnedPath, publicPem.Replace("PUBLIC KEY", "PRIVATE KEY"));
+    try
+    {
+        _ = PublisherTrustBootstrap.EnsureEmbedded(rejectedRoot);
+        throw new InvalidDataException("PORTABILITY_TAMPERED_TRUST_ACCEPTED");
+    }
+    catch (InvalidDataException ex) when (ex.Message == "PUBLISHER_TRUST_PIN_CONFLICT") { }
+    Console.WriteLine("TAMPERED_LOCAL_TRUST_REJECTED_PASS");
 
     var untrustedRoot = new MaintenancePaths(Path.Combine(tempRoot, "untrusted"));
     Directory.CreateDirectory(untrustedRoot.ReleaseSigningTrustRoot);
