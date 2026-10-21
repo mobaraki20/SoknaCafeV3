@@ -193,6 +193,38 @@ using (var archive = ZipFile.Open(packagePath, ZipArchiveMode.Create))
     }
 }
 
+// Regression: a correctly signed, intact, exact-baseline test-only release
+// must pass VerifyOnly but cannot create a trusted Stage/sequence. This
+// fixture is strictly restricted to the disposable Windows CI sandbox.
+if (variant == "signed-readonly-stage-forbidden")
+{
+    var ciRoot = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.Ordinal) &&
+        string.Equals(Environment.GetEnvironmentVariable("RUNNER_OS"), "Windows", StringComparison.Ordinal) &&
+        !string.IsNullOrWhiteSpace(runnerTemp) &&
+        Path.GetFullPath(root).StartsWith(Path.GetFullPath(runnerTemp).TrimEnd(Path.DirectorySeparatorChar) +
+            Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    if (!ciRoot) throw new InvalidOperationException("SIGNED_READONLY_STAGE_TEST_CI_ONLY");
+    var paths = new MaintenancePaths(root);
+    var verifier = new ReleaseSetVerifierStager(paths);
+    var inspected = verifier.VerifyOnly(packagePath, identity);
+    if (!inspected.SignatureVerified || !inspected.ArtifactIntegrityVerified ||
+        inspected.ExactBaselineVerified != true || inspected.StagePerformed)
+        throw new InvalidDataException("SIGNED_READONLY_PREFLIGHT_INVALID");
+    var denied = false;
+    try { _ = verifier.VerifyAndStage(packagePath, identity); }
+    catch (InvalidDataException ex) when (ex.Message == "RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN")
+    { denied = true; }
+    if (!denied || File.Exists(paths.ReleaseSequenceStatePath) ||
+        Directory.Exists(paths.StagingRoot))
+        throw new InvalidDataException("SIGNED_READONLY_STAGE_MUTATED_SEQUENCE_OR_STAGE");
+    Console.WriteLine(JsonSerializer.Serialize(new {
+        result = "PASS", test = "signed_verifyonly_not_installable_stage_denied",
+        verified = true, stage_denied = true, anti_rollback_mutation = false,
+        stage_created = false, database_mutation_performed = false
+    }, AtomicFile.JsonOptions));
+    return;
+}
+
 // Only the isolated signed-fixture executable may seed a Stage directly.
 // The shipped Update Engine still REQUIRES a Supervisor-issued permit.
 StagedReleaseReceipt? seededStage = null;
