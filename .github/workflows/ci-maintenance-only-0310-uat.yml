@@ -177,7 +177,12 @@ jobs:
             New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+$exe+'"') -StartupType Automatic|Out-Null
             Start-Service SoknaMaintenanceSupervisor
             $log=Join-Path $env:RUNNER_TEMP 'maintenance-only-inno-smoke.log'
-            $process=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$log+'"')) -PassThru -Wait
+            $process=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$log+'"')) -PassThru
+            if(-not $process.WaitForExit(90000)){
+              if(Test-Path $log){Get-Content $log -Tail 75|Out-Host}
+              try{$process.Kill($true)}catch{}
+              throw 'INNO_INSTALLER_BOUNDED_SMOKE_TIMEOUT'
+            }
             $errorPath=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
             if(Test-Path $errorPath){Write-Host 'Scoped installer failure code:';Get-Content $errorPath|Out-Host}
             if(Test-Path $log){
@@ -213,7 +218,7 @@ jobs:
           $exe=Join-Path $out 'SOKNA-Maintenance-Only-0.3.10-UAT.exe'
           $notes=@'
           UAT PRE-RELEASE (not production-qualified): first independently installable SOKNA Maintenance component updater.
-          Installs ONLY Supervisor+Update Engine 0.3.9 -> 0.3.10. Windows Services Manager 1.1.19, Runtime 1.0.6, Print 6.2.9, Recovery Console 0.1.2 remain unchanged. Does not install Local or Public and does NOT independently fix stable_recovery.
+          Installs ONLY Supervisor+Update Engine 0.3.9 -> 0.3.10. Windows Services Manager 1.1.19, Runtime 1.0.6, Print 6.2.9, Recovery Console 0.1.2 remain unchanged. Does not install Local or Public. On exactly attested Home Local 231as R8, attempts an immutable-source recovery.php overlay repair; a real home host check is still required.
           Guardrails: Windows Admin approval, exact expected baseline 0.3.9, full payload hashes, current owner and running health, version pin and no downgrade, service stop/process exit, rollback and HTTP version proof, out-of-scope file canaries, separate component receipt, no changes to whole-shell install state.
           Testing: Windows Server 2022 GitHub CI real SCM smoke, actual Inno EXE successful upgrade with installed version readback, payload tamper check, Maintenance binary build and Inno compile. Home stable-recovery repair requires a real 231as R8 host test. Windows 10 Home real-host UAT is still required.
           No publisher Authenticode signature has been fabricated. Verify SHA256SUMS.txt after download.
