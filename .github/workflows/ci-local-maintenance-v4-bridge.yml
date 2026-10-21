@@ -1,0 +1,46 @@
+name: Local Web to Maintenance V4 panel bridge
+on:
+  push:
+    branches:
+      - fix/local-panel-maintenance-v4-bridge-20261022
+  pull_request:
+    paths:
+      - apps/local-web/src/Core/Bootstrap.php
+      - apps/local-web/src/Domain/Update/MaintenanceV4PanelService.php
+      - apps/local-web/public/system/api.php
+      - apps/local-web/public/assets/system-diagnostics.js
+      - apps/local-web/tests/maintenance_v4_panel_contract.php
+      - .github/workflows/ci-local-maintenance-v4-bridge.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  php-local-maintenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, curl
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: PHP syntax and frontend JavaScript syntax
+        run: |
+          php -l apps/local-web/src/Domain/Update/MaintenanceV4PanelService.php
+          php -l apps/local-web/src/Core/Bootstrap.php
+          php -l apps/local-web/public/system/api.php
+          php -l apps/local-web/tests/maintenance_v4_panel_contract.php
+          node --check apps/local-web/public/assets/system-diagnostics.js
+      - name: Simulate actual Maintenance HMAC route sequence and refuse unsafe actions
+        run: |
+          php apps/local-web/tests/maintenance_v4_panel_contract.php
+      - name: Preserve Local/Public separation
+        run: |
+          git diff --name-only ${{ github.event.pull_request.base.sha || 'HEAD^' }} HEAD | tee /tmp/local-panel-files.txt
+          if grep -E '^(apps/public/|windows/maintenance/|windows/runtime/|windows/print-agent/)' /tmp/local-panel-files.txt; then
+            echo 'UNEXPECTED_PUBLIC_OR_WINDOWS_RUNTIME_MUTATION'; exit 1
+          fi
