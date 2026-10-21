@@ -22,6 +22,15 @@ for (var i = 0; i < args.Length; i++)
     }
 }
 if (string.IsNullOrWhiteSpace(root)) throw new InvalidOperationException("--root is required.");
+// "valid" is an install-qualified synthetic fixture ONLY inside the disposable
+// GitHub Windows RUNNER_TEMP; on any installed machine it remains read-only.
+var runnerTemp = Environment.GetEnvironmentVariable("RUNNER_TEMP");
+var validCiFixture = variant == "valid" &&
+    string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.Ordinal) &&
+    string.Equals(Environment.GetEnvironmentVariable("RUNNER_OS"), "Windows", StringComparison.Ordinal) &&
+    !string.IsNullOrWhiteSpace(runnerTemp) &&
+    Path.GetFullPath(root).StartsWith(Path.GetFullPath(runnerTemp).TrimEnd(Path.DirectorySeparatorChar) +
+        Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 if (variant is "for-install-local-synthetic" or "for-install-local-no-db-synthetic" or "for-install-paired-synthetic")
 {
     // These self-asserted fixture qualification flags MUST NOT be written to
@@ -105,11 +114,13 @@ var artifact = new ReleaseArtifact(
 var now = DateTimeOffset.UtcNow;
 var created = variant == "expired" ? now.AddHours(-2) : now.AddMinutes(-1);
 var expires = variant == "expired" ? now.AddHours(-1) : now.AddHours(2);
-var syntheticLocal = variant is "for-install-local-synthetic" or "for-install-local-no-db-synthetic" or "for-install-paired-synthetic";
+var syntheticLocal = validCiFixture ||
+    variant is "for-install-local-synthetic" or "for-install-local-no-db-synthetic" or "for-install-paired-synthetic";
 var forInstall = variant == "for-install-unqualified" || syntheticLocal;
 var format = variant == "design-draft" ? "sokna-maintenance-release-set-v2.1-draft" : ReleaseSetVerifierStager.Format;
 var schema = variant == "design-draft" ? "2.1-design" : ReleaseSetVerifierStager.SchemaVersion;
-var status = variant == "design-draft" ? "DESIGN_ONLY_NOT_FOR_INSTALL" : "ENGINEERING_TEST_NOT_FOR_INSTALL";
+var status = variant == "design-draft" ? "DESIGN_ONLY_NOT_FOR_INSTALL" :
+    syntheticLocal ? "CI_SYNTHETIC_STAGE_FIXTURE_NOT_PRODUCTION" : "ENGINEERING_TEST_NOT_FOR_INSTALL";
 
 var emptyArray = JsonSerializer.SerializeToElement(Array.Empty<object>());
 var emptyObject = JsonSerializer.SerializeToElement(new Dictionary<string, object?>());
