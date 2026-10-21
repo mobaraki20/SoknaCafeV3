@@ -25,7 +25,7 @@ Scope: **future release infrastructure only**. This branch does not modify or re
 
 ## Current implemented preparatory capability
 
-`build-component-release-v1.ps1` prepares a **small, isolated, hash-inventoried candidate archive** for exactly one release unit. Its manifest carries source commit, source version, exact included-file list/hash and release scope. It deliberately sets `installable=false`. A Windows CI contract confirms runtime-only, print-only and maintenance-group payload boundaries; no Windows service mutation is performed.
+Existing `windows/runtime/build-component-package.ps1` and `windows/print-agent/build-component-package.ps1` remain the component compilation/publish source; they are not replaced. The new `build-component-release-v1.ps1` only wraps the resulting binary/bundle into a common **small, isolated, hash-inventoried candidate archive** for exactly one release unit. Its manifest carries source commit, source version, exact included-file list/hash and release scope. It deliberately sets `installable=false`. A Windows CI contract confirms runtime-only, print-only and maintenance-group payload boundaries; no Windows service mutation is performed.
 
 ## What must be completed before publishing a standalone EXE
 
