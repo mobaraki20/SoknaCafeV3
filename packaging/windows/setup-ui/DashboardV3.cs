@@ -234,7 +234,7 @@ internal sealed class WindowsServicesDashboardV3 : Form
         primary.Text = prim.Any(x => x.Action == ComponentAction.Install) ? "نصب اجزای لازم" : "اجرای به‌روزرسانی";
         if (p.IsBlocked) { actionTitle.Text = "ادامه نصب ایمن نیست"; actionText.Text = "حداقل یک component ناسازگار یا جدیدتر از release هدف تشخیص داده شد. هیچ mutation انجام نمی‌شود."; }
         else if (p.HasMutation) { actionTitle.Text = "برنامه تغییرات آماده است"; actionText.Text = "قبل از اجرا، برنامه دقیق هر component نمایش داده می‌شود. اجزای سالم بدون توقف و جایگزینی باقی می‌مانند."; }
-        else if (p.Rows.Any(x => x.UpdateState == "independent_newer_compatible"))
+        else if (p.Rows.Any(x => x.UpdateState == "independent_compatible_keep"))
         {
             actionTitle.Text = "Maintenance مستقل به‌روز است";
             actionText.Text = "نسخه 0.3.10 با رسید نصب مستقل، هش دو جزء و سلامت سرویس تأیید شده و بدون تغییر باقی می‌ماند.";
