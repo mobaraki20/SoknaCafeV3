@@ -24,7 +24,28 @@ if(-not(Test-Path -LiteralPath $corePath -PathType Leaf)){throw 'Qualified Windo
 $coreRaw=[IO.File]::ReadAllText($corePath,[Text.Encoding]::UTF8)
 
 $oldProp="function Prop(`$o,[string]`$n,`$default=`$null){if(`$null-ne`$o-and`$o.PSObject.Properties.Name-contains`$n){return `$o.`$n};`$default}"
-$newProp=$oldProp+"`r`nfunction Compatible-Fingerprint(`$m,[string]`$actual,[string]`$target){if([string]::IsNullOrWhiteSpace(`$actual)){return `$false};if(`$actual-eq`$target){return `$true};`$accepted=@(Prop `$m 'accepted_installed_sha256' `$null);return @(`$accepted|Where-Object{[string]`$_-eq`$actual}).Count-gt0}"
+$independentProof=@'
+function Verified-IndependentMaintenancePair($m,[string]$actual){
+  $id=[string](Prop $m 'component_id' '')
+  if($id-notin@('maintenance','maintenance-update-engine')-or[string](Prop $m 'version' '')-ne'0.3.10'-or$actual.Length-ne64){return $false}
+  try{
+    $receiptPath=Join-Path $DataRoot 'setup\maintenance-only-component-receipt-v1.json'
+    $supervisor=Join-Path $InstallRoot 'Maintenance\App\SoknaMaintenanceSupervisor.exe'
+    $engine=Join-Path $InstallRoot 'Maintenance\App\SoknaMaintenanceUpdateEngine.exe'
+    if(-not(Test-Path -LiteralPath $receiptPath -PathType Leaf)-or-not(Test-Path -LiteralPath $supervisor -PathType Leaf)-or-not(Test-Path -LiteralPath $engine -PathType Leaf)){return $false}
+    $receipt=Get-Content -LiteralPath $receiptPath -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
+    $tx=[Guid]::Empty
+    if([string]$receipt.format-ne'sokna-maintenance-only-component-receipt-v1'-or[int]$receipt.schema_version-ne1-or[string]$receipt.release_scope-ne'maintenance_only'-or[string]$receipt.version-ne'0.3.10'-or-not[Guid]::TryParseExact([string]$receipt.transaction_id,'N',[ref]$tx)-or-not[bool]$receipt.windows_shell_state_unchanged-or-not[bool]$receipt.runtime_unchanged-or-not[bool]$receipt.print_agent_unchanged-or-not[bool]$receipt.recovery_console_unchanged){return $false}
+    $supervisorHash=Sha $supervisor
+    $engineHash=Sha $engine
+    if($supervisorHash.Length-ne64-or$engineHash.Length-ne64-or$supervisorHash-ne[string]$receipt.supervisor_sha256-or$engineHash-ne[string]$receipt.engine_sha256-or(VersionOf $supervisor)-ne'0.3.10'-or(VersionOf $engine)-ne'0.3.10'){return $false}
+    $svc=Service-Info 'SoknaMaintenanceSupervisor'
+    if(-not$svc.Installed-or[string]$svc.State-ne'Running'-or-not(Owned ([string]$svc.ImagePath) $InstallRoot)-or-not(Registration-Matches 'maintenance' ([string]$svc.ImagePath) $supervisor $DataRoot)){return $false}
+    return ($actual-eq$(if($id-eq'maintenance'){$supervisorHash}else{$engineHash}))
+  }catch{return $false}
+}
+'@.Trim()
+$newProp=$oldProp+"`r`n"+$independentProof+"`r`nfunction Compatible-Fingerprint(`$m,[string]`$actual,[string]`$target){if([string]::IsNullOrWhiteSpace(`$actual)){return `$false};if(`$actual-eq`$target){return `$true};`$accepted=@(Prop `$m 'accepted_installed_sha256' `$null);if(@(`$accepted|Where-Object{[string]`$_-eq`$actual}).Count-gt0){return `$true};return (Verified-IndependentMaintenancePair `$m `$actual)}"
 if(-not$coreRaw.Contains($oldProp)){throw 'Expected R8 Prop contract was not found; refusing an unbounded core rewrite.'}
 if(([regex]::Matches($coreRaw,[regex]::Escape($oldProp))).Count-ne1){throw 'Expected exactly one R8 Prop contract occurrence.'}
 $coreRaw=$coreRaw.Replace($oldProp,$newProp)
