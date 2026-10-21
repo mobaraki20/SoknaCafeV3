@@ -1,0 +1,70 @@
+name: Maintenance Home 231as signed baseline + stable recovery safety
+on:
+  push:
+    branches: [work/maintenance-panel-231as-stable-recovery-20261021]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: maintenance-home-231as-recovery
+  cancel-in-progress: true
+jobs:
+  windows-maintenance:
+    runs-on: windows-2022
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Source-exact Home baseline, unchanged original allowlist and strict Recovery contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $contract=Get-Content packaging/windows/local-slot-bootstrap-contract-v1.json -Raw|ConvertFrom-Json
+          $expected='3.0.0-g6.2-workspace.231as-connectivity-relay-ack-home-uat'
+          $entry=@($contract.entries|Where-Object build -eq $expected)
+          if($entry.Count-ne1 -or $entry[0].managed_files-ne509 -or $entry[0].managed_tree_sha256-ne'd67561b5cc72d0e8003c2497c2af26dcdb3f7c5a893aa4eccaa462924c49f77f'){throw 'Incorrect qualified exact 231as baseline'}
+          $c=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/MaintenancePaths.cs -Raw
+          foreach($v in @('b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a','d67561b5cc72d0e8003c2497c2af26dcdb3f7c5a893aa4eccaa462924c49f77f')){
+            if(-not$c.Contains($v)){throw 'Exact previous or 231as managed digest removed'}
+          }
+          $w=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/ProductionInactiveLocalSlotWriter.cs -Raw
+          if(-not$w.Contains('INACTIVE_SLOT_STABLE_RECOVERY_MISSING')){throw 'Inactive release is allowed without recovery'}
+          $p=Get-Content packaging/windows/scripts/queue-local-slot-adoption-r8.ps1 -Raw
+          if($p.Contains("(.\.\.\?|)(/|$)")){throw 'Unsafe file-path acceptance regex retained'}
+          $tokens=$null;$errors=$null
+          [Management.Automation.Language.Parser]::ParseFile((Resolve-Path packaging/windows/scripts/queue-local-slot-adoption-r8.ps1),[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count){throw 'Adoption queue syntax failed'}
+          $source=Get-Content apps/local-web/public/local-recovery.php -Raw
+          if(-not$source.Contains('managed_slot_recovery_requires_console')){throw 'Unsafe physical-tree POST is still available on R8'}
+          Write-Host 'Exact Home 231as, managed recovery and immutable identity safety: PASS'
+      - name: Build Maintenance Supervisor and Update Engine with bundled recovery resource
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($proj in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine')){
+            dotnet build "windows/maintenance/src/$proj/$proj.csproj" -c Release --nologo -warnaserror
+            if($LASTEXITCODE-ne0){throw "Maintenance project failed: $proj"}
+          }
+          Write-Host 'Maintenance Supervisor and Update Engine compile: PASS'
+  php-safe-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax and read-only Recovery GET
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l apps/local-web/public/local-recovery.php
+          php -r '$_SERVER["REQUEST_METHOD"]="GET"; require "apps/local-web/public/local-recovery.php";' > /tmp/sokna-recovery-get.html
+          grep -q 'بازیابی اضطراری Local' /tmp/sokna-recovery-get.html
+          mkdir -p /tmp/sokna-recovery-r8/LocalWeb/release/public
+          cp apps/local-web/public/local-recovery.php /tmp/sokna-recovery-r8/LocalWeb/release/public/local-recovery.php
+          printf '{}\n' > /tmp/sokna-recovery-r8/LocalWeb/release/.sokna-installation.json
+          cd /tmp/sokna-recovery-r8/LocalWeb/release
+          php -r '$_SERVER["REQUEST_METHOD"]="POST"; $_POST["recovery_code"]="not-a-recovery-token"; require "public/local-recovery.php";' > /tmp/sokna-recovery-post.html
+          grep -q 'Recovery Console' /tmp/sokna-recovery-post.html
+          test -f /tmp/sokna-recovery-r8/LocalWeb/release/.sokna-installation.json
+          echo 'R8 emergency Recovery rejects unsafe legacy POST; GET stays self-contained: PASS'
