@@ -92,6 +92,7 @@ use Sokna\Local\Search\AdminSearchProvider;
 use Sokna\Local\Search\NavigationSearchProvider;
 
 use Sokna\Local\Domain\Update\LocalUpdateService;
+use Sokna\Local\Domain\Update\MaintenanceV4PanelService;
 use Sokna\Local\Domain\Update\LocalUpdateUploadService;
 use Sokna\Local\Domain\Update\ComponentUpdateCenterService;
 use Sokna\Local\Domain\Recovery\RecoveryWorkspaceService;
@@ -168,6 +169,7 @@ final class Bootstrap
     private ?SystemDiagnosticsService $systemDiagnostics = null;
     private ?WindowsServicesPairingService $windowsServicesPairing = null;
     private ?LocalUpdateService $localUpdates = null;
+    private ?MaintenanceV4PanelService $maintenanceV4 = null;
     private ?LocalUpdateUploadService $localUpdateUploads = null;
     private ?ComponentUpdateCenterService $updateCenter = null;
     private ?RecoveryWorkspaceService $recoveryWorkspace = null;
@@ -625,11 +627,24 @@ final class Bootstrap
         );
     }
 
+    public function maintenanceV4(): MaintenanceV4PanelService
+    {
+        return $this->maintenanceV4 ??= new MaintenanceV4PanelService(
+            $this->config->requiredString('app.data_dir'));
+    }
+
     public function localUpdateUploads(): LocalUpdateUploadService
     {
         return $this->localUpdateUploads ??= new LocalUpdateUploadService(
             $this->localUpdates()->incomingDir(),
-            fn(string $path,int $actorId): array => $this->localUpdates()->stageUploadedZip($path,$actorId)
+            function(string $path,int $actorId): array {
+                if(MaintenanceV4PanelService::isV4Archive($path))
+                    return $this->maintenanceV4()->stageUploadedZip($path,$actorId);
+                if($this->maintenanceV4()->ownsCurrentUpdate())
+                    throw new \Sokna\Local\Domain\Update\LocalUpdateException(
+                        'maintenance_stage_exists','نسخه آماده Maintenance را پیش از فایل دیگر تعیین تکلیف کن.',409);
+                return $this->localUpdates()->stageUploadedZip($path,$actorId);
+            }
         );
     }
 
