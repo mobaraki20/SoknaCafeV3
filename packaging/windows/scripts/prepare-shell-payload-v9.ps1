@@ -45,7 +45,17 @@ function Verified-IndependentMaintenancePair($m,[string]$actual){
   }catch{return $false}
 }
 '@.Trim()
-$newProp=$oldProp+"`r`n"+$independentProof+"`r`nfunction Compatible-Fingerprint(`$m,[string]`$actual,[string]`$target){if([string]::IsNullOrWhiteSpace(`$actual)){return `$false};if(`$actual-eq`$target){return `$true};`$accepted=@(Prop `$m 'accepted_installed_sha256' `$null);if(@(`$accepted|Where-Object{[string]`$_-eq`$actual}).Count-gt0){return `$true};return (Verified-IndependentMaintenancePair `$m `$actual)}"
+$reconcileProof=@'
+function Can-ReconcileIndependentMaintenancePlan($ui,$resolved,$manifestRow,[string]$mode){
+  # Only the non-elevated UI hash-drift REPAIR vs admin attested KEEP case.
+  if($mode-ne'install'-or[string]$resolved.Id-notin@('maintenance','maintenance-update-engine')-or[string]$resolved.Action-ne'KEEP'-or[string](Prop $ui 'action' '')-ne'REPAIR'){return $false}
+  if([string]$resolved.CurrentVersion-ne'0.3.10'-or[string]$resolved.TargetVersion-ne'0.3.10'-or[string]$resolved.InstalledHash-eq[string]$resolved.TargetHash){return $false}
+  if([string](Prop $ui 'component_id' '')-ne[string]$resolved.Id-or[string](Prop $ui 'current_version' '')-ne'0.3.10'-or[string](Prop $ui 'target_version' '')-ne'0.3.10'){return $false}
+  if([string](Prop $ui 'installed_sha256' '')-ne[string]$resolved.InstalledHash-or[string](Prop $ui 'target_sha256' '')-ne[string]$resolved.TargetHash){return $false}
+  return (Verified-IndependentMaintenancePair $manifestRow ([string]$resolved.InstalledHash))
+}
+'@.Trim()
+$newProp=$oldProp+"`r`n"+$independentProof+"`r`n"+$reconcileProof+"`r`nfunction Compatible-Fingerprint(`$m,[string]`$actual,[string]`$target){if([string]::IsNullOrWhiteSpace(`$actual)){return `$false};if(`$actual-eq`$target){return `$true};`$accepted=@(Prop `$m 'accepted_installed_sha256' `$null);if(@(`$accepted|Where-Object{[string]`$_-eq`$actual}).Count-gt0){return `$true};return (Verified-IndependentMaintenancePair `$m `$actual)}"
 if(-not$coreRaw.Contains($oldProp)){throw 'Expected R8 Prop contract was not found; refusing an unbounded core rewrite.'}
 if(([regex]::Matches($coreRaw,[regex]::Escape($oldProp))).Count-ne1){throw 'Expected exactly one R8 Prop contract occurrence.'}
 $coreRaw=$coreRaw.Replace($oldProp,$newProp)
@@ -68,6 +78,23 @@ $oldVersionOlder="elseif(`$cmp-lt0){`$action='UPDATE';`$reason='version_older'}"
 $newVersionOlder="elseif(`$cmp-lt0){if(`$id-eq'maintenance-recovery-console'-and`$current-eq'0.1.1'-and(Compatible-Fingerprint `$m `$ih `$targetHash)){`$action='KEEP';`$reason='accepted_frozen_recovery_011'}else{`$action='UPDATE';`$reason='version_older'}}"
 if(([regex]::Matches($coreRaw,[regex]::Escape($oldVersionOlder))).Count-ne1){throw 'Expected exactly one Recovery version-older contract; refusing unsafe shell rewrite.'}
 $coreRaw=$coreRaw.Replace($oldVersionOlder,$newVersionOlder)
+
+
+# Allow only a verified independent 0.3.10 REPAIR -> KEEP reconciliation when
+# the normal UI cannot read the protected standalone receipt. All other
+# disagreement, changed installed bytes and explicit manual repair fail closed.
+$oldPlanCompare=@'
+if(([string]$u.action).Replace('_','')-ne([string]$r.Action).Replace('_','')){throw "Component plan changed after elevation: $($r.Id), UI=$($u.action), privileged=$($r.Action)"}
+'@.Trim()
+$newPlanCompare=@'
+if(([string]$u.action).Replace('_','')-ne([string]$r.Action).Replace('_','')){
+  $componentManifest=@($manifest.components|Where-Object{[string]$_.component_id-eq[string]$r.Id})|Select-Object -First 1
+  if(-not(Can-ReconcileIndependentMaintenancePlan $u $r $componentManifest ([string]$plan.mode))){throw "Component plan changed after elevation: $($r.Id), UI=$($u.action), privileged=$($r.Action)"}
+  Event 'independent_maintenance_keep_reconciled' 'kept' @{component_id=$r.Id;reason='verified_standalone_0.3.10';installed_sha256=$r.InstalledHash;target_sha256=$r.TargetHash;no_mutation=$true}
+}
+'@.Trim()
+if(([regex]::Matches($coreRaw,[regex]::Escape($oldPlanCompare))).Count-ne1){throw 'Expected exactly one privileged UI-plan comparison; refusing unbounded rewrite.'}
+$coreRaw=$coreRaw.Replace($oldPlanCompare,$newPlanCompare)
 
 $oldSubordinateKeep=@'
 if($r.Action-eq'KEEP'){$CurrentPhase='No mutation';if((Sha $r.InstalledPath)-ne$r.TargetHash){throw "Maintenance subordinate fingerprint mismatch: $($r.Id)"};Event 'component_action_completed' 'kept' @{action='KEEP';proof='no_stop_no_copy_no_registration_no_restart';after_sha256=(Sha $r.InstalledPath)};continue}
