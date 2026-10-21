@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Sokna.Maintenance.Core;
 
-const string EngineVersion = "0.3.6";
+const string EngineVersion = "0.3.8";
 
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
