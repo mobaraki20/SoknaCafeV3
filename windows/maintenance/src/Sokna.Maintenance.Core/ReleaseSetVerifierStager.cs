@@ -21,7 +21,8 @@ public sealed record ReleaseSetPreflightResult(
     [property: JsonPropertyName("stage_performed")] bool StagePerformed,
     [property: JsonPropertyName("panel_activation_ready")] bool PanelActivationReady,
     // Authenticated statement from the signed manifest, not host readiness.
-    [property: JsonPropertyName("signed_install_intent")] bool SignedInstallIntent = false);
+    [property: JsonPropertyName("signed_install_intent")] bool SignedInstallIntent = false,
+    [property: JsonPropertyName("operator_authorized")] bool OperatorAuthorized = false);
 
 public sealed class ReleaseSetVerifierStager
 {
@@ -96,10 +97,11 @@ public sealed class ReleaseSetVerifierStager
             throw new InvalidDataException("Release Set manifest JSON is invalid.", ex);
         }
 
-        ValidateManifest(manifest, installed);
+        var operatorAuthorized = OperatorUploadedLocalPackage.IsEligible(_paths, packagePath, manifest);
+        ValidateManifest(manifest, installed, operatorAuthorized);
         var canonical = ReleaseSetCanonicalizer.CanonicalBytesWithBlankSignatureValue(manifestBytes);
         var manifestHash = ReleaseSetCanonicalizer.Sha256Hex(canonical);
-        VerifySignature(manifest, canonical);
+        if (!operatorAuthorized) VerifySignature(manifest, canonical);
         ValidateArchiveAgainstArtifacts(entries, manifest.Artifacts);
         var previous = LoadSequenceState();
         if (previous is not null)
@@ -114,12 +116,13 @@ public sealed class ReleaseSetVerifierStager
 
         return new ReleaseSetPreflightResult(
             manifest.ReleaseSetId, manifest.Sequence, manifest.ReleaseType,
-            packageHash, manifestHash, true, true,
+            packageHash, manifestHash, !operatorAuthorized, true,
             manifest.ReleaseType is "windows_components_only" or "updater_only" ? null : true,
             ActivationPerformed: false, DatabaseMutationPerformed: false,
             StagePerformed: false, PanelActivationReady: false,
-            SignedInstallIntent: manifest.ForInstall && manifest.ProductionPass &&
-                !manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase));
+            SignedInstallIntent: !operatorAuthorized && manifest.ForInstall && manifest.ProductionPass &&
+                !manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase),
+            OperatorAuthorized: operatorAuthorized);
     }
 
     public StagedReleaseReceipt VerifyAndStage(string packagePath, InstalledReleaseIdentity installed)
@@ -128,7 +131,7 @@ public sealed class ReleaseSetVerifierStager
         packagePath = Path.GetFullPath(packagePath);
         if (!File.Exists(packagePath)) throw new FileNotFoundException("Release Set package was not found.", packagePath);
         Directory.CreateDirectory(_paths.UpdateRoot);
-        Directory.CreateDirectory(_paths.ReleaseSigningTrustRoot);
+        // Operator-uploaded local_only ZIPs do not need publisher keys or trust directories.
 
         using var updateLock = SingleInstanceLock.Acquire(_paths.UpdateStageLockPath);
         var packageSha256 = HashFile(packagePath);
@@ -159,16 +162,17 @@ public sealed class ReleaseSetVerifierStager
             throw new InvalidDataException("Release Set manifest JSON is invalid.", ex);
         }
 
-        ValidateManifest(manifest, installed);
+        var operatorAuthorized = OperatorUploadedLocalPackage.IsEligible(_paths, packagePath, manifest);
+        ValidateManifest(manifest, installed, operatorAuthorized);
         var canonical = ReleaseSetCanonicalizer.CanonicalBytesWithBlankSignatureValue(manifestBytes);
         var manifestSha256 = ReleaseSetCanonicalizer.Sha256Hex(canonical);
-        VerifySignature(manifest, canonical);
+        if (!operatorAuthorized) VerifySignature(manifest, canonical);
         ValidateArchiveAgainstArtifacts(entries, manifest.Artifacts);
         // VerifyOnly may authenticate test-only packages, but Stage writes a
         // durable anti-rollback sequence. Deny non-installable packages before
         // any sequence, receipt, directory or operation is created.
-        if (!manifest.ForInstall || !manifest.ProductionPass ||
-            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase))
+        if (!operatorAuthorized && (!manifest.ForInstall || !manifest.ProductionPass ||
+            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidDataException("RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN");
 
         // A signed VerifyOnly/test-only package must not even allocate the
@@ -196,7 +200,10 @@ public sealed class ReleaseSetVerifierStager
             if (receipt.ReleaseSetId != manifest.ReleaseSetId || receipt.Sequence != manifest.Sequence ||
                 receipt.ManifestSha256 != manifestSha256 || receipt.PackageSha256 != packageSha256 ||
                 receipt.ActivationPerformed || receipt.DatabaseMutationPerformed ||
-                !receipt.SignatureVerified || !receipt.ArtifactIntegrityVerified || !receipt.PreflightIdentityMatch)
+                !OperatorUploadedLocalPackage.HasTrustedPackageEvidence(
+                    receipt.SignatureVerified, receipt.OperatorAuthorized) ||
+                receipt.OperatorAuthorized != operatorAuthorized ||
+                !receipt.ArtifactIntegrityVerified || !receipt.PreflightIdentityMatch)
                 throw new InvalidDataException("Existing Release Set stage identity/evidence does not match this package.");
             PersistSequenceState(manifest, manifestSha256);
             return receipt;
@@ -245,8 +252,9 @@ public sealed class ReleaseSetVerifierStager
                 ActivationPerformed: false,
                 DatabaseMutationPerformed: false,
                 PreflightIdentityMatch: true,
-                SignatureVerified: true,
-                ArtifactIntegrityVerified: true);
+                SignatureVerified: !operatorAuthorized,
+                ArtifactIntegrityVerified: true,
+                OperatorAuthorized: operatorAuthorized);
             AtomicFile.WriteJson(Path.Combine(incoming, "stage-receipt.json"), receipt);
             Directory.Move(incoming, finalRoot);
             PersistSequenceState(manifest, manifestSha256);
@@ -275,23 +283,28 @@ public sealed class ReleaseSetVerifierStager
         return result;
     }
 
-    private static void ValidateManifest(ReleaseSetManifest manifest, InstalledReleaseIdentity installed)
+    private static void ValidateManifest(ReleaseSetManifest manifest, InstalledReleaseIdentity installed,
+        bool operatorAuthorized)
     {
         if (manifest.Format != Format || manifest.SchemaVersion != SchemaVersion)
             throw new InvalidDataException("Unsupported Release Set format/schema.");
-        if (string.IsNullOrWhiteSpace(manifest.Status) || manifest.Status.Contains("DESIGN", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(manifest.Status) ||
+            (!operatorAuthorized && manifest.Status.Contains("DESIGN", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidDataException("Design/empty Release Set status cannot be staged.");
         if (string.IsNullOrWhiteSpace(manifest.ReleaseSetId) || manifest.ReleaseSetId.Length > 128)
             throw new InvalidDataException("release_set_id is invalid.");
         if (manifest.Sequence <= 0) throw new InvalidDataException("Release Set sequence must be positive.");
         if (!ReleaseTypes.Contains(manifest.ReleaseType)) throw new InvalidDataException("release_type is unsupported.");
-        if (manifest.CreatedAt >= manifest.ExpiresAt) throw new InvalidDataException("Release Set created/expires window is invalid.");
-        var now = DateTimeOffset.UtcNow;
-        if (manifest.CreatedAt > now.AddMinutes(5)) throw new InvalidDataException("Release Set creation time is in the future.");
-        if (manifest.ExpiresAt <= now) throw new InvalidDataException("Release Set has expired.");
-        if (manifest.Signature is null || manifest.Signature.Algorithm != SignatureAlgorithm ||
-            !KeyIdPattern.IsMatch(manifest.Signature.KeyId ?? string.Empty) || string.IsNullOrWhiteSpace(manifest.Signature.Value))
-            throw new InvalidDataException("Release Set signature metadata is invalid.");
+        if (!operatorAuthorized)
+        {
+            if (manifest.CreatedAt >= manifest.ExpiresAt) throw new InvalidDataException("Release Set created/expires window is invalid.");
+            var now = DateTimeOffset.UtcNow;
+            if (manifest.CreatedAt > now.AddMinutes(5)) throw new InvalidDataException("Release Set creation time is in the future.");
+            if (manifest.ExpiresAt <= now) throw new InvalidDataException("Release Set has expired.");
+            if (manifest.Signature is null || manifest.Signature.Algorithm != SignatureAlgorithm ||
+                !KeyIdPattern.IsMatch(manifest.Signature.KeyId ?? string.Empty) || string.IsNullOrWhiteSpace(manifest.Signature.Value))
+                throw new InvalidDataException("Release Set signature metadata is invalid.");
+        }
         if (manifest.Requirements is null || manifest.Artifacts is null || manifest.SupportedBaselines is null ||
             manifest.InstallPlan is null || manifest.Compatibility is null || manifest.MutationPolicy is null ||
             manifest.Database is null || manifest.Recovery is null || manifest.Qualification is null || manifest.PreUpdateBackupPolicy is null)
@@ -325,7 +338,10 @@ public sealed class ReleaseSetVerifierStager
             manifest.Recovery.MachineIdentity != "fresh_reprovision_required" ||
             manifest.Recovery.PublicReenrollment != "credential_rotation_and_authority_epoch_required")
             throw new InvalidDataException("Release Set recovery/restore policy is incompatible with Maintenance V4.");
-        ValidateForInstallGate(manifest);
+        // The logged-in operator's explicit ZIP upload is the install intent.
+        // Never require publisher-issued production/canary/failure-matrix metadata
+        // for this local_only path; physical baseline/backup/cutover checks stay.
+        if (!operatorAuthorized) ValidateForInstallGate(manifest);
         ValidateMinimumVersion(installed.MaintenanceSupervisorVersion, manifest.Requirements.MaintenanceSupervisorMin, "Maintenance Supervisor");
         ValidateMinimumVersion(installed.UpdateEngineVersion, manifest.Requirements.UpdateEngineMin, "Update Engine");
         ValidateOptionalMinimumVersion(installed.BackupRecoveryEngineVersion, manifest.Requirements.BackupRecoveryEngineMin, "Backup & Recovery Engine");
