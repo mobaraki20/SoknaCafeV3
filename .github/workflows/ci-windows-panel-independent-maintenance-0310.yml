@@ -1,0 +1,50 @@
+name: Windows panel independent Maintenance 0.3.10 compatibility
+
+on:
+  push:
+    branches:
+      - fix/windows-panel-independent-maintenance-0310-20261021
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-and-contract:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify limited source scope and exact independent receipt contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $planner = Get-Content packaging/windows/setup-ui/ComponentUpdatePlanner.cs -Raw
+          $dashboard = Get-Content packaging/windows/setup-ui/DashboardV3.cs -Raw
+          $writer = Get-Content packaging/windows/scripts/setup-windows-components-maintenance-v1.ps1 -Raw
+          foreach ($needle in @('IsVerifiedIndependentMaintenancePair', 'independent_compatible_keep', 'maintenance-only-component-receipt-v1.json', 'Guid.TryParseExact', 'SoknaMaintenanceSupervisor', 'SoknaMaintenanceUpdateEngine', 'service.State, "RUNNING"', 'registrationHealthy')) {
+            if (-not $planner.Contains($needle)) { throw "Missing planner guard: $needle" }
+          }
+          foreach ($needle in @('sokna-maintenance-only-component-receipt-v1', "version='0.3.10'", 'windows_shell_state_unchanged=$true', 'recovery_console_unchanged=$true', 'runtime_unchanged=$true', 'print_agent_unchanged=$true', 'supervisor_sha256=', 'engine_sha256=')) {
+            if (-not $writer.Contains($needle)) { throw "Missing receipt producer field: $needle" }
+          }
+          if (-not $dashboard.Contains('independent_compatible_keep')) { throw 'Missing dashboard status' }
+          if (-not $planner.Contains('string.Equals(observedVersion, "0.3.10"')) { throw 'Unbounded future version allowlisting' }
+          if (-not $planner.Contains('if (cmp > 0 && !keepIndependentMaintenance)')) { throw 'Downgrade gate weakened' }
+          Write-Host 'Receipt producer/consumer contract and bounded downgrade exception: PASS'
+      - name: Build real Windows Setup UI
+        shell: pwsh
+        run: |
+          dotnet build packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Setup UI compile failed' }
+      - name: Run existing planner self-test on Windows
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem packaging/windows/setup-ui/bin/Release -Filter SoknaSetupUi.exe -Recurse -File | Select-Object -First 1
+          if (-not $exe) { throw 'Setup UI executable not found' }
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList '--planner-self-test' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Planner self-test failed: $($p.ExitCode)" }
+          Write-Host 'Windows planner self-test: PASS'

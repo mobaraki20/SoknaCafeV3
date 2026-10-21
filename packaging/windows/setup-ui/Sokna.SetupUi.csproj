@@ -16,9 +16,9 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyTitle>SOKNA Windows Services</AssemblyTitle>
     <Product>SOKNA Windows Services</Product>
-    <Version>1.1.17</Version>
-    <FileVersion>1.1.17.0</FileVersion>
-    <AssemblyVersion>1.1.17.0</AssemblyVersion>
+    <Version>1.1.21</Version>
+    <FileVersion>1.1.21.0</FileVersion>
+    <AssemblyVersion>1.1.21.0</AssemblyVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

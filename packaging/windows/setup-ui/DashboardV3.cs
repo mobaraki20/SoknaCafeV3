@@ -234,6 +234,11 @@ internal sealed class WindowsServicesDashboardV3 : Form
         primary.Text = prim.Any(x => x.Action == ComponentAction.Install) ? "نصب اجزای لازم" : "اجرای به‌روزرسانی";
         if (p.IsBlocked) { actionTitle.Text = "ادامه نصب ایمن نیست"; actionText.Text = "حداقل یک component ناسازگار یا جدیدتر از release هدف تشخیص داده شد. هیچ mutation انجام نمی‌شود."; }
         else if (p.HasMutation) { actionTitle.Text = "برنامه تغییرات آماده است"; actionText.Text = "قبل از اجرا، برنامه دقیق هر component نمایش داده می‌شود. اجزای سالم بدون توقف و جایگزینی باقی می‌مانند."; }
+        else if (p.Rows.Any(x => x.UpdateState == "independent_compatible_keep"))
+        {
+            actionTitle.Text = "Maintenance مستقل به‌روز است";
+            actionText.Text = "نسخه 0.3.10 با رسید نصب مستقل، هش دو جزء و سلامت سرویس تأیید شده و بدون تغییر باقی می‌ماند.";
+        }
         else { actionTitle.Text = "همه اجزا با release هدف یکسان‌اند"; actionText.Text = "نسخه، fingerprint و ثبت سرویس‌ها بررسی شده است. در صورت مشکل عملیاتی می‌توانید تعمیر نصب یا بسته عیب‌یابی را اجرا کنید."; }
         var vc = ReadVcRuntime(); prereqText.Text = vc.ready ? $"پیش‌نیاز ویندوز آماده است • Visual C++ {vc.version}" : "پیش‌نیاز Visual C++ آماده نیست؛ mutation مسدود می‌شود."; prereqText.ForeColor = vc.ready ? SetupPalette.Good : SetupPalette.Danger;
         pair.Enabled = !p.IsBlocked && prim.All(x => x.CurrentVersion != "—"); localUrl.Enabled = pair.Enabled; pairingCode.Enabled = pair.Enabled; startRuntime.Enabled = pair.Enabled;
@@ -366,6 +371,33 @@ internal static class TestFixtures
 
 internal static class ComponentPlannerSelfTest
 {
+    // Test the REAL manifest consumed by Windows Setup UI against the exact
+    // standalone 0.3.10 pair verified on the Home host by the elevated
+    // installer. The previous self-test never checked this KEEP path.
+    internal static void FingerprintRun(string manifestPath)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
+        var root = doc.RootElement;
+        if (root.GetProperty("package_version").GetString() != "1.1.21")
+            throw new InvalidOperationException("fingerprint_package_version");
+        var versions = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["maintenance"] = "261f169eccb1208d3fbcb2e4e5302daa2dc516e75852cbedd2a706926abacf6a",
+            ["maintenance-update-engine"] = "809f1f7be3882999699cbfcb17329dba9d59b32bf4e4785a73a91731d8f107fd"
+        };
+        foreach (var item in root.GetProperty("components").EnumerateArray())
+        {
+            var id = item.GetProperty("component_id").GetString() ?? "";
+            if (!versions.TryGetValue(id, out var observed)) continue;
+            if (item.GetProperty("version").GetString() != "0.3.10" ||
+                !ComponentUpdatePlanner.IsAcceptedInstalledFingerprint(item, observed) ||
+                ComponentUpdatePlanner.IsAcceptedInstalledFingerprint(item, new string('f', 64)) ||
+                ComponentUpdatePlanner.IsAcceptedInstalledFingerprint(item, observed[..63] + "0"))
+                throw new InvalidOperationException("fingerprint_bounded_keep_" + id);
+            versions.Remove(id);
+        }
+        if (versions.Count != 0) throw new InvalidOperationException("fingerprint_missing_component");
+    }
     internal static void Run()
     {
         var p = TestFixtures.UpgradePlan();
