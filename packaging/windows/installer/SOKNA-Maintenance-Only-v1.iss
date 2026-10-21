@@ -20,6 +20,7 @@ CreateUninstallRegKey=no
 PrivilegesRequired=admin
 MinVersion=10.0
 ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
 OutputBaseFilename=SOKNA-Maintenance-Only-0.3.10-UAT
 Compression=lzma2/ultra64
@@ -43,6 +44,14 @@ Source: "{#PayloadRoot}\setup-windows-components-maintenance-v1.ps1"; DestDir: "
 Source: "{#PayloadRoot}\\maintenance-signed-health-v1.ps1"; DestDir: "{tmp}\\SOKNA-maintenance-only"; Flags: ignoreversion deleteafterinstall
 
 [Code]
+var
+  MaintenanceFailureExitCode: Integer;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  Result := MaintenanceFailureExitCode;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ExitCode: Integer;
@@ -56,10 +65,14 @@ begin
     '" -PayloadRoot "' + ExpandConstant('{tmp}\SOKNA-maintenance-only') + '"';
   Log('SOKNA_MAINTENANCE_ONLY_SCOPED_TRANSACTION_START');
   if not Exec(PS, Params, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+  begin
+    MaintenanceFailureExitCode := 42;
     RaiseException('Unable to invoke scoped Maintenance transaction.');
+  end;
   if ExitCode <> 0 then
   begin
     Log('SOKNA_MAINTENANCE_ONLY_TRANSACTION_FAILED=' + IntToStr(ExitCode));
+    MaintenanceFailureExitCode := 43;
     RaiseException('Maintenance-only installation failed. Read the transaction evidence under ProgramData\SOKNA\setup\component-transactions.');
   end;
   Log('SOKNA_MAINTENANCE_ONLY_TRANSACTION_VERIFIED');
