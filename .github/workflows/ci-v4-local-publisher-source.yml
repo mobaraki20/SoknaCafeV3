@@ -64,6 +64,20 @@ jobs:
         run: |
           python windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/test_ephemeral_publisher.py
           if ($LASTEXITCODE -ne 0) { throw 'Universal trust/bootstrap/issuer fixture failed' }
+      - name: Packaging must reject absent central publisher SPKI before making an installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $nonexistent=Join-Path $env:RUNNER_TEMP 'publisher-spki-missing.pem'
+          $output=Join-Path $env:RUNNER_TEMP 'should-not-build-windows-installer'
+          try {
+            & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot $output -PublisherPublicSpkiPem $nonexistent
+            throw 'PACKAGING_ACCEPTED_MISSING_PUBLISHER_TRUST'
+          } catch {
+            if (-not $_.Exception.Message.Contains('universal publisher public SPKI is absent')) { throw }
+          }
+          if (Test-Path -LiteralPath $output) { throw 'Missing issuer must fail before any build output' }
+          Write-Host 'NO_UNTRUSTED_WINDOWS_SERVICES_INSTALLER_PASS'
       - name: Synthetic only, no public/private key published or host mutated
         shell: pwsh
         run: |
