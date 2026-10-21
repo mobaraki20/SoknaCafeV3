@@ -170,6 +170,10 @@ jobs:
             $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.10-UAT.exe'
             $log=Join-Path $env:RUNNER_TEMP 'maintenance-only-inno-smoke.log'
             $process=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$log+'"')) -PassThru -Wait
+            if(Test-Path $log){
+              Write-Host 'Inno install log (filtered)'
+              Get-Content $log -Tail 140|Where-Object{$_ -match 'SOKNA|ssPostInstall|Error|error|maintenance-only|Extract|inno|PowerShell|Filename|Executing|Install'}|Select-Object -Last 70|Out-Host
+            }else{Write-Warning ('Expected Inno log not found: '+$log)}
             if($process.ExitCode -ne 0){throw "Actual Inno EXE failed: ExitCode=$($process.ExitCode); log=$log"}
             foreach($file in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')){
               if(([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $app $file)).FileVersion)-ne'0.3.10.0'){throw "Inno EXE did not upgrade $file"}
