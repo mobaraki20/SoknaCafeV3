@@ -107,19 +107,19 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
                     // can supply the exact new identity. No user version input.
                     using var lease = MachineMutationLease.Acquire(
                         _paths, "supervisor-local-identity-rebind");
-                    var receipt = new SupervisorSignedLocalIdentityRebind(_paths)
+                    var adoptionReceipt = new SupervisorSignedLocalIdentityRebind(_paths)
                         .AdoptForNextRelease(package, installed);
-                    if (receipt is null)
+                    if (adoptionReceipt is null)
                         throw new InvalidDataException("LOCAL_IDENTITY_REBIND_NOT_APPLICABLE");
                     _journal.Append("update.local_identity.signed_rebound",
                         _state.InstanceId, _state.InstallGeneration,
                         new Dictionary<string, object?>
                         {
                             ["operation_id"] = operation.OperationId,
-                            ["signed_release_set_id"] = receipt.SignedReleaseSetId,
-                            ["signed_package_sha256"] = receipt.SignedPackageSha256,
-                            ["previous_identity_sha256"] = receipt.PreviousIdentitySha256,
-                            ["adopted_managed_tree_sha256"] = receipt.AdoptedManagedTreeSha256,
+                            ["signed_release_set_id"] = adoptionReceipt.SignedReleaseSetId,
+                            ["signed_package_sha256"] = adoptionReceipt.SignedPackageSha256,
+                            ["previous_identity_sha256"] = adoptionReceipt.PreviousIdentitySha256,
+                            ["adopted_managed_tree_sha256"] = adoptionReceipt.AdoptedManagedTreeSha256,
                             ["database_mutation_performed"] = false
                         });
                     identityBytes = File.ReadAllBytes(_paths.InstalledReleaseIdentityPath);
