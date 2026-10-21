@@ -19,7 +19,9 @@ public sealed record ReleaseSetPreflightResult(
     [property: JsonPropertyName("activation_performed")] bool ActivationPerformed,
     [property: JsonPropertyName("database_mutation_performed")] bool DatabaseMutationPerformed,
     [property: JsonPropertyName("stage_performed")] bool StagePerformed,
-    [property: JsonPropertyName("panel_activation_ready")] bool PanelActivationReady);
+    [property: JsonPropertyName("panel_activation_ready")] bool PanelActivationReady,
+    // Authenticated statement from the signed manifest, not host readiness.
+    [property: JsonPropertyName("signed_install_intent")] bool SignedInstallIntent = false);
 
 public sealed class ReleaseSetVerifierStager
 {
@@ -115,7 +117,9 @@ public sealed class ReleaseSetVerifierStager
             packageHash, manifestHash, true, true,
             manifest.ReleaseType is "windows_components_only" or "updater_only" ? null : true,
             ActivationPerformed: false, DatabaseMutationPerformed: false,
-            StagePerformed: false, PanelActivationReady: false);
+            StagePerformed: false, PanelActivationReady: false,
+            SignedInstallIntent: manifest.ForInstall && manifest.ProductionPass &&
+                !manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase));
     }
 
     public StagedReleaseReceipt VerifyAndStage(string packagePath, InstalledReleaseIdentity installed)
