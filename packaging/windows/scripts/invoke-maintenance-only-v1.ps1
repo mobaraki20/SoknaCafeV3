@@ -52,14 +52,10 @@ if(-not(Test-Path -LiteralPath (Join-Path $installRoot 'Runtime\SoknaRuntimeServ
 $superInstalled=Join-Path $appRoot 'SoknaMaintenanceSupervisor.exe'
 $engineInstalled=Join-Path $appRoot 'SoknaMaintenanceUpdateEngine.exe'
 if((Version $superInstalled)-ne'0.3.9' -or (Version $engineInstalled)-ne'0.3.9'){Fail 'This UAT package is only qualified for 0.3.9 to 0.3.10.'}
-$healthUrl='http://127.0.0.1:17631/v1/health'
-$h=[Net.Http.HttpClientHandler]::new()
-$h.UseProxy=$false
-$client=[Net.Http.HttpClient]::new($h);$client.Timeout=[TimeSpan]::FromSeconds(3)
-try{
- $resp=$client.GetAsync($healthUrl).GetAwaiter().GetResult()
- if(-not$resp.IsSuccessStatusCode){Fail 'Current Supervisor health is not healthy.'}
-}finally{$client.Dispose();$h.Dispose()}
+$healthProbe=Join-Path $PayloadRoot 'maintenance-signed-health-v1.ps1'
+if(-not(Test-Path -LiteralPath $healthProbe -PathType Leaf)){Fail 'Signed read-only health probe missing.'}
+. $healthProbe
+Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.9' -Attempts 40
 
 $dataRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
 $txDir=Join-Path $dataRoot ('setup\component-transactions\maintenance-'+[guid]::NewGuid().ToString('N'))
@@ -100,18 +96,5 @@ if($result.status-ne'completed' -or $result.exit_code-ne0){Fail 'Maintenance-onl
 $after=@{runtime=(Hex $runtime);print=(Hex $print);recovery=(Hex $recovery)}
 foreach($key in @('runtime','print','recovery')){if($before[$key]-ne$after[$key]){Fail ('Out-of-scope component was modified: '+$key)}}
 if((Version $superInstalled)-ne'0.3.10' -or (Version $engineInstalled)-ne'0.3.10'){Fail 'Installed version readback did not match.'}
-$client=[Net.Http.HttpClient]::new();$client.Timeout=[TimeSpan]::FromSeconds(3)
-try {
- $healthy=$false
- for($i=0;$i-lt20;$i++){
-  try{
-   $resp=$client.GetAsync($healthUrl).GetAwaiter().GetResult()
-   if($resp.IsSuccessStatusCode){$body=$resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()|ConvertFrom-Json
-     if(([string]$body.data.supervisor_version)-eq'0.3.10'){$healthy=$true;break}
-   }
-  }catch{}
-  Start-Sleep -Milliseconds 500
- }
- if(-not$healthy){Fail 'Supervisor new HTTP version 0.3.10 was not verified; needs manual recovery review.'}
-}finally{$client.Dispose()}
+Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.10' -Attempts 40
 Write-Host ('Maintenance-only upgraded and verified 0.3.9 -> 0.3.10. Transaction: '+$txDir)
