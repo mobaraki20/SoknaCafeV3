@@ -45,6 +45,17 @@ jobs:
           if ($result.result -ne 'PASS' -or -not $result.verified -or -not $result.stage_denied -or $result.anti_rollback_mutation -or $result.stage_created) {
             throw 'Read-only signed package acquired a trusted Stage or anti-rollback sequence'
           }
+      - name: Legacy recovery closes only with newer committed proof and retains audit history
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP ('legacy-reconcile-' + [guid]::NewGuid().ToString('N'))
+          $raw = @(& dotnet run --project windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release --no-build -- --root $root --variant legacy-reconcile-policy)
+          if ($LASTEXITCODE -ne 0) { throw ('Legacy recovery reconciliation failed: ' + ($raw -join ' ')) }
+          $result = ($raw -join "`n") | ConvertFrom-Json
+          if ($result.result -ne 'PASS' -or -not $result.legacy_audited -or -not $result.next_update_admitted -or $result.fail_closed_variants -ne 7) {
+            throw 'Legacy recovery audit/fail-closed/next-update regression'
+          }
       - name: CI-only qualified synthetic package still stages with no activation
         shell: pwsh
         run: |
