@@ -20,7 +20,9 @@
       "health_policy": "running_when_paired_or_manual_when_unpaired",
       "dependencies": [],
       "accepted_installed_sha256": [
-        "26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd"
+        "26deed62524278fa93a9a576d958f9177fe97c878b75829a8dc93a1440955afd",
+        "8e05a5deee806bc89cf8f1e8ec1b642d1acf6fae37da12ab0ecb78467132d1f3",
+        "7b071b71bcd38c2abcb26bceaf0a3593f2acb1dfbebf2599117aca6d9ce7e456"
       ]
     },
     {
