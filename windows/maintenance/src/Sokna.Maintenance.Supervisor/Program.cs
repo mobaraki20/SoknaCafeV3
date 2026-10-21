@@ -1123,6 +1123,14 @@ app.MapPost("/v1/local-updates/stage", async context =>
         await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
             "rejected", "IDEMPOTENCY_CONFLICT", false, new { });
     }
+    catch (InvalidDataException ex) when (ex.Message == "RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN")
+    {
+        // Authenticated VerifyOnly is diagnostic evidence, never an install permit.
+        // No blocking Stage operation or anti-rollback sequence was created.
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity,
+            false, "rejected", ex.Message, false,
+            new { stage_performed = false, panel_update_ready = false });
+    }
     catch (InvalidDataException)
     {
         await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity,
