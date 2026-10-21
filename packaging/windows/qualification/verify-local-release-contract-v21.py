@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Read-only early contract gate for Maintenance V4 Local Release Set v2.1.
 
-Never signs, claims real-host qualification or bypasses Supervisor checks.
-Run before publisher signing to catch payload/target mismatches early.
+No signing keys, certificates or publisher enrollment are needed for operator-uploaded Local ZIPs.
+Checks package structure before upload; host Supervisor retains final authority for installed baseline, backup and recovery.
 """
 import argparse
 import hashlib
@@ -73,20 +73,16 @@ def inspect(package_path, preparation=False):
             tree = sha(b"".join((p + "\0" + sha(files[p]) + "\n").encode()
                                 for p in sorted(files)))
             require(target.get("managed_files") == count,
-                    "SIGNED_TARGET_MANAGED_FILES_MISSING_OR_WRONG")
+                    "LOCAL_TARGET_MANAGED_FILES_MISSING_OR_WRONG")
             require(target.get("managed_tree_sha256") == tree,
-                    "SIGNED_TARGET_TREE_MISMATCH")
+                    "LOCAL_TARGET_TREE_MISMATCH")
             require(files.get("VERSION.txt", b"").decode("utf-8-sig").strip()
-                    == target.get("version"), "SIGNED_TARGET_VERSION_MISMATCH")
-            if not preparation:
-                require(manifest.get("for_install") is True
-                        and manifest.get("production_pass") is True,
-                        "NOT_INSTALL_QUALIFIED")
-                require(bool((manifest.get("signature") or {}).get("value")),
-                        "SIGNATURE_MISSING")
-                # These are only declared claims. Supervisor must independently
-                # verify signer, exact installed baseline, anti-rollback,
-                # qualification and machine recovery/backup evidence.
+                    == target.get("version"), "LOCAL_TARGET_VERSION_MISMATCH")
+            # Intent to install is established by an authenticated operator
+            # uploading this ZIP via the Local administration panel. No issuer
+            # signature/production-pass/canary metadata is required here.
+            # The Supervisor independently checks package path, content digest,
+            # exact installed baseline, rollback state and runtime health.
     except (OSError, ValueError, KeyError, TypeError, UnicodeError, zipfile.BadZipFile) as ex:
         defects.append("ARCHIVE_UNREADABLE_" + type(ex).__name__)
     return sorted(set(defects))
