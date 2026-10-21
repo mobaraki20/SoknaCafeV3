@@ -128,6 +128,13 @@ public sealed class SupervisorLocalReleaseStageCoordinator
                 verified.PackageSha256 != preflightReceipt.Verification.PackageSha256)
                 throw new InvalidDataException("Signed Release Set provenance changed since Preflight.");
 
+            // A signed VerifyOnly release is not necessarily installable. Reject
+            // test-only/read-only manifests BEFORE creating a blocking durable
+            // Stage operation. VerifyAndStage independently rechecks the same
+            // authenticated policy under its own filesystem lock.
+            if (!verified.SignedInstallIntent)
+                throw new InvalidDataException("RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN");
+
             var requestHash = MaintenanceOperationStore.CanonicalRequestHash(
                 "update.local-stage." + preflightOperationId, preflight.PackageRef, operatorId);
             var (operation, created) = _operations.GetOrCreate(idempotencyKey, requestHash,
