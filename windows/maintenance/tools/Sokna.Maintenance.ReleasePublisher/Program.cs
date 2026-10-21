@@ -122,7 +122,7 @@ if (signer.KeySize != 256)
     throw new InvalidDataException("PUBLISHER_KEY_MUST_BE_P256");
 var spki = signer.ExportSubjectPublicKeyInfo();
 var keyFingerprint = Hex(SHA256.HashData(spki))[..20];
-if (!parsed.Signature.KeyId.EndsWith(keyFingerprint, StringComparison.Ordinal) ||
+if (parsed.Signature.KeyId != PublisherTrustBootstrap.KeyIdPrefix + keyFingerprint ||
     parsed.Signature.Algorithm != ReleaseSetVerifierStager.SignatureAlgorithm ||
     !string.IsNullOrEmpty(parsed.Signature.Value))
     throw new InvalidDataException("PUBLISHER_SIGNING_KEY_OR_CANONICAL_INPUT_MISMATCH");
