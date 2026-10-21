@@ -157,16 +157,16 @@ public sealed class ReleaseSetVerifierStager
         }
 
         ValidateManifest(manifest, installed);
-        // Stage persists the anti-rollback high-water mark. A signed VerifyOnly
-        // UAT package must NEVER consume a sequence or stage a non-installable
-        // release. VerifyOnly itself remains available for such packages.
-        if (!manifest.ForInstall || !manifest.ProductionPass ||
-            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN");
         var canonical = ReleaseSetCanonicalizer.CanonicalBytesWithBlankSignatureValue(manifestBytes);
         var manifestSha256 = ReleaseSetCanonicalizer.Sha256Hex(canonical);
         VerifySignature(manifest, canonical);
         ValidateArchiveAgainstArtifacts(entries, manifest.Artifacts);
+        // VerifyOnly may authenticate test-only packages, but Stage writes a
+        // durable anti-rollback sequence. Deny non-installable packages before
+        // any sequence, receipt, directory or operation is created.
+        if (!manifest.ForInstall || !manifest.ProductionPass ||
+            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN");
 
         var existingSequence = LoadSequenceState();
         if (existingSequence is not null)
