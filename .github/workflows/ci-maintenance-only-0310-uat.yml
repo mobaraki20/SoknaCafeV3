@@ -26,14 +26,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          foreach($f in @('invoke-maintenance-only-v1.ps1','setup-windows-components-maintenance-v1.ps1','prepare-maintenance-only-payload-v1.ps1')){
+          foreach($f in @('invoke-maintenance-only-v1.ps1','setup-windows-components-maintenance-v1.ps1','prepare-maintenance-only-payload-v1.ps1','maintenance-signed-health-v1.ps1')){
             $p=Join-Path new/packaging/windows/scripts $f
             $tokens=$null;$errors=$null
             [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors)|Out-Null
             if($errors.Count){throw ("Script syntax: "+$f+": "+(($errors|ForEach-Object Message)-join '; '))}
           }
           $core=Get-Content new/packaging/windows/scripts/setup-windows-components-maintenance-v1.ps1 -Raw
-          foreach($guard in @('MAINTENANCE_ONLY_SCOPE_REQUIRED','EXPECTED_HOME_MAINTENANCE_039_BASELINE_REQUIRED','OUT_OF_SCOPE_COMPONENT_IN_PLAN','RestoreMaintenanceOnly','MAINTENANCE_HEALTH_VERSION_UNVERIFIED','windows_shell_state_unchanged')){
+          foreach($guard in @('MAINTENANCE_ONLY_SCOPE_REQUIRED','EXPECTED_HOME_MAINTENANCE_039_BASELINE_REQUIRED','OUT_OF_SCOPE_COMPONENT_IN_PLAN','RestoreMaintenanceOnly','Assert-MaintenanceSignedHealth','windows_shell_state_unchanged')){
             if(-not$core.Contains($guard)){throw "Missing strict guard $guard"}
           }
           if($core.Contains('WriteJson $statePath $state')){throw 'Component installer must not overwrite whole Windows Services state'}
