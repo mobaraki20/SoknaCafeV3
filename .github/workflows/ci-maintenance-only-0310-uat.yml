@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: maintenance-only-0310-uat
+  cancel-in-progress: true
 jobs:
   build-verify-release:
     runs-on: windows-2022
