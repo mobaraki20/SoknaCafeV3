@@ -23,7 +23,7 @@ try {
   )){
     $out=Join-Path $base $case.id
     $raw=@(& $builder -RepoRoot $RepoRoot -OutputRoot $out -ComponentId $case.id -PayloadSource $case.source -SourceCommit $sourceCommit)
-    if($LASTEXITCODE -ne 0){throw "Failed to build $($case.id) candidate."}
+    if(-not $?){throw "Failed to build $($case.id) candidate."}
     $result=($raw -join [Environment]::NewLine)|ConvertFrom-Json
     if($result.component_id-ne$case.id -or $result.installable -ne $false -or -not(Test-Path $result.zip)){throw "Invalid $($case.id) build result"}
     $z=[IO.Compression.ZipFile]::OpenRead([string]$result.zip)
