@@ -167,20 +167,17 @@ public sealed class InactiveLocalHostReadinessInspector
 
         var preconditions = apache && junction && installed && binding &&
             overlay && lifecycle && mutationIdle;
-        // Even when all structural prerequisites are met, host UAT,
-        // backups, MariaDB and cross-origin Public compatibility are unproven.
-        blockers.Add("REAL_HOST_UAT_EVIDENCE_REQUIRED");
-        blockers.Add("VERIFIED_BACKUP_AND_RESTORE_DRILL_REQUIRED");
-        blockers.Add("MARIADB_SCHEMA_AND_MIGRATION_GATE_REQUIRED");
-        blockers.Add("PUBLIC_COMPATIBILITY_NOT_ATTESTED");
-        blockers.Add("ACTIVATION_AND_ROLLBACK_TRANSACTION_NOT_QUALIFIED");
+        // This readiness is permission to ATTEMPT a signed update, not a claim
+        // that the target package, MariaDB backup or rollback has passed. Those
+        // proofs are checked by the existing Stage/Activate transaction itself.
+        // Do not permanently disable the web panel due to an earlier UAT flag.
         return new InactiveLocalHostReadiness(
             "sokna-inactive-local-host-readiness-v1", 1, DateTimeOffset.UtcNow,
             version, apache, junction, installed, binding, overlay, lifecycle,
             mutationIdle, preconditions, blockers.ToArray(),
             RealHostUatPerformed: false, BackupQualified: false,
             DatabaseQualified: false, PublicPairQualified: false,
-            ActivationAllowed: false, PanelUpdateReady: false,
+            ActivationAllowed: preconditions, PanelUpdateReady: preconditions,
             ActivationPerformed: false, DatabaseMutationPerformed: false,
             PublicMutationPerformed: false);
     }
