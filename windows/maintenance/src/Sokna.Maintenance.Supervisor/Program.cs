@@ -42,34 +42,6 @@ var stateStore = new SupervisorStateStore(paths);
 var state = stateStore.LoadOrCreate();
 stateStore.Save(state);
 var journal = new DurableJournal(paths.JournalPath);
-// Per-host automatic PUBLIC-key provisioning. The only accepted input is the
-// SPKI embedded at Windows Services build time; user ZIPs cannot add trust.
-try
-{
-    var trust = PublisherTrustBootstrap.EnsureEmbedded(paths);
-    journal.Append("publisher.trust.bootstrap", state.InstanceId,
-        state.InstallGeneration, new Dictionary<string, object?>
-        {
-            ["state"] = trust.State,
-            ["issuer_key_id"] = trust.KeyId,
-            ["public_spki_sha256"] = trust.PublicKeySha256,
-            ["mutated"] = trust.Mutated,
-            ["user_interaction_required"] = false
-        });
-}
-catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
-    InvalidDataException or CryptographicException or ArgumentException)
-{
-    journal.Append("publisher.trust.bootstrap_blocked", state.InstanceId,
-        state.InstallGeneration, new Dictionary<string, object?>
-        {
-            ["error_type"] = ex.GetType().Name,
-            ["publisher_trust_not_weakened"] = true,
-            ["manual_key_approval_available"] = false
-        });
-    // Keep runtime health and recovery endpoints alive; signed Release Set
-    // verification remains fail-closed until a trusted foundation install.
-}
 var operations = new MaintenanceOperationStore(paths);
 var stageRestartReconciler = new SupervisorStageRestartReconciler(operations, journal, state);
 var localStageRecoveryCoordinator = new SupervisorLocalStageRecoveryCoordinator(paths, operations, journal, state);
