@@ -214,6 +214,37 @@ if (variant == "signed-readonly-stage-forbidden")
     try { _ = verifier.VerifyAndStage(packagePath, identity); }
     catch (InvalidDataException ex) when (ex.Message == "RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN")
     { denied = true; }
+    // The canonical Supervisor path must also reject the authenticated
+    // read-only package BEFORE it reserves a durable Stage operation. A 422
+    // must never become a sticky recovery_required blocker for later updates.
+    Directory.CreateDirectory(paths.InboxRoot);
+    AtomicFile.WriteJson(paths.InstalledReleaseIdentityPath, identity);
+    var packageRef = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(packagePath)))
+        .ToLowerInvariant() + ".zip";
+    File.Copy(packagePath, Path.Combine(paths.InboxRoot, packageRef));
+    var operations = new MaintenanceOperationStore(paths);
+    var state = new SupervisorStateStore(paths).LoadOrCreate();
+    var journal = new DurableJournal(paths.JournalPath);
+    const string actor = "ci-signed-readonly";
+    var preflight = new SupervisorLocalPackagePreflightCoordinator(
+        paths, operations, journal, state).Verify(
+        packageRef, actor, Guid.NewGuid().ToString("N"));
+    if (preflight.Operation.State != "verified" || preflight.Receipt is null)
+        throw new InvalidDataException("SIGNED_READONLY_SUPERVISOR_PREFLIGHT_INVALID");
+    var supervisorStageDenied = false;
+    try
+    {
+        _ = new SupervisorLocalReleaseStageCoordinator(paths, operations, journal, state)
+            .Stage(preflight.Operation.OperationId, actor, Guid.NewGuid().ToString("N"));
+    }
+    catch (InvalidDataException ex) when (ex.Message == "RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN")
+    {
+        supervisorStageDenied = true;
+    }
+    if (!supervisorStageDenied ||
+        operations.ListRecent().Any(op => op.OperationType == "update.local-stage") ||
+        operations.ListBlocking().Count != 0)
+        throw new InvalidDataException("SIGNED_READONLY_SUPERVISOR_STAGE_POISONED_LEDGER");
     var trustedStageCreated = Directory.Exists(paths.StagingRoot) &&
         Directory.EnumerateFiles(paths.StagingRoot, "stage-receipt.json", SearchOption.AllDirectories).Any();
     if (!denied || File.Exists(paths.ReleaseSequenceStatePath) ||
