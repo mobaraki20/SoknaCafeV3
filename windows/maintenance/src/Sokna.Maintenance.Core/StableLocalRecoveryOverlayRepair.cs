@@ -19,9 +19,7 @@ public static class StableLocalRecoveryOverlayRepair
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Stable Local recovery repair requires Windows.");
 
-        LocalInstallLayout layout;
-        try { layout = new LocalSlotManager(paths).InspectHealthyCurrent(); }
-        catch (System.ServiceProcess.InvalidEnumArgumentException) { return "host_not_applicable"; }
+        var layout = new LocalSlotManager(paths).InspectHealthyCurrent();
         if (!string.Equals(layout.Build, Phase3HomeReleaseContract.Home231AsBuild,
                 StringComparison.Ordinal))
             return "different_local_baseline_no_mutation";
