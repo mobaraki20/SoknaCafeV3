@@ -124,7 +124,6 @@ public sealed class ReleaseSetVerifierStager
         packagePath = Path.GetFullPath(packagePath);
         if (!File.Exists(packagePath)) throw new FileNotFoundException("Release Set package was not found.", packagePath);
         Directory.CreateDirectory(_paths.UpdateRoot);
-        Directory.CreateDirectory(_paths.StagingRoot);
         Directory.CreateDirectory(_paths.ReleaseSigningTrustRoot);
 
         using var updateLock = SingleInstanceLock.Acquire(_paths.UpdateStageLockPath);
@@ -167,6 +166,10 @@ public sealed class ReleaseSetVerifierStager
         if (!manifest.ForInstall || !manifest.ProductionPass ||
             manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN");
+
+        // A signed VerifyOnly/test-only package must not even allocate the
+        // trusted Stage root. Only install-qualified manifests may reach it.
+        Directory.CreateDirectory(_paths.StagingRoot);
 
         var existingSequence = LoadSequenceState();
         if (existingSequence is not null)
