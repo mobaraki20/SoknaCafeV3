@@ -222,7 +222,7 @@ internal static class ComponentUpdatePlanner
             installedPath, targetPath, installedHash, targetHash, serviceName, service.State, registrationHealthy, group);
     }
 
-    private static bool IsAcceptedInstalledFingerprint(JsonElement component, string installedHash)
+    internal static bool IsAcceptedInstalledFingerprint(JsonElement component, string installedHash)
     {
         if (string.IsNullOrWhiteSpace(installedHash)) return false;
         if (!component.TryGetProperty("accepted_installed_sha256", out var accepted) || accepted.ValueKind != JsonValueKind.Array) return false;
