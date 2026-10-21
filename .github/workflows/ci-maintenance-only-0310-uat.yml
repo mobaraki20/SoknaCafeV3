@@ -42,6 +42,10 @@ jobs:
           if($core.Contains('WriteJson $statePath $state')){throw 'Component installer must not overwrite whole Windows Services state'}
           $installer=Get-Content new/packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss -Raw
           if($installer -match 'DestDir: "\{app\}' -or $installer -notmatch 'CreateUninstallRegKey=no'){throw 'Manager shell must not be overwritten or re-registered'}
+          # The actual installer executes Windows PowerShell 5.1, not pwsh 7.
+          $parser='foreach($f in Get-ChildItem "$PWD/new/packaging/windows/scripts" -Filter "*maintenance*.ps1"){ $t=$null;$e=$null;[Management.Automation.Language.Parser]::ParseFile($f.FullName,[ref]$t,[ref]$e)|Out-Null;if($e.Count){throw ($f.Name+": "+(($e|ForEach-Object Message)-join "; "))}}'
+          & "$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -Command $parser
+          if($LASTEXITCODE-ne0){throw 'Windows PowerShell 5.1 parse failed'}
           Write-Host 'Scoped component-only isolation contract: PASS'
       - name: Build real Supervisor and Engine 0.3.9 / 0.3.10
         shell: pwsh
@@ -170,6 +174,8 @@ jobs:
             $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.10-UAT.exe'
             $log=Join-Path $env:RUNNER_TEMP 'maintenance-only-inno-smoke.log'
             $process=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$log+'"')) -PassThru -Wait
+            $errorPath=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
+            if(Test-Path $errorPath){Write-Host 'Scoped installer failure code:';Get-Content $errorPath|Out-Host}
             if(Test-Path $log){
               Write-Host 'Inno install log (filtered)'
               Get-Content $log -Tail 140|Where-Object{$_ -match 'SOKNA|ssPostInstall|Error|error|maintenance-only|Extract|inno|PowerShell|Filename|Executing|Install'}|Select-Object -Last 70|Out-Host
