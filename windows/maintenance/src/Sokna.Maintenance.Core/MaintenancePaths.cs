@@ -51,12 +51,19 @@ public static class Phase3HomeReleaseContract
     public const string Build = "3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory";
     public const int ManagedFiles = 497;
     public const string ManagedTreeSha256 = "b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a";
+    // Source-qualified Home Local 231as: the exact 509-file installed-release
+    // inventory from the published Home canary, not a version-prefix bypass.
+    public const string Home231AsBuild = "3.0.0-g6.2-workspace.231as-connectivity-relay-ack-home-uat";
+    public const int Home231AsManagedFiles = 509;
+    public const string Home231AsManagedTreeSha256 = "d67561b5cc72d0e8003c2497c2af26dcdb3f7c5a893aa4eccaa462924c49f77f";
 
     public static string RequireCanonicalManagedTree(string expectedBuild, int expectedManagedFiles)
     {
-        if (!string.Equals(expectedBuild, Build, StringComparison.Ordinal) || expectedManagedFiles != ManagedFiles)
-            throw new InvalidDataException("Phase 3 Home cycle is allowlisted only for the exact qualified 231ai release identity.");
-        return ManagedTreeSha256;
+        if (string.Equals(expectedBuild, Build, StringComparison.Ordinal) && expectedManagedFiles == ManagedFiles)
+            return ManagedTreeSha256;
+        if (string.Equals(expectedBuild, Home231AsBuild, StringComparison.Ordinal) && expectedManagedFiles == Home231AsManagedFiles)
+            return Home231AsManagedTreeSha256;
+        throw new InvalidDataException("Phase 3 Home cycle requires one exact source-qualified Local managed-tree baseline (231ai or 231as).");
     }
 }
 

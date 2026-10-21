@@ -75,6 +75,31 @@ var localInboxUpload = new LocalInboxUploadCoordinator(paths);
 var localReleaseStageCoordinator = new SupervisorLocalReleaseStageCoordinator(paths, operations, journal, state);
 var localSlotCoordinator = new SupervisorLocalSlotCoordinator(paths, operations, journal, state, updateEnginePath);
 var productionMigrationCoordinator = new SupervisorProductionMigrationCoordinator(paths, operations, journal, state, updateEnginePath);
+// Home-only machine-owned stable recovery, after journal establishment and before
+// accepting new Stage/Activate calls. Never reconcile identities or relax signed gates.
+try
+{
+    var recoveryRepair = StableLocalRecoveryOverlayRepair.RepairHome231As(paths);
+    journal.Append("update.local_stable_recovery.verified", state.InstanceId,
+        state.InstallGeneration, new Dictionary<string, object?>
+        {
+            ["result"] = recoveryRepair,
+            ["allowed_baseline"] = "231as",
+            ["identity_mutated"] = false,
+            ["public_mutated"] = false
+        });
+}
+catch (Exception ex)
+{
+    journal.Append("update.local_stable_recovery.blocked", state.InstanceId,
+        state.InstallGeneration, new Dictionary<string, object?>
+        {
+            ["error_type"] = ex.GetType().Name,
+            ["result"] = "requires_qualified_on_host_remediation",
+            ["identity_mutated"] = false,
+            ["public_mutated"] = false
+        });
+}
 var adoptionQueue = new LocalSlotAdoptionQueue(paths);
 var codeOnlyActivationWorker = new LocalCodeOnlyActivationWorker(
     codeOnlyExecution, operations);

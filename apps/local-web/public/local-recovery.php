@@ -2,7 +2,7 @@
 declare(strict_types=1);
 /* Stable, self-contained Local recovery entrypoint. It deliberately does not load the application bootstrap. */
 header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('Cache-Control: no-store');
-$packageRoot=dirname(__DIR__);$configFile=$packageRoot.'/config.php';$message='';$ok=false;
+$packageRoot=dirname(__DIR__);$configFile=$packageRoot.'/config.php';if(!is_file($configFile)){$configFile=dirname($packageRoot).'/config.php';}$message='';$ok=false;
 function e(string $v): string{return htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
 function rr(string $p): array{$raw=@file_get_contents($p);if(!is_string($raw))return [];try{$d=json_decode($raw,true,32,JSON_THROW_ON_ERROR);return is_array($d)?$d:[];}catch(Throwable){return [];}}
 function rm_tree(string $p): void{if(!file_exists($p))return;if(is_file($p)||is_link($p)){@unlink($p);return;}$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($p,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);foreach($it as $f){$f->isDir()?@rmdir($f->getPathname()):@unlink($f->getPathname());}@rmdir($p);}
@@ -12,10 +12,14 @@ function safe_id(string $v): string{if(!preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]
 $config=is_file($configFile)?require $configFile:null;$data=is_array($config)?trim((string)($config['app']['data_dir']??'')):'';$localRoot=dirname(__DIR__);$lifecycle=$data!==''?rtrim($data,"\\/").'/lifecycle/local':'';$state=$lifecycle!==''?rr($lifecycle.'/state.json'):[];$token=$lifecycle!==''?rr($lifecycle.'/recovery-token.json'):[];
 if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
     try{
+        // R8's Web is a junction to a versioned sibling. The old physical-Web
+        // copy-tree recovery is unsafe there: use the independent Windows
+        // Recovery Console for an authenticated slot rollback.
+        if(is_file($localRoot.'/.sokna-installation.json'))throw new RuntimeException('managed_slot_recovery_requires_console');
         $provided=trim((string)($_POST['recovery_code']??''));if($provided===''||!isset($token['hash'])||!password_verify($provided,(string)$token['hash']))throw new RuntimeException('bad_recovery_code');
         $id=safe_id((string)($state['lkg_recovery_id']??''));$dir=$lifecycle.'/recovery-points/'.$id;$manifest=rr($dir.'/manifest.json');if(($manifest['format']??'')!=='sokna-local-recovery-point-v1'||!is_dir($dir.'/payload'))throw new RuntimeException('recovery_point_missing');verify_point($dir.'/payload',$manifest);
         copy_tree($dir.'/payload',$localRoot,__FILE__,$manifest);$state['active_version']=(string)($manifest['version']??'unknown');$state['previous_version']='';$state['history'][]=['at'=>gmdate('c'),'action'=>'stable_recovery','version'=>$state['active_version'],'actor_user_id'=>0,'recovery_id'=>$id];
         $tmp=$lifecycle.'/state.json.tmp-'.bin2hex(random_bytes(3));file_put_contents($tmp,json_encode($state,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n",LOCK_EX);rename($tmp,$lifecycle.'/state.json');$ok=true;$message='نسخه پایدار قبلی بازیابی شد. اکنون صفحه اصلی را بررسی کن.';
-    }catch(Throwable $ex){$message='بازیابی انجام نشد. کد بازیابی یا recovery point معتبر نیست.';}
+    }catch(Throwable $ex){$message=$ex->getMessage()==='managed_slot_recovery_requires_console'?'این نصب از اسلات‌های مدیریت‌شده استفاده می‌کند. برای بازگردانی امن نسخه، از Recovery Console ویندوز استفاده کنید.':'بازیابی انجام نشد. کد بازیابی یا recovery point معتبر نیست.';}
 }
 ?><!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>بازیابی Local | سکنا</title><style>body{font-family:system-ui,sans-serif;background:#f4f1eb;color:#26221d;margin:0;padding:32px}.box{max-width:620px;margin:auto;background:#fff;padding:28px;border-radius:18px;box-shadow:0 8px 30px #0001}label,input,button{display:block;width:100%;box-sizing:border-box}input,button{padding:12px;margin-top:8px;border-radius:10px;border:1px solid #bbb}button{background:#222;color:#fff;cursor:pointer}.note{padding:12px;border-radius:10px;background:#f7f4ef;margin:16px 0}.ok{background:#e9f8ee}.bad{background:#fff0ee}</style></head><body><main class="box"><h1>بازیابی اضطراری Local</h1><p>این صفحه مستقل از bootstrap اصلی اجرا می‌شود و فقط آخرین recovery point معتبر Local را برمی‌گرداند.</p><?php if($message!==''):?><div class="note <?= $ok?'ok':'bad' ?>"><?=e($message)?></div><?php endif;?><div class="note">نسخه ثبت‌شده: <?=e((string)($state['active_version']??'—'))?><br>Recovery point: <?=e((string)($state['lkg_recovery_id']??'—'))?></div><form method="post"><label>کد بازیابی<input name="recovery_code" type="password" autocomplete="off" required></label><button type="submit">بازگردانی آخرین نسخه پایدار</button></form><p><a href="/">بازگشت به سکنا</a></p></main></body></html>
