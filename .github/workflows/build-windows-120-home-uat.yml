@@ -80,7 +80,7 @@ jobs:
           $ErrorActionPreference='Stop'
           $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-120-rc2'
           & ./packaging/windows/tests/independent-maintenance-pair-0310.ps1 -ShellRoot (Join-Path $out 'unified-shell-v4') -ReleaseRoot $out
-          if ($LASTEXITCODE -ne 0){throw 'Privileged 0.3.10 KEEP and tamper-denial tests failed'}
+          if (-not $?) { throw 'Privileged 0.3.10 KEEP and tamper-denial tests failed' }
       - name: Verify final release, hashes, metadata and real planner self-test
         shell: pwsh
         run: |
