@@ -25,13 +25,13 @@ jobs:
           $planner = Get-Content packaging/windows/setup-ui/ComponentUpdatePlanner.cs -Raw
           $dashboard = Get-Content packaging/windows/setup-ui/DashboardV3.cs -Raw
           $writer = Get-Content packaging/windows/scripts/setup-windows-components-maintenance-v1.ps1 -Raw
-          foreach ($needle in @('IsVerifiedIndependentMaintenancePair', 'independent_newer_compatible', 'maintenance-only-component-receipt-v1.json', 'Guid.TryParseExact', 'SoknaMaintenanceSupervisor', 'SoknaMaintenanceUpdateEngine', 'service.State, "RUNNING"', 'registrationHealthy')) {
+          foreach ($needle in @('IsVerifiedIndependentMaintenancePair', 'independent_compatible_keep', 'maintenance-only-component-receipt-v1.json', 'Guid.TryParseExact', 'SoknaMaintenanceSupervisor', 'SoknaMaintenanceUpdateEngine', 'service.State, "RUNNING"', 'registrationHealthy')) {
             if (-not $planner.Contains($needle)) { throw "Missing planner guard: $needle" }
           }
           foreach ($needle in @('sokna-maintenance-only-component-receipt-v1', "version='0.3.10'", 'windows_shell_state_unchanged=$true', 'recovery_console_unchanged=$true', 'runtime_unchanged=$true', 'print_agent_unchanged=$true', 'supervisor_sha256=', 'engine_sha256=')) {
             if (-not $writer.Contains($needle)) { throw "Missing receipt producer field: $needle" }
           }
-          if (-not $dashboard.Contains('independent_newer_compatible')) { throw 'Missing dashboard status' }
+          if (-not $dashboard.Contains('independent_compatible_keep')) { throw 'Missing dashboard status' }
           if (-not $planner.Contains('string.Equals(observedVersion, "0.3.10"')) { throw 'Unbounded future version allowlisting' }
           if (-not $planner.Contains('if (cmp > 0 && !keepIndependentMaintenance)')) { throw 'Downgrade gate weakened' }
           Write-Host 'Receipt producer/consumer contract and bounded downgrade exception: PASS'
