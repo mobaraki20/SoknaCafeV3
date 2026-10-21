@@ -62,7 +62,7 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
             var legacyOnly = blockers.Count > 0 && blockers.All(op =>
                 op.OperationType == "update.local-slot-home-cycle" &&
                 op.State == "recovery_required" &&
-                !op.DatabaseMutationPerformed && !op.ActivationPerformed) &&
+                !op.DatabaseMutationPerformed) &&
                 _operations.ListCommittedLocalMigrations().Any(op =>
                     op.State == "committed" && op.CreatedAtUtc > blockers.Max(b => b.CreatedAtUtc));
             if (!legacyOnly && blockers.Any(op =>
