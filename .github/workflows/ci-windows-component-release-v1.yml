@@ -1,0 +1,24 @@
+name: Windows independent component release contract
+on:
+  push:
+    branches: [work/windows-component-only-release-foundation-20261021]
+    paths:
+      - packaging/windows/scripts/build-component-release-v1.ps1
+      - packaging/windows/tests/component-release-v1-contract.ps1
+      - packaging/windows/component-release-contract-v1.md
+      - .github/workflows/ci-windows-component-release-v1.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  component-boundaries:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify single-component artifact source and scope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./packaging/windows/tests/component-release-v1-contract.ps1 -RepoRoot (Get-Location).Path
+          if(-not $?){throw 'Component-only release contract did not pass'}
