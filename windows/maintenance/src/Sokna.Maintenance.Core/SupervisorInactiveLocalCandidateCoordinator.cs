@@ -235,7 +235,9 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
         var stageReceipt = AtomicFile.ReadJson<StagedReleaseReceipt>(stage.StageReceiptPath);
         var manifest = AtomicFile.ReadJson<ReleaseSetManifest>(
             Path.Combine(stageReceipt.StageRoot, "release-set.json"));
-        RequireInstallableLegacyRelease(manifest);
+        // Inspector above fully revalidates the exact operator-uploaded Stage.
+        // The release publisher's canary/signing gate is not part of this path.
+        RequireInstallableLegacyRelease(manifest, stageReceipt.OperatorAuthorized);
         if (manifest.ReleaseType != "local_only" ||
             manifest.ReleaseSetId != signed.ReleaseSetId ||
             !manifest.Targets.TryGetProperty("local", out var target) ||
@@ -255,12 +257,17 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
 
     /// <summary>Pure guard for a signed, explicitly installable Local-only
     /// release; signed SOURCE/engineering artifacts are never install permits.</summary>
-    public static void RequireInstallableLegacyRelease(ReleaseSetManifest manifest)
+    public static void RequireInstallableLegacyRelease(
+        ReleaseSetManifest manifest, bool operatorAuthorized = false)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         if (manifest.ReleaseType != "local_only" ||
-            !manifest.ForInstall || !manifest.ProductionPass ||
-            string.IsNullOrWhiteSpace(manifest.Status) ||
+            string.IsNullOrWhiteSpace(manifest.Status))
+            throw new InvalidDataException("LOCAL_RELEASE_CONTRACT_INVALID");
+        // Authorization here is a fact proven by authenticated Local Inbox ->
+        // Preflight -> Stage receipts, not a flag read from the selected ZIP.
+        if (operatorAuthorized) return;
+        if (!manifest.ForInstall || !manifest.ProductionPass ||
             manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase) ||
             manifest.Status.Contains("ENGINEERING", StringComparison.OrdinalIgnoreCase) ||
             manifest.Status.Contains("SOURCE_ONLY", StringComparison.OrdinalIgnoreCase) ||

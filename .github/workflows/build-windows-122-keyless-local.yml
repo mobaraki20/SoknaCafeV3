@@ -1,0 +1,134 @@
+name: Windows Services 1.1.22 Keyless Local - universal pre-release
+on:
+  pull_request:
+    paths:
+      - .github/workflows/build-windows-122-keyless-local.yml
+      - windows/maintenance/src/**
+      - packaging/windows/**
+      - release/compatibility-v2.json
+      - COMPONENTS.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-services-122-keyless
+  cancel-in-progress: false
+
+jobs:
+  qualify-build-publish:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact version authority, unrelated component freeze and M10
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python tests/g6-component-release-contract.py
+          if ($LASTEXITCODE -ne 0) { throw 'G6 component source contract failed' }
+          python tests/m10-release-qualification.py
+          if ($LASTEXITCODE -ne 0) { throw 'M10 qualification failed' }
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          $v=@{};foreach($c in $m.components){$v[[string]$c.component_id]=[string]$c.version}
+          if($m.package_version-ne'1.1.22' -or @($m.components).Count-ne5 -or $v.runtime-ne'1.0.6' -or $v.'print-agent'-ne'6.2.9' -or $v.maintenance-ne'0.3.11' -or $v.'maintenance-update-engine'-ne'0.3.11' -or $v.'maintenance-recovery-console'-ne'0.1.2'){
+            throw 'Not the qualified keyless maintenance-only increment'
+          }
+          if(@($m.components|Where-Object{$_.version-eq'0.3.10'}).Count -gt 0){
+            throw 'New Windows installer still contains stale Maintenance'
+          }
+      - name: Test actual keyless Local ZIP Preflight/Stage on Windows
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Sokna.Maintenance.OperatorUploadHarness.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0){throw 'Keyless upload/preflight/stage regression failed'}
+      - name: Test existing Maintenance activation-worker regression
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.ActivationWorkerHarness/Sokna.Maintenance.ActivationWorkerHarness.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0){throw 'Activation worker regression failed'}
+      - name: Install existing Inno Setup toolchain
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0){throw 'Inno Setup unavailable'}
+      - name: Build normal five-component one-click Windows Services package
+        shell: pwsh
+        timeout-minutes: 55
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-122-keyless'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and(Test-Path -LiteralPath $_ -PathType Leaf)}|Select-Object -First 1
+          if(-not $iscc){throw 'Inno Setup ISCC missing'}
+          & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot $out -IsccExe $iscc
+          if($LASTEXITCODE -ne 0){throw 'Windows Services V4 builder failed'}
+      - name: Verify emitted installer metadata and previous installed receipt policy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-122-keyless'
+          $idx=Get-Content (Join-Path $out 'artifact-index.json') -Raw|ConvertFrom-Json
+          if($idx.package_version-ne'1.1.22' -or $idx.component_count-ne5 -or $idx.installer_kind-ne'unified-v4-bootstrap'){
+            throw 'Invalid unified Windows installer artifact index'
+          }
+          $exe=Join-Path $out ([string]$idx.windows_services.file)
+          if([IO.Path]::GetFileName($exe)-ne'SOKNA-Windows-Services-Setup-1.1.22.exe' -or -not(Test-Path -LiteralPath $exe)){throw 'Expected one-click setup absent'}
+          $hash=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($hash-ne$idx.windows_services.sha256){throw 'Setup digest mismatch'}
+          $version=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion
+          if($version-ne'1.1.22.0'){throw "Wrong installer FileVersion: $version"}
+          $shell=Get-Content (Join-Path $out 'unified-shell-v4/windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
+          $components=@{};foreach($c in $shell.components){$components[[string]$c.component_id]=[string]$c.version}
+          if($components.maintenance-ne'0.3.11' -or $components.'maintenance-update-engine'-ne'0.3.11' -or $components.runtime-ne'1.0.6' -or $components.'print-agent'-ne'6.2.9' -or $components.'maintenance-recovery-console'-ne'0.1.2'){
+            throw 'Compiled component version drift'
+          }
+          $ui=Join-Path $out 'SoknaSetupUi.exe'
+          if(-not(Test-Path -LiteralPath $ui)){throw 'Setup UI missing'}
+          if([Diagnostics.FileVersionInfo]::GetVersionInfo($ui).FileVersion-ne'1.1.22.0'){throw 'Setup UI version drift'}
+          $plan=Start-Process -FilePath $ui -ArgumentList '--planner-self-test' -Wait -PassThru
+          if($plan.ExitCode-ne0){throw "Planner self-test failed: $($plan.ExitCode)"}
+          "$hash  $([IO.Path]::GetFileName($exe))" | Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ASCII
+          Write-Host 'WINDOWS_1122_KEYLESS_INSTALLER_SOURCE_AND_PACKAGE_GATES_PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-services-1122-keyless-uat
+          path: |
+            ${{ runner.temp }}/sokna-windows-122-keyless/SOKNA-Windows-Services-Setup-1.1.22.exe
+            ${{ runner.temp }}/sokna-windows-122-keyless/SHA256SUMS.txt
+            ${{ runner.temp }}/sokna-windows-122-keyless/artifact-index.json
+          if-no-files-found: error
+      - name: Publish immutable pre-release (not a real-host installation claim)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='windows-services-v1.1.22-keyless-rc.1'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-122-keyless'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if($LASTEXITCODE-eq0){throw 'Existing pre-release may not be overwritten'}
+          $notes=@(
+            'Windows Services 1.1.22 / Maintenance Supervisor+Engine 0.3.11.',
+            'ONE universal one-click Windows Services installer; no per-computer key, certificate or Release Set publisher trust.',
+            'Logged-in administrator can upload an unsigned SOKNA local_only v2.1 ZIP in the Local panel; Supervisor binds SHA256, baseline, stage and recovery receipts.',
+            'Runtime 1.0.6, Print Agent 6.2.9 and Recovery Console 0.1.2 remain unchanged.',
+            'No source-supplied issuer signing tool or producer key required.',
+            'Windows CI source/package/Preflight/Stage/worker checks passed. Real installation, production database backup and end-to-end Activate/rollback still require host UAT.',
+            'NOT a claim of installed Cafe or Home upgrade. Not a substitute for a Local application ZIP.'
+          )
+          $notes|Set-Content (Join-Path $out 'RELEASE_NOTES.md') -Encoding UTF8
+          gh release create $tag (Join-Path $out 'SOKNA-Windows-Services-Setup-1.1.22.exe') (Join-Path $out 'SHA256SUMS.txt') (Join-Path $out 'artifact-index.json') --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'SOKNA Windows Services 1.1.22 — keyless Local UAT' --notes-file (Join-Path $out 'RELEASE_NOTES.md') --prerelease
+          if($LASTEXITCODE-ne0){throw 'Pre-release publish failed'}
+          Write-Host "PUBLISHED: $tag"

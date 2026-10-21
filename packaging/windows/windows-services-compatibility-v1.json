@@ -32,7 +32,7 @@
     "mariadb",
     "business-data"
   ],
-  "package_version": "1.1.21",
+  "package_version": "1.1.22",
   "activation_rule": "verify-shell-hashes-and-component-versions-before-service-mutation",
   "lifecycle_ownership": {
     "windows_services": [
