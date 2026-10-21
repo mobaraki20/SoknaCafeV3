@@ -64,8 +64,15 @@ public static class StableLocalRecoveryOverlayRepair
             {
                 if (File.Exists(file)) continue;
                 var directory = Path.GetDirectoryName(file)!;
-                if (!Directory.Exists(directory) || IsReparse(directory))
+                var parent = Path.GetDirectoryName(directory)!;
+                if (!Directory.Exists(parent) || IsReparse(parent) ||
+                    Directory.Exists(directory) && IsReparse(directory))
                     throw new InvalidDataException("STABLE_RECOVERY_OVERLAY_DIRECTORY_INVALID");
+                // The persistent public overlay directory may not exist yet on
+                // an installation that has never had recovery.php; only create
+                // this one fixed, qualified machine-owned directory.
+                if (!Directory.Exists(directory))
+                    Directory.CreateDirectory(directory);
                 var temporary = file + ".incoming." + Guid.NewGuid().ToString("N");
                 try
                 {
