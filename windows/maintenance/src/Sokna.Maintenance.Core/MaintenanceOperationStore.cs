@@ -134,6 +134,15 @@ public sealed class MaintenanceOperationStore
             .OrderBy(static o => o.CreatedAtUtc)
             .ToArray();
 
+    // This must scan the ENTIRE durable history: the superseding committed
+    // migration may be older than the most recent 100 unrelated operations.
+    public IReadOnlyList<MaintenanceOperation> ListCommittedLocalMigrations()
+        => LoadAllOperations()
+            .Where(static o => o.OperationType == "update.local-slot-migrate" &&
+                o.State == "committed" && !o.DatabaseMutationPerformed)
+            .OrderByDescending(static o => o.UpdatedAtUtc)
+            .ToArray();
+
     public IReadOnlyList<MaintenanceOperation> ListInterruptedLocalStages()
         => LoadAllOperations()
             .Where(static o => o.OperationType is "update.local-stage" or "update.stage" &&

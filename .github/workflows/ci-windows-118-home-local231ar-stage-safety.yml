@@ -1,0 +1,73 @@
+name: Windows 1.1.19 Local Panel Update Safety
+
+on:
+  push:
+    branches:
+      - work/windows-118-home-local231ar-stage-qualification-20261021
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-stage-safety:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile existing Maintenance engine and signed fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release --nologo -warnaserror
+          if ($LASTEXITCODE -ne 0) { throw 'Maintenance Engine build failed' }
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release --nologo -warnaserror
+          if ($LASTEXITCODE -ne 0) { throw 'Maintenance Supervisor build failed' }
+          dotnet build windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release --nologo -warnaserror
+          if ($LASTEXITCODE -ne 0) { throw 'Signed fixture build failed' }
+      - name: Verify actual Engine CLI version matches 0.3.9
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $lines = @(& dotnet run --project windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release --no-build -- --help)
+          if ($LASTEXITCODE -ne 0 -or -not (($lines -join "`n") -match 'SOKNA Maintenance Update Engine 0\.3\.9')) {
+            throw ('Engine CLI version disagrees with installed component 0.3.9: ' + ($lines -join ' '))
+          }
+      - name: Read-only signed VerifyOnly succeeds but Stage cannot advance sequence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP ('signed-readonly-' + [guid]::NewGuid().ToString('N'))
+          $raw = @(& dotnet run --project windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release --no-build -- --root $root --variant signed-readonly-stage-forbidden)
+          if ($LASTEXITCODE -ne 0) { throw ('Read-only signed Stage guard failed: ' + ($raw -join ' ')) }
+          $result = ($raw -join "`n") | ConvertFrom-Json
+          if ($result.result -ne 'PASS' -or -not $result.verified -or -not $result.stage_denied -or $result.anti_rollback_mutation -or $result.stage_created) {
+            throw 'Read-only signed package acquired a trusted Stage or anti-rollback sequence'
+          }
+      - name: Legacy recovery closes only with newer committed proof and retains audit history
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP ('legacy-reconcile-' + [guid]::NewGuid().ToString('N'))
+          $raw = @(& dotnet run --project windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release --no-build -- --root $root --variant legacy-reconcile-policy)
+          if ($LASTEXITCODE -ne 0) { throw ('Legacy recovery reconciliation failed: ' + ($raw -join ' ')) }
+          $result = ($raw -join "`n") | ConvertFrom-Json
+          if ($result.result -ne 'PASS' -or -not $result.legacy_audited -or -not $result.next_update_admitted -or $result.fail_closed_variants -ne 7) {
+            throw 'Legacy recovery audit/fail-closed/next-update regression'
+          }
+      - name: CI-only qualified synthetic package still stages with no activation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP ('signed-qualified-' + [guid]::NewGuid().ToString('N'))
+          $raw = @(& dotnet run --project windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release --no-build -- --root $root --variant valid --seed-stage)
+          if ($LASTEXITCODE -ne 0) { throw ('Disposable signed Stage fixture failed: ' + ($raw -join ' ')) }
+          $result = ($raw -join "`n") | ConvertFrom-Json
+          if (-not $result.seeded_stage.signature_verified -or -not $result.seeded_stage.artifact_integrity_verified -or $result.seeded_stage.activation_performed -or $result.seeded_stage.database_mutation_performed) {
+            throw 'Qualified synthetic Stage contract failed'
+          }
+          if (-not (Test-Path (Join-Path $root 'update/release-sequence.json'))) { throw 'Qualified synthetic Stage did not persist sequence' }
+          Write-Host 'Signed read-only denial and qualified CI Stage: PASS; no host mutation or installer release.'

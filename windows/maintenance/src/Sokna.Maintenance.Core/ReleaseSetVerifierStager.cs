@@ -19,7 +19,9 @@ public sealed record ReleaseSetPreflightResult(
     [property: JsonPropertyName("activation_performed")] bool ActivationPerformed,
     [property: JsonPropertyName("database_mutation_performed")] bool DatabaseMutationPerformed,
     [property: JsonPropertyName("stage_performed")] bool StagePerformed,
-    [property: JsonPropertyName("panel_activation_ready")] bool PanelActivationReady);
+    [property: JsonPropertyName("panel_activation_ready")] bool PanelActivationReady,
+    // Authenticated statement from the signed manifest, not host readiness.
+    [property: JsonPropertyName("signed_install_intent")] bool SignedInstallIntent = false);
 
 public sealed class ReleaseSetVerifierStager
 {
@@ -115,7 +117,9 @@ public sealed class ReleaseSetVerifierStager
             packageHash, manifestHash, true, true,
             manifest.ReleaseType is "windows_components_only" or "updater_only" ? null : true,
             ActivationPerformed: false, DatabaseMutationPerformed: false,
-            StagePerformed: false, PanelActivationReady: false);
+            StagePerformed: false, PanelActivationReady: false,
+            SignedInstallIntent: manifest.ForInstall && manifest.ProductionPass &&
+                !manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase));
     }
 
     public StagedReleaseReceipt VerifyAndStage(string packagePath, InstalledReleaseIdentity installed)
@@ -124,7 +128,6 @@ public sealed class ReleaseSetVerifierStager
         packagePath = Path.GetFullPath(packagePath);
         if (!File.Exists(packagePath)) throw new FileNotFoundException("Release Set package was not found.", packagePath);
         Directory.CreateDirectory(_paths.UpdateRoot);
-        Directory.CreateDirectory(_paths.StagingRoot);
         Directory.CreateDirectory(_paths.ReleaseSigningTrustRoot);
 
         using var updateLock = SingleInstanceLock.Acquire(_paths.UpdateStageLockPath);
@@ -161,6 +164,16 @@ public sealed class ReleaseSetVerifierStager
         var manifestSha256 = ReleaseSetCanonicalizer.Sha256Hex(canonical);
         VerifySignature(manifest, canonical);
         ValidateArchiveAgainstArtifacts(entries, manifest.Artifacts);
+        // VerifyOnly may authenticate test-only packages, but Stage writes a
+        // durable anti-rollback sequence. Deny non-installable packages before
+        // any sequence, receipt, directory or operation is created.
+        if (!manifest.ForInstall || !manifest.ProductionPass ||
+            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN");
+
+        // A signed VerifyOnly/test-only package must not even allocate the
+        // trusted Stage root. Only install-qualified manifests may reach it.
+        Directory.CreateDirectory(_paths.StagingRoot);
 
         var existingSequence = LoadSequenceState();
         if (existingSequence is not null)

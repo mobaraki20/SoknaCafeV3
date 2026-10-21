@@ -55,7 +55,18 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
             // Existing operations must not be overlooked because they are older
             // than the last 100 receipts. Damaged journal evidence fails closed.
             var prior = _operations.GetByIdempotencyKey(idempotencyKey);
-            if (_operations.ListBlocking().Any(op => prior is null || op.OperationId != prior.OperationId || op.State == "recovery_required"))
+            var blockers = _operations.ListBlocking();
+            // An obsolete read-only Home-cycle recovery can be reconciled only
+            // AFTER verifying the next signed package/current Local identity.
+            // Never allow it to bypass Stage/Activate or any other blocker.
+            var legacyOnly = blockers.Count > 0 && blockers.All(op =>
+                op.OperationType == "update.local-slot-home-cycle" &&
+                op.State == "recovery_required" &&
+                !op.DatabaseMutationPerformed) &&
+                _operations.ListCommittedLocalMigrations().Any(op =>
+                    op.State == "committed" && op.CreatedAtUtc > blockers.Max(b => b.CreatedAtUtc));
+            if (!legacyOnly && blockers.Any(op =>
+                prior is null || op.OperationId != prior.OperationId || op.State == "recovery_required"))
                 throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
 
             var hash = MaintenanceOperationStore.CanonicalRequestHash(
@@ -92,14 +103,57 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
 
                 // Validates the signed manifest, artifact hashes, exact baseline
                 // and anti-rollback state WITHOUT persisting a stage or sequence.
-                var verified = new ReleaseSetVerifierStager(_paths)
-                    .VerifyOnly(package, installed);
+                ReleaseSetPreflightResult verified;
+                try
+                {
+                    verified = new ReleaseSetVerifierStager(_paths)
+                        .VerifyOnly(package, installed);
+                }
+                catch (InvalidDataException ex) when (ex.Message ==
+                    "Installed release identity does not match any exact supported baseline.")
+                {
+                    // External code-only install changed the physical Local
+                    // version but the trusted Maintenance baseline is stale.
+                    // Only an issuer-signed, install-qualified next Release Set
+                    // can supply the exact new identity. No user version input.
+                    using var lease = MachineMutationLease.Acquire(
+                        _paths, "supervisor-local-identity-rebind");
+                    var adoptionReceipt = new SupervisorSignedLocalIdentityRebind(_paths)
+                        .AdoptForNextRelease(package, installed);
+                    if (adoptionReceipt is null)
+                        throw new InvalidDataException("LOCAL_IDENTITY_REBIND_NOT_APPLICABLE");
+                    _journal.Append("update.local_identity.signed_rebound",
+                        _state.InstanceId, _state.InstallGeneration,
+                        new Dictionary<string, object?>
+                        {
+                            ["operation_id"] = operation.OperationId,
+                            ["signed_release_set_id"] = adoptionReceipt.SignedReleaseSetId,
+                            ["signed_package_sha256"] = adoptionReceipt.SignedPackageSha256,
+                            ["previous_identity_sha256"] = adoptionReceipt.PreviousIdentitySha256,
+                            ["adopted_managed_tree_sha256"] = adoptionReceipt.AdoptedManagedTreeSha256,
+                            ["database_mutation_performed"] = false
+                        });
+                    identityBytes = File.ReadAllBytes(_paths.InstalledReleaseIdentityPath);
+                    identityHash = Sha256(identityBytes);
+                    installed = AtomicFile.ReadJson<InstalledReleaseIdentity>(
+                        _paths.InstalledReleaseIdentityPath);
+                    verified = new ReleaseSetVerifierStager(_paths)
+                        .VerifyOnly(package, installed);
+                }
                 using var opened = File.OpenRead(package);
                 var packageAfter = Sha256(opened);
                 var identityAfter = Sha256(File.ReadAllBytes(_paths.InstalledReleaseIdentityPath));
                 if (!string.Equals(packageAfter, verified.PackageSha256, StringComparison.Ordinal) ||
                     !string.Equals(identityAfter, identityHash, StringComparison.Ordinal))
                     throw new InvalidDataException("Package or installed identity changed during preflight.");
+
+                if (legacyOnly)
+                {
+                    new SupervisorLegacySlotReconciler(_paths, _operations, _journal, _state)
+                        .Reconcile();
+                    if (_operations.ListBlocking().Any(op => op.OperationId != operation.OperationId))
+                        throw new InvalidDataException("LOCAL_LEGACY_RECOVERY_RECONCILIATION_REQUIRED");
+                }
 
                 var receiptPath = ReceiptPath(operation.OperationId);
                 if (operation.State == "verified")
