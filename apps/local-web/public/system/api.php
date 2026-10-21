@@ -8,7 +8,7 @@ use Sokna\Local\UI\WebAction;
 $core=require dirname(__DIR__).'/_app.php';$user=WebAction::requireAny($core,[]);$actorId=(int)($user['id']??0);
 try{
     if(($_SERVER['REQUEST_METHOD']??'GET')==='GET'){
-        WebAction::json(['success'=>true,'snapshot'=>$core->systemDiagnostics()->snapshot(),'update_center'=>$core->updateCenter()->snapshot(),'recovery'=>$core->recoveryWorkspace()->snapshot(),'windows_services_pairing'=>$core->windowsServicesPairing()->status()]);
+        WebAction::json(['success'=>true,'snapshot'=>$core->systemDiagnostics()->snapshot(),'update_center'=>$core->updateCenter()->snapshot(),'maintenance_v4'=>$core->maintenanceV4()->snapshot(),'recovery'=>$core->recoveryWorkspace()->snapshot(),'windows_services_pairing'=>$core->windowsServicesPairing()->status()]);
     }
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
     if($action==='support_bundle')WebAction::json(['success'=>true,'bundle'=>$core->systemDiagnostics()->createSupportBundle()]);
@@ -23,9 +23,23 @@ try{
     if($action==='public_update_rollback')WebAction::json(['success'=>true,'public_update'=>$core->publicEdgePublisher()->rollbackUpdate()]);
     if($action==='public_pair')WebAction::json(['success'=>true,'pairing'=>$core->publicReenrollment()->initialPair((string)($data['base_url']??''),(string)($data['pairing_code']??''),(string)($data['display_name']??''),$actorId)]);
     if($action==='public_reenroll')WebAction::json(['success'=>true,'reenrollment'=>$core->publicReenrollment()->complete((string)($data['base_url']??''),(string)($data['enrollment_code']??''),(string)($data['display_name']??''),$actorId)]);
-    if($action==='update_activate')WebAction::json(['success'=>true,'update_center'=>$core->localUpdates()->activateStaged($actorId)]);
-    if($action==='update_repair')WebAction::json(['success'=>true,'update_center'=>$core->localUpdates()->repairStaged($actorId)]);
-    if($action==='update_rollback')WebAction::json(['success'=>true,'update_center'=>$core->localUpdates()->rollback($actorId)]);
+    if($action==='update_activate'){
+        if($core->maintenanceV4()->ownsCurrentUpdate())
+            WebAction::json(['success'=>true,'maintenance_v4'=>$core->maintenanceV4()->activateStaged($actorId)]);
+        WebAction::json(['success'=>true,'update_center'=>$core->localUpdates()->activateStaged($actorId)]);
+    }
+    if($action==='update_repair'){
+        if($core->maintenanceV4()->ownsCurrentUpdate())
+            throw new LocalUpdateException('maintenance_repair_unavailable',
+                'Repair برای بسته V4 در این مسیر آماده نیست؛ نصب معمولی را بررسی کن.',409);
+        WebAction::json(['success'=>true,'update_center'=>$core->localUpdates()->repairStaged($actorId)]);
+    }
+    if($action==='update_rollback'){
+        if($core->maintenanceV4()->ownsCurrentUpdate())
+            throw new LocalUpdateException('maintenance_recovery_console_required',
+                'بازگشت نسخه V4 فقط از مسیر بازیابی مستقل Maintenance انجام می‌شود.',409);
+        WebAction::json(['success'=>true,'update_center'=>$core->localUpdates()->rollback($actorId)]);
+    }
     if($action==='recovery_code_rotate')WebAction::json(['success'=>true,'recovery'=>$core->localUpdates()->rotateRecoveryCode($actorId)]);
     if($action==='backup_create')WebAction::json(['success'=>true,'backup'=>$core->recoveryWorkspace()->create((string)($data['passphrase']??''),$actorId)]);
     if($action==='backup_inspect')WebAction::json(['success'=>true,'manifest'=>$core->recoveryWorkspace()->inspect((string)($data['id']??''),(string)($data['passphrase']??''))]);
