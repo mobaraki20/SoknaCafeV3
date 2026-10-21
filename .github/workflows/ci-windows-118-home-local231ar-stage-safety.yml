@@ -24,6 +24,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release --nologo -warnaserror
           if ($LASTEXITCODE -ne 0) { throw 'Maintenance Engine build failed' }
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release --nologo -warnaserror
+          if ($LASTEXITCODE -ne 0) { throw 'Maintenance Supervisor build failed' }
           dotnet build windows/maintenance/tests/Sokna.Maintenance.P2Fixture/Sokna.Maintenance.P2Fixture.csproj -c Release --nologo -warnaserror
           if ($LASTEXITCODE -ne 0) { throw 'Signed fixture build failed' }
       - name: Verify actual Engine CLI version matches 0.3.8
