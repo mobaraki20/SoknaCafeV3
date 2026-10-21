@@ -82,8 +82,9 @@ jobs:
           $original=[IO.File]::ReadAllBytes($file)
           try{
             [IO.File]::AppendAllText($file,'TAMPER')
-            & ./new/packaging/windows/scripts/invoke-maintenance-only-v1.ps1 -PayloadRoot $out 2>&1|Out-Null
-            if($?){throw 'Tampered package accepted'}
+            $rejected=$false
+            try{& ./new/packaging/windows/scripts/invoke-maintenance-only-v1.ps1 -PayloadRoot $out 2>&1|Out-Null}catch{$rejected=$true}
+            if(-not$rejected){throw 'Tampered package accepted'}
           }finally{[IO.File]::WriteAllBytes($file,$original)}
       - name: Real SCM service upgrade smoke 0.3.9 -> 0.3.10
         shell: pwsh
@@ -112,8 +113,13 @@ jobs:
               if($v-ne$pair[1]){throw "Installed component not upgraded"}
             }
             if((Get-Service SoknaMaintenanceSupervisor).Status-ne'Running'){throw 'Supervisor not running after upgrade'}
-            foreach($expected in @('RUNTIME-UNTOUCHED','PRINT-UNTOUCHED','RECOVERY-UNTOUCHED')){
-              if(-not(Get-ChildItem $root -File -Recurse|Where-Object{(Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue) -like "*$expected*"})){throw "Out-of-scope canary disappeared: $expected"}
+            $canaries=@{
+              'Runtime/SoknaRuntimeService.exe'='RUNTIME-UNTOUCHED'
+              'PrintAgent/Service/Sokna.PrintAgent.Service.exe'='PRINT-UNTOUCHED'
+              'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe'='RECOVERY-UNTOUCHED'
+            }
+            foreach($entry in $canaries.GetEnumerator()){
+              if((Get-Content (Join-Path $root $entry.Key) -Raw).Trim() -ne $entry.Value){throw "Out-of-scope canary changed: $($entry.Key)"}
             }
             Write-Host 'Windows SCM live scoped upgrade and sibling canaries: PASS'
           }finally{
