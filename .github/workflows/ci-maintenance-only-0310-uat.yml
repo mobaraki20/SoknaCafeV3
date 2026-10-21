@@ -147,6 +147,42 @@ jobs:
           $hash=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  SOKNA-Maintenance-Only-0.3.10-UAT.exe"|Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
           Write-Host "Standalone Maintenance EXE SHA256: $hash"
+      - name: Execute the final Inno EXE against a real Windows service
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'SOKNA-maintenance-only-inno-smoke'
+          $app=Join-Path $root 'Maintenance/App'
+          New-Item -ItemType Directory -Path $app,(Join-Path $root 'Runtime'),(Join-Path $root 'PrintAgent/Service'),(Join-Path $root 'Maintenance/Recovery') -Force|Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'baseline-maintenance/*') $app -Recurse -Force
+          $canaries=@{
+            'Runtime/SoknaRuntimeService.exe'='RUNTIME-INNO-UNTOUCHED'
+            'PrintAgent/Service/Sokna.PrintAgent.Service.exe'='PRINT-INNO-UNTOUCHED'
+            'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe'='RECOVERY-INNO-UNTOUCHED'
+          }
+          foreach($entry in $canaries.GetEnumerator()){Set-Content (Join-Path $root $entry.Key) $entry.Value -Encoding ASCII}
+          $exe=Join-Path $app 'SoknaMaintenanceSupervisor.exe'
+          for($i=0;$i-lt40;$i++){if(-not(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue)){break};Start-Sleep -Milliseconds 250}
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Original test service not fully removed'}
+          try{
+            New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+$exe+'"') -StartupType Automatic|Out-Null
+            Start-Service SoknaMaintenanceSupervisor
+            $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.10-UAT.exe'
+            $log=Join-Path $env:RUNNER_TEMP 'maintenance-only-inno-smoke.log'
+            $process=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$log+'"')) -PassThru -Wait
+            if($process.ExitCode -ne 0){throw "Actual Inno EXE failed: ExitCode=$($process.ExitCode); log=$log"}
+            foreach($file in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')){
+              if(([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $app $file)).FileVersion)-ne'0.3.10.0'){throw "Inno EXE did not upgrade $file"}
+            }
+            if((Get-Service SoknaMaintenanceSupervisor).Status-ne'Running'){throw 'Supervisor stopped after actual EXE'}
+            foreach($entry in $canaries.GetEnumerator()){
+              if((Get-Content (Join-Path $root $entry.Key) -Raw).Trim() -ne$entry.Value){throw "Inno EXE modified forbidden component $($entry.Key)"}
+            }
+            Write-Host 'Actual Inno EXE 0.3.9 -> 0.3.10 Windows SCM installation: PASS'
+          }finally{
+            Stop-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue
+            & "$env:WINDIR/System32/sc.exe" delete SoknaMaintenanceSupervisor|Out-Null
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: SOKNA-Maintenance-Only-0.3.10-UAT
@@ -166,5 +202,5 @@ jobs:
           Testing: Windows Server 2022 GitHub CI real SCM smoke, payload tamper check, Maintenance binary build and Inno compile. Windows 10 Home real-host UAT is still required.
           No publisher Authenticode signature has been fabricated. Verify SHA256SUMS.txt after download.
           '@
-          gh release create $tag $exe (Join-Path $out 'SHA256SUMS.txt') --title 'SOKNA Maintenance 0.3.10 — independent UAT installer' --notes $notes --prerelease --target ${{ github.sha }}
+          gh release create $tag $exe (Join-Path $out 'SHA256SUMS.txt') --repo mobaraki20/SoknaCafeV3 --title 'SOKNA Maintenance 0.3.10 — independent UAT installer' --notes $notes --prerelease --target ${{ github.sha }}
           if($LASTEXITCODE-ne0){throw 'GitHub pre-release publish failed'}
