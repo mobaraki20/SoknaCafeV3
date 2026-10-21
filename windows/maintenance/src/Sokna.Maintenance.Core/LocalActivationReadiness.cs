@@ -34,7 +34,9 @@ public static class LocalActivationReadinessPolicy
         if (!fullyVerifiedStage || receipt.Format != "sokna-maintenance-staged-release-v1" ||
             receipt.SchemaVersion != 1 || receipt.ActivationPerformed ||
             receipt.DatabaseMutationPerformed ||
-            !receipt.PreflightIdentityMatch || !receipt.SignatureVerified ||
+            !receipt.PreflightIdentityMatch ||
+            !OperatorUploadedLocalPackage.HasTrustedPackageEvidence(
+                receipt.SignatureVerified, receipt.OperatorAuthorized) ||
             !receipt.ArtifactIntegrityVerified ||
             manifest.ReleaseSetId != receipt.ReleaseSetId ||
             manifest.Sequence != receipt.Sequence)
