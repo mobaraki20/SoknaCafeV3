@@ -36,7 +36,7 @@ final class MaintenanceV4PanelService
     {
         $s=$this->load();
         return isset($s['stage_operation_id'])&&
-            in_array((string)($s['state']??''),['staged','preparing','activating','recovery_required'],true);
+            in_array((string)($s['state']??''),['staged','preparing','activating','outcome_unknown','recovery_required'],true);
     }
 
     public function ownsCurrentUpdate(): bool
@@ -64,10 +64,29 @@ final class MaintenanceV4PanelService
             $out['actions']=(array)($cap['local_routine']??[]);
             if(isset($s['stage_operation_id'])&&preg_match('/^[a-f0-9]{32}$/D',(string)$s['stage_operation_id'])){
                 $operation=$this->send('GET','/v1/operations/'.$s['stage_operation_id']);
-                $op=(array)($operation['data']['operation']??$operation['data']??[]);
+                $op=(array)($operation['data']??[]);
                 if(($op['state']??'')==='recovery_required'){
                     $out['panel_update_ready']=false;
                     $out['blocking_code']='LOCAL_RECOVERY_REQUIRED';
+                }
+                if(in_array((string)($s['state']??''),['activating','outcome_unknown','recovery_required'],true)){
+                    try {
+                        $activation=$this->send('GET','/v1/operations/by-idempotency/'.$s['activation_key']);
+                        $outcome=(array)($activation['data']??[]);
+                        $state=(string)($outcome['state']??'');
+                        if($state==='committed'&&($s['state']??'')!=='completed'){
+                            $s['state']='completed';$this->save($s);
+                            $out['activation_state']='completed';
+                            $out['staged']['state']='completed';
+                            $out['panel_update_ready']=false;
+                        }elseif($state==='recovery_required'){
+                            $s['state']='recovery_required';$this->save($s);
+                            $out['activation_state']='recovery_required';
+                            $out['staged']['state']='recovery_required';
+                            $out['panel_update_ready']=false;
+                            $out['blocking_code']='LOCAL_RECOVERY_REQUIRED';
+                        }
+                    }catch(LocalUpdateException){/* An absent/ambiguous operation cannot authorize retry. */}
                 }
             }
         }catch(LocalUpdateException $e){
@@ -189,7 +208,9 @@ final class MaintenanceV4PanelService
             $this->save($s);
             return ['engine'=>'maintenance-v4','state'=>$status];
         }catch(Throwable $e){
-            $s['state']='recovery_required';$this->save($s);
+            // Connection loss may happen after an irreversible mutation. Do not
+            // invent a rollback success or rerun PHP's old updater.
+            $s['state']='outcome_unknown';$this->save($s);
             throw $e;
         }
     }
@@ -266,7 +287,11 @@ final class MaintenanceV4PanelService
         }
         if(!is_array($result)||!array_key_exists('ok',$result))
             throw new LocalUpdateException('maintenance_bad_response','پاسخ Maintenance معتبر نیست.',503);
-        if((int)$response['status']<200||(int)$response['status']>=300||$result['ok']!==true)
+        $pendingActivation=$path==='/v1/local-updates/activate-code-only'&&
+            (int)$response['status']===202&&
+            in_array((string)($result['state']??''),['accepted','running','activating'],true);
+        if(!$pendingActivation&&((int)$response['status']<200||
+           (int)$response['status']>=300||$result['ok']!==true))
             throw new LocalUpdateException('maintenance_rejected',
                 'Maintenance درخواست را رد کرد: '.(string)($result['code']??'unknown'),409,
                 ['maintenance_code'=>(string)($result['code']??'unknown')]);
