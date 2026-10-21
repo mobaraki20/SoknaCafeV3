@@ -170,14 +170,20 @@ jobs:
           for($i=0;$i-lt40;$i++){if(-not(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue)){break};Start-Sleep -Milliseconds 250}
           if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Original test service not fully removed'}
           try{
+            $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.10-UAT.exe'
+            # A binary with no owned installed service must exit nonzero (not success).
+            $negative=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru -Wait
+            if($negative.ExitCode -eq 0){throw 'Inno reported success with missing service (false success)'}
+            if(([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)-ne'0.3.9.0'){throw 'Negative installer mutated baseline'}
             New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+$exe+'"') -StartupType Automatic|Out-Null
             Start-Service SoknaMaintenanceSupervisor
-            $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.10-UAT.exe'
             $log=Join-Path $env:RUNNER_TEMP 'maintenance-only-inno-smoke.log'
             $process=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$log+'"')) -PassThru -Wait
             $errorPath=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
             if(Test-Path $errorPath){Write-Host 'Scoped installer failure code:';Get-Content $errorPath|Out-Host}
             if(Test-Path $log){
+              if(-not ((Get-Content $log -Raw) -match '64-bit install mode: Yes')){throw 'Inno did not invoke native 64-bit installation mode'}
+              if(-not ((Get-Content $log -Raw) -match 'SOKNA_MAINTENANCE_ONLY_TRANSACTION_VERIFIED')){throw 'Inno did not attest completed scoped transaction'}
               Write-Host 'Inno install log (filtered)'
               Get-Content $log -Tail 140|Where-Object{$_ -match 'SOKNA|ssPostInstall|Error|error|maintenance-only|Extract|inno|PowerShell|Filename|Executing|Install'}|Select-Object -Last 70|Out-Host
             }else{Write-Warning ('Expected Inno log not found: '+$log)}
