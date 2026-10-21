@@ -109,12 +109,11 @@ if (variant == "legacy-reconcile-policy")
         MaintenanceOperationStore.CanonicalRequestHash("update.local-package-preflight",
             "next.zip", "ci"), "update.local-package-preflight", "next.zip", "ci");
     Need(next.State == "accepted", "NEXT_UPDATE_MUST_BE_ADMISSIBLE");
-    textOutput();
-    return;
-    void textOutput() => Console.WriteLine(JsonSerializer.Serialize(new {
+    Console.WriteLine(JsonSerializer.Serialize(new {
         result = "PASS", legacy_audited = true, next_update_admitted = true,
         fail_closed_variants = 7
     }));
+    return;
 }
 
 // "valid" is an install-qualified synthetic fixture ONLY inside the disposable
