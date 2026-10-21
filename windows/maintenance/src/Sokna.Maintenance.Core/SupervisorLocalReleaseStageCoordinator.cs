@@ -81,7 +81,9 @@ public sealed class SupervisorLocalReleaseStageCoordinator
                 preflightReceipt.OperationId != preflightOperationId ||
                 preflightReceipt.PackageRef != preflight.PackageRef ||
                 preflightReceipt.Verification is null ||
-                !preflightReceipt.Verification.SignatureVerified ||
+                !OperatorUploadedLocalPackage.HasTrustedPackageEvidence(
+                    preflightReceipt.Verification.SignatureVerified,
+                    preflightReceipt.Verification.OperatorAuthorized) ||
                 !preflightReceipt.Verification.ArtifactIntegrityVerified ||
                 preflightReceipt.Verification.ExactBaselineVerified != true ||
                 preflightReceipt.Verification.ReleaseType != "local_only" ||
@@ -132,7 +134,7 @@ public sealed class SupervisorLocalReleaseStageCoordinator
             // test-only/read-only manifests BEFORE creating a blocking durable
             // Stage operation. VerifyAndStage independently rechecks the same
             // authenticated policy under its own filesystem lock.
-            if (!verified.SignedInstallIntent)
+            if (!verified.SignedInstallIntent && !verified.OperatorAuthorized)
                 throw new InvalidDataException("RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN");
 
             var requestHash = MaintenanceOperationStore.CanonicalRequestHash(
@@ -173,7 +175,7 @@ public sealed class SupervisorLocalReleaseStageCoordinator
                 var persisted = AtomicFile.ReadJson<StagedReleaseReceipt>(receiptPath);
                 ValidateStageReceipt(persisted, verified);
                 operation = _operations.Update(operation, "staged", "STAGED",
-                    "Signed, preflight-bound Local-only release staged; no activation or DB mutation.",
+                    "Preflight-bound, operator-approved Local release staged; no activation or DB mutation.",
                     stageReceiptPath: receiptPath);
                 Journal("update.local_stage.staged", operation, preflightOperationId);
                 return new(operation, preflightOperationId, created, !created, persisted);
@@ -201,7 +203,10 @@ public sealed class SupervisorLocalReleaseStageCoordinator
             staged.Sequence != verified.Sequence ||
             staged.ManifestSha256 != verified.ManifestSha256 ||
             staged.PackageSha256 != verified.PackageSha256 ||
-            !staged.SignatureVerified || !staged.ArtifactIntegrityVerified ||
+            !OperatorUploadedLocalPackage.HasTrustedPackageEvidence(
+                staged.SignatureVerified, staged.OperatorAuthorized) ||
+            staged.OperatorAuthorized != verified.OperatorAuthorized ||
+            !staged.ArtifactIntegrityVerified ||
             !staged.PreflightIdentityMatch || staged.ActivationPerformed ||
             staged.DatabaseMutationPerformed)
             throw new InvalidDataException("Stage receipt does not prove the exact preflight package.");
