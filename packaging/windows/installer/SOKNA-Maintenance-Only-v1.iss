@@ -67,13 +67,16 @@ begin
   if not Exec(PS, Params, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
   begin
     MaintenanceFailureExitCode := 42;
-    RaiseException('Unable to invoke scoped Maintenance transaction.');
+    Log('SOKNA_MAINTENANCE_ONLY_TRANSACTION_START_FAILED');
+    MsgBox('Maintenance-only installation could not start. No installed service was changed.', mbError, MB_OK);
+    Exit;
   end;
   if ExitCode <> 0 then
   begin
     Log('SOKNA_MAINTENANCE_ONLY_TRANSACTION_FAILED=' + IntToStr(ExitCode));
     MaintenanceFailureExitCode := 43;
-    RaiseException('Maintenance-only installation failed. Read the transaction evidence under ProgramData\SOKNA\setup\component-transactions.');
+    MsgBox('Maintenance-only update failed. Inspect ProgramData\SOKNA\setup\maintenance-only-last-error.txt and transaction evidence. Do not treat this update as installed.', mbError, MB_OK);
+    Exit;
   end;
   Log('SOKNA_MAINTENANCE_ONLY_TRANSACTION_VERIFIED');
 end;
