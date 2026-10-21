@@ -106,9 +106,10 @@ try{
     echo "PASS HMAC transport, no release publisher signing, correct routes, no retry, status\n";
     $descriptor['base_url']='http://evil.example:17631/';
     file_put_contents($root.'/supervisor/control-plane.json',json_encode($descriptor));
-    reject(fn()=>$service->snapshot()['available']===true?throw new RuntimeException('Bad URL accepted'):throw new LocalUpdateException('blocked','blocked'),
-        'malicious endpoint blocked');
-    check($service->snapshot()['blocking_code']==='maintenance_adapter_unavailable','bad URL fail closed');
+    $unsafe=$service->snapshot();
+    check($unsafe['available']===false&&
+        $unsafe['blocking_code']==='maintenance_adapter_unavailable',
+        'malicious control-plane URL denied without making any network request');
     echo "PASS bad loopback/descriptor denied\n";
 }finally{
     $walk=function($dir)use(&$walk){foreach(scandir($dir)?:[] as $name){if($name==='.'||$name==='..')continue;$path=$dir.'/'.$name;if(is_dir($path))$walk($path);else@unlink($path);}@rmdir($dir);};
