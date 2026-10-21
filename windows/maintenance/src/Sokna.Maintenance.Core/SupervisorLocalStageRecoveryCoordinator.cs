@@ -173,7 +173,9 @@ public sealed class SupervisorLocalStageRecoveryCoordinator
             proof.PackageRef != operation.PackageRef || proof.Verification is null ||
             proof.Verification.ReleaseType != "local_only" ||
             proof.Verification.ExactBaselineVerified != true ||
-            !proof.Verification.SignatureVerified || !proof.Verification.ArtifactIntegrityVerified ||
+            !OperatorUploadedLocalPackage.HasTrustedPackageEvidence(
+                proof.Verification.SignatureVerified, proof.Verification.OperatorAuthorized) ||
+            !proof.Verification.ArtifactIntegrityVerified ||
             proof.Verification.StagePerformed || proof.Verification.ActivationPerformed ||
             proof.Verification.DatabaseMutationPerformed)
             throw new InvalidDataException("Preflight receipt cannot prove Stage provenance.");
@@ -246,7 +248,10 @@ public sealed class SupervisorLocalStageRecoveryCoordinator
             staged.Sequence != verified.Sequence || staged.PackageSha256 != verified.PackageSha256 ||
             staged.ManifestSha256 != verified.ManifestSha256 ||
             !string.Equals(Path.GetFullPath(staged.StageRoot), expectedRoot, StringComparison.OrdinalIgnoreCase) ||
-            !staged.SignatureVerified || !staged.ArtifactIntegrityVerified ||
+            !OperatorUploadedLocalPackage.HasTrustedPackageEvidence(
+                staged.SignatureVerified, staged.OperatorAuthorized) ||
+            staged.OperatorAuthorized != proof.Verification.OperatorAuthorized ||
+            !staged.ArtifactIntegrityVerified ||
             !staged.PreflightIdentityMatch || staged.ActivationPerformed ||
             staged.DatabaseMutationPerformed)
             throw new InvalidDataException("Stage receipt is inconsistent or indicates a mutation.");
