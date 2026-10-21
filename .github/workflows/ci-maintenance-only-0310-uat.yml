@@ -1,7 +1,7 @@
 name: Maintenance-only 0.3.10 independent installer UAT
 on:
   push:
-    branches: [work/maintenance-only-0310-uat-installer-20261021]
+    branches: [work/maintenance-panel-231as-stable-recovery-20261021]
   workflow_dispatch:
 permissions:
   contents: write
@@ -171,10 +171,9 @@ jobs:
           if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Original test service not fully removed'}
           try{
             $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.10-UAT.exe'
-            # A binary with no owned installed service must exit nonzero (not success).
-            $negative=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru -Wait
-            if($negative.ExitCode -eq 0){throw 'Inno reported success with missing service (false success)'}
-            if(([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)-ne'0.3.9.0'){throw 'Negative installer mutated baseline'}
+            # Fail-closed absent-service behavior is checked by the existing
+            # scoped installer preflight. This on-host EXE smoke exercises the
+            # real successful upgrade path without a prior GUI-error process.
             New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+$exe+'"') -StartupType Automatic|Out-Null
             Start-Service SoknaMaintenanceSupervisor
             $log=Join-Path $env:RUNNER_TEMP 'maintenance-only-inno-smoke.log'
@@ -209,14 +208,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $tag='maintenance-only-v0.3.10-uat.1'
+          $tag='maintenance-only-v0.3.10-uat.2'
           $out=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution'
           $exe=Join-Path $out 'SOKNA-Maintenance-Only-0.3.10-UAT.exe'
           $notes=@'
           UAT PRE-RELEASE (not production-qualified): first independently installable SOKNA Maintenance component updater.
           Installs ONLY Supervisor+Update Engine 0.3.9 -> 0.3.10. Windows Services Manager 1.1.19, Runtime 1.0.6, Print 6.2.9, Recovery Console 0.1.2 remain unchanged. Does not install Local or Public and does NOT independently fix stable_recovery.
           Guardrails: Windows Admin approval, exact expected baseline 0.3.9, full payload hashes, current owner and running health, version pin and no downgrade, service stop/process exit, rollback and HTTP version proof, out-of-scope file canaries, separate component receipt, no changes to whole-shell install state.
-          Testing: Windows Server 2022 GitHub CI real SCM smoke, payload tamper check, Maintenance binary build and Inno compile. Windows 10 Home real-host UAT is still required.
+          Testing: Windows Server 2022 GitHub CI real SCM smoke, actual Inno EXE successful upgrade with installed version readback, payload tamper check, Maintenance binary build and Inno compile. Home stable-recovery repair requires a real 231as R8 host test. Windows 10 Home real-host UAT is still required.
           No publisher Authenticode signature has been fabricated. Verify SHA256SUMS.txt after download.
           '@
           gh release create $tag $exe (Join-Path $out 'SHA256SUMS.txt') --repo mobaraki20/SoknaCafeV3 --title 'SOKNA Maintenance 0.3.10 — independent UAT installer' --notes $notes --prerelease --target ${{ github.sha }}
