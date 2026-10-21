@@ -29,6 +29,7 @@ if (parsed.Format != ReleaseSetVerifierStager.Format ||
     !parsed.ProductionPass || parsed.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase))
     throw new InvalidDataException("PUBLISHER_LOCAL_QUALIFICATION_REQUIRED");
 ReleaseInstallQualificationGate.Require(parsed);
+RequireGeneralManifestSafety(parsed);
 if (parsed.SupportedBaselines.Length != 1 || parsed.SupportedBaselines[0].Local is null ||
     parsed.Artifacts.Count != 1)
     throw new InvalidDataException("PUBLISHER_EXACT_LOCAL_ONLY_CONTRACT_REQUIRED");
@@ -162,6 +163,45 @@ Console.WriteLine("release_set_id=" + parsed.ReleaseSetId);
 Console.WriteLine("release_sha256=" + Hex(SHA256.HashData(File.ReadAllBytes(output))));
 Console.WriteLine("private_key_exported=false");
 Console.WriteLine("real_cafe_install_not_claimed=true");
+
+
+static void RequireGeneralManifestSafety(ReleaseSetManifest m)
+{
+    var now = DateTimeOffset.UtcNow;
+    if (string.IsNullOrWhiteSpace(m.ReleaseSetId) || m.ReleaseSetId.Length > 128 ||
+        m.Sequence <= 0 || m.CreatedAt >= m.ExpiresAt ||
+        m.CreatedAt > now.AddMinutes(5) || m.ExpiresAt <= now)
+        throw new InvalidDataException("PUBLISHER_RELEASE_ID_SEQUENCE_OR_EXPIRY_INVALID");
+    if (m.Requirements is null || m.Compatibility is null ||
+        m.MutationPolicy is null || m.Database is null || m.Recovery is null ||
+        m.PreUpdateBackupPolicy is null || m.InstallPlan is null ||
+        m.Targets.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ||
+        m.DependencyGraph.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        throw new InvalidDataException("PUBLISHER_REQUIRED_MANIFEST_SECTION_MISSING");
+    if (m.InstallPlan.Length == 0 || m.InstallPlan[0].Phase != "preflight" ||
+        m.InstallPlan[0].Mutation ||
+        m.InstallPlan.Any(x => string.IsNullOrWhiteSpace(x.Phase) || string.IsNullOrWhiteSpace(x.Component)))
+        throw new InvalidDataException("PUBLISHER_PREFLIGHT_PLAN_INVALID");
+    if (m.MutationPolicy.Local is not ("allow" or "drain_then_block" or "block") ||
+        m.MutationPolicy.Guest is not ("allow" or "queue" or "read_only" or "block") ||
+        m.MutationPolicy.StaffPublic is not ("allow" or "queue" or "read_only" or "block"))
+        throw new InvalidDataException("PUBLISHER_MUTATION_POLICY_INVALID");
+    if (m.Database.Local is null || m.Database.Public is null ||
+        m.Database.Local.RollbackAfterBoundary != "forbidden" ||
+        m.Database.Public.RollbackAfterBoundary != "forbidden" ||
+        m.Recovery.PreDb != "rollback_or_discard_allowed" ||
+        m.Recovery.PostDb != "retain_target_updater_forward_recovery_only" ||
+        m.Recovery.BusinessBackupRestore != "clean_target_only" ||
+        m.Recovery.DisasterRestore != "authority_epoch_reenrollment_required" ||
+        m.Recovery.MachineIdentity != "fresh_reprovision_required" ||
+        m.Recovery.PublicReenrollment != "credential_rotation_and_authority_epoch_required")
+        throw new InvalidDataException("PUBLISHER_RECOVERY_OR_DB_CONTRACT_INVALID");
+    if (m.PreUpdateBackupPolicy.OnFailure != "reject_pre_mutation" ||
+        m.PreUpdateBackupPolicy.RecentLocalVerifiedMaxAgeSeconds is <= 0 ||
+        !m.PreUpdateBackupPolicy.Required ||
+        !m.PreUpdateBackupPolicy.SystemRecoverySnapshotRequired)
+        throw new InvalidDataException("PUBLISHER_BACKUP_POLICY_INVALID");
+}
 
 static void RequireCompleteIdentity(ReleaseComponentIdentity identity)
 {
