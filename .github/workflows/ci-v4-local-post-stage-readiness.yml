@@ -1,0 +1,22 @@
+name: V4 Cafe Local Signed Rebind Panel UX (source only)
+on:
+  push:
+    branches:
+      - fix/v4-local-panel-refresh-after-signed-rebind-20261021
+  pull_request:
+    paths:
+      - packaging/windows/qualification/fix-cafe-local-post-stage.py
+      - packaging/windows/qualification/test_fix_cafe_local_post_stage.py
+      - .github/workflows/ci-v4-local-post-stage-readiness.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  post-stage-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify conservative Local panel path (no signer, no installer)
+        run: python3 packaging/windows/qualification/test_fix_cafe_local_post_stage.py
