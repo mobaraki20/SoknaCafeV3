@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Disposable signing interoperability fixture. Never publish this test release."""
-import base64,hashlib,io,json,os,pathlib,subprocess,sys,tempfile,zipfile
+import base64,hashlib,io,json,os,pathlib,subprocess,sys,tempfile,zipfile,datetime
 from cryptography.hazmat.primitives import hashes,serialization
 from cryptography.hazmat.primitives.asymmetric import ec,utils
 
@@ -38,6 +38,30 @@ def main():
                   "artifacts":{"local-web":{"path":"artifacts/local/web.zip","sha256":sha(payload),"size_bytes":len(payload),
                                              "component":"local-web","kind":"web-tree-zip-v1"}},
                   "signature":{"algorithm":"ecdsa-p256-sha256","key_id":"ci-ephemeral-"+sha(spki)[:20],"value":""}}
+        now=datetime.datetime.now(datetime.timezone.utc)
+        manifest.update({
+            "created_at":now.isoformat().replace("+00:00","Z"),
+            "expires_at":(now+datetime.timedelta(days=7)).isoformat().replace("+00:00","Z"),
+            "requirements":{"maintenance_supervisor_min":"0.3.10","update_engine_min":"0.3.10",
+                            "backup_recovery_engine_min":None,"public_maintenance_kernel_min":None},
+            "dependency_graph":[],
+            "install_plan":[{"phase":"preflight","component":"local-web","mutation":False}],
+            "compatibility":{"allowed_intermediate_pairs":[],"max_stagger_seconds":0,
+                             "client_build_window":{},"protocol_window":{}},
+            "mutation_policy":{"guest":"queue","staff_public":"queue","local":"drain_then_block"},
+            "database":{"local":{"migration_dag":[],"forward_boundary_phase":"db_forward_boundary",
+                                  "rollback_after_boundary":"forbidden"},
+                        "public":{"migration_dag":[],"forward_boundary_phase":"db_forward_boundary",
+                                  "rollback_after_boundary":"forbidden"}},
+            "recovery":{"pre_db":"rollback_or_discard_allowed","post_db":"retain_target_updater_forward_recovery_only",
+                        "disaster_restore":"authority_epoch_reenrollment_required",
+                        "business_backup_restore":"clean_target_only","machine_identity":"fresh_reprovision_required",
+                        "public_reenrollment":"credential_rotation_and_authority_epoch_required"},
+            "pre_update_backup_policy":{"required":True,"recent_local_verified_max_age_seconds":86400,
+                                        "require_remote_verified_before_db_boundary":False,
+                                        "system_recovery_snapshot_required":True,
+                                        "on_failure":"reject_pre_mutation"}
+        })
         receipt={"release_set_id":"ci-ephemeral","artifact_sha256":sha(payload),"result":"QUALIFIED",
                  "failure_matrix_id":"CI-FAKE-FIXTURE","real_windows_uat_sha256":"1"*64,
                  "mariadb_backup_restore_sha256":"2"*64,"negative_matrix_sha256":"3"*64}
