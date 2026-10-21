@@ -13,18 +13,6 @@ internal static class DashboardEntryV3
         Application.SetCompatibleTextRenderingDefault(false);
         if (args.Length == 2 && args[0].Equals("--layout-self-test", StringComparison.OrdinalIgnoreCase))
             return RunLayoutSelfTest(Path.GetFullPath(args[1]));
-        if (args.Length == 2 && args[0].Equals("--fingerprint-self-test", StringComparison.OrdinalIgnoreCase))
-        {
-            try { ComponentPlannerSelfTest.FingerprintRun(args[1]); return 0; }
-            catch (Exception ex)
-            {
-                // A GUI-subsystem EXE must exit noninteractively on self-test
-                // failures rather than hanging Windows CI behind an error dialog.
-                try { File.WriteAllText(Path.Combine(Path.GetTempPath(),
-                    "sokna-fingerprint-selftest-error.txt"), ex.ToString()); } catch { }
-                return 31;
-            }
-        }
         if (args.Length == 1 && args[0].Equals("--planner-self-test", StringComparison.OrdinalIgnoreCase))
         {
             ComponentPlannerSelfTest.Run();
