@@ -6,6 +6,11 @@
       "build": "3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory",
       "managed_files": 497,
       "managed_tree_sha256": "b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a"
+    },
+    {
+      "build": "3.0.0-g6.2-workspace.231as-connectivity-relay-ack-home-uat",
+      "managed_files": 509,
+      "managed_tree_sha256": "d67561b5cc72d0e8003c2497c2af26dcdb3f7c5a893aa4eccaa462924c49f77f"
     }
   ],
   "database_mutation": false,

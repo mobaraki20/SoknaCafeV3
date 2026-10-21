@@ -100,6 +100,62 @@ if(-not$entry){
   exit 0
 }
 
+# Before honoring an exact release contract, independently rehash the *installed*
+# managed tree. The release version string or Bootstrap JSON alone is not proof.
+# Machine-specific persistent overlay (including recovery.php) is not managed.
+try {
+  $inventoryPath=Join-Path $webRoot 'resources\local-managed-files-v1.json'
+  if(-not(Test-Path -LiteralPath $inventoryPath -PathType Leaf)){
+    Evidence 'deferred' 'LOCAL_MANAGED_INVENTORY_MISSING' 'Installed Local managed-files inventory is missing; cannot attest baseline.'
+    exit 0
+  }
+  $inventory=Get-Content -LiteralPath $inventoryPath -Raw|ConvertFrom-Json
+  $files=@(Prop $inventory 'files' @())
+  if([string](Prop $inventory 'format' '')-ne'sokna-local-managed-files-v1'-or
+     $files.Count-ne[int]$entry.managed_files){
+    Evidence 'deferred' 'LOCAL_MANAGED_INVENTORY_MISMATCH' 'Installed managed file count/format does not match the exact qualified baseline.'
+    exit 0
+  }
+  $sorted=[string[]]@($files)
+  [Array]::Sort($sorted,[StringComparer]::Ordinal)
+  $digest=[Security.Cryptography.SHA256]::Create()
+  try {
+    $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach($rel in $sorted){
+      $r=([string]$rel).Replace('\','/')
+      if([string]::IsNullOrWhiteSpace($r)-or
+         $r.StartsWith('/')-or
+         $r-match'(^|/)(\.\.?|)(/|$)'-or
+         $r.Contains(':')-or
+         -not$seen.Add($r)){throw 'Unsafe or duplicated managed file path.'}
+      $file=Join-Path $webRoot ($r.Replace('/','\'))
+      if(-not(Test-Path -LiteralPath $file -PathType Leaf)){throw 'Managed file missing.'}
+      $hash=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+      $line=$r+[char]0+$hash+"`n"
+      $bytes=[Text.Encoding]::UTF8.GetBytes($line)
+      [void]$digest.TransformBlock($bytes,0,$bytes.Length,$null,0)
+    }
+    [void]$digest.TransformFinalBlock([byte[]]@(),0,0)
+    $installedTree=([BitConverter]::ToString($digest.Hash)-replace'-','').ToLowerInvariant()
+  }finally{$digest.Dispose()}
+  if($installedTree-ne([string]$entry.managed_tree_sha256).ToLowerInvariant()){
+    Evidence 'deferred' 'LOCAL_MANAGED_TREE_HASH_MISMATCH' 'Installed Local tree does not equal the exact release contract; no identity or layout has been changed.'
+    exit 0
+  }
+}catch{
+  Evidence 'deferred' 'LOCAL_MANAGED_TREE_ATTESTATION_FAILED' $_.Exception.Message
+  exit 0
+}
+
+# If Local is already on a junction-managed R8 slot, there is no physical
+# Web directory to adopt. Do not rerun a layout migration against COMMITTED
+# migration-state.json. A later signed Local-only Release Set must independently
+# rebind the exact observed 231as identity during panel preflight.
+if(Is-Reparse $webRoot){
+  Evidence 'skipped' 'LOCAL_R8_ALREADY_PRESENT_SIGNED_REBIND_REQUIRED' 'The exact managed Local tree is verified and Web is already a junction. Physical layout adoption is not applicable. Signed next-release preflight must bind installed identity; no identity, signature, service or database was changed.' ([pscustomobject]@{verified_build=$currentBuild;verified_managed_files=[int]$entry.managed_files;verified_managed_tree_sha256=$installedTree})
+  exit 0
+}
+
 $common=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)
 $maintenanceRoot=Join-Path $common 'SOKNA\Maintenance'
 $localSlotRoot=Join-Path $maintenanceRoot 'local-slots'
