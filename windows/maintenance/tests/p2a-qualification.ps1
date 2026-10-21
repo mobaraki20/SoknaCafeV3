@@ -74,6 +74,22 @@ foreach($variant in @('bad-signature','bad-artifact','expired','unexpected-entry
   $checks.Add($variant+'_rejected')
 }
 
+# A fully signed, intact exact-baseline package is valid for read-only
+# verification but must NOT consume the anti-rollback high-water mark when
+# for_install=false. The next install-qualified release must remain stageable.
+$root=New-Root 'signed-readonly-stage-forbidden'
+$f=New-Fixture $root 'signed-readonly-stage-forbidden' 14 'signed-readonly-14'
+$verifyRaw=@(& $EngineExe verify-only --package ([string]$f.package) --identity ([string]$f.identity) --data-root ([string]$f.data_root) 2>&1)
+Assert ($LASTEXITCODE-eq0) ('Signed test-only VerifyOnly must still pass: '+($verifyRaw -join "`n"))
+$verify=($verifyRaw -join "`n")|ConvertFrom-Json
+Assert ([bool]$verify.receipt.signature_verified -and [bool]$verify.receipt.artifact_integrity_verified) 'Signed test-only verification failed'
+$r=Invoke-Engine $f
+Assert-Rejected $r 'signed non-installable Stage'
+Assert ($r.Text.Contains('RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN')) 'Missing non-installable Stage denial reason'
+Assert (-not(Test-Path -LiteralPath (Join-Path $root 'update/release-sequence.json'))) 'Test-only Stage poisoned anti-rollback high-water mark'
+Assert (-not(Test-Path -LiteralPath (Join-Path $root 'staging/release-sets'))) 'Test-only Stage persisted a forbidden stage'
+$checks.Add('signed_verifyonly_passes_but_stage_never_consumes_sequence')
+
 # 10) Requirement mismatch is fail-closed.
 $root=New-Root 'requirement';$f=New-Fixture $root 'valid' 13 'release-requirement'
 $identity=Get-Content -LiteralPath $f.identity -Raw|ConvertFrom-Json
