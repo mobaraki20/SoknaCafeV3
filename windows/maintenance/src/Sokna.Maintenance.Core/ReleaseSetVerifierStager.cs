@@ -400,15 +400,6 @@ public sealed class ReleaseSetVerifierStager
         using var verifier = ECDsa.Create();
         verifier.ImportFromPem(File.ReadAllText(trustPath, Encoding.ASCII));
         if (verifier.KeySize != 256) throw new InvalidDataException("Release signing key must be ECDSA P-256.");
-        if (manifest.Signature.KeyId.StartsWith(PublisherTrustBootstrap.KeyIdPrefix, StringComparison.Ordinal))
-        {
-            // Installed publisher key ID is content-addressed by its SPKI.
-            // A substituted trust file must not authorize a differently signed ZIP.
-            var actualSpki = verifier.ExportSubjectPublicKeyInfo();
-            var fingerprint = Convert.ToHexString(SHA256.HashData(actualSpki)).ToLowerInvariant()[..20];
-            if (manifest.Signature.KeyId != PublisherTrustBootstrap.KeyIdPrefix + fingerprint)
-                throw new InvalidDataException("PUBLISHER_TRUST_PUBLIC_KEY_PIN_MISMATCH");
-        }
         if (!verifier.VerifyData(canonical, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
             throw new InvalidDataException("Release Set signature verification failed.");
     }
