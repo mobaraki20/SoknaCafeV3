@@ -1,0 +1,128 @@
+name: Windows Services 1.1.19 RC1 — Web Panel Local Update
+on:
+  push:
+    branches: [work/windows-118-home-local231ar-stage-qualification-20261021]
+    paths: [.github/workflows/build-cafe-windows-119-rc1.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  qualify:
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check frozen component baselines and Maintenance-only delta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw | ConvertFrom-Json
+          $v=@{};foreach($c in $m.components){$v[[string]$c.component_id]=[string]$c.version}
+          if($m.package_version -ne '1.1.19' -or $m.components.Count -ne 5){throw 'Package contract changed'}
+          if($v.runtime -ne '1.0.6' -or $v.'print-agent' -ne '6.2.9'){throw 'Runtime or Print version mismatch'}
+          if($v.maintenance -ne '0.3.9' -or $v.'maintenance-update-engine' -ne '0.3.9' -or $v.'maintenance-recovery-console' -ne '0.1.2'){throw 'Maintenance panel version mismatch'}
+          $rc=@($m.components | Where-Object component_id -eq 'maintenance-recovery-console')[0]
+          foreach($hash in @('368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd','85989bc8d1096575b0fcfc7d7d55aa999674c20ac8092fd3ea16d90e574c17e9')){
+            if($hash -notin @($rc.accepted_installed_sha256)){throw 'Released Home Recovery KEEP fingerprint absent'}
+          }
+      - name: Fail-closed durable reservation, signed activation and Engine regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release --nologo -warnaserror
+          if($LASTEXITCODE-ne0){throw 'Supervisor compile failed'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release --nologo -warnaserror
+          if($LASTEXITCODE-ne0){throw 'Engine compile failed'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.ActivationWorkerHarness/Sokna.Maintenance.ActivationWorkerHarness.csproj -c Release --nologo
+          if($LASTEXITCODE-ne0){throw 'Scoped activation regression failed'}
+          & ./windows/maintenance/tests/p26-signed-activate-http-denial.ps1 `
+            -SupervisorDll 'windows/maintenance/src/Sokna.Maintenance.Supervisor/bin/Release/net8.0-windows/SoknaMaintenanceSupervisor.dll' `
+            -SeedHarnessDll 'windows/maintenance/tests/Sokna.Maintenance.ActivationWorkerHarness/bin/Release/net8.0-windows/Sokna.Maintenance.ActivationWorkerHarness.dll'
+          if($LASTEXITCODE-ne0){throw 'Signed activation HTTP/denial contract failed'}
+      - name: Build and self-test Runtime
+        shell: pwsh
+        run: |
+          dotnet build windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --nologo
+          if($LASTEXITCODE -ne 0){throw 'Build failed'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --scheduler-self-test
+          if($LASTEXITCODE -ne 0){throw 'Scheduler test failed'}
+          dotnet run --project windows/runtime/source/Sokna.Runtime.Service.csproj -c Release --no-build -- --health-self-test
+          if($LASTEXITCODE -ne 0){throw 'Health test failed'}
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if($LASTEXITCODE -ne 0){throw 'Inno Setup installation failed'}
+      - name: Build complete V4 Windows installer
+        shell: pwsh
+        timeout-minutes: 48
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-119-rc1'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+          if(-not $iscc){throw 'ISCC missing'}
+          & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot $out -IsccExe $iscc
+          if($LASTEXITCODE -ne 0){throw 'Installer build failed'}
+          $idx=Get-Content "$out/artifact-index.json" -Raw|ConvertFrom-Json
+          if($idx.package_version -ne '1.1.19' -or $idx.component_count -ne 5 -or $idx.runtime.version -ne '1.0.6' -or $idx.installer_kind -ne 'unified-v4-bootstrap'){throw 'Package index mismatch'}
+          $exe=Join-Path $out ([string]$idx.windows_services.file)
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha -ne $idx.windows_services.sha256){throw 'Artifact digest mismatch'}
+          if([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion -ne '1.1.19.0'){throw 'Installer version metadata mismatch'}
+          "$sha  $([IO.Path]::GetFileName($exe))" | Set-Content "$out/SHA256SUMS.txt" -Encoding ASCII
+      - name: Verify planner regression and privileged Recovery parity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-119-rc1'
+          $ui=Join-Path $out 'SoknaSetupUi.exe'
+          if(-not(Test-Path -LiteralPath $ui)){throw 'Release UI is missing'}
+          $p=Start-Process -FilePath $ui -ArgumentList '--planner-self-test' -Wait -PassThru
+          if($p.ExitCode-ne0){throw "Planner regression failed: $($p.ExitCode)"}
+          $core=Get-Content (Join-Path $out 'unified-shell-v4/setup-windows-components-core-v5.ps1') -Raw
+          foreach($needle in @('accepted_frozen_recovery_011','$current-eq''0.1.1''','Compatible-Fingerprint')){
+            if(-not $core.Contains($needle)){throw "Recovery privileged compatibility marker missing: $needle"}
+          }
+          $wrapper=Get-Content (Join-Path $out 'unified-shell-v4/setup-windows-components-v4.ps1') -Raw
+          if(-not $wrapper.Contains('PRIVILEGED_PREFLIGHT_RECOVERY_LIFECYCLE_REQUIRED')){throw 'Independent Recovery lifecycle guard missing'}
+          $installed=(Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json)
+          $recovery=@($installed.components|Where-Object component_id -eq 'maintenance-recovery-console')[0]
+          if($recovery.version-ne'0.1.2' -or @($recovery.accepted_installed_sha256).Count-lt2){throw 'Recovery compatibility allowlist is invalid'}
+          Write-Host 'Planner regression, immutable Recovery guard and privileged parity: PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-services-119-rc1-home-local-activation-uat
+          path: |
+            ${{ runner.temp }}/sokna-windows-119-rc1/SOKNA-Windows-Services-Setup-1.1.19.exe
+            ${{ runner.temp }}/sokna-windows-119-rc1/SHA256SUMS.txt
+            ${{ runner.temp }}/sokna-windows-119-rc1/artifact-index.json
+          if-no-files-found: error
+      - name: Publish qualified Home Local Activation UAT pre-release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag='windows-services-v1.1.19-rc.1'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-windows-119-rc1'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if($LASTEXITCODE -eq 0){throw 'Existing release; refusing overwrite'}
+          @'
+          Windows Services 1.1.19-rc.1 — Home Local Web Update Panel test candidate.
+          Maintenance Supervisor + Update Engine 0.3.9: web panel eligibility now follows independently inspected healthy Local machine state, rather than an unconditional never-ready UAT placeholder.
+          Obsolete 2026-10-17 home-cycle recovery can be settled only against a later committed R8 migration and current signed Local baseline/healthy Apache slot. Other pending operations are not bypassed.
+          Signed ZIP upload, Preflight, Stage and durable Activate reuse existing Maintenance V4 engine; verified backup/recovery remains transaction-scoped.
+          Runtime 1.0.6, Print Agent 6.2.9 and independent Recovery Console 0.1.2 are unchanged version components. Existing healthy Runtime/Print are KEEP (no service restart).
+          DOES NOT install or alter Local or Public assets. Local operator needs a genuine install-qualified signed next-version Local-only Release Set ZIP.
+          Qualification includes Windows build, signed-stage negative/positive tests, activation/reservation regression, installer planner and package digests.
+          Actual Home web-panel cross-version activation and rollback UAT must still be performed on the user's Home test PC before using this in Cafe.
+          '@ | Set-Content "$out/RELEASE_NOTES.md" -Encoding UTF8
+          gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'SOKNA Windows Services 1.1.19-rc.1 — Home Local Activation UAT' --notes-file "$out/RELEASE_NOTES.md" --prerelease "$out/SOKNA-Windows-Services-Setup-1.1.19.exe" "$out/SHA256SUMS.txt" "$out/artifact-index.json"
+          if($LASTEXITCODE -ne 0){throw 'Pre-release creation failed'}
