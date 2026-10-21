@@ -1,0 +1,40 @@
+name: Maintenance V4 Operator ZIP - No Publisher Key
+on:
+  push:
+    branches:
+      - fix/v4-panel-operator-unsigned-local-20261022
+  pull_request:
+    paths:
+      - windows/maintenance/src/Sokna.Maintenance.Core/**
+      - windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/**
+      - .github/workflows/ci-v4-operator-keyless-local.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  operator-keyless-zip:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Compile installed Supervisor and Update Engine
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Supervisor compile failed' }
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Engine compile failed' }
+      - name: Operator-selected unsigned ZIP, Stage and negative cases - real Windows file IO
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Sokna.Maintenance.OperatorUploadHarness.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Keyless operator ZIP harness failed' }
+      - name: No publisher key provisioned, no installable package published
+        shell: pwsh
+        run: |
+          Write-Host 'OPERATOR_LOCAL_KEYLESS_CI_DONE: no publisher signing or certificate, no production install claim'

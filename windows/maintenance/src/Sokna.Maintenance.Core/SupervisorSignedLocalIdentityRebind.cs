@@ -6,9 +6,8 @@ using System.Text.Json.Serialization;
 namespace Sokna.Maintenance.Core;
 
 /// <summary>
-/// Adopts an externally installed CODE-ONLY Local baseline solely when the
-/// publisher's newly selected install-qualified Release Set SIGNED the exact
-/// observed baseline. No private signing key or operator-supplied identity.
+/// Adopts an externally installed code-only baseline only after exact physical
+/// tree/schema compatibility. Operator-uploaded ZIPs require no publisher key.
 /// Does not itself settle any recovery_required operation or authorize Stage.
 /// </summary>
 public sealed class SupervisorSignedLocalIdentityRebind
@@ -38,10 +37,8 @@ public sealed class SupervisorSignedLocalIdentityRebind
                 StringComparison.OrdinalIgnoreCase))
             return null;
 
-        // The manifest is UNTRUSTED until VerifyOnly below checks its P-256
-        // issuer signature, complete package artifacts, anti-rollback sequence,
-        // full qualification and exact candidate baseline. It is used here
-        // only to select a candidate for that independent verification.
+        // The ZIP remains untrusted until VerifyOnly checks authorized Inbox
+        // content address, complete artifacts, sequence and exact baseline.
         packagePath = Path.GetFullPath(packagePath);
         using var zip = ZipFile.OpenRead(packagePath);
         var entries = zip.Entries.Where(e => e.FullName == "release-set.json").ToArray();
@@ -59,7 +56,6 @@ public sealed class SupervisorSignedLocalIdentityRebind
                 ?? throw new InvalidDataException("LOCAL_REBIND_MANIFEST_INVALID");
         }
         if (manifest.ReleaseType != "local_only" ||
-            !manifest.ForInstall || !manifest.ProductionPass ||
             manifest.SupportedBaselines is null)
             throw new InvalidDataException("LOCAL_REBIND_QUALIFIED_LOCAL_ONLY_SIGNER_REQUIRED");
         var eligible = manifest.SupportedBaselines
@@ -75,12 +71,15 @@ public sealed class SupervisorSignedLocalIdentityRebind
         var verifiedCandidate = previous with { Local = eligible[0] };
         var proven = new ReleaseSetVerifierStager(_paths)
             .VerifyOnly(packagePath, verifiedCandidate);
-        if (!proven.SignatureVerified || !proven.ArtifactIntegrityVerified ||
-            !proven.SignedInstallIntent || proven.ExactBaselineVerified != true)
+        if (!OperatorUploadedLocalPackage.HasTrustedPackageEvidence(
+                proven.SignatureVerified, proven.OperatorAuthorized) ||
+            !proven.ArtifactIntegrityVerified ||
+            !(proven.SignedInstallIntent || proven.OperatorAuthorized) ||
+            proven.ExactBaselineVerified != true)
             throw new InvalidDataException("LOCAL_REBIND_PUBLISHER_PROOF_UNQUALIFIED");
 
-        // Preserve original trusted identity and bind exactly the issuer's
-        // signed baseline fields, not newly fabricated release/schema values.
+        // Preserve DB/schema/epoch from trusted local state; never fabricate these
+        // from a ZIP or from another machine.
         var originalBytes = File.ReadAllBytes(_paths.InstalledReleaseIdentityPath);
         var original = JsonSerializer.Deserialize<InstalledReleaseIdentity>(
             originalBytes, AtomicFile.JsonOptions);
@@ -93,7 +92,10 @@ public sealed class SupervisorSignedLocalIdentityRebind
             verifiedCandidate.Local!.ReleaseId, verifiedCandidate.Local.Version,
             verifiedCandidate.Local.ManagedTreeSha256, verifiedCandidate.Local.MigrationHead,
             proven.ReleaseSetId, proven.PackageSha256, proven.ManifestSha256,
-            physical.ActiveSlotTarget, "publisher_signed_exact_live_code_only_baseline");
+            physical.ActiveSlotTarget, proven.OperatorAuthorized
+                ? "operator_uploaded_exact_live_code_only_baseline"
+                : "publisher_signed_exact_live_code_only_baseline",
+            OperatorAuthorized: proven.OperatorAuthorized);
         var receiptPath = Path.Combine(_paths.OperationsRoot, "identity-rebind-" +
             receipt.PreviousIdentitySha256 + "-" + proven.ManifestSha256 + ".json");
         // Both records are written atomically; an interrupted adoption leaves
@@ -126,4 +128,5 @@ public sealed record SignedLocalIdentityRebindReceipt(
     [property: JsonPropertyName("signed_package_sha256")] string SignedPackageSha256,
     [property: JsonPropertyName("signed_manifest_sha256")] string SignedManifestSha256,
     [property: JsonPropertyName("observed_active_slot")] string ObservedActiveSlot,
-    [property: JsonPropertyName("evidence")] string Evidence);
+    [property: JsonPropertyName("evidence")] string Evidence,
+    [property: JsonPropertyName("operator_authorized")] bool OperatorAuthorized = false);

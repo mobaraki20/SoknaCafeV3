@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source-only regression tests: never create signing keys or install packages."""
+"""Unsigned operator-uploaded Local ZIP source checks: never create keys or perform installation."""
 import hashlib
 import importlib.util
 import io
@@ -68,19 +68,19 @@ class ContractTests(unittest.TestCase):
 
     def test_missing_target_count(self):
         codes = self.inspect(fixture(lambda m: m["targets"]["local"].pop("managed_files")))
-        self.assertIn("SIGNED_TARGET_MANAGED_FILES_MISSING_OR_WRONG", codes)
+        self.assertIn("LOCAL_TARGET_MANAGED_FILES_MISSING_OR_WRONG", codes)
 
     def test_wrong_target_count(self):
         codes = self.inspect(fixture(lambda m: m["targets"]["local"].update(managed_files=1)))
-        self.assertIn("SIGNED_TARGET_MANAGED_FILES_MISSING_OR_WRONG", codes)
+        self.assertIn("LOCAL_TARGET_MANAGED_FILES_MISSING_OR_WRONG", codes)
 
     def test_wrong_target_hash(self):
         codes = self.inspect(fixture(lambda m: m["targets"]["local"].update(managed_tree_sha256="0"*64)))
-        self.assertIn("SIGNED_TARGET_TREE_MISMATCH", codes)
+        self.assertIn("LOCAL_TARGET_TREE_MISMATCH", codes)
 
     def test_wrong_target_version(self):
         codes = self.inspect(fixture(lambda m: m["targets"]["local"].update(version="3.0.0.other")))
-        self.assertIn("SIGNED_TARGET_VERSION_MISMATCH", codes)
+        self.assertIn("LOCAL_TARGET_VERSION_MISMATCH", codes)
 
     def test_unresolved_identity_placeholder(self):
         codes = self.inspect(fixture(lambda m: m["supported_baselines"][0]["local"].update(

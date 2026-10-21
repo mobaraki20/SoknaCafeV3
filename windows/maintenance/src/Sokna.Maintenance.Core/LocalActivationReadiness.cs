@@ -34,7 +34,9 @@ public static class LocalActivationReadinessPolicy
         if (!fullyVerifiedStage || receipt.Format != "sokna-maintenance-staged-release-v1" ||
             receipt.SchemaVersion != 1 || receipt.ActivationPerformed ||
             receipt.DatabaseMutationPerformed ||
-            !receipt.PreflightIdentityMatch || !receipt.SignatureVerified ||
+            !receipt.PreflightIdentityMatch ||
+            !OperatorUploadedLocalPackage.HasTrustedPackageEvidence(
+                receipt.SignatureVerified, receipt.OperatorAuthorized) ||
             !receipt.ArtifactIntegrityVerified ||
             manifest.ReleaseSetId != receipt.ReleaseSetId ||
             manifest.Sequence != receipt.Sequence)
@@ -42,13 +44,13 @@ public static class LocalActivationReadinessPolicy
 
         if (manifest.ReleaseType != "local_only")
             blockers.Add("LOCAL_ONLY_ACTIVATION_CONTRACT_REQUIRED");
-        if (!manifest.ForInstall || !manifest.ProductionPass ||
+        if (!receipt.OperatorAuthorized && (!manifest.ForInstall || !manifest.ProductionPass ||
             string.IsNullOrWhiteSpace(manifest.Status) ||
-            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase))
+            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase)))
             blockers.Add("RELEASE_NOT_QUALIFIED_FOR_INSTALL");
 
         var qualification = manifest.Qualification;
-        if (qualification is null ||
+        if (!receipt.OperatorAuthorized && (qualification is null ||
             !qualification.RealWindows || !qualification.RealMariaDb ||
             !qualification.RealPublicHost || !qualification.Canary ||
             !qualification.RecoveryConsoleWebDown ||
@@ -56,7 +58,7 @@ public static class LocalActivationReadinessPolicy
             !qualification.RemoteVaultRealHost ||
             !qualification.CleanMachineRemoteRestore ||
             qualification.FailureMatrixCasesRequired < 80 ||
-            string.IsNullOrWhiteSpace(qualification.FailureMatrixId))
+            string.IsNullOrWhiteSpace(qualification.FailureMatrixId)))
             blockers.Add("RELEASE_FAILURE_MATRIX_NOT_QUALIFIED");
 
         var backup = manifest.PreUpdateBackupPolicy;

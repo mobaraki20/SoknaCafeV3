@@ -139,4 +139,5 @@ public sealed record StagedReleaseReceipt(
     [property: JsonPropertyName("database_mutation_performed")] bool DatabaseMutationPerformed,
     [property: JsonPropertyName("preflight_identity_match")] bool PreflightIdentityMatch,
     [property: JsonPropertyName("signature_verified")] bool SignatureVerified,
-    [property: JsonPropertyName("artifact_integrity_verified")] bool ArtifactIntegrityVerified);
+    [property: JsonPropertyName("artifact_integrity_verified")] bool ArtifactIntegrityVerified,
+    [property: JsonPropertyName("operator_authorized")] bool OperatorAuthorized = false);
