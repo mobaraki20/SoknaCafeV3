@@ -109,6 +109,8 @@ PidFile "$ar/logs/httpd.pid"
       $results+=@{root=$base;fault=$fault;phase=$state.phase;database_mutation=$state.database_mutation_performed;status='PASS'}
       Write-Host "U01_CYCLE_PASS $base / $fault"
     } finally {
+      $routine=Join-Path $root 'Maintenance/local-slots/routine-state.json'
+      if(Test-Path -LiteralPath $routine){Write-Host 'U01_CI_ROUTINE_STATE';Get-Content -LiteralPath $routine -Raw|Write-Host}
       if(Get-Service SoknaApache -ErrorAction SilentlyContinue){Stop-Service SoknaApache -ErrorAction SilentlyContinue;& sc.exe delete SoknaApache|Out-Null;Start-Sleep -Milliseconds 500}
       if(Test-Path (Join-Path $root 'Web')){[IO.Directory]::Delete((Join-Path $root 'Web'))}
       if(Test-Path $root){Remove-Item $root -Recurse -Force}

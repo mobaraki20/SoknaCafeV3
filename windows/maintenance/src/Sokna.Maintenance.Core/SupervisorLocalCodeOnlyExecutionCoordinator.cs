@@ -188,6 +188,9 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                     args.Concat(new[] {"--delegation-id", permit}).ToArray(),
                     AppContext.BaseDirectory);
                 var result = child.WaitAndCapture(1_500_000);
+                if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true" &&
+                    File.Exists(Path.Combine(currentRoot.PackageRoot, ".u01-ci-only")) && (!result.Finished || result.ExitCode != 0))
+                    Console.Error.WriteLine("U01_CI_ENGINE_OUTCOME exit=" + result.ExitCode + "\n" + result.Stdout + "\n" + result.Stderr);
                 if (!result.Finished || result.ExitCode != 0)
                     throw new InvalidOperationException(
                         result.Finished ? "CODE_ONLY_ENGINE_FAILED" :
