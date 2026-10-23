@@ -59,7 +59,8 @@ public static class RoutineLocalDatabase
         if ((File.GetAttributes(backupRoot) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("LOCAL_DATABASE_BACKUP_ROOT_UNSAFE");
         var acl = new ProcessStartInfo("icacls.exe") { UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardOutput = true, RedirectStandardError = true };
+            RedirectStandardOutput = true, RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8, StandardErrorEncoding = System.Text.Encoding.UTF8 };
         foreach (var arg in new[] { backupRoot, "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F" }) acl.ArgumentList.Add(arg);
         using (var process = Process.Start(acl) ?? throw new InvalidOperationException("LOCAL_DATABASE_BACKUP_ACL_FAILED"))
         {
@@ -101,7 +102,8 @@ public static class RoutineLocalDatabase
         using var reader = new StreamReader(resource);
         var script = reader.ReadToEnd().Replace("<?php", "", StringComparison.Ordinal);
         var psi = new ProcessStartInfo(FindBinary(Path.Combine(packageRoot, "Infrastructure"), "php.exe"))
-        { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8, StandardErrorEncoding = System.Text.Encoding.UTF8 };
         // PHP auto-discovery may miss php.ini when its executable directory is Unicode.
         // Use the existing infrastructure-owned adjacent INI explicitly; never copy config.
         var ini = Path.Combine(Path.GetDirectoryName(psi.FileName)!, "php.ini");

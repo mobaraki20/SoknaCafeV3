@@ -83,7 +83,8 @@ internal sealed class RoutineLocalLifecycle
             + "if(!is_array($c))exit(65);$d=trim((string)($c['app']['data_dir']??''));"
             + "if($d==='')exit(66);echo $d;";
         var psi = new ProcessStartInfo(php) { UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardOutput = true, RedirectStandardError = true };
+            RedirectStandardOutput = true, RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8, StandardErrorEncoding = System.Text.Encoding.UTF8 };
         psi.ArgumentList.Add("-r"); psi.ArgumentList.Add(script); psi.ArgumentList.Add(packageRoot);
         using var proc = Process.Start(psi) ?? throw new InvalidOperationException("Local PHP CLI could not start.");
         if (!proc.WaitForExit(8000)) { proc.Kill(entireProcessTree:true); throw new TimeoutException("Local data-root discovery timed out."); }
@@ -132,7 +133,8 @@ internal sealed class RoutineLocalLifecycle
 
     private static void RunPhp(string php, IReadOnlyList<string> args, string what)
     {
-        var psi=new ProcessStartInfo(php){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
+        var psi=new ProcessStartInfo(php){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,
+            StandardOutputEncoding=System.Text.Encoding.UTF8,StandardErrorEncoding=System.Text.Encoding.UTF8};
         foreach(var a in args)psi.ArgumentList.Add(a);
         using var p=Process.Start(psi) ?? throw new InvalidOperationException(what+" could not start.");
         if (!p.WaitForExit(8000)) {p.Kill(entireProcessTree:true);throw new TimeoutException(what+" timed out.");}
