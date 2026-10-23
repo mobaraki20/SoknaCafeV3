@@ -116,6 +116,20 @@ PidFile "$ar/logs/httpd.pid"
   Need ($results.Count-eq24) 'REQUIRE_24_COMPLETED_CYCLES'
   $results|ConvertTo-Json -Depth 8|Set-Content (Join-Path $env:RUNNER_TEMP 'U01-WINDOWS-CYCLES.json') -Encoding utf8NoBOM
   Write-Host 'U01_WINDOWS_REAL_APACHE_PHP_MARIADB_24_CYCLES_PASS'
+  # Run the actual Home bridge PHP+Go result parsers on Windows against this
+  # disposable MariaDB, then build the two Win10-compatible entrypoints.
+  Run python @('release/build-home-u01.py','--panel-directory',"$env:RUNNER_TEMP/u01-local")
+  $homeOut=Join-Path $env:RUNNER_TEMP 'u01-home';New-Item -ItemType Directory -Force $homeOut|Out-Null
+  $env:SOKNA_U01_TEST_PHP=$phpExe;$env:SOKNA_U01_TEST_DB_PORT=[string]$dbPort
+  Push-Location (Join-Path $repo 'windows/maintenance/tools/HomeBootstrap')
+  try {
+    & go test -json -count=1 ./... | Tee-Object (Join-Path $homeOut 'HOME-WINDOWS-TESTS.jsonl')
+    Need ($LASTEXITCODE-eq0) 'HOME_WINDOWS_MARIADB_BRIDGE_TESTS_FAILED'
+    Run go @('vet','./...')
+    Run go @('build','-buildvcs=false','-trimpath','-ldflags=-H=windowsgui -s -w -X main.allowMutationBuild=false','-o',"$homeOut/SOKNA-Home-231au-to-231bf-PREFLIGHT.exe",'.')
+    Run go @('build','-buildvcs=false','-trimpath','-ldflags=-H=windowsgui -s -w -X main.allowMutationBuild=true','-o',"$homeOut/SOKNA-Home-231au-to-231bf-UPDATE-UAT.exe",'.')
+    Get-ChildItem $homeOut -Filter *.exe | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content (Join-Path $homeOut 'SHA256SUMS-HOME.txt') -Encoding ascii
+  } finally { Pop-Location }
 } finally {
   if(-not$db.HasExited){$db.Kill($true);$db.WaitForExit()}
   $dbOut.Result|Set-Content (Join-Path $lab 'mariadb-stdout.log');$dbErr.Result|Set-Content (Join-Path $lab 'mariadb-stderr.log')

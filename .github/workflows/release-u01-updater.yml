@@ -123,6 +123,10 @@ jobs:
           tools: none
         env:
           phpts: ts
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.12'
+          cache: false
       - name: Iran presentation regression
         shell: pwsh
         run: |
@@ -142,6 +146,7 @@ jobs:
           path: |
             ${{ runner.temp }}/u01-local/*
             ${{ runner.temp }}/U01-WINDOWS-CYCLES.json
+            ${{ runner.temp }}/u01-home/*
           if-no-files-found: error
   publish:
     if: false # Enabled only when the Home bootstrap is qualified too.
