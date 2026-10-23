@@ -419,7 +419,11 @@ func (b *bridge) writeEvidence() {
 }
 
 func runHidden(name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
+	if strings.EqualFold(filepath.Base(name), "php.exe") {
+        ini := filepath.Join(filepath.Dir(name), "php.ini")
+        if st, err := os.Stat(ini); err == nil && st.Mode().IsRegular() { args = append([]string{"-c", ini}, args...) }
+    }
+    cmd := exec.Command(name, args...)
 	hideCommand(cmd)
 	var out bytes.Buffer
 	cmd.Stdout = &out

@@ -102,6 +102,10 @@ public static class RoutineLocalDatabase
         var script = reader.ReadToEnd().Replace("<?php", "", StringComparison.Ordinal);
         var psi = new ProcessStartInfo(FindBinary(Path.Combine(packageRoot, "Infrastructure"), "php.exe"))
         { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        // PHP auto-discovery may miss php.ini when its executable directory is Unicode.
+        // Use the existing infrastructure-owned adjacent INI explicitly; never copy config.
+        var ini = Path.Combine(Path.GetDirectoryName(psi.FileName)!, "php.ini");
+        if (File.Exists(ini)) { psi.ArgumentList.Add("-c"); psi.ArgumentList.Add(ini); }
         foreach (var arg in new[] { "-r", script, packageRoot, sourceRoot, targetRoot, mode,
             JsonSerializer.Serialize(plan), backup, dump }) psi.ArgumentList.Add(arg);
         using var process = Process.Start(psi) ?? throw new InvalidOperationException("LOCAL_DATABASE_HELPER_START_FAILED");

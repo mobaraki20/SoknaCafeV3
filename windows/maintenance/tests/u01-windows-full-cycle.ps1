@@ -4,7 +4,7 @@ if($env:GITHUB_ACTIONS-ne'true'-or$env:RUNNER_OS-ne'Windows'){throw 'DISPOSABLE_
 if(Get-Service SoknaApache -ErrorAction SilentlyContinue){throw 'REFUSE_EXISTING_SOKNA_APACHE'}
 function Need([bool]$ok,[string]$why){if(-not$ok){throw $why}}
 function P([string]$path){[IO.Path]::GetFullPath($path).Replace('\','/')}
-function Run([string]$exe,[string[]]$arguments){& $exe @arguments;if($LASTEXITCODE-ne0){throw "Command failed ($LASTEXITCODE): $exe"}}
+function Run([string]$exe,[string[]]$arguments){if([IO.Path]::GetFileName($exe)-ieq'php.exe'){$ini=Join-Path (Split-Path -Parent $exe) 'php.ini';if(Test-Path -LiteralPath $ini -PathType Leaf){$arguments=@('-c',$ini)+$arguments}};& $exe @arguments;if($LASTEXITCODE-ne0){throw "Command failed ($LASTEXITCODE): $exe"}}
 $repo=$PWD.Path
 $lab=Join-Path $env:RUNNER_TEMP 'sokna-u01-dependencies'
 New-Item -ItemType Directory -Force $lab|Out-Null
@@ -62,10 +62,7 @@ try {
       Copy-Item (Join-Path $mdb 'bin') (Join-Path $infra 'MariaDB/bin') -Recurse
       Copy-Item $apacheSource (Join-Path $infra 'Apache') -Recurse
       $localPhp=Join-Path $infra 'PHP/php.exe'
-      Run $localPhp @('--ini')
-      Run $localPhp @('-r','echo json_encode(["ini"=>php_ini_loaded_file(),"scan"=>php_ini_scanned_files(),"ext"=>ini_get("extension_dir"),"drivers"=>PDO::getAvailableDrivers()],JSON_UNESCAPED_UNICODE),PHP_EOL;')
-      Write-Host 'ORIGINAL_ASCII_INI_PROBE'
-      Run $localPhp @('-c',(Join-Path $phpRoot 'php.ini'),'-r','echo json_encode(["ini"=>php_ini_loaded_file(),"ext"=>ini_get("extension_dir"),"drivers"=>PDO::getAvailableDrivers()],JSON_UNESCAPED_UNICODE),PHP_EOL;')
+      Run $localPhp @('-r','if(!in_array("mysql",PDO::getAvailableDrivers(),true))exit(74);')
       Run $localPhp @((Join-Path $repo 'windows/maintenance/tests/u01-fixture.php'),$root,$old,"$dbPort",'init')
       $configHash=(Get-FileHash (Join-Path $root 'config.php')).Hash;$lockHash=(Get-FileHash (Join-Path $root 'install.lock')).Hash
       New-Item -ItemType Junction -Path (Join-Path $root 'Web') -Target $old|Out-Null
