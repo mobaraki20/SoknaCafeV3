@@ -10,6 +10,7 @@ trap {
     $errorText=([string]$_.Exception.Message -replace '[\\r\\n\\0]',' ').Trim()
     if($errorText.Length-gt800){$errorText=$errorText.Substring(0,800)}
     [IO.File]::WriteAllText((Join-Path $logRoot 'maintenance-only-last-error.txt'),('at_utc='+[DateTime]::UtcNow.ToString('o')+"`n"+'code='+$errorText),[Text.UTF8Encoding]::new($false))
+    Write-Host ('MAINTENANCE_ONLY_FAILED: '+$errorText)
   }catch{}
   exit 2
 }
