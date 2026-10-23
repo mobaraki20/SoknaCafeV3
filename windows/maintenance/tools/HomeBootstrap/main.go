@@ -311,6 +311,9 @@ func (b *bridge) run() error {
 	if err = b.backupMariaDB(); err != nil {
 		return preMutationFailure(fmt.Errorf("MariaDB baseline backup unavailable BEFORE Apache downtime: %w", err))
 	}
+	if err = b.verifyBaselineBackupBeforeBoundary(); err != nil {
+		return preMutationFailure(fmt.Errorf("MariaDB backup proof unavailable BEFORE Apache downtime: %w", err))
+	}
 	b.addStep("private pre-boundary SQL backup stored and SHA256-verified BEFORE Apache stop")
 	if err = os.Rename(b.stageSlot, b.targetSlot); err != nil {
 		return preMutationFailure(err)

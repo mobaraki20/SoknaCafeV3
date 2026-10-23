@@ -191,11 +191,12 @@ func (b *bridge) backupMariaDB() error {
 		return err
 	}
 	file := filepath.Join(dir, "before-u01-"+time.Now().UTC().Format("20060102T150405.000000000")+".sql")
-	if _, err := os.Stat(file); err == nil {
+	_, statErr := os.Stat(file)
+	if statErr == nil {
 		return errors.New("DB_BACKUP_EXISTS; refuse overwrite")
 	}
-	if !os.IsNotExist(err) {
-		return err
+	if !os.IsNotExist(statErr) {
+		return statErr
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()

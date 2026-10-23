@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -65,6 +67,59 @@ echo 'INITIALIZED';`
 	}
 	if n, e := b.phpMigrationTransitionPreflight(b.targetSlot); e != nil || n != migrationCount {
 		t.Fatalf("preflight: %d %v", n, e)
+	}
+	// The dump must actually exist, restore, and retain the baseline sentinel.
+	// This catches a Go err-shadowing regression that returned nil before dump.
+	dump := os.Getenv("SOKNA_HOME_TEST_DUMP")
+	client := os.Getenv("SOKNA_HOME_TEST_DB_CLIENT")
+	if dump == "" || client == "" {
+		t.Fatal("real dump/restore clients required for requested DB qualification")
+	}
+	installedDump := filepath.Join(b.packageRoot, "Infrastructure", "MariaDB", "bin", "mariadb-dump.exe")
+	if err = copyFile(dump, installedDump); err != nil {
+		t.Fatal(err)
+	}
+	os.Chmod(installedDump, 0700)
+	if err = b.preflightMariaDBBackupConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.backupMariaDB(); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.verifyBaselineBackupBeforeBoundary(); err != nil {
+		t.Fatal(err)
+	}
+	firstPath, firstHash := b.ev.DatabaseBackupPath, b.ev.DatabaseBackupSHA256
+	if err = b.backupMariaDB(); err != nil {
+		t.Fatal(err)
+	}
+	if firstPath == b.ev.DatabaseBackupPath {
+		t.Fatal("second backup overwrote baseline evidence")
+	}
+	if hash, _, e := shaFile(firstPath); e != nil || hash != firstHash {
+		t.Fatal("first backup changed")
+	}
+	backup, err := os.ReadFile(b.ev.DatabaseBackupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := exec.Command(client, "--host=127.0.0.1", "--port="+port, "--user=root")
+	restore.Stdin = strings.NewReader(strings.ReplaceAll(string(backup), "sokna_u01_home_ci", "sokna_home_restore_ci"))
+	if out, e := restore.CombinedOutput(); e != nil {
+		t.Fatalf("real SQL restore: %v %s", e, out)
+	}
+	checkRestore := exec.Command(client, "--host=127.0.0.1", "--port="+port, "--user=root", "--batch", "--skip-column-names", "-e", "SELECT COUNT(*) FROM sokna_home_restore_ci.schema_migrations; SELECT value FROM sokna_home_restore_ci.u01_sentinel WHERE id=1;")
+	if out, e := checkRestore.CombinedOutput(); e != nil || strings.TrimSpace(string(out)) != "71\nhome-data-preserved" {
+		t.Fatalf("restored baseline not proven: %v %s", e, out)
+	}
+	if err = os.WriteFile(b.ev.DatabaseBackupPath, append(backup, []byte("tamper")...), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.verifyBaselineBackupBeforeBoundary(); err == nil {
+		t.Fatal("tampered SQL backup admitted")
+	}
+	if err = os.WriteFile(b.ev.DatabaseBackupPath, backup, 0600); err != nil {
+		t.Fatal(err)
 	}
 	if err = b.phpApplyTargetMigrations(b.targetSlot); err != nil {
 		t.Fatal(err)
