@@ -278,7 +278,8 @@ jobs:
               $older.maintenance_supervisor_version='0.3.12'
               $older.update_engine_version='0.3.12'
               [IO.File]::WriteAllText($identityPath,($older|ConvertTo-Json -Depth 20))
-              $syncEvidence=Join-Path $env:RUNNER_TEMP 'historical-recovery-identity-sync'
+              $syncEvidence=Join-Path (Split-Path $identityPath -Parent) ('ci-historical-recovery-identity-sync-'+[guid]::NewGuid().ToString('N'))
+              if([IO.Path]::GetPathRoot($syncEvidence)-ne[IO.Path]::GetPathRoot($identityPath)){throw 'CI_EVIDENCE_MUST_SHARE_IDENTITY_VOLUME'}
               Sync-MaintenanceInstalledVersions -AppRoot $app -EvidenceRoot $syncEvidence
               $reconciled=Get-Content $identityPath -Raw|ConvertFrom-Json
               if($reconciled.maintenance_supervisor_version-ne'0.3.13' -or $reconciled.update_engine_version-ne'0.3.13'){throw 'HISTORIC_RECOVERY_PREVENTED_COMPONENT_SYNC'}
