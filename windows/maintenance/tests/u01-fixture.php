@@ -18,6 +18,16 @@ if($mode==='init'){
 $cfg=require $root.'/config.php';$pdo=\Sokna\Local\Core\Database::connect(\Sokna\Local\Core\Config::fromArray($cfg));
 $m=new \Sokna\Local\Core\Migrations($pdo,$web.'/database/migrations');
 if($mode==='init'){
+// Reconstruct an EXISTING seeded installation, not a new clean install:
+// historical 0059 deliberately requires the cafe catalog to exist already.
+$pre=$root.'/fixture-before-0059';@mkdir($pre,0700,true);
+foreach(glob($web.'/database/migrations/*.sql') as $f)if(strcmp(basename($f),'0059_')<0)copy($f,$pre.'/'.basename($f));
+(new \Sokna\Local\Core\Migrations($pdo,$pre))->migrate();
+$doc=json_decode(file_get_contents($web.'/resources/default-content/v1/catalog.json'),true,512,JSON_THROW_ON_ERROR);
+foreach($doc['categories'] as $c){$pdo->prepare('INSERT IGNORE INTO categories(category_key,name,audience) VALUES(?,?,?)')->execute([$c['category_key'],$c['name'],$c['audience']??'guest_staff']);}
+foreach($doc['items'] as $i){$q=$pdo->prepare('SELECT id FROM categories WHERE category_key=?');$q->execute([$i['category_key']]);$category=$q->fetchColumn();if(!$category)throw new RuntimeException('FIXTURE_CATEGORY_MISSING');$pdo->prepare('INSERT IGNORE INTO items(item_code,category_id,name,price) VALUES(?,?,?,?)')->execute([$i['item_code'],$category,$i['name'],$i['price']]);}
+// Historical existing-host SKUs referenced by immutable 0059, absent from the current clean catalog.
+foreach(['1019','1113'] as $code)$pdo->prepare('INSERT IGNORE INTO items(item_code,category_id,name,price) VALUES(?,?,?,?)')->execute([$code,$category,'Existing-host fixture '.$code,1000]);
     $m->migrate();
     $pdo->exec("CREATE TABLE u01_sentinel (id INT PRIMARY KEY, value VARCHAR(40)) ENGINE=InnoDB;INSERT INTO u01_sentinel VALUES(1,'preserve-business-data')");
 }
