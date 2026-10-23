@@ -9,7 +9,7 @@ permissions:
 
 concurrency:
   group: windows-services-123-u01
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-installer:
@@ -140,16 +140,21 @@ jobs:
       - name: Real Windows SCM, Apache, PHP, MariaDB - 24 completed cycles
         shell: pwsh
         run: ./windows/maintenance/tests/u01-windows-full-cycle.ps1
+      - name: Freeze completed recovery evidence with the Local package
+        shell: pwsh
+        run: Copy-Item "$env:RUNNER_TEMP/U01-WINDOWS-CYCLES.json" "$env:RUNNER_TEMP/u01-local/U01-WINDOWS-CYCLES.json"
       - uses: actions/upload-artifact@v4
         with:
           name: u01-local-and-evidence
           path: |
             ${{ runner.temp }}/u01-local/*
-            ${{ runner.temp }}/U01-WINDOWS-CYCLES.json
-            ${{ runner.temp }}/u01-home/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: u01-home-qualified
+          path: ${{ runner.temp }}/u01-home/*
           if-no-files-found: error
   publish:
-    if: false # Enabled only when the Home bootstrap is qualified too.
     needs: [build-installer, windows-qualification]
     runs-on: ubuntu-latest
     steps:
@@ -162,6 +167,10 @@ jobs:
         with:
           name: u01-local-and-evidence
           path: publish/local
+      - uses: actions/download-artifact@v4
+        with:
+          name: u01-home-qualified
+          path: publish/home
       - name: Publish immutable U01 candidate after successful qualification
         env:
           GH_TOKEN: ${{ github.token }}
@@ -171,4 +180,4 @@ jobs:
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo 'Immutable release already exists; refusing overwrite'; exit 1
           fi
-          gh release create "$tag" publish/SOKNA-Windows-Services-Setup-1.1.23.exe publish/SHA256SUMS.txt publish/artifact-index.json publish/local/SOKNA-Local-231bf-U01-Panel-Update.zip publish/local/SHA256SUMS-LOCAL.txt publish/local/target.json publish/local/U01-WINDOWS-CYCLES.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'SOKNA U01 — Windows Services 1.1.23 / Local 231bf' --notes-file docs/releases/u01/RELEASE-NOTES.md --prerelease
+          gh release create "$tag" publish/SOKNA-Windows-Services-Setup-1.1.23.exe publish/SHA256SUMS.txt publish/artifact-index.json publish/local/SOKNA-Local-231bf-U01-Panel-Update.zip publish/local/SHA256SUMS-LOCAL.txt publish/local/target.json publish/local/U01-WINDOWS-CYCLES.json publish/home/SOKNA-Home-231au-to-231bf-PREFLIGHT.exe publish/home/SOKNA-Home-231au-to-231bf-UPDATE-UAT.exe publish/home/SHA256SUMS-HOME.txt publish/home/HOME-WINDOWS-TESTS.jsonl --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'SOKNA U01 — Windows Services 1.1.23 / Local 231bf / Home bootstrap' --notes-file docs/releases/u01/RELEASE-NOTES.md --prerelease
