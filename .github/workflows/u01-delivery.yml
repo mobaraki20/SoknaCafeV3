@@ -1,0 +1,41 @@
+name: U01 qualified Home download bundle
+on:
+  push:
+    branches: ['release/u01-package-delivery-20261023']
+permissions:
+  contents: write
+concurrency:
+  group: u01-final-qualified-delivery
+  cancel-in-progress: false
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download only the immutable qualified release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          tag=windows-services-v1.1.23-u01-rc.1
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > release.json
+          python -c 'import json; r=json.load(open("release.json")); assert r["target_commitish"]=="e8649ecbeb92603a4aae3c27f80b13d3f856848c" and r["prerelease"]'
+          mkdir stage
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir stage -p 'SOKNA-Windows-Services-Setup-1.1.23.exe' -p 'SOKNA-Home-231au-to-231bf-UPDATE-UAT.exe' -p 'SOKNA-Home-231au-to-231bf-PREFLIGHT.exe' -p 'SOKNA-Local-231bf-U01-Panel-Update.zip' -p 'SHA256SUMS.txt' -p 'SHA256SUMS-HOME.txt' -p 'SHA256SUMS-LOCAL.txt' -p 'target.json' -p 'U01-WINDOWS-CYCLES.json' -p 'HOME-WINDOWS-TESTS.jsonl' -p 'artifact-index.json'
+      - name: Verify hashes, native fault matrix, actual Home tests and the exact source tree
+        run: python release/assemble-u01-delivery.py --assets stage --output publish --source-sha e8649ecbeb92603a4aae3c27f80b13d3f856848c --run-id 39928737099
+      - name: Add the final Home bundle and Persian guide without replacing qualified binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh release upload windows-services-v1.1.23-u01-rc.1 publish/SOKNA-HOME-FINAL-U01-20261023.zip publish/README-U01-FA.md publish/QUALIFICATION-U01.json publish/SOKNA-Local-231bf-Full-Source.zip publish/SHA256SUMS-U01-DELIVERY.txt --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: u01-final-delivery
+          path: publish/*
+          if-no-files-found: error
