@@ -1,0 +1,7 @@
+{
+  "checkpoint": "H337_COMMUNICATION_A12_20261014",
+  "finding": "A12",
+  "status": "SOURCE_INSTRUMENTATION_QUALIFIED_REAL_WAN_DECISION_PENDING",
+  "change": "Local signed WAN transport emits safe per-exchange DNS probe/connect+TLS/write/TTFB/body/total timing without changing request signing, identity, deadline, ACK, or Connection: close semantics",
+  "transport_decision": "retain current transport until real WAN evidence shows whether pooled persistent adapter is justified"
+}

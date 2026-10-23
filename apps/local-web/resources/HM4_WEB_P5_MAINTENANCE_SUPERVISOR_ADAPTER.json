@@ -1,0 +1,30 @@
+{
+  "format": "sokna-maintenance-v4-web-p5-v1",
+  "date": "2026-10-15",
+  "scope": "local-web-maintenance-supervisor-read-adapter-ui",
+  "parent": {
+    "version": "3.0.0-g6.2-workspace.231l-secure-wanoff-bootstrap",
+    "advertised_canonical_tree": "0fdb0485f8d97b5514829e9405cd81510a83db1154d77072c3aeec8af8d94c3d",
+    "managed_tree": "ffa5b73b966da579aaa14d09094a38879158115fb8ff71273a112a19ad5dfb27",
+    "qualified_source_sha256": "da8bdbdd2337eaed9c5a40f676cb918187b05bf211440e4fbeb4a374a39acbda"
+  },
+  "windows_dependency": {
+    "checkpoint": "MAINTENANCE_V4_WINDOWS_P1_20261015",
+    "source_commit": "01558cc3220092dd857e5d196c2157c00c5de390",
+    "protocol": "1.0",
+    "default_port": 17631,
+    "service_name": "SoknaMaintenanceSupervisor",
+    "auth_scheme": "sokna-hmac-sha256-v1",
+    "web_adapter_acl": "PENDING_REAL_WINDOWS_IDENTITY_GRANT"
+  },
+  "implemented": [
+    "server-side ProgramData control-plane discovery",
+    "strict 127.0.0.1 descriptor validation",
+    "HMAC-SHA256 signed GET adapter compatible with Windows P1 canonical request",
+    "read-only maintenance snapshot endpoint",
+    "Maintenance V4 Local System tab/status UI",
+    "fail-closed ACL/auth/protocol/identity states"
+  ],
+  "mutation_support": false,
+  "real_host_integration": "PENDING"
+}

@@ -1,35 +1,49 @@
 <?php
 declare(strict_types=1);
+use Sokna\Local\Domain\Integrations\IntegrationException;
+use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException;
+use Sokna\Local\Domain\Printing\PrintException;
+use Sokna\Local\Domain\System\WindowsServicesPairingException;
 use Sokna\Local\UI\WebAction;
-$core=require dirname(__DIR__).'/_app.php';$user=WebAction::requireAny($core,['cashier_accounts']);$isAdmin=(string)($user['role']??'')==='admin';
+$core=require dirname(__DIR__).'/_app.php';$user=WebAction::requireAny($core,[]);if((string)($user['role']??'')!=='admin')WebAction::json(['success'=>false,'code'=>'forbidden','message'=>'مدیریت اتصال‌ها فقط برای مدیر فعال است.'],403);$actorId=(int)($user['id']??0);
 try{
     if(($_SERVER['REQUEST_METHOD']??'GET')==='GET'){
-        $action=(string)($_GET['action']??'snapshot');
-        if($action==='snapshot'){
-            $integration=$core->integrationWorkspace()->snapshot();$finance=$core->financeWorkspace()->snapshot();
-            WebAction::json(['success'=>true,'snapshot'=>['integrations'=>$integration,'open_accounts'=>$finance['open_accounts'],'printing'=>$isAdmin?$core->printManagement()->snapshot():null]]);
-        }
-        if($action==='account')WebAction::json(['success'=>true,'account'=>$core->settlements()->account((int)($_GET['session_id']??0))]);
-        if($action==='reservation_search')WebAction::json(['success'=>true,'rows'=>$core->accommodation()->searchReservations((string)($_GET['q']??''),$user)]);
-        WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
+        $errors=[];$guard=$core->snapshotGuard();
+        $accommodation=$guard->capture('connections','accommodation',['enabled'=>false,'base_url'=>'','configured'=>false,'credential_saved'=>false],'وضعیت اتصال اقامتگاه فعلاً در دسترس نیست.',fn():array=>$core->integrationSettings()->accommodationSnapshot());
+        $public=$guard->capture('connections','public_edge',['status'=>'unavailable','base_url'=>'','last_sync_at'=>'','version'=>''],'وضعیت وب عمومی فعلاً در دسترس نیست.',fn():array=>$core->systemDiagnostics()->publicConnectionStatus());
+        $lanStaff=$guard->capture('connections','lan_staff',['enabled'=>false,'configured'=>false,'base_url'=>'','source'=>'config','staff_policy'=>'lan_preferred_public_fallback','guest_policy'=>'public_first'],'وضعیت مسیر LAN کارکنان فعلاً در دسترس نیست.',fn():array=>$core->integrationSettings()->lanStaffSnapshot());
+        $originTransition=$guard->capture('connections','public_origin_transition',['active'=>false],'وضعیت انتقال آدرس Public فعلاً در دسترس نیست.',fn():array=>$core->publicOriginRebind()->transitionStatus());
+        $windows=$guard->capture('connections','windows_services',['state'=>'unavailable','active'=>false],'وضعیت Windows Services فعلاً در دسترس نیست.',fn():array=>$core->windowsServicesPairing()->status());
+        $runtime=$guard->capture('connections','windows_runtime',['status'=>'unavailable','runtime_version'=>'','contract_version'=>1],'وضعیت Windows Runtime فعلاً در دسترس نیست.',function()use($core):array{$health=$core->systemDiagnostics()->healthComponent('runtime');return (array)(($health['components']??[])['runtime']??[]);});
+        $agents=$guard->capture('connections','print_agents',[],'فهرست Print Agentها فعلاً در دسترس نیست.',function()use($core):array{$snap=$core->printManagement()->snapshot();return array_values((array)($snap['agents']??[]));});
+        foreach(['accommodation'=>$accommodation,'public_edge'=>$public,'lan_staff'=>$lanStaff,'public_origin_transition'=>$originTransition,'windows_services'=>$windows,'windows_runtime'=>$runtime,'print_agents'=>$agents] as $key=>$section)if($section['error']!==null)$errors[$key]=$section['error'];
+        WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
     }
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
-    if($action==='accommodation_prepare'){
-        $reservation=['reservation_code'=>(string)($data['reservation_code']??''),'guest_name'=>(string)($data['guest_name']??''),'room_name'=>(string)($data['room_name']??''),'phone_hint'=>(string)($data['phone_hint']??'')];
-        $expected=['expected_session_id'=>(int)($data['expected_session_id']??0),'expected_remaining_total'=>(int)($data['expected_remaining_total']??-1),'expected_signature'=>(string)($data['expected_signature']??'')];
-        WebAction::json(['success'=>true,'result'=>$core->accommodation()->prepare((int)($data['session_id']??0),$reservation,$expected,$user)]);
+    if($action==='accommodation_config_save')WebAction::json(['success'=>true,'result'=>$core->integrationSettings()->saveAccommodation($data)]);
+    if($action==='accommodation_test'){
+        $result=$core->accommodationTransport()->testConnection();
+        if(empty($result['success']))throw new IntegrationException((string)($result['code']??'accommodation_test_failed'),(string)($result['message']??'آزمایش اتصال اقامتگاه انجام نشد.'),502);
+        WebAction::json(['success'=>true,'result'=>$result]);
     }
-    if($action==='accommodation_charge')WebAction::json(['success'=>true,'result'=>$core->accommodation()->attemptCharge((int)($data['transfer_id']??0),$user)]);
-    if($action==='accommodation_finalize')WebAction::json(['success'=>true,'result'=>$core->accommodation()->finalizeLocal((int)($data['transfer_id']??0),$user)]);
-    if($action==='accommodation_void')WebAction::json(['success'=>true,'result'=>$core->accommodation()->attemptVoid((int)($data['transfer_id']??0),(string)($data['reason']??''),$user)]);
-    if($action==='accommodation_reversal_finalize')WebAction::json(['success'=>true,'result'=>$core->accommodation()->finalizeLocalReversal((int)($data['transfer_id']??0),(string)($data['reason']??'تکمیل برگشت محلی'),$user)]);
-    if(!$isAdmin)WebAction::json(['success'=>false,'code'=>'forbidden','message'=>'این عملیات فقط برای مدیر فعال است.'],403);
-    if($action==='print_agent_create')WebAction::json(['success'=>true,'result'=>$core->printing()->createAgent((string)($data['name']??''),$user)]);
-    if($action==='print_destination_configure')WebAction::json(['success'=>true,'result'=>$core->printing()->configureDestination((string)($data['destination_key']??''),$data,$user)]);
-    if($action==='print_template_import')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->import((string)($data['package_json']??''),$user)]);
-    if($action==='print_template_activate')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->activate((int)($data['package_id']??0),$user)]);
-    if($action==='print_template_preview')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->preview((int)($data['package_id']??0),(string)($data['destination_key']??''),$user)]);
-    if($action==='print_test')WebAction::json(['success'=>true,'result'=>$core->printing()->enqueueTest((string)($data['destination_key']??''),(string)($data['request_id']??''),$user,isset($data['package_id'])?(int)$data['package_id']:null)]);
-    if($action==='print_resolve')WebAction::json(['success'=>true,'result'=>$core->printing()->resolveAmbiguous((int)($data['job_id']??0),(string)($data['resolution']??''),(string)($data['reason']??''),$user)]);
+    if($action==='public_pair')WebAction::json(['success'=>true,'pairing'=>$core->publicReenrollment()->initialPair((string)($data['base_url']??''),(string)($data['pairing_code']??''),(string)($data['display_name']??''),$actorId)]);
+    if($action==='public_sync')WebAction::json(['success'=>true,'public_sync'=>$core->publicEdgePublisher()->syncAll()]);
+    if($action==='public_probe'){
+        $heartbeat=$core->publicEdgePublisher()->syncHeartbeat(2);
+        $roundtrip=$core->publicEdgeRelay()->diagnosticProbe(2);
+        $status=$core->systemDiagnostics()->publicConnectionStatus(true);
+        WebAction::json(['success'=>true,'probe'=>['heartbeat'=>$heartbeat,'roundtrip'=>$roundtrip,'status'=>$status]]);
+    }
+    if($action==='public_reenroll')WebAction::json(['success'=>true,'reenrollment'=>$core->publicReenrollment()->complete((string)($data['base_url']??''),(string)($data['enrollment_code']??''),(string)($data['display_name']??''),$actorId)]);
+    if($action==='public_origin_rebind_preflight')WebAction::json(['success'=>true,'origin_rebind'=>$core->publicOriginRebind()->preflight((string)($data['base_url']??''))]);
+    if($action==='public_origin_rebind_execute')WebAction::json(['success'=>true,'origin_rebind'=>$core->publicOriginRebind()->execute((string)($data['base_url']??''),$actorId)]);
+    if($action==='public_origin_transition_status')WebAction::json(['success'=>true,'origin_transition'=>$core->publicOriginRebind()->transitionStatus()]);
+    if($action==='public_origin_transition_close')WebAction::json(['success'=>true,'origin_transition'=>$core->publicOriginRebind()->closeTransition((string)($data['rebind_id']??''),$actorId)]);
+    if($action==='lan_staff_preflight')WebAction::json(['success'=>true,'lan_staff_preflight'=>$core->integrationSettings()->preflightLanStaff($data,$actorId)]);
+    if($action==='lan_staff_config_save')WebAction::json(['success'=>true,'lan_staff'=>$core->integrationSettings()->saveLanStaff($data,$actorId)]);
+    if($action==='windows_services_pairing_create')WebAction::json(['success'=>true,'windows_services'=>$core->windowsServicesPairing()->create($user,(string)($data['display_name']??''),!empty($data['allow_additional']))]);
+    if($action==='windows_services_print_token_rotation_create')WebAction::json(['success'=>true,'windows_services'=>$core->windowsServicesPairing()->createRotation($user,(int)($data['agent_id']??0),(string)($data['display_name']??''))]);
+    if($action==='windows_services_pairing_cancel')WebAction::json(['success'=>true,'windows_services'=>$core->windowsServicesPairing()->cancelActive($user)]);
+    if($action==='windows_services_agent_retire')WebAction::json(['success'=>true,'windows_services'=>$core->windowsServicesPairing()->retireConnection($user,(int)($data['agent_id']??0),(string)($data['reason']??'operator_removed'))]);
     WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
-}catch(\Throwable $e){if(property_exists($e,'httpStatus'))WebAction::knownFailure($e);error_log('integrations web action: '.$e->getMessage());WebAction::json(['success'=>false,'code'=>'internal_error','message'=>'عملیات یکپارچه‌سازی انجام نشد.'],500);}
+}catch(IntegrationException|PublicEdgeSyncException|WindowsServicesPairingException|PrintException $e){WebAction::knownFailure($e);}catch(Throwable $e){WebAction::unexpected($core,$e,'connections.web_action_failed','عملیات اتصال‌ها کامل نشد.');}

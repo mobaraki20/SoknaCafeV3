@@ -1,0 +1,8 @@
+{
+  "format": "sokna-build-provenance-v1",
+  "release_set_id": "sokna-local-231bf-u01-iran-time-updater-20261023",
+  "version": "3.0.0-g6.2-workspace.231bf-u01-iran-time-updater-rc1",
+  "source": "M06 + subsequent theme corrections + T01 + U01",
+  "created_at": "2026-10-23T00:00:00Z",
+  "production_host_install_verified": false
+}

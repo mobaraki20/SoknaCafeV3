@@ -1,0 +1,27 @@
+{
+  "schema": "sokna-recipe-seed-v1",
+  "source_ref": "sokna_recipe_costing_estimate_v1",
+  "source_file": "Sokna_Recipe_Costing_Estimate_1405-06-16_to_1405-07-16.xlsx",
+  "policy": {
+    "seed_only_when_no_active_recipe": true,
+    "overwrite_manual_recipe": false,
+    "management_waste_percent_in_quantity": 0,
+    "review_status": "needs_review",
+    "ambiguous_components_are_omitted": true
+  },
+  "new_inventory_items": [
+    {"item_code":"INV-090","name":"تخم مرغ","base_unit":"count","review_status":"ready"},
+    {"item_code":"INV-091","name":"پودر سوخاری پانکو","base_unit":"g","review_status":"needs_review"}
+  ],
+  "recipes": [
+    {"item_code":"1310","name":"اسنک مرغ","components":[["INV-025",45,"estimated"],["INV-030",25,"estimated"],["INV-015",45,"estimated"],["INV-017",35,"estimated"],["INV-010",20,"estimated"]],"omitted":["نان تست: برند نامشخص","مخلوط پیاز/فلفل/ذرت/سس: مقدار تجمیعی"]},
+    {"item_code":"1305","name":"پاستا چیکن آلفردو","components":[["INV-025",50,"known"],["INV-030",50,"known"],["INV-005",100,"known"],["INV-003",100,"known"],["INV-067",100,"known"],["INV-019",10,"known"],["INV-040",20,"estimated"],["INV-046",15,"estimated"]],"omitted":["جعفری/ادویه: مقدار تجمیعی"]},
+    {"item_code":"1301","name":"سیب زمینی ساده","components":[["INV-009",250,"known"],["INV-010",20,"estimated"]],"omitted":["روغن: منبع ml ولی inventory g","ادویه: مقدار تجمیعی"]},
+    {"item_code":"1313","name":"سیب زمینی با سس قارچ","components":[["INV-009",250,"known"],["INV-030",50,"known"],["INV-005",100,"known"],["INV-003",50,"known"]],"omitted":["عصاره مرغ: یک‌چهارم count قابل نمایش نیست","روغن: ml→g نامشخص","ادویه: مقدار تجمیعی"]},
+    {"item_code":"1312","name":"سالاد سزار","components":[["INV-025",120,"known"],["INV-035",120,"known"],["INV-040",40,"estimated"],["INV-046",20,"estimated"],["INV-019",4,"known"]],"omitted":["نان تست: برند نامشخص","بیبی کورن: مقدار portion مبهم","سس سزار: ترکیبی"]},
+    {"item_code":"1309","name":"قارچ سوخاری","components":[["INV-030",135,"estimated"],["INV-090",1,"known"],["INV-091",35,"estimated"]],"omitted":["آرد/ادویه: مقدار تجمیعی","روغن: مقدار/واحد قطعی نیست"]},
+    {"item_code":"118","name":"زینگر","components":[["INV-025",200,"known"],["INV-091",30,"estimated"],["INV-039",50,"estimated"],["INV-035",30,"estimated"],["INV-042",20,"estimated"]],"omitted":["نان برگر: برند نامشخص","سس برگر: ترکیبی","روغن: مقدار/واحد قطعی نیست"]},
+    {"item_code":"1314","name":"برگر گوشت","components":[["INV-028",1,"known"],["INV-039",50,"estimated"],["INV-035",30,"estimated"],["INV-042",20,"estimated"]],"omitted":["نان برگر: برند نامشخص","سس برگر: ترکیبی"]},
+    {"item_code":"1315","name":"برگر مرغ","components":[["INV-029",1,"known"],["INV-039",50,"estimated"],["INV-035",30,"estimated"],["INV-042",20,"estimated"]],"omitted":["نان برگر: برند نامشخص","سس برگر: ترکیبی"]}
+  ]
+}

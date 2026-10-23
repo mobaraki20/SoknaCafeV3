@@ -41,6 +41,20 @@ final class UpdateMigrationPolicy
         return $catalog;
     }
 
+    /** @param list<array<string,mixed>> $files */
+    public static function assertDeltaPayloadMatchesCatalog(array $manifest,array $files): array
+    {
+        $catalog=self::catalogFromManifest($manifest);
+        foreach($files as $entry){
+            if(!is_array($entry))continue;$path=str_replace('\\','/',(string)($entry['path']??''));
+            if(!preg_match('#^database/migrations/(\d{4}_[a-z0-9_]+)\.sql$#D',$path,$m))continue;
+            $version=$m[1];$hash=strtolower((string)($entry['sha256']??''));
+            if(!isset($catalog[$version])||!preg_match('/^[a-f0-9]{64}$/D',$hash)||!hash_equals($catalog[$version],$hash))
+                throw new LocalUpdateException('database_catalog_mismatch','Migration موجود در payload delta با lineage اعلام‌شده یکسان نیست.',422,['migration'=>$version]);
+        }
+        return $catalog;
+    }
+
     /**
      * A direct upgrade is allowed when the installed migration history is an
      * unchanged subset of the incoming package catalog. New migrations may be

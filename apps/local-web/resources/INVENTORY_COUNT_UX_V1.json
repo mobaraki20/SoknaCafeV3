@@ -1,0 +1,13 @@
+{
+  "contract": "sokna-inventory-count-session-autosave-v1",
+  "principles": [
+    "inventory count is one resumable session, not a collection of row-save forms",
+    "line updates remain optimistic-version fenced and auditable",
+    "dirty rows autosave after a bounded debounce and on blur",
+    "saving a row never rerenders the full count workspace while the operator is typing",
+    "save-progress flushes dirty rows explicitly",
+    "finalize first flushes dirty rows and stops if any row failed to save",
+    "blank count quantities are not silently converted to zero by autosave",
+    "save failures stay visible and retryable"
+  ]
+}

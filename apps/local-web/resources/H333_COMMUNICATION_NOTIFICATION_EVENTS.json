@@ -1,0 +1,13 @@
+{
+  "checkpoint": "H333_COMMUNICATION_A07_DURABLE_NOTIFICATION_EVENTS_20261014",
+  "finding": "A07",
+  "status": "ENGINEERING_SOURCE_QUALIFIED_REAL_MARIADB_UAT_PENDING",
+  "design": {
+    "event_capture": "InnoDB AFTER triggers write notification_domain_events in the same business transaction",
+    "consumer": "NotificationService consumes durable events instead of scanning current business state",
+    "idempotency": "event_key plus existing notification_outbox idempotency key",
+    "ttl_basis": "event occurred_at, not worker scan time",
+    "backlog": "durable until dispatched; 200-event bounded batches without last-50 loss"
+  },
+  "migration": "0063_notification_domain_event_outbox.sql"
+}

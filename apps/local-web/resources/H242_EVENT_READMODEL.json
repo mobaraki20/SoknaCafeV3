@@ -1,0 +1,15 @@
+{
+  "checkpoint": "H242_EVENT_READMODEL_20261012",
+  "phase": "P2",
+  "date": "2026-10-12",
+  "architecture": "transactional outbox + monotonic Public cursor + targeted Staff/Guest read models",
+  "authority": "Local remains business authority; Public remains projection/read-model host",
+  "delivery": "at-least-once, idempotent model writes, contiguous cursor, gap fail-closed + signed full reset",
+  "guest_reads": "guest order list/status/table context served from internal Public guest_operational projection; no normal Public-to-Local read roundtrip",
+  "guest_privacy": "raw device/client tokens are not projected; device/tracking SHA-256 ownership hashes only",
+  "component": "local",
+  "version": "3.0.0-g6.2-workspace.222-event-readmodel",
+  "staff_reads": "Hall snapshot/table account, settlement account and active table drafts are Public read-model reads; active drafts are included in table_draft_context; no normal draft-get relay",
+  "coherency": "Hall/finance projection does not silently omit an account: projection failure keeps the previous coherent Public model and retries; settlement mutations invalidate operations immediately",
+  "table_state": "pending-only guest session is projected as pending_guest / منتظر تأیید; mixed accounted+pending remains account with pending count"
+}

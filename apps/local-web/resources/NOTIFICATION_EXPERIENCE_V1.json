@@ -1,0 +1,53 @@
+{
+  "account_preferences": [
+    "in_app_enabled",
+    "push_enabled",
+    "push_operations_enabled",
+    "push_management_enabled"
+  ],
+  "account_preferences_remote_edit": true,
+  "actions": {
+    "body_click_always_has_safe_target": true,
+    "destructive_mutation_from_notification": false,
+    "fallback": "Body click remains the canonical action when action buttons are unsupported.",
+    "max_product_actions": 2,
+    "progressive_enhancement": true,
+    "safe_navigation_only": true
+  },
+  "anti_regression": [
+    "do not register a second Local-origin device Push subscription from account settings",
+    "do not make notification action availability required for business workflow",
+    "do not send destructive business mutations from OS notification buttons",
+    "do not bypass Public-origin push ownership during rebind"
+  ],
+  "categories": {
+    "management": [
+      "settlement.completed",
+      "inventory.purchase_price_changed",
+      "manual"
+    ],
+    "operations": [
+      "guest_order.new",
+      "preparation.accounted",
+      "waiter_call.new"
+    ]
+  },
+  "contract": "sokna-notification-experience-v1",
+  "delivery_guarantees": {
+    "durable_outbox": true,
+    "origin_rebind_fenced": true,
+    "per_endpoint_receipts": true,
+    "retryable_failures": true,
+    "ttl_fenced": true
+  },
+  "device_vs_account": "Unsubscribing one device does not change account category preferences; account preferences apply to all registered devices.",
+  "ownership": {
+    "account_push_preferences": "Local authority; editable from Local Account and authenticated Public App Center through Local realtime",
+    "device_push_subscription": "Public Staff PWA App Center",
+    "in_app": "Local account/inbox"
+  },
+  "permission": {
+    "direct_user_gesture_required": true,
+    "ios_requires_home_screen_app": true
+  }
+}

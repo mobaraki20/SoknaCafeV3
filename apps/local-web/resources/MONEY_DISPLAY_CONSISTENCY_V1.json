@@ -1,0 +1,40 @@
+{
+  "format": "sokna-money-display-consistency-v1",
+  "schema_version": 1,
+  "scope": "All human-facing monetary output in Local Web and Public Web, including Staff and Guest surfaces",
+  "rules": [
+    "human-facing monetary output must use an approved money formatter or explicit semantic amount-only moneyNumber formatter",
+    "money digits use Persian numerals and three-digit grouping with U+066C separator",
+    "full money strings include the تومان currency label unless the UI already provides an adjacent explicit تومان label",
+    "amount-only moneyNumber is permitted only where the same visual component provides the currency context",
+    "raw canonical numeric values remain permitted in API payloads, data attributes, storage, arithmetic and signed print-document schemas",
+    "quantities, percentages, identifiers, dates and durations are not money and must not be grouped under this contract",
+    "Guest and Guest-LAN price output must preserve the same grouping behavior",
+    "server-rendered search and notification money must use Persian grouped output"
+  ],
+  "approved_js": [
+    "SoknaLocale.money",
+    "SoknaLocale.moneyNumber",
+    "formatMoney",
+    "money",
+    "bareMoney backed by SoknaLocale.moneyNumber"
+  ],
+  "approved_php": [
+    "Sokna\\Local\\UI\\MoneyDisplay::money",
+    "Sokna\\Local\\UI\\MoneyDisplay::unitCost",
+    "GuestPageRenderer::money",
+    "GuestLanPageRenderer::money",
+    "dashboard money closures backed by grouped Persian digits"
+  ],
+  "examples": {
+    "full": "۱٬۲۳۴٬۵۶۷ تومان",
+    "amount_only": "۱٬۲۳۴٬۵۶۷",
+    "signed_full": "-۱۲۰٬۰۰۰ تومان"
+  },
+  "exclusions": [
+    "API/storage canonical numbers",
+    "data-* machine values",
+    "business arithmetic",
+    "print document numeric payload fields"
+  ]
+}

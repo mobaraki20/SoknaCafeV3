@@ -173,7 +173,7 @@ final class SupplyDeferredAdapter
         if($requestId===''||strlen($requestId)>96||preg_match('/^[A-Za-z0-9._:-]+$/',$requestId)!==1)$errors[]='request_id';
         $kind=trim((string)($envelope['kind']??''));
         if(!in_array($kind,self::KINDS,true))$errors[]='kind';
-        $occurred=strtotime(trim((string)($envelope['occurred_at']??'')))?:0;
+        $occurred=\Sokna\Shared\IranTime::wireEpoch((string)($envelope['occurred_at']??''))?:0;
         if($occurred<=0||$occurred>time()+300)$errors[]='occurred_at';
         if(!is_array($envelope['payload']??null))$errors[]='payload';
         if(trim((string)($envelope['actor_projection_id']??''))==='')$errors[]='actor_projection_id';

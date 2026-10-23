@@ -14,13 +14,19 @@ final class AccommodationTransport
     public function charge(array $payload): array{return $this->request('charge','POST',$payload,10);}
     public function void(array $payload): array{return $this->request('void','POST',$payload,10);}
     public function search(string $query): array{return $this->request('search','GET',['query'=>$query],7);}
+    public function testConnection(): array
+    {
+        $result=$this->request('search','GET',['query'=>'__sokna_connection_probe__'],5,false);
+        if(empty($result['success']))return $result;
+        return ['success'=>true,'code'=>'connection_ok','ambiguous'=>false,'retryable'=>false,'message'=>'اتصال اقامتگاه با موفقیت تأیید شد.','checked_at'=>gmdate(DATE_ATOM)];
+    }
 
-    private function request(string $action,string $method,array $parameters,int $timeout): array
+    private function request(string $action,string $method,array $parameters,int $timeout,bool $requireEnabled=true): array
     {
         if($this->override!==null)return ($this->override)($action,$method,$parameters,$timeout);
-        if(!$this->enabled())return ['success'=>false,'code'=>'integration_disabled','ambiguous'=>false,'retryable'=>false,'message'=>'اتصال اقامتگاه غیرفعال است.'];
+        if($requireEnabled&&!$this->enabled())return ['success'=>false,'code'=>'integration_disabled','ambiguous'=>false,'retryable'=>false,'message'=>'اتصال اقامتگاه غیرفعال است.'];
         $base=rtrim($this->config->string('integrations.accommodation.base_url',''),'/');
-        $apiKey=$this->config->string('integrations.accommodation.api_key','');
+        $apiKey=$this->config->string('integrations.accommodation.api_key',$this->config->string('integrations.accommodation.secret',''));
         if($base===''||$apiKey==='')throw new IntegrationException('accommodation_not_configured','تنظیمات اتصال اقامتگاه کامل نیست.',409);
         $parts=parse_url($base);$host=strtolower((string)($parts['host']??''));$scheme=strtolower((string)($parts['scheme']??''));
         if($scheme!=='https'&&!in_array($host,['localhost','127.0.0.1','::1'],true))throw new IntegrationException('insecure_endpoint','ارتباط اقامتگاه باید HTTPS باشد.',409);

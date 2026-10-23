@@ -1,0 +1,14 @@
+{
+  "format": "sokna-h300-update-recovery-final-v1",
+  "version": "3.0.0-g6.2-workspace.230c-menu-product-model-v2-recovery-final",
+  "date": "2026-10-13",
+  "public_version": "3.0.0-g3.6-workspace.35bs-menu-product-model-v2-hotpath",
+  "goals": [
+    "immutable published migration history",
+    "forward-only index normalization",
+    "existing-install recovery after forward migration",
+    "lifecycle/inventory reconciliation after setup recovery",
+    "support bundle direct download hardening"
+  ],
+  "real_host_uat_required": true
+}

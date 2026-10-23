@@ -6,6 +6,7 @@ try{
     if(($_SERVER['REQUEST_METHOD']??'GET')==='GET'){
         $action=(string)($_GET['action']??'search');
         if($action==='search')WebAction::json(['success'=>true,'rows'=>$core->financeWorkspace()->subscriberDirectory((string)($_GET['q']??''),(string)($_GET['status']??'all'),($_GET['debt']??'0')==='1')]);
+        if($action==='settlement_search')WebAction::json(['success'=>true,'rows'=>$core->subscribers()->search((string)($_GET['q']??''),20)]);
         if($action==='detail')WebAction::json(['success'=>true,'detail'=>$core->financeWorkspace()->subscriberDetail((int)($_GET['id']??0))]);
         WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
     }

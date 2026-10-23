@@ -23,7 +23,7 @@ final class StaffBenefitManagementService
         if($key===''||$name==='')throw new StaffConsumptionException('benefit_policy_required','کلید و نام Policy لازم است.',422);
         $description=$this->nullableText($data['description']??null,500);$active=$this->bool($data['active']??true);$default=$this->bool($data['is_default']??false);$priority=$this->priority($data['priority']??100);
         $this->pdo->beginTransaction();
-        try{
+        try{$this->assertModuleEnabledTx();
             if($default&&$active)$this->pdo->exec('UPDATE staff_benefit_policies SET is_default=0 WHERE is_default=1');
             if($id>0){$q=$this->pdo->prepare('SELECT id FROM staff_benefit_policies WHERE id=? FOR UPDATE');$q->execute([$id]);if(!$q->fetchColumn())throw new StaffConsumptionException('benefit_policy_missing','Policy مزایا پیدا نشد.',404);$q=$this->pdo->prepare('UPDATE staff_benefit_policies SET policy_key=?,name=?,description=?,active=?,is_default=?,priority=?,updated_by_user_id=? WHERE id=?');$q->execute([$key,$name,$description,$active?1:0,$default&&$active?1:0,$priority,(int)$user['id'],$id]);}
             else{$q=$this->pdo->prepare('INSERT INTO staff_benefit_policies(policy_key,name,description,active,is_default,priority,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?,?,?,?,?)');$q->execute([$key,$name,$description,$active?1:0,$default&&$active?1:0,$priority,(int)$user['id'],(int)$user['id']]);$id=(int)$this->pdo->lastInsertId();}
@@ -36,7 +36,7 @@ final class StaffBenefitManagementService
     {
         $user=$this->assertManager($actor);$id=(int)($data['id']??0);$policyId=(int)($data['policy_id']??0);if($policyId<1)throw new StaffConsumptionException('benefit_policy_required','Policy مزایا لازم است.',422);
         [$scope,$scopeId,$type,$percent,$fixed]=$this->definition($data);$priority=$this->priority($data['priority']??100);$active=$this->bool($data['active']??true);
-        $this->pdo->beginTransaction();try{
+        $this->pdo->beginTransaction();try{$this->assertModuleEnabledTx();
             $this->assertPolicyTx($policyId);$this->assertScopeTargetTx($scope,$scopeId);
             if($id>0){$q=$this->pdo->prepare('SELECT id FROM staff_benefit_policy_rules WHERE id=? FOR UPDATE');$q->execute([$id]);if(!$q->fetchColumn())throw new StaffConsumptionException('benefit_rule_missing','Rule مزایا پیدا نشد.',404);$q=$this->pdo->prepare('UPDATE staff_benefit_policy_rules SET policy_id=?,scope_type=?,scope_id=?,benefit_type=?,percent_bps=?,fixed_amount=?,priority=?,active=? WHERE id=?');$q->execute([$policyId,$scope,$scopeId,$type,$percent,$fixed,$priority,$active?1:0,$id]);}
             else{$q=$this->pdo->prepare('INSERT INTO staff_benefit_policy_rules(policy_id,scope_type,scope_id,benefit_type,percent_bps,fixed_amount,priority,active) VALUES(?,?,?,?,?,?,?,?)');$q->execute([$policyId,$scope,$scopeId,$type,$percent,$fixed,$priority,$active?1:0]);$id=(int)$this->pdo->lastInsertId();}
@@ -48,7 +48,7 @@ final class StaffBenefitManagementService
     {
         $user=$this->assertManager($actor);$personnelId=(int)($data['personnel_id']??0);if($personnelId<1)throw new StaffConsumptionException('personnel_invalid','پرسنل معتبر نیست.',422);
         $policyId=(int)($data['policy_id']??0);$policyId=$policyId>0?$policyId:null;$active=$this->bool($data['active']??true);$from=$this->date($data['valid_from']??null);$until=$this->date($data['valid_until']??null);$this->dateRange($from,$until);$notes=$this->nullableText($data['notes']??null,500);
-        $this->pdo->beginTransaction();try{
+        $this->pdo->beginTransaction();try{$this->assertModuleEnabledTx();
             $this->assertPersonnelTx($personnelId);if($policyId!==null)$this->assertPolicyTx($policyId);
             $q=$this->pdo->prepare('SELECT id FROM staff_benefit_profiles WHERE personnel_id=? FOR UPDATE');$q->execute([$personnelId]);$id=(int)($q->fetchColumn()?:0);
             if($id>0){$q=$this->pdo->prepare('UPDATE staff_benefit_profiles SET policy_id=?,active=?,valid_from=?,valid_until=?,notes=?,updated_by_user_id=? WHERE id=?');$q->execute([$policyId,$active?1:0,$from,$until,$notes,(int)$user['id'],$id]);}
@@ -61,7 +61,7 @@ final class StaffBenefitManagementService
     {
         $user=$this->assertManager($actor);$id=(int)($data['id']??0);$personnelId=(int)($data['personnel_id']??0);if($personnelId<1)throw new StaffConsumptionException('personnel_invalid','پرسنل معتبر نیست.',422);
         [$scope,$scopeId,$type,$percent,$fixed]=$this->definition($data);$active=$this->bool($data['active']??true);$from=$this->dateTime($data['valid_from']??null);$until=$this->dateTime($data['valid_until']??null);$this->dateTimeRange($from,$until);$reason=$this->text($data['reason']??'',500);if($reason==='')throw new StaffConsumptionException('benefit_override_reason_required','دلیل Override مزایا لازم است.',422);
-        $this->pdo->beginTransaction();try{
+        $this->pdo->beginTransaction();try{$this->assertModuleEnabledTx();
             $this->assertPersonnelTx($personnelId);$this->assertScopeTargetTx($scope,$scopeId);
             if($id>0){$q=$this->pdo->prepare('SELECT id FROM staff_benefit_overrides WHERE id=? FOR UPDATE');$q->execute([$id]);if(!$q->fetchColumn())throw new StaffConsumptionException('benefit_override_missing','Override مزایا پیدا نشد.',404);$q=$this->pdo->prepare('UPDATE staff_benefit_overrides SET personnel_id=?,scope_type=?,scope_id=?,benefit_type=?,percent_bps=?,fixed_amount=?,active=?,valid_from=?,valid_until=?,reason=?,updated_by_user_id=? WHERE id=?');$q->execute([$personnelId,$scope,$scopeId,$type,$percent,$fixed,$active?1:0,$from,$until,$reason,(int)$user['id'],$id]);}
             else{$q=$this->pdo->prepare('INSERT INTO staff_benefit_overrides(personnel_id,scope_type,scope_id,benefit_type,percent_bps,fixed_amount,active,valid_from,valid_until,reason,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');$q->execute([$personnelId,$scope,$scopeId,$type,$percent,$fixed,$active?1:0,$from,$until,$reason,(int)$user['id'],(int)$user['id']]);$id=(int)$this->pdo->lastInsertId();}
@@ -69,7 +69,8 @@ final class StaffBenefitManagementService
         }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
-    private function assertManager(array $actor): array{$id=(int)($actor['id']??0);$fresh=$id>0?$this->identity->findActiveById($id):null;if($fresh===null||!$this->capabilities->has('staff_benefit_manage',$fresh))throw new StaffConsumptionException('forbidden','دسترسی مدیریت مزایای پرسنل فعال نیست.',403);return $fresh;}
+    private function assertModuleEnabledTx(): void{$q=$this->pdo->query("SELECT setting_value FROM settings WHERE setting_key='module.staff_consumption.enabled' LIMIT 1 FOR UPDATE");$v=$q->fetchColumn();$enabled=$v===false||$v===null||in_array(strtolower(trim((string)$v)),['1','true','yes','on'],true);if(!$enabled)throw new StaffConsumptionException('staff_consumption_disabled','مصرف پرسنل غیرفعال است؛ تغییر قوانین مزایا تا فعال‌سازی دوباره انجام نمی‌شود.',409);}
+    private function assertManager(array $actor): array{$id=(int)($actor['id']??0);$fresh=$id>0?$this->identity->findActiveById($id):null;if($fresh===null||!$this->capabilities->has('staff_benefit_manage',$fresh))throw new StaffConsumptionException('forbidden','دسترسی مدیریت مزایای پرسنل فعال نیست.',403);$q=$this->pdo->prepare("SELECT setting_value FROM settings WHERE setting_key='module.staff_consumption.enabled' LIMIT 1");$q->execute();$v=$q->fetchColumn();$enabled=$v===false||$v===null||in_array(strtolower(trim((string)$v)),['1','true','yes','on'],true);if(!$enabled)throw new StaffConsumptionException('staff_consumption_disabled','مصرف پرسنل غیرفعال است؛ تغییر قوانین مزایا تا فعال‌سازی دوباره انجام نمی‌شود.',409);return $fresh;}
     private function assertPolicyTx(int $id): void{$q=$this->pdo->prepare('SELECT id FROM staff_benefit_policies WHERE id=? FOR UPDATE');$q->execute([$id]);if(!$q->fetchColumn())throw new StaffConsumptionException('benefit_policy_missing','Policy مزایا پیدا نشد.',404);}
     private function assertPersonnelTx(int $id): void{$q=$this->pdo->prepare('SELECT id FROM personnel WHERE id=? AND archived_at IS NULL FOR UPDATE');$q->execute([$id]);if(!$q->fetchColumn())throw new StaffConsumptionException('personnel_unavailable','پرسنل پیدا نشد.',404);}
     private function assertScopeTargetTx(string $scope,?int $id): void{if($scope==='all')return;$table=$scope==='item'?'items':'categories';$q=$this->pdo->prepare("SELECT id FROM {$table} WHERE id=? FOR UPDATE");$q->execute([$id]);if(!$q->fetchColumn())throw new StaffConsumptionException('benefit_scope_target_missing','هدف محدوده مزایا پیدا نشد.',422);}

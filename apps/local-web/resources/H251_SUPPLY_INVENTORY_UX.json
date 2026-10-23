@@ -1,0 +1,58 @@
+{
+  "checkpoint": "H251_SUPPLY_INVENTORY_UX_ROOT_PASS_20261012",
+  "status": "working-engineering-not-install-qualified",
+  "base_checkpoint": "H250_DATA_RECIPE_RECONCILIATION_20261012",
+  "version_policy": "No release version bump in Block B; version is assigned only during final Block E qualification.",
+  "scope": [
+    "purchase / supply need / direct purchase",
+    "receive",
+    "count",
+    "waste / adjustment",
+    "shared purchase-unit conversion summary",
+    "mobile 360/390/430 and desktop 1366 visual qualification"
+  ],
+  "product_rules": {
+    "purchase_variance_is_non_blocking": true,
+    "purchase_without_prior_need_is_allowed": true,
+    "early_or_late_receive_is_non_blocking": true,
+    "negative_stock_due_to_event_ordering_is_non_blocking": true,
+    "uncertain_purchase_conversion_requires_actual_quantity": true,
+    "count_is_independent_task": true,
+    "secondary_metadata_uses_progressive_disclosure": true
+  },
+  "changes": [
+    "Added first-class Direct Purchase entry to the purchase workflow.",
+    "Added item picker to the shared inventory receive path for direct purchase without duplicating inventory business logic.",
+    "Reused one purchase-unit operation context / conversion-summary primitive across direct receive, supply receive, waste and batch receive.",
+    "Kept fixed conversions deterministic and actual-quantity conversions explicit for uncertain packages.",
+    "Made purchase/receive variance and negative-stock ordering warnings non-blocking while retaining audit semantics.",
+    "Clarified that supply needs are recorded in stock/base units and package/carton choice belongs to purchase/receive.",
+    "Added package suggestions on purchase cards from canonical purchase-unit data.",
+    "Compacted workflow navigation, count controls and operation dialogs for 360/390/430 without changing desktop semantics.",
+    "Moved time/reference/note/supplier secondary metadata into task-local progressive disclosure so the primary mobile path stays short.",
+    "Added browser geometry assertions that action footers stay inside the dialog and viewport."
+  ],
+  "visual_matrix": {
+    "viewports": [1366, 430, 390, 360],
+    "states": [
+      "quality queue",
+      "purchase list",
+      "supply need",
+      "direct purchase with uncertain package / actual weight",
+      "partial receive",
+      "count with 65 lines",
+      "waste producing temporary negative stock",
+      "manual adjustment producing temporary negative stock"
+    ]
+  },
+  "qualification": {
+    "h251_contract": "PASS",
+    "h251_browser": "PASS",
+    "inventory_supply_recipe_regression": "PASS",
+    "php_lint": "PASS",
+    "node_check": "PASS",
+    "real_host_uat": "NOT_RUN"
+  },
+  "next_block": "H252 / Block C — Staff Mobile iterative visual qualification",
+  "installable": false
+}

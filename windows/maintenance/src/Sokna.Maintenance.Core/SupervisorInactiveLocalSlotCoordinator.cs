@@ -178,7 +178,7 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
                 sourceReceipt.TargetManagedFiles, sourceReceipt.TargetManagedTreeSha256);
             // Read-only PHP/installed configuration status and migration catalog
             // checks are MANDATORY before committing a new inactive sibling.
-            RoutineLocalLifecycle.RequireUnchangedMigrationCatalog(layout.WebRoot, incomplete);
+            RoutineLocalDatabase.Plan(layout.WebRoot, incomplete);
             RoutineLocalLifecycle.RequireTargetSetupBoot(root, incomplete);
             LocalManagedTreeAttestation.RequireExact(incomplete,
                 sourceReceipt.TargetManagedFiles, sourceReceipt.TargetManagedTreeSha256);
@@ -224,7 +224,7 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
             receipt.TargetManagedFiles, receipt.TargetTreeSha256);
         RoutineLocalBinding.RequireTarget(persistent, target,
             layout.PackageRoot, receipt.TargetVersion);
-        RoutineLocalLifecycle.RequireUnchangedMigrationCatalog(layout.WebRoot, target);
+        RoutineLocalDatabase.Plan(layout.WebRoot, target);
         RoutineLocalLifecycle.RequireTargetSetupBoot(layout.PackageRoot, target);
         lifecycle.RequireIdle();
         RequireUnchangedActive(manager, receipt.PreviousActiveSlot, layout.Build);

@@ -138,8 +138,8 @@ final class DeferredReceiptService
         $requestId=trim((string)($envelope['request_id']??''));
         if($installationId===''||$requestId==='')
             throw new RuntimeException('شناسه اتصال یا درخواست Deferred کامل نیست.');
-        $occurredTs=strtotime((string)($envelope['occurred_at']??''));
-        if($occurredTs===false)throw new RuntimeException('زمان رخداد Deferred معتبر نیست.');
+        $occurredTs=\Sokna\Shared\IranTime::wireEpoch((string)($envelope['occurred_at']??''));
+        if($occurredTs<=0)throw new RuntimeException('زمان رخداد Deferred معتبر نیست.');
 
         $stmt=$this->pdo->prepare(
             'INSERT INTO deferred_work_receipts(installation_id,request_id,request_hash,kind,actor_projection_id,actor_user_id,
@@ -148,7 +148,7 @@ final class DeferredReceiptService
         );
         $stmt->execute([
             $installationId,$requestId,self::requestHash($envelope),(string)($envelope['kind']??''),
-            (string)($envelope['actor_projection_id']??''),(int)($actor['id']??0),
+            (string)($envelope['actor_projection_id']??''),((int)($actor['id']??0))?:null,
             date('Y-m-d H:i:s',$occurredTs),self::canonicalJson($envelope),$state,self::json($result),
             $errorCode!==''?$errorCode:null,$financialPeriodId,$reconcile?1:0,$state==='committed'?date('Y-m-d H:i:s'):null,
         ]);

@@ -26,10 +26,18 @@ final class PreparationRealtimeAdapter
 
         $payload=is_array($envelope['payload']??null)?$envelope['payload']:[];
         $action=trim((string)($payload['action']??''));
-        if($action!=='claim_order_area')
+        if(!in_array($action,['claim_order_area','ack_adjustment'],true))
             throw new PreparationException('unsupported_action','عملیات آماده‌سازی پشتیبانی نمی‌شود.',422);
 
-        $this->pdo->beginTransaction();
+        if($action==='ack_adjustment'){
+            $actorStmt=$this->pdo->prepare('SELECT id,username,display_name,role,active FROM users WHERE id=? LIMIT 1');
+            $actorStmt->execute([(int)$match[1]]);$actor=$actorStmt->fetch(PDO::FETCH_ASSOC);
+            if(!is_array($actor)||(int)$actor['active']!==1)
+                throw new PreparationException('actor_invalid','حساب کاربری راه‌دور فعال نیست.',403);
+            return $this->preparation->acknowledgeAdjustment($payload,$actor);
+        }
+
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
         try{
             $actorStmt=$this->pdo->prepare('SELECT id,username,display_name,role,active FROM users WHERE id=? FOR UPDATE');
             $actorStmt->execute([(int)$match[1]]);
@@ -38,10 +46,10 @@ final class PreparationRealtimeAdapter
                 throw new PreparationException('actor_invalid','حساب کاربری راه‌دور فعال نیست.',403);
 
             $result=$this->preparation->claimTx($payload,$actor);
-            $this->pdo->commit();
+            if($ownsTransaction)$this->pdo->commit();
             return $result;
         }catch(Throwable $e){
-            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
     }

@@ -1,0 +1,10 @@
+{
+  "checkpoint": "H209",
+  "title": "Inventory data quality queue",
+  "policy": {
+    "review_queue_is_non_blocking": true,
+    "quality_gaps_do_not_stop_purchase_receive_or_consumption": true,
+    "unknown_or_partial_cost_is_never_treated_as_zero": true
+  },
+  "signals": ["purchase_unit_review", "inventory_cost_quality", "receipt_missing_cost"]
+}

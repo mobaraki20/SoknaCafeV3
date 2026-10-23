@@ -10,6 +10,7 @@ final class PrintAgentV4HttpAdapter
     public function handle(string $authorization,array $body): array
     {
         try{
+            if(trim($authorization)==='')throw new PrintException('authorization_header_missing','هدر احراز هویت Print Worker به PHP نرسیده است؛ پیکربندی Apache را بررسی کن.',401);
             $agent=$this->printing->authenticate($authorization);$action=(string)($body['action']??'');
             $r=match($action){
                 'probe'=>$this->printing->probe($agent,(string)($body['agent_version']??'')),

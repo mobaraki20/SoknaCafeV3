@@ -8,10 +8,11 @@ $user=WebAction::requireAny($core,[]);
 try{
     if(($_SERVER['REQUEST_METHOD']??'GET')==='GET'){
         $action=(string)($_GET['action']??'snapshot');
-        if($action==='snapshot')WebAction::json(['success'=>true,'snapshot'=>$core->adminControls()->snapshot($user)]);
+        if($action==='snapshot'){$snapshot=$core->adminControls()->snapshot($user);$snapshot['qr_public_base_url']=$core->publicEdgeSyncClient()->publicBaseUrl();WebAction::json(['success'=>true,'snapshot'=>$snapshot]);}
         WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
     }
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
+    if($action==='team_member_save')WebAction::json(['success'=>true,'result'=>$core->adminControls()->saveTeamMember($data,$user)]);
     if($action==='user_save')WebAction::json(['success'=>true,'result'=>$core->adminControls()->saveUser($data,$user)]);
     if($action==='personnel_save')WebAction::json(['success'=>true,'result'=>$core->adminControls()->savePersonnel($data,$user)]);
     if($action==='settings_save')WebAction::json(['success'=>true,'result'=>$core->adminControls()->saveSettings($data,$user)]);
@@ -27,6 +28,5 @@ try{
     WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
 }catch(\Throwable $e){
     if(property_exists($e,'httpStatus'))WebAction::knownFailure($e);
-    error_log('admin controls web action: '.$e->getMessage());
-    WebAction::json(['success'=>false,'code'=>'internal_error','message'=>'عملیات مدیریتی انجام نشد.'],500);
+    WebAction::unexpected($core,$e,'admin.web_action_failed','عملیات مدیریتی کامل نشد.');
 }

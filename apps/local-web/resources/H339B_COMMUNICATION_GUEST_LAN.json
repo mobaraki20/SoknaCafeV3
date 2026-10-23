@@ -1,0 +1,33 @@
+{
+  "checkpoint": "H339B_COMMUNICATION_A15_20261014",
+  "contract": {
+    "browser_recovery": "same origin + same client/device token; prepared submission survives ambiguous response and network switch",
+    "business_authority": "Local only",
+    "cold_open": "Guest JS/CSS/media/theme are Local; Guest font lookup never attempts WAN when cache is absent",
+    "deployment_boundary": "DNS/TLS/AP isolation/firewall and real device behavior remain field prerequisites",
+    "guest_origin": "one hostname/origin; split DNS chooses Local on cafe LAN and Public on Internet",
+    "local_routes": [
+      "/menu",
+      "/menu/about",
+      "/menu/manifest.webmanifest",
+      "/api/guest/*",
+      "/theme/*",
+      "/media/*",
+      "/assets/scds/*",
+      "/font.php?surface=guest"
+    ],
+    "offline_hint": "navigator.onLine does not disable local_lan actions; LAN request result is authoritative",
+    "qr_authority": "active table access_token only; no Staff session/capability exposed",
+    "receipt_identity": "Guest mutation receipt hashes kind+actor+payload, ignoring transport timestamps; legacy exact-envelope hash accepted",
+    "request_identity": "Public and Local share deterministic Guest request-id grammar",
+    "watch": "Local long-poll uses cheap Local outbox high-water cursor; no Public/read-model rebuild dependency"
+  },
+  "real_host_installed": {
+    "local": "230y",
+    "public": "35ch"
+  },
+  "scope": [
+    "A15"
+  ],
+  "status": "engineering_source_qualified_real_android_iphone_wan_outage_uat_pending_not_installed"
+}

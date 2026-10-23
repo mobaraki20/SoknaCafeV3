@@ -13,6 +13,7 @@ use Sokna\Local\Domain\Orders\WaiterCallService;
 use Sokna\Local\Domain\Orders\StaffQuickOrderService;
 use Sokna\Local\Domain\Orders\TableDraftService;
 use Sokna\Local\Domain\Orders\OrderStaffActionService;
+use Sokna\Local\Domain\Orders\OrderAcceptanceService;
 use Sokna\Local\Domain\Orders\WaiterCallStaffService;
 use Sokna\Local\Domain\Orders\OrderWorkspaceService;
 use Sokna\Local\Domain\Orders\TableChangeService;
@@ -35,6 +36,7 @@ use Sokna\Local\Domain\Integrations\SubscriberAccountService;
 use Sokna\Local\Domain\Integrations\AccommodationTransport;
 use Sokna\Local\Domain\Integrations\AccommodationService;
 use Sokna\Local\Domain\Integrations\IntegrationWorkspaceService;
+use Sokna\Local\Domain\Integrations\IntegrationSettingsService;
 use Sokna\Local\Runtime\RuntimeTriggerService;
 use Sokna\Local\Runtime\RuntimeHealthClient;
 use Sokna\Local\Domain\Printing\PrintService;
@@ -47,6 +49,7 @@ use Sokna\Local\Domain\Operations\OperationsWorkspaceService;
 use Sokna\Local\Domain\Recovery\BusinessBackupService;
 use Sokna\Local\Domain\System\SupportBundleWriter;
 use Sokna\Local\Domain\System\SystemDiagnosticsService;
+use Sokna\Local\Domain\System\MaintenanceSupervisorClient;
 use Sokna\Local\Domain\System\WindowsServicesPairingService;
 use Sokna\Local\Relay\ExpenseDeferredAdapter;
 use Sokna\Local\Domain\Supply\SupplyAccessService;
@@ -57,15 +60,18 @@ use Sokna\Local\Relay\SubscriberPaymentDeferredAdapter;
 use Sokna\Local\Relay\DeferredDispatchService;
 use Sokna\Local\Relay\SettlementRealtimeAdapter;
 use Sokna\Local\Relay\GuestOrderRealtimeAdapter;
+use Sokna\Local\Relay\HallStaffRealtimeAdapter;
 use Sokna\Local\Relay\WaiterCallRealtimeAdapter;
 use Sokna\Local\Relay\RealtimeDispatchService;
 use Sokna\Local\Relay\StaffOrderRealtimeAdapter;
+use Sokna\Local\Relay\NotificationPushRealtimeAdapter;
 use Sokna\Local\Domain\Sellables\SellableRepository;
 use Sokna\Local\Domain\Sellables\CatalogAdminService;
 use Sokna\Local\Domain\Sellables\CategoryIconLibrary;
 use Sokna\Local\Domain\Sellables\DefaultContentSeeder;
 use Sokna\Local\Domain\Admin\AdminControlService;
 use Sokna\Local\Domain\Account\AccountService;
+use Sokna\Local\Domain\Account\UserUiPreferenceService;
 use Sokna\Local\Domain\GuestContent\ThemePackageManager;
 use Sokna\Local\Domain\GuestContent\GuestContentService;
 use Sokna\Local\Domain\Marketing\MarketingService;
@@ -95,20 +101,28 @@ use Sokna\Local\Domain\Update\LocalUpdateService;
 use Sokna\Local\Domain\Update\LocalUpdateUploadService;
 use Sokna\Local\Domain\Update\ComponentUpdateCenterService;
 use Sokna\Local\Domain\Recovery\RecoveryWorkspaceService;
+use Sokna\Local\Domain\PublicEdge\RemoteCredentialService;
 use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
 use Sokna\Local\Domain\PublicEdge\PublicProjectionBuilder;
 use Sokna\Local\Domain\PublicEdge\PublicReenrollmentService;
+use Sokna\Local\Domain\PublicEdge\PublicOriginRebindService;
 use Sokna\Local\Domain\PublicEdge\PublicEdgePublisherService;
+use Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService;
 use Sokna\Local\Domain\PublicEdge\PublicEdgeRelayService;
+use Sokna\Local\Domain\LanStaff\LanStaffRealtimeReceiptService;
+use Sokna\Local\Domain\LanStaff\LanStaffGatewayService;
 final class Bootstrap
 {
     private ?PDO $database = null;
     private ?IdentityRepository $identityRepository = null;
     private ?Capabilities $capabilities = null;
     private ?Auth $auth = null;
+    private ?LoginAccessService $loginAccess = null;
+    private ?RemoteCredentialService $remoteCredentials = null;
     private ?Migrations $migrations = null;
     private ?AdminControlService $adminControls = null;
     private ?AccountService $accountService = null;
+    private ?UserUiPreferenceService $uiPreferenceService = null;
     private ?PersonnelRepository $personnel = null;
     private ?StaffBenefitRepository $staffBenefits = null;
     private ?StaffBenefitCalculator $staffBenefitCalculator = null;
@@ -126,12 +140,14 @@ final class Bootstrap
     private ?CatalogAdminService $catalogAdmin = null;
     private ?CategoryIconLibrary $categoryIcons = null;
     private ?DefaultContentSeeder $defaultContentSeeder = null;
+    private ?TimeAuthority $timeAuthority = null;
     private ?BusinessClock $businessClock = null;
     private ?OrderCatalogService $orderCatalog = null;
     private ?OrderCommitService $orders = null;
     private ?StaffQuickOrderService $staffQuickOrders = null;
     private ?TableDraftService $tableDrafts = null;
     private ?OrderStaffActionService $orderStaffActions = null;
+    private ?OrderAcceptanceService $orderAcceptance = null;
     private ?WaiterCallStaffService $waiterCallStaff = null;
     private ?OrderWorkspaceService $orderWorkspace = null;
     private ?TableChangeService $tableChanges = null;
@@ -147,6 +163,7 @@ final class Bootstrap
     private ?FinancialPeriodIdentityService $financialPeriodIdentity = null;
     private ?FinancialPeriodService $financialPeriods = null;
     private ?FinanceWorkspaceService $financeWorkspace = null;
+    private ?SnapshotGuard $snapshotGuard = null;
     private ?SettlementService $settlements = null;
     private ?FinancialPeriodCloseService $financialPeriodClose = null;
     private ?SubscriberService $subscribers = null;
@@ -154,6 +171,7 @@ final class Bootstrap
     private ?AccommodationTransport $accommodationTransport = null;
     private ?AccommodationService $accommodation = null;
     private ?IntegrationWorkspaceService $integrationWorkspace = null;
+    private ?IntegrationSettingsService $integrationSettings = null;
     private ?RuntimeTriggerService $runtimeTriggers = null;
     private ?RuntimeHealthClient $runtimeHealthClient = null;
     private ?PrintService $printing = null;
@@ -166,6 +184,7 @@ final class Bootstrap
     private ?BusinessBackupService $businessBackup = null;
     private ?SupportBundleWriter $supportBundles = null;
     private ?SystemDiagnosticsService $systemDiagnostics = null;
+    private ?MaintenanceSupervisorClient $maintenanceSupervisor = null;
     private ?WindowsServicesPairingService $windowsServicesPairing = null;
     private ?LocalUpdateService $localUpdates = null;
     private ?LocalUpdateUploadService $localUpdateUploads = null;
@@ -181,6 +200,8 @@ final class Bootstrap
     private ?PublicEdgePublisherService $publicEdgePublisher = null;
     private ?PublicEdgeRelayService $publicEdgeRelay = null;
     private ?PublicReenrollmentService $publicReenrollmentService = null;
+    private ?PublicOriginRebindService $publicOriginRebindService = null;
+    private ?PublicAuthorityStateService $publicAuthorityStateService = null;
     private ?ExpenseDeferredAdapter $expenseDeferred = null;
     private ?SupplyAccessService $supplyAccess = null;
     private ?SupplyService $supply = null;
@@ -195,6 +216,10 @@ final class Bootstrap
     private ?WaiterCallRealtimeAdapter $waiterCallRealtime = null;
     private ?RealtimeDispatchService $realtimeDispatch = null;
     private ?StaffOrderRealtimeAdapter $staffOrderRealtime = null;
+    private ?HallStaffRealtimeAdapter $hallStaffRealtime = null;
+    private ?NotificationPushRealtimeAdapter $notificationPushRealtime = null;
+    private ?LanStaffRealtimeReceiptService $lanStaffRealtimeReceipts = null;
+    private ?LanStaffGatewayService $lanStaffGateway = null;
 
     private function __construct(
         private readonly Config $config,
@@ -205,7 +230,7 @@ final class Bootstrap
     public static function fromArray(array $values): self
     {
         $config = Config::fromArray($values);
-        $timezone = $config->string('app.timezone', 'Asia/Tehran');
+        $timezone = \Sokna\Shared\IranTime::ZONE;
         new DateTimeZone($timezone);
         date_default_timezone_set($timezone);
 
@@ -220,6 +245,11 @@ final class Bootstrap
     public function observability(): Observability
     {
         return $this->observability;
+    }
+
+    public function snapshotGuard(): SnapshotGuard
+    {
+        return $this->snapshotGuard ??= new SnapshotGuard($this->observability);
     }
 
     public function database(): PDO
@@ -237,10 +267,21 @@ final class Bootstrap
         return $this->capabilities ??= new Capabilities($this->identityRepository());
     }
 
+    public function loginAccess(): LoginAccessService
+    {
+        return $this->loginAccess ??= new LoginAccessService($this->database());
+    }
+
+
+    public function remoteCredentials(): RemoteCredentialService
+    {
+        return $this->remoteCredentials ??= new RemoteCredentialService($this->database());
+    }
+
     public function auth(): Auth
     {
         $lifetime = max(300, (int)$this->config->get('app.session_lifetime', Session::DEFAULT_LIFETIME));
-        return $this->auth ??= new Auth($this->identityRepository(), $this->capabilities(), $lifetime);
+        return $this->auth ??= new Auth($this->identityRepository(), $this->capabilities(), $lifetime, $this->loginAccess(), $this->remoteCredentials());
     }
 
     public function migrations(): Migrations
@@ -251,12 +292,17 @@ final class Bootstrap
 
     public function adminControls(): AdminControlService
     {
-        return $this->adminControls ??= new AdminControlService($this->database(), $this->identityRepository());
+        return $this->adminControls ??= new AdminControlService($this->database(), $this->identityRepository(), $this->snapshotGuard(), $this->remoteCredentials());
+    }
+
+    public function uiPreferences(): UserUiPreferenceService
+    {
+        return $this->uiPreferenceService ??= new UserUiPreferenceService($this->database());
     }
 
     public function account(): AccountService
     {
-        return $this->accountService ??= new AccountService($this->database());
+        return $this->accountService ??= new AccountService($this->database(), $this->remoteCredentials());
     }
 
     public function personnel(): PersonnelRepository
@@ -345,7 +391,7 @@ final class Bootstrap
             new InventorySearchProvider($this->database(), $this->auth()),
             new SubscriberSearchProvider($this->database(), $this->auth()),
             new AdminSearchProvider($this->database()),
-        ]);
+        ],$this->snapshotGuard());
     }
 
     public function sellables(): SellableRepository
@@ -369,9 +415,14 @@ final class Bootstrap
         return $this->catalogAdmin ??= new CatalogAdminService($this->database(), $this->identityRepository(), $this->categoryIcons());
     }
 
+    public function time(): TimeAuthority
+    {
+        return $this->timeAuthority ??= new TimeAuthority(\Sokna\Shared\IranTime::ZONE);
+    }
+
     public function businessClock(): BusinessClock
     {
-        return $this->businessClock ??= new BusinessClock($this->database(), $this->config->string('app.timezone', 'Asia/Tehran'));
+        return $this->businessClock ??= new BusinessClock($this->database(), $this->time()->timezone());
     }
 
     public function orderCatalog(): OrderCatalogService
@@ -403,8 +454,13 @@ final class Bootstrap
     public function orderStaffActions(): OrderStaffActionService
     {
         return $this->orderStaffActions ??= new OrderStaffActionService(
-            $this->database(),$this->identityRepository(),$this->capabilities(),$this->inventoryOrders(),$this->printing()
+            $this->database(),$this->identityRepository(),$this->capabilities(),$this->inventoryOrders(),$this->printing(),$this->preparation()
         );
+    }
+
+    public function orderAcceptance(): OrderAcceptanceService
+    {
+        return $this->orderAcceptance ??= new OrderAcceptanceService($this->database(),$this->identityRepository(),$this->capabilities());
     }
 
     public function waiterCallStaff(): WaiterCallStaffService
@@ -483,13 +539,13 @@ final class Bootstrap
 
     public function financeWorkspace(): FinanceWorkspaceService
     {
-        return $this->financeWorkspace ??= new FinanceWorkspaceService($this->database());
+        return $this->financeWorkspace ??= new FinanceWorkspaceService($this->database(),$this->snapshotGuard());
     }
 
     public function settlements(): SettlementService
     {
         return $this->settlements ??= new SettlementService(
-            $this->database(), $this->identityRepository(), $this->capabilities(), $this->businessClock(), $this->financialPeriods(), $this->tax(), $this->subscribers(), $this->printing()
+            $this->database(), $this->identityRepository(), $this->capabilities(), $this->businessClock(), $this->time(), $this->financialPeriods(), $this->tax(), $this->subscribers(), $this->printing()
         );
     }
 
@@ -523,6 +579,11 @@ final class Bootstrap
         return $this->integrationWorkspace ??= new IntegrationWorkspaceService($this->database(),$this->config);
     }
 
+    public function integrationSettings(): IntegrationSettingsService
+    {
+        return $this->integrationSettings ??= new IntegrationSettingsService($this->config,dirname(__DIR__,3).'/config.php',$this->publicEdgeSyncClient());
+    }
+
     public function printing(): PrintService
     {
         return $this->printing ??= new PrintService($this->database(), $this->identityRepository(), $this->printTemplates());
@@ -546,12 +607,126 @@ final class Bootstrap
     public function runtimeTriggers(): RuntimeTriggerService
     {
         return $this->runtimeTriggers ??= new RuntimeTriggerService($this->database(), [
-            'inventory.order_events'=>fn():array=>$this->inventoryOrders()->processPending(30),
-            'maintenance.health'=>fn():array=>['ok'=>true,'checked_at'=>date(DATE_ATOM)],
-            'public.projection_sync'=>fn():array=>$this->publicEdgePublisher()->syncAll(),
-            'public.relay_sync'=>fn():array=>$this->publicEdgeRelay()->sync(),
-            'notifications.outbox'=>fn():array=>$this->notifications()->processPending(100),
-        ]);
+            // Compatibility fallback for installed Runtime services that loaded an older
+            // trigger catalog before Local Web was upgraded. `inventory.order_events` is the
+            // oldest always-present machine trigger, so opportunistically drain Public relay
+            // here as well. Current Runtime 1.0.3 exposes the dedicated effective one-second public.relay_sync
+            // lane in Runtime Health. When that lane is active this legacy fallback is skipped;
+            // older runtimes without that proof retain the compatibility drain.
+            'inventory.order_events'=>function():array{
+                $inventory=$this->inventoryOrders()->processPending(30);
+                $public=['attempted'=>false,'success'=>true,'heartbeat'=>null,'relay'=>null,'projection_events'=>null];
+                try{
+                    if($this->publicEdgeSyncClient()->configured()){
+                        $runtimeProbe=$this->runtimeHealthClient()->probe();
+                        $runtimeHealth=is_array($runtimeProbe['health']??null)?$runtimeProbe['health']:[];
+                        $relayTrigger=is_array(($runtimeHealth['triggers']??[])['public.relay_sync']??null)?$runtimeHealth['triggers']['public.relay_sync']:[];
+                        $dedicatedRelay=($runtimeProbe['status']??'')==='ok'&&(int)($relayTrigger['effective_interval_seconds']??0)===1;
+                        if($dedicatedRelay){
+                            // The fast realtime circuit can fail while the Public heartbeat
+                            // endpoint remains healthy. Always keep this 15-second fallback
+                            // independent from Public relay/projection backoff.
+                            $public['attempted']=true;
+                            $public['heartbeat']=$this->publicEdgePublisher()->syncHeartbeatIfDue(15,2);
+                            $public['success']=($public['heartbeat']['success']??false)===true;
+                            if(!$public['success'])$public['error_code']='independent_heartbeat_failed';
+                            $public['skipped_reason']='dedicated_relay_only_heartbeat_independent';
+                        }else{
+                            $public['attempted']=true;
+                            $public['heartbeat']=$this->publicEdgePublisher()->syncHeartbeat();
+                            $public['relay']=$this->publicEdgeRelay()->sync();
+                            $public['projection_events']=$this->publicEdgePublisher()->syncProjectionEvents();
+                        }
+                    }
+                }catch(\Throwable $e){
+                    $public['success']=false;
+                    $public['error_code']=$e instanceof \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException?$e->errorCode:'public_relay_compat_failed';
+                    $public['exception_class']=get_class($e);
+                    $public['exception_fingerprint']=substr(hash('sha256',get_class($e).'|'.$e->getMessage()),0,20);
+                    $this->observability()->logEvent('warning','public.relay_compat_failed',[
+                        'trigger'=>'inventory.order_events','error_code'=>$public['error_code'],
+                        'exception_class'=>$public['exception_class'],'exception_fingerprint'=>$public['exception_fingerprint'],
+                    ]);
+                }
+                return ['inventory'=>$inventory,'public_compat'=>$public];
+            },
+            'maintenance.health'=>function():array{
+                $receipts=$this->runtimeTriggers()->recoverAbandonedAccepted();
+                return $this->systemDiagnostics()->maintain()+['runtime_receipts'=>$receipts];
+            },
+            'public.live_projection_sync'=>function(array $runtime=[]):array{
+                $deadline=(int)($runtime['deadline_epoch_ms']??0);
+                $publisher=$this->publicEdgePublisher();$permit=$publisher->transportLanePermit('live_projection');
+                if(($permit['active']??false)===true)return ['success'=>false,'skipped'=>true,'error_code'=>'live_projection_circuit_open','reason'=>'circuit_open','breaker'=>$permit];
+                try{
+                    $projection=$publisher->syncLiveProjection($deadline>0?$deadline:null);
+                    if(($projection['transport_unreachable']??false)===true){
+                        $failure=(array)($projection['transport_failure']??[]);
+                        throw new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException((string)($failure['error_code']??'public_unreachable'),'ارسال وضعیت زنده کامل نشد.',(int)($failure['http_status']??503),(string)($failure['detail_code']??'transport_failure'),(string)($failure['failure_class']??'transport'),(int)($failure['retry_after_seconds']??0));
+                    }
+                    $publisher->clearTransportLaneFailure('live_projection');
+                    return ['success'=>($projection['success']??false)===true,'projection'=>$projection];
+                }catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){
+                    $publisher->recordTransportLaneFailure('live_projection',$e);
+                    return ['success'=>false,'error_code'=>$e->errorCode,'detail_code'=>$e->detailCode,'failure_class'=>$e->failureClass];
+                }
+            },
+            'public.projection_sync'=>function(array $runtime=[]):array{
+                $deadline=(int)($runtime['deadline_epoch_ms']??0);
+                $hasBudget=static fn(int $reserve=75):bool=>$deadline<=0||($deadline-(int)floor(microtime(true)*1000))>$reserve;
+                // H289: downstream Public outages are business-transport state, not Runtime
+                // scheduler failures. Each transport lane has an independent circuit breaker.
+                $out=['success'=>true,'control'=>null,'deferred'=>null,'projection'=>null];
+
+                $controlPermit=$this->publicEdgePublisher()->transportLanePermit('control');
+                if(($controlPermit['active']??false)===true){$out['control']=['success'=>true,'skipped'=>true,'reason'=>'circuit_open','breaker'=>$controlPermit];}
+                else{
+                    try{$out['control']=$this->publicEdgePublisher()->syncAutomaticProjection(3,$deadline>0?$deadline:null);$this->publicEdgePublisher()->clearTransportLaneFailure('control');}
+                    catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){$this->publicEdgePublisher()->recordTransportLaneFailure('control',$e);$out['control']=['success'=>false,'error_code'=>$e->errorCode,'detail_code'=>$e->detailCode,'failure_class'=>$e->failureClass,'retry_after_seconds'=>$e->retryAfterSeconds];}
+                }
+                if(!$hasBudget())return array_replace($out,['success'=>false,'deadline_exhausted'=>true]);
+
+                $deferredPermit=$this->publicEdgePublisher()->transportLanePermit('deferred');
+                if(($deferredPermit['active']??false)===true){$out['deferred']=['success'=>true,'skipped'=>true,'reason'=>'circuit_open','breaker'=>$deferredPermit];}
+                else{
+                    try{$out['deferred']=$this->publicEdgeRelay()->syncDeferredOnly(10,50,3,$deadline>0?$deadline:null);$this->publicEdgePublisher()->clearTransportLaneFailure('deferred');}
+                    catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){$this->publicEdgePublisher()->recordTransportLaneFailure('deferred',$e);$out['deferred']=['success'=>false,'error_code'=>$e->errorCode,'detail_code'=>$e->detailCode,'failure_class'=>$e->failureClass,'retry_after_seconds'=>$e->retryAfterSeconds];}
+                }
+                if(!$hasBudget())return array_replace($out,['success'=>false,'deadline_exhausted'=>true]);
+
+                $projectionPermit=$this->publicEdgePublisher()->transportLanePermit('projection');
+                if(($projectionPermit['active']??false)===true){$out['projection']=['success'=>true,'skipped'=>true,'reason'=>'circuit_open','breaker'=>$projectionPermit];}
+                else{
+                    try{
+                        $out['projection_safety']=$this->publicEdgePublisher()->seedProjectionSafetyInvalidations(600,3);
+                        $allowed=$this->publicEdgePublisher()->liveProjectionWorkerFresh()
+                            ?array_values(array_diff($this->publicProjectionBuilder()->remoteModelKeys(),['operations','guest_operational','table_draft_context','preparation'])):null;
+                        $out['projection']=$this->publicEdgePublisher()->syncProjectionModelsV2(250,4,4,$deadline>0?$deadline:null,$allowed);
+                        if(($out['projection']['transport_unreachable']??false)===true){$tf=is_array($out['projection']['transport_failure']??null)?$out['projection']['transport_failure']:[];throw new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException((string)($tf['error_code']??'public_unreachable'),'ارتباط replication با Public Edge برقرار نشد.',(int)($tf['http_status']??503),(string)($tf['detail_code']??'transport_failure'),(string)($tf['failure_class']??'transport'),(int)($tf['retry_after_seconds']??0));}
+                        $this->publicEdgePublisher()->clearTransportLaneFailure('projection');
+                    }catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){$this->publicEdgePublisher()->recordTransportLaneFailure('projection',$e);$out['projection']=['success'=>false,'error_code'=>$e->errorCode,'detail_code'=>$e->detailCode,'failure_class'=>$e->failureClass,'retry_after_seconds'=>$e->retryAfterSeconds];}
+                }
+                foreach(['control','deferred','projection'] as $lane)if(is_array($out[$lane])&&($out[$lane]['success']??true)===false)$out['success']=false;
+                return $out;
+            },
+            'public.relay_sync'=>function(array $runtime=[]):array{
+                $deadline=(int)($runtime['deadline_epoch_ms']??0);
+                // H289 fast lane: one signed exchange request per tick. ACKs are durable and
+                // returned on the next exchange; projection/deferred work can never block it.
+                $permit=$this->publicEdgePublisher()->transportLanePermit('realtime');
+                if(($permit['active']??false)===true)return ['success'=>true,'skipped'=>true,'reason'=>'circuit_open','breaker'=>$permit];
+                try{
+                    $relay=$this->publicEdgeRelay()->syncRealtimeExchange(8,3,$deadline>0?$deadline:null);
+                    $this->publicEdgePublisher()->clearTransportLaneFailure('realtime');
+                    return ['success'=>true,'relay'=>$relay];
+                }catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){
+                    $this->publicEdgePublisher()->recordTransportLaneFailure('realtime',$e);
+                    // Expected WAN failure is contained here: Runtime scheduler stays healthy.
+                    return ['success'=>false,'error_code'=>$e->errorCode,'detail_code'=>$e->detailCode,'failure_class'=>$e->failureClass,'retry_after_seconds'=>$e->retryAfterSeconds,'contained'=>true];
+                }
+            },
+            'notifications.outbox'=>fn(array $runtime=[]):array=>$this->notifications()->processPending(100,(int)($runtime['deadline_epoch_ms']??0)>0?(int)$runtime['deadline_epoch_ms']:null),
+        ],$this->observability());
     }
 
     public function runtimeTriggerHttp(): RuntimeTriggerHttpAdapter
@@ -580,7 +755,7 @@ final class Bootstrap
 
     public function operationsWorkspace(): OperationsWorkspaceService
     {
-        return $this->operationsWorkspace ??= new OperationsWorkspaceService($this->database(),$this->supply(),$this->expenses());
+        return $this->operationsWorkspace ??= new OperationsWorkspaceService($this->database(),$this->supply(),$this->expenses(),$this->snapshotGuard(),$this->inventory());
     }
 
     public function businessBackup(): BusinessBackupService
@@ -588,7 +763,9 @@ final class Bootstrap
         return $this->businessBackup ??= new BusinessBackupService(
             $this->database(),
             $this->observability(),
-            $this->config->string('installation.id','')
+            $this->config->string('installation.id',''),
+            $this->publicAuthorityState(),
+            $this->publicEdgeSyncClient()
         );
     }
 
@@ -601,8 +778,13 @@ final class Bootstrap
     {
         return $this->systemDiagnostics ??= new SystemDiagnosticsService(
             $this->database(),$this->config,$this->observability,$this->migrations(),$this->printManagement(),$this->supportBundles(),
-            dirname(__DIR__,3),dirname(__DIR__,2),dirname(__DIR__,2).'/VERSION.txt',$this->publicEdgeSyncClient(),$this->runtimeHealthClient()
+            dirname(__DIR__,3),dirname(__DIR__,2),dirname(__DIR__,2).'/VERSION.txt',$this->publicEdgeSyncClient(),$this->runtimeHealthClient(),$this->time(),$this->businessClock(),$this->notifications(),$this->maintenanceSupervisor()
         );
+    }
+
+    public function maintenanceSupervisor(): MaintenanceSupervisorClient
+    {
+        return $this->maintenanceSupervisor ??= new MaintenanceSupervisorClient();
     }
 
     public function windowsServicesPairing(): WindowsServicesPairingService
@@ -611,9 +793,10 @@ final class Bootstrap
             $this->config,
             $this->config->requiredString('app.data_dir'),
             fn(string $name,array $actor): array => $this->printing()->createAgent($name,$actor),
-            function(int $agentId,int $actorId,string $reason): void { $this->printing()->retireAgent($agentId,$actorId,$reason); },
+            fn(int $agentId,int $actorId,string $reason): array => $this->printing()->retireAgent($agentId,$actorId,$reason),
             fn(int $agentId,array $actor): array => $this->printing()->prepareAgentTokenRotation($agentId,$actor),
             fn(int $agentId,string $token,int $actorId): array => $this->printing()->commitAgentTokenRotation($agentId,$token,$actorId),
+            fn(): array => $this->printing()->activeAgentSummaries(),
         );
     }
 
@@ -663,40 +846,50 @@ final class Bootstrap
 
     public function reporting(): ReportingService
     {
-        return $this->reporting ??= new ReportingService($this->database());
+        return $this->reporting ??= new ReportingService($this->database(),$this->time());
     }
 
     public function notifications(): NotificationService
     {
-        return $this->notifications ??= new NotificationService($this->database());
+        return $this->notifications ??= new NotificationService($this->database(),$this->config);
+    }
+
+    public function publicAuthorityState(): PublicAuthorityStateService
+    {
+        return $this->publicAuthorityStateService ??= new PublicAuthorityStateService($this->database(),$this->config->string('installation.id',''));
     }
 
     public function publicEdgeSyncClient(): PublicEdgeSyncClient
     {
-        return $this->publicEdgeSyncClient ??= new PublicEdgeSyncClient($this->config);
+        return $this->publicEdgeSyncClient ??= new PublicEdgeSyncClient($this->config, null, $this->observability(),$this->publicAuthorityState());
     }
 
     public function publicProjectionBuilder(): PublicProjectionBuilder
     {
-        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent(),$this->marketing(),$this->reporting(),$this->notifications(),$this->categoryIcons(),$this->orderCatalog());
+        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent(),$this->marketing(),$this->reporting(),$this->notifications(),$this->categoryIcons(),$this->orderCatalog(),$this->preparation(),$this->orderWorkspace());
     }
 
     public function publicEdgePublisher(): PublicEdgePublisherService
     {
         $v=@file_get_contents(dirname(__DIR__,2).'/VERSION.txt');
-        return $this->publicEdgePublisher ??= new PublicEdgePublisherService($this->database(),$this->publicEdgeSyncClient(),$this->publicProjectionBuilder(),$this->observability(),is_string($v)&&trim($v)!==''?trim($v):'unknown');
+        return $this->publicEdgePublisher ??= new PublicEdgePublisherService($this->database(),$this->publicEdgeSyncClient(),$this->publicProjectionBuilder(),$this->observability(),$this->publicAuthorityState(),$this->config,is_string($v)&&trim($v)!==''?trim($v):'unknown');
     }
 
     public function publicEdgeRelay(): PublicEdgeRelayService
     {
         return $this->publicEdgeRelay ??= new PublicEdgeRelayService(
-            $this->database(),$this->publicEdgeSyncClient(),$this->realtimeDispatch(),$this->deferredDispatch(),$this->observability()
+            $this->database(),$this->publicEdgeSyncClient(),$this->realtimeDispatch(),$this->deferredDispatch(),$this->observability(),$this->lanStaffRealtimeReceipts(),$this->publicEdgePublisher()
         );
     }
 
     public function publicReenrollment(): PublicReenrollmentService
     {
-        return $this->publicReenrollmentService ??= new PublicReenrollmentService($this->config,$this->publicEdgeSyncClient(),dirname(__DIR__,3).'/config.php');
+        return $this->publicReenrollmentService ??= new PublicReenrollmentService($this->config,$this->publicEdgeSyncClient(),$this->publicAuthorityState(),dirname(__DIR__,3).'/config.php');
+    }
+
+    public function publicOriginRebind(): PublicOriginRebindService
+    {
+        return $this->publicOriginRebindService ??= new PublicOriginRebindService($this->config,$this->publicEdgeSyncClient(),$this->publicAuthorityState(),dirname(__DIR__,3).'/config.php',$this->notifications());
     }
 
     public function expenseDeferred(): ExpenseDeferredAdapter
@@ -736,10 +929,15 @@ final class Bootstrap
         );
     }
 
+    public function dailyDeferred(): \Sokna\Local\Relay\DailyOperationsDeferredAdapter
+    {
+        return new \Sokna\Local\Relay\DailyOperationsDeferredAdapter($this->database(),$this->operationsCommands(),new \Sokna\Local\Relay\DeferredReceiptService($this->database()),$this->inventory());
+    }
+
     public function deferredDispatch(): DeferredDispatchService
     {
         return $this->deferredDispatch ??= new DeferredDispatchService(
-            $this->supplyDeferred(), $this->inventoryDeferred(), $this->expenseDeferred(), $this->subscriberPaymentDeferred()
+            $this->supplyDeferred(), $this->inventoryDeferred(), $this->expenseDeferred(), $this->subscriberPaymentDeferred(), new \Sokna\Local\Relay\DailyOperationsDeferredAdapter($this->database(),$this->operationsCommands(),new \Sokna\Local\Relay\DeferredReceiptService($this->database()),$this->inventory())
         );
     }
 
@@ -774,13 +972,43 @@ final class Bootstrap
         return $this->staffOrderRealtime ??= new StaffOrderRealtimeAdapter($this->identityRepository(), $this->orderStaffActions());
     }
 
+    public function hallStaffRealtime(): HallStaffRealtimeAdapter
+    {
+        return $this->hallStaffRealtime ??= new HallStaffRealtimeAdapter(
+            $this->identityRepository(), $this->waiterCallStaff(), $this->tableChanges(), $this->orderStaffActions()
+        );
+    }
+
+    public function notificationPushRealtime(): NotificationPushRealtimeAdapter
+    {
+        return $this->notificationPushRealtime ??= new NotificationPushRealtimeAdapter($this->identityRepository(),$this->capabilities(),$this->notifications());
+    }
+
+    public function operationsCommands(): \Sokna\Local\Relay\OperationsRealtimeAdapter
+    {
+        return new \Sokna\Local\Relay\OperationsRealtimeAdapter($this->database(),$this->inventory(),$this->inventoryCounts(),$this->supply(),$this->operationsWorkspace(),$this->expenses());
+    }
+
     public function realtimeDispatch(): RealtimeDispatchService
     {
         return $this->realtimeDispatch ??= new RealtimeDispatchService(
             $this->guestOrderRealtime(), $this->waiterCallRealtime(), $this->settlementRealtime(),
-            $this->preparationRealtime(), $this->tableDraftRealtime(), $this->staffOrderRealtime()
+            $this->preparationRealtime(), $this->tableDraftRealtime(), $this->staffOrderRealtime(),
+            $this->hallStaffRealtime(), $this->notificationPushRealtime(), $this->operationsCommands()
         );
     }
+    public function lanStaffRealtimeReceipts(): LanStaffRealtimeReceiptService
+    {
+        return $this->lanStaffRealtimeReceipts ??= new LanStaffRealtimeReceiptService($this->database());
+    }
+
+    public function lanStaffGateway(): LanStaffGatewayService
+    {
+        return $this->lanStaffGateway ??= new LanStaffGatewayService(
+            $this->config,$this->database(),$this->publicProjectionBuilder(),$this->realtimeDispatch(),$this->deferredDispatch(),$this->lanStaffRealtimeReceipts()
+        );
+    }
+
     public function startSession(?string $cookiePath = null, ?bool $secure = null): void
     {
         Session::start($this->config, $this->observability, $cookiePath, $secure);

@@ -16,7 +16,8 @@ final class SettlementRealtimeAdapter
 
     public function dispatch(array $envelope): array
     {
-        if(trim((string)($envelope['kind']??''))!=='settlement.commit')
+        $kind=trim((string)($envelope['kind']??''));
+        if(!in_array($kind,['settlement.commit','settlement.review','settlement.discount_preview','settlement.discount','settlement.receipt_reprint','settlement.followup_detach','settlement.followup_destination'],true))
             throw new SettlementException('unsupported_kind','عملیات تسویه معتبر نیست.',422);
 
         $projection=trim((string)($envelope['actor_projection_id']??''));
@@ -30,8 +31,23 @@ final class SettlementRealtimeAdapter
             throw new SettlementException('invalid_request_id','شناسه درخواست تسویه معتبر نیست.',422);
 
         $payload=is_array($envelope['payload']??null)?$envelope['payload']:[];
+        if($kind==='settlement.review')return $this->settlements->review($payload,$actor);
+        if($kind==='settlement.discount_preview')return $this->settlements->previewDiscount((int)($payload['session_id']??0),array_key_exists('discount_type',$payload)&&$payload['discount_type']!==null?(string)$payload['discount_type']:null,(int)($payload['discount_value']??0),$actor);
+        if($kind==='settlement.discount')return $this->settlements->setDiscount(
+            (int)($payload['session_id']??0),
+            array_key_exists('discount_type',$payload)&&$payload['discount_type']!==null?(string)$payload['discount_type']:null,
+            (int)($payload['discount_value']??0),
+            $actor
+        );
+        if($kind==='settlement.receipt_reprint')return $this->settlements->reprintReceipt(
+            (int)($payload['settlement_id']??0),$requestId,$actor
+        );
+        if($kind==='settlement.followup_detach')return $this->settlements->detachForFollowup($payload,$actor);
+        if($kind==='settlement.followup_destination')return $this->settlements->setFollowupDestination(
+            (int)($payload['session_id']??0),(string)($payload['destination']??''),$actor
+        );
         // Relay request_id is the canonical idempotency owner for remote settlement.
         $payload['request_id']=$requestId;
-        return $this->settlements->settle($payload,$actor);
+        return $this->settlements->settle($payload,$actor,true);
     }
 }

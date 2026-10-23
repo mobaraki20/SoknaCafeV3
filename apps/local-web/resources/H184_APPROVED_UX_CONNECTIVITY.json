@@ -1,0 +1,20 @@
+{
+  "version": "3.0.0-g6.2-workspace.184-approved-ux-connectivity",
+  "baseline": "3.0.0-g6.2-workspace.183-h176-baseline-relay-free-table",
+  "public_baseline": "3.0.0-g3.6-workspace.35ah-h176-baseline-relay-free-table",
+  "public_target": "3.0.0-g3.6-workspace.35ai-dev26-guest-connectivity",
+  "scope": [
+    "A01-A07 global shell/modal decisions",
+    "A08-A09 online acceptance hierarchy",
+    "Hall responsive table-card rules and 60-minute long-presence badge",
+    "Progressive account-line edit modal",
+    "Adaptive order destination cards and fixed order actions",
+    "Safe dirty-exit actions",
+    "Square table-move destination grid",
+    "Independent Staff/Guest meal-group visibility",
+    "Release table for financial follow-up with auditable settlement-method change",
+    "Local-Public installed connectivity probe",
+    "Exact Public version display including multi-letter workspace suffixes"
+  ],
+  "real_host_gate": "Windows Local <-> LiteSpeed Public round-trip/retry/recovery must be verified after installation"
+}

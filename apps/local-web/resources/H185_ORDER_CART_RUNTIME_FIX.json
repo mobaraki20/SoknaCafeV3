@@ -1,0 +1,18 @@
+{
+  "version": "3.0.0-g6.2-workspace.185-order-cart-runtime-fix",
+  "baseline": "3.0.0-g6.2-workspace.184-approved-ux-connectivity",
+  "public_baseline": "3.0.0-g3.6-workspace.35ai-dev26-guest-connectivity",
+  "public_target": "3.0.0-g3.6-workspace.35aj-order-cart-runtime-fix",
+  "scope": [
+    "Order line delete action is always visible in the row summary",
+    "Order cart footer is pinned to the bottom of the cart; only item lines scroll as count grows",
+    "Explicit temporary save returns to Hall after successful save",
+    "Shared Staff order UI is synchronized to Public Staff surface"
+  ],
+  "acceptance": [
+    "No click/expand required to reveal delete",
+    "Footer y-position is invariant when order lines grow on desktop shell",
+    "Cart lines become the scroll owner",
+    "Temporary-save success calls Hall exit with draft_saved reason"
+  ]
+}

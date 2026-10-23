@@ -17,25 +17,29 @@ final class SupportBundleWriter
 
     public function create(array $snapshot): array
     {
-        $dir=$this->bundleDir();
+        $started=microtime(true);$dir=$this->bundleDir();
         if(!is_dir($dir)&&!@mkdir($dir,0700,true)&&!is_dir($dir))throw new RuntimeException('Support bundle directory is not writable.');
         $id='support-'.gmdate('Ymd-His').'-'.bin2hex(random_bytes(4));
         $path=$dir.DIRECTORY_SEPARATOR.$id.'.json.gz';
         $tmp=$path.'.tmp-'.bin2hex(random_bytes(3));
         $bundleSnapshot=$snapshot;unset($bundleSnapshot['recent_logs']);
+        $logStarted=microtime(true);$recentLogs=$this->recentLogs(self::MAX_LOG_LINES);$logElapsed=(int)round((microtime(true)-$logStarted)*1000);
         $payload=[
             'format'=>self::FORMAT,
             'generated_at'=>gmdate('c'),
             'notice'=>'Operational diagnostics only. Secrets and credentials are intentionally excluded/redacted.',
             'snapshot'=>$this->observability->redact($bundleSnapshot),
-            'recent_logs'=>$this->recentLogs(self::MAX_LOG_LINES),
+            'known_state'=>$this->knownState(),
+            'recent_logs'=>$recentLogs,
+            'bundle_profile'=>['log_tail_elapsed_ms'=>$logElapsed,'log_rows'=>count($recentLogs)],
         ];
         $json=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);
         $gz=gzencode($json,6,ZLIB_ENCODING_GZIP);if($gz===false)throw new RuntimeException('Support bundle compression failed.');
         if(@file_put_contents($tmp,$gz,LOCK_EX)===false||!@rename($tmp,$path)){@unlink($tmp);throw new RuntimeException('Support bundle could not be written.');}
-        @chmod($path,0600);$size=(int)(filesize($path)?:0);$sha=hash_file('sha256',$path);if(!is_string($sha)||$sha==='')throw new RuntimeException('Support bundle hash failed.');$this->prune($path);
-        $this->observability->logEvent('info','system.support_bundle_created',['bundle_id'=>$id,'size_bytes'=>$size]);
-        return ['id'=>$id,'file_name'=>basename($path),'size_bytes'=>$size,'sha256'=>$sha,'download'=>'/system/download.php?id='.rawurlencode($id)];
+        @chmod($path,0600);clearstatcache(true,$path);$size=(int)(@filesize($path)?:0);if($size<=0){@unlink($path);throw new RuntimeException('Support bundle file is empty.');}$sha=hash_file('sha256',$path);if(!is_string($sha)||$sha==='')throw new RuntimeException('Support bundle hash failed.');$this->prune($path);
+        $elapsed=(int)round((microtime(true)-$started)*1000);
+        $this->observability->logEvent('info','system.support_bundle_created',['bundle_id'=>$id,'size_bytes'=>$size,'generation_ms'=>$elapsed,'log_tail_ms'=>$logElapsed]);
+        return ['id'=>$id,'file_name'=>basename($path),'size_bytes'=>$size,'sha256'=>$sha,'generation_ms'=>$elapsed,'download'=>'/system/download.php?id='.rawurlencode($id)];
     }
 
     public function resolve(string $id): string
@@ -52,20 +56,52 @@ final class SupportBundleWriter
         $limit=max(1,min(self::MAX_LOG_LINES,$limit));$files=glob($this->observability->logDir().DIRECTORY_SEPARATOR.'sokna-*.jsonl')?:[];
         rsort($files,SORT_STRING);$out=[];
         foreach(array_slice($files,0,3) as $file){
-            $fh=@fopen($file,'rb');if($fh===false)continue;$ring=[];
-            try{
-                while(($line=fgets($fh,16385))!==false){
-                    if(!str_ends_with($line,"\n")&&!feof($fh)){while(($rest=fgets($fh,16385))!==false&&!str_ends_with($rest,"\n")){}continue;}
-                    if(strlen($line)>16384)continue;
-                    try{$row=json_decode(trim($line),true,32,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
-                    if(!is_array($row))continue;$ring[]=$this->observability->redact($row);if(count($ring)>$limit)array_shift($ring);
-                }
-            }finally{fclose($fh);}
-            for($i=count($ring)-1;$i>=0&&count($out)<$limit;$i--){$row=$ring[$i];if(is_array($row)){$row['log_file']=basename($file);$out[]=$row;}}
-            if(count($out)>=$limit)break;
+            $need=$limit-count($out);if($need<=0)break;
+            foreach($this->tailJsonRows($file,$need) as $row){$row['log_file']=basename($file);$out[]=$row;if(count($out)>=$limit)break 2;}
         }
         return $out;
     }
+
+    /** Read newest valid JSONL records without scanning the complete log file. */
+    private function tailJsonRows(string $file,int $limit): array
+    {
+        $limit=max(1,min(self::MAX_LOG_LINES,$limit));$fh=@fopen($file,'rb');if($fh===false)return [];
+        $rows=[];$buffer='';
+        try{
+            if(fseek($fh,0,SEEK_END)!==0)return [];$pos=ftell($fh);if(!is_int($pos)||$pos<0)return [];
+            while($pos>0&&count($rows)<$limit){
+                $read=min(65536,$pos);$pos-=$read;if(fseek($fh,$pos,SEEK_SET)!==0)break;$chunk=fread($fh,$read);if(!is_string($chunk)||$chunk==='')break;
+                $buffer=$chunk.$buffer;$parts=explode("\n",$buffer);$buffer=(string)array_shift($parts);
+                for($i=count($parts)-1;$i>=0&&count($rows)<$limit;$i--){
+                    $line=trim((string)$parts[$i]);if($line===''||strlen($line)>16384)continue;
+                    try{$row=json_decode($line,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+                    if(is_array($row))$rows[]=$this->observability->redact($row);
+                }
+            }
+            if($pos===0&&count($rows)<$limit){$line=trim($buffer);if($line!==''&&strlen($line)<=16384){try{$row=json_decode($line,true,32,JSON_THROW_ON_ERROR);if(is_array($row))$rows[]=$this->observability->redact($row);}catch(Throwable){}}}
+        }finally{fclose($fh);}
+        return $rows;
+    }
+
+
+    private function knownState(): array
+    {
+        $out=[];$errors=[];
+        $targets=[
+            'local_update_state'=>$this->observability->dataRoot().DIRECTORY_SEPARATOR.'lifecycle'.DIRECTORY_SEPARATOR.'local'.DIRECTORY_SEPARATOR.'state.json',
+            'local_managed_files'=>$this->observability->dataRoot().DIRECTORY_SEPARATOR.'lifecycle'.DIRECTORY_SEPARATOR.'local'.DIRECTORY_SEPARATOR.'managed-files.json',
+        ];
+        foreach($targets as $key=>$path){
+            try{
+                $raw=@file_get_contents($path);if(!is_string($raw)||trim($raw)==='')continue;
+                $decoded=json_decode($raw,true,64,JSON_THROW_ON_ERROR);
+                if(is_array($decoded))$out[$key]=$this->observability->redact($decoded);
+            }catch(Throwable $e){$errors[]=['key'=>$key,'class'=>get_class($e),'fingerprint'=>substr(hash('sha256',get_class($e).'|'.$e->getMessage()),0,20)];}
+        }
+        if($errors!==[])$out['_errors']=$errors;
+        return $out;
+    }
+
 
     private function bundleDir(): string{return $this->observability->dataRoot().DIRECTORY_SEPARATOR.'support-bundles';}
 

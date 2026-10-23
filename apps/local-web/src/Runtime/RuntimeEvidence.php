@@ -14,6 +14,23 @@ final class RuntimeEvidence
 {
     public const FRESH_SECONDS = 180;
     public const SCHEDULER_FRESH_SECONDS = 30;
+    public const EXECUTION_STALL_SECONDS = 120;
+
+    /** Indexed liveness evidence for the transport heartbeat; no all-history GROUP BY. */
+    public static function heartbeatSnapshot(PDO $pdo, ?int $nowEpoch=null): array
+    {
+        try{
+            $latest=$pdo->query('SELECT runtime_instance_id,accepted_at FROM runtime_trigger_receipts ORDER BY id DESC LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+            if(!is_array($latest))return self::fromRows([],$nowEpoch);
+            $id=(string)$latest['runtime_instance_id'];$row=['runtime_instance_id'=>$id,'last_seen'=>(string)$latest['accepted_at']];
+            foreach(['accepted'=>'last_pending_at','failed'=>'last_failed_at','completed'=>'last_completed_at'] as $state=>$key){
+                $q=$pdo->prepare('SELECT accepted_at FROM runtime_trigger_receipts WHERE runtime_instance_id=? AND state=? ORDER BY accepted_at DESC LIMIT 1');$q->execute([$id,$state]);$row[$key]=(string)($q->fetchColumn()?:'');
+            }
+            $q=$pdo->prepare("SELECT COUNT(*) FROM runtime_trigger_receipts WHERE runtime_instance_id=? AND state='failed' AND accepted_at>=DATE_SUB(CURRENT_TIMESTAMP(),INTERVAL 15 MINUTE)");$q->execute([$id]);$row['recent_failed_count']=(int)$q->fetchColumn();
+            $q=$pdo->prepare("SELECT COUNT(*) FROM runtime_trigger_receipts WHERE runtime_instance_id=? AND state='accepted'");$q->execute([$id]);$row['pending_count']=(int)$q->fetchColumn();
+            return self::fromRows([$row],$nowEpoch);
+        }catch(Throwable){return ['status'=>'unavailable','last_seen_at'=>'','age_seconds'=>null,'recent_failed_count'=>0,'unresolved_failure'=>true];}
+    }
 
     public static function snapshot(PDO $pdo, ?int $nowEpoch = null): array
     {
@@ -21,8 +38,10 @@ final class RuntimeEvidence
             $rows = $pdo->query(
                 "SELECT runtime_instance_id," .
                 "MAX(accepted_at) last_seen," .
-                "SUM(CASE WHEN state='failed' AND accepted_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 15 MINUTE) THEN 1 ELSE 0 END) recent_failed_count," .
+                "SUM(CASE WHEN state='failed' AND accepted_at>=DATE_SUB(CURRENT_TIMESTAMP(),INTERVAL 15 MINUTE) THEN 1 ELSE 0 END) recent_failed_count," .
+                "SUM(CASE WHEN state='accepted' THEN 1 ELSE 0 END) pending_count," .
                 "COUNT(*) receipt_count," .
+                "MAX(CASE WHEN state='accepted' THEN accepted_at ELSE NULL END) last_pending_at," .
                 "MAX(CASE WHEN state='failed' THEN accepted_at ELSE NULL END) last_failed_at," .
                 "MAX(CASE WHEN state='completed' THEN accepted_at ELSE NULL END) last_completed_at " .
                 "FROM runtime_trigger_receipts GROUP BY runtime_instance_id ORDER BY last_seen DESC LIMIT 10"
@@ -52,18 +71,26 @@ final class RuntimeEvidence
             $lastSeen = trim((string)($row['last_seen'] ?? ''));
             $lastFailed = trim((string)($row['last_failed_at'] ?? ''));
             $lastCompleted = trim((string)($row['last_completed_at'] ?? ''));
+            $lastPending = trim((string)($row['last_pending_at'] ?? ''));
             $age = self::age($lastSeen, $now);
+            $pendingAge = self::age($lastPending, $now);
+            $pendingCount = max(0, (int)($row['pending_count'] ?? 0));
             $failedEpoch = self::epoch($lastFailed);
             $completedEpoch = self::epoch($lastCompleted);
             $unresolved = $failedEpoch > 0 && ($completedEpoch <= 0 || $failedEpoch > $completedEpoch);
+            $executionState = $unresolved ? 'failed' : ($pendingCount > 0 ? (($pendingAge !== null && $pendingAge > self::EXECUTION_STALL_SECONDS) ? 'stalled' : 'running') : ($lastCompleted !== '' ? 'completed' : 'not_seen'));
             $instances[] = [
                 'runtime_instance_id' => trim((string)($row['runtime_instance_id'] ?? '')),
                 'last_seen' => $lastSeen,
                 'age_seconds' => $age,
                 'recent_failed_count' => max(0, (int)($row['recent_failed_count'] ?? 0)),
+                'pending_count' => $pendingCount,
                 'receipt_count' => max(0, (int)($row['receipt_count'] ?? 0)),
+                'last_pending_at' => $lastPending,
+                'pending_age_seconds' => $pendingAge,
                 'last_failed_at' => $lastFailed,
                 'last_completed_at' => $lastCompleted,
+                'execution_state' => $executionState,
                 'unresolved_failure' => $unresolved,
             ];
         }
@@ -73,7 +100,7 @@ final class RuntimeEvidence
             $status = 'not_seen';
         } elseif ($latest['age_seconds'] === null || $latest['age_seconds'] > self::FRESH_SECONDS) {
             $status = 'observed_stale';
-        } elseif ($latest['unresolved_failure']) {
+        } elseif ($latest['unresolved_failure'] || in_array((string)($latest['execution_state'] ?? ''), ['failed','stalled'], true)) {
             $status = 'degraded';
         } else {
             $status = 'observed_recently';
@@ -87,6 +114,11 @@ final class RuntimeEvidence
             'last_seen_at' => (string)($latest['last_seen'] ?? ''),
             'age_seconds' => $latest['age_seconds'] ?? null,
             'recent_failed_count' => (int)($latest['recent_failed_count'] ?? 0),
+            'pending_count' => (int)($latest['pending_count'] ?? 0),
+            'last_pending_at' => (string)($latest['last_pending_at'] ?? ''),
+            'pending_age_seconds' => $latest['pending_age_seconds'] ?? null,
+            'execution_state' => (string)($latest['execution_state'] ?? 'not_seen'),
+            'execution_stall_seconds' => self::EXECUTION_STALL_SECONDS,
             'unresolved_failure' => (bool)($latest['unresolved_failure'] ?? false),
             'last_failed_at' => (string)($latest['last_failed_at'] ?? ''),
             'last_completed_at' => (string)($latest['last_completed_at'] ?? ''),
@@ -146,6 +178,16 @@ final class RuntimeEvidence
                 'fresh' => $schedulerFresh,
                 'last_error_code' => (string)($scheduler['last_error_code'] ?? ''),
             ],
+            'execution' => [
+                'state' => (string)($receipt['execution_state'] ?? 'not_seen'),
+                'pending_count' => (int)($receipt['pending_count'] ?? 0),
+                'last_pending_at' => (string)($receipt['last_pending_at'] ?? ''),
+                'pending_age_seconds' => $receipt['pending_age_seconds'] ?? null,
+                'last_completed_at' => (string)($receipt['last_completed_at'] ?? ''),
+                'last_failed_at' => (string)($receipt['last_failed_at'] ?? ''),
+                'recent_failed_count' => (int)($receipt['recent_failed_count'] ?? 0),
+                'stall_seconds' => self::EXECUTION_STALL_SECONDS,
+            ],
             'supervised_components' => is_array($health['supervised_components'] ?? null) ? $health['supervised_components'] : [],
             'instance_match' => $instanceMatch,
             'scheduler_fresh_seconds' => self::SCHEDULER_FRESH_SECONDS,
@@ -168,7 +210,11 @@ final class RuntimeEvidence
     private static function epoch(string $value): int
     {
         if ($value === '') return 0;
-        $epoch = strtotime($value . (preg_match('/(?:Z|[+-]\d\d:?\d\d)$/', $value) ? '' : ' UTC'));
+        // runtime_trigger_receipts.accepted_at is DATETIME DEFAULT CURRENT_TIMESTAMP.
+        // Local Database::connect() sets the MariaDB session time_zone to PHP's
+        // app.timezone offset. Bare receipt timestamps are therefore LOCAL,
+        // unlike ISO-8601 UTC scheduler timestamps. Never append ' UTC' here.
+        $epoch = strtotime($value);
         return $epoch === false ? 0 : $epoch;
     }
 }

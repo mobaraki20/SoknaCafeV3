@@ -45,6 +45,18 @@ final class StaffQuickOrderService
 
     public function commitTx(array $data,array $user): array
     {
+        return $this->commitPreparedTx($data,$user,null);
+    }
+
+    /** @param list<array<string,mixed>> $snapshots */
+    public function commitDraftTx(array $data,array $user,array $snapshots): array
+    {
+        return $this->commitPreparedTx($data,$user,$snapshots);
+    }
+
+    /** @param null|list<array<string,mixed>> $trustedSnapshots */
+    private function commitPreparedTx(array $data,array $user,?array $trustedSnapshots): array
+    {
         if(!$this->pdo->inTransaction())throw new \LogicException('Staff Quick Order requires an open transaction.');
         $actor=$this->assertActor($user);
         $userId=(int)$actor['id'];
@@ -57,7 +69,7 @@ final class StaffQuickOrderService
         $table->execute([$tableId]);
         if(!$table->fetch(PDO::FETCH_ASSOC))throw new StaffQuickOrderException('invalid_table','میز فعال پیدا نشد.',404);
 
-        $sessionStmt=$this->pdo->prepare("SELECT * FROM table_sessions WHERE table_id=? AND status IN('active','pending') ORDER BY FIELD(status,'active','pending'),id DESC LIMIT 1 FOR UPDATE");
+        $sessionStmt=$this->pdo->prepare("SELECT * FROM table_sessions WHERE table_id=? AND status IN('active','pending') AND live_table_guard IS NOT NULL ORDER BY FIELD(status,'active','pending'),id DESC LIMIT 1 FOR UPDATE");
         $sessionStmt->execute([$tableId]);
         $session=$sessionStmt->fetch(PDO::FETCH_ASSOC)?:null;
         $currentSessionId=$session?(int)$session['id']:0;
@@ -95,7 +107,7 @@ final class StaffQuickOrderService
             throw new StaffQuickOrderException('pending_guest_order','سفارش مهمان منتظر بررسی است؛ ابتدا آن را تعیین تکلیف کنید.',409);
 
         try{
-            $order=$this->orders->commitTx([
+            $command=[
                 'source'=>'staff',
                 'actor_user_id'=>$userId,
                 'table_id'=>$tableId,
@@ -105,7 +117,8 @@ final class StaffQuickOrderService
                 'customer_note'=>(string)($data['note']??''),
                 'occurred_at'=>$data['occurred_at']??null,
                 'items'=>$data['items']??null,
-            ]);
+            ];
+            $order=$trustedSnapshots===null?$this->orders->commitTx($command):$this->orders->commitSnapshotsTx($command,$trustedSnapshots);
         }catch(OrderCommitException $e){
             throw new StaffQuickOrderException($e->errorCode,$e->getMessage(),$e->httpStatus,$e->details);
         }

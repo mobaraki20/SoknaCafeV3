@@ -8,6 +8,7 @@ try{
     if(($_SERVER['REQUEST_METHOD']??'GET')==='GET')WebAction::json($core->preparation()->feed($user));
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
     if($action==='claim')WebAction::json($core->preparation()->claim($data,$user));
+    if($action==='ack_adjustment')WebAction::json($core->preparation()->acknowledgeAdjustment($data,$user));
     WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
 }catch(\Throwable $e){
     if(property_exists($e,'httpStatus'))WebAction::knownFailure($e);

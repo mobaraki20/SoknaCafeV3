@@ -1,0 +1,13 @@
+{
+  "contract": "sokna-table-qr-lifecycle-v1",
+  "principles": [
+    "one active QR token maps to one table",
+    "rotation invalidates the current token immediately",
+    "the immediately previous token remains recoverable and can be restored explicitly",
+    "QR rotation and Public-origin rebind are distinct lifecycle events",
+    "operators preview and test the current QR before printing",
+    "bulk download is generated only from active current table QR bindings",
+    "rotation and restore are audited with actor and timestamp",
+    "printed QR validity must never be inferred after a Public URL/origin change"
+  ]
+}

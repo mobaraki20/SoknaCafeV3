@@ -5,6 +5,8 @@ namespace Sokna\Local\Domain\Recovery;
 
 use PDO;
 use Sokna\Local\Core\Observability;
+use Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService;
+use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
 use Throwable;
 
 final class BusinessBackupService
@@ -14,7 +16,7 @@ final class BusinessBackupService
     private const CHUNK=1048576;
     private const EXCLUDED_TABLES=[
         'schema_migrations','schema_migration_statements',
-        'runtime_trigger_receipts',
+        'runtime_trigger_receipts','public_authority_state',
         'print_agents','print_destinations','print_jobs','print_attempts','print_claim_requests','print_claim_reconciliations',
     ];
     private const EMPTY_TARGET_MARKERS=['users','orders','inventory_items','expenses','settlement_records','subscriber_ledger','accommodation_transfers'];
@@ -24,6 +26,8 @@ final class BusinessBackupService
         private readonly PDO $pdo,
         private readonly Observability $observability,
         private readonly string $sourceInstallationId,
+        private readonly ?PublicAuthorityStateService $authorityState=null,
+        private readonly ?PublicEdgeSyncClient $publicClient=null,
     ) {}
 
     public function createEncrypted(string $destination,string $passphrase,int $actorUserId=0): array
@@ -141,6 +145,13 @@ final class BusinessBackupService
                 if(($counts[$table]??0)!==$expectedCount||!preg_match('/^[a-f0-9]{64}$/',$expectedHash)||!hash_equals($expectedHash,$actualHash))
                     throw new RecoveryException('backup_integrity','یکپارچگی داده پشتیبان تأیید نشد.',422,['table'=>$table]);
             }
+            // A14: a business restore is a new authority event. Never let restored
+            // transport cursors/outbox become current Public authority. Fence communication
+            // in the SAME transaction, then require explicit credential+epoch re-enrollment.
+            foreach(['public_projection_outbox','public_projection_model_delivery','public_projection_model_targets','public_sync_state'] as $transportTable){
+                try{$this->pdo->exec('DELETE FROM `'.$transportTable.'`');}catch(Throwable){}
+            }
+            if($this->authorityState!==null)$this->authorityState->markRestoreRequired('business_restore');
             $this->pdo->exec('SET FOREIGN_KEY_CHECKS=1');
             $this->pdo->commit();
         }catch(Throwable $e){
@@ -148,15 +159,23 @@ final class BusinessBackupService
             if($this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }finally{gzclose($gz);}
-        $this->observability->logEvent('warning','recovery.business_restored',[
+        $publicFenceConfirmed=false;$publicFenceError='';
+        if($this->publicClient!==null&&$this->publicClient->configured()){
+            try{
+                $fence=$this->publicClient->fenceAuthorityAfterRestore(5);$status=(int)($fence['status']??0);$body=is_array($fence['body']??null)?$fence['body']:[];
+                $publicFenceConfirmed=($status>=200&&$status<300&&($body['ok']??false)===true)||($status===409&&in_array((string)($body['error']??''),['authority_reenrollment_required'],true));
+                if(!$publicFenceConfirmed)$publicFenceError=(string)($body['error']??'authority_fence_failed');
+            }catch(Throwable $e){$publicFenceError=$e instanceof \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException?$e->errorCode:'authority_fence_unreachable';}
+        }else{$publicFenceError='public_not_configured';}
+        $this->observability->logEvent($publicFenceConfirmed?'warning':'error','recovery.business_restored',[
             'actor_user_id'=>$actorUserId,'source_installation_id'=>$manifest['source_installation_id']??'',
-            'table_count'=>count($restoreTables),'row_count'=>array_sum(array_intersect_key($counts,array_flip($restoreTables))),'machine_identity_reprovision_required'=>true,
+            'table_count'=>count($restoreTables),'row_count'=>array_sum(array_intersect_key($counts,array_flip($restoreTables))),'machine_identity_reprovision_required'=>true,'public_authority_fence_confirmed'=>$publicFenceConfirmed,'public_authority_fence_error'=>$publicFenceError,
         ]);
         return [
             'restored'=>true,'source_installation_id'=>(string)($manifest['source_installation_id']??''),
             'table_count'=>count($restoreTables),'row_count'=>array_sum(array_intersect_key($counts,array_flip($restoreTables))),
             'excluded_machine_identity'=>(array)($manifest['excluded_machine_identity']??[]),
-            'machine_identity_reprovision_required'=>true,
+            'machine_identity_reprovision_required'=>true,'public_authority_fence_confirmed'=>$publicFenceConfirmed,'public_authority_fence_error'=>$publicFenceError,
         ];
     }
 

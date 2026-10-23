@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sokna.local/contracts/sokna-guest-theme-v2.schema.json",
+  "title": "SOKNA Guest Theme v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "contract_revision",
+    "engine_contract",
+    "theme_key",
+    "name",
+    "version",
+    "description",
+    "layout",
+    "media_aspect",
+    "composition",
+    "variants",
+    "tokens",
+    "editable_tokens"
+  ],
+  "properties": {
+    "format": {
+      "const": "sokna-guest-theme-v2"
+    },
+    "theme_key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,63}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "layout": {
+      "const": "cards"
+    },
+    "media_aspect": {
+      "enum": [
+        "1:1",
+        "4:3",
+        "3:2"
+      ]
+    },
+    "composition": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "campaigns",
+          "featured",
+          "catalog",
+          "more"
+        ]
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "variants": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "header": {
+          "enum": [
+            "compact",
+            "brand-forward"
+          ]
+        },
+        "category_nav": {
+          "enum": [
+            "pills",
+            "tabs"
+          ]
+        },
+        "catalog": {
+          "enum": [
+            "adaptive",
+            "list",
+            "cards"
+          ]
+        },
+        "item_media": {
+          "enum": [
+            "leading",
+            "top",
+            "hidden"
+          ]
+        },
+        "featured": {
+          "enum": [
+            "rail",
+            "grid"
+          ]
+        },
+        "campaigns": {
+          "enum": [
+            "cards",
+            "banner"
+          ]
+        },
+        "surfaces": {
+          "enum": [
+            "outlined",
+            "soft",
+            "elevated"
+          ]
+        },
+        "density": {
+          "enum": [
+            "compact",
+            "comfortable",
+            "airy"
+          ]
+        },
+        "detail": {
+          "enum": [
+            "sheet",
+            "editorial"
+          ]
+        },
+        "action_dock": {
+          "enum": [
+            "floating",
+            "attached"
+          ]
+        },
+        "content_width": {
+          "enum": [
+            "narrow",
+            "standard",
+            "wide"
+          ]
+        },
+        "typography": {
+          "enum": [
+            "compact",
+            "standard",
+            "large"
+          ]
+        },
+        "motion": {
+          "enum": [
+            "subtle",
+            "none"
+          ]
+        }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canvas",
+        "surface",
+        "surface_soft",
+        "text",
+        "muted",
+        "border",
+        "primary",
+        "primary_contrast",
+        "accent",
+        "accent_contrast",
+        "focus",
+        "ready_bg",
+        "ready_text",
+        "degraded_bg",
+        "degraded_text",
+        "danger",
+        "danger_contrast",
+        "radius_md",
+        "radius_lg"
+      ],
+      "properties": {
+        "canvas": {
+          "$ref": "#/$defs/color"
+        },
+        "surface": {
+          "$ref": "#/$defs/color"
+        },
+        "surface_soft": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "muted": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "primary": {
+          "$ref": "#/$defs/color"
+        },
+        "primary_contrast": {
+          "$ref": "#/$defs/color"
+        },
+        "accent": {
+          "$ref": "#/$defs/color"
+        },
+        "accent_contrast": {
+          "$ref": "#/$defs/color"
+        },
+        "focus": {
+          "$ref": "#/$defs/color"
+        },
+        "ready_bg": {
+          "$ref": "#/$defs/color"
+        },
+        "ready_text": {
+          "$ref": "#/$defs/color"
+        },
+        "degraded_bg": {
+          "$ref": "#/$defs/color"
+        },
+        "degraded_text": {
+          "$ref": "#/$defs/color"
+        },
+        "danger": {
+          "$ref": "#/$defs/color"
+        },
+        "danger_contrast": {
+          "$ref": "#/$defs/color"
+        },
+        "radius_md": {
+          "$ref": "#/$defs/radius"
+        },
+        "radius_lg": {
+          "$ref": "#/$defs/radius"
+        }
+      }
+    },
+    "editable_tokens": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "canvas",
+          "surface",
+          "surface_soft",
+          "text",
+          "muted",
+          "border",
+          "primary",
+          "primary_contrast",
+          "accent",
+          "accent_contrast",
+          "focus",
+          "ready_bg",
+          "ready_text",
+          "degraded_bg",
+          "degraded_text",
+          "danger",
+          "danger_contrast",
+          "radius_md",
+          "radius_lg"
+        ]
+      }
+    },
+    "engine_contract": {
+      "const": "sokna-guest-theme-engine-v2"
+    },
+    "contract_revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "radius": {
+      "type": "string",
+      "pattern": "^(?:[8-9]|[1-3][0-9]|40)px$"
+    }
+  }
+}

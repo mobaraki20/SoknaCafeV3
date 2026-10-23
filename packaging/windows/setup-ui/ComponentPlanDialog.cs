@@ -99,7 +99,7 @@ internal sealed class ComponentPlanDialog : Form
         var footer = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 14, 0, 0) };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        var note = new Label { AutoSize = true, Text = $"Windows Services {Application.ProductVersion}  •  بررسی {plan.VerifiedAtUtc.LocalDateTime:HH:mm}", ForeColor = SetupPalette.Muted, Anchor = AnchorStyles.Right };
+        var note = new Label { AutoSize = true, Text = $"Windows Services {Application.ProductVersion}  •  بررسی {Sokna.Shared.IranPresentation.Clock(plan.VerifiedAtUtc)}", ForeColor = SetupPalette.Muted, Anchor = AnchorStyles.Right };
         var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
         var cancel = new Button { Text = "انصراف", DialogResult = DialogResult.Cancel, AutoSize = true, MinimumSize = new Size(86, 36), FlatStyle = FlatStyle.Flat, BackColor = SetupPalette.Surface, ForeColor = SetupPalette.BrandDark };
         cancel.FlatAppearance.BorderColor = SetupPalette.Border;

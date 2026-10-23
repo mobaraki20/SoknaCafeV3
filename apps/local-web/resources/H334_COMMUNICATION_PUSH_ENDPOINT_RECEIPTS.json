@@ -1,0 +1,13 @@
+{
+  "checkpoint": "H334_COMMUNICATION_A08_PUSH_ENDPOINT_RECEIPTS_20261014",
+  "finding": "A08",
+  "status": "ENGINEERING_SOURCE_QUALIFIED_REAL_MARIADB_AND_BRIDGE_UAT_PENDING",
+  "design": {
+    "delivery_identity": "outbox_id + endpoint_hash",
+    "states": ["pending", "transient", "accepted", "gone", "fatal"],
+    "retry": "only pending/transient endpoints are sent again",
+    "terminal": "accepted/gone/fatal endpoints are never re-sent for the same outbox",
+    "endpoint_set": "frozen on first delivery attempt"
+  },
+  "migration": "0064_notification_push_endpoint_delivery_receipts.sql"
+}

@@ -1,0 +1,22 @@
+{
+  "changes": {
+    "business_terminal": "Guest treats state=committed + business_terminal=true as definite cafe commit even while Public projection visibility is pending",
+    "identity": "client_token/request_id semantics unchanged; no second mutation is emitted by visibility reconciliation",
+    "replay": "prepared replay checks business_terminal before generic accepted/nonterminal handling",
+    "ui_release": "pending submission, cart and busy state release immediately after business commit; Public projection refresh continues in background"
+  },
+  "date": "2026-10-15",
+  "format": "sokna-h342-r3-guest-business-terminal-v1",
+  "non_goals": [
+    "H342 P2 edit/cancel durability",
+    "waiter durability",
+    "real cafe/device acceptance"
+  ],
+  "paired_local_version": "3.0.0-g6.2-workspace.231n-h342-guest-business-terminal-r3",
+  "paired_public_version": "3.0.0-g3.6-workspace.35db-h342-guest-business-terminal-r3",
+  "parent_version": "3.0.0-g6.2-workspace.231m-maintenance-supervisor-adapter-foundation",
+  "scope": [
+    "H342-F03"
+  ],
+  "version": "3.0.0-g6.2-workspace.231n-h342-guest-business-terminal-r3"
+}

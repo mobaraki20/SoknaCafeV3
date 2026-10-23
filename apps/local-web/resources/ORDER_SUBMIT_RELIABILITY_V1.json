@@ -1,0 +1,24 @@
+{
+  "format": "sokna-order-submit-reliability-v1",
+  "guest": {
+    "model_fresh": "availability projection freshness",
+    "mutation_ready": "local heartbeat fresh AND intake enabled",
+    "warning_may_show_while_submit_remains_enabled": true
+  },
+  "principles": {
+    "blind_mutation_retry_for_unknown_outcome_forbidden": true,
+    "handover_must_not_require_manual_page_reload": true,
+    "local_authority_revalidates_session_price_availability_and_concurrency": true,
+    "read_model_freshness_is_not_write_readiness": true,
+    "stale_read_model_with_live_authoritative_write_path_must_not_disable_submit": true,
+    "write_path_unavailable_must_fail_closed": true
+  },
+  "staff": {
+    "readiness_sources": [
+      "live public command channel",
+      "healthy authenticated LAN"
+    ],
+    "recovery_event_driven": true
+  },
+  "version": 1
+}

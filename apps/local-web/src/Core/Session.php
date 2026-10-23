@@ -120,7 +120,8 @@ final class Session
 
         if (ini_get('session.use_cookies') && PHP_SAPI !== 'cli') {
             $params = session_get_cookie_params();
-            setcookie(session_name(), '', time() - 42000, [
+            setcookie(session_name(), '', [
+                'expires' => time() - 42000,
                 'path' => (string)($params['path'] ?? '/'),
                 'domain' => (string)($params['domain'] ?? ''),
                 'secure' => (bool)($params['secure'] ?? false),

@@ -16,11 +16,17 @@ if (strtolower(trim((string)($_GET['family'] ?? 'vazirmatn'))) !== 'vazirmatn') 
 // the replaceable Web payload so upgrades cannot remove it.
 $packageRoot = dirname(__DIR__, 2);
 $path = FontRuntime::fontPath($packageRoot);
-if (!FontRuntime::valid($path) && !FontRuntime::ensure($packageRoot)) {
-    http_response_code(404);
-    header('Cache-Control: no-store, max-age=0');
-    header('X-Content-Type-Options: nosniff');
-    exit;
+$guestSurface = strtolower(trim((string)($_GET['surface'] ?? ''))) === 'guest';
+if (!FontRuntime::valid($path)) {
+    // Guest LAN cold-open must never wait on a CDN while cafe WAN is down. The
+    // Guest stylesheet has safe system-font fallbacks; installation/setup may
+    // still prefetch Vazirmatn for normal Staff and later Guest requests.
+    if ($guestSurface || !FontRuntime::ensure($packageRoot)) {
+        http_response_code(404);
+        header('Cache-Control: no-store, max-age=0');
+        header('X-Content-Type-Options: nosniff');
+        exit;
+    }
 }
 
 $etag = '"'.hash_file('sha256', $path).'"';

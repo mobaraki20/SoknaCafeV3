@@ -1,0 +1,3 @@
+ALTER TABLE guest_media_assets
+    ADD COLUMN focal_x DECIMAL(6,5) NOT NULL DEFAULT 0.50000 AFTER height_px,
+    ADD COLUMN focal_y DECIMAL(6,5) NOT NULL DEFAULT 0.50000 AFTER focal_x;

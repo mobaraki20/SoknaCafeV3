@@ -1,0 +1,31 @@
+{
+  "format": "sokna-guest-order-experience-v1",
+  "reference": {
+    "legacy_archive_sha256": "1a1d0723edb5cf2ebdb6e7f37925b08ca729d82ceb283089183fbca61439e4dc",
+    "product_decision": "Guest /menu graphical-interface-interaction follows Dev26 while V3 business authority remains current"
+  },
+  "review": {
+    "authoritative_quote": true,
+    "explicit_fulfillment_surface": true,
+    "global_note": true,
+    "line_notes": true,
+    "mixed_per_line_takeaway": true,
+    "presets": [
+      "all_dine_in",
+      "all_takeaway"
+    ]
+  },
+  "safety": {
+    "current_quote_idempotency_edit_cancel_conflict_logic_preserved": true,
+    "invalid_or_unavailable_write_path_fails_closed": true,
+    "missing_social_url_never_invented_or_hardcoded": true,
+    "no_legacy_backend_reintroduced": true
+  },
+  "success": {
+    "instagram_copy_editable": true,
+    "instagram_cta": "only when enabled and configured URL exists",
+    "live_order_status": true,
+    "view_order_action": true
+  },
+  "version": 1
+}

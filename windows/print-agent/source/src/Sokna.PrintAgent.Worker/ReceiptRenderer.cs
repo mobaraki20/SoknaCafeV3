@@ -79,7 +79,7 @@ internal static class ReceiptRenderer
         {
             var parts=new List<string>();var table=Get(root,"table_name","");if(table.Length>0)parts.Add(FaDigits(table));
             var number=prep?Get(root,"order_number",""):Get(root,"invoice_number",Get(root,"badge",""));if(number.Length>0&&(prep?_showOrder:true))parts.Add((prep?"سفارش ":"")+FaDigits(number));
-            if(_showTime){var date=Get(root,"display_date",Get(root,"created_at",""));if(date.Length>0)parts.Add(FaDigits(date));}if(parts.Count>0)Text(string.Join(" · ",parts),Math.Max(15,_base-5),true,StringAlignment.Center,3);
+            if(_showTime){var date=Get(root,"display_date",Get(root,"created_at",""));if(date.Length>0)parts.Add(Sokna.Shared.IranPresentation.ReceiptDate(date));}if(parts.Count>0)Text(string.Join(" · ",parts),Math.Max(15,_base-5),true,StringAlignment.Center,3);
             if(_showActor){var actor=Get(root,"actor_name","");if(actor.Length>0)Text("ثبت‌کننده: "+actor,Math.Max(13,_base-7),false,StringAlignment.Center,2);}
         }
         private void DrawPreparationItems(JsonElement root)

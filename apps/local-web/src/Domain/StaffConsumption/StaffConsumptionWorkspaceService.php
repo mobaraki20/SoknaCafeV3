@@ -32,16 +32,20 @@ final class StaffConsumptionWorkspaceService
         $self=$access['staff_consumption_self']?$this->personnel->findActiveByLinkedUserId((int)$fresh['id']):null;
         $needsPersonnel=$access['staff_consumption_proxy']||$access['staff_benefit_manage']||$access['staff_account_manage']||$access['staff_consumption_reports'];
         $personnel=$needsPersonnel?$this->activePersonnel():($self!==null?[$self]:[]);
-        $catalog=($access['staff_consumption_self']||$access['staff_consumption_proxy'])?$this->catalog->staffCatalogRows():[];
+        $canConsume=$access['staff_consumption_self']||$access['staff_consumption_proxy'];
+        $catalog=$canConsume?$this->catalog->staffCatalogRows():[];
+        $catalogGroups=$canConsume?$this->catalog->staffCatalogGroups():[];
         $history=[];
         if($access['staff_consumption_reports'])$history=$this->historyRows(null,50);
         elseif($self!==null)$history=$this->historyRows((int)$self['id'],30);
         return [
             'success'=>true,
+            'module_enabled'=>$this->moduleEnabled(),
             'access'=>$access,
             'self_personnel'=>$self,
             'personnel'=>$personnel,
             'catalog'=>$catalog,
+            'catalog_groups'=>$catalogGroups,
             'history'=>$history,
             'benefits'=>$access['staff_benefit_manage']?$this->benefitManagementSnapshot():null,
             'report_defaults'=>['from'=>date('Y-m-01'),'to'=>date('Y-m-d')],
@@ -50,12 +54,14 @@ final class StaffConsumptionWorkspaceService
 
     public function quoteSelf(array $data,array $user): array
     {
+        $this->assertModuleEnabled();
         $personnel=$this->foundation->selfConsumer($user);
         return $this->quote((int)$personnel['id'],$data,$user);
     }
 
     public function quoteForPersonnel(int $personnelId,array $data,array $user): array
     {
+        $this->assertModuleEnabled();
         $personnel=$this->foundation->proxyConsumer($personnelId,$user);
         return $this->quote((int)$personnel['id'],$data,$user);
     }
@@ -139,6 +145,20 @@ final class StaffConsumptionWorkspaceService
             'items'=>$this->pdo->query('SELECT id,name,category_id,active FROM items ORDER BY category_id,sort_order,id')->fetchAll(PDO::FETCH_ASSOC),
         ];
         return ['policies'=>$policies,'rules'=>$rules,'profiles'=>$profiles,'overrides'=>$overrides,'scope_targets'=>$scopeTargets];
+    }
+
+
+    private function moduleEnabled(): bool
+    {
+        $q=$this->pdo->prepare("SELECT setting_value FROM settings WHERE setting_key='module.staff_consumption.enabled' LIMIT 1");
+        $q->execute();$v=$q->fetchColumn();
+        if($v===false||$v===null)return true;
+        return in_array(strtolower(trim((string)$v)),['1','true','yes','on'],true);
+    }
+
+    private function assertModuleEnabled(): void
+    {
+        if(!$this->moduleEnabled())throw new StaffConsumptionException('staff_consumption_disabled','مصرف پرسنل غیرفعال است؛ سوابق، حساب‌ها و گزارش‌های قبلی همچنان در دسترس‌اند.',409);
     }
 
     private function assertWorkspaceAccess(array $user): array

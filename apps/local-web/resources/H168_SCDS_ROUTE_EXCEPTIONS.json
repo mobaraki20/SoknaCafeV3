@@ -1,0 +1,1134 @@
+{
+  "schema": 1,
+  "checkpoint": "H168",
+  "version": "3.0.0-g6.2-workspace.168-scds-workflow-composition-convergence",
+  "source": "public/assets/product-ui.css",
+  "rule": "Generic interaction semantics are SCDS-owned; workflow density/placement must prefer inherited composition variables over primitive-child selectors.",
+  "fingerprint_algorithm": "sha256(context + newline + selector + newline + serialized declarations)",
+  "baseline_unique_exceptions": 100,
+  "unique_exceptions": 55,
+  "selector_occurrences": 55,
+  "retired_exceptions": 45,
+  "by_rationale": {
+    "auth-setup": 4,
+    "catalog-management": 5,
+    "component-local": 6,
+    "customer-management": 3,
+    "finance-reporting": 9,
+    "guest-content-media": 1,
+    "management-dialog": 5,
+    "notifications": 1,
+    "operational-ordering": 1,
+    "preparation-workflow": 7,
+    "printing-workflow": 3,
+    "shell-context": 4,
+    "staff-workflow": 3,
+    "system-management": 2,
+    "workspace-local": 1
+  },
+  "by_family": {
+    "alert": 1,
+    "badge": 8,
+    "button": 42,
+    "dialog": 4
+  },
+  "exceptions": [
+    {
+      "fingerprint": "70fb2d3a681af8ea12d8ffd5cdcdb1933e6cf11ae0f1f6cbd8630380f24e0c33",
+      "selector": ".sc-auth__card .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "d0c4516178e937b3417651d525703d471c589c6e076de93678f63c3c6ed7d401",
+      "rationale_key": "auth-setup",
+      "rationale": "Authentication/setup composition owns width and stacking, not primitive appearance.",
+      "occurrences": 1,
+      "source_lines": [
+        73
+      ]
+    },
+    {
+      "fingerprint": "7373ad04889c485ddd814efb0f6baeea192de50a7493473748b44b1b5a46d0e3",
+      "selector": ".sc-setup__main>.sc-alert",
+      "families": [
+        "alert"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "ab79ea2b8573788fd2a30602610fed09fa34e7a07f24cbadb92a736c96c77339",
+      "rationale_key": "auth-setup",
+      "rationale": "Authentication/setup composition owns width and stacking, not primitive appearance.",
+      "occurrences": 1,
+      "source_lines": [
+        82
+      ]
+    },
+    {
+      "fingerprint": "e38380ad7492dbed5349dd49674fa79b6c649830252b53239bfe9d4387e7002b",
+      "selector": ".sc-setup__actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "ab79ea2b8573788fd2a30602610fed09fa34e7a07f24cbadb92a736c96c77339",
+      "rationale_key": "auth-setup",
+      "rationale": "Authentication/setup composition owns width and stacking, not primitive appearance.",
+      "occurrences": 1,
+      "source_lines": [
+        86
+      ]
+    },
+    {
+      "fingerprint": "a5b3ee0a1deda39212867c35bcfd5225d6ce255926fd8ac51301cdbbb0cdf247",
+      "selector": ".sc-setup__actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product > @media (max-width:680px)",
+      "declaration_sha256": "3a0e8220ec679c7f0822b8a98a866292bf9809595c48c35f90d040cbf1fc826b",
+      "rationale_key": "auth-setup",
+      "rationale": "Authentication/setup composition owns width and stacking, not primitive appearance.",
+      "occurrences": 1,
+      "source_lines": [
+        99
+      ]
+    },
+    {
+      "fingerprint": "477592e5d937645190d851ccfe77580cc27beecfbe8c908c939a91be53209f4e",
+      "selector": "body[data-page=\"staff\"] .sc-cart .sc-card__foot .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "51a97f87ceedf50d26ff46a81bb747518182f9fb444ae47022f2269f3f60cc2e",
+      "rationale_key": "staff-workflow",
+      "rationale": "Staff workflows require operational touch sizing or local layout.",
+      "occurrences": 1,
+      "source_lines": [
+        317
+      ]
+    },
+    {
+      "fingerprint": "0a523db129de7cd01d5d8ba57b53ba20ec5a2600d203dab68c331a367e92e124",
+      "selector": "body[data-page=\"operations\"] .sc-list-item .sc-actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "86f3648a224835d5a86b1265fa378e9a31b36038fd5cd055bceeaef6141cc816",
+      "rationale_key": "management-dialog",
+      "rationale": "Management routes specialize dialog width or local action layout.",
+      "occurrences": 1,
+      "source_lines": [
+        322
+      ]
+    },
+    {
+      "fingerprint": "f619f59b4e814526ce98ce4403cc3e4fc6da4e67cb1ecfde831c39e24e42fcfd",
+      "selector": "body[data-page=\"staff-consumption\"] [data-panel=\"self\"] .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "435c0682057866ffc831bc35fdc5476a1b901ba0c9492383049f732da9f17125",
+      "rationale_key": "staff-workflow",
+      "rationale": "Staff workflows require operational touch sizing or local layout.",
+      "occurrences": 1,
+      "source_lines": [
+        329
+      ]
+    },
+    {
+      "fingerprint": "843fd8a76d01dec8af03b1538b79787e7ae2018b311adac12ce17e90c0eb4f6c",
+      "selector": "body[data-page=\"staff-consumption\"] [data-panel=\"proxy\"] .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "435c0682057866ffc831bc35fdc5476a1b901ba0c9492383049f732da9f17125",
+      "rationale_key": "staff-workflow",
+      "rationale": "Staff workflows require operational touch sizing or local layout.",
+      "occurrences": 1,
+      "source_lines": [
+        329
+      ]
+    },
+    {
+      "fingerprint": "c52795c882ec8215d68988ec038b526665a25a64dca0e579b2d9b4ccfd2f0cae",
+      "selector": "body[data-page=\"catalog\"] .sc-dialog",
+      "families": [
+        "dialog"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "874976c21c5a3beed2ae7ea60424ddf4fd61c218896f92f991e67a43c16fbc72",
+      "rationale_key": "catalog-management",
+      "rationale": "Catalog management uses compact bulk/filter/editor actions.",
+      "occurrences": 1,
+      "source_lines": [
+        349
+      ]
+    },
+    {
+      "fingerprint": "5c42c452c7713414e8686550997a837ee2bf03f5c604861b98698b750cf6204c",
+      "selector": "body[data-page=\"admin\"] .sc-dialog",
+      "families": [
+        "dialog"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "874976c21c5a3beed2ae7ea60424ddf4fd61c218896f92f991e67a43c16fbc72",
+      "rationale_key": "management-dialog",
+      "rationale": "Management routes specialize dialog width or local action layout.",
+      "occurrences": 1,
+      "source_lines": [
+        349
+      ]
+    },
+    {
+      "fingerprint": "1051175052503697f5f3f7c20c227c8bb80fcf1c90f5c3c27edd42eaa42a90f7",
+      "selector": "body[data-page=\"operations\"] .sc-dialog",
+      "families": [
+        "dialog"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "874976c21c5a3beed2ae7ea60424ddf4fd61c218896f92f991e67a43c16fbc72",
+      "rationale_key": "management-dialog",
+      "rationale": "Management routes specialize dialog width or local action layout.",
+      "occurrences": 1,
+      "source_lines": [
+        349
+      ]
+    },
+    {
+      "fingerprint": "58ee7f0569d83cad74455db65841c2739b73b94a80f8876448b40e1493c978af",
+      "selector": "body[data-page=\"printing\"] .sc-dialog",
+      "families": [
+        "dialog"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "874976c21c5a3beed2ae7ea60424ddf4fd61c218896f92f991e67a43c16fbc72",
+      "rationale_key": "printing-workflow",
+      "rationale": "Printing controls specialize destination/template workflow layout.",
+      "occurrences": 1,
+      "source_lines": [
+        349
+      ]
+    },
+    {
+      "fingerprint": "883a8f0526da368d747fb12f321a5e5db961abe600813646fa4a41f58bcbe388",
+      "selector": "body[data-page=\"reports\"] [data-report-form] .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "d5b253422623f426224aa6d1d7017c3d1631f8388d4cc3e23c0cc36634816111",
+      "rationale_key": "finance-reporting",
+      "rationale": "Finance/report controls specialize placement/density for scan-heavy data work.",
+      "occurrences": 1,
+      "source_lines": [
+        370
+      ]
+    },
+    {
+      "fingerprint": "557fd9f67824fd34eea99b3166e5f15ae2cfd6ea873a44bb7aaded369a793238",
+      "selector": "body[data-page=\"operations\"] [data-count-lines] .sc-inline .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product > @media (max-width:900px)",
+      "declaration_sha256": "51377a917eb300718260706c74bdd7faf10af464dc8077e826f648bfc9e855e0",
+      "rationale_key": "management-dialog",
+      "rationale": "Management routes specialize dialog width or local action layout.",
+      "occurrences": 1,
+      "source_lines": [
+        390
+      ]
+    },
+    {
+      "fingerprint": "aafe394b8b5197760a5cd2d3660bebfdbdbb0d078c276e89e07bd44c41982746",
+      "selector": "body[data-page=\"operations\"] [data-count-lines] .sc-inline .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product > @media (max-width:520px)",
+      "declaration_sha256": "60176ab3ccb73eb2bc5c4635a098911abfc2c192a708a4ad3b4ede05e9c74588",
+      "rationale_key": "management-dialog",
+      "rationale": "Management routes specialize dialog width or local action layout.",
+      "occurrences": 1,
+      "source_lines": [
+        413
+      ]
+    },
+    {
+      "fingerprint": "66fbb3c2c23dcfb4ac8c8185838b6cb821cc6c2cc1d7c8c85167a5c76e283d31",
+      "selector": ".sc-command-result__actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "2ab22c400c3d10bcac25278a3f3170d83997ec1860fedffebe322c3dd5e28250",
+      "rationale_key": "component-local",
+      "rationale": "Component-local composition changes placement/size without owning primitive semantics.",
+      "occurrences": 1,
+      "source_lines": [
+        507
+      ]
+    },
+    {
+      "fingerprint": "8e3ccef0242ec92314e497a9503c4c8e760e6987c608c3499b45c45610c801aa",
+      "selector": ".sc-media-card__body>.sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "09f4ee54080572149f83892319c26685f2bb6920033031ec741a3976079e61f0",
+      "rationale_key": "guest-content-media",
+      "rationale": "Media keeps only true badge placement; button sizing/width/flex now flows through SCDS composition variables.",
+      "occurrences": 1,
+      "source_lines": [
+        911
+      ]
+    },
+    {
+      "fingerprint": "ee9898ff175abdb93d9846790fea54ffb96afb3a48664578d06061c344d9f8c0",
+      "selector": ".sc-finance-account-list>.sc-card .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "d31f1e4eb9ee355c381e69fc75b759971f0a14bd656897bd52d6a5936cd9b0b7",
+      "rationale_key": "finance-reporting",
+      "rationale": "Finance/report controls specialize placement/density for scan-heavy data work.",
+      "occurrences": 1,
+      "source_lines": [
+        975
+      ]
+    },
+    {
+      "fingerprint": "cdbf9484a96793f4cc7d5111afdd8a46ee0d206cc0570d6a54b725f06114648c",
+      "selector": ".sc-data-panel>.sc-section-head>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:760px)",
+      "declaration_sha256": "0fd943ffe4c56bbc10db6b7a848b163abc2440545a15362d586584dc010f06bf",
+      "rationale_key": "workspace-local",
+      "rationale": "Workspace-local placement/density exception.",
+      "occurrences": 1,
+      "source_lines": [
+        998
+      ]
+    },
+    {
+      "fingerprint": "358004cc1c377bbed30d6ce104d079164c7351f5f0237667b51ed91e49a120b8",
+      "selector": ".sc-notifications-side .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "033856786c00bb83ffa194f32bfba076dc08a8b4d784abc9d63cea30e7d5e8fc",
+      "rationale_key": "notifications",
+      "rationale": "Notification side/actions are local composition, not base button semantics.",
+      "occurrences": 1,
+      "source_lines": [
+        1043
+      ]
+    },
+    {
+      "fingerprint": "296a4aa0a5e817fbe32d9341eb16ecf7d1c9b26b2d12c645b41122ff011d4940",
+      "selector": ".sc-row-actions>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "a69c6e1e7e720dbd1adc872a2dc337402e856168e4a16d0b2f48c8d56bebb3cd",
+      "rationale_key": "component-local",
+      "rationale": "Component-local composition changes placement/size without owning primitive semantics.",
+      "occurrences": 1,
+      "source_lines": [
+        1332
+      ]
+    },
+    {
+      "fingerprint": "7859de3c92ce1ecb19a1b61f65db07033f858739b2eed82832df9dd4f46e48f4",
+      "selector": ".sc-table-qr__tools .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "0d5c8cefbae92639419fd9966476b17f77c807364562d65c9808ac6273b79cbc",
+      "rationale_key": "component-local",
+      "rationale": "Component-local composition changes placement/size without owning primitive semantics.",
+      "occurrences": 1,
+      "source_lines": [
+        1334
+      ]
+    },
+    {
+      "fingerprint": "808042025c6bddc176d68b298bee6e985ddad5d0eaca1688a2eccd99f582593e",
+      "selector": ".sc-catalog-filterbar__result .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "82ad0f7b544aa304cbff4db9c76e304dae2a60fae8595e83e1ca6d198f5e898e",
+      "rationale_key": "catalog-management",
+      "rationale": "Catalog management uses compact bulk/filter/editor actions.",
+      "occurrences": 1,
+      "source_lines": [
+        1929
+      ]
+    },
+    {
+      "fingerprint": "3e826db34e8e810a8ab2d805f4efc9f03bc4b2aa48778b8400f6dbeb245530ec",
+      "selector": ".sc-catalog-mini-badges .sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "e5397ae246bea29392bd93551a1ac63805d79169d3c76498eee6d1ceadda8ef5",
+      "rationale_key": "catalog-management",
+      "rationale": "Catalog management uses compact bulk/filter/editor actions.",
+      "occurrences": 1,
+      "source_lines": [
+        1930
+      ]
+    },
+    {
+      "fingerprint": "cb1932eaf6bdd79ccc966f5029b0774ff5d62f68e378a478b5165c72c6fe8b26",
+      "selector": ".sc-catalog-filterbar__result .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:420px)",
+      "declaration_sha256": "3a0e8220ec679c7f0822b8a98a866292bf9809595c48c35f90d040cbf1fc826b",
+      "rationale_key": "catalog-management",
+      "rationale": "Catalog management uses compact bulk/filter/editor actions.",
+      "occurrences": 1,
+      "source_lines": [
+        1936
+      ]
+    },
+    {
+      "fingerprint": "d3166029174ac77a4807b74f7c8988291c3d2f96e847d616292f1babad1ef77f",
+      "selector": ".sc-finance-invoice-toolbar .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "edcd900711b9ddd53041769b36fc559377495746ba13925dafbae9188b21a735",
+      "rationale_key": "finance-reporting",
+      "rationale": "Finance/report controls specialize placement/density for scan-heavy data work.",
+      "occurrences": 1,
+      "source_lines": [
+        1942
+      ]
+    },
+    {
+      "fingerprint": "92d224b093ea6f555de531db70698e70045d686d9542f59785287de0ce488572",
+      "selector": ".sc-finance-invoice-toolbar .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:900px)",
+      "declaration_sha256": "8b04bc7437a7a651022e873eedca066c285aa5e9134f88108bfd7830a5c87c4f",
+      "rationale_key": "finance-reporting",
+      "rationale": "Finance/report controls specialize placement/density for scan-heavy data work.",
+      "occurrences": 1,
+      "source_lines": [
+        1963
+      ]
+    },
+    {
+      "fingerprint": "db212394196914e59dba3ec7796634645b516bf4a0e0225b0f5b4f1a47e250b9",
+      "selector": ".sc-report-range>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:900px)",
+      "declaration_sha256": "df4f2ee2b25e89324411c78c5a3588c1fa2dbe9864348a00895088e2d5695775",
+      "rationale_key": "finance-reporting",
+      "rationale": "Finance/report controls specialize placement/density for scan-heavy data work.",
+      "occurrences": 1,
+      "source_lines": [
+        1963
+      ]
+    },
+    {
+      "fingerprint": "50f22172a88e3a6a0774dd67c0d88be754ad85fbf343a4868c9c123ab4248698",
+      "selector": ".sc-finance-invoice-toolbar .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:620px)",
+      "declaration_sha256": "51377a917eb300718260706c74bdd7faf10af464dc8077e826f648bfc9e855e0",
+      "rationale_key": "finance-reporting",
+      "rationale": "Finance/report controls specialize placement/density for scan-heavy data work.",
+      "occurrences": 1,
+      "source_lines": [
+        1964
+      ]
+    },
+    {
+      "fingerprint": "13bcb2079057eea422405db6dd1c2265e5f892a94d5eb2bfbf51eb42237087dd",
+      "selector": ".sc-finance-invoice-row__value .sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "@media (max-width:620px)",
+      "declaration_sha256": "14eba37860e53504b988422f5dac7291f103c73ba0b96364845f600319d89158",
+      "rationale_key": "finance-reporting",
+      "rationale": "Finance/report controls specialize placement/density for scan-heavy data work.",
+      "occurrences": 1,
+      "source_lines": [
+        1964
+      ]
+    },
+    {
+      "fingerprint": "1e6134053e9ac5afdada9401fbd4e12e556956b59c775841019e9b7adc162883",
+      "selector": ".sc-report-range>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:620px)",
+      "declaration_sha256": "3a0e8220ec679c7f0822b8a98a866292bf9809595c48c35f90d040cbf1fc826b",
+      "rationale_key": "finance-reporting",
+      "rationale": "Finance/report controls specialize placement/density for scan-heavy data work.",
+      "occurrences": 1,
+      "source_lines": [
+        1964
+      ]
+    },
+    {
+      "fingerprint": "521f58cde2b32371b86d4f8fbc789cf2f745703c4c00dc1c8de2710ef819273f",
+      "selector": ".sc-finance-invoice-toolbar .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:390px)",
+      "declaration_sha256": "60176ab3ccb73eb2bc5c4635a098911abfc2c192a708a4ad3b4ede05e9c74588",
+      "rationale_key": "finance-reporting",
+      "rationale": "Finance/report controls specialize placement/density for scan-heavy data work.",
+      "occurrences": 1,
+      "source_lines": [
+        1965
+      ]
+    },
+    {
+      "fingerprint": "aa3a524edc3414f57f84b59ec3f56cda5ebd9839414f7a045faa1012a7ff6c57",
+      "selector": ".sc-scan-row__actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "a0ba227f24b51f87e5ae6fe7330bb61b2d724a21730c0ab6608268f5c50fc99b",
+      "rationale_key": "component-local",
+      "rationale": "Component-local composition changes placement/size without owning primitive semantics.",
+      "occurrences": 1,
+      "source_lines": [
+        1972
+      ]
+    },
+    {
+      "fingerprint": "daa569e1a7ddfc3f00aab9aae49dab673819183954af260a787208c4083c30bf",
+      "selector": ".sc-file-picker>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:760px)",
+      "declaration_sha256": "8037400c240808bc5b879b86ff0a6d84ab36246be5aaf6ff53342de3b2a63a99",
+      "rationale_key": "component-local",
+      "rationale": "Component-local composition changes placement/size without owning primitive semantics.",
+      "occurrences": 1,
+      "source_lines": [
+        2108
+      ]
+    },
+    {
+      "fingerprint": "06d6a0c169d7d17dd94e5af81f1ea18ac2fd81c83fd808e36fe4cb9538e19e68",
+      "selector": ".sc-catalog-bulk .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:720px)",
+      "declaration_sha256": "b7aa1ec0049dec9d6f060e6642d5f8865f1b83c15e7a0605337b1c28b2216147",
+      "rationale_key": "catalog-management",
+      "rationale": "Catalog management uses compact bulk/filter/editor actions.",
+      "occurrences": 1,
+      "source_lines": [
+        2151
+      ]
+    },
+    {
+      "fingerprint": "0382c323869833025c09a66e2fdee34b847ca44d253dc64858820ee650e719b5",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (min-width:1181px)",
+      "declaration_sha256": "99202fe38d8411843ed6b9b222b703586e8acf49e88ed5b3922af01ed0927b60",
+      "rationale_key": "shell-context",
+      "rationale": "Compact shell/footer layout intentionally specializes shared controls.",
+      "occurrences": 1,
+      "source_lines": [
+        2185
+      ]
+    },
+    {
+      "fingerprint": "cf3c725fc46d2eceb897d93f4090d394257918d2fbbeb26125d057da8e2d9ecd",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-button>span",
+      "families": [
+        "button"
+      ],
+      "context": "@media (min-width:1181px)",
+      "declaration_sha256": "6aa34d7432e79eb0ce9d335d909a58940c4a549b4bb7d0ad14b9259889ee5001",
+      "rationale_key": "shell-context",
+      "rationale": "Compact shell/footer layout intentionally specializes shared controls.",
+      "occurrences": 1,
+      "source_lines": [
+        2185
+      ]
+    },
+    {
+      "fingerprint": "31f06e221a1b83a43ed8935a6cf63e025c98a784943f09e0351ead4a658cc44c",
+      "selector": ".sc-preparation-adjustment .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "f44d20ad8e221a4c5ad93ca8f24fae8f428f9586dcdbb3d060d4e270a680261a",
+      "rationale_key": "preparation-workflow",
+      "rationale": "Preparation uses ticket/action density that differs from generic management UI.",
+      "occurrences": 1,
+      "source_lines": [
+        2298
+      ]
+    },
+    {
+      "fingerprint": "aa26466ba6b1c4c0af3cf8682e896f8f09481ee4a8f231e5328c3642bb1c0906",
+      "selector": ".sc-preparation-adjustment .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:760px)",
+      "declaration_sha256": "7d4c7891c7a0deb58a6baed155d09e76523b7e93ff1d87369706de9e539ab82b",
+      "rationale_key": "preparation-workflow",
+      "rationale": "Preparation uses ticket/action density that differs from generic management UI.",
+      "occurrences": 1,
+      "source_lines": [
+        2299
+      ]
+    },
+    {
+      "fingerprint": "f1be1b7a23d8704aa7e2fe69184b505a1952f9dca257c73b100690807cc1320b",
+      "selector": ".sc-hall-acceptance-button .sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "882b30ca5c4b62bc925660d7357130a5ce62f9eebc95b5b5da66389f3cad42d6",
+      "rationale_key": "operational-ordering",
+      "rationale": "Hall/Order/Settlement keeps only true state/badge composition; sizing now flows through SCDS composition variables.",
+      "occurrences": 1,
+      "source_lines": [
+        2302
+      ]
+    },
+    {
+      "fingerprint": "d5940a89fbb915fb78f2211fc65bf0ab7acc80fd863e77239a7721cc702e443b",
+      "selector": ".sc-entity-editor__footer .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:620px)",
+      "declaration_sha256": "3a0e8220ec679c7f0822b8a98a866292bf9809595c48c35f90d040cbf1fc826b",
+      "rationale_key": "component-local",
+      "rationale": "Component-local composition changes placement/size without owning primitive semantics.",
+      "occurrences": 1,
+      "source_lines": [
+        2431
+      ]
+    },
+    {
+      "fingerprint": "8f270c2147964f34a0d7af90e3948e8e71c035a3b2d021dacf894bc5f468fd58",
+      "selector": "body[data-page=\"subscribers\"] .sc-subscriber-account__actions>.sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "@media (max-width:640px)",
+      "declaration_sha256": "51377a917eb300718260706c74bdd7faf10af464dc8077e826f648bfc9e855e0",
+      "rationale_key": "customer-management",
+      "rationale": "Customer/account actions specialize editor or account layout.",
+      "occurrences": 1,
+      "source_lines": [
+        2478
+      ]
+    },
+    {
+      "fingerprint": "b02c615a6c550476dbfd992b1c35b848b86627f5518113c163f621e6a7d1fd44",
+      "selector": ".sc-system-action-item>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "8037400c240808bc5b879b86ff0a6d84ab36246be5aaf6ff53342de3b2a63a99",
+      "rationale_key": "system-management",
+      "rationale": "System maintenance actions specialize responsive placement.",
+      "occurrences": 1,
+      "source_lines": [
+        2499
+      ]
+    },
+    {
+      "fingerprint": "ec18f3aa233f55169234c28c4b05aebd4e5139ffbe77d602fca2268082f8a8aa",
+      "selector": ".sc-system-action-item>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:620px)",
+      "declaration_sha256": "3a0e8220ec679c7f0822b8a98a866292bf9809595c48c35f90d040cbf1fc826b",
+      "rationale_key": "system-management",
+      "rationale": "System maintenance actions specialize responsive placement.",
+      "occurrences": 1,
+      "source_lines": [
+        2503
+      ]
+    },
+    {
+      "fingerprint": "ae1e2cdf339a19745e47a317b5e2a26f6fc6cf4b5e525eb4b979f7f38bcfab56",
+      "selector": ".sc-print-template-section-row .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "f6490e9e67afffd1564ffff72e832d70a6a3d247c8a1efe2645695a5b81073a3",
+      "rationale_key": "printing-workflow",
+      "rationale": "Printing controls specialize destination/template workflow layout.",
+      "occurrences": 1,
+      "source_lines": [
+        2506
+      ]
+    },
+    {
+      "fingerprint": "97877cbc9d9024362669ace294818fb700808fc442ebe1a08faa798db90de600",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (min-width:981px)",
+      "declaration_sha256": "52f80092416af0b9c3526c006de1b3689ebb291ed9dc376105176f6ccb09a551",
+      "rationale_key": "shell-context",
+      "rationale": "Compact shell/footer layout intentionally specializes shared controls.",
+      "occurrences": 1,
+      "source_lines": [
+        2608
+      ]
+    },
+    {
+      "fingerprint": "3c0fa9eb15efa190f7c63b2bb15d2c9c03023d0d370e2841aff42208831a5e1a",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-icon-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (min-width:981px)",
+      "declaration_sha256": "52f80092416af0b9c3526c006de1b3689ebb291ed9dc376105176f6ccb09a551",
+      "rationale_key": "shell-context",
+      "rationale": "Compact shell/footer layout intentionally specializes shared controls.",
+      "occurrences": 1,
+      "source_lines": [
+        2608
+      ]
+    },
+    {
+      "fingerprint": "386e3788b77180e3071d499a4ee0e4bfdb4ada5d29e9217ae9b589a385aa7ea0",
+      "selector": ".sc-preparation-order__head>.sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "de7e6a7b684c7304fad4a66d96fbcd19bcdf738a7297b7ee6da5c729a73a214c",
+      "rationale_key": "preparation-workflow",
+      "rationale": "Preparation uses ticket/action density that differs from generic management UI.",
+      "occurrences": 1,
+      "source_lines": [
+        2619
+      ]
+    },
+    {
+      "fingerprint": "da9c6ed3dfaca82ac4dd6b281bf437ab5142fa9cfe4f0a452dfe4b67f7421771",
+      "selector": ".sc-preparation-area__head .sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "c37ce69aa6a74dbd2e8c8508f1f544cb5a3a3e899729c8aa904dddae40f504e2",
+      "rationale_key": "preparation-workflow",
+      "rationale": "Preparation uses ticket/action density that differs from generic management UI.",
+      "occurrences": 1,
+      "source_lines": [
+        2620
+      ]
+    },
+    {
+      "fingerprint": "f6a358117dcd5c46af2a35dc4ba5539e525aa0e51a9841c213d303b39921d443",
+      "selector": ".sc-preparation-area>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "e5d2cd73b218bfcfbc701d177111b64cb9a0ab4757e6b5ccf7353aed3a05d397",
+      "rationale_key": "preparation-workflow",
+      "rationale": "Preparation uses ticket/action density that differs from generic management UI.",
+      "occurrences": 1,
+      "source_lines": [
+        2620
+      ]
+    },
+    {
+      "fingerprint": "2f9f9f323ae5b09f35461d0295fbd344348929af79ea6856535b9d468a22890d",
+      "selector": ".sc-preparation-area__head .sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "@media (max-width:700px)",
+      "declaration_sha256": "8eb39e99ae30b5c39f46580e266329653d18eb6ffbfe15a3446cb5e4f3421d47",
+      "rationale_key": "preparation-workflow",
+      "rationale": "Preparation uses ticket/action density that differs from generic management UI.",
+      "occurrences": 1,
+      "source_lines": [
+        2621
+      ]
+    },
+    {
+      "fingerprint": "9ce0862a5481b198735d7420f9b4cb5e4f7a0be826198b48ddd7cf95eed1bce1",
+      "selector": ".sc-preparation-area>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:700px)",
+      "declaration_sha256": "9e2dac8ac3b801b9fcbf2975d78b24aca95e08695e8f679c5d037b61d3ba9f9b",
+      "rationale_key": "preparation-workflow",
+      "rationale": "Preparation uses ticket/action density that differs from generic management UI.",
+      "occurrences": 1,
+      "source_lines": [
+        2621
+      ]
+    },
+    {
+      "fingerprint": "1fe3936adaba0071e8354631b6006f839886575a2df7f698ee0e9f908862d9e2",
+      "selector": ".sc-subscriber-editor__actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "05c9c4169a2352555e0e82286fa872b8766b727e3f52659fd2e353fa3d94b10f",
+      "rationale_key": "customer-management",
+      "rationale": "Customer/account actions specialize editor or account layout.",
+      "occurrences": 1,
+      "source_lines": [
+        3186
+      ]
+    },
+    {
+      "fingerprint": "a72515b870b49966cfa3b05cc2a10d94620eb78e772fcee76d4457094871f54f",
+      "selector": ".sc-subscriber-editor__actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:640px)",
+      "declaration_sha256": "3a0e8220ec679c7f0822b8a98a866292bf9809595c48c35f90d040cbf1fc826b",
+      "rationale_key": "customer-management",
+      "rationale": "Customer/account actions specialize editor or account layout.",
+      "occurrences": 1,
+      "source_lines": [
+        3199
+      ]
+    },
+    {
+      "fingerprint": "946bbeef165e41c57e17ad0f7f12258abf4b3abc9a5f86fe8f7359724ac6a6ea",
+      "selector": "body[data-page=\"printing\"] .sc-print-destination-item>.sc-actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "3a0e8220ec679c7f0822b8a98a866292bf9809595c48c35f90d040cbf1fc826b",
+      "rationale_key": "printing-workflow",
+      "rationale": "Printing controls specialize destination/template workflow layout.",
+      "occurrences": 1,
+      "source_lines": [
+        3208
+      ]
+    }
+  ],
+  "retired_from_h167": [
+    {
+      "fingerprint": "298209f2aa13525bc6bea742b8150580297bf464cb477c20a9586c39baad640f",
+      "selector": ".sc-hall-toolbar__actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "417beb95fd733f166ae7a147fd8628d9d72981eed668cc462e7e94736167519d",
+      "selector": ".sc-hall-toolbar__actions .sc-icon-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "2312ed31e74f7a29e60521b034e93a930a2dc9eff2a258e4ad6571c4881f9e59",
+      "selector": ".sc-hall-attention-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "055b5ece4fd5dc394804a404a7a1bf61c8009f86862376c9006f83a1b37ea00f",
+      "selector": ".sc-hall-account-head .sc-icon-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "2ba558e0b1257c17b1831b6bfb75841fdf9bc170f76e5b58a8606c387c193543",
+      "selector": ".sc-hall-account-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "1eb8bb98ab28b58ef22e1572bae25c0a55398d20a90eb35a8405d3cafb706e7e",
+      "selector": ".sc-order-head>.sc-icon-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "a71055073546dadd2af31054c3a8d795b9a939fa0cf4f51e8cd72f5179c88b0a",
+      "selector": ".sc-order-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "411bcf3d02173f8ca90ca6b28084d308c917722c0f102cebb8a4642b646989de",
+      "selector": ".sc-hall-attention-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "04622abb87ff3543cbe2e3406e882fa13b8e6279113ed07bfcd490347c30f0ac",
+      "selector": ".sc-order-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "b3fda09f0a7716d5857100bf6aad65b55ed90bf3e09d090085445734117316c9",
+      "selector": ".sc-hall-account .sc-attention-item__actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "9c7c057c0c8fcf983a085434dd21f833e74222b824b940f24d82dab4a76ad769",
+      "selector": ".sc-media-card__actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "9723f4431b01ebe0b82ee010454c3d0b07746da7ded01c3f8371625958320833",
+      "selector": ".sc-item-media-row>.sc-button",
+      "context": "unlayered",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "c53cd4f64b40d2abb0c10b597b5930c90e2d1e46a4cf9d38887edfabdcd99df3",
+      "selector": ".sc-media-upload-row__foot .sc-button",
+      "context": "unlayered",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "3ad76c6d3914fa34c2fb65d2b8f2bd1c9a2ae2ddf108789dcc0b8696b77b970c",
+      "selector": ".sc-media-summary__action .sc-button",
+      "context": "@media (max-width:900px)",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "5159b6ebf99915aa8c50572362fc48104a0a338fca4636ff2c8751b6f9685dbf",
+      "selector": ".sc-item-media-row>.sc-button",
+      "context": "@media (max-width:760px)",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "1f5b0db3370c2b43a3ba8de378f9e2ef484bbbc4e2b2373d81b12562a72e4218",
+      "selector": ".sc-media-dialog__toolbar .sc-button",
+      "context": "@media (max-width:760px)",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "0180a3a2cc18efd25e953e745fa36a74c4c87b03ecf98fc82952a7df2551790e",
+      "selector": ".sc-media-dialog__actions .sc-button",
+      "context": "@media (max-width:760px)",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "2c674207e38eccbd0762b438b51dfffbe9e39657c6fe20ffa52c0a9f97a07a15",
+      "selector": ".sc-hall-attention-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "7bf61e1e072c277409d5ac837695b1ca598c678d41da06eb3391aa42f755ab7c",
+      "selector": ".sc-hall-account-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "a5d1a6d39a878c71d38683ed6692218da15ff6312fb6466efca9db88b6cd4c21",
+      "selector": ".sc-hall-account .sc-attention-item__actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "acdf0c709908692815aff4586125bb416c78b16022d82e4a0d73e37ce0f76dab",
+      "selector": ".sc-media-card__actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "5b0eaf3eb8da6252a41f1b36f413f240eb461a3f6022b48d3535230c7d5ebefb",
+      "selector": ".sc-hall-account-head .sc-icon-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "1869e95411a9a0136f8f44f3c29a8b5299a922c2465726de3328fdd79dd55a4e",
+      "selector": ".sc-order-head>.sc-icon-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "044a78cbff74fd72b9ee6dbe41812431fa8c2e6a2f44b04bd55cade6fc1fe387",
+      "selector": ".sc-hall-account-head .sc-icon-button",
+      "context": "@media (max-width:760px), (pointer:coarse)",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "719e49d99aa92cebd3e5819fbbb3e55fa0e9d125b85080ffea239ba198acc790",
+      "selector": ".sc-order-head>.sc-icon-button",
+      "context": "@media (max-width:760px), (pointer:coarse)",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "e2b6dd55c66ad795b958d86f959aeda2f65a279bf3f9359e941842953c27d7e8",
+      "selector": ".sc-hall-attention-actions .sc-button",
+      "context": "@media (max-width:760px), (pointer:coarse)",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "a22e6ab0f62c5d187c2981ebd12362461a5855cf3f35584c49252af2524b5da3",
+      "selector": ".sc-hall-account-actions .sc-button",
+      "context": "@media (max-width:760px), (pointer:coarse)",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "13c187b80dde65e4da9ed93bba12f1c7b1be0623a619a7bc6b3fb73d27581253",
+      "selector": ".sc-hall-account .sc-attention-item__actions .sc-button",
+      "context": "@media (max-width:760px), (pointer:coarse)",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "2331ae0d4db75dc7fea0adcfa122b59488d5d187a26251e1ac4869cd742479c2",
+      "selector": ".sc-media-card__actions .sc-button",
+      "context": "@media (max-width:760px), (pointer:coarse)",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "ed173868fd4493b161ab000eda304c5185c9338cc161b33b8857334fa4700972",
+      "selector": "body[data-page=\"operator\"] .sc-hall-account-actions .sc-button.is-active",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "b148df077e3ddcb73424512d7ff5632b1abb201b8db7f1129576183fef8464ca",
+      "selector": "body[data-page=\"guest-content\"] .sc-public-sync-row>.sc-actions .sc-button",
+      "context": "@media (max-width:760px)",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "c7350dd961128c86673732fb66227c093cd517e97792574fa0376a5f7b993067",
+      "selector": ".sc-order-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "e441135f53e6fe4f06df5ee324c1d1d448c81816413b04e1242f6327bc365f52",
+      "selector": ".sc-order-actions .sc-button",
+      "context": "@media (max-width:720px)",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "3d1a9991e66a97137f1616ade18a00a27ef722bb8ba5e24e389c77ecee649b5c",
+      "selector": ".sc-media-upload-row__foot .sc-button",
+      "context": "@media (max-width:760px)",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "2b4c2a143be5a094cd17dbc7b540a8f19d239202d19c73d52fb08fb90bdfea98",
+      "selector": ".sc-brand-identity__actions .sc-button",
+      "context": "@media (max-width:760px)",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "03680854d364de77c741174f3ab2aff2375c5a8c114aca3816b61e79c69f1bc3",
+      "selector": "body[data-page=\"operator\"] .sc-hall-attention-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "a0f4bd6e5d2473ad4d7754c523b639d8694cefb79925847e72a377bbb3aa4a02",
+      "selector": "body[data-page=\"operator\"] .sc-attention-item__actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "2618f042fd46c7965e5960d6444eb27d9c98f7ef7773b9641a652854692abb84",
+      "selector": "body[data-page=\"operator\"] .sc-hall-account-head .sc-icon-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "daa847a1190a78a05a711daf4ca1f5d3ed1261d5dc3636b6047461cadcb8b0d6",
+      "selector": ".sc-order-workspace-v107 .sc-order-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "6ca1d92b9179be1ea1649301c5a04889bbb5df7f15b78314a97da1277446d711",
+      "selector": ".sui-settlement-callout .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "7ba9070bf9d3f6d1428d02431fec6dbfb64d30a31d845c387f7e34efae7f2bef",
+      "selector": "body[data-page=\"operator\"] .sc-hall-account-head .sc-icon-button",
+      "context": "@media (max-width:760px)",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "bd7752bdec777ece0aa60545aac4ce0d3033d0f4d77a6dd31877f464452897fa",
+      "selector": "body[data-page=\"operator\"] .sc-hall-account-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "3f30a79d647db4e405641ca26d362de1526da4e1364c029911a5b5a952c07e35",
+      "selector": ".sc-hall-discount-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "35522735d7e4101b5fcd00667e98787a2aafa2f1e4fb6330a147ca1b6a1b3287",
+      "selector": "body[data-page=\"operator\"] .sc-hall-account-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "b28b91fdd416235d7a8c406347ec7d41e422cdc3f357426bee8905abba35dafd",
+      "selector": "body[data-page=\"operator\"] .sc-hall-account-actions .sc-button>span",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    }
+  ]
+}

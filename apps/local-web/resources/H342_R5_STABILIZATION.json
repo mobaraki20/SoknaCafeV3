@@ -1,0 +1,19 @@
+{
+  "component": "local",
+  "date": "2026-10-15",
+  "format": "sokna-h342-r5-stabilization-v1",
+  "notes": [
+    "No DB migration",
+    "No Windows mutation",
+    "Guest JS is mirrored byte-identically with Public"
+  ],
+  "parent": "3.0.0-g6.2-workspace.231n-h342-guest-business-terminal-r3",
+  "scope": [
+    "notification_deep_link_canonicalization",
+    "legacy_notification_route_compatibility",
+    "push_click_local_route_compatibility",
+    "connections_signal_separation",
+    "guest_edit_cancel_durable_recovery",
+    "guest_waiter_tab_close_recovery"
+  ]
+}

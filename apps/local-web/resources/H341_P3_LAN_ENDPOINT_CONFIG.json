@@ -1,0 +1,48 @@
+{
+  "format": "sokna-h341-p3-lan-endpoint-config-v1",
+  "date": "2026-10-15",
+  "status": "engineering-source-qualified",
+  "release_set_id": "sokna-v3-h341-p3-20261015-staff-lan-config-reconcile",
+  "architecture": {
+    "canonical_user_origin": "public_always",
+    "staff_policy": "lan_preferred_public_fallback",
+    "guest_policy": "public_first",
+    "same_host_split_dns_product_authority": false,
+    "lan_endpoint_owner": "local_config",
+    "lan_endpoint_contract": "sokna-staff-lan-config-v1",
+    "lan_endpoint_requirements": [
+      "explicitly_enabled",
+      "https",
+      "separate_origin_from_public",
+      "optional_local_base_path",
+      "private_source_enforced",
+      "token_authenticated",
+      "cors_origin_bound_to_public_origin"
+    ],
+    "browser_discovery": "background_non_blocking",
+    "legacy_lan_adaptive_json_authority": false,
+    "legacy_guest_same_path_routes": false
+  },
+  "config_concurrency": {
+    "shared_config_lock": "config.php.write.lock",
+    "origin_rebind_drift_fence": true
+  },
+  "guest_lan": {
+    "enabled_by_p3": false,
+    "legacy_entrypoint_fail_closed": true,
+    "future_resilience_only": true
+  },
+  "field_acceptance_pending": [
+    "real Local TLS certificate",
+    "LAN DNS/internal hostname config",
+    "AP/firewall/client isolation",
+    "Chrome Local Network Access behavior",
+    "Android/iPhone Wi-Fi/mobile handover",
+    "real LAN timeout/fallback timing"
+  ],
+  "non_goals": [
+    "no real network/DNS/TLS mutation",
+    "no real host install",
+    "no PWA/push/cookie/CSP migration acceptance; H341-P4 owns that"
+  ]
+}

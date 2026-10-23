@@ -1,0 +1,56 @@
+{
+  "baseline": {
+    "version": "3.0.0-g6.2-workspace.231be-m06-home-panel-closure-uat"
+  },
+  "component": "local",
+  "contracts": {
+    "authority_epoch": "sokna-authority-epoch-v1",
+    "catalog_row_actions": "sokna-catalog-row-actions-v1",
+    "connection_association_lifecycle": "sokna-connection-association-lifecycle-v1",
+    "deployment_rebind": "sokna-local-public-origin-rebind-v2",
+    "freshness_contract": "projection-heartbeat-v1",
+    "guest_order_experience": "sokna-guest-order-experience-v1",
+    "guest_routing": "public-first-no-split-dns-v1",
+    "guest_theme_contract_revision": 2,
+    "guest_theme_engine": "sokna-guest-theme-engine-v2",
+    "human_numeric_display": "sokna-human-numeric-display-v2",
+    "inventory_count_ux": "sokna-inventory-count-session-autosave-v1",
+    "local_public_contract": 1,
+    "maintenance_control_protocol": "1.0",
+    "maintenance_web_adapter": "sokna-maintenance-web-adapter-v1",
+    "marketing_media": "sokna-marketing-media-v1",
+    "media_image_workflow": "sokna-media-image-workflow-v1",
+    "money_display_consistency": "sokna-money-display-consistency-v1",
+    "money_input_consistency": "sokna-money-input-consistency-v1",
+    "notification_experience": "sokna-notification-experience-v1",
+    "order_submit_reliability": "sokna-order-submit-reliability-v1",
+    "product_copy_governance": "sokna-product-copy-governance-v1",
+    "pwa_origin_lan_lifecycle": "sokna-pwa-origin-lan-lifecycle-v1",
+    "release_line": "v3",
+    "reports_marketing_ui": "sokna-reports-marketing-ui-v1",
+    "signed_http_transport_profile": "sokna-signed-http-v1",
+    "staff_lan_policy": "lan-preferred-public-fallback-v1",
+    "table_qr_lifecycle": "sokna-table-qr-lifecycle-v1",
+    "trace_contract": "sokna-trace-v1",
+    "iran_time": "sokna-iran-time-v1"
+  },
+  "format": "sokna-release-component-identity-v1",
+  "qualification": {
+    "tier": "ci_release_candidate",
+    "claim_rule": "Windows CI is not an installed Cafe/Home claim"
+  },
+  "release_set_id": "sokna-local-231bf-u01-iran-time-updater-20261023",
+  "schema_version": 1,
+  "source": {
+    "canonical_tree_sha256": "e2c2017502027fa091fa9e457dfaa2ac077a9b4dbb3cc5bdf56885bf71f49831",
+    "canonical_file_count": 520,
+    "managed_file_count": 522,
+    "source_ref": "M06 + Theme R2/CSS review + T01 + U01",
+    "digest_algorithm": "sha256(path\\0size\\0file_sha256\\n), lexical path order",
+    "digest_excludes": [
+      "resources/build-provenance.json",
+      "resources/release-identity-v1.json"
+    ]
+  },
+  "version": "3.0.0-g6.2-workspace.231bf-u01-iran-time-updater-rc1"
+}

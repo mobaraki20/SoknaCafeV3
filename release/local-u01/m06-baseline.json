@@ -1,0 +1,8 @@
+{
+  "release_id": "sokna-local-231be-m06-home-panel-closure-20261023",
+  "version": "3.0.0-g6.2-workspace.231be-m06-home-panel-closure-uat",
+  "managed_tree_sha256": "a5e7c2ea5d59bd2f0e5380fecfff46aac3cb7b9b2ae3a790b98c74e098c57237",
+  "schema_fingerprint": "migration-ledger-sha256-v1:dfcc5fb2a6d9c3fa323931f3a197e6fb64d59549ce1ff77a1a37e1f2d4f5d99f",
+  "migration_head": "0073_offhours_daily_operations",
+  "authority_epoch_policy": null
+}

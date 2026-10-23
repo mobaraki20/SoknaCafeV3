@@ -1,0 +1,22 @@
+{
+  "format": "sokna-h176-live-connectivity-contract-v1",
+  "date": "2026-10-09",
+  "local_base": "3.0.0-g6.2-workspace.175-uat-public-projection-fix",
+  "local_target": "3.0.0-g6.2-workspace.176-live-connectivity-contract",
+  "public_base": "3.0.0-g3.6-workspace.35z-shared-backoffice-frontend",
+  "public_target": "3.0.0-g3.6-workspace.35aa-live-connectivity-contract",
+  "contract": {
+    "relay_heartbeat_seconds": 5,
+    "projection_seconds": 30,
+    "guest_live_fresh_seconds": 15,
+    "guest_projection_fresh_seconds": 90,
+    "staff_projection_fresh_seconds": 90,
+    "database_timestamp_zone": "UTC"
+  },
+  "root_cause": [
+    "guest live/projection freshness used one 15-second window while projection cadence is 30 seconds",
+    "5-second relay trigger did not send a liveness heartbeat",
+    "guest timestamp parsing did not explicitly normalize UTC database timestamps",
+    "GuestCompatibility duplicated liveness logic instead of consuming the canonical runtime state"
+  ]
+}

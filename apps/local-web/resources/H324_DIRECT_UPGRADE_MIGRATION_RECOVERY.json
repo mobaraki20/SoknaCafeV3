@@ -1,0 +1,26 @@
+{
+  "format": "sokna-h324-direct-upgrade-migration-recovery-v1",
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "problem": "Direct cumulative upgrade from H296 229b executes late-added 0054_repair before canonical 0055 creates bundle_choice_item_id.",
+  "repair": {
+    "bridge_migration": "0054_0_h324_direct_upgrade_bundle_choice_prereq",
+    "canonical_0055_immutable": true,
+    "prejournals": [
+      {
+        "version": "0055_menu_variant_suggestion_bundle",
+        "ordinal": 56,
+        "sha256": "828468b8f58ed98ccf5a180920eac292a4ef729c3c4a8134a48a9ecfd5d8f32d"
+      }
+    ],
+    "supports_states": [
+      "fresh_h296_229b",
+      "h323_failed_at_0054_repair_statement_2_after_file_rollback"
+    ]
+  },
+  "pair": {
+    "public_version": "3.0.0-g3.6-workspace.35ch-mobile-pwa-capacity-uat-pair",
+    "public_change_required": false
+  },
+  "qualification_rule": "A cumulative package may not be called migration-qualified from hash/subset checks alone; baseline-to-target execution order and interrupted-state recovery must be exercised."
+}

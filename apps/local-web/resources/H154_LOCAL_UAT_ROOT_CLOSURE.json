@@ -1,0 +1,20 @@
+{
+  "format": "sokna-local-change-note-v1",
+  "version": "3.0.0-g6.2-workspace.154-uat-root-closure",
+  "parent": "3.0.0-g6.2-workspace.153-public-staff-projection-convergence",
+  "date": "2026-10-08",
+  "scope": "Local UAT root closure: shared UI primitives, customers, settlement, printing and Hall workflows",
+  "changes": [
+    "v107 sidebar tone and shared dialog/search/number formatting primitives converged",
+    "Update Center clears completed package state and shows recognizable Public build version",
+    "customer mobile normalization and master-detail readability improved",
+    "settlement search/adornments and split-payment auto-allocation standardized",
+    "printing UI simplified while preserving Windows Print Worker and print contracts",
+    "Hall adds sort/view-density/manual-refresh controls without replacing default card view",
+    "Hall account/footer/discount/item-edit visual hierarchy standardized",
+    "temporary orders are visible as unsent draft table state and restore on reopen",
+    "committed order corrections support quantity, fulfillment mode and preparation-note changes with delta preparation/correction printing"
+  ],
+  "database_migration": "0038_order_item_semantic_adjustments.sql",
+  "public_edge_change_required": false
+}

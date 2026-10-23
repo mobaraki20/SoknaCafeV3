@@ -4,31 +4,40 @@ declare(strict_types=1);
 namespace Sokna\Local\Domain\Finance;
 
 use PDO;
+use Sokna\Local\Core\SnapshotGuard;
 
 final class FinanceWorkspaceService
 {
-    public function __construct(private readonly PDO $pdo) {}
+    public function __construct(private readonly PDO $pdo,private readonly SnapshotGuard $guard) {}
 
     public function snapshot(): array
     {
+        $errors=[];
+        $open=$this->guard->capture('finance','open_accounts',[],'حساب‌های باز فعلاً در دسترس نیستند.',fn():array=>$this->openAccounts());
+        $periods=$this->guard->capture('finance','periods',[],'دوره‌های مالی فعلاً در دسترس نیستند.',fn():array=>$this->periods());
+        $settlements=$this->guard->capture('finance','recent_settlements',[],'فاکتورهای اخیر فعلاً در دسترس نیستند.',fn():array=>$this->recentSettlements());
+        $tax=$this->guard->capture('finance','tax',['enabled'=>false,'current_rate'=>null,'rate_history'=>[],'items'=>[]],'اطلاعات مالیات فعلاً در دسترس نیست.',fn():array=>$this->taxSnapshot());
+        $subscribers=$this->guard->capture('finance','subscriber_summary',['total_count'=>0,'active_count'=>0,'receivable_total'=>0],'خلاصه حساب مشتریان فعلاً در دسترس نیست.',fn():array=>$this->subscriberSummary());
+        foreach(['open_accounts'=>$open,'periods'=>$periods,'recent_settlements'=>$settlements,'tax'=>$tax,'subscriber_summary'=>$subscribers] as $key=>$result){if($result['error']!==null)$errors[$key]=$result['error'];}
         return [
-            'open_accounts'=>$this->openAccounts(),
-            'periods'=>$this->periods(),
-            'recent_settlements'=>$this->recentSettlements(),
-            'tax'=>$this->taxSnapshot(),
-            'subscriber_summary'=>$this->subscriberSummary(),
+            'open_accounts'=>$open['value'],
+            'periods'=>$periods['value'],
+            'recent_settlements'=>$settlements['value'],
+            'tax'=>$tax['value'],
+            'subscriber_summary'=>$subscribers['value'],
+            'errors'=>$errors,
         ];
     }
 
     public function openAccounts(): array
     {
-        $sql="SELECT s.id session_id,s.status,s.opened_at,t.id table_id,t.name table_name,
+        $sql="SELECT s.id session_id,s.status,s.started_at,s.service_detached_at,s.service_detach_reason,s.followup_settlement_destination,s.followup_settlement_updated_at,t.id table_id,t.name table_name,
                     COALESCE(SUM(CASE WHEN o.status='accounted' THEN o.total_amount ELSE 0 END),0) accounted_subtotal,
                     SUM(o.status='pending_approval') pending_orders
              FROM table_sessions s JOIN cafe_tables t ON t.id=s.table_id
              LEFT JOIN orders o ON o.session_id=s.id AND o.status IN('pending_approval','new','accounted')
              WHERE s.status IN('active','pending')
-             GROUP BY s.id,s.status,s.opened_at,t.id,t.name ORDER BY t.name,s.id";
+             GROUP BY s.id,s.status,s.started_at,s.service_detached_at,s.service_detach_reason,s.followup_settlement_destination,s.followup_settlement_updated_at,t.id,t.name ORDER BY (s.service_detached_at IS NULL) DESC,t.name,s.id";
         return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -59,15 +68,53 @@ final class FinanceWorkspaceService
         return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function recentSettlements(int $limit=40): array
+    public function recentSettlements(int $limit=100): array
     {
         $limit=max(1,min(100,$limit));
         $sql="SELECT sr.id,sr.invoice_number,sr.destination,sr.table_name_snapshot,sr.subtotal,sr.discount,sr.tax_amount,sr.total,
-                    sr.status,sr.settlement_kind,sr.settled_at,sr.business_date,sr.reverses_settlement_id,
+                    sr.status,sr.settlement_kind,sr.tender_capture_status,sr.settled_at,sr.business_date,sr.reverses_settlement_id,
                     u.display_name actor_name
              FROM settlement_records sr LEFT JOIN users u ON u.id=sr.actor_user_id
              ORDER BY sr.id DESC LIMIT {$limit}";
         return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function settlementDetail(int $settlementId): array
+    {
+        if($settlementId<1)throw new SettlementException('invalid_settlement','سند مالی معتبر نیست.',422);
+        $stmt=$this->pdo->prepare(
+            "SELECT sr.*,fp.title period_title,u.display_name actor_name,sl.subscriber_id,sub.name subscriber_name,
+                    at.reservation_code,at.guest_name_snapshot accommodation_guest,at.room_name_snapshot accommodation_room,
+                    original.invoice_number original_invoice_number,reversal.invoice_number reversal_invoice_number
+             FROM settlement_records sr
+             LEFT JOIN financial_periods fp ON fp.id=sr.financial_period_id
+             LEFT JOIN users u ON u.id=sr.actor_user_id
+             LEFT JOIN subscriber_ledger sl ON sl.id=sr.subscriber_ledger_entry_id
+             LEFT JOIN subscribers sub ON sub.id=sl.subscriber_id
+             LEFT JOIN accommodation_transfers at ON at.id=sr.accommodation_transfer_id
+             LEFT JOIN settlement_records original ON original.id=sr.reverses_settlement_id
+             LEFT JOIN settlement_records reversal ON reversal.reverses_settlement_id=sr.id AND reversal.status='reversal'
+             WHERE sr.id=? LIMIT 1"
+        );
+        $stmt->execute([$settlementId]);$record=$stmt->fetch(PDO::FETCH_ASSOC);
+        if(!is_array($record))throw new SettlementException('settlement_not_found','سند مالی پیدا نشد.',404);
+        $snapshot=json_decode((string)($record['invoice_snapshot_json']??''),true);
+        if(!is_array($snapshot))$snapshot=[];
+        $items=[];
+        foreach((array)($snapshot['items']??[]) as $item){
+            if(!is_array($item))continue;
+            $items[]=[
+                'name'=>(string)($item['name']??''),'note'=>(string)($item['note']??''),
+                'quantity'=>(int)($item['quantity']??0),'unit_price'=>(int)($item['unit_price']??0),
+                'line_total'=>(int)($item['line_total']??0),'line_discount'=>(int)($item['line_discount']??0),
+                'tax_amount'=>(int)($item['tax_amount']??0),'line_final'=>(int)($item['line_final']??($item['line_total']??0)),
+            ];
+        }
+        $tenderStmt=$this->pdo->prepare("SELECT tender_type type,amount FROM settlement_tender_allocations WHERE settlement_id=? ORDER BY FIELD(tender_type,'cash','pos','bank_transfer'),id");
+        $tenderStmt->execute([$settlementId]);
+        $tenders=array_map(static fn(array $row):array=>['type'=>(string)$row['type'],'amount'=>(int)$row['amount']],$tenderStmt->fetchAll(PDO::FETCH_ASSOC));
+        unset($record['invoice_snapshot_json'],$record['request_fingerprint']);
+        return ['record'=>$record,'snapshot'=>$snapshot,'items'=>$items,'tenders'=>$tenders];
     }
 
     public function taxSnapshot(): array
@@ -100,8 +147,10 @@ final class FinanceWorkspaceService
         if($status==='active')$where[]='s.active=1';elseif($status==='inactive')$where[]='s.active=0';
         if($debtOnly)$where[]="COALESCE((SELECT l2.balance_after FROM subscriber_ledger l2 WHERE l2.subscriber_id=s.id ORDER BY l2.id DESC LIMIT 1),0)>0";
         if($query!==''){
-            $normalized=preg_replace('/\D+/','',$query)??'';
-            $where[]='(s.name LIKE ? OR s.mobile LIKE ? OR s.mobile_normalized LIKE ?)';
+            $query=strtr($query,['ي'=>'ی','ك'=>'ک']);
+            $normalized=preg_replace('/\D+/u','',$query)??'';
+            $nameExpr="REPLACE(REPLACE(s.name,'ي','ی'),'ك','ک')";
+            $where[]='('.$nameExpr.' LIKE ? OR s.mobile LIKE ? OR s.mobile_normalized LIKE ?)';
             $params[]='%'.$query.'%';$params[]='%'.$query.'%';$params[]='%'.$normalized.'%';
         }
         $sql="SELECT s.*,COALESCE((SELECT l.balance_after FROM subscriber_ledger l WHERE l.subscriber_id=s.id ORDER BY l.id DESC LIMIT 1),0) balance,
@@ -113,7 +162,7 @@ final class FinanceWorkspaceService
     public function subscriberDetail(int $subscriberId,int $ledgerLimit=80): array
     {
         if($subscriberId<1)throw new SettlementException('invalid_subscriber','مشتری معتبر نیست.',422);
-        $st=$this->pdo->prepare("SELECT s.*,COALESCE((SELECT l.balance_after FROM subscriber_ledger l WHERE l.subscriber_id=s.id ORDER BY l.id DESC LIMIT 1),0) balance FROM subscribers s WHERE s.id=?");
+        $st=$this->pdo->prepare("SELECT s.*,COALESCE((SELECT l.balance_after FROM subscriber_ledger l WHERE l.subscriber_id=s.id ORDER BY l.id DESC LIMIT 1),0) balance,(SELECT MAX(l2.created_at) FROM subscriber_ledger l2 WHERE l2.subscriber_id=s.id) last_activity FROM subscribers s WHERE s.id=?");
         $st->execute([$subscriberId]);$subscriber=$st->fetch(PDO::FETCH_ASSOC);
         if(!is_array($subscriber))throw new SettlementException('subscriber_not_found','مشتری پیدا نشد.',404);
         $ledgerLimit=max(1,min(200,$ledgerLimit));

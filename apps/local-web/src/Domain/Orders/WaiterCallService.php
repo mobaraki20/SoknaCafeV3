@@ -16,9 +16,9 @@ final class WaiterCallService
 
     public function create(array $data): array
     {
-        $this->pdo->beginTransaction();
-        try{$result=$this->createTx($data);$this->pdo->commit();return $result;}
-        catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
+        try{$result=$this->createTx($data);if($ownsTransaction)$this->pdo->commit();return $result;}
+        catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
     public function createTx(array $data): array
@@ -49,7 +49,7 @@ final class WaiterCallService
 
         $session=null;
         if(!$publicContext&&$sessionToken!==''){
-            $stmt=$this->pdo->prepare("SELECT id,public_token FROM table_sessions WHERE public_token=? AND table_id=? AND status='active' LIMIT 1 FOR UPDATE");
+            $stmt=$this->pdo->prepare("SELECT id,public_token FROM table_sessions WHERE public_token=? AND table_id=? AND status='active' AND live_table_guard IS NOT NULL LIMIT 1 FOR UPDATE");
             $stmt->execute([$sessionToken,(int)$table['id']]);$row=$stmt->fetch(PDO::FETCH_ASSOC);$session=is_array($row)?$row:null;
         }
         $active=$this->pdo->prepare("SELECT public_code,status FROM waiter_calls WHERE table_id=? AND status IN('new','accepted') ORDER BY id DESC LIMIT 1 FOR UPDATE");
@@ -89,9 +89,9 @@ final class WaiterCallService
 
     public function cancel(array $data): array
     {
-        $this->pdo->beginTransaction();
-        try{$result=$this->cancelTx($data);$this->pdo->commit();return $result;}
-        catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
+        try{$result=$this->cancelTx($data);if($ownsTransaction)$this->pdo->commit();return $result;}
+        catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
     public function cancelTx(array $data): array

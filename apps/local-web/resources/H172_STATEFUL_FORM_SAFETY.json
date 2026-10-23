@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "checkpoint": "H172",
+  "version": "3.0.0-g6.2-workspace.172-stateful-form-safety",
+  "objective": "Close the H155 source/browser stateful-form safety gap without claiming installed real-environment qualification.",
+  "dirty_form_owner": "public/assets/product-interactions.js",
+  "duplicate_submit_owner": "public/assets/ui-dialogs.js:SoknaUI.busy",
+  "enrolled_forms": [
+    "marketing:campaign",
+    "marketing:event",
+    "catalog:item-full-editor",
+    "admin:team-editor"
+  ],
+  "behaviors": [
+    "input/change marks tracked form dirty",
+    "successful load/save lifecycle marks tracked form clean",
+    "dialog close and Escape require discard confirmation while dirty",
+    "tab change requires discard confirmation when leaving a dirty active panel",
+    "beforeunload is blocked while a visible tracked form is dirty",
+    "rapid duplicate submit cannot re-enter a SoknaUI.busy form task"
+  ],
+  "carry_forward_source_browser": {
+    "hall_draft_roundtrip": "H172 replacement gate for stale H154 browser harness",
+    "preparation_populated": "H129 active/handled populated fixture",
+    "marketing_date_roundtrip": "H162",
+    "customer_search": "H162",
+    "catalog_editor": "H90/H133"
+  },
+  "not_verified_installed": [
+    "Hall draft persistence/restore on installed Windows Local",
+    "Preparation populated workflow with installed real data",
+    "Marketing date and Customer Search against final installed real DB",
+    "physical printer output and printer failover",
+    "Local-Public-Guest real-host mutation/retry/idempotency/stale/recovery",
+    "System update/rollback/backup/restore destructive workflow"
+  ]
+}

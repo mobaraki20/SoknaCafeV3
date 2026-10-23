@@ -21,7 +21,8 @@ public sealed record LocalCodeOnlyPreExecutionEvidence(
     [property: JsonPropertyName("physical_sibling_verified")] bool PhysicalSiblingVerified,
     [property: JsonPropertyName("unchanged_migrations_verified")] bool UnchangedMigrationsVerified,
     [property: JsonPropertyName("execution_authorized")] bool ExecutionAuthorized,
-    [property: JsonPropertyName("panel_update_ready")] bool PanelUpdateReady);
+    [property: JsonPropertyName("panel_update_ready")] bool PanelUpdateReady,
+    RoutineMigrationPlan? MigrationPlan = null);
 
 public sealed class SupervisorLocalCodeOnlyPreExecution
 {
@@ -127,7 +128,19 @@ public sealed class SupervisorLocalCodeOnlyPreExecution
         var persistent = Path.Combine(packageRoot, "LocalWeb", "persistent");
         RoutineLocalBinding.RequireCurrent(layout.WebRoot, packageRoot, layout.Build);
         RoutineLocalBinding.RequireTarget(persistent, target, packageRoot, receipt.TargetVersion);
-        RoutineLocalLifecycle.RequireUnchangedMigrationCatalog(layout.WebRoot, target);
+        var migrations = RoutineLocalDatabase.Plan(layout.WebRoot, target);
+        var declared = manifest.Targets.GetProperty("local");
+        if (migrations.RequiresMigration &&
+            (!declared.TryGetProperty("schema_fingerprint", out var schema) || schema.GetString() != migrations.TargetFingerprint ||
+             !declared.TryGetProperty("migration_head", out var head) || head.GetString() != migrations.TargetHead ||
+             identity.Local.SchemaFingerprint != migrations.SourceFingerprint || identity.Local.MigrationHead != migrations.SourceHead))
+            throw new InvalidDataException("LOCAL_MIGRATION_IDENTITY_MISMATCH");
+        if (migrations.RequiresMigration)
+        {
+            if (manifest.PreUpdateBackupPolicy.RequireRemoteVerifiedBeforeDbBoundary)
+                throw new InvalidDataException("LOCAL_REMOTE_BACKUP_POLICY_UNSUPPORTED");
+            RoutineLocalDatabase.RequireBaseline(packageRoot, layout.WebRoot, target, migrations);
+        }
         RoutineLocalLifecycle.RequireTargetSetupBoot(packageRoot, target);
         if (Sha(_paths.InstalledReleaseIdentityPath) != installedHash ||
             Sha(stageReceiptPath) != stageReceiptSha ||
@@ -139,8 +152,8 @@ public sealed class SupervisorLocalCodeOnlyPreExecution
             stageOperationId, signed.ReleaseSetId, oldSlot, target,
             receipt.TargetVersion, receipt.TargetTreeSha256, receipt.TargetManagedFiles,
             SignedStageVerified: true, PhysicalSiblingVerified: true,
-            UnchangedMigrationsVerified: true, ExecutionAuthorized: false,
-            PanelUpdateReady: false);
+            UnchangedMigrationsVerified: !migrations.RequiresMigration, ExecutionAuthorized: false,
+            PanelUpdateReady: false, MigrationPlan: migrations);
     }
 
     /// <summary>

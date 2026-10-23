@@ -1,0 +1,21 @@
+{
+  "version": "3.0.0-g6.2-workspace.155-h154-visual-reaudit-closure",
+  "baseline": "3.0.0-g6.2-workspace.154-uat-root-closure",
+  "source_baseline": "3.0.0-g6.2-workspace.153-public-staff-projection-convergence",
+  "scope": [
+    "sidebar final-cascade v107 gradient/glow",
+    "settlement search icon sizing/RTL containment",
+    "Persian accommodation phone-hint rendering",
+    "customer mobile help Persian copy",
+    "draft unsaved beforeunload guard",
+    "account footer action width/readability",
+    "committed-item reason visibility",
+    "account footer discount label remains concise in edit state",
+    "committed-item confirm/cancel glyphs render without external sprite dependency",
+    "settlement search icon final contrast/readability, not geometry only",
+    "system-wide Persian numeric-input owner replaces remaining native number fields while preserving canonical submit values and bounds validation",
+    "context/help audit confirms page-level explanatory copy is owned by ProductShell headers or contained card/disclosure/help surfaces",
+    "current House dev.14 charge_allowed contract is consumed so accommodation settlement excludes non-chargeable/inactive stays"
+  ],
+  "public_edge_changed": false
+}

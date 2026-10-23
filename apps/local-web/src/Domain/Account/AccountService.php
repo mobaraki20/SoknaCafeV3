@@ -3,12 +3,13 @@ declare(strict_types=1);
 
 namespace Sokna\Local\Domain\Account;
 
+use Sokna\Local\Domain\PublicEdge\RemoteCredentialService;
 use PDO;
 use Throwable;
 
 final class AccountService
 {
-    public function __construct(private readonly PDO $pdo){}
+    public function __construct(private readonly PDO $pdo,private readonly ?RemoteCredentialService $remoteCredentials=null){}
 
     /** @return array{id:int,username:string,display_name:string,role:string,updated_at:string} */
     public function snapshot(array $actor): array
@@ -49,6 +50,7 @@ final class AccountService
             if(!is_array($row))throw new AccountException('account_missing','حساب کاربری پیدا نشد.',404);
             if(!password_verify($current,(string)$row['password_hash']))throw new AccountException('current_password_invalid','رمز فعلی درست نیست.',422);
             $this->pdo->prepare('UPDATE users SET password_hash=? WHERE id=?')->execute([password_hash($next,PASSWORD_DEFAULT),$id]);
+            $this->remoteCredentials?->syncFromPassword($id,$next);
             $this->audit('account.password_changed',$id,(string)$row['display_name'],[]);
             $this->pdo->commit();
             return ['saved'=>true];

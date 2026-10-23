@@ -16,14 +16,17 @@ final class BusinessClock
         private readonly string $timezone = 'Asia/Tehran',
     ) {}
 
-    /** @return array{business_date:string,shift_key:string,shift_label:string,cutoff:string} */
+    /** @return array{business_date:string,civil_date:string,shift_key:string,shift_label:string,cutoff:string} */
     public function assignment(DateTimeInterface|string|null $value = null): array
     {
         $tz = new DateTimeZone($this->timezone);
         if ($value instanceof DateTimeInterface) {
             $dt = DateTimeImmutable::createFromInterface($value)->setTimezone($tz);
         } elseif (is_string($value) && trim($value) !== '') {
-            $dt = new DateTimeImmutable($value, $tz);
+            // A string with an explicit offset/Z is an instant; project it into
+            // the business timezone before applying cutoff/shift rules. Bare
+            // form/DB values keep their existing local-wall-clock semantics.
+            $dt = (new DateTimeImmutable($value, $tz))->setTimezone($tz);
         } else {
             $dt = new DateTimeImmutable('now', $tz);
         }
@@ -31,9 +34,10 @@ final class BusinessClock
         $cutoff = $this->cutoff();
         $cutoffMinutes = self::clockMinutes($cutoff);
         $clockMinutes = ((int)$dt->format('G')) * 60 + (int)$dt->format('i');
+        $civilDate = $dt->format('Y-m-d');
         $businessDate = $clockMinutes < $cutoffMinutes
             ? $dt->modify('-1 day')->format('Y-m-d')
-            : $dt->format('Y-m-d');
+            : $civilDate;
         $offset = $clockMinutes - $cutoffMinutes;
         if ($offset < 0) $offset += 1440;
 
@@ -41,13 +45,14 @@ final class BusinessClock
             if ($offset >= $shift['start_offset'] && $offset < $shift['end_offset']) {
                 return [
                     'business_date'=>$businessDate,
+                    'civil_date'=>$civilDate,
                     'shift_key'=>$shift['key'],
                     'shift_label'=>$shift['label'],
                     'cutoff'=>$cutoff,
                 ];
             }
         }
-        return ['business_date'=>$businessDate,'shift_key'=>'outside','shift_label'=>'خارج از شیفت','cutoff'=>$cutoff];
+        return ['business_date'=>$businessDate,'civil_date'=>$civilDate,'shift_key'=>'outside','shift_label'=>'خارج از شیفت','cutoff'=>$cutoff];
     }
 
     private function cutoff(): string

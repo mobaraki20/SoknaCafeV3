@@ -12,11 +12,13 @@ final class DeferredDispatchService
         private readonly InventoryDeferredAdapter $inventory,
         private readonly ExpenseDeferredAdapter $expenses,
         private readonly SubscriberPaymentDeferredAdapter $subscriberPayments,
+        private readonly ?DailyOperationsDeferredAdapter $daily=null,
     ) {}
 
     public function dispatch(string $installationId,array $envelope): array
     {
         return match(trim((string)($envelope['kind']??''))){
+            'operations.daily'=>$this->daily?->dispatch($installationId,$envelope)??throw new \LogicException('Daily adapter missing'),
             'supply.need.create','supply.status.prepare','supply.status.return','supply.receipt'=>$this->supply->dispatch($installationId,$envelope),
             'inventory.waste','inventory.count_draft'=>$this->inventory->dispatch($installationId,$envelope),
             'expense.create'=>$this->expenses->dispatch($installationId,$envelope),

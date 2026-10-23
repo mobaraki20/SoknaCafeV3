@@ -14,6 +14,11 @@ function setup_private_write(string $path,string $bytes): void {
     $tmp=$path.'.tmp-'.bin2hex(random_bytes(4));if(file_put_contents($tmp,$bytes,LOCK_EX)===false)setup_fail('write_failed','فایل تنظیمات قابل نوشتن نیست.');@chmod($tmp,0600);if(!rename($tmp,$path)){@unlink($tmp);setup_fail('write_failed','فایل تنظیمات به‌صورت اتمیک ذخیره نشد.');}
 }
 function setup_config_php(array $config): string { return "<?php\ndeclare(strict_types=1);\nreturn ".var_export($config,true).";\n"; }
+function setup_local_base_url(string $root): string {
+    $state=$root.DIRECTORY_SEPARATOR.'Infrastructure'.DIRECTORY_SEPARATOR.'infrastructure-state.json';
+    if(is_file($state)){try{$j=json_decode((string)file_get_contents($state),true,32,JSON_THROW_ON_ERROR);$e=(array)($j['endpoints']['local_web']??[]);foreach([(string)($e['origin']??''),(string)($e['base_url']??'')] as $v){$v=rtrim(trim($v),'/');$p=parse_url($v);if(is_array($p)&&in_array(strtolower((string)($p['scheme']??'')),['http','https'],true)&&in_array(strtolower((string)($p['host']??'')),['127.0.0.1','localhost'],true))return $v;}}catch(Throwable){}}
+    return 'http://127.0.0.1:18080';
+}
 
 $mode=strtolower(setup_arg($argv,'--mode'));$configFile=setup_arg($argv,'--config-file');$validate=in_array('--validate-only',$argv,true);
 if(!in_array($mode,['new','recover'],true))setup_fail('invalid_mode','حالت Setup معتبر نیست.');
@@ -22,7 +27,7 @@ try{$input=json_decode((string)file_get_contents($configFile),true,64,JSON_THROW
 if(!is_array($input))setup_fail('config_invalid','فایل تنظیمات Setup معتبر نیست.');
 $db=is_array($input['db']??null)?$input['db']:[];$dataDir=trim((string)($input['data_dir']??''));$timezone=trim((string)($input['timezone']??'Asia/Tehran'))?:'Asia/Tehran';
 if($dataDir===''||!preg_match('/^(?:[A-Za-z]:[\\\\\/]|\/)/',$dataDir))setup_fail('data_dir_invalid','مسیر داده باید کامل باشد.');
-$root=dirname(__DIR__,3);$configPath=$root.DIRECTORY_SEPARATOR.'config.php';$lockPath=$root.DIRECTORY_SEPARATOR.'install.lock';
+$local=dirname(__DIR__);$root=dirname($local);$configPath=$root.DIRECTORY_SEPARATOR.'config.php';$lockPath=$root.DIRECTORY_SEPARATOR.'install.lock';
 $secrets=$dataDir.DIRECTORY_SEPARATOR.'secrets';$runtimeDir=$dataDir.DIRECTORY_SEPARATOR.'runtime';
 $installationId=trim((string)($input['installation_id']??''));if($installationId==='')$installationId='local-'.bin2hex(random_bytes(16));
 $localToken=bin2hex(random_bytes(32));$healthToken=bin2hex(random_bytes(32));
@@ -30,8 +35,8 @@ $appConfig=[
     'app'=>['timezone'=>$timezone,'data_dir'=>$dataDir,'session_lifetime'=>43200],
     'db'=>['host'=>trim((string)($db['host']??'')),'port'=>(string)($db['port']??'3306'),'name'=>trim((string)($db['name']??'')),'charset'=>'utf8mb4','user'=>trim((string)($db['user']??'')),'pass'=>(string)($db['pass']??'')],
     'installation'=>['id'=>$installationId],
-    'runtime'=>['local_token'=>$localToken],
-    'integrations'=>['accommodation'=>['base_url'=>'','secret'=>'']],
+    'runtime'=>['local_token'=>$localToken,'local_base_url'=>setup_local_base_url($root)],
+    'integrations'=>['accommodation'=>['enabled'=>false,'base_url'=>'','api_key'=>'']],
 ];
 try{$core=sokna_local_bootstrap($appConfig);$pdo=$core->database();$pdo->query('SELECT 1')->fetchColumn();}catch(Throwable $e){setup_fail('database_unavailable','اتصال دیتابیس کامل نشد: '.$e->getMessage());}
 if($validate){echo json_encode(['success'=>true,'mode'=>$mode,'database'=>'ready','mutation'=>'none'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;exit(0);}
@@ -41,7 +46,7 @@ try{
         $count=(int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();if($count>0)setup_fail('target_not_empty','نصب جدید فقط روی دیتابیس بدون کاربر مجاز است.');
         $username=trim((string)($input['admin_user']??''));$password=(string)($input['admin_password']??'');if(strlen($username)<3||strlen($password)<8)setup_fail('admin_invalid','اطلاعات مدیر اولیه معتبر نیست.');
         $pdo->beginTransaction();
-        $pdo->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'admin',1)")->execute([$username,password_hash($password,PASSWORD_DEFAULT),$username]);$adminId=(int)$pdo->lastInsertId();
+        $pdo->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'admin',1)")->execute([$username,password_hash($password,PASSWORD_DEFAULT),$username]);$adminId=(int)$pdo->lastInsertId();$pdo->prepare("INSERT INTO remote_user_credentials(user_id,password_hash,credential_version,source_mode) VALUES(?,?,1,'local_password')")->execute([$adminId,password_hash($password,PASSWORD_DEFAULT)]);
         $setting=$pdo->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');$setting->execute(['cafe.name',trim((string)($input['cafe_name']??'SOKNA'))]);
         $tables=max(1,min(100,(int)($input['table_count']??10)));$ins=$pdo->prepare('INSERT INTO cafe_tables(name,table_number,code,access_token,active,sort_order) VALUES(?,?,?,?,1,?)');for($i=1;$i<=$tables;$i++)$ins->execute(['میز '.$i,$i,'T'.$i,bin2hex(random_bytes(24)),$i]);
         $pdo->prepare("INSERT INTO audit_log(actor_user_id,actor_display_name_snapshot,action,entity_type,entity_id,details_json) VALUES(?,?,'setup.initialized','installation',?,?)")->execute([$adminId,$username,$installationId,json_encode(['table_count'=>$tables],JSON_UNESCAPED_UNICODE)]);
@@ -55,7 +60,7 @@ try{
     $runtime=[
         'contractVersion'=>1,'instanceId'=>'runtime-'.bin2hex(random_bytes(12)),'dataRoot'=>$runtimeDir,'healthPort'=>17621,
         'runtimeTokenFile'=>$secrets.DIRECTORY_SEPARATOR.'runtime-health.token','localTokenFile'=>$secrets.DIRECTORY_SEPARATOR.'runtime-local.token',
-        'localBaseUrl'=>'https://127.0.0.1','printAgentServiceName'=>'SoknaPrintWorker','supervisePrintAgent'=>true,
+        'localBaseUrl'=>(string)$appConfig['runtime']['local_base_url'],'printAgentServiceName'=>'SoknaPrintWorker','supervisePrintAgent'=>true,
         'triggers'=>[['key'=>'inventory.order_events','intervalSeconds'=>15],['key'=>'public.relay_sync','intervalSeconds'=>5],['key'=>'public.projection_sync','intervalSeconds'=>30],['key'=>'notifications.outbox','intervalSeconds'=>15],['key'=>'maintenance.health','intervalSeconds'=>60]],
     ];
     setup_private_write($runtimeDir.DIRECTORY_SEPARATOR.'runtime-config.json',json_encode($runtime,JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");

@@ -1,0 +1,17 @@
+{
+  "format": "sokna-h175-uat-public-projection-fix-v1",
+  "date": "2026-10-09",
+  "base_version": "3.0.0-g6.2-workspace.174-shared-backoffice-frontend",
+  "target_version": "3.0.0-g6.2-workspace.175-uat-public-projection-fix",
+  "public_version_unchanged": "3.0.0-g3.6-workspace.35z-shared-backoffice-frontend",
+  "fixes": [
+    "Public customer projection uses subscriber_ledger.reason AS note instead of nonexistent subscriber_ledger.note",
+    "Connections Edge version formatter preserves alphanumeric workspace suffixes such as 35z"
+  ],
+  "support_evidence": {
+    "event": "connections.web_action_failed",
+    "sqlstate": "42S22",
+    "unknown_column": "l.note"
+  },
+  "public_update_required": false
+}

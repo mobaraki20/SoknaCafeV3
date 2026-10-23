@@ -1,0 +1,47 @@
+{
+  "classes": {
+    "brand_editable": {
+      "examples": [
+        "menu labels",
+        "about/social/accommodation copy",
+        "post-order social CTA",
+        "guest connectivity/syncing copy"
+      ],
+      "owner": "GuestContentService draft/publish"
+    },
+    "technical_admin": {
+      "allowed_surfaces": [
+        "maintenance",
+        "support/diagnostics",
+        "updates",
+        "connections advanced"
+      ],
+      "editable": false,
+      "owner": "versioned source"
+    },
+    "transactional_system": {
+      "editable": false,
+      "examples": [
+        "conflict",
+        "duplicate-prevention",
+        "session expiry",
+        "payment/order failure",
+        "security warnings"
+      ],
+      "owner": "versioned source"
+    }
+  },
+  "format": "sokna-product-copy-governance-v1",
+  "normal_surface_forbidden_internal_terms": [
+    "Dev26",
+    "V107",
+    "workspace.",
+    "source-qualified",
+    "Public Edge",
+    "Local projection",
+    "renderer",
+    "contract"
+  ],
+  "rule": "Normal operational/guest UI must use product language. Internal engineering lineage and implementation nouns are not user-facing copy.",
+  "version": 1
+}

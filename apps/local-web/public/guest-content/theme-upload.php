@@ -1,0 +1,15 @@
+<?php
+declare(strict_types=1);
+use Sokna\Local\UI\LocalPage;use Sokna\Local\UI\WebAction;use Sokna\Local\Domain\GuestContent\GuestContentException;
+$core=require dirname(__DIR__).'/_app.php';$user=LocalPage::requireAdmin($core);header('Content-Type: application/json; charset=utf-8');header('Cache-Control: no-store');
+try{
+    if(($_SERVER['REQUEST_METHOD']??'')!=='POST')throw new GuestContentException('method_not_allowed','روش درخواست معتبر نیست.',405);
+    $expected=(string)($_SESSION['sokna_csrf_token']??'');$candidate=trim((string)($_POST['csrf_token']??''));if($expected===''||$candidate===''||!hash_equals($expected,$candidate))throw new GuestContentException('csrf_expired','نشست صفحه منقضی شده؛ صفحه را تازه کنید.',419);
+    $file=$_FILES['theme']??null;$uploadError=is_array($file)?(int)($file['error']??UPLOAD_ERR_NO_FILE):UPLOAD_ERR_NO_FILE;if($uploadError!==UPLOAD_ERR_OK){$problem=WebAction::uploadProblem($uploadError,'فایل تم');throw new GuestContentException($problem['code'],$problem['message'],$problem['status']);}
+    $tmp=(string)($file['tmp_name']??'');$name=(string)($file['name']??'theme.soknatheme');if(!is_uploaded_file($tmp))throw new GuestContentException('theme_upload_failed','فایل تم بارگذاری‌شده معتبر نیست.',422);
+    $size=(int)filesize($tmp);if($size<2||$size>65536)throw new GuestContentException('theme_size','حجم فایل تم باید کمتر از ۶۴ کیلوبایت باشد.',413);
+    if(!preg_match('/\.soknatheme$/i',$name))throw new GuestContentException('theme_extension','فایل تم باید پسوند .soknatheme داشته باشد.',422);
+    $raw=file_get_contents($tmp);if(!is_string($raw))throw new GuestContentException('theme_upload_failed','خواندن فایل تم کامل نشد.',500);
+    $result=$core->guestContent()->importThemePackage($raw,$user);
+    echo json_encode(['success'=>true,'result'=>$result],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+}catch(GuestContentException $e){http_response_code($e->httpStatus);echo json_encode(['success'=>false,'code'=>$e->errorCode,'message'=>$e->getMessage(),'details'=>$e->details],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);}catch(Throwable $e){error_log('guest theme upload: '.$e->getMessage());http_response_code(500);echo json_encode(['success'=>false,'code'=>'theme_upload_failed','message'=>'نصب تم انجام نشد.'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);}

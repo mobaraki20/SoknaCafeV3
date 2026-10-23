@@ -12,9 +12,16 @@ final class WindowsServicesPairingService
     private const FORMAT='sokna-windows-services-pairing-ticket-v1';
     private const BUNDLE_FORMAT='sokna-windows-services-pairing-v1';
     private const TTL_SECONDS=600;
-    private const RETAIN_TERMINAL_SECONDS=604800;
+    private const RETAIN_TERMINAL_SECONDS=15552000; // 180 days; secrets are stripped from terminal tickets.
+    private const HISTORY_LIMIT=20;
 
-    /** @param Closure(string,array):array $createAgent @param Closure(int,int,string):void $retireAgent @param Closure(int,array):array $prepareAgentRotation @param Closure(int,string,int):array $commitAgentRotation */
+    /**
+     * @param Closure(string,array):array $createAgent
+     * @param Closure(int,int,string):array $retireAgent
+     * @param Closure(int,array):array $prepareAgentRotation
+     * @param Closure(int,string,int):array $commitAgentRotation
+     * @param Closure():array $activeAgents
+     */
     public function __construct(
         private readonly Config $config,
         private readonly string $dataRoot,
@@ -22,31 +29,27 @@ final class WindowsServicesPairingService
         private readonly Closure $retireAgent,
         private readonly Closure $prepareAgentRotation,
         private readonly Closure $commitAgentRotation,
+        private readonly Closure $activeAgents,
     ) {}
 
-    public function create(array $actor,string $displayName=''): array
+    public function create(array $actor,string $displayName='',bool $allowAdditional=false): array
     {
         $this->assertAdmin($actor);$this->cleanup();$this->supersedeOutstanding();
+        $active=$this->normalizedActiveAgents();
+        if(!$allowAdditional&&$active!==[]){
+            throw new WindowsServicesPairingException(
+                'pairing_existing_agent_requires_reconnect',
+                'یک Print Agent فعال از قبل وجود دارد. برای اتصال دوباره همان دستگاه از «اتصال مجدد / تعویض توکن» استفاده کن؛ افزودن دستگاه جدید باید صریحاً انتخاب شود.',
+                409
+            );
+        }
         $displayName=trim($displayName);if($displayName==='')$displayName='Windows Services';
-        $displayName=$this->cut($displayName,120);
-        $actorId=(int)($actor['id']??0);
-        $agent=null;
+        $displayName=$this->cut($displayName,120);$actorId=(int)($actor['id']??0);$agent=null;
         try{
             $agent=($this->createAgent)($displayName,$actor);
             $agentId=max(0,(int)($agent['agent_id']??0));$printToken=trim((string)($agent['token']??''));
             if($agentId<1||strlen($printToken)<32)throw new WindowsServicesPairingException('print_agent_pairing_failed','ساخت دسترسی Print Agent کامل نشد.',500);
-            $bundle=$this->buildBundle($printToken);
-            $idHex=bin2hex(random_bytes(12));$pairingId='wsp-'.$idHex;$code='ws1_'.$idHex.'_'.bin2hex(random_bytes(24));$now=time();
-            $sealed=$this->seal($bundle);
-            $ticket=[
-                'format'=>self::FORMAT,'schema_version'=>1,'mode'=>'initial','pairing_id'=>$pairingId,'code_hash'=>hash('sha256',$code),
-                'state'=>'issued','created_at'=>gmdate('c',$now),'created_at_unix_ms'=>$this->nextCreatedMs(),'expires_at'=>gmdate('c',$now+self::TTL_SECONDS),
-                'actor_user_id'=>$actorId,'display_name'=>$displayName,'print_agent_id'=>$agentId,'local_base_url'=>$bundle['local_base_url'],
-                'exchange_count'=>0,'exchanged_at'=>null,'confirmed_at'=>null,'canceled_at'=>null,
-                'bundle_nonce'=>$sealed['nonce'],'bundle_ciphertext'=>$sealed['ciphertext'],
-            ];
-            $this->writeTicket($idHex,$ticket);
-            return $this->publicTicket($ticket)+['pairing_code'=>$code,'ttl_seconds'=>self::TTL_SECONDS];
+            return $this->issueTicket('initial',$agentId,$displayName,$actorId,$printToken);
         }catch(Throwable $e){
             if(is_array($agent)&&($agent['agent_id']??0)>0){try{($this->retireAgent)((int)$agent['agent_id'],$actorId,'pairing_create_failed');}catch(Throwable){}}
             throw $e;
@@ -60,55 +63,74 @@ final class WindowsServicesPairingService
         $resolvedId=max(0,(int)($prepared['agent_id']??0));$printToken=trim((string)($prepared['token']??''));
         if($resolvedId<1||$resolvedId!==$agentId||strlen($printToken)<32)throw new WindowsServicesPairingException('print_agent_rotation_failed','آماده‌سازی چرخش توکن Print Agent کامل نشد.',500);
         $displayName=trim($displayName);if($displayName==='')$displayName=(string)($prepared['name']??'Windows Services');
-        $displayName=$this->cut($displayName,120);$actorId=(int)($actor['id']??0);
-        $bundle=$this->buildBundle($printToken);
-        $idHex=bin2hex(random_bytes(12));$pairingId='wsp-'.$idHex;$code='ws1_'.$idHex.'_'.bin2hex(random_bytes(24));$now=time();$sealed=$this->seal($bundle);
-        $ticket=[
-            'format'=>self::FORMAT,'schema_version'=>1,'mode'=>'token_rotation','pairing_id'=>$pairingId,'code_hash'=>hash('sha256',$code),
-            'state'=>'issued','created_at'=>gmdate('c',$now),'created_at_unix_ms'=>$this->nextCreatedMs(),'expires_at'=>gmdate('c',$now+self::TTL_SECONDS),
-            'actor_user_id'=>$actorId,'display_name'=>$displayName,'print_agent_id'=>$resolvedId,'local_base_url'=>$bundle['local_base_url'],
-            'exchange_count'=>0,'exchanged_at'=>null,'confirmed_at'=>null,'canceled_at'=>null,
-            'bundle_nonce'=>$sealed['nonce'],'bundle_ciphertext'=>$sealed['ciphertext'],
-        ];
-        $this->writeTicket($idHex,$ticket);
-        return $this->publicTicket($ticket)+['pairing_code'=>$code,'ttl_seconds'=>self::TTL_SECONDS];
+        return $this->issueTicket('token_rotation',$resolvedId,$this->cut($displayName,120),(int)($actor['id']??0),$printToken);
     }
 
     public function status(): array
     {
-        $this->cleanup();$files=$this->ticketFiles();if($files===[]){try{[$base]=$this->canonicalLoopback($this->config->string('runtime.local_base_url',''));}catch(Throwable){$base='';}return ['state'=>'not_created','active'=>false,'local_base_url'=>$base];}
-        $tickets=[];foreach($files as $file){$ticket=$this->readTicketFile($file);if(is_array($ticket))$tickets[]=$ticket;}
-        usort($tickets,fn(array $a,array $b)=>((int)($b['created_at_unix_ms']??((strtotime((string)($b['created_at']??''))?:0)*1000)))<=>((int)($a['created_at_unix_ms']??((strtotime((string)($a['created_at']??''))?:0)*1000))));
-        if($tickets!==[])return $this->publicTicket($tickets[0]);
-        return ['state'=>'not_created','active'=>false];
+        $this->cleanup();$tickets=$this->sortedTickets();$agents=$this->normalizedActiveAgents();$activeIds=[];
+        foreach($agents as $agent){$id=max(0,(int)($agent['id']??0));if($id>0)$activeIds[$id]=true;}
+
+        $transient=null;$confirmed=null;$latest=$tickets[0]??null;
+        foreach($tickets as $ticket){
+            $state=(string)($ticket['state']??'');$agentId=max(0,(int)($ticket['print_agent_id']??0));
+            if($transient===null&&in_array($state,['issued','exchanged'],true)&&!$this->isExpired($ticket))$transient=$ticket;
+            if($confirmed===null&&$state==='confirmed'&&isset($activeIds[$agentId]))$confirmed=$ticket;
+        }
+        $selected=$transient??$confirmed??$latest;
+        if(is_array($selected))$out=$this->publicTicket($selected);
+        else{
+            try{[$base]=$this->canonicalLoopback($this->config->string('runtime.local_base_url',''));}catch(Throwable){$base='';}
+            $out=['state'=>'not_created','active'=>false,'association_active'=>false,'local_base_url'=>$base];
+        }
+        $out['association_active']=$confirmed!==null;
+        $out['confirmed_pairing_id']=$confirmed!==null?(string)($confirmed['pairing_id']??''):'';
+        $out['confirmed_agent_id']=$confirmed!==null?max(0,(int)($confirmed['print_agent_id']??0)):0;
+        $out['active_agent_count']=count($agents);
+        $out['active_agents']=$agents;
+        $out['history']=array_map(fn(array $ticket):array=>$this->publicTicket($ticket),array_slice($tickets,0,self::HISTORY_LIMIT));
+        return $out;
+    }
+
+    public function retireConnection(array $actor,int $agentId,string $reason='operator_removed'): array
+    {
+        $this->assertAdmin($actor);$this->cleanup();if($agentId<1)throw new WindowsServicesPairingException('pairing_agent_invalid','Print Agent معتبر نیست.',422);
+        $actorId=(int)($actor['id']??0);$reason=$this->cut(trim($reason),80);if($reason==='')$reason='operator_removed';
+        $retired=($this->retireAgent)($agentId,$actorId,$reason);$now=gmdate('c');$touched=0;
+        foreach($this->ticketFiles() as $file){
+            $ticket=$this->readTicketFile($file);if(!is_array($ticket)||max(0,(int)($ticket['print_agent_id']??0))!==$agentId)continue;
+            $state=(string)($ticket['state']??'');
+            if(in_array($state,['issued','exchanged'],true)){$ticket['state']='canceled';$ticket['canceled_at']=$now;}
+            elseif($state==='confirmed'){$ticket['state']='retired';$ticket['retired_at']=$now;$ticket['retired_by_user_id']=$actorId;$ticket['retire_reason']=$reason;}
+            else continue;
+            unset($ticket['bundle_nonce'],$ticket['bundle_ciphertext']);$this->writeTicket($this->idHex($ticket),$ticket);$touched++;
+        }
+        $status=$this->status();$status['retirement']=['agent_id'=>$agentId,'tickets_updated'=>$touched,'print_agent'=>$retired];return $status;
     }
 
     public function exchange(string $code,string $remoteAddress): array
     {
         $this->assertLoopback($remoteAddress);$ticket=$this->ticketForCode($code,false);$state=(string)($ticket['state']??'');
         if($state==='confirmed')throw new WindowsServicesPairingException('pairing_already_confirmed','این کد قبلاً مصرف شده است.',409);
-        if(in_array($state,['canceled','expired','superseded'],true))throw new WindowsServicesPairingException('pairing_unavailable','این کد دیگر قابل استفاده نیست.',410);
+        if(in_array($state,['canceled','expired','superseded','retired'],true))throw new WindowsServicesPairingException('pairing_unavailable','این کد دیگر قابل استفاده نیست.',410);
         if(!in_array($state,['issued','exchanged'],true))throw new WindowsServicesPairingException('pairing_state_invalid','وضعیت اتصال معتبر نیست.',409);
-        $bundle=$this->openBundle($ticket);
-        $ticket['state']='exchanged';$ticket['exchange_count']=max(0,(int)($ticket['exchange_count']??0))+1;$ticket['exchanged_at']=$ticket['exchanged_at']??gmdate('c');
-        $this->writeTicket($this->idHex($ticket),$ticket);
-        return ['pairing_id'=>(string)$ticket['pairing_id'],'bundle'=>$bundle,'expires_at'=>(string)$ticket['expires_at']];
+        $bundle=$this->openBundle($ticket);$ticket['state']='exchanged';$ticket['exchange_count']=max(0,(int)($ticket['exchange_count']??0))+1;$ticket['exchanged_at']=$ticket['exchanged_at']??gmdate('c');
+        $this->writeTicket($this->idHex($ticket),$ticket);return ['pairing_id'=>(string)$ticket['pairing_id'],'bundle'=>$bundle,'expires_at'=>(string)$ticket['expires_at']];
     }
 
     public function confirm(string $code,string $remoteAddress): array
     {
         $this->assertLoopback($remoteAddress);$ticket=$this->ticketForCode($code,false);$state=(string)($ticket['state']??'');
         if($state==='confirmed')return ['pairing_id'=>(string)$ticket['pairing_id'],'confirmed'=>true,'idempotent'=>true];
-        if(in_array($state,['canceled','expired','superseded'],true))throw new WindowsServicesPairingException('pairing_unavailable','این کد دیگر قابل استفاده نیست.',410);
+        if(in_array($state,['canceled','expired','superseded','retired'],true))throw new WindowsServicesPairingException('pairing_unavailable','این کد دیگر قابل استفاده نیست.',410);
         if($state!=='exchanged')throw new WindowsServicesPairingException('pairing_exchange_required','ابتدا بسته اتصال باید دریافت شود.',409);
         if((string)($ticket['mode']??'initial')==='token_rotation'){
             $bundle=$this->openBundle($ticket);$printToken=trim((string)($bundle['print_agent_token']??''));$agentId=max(0,(int)($ticket['print_agent_id']??0));$actorId=max(0,(int)($ticket['actor_user_id']??0));
             if($agentId<1||strlen($printToken)<32)throw new WindowsServicesPairingException('pairing_bundle_corrupt','بسته چرخش توکن معتبر نیست.',500);
             ($this->commitAgentRotation)($agentId,$printToken,$actorId);
         }
-        $ticket['state']='confirmed';$ticket['confirmed_at']=gmdate('c');unset($ticket['bundle_nonce'],$ticket['bundle_ciphertext']);
-        $this->writeTicket($this->idHex($ticket),$ticket);
-        return ['pairing_id'=>(string)$ticket['pairing_id'],'confirmed'=>true,'idempotent'=>false];
+        $ticket['state']='confirmed';$ticket['confirmed_at']=gmdate('c');unset($ticket['bundle_nonce'],$ticket['bundle_ciphertext']);$this->writeTicket($this->idHex($ticket),$ticket);
+        return ['pairing_id'=>(string)$ticket['pairing_id'],'confirmed'=>true,'idempotent'=>false,'print_agent_id'=>max(0,(int)($ticket['print_agent_id']??0)),'mode'=>(string)($ticket['mode']??'initial')];
     }
 
     public function cancel(string $code,string $remoteAddress): array
@@ -116,17 +138,23 @@ final class WindowsServicesPairingService
         $this->assertLoopback($remoteAddress);$ticket=$this->ticketForCode($code,false);$state=(string)($ticket['state']??'');
         if($state==='canceled')return ['pairing_id'=>(string)$ticket['pairing_id'],'canceled'=>true,'idempotent'=>true];
         if($state==='confirmed')throw new WindowsServicesPairingException('pairing_already_confirmed','اتصال قبلاً کامل شده است.',409);
-        if(in_array($state,['expired','superseded'],true))return ['pairing_id'=>(string)$ticket['pairing_id'],'canceled'=>true,'idempotent'=>true];
-        $this->retireTicketAgent($ticket,'pairing_canceled');$ticket['state']='canceled';$ticket['canceled_at']=gmdate('c');unset($ticket['bundle_nonce'],$ticket['bundle_ciphertext']);
-        $this->writeTicket($this->idHex($ticket),$ticket);
+        if(in_array($state,['expired','superseded','retired'],true))return ['pairing_id'=>(string)$ticket['pairing_id'],'canceled'=>true,'idempotent'=>true];
+        $this->retireTicketAgent($ticket,'pairing_canceled');$ticket['state']='canceled';$ticket['canceled_at']=gmdate('c');unset($ticket['bundle_nonce'],$ticket['bundle_ciphertext']);$this->writeTicket($this->idHex($ticket),$ticket);
         return ['pairing_id'=>(string)$ticket['pairing_id'],'canceled'=>true,'idempotent'=>false];
     }
 
     public function cancelActive(array $actor): array
     {
         $this->assertAdmin($actor);$this->cleanup();
-        foreach($this->ticketFiles() as $file){$ticket=$this->readTicketFile($file);if(!is_array($ticket)||!in_array((string)($ticket['state']??''),['issued','exchanged'],true))continue;$this->retireTicketAgent($ticket,'pairing_admin_canceled');$ticket['state']='canceled';$ticket['canceled_at']=gmdate('c');unset($ticket['bundle_nonce'],$ticket['bundle_ciphertext']);$this->writeTicket($this->idHex($ticket),$ticket);return $this->publicTicket($ticket);}
-        return ['state'=>'not_created','active'=>false];
+        foreach($this->sortedTickets() as $ticket){if(!in_array((string)($ticket['state']??''),['issued','exchanged'],true))continue;$this->retireTicketAgent($ticket,'pairing_admin_canceled');$ticket['state']='canceled';$ticket['canceled_at']=gmdate('c');unset($ticket['bundle_nonce'],$ticket['bundle_ciphertext']);$this->writeTicket($this->idHex($ticket),$ticket);return $this->status();}
+        return $this->status();
+    }
+
+    private function issueTicket(string $mode,int $agentId,string $displayName,int $actorId,string $printToken): array
+    {
+        $bundle=$this->buildBundle($printToken);$idHex=bin2hex(random_bytes(12));$pairingId='wsp-'.$idHex;$code='ws1_'.$idHex.'_'.bin2hex(random_bytes(24));$now=time();$sealed=$this->seal($bundle);
+        $ticket=['format'=>self::FORMAT,'schema_version'=>1,'mode'=>$mode,'pairing_id'=>$pairingId,'code_hash'=>hash('sha256',$code),'state'=>'issued','created_at'=>gmdate('c',$now),'created_at_unix_ms'=>$this->nextCreatedMs(),'expires_at'=>gmdate('c',$now+self::TTL_SECONDS),'actor_user_id'=>$actorId,'display_name'=>$displayName,'print_agent_id'=>$agentId,'local_base_url'=>$bundle['local_base_url'],'exchange_count'=>0,'exchanged_at'=>null,'confirmed_at'=>null,'canceled_at'=>null,'retired_at'=>null,'bundle_nonce'=>$sealed['nonce'],'bundle_ciphertext'=>$sealed['ciphertext']];
+        $this->writeTicket($idHex,$ticket);return $this->publicTicket($ticket)+['pairing_code'=>$code,'ttl_seconds'=>self::TTL_SECONDS];
     }
 
     private function buildBundle(string $printToken): array
@@ -135,14 +163,7 @@ final class WindowsServicesPairingService
         $healthPath=$this->secretsDir().DIRECTORY_SEPARATOR.'runtime-health.token';$runtimeToken=is_file($healthPath)?trim((string)@file_get_contents($healthPath)):'';
         if(strlen($runtimeToken)<32)throw new WindowsServicesPairingException('runtime_health_token_missing','توکن سلامت Runtime آماده نیست.',500);
         [$base,$origin]=$this->canonicalLoopback($this->config->string('runtime.local_base_url',''));
-        return [
-            'format'=>self::BUNDLE_FORMAT,'schema_version'=>1,'local_base_url'=>$base,'local_bridge_allowed_origin'=>$origin,
-            'runtime_token'=>$runtimeToken,'local_token'=>$localToken,'print_agent_token'=>$printToken,
-            'runtime_triggers'=>[
-                ['key'=>'inventory.order_events','intervalSeconds'=>15],['key'=>'public.relay_sync','intervalSeconds'=>5],
-                ['key'=>'public.projection_sync','intervalSeconds'=>30],['key'=>'notifications.outbox','intervalSeconds'=>15],['key'=>'maintenance.health','intervalSeconds'=>60],
-            ],
-        ];
+        return ['format'=>self::BUNDLE_FORMAT,'schema_version'=>1,'local_base_url'=>$base,'local_bridge_allowed_origin'=>$origin,'runtime_token'=>$runtimeToken,'local_token'=>$localToken,'print_agent_token'=>$printToken,'runtime_triggers'=>[['key'=>'inventory.order_events','intervalSeconds'=>15],['key'=>'public.relay_sync','intervalSeconds'=>5],['key'=>'public.live_projection_sync','intervalSeconds'=>1],['key'=>'public.projection_sync','intervalSeconds'=>30],['key'=>'notifications.outbox','intervalSeconds'=>15],['key'=>'maintenance.health','intervalSeconds'=>60]]];
     }
 
     private function ticketForCode(string $code,bool $requireBundle): array
@@ -151,15 +172,13 @@ final class WindowsServicesPairingService
         $file=$this->ticketDir().DIRECTORY_SEPARATOR.$m[1].'.json';$ticket=$this->readTicketFile($file);if(!is_array($ticket))throw new WindowsServicesPairingException('pairing_not_found','کد اتصال پیدا نشد.',404);
         $stored=(string)($ticket['code_hash']??'');if(strlen($stored)!==64||!hash_equals($stored,hash('sha256',$code)))throw new WindowsServicesPairingException('pairing_code_invalid','کد اتصال معتبر نیست.',403);
         if($this->isExpired($ticket)&&in_array((string)($ticket['state']??''),['issued','exchanged'],true)){$this->expireTicket($ticket);throw new WindowsServicesPairingException('pairing_expired','کد اتصال منقضی شده است. کد تازه‌ای بسازید.',410);}
-        if($requireBundle&&(!isset($ticket['bundle_nonce'],$ticket['bundle_ciphertext'])))throw new WindowsServicesPairingException('pairing_bundle_unavailable','بسته اتصال دیگر در دسترس نیست.',410);
-        return $ticket;
+        if($requireBundle&&(!isset($ticket['bundle_nonce'],$ticket['bundle_ciphertext'])))throw new WindowsServicesPairingException('pairing_bundle_unavailable','بسته اتصال دیگر در دسترس نیست.',410);return $ticket;
     }
 
     private function seal(array $bundle): array
     {
         if(!function_exists('sodium_crypto_secretbox'))throw new WindowsServicesPairingException('pairing_crypto_unavailable','رمزنگاری Pairing روی این نصب آماده نیست.',500);
-        $nonce=random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);$plain=json_encode($bundle,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);$cipher=sodium_crypto_secretbox($plain,$nonce,$this->key());
-        return ['nonce'=>base64_encode($nonce),'ciphertext'=>base64_encode($cipher)];
+        $nonce=random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);$plain=json_encode($bundle,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);$cipher=sodium_crypto_secretbox($plain,$nonce,$this->key());return ['nonce'=>base64_encode($nonce),'ciphertext'=>base64_encode($cipher)];
     }
 
     private function openBundle(array $ticket): array
@@ -179,7 +198,7 @@ final class WindowsServicesPairingService
 
     private function cleanup(): void
     {
-        $now=time();foreach($this->ticketFiles() as $file){$ticket=$this->readTicketFile($file);if(!is_array($ticket))continue;$state=(string)($ticket['state']??'');if(in_array($state,['issued','exchanged'],true)&&$this->isExpired($ticket)){$this->expireTicket($ticket);continue;}$terminal=in_array($state,['confirmed','canceled','expired','superseded'],true);$stamp=strtotime((string)($ticket['confirmed_at']??$ticket['canceled_at']??$ticket['expires_at']??''));if($terminal&&$stamp!==false&&$now-$stamp>self::RETAIN_TERMINAL_SECONDS)@unlink($file);}
+        $now=time();foreach($this->ticketFiles() as $file){$ticket=$this->readTicketFile($file);if(!is_array($ticket))continue;$state=(string)($ticket['state']??'');if(in_array($state,['issued','exchanged'],true)&&$this->isExpired($ticket)){$this->expireTicket($ticket);continue;}$terminal=in_array($state,['confirmed','canceled','expired','superseded','retired'],true);$stamp=strtotime((string)($ticket['retired_at']??$ticket['confirmed_at']??$ticket['canceled_at']??$ticket['expires_at']??''));if($terminal&&$stamp!==false&&$now-$stamp>self::RETAIN_TERMINAL_SECONDS)@unlink($file);}
     }
 
     private function supersedeOutstanding(): void
@@ -189,19 +208,29 @@ final class WindowsServicesPairingService
 
     private function expireTicket(array $ticket): void
     {
-        $this->retireTicketAgent($ticket,'pairing_expired');$ticket['state']='expired';unset($ticket['bundle_nonce'],$ticket['bundle_ciphertext']);$this->writeTicket($this->idHex($ticket),$ticket);
+        $this->retireTicketAgent($ticket,'pairing_expired');$ticket['state']='expired';$ticket['canceled_at']=gmdate('c');unset($ticket['bundle_nonce'],$ticket['bundle_ciphertext']);$this->writeTicket($this->idHex($ticket),$ticket);
     }
 
     private function retireTicketAgent(array $ticket,string $reason): void
     {
-        if((string)($ticket['mode']??'initial')!=='initial')return;
-        $agentId=max(0,(int)($ticket['print_agent_id']??0));if($agentId<1)return;($this->retireAgent)($agentId,max(0,(int)($ticket['actor_user_id']??0)),$reason);
+        if((string)($ticket['mode']??'initial')!=='initial')return;$agentId=max(0,(int)($ticket['print_agent_id']??0));if($agentId<1)return;($this->retireAgent)($agentId,max(0,(int)($ticket['actor_user_id']??0)),$reason);
     }
 
     private function publicTicket(array $ticket): array
     {
         $expires=(string)($ticket['expires_at']??'');$ts=strtotime($expires);$state=(string)($ticket['state']??'not_created');
-        return ['pairing_id'=>(string)($ticket['pairing_id']??''),'mode'=>(string)($ticket['mode']??'initial'),'print_agent_id'=>max(0,(int)($ticket['print_agent_id']??0)),'state'=>$state,'active'=>in_array($state,['issued','exchanged'],true)&&!$this->isExpired($ticket),'created_at'=>(string)($ticket['created_at']??''),'expires_at'=>$expires,'seconds_remaining'=>$ts===false?0:max(0,$ts-time()),'exchanged_at'=>$ticket['exchanged_at']??null,'confirmed_at'=>$ticket['confirmed_at']??null,'canceled_at'=>$ticket['canceled_at']??null,'display_name'=>(string)($ticket['display_name']??''),'local_base_url'=>(string)($ticket['local_base_url']??'')];
+        return ['pairing_id'=>(string)($ticket['pairing_id']??''),'mode'=>(string)($ticket['mode']??'initial'),'print_agent_id'=>max(0,(int)($ticket['print_agent_id']??0)),'state'=>$state,'active'=>in_array($state,['issued','exchanged'],true)&&!$this->isExpired($ticket),'association_active'=>$state==='confirmed','created_at'=>(string)($ticket['created_at']??''),'expires_at'=>$expires,'seconds_remaining'=>$ts===false?0:max(0,$ts-time()),'exchanged_at'=>$ticket['exchanged_at']??null,'confirmed_at'=>$ticket['confirmed_at']??null,'canceled_at'=>$ticket['canceled_at']??null,'retired_at'=>$ticket['retired_at']??null,'retire_reason'=>(string)($ticket['retire_reason']??''),'display_name'=>(string)($ticket['display_name']??''),'local_base_url'=>(string)($ticket['local_base_url']??'')];
+    }
+
+    private function normalizedActiveAgents(): array
+    {
+        $rows=($this->activeAgents)();$out=[];foreach(is_array($rows)?$rows:[] as $row){if(!is_array($row)||max(0,(int)($row['id']??0))<1)continue;$out[]=['id'=>(int)$row['id'],'name'=>$this->cut(trim((string)($row['name']??'')),120),'hostname'=>$this->cut(trim((string)($row['hostname']??'')),190),'agent_version'=>$this->cut(trim((string)($row['agent_version']??'')),40),'last_heartbeat_at'=>$row['last_heartbeat_at']??null,'created_at'=>$row['created_at']??null];}return $out;
+    }
+
+    private function sortedTickets(): array
+    {
+        $tickets=[];foreach($this->ticketFiles() as $file){$ticket=$this->readTicketFile($file);if(is_array($ticket))$tickets[]=$ticket;}
+        usort($tickets,fn(array $a,array $b)=>((int)($b['created_at_unix_ms']??((strtotime((string)($b['created_at']??''))?:0)*1000)))<=>((int)($a['created_at_unix_ms']??((strtotime((string)($a['created_at']??''))?:0)*1000))));return $tickets;
     }
 
     private function canonicalLoopback(string $value): array

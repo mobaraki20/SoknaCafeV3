@@ -485,7 +485,7 @@ internal static class SelfServiceDiagnostics
     {
         var builder = new StringBuilder();
         builder.AppendLine("SOKNA Windows Services - Self Service Diagnostic Report");
-        builder.AppendLine(DateTimeOffset.Now.ToString("O"));
+        builder.AppendLine(Sokna.Shared.IranPresentation.Display(DateTimeOffset.UtcNow));
         builder.AppendLine();
         foreach (var finding in findings)
         {

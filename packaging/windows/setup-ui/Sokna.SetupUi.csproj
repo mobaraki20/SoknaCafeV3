@@ -16,9 +16,9 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyTitle>SOKNA Windows Services</AssemblyTitle>
     <Product>SOKNA Windows Services</Product>
-    <Version>1.1.22</Version>
-    <FileVersion>1.1.22.0</FileVersion>
-    <AssemblyVersion>1.1.22.0</AssemblyVersion>
+    <Version>1.1.23</Version>
+    <FileVersion>1.1.23.0</FileVersion>
+    <AssemblyVersion>1.1.23.0</AssemblyVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
@@ -30,4 +30,5 @@
     <Compile Remove="PersianDashboardV2.cs" />
     <Compile Remove="DashboardEntry.cs" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../../../windows/shared/IranPresentation.cs" Link="Shared/IranPresentation.cs" /></ItemGroup>
 </Project>

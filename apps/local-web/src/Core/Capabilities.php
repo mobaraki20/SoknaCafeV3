@@ -21,19 +21,6 @@ final class Capabilities
         'staff_account_manage',
         'staff_consumption_reports',
         'remote_access',
-        'remote_operations',
-        'remote_preparation',
-        'remote_inventory',
-        'remote_inventory_cost',
-        'remote_reports',
-        'remote_notifications',
-        'remote_deferred_context',
-        'remote_order_actions',
-        'remote_preparation_actions',
-        'remote_table_drafts',
-        'remote_settlement',
-        'remote_supply',
-        'remote_subscriber_payments',
     ];
 
     public function __construct(private readonly IdentityRepository $repository)

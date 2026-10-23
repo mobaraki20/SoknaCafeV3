@@ -1,10 +1,10 @@
 {
   "components": {
     "local-web": {
-      "version": "3.0.0-g6.2-workspace.42-ui-convergence-q3-uat"
+      "version": "3.0.0-g6.2-workspace.231bf-u01-iran-time-updater-rc1"
     },
     "print-agent": {
-      "version": "6.2.9"
+      "version": "6.2.10"
     },
     "public-edge": {
       "version": "3.0.0-g3.6-uat.1"
@@ -13,10 +13,10 @@
       "version": "0.1.1-dev"
     },
     "windows-runtime": {
-      "version": "1.0.6"
+      "version": "1.0.7"
     },
     "windows-services-packaging": {
-      "version": "1.1.22"
+      "version": "1.1.23"
     }
   },
   "contracts": {

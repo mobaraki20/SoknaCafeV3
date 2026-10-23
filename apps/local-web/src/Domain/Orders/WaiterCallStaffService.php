@@ -14,9 +14,9 @@ final class WaiterCallStaffService
 
     public function changeStatus(array $data,array $user): array
     {
-        $this->pdo->beginTransaction();
-        try{$result=$this->changeStatusTx($data,$user);$this->pdo->commit();return $result;}
-        catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
+        try{$result=$this->changeStatusTx($data,$user);if($ownsTransaction)$this->pdo->commit();return $result;}
+        catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
     public function changeStatusTx(array $data,array $user): array
@@ -24,8 +24,12 @@ final class WaiterCallStaffService
         if(!$this->pdo->inTransaction())throw new \LogicException('Waiter staff action requires an open transaction.');
         $actor=$this->actor($user);$actorId=(int)$actor['id'];
         $callId=(int)($data['call_id']??0);$target=trim((string)($data['status']??''));
-        if($callId<1||!in_array($target,['accepted','done','cancelled'],true))
+        if($callId<1||!in_array($target,['accepted','done','completed','cancelled'],true))
             throw new WaiterCallException('invalid_action','عملیات فراخوان معتبر نیست.',422);
+        // `done` was emitted by an older operator UI, while the durable waiter-call schema
+        // has always defined the terminal state as `completed`. Accept the legacy input
+        // for upgrade compatibility, but persist/return/audit only the canonical state.
+        $canonicalTarget=$target==='done'?'completed':$target;
 
         $stmt=$this->pdo->prepare('SELECT w.*,ts.status session_status FROM waiter_calls w LEFT JOIN table_sessions ts ON ts.id=w.session_id WHERE w.id=? FOR UPDATE');
         $stmt->execute([$callId]);$call=$stmt->fetch(PDO::FETCH_ASSOC);
@@ -39,23 +43,23 @@ final class WaiterCallStaffService
         }
 
         $current=(string)$call['status'];
-        if($current===$target)return ['success'=>true,'idempotent'=>true,'call_id'=>$callId,'status'=>$current];
+        if($current===$canonicalTarget)return ['success'=>true,'idempotent'=>true,'call_id'=>$callId,'status'=>$current];
         if(!in_array($current,['new','accepted'],true))throw new WaiterCallException('call_closed','این فراخوان قبلاً بسته شده است.',409);
 
-        if($target==='accepted'){
+        if($canonicalTarget==='accepted'){
             if($current==='accepted'&&(int)($call['accepted_by_user_id']??0)!==$actorId)
                 throw new WaiterCallException('already_accepted','یکی از همکاران این فراخوان را پذیرفته است.',409);
             $this->pdo->prepare("UPDATE waiter_calls SET status='accepted',accepted_by_user_id=COALESCE(accepted_by_user_id,?),accepted_at=COALESCE(accepted_at,NOW()) WHERE id=? AND status IN('new','accepted')")
                 ->execute([$actorId,$callId]);
-        }elseif($target==='done'){
-            $this->pdo->prepare("UPDATE waiter_calls SET status='done',active_table_guard=NULL,accepted_by_user_id=COALESCE(accepted_by_user_id,?),accepted_at=COALESCE(accepted_at,NOW()),completed_at=NOW() WHERE id=? AND status IN('new','accepted')")
+        }elseif($canonicalTarget==='completed'){
+            $this->pdo->prepare("UPDATE waiter_calls SET status='completed',active_table_guard=NULL,accepted_by_user_id=COALESCE(accepted_by_user_id,?),accepted_at=COALESCE(accepted_at,NOW()),completed_at=NOW() WHERE id=? AND status IN('new','accepted')")
                 ->execute([$actorId,$callId]);
         }else{
             $this->pdo->prepare("UPDATE waiter_calls SET status='cancelled',active_table_guard=NULL,cancelled_at=NOW(),cancel_reason='manual',cancelled_by_user_id=? WHERE id=? AND status IN('new','accepted')")
                 ->execute([$actorId,$callId]);
         }
-        $this->audit('waiter_call.'.$target,$callId,$actor,['from_status'=>$current,'to_status'=>$target]);
-        return ['success'=>true,'idempotent'=>false,'call_id'=>$callId,'status'=>$target];
+        $this->audit('waiter_call.'.$canonicalTarget,$callId,$actor,['from_status'=>$current,'to_status'=>$canonicalTarget]);
+        return ['success'=>true,'idempotent'=>false,'call_id'=>$callId,'status'=>$canonicalTarget];
     }
 
     private function actor(array $user): array

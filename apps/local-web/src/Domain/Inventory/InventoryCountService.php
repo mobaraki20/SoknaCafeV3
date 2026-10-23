@@ -15,7 +15,7 @@ final class InventoryCountService
 
     public function start(array $data,array $user): array
     {
-        $this->pdo->beginTransaction();
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
         try{
             $actor=$this->inventory->assertActor($user,'inventory_operations');
             if(!$this->inventory->configuredTx())
@@ -47,7 +47,7 @@ final class InventoryCountService
             $stmt->execute([$title,$type,$scope,$category,(int)$actor['id']]);
             $sessionId=(int)$this->pdo->lastInsertId();
 
-            $sql="SELECT i.id,COALESCE(b.quantity_base,0) quantity_base,b.average_unit_cost
+            $sql="SELECT i.id,COALESCE(b.quantity_base,0) quantity_base,b.average_unit_cost,COALESCE(b.cost_status,'unknown') cost_status
                   FROM inventory_items i LEFT JOIN inventory_balances b ON b.inventory_item_id=i.id
                   WHERE i.active=1";
             $params=[];
@@ -57,36 +57,36 @@ final class InventoryCountService
             if(!$rows)throw new InventoryException('empty_scope','در محدوده انتخاب‌شده کالای فعالی برای شمارش وجود ندارد.',409);
 
             $line=$this->pdo->prepare(
-                'INSERT INTO inventory_count_lines(session_id,inventory_item_id,system_quantity_snapshot,unit_cost_snapshot,actual_quantity,actual_total_cost,difference_base)
-                 VALUES(?,?,?,?,NULL,NULL,NULL)'
+                'INSERT INTO inventory_count_lines(session_id,inventory_item_id,system_quantity_snapshot,unit_cost_snapshot,cost_status_snapshot,actual_quantity,actual_total_cost,difference_base)
+                 VALUES(?,?,?,?,?,NULL,NULL,NULL)'
             );
             foreach($rows as $row){
                 $system=$type==='opening'?(int)$row['quantity_base']:0;
                 $cost=$type==='opening'&&$row['average_unit_cost']!==null?(float)$row['average_unit_cost']:null;
-                $line->execute([$sessionId,(int)$row['id'],$system,$cost]);
+                $line->execute([$sessionId,(int)$row['id'],$system,$cost,$type==='opening'?(string)($row['cost_status']??'unknown'):'unknown']);
             }
 
             $this->audit('inventory.count_started',$sessionId,(int)$actor['id'],[
                 'session_type'=>$type,'title'=>$title,'scope_type'=>$scope,'scope_category_key'=>$category,'item_count'=>count($rows),
             ]);
-            $this->pdo->commit();
+            if($ownsTransaction)$this->pdo->commit();
             return ['session_id'=>$sessionId,'line_count'=>count($rows)];
         }catch(Throwable $e){
-            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
     }
 
     public function updateLine(array $data,array $user,bool $remote=false): array
     {
-        $this->pdo->beginTransaction();
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
         try{
             $actor=$this->inventory->assertActor($user,'inventory_operations');
             $result=$this->updateLineTx($data,(int)$actor['id'],$remote);
-            $this->pdo->commit();
+            if($ownsTransaction)$this->pdo->commit();
             return $result;
         }catch(Throwable $e){
-            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
     }
@@ -120,7 +120,13 @@ final class InventoryCountService
         $raw=array_key_exists('actual_major',$data)?trim((string)$data['actual_major']):'';
         $actual=$raw===''?null:InventoryService::majorToBase($raw,(string)$line['base_unit']);
         $costRaw=trim((string)($data['opening_total_cost']??''));
-        $openingCost=$isOpening&&$costRaw!==''?self::money($costRaw):null;
+        $canViewCost=(bool)($this->inventory->permissions(['id'=>$actorUserId])['can_view_cost']??false);
+        $openingCost=$isOpening
+            ?(!$canViewCost||!array_key_exists('opening_total_cost',$data)
+                ?($line['actual_total_cost']===null?null:(int)$line['actual_total_cost'])
+                :($costRaw!==''?self::money($costRaw):null))
+            :null;
+        if($isOpening&&$actual!==null&&$actual<1&&$openingCost!==null&&$openingCost>0)throw new InventoryException('invalid_opening_cost','برای موجودی صفر، هزینهٔ اولیه باید خالی یا صفر باشد.',422);
         $note=self::truncate(trim((string)($data['note']??'')),500);
 
         if($actual===null){
@@ -130,15 +136,15 @@ final class InventoryCountService
                 )->execute([$note?:null,$lineId,$sessionId]);
             }else{
                 $this->pdo->prepare(
-                    'UPDATE inventory_count_lines SET system_quantity_snapshot=0,unit_cost_snapshot=NULL,actual_quantity=NULL,actual_total_cost=NULL,note=?,difference_base=NULL,counted_by_user_id=NULL,counted_at=NULL WHERE id=? AND session_id=?'
+                    'UPDATE inventory_count_lines SET system_quantity_snapshot=0,unit_cost_snapshot=NULL,cost_status_snapshot=NULL,actual_quantity=NULL,actual_total_cost=NULL,note=?,difference_base=NULL,counted_by_user_id=NULL,counted_at=NULL WHERE id=? AND session_id=?'
                 )->execute([$note?:null,$lineId,$sessionId]);
             }
-        }elseif(!$isOpening&&$line['counted_at']===null){
+        }elseif(!$isOpening&&($line['counted_at']===null||!empty($data['recount']))){
             $balance=$this->inventory->balanceTx((int)$line['inventory_item_id']);
             $this->pdo->prepare(
-                'UPDATE inventory_count_lines SET system_quantity_snapshot=?,unit_cost_snapshot=?,actual_quantity=?,actual_total_cost=NULL,note=?,difference_base=NULL,counted_by_user_id=?,counted_at=NOW() WHERE id=? AND session_id=?'
+                'UPDATE inventory_count_lines SET system_quantity_snapshot=?,unit_cost_snapshot=?,cost_status_snapshot=?,actual_quantity=?,actual_total_cost=NULL,note=?,difference_base=NULL,counted_by_user_id=?,counted_at=NOW() WHERE id=? AND session_id=?'
             )->execute([
-                (int)$balance['quantity_base'],$balance['average_unit_cost']!==null?(float)$balance['average_unit_cost']:null,
+                (int)$balance['quantity_base'],$balance['average_unit_cost']!==null?(float)$balance['average_unit_cost']:null,(string)($balance['cost_status']??'unknown'),
                 $actual,$note?:null,$actorUserId,$lineId,$sessionId,
             ]);
         }else{
@@ -147,26 +153,28 @@ final class InventoryCountService
             )->execute([$actual,$openingCost,$note?:null,$actorUserId,$lineId,$sessionId]);
         }
 
-        $fresh=$this->pdo->prepare('SELECT id,session_id,inventory_item_id,actual_quantity,system_quantity_snapshot,updated_at FROM inventory_count_lines WHERE id=?');
+        $fresh=$this->pdo->prepare('SELECT id,session_id,inventory_item_id,actual_quantity,system_quantity_snapshot,cost_status_snapshot,counted_at,updated_at FROM inventory_count_lines WHERE id=?');
         $fresh->execute([$lineId]);$row=$fresh->fetch(PDO::FETCH_ASSOC)?:[];
         return [
             'line_id'=>$lineId,'session_id'=>$sessionId,
             'actual_quantity'=>$row['actual_quantity']===null?null:(int)$row['actual_quantity'],
+            'actual_total_cost'=>$openingCost,
             'system_quantity_snapshot'=>(int)($row['system_quantity_snapshot']??0),
-            'version'=>(string)($row['updated_at']??''),
+            'cost_status_snapshot'=>(string)($row['cost_status_snapshot']??'unknown'),
+            'version'=>(string)($row['updated_at']??''),'counted_at'=>$row['counted_at']??null,
         ];
     }
 
     public function finalize(int $sessionId,array $user): array
     {
-        $this->pdo->beginTransaction();
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
         try{
             $actor=$this->inventory->assertActor($user,'inventory_finalize');
             $result=$this->finalizeTx($sessionId,(int)$actor['id']);
-            $this->pdo->commit();
+            if($ownsTransaction)$this->pdo->commit();
             return $result;
         }catch(Throwable $e){
-            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
     }
@@ -236,7 +244,7 @@ final class InventoryCountService
 
     public function cancel(int $sessionId,array $user): array
     {
-        $this->pdo->beginTransaction();
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
         try{
             $actor=$this->inventory->assertActor($user,'inventory_operations');
             $stmt=$this->pdo->prepare('SELECT * FROM inventory_count_sessions WHERE id=? FOR UPDATE');
@@ -245,10 +253,10 @@ final class InventoryCountService
             if((string)$session['status']!=='draft')throw new InventoryStateConflict('count_closed','فقط شمارش در حال انجام قابل لغو است.',409);
             $this->pdo->prepare("UPDATE inventory_count_sessions SET status='cancelled' WHERE id=?")->execute([$sessionId]);
             $this->audit('inventory.count_cancelled',$sessionId,(int)$actor['id'],['session_type'=>$session['session_type'],'title'=>$session['title']]);
-            $this->pdo->commit();
+            if($ownsTransaction)$this->pdo->commit();
             return ['success'=>true,'session_id'=>$sessionId,'status'=>'cancelled'];
         }catch(Throwable $e){
-            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
     }
@@ -279,7 +287,7 @@ final class InventoryCountService
 
     private static function money(string $value): int
     {
-        $raw=str_replace([',','٬',' '],'',trim($value));
+        $raw=InventoryService::canonicalNumber($value);
         if($raw===''||!preg_match('/^\d+$/',$raw)||strlen($raw)>18)
             throw new InventoryException('invalid_cost','مبلغ واردشده معتبر نیست.',422);
         return (int)$raw;

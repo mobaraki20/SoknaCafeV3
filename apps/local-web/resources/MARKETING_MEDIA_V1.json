@@ -1,0 +1,20 @@
+{
+  "campaign": {
+    "cover_media_optional": true,
+    "guest_surface": "campaign_card_or_banner",
+    "owner_type": "campaign",
+    "slot_key": "cover"
+  },
+  "contract": "sokna-marketing-media-v1",
+  "event": {
+    "capacity_guest_visible_when_present": true,
+    "cover_media_optional": true,
+    "guest_surface": "events_detail",
+    "owner_type": "event",
+    "slot_key": "cover"
+  },
+  "fallback": "text-only; missing/archived media never hides campaign or event",
+  "media_owner": "guest_media_assets + guest_media_references",
+  "publication": "Local projection resolves media:<key> through canonical Guest media manifest",
+  "version": 1
+}

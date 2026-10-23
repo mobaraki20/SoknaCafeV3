@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Sokna\Local\Domain\StaffConsumption;
 
+use Sokna\Local\UI\MoneyDisplay;
 use PDO;
 use Sokna\Local\Domain\Orders\OrderCatalogService;
 use Sokna\Local\Domain\Orders\OrderCommitException;
@@ -68,6 +69,7 @@ final class StaffConsumptionPostingService
             $this->assertDuplicateOwnership($duplicate,$actorId,$personnelId);
             return $this->duplicateResult($duplicate);
         }
+        $this->assertModuleEnabledTx();
 
         $occurredAt=$this->occurredAt($data['occurred_at']??null);
         try{
@@ -207,7 +209,7 @@ final class StaffConsumptionPostingService
            (int)($orderLine['unit_price']??-1)!==(int)($calcLine['unit_price']??-2)||
            (int)($orderLine['quantity']??0)!==(int)($calcLine['quantity']??0)||
            (int)($orderLine['line_total']??-1)!==(int)($calcLine['menu_line_amount']??-2))
-            throw new StaffConsumptionException('posting_line_mismatch','ردیف شماره '.($index+1).' سفارش با Snapshot مزایا هم‌خوان نیست.',500);
+            throw new StaffConsumptionException('posting_line_mismatch','ردیف شماره '.MoneyDisplay::digits((string)($index+1)).' سفارش با Snapshot مزایا هم‌خوان نیست.',500);
     }
 
     private function singleStoredOverrideId(array $lines): ?int
@@ -219,6 +221,15 @@ final class StaffConsumptionPostingService
         }
         $keys=array_keys($ids);
         return count($keys)===1?(int)$keys[0]:null;
+    }
+
+
+    private function assertModuleEnabledTx(): void
+    {
+        $q=$this->pdo->query("SELECT setting_value FROM settings WHERE setting_key='module.staff_consumption.enabled' LIMIT 1 FOR UPDATE");
+        $v=$q->fetchColumn();
+        $enabled=$v===false||$v===null||in_array(strtolower(trim((string)$v)),['1','true','yes','on'],true);
+        if(!$enabled)throw new StaffConsumptionException('staff_consumption_disabled','مصرف پرسنل غیرفعال است؛ ثبت مصرف تازه انجام نمی‌شود.',409);
     }
 
     private function clientToken(mixed $value): string

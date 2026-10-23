@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "checkpoint": "H173",
+  "local_version": "3.0.0-g6.2-workspace.173-shared-staff-runtime-adapters",
+  "public_version": "3.0.0-g3.6-workspace.35y-shared-runtime-adapters",
+  "architecture": {
+    "frontend_authority": "local-build-time shared-staff-ui-v2",
+    "shared_owner_count": 26,
+    "shared_runtime": "public/assets/staff-app/runtime.js",
+    "local_adapter": "public/assets/staff-app/local-runtime-adapter.js",
+    "public_adapter": "assets/staff-app/public-hall-transport.js",
+    "shared_preparation_template": "resources/shared-staff-ui/preparation-workspace.php",
+    "runtime_dependency_on_local_assets": false
+  },
+  "contracts": {
+    "shared_ui_must_be_byte_identical": true,
+    "shared_preparation_must_not_branch_on_host": true,
+    "host_specific_transport_belongs_to_adapter": true,
+    "public_must_serve_shared_runtime_as_local_asset": true,
+    "css_geometry_change": false
+  },
+  "scope": {
+    "converged": ["ProductShell", "Hall", "OrderDraft", "Preparation", "interaction primitives"],
+    "remaining_for_later": ["Public generic data-page orchestration versus richer Local backoffice workspaces", "real-host Local-Public failure and recovery UAT"]
+  }
+}

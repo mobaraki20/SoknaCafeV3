@@ -1,0 +1,320 @@
+{
+  "version": "H249-block-a-2026-10-12",
+  "status": "working-engineering-not-install-qualified",
+  "sources": [
+    {
+      "file": "Sokna_Menu_Review_V9_Bun_Corrected_1405-06-16_to_1405-07-16.xlsx",
+      "sha256": "97c8b08c0169d14f45360c350ea08c457f6c1fb279a0dc72072241d3b63b20ab"
+    },
+    {
+      "file": "Sokna_Monthly_Reconciliation_V8_Bun_Corrected_1405-06-16_to_1405-07-16.xlsx",
+      "sha256": "f405edc369d494462b54baee356805919b70d535eb309d9b1c5d5836ebeafeef"
+    },
+    {
+      "file": "Sokna_Bar_Costing_V6_Latest_Prices_1405-06-16_to_1405-07-16.xlsx",
+      "sha256": "08e12f0d14b79caaeaac1270454fc6f8176a42ca3d870f854bcd0319aa28b07b"
+    },
+    {
+      "file": "Sokna_Cafe_Purchases_CORRECTED_V2_Cakes_Pending_1405-06-16_to_1405-07-16.xlsx",
+      "sha256": "236ebe5bd5e9550deb6de11dc80fe0370c5f0956f4a0584b9327e5433f4a6cea"
+    }
+  ],
+  "policy": {
+    "certain_conversion_may_be_fixed": true,
+    "uncertain_conversion_must_be_actual_quantity": true,
+    "uncertain_cost_must_not_be_seeded_as_fact": true,
+    "manual_active_recipe_wins_over_seed": true,
+    "cross_dimension_recipe_quantity_is_not_silently_converted": true
+  },
+  "purchase_units": {
+    "INV-009": {
+      "item": "سیب‌زمینی کاله",
+      "confirmed": [
+        {
+          "unit": "بسته ۲.۵ کیلویی",
+          "base_quantity_g": 2500
+        },
+        {
+          "unit": "کارتن ۴ بسته‌ای",
+          "base_quantity_g": 10000
+        }
+      ]
+    },
+    "INV-020": {
+      "item": "انبه منجمد",
+      "confirmed": [
+        {
+          "unit": "کیلوگرم",
+          "base_quantity_g": 1000
+        },
+        {
+          "unit": "بسته ۲.۵ کیلویی",
+          "base_quantity_g": 2500
+        }
+      ]
+    },
+    "INV-021": {
+      "item": "توت‌فرنگی منجمد",
+      "uncertain": [
+        {
+          "unit": "بسته",
+          "conversion_mode": "actual_quantity",
+          "reason": "مبلغ خرید دو بسته قطعی است اما وزن هر بسته قطعی نیست؛ ۲.۵kg در Costing V6 فرض موقت بود."
+        }
+      ]
+    },
+    "INV-007": {
+      "item": "بستنی وانیلی کاله",
+      "confirmed": [
+        {
+          "unit": "کیلوگرم",
+          "base_quantity_g": 1000
+        }
+      ],
+      "reference_price_toman_per_kg": 199200
+    },
+    "INV-008": {
+      "item": "بستنی شکلاتی کاله",
+      "confirmed": [
+        {
+          "unit": "کیلوگرم",
+          "base_quantity_g": 1000
+        }
+      ],
+      "cost_status": "needs_review",
+      "reason": "قیمت مستقل شکلاتی هنوز قطعی نیست و نباید از وانیلی کپی شود."
+    },
+    "INV-068": {
+      "item": "نان برگر سحر",
+      "confirmed": [
+        {
+          "unit": "بسته ۲ عددی",
+          "base_quantity_count": 2
+        }
+      ],
+      "identity_status": "needs_review",
+      "reason": "تبدیل بسته قطعی است ولی خرید عمومی «نان برگر» نباید بدون برند به این master نگاشت شود."
+    },
+    "INV-069": {
+      "item": "نان برگر تک‌نان",
+      "confirmed": [
+        {
+          "unit": "بسته",
+          "base_quantity_count": 2
+        }
+      ],
+      "identity_status": "needs_review",
+      "reason": "تبدیل بسته قطعی است ولی خرید عمومی «نان برگر» بین masterهای برنددار مبهم می‌ماند."
+    },
+    "INV-114": {
+      "item": "دوغ آپادا",
+      "confirmed": [
+        {
+          "unit": "شل ۱۲ بطری",
+          "base_quantity_count": 12
+        }
+      ],
+      "latest_reference_price_toman_per_bottle": 70000
+    },
+    "INV-079": {
+      "item": "چیزکیک ماتیلدا",
+      "confirmed": [
+        {
+          "unit": "عدد",
+          "base_quantity_count": 1
+        }
+      ],
+      "reference_price_toman_per_count": 210000
+    },
+    "INV-118": {
+      "item": "چیزکیک سن سباستین",
+      "confirmed": [
+        {
+          "unit": "عدد",
+          "base_quantity_count": 1
+        }
+      ],
+      "reference_price_toman_per_count": 230000
+    }
+  },
+  "unresolved_costs": [
+    {
+      "item_code": "INV-008",
+      "item": "بستنی شکلاتی کاله",
+      "reason": "قیمت خرید مستقل هنوز تأیید نشده است."
+    },
+    {
+      "item_code": "INV-097",
+      "item": "پودر قهوه گلد",
+      "reason": "قیمت خرید واقعی در منابع فعلی ثبت نشده است."
+    }
+  ],
+  "recipes": [
+    {
+      "menu_item_code": "1103",
+      "name": "شیک شکلات",
+      "source_recipe": [
+        {
+          "item": "بستنی شکلاتی",
+          "qty": 340,
+          "unit": "g"
+        },
+        {
+          "item": "شیر",
+          "qty": 65,
+          "unit": "g"
+        }
+      ],
+      "automation_note": "بستنی 340g قابل کسر قطعی است؛ شیر 65g به‌علت base unit=ml تا تأیید تبدیل جرم/حجم از کسر خودکار حذف می‌شود."
+    },
+    {
+      "menu_item_code": "1109",
+      "name": "شیک انبه",
+      "source_recipe": [
+        {
+          "item": "انبه",
+          "qty": 180,
+          "unit": "g"
+        },
+        {
+          "item": "بستنی وانیلی",
+          "qty": 220,
+          "unit": "g"
+        },
+        {
+          "item": "آب انبه",
+          "qty": 36,
+          "unit": "g"
+        }
+      ],
+      "automation_note": "انبه و بستنی قابل کسر قطعی‌اند؛ آب انبه 36g با base unit=ml بدون تبدیل جرم/حجم خودکار نمی‌شود."
+    },
+    {
+      "menu_item_code": "1108",
+      "name": "شیک نسکافه",
+      "source_recipe": [
+        {
+          "item": "بستنی وانیلی",
+          "qty": 300,
+          "unit": "g"
+        },
+        {
+          "item": "پودر قهوه گلد",
+          "qty": 2,
+          "unit": "g"
+        }
+      ],
+      "automation_note": "مقادیر رسپی قطعی‌اند؛ نامشخص بودن قیمت پودر گلد فقط cost coverage را کاهش می‌دهد و quantity را تغییر نمی‌دهد."
+    },
+    {
+      "menu_item_code": "1111",
+      "name": "اسموتی منگو بری",
+      "source_recipe": [
+        {
+          "item": "توت‌فرنگی",
+          "qty": 140,
+          "unit": "g"
+        },
+        {
+          "item": "سیروپ توت‌فرنگی",
+          "qty": 30,
+          "unit": "ml"
+        },
+        {
+          "item": "انبه",
+          "qty": 190,
+          "unit": "g"
+        }
+      ],
+      "automation_note": "30cc برابر 30ml است؛ هر سه جزء قابل کسر قطعی‌اند."
+    },
+    {
+      "menu_item_code": "1110",
+      "name": "اسموتی انبه",
+      "source_recipe": [
+        {
+          "item": "انبه",
+          "qty": 180,
+          "unit": "g"
+        },
+        {
+          "item": "نکتار",
+          "qty": 50,
+          "unit": "ml"
+        }
+      ],
+      "automation_note": "هر دو جزء با واحد پایه موجودی سازگار و قطعی‌اند."
+    }
+  ],
+  "qualification_checkpoint": "H250_DATA_RECIPE_RECONCILIATION_20261012",
+  "safety": {
+    "no_inventory_movement_fabricated": true,
+    "no_supply_receipt_fabricated": true,
+    "reference_prices_are_provenance_only_until_real_receipt": true,
+    "manual_master_overrides_are_preserved_by_guarded_updates": true
+  },
+  "reference_costs_toman": [
+    {
+      "subject": "نان برگر",
+      "basis": "count",
+      "amount": 40000,
+      "status": "confirmed",
+      "note": "۸ بسته=۶۴۰٬۰۰۰؛ هر بسته ۲ عدد. هویت برند خرید عمومی نامشخص می‌ماند."
+    },
+    {
+      "subject": "سیب‌زمینی",
+      "basis": "carton_10kg",
+      "amount": 3292000,
+      "status": "confirmed"
+    },
+    {
+      "subject": "انبه منجمد",
+      "basis": "kg",
+      "amount": 916800,
+      "status": "confirmed"
+    },
+    {
+      "subject": "توت‌فرنگی منجمد",
+      "basis": "two_packages_total",
+      "amount": 2858000,
+      "status": "confirmed_amount_unknown_weight",
+      "note": "وزن بسته نامعلوم؛ هزینه/kg مشتق نمی‌شود."
+    },
+    {
+      "subject": "بستنی وانیلی",
+      "basis": "kg",
+      "amount": 199200,
+      "status": "confirmed"
+    },
+    {
+      "subject": "دوغ آپادا",
+      "basis": "bottle",
+      "amount": 70000,
+      "status": "confirmed"
+    },
+    {
+      "subject": "بستنی شکلاتی",
+      "basis": "unknown",
+      "amount": null,
+      "status": "needs_review"
+    },
+    {
+      "subject": "پودر قهوه گلد",
+      "basis": "unknown",
+      "amount": null,
+      "status": "needs_review"
+    },
+    {
+      "subject": "چیزکیک ماتیلدا",
+      "basis": "count",
+      "amount": 210000,
+      "status": "reference_only"
+    },
+    {
+      "subject": "چیزکیک سن سباستین",
+      "basis": "count",
+      "amount": 230000,
+      "status": "reference_only"
+    }
+  ]
+}

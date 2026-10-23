@@ -1,0 +1,21 @@
+{
+  "format": "sokna-money-input-consistency-v1",
+  "schema_version": 1,
+  "scope": "Local/Public staff monetary entry controls",
+  "rules": [
+    "monetary entry controls opt into data-money-input=1 or equivalent dynamic dataset.moneyInput=1",
+    "visible monetary values group every three digits while typing using Persian digits and separator",
+    "parsers accept Latin, Persian and Arabic digits plus grouping separators",
+    "form submission normalizes monetary values to canonical Latin digits without grouping separators",
+    "signed monetary controls must explicitly opt into data-money-signed=1",
+    "expense create is independent of inventory_initialized and inventory runtime readiness"
+  ],
+  "expense": {
+    "requires_initial_inventory_count": false,
+    "requires_inventory_runtime_ready": false
+  },
+  "examples": {
+    "500000": "۵۰۰٬۰۰۰",
+    "-120000": "-۱۲۰٬۰۰۰"
+  }
+}

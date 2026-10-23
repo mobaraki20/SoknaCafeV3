@@ -1,0 +1,11 @@
+{
+  "admin_only_operator_report": true,
+  "checkpoint": "H342_R5B_SUPPORT_PREFLIGHT_20261015",
+  "committed_tree_drift_signal": true,
+  "local_operator_preflight": true,
+  "managed_inventory_evidence": "path+size+sha256 / admin-or-signed-support only / persistent secrets excluded",
+  "no_business_migration": true,
+  "public_self_diagnostics": true,
+  "scope": "stabilization_diagnostics_only",
+  "windows_unchanged": true
+}

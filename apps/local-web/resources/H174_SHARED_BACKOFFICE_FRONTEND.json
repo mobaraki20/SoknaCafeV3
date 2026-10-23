@@ -1,0 +1,46 @@
+{
+  "format": "sokna-h174-shared-backoffice-frontend-v1",
+  "date": "2026-10-09",
+  "local_version": "3.0.0-g6.2-workspace.174-shared-backoffice-frontend",
+  "public_version": "3.0.0-g3.6-workspace.35z-shared-backoffice-frontend",
+  "shared_staff_ui_files": 34,
+  "workspaces": ["operations", "subscribers", "reports", "notifications"],
+  "architecture": {
+    "shared_templates": true,
+    "shared_controllers": true,
+    "public_compatibility_adapter": true,
+    "unsafe_remote_mutations_fail_closed": true,
+    "css_drift_vs_h173": 0
+  },
+  "qualification": {
+    "h174_contract": "PASS",
+    "h174_browser": "PASS",
+    "h173_runtime_browser": "PASS",
+    "h172_stateful_browser": "PASS",
+    "h172_draft_roundtrip": "PASS",
+    "h166_interaction_primitives": "PASS",
+    "h165_data_primitives": "PASS",
+    "h164_primitive_geometry": "PASS",
+    "h150_hall_order_account": "PASS",
+    "h129_populated_preparation": "PASS",
+    "h95_printing_tabs": "PASS",
+    "h95_system_health": "PASS",
+    "public_h157_staff_runtime": "PASS",
+    "public_h157_preparation_runtime": "PASS",
+    "public_subfolder": "PASS",
+    "q3_guest_parity": "PASS"
+  },
+  "superseded_harnesses": [
+    "h160-backoffice-ia-contract.py",
+    "h161-data-workspace-scale-contract.py",
+    "h162-product-semantics-scale-contract.py",
+    "h162-product-semantics-scale-browser.py",
+    "ui-h92-customer-account-ux-browser.py"
+  ],
+  "real_environment_not_verified": [
+    "Windows/LiteSpeed Public-to-Local mutation propagation",
+    "outage/stale/retry/recovery",
+    "physical printer/failover",
+    "System update/rollback/backup/restore"
+  ]
+}

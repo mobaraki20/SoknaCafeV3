@@ -1,0 +1,34 @@
+{
+  "checkpoint": "H298_MENU_PRODUCT_MODEL_V2_HOTPATH_REBASE_20261013",
+  "revision": 2,
+  "product_spec": "sokna-menu-product-model-decision-v2",
+  "local_version": "3.0.0-g6.2-workspace.230a-menu-product-model-v2-hotpath",
+  "public_version": "3.0.0-g3.6-workspace.35bs-menu-product-model-v2-hotpath",
+  "features": [
+    "lifecycle_archive_visibility",
+    "category_archive",
+    "variant_family",
+    "suggestions_max2",
+    "simple_bundle",
+    "bundle_order_snapshot",
+    "bundle_preparation_print_inventory",
+    "guest_variant_bundle_suggestions",
+    "staff_variant_bundle",
+    "bundle_reporting"
+  ],
+  "baseline_counts": {
+    "active": 84,
+    "inactive": 0,
+    "retired": 51
+  },
+  "variant_families": 11,
+  "variant_members": 22,
+  "authority": "Local business authority; Public projection/read tier",
+  "real_host_uat_required": true,
+  "product_origin_checkpoint": "H297_MENU_PRODUCT_MODEL_V2_20261013",
+  "rebased_on": {
+    "local": "3.0.0-g6.2-workspace.229c-public-interactive-hotpath",
+    "public": "3.0.0-g3.6-workspace.35bq-public-interactive-hotpath",
+    "preserves": "H296 public interactive hot path"
+  }
+}

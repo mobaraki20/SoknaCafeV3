@@ -1,0 +1,410 @@
+{
+  "schema": 1,
+  "checkpoint": "H170",
+  "version": "3.0.0-g6.2-workspace.170-scds-management-composition-convergence",
+  "source": "public/assets/product-ui.css",
+  "rule": "Generic interaction semantics remain SCDS-owned; data/workflow/component action geometry must prefer inherited composition variables over primitive-child selectors.",
+  "fingerprint_algorithm": "sha256(context + newline + selector + newline + serialized declarations)",
+  "baseline_unique_exceptions": 33,
+  "unique_exceptions": 20,
+  "selector_occurrences": 20,
+  "retired_exceptions": 13,
+  "by_rationale": {
+    "auth-setup": 4,
+    "customer-management": 3,
+    "guest-content-media": 1,
+    "notifications": 1,
+    "operational-ordering": 1,
+    "shell-context": 4,
+    "staff-workflow": 3,
+    "system-management": 2,
+    "workspace-local": 1
+  },
+  "by_family": {
+    "alert": 1,
+    "badge": 3,
+    "button": 16
+  },
+  "exceptions": [
+    {
+      "fingerprint": "70fb2d3a681af8ea12d8ffd5cdcdb1933e6cf11ae0f1f6cbd8630380f24e0c33",
+      "selector": ".sc-auth__card .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "d0c4516178e937b3417651d525703d471c589c6e076de93678f63c3c6ed7d401",
+      "rationale_key": "auth-setup",
+      "rationale": "Authentication/setup composition owns width and stacking, not primitive appearance.",
+      "occurrences": 1,
+      "source_lines": [
+        73
+      ]
+    },
+    {
+      "fingerprint": "7373ad04889c485ddd814efb0f6baeea192de50a7493473748b44b1b5a46d0e3",
+      "selector": ".sc-setup__main>.sc-alert",
+      "families": [
+        "alert"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "ab79ea2b8573788fd2a30602610fed09fa34e7a07f24cbadb92a736c96c77339",
+      "rationale_key": "auth-setup",
+      "rationale": "Authentication/setup composition owns width and stacking, not primitive appearance.",
+      "occurrences": 1,
+      "source_lines": [
+        82
+      ]
+    },
+    {
+      "fingerprint": "e38380ad7492dbed5349dd49674fa79b6c649830252b53239bfe9d4387e7002b",
+      "selector": ".sc-setup__actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "ab79ea2b8573788fd2a30602610fed09fa34e7a07f24cbadb92a736c96c77339",
+      "rationale_key": "auth-setup",
+      "rationale": "Authentication/setup composition owns width and stacking, not primitive appearance.",
+      "occurrences": 1,
+      "source_lines": [
+        86
+      ]
+    },
+    {
+      "fingerprint": "a5b3ee0a1deda39212867c35bcfd5225d6ce255926fd8ac51301cdbbb0cdf247",
+      "selector": ".sc-setup__actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product > @media (max-width:680px)",
+      "declaration_sha256": "3a0e8220ec679c7f0822b8a98a866292bf9809595c48c35f90d040cbf1fc826b",
+      "rationale_key": "auth-setup",
+      "rationale": "Authentication/setup composition owns width and stacking, not primitive appearance.",
+      "occurrences": 1,
+      "source_lines": [
+        99
+      ]
+    },
+    {
+      "fingerprint": "477592e5d937645190d851ccfe77580cc27beecfbe8c908c939a91be53209f4e",
+      "selector": "body[data-page=\"staff\"] .sc-cart .sc-card__foot .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "51a97f87ceedf50d26ff46a81bb747518182f9fb444ae47022f2269f3f60cc2e",
+      "rationale_key": "staff-workflow",
+      "rationale": "Staff workflows require operational touch sizing or local layout.",
+      "occurrences": 1,
+      "source_lines": [
+        317
+      ]
+    },
+    {
+      "fingerprint": "f619f59b4e814526ce98ce4403cc3e4fc6da4e67cb1ecfde831c39e24e42fcfd",
+      "selector": "body[data-page=\"staff-consumption\"] [data-panel=\"self\"] .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "435c0682057866ffc831bc35fdc5476a1b901ba0c9492383049f732da9f17125",
+      "rationale_key": "staff-workflow",
+      "rationale": "Staff workflows require operational touch sizing or local layout.",
+      "occurrences": 1,
+      "source_lines": [
+        328
+      ]
+    },
+    {
+      "fingerprint": "843fd8a76d01dec8af03b1538b79787e7ae2018b311adac12ce17e90c0eb4f6c",
+      "selector": "body[data-page=\"staff-consumption\"] [data-panel=\"proxy\"] .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@layer product",
+      "declaration_sha256": "435c0682057866ffc831bc35fdc5476a1b901ba0c9492383049f732da9f17125",
+      "rationale_key": "staff-workflow",
+      "rationale": "Staff workflows require operational touch sizing or local layout.",
+      "occurrences": 1,
+      "source_lines": [
+        328
+      ]
+    },
+    {
+      "fingerprint": "8e3ccef0242ec92314e497a9503c4c8e760e6987c608c3499b45c45610c801aa",
+      "selector": ".sc-media-card__body>.sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "09f4ee54080572149f83892319c26685f2bb6920033031ec741a3976079e61f0",
+      "rationale_key": "guest-content-media",
+      "rationale": "Guest Content/Media retains only true badge placement after H168 convergence.",
+      "occurrences": 1,
+      "source_lines": [
+        906
+      ]
+    },
+    {
+      "fingerprint": "cdbf9484a96793f4cc7d5111afdd8a46ee0d206cc0570d6a54b725f06114648c",
+      "selector": ".sc-data-panel>.sc-section-head>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:760px)",
+      "declaration_sha256": "0fd943ffe4c56bbc10db6b7a848b163abc2440545a15362d586584dc010f06bf",
+      "rationale_key": "workspace-local",
+      "rationale": "Workspace-local placement/density exception.",
+      "occurrences": 1,
+      "source_lines": [
+        993
+      ]
+    },
+    {
+      "fingerprint": "358004cc1c377bbed30d6ce104d079164c7351f5f0237667b51ed91e49a120b8",
+      "selector": ".sc-notifications-side .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "033856786c00bb83ffa194f32bfba076dc08a8b4d784abc9d63cea30e7d5e8fc",
+      "rationale_key": "notifications",
+      "rationale": "Notification side/actions are local composition, not base button semantics.",
+      "occurrences": 1,
+      "source_lines": [
+        1038
+      ]
+    },
+    {
+      "fingerprint": "0382c323869833025c09a66e2fdee34b847ca44d253dc64858820ee650e719b5",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (min-width:1181px)",
+      "declaration_sha256": "99202fe38d8411843ed6b9b222b703586e8acf49e88ed5b3922af01ed0927b60",
+      "rationale_key": "shell-context",
+      "rationale": "Compact shell/footer layout intentionally specializes shared controls.",
+      "occurrences": 1,
+      "source_lines": [
+        2178
+      ]
+    },
+    {
+      "fingerprint": "cf3c725fc46d2eceb897d93f4090d394257918d2fbbeb26125d057da8e2d9ecd",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-button>span",
+      "families": [
+        "button"
+      ],
+      "context": "@media (min-width:1181px)",
+      "declaration_sha256": "6aa34d7432e79eb0ce9d335d909a58940c4a549b4bb7d0ad14b9259889ee5001",
+      "rationale_key": "shell-context",
+      "rationale": "Compact shell/footer layout intentionally specializes shared controls.",
+      "occurrences": 1,
+      "source_lines": [
+        2178
+      ]
+    },
+    {
+      "fingerprint": "f1be1b7a23d8704aa7e2fe69184b505a1952f9dca257c73b100690807cc1320b",
+      "selector": ".sc-hall-acceptance-button .sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "882b30ca5c4b62bc925660d7357130a5ce62f9eebc95b5b5da66389f3cad42d6",
+      "rationale_key": "operational-ordering",
+      "rationale": "Hall/Order/Settlement retains only true state/badge composition after H168 convergence.",
+      "occurrences": 1,
+      "source_lines": [
+        2295
+      ]
+    },
+    {
+      "fingerprint": "8f270c2147964f34a0d7af90e3948e8e71c035a3b2d021dacf894bc5f468fd58",
+      "selector": "body[data-page=\"subscribers\"] .sc-subscriber-account__actions>.sc-badge",
+      "families": [
+        "badge"
+      ],
+      "context": "@media (max-width:640px)",
+      "declaration_sha256": "51377a917eb300718260706c74bdd7faf10af464dc8077e826f648bfc9e855e0",
+      "rationale_key": "customer-management",
+      "rationale": "Customer/account actions specialize editor or account layout.",
+      "occurrences": 1,
+      "source_lines": [
+        2471
+      ]
+    },
+    {
+      "fingerprint": "b02c615a6c550476dbfd992b1c35b848b86627f5518113c163f621e6a7d1fd44",
+      "selector": ".sc-system-action-item>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "8037400c240808bc5b879b86ff0a6d84ab36246be5aaf6ff53342de3b2a63a99",
+      "rationale_key": "system-management",
+      "rationale": "System maintenance actions specialize responsive placement.",
+      "occurrences": 1,
+      "source_lines": [
+        2492
+      ]
+    },
+    {
+      "fingerprint": "ec18f3aa233f55169234c28c4b05aebd4e5139ffbe77d602fca2268082f8a8aa",
+      "selector": ".sc-system-action-item>.sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:620px)",
+      "declaration_sha256": "3a0e8220ec679c7f0822b8a98a866292bf9809595c48c35f90d040cbf1fc826b",
+      "rationale_key": "system-management",
+      "rationale": "System maintenance actions specialize responsive placement.",
+      "occurrences": 1,
+      "source_lines": [
+        2496
+      ]
+    },
+    {
+      "fingerprint": "97877cbc9d9024362669ace294818fb700808fc442ebe1a08faa798db90de600",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (min-width:981px)",
+      "declaration_sha256": "52f80092416af0b9c3526c006de1b3689ebb291ed9dc376105176f6ccb09a551",
+      "rationale_key": "shell-context",
+      "rationale": "Compact shell/footer layout intentionally specializes shared controls.",
+      "occurrences": 1,
+      "source_lines": [
+        2601
+      ]
+    },
+    {
+      "fingerprint": "3c0fa9eb15efa190f7c63b2bb15d2c9c03023d0d370e2841aff42208831a5e1a",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-icon-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (min-width:981px)",
+      "declaration_sha256": "52f80092416af0b9c3526c006de1b3689ebb291ed9dc376105176f6ccb09a551",
+      "rationale_key": "shell-context",
+      "rationale": "Compact shell/footer layout intentionally specializes shared controls.",
+      "occurrences": 1,
+      "source_lines": [
+        2601
+      ]
+    },
+    {
+      "fingerprint": "1fe3936adaba0071e8354631b6006f839886575a2df7f698ee0e9f908862d9e2",
+      "selector": ".sc-subscriber-editor__actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "unlayered",
+      "declaration_sha256": "05c9c4169a2352555e0e82286fa872b8766b727e3f52659fd2e353fa3d94b10f",
+      "rationale_key": "customer-management",
+      "rationale": "Customer/account actions specialize editor or account layout.",
+      "occurrences": 1,
+      "source_lines": [
+        3179
+      ]
+    },
+    {
+      "fingerprint": "a72515b870b49966cfa3b05cc2a10d94620eb78e772fcee76d4457094871f54f",
+      "selector": ".sc-subscriber-editor__actions .sc-button",
+      "families": [
+        "button"
+      ],
+      "context": "@media (max-width:640px)",
+      "declaration_sha256": "3a0e8220ec679c7f0822b8a98a866292bf9809595c48c35f90d040cbf1fc826b",
+      "rationale_key": "customer-management",
+      "rationale": "Customer/account actions specialize editor or account layout.",
+      "occurrences": 1,
+      "source_lines": [
+        3192
+      ]
+    }
+  ],
+  "retired_from_h169": [
+    {
+      "fingerprint": "0a523db129de7cd01d5d8ba57b53ba20ec5a2600d203dab68c331a367e92e124",
+      "selector": "body[data-page=\"operations\"] .sc-list-item .sc-actions .sc-button",
+      "context": "@layer product",
+      "rationale_key": "management-dialog"
+    },
+    {
+      "fingerprint": "c52795c882ec8215d68988ec038b526665a25a64dca0e579b2d9b4ccfd2f0cae",
+      "selector": "body[data-page=\"catalog\"] .sc-dialog",
+      "context": "@layer product",
+      "rationale_key": "catalog-management"
+    },
+    {
+      "fingerprint": "5c42c452c7713414e8686550997a837ee2bf03f5c604861b98698b750cf6204c",
+      "selector": "body[data-page=\"admin\"] .sc-dialog",
+      "context": "@layer product",
+      "rationale_key": "management-dialog"
+    },
+    {
+      "fingerprint": "1051175052503697f5f3f7c20c227c8bb80fcf1c90f5c3c27edd42eaa42a90f7",
+      "selector": "body[data-page=\"operations\"] .sc-dialog",
+      "context": "@layer product",
+      "rationale_key": "management-dialog"
+    },
+    {
+      "fingerprint": "58ee7f0569d83cad74455db65841c2739b73b94a80f8876448b40e1493c978af",
+      "selector": "body[data-page=\"printing\"] .sc-dialog",
+      "context": "@layer product",
+      "rationale_key": "printing-workflow"
+    },
+    {
+      "fingerprint": "557fd9f67824fd34eea99b3166e5f15ae2cfd6ea873a44bb7aaded369a793238",
+      "selector": "body[data-page=\"operations\"] [data-count-lines] .sc-inline .sc-button",
+      "context": "@layer product > @media (max-width:900px)",
+      "rationale_key": "management-dialog"
+    },
+    {
+      "fingerprint": "aafe394b8b5197760a5cd2d3660bebfdbdbb0d078c276e89e07bd44c41982746",
+      "selector": "body[data-page=\"operations\"] [data-count-lines] .sc-inline .sc-button",
+      "context": "@layer product > @media (max-width:520px)",
+      "rationale_key": "management-dialog"
+    },
+    {
+      "fingerprint": "808042025c6bddc176d68b298bee6e985ddad5d0eaca1688a2eccd99f582593e",
+      "selector": ".sc-catalog-filterbar__result .sc-button",
+      "context": "unlayered",
+      "rationale_key": "catalog-management"
+    },
+    {
+      "fingerprint": "3e826db34e8e810a8ab2d805f4efc9f03bc4b2aa48778b8400f6dbeb245530ec",
+      "selector": ".sc-catalog-mini-badges .sc-badge",
+      "context": "unlayered",
+      "rationale_key": "catalog-management"
+    },
+    {
+      "fingerprint": "cb1932eaf6bdd79ccc966f5029b0774ff5d62f68e378a478b5165c72c6fe8b26",
+      "selector": ".sc-catalog-filterbar__result .sc-button",
+      "context": "@media (max-width:420px)",
+      "rationale_key": "catalog-management"
+    },
+    {
+      "fingerprint": "06d6a0c169d7d17dd94e5af81f1ea18ac2fd81c83fd808e36fe4cb9538e19e68",
+      "selector": ".sc-catalog-bulk .sc-button",
+      "context": "@media (max-width:720px)",
+      "rationale_key": "catalog-management"
+    },
+    {
+      "fingerprint": "ae1e2cdf339a19745e47a317b5e2a26f6fc6cf4b5e525eb4b979f7f38bcfab56",
+      "selector": ".sc-print-template-section-row .sc-button",
+      "context": "unlayered",
+      "rationale_key": "printing-workflow"
+    },
+    {
+      "fingerprint": "946bbeef165e41c57e17ad0f7f12258abf4b3abc9a5f86fe8f7359724ac6a6ea",
+      "selector": "body[data-page=\"printing\"] .sc-print-destination-item>.sc-actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "printing-workflow"
+    }
+  ]
+}

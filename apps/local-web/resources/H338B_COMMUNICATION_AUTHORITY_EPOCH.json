@@ -1,0 +1,20 @@
+{
+  "checkpoint": "H338B_COMMUNICATION_A14_20261014",
+  "contract": {
+    "activation": "requires fresh heartbeat + read-model snapshot",
+    "authority_identity": "installation_id + authority_epoch",
+    "old_deferred": "needs_review",
+    "old_realtime": "unknown_review",
+    "public_fence": "signed restore fence disables remote/order intake",
+    "reenrollment": "rotates pairing secret + increments epoch",
+    "restore_local_phase": "reenroll_required"
+  },
+  "real_host_installed": {
+    "local": "230y",
+    "public": "35ch"
+  },
+  "scope": [
+    "A14"
+  ],
+  "status": "engineering_source_qualified_real_mariadb_restore_uat_pending_not_installed"
+}

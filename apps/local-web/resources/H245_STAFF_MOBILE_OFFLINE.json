@@ -1,0 +1,13 @@
+{
+  "checkpoint": "H245",
+  "scope": "shared-staff-mobile-offline",
+  "desktop_baseline_locked": true,
+  "changes": [
+    "contextual_dirty_navigation",
+    "mobile_order_dock",
+    "compact_mobile_hall",
+    "price_change_labels",
+    "zero_free_section_collapse",
+    "shared_public_local_order_workspace"
+  ]
+}

@@ -58,7 +58,8 @@ final class TableDraftService
         }
 
         $draft=$this->activeLocked($tableId);
-        $snapshots=$this->catalog->snapshotRowsTx($rows,'staff');
+        $preserved=$draft===null?[]:$this->preservedPriceQuantities($this->items((int)$draft['id']));
+        $snapshots=$this->catalog->snapshotDraftRowsTx($rows,$preserved);
         if($draft===null){
             if($expectedVersion!==0)
                 throw new TableDraftException('version_conflict','پیش‌نویس این میز تغییر کرده است؛ دوباره بارگذاری کنید.',409,['current_version'=>0]);
@@ -182,22 +183,21 @@ final class TableDraftService
 
         $items=$this->items($draftId);
         if($items===[])throw new TableDraftException('empty_draft','پیش‌نویس خالی قابل ثبت نیست.',422);
-
+        $commitRows=array_map(static fn(array $row):array=>[
+            'id'=>$row['id'],'quantity'=>$row['quantity'],'note'=>$row['note'],'expected_price'=>$row['unit_price'],'fulfillment_mode'=>$row['fulfillment_mode'],'bundle_choice_item_id'=>(int)($row['bundle_choice_item_id']??0),
+        ],$items);
         try{
-            $order=$this->quickOrders->commitTx([
+            // Revalidate availability/service constraints at finalize, but preserve only
+            // the price segments already stored in this server-owned draft.
+            $snapshots=$this->catalog->snapshotDraftRowsTx($this->catalog->normalizeRows($commitRows,false),$this->preservedPriceQuantities($items));
+            $order=$this->quickOrders->commitDraftTx([
                 'table_id'=>$tableId,
                 'expected_session_id'=>$expectedSessionId,
                 'request_token'=>self::orderToken($draftId),
                 'note'=>(string)($draft['note']??''),
-                'items'=>array_map(static fn(array $row):array=>[
-                    'id'=>$row['id'],
-                    'quantity'=>$row['quantity'],
-                    'note'=>$row['note'],
-                    'expected_price'=>$row['unit_price'],
-                    'fulfillment_mode'=>$row['fulfillment_mode'],
-                ],$items),
-            ],$actor);
-        }catch(StaffQuickOrderException $e){
+                'items'=>$commitRows,
+            ],$actor,$snapshots);
+        }catch(StaffQuickOrderException|OrderCommitException $e){
             throw new TableDraftException('finalize_rejected',$e->getMessage(),$e->httpStatus,['cause'=>$e->errorCode]+$e->details);
         }
 
@@ -224,7 +224,7 @@ final class TableDraftService
 
     private function currentSessionIdLocked(int $tableId): int
     {
-        $stmt=$this->pdo->prepare("SELECT id FROM table_sessions WHERE table_id=? AND status IN('active','pending') ORDER BY FIELD(status,'active','pending'),id DESC LIMIT 1 FOR UPDATE");
+        $stmt=$this->pdo->prepare("SELECT id FROM table_sessions WHERE table_id=? AND status IN('active','pending') AND live_table_guard IS NOT NULL ORDER BY FIELD(status,'active','pending'),id DESC LIMIT 1 FOR UPDATE");
         $stmt->execute([$tableId]);
         return (int)($stmt->fetchColumn()?:0);
     }
@@ -248,19 +248,19 @@ final class TableDraftService
         $this->pdo->prepare('DELETE FROM table_draft_items WHERE draft_id=?')->execute([$draftId]);
         if($snapshots===[])return;
         $stmt=$this->pdo->prepare(
-            'INSERT INTO table_draft_items(draft_id,item_id,item_name_snapshot,unit_price_snapshot,sellable_kind_snapshot,quantity,item_note,fulfillment_mode,sort_order) VALUES(?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO table_draft_items(draft_id,item_id,item_name_snapshot,unit_price_snapshot,sellable_kind_snapshot,quantity,item_note,fulfillment_mode,bundle_choice_item_id,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?)'
         );
         foreach($snapshots as $index=>$row){
             $stmt->execute([
                 $draftId,$row['item_id'],$row['item_name'],$row['unit_price'],$row['sellable_kind'],$row['quantity'],
-                $row['item_note'],$row['fulfillment_mode'],$index,
+                $row['item_note'],$row['fulfillment_mode'],(int)($row['bundle_choice_item_id']??0),$index,
             ]);
         }
     }
 
     private function items(int $draftId): array
     {
-        $stmt=$this->pdo->prepare('SELECT item_id,item_name_snapshot,unit_price_snapshot,sellable_kind_snapshot,quantity,item_note,fulfillment_mode,sort_order FROM table_draft_items WHERE draft_id=? ORDER BY sort_order,id');
+        $stmt=$this->pdo->prepare('SELECT item_id,item_name_snapshot,unit_price_snapshot,sellable_kind_snapshot,quantity,item_note,fulfillment_mode,bundle_choice_item_id,sort_order FROM table_draft_items WHERE draft_id=? ORDER BY sort_order,id');
         $stmt->execute([$draftId]);
         return array_map(static fn(array $row):array=>[
             'id'=>(int)$row['item_id'],
@@ -270,6 +270,7 @@ final class TableDraftService
             'quantity'=>(int)$row['quantity'],
             'note'=>(string)($row['item_note']??''),
             'fulfillment_mode'=>(string)$row['fulfillment_mode'],
+            'bundle_choice_item_id'=>(int)($row['bundle_choice_item_id']??0),
             'sort_order'=>(int)$row['sort_order'],
         ],$stmt->fetchAll(PDO::FETCH_ASSOC));
     }
@@ -288,6 +289,17 @@ final class TableDraftService
             'final_order_id'=>$draft['final_order_id']!==null?(int)$draft['final_order_id']:null,
             'items'=>$this->items((int)$draft['id']),
         ];
+    }
+
+    /** @param list<array<string,mixed>> $items @return array<string,int> */
+    private function preservedPriceQuantities(array $items): array
+    {
+        $result=[];
+        foreach($items as $row){
+            $key=(int)($row['id']??0).'|'.((string)($row['fulfillment_mode']??'dine_in')).'|'.(int)($row['bundle_choice_item_id']??0).'|'.(int)($row['unit_price']??0);
+            $result[$key]=max(0,(int)($result[$key]??0))+max(0,(int)($row['quantity']??0));
+        }
+        return $result;
     }
 
     private function audit(string $action,int $entityId,array $actor,array $details): void

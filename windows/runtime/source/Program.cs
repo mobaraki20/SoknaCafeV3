@@ -86,7 +86,7 @@ internal sealed record RuntimeTriggerOutcome(bool WorkerCompleted,bool WorkerSuc
     }
 }
 
-internal sealed record RuntimeHealthSnapshot(bool success,int contract_version,string runtime_version,string instance_id,string status,DateTimeOffset started_at,DateTimeOffset last_seen_at,string[] capabilities,RuntimeSchedulerHealth scheduler,Dictionary<string,RuntimeTriggerHealth> triggers,Dictionary<string,RuntimeComponentHealth> supervised_components);
+internal sealed record RuntimeHealthSnapshot(bool success,int contract_version,string runtime_version,string instance_id,string status,DateTimeOffset started_at,DateTimeOffset last_seen_at,string[] capabilities,RuntimeSchedulerHealth scheduler,Dictionary<string,RuntimeTriggerHealth> triggers,Dictionary<string,RuntimeComponentHealth> supervised_components,string time_zone="Asia/Tehran",string timestamp_basis="UTC");
 
 internal static class RuntimeVersionInfo
 {

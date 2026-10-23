@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Sokna\Local\Core;
 
+use Sokna\Local\Domain\PublicEdge\RemoteCredentialService;
 use Throwable;
 
 final class Auth
@@ -14,6 +15,8 @@ final class Auth
         private readonly IdentityRepository $repository,
         private readonly Capabilities $capabilities,
         private readonly int $sessionLifetime = Session::DEFAULT_LIFETIME,
+        private readonly ?LoginAccessService $loginAccess = null,
+        private readonly ?RemoteCredentialService $remoteCredentials = null,
     ) {
     }
 
@@ -55,16 +58,44 @@ final class Auth
         return $this->validatedUser;
     }
 
-    public function login(string $username, string $password): bool
+    /** @return list<array{id:int,username:string,display_name:string,role:string}> */
+    public function activeLoginUsers(): array
+    {
+        if ($this->loginAccess === null) return [];
+        try { return $this->loginAccess->activeUsers(); } catch (Throwable) { return []; }
+    }
+
+    /**
+     * @return array{ok:bool,code:string,retry_after:int,failures:int}
+     */
+    public function loginAttempt(string $username, string $password): array
     {
         $username = trim($username);
-        if ($username === '' || $password === '') return false;
+        if ($username === '' || $password === '') return ['ok'=>false,'code'=>'invalid','retry_after'=>0,'failures'=>0];
 
         $user = $this->repository->findActiveByUsername($username);
-        if ($user === null || !password_verify($password, (string)($user['password_hash'] ?? ''))) return false;
+        if ($user === null) return ['ok'=>false,'code'=>'invalid','retry_after'=>0,'failures'=>0];
+        $userId = (int)($user['id'] ?? 0);
 
+        if ($this->loginAccess !== null) {
+            $state = $this->loginAccess->status($userId);
+            if ($state['locked']) return ['ok'=>false,'code'=>'locked','retry_after'=>$state['retry_after'],'failures'=>$state['failures']];
+        }
+
+        if (!password_verify($password, (string)($user['password_hash'] ?? ''))) {
+            $state = $this->loginAccess?->fail($userId) ?? ['locked'=>false,'retry_after'=>0,'failures'=>0];
+            return ['ok'=>false,'code'=>$state['locked']?'locked':'invalid','retry_after'=>(int)$state['retry_after'],'failures'=>(int)$state['failures']];
+        }
+
+        $this->loginAccess?->clear($userId);
+        $this->remoteCredentials?->ensureMatchesVerifiedPassword($userId,$password);
         $this->loginUser($user);
-        return true;
+        return ['ok'=>true,'code'=>'ok','retry_after'=>0,'failures'=>0];
+    }
+
+    public function login(string $username, string $password): bool
+    {
+        return $this->loginAttempt($username, $password)['ok'];
     }
 
     public function loginUser(array $user): void

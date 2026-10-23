@@ -1,0 +1,454 @@
+{
+  "version": "H207",
+  "source_file": "Sokna_Cafe_Purchases_CORRECTED_1405-06-16_to_1405-07-16.xlsx",
+  "source_ref": "sokna_cafe_purchases_corrected_1405_06_16_to_1405_07_16",
+  "policy": {
+    "aliases_are_non_blocking": true,
+    "do_not_auto_merge_ambiguous_terms": true,
+    "do_not_fabricate_balances_costs_or_receipts": true
+  },
+  "alias_count": 47,
+  "new_master_items": [
+    {
+      "item_code": "INV-101",
+      "name": "تخم مرغ",
+      "base_unit": "count",
+      "department": "kitchen",
+      "review_status": "ready"
+    },
+    {
+      "item_code": "INV-102",
+      "name": "فلفل سیاه",
+      "base_unit": "g",
+      "department": "kitchen",
+      "review_status": "ready"
+    },
+    {
+      "item_code": "INV-103",
+      "name": "پودر سیر",
+      "base_unit": "g",
+      "department": "kitchen",
+      "review_status": "ready"
+    },
+    {
+      "item_code": "INV-104",
+      "name": "نمک",
+      "base_unit": "g",
+      "department": "kitchen",
+      "review_status": "ready"
+    },
+    {
+      "item_code": "INV-105",
+      "name": "زیره",
+      "base_unit": "g",
+      "department": "kitchen",
+      "review_status": "ready"
+    },
+    {
+      "item_code": "INV-106",
+      "name": "عسل",
+      "base_unit": "g",
+      "department": "shared",
+      "review_status": "needs_review"
+    },
+    {
+      "item_code": "INV-107",
+      "name": "گردو",
+      "base_unit": "g",
+      "department": "shared",
+      "review_status": "ready"
+    },
+    {
+      "item_code": "INV-108",
+      "name": "جو دوسر پرک",
+      "base_unit": "g",
+      "department": "bar",
+      "review_status": "needs_review"
+    },
+    {
+      "item_code": "INV-109",
+      "name": "کنسرو نخود",
+      "base_unit": "g",
+      "department": "kitchen",
+      "review_status": "needs_review"
+    },
+    {
+      "item_code": "INV-110",
+      "name": "نان چاپاتا",
+      "base_unit": "count",
+      "department": "kitchen",
+      "review_status": "ready"
+    },
+    {
+      "item_code": "INV-111",
+      "name": "نان پیتا",
+      "base_unit": "count",
+      "department": "kitchen",
+      "review_status": "needs_review"
+    },
+    {
+      "item_code": "INV-112",
+      "name": "پودر سوخاری پانکو سفید",
+      "base_unit": "g",
+      "department": "kitchen",
+      "review_status": "needs_review"
+    },
+    {
+      "item_code": "INV-113",
+      "name": "پودر سوخاری پانکو پاپریکا",
+      "base_unit": "g",
+      "department": "kitchen",
+      "review_status": "needs_review"
+    },
+    {
+      "item_code": "INV-114",
+      "name": "دوغ آپادا",
+      "base_unit": "count",
+      "department": "shared",
+      "review_status": "ready"
+    },
+    {
+      "item_code": "INV-115",
+      "name": "شربت گلسرخ",
+      "base_unit": "ml",
+      "department": "bar",
+      "review_status": "needs_review"
+    },
+    {
+      "item_code": "INV-116",
+      "name": "شربت بهار نارنج",
+      "base_unit": "ml",
+      "department": "bar",
+      "review_status": "needs_review"
+    },
+    {
+      "item_code": "INV-117",
+      "name": "سیروپ نعنا سن ایچ",
+      "base_unit": "ml",
+      "department": "bar",
+      "review_status": "needs_review"
+    }
+  ],
+  "aliases": [
+    {
+      "item_code": "INV-033",
+      "alias": "هندونه",
+      "normalized_alias": "هندونه",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-025",
+      "alias": "استیک مرغ",
+      "normalized_alias": "استیک مرغ",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-025",
+      "alias": "فیله مرغ",
+      "normalized_alias": "فیله مرغ",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-028",
+      "alias": "برگر گوشت",
+      "normalized_alias": "برگر گوشت",
+      "kind": "short_name"
+    },
+    {
+      "item_code": "INV-015",
+      "alias": "پنیر وییلی",
+      "normalized_alias": "پنیر وییلی",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-015",
+      "alias": "پنیری ویلی",
+      "normalized_alias": "پنیری ویلی",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-019",
+      "alias": "پودر پنیر پارمسان",
+      "normalized_alias": "پودر پنیر پارمسان",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-019",
+      "alias": "پودر پنیر پارمیسان",
+      "normalized_alias": "پودر پنیر پارمیسان",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-003",
+      "alias": "شیرپرچرب دومینو",
+      "normalized_alias": "شیرپرچرب دومینو",
+      "kind": "spacing"
+    },
+    {
+      "item_code": "INV-003",
+      "alias": "شیر پرچرب دومینو",
+      "normalized_alias": "شیر پرچرب دومینو",
+      "kind": "short_name"
+    },
+    {
+      "item_code": "INV-005",
+      "alias": "خامه بزرگ",
+      "normalized_alias": "خامه بزرگ",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-005",
+      "alias": "خامه ۱ لیتری",
+      "normalized_alias": "خامه ۱ لیتری",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-005",
+      "alias": "خامه یک لیتری",
+      "normalized_alias": "خامه یک لیتری",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-007",
+      "alias": "بستنی وانیل",
+      "normalized_alias": "بستنی وانیل",
+      "kind": "short_name"
+    },
+    {
+      "item_code": "INV-020",
+      "alias": "انبه یخ زده",
+      "normalized_alias": "انبه یخ زده",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-021",
+      "alias": "توت فرنگی یخ زده",
+      "normalized_alias": "توت فرنگی یخ زده",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-009",
+      "alias": "سیب زمینی",
+      "normalized_alias": "سیب زمینی",
+      "kind": "spacing"
+    },
+    {
+      "item_code": "INV-010",
+      "alias": "سس کچاب",
+      "normalized_alias": "سس کچاب",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-010",
+      "alias": "کچاپ",
+      "normalized_alias": "کچاپ",
+      "kind": "short_name"
+    },
+    {
+      "item_code": "INV-010",
+      "alias": "سس کچاپ سطلی",
+      "normalized_alias": "سس کچاپ سطلی",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-011",
+      "alias": "سس مایونز",
+      "normalized_alias": "سس مایونز",
+      "kind": "short_name"
+    },
+    {
+      "item_code": "INV-012",
+      "alias": "سس خردل",
+      "normalized_alias": "سس خردل",
+      "kind": "short_name"
+    },
+    {
+      "item_code": "INV-059",
+      "alias": "سیروپ بلو کارسانو",
+      "normalized_alias": "سیروپ بلو کارسانو",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-059",
+      "alias": "سیروپ بلوکارسانو",
+      "normalized_alias": "سیروپ بلوکارسانو",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-059",
+      "alias": "بلو کارسانو",
+      "normalized_alias": "بلو کارسانو",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-073",
+      "alias": "اب معدنی کوچک",
+      "normalized_alias": "اب معدنی کوچک",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-076",
+      "alias": "نوشابه قوطی اسپرایت",
+      "normalized_alias": "نوشابه قوطی اسپرایت",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-076",
+      "alias": "اسپرایت ایرانی",
+      "normalized_alias": "اسپرایت ایرانی",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-067",
+      "alias": "پاستا پنه بزرگ",
+      "normalized_alias": "پاستا پنه بزرگ",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-067",
+      "alias": "ماکارونی مانا پنه بزرگ",
+      "normalized_alias": "ماکارونی مانا پنه بزرگ",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-052",
+      "alias": "روغن سرخ کردنی اویلا",
+      "normalized_alias": "روغن سرخ کردنی اویلا",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-052",
+      "alias": "روغن سرخ کردنی",
+      "normalized_alias": "روغن سرخ کردنی",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-018",
+      "alias": "پنیر پیتزا مارگاریتا",
+      "normalized_alias": "پنیر پیتزا مارگاریتا",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-045",
+      "alias": "کنسرو ذرت",
+      "normalized_alias": "کنسرو ذرت",
+      "kind": "short_name"
+    },
+    {
+      "item_code": "INV-093",
+      "alias": "سیروپ سن ایچ توت فرنگی",
+      "normalized_alias": "سیروپ سن ایچ توت فرنگی",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-093",
+      "alias": "سیروپ توت فرنگی سن ایچ",
+      "normalized_alias": "سیروپ توت فرنگی سن ایچ",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-093",
+      "alias": "سیروپ توت فرنگی سم ایچ",
+      "normalized_alias": "سیروپ توت فرنگی سم ایچ",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-099",
+      "alias": "چای سوفیا",
+      "normalized_alias": "چای سوفیا",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-094",
+      "alias": "آبلیمو",
+      "normalized_alias": "آبلیمو",
+      "kind": "short_name"
+    },
+    {
+      "item_code": "INV-063",
+      "alias": "شربت گلاب زعفرون",
+      "normalized_alias": "شربت گلاب زعفرون",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-047",
+      "alias": "زیتون اسلایس سبز",
+      "normalized_alias": "زیتون اسلایس سبز",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-046",
+      "alias": "زیتون سیاه اسلایس",
+      "normalized_alias": "زیتون سیاه اسلایس",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-110",
+      "alias": "نون چاپاتا",
+      "normalized_alias": "نون چاپاتا",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-111",
+      "alias": "نان لبنانی",
+      "normalized_alias": "نان لبنانی",
+      "kind": "purchase_term"
+    },
+    {
+      "item_code": "INV-114",
+      "alias": "دوغ اپادا",
+      "normalized_alias": "دوغ اپادا",
+      "kind": "spelling"
+    },
+    {
+      "item_code": "INV-112",
+      "alias": "پانکو سفید",
+      "normalized_alias": "پانکو سفید",
+      "kind": "short_name"
+    },
+    {
+      "item_code": "INV-113",
+      "alias": "پانکو پاپریکا",
+      "normalized_alias": "پانکو پاپریکا",
+      "kind": "short_name"
+    }
+  ],
+  "deliberately_unmerged_examples": [
+    {
+      "term": "نان تست",
+      "reason": "دو master برندمحور موجود است؛ خرید بدون برند را نمی‌توان ایمن به یکی نسبت داد."
+    },
+    {
+      "term": "نان برگر",
+      "reason": "دو master برندمحور موجود است؛ خرید بدون برند مبهم است."
+    },
+    {
+      "term": "زیتون اسلایس",
+      "reason": "سبز و سیاه هر دو در master وجود دارند."
+    },
+    {
+      "term": "خامه",
+      "reason": "خامه ۱ لیتری و خامه کوچک هر دو وجود دارند."
+    },
+    {
+      "term": "بستنی پنج لیتری",
+      "reason": "طعم در عبارت خرید مشخص نیست."
+    },
+    {
+      "term": "روغن",
+      "reason": "چند روغن با کاربرد متفاوت در master وجود دارد."
+    },
+    {
+      "term": "ادویه",
+      "reason": "نام ماده مشخص نیست."
+    },
+    {
+      "term": "عصاره مرغ",
+      "reason": "واحد مصرف ¼ عدد با مدل integer فعلی ایمن نیست و وزن هر مکعب مشخص نشده است."
+    },
+    {
+      "term": "پنیر صباح شیشه ای",
+      "reason": "نوع دقیق پنیر برای اتصال به مواد موجود مشخص نیست."
+    }
+  ]
+}

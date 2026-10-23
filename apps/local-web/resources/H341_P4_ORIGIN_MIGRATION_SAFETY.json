@@ -1,0 +1,43 @@
+{
+  "format": "sokna-h341-p4-origin-migration-safety-v1",
+  "date": "2026-10-15",
+  "status": "engineering-source-vm-qualified-real-device-db-network-pending",
+  "release_set_id": "sokna-v3-h341-p4-20261015-pwa-origin-migration-safety",
+  "decisions": {
+    "deployment_domain_is_configuration": true,
+    "cross_origin_browser_state_auto_migration": false,
+    "canonical_origin_public_always": true,
+    "guest_default": "public_first",
+    "staff_transport": "lan_preferred_public_fallback"
+  },
+  "implemented": [
+    "Staff Service Worker registration uses the canonical /staff/sw.js route under the configured deployment base path.",
+    "Staff manifest id/start_url/scope and Service-Worker-Allowed remain aligned to the configured deployment base path.",
+    "Same-origin base-path rebinding cleans stale SOKNA Staff service-worker registration and local browser Push subscription best-effort before registering the new scope.",
+    "Cross-origin migration never claims browser storage/service-worker/push state migrated; reauthentication and Push resubscription are explicit.",
+    "Push delivery is suspended during Public-origin rebind and old-origin endpoint ownership is excluded until first subscription on the current binding retires old endpoints.",
+    "HTTPS origin rebind strengthens app.cookie_secure; cookie has no Domain attribute and follows configured base path.",
+    "Authenticated Staff CSP dynamically permits only the validated configured HTTPS LAN origin in connect-src.",
+    "LAN CORS remains exact Public-origin, no cookie credentials, with bounded Private Network preflight support."
+  ],
+  "explicit_limits": {
+    "staff_wan_off_cold_start_operational_lan": "OPEN: current Service Worker intentionally returns an honest offline shell and does not cache authenticated operational HTML/LAN credentials. Already-open Staff pages may use P3 LAN transport; a cold-start full operational LAN workspace is not claimed.",
+    "guest_wan_off_lan": "NOT_PRODUCT_DEFAULT: Guest remains Public-first; Local Guest compatibility entry is fail-closed unless a future explicit product workflow enables it.",
+    "guest_os_push": "NOT_IMPLEMENTED_REQUIREMENT: Guest status remains in-page; no Guest OS Push claim is made.",
+    "cross_origin_old_browser_cleanup": "BROWSER_ISOLATION: new origin cannot unregister old-origin Service Worker/PushSubscription; Local binding fence prevents those endpoints from being used after rebind until current-origin resubscribe."
+  },
+  "field_acceptance_pending": [
+    "real MariaDB Push binding/rebind transaction UAT",
+    "Android Chrome install/reinstall + Push permission/delivery",
+    "iPhone Safari Add-to-Home-Screen + Web Push user-activation/delivery",
+    "Chrome Local Network Access permission/Private Network behavior",
+    "real TLS/CSP/CORS with configured LAN hostname",
+    "Wi-Fi↔mobile handover mid-read/mid-mutation",
+    "old-origin retirement/redirect after API/relay cutover"
+  ],
+  "p5_blockers": [
+    "do not claim full WAN-off cold-start Staff LAN operation",
+    "do not claim cross-origin PWA state migration",
+    "do not claim real Push display/delay without device evidence"
+  ]
+}

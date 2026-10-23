@@ -1,0 +1,731 @@
+{
+  "format": "sokna-menu-business-reconciliation-v1",
+  "date": "2026-10-14",
+  "base_release": "H313_ARCH13_SIGNED_HTTP_PROFILE_20261014",
+  "protein_shake": {
+    "item_code": "1113",
+    "target_lifecycle": "active",
+    "guest_visible": true,
+    "staff_visible": true,
+    "available": true,
+    "reason": "latest project decision: newly added item; low early sales are not a retirement signal"
+  },
+  "price_sync": {
+    "format": "sokna-item-price-sync-v1",
+    "date": "2026-10-13",
+    "source_jalali_date": "1405-07-21",
+    "status": "approved_business_data_update",
+    "currency": "TOMAN",
+    "match_key": "item_code",
+    "one_time_sync": true,
+    "source": {
+      "file": "SOURCE_ITEMS_1405_07_21_23_13.xlsx",
+      "sha256": "cb15ceb59b35a45f883b26406aae41f27c1e3654b09b1c10ce1f45412bb0fcd4",
+      "comparison_file": "Items - 1405_07_18 23_01.xlsx",
+      "comparison_sha256": "a91e2bb4c2652d856c563c29639c55d479773374d1ef482212ef4be0dcc1e21a"
+    },
+    "items": [
+      {
+        "item_code": 206,
+        "name_reference_only": "دوغ آپادا",
+        "expected_previous_price_toman": 40000,
+        "desired_price_toman": 100000
+      },
+      {
+        "item_code": 1007,
+        "name_reference_only": "فیمتو",
+        "expected_previous_price_toman": 240000,
+        "desired_price_toman": 245000
+      },
+      {
+        "item_code": 1008,
+        "name_reference_only": "فیمتو اسپرایت",
+        "expected_previous_price_toman": 255000,
+        "desired_price_toman": 295000
+      },
+      {
+        "item_code": 1019,
+        "name_reference_only": "آیس دالگونا",
+        "expected_previous_price_toman": 210000,
+        "desired_price_toman": 220000
+      },
+      {
+        "item_code": 1106,
+        "name_reference_only": "شیک فیمتو",
+        "expected_previous_price_toman": 315000,
+        "desired_price_toman": 345000
+      },
+      {
+        "item_code": 1109,
+        "name_reference_only": "شیک انبه",
+        "expected_previous_price_toman": 355000,
+        "desired_price_toman": 475000
+      },
+      {
+        "item_code": 1110,
+        "name_reference_only": "اسموتی انبه",
+        "expected_previous_price_toman": 380000,
+        "desired_price_toman": 495000
+      },
+      {
+        "item_code": 1111,
+        "name_reference_only": "اسموتی منگو بری",
+        "expected_previous_price_toman": 395000,
+        "desired_price_toman": 520000
+      },
+      {
+        "item_code": 1301,
+        "name_reference_only": "سیب زمینی ساده",
+        "expected_previous_price_toman": 195000,
+        "desired_price_toman": 295000
+      },
+      {
+        "item_code": 1309,
+        "name_reference_only": "قارچ سوخاری",
+        "expected_previous_price_toman": 315000,
+        "desired_price_toman": 345000
+      },
+      {
+        "item_code": 1313,
+        "name_reference_only": "سیب زمینی با سس قارچ",
+        "expected_previous_price_toman": 415000,
+        "desired_price_toman": 495000
+      }
+    ],
+    "do_not_touch": [
+      "Revision 3 approved bundle prices: چای و باقلوا 225000, برای دو نفر 450000",
+      "new baklava master-data item price",
+      "new tea/herbal قوری بزرگ variant code/price (TBD)",
+      "other newly-created multi-item or variant sellable prices",
+      "lifecycle, visibility, availability, category, recipe, inventory, descriptions"
+    ],
+    "execution_rules": [
+      "match by item_code only",
+      "if already at desired price, no-op",
+      "audit before/after",
+      "preserve historical order line price snapshots",
+      "open-order existing lines keep old snapshot; newly-added lines use current price",
+      "do not enforce repeatedly after one-time cutover"
+    ]
+  },
+  "description_seed": {
+    "format": "sokna-menu-description-seed-v1",
+    "date": "2026-10-13",
+    "source_file": "SOURCE_MENU_DESCRIPTIONS_20261013.txt",
+    "source_sha256": "50bda802641c61ef591b0272259edbd9051689097e1a7ea4df7cc5b1694debd7",
+    "source_item_blocks": 79,
+    "source_nonempty_descriptions": 46,
+    "canonical_description_owners": 45,
+    "apply_count": 41,
+    "excluded_count": 4,
+    "price_import_from_source_file": false,
+    "price_authority_note": "All price text in the source description file is audit-only and MUST NOT overwrite installed/current item prices. Current item/database price remains authoritative unless a separately approved business-price decision exists (e.g. new bundle parent).",
+    "write_rules": [
+      "Match existing items by item_code, not by display name.",
+      "Variant-family descriptions are written to the family owner; compatibility member descriptions may mirror the same text but Guest presentation reads the family description.",
+      "Do not write blank descriptions and do not clear an existing description when the source block has no description.",
+      "Description update must never change lifecycle, availability, visibility, category, recipe, inventory linkage, or price.",
+      "Retired items may receive/preserve their description in archive without being reactivated.",
+      "The four tea texts «قوری بزرگ و کوچک» are sizing metadata, not descriptions; do not import them because the new labels are تک‌نفره / دو نفره / قوری بزرگ.",
+      "Three kitchen descriptions were corrected against the canonical handwritten recipe before approval: Caesar 120g/120g, snack sauce ketchup, mushroom-sauce fries 1/4 stock cube."
+    ],
+    "records": [
+      {
+        "entity_type": "item",
+        "item_code": 1113,
+        "canonical_name": "شیک پروتئینی",
+        "source_name": "شیک پروتئینی",
+        "approved_description": "موز، کنجد، کره بادام‌زمینی، گردو، جو دوسر، پودر دارچین و عسل.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "retired",
+        "source_description": "موز، کنجد، کره بادم زمینی، گردو، جو دوسر، پودر دارچین، عسل",
+        "source_price_text_ignored": "قیمت : 395,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1317,
+        "canonical_name": "سالاد حمص",
+        "source_name": "سالاد حمص",
+        "approved_description": "۱۳۰ گرم حمص، ۱۰۰ گرم مرغ، ۱۵۰ گرم کاهو پیچ، نان پیتا، گوجه گیلاسی، خیار سبز و زیتون سیاه و سبز.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "130 گ حمص، 100 گ مرغ، 150 گ کاهو پیچ، نون پیتا، گوجه گیلاسی، خیار سبز، زیتون سیاه و سبز",
+        "source_price_text_ignored": "قیمت : 570,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1316,
+        "canonical_name": "آب دوغ خیار",
+        "source_name": "آب دوغ خیار",
+        "approved_description": "آب‌دوغ‌خیار فقط سه‌شنبه‌شب‌ها سرو می‌شود :)",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "retired",
+        "source_description": "آب دوغ خیار فقط سه‌شنبه شب‌ها سرو میشه :)",
+        "source_price_text_ignored": "قیمت : 630,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1314,
+        "canonical_name": "برگر گوشت",
+        "source_name": "برگر گوشت",
+        "approved_description": "برگر گوشت (۱۰۰ تا ۱۲۵ گرم)، گوجه، خیارشور، کاهو پیچ، نان برگر و سس اختصاصی برگر.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "برگر گوشت (۱۰۰ - ۱۲۵ گرم) + گوجه + خیار شور + کاهو پیچ + نان برگر + سس برگر اختصاصی",
+        "source_price_text_ignored": "قیمت : 755,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1315,
+        "canonical_name": "برگر مرغ",
+        "source_name": "برگر مرغ",
+        "approved_description": "برگر مرغ (۱۰۰ تا ۱۲۰ گرم)، گوجه، خیارشور، کاهو پیچ، نان برگر و سس اختصاصی برگر.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "برگر مرغ (۱۰۰ - ۱۲۰ گرم) + گوجه + خیار شور + کاهو پیچ + نان برگر + سس برگر اختصاصی",
+        "source_price_text_ignored": "قیمت : 595,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1112,
+        "canonical_name": "شیک توت فرنگی",
+        "source_name": "شیک توت‌فرنگی",
+        "approved_description": "توت‌فرنگی، بستنی وانیلی و سیروپ توت‌فرنگی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "توت فرنگی، بستنی وانیلی، سیروپ توت‌فرنگی",
+        "source_price_text_ignored": "قیمت : 355,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1111,
+        "canonical_name": "اسموتی منگو بری",
+        "source_name": "اسموتی منگو بری",
+        "approved_description": "انبه، توت‌فرنگی و آب انبه.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "انبه، توت فرنگی، آب انبه",
+        "source_price_text_ignored": "قیمت : 520,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1110,
+        "canonical_name": "اسموتی انبه",
+        "source_name": "اسموتی انبه",
+        "approved_description": "انبه طبیعی و آب انبه.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "انبه طبیعی، آب انبه",
+        "source_price_text_ignored": "قیمت : 495,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 118,
+        "canonical_name": "زینگر",
+        "source_name": "زینگر",
+        "approved_description": "۲۰۰ گرم مرغ، پودر سوخاری، نان برگر، گوجه، کاهو پیچ، خیارشور و سس اختصاصی زینگر.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "۲۰۰ گرم مرغ + پودر سوخاری + نان برگر + گوجه + کاهو پیچ + خیار شور + سس زینگر اختصاصی",
+        "source_price_text_ignored": "قیمت : 630,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1109,
+        "canonical_name": "شیک انبه",
+        "source_name": "شیک انبه",
+        "approved_description": "انبه طبیعی و بستنی وانیلی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "با انبه طبیعی و بستنی وانیلی",
+        "source_price_text_ignored": "قیمت : 475,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1215,
+        "canonical_name": "دسر لیزی کت",
+        "source_name": "لیزی کت کیک",
+        "approved_description": "ترکیب کیک شکلاتی تلخ، سیروپ قهوه، کرم پنیری مخصوص و گاناش شکلات.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "retired",
+        "source_description": "ترکیب کیک شکلاتی تلخ، سیروپ قهوه، کرم پنیری مخصوص و گاناش شکلات",
+        "source_price_text_ignored": "قیمت : 280,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1214,
+        "canonical_name": "چیز کیک گلکسی",
+        "source_name": "چیز کیک گلکسی",
+        "approved_description": "خانگی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "retired",
+        "source_description": "خونگی",
+        "source_price_text_ignored": "قیمت : 285,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1107,
+        "canonical_name": "شیک پینات",
+        "source_name": "شیک پینات",
+        "approved_description": "کره بادام‌زمینی، بادام‌زمینی و پنیر خامه‌ای.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "کره ی بادام زمینی، بادام زمینی، پنیر خامه‌ای",
+        "source_price_text_ignored": "قیمت : 345,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1213,
+        "canonical_name": "آمریکن کوکی",
+        "source_name": "آمریکن کوکی",
+        "approved_description": "کوکی خانگی با تکه‌های شکلات.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "retired",
+        "source_description": "کوکی خونگی با تکه های شکلات",
+        "source_price_text_ignored": "قیمت : 95,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1212,
+        "canonical_name": "دسر برونی",
+        "source_name": "دسر برونی",
+        "approved_description": "خانگی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "retired",
+        "source_description": "خونگی",
+        "source_price_text_ignored": "قیمت : 240,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1211,
+        "canonical_name": "چیز کیک ماتیلدا",
+        "source_name": "چیز کیک ماتیلدا",
+        "approved_description": "با خامه صبحانه و شکلات ساربون.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "با خامه صبحانه و شکلات ساربون",
+        "source_price_text_ignored": "قیمت : 325,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1312,
+        "canonical_name": "سالاد سزار",
+        "source_name": "سالاد سزار",
+        "approved_description": "نان تست، ۱۲۰ گرم مرغ، ۱۲۰ گرم کاهو پیچ، گوجه گیلاسی، زیتون سیاه، بیبی‌کورن، پنیر پارمسان و سس سالاد.",
+        "validation": "canonical_recipe_corrected",
+        "apply": true,
+        "correction_note": "متن فایل ۱۶۰g مرغ/کاهو نوشته بود؛ رسپی دست‌نویس canonical هر دو را ۱۲۰g ثبت کرده است.",
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "نان تست + ۱۶۰ گرم مرغ + ۱۶۰ گرم کاهو پیچ + گوجه گیلاسی + زیتون سیاه + بیبی کورن + پنیر پارمسان + سس سالاد",
+        "source_price_text_ignored": "قیمت : 620,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1309,
+        "canonical_name": "قارچ سوخاری",
+        "source_name": "قارچ سوخاری",
+        "approved_description": "۸ عدد قارچ (در مجموع حدود ۱۲۰ تا ۱۵۰ گرم)، تخم‌مرغ، آرد طعم‌دار و پودر سوخاری.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "۸ عدد (۱۲۰ - ۱۵۰ گرم) قارچ + تخم مرغ + آرد طعم‌دار + پودر سوخاری",
+        "source_price_text_ignored": "قیمت : 345,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1310,
+        "canonical_name": "اسنک مرغ",
+        "source_name": "اسنک مرغ",
+        "approved_description": "۹۰ گرم مواد اسنک، نان تست، پنیر پیتزا، پنیر ویلی و سس کچاپ.",
+        "validation": "canonical_recipe_corrected",
+        "apply": true,
+        "correction_note": "متن فایل «سس اسنک» داشت؛ رسپی دست‌نویس canonical سس کچاپ را ثبت کرده است.",
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "۹۰ گرم مواد اسنک + نان تست + پنیر پیتزا + پنیر ویلی + سس اسنک",
+        "source_price_text_ignored": "قیمت : 345,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1305,
+        "canonical_name": "پاستا چیکن آلفردو",
+        "source_name": "پاستا چیکن آلفردو",
+        "approved_description": "۵۰ گرم مرغ، ۵۰ گرم قارچ، ۱۰۰ گرم خامه، ۱۰۰ میلی‌لیتر شیر، ۱۰۰ گرم پنه، پنیر پارمسان، گوجه گیلاسی، جعفری خشک و زیتون سیاه.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "۵۰ گرم مرغ + ۵۰ گرم قارچ + ۱۰۰ گرم خامه + ۱۰۰ میلی‌لیتر شیر + ۱۰۰ گرم پنه + پنیر پارمسان + گوجه گیلاسی + جعفری خشک + زیتون سیاه",
+        "source_price_text_ignored": "قیمت : 595,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1210,
+        "canonical_name": "کیک شعریه",
+        "source_name": "کیک شعریه",
+        "approved_description": "کیک شعریه خانگی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "retired",
+        "source_description": "کیک شعریه خونگی",
+        "source_price_text_ignored": "قیمت : 120,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1301,
+        "canonical_name": "سیب زمینی ساده",
+        "source_name": "سیب زمینی ساده",
+        "approved_description": "۲۵۰ گرم سیب‌زمینی، ادویه اختصاصی و سس کچاپ.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "۲۵۰ گرم سیب زمینی + ادویه اختصاصی + سس کچاپ",
+        "source_price_text_ignored": "قیمت : 295,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1313,
+        "canonical_name": "سیب زمینی با سس قارچ",
+        "source_name": "سیب زمینی با سس قارچ",
+        "approved_description": "۲۵۰ گرم سیب‌زمینی، ۵۰ گرم قارچ، ۱۰۰ گرم خامه، ۵۰ میلی‌لیتر شیر، ¼ عصاره مرغ و ادویه اختصاصی.",
+        "validation": "canonical_recipe_corrected",
+        "apply": true,
+        "correction_note": "متن فایل ½ ماجی نوشته بود؛ رسپی دست‌نویس canonical ¼ عصاره مرغ ثبت کرده است.",
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "۲۵۰ گرم سیب زمینی + ۵۰ گرم قارچ + ۱۰۰ گرم خامه + ۵۰ میلی‌لیتر شیر + ½ ماجی + ادویه اختصاصی",
+        "source_price_text_ignored": "قیمت : 495,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1203,
+        "canonical_name": "کیک شکلاتی",
+        "source_name": "کیک شکلاتی",
+        "approved_description": "کیک شکلاتی خانگی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "retired",
+        "source_description": "کیک شکلاتی خونگی",
+        "source_price_text_ignored": "قیمت : 130,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1201,
+        "canonical_name": "کیک بسبوسه",
+        "source_name": "کیک بسبوسه",
+        "approved_description": "کیک بسبوسه خانگی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "retired",
+        "source_description": "کیک بسبوسه خونگی",
+        "source_price_text_ignored": "قیمت : 120,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 607,
+        "canonical_name": "اردیبهشت",
+        "source_name": "شربت اردیبهشت",
+        "approved_description": "گل محمدی و تخم شربتی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "گل محمدی، تخم شربتی",
+        "source_price_text_ignored": "قیمت : 220,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 606,
+        "canonical_name": "دل نواز",
+        "source_name": "شربت دل‌نواز",
+        "approved_description": "به‌لیمو و تخم شربتی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "به لیمو، تخم شربتی",
+        "source_price_text_ignored": "قیمت : 220,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 605,
+        "canonical_name": "شهناز",
+        "source_name": "شربت شهناز",
+        "approved_description": "بیدمشک، نسترن و خاکشیر.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "بیدمشک، نسترن، خاک شیر",
+        "source_price_text_ignored": "قیمت : 190,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 604,
+        "canonical_name": "کرشمه",
+        "source_name": "شربت کرشمه",
+        "approved_description": "کاسنی، شاطره و تخم شربتی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "کاسنی، شاطره، تخم شربتی",
+        "source_price_text_ignored": "قیمت : 205,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 603,
+        "canonical_name": "شاه نوش",
+        "source_name": "شربت شاه نوش",
+        "approved_description": "زعفران، گلاب و خاکشیر.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "زعفران، گلاب، خاک شیر",
+        "source_price_text_ignored": "قیمت : 220,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 602,
+        "canonical_name": "زمرد",
+        "source_name": "شربت زمرد",
+        "approved_description": "نعنا، خاکشیر و بهارنارنج.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "retired",
+        "source_description": "نعنا، خاک شیر، بهار نارنج",
+        "source_price_text_ignored": "قیمت : 190,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 601,
+        "canonical_name": "ترنج",
+        "source_name": "شربت ترنج",
+        "approved_description": "بهارنارنج و تخم شربتی.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "بهار نارنج، تخم شربتی",
+        "source_price_text_ignored": "قیمت : 190,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1001,
+        "canonical_name": "آیس آمریکانو",
+        "source_name": "آیس آمریکانو",
+        "approved_description": "اسپرسو بر پایه روبوستا ۶۰ در ۴۰.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "اسپرسو بر پایه روبوستا 60 در 40",
+        "source_price_text_ignored": "قیمت : 180,000 / 195,000 تومان"
+      },
+      {
+        "entity_type": "item",
+        "item_code": 1002,
+        "canonical_name": "آیس کارامل ماکیاتو",
+        "source_name": "آیس کارامل ماکیاتو",
+        "approved_description": "اسپرسو بر پایه روبوستا ۶۰ در ۴۰.",
+        "validation": "source_normalized",
+        "apply": true,
+        "lifecycle_status_at_revision2": "active",
+        "source_description": "اسپرسو بر پایه روبوستا 60 در 40",
+        "source_price_text_ignored": "قیمت : 220,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "herbal-gold",
+        "canonical_name": "دمنوش طلا",
+        "member_codes": [
+          709,
+          710
+        ],
+        "approved_description": "به، سیب و زعفران.",
+        "validation": "source_normalized",
+        "apply": true,
+        "source_description": "به، سیب، زعفران",
+        "source_price_text_ignored": "قیمت : 170,000 / 370,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "herbal-golnoosh",
+        "canonical_name": "دمنوش گل نوش",
+        "member_codes": [
+          707,
+          708
+        ],
+        "approved_description": "به، سیب و دارچین.",
+        "validation": "source_normalized",
+        "apply": true,
+        "source_description": "به، سیب، دارچین",
+        "source_price_text_ignored": "قیمت : 180,000 / 360,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "herbal-thyme",
+        "canonical_name": "دمنوش آویشن",
+        "member_codes": [
+          705,
+          711
+        ],
+        "approved_description": "آویشن و عسل.",
+        "validation": "source_normalized",
+        "apply": true,
+        "source_description": "آویشن، عسل",
+        "source_price_text_ignored": "قیمت : 180,000 / 360,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "herbal-calm",
+        "canonical_name": "دمنوش آرام دل",
+        "member_codes": [
+          703,
+          712
+        ],
+        "approved_description": "گل‌گاوزبان، بهارنارنج، سنبل‌الطیب و گلاب.",
+        "validation": "source_normalized",
+        "apply": true,
+        "source_description": "گل گاوزبون، بهارنارنج، سنبل الطیب، گلاب",
+        "source_price_text_ignored": "قیمت : 190,000 / 390,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "herbal-red",
+        "canonical_name": "دمنوش فرش قرمز",
+        "member_codes": [
+          701,
+          713
+        ],
+        "approved_description": "چای قرمز، گل محمدی، بهارنارنج و دارچین.",
+        "validation": "source_normalized",
+        "apply": true,
+        "source_description": "چای قرمز، گل محمدی، بهار نارنج، دارچین",
+        "source_price_text_ignored": "قیمت : 190,000 / 390,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "americano",
+        "canonical_name": "آمریکانو",
+        "member_codes": [
+          903,
+          904
+        ],
+        "approved_description": "اسپرسو بر پایه روبوستا ۶۰ در ۴۰.",
+        "validation": "source_normalized",
+        "apply": true,
+        "source_description": "اسپرسو بر پایه روبوستا 60 در 40",
+        "source_price_text_ignored": "قیمت : 180,000 / 195,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "espresso",
+        "canonical_name": "اسپرسو",
+        "member_codes": [
+          901,
+          902
+        ],
+        "approved_description": "اسپرسو بر پایه روبوستا ۶۰ در ۴۰.",
+        "validation": "source_normalized",
+        "apply": true,
+        "source_description": "اسپرسو بر پایه روبوستا 60 در 40",
+        "source_price_text_ignored": "قیمت : 120,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "tea-simple",
+        "canonical_name": "چای ساده",
+        "member_codes": [
+          801,
+          802
+        ],
+        "approved_description": null,
+        "validation": "excluded_obsolete_size_phrase",
+        "apply": false,
+        "note": "متن «قوری بزرگ و کوچک» توضیح محصول نیست و با مدل جدید variant منسوخ می‌شود.",
+        "source_description": "قوری بزرگ و کوچک",
+        "source_price_text_ignored": "قیمت : 140,000 / 250,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "tea-morocco",
+        "canonical_name": "چای مراکش",
+        "member_codes": [
+          803,
+          804
+        ],
+        "approved_description": null,
+        "validation": "excluded_obsolete_size_phrase",
+        "apply": false,
+        "note": "متن «قوری بزرگ و کوچک» توضیح محصول نیست و با مدل جدید variant منسوخ می‌شود.",
+        "source_description": "قوری بزرگ و کوچک",
+        "source_price_text_ignored": "قیمت : 190,000 / 350,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "tea-cardamom-cinnamon",
+        "canonical_name": "چای هل و دارچین",
+        "member_codes": [
+          805,
+          806
+        ],
+        "approved_description": null,
+        "validation": "excluded_obsolete_size_phrase",
+        "apply": false,
+        "note": "متن «قوری بزرگ و کوچک» توضیح محصول نیست و با مدل جدید variant منسوخ می‌شود.",
+        "source_description": "قوری بزرگ و کوچک",
+        "source_price_text_ignored": "قیمت : 155,000 / 315,000 تومان"
+      },
+      {
+        "entity_type": "variant_family",
+        "family_key": "tea-saffron",
+        "canonical_name": "چای زعفران",
+        "member_codes": [
+          807,
+          808
+        ],
+        "approved_description": null,
+        "validation": "excluded_obsolete_size_phrase",
+        "apply": false,
+        "note": "متن «قوری بزرگ و کوچک» توضیح محصول نیست و با مدل جدید variant منسوخ می‌شود.",
+        "source_description": "قوری بزرگ و کوچک",
+        "source_price_text_ignored": "قیمت : 170,000 / 330,000 تومان"
+      }
+    ]
+  },
+  "variant_label_updates": {
+    "801": "تک‌نفره",
+    "802": "دو نفره",
+    "803": "تک‌نفره",
+    "804": "دو نفره",
+    "805": "تک‌نفره",
+    "806": "دو نفره",
+    "807": "تک‌نفره",
+    "808": "دو نفره",
+    "701": "تک‌نفره",
+    "713": "دو نفره",
+    "703": "تک‌نفره",
+    "712": "دو نفره",
+    "705": "تک‌نفره",
+    "711": "دو نفره",
+    "707": "تک‌نفره",
+    "708": "دو نفره",
+    "709": "تک‌نفره",
+    "710": "دو نفره"
+  },
+  "deferred": [
+    "tea/herbal third member قوری بزرگ: code/price TBD pending vessel measurement",
+    "باقلوا کوچک master item: code assignment pending",
+    "باقلوا گرد ۶cm phase-2: code assignment pending",
+    "Bundle چای و باقلوا / برای دو نفر: parent item codes pending",
+    "espresso -> small baklava suggestion: target master item pending"
+  ]
+}

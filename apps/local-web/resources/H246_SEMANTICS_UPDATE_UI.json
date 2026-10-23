@@ -1,0 +1,12 @@
+{
+  "checkpoint": "H246_SEMANTICS_UPDATE_UI_20261012",
+  "component": "local",
+  "version": "3.0.0-g6.2-workspace.224-semantics-update-ui",
+  "changes": [
+    "table state dimensions",
+    "hall time warning separate",
+    "single update verify success surface",
+    "disclosure chevron geometry",
+    "hall refresh standard"
+  ]
+}

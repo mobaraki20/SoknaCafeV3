@@ -1,0 +1,30 @@
+{
+  "schema": "sokna-h183-h176-baseline-relay-free-table-v1",
+  "date": "2026-10-09",
+  "baseline": {
+    "local": "3.0.0-g6.2-workspace.176-live-connectivity-contract",
+    "public": "3.0.0-g3.6-workspace.35aa-live-connectivity-contract"
+  },
+  "target": {
+    "local": "3.0.0-g6.2-workspace.183-h176-baseline-relay-free-table",
+    "public": "3.0.0-g3.6-workspace.35ah-h176-baseline-relay-free-table"
+  },
+  "policy": "H176 UI/presentation is canonical. Only Public Hall/Settlement relay and canonical free-table semantics are added.",
+  "free_table": {
+    "free_requires": [
+      "no active/pending table session",
+      "no active draft",
+      "no active waiter call (new/accepted)"
+    ],
+    "transfer_eligible_same_rule": true
+  },
+  "relay_kinds": [
+    "order.staff_status",
+    "hall.waiter_status",
+    "hall.table_move",
+    "hall.order_reprint",
+    "hall.order_item_adjust",
+    "settlement.discount",
+    "settlement.receipt_reprint"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "component": "local",
+  "date": "2026-10-15",
+  "format": "sokna-h342-r5a-stabilization-v1",
+  "notes": [
+    "No DB migration",
+    "No Windows mutation",
+    "Public source unchanged at H342 R5 35dd"
+  ],
+  "parent": "3.0.0-g6.2-workspace.231o-h342-stabilization-r5",
+  "scope": [
+    "support_bundle_download_resilience",
+    "support_bundle_zero_size_guard",
+    "update_center_targeted_passive_snapshot",
+    "update_center_error_state_clarity"
+  ]
+}

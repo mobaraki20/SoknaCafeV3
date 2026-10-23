@@ -42,7 +42,7 @@ final class TableChangeService
         $prior=$this->idempotentResult($requestId,$actorId,$sourceTableId,$targetTableId,$expectedSessionId,false);
         if($prior!==null)return $prior;
 
-        $this->pdo->beginTransaction();
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
         try{
             // Lock physical tables in deterministic order to avoid source/target deadlocks.
             $lockIds=[$sourceTableId,$targetTableId];sort($lockIds,SORT_NUMERIC);
@@ -53,16 +53,16 @@ final class TableChangeService
             if(!is_array($source))throw new TableChangeException('source_table_missing','میز مبدأ فعال پیدا نشد.',404);
             if(!is_array($target))throw new TableChangeException('target_table_missing','میز مقصد فعال پیدا نشد.',404);
 
-            $sessionStmt=$this->pdo->prepare("SELECT * FROM table_sessions WHERE id=? AND table_id=? AND status IN('active','pending') LIMIT 1 FOR UPDATE");
+            $sessionStmt=$this->pdo->prepare("SELECT * FROM table_sessions WHERE id=? AND table_id=? AND status IN('active','pending') AND live_table_guard IS NOT NULL LIMIT 1 FOR UPDATE");
             $sessionStmt->execute([$expectedSessionId,$sourceTableId]);$session=$sessionStmt->fetch(PDO::FETCH_ASSOC);
             if(!is_array($session)){
                 // A retry after a committed move should resolve to the original success.
                 $prior=$this->idempotentResult($requestId,$actorId,$sourceTableId,$targetTableId,$expectedSessionId,true);
-                if($prior!==null){$this->pdo->commit();return $prior;}
+                if($prior!==null){if($ownsTransaction)$this->pdo->commit();return $prior;}
                 throw new TableChangeException('session_changed','حساب میز هم‌زمان تغییر کرده است؛ صفحه را تازه کن.',409,['expected_session_id'=>$expectedSessionId]);
             }
 
-            $targetSession=$this->pdo->prepare("SELECT id,status FROM table_sessions WHERE table_id=? AND status IN('active','pending') ORDER BY id DESC LIMIT 1 FOR UPDATE");
+            $targetSession=$this->pdo->prepare("SELECT id,status FROM table_sessions WHERE table_id=? AND status IN('active','pending') AND live_table_guard IS NOT NULL ORDER BY id DESC LIMIT 1 FOR UPDATE");
             $targetSession->execute([$targetTableId]);$occupied=$targetSession->fetch(PDO::FETCH_ASSOC);
             if(is_array($occupied))throw new TableChangeException('target_occupied','میز مقصد الان حساب باز دارد.',409,['target_session_id'=>(int)$occupied['id']]);
 
@@ -177,12 +177,12 @@ final class TableChangeService
                 'moved_waiter_call_count'=>$movedCalls,'moved_draft_id'=>$movedDraftId,
             ];
             $this->audit($requestId,$actor,$details);
-            $this->pdo->commit();
+            if($ownsTransaction)$this->pdo->commit();
 
             $this->observability->logEvent('warning','orders.table_moved',$details+['actor_user_id'=>$actorId]);
             return $this->resultFromDetails($details,false);
         }catch(Throwable $e){
-            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
     }

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "contract": "sokna-human-numeric-display-v1",
+  "scope": [
+    "local-web",
+    "public-web",
+    "guest",
+    "staff"
+  ],
+  "policy": {
+    "human_operational_identifiers": "Persian digits at the display boundary; canonical value remains unchanged. Examples: order number, table number/name digits, invoice/receipt/session number.",
+    "counts_quantities_durations": "Use locale integer/number/percent formatters with Persian digits.",
+    "human_prose_with_digits": "Use humanDigits/digits for trusted human-facing labels and persisted notification prose.",
+    "canonical_exceptions": [
+      "software_version",
+      "ip_address",
+      "url",
+      "hash",
+      "token",
+      "support_id",
+      "request_id",
+      "trace_id",
+      "machine_id",
+      "deployment_id",
+      "filename",
+      "api_payload",
+      "query_param",
+      "data_attribute",
+      "structured_print_numeric_field"
+    ],
+    "storage_api": "Never localize canonical numeric storage or transport values."
+  },
+  "required_primitives": {
+    "javascript": [
+      "SoknaLocale.humanDigits",
+      "SoknaLocale.integer",
+      "SoknaLocale.number",
+      "SoknaLocale.percent"
+    ],
+    "php": [
+      "Sokna\\Local\\UI\\MoneyDisplay::digits",
+      "Sokna\\Local\\UI\\MoneyDisplay::number"
+    ]
+  }
+}

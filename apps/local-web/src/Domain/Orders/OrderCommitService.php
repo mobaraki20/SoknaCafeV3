@@ -35,6 +35,22 @@ final class OrderCommitService
 
     public function commitTx(array $data): array
     {
+        return $this->commitPreparedTx($data,null);
+    }
+
+    /**
+     * Internal trusted path for a server-owned saved draft. The caller must have
+     * revalidated these snapshots against the current catalog in the same transaction.
+     * @param list<array<string,mixed>> $snapshots
+     */
+    public function commitSnapshotsTx(array $data,array $snapshots): array
+    {
+        return $this->commitPreparedTx($data,$snapshots);
+    }
+
+    /** @param null|list<array<string,mixed>> $trustedSnapshots */
+    private function commitPreparedTx(array $data,?array $trustedSnapshots): array
+    {
         if(!$this->pdo->inTransaction())throw new \LogicException('Order commit requires an open transaction.');
         $command=$this->normalizeCommand($data);
         $table=null;
@@ -57,7 +73,7 @@ final class OrderCommitService
             ];
         }
 
-        $lines=$this->catalog->snapshotRowsTx($command['items'],$command['source']);
+        $lines=$trustedSnapshots===null?$this->catalog->snapshotRowsTx($command['items'],$command['source']):$this->trustedSnapshotRows($command,$trustedSnapshots);
         $taxAt=date('Y-m-d H:i:s');
         foreach($lines as &$line){
             $snapshot=$this->tax->orderLineSnapshotTx((int)($line['item_id']??0),$taxAt);
@@ -88,19 +104,21 @@ final class OrderCommitService
         $orderId=(int)$this->pdo->lastInsertId();
 
         $lineInsert=$this->pdo->prepare(
-            'INSERT INTO order_items(order_id,item_id,item_name,sellable_kind_snapshot,unit_price,quantity,ordered_quantity,item_note,fulfillment_mode,preparation_station,line_total,'.
+            'INSERT INTO order_items(order_id,item_id,category_id_snapshot,category_name_snapshot,category_snapshot_quality,item_name,sellable_kind_snapshot,unit_price,quantity,ordered_quantity,item_note,fulfillment_mode,preparation_station,line_total,'.
             'tax_policy_snapshot,tax_rate_bps_snapshot,tax_rate_version_id,tax_item_policy_version_id) '.
-            'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+            'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
         );
         $persisted=[];
         foreach($lines as $line){
             $lineInsert->execute([
-                $orderId,$line['item_id'],$line['item_name'],$line['sellable_kind'],$line['unit_price'],
+                $orderId,$line['item_id'],$line['category_id']??null,$line['category_name']??null,'exact_order',$line['item_name'],$line['sellable_kind'],$line['unit_price'],
                 $line['quantity'],$line['quantity'],$line['item_note'],$line['fulfillment_mode'],$line['preparation_station'],$line['line_total'],
                 $line['tax_policy_snapshot'],$line['tax_rate_bps_snapshot'],$line['tax_rate_version_id'],$line['tax_item_policy_version_id'],
             ]);
+            $orderItemId=(int)$this->pdo->lastInsertId();
+            $this->catalog->persistBundleComponentsTx($orderItemId,$line);
             $persisted[]=[
-                'order_item_id'=>(int)$this->pdo->lastInsertId(),
+                'order_item_id'=>$orderItemId,
                 'item_id'=>(int)$line['item_id'],
                 'category_id'=>(int)($line['category_id']??0),
                 'item_name'=>(string)$line['item_name'],
@@ -122,13 +140,39 @@ final class OrderCommitService
 
         // Table-service printing can be emitted immediately. Staff Consumption defers
         // printing until its authority document exists so the ticket carries the real consumer identity.
-        if($command['order_context']==='table_service')$this->printing->enqueueOrderTx($orderId,(int)($actor??0));
+        if($command['order_context']==='table_service'&&$this->preparationAutoPrintEnabled())$this->printing->enqueueOrderTx($orderId,(int)($actor??0));
 
         return [
             'success'=>true,'duplicate'=>false,'order_id'=>$orderId,'order_number'=>$number,
             'public_code'=>$publicCode,'total_amount'=>$total,'order_context'=>$command['order_context'],'lines'=>$persisted,
             'business_date'=>$business['business_date'],'business_shift_key'=>$business['shift_key'],
         ];
+    }
+
+    /** @param list<array<string,mixed>> $snapshots @return list<array<string,mixed>> */
+    private function trustedSnapshotRows(array $command,array $snapshots): array
+    {
+        if($command['source']!=='staff'||count($snapshots)!==count($command['items']))
+            throw new OrderCommitException('snapshot_mismatch','Snapshot ثبت موقت معتبر نیست.',409);
+        $result=[];
+        foreach(array_values($snapshots) as $index=>$line){
+            $requested=$command['items'][$index]??null;
+            if(!is_array($requested)||!is_array($line))throw new OrderCommitException('snapshot_mismatch','Snapshot ثبت موقت معتبر نیست.',409);
+            $unit=(int)($line['unit_price']??-1);$qty=(int)($line['quantity']??0);$id=(int)($line['item_id']??0);$mode=(string)($line['fulfillment_mode']??'dine_in');
+            if($id!==(int)$requested['id']||$qty!==(int)$requested['quantity']||$mode!==(string)$requested['fulfillment_mode']||
+                (int)($line['bundle_choice_item_id']??0)!==(int)($requested['bundle_choice_item_id']??0)||$unit<0||($requested['expected_price']!==null&&$unit!==(int)$requested['expected_price'])||
+                (int)($line['line_total']??-1)!==$unit*$qty||trim((string)($line['item_name']??''))===''){
+                throw new OrderCommitException('snapshot_mismatch','Snapshot ثبت موقت با اقلام سفارش هم‌خوان نیست.',409,['line_index'=>$index]);
+            }
+            $result[]=$line;
+        }
+        return $result;
+    }
+
+    private function preparationAutoPrintEnabled(): bool
+    {
+        $stmt=$this->pdo->prepare("SELECT setting_value FROM settings WHERE setting_key='printing.quick.auto_preparation' LIMIT 1");$stmt->execute();$raw=$stmt->fetchColumn();
+        return $raw===false||in_array(strtolower(trim((string)$raw)),['1','true','yes','on'],true);
     }
 
     private function normalizeCommand(array $data): array

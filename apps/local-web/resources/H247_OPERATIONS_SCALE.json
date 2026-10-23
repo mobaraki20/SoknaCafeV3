@@ -1,0 +1,12 @@
+{
+  "checkpoint": "H247_OPERATIONS_SCALE_20261012",
+  "version": "3.0.0-g6.2-workspace.225-operations-scale",
+  "changes": [
+    "open count task first",
+    "count progress/search/filter",
+    "targeted count line save without full refresh",
+    "inventory/count DOM chunking",
+    "active-workflow lazy render",
+    "stock list collapsed during count"
+  ]
+}

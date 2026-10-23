@@ -1,0 +1,17 @@
+{
+  "format": "sokna-inventory-default-catalog-provenance-v1",
+  "source_archive": "Sokna-CLEAN-INSTALL-1.36.4-dev.26(1).zip",
+  "source_archive_sha256": "1a1d0723edb5cf2ebdb6e7f37925b08ca729d82ceb283089183fbca61439e4dc",
+  "source_path": "database/inventory_seed.json",
+  "seed_sha256": "f6a308e9fbb591d84e9fac5be8d214481d1cba70bfddc1ed72163339f1956677",
+  "seed_version": 1,
+  "inventory_items": 89,
+  "purchase_units": 64,
+  "migration": "database/migrations/0040_inventory_dev26_master_seed.sql",
+  "merge_policy": {
+    "existing_item": "preserve_if_item_code_or_exact_name_exists",
+    "purchase_unit": "insert_missing_only_when_canonical_item_identity_matches",
+    "balances": "not_seeded",
+    "costs": "not_seeded"
+  }
+}

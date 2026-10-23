@@ -51,12 +51,61 @@ final class PrintTemplatePackageService
         return ['package_id'=>$id,'content_sha256'=>$sha,'deduplicated'=>false];
     }
 
+    public function details(int $packageId,array $actor): array
+    {
+        $this->admin($actor);$row=$this->packageRow($packageId);$package=$this->decodePackage((string)$row['package_json']);
+        return [
+            'package_id'=>$packageId,
+            'package'=>$package,
+            'template'=>$package['template'],
+            'suggested_version'=>$this->nextVersion((string)$row['template_key']),
+            'active'=>$this->activePackageId((string)$row['document_kind'])===$packageId,
+            'contract'=>$this->contract(),
+        ];
+    }
+
+    public function saveVersion(int $basePackageId,array $input,array $actor): array
+    {
+        $uid=$this->admin($actor);$base=$this->packageRow($basePackageId);
+        $package=$this->canonicalPackage([
+            'format'=>self::FORMAT,
+            'template_key'=>(string)$base['template_key'],
+            'name'=>$input['name']??$base['display_name'],
+            'version'=>$input['version']??'',
+            'document_kind'=>(string)$base['document_kind'],
+            'description'=>$input['description']??($base['description']??''),
+            'template'=>$input['template']??null,
+        ]);
+        $result=$this->persistPackage($package,$uid,'printing.template_version_created',[
+            'base_package_id'=>$basePackageId,'base_version'=>(string)$base['version'],
+        ]);
+        return $result+['base_package_id'=>$basePackageId,'suggested_next_version'=>$this->nextVersion((string)$base['template_key'])];
+    }
+
+    public function installStandard(string $kind,array $actor): array
+    {
+        $uid=$this->admin($actor);if(!in_array($kind,self::KINDS,true))throw new PrintException('print_template_kind','نوع قالب استاندارد معتبر نیست.',422);
+        $package=$this->standardPackage($kind);
+        $result=$this->persistPackage($package,$uid,'printing.template_standard_installed',['standard'=>true]);
+        return $result+['document_kind'=>$kind,'standard'=>true];
+    }
+
+    public function rollback(int $packageId,array $actor): array
+    {
+        $uid=$this->admin($actor);$target=$this->packageRow($packageId);$kind=(string)$target['document_kind'];$activeId=$this->activePackageId($kind);
+        if($activeId===$packageId)return ['package_id'=>$packageId,'document_kind'=>$kind,'version'=>(string)$target['version'],'already_active'=>true];
+        $active=$activeId>0?$this->packageRow($activeId):null;
+        if(is_array($active)&&(string)$active['template_key']!==(string)$target['template_key'])throw new PrintException('print_template_rollback_family','بازگردانی فقط بین نسخه‌های یک خانواده قالب انجام می‌شود.',422);
+        $this->setActive($packageId,$uid,'printing.template_rolled_back',[
+            'from_package_id'=>$activeId?:null,'from_version'=>is_array($active)?(string)$active['version']:null,
+        ]);
+        return ['package_id'=>$packageId,'document_kind'=>$kind,'version'=>(string)$target['version'],'rolled_back_from'=>$activeId?:null];
+    }
+
     public function activate(int $packageId,array $actor): array
     {
-        $uid=$this->admin($actor);$row=$this->packageRow($packageId);$kind=(string)$row['document_kind'];
-        $q=$this->pdo->prepare('INSERT INTO print_template_activations(document_kind,package_id,activated_by_user_id,activated_at) VALUES(?,?,?,NOW()) ON DUPLICATE KEY UPDATE package_id=VALUES(package_id),activated_by_user_id=VALUES(activated_by_user_id),activated_at=NOW()');
-        $q->execute([$kind,$packageId,$uid]);$this->audit($uid,'printing.template_activated','print_template_package',(string)$packageId,['document_kind'=>$kind,'version'=>$row['version'],'sha256'=>$row['content_sha256']]);
-        return ['package_id'=>$packageId,'document_kind'=>$kind,'version'=>(string)$row['version']];
+        $uid=$this->admin($actor);$row=$this->packageRow($packageId);$this->setActive($packageId,$uid,'printing.template_activated');
+        return ['package_id'=>$packageId,'document_kind'=>(string)$row['document_kind'],'version'=>(string)$row['version']];
     }
 
     public function applyActive(array $payload): array
@@ -70,18 +119,32 @@ final class PrintTemplatePackageService
         $payload['schema']='sokna-print-document-v2';$payload['template']=$this->decodeTemplate((string)$row['template_json']);return $payload;
     }
 
-    public function preview(int $packageId,string $destinationKey,array $actor): array
+    public function preview(int $packageId,string $destinationKey,array $actor,string $outputFormat='pdf'): array
     {
-        $this->admin($actor);$row=$this->packageRow($packageId);$destination=$this->destination($destinationKey);$kind=(string)$row['document_kind'];
-        if($this->destinationKind((string)$destination['destination_type'])!==$kind)throw new PrintException('print_template_kind_mismatch','قالب و مقصد چاپ هم‌نوع نیستند.',422);
-        $payload=$this->applyPackage($this->fixture($kind),$packageId);$agentId=(int)($destination['agent_id']??0);
-        if($agentId<1)throw new PrintException('print_preview_agent_missing','برای Preview باید مقصد به Print Agent متصل باشد.',409);
-        $a=$this->pdo->prepare('SELECT id,name,bridge_protocol_version,bridge_port,bridge_pairing_id,bridge_origin,last_heartbeat_at FROM print_agents WHERE id=? AND active=1 AND retired_at IS NULL LIMIT 1');$a->execute([$agentId]);$agent=$a->fetch(PDO::FETCH_ASSOC);
-        if(!is_array($agent)||(int)$agent['bridge_protocol_version']!==1||(int)$agent['bridge_port']<1||trim((string)($agent['bridge_pairing_id']??''))==='')throw new PrintException('print_preview_bridge_unavailable','Local Preview Bridge این Agent آماده نیست.',409);
+        $this->admin($actor);$row=$this->packageRow($packageId);$kind=(string)$row['document_kind'];
+        $format=strtolower(trim($outputFormat));if(!in_array($format,['pdf','png'],true))throw new PrintException('print_preview_format','فرمت پیش‌نمایش معتبر نیست.',422);
+        $destination=null;$agentId=0;$paperWidth=80.0;$printableWidth=72.0;$profileLabel='پروفایل استاندارد ۸۰ میلی‌متر';
+        if(trim($destinationKey)!==''){
+            $destination=$this->destination($destinationKey);
+            if($this->destinationKind((string)$destination['destination_type'])!==$kind)throw new PrintException('print_template_kind_mismatch','قالب و مقصد چاپ هم‌نوع نیستند.',422);
+            $agentId=(int)($destination['agent_id']??0);$paperWidth=(float)$destination['paper_width_mm'];$printableWidth=(float)$destination['printable_width_mm'];$profileLabel=(string)($destination['label']??$destinationKey);
+        }
+        $payload=$this->applyPackage($this->fixture($kind),$packageId);
+        $agent=$this->previewAgent($agentId);
         return [
-            'package_id'=>$packageId,'destination_key'=>$destinationKey,'bridge'=>['agent_id'=>$agentId,'agent_name'=>(string)$agent['name'],'protocol_version'=>1,'port'=>(int)$agent['bridge_port'],'pairing_id'=>(string)$agent['bridge_pairing_id'],'origin'=>(string)($agent['bridge_origin']??'')],
-            'preview'=>['type'=>'print.preview','protocol_version'=>1,'revision'=>1,'session_id'=>'tpl-'.bin2hex(random_bytes(8)),'payload_json'=>self::json($payload),'paper_width_mm'=>(float)$destination['paper_width_mm'],'printable_width_mm'=>(float)$destination['printable_width_mm'],'dpi'=>203],
+            'package_id'=>$packageId,'destination_key'=>$destination!==null?$destinationKey:null,'profile_label'=>$profileLabel,
+            'bridge'=>['agent_id'=>(int)$agent['id'],'agent_name'=>(string)$agent['name'],'protocol_version'=>1,'port'=>(int)$agent['bridge_port'],'pairing_id'=>(string)$agent['bridge_pairing_id'],'origin'=>(string)($agent['bridge_origin']??'')],
+            'preview'=>['type'=>'print.preview','protocol_version'=>1,'revision'=>1,'session_id'=>'tpl-'.bin2hex(random_bytes(8)),'payload_json'=>self::json($payload),'paper_width_mm'=>$paperWidth,'printable_width_mm'=>$printableWidth,'dpi'=>203,'output_format'=>$format],
         ];
+    }
+
+    private function previewAgent(int $preferredAgentId=0): array
+    {
+        $where='active=1 AND retired_at IS NULL AND bridge_protocol_version=1 AND bridge_port>0 AND bridge_pairing_id IS NOT NULL AND bridge_pairing_id<>\'\'';
+        if($preferredAgentId>0){$q=$this->pdo->prepare('SELECT id,name,bridge_protocol_version,bridge_port,bridge_pairing_id,bridge_origin,last_heartbeat_at FROM print_agents WHERE id=? AND '.$where.' LIMIT 1');$q->execute([$preferredAgentId]);$agent=$q->fetch(PDO::FETCH_ASSOC);if(is_array($agent))return $agent;}
+        $q=$this->pdo->query('SELECT id,name,bridge_protocol_version,bridge_port,bridge_pairing_id,bridge_origin,last_heartbeat_at FROM print_agents WHERE '.$where.' ORDER BY last_heartbeat_at DESC,id DESC LIMIT 1');$agent=$q->fetch(PDO::FETCH_ASSOC);
+        if(!is_array($agent))throw new PrintException('print_preview_bridge_unavailable','برای پیش‌نمایش، Windows Print Agent متصل و Local Preview Bridge لازم است؛ پرینتر فیزیکی لازم نیست.',409);
+        return $agent;
     }
 
     public function packageKind(int $packageId): string{return (string)$this->packageRow($packageId)['document_kind'];}
@@ -89,7 +152,67 @@ final class PrintTemplatePackageService
 
     public function contract(): array
     {
-        return ['document_kinds'=>self::KINDS,'max_package_bytes'=>65536,'template_fields'=>self::TEMPLATE_KEYS,'design_fields'=>self::DESIGN_KEYS,'executable_content'=>false];
+        return [
+            'document_kinds'=>self::KINDS,
+            'max_package_bytes'=>65536,
+            'template_fields'=>self::TEMPLATE_KEYS,
+            'design_fields'=>self::DESIGN_KEYS,
+            'label_fields'=>self::LABEL_KEYS,
+            'sections'=>['preparation'=>self::PREP_SECTIONS,'customer'=>self::CUSTOMER_SECTIONS],
+            'ranges'=>['base_font_size'=>[18,42],'title_font_size'=>[22,60],'table_font_size'=>[24,72],'line_spacing'=>[2,20],'margin'=>[2,30]],
+            'choices'=>['density'=>['compact','comfortable'],'header_alignment'=>['center','right'],'separator_style'=>['solid','dashed','minimal'],'item_layout'=>['columnar','columnar-compact','two-line','responsive-receipt']],
+            'standards'=>['preparation'=>['template_key'=>'sokna-standard-preparation','version'=>'1.0.0'],'customer'=>['template_key'=>'sokna-standard-customer','version'=>'1.0.0']],
+            'executable_content'=>false,
+            'versioning'=>'immutable',
+        ];
+    }
+
+    private function persistPackage(array $package,int $uid,string $auditAction,array $auditExtra=[]): array
+    {
+        $canonical=self::json($package);$sha=hash('sha256',$canonical);
+        $existing=$this->pdo->prepare('SELECT id,content_sha256 FROM print_template_packages WHERE template_key=? AND version=? LIMIT 1');
+        $existing->execute([$package['template_key'],$package['version']]);$row=$existing->fetch(PDO::FETCH_ASSOC);
+        if(is_array($row)){
+            if(!hash_equals((string)$row['content_sha256'],$sha))throw new PrintException('print_template_version_conflict','این نسخه قبلاً با محتوای دیگری ثبت شده است.',409);
+            return ['package_id'=>(int)$row['id'],'content_sha256'=>$sha,'deduplicated'=>true];
+        }
+        $same=$this->pdo->prepare('SELECT id FROM print_template_packages WHERE content_sha256=? LIMIT 1');$same->execute([$sha]);$sameId=$same->fetchColumn();
+        if($sameId!==false)return ['package_id'=>(int)$sameId,'content_sha256'=>$sha,'deduplicated'=>true];
+        $q=$this->pdo->prepare('INSERT INTO print_template_packages(template_key,display_name,version,document_kind,package_format,package_json,template_json,content_sha256,description,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,?)');
+        $q->execute([$package['template_key'],$package['name'],$package['version'],$package['document_kind'],self::FORMAT,$canonical,self::json($package['template']),$sha,$package['description']!==''?$package['description']:null,$uid]);
+        $id=(int)$this->pdo->lastInsertId();$this->audit($uid,$auditAction,'print_template_package',(string)$id,$auditExtra+['template_key'=>$package['template_key'],'version'=>$package['version'],'document_kind'=>$package['document_kind'],'sha256'=>$sha]);
+        return ['package_id'=>$id,'content_sha256'=>$sha,'deduplicated'=>false];
+    }
+
+    private function setActive(int $packageId,int $uid,string $auditAction,array $extra=[]): void
+    {
+        $row=$this->packageRow($packageId);$kind=(string)$row['document_kind'];
+        $q=$this->pdo->prepare('INSERT INTO print_template_activations(document_kind,package_id,activated_by_user_id,activated_at) VALUES(?,?,?,NOW()) ON DUPLICATE KEY UPDATE package_id=VALUES(package_id),activated_by_user_id=VALUES(activated_by_user_id),activated_at=NOW()');
+        $q->execute([$kind,$packageId,$uid]);$this->audit($uid,$auditAction,'print_template_package',(string)$packageId,$extra+['document_kind'=>$kind,'version'=>$row['version'],'sha256'=>$row['content_sha256']]);
+    }
+
+    private function activePackageId(string $kind): int
+    {
+        $q=$this->pdo->prepare('SELECT package_id FROM print_template_activations WHERE document_kind=? LIMIT 1');$q->execute([$kind]);$id=$q->fetchColumn();return $id===false?0:(int)$id;
+    }
+
+    private function nextVersion(string $templateKey): string
+    {
+        $q=$this->pdo->prepare('SELECT version FROM print_template_packages WHERE template_key=?');$q->execute([$templateKey]);$best='0.0.0';
+        foreach($q->fetchAll(PDO::FETCH_COLUMN)?:[] as $version){if(!preg_match('/^(\d+)\.(\d+)\.(\d+)/',(string)$version,$m))continue;$stable=$m[1].'.'.$m[2].'.'.$m[3];if(version_compare($stable,$best,'>'))$best=$stable;}
+        $parts=array_map('intval',explode('.',$best));$parts[2]++;return implode('.',$parts);
+    }
+
+    private function standardPackage(string $kind): array
+    {
+        if($kind==='preparation')return $this->canonicalPackage([
+            'format'=>self::FORMAT,'template_key'=>'sokna-standard-preparation','name'=>'استاندارد سکنا — آماده‌سازی','version'=>'1.0.0','document_kind'=>'preparation','description'=>'قالب رسمی و خوانای سکنا برای فیش آماده‌سازی.',
+            'template'=>['base_font_size'=>24,'title_font_size'=>32,'table_font_size'=>28,'line_spacing'=>5,'margin'=>8,'show_actor'=>true,'show_time'=>true,'show_order_number'=>true,'show_section_titles'=>true,'show_prices'=>false,'footer'=>'','design'=>['density'=>'compact','header_alignment'=>'right','separator_style'=>'solid','item_layout'=>'two-line','section_order'=>self::PREP_SECTIONS,'labels'=>['ticket_title'=>'فیش آماده‌سازی','note'=>'یادداشت','takeaway'=>'بیرون‌بر','reprint'=>'چاپ مجدد']]],
+        ]);
+        return $this->canonicalPackage([
+            'format'=>self::FORMAT,'template_key'=>'sokna-standard-customer','name'=>'استاندارد سکنا — فیش مشتری','version'=>'1.0.0','document_kind'=>'customer','description'=>'قالب رسمی سکنا برای فیش مشتری با جمع‌ها و روش تسویه.',
+            'template'=>['base_font_size'=>23,'title_font_size'=>30,'table_font_size'=>28,'line_spacing'=>5,'margin'=>9,'show_actor'=>false,'show_time'=>true,'show_order_number'=>true,'show_section_titles'=>false,'show_prices'=>true,'footer'=>'سپاس از همراهی شما','design'=>['density'=>'compact','header_alignment'=>'right','separator_style'=>'solid','item_layout'=>'columnar','section_order'=>self::CUSTOMER_SECTIONS,'labels'=>['subtotal'=>'جمع جزء','discount'=>'تخفیف','tax'=>'مالیات','total'=>'مبلغ نهایی','settlement'=>'روش تسویه','reprint'=>'چاپ مجدد']]],
+        ]);
     }
 
     private function activeTemplate(string $kind): ?array
@@ -139,6 +262,7 @@ final class PrintTemplatePackageService
     private function destination(string $key): array{$q=$this->pdo->prepare('SELECT * FROM print_destinations WHERE destination_key=? LIMIT 1');$q->execute([$key]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!is_array($r))throw new PrintException('destination_not_found','مقصد چاپ پیدا نشد.',404);return $r;}
     private function packageRow(int $id): array{$q=$this->pdo->prepare('SELECT * FROM print_template_packages WHERE id=? LIMIT 1');$q->execute([$id]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!is_array($r))throw new PrintException('print_template_not_found','قالب چاپ پیدا نشد.',404);return $r;}
     private function decodeTemplate(string $json): array{$v=json_decode($json,true);if(!is_array($v))throw new PrintException('print_template_corrupt','نسخه ذخیره‌شده قالب معتبر نیست.',500);return $v;}
+    private function decodePackage(string $json): array{$v=json_decode($json,true);if(!is_array($v)||array_is_list($v))throw new PrintException('print_template_corrupt','بسته ذخیره‌شده قالب معتبر نیست.',500);return $v;}
     private function keys(array $value,array $allowed,string $scope): void{foreach(array_keys($value) as $key)if(!in_array((string)$key,$allowed,true))throw new PrintException('print_template_unknown_field','فیلد '.$scope.'.'.$key.' در contract قالب چاپ مجاز نیست.',422);}
     private function admin(array $actor): int{if((string)($actor['role']??'')!=='admin'||(int)($actor['id']??0)<1)throw new PrintException('forbidden','این عملیات فقط برای مدیر فعال است.',403);return (int)$actor['id'];}
     private function text(mixed $value,int $max,string $label): string{$v=trim((string)$value);if($v===''||strlen($v)>$max*4||preg_match('/[<>]/u',$v))throw new PrintException('print_template_text',$label.' معتبر نیست.',422);return $v;}

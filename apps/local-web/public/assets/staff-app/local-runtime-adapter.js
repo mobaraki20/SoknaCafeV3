@@ -1,0 +1,13 @@
+(()=>{'use strict';
+const R=window.SoknaStaffRuntime;if(!R)return;
+const root=()=>document.querySelector('[data-operator-workspace]');
+const prepRoot=()=>document.querySelector('[data-preparation-workspace]');
+const cfg=()=>{const n=root();return {api:n?.dataset.api||R.appPath('/operator/api.php'),orderApi:n?.dataset.orderApi||R.appPath('/staff/api.php'),financeApi:n?.dataset.financeApi||R.appPath('/finance/api.php'),subscriberApi:n?.dataset.subscriberApi||R.appPath('/subscribers/api.php'),csrf:n?.dataset.csrf||''}};
+const request=(url,opt={})=>R.json(url,opt);
+const hall={host:'local',request,mutate:async p=>{const c=cfg();return R.json(c.api,{method:'POST',body:JSON.stringify({...p,csrf_token:c.csrf})})},financeMutate:async p=>{const c=cfg();return R.json(c.financeApi,{method:'POST',body:JSON.stringify({...p,csrf_token:c.csrf})})},canMutate:()=>true};
+hall.orderTransport={canMutate:()=>true,get:async(action,params={})=>{const c=cfg();const q=Object.entries(params).map(([k,v])=>`&${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('');return R.json(`${c.orderApi}?action=${encodeURIComponent(action)}${q}`)},post:async payload=>{const c=cfg();return R.json(c.orderApi,{method:'POST',body:JSON.stringify({...payload,csrf_token:c.csrf})})}};
+const finance={host:'local',request,post:async(url,payload={})=>{const c=cfg();return R.json(url,{method:'POST',body:JSON.stringify({...payload,csrf_token:c.csrf})})}};
+const preparation={host:'local',load:async()=>{const n=prepRoot();return R.json(n?.dataset.api||R.appPath('/waiter/api.php'))},mutate:async payload=>{const n=prepRoot(),csrf=n?.dataset.csrf||'';return R.json(n?.dataset.api||R.appPath('/waiter/api.php'),{method:'POST',body:JSON.stringify({...payload,csrf_token:csrf})})},normalizeAction:action=>String(action||''),isStale:()=>false,lastSync:()=>'',meta:()=>({stale:false,last_sync_at:'',connectivity:null})};
+R.register('hall',hall);R.register('finance',finance);R.register('preparation',preparation);
+window.SoknaHallTransport=hall;window.SoknaFinanceTransport=finance;
+})();

@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "checkpoint": "H171",
+  "version": "3.0.0-g6.2-workspace.171-scds-interaction-composition-closure",
+  "source": "public/assets/product-ui.css",
+  "rule": "Product UI declares interaction composition only on containers; Button/Icon Button/Badge/Alert/Dialog child ownership is fully SCDS-owned.",
+  "fingerprint_algorithm": "sha256(context + newline + selector + newline + serialized declarations)",
+  "baseline_unique_exceptions": 20,
+  "unique_exceptions": 0,
+  "selector_occurrences": 0,
+  "retired_exceptions": 20,
+  "by_rationale": {},
+  "by_family": {},
+  "exceptions": [],
+  "retired_from_h170": [
+    {
+      "fingerprint": "70fb2d3a681af8ea12d8ffd5cdcdb1933e6cf11ae0f1f6cbd8630380f24e0c33",
+      "selector": ".sc-auth__card .sc-button",
+      "context": "@layer product",
+      "rationale_key": "auth-setup"
+    },
+    {
+      "fingerprint": "7373ad04889c485ddd814efb0f6baeea192de50a7493473748b44b1b5a46d0e3",
+      "selector": ".sc-setup__main>.sc-alert",
+      "context": "@layer product",
+      "rationale_key": "auth-setup"
+    },
+    {
+      "fingerprint": "e38380ad7492dbed5349dd49674fa79b6c649830252b53239bfe9d4387e7002b",
+      "selector": ".sc-setup__actions .sc-button",
+      "context": "@layer product",
+      "rationale_key": "auth-setup"
+    },
+    {
+      "fingerprint": "a5b3ee0a1deda39212867c35bcfd5225d6ce255926fd8ac51301cdbbb0cdf247",
+      "selector": ".sc-setup__actions .sc-button",
+      "context": "@layer product > @media (max-width:680px)",
+      "rationale_key": "auth-setup"
+    },
+    {
+      "fingerprint": "477592e5d937645190d851ccfe77580cc27beecfbe8c908c939a91be53209f4e",
+      "selector": "body[data-page=\"staff\"] .sc-cart .sc-card__foot .sc-button",
+      "context": "@layer product",
+      "rationale_key": "staff-workflow"
+    },
+    {
+      "fingerprint": "f619f59b4e814526ce98ce4403cc3e4fc6da4e67cb1ecfde831c39e24e42fcfd",
+      "selector": "body[data-page=\"staff-consumption\"] [data-panel=\"self\"] .sc-button",
+      "context": "@layer product",
+      "rationale_key": "staff-workflow"
+    },
+    {
+      "fingerprint": "843fd8a76d01dec8af03b1538b79787e7ae2018b311adac12ce17e90c0eb4f6c",
+      "selector": "body[data-page=\"staff-consumption\"] [data-panel=\"proxy\"] .sc-button",
+      "context": "@layer product",
+      "rationale_key": "staff-workflow"
+    },
+    {
+      "fingerprint": "8e3ccef0242ec92314e497a9503c4c8e760e6987c608c3499b45c45610c801aa",
+      "selector": ".sc-media-card__body>.sc-badge",
+      "context": "unlayered",
+      "rationale_key": "guest-content-media"
+    },
+    {
+      "fingerprint": "cdbf9484a96793f4cc7d5111afdd8a46ee0d206cc0570d6a54b725f06114648c",
+      "selector": ".sc-data-panel>.sc-section-head>.sc-button",
+      "context": "@media (max-width:760px)",
+      "rationale_key": "workspace-local"
+    },
+    {
+      "fingerprint": "358004cc1c377bbed30d6ce104d079164c7351f5f0237667b51ed91e49a120b8",
+      "selector": ".sc-notifications-side .sc-button",
+      "context": "unlayered",
+      "rationale_key": "notifications"
+    },
+    {
+      "fingerprint": "0382c323869833025c09a66e2fdee34b847ca44d253dc64858820ee650e719b5",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-button",
+      "context": "@media (min-width:1181px)",
+      "rationale_key": "shell-context"
+    },
+    {
+      "fingerprint": "cf3c725fc46d2eceb897d93f4090d394257918d2fbbeb26125d057da8e2d9ecd",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-button>span",
+      "context": "@media (min-width:1181px)",
+      "rationale_key": "shell-context"
+    },
+    {
+      "fingerprint": "f1be1b7a23d8704aa7e2fe69184b505a1952f9dca257c73b100690807cc1320b",
+      "selector": ".sc-hall-acceptance-button .sc-badge",
+      "context": "unlayered",
+      "rationale_key": "operational-ordering"
+    },
+    {
+      "fingerprint": "8f270c2147964f34a0d7af90e3948e8e71c035a3b2d021dacf894bc5f468fd58",
+      "selector": "body[data-page=\"subscribers\"] .sc-subscriber-account__actions>.sc-badge",
+      "context": "@media (max-width:640px)",
+      "rationale_key": "customer-management"
+    },
+    {
+      "fingerprint": "b02c615a6c550476dbfd992b1c35b848b86627f5518113c163f621e6a7d1fd44",
+      "selector": ".sc-system-action-item>.sc-button",
+      "context": "unlayered",
+      "rationale_key": "system-management"
+    },
+    {
+      "fingerprint": "ec18f3aa233f55169234c28c4b05aebd4e5139ffbe77d602fca2268082f8a8aa",
+      "selector": ".sc-system-action-item>.sc-button",
+      "context": "@media (max-width:620px)",
+      "rationale_key": "system-management"
+    },
+    {
+      "fingerprint": "97877cbc9d9024362669ace294818fb700808fc442ebe1a08faa798db90de600",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-button",
+      "context": "@media (min-width:981px)",
+      "rationale_key": "shell-context"
+    },
+    {
+      "fingerprint": "3c0fa9eb15efa190f7c63b2bb15d2c9c03023d0d370e2841aff42208831a5e1a",
+      "selector": "body.sc-nav-compact .sc-shell__footer .sc-icon-button",
+      "context": "@media (min-width:981px)",
+      "rationale_key": "shell-context"
+    },
+    {
+      "fingerprint": "1fe3936adaba0071e8354631b6006f839886575a2df7f698ee0e9f908862d9e2",
+      "selector": ".sc-subscriber-editor__actions .sc-button",
+      "context": "unlayered",
+      "rationale_key": "customer-management"
+    },
+    {
+      "fingerprint": "a72515b870b49966cfa3b05cc2a10d94620eb78e772fcee76d4457094871f54f",
+      "selector": ".sc-subscriber-editor__actions .sc-button",
+      "context": "@media (max-width:640px)",
+      "rationale_key": "customer-management"
+    }
+  ]
+}

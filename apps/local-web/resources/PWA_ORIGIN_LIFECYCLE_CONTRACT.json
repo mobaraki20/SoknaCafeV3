@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "contract": "sokna-pwa-origin-lan-lifecycle-v1",
+  "status": "binding",
+  "identity": {
+    "installation_id_url_independent": true,
+    "public_instance_id_url_independent": true,
+    "pwa_app_id_url_independent": true,
+    "manifest_id_url_derived": false
+  },
+  "staff": {
+    "install_authority": "public",
+    "transport_policy": "lan_preferred_public_fallback",
+    "manual_local_public_picker": false
+  },
+  "guest": {
+    "transport_policy": "public_first"
+  },
+  "public_rebind": {
+    "contract": "sokna-deployment-rebind-v2",
+    "workflow": [
+      "precheck",
+      "prepare",
+      "commit_public",
+      "verify_target",
+      "commit_local_config",
+      "pwa_push_transition",
+      "finalize"
+    ],
+    "transition_kinds": [
+      "same_origin",
+      "cross_origin"
+    ],
+    "target_identity_must_match": true,
+    "target_health_before_commit": true,
+    "rollback_on_verified_failure": true,
+    "unknown_commit_outcome_fail_closed": true,
+    "old_binding_grace_requires_operator_retirement": true,
+    "stacked_rebind_while_grace_active": false,
+    "cross_origin_hidden_state_transfer": false,
+    "cross_origin_reauthentication": true,
+    "cross_origin_new_service_worker": true,
+    "cross_origin_push_resubscribe": true
+  },
+  "lan_binding": {
+    "source_hardcoded": false,
+    "https_required": true,
+    "must_be_separate_from_public_origin": true,
+    "dns_must_resolve_private_only": true,
+    "cors_public_origin_required": true,
+    "private_network_access_preflight_required": true,
+    "token_authenticated_health_required": true,
+    "health_quorum": "2_of_3",
+    "runtime_probe_budget_ms": 700,
+    "failed_preflight_preserves_previous_binding": true,
+    "fixed_local_ip_preference": "dhcp_reservation"
+  },
+  "lan_runtime": {
+    "probe_non_blocking": true,
+    "public_fallback_always_available_when_public_reachable": true,
+    "circuit_breaker": "exponential_backoff_with_jitter",
+    "backoff_cap_ms": 60000,
+    "network_change_resets_circuit": true,
+    "telemetry_secret_free": true
+  },
+  "anti_regression": [
+    "no_product_domain_literal",
+    "no_cafe_private_ip_literal",
+    "no_url_derived_product_identity",
+    "no_host_header_configuration_authority",
+    "no_second_local_staff_app",
+    "no_stale_push_after_rebind",
+    "no_lan_without_https_auth_cors_private_network_validation",
+    "no_lan_failure_blocking_public",
+    "no_guest_policy_change_without_superseding_binding_decision",
+    "no_unbounded_wan_off_bearer",
+    "no_local_offline_password_authority_without_superseding_security_decision"
+  ],
+  "wan_off_bootstrap": {
+    "mode": "secure_warm_bootstrap_only",
+    "credential_fence": "min_lan_token_public_session_8h",
+    "device_fence_max_seconds": 28800,
+    "offline_password_login_supported": false,
+    "long_outage_after_expiry": "fail_closed_require_public_reauth_rewarm",
+    "bearer_ttl_extension_as_continuity_strategy": false,
+    "logout_purges_cached_bootstrap": true
+  }
+}

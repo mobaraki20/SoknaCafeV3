@@ -1,17 +1,26 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/src/Shared/IranTime.php';
+
+require_once __DIR__ . '/src/Shared/OperationsSnapshotPolicy.php';
+require_once __DIR__ . '/src/Shared/DailySupply.php';
+
 use Sokna\Local\Core\Bootstrap;
 
 require_once __DIR__ . '/src/Core/Config.php';
 require_once __DIR__ . '/src/Core/Database.php';
 require_once __DIR__ . '/src/Core/Observability.php';
+require_once __DIR__ . '/src/Core/SnapshotGuard.php';
 require_once __DIR__ . '/src/Core/IdentityRepository.php';
 require_once __DIR__ . '/src/Core/PdoIdentityRepository.php';
 require_once __DIR__ . '/src/Core/Capabilities.php';
 require_once __DIR__ . '/src/Core/Session.php';
 require_once __DIR__ . '/src/Core/Auth.php';
+require_once __DIR__ . '/src/Core/LoginAccessService.php';
+require_once __DIR__ . '/src/Core/MigrationExecutionException.php';
 require_once __DIR__ . '/src/Core/Migrations.php';
+require_once __DIR__ . '/src/Core/TimeAuthority.php';
 require_once __DIR__ . '/src/Domain/Sellables/SellableKind.php';
 require_once __DIR__ . '/src/Domain/Sellables/SellableRepository.php';
 require_once __DIR__ . '/src/Domain/Sellables/CategoryIconLibrary.php';
@@ -22,6 +31,7 @@ require_once __DIR__ . '/src/Domain/Admin/AdminControlException.php';
 require_once __DIR__ . '/src/Domain/Admin/AdminControlService.php';
 require_once __DIR__ . '/src/Domain/Account/AccountException.php';
 require_once __DIR__ . '/src/Domain/Account/AccountService.php';
+require_once __DIR__ . '/src/Domain/Account/UserUiPreferenceService.php';
 require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionException.php';
 require_once __DIR__ . '/src/Domain/StaffConsumption/PersonnelRepository.php';
 require_once __DIR__ . '/src/Domain/StaffConsumption/StaffBenefitRepository.php';
@@ -35,6 +45,7 @@ require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionRepository.
 require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionPostingService.php';
 require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php';
 require_once __DIR__ . '/src/Domain/StaffConsumption/StaffConsumptionReportService.php';
+require_once __DIR__ . '/src/UI/MoneyDisplay.php';
 require_once __DIR__ . '/src/Search/SearchProvider.php';
 require_once __DIR__ . '/src/Search/SearchNormalizer.php';
 require_once __DIR__ . '/src/Search/CatalogSearchProvider.php';
@@ -57,6 +68,8 @@ require_once __DIR__ . '/src/Domain/Orders/StaffQuickOrderService.php';
 require_once __DIR__ . '/src/Domain/Orders/TableDraftException.php';
 require_once __DIR__ . '/src/Domain/Orders/TableDraftService.php';
 require_once __DIR__ . '/src/Domain/Orders/OrderStaffActionException.php';
+require_once __DIR__ . '/src/Domain/Orders/OrderAcceptanceException.php';
+require_once __DIR__ . '/src/Domain/Orders/OrderAcceptanceService.php';
 require_once __DIR__ . '/src/Domain/Orders/OrderStaffActionService.php';
 require_once __DIR__ . '/src/Domain/Orders/WaiterCallStaffService.php';
 require_once __DIR__ . '/src/Domain/Orders/OrderWorkspaceService.php';
@@ -64,6 +77,7 @@ require_once __DIR__ . '/src/Domain/Orders/TableChangeException.php';
 require_once __DIR__ . '/src/Domain/Orders/TableChangeService.php';
 require_once __DIR__ . '/src/Relay/TableDraftRealtimeAdapter.php';
 require_once __DIR__ . '/src/Relay/StaffOrderRealtimeAdapter.php';
+require_once __DIR__ . '/src/Relay/NotificationPushRealtimeAdapter.php';
 require_once __DIR__ . '/src/Domain/Preparation/PreparationAccessService.php';
 require_once __DIR__ . '/src/Domain/Preparation/PreparationException.php';
 require_once __DIR__ . '/src/Domain/Preparation/PreparationService.php';
@@ -85,17 +99,20 @@ require_once __DIR__ . '/src/Domain/Integrations/SubscriberService.php';
 require_once __DIR__ . '/src/Domain/Integrations/SubscriberAccountService.php';
 require_once __DIR__ . '/src/Domain/Integrations/AccommodationTransport.php';
 require_once __DIR__ . '/src/Domain/Integrations/IntegrationWorkspaceService.php';
+require_once __DIR__ . '/src/Domain/Integrations/IntegrationSettingsService.php';
 require_once __DIR__ . '/src/Domain/Finance/SettlementException.php';
 require_once __DIR__ . '/src/Domain/Finance/SettlementService.php';
 require_once __DIR__ . '/src/Domain/Integrations/AccommodationService.php';
 require_once __DIR__ . '/src/Runtime/RuntimeTriggerException.php';
 require_once __DIR__ . '/src/Runtime/RuntimeTriggerService.php';
 require_once __DIR__ . '/src/Runtime/RuntimeHealthClient.php';
+require_once __DIR__ . '/src/Runtime/RuntimeConfigReconciler.php';
 require_once __DIR__ . '/src/Runtime/RuntimeEvidence.php';
 require_once __DIR__ . '/src/Domain/Printing/PrintException.php';
 require_once __DIR__ . '/src/Domain/Printing/PrintService.php';
 require_once __DIR__ . '/src/Domain/Printing/PrintTemplatePackageService.php';
 require_once __DIR__ . '/src/Domain/Printing/PrintManagementService.php';
+require_once __DIR__ . '/src/Http/RequestHeaders.php';
 require_once __DIR__ . '/src/Http/PrintAgentV4HttpAdapter.php';
 require_once __DIR__ . '/src/Http/RuntimeTriggerHttpAdapter.php';
 require_once __DIR__ . '/src/Domain/Finance/FinancialPeriodCloseService.php';
@@ -107,9 +124,12 @@ require_once __DIR__ . '/src/Setup/SetupException.php';
 require_once __DIR__ . '/src/Setup/BrowserSetupService.php';
 require_once __DIR__ . '/src/Domain/System/SupportBundleWriter.php';
 require_once __DIR__ . '/src/Domain/System/SystemDiagnosticsService.php';
+require_once __DIR__ . '/src/Domain/System/MaintenanceSupervisorClient.php';
+require_once __DIR__ . '/src/Domain/System/MaintenanceSupportEvidence.php';
 require_once __DIR__ . '/src/Domain/System/WindowsServicesPairingException.php';
 require_once __DIR__ . '/src/Domain/System/WindowsServicesPairingService.php';
 require_once __DIR__ . '/src/Domain/Update/LocalUpdateException.php';
+require_once __DIR__ . '/src/Domain/Update/LegacySlotUpdateGuard.php';
 require_once __DIR__ . '/src/Domain/Update/UpdateMigrationPolicy.php';
 require_once __DIR__ . '/src/Domain/Update/LocalUpdateService.php';
 require_once __DIR__ . '/src/Domain/Update/LocalUpdateUploadService.php';
@@ -121,27 +141,37 @@ require_once __DIR__ . '/src/Domain/GuestContent/GuestContentService.php';
 require_once __DIR__ . '/src/Domain/Marketing/MarketingException.php';
 require_once __DIR__ . '/src/Domain/Marketing/MarketingService.php';
 require_once __DIR__ . '/src/Domain/Reporting/ReportingException.php';
+require_once __DIR__ . '/src/Domain/Reporting/XlsxWorkbook.php';
 require_once __DIR__ . '/src/Domain/Reporting/ReportingService.php';
 require_once __DIR__ . '/src/Domain/Notifications/NotificationException.php';
 require_once __DIR__ . '/src/Domain/Notifications/NotificationService.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicEdgeSyncException.php';
+require_once __DIR__ . '/src/Domain/PublicEdge/PublicAuthorityStateService.php';
+require_once __DIR__ . '/src/Domain/PublicEdge/RemoteCredentialService.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicEdgeSyncClient.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicProjectionBuilder.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicEdgePublisherService.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicReenrollmentService.php';
+require_once __DIR__ . '/src/Domain/PublicEdge/PublicOriginRebindService.php';
 require_once __DIR__ . '/src/Relay/ExpenseDeferredAdapter.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyException.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyAccessService.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyService.php';
 require_once __DIR__ . '/src/Relay/DeferredReceiptService.php';
+require_once __DIR__ . '/src/Relay/DailyOperationsDeferredAdapter.php';
 require_once __DIR__ . '/src/Relay/SupplyDeferredAdapter.php';
 require_once __DIR__ . '/src/Relay/SubscriberPaymentDeferredAdapter.php';
 require_once __DIR__ . '/src/Relay/DeferredDispatchService.php';
 require_once __DIR__ . '/src/Relay/SettlementRealtimeAdapter.php';
 require_once __DIR__ . '/src/Relay/GuestOrderRealtimeAdapter.php';
 require_once __DIR__ . '/src/Relay/WaiterCallRealtimeAdapter.php';
+require_once __DIR__ . '/src/Relay/HallStaffRealtimeAdapter.php';
+require_once __DIR__ . '/src/Relay/OperationsRealtimeAdapter.php';
 require_once __DIR__ . '/src/Relay/RealtimeDispatchService.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicEdgeRelayService.php';
+require_once __DIR__ . '/src/Domain/LanStaff/LanStaffTokenVerifier.php';
+require_once __DIR__ . '/src/Domain/LanStaff/LanStaffRealtimeReceiptService.php';
+require_once __DIR__ . '/src/Domain/LanStaff/LanStaffGatewayService.php';
 require_once __DIR__ . '/src/UI/LocalUrl.php';
 require_once __DIR__ . '/src/UI/AssetUrl.php';
 require_once __DIR__ . '/src/UI/FontRuntime.php';
@@ -153,5 +183,9 @@ require_once __DIR__ . '/src/Core/Bootstrap.php';
 
 function sokna_local_bootstrap(array $config): Bootstrap
 {
+    // Existing installations predate some Runtime trigger owners. Reconcile the
+    // trigger catalog on every Local bootstrap; the operation is a no-op when
+    // already current and never replaces machine identity/tokens.
+    \Sokna\Local\Runtime\RuntimeConfigReconciler::reconcileFromConfig($config);
     return Bootstrap::fromArray($config);
 }

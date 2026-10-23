@@ -6,6 +6,7 @@ namespace Sokna\Local\Domain\Finance;
 use PDO;
 use Sokna\Local\Core\Capabilities;
 use Sokna\Local\Core\IdentityRepository;
+use Sokna\Local\Core\TimeAuthority;
 use Sokna\Local\Domain\Orders\BusinessClock;
 use Sokna\Local\Domain\Tax\TaxService;
 use Sokna\Local\Domain\Integrations\SubscriberService;
@@ -19,6 +20,7 @@ final class SettlementService
         private readonly IdentityRepository $identity,
         private readonly Capabilities $capabilities,
         private readonly BusinessClock $clock,
+        private readonly TimeAuthority $time,
         private readonly FinancialPeriodService $periods,
         private readonly TaxService $tax,
         private readonly SubscriberService $subscribers,
@@ -30,6 +32,7 @@ final class SettlementService
         $this->pdo->beginTransaction();
         try{
             $account=$this->accountTx($sessionId);
+            $account['followup_events']=$this->followupEventsTx($sessionId);
             $this->pdo->commit();
             return $account;
         }catch(Throwable $e){
@@ -38,53 +41,218 @@ final class SettlementService
         }
     }
 
-    public function setDiscount(int $sessionId,?string $type,int $value,array $user): array
+    public function markRecoveryRequired(array $data,array $user): array
     {
         $this->pdo->beginTransaction();
         try{
             $actor=$this->assertCashier($user);
+            $sessionId=(int)($data['session_id']??0);
+            if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
             $session=$this->lockSession($sessionId);
-            if(!in_array((string)$session['status'],['active','pending'],true))
-                throw new SettlementStateConflict('session_closed','این حساب دیگر قابل تغییر نیست.',409);
+            if(!in_array((string)$session['status'],['active','pending'],true))throw new SettlementStateConflict('session_closed','این حساب دیگر قابل پیگیری نیست.',409);
+            if(!empty($session['service_detached_at'])){
+                $this->pdo->commit();
+                return ['session_id'=>$sessionId,'eligible'=>false,'already_detached'=>true];
+            }
+            $destination=trim((string)($data['destination']??''));
+            if(!in_array($destination,['direct','subscriber','accommodation'],true))throw new SettlementException('invalid_destination','روش تسویه معتبر نیست.',422);
+            $code=trim((string)($data['code']??''));
+            $message=trim((string)($data['message']??''));
+            $status=(int)($data['status']??0);
+            if(!$this->isRecoveryWorthySignal($destination,$code,$message,$status))
+                throw new SettlementStateConflict('recovery_not_required','این خطا نیازمند آزادسازی میز برای پیگیری مالی نیست.',409);
+            $details=['destination'=>$destination,'code'=>mb_substr($code!==''?$code:'operational_failure',0,100),'message'=>mb_substr($message!==''?$message:'تسویه کامل نشد.',0,300),'status'=>$status];
+            $latest=$this->latestRecoveryStateTx($sessionId);
+            if(($latest['state']??'')==='required'&&($latest['destination']??'')===$destination&&($latest['code']??'')===$details['code']){
+                $this->pdo->commit();
+                return ['session_id'=>$sessionId,'eligible'=>true,'idempotent'=>true]+$details;
+            }
+            $this->audit('settlement.recovery_required','table_session',$sessionId,(int)$actor['id'],$details);
+            $this->pdo->commit();
+            return ['session_id'=>$sessionId,'eligible'=>true,'idempotent'=>false]+$details;
+        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
+    public function detachForFollowup(array $data,array $user): array
+    {
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertCashier($user);$sessionId=(int)($data['session_id']??0);if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
+            $account=$this->accountTx($sessionId);$this->assertExpected($account,(int)($data['expected_session_id']??0),(int)($data['expected_remaining_total']??-1),(string)($data['expected_signature']??''));
+            $session=$account['session'];if(!empty($session['service_detached_at'])){$account['followup_events']=$this->followupEventsTx($sessionId);if($ownsTransaction)$this->pdo->commit();return ['detached'=>true,'idempotent'=>true,'account'=>$account];}
+            $recovery=$this->latestRecoveryStateTx($sessionId);
+            if(($recovery['state']??'')!=='required')throw new SettlementStateConflict('settlement_recovery_required','آزاد کردن میز فقط پس از خطای عملیاتی در تسویه در دسترس است.',409);
+            if((int)$account['remaining_total']<1)throw new SettlementStateConflict('nothing_remaining','این حساب مانده‌ای برای پیگیری ندارد.',409);
+            $pending=$this->pdo->prepare("SELECT COUNT(*) FROM orders WHERE session_id=? AND status IN('pending_approval','new')");$pending->execute([$sessionId]);if((int)$pending->fetchColumn()>0)throw new SettlementStateConflict('pending_orders_exist','قبل از آزاد کردن میز، سفارش‌های منتظر را تعیین تکلیف کنید.',409);
+            $draft=$this->pdo->prepare("SELECT COUNT(*) FROM table_drafts WHERE table_id=? AND state='active'");$draft->execute([(int)$session['table_id']]);if((int)$draft->fetchColumn()>0)throw new SettlementStateConflict('active_draft_exists','قبل از آزاد کردن میز، سفارش موقت این میز را تعیین تکلیف کنید.',409);
+            $reason=trim((string)($data['reason']??''));if($reason==='')$reason='پیگیری تسویه پس از آزادسازی میز';$reason=mb_substr($reason,0,300);
+            $destination=trim((string)($data['destination']??($recovery['destination']??($session['followup_settlement_destination']??''))));if($destination!==''&&!in_array($destination,['direct','subscriber','accommodation'],true))throw new SettlementException('invalid_destination','روش پیگیری تسویه معتبر نیست.',422);
+            $this->pdo->prepare("UPDATE table_sessions SET live_table_guard=NULL,service_detached_at=NOW(),service_detached_by_user_id=?,service_detach_reason=?,followup_settlement_destination=NULLIF(?,''),followup_settlement_updated_at=NOW(),followup_settlement_updated_by_user_id=? WHERE id=? AND status IN('active','pending')")->execute([(int)$actor['id'],$reason,$destination,(int)$actor['id'],$sessionId]);
+            $this->pdo->prepare("UPDATE waiter_calls SET status='cancelled',active_table_guard=NULL,cancelled_at=COALESCE(cancelled_at,NOW()),cancel_reason=COALESCE(cancel_reason,'settlement_followup'),cancelled_by_user_id=COALESCE(cancelled_by_user_id,?) WHERE session_id=? AND status IN('new','accepted')")->execute([(int)$actor['id'],$sessionId]);
+            $this->insertFollowupEventTx($sessionId,'detached',null,$destination!==''?$destination:null,$reason,(int)$actor['id']);
+            $this->audit('settlement.followup_detached','table_session',$sessionId,(int)$actor['id'],['table_id'=>(int)$session['table_id'],'reason'=>$reason,'destination'=>$destination?:null]);
+            $account=$this->accountTx($sessionId);$account['followup_events']=$this->followupEventsTx($sessionId);if($ownsTransaction)$this->pdo->commit();return ['detached'=>true,'idempotent'=>false,'account'=>$account];
+        }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
+    public function setFollowupDestination(int $sessionId,string $destination,array $user): array
+    {
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertCashier($user);if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);$destination=trim($destination);if(!in_array($destination,['direct','subscriber','accommodation'],true))throw new SettlementException('invalid_destination','روش تسویه معتبر نیست.',422);
+            $session=$this->lockSession($sessionId);if(!in_array((string)$session['status'],['active','pending'],true))throw new SettlementStateConflict('session_closed','این حساب دیگر قابل پیگیری نیست.',409);if(empty($session['service_detached_at']))throw new SettlementStateConflict('followup_not_detached','این حساب هنوز به میز فعال متصل است.',409);
+            $from=trim((string)($session['followup_settlement_destination']??''));if($from===$destination){if($ownsTransaction)$this->pdo->commit();return ['session_id'=>$sessionId,'destination'=>$destination,'idempotent'=>true];}
+            $this->pdo->prepare('UPDATE table_sessions SET followup_settlement_destination=?,followup_settlement_updated_at=NOW(),followup_settlement_updated_by_user_id=? WHERE id=?')->execute([$destination,(int)$actor['id'],$sessionId]);
+            $this->insertFollowupEventTx($sessionId,'method_changed',$from!==''?$from:null,$destination,'تغییر روش تسویه در پیگیری',(int)$actor['id']);
+            $this->audit('settlement.followup_destination_changed','table_session',$sessionId,(int)$actor['id'],['from'=>$from?:null,'to'=>$destination]);
+            if($ownsTransaction)$this->pdo->commit();return ['session_id'=>$sessionId,'destination'=>$destination,'idempotent'=>false];
+        }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
+    public function reprintReceipt(int $settlementId,string $requestId,array $user): array
+    {
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertCashier($user);if($settlementId<1)throw new SettlementException('invalid_settlement','فاکتور معتبر نیست.',422);
+            $requestId=self::requestId($requestId);$job=$this->printing->enqueueSettlementReprintTx($settlementId,(int)$actor['id'],$requestId);
+            $this->audit('settlement.receipt_reprint_requested','settlement',$settlementId,(int)$actor['id'],['request_id'=>$requestId,'print_job_id'=>$job['job_id']??null,'print_status'=>$job['status']??null]);
+            if($ownsTransaction)$this->pdo->commit();return $job;
+        }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
+    public function setDiscount(int $sessionId,?string $type,int $value,array $user): array
+    {
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertCashier($user);
+            $result=$this->applyDiscountTx($sessionId,$type,$value,$actor,'settlement.discount_updated',[]);
+            if($ownsTransaction)$this->pdo->commit();
+            return $result;
+        }catch(Throwable $e){
+            if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    public function previewDiscount(int $sessionId,?string $type,int $value,array $user): array
+    {
+        $this->pdo->beginTransaction();
+        try{
+            $this->assertCashier($user);
+            if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
             if($this->hasActiveItemizedTx($sessionId))
                 throw new SettlementStateConflict('itemized_locked','پس از شروع پرداخت جداگانه، تخفیف حساب قابل تغییر نیست.',409);
-
-            $subtotal=$this->confirmedSubtotalTx($sessionId);
+            $account=$this->accountTx($sessionId);
             $type=$type===null||trim($type)===''?null:trim($type);
             if($type!==null&&!in_array($type,['percent','fixed'],true))
                 throw new SettlementException('invalid_discount','نوع تخفیف معتبر نیست.',422);
-            $value=max(0,$value);
+            $subtotal=(int)($account['subtotal']??0);$value=max(0,$value);
             if($type==='percent'&&$value>100)
                 throw new SettlementException('invalid_discount','درصد تخفیف نمی‌تواند بیشتر از صد باشد.',422);
             if($type==='fixed'&&$value>$subtotal)
                 throw new SettlementException('invalid_discount','تخفیف ثابت نمی‌تواند بیشتر از جمع فاکتور باشد.',422);
             if($type===null)$value=0;
-            $amount=self::discountAmount($subtotal,$type,$value);
-
-            $this->pdo->prepare(
-                'INSERT INTO invoice_discount_audit(session_id,previous_type,previous_value,previous_amount,new_type,new_value,new_amount,subtotal,actor_user_id)
-                 VALUES(?,?,?,?,?,?,?,?,?)'
-            )->execute([
-                $sessionId,$session['discount_type']??null,(int)($session['discount_value']??0),(int)($session['discount_amount']??0),
-                $type,$value,$amount,$subtotal,(int)$actor['id']
-            ]);
-            $this->pdo->prepare(
-                'UPDATE table_sessions SET discount_type=?,discount_value=?,discount_amount=?,discount_by_user_id=?,discount_updated_at=NOW() WHERE id=?'
-            )->execute([$type,$value,$amount,(int)$actor['id'],$sessionId]);
-            $this->audit('settlement.discount_updated','table_session',$sessionId,(int)$actor['id'],[
-                'discount_type'=>$type,'discount_value'=>$value,'discount_amount'=>$amount,'subtotal'=>$subtotal
-            ]);
+            $discount=self::discountAmount($subtotal,$type,$value);
+            $calculated=TaxService::calculateInvoiceLines((array)($account['items']??[]),$discount);
             $this->pdo->commit();
-            return ['session_id'=>$sessionId,'discount_type'=>$type,'discount_value'=>$value,'discount_amount'=>$amount];
+            return [
+                'session_id'=>$sessionId,'discount_type'=>$type,'discount_value'=>$value,'subtotal'=>(int)$calculated['subtotal'],
+                'discount_amount'=>(int)$calculated['discount'],'net'=>(int)$calculated['net'],'taxable'=>(int)$calculated['taxable'],
+                'tax'=>(int)$calculated['tax'],'total'=>(int)$calculated['total'],
+            ];
         }catch(Throwable $e){
             if($this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
     }
 
-    public function settle(array $data,array $user): array
+    /**
+     * Complimentary is a first-class account action, but intentionally reuses the canonical
+     * discount calculation/storage contract: 100% percent discount means a fully complimentary bill.
+     * The dedicated audit action preserves the business meaning without adding a second money owner.
+     */
+    public function setComplimentary(int $sessionId,bool $enabled,array $user): array
     {
         $this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertCashier($user);
+            $result=$this->applyDiscountTx(
+                $sessionId,
+                $enabled?'percent':null,
+                $enabled?100:0,
+                $actor,
+                'settlement.complimentary_updated',
+                ['complimentary'=>$enabled]
+            );
+            $this->pdo->commit();
+            return $result+['complimentary'=>$enabled];
+        }catch(Throwable $e){
+            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    private function applyDiscountTx(int $sessionId,?string $type,int $value,array $actor,string $auditAction,array $auditExtra): array
+    {
+        $session=$this->lockSession($sessionId);
+        if(!in_array((string)$session['status'],['active','pending'],true))
+            throw new SettlementStateConflict('session_closed','این حساب دیگر قابل تغییر نیست.',409);
+        if($this->hasActiveItemizedTx($sessionId))
+            throw new SettlementStateConflict('itemized_locked','پس از شروع پرداخت جداگانه، تخفیف حساب قابل تغییر نیست.',409);
+
+        $subtotal=$this->confirmedSubtotalTx($sessionId);
+        $type=$type===null||trim($type)===''?null:trim($type);
+        if($type!==null&&!in_array($type,['percent','fixed'],true))
+            throw new SettlementException('invalid_discount','نوع تخفیف معتبر نیست.',422);
+        $value=max(0,$value);
+        if($type==='percent'&&$value>100)
+            throw new SettlementException('invalid_discount','درصد تخفیف نمی‌تواند بیشتر از صد باشد.',422);
+        if($type==='fixed'&&$value>$subtotal)
+            throw new SettlementException('invalid_discount','تخفیف ثابت نمی‌تواند بیشتر از جمع فاکتور باشد.',422);
+        if($type===null)$value=0;
+        $amount=self::discountAmount($subtotal,$type,$value);
+
+        $this->pdo->prepare(
+            'INSERT INTO invoice_discount_audit(session_id,previous_type,previous_value,previous_amount,new_type,new_value,new_amount,subtotal,actor_user_id)
+             VALUES(?,?,?,?,?,?,?,?,?)'
+        )->execute([
+            $sessionId,$session['discount_type']??null,(int)($session['discount_value']??0),(int)($session['discount_amount']??0),
+            $type,$value,$amount,$subtotal,(int)$actor['id']
+        ]);
+        $this->pdo->prepare(
+            'UPDATE table_sessions SET discount_type=?,discount_value=?,discount_amount=?,discount_by_user_id=?,discount_updated_at=NOW() WHERE id=?'
+        )->execute([$type,$value,$amount,(int)$actor['id'],$sessionId]);
+        $complimentary=$type==='percent'&&$value===100;
+        $this->audit($auditAction,'table_session',$sessionId,(int)$actor['id'],[
+            'discount_type'=>$type,'discount_value'=>$value,'discount_amount'=>$amount,'subtotal'=>$subtotal,
+            'complimentary'=>$complimentary
+        ]+$auditExtra);
+        return [
+            'session_id'=>$sessionId,'discount_type'=>$type,'discount_value'=>$value,'discount_amount'=>$amount,
+            'complimentary'=>$complimentary
+        ];
+    }
+
+    public function review(array $data,array $user): array
+    {
+        $this->pdo->beginTransaction();
+        try{
+            $this->assertCashier($user);
+            $sessionId=(int)($data['session_id']??0);
+            if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
+            $mode=(string)($data['mode']??'itemized');
+            if(!in_array($mode,['full','itemized'],true))throw new SettlementException('invalid_mode','نوع تسویه معتبر نیست.',422);
+            $account=$this->accountTx($sessionId);
+            $this->assertExpected($account,(int)($data['expected_session_id']??0),(int)($data['expected_remaining_total']??-1),(string)($data['expected_signature']??''));
+            $review=$mode==='full'?$this->reviewAllRemaining($account):$this->reviewSelection($account,self::normalizeSelection((array)($data['selection']??[])));
+            $this->pdo->commit();return $review;
+        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
+    public function settle(array $data,array $user,bool $allowLegacyMissingTender=false): array
+    {
+        $printReceipt=!array_key_exists('print_receipt',$data)||filter_var($data['print_receipt'],FILTER_VALIDATE_BOOLEAN);
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
         try{
             $actor=$this->assertCashier($user);
             $sessionId=(int)($data['session_id']??0);
@@ -119,16 +287,25 @@ final class SettlementService
             $accommodationTransferId=$destination==='accommodation'?(int)($data['accommodation_transfer_id']??0):0;
             if($destination==='subscriber'&&$subscriberId<1)throw new SettlementException('subscriber_required','مشتری انتخاب نشده است.',422);
             if($destination==='accommodation'&&$accommodationTransferId<1)throw new SettlementException('accommodation_transfer_required','انتقال اقامتگاه مشخص نیست.',422);
+            $rawTenders=is_array($data['tenders']??null)?$data['tenders']:[];
+            $tenders=[];$tenderCaptureStatus='not_applicable';$missingTenderForNewDirect=false;
+            if($destination==='direct'){
+                if($rawTenders){$tenders=self::normalizeTenders($rawTenders);$tenderCaptureStatus='recorded';}
+                else{$tenderCaptureStatus='legacy_missing';$missingTenderForNewDirect=!$allowLegacyMissingTender;}
+            }elseif($rawTenders){
+                throw new SettlementException('tender_not_applicable','روش پرداخت نقدی/کارتخوان برای این مقصد تسویه قابل ثبت نیست.',422);
+            }
             $adapterKey=$destination==='subscriber'?'subscriber:'.$subscriberId:($destination==='accommodation'?'accommodation:'.$accommodationTransferId:'');
-            $fingerprint=self::requestFingerprint($sessionId,$destination,$mode,$selection,$adapterKey);
+            $fingerprint=self::requestFingerprint($sessionId,$destination,$mode,$selection,$adapterKey,$tenders);
 
             $existing=$this->findRequestTx($requestId);
             if($existing!==null){
                 $this->assertRequestMatch($existing,$sessionId,$destination,$fingerprint);
                 $result=$this->recordResult($existing,true);
-                $this->pdo->commit();
+                if($ownsTransaction)$this->pdo->commit();
                 return $result;
             }
+            if($missingTenderForNewDirect)throw new SettlementException('tender_required','روش پرداخت را مشخص کن.',422);
 
             $accommodationTransfer=null;
             if($destination==='accommodation'){
@@ -147,7 +324,11 @@ final class SettlementService
                 (string)($data['expected_signature']??'')
             );
             $review=$mode==='full'?$this->reviewAllRemaining($account):$this->reviewSelection($account,$selection);
-            $settledAt=date('Y-m-d H:i:s');
+            if($destination==='direct'&&$tenderCaptureStatus==='recorded')self::assertTenderTotal($tenders,(int)$review['total']);
+            $eventUtc=$this->time->nowUtc();
+            $settledAtUtc=$eventUtc->format('Y-m-d H:i:s');
+            $settledAt=$eventUtc->setTimezone(new \DateTimeZone($this->time->timezone()))->format('Y-m-d H:i:s');
+            $business=$this->clock->assignment($eventUtc);
             if($destination==='accommodation'){
                 if((int)$review['total']!==(int)$accommodationTransfer['amount']||!hash_equals((string)$accommodationTransfer['account_signature'],(string)$account['signature']))
                     throw new SettlementStateConflict('accommodation_account_changed','حساب پس از ساخت انتقال اقامتگاه تغییر کرده است؛ تکمیل محلی متوقف شد.',409);
@@ -159,8 +340,9 @@ final class SettlementService
             }else{
                 $issued=$this->periods->issueDocumentNumberTx($settledAt,(int)$actor['id'],'I');
                 $snapshot=$this->paymentSnapshot($account,$review,(string)$issued['invoice_number'],$settledAt);
+                $snapshot['tender_capture_status']=$tenderCaptureStatus;
+                if($tenders)$snapshot['payment_tenders']=$tenders;
             }
-            $business=$this->clock->assignment($settledAt);
             $subscriberLedgerId=null;
             if($destination==='subscriber'){
                 $ledger=$this->subscribers->insertLedgerTx($subscriberId,'invoice',(int)$review['total'],(int)$actor['id'],(int)$issued['period']['id'],$sessionId,null,'S-'.$sessionId,null,$snapshot,'settlement:subscriber:'.$requestId);
@@ -169,22 +351,23 @@ final class SettlementService
 
             $stmt=$this->pdo->prepare(
                 "INSERT INTO settlement_records(session_id,financial_period_id,invoice_number,invoice_snapshot_json,destination,table_name_snapshot,
-                 subtotal,discount,taxable_amount,tax_amount,total,status,actor_user_id,subscriber_ledger_entry_id,accommodation_transfer_id,request_id,request_fingerprint,settlement_kind,closes_session,
-                 remaining_subtotal,remaining_discount,remaining_tax,remaining_total,allocation_version,settled_at,business_date,business_shift_key,
+                 subtotal,discount,taxable_amount,tax_amount,total,status,actor_user_id,subscriber_ledger_entry_id,accommodation_transfer_id,request_id,request_fingerprint,settlement_kind,tender_capture_status,closes_session,
+                 remaining_subtotal,remaining_discount,remaining_tax,remaining_total,allocation_version,settled_at,settled_at_utc,civil_date,business_date,business_shift_key,
                  business_shift_label,business_cutoff_snapshot)
-                 VALUES(?,?,?,?,?,?,?,?,?,?,?,'completed',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?,'completed',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             );
             $stmt->execute([
                 $sessionId,(int)$issued['period']['id'],(string)$issued['invoice_number'],
                 json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),
                 $destination,(string)$account['session']['table_name'],
                 (int)$review['subtotal'],(int)$review['discount'],(int)$review['taxable'],(int)$review['tax'],(int)$review['total'],
-                (int)$actor['id'],$subscriberLedgerId,$accommodationTransferId>0?$accommodationTransferId:null,$requestId,$fingerprint,$mode,!empty($review['closes_session'])?1:0,
+                (int)$actor['id'],$subscriberLedgerId,$accommodationTransferId>0?$accommodationTransferId:null,$requestId,$fingerprint,$mode,$tenderCaptureStatus,!empty($review['closes_session'])?1:0,
                 (int)$review['remaining_subtotal'],(int)$review['remaining_discount'],(int)$review['remaining_tax'],(int)$review['remaining_total'],
-                (int)$account['allocation_version'],$settledAt,(string)$business['business_date'],(string)$business['shift_key'],
+                (int)$account['allocation_version'],$settledAt,$settledAtUtc,(string)$business['civil_date'],(string)$business['business_date'],(string)$business['shift_key'],
                 (string)$business['shift_label'],(string)$business['cutoff']
             ]);
             $settlementId=(int)$this->pdo->lastInsertId();
+            if($tenders)$this->insertTenderAllocationsTx($settlementId,$tenders);
             if($destination==='accommodation'){
                 $this->pdo->prepare('UPDATE accommodation_transfers SET local_finalize_pending=0 WHERE id=?')->execute([$accommodationTransferId]);
             }
@@ -218,23 +401,27 @@ final class SettlementService
                     (int)$account['discount'],(int)$account['subtotal'],(int)$account['discount'],(int)$account['taxable'],
                     (int)$account['tax'],(int)$account['total'],$destination,(int)$actor['id'],$sessionId
                 ]);
+                if(!empty($account['session']['service_detached_at']))$this->insertFollowupEventTx($sessionId,'settled',(string)($account['session']['followup_settlement_destination']??'')?:null,$destination,'پیگیری با تسویه نهایی بسته شد.',(int)$actor['id']);
             }
 
             $this->audit('settlement.completed','settlement_record',$settlementId,(int)$actor['id'],[
                 'session_id'=>$sessionId,'invoice_number'=>$issued['invoice_number'],'financial_period_id'=>(int)$issued['period']['id'],
                 'destination'=>$destination,'settlement_kind'=>$mode,'closes_session'=>!empty($review['closes_session']),
+                'tender_capture_status'=>$tenderCaptureStatus,'tenders'=>$tenders,
                 'subtotal'=>(int)$review['subtotal'],'discount'=>(int)$review['discount'],'tax'=>(int)$review['tax'],
                 'total'=>(int)$review['total'],'remaining_total'=>(int)$review['remaining_total'],'line_count'=>count($review['lines'])
             ]);
-            // Final receipt printing is optional and must never own Settlement success.
-            $this->printing->enqueueSettlementTx($settlementId,(int)$actor['id']);
+            if(($this->latestRecoveryStateTx($sessionId)['state']??'')==='required')
+                $this->audit('settlement.recovery_cleared','table_session',$sessionId,(int)$actor['id'],['reason'=>'settlement_succeeded','destination'=>$destination]);
+            // Final receipt printing is user-selectable and must never own Settlement success.
+            if($printReceipt)$this->printing->enqueueSettlementTx($settlementId,(int)$actor['id']);
             $record=$this->findRequestTx($requestId);
             if($record===null)throw new SettlementException('record_missing','سند تسویه پس از ثبت قابل بازیابی نیست.',500);
             $result=$this->recordResult($record,false)+['completed_orders'=>$completedOrders];
-            $this->pdo->commit();
+            if($ownsTransaction)$this->pdo->commit();
             return $result;
         }catch(Throwable $e){
-            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
     }
@@ -280,7 +467,10 @@ final class SettlementService
                 $ledger=$this->subscribers->reverseEntryTx((int)$record['subscriber_ledger_entry_id'],$reason,(int)$actor['id'],'settlement:subscriber:reversal:'.$settlementId);
                 $subscriberReversalId=(int)$ledger['id'];
             }
-            $issuedAt=date('Y-m-d H:i:s');
+            $eventUtc=$this->time->nowUtc();
+            $issuedAtUtc=$eventUtc->format('Y-m-d H:i:s');
+            $issuedAt=$eventUtc->setTimezone(new \DateTimeZone($this->time->timezone()))->format('Y-m-d H:i:s');
+            $business=$this->clock->assignment($eventUtc);
             $issued=$this->periods->issueDocumentNumberTx($issuedAt,(int)$actor['id'],'R');
             $snapshot=json_decode((string)$record['invoice_snapshot_json'],true);
             if(!is_array($snapshot))$snapshot=[];
@@ -288,23 +478,22 @@ final class SettlementService
             $snapshot['issued_at']=date(DATE_ATOM,strtotime($issuedAt));
             $snapshot['document_type']='reversal';
             $snapshot['reverses_invoice_number']=(string)$record['invoice_number'];
-            $business=$this->clock->assignment($issuedAt);
             $fingerprint=hash('sha256',json_encode(['reverses'=>$settlementId,'reason'=>$reason],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
 
             $insert=$this->pdo->prepare(
                 "INSERT INTO settlement_records(session_id,financial_period_id,invoice_number,invoice_snapshot_json,destination,table_name_snapshot,
                  subtotal,discount,taxable_amount,tax_amount,total,status,reverses_settlement_id,actor_user_id,request_id,request_fingerprint,
-                 subscriber_ledger_entry_id,accommodation_transfer_id,settlement_kind,closes_session,remaining_subtotal,remaining_discount,remaining_tax,remaining_total,allocation_version,
-                 void_reason,voided_by_user_id,voided_at,settled_at,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot)
-                 VALUES(?,?,?,?,?,?,?,?,?,?,?,'reversal',?,?,?,?,?,?,'reversal',0,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                 subscriber_ledger_entry_id,accommodation_transfer_id,settlement_kind,tender_capture_status,closes_session,remaining_subtotal,remaining_discount,remaining_tax,remaining_total,allocation_version,
+                 void_reason,voided_by_user_id,voided_at,settled_at,settled_at_utc,civil_date,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot)
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?,'reversal',?,?,?,?,?,?,'reversal',?,0,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             );
             $insert->execute([
                 (int)$record['session_id'],(int)$issued['period']['id'],(string)$issued['invoice_number'],
                 json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),
                 (string)$record['destination'],(string)$record['table_name_snapshot'],(int)$record['subtotal'],(int)$record['discount'],
                 (int)$record['taxable_amount'],(int)$record['tax_amount'],(int)$record['total'],$settlementId,(int)$actor['id'],$requestId,$fingerprint,
-                $subscriberReversalId,(int)($record['accommodation_transfer_id']??0)?:null,
-                0,0,0,0,(int)$record['allocation_version'],$reason,(int)$actor['id'],$issuedAt,$issuedAt,
+                $subscriberReversalId,(int)($record['accommodation_transfer_id']??0)?:null,(string)($record['tender_capture_status']??((string)$record['destination']==='direct'?'legacy_missing':'not_applicable')),
+                0,0,0,0,(int)$record['allocation_version'],$reason,(int)$actor['id'],$issuedAt,$issuedAt,$issuedAtUtc,(string)$business['civil_date'],
                 (string)$business['business_date'],(string)$business['shift_key'],(string)$business['shift_label'],(string)$business['cutoff']
             ]);
             $reversalId=(int)$this->pdo->lastInsertId();
@@ -316,22 +505,24 @@ final class SettlementService
             );
             $copy->execute([$reversalId,$settlementId]);
             if($copy->rowCount()<1)throw new SettlementException('reversal_lines_missing','خطوط مالی رسید برای برگشت پیدا نشد.',409);
+            $copyTenders=$this->pdo->prepare(
+                'INSERT INTO settlement_tender_allocations(settlement_id,tender_type,amount) SELECT ?,tender_type,amount FROM settlement_tender_allocations WHERE settlement_id=? ORDER BY id'
+            );
+            $copyTenders->execute([$reversalId,$settlementId]);
 
             $this->pdo->prepare(
                 "UPDATE settlement_records SET void_reason=?,voided_by_user_id=?,voided_at=NOW() WHERE id=? AND status='completed'"
             )->execute([$reason,(int)$actor['id'],$settlementId]);
 
             if((int)$record['closes_session']===1){
-                $session=$this->lockSession((int)$record['session_id']);
-                $other=$this->pdo->prepare("SELECT id FROM table_sessions WHERE table_id=? AND id<>? AND status IN('active','pending') LIMIT 1 FOR UPDATE");
-                $other->execute([(int)$session['table_id'],(int)$session['id']]);
-                if($other->fetchColumn()!==false)
-                    throw new SettlementStateConflict('table_in_use','میز در حساب فعال دیگری استفاده می‌شود و رسید فعلی قابل بازگشت خودکار نیست.',409);
+                $session=$this->lockSession((int)$record['session_id']);$detached=!empty($session['service_detached_at']);
+                if(!$detached){$other=$this->pdo->prepare("SELECT id FROM table_sessions WHERE table_id=? AND id<>? AND status IN('active','pending') AND live_table_guard IS NOT NULL LIMIT 1 FOR UPDATE");$other->execute([(int)$session['table_id'],(int)$session['id']]);if($other->fetchColumn()!==false)throw new SettlementStateConflict('table_in_use','میز در حساب فعال دیگری استفاده می‌شود و رسید فعلی قابل بازگشت خودکار نیست.',409);}
                 $this->pdo->prepare(
-                    "UPDATE table_sessions SET status='active',live_table_guard=table_id,checkout_subtotal=NULL,checkout_discount=NULL,
+                    "UPDATE table_sessions SET status='active',live_table_guard=IF(service_detached_at IS NULL,table_id,NULL),checkout_subtotal=NULL,checkout_discount=NULL,
                      checkout_taxable=NULL,checkout_tax=NULL,checkout_total=NULL,settlement_destination=NULL,checkout_voided_at=NOW(),
                      checkout_voided_by_user_id=?,closed_by_user_id=NULL,ended_reason=NULL,ended_at=NULL WHERE id=?"
                 )->execute([(int)$actor['id'],(int)$session['id']]);
+                if($detached)$this->insertFollowupEventTx((int)$session['id'],'reopened',(string)($record['destination']??'')?:null,(string)($session['followup_settlement_destination']??'')?:null,'سند برگشت خورد؛ حساب برای پیگیری باز ماند و میز اشغال نشد.',(int)$actor['id']);
                 $orders=$this->pdo->prepare("SELECT id FROM orders WHERE session_id=? AND status='completed' FOR UPDATE");
                 $orders->execute([(int)$session['id']]);
                 $reopen=$this->pdo->prepare("UPDATE orders SET status='accounted' WHERE id=? AND status='completed'");
@@ -438,6 +629,14 @@ final class SettlementService
         );
         $totals->execute([$sessionId,$allocationVersion]);$paidTotals=$totals->fetch(PDO::FETCH_ASSOC)?:[];
 
+        $receiptsStmt=$this->pdo->prepare(
+            "SELECT sr.id,sr.invoice_number,sr.total,sr.settled_at,sr.destination FROM settlement_records sr
+             WHERE sr.session_id=? AND sr.status='completed' AND sr.allocation_version=?
+               AND NOT EXISTS(SELECT 1 FROM settlement_records rv WHERE rv.reverses_settlement_id=sr.id AND rv.status='reversal')
+             ORDER BY sr.id DESC LIMIT 20"
+        );
+        $receiptsStmt->execute([$sessionId,$allocationVersion]);$receipts=$receiptsStmt->fetchAll(PDO::FETCH_ASSOC);
+
         $fullBy=[];foreach($calculated['lines'] as $line)$fullBy[(int)$line['order_item_id']]=$line;
         $remainingItems=[];$paidQuantities=[];$byOrder=[];
         foreach($lines as $line){
@@ -476,7 +675,8 @@ final class SettlementService
             'remaining_taxable'=>max(0,(int)$calculated['taxable']-$paidTaxable),
             'remaining_tax'=>max(0,(int)$calculated['tax']-$paidTax),
             'remaining_total'=>max(0,(int)$calculated['total']-$paidTotal),
-            'receipt_count'=>(int)($paidTotals['receipt_count']??0),'signature'=>$signature,
+            'receipt_count'=>(int)($paidTotals['receipt_count']??0),'receipts'=>$receipts,'signature'=>$signature,
+            'is_complimentary'=>(string)($session['discount_type']??'')==='percent'&&(int)($session['discount_value']??0)===100,
         ];
     }
 
@@ -547,6 +747,7 @@ final class SettlementService
                 'taxable_amount'=>(int)$line['taxable_amount'],'tax_rate_bps'=>(int)$line['tax_rate_bps'],
                 'tax_amount'=>(int)$line['tax_amount'],'line_final'=>(int)$line['final_amount']
             ];
+            $bundle=$this->pdo->prepare('SELECT item_name_snapshot name,quantity,component_mode,choice_label_snapshot FROM order_item_bundle_components WHERE order_item_id=? ORDER BY id');$bundle->execute([(int)$line['order_item_id']]);$components=$bundle->fetchAll(PDO::FETCH_ASSOC)?:[];if($components!==[])$item['bundle_components']=array_map(static fn(array $c):array=>['name'=>(string)$c['name'],'quantity'=>(int)$c['quantity'],'mode'=>(string)$c['component_mode'],'choice_label'=>$c['choice_label_snapshot']],$components);
             $items[]=$item;
         }
         $snapshot=[
@@ -555,6 +756,7 @@ final class SettlementService
             'account_discount'=>(int)$account['discount'],'account_total'=>(int)$account['total'],
             'paid_before'=>(int)$account['paid_total'],'subtotal'=>(int)$review['subtotal'],
             'discount'=>(int)$review['discount'],'total'=>(int)$review['total'],
+            'complimentary'=>(bool)($account['is_complimentary']??false),
             'remaining_after'=>(int)$review['remaining_total'],'items'=>$items
         ];
         if($taxAware)$snapshot += [
@@ -563,6 +765,35 @@ final class SettlementService
             'tax'=>(int)$review['tax'],'remaining_tax_after'=>(int)$review['remaining_tax']
         ];
         return $snapshot;
+    }
+
+    private function latestRecoveryStateTx(int $sessionId): array
+    {
+        $q=$this->pdo->prepare("SELECT action,details_json FROM audit_log WHERE entity_type='table_session' AND entity_id=? AND action IN('settlement.recovery_required','settlement.recovery_cleared','settlement.followup_detached') ORDER BY id DESC LIMIT 1");
+        $q->execute([(string)$sessionId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+        if(!is_array($row))return ['state'=>'none'];
+        $details=json_decode((string)($row['details_json']??''),true);if(!is_array($details))$details=[];
+        $action=(string)$row['action'];
+        return ['state'=>$action==='settlement.recovery_required'?'required':($action==='settlement.followup_detached'?'detached':'cleared'),'destination'=>(string)($details['destination']??''),'code'=>(string)($details['code']??''),'message'=>(string)($details['message']??'')];
+    }
+
+    private function isRecoveryWorthySignal(string $destination,string $code,string $message,int $status): bool
+    {
+        $text=strtolower(trim($code.' '.$message));
+        if($status>=500)return true;
+        if(in_array($code,['network_failed','request_pending','accommodation_result_uncertain','accommodation_remote_failed','local_finalize_pending','local_reversal_pending'],true))return true;
+        if($destination==='accommodation'&&preg_match('/accommodation|transfer|finalize|reversal|upstream|connection|timeout|relay/',$text)===1)return true;
+        return preg_match('/failed to fetch|networkerror|network request failed|load failed|fetch failed|offline|timeout|timed out/',$text)===1;
+    }
+
+    private function insertFollowupEventTx(int $sessionId,string $type,?string $from,?string $to,?string $note,int $actorId): void
+    {
+        $q=$this->pdo->prepare('INSERT INTO settlement_followup_events(session_id,event_type,from_destination,to_destination,note,actor_user_id) VALUES(?,?,?,?,?,?)');$q->execute([$sessionId,$type,$from,$to,$note,$actorId]);
+    }
+
+    private function followupEventsTx(int $sessionId): array
+    {
+        $q=$this->pdo->prepare('SELECT e.id,e.event_type,e.from_destination,e.to_destination,e.note,e.created_at,u.display_name actor_name FROM settlement_followup_events e LEFT JOIN users u ON u.id=e.actor_user_id WHERE e.session_id=? ORDER BY e.id DESC LIMIT 50');$q->execute([$sessionId]);return $q->fetchAll(PDO::FETCH_ASSOC)?:[];
     }
 
     private function findRequestTx(string $requestId): ?array
@@ -582,15 +813,31 @@ final class SettlementService
 
     private function recordResult(array $record,bool $idempotent): array
     {
+        $settlementId=(int)($record['id']??0);
         return [
-            'settlement_id'=>(int)($record['id']??0),'invoice_number'=>(string)($record['invoice_number']??''),
+            'settlement_id'=>$settlementId,'invoice_number'=>(string)($record['invoice_number']??''),
             'financial_period_id'=>(int)($record['financial_period_id']??0),'session_id'=>(int)($record['session_id']??0),
             'destination'=>(string)($record['destination']??''),'settlement_kind'=>(string)($record['settlement_kind']??''),
+            'tender_capture_status'=>(string)($record['tender_capture_status']??((string)($record['destination']??'')==='direct'?'legacy_missing':'not_applicable')),
+            'tenders'=>$settlementId>0?$this->tenderAllocationsTx($settlementId):[],
             'closes_session'=>(int)($record['closes_session']??0)===1,'subtotal_amount'=>(int)($record['subtotal']??0),
             'discount_amount'=>(int)($record['discount']??0),'taxable_amount'=>(int)($record['taxable_amount']??0),
             'tax_amount'=>(int)($record['tax_amount']??0),'total_amount'=>(int)($record['total']??0),
             'remaining_total'=>(int)($record['remaining_total']??0),'idempotent'=>$idempotent
         ];
+    }
+
+    private function insertTenderAllocationsTx(int $settlementId,array $tenders): void
+    {
+        $stmt=$this->pdo->prepare('INSERT INTO settlement_tender_allocations(settlement_id,tender_type,amount) VALUES(?,?,?)');
+        foreach($tenders as $tender)$stmt->execute([$settlementId,(string)$tender['type'],(int)$tender['amount']]);
+    }
+
+    private function tenderAllocationsTx(int $settlementId): array
+    {
+        $stmt=$this->pdo->prepare("SELECT tender_type type,amount FROM settlement_tender_allocations WHERE settlement_id=? ORDER BY FIELD(tender_type,'cash','pos','bank_transfer'),id");
+        $stmt->execute([$settlementId]);
+        return array_map(static fn(array $row):array=>['type'=>(string)$row['type'],'amount'=>(int)$row['amount']],$stmt->fetchAll(PDO::FETCH_ASSOC));
     }
 
     private function lockSession(int $sessionId): array
@@ -688,12 +935,44 @@ final class SettlementService
         return $value;
     }
 
-    private static function requestFingerprint(int $sessionId,string $destination,string $mode,array $selection,string $adapterKey=''): string
+    private static function requestFingerprint(int $sessionId,string $destination,string $mode,array $selection,string $adapterKey='',array $tenders=[]): string
     {
         ksort($selection,SORT_NUMERIC);
-        return hash('sha256',json_encode([
-            'session_id'=>$sessionId,'destination'=>$destination,'mode'=>$mode,'selection'=>$selection,'adapter_key'=>$adapterKey
-        ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
+        $payload=['session_id'=>$sessionId,'destination'=>$destination,'mode'=>$mode,'selection'=>$selection,'adapter_key'=>$adapterKey];
+        if($tenders)$payload['tenders']=$tenders;
+        return hash('sha256',json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
+    }
+
+    private static function normalizeTenders(array $raw): array
+    {
+        $allowed=['cash'=>true,'pos'=>true,'bank_transfer'=>true];$map=[];
+        if(array_is_list($raw)){
+            foreach($raw as $row){
+                if(!is_array($row))throw new SettlementException('invalid_tender','روش پرداخت معتبر نیست.',422);
+                $type=trim((string)($row['type']??''));$amount=(int)($row['amount']??0);
+                if(!isset($allowed[$type]))throw new SettlementException('invalid_tender','روش پرداخت معتبر نیست.',422,['tender_type'=>$type]);
+                if(isset($map[$type]))throw new SettlementException('duplicate_tender','هر روش پرداخت فقط یک‌بار قابل ثبت است.',422,['tender_type'=>$type]);
+                if($amount<1)throw new SettlementException('invalid_tender_amount','مبلغ هر روش پرداخت باید بیشتر از صفر باشد.',422,['tender_type'=>$type]);
+                $map[$type]=$amount;
+            }
+        }else{
+            foreach($raw as $type=>$amount){
+                $type=trim((string)$type);$amount=(int)$amount;
+                if(!isset($allowed[$type]))throw new SettlementException('invalid_tender','روش پرداخت معتبر نیست.',422,['tender_type'=>$type]);
+                if($amount<1)throw new SettlementException('invalid_tender_amount','مبلغ هر روش پرداخت باید بیشتر از صفر باشد.',422,['tender_type'=>$type]);
+                $map[$type]=$amount;
+            }
+        }
+        if(!$map)throw new SettlementException('tender_required','روش پرداخت را مشخص کن.',422);
+        $order=['cash'=>0,'pos'=>1,'bank_transfer'=>2];
+        uksort($map,static fn(string $a,string $b):int=>$order[$a]<=>$order[$b]);
+        $out=[];foreach($map as $type=>$amount)$out[]=['type'=>$type,'amount'=>$amount];return $out;
+    }
+
+    private static function assertTenderTotal(array $tenders,int $total): void
+    {
+        $sum=array_sum(array_map(static fn(array $row):int=>(int)$row['amount'],$tenders));
+        if($total<1||$sum!==$total)throw new SettlementException('tender_total_mismatch','جمع روش‌های پرداخت باید دقیقاً برابر مبلغ این تسویه باشد.',422,['expected_total'=>$total,'tender_total'=>$sum,'remaining'=>$total-$sum]);
     }
 
     private static function normalizeSelection(array $selection): array

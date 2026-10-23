@@ -512,7 +512,7 @@ app.MapPost("/v1/local-updates/activate-code-only", async context =>
                 completion_requires_operation_poll = pending,
                 poll_path = "/v1/operations/" + reservation.Operation.OperationId,
                 panel_update_ready = false, activation_committed = phase == "committed",
-                database_mutation_performed = false, public_mutation_performed = false },
+                database_mutation_performed = reservation.Operation.DatabaseMutationPerformed, public_mutation_performed = false },
             reservation.Operation.OperationId);
     }
     catch (JsonException)

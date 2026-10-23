@@ -28,4 +28,23 @@ final class SearchNormalizer
     {
         return strtr($value,['\\'=>'\\\\','%'=>'\\%','_'=>'\\_']).'%';
     }
+
+    public static function likeContains(string $value): string
+    {
+        return '%'.strtr($value,['\\'=>'\\\\','%'=>'\\%','_'=>'\\_']).'%';
+    }
+
+    /** @return list<string> */
+    public static function terms(string $value): array
+    {
+        $value=self::normalize($value);
+        return array_values(array_filter(explode(' ',$value),static fn(string $term): bool => $term!==''));
+    }
+
+    public static function matches(string $haystack,string $query): bool
+    {
+        $haystack=self::normalize($haystack);
+        foreach(self::terms($query) as $term)if(!str_contains($haystack,$term))return false;
+        return true;
+    }
 }

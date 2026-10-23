@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Sokna\Local\Domain\StaffConsumption;
 
+use Sokna\Local\UI\MoneyDisplay;
 final class StaffBenefitCalculator
 {
     public const ALGORITHM_VERSION = 'f1.2-v1';
@@ -235,7 +236,7 @@ final class StaffBenefitCalculator
     private function normalizeLine(array $line, int $index): array
     {
         $itemId=(int)($line['item_id']??0);$categoryId=(int)($line['category_id']??0);$unit=(int)($line['unit_price']??-1);$qty=(int)($line['quantity']??0);
-        if($itemId<1||$categoryId<1||$unit<0||$qty<1)throw new StaffConsumptionException('benefit_line_invalid','آیتم شماره '.($index+1).' برای محاسبه مزایا معتبر نیست.',422);
+        if($itemId<1||$categoryId<1||$unit<0||$qty<1)throw new StaffConsumptionException('benefit_line_invalid','آیتم شماره '.MoneyDisplay::digits((string)($index+1)).' برای محاسبه مزایا معتبر نیست.',422);
         return [
             'item_id'=>$itemId,'category_id'=>$categoryId,'item_name'=>trim((string)($line['item_name']??'')),
             'unit_price'=>$unit,'quantity'=>$qty,'menu_line_amount'=>$this->safeMultiply($unit,$qty),

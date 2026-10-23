@@ -29,16 +29,37 @@ final class AccommodationService
         $payload=is_array($result['payload']??null)?$result['payload']:[];$rows=$payload['data']['reservations']??$payload['reservations']??$payload['data']??[];
         if(!is_array($rows))$rows=[];$out=[];
         foreach($rows as $row){
-            if(!is_array($row))continue;$code=self::clip(trim((string)($row['reservation_code']??$row['code']??$row['id']??'')),80);$guest=self::clip(trim((string)($row['guest_name']??$row['guest']??$row['name']??'')),160);
-            $rooms=$row['room_names']??[];$room=self::clip(trim((string)($row['room_name']??(is_array($rooms)?implode('، ',$rooms):$rooms))),240);$phone=self::clip(trim((string)($row['phone_hint']??$row['phone']??'')),40);
-            if($code===''||$guest===''||$room==='')continue;$out[]=['reservation_code'=>$code,'guest_name'=>$guest,'room_name'=>$room,'phone_hint'=>$phone];if(count($out)>=30)break;
+            if(!is_array($row)||!self::isSettleableReservation($row))continue;$code=self::clip(trim((string)($row['reservation_code']??$row['code']??$row['id']??'')),80);$guest=self::clip(trim((string)($row['guest_name']??$row['guest']??$row['name']??'')),160);
+            $rooms=$row['room_names']??[];$room=self::clip(trim((string)($row['room_name']??(is_array($rooms)?implode('، ',$rooms):$rooms))),240);$phone=self::clip(trim((string)($row['phone_hint']??$row['masked_mobile']??$row['phone']??'')),40);
+            $state=self::clip(trim((string)($row['reservation_status']??$row['status']??$row['state']??'')),40);
+            if($code===''||$guest===''||$room==='')continue;$out[]=['reservation_code'=>$code,'guest_name'=>$guest,'room_name'=>$room,'phone_hint'=>$phone,'reservation_status'=>$state];if(count($out)>=30)break;
         }
         return $out;
+    }
+
+    private static function isSettleableReservation(array $row): bool
+    {
+        foreach(['charge_allowed','settleable','can_charge','is_active','active','checked_in'] as $key){
+            if(!array_key_exists($key,$row))continue;
+            $value=$row[$key];
+            if(is_bool($value))return $value;
+            if(is_int($value)||is_float($value))return (int)$value===1;
+            $text=strtolower(trim((string)$value));
+            if(in_array($text,['1','true','yes','active','checked_in','in_house'],true))return true;
+            if(in_array($text,['0','false','no','inactive'],true))return false;
+        }
+        $state=strtolower(trim((string)($row['reservation_status']??$row['status']??$row['state']??'')));
+        $state=str_replace(['-',' '],'_',$state);
+        if($state==='')return true; // older House API: preserve compatibility when no state is exposed
+        if(in_array($state,['cancelled','canceled','checked_out','checkout','completed','closed','no_show','void','voided','expired','archived'],true))return false;
+        if(in_array($state,['active','checked_in','checkin','in_house','confirmed','booked','arrived','occupied'],true))return true;
+        return true;
     }
 
     public function prepare(int $sessionId,array $reservation,array $expected,array $user): array
     {
         $actor=$this->assertCashier($user);
+        if(!$this->transport->enabled())throw new IntegrationException('integration_disabled','اتصال اقامتگاه غیرفعال است.',409);
         $code=self::clip(trim((string)($reservation['reservation_code']??'')),80);
         $guest=self::clip(trim((string)($reservation['guest_name']??'')),160);
         $room=self::clip(trim((string)($reservation['room_name']??implode('، ',(array)($reservation['room_names']??[])))),240);
@@ -64,11 +85,9 @@ final class AccommodationService
                 throw new IntegrationStateConflict('account_changed','حساب در این فاصله تغییر کرده است؛ انتقال اقامتگاه ساخته نشد.',409);
             if((int)$prepared['review']['total']<1)throw new IntegrationException('invalid_amount','مبلغ قابل انتقال معتبر نیست.',409);
             $externalOrder='CAFE-S-'.$sessionId;
-            $snapshot=$prepared['snapshot'];
-            $payloadHash=hash('sha256',self::canonicalJson([
-                'external_order_id'=>$externalOrder,'reservation_code'=>$code,'amount'=>(int)$prepared['review']['total'],
-                'currency'=>'TOMAN','invoice'=>$snapshot,
-            ]));
+            $snapshot=self::canonicalArray((array)$prepared['snapshot']);
+            $chargePayload=self::chargePayloadBase($externalOrder,$code,(int)$prepared['review']['total'],$snapshot);
+            $payloadHash=self::payloadHash($chargePayload);
             $stmt=$this->pdo->prepare(
                 "INSERT INTO accommodation_transfers(session_id,financial_period_id,external_order_id,reservation_code,guest_name_snapshot,room_name_snapshot,
                  phone_hint_snapshot,amount,invoice_number,invoice_snapshot_json,account_signature,payload_hash,status,operator_user_id)
@@ -94,7 +113,11 @@ final class AccommodationService
         try{
             $transfer=$this->byIdTx($transferId);
             if($transfer===null)throw new IntegrationException('transfer_not_found','انتقال اقامتگاه پیدا نشد.',404);
-            if((string)$transfer['status']==='posted'){$this->pdo->commit();return $this->finalizeLocal($transferId,$user)+['remote_idempotent'=>true];}
+            if((string)$transfer['status']==='posted'){
+                $this->pdo->commit();$local=$this->finalizeLocal($transferId,$user);
+                if(($local['success']??true)===false)return ['success'=>false,'posted'=>true,'local_finalize_pending'=>true,'local'=>$local,'remote_idempotent'=>true,'message'=>'هزینه در اقامتگاه ثبت شده، اما بستن حساب محلی کامل نشده است. دوباره همین ثبت را بزنید یا از بخش مالی «تکمیل تسویه محلی» را انجام دهید.'];
+                return ['success'=>true,'posted'=>true,'local'=>$local,'remote_idempotent'=>true];
+            }
             if(in_array((string)$transfer['status'],['void_pending','void_failed','voided'],true))throw new IntegrationStateConflict('void_in_progress','این انتقال در فرایند برگشت است.',409);
             if(!in_array((string)$transfer['status'],['pending','failed'],true))throw new IntegrationStateConflict('invalid_transfer_state','وضعیت انتقال برای ارسال معتبر نیست.',409);
             $this->pdo->prepare("UPDATE accommodation_transfers SET status='pending',attempt_count=attempt_count+1,last_attempt_at=NOW(),last_error_code=NULL,last_error=NULL WHERE id=?")
@@ -103,10 +126,16 @@ final class AccommodationService
         }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
 
         $transfer=$this->byId($transferId);$snapshot=json_decode((string)($transfer['invoice_snapshot_json']??''),true);if(!is_array($snapshot))$snapshot=[];
-        $result=$this->transport->charge([
-            'external_order_id'=>(string)$transfer['external_order_id'],'reservation_code'=>(string)$transfer['reservation_code'],
-            'amount'=>(int)$transfer['amount'],'currency'=>'TOMAN','invoice'=>$snapshot,'payload_hash'=>(string)$transfer['payload_hash'],'requested_at'=>date(DATE_ATOM)
-        ]);
+        $snapshot=self::canonicalArray($snapshot);
+        $chargePayload=self::chargePayloadBase((string)$transfer['external_order_id'],(string)$transfer['reservation_code'],(int)$transfer['amount'],$snapshot);
+        $payloadHash=self::payloadHash($chargePayload);
+        $canonicalSnapshot=self::canonicalJson($snapshot);
+        if(!hash_equals(strtolower((string)($transfer['payload_hash']??'')),$payloadHash)||!hash_equals((string)($transfer['invoice_snapshot_json']??''),$canonicalSnapshot)){
+            $repair=$this->pdo->prepare("UPDATE accommodation_transfers SET invoice_snapshot_json=?,payload_hash=? WHERE id=? AND status IN ('pending','failed')");
+            $repair->execute([$canonicalSnapshot,$payloadHash,$transferId]);
+            if($repair->rowCount()>0){$transfer['invoice_snapshot_json']=$canonicalSnapshot;$transfer['payload_hash']=$payloadHash;}
+        }
+        $result=$this->transport->charge($chargePayload+['payload_hash'=>$payloadHash,'requested_at'=>date(DATE_ATOM)]);
         $this->pdo->beginTransaction();
         try{
             $locked=$this->byIdTx($transferId);if($locked===null)throw new IntegrationException('transfer_not_found','انتقال اقامتگاه پیدا نشد.',404);
@@ -116,6 +145,7 @@ final class AccommodationService
                 $this->audit('accommodation.remote_posted','accommodation_transfer',$transferId,(int)$actor['id'],['transaction_id'=>$result['transaction_id']??'','idempotent'=>(bool)($result['idempotent']??false)]);
                 $this->pdo->commit();
                 $local=$this->finalizeLocal($transferId,$user);
+                if(($local['success']??true)===false)return ['success'=>false,'posted'=>true,'local_finalize_pending'=>true,'remote'=>$result,'local'=>$local,'message'=>'هزینه در اقامتگاه ثبت شد، اما بستن حساب محلی کامل نشد. دوباره همین ثبت را بزنید یا از بخش مالی «تکمیل تسویه محلی» را انجام دهید.'];
                 return ['success'=>true,'posted'=>true,'remote'=>$result,'local'=>$local];
             }
             $ambiguous=(bool)($result['ambiguous']??false);$code=self::clip((string)($result['code']??'remote_error'),80);$message=self::clip((string)($result['message']??'عملیات اقامتگاه انجام نشد.'),500);
@@ -149,7 +179,11 @@ final class AccommodationService
         $this->pdo->beginTransaction();
         try{
             $transfer=$this->byIdTx($transferId);if($transfer===null)throw new IntegrationException('transfer_not_found','انتقال اقامتگاه پیدا نشد.',404);
-            if((string)$transfer['status']==='voided'){$this->pdo->commit();return $this->finalizeLocalReversal($transferId,$reason,$user)+['remote_idempotent'=>true];}
+            if((string)$transfer['status']==='voided'){
+                $this->pdo->commit();$local=$this->finalizeLocalReversal($transferId,$reason,$user);
+                if(($local['success']??true)===false)return ['success'=>false,'voided'=>true,'local_reversal_pending'=>true,'local'=>$local,'remote_idempotent'=>true,'message'=>'برگشت در اقامتگاه ثبت شده، اما برگشت محلی کامل نشده است. از بخش مالی «تکمیل برگشت محلی» را انجام دهید.'];
+                return ['success'=>true,'voided'=>true,'local'=>$local,'remote_idempotent'=>true];
+            }
             if(!in_array((string)$transfer['status'],['posted','void_pending','void_failed'],true))throw new IntegrationStateConflict('not_voidable','فقط انتقال قطعی‌شده قابل برگشت است.',409);
             $this->pdo->prepare("UPDATE accommodation_transfers SET status='void_pending',void_requested_by_user_id=?,attempt_count=attempt_count+1,last_attempt_at=NOW(),last_error_code=NULL,last_error=NULL WHERE id=?")
                 ->execute([(int)$actor['id'],$transferId]);$this->pdo->commit();
@@ -162,7 +196,9 @@ final class AccommodationService
                 $this->pdo->prepare("UPDATE accommodation_transfers SET status='voided',remote_void_transaction_id=?,remote_original_transaction_id=?,remote_tracking_id=?,voided_by_user_id=?,voided_at=COALESCE(voided_at,NOW()),last_error_code=NULL,last_error=NULL,suspicious_response=0,local_reversal_pending=1 WHERE id=?")
                     ->execute([self::clip((string)($result['transaction_id']??''),120)?:null,self::clip((string)($result['original_transaction_id']??''),120)?:null,self::clip((string)($result['tracking_id']??''),120)?:null,(int)$actor['id'],$transferId]);
                 $this->audit('accommodation.remote_voided','accommodation_transfer',$transferId,(int)$actor['id'],['reason'=>$reason,'idempotent'=>(bool)($result['idempotent']??false)]);$this->pdo->commit();
-                $local=$this->finalizeLocalReversal($transferId,$reason,$user);return ['success'=>true,'voided'=>true,'remote'=>$result,'local'=>$local];
+                $local=$this->finalizeLocalReversal($transferId,$reason,$user);
+                if(($local['success']??true)===false)return ['success'=>false,'voided'=>true,'local_reversal_pending'=>true,'remote'=>$result,'local'=>$local,'message'=>'برگشت در اقامتگاه انجام شد، اما برگشت محلی کامل نشد. از بخش مالی «تکمیل برگشت محلی» را انجام دهید.'];
+                return ['success'=>true,'voided'=>true,'remote'=>$result,'local'=>$local];
             }
             $ambiguous=(bool)($result['ambiguous']??false);$code=self::clip((string)($result['code']??'remote_error'),80);$message=self::clip((string)($result['message']??'برگشت اقامتگاه انجام نشد.'),500);
             $this->pdo->prepare('UPDATE accommodation_transfers SET status=?,last_error_code=?,last_error=?,remote_tracking_id=?,suspicious_response=? WHERE id=?')
@@ -185,6 +221,9 @@ final class AccommodationService
     private function assertSamePreparedIntent(array $row,string $reservationCode): void{if((string)$row['reservation_code']!==$reservationCode)throw new IntegrationStateConflict('transfer_conflict','برای این حساب انتقال دیگری با رزرو متفاوت ساخته شده است.',409);}
     private function assertCashier(array $user): array{$fresh=$this->identity->findActiveById((int)($user['id']??0));if($fresh===null)throw new IntegrationException('forbidden','حساب کاربری فعال نیست.',403);if((string)($fresh['role']??'')!=='admin'&&!$this->capabilities->has('cashier_accounts',$fresh))throw new IntegrationException('forbidden','دسترسی تسویه اقامتگاه فعال نیست.',403);return $fresh;}
     private function audit(string $action,string $entityType,int $entityId,int $actorId,array $details): void{$name=$this->pdo->prepare('SELECT display_name FROM users WHERE id=? LIMIT 1');$name->execute([$actorId]);$display=$name->fetchColumn();$this->pdo->prepare('INSERT INTO audit_log(actor_user_id,actor_display_name_snapshot,action,entity_type,entity_id,details_json) VALUES(?,?,?,?,?,?)')->execute([$actorId,$display!==false?$display:null,$action,$entityType,(string)$entityId,json_encode($details,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'{}']);}
-    private static function canonicalJson(array $v): string{ksort($v);$json=json_encode($v,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRESERVE_ZERO_FRACTION);if(!is_string($json))throw new IntegrationException('json_failed','ساخت payload انتقال انجام نشد.',500);return $json;}
+    private static function canonicalArray(array $v): array{ksort($v,SORT_STRING);return $v;}
+    private static function chargePayloadBase(string $externalOrder,string $reservationCode,int $amount,array $snapshot): array{return self::canonicalArray(['external_order_id'=>$externalOrder,'reservation_code'=>$reservationCode,'amount'=>$amount,'currency'=>'TOMAN','invoice'=>self::canonicalArray($snapshot)]);}
+    private static function payloadHash(array $payload): string{return hash('sha256',self::canonicalJson($payload));}
+    private static function canonicalJson(array $v): string{$v=self::canonicalArray($v);$json=json_encode($v,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRESERVE_ZERO_FRACTION);if(!is_string($json))throw new IntegrationException('json_failed','ساخت payload انتقال انجام نشد.',500);return $json;}
     private static function clip(string $v,int $n): string{return function_exists('mb_substr')?mb_substr($v,0,$n,'UTF-8'):substr($v,0,$n);}
 }

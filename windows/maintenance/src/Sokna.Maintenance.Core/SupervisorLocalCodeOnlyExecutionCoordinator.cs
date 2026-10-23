@@ -135,7 +135,7 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             // UNDER the live machine mutation lease immediately before Engine.
             var verified = _proof.Inspect(stageId, prior?.OperationId);
             if (!verified.SignedStageVerified || !verified.PhysicalSiblingVerified ||
-                !verified.UnchangedMigrationsVerified || verified.ExecutionAuthorized ||
+                (!verified.UnchangedMigrationsVerified && verified.MigrationPlan?.RequiresMigration != true) || verified.ExecutionAuthorized ||
                 verified.PanelUpdateReady)
                 throw new InvalidDataException("CODE_ONLY_PREEXECUTION_PROOF_INVALID");
             var identity = AtomicFile.ReadJson<InstalledReleaseIdentity>(
@@ -176,6 +176,8 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                 "--target-managed-files", verified.TargetManagedFiles.ToString(CultureInfo.InvariantCulture),
                 "--target-managed-tree-sha256", verified.TargetTreeSha256,
                 "--release-set-id", verified.ReleaseSetId,
+                "--target-schema-fingerprint", verified.MigrationPlan?.TargetFingerprint ?? identity.Local.SchemaFingerprint,
+                "--target-migration-head", verified.MigrationPlan?.TargetHead ?? identity.Local.MigrationHead,
                 "--data-root", _paths.DataRoot
             };
             try
@@ -185,7 +187,7 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                 using var child = WindowsJobChildProcess.Start(_engineExecutable,
                     args.Concat(new[] {"--delegation-id", permit}).ToArray(),
                     AppContext.BaseDirectory);
-                var result = child.WaitAndCapture(240_000);
+                var result = child.WaitAndCapture(1_500_000);
                 if (!result.Finished || result.ExitCode != 0)
                     throw new InvalidOperationException(
                         result.Finished ? "CODE_ONLY_ENGINE_FAILED" :
@@ -197,7 +199,8 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                     !root.TryGetProperty("phase", out var phase) ||
                     phase.GetString() != "COMMITTED" ||
                     !root.TryGetProperty("database_mutation_performed", out var db) ||
-                    db.GetBoolean() ||
+                    db.ValueKind is not (JsonValueKind.True or JsonValueKind.False) ||
+                    db.GetBoolean() != (verified.MigrationPlan?.RequiresMigration == true) ||
                     !root.TryGetProperty("public_mutation_performed", out var pub) ||
                     pub.GetBoolean())
                     throw new InvalidDataException("CODE_ONLY_ENGINE_SUCCESS_ENVELOPE_INVALID");
@@ -214,6 +217,9 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                     installed.Local is null ||
                     installed.Local.Version != verified.TargetVersion ||
                     installed.Local.ReleaseId != verified.ReleaseSetId ||
+                    (verified.MigrationPlan?.RequiresMigration == true &&
+                     (installed.Local.SchemaFingerprint != verified.MigrationPlan.TargetFingerprint ||
+                      installed.Local.MigrationHead != verified.MigrationPlan.TargetHead)) ||
                     !string.Equals(installed.Local.ManagedTreeSha256, verified.TargetTreeSha256,
                         StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("CODE_ONLY_INSTALLED_READBACK_UNPROVEN");
@@ -223,11 +229,11 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                 operation = _operations.Update(operation, "committed",
                     "CODE_ONLY_INSTALLED_READBACK_VERIFIED",
                     "Local version and Maintenance installed identity agree; HTTP and managed tree verified.",
-                    activationPerformed: true, databaseMutationPerformed: false);
+                    activationPerformed: true, databaseMutationPerformed: db.GetBoolean());
                 Journal("update.local_code_only.committed", operation);
                 return new(operation, created, false);
             }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or
+            catch (Exception ex) when (ex is IOException or InvalidDataException or TimeoutException or
                 InvalidOperationException or JsonException or
                 System.ComponentModel.Win32Exception or UnauthorizedAccessException)
             {
@@ -284,7 +290,7 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                 operation = _operations.Update(operation, "recovery_required",
                     "CODE_ONLY_EXECUTION_OUTCOME_UNPROVEN", ex.Message,
                     Path.Combine(_paths.LocalSlotStateRoot, "routine-state.json"),
-                    activationPerformed: true, databaseMutationPerformed: false);
+                    activationPerformed: true, databaseMutationPerformed: ReadRoutineDatabaseBoundary());
                 Journal("update.local_code_only.recovery_required", operation);
                 return new(operation, created, false);
             }
@@ -357,7 +363,7 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             using var child = WindowsJobChildProcess.Start(_engineExecutable,
                 args.Concat(new[] { "--delegation-id", permit }).ToArray(),
                 AppContext.BaseDirectory);
-            var result = child.WaitAndCapture(240_000);
+            var result = child.WaitAndCapture(1_500_000);
             if (!result.Finished || result.ExitCode != 0)
                 throw new InvalidOperationException(
                     result.Finished ? "LEGACY_ENGINE_FAILED" :
@@ -467,7 +473,8 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                     "CODE_ONLY_PREEXECUTION_FAILED",
                 unproven ? "Activation outcome requires Recovery Console verification." :
                     "Activation did not enter Engine execution.",
-                activationPerformed: unproven || operation.ActivationPerformed);
+                activationPerformed: unproven || operation.ActivationPerformed,
+                databaseMutationPerformed: unproven ? ReadRoutineDatabaseBoundary() : false);
             Journal("update.local_code_only.worker_quarantined", updated);
         }
     }
@@ -485,6 +492,12 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                 QuarantineActivationFailure(operation.OperationId);
             return pending.Length;
         }
+    }
+
+    private bool ReadRoutineDatabaseBoundary()
+    {
+        try { return AtomicFile.ReadJson<RoutineLocalSlotState>(Path.Combine(_paths.LocalSlotStateRoot, "routine-state.json")).DatabaseMutationPerformed; }
+        catch { return true; } // Unknown Engine outcome is conservatively post-boundary.
     }
 
     private static string Sha256File(string path)
@@ -530,13 +543,14 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             if (!File.Exists(routineStatePath))
                 throw new InvalidDataException("CODE_ONLY_RECOVERY_EVIDENCE_MISSING");
             var state = AtomicFile.ReadJson<RoutineLocalSlotState>(routineStatePath);
-            ProductionLocalSlotMigrationBridge.RoutineLocalSlotSafety
-                .RequireInterruptedForRecovery(state);
+            if (state.Phase != "COMMITTED")
+                ProductionLocalSlotMigrationBridge.RoutineLocalSlotSafety.RequireInterruptedForRecovery(state);
+            var forward = state.DatabaseMutationPerformed || state.Phase == "COMMITTED";
             if (!state.MaintenanceIdentityCommitExpected)
                 throw new InvalidDataException("CODE_ONLY_QUALIFIED_RECOVERY_REQUIRED");
-            RoutineLocalLifecycle.RequireCrashRollbackEvidence(state.PackageRoot,
-                _paths.LocalSlotStateRoot, state.CurrentBuild,
-                _paths.InstalledReleaseIdentityPath);
+            if (state.Phase != "COMMITTED")
+                RoutineLocalLifecycle.RequireCrashRollbackEvidence(state.PackageRoot,
+                    _paths.LocalSlotStateRoot, state.CurrentBuild, _paths.InstalledReleaseIdentityPath);
             if (!File.Exists(_engineExecutable))
                 throw new InvalidDataException("CODE_ONLY_UPDATE_ENGINE_UNAVAILABLE");
             var (operation, created) = _operations.GetOrCreate(idempotencyKey,
@@ -544,7 +558,7 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             operation = _operations.Update(operation, "recovering",
                 "CODE_ONLY_RECOVERY_ENGINE_START_INTENT",
                 "Operator-authorized recovery-console routine rollback with byte-verified snapshot.",
-                incrementAttempt: true, databaseMutationPerformed: false);
+                incrementAttempt: true, databaseMutationPerformed: state.DatabaseMutationPerformed);
             Journal("update.local_code_only.recover_intent", operation);
             try
             {
@@ -555,45 +569,46 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
                 using var child = WindowsJobChildProcess.Start(_engineExecutable,
                     args.Concat(new[] {"--delegation-id", permit}).ToArray(),
                     AppContext.BaseDirectory);
-                var result = child.WaitAndCapture(240_000);
+                var result = child.WaitAndCapture(1_500_000);
                 if (!result.Finished || result.ExitCode != 0)
                     throw new InvalidOperationException("CODE_ONLY_RECOVERY_EXECUTION_UNPROVEN");
                 using var response = JsonDocument.Parse(result.Stdout);
                 var root = response.RootElement;
                 if (!root.TryGetProperty("ok", out var ok) || !ok.GetBoolean() ||
                     !root.TryGetProperty("phase", out var phase) ||
-                    phase.GetString() != "RECOVERED_TO_PREVIOUS_SLOT")
+                    phase.GetString() != (forward ? "COMMITTED" : "RECOVERED_TO_PREVIOUS_SLOT"))
                     throw new InvalidDataException("CODE_ONLY_RECOVERY_RESULT_UNPROVEN");
                 var live = new LocalSlotManager(_paths).InspectHealthyCurrent();
                 var installed = AtomicFile.ReadJson<InstalledReleaseIdentity>(
                     _paths.InstalledReleaseIdentityPath);
-                if (live.Build != state.CurrentBuild ||
-                    !string.Equals(live.ActiveSlotTarget, state.PreviousSlot,
+                if (live.Build != (forward ? state.TargetBuild : state.CurrentBuild) ||
+                    !string.Equals(live.ActiveSlotTarget, forward ? state.TargetSlot : state.PreviousSlot,
                         StringComparison.OrdinalIgnoreCase) ||
                     installed.Local is null ||
-                    installed.Local.Version != state.CurrentBuild)
+                    installed.Local.Version != (forward ? state.TargetBuild : state.CurrentBuild))
                     throw new InvalidDataException("CODE_ONLY_RECOVERY_READBACK_UNPROVEN");
                 LocalManagedTreeAttestation.RequireExact(live.WebRoot,
-                    state.CurrentManagedFiles, state.CurrentManagedTreeSha256);
-                activation = _operations.Update(activation, "failed",
+                    forward ? state.TargetManagedFiles : state.CurrentManagedFiles,
+                    forward ? state.TargetManagedTreeSha256 : state.CurrentManagedTreeSha256);
+                activation = _operations.Update(activation, forward ? "committed" : "failed",
                     "CODE_ONLY_PREVIOUS_RELEASE_RECOVERED",
                     "Original Local release restored with verified lifecycle and installed identity.",
-                    activationPerformed: true, databaseMutationPerformed: false);
+                    activationPerformed: true, databaseMutationPerformed: state.DatabaseMutationPerformed);
                 operation = _operations.Update(operation, "committed",
                     "CODE_ONLY_RECOVERY_VERIFIED",
                     "Previous Apache slot and installed Local identity verified.",
-                    activationPerformed: true, databaseMutationPerformed: false);
+                    activationPerformed: true, databaseMutationPerformed: state.DatabaseMutationPerformed);
                 Journal("update.local_code_only.recovery_committed", operation);
                 return new(operation, created, false);
             }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or
+            catch (Exception ex) when (ex is IOException or InvalidDataException or TimeoutException or
                 InvalidOperationException or JsonException or
                 System.ComponentModel.Win32Exception or UnauthorizedAccessException)
             {
                 operation = _operations.Update(operation, "recovery_required",
                     "CODE_ONLY_RECOVERY_UNPROVEN", ex.Message,
                     routineStatePath, activationPerformed: true,
-                    databaseMutationPerformed: false);
+                    databaseMutationPerformed: state.DatabaseMutationPerformed);
                 Journal("update.local_code_only.recovery_required", operation);
                 return new(operation, created, false);
             }
@@ -628,7 +643,7 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             using var child=WindowsJobChildProcess.Start(_engineExecutable,
                 args.Concat(new[]{"--delegation-id",token}).ToArray(),
                 AppContext.BaseDirectory);
-            var execution=child.WaitAndCapture(240_000);
+            var execution=child.WaitAndCapture(1_500_000);
             if(!execution.Finished || execution.ExitCode!=0)
                 throw new InvalidOperationException("LEGACY_RECOVERY_ENGINE_FAILED");
             using var json=JsonDocument.Parse(execution.Stdout);

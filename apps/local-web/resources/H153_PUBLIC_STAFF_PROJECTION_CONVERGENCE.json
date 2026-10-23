@@ -1,0 +1,13 @@
+{
+  "format": "sokna-local-change-note-v1",
+  "version": "3.0.0-g6.2-workspace.153-public-staff-projection-convergence",
+  "parent": "3.0.0-g6.2-workspace.152-h149-audit-root-closure",
+  "date": "2026-10-08",
+  "scope": "Public Staff bounded Hall/order projection convergence",
+  "changes": [
+    "operations.orders now includes bounded canonical order item lines",
+    "projects item note, order note, fulfillment mode, quantities and prices for remote Hall display",
+    "no Public business authority introduced"
+  ],
+  "database_migration": false
+}

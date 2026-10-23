@@ -12,10 +12,37 @@ final class SubscriberService
 
     public static function normalizeMobile(string $mobile): string
     {
+        $mobile=strtr($mobile,[
+            '۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9',
+            '٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9',
+        ]);
         $digits=preg_replace('/\D+/','',$mobile)??'';
         if(str_starts_with($digits,'0098'))$digits='0'.substr($digits,4);
         elseif(str_starts_with($digits,'98'))$digits='0'.substr($digits,2);
-        return substr($digits,0,20);
+        elseif(strlen($digits)===10&&str_starts_with($digits,'9'))$digits='0'.$digits;
+        return substr($digits,0,11);
+    }
+
+    private static function normalizeSearchText(string $value): string
+    {
+        $value=strtr(trim($value),['ي'=>'ی','ى'=>'ی','ئ'=>'ی','ك'=>'ک','ة'=>'ه','ۀ'=>'ه',"\u{200C}"=>' ']);
+        return trim(preg_replace('/\s+/u',' ',$value)??$value);
+    }
+
+    private static function isMobileSearch(string $query): bool
+    {
+        $ascii=strtr(trim($query),[
+            '۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9',
+            '٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9',
+        ]);
+        $compact=preg_replace('/[\s()+\-._]+/u','',$ascii)??$ascii;
+        return preg_match('/^\+?\d+$/D',$compact)===1;
+    }
+
+    private static function like(string $value,bool $prefix=false): string
+    {
+        $escaped=strtr($value,['\\'=>'\\\\','%'=>'\\%','_'=>'\\_']);
+        return $prefix?$escaped.'%':'%'.$escaped.'%';
     }
 
     public function create(array $data,array $user): array
@@ -24,7 +51,9 @@ final class SubscriberService
         $name=self::clip(trim((string)($data['name']??'')),160);
         $mobile=self::clip(trim((string)($data['mobile']??'')),30);
         $normalized=self::normalizeMobile($mobile);
-        if($name===''||strlen($normalized)<7)throw new IntegrationException('invalid_subscriber','نام یا شماره مشتری معتبر نیست.',422);
+        if($name==='')throw new IntegrationException('invalid_subscriber_name','نام یا عنوان مشتری را وارد کنید.',422);
+        if(!preg_match('/^09\d{9}$/D',$normalized))throw new IntegrationException('invalid_subscriber_mobile','شماره موبایل باید به شکل 09xxxxxxxxx باشد.',422);
+        $mobile=$normalized;
         $active=(bool)($data['active']??true);
         $stmt=$this->pdo->prepare('INSERT INTO subscribers(name,mobile,mobile_normalized,active,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?,?,?)');
         $stmt->execute([$name,$mobile,$normalized,$active?1:0,(int)$actor['id'],(int)$actor['id']]);
@@ -35,7 +64,9 @@ final class SubscriberService
     {
         $actor=$this->assertAdmin($user);$name=self::clip(trim((string)($data['name']??'')),160);$mobile=self::clip(trim((string)($data['mobile']??'')),30);
         $normalized=self::normalizeMobile($mobile);$active=(bool)($data['active']??true);
-        if($subscriberId<1||$name===''||strlen($normalized)<7)throw new IntegrationException('invalid_subscriber','نام یا شماره مشتری معتبر نیست.',422);
+        if($subscriberId<1||$name==='')throw new IntegrationException('invalid_subscriber','اطلاعات مشتری معتبر نیست.',422);
+        if(!preg_match('/^09\d{9}$/D',$normalized))throw new IntegrationException('invalid_subscriber_mobile','شماره موبایل باید به شکل 09xxxxxxxxx باشد.',422);
+        $mobile=$normalized;
         $stmt=$this->pdo->prepare('UPDATE subscribers SET name=?,mobile=?,mobile_normalized=?,active=?,updated_by_user_id=? WHERE id=?');
         $stmt->execute([$name,$mobile,$normalized,$active?1:0,(int)$actor['id'],$subscriberId]);
         if($stmt->rowCount()===0){$check=$this->pdo->prepare('SELECT id FROM subscribers WHERE id=?');$check->execute([$subscriberId]);if($check->fetchColumn()===false)throw new IntegrationException('subscriber_not_found','مشتری پیدا نشد.',404);}
@@ -45,16 +76,16 @@ final class SubscriberService
     public function search(string $query,int $limit=20): array
     {
         $query=trim($query);$limit=max(1,min(50,$limit));if($query==='')return [];
-        $mobile=self::normalizeMobile($query);$hasDigits=$mobile!==''&&preg_match('/\d/',$query)===1;
-        $select="SELECT s.*,COALESCE((SELECT l.balance_after FROM subscriber_ledger l WHERE l.subscriber_id=s.id ORDER BY l.id DESC LIMIT 1),0) balance FROM subscribers s WHERE s.active=1";
-        if($hasDigits){
-            if(strlen($mobile)<3)return [];
+        $select="SELECT s.*,COALESCE((SELECT l.balance_after FROM subscriber_ledger l WHERE l.subscriber_id=s.id ORDER BY l.id DESC LIMIT 1),0) balance,(SELECT MAX(l3.created_at) FROM subscriber_ledger l3 WHERE l3.subscriber_id=s.id) last_activity FROM subscribers s WHERE s.active=1";
+        if(self::isMobileSearch($query)){
+            $mobile=self::normalizeMobile($query);if(strlen($mobile)<3)return [];
             $stmt=$this->pdo->prepare($select." AND s.mobile_normalized LIKE ? ORDER BY (s.mobile_normalized=?) DESC,(s.mobile_normalized LIKE ?) DESC,s.name,s.id LIMIT {$limit}");
-            $stmt->execute(['%'.$mobile.'%',$mobile,$mobile.'%']);
+            $stmt->execute([self::like($mobile),$mobile,self::like($mobile,true)]);
         }else{
-            if(self::textLength($query)<2)return [];
-            $stmt=$this->pdo->prepare($select." AND s.name LIKE ? ORDER BY (s.name=?) DESC,(s.name LIKE ?) DESC,s.name,s.id LIMIT {$limit}");
-            $stmt->execute(['%'.$query.'%',$query,$query.'%']);
+            $name=self::normalizeSearchText($query);if(self::textLength($name)<2)return [];
+            $nameExpr="REPLACE(REPLACE(REPLACE(s.name,'ي','ی'),'ى','ی'),'ك','ک')";
+            $stmt=$this->pdo->prepare($select." AND {$nameExpr} LIKE ? ORDER BY ({$nameExpr}=?) DESC,({$nameExpr} LIKE ?) DESC,s.name,s.id LIMIT {$limit}");
+            $stmt->execute([self::like($name),$name,self::like($name,true)]);
         }
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }

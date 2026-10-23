@@ -1,0 +1,49 @@
+{
+  "phase": "H341-P4B",
+  "date": "2026-10-15",
+  "contract": "sokna-staff-wanoff-bootstrap-v1",
+  "goal": "Secure Staff PWA cold-start on cafe Wi-Fi with WAN unavailable and Local healthy, without caching authenticated operational HTML or creating a second password authority.",
+  "scope": {
+    "supported_offline_surfaces": [
+      "staff home bootstrap",
+      "hall/order/settlement",
+      "preparation"
+    ],
+    "not_offline_default": [
+      "management/reporting pages",
+      "guest LAN",
+      "guest OS push",
+      "offline password login"
+    ]
+  },
+  "security_invariants": [
+    "cached HTML contains no LAN bearer token and no operational data",
+    "LAN credential is persisted only in secure context and expires at the earliest of LAN token, Public session and 8-hour device fence",
+    "cold-start reauthenticates Local by LAN health before runtime adapters load",
+    "installation_id and projection_id must match the persisted authenticated session identity",
+    "Local remains capability authority and revalidates projection/capabilities on every LAN request",
+    "WAN-off transport never silently falls back to unavailable Public endpoints",
+    "mutations retain durable request identity and reconcile LAN receipt before returning unknown outcome",
+    "logout/device-clear purges both persisted bootstrap credential and offline template cache",
+    "cross-origin origin migration never claims browser state migration"
+  ],
+  "pwa_cache_policy": {
+    "network_first_navigation": true,
+    "cached_safe_templates": [
+      "home",
+      "operator",
+      "preparation"
+    ],
+    "cached_static_assets_allowlist_only": true,
+    "cache_operational_api_responses": false,
+    "cache_authenticated_operational_html": false
+  },
+  "field_acceptance_pending": [
+    "real Android Chrome cold-start",
+    "real iPhone Home Screen cold-start",
+    "Chrome Local Network Access permission/behavior",
+    "real LAN DNS/TLS/AP/firewall",
+    "real WAN-off mutation interruption",
+    "real MariaDB/device session expiry/logout behavior"
+  ]
+}

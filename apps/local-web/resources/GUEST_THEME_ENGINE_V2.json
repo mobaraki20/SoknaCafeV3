@@ -1,0 +1,183 @@
+{
+  "contract": "sokna-guest-theme-engine-v2",
+  "package_format": "sokna-guest-theme-v2",
+  "compatibility": {
+    "accepts_v1": true,
+    "v1_fingerprint_must_remain_stable": true,
+    "executable_payloads_allowed": false,
+    "local_is_business_authority": true,
+    "theme_publish_uses_guest_revision": true
+  },
+  "protected_functional_surfaces": [
+    "brand_table_and_menu_context",
+    "connectivity_readiness_and_last_sync",
+    "recent_active_and_pending_orders",
+    "menu_group_switching",
+    "search_mode_results_clear_back_and_focus",
+    "category_navigation_and_active_tracking",
+    "campaigns_featured_events_and_metrics",
+    "item_availability_station_and_quantity_controls",
+    "item_detail_notes_options_suggestions_variants_and_bundles",
+    "cart_order_review_totals_and_notes",
+    "mixed_fulfillment_takeaway_and_first_order_confirmation",
+    "order_submit_pending_unknown_outcome_and_reconciliation",
+    "order_status_history_edit_cancel_append_and_conflict",
+    "waiter_call_status_cancel_public_table_picker_and_remembered_selection",
+    "public_about_contact_social_accommodation_and_footer",
+    "success_live_status_order_view_and_post_order_actions",
+    "pwa_manifest_standalone_safe_area_and_installability",
+    "analytics_semantics_and_action_metrics",
+    "offline_stale_degraded_missing_media_and_recovery_states",
+    "keyboard_focus_dialog_queue_inert_scroll_lock_swipe_and_reduced_motion"
+  ],
+  "composition": {
+    "slots": [
+      "campaigns",
+      "featured",
+      "catalog",
+      "more"
+    ],
+    "required": [
+      "campaigns",
+      "featured",
+      "catalog",
+      "more"
+    ],
+    "safe_fallback": "For v2 all protected body slots are always retained; empty business-owned sections render nothing and malformed/missing slot lists are completed by the engine.",
+    "policy": "order_only_for_v2_protected_body_slots",
+    "required_slots": [
+      "campaigns",
+      "featured",
+      "catalog",
+      "more"
+    ],
+    "theme_may_disable_slots": false,
+    "business_data_controls_visibility": true
+  },
+  "variants": {
+    "header": [
+      "compact",
+      "brand-forward"
+    ],
+    "category_nav": [
+      "pills",
+      "tabs"
+    ],
+    "catalog": [
+      "adaptive",
+      "list",
+      "cards"
+    ],
+    "item_media": [
+      "leading",
+      "top",
+      "hidden"
+    ],
+    "featured": [
+      "rail",
+      "grid"
+    ],
+    "campaigns": [
+      "cards",
+      "banner"
+    ],
+    "surfaces": [
+      "outlined",
+      "soft",
+      "elevated"
+    ],
+    "density": [
+      "compact",
+      "comfortable",
+      "airy"
+    ],
+    "detail": [
+      "sheet",
+      "editorial"
+    ],
+    "action_dock": [
+      "floating",
+      "attached"
+    ],
+    "content_width": [
+      "narrow",
+      "standard",
+      "wide"
+    ],
+    "typography": [
+      "compact",
+      "standard",
+      "large"
+    ],
+    "motion": [
+      "subtle",
+      "none"
+    ]
+  },
+  "required_tokens": [
+    "canvas",
+    "surface",
+    "surface_soft",
+    "text",
+    "muted",
+    "border",
+    "primary",
+    "primary_contrast",
+    "accent",
+    "accent_contrast",
+    "focus",
+    "ready_bg",
+    "ready_text",
+    "degraded_bg",
+    "degraded_text",
+    "danger",
+    "danger_contrast",
+    "radius_md",
+    "radius_lg"
+  ],
+  "media_aspect": [
+    "1:1",
+    "4:3",
+    "3:2"
+  ],
+  "quality_gates": {
+    "normal_text_contrast_min": 4.5,
+    "muted_text_contrast_min": 4.5,
+    "focus_contrast_min": 3.0,
+    "interactive_target_product_min_css_px": 44,
+    "minimum_test_viewports": [
+      "360x800",
+      "390x844",
+      "430x932",
+      "768x1024",
+      "1440x900"
+    ],
+    "no_horizontal_overflow": true,
+    "reduced_motion_required": true,
+    "focus_must_not_be_obscured_by_sticky_ui": true,
+    "missing_media_must_degrade_without_blocking_menu_or_order": true,
+    "visual_review_required_before_publish": true,
+    "performance_targets": {
+      "lcp_seconds_at_p75_max": 2.5,
+      "inp_ms_at_p75_max": 200,
+      "cls_at_p75_max": 0.1
+    },
+    "rtl_persian_long_copy_required": true,
+    "dynamic_price_and_long_item_name_required": true,
+    "many_categories_stress_required": true,
+    "bundle_variant_and_unavailable_states_required": true,
+    "public_no_qr_and_table_qr_required": true,
+    "active_order_edit_cancel_waiter_required": true,
+    "safe_area_and_short_height_required": true,
+    "fallback_base_style_for_future_surfaces": true
+  },
+  "authoring_rule": "A third-party or coding agent may only choose declared tokens, composition slots and engine-owned variants. A valid theme never carries CSS, JavaScript, PHP, HTML fragments, database instructions or business rules.",
+  "contract_revision": 1,
+  "evolution_policy": {
+    "theme_declares_contract_revision": true,
+    "host_may_add_protected_functional_surfaces": true,
+    "older_v2_theme_safe_fallback": "New protected surfaces render with engine base styling until the theme is requalified; a theme may never suppress them.",
+    "new_visual_variant_requires_engine_update": true,
+    "theme_only_update_must_not_change_business_logic": true
+  }
+}

@@ -10,7 +10,9 @@ final class RuntimeTriggerHttpAdapter
     public function handle(array $headers,string $body): array
     {
         $authorization=trim((string)($headers['Authorization']??$headers['authorization']??''));$contract=trim((string)($headers['X-Sokna-Runtime-Contract']??$headers['x-sokna-runtime-contract']??''));
-        if($this->token===''||!hash_equals('Bearer '.$this->token,$authorization))return ['status'=>401,'body'=>['success'=>false,'code'=>'unauthorized']];
+        if($this->token==='')return ['status'=>503,'body'=>['success'=>false,'code'=>'runtime_auth_not_configured']];
+        if($authorization==='')return ['status'=>401,'body'=>['success'=>false,'code'=>'authorization_header_missing']];
+        if(!hash_equals('Bearer '.$this->token,$authorization))return ['status'=>401,'body'=>['success'=>false,'code'=>'runtime_token_mismatch']];
         if($contract!=='1')return ['status'=>426,'body'=>['success'=>false,'code'=>'runtime_contract_upgrade_required']];
         $data=json_decode($body,true);if(!is_array($data))return ['status'=>400,'body'=>['success'=>false,'code'=>'invalid_request']];
         try{return ['status'=>200,'body'=>$this->service->accept($data)];}

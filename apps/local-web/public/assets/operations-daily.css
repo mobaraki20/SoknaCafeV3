@@ -1,0 +1,29 @@
+/* Inventory only: task forms use document scrolling on both hosts. */
+[data-operations-workspace] .sc-ops-task-page[hidden]{display:none!important}
+[data-operations-workspace] .sc-ops-task-page{position:static;inset:auto;width:100%;max-width:64rem;margin:1rem auto;max-height:none;overflow:visible;color:inherit}
+[data-operations-workspace] .sc-ops-task-page .sc-dialog-frame{display:flex;flex-direction:column;min-height:0;height:auto;max-height:none;overflow:visible}
+[data-operations-workspace] .sc-ops-task-page .sc-dialog-frame__body{flex:initial;min-height:0;max-height:none;height:auto;overflow:visible;overscroll-behavior:auto}
+[data-operations-workspace] .sc-ops-task-page .sc-dialog-frame__head{position:static;flex:initial}
+[data-operations-workspace] .sc-ops-task-page .sc-dialog-frame__foot{position:sticky;bottom:0;z-index:5;flex:initial;padding-bottom:max(1rem,env(safe-area-inset-bottom));background:var(--sc-surface,#fff);border-top:1px solid var(--sc-border,#ddd)}
+[data-operations-workspace].is-ops-task-open>.sc-work-panel,[data-operations-workspace].is-ops-task-open>.sc-toolbar{display:none!important}
+[data-operations-workspace] .sc-ops-workflow-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}
+[data-operations-workspace] .sc-ops-workflow-link{width:100%;min-width:0;white-space:normal;text-align:start}
+[data-operations-workspace] .sc-ops-more{min-width:0}
+[data-operations-workspace] .sc-ops-more>summary,[data-operations-workspace] .sc-ops-cost-details>summary{cursor:pointer;padding:1rem;min-height:44px}
+[data-operations-workspace] .sc-ops-more>div{display:grid;gap:.5rem}
+[data-operations-workspace] .sc-ops-cost-details{border:1px solid var(--sc-border,#ddd);border-radius:.75rem}
+[data-operations-workspace] .sc-count-line button,[data-operations-workspace] [data-count-lines] button{min-height:44px;min-width:44px}
+@media(max-width:640px){
+ [data-operations-workspace] .sc-ops-workflow-nav{grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
+ [data-operations-workspace] .sc-ops-workflow-link{padding:.75rem;min-height:64px}
+ [data-operations-workspace] .sc-ops-workflow-link strong{font-size:1rem}
+ [data-operations-workspace] .sc-ops-workflow-link small{font-size:.75rem;line-height:1.6}
+ [data-operations-workspace] .sc-ops-task-page{margin:.5rem auto;min-width:0;border-radius:.75rem}
+ [data-operations-workspace] .sc-ops-task-page .sc-dialog-frame__body,[data-operations-workspace] .sc-ops-task-page .sc-dialog-frame__head{padding:1rem}
+ [data-operations-workspace] .sc-ops-task-page .sc-form-grid{grid-template-columns:minmax(0,1fr)}
+ [data-operations-workspace] .sc-ops-task-page .sc-dialog-frame__foot{display:flex;flex-wrap:wrap;gap:.5rem;padding-inline:1rem}
+ [data-operations-workspace] .sc-ops-task-page .sc-dialog-frame__foot>.sc-button{flex:1 1 8rem;min-height:48px}
+ [data-operations-workspace] .sc-ops-task-page .sc-control{font-size:max(16px,1rem);max-width:100%}
+ [data-operations-workspace] .sc-ops-task-page .sc-table-wrap{max-width:100%}
+ [data-operations-workspace] .sc-ops-preview{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

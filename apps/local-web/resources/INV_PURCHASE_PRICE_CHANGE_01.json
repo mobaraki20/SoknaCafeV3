@@ -1,0 +1,29 @@
+{
+  "feature_id": "INV-PURCHASE-PRICE-CHANGE-01",
+  "version": 1,
+  "scope": [
+    "inventory",
+    "supply",
+    "reporting",
+    "notifications"
+  ],
+  "cost_owner": "InventoryService::recordMovementTx",
+  "history_table": "inventory_purchase_price_events",
+  "comparison": {
+    "primary": "last comparable normalized purchase cost before the receipt movement",
+    "secondary": "weighted average inventory cost immediately before the receipt movement",
+    "different_purchase_units": "compare only after normalization to base unit",
+    "missing_cost": "no price event until actual receipt cost is completed",
+    "reversed_receipt": "excluded from last-comparable lookup"
+  },
+  "history_semantics": "immutable snapshot including item/category labels, supplier and unit context; later master-data changes do not rewrite prior events",
+  "notification": {
+    "event_type": "inventory.purchase_price_changed",
+    "delivery": "notification_domain_events -> NotificationService",
+    "default_enabled": false,
+    "thresholds": "manager-configurable; no threshold number is seeded or active until explicitly saved",
+    "target": "/operations/?workflow=receive&receipt_id=<receipt_id>#receipt-<receipt_id>",
+    "route_resolution": "canonical Local Staff route is converted to the Public Staff counterpart by SoknaStaffRuntime.staffPath()"
+  },
+  "workflow_policy": "informational and non-blocking"
+}

@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
-use Sokna\Local\UI\LocalPage;use Sokna\Local\Domain\GuestContent\GuestContentException;
+use Sokna\Local\UI\LocalPage;use Sokna\Local\UI\WebAction;use Sokna\Local\Domain\GuestContent\GuestContentException;
 $core=require dirname(__DIR__).'/_app.php';$user=LocalPage::requireAdmin($core);header('Content-Type: application/json; charset=utf-8');header('Cache-Control: no-store');
 try{
     if(($_SERVER['REQUEST_METHOD']??'')!=='POST')throw new GuestContentException('method_not_allowed','روش درخواست معتبر نیست.',405);
     $expected=(string)($_SESSION['sokna_csrf_token']??'');$candidate=trim((string)($_POST['csrf_token']??''));if($expected===''||$candidate===''||!hash_equals($expected,$candidate))throw new GuestContentException('csrf_expired','نشست صفحه منقضی شده؛ صفحه را تازه کنید.',419);
-    $file=$_FILES['media']??null;if(!is_array($file)||(int)($file['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK)throw new GuestContentException('upload_failed','آپلود تصویر کامل نشد.',422);
+    $file=$_FILES['media']??null;$uploadError=is_array($file)?(int)($file['error']??UPLOAD_ERR_NO_FILE):UPLOAD_ERR_NO_FILE;if($uploadError!==UPLOAD_ERR_OK){$problem=WebAction::uploadProblem($uploadError,'تصویر');throw new GuestContentException($problem['code'],$problem['message'],$problem['status']);}
     $tmp=(string)($file['tmp_name']??'');if(!is_uploaded_file($tmp))throw new GuestContentException('upload_failed','فایل بارگذاری‌شده معتبر نیست.',422);
     $result=$core->guestContent()->importUpload($tmp,(string)($file['name']??'image'),(string)($_POST['alt_text']??''),$user);
     echo json_encode(['success'=>true,'result'=>$result],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);

@@ -211,7 +211,7 @@ final class ExpenseService
 
     public function normalizeOccurredAt(string $value): string
     {
-        $value=trim($value);$ts=strtotime($value);
+        $value=trim($value);try{$ts=\Sokna\Shared\IranTime::parse($value)->getTimestamp();}catch(\Throwable){$ts=false;}
         if($value===''||$ts===false||$ts>time()+300)
             throw new ExpenseException('invalid_occurred_at','زمان وقوع هزینه معتبر نیست.',422);
         return date('Y-m-d H:i:s',$ts);

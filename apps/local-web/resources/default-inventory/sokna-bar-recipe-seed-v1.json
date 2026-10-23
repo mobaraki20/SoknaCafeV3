@@ -1,0 +1,1618 @@
+{
+  "schema": "sokna-bar-recipe-seed-v1",
+  "source_ref": "sokna_bar_costing_v3_1405_06_16_to_1405_07_16",
+  "source_file": "Sokna_Bar_Costing_V3_1405-06-16_to_1405-07-16.xlsx",
+  "source_sha256": "32a2e0f6354cfd96710d055af4df016e50d8a99e7e7df500950a28e68c95a5b6",
+  "policy": {
+    "seed_only_when_no_active_recipe": true,
+    "overwrite_manual_recipe": false,
+    "default_review_status": "needs_review",
+    "partial_recipe_blocks_margin": true,
+    "ambiguous_components_are_omitted": true,
+    "component_quantity_default": "estimated",
+    "direct_fixed_count_can_be_known": true
+  },
+  "summary": {
+    "source_recipe_rows": 166,
+    "source_menu_items": 59,
+    "seedable_recipes": 40,
+    "complete_seeded_recipes": 5,
+    "partial_seeded_recipes": 35,
+    "skipped_recipes": 19,
+    "new_inventory_items": 9
+  },
+  "new_inventory_items": [
+    {
+      "item_code": "INV-092",
+      "name": "پودر کاکائو",
+      "category": "ingredient",
+      "base_unit": "g",
+      "department": "bar",
+      "review_status": "ready",
+      "review_note": "خرید ۳۳۰ گرم با مبلغ مشخص در داده هزینه بار ثبت شده است."
+    },
+    {
+      "item_code": "INV-093",
+      "name": "سیروپ توت‌فرنگی",
+      "category": "ingredient",
+      "base_unit": "ml",
+      "department": "bar",
+      "review_status": "needs_review",
+      "review_note": "هویت ماده روشن است؛ حجم بطری در مدل هزینه ۷۸۰ml فرض شده و باید هنگام ورود واقعی ثبت شود."
+    },
+    {
+      "item_code": "INV-094",
+      "name": "آبلیمو صنعتی",
+      "category": "ingredient",
+      "base_unit": "ml",
+      "department": "bar",
+      "review_status": "ready",
+      "review_note": "۱۸ لیتر خرید با مبلغ مشخص در داده هزینه بار ثبت شده است."
+    },
+    {
+      "item_code": "INV-095",
+      "name": "ارده",
+      "category": "ingredient",
+      "base_unit": "g",
+      "department": "bar",
+      "review_status": "ready",
+      "review_note": "۲.۶ کیلو خرید با وزن مشخص در داده هزینه بار ثبت شده است."
+    },
+    {
+      "item_code": "INV-096",
+      "name": "کرم لوتوس",
+      "category": "ingredient",
+      "base_unit": "g",
+      "department": "bar",
+      "review_status": "needs_review",
+      "review_note": "وزن ظرف ۴۰۰g در مدل هزینه فرض شده و باید هنگام دریافت واقعی تأیید شود."
+    },
+    {
+      "item_code": "INV-097",
+      "name": "نسکافه",
+      "category": "ingredient",
+      "base_unit": "g",
+      "department": "bar",
+      "review_status": "needs_review",
+      "review_note": "قیمت/وزن خرید در بازه قطعی نیست؛ master برای ثبت واقعی خرید ایجاد می‌شود."
+    },
+    {
+      "item_code": "INV-098",
+      "name": "نکتار انبه",
+      "category": "ingredient",
+      "base_unit": "ml",
+      "department": "bar",
+      "review_status": "needs_review",
+      "review_note": "حجم ۱ لیتری در مدل هزینه فرض شده و باید هنگام دریافت واقعی تأیید شود."
+    },
+    {
+      "item_code": "INV-099",
+      "name": "چای",
+      "category": "ingredient",
+      "base_unit": "g",
+      "department": "bar",
+      "review_status": "needs_review",
+      "review_note": "وزن بسته ۱kg در مدل هزینه فرض شده و باید از بسته/فاکتور تأیید شود."
+    },
+    {
+      "item_code": "INV-100",
+      "name": "شکلات کنار قهوه",
+      "category": "ingredient",
+      "base_unit": "count",
+      "department": "bar",
+      "review_status": "needs_review",
+      "review_note": "تعداد سرو به‌ازای شات مشخص است؛ هزینه/تعداد بسته خرید هنوز باید با وزن یا فاکتور تأیید شود."
+    }
+  ],
+  "recipes": [
+    {
+      "item_code": "901",
+      "name": "اسپرسو تک",
+      "review_status": "needs_review",
+      "completeness_status": "complete",
+      "components": [
+        [
+          "INV-001",
+          9,
+          "estimated",
+          "قهوه: 9 گرم — منبع Bar Costing V3؛ دوز ۹g فرض اولیه؛ باید یک بار وزن شود."
+        ],
+        [
+          "INV-100",
+          1,
+          "known",
+          "شکلات کنار قهوه: 1 عدد — منبع Bar Costing V3؛ طبق اعلام کاربر: ۱ شکلات برای هر شات. تعداد شکلات قطعی؛ وزن هر عدد فعلاً 7g فرض شده."
+        ]
+      ],
+      "omitted": []
+    },
+    {
+      "item_code": "902",
+      "name": "اسپرسو دبل",
+      "review_status": "needs_review",
+      "completeness_status": "complete",
+      "components": [
+        [
+          "INV-001",
+          18,
+          "estimated",
+          "قهوه: 18 گرم — منبع Bar Costing V3؛ دوز ۱۸g فرض اولیه."
+        ],
+        [
+          "INV-100",
+          2,
+          "known",
+          "شکلات کنار قهوه: 2 عدد — منبع Bar Costing V3؛ طبق اعلام کاربر: ۱ شکلات برای هر شات. تعداد شکلات قطعی؛ وزن هر عدد فعلاً 7g فرض شده."
+        ]
+      ],
+      "omitted": []
+    },
+    {
+      "item_code": "903",
+      "name": "آمریکانو تک",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-001",
+          9,
+          "estimated",
+          "قهوه: 9 گرم — منبع Bar Costing V3؛ ۹g قهوه + آب."
+        ],
+        [
+          "INV-100",
+          1,
+          "known",
+          "شکلات کنار قهوه: 1 عدد — منبع Bar Costing V3؛ طبق اعلام کاربر: ۱ شکلات برای هر شات. تعداد شکلات قطعی؛ وزن هر عدد فعلاً 7g فرض شده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "904",
+      "name": "آمریکانو دبل",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-001",
+          18,
+          "estimated",
+          "قهوه: 18 گرم — منبع Bar Costing V3؛ ۱۸g قهوه + آب."
+        ],
+        [
+          "INV-100",
+          2,
+          "known",
+          "شکلات کنار قهوه: 2 عدد — منبع Bar Costing V3؛ طبق اعلام کاربر: ۱ شکلات برای هر شات. تعداد شکلات قطعی؛ وزن هر عدد فعلاً 7g فرض شده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1001",
+      "name": "آیس آمریکانو",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-001",
+          18,
+          "estimated",
+          "قهوه: 18 گرم — منبع Bar Costing V3؛ دبل‌شات فرض شده."
+        ],
+        [
+          "INV-100",
+          2,
+          "known",
+          "شکلات کنار قهوه: 2 عدد — منبع Bar Costing V3؛ طبق اعلام کاربر: ۱ شکلات برای هر شات. تعداد شکلات قطعی؛ وزن هر عدد فعلاً 7g فرض شده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1004",
+      "name": "آیس لته",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-001",
+          18,
+          "estimated",
+          "قهوه: 18 گرم — منبع Bar Costing V3؛ ۱۸g قهوه + ۱۸۰ml شیر."
+        ],
+        [
+          "INV-003",
+          180,
+          "estimated",
+          "شیر پرچرب: 180 میلی‌لیتر — منبع Bar Costing V3؛ ۱۸g قهوه + ۱۸۰ml شیر."
+        ],
+        [
+          "INV-100",
+          2,
+          "known",
+          "شکلات کنار قهوه: 2 عدد — منبع Bar Costing V3؛ طبق اعلام کاربر: ۱ شکلات برای هر شات. تعداد شکلات قطعی؛ وزن هر عدد فعلاً 7g فرض شده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1002",
+      "name": "آیس کارامل ماکیاتو",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-001",
+          18,
+          "estimated",
+          "قهوه: 18 گرم — منبع Bar Costing V3؛ ۲۰ml سیروپ کارامل فرض شده."
+        ],
+        [
+          "INV-003",
+          180,
+          "estimated",
+          "شیر پرچرب: 180 میلی‌لیتر — منبع Bar Costing V3؛ ۲۰ml سیروپ کارامل فرض شده."
+        ],
+        [
+          "INV-100",
+          2,
+          "known",
+          "شکلات کنار قهوه: 2 عدد — منبع Bar Costing V3؛ طبق اعلام کاربر: ۱ شکلات برای هر شات. تعداد شکلات قطعی؛ وزن هر عدد فعلاً 7g فرض شده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "avg_syrup_ml",
+          "name": "سیروپ طعم‌دار عمومی",
+          "reason": "سیروپ عمومی به SKU واقعی وصل نیست؛ برای جلوگیری از کسر از ماده اشتباه حذف شده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1003",
+      "name": "آیس موکا",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-001",
+          18,
+          "estimated",
+          "قهوه: 18 گرم — منبع Bar Costing V3؛ ۷g کاکائو؛ سس شکلات مستقل ثبت نشده."
+        ],
+        [
+          "INV-003",
+          160,
+          "estimated",
+          "شیر پرچرب: 160 میلی‌لیتر — منبع Bar Costing V3؛ ۷g کاکائو؛ سس شکلات مستقل ثبت نشده."
+        ],
+        [
+          "INV-092",
+          7,
+          "estimated",
+          "پودر کاکائو: 7 گرم — منبع Bar Costing V3؛ ۷g کاکائو؛ سس شکلات مستقل ثبت نشده."
+        ],
+        [
+          "INV-100",
+          2,
+          "known",
+          "شکلات کنار قهوه: 2 عدد — منبع Bar Costing V3؛ طبق اعلام کاربر: ۱ شکلات برای هر شات. تعداد شکلات قطعی؛ وزن هر عدد فعلاً 7g فرض شده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sugar_small",
+          "name": "شیرین‌کننده کوچک",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "905",
+      "name": "آفوگاتو",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-001",
+          9,
+          "estimated",
+          "قهوه: 9 گرم — منبع Bar Costing V3؛ ۱ شات + ۱۲۰ml بستنی."
+        ],
+        [
+          "INV-100",
+          1,
+          "known",
+          "شکلات کنار قهوه: 1 عدد — منبع Bar Costing V3؛ طبق اعلام کاربر: ۱ شکلات برای هر شات. تعداد شکلات قطعی؛ وزن هر عدد فعلاً 7g فرض شده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "vanilla_icecream_ml",
+          "name": "بستنی وانیلی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "1011",
+      "name": "آب هندوانه",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-033",
+          350,
+          "estimated",
+          "هندوانه: 350 گرم — منبع Bar Costing V3؛ ۳۵۰g هندوانه."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1009",
+      "name": "شیر موز",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          200,
+          "estimated",
+          "شیر پرچرب: 200 میلی‌لیتر — منبع Bar Costing V3؛ ۲۰۰ml شیر + ۱۵۰g موز."
+        ],
+        [
+          "INV-032",
+          150,
+          "estimated",
+          "موز: 150 گرم — منبع Bar Costing V3؛ ۲۰۰ml شیر + ۱۵۰g موز."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1010",
+      "name": "شیر موز بستنی",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          180,
+          "estimated",
+          "شیر پرچرب: 180 میلی‌لیتر — منبع Bar Costing V3؛ ۱۸۰ml شیر + موز + ۱۲۰ml بستنی."
+        ],
+        [
+          "INV-032",
+          150,
+          "estimated",
+          "موز: 150 گرم — منبع Bar Costing V3؛ ۱۸۰ml شیر + موز + ۱۲۰ml بستنی."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "vanilla_icecream_ml",
+          "name": "بستنی وانیلی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1005",
+      "name": "موهیتو",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-060",
+          20,
+          "estimated",
+          "سیروپ نعنا/موهیتو: 20 میلی‌لیتر — منبع Bar Costing V3؛ ۲۰ml سیروپ نعنا؛ خرید ۳ بطری با فروش موهیتوها خوب هم‌راستا است."
+        ],
+        [
+          "INV-031",
+          30,
+          "estimated",
+          "لیمو تازه: 30 گرم — منبع Bar Costing V3؛ ۲۰ml سیروپ نعنا؛ خرید ۳ بطری با فروش موهیتوها خوب هم‌راستا است."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sparkling_ml",
+          "name": "آب گازدار",
+          "reason": "آب گازدار مصرفی بر حسب ml است و به SKU شمارشی موجودی نگاشت قطعی ندارد."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1016",
+      "name": "بلو موهیتو",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-060",
+          20,
+          "estimated",
+          "سیروپ نعنا/موهیتو: 20 میلی‌لیتر — منبع Bar Costing V3؛ ۱۵ml بلوکاراسائو فرض شده."
+        ],
+        [
+          "INV-059",
+          15,
+          "estimated",
+          "سیروپ بلوکاراسائو: 15 میلی‌لیتر — منبع Bar Costing V3؛ ۱۵ml بلوکاراسائو فرض شده."
+        ],
+        [
+          "INV-031",
+          30,
+          "estimated",
+          "لیمو تازه: 30 گرم — منبع Bar Costing V3؛ ۱۵ml بلوکاراسائو فرض شده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sparkling_ml",
+          "name": "آب گازدار",
+          "reason": "آب گازدار مصرفی بر حسب ml است و به SKU شمارشی موجودی نگاشت قطعی ندارد."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1018",
+      "name": "رد موهیتو",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-060",
+          20,
+          "estimated",
+          "سیروپ نعنا/موهیتو: 20 میلی‌لیتر — منبع Bar Costing V3؛ ۱۵ml توت‌فرنگی فرض شده."
+        ],
+        [
+          "INV-093",
+          15,
+          "estimated",
+          "سیروپ توت‌فرنگی: 15 میلی‌لیتر — منبع Bar Costing V3؛ ۱۵ml توت‌فرنگی فرض شده."
+        ],
+        [
+          "INV-031",
+          30,
+          "estimated",
+          "لیمو تازه: 30 گرم — منبع Bar Costing V3؛ ۱۵ml توت‌فرنگی فرض شده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sparkling_ml",
+          "name": "آب گازدار",
+          "reason": "آب گازدار مصرفی بر حسب ml است و به SKU شمارشی موجودی نگاشت قطعی ندارد."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1006",
+      "name": "لیموناد",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-094",
+          60,
+          "estimated",
+          "آبلیمو صنعتی: 60 میلی‌لیتر — منبع Bar Costing V3؛ ۶۰ml آبلیمو صنعتی + آب گازدار."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sparkling_ml",
+          "name": "آب گازدار",
+          "reason": "آب گازدار مصرفی بر حسب ml است و به SKU شمارشی موجودی نگاشت قطعی ندارد."
+        },
+        {
+          "source_code": "sugar_small",
+          "name": "شیرین‌کننده کوچک",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1008",
+      "name": "فیمتو اسپرایت",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-076",
+          1,
+          "known",
+          "اسپرایت قوطی: 1 عدد — منبع Bar Costing V3؛ ۱ قوطی اسپرایت + ۳۰ml فیمتو."
+        ],
+        [
+          "INV-062",
+          30,
+          "estimated",
+          "فیمتو: 30 میلی‌لیتر — منبع Bar Costing V3؛ ۱ قوطی اسپرایت + ۳۰ml فیمتو."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1007",
+      "name": "فیمتو",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-062",
+          30,
+          "estimated",
+          "فیمتو: 30 میلی‌لیتر — منبع Bar Costing V3؛ ۳۰ml فیمتو."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sparkling_ml",
+          "name": "آب گازدار",
+          "reason": "آب گازدار مصرفی بر حسب ml است و به SKU شمارشی موجودی نگاشت قطعی ندارد."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1103",
+      "name": "شیک شکلات",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          150,
+          "estimated",
+          "شیر پرچرب: 150 میلی‌لیتر — منبع Bar Costing V3؛ پایه ۱۵۰ml شیر + ۱۸۰ml بستنی شکلاتی."
+        ],
+        [
+          "INV-092",
+          5,
+          "estimated",
+          "پودر کاکائو: 5 گرم — منبع Bar Costing V3؛ پایه ۱۵۰ml شیر + ۱۸۰ml بستنی شکلاتی."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "choc_icecream_ml",
+          "name": "بستنی شکلاتی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "1109",
+      "name": "شیک انبه",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          120,
+          "estimated",
+          "شیر پرچرب: 120 میلی‌لیتر — منبع Bar Costing V3؛ ۱۰۰g انبه."
+        ],
+        [
+          "INV-020",
+          100,
+          "estimated",
+          "انبه منجمد: 100 گرم — منبع Bar Costing V3؛ ۱۰۰g انبه."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "vanilla_icecream_ml",
+          "name": "بستنی وانیلی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "1112",
+      "name": "شیک توت فرنگی",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          120,
+          "estimated",
+          "شیر پرچرب: 120 میلی‌لیتر — منبع Bar Costing V3؛ ۱۰۰g توت‌فرنگی."
+        ],
+        [
+          "INV-021",
+          100,
+          "estimated",
+          "توت‌فرنگی منجمد: 100 گرم — منبع Bar Costing V3؛ ۱۰۰g توت‌فرنگی."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "vanilla_icecream_ml",
+          "name": "بستنی وانیلی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "1101",
+      "name": "شیک ارده",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          150,
+          "estimated",
+          "شیر پرچرب: 150 میلی‌لیتر — منبع Bar Costing V3؛ ۳۰g ارده."
+        ],
+        [
+          "INV-095",
+          30,
+          "estimated",
+          "ارده: 30 گرم — منبع Bar Costing V3؛ ۳۰g ارده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "vanilla_icecream_ml",
+          "name": "بستنی وانیلی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "1102",
+      "name": "شیک ارده اسپرسو",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          150,
+          "estimated",
+          "شیر پرچرب: 150 میلی‌لیتر — منبع Bar Costing V3؛ ۳۰g ارده + دبل‌شات."
+        ],
+        [
+          "INV-095",
+          30,
+          "estimated",
+          "ارده: 30 گرم — منبع Bar Costing V3؛ ۳۰g ارده + دبل‌شات."
+        ],
+        [
+          "INV-001",
+          18,
+          "estimated",
+          "قهوه: 18 گرم — منبع Bar Costing V3؛ ۳۰g ارده + دبل‌شات."
+        ],
+        [
+          "INV-100",
+          2,
+          "known",
+          "شکلات کنار قهوه: 2 عدد — منبع Bar Costing V3؛ طبق اعلام کاربر: ۱ شکلات برای هر شات. تعداد شکلات قطعی؛ وزن هر عدد فعلاً 7g فرض شده."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "vanilla_icecream_ml",
+          "name": "بستنی وانیلی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "1104",
+      "name": "شیک لوتوس",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          150,
+          "estimated",
+          "شیر پرچرب: 150 میلی‌لیتر — منبع Bar Costing V3؛ ۳۰g لوتوس؛ وزن ظرف فرضی."
+        ],
+        [
+          "INV-096",
+          30,
+          "estimated",
+          "کرم لوتوس: 30 گرم — منبع Bar Costing V3؛ ۳۰g لوتوس؛ وزن ظرف فرضی."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "vanilla_icecream_ml",
+          "name": "بستنی وانیلی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "1107",
+      "name": "شیک پینات",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          150,
+          "estimated",
+          "شیر پرچرب: 150 میلی‌لیتر — منبع Bar Costing V3؛ ۳۰g کره بادام‌زمینی."
+        ],
+        [
+          "INV-058",
+          30,
+          "estimated",
+          "کره بادام‌زمینی: 30 گرم — منبع Bar Costing V3؛ ۳۰g کره بادام‌زمینی."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "vanilla_icecream_ml",
+          "name": "بستنی وانیلی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "1108",
+      "name": "شیک نسکافه",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          150,
+          "estimated",
+          "شیر پرچرب: 150 میلی‌لیتر — منبع Bar Costing V3؛ ۶g نسکافه."
+        ],
+        [
+          "INV-097",
+          6,
+          "estimated",
+          "نسکافه: 6 گرم — منبع Bar Costing V3؛ ۶g نسکافه."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "vanilla_icecream_ml",
+          "name": "بستنی وانیلی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "1106",
+      "name": "شیک فیمتو",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-003",
+          150,
+          "estimated",
+          "شیر پرچرب: 150 میلی‌لیتر — منبع Bar Costing V3؛ ۳۰ml فیمتو."
+        ],
+        [
+          "INV-062",
+          30,
+          "estimated",
+          "فیمتو: 30 میلی‌لیتر — منبع Bar Costing V3؛ ۳۰ml فیمتو."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "vanilla_icecream_ml",
+          "name": "بستنی وانیلی",
+          "reason": "رسپی بر حسب ml است ولی موجودی بستنی بر حسب g؛ تا اندازه‌گیری تبدیل، کسر خودکار حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "1110",
+      "name": "اسموتی انبه",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-020",
+          180,
+          "estimated",
+          "انبه منجمد: 180 گرم — منبع Bar Costing V3؛ ۱۸۰g انبه + ۵۰ml نکتار."
+        ],
+        [
+          "INV-098",
+          50,
+          "estimated",
+          "نکتار انبه: 50 میلی‌لیتر — منبع Bar Costing V3؛ ۱۸۰g انبه + ۵۰ml نکتار."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1111",
+      "name": "اسموتی منگو بری",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-020",
+          120,
+          "estimated",
+          "انبه منجمد: 120 گرم — منبع Bar Costing V3؛ ۱۲۰g انبه + ۸۰g توت‌فرنگی."
+        ],
+        [
+          "INV-021",
+          80,
+          "estimated",
+          "توت‌فرنگی منجمد: 80 گرم — منبع Bar Costing V3؛ ۱۲۰g انبه + ۸۰g توت‌فرنگی."
+        ],
+        [
+          "INV-098",
+          50,
+          "estimated",
+          "نکتار انبه: 50 میلی‌لیتر — منبع Bar Costing V3؛ ۱۲۰g انبه + ۸۰g توت‌فرنگی."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "801",
+      "name": "چای ساده - کوچک",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-099",
+          5,
+          "estimated",
+          "چای: 5 گرم — منبع Bar Costing V3؛ ۵g چای."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sugar_small",
+          "name": "شیرین‌کننده کوچک",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "802",
+      "name": "چای ساده - بزرگ",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-099",
+          10,
+          "estimated",
+          "چای: 10 گرم — منبع Bar Costing V3؛ ۱۰g چای."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sugar_big",
+          "name": "شیرین‌کننده بزرگ",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "803",
+      "name": "چای مراکش - کوچک",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-099",
+          5,
+          "estimated",
+          "چای: 5 گرم — منبع Bar Costing V3؛ چای + نعنا/گارنیش."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sugar_small",
+          "name": "شیرین‌کننده کوچک",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "804",
+      "name": "چای مراکش - بزرگ",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-099",
+          10,
+          "estimated",
+          "چای: 10 گرم — منبع Bar Costing V3؛ چای + نعنا/گارنیش."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sugar_big",
+          "name": "شیرین‌کننده بزرگ",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "807",
+      "name": "چای زعفران - کوچک",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-099",
+          5,
+          "estimated",
+          "چای: 5 گرم — منبع Bar Costing V3؛ زعفران خرید مستقیم ندارد."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sugar_small",
+          "name": "شیرین‌کننده کوچک",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "saffron_small",
+          "name": "زعفران کوچک",
+          "reason": "زعفران به‌صورت سهمی ثبت شده و وزن مصرف باید اندازه‌گیری شود."
+        }
+      ]
+    },
+    {
+      "item_code": "808",
+      "name": "چای زعفران - بزرگ",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-099",
+          10,
+          "estimated",
+          "چای: 10 گرم — منبع Bar Costing V3؛ زعفران خرید مستقیم ندارد."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sugar_big",
+          "name": "شیرین‌کننده بزرگ",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "saffron_big",
+          "name": "زعفران بزرگ",
+          "reason": "زعفران به‌صورت سهمی ثبت شده و وزن مصرف باید اندازه‌گیری شود."
+        }
+      ]
+    },
+    {
+      "item_code": "805",
+      "name": "چای هل و دارچین - کوچک",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-099",
+          5,
+          "estimated",
+          "چای: 5 گرم — منبع Bar Costing V3؛ ادویه برآوردی."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sugar_small",
+          "name": "شیرین‌کننده کوچک",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "spice_small",
+          "name": "هل/دارچین کوچک",
+          "reason": "هل/دارچین به‌صورت سهمی ثبت شده و مواد/وزن باید جدا شود."
+        }
+      ]
+    },
+    {
+      "item_code": "806",
+      "name": "چای هل و دارچین - بزرگ",
+      "review_status": "needs_review",
+      "completeness_status": "partial",
+      "components": [
+        [
+          "INV-099",
+          10,
+          "estimated",
+          "چای: 10 گرم — منبع Bar Costing V3؛ ادویه برآوردی."
+        ]
+      ],
+      "omitted": [
+        {
+          "source_code": "sugar_big",
+          "name": "شیرین‌کننده بزرگ",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "spice_big",
+          "name": "هل/دارچین بزرگ",
+          "reason": "هل/دارچین به‌صورت سهمی ثبت شده و مواد/وزن باید جدا شود."
+        }
+      ]
+    },
+    {
+      "item_code": "205",
+      "name": "آب معدنی کوچک",
+      "review_status": "needs_review",
+      "completeness_status": "complete",
+      "components": [
+        [
+          "INV-073",
+          1,
+          "known",
+          "آب معدنی کوچک: 1 عدد — منبع Bar Costing V3؛ هزینه واحد؛ برای موارد فاقد خرید مستقیم مشابه‌سازی شده."
+        ]
+      ],
+      "omitted": []
+    },
+    {
+      "item_code": "207",
+      "name": "آب گاز دار لیمویی",
+      "review_status": "needs_review",
+      "completeness_status": "complete",
+      "components": [
+        [
+          "INV-072",
+          1,
+          "known",
+          "آب گازدار لیمویی: 1 عدد — منبع Bar Costing V3؛ هزینه واحد؛ برای موارد فاقد خرید مستقیم مشابه‌سازی شده."
+        ]
+      ],
+      "omitted": []
+    },
+    {
+      "item_code": "203",
+      "name": "نوشابه شانی قوطی",
+      "review_status": "needs_review",
+      "completeness_status": "complete",
+      "components": [
+        [
+          "INV-075",
+          1,
+          "known",
+          "شانی قوطی: 1 عدد — منبع Bar Costing V3؛ هزینه واحد؛ برای موارد فاقد خرید مستقیم مشابه‌سازی شده."
+        ]
+      ],
+      "omitted": []
+    }
+  ],
+  "skipped_recipes": [
+    {
+      "item_code": "1012",
+      "name": "آب طالبی",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "cantaloupe_serving",
+          "name": "طالبی - سهم یک لیوان",
+          "reason": "رسپی به صورت سهم است ولی موجودی طالبی بر حسب g؛ وزن یک لیوان باید اندازه‌گیری شود."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "1017",
+      "name": "سیروپ",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "avg_syrup_ml",
+          "name": "سیروپ طعم‌دار عمومی",
+          "reason": "سیروپ عمومی به SKU واقعی وصل نیست؛ برای جلوگیری از کسر از ماده اشتباه حذف شده است."
+        }
+      ]
+    },
+    {
+      "item_code": "703",
+      "name": "دمنوش آرام دل - کوچک",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "herbal_mix_small",
+          "name": "مواد دمنوش کوچک",
+          "reason": "ترکیب دمنوش تجمیعی است و مواد اصلی هنوز تعریف نشده‌اند."
+        },
+        {
+          "source_code": "sugar_small",
+          "name": "شیرین‌کننده کوچک",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "709",
+      "name": "دمنوش طلا - کوچک",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "herbal_mix_small",
+          "name": "مواد دمنوش کوچک",
+          "reason": "ترکیب دمنوش تجمیعی است و مواد اصلی هنوز تعریف نشده‌اند."
+        },
+        {
+          "source_code": "sugar_small",
+          "name": "شیرین‌کننده کوچک",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "707",
+      "name": "دمنوش گل نوش - کوچک",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "herbal_mix_small",
+          "name": "مواد دمنوش کوچک",
+          "reason": "ترکیب دمنوش تجمیعی است و مواد اصلی هنوز تعریف نشده‌اند."
+        },
+        {
+          "source_code": "sugar_small",
+          "name": "شیرین‌کننده کوچک",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "712",
+      "name": "دمنوش آرام دل - بزرگ",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "herbal_mix_big",
+          "name": "مواد دمنوش بزرگ",
+          "reason": "ترکیب دمنوش تجمیعی است و مواد اصلی هنوز تعریف نشده‌اند."
+        },
+        {
+          "source_code": "sugar_big",
+          "name": "شیرین‌کننده بزرگ",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "710",
+      "name": "دمنوش طلا - بزرگ",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "herbal_mix_big",
+          "name": "مواد دمنوش بزرگ",
+          "reason": "ترکیب دمنوش تجمیعی است و مواد اصلی هنوز تعریف نشده‌اند."
+        },
+        {
+          "source_code": "sugar_big",
+          "name": "شیرین‌کننده بزرگ",
+          "reason": "شیرین‌کننده سهمی به ماده انبار قطعی نگاشت نشده است."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "607",
+      "name": "اردیبهشت",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "traditional_syrup_serving",
+          "name": "شربت سنتی - سهم",
+          "reason": "شربت اختصاصی به صورت سهمی است و ترکیب واقعی باید تعریف شود."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "603",
+      "name": "شاه نوش",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "traditional_syrup_serving",
+          "name": "شربت سنتی - سهم",
+          "reason": "شربت اختصاصی به صورت سهمی است و ترکیب واقعی باید تعریف شود."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "605",
+      "name": "شهناز",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "traditional_syrup_serving",
+          "name": "شربت سنتی - سهم",
+          "reason": "شربت اختصاصی به صورت سهمی است و ترکیب واقعی باید تعریف شود."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "604",
+      "name": "کرشمه",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "traditional_syrup_serving",
+          "name": "شربت سنتی - سهم",
+          "reason": "شربت اختصاصی به صورت سهمی است و ترکیب واقعی باید تعریف شود."
+        },
+        {
+          "source_code": "garnish",
+          "name": "گارنیش",
+          "reason": "گارنیش تجمیعی به ماده انبار مشخص نگاشت نشده است."
+        },
+        {
+          "source_code": "ice_water",
+          "name": "یخ و آب",
+          "reason": "یخ و آب به‌صورت مصرف انباری مستقل مدیریت نمی‌شود."
+        }
+      ]
+    },
+    {
+      "item_code": "206",
+      "name": "دوغ آپادا",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "doogh_unit",
+          "name": "دوغ آپادا",
+          "reason": "SKU انبار مستقل برای دوغ آپادا هنوز با خرید واقعی تأیید نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "210",
+      "name": "نوشابه سون آپ 300 سی سی",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "sevenup_300",
+          "name": "سون‌آپ ۳۰۰cc",
+          "reason": "SKU انبار مستقل برای سون‌آپ ۳۰۰cc هنوز با خرید واقعی تأیید نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "214",
+      "name": "نوشابه سون آپ قوطی",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "sevenup_can",
+          "name": "سون‌آپ قوطی",
+          "reason": "SKU انبار مستقل برای سون‌آپ قوطی هنوز با خرید واقعی تأیید نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "211",
+      "name": "نوشابه میراندا قوطی",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "miranda_can",
+          "name": "میراندا قوطی",
+          "reason": "SKU انبار مستقل برای میراندا قوطی هنوز با خرید واقعی تأیید نشده است."
+        }
+      ]
+    },
+    {
+      "item_code": "209",
+      "name": "نوشابه پپسی 300 سی سی",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "pepsi_300",
+          "name": "پپسی ۳۰۰cc",
+          "reason": "موجودی فعلی پپسی بسته‌بندی ۳۰۰cc/قوطی را تفکیک نمی‌کند؛ نگاشت خودکار انجام نشد."
+        }
+      ]
+    },
+    {
+      "item_code": "201",
+      "name": "نوشابه پپسی قوطی",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "pepsi_can",
+          "name": "پپسی قوطی",
+          "reason": "موجودی فعلی پپسی بسته‌بندی ۳۰۰cc/قوطی را تفکیک نمی‌کند؛ نگاشت خودکار انجام نشد."
+        }
+      ]
+    },
+    {
+      "item_code": "212",
+      "name": "نوشابه کوکا زیرو قوطی",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "coke_can",
+          "name": "کوکا/زیرو قوطی",
+          "reason": "کوکا و زیرو دو SKU جدا هستند اما منبع هزینه آن‌ها را تجمیع کرده است؛ نگاشت خودکار انجام نشد."
+        }
+      ]
+    },
+    {
+      "item_code": "208",
+      "name": "نوشابه کوکا قوطی",
+      "reason": "هیچ جزء قابل نگاشت امنی وجود ندارد",
+      "omitted": [
+        {
+          "source_code": "coke_can",
+          "name": "کوکا/زیرو قوطی",
+          "reason": "کوکا و زیرو دو SKU جدا هستند اما منبع هزینه آن‌ها را تجمیع کرده است؛ نگاشت خودکار انجام نشد."
+        }
+      ]
+    }
+  ],
+  "measurement_backlog": [
+    {
+      "اولویت": "۱",
+      "اندازه‌گیری": "دوز قهوه سینگل/دبل",
+      "روش": "وزن یک شات واقعی با ترازوی بار",
+      "اثر روی آیتم‌ها": "اسپرسو، آمریکانو، آیس‌کافی، ارده اسپرسو",
+      "اهمیت مالی": "بالا",
+      "زمان لازم": "۵ دقیقه"
+    },
+    {
+      "اولویت": "۲",
+      "اندازه‌گیری": "حجم بستنی هر شیک",
+      "روش": "یک شیک شکلات و یک شیک میوه‌ای را اندازه بگیرید",
+      "اثر روی آیتم‌ها": "همه شیک‌ها + آفوگاتو + شیرموزبستنی",
+      "اهمیت مالی": "خیلی بالا",
+      "زمان لازم": "۱۰ دقیقه"
+    },
+    {
+      "اولویت": "۳",
+      "اندازه‌گیری": "وزن انبه/توت در شیک و اسموتی",
+      "روش": "یک‌بار قبل از بلندر وزن شود",
+      "اثر روی آیتم‌ها": "شیک انبه/توت، اسموتی انبه/منگو بری",
+      "اهمیت مالی": "خیلی بالا",
+      "زمان لازم": "۱۰ دقیقه"
+    },
+    {
+      "اولویت": "۴",
+      "اندازه‌گیری": "حجم شیر",
+      "روش": "پیمانه یک‌بار برای لته، شیک و شیرموز",
+      "اثر روی آیتم‌ها": "بیش از ۲۰۰ فروش وابسته",
+      "اهمیت مالی": "بالا",
+      "زمان لازم": "۱۰ دقیقه"
+    },
+    {
+      "اولویت": "۵",
+      "اندازه‌گیری": "دوز سیروپ موهیتو/بلو/رد",
+      "روش": "پمپ یا پیمانه را ml کنید",
+      "اثر روی آیتم‌ها": "۱۱۷ موهیتوی فروخته‌شده",
+      "اهمیت مالی": "بالا",
+      "زمان لازم": "۵ دقیقه"
+    },
+    {
+      "اولویت": "۶",
+      "اندازه‌گیری": "حجم/تعداد بطری فیمتو در کارتن",
+      "روش": "عکس کارتن یا فاکتور خرید",
+      "اثر روی آیتم‌ها": "فیمتو، فیمتواسپرایت، شیک فیمتو",
+      "اهمیت مالی": "متوسط",
+      "زمان لازم": "۲ دقیقه"
+    },
+    {
+      "اولویت": "۷",
+      "اندازه‌گیری": "وزن چای سوفیا",
+      "روش": "وزن بسته خریداری‌شده",
+      "اثر روی آیتم‌ها": "تمام چای‌ها",
+      "اهمیت مالی": "متوسط",
+      "زمان لازم": "۱ دقیقه"
+    },
+    {
+      "اولویت": "۸",
+      "اندازه‌گیری": "ترکیب شربت‌های اختصاصی و دمنوش‌ها",
+      "روش": "فقط مواد اصلی هر آیتم را بنویسید",
+      "اثر روی آیتم‌ها": "اردیبهشت، شاه‌نوش، شهناز، کرشمه، دمنوش‌ها",
+      "اهمیت مالی": "متوسط",
+      "زمان لازم": "۱۵ دقیقه"
+    },
+    {
+      "اولویت": "۹",
+      "اندازه‌گیری": "وزن متوسط شکلات کنار قهوه",
+      "روش": "۱۰ عدد شکلات تخت/پیچ را با هم وزن کنید و تقسیم بر ۱۰ کنید",
+      "اثر روی آیتم‌ها": "تمام آیتم‌های قهوه‌دار؛ تعداد سرو قطعی است، فقط هزینه هر عدد دقیق می‌شود",
+      "اهمیت مالی": "متوسط",
+      "زمان لازم": "۳ دقیقه"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+name: Iran time presentation source qualification
+on:
+  push:
+    branches: ['fix/iran-time-format-20261023']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  presentation:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Check Iran presentation under three host zones
+        shell: pwsh
+        run: |
+          foreach ($zone in @('UTC','America/Los_Angeles','Asia/Tehran')) {
+            $env:TZ=$zone
+            dotnet run --project windows/shared/tests/IranPresentationTests.csproj
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build affected Windows components
+        shell: pwsh
+        run: |
+          foreach ($project in @('packaging/windows/setup-ui/Sokna.SetupUi.csproj','windows/runtime/source/Sokna.Runtime.Service.csproj','windows/print-agent/source/src/Sokna.PrintAgent.Worker/Sokna.PrintAgent.Worker.csproj')) {
+            dotnet build $project --configuration Release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

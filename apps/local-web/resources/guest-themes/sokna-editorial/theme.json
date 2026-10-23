@@ -1,0 +1,63 @@
+{
+  "format": "sokna-guest-theme-v2",
+  "engine_contract": "sokna-guest-theme-engine-v2",
+  "contract_revision": 1,
+  "theme_key": "sokna-editorial",
+  "name": "سکنا ادیتوریال",
+  "version": "2.0.0",
+  "description": "قالب مرجع نسل دوم؛ موبایل‌محور با تصویرخوانی قوی، مسیرهای عملکردی محافظت‌شده و چیدمان کنترل‌شده.",
+  "layout": "cards",
+  "media_aspect": "4:3",
+  "composition": [
+    "campaigns",
+    "featured",
+    "catalog",
+    "more"
+  ],
+  "variants": {
+    "header": "brand-forward",
+    "category_nav": "pills",
+    "catalog": "adaptive",
+    "item_media": "leading",
+    "featured": "rail",
+    "campaigns": "banner",
+    "surfaces": "soft",
+    "density": "comfortable",
+    "detail": "editorial",
+    "action_dock": "floating",
+    "content_width": "standard",
+    "typography": "standard",
+    "motion": "subtle"
+  },
+  "tokens": {
+    "canvas": "#F5F0E7",
+    "surface": "#FFFDFC",
+    "surface_soft": "#ECE5D9",
+    "text": "#202622",
+    "muted": "#5D655F",
+    "border": "#D4CCBE",
+    "primary": "#315E54",
+    "primary_contrast": "#FFFFFF",
+    "accent": "#9B5537",
+    "accent_contrast": "#FFFFFF",
+    "focus": "#236F7A",
+    "ready_bg": "#E7F0EA",
+    "ready_text": "#24533C",
+    "degraded_bg": "#FFF0D7",
+    "degraded_text": "#68440F",
+    "danger": "#A33C35",
+    "danger_contrast": "#FFFFFF",
+    "radius_md": "16px",
+    "radius_lg": "26px"
+  },
+  "editable_tokens": [
+    "canvas",
+    "surface",
+    "surface_soft",
+    "primary",
+    "accent",
+    "focus",
+    "radius_md",
+    "radius_lg"
+  ]
+}

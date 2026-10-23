@@ -139,3 +139,7 @@ If any answer is unknown, the change is not finished.
 7. current immutable checkpoint/handoff
 
 When a Windows defect reveals a reusable lesson, update this document in the same engineering block so another Windows component or future agent does not repeat it.
+
+## Iran time presentation boundary (2026-10-23)
+
+Use `windows/shared/IranPresentation.cs` for human dates, receipt dates and numeric UI. Never use `.LocalDateTime` / `.ToLocalTime()` for cafe display: the Windows timezone is not the business timezone. Keep DateTimeOffset UTC/explicit offsets in leases, signed APIs, journals and persistence. Legacy bare receipt timestamps are Tehran wall time. Test presentation under UTC and a foreign host timezone, including Iran midnight. Machine JSON numeric values remain invariant numbers. This is a source change, not real-host UAT.

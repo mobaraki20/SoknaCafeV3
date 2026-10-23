@@ -63,6 +63,17 @@ internal sealed class RoutineLocalLifecycle
             maintenancePaths, signedReleaseSetId, targetTreeSha256);
     }
 
+    public static RoutineLocalLifecycle Resume(string packageRoot, string evidenceRoot, string currentBuild,
+        MaintenancePaths? maintenancePaths, string? releaseSetId, string targetTree)
+    {
+        // Restore only lifecycle/identity metadata, never the business database.
+        // Apache is stopped by the caller; the durable snapshot remains intact.
+        RestoreCrashBackup(packageRoot, evidenceRoot, currentBuild, maintenancePaths?.InstalledReleaseIdentityPath);
+        var root = ResolveLifecycleRoot(packageRoot);
+        return new RoutineLocalLifecycle(Path.Combine(root, "state.json"), Path.Combine(root, "managed-files.json"),
+            currentBuild, Path.Combine(evidenceRoot, "routine-local-lifecycle-before.json"), maintenancePaths, releaseSetId, targetTree);
+    }
+
     private static string ResolveLifecycleRoot(string packageRoot)
     {
         var php = FindPhpCli(Path.Combine(packageRoot, "Infrastructure"));
@@ -183,7 +194,7 @@ internal sealed class RoutineLocalLifecycle
         AtomicWrite(_backupPath,JsonSerializer.SerializeToUtf8Bytes(proof));
     }
 
-    public void Commit(string targetBuild, string targetSlot, int targetManagedFiles)
+    public void Commit(string targetBuild, string targetSlot, int targetManagedFiles, RoutineMigrationPlan? migrations = null)
     {
         if (!File.Exists(_backupPath)) throw new InvalidDataException("Local lifecycle rollback evidence is missing.");
         RequireIdle();
@@ -196,7 +207,10 @@ internal sealed class RoutineLocalLifecycle
         var history=state["history"] as JsonArray ?? new JsonArray();
         history.Add(new JsonObject { ["at"]=DateTimeOffset.UtcNow.ToString("O"),
             ["action"]="maintenance_routine_slot_activate", ["version"]=targetBuild,
-            ["actor_user_id"]=0, ["migrations"]=new JsonArray() });
+            ["actor_user_id"]=0, ["migrations"]= migrations?.RequiresMigration == true
+                ? new JsonArray(Directory.EnumerateFiles(Path.Combine(targetSlot,"database","migrations"),"*.sql")
+                    .Select(Path.GetFileNameWithoutExtension).OrderBy(x=>x,StringComparer.Ordinal).Skip(migrations.SourceCount)
+                    .Select(x=>(JsonNode?)JsonValue.Create(x)).ToArray()) : new JsonArray() });
         while(history.Count>100)history.RemoveAt(0);
         if (state["history"] is null) state["history"]=history;
         var inv=ReadObject(File.ReadAllBytes(Path.Combine(targetSlot,"resources","local-managed-files-v1.json")));
@@ -225,7 +239,9 @@ internal sealed class RoutineLocalLifecycle
             var targetIdentity = installed with { Local = installed.Local with {
                 ReleaseId = _targetReleaseSetId,
                 Version = targetBuild,
-                ManagedTreeSha256 = _targetManagedTreeSha256
+                ManagedTreeSha256 = _targetManagedTreeSha256,
+                SchemaFingerprint = migrations?.TargetFingerprint ?? installed.Local.SchemaFingerprint,
+                MigrationHead = migrations?.TargetHead ?? installed.Local.MigrationHead
             } };
             AtomicFile.WriteJson(_maintenanceIdentityPath, targetIdentity);
             var observed = AtomicFile.ReadJson<InstalledReleaseIdentity>(_maintenanceIdentityPath);

@@ -5,10 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>SoknaMaintenanceCore</AssemblyName>
-    <Version>0.2.5</Version>
-    <AssemblyVersion>0.2.5.0</AssemblyVersion>
-    <FileVersion>0.2.5.0</FileVersion>
-    <InformationalVersion>0.2.5</InformationalVersion>
+    <Version>0.2.6</Version>
+    <AssemblyVersion>0.2.6.0</AssemblyVersion>
+    <FileVersion>0.2.6.0</FileVersion>
+    <InformationalVersion>0.2.6</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="ProductionLocalSlotMigration.cs" />
@@ -17,6 +17,7 @@
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="RoutineLocalDatabase.php" LogicalName="Sokna.Maintenance.Core.RoutineLocalDatabase.php" />
     <EmbeddedResource Include="../../../../apps/local-web/public/local-recovery.php"
                       LogicalName="Sokna.Maintenance.Core.StableLocalRecoveryPhp" />
   </ItemGroup>

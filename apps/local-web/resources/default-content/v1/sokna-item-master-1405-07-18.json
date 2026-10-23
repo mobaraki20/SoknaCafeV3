@@ -1,0 +1,1291 @@
+{
+  "schema": "sokna-item-master-sync-v1",
+  "source_file": "Items - 1405_07_18 23_01.xlsx",
+  "source_sha256": "a91e2bb4c2652d856c563c29639c55d479773374d1ef482212ef4be0dcc1e21a",
+  "source_date_jalali": "1405-07-18",
+  "rows": 135,
+  "baseline_catalog_items": 131,
+  "target_catalog_items": 135,
+  "authoritative_fields": [
+    "item_code",
+    "name",
+    "category",
+    "active",
+    "price"
+  ],
+  "items": [
+    {
+      "item_code": "1312",
+      "name": "سالاد سزار",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 620000
+    },
+    {
+      "item_code": "606",
+      "name": "دل نواز",
+      "category": "شربت ها",
+      "active": true,
+      "price": 220000
+    },
+    {
+      "item_code": "1309",
+      "name": "قارچ سوخاری",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 315000
+    },
+    {
+      "item_code": "1004",
+      "name": "آیس لته",
+      "category": "بار سرد",
+      "active": true,
+      "price": 195000
+    },
+    {
+      "item_code": "1316",
+      "name": "آب دوغ خیار",
+      "category": "فینگرفود",
+      "active": false,
+      "price": 630000
+    },
+    {
+      "item_code": "205",
+      "name": "آب معدنی کوچک",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 40000
+    },
+    {
+      "item_code": "804",
+      "name": "چای مراکش - بزرگ",
+      "category": "چای ها",
+      "active": true,
+      "price": 350000
+    },
+    {
+      "item_code": "1102",
+      "name": "شیک ارده اسپرسو",
+      "category": "شیک ها",
+      "active": true,
+      "price": 395000
+    },
+    {
+      "item_code": "1214",
+      "name": "چیز کیک گلکسی",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 285000
+    },
+    {
+      "item_code": "1213",
+      "name": "آمریکن کوکی",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 95000
+    },
+    {
+      "item_code": "1019",
+      "name": "آیس دالگونا",
+      "category": "بار سرد",
+      "active": true,
+      "price": 210000
+    },
+    {
+      "item_code": "604",
+      "name": "کرشمه",
+      "category": "شربت ها",
+      "active": true,
+      "price": 205000
+    },
+    {
+      "item_code": "807",
+      "name": "چای زعفران - کوچک",
+      "category": "چای ها",
+      "active": true,
+      "price": 170000
+    },
+    {
+      "item_code": "209",
+      "name": "نوشابه پپسی 300 سی سی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 55000
+    },
+    {
+      "item_code": "1202",
+      "name": "کیک زعفرونی",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 130000
+    },
+    {
+      "item_code": "1308",
+      "name": "ساندویچ گریل گوشت و قارچ",
+      "category": "فینگرفود",
+      "active": false,
+      "price": 440000
+    },
+    {
+      "item_code": "1304",
+      "name": "سیب زمینی با پنیر پستو",
+      "category": "فینگرفود",
+      "active": false,
+      "price": 280000
+    },
+    {
+      "item_code": "1201",
+      "name": "کیک بسبوسه",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 110000
+    },
+    {
+      "item_code": "1314",
+      "name": "برگر گوشت",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 755000
+    },
+    {
+      "item_code": "1112",
+      "name": "شیک توت فرنگی",
+      "category": "شیک ها",
+      "active": true,
+      "price": 355000
+    },
+    {
+      "item_code": "1007",
+      "name": "فیمتو",
+      "category": "بار سرد",
+      "active": true,
+      "price": 240000
+    },
+    {
+      "item_code": "703",
+      "name": "دمنوش آرام دل - کوچک",
+      "category": "دمنوش ها",
+      "active": true,
+      "price": 190000
+    },
+    {
+      "item_code": "210",
+      "name": "نوشابه سون آپ 300 سی سی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 55000
+    },
+    {
+      "item_code": "805",
+      "name": "چای هل و دارچین - کوچک",
+      "category": "چای ها",
+      "active": true,
+      "price": 155000
+    },
+    {
+      "item_code": "1219",
+      "name": "سس سزار",
+      "category": "سرویس‌ها",
+      "active": true,
+      "price": 40000
+    },
+    {
+      "item_code": "1207",
+      "name": "توپک شعریه",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 100000
+    },
+    {
+      "item_code": "904",
+      "name": "آمریکانو دبل",
+      "category": "بار گرم",
+      "active": true,
+      "price": 195000
+    },
+    {
+      "item_code": "602",
+      "name": "زمرد",
+      "category": "شربت ها",
+      "active": false,
+      "price": 190000
+    },
+    {
+      "item_code": "1013",
+      "name": "پیناکولادا",
+      "category": "بار سرد",
+      "active": true,
+      "price": 295000
+    },
+    {
+      "item_code": "1003",
+      "name": "آیس موکا",
+      "category": "بار سرد",
+      "active": true,
+      "price": 220000
+    },
+    {
+      "item_code": "1211",
+      "name": "چیز کیک ماتیلدا",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 325000
+    },
+    {
+      "item_code": "1217",
+      "name": "سرویس بیرون‌بر",
+      "category": "سرویس‌ها",
+      "active": true,
+      "price": 15000
+    },
+    {
+      "item_code": "1218",
+      "name": "تیرامیسو",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 280000
+    },
+    {
+      "item_code": "1208",
+      "name": "سرویس کیک",
+      "category": "سرویس‌ها",
+      "active": true,
+      "price": 25000
+    },
+    {
+      "item_code": "1318",
+      "name": "چاپاتای مرغ",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 390000
+    },
+    {
+      "item_code": "104",
+      "name": "چلو ماهی سرخ شده",
+      "category": "غذای اصلی",
+      "active": false,
+      "price": 850000
+    },
+    {
+      "item_code": "1113",
+      "name": "شیک پروتئینی",
+      "category": "شیک ها",
+      "active": true,
+      "price": 395000
+    },
+    {
+      "item_code": "601",
+      "name": "ترنج",
+      "category": "شربت ها",
+      "active": true,
+      "price": 190000
+    },
+    {
+      "item_code": "1311",
+      "name": "اسپاگتی",
+      "category": "فینگرفود",
+      "active": false,
+      "price": 360000
+    },
+    {
+      "item_code": "711",
+      "name": "دمنوش آویشن - بزرگ",
+      "category": "دمنوش ها",
+      "active": true,
+      "price": 360000
+    },
+    {
+      "item_code": "1001",
+      "name": "آیس آمریکانو",
+      "category": "بار سرد",
+      "active": true,
+      "price": 180000
+    },
+    {
+      "item_code": "1216",
+      "name": "کیک شکلاتی مخملی",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 285000
+    },
+    {
+      "item_code": "901",
+      "name": "اسپرسو تک",
+      "category": "بار گرم",
+      "active": true,
+      "price": 120000
+    },
+    {
+      "item_code": "608",
+      "name": "خیار سکنجبین",
+      "category": "شربت ها",
+      "active": true,
+      "price": 220000
+    },
+    {
+      "item_code": "709",
+      "name": "دمنوش طلا - کوچک",
+      "category": "دمنوش ها",
+      "active": true,
+      "price": 195000
+    },
+    {
+      "item_code": "103",
+      "name": "چلو میگو دوپیازه",
+      "category": "غذای اصلی",
+      "active": false,
+      "price": 880000
+    },
+    {
+      "item_code": "1109",
+      "name": "شیک انبه",
+      "category": "شیک ها",
+      "active": true,
+      "price": 355000
+    },
+    {
+      "item_code": "603",
+      "name": "شاه نوش",
+      "category": "شربت ها",
+      "active": true,
+      "price": 220000
+    },
+    {
+      "item_code": "713",
+      "name": "دمنوش فرش قرمز - بزرگ",
+      "category": "دمنوش ها",
+      "active": true,
+      "price": 390000
+    },
+    {
+      "item_code": "902",
+      "name": "اسپرسو دبل",
+      "category": "بار گرم",
+      "active": true,
+      "price": 180000
+    },
+    {
+      "item_code": "808",
+      "name": "چای زعفران - بزرگ",
+      "category": "چای ها",
+      "active": true,
+      "price": 330000
+    },
+    {
+      "item_code": "108",
+      "name": "چلو ساده مجبوسی",
+      "category": "غذای اصلی",
+      "active": false,
+      "price": 150000
+    },
+    {
+      "item_code": "801",
+      "name": "چای ساده - کوچک",
+      "category": "چای ها",
+      "active": true,
+      "price": 140000
+    },
+    {
+      "item_code": "1303",
+      "name": "سیب زمینی با پنیر پارماسان",
+      "category": "فینگرفود",
+      "active": false,
+      "price": 280000
+    },
+    {
+      "item_code": "1301",
+      "name": "سیب زمینی ساده",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 195000
+    },
+    {
+      "item_code": "1206",
+      "name": "کوکی ساده",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 90000
+    },
+    {
+      "item_code": "705",
+      "name": "دمنوش آویشن - کوچک",
+      "category": "دمنوش ها",
+      "active": true,
+      "price": 180000
+    },
+    {
+      "item_code": "1103",
+      "name": "شیک شکلات",
+      "category": "شیک ها",
+      "active": true,
+      "price": 260000
+    },
+    {
+      "item_code": "1313",
+      "name": "سیب زمینی با سس قارچ",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 415000
+    },
+    {
+      "item_code": "1315",
+      "name": "برگر مرغ",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 595000
+    },
+    {
+      "item_code": "903",
+      "name": "آمریکانو تک",
+      "category": "بار گرم",
+      "active": true,
+      "price": 180000
+    },
+    {
+      "item_code": "1204",
+      "name": "کیک هویج گردویی",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 130000
+    },
+    {
+      "item_code": "203",
+      "name": "نوشابه شانی قوطی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 155000
+    },
+    {
+      "item_code": "109",
+      "name": "خوراک میگو سوخاری",
+      "category": "خوراک",
+      "active": true,
+      "price": 730000
+    },
+    {
+      "item_code": "707",
+      "name": "دمنوش گل نوش - کوچک",
+      "category": "دمنوش ها",
+      "active": true,
+      "price": 180000
+    },
+    {
+      "item_code": "212",
+      "name": "نوشابه کوکا زیرو قوطی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 105000
+    },
+    {
+      "item_code": "211",
+      "name": "نوشابه میراندا قوطی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 155000
+    },
+    {
+      "item_code": "708",
+      "name": "دمنوش گل نوش - بزرگ",
+      "category": "دمنوش ها",
+      "active": true,
+      "price": 360000
+    },
+    {
+      "item_code": "1105",
+      "name": "شیک اسپرسو",
+      "category": "شیک ها",
+      "active": true,
+      "price": 310000
+    },
+    {
+      "item_code": "1012",
+      "name": "آب طالبی",
+      "category": "بار سرد",
+      "active": true,
+      "price": 220000
+    },
+    {
+      "item_code": "1107",
+      "name": "شیک پینات",
+      "category": "شیک ها",
+      "active": true,
+      "price": 345000
+    },
+    {
+      "item_code": "806",
+      "name": "چای هل و دارچین - بزرگ",
+      "category": "چای ها",
+      "active": true,
+      "price": 315000
+    },
+    {
+      "item_code": "117",
+      "name": "قیمه گوشت",
+      "category": "خوراک",
+      "active": true,
+      "price": 530000
+    },
+    {
+      "item_code": "802",
+      "name": "چای ساده - بزرگ",
+      "category": "چای ها",
+      "active": true,
+      "price": 250000
+    },
+    {
+      "item_code": "1104",
+      "name": "شیک لوتوس",
+      "category": "شیک ها",
+      "active": true,
+      "price": 335000
+    },
+    {
+      "item_code": "1209",
+      "name": "دونات",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 180000
+    },
+    {
+      "item_code": "202",
+      "name": "نوشابه دیو قوطی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 155000
+    },
+    {
+      "item_code": "106",
+      "name": "میکس ماهی میگو",
+      "category": "غذای اصلی",
+      "active": false,
+      "price": 900000
+    },
+    {
+      "item_code": "213",
+      "name": "نوشابه میراندا 300 سی سی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 55000
+    },
+    {
+      "item_code": "206",
+      "name": "دوغ آپادا",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 40000
+    },
+    {
+      "item_code": "1005",
+      "name": "موهیتو",
+      "category": "بار سرد",
+      "active": true,
+      "price": 265000
+    },
+    {
+      "item_code": "605",
+      "name": "شهناز",
+      "category": "شربت ها",
+      "active": true,
+      "price": 190000
+    },
+    {
+      "item_code": "1016",
+      "name": "بلو موهیتو",
+      "category": "بار سرد",
+      "active": true,
+      "price": 275000
+    },
+    {
+      "item_code": "1006",
+      "name": "لیموناد",
+      "category": "بار سرد",
+      "active": true,
+      "price": 240000
+    },
+    {
+      "item_code": "803",
+      "name": "چای مراکش - کوچک",
+      "category": "چای ها",
+      "active": true,
+      "price": 190000
+    },
+    {
+      "item_code": "301",
+      "name": "ترشی مخلوط",
+      "category": "ترشیجات",
+      "active": true,
+      "price": 60000
+    },
+    {
+      "item_code": "102",
+      "name": "مجبوس گوشت بره",
+      "category": "غذای اصلی",
+      "active": false,
+      "price": 820000
+    },
+    {
+      "item_code": "1205",
+      "name": "کوکی کاکائویی",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 100000
+    },
+    {
+      "item_code": "1017",
+      "name": "سیروپ",
+      "category": "بار سرد",
+      "active": true,
+      "price": 30000
+    },
+    {
+      "item_code": "1015",
+      "name": "رد جک",
+      "category": "بار سرد",
+      "active": true,
+      "price": 260000
+    },
+    {
+      "item_code": "107",
+      "name": "چلو ساده",
+      "category": "غذای اصلی",
+      "active": false,
+      "price": 120000
+    },
+    {
+      "item_code": "1011",
+      "name": "آب هندوانه",
+      "category": "بار سرد",
+      "active": true,
+      "price": 215000
+    },
+    {
+      "item_code": "701",
+      "name": "دمنوش فرش قرمز - کوچک",
+      "category": "دمنوش ها",
+      "active": true,
+      "price": 190000
+    },
+    {
+      "item_code": "905",
+      "name": "آفوگاتو",
+      "category": "بار سرد",
+      "active": true,
+      "price": 265000
+    },
+    {
+      "item_code": "114",
+      "name": "بشقاب سوسیس بندری",
+      "category": "فینگرفود",
+      "active": false,
+      "price": 390000
+    },
+    {
+      "item_code": "1014",
+      "name": "بلو جک",
+      "category": "بار سرد",
+      "active": true,
+      "price": 255000
+    },
+    {
+      "item_code": "110",
+      "name": "خوراک ماهی سرخ شده",
+      "category": "خوراک",
+      "active": true,
+      "price": 730000
+    },
+    {
+      "item_code": "1305",
+      "name": "پاستا چیکن آلفردو",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 595000
+    },
+    {
+      "item_code": "116",
+      "name": "خوراک میگو دوپیازه",
+      "category": "خوراک",
+      "active": true,
+      "price": 760000
+    },
+    {
+      "item_code": "207",
+      "name": "آب گاز دار لیمویی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 95000
+    },
+    {
+      "item_code": "1002",
+      "name": "آیس کارامل ماکیاتو",
+      "category": "بار سرد",
+      "active": true,
+      "price": 220000
+    },
+    {
+      "item_code": "1009",
+      "name": "شیر موز",
+      "category": "بار سرد",
+      "active": true,
+      "price": 235000
+    },
+    {
+      "item_code": "101",
+      "name": "مجبوس مرغ",
+      "category": "غذای اصلی",
+      "active": false,
+      "price": 490000
+    },
+    {
+      "item_code": "1215",
+      "name": "دسر لیزی کت",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 280000
+    },
+    {
+      "item_code": "1010",
+      "name": "شیر موز بستنی",
+      "category": "بار سرد",
+      "active": true,
+      "price": 270000
+    },
+    {
+      "item_code": "1110",
+      "name": "اسموتی انبه",
+      "category": "اسموتی",
+      "active": true,
+      "price": 380000
+    },
+    {
+      "item_code": "1106",
+      "name": "شیک فیمتو",
+      "category": "شیک ها",
+      "active": true,
+      "price": 315000
+    },
+    {
+      "item_code": "1018",
+      "name": "رد موهیتو",
+      "category": "بار سرد",
+      "active": true,
+      "price": 275000
+    },
+    {
+      "item_code": "112",
+      "name": "غوزی",
+      "category": "غذای اصلی",
+      "active": false,
+      "price": 850000
+    },
+    {
+      "item_code": "1302",
+      "name": "سیب زمینی با پنیر چدار",
+      "category": "فینگرفود",
+      "active": false,
+      "price": 420000
+    },
+    {
+      "item_code": "607",
+      "name": "اردیبهشت",
+      "category": "شربت ها",
+      "active": true,
+      "price": 220000
+    },
+    {
+      "item_code": "201",
+      "name": "نوشابه پپسی قوطی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 155000
+    },
+    {
+      "item_code": "302",
+      "name": "ترشی انبه",
+      "category": "ترشیجات",
+      "active": true,
+      "price": 90000
+    },
+    {
+      "item_code": "1210",
+      "name": "کیک شعریه",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 120000
+    },
+    {
+      "item_code": "115",
+      "name": "فلافل",
+      "category": "خوراک",
+      "active": true,
+      "price": 165000
+    },
+    {
+      "item_code": "1008",
+      "name": "فیمتو اسپرایت",
+      "category": "بار سرد",
+      "active": true,
+      "price": 255000
+    },
+    {
+      "item_code": "1307",
+      "name": "ساندویچ گریل مرغ و قارچ",
+      "category": "فینگرفود",
+      "active": false,
+      "price": 390000
+    },
+    {
+      "item_code": "1306",
+      "name": "پاستا میگو آلفردو",
+      "category": "فینگرفود",
+      "active": false,
+      "price": 690000
+    },
+    {
+      "item_code": "1310",
+      "name": "اسنک مرغ",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 345000
+    },
+    {
+      "item_code": "111",
+      "name": "خوراک مرغ سرخ شده",
+      "category": "خوراک",
+      "active": true,
+      "price": 400000
+    },
+    {
+      "item_code": "1111",
+      "name": "اسموتی منگو بری",
+      "category": "اسموتی",
+      "active": true,
+      "price": 395000
+    },
+    {
+      "item_code": "204",
+      "name": "لیموناد - شیشه",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 55000
+    },
+    {
+      "item_code": "118",
+      "name": "زینگر",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 630000
+    },
+    {
+      "item_code": "208",
+      "name": "نوشابه کوکا قوطی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 105000
+    },
+    {
+      "item_code": "1203",
+      "name": "کیک شکلاتی",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 130000
+    },
+    {
+      "item_code": "1317",
+      "name": "سالاد حمص",
+      "category": "فینگرفود",
+      "active": true,
+      "price": 570000
+    },
+    {
+      "item_code": "710",
+      "name": "دمنوش طلا - بزرگ",
+      "category": "دمنوش ها",
+      "active": true,
+      "price": 390000
+    },
+    {
+      "item_code": "113",
+      "name": "خوراک جگر بره",
+      "category": "خوراک",
+      "active": true,
+      "price": 460000
+    },
+    {
+      "item_code": "1212",
+      "name": "دسر برونی",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 240000
+    },
+    {
+      "item_code": "1220",
+      "name": "چیزکیک سن سباستین",
+      "category": "کیک و دسر",
+      "active": true,
+      "price": 325000
+    },
+    {
+      "item_code": "712",
+      "name": "دمنوش آرام دل - بزرگ",
+      "category": "دمنوش ها",
+      "active": true,
+      "price": 360000
+    },
+    {
+      "item_code": "1101",
+      "name": "شیک ارده",
+      "category": "شیک ها",
+      "active": true,
+      "price": 355000
+    },
+    {
+      "item_code": "214",
+      "name": "نوشابه سون آپ قوطی",
+      "category": "نوشیدنی",
+      "active": true,
+      "price": 155000
+    },
+    {
+      "item_code": "105",
+      "name": "چلو میگو سوخاری",
+      "category": "غذای اصلی",
+      "active": false,
+      "price": 850000
+    },
+    {
+      "item_code": "1108",
+      "name": "شیک نسکافه",
+      "category": "شیک ها",
+      "active": true,
+      "price": 315000
+    }
+  ],
+  "price_changes": [
+    {
+      "item_code": "1309",
+      "name": "قارچ سوخاری",
+      "old_price": 290000,
+      "new_price": 315000
+    },
+    {
+      "item_code": "1102",
+      "name": "شیک ارده اسپرسو",
+      "old_price": 375000,
+      "new_price": 395000
+    },
+    {
+      "item_code": "807",
+      "name": "چای زعفران - کوچک",
+      "old_price": 155000,
+      "new_price": 170000
+    },
+    {
+      "item_code": "1314",
+      "name": "برگر گوشت",
+      "old_price": 655000,
+      "new_price": 755000
+    },
+    {
+      "item_code": "1112",
+      "name": "شیک توت فرنگی",
+      "old_price": 345000,
+      "new_price": 355000
+    },
+    {
+      "item_code": "1007",
+      "name": "فیمتو",
+      "old_price": 230000,
+      "new_price": 240000
+    },
+    {
+      "item_code": "711",
+      "name": "دمنوش آویشن - بزرگ",
+      "old_price": 340000,
+      "new_price": 360000
+    },
+    {
+      "item_code": "901",
+      "name": "اسپرسو تک",
+      "old_price": 110000,
+      "new_price": 120000
+    },
+    {
+      "item_code": "709",
+      "name": "دمنوش طلا - کوچک",
+      "old_price": 170000,
+      "new_price": 195000
+    },
+    {
+      "item_code": "1109",
+      "name": "شیک انبه",
+      "old_price": 340000,
+      "new_price": 355000
+    },
+    {
+      "item_code": "902",
+      "name": "اسپرسو دبل",
+      "old_price": 160000,
+      "new_price": 180000
+    },
+    {
+      "item_code": "808",
+      "name": "چای زعفران - بزرگ",
+      "old_price": 315000,
+      "new_price": 330000
+    },
+    {
+      "item_code": "705",
+      "name": "دمنوش آویشن - کوچک",
+      "old_price": 160000,
+      "new_price": 180000
+    },
+    {
+      "item_code": "203",
+      "name": "نوشابه شانی قوطی",
+      "old_price": 145000,
+      "new_price": 155000
+    },
+    {
+      "item_code": "707",
+      "name": "دمنوش گل نوش - کوچک",
+      "old_price": 160000,
+      "new_price": 180000
+    },
+    {
+      "item_code": "212",
+      "name": "نوشابه کوکا زیرو قوطی",
+      "old_price": 95000,
+      "new_price": 105000
+    },
+    {
+      "item_code": "211",
+      "name": "نوشابه میراندا قوطی",
+      "old_price": 145000,
+      "new_price": 155000
+    },
+    {
+      "item_code": "708",
+      "name": "دمنوش گل نوش - بزرگ",
+      "old_price": 340000,
+      "new_price": 360000
+    },
+    {
+      "item_code": "1105",
+      "name": "شیک اسپرسو",
+      "old_price": 285000,
+      "new_price": 310000
+    },
+    {
+      "item_code": "1012",
+      "name": "آب طالبی",
+      "old_price": 195000,
+      "new_price": 220000
+    },
+    {
+      "item_code": "1107",
+      "name": "شیک پینات",
+      "old_price": 315000,
+      "new_price": 345000
+    },
+    {
+      "item_code": "1104",
+      "name": "شیک لوتوس",
+      "old_price": 315000,
+      "new_price": 335000
+    },
+    {
+      "item_code": "202",
+      "name": "نوشابه دیو قوطی",
+      "old_price": 145000,
+      "new_price": 155000
+    },
+    {
+      "item_code": "1005",
+      "name": "موهیتو",
+      "old_price": 255000,
+      "new_price": 265000
+    },
+    {
+      "item_code": "1016",
+      "name": "بلو موهیتو",
+      "old_price": 265000,
+      "new_price": 275000
+    },
+    {
+      "item_code": "1006",
+      "name": "لیموناد",
+      "old_price": 225000,
+      "new_price": 240000
+    },
+    {
+      "item_code": "1011",
+      "name": "آب هندوانه",
+      "old_price": 190000,
+      "new_price": 215000
+    },
+    {
+      "item_code": "905",
+      "name": "آفوگاتو",
+      "old_price": 245000,
+      "new_price": 265000
+    },
+    {
+      "item_code": "207",
+      "name": "آب گاز دار لیمویی",
+      "old_price": 85000,
+      "new_price": 95000
+    },
+    {
+      "item_code": "1009",
+      "name": "شیر موز",
+      "old_price": 220000,
+      "new_price": 235000
+    },
+    {
+      "item_code": "1010",
+      "name": "شیر موز بستنی",
+      "old_price": 255000,
+      "new_price": 270000
+    },
+    {
+      "item_code": "1110",
+      "name": "اسموتی انبه",
+      "old_price": 360000,
+      "new_price": 380000
+    },
+    {
+      "item_code": "1106",
+      "name": "شیک فیمتو",
+      "old_price": 290000,
+      "new_price": 315000
+    },
+    {
+      "item_code": "201",
+      "name": "نوشابه پپسی قوطی",
+      "old_price": 145000,
+      "new_price": 155000
+    },
+    {
+      "item_code": "1008",
+      "name": "فیمتو اسپرایت",
+      "old_price": 245000,
+      "new_price": 255000
+    },
+    {
+      "item_code": "1310",
+      "name": "اسنک مرغ",
+      "old_price": 335000,
+      "new_price": 345000
+    },
+    {
+      "item_code": "1111",
+      "name": "اسموتی منگو بری",
+      "old_price": 385000,
+      "new_price": 395000
+    },
+    {
+      "item_code": "208",
+      "name": "نوشابه کوکا قوطی",
+      "old_price": 95000,
+      "new_price": 105000
+    },
+    {
+      "item_code": "710",
+      "name": "دمنوش طلا - بزرگ",
+      "old_price": 370000,
+      "new_price": 390000
+    },
+    {
+      "item_code": "712",
+      "name": "دمنوش آرام دل - بزرگ",
+      "old_price": 340000,
+      "new_price": 360000
+    },
+    {
+      "item_code": "1101",
+      "name": "شیک ارده",
+      "old_price": 345000,
+      "new_price": 355000
+    },
+    {
+      "item_code": "214",
+      "name": "نوشابه سون آپ قوطی",
+      "old_price": 145000,
+      "new_price": 155000
+    },
+    {
+      "item_code": "1108",
+      "name": "شیک نسکافه",
+      "old_price": 270000,
+      "new_price": 315000
+    }
+  ],
+  "added_items": [
+    {
+      "item_code": "1019",
+      "category": "بار سرد",
+      "name": "آیس دالگونا",
+      "price": 210000,
+      "preparation_station": "cold_bar",
+      "sort_order": 190,
+      "category_key": "cold-drinks",
+      "menus": [
+        "main",
+        "breakfast",
+        "lunch"
+      ]
+    },
+    {
+      "item_code": "1318",
+      "category": "فینگرفود",
+      "name": "چاپاتای مرغ",
+      "price": 390000,
+      "preparation_station": "kitchen",
+      "sort_order": 200,
+      "category_key": "finger-food",
+      "menus": [
+        "main"
+      ]
+    },
+    {
+      "item_code": "1113",
+      "category": "شیک ها",
+      "name": "شیک پروتئینی",
+      "price": 395000,
+      "preparation_station": "cold_bar",
+      "sort_order": 110,
+      "category_key": "shakes-smoothies",
+      "menus": [
+        "main"
+      ]
+    },
+    {
+      "item_code": "1018",
+      "category": "بار سرد",
+      "name": "رد موهیتو",
+      "price": 275000,
+      "preparation_station": "cold_bar",
+      "sort_order": 200,
+      "category_key": "cold-drinks",
+      "menus": [
+        "main",
+        "breakfast",
+        "lunch"
+      ]
+    }
+  ],
+  "identity_drift": [],
+  "menu_membership_inference": {
+    "1318": "Export has category only; kept main-only by analogy with prepared sandwiches in current V3.",
+    "1018": "Cold-drink category pattern: main/breakfast/lunch.",
+    "1019": "Cold-drink category pattern: main/breakfast/lunch.",
+    "1113": "Shake category pattern: main only."
+  },
+  "upgrade_policy": {
+    "existing_price_update": "guarded: update only when installed price still equals H201 default old price",
+    "existing_description_image_schedule": "preserve",
+    "existing_available": "preserve operational availability",
+    "new_item_insert": "insert only when item_code is absent",
+    "new_menu_links": "insert idempotently using documented V3 menu inference"
+  }
+}

@@ -1,0 +1,1482 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "code": "INV-001",
+      "name": "قهوه",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "خرید وزنی؛ در سابقه خرید ۱۰ کیلو ثبت شده.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-002",
+      "name": "شیر پرچرب کاله ۱ لیتری",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "ml",
+      "review_status": "ready",
+      "review_note": "بخش پیش‌فرض طبق تصمیم مالک؛ کارتن ۱۲ عددی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "عدد ۱ لیتری",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        },
+        {
+          "name": "کارتن ۱۲ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 12000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-003",
+      "name": "شیر پرچرب دومینو ۱ لیتری",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "ready",
+      "review_note": "بخش پیش‌فرض طبق تصمیم مالک؛ خرید ۱۰ عددی در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "عدد ۱ لیتری",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        },
+        {
+          "name": "کارتن / بسته",
+          "conversion_mode": "fixed",
+          "base_quantity": null,
+          "review_status": "needs_review",
+          "note": "تعداد داخل کارتن/بسته قطعی نیست؛ خرید ۱۰ عددی در سابقه."
+        }
+      ]
+    },
+    {
+      "code": "INV-004",
+      "name": "شیر نارگیل کوچک",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "needs_review",
+      "review_note": "حجم هر عدد در منبع مشخص نیست؛ خرید ۶ عددی ثبت شده.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "عدد",
+          "conversion_mode": "fixed",
+          "base_quantity": null,
+          "review_status": "needs_review",
+          "note": "حجم هر عدد نامشخص."
+        }
+      ]
+    },
+    {
+      "code": "INV-005",
+      "name": "خامه کاله ۱ لیتری",
+      "category": "ingredient",
+      "default_department": "shared",
+      "base_unit": "ml",
+      "review_status": "ready",
+      "review_note": "کارتن ۱۲ عددی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "عدد ۱ لیتری",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        },
+        {
+          "name": "کارتن ۱۲ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 12000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-006",
+      "name": "خامه کوچک کاله",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "needs_review",
+      "review_note": "سایز کوچک در گفتگو آمده ولی حجم دقیق ثبت نشده.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "بسته / عدد",
+          "conversion_mode": "fixed",
+          "base_quantity": null,
+          "review_status": "needs_review",
+          "note": "حجم سایز کوچک نامشخص."
+        }
+      ]
+    },
+    {
+      "code": "INV-007",
+      "name": "بستنی وانیلی کاله",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "هر کارتن ۲ بن‌ماری؛ وزن بن‌ماری/کارتن متغیر و باید هنگام ورود ثبت شود.",
+      "source_note": "WhatsApp Chat...txt + تأیید مالک",
+      "purchase_units": [
+        {
+          "name": "بن‌ماری",
+          "conversion_mode": "actual_quantity",
+          "base_quantity": null,
+          "review_status": "ready",
+          "note": "وزن هر بن‌ماری متغیر."
+        },
+        {
+          "name": "کارتن ۲ بن‌ماری",
+          "conversion_mode": "actual_quantity",
+          "base_quantity": null,
+          "review_status": "ready",
+          "note": "تعداد بن‌ماری ثابت ۲؛ وزن کل خرید باید ثبت شود."
+        }
+      ]
+    },
+    {
+      "code": "INV-008",
+      "name": "بستنی شکلاتی کاله",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "هر کارتن ۲ بن‌ماری؛ وزن بن‌ماری/کارتن متغیر و باید هنگام ورود ثبت شود.",
+      "source_note": "WhatsApp Chat...txt + تأیید مالک",
+      "purchase_units": [
+        {
+          "name": "بن‌ماری",
+          "conversion_mode": "actual_quantity",
+          "base_quantity": null,
+          "review_status": "ready",
+          "note": "وزن هر بن‌ماری متغیر."
+        },
+        {
+          "name": "کارتن ۲ بن‌ماری",
+          "conversion_mode": "actual_quantity",
+          "base_quantity": null,
+          "review_status": "ready",
+          "note": "تعداد بن‌ماری ثابت ۲؛ وزن کل خرید باید ثبت شود."
+        }
+      ]
+    },
+    {
+      "code": "INV-009",
+      "name": "سیب‌زمینی کاله",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "هر کارتن ۴ بسته ۲.۵ کیلویی = ۱۰ کیلو؛ تأیید مالک.",
+      "source_note": "WhatsApp Chat...txt + تأیید مالک",
+      "purchase_units": [
+        {
+          "name": "بسته ۲.۵ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 2500,
+          "review_status": "ready",
+          "note": ""
+        },
+        {
+          "name": "کارتن ۴ بسته‌ای",
+          "conversion_mode": "fixed",
+          "base_quantity": 10000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-010",
+      "name": "سس کچاپ کاله",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "دبه/سطل ۸ و ۹ کیلویی در سوابق دیده می‌شود؛ هر دو روش خرید نگه داشته شوند.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "دبه / سطل ۸ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 8000,
+          "review_status": "ready",
+          "note": ""
+        },
+        {
+          "name": "دبه / سطل ۹ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 9000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-011",
+      "name": "سس مایونز کم‌چرب",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "دبه/سطل ۸ کیلویی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "دبه / سطل ۸ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 8000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-012",
+      "name": "سس خردل کاله",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "دبه ۸ کیلویی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "دبه ۸ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 8000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-013",
+      "name": "کچاپ تک‌نفره",
+      "category": "packaging",
+      "default_department": "kitchen",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "کارتن ۳۰۰ عددی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "کارتن ۳۰۰ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 300,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-014",
+      "name": "سس شکلات فرمند بزرگ",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "needs_review",
+      "review_note": "حجم ظرف در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-015",
+      "name": "پنیر ویلی",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "هر عدد/بسته ۱ کیلو در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "عدد / بسته ۱ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-016",
+      "name": "دیپ چدار",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "هر عدد ۱ کیلو در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "عدد ۱ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-017",
+      "name": "پنیر پیتزا کاله",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "بسته ۲ کیلویی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "بسته ۲ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 2000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-018",
+      "name": "پنیر مارگاریتا",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "بسته ۲ کیلویی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "بسته ۲ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 2000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-019",
+      "name": "پنیر پارمسان",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "تعداد خرید مشخص است ولی وزن هر عدد در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "عدد / بسته",
+          "conversion_mode": "fixed",
+          "base_quantity": null,
+          "review_status": "needs_review",
+          "note": "وزن هر عدد مشخص نیست."
+        }
+      ]
+    },
+    {
+      "code": "INV-020",
+      "name": "انبه منجمد",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "هم بسته ۲.۵ کیلویی و هم بن‌ماری/وزن متغیر در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        },
+        {
+          "name": "بسته ۲.۵ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 2500,
+          "review_status": "ready",
+          "note": ""
+        },
+        {
+          "name": "بن‌ماری / ظرف",
+          "conversion_mode": "actual_quantity",
+          "base_quantity": null,
+          "review_status": "ready",
+          "note": "وزن متغیر؛ وزن واقعی خرید ثبت شود."
+        }
+      ]
+    },
+    {
+      "code": "INV-021",
+      "name": "توت‌فرنگی منجمد",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "بسته ۲.۵ کیلویی و خرید کیلویی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        },
+        {
+          "name": "بسته ۲.۵ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 2500,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-022",
+      "name": "شاه‌توت منجمد",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "بسته ۲.۵ کیلویی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "بسته ۲.۵ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 2500,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-023",
+      "name": "آلبالو بدون هسته منجمد",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "بسته ۲.۵ کیلویی و قیمت کیلویی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "بسته ۲.۵ کیلویی",
+          "conversion_mode": "fixed",
+          "base_quantity": 2500,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-024",
+      "name": "میوه خشک انبه",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "وزن بسته در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-025",
+      "name": "سینه مرغ بدون استخوان",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "خرید وزنی با وزن دقیق/کیلویی در سوابق متعدد.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-026",
+      "name": "مرغ کامل",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "در سوابق به صورت «مرغ» و «مرغ کامل» آمده؛ وزن خرید باید ثبت شود.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-027",
+      "name": "مرغ هشت‌تکه",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "در سابقه خرید با عنوان مستقل آمده؛ وزن/تعداد بسته مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-028",
+      "name": "برگر گوشت ۸۵٪",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "خرید تعدادی و بسته ۵ عددی در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "عدد",
+          "conversion_mode": "fixed",
+          "base_quantity": 1,
+          "review_status": "ready",
+          "note": ""
+        },
+        {
+          "name": "بسته ۵ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 5,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-029",
+      "name": "برگر مرغ",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "خرید تعدادی؛ ۱۵ عددی و بسته‌ای در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "عدد",
+          "conversion_mode": "fixed",
+          "base_quantity": 1,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-030",
+      "name": "قارچ",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "خرید کیلویی؛ یک رخداد خرابی ۳ بسته نیز در سابقه ثبت شده.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-031",
+      "name": "لیمو",
+      "category": "ingredient",
+      "default_department": "shared",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "خرید وزنی؛ هم برای بار و هم آشپزخانه قابل استفاده.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-032",
+      "name": "موز",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "خرید وزنی در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-033",
+      "name": "هندوانه",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "خرید وزنی در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-034",
+      "name": "طالبی",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "خرید با مبلغ/وزن متغیر؛ مقدار دقیق باید هنگام ورود ثبت شود.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-035",
+      "name": "کاهو پیچ",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "در سوابق هم عددی و هم وزنی آمده؛ موجودی پایه وزنی نگه داشته شود.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-036",
+      "name": "نعنا",
+      "category": "ingredient",
+      "default_department": "shared",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "مشترک بین بار و آشپزخانه طبق تصمیم مالک؛ خرید وزنی.",
+      "source_note": "messages (1).html + تأیید مالک",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-037",
+      "name": "جعفری",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "خرید مبلغی ثبت شده؛ وزن خرید باید هنگام ورود ثبت شود.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-038",
+      "name": "تربچه",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "مقدار دقیق در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-039",
+      "name": "گوجه",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "خرید وزنی با گرم در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-040",
+      "name": "گوجه گیلاسی",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "در سابقه «۵ بسته» آمده؛ وزن هر بسته مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-041",
+      "name": "خیار سبز",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "مقدار خرید در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-042",
+      "name": "خیارشور",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "نوع/وزن ظرف در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-043",
+      "name": "پیاز",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "مقدار خرید در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-044",
+      "name": "بیبی کورن",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "۲ عدد در سابقه؛ اندازه/وزن بسته نیازمند بازبینی.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-045",
+      "name": "ذرت کنسرو سحر",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "تعداد خرید/قیمت واحد مشخص؛ وزن کنسرو در منبع نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-046",
+      "name": "زیتون سیاه",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "خرید قوطی؛ وزن قوطی در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "قوطی",
+          "conversion_mode": "fixed",
+          "base_quantity": null,
+          "review_status": "needs_review",
+          "note": "وزن قوطی مشخص نیست."
+        }
+      ]
+    },
+    {
+      "code": "INV-047",
+      "name": "زیتون سبز اسلایسی",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "خرید یک قوطی؛ وزن قوطی در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "قوطی",
+          "conversion_mode": "fixed",
+          "base_quantity": null,
+          "review_status": "needs_review",
+          "note": "وزن قوطی مشخص نیست."
+        }
+      ]
+    },
+    {
+      "code": "INV-048",
+      "name": "کشمش",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "خرید ۱ کیلو در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "کیلوگرم",
+          "conversion_mode": "fixed",
+          "base_quantity": 1000,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-049",
+      "name": "ماست سون متوسط",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "سایز «متوسط» آمده؛ وزن دقیق مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-050",
+      "name": "سرکه بالزامیک وردا ۵۰۰ میلی‌لیتری",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "ml",
+      "review_status": "ready",
+      "review_note": "بطری ۵۰۰ میلی‌لیتری در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "بطری ۵۰۰ میلی‌لیتری",
+          "conversion_mode": "fixed",
+          "base_quantity": 500,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-051",
+      "name": "رب انار مهرام",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "۳ عدد خرید ثبت شده؛ وزن هر عدد مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-052",
+      "name": "روغن اویلا ۱۸۰۰ گرمی",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "ready",
+      "review_note": "هر عدد ۱۸۰۰ گرم؛ خرید ۶ عددی در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "عدد ۱۸۰۰ گرمی",
+          "conversion_mode": "fixed",
+          "base_quantity": 1800,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-053",
+      "name": "روغن ویژه کاله",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "خرید به صورت «حلب» ثبت شده؛ وزن حلب مشخص نیست.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-054",
+      "name": "ادویه پودر کچاپ",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "مقدار/بسته در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-055",
+      "name": "گل محمدی",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "مقدار خرید در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-056",
+      "name": "آویشن خشک",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "مقدار خرید در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-057",
+      "name": "سبزی خشک",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "مقدار خرید در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-058",
+      "name": "کره بادام‌زمینی خانگی",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "وزن ظرف/خرید در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-059",
+      "name": "سیروپ بلو کاراسائو",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "needs_review",
+      "review_note": "حجم بطری در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-060",
+      "name": "سیروپ موهیتو",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "needs_review",
+      "review_note": "در خرید تجمیعی با سیروپ لیموناد آمده؛ تعداد/حجم مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-061",
+      "name": "سیروپ لیموناد",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "needs_review",
+      "review_note": "در خرید تجمیعی با سیروپ موهیتو آمده؛ تعداد/حجم مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-062",
+      "name": "شربت فیمتو",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "needs_review",
+      "review_note": "هم مبلغ خرید و هم یک کارتن ثبت شده؛ تعداد/حجم کارتن مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-063",
+      "name": "شربت گلاب زعفران",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "needs_review",
+      "review_note": "۳ عدد ثبت شده؛ حجم هر عدد مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-064",
+      "name": "عرق نسترن",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "needs_review",
+      "review_note": "حجم ظرف در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-065",
+      "name": "کمپوت آناناس",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "تعداد/وزن قوطی در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-066",
+      "name": "آبمیوه آناناس سن‌ایچ",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "ml",
+      "review_status": "needs_review",
+      "review_note": "حجم بسته در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-067",
+      "name": "پنه بزرگ مانا",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "کارتن ۲۰ عددی ثبت شده؛ وزن هر بسته مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-068",
+      "name": "نان برگر سحر",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "در سابقه هم بسته ۳تایی و هم کارتن ۱۲ بسته دوتایی آمده؛ هر دو به عنوان واحد خرید موقت ثبت شده‌اند.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "بسته ۳ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 3,
+          "review_status": "needs_review",
+          "note": "در یکی از سوابق صراحتاً بسته ۳تایی آمده."
+        },
+        {
+          "name": "بسته ۲ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 2,
+          "review_status": "needs_review",
+          "note": "در یکی از سوابق کارتن ۱۲ بسته دوتایی آمده."
+        },
+        {
+          "name": "کارتن ۱۲ بسته دوتایی",
+          "conversion_mode": "fixed",
+          "base_quantity": 24,
+          "review_status": "needs_review",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-069",
+      "name": "نان برگر تک‌نان",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "برند طبق توضیح مالک؛ تعداد داخل بسته هنوز قطعی نیست.",
+      "source_note": "تأیید مالک / نیازمند بازبینی",
+      "purchase_units": [
+        {
+          "name": "بسته",
+          "conversion_mode": "fixed",
+          "base_quantity": null,
+          "review_status": "needs_review",
+          "note": "تعداد داخل بسته هنوز قطعی نیست."
+        }
+      ]
+    },
+    {
+      "code": "INV-070",
+      "name": "نان تست سحر",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "خرید ۲ بسته ثبت شده؛ تعداد برش/عدد داخل بسته مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-071",
+      "name": "نان تست تک‌نان",
+      "category": "ingredient",
+      "default_department": "kitchen",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "۴ بسته در سابقه؛ تعداد داخل هر بسته مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-072",
+      "name": "آب گازدار لیمویی کاله",
+      "category": "ready_drink",
+      "default_department": "bar",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "شل ۱۵ عددی در سابقه.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": [
+        {
+          "name": "شل ۱۵ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 15,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-073",
+      "name": "آب معدنی کوچک",
+      "category": "ready_drink",
+      "default_department": "shared",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "تعداد بسته موقتاً ۱۲ ثبت می‌شود؛ مالک بین ۱۲ و ۱۵ مطمئن نیست.",
+      "source_note": "messages (1).html + توضیح مالک",
+      "purchase_units": [
+        {
+          "name": "بسته ۱۲ عددی (موقت)",
+          "conversion_mode": "fixed",
+          "base_quantity": 12,
+          "review_status": "needs_review",
+          "note": "مالک بین ۱۲ و ۱۵ مطمئن نیست؛ فعلاً ۱۲ برای بازبینی وارد شده."
+        }
+      ]
+    },
+    {
+      "code": "INV-074",
+      "name": "پپسی",
+      "category": "ready_drink",
+      "default_department": "bar",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "شل ۲۴ عددی؛ تأیید مالک.",
+      "source_note": "messages (1).html + تأیید مالک",
+      "purchase_units": [
+        {
+          "name": "شل ۲۴ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 24,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-075",
+      "name": "شانی",
+      "category": "ready_drink",
+      "default_department": "bar",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "شل ۲۴ عددی؛ تأیید مالک.",
+      "source_note": "messages (1).html + تأیید مالک",
+      "purchase_units": [
+        {
+          "name": "شل ۲۴ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 24,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-076",
+      "name": "اسپرایت قوطی",
+      "category": "ready_drink",
+      "default_department": "bar",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "خرید ۴۸ عددی در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "عدد",
+          "conversion_mode": "fixed",
+          "base_quantity": 1,
+          "review_status": "ready",
+          "note": ""
+        },
+        {
+          "name": "بسته / خرید ۴۸ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 48,
+          "review_status": "ready",
+          "note": "در سابقه خرید ۴۸ عدد ثبت شده."
+        }
+      ]
+    },
+    {
+      "code": "INV-077",
+      "name": "دو قنبرزاده (عنوان نیازمند تأیید)",
+      "category": "ready_drink",
+      "default_department": "shared",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "عبارت منبع «دو قنبر زاده ۲ عدد» است؛ نام محصول باید توسط مالک اصلاح شود.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-078",
+      "name": "جک (عنوان نیازمند تأیید)",
+      "category": "ready_drink",
+      "default_department": "bar",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "در خرید عمده «آب معدنی و پپسی و جک» آمده؛ نوع دقیق محصول مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-079",
+      "name": "چیزکیک ماتیلدا",
+      "category": "ready_food",
+      "default_department": "shared",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "بارها به صورت تعداد ثبت شده.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "عدد",
+          "conversion_mode": "fixed",
+          "base_quantity": 1,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-080",
+      "name": "تیرامیسو",
+      "category": "ready_food",
+      "default_department": "shared",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "به صورت تعداد ثبت شده.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "عدد",
+          "conversion_mode": "fixed",
+          "base_quantity": 1,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-081",
+      "name": "کیک (نوع نامشخص)",
+      "category": "ready_food",
+      "default_department": "shared",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "در منبع «کیک» با مبلغ آمده؛ نوع/تعداد مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-082",
+      "name": "لیوان شیک",
+      "category": "packaging",
+      "default_department": "bar",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "خرید ۳۰۰ عددی در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "بسته ۳۰۰ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 300,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-083",
+      "name": "نی شیک",
+      "category": "packaging",
+      "default_department": "bar",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "تعداد بسته در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-084",
+      "name": "زیپ‌کیپ",
+      "category": "packaging",
+      "default_department": "kitchen",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "تعداد/سایز بسته در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-085",
+      "name": "کیسه پلاستیکی",
+      "category": "packaging",
+      "default_department": "shared",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "تعداد بسته در منبع مشخص نیست.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-086",
+      "name": "دستکش لاتکس لارج",
+      "category": "consumable",
+      "default_department": "shared",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "بسته ۵۰ عددی در سابقه؛ یک خرید قدیمی لاتکس بدون تعداد هم وجود دارد.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "بسته ۵۰ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 50,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-087",
+      "name": "دستکش مشکی",
+      "category": "consumable",
+      "default_department": "shared",
+      "base_unit": "count",
+      "review_status": "ready",
+      "review_note": "بسته ۱۰۰ عددی در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": [
+        {
+          "name": "بسته ۱۰۰ عددی",
+          "conversion_mode": "fixed",
+          "base_quantity": 100,
+          "review_status": "ready",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "code": "INV-088",
+      "name": "عود یاسمین",
+      "category": "consumable",
+      "default_department": "shared",
+      "base_unit": "count",
+      "review_status": "needs_review",
+      "review_note": "کالای مصرفی محیطی؛ یک خرید در سابقه.",
+      "source_note": "messages (1).html",
+      "purchase_units": []
+    },
+    {
+      "code": "INV-089",
+      "name": "باریستا (عنوان نیازمند تأیید)",
+      "category": "ingredient",
+      "default_department": "bar",
+      "base_unit": "g",
+      "review_status": "needs_review",
+      "review_note": "در منبع «۱ ظرف باریستا» آمده؛ محصول دقیق و واحد پایه نیازمند اصلاح.",
+      "source_note": "WhatsApp Chat...txt",
+      "purchase_units": []
+    }
+  ]
+}

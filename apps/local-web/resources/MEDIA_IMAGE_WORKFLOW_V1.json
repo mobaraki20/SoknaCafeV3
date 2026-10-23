@@ -1,0 +1,37 @@
+{
+  "contract": "sokna-media-image-workflow-v1",
+  "status": "binding-source-implemented",
+  "upload": {
+    "accepted": ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    "max_bytes": 8388608,
+    "recommended_short_side_px": 1200,
+    "soft_warning_below_px": 1200,
+    "strong_warning_below_px": 800,
+    "original_preserved": true,
+    "inline_from_picker": true
+  },
+  "delivery": {
+    "guest_card_max_width_px": 960,
+    "prefer_webp_when_encoder_available": true,
+    "focal_square_max_px": 960,
+    "animated_gif_never_silently_flattened": true
+  },
+  "editing": {
+    "non_destructive": true,
+    "browser_canvas_primary": true,
+    "corrected_copy_max_side_px": 2400,
+    "operations": ["rotate_left", "rotate_right", "crop_square_from_focal"],
+    "focal_point_is_metadata_not_master_mutation": true,
+    "gif_transform_disabled_to_preserve_animation": true
+  },
+  "accessibility": {
+    "alt_text_supported": true,
+    "decorative_image_alt_may_be_empty": true
+  },
+  "anti_regression": [
+    "do not require leaving item picker to upload media",
+    "do not overwrite original file during crop or rotate",
+    "do not silently flatten animated GIF",
+    "do not hard block lower resolution image when use case may still be valid"
+  ]
+}

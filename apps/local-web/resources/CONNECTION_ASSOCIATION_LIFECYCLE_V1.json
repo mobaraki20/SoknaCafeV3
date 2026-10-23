@@ -1,0 +1,40 @@
+{
+  "format": "sokna-connection-association-lifecycle-v1",
+  "schema_version": 1,
+  "owner": "local-web",
+  "windows_services_version_boundary": "1.1.12-unchanged",
+  "principles": {
+    "pairing_ticket_is_not_live_connection": true,
+    "live_runtime_uses_runtime_health_evidence": true,
+    "live_print_uses_fresh_agent_heartbeat": true,
+    "print_agent_id_is_local_stable_association": true,
+    "reconnect_existing_agent_uses_token_rotation": true,
+    "adding_additional_device_requires_explicit_intent": true,
+    "retirement_is_audited_not_deleted": true,
+    "retired_print_agent_token_is_rejected": true,
+    "pairing_history_keeps_no_bundle_secret": true,
+    "runtime_unpair_is_not_claimed_by_local_only_retirement": true
+  },
+  "retirement": {
+    "blocks_on_print_states": ["reserved", "claimed", "started", "unknown", "recovery_hold"],
+    "primary_with_valid_fallback": "promote_fallback",
+    "primary_without_valid_fallback": "disable_destination_and_clear_route",
+    "fallback_only_reference": "clear_fallback",
+    "ticket_states": {
+      "issued": "canceled",
+      "exchanged": "canceled",
+      "confirmed": "retired"
+    }
+  },
+  "ui": {
+    "normal_existing_device_action": "reconnect_token_rotation",
+    "new_device_action": "advanced_explicit_add_device",
+    "stale_active_agent_action": "retire_old_connection",
+    "retired_agent_visibility": "history",
+    "overall_status_source": "runtime_health_plus_print_heartbeat"
+  },
+  "deferred_cross_component": {
+    "per_device_runtime_credential_revocation": "requires_windows_contract_change",
+    "windows_manager_unpair": "requires_windows_contract_change"
+  }
+}

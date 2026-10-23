@@ -1,0 +1,22 @@
+{
+  "format": "sokna-h341-p2-safe-origin-rebind-v1",
+  "date": "2026-10-15",
+  "status": "engineering-source-candidate",
+  "version": "3.0.0-g6.2-workspace.231i-safe-origin-rebind",
+  "workflow": [
+    "signed current probe",
+    "signed target probe with shared-secret proof",
+    "same public_instance_id fence",
+    "stage Local config",
+    "prepare+commit Public config",
+    "verify target binding and health",
+    "commit Local config",
+    "finalize Public or leave recoverable backup"
+  ],
+  "failure_semantics": [
+    "before public commit: no active binding mutation",
+    "after public commit before local commit: automatic Public rollback attempted",
+    "rollback refuses config drift",
+    "after local commit: finalize failure is reported as pending, not destructive rollback"
+  ]
+}

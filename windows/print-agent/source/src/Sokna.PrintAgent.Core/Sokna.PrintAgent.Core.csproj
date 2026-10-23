@@ -4,4 +4,5 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../../../../shared/IranPresentation.cs" Link="Shared/IranPresentation.cs" /></ItemGroup>
 </Project>

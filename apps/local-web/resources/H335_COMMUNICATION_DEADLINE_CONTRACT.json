@@ -1,0 +1,1 @@
+{"checkpoint":"H335_COMMUNICATION_A16_A13_20261014","finding":"A16","status":"ENGINEERING_SOURCE_QUALIFIED_REAL_NETWORK_UAT_PENDING","change":"legacy realtime drain receives the same sync deadline; realtime-only compatibility path derives/passes one bounded deadline"}

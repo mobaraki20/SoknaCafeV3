@@ -1,0 +1,34 @@
+{
+  "version": "H208",
+  "policy": {
+    "unknown_conversion_non_blocking": true,
+    "fixed_conversion_only_when_mathematically_certain": true,
+    "missing_cost_non_blocking_but_degrades_cost_coverage": true,
+    "weighted_average_cost_owner": "InventoryService::recordMovementTx"
+  },
+  "seeded_units": {
+    "fixed_kg_item_codes": [
+      "INV-102",
+      "INV-103",
+      "INV-104",
+      "INV-105",
+      "INV-106",
+      "INV-107",
+      "INV-108"
+    ],
+    "fixed_count_item_codes": [
+      "INV-101",
+      "INV-110",
+      "INV-111",
+      "INV-114"
+    ],
+    "actual_quantity_item_codes": [
+      "INV-109",
+      "INV-112",
+      "INV-113",
+      "INV-115",
+      "INV-116",
+      "INV-117"
+    ]
+  }
+}
