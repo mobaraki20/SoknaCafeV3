@@ -41,7 +41,7 @@ $harness=Join-Path $build 'harness/Sokna.Maintenance.U01Harness.exe';$engine=Joi
 $package=Join-Path $env:RUNNER_TEMP 'u01-local/SOKNA-Local-231bf-U01-Panel-Update.zip'
 $target=Join-Path $env:RUNNER_TEMP 'u01-local/target.json'
 $baseline=Join-Path $repo 'release/local-u01/m06-baseline.json'
-$roots=@('C:\SoknaU01-CI','C:\Sokna U01 CI With Spaces','D:\SoknaU01-CI','D:\سامانه کافه آزمون U01')
+$roots=@('D:\سامانه کافه آزمون U01','C:\SoknaU01-CI','C:\Sokna U01 CI With Spaces','D:\SoknaU01-CI')
 $faults=@('none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')
 $results=@()
 try {
@@ -62,6 +62,10 @@ try {
       Copy-Item (Join-Path $mdb 'bin') (Join-Path $infra 'MariaDB/bin') -Recurse
       Copy-Item $apacheSource (Join-Path $infra 'Apache') -Recurse
       $localPhp=Join-Path $infra 'PHP/php.exe'
+      Run $localPhp @('--ini')
+      Run $localPhp @('-r','echo json_encode(["ini"=>php_ini_loaded_file(),"scan"=>php_ini_scanned_files(),"ext"=>ini_get("extension_dir"),"drivers"=>PDO::getAvailableDrivers()],JSON_UNESCAPED_UNICODE),PHP_EOL;')
+      Write-Host 'ORIGINAL_ASCII_INI_PROBE'
+      Run $localPhp @('-c',(Join-Path $phpRoot 'php.ini'),'-r','echo json_encode(["ini"=>php_ini_loaded_file(),"ext"=>ini_get("extension_dir"),"drivers"=>PDO::getAvailableDrivers()],JSON_UNESCAPED_UNICODE),PHP_EOL;')
       Run $localPhp @((Join-Path $repo 'windows/maintenance/tests/u01-fixture.php'),$root,$old,"$dbPort",'init')
       $configHash=(Get-FileHash (Join-Path $root 'config.php')).Hash;$lockHash=(Get-FileHash (Join-Path $root 'install.lock')).Hash
       New-Item -ItemType Junction -Path (Join-Path $root 'Web') -Target $old|Out-Null
