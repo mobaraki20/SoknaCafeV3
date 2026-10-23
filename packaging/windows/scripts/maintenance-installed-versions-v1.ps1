@@ -80,7 +80,7 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
   $out=[IO.FileStream]::new($temp,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None,4096,[IO.FileOptions]::WriteThrough)
   try{$out.Write($bytes,0,$bytes.Length);$out.Flush($true)}finally{$out.Dispose()}
   # Atomic replace on the existing volume; the original also remains in evidence.
-  [IO.File]::Replace($temp,$identityPath,$null)
+  [IO.File]::Replace($temp,$identityPath,(Join-Path $EvidenceRoot 'installed-release-identity.atomic-before.json'))
   if([IO.File]::ReadAllText($identityPath)-cne$after){throw 'COMPONENT_IDENTITY_READBACK_UNPROVEN'}
   $receipt=[ordered]@{format='sokna-maintenance-installed-version-sync-v1';at_utc=[DateTime]::UtcNow.ToString('o');previous_versions=$prior;observed_versions=$versions;observed_binary_sha256=$hashes;local_identity_changed=$false;public_identity_changed=$false;services_changed=$false;database_mutation_performed=$false}
   [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'component-version-sync.json'),($receipt|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
