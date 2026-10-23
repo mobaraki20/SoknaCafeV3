@@ -102,7 +102,7 @@ catch (Exception ex)
 }
 var adoptionQueue = new LocalSlotAdoptionQueue(paths);
 var codeOnlyActivationWorker = new LocalCodeOnlyActivationWorker(
-    codeOnlyExecution, operations);
+    codeOnlyExecution, operations, inactiveSlotCoordinator);
 journal.Append("supervisor.starting", state.InstanceId, state.InstallGeneration, new Dictionary<string, object?>
 {
     ["pid"] = Environment.ProcessId,
@@ -676,6 +676,13 @@ app.MapPost("/v1/local-updates/prepare-inactive-slot", async context =>
             new { result.Receipt, result.Created, result.Reconciled,
                 activation_allowed = false, panel_update_ready = false,
                 database_mutation_performed = false, public_mutation_performed = false });
+    }
+    catch (LocalPreparationException ex)
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "preparation_failed", ex.Message, true,
+            new { preparation_step = ex.Step, reason_code = ex.ReasonCode,
+                activation_allowed = false, panel_update_ready = false });
     }
     catch (JsonException)
     {

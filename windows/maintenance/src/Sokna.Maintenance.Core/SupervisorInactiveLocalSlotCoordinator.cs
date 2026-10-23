@@ -59,7 +59,31 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
     }
 
     public InactiveLocalSlotOutcome Prepare(string stageOperationId, string operatorId,
-        string idempotencyKey, string privateCandidateIdempotencyKey)
+        string idempotencyKey, string privateCandidateIdempotencyKey,
+        string? ownActivationOperationId = null)
+    {
+        var step = "CANDIDATE";
+        try { return PrepareCore(stageOperationId, operatorId, idempotencyKey,
+            privateCandidateIdempotencyKey, ownActivationOperationId, value => step = value); }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or
+            UnauthorizedAccessException or InvalidOperationException or
+            System.ComponentModel.Win32Exception or TimeoutException or
+            System.Text.Json.JsonException or CryptographicException)
+        {
+            var error = new LocalPreparationException(step, ex);
+            _journal.Append("update.local_inactive_slot.failed", _state.InstanceId,
+                _state.InstallGeneration, new Dictionary<string, object?> {
+                    ["stage_operation_id"] = stageOperationId,
+                    ["preparation_step"] = error.Step, ["reason_code"] = error.ReasonCode,
+                    ["activation_performed"] = false, ["database_mutation_performed"] = false
+                });
+            throw error;
+        }
+    }
+
+    private InactiveLocalSlotOutcome PrepareCore(string stageOperationId, string operatorId,
+        string idempotencyKey, string privateCandidateIdempotencyKey,
+        string? ownActivationOperationId, Action<string> step)
     {
         if (!MaintenanceOperationStore.IsValidIdempotencyKey(idempotencyKey) ||
             !MaintenanceOperationStore.IsValidIdempotencyKey(privateCandidateIdempotencyKey))
@@ -67,13 +91,16 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
         // Reattest the signed Stage and the private extraction independently.
         // This owner holds a different OS lease, so complete the private C1
         // inspection before acquiring our cross-process machine-wide lease.
-        var candidate = _private.Prepare(stageOperationId, operatorId, privateCandidateIdempotencyKey);
+        var candidate = _private.Prepare(stageOperationId, operatorId, privateCandidateIdempotencyKey,
+            ownActivationOperationId);
         var sourceReceipt = candidate.Receipt;
+        step("HOST_BASELINE");
         lock (LocalUpdateOperationGate.Sync)
         {
             using var lease = MachineMutationLease.Acquire(_paths, "supervisor-inactive-slot");
-            if (_operations.ListBlocking().Count != 0)
-                throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
+            var stage = _operations.Get(stageOperationId)
+                ?? throw new InvalidDataException("INACTIVE_SLOT_STAGE_MISSING");
+            LocalUpdateOperationGate.RequireStageInspection(_operations, stage, ownActivationOperationId);
             if (sourceReceipt.StageOperationId != stageOperationId ||
                 sourceReceipt.OperatorId != operatorId ||
                 sourceReceipt.PromotionQualified || sourceReceipt.ActivationPerformed ||
@@ -112,6 +139,7 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
                     identity.Local.ManagedTreeSha256);
             }
             var persistent = Path.Combine(root, "LocalWeb", "persistent");
+            step("BINDING");
             RoutineLocalBinding.RequireCurrent(layout.WebRoot, root, layout.Build);
             RoutineLocalBinding.RequireTarget(persistent, previous, root, layout.Build);
             // Opens lifecycle in read-only mode and rejects pending repair,
@@ -119,6 +147,7 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
             var lifecycle = RoutineLocalLifecycle.Open(root,
                 _paths.LocalSlotStateRoot, layout.Build);
             lifecycle.RequireIdle();
+            step("EVIDENCE");
 
             var installedSha = Hash(_paths.InstalledReleaseIdentityPath);
             if (sourceReceipt.InstalledIdentitySha256 != installedSha)
@@ -172,14 +201,18 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
                     ["active_pointer_change"] = false,
                     ["db_mutation"] = false, ["public_mutation"] = false
                 });
+            step("COPY");
             ProductionInactiveLocalSlotWriter.CopyToNewSibling(
                 sourceReceipt.CandidateRoot, incomplete, root, layout.WebRoot,
                 layout.Build, sourceReceipt.TargetVersion,
                 sourceReceipt.TargetManagedFiles, sourceReceipt.TargetManagedTreeSha256);
             // Read-only PHP/installed configuration status and migration catalog
             // checks are MANDATORY before committing a new inactive sibling.
+            step("DATABASE_PLAN");
             RoutineLocalDatabase.Plan(layout.WebRoot, incomplete);
+            step("TARGET_BOOT");
             RoutineLocalLifecycle.RequireTargetSetupBoot(root, incomplete);
+            step("FINAL_ATTESTATION");
             LocalManagedTreeAttestation.RequireExact(incomplete,
                 sourceReceipt.TargetManagedFiles, sourceReceipt.TargetManagedTreeSha256);
             lifecycle.RequireIdle();

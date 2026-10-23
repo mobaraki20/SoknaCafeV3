@@ -12,9 +12,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\Sokna.ico</ApplicationIcon>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-    <Version>1.1.23</Version>
-    <FileVersion>1.1.23.0</FileVersion>
-    <AssemblyVersion>1.1.23.0</AssemblyVersion>
+    <Version>1.1.24</Version>
+    <FileVersion>1.1.24.0</FileVersion>
+    <AssemblyVersion>1.1.24.0</AssemblyVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

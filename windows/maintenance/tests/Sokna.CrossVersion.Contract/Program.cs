@@ -18,6 +18,8 @@ try {
  File.WriteAllText(Path.Combine(baseDir,"install.lock"),JsonSerializer.Serialize(new {format="sokna-install-lock-v3",installation_id=identity}));
  var binding=JsonSerializer.Serialize(new {format="sokna-local-installation-binding-v1",installation_id=identity,web_version=oldBuild,bound_at="2026-10-18T00:00:00Z",source="real-home-fixture"});
  File.WriteAllText(Path.Combine(persistent,".sokna-installation.json"),binding);
+ Directory.CreateDirectory(Path.Combine(baseDir,"Web"));
+ File.WriteAllText(Path.Combine(baseDir,"Web",".sokna-installation.json"),binding);
  File.WriteAllText(Path.Combine(target,".sokna-installation.json"),binding);
  var original=SHA256.HashData(File.ReadAllBytes(Path.Combine(persistent,".sokna-installation.json")));
  RoutineLocalBinding.PrepareTarget(persistent,target,baseDir,oldBuild,newBuild);
@@ -25,6 +27,14 @@ try {
  Check(SHA256.HashData(File.ReadAllBytes(Path.Combine(persistent,".sokna-installation.json"))).SequenceEqual(original),"persistent binding unchanged");
  var dest=JsonNode.Parse(File.ReadAllText(Path.Combine(target,".sokna-installation.json")))!.AsObject();
  Check((string?)dest["web_version"]==newBuild && (string?)dest["installation_id"]==identity,"target binding identity/version");
+ // A second upgrade must work with the original persistent snapshot intact.
+ File.Copy(Path.Combine(target,".sokna-installation.json"),Path.Combine(baseDir,"Web",".sokna-installation.json"),true);
+ const string thirdBuild="3.0.0-g6.2-workspace.231-next";
+ RoutineLocalBinding.PrepareTarget(persistent,target,baseDir,newBuild,thirdBuild);
+ RoutineLocalBinding.RequireTarget(persistent,target,baseDir,thirdBuild);
+ Check(SHA256.HashData(File.ReadAllBytes(Path.Combine(persistent,".sokna-installation.json"))).SequenceEqual(original),"A to B to C retains original persistent identity");
+ ExpectBlocked(()=>RoutineLocalBinding.PrepareTarget(persistent,target,baseDir,oldBuild,thirdBuild),"stale active version");
+ File.WriteAllText(Path.Combine(baseDir,"Web",".sokna-installation.json"),binding);
  File.WriteAllText(Path.Combine(persistent,".sokna-installation.json"),binding.Replace(identity,"foreign"));
  ExpectBlocked(()=>RoutineLocalBinding.PrepareTarget(persistent,target,baseDir,oldBuild,newBuild),"foreign identity");
  File.WriteAllText(Path.Combine(persistent,".sokna-installation.json"),binding);
@@ -42,7 +52,7 @@ try {
  var ctor=typ.GetConstructor(BindingFlags.NonPublic|BindingFlags.Instance,null,new[]{typeof(string),typeof(string),typeof(string),typeof(string),typeof(MaintenancePaths),typeof(string),typeof(string)},null)!;
  var obj=ctor.Invoke(new object?[]{statePath,managedPath,oldBuild,Path.Combine(evidence,"routine-local-lifecycle-before.json"),null,null,null});
  void Invoke(string method,params object[] args) {try {typ.GetMethod(method,BindingFlags.Public|BindingFlags.Instance)!.Invoke(obj,args);} catch(TargetInvocationException e) {throw e.InnerException!;} }
- Invoke("SaveRollbackEvidence"); Invoke("Commit",newBuild,target,2);
+ Invoke("SaveRollbackEvidence"); Invoke("Commit",newBuild,target,2,null!);
  Check((string?)JsonNode.Parse(File.ReadAllText(statePath))!["active_version"]==newBuild,"Local lifecycle committed");
  Invoke("Restore");
  Check(SHA256.HashData(File.ReadAllBytes(statePath)).SequenceEqual(stateHash) && SHA256.HashData(File.ReadAllBytes(managedPath)).SequenceEqual(managedHash),"Local lifecycle rollback byte exact");
