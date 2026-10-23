@@ -39,7 +39,7 @@ func TestDatabaseForwardMariaDB(t *testing.T) {
 foreach(['Config','Database','MigrationExecutionException','Migrations'] as $c)require_once $web.'/src/Core/'.$c.'.php';
 $s=new PDO('mysql:host=127.0.0.1;port='.$port,'root','',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 $s->exec('DROP DATABASE IF EXISTS sokna_u01_home_ci;CREATE DATABASE sokna_u01_home_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-$cfg=['app'=>['timezone'=>'Asia/Tehran'],'db'=>['host'=>'127.0.0.1','port'=>$port,'name'=>'sokna_u01_home_ci','charset'=>'utf8mb4','user'=>'root','pass'=>'']];
+$cfg=['app'=>['timezone'=>'Asia/Tehran','data_dir'=>$root.'/data'],'db'=>['host'=>'127.0.0.1','port'=>$port,'name'=>'sokna_u01_home_ci','charset'=>'utf8mb4','user'=>'root','pass'=>'']];
 file_put_contents($root.'/config.php',"<?php return ".var_export($cfg,true).';');
 $pdo=\Sokna\Local\Core\Database::connect(\Sokna\Local\Core\Config::fromArray($cfg));
 // Reconstruct an EXISTING seeded installation, not a new clean install:
@@ -75,6 +75,35 @@ echo 'INITIALIZED';`
 	}
 	if proof.Count != targetMigrationCount || proof.Head != "0074_iran_time_notification_boundaries" {
 		t.Fatalf("bad proof %+v", proof)
+	}
+	// Exercise the REAL first-bind writer, not a separately seeded identity.
+	b.lifecycleRoot = filepath.Join(b.packageRoot, "data", "lifecycle", "local")
+	if err = os.MkdirAll(b.lifecycleRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	b.lifecycleStatePath = filepath.Join(b.lifecycleRoot, "state.json")
+	b.lifecycleManagedPath = filepath.Join(b.lifecycleRoot, "managed-files.json")
+	raw, _ := json.Marshal(map[string]any{"format": "sokna-local-update-state-v1", "schema_version": 1, "active_version": baselineVersion, "staged": nil, "activation_journal": nil, "recovery_mode": nil})
+	if err = os.WriteFile(b.lifecycleStatePath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.reconcileLocalLifecycle(); err != nil {
+		t.Fatal(err)
+	}
+	b.dbBoundary = true
+	b.ev.MigrationsApplied = proof.Count
+	b.maintenanceSupervisorVersion = "0.3.13"
+	b.maintenanceEngineVersion = "0.3.13"
+	if err = os.MkdirAll(filepath.Dir(b.installedIdentityPath()), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.attestAndRegisterU01Identity(); err != nil {
+		t.Fatal(err)
+	}
+	if export := os.Getenv("SOKNA_HOME_EXPORT_IDENTITY"); export != "" {
+		if err = copyFile(b.installedIdentityPath(), export); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// A repeated one-off must reject the changed baseline before reapplying.
 	if _, err = b.phpMigrationTransitionPreflight(b.targetSlot); err == nil {

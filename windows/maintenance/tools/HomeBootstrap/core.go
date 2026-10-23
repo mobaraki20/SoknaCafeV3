@@ -26,10 +26,10 @@ const (
 	baselineVersion      = "3.0.0-g6.2-workspace.231au-maintenance-descriptor-panel-bridge-home-uat"
 	baselineFiles        = 510
 	baselineTree         = "aecfe030af4465fa9544041bf17cb58210f6f7f3592fb55c586de30264e01af8"
-	targetVersion        = "3.0.0-g6.2-workspace.231bf-u01-iran-time-updater-rc1"
+	targetVersion        = "3.0.0-g6.2-workspace.231bk-durable-updater-rc1"
 	targetFiles          = 522
-	targetTree = "80fd968a9e4f1642c3f1519f66d7ab6a2fb1bb64f1a8c0a26444d0d8da1712be"
-	targetZipSHA = "bc5bab33790374db9ed2dfe63363be58649b6529a235ad5d8d8457592e080118"
+	targetTree           = "2b06467db7607606fde101ce419dfd35acae24868192ce33d848ba4e9cb18ebd"
+	targetZipSHA         = "9c501e0652f9c0681cdaa7c67840061f56ac24e8b11f83bc1c0fe3005d8d8f80"
 	migrationCount       = 71
 	targetMigrationCount = 75
 	apacheService        = "SoknaApache"
@@ -107,35 +107,39 @@ type evidence struct {
 }
 
 type bridge struct {
-	ev                      evidence
-	evidenceDir             string
-	logPath                 string
-	desktopLog              string
-	packageRoot             string
-	stableWeb               string
-	targetSlot              string
-	stageSlot               string
-	backupPath              string
-	persistentRoot          string
-	phpPath                 string
-	updateEngine            string
-	dataRoot                string
-	lifecycleRoot           string
-	lifecycleStatePath      string
-	lifecycleManagedPath    string
-	lifecycleStateBackup    string
-	lifecycleManagedBackup  string
-	lifecycleManagedExisted bool
-	lifecycleMutated        bool
-	baseline                fileManifest
-	target                  fileManifest
-	migrations              migrationManifest
-	targetZip               []byte
-	oldServicePID           int
-	switched                bool
-	dbBoundary              bool
-	readOnly                bool
-	transaction             *transactionEvidence
+	ev                           evidence
+	evidenceDir                  string
+	logPath                      string
+	desktopLog                   string
+	packageRoot                  string
+	stableWeb                    string
+	targetSlot                   string
+	stageSlot                    string
+	backupPath                   string
+	persistentRoot               string
+	phpPath                      string
+	updateEngine                 string
+	dataRoot                     string
+	lifecycleRoot                string
+	lifecycleStatePath           string
+	lifecycleManagedPath         string
+	lifecycleStateBackup         string
+	lifecycleManagedBackup       string
+	lifecycleManagedExisted      bool
+	lifecycleMutated             bool
+	baseline                     fileManifest
+	target                       fileManifest
+	migrations                   migrationManifest
+	targetZip                    []byte
+	oldServicePID                int
+	switched                     bool
+	dbBoundary                   bool
+	readOnly                     bool
+	transaction                  *transactionEvidence
+	legacyPlan                   *legacyReconciliationPlan
+	baselineAttested             bool
+	maintenanceSupervisorVersion string
+	maintenanceEngineVersion     string
 }
 
 func normalizeRel(p string) (string, error) {
@@ -420,13 +424,18 @@ func (b *bridge) writeEvidence() {
 
 func runHidden(name string, args ...string) (string, error) {
 	phpWorkingDirectory := ""
-    if strings.EqualFold(filepath.Base(name), "php.exe") {
-        ini := filepath.Join(filepath.Dir(name), "php.ini")
-        if st, err := os.Stat(ini); err == nil && st.Mode().IsRegular() { args = append([]string{"-c", "php.ini"}, args...); phpWorkingDirectory = filepath.Dir(name) }
-    }
-    cmd := exec.Command(name, args...)
-    if phpWorkingDirectory != "" { cmd.Dir = phpWorkingDirectory }
-    hideCommand(cmd)
+	if strings.EqualFold(filepath.Base(name), "php.exe") {
+		ini := filepath.Join(filepath.Dir(name), "php.ini")
+		if st, err := os.Stat(ini); err == nil && st.Mode().IsRegular() {
+			args = append([]string{"-c", "php.ini"}, args...)
+			phpWorkingDirectory = filepath.Dir(name)
+		}
+	}
+	cmd := exec.Command(name, args...)
+	if phpWorkingDirectory != "" {
+		cmd.Dir = phpWorkingDirectory
+	}
+	hideCommand(cmd)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -937,7 +946,7 @@ func validateEngineHelp(out string) (string, error) {
 	}
 	rest := strings.TrimPrefix(header, prefix)
 	version, _, ok := strings.Cut(rest, " ")
-	if !ok || version != "0.3.12" {
+	if !ok || version != "0.3.13" {
 		return "", fmt.Errorf("unsupported Maintenance Update Engine version %q", rest)
 	}
 	if !strings.Contains(out, "local-slot-inspect --expected-build <id>") ||
@@ -956,6 +965,7 @@ func (b *bridge) verifyUpdateEngineVersion() error {
 	if err != nil {
 		return fmt.Errorf("Maintenance Update Engine contract mismatch: %w", err)
 	}
+	b.maintenanceEngineVersion = version
 	b.log("Maintenance Update Engine read-only slot inspect contract verified: " + version)
 	return nil
 }

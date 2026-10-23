@@ -1,0 +1,40 @@
+name: Home AU historical reconciliation native Windows qualification
+on:
+  push:
+    branches: ['work/home-au-bk-reconcile-20261024']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-proof-and-ledger:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.12'
+          cache: false
+      - name: Prepare compile-only private payload placeholders
+        shell: pwsh
+        run: |
+          # The real Local source and full sealed AU→BK payload stay in Library.
+          # These placeholders only permit compiling the shared Go package for
+          # the tests below. They cannot create a runnable update EXE, and none
+          # of the selected tests invokes newBridge or claims payload/SQL UAT.
+          $p='windows/maintenance/tools/HomeBootstrap/payload'
+          '{}'|Set-Content "$p/target-manifest.json" -Encoding UTF8
+          '{}'|Set-Content "$p/migration-catalog.json" -Encoding UTF8
+          [IO.File]::WriteAllBytes((Join-Path $PWD "$p/local-m06-target.zip"),[byte[]]@(80,75,5,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0))
+      - name: Real NTFS identity and junction refusal, writer lease, actual historical chain and atomic ledger transition
+        shell: pwsh
+        working-directory: windows/maintenance/tools/HomeBootstrap
+        run: |
+          go test -json -count=1 -run '^(TestLegacy|TestObservedMaintenance|TestNative)' ./... | Tee-Object -FilePath "$env:RUNNER_TEMP/HOME-NATIVE-PROOF.jsonl"
+          if($LASTEXITCODE-ne0){throw 'Native Home reconciliation qualification failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: home-native-reconciliation-proof
+          path: ${{ runner.temp }}/HOME-NATIVE-PROOF.jsonl
+          if-no-files-found: error

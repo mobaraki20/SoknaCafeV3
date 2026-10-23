@@ -1,0 +1,56 @@
+{
+  "format": "sokna-local-slot-phase3-state-v1",
+  "schema_version": 1,
+  "phase": "RECOVERY_REQUIRED",
+  "expected_build": "3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory",
+  "package_root": "D:\\SOKNA",
+  "stable_web_root": "D:\\SOKNA\\Web",
+  "slot_root": "D:\\SOKNA\\LocalWeb\\releases",
+  "slot_a": "D:\\SOKNA\\LocalWeb\\releases\\231ai-b0e252b62b80-a",
+  "slot_b": "D:\\SOKNA\\LocalWeb\\releases\\231ai-b0e252b62b80-b",
+  "active_slot": "D:\\SOKNA\\LocalWeb\\releases\\231ai-b0e252b62b80-a",
+  "previous_slot": "D:\\SOKNA\\LocalWeb\\pre-slot\\physical-web-20261017T014239606Z",
+  "physical_web_backup": "D:\\SOKNA\\LocalWeb\\pre-slot\\physical-web-20261017T014239606Z",
+  "database_mutation_performed": false,
+  "public_mutation_performed": false,
+  "windows_reboot_required": false,
+  "recovery_required": true,
+  "updated_at_utc": "2026-10-17T01:43:55.6939685+00:00",
+  "events": [
+    {
+      "state": "DISCOVERED",
+      "at_utc": "2026-10-17T01:42:31.1997593+00:00",
+      "detail": null
+    },
+    {
+      "state": "BASELINE_VERIFIED",
+      "at_utc": "2026-10-17T01:42:31.2663665+00:00",
+      "detail": null
+    },
+    {
+      "state": "SLOTS_STAGED",
+      "at_utc": "2026-10-17T01:42:32.0825773+00:00",
+      "detail": null
+    },
+    {
+      "state": "SLOTS_VERIFIED",
+      "at_utc": "2026-10-17T01:42:39.6025092+00:00",
+      "detail": null
+    },
+    {
+      "state": "APACHE_STOPPED",
+      "at_utc": "2026-10-17T01:42:42.2139337+00:00",
+      "detail": "initial conversion"
+    },
+    {
+      "state": "POINTER_SWITCHED",
+      "at_utc": "2026-10-17T01:42:42.2846386+00:00",
+      "detail": "physical Web -\u003E slot A"
+    },
+    {
+      "state": "RECOVERY_REQUIRED",
+      "at_utc": "2026-10-17T01:43:55.6939669+00:00",
+      "detail": "Target Local HTTP health was not proven within the Phase 3 timeout."
+    }
+  ]
+}

@@ -96,11 +96,11 @@ func main() {
 	}
 	if b.ev.Phase == "LOCAL_RUNNING_PANEL_BLOCKED" {
 		b.log("Local healthy on U01 but signed panel readiness blocked; no DB recovery required")
-		showError("Local U01 بالا آمده و دیتابیس ۷۵/۷۵ است، اما اتصال امضاشده پنل Maintenance هنوز آماده نیست. نصب‌کننده را تکرار نکنید.\n" + b.evidenceDir)
+		showError("Local 231bk بالا آمده و دیتابیس ۷۵/۷۵ است، اما اتصال امضاشده پنل Maintenance هنوز آماده نیست. نصب‌کننده را تکرار نکنید.\n" + b.evidenceDir)
 		return
 	}
 	b.log("PASS: independent Local transition completed")
-	showSuccess("Local U01 و ۷۵ مهاجرت دیتابیس با موفقیت بررسی شدند.\n\nفقط Local و دیتابیس آن تغییر کرده‌اند؛ Windows Services و Public بدون تغییر هستند.\nآزمون نهایی ارتباط پنل Maintenance را در مرورگر اجرا کنید.\n\nشناسه بررسی: " + b.ev.AttemptID)
+	showSuccess("Local 231bk و ۷۵ مهاجرت دیتابیس با موفقیت بررسی شدند.\n\nفقط Local و دیتابیس آن تغییر کرده‌اند؛ Windows Services و Public بدون تغییر هستند.\nآزمون نهایی ارتباط پنل Maintenance را در مرورگر اجرا کنید.\n\nشناسه بررسی: " + b.ev.AttemptID)
 }
 
 func newBridge() (*bridge, error) {
@@ -199,13 +199,11 @@ func (b *bridge) run() error {
 		} else if !os.IsNotExist(er) {
 			return fmt.Errorf("previous transaction inspection unavailable: %w", er)
 		}
-		legacySuperseded, e := refusePendingSignedV4Updates()
+		plan, e := assessPendingSignedV4Updates(b.packageRoot)
 		if e != nil {
 			return e
 		}
-		if legacySuperseded {
-			b.addStep("historical committed legacy operation proven; V4 ledger untouched; exact current 231au checked")
-		}
+		b.legacyPlan = plan
 	}
 	oldSlot := filepath.Join(root, "Web.release.231au-"+baselineTree[:12])
 	b.backupPath = oldSlot
@@ -252,8 +250,9 @@ func (b *bridge) run() error {
 	b.ev.MigrationsApplied = applied
 	b.writeEvidence()
 	b.addStep("migration catalog exactly 71/71 on installed 231au")
+	b.baselineAttested = true
 	if b.readOnly {
-		if _, err = refusePendingSignedV4Updates(); err != nil {
+		if _, err = assessPendingSignedV4Updates(b.packageRoot); err != nil {
 			return fmt.Errorf("Maintenance operation ledger not idle: %w", err)
 		}
 		if err = b.preflightMariaDBBackupConfig(); err != nil {
@@ -262,7 +261,7 @@ func (b *bridge) run() error {
 		b.addStep("dry-run qualified: no staged Maintenance conflict and SQL backup client/config present")
 		return b.readOnlyTargetPreflight()
 	}
-	slot := filepath.Join(root, "Web.release.231bf-"+targetTree[:12])
+	slot := filepath.Join(root, "Web.release.231bk-"+targetTree[:12])
 	b.targetSlot = slot
 	suffix := b.ev.AttemptID[len(b.ev.AttemptID)-10:]
 	b.stageSlot = slot + ".staging-" + suffix
@@ -320,6 +319,9 @@ func (b *bridge) run() error {
 		return preMutationFailure(err)
 	}
 	if err = b.assertHomeStateUnchanged(); err != nil {
+		return preMutationFailure(err)
+	}
+	if err = b.reconcileVerifiedLegacy(); err != nil {
 		return preMutationFailure(err)
 	}
 	if err = b.checkpointTransaction("READY_TO_SWITCH"); err != nil {
@@ -384,7 +386,7 @@ func (b *bridge) run() error {
 	if err = waitHealth(targetVersion, 45*time.Second); err != nil {
 		return b.failAfterDbBoundary(err)
 	}
-	b.addStep("HTTP Local U01/php-ready healthy after DB forward migration")
+	b.addStep("HTTP Local 231bk/php-ready healthy after DB forward migration")
 	if err = b.verifyOverlayAt(b.targetSlot); err != nil {
 		return b.failAfterDbBoundary(err)
 	}

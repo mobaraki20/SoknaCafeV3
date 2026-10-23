@@ -42,7 +42,7 @@ func msgBox(title, text string, flags uintptr) int {
 	return int(r)
 }
 func confirmStart() bool {
-	return msgBox("SOKNA Home | U01 Panel Bootstrap", "آخرین نصب مستقل Local 231au به U01، با چهار مهاجرت پایگاه داده.\n\nقبل از تغییر، هش ۵۱۰ فایل و سلامت MariaDB چک می‌شود. ابتدا بکاپ SQL تهیه و بررسی می‌شود، سپس Apache متوقف می‌شود.\n\nبعد از شروع مهاجرت SQL، بازگشت خودکار کد قدیمی ایمن نیست. فقط زمانی اجرا کنید که فعالیت کافه متوقف است.\n\nادامه می‌دهید؟", 0x00000004|0x00000030) == 6
+	return msgBox("SOKNA Home | 231au to 231bk", "آخرین نصب مستقل Local 231au به 231bk، با چهار مهاجرت پایگاه داده.\n\nقبل از تغییر، هش ۵۱۰ فایل و سلامت MariaDB چک می‌شود. ابتدا بکاپ SQL تهیه و بررسی می‌شود، سپس Apache متوقف می‌شود.\n\nبعد از شروع مهاجرت SQL، بازگشت خودکار کد قدیمی ایمن نیست. فقط زمانی اجرا کنید که فعالیت کافه متوقف است.\n\nادامه می‌دهید؟", 0x00000004|0x00000030) == 6
 }
 func showSuccess(text string) { msgBox("سکنا | عملیات کامل شد", text, 0x00000040) }
 func showError(text string)   { msgBox("سکنا | عملیات انجام نشد", text, 0x00000010) }

@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const homeTargetReleaseID = "sokna-local-231bf-u01-iran-time-updater-20261023"
+const homeTargetReleaseID = "sokna-local-231bk-durable-updater-20261023"
 
 // A one-time authenticated operator-led bridge from a byte-verified physical
 // Home Local 231au and schema 71/71. No fabricated signature or trust keys.
@@ -93,7 +93,6 @@ func (b *bridge) attestAndRegisterU01Identity() error {
 	path := b.installedIdentityPath()
 	original, err := os.ReadFile(path)
 	var existing map[string]json.RawMessage
-	var authority any = nil
 	exists := err == nil
 	if exists {
 		if err = json.Unmarshal(original, &existing); err != nil {
@@ -111,7 +110,6 @@ func (b *bridge) attestAndRegisterU01Identity() error {
 		if !(version == baselineVersion || knownStale) {
 			return errors.New("MAINTENANCE_IDENTITY_CHANGED_FROM_PREFLIGHT")
 		}
-		authority = old["authority_epoch_policy"]
 		snapshot := filepath.Join(b.evidenceDir, "installed-release-identity.before.json")
 		if err = os.WriteFile(snapshot, original, 0600); err != nil {
 			return err
@@ -126,14 +124,17 @@ func (b *bridge) attestAndRegisterU01Identity() error {
 	} else {
 		return fmt.Errorf("MAINTENANCE_IDENTITY_READ_ERROR: %w", err)
 	}
-	next := map[string]any{"release_id": homeTargetReleaseID, "version": targetVersion, "managed_tree_sha256": targetTree, "schema_fingerprint": proof.Fingerprint, "migration_head": proof.Head, "authority_epoch_policy": authority}
+	next := map[string]any{"release_id": homeTargetReleaseID, "version": targetVersion, "managed_tree_sha256": targetTree, "schema_fingerprint": proof.Fingerprint, "migration_head": proof.Head, "authority_epoch_policy": "preserved"}
 	encoded, err := json.Marshal(next)
 	if err != nil {
 		return err
 	}
 	existing["local"] = encoded
-	existing["maintenance_supervisor_version"] = json.RawMessage(`"0.3.12"`)
-	existing["update_engine_version"] = json.RawMessage(`"0.3.12"`)
+	if b.maintenanceSupervisorVersion != "0.3.13" || b.maintenanceEngineVersion != "0.3.13" {
+		return errors.New("MAINTENANCE_OBSERVED_VERSIONS_UNPROVEN")
+	}
+	existing["maintenance_supervisor_version"], _ = json.Marshal(b.maintenanceSupervisorVersion)
+	existing["update_engine_version"], _ = json.Marshal(b.maintenanceEngineVersion)
 	body, err := json.MarshalIndent(existing, "", "  ")
 	if err != nil {
 		return err
@@ -164,7 +165,7 @@ func (b *bridge) attestAndRegisterU01Identity() error {
 	if err != nil || !bytes.Equal(rb, body) {
 		return errors.New("IDENTITY_BIND_READBACK_INVALID")
 	}
-	b.addStep("Maintenance local identity atomically registered from exact 231bf tree and 75/75 DB proof; no publisher key or machine-specific signing")
+	b.addStep("Maintenance local identity atomically registered from exact 231bk tree and 75/75 DB proof; no publisher key or machine-specific signing")
 	return nil
 }
 
