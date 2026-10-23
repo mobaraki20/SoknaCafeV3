@@ -143,3 +143,14 @@ When a Windows defect reveals a reusable lesson, update this document in the sam
 ## Iran time presentation boundary (2026-10-23)
 
 Use `windows/shared/IranPresentation.cs` for human dates, receipt dates and numeric UI. Never use `.LocalDateTime` / `.ToLocalTime()` for cafe display: the Windows timezone is not the business timezone. Keep DateTimeOffset UTC/explicit offsets in leases, signed APIs, journals and persistence. Legacy bare receipt timestamps are Tehran wall time. Test presentation under UTC and a foreign host timezone, including Iran midnight. Machine JSON numeric values remain invariant numbers. This is a source change, not real-host UAT.
+
+## U01 release qualification lessons (2026-10-23)
+
+- When the current Local/Public source lives in Library, import the entire authoritative snapshot before applying updater changes. Copying only files listed by the previous change report leaves older UI and default-content files in Git. Verify every unchanged authoritative file byte, including binary assets; a passing version label or migration catalog is insufficient.
+- A database-aware child timeout must fit both the coordinator budget and the Windows Job wrapper's validation bound. U01's 25-minute coordinator budget was rejected by the previous 10-minute guard after the child was already started; retain this case in the full native activation matrix.
+- Machine-owned recovery PHP is an embedded Windows resource. Keep the trusted resource under its Windows owner; excluding machine overlays from Local release snapshots must not break the Windows build.
+- Disposable upgrade fixtures must reconstruct an existing seeded installation, including persistent binding and the stable recovery overlay. Immutable historical migrations may legitimately require cafe catalog SKUs and must not be rewritten merely to make an empty fixture pass.
+- MariaDB checksum lists may prefix filenames with ./; validate the official digest without weakening the digest comparison.
+- Exercise Home bootstrap's actual PHP-to-Go result parser with a real disposable MariaDB upgrade. Source-pattern assertions missed a three-versus-four migration count mismatch in an older bridge.
+
+- Windows PHP can silently skip adjacent php.ini auto-discovery when its executable directory is Unicode, leaving PDO without the MySQL driver. Native database helpers and the Home bridge pass the existing adjacent infrastructure-owned INI with -c; do not rewrite host settings or assume php.exe presence proves database readiness. Retain the Unicode path as the first native qualification root so this fails before repeating already-proven paths.
