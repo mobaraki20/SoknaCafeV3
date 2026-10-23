@@ -18,7 +18,7 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="RoutineLocalDatabase.php" LogicalName="Sokna.Maintenance.Core.RoutineLocalDatabase.php" />
-    <EmbeddedResource Include="../../../../apps/local-web/public/local-recovery.php"
+    <EmbeddedResource Include="StableLocalRecovery.php"
                       LogicalName="Sokna.Maintenance.Core.StableLocalRecoveryPhp" />
   </ItemGroup>
 </Project>

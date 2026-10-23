@@ -12,7 +12,7 @@ $mdbZip=Join-Path $lab 'mariadb.zip'
 $mdbUrl='https://archive.mariadb.org/mariadb-11.4.7/winx64-packages/'
 Invoke-WebRequest ($mdbUrl+'mariadb-11.4.7-winx64.zip') -OutFile $mdbZip
 $sums=(Invoke-WebRequest ($mdbUrl+'sha256sums.txt')).Content
-$expected=[regex]::Match([string]$sums,'(?im)^([0-9a-f]{64})\s+\*?mariadb-11\.4\.7-winx64\.zip\s*$').Groups[1].Value
+$expected=[regex]::Match([string]$sums,'(?im)^([0-9a-f]{64})\s+\*?(?:\./)?mariadb-11\.4\.7-winx64\.zip\s*$').Groups[1].Value
 Need ($expected.Length-eq64-and(Get-FileHash $mdbZip).Hash-eq$expected) 'MARIADB_DOWNLOAD_SHA256'
 Expand-Archive $mdbZip (Join-Path $lab 'mdb')
 $mdb=(Get-ChildItem (Join-Path $lab 'mdb') -Directory|Select-Object -First 1).FullName
