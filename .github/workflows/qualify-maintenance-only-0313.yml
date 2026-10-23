@@ -31,7 +31,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          foreach($f in @('invoke-maintenance-only-v1.ps1','setup-windows-components-maintenance-v1.ps1','prepare-maintenance-only-payload-v1.ps1','maintenance-signed-health-v1.ps1')){
+          foreach($f in @('invoke-maintenance-only-v1.ps1','setup-windows-components-maintenance-v1.ps1','prepare-maintenance-only-payload-v1.ps1','maintenance-signed-health-v1.ps1','maintenance-installed-versions-v1.ps1')){
             $p=Join-Path new/packaging/windows/scripts $f
             $tokens=$null;$errors=$null
             [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors)|Out-Null
@@ -108,6 +108,11 @@ jobs:
           Set-Content (Join-Path $root 'Runtime/SoknaRuntimeService.exe') 'RUNTIME-UNTOUCHED' -Encoding ASCII
           Set-Content (Join-Path $root 'PrintAgent/Service/Sokna.PrintAgent.Service.exe') 'PRINT-UNTOUCHED' -Encoding ASCII
           Set-Content (Join-Path $root 'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe') 'RECOVERY-UNTOUCHED' -Encoding ASCII
+          $identityPath=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/Maintenance/installed-release-identity.json'
+          New-Item -ItemType Directory -Path (Split-Path $identityPath -Parent) -Force|Out-Null
+          $identity=[ordered]@{local=@{release_id='preserve-real-local';version='231bf';managed_tree_sha256=('a'*64);authority_epoch_policy=$null};public=@{release_id='preserve-public';version='35eo'};maintenance_supervisor_version='0.3.12';update_engine_version='0.3.12';backup_recovery_engine_version=$null;public_maintenance_kernel_version=$null;unknown_extension=@{must='survive'}}
+          $beforeUnrelated=($identity|ConvertTo-Json -Depth 20 -Compress)
+          [IO.File]::WriteAllText($identityPath,($identity|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
           $exe=Join-Path $app 'SoknaMaintenanceSupervisor.exe'
           if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Runner contains unexpected production service'}
           try{
@@ -149,10 +154,10 @@ jobs:
           $payload=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
           & $iscc "/DPayloadRoot=$payload" "/DOutputDir=$out" "$source/packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss"
           if($LASTEXITCODE-ne0){throw 'Maintenance-only Inno compilation failed'}
-          $exe=Join-Path $out 'SOKNA-Maintenance-Only-0.3.13-UAT.exe'
+          $exe=Join-Path $out 'SOKNA-Maintenance-Only-0.3.13-UAT-REV2.exe'
           if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Expected installer EXE missing'}
           $hash=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  SOKNA-Maintenance-Only-0.3.13-UAT.exe"|Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
+          "$hash  SOKNA-Maintenance-Only-0.3.13-UAT-REV2.exe"|Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
           Write-Host "Standalone Maintenance EXE SHA256: $hash"
       - name: Execute the final Inno EXE against a real Windows service
         shell: pwsh
@@ -168,11 +173,16 @@ jobs:
             'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe'='RECOVERY-INNO-UNTOUCHED'
           }
           foreach($entry in $canaries.GetEnumerator()){Set-Content (Join-Path $root $entry.Key) $entry.Value -Encoding ASCII}
+          $identityPath=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/Maintenance/installed-release-identity.json'
+          New-Item -ItemType Directory -Path (Split-Path $identityPath -Parent) -Force|Out-Null
+          $identity=[ordered]@{local=@{release_id='preserve-real-local';version='231bf';managed_tree_sha256=('a'*64);authority_epoch_policy=$null};public=@{release_id='preserve-public';version='35eo'};maintenance_supervisor_version='0.3.12';update_engine_version='0.3.12';backup_recovery_engine_version=$null;public_maintenance_kernel_version=$null;unknown_extension=@{must='survive'}}
+          $beforeUnrelated=($identity|ConvertTo-Json -Depth 20 -Compress)
+          [IO.File]::WriteAllText($identityPath,($identity|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
           $exe=Join-Path $app 'SoknaMaintenanceSupervisor.exe'
           for($i=0;$i-lt40;$i++){if(-not(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue)){break};Start-Sleep -Milliseconds 250}
           if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Original test service not fully removed'}
           try{
-            $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.13-UAT.exe'
+            $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.13-UAT-REV2.exe'
             # Fail-closed absent-service behavior is checked by the existing
             # scoped installer preflight. This on-host EXE smoke exercises the
             # real successful upgrade path without a prior GUI-error process.
@@ -201,7 +211,28 @@ jobs:
             foreach($entry in $canaries.GetEnumerator()){
               if((Get-Content (Join-Path $root $entry.Key) -Raw).Trim() -ne$entry.Value){throw "Inno EXE modified forbidden component $($entry.Key)"}
             }
-            Write-Host 'Actual Inno EXE 0.3.12 -> 0.3.13 Windows SCM installation: PASS'
+            $observed=Get-Content $identityPath -Raw|ConvertFrom-Json
+            if($observed.maintenance_supervisor_version-ne'0.3.13' -or $observed.update_engine_version-ne'0.3.13'){throw 'STALE_INSTALLED_COMPONENT_VERSION_AFTER_REAL_EXE'}
+            $observed.maintenance_supervisor_version='0.3.12';$observed.update_engine_version='0.3.12'
+            if(($observed|ConvertTo-Json -Depth 20 -Compress)-cne$beforeUnrelated){throw 'UNRELATED_IDENTITY_CHANGED'}
+            # Reproduce Cafe: real 0.3.13 binaries, stale 0.3.12 metadata.
+            [IO.File]::WriteAllText($identityPath,($observed|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
+            $pidBefore=(Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId
+            $binaryBefore=(Get-FileHash $exe -Algorithm SHA256).Hash
+            $repair=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
+            if(-not$repair.WaitForExit(90000) -or $repair.ExitCode-ne0){throw 'EXISTING_0313_METADATA_REPAIR_FAILED'}
+            if((Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId-ne$pidBefore -or (Get-FileHash $exe -Algorithm SHA256).Hash-cne$binaryBefore){throw 'METADATA_REPAIR_RESTARTED_OR_CHANGED_SERVICE'}
+            $fixed=Get-Content $identityPath -Raw|ConvertFrom-Json
+            if($fixed.maintenance_supervisor_version-ne'0.3.13' -or $fixed.update_engine_version-ne'0.3.13'){throw 'COMPONENT_VERSION_REPAIR_UNPROVEN'}
+            $fixed.maintenance_supervisor_version='0.3.12';$fixed.update_engine_version='0.3.12'
+            if(($fixed|ConvertTo-Json -Depth 20 -Compress)-cne$beforeUnrelated){throw 'REPAIR_CHANGED_UNRELATED_IDENTITY'}
+            # A second repair is an exact no-op, including identity bytes and PID.
+            $identityHash=(Get-FileHash $identityPath -Algorithm SHA256).Hash
+            $repeat=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
+            if(-not$repeat.WaitForExit(90000) -or $repeat.ExitCode-ne0){throw 'METADATA_REPAIR_REPEAT_FAILED'}
+            if((Get-FileHash $identityPath -Algorithm SHA256).Hash-cne$identityHash -or (Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId-ne$pidBefore){throw 'METADATA_REPAIR_REPEAT_NOT_NOOP'}
+            Write-Host 'Actual Inno EXE upgrade, stale-version repair, preserved Local/Public/extensions, unchanged PID and repeated no-op: PASS'
+
           }finally{
             Stop-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue
             & "$env:WINDIR/System32/sc.exe" delete SoknaMaintenanceSupervisor|Out-Null

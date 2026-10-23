@@ -22,7 +22,7 @@ MinVersion=10.0
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=SOKNA-Maintenance-Only-0.3.13-UAT
+OutputBaseFilename=SOKNA-Maintenance-Only-0.3.13-UAT-REV2
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -42,6 +42,8 @@ Source: "{#PayloadRoot}\invoke-maintenance-only-v1.ps1"; DestDir: "{tmp}\SOKNA-m
 Source: "{#PayloadRoot}\setup-windows-components-maintenance-v1.ps1"; DestDir: "{tmp}\SOKNA-maintenance-only"; Flags: ignoreversion deleteafterinstall
 
 Source: "{#PayloadRoot}\\maintenance-signed-health-v1.ps1"; DestDir: "{tmp}\\SOKNA-maintenance-only"; Flags: ignoreversion deleteafterinstall
+
+Source: "{#PayloadRoot}\maintenance-installed-versions-v1.ps1"; DestDir: "{tmp}\SOKNA-maintenance-only"; Flags: ignoreversion deleteafterinstall
 
 [Code]
 var

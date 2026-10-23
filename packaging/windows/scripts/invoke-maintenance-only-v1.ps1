@@ -70,11 +70,12 @@ if(-not(Test-Path -LiteralPath (Join-Path $installRoot 'Runtime\SoknaRuntimeServ
    -not(Test-Path -LiteralPath (Join-Path $installRoot 'Maintenance\Recovery\SoknaMaintenanceRecoveryConsole.exe') -PathType Leaf)){Fail 'Existing managed installation incomplete; use the full Windows Services installer.'}
 $superInstalled=Join-Path $appRoot 'SoknaMaintenanceSupervisor.exe'
 $engineInstalled=Join-Path $appRoot 'SoknaMaintenanceUpdateEngine.exe'
-if((Version $superInstalled)-ne'0.3.12' -or (Version $engineInstalled)-ne'0.3.12'){Fail 'This UAT package is only qualified for 0.3.12 to 0.3.13.'}
+$installedVersion=Version $superInstalled
+if($installedVersion-notin @('0.3.12','0.3.13') -or (Version $engineInstalled)-ne$installedVersion){Fail 'This UAT package requires matching Maintenance 0.3.12 or 0.3.13 components.'}
 $healthProbe=Join-Path $PayloadRoot 'maintenance-signed-health-v1.ps1'
 if(-not(Test-Path -LiteralPath $healthProbe -PathType Leaf)){Fail 'Signed read-only health probe missing.'}
 . $healthProbe
-Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.12' -Attempts 40
+Assert-MaintenanceSignedHealth -ExpectedVersion $installedVersion -Attempts 40
 
 $dataRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
 $txDir=Join-Path $dataRoot ('setup\component-transactions\maintenance-'+[guid]::NewGuid().ToString('N'))
@@ -82,6 +83,20 @@ New-Item -ItemType Directory -Path $txDir -Force | Out-Null
 # The plan and rollback directory are privileged state. No world-write inherited ACL.
 & (Join-Path $env:WINDIR 'System32\icacls.exe') $txDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 if($LASTEXITCODE-ne0){Fail 'Privileged transaction ACL could not be established.'}
+. (Join-Path $PayloadRoot 'maintenance-installed-versions-v1.ps1')
+if($installedVersion-eq'0.3.13'){
+ # An already-installed 0.3.13 is not reinstalled. Bind its physical hashes to
+ # the previous privileged scoped receipt, then repair only stale metadata.
+ $receiptPath=Join-Path $dataRoot 'setup\maintenance-only-component-receipt-v1.json'
+ $receipt=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
+ if($receipt.format-ne'sokna-maintenance-only-component-receipt-v1' -or $receipt.version-ne'0.3.13' -or
+    $receipt.supervisor_sha256-cne(Hex $superInstalled) -or $receipt.engine_sha256-cne(Hex $engineInstalled)){
+  Fail 'Installed 0.3.13 component receipt does not match physical binaries.'
+ }
+ Sync-MaintenanceInstalledVersions -AppRoot $appRoot -EvidenceRoot $txDir
+ Write-Host 'Maintenance 0.3.13 verified; component version metadata synchronized without service changes.'
+ exit 0
+}
 $group=Get-Content -LiteralPath (Join-Path $PayloadRoot 'windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
 if($group.format-ne'sokna-windows-component-manifest-v2' -or $group.package_version-ne'0.3.13' -or @($group.components).Count-ne2){Fail 'Scoped service-group manifest invalid.'}
 $tx=[guid]::NewGuid().ToString('N')
@@ -117,3 +132,5 @@ foreach($key in @('runtime','print','recovery')){if($before[$key]-ne$after[$key]
 if((Version $superInstalled)-ne'0.3.13' -or (Version $engineInstalled)-ne'0.3.13'){Fail 'Installed version readback did not match.'}
 Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.13' -Attempts 40
 Write-Host ('Maintenance-only upgraded and verified 0.3.12 -> 0.3.13. Transaction: '+$txDir)
+
+Sync-MaintenanceInstalledVersions -AppRoot $appRoot -EvidenceRoot $txDir
