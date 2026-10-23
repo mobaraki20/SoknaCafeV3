@@ -18,7 +18,7 @@ var old=Directory.EnumerateDirectories(root,"Web.release.*").First(p=>File.ReadA
 var oldCount=JsonDocument.Parse(File.ReadAllBytes(Path.Combine(old,"resources","local-managed-files-v1.json"))).RootElement.GetProperty("files").GetArrayLength();
 var fault=args.Length>5?args[5]:"none";
 var bridge=new ProductionLocalSlotMigrationBridge(paths,TimeSpan.FromSeconds(20),TimeSpan.FromSeconds(20),
-    phase=>{if(phase=="ROUTINE_"+fault)Environment.Exit(97);});
+    phase=>{if(command=="activate" && phase=="ROUTINE_"+fault)Environment.Exit(97);});
 var operations=new MaintenanceOperationStore(paths);var journal=new DurableJournal(paths.JournalPath);
 var state=new SupervisorStateStore(paths).LoadOrCreate();
 var stages=new SupervisorLocalStageRecoveryCoordinator(paths,operations,journal,state);
