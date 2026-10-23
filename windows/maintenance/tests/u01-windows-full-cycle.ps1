@@ -4,7 +4,7 @@ if($env:GITHUB_ACTIONS-ne'true'-or$env:RUNNER_OS-ne'Windows'){throw 'DISPOSABLE_
 if(Get-Service SoknaApache -ErrorAction SilentlyContinue){throw 'REFUSE_EXISTING_SOKNA_APACHE'}
 function Need([bool]$ok,[string]$why){if(-not$ok){throw $why}}
 function P([string]$path){[IO.Path]::GetFullPath($path).Replace('\','/')}
-function Run([string]$exe,[string[]]$arguments){if([IO.Path]::GetFileName($exe)-ieq'php.exe'){$ini=Join-Path (Split-Path -Parent $exe) 'php.ini';if(Test-Path -LiteralPath $ini -PathType Leaf){$arguments=@('-c',$ini)+$arguments}};& $exe @arguments;if($LASTEXITCODE-ne0){throw "Command failed ($LASTEXITCODE): $exe"}}
+function Run([string]$exe,[string[]]$arguments){$pushed=$false;if([IO.Path]::GetFileName($exe)-ieq'php.exe'){$dir=Split-Path -Parent $exe;$ini=Join-Path $dir 'php.ini';if(Test-Path -LiteralPath $ini -PathType Leaf){$arguments=@('-c','php.ini')+$arguments;Push-Location -LiteralPath $dir;$pushed=$true}};try{& $exe @arguments;$code=$LASTEXITCODE}finally{if($pushed){Pop-Location}};if($code-ne0){throw "Command failed ($code): $exe"}}
 $repo=$PWD.Path
 $lab=Join-Path $env:RUNNER_TEMP 'sokna-u01-dependencies'
 New-Item -ItemType Directory -Force $lab|Out-Null
