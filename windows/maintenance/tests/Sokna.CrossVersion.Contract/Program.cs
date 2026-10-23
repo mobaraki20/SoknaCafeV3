@@ -57,6 +57,20 @@ try {
  Invoke("Restore");
  Check(SHA256.HashData(File.ReadAllBytes(statePath)).SequenceEqual(stateHash) && SHA256.HashData(File.ReadAllBytes(managedPath)).SequenceEqual(managedHash),"Local lifecycle rollback byte exact");
  Invoke("Complete");Check(!File.Exists(Path.Combine(evidence,"routine-local-lifecycle-before.json")),"rollback evidence finalized");
+ // The next ZIP's exact baseline uses the first target's preserved policy.
+ // Old commits retained null here, so A -> B succeeded and B -> C failed.
+ var identityPaths=new MaintenancePaths(Path.Combine(baseDir,"maintenance-identity"));
+ var beforeIdentity=new InstalledReleaseIdentity(new ReleaseComponentIdentity("ci-source",oldBuild,
+     new string('a',64),"schema-fixture","migration-fixture",null),null,"0.3.13","0.3.13",null,null);
+ AtomicFile.WriteJson(identityPaths.InstalledReleaseIdentityPath,beforeIdentity);
+ obj=ctor.Invoke(new object?[]{statePath,managedPath,oldBuild,Path.Combine(evidence,"routine-local-lifecycle-before.json"),
+     identityPaths,"ci-target",new string('b',64)});
+ Invoke("SaveRollbackEvidence");Invoke("Commit",newBuild,target,2,null!);
+ var committedIdentity=AtomicFile.ReadJson<InstalledReleaseIdentity>(identityPaths.InstalledReleaseIdentityPath).Local!;
+ Check(committedIdentity.ReleaseId=="ci-target" && committedIdentity.Version==newBuild &&
+     committedIdentity.ManagedTreeSha256==new string('b',64) && committedIdentity.AuthorityEpochPolicy=="preserved",
+     "committed Maintenance identity is a usable next exact baseline");
+ Invoke("Restore");Invoke("Complete");
  // Busy Local must never pass preflight.
  File.WriteAllText(statePath,JsonSerializer.Serialize(new{format="sokna-local-update-state-v1",active_version=oldBuild,staged=new {version=newBuild},activation_journal=(string?)null,recovery_mode=(string?)null}));
  try { ctor.Invoke(new object?[]{statePath,managedPath,oldBuild,Path.Combine(evidence,"busy.json"),null,null,null}); throw new Exception("FAIL staged allowed"); }

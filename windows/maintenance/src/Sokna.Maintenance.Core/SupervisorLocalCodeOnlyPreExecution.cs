@@ -130,6 +130,9 @@ public sealed class SupervisorLocalCodeOnlyPreExecution
         RoutineLocalBinding.RequireTarget(persistent, target, packageRoot, receipt.TargetVersion);
         var migrations = RoutineLocalDatabase.Plan(layout.WebRoot, target);
         var declared = manifest.Targets.GetProperty("local");
+        if (declared.TryGetProperty("authority_epoch_policy", out var epochPolicy) &&
+            epochPolicy.ValueKind != JsonValueKind.Null && epochPolicy.GetString() != "preserved")
+            throw new InvalidDataException("CODE_ONLY_TARGET_AUTHORITY_POLICY_UNSUPPORTED");
         if (migrations.RequiresMigration &&
             (!declared.TryGetProperty("schema_fingerprint", out var schema) || schema.GetString() != migrations.TargetFingerprint ||
              !declared.TryGetProperty("migration_head", out var head) || head.GetString() != migrations.TargetHead ||
