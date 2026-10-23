@@ -41,6 +41,9 @@ $harness=Join-Path $build 'harness/Sokna.Maintenance.U01Harness.exe';$engine=Joi
 $package=Join-Path $env:RUNNER_TEMP 'u01-local/SOKNA-Local-231bf-U01-Panel-Update.zip'
 $target=Join-Path $env:RUNNER_TEMP 'u01-local/target.json'
 $baseline=Join-Path $repo 'release/local-u01/m06-baseline.json'
+$nextRoot=Join-Path $env:RUNNER_TEMP 'u01-next-local'
+Run python @('windows/maintenance/tests/u01-next-package.py',(Join-Path $env:RUNNER_TEMP 'u01-local'),$nextRoot)
+$nextTarget=Join-Path $nextRoot 'target.json';$nextPackage=Join-Path $nextRoot 'SOKNA-Local-231bf-U01-Panel-Update.zip'
 $roots=@('D:\سامانه کافه آزمون U01','C:\SoknaU01-CI','C:\Sokna U01 CI With Spaces','D:\SoknaU01-CI')
 $faults=@('none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')
 $results=@()
@@ -106,7 +109,19 @@ PidFile "$ar/logs/httpd.pid"
       Run $localPhp @((Join-Path $repo 'windows/maintenance/tests/u01-fixture.php'),$root,(Join-Path $root 'Web'),"$dbPort",'verify')
       Need ((Get-FileHash (Join-Path $root 'config.php')).Hash-eq$configHash) 'CONFIG_CHANGED'
       Need ((Get-FileHash (Join-Path $root 'install.lock')).Hash-eq$lockHash) 'INSTALL_IDENTITY_CHANGED'
-      $results+=@{root=$base;fault=$fault;phase=$state.phase;database_mutation=$state.database_mutation_performed;status='PASS'}
+      $second=$false
+      if($fault-eq'none'){
+        $nextCommon=@($root,$target,$nextTarget,$engine,'none',$nextPackage)
+        Run $harness (@('prepare')+$nextCommon)
+        Run $harness (@('panel-activate')+$nextCommon)
+        $after=Get-Content (Join-Path $root 'Maintenance/local-slots/routine-state.json') -Raw|ConvertFrom-Json
+        Need ($after.phase-eq'COMMITTED'-and-not$after.database_mutation_performed) 'SECOND_UPGRADE_NO_SQL_COMMIT_REQUIRED'
+        Run $localPhp @((Join-Path $repo 'windows/maintenance/tests/u01-fixture.php'),$root,(Join-Path $root 'Web'),"$dbPort",'verify')
+        Need ((Get-FileHash (Join-Path $root 'config.php')).Hash-eq$configHash) 'SECOND_UPGRADE_CONFIG_CHANGED'
+        Need ((Get-FileHash (Join-Path $root 'install.lock')).Hash-eq$lockHash) 'SECOND_UPGRADE_INSTALL_IDENTITY_CHANGED'
+        $second=$true
+      }
+      $results+=@{root=$base;fault=$fault;phase=$state.phase;database_mutation=$state.database_mutation_performed;second_upgrade=$second;status='PASS'}
       Write-Host "U01_CYCLE_PASS $base / $fault"
     } finally {
       $routine=Join-Path $root 'Maintenance/local-slots/routine-state.json'

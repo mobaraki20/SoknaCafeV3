@@ -143,6 +143,24 @@ try
     Require(coordinator.QuarantineInterruptedActivations() == 0,
         "already quarantined operation retriggered on restart");
 
+    var preparing = coordinator.ReserveActivation(stage.OperationId,"operator-test","activation-preparation-crash");
+    operations.Update(preparing.Operation,"accepted","LOCAL_PREPARATION_STARTED");
+    Require(coordinator.QuarantineInterruptedActivations()==1,"preparation crash was not discovered");
+    var prepCrash=operations.Get(preparing.Operation.OperationId)!;
+    Require(prepCrash.State=="recovery_required" && !prepCrash.ActivationPerformed && !prepCrash.DatabaseMutationPerformed,
+        "preparation crash must retain blocker without inventing an Engine/DB mutation");
+    // Synthetic fixture only: close the simulated recovery to test the next boundary.
+    operations.Update(prepCrash,"failed","CI_PREPARATION_EVIDENCE_INSPECTED");
+    var preparingFailure=coordinator.ReserveActivation(stage.OperationId,"operator-test","activation-preparation-error");
+    operations.Update(preparingFailure.Operation,"accepted","LOCAL_PREPARATION_STARTED");
+    coordinator.QuarantineActivationFailure(preparingFailure.Operation.OperationId,
+        new LocalPreparationException("BINDING",new InvalidDataException("ROUTINE_ACTIVE_PERSISTENT_IDENTITY_MISMATCH")));
+    var prepFailed=operations.Get(preparingFailure.Operation.OperationId)!;
+    Require(prepFailed.ResultCode=="LOCAL_PREPARE_BINDING_FAILED" &&
+        prepFailed.ResultMessage!.Contains("ROUTINE_ACTIVE_PERSISTENT_IDENTITY_MISMATCH") && !prepFailed.ActivationPerformed,
+        "real preparation cause was lost");
+    Require(new LocalPreparationException("TARGET_BOOT",new Exception("password=do-not-expose")).ReasonCode=="Exception",
+        "arbitrary exception text escaped into public diagnostics");
     var accepted2 = coordinator.ReserveActivation(
         stage.OperationId, "operator-test", "activation-key-three");
     // After Engine-start intent, loss of Supervisor must ALWAYS require recovery.

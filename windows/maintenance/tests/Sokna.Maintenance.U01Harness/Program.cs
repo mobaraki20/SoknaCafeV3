@@ -26,19 +26,28 @@ var candidates=new SupervisorInactiveLocalCandidateCoordinator(paths,operations,
 var slots=new SupervisorInactiveLocalSlotCoordinator(paths,operations,candidates,journal,state);
 var proof=new SupervisorLocalCodeOnlyPreExecution(paths,operations,stages);
 var execution=new SupervisorLocalCodeOnlyExecutionCoordinator(paths,operations,proof,journal,state,args[4],candidates,stages);
+var suffix=Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(version))).ToLowerInvariant()[..16];
+var activateKey="u01-activate-"+suffix;
 switch(command)
 {
     case "prepare":
         Directory.CreateDirectory(paths.InboxRoot);
-        AtomicFile.WriteJson(paths.InstalledReleaseIdentityPath,new InstalledReleaseIdentity(baseline,null,"0.3.12","0.3.12",null,null));
+        if(!File.Exists(paths.InstalledReleaseIdentityPath))
+            AtomicFile.WriteJson(paths.InstalledReleaseIdentityPath,new InstalledReleaseIdentity(baseline,null,"0.3.13","0.3.13",null,null));
+        else if(AtomicFile.ReadJson<InstalledReleaseIdentity>(paths.InstalledReleaseIdentityPath).Local!=baseline)
+            throw new InvalidDataException("SECOND_UPGRADE_DID_NOT_RETAIN_FIRST_COMMITTED_IDENTITY");
         new SecretStore(paths).EnsureKeys();
         var package=args[6];var sha=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(package))).ToLowerInvariant();
         File.Copy(package,Path.Combine(paths.InboxRoot,sha+".zip"));
-        var preflight=new SupervisorLocalPackagePreflightCoordinator(paths,operations,journal,state).Verify(sha+".zip","user:1","u01-preflight");
-        var stage=new SupervisorLocalReleaseStageCoordinator(paths,operations,journal,state).Stage(preflight.Operation.OperationId,"user:1","u01-stage");
-        _=slots.Prepare(stage.Operation.OperationId,"user:1","u01-slot","u01-candidate");
-        var evidence=proof.Inspect(stage.Operation.OperationId);
-        if(evidence.MigrationPlan?.RequiresMigration!=true)throw new InvalidDataException("APPEND_ONLY_PLAN_NOT_PROVEN");
+        var preflight=new SupervisorLocalPackagePreflightCoordinator(paths,operations,journal,state).Verify(sha+".zip","user:1","u01-preflight-"+suffix);
+        var stage=new SupervisorLocalReleaseStageCoordinator(paths,operations,journal,state).Stage(preflight.Operation.OperationId,"user:1","u01-stage-"+suffix);
+        // Fault-injection cases deliberately exercise the lower Engine bridge.
+        // Normal case must prepare ONLY after its durable parent is reserved.
+        if(fault!="none") {
+            _=slots.Prepare(stage.Operation.OperationId,"user:1","u01-slot","u01-candidate");
+            var evidence=proof.Inspect(stage.Operation.OperationId);
+            if(evidence.MigrationPlan?.RequiresMigration!=true)throw new InvalidDataException("APPEND_ONLY_PLAN_NOT_PROVEN");
+        }
         File.WriteAllText(Path.Combine(root,"stage-id.txt"),stage.Operation.OperationId);
         Console.WriteLine("U01_REAL_PACKAGE_PREFLIGHT_STAGE_INACTIVE_PASS");break;
     case "activate":
@@ -52,12 +61,13 @@ switch(command)
         Console.WriteLine(JsonSerializer.Serialize(recovered,AtomicFile.JsonOptions));break;
     case "panel-activate":
         var stageId=File.ReadAllText(Path.Combine(root,"stage-id.txt"));
-        var accepted=execution.ReserveActivation(stageId,"user:1","u01-activate");
+        var accepted=execution.ReserveActivation(stageId,"user:1",activateKey);
         if(accepted.Operation.State!="accepted")throw new InvalidDataException("U01_NOT_ACCEPTED");
-        var committed=execution.ExecuteReservedActivation(stageId,"user:1","u01-activate");
-        if(committed.Operation.State!="committed" || !committed.Operation.DatabaseMutationPerformed)
+        var committed=execution.ExecutePreparedReservedActivation(stageId,"user:1",activateKey,slots);
+        var requiresSql=baseline.SchemaFingerprint!=t.GetProperty("schema_fingerprint").GetString();
+        if(committed.Operation.State!="committed" || committed.Operation.DatabaseMutationPerformed!=requiresSql)
             throw new InvalidDataException(JsonSerializer.Serialize(committed,AtomicFile.JsonOptions));
-        var replay=execution.ReserveActivation(stageId,"user:1","u01-activate");
+        var replay=execution.ReserveActivation(stageId,"user:1",activateKey);
         if(!replay.Reconciled || replay.Operation.OperationId!=committed.Operation.OperationId)
             throw new InvalidDataException("U01_IDEMPOTENCY_REPLAY_FAILED");
         Console.WriteLine("U01_PANEL_COORDINATORS_DELEGATED_ENGINE_COMMITTED_AND_REPLAY_PASS");break;

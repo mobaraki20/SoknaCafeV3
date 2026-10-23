@@ -14,6 +14,7 @@ public sealed class LocalCodeOnlyActivationWorker : BackgroundService
 {
     private readonly SupervisorLocalCodeOnlyExecutionCoordinator _coordinator;
     private readonly MaintenanceOperationStore _operations;
+    private readonly SupervisorInactiveLocalSlotCoordinator _slots;
     private readonly SemaphoreSlim _wake = new(0, 1);
     // Persisting a reservation and signalling the hosted worker are two
     // separate operations. If the signal is lost but Supervisor stays alive,
@@ -23,10 +24,11 @@ public sealed class LocalCodeOnlyActivationWorker : BackgroundService
 
     public LocalCodeOnlyActivationWorker(
         SupervisorLocalCodeOnlyExecutionCoordinator coordinator,
-        MaintenanceOperationStore operations)
+        MaintenanceOperationStore operations, SupervisorInactiveLocalSlotCoordinator slots)
     {
         _coordinator = coordinator;
         _operations = operations;
+        _slots = slots;
     }
 
     public void NotifyAccepted()
@@ -64,8 +66,8 @@ public sealed class LocalCodeOnlyActivationWorker : BackgroundService
                         // coordinator on a managed hosted worker prevents the
                         // 240s Windows child budget from blocking Local's
                         // 10s signed HTTP transport.
-                        await Task.Run(() => _coordinator.ExecuteReservedActivation(
-                            accepted.PackageRef, accepted.OperatorId, accepted.IdempotencyKey),
+                        await Task.Run(() => _coordinator.ExecutePreparedReservedActivation(
+                            accepted.PackageRef, accepted.OperatorId, accepted.IdempotencyKey, _slots),
                             stoppingToken);
                     }
                     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -78,7 +80,7 @@ public sealed class LocalCodeOnlyActivationWorker : BackgroundService
                     {
                         Console.Error.WriteLine(
                             "Local code-only activation worker failed: " + error.GetType().Name);
-                        try { _coordinator.QuarantineActivationFailure(accepted.OperationId); }
+                        try { _coordinator.QuarantineActivationFailure(accepted.OperationId, error); }
                         catch (Exception evidenceError)
                         {
                             // Never pretend the updater is idle when durable

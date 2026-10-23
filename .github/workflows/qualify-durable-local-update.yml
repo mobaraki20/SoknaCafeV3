@@ -1,0 +1,96 @@
+name: Qualify durable Local preparation and Windows Services 1.1.24
+on:
+  push:
+    branches: ['work/updater-durable-20261023']
+  workflow_dispatch:
+
+# Disposable CI only. No deployment, release publication or repository write.
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.12'
+          cache: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, intl, sodium, zip, gd
+          coverage: none
+          tools: none
+        env:
+          phpts: ts
+      - name: Compile Supervisor and verify durable operation and repeated binding contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release --nologo
+          if($LASTEXITCODE-ne0){throw 'Supervisor compilation failed'}
+          foreach($p in @('Sokna.CrossVersion.Contract','Sokna.Maintenance.ActivationWorkerHarness','Sokna.Maintenance.OperatorUploadHarness')){
+            dotnet run --project "windows/maintenance/tests/$p/$p.csproj" -c Release --nologo
+            if($LASTEXITCODE-ne0){throw "Contract failed: $p"}
+          }
+      - name: Build disposable Local payload and execute native failure and recovery cycles
+        shell: pwsh
+        run: |
+          python release/build-local-u01.py --output "$env:RUNNER_TEMP/u01-local"
+          if($LASTEXITCODE-ne0){throw 'Qualification payload build failed'}
+          ./windows/maintenance/tests/u01-windows-full-cycle.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: durable-local-native-evidence
+          path: ${{ runner.temp }}/U01-WINDOWS-CYCLES.json
+          if-no-files-found: warn
+  build-installer:
+    needs: qualify
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build normal Windows Services installer after native qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python tests/g6-component-release-contract.py
+          if($LASTEXITCODE-ne0){throw 'Component version contract failed'}
+          choco install innosetup --yes --no-progress
+          if($LASTEXITCODE-ne0){throw 'Inno Setup unavailable'}
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{Test-Path $_}|Select-Object -First 1
+          ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot "$env:RUNNER_TEMP/windows-1124" -IsccExe $iscc
+          $out=Join-Path $env:RUNNER_TEMP 'windows-1124'
+          $idx=Get-Content (Join-Path $out 'artifact-index.json') -Raw|ConvertFrom-Json
+          if($idx.package_version-ne'1.1.24'){throw 'Wrong package version'}
+          $exe=Join-Path $out $idx.windows_services.file
+          if((Get-FileHash $exe).Hash.ToLowerInvariant()-ne$idx.windows_services.sha256){throw 'Installer digest mismatch'}
+          "$($idx.windows_services.sha256)  $([IO.Path]::GetFileName($exe))"|Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ASCII
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-services-1124-qualified-candidate
+          path: |
+            ${{ runner.temp }}/windows-1124/SOKNA-Windows-Services-Setup-1.1.24.exe
+            ${{ runner.temp }}/windows-1124/SHA256SUMS.txt
+            ${{ runner.temp }}/windows-1124/artifact-index.json
+          if-no-files-found: error

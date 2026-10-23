@@ -7,8 +7,8 @@
 [Setup]
 AppId={{965FF692-4DAD-4C58-B76D-3F3A70A687CB}
 AppName=SOKNA Maintenance Component Update (UAT)
-AppVersion=0.3.10
-AppVerName=SOKNA Maintenance Only 0.3.10 UAT
+AppVersion=0.3.13
+AppVerName=SOKNA Maintenance Only 0.3.13 UAT
 AppPublisher=SOKNA
 AppCopyright=SOKNA
 DefaultDirName={autopf}\SOKNA Windows Services
@@ -22,7 +22,7 @@ MinVersion=10.0
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=SOKNA-Maintenance-Only-0.3.10-UAT
+OutputBaseFilename=SOKNA-Maintenance-Only-0.3.13-UAT-REV3
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -42,6 +42,8 @@ Source: "{#PayloadRoot}\invoke-maintenance-only-v1.ps1"; DestDir: "{tmp}\SOKNA-m
 Source: "{#PayloadRoot}\setup-windows-components-maintenance-v1.ps1"; DestDir: "{tmp}\SOKNA-maintenance-only"; Flags: ignoreversion deleteafterinstall
 
 Source: "{#PayloadRoot}\\maintenance-signed-health-v1.ps1"; DestDir: "{tmp}\\SOKNA-maintenance-only"; Flags: ignoreversion deleteafterinstall
+
+Source: "{#PayloadRoot}\maintenance-installed-versions-v1.ps1"; DestDir: "{tmp}\SOKNA-maintenance-only"; Flags: ignoreversion deleteafterinstall
 
 [Code]
 var

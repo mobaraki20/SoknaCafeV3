@@ -19,10 +19,17 @@ public static class RoutineLocalBinding
     {
         var sourcePath = Path.Combine(persistentRoot, BindingFile);
         var targetPath = Path.Combine(targetSlot, BindingFile);
-        var source = RequireBinding(sourcePath, packageRoot, currentBuild);
+        // Persistent is an installation snapshot, deliberately unchanged by
+        // cutover. After A -> B it can still name A. Version authority is the
+        // active Web binding, while BOTH bindings must match install.lock.
+        var persistent = RequireBinding(sourcePath, packageRoot);
+        var source = RequireBinding(Path.Combine(packageRoot, "Web", BindingFile),
+            packageRoot, currentBuild);
+        if (!string.Equals(Id(persistent), Id(source), StringComparison.Ordinal))
+            throw new InvalidDataException("ROUTINE_ACTIVE_PERSISTENT_IDENTITY_MISMATCH");
         if (string.Equals(currentBuild, targetBuild, StringComparison.Ordinal))
         {
-            File.Copy(sourcePath, targetPath, overwrite: true);
+            File.Copy(Path.Combine(packageRoot, "Web", BindingFile), targetPath, overwrite: true);
             RequireTarget(persistentRoot, targetSlot, packageRoot, targetBuild);
             return;
         }

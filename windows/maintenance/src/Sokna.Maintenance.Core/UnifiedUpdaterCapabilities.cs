@@ -80,4 +80,5 @@ public sealed record UnifiedUpdaterCapabilitiesResult(
     [property: JsonPropertyName("panel_update_ready")] bool PanelUpdateReady,
     [property: JsonPropertyName("blocking_code")] string BlockingCode,
     [property: JsonPropertyName("detail")] string Detail,
-    [property: JsonPropertyName("inbox_transport_available")] bool InboxTransportAvailable);
+    [property: JsonPropertyName("inbox_transport_available")] bool InboxTransportAvailable,
+    [property: JsonPropertyName("local_activation_workflow")] string LocalActivationWorkflow = "supervisor-durable-prepare-v1");

@@ -243,13 +243,18 @@ internal sealed class RoutineLocalLifecycle
                 Version = targetBuild,
                 ManagedTreeSha256 = _targetManagedTreeSha256,
                 SchemaFingerprint = migrations?.TargetFingerprint ?? installed.Local.SchemaFingerprint,
-                MigrationHead = migrations?.TargetHead ?? installed.Local.MigrationHead
+                MigrationHead = migrations?.TargetHead ?? installed.Local.MigrationHead,
+                // This routine preserves the installation's authority epoch.
+                // Persist the same policy advertised by the qualified target;
+                // carrying an old null forward breaks the next exact baseline.
+                AuthorityEpochPolicy = "preserved"
             } };
             AtomicFile.WriteJson(_maintenanceIdentityPath, targetIdentity);
             var observed = AtomicFile.ReadJson<InstalledReleaseIdentity>(_maintenanceIdentityPath);
             if (observed.Local is null || observed.Local.Version != targetBuild ||
                 observed.Local.ReleaseId != _targetReleaseSetId ||
-                observed.Local.ManagedTreeSha256 != _targetManagedTreeSha256)
+                observed.Local.ManagedTreeSha256 != _targetManagedTreeSha256 ||
+                observed.Local.AuthorityEpochPolicy != "preserved")
                 throw new InvalidDataException("ROUTINE_INSTALLED_IDENTITY_READBACK_FAILED");
         }
     }

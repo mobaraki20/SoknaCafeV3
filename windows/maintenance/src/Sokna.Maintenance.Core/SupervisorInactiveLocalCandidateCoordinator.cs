@@ -60,7 +60,8 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
         _journal = journal; _state = state;
     }
 
-    public InactiveLocalCandidateOutcome Prepare(string operationId, string operatorId, string idem)
+    public InactiveLocalCandidateOutcome Prepare(string operationId, string operatorId, string idem,
+        string? ownActivationOperationId = null)
     {
         if (operationId is not { Length: 32 } || !operationId.All(char.IsAsciiHexDigit) ||
             !MaintenanceOperationStore.IsValidIdempotencyKey(idem) ||
@@ -70,8 +71,6 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
         lock (LocalUpdateOperationGate.Sync)
         {
             using var machineLease = MachineMutationLease.Acquire(_paths, "supervisor-inactive-candidate");
-            if (_operations.ListBlocking().Count != 0)
-                throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
             var operation = _operations.Get(operationId)
                 ?? throw new InvalidDataException("INACTIVE_CANDIDATE_STAGE_UNVERIFIED");
             if (operation.OperationType != "update.local-stage" ||
@@ -79,10 +78,11 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
                 operation.StageReceiptPath is null ||
                 operation.ActivationPerformed || operation.DatabaseMutationPerformed)
                 throw new InvalidDataException("INACTIVE_CANDIDATE_STAGE_UNVERIFIED");
+            LocalUpdateOperationGate.RequireStageInspection(_operations, operation, ownActivationOperationId);
 
             // This independently rehashes every staged file and re-verifies
             // original signed package, installed baseline, sequence and receipt.
-            var readiness = _inspector.InspectActivationReadiness(operationId);
+            var readiness = _inspector.InspectActivationReadiness(operationId, ownActivationOperationId);
             if (!readiness.StageEvidenceVerified ||
                 readiness.ReleaseType != "local_only")
                 throw new InvalidDataException("INACTIVE_CANDIDATE_NOT_LOCAL_ONLY");

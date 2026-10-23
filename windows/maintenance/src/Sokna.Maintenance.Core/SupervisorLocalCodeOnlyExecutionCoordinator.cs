@@ -83,6 +83,52 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
         string stageId, string operatorId, string idempotencyKey)
         => ActivateCore(stageId, operatorId, idempotencyKey, reserved: true);
 
+    // The existing durable activation is the parent of preparation as well as
+    // cutover. No work depends on PHP/browser lifetime. Every preparation
+    // owner retains its OS lease and verifies the exact parent Stage/operator.
+    public LocalCodeOnlyExecutionOutcome ExecutePreparedReservedActivation(
+        string stageId, string operatorId, string idempotencyKey,
+        SupervisorInactiveLocalSlotCoordinator slots)
+    {
+        RequireRequest(stageId, operatorId, idempotencyKey);
+        var operation = _operations.GetByIdempotencyKey(idempotencyKey)
+            ?? throw new InvalidDataException("CODE_ONLY_RESERVED_INTENT_MISSING");
+        var stage = _operations.Get(stageId)
+            ?? throw new InvalidDataException("CODE_ONLY_SIGNED_STAGE_NOT_FOUND");
+        lock (LocalUpdateOperationGate.Sync)
+        {
+            // A replay/terminal record never executes preparation again.
+            RequireSameRequest(operation, "update.local-code-only-activate", stageId,
+                operatorId, MaintenanceOperationStore.CanonicalRequestHash(
+                    "update.local-code-only-activate", stageId, operatorId));
+            if (operation.State != "accepted" || operation.AttemptCount != 0)
+                return new(operation, false, true);
+            LocalUpdateOperationGate.RequireStageInspection(_operations, stage, operation.OperationId);
+            _operations.Update(operation, "accepted", "LOCAL_PREPARATION_STARTED",
+                "Supervisor is verifying the inactive Local release before Engine dispatch.");
+        }
+        bool legacy = false;
+        try { _ = new LocalSlotManager(_paths).InspectLegacyPhysicalCurrent(); legacy = true; }
+        catch (InvalidDataException ex) when (ex.Message is
+            "LEGACY_WEB_ALREADY_JUNCTION" or "LEGACY_PHYSICAL_WEB_REQUIRED") { }
+        static string Derived(string prefix, string material) => prefix +
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(material))).ToLowerInvariant()[..32];
+        if (legacy)
+            _legacyCandidate.Prepare(stageId, operatorId,
+                Derived("candidate-", "private|" + idempotencyKey), operation.OperationId);
+        else
+        {
+            var receipt = slots.Prepare(stageId, operatorId,
+                Derived("slot-", "slot|" + idempotencyKey),
+                Derived("candidate-", "private|" + idempotencyKey), operation.OperationId).Receipt;
+            if (!receipt.ActualHostHealthQualified || receipt.ActivationPerformed ||
+                receipt.DatabaseMutationPerformed || receipt.PublicMutationPerformed)
+                throw new InvalidDataException("LOCAL_PREPARATION_RECEIPT_INVALID");
+        }
+        return ExecuteReservedActivation(stageId, operatorId, idempotencyKey);
+    }
+
     // Existing engine-internal synchronous primitive is retained.
     public LocalCodeOnlyExecutionOutcome Activate(
         string stageId, string operatorId, string idempotencyKey)
@@ -459,7 +505,7 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
     // Only a durable accepted intent can be safely classified as a
     // pre-mutation failure. After Engine intent any unknown outcome is
     // quarantined, never blindly re-dispatched on an HTTP retry.
-    public void QuarantineActivationFailure(string operationId)
+    public void QuarantineActivationFailure(string operationId, Exception? failure = null)
     {
         lock (LocalUpdateOperationGate.Sync)
         {
@@ -470,11 +516,21 @@ public sealed class SupervisorLocalCodeOnlyExecutionCoordinator
             if (operation.State is not ("accepted" or "activating" or "running"))
                 return;
             var unproven = operation.State != "accepted";
+            var preparing = operation.ResultCode == "LOCAL_PREPARATION_STARTED";
+            // A crash during preparation may leave a partial inactive sibling.
+            // Preserve that evidence; never silently replay after service start.
+            var interruptedPreparation = preparing && failure is null;
+            var safeReason = failure?.Message;
+            if (safeReason is null || safeReason.Length is < 1 or > 120 ||
+                safeReason.Any(static c => !(char.IsAsciiLetterUpper(c) || char.IsAsciiDigit(c) || c == '_')))
+                safeReason = preparing ? "LOCAL_PREPARATION_FAILED" : "CODE_ONLY_PREEXECUTION_FAILED";
             var updated = _operations.Update(operation,
-                unproven ? "recovery_required" : "failed",
+                unproven || interruptedPreparation ? "recovery_required" : "failed",
                 unproven ? "CODE_ONLY_INTERRUPTED_REQUIRES_VERIFICATION" :
-                    "CODE_ONLY_PREEXECUTION_FAILED",
+                    interruptedPreparation ? "LOCAL_PREPARATION_INTERRUPTED_REQUIRES_VERIFICATION" : safeReason,
                 unproven ? "Activation outcome requires Recovery Console verification." :
+                    failure is LocalPreparationException prep ?
+                        "Preparation step " + prep.Step + "; reason " + prep.ReasonCode + ". Engine was not dispatched." :
                     "Activation did not enter Engine execution.",
                 activationPerformed: unproven || operation.ActivationPerformed,
                 databaseMutationPerformed: unproven ? ReadRoutineDatabaseBoundary() : false);
