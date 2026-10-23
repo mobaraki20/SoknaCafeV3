@@ -47,6 +47,10 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
  try{
   $ops=Join-Path $store 'operations'
   $records=@(Get-ChildItem -LiteralPath $ops -Filter 'op-*.json' -File -ErrorAction Stop)
+  # Historical recovery-required records remain durable, but do not represent
+  # active mutation. Do not touch or mark them recovered during component-only
+  # metadata synchronization. New Local activation still uses its own gates.
+  $unresolvedRecoveryIds=New-Object 'System.Collections.Generic.List[string]'
   if($records.Count-gt20000){throw 'COMPONENT_IDENTITY_OPERATION_LIMIT'}
   foreach($file in $records){
    $op=[IO.File]::ReadAllText($file.FullName)|ConvertFrom-Json -ErrorAction Stop
@@ -58,7 +62,8 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
       ([string]$op.package_ref).Length-gt4096 -or $op.attempt_count-lt0 -or
       $op.activation_performed-isnot[bool] -or $op.database_mutation_performed-isnot[bool] -or
       [DateTimeOffset]::Parse($op.updated_at_utc)-lt[DateTimeOffset]::Parse($op.created_at_utc)){throw 'COMPONENT_IDENTITY_OPERATION_CORRUPT'}
-   if($op.state-in@('accepted','running','activating','recovering','recovery_required')){throw 'COMPONENT_IDENTITY_UPDATER_BLOCKED'}
+   if($op.state-in@('accepted','running','activating','recovering')){throw 'COMPONENT_IDENTITY_UPDATER_BLOCKED'}
+   if($op.state-eq'recovery_required'){$unresolvedRecoveryIds.Add([string]$op.operation_id)}
   }
   $before=[IO.File]::ReadAllBytes($identityPath)
   $doc=[Text.Encoding]::UTF8.GetString($before)|ConvertFrom-Json -ErrorAction Stop
@@ -93,7 +98,7 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
   # Atomic replace on the existing volume; the original also remains in evidence.
   [IO.File]::Replace($temp,$identityPath,(Join-Path $EvidenceRoot 'installed-release-identity.atomic-before.json'))
   if([IO.File]::ReadAllText($identityPath)-cne$after){throw 'COMPONENT_IDENTITY_READBACK_UNPROVEN'}
-  $receipt=[ordered]@{format='sokna-maintenance-installed-version-sync-v1';at_utc=[DateTime]::UtcNow.ToString('o');previous_versions=$prior;observed_versions=$versions;observed_binary_sha256=$hashes;local_identity_changed=$false;public_identity_changed=$false;services_changed=$false;database_mutation_performed=$false}
+  $receipt=[ordered]@{format='sokna-maintenance-installed-version-sync-v1';at_utc=[DateTime]::UtcNow.ToString('o');previous_versions=$prior;observed_versions=$versions;observed_binary_sha256=$hashes;local_identity_changed=$false;public_identity_changed=$false;services_changed=$false;database_mutation_performed=$false;outstanding_recovery_required_operation_ids=@($unresolvedRecoveryIds.ToArray());recovery_records_unchanged=$true}
   [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'component-version-sync.json'),($receipt|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
  }finally{$lease.Dispose()}
 }
