@@ -161,10 +161,10 @@ jobs:
           $payload=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
           & $iscc "/DPayloadRoot=$payload" "/DOutputDir=$out" "$source/packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss"
           if($LASTEXITCODE-ne0){throw 'Maintenance-only Inno compilation failed'}
-          $exe=Join-Path $out 'SOKNA-Maintenance-Only-0.3.13-UAT-REV2.exe'
+          $exe=Join-Path $out 'SOKNA-Maintenance-Only-0.3.13-UAT-REV3.exe'
           if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Expected installer EXE missing'}
           $hash=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  SOKNA-Maintenance-Only-0.3.13-UAT-REV2.exe"|Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
+          "$hash  SOKNA-Maintenance-Only-0.3.13-UAT-REV3.exe"|Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
           Write-Host "Standalone Maintenance EXE SHA256: $hash"
       - name: Execute the final Inno EXE against a real Windows service
         shell: pwsh
@@ -189,7 +189,7 @@ jobs:
           for($i=0;$i-lt40;$i++){if(-not(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue)){break};Start-Sleep -Milliseconds 250}
           if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Original test service not fully removed'}
           try{
-            $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.13-UAT-REV2.exe'
+            $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.13-UAT-REV3.exe'
             # Fail-closed absent-service behavior is checked by the existing
             # scoped installer preflight. This on-host EXE smoke exercises the
             # real successful upgrade path without a prior GUI-error process.
@@ -251,10 +251,30 @@ jobs:
             }
             $ops=Join-Path (Split-Path $identityPath -Parent) 'operations'
             $opId=[Guid]::NewGuid().ToString('N');$opPath=Join-Path $ops ('op-'+$opId+'.json')
-            $block=[ordered]@{format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$opId;idempotency_key='fixture-blocking-key';operator_id='user:0';operation_type='update.local-code-only-activate';state='recovery_required';canonical_request_sha256=('a'*64);package_ref=('b'*32);attempt_count=1;activation_performed=$false;database_mutation_performed=$false;created_at_utc='2026-10-23T00:00:00Z';updated_at_utc='2026-10-23T00:00:00Z'}
+            $block=[ordered]@{format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$opId;idempotency_key='fixture-blocking-key';operator_id='home-uat';operation_type='update.local-slot-home-cycle';state='running';canonical_request_sha256=('a'*64);package_ref=('b'*32);attempt_count=1;activation_performed=$true;database_mutation_performed=$false;result_code='LOCAL_SLOT_RECOVERY_REQUIRED';created_at_utc='2026-10-17T01:42:24Z';updated_at_utc='2026-10-17T01:43:55Z'}
             try{
               [IO.File]::WriteAllText($opPath,($block|ConvertTo-Json -Depth 10))
               Expect-SyncRejected 'blocking-operation'
+              # Regression from actual home host: a superseded legacy home-cycle
+              # remains recovery_required even after a later committed adoption.
+              # Its durable record must remain byte-for-byte unchanged while
+              # only the two installed component identity versions are synced.
+              $block.state='recovery_required'
+              [IO.File]::WriteAllText($opPath,($block|ConvertTo-Json -Depth 10))
+              $historicalOpHash=(Get-FileHash $opPath -Algorithm SHA256).Hash
+              $older=Get-Content $identityPath -Raw|ConvertFrom-Json
+              $older.maintenance_supervisor_version='0.3.12'
+              $older.update_engine_version='0.3.12'
+              [IO.File]::WriteAllText($identityPath,($older|ConvertTo-Json -Depth 20))
+              $syncEvidence=Join-Path $env:RUNNER_TEMP 'historical-recovery-identity-sync'
+              Sync-MaintenanceInstalledVersions -AppRoot $app -EvidenceRoot $syncEvidence
+              $reconciled=Get-Content $identityPath -Raw|ConvertFrom-Json
+              if($reconciled.maintenance_supervisor_version-ne'0.3.13' -or $reconciled.update_engine_version-ne'0.3.13'){throw 'HISTORIC_RECOVERY_PREVENTED_COMPONENT_SYNC'}
+              if((Get-FileHash $opPath -Algorithm SHA256).Hash-cne$historicalOpHash){throw 'HISTORIC_RECOVERY_OPERATION_MUTATED'}
+              $syncReceipt=Get-Content (Join-Path $syncEvidence 'component-version-sync.json') -Raw|ConvertFrom-Json
+              if($syncReceipt.recovery_records_unchanged-ne$true -or $opId -notin @($syncReceipt.outstanding_recovery_required_operation_ids)){throw 'HISTORIC_RECOVERY_NOT_REPORTED'}
+              $reconciled.maintenance_supervisor_version='0.3.12';$reconciled.update_engine_version='0.3.12'
+              if(($reconciled|ConvertTo-Json -Depth 20 -Compress)-cne$beforeUnrelated){throw 'HISTORIC_RECOVERY_CHANGED_OTHER_IDENTITY'}
               [IO.File]::WriteAllText($opPath,'{}')
               Expect-SyncRejected 'corrupt-operation'
             }finally{if(Test-Path $opPath){[IO.File]::Delete($opPath)}}
@@ -268,7 +288,7 @@ jobs:
               [IO.File]::WriteAllText($identityPath,($newer|ConvertTo-Json -Depth 20))
               Expect-SyncRejected 'snapshot-downgrade'
             }finally{[IO.File]::WriteAllBytes($identityPath,$savedIdentity)}
-            Write-Host 'Native negative version-sync cases: blocking operation, corrupt evidence, shared machine lease, downgrade: PASS'
+            Write-Host 'Native component sync with preserved historical recovery and negative active-operation, corrupt evidence, shared machine lease, downgrade cases: PASS'
             Write-Host 'Actual Inno EXE upgrade, stale-version repair, preserved Local/Public/extensions, unchanged PID and repeated no-op: PASS'
 
           }finally{
