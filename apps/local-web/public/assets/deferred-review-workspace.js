@@ -3,9 +3,12 @@
 const root=document.querySelector('[data-operations-workspace]');
 const body=document.querySelector('[data-deferred-reviews]');
 if(!root||!body||root.dataset.admin!=='1')return;
+const L=window.SoknaLocale||{humanDigits:v=>String(v??'').replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[Number(d)]),dateTime:v=>String(v??'')};
 const api=root.dataset.api;
 const csrf=root.dataset.csrf;
 const status=document.querySelector('[data-status]');
+const section=document.querySelector('[data-deferred-review-section]');
+const countBadge=document.querySelector('[data-deferred-review-badge]');
 function setStatus(message,bad=false){
   if(!status)return;
   status.textContent=message;
@@ -29,19 +32,24 @@ async function jsonRequest(url,options={}){
   const response=await fetch(url,{credentials:'same-origin',cache:'no-store',...options});
   let payload={};
   try{payload=await response.json()}catch(_){throw new Error('پاسخ سامانه قابل خواندن نیست.');}
-  if(!response.ok||payload.success===false)throw new Error(payload.message||'عملیات انجام نشد.');
+  if(!response.ok||payload.success===false)throw new Error((payload.message||'عملیات انجام نشد.')+(payload.support_id?` · کد پیگیری: ${payload.support_id}`:''));
   return payload;
 }
 async function loadReviews(){
   const payload=await jsonRequest(`${api}?action=snapshot`);
-  renderReviews(payload.snapshot?.deferred_reviews||[]);
+  renderReviews(payload.snapshot?.deferred_reviews||[],payload.snapshot?.errors?.deferred_reviews||null);
 }
-function renderReviews(rows){
+function renderReviews(rows,error=null){
   body.replaceChildren();
+  if(section)section.hidden=!error&&!rows.length;
+  if(countBadge){countBadge.textContent=L.humanDigits(rows.length);countBadge.className='sc-badge '+(rows.length?'sc-badge--warning':'sc-badge--success');}
+  if(error){
+    const row=document.createElement('tr'),td=document.createElement('td');td.colSpan=5;td.className='sc-error';td.textContent=(error.message||'بررسی عملیات‌های معوق فعلاً در دسترس نیست.')+(error.support_id?` · کد پیگیری: ${error.support_id}`:'');row.append(td);body.append(row);return;
+  }
   if(!rows.length){
     const row=document.createElement('tr');
     const td=document.createElement('td');
-    td.colSpan=6;
+    td.colSpan=5;
     td.textContent='موردی برای بررسی وجود ندارد.';
     row.append(td);
     body.append(row);
@@ -49,10 +57,9 @@ function renderReviews(rows){
   }
   for(const review of rows){
     const row=document.createElement('tr');
-    cell(row,'زمان',review.created_at);
-    cell(row,'نوع',review.kind);
+    cell(row,'زمان',L.dateTime(review.created_at));
+    cell(row,'نوع','عملیات نیازمند بررسی');
     cell(row,'کاربر',review.actor_name||'—');
-    cell(row,'علت',review.reason_code);
     cell(row,'پیام',review.message||'—');
     const actionsCell=document.createElement('td');
     actionsCell.dataset.label='عملیات';
@@ -68,11 +75,11 @@ function renderReviews(rows){
   }
 }
 async function resolveReview(review,decision){
-  const title=decision==='approve'?'دلیل تأیید را ثبت کن:':'دلیل رد را ثبت کن:';
-  const reason=window.prompt(title,'بررسی مدیر');
+  const title=decision==='approve'?'تأیید مورد':'رد مورد';
+  const reason=await SoknaUI.prompt(title,{label:'دلیل تصمیم',value:'بررسی مدیر'});
   if(!reason)return;
   try{
-    setStatus('در حال ثبت تصمیم Deferred…');
+    setStatus('در حال ثبت تصمیم…');
     await jsonRequest(api,{
       method:'POST',
       headers:{'Accept':'application/json','Content-Type':'application/json','X-CSRF-Token':csrf},
@@ -86,13 +93,10 @@ async function resolveReview(review,decision){
       })
     });
     await loadReviews();
-    setStatus('مورد Deferred تعیین تکلیف شد و برای reconcile آماده است.');
+    setStatus('تصمیم ثبت شد.');
   }catch(error){
     setStatus(error.message,true);
   }
 }
-document.querySelector('[data-tab="deferred"]')?.addEventListener('click',()=>{
-  loadReviews().catch(error=>setStatus(error.message,true));
-});
 loadReviews().catch(error=>setStatus(error.message,true));
 })();

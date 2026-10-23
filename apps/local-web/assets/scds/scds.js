@@ -13,6 +13,6 @@
     const set=v=>{const next=Math.min(max,Math.max(min,v));if(output){output.value=String(next);output.textContent=String(next);}root.dispatchEvent(new CustomEvent('scds:quantity',{bubbles:true,detail:{value:next}}));};
     q(root,'button[data-delta]').forEach(button=>button.addEventListener('click',()=>set(Number(output?.value??output?.textContent??0)+(Number(button.dataset.delta)||0)*step)));
   });
-  q(document,'[data-scds-dialog-open]').forEach(button=>button.addEventListener('click',()=>{const dialog=document.getElementById(button.dataset.scdsDialogOpen||'');if(dialog instanceof HTMLDialogElement)dialog.showModal();}));
+  q(document,'[data-scds-dialog-open]').forEach(button=>button.addEventListener('click',()=>{const dialog=document.getElementById(button.dataset.scdsDialogOpen||'');if(!(dialog instanceof HTMLDialogElement))return;if(!window.SoknaUI?.showDialog?.(dialog))dialog.showModal();}));
   q(document,'[data-scds-dialog-close]').forEach(button=>button.addEventListener('click',()=>{const dialog=button.closest('dialog');if(dialog instanceof HTMLDialogElement)dialog.close();}));
 })();

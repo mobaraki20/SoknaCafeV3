@@ -27,7 +27,7 @@ def prepare(panel_dir):
     (r/'payload/local-m06-target.zip').write_bytes(raw)
     for name,value in [('target-manifest.json',manifest),('migration-catalog.json',catalog)]:
         (r/'payload'/name).write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-    p=r/'core.go';s=p.read_text();s=re.sub(r'targetZipSHA\s*=\s*"[a-f0-9]{64}"','targetZipSHA = "'+sha(raw)+'"',s);p.write_text(s,encoding='utf-8')
+    p=r/'core.go';s=p.read_text();s=re.sub(r'targetTree\s*=\s*"[a-f0-9]{64}"','targetTree = "'+tree+'"',s);s=re.sub(r'targetZipSHA\s*=\s*"[a-f0-9]{64}"','targetZipSHA = "'+sha(raw)+'"',s);p.write_text(s,encoding='utf-8')
     print(json.dumps({'target_version':target['version'],'target_tree':tree,'target_zip_sha256':sha(raw),'migrations':len(current)}))
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--panel-directory',type=Path,required=True);a=p.parse_args();prepare(a.panel_directory)

@@ -34,4 +34,12 @@ Local Web is installed from its web package, not from a Windows/PowerShell insta
 
 The browser wizard owns environment preflight, MariaDB 11.4.x connection testing/optional database creation, migrations, initial admin/cafe/table bootstrap, installation identity, Runtime token/config provisioning, final health validation and the final setup lock. `install.lock` is written only after the final health check. A config-without-valid-lock state is treated as partial and may be safely resumed after the database installation identity is verified.
 
+An installed Web tree is also bound to the persistent installation identity by a machine-local `.sokna-installation.json` file outside the public document root. If a Clean package is extracted after the old `Web` directory was removed while `config.php`/`install.lock` still exist in the SOKNA root, the wizard reports **existing installation found** instead of silently reusing that state. The operator can either validate and continue the existing installation without changing business data, or explicitly archive the old setup state under `SetupArchive/` and start a fresh wizard. The fresh path never automatically deletes the previous data directory or database.
+
 `tools/setup-machine.php` remains an internal/legacy automation helper while packaging is revised in G5; it is not the end-user Local Web installation surface.
+
+## D2.3 Product Design System
+
+The Local Web product UI now uses a shared page grammar derived from the approved prototype and the D2.1/D2.2 real workflows. Canonical shared patterns cover page headers, attached local tabs, section/panel hierarchy, tables, metrics, detail rails and compact attention inboxes. Tabbed routes declare the shared page pattern through `ProductShell::start(..., true)` instead of inventing route-specific header/tab styling.
+
+Hall attention now lives in the contextual detail rail: items for the selected table are promoted while remaining hall actions stay in the same compact inbox. Existing backend-backed actions are preserved; prototype-only fake actions are not introduced.

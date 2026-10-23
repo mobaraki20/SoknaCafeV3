@@ -164,5 +164,20 @@
     ],
     "canonical_catalog_digest_sha256": "cd800ff566d65fc5591f2a6effc602059d3fe1cea2de61857191058940d64c60",
     "category_icon_assignment_sha256": "c892ed039c58986a635c29173767a4cac1c2867a43c0014350ae872022454683"
+  },
+  "business_reconciliation_2026_10_14": {
+    "product_model_revision": 4,
+    "latest_items_export": "SOURCE_ITEMS_1405_07_21_23_13.xlsx",
+    "latest_items_export_sha256": "cb15ceb59b35a45f883b26406aae41f27c1e3654b09b1c10ce1f45412bb0fcd4",
+    "description_source": "SOURCE_MENU_DESCRIPTIONS_20261013.txt",
+    "description_source_sha256": "50bda802641c61ef591b0272259edbd9051689097e1a7ea4df7cc5b1694debd7",
+    "price_delta_count": 11,
+    "approved_description_write_count": 41,
+    "protein_shake_1113": "active_new",
+    "deferred": [
+      "large_pot_variants",
+      "baklava_master_items",
+      "bundle_parent_items"
+    ]
   }
 }

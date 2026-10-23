@@ -12,7 +12,7 @@
     {
       "menu_key": "breakfast",
       "name": "صبحانه",
-      "status": "draft",
+      "status": "inactive",
       "sort_order": 20,
       "schedule_days": null,
       "daily_start": null,
@@ -21,7 +21,7 @@
     {
       "menu_key": "lunch",
       "name": "ناهار",
-      "status": "draft",
+      "status": "inactive",
       "sort_order": 30,
       "schedule_days": null,
       "daily_start": null,
@@ -31,7 +31,7 @@
   "categories": [
     {
       "category_key": "coffee",
-      "name": "بار گرم",
+      "name": "قهوه",
       "audience": "guest_staff",
       "sort_order": 10,
       "icon_key": "bean",
@@ -40,84 +40,112 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1,
+      "active": 1
     },
     {
-      "category_key": "tea-herbal",
-      "name": "چای ها",
+      "category_key": "food-snacks",
+      "name": "غذا و میان‌وعده",
       "audience": "guest_staff",
       "sort_order": 20,
-      "icon_key": "tea",
-      "image_path": "assets/menu/default/tea-pot.webp",
+      "icon_key": "sharing",
+      "image_path": "assets/menu/default/caesar-salad.webp",
       "menus": [
         "main",
-        "breakfast",
         "lunch"
-      ]
-    },
-    {
-      "category_key": "herbal-tea",
-      "name": "دمنوش ها",
-      "audience": "guest_staff",
-      "sort_order": 30,
-      "icon_key": "herbal",
-      "image_path": "assets/menu/default/herbal-tea.webp",
-      "menus": [
-        "main",
-        "breakfast",
-        "lunch"
-      ]
-    },
-    {
-      "category_key": "traditional-syrups",
-      "name": "شربت ها",
-      "audience": "guest_staff",
-      "sort_order": 40,
-      "icon_key": "sharbat",
-      "image_path": "assets/menu/default/summer-sharbat.webp",
-      "menus": [
-        "main",
-        "breakfast"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1,
+      "active": 1
     },
     {
       "category_key": "cold-drinks",
-      "name": "بار سرد",
+      "name": "نوشیدنی‌های سرد",
       "audience": "guest_staff",
-      "sort_order": 50,
+      "sort_order": 30,
       "icon_key": "cold-drink",
       "image_path": "assets/menu/default/blue-mojito.webp",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1,
+      "active": 1
     },
     {
-      "category_key": "smoothies",
-      "name": "اسموتی",
+      "category_key": "tea-herbal",
+      "name": "چای و دمنوش",
       "audience": "guest_staff",
-      "sort_order": 60,
-      "icon_key": "smoothie",
-      "image_path": "assets/menu/default/mango-smoothie.webp",
+      "sort_order": 40,
+      "icon_key": "tea",
+      "image_path": "assets/menu/default/tea-pot.webp",
       "menus": [
-        "main"
-      ]
+        "main",
+        "breakfast",
+        "lunch"
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1,
+      "active": 1
     },
     {
       "category_key": "shakes-smoothies",
-      "name": "شیک ها",
+      "name": "شیک و اسموتی",
       "audience": "guest_staff",
-      "sort_order": 70,
+      "sort_order": 50,
       "icon_key": "shake",
       "image_path": "assets/menu/default/vanilla-shake.webp",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1,
+      "active": 1
+    },
+    {
+      "category_key": "traditional-syrups",
+      "name": "شربت‌ها",
+      "audience": "guest_staff",
+      "sort_order": 60,
+      "icon_key": "sharbat",
+      "image_path": "assets/menu/default/summer-sharbat.webp",
+      "menus": [
+        "main",
+        "breakfast"
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1,
+      "active": 1
+    },
+    {
+      "category_key": "cakes-desserts",
+      "name": "کیک و دسر",
+      "audience": "guest_staff",
+      "sort_order": 70,
+      "icon_key": "cake",
+      "image_path": "assets/menu/default/chocolate-brownie.webp",
+      "menus": [
+        "main",
+        "breakfast"
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1,
+      "active": 1
     },
     {
       "category_key": "packaged-drinks",
-      "name": "نوشیدنی",
+      "name": "نوشیدنی‌های آماده",
       "audience": "guest_staff",
       "sort_order": 80,
       "icon_key": "water",
@@ -126,79 +154,123 @@
         "main",
         "breakfast",
         "lunch"
-      ]
-    },
-    {
-      "category_key": "cakes-desserts",
-      "name": "کیک و دسر",
-      "audience": "guest_staff",
-      "sort_order": 90,
-      "icon_key": "cake",
-      "image_path": "assets/menu/default/chocolate-brownie.webp",
-      "menus": [
-        "main",
-        "breakfast"
-      ]
-    },
-    {
-      "category_key": "finger-food",
-      "name": "فینگرفود",
-      "audience": "guest_staff",
-      "sort_order": 100,
-      "icon_key": "sharing",
-      "image_path": "assets/menu/default/caesar-salad.webp",
-      "menus": [
-        "main",
-        "lunch"
-      ]
-    },
-    {
-      "category_key": "foods",
-      "name": "خوراک",
-      "audience": "guest_staff",
-      "sort_order": 110,
-      "icon_key": "food",
-      "image_path": "assets/menu/default/yogurt-soup.webp",
-      "menus": [
-        "main",
-        "lunch"
-      ]
-    },
-    {
-      "category_key": "main-dishes",
-      "name": "غذای اصلی",
-      "audience": "guest_staff",
-      "sort_order": 120,
-      "icon_key": "iranian-food",
-      "image_path": null,
-      "menus": [
-        "lunch"
-      ]
-    },
-    {
-      "category_key": "pickles-sides",
-      "name": "ترشیجات",
-      "audience": "guest_staff",
-      "sort_order": 130,
-      "icon_key": "sauce",
-      "image_path": null,
-      "menus": [
-        "main",
-        "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1,
+      "active": 1
     },
     {
       "category_key": "internal-services",
       "name": "سرویس‌ها",
       "audience": "staff_only",
-      "sort_order": 140,
+      "sort_order": 900,
       "icon_key": "service",
       "image_path": null,
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 0,
+      "staff_visible": 1,
+      "active": 1
+    },
+    {
+      "category_key": "herbal-tea",
+      "name": "دمنوش ها",
+      "audience": "guest_staff",
+      "sort_order": 110,
+      "icon_key": "herbal",
+      "image_path": "assets/menu/default/herbal-tea.webp",
+      "menus": [
+        "main",
+        "breakfast",
+        "lunch"
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0,
+      "active": 0
+    },
+    {
+      "category_key": "smoothies",
+      "name": "اسموتی",
+      "audience": "guest_staff",
+      "sort_order": 120,
+      "icon_key": "smoothie",
+      "image_path": "assets/menu/default/mango-smoothie.webp",
+      "menus": [
+        "main"
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0,
+      "active": 0
+    },
+    {
+      "category_key": "finger-food",
+      "name": "فینگرفود",
+      "audience": "guest_staff",
+      "sort_order": 130,
+      "icon_key": "sharing",
+      "image_path": "assets/menu/default/caesar-salad.webp",
+      "menus": [
+        "main",
+        "lunch"
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0,
+      "active": 0
+    },
+    {
+      "category_key": "foods",
+      "name": "خوراک",
+      "audience": "guest_staff",
+      "sort_order": 140,
+      "icon_key": "food",
+      "image_path": "assets/menu/default/yogurt-soup.webp",
+      "menus": [
+        "main",
+        "lunch"
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0,
+      "active": 0
+    },
+    {
+      "category_key": "main-dishes",
+      "name": "غذای اصلی",
+      "audience": "guest_staff",
+      "sort_order": 150,
+      "icon_key": "iranian-food",
+      "image_path": null,
+      "menus": [
+        "lunch"
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0,
+      "active": 0
+    },
+    {
+      "category_key": "pickles-sides",
+      "name": "ترشیجات",
+      "audience": "guest_staff",
+      "sort_order": 160,
+      "icon_key": "sauce",
+      "image_path": null,
+      "menus": [
+        "main",
+        "lunch"
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0,
+      "active": 0
     }
   ],
   "items": [
@@ -207,7 +279,7 @@
       "category": "بار گرم",
       "name": "اسپرسو تک",
       "description": "اسپرسو بر پایه روبوستا ۶۰/۴۰.",
-      "price": 110000,
+      "price": 120000,
       "image_path": "assets/menu/default/espresso-tahini-shake.webp",
       "preparation_station": "hot_bar",
       "sort_order": 10,
@@ -220,14 +292,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "902",
       "category": "بار گرم",
       "name": "اسپرسو دبل",
       "description": "اسپرسو بر پایه روبوستا ۶۰/۴۰.",
-      "price": 160000,
+      "price": 180000,
       "image_path": "assets/menu/default/espresso-tahini-shake.webp",
       "preparation_station": "hot_bar",
       "sort_order": 20,
@@ -240,7 +315,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "903",
@@ -260,7 +338,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "904",
@@ -280,7 +361,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "801",
@@ -300,7 +384,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "802",
@@ -320,7 +407,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "803",
@@ -340,7 +430,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "804",
@@ -360,7 +453,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "805",
@@ -380,7 +476,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "806",
@@ -400,14 +499,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "807",
       "category": "چای ها",
       "name": "چای زعفران - کوچک",
       "description": "قوری کوچک.",
-      "price": 155000,
+      "price": 170000,
       "image_path": "assets/menu/default/tea-pot.webp",
       "preparation_station": "hot_bar",
       "sort_order": 70,
@@ -420,14 +522,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "808",
       "category": "چای ها",
       "name": "چای زعفران - بزرگ",
       "description": "قوری بزرگ.",
-      "price": 315000,
+      "price": 330000,
       "image_path": "assets/menu/default/tea-pot.webp",
       "preparation_station": "hot_bar",
       "sort_order": 80,
@@ -440,7 +545,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "701",
@@ -455,12 +563,15 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "herbal-tea",
+      "category_key": "tea-herbal",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "703",
@@ -475,19 +586,22 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "herbal-tea",
+      "category_key": "tea-herbal",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "705",
       "category": "دمنوش ها",
       "name": "دمنوش آویشن - کوچک",
       "description": "آویشن و عسل.",
-      "price": 160000,
+      "price": 180000,
       "image_path": "assets/menu/default/herbal-tea.webp",
       "preparation_station": "hot_bar",
       "sort_order": 30,
@@ -495,19 +609,22 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "herbal-tea",
+      "category_key": "tea-herbal",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "707",
       "category": "دمنوش ها",
       "name": "دمنوش گل نوش - کوچک",
       "description": "به، سیب و دارچین.",
-      "price": 160000,
+      "price": 180000,
       "image_path": "assets/menu/default/herbal-tea.webp",
       "preparation_station": "hot_bar",
       "sort_order": 40,
@@ -515,19 +632,22 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "herbal-tea",
+      "category_key": "tea-herbal",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "708",
       "category": "دمنوش ها",
       "name": "دمنوش گل نوش - بزرگ",
       "description": "به، سیب و دارچین.",
-      "price": 340000,
+      "price": 360000,
       "image_path": "assets/menu/default/herbal-tea.webp",
       "preparation_station": "hot_bar",
       "sort_order": 50,
@@ -535,19 +655,22 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "herbal-tea",
+      "category_key": "tea-herbal",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "709",
       "category": "دمنوش ها",
       "name": "دمنوش طلا - کوچک",
       "description": "به، سیب و زعفران.",
-      "price": 170000,
+      "price": 195000,
       "image_path": "assets/menu/default/herbal-tea.webp",
       "preparation_station": "hot_bar",
       "sort_order": 60,
@@ -555,19 +678,22 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "herbal-tea",
+      "category_key": "tea-herbal",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "710",
       "category": "دمنوش ها",
       "name": "دمنوش طلا - بزرگ",
       "description": "به، سیب و زعفران.",
-      "price": 370000,
+      "price": 390000,
       "image_path": "assets/menu/default/herbal-tea.webp",
       "preparation_station": "hot_bar",
       "sort_order": 70,
@@ -575,19 +701,22 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "herbal-tea",
+      "category_key": "tea-herbal",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "711",
       "category": "دمنوش ها",
       "name": "دمنوش آویشن - بزرگ",
       "description": "آویشن و عسل.",
-      "price": 340000,
+      "price": 360000,
       "image_path": "assets/menu/default/herbal-tea.webp",
       "preparation_station": "hot_bar",
       "sort_order": 80,
@@ -595,19 +724,22 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "herbal-tea",
+      "category_key": "tea-herbal",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "712",
       "category": "دمنوش ها",
       "name": "دمنوش آرام دل - بزرگ",
       "description": "گل گاوزبان، بهارنارنج، سنبل‌الطیب و گلاب.",
-      "price": 340000,
+      "price": 360000,
       "image_path": "assets/menu/default/herbal-tea.webp",
       "preparation_station": "hot_bar",
       "sort_order": 90,
@@ -615,12 +747,15 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "herbal-tea",
+      "category_key": "tea-herbal",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "713",
@@ -635,12 +770,15 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "herbal-tea",
+      "category_key": "tea-herbal",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "601",
@@ -659,32 +797,38 @@
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "602",
       "category": "شربت ها",
       "name": "زمرد",
-      "description": "",
+      "description": "نعنا، خاکشیر و بهارنارنج.",
       "price": 190000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 20,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
       "category_key": "traditional-syrups",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "603",
       "category": "شربت ها",
       "name": "شاه نوش",
-      "description": "زعفران، گلاب و خاک‌شیر.",
+      "description": "زعفران، گلاب و خاکشیر.",
       "price": 220000,
       "image_path": "assets/menu/default/redjack.webp",
       "preparation_station": "cold_bar",
@@ -697,7 +841,10 @@
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "604",
@@ -716,13 +863,16 @@
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "605",
       "category": "شربت ها",
       "name": "شهناز",
-      "description": "بیدمشک، زعفران و خاک‌شیر.",
+      "description": "بیدمشک، نسترن و خاکشیر.",
       "price": 190000,
       "image_path": "assets/menu/default/summer-sharbat.webp",
       "preparation_station": "cold_bar",
@@ -735,7 +885,10 @@
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "606",
@@ -754,7 +907,10 @@
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "607",
@@ -773,7 +929,10 @@
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "608",
@@ -792,14 +951,17 @@
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "905",
       "category": "بار سرد",
       "name": "آفوگاتو",
       "description": "اسپرسو و بستنی وانیلی.",
-      "price": 245000,
+      "price": 265000,
       "image_path": "assets/menu/default/espresso-tahini-shake.webp",
       "preparation_station": "hot_bar",
       "sort_order": 10,
@@ -807,18 +969,21 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "cold-drinks",
+      "category_key": "coffee",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1001",
       "category": "بار سرد",
       "name": "آیس آمریکانو",
-      "description": "اسپرسو بر پایه روبوستا ۶۰/۴۰.",
+      "description": "اسپرسو بر پایه روبوستا ۶۰ در ۴۰.",
       "price": 180000,
       "image_path": "assets/menu/default/lemon-soda.webp",
       "preparation_station": "cold_bar",
@@ -827,18 +992,21 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "cold-drinks",
+      "category_key": "coffee",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1002",
       "category": "بار سرد",
       "name": "آیس کارامل ماکیاتو",
-      "description": "قهوه سرد با کارامل.",
+      "description": "اسپرسو بر پایه روبوستا ۶۰ در ۴۰.",
       "price": 220000,
       "image_path": "assets/menu/default/lemon-soda.webp",
       "preparation_station": "cold_bar",
@@ -847,12 +1015,15 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "cold-drinks",
+      "category_key": "coffee",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1003",
@@ -867,12 +1038,15 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "cold-drinks",
+      "category_key": "coffee",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1004",
@@ -887,19 +1061,22 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "cold-drinks",
+      "category_key": "coffee",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1005",
       "category": "بار سرد",
       "name": "موهیتو",
       "description": "موهیتوی خنک با نعنا و لیمو.",
-      "price": 255000,
+      "price": 265000,
       "image_path": "assets/menu/default/green-mojito.webp",
       "preparation_station": "cold_bar",
       "sort_order": 60,
@@ -912,14 +1089,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1006",
       "category": "بار سرد",
       "name": "لیموناد",
       "description": "لیموناد خنک.",
-      "price": 225000,
+      "price": 240000,
       "image_path": "assets/menu/default/lemon-soda.webp",
       "preparation_station": "cold_bar",
       "sort_order": 70,
@@ -932,14 +1112,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1007",
       "category": "بار سرد",
       "name": "فیمتو",
       "description": "نوشیدنی خنک فیمتو.",
-      "price": 230000,
+      "price": 245000,
       "image_path": "assets/menu/default/vimto.webp",
       "preparation_station": "cold_bar",
       "sort_order": 80,
@@ -952,14 +1135,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1008",
       "category": "بار سرد",
       "name": "فیمتو اسپرایت",
       "description": "فیمتو و اسپریت.",
-      "price": 245000,
+      "price": 295000,
       "image_path": "assets/menu/default/redjack.webp",
       "preparation_station": "cold_bar",
       "sort_order": 90,
@@ -972,14 +1158,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1009",
       "category": "بار سرد",
       "name": "شیر موز",
       "description": "شیر و موز.",
-      "price": 220000,
+      "price": 235000,
       "image_path": "assets/menu/default/milkshake.webp",
       "preparation_station": "cold_bar",
       "sort_order": 100,
@@ -992,14 +1181,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1010",
       "category": "بار سرد",
       "name": "شیر موز بستنی",
       "description": "شیر موز با بستنی.",
-      "price": 255000,
+      "price": 270000,
       "image_path": "assets/menu/default/milkshake.webp",
       "preparation_station": "cold_bar",
       "sort_order": 110,
@@ -1012,14 +1204,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1011",
       "category": "بار سرد",
       "name": "آب هندوانه",
       "description": "آب هندوانه تازه.",
-      "price": 190000,
+      "price": 215000,
       "image_path": "assets/menu/default/red-drink.webp",
       "preparation_station": "cold_bar",
       "sort_order": 120,
@@ -1032,14 +1227,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1012",
       "category": "بار سرد",
       "name": "آب طالبی",
       "description": "آب طالبی تازه.",
-      "price": 195000,
+      "price": 220000,
       "image_path": "assets/menu/default/mango-drink.webp",
       "preparation_station": "cold_bar",
       "sort_order": 130,
@@ -1052,7 +1250,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1013",
@@ -1064,15 +1265,18 @@
       "preparation_station": "cold_bar",
       "sort_order": 140,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cold-drinks",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1014",
@@ -1084,15 +1288,18 @@
       "preparation_station": "cold_bar",
       "sort_order": 150,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cold-drinks",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1015",
@@ -1104,22 +1311,25 @@
       "preparation_station": "cold_bar",
       "sort_order": 160,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cold-drinks",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1016",
       "category": "بار سرد",
       "name": "بلو موهیتو",
       "description": "موهیتوی آبی خنک.",
-      "price": 265000,
+      "price": 275000,
       "image_path": "assets/menu/default/blue-mojito.webp",
       "preparation_station": "cold_bar",
       "sort_order": 170,
@@ -1132,7 +1342,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1017",
@@ -1147,19 +1360,22 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "cold-drinks",
+      "category_key": "internal-services",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 0,
+      "staff_visible": 1
     },
     {
       "item_code": "1110",
       "category": "اسموتی",
       "name": "اسموتی انبه",
       "description": "انبه طبیعی و آب انبه.",
-      "price": 360000,
+      "price": 495000,
       "image_path": "assets/menu/default/mango-smoothie.webp",
       "preparation_station": "cold_bar",
       "sort_order": 10,
@@ -1167,17 +1383,20 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "smoothies",
+      "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1111",
       "category": "اسموتی",
       "name": "اسموتی منگو بری",
       "description": "انبه، توت‌فرنگی و آب انبه.",
-      "price": 385000,
+      "price": 520000,
       "image_path": "assets/menu/default/mango-smoothie.webp",
       "preparation_station": "cold_bar",
       "sort_order": 20,
@@ -1185,17 +1404,20 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "smoothies",
+      "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1101",
       "category": "شیک ها",
       "name": "شیک ارده",
       "description": "شیک ارده.",
-      "price": 345000,
+      "price": 355000,
       "image_path": "assets/menu/default/tahini-shake.webp",
       "preparation_station": "cold_bar",
       "sort_order": 10,
@@ -1206,14 +1428,17 @@
       "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1102",
       "category": "شیک ها",
       "name": "شیک ارده اسپرسو",
       "description": "ارده و اسپرسو.",
-      "price": 375000,
+      "price": 395000,
       "image_path": "assets/menu/default/espresso-tahini-shake.webp",
       "preparation_station": "cold_bar",
       "sort_order": 20,
@@ -1224,7 +1449,10 @@
       "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1103",
@@ -1242,14 +1470,17 @@
       "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1104",
       "category": "شیک ها",
       "name": "شیک لوتوس",
       "description": "شیک لوتوس.",
-      "price": 315000,
+      "price": 335000,
       "image_path": "assets/menu/default/lotus-shake.webp",
       "preparation_station": "cold_bar",
       "sort_order": 40,
@@ -1260,32 +1491,38 @@
       "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1105",
       "category": "شیک ها",
       "name": "شیک اسپرسو",
       "description": "شیک اسپرسو.",
-      "price": 285000,
+      "price": 310000,
       "image_path": "assets/menu/default/espresso-tahini-shake.webp",
       "preparation_station": "cold_bar",
       "sort_order": 50,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1106",
       "category": "شیک ها",
       "name": "شیک فیمتو",
       "description": "شیک فیمتو.",
-      "price": 290000,
+      "price": 345000,
       "image_path": "assets/menu/default/red-drink.webp",
       "preparation_station": "cold_bar",
       "sort_order": 60,
@@ -1296,14 +1533,17 @@
       "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1107",
       "category": "شیک ها",
       "name": "شیک پینات",
       "description": "کره بادام‌زمینی، بادام‌زمینی و پنیر خامه‌ای.",
-      "price": 315000,
+      "price": 345000,
       "image_path": "assets/menu/default/milkshake.webp",
       "preparation_station": "cold_bar",
       "sort_order": 70,
@@ -1314,14 +1554,17 @@
       "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1108",
       "category": "شیک ها",
       "name": "شیک نسکافه",
       "description": "شیک نسکافه.",
-      "price": 270000,
+      "price": 315000,
       "image_path": "assets/menu/default/milkshake.webp",
       "preparation_station": "cold_bar",
       "sort_order": 80,
@@ -1332,14 +1575,17 @@
       "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1109",
       "category": "شیک ها",
       "name": "شیک انبه",
       "description": "انبه طبیعی و بستنی وانیلی.",
-      "price": 340000,
+      "price": 475000,
       "image_path": "assets/menu/default/mango-drink.webp",
       "preparation_station": "cold_bar",
       "sort_order": 90,
@@ -1350,14 +1596,17 @@
       "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1112",
       "category": "شیک ها",
       "name": "شیک توت فرنگی",
       "description": "توت‌فرنگی، بستنی وانیلی و سیروپ توت‌فرنگی.",
-      "price": 345000,
+      "price": 355000,
       "image_path": "assets/menu/default/strawberry-shake.webp",
       "preparation_station": "cold_bar",
       "sort_order": 100,
@@ -1368,14 +1617,17 @@
       "category_key": "shakes-smoothies",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "201",
       "category": "نوشیدنی",
       "name": "نوشابه پپسی قوطی",
       "description": "",
-      "price": 145000,
+      "price": 155000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 10,
@@ -1388,34 +1640,40 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "202",
       "category": "نوشیدنی",
       "name": "نوشابه دیو قوطی",
       "description": "",
-      "price": 145000,
+      "price": 155000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 20,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "packaged-drinks",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "203",
       "category": "نوشیدنی",
       "name": "نوشابه شانی قوطی",
       "description": "",
-      "price": 145000,
+      "price": 155000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 30,
@@ -1428,7 +1686,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "204",
@@ -1440,15 +1701,18 @@
       "preparation_station": "cold_bar",
       "sort_order": 40,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "packaged-drinks",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "205",
@@ -1468,14 +1732,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "206",
       "category": "نوشیدنی",
       "name": "دوغ آپادا",
       "description": "",
-      "price": 40000,
+      "price": 100000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 60,
@@ -1488,14 +1755,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "207",
       "category": "نوشیدنی",
       "name": "آب گاز دار لیمویی",
       "description": "",
-      "price": 85000,
+      "price": 95000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 70,
@@ -1508,14 +1778,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "208",
       "category": "نوشیدنی",
       "name": "نوشابه کوکا قوطی",
       "description": "",
-      "price": 95000,
+      "price": 105000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 80,
@@ -1528,7 +1801,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "209",
@@ -1548,7 +1824,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "210",
@@ -1568,14 +1847,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "211",
       "category": "نوشیدنی",
       "name": "نوشابه میراندا قوطی",
       "description": "",
-      "price": 145000,
+      "price": 155000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 110,
@@ -1588,14 +1870,17 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "212",
       "category": "نوشیدنی",
       "name": "نوشابه کوکا زیرو قوطی",
       "description": "",
-      "price": 95000,
+      "price": 105000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 120,
@@ -1608,7 +1893,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "213",
@@ -1620,22 +1908,25 @@
       "preparation_station": "cold_bar",
       "sort_order": 130,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "packaged-drinks",
       "menus": [
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "214",
       "category": "نوشیدنی",
       "name": "نوشابه سون آپ قوطی",
       "description": "",
-      "price": 145000,
+      "price": 155000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 140,
@@ -1648,26 +1939,32 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1201",
       "category": "کیک و دسر",
       "name": "کیک بسبوسه",
-      "description": "",
+      "description": "کیک بسبوسه خانگی.",
       "price": 110000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 10,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1202",
@@ -1679,33 +1976,39 @@
       "preparation_station": "cold_bar",
       "sort_order": 20,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1203",
       "category": "کیک و دسر",
       "name": "کیک شکلاتی",
-      "description": "",
+      "description": "کیک شکلاتی خانگی.",
       "price": 130000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 30,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1204",
@@ -1717,14 +2020,17 @@
       "preparation_station": "cold_bar",
       "sort_order": 40,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1205",
@@ -1736,14 +2042,17 @@
       "preparation_station": "cold_bar",
       "sort_order": 50,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1206",
@@ -1755,14 +2064,17 @@
       "preparation_station": "cold_bar",
       "sort_order": 60,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1207",
@@ -1774,14 +2086,17 @@
       "preparation_station": "cold_bar",
       "sort_order": 70,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1209",
@@ -1793,39 +2108,45 @@
       "preparation_station": "cold_bar",
       "sort_order": 80,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1210",
       "category": "کیک و دسر",
       "name": "کیک شعریه",
-      "description": "",
+      "description": "کیک شعریه خانگی.",
       "price": 120000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 90,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1211",
       "category": "کیک و دسر",
       "name": "چیز کیک ماتیلدا",
-      "description": "با خامه صبحانه و شکلات سس‌دار.",
+      "description": "با خامه صبحانه و شکلات ساربون.",
       "price": 325000,
       "image_path": "assets/menu/default/chocolate-brownie.webp",
       "preparation_station": "other",
@@ -1838,83 +2159,98 @@
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1212",
       "category": "کیک و دسر",
       "name": "دسر برونی",
-      "description": "",
+      "description": "خانگی.",
       "price": 240000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 110,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1213",
       "category": "کیک و دسر",
       "name": "آمریکن کوکی",
-      "description": "",
+      "description": "کوکی خانگی با تکه‌های شکلات.",
       "price": 95000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 120,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1214",
       "category": "کیک و دسر",
       "name": "چیز کیک گلکسی",
-      "description": "",
+      "description": "خانگی.",
       "price": 285000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 130,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1215",
       "category": "کیک و دسر",
       "name": "دسر لیزی کت",
-      "description": "",
+      "description": "ترکیب کیک شکلاتی تلخ، سیروپ قهوه، کرم پنیری مخصوص و گاناش شکلات.",
       "price": 280000,
       "image_path": null,
       "preparation_station": "cold_bar",
       "sort_order": 140,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1216",
@@ -1926,14 +2262,17 @@
       "preparation_station": "cold_bar",
       "sort_order": 150,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1218",
@@ -1945,14 +2284,17 @@
       "preparation_station": "cold_bar",
       "sort_order": 160,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "cakes-desserts",
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1220",
@@ -1971,7 +2313,10 @@
       "menus": [
         "main",
         "breakfast"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "114",
@@ -1984,19 +2329,22 @@
       "sort_order": 10,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "118",
       "category": "فینگرفود",
       "name": "زینگر",
-      "description": "۲۰۰ گرم مرغ، پودر سوخاری، نان برگر، گوجه، کاهوپیچ، خیارشور و سس زینگر اختصاصی.",
+      "description": "۲۰۰ گرم مرغ، پودر سوخاری، نان برگر، گوجه، کاهو پیچ، خیارشور و سس اختصاصی زینگر.",
       "price": 630000,
       "image_path": "assets/menu/default/burger.webp",
       "preparation_station": "kitchen",
@@ -2005,17 +2353,20 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1301",
       "category": "فینگرفود",
       "name": "سیب زمینی ساده",
-      "description": "سیب زمینی، ادویه اختصاصی و سس کچاپ.",
-      "price": 195000,
+      "description": "۲۵۰ گرم سیب‌زمینی، ادویه اختصاصی و سس کچاپ.",
+      "price": 295000,
       "image_path": "assets/menu/default/chicken-club-toast.webp",
       "preparation_station": "kitchen",
       "sort_order": 30,
@@ -2023,11 +2374,14 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1302",
@@ -2040,13 +2394,16 @@
       "sort_order": 40,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1303",
@@ -2059,13 +2416,16 @@
       "sort_order": 50,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1304",
@@ -2078,19 +2438,22 @@
       "sort_order": 60,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1305",
       "category": "فینگرفود",
       "name": "پاستا چیکن آلفردو",
-      "description": "مرغ، قارچ، خامه، شیر، پنه، پنیر پارمسان، گوجه گیلاسی، جعفری خشک و زیتون سیاه.",
+      "description": "۵۰ گرم مرغ، ۵۰ گرم قارچ، ۱۰۰ گرم خامه، ۱۰۰ میلی‌لیتر شیر، ۱۰۰ گرم پنه، پنیر پارمسان، گوجه گیلاسی، جعفری خشک و زیتون سیاه.",
       "price": 595000,
       "image_path": "assets/menu/default/chicken-alfredo.webp",
       "preparation_station": "kitchen",
@@ -2099,10 +2462,13 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1306",
@@ -2115,12 +2481,15 @@
       "sort_order": 80,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1307",
@@ -2133,12 +2502,15 @@
       "sort_order": 90,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1308",
@@ -2151,19 +2523,22 @@
       "sort_order": 100,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1309",
       "category": "فینگرفود",
       "name": "قارچ سوخاری",
-      "description": "قارچ، تخم‌مرغ، آرد طعم‌دار و پودر سوخاری.",
-      "price": 290000,
+      "description": "۸ عدد قارچ (در مجموع حدود ۱۲۰ تا ۱۵۰ گرم)، تخم‌مرغ، آرد طعم‌دار و پودر سوخاری.",
+      "price": 345000,
       "image_path": "assets/menu/default/fried-mushroom.webp",
       "preparation_station": "kitchen",
       "sort_order": 110,
@@ -2171,18 +2546,21 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1310",
       "category": "فینگرفود",
       "name": "اسنک مرغ",
-      "description": "مواد اسنک، نان تست، پنیر پیتزا، پنیر ورقه‌ای و سس اسنک.",
-      "price": 335000,
+      "description": "۹۰ گرم مواد اسنک، نان تست، پنیر پیتزا، پنیر ویلی و سس کچاپ.",
+      "price": 345000,
       "image_path": "assets/menu/default/chicken-club-toast.webp",
       "preparation_station": "kitchen",
       "sort_order": 120,
@@ -2190,10 +2568,13 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1311",
@@ -2206,18 +2587,21 @@
       "sort_order": 130,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1312",
       "category": "فینگرفود",
       "name": "سالاد سزار",
-      "description": "نان تست، مرغ، کاهوپیچ، گوجه گیلاسی، زیتون سیاه، بیبی‌کورن، پنیر پارمسان و سس سالاد.",
+      "description": "نان تست، ۱۲۰ گرم مرغ، ۱۲۰ گرم کاهو پیچ، گوجه گیلاسی، زیتون سیاه، بیبی‌کورن، پنیر پارمسان و سس سالاد.",
       "price": 620000,
       "image_path": "assets/menu/default/caesar-salad.webp",
       "preparation_station": "kitchen",
@@ -2226,18 +2610,21 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1313",
       "category": "فینگرفود",
       "name": "سیب زمینی با سس قارچ",
-      "description": "سیب زمینی، قارچ، خامه، شیر، پنیر و ادویه اختصاصی.",
-      "price": 415000,
+      "description": "۲۵۰ گرم سیب‌زمینی، ۵۰ گرم قارچ، ۱۰۰ گرم خامه، ۵۰ میلی‌لیتر شیر، ¼ عصاره مرغ و ادویه اختصاصی.",
+      "price": 495000,
       "image_path": "assets/menu/default/chicken-club-toast.webp",
       "preparation_station": "kitchen",
       "sort_order": 150,
@@ -2245,18 +2632,21 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1314",
       "category": "فینگرفود",
       "name": "برگر گوشت",
-      "description": "برگر گوشت ۱۵۰–۱۸۰ گرم، گوجه، خیارشور، کاهوپیچ، نان برگر و سس برگر اختصاصی.",
-      "price": 655000,
+      "description": "برگر گوشت (۱۰۰ تا ۱۲۵ گرم)، گوجه، خیارشور، کاهو پیچ، نان برگر و سس اختصاصی برگر.",
+      "price": 755000,
       "image_path": "assets/menu/default/burger.webp",
       "preparation_station": "kitchen",
       "sort_order": 160,
@@ -2264,16 +2654,19 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1315",
       "category": "فینگرفود",
       "name": "برگر مرغ",
-      "description": "برگر مرغ ۱۰۰–۱۲۰ گرم، گوجه، خیارشور، کاهوپیچ، نان برگر و سس برگر اختصاصی.",
+      "description": "برگر مرغ (۱۰۰ تا ۱۲۰ گرم)، گوجه، خیارشور، کاهو پیچ، نان برگر و سس اختصاصی برگر.",
       "price": 595000,
       "image_path": "assets/menu/default/burger.webp",
       "preparation_station": "kitchen",
@@ -2282,35 +2675,41 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "1316",
       "category": "فینگرفود",
       "name": "آب دوغ خیار",
-      "description": "آب دوغ خیار؛ فقط سه‌شنبه‌شب‌ها سرو می‌شود.",
+      "description": "آب‌دوغ‌خیار فقط سه‌شنبه‌شب‌ها سرو می‌شود :)",
       "price": 630000,
       "image_path": "assets/menu/default/yogurt-soup.webp",
       "preparation_station": "kitchen",
       "sort_order": 180,
       "featured": 1,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1317",
       "category": "فینگرفود",
       "name": "سالاد حمص",
-      "description": "",
+      "description": "۱۳۰ گرم حمص، ۱۰۰ گرم مرغ، ۱۵۰ گرم کاهو پیچ، نان پیتا، گوجه گیلاسی، خیار سبز و زیتون سیاه و سبز.",
       "price": 570000,
       "image_path": null,
       "preparation_station": "kitchen",
@@ -2319,11 +2718,14 @@
       "active": 1,
       "available": 1,
       "staff_only": 0,
-      "category_key": "finger-food",
+      "category_key": "food-snacks",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     },
     {
       "item_code": "109",
@@ -2335,14 +2737,17 @@
       "preparation_station": "kitchen",
       "sort_order": 10,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "foods",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "110",
@@ -2354,14 +2759,17 @@
       "preparation_station": "kitchen",
       "sort_order": 20,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "foods",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "111",
@@ -2373,14 +2781,17 @@
       "preparation_station": "kitchen",
       "sort_order": 30,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "foods",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "113",
@@ -2392,14 +2803,17 @@
       "preparation_station": "kitchen",
       "sort_order": 40,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "foods",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "115",
@@ -2411,14 +2825,17 @@
       "preparation_station": "kitchen",
       "sort_order": 50,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "foods",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "116",
@@ -2430,14 +2847,17 @@
       "preparation_station": "kitchen",
       "sort_order": 60,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "foods",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "117",
@@ -2449,14 +2869,17 @@
       "preparation_station": "kitchen",
       "sort_order": 70,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "foods",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "101",
@@ -2469,12 +2892,15 @@
       "sort_order": 10,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
       "category_key": "main-dishes",
       "menus": [
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "102",
@@ -2487,12 +2913,15 @@
       "sort_order": 20,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
       "category_key": "main-dishes",
       "menus": [
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "103",
@@ -2505,12 +2934,15 @@
       "sort_order": 30,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
       "category_key": "main-dishes",
       "menus": [
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "104",
@@ -2523,12 +2955,15 @@
       "sort_order": 40,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
       "category_key": "main-dishes",
       "menus": [
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "105",
@@ -2541,12 +2976,15 @@
       "sort_order": 50,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
       "category_key": "main-dishes",
       "menus": [
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "106",
@@ -2559,12 +2997,15 @@
       "sort_order": 60,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
       "category_key": "main-dishes",
       "menus": [
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "107",
@@ -2577,12 +3018,15 @@
       "sort_order": 70,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
       "category_key": "main-dishes",
       "menus": [
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "108",
@@ -2595,12 +3039,15 @@
       "sort_order": 80,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
       "category_key": "main-dishes",
       "menus": [
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "112",
@@ -2613,12 +3060,15 @@
       "sort_order": 90,
       "featured": 0,
       "active": 0,
-      "available": 1,
+      "available": 0,
       "staff_only": 0,
       "category_key": "main-dishes",
       "menus": [
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "301",
@@ -2630,14 +3080,17 @@
       "preparation_station": "kitchen",
       "sort_order": 10,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "pickles-sides",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "302",
@@ -2649,14 +3102,17 @@
       "preparation_station": "kitchen",
       "sort_order": 20,
       "featured": 0,
-      "active": 1,
-      "available": 1,
+      "active": 0,
+      "available": 0,
       "staff_only": 0,
       "category_key": "pickles-sides",
       "menus": [
         "main",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "retired",
+      "guest_visible": 0,
+      "staff_visible": 0
     },
     {
       "item_code": "1208",
@@ -2676,7 +3132,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 0,
+      "staff_visible": 1
     },
     {
       "item_code": "1217",
@@ -2696,7 +3155,10 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 0,
+      "staff_visible": 1
     },
     {
       "item_code": "1219",
@@ -2716,143 +3178,389 @@
         "main",
         "breakfast",
         "lunch"
-      ]
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 0,
+      "staff_visible": 1
+    },
+    {
+      "item_code": "1019",
+      "category": "بار سرد",
+      "name": "آیس دالگونا",
+      "description": "",
+      "price": 220000,
+      "image_path": null,
+      "preparation_station": "cold_bar",
+      "sort_order": 190,
+      "featured": 0,
+      "active": 1,
+      "available": 1,
+      "staff_only": 0,
+      "category_key": "coffee",
+      "menus": [
+        "main",
+        "breakfast",
+        "lunch"
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
+    },
+    {
+      "item_code": "1318",
+      "category": "فینگرفود",
+      "name": "چاپاتای مرغ",
+      "description": "",
+      "price": 390000,
+      "image_path": null,
+      "preparation_station": "kitchen",
+      "sort_order": 200,
+      "featured": 0,
+      "active": 1,
+      "available": 1,
+      "staff_only": 0,
+      "category_key": "food-snacks",
+      "menus": [
+        "main"
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
+    },
+    {
+      "item_code": "1113",
+      "category": "شیک ها",
+      "name": "شیک پروتئینی",
+      "description": "موز، کنجد، کره بادام‌زمینی، گردو، جو دوسر، پودر دارچین و عسل.",
+      "price": 395000,
+      "image_path": null,
+      "preparation_station": "cold_bar",
+      "sort_order": 110,
+      "featured": 0,
+      "active": 1,
+      "available": 1,
+      "staff_only": 0,
+      "category_key": "shakes-smoothies",
+      "menus": [
+        "main"
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
+    },
+    {
+      "item_code": "1018",
+      "category": "بار سرد",
+      "name": "رد موهیتو",
+      "description": "",
+      "price": 275000,
+      "image_path": null,
+      "preparation_station": "cold_bar",
+      "sort_order": 200,
+      "featured": 0,
+      "active": 1,
+      "available": 1,
+      "staff_only": 0,
+      "category_key": "cold-drinks",
+      "menus": [
+        "main",
+        "breakfast",
+        "lunch"
+      ],
+      "lifecycle_status": "active",
+      "guest_visible": 1,
+      "staff_visible": 1
     }
   ],
   "retired_item_codes": [
-    "FOOD-ABDOUGH",
-    "FOOD-BURGER-BEEF",
-    "FOOD-BURGER-CHICKEN",
-    "FOOD-ZINGER",
-    "FOOD-CAESAR",
-    "FOOD-FRIED-MUSHROOM",
-    "FOOD-CHICKEN-TOAST",
-    "FOOD-ALFREDO",
-    "SHARBAT-CUCUMBER-SEKANJABIN",
-    "SHARBAT-ORDIBEHESHT",
-    "SHARBAT-DELNAVAZ",
-    "SHARBAT-SHAHNAZ",
-    "SHARBAT-KERESHMEH",
-    "SHARBAT-SHAHNOUSH",
-    "SHARBAT-TORANJ",
-    "HERBAL-GOLD-S",
-    "HERBAL-GOLD-L",
-    "HERBAL-GOLNOUSH-S",
-    "HERBAL-GOLNOUSH-L",
-    "HERBAL-THYME-S",
-    "HERBAL-THYME-L",
-    "HERBAL-ARAMDEL-S",
-    "HERBAL-ARAMDEL-L",
-    "HERBAL-RED-CARPET-S",
-    "HERBAL-RED-CARPET-L",
-    "TEA-SAFFRON-S",
-    "TEA-SAFFRON-L",
-    "TEA-CARDAMOM-CINNAMON-S",
-    "TEA-CARDAMOM-CINNAMON-L",
-    "TEA-MOROCCO-S",
-    "TEA-MOROCCO-L",
-    "TEA-PLAIN-S",
-    "TEA-PLAIN-L",
-    "HOT-AFFOGATO",
-    "HOT-AMERICANO-S",
-    "HOT-AMERICANO-L",
-    "HOT-ESPRESSO-DOUBLE",
-    "HOT-ESPRESSO-SINGLE",
-    "COLD-BLUE-MOJITO",
-    "COLD-RED-JACK",
-    "COLD-BLUE-JACK",
-    "COLD-WATERMELON",
-    "COLD-CANTALOUPE",
-    "COLD-BANANA-ICECREAM",
-    "COLD-BANANA-MILK",
-    "COLD-ICE-AMERICANO-S",
-    "COLD-ICE-CARAMEL-MACCHIATO",
-    "COLD-ICE-MOCHA",
-    "COLD-ICE-LATTE",
-    "COLD-MOJITO",
-    "COLD-LEMONADE",
-    "COLD-FIMTO",
-    "COLD-FIMTO-SPRITE",
-    "MENU-1017",
-    "SHAKE-STRAWBERRY",
-    "SHAKE-MANGO",
-    "SHAKE-PEANUT",
-    "SHAKE-NESCAFE",
-    "SHAKE-FIMTO",
-    "SHAKE-TAHINI",
-    "SHAKE-TAHINI-ESPRESSO",
-    "SHAKE-CHOCOLATE",
-    "SHAKE-ESPRESSO",
-    "SHAKE-LOTUS",
-    "DESSERT-MATILDA-CHEESECAKE",
-    "MENU-1214",
-    "MENU-1213",
-    "MENU-1202",
-    "MENU-1201",
-    "MENU-1207",
-    "MENU-1218",
-    "MENU-1216",
-    "MENU-1206",
-    "MENU-1204",
-    "MENU-1209",
-    "MENU-1205",
-    "MENU-1215",
-    "MENU-1210",
-    "MENU-1203",
-    "MENU-1212",
-    "POTATO-PLAIN",
-    "POTATO-MUSHROOM",
-    "POTATO-CHEDDAR",
-    "SMOOTHIE-MANGO-BERRY",
-    "SMOOTHIE-MANGO",
-    "SMOOTHIE-PINACOLADA",
-    "MENU-1308",
-    "MENU-1304",
-    "MENU-1311",
-    "MENU-1303",
-    "MENU-114",
-    "MENU-1307",
-    "MENU-1306",
-    "MENU-205",
-    "MENU-209",
-    "MENU-210",
-    "MENU-203",
-    "MENU-212",
-    "MENU-211",
-    "MENU-202",
-    "MENU-213",
-    "MENU-206",
-    "MENU-207",
-    "MENU-201",
-    "MENU-204",
-    "MENU-208",
-    "MENU-214",
-    "MENU-104",
-    "MENU-103",
-    "MENU-108",
-    "MENU-106",
-    "MENU-102",
-    "MENU-107",
-    "MENU-101",
-    "MENU-112",
-    "MENU-105",
-    "MENU-109",
-    "MENU-117",
-    "MENU-110",
-    "MENU-116",
-    "MENU-115",
-    "MENU-111",
-    "MENU-113",
-    "MENU-301",
-    "MENU-302",
-    "MENU-602",
-    "SERVICE-TAKEAWAY",
-    "SERVICE-CAKE"
+    "1316",
+    "1214",
+    "1213",
+    "1202",
+    "1308",
+    "1304",
+    "1201",
+    "1207",
+    "602",
+    "1013",
+    "1218",
+    "104",
+    "1311",
+    "1216",
+    "103",
+    "108",
+    "1303",
+    "1206",
+    "1204",
+    "109",
+    "1105",
+    "117",
+    "1209",
+    "202",
+    "106",
+    "213",
+    "301",
+    "102",
+    "1205",
+    "1015",
+    "107",
+    "114",
+    "1014",
+    "110",
+    "116",
+    "101",
+    "1215",
+    "112",
+    "1302",
+    "302",
+    "1210",
+    "115",
+    "1307",
+    "1306",
+    "111",
+    "204",
+    "1203",
+    "113",
+    "1212",
+    "105"
   ],
   "retired_category_keys": [
-    "starters-salads",
-    "burgers-sandwiches",
-    "pasta",
-    "add-ons"
-  ]
+    "herbal-tea",
+    "smoothies",
+    "finger-food",
+    "foods",
+    "main-dishes",
+    "pickles-sides"
+  ],
+  "variant_families": [
+    {
+      "family_key": "h297-01",
+      "name": "اسپرسو",
+      "category_key": "coffee",
+      "sort_order": 10,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "901",
+          "label": "تک",
+          "sort_order": 10
+        },
+        {
+          "item_code": "902",
+          "label": "دبل",
+          "sort_order": 20
+        }
+      ],
+      "description": "اسپرسو بر پایه روبوستا ۶۰ در ۴۰."
+    },
+    {
+      "family_key": "h297-02",
+      "name": "آمریکانو",
+      "category_key": "coffee",
+      "sort_order": 20,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "903",
+          "label": "تک",
+          "sort_order": 10
+        },
+        {
+          "item_code": "904",
+          "label": "دبل",
+          "sort_order": 20
+        }
+      ],
+      "description": "اسپرسو بر پایه روبوستا ۶۰ در ۴۰."
+    },
+    {
+      "family_key": "h297-03",
+      "name": "چای ساده",
+      "category_key": "tea-herbal",
+      "sort_order": 30,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "801",
+          "label": "تک‌نفره",
+          "sort_order": 10
+        },
+        {
+          "item_code": "802",
+          "label": "دو نفره",
+          "sort_order": 20
+        }
+      ]
+    },
+    {
+      "family_key": "h297-04",
+      "name": "چای مراکش",
+      "category_key": "tea-herbal",
+      "sort_order": 40,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "803",
+          "label": "تک‌نفره",
+          "sort_order": 10
+        },
+        {
+          "item_code": "804",
+          "label": "دو نفره",
+          "sort_order": 20
+        }
+      ]
+    },
+    {
+      "family_key": "h297-05",
+      "name": "چای هل و دارچین",
+      "category_key": "tea-herbal",
+      "sort_order": 50,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "805",
+          "label": "تک‌نفره",
+          "sort_order": 10
+        },
+        {
+          "item_code": "806",
+          "label": "دو نفره",
+          "sort_order": 20
+        }
+      ]
+    },
+    {
+      "family_key": "h297-06",
+      "name": "چای زعفران",
+      "category_key": "tea-herbal",
+      "sort_order": 60,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "807",
+          "label": "تک‌نفره",
+          "sort_order": 10
+        },
+        {
+          "item_code": "808",
+          "label": "دو نفره",
+          "sort_order": 20
+        }
+      ]
+    },
+    {
+      "family_key": "h297-07",
+      "name": "دمنوش فرش قرمز",
+      "category_key": "tea-herbal",
+      "sort_order": 70,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "701",
+          "label": "تک‌نفره",
+          "sort_order": 10
+        },
+        {
+          "item_code": "713",
+          "label": "دو نفره",
+          "sort_order": 20
+        }
+      ],
+      "description": "چای قرمز، گل محمدی، بهارنارنج و دارچین."
+    },
+    {
+      "family_key": "h297-08",
+      "name": "دمنوش آرام دل",
+      "category_key": "tea-herbal",
+      "sort_order": 80,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "703",
+          "label": "تک‌نفره",
+          "sort_order": 10
+        },
+        {
+          "item_code": "712",
+          "label": "دو نفره",
+          "sort_order": 20
+        }
+      ],
+      "description": "گل‌گاوزبان، بهارنارنج، سنبل‌الطیب و گلاب."
+    },
+    {
+      "family_key": "h297-09",
+      "name": "دمنوش آویشن",
+      "category_key": "tea-herbal",
+      "sort_order": 90,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "705",
+          "label": "تک‌نفره",
+          "sort_order": 10
+        },
+        {
+          "item_code": "711",
+          "label": "دو نفره",
+          "sort_order": 20
+        }
+      ],
+      "description": "آویشن و عسل."
+    },
+    {
+      "family_key": "h297-10",
+      "name": "دمنوش گل نوش",
+      "category_key": "tea-herbal",
+      "sort_order": 100,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "707",
+          "label": "تک‌نفره",
+          "sort_order": 10
+        },
+        {
+          "item_code": "708",
+          "label": "دو نفره",
+          "sort_order": 20
+        }
+      ],
+      "description": "به، سیب و دارچین."
+    },
+    {
+      "family_key": "h297-11",
+      "name": "دمنوش طلا",
+      "category_key": "tea-herbal",
+      "sort_order": 110,
+      "featured": 0,
+      "members": [
+        {
+          "item_code": "709",
+          "label": "تک‌نفره",
+          "sort_order": 10
+        },
+        {
+          "item_code": "710",
+          "label": "دو نفره",
+          "sort_order": 20
+        }
+      ],
+      "description": "به، سیب و زعفران."
+    }
+  ],
+  "suggestions": [],
+  "bundles": [],
+  "product_model_revision": 4,
+  "business_reconciliation": {
+    "checkpoint": "H319_MENU_BUSINESS_RECONCILIATION_20261014",
+    "base": "H313_ARCH13_SIGNED_HTTP_PROFILE_20261014",
+    "description_source_sha256": "50bda802641c61ef591b0272259edbd9051689097e1a7ea4df7cc5b1694debd7",
+    "price_source_sha256": "cb15ceb59b35a45f883b26406aae41f27c1e3654b09b1c10ce1f45412bb0fcd4",
+    "protein_shake_1113": "active_new",
+    "tea_herbal_labels": "single_person_double_person",
+    "large_pot_members": "deferred_tbd",
+    "baklava_and_bundles": "deferred_pending_master_codes"
+  }
 }

@@ -28,8 +28,8 @@ const (
 	baselineTree         = "aecfe030af4465fa9544041bf17cb58210f6f7f3592fb55c586de30264e01af8"
 	targetVersion        = "3.0.0-g6.2-workspace.231bf-u01-iran-time-updater-rc1"
 	targetFiles          = 522
-	targetTree           = "785b8c3dffa4c785685d7aec435b6092cf2c53539c692948e2fda24263e982e3"
-	targetZipSHA = "2302bb5933d02c5905a5b7a1c9ae6e9d61b1502e1c6b9be5a70c6c8bee016625"
+	targetTree = "80fd968a9e4f1642c3f1519f66d7ab6a2fb1bb64f1a8c0a26444d0d8da1712be"
+	targetZipSHA = "bc5bab33790374db9ed2dfe63363be58649b6529a235ad5d8d8457592e080118"
 	migrationCount       = 71
 	targetMigrationCount = 75
 	apacheService        = "SoknaApache"

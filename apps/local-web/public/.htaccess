@@ -1,3 +1,12 @@
+AddType application/manifest+json .webmanifest
 Options -Indexes
 RewriteEngine On
+# Preserve Bearer credentials for PHP endpoints under Apache/FastCGI/mod_php.
+# The rewrite engine can still see the original HTTP Authorization header even on
+# stacks that do not expose it as $_SERVER[HTTP_AUTHORIZATION].
+RewriteCond %{HTTP:Authorization} ^(.+)$
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%1]
 RewriteRule ^internal/runtime/v1/trigger$ internal/runtime/v1/trigger.php [L,QSA]
+# H341-P3: the canonical Guest origin stays Public. Local no longer owns /menu or
+# /api/guest/* via same-host split DNS. guest-lan.php remains source-compatible but
+# is fail-closed unless a future explicit Guest-LAN product workflow enables it.
