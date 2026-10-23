@@ -46,7 +46,13 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
   foreach($file in $records){
    $op=[IO.File]::ReadAllText($file.FullName)|ConvertFrom-Json -ErrorAction Stop
    if($op.format-ne'sokna-maintenance-operation-v1' -or $op.schema_version-ne1 -or
-      $op.operation_id-notmatch'^[a-f0-9]{32}$' -or $file.Name-cne('op-'+$op.operation_id+'.json')){throw 'COMPONENT_IDENTITY_OPERATION_CORRUPT'}
+      $op.operation_id-notmatch'^[a-f0-9]{32}$' -or $file.Name-cne('op-'+$op.operation_id+'.json') -or
+      $op.idempotency_key-notmatch'^[a-zA-Z0-9._:-]{1,128}$' -or $op.operator_id-notmatch'^[a-zA-Z0-9._:-]{1,128}$' -or
+      $op.operation_type-notmatch'^[a-zA-Z0-9._:-]{1,128}$' -or $op.state-notmatch'^[a-zA-Z0-9._:-]{1,64}$' -or
+      $op.canonical_request_sha256-notmatch'^[a-fA-F0-9]{64}$' -or [string]::IsNullOrWhiteSpace([string]$op.package_ref) -or
+      ([string]$op.package_ref).Length-gt4096 -or $op.attempt_count-lt0 -or
+      $op.activation_performed-isnot[bool] -or $op.database_mutation_performed-isnot[bool] -or
+      [DateTimeOffset]::Parse($op.updated_at_utc)-lt[DateTimeOffset]::Parse($op.created_at_utc)){throw 'COMPONENT_IDENTITY_OPERATION_CORRUPT'}
    if($op.state-in@('accepted','running','activating','recovering','recovery_required')){throw 'COMPONENT_IDENTITY_UPDATER_BLOCKED'}
   }
   $before=[IO.File]::ReadAllBytes($identityPath)

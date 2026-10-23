@@ -231,6 +231,35 @@ jobs:
             $repeat=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
             if(-not$repeat.WaitForExit(90000) -or $repeat.ExitCode-ne0){throw 'METADATA_REPAIR_REPEAT_FAILED'}
             if((Get-FileHash $identityPath -Algorithm SHA256).Hash-cne$identityHash -or (Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId-ne$pidBefore){throw 'METADATA_REPAIR_REPEAT_NOT_NOOP'}
+            $payload=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
+            . (Join-Path $payload 'maintenance-signed-health-v1.ps1')
+            . (Join-Path $payload 'maintenance-installed-versions-v1.ps1')
+            function Expect-SyncRejected([string]$case){
+              $before=(Get-FileHash $identityPath -Algorithm SHA256).Hash
+              $rejected=$false
+              try{Sync-MaintenanceInstalledVersions -AppRoot $app -EvidenceRoot (Join-Path $env:RUNNER_TEMP ('rejected-'+$case))}catch{$rejected=$true}
+              if(-not$rejected -or (Get-FileHash $identityPath -Algorithm SHA256).Hash-cne$before){throw ('SYNC_FAILED_OPEN_'+$case)}
+            }
+            $ops=Join-Path (Split-Path $identityPath -Parent) 'operations'
+            $opId=[Guid]::NewGuid().ToString('N');$opPath=Join-Path $ops ('op-'+$opId+'.json')
+            $block=[ordered]@{format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$opId;idempotency_key='fixture-blocking-key';operator_id='user:0';operation_type='update.local-code-only-activate';state='recovery_required';canonical_request_sha256=('a'*64);package_ref=('b'*32);attempt_count=1;activation_performed=$false;database_mutation_performed=$false;created_at_utc='2026-10-23T00:00:00Z';updated_at_utc='2026-10-23T00:00:00Z'}
+            try{
+              [IO.File]::WriteAllText($opPath,($block|ConvertTo-Json -Depth 10))
+              Expect-SyncRejected 'blocking-operation'
+              [IO.File]::WriteAllText($opPath,'{}')
+              Expect-SyncRejected 'corrupt-operation'
+            }finally{if(Test-Path $opPath){[IO.File]::Delete($opPath)}}
+            $leasePath=Join-Path (Split-Path $identityPath -Parent) 'update/machine-mutation.lock'
+            $lease=[IO.File]::Open($leasePath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+            try{Expect-SyncRejected 'machine-lease-held'}finally{$lease.Dispose()}
+            $savedIdentity=[IO.File]::ReadAllBytes($identityPath)
+            try{
+              $newer=Get-Content $identityPath -Raw|ConvertFrom-Json
+              $newer.maintenance_supervisor_version='0.3.14'
+              [IO.File]::WriteAllText($identityPath,($newer|ConvertTo-Json -Depth 20))
+              Expect-SyncRejected 'snapshot-downgrade'
+            }finally{[IO.File]::WriteAllBytes($identityPath,$savedIdentity)}
+            Write-Host 'Native negative version-sync cases: blocking operation, corrupt evidence, shared machine lease, downgrade: PASS'
             Write-Host 'Actual Inno EXE upgrade, stale-version repair, preserved Local/Public/extensions, unchanged PID and repeated no-op: PASS'
 
           }finally{
