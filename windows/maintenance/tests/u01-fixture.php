@@ -11,6 +11,9 @@ if($mode==='init'){
     file_put_contents($root.'/install.lock',json_encode(['format'=>'sokna-install-lock-v3','installation_id'=>'u01-disposable-ci']));
     file_put_contents($web.'/.sokna-installation.json',json_encode(['format'=>'sokna-local-installation-binding-v1','installation_id'=>'u01-disposable-ci','web_version'=>trim(file_get_contents($web.'/VERSION.txt'))]));
     @mkdir($root.'/LocalWeb/persistent',0777,true);copy($web.'/.sokna-installation.json',$root.'/LocalWeb/persistent/.sokna-installation.json');
+    @mkdir($root.'/LocalWeb/persistent/public',0777,true);
+    $recovery=dirname(__DIR__).'/src/Sokna.Maintenance.Core/StableLocalRecovery.php';
+    copy($recovery,$web.'/public/local-recovery.php');copy($recovery,$root.'/LocalWeb/persistent/public/local-recovery.php');
     @mkdir($root.'/Data/lifecycle/local',0777,true);@mkdir($root.'/Data/guest-media',0777,true);
     file_put_contents($root.'/Data/guest-media/sentinel.txt','preserve-media');
     file_put_contents($root.'/Data/lifecycle/local/state.json',json_encode(['format'=>'sokna-local-update-state-v1','active_version'=>trim(file_get_contents($web.'/VERSION.txt')),'staged'=>null,'activation_journal'=>null,'recovery_mode'=>null,'history'=>[]]));
