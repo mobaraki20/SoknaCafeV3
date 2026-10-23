@@ -121,8 +121,15 @@ jobs:
             $running=$false
             for($i=0;$i-lt30;$i++){if((Get-Service SoknaMaintenanceSupervisor).Status-eq'Running'){$running=$true;break};Start-Sleep -Milliseconds 500}
             if(-not$running){throw 'Baseline Supervisor did not start on clean runner'}
-            & ./new/packaging/windows/scripts/invoke-maintenance-only-v1.ps1 -PayloadRoot (Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle')
-            if(-not$?){throw 'Real SCM Maintenance-only upgrade failed'}
+            $ps=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+            $entry=(Resolve-Path './new/packaging/windows/scripts/invoke-maintenance-only-v1.ps1').Path
+            $payload=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
+            $direct=Start-Process -FilePath $ps -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$entry+'"'),'-PayloadRoot',('"'+$payload+'"')) -Wait -PassThru
+            if($direct.ExitCode-ne0){
+              $errorFile=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
+              if(Test-Path $errorFile){Get-Content $errorFile|Out-Host}
+              throw 'Real Windows PowerShell 5.1 SCM Maintenance-only upgrade failed'
+            }
             foreach($pair in @(@('SoknaMaintenanceSupervisor.exe','0.3.13.0'),@('SoknaMaintenanceUpdateEngine.exe','0.3.13.0'))){
               $v=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $app $pair[0])).FileVersion
               if($v-ne$pair[1]){throw "Installed component not upgraded"}
@@ -192,6 +199,8 @@ jobs:
             $process=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$log+'"')) -PassThru
             if(-not $process.WaitForExit(90000)){
               if(Test-Path $log){Get-Content $log -Tail 75|Out-Host}
+              $failed=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
+              if(Test-Path $failed){Get-Content $failed|Out-Host}
               try{$process.Kill($true)}catch{}
               throw 'INNO_INSTALLER_BOUNDED_SMOKE_TIMEOUT'
             }
