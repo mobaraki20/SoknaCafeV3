@@ -8,7 +8,7 @@ on:
       - '.github/workflows/qualify-maintenance-only-0313.yml'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: maintenance-only-0313-qualification
   cancel-in-progress: true
@@ -266,6 +266,18 @@ jobs:
               $older.maintenance_supervisor_version='0.3.12'
               $older.update_engine_version='0.3.12'
               [IO.File]::WriteAllText($identityPath,($older|ConvertTo-Json -Depth 20))
+              # Exercise the exact real Inno EXE, not just a function-level test.
+              $pidBeforeHistorical=(Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId
+              $binaryBeforeHistorical=(Get-FileHash $exe -Algorithm SHA256).Hash
+              $historicExe=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
+              if(-not$historicExe.WaitForExit(90000) -or $historicExe.ExitCode-ne0){throw 'HISTORICAL_HOME_OPERATION_BLOCKED_INNO_REV3'}
+              if((Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId-ne$pidBeforeHistorical -or (Get-FileHash $exe -Algorithm SHA256).Hash-cne$binaryBeforeHistorical){throw 'HISTORIC_RECOVERY_INNO_MUTATED_SERVICE'}
+              if((Get-FileHash $opPath -Algorithm SHA256).Hash-cne$historicalOpHash){throw 'HISTORIC_RECOVERY_INNO_MUTATED_OPERATION'}
+              # Repeat at the sync-function level to validate the audit receipt.
+              $older=Get-Content $identityPath -Raw|ConvertFrom-Json
+              $older.maintenance_supervisor_version='0.3.12'
+              $older.update_engine_version='0.3.12'
+              [IO.File]::WriteAllText($identityPath,($older|ConvertTo-Json -Depth 20))
               $syncEvidence=Join-Path $env:RUNNER_TEMP 'historical-recovery-identity-sync'
               Sync-MaintenanceInstalledVersions -AppRoot $app -EvidenceRoot $syncEvidence
               $reconciled=Get-Content $identityPath -Raw|ConvertFrom-Json
@@ -297,6 +309,33 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         with:
-          name: SOKNA-Maintenance-Only-0.3.13-UAT
+          name: SOKNA-Maintenance-Only-0.3.13-UAT-REV3
           path: ${{ runner.temp }}/maintenance-only-distribution/*
           if-no-files-found: error
+      - name: Publish qualified standalone REV3 as GitHub pre-release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='maintenance-only-v0.3.13-uat.rev3'
+          $out=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution'
+          $exe=Join-Path $out 'SOKNA-Maintenance-Only-0.3.13-UAT-REV3.exe'
+          $sums=Join-Path $out 'SHA256SUMS.txt'
+          if(-not(Test-Path -LiteralPath $exe -PathType Leaf) -or -not(Test-Path -LiteralPath $sums -PathType Leaf)){throw 'Qualified release assets missing'}
+          $sha=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if((Get-Content -LiteralPath $sums -Raw)-notmatch [regex]::Escape($sha)){throw 'Installer SHA256 not attested'}
+          $existing=& gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName 2>$null
+          if($LASTEXITCODE-eq0){throw 'REV3 tag already exists; refusing overwrite'}
+          @(
+            '# SOKNA Maintenance-only 0.3.13 UAT REV3',
+            '',
+            'Standalone component maintenance metadata repair for already upgraded 0.3.13 installations.',
+            'Fixes failure COMPONENT_IDENTITY_UPDATER_BLOCKED caused by historical recovery_required records.',
+            'Preserves historical recovery records and rejects truly active mutations.',
+            'Only Maintenance component identity versions are synchronized; Local/Public, Runtime and Print are not upgraded.',
+            'Real Windows 2022 Inno EXE qualification required to pass before publishing.',
+            'Test-only pre-release; validate exact installed baseline and current host state before deploying.'
+          )|Set-Content (Join-Path $out 'RELEASE-NOTES.md') -Encoding utf8
+          & gh release create $tag $exe $sums --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'SOKNA Maintenance 0.3.13 UAT REV3 — historical ledger fix' --notes-file (Join-Path $out 'RELEASE-NOTES.md')
+          if($LASTEXITCODE-ne0){throw 'REV3 Github pre-release creation failed'}
