@@ -153,7 +153,9 @@ public sealed class WindowsJobChildProcess : IDisposable
     public WindowsJobChildOutcome WaitAndCapture(int timeoutMilliseconds)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(WindowsJobChildProcess));
-        if (timeoutMilliseconds is < 1 or > 600000) throw new ArgumentOutOfRangeException(nameof(timeoutMilliseconds));
+        // Database-aware activation has a bounded 25-minute budget (dump,
+        // migration and service health). Keep the native Job wait compatible.
+        if (timeoutMilliseconds is < 1 or > 1_800_000) throw new ArgumentOutOfRangeException(nameof(timeoutMilliseconds));
         using var standardOutput = new StreamReader(_stdout, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
         using var standardError = new StreamReader(_stderr, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
         var stdoutTask = standardOutput.ReadToEndAsync();
