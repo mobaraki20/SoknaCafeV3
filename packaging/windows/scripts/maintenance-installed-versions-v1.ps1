@@ -23,12 +23,17 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
    throw 'COMPONENT_IDENTITY_UNSAFE_PATH'
   }
  }
+ function ComponentSha256([string]$path){
+  $stream=[IO.File]::OpenRead($path);$algorithm=[Security.Cryptography.SHA256]::Create()
+  try{return ([BitConverter]::ToString($algorithm.ComputeHash($stream))-replace'-','').ToLowerInvariant()}
+  finally{$algorithm.Dispose();$stream.Dispose()}
+ }
  $versions=@();$hashes=@()
  foreach($p in @($super,$engine)){
   $v=[string]([Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion)
   if($v-ne'0.3.13.0'){throw 'COMPONENT_IDENTITY_PHYSICAL_0313_REQUIRED'}
   $versions+='0.3.13'
-  $hashes+=(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()
+  $hashes+=(ComponentSha256 $p)
  }
  Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.13' -Attempts 10
  $update=Join-Path $store 'update'
@@ -79,7 +84,7 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
   if([Convert]::ToBase64String([IO.File]::ReadAllBytes($identityPath))-cne[Convert]::ToBase64String($before)){throw 'COMPONENT_IDENTITY_CHANGED_DURING_SYNC'}
   foreach($i in @(0,1)){
    $p=@($super,$engine)[$i]
-   if((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()-cne$hashes[$i]){throw 'COMPONENT_IDENTITY_BINARY_CHANGED'}
+   if((ComponentSha256 $p)-cne$hashes[$i]){throw 'COMPONENT_IDENTITY_BINARY_CHANGED'}
   }
   $temp=$identityPath+'.tmp.'+[Guid]::NewGuid().ToString('N')
   $bytes=[Text.UTF8Encoding]::new($false).GetBytes($after)
