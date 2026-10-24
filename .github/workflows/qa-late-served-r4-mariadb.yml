@@ -1,0 +1,38 @@
+name: QA Late Served R4 MariaDB (isolated)
+on:
+  push:
+    branches:
+      - qa/late-served-r4-mariadb-20261025
+    paths:
+      - '.github/workflows/qa-late-served-r4-mariadb.yml'
+      - 'qa/late-served-r4/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa_root_local_only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd='healthcheck.sh --connect --innodb_initialized'
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python driver
+        run: python3 -m pip install --break-system-packages --user PyMySQL==1.1.1
+      - name: Verify real MariaDB migration and transaction primitives
+        env:
+          MARIADB_HOST: 127.0.0.1
+          MARIADB_PASSWORD: qa_root_local_only
+        run: python3 qa/late-served-r4/test_db.py
+      - name: Scope notice
+        if: always()
+        run: |
+          echo 'SQL/MariaDB primitives only: does not exercise actual PHP application service, inventory, printing, relay, or Windows updater.'
