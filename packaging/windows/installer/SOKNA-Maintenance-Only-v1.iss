@@ -70,14 +70,14 @@ begin
   begin
     MaintenanceFailureExitCode := 42;
     Log('SOKNA_MAINTENANCE_ONLY_TRANSACTION_START_FAILED');
-    MsgBox('Maintenance-only installation could not start. No installed service was changed.', mbError, MB_OK);
+    if not WizardSilent then MsgBox('Maintenance-only installation could not start. No installed service was changed.', mbError, MB_OK);
     Exit;
   end;
   if ExitCode <> 0 then
   begin
     Log('SOKNA_MAINTENANCE_ONLY_TRANSACTION_FAILED=' + IntToStr(ExitCode));
     MaintenanceFailureExitCode := 43;
-    MsgBox('Maintenance-only update failed. Inspect ProgramData\SOKNA\setup\maintenance-only-last-error.txt and transaction evidence. Do not treat this update as installed.', mbError, MB_OK);
+    if not WizardSilent then MsgBox('Maintenance-only update failed. Inspect ProgramData\SOKNA\setup\maintenance-only-last-error.txt and transaction evidence. Do not treat this update as installed.', mbError, MB_OK);
     Exit;
   end;
   Log('SOKNA_MAINTENANCE_ONLY_TRANSACTION_VERIFIED');
