@@ -8,7 +8,13 @@ HOST=os.getenv('MARIADB_HOST','127.0.0.1')
 PASS=os.getenv('MARIADB_PASSWORD','qa_root_local_only')
 DB='sokna_late_served_r4_qa'
 def con(db=None):
-    return pymysql.connect(host=HOST,user='root',password=PASS,db=db,charset='utf8mb4',autocommit=True,connect_timeout=10)
+    # MariaDB Docker initializes its root credentials asynchronously on first startup.
+    for attempt in range(60):
+        try:
+            return pymysql.connect(host=HOST,user='root',password=PASS,db=db,charset='utf8mb4',autocommit=True,connect_timeout=2)
+        except OperationalError:
+            if attempt == 59: raise
+            time.sleep(1)
 def sqlexec(conn,sql,args=None):
     with conn.cursor() as cur:
         cur.execute(sql,args)
