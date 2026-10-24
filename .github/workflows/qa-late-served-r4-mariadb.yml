@@ -33,3 +33,23 @@ jobs:
         if: always()
         run: |
           echo 'SQL/MariaDB primitives only: does not exercise actual PHP application service, inventory, printing, relay, or Windows updater.'
+
+  debian-db-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Obtain Debian 13 runtime-only packages
+        run: |
+          mkdir -p "$RUNNER_TEMP/db-debs"
+          docker run --rm -v "$RUNNER_TEMP/db-debs:/out" debian:trixie bash -euc '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install --download-only -y --no-install-recommends mariadb-server php8.4-mysql
+            cp /var/cache/apt/archives/*.deb /out/
+            ls -lh /out | tail -8
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r4-debian13-mariadb-php84-offline-debs
+          path: ${{ runner.temp }}/db-debs/*.deb
+          retention-days: 1
+          if-no-files-found: error
