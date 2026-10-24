@@ -69,7 +69,7 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
   $doc=[Text.Encoding]::UTF8.GetString($before)|ConvertFrom-Json -ErrorAction Stop
   $names=@('maintenance_supervisor_version','update_engine_version')
   foreach($name in $names){
-   if(-not$doc.PSObject.Properties[$name] -or [string]$doc.$name-notmatch'^0\.3\.(?:[0-9]|1[0-5])$'){
+   if(-not$doc.PSObject.Properties[$name] -or [string]$doc.$name-notmatch'^0\.3\.(?:[0-9]|1[0-6])$'){
     throw 'COMPONENT_IDENTITY_PREVIOUS_VERSION_UNQUALIFIED'
    }
   }
