@@ -19,6 +19,17 @@ func TestActualEngineArtifactContract(t *testing.T) {
 		if path == "" {
 			t.Skip("actual native artifacts not supplied")
 		}
+		actualHelp, err := runHidden(path, "--help")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if key == "SOKNA_TEST_ENGINE_FIXED" {
+			if _, err = validateEngineHelp(actualHelp); err != nil {
+				t.Fatal("fixed producer CLI must itself report the assembly version", err)
+			}
+		} else if !strings.HasPrefix(actualHelp, "SOKNA Maintenance Update Engine 0.3.12 (") {
+			t.Fatal("historical producer mismatch not reproduced")
+		}
 		b := &bridge{updateEngine: path, evidenceDir: t.TempDir()}
 		if e := b.verifyUpdateEngineVersion(); e != nil {
 			t.Fatal(key, e)
