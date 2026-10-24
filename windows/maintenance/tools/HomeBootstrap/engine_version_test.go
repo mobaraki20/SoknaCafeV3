@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -25,5 +26,17 @@ func TestActualEngineArtifactContract(t *testing.T) {
 		if b.maintenanceEngineVersion != "0.3.13" {
 			t.Fatal("physical engine version not retained")
 		}
+	}
+}
+
+func TestActualOldPhysicalEngineRejected(t *testing.T) {
+	path := os.Getenv("SOKNA_TEST_ENGINE_PHYSICAL_OLD")
+	if path == "" {
+		t.Skip("actual negative artifact not supplied")
+	}
+	b := &bridge{updateEngine: path, evidenceDir: t.TempDir()}
+	err := b.verifyUpdateEngineVersion()
+	if err == nil || !strings.Contains(err.Error(), "ENGINE_PHYSICAL_VERSION_UNSUPPORTED") {
+		t.Fatalf("old physical artifact admitted or not independently read: %v", err)
 	}
 }
