@@ -75,16 +75,16 @@ var localInboxUpload = new LocalInboxUploadCoordinator(paths);
 var localReleaseStageCoordinator = new SupervisorLocalReleaseStageCoordinator(paths, operations, journal, state);
 var localSlotCoordinator = new SupervisorLocalSlotCoordinator(paths, operations, journal, state, updateEnginePath);
 var productionMigrationCoordinator = new SupervisorProductionMigrationCoordinator(paths, operations, journal, state, updateEnginePath);
-// Home-only machine-owned stable recovery, after journal establishment and before
+// Maintenance-owned stable recovery for adopted managed slots, before
 // accepting new Stage/Activate calls. Never reconcile identities or relax signed gates.
 try
 {
-    var recoveryRepair = StableLocalRecoveryOverlayRepair.RepairHome231As(paths);
+    var recoveryRepair = StableLocalRecoveryOverlayRepair.RepairCurrentInstallation(paths);
     journal.Append("update.local_stable_recovery.verified", state.InstanceId,
         state.InstallGeneration, new Dictionary<string, object?>
         {
             ["result"] = recoveryRepair,
-            ["allowed_baseline"] = "231as",
+            ["qualification"] = "exact_installed_identity_and_binding",
             ["identity_mutated"] = false,
             ["public_mutated"] = false
         });
@@ -1478,3 +1478,4 @@ static string ExtractExecutable(string imagePath)
     var exe = text.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
     return exe >= 0 ? text[..(exe + 4)].Trim() : text.Split(' ', 2)[0];
 }
+

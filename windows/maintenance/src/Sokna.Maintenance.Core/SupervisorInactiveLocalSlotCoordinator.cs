@@ -147,6 +147,8 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
             var lifecycle = RoutineLocalLifecycle.Open(root,
                 _paths.LocalSlotStateRoot, layout.Build);
             lifecycle.RequireIdle();
+            step("RECOVERY_OVERLAY");
+            StableLocalRecoveryOverlayRepair.EnsureVerifiedInstallation(_paths, layout);
             step("EVIDENCE");
 
             var installedSha = Hash(_paths.InstalledReleaseIdentityPath);
@@ -282,3 +284,4 @@ public sealed class SupervisorInactiveLocalSlotCoordinator
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 }
+
