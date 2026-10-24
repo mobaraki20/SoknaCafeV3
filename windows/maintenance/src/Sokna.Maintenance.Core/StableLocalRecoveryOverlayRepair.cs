@@ -28,6 +28,33 @@ public static class StableLocalRecoveryOverlayRepair
         }
     }
 
+    // Read-only gate for panel preflight. Fail before signing any green receipt
+    // if the active and persistent overlays are not exactly the embedded bytes.
+    // No repair, provisioning, or operator-state mutation happens here.
+    public static void RequireReadyForPreflight(MaintenancePaths paths)
+    {
+        if (!File.Exists(paths.InstalledReleaseIdentityPath)) return;
+        var layout = new LocalSlotManager(paths).InspectHealthyCurrent();
+        if (!layout.WebIsReparsePoint || layout.ActiveSlotTarget is null) return;
+        var root = Path.GetFullPath(layout.PackageRoot);
+        var slot = Path.GetFullPath(layout.ActiveSlotTarget);
+        var persistent = Path.Combine(root, "LocalWeb", "persistent");
+        using var asset = typeof(StableLocalRecoveryOverlayRepair).Assembly
+            .GetManifestResourceStream(Resource)
+            ?? throw new InvalidDataException("STABLE_RECOVERY_TRUSTED_EMBEDDED_SOURCE_MISSING");
+        using var bytes = new MemoryStream();
+        asset.CopyTo(bytes);
+        var expected = SHA256.HashData(bytes.ToArray());
+        foreach (var file in new[] { Path.Combine(persistent, Relative), Path.Combine(slot, Relative) })
+        {
+            if (!File.Exists(file))
+                throw new InvalidDataException("STABLE_RECOVERY_OVERLAY_PREFLIGHT_MISSING");
+            var directory = Path.GetDirectoryName(file)!;
+            RequirePlainDirectory(directory);
+            CheckAllowed(file, expected);
+        }
+    }
+
     // Kept for older callers; there is no build-specific exception anymore.
     public static string RepairHome231As(MaintenancePaths paths) => RepairCurrentInstallation(paths);
 
@@ -64,6 +91,10 @@ public static class StableLocalRecoveryOverlayRepair
             throw new InvalidDataException("STABLE_RECOVERY_EMBEDDED_SOURCE_SIZE_INVALID");
         var payload = bytes.ToArray(); var expected = SHA256.HashData(payload);
         var files = new[] { Path.Combine(persistent, Relative), Path.Combine(slot, Relative) };
+        // Exact, narrowly scoped Cafe 231bf migration. Unknown overlays still
+        // fail closed; the old pair is backed up outside the HTTP webroot first.
+        var migrated = KnownCafeRecoveryOverlayMigration.TryMigrate(
+            root, layout.Build, identity.Local.ManagedTreeSha256, files, payload);
         // Validate BOTH paths before creating either: no overwrite, no redirected
         // parent, no presence-equality shortcut that accepts two absent files.
         foreach (var file in files)
@@ -98,7 +129,7 @@ public static class StableLocalRecoveryOverlayRepair
             CheckAllowed(file, expected);
         }
         LocalManagedTreeAttestation.RequireExact(slot, layout.ManagedFileCount, identity.Local.ManagedTreeSha256);
-        return created == 0 ? "verified_unchanged" : "repaired_and_verified";
+        return migrated ? "migrated_known_cafe_231bf" : created == 0 ? "verified_unchanged" : "repaired_and_verified";
     }
 
     private static void RequirePlainDirectory(string path)
