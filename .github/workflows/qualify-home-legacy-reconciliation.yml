@@ -11,10 +11,28 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22.2'
           cache: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build actual historical-banner and fixed Engine artifacts
+        shell: pwsh
+        run: |
+          $p='windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs'
+          $fixed=Get-Content $p -Raw
+          git show 8a4dd26c55d29075fcf05680309bf165b4b13646:$p | Set-Content $p -Encoding UTF8
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine -c Release -r win-x64 --self-contained true -o "$env:RUNNER_TEMP/engine-old-banner"
+          if($LASTEXITCODE-ne0){throw 'Historical artifact build failed'}
+          [IO.File]::WriteAllText((Join-Path $PWD $p),$fixed)
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine -c Release -r win-x64 --self-contained true -o "$env:RUNNER_TEMP/engine-fixed"
+          if($LASTEXITCODE-ne0){throw 'Fixed artifact build failed'}
+          "SOKNA_TEST_ENGINE_OLD_BANNER=$env:RUNNER_TEMP/engine-old-banner/SoknaMaintenanceUpdateEngine.exe" >> $env:GITHUB_ENV
+          "SOKNA_TEST_ENGINE_FIXED=$env:RUNNER_TEMP/engine-fixed/SoknaMaintenanceUpdateEngine.exe" >> $env:GITHUB_ENV
       - name: Prepare compile-only private payload placeholders
         shell: pwsh
         run: |
@@ -30,7 +48,7 @@ jobs:
         shell: pwsh
         working-directory: windows/maintenance/tools/HomeBootstrap
         run: |
-          go test -json -count=1 -run '^(TestLegacy|TestObservedMaintenance|TestNative|TestBothQualifiedHomeBaselineManifests)' ./... | Tee-Object -FilePath "$env:RUNNER_TEMP/HOME-NATIVE-PROOF.jsonl"
+          go test -json -count=1 -run '^(TestLegacy|TestObservedMaintenance|TestNative|TestBothQualifiedHomeBaselineManifests|TestActualEngineArtifactContract|TestEngineVersion)' ./... | Tee-Object -FilePath "$env:RUNNER_TEMP/HOME-NATIVE-PROOF.jsonl"
           if($LASTEXITCODE-ne0){throw 'Native Home reconciliation qualification failed'}
       - uses: actions/upload-artifact@v4
         if: always()

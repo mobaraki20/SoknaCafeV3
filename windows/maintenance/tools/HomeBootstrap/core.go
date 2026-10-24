@@ -968,7 +968,11 @@ func (b *bridge) verifyUpdateEngineVersion() error {
 	if err != nil {
 		return fmt.Errorf("Maintenance Update Engine help failed: %v %s", err, out)
 	}
-	version, err := validateEngineHelp(out)
+	physical, err := readEngineFileVersion(b.updateEngine, b.evidenceDir)
+	if err != nil {
+		return err
+	}
+	version, err := validateInstalledEngine(out, physical)
 	if err != nil {
 		return fmt.Errorf("Maintenance Update Engine contract mismatch: %w", err)
 	}

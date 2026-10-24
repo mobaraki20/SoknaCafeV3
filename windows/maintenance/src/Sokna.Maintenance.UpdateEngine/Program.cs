@@ -2,11 +2,11 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Sokna.Maintenance.Core;
 
-const string EngineVersion = "0.3.12";
+
 
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
-    Console.WriteLine($"SOKNA Maintenance Update Engine {EngineVersion} (R8 sibling-release activation; verified append-only database forward recovery)");
+    Console.WriteLine($"SOKNA Maintenance Update Engine {EngineBuild.Version} (R8 sibling-release activation; verified append-only database forward recovery)");
     Console.WriteLine("verify-only --package <zip> --identity <json> [--data-root <path>] (read-only; no stage or sequence mutation)");
     Console.WriteLine("cutover-attest --transaction-id <id> --stage-operation-id <id> --data-root <path> --delegation-id <id> (Supervisor-delegated read-only evidence only)");
     Console.WriteLine("cutover-lab-switch --transaction-id <id> --stage-operation-id <id> --data-root <path> --lab-case <name> --lab-mode <mode> --delegation-id <id> (disposable CI fixture ONLY)");
@@ -213,7 +213,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = EngineVersion,
+                engine_version = EngineBuild.Version,
                 phase = "INSPECTED",
                 layout,
                 managed_tree_sha256 = managedTree,
@@ -234,7 +234,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = result.Ok,
-                engine_version = EngineVersion,
+                engine_version = EngineBuild.Version,
                 phase = result.Phase,
                 result,
                 managed_tree_sha256 = result.ManagedTreeSha256,
@@ -254,7 +254,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = result.Ok,
-                engine_version = EngineVersion,
+                engine_version = EngineBuild.Version,
                 phase = result.Phase,
                 result,
                 managed_tree_sha256 = result.ManagedTreeSha256,
@@ -274,7 +274,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
-                engine_version = EngineVersion,
+                engine_version = EngineBuild.Version,
                 phase = "STAGED",
                 target_slot = targetSlot,
                 target_build = targetBuild,
@@ -294,7 +294,7 @@ try
             var result = bridge.RecoverSignedLegacy();
             Console.WriteLine(JsonSerializer.Serialize(new {
                 ok = result.Ok,
-                engine_version = EngineVersion,
+                engine_version = EngineBuild.Version,
                 phase = result.Phase,
                 result,
                 managed_tree_sha256 = result.ManagedTreeSha256,
@@ -321,7 +321,7 @@ try
                 currentBuild, targetBuild, source, targetCount, targetTree, releaseId);
             Console.WriteLine(JsonSerializer.Serialize(new {
                 ok = result.Ok,
-                engine_version = EngineVersion,
+                engine_version = EngineBuild.Version,
                 phase = result.Phase,
                 result,
                 managed_tree_sha256 = result.ManagedTreeSha256,
@@ -347,7 +347,7 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = result.Ok,
-                engine_version = EngineVersion,
+                engine_version = EngineBuild.Version,
                 phase = result.Phase,
                 result,
                 managed_tree_sha256 = result.ManagedTreeSha256,
@@ -368,7 +368,7 @@ catch (Exception ex) when (ex is InvalidDataException or IOException or Unauthor
     Console.Error.WriteLine(JsonSerializer.Serialize(new
     {
         ok = false,
-        engine_version = EngineVersion,
+        engine_version = EngineBuild.Version,
         phase = "FAILED",
         code = command switch
         {
@@ -395,7 +395,7 @@ void RunRecovery(Func<ProductionLocalSlotMigrationResult> action, string code, s
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             ok = result.Ok,
-            engine_version = EngineVersion,
+            engine_version = EngineBuild.Version,
             phase = result.Phase,
             result,
             managed_tree_sha256 = result.ManagedTreeSha256,
@@ -408,7 +408,7 @@ void RunRecovery(Func<ProductionLocalSlotMigrationResult> action, string code, s
     }
     catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or TimeoutException or AggregateException or System.ComponentModel.Win32Exception or InvalidOperationException)
     {
-        Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, engine_version = EngineVersion, phase = "RECOVERY_FAILED", code, error = ex.Message, database_mutation_performed = false, public_mutation_performed = false, windows_reboot_required = false, recovery_required = true, state_path = statePath }, AtomicFile.JsonOptions));
+        Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, engine_version = EngineBuild.Version, phase = "RECOVERY_FAILED", code, error = ex.Message, database_mutation_performed = false, public_mutation_performed = false, windows_reboot_required = false, recovery_required = true, state_path = statePath }, AtomicFile.JsonOptions));
         Environment.ExitCode = 4;
     }
 }
@@ -421,7 +421,7 @@ void RunRoutineRecovery(Func<RoutineLocalSlotResult> action, string code, string
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             ok = result.Ok,
-            engine_version = EngineVersion,
+            engine_version = EngineBuild.Version,
             phase = result.Phase,
             result,
             managed_tree_sha256 = result.ManagedTreeSha256,
@@ -434,7 +434,7 @@ void RunRoutineRecovery(Func<RoutineLocalSlotResult> action, string code, string
     }
     catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or TimeoutException or AggregateException or System.ComponentModel.Win32Exception or InvalidOperationException)
     {
-        Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, engine_version = EngineVersion, phase = "RECOVERY_FAILED", code, error = ex.Message, database_mutation_performed = RoutineDatabaseBoundary(), public_mutation_performed = false, windows_reboot_required = false, recovery_required = true, state_path = statePath }, AtomicFile.JsonOptions));
+        Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, engine_version = EngineBuild.Version, phase = "RECOVERY_FAILED", code, error = ex.Message, database_mutation_performed = RoutineDatabaseBoundary(), public_mutation_performed = false, windows_reboot_required = false, recovery_required = true, state_path = statePath }, AtomicFile.JsonOptions));
         Environment.ExitCode = 4;
     }
 }
@@ -478,7 +478,7 @@ void RunVerifyOnly(string package, string identity, MaintenancePaths paths)
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             ok = true,
-            engine_version = EngineVersion,
+            engine_version = EngineBuild.Version,
             phase = "VERIFIED_READ_ONLY",
             code = "PACKAGE_INTEGRITY_VERIFIED",
             receipt,
@@ -493,7 +493,7 @@ void RunVerifyOnly(string package, string identity, MaintenancePaths paths)
         Console.Error.WriteLine(JsonSerializer.Serialize(new
         {
             ok = false,
-            engine_version = EngineVersion,
+            engine_version = EngineBuild.Version,
             phase = "REJECTED_READ_ONLY",
             code = "PACKAGE_PREFLIGHT_REJECTED",
             error = ex.Message,
@@ -528,11 +528,11 @@ void RunVerifyStage(string package, string identity, MaintenancePaths paths)
     try
     {
         var receipt = engine.VerifyAndStage(package, installed);
-        Console.WriteLine(JsonSerializer.Serialize(new { ok = true, engine_version = EngineVersion, phase = "STAGED", release_set_id = receipt.ReleaseSetId, sequence = receipt.Sequence, receipt, activation_performed = false, database_mutation_performed = false }, AtomicFile.JsonOptions));
+        Console.WriteLine(JsonSerializer.Serialize(new { ok = true, engine_version = EngineBuild.Version, phase = "STAGED", release_set_id = receipt.ReleaseSetId, sequence = receipt.Sequence, receipt, activation_performed = false, database_mutation_performed = false }, AtomicFile.JsonOptions));
     }
     catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or CryptographicException)
     {
-        Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, engine_version = EngineVersion, phase = "REJECTED_PRE_MUTATION", code = "RELEASE_SET_REJECTED", error = ex.Message, activation_performed = false, database_mutation_performed = false }, AtomicFile.JsonOptions));
+        Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, engine_version = EngineBuild.Version, phase = "REJECTED_PRE_MUTATION", code = "RELEASE_SET_REJECTED", error = ex.Message, activation_performed = false, database_mutation_performed = false }, AtomicFile.JsonOptions));
         Environment.ExitCode = 2;
     }
 }
@@ -560,4 +560,10 @@ bool RoutineDatabaseBoundary()
 {
     try { return AtomicFile.ReadJson<RoutineLocalSlotState>(bridge.RoutineStatePath).DatabaseMutationPerformed; }
     catch { return command is "local-slot-activate-qualified" or "local-slot-recover-routine"; }
+}
+
+
+internal static class EngineBuild
+{
+    internal static string Version => System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? throw new InvalidOperationException("Engine assembly version unavailable.");
 }
