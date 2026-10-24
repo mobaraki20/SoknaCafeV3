@@ -253,8 +253,17 @@ jobs:
             if(($fixed|ConvertTo-Json -Depth 20 -Compress)-cne$beforeUnrelated){throw 'REPAIR_CHANGED_UNRELATED_IDENTITY'}
             # A second repair is an exact no-op, including identity bytes and PID.
             $identityHash=(Get-FileHash $identityPath -Algorithm SHA256).Hash
-            $repeat=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
-            if(-not$repeat.WaitForExit(90000) -or $repeat.ExitCode-ne0){throw 'METADATA_REPAIR_REPEAT_FAILED'}
+            $repeatLog=Join-Path $env:RUNNER_TEMP 'maintenance-only-repeat-inno.log'
+            $repeat=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$repeatLog+'"')) -PassThru
+            $repeatFinished=$repeat.WaitForExit(45000)
+            if(-not$repeatFinished -or $repeat.ExitCode-ne0){
+              Write-Warning ("REPEAT_FINISHED="+$repeatFinished+" PID="+$repeat.Id)
+              if(Test-Path -LiteralPath $repeatLog){Get-Content -LiteralPath $repeatLog -Tail 150|Out-Host}
+              $repeatError=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
+              if(Test-Path -LiteralPath $repeatError){Get-Content -LiteralPath $repeatError|Out-Host}
+              if(-not$repeatFinished){Stop-Process -Id $repeat.Id -Force -ErrorAction SilentlyContinue}
+              throw 'METADATA_REPAIR_REPEAT_FAILED'
+            }
             if((Get-FileHash $identityPath -Algorithm SHA256).Hash-cne$identityHash -or (Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId-ne$pidBefore){throw 'METADATA_REPAIR_REPEAT_NOT_NOOP'}
             $payload=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
             . (Join-Path $payload 'maintenance-signed-health-v1.ps1')
