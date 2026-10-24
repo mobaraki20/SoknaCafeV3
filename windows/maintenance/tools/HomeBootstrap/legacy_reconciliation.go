@@ -342,19 +342,22 @@ func (b *bridge) reconcileVerifiedLegacy() error {
 			return errors.New("LEGACY_PROOF_CHANGED")
 		}
 	}
-	return commitLegacyReconciliation(fresh, b.evidenceDir, b.ev.AttemptID)
+	return commitLegacyReconciliation(fresh, b.evidenceDir, b.ev.AttemptID, b.baseline.ManagedTreeSHA256)
 }
 
 // Evidence first; original attempt becomes superseded_verified, never success.
 // Crash before transition keeps the blocker; retry preserves original bytes.
-func commitLegacyReconciliation(plan *legacyReconciliationPlan, evidenceDir, attemptID string) error {
+func commitLegacyReconciliation(plan *legacyReconciliationPlan, evidenceDir, attemptID, observedTree string) error {
+	if observedTree != baselineTree && observedTree != canonicalBaselineTree {
+		return errors.New("LEGACY_OBSERVED_BASELINE_UNQUALIFIED")
+	}
 	id := jsonString(plan.operation, "operation_id")
 	root := filepath.Dir(plan.operationPath)
 	proof := map[string]string{}
 	for path, raw := range plan.sources {
 		proof[path] = proofSHA(raw)
 	}
-	receipt := map[string]any{"format": "sokna-home-legacy-reconciliation-v1", "schema_version": 1, "old_operation_id": id, "original_operation": plan.operation, "source_sha256": proof, "observed_version": baselineVersion, "observed_managed_files": baselineFiles, "observed_tree_sha256": baselineTree, "observed_migrations": migrationCount, "attempt_id": attemptID, "evidence_dir": evidenceDir, "evidence": "linked_archived_phase3_and_committed_r8_plus_fresh_exact_au_ntfs_http_binding_db71_signed_foundation", "database_mutation_performed": false}
+	receipt := map[string]any{"format": "sokna-home-legacy-reconciliation-v1", "schema_version": 1, "old_operation_id": id, "original_operation": plan.operation, "source_sha256": proof, "observed_version": baselineVersion, "observed_managed_files": baselineFiles, "observed_tree_sha256": observedTree, "observed_migrations": migrationCount, "attempt_id": attemptID, "evidence_dir": evidenceDir, "evidence": "linked_archived_phase3_and_committed_r8_plus_fresh_exact_au_ntfs_http_binding_db71_signed_foundation", "database_mutation_performed": false}
 	path := filepath.Join(root, "reconciliation-home-"+id+".json")
 	if isReparse(path) {
 		return errors.New("LEGACY_RECEIPT_REDIRECTED")

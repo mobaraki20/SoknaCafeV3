@@ -30,7 +30,7 @@ jobs:
         shell: pwsh
         working-directory: windows/maintenance/tools/HomeBootstrap
         run: |
-          go test -json -count=1 -run '^(TestLegacy|TestObservedMaintenance|TestNative)' ./... | Tee-Object -FilePath "$env:RUNNER_TEMP/HOME-NATIVE-PROOF.jsonl"
+          go test -json -count=1 -run '^(TestLegacy|TestObservedMaintenance|TestNative|TestBothQualifiedHomeBaselineManifests)' ./... | Tee-Object -FilePath "$env:RUNNER_TEMP/HOME-NATIVE-PROOF.jsonl"
           if($LASTEXITCODE-ne0){throw 'Native Home reconciliation qualification failed'}
       - uses: actions/upload-artifact@v4
         if: always()

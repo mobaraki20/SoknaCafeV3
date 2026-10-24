@@ -41,7 +41,7 @@ func (b *bridge) preflightInstalledMaintenanceIdentity() error {
 		return errors.New("MAINTENANCE_PREVIOUS_LOCAL_IDENTITY_NOT_VERIFIABLE")
 	}
 	// Only the known Home upgrade lineage is allowed for controlled rebind.
-	good := local.Version == baselineVersion && strings.EqualFold(local.Tree, baselineTree)
+	good := local.Version == baselineVersion && (strings.EqualFold(local.Tree, baselineTree) || strings.EqualFold(local.Tree, canonicalBaselineTree))
 	knownStale := strings.HasPrefix(local.Version, "3.0.0-g6.2-workspace.231at-") || strings.HasPrefix(local.Version, "3.0.0-g6.2-workspace.231as-") || strings.HasPrefix(local.Version, "3.0.0-g6.2-workspace.231ap-") || strings.HasPrefix(local.Version, "3.0.0-g6.2-workspace.231ar-")
 	if !good && !knownStale {
 		return errors.New("MAINTENANCE_IDENTITY_NOT_SUPPORTED_231AU_HOME_BASELINE")

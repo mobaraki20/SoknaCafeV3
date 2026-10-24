@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-//go:embed payload/baseline-manifest.json payload/target-manifest.json payload/migration-catalog.json payload/local-m06-target.zip
+//go:embed payload/baseline-manifest.json payload/baseline-canonical-manifest.json payload/target-manifest.json payload/migration-catalog.json payload/local-m06-target.zip
 var embedded embed.FS
 
 // Last-resort one-time migration-aware UAT transition from exact Local 231au to U01.
@@ -105,7 +105,7 @@ func main() {
 
 func newBridge() (*bridge, error) {
 	now := time.Now().UTC()
-	id := "local231au-m06-" + now.Format("20060102T150405Z") + "-" + fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%d", now.UnixNano(), os.Getpid()))))[:10]
+	id := "home-au-bk-rev2-" + now.Format("20060102T150405Z") + "-" + fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%d", now.UnixNano(), os.Getpid()))))[:10]
 	baseData, err := embedded.ReadFile("payload/baseline-manifest.json")
 	if err != nil {
 		return nil, err
@@ -123,6 +123,14 @@ func newBridge() (*bridge, error) {
 		return nil, err
 	}
 	base, err := loadManifest(baseData, "baseline", baselineVersion, baselineFiles, baselineTree)
+	if err != nil {
+		return nil, err
+	}
+	canonicalData, err := embedded.ReadFile("payload/baseline-canonical-manifest.json")
+	if err != nil {
+		return nil, err
+	}
+	canonical, err := loadManifest(canonicalData, "baseline", baselineVersion, baselineFiles, canonicalBaselineTree)
 	if err != nil {
 		return nil, err
 	}
@@ -151,16 +159,16 @@ func newBridge() (*bridge, error) {
 	}
 	desktop := ""
 	if exe, er := os.Executable(); er == nil {
-		desktop = filepath.Join(filepath.Dir(exe), "SOKNA-Local-231au-U01-"+id+".log")
+		desktop = filepath.Join(filepath.Dir(exe), "SOKNA-Home-231au-to-231bk-REV2-"+id+".log")
 	}
-	b := &bridge{baseline: base, target: target, migrations: mig, targetZip: zipData, evidenceDir: evidenceDir, logPath: filepath.Join(evidenceDir, "bridge.log"), desktopLog: desktop}
+	b := &bridge{baseline: base, baselines: []fileManifest{base, canonical}, target: target, migrations: mig, targetZip: zipData, evidenceDir: evidenceDir, logPath: filepath.Join(evidenceDir, "bridge.log"), desktopLog: desktop}
 	b.ev = evidence{Format: "sokna-local-exact-baseline-bootstrap-v1", AttemptID: id, StartedAt: now.Format(time.RFC3339), Phase: "PREFLIGHT", BaselineVersion: baselineVersion, BaselineFiles: baselineFiles, BaselineTree: baselineTree, TargetVersion: targetVersion, TargetFiles: targetFiles, TargetTree: targetTree, MigrationsExpected: targetMigrationCount, DatabaseMutation: false, PublicMutation: false, WindowsServicesMutation: false, WindowsReboot: false}
 	b.writeEvidence()
 	return b, nil
 }
 
 func (b *bridge) run() error {
-	b.addStep("verified exact Local 231au baseline and SHA-sealed U01 target")
+	b.addStep("embedded BK target ZIP sealed; installed Local baseline NOT YET VERIFIED")
 	out, err := runHidden("sc.exe", "qc", apacheService)
 	if err != nil {
 		return fmt.Errorf("SoknaApache missing: %v %s", err, out)
@@ -205,12 +213,20 @@ func (b *bridge) run() error {
 		}
 		b.legacyPlan = plan
 	}
-	oldSlot := filepath.Join(root, "Web.release.231au-"+baselineTree[:12])
+	b.ev.Phase = "BASELINE_DISCOVERY"
+	b.writeEvidence()
+	oldSlot, err := b.discoverOriginalSlot()
+	if err != nil {
+		return err
+	}
 	b.backupPath = oldSlot
 	b.ev.BackupPath = oldSlot
 	if err = b.verifyOriginalSlot(oldSlot); err != nil {
 		return err
 	}
+	b.ev.BaselineTreeVerified = true
+	b.ev.Phase = "PREFLIGHT"
+	b.writeEvidence()
 	b.addStep("current junction resolves to verified direct-sibling 231au physical release")
 	if err = httpHealth(baselineVersion); err != nil {
 		return fmt.Errorf("original Local HTTP not healthy: %w", err)
@@ -248,6 +264,7 @@ func (b *bridge) run() error {
 		return errors.New("Local schema migration mismatch")
 	}
 	b.ev.MigrationsApplied = applied
+	b.ev.BaselineDatabaseVerified = true
 	b.writeEvidence()
 	b.addStep("migration catalog exactly 71/71 on installed 231au")
 	b.baselineAttested = true

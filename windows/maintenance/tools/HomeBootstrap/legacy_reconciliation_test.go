@@ -206,7 +206,7 @@ func TestLegacyTransitionPreservesFailureAndPeerFields(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = commitLegacyReconciliation(p, t.TempDir(), "test"); e != nil {
+	if e = commitLegacyReconciliation(p, t.TempDir(), "test", baselineTree); e != nil {
 		t.Fatal(e)
 	}
 	_, after, e := regularProof(f.operation)
@@ -231,11 +231,11 @@ func TestLegacyCrashBeforeTransitionCanResume(t *testing.T) {
 		t.Fatal(e)
 	}
 	original, _ := os.ReadFile(f.operation)
-	if e = commitLegacyReconciliation(p, t.TempDir(), "first"); e != nil {
+	if e = commitLegacyReconciliation(p, t.TempDir(), "first", baselineTree); e != nil {
 		t.Fatal(e)
 	}
 	os.WriteFile(f.operation, original, 0600)
-	if e = commitLegacyReconciliation(p, t.TempDir(), "retry"); e != nil {
+	if e = commitLegacyReconciliation(p, t.TempDir(), "retry", baselineTree); e != nil {
 		t.Fatal(e)
 	}
 }
@@ -246,7 +246,7 @@ func TestLegacyChangedOperationRefused(t *testing.T) {
 		t.Fatal(e)
 	}
 	editLegacy(t, f.operation, func(m map[string]any) { m["state"] = "running" })
-	if e = commitLegacyReconciliation(p, t.TempDir(), "test"); e == nil {
+	if e = commitLegacyReconciliation(p, t.TempDir(), "test", baselineTree); e == nil {
 		t.Fatal("changed operation overwritten")
 	}
 }
