@@ -329,7 +329,7 @@ jobs:
             $savedIdentity=[IO.File]::ReadAllBytes($identityPath)
             try{
               $newer=Get-Content $identityPath -Raw|ConvertFrom-Json
-              $newer.maintenance_supervisor_version='0.3.16'
+              $newer.maintenance_supervisor_version='0.3.17'
               [IO.File]::WriteAllText($identityPath,($newer|ConvertTo-Json -Depth 20))
               Expect-SyncRejected 'snapshot-downgrade'
             }finally{[IO.File]::WriteAllBytes($identityPath,$savedIdentity)}
