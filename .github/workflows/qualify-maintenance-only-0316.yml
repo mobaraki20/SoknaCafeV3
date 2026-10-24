@@ -253,6 +253,13 @@ jobs:
             if(($fixed|ConvertTo-Json -Depth 20 -Compress)-cne$beforeUnrelated){throw 'REPAIR_CHANGED_UNRELATED_IDENTITY'}
             # A second repair is an exact no-op, including identity bytes and PID.
             $identityHash=(Get-FileHash $identityPath -Algorithm SHA256).Hash
+            # Isolate PowerShell no-op logic from repeated Inno invocation.
+            # This qualified payload is exactly the same bytes packed into EXE.
+            $directPs=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+            $directScript=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle/invoke-maintenance-only-v1.ps1'
+            $directPayload=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
+            & $directPs -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $directScript -PayloadRoot $directPayload
+            if($LASTEXITCODE-ne0){throw 'DIRECT_IDEMPOTENT_COMPONENT_SCRIPT_FAILED'}
             $repeatLog=Join-Path $env:RUNNER_TEMP 'maintenance-only-repeat-inno.log'
             $repeat=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$repeatLog+'"')) -PassThru
             $repeatFinished=$repeat.WaitForExit(45000)
