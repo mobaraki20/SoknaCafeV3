@@ -24,13 +24,20 @@ internal static class KnownCafeRecoveryOverlayMigration
         string.Equals(treeSha, BaselineTree, StringComparison.OrdinalIgnoreCase);
 
     internal static bool TryMigrate(string packageRoot, string version, string treeSha,
-        string[] files, byte[] trustedPayload)
+        string[] files, byte[] trustedPayload) =>
+        TryMigrateCore(packageRoot, version, treeSha, files, trustedPayload,
+            LegacySha256, LegacyLength);
+
+    // CI injects a synthetic legacy hash to exercise atomic migration and
+    // rollback without distributing the field-observed recovery PHP bytes.
+    internal static bool TryMigrateCore(string packageRoot, string version, string treeSha,
+        string[] files, byte[] trustedPayload, string approvedLegacySha256, int approvedLegacyLength)
     {
         if (!Qualifies(version, treeSha)) return false;
         if (files.Length != 2 || trustedPayload.Length < 100 || trustedPayload.Length > 65536)
             throw new InvalidDataException(Invalid);
         var expected = Hash(trustedPayload);
-        var legacy = Convert.FromHexString(LegacySha256);
+        var legacy = Convert.FromHexString(approvedLegacySha256);
         var current = new byte[2][];
         var old = new bool[2];
 
@@ -49,7 +56,7 @@ internal static class KnownCafeRecoveryOverlayMigration
                 return false;
             current[i] = File.ReadAllBytes(file);
             var hash = Hash(current[i]);
-            old[i] = current[i].Length == LegacyLength && Equal(hash, legacy);
+            old[i] = current[i].Length == approvedLegacyLength && Equal(hash, legacy);
             if (!old[i] && !Equal(hash, expected)) return false;
         }
         if (!old[0] && !old[1]) return false;
@@ -58,7 +65,7 @@ internal static class KnownCafeRecoveryOverlayMigration
         if (!Directory.Exists(localWeb) ||
             (File.GetAttributes(localWeb) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_BACKUP_ROOT_UNSAFE");
-        var backups = Path.Combine(localWeb, "recovery-overlay-migration-" + LegacySha256[..16]);
+        var backups = Path.Combine(localWeb, "recovery-overlay-migration-" + approvedLegacySha256[..16]);
         Directory.CreateDirectory(backups);
         if ((File.GetAttributes(backups) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_BACKUP_ROOT_UNSAFE");
@@ -73,7 +80,7 @@ internal static class KnownCafeRecoveryOverlayMigration
             if (File.Exists(backupsPath[i]))
             {
                 if ((File.GetAttributes(backupsPath[i]) & FileAttributes.ReparsePoint) != 0 ||
-                    new FileInfo(backupsPath[i]).Length != LegacyLength ||
+                    new FileInfo(backupsPath[i]).Length != approvedLegacyLength ||
                     !Equal(Hash(File.ReadAllBytes(backupsPath[i])), legacy))
                     throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_BACKUP_CONFLICT");
             }
@@ -126,7 +133,7 @@ internal static class KnownCafeRecoveryOverlayMigration
             var json = JsonSerializer.Serialize(new {
                 format = "sokna-stable-recovery-known-cafe-migration-v1",
                 baseline_version = version, baseline_tree_sha256 = treeSha,
-                old_sha256 = LegacySha256,
+                old_sha256 = approvedLegacySha256,
                 new_sha256 = Convert.ToHexString(expected).ToLowerInvariant(),
                 backup_paths = names,
                 activation_performed = false, database_mutation_performed = false,
