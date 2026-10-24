@@ -31,11 +31,11 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
  $versions=@();$hashes=@()
  foreach($p in @($super,$engine)){
   $v=[string]([Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion)
-  if($v-ne'0.3.15.0'){throw 'COMPONENT_IDENTITY_PHYSICAL_0315_REQUIRED'}
-  $versions+='0.3.15'
+  if($v-ne'0.3.16.0'){throw 'COMPONENT_IDENTITY_PHYSICAL_0316_REQUIRED'}
+  $versions+='0.3.16'
   $hashes+=(ComponentSha256 $p)
  }
- Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.15' -Attempts 10
+ Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.16' -Attempts 10
  $update=Join-Path $store 'update'
  New-Item -ItemType Directory -Path $update -Force|Out-Null
  $lockPath=Join-Path $update 'machine-mutation.lock'
@@ -69,11 +69,11 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
   $doc=[Text.Encoding]::UTF8.GetString($before)|ConvertFrom-Json -ErrorAction Stop
   $names=@('maintenance_supervisor_version','update_engine_version')
   foreach($name in $names){
-   if(-not$doc.PSObject.Properties[$name] -or [string]$doc.$name-notmatch'^0\.3\.(?:[0-9]|1[0-5])$'){
+   if(-not$doc.PSObject.Properties[$name] -or [string]$doc.$name-notmatch'^0\.3\.(?:[0-9]|1[0-6])$'){
     throw 'COMPONENT_IDENTITY_PREVIOUS_VERSION_UNQUALIFIED'
    }
   }
-  if($doc.maintenance_supervisor_version-eq'0.3.15' -and $doc.update_engine_version-eq'0.3.15'){return}
+  if($doc.maintenance_supervisor_version-eq'0.3.16' -and $doc.update_engine_version-eq'0.3.16'){return}
   $beforeSemantic=$doc|ConvertTo-Json -Depth 100 -Compress
   $prior=@([string]$doc.maintenance_supervisor_version,[string]$doc.update_engine_version)
   $doc.maintenance_supervisor_version=$versions[0];$doc.update_engine_version=$versions[1]

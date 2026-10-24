@@ -155,6 +155,11 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
                         throw new InvalidDataException("LOCAL_LEGACY_RECOVERY_RECONCILIATION_REQUIRED");
                 }
 
+                // Preflight is genuinely read-only: detect nonqualified Local
+                // recovery overlay before returning a verified installation
+                // receipt, rather than failing after Stage/activation reservation.
+                StableLocalRecoveryOverlayRepair.RequireReadyForPreflight(_paths);
+
                 var receiptPath = ReceiptPath(operation.OperationId);
                 if (operation.State == "verified")
                 {

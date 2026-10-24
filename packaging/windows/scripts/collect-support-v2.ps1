@@ -143,6 +143,64 @@ try {
   $userBootstrap=Join-Path $env:LOCALAPPDATA 'SOKNA\Installer\logs';$userDest=Join-Path $work 'user-bootstrap';New-Item -ItemType Directory -Path $userDest -Force|Out-Null
   if(Test-Path $userBootstrap -PathType Container){foreach($tx in @(Get-ChildItem $userBootstrap -Directory|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First $InstallerTransactions)){CopySafeTextTree $tx.FullName (Join-Path $userDest $tx.Name)}}
 
+  # Maintenance Local-updater evidence: bounded, read-only, no file content,
+  # raw database rows, credentials or private operation payloads.
+  # This prevents repeated one-file-at-a-time operator diagnostics.
+  $maintDir=Join-Path $work 'maintenance';New-Item -ItemType Directory -Path $maintDir -Force|Out-Null
+  try{
+    $recent=@()
+    $ops=Join-Path $DataRoot 'Maintenance\operations'
+    if(Test-Path -LiteralPath $ops -PathType Container){
+      foreach($item in @(Get-ChildItem -LiteralPath $ops -File -Filter 'op-*.json'|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 25)){
+        try{
+          $op=Get-Content -LiteralPath $item.FullName -Raw|ConvertFrom-Json
+          $recent+=([ordered]@{
+            operation_id=[string]$op.operation_id;operation_type=[string]$op.operation_type
+            state=[string]$op.state;result_code=[string]$op.result_code
+            result_message=(Redact ([string]$op.result_message))
+            updated_at_utc=[string]$op.updated_at_utc
+            activation_performed=[bool]$op.activation_performed
+            database_mutation_performed=[bool]$op.database_mutation_performed
+          })
+        }catch{AddError 'maintenance-operation-summary' $_.Exception.Message}
+      }
+    }
+    WriteJson (Join-Path $maintDir 'recent-operations.json') ([ordered]@{format='sokna-maintenance-recent-operations-v1';operations=$recent})
+  }catch{AddError 'maintenance-operations' $_.Exception.Message}
+  try{
+    $roots=@(Get-PSDrive -PSProvider FileSystem|ForEach-Object{Join-Path $_.Root 'SOKNA'}|Select-Object -Unique)
+    $snapshots=@()
+    foreach($root in $roots){
+      $web=Join-Path $root 'Web'
+      $persistent=Join-Path $root 'LocalWeb\persistent'
+      if(-not(Test-Path -LiteralPath $web -PathType Container) -and -not(Test-Path -LiteralPath $persistent -PathType Container)){continue}
+      $paths=@(
+        (Join-Path $web 'public\local-recovery.php'),
+        (Join-Path $persistent 'public\local-recovery.php')
+      )
+      $entry=@()
+      foreach($candidate in $paths){
+        $meta=FileMeta $candidate
+        $reparse=$false
+        if(Test-Path -LiteralPath $candidate){
+          $reparse=[bool]((Get-Item -LiteralPath $candidate -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)
+        }
+        $entry+=([ordered]@{
+          path=$candidate;present=($null-ne$meta);size_bytes=$(if($meta){$meta.length}else{$null})
+          sha256=$(if($meta){$meta.sha256}else{$null});reparse_point=$reparse
+        })
+      }
+      $snapshots+=([ordered]@{install_root=$root;files=$entry})
+    }
+    WriteJson (Join-Path $maintDir 'stable-recovery-overlay.json') ([ordered]@{
+      format='sokna-stable-recovery-overlay-diagnostics-v1'
+      captured_at_utc=[DateTime]::UtcNow.ToString('o')
+      reference_0315_sha256='fd36bf0170a357aa3d0a283e9989fa0b442607f238bb70b659c2def8f5791598'
+      legacy_cafe_sha256='e23949e5522c42fc8e6cf661b302a2fbb23f0c2d6138a873bef8644c2a5ee7a9'
+      installations=$snapshots
+    })
+  }catch{AddError 'maintenance-stable-recovery-overlay' $_.Exception.Message}
+
   $completeness='complete';if($collectionErrors.Count-gt0){$completeness='partial'}
   $summary=[ordered]@{format='sokna-windows-support-v2';schema_version=2;created_at_utc=[DateTime]::UtcNow.ToString('o');computer_name=$env:COMPUTERNAME;collector='collect-support-v2.ps1';baseline_collected=$baselineOk;completeness=$completeness;dependency_class=$dependencyClass;ports=[ordered]@{local_http_18080=$port18080;mariadb_3306=$port3306};collection_errors=$collectionErrors;note='Bounded text evidence is redacted. Secrets, pairing codes, credentials, raw DB rows and private files are excluded.'}
   WriteJson (Join-Path $work 'support-v2-summary.json') $summary

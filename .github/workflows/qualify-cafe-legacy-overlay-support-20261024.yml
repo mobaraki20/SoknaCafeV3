@@ -1,0 +1,44 @@
+name: Qualify Cafe legacy overlay and support diagnostics
+on:
+  push:
+    branches:
+      - fix/cafe-overlay-legacy-support-20261024
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-windows:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Supervisor and new migration class
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Existing nine overlay scenarios
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.RecoveryOverlayHarness/Sokna.Maintenance.RecoveryOverlayHarness.csproj -c Release -- "$env:RUNNER_TEMP\overlay-existing"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Actual migration algorithm regression
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.CafeOverlayHarness/Sokna.Maintenance.CafeOverlayHarness.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Parse Support V2 collector with Windows PowerShell
+        shell: powershell
+        run: |
+          $path='packaging/windows/scripts/collect-support-v2.ps1'
+          $tokens=$null; $errors=$null
+          [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
+          if (@($errors).Count -gt 0) { $errors|Format-List; exit 1 }
+      - name: Inspect exact baseline guard
+        shell: pwsh
+        run: |
+          $s=Get-Content windows/maintenance/src/Sokna.Maintenance.Core/KnownCafeRecoveryOverlayMigration.cs -Raw
+          if ($s -notmatch '231bf-u01-iran-time-updater-rc1' -or $s -notmatch 'e23949e5522c42fc8e6cf661b302a2fbb23f0c2d6138a873bef8644c2a5ee7a9') { exit 2 }

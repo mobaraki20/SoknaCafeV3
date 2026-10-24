@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/Sokna.Maintenance.Core/*.cs" Exclude="../../src/Sokna.Maintenance.Core/ProductionLocalSlotMigration.cs"/>
+    <Compile Include="Program.cs"/>
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1"/>
+    <EmbeddedResource Include="../../src/Sokna.Maintenance.Core/RoutineLocalDatabase.php" LogicalName="Sokna.Maintenance.Core.RoutineLocalDatabase.php"/>
+    <EmbeddedResource Include="../../src/Sokna.Maintenance.Core/StableLocalRecovery.php" LogicalName="Sokna.Maintenance.Core.StableLocalRecoveryPhp"/>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,375 @@
+name: Maintenance-only 0.3.16 independent installer qualification
+on:
+  push:
+    branches: [fix/cafe-overlay-legacy-support-20261024]
+    paths:
+      - 'packaging/windows/scripts/*maintenance*-v1.ps1'
+      - 'packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss'
+      - 'windows/maintenance/**'
+      - '.github/workflows/qualify-maintenance-only-0316.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: maintenance-only-0316-qualification
+  cancel-in-progress: true
+jobs:
+  build-verify-release:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: new
+      - uses: actions/checkout@v4
+        with:
+          ref: 0351404419bf83e4ef7fba46daa65c4f31739366
+          path: baseline
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: PowerShell 5.1 syntax, scope and version contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($f in @('invoke-maintenance-only-v1.ps1','setup-windows-components-maintenance-v1.ps1','prepare-maintenance-only-payload-v1.ps1','maintenance-signed-health-v1.ps1','maintenance-installed-versions-v1.ps1')){
+            $p=Join-Path new/packaging/windows/scripts $f
+            $tokens=$null;$errors=$null
+            [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors)|Out-Null
+            if($errors.Count){throw ("Script syntax: "+$f+": "+(($errors|ForEach-Object Message)-join '; '))}
+          }
+          $core=Get-Content new/packaging/windows/scripts/setup-windows-components-maintenance-v1.ps1 -Raw
+          foreach($guard in @('MAINTENANCE_ONLY_SCOPE_REQUIRED','EXPECTED_MAINTENANCE_0315_BASELINE_REQUIRED','OUT_OF_SCOPE_COMPONENT_IN_PLAN','RestoreMaintenanceOnly','Assert-MaintenanceSignedHealth','windows_shell_state_unchanged')){
+            if(-not$core.Contains($guard)){throw "Missing strict guard $guard"}
+          }
+          if($core.Contains('WriteJson $statePath $state')){throw 'Component installer must not overwrite whole Windows Services state'}
+          $installer=Get-Content new/packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss -Raw
+          if($installer -match 'DestDir: "\{app\}' -or $installer -notmatch 'CreateUninstallRegKey=no'){throw 'Manager shell must not be overwritten or re-registered'}
+          # The actual installer executes Windows PowerShell 5.1, not pwsh 7.
+          $parser='foreach($f in Get-ChildItem "$PWD/new/packaging/windows/scripts" -Filter "*maintenance*.ps1"){ $t=$null;$e=$null;[Management.Automation.Language.Parser]::ParseFile($f.FullName,[ref]$t,[ref]$e)|Out-Null;if($e.Count){throw ($f.Name+": "+(($e|ForEach-Object Message)-join "; "))}}'
+          & "$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -Command $parser
+          if($LASTEXITCODE-ne0){throw 'Windows PowerShell 5.1 parse failed'}
+          Write-Host 'Scoped component-only isolation contract: PASS'
+      - name: Native recovery overlay and real sibling copy contract
+        shell: pwsh
+        run: |
+          dotnet run --project new/windows/maintenance/tests/Sokna.Maintenance.RecoveryOverlayHarness -c Release -- "$env:RUNNER_TEMP/recovery-overlay"
+          if($LASTEXITCODE-ne0){throw 'Native recovery overlay contract failed'}
+      - name: Cafe exact-legacy migration, backup, interrupted pair and foreign bytes
+        shell: pwsh
+        run: |
+          dotnet run --project new/windows/maintenance/tests/Sokna.Maintenance.CafeOverlayHarness -c Release
+          if($LASTEXITCODE-ne0){throw 'Cafe recovery overlay migration failed'}
+      - name: Same completed ZIP new browser upload ID and exact chunk progress
+        shell: pwsh
+        run: |
+          dotnet run --project new/windows/maintenance/tests/Sokna.Maintenance.InboxRetryHarness -c Release -- "$env:RUNNER_TEMP/inbox-retry"
+          if($LASTEXITCODE-ne0){throw 'Inbox retry contract failed'}
+      - name: Build real Supervisor and Engine 0.3.15 / 0.3.16
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $old=Join-Path $env:RUNNER_TEMP 'baseline-maintenance'
+          $new=Join-Path $env:RUNNER_TEMP 'new-maintenance'
+          New-Item -ItemType Directory -Path $old,$new -Force|Out-Null
+          foreach($set in @(@('baseline',$old),@('new',$new))){
+            $source=$set[0];$dest=$set[1]
+            foreach($proj in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine')){
+              $file="$source/windows/maintenance/src/$proj/$proj.csproj"
+              & dotnet publish $file -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $dest
+              if($LASTEXITCODE-ne0){throw "Publish failed $source/$proj"}
+            }
+          }
+          foreach($pair in @(@($old,'0.3.15.0'),@($new,'0.3.16.0'))){
+            foreach($file in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')){
+              $v=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $pair[0] $file)).FileVersion
+              if($v-ne$pair[1]){throw "Wrong compiled file version $v vs $($pair[1])"}
+            }
+          }
+      - name: Produce exact component-only package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path new).Path
+          $out=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
+          & $root/packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1 -RepoRoot $root -MaintenanceAppBundle (Join-Path $env:RUNNER_TEMP 'new-maintenance') -OutputRoot $out
+          if(-not$?){throw 'Scoped component payload failed'}
+          $m=Get-Content (Join-Path $out 'component-install-manifest-v1.json') -Raw|ConvertFrom-Json
+          if($m.release_scope-ne'maintenance_only' -or $m.component_version-ne'0.3.16' -or $m.runtime_changes -or $m.print_agent_changes -or $m.recovery_console_changes -or $m.manager_changes){throw 'Installer scope violation'}
+          $names=@($m.files|ForEach-Object path)
+          if(@($names|Where-Object{$_ -notmatch '^maintenance/app/'}).Count){throw 'Unrelated source was packaged'}
+      - name: Exercise tampered payload guard without changing services
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
+          $file=Join-Path $out 'maintenance/app/SoknaMaintenanceUpdateEngine.exe'
+          $original=[IO.File]::ReadAllBytes($file)
+          try{
+            [IO.File]::AppendAllText($file,'TAMPER')
+            $ps=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+            $fileName=(Resolve-Path './new/packaging/windows/scripts/invoke-maintenance-only-v1.ps1').Path
+            $p=Start-Process -FilePath $ps -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$fileName+'"'),'-PayloadRoot',('"'+$out+'"')) -Wait -PassThru -WindowStyle Hidden
+            if($p.ExitCode -eq 0){throw 'Tampered package accepted'}
+          }finally{[IO.File]::WriteAllBytes($file,$original)}
+      - name: Real SCM service upgrade smoke 0.3.15 -> 0.3.16
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'SOKNA-maintenance-only-smoke'
+          $app=Join-Path $root 'Maintenance/App'
+          New-Item -ItemType Directory -Path $app,(Join-Path $root 'Runtime'),(Join-Path $root 'PrintAgent/Service'),(Join-Path $root 'Maintenance/Recovery') -Force|Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'baseline-maintenance/*') $app -Recurse -Force
+          # Explicit canaries for forbidden out-of-scope writes; never register these as services.
+          Set-Content (Join-Path $root 'Runtime/SoknaRuntimeService.exe') 'RUNTIME-UNTOUCHED' -Encoding ASCII
+          Set-Content (Join-Path $root 'PrintAgent/Service/Sokna.PrintAgent.Service.exe') 'PRINT-UNTOUCHED' -Encoding ASCII
+          Set-Content (Join-Path $root 'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe') 'RECOVERY-UNTOUCHED' -Encoding ASCII
+          $identityPath=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/Maintenance/installed-release-identity.json'
+          New-Item -ItemType Directory -Path (Split-Path $identityPath -Parent) -Force|Out-Null
+          $identity=[ordered]@{local=@{release_id='preserve-real-local';version='231bf';managed_tree_sha256=('a'*64);authority_epoch_policy=$null};public=@{release_id='preserve-public';version='35eo'};maintenance_supervisor_version='0.3.15';update_engine_version='0.3.15';backup_recovery_engine_version=$null;public_maintenance_kernel_version=$null;unknown_extension=@{must='survive'}}
+          $beforeUnrelated=($identity|ConvertTo-Json -Depth 20 -Compress)
+          [IO.File]::WriteAllText($identityPath,($identity|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
+          $exe=Join-Path $app 'SoknaMaintenanceSupervisor.exe'
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Runner contains unexpected production service'}
+          try{
+            New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+$exe+'"') -StartupType Automatic|Out-Null
+            Start-Service SoknaMaintenanceSupervisor
+            $running=$false
+            for($i=0;$i-lt30;$i++){if((Get-Service SoknaMaintenanceSupervisor).Status-eq'Running'){$running=$true;break};Start-Sleep -Milliseconds 500}
+            if(-not$running){throw 'Baseline Supervisor did not start on clean runner'}
+            $ps=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+            $entry=(Resolve-Path './new/packaging/windows/scripts/invoke-maintenance-only-v1.ps1').Path
+            $payload=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
+            $direct=Start-Process -FilePath $ps -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$entry+'"'),'-PayloadRoot',('"'+$payload+'"')) -Wait -PassThru
+            if($direct.ExitCode-ne0){
+              $errorFile=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
+              if(Test-Path $errorFile){Get-Content $errorFile|Out-Host}
+              throw 'Real Windows PowerShell 5.1 SCM Maintenance-only upgrade failed'
+            }
+            foreach($pair in @(@('SoknaMaintenanceSupervisor.exe','0.3.16.0'),@('SoknaMaintenanceUpdateEngine.exe','0.3.16.0'))){
+              $v=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $app $pair[0])).FileVersion
+              if($v-ne$pair[1]){throw "Installed component not upgraded"}
+            }
+            if((Get-Service SoknaMaintenanceSupervisor).Status-ne'Running'){throw 'Supervisor not running after upgrade'}
+            $canaries=@{
+              'Runtime/SoknaRuntimeService.exe'='RUNTIME-UNTOUCHED'
+              'PrintAgent/Service/Sokna.PrintAgent.Service.exe'='PRINT-UNTOUCHED'
+              'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe'='RECOVERY-UNTOUCHED'
+            }
+            foreach($entry in $canaries.GetEnumerator()){
+              if((Get-Content (Join-Path $root $entry.Key) -Raw).Trim() -ne $entry.Value){throw "Out-of-scope canary changed: $($entry.Key)"}
+            }
+            Write-Host 'Windows SCM live scoped upgrade and sibling canaries: PASS'
+          }finally{
+            Stop-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue
+            & "$env:WINDIR/System32/sc.exe" delete SoknaMaintenanceSupervisor|Out-Null
+          }
+      - name: Compile small standalone installer with Inno Setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path $_)}|Select-Object -First 1
+          if(-not$iscc){choco install innosetup -y --no-progress|Out-Host;$iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path $_)}|Select-Object -First 1}
+          if(-not$iscc){throw 'Inno Setup compiler not installed'}
+          $out=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution'
+          New-Item -ItemType Directory -Path $out -Force|Out-Null
+          $source=(Resolve-Path new).Path
+          $payload=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
+          & $iscc "/DPayloadRoot=$payload" "/DOutputDir=$out" "$source/packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss"
+          if($LASTEXITCODE-ne0){throw 'Maintenance-only Inno compilation failed'}
+          $exe=Join-Path $out 'SOKNA-Maintenance-Only-0.3.16-UAT-REV1.exe'
+          if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Expected installer EXE missing'}
+          $hash=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  SOKNA-Maintenance-Only-0.3.16-UAT-REV1.exe"|Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
+          Write-Host "Standalone Maintenance EXE SHA256: $hash"
+      - name: Execute the final Inno EXE against a real Windows service
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'SOKNA-maintenance-only-inno-smoke'
+          $app=Join-Path $root 'Maintenance/App'
+          New-Item -ItemType Directory -Path $app,(Join-Path $root 'Runtime'),(Join-Path $root 'PrintAgent/Service'),(Join-Path $root 'Maintenance/Recovery') -Force|Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'baseline-maintenance/*') $app -Recurse -Force
+          $canaries=@{
+            'Runtime/SoknaRuntimeService.exe'='RUNTIME-INNO-UNTOUCHED'
+            'PrintAgent/Service/Sokna.PrintAgent.Service.exe'='PRINT-INNO-UNTOUCHED'
+            'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe'='RECOVERY-INNO-UNTOUCHED'
+          }
+          foreach($entry in $canaries.GetEnumerator()){Set-Content (Join-Path $root $entry.Key) $entry.Value -Encoding ASCII}
+          $identityPath=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/Maintenance/installed-release-identity.json'
+          New-Item -ItemType Directory -Path (Split-Path $identityPath -Parent) -Force|Out-Null
+          $identity=[ordered]@{local=@{release_id='preserve-real-local';version='231bf';managed_tree_sha256=('a'*64);authority_epoch_policy=$null};public=@{release_id='preserve-public';version='35eo'};maintenance_supervisor_version='0.3.15';update_engine_version='0.3.15';backup_recovery_engine_version=$null;public_maintenance_kernel_version=$null;unknown_extension=@{must='survive'}}
+          $beforeUnrelated=($identity|ConvertTo-Json -Depth 20 -Compress)
+          [IO.File]::WriteAllText($identityPath,($identity|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
+          $exe=Join-Path $app 'SoknaMaintenanceSupervisor.exe'
+          for($i=0;$i-lt40;$i++){if(-not(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue)){break};Start-Sleep -Milliseconds 250}
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Original test service not fully removed'}
+          try{
+            $installer=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution/SOKNA-Maintenance-Only-0.3.16-UAT-REV1.exe'
+            # Fail-closed absent-service behavior is checked by the existing
+            # scoped installer preflight. This on-host EXE smoke exercises the
+            # real successful upgrade path without a prior GUI-error process.
+            New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+$exe+'"') -StartupType Automatic|Out-Null
+            Start-Service SoknaMaintenanceSupervisor
+            $log=Join-Path $env:RUNNER_TEMP 'maintenance-only-inno-smoke.log'
+            $process=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$log+'"')) -PassThru
+            if(-not $process.WaitForExit(90000)){
+              if(Test-Path $log){Get-Content $log -Tail 75|Out-Host}
+              $failed=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
+              if(Test-Path $failed){Get-Content $failed|Out-Host}
+              try{$process.Kill($true)}catch{}
+              throw 'INNO_INSTALLER_BOUNDED_SMOKE_TIMEOUT'
+            }
+            $errorPath=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
+            if(Test-Path $errorPath){Write-Host 'Scoped installer failure code:';Get-Content $errorPath|Out-Host}
+            if(Test-Path $log){
+              if(-not ((Get-Content $log -Raw) -match '64-bit install mode: Yes')){throw 'Inno did not invoke native 64-bit installation mode'}
+              if(-not ((Get-Content $log -Raw) -match 'SOKNA_MAINTENANCE_ONLY_TRANSACTION_VERIFIED')){throw 'Inno did not attest completed scoped transaction'}
+              Write-Host 'Inno install log (filtered)'
+              Get-Content $log -Tail 140|Where-Object{$_ -match 'SOKNA|ssPostInstall|Error|error|maintenance-only|Extract|inno|PowerShell|Filename|Executing|Install'}|Select-Object -Last 70|Out-Host
+            }else{Write-Warning ('Expected Inno log not found: '+$log)}
+            if($process.ExitCode -ne 0){throw "Actual Inno EXE failed: ExitCode=$($process.ExitCode); log=$log"}
+            foreach($file in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')){
+              if(([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $app $file)).FileVersion)-ne'0.3.16.0'){throw "Inno EXE did not upgrade $file"}
+            }
+            if((Get-Service SoknaMaintenanceSupervisor).Status-ne'Running'){throw 'Supervisor stopped after actual EXE'}
+            foreach($entry in $canaries.GetEnumerator()){
+              if((Get-Content (Join-Path $root $entry.Key) -Raw).Trim() -ne$entry.Value){throw "Inno EXE modified forbidden component $($entry.Key)"}
+            }
+            $observed=Get-Content $identityPath -Raw|ConvertFrom-Json
+            if($observed.maintenance_supervisor_version-ne'0.3.16' -or $observed.update_engine_version-ne'0.3.16'){throw 'STALE_INSTALLED_COMPONENT_VERSION_AFTER_REAL_EXE'}
+            $observed.maintenance_supervisor_version='0.3.15';$observed.update_engine_version='0.3.15'
+            if(($observed|ConvertTo-Json -Depth 20 -Compress)-cne$beforeUnrelated){throw 'UNRELATED_IDENTITY_CHANGED'}
+            # Reproduce Cafe: real 0.3.16 binaries, stale 0.3.15 metadata.
+            [IO.File]::WriteAllText($identityPath,($observed|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
+            $pidBefore=(Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId
+            $binaryBefore=(Get-FileHash $exe -Algorithm SHA256).Hash
+            $repair=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
+            if(-not$repair.WaitForExit(90000) -or $repair.ExitCode-ne0){throw 'EXISTING_0316_METADATA_REPAIR_FAILED'}
+            if((Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId-ne$pidBefore -or (Get-FileHash $exe -Algorithm SHA256).Hash-cne$binaryBefore){throw 'METADATA_REPAIR_RESTARTED_OR_CHANGED_SERVICE'}
+            $fixed=Get-Content $identityPath -Raw|ConvertFrom-Json
+            if($fixed.maintenance_supervisor_version-ne'0.3.16' -or $fixed.update_engine_version-ne'0.3.16'){throw 'COMPONENT_VERSION_REPAIR_UNPROVEN'}
+            $fixed.maintenance_supervisor_version='0.3.15';$fixed.update_engine_version='0.3.15'
+            if(($fixed|ConvertTo-Json -Depth 20 -Compress)-cne$beforeUnrelated){throw 'REPAIR_CHANGED_UNRELATED_IDENTITY'}
+            # A second repair is an exact no-op, including identity bytes and PID.
+            $identityHash=(Get-FileHash $identityPath -Algorithm SHA256).Hash
+            # Isolate PowerShell no-op logic from repeated Inno invocation.
+            # This qualified payload is exactly the same bytes packed into EXE.
+            $directPs=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+            $directScript=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle/invoke-maintenance-only-v1.ps1'
+            $directPayload=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
+            & $directPs -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $directScript -PayloadRoot $directPayload
+            if($LASTEXITCODE-ne0){throw 'DIRECT_IDEMPOTENT_COMPONENT_SCRIPT_FAILED'}
+            $repeatLog=Join-Path $env:RUNNER_TEMP 'maintenance-only-repeat-inno.log'
+            $repeat=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$repeatLog+'"')) -PassThru
+            $repeatFinished=$repeat.WaitForExit(45000)
+            if(-not$repeatFinished -or $repeat.ExitCode-ne0){
+              Write-Warning ("REPEAT_FINISHED="+$repeatFinished+" PID="+$repeat.Id)
+              if(Test-Path -LiteralPath $repeatLog){Get-Content -LiteralPath $repeatLog -Tail 150|Out-Host}
+              $repeatError=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
+              if(Test-Path -LiteralPath $repeatError){Get-Content -LiteralPath $repeatError|Out-Host}
+              if(-not$repeatFinished){Stop-Process -Id $repeat.Id -Force -ErrorAction SilentlyContinue}
+              throw 'METADATA_REPAIR_REPEAT_FAILED'
+            }
+            if((Get-FileHash $identityPath -Algorithm SHA256).Hash-cne$identityHash -or (Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId-ne$pidBefore){throw 'METADATA_REPAIR_REPEAT_NOT_NOOP'}
+            $payload=Join-Path $env:RUNNER_TEMP 'maintenance-only-bundle'
+            . (Join-Path $payload 'maintenance-signed-health-v1.ps1')
+            . (Join-Path $payload 'maintenance-installed-versions-v1.ps1')
+            function Expect-SyncRejected([string]$case){
+              $before=(Get-FileHash $identityPath -Algorithm SHA256).Hash
+              $rejected=$false
+              try{Sync-MaintenanceInstalledVersions -AppRoot $app -EvidenceRoot (Join-Path $env:RUNNER_TEMP ('rejected-'+$case))}catch{$rejected=$true}
+              if(-not$rejected -or (Get-FileHash $identityPath -Algorithm SHA256).Hash-cne$before){throw ('SYNC_FAILED_OPEN_'+$case)}
+            }
+            $ops=Join-Path (Split-Path $identityPath -Parent) 'operations'
+            $opId=[Guid]::NewGuid().ToString('N');$opPath=Join-Path $ops ('op-'+$opId+'.json')
+            $block=[ordered]@{format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$opId;idempotency_key='fixture-blocking-key';operator_id='home-uat';operation_type='update.local-slot-home-cycle';state='running';canonical_request_sha256=('a'*64);package_ref=('b'*32);attempt_count=1;activation_performed=$true;database_mutation_performed=$false;result_code='LOCAL_SLOT_RECOVERY_REQUIRED';created_at_utc='2026-10-17T01:42:24Z';updated_at_utc='2026-10-17T01:43:55Z'}
+            try{
+              [IO.File]::WriteAllText($opPath,($block|ConvertTo-Json -Depth 10))
+              Expect-SyncRejected 'blocking-operation'
+              # Regression from actual home host: a superseded legacy home-cycle
+              # remains recovery_required even after a later committed adoption.
+              # Its durable record must remain byte-for-byte unchanged while
+              # only the two installed component identity versions are synced.
+              $block.state='recovery_required'
+              [IO.File]::WriteAllText($opPath,($block|ConvertTo-Json -Depth 10))
+              $historicalOpHash=(Get-FileHash $opPath -Algorithm SHA256).Hash
+              $older=Get-Content $identityPath -Raw|ConvertFrom-Json
+              $older.maintenance_supervisor_version='0.3.15'
+              $older.update_engine_version='0.3.15'
+              [IO.File]::WriteAllText($identityPath,($older|ConvertTo-Json -Depth 20))
+              # Exercise the exact real Inno EXE, not just a function-level test.
+              $pidBeforeHistorical=(Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId
+              $binaryBeforeHistorical=(Get-FileHash $exe -Algorithm SHA256).Hash
+              $historicExe=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
+              if(-not$historicExe.WaitForExit(90000) -or $historicExe.ExitCode-ne0){throw 'HISTORICAL_HOME_OPERATION_BLOCKED_INNO_REV1'}
+              if((Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'").ProcessId-ne$pidBeforeHistorical -or (Get-FileHash $exe -Algorithm SHA256).Hash-cne$binaryBeforeHistorical){throw 'HISTORIC_RECOVERY_INNO_MUTATED_SERVICE'}
+              if((Get-FileHash $opPath -Algorithm SHA256).Hash-cne$historicalOpHash){throw 'HISTORIC_RECOVERY_INNO_MUTATED_OPERATION'}
+              # Repeat at the sync-function level to validate the audit receipt.
+              $older=Get-Content $identityPath -Raw|ConvertFrom-Json
+              $older.maintenance_supervisor_version='0.3.15'
+              $older.update_engine_version='0.3.15'
+              [IO.File]::WriteAllText($identityPath,($older|ConvertTo-Json -Depth 20))
+              $syncEvidence=Join-Path (Split-Path $identityPath -Parent) ('ci-historical-recovery-identity-sync-'+[guid]::NewGuid().ToString('N'))
+              if([IO.Path]::GetPathRoot($syncEvidence)-ne[IO.Path]::GetPathRoot($identityPath)){throw 'CI_EVIDENCE_MUST_SHARE_IDENTITY_VOLUME'}
+              Sync-MaintenanceInstalledVersions -AppRoot $app -EvidenceRoot $syncEvidence
+              $reconciled=Get-Content $identityPath -Raw|ConvertFrom-Json
+              if($reconciled.maintenance_supervisor_version-ne'0.3.16' -or $reconciled.update_engine_version-ne'0.3.16'){throw 'HISTORIC_RECOVERY_PREVENTED_COMPONENT_SYNC'}
+              if((Get-FileHash $opPath -Algorithm SHA256).Hash-cne$historicalOpHash){throw 'HISTORIC_RECOVERY_OPERATION_MUTATED'}
+              $syncReceipt=Get-Content (Join-Path $syncEvidence 'component-version-sync.json') -Raw|ConvertFrom-Json
+              if($syncReceipt.recovery_records_unchanged-ne$true -or $opId -notin @($syncReceipt.outstanding_recovery_required_operation_ids)){throw 'HISTORIC_RECOVERY_NOT_REPORTED'}
+              $reconciled.maintenance_supervisor_version='0.3.15';$reconciled.update_engine_version='0.3.15'
+              if(($reconciled|ConvertTo-Json -Depth 20 -Compress)-cne$beforeUnrelated){throw 'HISTORIC_RECOVERY_CHANGED_OTHER_IDENTITY'}
+              [IO.File]::WriteAllText($opPath,'{}')
+              Expect-SyncRejected 'corrupt-operation'
+            }finally{if(Test-Path $opPath){[IO.File]::Delete($opPath)}}
+            $leasePath=Join-Path (Split-Path $identityPath -Parent) 'update/machine-mutation.lock'
+            $lease=[IO.File]::Open($leasePath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+            try{Expect-SyncRejected 'machine-lease-held'}finally{$lease.Dispose()}
+            $savedIdentity=[IO.File]::ReadAllBytes($identityPath)
+            try{
+              $newer=Get-Content $identityPath -Raw|ConvertFrom-Json
+              $newer.maintenance_supervisor_version='0.3.17'
+              [IO.File]::WriteAllText($identityPath,($newer|ConvertTo-Json -Depth 20))
+              Expect-SyncRejected 'snapshot-downgrade'
+            }finally{[IO.File]::WriteAllBytes($identityPath,$savedIdentity)}
+            Write-Host 'Native component sync with preserved historical recovery and negative active-operation, corrupt evidence, shared machine lease, downgrade cases: PASS'
+            Write-Host 'Actual Inno EXE upgrade, stale-version repair, preserved Local/Public/extensions, unchanged PID and repeated no-op: PASS'
+
+          }finally{
+            Stop-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue
+            & "$env:WINDIR/System32/sc.exe" delete SoknaMaintenanceSupervisor|Out-Null
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Maintenance-Only-0.3.16-UAT-REV1
+          path: ${{ runner.temp }}/maintenance-only-distribution/*
+          if-no-files-found: error
+      - name: Publish qualified standalone REV1 as GitHub pre-release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='maintenance-only-v0.3.16-uat.rev1'
+          $out=Join-Path $env:RUNNER_TEMP 'maintenance-only-distribution'
+          $exe=Join-Path $out 'SOKNA-Maintenance-Only-0.3.16-UAT-REV1.exe'
+          $sums=Join-Path $out 'SHA256SUMS.txt'
+          if(-not(Test-Path -LiteralPath $exe -PathType Leaf) -or -not(Test-Path -LiteralPath $sums -PathType Leaf)){throw 'Qualified release assets missing'}
+          $sha=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if((Get-Content -LiteralPath $sums -Raw)-notmatch [regex]::Escape($sha)){throw 'Installer SHA256 not attested'}
+          $existing=& gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName 2>$null
+          if($LASTEXITCODE-eq0){throw 'REV1 tag already exists; refusing overwrite'}
+          @(
+            '# SOKNA Maintenance-only 0.3.16 UAT REV1',
+            '',
+            'Maintenance 0.3.15 to 0.3.16: provision and verify missing stable recovery overlay for adopted managed Local slots.',
+            'Fixes INBOX_UPLOAD_STATE_MISSING for a new browser session reuploading a completed identical ZIP; exact bytes and per-chunk progress are checked.',
+            'Preserves historical recovery records and rejects truly active mutations.',
+            'Only Maintenance component identity versions are synchronized; Local/Public, Runtime and Print are not upgraded.',
+            'Real Windows 2022 Inno EXE qualification required to pass before publishing.',
+            'Test-only pre-release; scoped Cafe overlay migration is limited to exact 231bf/version/tree/dual hash; confirm real host before deployment.'
+          )|Set-Content (Join-Path $out 'RELEASE-NOTES.md') -Encoding utf8
+          & gh release create $tag $exe $sums --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'SOKNA Maintenance 0.3.16 UAT REV1 — completed ZIP retry' --notes-file (Join-Path $out 'RELEASE-NOTES.md')
+          if($LASTEXITCODE-ne0){throw 'REV1 Github pre-release creation failed'}
+
