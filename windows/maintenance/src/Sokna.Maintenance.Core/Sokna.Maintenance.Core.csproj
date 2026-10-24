@@ -5,10 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>SoknaMaintenanceCore</AssemblyName>
-    <Version>0.3.14</Version>
-    <AssemblyVersion>0.3.14.0</AssemblyVersion>
-    <FileVersion>0.3.14.0</FileVersion>
-    <InformationalVersion>0.3.14</InformationalVersion>
+    <Version>0.3.15</Version>
+    <AssemblyVersion>0.3.15.0</AssemblyVersion>
+    <FileVersion>0.3.15.0</FileVersion>
+    <InformationalVersion>0.3.15</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="ProductionLocalSlotMigration.cs" />

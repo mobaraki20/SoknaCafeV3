@@ -1,7 +1,7 @@
 name: Maintenance-only 0.3.14 independent installer qualification
 on:
   push:
-    branches: [work/home-au-bk-reconcile-20261024]
+    branches: [work/maintenance-0314-released]
     paths:
       - 'packaging/windows/scripts/*maintenance*-v1.ps1'
       - 'packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss'
