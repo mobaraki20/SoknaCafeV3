@@ -69,8 +69,12 @@ func TestNativeHomeLeaseRejectsConcurrentWriter(t *testing.T) {
 }
 
 func nativeDiscoveryFixture(t *testing.T) (*bridge, string) {
+	return nativeDiscoveryFixtureAt(t, t.TempDir())
+}
+
+func nativeDiscoveryFixtureAt(t *testing.T, parent string) (*bridge, string) {
 	t.Helper()
-	root := filepath.Join(t.TempDir(), "خانه With Spaces")
+	root := filepath.Join(parent, "خانه With Spaces")
 	slot := filepath.Join(root, "Web.release.231au-label-without-hash")
 	os.MkdirAll(slot, 0700)
 	files := []fileEntry{}
@@ -113,6 +117,25 @@ func TestNativeHomeDiscoveryUsesActualJunctionNotHashLabel(t *testing.T) {
 	}
 	if e = b.verifyOriginalSlot(got); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestNativeHomeDiscoverySecondaryNTFSVolume(t *testing.T) {
+	if _, err := os.Stat(`D:\`); err != nil {
+		t.Skip("secondary NTFS volume unavailable")
+	}
+	parent, err := os.MkdirTemp(`D:\`, "sokna-home-discovery-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(parent) })
+	b, slot := nativeDiscoveryFixtureAt(t, parent)
+	actual, err := b.discoverOriginalSlot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proofEqualPath(actual, slot) || !b.ev.BaselineTreeVerified {
+		t.Fatal("secondary-volume actual slot not proven")
 	}
 }
 func TestNativeHomeDiscoveryRejectsCurrentFileDrift(t *testing.T) {
