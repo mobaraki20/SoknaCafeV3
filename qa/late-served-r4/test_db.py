@@ -30,7 +30,7 @@ def apply_file(c,name):
 def insert_order(c,token,session=1):
     with c.cursor() as cur:
         cur.execute('''INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,order_context,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot)
-        VALUES(%s,%s,1,%s,'staff','accounted','table_service',100000,%s,'2026-10-25','QA','QA','04:00')''',(token,token,session,int(uuid.uuid4().int%2000000000)))
+        VALUES(%s,%s,1,%s,'staff','accounted','table_service',100000,%s,'2026-10-25','QA','QA','04:00')''',(token[:30],token,session,int(uuid.uuid4().int%2000000000)))
         return cur.lastrowid
 
 base=con()
