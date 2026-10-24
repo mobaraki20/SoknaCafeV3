@@ -35,7 +35,7 @@ func TestExact231auToU01Payload(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if !strings.Contains(target.Version, "231bf-") {
+	if !strings.Contains(target.Version, "231bk-") {
 		t.Fatal("U01 target not uniquely identified")
 	}
 	data, e := embedded.ReadFile("payload/local-m06-target.zip")
@@ -124,11 +124,11 @@ func TestFailClosedAfterDBForward(t *testing.T) {
 	}
 }
 func TestEngineContractAndHostAgnostic(t *testing.T) {
-	good := "SOKNA Maintenance Update Engine 0.3.12 (DB mutation disabled)\nlocal-slot-inspect --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256>\n"
+	good := "SOKNA Maintenance Update Engine 0.3.13 (DB mutation disabled)\nlocal-slot-inspect --expected-build <id> --expected-managed-files <n> --expected-managed-tree-sha256 <sha256>\n"
 	if _, err := validateEngineHelp(good); err != nil {
 		t.Fatal(err)
 	}
-	for _, bad := range []string{strings.Replace(good, "0.3.12", "0.3.8", 1), strings.Replace(good, "--expected-managed-tree-sha256 <sha256>", "", 1)} {
+	for _, bad := range []string{strings.Replace(good, "0.3.13", "0.3.8", 1), strings.Replace(good, "--expected-managed-tree-sha256 <sha256>", "", 1)} {
 		if _, e := validateEngineHelp(bad); e == nil {
 			t.Fatal("unsafe update engine admitted")
 		}

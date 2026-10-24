@@ -191,11 +191,12 @@ func (b *bridge) backupMariaDB() error {
 		return err
 	}
 	file := filepath.Join(dir, "before-u01-"+time.Now().UTC().Format("20060102T150405.000000000")+".sql")
-	if _, err := os.Stat(file); err == nil {
+	_, statErr := os.Stat(file)
+	if statErr == nil {
 		return errors.New("DB_BACKUP_EXISTS; refuse overwrite")
 	}
-	if !os.IsNotExist(err) {
-		return err
+	if !os.IsNotExist(statErr) {
+		return statErr
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
@@ -260,7 +261,7 @@ func (b *bridge) failAfterDbBoundary(cause error) error {
 }
 
 // Read a live Supervisor-published descriptor, not a guessed port or a key.
-// It proves a matching 0.3.12 foundation is present before the last EXE ever
+// It proves a matching 0.3.13 foundation is present before the last EXE ever
 // modifies Apache, Local files or MariaDB. HMAC round-trip still requires UAT.
 func (b *bridge) preflightSupervisorDescriptor() error {
 	pd := os.Getenv("ProgramData")
@@ -270,7 +271,7 @@ func (b *bridge) preflightSupervisorDescriptor() error {
 	path := filepath.Join(pd, "SOKNA", "Maintenance", "control-plane.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return errors.New("MAINTENANCE_0312_DESCRIPTOR_MISSING: update Windows Services independently before Local")
+		return errors.New("MAINTENANCE_0313_DESCRIPTOR_MISSING: update Windows Services independently before Local")
 	}
 	var v struct {
 		Format            string `json:"format"`
@@ -284,8 +285,8 @@ func (b *bridge) preflightSupervisorDescriptor() error {
 	if err := json.Unmarshal(data, &v); err != nil {
 		return errors.New("MAINTENANCE_DESCRIPTOR_INVALID")
 	}
-	if v.Format != "sokna-maintenance-control-plane-v1" || v.SchemaVersion != 1 || v.Protocol != "1.0" || v.SupervisorVersion != "0.3.12" || v.Readiness != "ready" || v.AuthScheme != "sokna-hmac-sha256-v1" || !strings.HasPrefix(v.BaseURL, "http://127.0.0.1:") {
-		return fmt.Errorf("MAINTENANCE_0312_REQUIRED: got descriptor protocol=%q supervisor_version=%q ready=%q", v.Protocol, v.SupervisorVersion, v.Readiness)
+	if v.Format != "sokna-maintenance-control-plane-v1" || v.SchemaVersion != 1 || v.Protocol != "1.0" || v.SupervisorVersion != "0.3.13" || v.Readiness != "ready" || v.AuthScheme != "sokna-hmac-sha256-v1" || !strings.HasPrefix(v.BaseURL, "http://127.0.0.1:") {
+		return fmt.Errorf("MAINTENANCE_0313_REQUIRED: got descriptor protocol=%q supervisor_version=%q ready=%q", v.Protocol, v.SupervisorVersion, v.Readiness)
 	}
 	u, err := url.Parse(v.BaseURL)
 	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.Path != "/" {
@@ -294,13 +295,14 @@ func (b *bridge) preflightSupervisorDescriptor() error {
 	client := &http.Client{Timeout: 4 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Get(v.BaseURL + "v1/health")
 	if err != nil {
-		return errors.New("MAINTENANCE_0312_HEALTH_UNREACHABLE")
+		return errors.New("MAINTENANCE_0313_HEALTH_UNREACHABLE")
 	}
 	resp.Body.Close()
 	if resp.StatusCode != 401 {
-		return fmt.Errorf("MAINTENANCE_0312_UNSIGNED_HEALTH_UNEXPECTED_STATUS_%d", resp.StatusCode)
+		return fmt.Errorf("MAINTENANCE_0313_UNSIGNED_HEALTH_UNEXPECTED_STATUS_%d", resp.StatusCode)
 	}
-	b.addStep("verified installed Maintenance Supervisor 0.3.12 Descriptor and live HMAC health gate (401 for unsigned probe)")
+	b.maintenanceSupervisorVersion = v.SupervisorVersion
+	b.addStep("verified installed Maintenance Supervisor 0.3.13 Descriptor and live HMAC health gate (401 for unsigned probe)")
 	return nil
 }
 

@@ -127,6 +127,9 @@ public sealed class InactiveLocalHostReadinessInspector
                     if (layout.ActiveSlotTarget is null || !Directory.Exists(persistent) ||
                         (File.GetAttributes(persistent) & FileAttributes.ReparsePoint) != 0)
                         throw new InvalidDataException("Persistent machine overlay is unsafe.");
+                    if (!File.Exists(Path.Combine(persistent, "public", "local-recovery.php")) ||
+                        !File.Exists(Path.Combine(layout.WebRoot, "public", "local-recovery.php")))
+                        throw new InvalidDataException("Stable recovery entrypoint missing.");
                     foreach (var relative in new[]
                     {
                         Path.Combine("public", "local-recovery.php"),
@@ -203,3 +206,4 @@ public sealed class InactiveLocalHostReadinessInspector
             System.Security.SecurityException or ArgumentException or
             System.Net.Http.HttpRequestException or System.Net.Sockets.SocketException;
 }
+

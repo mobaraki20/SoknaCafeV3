@@ -1,0 +1,62 @@
+name: Home AU historical reconciliation native Windows qualification
+on:
+  push:
+    branches: ['work/home-au-bk-reconcile-20261024']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-proof-and-ledger:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.2'
+          cache: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build actual historical-banner and fixed Engine artifacts
+        shell: pwsh
+        run: |
+          $p='windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Program.cs'
+          $fixed=Get-Content $p -Raw
+          git show 8a4dd26c55d29075fcf05680309bf165b4b13646:$p | Set-Content $p -Encoding UTF8
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine -c Release -r win-x64 --self-contained true -p:Version=0.3.13 -p:AssemblyVersion=0.3.13.0 -p:FileVersion=0.3.13.0 -o "$env:RUNNER_TEMP/engine-old-banner"
+          if($LASTEXITCODE-ne0){throw 'Historical artifact build failed'}
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine -c Release -r win-x64 --self-contained true -p:Version=0.3.12 -p:AssemblyVersion=0.3.12.0 -p:FileVersion=0.3.12.0 -o "$env:RUNNER_TEMP/engine-physical-old"
+          if($LASTEXITCODE-ne0){throw 'Negative physical artifact build failed'}
+          "SOKNA_TEST_ENGINE_PHYSICAL_OLD=$env:RUNNER_TEMP/engine-physical-old/SoknaMaintenanceUpdateEngine.exe" >> $env:GITHUB_ENV
+          [IO.File]::WriteAllText((Join-Path $PWD $p),$fixed)
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine -c Release -r win-x64 --self-contained true -p:Version=0.3.13 -p:AssemblyVersion=0.3.13.0 -p:FileVersion=0.3.13.0 -o "$env:RUNNER_TEMP/engine-fixed"
+          if($LASTEXITCODE-ne0){throw 'Fixed artifact build failed'}
+          "SOKNA_TEST_ENGINE_OLD_BANNER=$env:RUNNER_TEMP/engine-old-banner/SoknaMaintenanceUpdateEngine.exe" >> $env:GITHUB_ENV
+          "SOKNA_TEST_ENGINE_FIXED=$env:RUNNER_TEMP/engine-fixed/SoknaMaintenanceUpdateEngine.exe" >> $env:GITHUB_ENV
+      - name: Prepare compile-only private payload placeholders
+        shell: pwsh
+        run: |
+          # The real Local source and full sealed AU→BK payload stay in Library.
+          # These placeholders only permit compiling the shared Go package for
+          # the tests below. They cannot create a runnable update EXE, and none
+          # of the selected tests invokes newBridge or claims payload/SQL UAT.
+          $p='windows/maintenance/tools/HomeBootstrap/payload'
+          '{}'|Set-Content "$p/target-manifest.json" -Encoding UTF8
+          '{}'|Set-Content "$p/migration-catalog.json" -Encoding UTF8
+          [IO.File]::WriteAllBytes((Join-Path $PWD "$p/local-m06-target.zip"),[byte[]]@(80,75,5,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0))
+      - name: Real NTFS identity and junction refusal, writer lease, actual historical chain and atomic ledger transition
+        shell: pwsh
+        working-directory: windows/maintenance/tools/HomeBootstrap
+        run: |
+          foreach($v in @('SOKNA_TEST_ENGINE_OLD_BANNER','SOKNA_TEST_ENGINE_FIXED','SOKNA_TEST_ENGINE_PHYSICAL_OLD')){if(-not(Test-Path ([Environment]::GetEnvironmentVariable($v)))){throw "Actual artifact missing: $v"}}
+          go test -json -count=1 -run '^(TestLegacy|TestObservedMaintenance|TestNative|TestBothQualifiedHomeBaselineManifests|TestActualEngineArtifactContract|TestActualOldPhysicalEngineRejected|TestEngineVersion)' ./... | Tee-Object -FilePath "$env:RUNNER_TEMP/HOME-NATIVE-PROOF.jsonl"
+          if($LASTEXITCODE-ne0){throw 'Native Home reconciliation qualification failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: home-native-reconciliation-proof
+          path: ${{ runner.temp }}/HOME-NATIVE-PROOF.jsonl
+          if-no-files-found: error

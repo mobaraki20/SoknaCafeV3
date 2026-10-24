@@ -9,7 +9,104 @@ import (
 	"time"
 )
 
+// Folder labels are not release identity. Resolve the ACTUAL Web directory,
+// constrain its physical sibling location, then match complete qualified bytes.
+func (b *bridge) discoverOriginalSlot() (string, error) {
+	if !isReparse(b.stableWeb) {
+		return "", errors.New("BASELINE_WEB_NOT_JUNCTION")
+	}
+	slot, err := resolveActiveDirectory(b.stableWeb)
+	if err != nil {
+		return "", fmt.Errorf("BASELINE_JUNCTION_TARGET_UNAVAILABLE: %w", err)
+	}
+	b.ev.DiscoveredActiveSlot = slot
+	b.writeEvidence()
+	// Preserve the discovered service-root spelling even with drive aliases;
+	// physical parent identity, rather than a textual drive label, proves scope.
+	parentMatches, e := samePhysicalDirectory(filepath.Dir(slot), b.packageRoot)
+	if e != nil {
+		return "", e
+	}
+	if !parentMatches {
+		return "", errors.New("BASELINE_ACTIVE_SLOT_OUTSIDE_SIBLING_RELEASE_ROOT")
+	}
+	slot = filepath.Join(b.packageRoot, filepath.Base(slot))
+	if err = qualifyDiscoveredSlot(b.packageRoot, b.stableWeb, slot); err != nil {
+		return "", err
+	}
+	v, err := os.ReadFile(filepath.Join(slot, "VERSION.txt"))
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(string(v)) != baselineVersion {
+		return "", errors.New("BASELINE_INSTALLED_VERSION_MISMATCH")
+	}
+	for _, candidate := range b.baselines {
+		if err = verifyTree(slot, candidate); err == nil {
+			b.baseline = candidate
+			b.ev.BaselineTree = candidate.ManagedTreeSHA256
+			if err = b.verifyOriginalSlot(slot); err != nil {
+				return "", err
+			}
+			b.ev.BaselineTreeVerified = true
+			b.ev.ObservedManagedTree = candidate.ManagedTreeSHA256
+			return slot, nil
+		}
+		b.ev.BaselineCandidateErrors = append(b.ev.BaselineCandidateErrors, candidate.ManagedTreeSHA256+": "+err.Error())
+	}
+	// Metadata only: retain the observed managed digest in a failed report so a
+	// further mismatch does not require another manual collection of files.
+	if len(b.baselines) > 0 {
+		actual := []fileEntry{}
+		complete := true
+		for _, entry := range b.baselines[0].Files {
+			digest, size, e := shaFile(filepath.Join(slot, filepath.FromSlash(entry.Path)))
+			if e != nil {
+				complete = false
+				break
+			}
+			actual = append(actual, fileEntry{Path: entry.Path, Size: size, SHA256: digest})
+		}
+		if complete {
+			b.ev.ObservedManagedTree = managedTree(actual)
+		}
+	}
+	return "", fmt.Errorf("BASELINE_MANAGED_TREE_UNRECOGNIZED: actual active slot discovered at %s; neither complete qualified AU manifest matched; no mutation", slot)
+}
+
+func qualifyDiscoveredSlot(packageRoot, stableWeb, slot string) error {
+	root, err := filepath.Abs(packageRoot)
+	if err != nil {
+		return err
+	}
+	actual, err := filepath.Abs(slot)
+	if err != nil {
+		return err
+	}
+	if !proofEqualPath(filepath.Dir(actual), root) || !strings.HasPrefix(strings.ToLower(filepath.Base(actual)), "web.release.") || proofEqualPath(actual, stableWeb) {
+		return errors.New("BASELINE_ACTIVE_SLOT_OUTSIDE_SIBLING_RELEASE_ROOT")
+	}
+	s, err := os.Lstat(actual)
+	if err != nil {
+		return err
+	}
+	if !s.IsDir() || isReparse(actual) || s.Mode()&os.ModeSymlink != 0 {
+		return errors.New("BASELINE_ACTIVE_SLOT_NOT_PHYSICAL")
+	}
+	same, err := samePhysicalDirectory(stableWeb, actual)
+	if err != nil {
+		return err
+	}
+	if !same {
+		return errors.New("BASELINE_JUNCTION_IDENTITY_MISMATCH")
+	}
+	return nil
+}
+
 func (b *bridge) verifyOriginalSlot(oldSlot string) error {
+	if err := qualifyDiscoveredSlot(b.packageRoot, b.stableWeb, oldSlot); err != nil {
+		return err
+	}
 	if !isReparse(b.stableWeb) {
 		return errors.New("stable Web must be an existing Windows junction; no legacy physical mutation allowed")
 	}

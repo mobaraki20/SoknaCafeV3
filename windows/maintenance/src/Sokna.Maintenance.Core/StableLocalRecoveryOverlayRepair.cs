@@ -3,113 +3,115 @@ using System.Security.Cryptography;
 
 namespace Sokna.Maintenance.Core;
 
-/// <summary>
-/// Repairs ONLY the machine-owned, unmanaged Local recovery PHP overlay for
-/// the exact installed Home 231as R8 slot. This is never a Local code release,
-/// signing operation, installed-release identity rebind, or schema mutation.
-/// A different existing file is left untouched and causes an explicit block.
-/// </summary>
+/// <summary>Maintenance-owned compatibility entrypoint, never a managed Local
+/// code file. Managed-slot POST recovery stays owned by the Windows console.
+/// Missing files are provisioned from this assembly only; foreign bytes block.
+/// Startup and routine preparation use the same installed-identity contract.</summary>
 public static class StableLocalRecoveryOverlayRepair
 {
     private const string Resource = "Sokna.Maintenance.Core.StableLocalRecoveryPhp";
-    private const string Relative = "public\\local-recovery.php";
+    private static readonly string Relative = Path.Combine("public", "local-recovery.php");
 
-    public static string RepairHome231As(MaintenancePaths paths)
+    public static string RepairCurrentInstallation(MaintenancePaths paths)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Stable Local recovery repair requires Windows.");
+        lock (LocalUpdateOperationGate.Sync)
+        {
+            using var lease = MachineMutationLease.Acquire(paths, "stable-recovery-overlay");
+            LocalUpdateOperationGate.RequireNoPendingMutation(new MaintenanceOperationStore(paths));
+            // No fabricated identity on an installation not adopted yet.
+            if (!File.Exists(paths.InstalledReleaseIdentityPath)) return "not_adopted_no_mutation";
+            var layout = new LocalSlotManager(paths).InspectHealthyCurrent();
+            RoutineLocalLifecycle.Open(layout.PackageRoot, paths.LocalSlotStateRoot, layout.Build).RequireIdle();
+            return EnsureVerifiedInstallation(paths, layout);
+        }
+    }
 
-        var layout = new LocalSlotManager(paths).InspectHealthyCurrent();
-        if (!string.Equals(layout.Build, Phase3HomeReleaseContract.Home231AsBuild,
-                StringComparison.Ordinal))
-            return "different_local_baseline_no_mutation";
-        if (layout.ManagedFileCount != Phase3HomeReleaseContract.Home231AsManagedFiles ||
-            !layout.WebIsReparsePoint || layout.ActiveSlotTarget is null)
-            throw new InvalidDataException("STABLE_RECOVERY_EXACT_231AS_R8_REQUIRED");
+    // Kept for older callers; there is no build-specific exception anymore.
+    public static string RepairHome231As(MaintenancePaths paths) => RepairCurrentInstallation(paths);
 
-        ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(
-            layout.ActiveSlotTarget, layout.PackageRoot);
-        LocalManagedTreeAttestation.RequireExact(
-            layout.WebRoot,
-            Phase3HomeReleaseContract.Home231AsManagedFiles,
-            Phase3HomeReleaseContract.Home231AsManagedTreeSha256);
-
-        var persistent = Path.Combine(layout.PackageRoot, "LocalWeb", "persistent");
-        if (!Directory.Exists(persistent) || IsReparse(persistent))
-            throw new InvalidDataException("STABLE_RECOVERY_PERSISTENT_ROOT_INVALID");
-        RoutineLocalBinding.RequireCurrent(layout.WebRoot, layout.PackageRoot, layout.Build);
-        RoutineLocalBinding.RequireTarget(
-            persistent, layout.ActiveSlotTarget, layout.PackageRoot, layout.Build);
-
-        using var asset = typeof(StableLocalRecoveryOverlayRepair).Assembly
-            .GetManifestResourceStream(Resource)
+    // Caller holds the common machine lease and has verified the ledger/lifecycle.
+    // Internal to prevent use as an unqualified external repair API.
+    internal static string EnsureVerifiedInstallation(MaintenancePaths paths, LocalInstallLayout layout)
+    {
+        if (!layout.WebIsReparsePoint || layout.ActiveSlotTarget is null)
+            throw new InvalidDataException("STABLE_RECOVERY_MANAGED_SLOT_REQUIRED");
+        var root = Path.GetFullPath(layout.PackageRoot);
+        var slot = Path.GetFullPath(layout.ActiveSlotTarget);
+        var web = Path.GetFullPath(layout.WebRoot);
+        if (!string.Equals(web, Path.Combine(root, "Web"), StringComparison.OrdinalIgnoreCase) ||
+            !IsReparse(web) ||
+            !string.Equals(new DirectoryInfo(web).ResolveLinkTarget(true)?.FullName, slot, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("STABLE_RECOVERY_ACTIVE_POINTER_MISMATCH");
+        ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(slot, root);
+        RequirePlainDirectory(root);
+        RequirePlainDirectory(slot);
+        var identity = AtomicFile.ReadJson<InstalledReleaseIdentity>(paths.InstalledReleaseIdentityPath);
+        if (identity.Local is null || identity.Local.Version != layout.Build)
+            throw new InvalidDataException("STABLE_RECOVERY_INSTALLED_IDENTITY_REQUIRED");
+        LocalManagedTreeAttestation.RequireExact(slot, layout.ManagedFileCount, identity.Local.ManagedTreeSha256);
+        var localWeb = Path.Combine(root, "LocalWeb");
+        var persistent = Path.Combine(localWeb, "persistent");
+        RequirePlainDirectory(localWeb);
+        RequirePlainDirectory(persistent);
+        RoutineLocalBinding.RequireCurrent(slot, root, layout.Build);
+        RoutineLocalBinding.RequireTarget(persistent, slot, root, layout.Build);
+        using var asset = typeof(StableLocalRecoveryOverlayRepair).Assembly.GetManifestResourceStream(Resource)
             ?? throw new InvalidDataException("STABLE_RECOVERY_TRUSTED_EMBEDDED_SOURCE_MISSING");
-        using var bytes = new MemoryStream();
-        asset.CopyTo(bytes);
+        using var bytes = new MemoryStream(); asset.CopyTo(bytes);
         if (bytes.Length is < 100 or > 65536)
             throw new InvalidDataException("STABLE_RECOVERY_EMBEDDED_SOURCE_SIZE_INVALID");
-        var payload = bytes.ToArray();
-        var targetHash = SHA256.HashData(payload);
-        var activeFile = Path.Combine(layout.WebRoot, Relative);
-        var persistentFile = Path.Combine(persistent, Relative);
-
-        // Neither the machine-bound overlay nor active file may be a link or
-        // contain an unrecognized version that a new installer silently replaces.
-        CheckAllowed(activeFile, targetHash);
-        CheckAllowed(persistentFile, targetHash);
-        var created = new List<string>();
-        try
+        var payload = bytes.ToArray(); var expected = SHA256.HashData(payload);
+        var files = new[] { Path.Combine(persistent, Relative), Path.Combine(slot, Relative) };
+        // Validate BOTH paths before creating either: no overwrite, no redirected
+        // parent, no presence-equality shortcut that accepts two absent files.
+        foreach (var file in files)
         {
-            foreach (var file in new[] { persistentFile, activeFile })
+            var directory = Path.GetDirectoryName(file)!;
+            if (Directory.Exists(directory)) RequirePlainDirectory(directory);
+            else if (File.Exists(directory)) throw new InvalidDataException("STABLE_RECOVERY_OVERLAY_DIRECTORY_INVALID");
+            CheckAllowed(file, expected);
+        }
+        var created = 0;
+        foreach (var file in files)
+        {
+            if (File.Exists(file)) continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            var temp = file + ".incoming." + Guid.NewGuid().ToString("N");
+            try
             {
-                if (File.Exists(file)) continue;
-                var directory = Path.GetDirectoryName(file)!;
-                var parent = Path.GetDirectoryName(directory)!;
-                if (!Directory.Exists(parent) || IsReparse(parent) ||
-                    Directory.Exists(directory) && IsReparse(directory))
-                    throw new InvalidDataException("STABLE_RECOVERY_OVERLAY_DIRECTORY_INVALID");
-                // The persistent public overlay directory may not exist yet on
-                // an installation that has never had recovery.php; only create
-                // this one fixed, qualified machine-owned directory.
-                if (!Directory.Exists(directory))
-                    Directory.CreateDirectory(directory);
-                var temporary = file + ".incoming." + Guid.NewGuid().ToString("N");
-                try
-                {
-                    File.WriteAllBytes(temporary, payload);
-                    if (!Equal(SHA256.HashData(File.ReadAllBytes(temporary)), targetHash))
-                        throw new InvalidDataException("STABLE_RECOVERY_STAGING_HASH_MISMATCH");
-                    File.Move(temporary, file, overwrite: false);
-                    created.Add(file);
-                }
-                finally
-                {
-                    if (File.Exists(temporary)) File.Delete(temporary);
-                }
+                using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+                { output.Write(payload); output.Flush(true); }
+                CheckAllowed(temp, expected);
+                File.Move(temp, file, overwrite: false);
+                created++;
             }
-            CheckAllowed(activeFile, targetHash);
-            CheckAllowed(persistentFile, targetHash);
-            LocalManagedTreeAttestation.RequireExact(
-                layout.WebRoot,
-                Phase3HomeReleaseContract.Home231AsManagedFiles,
-                Phase3HomeReleaseContract.Home231AsManagedTreeSha256);
-            return created.Count == 0 ? "verified_unchanged" : "repaired_and_verified";
+            finally { if (File.Exists(temp)) File.Delete(temp); }
         }
-        catch
+        // A process interruption after the first atomic move is safely resumed:
+        // the next call accepts only exact embedded bytes and fills the missing
+        // partner. Until then CopyToNewSibling retains its missing-file guard.
+        foreach (var file in files)
         {
-            // A failed partially-applied repair must not leave an inconsistent
-            // overlay pair. Only remove bytes this transaction created.
-            foreach (var file in created)
-                if (File.Exists(file) && Equal(SHA256.HashData(File.ReadAllBytes(file)), targetHash))
-                    File.Delete(file);
-            throw;
+            if (!File.Exists(file)) throw new InvalidDataException("STABLE_RECOVERY_OVERLAY_READBACK_MISSING");
+            CheckAllowed(file, expected);
         }
+        LocalManagedTreeAttestation.RequireExact(slot, layout.ManagedFileCount, identity.Local.ManagedTreeSha256);
+        return created == 0 ? "verified_unchanged" : "repaired_and_verified";
+    }
+
+    private static void RequirePlainDirectory(string path)
+    {
+        if (!Directory.Exists(path) || IsReparse(path))
+            throw new InvalidDataException("STABLE_RECOVERY_DIRECTORY_REDIRECTED");
     }
 
     private static void CheckAllowed(string file, byte[] expected)
     {
+        if (Directory.Exists(file)) throw new InvalidDataException("STABLE_RECOVERY_EXISTING_OVERLAY_NOT_QUALIFIED");
         if (!File.Exists(file)) return;
-        if (IsReparse(file) || !Equal(SHA256.HashData(File.ReadAllBytes(file)), expected))
+        if (IsReparse(file) || new FileInfo(file).Length > 65536 || !Equal(SHA256.HashData(File.ReadAllBytes(file)), expected))
             throw new InvalidDataException("STABLE_RECOVERY_EXISTING_OVERLAY_NOT_QUALIFIED");
     }
 
@@ -119,3 +121,4 @@ public static class StableLocalRecoveryOverlayRepair
     private static bool Equal(byte[] a, byte[] b) =>
         CryptographicOperations.FixedTimeEquals(a, b);
 }
+

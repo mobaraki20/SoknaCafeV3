@@ -1,3 +1,3 @@
 module sokna.local.legacytransition
 
-go 1.23
+go 1.22

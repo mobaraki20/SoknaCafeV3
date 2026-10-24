@@ -23,16 +23,17 @@ import (
 )
 
 const (
-	baselineVersion      = "3.0.0-g6.2-workspace.231au-maintenance-descriptor-panel-bridge-home-uat"
-	baselineFiles        = 510
-	baselineTree         = "aecfe030af4465fa9544041bf17cb58210f6f7f3592fb55c586de30264e01af8"
-	targetVersion        = "3.0.0-g6.2-workspace.231bf-u01-iran-time-updater-rc1"
-	targetFiles          = 522
-	targetTree = "80fd968a9e4f1642c3f1519f66d7ab6a2fb1bb64f1a8c0a26444d0d8da1712be"
-	targetZipSHA = "bc5bab33790374db9ed2dfe63363be58649b6529a235ad5d8d8457592e080118"
-	migrationCount       = 71
-	targetMigrationCount = 75
-	apacheService        = "SoknaApache"
+	baselineVersion       = "3.0.0-g6.2-workspace.231au-maintenance-descriptor-panel-bridge-home-uat"
+	baselineFiles         = 510
+	baselineTree          = "095604fd2c35dd4cae9709c6eb9c114fa6a39db3cf9a21ae78e162370629f241"
+	canonicalBaselineTree = "aecfe030af4465fa9544041bf17cb58210f6f7f3592fb55c586de30264e01af8"
+	targetVersion         = "3.0.0-g6.2-workspace.231bk-durable-updater-rc1"
+	targetFiles           = 522
+	targetTree            = "2b06467db7607606fde101ce419dfd35acae24868192ce33d848ba4e9cb18ebd"
+	targetZipSHA          = "9c501e0652f9c0681cdaa7c67840061f56ac24e8b11f83bc1c0fe3005d8d8f80"
+	migrationCount        = 71
+	targetMigrationCount  = 75
+	apacheService         = "SoknaApache"
 )
 
 var machineLocalOverlay = []string{
@@ -73,69 +74,79 @@ type migrationManifest struct {
 }
 
 type evidence struct {
-	Format                  string   `json:"format"`
-	AttemptID               string   `json:"attempt_id"`
-	StartedAt               string   `json:"started_at"`
-	FinishedAt              string   `json:"finished_at,omitempty"`
-	OK                      bool     `json:"ok"`
-	Phase                   string   `json:"phase"`
-	Error                   string   `json:"error,omitempty"`
-	PackageRoot             string   `json:"package_root,omitempty"`
-	StableWeb               string   `json:"stable_web,omitempty"`
-	TargetSlot              string   `json:"target_slot,omitempty"`
-	BackupPath              string   `json:"backup_path,omitempty"`
-	BaselineVersion         string   `json:"baseline_version"`
-	BaselineFiles           int      `json:"baseline_files"`
-	BaselineTree            string   `json:"baseline_tree_sha256"`
-	TargetVersion           string   `json:"target_version"`
-	TargetFiles             int      `json:"target_files"`
-	TargetTree              string   `json:"target_tree_sha256"`
-	MigrationsExpected      int      `json:"migrations_expected"`
-	MigrationsApplied       int      `json:"migrations_applied,omitempty"`
-	UpdateEnginePath        string   `json:"update_engine_path,omitempty"`
-	UpdateEngineInspectOK   bool     `json:"update_engine_inspect_ok"`
-	DatabaseBoundaryReached bool     `json:"database_boundary_reached"`
-	DatabaseBackupPath      string   `json:"database_backup_path,omitempty"`
-	DatabaseBackupSHA256    string   `json:"database_backup_sha256,omitempty"`
-	DatabaseMutation        bool     `json:"database_mutation_performed"`
-	PublicMutation          bool     `json:"public_mutation_performed"`
-	WindowsServicesMutation bool     `json:"windows_services_mutation_performed"`
-	WindowsReboot           bool     `json:"windows_reboot_required"`
-	RollbackAttempted       bool     `json:"rollback_attempted"`
-	RollbackOK              bool     `json:"rollback_ok"`
-	Steps                   []string `json:"steps"`
+	Format                   string   `json:"format"`
+	AttemptID                string   `json:"attempt_id"`
+	StartedAt                string   `json:"started_at"`
+	FinishedAt               string   `json:"finished_at,omitempty"`
+	OK                       bool     `json:"ok"`
+	Phase                    string   `json:"phase"`
+	Error                    string   `json:"error,omitempty"`
+	PackageRoot              string   `json:"package_root,omitempty"`
+	StableWeb                string   `json:"stable_web,omitempty"`
+	TargetSlot               string   `json:"target_slot,omitempty"`
+	BackupPath               string   `json:"backup_path,omitempty"`
+	BaselineVersion          string   `json:"baseline_version"`
+	BaselineFiles            int      `json:"baseline_files"`
+	BaselineTree             string   `json:"baseline_tree_sha256"`
+	DiscoveredActiveSlot     string   `json:"discovered_active_slot,omitempty"`
+	BaselineTreeVerified     bool     `json:"baseline_tree_verified"`
+	BaselineDatabaseVerified bool     `json:"baseline_database_verified"`
+	BaselineCandidateErrors  []string `json:"baseline_candidate_errors,omitempty"`
+	ObservedManagedTree      string   `json:"observed_managed_tree_sha256,omitempty"`
+	TargetVersion            string   `json:"target_version"`
+	TargetFiles              int      `json:"target_files"`
+	TargetTree               string   `json:"target_tree_sha256"`
+	MigrationsExpected       int      `json:"migrations_expected"`
+	MigrationsApplied        int      `json:"migrations_applied,omitempty"`
+	UpdateEnginePath         string   `json:"update_engine_path,omitempty"`
+	UpdateEngineInspectOK    bool     `json:"update_engine_inspect_ok"`
+	DatabaseBoundaryReached  bool     `json:"database_boundary_reached"`
+	DatabaseBackupPath       string   `json:"database_backup_path,omitempty"`
+	DatabaseBackupSHA256     string   `json:"database_backup_sha256,omitempty"`
+	DatabaseMutation         bool     `json:"database_mutation_performed"`
+	PublicMutation           bool     `json:"public_mutation_performed"`
+	WindowsServicesMutation  bool     `json:"windows_services_mutation_performed"`
+	WindowsReboot            bool     `json:"windows_reboot_required"`
+	RollbackAttempted        bool     `json:"rollback_attempted"`
+	RollbackOK               bool     `json:"rollback_ok"`
+	Steps                    []string `json:"steps"`
 }
 
 type bridge struct {
-	ev                      evidence
-	evidenceDir             string
-	logPath                 string
-	desktopLog              string
-	packageRoot             string
-	stableWeb               string
-	targetSlot              string
-	stageSlot               string
-	backupPath              string
-	persistentRoot          string
-	phpPath                 string
-	updateEngine            string
-	dataRoot                string
-	lifecycleRoot           string
-	lifecycleStatePath      string
-	lifecycleManagedPath    string
-	lifecycleStateBackup    string
-	lifecycleManagedBackup  string
-	lifecycleManagedExisted bool
-	lifecycleMutated        bool
-	baseline                fileManifest
-	target                  fileManifest
-	migrations              migrationManifest
-	targetZip               []byte
-	oldServicePID           int
-	switched                bool
-	dbBoundary              bool
-	readOnly                bool
-	transaction             *transactionEvidence
+	ev                           evidence
+	evidenceDir                  string
+	logPath                      string
+	desktopLog                   string
+	packageRoot                  string
+	stableWeb                    string
+	targetSlot                   string
+	stageSlot                    string
+	backupPath                   string
+	persistentRoot               string
+	phpPath                      string
+	updateEngine                 string
+	dataRoot                     string
+	lifecycleRoot                string
+	lifecycleStatePath           string
+	lifecycleManagedPath         string
+	lifecycleStateBackup         string
+	lifecycleManagedBackup       string
+	lifecycleManagedExisted      bool
+	lifecycleMutated             bool
+	baseline                     fileManifest
+	baselines                    []fileManifest
+	target                       fileManifest
+	migrations                   migrationManifest
+	targetZip                    []byte
+	oldServicePID                int
+	switched                     bool
+	dbBoundary                   bool
+	readOnly                     bool
+	transaction                  *transactionEvidence
+	legacyPlan                   *legacyReconciliationPlan
+	baselineAttested             bool
+	maintenanceSupervisorVersion string
+	maintenanceEngineVersion     string
 }
 
 func normalizeRel(p string) (string, error) {
@@ -420,13 +431,18 @@ func (b *bridge) writeEvidence() {
 
 func runHidden(name string, args ...string) (string, error) {
 	phpWorkingDirectory := ""
-    if strings.EqualFold(filepath.Base(name), "php.exe") {
-        ini := filepath.Join(filepath.Dir(name), "php.ini")
-        if st, err := os.Stat(ini); err == nil && st.Mode().IsRegular() { args = append([]string{"-c", "php.ini"}, args...); phpWorkingDirectory = filepath.Dir(name) }
-    }
-    cmd := exec.Command(name, args...)
-    if phpWorkingDirectory != "" { cmd.Dir = phpWorkingDirectory }
-    hideCommand(cmd)
+	if strings.EqualFold(filepath.Base(name), "php.exe") {
+		ini := filepath.Join(filepath.Dir(name), "php.ini")
+		if st, err := os.Stat(ini); err == nil && st.Mode().IsRegular() {
+			args = append([]string{"-c", "php.ini"}, args...)
+			phpWorkingDirectory = filepath.Dir(name)
+		}
+	}
+	cmd := exec.Command(name, args...)
+	if phpWorkingDirectory != "" {
+		cmd.Dir = phpWorkingDirectory
+	}
+	hideCommand(cmd)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -937,7 +953,7 @@ func validateEngineHelp(out string) (string, error) {
 	}
 	rest := strings.TrimPrefix(header, prefix)
 	version, _, ok := strings.Cut(rest, " ")
-	if !ok || version != "0.3.12" {
+	if !ok || version != "0.3.13" {
 		return "", fmt.Errorf("unsupported Maintenance Update Engine version %q", rest)
 	}
 	if !strings.Contains(out, "local-slot-inspect --expected-build <id>") ||
@@ -952,10 +968,15 @@ func (b *bridge) verifyUpdateEngineVersion() error {
 	if err != nil {
 		return fmt.Errorf("Maintenance Update Engine help failed: %v %s", err, out)
 	}
-	version, err := validateEngineHelp(out)
+	physical, err := readEngineFileVersion(b.updateEngine, b.evidenceDir)
+	if err != nil {
+		return err
+	}
+	version, err := validateInstalledEngine(out, physical)
 	if err != nil {
 		return fmt.Errorf("Maintenance Update Engine contract mismatch: %w", err)
 	}
+	b.maintenanceEngineVersion = version
 	b.log("Maintenance Update Engine read-only slot inspect contract verified: " + version)
 	return nil
 }

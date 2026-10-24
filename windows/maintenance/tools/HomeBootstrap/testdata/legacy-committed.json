@@ -1,0 +1,80 @@
+{
+  "format": "sokna-local-slot-migration-state-v1",
+  "schema_version": 1,
+  "phase": "COMMITTED",
+  "expected_build": "3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory",
+  "expected_managed_files": 497,
+  "expected_managed_tree_sha256": "b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a",
+  "package_root": "D:\\SOKNA",
+  "stable_web_root": "D:\\SOKNA\\Web",
+  "apache_executable": "D:\\SOKNA\\Infrastructure\\Apache\\bin\\httpd.exe",
+  "health_url": "http://127.0.0.1:18080/login.php",
+  "release_root": "D:\\SOKNA",
+  "target_slot": "D:\\SOKNA\\Web.release.231ai-b0e252b62b80",
+  "physical_web_backup": "D:\\SOKNA\\LocalWeb\\pre-slot\\physical-web-20261017T070456772Z",
+  "active_slot": "D:\\SOKNA\\Web.release.231ai-b0e252b62b80",
+  "previous_slot": "D:\\SOKNA\\LocalWeb\\pre-slot\\physical-web-20261017T070456772Z",
+  "activation_performed": true,
+  "database_mutation_performed": false,
+  "public_mutation_performed": false,
+  "windows_reboot_required": false,
+  "recovery_required": false,
+  "updated_at_utc": "2026-10-17T07:05:02.3548611+00:00",
+  "events": [
+    {
+      "state": "DISCOVERED",
+      "at_utc": "2026-10-17T07:04:44.0708317+00:00",
+      "detail": null
+    },
+    {
+      "state": "BASELINE_VERIFIED",
+      "at_utc": "2026-10-17T07:04:48.728697+00:00",
+      "detail": "tree=b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a"
+    },
+    {
+      "state": "BASELINE_HTTP_HEALTHY",
+      "at_utc": "2026-10-17T07:04:48.7329742+00:00",
+      "detail": "http://127.0.0.1:18080/login.php"
+    },
+    {
+      "state": "SLOT_STAGED_VERIFIED",
+      "at_utc": "2026-10-17T07:04:56.7698977+00:00",
+      "detail": "D:\\SOKNA\\Web.release.231ai-b0e252b62b80"
+    },
+    {
+      "state": "READY_TO_ACTIVATE",
+      "at_utc": "2026-10-17T07:04:56.7795647+00:00",
+      "detail": "D:\\SOKNA\\LocalWeb\\pre-slot\\physical-web-20261017T070456772Z"
+    },
+    {
+      "state": "APACHE_STOPPED",
+      "at_utc": "2026-10-17T07:05:00.6806077+00:00",
+      "detail": "production migration"
+    },
+    {
+      "state": "PHYSICAL_WEB_BACKED_UP",
+      "at_utc": "2026-10-17T07:05:00.686265+00:00",
+      "detail": "D:\\SOKNA\\LocalWeb\\pre-slot\\physical-web-20261017T070456772Z"
+    },
+    {
+      "state": "POINTER_SWITCHED",
+      "at_utc": "2026-10-17T07:05:00.7435998+00:00",
+      "detail": "D:\\SOKNA\\Web.release.231ai-b0e252b62b80"
+    },
+    {
+      "state": "APACHE_STARTED",
+      "at_utc": "2026-10-17T07:05:01.8011564+00:00",
+      "detail": "D:\\SOKNA\\Web.release.231ai-b0e252b62b80"
+    },
+    {
+      "state": "HTTP_HEALTHY",
+      "at_utc": "2026-10-17T07:05:02.3522568+00:00",
+      "detail": "http://127.0.0.1:18080/login.php"
+    },
+    {
+      "state": "COMMITTED",
+      "at_utc": "2026-10-17T07:05:02.3548582+00:00",
+      "detail": "tree=b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a"
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -42,10 +43,43 @@ func msgBox(title, text string, flags uintptr) int {
 	return int(r)
 }
 func confirmStart() bool {
-	return msgBox("SOKNA Home | U01 Panel Bootstrap", "آخرین نصب مستقل Local 231au به U01، با چهار مهاجرت پایگاه داده.\n\nقبل از تغییر، هش ۵۱۰ فایل و سلامت MariaDB چک می‌شود. ابتدا بکاپ SQL تهیه و بررسی می‌شود، سپس Apache متوقف می‌شود.\n\nبعد از شروع مهاجرت SQL، بازگشت خودکار کد قدیمی ایمن نیست. فقط زمانی اجرا کنید که فعالیت کافه متوقف است.\n\nادامه می‌دهید؟", 0x00000004|0x00000030) == 6
+	return msgBox("SOKNA Home | 231au to 231bk", "آخرین نصب مستقل Local 231au به 231bk، با چهار مهاجرت پایگاه داده.\n\nقبل از تغییر، هش ۵۱۰ فایل و سلامت MariaDB چک می‌شود. ابتدا بکاپ SQL تهیه و بررسی می‌شود، سپس Apache متوقف می‌شود.\n\nبعد از شروع مهاجرت SQL، بازگشت خودکار کد قدیمی ایمن نیست. فقط زمانی اجرا کنید که فعالیت کافه متوقف است.\n\nادامه می‌دهید؟", 0x00000004|0x00000030) == 6
 }
 func showSuccess(text string) { msgBox("سکنا | عملیات کامل شد", text, 0x00000040) }
 func showError(text string)   { msgBox("سکنا | عملیات انجام نشد", text, 0x00000010) }
+
+// Ask the native opened directory handle for its final DOS path. Never infer a
+// junction target from VERSION.txt, a manifest digest or a directory label.
+func resolveActiveDirectory(path string) (string, error) {
+	p, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return "", err
+	}
+	h, err := syscall.CreateFile(p, 0x80, syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE, nil, syscall.OPEN_EXISTING, syscall.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if err != nil {
+		return "", err
+	}
+	defer syscall.CloseHandle(h)
+	proc := syscall.NewLazyDLL("kernel32.dll").NewProc("GetFinalPathNameByHandleW")
+	n, _, e := proc.Call(uintptr(h), 0, 0, 0)
+	if n == 0 || n > 32768 {
+		return "", fmt.Errorf("native final directory path size invalid: %v", e)
+	}
+	buf := make([]uint16, int(n)+1)
+	got, _, e := proc.Call(uintptr(h), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), 0)
+	if got == 0 || got >= uintptr(len(buf)) {
+		return "", fmt.Errorf("native final directory path unavailable: %v", e)
+	}
+	result := syscall.UTF16ToString(buf[:got])
+	if strings.HasPrefix(strings.ToUpper(result), `\\?\UNC\`) {
+		return "", fmt.Errorf("network release targets are not qualified")
+	}
+	result = strings.TrimPrefix(result, `\\?\`)
+	if !filepath.IsAbs(result) {
+		return "", fmt.Errorf("native final directory path is not absolute")
+	}
+	return filepath.Clean(result), nil
+}
 
 // Directory identity is established using native NTFS file IDs, not
 // filepath.EvalSymlinks (which does not resolve Windows junctions correctly).

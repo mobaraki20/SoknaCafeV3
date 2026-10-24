@@ -1,0 +1,80 @@
+{
+  "format": "sokna-local-slot-migration-state-v1",
+  "schema_version": 1,
+  "phase": "ROLLED_BACK",
+  "expected_build": "3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory",
+  "expected_managed_files": 497,
+  "expected_managed_tree_sha256": "b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a",
+  "package_root": "D:\\SOKNA",
+  "stable_web_root": "D:\\SOKNA\\Web",
+  "apache_executable": "D:\\SOKNA\\Infrastructure\\Apache\\bin\\httpd.exe",
+  "health_url": "http://127.0.0.1:18080/login.php",
+  "release_root": "D:\\SOKNA\\LocalWeb\\releases",
+  "target_slot": "D:\\SOKNA\\LocalWeb\\releases\\231ai-b0e252b62b80",
+  "physical_web_backup": "D:\\SOKNA\\LocalWeb\\pre-slot\\physical-web-20261017T031313618Z",
+  "active_slot": null,
+  "previous_slot": "D:\\SOKNA\\LocalWeb\\releases\\231ai-b0e252b62b80",
+  "activation_performed": true,
+  "database_mutation_performed": false,
+  "public_mutation_performed": false,
+  "windows_reboot_required": false,
+  "recovery_required": false,
+  "updated_at_utc": "2026-10-17T03:13:56.0002691+00:00",
+  "events": [
+    {
+      "state": "DISCOVERED",
+      "at_utc": "2026-10-17T03:13:07.2765122+00:00",
+      "detail": null
+    },
+    {
+      "state": "BASELINE_VERIFIED",
+      "at_utc": "2026-10-17T03:13:07.3248449+00:00",
+      "detail": "tree=b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a"
+    },
+    {
+      "state": "BASELINE_HTTP_HEALTHY",
+      "at_utc": "2026-10-17T03:13:07.3279092+00:00",
+      "detail": "http://127.0.0.1:18080/login.php"
+    },
+    {
+      "state": "LEGACY_PHASE3_STATE_ARCHIVED",
+      "at_utc": "2026-10-17T03:13:07.345879+00:00",
+      "detail": "C:\\ProgramData\\SOKNA\\Maintenance\\local-slots\\history\\phase3-state-20261017T031307337Z.json"
+    },
+    {
+      "state": "SLOT_STAGED_VERIFIED",
+      "at_utc": "2026-10-17T03:13:13.6163368+00:00",
+      "detail": "D:\\SOKNA\\LocalWeb\\releases\\231ai-b0e252b62b80"
+    },
+    {
+      "state": "READY_TO_ACTIVATE",
+      "at_utc": "2026-10-17T03:13:13.6188717+00:00",
+      "detail": "D:\\SOKNA\\LocalWeb\\pre-slot\\physical-web-20261017T031313618Z"
+    },
+    {
+      "state": "APACHE_STOPPED",
+      "at_utc": "2026-10-17T03:13:16.2560793+00:00",
+      "detail": "production migration"
+    },
+    {
+      "state": "PHYSICAL_WEB_BACKED_UP",
+      "at_utc": "2026-10-17T03:13:16.2614126+00:00",
+      "detail": "D:\\SOKNA\\LocalWeb\\pre-slot\\physical-web-20261017T031313618Z"
+    },
+    {
+      "state": "POINTER_SWITCHED",
+      "at_utc": "2026-10-17T03:13:16.3921425+00:00",
+      "detail": "D:\\SOKNA\\LocalWeb\\releases\\231ai-b0e252b62b80"
+    },
+    {
+      "state": "APACHE_STARTED",
+      "at_utc": "2026-10-17T03:13:17.1835022+00:00",
+      "detail": "D:\\SOKNA\\LocalWeb\\releases\\231ai-b0e252b62b80"
+    },
+    {
+      "state": "ROLLED_BACK",
+      "at_utc": "2026-10-17T03:13:56.0002677+00:00",
+      "detail": "Local HTTP health was not proven at \u0027http://127.0.0.1:18080/login.php\u0027 within the migration timeout. Last: HTTP health mismatch at \u0027http://127.0.0.1:18080/login.php\u0027. status=302, build=\u0027\u0027, runtime=\u0027\u0027."
+    }
+  ]
+}

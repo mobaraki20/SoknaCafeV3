@@ -94,8 +94,11 @@ public sealed class LocalInboxUploadCoordinator
             }
             else
             {
-                if (File.Exists(partPath) || File.Exists(finalPath))
+                if (File.Exists(partPath))
                     throw new InvalidDataException("INBOX_UPLOAD_STATE_MISSING");
+                // A fresh browser upload ID can refer to a blob completed by a
+                // previous attempt. Reuse only exact content, never overwrite it.
+                if (File.Exists(finalPath)) RequireContentHash(finalPath, expectedHash, request.TotalBytes);
                 AtomicFile.WriteJson(metadataPath, new LocalInboxUploadState(
                     "sokna-local-inbox-upload-v1", uploadId, request.OperatorId,
                     expectedHash, request.TotalBytes));
@@ -104,8 +107,19 @@ public sealed class LocalInboxUploadCoordinator
             if (File.Exists(finalPath))
             {
                 RequireContentHash(finalPath, expectedHash, request.TotalBytes);
-                return new LocalInboxChunkOutcome(uploadId, request.TotalBytes, true,
-                    finalRef, true, false, false);
+                // Preserve the existing browser's per-chunk acknowledgement
+                // contract even when the full content-addressed ZIP is cached.
+                // Check each supplied chunk against those immutable bytes.
+                using var completed = new FileStream(finalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                completed.Position = request.Offset;
+                var existing = new byte[bytes.Length];
+                completed.ReadExactly(existing);
+                if (!CryptographicOperations.FixedTimeEquals(existing, bytes))
+                    throw new InvalidDataException("INBOX_UPLOAD_CHUNK_MISMATCH");
+                var acknowledged = request.Offset + bytes.Length;
+                var done = acknowledged == request.TotalBytes;
+                return new LocalInboxChunkOutcome(uploadId, acknowledged, done,
+                    done ? finalRef : null, done, false, false);
             }
             using (var stream = new FileStream(partPath, FileMode.OpenOrCreate,
                        FileAccess.ReadWrite, FileShare.None, 65536, FileOptions.WriteThrough))
@@ -165,3 +179,4 @@ public sealed class LocalInboxUploadCoordinator
             throw new InvalidDataException("INBOX_PACKAGE_HASH_MISMATCH");
     }
 }
+

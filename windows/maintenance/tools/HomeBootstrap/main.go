@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-//go:embed payload/baseline-manifest.json payload/target-manifest.json payload/migration-catalog.json payload/local-m06-target.zip
+//go:embed payload/baseline-manifest.json payload/baseline-canonical-manifest.json payload/target-manifest.json payload/migration-catalog.json payload/local-m06-target.zip
 var embedded embed.FS
 
 // Last-resort one-time migration-aware UAT transition from exact Local 231au to U01.
@@ -96,16 +96,16 @@ func main() {
 	}
 	if b.ev.Phase == "LOCAL_RUNNING_PANEL_BLOCKED" {
 		b.log("Local healthy on U01 but signed panel readiness blocked; no DB recovery required")
-		showError("Local U01 بالا آمده و دیتابیس ۷۵/۷۵ است، اما اتصال امضاشده پنل Maintenance هنوز آماده نیست. نصب‌کننده را تکرار نکنید.\n" + b.evidenceDir)
+		showError("Local 231bk بالا آمده و دیتابیس ۷۵/۷۵ است، اما اتصال امضاشده پنل Maintenance هنوز آماده نیست. نصب‌کننده را تکرار نکنید.\n" + b.evidenceDir)
 		return
 	}
 	b.log("PASS: independent Local transition completed")
-	showSuccess("Local U01 و ۷۵ مهاجرت دیتابیس با موفقیت بررسی شدند.\n\nفقط Local و دیتابیس آن تغییر کرده‌اند؛ Windows Services و Public بدون تغییر هستند.\nآزمون نهایی ارتباط پنل Maintenance را در مرورگر اجرا کنید.\n\nشناسه بررسی: " + b.ev.AttemptID)
+	showSuccess("Local 231bk و ۷۵ مهاجرت دیتابیس با موفقیت بررسی شدند.\n\nفقط Local و دیتابیس آن تغییر کرده‌اند؛ Windows Services و Public بدون تغییر هستند.\nآزمون نهایی ارتباط پنل Maintenance را در مرورگر اجرا کنید.\n\nشناسه بررسی: " + b.ev.AttemptID)
 }
 
 func newBridge() (*bridge, error) {
 	now := time.Now().UTC()
-	id := "local231au-m06-" + now.Format("20060102T150405Z") + "-" + fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%d", now.UnixNano(), os.Getpid()))))[:10]
+	id := "home-au-bk-rev2-" + now.Format("20060102T150405Z") + "-" + fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%d", now.UnixNano(), os.Getpid()))))[:10]
 	baseData, err := embedded.ReadFile("payload/baseline-manifest.json")
 	if err != nil {
 		return nil, err
@@ -123,6 +123,14 @@ func newBridge() (*bridge, error) {
 		return nil, err
 	}
 	base, err := loadManifest(baseData, "baseline", baselineVersion, baselineFiles, baselineTree)
+	if err != nil {
+		return nil, err
+	}
+	canonicalData, err := embedded.ReadFile("payload/baseline-canonical-manifest.json")
+	if err != nil {
+		return nil, err
+	}
+	canonical, err := loadManifest(canonicalData, "baseline", baselineVersion, baselineFiles, canonicalBaselineTree)
 	if err != nil {
 		return nil, err
 	}
@@ -151,16 +159,16 @@ func newBridge() (*bridge, error) {
 	}
 	desktop := ""
 	if exe, er := os.Executable(); er == nil {
-		desktop = filepath.Join(filepath.Dir(exe), "SOKNA-Local-231au-U01-"+id+".log")
+		desktop = filepath.Join(filepath.Dir(exe), "SOKNA-Home-231au-to-231bk-REV2-"+id+".log")
 	}
-	b := &bridge{baseline: base, target: target, migrations: mig, targetZip: zipData, evidenceDir: evidenceDir, logPath: filepath.Join(evidenceDir, "bridge.log"), desktopLog: desktop}
+	b := &bridge{baseline: base, baselines: []fileManifest{base, canonical}, target: target, migrations: mig, targetZip: zipData, evidenceDir: evidenceDir, logPath: filepath.Join(evidenceDir, "bridge.log"), desktopLog: desktop}
 	b.ev = evidence{Format: "sokna-local-exact-baseline-bootstrap-v1", AttemptID: id, StartedAt: now.Format(time.RFC3339), Phase: "PREFLIGHT", BaselineVersion: baselineVersion, BaselineFiles: baselineFiles, BaselineTree: baselineTree, TargetVersion: targetVersion, TargetFiles: targetFiles, TargetTree: targetTree, MigrationsExpected: targetMigrationCount, DatabaseMutation: false, PublicMutation: false, WindowsServicesMutation: false, WindowsReboot: false}
 	b.writeEvidence()
 	return b, nil
 }
 
 func (b *bridge) run() error {
-	b.addStep("verified exact Local 231au baseline and SHA-sealed U01 target")
+	b.addStep("embedded BK target ZIP sealed; installed Local baseline NOT YET VERIFIED")
 	out, err := runHidden("sc.exe", "qc", apacheService)
 	if err != nil {
 		return fmt.Errorf("SoknaApache missing: %v %s", err, out)
@@ -199,20 +207,26 @@ func (b *bridge) run() error {
 		} else if !os.IsNotExist(er) {
 			return fmt.Errorf("previous transaction inspection unavailable: %w", er)
 		}
-		legacySuperseded, e := refusePendingSignedV4Updates()
+		plan, e := assessPendingSignedV4Updates(b.packageRoot)
 		if e != nil {
 			return e
 		}
-		if legacySuperseded {
-			b.addStep("historical committed legacy operation proven; V4 ledger untouched; exact current 231au checked")
-		}
+		b.legacyPlan = plan
 	}
-	oldSlot := filepath.Join(root, "Web.release.231au-"+baselineTree[:12])
+	b.ev.Phase = "BASELINE_DISCOVERY"
+	b.writeEvidence()
+	oldSlot, err := b.discoverOriginalSlot()
+	if err != nil {
+		return err
+	}
 	b.backupPath = oldSlot
 	b.ev.BackupPath = oldSlot
 	if err = b.verifyOriginalSlot(oldSlot); err != nil {
 		return err
 	}
+	b.ev.BaselineTreeVerified = true
+	b.ev.Phase = "PREFLIGHT"
+	b.writeEvidence()
 	b.addStep("current junction resolves to verified direct-sibling 231au physical release")
 	if err = httpHealth(baselineVersion); err != nil {
 		return fmt.Errorf("original Local HTTP not healthy: %w", err)
@@ -250,10 +264,12 @@ func (b *bridge) run() error {
 		return errors.New("Local schema migration mismatch")
 	}
 	b.ev.MigrationsApplied = applied
+	b.ev.BaselineDatabaseVerified = true
 	b.writeEvidence()
 	b.addStep("migration catalog exactly 71/71 on installed 231au")
+	b.baselineAttested = true
 	if b.readOnly {
-		if _, err = refusePendingSignedV4Updates(); err != nil {
+		if _, err = assessPendingSignedV4Updates(b.packageRoot); err != nil {
 			return fmt.Errorf("Maintenance operation ledger not idle: %w", err)
 		}
 		if err = b.preflightMariaDBBackupConfig(); err != nil {
@@ -262,7 +278,7 @@ func (b *bridge) run() error {
 		b.addStep("dry-run qualified: no staged Maintenance conflict and SQL backup client/config present")
 		return b.readOnlyTargetPreflight()
 	}
-	slot := filepath.Join(root, "Web.release.231bf-"+targetTree[:12])
+	slot := filepath.Join(root, "Web.release.231bk-"+targetTree[:12])
 	b.targetSlot = slot
 	suffix := b.ev.AttemptID[len(b.ev.AttemptID)-10:]
 	b.stageSlot = slot + ".staging-" + suffix
@@ -312,6 +328,9 @@ func (b *bridge) run() error {
 	if err = b.backupMariaDB(); err != nil {
 		return preMutationFailure(fmt.Errorf("MariaDB baseline backup unavailable BEFORE Apache downtime: %w", err))
 	}
+	if err = b.verifyBaselineBackupBeforeBoundary(); err != nil {
+		return preMutationFailure(fmt.Errorf("MariaDB backup proof unavailable BEFORE Apache downtime: %w", err))
+	}
 	b.addStep("private pre-boundary SQL backup stored and SHA256-verified BEFORE Apache stop")
 	if err = os.Rename(b.stageSlot, b.targetSlot); err != nil {
 		return preMutationFailure(err)
@@ -320,6 +339,9 @@ func (b *bridge) run() error {
 		return preMutationFailure(err)
 	}
 	if err = b.assertHomeStateUnchanged(); err != nil {
+		return preMutationFailure(err)
+	}
+	if err = b.reconcileVerifiedLegacy(); err != nil {
 		return preMutationFailure(err)
 	}
 	if err = b.checkpointTransaction("READY_TO_SWITCH"); err != nil {
@@ -384,7 +406,7 @@ func (b *bridge) run() error {
 	if err = waitHealth(targetVersion, 45*time.Second); err != nil {
 		return b.failAfterDbBoundary(err)
 	}
-	b.addStep("HTTP Local U01/php-ready healthy after DB forward migration")
+	b.addStep("HTTP Local 231bk/php-ready healthy after DB forward migration")
 	if err = b.verifyOverlayAt(b.targetSlot); err != nil {
 		return b.failAfterDbBoundary(err)
 	}

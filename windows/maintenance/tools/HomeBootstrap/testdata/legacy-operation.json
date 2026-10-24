@@ -1,0 +1,19 @@
+{
+  "format": "sokna-maintenance-operation-v1",
+  "schema_version": 1,
+  "operation_id": "144ce8bb82c641caa48ee0b898e5b22a",
+  "idempotency_key": "home-p3-231ai-r2",
+  "canonical_request_sha256": "fdc7f2bcecadd86d6a27add779e12d13d7fe907176f9f6d86e65348e53555b54",
+  "operation_type": "update.local-slot-home-cycle",
+  "operator_id": "home-uat",
+  "state": "recovery_required",
+  "package_ref": "phase3-local-slots:3.0.0-g6.2-workspace.231ai-browser-recovery-managed-inventory:497:b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a",
+  "created_at_utc": "2026-10-17T01:42:24.0080273+00:00",
+  "updated_at_utc": "2026-10-17T01:43:55.7329407+00:00",
+  "attempt_count": 1,
+  "result_code": "LOCAL_SLOT_RECOVERY_REQUIRED",
+  "result_message": "{\r\n  \u0022ok\u0022: false,\r\n  \u0022engine_version\u0022: \u00220.3.1\u0022,\r\n  \u0022phase\u0022: \u0022FAILED\u0022,\r\n  \u0022code\u0022: \u0022LOCAL_SLOT_PHASE3_FAILED\u0022,\r\n  \u0022error\u0022: \u0022Initial Local slot conversion failed and physical-Web rollback health could not be proven. (Target Local HTTP health was not proven within the Phase 3 timeout.) (Target Local HTTP health was not proven within the Phase 3 timeout.)\u0022,\r\n  \u0022activation_performed\u0022: true,\r\n  \u0022database_mutation_performed\u0022: false,\r\n  \u0022public_mutation_performed\u0022: false,\r\n  \u0022windows_reboot_required\u0022: false,\r\n  \u0022expected_managed_tree_sha256\u0022: \u0022b0e252b62b804c00e25c925d31ded8986fa23c3ab0d58b668eb79a79b961f56a\u0022,\r\n  \u0022state_path\u0022: \u0022C:\\\\ProgramData\\\\SOKNA\\\\Maintenance\\\\local-slots\\\\phase3-state.json\u0022\r\n}",
+  "stage_receipt_path": "C:\\ProgramData\\SOKNA\\Maintenance\\local-slots\\phase3-state.json",
+  "activation_performed": true,
+  "database_mutation_performed": false
+}
