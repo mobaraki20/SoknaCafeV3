@@ -1,0 +1,95 @@
+name: Archive obsolete SOKNA releases as reversible drafts
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'release/archive-requests/*.json'
+permissions:
+  contents: write
+concurrency:
+  group: sokna-release-visibility-maintenance
+  cancel-in-progress: false
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Validate exact signed-off inventory and convert only old releases to drafts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="$(git diff-tree --no-commit-id --name-only -r HEAD)"
+          if [[ "$file" != release/archive-requests/*.json || "$(echo "$file" | wc -l)" -ne 1 ]]; then
+            echo 'Must be exactly one release archive request JSON'; exit 1
+          fi
+          python3 - "$file" <<'PY'
+          import json,os,subprocess,sys,time
+          request=json.load(open(sys.argv[1],encoding='utf-8'))
+          assert request['format']=='sokna-release-visibility-archive-v1'
+          assert request['policy']=='draft-only-preserve-tag-and-assets'
+          assert request['confirmation']=='ARCHIVE_OBSOLETE_RELEASES_AS_DRAFTS'
+          repo=os.environ['GITHUB_REPOSITORY']
+          def gh(*args):
+              z=subprocess.run(['gh','api',*args],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+              if z.returncode:
+                  raise RuntimeError(f"GitHub API failed ({z.returncode}): {z.stderr[-800:]}")
+              return json.loads(z.stdout)
+          releases=[]
+          for page in range(1,6):
+              part=gh(f'repos/{repo}/releases?per_page=100&page={page}')
+              releases.extend(part)
+              if len(part)<100:break
+          bytag={r['tag_name']:r for r in releases}
+          expected={r['tag']:r['id'] for r in request['archive']}
+          keep=set(request['keep_tags'])
+          assert len(keep)==4 and len(expected)==len(request['archive'])
+          assert not keep.intersection(expected)
+          assert set(bytag)==keep|set(expected),'New/unknown release or missing archive item: review again'
+          assert bytag['windows-services-v1.1.24-rc.1']['prerelease']
+          assert bytag['maintenance-only-v0.3.15-uat.rev1']['prerelease']
+          assert not bytag['windows-services-v1.0.17']['prerelease']
+          assert not bytag['prerequisites-v1.0.13']['prerelease']
+          names={a['name'] for a in bytag['windows-services-v1.1.24-rc.1']['assets']}
+          assert 'SOKNA-Windows-Services-Setup-1.1.24.exe' in names,'New Windows installer not published'
+          assert 'SOKNA-Maintenance-Only-0.3.15-UAT-REV1.exe' in {a['name'] for a in bytag['maintenance-only-v0.3.15-uat.rev1']['assets']}
+          for tag in keep:
+              assert not bytag[tag]['draft'],f'Retained release is draft: {tag}'
+          for tag,rid in expected.items():
+              r=bytag[tag]
+              assert r['id']==rid and not r.get('immutable',False),f'Identity/immutability mismatch for {tag}'
+          # Full preflight above is completed before the first mutation.
+          print('ARCHIVE_PREFLIGHT_PASS',len(expected),'reversible draft conversions, retain',sorted(keep),flush=True)
+          evidence={'format':'sokna-release-archive-evidence-v1','keep_tags':sorted(keep),'archive_tags':[],'errors':[]}
+          try:
+              for tag,rid in expected.items():
+                  previous=bytag[tag]
+                  if previous['draft']:
+                      evidence['archive_tags'].append({'tag':tag,'id':rid,'status':'already_draft'})
+                      continue
+                  # Drafting does not delete the tag or release assets; unlike deleting releases.
+                  try:
+                      result=gh('-X','PATCH',f'repos/{repo}/releases/{rid}','-F','draft=true')
+                      assert result['id']==rid and result['draft'] is True and result['tag_name']==tag
+                      assert {a['id'] for a in result['assets']}=={a['id'] for a in previous['assets']}
+                      evidence['archive_tags'].append({'tag':tag,'id':rid,'status':'draft_verified','asset_count':len(result['assets'])})
+                      print('DRAFT_VERIFIED',tag,flush=True)
+                  except Exception as e:
+                      evidence['errors'].append({'tag':tag,'error':str(e)})
+                      raise
+          finally:
+              with open('archive-evidence.json','w',encoding='utf-8') as f:json.dump(evidence,f,ensure_ascii=False,indent=2)
+          assert len(evidence['archive_tags'])==len(expected) and not evidence['errors']
+          print('SOKNA_RELEASE_ARCHIVE_COMPLETED',len(expected))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sokna-release-archive-evidence
+          path: archive-evidence.json
+          if-no-files-found: warn
+          retention-days: 90
