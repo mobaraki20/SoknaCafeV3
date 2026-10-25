@@ -43,13 +43,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/db-debs"
           docker run --rm -v "$RUNNER_TEMP/db-debs:/out" debian:trixie bash -euc '
             apt-get update -qq
-            DEBIAN_FRONTEND=noninteractive apt-get install --download-only -y --no-install-recommends mariadb-server php8.4-mysql
+            DEBIAN_FRONTEND=noninteractive apt-get install --download-only -y --no-install-recommends mariadb-server php8.4-mysql php8.4-cli
             cp /var/cache/apt/archives/*.deb /out/
             ls -lh /out | tail -8
           '
       - uses: actions/upload-artifact@v4
         with:
-          name: r4-debian13-mariadb-php84-offline-debs
+          name: r4-debian13-mariadb-php84cli-offline-debs
           path: ${{ runner.temp }}/db-debs/*.deb
           retention-days: 1
           if-no-files-found: error
