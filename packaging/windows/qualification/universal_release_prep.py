@@ -22,6 +22,16 @@ REQUIRED_ID = ("release_id", "version", "managed_tree_sha256", "schema_fingerpri
 HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
 MIGRATION = re.compile(r"^database/migrations/(\d{4}_[a-z0-9_]+)\.sql$")
 MAX_BASELINES = 64
+VERSION_MARKER = re.compile(r"\.231([a-z]{1,4})(?=[^a-z]|$)")
+
+def version_ordinal(version: str):
+    match = VERSION_MARKER.search(version)
+    if match is None:
+        return None
+    value = 0
+    for ch in match.group(1):
+        value = value * 26 + ord(ch) - 96
+    return value
 
 class UnsafeRelease(ValueError):
     pass
@@ -138,6 +148,10 @@ def prepare(source_release: Path, baseline_releases: list[Path], output: Path):
                 continue
             if candidate["migration_head"] > head:
                 raise UnsafeRelease("DOWNGRADE_DATABASE_FORBIDDEN")
+            source_ordinal = version_ordinal(candidate["version"])
+            target_ordinal = version_ordinal(identity["version"])
+            if source_ordinal is not None and target_ordinal is not None and source_ordinal >= target_ordinal:
+                raise UnsafeRelease("DOWNGRADE_OR_SAME_APP_VERSION_FORBIDDEN:" + candidate["version"])
             key = tuple(candidate[k] for k in REQUIRED_ID)
             if key in seen:
                 continue
@@ -186,12 +200,19 @@ def prepare(source_release: Path, baseline_releases: list[Path], output: Path):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--candidate",required=True,type=Path)
-    ap.add_argument("--baseline",required=True,action="append",type=Path)
+    ap.add_argument("--baseline",action="append",type=Path,default=[])
+    ap.add_argument("--baseline-dir",action="append",type=Path,default=[],
+                    help="Trusted catalog directory of historical Local release-set ZIPs")
     ap.add_argument("--output",required=True,type=Path)
     ap.add_argument("--report",type=Path)
     args = ap.parse_args()
     try:
-        report=prepare(args.candidate,args.baseline,args.output)
+        catalogs=[]
+        for directory in args.baseline_dir:
+            if not directory.is_dir():
+                raise UnsafeRelease("BASELINE_CATALOG_DIRECTORY_MISSING:" + str(directory))
+            catalogs.extend(sorted(directory.glob("*.zip")))
+        report=prepare(args.candidate,args.baseline+catalogs,args.output)
     except (UnsafeRelease,ValueError,OSError,zipfile.BadZipFile) as e:
         print(json.dumps({"ok":False,"code":str(e)},ensure_ascii=False),file=sys.stderr)
         return 2
