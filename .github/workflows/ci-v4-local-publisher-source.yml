@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/**
+      - windows/maintenance/tools/Sokna.Maintenance.HostPortabilityHarness/**
       - .github/workflows/ci-v4-local-publisher-source.yml
   workflow_dispatch:
 
@@ -22,6 +23,8 @@ jobs:
           dotnet-version: 8.0.x
       - name: Build issuer against existing Maintenance Core
         run: dotnet build windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/Sokna.Maintenance.ReleasePublisher.csproj --configuration Debug
+      - name: Build independent-host verifier (real Core, synthetic fixtures)
+        run: dotnet build windows/maintenance/tools/Sokna.Maintenance.HostPortabilityHarness/Sokna.Maintenance.HostPortabilityHarness.csproj --configuration Debug
       - name: Ephemeral CI-only P256 verification / negative gates
         shell: pwsh
         run: |

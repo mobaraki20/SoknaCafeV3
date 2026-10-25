@@ -30,11 +30,25 @@ if (parsed.Format != ReleaseSetVerifierStager.Format ||
     throw new InvalidDataException("PUBLISHER_LOCAL_QUALIFICATION_REQUIRED");
 ReleaseInstallQualificationGate.Require(parsed);
 RequireGeneralManifestSafety(parsed);
-if (parsed.SupportedBaselines.Length != 1 || parsed.SupportedBaselines[0].Local is null ||
+// A published Local-only ZIP may target multiple exact, qualified baselines.
+// The target machine selects its own baseline at signed Supervisor Preflight.
+// Machine name, install path, LAN address and installation_id are never issuer inputs.
+if (parsed.SupportedBaselines is not { Length: > 0 and <= 64 } ||
     parsed.Artifacts.Count != 1)
     throw new InvalidDataException("PUBLISHER_EXACT_LOCAL_ONLY_CONTRACT_REQUIRED");
-var baseline = parsed.SupportedBaselines[0].Local!;
-RequireCompleteIdentity(baseline);
+var baselineIds = new HashSet<string>(StringComparer.Ordinal);
+foreach (var supported in parsed.SupportedBaselines)
+{
+    if (supported.Local is null || supported.Public is not null)
+        throw new InvalidDataException("PUBLISHER_LOCAL_ONLY_BASELINE_REQUIRED");
+    var baseline = supported.Local;
+    RequireCompleteIdentity(baseline);
+    var identityKey = string.Join("\\n", baseline.ReleaseId, baseline.Version,
+        baseline.ManagedTreeSha256.ToLowerInvariant(), baseline.SchemaFingerprint,
+        baseline.MigrationHead, baseline.AuthorityEpochPolicy);
+    if (!baselineIds.Add(identityKey))
+        throw new InvalidDataException("PUBLISHER_DUPLICATE_BASELINE_FORBIDDEN");
+}
 var target = parsed.Targets.GetProperty("local");
 var targetVersion = target.GetProperty("version").GetString();
 var targetSha = target.GetProperty("managed_tree_sha256").GetString();
@@ -162,7 +176,7 @@ Console.WriteLine("PUBLISHER_SEALED_RELEASE_SET_SOURCE_QUALIFICATION_ONLY");
 Console.WriteLine("release_set_id=" + parsed.ReleaseSetId);
 Console.WriteLine("release_sha256=" + Hex(SHA256.HashData(File.ReadAllBytes(output))));
 Console.WriteLine("private_key_exported=false");
-Console.WriteLine("real_cafe_install_not_claimed=true");
+Console.WriteLine("real_target_host_install_not_claimed=true");
 
 
 static void RequireGeneralManifestSafety(ReleaseSetManifest m)

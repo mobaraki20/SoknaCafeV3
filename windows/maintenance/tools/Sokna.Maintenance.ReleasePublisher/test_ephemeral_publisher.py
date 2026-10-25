@@ -6,6 +6,7 @@ from cryptography.hazmat.primitives.asymmetric import ec,utils
 
 ROOT=pathlib.Path(__file__).resolve().parents[4]
 PROJECT=ROOT/"windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/Sokna.Maintenance.ReleasePublisher.csproj"
+HOST_HARNESS=ROOT/"windows/maintenance/tools/Sokna.Maintenance.HostPortabilityHarness/Sokna.Maintenance.HostPortabilityHarness.csproj"
 sha=lambda b:hashlib.sha256(b).hexdigest()
 def invoke(man,web,proof,out,pem):
     env=dict(os.environ)
@@ -33,7 +34,9 @@ def main():
                   "qualification":{"failure_matrix_id":"CI-FAKE-FIXTURE","failure_matrix_cases_required":80,
                       "real_windows":True,"real_mariadb":True,"canary":True,"recovery_console_web_down":True,
                       "business_backup_consistency_real_mariadb":True},
-                  "supported_baselines":[{"local":dict(identity,release_id="ci-source",version="3.0.0.ci-test-source"),"public":None}],
+                  "supported_baselines":[
+                      {"local":dict(identity,release_id="ci-source-channel-a",version="3.0.0.ci-test-source"),"public":None},
+                      {"local":dict(identity,release_id="ci-source-channel-b",version="3.0.0.ci-test-source"),"public":None}],
                   "targets":{"local":dict(identity,managed_files=len(files))},
                   "artifacts":{"local-web":{"path":"artifacts/local/web.zip","sha256":sha(payload),"size_bytes":len(payload),
                                              "component":"local-web","kind":"web-tree-zip-v1"}},
@@ -84,7 +87,25 @@ def main():
         signer.public_key().verify(utils.encode_dss_signature(int.from_bytes(sig[:32],"big"),int.from_bytes(sig[32:],"big")),
             canonical(signed).encode("ascii"),ec.ECDSA(hashes.SHA256()))
         print("POSITIVE_EPHEMERAL_SIGN_AND_CSHARP_CANONICAL_READBACK_PASS")
+        public_file=tmp/"publisher.spki.pem"
+        public_file.write_bytes(signer.public_key().public_bytes(
+            serialization.Encoding.PEM,serialization.PublicFormat.SubjectPublicKeyInfo))
+        portability=subprocess.run(["dotnet","run","--no-build","--project",
+            str(HOST_HARNESS),"--",str(out),str(public_file)],
+            capture_output=True,text=True)
+        assert portability.returncode==0,portability.stdout+"\\n"+portability.stderr
+        assert "INDEPENDENT_HOST_BASELINE_0_REPLICA_0_PASS" in portability.stdout
+        assert "INDEPENDENT_HOST_BASELINE_1_REPLICA_1_PASS" in portability.stdout
+        assert "INCOMPATIBLE_HOST_FAIL_CLOSED_PASS" in portability.stdout
+        assert "NO_PREPROVISIONED_TRUST_FAIL_CLOSED_PASS" in portability.stdout
+        print("POSITIVE_SAME_ZIP_INDEPENDENT_HOSTS_AND_NEGATIVE_HOST_GATES_PASS")
         out.unlink()
+        manifest["supported_baselines"].append(manifest["supported_baselines"][0].copy())
+        save()
+        duplicate=invoke(mf,web,rf,out,pem)
+        assert duplicate.returncode!=0 and not out.exists()
+        print("NEGATIVE_DUPLICATE_BASELINE_PASS")
+        manifest["supported_baselines"].pop()
         missing=invoke(mf,web,rf,out,None)
         assert missing.returncode!=0 and not out.exists()
         print("NEGATIVE_MISSING_PROTECTED_CREDENTIAL_PASS")
@@ -102,5 +123,5 @@ def main():
         invalid=invoke(mf,web,rf,out,pem)
         assert invalid.returncode!=0 and not out.exists()
         print("NEGATIVE_UNBOUND_RECEIPT_PASS")
-        print("5/5 source-only synthetic checks passed; real-host UAT NOT RUN")
+        print("7/7 synthetic release/signature/portability checks passed; live Windows UAT NOT RUN")
 if __name__=="__main__":main()

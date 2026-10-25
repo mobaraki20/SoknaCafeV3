@@ -20,12 +20,15 @@ def inspect(package_path, preparation=False):
     def require(ok, code):
         if not ok:
             defects.append(code)
-    name = "release-set-template-UNQUALIFIED.json" if preparation else "release-set.json"
     try:
         with zipfile.ZipFile(package_path) as package:
             names = [i.filename for i in package.infolist() if not i.is_dir()]
-            if names.count(name) != 1:
+            candidate_names = (["release-set-template-UNQUALIFIED.json", "release-set.json"]
+                               if preparation else ["release-set.json"])
+            present = [name for name in candidate_names if names.count(name) == 1]
+            if len(present) != 1:
                 return ["MANIFEST_MISSING_OR_DUPLICATE"]
+            name = present[0]
             raw = package.read(name)
             require(len(raw) <= 2 * 1024 * 1024, "MANIFEST_TOO_LARGE")
             manifest = json.loads(raw)
@@ -34,15 +37,27 @@ def inspect(package_path, preparation=False):
             require(manifest.get("release_type") == "local_only", "NOT_LOCAL_ONLY")
             target = (manifest.get("targets") or {}).get("local") or {}
             bases = manifest.get("supported_baselines") or []
-            require(len(bases) == 1 and isinstance(bases[0].get("local"), dict),
-                    "EXACT_LOCAL_BASELINE_REQUIRED")
-            for identity in [target, bases[0].get("local", {}) if bases else {}]:
+            require(isinstance(bases, list) and 1 <= len(bases) <= 64 and all(
+                isinstance(b, dict) and isinstance(b.get("local"), dict)
+                and b.get("public") is None for b in bases
+            ), "EXACT_LOCAL_BASELINES_1_TO_64_REQUIRED")
+            identities = [target] + [b.get("local", {}) for b in bases if isinstance(b, dict)]
+            unique_baselines = set()
+            for i, identity in enumerate(identities):
+                require(isinstance(identity, dict), "BASELINE_IDENTITY_NOT_OBJECT")
+                if not isinstance(identity, dict):
+                    continue
                 for key in ("release_id", "version", "managed_tree_sha256",
                             "schema_fingerprint", "migration_head", "authority_epoch_policy"):
                     value = identity.get(key)
                     require(isinstance(value, str) and bool(value.strip())
                             and "__READ_TRUSTED" not in value,
                             "UNRESOLVED_IDENTITY_" + key.upper())
+                if i:
+                    key = tuple(identity.get(k) for k in ("release_id", "version", "managed_tree_sha256",
+                        "schema_fingerprint", "migration_head", "authority_epoch_policy"))
+                    require(key not in unique_baselines, "DUPLICATE_BASELINE_FORBIDDEN")
+                    unique_baselines.add(key)
             artifacts = [a for a in (manifest.get("artifacts") or {}).values()
                          if a.get("component") == "local-web"
                          and a.get("kind") == "web-tree-zip-v1"]
@@ -78,6 +93,35 @@ def inspect(package_path, preparation=False):
                     "SIGNED_TARGET_TREE_MISMATCH")
             require(files.get("VERSION.txt", b"").decode("utf-8-sig").strip()
                     == target.get("version"), "SIGNED_TARGET_VERSION_MISMATCH")
+            migrations = {p[len("database/migrations/"):-4]: sha(v)
+                          for p, v in files.items()
+                          if p.startswith("database/migrations/") and p.endswith(".sql")}
+            if migrations and isinstance(target.get("schema_fingerprint"), str) and (
+                    target["schema_fingerprint"].startswith("migration-ledger-sha256-v1:")):
+                def ledger(head):
+                    relevant = sorted((k,v) for k,v in migrations.items() if k <= head)
+                    if not relevant or relevant[-1][0] != head:
+                        return None
+                    return "migration-ledger-sha256-v1:" + sha("".join(
+                        k + "\\0" + v + "\\n" for k,v in relevant).encode())
+                require(target.get("schema_fingerprint") == ledger(target.get("migration_head","")),
+                        "TARGET_SCHEMA_LEDGER_MISMATCH")
+                for baseline in bases:
+                    if not isinstance(baseline, dict) or not isinstance(baseline.get("local"), dict):
+                        continue
+                    source = baseline["local"]
+                    require(source.get("schema_fingerprint") == ledger(source.get("migration_head","")),
+                            "BASELINE_SCHEMA_LEDGER_MISMATCH")
+                if any(isinstance(b, dict) and isinstance(b.get("local"), dict)
+                       and b["local"].get("migration_head") != target.get("migration_head") for b in bases):
+                    dag = ((manifest.get("database") or {}).get("local") or {}).get("migration_dag")
+                    require(isinstance(dag, list) and bool(dag),
+                            "MIGRATION_DAG_REQUIRED_FOR_SCHEMA_CHANGE")
+            if preparation:
+                require(manifest.get("for_install") is not True
+                        and manifest.get("production_pass") is not True
+                        and not ((manifest.get("signature") or {}).get("value")),
+                        "PREPARATION_ARCHIVE_MUST_NOT_CLAIM_INSTALLABLE")
             if not preparation:
                 require(manifest.get("for_install") is True
                         and manifest.get("production_pass") is True,
