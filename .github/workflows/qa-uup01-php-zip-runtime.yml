@@ -1,0 +1,26 @@
+name: UUP01 obtain isolated PHP zip runtime extension
+on:
+  push:
+    branches: [qa/late-served-r4-mariadb-20261025]
+    paths: [.github/workflows/qa-uup01-php-zip-runtime.yml]
+permissions:
+  contents: read
+jobs:
+  isolated-extension:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Package PHP 8.4 Zip and its Debian runtime dependencies
+        run: |
+          mkdir -p "$RUNNER_TEMP/debs"
+          docker run --rm -v "$RUNNER_TEMP/debs:/out" debian:trixie bash -euc '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install --download-only -y --no-install-recommends php8.4-zip
+            cp /var/cache/apt/archives/*.deb /out/
+            ls -lh /out
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: isolated-php84-zip-offline-debs
+          path: ${{ runner.temp }}/debs/*.deb
+          retention-days: 1
