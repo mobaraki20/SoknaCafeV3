@@ -117,6 +117,11 @@ def inspect(package_path, preparation=False):
                     dag = ((manifest.get("database") or {}).get("local") or {}).get("migration_dag")
                     require(isinstance(dag, list) and bool(dag),
                             "MIGRATION_DAG_REQUIRED_FOR_SCHEMA_CHANGE")
+            if preparation:
+                require(manifest.get("for_install") is not True
+                        and manifest.get("production_pass") is not True
+                        and not ((manifest.get("signature") or {}).get("value")),
+                        "PREPARATION_ARCHIVE_MUST_NOT_CLAIM_INSTALLABLE")
             if not preparation:
                 require(manifest.get("for_install") is True
                         and manifest.get("production_pass") is True,
