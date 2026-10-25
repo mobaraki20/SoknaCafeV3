@@ -118,6 +118,19 @@ class ContractTests(unittest.TestCase):
             ]
         self.assertIn("EXACT_LOCAL_BASELINES_1_TO_64_REQUIRED", self.inspect(fixture(edit)))
 
+    def test_preparation_cannot_claim_installable(self):
+        def fake_release(m):
+            m["for_install"] = True
+            m["production_pass"] = True
+        codes = self.inspect(fixture(fake_release), preparation=True)
+        self.assertIn("PREPARATION_ARCHIVE_MUST_NOT_CLAIM_INSTALLABLE", codes)
+
+    def test_preparation_cannot_claim_signed(self):
+        def fake_signed(m):
+            m["signature"]["value"] = "pretend-signature"
+        codes = self.inspect(fixture(fake_signed), preparation=True)
+        self.assertIn("PREPARATION_ARCHIVE_MUST_NOT_CLAIM_INSTALLABLE", codes)
+
     def test_not_installable_without_signed_manifest(self):
         self.assertIn("MANIFEST_MISSING_OR_DUPLICATE", self.inspect(fixture(), preparation=False))
 
