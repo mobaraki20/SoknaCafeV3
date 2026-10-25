@@ -39,7 +39,35 @@ try
             if (!result.SignatureVerified || !result.ArtifactIntegrityVerified ||
                 !result.SignedInstallIntent || result.ExactBaselineVerified != true)
                 throw new InvalidDataException("PORTABILITY_COMPATIBLE_HOST_REJECTED");
+            // Exercise the real durable Windows Stage path, not VerifyOnly.
+            // These machine roots are disposable; no service, real DB or active Web touched.
+            var receipt = new ReleaseSetVerifierStager(paths).VerifyAndStage(zip, installed);
+            if (receipt.ReleaseSetId != manifest.ReleaseSetId ||
+                receipt.Sequence != manifest.Sequence ||
+                !receipt.SignatureVerified || !receipt.ArtifactIntegrityVerified ||
+                !receipt.PreflightIdentityMatch || receipt.ActivationPerformed ||
+                receipt.DatabaseMutationPerformed ||
+                !File.Exists(Path.Combine(receipt.StageRoot, "stage-receipt.json")))
+                throw new InvalidDataException("PORTABILITY_DURABLE_STAGE_INVALID");
+            foreach (var artifact in manifest.Artifacts.Values)
+            {
+                var stored = Path.Combine(receipt.StageRoot, artifact.Path.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(stored) ||
+                    !Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(stored)))
+                        .Equals(artifact.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("PORTABILITY_STAGED_ARTIFACT_MISMATCH");
+            }
+            var replay = new ReleaseSetVerifierStager(paths).VerifyAndStage(zip, installed);
+            if (replay.StageRoot != receipt.StageRoot || replay.ManifestSha256 != receipt.ManifestSha256 ||
+                replay.PackageSha256 != receipt.PackageSha256)
+                throw new InvalidDataException("PORTABILITY_STAGE_REPLAY_NOT_IDEMPOTENT");
+            var sequence = AtomicFile.ReadJson<ReleaseSequenceState>(paths.ReleaseSequenceStatePath);
+            if (sequence.HighestSequence != manifest.Sequence ||
+                sequence.ReleaseSetId != manifest.ReleaseSetId ||
+                sequence.ManifestSha256 != receipt.ManifestSha256)
+                throw new InvalidDataException("PORTABILITY_HIGH_WATER_NOT_PERSISTED");
             Console.WriteLine("INDEPENDENT_HOST_BASELINE_" + n + "_REPLICA_" + replica + "_PASS");
+            Console.WriteLine("DURABLE_STAGE_BASELINE_" + n + "_REPLICA_" + replica + "_PASS");
         }
     }
 
@@ -51,12 +79,16 @@ try
         manifest.Signature.KeyId + ".spki.pem"), publicPem);
     var mismatched = new InstalledReleaseIdentity(wrong, null, "0.3.10", "0.3.10", null, null);
     ExpectReject(zip, rejectedRoot, mismatched, "Installed release identity does not match any exact supported baseline.");
+    if (Directory.Exists(rejectedRoot.StagingRoot) || File.Exists(rejectedRoot.ReleaseSequenceStatePath))
+        throw new InvalidDataException("PORTABILITY_REJECTED_HOST_STATE_MUTATED");
     Console.WriteLine("INCOMPATIBLE_HOST_FAIL_CLOSED_PASS");
 
     var untrustedRoot = new MaintenancePaths(Path.Combine(tempRoot, "untrusted"));
     Directory.CreateDirectory(untrustedRoot.ReleaseSigningTrustRoot);
     var validIdentity = new InstalledReleaseIdentity(first, null, "0.3.10", "0.3.10", null, null);
     ExpectReject(zip, untrustedRoot, validIdentity, "Release signing key is not trusted on this machine.");
+    if (Directory.Exists(untrustedRoot.StagingRoot) || File.Exists(untrustedRoot.ReleaseSequenceStatePath))
+        throw new InvalidDataException("PORTABILITY_UNTRUSTED_HOST_STATE_MUTATED");
     Console.WriteLine("NO_PREPROVISIONED_TRUST_FAIL_CLOSED_PASS");
 }
 finally { if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true); }
