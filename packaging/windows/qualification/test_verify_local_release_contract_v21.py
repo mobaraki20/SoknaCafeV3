@@ -95,6 +95,29 @@ class ContractTests(unittest.TestCase):
         codes = self.inspect(fixture(lambda m: m.update(release_type="paired")))
         self.assertIn("NOT_LOCAL_ONLY", codes)
 
+    def test_three_distinct_baselines_are_accepted_for_one_target(self):
+        def edit(m):
+            initial = m["supported_baselines"][0]["local"]
+            for label in ("cafe", "remote"):
+                m["supported_baselines"].append({
+                    "local": dict(initial, release_id=label), "public": None
+                })
+        self.assertEqual(self.inspect(fixture(edit)), [])
+
+    def test_duplicate_baseline_is_rejected(self):
+        def edit(m):
+            m["supported_baselines"].append(deepcopy(m["supported_baselines"][0]))
+        self.assertIn("DUPLICATE_BASELINE_FORBIDDEN", self.inspect(fixture(edit)))
+
+    def test_65_baselines_are_rejected(self):
+        def edit(m):
+            initial = m["supported_baselines"][0]["local"]
+            m["supported_baselines"] = [
+                {"local": dict(initial, release_id="b" + str(i)), "public": None}
+                for i in range(65)
+            ]
+        self.assertIn("EXACT_LOCAL_BASELINES_1_TO_64_REQUIRED", self.inspect(fixture(edit)))
+
     def test_not_installable_without_signed_manifest(self):
         self.assertIn("MANIFEST_MISSING_OR_DUPLICATE", self.inspect(fixture(), preparation=False))
 
