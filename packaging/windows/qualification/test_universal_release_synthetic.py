@@ -23,7 +23,7 @@ class Synthetic(unittest.TestCase):
             base_fp=ledger(cat,'0001_start')
             dest={'release_id':'target','version':'3.0.0.synthetic.231bp','managed_tree_sha256':canonical_tree(files),
                 'migration_head':'0002_late','authority_epoch_policy':'preserved','managed_files':len(files)}
-            def baseline(i):return {'release_id':f'base{i}', 'version':f'3.0.0.synthetic.231b{i}',
+            def baseline(i):return {'release_id':f'base{i}', 'version':f'3.0.0.synthetic.231b{chr(96+i)}',
                 'managed_tree_sha256':hashlib.sha256(f'base-{i}'.encode()).hexdigest(),
                 'schema_fingerprint':base_fp,'migration_head':'0001_start','authority_epoch_policy':'preserved'}
             m={'format':'sokna-maintenance-release-set-v2.1','release_type':'local_only',
@@ -47,5 +47,10 @@ class Synthetic(unittest.TestCase):
             archive(sources[0],dict(m,targets={'local':corrupted}))
             with self.assertRaisesRegex(UnsafeRelease,'BASELINE_MIGRATION_LEDGER_MISMATCH'):
                 prepare(candidate,sources,root/'bad.zip')
+            future=baseline(1)
+            future['version']='3.0.0.synthetic.231bz'
+            archive(sources[0],dict(m,targets={'local':future}))
+            with self.assertRaisesRegex(UnsafeRelease,'DOWNGRADE_OR_SAME_APP_VERSION_FORBIDDEN'):
+                prepare(candidate,sources,root/'future.zip')
 
 if __name__=='__main__':unittest.main(verbosity=2)
