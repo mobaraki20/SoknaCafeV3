@@ -1,0 +1,46 @@
+name: Universal update publisher source and Windows portability gates
+on:
+  push:
+    branches:
+      - work/v4-universal-update-release-pipeline-20261025
+  pull_request:
+    paths:
+      - packaging/windows/qualification/**
+      - windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/**
+      - windows/maintenance/tools/Sokna.Maintenance.HostPortabilityHarness/**
+      - .github/workflows/ci-universal-release-pipeline.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit source-only multi-baseline manifest and negative cases
+        run: python3 -m unittest discover -s packaging/windows/qualification -p 'test_*release*.py' -v
+      - name: Release artifacts intentionally disabled
+        run: echo 'SOURCE GATE ONLY - NO SIGNING - NO REAL HOST INSTALL'
+
+  windows-publisher:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build existing Maintenance publisher and host portability verifier
+        run: |
+          dotnet build windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/Sokna.Maintenance.ReleasePublisher.csproj --configuration Debug
+          dotnet build windows/maintenance/tools/Sokna.Maintenance.HostPortabilityHarness/Sokna.Maintenance.HostPortabilityHarness.csproj --configuration Debug
+      - name: Ephemeral, disposable signature and two-host portability checks
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          python windows/maintenance/tools/Sokna.Maintenance.ReleasePublisher/test_ephemeral_publisher.py
+      - name: No credentials, production flags or release publication
+        run: echo 'NO INSTALLABLE BUILD, NO PER-MACHINE KEY, NO RELEASE'
