@@ -52,7 +52,7 @@ jobs:
           $ErrorActionPreference='Stop'
           $root=Join-Path $env:RUNNER_TEMP 'bk2b-support-input'
           $out=Join-Path $env:RUNNER_TEMP 'bk2b-support-output'
-          $backups=Join-Path $root 'backups'
+          $backups=Join-Path $root 'Maintenance\backups'
           New-Item -ItemType Directory -Force -Path $backups,$out | Out-Null
           $state=@{
             format='sokna-maintenance-backup-job-v1'
@@ -65,7 +65,7 @@ jobs:
           }|ConvertTo-Json -Compress
           [IO.File]::WriteAllText((Join-Path $backups 'schedule-state.json'),$state)
           $journal='{"event_type":"backup.upload.unknown","occurred_at_utc":"2026-10-26T00:00:00Z","details":{"code":"BACKUP_UPLOAD_OUTCOME_UNKNOWN","error_type":"IOException","bearer":"FAKE_SECRET_MUST_NOT_LEAK_97531"}}'
-          [IO.File]::WriteAllText((Join-Path $root 'maintenance-journal.jsonl'),$journal+[Environment]::NewLine)
+          [IO.File]::WriteAllText((Join-Path $root 'Maintenance\maintenance-journal.jsonl'),$journal+[Environment]::NewLine)
           & ./packaging/windows/scripts/collect-support-v2.ps1 -DataRoot $root -OutputRoot $out
           if($LASTEXITCODE -ne 0){throw 'Support Bundle collector failed'}
           $zip=Get-ChildItem $out -Filter '*.zip' -File | Select-Object -First 1
