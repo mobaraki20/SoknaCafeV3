@@ -45,7 +45,7 @@ jobs:
           $exe=Join-Path $env:RUNNER_TEMP 'bk2b-app/SoknaMaintenanceSupervisor.exe'
           $root=Join-Path $env:RUNNER_TEMP 'bk2b-data'
           New-Item -ItemType Directory -Force -Path $root|Out-Null
-          $bin='""'+$exe+'"" --data-root ""'+$root+'"" --port 17673'
+          $bin='"'+$exe+'" --data-root "'+$root+'" --port 17673'
           & sc.exe create $svc binPath= $bin start= demand
           if($LASTEXITCODE -ne 0){throw "Could not create isolated SCM service"}
           try {
