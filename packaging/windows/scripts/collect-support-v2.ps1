@@ -232,7 +232,73 @@ try {
           $kind=[string]$row.event_type
           if($kind -notmatch '^backup\.'){$kind=[string]$row.type}
           if($kind -match '^backup\.'){
-            $events+=([ordered]@{event_type=$kind;timestamp_utc=[string]$row.timestamp_utc})
+            $details=$row.details
+            $safeCode='';$safeErrorType=''
+            if($null-ne$details){
+              $candidate=[string]$details.code
+              if($candidate -cmatch '^[A-Z][A-Z0-9_]{0,95}
+          }
+        }catch{}
+      }
+    }
+    WriteJson (Join-Path $maintDir 'backup-events-safe.json') ([ordered]@{format='sokna-backup-events-safe-v1';events=@($events|Select-Object -Last 100)})
+  }catch{AddError 'maintenance-backup-events' $_.Exception.GetType().Name}
+
+  $completeness='complete';if($collectionErrors.Count-gt0){$completeness='partial'}
+  $summary=[ordered]@{format='sokna-windows-support-v2';schema_version=2;created_at_utc=[DateTime]::UtcNow.ToString('o');computer_name=$env:COMPUTERNAME;collector='collect-support-v2.ps1';baseline_collected=$baselineOk;completeness=$completeness;dependency_class=$dependencyClass;ports=[ordered]@{local_http_18080=$port18080;mariadb_3306=$port3306};collection_errors=$collectionErrors;note='Bounded text evidence is redacted. Secrets, pairing codes, credentials, raw DB rows and private files are excluded.'}
+  WriteJson (Join-Path $work 'support-v2-summary.json') $summary
+
+  $manifestEntries=@()
+  Get-ChildItem $work -File -Recurse|Where-Object{$_.FullName-ne(Join-Path $work 'bundle-manifest.json')}|ForEach-Object{
+    $rel=$_.FullName.Substring($work.Length+1).Replace('\','/')
+    $manifestEntries+=([ordered]@{path=$rel;size=[int64]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()})
+  }
+  WriteJson (Join-Path $work 'bundle-manifest.json') ([ordered]@{format='sokna-support-bundle-manifest-v1';created_at_utc=[DateTime]::UtcNow.ToString('o');completeness=$completeness;collection_errors=$collectionErrors;entries=$manifestEntries})
+
+  $leaks=@()
+  Get-ChildItem $work -File -Recurse|Where-Object{$_.Extension -in @('.json','.jsonl','.log','.txt')}|ForEach-Object{
+    try{$raw=Get-Content -LiteralPath $_.FullName -Raw -ErrorAction Stop;if($raw-match'(?i)ws1_[a-f0-9]{24}_[a-f0-9]{48}'){$leaks+=$_.FullName};if($raw-match'(?i)(password|passwd|pwd|token|secret|credential)\s*[:=]\s*(?!\[REDACTED\])\S+'){$leaks+=$_.FullName}}catch{}
+  }
+  if($leaks.Count-gt0){throw ('Support bundle secret-canary scan failed: '+(($leaks|Select-Object -Unique|ForEach-Object{[IO.Path]::GetFileName($_)})-join','))}
+
+  Compress-Archive -Path (Join-Path $work '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+  $hash=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant();Write-Host ("SOKNA_SUPPORT_BUNDLE="+$zip);Write-Host ("SOKNA_SUPPORT_SHA256="+$hash)
+}finally{Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue}
+){$safeCode=$candidate}
+              $candidate=[string]$details.error_type
+              if($candidate -cmatch '^[A-Za-z][A-Za-z0-9_.]{0,95}
+          }
+        }catch{}
+      }
+    }
+    WriteJson (Join-Path $maintDir 'backup-events-safe.json') ([ordered]@{format='sokna-backup-events-safe-v1';events=@($events|Select-Object -Last 100)})
+  }catch{AddError 'maintenance-backup-events' $_.Exception.GetType().Name}
+
+  $completeness='complete';if($collectionErrors.Count-gt0){$completeness='partial'}
+  $summary=[ordered]@{format='sokna-windows-support-v2';schema_version=2;created_at_utc=[DateTime]::UtcNow.ToString('o');computer_name=$env:COMPUTERNAME;collector='collect-support-v2.ps1';baseline_collected=$baselineOk;completeness=$completeness;dependency_class=$dependencyClass;ports=[ordered]@{local_http_18080=$port18080;mariadb_3306=$port3306};collection_errors=$collectionErrors;note='Bounded text evidence is redacted. Secrets, pairing codes, credentials, raw DB rows and private files are excluded.'}
+  WriteJson (Join-Path $work 'support-v2-summary.json') $summary
+
+  $manifestEntries=@()
+  Get-ChildItem $work -File -Recurse|Where-Object{$_.FullName-ne(Join-Path $work 'bundle-manifest.json')}|ForEach-Object{
+    $rel=$_.FullName.Substring($work.Length+1).Replace('\','/')
+    $manifestEntries+=([ordered]@{path=$rel;size=[int64]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()})
+  }
+  WriteJson (Join-Path $work 'bundle-manifest.json') ([ordered]@{format='sokna-support-bundle-manifest-v1';created_at_utc=[DateTime]::UtcNow.ToString('o');completeness=$completeness;collection_errors=$collectionErrors;entries=$manifestEntries})
+
+  $leaks=@()
+  Get-ChildItem $work -File -Recurse|Where-Object{$_.Extension -in @('.json','.jsonl','.log','.txt')}|ForEach-Object{
+    try{$raw=Get-Content -LiteralPath $_.FullName -Raw -ErrorAction Stop;if($raw-match'(?i)ws1_[a-f0-9]{24}_[a-f0-9]{48}'){$leaks+=$_.FullName};if($raw-match'(?i)(password|passwd|pwd|token|secret|credential)\s*[:=]\s*(?!\[REDACTED\])\S+'){$leaks+=$_.FullName}}catch{}
+  }
+  if($leaks.Count-gt0){throw ('Support bundle secret-canary scan failed: '+(($leaks|Select-Object -Unique|ForEach-Object{[IO.Path]::GetFileName($_)})-join','))}
+
+  Compress-Archive -Path (Join-Path $work '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+  $hash=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant();Write-Host ("SOKNA_SUPPORT_BUNDLE="+$zip);Write-Host ("SOKNA_SUPPORT_SHA256="+$hash)
+}finally{Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue}
+){$safeErrorType=$candidate}
+            }
+            $stamp=[string]$row.occurred_at_utc
+            if(-not$stamp){$stamp=[string]$row.timestamp_utc}
+            $events+=([ordered]@{event_type=$kind;timestamp_utc=$stamp;code=$safeCode;error_type=$safeErrorType})
           }
         }catch{}
       }
