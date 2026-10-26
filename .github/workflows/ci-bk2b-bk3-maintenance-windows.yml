@@ -1,0 +1,90 @@
+name: BK-2b BK-3 Windows Maintenance 0.3.17 laboratory
+on:
+  push:
+    branches:
+      - work/bk2b-bk3-maintenance-v4-20261026
+    paths:
+      - 'windows/maintenance/**'
+      - '.github/workflows/ci-bk2b-bk3-maintenance-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-build-lifecycle:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Source safety contract
+        shell: pwsh
+        run: |
+          python windows/maintenance/tests/bk2b_windows_source_contract.py
+          if ($LASTEXITCODE -ne 0) { throw "BK-2b source gate failed" }
+      - name: Restore and strict build on actual Windows .NET 8
+        shell: pwsh
+        run: |
+          dotnet restore windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj
+          if ($LASTEXITCODE -ne 0) { throw "Windows restore failed" }
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release --no-restore -p:TreatWarningsAsErrors=true
+          if ($LASTEXITCODE -ne 0) { throw "Windows Supervisor build failed" }
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -p:TreatWarningsAsErrors=true
+          if ($LASTEXITCODE -ne 0) { throw "Existing Update Engine regression" }
+      - name: Publish supervisor to isolated runner
+        shell: pwsh
+        run: |
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained false -o "$env:RUNNER_TEMP/bk2b-app"
+          if ($LASTEXITCODE -ne 0) { throw "Supervisor publish failed" }
+      - name: Windows SCM start stop restart and forced termination
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $svc="SoknaMaintenanceBk2bLab"
+          $exe=Join-Path $env:RUNNER_TEMP 'bk2b-app/SoknaMaintenanceSupervisor.exe'
+          $root=Join-Path $env:RUNNER_TEMP 'bk2b-data'
+          New-Item -ItemType Directory -Force -Path $root|Out-Null
+          $bin='""'+$exe+'"" --data-root ""'+$root+'"" --port 17673'
+          & sc.exe create $svc binPath= $bin start= demand
+          if($LASTEXITCODE -ne 0){throw "Could not create isolated SCM service"}
+          try {
+            & sc.exe start $svc
+            if($LASTEXITCODE -notin @(0,1056)){throw "Service failed first start"}
+            Start-Sleep -Seconds 7
+            $s=Get-Service $svc
+            if($s.Status -ne 'Running'){throw "Service not running"}
+            & sc.exe stop $svc|Out-Host
+            Start-Sleep -Seconds 5
+            if((Get-Service $svc).Status -ne 'Stopped'){throw "Service stop failed"}
+            & sc.exe start $svc|Out-Host
+            Start-Sleep -Seconds 7
+            if((Get-Service $svc).Status -ne 'Running'){throw "Service restart failed"}
+            $entry=Get-CimInstance Win32_Service -Filter "Name='$svc'"
+            if($entry.ProcessId -le 0){throw "No SCM service PID"}
+            Stop-Process -Id $entry.ProcessId -Force
+            Start-Sleep -Seconds 5
+            & sc.exe start $svc|Out-Host
+            Start-Sleep -Seconds 7
+            if((Get-Service $svc).Status -ne 'Running'){throw "Crash restart failed"}
+            Write-Host "SCM START STOP RESTART KILL RECOVERY: PASS"
+          } finally {
+            & sc.exe stop $svc|Out-Null
+            Start-Sleep -Seconds 3
+            & sc.exe delete $svc|Out-Null
+          }
+      - name: Produce read-only build evidence and hashes
+        if: always()
+        shell: pwsh
+        run: |
+          $out=Join-Path $env:RUNNER_TEMP 'bk2b-app'
+          if(Test-Path $out){
+            Get-ChildItem $out -Filter '*.exe'|Get-FileHash -Algorithm SHA256|ForEach-Object{"$($_.Hash.ToLowerInvariant())  $($_.Path)"}
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bk2b-windows-lab-logs-and-source-only
+          path: |
+            windows/maintenance/tests/bk2b_windows_source_contract.py
+          retention-days: 14
