@@ -42,6 +42,19 @@ try
         LastVerifiedBackupId = oldGood, LastVerifiedSha256 = new string('f', 64),
         LastRemoteReceiptId = "rct_" + new string('a', 40)
     };
+    // A contradictory RUNNING record with remote identity is ambiguous, never retried.
+    AtomicFile.WriteJson(diskState, prepared with {
+        State = "RUNNING", Code = "BACKUP_LOCAL_PREPARE_STARTED"
+    });
+    var restartWorker = new BackupSchedulerWorker(paths, new MaintenanceOperationStore(paths),
+        new DurableJournal(paths.JournalPath), supervisor);
+    await restartWorker.StartAsync(CancellationToken.None);
+    using (var shutdown = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+        await restartWorker.StopAsync(shutdown.Token);
+    var interruptedRemote = AtomicFile.ReadJson<BackupJobState>(diskState);
+    Check(interruptedRemote.State == "UNKNOWN" && interruptedRemote.BackupId == artifactId &&
+        interruptedRemote.NextDueUtc is null && interruptedRemote.LastVerifiedBackupId == oldGood,
+        "ambiguous interrupted remote identity remains UNKNOWN and LKG is intact");
     AtomicFile.WriteJson(diskState, prepared);
     var block = typeof(BackupSchedulerWorker).GetMethod("ChangeIfNotUnknown",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -80,6 +93,14 @@ try
     Check(refused, "unresolved artifact blocks reprovision with a new recovery secret");
     AtomicFile.WriteJson(diskState, new BackupJobState());
     new SecretStore(paths).EnsureKeys();
+    var leaseRefusal = false;
+    using (MachineMutationLease.Acquire(paths, "test-update"))
+    {
+        try { worker.ProvisionFromAdmin(policy, passphrase, fakeBearer1); }
+        catch (InvalidOperationException ex) when (ex.Message == MachineMutationLease.ConflictCode)
+        { leaseRefusal = true; }
+    }
+    Check(leaseRefusal, "shared updater mutation lease blocks backup provisioning");
     worker.ProvisionFromAdmin(policy, passphrase, fakeBearer1);
     Check(File.Exists(Path.Combine(paths.SecretsRoot, "backup-recovery-vault.dpapi")),
         "operational DPAPI cache created by existing Supervisor");
