@@ -201,6 +201,45 @@ try {
     })
   }catch{AddError 'maintenance-stable-recovery-overlay' $_.Exception.Message}
 
+  # BK-2b: whitelist-only read of durable backup state and recent fault codes.
+  # Never include DPAPI blob, policy bearer, passphrase, PHP child output, or raw SQL.
+  try {
+    $broot=Join-Path $DataRoot 'Maintenance\backups'
+    $statePath=Join-Path $broot 'schedule-state.json'
+    $safe=[ordered]@{format='sokna-backup-support-v1';evidence_available=$false;state='DISABLED';code='NO_BACKUP_STATE';pending_backup_id='';pending_sha256='';pending_size=$null;last_verified_backup_id='';last_verified_sha256='';last_remote_receipt_id='';last_remote_verified_at_utc='';last_attempt_at_utc='';next_due_utc='';recovery_copy_confirmed=$false}
+    if(Test-Path -LiteralPath $statePath -PathType Leaf){
+      $s=Get-Content -LiteralPath $statePath -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
+      $safe.evidence_available=$true
+      foreach($field in @('state','code','backupId','artifactSha256','artifactSize','lastVerifiedBackupId','lastVerifiedSha256','lastRemoteReceiptId','lastRemoteVerifiedAtUtc','lastAttemptAtUtc','nextDueUtc')){
+        $name=switch($field){'backupId'{'pending_backup_id'}'artifactSha256'{'pending_sha256'}'artifactSize'{'pending_size'}'lastVerifiedBackupId'{'last_verified_backup_id'}'lastVerifiedSha256'{'last_verified_sha256'}'lastRemoteReceiptId'{'last_remote_receipt_id'}'lastRemoteVerifiedAtUtc'{'last_remote_verified_at_utc'}'lastAttemptAtUtc'{'last_attempt_at_utc'}'nextDueUtc'{'next_due_utc'}default{$field}}
+        if($null-ne $s.$field){$safe[$name]=$s.$field}
+      }
+    }
+    $policyPath=Join-Path $broot 'schedule-policy.json'
+    if(Test-Path -LiteralPath $policyPath -PathType Leaf){
+      $policy=Get-Content -LiteralPath $policyPath -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
+      $safe.recovery_copy_confirmed=($policy.recoveryCopyExternallyConfirmed -eq $true)
+    }
+    WriteJson (Join-Path $maintDir 'backup-status-safe.json') $safe
+  }catch{AddError 'maintenance-backup-status' $_.Exception.GetType().Name}
+  try {
+    $journalPath=Join-Path $DataRoot 'Maintenance\maintenance-journal.jsonl'
+    $events=@()
+    if(Test-Path -LiteralPath $journalPath -PathType Leaf){
+      foreach($line in @(Get-Content -LiteralPath $journalPath -Tail 1000 -ErrorAction Stop)){
+        try{
+          $row=$line|ConvertFrom-Json -ErrorAction Stop
+          $kind=[string]$row.event_type
+          if($kind -notmatch '^backup\.'){$kind=[string]$row.type}
+          if($kind -match '^backup\.'){
+            $events+=([ordered]@{event_type=$kind;timestamp_utc=[string]$row.timestamp_utc})
+          }
+        }catch{}
+      }
+    }
+    WriteJson (Join-Path $maintDir 'backup-events-safe.json') ([ordered]@{format='sokna-backup-events-safe-v1';events=@($events|Select-Object -Last 100)})
+  }catch{AddError 'maintenance-backup-events' $_.Exception.GetType().Name}
+
   $completeness='complete';if($collectionErrors.Count-gt0){$completeness='partial'}
   $summary=[ordered]@{format='sokna-windows-support-v2';schema_version=2;created_at_utc=[DateTime]::UtcNow.ToString('o');computer_name=$env:COMPUTERNAME;collector='collect-support-v2.ps1';baseline_collected=$baselineOk;completeness=$completeness;dependency_class=$dependencyClass;ports=[ordered]@{local_http_18080=$port18080;mariadb_3306=$port3306};collection_errors=$collectionErrors;note='Bounded text evidence is redacted. Secrets, pairing codes, credentials, raw DB rows and private files are excluded.'}
   WriteJson (Join-Path $work 'support-v2-summary.json') $summary
