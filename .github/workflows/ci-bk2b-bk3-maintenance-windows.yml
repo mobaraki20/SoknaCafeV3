@@ -5,6 +5,7 @@ on:
       - work/bk2b-bk3-maintenance-v4-20261026
     paths:
       - 'windows/maintenance/**'
+      - 'packaging/windows/scripts/collect-support-v2.ps1'
       - '.github/workflows/ci-bk2b-bk3-maintenance-windows.yml'
   workflow_dispatch:
 permissions:
