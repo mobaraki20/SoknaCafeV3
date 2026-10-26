@@ -46,6 +46,46 @@ jobs:
         run: |
           dotnet run --project windows/maintenance/tests/Sokna.Maintenance.BackupHarness/Sokna.Maintenance.BackupHarness.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw "Backup durable state/DPAPI test failed" }
+      - name: Real Windows Support Bundle backup evidence, whitelist and redaction
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'bk2b-support-input'
+          $out=Join-Path $env:RUNNER_TEMP 'bk2b-support-output'
+          $backups=Join-Path $root 'backups'
+          New-Item -ItemType Directory -Force -Path $backups,$out | Out-Null
+          $state=@{
+            format='sokna-maintenance-backup-job-v1'
+            state='UNKNOWN';code='BACKUP_UPLOAD_OUTCOME_UNKNOWN'
+            backupId='business-lab-durable-12345678'
+            artifactSha256=('a'*64);artifactSize=2048
+            lastVerifiedBackupId='business-lab-oldgood-12345678'
+            lastRemoteReceiptId=('rct_'+('b'*40))
+            disallowedSecret='FAKE_SECRET_MUST_NOT_LEAK_97531'
+          }|ConvertTo-Json -Compress
+          [IO.File]::WriteAllText((Join-Path $backups 'schedule-state.json'),$state)
+          $journal='{"event_type":"backup.upload.unknown","occurred_at_utc":"2026-10-26T00:00:00Z","details":{"code":"BACKUP_UPLOAD_OUTCOME_UNKNOWN","error_type":"IOException","bearer":"FAKE_SECRET_MUST_NOT_LEAK_97531"}}'
+          [IO.File]::WriteAllText((Join-Path $root 'maintenance-journal.jsonl'),$journal+[Environment]::NewLine)
+          & ./packaging/windows/scripts/collect-support-v2.ps1 -DataRoot $root -OutputRoot $out
+          if($LASTEXITCODE -ne 0){throw 'Support Bundle collector failed'}
+          $zip=Get-ChildItem $out -Filter '*.zip' -File | Select-Object -First 1
+          if(-not $zip){throw 'Support Bundle ZIP missing'}
+          $expanded=Join-Path $env:RUNNER_TEMP 'bk2b-support-expanded'
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath $expanded -Force
+          $s=Get-Content (Join-Path $expanded 'maintenance/backup-status-safe.json') -Raw | ConvertFrom-Json
+          $e=Get-Content (Join-Path $expanded 'maintenance/backup-events-safe.json') -Raw | ConvertFrom-Json
+          if($s.state -ne 'UNKNOWN' -or $s.pending_backup_id -ne 'business-lab-durable-12345678'){
+            throw 'Support Bundle lacks pending identity'
+          }
+          if(-not ($e.events | Where-Object {$_.event_type -eq 'backup.upload.unknown'})){
+            throw 'Support Bundle lacks backup fault event'
+          }
+          $sRaw=Get-Content (Join-Path $expanded 'maintenance/backup-status-safe.json') -Raw
+          $eRaw=Get-Content (Join-Path $expanded 'maintenance/backup-events-safe.json') -Raw
+          if(($sRaw+$eRaw).Contains('FAKE_SECRET_MUST_NOT_LEAK_97531')){
+            throw 'Support Bundle leaked forbidden field'
+          }
+          Write-Host 'REAL WINDOWS SUPPORT BUNDLE BK2B WHITELIST: PASS'
       - name: Publish supervisor to isolated runner
         shell: pwsh
         run: |
