@@ -31,6 +31,12 @@ public sealed record BackupProvisionRequest
     public string VaultBearer { get; init; } = "";
 }
 
+public sealed record BackupCredentialRenewalRequest
+{
+    public string VaultBearer { get; init; } = "";
+    public DateTimeOffset? ExpiresAtUtc { get; init; }
+}
+
 public sealed record BackupJobState
 {
     public string Format { get; init; } = "sokna-maintenance-backup-job-v1";
@@ -123,8 +129,8 @@ public sealed class BackupSchedulerWorker : BackgroundService
     public object ProvisionFromAdmin(BackupSchedulePolicy policy, string passphrase, string bearer)
     {
         if (!policy.Enabled || !policy.RecoveryCopyExternallyConfirmed ||
-            passphrase.Length is < 16 or > 1024 ||
-            !bearer.StartsWith("vlt_", StringComparison.Ordinal) || bearer.Length is < 60 or > 145 ||
+            string.IsNullOrEmpty(passphrase) || passphrase.Length is < 16 or > 1024 ||
+            string.IsNullOrEmpty(bearer) || !bearer.StartsWith("vlt_", StringComparison.Ordinal) || bearer.Length is < 60 or > 145 ||
             policy.VaultCredentialExpiresAtUtc is null || policy.VaultCredentialExpiresAtUtc < DateTimeOffset.UtcNow.AddDays(2) ||
             !Path.IsPathFullyQualified(policy.PhpExecutable) || !File.Exists(policy.PhpExecutable) ||
             string.IsNullOrEmpty(policy.ExpectedLocalBuild) || !IsSha(policy.ExpectedManagedTreeSha256) ||
@@ -175,6 +181,59 @@ public sealed class BackupSchedulerWorker : BackgroundService
             vault_credential_expires_at_utc = policy.VaultCredentialExpiresAtUtc };
     }
 
+
+    // Rotate only the limited vault.upload credential. This is NOT an admin session,
+    // does not replace the user-held recovery passphrase, and never resets UNKNOWN.
+    public object RenewUploadCredentialFromAdmin(string bearer, DateTimeOffset? expires)
+    {
+        if (string.IsNullOrEmpty(bearer) ||
+            !bearer.StartsWith("vlt_", StringComparison.Ordinal) ||
+            bearer.Length is < 60 or > 145 ||
+            expires is null || expires <= DateTimeOffset.UtcNow.AddDays(2))
+            throw new InvalidDataException("BACKUP_RENEWAL_CONTRACT_INVALID");
+        using (MachineMutationLease.Acquire(_paths, "backup-credential-renew"))
+        {
+            lock (_gate)
+            {
+                var p = LoadPolicy() ?? throw new InvalidDataException("BACKUP_POLICY_MISSING");
+                if (!File.Exists(_sealed) || (File.GetAttributes(_sealed) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("BACKUP_SECRETS_UNAVAILABLE");
+                byte[] clear = ProtectedData.Unprotect(File.ReadAllBytes(_sealed),
+                    Encoding.UTF8.GetBytes("SOKNA-BK2B-RECOVERY-VAULT-CREDENTIALS-v1"), DataProtectionScope.LocalMachine);
+                byte[] replacement;
+                try
+                {
+                    var original = JsonSerializer.Deserialize<Dictionary<string, string>>(clear)
+                        ?? throw new InvalidDataException("BACKUP_SEALED_CREDENTIAL_INVALID");
+                    if (!original.TryGetValue("recovery_passphrase", out var pass) || pass.Length < 16)
+                        throw new InvalidDataException("BACKUP_RECOVERY_CREDENTIAL_INVALID");
+                    replacement = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string>
+                    { ["recovery_passphrase"] = pass, ["vault_bearer"] = bearer });
+                }
+                finally { CryptographicOperations.ZeroMemory(clear); }
+                var encrypted = ProtectedData.Protect(replacement,
+                    Encoding.UTF8.GetBytes("SOKNA-BK2B-RECOVERY-VAULT-CREDENTIALS-v1"), DataProtectionScope.LocalMachine);
+                CryptographicOperations.ZeroMemory(replacement);
+                var temporary = _sealed + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write,
+                        FileShare.None, 4096, FileOptions.WriteThrough))
+                    { file.Write(encrypted); file.Flush(flushToDisk: true); }
+                    File.Move(temporary, _sealed, overwrite: true);
+                }
+                finally { if (File.Exists(temporary)) File.Delete(temporary); CryptographicOperations.ZeroMemory(encrypted); }
+                AtomicFile.WriteJson(_policy, p with { VaultCredentialExpiresAtUtc = expires });
+                // Existing PREPARED/UNKNOWN artifact stays immutable. Renewing tokens never
+                // manufactures a new backup, advances the schedule or marks a receipt valid.
+                _journal.Append("backup.credential_renewed", _supervisor.InstanceId, _supervisor.InstallGeneration,
+                    new Dictionary<string, object?> { ["expires_at_utc"] = expires });
+            }
+        }
+        return new { credential_renewed = true, vault_credential_expires_at_utc = expires,
+            pending_artifact_preserved = true, secrets_returned = false };
+    }
+
     public object DisableFromAdmin()
     {
         using (MachineMutationLease.Acquire(_paths, "backup-disable"))
@@ -214,10 +273,19 @@ public sealed class BackupSchedulerWorker : BackgroundService
         {
             try { await TickAsync(stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+
             catch (Exception ex)
             {
-                // No secrets, file paths, URLs, PHP stderr or business rows in logs.
+                // Only symbolic error evidence is recorded for the standard Support Bundle.
                 Console.Error.WriteLine("Backup scheduler tick blocked: " + ex.GetType().Name);
+                try
+                {
+                    _journal.Append("backup.tick.failed", _supervisor.InstanceId, _supervisor.InstallGeneration,
+                        new Dictionary<string, object?> { ["error_type"] = ex.GetType().Name,
+                            ["code"] = "BACKUP_TICK_EXCEPTION" });
+                    ChangeIfNotUnknown("BLOCKED", "BACKUP_TICK_EXCEPTION");
+                }
+                catch (Exception) { /* evidence remains fail-closed; never launch a second job */ }
             }
             try { await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken); }
             catch (OperationCanceledException) { break; }
@@ -231,6 +299,8 @@ public sealed class BackupSchedulerWorker : BackgroundService
         if (!Validate(policy, out var code)) { ChangeIfNotUnknown("BLOCKED", code); return; }
         var previous = LoadState();
         if (previous.State == "EVIDENCE_UNAVAILABLE") return;
+        if (previous.BackupId is not null && previous.State is not ("UNKNOWN" or "PREPARED" or "UPLOADING"))
+        { Save(previous with { State = "UNKNOWN", Code = "BACKUP_PENDING_ARTIFACT_PRESERVED" }); previous = LoadState(); }
         if (previous.State == "REMOTE_VERIFIED" && previous.NextDueUtc > DateTimeOffset.UtcNow) return;
         if (previous.State == "BLOCKED" && previous.NextDueUtc > DateTimeOffset.UtcNow) return;
         // Single machine lease spans local snapshot, remote transfer AND reconciliation.
@@ -459,7 +529,13 @@ public sealed class BackupSchedulerWorker : BackgroundService
         lock (_gate)
         {
             var previous = LoadState();
-            if (previous.State is "RUNNING" or "UNKNOWN") return;
+            if (previous.State is "RUNNING" or "UNKNOWN" or "PREPARED" or "UPLOADING" ||
+                previous.BackupId is not null)
+            {
+                if (previous.State != "UNKNOWN" || previous.Code != code)
+                    Save(previous with { State = "UNKNOWN", Code = code, NextDueUtc = null });
+                return;
+            }
             if (previous.State == state && previous.Code == code) return;
             Save(previous with { State = state, Code = code, NextDueUtc = DateTimeOffset.UtcNow.AddMinutes(30) });
         }
