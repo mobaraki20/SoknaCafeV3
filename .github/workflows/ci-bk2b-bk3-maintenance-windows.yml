@@ -23,6 +23,14 @@ jobs:
         run: |
           python windows/maintenance/tests/bk2b_windows_source_contract.py
           if ($LASTEXITCODE -ne 0) { throw "BK-2b source gate failed" }
+      - name: PowerShell syntax gate for redacted Support Bundle
+        shell: pwsh
+        run: |
+          $tokens=$null; $errors=$null
+          $path=(Resolve-Path packaging/windows/scripts/collect-support-v2.ps1).Path
+          [System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count -ne 0) { throw ("Backup support script syntax failed: "+(($errors|ForEach-Object Message)-join '; ')) }
+          Write-Host "BACKUP SUPPORT BUNDLE SCRIPT PARSE: PASS"
       - name: Restore and strict build on actual Windows .NET 8
         shell: pwsh
         run: |
