@@ -203,7 +203,7 @@ try {
 
   # BK-2b whitelist-only diagnostic evidence. Never bundle DPAPI, policy, bearer or passphrase.
   try {
-    $backupRoot=Join-Path $DataRoot 'backups'
+    $backupRoot=Join-Path $DataRoot 'Maintenance\backups'
     $backupStatePath=Join-Path $backupRoot 'schedule-state.json'
     $safe=[ordered]@{format='sokna-backup-support-v1';evidence_available=$false;state='DISABLED';code='NO_BACKUP_STATE';pending_backup_id='';pending_sha256='';pending_size=$null;last_verified_backup_id='';last_verified_sha256='';last_remote_receipt_id='';last_remote_verified_at_utc='';last_attempt_at_utc='';next_due_utc=''}
     if(Test-Path -LiteralPath $backupStatePath -PathType Leaf){
@@ -226,7 +226,7 @@ try {
     WriteJson (Join-Path $maintDir 'backup-status-safe.json') $safe
   }catch{AddError 'maintenance-backup-status' $_.Exception.GetType().Name}
   try {
-    $events=@();$backupJournal=Join-Path $DataRoot 'maintenance-journal.jsonl'
+    $events=@();$backupJournal=Join-Path $DataRoot 'Maintenance\maintenance-journal.jsonl'
     if(Test-Path -LiteralPath $backupJournal -PathType Leaf){
       foreach($line in @(Get-Content -LiteralPath $backupJournal -Tail 1000 -ErrorAction Stop)){
         try {
