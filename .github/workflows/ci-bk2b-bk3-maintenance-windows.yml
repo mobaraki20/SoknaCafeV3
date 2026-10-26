@@ -108,6 +108,15 @@ jobs:
             Start-Sleep -Seconds 7
             $s=Get-Service $svc
             if($s.Status -ne 'Running'){throw "Service not running"}
+            $secretsDir=Join-Path $root 'secrets'
+            $aceList=(Get-Acl -LiteralPath $secretsDir -ErrorAction Stop).Access
+            $permitted=@('S-1-5-18','S-1-5-32-544')
+            foreach($ace in $aceList){
+              if($ace.AccessControlType -ne 'Allow'){continue}
+              $sid=$ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+              if($sid -notin $permitted){throw ('Broad Maintenance secrets ACL found: '+$sid)}
+            }
+            Write-Host "MAINTENANCE SECRETS ACL SYSTEM/ADMIN ONLY: PASS"
             & sc.exe stop $svc|Out-Host
             Start-Sleep -Seconds 5
             if((Get-Service $svc).Status -ne 'Stopped'){throw "Service stop failed"}
