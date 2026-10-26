@@ -201,6 +201,57 @@ try {
     })
   }catch{AddError 'maintenance-stable-recovery-overlay' $_.Exception.Message}
 
+  # BK-2b whitelist-only diagnostic evidence. Never bundle DPAPI, policy, bearer or passphrase.
+  try {
+    $backupRoot=Join-Path $DataRoot 'Maintenance\backups'
+    $backupStatePath=Join-Path $backupRoot 'schedule-state.json'
+    $safe=[ordered]@{format='sokna-backup-support-v1';evidence_available=$false;state='DISABLED';code='NO_BACKUP_STATE';pending_backup_id='';pending_sha256='';pending_size=$null;last_verified_backup_id='';last_verified_sha256='';last_remote_receipt_id='';last_remote_verified_at_utc='';last_attempt_at_utc='';next_due_utc=''}
+    if(Test-Path -LiteralPath $backupStatePath -PathType Leaf){
+      $s=Get-Content -LiteralPath $backupStatePath -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
+      $safe.evidence_available=$true
+      foreach($field in @('state','code')){
+        $v=[string]$s.$field
+        if($v -cmatch '^[A-Z][A-Z0-9_]{0,95}$'){$safe[$field]=$v}
+      }
+      foreach($pair in @(@('backupId','pending_backup_id'),@('artifactSha256','pending_sha256'),@('lastVerifiedBackupId','last_verified_backup_id'),@('lastVerifiedSha256','last_verified_sha256'),@('lastRemoteReceiptId','last_remote_receipt_id'))){
+        $v=[string]$s.($pair[0])
+        if($v -cmatch '^[A-Za-z0-9_-]{1,128}$'){$safe[$pair[1]]=$v}
+      }
+      if($null-ne $s.artifactSize -and [long]$s.artifactSize -ge 0){$safe.pending_size=[long]$s.artifactSize}
+      foreach($pair in @(@('lastRemoteVerifiedAtUtc','last_remote_verified_at_utc'),@('lastAttemptAtUtc','last_attempt_at_utc'),@('nextDueUtc','next_due_utc'))){
+        $v=[string]$s.($pair[0]);$when=[datetimeoffset]::MinValue
+        if([datetimeoffset]::TryParse($v,[ref]$when)){$safe[$pair[1]]=$when.ToUniversalTime().ToString('o')}
+      }
+    }
+    WriteJson (Join-Path $maintDir 'backup-status-safe.json') $safe
+  }catch{AddError 'maintenance-backup-status' $_.Exception.GetType().Name}
+  try {
+    $events=@();$backupJournal=Join-Path $DataRoot 'Maintenance\maintenance-journal.jsonl'
+    if(Test-Path -LiteralPath $backupJournal -PathType Leaf){
+      foreach($line in @(Get-Content -LiteralPath $backupJournal -Tail 1000 -ErrorAction Stop)){
+        try {
+          $row=$line|ConvertFrom-Json -ErrorAction Stop
+          $kind=[string]$row.event_type
+          if($kind -notmatch '^backup\.'){$kind=[string]$row.type}
+          if($kind -notmatch '^backup\.[a-z0-9_.-]{1,90}$'){continue}
+          $details=$row.details;$safeCode='';$safeType=''
+          if($null-ne $details){
+            $v=[string]$details.code
+            if($v -cmatch '^[A-Z][A-Z0-9_]{0,95}$'){$safeCode=$v}
+            $v=[string]$details.error_type
+            if($v -cmatch '^[A-Za-z][A-Za-z0-9_.]{0,95}$'){$safeType=$v}
+          }
+          $stamp=[string]$row.occurred_at_utc
+          if(-not $stamp){$stamp=[string]$row.timestamp_utc}
+          $when=[datetimeoffset]::MinValue
+          if(-not [datetimeoffset]::TryParse($stamp,[ref]$when)){$stamp=''}else{$stamp=$when.ToUniversalTime().ToString('o')}
+          $events+=([ordered]@{event_type=$kind;timestamp_utc=$stamp;code=$safeCode;error_type=$safeType})
+        }catch{}
+      }
+    }
+    WriteJson (Join-Path $maintDir 'backup-events-safe.json') ([ordered]@{format='sokna-backup-events-safe-v1';events=@($events|Select-Object -Last 100)})
+  }catch{AddError 'maintenance-backup-events' $_.Exception.GetType().Name}
+
   $completeness='complete';if($collectionErrors.Count-gt0){$completeness='partial'}
   $summary=[ordered]@{format='sokna-windows-support-v2';schema_version=2;created_at_utc=[DateTime]::UtcNow.ToString('o');computer_name=$env:COMPUTERNAME;collector='collect-support-v2.ps1';baseline_collected=$baselineOk;completeness=$completeness;dependency_class=$dependencyClass;ports=[ordered]@{local_http_18080=$port18080;mariadb_3306=$port3306};collection_errors=$collectionErrors;note='Bounded text evidence is redacted. Secrets, pairing codes, credentials, raw DB rows and private files are excluded.'}
   WriteJson (Join-Path $work 'support-v2-summary.json') $summary
