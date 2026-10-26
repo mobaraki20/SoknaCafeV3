@@ -258,7 +258,30 @@ public sealed class BackupSchedulerWorker : BackgroundService
             {
                 var previous = LoadState();
                 if (previous.State == "RUNNING")
-                    Save(previous with { State = "UNKNOWN", Code = "BACKUP_RESTART_OUTCOME_UNKNOWN" });
+                {
+                    // RUNNING is used exclusively by the local-only prepare phase.
+                    // When no artifact identity has been emitted, no upload was authorized;
+                    // recover with a bounded delay instead of an unreconcilable UNKNOWN.
+                    // Any other interrupted state remains UNKNOWN (fail-closed).
+                    if (previous.Code == "BACKUP_LOCAL_PREPARE_STARTED" &&
+                        previous.BackupId is null && previous.ArtifactSha256 is null &&
+                        previous.ArtifactSize is null && previous.ArtifactInstallationId is null)
+                    {
+                        Save(previous with { State = "BLOCKED",
+                            Code = "BACKUP_LOCAL_PREPARE_INTERRUPTED",
+                            OperationId = null,
+                            NextDueUtc = DateTimeOffset.UtcNow.AddMinutes(30) });
+                        _journal.Append("backup.prepare.interrupted", _supervisor.InstanceId,
+                            _supervisor.InstallGeneration,
+                            new Dictionary<string, object?> {
+                                ["code"] = "BACKUP_LOCAL_PREPARE_INTERRUPTED" });
+                    }
+                    else
+                    {
+                        Save(previous with { State = "UNKNOWN", Code = "BACKUP_RESTART_OUTCOME_UNKNOWN",
+                            NextDueUtc = null });
+                    }
+                }
             }
         }
         catch (Exception ex)
