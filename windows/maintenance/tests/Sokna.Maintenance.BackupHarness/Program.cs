@@ -13,6 +13,24 @@ try
     var worker = new BackupSchedulerWorker(paths, new MaintenanceOperationStore(paths),
         new DurableJournal(paths.JournalPath), supervisor);
     var diskState = Path.Combine(root, "backups", "schedule-state.json");
+    // Crash during local-only preparation cannot have transmitted to Public.
+    // It must recover after a bounded delay without indefinitely locking UNKNOWN.
+    AtomicFile.WriteJson(diskState, new BackupJobState {
+        State = "RUNNING", Code = "BACKUP_LOCAL_PREPARE_STARTED",
+        OperationId = "lab-crashed-local-preparation", LastAttemptAtUtc = DateTimeOffset.UtcNow,
+        LastVerifiedBackupId = "business-known-good-before-crash",
+        LastVerifiedSha256 = new string('e', 64)
+    });
+    await worker.StartAsync(CancellationToken.None);
+    using (var shutdown = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+        await worker.StopAsync(shutdown.Token);
+    var interrupted = AtomicFile.ReadJson<BackupJobState>(diskState);
+    Check(interrupted.State == "BLOCKED" &&
+        interrupted.Code == "BACKUP_LOCAL_PREPARE_INTERRUPTED" &&
+        interrupted.BackupId is null && interrupted.NextDueUtc > DateTimeOffset.UtcNow &&
+        interrupted.LastVerifiedBackupId == "business-known-good-before-crash",
+        "interrupted local-only prepare retries safely and preserves LKG");
+
     var artifactId = "business-incident-20261026-01234567";
     var sha = new string('a', 64);
     var oldGood = "business-known-good-0123456789";
