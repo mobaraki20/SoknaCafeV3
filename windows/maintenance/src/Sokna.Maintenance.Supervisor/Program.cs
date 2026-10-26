@@ -155,7 +155,8 @@ app.Use(async (context, next) =>
     var isProductionRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/recover", StringComparison.Ordinal);
     var isBackupProvision = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/backups/configure", StringComparison.Ordinal);
     var isBackupDisable = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/backups/disable", StringComparison.Ordinal);
-    var isMutation = isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isLocalCodeOnlyActivation || isLocalCodeOnlyRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery || isBackupProvision || isBackupDisable;
+    var isBackupRenewal = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/backups/renew-upload-credential", StringComparison.Ordinal);
+    var isMutation = isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isLocalCodeOnlyActivation || isLocalCodeOnlyRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery || isBackupProvision || isBackupDisable || isBackupRenewal;
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
@@ -212,7 +213,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalCodeOnlyActivation || isStageMutation || isBackupProvision || isBackupDisable) && keyId != "web-adapter")
+    if ((isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalCodeOnlyActivation || isStageMutation || isBackupProvision || isBackupDisable || isBackupRenewal) && keyId != "web-adapter")
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
@@ -233,7 +234,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isLocalCodeOnlyActivation || isStageMutation || isProductionMigration || isBackupProvision || isBackupDisable || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
+    if ((isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isLocalCodeOnlyActivation || isStageMutation || isProductionMigration || isBackupProvision || isBackupDisable || isBackupRenewal || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "acl_pending", "WEB_ADAPTER_ACL_PENDING", false,
             new { acl_state = aclEvidence.State, service_name = aclEvidence.ServiceName });
@@ -1364,6 +1365,36 @@ app.MapPost("/v1/backups/configure", async context =>
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "blocked",
             "BACKUP_SECRETS_STORAGE_UNAVAILABLE", false, new { error_type = ex.GetType().Name });
+    }
+});
+// Limited vault.upload bearer renewal, restricted to the signed Local admin adapter.
+// Public credential *issuance* and permission checks remain Public/Local owned.
+app.MapPost("/v1/backups/renew-upload-credential", async context =>
+{
+    try
+    {
+        var bytes = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<BackupCredentialRenewalRequest>(bytes, AtomicFile.JsonOptions)
+            ?? throw new InvalidDataException("BACKUP_RENEWAL_REQUEST_INVALID");
+        var worker = app.Services.GetRequiredService<BackupSchedulerWorker>();
+        var response = worker.RenewUploadCredentialFromAdmin(request.VaultBearer, request.ExpiresAtUtc);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, "credential_updated",
+            "BACKUP_SCOPED_CREDENTIAL_UPDATED", false, response);
+    }
+    catch (InvalidOperationException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false, "blocked",
+            "MACHINE_MUTATION_LEASE_BUSY", true, new { });
+    }
+    catch (Exception ex) when (ex is JsonException or InvalidDataException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false, "rejected",
+            "BACKUP_RENEWAL_REQUEST_INVALID", false, new { });
+    }
+    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.Cryptography.CryptographicException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "blocked",
+            "BACKUP_RENEWAL_STORAGE_UNAVAILABLE", true, new { error_type = ex.GetType().Name });
     }
 });
 app.MapPost("/v1/backups/disable", async context =>
