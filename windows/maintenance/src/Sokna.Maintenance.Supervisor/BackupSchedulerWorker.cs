@@ -130,9 +130,9 @@ public sealed class BackupSchedulerWorker : BackgroundService
     {
         if (!policy.Enabled || !policy.RecoveryCopyExternallyConfirmed ||
             string.IsNullOrEmpty(passphrase) || passphrase.Length is < 16 or > 1024 ||
-            string.IsNullOrEmpty(bearer) || !bearer.StartsWith("vlt_", StringComparison.Ordinal) || bearer.Length is < 60 or > 145 ||
+            string.IsNullOrEmpty(bearer) || !ValidVaultBearer(bearer) ||
             policy.VaultCredentialExpiresAtUtc is null || policy.VaultCredentialExpiresAtUtc < DateTimeOffset.UtcNow.AddDays(2) ||
-            !Path.IsPathFullyQualified(policy.PhpExecutable) || !File.Exists(policy.PhpExecutable) ||
+            !ValidPhpCliPath(policy.PhpExecutable) ||
             string.IsNullOrEmpty(policy.ExpectedLocalBuild) || !IsSha(policy.ExpectedManagedTreeSha256) ||
             string.IsNullOrEmpty(policy.SourceInstallationId) ||
             !Uri.TryCreate(policy.RemoteVaultEndpoint, UriKind.Absolute, out var u) ||
@@ -187,8 +187,7 @@ public sealed class BackupSchedulerWorker : BackgroundService
     public object RenewUploadCredentialFromAdmin(string bearer, DateTimeOffset? expires)
     {
         if (string.IsNullOrEmpty(bearer) ||
-            !bearer.StartsWith("vlt_", StringComparison.Ordinal) ||
-            bearer.Length is < 60 or > 145 ||
+            !ValidVaultBearer(bearer) ||
             expires is null || expires <= DateTimeOffset.UtcNow.AddDays(2))
             throw new InvalidDataException("BACKUP_RENEWAL_CONTRACT_INVALID");
         using (MachineMutationLease.Acquire(_paths, "backup-credential-renew"))
@@ -455,7 +454,7 @@ public sealed class BackupSchedulerWorker : BackgroundService
         if (p.VaultCredentialExpiresAtUtc is null || p.VaultCredentialExpiresAtUtc <= DateTimeOffset.UtcNow.AddHours(24))
             { code = "VAULT_UPLOAD_CREDENTIAL_EXPIRED_OR_RENEWAL_DUE"; return false; }
         if (!File.Exists(_sealed)) { code = "RECOVERY_CREDENTIAL_NOT_PROVISIONED"; return false; }
-        if (!Path.IsPathFullyQualified(p.PhpExecutable) || !File.Exists(p.PhpExecutable))
+        if (!ValidPhpCliPath(p.PhpExecutable))
             { code = "PHP_CLI_NOT_VERIFIED"; return false; }
         if (string.IsNullOrWhiteSpace(p.ExpectedLocalBuild) || !IsSha(p.ExpectedManagedTreeSha256)
             || string.IsNullOrWhiteSpace(p.SourceInstallationId))
@@ -514,6 +513,23 @@ public sealed class BackupSchedulerWorker : BackgroundService
     }
 
     private static bool IsSha(string x) => x.Length == 64 && x.All(char.IsAsciiHexDigit);
+    private static bool ValidVaultBearer(string? bearer)
+    {
+        if (string.IsNullOrEmpty(bearer) || bearer.Length is < 61 or > 125 ||
+            !bearer.StartsWith("vlt_", StringComparison.Ordinal) || bearer.IndexOf('.') != 28)
+            return false;
+        return bearer.AsSpan(4, 24).IndexOfAnyExcept("0123456789abcdef") < 0 &&
+            bearer.AsSpan(29).Length is >= 32 and <= 96 &&
+            bearer.AsSpan(29).ToArray().All(static c =>
+                char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+    }
+    private static bool ValidPhpCliPath(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || !Path.IsPathFullyQualified(path) ||
+            !string.Equals(Path.GetFileName(path), "php.exe", StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(path)) return false;
+        return (File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0;
+    }
     private BackupSchedulePolicy? LoadPolicy() => File.Exists(_policy)
         ? AtomicFile.ReadJson<BackupSchedulePolicy>(_policy) : null;
     private BackupJobState LoadState()
@@ -549,6 +565,10 @@ internal static class BackupPhpJobRunner
     public static async Task<BackupJobReceipt> RunAsync(LocalInstallLayout layout, BackupSchedulePolicy policy,
         string sealedPath, string mode, BackupJobReceipt? artifact, CancellationToken stop)
     {
+        if (!string.Equals(Path.GetFileName(policy.PhpExecutable), "php.exe", StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(policy.PhpExecutable) ||
+            (File.GetAttributes(policy.PhpExecutable) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("BACKUP_PHP_CLI_UNTRUSTED");
         var sourceScript = Path.GetFullPath(Path.Combine(layout.WebRoot, "tools", "maintenance-backup-job.php"));
         if (!File.Exists(sourceScript) || (File.GetAttributes(sourceScript) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("BACKUP_CLI_NOT_IN_MANAGED_SOURCE");
