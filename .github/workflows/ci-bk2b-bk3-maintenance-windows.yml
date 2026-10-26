@@ -32,6 +32,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Windows Supervisor build failed" }
           dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -p:TreatWarningsAsErrors=true
           if ($LASTEXITCODE -ne 0) { throw "Existing Update Engine regression" }
+      - name: Windows durable backup state and DPAPI credential fault harness
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.BackupHarness/Sokna.Maintenance.BackupHarness.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Backup durable state/DPAPI test failed" }
       - name: Publish supervisor to isolated runner
         shell: pwsh
         run: |
