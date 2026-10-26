@@ -127,6 +127,9 @@ builder.Services.AddHostedService<LocalSlotAdoptionWorker>();
 builder.Services.AddSingleton(codeOnlyActivationWorker);
 builder.Services.AddHostedService(provider =>
     provider.GetRequiredService<LocalCodeOnlyActivationWorker>());
+// BK-2b: no new Windows service or engine; same Supervisor process.
+builder.Services.AddSingleton(new BackupSchedulerWorker(paths, operations, journal, state));
+builder.Services.AddHostedService(provider => provider.GetRequiredService<BackupSchedulerWorker>());
 var app = builder.Build();
 
 app.Use(async (context, next) =>
@@ -150,7 +153,9 @@ app.Use(async (context, next) =>
     var isLocalSlotMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/home-cycle", StringComparison.Ordinal);
     var isProductionMigration = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/migrate", StringComparison.Ordinal);
     var isProductionRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/recover", StringComparison.Ordinal);
-    var isMutation = isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isLocalCodeOnlyActivation || isLocalCodeOnlyRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery;
+    var isBackupProvision = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/backups/configure", StringComparison.Ordinal);
+    var isBackupDisable = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/backups/disable", StringComparison.Ordinal);
+    var isMutation = isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isLocalCodeOnlyActivation || isLocalCodeOnlyRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery || isBackupProvision || isBackupDisable;
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
@@ -207,7 +212,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalCodeOnlyActivation || isStageMutation) && keyId != "web-adapter")
+    if ((isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalCodeOnlyActivation || isStageMutation || isBackupProvision || isBackupDisable) && keyId != "web-adapter")
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
@@ -228,7 +233,7 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if ((isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isLocalCodeOnlyActivation || isStageMutation || isProductionMigration || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
+    if ((isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isLocalCodeOnlyActivation || isStageMutation || isProductionMigration || isBackupProvision || isBackupDisable || (isLocalSlotMutation && keyId == "web-adapter")) && aclEvidence.State != "ready")
     {
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "acl_pending", "WEB_ADAPTER_ACL_PENDING", false,
             new { acl_state = aclEvidence.State, service_name = aclEvidence.ServiceName });
@@ -1324,10 +1329,62 @@ app.MapPost("/v1/local-slots/home-cycle", async context =>
 
 app.MapGet("/v1/backups", async context =>
 {
-    await WriteEnvelope(context, StatusCodes.Status200OK, true, "not_implemented_yet", "BACKUP_ENGINE_PENDING", false, new
+    var worker = app.Services.GetRequiredService<BackupSchedulerWorker>();
+    await WriteEnvelope(context, StatusCodes.Status200OK, true, "source_qualification_pending",
+        "BACKUP_WINDOWS_BUILD_AND_UAT_PENDING", false, worker.ReadStatus());
+});
+
+// This is a privileged INTERNAL adapter endpoint, not a browser endpoint.
+// The Local web adapter MUST verify an interactive administrator session,
+// retyped offline recovery secret and explicit owner-copy acknowledgement.
+app.MapPost("/v1/backups/configure", async context =>
+{
+    try
     {
-        local_backups = Array.Empty<object>(), remote_transfer = (object?)null, protection_state = "not_implemented_yet"
-    });
+        var bytes = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<BackupProvisionRequest>(bytes, AtomicFile.JsonOptions)
+            ?? throw new InvalidDataException("BACKUP_PROVISION_REQUEST_INVALID");
+        var policy = request.Policy ?? throw new InvalidDataException("BACKUP_POLICY_MISSING");
+        var worker = app.Services.GetRequiredService<BackupSchedulerWorker>();
+        var result = worker.ProvisionFromAdmin(policy, request.RecoveryPassphrase, request.VaultBearer);
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, "configured",
+            "BACKUP_PROVISIONED_NOT_YET_VERIFIED", false, result);
+    }
+    catch (InvalidOperationException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false, "blocked",
+            "BACKUP_PROVISION_BLOCKED_PENDING_ARTIFACT_OR_LEASE", false, new { });
+    }
+    catch (Exception ex) when (ex is InvalidDataException or JsonException or ArgumentException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false, "rejected",
+            "BACKUP_PROVISION_REQUEST_INVALID", false, new { });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "blocked",
+            "BACKUP_SECRETS_STORAGE_UNAVAILABLE", false, new { error_type = ex.GetType().Name });
+    }
+});
+app.MapPost("/v1/backups/disable", async context =>
+{
+    try
+    {
+        var worker = app.Services.GetRequiredService<BackupSchedulerWorker>();
+        var result = worker.DisableFromAdmin();
+        await WriteEnvelope(context, StatusCodes.Status200OK, true, "disabled",
+            "BACKUP_SCHEDULE_DISABLED", false, result);
+    }
+    catch (InvalidOperationException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false, "blocked",
+            "MACHINE_MUTATION_LEASE_BUSY", false, new { });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false, "blocked",
+            "BACKUP_DISABLE_EVIDENCE_UNAVAILABLE", false, new { error_type = ex.GetType().Name });
+    }
 });
 
 app.MapGet("/v1/recovery", async context =>
