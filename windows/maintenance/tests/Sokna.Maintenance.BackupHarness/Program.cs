@@ -39,9 +39,13 @@ try
     Check(unknown.State == "UNKNOWN" && unknown.BackupId == artifactId,
         "repeated errors cannot launch a new backup");
 
+    var mockBin=Path.Combine(root,"test-runtime"); Directory.CreateDirectory(mockBin);
+    // Fake name for path validation only; this test never launches a PHP subprocess.
+    var fakePhp=Path.Combine(mockBin,"php.exe");
+    File.Copy(Path.Combine(Environment.SystemDirectory,"cmd.exe"),fakePhp);
     var policy = new BackupSchedulePolicy {
         Enabled = true, RecoveryCopyExternallyConfirmed = true, IntervalHours = 24,
-        PhpExecutable = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+        PhpExecutable = fakePhp,
         RemoteVaultEndpoint = "https://backup.invalid/maintenance.php",
         ExpectedLocalBuild = "test-build",
         ExpectedManagedTreeSha256 = sha,
