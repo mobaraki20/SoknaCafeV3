@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Source guards only; runtime verification lives in the Windows runner."""
 from pathlib import Path
-s=(Path(__file__).resolve().parents[2]/"src/Sokna.Maintenance.Supervisor/BackupSchedulerWorker.cs").read_text()
-p=(Path(__file__).resolve().parents[2]/"src/Sokna.Maintenance.Supervisor/Program.cs").read_text()
+s=(Path(__file__).resolve().parents[1]/"src/Sokna.Maintenance.Supervisor/BackupSchedulerWorker.cs").read_text()
+p=(Path(__file__).resolve().parents[1]/"src/Sokna.Maintenance.Supervisor/Program.cs").read_text()
 checks={
 "hosted in existing supervisor": 'AddHostedService(provider => provider.GetRequiredService<BackupSchedulerWorker>())' in p,
 "shared updater mutex": 'MachineMutationLease.Acquire(_paths, "backup-scheduled")' in s,
