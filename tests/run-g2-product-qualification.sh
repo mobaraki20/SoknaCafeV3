@@ -57,6 +57,9 @@ reset_db
 
 echo '==> tests/local-g2-observability-selftest.php'
 reset_db
+# G2 observes the current fully migrated schema. Build it from the audited
+# catalog-aware migration selftest, rather than invoking guarded 0059 on an empty DB.
+"$PHP_BIN" tests/local-mysql-migration-selftest.php >/dev/null
 "$PHP_BIN" tests/local-g2-observability-selftest.php
 
 echo '==> tests/local-g2-update-lifecycle-selftest.php'
