@@ -73,6 +73,18 @@ jobs:
         run: php tests/local-mysql-migration-selftest.php
       - name: R16 default catalog and real DB contracts
         run: php tests/default-content-real-db-selftest.php
+      - name: Reset disposable test schema before fresh-install G2 test
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$SOKNA_TEST_DB_NAME" = "sokna_m2"
+          php -r '
+            $pdo=new PDO("mysql:host=".getenv("SOKNA_TEST_DB_HOST").";port=".getenv("SOKNA_TEST_DB_PORT").";charset=utf8mb4",
+              getenv("SOKNA_TEST_DB_ROOT_USER"),getenv("SOKNA_TEST_DB_ROOT_PASS"),
+              [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+            $pdo->exec("DROP DATABASE IF EXISTS `sokna_m2`");
+            $pdo->exec("CREATE DATABASE `sokna_m2` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+          '
       - name: R16 setup lifecycle against real DB
         run: php tests/local-g2-browser-setup-selftest.php
       - name: R16 backup/recovery and release contracts
