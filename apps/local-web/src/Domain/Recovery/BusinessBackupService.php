@@ -206,7 +206,12 @@ final class BusinessBackupService
     {
         if(!$row)return;$cols=array_keys($row);$quoted=array_map(static fn(string $c):string=>'`'.str_replace('`','``',$c).'`',$cols);
         $stmt=$this->pdo->prepare('INSERT INTO `'.str_replace('`','``',$table).'`('.implode(',',$quoted).') VALUES('.implode(',',array_fill(0,count($cols),'?')).')');
-        $stmt->execute(array_values($row));
+        try {$stmt->execute(array_values($row));}
+        catch (\PDOException $error) {
+            // Never expose a restored business row; table name and SQLSTATE are enough for support.
+            throw new RecoveryException('restore_row_conflict','بازیابی داده جدول '.$table.' کامل نشد.',409,
+                ['table'=>$table,'sqlstate'=>(string)$error->getCode()]);
+        }
     }
 
     private function assertEmptyTarget(): void
