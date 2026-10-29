@@ -37,7 +37,9 @@ reset_local_db
 "$PHP_BIN" tests/local-m10-release-selftest.php
 "$PHP_BIN" tests/local-g2-support-bundle-pure-selftest.php
 "$PHP_BIN" tests/local-g3-public-reenroll-pure-selftest.php
-python3 apps/local-web/tests/g2-observability-contract.py
+# G2.2 observability DB self-test runs in run-g2-product-qualification.sh above.
+# Preserve its coverage by checking the maintained G2 qualification contract.
+python3 tests/g2-product-qualification-contract.py
 python3 tests/m7-runtime-gate.py
 python3 tests/m8-print-agent-gate.py
 python3 tests/m9-packaging-gate.py
