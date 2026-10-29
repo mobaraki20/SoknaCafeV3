@@ -116,7 +116,18 @@ python3 tests/validate-v3-foundation.py --component local
 python3 tests/component-registry-gate.py
 python3 tests/g1-real-db-qualification-contract.py
 python3 tests/f1-real-db-qualification-contract.py
-for test_file in apps/local-web/tests/*.py; do python3 "$test_file"; done
+failed_local_contracts=()
+for test_file in apps/local-web/tests/*.py; do
+  if ! python3 "$test_file"; then
+    failed_local_contracts+=("$test_file")
+    echo "FAIL: $test_file" >&2
+  fi
+done
+if (( ${#failed_local_contracts[@]} > 0 )); then
+  printf 'Local source-contract failures (%d):\n' "${#failed_local_contracts[@]}" >&2
+  printf ' - %s\n' "${failed_local_contracts[@]}" >&2
+  exit 1
+fi
 find apps/local-web -type f -name '*.php' -print0 | xargs -0 -n1 "$PHP_BIN" -l >/dev/null
 find apps/local-web/public -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
