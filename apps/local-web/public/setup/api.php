@@ -6,6 +6,7 @@ require_once dirname(__DIR__,2).'/src/Setup/SetupException.php';
 require_once dirname(__DIR__,2).'/src/Setup/BrowserSetupService.php';
 
 use Sokna\Local\Setup\BrowserSetupService;
+use Sokna\Local\Core\LocalEndpoint;
 use Sokna\Local\Setup\SetupException;
 
 header('Content-Type: application/json; charset=utf-8');
@@ -16,13 +17,14 @@ session_name('sokna_setup');session_set_cookie_params(['httponly'=>true,'secure'
 $_SESSION['csrf']=$_SESSION['csrf']??bin2hex(random_bytes(24));
 $local=dirname(__DIR__,2);$root=dirname($local);$service=new BrowserSetupService($root,$local);
 $action=(string)($_GET['action']??'status');
+$canonical=LocalEndpoint::fromServer($_SERVER);
 
 function setup_json(array $payload,int $status=200): never { http_response_code($status);echo json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);exit; }
 function setup_body(): array { $raw=file_get_contents('php://input');$v=json_decode((string)$raw,true);return is_array($v)?$v:[]; }
 function setup_csrf(array $body): void { if(!hash_equals((string)($_SESSION['csrf']??''),(string)($body['csrf']??'')))throw new SetupException('csrf_invalid','نشست راه‌اندازی معتبر نیست. صفحه را تازه کن و دوباره تلاش کن.',403); }
 
 try {
-    if($action==='status') setup_json(['success'=>true,'csrf'=>$_SESSION['csrf'],'setup'=>$service->status(),'preflight'=>$service->preflight()]);
+    if($action==='status') setup_json(['success'=>true,'csrf'=>$_SESSION['csrf'],'canonical'=>$canonical,'setup'=>$service->status(),'preflight'=>$service->preflight()]);
     if($_SERVER['REQUEST_METHOD']!=='POST') throw new SetupException('method_not_allowed','روش درخواست معتبر نیست.',405);
     $body=setup_body();setup_csrf($body);
     if($action==='preflight') setup_json(['success'=>true,'preflight'=>$service->preflight((string)($body['data_dir']??''))]);
