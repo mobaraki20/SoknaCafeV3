@@ -65,6 +65,14 @@ try{$core->inventoryCounts()->finalize($openingId,$operator);}
 catch(InventoryException $e){$opsFinalizeDenied=$e->errorCode==='forbidden';}
 m55_assert($opsFinalizeDenied,'inventory_operations user finalized without inventory_finalize');
 
+// A full opening count must explicitly confirm zero stock for every untouched item.
+foreach ($pdo->query("SELECT id,updated_at FROM inventory_count_lines WHERE session_id={$openingId} AND actual_quantity IS NULL")->fetchAll(PDO::FETCH_ASSOC) as $unreviewed) {
+    $core->inventoryCounts()->updateLine([
+        'session_id'=>$openingId,'line_id'=>(int)$unreviewed['id'],
+        'expected_version'=>(string)$unreviewed['updated_at'],
+        'actual_major'=>'0','opening_total_cost'=>'0','note'=>'CI: reviewed empty stock',
+    ],$operator);
+}
 $openingFinal=$core->inventoryCounts()->finalize($openingId,$finalizer);
 m55_assert($openingFinal['movements']===1&&$openingFinal['differences']===1,'opening count did not create canonical movement');
 $init=(string)$pdo->query("SELECT setting_value FROM settings WHERE setting_key='inventory_initialized'")->fetchColumn();
