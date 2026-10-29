@@ -6,6 +6,8 @@ namespace Sokna\Local\Setup;
 use PDO;
 use Throwable;
 use Sokna\Local\UI\FontRuntime;
+use Sokna\Local\Core\LocalEndpoint;
+require_once dirname(__DIR__).'/Core/LocalEndpoint.php';
 
 final class BrowserSetupService
 {
@@ -494,22 +496,26 @@ final class BrowserSetupService
         $statePath=$this->packageRoot.DIRECTORY_SEPARATOR.'Infrastructure'.DIRECTORY_SEPARATOR.'infrastructure-state.json';
         if(is_file($statePath)){
             try{
-                $raw=@file_get_contents($statePath);$state=is_string($raw)?json_decode($raw,true,32,JSON_THROW_ON_ERROR):null;
+                $raw=@file_get_contents($statePath);
+                $state=is_string($raw)?json_decode($raw,true,32,JSON_THROW_ON_ERROR):null;
                 if(is_array($state)){
                     $endpoint=(array)($state['endpoints']['local_web']??[]);
                     foreach([(string)($endpoint['origin']??''),(string)($endpoint['base_url']??'')] as $candidate){
-                        $validated=$this->normalizeLocalBaseUrl($candidate);
-                        if($validated!=='')return $validated;
+                        try{return self::normalizeLocalBaseUrl($candidate);}catch(SetupException){}
                     }
                 }
             }catch(Throwable){}
         }
-        return \Sokna\Local\Core\LocalEndpoint::fromServer($_SERVER)['origin'];
+        try{return LocalEndpoint::fromServer($_SERVER);}
+        catch(\InvalidArgumentException){return 'http://127.0.0.1:18080/';}
     }
 
-    private function normalizeLocalBaseUrl(string $value): string
+    /** Public only for setup contract verification; does not mutate installation state. */
+    public static function normalizeLocalBaseUrl(string $value): string
     {
-        return \Sokna\Local\Core\LocalEndpoint::normalizeOrigin($value);
+        $origin=LocalEndpoint::normalizeOrigin($value);
+        if($origin==='')throw new SetupException('local_endpoint_invalid','آدرس Local باید Loopback با پورت ۱۰۲۴ تا ۶۵۵۳۵ باشد.',422);
+        return $origin;
     }
 
     private function adoptLegacyRootFilesIfNeeded(): void
