@@ -125,14 +125,14 @@ need("default_content.v2" in setup and "'menus'" in setup and "'media'" in setup
 need('defaultContentSeeder()->seed(' in machine,'setup-machine seed hook missing')
 
 projection=(R/'apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php').read_text(encoding='utf-8')
-need("c.audience<>'staff_only'" in projection,'Public category staff-only filter is not V3-safe')
+need("c.guest_visible=1" in projection and "i.guest_visible=1" in projection,'Public projection fails to exclude non-guest categories/items')
 need("'icon_key'" in projection and "'image_path'" in projection and 'publicMediaForSource' in projection,'category icon/media Public projection missing')
 renderer=(R/'apps/public/src/Guest/GuestPageRenderer.php').read_text(encoding='utf-8')
 need('/assets/category-icons.svg#icon-' in renderer,'Public category icon renderer missing')
 need('sg-category-media' in renderer,'Public category image renderer missing')
 need('/assets/favicon-32.png' in renderer and '/assets/favicon-180.png' in renderer,'Public favicon wiring missing')
 shell=(R/'apps/local-web/src/UI/ProductShell.php').read_text(encoding='utf-8')
-need('/assets/favicon-32.png' in shell and '/assets/favicon-180.png' in shell,'Local favicon wiring missing')
+need("$brandAsset('icon-32')" in shell and "$brandAsset('icon-180')" in shell,'Local per-installation brand favicon wiring missing')
 
 # Exact legacy edge-case mapping remains intentional and visible in the source data.
 other=[x for x in doc['items'] if x.get('preparation_station')=='other']
