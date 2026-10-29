@@ -92,7 +92,7 @@ internal static class ReceiptRenderer
                 {
                     var quantity=FaDigits(Get(item,"quantity","1"));var name=Get(item,"name","—");Text(quantity+" × "+name,Math.Max(28,_table),true,StringAlignment.Far,_density=="comfortable"?3:2);
                     if(item.TryGetProperty("previous_quantity",out var previous)&&previous.ValueKind!=JsonValueKind.Null){var oldQuantity=FaDigits(previous.ToString());BoxText($"{Label("adjustment","اصلاح")}: قبلی {oldQuantity} ← جدید {quantity}",Math.Max(17,_base-3),true);}
-                    var mode=Get(item,"fulfillment_mode","");if(mode=="takeaway")BoxText(Label("takeaway","بیرون‌بر"),Math.Max(18,_base-2),true);
+                    var mode=Get(item,"fulfillment_mode","");if(mode=="takeaway")BoxText(Label("takeaway","بیرون‌بر"),Math.Max(18,_base-2),true);else if(mode=="dine_in")BoxText(Label("dine_in","داخل کافه"),Math.Max(18,_base-2),true);
                     var note=Get(item,"note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,Math.Max(18,_base-2),true);Hairline();
                 }
             }
