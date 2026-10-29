@@ -100,6 +100,28 @@ jobs:
         run: php tests/local-g2-browser-setup-selftest.php
       - name: R16 backup/recovery and release contracts
         run: php tests/local-m10-release-selftest.php
+      # M10 deliberately leaves synthetic 9998_m10_crash in its disposable DB.
+      # G2.3 requires a clean, fully migrated baseline; never disable lineage guards.
+      - name: Reset M10 crash-migration fixture before G2.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$SOKNA_TEST_DB_NAME" = "sokna_m2"
+          php -r '
+            $pdo=new PDO("mysql:host=".getenv("SOKNA_TEST_DB_HOST").";port=".getenv("SOKNA_TEST_DB_PORT").";charset=utf8mb4",
+              getenv("SOKNA_TEST_DB_ROOT_USER"),getenv("SOKNA_TEST_DB_ROOT_PASS"),
+              [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+            $pdo->exec("DROP DATABASE IF EXISTS `sokna_m2`");
+            $pdo->exec("CREATE DATABASE `sokna_m2` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+          '
+          php tests/local-mysql-migration-selftest.php
+          php -r '
+            $pdo=new PDO("mysql:host=".getenv("SOKNA_TEST_DB_HOST").";port=".getenv("SOKNA_TEST_DB_PORT").";dbname=sokna_m2;charset=utf8mb4",
+              getenv("SOKNA_TEST_DB_USER"),getenv("SOKNA_TEST_DB_PASS"),
+              [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+            $n=(int)$pdo->query("SELECT COUNT(*) FROM schema_migrations WHERE version LIKE \"999%\"")->fetchColumn();
+            if($n!==0){fwrite(STDERR,"Unexpected synthetic M10 schema migration in G2.3 baseline\\n");exit(2);}
+          '
       - name: R16 updater lifecycle DB qualification
         run: php tests/local-g2-update-lifecycle-selftest.php
       - name: Write test scope and result
