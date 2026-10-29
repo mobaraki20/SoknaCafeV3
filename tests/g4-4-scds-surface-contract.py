@@ -6,7 +6,14 @@ local=['guest-content/index.php','marketing/index.php','reports/index.php','noti
 for rel in local:
     s=(R/'apps/local-web/public'/rel).read_text(encoding='utf-8')
     if 'ProductShell::start' not in s: raise SystemExit('FAIL G4 Local surface bypasses ProductShell: '+rel)
-    if 'sc-' not in s: raise SystemExit('FAIL G4 Local surface lacks SCDS components: '+rel)
+    # Shared reports/notifications render the canonical SCDS markup via a PHP include.
+    if 'sc-' not in s:
+        shared_rel={'reports/index.php':'reports-workspace.php','notifications/index.php':'notifications-workspace.php'}.get(rel)
+        if shared_rel is None or 'resources/shared-staff-ui/'+shared_rel not in s:
+            raise SystemExit('FAIL G4 Local surface lacks SCDS components: '+rel)
+        shared=(R/'apps/local-web/resources/shared-staff-ui'/shared_rel).read_text(encoding='utf-8')
+        if 'sc-' not in shared or re.search(r'\\sstyle\\s*=',shared,re.I):
+            raise SystemExit('FAIL G4 shared surface has missing/unsafe SCDS components: '+rel)
     if re.search(r'\sstyle\s*=',s,re.I): raise SystemExit('FAIL G4 Local surface has inline style owner: '+rel)
 for rel in ['assets/scds/guest.css','assets/scds/guest.js','assets/scds/remote-staff.css','assets/scds/remote-staff.js']:
     if not (R/'apps/public'/rel).is_file(): raise SystemExit('FAIL Public SCDS asset missing: '+rel)
@@ -16,7 +23,7 @@ for name,s in [('guest',guest),('remote',remote)]:
         if token not in s: raise SystemExit(f'FAIL Public {name} RTL/responsive contract missing {token}')
 if 'aria-label=' not in guest or 'role="status"' not in guest: raise SystemExit('FAIL Guest accessibility semantics missing')
 if 'aria-label=' not in remote: raise SystemExit('FAIL Remote accessibility semantics missing')
-for rel in ['apps/public/assets/scds/guest.js','apps/public/assets/scds/remote-staff.js','apps/local-web/public/assets/integrations-workspace.js']:
+for rel in ['apps/public/assets/scds/guest.js','apps/public/assets/scds/remote-staff.js','apps/local-web/public/assets/connections-workspace.js']:
     s=(R/rel).read_text(encoding='utf-8')
     if 'innerHTML' in s: raise SystemExit('FAIL unsafe innerHTML in '+rel)
 css=(R/'apps/local-web/assets/scds/components.css').read_text(encoding='utf-8')
