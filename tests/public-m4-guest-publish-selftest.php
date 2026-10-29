@@ -148,7 +148,7 @@ try {
 
     $stored = $pdo->prepare('SELECT version FROM guest_availability_state WHERE installation_id=?');
     $stored->execute([$installationId]);
-    if ((string)$stored->fetchColumn() !== $availabilityPayload['version']) {
+    if ((string)$stored->fetchColumn() !== $stableAvailabilityPayload['version']) {
         public_m4_guest_fail('M4 availability projection was not persisted independently.');
     }
 
