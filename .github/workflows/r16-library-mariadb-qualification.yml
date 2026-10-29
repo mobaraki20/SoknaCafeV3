@@ -1,0 +1,100 @@
+name: R16 Library Source MariaDB Qualification (CI-only)
+
+on:
+  push:
+    branches:
+      - ci/r16-library-mariadb-20261029
+    paths:
+      - '.github/workflows/r16-library-mariadb-qualification.yml'
+      - 'ci/fixtures/r16-library-local-db-source-20261029.tar.gz'
+  workflow_dispatch:
+
+permissions: { contents: read }
+
+jobs:
+  r16-mariadb:
+    name: Exact R16 Local source vs real MariaDB 11.4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: root
+      R16_ARCHIVE: ci/fixtures/r16-library-local-db-source-20261029.tar.gz
+      R16_FIXTURE_SHA256: d7d427018e29e001927afeec6e59db55a84f278f923781ac6a913b4b9f8e538c
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install real MariaDB PHP client and ZIP dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-mysql php-zip
+          php -r 'exit(in_array("mysql", PDO::getAvailableDrivers(), true) ? 0 : 1);'
+      - name: Verify exact Library R16 source snapshot and overlay (no repo production mutation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${R16_FIXTURE_SHA256}  ${R16_ARCHIVE}" | sha256sum --check --status
+          count=$(tar -tzf "$R16_ARCHIVE" | wc -l)
+          test "$count" -eq 388
+          while IFS= read -r p; do
+            [[ "$p" == apps/local-web/* ]] || { echo "Unexpected archive path: $p"; exit 9; }
+            [[ "$p" != *'/../'* && "$p" != *'/./'* ]] || { echo "Unsafe archive path: $p"; exit 9; }
+          done < <(tar -tzf "$R16_ARCHIVE")
+          rm -rf apps/local-web/src apps/local-web/database apps/local-web/resources
+          tar -xzf "$R16_ARCHIVE" -C . --no-same-owner --no-same-permissions
+          for p in apps/local-web/bootstrap.php apps/local-web/src/Core/Migrations.php apps/local-web/src/Setup/BrowserSetupService.php apps/local-web/src/Domain/Recovery/BusinessBackupService.php apps/local-web/database/migrations/0059_menu_business_reconciliation_v4.sql apps/local-web/resources; do
+            test -e "$p" || { echo "Missing R16 file: $p"; exit 8; }
+          done
+          echo "R16 Library snapshot verified: $count files, $R16_FIXTURE_SHA256"
+      - name: Lint R16 PHP sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          find apps/local-web/src apps/local-web/resources apps/local-web/bootstrap.php -type f -name '*.php' -print0 | xargs -0 -n1 php -l > /tmp/r16-lint.log
+          tail -n 3 /tmp/r16-lint.log
+      - name: R16 clean install, migration 0059 order, default seed and idempotence (MariaDB)
+        run: php tests/local-mysql-migration-selftest.php
+      - name: R16 default catalog and real DB contracts
+        run: php tests/default-content-real-db-selftest.php
+      - name: R16 setup lifecycle against real DB
+        run: php tests/local-g2-browser-setup-selftest.php
+      - name: R16 backup/recovery and release contracts
+        run: php tests/local-m10-release-selftest.php
+      - name: R16 updater lifecycle DB qualification
+        run: php tests/local-g2-update-lifecycle-selftest.php
+      - name: Write test scope and result
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/r16-ci-evidence
+          {
+            echo 'R16 Library Source MariaDB Qualification — SOURCE ONLY / NOT INSTALLABLE'
+            echo "Commit: $GITHUB_SHA"
+            echo "Fixture SHA256: $R16_FIXTURE_SHA256"
+            echo 'Scope: R16 Local src/, database/, resources/, bootstrap.php and setup API/JS'
+            echo 'Database: disposable MariaDB 11.4 GitHub Actions service'
+            echo 'Note: does not qualify Public payloads, Windows physical printing, host installation or two-baseline updater recovery.'
+          } > /tmp/r16-ci-evidence/scope.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r16-source-mariadb-ci-scope
+          path: /tmp/r16-ci-evidence/
+          retention-days: 14
