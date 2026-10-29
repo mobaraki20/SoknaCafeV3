@@ -43,8 +43,13 @@ final class GuestRuntimeService
     {
         $fresh = max(5, $freshSeconds);
         $now = time();
-        $heartbeat = strtotime((string)($bundle['heartbeat_at'] ?? '')) ?: 0;
-        $availabilityAt = strtotime((string)($bundle['last_sync_at'] ?? '')) ?: 0;
+        // MariaDB writes UTC_TIMESTAMP() without an offset. Parse it as UTC
+        // regardless of PHP's configured timezone (including Asia/Tehran).
+        // Otherwise a fresh heartbeat can appear hours old and disable guest actions.
+        $heartbeatRaw = trim((string)($bundle['heartbeat_at'] ?? ''));
+        $availabilityRaw = trim((string)($bundle['last_sync_at'] ?? ''));
+        $heartbeat = $heartbeatRaw === '' ? 0 : (strtotime($heartbeatRaw . ' UTC') ?: 0);
+        $availabilityAt = $availabilityRaw === '' ? 0 : (strtotime($availabilityRaw . ' UTC') ?: 0);
         $localFresh = $heartbeat >= $now - $fresh;
         $availabilityFresh = $availabilityAt >= $now - $fresh;
         $enabled = (bool)($bundle['remote_enabled'] ?? false)

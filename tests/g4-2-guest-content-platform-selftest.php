@@ -155,6 +155,11 @@ g42((int)$pp->query("SELECT COUNT(*) FROM guest_publish_revisions WHERE installa
 g42((int)$pp->query("SELECT COUNT(*) FROM guest_active_revisions WHERE installation_id='g42-installation'")->fetchColumn() === 1, 'Guest active revision missing on Public');
 
 $bundle = $public->guestRuntime()->bundle($installation);
+$guestActionState = $public->guestRuntime()->actionState($bundle);
+g42(($guestActionState['enabled'] ?? false) === true
+    && ($guestActionState['local_fresh'] ?? false) === true
+    && ($guestActionState['availability_fresh'] ?? false) === true,
+    'Fresh signed Local heartbeat/availability did not enable the Public Guest menu');
 $presentation = (array)(($bundle['snapshot']['presentation'] ?? []));
 g42((string)($presentation['theme']['theme_key'] ?? '') === 'sokna-house', 'Published theme missing from Public snapshot');
 g42((string)($presentation['theme']['tokens']['primary'] ?? '') === '#123456', 'Published theme token missing from Public snapshot');
