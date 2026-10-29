@@ -39,6 +39,19 @@ if(($sync['success']??false)!==true){
             $failCodes[(string)$channel]['error_code']=(string)($detail['error_code']??'');
         }
     }
+    // Probe only the disposable CI Public database, and report model keys only.
+    // This distinguishes producer serialization drift from a legacy receiver rejecting a model.
+    $rejectedKeys=[];$roundtripHashDrift=[];
+    $probeModels=json_decode(json_encode($builder->remoteModels(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),true,512,JSON_THROW_ON_ERROR);
+    foreach($probeModels as $model){
+        $key=(string)($model['model_key']??'unknown');
+        if(!hash_equals((string)($model['source_version']??''),\\Sokna\\PublicEdge\\Core\\CanonicalJson::sha256($model['payload']??null)))$roundtripHashDrift[]=$key;
+        $single=$public->remoteReadModels()->sync($installation,['models'=>[$model]]);
+        $body=(array)($single['body']??[]);
+        if((int)($body['synced']??0)+(int)($body['unchanged']??0)!==1)$rejectedKeys[]=$key;
+    }
+    sort($rejectedKeys,SORT_STRING);sort($roundtripHashDrift,SORT_STRING);
+    $failCodes['model_probe']=['rejected_keys'=>$rejectedKeys,'roundtrip_hash_drift_keys'=>$roundtripHashDrift];
     g32db(false,'publisher sync failed; channel_codes='.json_encode($failCodes,JSON_THROW_ON_ERROR));
 }
 $pp=$public->database();g32db((int)$pp->query("SELECT COUNT(*) FROM auth_projections WHERE installation_id='{$installation}'")->fetchColumn()===1,'explicit remote projection boundary failed');g32db((int)$pp->query("SELECT COUNT(*) FROM remote_read_models WHERE installation_id='{$installation}'")->fetchColumn()===11,'remote models missing');$modelKeys=$pp->query("SELECT model_key FROM remote_read_models WHERE installation_id='{$installation}' ORDER BY model_key")->fetchAll(PDO::FETCH_COLUMN);g32db($modelKeys===['deferred_context','guest_operational','inventory','inventory_cost','notifications','operations','operations_workspace','preparation','reports','subscribers','table_draft_context'],'remote model set drifted');g32db((int)$pp->query("SELECT COUNT(*) FROM guest_active_revisions WHERE installation_id='{$installation}'")->fetchColumn()===1,'guest publish missing');g32db((int)$pp->query("SELECT COUNT(*) FROM installation_heartbeats WHERE installation_id='{$installation}'")->fetchColumn()===1,'heartbeat missing');
