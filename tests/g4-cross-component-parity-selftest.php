@@ -24,7 +24,7 @@ $qu=$root->quote($user);$qp=$root->quote($pass);$root->exec("CREATE USER IF NOT 
 
 $data=sys_get_temp_dir().'/sokna-g41-'.bin2hex(random_bytes(4));@mkdir($data,0700,true);$installation='g41-installation';$secret='g41-secret-'.bin2hex(random_bytes(12));
 $localConfig=['app'=>['timezone'=>'UTC','data_dir'=>$data],'db'=>['host'=>$host,'port'=>$port,'name'=>$localName,'charset'=>'utf8mb4','user'=>$user,'pass'=>$pass],'installation'=>['id'=>$installation],'runtime'=>['local_token'=>'g41'],'public'=>['base_url'=>'http://127.0.0.1','shared_secret'=>$secret],'integrations'=>['accommodation'=>['base_url'=>'','secret'=>'']]];
-$local=sokna_local_bootstrap($localConfig);$local->migrations()->migrate();$lp=$local->database();
+$local=sokna_local_bootstrap($localConfig);$local->migrations()->migrate('0059_menu_business_reconciliation_v4');$lp=$local->database();
 
 $pwd=password_hash('RemoteG41Pass!',PASSWORD_DEFAULT);
 $mkUser=function(string $username,string $role,array $caps)use($lp,$pwd):array{$q=$lp->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)');$q->execute([$username,$pwd,$username,$role]);$id=(int)$lp->lastInsertId();$c=$lp->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)');foreach($caps as $cap)$c->execute([$id,$cap]);return ['id'=>$id,'username'=>$username,'display_name'=>$username,'role'=>$role,'active'=>1];};
