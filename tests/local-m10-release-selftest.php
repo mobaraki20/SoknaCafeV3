@@ -71,6 +71,15 @@ try{
   $dst->migrations()->migrate('0059_menu_business_reconciliation_v4');
   $dst->defaultContentSeeder()->seed();
   $dst->migrations()->migrate();
+  // The fixture seed may provision reference inventory data. Real restore requires
+  // an empty business target, so clear ONLY disposable baseline inventory fixtures.
+  $targetPdo=$dst->database();
+  $targetPdo->exec('SET FOREIGN_KEY_CHECKS=0');
+  try {
+    foreach (['inventory_movements','inventory_balances','inventory_purchase_units','inventory_recipe_components','inventory_recipe_versions','inventory_items'] as $table) {
+      $targetPdo->exec('DELETE FROM `'.$table.'`');
+    }
+  } finally { $targetPdo->exec('SET FOREIGN_KEY_CHECKS=1'); }
   $restored=$dst->businessBackup()->restoreEncryptedToEmptyTarget($backup,$secret,0);
   m10_assert(!empty($restored['restored'])&&!empty($restored['machine_identity_reprovision_required']),'machine takeover restore did not require fresh identity');
   $dp=$dst->database();
