@@ -44,7 +44,18 @@ PUBLIC_DB_TESTS+=(
 failed_public_db=()
 for t in "${PUBLIC_DB_TESTS[@]}"; do
   echo "==> $t"
-  if ! ( set -euo pipefail; reset_db || exit 1; "$PHP_BIN" "$t" || exit 1 ); then
+  if ! (
+    set -euo pipefail
+    reset_db
+    # Publisher/parity scenarios require the post-0059 operations/notification tables.
+    # Prepare the real, guarded schema + canonical seed, then remove only disposable
+    # catalog fixture rows, as the common M5/F1 setup already does.
+    if [[ "$t" == "tests/g3-remote-staff-publisher-selftest.php" ||
+          "$t" == "tests/g4-cross-component-parity-selftest.php" ]]; then
+      "$PHP_BIN" tests/local-mysql-migration-selftest.php >/dev/null
+    fi
+    "$PHP_BIN" "$t"
+  ); then
     failed_public_db+=("$t")
     echo "FAIL: $t" >&2
   fi
