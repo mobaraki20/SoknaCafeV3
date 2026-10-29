@@ -82,17 +82,29 @@ DB_TESTS=(
   tests/local-f1-staff-ui-reporting-selftest.php
 )
 
+failed_db_tests=()
 for test_file in "${DB_TESTS[@]}"; do
   echo "==> $test_file"
-  reset_db
-  # Each legacy scenario expects a fully migrated but empty catalogue. Recreate
-  # it through the SAME guarded migration+seed+cleanup selftest used by M5 CI.
-  # This is a disposable CI database only; no production migration is bypassed.
-  if [[ "$test_file" != "tests/local-mysql-migration-selftest.php" ]]; then
-    "$PHP_BIN" tests/local-mysql-migration-selftest.php >/dev/null
+  # Run all independent scenarios even when one fails; each owns a freshly reset
+  # disposable CI database. Aggregate failures and keep the final gate failing.
+  if ! (
+    set -euo pipefail
+    reset_db
+    # The real guarded 0059 migration depends on the approved canonical seed.
+    if [[ "$test_file" != "tests/local-mysql-migration-selftest.php" ]]; then
+      "$PHP_BIN" tests/local-mysql-migration-selftest.php >/dev/null
+    fi
+    "$PHP_BIN" "$test_file"
+  ); then
+    failed_db_tests+=("$test_file")
+    echo "FAIL: $test_file" >&2
   fi
-  "$PHP_BIN" "$test_file"
 done
+if (( ${#failed_db_tests[@]} > 0 )); then
+  printf 'F1 independent MariaDB failures (%d):\\n' "${#failed_db_tests[@]}" >&2
+  printf ' - %s\\n' "${failed_db_tests[@]}" >&2
+  exit 1
+fi
 
 reset_db
 
