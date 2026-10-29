@@ -120,7 +120,7 @@ try{
     $downgrade=$tmp.'/schema-downgrade.zip';g23package($downgrade,$withoutLast);
     g23deny(fn()=>$newer->stageUploadedZip($downgrade,1),'schema_downgrade_unsupported');
 
-    $drift=$files;$historical=array_key_first(array_filter(array_keys($files),static fn(string $p):bool=>str_starts_with($p,'database/migrations/')));
+    $drift=$files;$historical=current(array_values(array_filter(array_keys($files),static fn(string $p):bool=>str_starts_with($p,'database/migrations/'))));
     g23(is_string($historical),'historical SQL file missing');
     $drift[$historical].="\n-- tampered migration history";
     $driftZip=$tmp.'/changed-history.zip';g23package($driftZip,$drift);
