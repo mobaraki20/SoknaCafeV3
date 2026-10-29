@@ -14,10 +14,15 @@ final class BusinessBackupService
     private const MAGIC="SOKNA-SKB1\n";
     private const FORMAT='sokna-business-backup-v1';
     private const CHUNK=1048576;
+    private const LEGACY_TRANSPORT_TABLES=[
+        'public_projection_outbox','public_projection_model_delivery',
+        'public_projection_model_targets','public_sync_state',
+    ];
     private const EXCLUDED_TABLES=[
         'schema_migrations','schema_migration_statements',
         'runtime_trigger_receipts','public_authority_state',
         'print_agents','print_destinations','print_jobs','print_attempts','print_claim_requests','print_claim_reconciliations',
+        ...self::LEGACY_TRANSPORT_TABLES,
     ];
     private const EMPTY_TARGET_MARKERS=['users','orders','inventory_items','expenses','settlement_records','subscriber_ledger','accommodation_transfers'];
     private const EXCLUDED_MACHINE_IDENTITY=['runtime_machine_secret','print_agent_identity','tls_private_key'];
@@ -114,8 +119,10 @@ final class BusinessBackupService
         foreach($sourceVersions as $version)if(!in_array($version,$targetVersions,true)){gzclose($gz);throw new RecoveryException('schema_incompatible','نسخه دیتابیس مقصد از پشتیبان قدیمی‌تر است.',409,['missing_version'=>$version]);}
         $tables=array_values(array_map('strval',(array)($manifest['tables']??[])));
         $allowed=array_flip($this->businessTables());
-        foreach($tables as $table)if(!isset($allowed[$table])){gzclose($gz);throw new RecoveryException('table_not_allowed','پشتیبان شامل جدول غیرمجاز است.',422,['table'=>$table]);}
-        $restoreTables=$tables;
+        // Older encrypted backups contained disposable Public transport data. Keep
+        // validating their row counts/hashes but NEVER rehydrate stale delivery jobs.
+        foreach($tables as $table)if(!isset($allowed[$table])&&!in_array($table,self::LEGACY_TRANSPORT_TABLES,true)){gzclose($gz);throw new RecoveryException('table_not_allowed','پشتیبان شامل جدول غیرمجاز است.',422,['table'=>$table]);}
+        $restoreTables=array_values(array_filter($tables,static fn(string $table):bool=>!in_array($table,self::LEGACY_TRANSPORT_TABLES,true)));
 
         $counts=[];$hashCtx=[];$current='';$footer=null;
         $this->pdo->beginTransaction();
@@ -132,7 +139,9 @@ final class BusinessBackupService
                 if($kind==='row'){
                     $table=(string)($entry['table']??'');$row=$entry['value']??null;
                     if($table===''||$table!==$current||!is_array($row))throw new RecoveryException('backup_contract','ترتیب رکوردهای پشتیبان معتبر نیست.',422);
-                    hash_update($hashCtx[$table],$trim."\n");$this->insertRow($table,$row);$counts[$table]++;continue;
+                    hash_update($hashCtx[$table],$trim."\n");
+                    if(!in_array($table,self::LEGACY_TRANSPORT_TABLES,true))$this->insertRow($table,$row);
+                    $counts[$table]++;continue;
                 }
                 if($kind==='footer'){$footer=$entry;break;}
                 throw new RecoveryException('backup_contract','رکورد ناشناخته در پشتیبان وجود دارد.',422);
