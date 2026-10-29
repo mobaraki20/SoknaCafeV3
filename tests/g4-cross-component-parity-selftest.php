@@ -30,6 +30,7 @@ $pwd=password_hash('RemoteG41Pass!',PASSWORD_DEFAULT);
 $mkUser=function(string $username,string $role,array $caps)use($lp,$pwd):array{$q=$lp->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)');$q->execute([$username,$pwd,$username,$role]);$id=(int)$lp->lastInsertId();$c=$lp->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)');foreach($caps as $cap)$c->execute([$id,$cap]);return ['id'=>$id,'username'=>$username,'display_name'=>$username,'role'=>$role,'active'=>1];};
 $admin=$mkUser('g41-admin','admin',[]);
 $remote=$mkUser('g41-remote','operator',['orders_floor','cashier_accounts','inventory_operations','remote_access','remote_settlement','remote_supply','remote_subscriber_payments']);
+$local->remoteCredentials()->syncFromPassword((int)$remote['id'],'RemoteG41Pass!');
 $lp->prepare("INSERT INTO user_preparation_areas(user_id,area_key) VALUES(?,'kitchen')")->execute([$remote['id']]);
 $settings=$lp->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');foreach([['cafe.name','G41 Cafe'],['installation.id',$installation],['orders_accepting.cafe','1'],['orders_accepting.kitchen','1'],['orders_accepting.bar','1'],['waiter_call_enabled','1'],['module.inventory.enabled','1'],['module.supply.enabled','1'],['inventory_initialized','1'],['inventory_reconciliation_required','0']] as [$k,$v])$settings->execute([$k,$v]);
 
@@ -55,7 +56,7 @@ if(($initialPublish['success']??false)!==true){
     }
     g41(false,'initial projection publish failed; channel_codes='.json_encode($failCodes,JSON_THROW_ON_ERROR));
 }
-$relay=new PublicEdgeRelayService($lp,$client,$local->realtimeDispatch(),$local->deferredDispatch(),$obs);
+$relay=new PublicEdgeRelayService($lp,$client,$local->realtimeDispatch(),$local->deferredDispatch(),$obs,$local->lanStaffRealtimeReceipts(),$publisher);
 
 $login=$kernel->handle('POST','/staff/login',[],http_build_query(['installation_id'=>$installation,'username'=>'g41-remote','password'=>'RemoteG41Pass!']),['Content-Type'=>'application/x-www-form-urlencoded']);g41((int)$login['status']===303,'remote login failed');preg_match('/sokna_staff=([^;]+)/',(string)($login['headers']['Set-Cookie']??''),$m);$cookie='sokna_staff='.($m[1]??'');g41(strlen($cookie)>20,'remote session cookie missing');
 $staff=$kernel->handle('GET','/staff',[],'',['Cookie'=>$cookie]);g41(str_contains((string)$staff['body'],'data-action="settlement"')&&str_contains((string)$staff['body'],'data-action="supply"')&&str_contains((string)$staff['body'],'data-action="subscriber"'),'remote action surface missing');
