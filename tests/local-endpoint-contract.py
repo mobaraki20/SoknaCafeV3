@@ -37,9 +37,9 @@ js=(R/"apps/local-web/public/assets/setup-wizard.js").read_text(encoding="utf-8"
 need("location.replace(canonical.origin+'/setup/')" in js,"Browser Setup must canonicalize browser origin")
 
 app=(R/"apps/local-web/public/_app.php").read_text(encoding="utf-8")
-recovery=(R/"apps/local-web/public/local-recovery.php").read_text(encoding="utf-8")
+recovery=(R/"apps/local-web/public/system/recovery-upload.php").read_text(encoding="utf-8")
 need("dirname(__DIR__,3)" not in app and "$root=dirname(__DIR__);" in app,"Local app still assumes monorepo root")
-need("dirname(__DIR__,3)" not in recovery and "$packageRoot=dirname(__DIR__);" in recovery,"Recovery still assumes monorepo root")
+need("dirname(__DIR__,3)" not in recovery and "dirname(__DIR__).'/_app.php'" in recovery,"Recovery still assumes monorepo root")
 
 runtime=(R/"windows/runtime/source/Program.cs").read_text(encoding="utf-8")
 need('LocalBaseUrl { get; init; } = ""' in runtime,"Runtime still has a hardcoded Local URL default")
