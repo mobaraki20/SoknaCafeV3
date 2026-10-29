@@ -1,0 +1,55 @@
+--- a/apps/local-web/src/Setup/BrowserSetupService.php
++++ b/apps/local-web/src/Setup/BrowserSetupService.php
+@@ -6,6 +6,8 @@
+ use PDO;
+ use Throwable;
+ use Sokna\Local\UI\FontRuntime;
++use Sokna\Local\Core\LocalEndpoint;
++require_once dirname(__DIR__).'/Core/LocalEndpoint.php';
+ 
+ final class BrowserSetupService
+ {
+@@ -494,30 +496,26 @@
+         $statePath=$this->packageRoot.DIRECTORY_SEPARATOR.'Infrastructure'.DIRECTORY_SEPARATOR.'infrastructure-state.json';
+         if(is_file($statePath)){
+             try{
+-                $raw=@file_get_contents($statePath);$state=is_string($raw)?json_decode($raw,true,32,JSON_THROW_ON_ERROR):null;
++                $raw=@file_get_contents($statePath);
++                $state=is_string($raw)?json_decode($raw,true,32,JSON_THROW_ON_ERROR):null;
+                 if(is_array($state)){
+                     $endpoint=(array)($state['endpoints']['local_web']??[]);
+                     foreach([(string)($endpoint['origin']??''),(string)($endpoint['base_url']??'')] as $candidate){
+-                        $validated=$this->validateLoopbackUrl($candidate);if($validated!=='')return $validated;
++                        try{return self::normalizeLocalBaseUrl($candidate);}catch(SetupException){}
+                     }
+                 }
+             }catch(Throwable){}
+         }
+-        $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http';
+-        $host=trim((string)($_SERVER['HTTP_HOST']??''));
+-        if(preg_match('/^(?:127\\.0\\.0\\.1|localhost)(?::([0-9]{1,5}))?$/i',$host,$m)===1){
+-            $port=isset($m[1])?(int)$m[1]:($scheme==='https'?443:80);
+-            if($port>=1&&$port<=65535)return $scheme.'://'.$host;
+-        }
+-        return 'http://127.0.0.1:18080';
+-    }
+-
+-    private function validateLoopbackUrl(string $value): string
+-    {
+-        $value=rtrim(trim($value),'/');if($value==='')return '';$parts=parse_url($value);if(!is_array($parts))return '';
+-        $scheme=strtolower((string)($parts['scheme']??''));$host=strtolower((string)($parts['host']??''));$port=isset($parts['port'])?(int)$parts['port']:($scheme==='https'?443:80);
+-        if(!in_array($scheme,['http','https'],true)||!in_array($host,['127.0.0.1','localhost'],true)||$port<1||$port>65535)return '';
+-        return $scheme.'://'.$host.(isset($parts['port'])?':'.$port:'');
++        try{return LocalEndpoint::fromServer($_SERVER);}
++        catch(\InvalidArgumentException){return 'http://127.0.0.1:18080/';}
++    }
++
++    /** Public only for setup contract verification; does not mutate installation state. */
++    public static function normalizeLocalBaseUrl(string $value): string
++    {
++        $origin=LocalEndpoint::normalizeOrigin($value);
++        if($origin==='')throw new SetupException('local_endpoint_invalid','آدرس Local باید Loopback با پورت ۱۰۲۴ تا ۶۵۵۳۵ باشد.',422);
++        return $origin;
+     }
+ 
+     private function adoptLegacyRootFilesIfNeeded(): void
