@@ -44,7 +44,12 @@ ddispatch=read('apps/local-web/src/Relay/DeferredDispatchService.php')
 need("$this->inventory->dispatch($installationId,$envelope)" in ddispatch,'inventory deferred installation ownership not forwarded')
 opsapi=read('apps/local-web/public/operations/api.php');opsjs=read('apps/local-web/public/assets/deferred-review-workspace.js');opsindex=read('apps/local-web/public/operations/index.php')
 need('deferred_resolve' in opsapi and 'pendingReviews' in opsapi,'Local deferred review API missing')
-need('renderReviews' in opsjs and 'deferred_resolve' in opsjs and 'deferred-review-workspace.js' in opsindex,'Local deferred review UI missing')
+shared_ops=read('apps/local-web/resources/shared-staff-ui/operations-workspace.php')
+need('renderReviews' in opsjs and 'deferred_resolve' in opsjs
+     and 'resources/shared-staff-ui/operations-workspace.php' in opsindex
+     and 'deferred-review-workspace.js' in shared_ops
+     and 'data-deferred-reviews' in shared_ops,
+     'Local deferred review UI missing from shared Operations template')
 print('PASS G4.1 cross-component parity source contract')
 # Public kernel adapters must be loaded by the runtime bootstrap, not only by isolated tests.
 bootstrap=read('apps/public/bootstrap.php')
