@@ -108,4 +108,17 @@ if (!in_array('actor_display_name_snapshot', array_map('strval', $columns), true
     mysql_migration_fail('Audit compatibility snapshot column is missing from the real migrated schema.');
 }
 
+// Return the disposable CI database to the historical empty-catalog test fixture.
+// Production BrowserSetupService never executes this test-only cleanup.
+foreach (['item_variant_members', 'item_variant_families', 'menu_items', 'menu_categories', 'guest_media_references', 'guest_media_derivatives', 'guest_media_assets', 'items', 'categories', 'menus'] as $table) {
+    $pdo->exec('DELETE FROM `'.$table.'`');
+}
+$pdo->exec("DELETE FROM settings WHERE setting_key='default_content.v2'");
+$pdo->exec("DELETE FROM audit_log WHERE action LIKE 'catalog.%'");
+foreach (['menus', 'categories', 'items', 'item_variant_families'] as $table) {
+    if ((int)$pdo->query('SELECT COUNT(*) FROM `'.$table.'`')->fetchColumn() !== 0) {
+        mysql_migration_fail("CI fixture cleanup left canonical data in {$table}.");
+    }
+}
+
 fwrite(STDOUT, "Local MariaDB migration stack self-test: OK\n");
