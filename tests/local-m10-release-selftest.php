@@ -66,7 +66,12 @@ $root->exec('CREATE DATABASE `'.$target.'` CHARACTER SET utf8mb4 COLLATE utf8mb4
 try{
   $root->exec("GRANT ALL PRIVILEGES ON `{$target}`.* TO '".str_replace("'","''",$user)."'@'%'");
   $dst=sokna_local_bootstrap($cfg($target,$targetData,'m10-new-machine'));
-  $dst->migrations()->migrate();$restored=$dst->businessBackup()->restoreEncryptedToEmptyTarget($backup,$secret,0);
+  // Prepare a structurally complete target without business identities. The catalog
+  // seed satisfies guarded 0059 and will be replaced, not merged, by restoreSnapshot().
+  $dst->migrations()->migrate('0059_menu_business_reconciliation_v4');
+  $dst->defaultContentSeeder()->seed();
+  $dst->migrations()->migrate();
+  $restored=$dst->businessBackup()->restoreEncryptedToEmptyTarget($backup,$secret,0);
   m10_assert(!empty($restored['restored'])&&!empty($restored['machine_identity_reprovision_required']),'machine takeover restore did not require fresh identity');
   $dp=$dst->database();
   $q=$dp->prepare('SELECT COUNT(*) FROM users WHERE username=?');$q->execute([$uname]);m10_assert((int)$q->fetchColumn()===1,'business user not restored');
