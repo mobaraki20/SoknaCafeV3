@@ -504,12 +504,12 @@ final class BrowserSetupService
                 }
             }catch(Throwable){}
         }
-        return \\Sokna\\Local\\Core\\LocalEndpoint::fromServer($_SERVER)['origin'];
+        return \Sokna\Local\Core\LocalEndpoint::fromServer($_SERVER)['origin'];
     }
 
     private function normalizeLocalBaseUrl(string $value): string
     {
-        return \\Sokna\\Local\\Core\\LocalEndpoint::normalizeOrigin($value);
+        return \Sokna\Local\Core\LocalEndpoint::normalizeOrigin($value);
     }
 
     private function adoptLegacyRootFilesIfNeeded(): void
