@@ -108,6 +108,9 @@ final class RemoteReadModelService
     public function read(array $session, string $modelKey, int $staleSeconds = 90): array
     {
         $modelKey = trim($modelKey);
+        // This snapshot is exclusively consumed by Guest runtime; even a Staff
+        // administrator with wildcard capabilities must never read it here.
+        if ($modelKey === 'guest_operational') return $this->error(404, 'unknown_model');
         $required = self::MODEL_CAPABILITIES[$modelKey] ?? null;
         if ($required === null) return $this->error(404, 'unknown_model');
         if (!$this->hasCapability($session, $required)) return $this->error(403, 'forbidden');
