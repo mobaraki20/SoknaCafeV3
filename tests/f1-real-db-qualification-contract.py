@@ -47,8 +47,17 @@ for fragment in required:
     if fragment not in runner:
         fail(f'F1 qualification runner missing contract fragment: {fragment}')
 
-if not re.search(r'for test_file in "\$\{DB_TESTS\[@\]\}"; do\s+echo .*?\s+reset_db\s+"\$PHP_BIN"', runner, re.S):
-    fail('F1 qualification runner must reset database before every DB self-test')
+# An isolated subshell per test must reset the disposable DB, run the test,
+# and collect any failure; no failed scenario can be omitted from the final gate.
+loop_start=runner.find('for test_file in "${DB_TESTS[@]}"; do')
+loop_end=runner.find('\ndone',loop_start)
+loop=runner[loop_start:loop_end] if loop_start>=0 and loop_end>loop_start else ''
+if not (re.search(r'if\s+!\s*\(\s*set -euo pipefail\s+reset_db\b',loop,re.S)
+    and '"$PHP_BIN" "$test_file"' in loop
+    and 'failed_db_tests+=("$test_file")' in loop
+    and "if (( ${#failed_db_tests[@]} > 0 )); then" in runner
+    and "exit 1" in runner[loop_end:]):
+    fail('F1 qualification runner must reset and fail closed on every isolated DB self-test')
 
 # Product scenarios must not silently disappear from the source tree.
 for name in (
