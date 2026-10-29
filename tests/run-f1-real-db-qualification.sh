@@ -85,6 +85,12 @@ DB_TESTS=(
 for test_file in "${DB_TESTS[@]}"; do
   echo "==> $test_file"
   reset_db
+  # Each legacy scenario expects a fully migrated but empty catalogue. Recreate
+  # it through the SAME guarded migration+seed+cleanup selftest used by M5 CI.
+  # This is a disposable CI database only; no production migration is bypassed.
+  if [[ "$test_file" != "tests/local-mysql-migration-selftest.php" ]]; then
+    "$PHP_BIN" tests/local-mysql-migration-selftest.php >/dev/null
+  fi
   "$PHP_BIN" "$test_file"
 done
 
