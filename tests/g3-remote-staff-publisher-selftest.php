@@ -29,6 +29,15 @@ if(($sync['success']??false)!==true){
     $failCodes=[];foreach((array)($sync['channels']??[]) as $channel=>$record){
         if(!is_array($record)||($record['ok']??null)!==false)continue;
         $failCodes[(string)$channel]=['code'=>(string)($record['code']??''),'status'=>(int)($record['status']??$record['http_status']??0)];
+        if((string)$channel==='read_models'){
+            $detail=(array)($record['detail']??[]);
+            $failCodes[(string)$channel]['protocol']=(int)($detail['protocol']??0);
+            $failCodes[(string)$channel]['reason']=(string)($detail['reason']??'');
+            $failCodes[(string)$channel]['submitted_models']=(int)($detail['submitted_models']??0);
+            $failCodes[(string)$channel]['accepted_models']=(int)($detail['accepted_models']??0);
+            $failCodes[(string)$channel]['http_status']=(int)($detail['http_status']??0);
+            $failCodes[(string)$channel]['error_code']=(string)($detail['error_code']??'');
+        }
     }
     g32db(false,'publisher sync failed; channel_codes='.json_encode($failCodes,JSON_THROW_ON_ERROR));
 }
