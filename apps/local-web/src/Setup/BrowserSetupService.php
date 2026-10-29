@@ -147,7 +147,8 @@ final class BrowserSetupService
         try {
             $core = \sokna_local_bootstrap($appConfig);
             $pdo = $core->database();
-            $core->migrations()->migrate();
+            // Fresh setup: schema first, then seed canonical catalog, then run data-dependent migrations.
+            $core->migrations()->migrate('0059_menu_business_reconciliation_v4');
             $users = (int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
             $savedInstallationId = $this->setting($pdo,'installation.id');
             if ($users > 0 && $savedInstallationId !== $installationId) {
@@ -172,6 +173,7 @@ final class BrowserSetupService
             $adminId=(int)$pdo->query("SELECT id FROM users WHERE role='admin' AND active=1 ORDER BY id LIMIT 1")->fetchColumn();
             if($adminId<1)throw new SetupException('admin_missing','مدیر فعال برای تکمیل داده اولیه پیدا نشد.',500);
             $core->defaultContentSeeder()->seed($adminId);
+            $core->migrations()->migrate();
             $this->provisionMachineFiles($appConfig);
             $health = $this->finalHealth($appConfig);
             $this->writePrivate($this->lockPath(), json_encode([
@@ -197,7 +199,7 @@ final class BrowserSetupService
         $config = $this->loadConfig();
         if ($config === []) throw new SetupException('resume_unavailable','Setup نیمه‌تمامی برای ادامه پیدا نشد.',404);
         try {
-            $core=\sokna_local_bootstrap($config);$pdo=$core->database();$core->migrations()->migrate();
+            $core=\sokna_local_bootstrap($config);$pdo=$core->database();$core->migrations()->migrate('0059_menu_business_reconciliation_v4');
             $installationId=trim((string)($config['installation']['id']??''));
             if ($installationId==='' || $this->setting($pdo,'installation.id')!==$installationId || (int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn()<1) {
                 throw new SetupException('resume_not_ready','Setup نیمه‌تمام هنوز به مرحله قابل نهایی‌سازی نرسیده است.',409);
@@ -205,6 +207,7 @@ final class BrowserSetupService
             $adminId=(int)$pdo->query("SELECT id FROM users WHERE role='admin' AND active=1 ORDER BY id LIMIT 1")->fetchColumn();
             if($adminId<1)throw new SetupException('admin_missing','مدیر فعال برای ادامه داده اولیه پیدا نشد.',500);
             $core->defaultContentSeeder()->seed($adminId);
+            $core->migrations()->migrate();
             $this->provisionMachineFiles($config);
             $health=$this->finalHealth($config);
             $this->writePrivate($this->lockPath(),json_encode(['format'=>'sokna-install-lock-v3','installation_id'=>$installationId,'created_at'=>gmdate('c'),'setup_surface'=>'browser-resume','health'=>$health],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");
