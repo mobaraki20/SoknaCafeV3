@@ -37,6 +37,9 @@ reset_db
 
 echo '==> G4.2 migration + Theme/Media/Copy + Public publish/render E2E'
 reset_db
+# Guest publish exercises the full Public model set; 0059+ must exist while
+# the disposable catalog is clean so the media manifest remains one-item.
+"$PHP_BIN" tests/local-mysql-migration-selftest.php >/dev/null
 "$PHP_BIN" tests/g4-2-guest-content-platform-selftest.php
 
 echo '==> G4.2 source contracts and package safety'
