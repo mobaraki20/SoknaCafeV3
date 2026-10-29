@@ -39,7 +39,7 @@ $makeUser=function(string $name,array $caps)use($pdo):array{
     foreach($caps as $cap)$stmt->execute([$id,$cap]);
     return ['id'=>$id,'username'=>$name,'display_name'=>$name,'role'=>'operator','active'=>1];
 };
-$operator=$makeUser('m55-operator',['orders_floor','inventory_view','inventory_operations','inventory_manage']);
+$operator=$makeUser('m55-operator',['orders_floor','inventory_view','inventory_cost_view','inventory_operations','inventory_manage']);
 $finalizer=$makeUser('m55-finalizer',['inventory_view','inventory_finalize']);
 $viewer=$makeUser('m55-viewer',['inventory_view']);
 
