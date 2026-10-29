@@ -47,7 +47,14 @@ $publicConfig=['db'=>['host'=>$host,'port'=>$port,'name'=>$publicName,'charset'=
 $public=sokna_public_bootstrap($publicConfig);$public->migrations()->migrate();$kernel=new PublicHttpKernel($public,dirname(__DIR__).'/apps/public');
 $transport=function(string $url,string $method,array $headers,string $raw)use($kernel){$path=(string)(parse_url($url,PHP_URL_PATH)?:'/');$r=$kernel->handle($method,$path,[],$raw,$headers);return ['status'=>(int)$r['status'],'body'=>(string)($r['body']??'')];};
 $client=new PublicEdgeSyncClient(LocalConfig::fromArray($localConfig),$transport);$obs=new Observability($data);$builder=new PublicProjectionBuilder($lp,$local->settlements(),$local->supply());$publisher=new PublicEdgePublisherService($lp,$client,$builder,$obs,'g41-ci');
-g41(($publisher->syncAll()['success']??false)===true,'initial projection publish failed');
+$initialPublish=$publisher->syncAll();
+if(($initialPublish['success']??false)!==true){
+    $failCodes=[];foreach((array)($initialPublish['channels']??[]) as $channel=>$record){
+        if(!is_array($record)||($record['ok']??null)!==false)continue;
+        $failCodes[(string)$channel]=['code'=>(string)($record['code']??''),'status'=>(int)($record['status']??$record['http_status']??0)];
+    }
+    g41(false,'initial projection publish failed; channel_codes='.json_encode($failCodes,JSON_THROW_ON_ERROR));
+}
 $relay=new PublicEdgeRelayService($lp,$client,$local->realtimeDispatch(),$local->deferredDispatch(),$obs);
 
 $login=$kernel->handle('POST','/staff/login',[],http_build_query(['installation_id'=>$installation,'username'=>'g41-remote','password'=>'RemoteG41Pass!']),['Content-Type'=>'application/x-www-form-urlencoded']);g41((int)$login['status']===303,'remote login failed');preg_match('/sokna_staff=([^;]+)/',(string)($login['headers']['Set-Cookie']??''),$m);$cookie='sokna_staff='.($m[1]??'');g41(strlen($cookie)>20,'remote session cookie missing');
