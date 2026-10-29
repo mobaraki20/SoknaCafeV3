@@ -74,7 +74,11 @@ python3 tests/scds-m6-gate.py
 python3 tests/validate-v3-foundation.py --component local
 python3 tests/component-registry-gate.py
 python3 tests/g2-product-qualification-contract.py
-for test_file in apps/local-web/tests/*.py; do python3 "$test_file"; done
+# Legacy subdirectory may have no Python tests; keep discovered tests, not the raw glob.
+shopt -s nullglob
+local_python_tests=(apps/local-web/tests/*.py)
+shopt -u nullglob
+for test_file in "${local_python_tests[@]}"; do python3 "$test_file"; done
 find apps/local-web -type f -name '*.php' -print0 | xargs -0 -n1 "$PHP_BIN" -l >/dev/null
 find apps/local-web/public -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
