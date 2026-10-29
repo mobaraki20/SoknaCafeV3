@@ -98,8 +98,11 @@ for banned in [
 for base in [R/'apps/local-web/public/assets',R/'apps/public/assets']:
     for n in ('favicon-32.png','favicon-180.png'):
         need((base/n).is_file() and (base/n).stat().st_size>0,f'{(base/n).relative_to(R)} missing')
-    need(not (base/'favicon-192.png').exists(),'unused favicon-192.png should not be migrated')
-    need(not (base/'favicon-512.png').exists(),'unused favicon-512.png should not be migrated')
+    need((base/'favicon-192.png').is_file(),'active PWA favicon-192.png missing')
+local_manifest=(R/'apps/local-web/public/manifest.webmanifest').read_text(encoding='utf-8')
+need('favicon-192.png' in local_manifest and 'favicon-512.png' in local_manifest,'Local PWA icon manifest missing active icons')
+need((R/'apps/local-web/public/assets/favicon-512.png').is_file(),'Local PWA favicon-512.png missing')
+need(not (R/'apps/public/assets/favicon-512.png').exists(),'Public must not import unused favicon-512.png')
 
 seeder=(R/'apps/local-web/src/Domain/Sellables/DefaultContentSeeder.php').read_text(encoding='utf-8')
 need("private const MARKER_KEY = 'default_content.v2'" in seeder,'idempotent seed marker missing')
