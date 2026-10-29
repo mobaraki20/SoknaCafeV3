@@ -39,6 +39,8 @@ dcr($scalar('SELECT COUNT(*) FROM items')===135,'Database item count mismatch');
 dcr($scalar('SELECT COUNT(*) FROM items WHERE active=1')===85,'Active item count mismatch');
 dcr($scalar('SELECT COUNT(*) FROM items WHERE available=1')===85,'Available item count mismatch');
 dcr($scalar('SELECT COUNT(*) FROM items WHERE staff_only=1')===3,'Staff-only item count mismatch');
+dcr($scalar("SELECT COUNT(*) FROM items WHERE lifecycle_status='retired' AND staff_only=1")===0,'Archived items were incorrectly classified as staff-only');
+dcr($scalar("SELECT COUNT(*) FROM items WHERE item_code='1017' AND active=1 AND guest_visible=0 AND staff_visible=1 AND staff_only=0")===1,'Active guest-hidden staff-visible item was incorrectly classified as staff-only');
 dcr($scalar('SELECT COUNT(*) FROM items WHERE featured=1')===8,'Featured item count mismatch');
 dcr($scalar('SELECT COUNT(*) FROM menu_categories')===33,'Menu/category membership count mismatch');
 dcr($scalar('SELECT COUNT(*) FROM menu_items')===297,'Menu/item membership count mismatch');

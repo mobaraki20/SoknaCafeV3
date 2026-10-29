@@ -117,6 +117,9 @@ derivative_line=next((x for x in seeder.splitlines() if 'guest_media_derivatives
 need(derivative_line.count('?')==6,'guest media derivative INSERT placeholder count must be exactly six')
 item_line=next((x for x in seeder.splitlines() if '$itemUp=' in x),'')
 need(item_line.count('?')==17,'reconciled item upsert placeholder count must be exactly seventeen')
+need("(int)($row['staff_only']??0)" in seeder,'seed must preserve explicit staff-only flag independently of guest visibility')
+retirement_line=next((line for line in seeder.splitlines() if "UPDATE items SET lifecycle_status='retired'" in line),'')
+need('staff_only=1' not in retirement_line,'archiving must not silently reclassify products as staff-only')
 
 setup=(R/'apps/local-web/src/Setup/BrowserSetupService.php').read_text(encoding='utf-8')
 machine=(R/'apps/local-web/tools/setup-machine.php').read_text(encoding='utf-8')
