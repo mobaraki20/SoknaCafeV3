@@ -33,13 +33,27 @@ PUBLIC_DB_TESTS=(
  tests/public-m4-guest-publish-selftest.php tests/public-m4-guest-compat-selftest.php tests/public-m4-guest-renderer-selftest.php
  tests/public-m4-guest-runtime-selftest.php tests/public-m4-remote-read-model-selftest.php tests/public-m4-failure-isolation-selftest.php
 )
-for t in "${PUBLIC_DB_TESTS[@]}"; do echo "==> $t"; reset_db; "$PHP_BIN" "$t"; done
-
-echo '==> G3.1 deploy/guest real DB'; reset_db; "$PHP_BIN" tests/public-g3-deploy-selftest.php
-echo '==> G3.2 remote staff/publisher real DB'; reset_db; "$PHP_BIN" tests/g3-remote-staff-publisher-selftest.php
-echo '==> G3.3 emergency/update/takeover real DB'; reset_db; "$PHP_BIN" tests/public-g3-emergency-update-takeover-selftest.php
-
-echo '==> G4.1 cross-component provider/consumer E2E'; reset_db; "$PHP_BIN" tests/g4-cross-component-parity-selftest.php
+# Collect every independent Public/G3/G4 DB failure in one CI attempt.
+# The database is reset for each scenario and any failed scenario fails the gate.
+PUBLIC_DB_TESTS+=(
+  tests/public-g3-deploy-selftest.php
+  tests/g3-remote-staff-publisher-selftest.php
+  tests/public-g3-emergency-update-takeover-selftest.php
+  tests/g4-cross-component-parity-selftest.php
+)
+failed_public_db=()
+for t in "${PUBLIC_DB_TESTS[@]}"; do
+  echo "==> $t"
+  if ! ( set -euo pipefail; reset_db || exit 1; "$PHP_BIN" "$t" || exit 1 ); then
+    failed_public_db+=("$t")
+    echo "FAIL: $t" >&2
+  fi
+done
+if (( ${#failed_public_db[@]} > 0 )); then
+  printf 'Public/G3/G4 DB failures (%d):\n' "${#failed_public_db[@]}" >&2
+  printf ' - %s\n' "${failed_public_db[@]}" >&2
+  exit 1
+fi
 python3 tests/g4-cross-component-parity-contract.py
 python3 tests/product-parity-gate.py --mode inventory
 find apps/local-web/src apps/local-web/public apps/public/src -type f -name '*.php' -print0 | xargs -0 -n1 "$PHP_BIN" -l >/dev/null
