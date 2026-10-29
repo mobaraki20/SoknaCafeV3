@@ -18,6 +18,11 @@ final class RemoteReadModelService
         'reports' => 'reports.read',
         'notifications' => 'notifications.read',
         'deferred_context' => 'deferred.context',
+        'operations_workspace' => 'operations.workspace.read',
+        'subscribers' => 'subscriber.read',
+        'table_draft_context' => 'orders.table_draft',
+        // Guest runtime data must never be readable through a Staff session.
+        'guest_operational' => '__guest_runtime_internal',
     ];
 
     public function __construct(
