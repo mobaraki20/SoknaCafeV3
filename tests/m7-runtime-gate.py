@@ -28,7 +28,7 @@ need('MapServiceStatus' in source and 'status.ToString().ToLowerInvariant()' not
 need('print_agent_supervision_failed' in source,'Runtime Print supervision error evidence missing')
 need('--health-self-test' in source,'Runtime health behavior self-test entry point missing')
 endpoint=(R/'apps/local-web/public/internal/runtime/v1/trigger.php').read_text(encoding='utf-8')
-need("->handle(['Authorization'=>" in endpoint and "X-Sokna-Runtime-Contract" in endpoint,'Runtime endpoint does not pass adapter header map')
+need(re.search(r"->handle\\(\\s*\\[.*?['\\\"]Authorization['\\\"].*?\\],\\s*\\$raw\\)", endpoint, re.S) is not None and "X-Sokna-Runtime-Contract" in endpoint, 'Runtime endpoint does not pass adapter header map')
 local=(R/'apps/local-web/src/Runtime/RuntimeTriggerService.php').read_text(encoding='utf-8')
 for token in ["'command'","'powershell'","unsupported_trigger","request_id_conflict","runtime_trigger_receipts"]: need(token in local,'Local Runtime trigger guard missing '+token)
 need('business_payload' in local and 'payload' in local,'Runtime trigger forbidden business payload fence missing')
