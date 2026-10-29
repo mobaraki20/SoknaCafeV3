@@ -117,7 +117,12 @@ python3 tests/component-registry-gate.py
 python3 tests/g1-real-db-qualification-contract.py
 python3 tests/f1-real-db-qualification-contract.py
 failed_local_contracts=()
-for test_file in apps/local-web/tests/*.py; do
+# Empty legacy subdirectory is valid: Python source checks were consolidated in tests/.
+# Bash must not treat an unmatched '*.py' glob as a filename.
+shopt -s nullglob
+local_contract_files=(apps/local-web/tests/*.py)
+shopt -u nullglob
+for test_file in "${local_contract_files[@]}"; do
   if ! python3 "$test_file"; then
     failed_local_contracts+=("$test_file")
     echo "FAIL: $test_file" >&2
