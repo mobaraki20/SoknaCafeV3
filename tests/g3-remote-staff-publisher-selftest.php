@@ -42,7 +42,7 @@ if(($sync['success']??false)!==true){
     // Probe only the disposable CI Public database, and report model keys only.
     // This distinguishes producer serialization drift from a legacy receiver rejecting a model.
     $rejectedKeys=[];$roundtripHashDrift=[];
-    $probeModels=json_decode(json_encode($builder->remoteModels(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),true,512,JSON_THROW_ON_ERROR);
+    $probeModels=json_decode(json_encode($builder->remoteModels(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRESERVE_ZERO_FRACTION|JSON_THROW_ON_ERROR),true,512,JSON_THROW_ON_ERROR);
     foreach($probeModels as $model){
         $key=(string)($model['model_key']??'unknown');
         if(!hash_equals((string)($model['source_version']??''),\Sokna\PublicEdge\Core\CanonicalJson::sha256($model['payload']??null)))$roundtripHashDrift[]=$key;

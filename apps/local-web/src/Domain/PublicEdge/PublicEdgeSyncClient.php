@@ -84,7 +84,8 @@ final class PublicEdgeSyncClient
         $this->assertAuthorityPathAllowed($path);
         if($this->authorityState!==null)$payload['authority_epoch']=$this->authorityState->epoch();
 
-        $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        // Preserve fractional number types used by the canonical projection hash.
+        $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR);
         if(strlen($body)>2097152)throw new PublicEdgeSyncException('public_payload_too_large','Payload همگام‌سازی از سقف امن بزرگ‌تر است.',413,'request_payload_limit');
         $timestamp = (string)time();
         $nonce = bin2hex(random_bytes(16));
