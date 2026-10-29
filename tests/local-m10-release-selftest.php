@@ -52,6 +52,9 @@ m10_assert((string)file_get_contents($backup, false, null, 0, 11)==="SOKNA-SKB1\
 m10_assert(strpos((string)file_get_contents($backup),$uname)===false,'plaintext business identity leaked into encrypted backup');
 $manifest=$core->businessBackup()->inspectEncrypted($backup,$secret);
 m10_assert(($manifest['source_installation_id']??'')==='m10-source-installation','backup installation identity drifted');
+foreach (['public_projection_outbox','public_projection_model_delivery','public_projection_model_targets','public_sync_state'] as $transportTable) {
+    m10_assert(in_array($transportTable,(array)($manifest['excluded_tables']??[]),true),'Public transport crossed business backup boundary: '.$transportTable);
+}
 foreach(['runtime_machine_secret','print_agent_identity','tls_private_key'] as $excluded)
     m10_assert(in_array($excluded,(array)($manifest['excluded_machine_identity']??[]),true),'machine identity exclusion missing: '.$excluded);
 $bad=false;try{$core->businessBackup()->inspectEncrypted($backup,'definitely-wrong-secret');}catch(RecoveryException $e){$bad=$e->errorCode==='backup_auth_failed';}
