@@ -116,7 +116,7 @@ need("$v==='other'?'cold_bar'" in seeder,'legacy preparation station mapping mis
 derivative_line=next((x for x in seeder.splitlines() if 'guest_media_derivatives' in x and 'VALUES' in x),'')
 need(derivative_line.count('?')==6,'guest media derivative INSERT placeholder count must be exactly six')
 item_line=next((x for x in seeder.splitlines() if '$itemUp=' in x),'')
-need(item_line.count('?')==12,'item upsert placeholder count must be exactly twelve')
+need(item_line.count('?')==17,'reconciled item upsert placeholder count must be exactly seventeen')
 
 setup=(R/'apps/local-web/src/Setup/BrowserSetupService.php').read_text(encoding='utf-8')
 machine=(R/'apps/local-web/tools/setup-machine.php').read_text(encoding='utf-8')
