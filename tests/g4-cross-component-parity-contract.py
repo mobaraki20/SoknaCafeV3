@@ -21,8 +21,16 @@ for f in ['apps/local-web/src/Setup/BrowserSetupService.php','apps/local-web/too
     s=read(f);need('public.relay_sync' in s and 'public.projection_sync' in s,'runtime scheduling missing in '+f)
 cap=read('apps/local-web/src/Core/Capabilities.php')
 projection=read('apps/local-web/src/Domain/PublicEdge/PublicProjectionBuilder.php')
-for local,public in [('remote_settlement','finance.settle'),('remote_supply','supply.need.defer'),('remote_subscriber_payments','subscriber.payment.defer')]:
-    need(local in cap,'local remote capability missing '+local);need(local in projection and public in projection,'projection capability missing '+local+' -> '+public)
+# Remote Staff is authorized by canonical Local responsibilities, not duplicate
+# remote_* capability grants. Verify the capability mapping in one add branch.
+import re
+mapping_rules=re.findall(r"if\(([^\n]+?)\)\$add\(\$out,([^\n]+?)\);",projection)
+for local,public in [('cashier_accounts','finance.settle'),('inventory_operations','supply.need.defer'),('cashier_accounts','subscriber.payment.defer')]:
+    need("'"+local+"'" in cap,'canonical Local capability missing '+local)
+    need(any("$has('"+local+"')" in rule and "'"+public+"'" in grants for rule,grants in mapping_rules),
+         'canonical projection mapping missing '+local+' -> '+public)
+need("if(!$admin&&!in_array('remote_access',$caps,true))continue;" in projection,
+     'remote access admission gate missing')
 need('settlement_accounts' in projection and 'supply_groups' in projection and 'balance' in projection,'remote action context incomplete')
 renderer=read('apps/public/src/Remote/RemoteStaffPageRenderer.php');js=read('apps/public/assets/scds/remote-staff.js')
 for action in ['data-action="settlement"','data-action="supply"','data-action="subscriber"']:

@@ -29,7 +29,7 @@ $local=sokna_local_bootstrap($localConfig);$local->migrations()->migrate('0059_m
 $pwd=password_hash('RemoteG41Pass!',PASSWORD_DEFAULT);
 $mkUser=function(string $username,string $role,array $caps)use($lp,$pwd):array{$q=$lp->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)');$q->execute([$username,$pwd,$username,$role]);$id=(int)$lp->lastInsertId();$c=$lp->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)');foreach($caps as $cap)$c->execute([$id,$cap]);return ['id'=>$id,'username'=>$username,'display_name'=>$username,'role'=>$role,'active'=>1];};
 $admin=$mkUser('g41-admin','admin',[]);
-$remote=$mkUser('g41-remote','operator',['orders_floor','cashier_accounts','inventory_operations','remote_access','remote_settlement','remote_supply','remote_subscriber_payments']);
+$remote=$mkUser('g41-remote','operator',['orders_floor','cashier_accounts','inventory_operations','remote_access']);
 $local->remoteCredentials()->syncFromPassword((int)$remote['id'],'RemoteG41Pass!');
 $lp->prepare("INSERT INTO user_preparation_areas(user_id,area_key) VALUES(?,'kitchen')")->execute([$remote['id']]);
 $settings=$lp->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');foreach([['cafe.name','G41 Cafe'],['installation.id',$installation],['orders_accepting.cafe','1'],['orders_accepting.kitchen','1'],['orders_accepting.bar','1'],['waiter_call_enabled','1'],['module.inventory.enabled','1'],['module.supply.enabled','1'],['inventory_initialized','1'],['inventory_reconciliation_required','0']] as [$k,$v])$settings->execute([$k,$v]);
