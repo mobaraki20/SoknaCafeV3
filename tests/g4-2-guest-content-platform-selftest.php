@@ -53,7 +53,7 @@ $localConfig = [
     'integrations' => ['accommodation' => ['base_url' => '', 'secret' => '']],
 ];
 $local = sokna_local_bootstrap($localConfig);
-$applied = $local->migrations()->migrate();
+$applied = $local->migrations()->migrate('0059_menu_business_reconciliation_v4');
 g42(in_array('0023_g4_guest_content_platform', $applied, true), 'G4.2 Local migration was not applied');
 $lp = $local->database();
 foreach (['guest_content_config','guest_media_assets','guest_media_derivatives','guest_media_references'] as $table) {
