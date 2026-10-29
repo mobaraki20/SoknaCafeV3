@@ -101,8 +101,8 @@ for test_file in "${DB_TESTS[@]}"; do
   fi
 done
 if (( ${#failed_db_tests[@]} > 0 )); then
-  printf 'F1 independent MariaDB failures (%d):\\n' "${#failed_db_tests[@]}" >&2
-  printf ' - %s\\n' "${failed_db_tests[@]}" >&2
+  printf 'F1 independent MariaDB failures (%d):\n' "${#failed_db_tests[@]}" >&2
+  printf ' - %s\n' "${failed_db_tests[@]}" >&2
   exit 1
 fi
 
