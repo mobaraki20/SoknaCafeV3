@@ -45,7 +45,7 @@ if(($sync['success']??false)!==true){
     $probeModels=json_decode(json_encode($builder->remoteModels(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),true,512,JSON_THROW_ON_ERROR);
     foreach($probeModels as $model){
         $key=(string)($model['model_key']??'unknown');
-        if(!hash_equals((string)($model['source_version']??''),\\Sokna\\PublicEdge\\Core\\CanonicalJson::sha256($model['payload']??null)))$roundtripHashDrift[]=$key;
+        if(!hash_equals((string)($model['source_version']??''),\Sokna\PublicEdge\Core\CanonicalJson::sha256($model['payload']??null)))$roundtripHashDrift[]=$key;
         $single=$public->remoteReadModels()->sync($installation,['models'=>[$model]]);
         $body=(array)($single['body']??[]);
         if((int)($body['synced']??0)+(int)($body['unchanged']??0)!==1)$rejectedKeys[]=$key;
