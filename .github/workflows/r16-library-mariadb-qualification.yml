@@ -6,6 +6,7 @@ on:
       - ci/r16-library-mariadb-20261029
     paths:
       - '.github/workflows/r16-library-mariadb-qualification.yml'
+      - 'ci/patches/r16-localendpoint-service.patch'
       - 'ci/fixtures/r16-library-local-db-source-20261029.tar.gz'
   workflow_dispatch:
 
@@ -63,6 +64,16 @@ jobs:
             test -e "$p" || { echo "Missing R16 file: $p"; exit 8; }
           done
           echo "R16 Library snapshot verified: $count files, $R16_FIXTURE_SHA256"
+      - name: Apply reviewed R16 LocalEndpoint fix (pinned hashes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "fe1d4bc0ad95c77e5bc26b9f9d9e81aea91c841deebe62c9e75760f36ef3aa68  apps/local-web/src/Setup/BrowserSetupService.php" | sha256sum --check
+          git apply --check ci/patches/r16-localendpoint-service.patch
+          git apply ci/patches/r16-localendpoint-service.patch
+          echo "8fa67b5de4fc9fc8a4f6e1cba9fa8ecd99c323718273422d20ee75c16c22e79f  apps/local-web/src/Setup/BrowserSetupService.php" | sha256sum --check
+          php -l apps/local-web/src/Setup/BrowserSetupService.php
+          python3 tests/local-endpoint-contract.py
       - name: Lint R16 PHP sources
         shell: bash
         run: |
