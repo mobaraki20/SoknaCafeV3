@@ -20,14 +20,19 @@ final class Migrations
     }
 
     /** @return list<string> versions applied during this call */
-    public function migrate(): array
+    public function migrate(?string $stopBefore = null): array
     {
         $this->ensureLedger();
         $this->acquireLock();
         try {
             $applied = array_fill_keys($this->appliedVersions(), true);
             $newlyApplied = [];
-            foreach ($this->catalog() as $version => $path) {
+            $catalog = $this->catalog();
+            if ($stopBefore !== null && !isset($catalog[$stopBefore])) {
+                throw new RuntimeException("Unknown Local migration boundary '{$stopBefore}'.");
+            }
+            foreach ($catalog as $version => $path) {
+                if ($stopBefore !== null && strcmp($version, $stopBefore) >= 0) break;
                 if (isset($applied[$version])) continue;
                 $sql = @file_get_contents($path);
                 if (!is_string($sql) || trim($sql) === '') {
