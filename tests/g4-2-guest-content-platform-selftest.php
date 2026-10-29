@@ -165,10 +165,25 @@ $meta = array_values($manifest)[0];
 g42((string)($meta['alt_text'] ?? '') === 'تصویر لاته G42', 'Published media alt text missing');
 $sha = (string)($meta['sha256'] ?? '');
 $ext = (string)($meta['extension'] ?? '');
-g42($sha !== '' && $ext === 'png', 'Published media metadata invalid');
+$mime = (string)($meta['mime'] ?? '');
+$allowedMedia = ['png'=>'image/png','webp'=>'image/webp','jpg'=>'image/jpeg','gif'=>'image/gif'];
+g42(preg_match('/^[a-f0-9]{64}$/D', $sha) === 1
+    && isset($allowedMedia[$ext]) && $mime === $allowedMedia[$ext],
+    'Published media metadata invalid');
+$derivative = $lp->prepare("SELECT d.sha256,d.mime,d.extension FROM guest_media_derivatives d
+    JOIN guest_media_assets a ON a.id=d.media_id
+    WHERE a.media_key=? AND d.variant_key='guest-card' LIMIT 1");
+$derivative->execute([$mediaKey]);
+$sourceMedia = $derivative->fetch(PDO::FETCH_ASSOC);
+g42(is_array($sourceMedia) && hash_equals((string)$sourceMedia['sha256'], $sha)
+    && (string)$sourceMedia['extension'] === $ext && (string)$sourceMedia['mime'] === $mime,
+    'Published media does not match canonical Local guest-card derivative');
 
 $mediaResponse = $kernel->handle('GET', "/media/{$installation}/{$sha}.{$ext}");
-g42((int)$mediaResponse['status'] === 200 && is_file((string)($mediaResponse['file_path'] ?? '')), 'Public media replica is not readable');
+$replica = (string)($mediaResponse['file_path'] ?? '');
+g42((int)$mediaResponse['status'] === 200 && is_file($replica)
+    && hash_equals($sha, (string)hash_file('sha256', $replica)),
+    'Public media replica is not readable or its content hash differs');
 $themeCss = $kernel->handle('GET', "/theme/{$installation}.css");
 g42((int)$themeCss['status'] === 200 && str_contains((string)$themeCss['body'], '--sg-color-primary:#123456'), 'Published theme CSS did not render safe token');
 $menu = $kernel->handle('GET', '/menu', ['installation' => $installation]);
