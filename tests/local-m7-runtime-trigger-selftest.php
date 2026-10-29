@@ -31,6 +31,6 @@ $upgrade=$http->handle(['Authorization'=>'Bearer runtime-local-test-token-000000
 $ok=$base;$ok['request_id']='runtime-request-0004';$ok['correlation_id']='corr-runtime-0004';
 $httpOk=$http->handle(['Authorization'=>'Bearer runtime-local-test-token-000000000000','X-Sokna-Runtime-Contract'=>'1'],json_encode($ok));m7_assert($httpOk['status']===200&&$httpOk['body']['accepted']===true,'Runtime HTTP adapter did not pass canonical trigger request');
 m7_assert(array_keys($httpOk['body'])===['success','accepted','delivery_state','deduplicated','trigger_key','accepted_at','correlation_id','execution_state','worker_completed','worker_success','worker_error_code'],'Runtime HTTP adapter returned fields outside v1 contract');
-$endpoint=file_get_contents(dirname(__DIR__).'/apps/local-web/public/internal/runtime/v1/trigger.php');m7_assert(is_string($endpoint)&&str_contains($endpoint,"->handle(['Authorization'=>"),'Runtime endpoint still calls adapter with legacy positional arguments');
+$endpoint=file_get_contents(dirname(__DIR__).'/apps/local-web/public/internal/runtime/v1/trigger.php');m7_assert(is_string($endpoint)&&preg_match('/->handle\\(\\s*\\[.*?[\\x27\\x22]Authorization[\\x27\\x22].*?\\],\\s*\\$raw\\)/s',$endpoint)===1,'Runtime endpoint still calls adapter with legacy positional arguments');
 $count=(int)$pdo->query("SELECT COUNT(*) FROM runtime_trigger_receipts")->fetchColumn();m7_assert($count===2,'Runtime receipt store duplicated rejected/replayed requests');
 fwrite(STDOUT,"Local M7 Runtime trigger self-test: OK\n");
