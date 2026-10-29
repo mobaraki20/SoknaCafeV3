@@ -115,15 +115,29 @@ $priceDraft=$core->tableDrafts()->save([
 ],$userA);
 $priceDraftId=(int)$priceDraft['draft']['id'];
 $pdo->prepare('UPDATE items SET price=? WHERE id=?')->execute([125000,$itemId]);
-$priceRejected=false;
-try{$core->tableDrafts()->finalize(['draft_id'=>$priceDraftId,'expected_version'=>1],$userA);}
-catch(TableDraftException $e){$priceRejected=$e->errorCode==='finalize_rejected'&&($e->details['cause']??'')==='price_changed';}
-m53_assert($priceRejected,'Finalize trusted stale draft price instead of current catalog');
-m53_assert((int)$pdo->query("SELECT COUNT(*) FROM orders WHERE table_id={$priceTable}")->fetchColumn()===0,'rejected finalize created order side effect');
+// Approved pricing contract: the saved quantity retains its server-owned price segment.
+// Newly added quantity cannot piggyback on the obsolete price after the catalog changes.
+$extraAtOldPriceRejected=false;
+try{$core->tableDrafts()->save([
+    'table_id'=>$priceTable,'expected_version'=>1,'expected_session_id'=>0,
+    'items'=>[['id'=>$itemId,'quantity'=>2,'expected_price'=>100000]],
+],$userA);}
+catch(\Sokna\Local\Domain\Orders\OrderCommitException $e){$extraAtOldPriceRejected=$e->errorCode==='price_changed';}
+m53_assert($extraAtOldPriceRejected,'New quantity reused stale draft price without a new-price segment');
+$priceFinal=$core->tableDrafts()->finalize(['draft_id'=>$priceDraftId,'expected_version'=>1],$userA);
+m53_assert((int)($priceFinal['order_id']??0)>0,'Saved price segment did not finalize');
+$storedPrice=$pdo->query('SELECT unit_price_snapshot FROM order_items WHERE order_id='.(int)$priceFinal['order_id'].' LIMIT 1')->fetchColumn();
+m53_assert((int)$storedPrice===100000,'Saved draft quantity did not preserve the agreed price');
 
-$cancel=$core->tableDrafts()->cancel(['table_id'=>$priceTable,'expected_version'=>1],$userB);
+$pdo->exec("INSERT INTO cafe_tables(name,table_number,code,access_token,active,sort_order) VALUES('Cancel Table',15,'D15','m53-cancel-table',1,5)");
+$cancelTable=(int)$pdo->lastInsertId();
+$cancelDraft=$core->tableDrafts()->save([
+    'table_id'=>$cancelTable,'expected_version'=>0,'expected_session_id'=>0,
+    'items'=>[['id'=>$itemId,'quantity'=>1,'expected_price'=>125000]],
+],$userA);
+$cancel=$core->tableDrafts()->cancel(['table_id'=>$cancelTable,'expected_version'=>1],$userB);
 m53_assert($cancel['cancelled']===true,'explicit cancel failed');
-m53_assert((int)$pdo->query("SELECT COUNT(*) FROM table_drafts WHERE table_id={$priceTable} AND state='active'")->fetchColumn()===0,'cancel did not clear active-draft guard');
+m53_assert((int)$pdo->query("SELECT COUNT(*) FROM table_drafts WHERE table_id={$cancelTable} AND state='active'")->fetchColumn()===0,'cancel did not clear active-draft guard');
 
 $pdo->prepare('UPDATE items SET price=? WHERE id=?')->execute([100000,$itemId]);
 $pdo->exec("INSERT INTO cafe_tables(name,table_number,code,access_token,active,sort_order) VALUES('Quick Table',13,'D13','m53-quick-table',1,3)");
