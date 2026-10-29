@@ -126,7 +126,7 @@ catch(\Sokna\Local\Domain\Orders\OrderCommitException $e){$extraAtOldPriceReject
 m53_assert($extraAtOldPriceRejected,'New quantity reused stale draft price without a new-price segment');
 $priceFinal=$core->tableDrafts()->finalize(['draft_id'=>$priceDraftId,'expected_version'=>1],$userA);
 m53_assert((int)($priceFinal['order_id']??0)>0,'Saved price segment did not finalize');
-$storedPrice=$pdo->query('SELECT unit_price_snapshot FROM order_items WHERE order_id='.(int)$priceFinal['order_id'].' LIMIT 1')->fetchColumn();
+$storedPrice=$pdo->query('SELECT unit_price FROM order_items WHERE order_id='.(int)$priceFinal['order_id'].' LIMIT 1')->fetchColumn();
 m53_assert((int)$storedPrice===100000,'Saved draft quantity did not preserve the agreed price');
 
 $pdo->exec("INSERT INTO cafe_tables(name,table_number,code,access_token,active,sort_order) VALUES('Cancel Table',15,'D15','m53-cancel-table',1,5)");
