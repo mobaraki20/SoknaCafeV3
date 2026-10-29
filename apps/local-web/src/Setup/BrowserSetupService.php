@@ -498,26 +498,18 @@ final class BrowserSetupService
                 if(is_array($state)){
                     $endpoint=(array)($state['endpoints']['local_web']??[]);
                     foreach([(string)($endpoint['origin']??''),(string)($endpoint['base_url']??'')] as $candidate){
-                        $validated=$this->validateLoopbackUrl($candidate);if($validated!=='')return $validated;
+                        $validated=$this->normalizeLocalBaseUrl($candidate);
+                        if($validated!=='')return $validated;
                     }
                 }
             }catch(Throwable){}
         }
-        $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http';
-        $host=trim((string)($_SERVER['HTTP_HOST']??''));
-        if(preg_match('/^(?:127\\.0\\.0\\.1|localhost)(?::([0-9]{1,5}))?$/i',$host,$m)===1){
-            $port=isset($m[1])?(int)$m[1]:($scheme==='https'?443:80);
-            if($port>=1&&$port<=65535)return $scheme.'://'.$host;
-        }
-        return 'http://127.0.0.1:18080';
+        return \\Sokna\\Local\\Core\\LocalEndpoint::fromServer($_SERVER)['origin'];
     }
 
-    private function validateLoopbackUrl(string $value): string
+    private function normalizeLocalBaseUrl(string $value): string
     {
-        $value=rtrim(trim($value),'/');if($value==='')return '';$parts=parse_url($value);if(!is_array($parts))return '';
-        $scheme=strtolower((string)($parts['scheme']??''));$host=strtolower((string)($parts['host']??''));$port=isset($parts['port'])?(int)$parts['port']:($scheme==='https'?443:80);
-        if(!in_array($scheme,['http','https'],true)||!in_array($host,['127.0.0.1','localhost'],true)||$port<1||$port>65535)return '';
-        return $scheme.'://'.$host.(isset($parts['port'])?':'.$port:'');
+        return \\Sokna\\Local\\Core\\LocalEndpoint::normalizeOrigin($value);
     }
 
     private function adoptLegacyRootFilesIfNeeded(): void
