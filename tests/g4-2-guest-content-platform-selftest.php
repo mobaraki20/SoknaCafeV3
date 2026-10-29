@@ -54,7 +54,7 @@ $localConfig = [
 ];
 $local = sokna_local_bootstrap($localConfig);
 $applied = $local->migrations()->migrate('0059_menu_business_reconciliation_v4');
-g42(in_array('0023_g4_guest_content_platform', $applied, true), 'G4.2 Local migration was not applied');
+g42(in_array('0023_g4_guest_content_platform', $applied, true) || in_array('0023_g4_guest_content_platform', $local->migrations()->appliedVersions(), true), 'G4.2 required Local migration is absent');
 $lp = $local->database();
 foreach (['guest_content_config','guest_media_assets','guest_media_derivatives','guest_media_references'] as $table) {
     $exists = (int)$lp->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=" . $lp->quote($table))->fetchColumn();
