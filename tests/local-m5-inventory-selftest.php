@@ -153,7 +153,9 @@ m55_assert((int)$duplicate['movement_id']===(int)$r2['movement_id']&&$movementCo
 $periodic=$core->inventoryCounts()->start(['title'=>'Periodic','session_type'=>'periodic','scope_type'=>'full'],$operator);
 $periodicId=(int)$periodic['session_id'];
 $lines=$pdo->query("SELECT id,inventory_item_id,updated_at FROM inventory_count_lines WHERE session_id={$periodicId} ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
-m55_assert(count($lines)===2,'periodic count did not snapshot active inventory catalogue');
+$activeInventoryCount=(int)$pdo->query('SELECT COUNT(*) FROM inventory_items WHERE active=1')->fetchColumn();
+m55_assert($activeInventoryCount>=2&&count($lines)===$activeInventoryCount,
+    'periodic count did not snapshot every active inventory item');
 $targetLine=null;
 foreach($lines as $row){
     $item=(int)$row['inventory_item_id'];
