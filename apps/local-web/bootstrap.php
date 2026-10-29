@@ -8,6 +8,7 @@ require_once __DIR__ . '/src/Shared/DailySupply.php';
 
 use Sokna\Local\Core\Bootstrap;
 
+require_once __DIR__ . '/src/Core/LocalEndpoint.php';
 require_once __DIR__ . '/src/Core/Config.php';
 require_once __DIR__ . '/src/Core/Database.php';
 require_once __DIR__ . '/src/Core/Observability.php';
