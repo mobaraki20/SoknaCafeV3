@@ -32,9 +32,17 @@ $core = sokna_local_bootstrap([
 ]);
 
 $expected = ['0001_m2_platform_core', '0002_m5_sellables', '0003_m5_orders', '0004_m5_table_drafts', '0005_m5_preparation', '0006_m5_inventory', '0007_m5_supply', '0008_m5_deferred_receipts', '0009_m5_tax', '0010_m5_expenses', '0011_m5_financial_periods', '0012_m5_settlement', '0013_m5_integrations', '0014_m7_runtime', '0015_m8_printing', '0016_g1_guest_waiter', '0017_g1_admin_controls', '0018_g1_global_search', '0019_f1_staff_consumption_foundation', '0020_f1_staff_account', '0021_f1_staff_consumption_reporting', '0022_g3_public_edge_sync', '0023_g4_guest_content_platform', '0024_g4_business_extensions', '0025_g4_print_template_packages', '0026_q3_remote_credentials'];
-$first = $core->migrations()->migrate();
-if ($first !== $expected) {
-    mysql_migration_fail('First Local migration pass did not apply the expected ordered migration stack: ' . json_encode($first));
+$catalog = array_keys($core->migrations()->catalog());
+$preSeed = array_values(array_filter($catalog, static fn (string $version): bool => strcmp($version, '0059_menu_business_reconciliation_v4') < 0));
+$first = $core->migrations()->migrate('0059_menu_business_reconciliation_v4');
+if ($first !== $preSeed || array_slice($first, 0, count($expected)) !== $expected) {
+    mysql_migration_fail('Pre-seed Local migration pass did not follow the expected ordered schema stack: ' . json_encode($first));
+}
+$seed = $core->defaultContentSeeder()->seed();
+if (($seed['seeded'] ?? false) !== true) mysql_migration_fail('Clean installation did not seed the default catalog.');
+$afterSeed = $core->migrations()->migrate();
+if ($afterSeed !== array_values(array_diff($catalog, $preSeed))) {
+    mysql_migration_fail('Post-seed Local migration pass did not apply the complete remaining stack: ' . json_encode($afterSeed));
 }
 $second = $core->migrations()->migrate();
 if ($second !== []) mysql_migration_fail('Second Local migration pass was not idempotent.');
