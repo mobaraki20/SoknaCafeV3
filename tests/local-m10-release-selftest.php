@@ -52,6 +52,9 @@ m10_assert((string)file_get_contents($backup, false, null, 0, 11)==="SOKNA-SKB1\
 m10_assert(strpos((string)file_get_contents($backup),$uname)===false,'plaintext business identity leaked into encrypted backup');
 $manifest=$core->businessBackup()->inspectEncrypted($backup,$secret);
 m10_assert(($manifest['source_installation_id']??'')==='m10-source-installation','backup installation identity drifted');
+foreach (['public_projection_outbox','public_projection_model_delivery','public_projection_model_targets','public_sync_state'] as $transportTable) {
+    m10_assert(in_array($transportTable,(array)($manifest['excluded_tables']??[]),true),'Public transport crossed business backup boundary: '.$transportTable);
+}
 foreach(['runtime_machine_secret','print_agent_identity','tls_private_key'] as $excluded)
     m10_assert(in_array($excluded,(array)($manifest['excluded_machine_identity']??[]),true),'machine identity exclusion missing: '.$excluded);
 $bad=false;try{$core->businessBackup()->inspectEncrypted($backup,'definitely-wrong-secret');}catch(RecoveryException $e){$bad=$e->errorCode==='backup_auth_failed';}
@@ -66,7 +69,21 @@ $root->exec('CREATE DATABASE `'.$target.'` CHARACTER SET utf8mb4 COLLATE utf8mb4
 try{
   $root->exec("GRANT ALL PRIVILEGES ON `{$target}`.* TO '".str_replace("'","''",$user)."'@'%'");
   $dst=sokna_local_bootstrap($cfg($target,$targetData,'m10-new-machine'));
-  $dst->migrations()->migrate();$restored=$dst->businessBackup()->restoreEncryptedToEmptyTarget($backup,$secret,0);
+  // Prepare a structurally complete target without business identities. The catalog
+  // seed satisfies guarded 0059 and will be replaced, not merged, by restoreSnapshot().
+  $dst->migrations()->migrate('0059_menu_business_reconciliation_v4');
+  $dst->defaultContentSeeder()->seed();
+  $dst->migrations()->migrate();
+  // The fixture seed may provision reference inventory data. Real restore requires
+  // an empty business target, so clear ONLY disposable baseline inventory fixtures.
+  $targetPdo=$dst->database();
+  $targetPdo->exec('SET FOREIGN_KEY_CHECKS=0');
+  try {
+    foreach (['inventory_movements','inventory_balances','inventory_purchase_units','inventory_recipe_components','inventory_recipe_versions','inventory_items'] as $table) {
+      $targetPdo->exec('DELETE FROM `'.$table.'`');
+    }
+  } finally { $targetPdo->exec('SET FOREIGN_KEY_CHECKS=1'); }
+  $restored=$dst->businessBackup()->restoreEncryptedToEmptyTarget($backup,$secret,0);
   m10_assert(!empty($restored['restored'])&&!empty($restored['machine_identity_reprovision_required']),'machine takeover restore did not require fresh identity');
   $dp=$dst->database();
   $q=$dp->prepare('SELECT COUNT(*) FROM users WHERE username=?');$q->execute([$uname]);m10_assert((int)$q->fetchColumn()===1,'business user not restored');

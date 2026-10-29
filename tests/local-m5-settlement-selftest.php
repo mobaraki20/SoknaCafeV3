@@ -89,6 +89,8 @@ $partialRequest=[
     'expected_session_id'=>$sessionId,'expected_remaining_total'=>$account0['remaining_total'],'expected_signature'=>$account0['signature'],
     'selection'=>[['order_item_id'=>(int)$lineA['id'],'quantity'=>1]],
 ];
+$partialReview=$core->settlements()->review($partialRequest,$cashier);
+$partialRequest['tenders']=[['type'=>'pos','amount'=>(int)$partialReview['total']]];
 $partial=$core->settlements()->settle($partialRequest,$cashier);
 m510_assert(empty($partial['idempotent'])&&empty($partial['closes_session'])&&$partial['settlement_kind']==='itemized','itemized partial settlement did not stay open');
 $partialRetry=$core->settlements()->settle($partialRequest,$cashier);
@@ -100,6 +102,7 @@ m510_assert($account1['remaining_total']<$account0['remaining_total'],'itemized 
 $stale=false;
 try{$core->settlements()->settle([
     'session_id'=>$sessionId,'destination'=>'direct','mode'=>'full','request_id'=>'m510-stale-full',
+    'tenders'=>[['type'=>'cash','amount'=>(int)$account0['remaining_total']]],
     'expected_session_id'=>$sessionId,'expected_remaining_total'=>$account0['remaining_total'],'expected_signature'=>$account0['signature'],
 ],$cashier);}catch(SettlementStateConflict $e){$stale=$e->errorCode==='account_changed';}
 m510_assert($stale,'stale account confirmation committed after itemized payment');
@@ -118,6 +121,7 @@ m510_assert($adapterGuarded,'Accommodation settlement bypassed its canonical tra
 
 $final=$core->settlements()->settle([
     'session_id'=>$sessionId,'destination'=>'direct','mode'=>'full','request_id'=>'m510-settle-final',
+    'tenders'=>[['type'=>'cash','amount'=>(int)$account1['remaining_total']]],
     'expected_session_id'=>$sessionId,'expected_remaining_total'=>$account1['remaining_total'],'expected_signature'=>$account1['signature'],
 ],$cashier);
 m510_assert(!empty($final['closes_session'])&&$final['remaining_total']===0,'final settlement did not close exact remaining account');

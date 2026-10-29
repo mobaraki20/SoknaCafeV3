@@ -130,10 +130,25 @@ try {
     if (($availability['status'] ?? 0) !== 200 || ($availability['body']['version'] ?? '') !== $availabilityPayload['version']) {
         public_m4_guest_fail('M4 availability projection sync failed.');
     }
+    // Current Local omits generated_at from availability content identity so
+    // ordinary heartbeats cannot generate a different business revision.
+    $stableAvailabilityCore = $availabilityCore;
+    unset($stableAvailabilityCore['generated_at']);
+    $stableAvailabilityPayload = ['version' => CanonicalJson::sha256($stableAvailabilityCore)] + $availabilityCore;
+    $stableAvailability = signed_call($adapter, $verifier, $secret, $installationId, 'availability', '/api/v1/local/guest/availability.php', $stableAvailabilityPayload);
+    if (($stableAvailability['status'] ?? 0) !== 200 || ($stableAvailability['body']['version'] ?? '') !== $stableAvailabilityPayload['version']) {
+        public_m4_guest_fail('Current Local stable availability hash not supported.');
+    }
+    $modifiedAvailability = $stableAvailabilityPayload;
+    $modifiedAvailability['items']['coffee']['available'] = false;
+    $integrityDenied = signed_call($adapter, $verifier, $secret, $installationId, 'availability', '/api/v1/local/guest/availability.php', $modifiedAvailability);
+    if ((int)($integrityDenied['status'] ?? 0) !== 422 || ($integrityDenied['body']['error'] ?? '') !== 'availability_integrity_failed') {
+        public_m4_guest_fail('Tampered availability state escaped hash verification.');
+    }
 
     $stored = $pdo->prepare('SELECT version FROM guest_availability_state WHERE installation_id=?');
     $stored->execute([$installationId]);
-    if ((string)$stored->fetchColumn() !== $availabilityPayload['version']) {
+    if ((string)$stored->fetchColumn() !== $stableAvailabilityPayload['version']) {
         public_m4_guest_fail('M4 availability projection was not persisted independently.');
     }
 

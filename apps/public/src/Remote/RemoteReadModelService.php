@@ -18,6 +18,11 @@ final class RemoteReadModelService
         'reports' => 'reports.read',
         'notifications' => 'notifications.read',
         'deferred_context' => 'deferred.context',
+        'operations_workspace' => 'operations.workspace.read',
+        'subscribers' => 'subscriber.read',
+        'table_draft_context' => 'orders.table_draft',
+        // Guest runtime data must never be readable through a Staff session.
+        'guest_operational' => '__guest_runtime_internal',
     ];
 
     public function __construct(
@@ -103,6 +108,9 @@ final class RemoteReadModelService
     public function read(array $session, string $modelKey, int $staleSeconds = 90): array
     {
         $modelKey = trim($modelKey);
+        // This snapshot is exclusively consumed by Guest runtime; even a Staff
+        // administrator with wildcard capabilities must never read it here.
+        if ($modelKey === 'guest_operational') return $this->error(404, 'unknown_model');
         $required = self::MODEL_CAPABILITIES[$modelKey] ?? null;
         if ($required === null) return $this->error(404, 'unknown_model');
         if (!$this->hasCapability($session, $required)) return $this->error(403, 'forbidden');

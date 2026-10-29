@@ -97,6 +97,11 @@
     try{
       if(await resetLegacyBrowserState())return;
       const result=await api('status');
+      const canonical=result?.canonical;
+      if(canonical?.origin && canonical.origin!==location.origin){
+        location.replace(canonical.origin+'/setup/');
+        return;
+      }
       sessionStorage.removeItem('sokna.setup.browser-state-reset');
       csrf=result.csrf;
       renderChecks(result.preflight);

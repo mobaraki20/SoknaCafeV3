@@ -53,8 +53,8 @@ $localConfig = [
     'integrations' => ['accommodation' => ['base_url' => '', 'secret' => '']],
 ];
 $local = sokna_local_bootstrap($localConfig);
-$applied = $local->migrations()->migrate();
-g42(in_array('0023_g4_guest_content_platform', $applied, true), 'G4.2 Local migration was not applied');
+$applied = $local->migrations()->migrate('0059_menu_business_reconciliation_v4');
+g42(in_array('0023_g4_guest_content_platform', $applied, true) || in_array('0023_g4_guest_content_platform', $local->migrations()->appliedVersions(), true), 'G4.2 required Local migration is absent');
 $lp = $local->database();
 foreach (['guest_content_config','guest_media_assets','guest_media_derivatives','guest_media_references'] as $table) {
     $exists = (int)$lp->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=" . $lp->quote($table))->fetchColumn();
@@ -155,6 +155,11 @@ g42((int)$pp->query("SELECT COUNT(*) FROM guest_publish_revisions WHERE installa
 g42((int)$pp->query("SELECT COUNT(*) FROM guest_active_revisions WHERE installation_id='g42-installation'")->fetchColumn() === 1, 'Guest active revision missing on Public');
 
 $bundle = $public->guestRuntime()->bundle($installation);
+$guestActionState = $public->guestRuntime()->actionState($bundle);
+g42(($guestActionState['enabled'] ?? false) === true
+    && ($guestActionState['local_fresh'] ?? false) === true
+    && ($guestActionState['availability_fresh'] ?? false) === true,
+    'Fresh signed Local heartbeat/availability did not enable the Public Guest menu');
 $presentation = (array)(($bundle['snapshot']['presentation'] ?? []));
 g42((string)($presentation['theme']['theme_key'] ?? '') === 'sokna-house', 'Published theme missing from Public snapshot');
 g42((string)($presentation['theme']['tokens']['primary'] ?? '') === '#123456', 'Published theme token missing from Public snapshot');
@@ -165,10 +170,25 @@ $meta = array_values($manifest)[0];
 g42((string)($meta['alt_text'] ?? '') === 'تصویر لاته G42', 'Published media alt text missing');
 $sha = (string)($meta['sha256'] ?? '');
 $ext = (string)($meta['extension'] ?? '');
-g42($sha !== '' && $ext === 'png', 'Published media metadata invalid');
+$mime = (string)($meta['mime'] ?? '');
+$allowedMedia = ['png'=>'image/png','webp'=>'image/webp','jpg'=>'image/jpeg','gif'=>'image/gif'];
+g42(preg_match('/^[a-f0-9]{64}$/D', $sha) === 1
+    && isset($allowedMedia[$ext]) && $mime === $allowedMedia[$ext],
+    'Published media metadata invalid');
+$derivative = $lp->prepare("SELECT d.sha256,d.mime,d.extension FROM guest_media_derivatives d
+    JOIN guest_media_assets a ON a.id=d.media_id
+    WHERE a.media_key=? AND d.variant_key='guest-card' LIMIT 1");
+$derivative->execute([$mediaKey]);
+$sourceMedia = $derivative->fetch(PDO::FETCH_ASSOC);
+g42(is_array($sourceMedia) && hash_equals((string)$sourceMedia['sha256'], $sha)
+    && (string)$sourceMedia['extension'] === $ext && (string)$sourceMedia['mime'] === $mime,
+    'Published media does not match canonical Local guest-card derivative');
 
 $mediaResponse = $kernel->handle('GET', "/media/{$installation}/{$sha}.{$ext}");
-g42((int)$mediaResponse['status'] === 200 && is_file((string)($mediaResponse['file_path'] ?? '')), 'Public media replica is not readable');
+$replica = (string)($mediaResponse['file_path'] ?? '');
+g42((int)$mediaResponse['status'] === 200 && is_file($replica)
+    && hash_equals($sha, (string)hash_file('sha256', $replica)),
+    'Public media replica is not readable or its content hash differs');
 $themeCss = $kernel->handle('GET', "/theme/{$installation}.css");
 g42((int)$themeCss['status'] === 200 && str_contains((string)$themeCss['body'], '--sg-color-primary:#123456'), 'Published theme CSS did not render safe token');
 $menu = $kernel->handle('GET', '/menu', ['installation' => $installation]);

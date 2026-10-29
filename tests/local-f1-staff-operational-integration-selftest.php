@@ -33,5 +33,7 @@ $job=(array)$pdo->query('SELECT payload_json FROM print_jobs WHERE id='.(int)$po
 // Normal table-service path remains canonical and is printed immediately by OrderCommitService.
 $pdo->exec("INSERT INTO cafe_tables(name,table_number,code,access_token,active,sort_order) VALUES('F15 Table',51,'F15T','f15-table-token',1,1)");$tableId=(int)$pdo->lastInsertId();
 $tableOrder=$core->staffQuickOrders()->commit(['table_id'=>$tableId,'expected_session_id'=>0,'request_token'=>'f15-table-order-0001','items'=>[['id'=>$menuItemId,'quantity'=>1,'expected_price'=>200000]]],$manager);
-$tableJob=(array)$pdo->query('SELECT payload_json FROM print_jobs WHERE entity_type=\'order\' AND entity_id='.(int)$tableOrder['order_id'].' LIMIT 1')->fetch(PDO::FETCH_ASSOC);$tablePayload=json_decode((string)($tableJob['payload_json']??''),true);f15_assert((string)($tablePayload['order_context']??'')==='table_service'&&(string)($tablePayload['table_name']??'')==='F15 Table','table-service print regression');
+$tableJob=(array)$pdo->query('SELECT payload_json FROM print_jobs WHERE entity_type=\'order\' AND entity_id='.(int)$tableOrder['order_id'].' LIMIT 1')->fetch(PDO::FETCH_ASSOC);f15_assert(isset($tableJob['payload_json']),'table-service preparation print intent was not queued');
+$tablePayload=json_decode((string)($tableJob['payload_json']??''),true);
+f15_assert((string)($tablePayload['order_context']??'')==='table_service'&&(string)($tablePayload['table_name']??'')==='F۱۵ Table','table-service print context or Persian-digit display regression');
 fwrite(STDOUT,"F1.5 Staff operational integration DB self-test: OK\n");

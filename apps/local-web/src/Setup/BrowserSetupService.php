@@ -6,6 +6,8 @@ namespace Sokna\Local\Setup;
 use PDO;
 use Throwable;
 use Sokna\Local\UI\FontRuntime;
+use Sokna\Local\Core\LocalEndpoint;
+require_once dirname(__DIR__).'/Core/LocalEndpoint.php';
 
 final class BrowserSetupService
 {
@@ -147,7 +149,8 @@ final class BrowserSetupService
         try {
             $core = \sokna_local_bootstrap($appConfig);
             $pdo = $core->database();
-            $core->migrations()->migrate();
+            // Fresh setup: schema first, then seed canonical catalog, then run data-dependent migrations.
+            $core->migrations()->migrate('0059_menu_business_reconciliation_v4');
             $users = (int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
             $savedInstallationId = $this->setting($pdo,'installation.id');
             if ($users > 0 && $savedInstallationId !== $installationId) {
@@ -172,6 +175,7 @@ final class BrowserSetupService
             $adminId=(int)$pdo->query("SELECT id FROM users WHERE role='admin' AND active=1 ORDER BY id LIMIT 1")->fetchColumn();
             if($adminId<1)throw new SetupException('admin_missing','مدیر فعال برای تکمیل داده اولیه پیدا نشد.',500);
             $core->defaultContentSeeder()->seed($adminId);
+            $core->migrations()->migrate();
             $this->provisionMachineFiles($appConfig);
             $health = $this->finalHealth($appConfig);
             $this->writePrivate($this->lockPath(), json_encode([
@@ -197,7 +201,7 @@ final class BrowserSetupService
         $config = $this->loadConfig();
         if ($config === []) throw new SetupException('resume_unavailable','Setup نیمه‌تمامی برای ادامه پیدا نشد.',404);
         try {
-            $core=\sokna_local_bootstrap($config);$pdo=$core->database();$core->migrations()->migrate();
+            $core=\sokna_local_bootstrap($config);$pdo=$core->database();$core->migrations()->migrate('0059_menu_business_reconciliation_v4');
             $installationId=trim((string)($config['installation']['id']??''));
             if ($installationId==='' || $this->setting($pdo,'installation.id')!==$installationId || (int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn()<1) {
                 throw new SetupException('resume_not_ready','Setup نیمه‌تمام هنوز به مرحله قابل نهایی‌سازی نرسیده است.',409);
@@ -205,6 +209,7 @@ final class BrowserSetupService
             $adminId=(int)$pdo->query("SELECT id FROM users WHERE role='admin' AND active=1 ORDER BY id LIMIT 1")->fetchColumn();
             if($adminId<1)throw new SetupException('admin_missing','مدیر فعال برای ادامه داده اولیه پیدا نشد.',500);
             $core->defaultContentSeeder()->seed($adminId);
+            $core->migrations()->migrate();
             $this->provisionMachineFiles($config);
             $health=$this->finalHealth($config);
             $this->writePrivate($this->lockPath(),json_encode(['format'=>'sokna-install-lock-v3','installation_id'=>$installationId,'created_at'=>gmdate('c'),'setup_surface'=>'browser-resume','health'=>$health],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");
@@ -491,30 +496,26 @@ final class BrowserSetupService
         $statePath=$this->packageRoot.DIRECTORY_SEPARATOR.'Infrastructure'.DIRECTORY_SEPARATOR.'infrastructure-state.json';
         if(is_file($statePath)){
             try{
-                $raw=@file_get_contents($statePath);$state=is_string($raw)?json_decode($raw,true,32,JSON_THROW_ON_ERROR):null;
+                $raw=@file_get_contents($statePath);
+                $state=is_string($raw)?json_decode($raw,true,32,JSON_THROW_ON_ERROR):null;
                 if(is_array($state)){
                     $endpoint=(array)($state['endpoints']['local_web']??[]);
                     foreach([(string)($endpoint['origin']??''),(string)($endpoint['base_url']??'')] as $candidate){
-                        $validated=$this->validateLoopbackUrl($candidate);if($validated!=='')return $validated;
+                        try{return self::normalizeLocalBaseUrl($candidate);}catch(SetupException){}
                     }
                 }
             }catch(Throwable){}
         }
-        $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http';
-        $host=trim((string)($_SERVER['HTTP_HOST']??''));
-        if(preg_match('/^(?:127\\.0\\.0\\.1|localhost)(?::([0-9]{1,5}))?$/i',$host,$m)===1){
-            $port=isset($m[1])?(int)$m[1]:($scheme==='https'?443:80);
-            if($port>=1&&$port<=65535)return $scheme.'://'.$host;
-        }
-        return 'http://127.0.0.1:18080';
+        try{return LocalEndpoint::fromServer($_SERVER);}
+        catch(\InvalidArgumentException){return 'http://127.0.0.1:18080/';}
     }
 
-    private function validateLoopbackUrl(string $value): string
+    /** Public only for setup contract verification; does not mutate installation state. */
+    public static function normalizeLocalBaseUrl(string $value): string
     {
-        $value=rtrim(trim($value),'/');if($value==='')return '';$parts=parse_url($value);if(!is_array($parts))return '';
-        $scheme=strtolower((string)($parts['scheme']??''));$host=strtolower((string)($parts['host']??''));$port=isset($parts['port'])?(int)$parts['port']:($scheme==='https'?443:80);
-        if(!in_array($scheme,['http','https'],true)||!in_array($host,['127.0.0.1','localhost'],true)||$port<1||$port>65535)return '';
-        return $scheme.'://'.$host.(isset($parts['port'])?':'.$port:'');
+        $origin=LocalEndpoint::normalizeOrigin($value);
+        if($origin==='')throw new SetupException('local_endpoint_invalid','آدرس Local باید Loopback با پورت ۱۰۲۴ تا ۶۵۵۳۵ باشد.',422);
+        return $origin;
     }
 
     private function adoptLegacyRootFilesIfNeeded(): void

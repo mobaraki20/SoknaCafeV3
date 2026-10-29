@@ -24,7 +24,7 @@ for token in ["LocalWebUrl()","WebPublicPath()","EnsureApachePortAvailableWithFa
 need('var w = Slash(WebPublicPath())' in setup and r'$"DocumentRoot \"{w}\""' in setup,"Apache must serve Local Web public/ directory")
 
 browser=(R/"apps/local-web/src/Setup/BrowserSetupService.php").read_text(encoding="utf-8")
-for token in ["normalizeLocalBaseUrl","local_base_url","local_bridge_allowed_origin","windows-services-pairing.json","print_agent_token"]:
+for token in ["normalizeLocalBaseUrl","local_base_url","infrastructure-state.json","LocalEndpoint::fromServer"]:
     need(token in browser,f"Browser Setup endpoint/pairing implementation missing: {token}")
 need("https://127.0.0.1" not in browser,"Browser Setup retains hardcoded HTTPS endpoint")
 
@@ -32,14 +32,14 @@ helper=(R/"apps/local-web/src/Core/LocalEndpoint.php").read_text(encoding="utf-8
 for token in ["CANONICAL_HOST = '127.0.0.1'","MIN_PORT = 1024","fromServer","canonicalRedirectTarget"]:
     need(token in helper,f"Local endpoint helper missing: {token}")
 api=(R/"apps/local-web/public/setup/api.php").read_text(encoding="utf-8")
-need("setup_local_base_url" in api and "LocalEndpoint::fromServer" in api,"Setup API must derive actual Apache port through canonical helper")
+need("LocalEndpoint::fromServer" in api and "'canonical'=>$canonical" in api,"Setup API must return validated canonical endpoint from server")
 js=(R/"apps/local-web/public/assets/setup-wizard.js").read_text(encoding="utf-8")
 need("location.replace(canonical.origin+'/setup/')" in js,"Browser Setup must canonicalize browser origin")
 
 app=(R/"apps/local-web/public/_app.php").read_text(encoding="utf-8")
-recovery=(R/"apps/local-web/public/local-recovery.php").read_text(encoding="utf-8")
-need("dirname(__DIR__,3)" not in app and "$root=dirname(__DIR__);" in app,"Local app still assumes monorepo root")
-need("dirname(__DIR__,3)" not in recovery and "$packageRoot=dirname(__DIR__);" in recovery,"Recovery still assumes monorepo root")
+recovery=(R/"apps/local-web/public/system/recovery-upload.php").read_text(encoding="utf-8")
+need("dirname(__DIR__,3)" not in app and "$local=dirname(__DIR__);$root=dirname($local);" in app,"Local app still assumes monorepo root")
+need("dirname(__DIR__,3)" not in recovery and "dirname(__DIR__).'/_app.php'" in recovery,"Recovery still assumes monorepo root")
 
 runtime=(R/"windows/runtime/source/Program.cs").read_text(encoding="utf-8")
 need('LocalBaseUrl { get; init; } = ""' in runtime,"Runtime still has a hardcoded Local URL default")

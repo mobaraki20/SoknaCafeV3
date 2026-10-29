@@ -31,8 +31,15 @@ final class GuestAvailabilityService
 
         $canonical = $body;
         unset($canonical['version']);
-        $expected = CanonicalJson::sha256($canonical);
-        if (!hash_equals($version, $expected)) {
+        // The first Public protocol hashed generated_at with the business state;
+        // current Local hashes only the stable availability state. Both are
+        // authenticated by the signed transport and must match a recomputed digest.
+        // Never skip the digest check or accept any other unverified scope.
+        $legacyExpected = CanonicalJson::sha256($canonical);
+        $stableState = $canonical;
+        unset($stableState['generated_at']);
+        $stableExpected = CanonicalJson::sha256($stableState);
+        if (!hash_equals($version, $legacyExpected) && !hash_equals($version, $stableExpected)) {
             return $this->error(422, 'availability_integrity_failed');
         }
 

@@ -24,12 +24,13 @@ $qu=$root->quote($user);$qp=$root->quote($pass);$root->exec("CREATE USER IF NOT 
 
 $data=sys_get_temp_dir().'/sokna-g41-'.bin2hex(random_bytes(4));@mkdir($data,0700,true);$installation='g41-installation';$secret='g41-secret-'.bin2hex(random_bytes(12));
 $localConfig=['app'=>['timezone'=>'UTC','data_dir'=>$data],'db'=>['host'=>$host,'port'=>$port,'name'=>$localName,'charset'=>'utf8mb4','user'=>$user,'pass'=>$pass],'installation'=>['id'=>$installation],'runtime'=>['local_token'=>'g41'],'public'=>['base_url'=>'http://127.0.0.1','shared_secret'=>$secret],'integrations'=>['accommodation'=>['base_url'=>'','secret'=>'']]];
-$local=sokna_local_bootstrap($localConfig);$local->migrations()->migrate();$lp=$local->database();
+$local=sokna_local_bootstrap($localConfig);$local->migrations()->migrate('0059_menu_business_reconciliation_v4');$lp=$local->database();
 
 $pwd=password_hash('RemoteG41Pass!',PASSWORD_DEFAULT);
 $mkUser=function(string $username,string $role,array $caps)use($lp,$pwd):array{$q=$lp->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)');$q->execute([$username,$pwd,$username,$role]);$id=(int)$lp->lastInsertId();$c=$lp->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)');foreach($caps as $cap)$c->execute([$id,$cap]);return ['id'=>$id,'username'=>$username,'display_name'=>$username,'role'=>$role,'active'=>1];};
 $admin=$mkUser('g41-admin','admin',[]);
-$remote=$mkUser('g41-remote','operator',['orders_floor','cashier_accounts','inventory_operations','remote_access','remote_settlement','remote_supply','remote_subscriber_payments']);
+$remote=$mkUser('g41-remote','operator',['orders_floor','cashier_accounts','inventory_operations','remote_access']);
+$local->remoteCredentials()->syncFromPassword((int)$remote['id'],'RemoteG41Pass!');
 $lp->prepare("INSERT INTO user_preparation_areas(user_id,area_key) VALUES(?,'kitchen')")->execute([$remote['id']]);
 $settings=$lp->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');foreach([['cafe.name','G41 Cafe'],['installation.id',$installation],['orders_accepting.cafe','1'],['orders_accepting.kitchen','1'],['orders_accepting.bar','1'],['waiter_call_enabled','1'],['module.inventory.enabled','1'],['module.supply.enabled','1'],['inventory_initialized','1'],['inventory_reconciliation_required','0']] as [$k,$v])$settings->execute([$k,$v]);
 
@@ -47,15 +48,22 @@ $publicConfig=['db'=>['host'=>$host,'port'=>$port,'name'=>$publicName,'charset'=
 $public=sokna_public_bootstrap($publicConfig);$public->migrations()->migrate();$kernel=new PublicHttpKernel($public,dirname(__DIR__).'/apps/public');
 $transport=function(string $url,string $method,array $headers,string $raw)use($kernel){$path=(string)(parse_url($url,PHP_URL_PATH)?:'/');$r=$kernel->handle($method,$path,[],$raw,$headers);return ['status'=>(int)$r['status'],'body'=>(string)($r['body']??'')];};
 $client=new PublicEdgeSyncClient(LocalConfig::fromArray($localConfig),$transport);$obs=new Observability($data);$builder=new PublicProjectionBuilder($lp,$local->settlements(),$local->supply());$publisher=new PublicEdgePublisherService($lp,$client,$builder,$obs,'g41-ci');
-g41(($publisher->syncAll()['success']??false)===true,'initial projection publish failed');
-$relay=new PublicEdgeRelayService($lp,$client,$local->realtimeDispatch(),$local->deferredDispatch(),$obs);
+$initialPublish=$publisher->syncAll();
+if(($initialPublish['success']??false)!==true){
+    $failCodes=[];foreach((array)($initialPublish['channels']??[]) as $channel=>$record){
+        if(!is_array($record)||($record['ok']??null)!==false)continue;
+        $failCodes[(string)$channel]=['code'=>(string)($record['code']??''),'status'=>(int)($record['status']??$record['http_status']??0)];
+    }
+    g41(false,'initial projection publish failed; channel_codes='.json_encode($failCodes,JSON_THROW_ON_ERROR));
+}
+$relay=new PublicEdgeRelayService($lp,$client,$local->realtimeDispatch(),$local->deferredDispatch(),$obs,$local->lanStaffRealtimeReceipts(),$publisher);
 
 $login=$kernel->handle('POST','/staff/login',[],http_build_query(['installation_id'=>$installation,'username'=>'g41-remote','password'=>'RemoteG41Pass!']),['Content-Type'=>'application/x-www-form-urlencoded']);g41((int)$login['status']===303,'remote login failed');preg_match('/sokna_staff=([^;]+)/',(string)($login['headers']['Set-Cookie']??''),$m);$cookie='sokna_staff='.($m[1]??'');g41(strlen($cookie)>20,'remote session cookie missing');
 $staff=$kernel->handle('GET','/staff',[],'',['Cookie'=>$cookie]);g41(str_contains((string)$staff['body'],'data-action="settlement"')&&str_contains((string)$staff['body'],'data-action="supply"')&&str_contains((string)$staff['body'],'data-action="subscriber"'),'remote action surface missing');
 
 // A05 + A15: Realtime settlement provider -> queue -> Local canonical settlement -> ACK.
 $ops=body($kernel->handle('GET','/api/staff/read',['model'=>'operations'],'',['Cookie'=>$cookie]));$accounts=(array)($ops['payload']['settlement_accounts']??[]);$account=null;foreach($accounts as $a)if((int)$a['session_id']===$sessionId){$account=$a;break;}g41(is_array($account),'settlement account projection missing');
-$settleId='g41-settle-'.bin2hex(random_bytes(4));$settleEnvelope=['request_id'=>$settleId,'kind'=>'settlement.commit','created_at'=>gmdate('c'),'expires_at'=>gmdate('c',time()+120),'payload'=>['session_id'=>$sessionId,'expected_session_id'=>$sessionId,'expected_remaining_total'=>(int)$account['remaining_total'],'expected_signature'=>(string)$account['signature'],'destination'=>'direct','mode'=>'full']];
+$settleId='g41-settle-'.bin2hex(random_bytes(4));$settleEnvelope=['request_id'=>$settleId,'kind'=>'settlement.commit','created_at'=>gmdate('c'),'expires_at'=>gmdate('c',time()+120),'payload'=>['session_id'=>$sessionId,'expected_session_id'=>$sessionId,'expected_remaining_total'=>(int)$account['remaining_total'],'expected_signature'=>(string)$account['signature'],'destination'=>'direct','mode'=>'full','tenders'=>[['type'=>'cash','amount'=>(int)$account['remaining_total']]]]];
 $queuedResponse=$kernel->handle('POST','/api/staff/realtime',[],json_encode($settleEnvelope),['Cookie'=>$cookie,'Content-Type'=>'application/json']);$queued=body($queuedResponse);g41(($queued['state']??'')==='queued','settlement was not queued; status='.(string)($queuedResponse['status']??0).'; body='.(string)($queuedResponse['body']??''));$relayOut=$relay->sync();g41((int)$relayOut['realtime']>=1,'realtime worker did not dispatch settlement');$settled=body($kernel->handle('GET','/api/staff/realtime/result',['request_id'=>$settleId],'',['Cookie'=>$cookie]));g41(($settled['state']??'')==='committed','settlement realtime did not commit');g41((string)$lp->query("SELECT status FROM table_sessions WHERE id={$sessionId}")->fetchColumn()==='closed','canonical Local settlement did not close session');
 
 // A13 + A06: Deferred Supply need provider -> Local Supply owner -> ACK.

@@ -39,7 +39,7 @@ $makeUser=function(string $name,array $caps)use($pdo):array{
     foreach($caps as $cap)$stmt->execute([$id,$cap]);
     return ['id'=>$id,'username'=>$name,'display_name'=>$name,'role'=>'operator','active'=>1];
 };
-$operator=$makeUser('m55-operator',['orders_floor','inventory_view','inventory_operations','inventory_manage']);
+$operator=$makeUser('m55-operator',['orders_floor','inventory_view','inventory_cost_view','inventory_operations','inventory_manage']);
 $finalizer=$makeUser('m55-finalizer',['inventory_view','inventory_finalize']);
 $viewer=$makeUser('m55-viewer',['inventory_view']);
 
@@ -65,6 +65,14 @@ try{$core->inventoryCounts()->finalize($openingId,$operator);}
 catch(InventoryException $e){$opsFinalizeDenied=$e->errorCode==='forbidden';}
 m55_assert($opsFinalizeDenied,'inventory_operations user finalized without inventory_finalize');
 
+// A full opening count must explicitly confirm zero stock for every untouched item.
+foreach ($pdo->query("SELECT id,updated_at FROM inventory_count_lines WHERE session_id={$openingId} AND actual_quantity IS NULL")->fetchAll(PDO::FETCH_ASSOC) as $unreviewed) {
+    $core->inventoryCounts()->updateLine([
+        'session_id'=>$openingId,'line_id'=>(int)$unreviewed['id'],
+        'expected_version'=>(string)$unreviewed['updated_at'],
+        'actual_major'=>'0','opening_total_cost'=>'0','note'=>'CI: reviewed empty stock',
+    ],$operator);
+}
 $openingFinal=$core->inventoryCounts()->finalize($openingId,$finalizer);
 m55_assert($openingFinal['movements']===1&&$openingFinal['differences']===1,'opening count did not create canonical movement');
 $init=(string)$pdo->query("SELECT setting_value FROM settings WHERE setting_key='inventory_initialized'")->fetchColumn();
@@ -145,7 +153,9 @@ m55_assert((int)$duplicate['movement_id']===(int)$r2['movement_id']&&$movementCo
 $periodic=$core->inventoryCounts()->start(['title'=>'Periodic','session_type'=>'periodic','scope_type'=>'full'],$operator);
 $periodicId=(int)$periodic['session_id'];
 $lines=$pdo->query("SELECT id,inventory_item_id,updated_at FROM inventory_count_lines WHERE session_id={$periodicId} ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
-m55_assert(count($lines)===2,'periodic count did not snapshot active inventory catalogue');
+$activeInventoryCount=(int)$pdo->query('SELECT COUNT(*) FROM inventory_items WHERE active=1')->fetchColumn();
+m55_assert($activeInventoryCount>=2&&count($lines)===$activeInventoryCount,
+    'periodic count did not snapshot every active inventory item');
 $targetLine=null;
 foreach($lines as $row){
     $item=(int)$row['inventory_item_id'];

@@ -416,6 +416,28 @@ final class PublicEdgePublisherService
         }
         if(!$supported){
             $legacy=$this->syncProjectionEvents(min(100,$eventLimit),$transportTimeoutSeconds);
+            if(($legacy['supported']??true)===false){
+                // Compatibility with pre-v2 Public: a 404 from both durable endpoints
+                // is NOT proof that read models were delivered. Send the signed full
+                // snapshot through the supported v1 route and verify every model was
+                // accepted. Keep outbox events pending: v1 has no per-model sequence ACK.
+                try{
+                    $models=$this->builder->remoteModels();
+                    $response=$this->client->postRaw('/api/v1/local/read-models',['models'=>$models],$transportTimeoutSeconds);
+                    $status=(int)($response['status']??0);
+                    $body=is_array($response['body']??null)?$response['body']:[];
+                    $accepted=(int)($body['synced']??0)+(int)($body['unchanged']??0);
+                    $complete=$status>=200&&$status<300&&($body['ok']??false)===true&&$accepted===count($models)&&count($models)===count($this->builder->remoteModelKeys());
+                    return ['success'=>$complete,'configured'=>true,'protocol'=>1,'fallback'=>true,
+                        'reason'=>$complete?'verified_legacy_full_snapshot':'legacy_model_set_incomplete',
+                        'submitted_models'=>count($models),'accepted_models'=>$accepted,'http_status'=>$status,
+                        'pending_events'=>count($rows),'delivered_events'=>0,'legacy'=>$legacy];
+                }catch(PublicEdgeSyncException $e){
+                    return ['success'=>false,'configured'=>true,'protocol'=>1,'fallback'=>true,
+                        'error_code'=>$e->errorCode,'http_status'=>$e->httpStatus,
+                        'pending_events'=>count($rows),'delivered_events'=>0,'legacy'=>$legacy];
+                }
+            }
             return ['success'=>(bool)($legacy['success']??false),'configured'=>true,'protocol'=>1,'fallback'=>true,'pending_events'=>count($rows),'legacy'=>$legacy];
         }
         $state=$this->projectionDeliveryState($this->builder->remoteModelKeys());$deliver=[];

@@ -57,6 +57,9 @@ reset_db
 
 echo '==> tests/local-g2-observability-selftest.php'
 reset_db
+# G2 observes the current fully migrated schema. Build it from the audited
+# catalog-aware migration selftest, rather than invoking guarded 0059 on an empty DB.
+"$PHP_BIN" tests/local-mysql-migration-selftest.php >/dev/null
 "$PHP_BIN" tests/local-g2-observability-selftest.php
 
 echo '==> tests/local-g2-update-lifecycle-selftest.php'
@@ -74,7 +77,11 @@ python3 tests/scds-m6-gate.py
 python3 tests/validate-v3-foundation.py --component local
 python3 tests/component-registry-gate.py
 python3 tests/g2-product-qualification-contract.py
-for test_file in apps/local-web/tests/*.py; do python3 "$test_file"; done
+# Legacy subdirectory may have no Python tests; keep discovered tests, not the raw glob.
+shopt -s nullglob
+local_python_tests=(apps/local-web/tests/*.py)
+shopt -u nullglob
+for test_file in "${local_python_tests[@]}"; do python3 "$test_file"; done
 find apps/local-web -type f -name '*.php' -print0 | xargs -0 -n1 "$PHP_BIN" -l >/dev/null
 find apps/local-web/public -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 

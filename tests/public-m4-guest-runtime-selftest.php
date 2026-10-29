@@ -60,6 +60,20 @@ $fresh = $runtime->actionState($bundle, 15);
 if (($fresh['enabled'] ?? false) !== true || ($fresh['local_fresh'] ?? false) !== true || ($fresh['availability_fresh'] ?? false) !== true) {
     public_m4_runtime_fail('M4 Guest action state rejected a fresh Local+availability projection.');
 }
+// All DB timestamps above are UTC_TIMESTAMP(); freshness must not depend
+// on the PHP process/user timezone. Reproduce the Asia/Tehran host setting.
+$previousTimezone = date_default_timezone_get();
+try {
+    date_default_timezone_set('Asia/Tehran');
+    $freshInTehran = $runtime->actionState($bundle, 15);
+    if (($freshInTehran['enabled'] ?? false) !== true
+        || ($freshInTehran['local_fresh'] ?? false) !== true
+        || ($freshInTehran['availability_fresh'] ?? false) !== true) {
+        public_m4_runtime_fail('M4 UTC heartbeat/availability was misread in Asia/Tehran timezone.');
+    }
+} finally {
+    date_default_timezone_set($previousTimezone);
+}
 
 $pdo->prepare('UPDATE installation_heartbeats SET last_seen_at=DATE_SUB(UTC_TIMESTAMP(), INTERVAL 2 MINUTE) WHERE installation_id=?')
     ->execute([$installationId]);

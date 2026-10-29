@@ -389,7 +389,9 @@ final class SystemDiagnosticsService
         }
         return [
             'status'=>$status,
-            'base_url'=>$baseUrl,
+            // A diagnostic snapshot never needs Public URL credentials, path, query or fragment.
+            // Public Web clients continue to use the configured endpoint independently.
+            'base_url'=>$base,
             'base_origin'=>$base,
             'productization'=>'G3.3_LIVE_HEALTH_EMERGENCY',
             'last_sync_at'=>$latest,

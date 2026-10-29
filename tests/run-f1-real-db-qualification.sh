@@ -82,11 +82,29 @@ DB_TESTS=(
   tests/local-f1-staff-ui-reporting-selftest.php
 )
 
+failed_db_tests=()
 for test_file in "${DB_TESTS[@]}"; do
   echo "==> $test_file"
-  reset_db
-  "$PHP_BIN" "$test_file"
+  # Run all independent scenarios even when one fails; each owns a freshly reset
+  # disposable CI database. Aggregate failures and keep the final gate failing.
+  if ! (
+    set -euo pipefail
+    reset_db
+    # The real guarded 0059 migration depends on the approved canonical seed.
+    if [[ "$test_file" != "tests/local-mysql-migration-selftest.php" ]]; then
+      "$PHP_BIN" tests/local-mysql-migration-selftest.php >/dev/null
+    fi
+    "$PHP_BIN" "$test_file"
+  ); then
+    failed_db_tests+=("$test_file")
+    echo "FAIL: $test_file" >&2
+  fi
 done
+if (( ${#failed_db_tests[@]} > 0 )); then
+  printf 'F1 independent MariaDB failures (%d):\n' "${#failed_db_tests[@]}" >&2
+  printf ' - %s\n' "${failed_db_tests[@]}" >&2
+  exit 1
+fi
 
 reset_db
 
@@ -98,7 +116,23 @@ python3 tests/validate-v3-foundation.py --component local
 python3 tests/component-registry-gate.py
 python3 tests/g1-real-db-qualification-contract.py
 python3 tests/f1-real-db-qualification-contract.py
-for test_file in apps/local-web/tests/*.py; do python3 "$test_file"; done
+failed_local_contracts=()
+# Empty legacy subdirectory is valid: Python source checks were consolidated in tests/.
+# Bash must not treat an unmatched '*.py' glob as a filename.
+shopt -s nullglob
+local_contract_files=(apps/local-web/tests/*.py)
+shopt -u nullglob
+for test_file in "${local_contract_files[@]}"; do
+  if ! python3 "$test_file"; then
+    failed_local_contracts+=("$test_file")
+    echo "FAIL: $test_file" >&2
+  fi
+done
+if (( ${#failed_local_contracts[@]} > 0 )); then
+  printf 'Local source-contract failures (%d):\n' "${#failed_local_contracts[@]}" >&2
+  printf ' - %s\n' "${failed_local_contracts[@]}" >&2
+  exit 1
+fi
 find apps/local-web -type f -name '*.php' -print0 | xargs -0 -n1 "$PHP_BIN" -l >/dev/null
 find apps/local-web/public -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 

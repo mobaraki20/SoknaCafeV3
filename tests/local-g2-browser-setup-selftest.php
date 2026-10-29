@@ -8,26 +8,32 @@ use Sokna\Local\Setup\SetupException;
 function g21db_assert(bool $v,string $m):void{if(!$v)throw new RuntimeException($m);}
 $host=getenv('SOKNA_TEST_DB_HOST')?:'127.0.0.1';$port=getenv('SOKNA_TEST_DB_PORT')?:'3306';$name=getenv('SOKNA_TEST_DB_NAME')?:'sokna_m2';$user=getenv('SOKNA_TEST_DB_USER')?:'sokna';$pass=getenv('SOKNA_TEST_DB_PASS')?:'sokna';
 $tmp=sys_get_temp_dir().DIRECTORY_SEPARATOR.'sokna-g21-db-'.bin2hex(random_bytes(5));$data=$tmp.DIRECTORY_SEPARATOR.'data';mkdir($tmp,0700,true);
-$service=new BrowserSetupService($tmp,__DIR__.'/../apps/local-web');
+$localWeb=__DIR__.'/../apps/local-web';
+$bindingPath=$localWeb.'/.sokna-installation.json';$oldBinding=is_file($bindingPath)?file_get_contents($bindingPath):null;
+$oldServer=['HTTP_HOST'=>$_SERVER['HTTP_HOST']??null,'SERVER_PORT'=>$_SERVER['SERVER_PORT']??null,'HTTPS'=>$_SERVER['HTTPS']??null];
+$_SERVER['HTTP_HOST']='localhost:23456';$_SERVER['SERVER_PORT']='23456';$_SERVER['HTTPS']='off';
+$service=new BrowserSetupService($tmp,$localWeb);
 try{
   $db=['host'=>$host,'port'=>$port,'name'=>$name,'user'=>$user,'pass'=>$pass];$probe=$service->testDatabase($db,false);g21db_assert($probe['compatible']===true,'MariaDB compatibility probe failed');
-  $result=$service->installNew(['data_dir'=>$data,'local_base_url'=>'http://127.0.0.1:23456/','db'=>$db,'create_database'=>false,'admin_user'=>'g21admin','admin_password'=>'G21pass!!','cafe_name'=>'G21 Cafe','table_count'=>3,'timezone'=>'Asia/Tehran']);
+  $result=$service->installNew(['data_dir'=>$data,'local_base_url'=>'http://external.example:4444/','db'=>$db,'create_database'=>false,'admin_user'=>'g21admin','admin_password'=>'G21pass!!','cafe_name'=>'G21 Cafe','table_count'=>3,'timezone'=>'Asia/Tehran']);
   g21db_assert(($result['state']??'')==='installed','install did not finish');g21db_assert(is_file($tmp.'/config.php')&&is_file($tmp.'/install.lock'),'config/lock missing');
   $config=require $tmp.'/config.php';$pdo=sokna_local_bootstrap($config)->database();
   g21db_assert((int)$pdo->query("SELECT COUNT(*) FROM users WHERE username='g21admin' AND role='admin'")->fetchColumn()===1,'admin missing');
   g21db_assert((int)$pdo->query('SELECT COUNT(*) FROM cafe_tables')->fetchColumn()===3,'initial tables mismatch');
   $iid=(string)$pdo->query("SELECT setting_value FROM settings WHERE setting_key='installation.id'")->fetchColumn();g21db_assert($iid===$config['installation']['id'],'installation identity mismatch');
-  g21db_assert(($config['local']['base_url']??'')==='http://127.0.0.1:23456/','Local endpoint not persisted');
-  $pairingPath=$data.'/setup/windows-services-pairing.json';
-  g21db_assert(is_file($data.'/secrets/runtime-local.token')&&is_file($data.'/secrets/runtime-health.token')&&is_file($data.'/secrets/print-agent.token')&&is_file($pairingPath),'machine pairing files missing');
-  $pairing=json_decode((string)file_get_contents($pairingPath),true,32,JSON_THROW_ON_ERROR);
-  g21db_assert(($pairing['local_base_url']??'')==='http://127.0.0.1:23456/'&&($pairing['local_bridge_allowed_origin']??'')==='http://127.0.0.1:23456','pairing endpoint drift');
-  foreach(['runtime_token','local_token','print_agent_token'] as $k)g21db_assert(strlen((string)($pairing[$k]??''))>=32,'pairing secret missing '.$k);
-  $printHash=hash('sha256',(string)$pairing['print_agent_token']);$stmt=$pdo->prepare('SELECT COUNT(*) FROM print_agents WHERE token_hash=? AND active=1');$stmt->execute([$printHash]);g21db_assert((int)$stmt->fetchColumn()===1,'paired Print Agent token not registered');
-  g21db_assert(($result['pairing_file']??'')===$pairingPath,'install result did not surface pairing file');
+  g21db_assert(($config['runtime']['local_base_url']??'')==='http://127.0.0.1:23456/','Local endpoint was not derived from the actual loopback Apache port');
+  g21db_assert(is_file($data.'/secrets/runtime-local.token')&&is_file($data.'/secrets/runtime-health.token'),'runtime machine secrets missing');
+  $runtimeConfig=json_decode((string)file_get_contents($data.'/runtime/runtime-config.json'),true,32,JSON_THROW_ON_ERROR);
+  g21db_assert(($runtimeConfig['localBaseUrl']??'')==='http://127.0.0.1:23456/','runtime provisioning endpoint drift');
+  g21db_assert(!is_file($data.'/secrets/print-agent.token')&&!is_file($data.'/setup/windows-services-pairing.json'),'setup bypassed explicit Windows Services pairing');
+  g21db_assert((int)$pdo->query('SELECT COUNT(*) FROM print_agents')->fetchColumn()===0,'setup registered Print Agent without authorized pairing');
+  $binding=json_decode((string)file_get_contents($bindingPath),true,32,JSON_THROW_ON_ERROR);
+  g21db_assert(($binding['installation_id']??'')===$config['installation']['id']&&($binding['format']??'')==='sokna-local-installation-binding-v1','current Web binding missing');
   @unlink($tmp.'/install.lock');$partial=$service->status();g21db_assert($partial['state']==='partial','partial state after lock loss missing');$resume=$service->resume();g21db_assert(!empty($resume['resumed'])&&$service->status()['installed'],'resume did not restore valid lock');
   try{$service->installNew(['data_dir'=>$data,'db'=>$db,'admin_user'=>'x','admin_password'=>'12345678']);throw new RuntimeException('locked install was accepted');}catch(SetupException $e){g21db_assert($e->errorCode==='setup_locked','unexpected locked error');}
   echo "G2.1 Browser Setup MariaDB self-test: OK\n";
 } finally {
+  if($oldBinding===null)@unlink($bindingPath);else @file_put_contents($bindingPath,$oldBinding);
+  foreach($oldServer as $key=>$value){if($value===null)unset($_SERVER[$key]);else $_SERVER[$key]=$value;}
   $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tmp,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);foreach($it as $f){$f->isDir()?@rmdir($f->getPathname()):@unlink($f->getPathname());}@rmdir($tmp);
 }
