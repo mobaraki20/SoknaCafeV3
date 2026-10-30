@@ -34,8 +34,14 @@ public static class LocalDeltaCandidateMaterializer
         var actualBaseTree = LocalManagedTreeAttestation.Compute(actualRoot, basePaths.Count);
         if (!actualBaseTree.Equals(expectedBaseTreeSha256, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("LOCAL_DELTA_PHYSICAL_BASE_TREE_MISMATCH");
+        // R8 active slots also contain a small machine-local overlay that is
+        // deliberately absent from the managed release inventory. Do not copy
+        // those bytes into the candidate or mistake them for managed drift.
         var realFiles = Directory.EnumerateFiles(actualRoot, "*", SearchOption.AllDirectories)
-            .Select(f => Path.GetRelativePath(actualRoot, f).Replace('\\', '/')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .Select(f => Path.GetRelativePath(actualRoot, f).Replace('\\', '/'))
+            .Where(static p => p is not (".sokna-installation.json" or
+                "public/local-recovery.php" or "public/local-update-runner.php"))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (!realFiles.SetEquals(basePaths))
             throw new InvalidDataException("LOCAL_DELTA_PHYSICAL_BASE_INVENTORY_MISMATCH");
         if (Directory.EnumerateFiles(actualRoot, "*", SearchOption.AllDirectories).Any(IsReparse) ||
