@@ -73,7 +73,7 @@ if(-not(Test-Path -LiteralPath (Join-Path $installRoot 'Runtime\SoknaRuntimeServ
 $superInstalled=Join-Path $appRoot 'SoknaMaintenanceSupervisor.exe'
 $engineInstalled=Join-Path $appRoot 'SoknaMaintenanceUpdateEngine.exe'
 $installedVersion=Version $superInstalled
-if($installedVersion-notin @('0.3.15','0.3.16','0.3.17') -or (Version $engineInstalled)-ne$installedVersion){Fail 'This UAT package requires matching Maintenance 0.3.15 or 0.3.16 components, or an already qualified 0.3.17.'}
+if($installedVersion-notin @('0.3.12','0.3.15','0.3.16','0.3.17') -or (Version $engineInstalled)-ne$installedVersion){Fail 'This UAT package requires matching Maintenance 0.3.12, 0.3.15 or 0.3.16 components, or an already qualified 0.3.17.'}
 $healthProbe=Join-Path $PayloadRoot 'maintenance-signed-health-v1.ps1'
 if(-not(Test-Path -LiteralPath $healthProbe -PathType Leaf)){Fail 'Signed read-only health probe missing.'}
 . $healthProbe
