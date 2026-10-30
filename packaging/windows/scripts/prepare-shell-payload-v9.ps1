@@ -65,7 +65,7 @@ if(([regex]::Matches($coreRaw,[regex]::Escape($oldProp))).Count-ne1){throw 'Expe
 $coreRaw=$coreRaw.Replace($oldProp,$newProp)
 
 $oldCoreLine="if([string]`$plan.mode-eq'repair'-and`$action-eq'KEEP'){`$action='REPAIR';`$reason='explicit_repair'}"
-$newCoreLine="if([string]`$plan.mode-eq'repair'-and`$action-eq'KEEP'-and`$id-ne'maintenance-recovery-console'-and-not(Verified-IndependentMaintenancePair `$m `$ih)){`$action='REPAIR';`$reason='explicit_repair'}"
+$newCoreLine="if([string]`$plan.mode-eq'repair'-and`$action-eq'KEEP'-and`$id-ne'maintenance-recovery-console'-and -not(Verified-IndependentMaintenancePair `$m `$ih)){`$action='REPAIR';`$reason='explicit_repair'}"
 if(-not$coreRaw.Contains($oldCoreLine)){throw 'Expected R8 explicit-repair core contract was not found; refusing an unbounded core rewrite.'}
 if(([regex]::Matches($coreRaw,[regex]::Escape($oldCoreLine))).Count-ne1){throw 'Expected exactly one R8 explicit-repair core contract occurrence.'}
 $coreRaw=$coreRaw.Replace($oldCoreLine,$newCoreLine)
