@@ -2,7 +2,7 @@ name: R22 Windows Maintenance & R20 Source Compatibility (CI-only)
 on:
   push:
     branches: [ci/r21-local-native-lifecycle-20261030]
-    paths: ['.github/workflows/r22-windows-maintenance-ci.yml']
+    paths: ['.github/workflows/r22-windows-maintenance-ci.yml', 'windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Program.cs']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
