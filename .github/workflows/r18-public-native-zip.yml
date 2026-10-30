@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/r18-public-native-zip.yml'
       - 'ci/fixtures/r18-public-native-qualification.tar.gz'
+      - 'ci/tests/r18-native-public-lifecycle.php'
   workflow_dispatch:
 
 permissions: { contents: read }
@@ -40,7 +41,10 @@ jobs:
           php -l /tmp/sokna-r18-zip-ci/GuardCandidate.php
           php -l /tmp/sokna-r18-zip-ci/RoutinePublicUpdateService.php
       - name: Native ZIP Routine + Emergency guard functional lifecycle
-        run: php /tmp/sokna-r18-zip-ci/test_native_zip.php
+        run: |
+          cp ci/tests/r18-native-public-lifecycle.php /tmp/sokna-r18-zip-ci/test_native_zip.php
+          echo '94af6baabe5b07f6f766f4fac1881a288266dbb75da0522d31028b6200bd985a  /tmp/sokna-r18-zip-ci/test_native_zip.php' | sha256sum --check
+          php /tmp/sokna-r18-zip-ci/test_native_zip.php
       - name: State explicit release boundaries
         if: always()
         run: |
