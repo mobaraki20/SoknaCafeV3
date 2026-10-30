@@ -7,8 +7,8 @@
 [Setup]
 AppId={{965FF692-4DAD-4C58-B76D-3F3A70A687CB}
 AppName=SOKNA Maintenance Component Update (UAT)
-AppVersion=0.3.17
-AppVerName=SOKNA Maintenance Only 0.3.17 UAT
+AppVersion=0.3.18
+AppVerName=SOKNA Maintenance Only 0.3.18 UAT
 AppPublisher=SOKNA
 AppCopyright=SOKNA
 DefaultDirName={autopf}\SOKNA Windows Services
@@ -22,7 +22,7 @@ MinVersion=10.0
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=SOKNA-Maintenance-Only-0.3.17-HOME-UAT-REV2
+OutputBaseFilename=SOKNA-Maintenance-Only-0.3.18-HOME-UAT-REV2
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
