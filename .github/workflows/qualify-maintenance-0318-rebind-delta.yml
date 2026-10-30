@@ -1,0 +1,133 @@
+name: SOKNA Maintenance 0.3.18 Delta Rebind UAT REV2
+on:
+  push:
+    branches: [work/maintenance-0318-rebind-local-delta-20261030]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows-maintenance:
+    runs-on: windows-2022
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: new
+      - uses: actions/checkout@v4
+        with:
+          ref: release/maintenance-0317-home-direct-20261030
+          path: baseline
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Verify native Delta and external-copy rebind
+        shell: pwsh
+        run: |
+          dotnet run --project new/windows/maintenance/tests/Sokna.Maintenance.DeltaRebindHarness -c Release
+          if($LASTEXITCODE -ne 0){throw 'Delta/rebind regression failed'}
+          dotnet run --project new/windows/maintenance/tests/Sokna.Maintenance.RecoveryOverlayHarness -c Release -- "$env:RUNNER_TEMP/overlay"
+          if($LASTEXITCODE -ne 0){throw 'Recovery overlay regression failed'}
+      - name: Publish baseline and new Maintenance components
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($pair in @(@('new','0.3.18'),@('baseline','0.3.17'))){
+            $dest=Join-Path $env:RUNNER_TEMP ('maintenance-'+$pair[0])
+            New-Item -ItemType Directory -Path $dest -Force | Out-Null
+            foreach($name in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine')){
+              dotnet publish "$($pair[0])/windows/maintenance/src/$name/$name.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $dest
+              if($LASTEXITCODE -ne 0){throw "Failed publish $name"}
+            }
+            foreach($file in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')){
+              if(([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $dest $file)).FileVersion) -ne ($pair[1]+'.0')){throw "Incorrect $file version"}
+            }
+          }
+      - name: Assemble scoped Maintenance payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path new).Path
+          & "$root/packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1" -RepoRoot $root -MaintenanceAppBundle (Join-Path $env:RUNNER_TEMP 'maintenance-new') -OutputRoot (Join-Path $env:RUNNER_TEMP 'maintenance-payload')
+          if(-not $?) {throw 'Payload failed'}
+          $m=Get-Content (Join-Path $env:RUNNER_TEMP 'maintenance-payload/component-install-manifest-v1.json') -Raw | ConvertFrom-Json
+          if($m.component_version -ne '0.3.18' -or $m.release_scope -ne 'maintenance_only' -or $m.runtime_changes -or $m.print_agent_changes -or $m.recovery_console_changes){throw 'Out-of-scope payload'}
+      - name: Build standalone Inno EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if(-not(Test-Path $iscc)){choco install innosetup -y --no-progress | Out-Host}
+          if(-not(Test-Path $iscc)){throw 'Inno compiler missing'}
+          $dest=Join-Path (Resolve-Path new).Path 'dist'
+          New-Item -ItemType Directory -Path $dest -Force | Out-Null
+          & $iscc ("/DPayloadRoot="+(Join-Path $env:RUNNER_TEMP 'maintenance-payload')) ("/DOutputDir="+$dest) 'new/packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss'
+          if($LASTEXITCODE -ne 0){throw 'Inno compile failed'}
+          $exe=@(Get-ChildItem $dest -Filter '*0.3.18*.exe')
+          if($exe.Count -ne 1){throw 'Expected one versioned EXE'}
+          $sha=(Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  $($exe[0].Name)" | Set-Content (Join-Path $dest 'SHA256SUMS.txt') -Encoding ASCII
+      - name: Real Windows service upgrade by final EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'SOKNA-scoped-0318'
+          $app=Join-Path $root 'Maintenance/App'
+          New-Item -ItemType Directory -Path $app,(Join-Path $root 'Runtime'),(Join-Path $root 'PrintAgent/Service'),(Join-Path $root 'Maintenance/Recovery') -Force | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'maintenance-baseline/*') $app -Recurse -Force
+          $canaries=@{
+            'Runtime/SoknaRuntimeService.exe'='UNCHANGED-RUNTIME'
+            'PrintAgent/Service/Sokna.PrintAgent.Service.exe'='UNCHANGED-PRINT'
+            'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe'='UNCHANGED-RECOVERY'
+          }
+          foreach($i in $canaries.GetEnumerator()){Set-Content (Join-Path $root $i.Key) $i.Value}
+          $identity=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/Maintenance/installed-release-identity.json'
+          New-Item -ItemType Directory -Path (Split-Path $identity -Parent) -Force | Out-Null
+          $state=[ordered]@{
+            local=@{release_id='preserve-local';version='231bz';managed_tree_sha256=('a'*64);authority_epoch_policy='preserved'}
+            public=@{release_id='preserve-public';version='35fk'}
+            maintenance_supervisor_version='0.3.17';update_engine_version='0.3.17'
+            backup_recovery_engine_version=$null;public_maintenance_kernel_version=$null
+          }
+          [IO.File]::WriteAllText($identity,($state|ConvertTo-Json -Depth 16))
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Unexpected existing service'}
+          try{
+            New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+(Join-Path $app 'SoknaMaintenanceSupervisor.exe')+'"') -StartupType Automatic|Out-Null
+            Start-Service SoknaMaintenanceSupervisor
+            $installer=@(Get-ChildItem new/dist -Filter '*0.3.18*.exe')[0].FullName
+            $log=Join-Path $env:RUNNER_TEMP 'maintenance-0318-install.log'
+            $p=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$log+'"')) -PassThru
+            if(-not $p.WaitForExit(120000) -or $p.ExitCode -ne 0){
+              if(Test-Path $log){Get-Content $log -Tail 90|Out-Host}
+              $err=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/maintenance-only-last-error.txt'
+              if(Test-Path $err){Get-Content $err|Out-Host}
+              throw 'Final installer failed real Windows upgrade'
+            }
+            foreach($name in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')){
+              if(([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $app $name)).FileVersion) -ne '0.3.18.0'){throw 'Installed component mismatch'}
+            }
+            if((Get-Service SoknaMaintenanceSupervisor).Status -ne 'Running'){throw 'Supervisor stopped'}
+            $readback=Get-Content $identity -Raw|ConvertFrom-Json
+            if($readback.local.version -ne '231bz' -or $readback.public.version -ne '35fk' -or $readback.maintenance_supervisor_version -ne '0.3.18'){throw 'Unrelated release identity was modified'}
+            foreach($i in $canaries.GetEnumerator()){
+              if((Get-Content (Join-Path $root $i.Key) -Raw).Trim() -ne $i.Value){throw 'Forbidden component mutated'}
+            }
+          } finally {
+            Stop-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue
+            & "$env:WINDIR/System32/sc.exe" delete SoknaMaintenanceSupervisor | Out-Null
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-Maintenance-Only-0.3.18-Delta-Rebind-UAT
+          path: new/dist/*
+          if-no-files-found: error
+      - name: Release qualified installer as pre-release REV2
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag='maintenance-only-v0.3.18-delta-rebind-uat.rev2'
+          $exe=@(Get-ChildItem new/dist -Filter '*0.3.18*.exe')[0]
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null|Out-Null
+          if($LASTEXITCODE -eq 0){throw 'Refuse release overwrite'}
+          gh release create $tag $exe.FullName (Resolve-Path new/dist/SHA256SUMS.txt).Path --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'SOKNA Maintenance 0.3.18 UAT Delta Rebind' --notes 'Maintenance-only UAT. Private verified Delta target reconstruction and guarded external-copy Local binding reconciliation; no Local/Public business data mutation.'
+          if($LASTEXITCODE -ne 0){throw 'Release creation failed'}

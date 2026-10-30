@@ -62,6 +62,41 @@ public static class RoutineLocalBinding
     public static void RequireCurrent(string webRoot, string packageRoot, string currentBuild)
         => _ = RequireBinding(Path.Combine(webRoot, BindingFile), packageRoot, currentBuild);
 
+    /// <summary>
+    /// Rebind ONLY the installation's machine-local version marker after a
+    /// separately verified exact physical tree + unchanged DB schema. An
+    /// arbitrary ZIP or unverified manual copy can never call this as an install
+    /// authority. Both bindings must still match install.lock.
+    /// </summary>
+    public static void AdoptVerifiedExternalBuild(string persistentRoot, string activeSlot,
+        string packageRoot, string previousBuild, string provenBuild)
+    {
+        var persistent = RequireBinding(Path.Combine(persistentRoot, BindingFile), packageRoot);
+        var path = Path.Combine(activeSlot, BindingFile);
+        var source = RequireBinding(path, packageRoot);
+        if (!string.Equals(Id(persistent), Id(source), StringComparison.Ordinal))
+            throw new InvalidDataException("LOCAL_REBIND_INSTALLATION_ID_MISMATCH");
+        var current = (string?)source["web_version"];
+        if (string.Equals(current, provenBuild, StringComparison.Ordinal))
+            return; // idempotent recovery after interrupted identity write
+        if (!string.Equals(current, previousBuild, StringComparison.Ordinal))
+            throw new InvalidDataException("LOCAL_REBIND_UNEXPECTED_ACTIVE_BINDING_VERSION");
+
+        var target = (JsonObject)source.DeepClone();
+        target["web_version"] = provenBuild;
+        target["source"] = "maintenance-verified-external-code-only-rebind";
+        target["bound_at"] = DateTimeOffset.UtcNow.ToString("O");
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(target, new JsonSerializerOptions { WriteIndented = true });
+        var tmp = path + ".new-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            File.WriteAllBytes(tmp, bytes);
+            File.Move(tmp, path, overwrite: true);
+        }
+        finally { if (File.Exists(tmp)) File.Delete(tmp); }
+        RequireTarget(persistentRoot, activeSlot, packageRoot, provenBuild);
+    }
+
     private static string Id(JsonObject o) => (string?)o["installation_id"] ?? string.Empty;
 
     private static JsonObject RequireBinding(string path, string packageRoot, string? expectedBuild = null)
