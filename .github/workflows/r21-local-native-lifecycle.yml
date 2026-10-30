@@ -1,0 +1,123 @@
+name: R21 Native Local Lifecycle MariaDB Stage Activate Recovery (CI-only)
+on:
+  push:
+    branches: [ci/r21-local-native-lifecycle-20261030]
+    paths:
+      - '.github/workflows/r21-local-native-lifecycle.yml'
+      - 'ci/tests/r21-local-native-lifecycle.php'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  native-lifecycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      SOKNA_TEST_DB_HOST: '127.0.0.1'
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native PHP zip and MySQL drivers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y php-zip php-mysql
+          php -r 'exit(class_exists(ZipArchive::class) && in_array("mysql",PDO::getAvailableDrivers(),true) ? 0 : 1);'
+      - name: Reconstruct immutable R17 original and R20 source-identical payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/r21
+          cat ci/fixtures/r19-local-r17-part-*.bin > /tmp/r21/r17.zip
+          echo "9525ecbfb256a62b782b768e510dccab5bc81941c2eb93fa56f5c704b403b5f4  /tmp/r21/r17.zip" | sha256sum --check
+          cat > /tmp/r21/rebuild.py <<'PY'
+          import zipfile,json,hashlib
+          source='/tmp/r21/r17.zip';target='/tmp/r21/r20.zip'
+          def sha(data):return hashlib.sha256(data).hexdigest()
+          with zipfile.ZipFile(source) as z:
+            members={x.filename:z.read(x) for x in z.infolist()}
+            src='payload/src/Domain/Update/LocalUpdateService.php'
+            s=members[src].decode('utf-8')
+            assert sha(members[src])=='1befeeb23d842ba76f25bef12840fa20e427b761de50219e4eb05b859e56ee2f'
+            lines=s.splitlines(keepends=True)
+            candidates=[i for i,line in enumerate(lines) if "$reported=trim(implode(" in line and "$expected=$this->currentVersion()" in line]
+            assert len(candidates)==1,candidates
+            i=candidates[0]
+            old=lines[i]
+            assert "fresh_process_version_mismatch" in old and old.endswith("\n")
+            indent=old[:len(old)-len(old.lstrip())]
+            lines[i]=indent+'$reported=trim(implode("\\\\n",$out));\n'+indent+"// The lifecycle state still holds the previous version during activation,\n"+indent+"// and holds the target version during rollback restoration. Verify the\n"+indent+"// code that a fresh PHP process actually loaded, not the state journal.\n"+indent+'$expected=$this->webVersion();\n'+indent+"if($expected==='unknown'||$reported!==$expected)throw new LocalUpdateException('fresh_process_version_mismatch','PHP process تازه نسخه هدف را تأیید نکرد.',500,['expected'=>$expected,'output'=>substr($reported,0,1000)]);\n"
+            members[src]=''.join(lines).encode('utf-8')
+            assert sha(members[src])=='388abb055898c2dffcc5d42993f52d055ff690d337360fbcaeba3e7d1053cff8',sha(members[src])
+            version='3.0.0-g6.2-workspace.231bt-r20-readback-qa'
+            members['payload/VERSION.txt']=(version+'\n').encode()
+            m=json.loads(members['manifest.json'])
+            assert len(m['files'])==534
+            m['version']=version
+            m['qa_provenance']={'classification':'CI_ONLY_RECONSTRUCTED_R20_SOURCE','original_r17_sha256':'9525ecbfb256a62b782b768e510dccab5bc81941c2eb93fa56f5c704b403b5f4','installation_authorized':False}
+            for entry in m['files']:
+              if entry['path'] in ('src/Domain/Update/LocalUpdateService.php','VERSION.txt'):
+                data=members['payload/'+entry['path']];entry['sha256']=sha(data);entry['size']=len(data)
+            members['manifest.json']=json.dumps(m,ensure_ascii=False,indent=2).encode('utf-8')
+            with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as out:
+              for name,data in members.items():out.writestr(name,data)
+          with zipfile.ZipFile(target) as z:
+            m=json.loads(z.read('manifest.json'))
+            for entry in m['files']:
+              data=z.read('payload/'+entry['path'])
+              assert len(data)==entry['size'] and sha(data)==entry['sha256']
+          print('R20 payload rebuilt with independently pinned patched PHP service; 534/534 hashes PASS')
+          PY
+          python3 /tmp/r21/rebuild.py
+          unzip -q /tmp/r21/r17.zip -d /tmp/r21/orig
+          unzip -q /tmp/r21/r20.zip -d /tmp/r21/updated
+          for case in old patched; do mkdir -p "/tmp/r21/$case"; done
+          cp -a /tmp/r21/orig/payload /tmp/r21/old/Web
+          cp -a /tmp/r21/updated/payload /tmp/r21/patched/Web
+          printf '%s\n' '3.0.0-g6.2-workspace.231bs' > /tmp/r21/old/Web/VERSION.txt
+          printf '%s\n' '3.0.0-g6.2-workspace.231bs' > /tmp/r21/patched/Web/VERSION.txt
+          test -f /tmp/r21/old/Web/src/Domain/Update/LocalUpdateService.php
+          php -l /tmp/r21/patched/Web/src/Domain/Update/LocalUpdateService.php
+      - name: Establish genuine MariaDB 11.4 with 76 migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf apps/local-web
+          cp -a /tmp/r21/orig/payload apps/local-web
+          php tests/local-mysql-migration-selftest.php
+      - name: Full isolated patched R20 native Stage Activate Readback Code-only Rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          R21_TEST_ROOT=/tmp/r21/patched R21_PACKAGE=/tmp/r21/r20.zip php ci/tests/r21-local-native-lifecycle.php patched | tee /tmp/r21/patched-result.json
+      - name: Probe older R17 in-process updater behavior without touching host
+        shell: bash
+        run: |
+          set -euo pipefail
+          R21_TEST_ROOT=/tmp/r21/old R21_PACKAGE=/tmp/r21/r20.zip php ci/tests/r21-local-native-lifecycle.php original | tee /tmp/r21/original-result.json
+      - name: Record CI-only scope
+        if: always()
+        run: |
+          echo 'Disposable Ubuntu + PHP ZipArchive + MariaDB 11.4 only. Source-identical R20 service, reconstructed test ZIP. No Windows/real host, no publish, not installable.' > /tmp/r21/scope.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r21-native-lifecycle-ci-only
+          path: |
+            /tmp/r21/*-result.json
+            /tmp/r21/scope.txt
+          retention-days: 14
