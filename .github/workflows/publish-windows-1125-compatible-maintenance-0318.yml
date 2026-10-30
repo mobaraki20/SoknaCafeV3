@@ -170,6 +170,31 @@ jobs:
             $shell=Join-Path $out 'unified-shell-v4'
             $visual=Join-Path $out 'visual'
             New-Item -ItemType Directory -Path $visual -Force|Out-Null
+            # Read-only evidence for the exact scoped-standalone acceptance gates.
+            $receiptFile=Join-Path $data 'setup/maintenance-only-component-receipt-v1.json'
+            $receiptOk=Test-Path -LiteralPath $receiptFile -PathType Leaf
+            Write-Host ('VERIFIER_RECEIPT_EXISTS='+$receiptOk)
+            if($receiptOk){
+              $receipt=Get-Content $receiptFile -Raw|ConvertFrom-Json
+              $super=Join-Path $app 'SoknaMaintenanceSupervisor.exe'
+              $engine=Join-Path $app 'SoknaMaintenanceUpdateEngine.exe'
+              $observedSuper=[Diagnostics.FileVersionInfo]::GetVersionInfo($super).FileVersion
+              $observedEngine=[Diagnostics.FileVersionInfo]::GetVersionInfo($engine).FileVersion
+              $superHash=(Get-FileHash $super -Algorithm SHA256).Hash.ToLowerInvariant()
+              $engineHash=(Get-FileHash $engine -Algorithm SHA256).Hash.ToLowerInvariant()
+              $svc=Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'"
+              $reg=Get-ItemProperty 'HKLM:/SYSTEM/CurrentControlSet/Services/SoknaMaintenanceSupervisor'
+              Write-Host ('VERIFIER_RECEIPT_VERSION='+$receipt.version)
+              Write-Host ('VERIFIER_PHYSICAL_SUPER='+$observedSuper+' ENGINE='+$observedEngine)
+              Write-Host ('VERIFIER_RECEIPT_HASH_MATCH='+($superHash -eq $receipt.supervisor_sha256)+'/'+($engineHash -eq $receipt.engine_sha256))
+              Write-Host ('VERIFIER_RECEIPT_FLAGS='+($receipt.windows_shell_state_unchanged)+'/'+($receipt.runtime_unchanged)+'/'+($receipt.print_agent_unchanged)+'/'+($receipt.recovery_console_unchanged))
+              $txGuid=[Guid]::Empty
+              Write-Host ('VERIFIER_RECEIPT_TX_IS_GUID='+[Guid]::TryParse([string]$receipt.transaction_id,[ref]$txGuid))
+              Write-Host ('VERIFIER_SERVICE_STATE='+[string]$svc.State)
+              Write-Host ('VERIFIER_SERVICE_PATH='+[string]$svc.PathName)
+              Write-Host ('VERIFIER_REGISTRY_PATH='+[string]$reg.ImagePath)
+              Write-Host ('VERIFIER_EXPECTED_INSTALLROOT='+$root)
+            }
             $ui=Join-Path $out 'SoknaSetupUi.exe'
             $check=Start-Process $ui -ArgumentList @('--independent-maintenance-self-test',$shell,$root,$data,$visual) -Wait -PassThru
             if($check.ExitCode -ne 0){
