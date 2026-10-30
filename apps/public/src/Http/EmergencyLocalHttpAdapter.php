@@ -12,7 +12,7 @@ final class EmergencyLocalHttpAdapter
         $body=json_decode($rawBody,true);if(!is_array($body))return ['status'=>400,'body'=>['ok'=>false,'error'=>'invalid_json']];
         try{
             if($path==='/api/v1/local/emergency/access'){$r=$this->core->emergencyAccess()->provisionHash((string)($body['password_hash']??''),'local:'.$installationId);return ['status'=>200,'body'=>['ok'=>true]+$r];}
-            if($path==='/api/v1/local/diagnostics')return ['status'=>200,'body'=>['ok'=>true,'health'=>$this->core->health()->status()['body']??[],'update'=>$this->core->publicUpdates()->snapshot(),'recent_logs'=>$this->core->emergencyAccess()->recentAudit(40)]];
+            if($path==='/api/v1/local/diagnostics')return ['status'=>200,'body'=>['ok'=>true,'health'=>$this->core->health()->status()['body']??[],'update'=>$this->core->publicUpdates()->snapshot(),'recent_logs'=>$this->core->emergencyAccess()->recentAudit(40),'stable_emergency_owner'=>$this->stableOwnerIdentity()]];
             $u=$this->core->publicUpdates();$actor='local:'.$installationId;
             if($path==='/api/v1/local/update/status')return ['status'=>200,'body'=>['ok'=>true,'update'=>$u->snapshot()]];
             if($path==='/api/v1/local/update/stage'){$b64=(string)($body['package_base64']??'');if(strlen($b64)>100663296)return ['status'=>413,'body'=>['ok'=>false,'error'=>'package_too_large']];$bytes=base64_decode($b64,true);if(!is_string($bytes)||$bytes==='')return ['status'=>422,'body'=>['ok'=>false,'error'=>'invalid_package']];$want=strtolower((string)($body['sha256']??''));if(!preg_match('/^[a-f0-9]{64}$/',$want)||!hash_equals($want,hash('sha256',$bytes)))return ['status'=>422,'body'=>['ok'=>false,'error'=>'package_hash_mismatch']];$tmp=$u->incomingDir().'/local-'.bin2hex(random_bytes(8)).'.zip';file_put_contents($tmp,$bytes,LOCK_EX);try{$staged=$u->stageUploadedZip($tmp,$actor);}finally{@unlink($tmp);}return ['status'=>200,'body'=>['ok'=>true,'staged'=>$staged]];}
@@ -22,4 +22,36 @@ final class EmergencyLocalHttpAdapter
             return ['status'=>404,'body'=>['ok'=>false,'error'=>'route_not_found']];
         }catch(PublicUpdateException $e){return ['status'=>$e->httpStatus,'body'=>['ok'=>false,'error'=>$e->errorCode]];}
     }
+    /**
+     * Standard SIGNED Local->Public diagnostics. Read-only fingerprints of
+     * stable owner code; never include credentials, file bodies or host paths.
+     */
+    private function stableOwnerIdentity(): array
+    {
+        $base=dirname(__DIR__,2).'/src/Emergency/';
+        $files=[];$complete=true;
+        foreach([
+            'PublicUpdateException.php','EmergencyAccessService.php',
+            'PairingSecretStore.php','PublicTakeoverService.php',
+            'PublicUpdateService.php'
+        ] as $name){
+            $p=$base.$name;
+            $digest=is_file($p)&&is_readable($p)?@hash_file('sha256',$p):false;
+            $ok=is_string($digest)&&preg_match('/^[a-f0-9]{64}$/D',$digest)===1;
+            if(!$ok)$complete=false;
+            $files[]=[
+                'path'=>'src/Emergency/'.$name,
+                'status'=>$ok?'verified':'unknown',
+                'sha256'=>$ok?$digest:null
+            ];
+        }
+        return [
+            'format'=>'sokna-public-stable-emergency-owner-fingerprints-v1',
+            'status'=>$complete?'verified':'unknown',
+            'files'=>$files,
+            'content_collected'=>false,
+            'machine_identity_collected'=>false
+        ];
+    }
+
 }
