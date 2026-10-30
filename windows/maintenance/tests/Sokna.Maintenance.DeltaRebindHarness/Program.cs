@@ -45,6 +45,10 @@ try
     Write(Path.Combine(physical, "public/changed.php"), "old");
     Write(Path.Combine(physical, "public/deleted.php"), "to-delete");
     Inventory(physical, Current);
+    // Actual R8 Web releases also have machine-local (unmanaged) files.
+    Write(Path.Combine(physical, ".sokna-installation.json"), "protected-binding");
+    Write(Path.Combine(physical, "public/local-recovery.php"), "protected-recovery");
+    Write(Path.Combine(physical, "public/local-update-runner.php"), "protected-runner");
     Write(Path.Combine(target, "VERSION.txt"), newVersion);
     Write(Path.Combine(target, "public/keep.php"), "unchanged");
     Write(Path.Combine(target, "public/changed.php"), "new");
