@@ -122,7 +122,7 @@ try
     File.Copy(uploaded, secondPath);
     var secondVerifier = new ReleaseSetVerifierStager(otherPaths);
     var secondReceipt = secondVerifier.VerifyAndStage(secondPath, secondInstalled);
-    Check(secondReceipt.ExactBaselineVerified == true &&
+    Check(secondReceipt.PreflightIdentityMatch &&
         secondReceipt.ArtifactIntegrityVerified && secondReceipt.OperatorAuthorized &&
         secondReceipt.PackageSha256 == staged.PackageSha256,
         "one immutable ZIP stages on two independent valid source identities");
