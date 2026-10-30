@@ -88,7 +88,12 @@ jobs:
             if($null-eq$manifest){throw 'Support manifest missing'}
             $read=[IO.StreamReader]::new($manifest.Open())
             try{$m=$read.ReadToEnd()|ConvertFrom-Json}finally{$read.Dispose()}
-            if(-not@($m.entries|Where-Object{$_.path-eq'windows/universal-source-inventory.json'}).Count){throw 'Support hash manifest does not cover identity file'}
+            $manifestMatches=@($m.entries|Where-Object{([string]$_.path).Replace('\','/') -eq 'windows/universal-source-inventory.json'})
+            if($manifestMatches.Count -ne 1){
+              Write-Host ('Manifest entry count: '+@($m.entries).Count)
+              Write-Host ('Possible paths: '+(@($m.entries|Where-Object{$_.path -like '*universal*'}|ForEach-Object{$_.path})-join ','))
+              throw 'Support hash manifest does not cover identity file'
+            }
           }finally{$z.Dispose()}
           Write-Host 'R24_REAL_STANDARD_SUPPORT_ZIP_PASS'
       - uses: actions/upload-artifact@v4
