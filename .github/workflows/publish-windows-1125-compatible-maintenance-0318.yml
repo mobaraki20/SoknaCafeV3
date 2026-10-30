@@ -196,7 +196,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag=windows-services-v1.1.25-maintenance-0318-compat-uat
+          tag=windows-services-v1.1.25-maintenance-0318-compat-uat.rev2
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release already exists; refusing overwrite"; exit 1
           fi
@@ -221,7 +221,7 @@ jobs:
           python3 - <<'PY'
           import json
           d=json.load(open('release-verify.json'))
-          assert d['tagName']=='windows-services-v1.1.25-maintenance-0318-compat-uat' and d['isPrerelease'] and not d['isDraft']
+          assert d['tagName']=='windows-services-v1.1.25-maintenance-0318-compat-uat.rev2' and d['isPrerelease'] and not d['isDraft']
           assert {a['name'] for a in d['assets']}=={'SOKNA-Windows-Services-Setup-1.1.25.exe','artifact-index.json','SHA256SUMS.txt'}
           print('SOKNA_WINDOWS_1125_GITHUB_PUBLISHED_AND_VERIFIED')
           PY
