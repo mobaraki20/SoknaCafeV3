@@ -1,0 +1,30 @@
+name: R28 Canonical Public dual-owner gate regression
+on:
+  push:
+    branches: [work/r28-canonical-owner-gate-reconciliation-20261030]
+    paths:
+      - '.github/workflows/r28-canonical-owner-reconciliation.yml'
+      - 'release/qualification/uup01_standard_support_gate.py'
+      - 'release/qualification/test_uup01_standard_support_gate.py'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check-real-owner-fence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Public Routine and Emergency independent owner regression
+        run: python -m unittest discover -s release/qualification -p test_uup01_standard_support_gate.py -v
+      - name: Public support gate never authorizes install from reports alone
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile release/qualification/uup01_standard_support_gate.py
+          grep -q 'block("REAL_MULTI_BASELINE_ACTIVATION_RECOVERY_UAT_NOT_ATTESTED")' release/qualification/uup01_standard_support_gate.py
+          grep -q 'block("PUBLIC_STABLE_EMERGENCY_OWNER_RUNTIME_NOT_QUALIFIED")' release/qualification/uup01_standard_support_gate.py
+          ! grep -q 'PUBLIC_EMERGENCY_ROUTINE_OWNER_DRIFT' release/qualification/uup01_standard_support_gate.py
+          echo 'R28_CANONICAL_OWNER_SEPARATION_AND_NO_PREMATURE_RELEASE_PASS'
