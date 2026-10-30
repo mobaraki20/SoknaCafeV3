@@ -1,0 +1,125 @@
+name: R20 Local Fresh PHP Readback Regression (CI-only)
+
+on:
+  push:
+    branches: [ci/r20-local-readback-20261030]
+    paths: ['.github/workflows/r20-local-readback-20261030.yml']
+  workflow_dispatch:
+
+permissions: { contents: read }
+
+jobs:
+  readback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover exact immutable R17 Local ZIP and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/fixtures/r19-local-r17-part-*.bin > /tmp/r20-r17-local.zip
+          echo "9525ecbfb256a62b782b768e510dccab5bc81941c2eb93fa56f5c704b403b5f4  /tmp/r20-r17-local.zip" | sha256sum -c
+          unzip -tqq /tmp/r20-r17-local.zip
+          mkdir -p /tmp/r20-original /tmp/r20-candidate
+          unzip -p /tmp/r20-r17-local.zip payload/src/Domain/Update/LocalUpdateService.php > /tmp/r20-original/LocalUpdateService.php
+          unzip -p /tmp/r20-r17-local.zip payload/src/Domain/Update/LocalUpdateException.php > /tmp/r20-original/LocalUpdateException.php
+          cp /tmp/r20-original/LocalUpdateService.php /tmp/r20-candidate/LocalUpdateService.php
+          echo "1befeeb23d842ba76f25bef12840fa20e427b761de50219e4eb05b859e56ee2f  /tmp/r20-original/LocalUpdateService.php" | sha256sum -c
+      - name: Apply pinned R20 minimal source fix in disposable CI fixture
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/r20-candidate/LocalUpdateService.php')
+          s=p.read_text()
+          old='$reported=trim(implode("\\n",$out));$expected=$this->currentVersion();if($reported===\'\'||!str_contains($reported,$expected))throw new LocalUpdateException(\'fresh_process_version_mismatch\',\'PHP process تازه نسخه هدف را تأیید نکرد.\',500,[\'expected\'=>$expected,\'output\'=>substr($reported,0,1000)]);'
+          new='$reported=trim(implode("\\n",$out));\n        // The lifecycle state still holds the previous version during activation,\n        // and holds the target version during rollback restoration. Verify the\n        // code that a fresh PHP process actually loaded, not the state journal.\n        $expected=$this->webVersion();\n        if($expected===\'unknown\'||$reported!==$expected)throw new LocalUpdateException(\'fresh_process_version_mismatch\',\'PHP process تازه نسخه هدف را تأیید نکرد.\',500,[\'expected\'=>$expected,\'output\'=>substr($reported,0,1000)]);'
+          assert s.count(old)==1, 'unmatched original R17 source; fail closed'
+          p.write_text(s.replace(old,new))
+          PY
+          echo "388abb055898c2dffcc5d42993f52d055ff690d337360fbcaeba3e7d1053cff8  /tmp/r20-candidate/LocalUpdateService.php" | sha256sum -c
+          php -l /tmp/r20-original/LocalUpdateService.php
+          php -l /tmp/r20-candidate/LocalUpdateService.php
+      - name: Verify fresh PHP subprocess acceptance / rejection for R17 and R20
+        shell: bash
+        run: |
+          cat > /tmp/r20-probe.php <<'PHP'
+          <?php
+          declare(strict_types=1);
+          namespace Sokna\Local\Core {
+            final class Observability {
+              public function __construct(private readonly string $root) {}
+              public function dataRoot(): string { return $this->root; }
+            }
+            final class Migrations {}
+          }
+          namespace {
+            use Sokna\Local\Core\Observability;
+            use Sokna\Local\Core\Migrations;
+            use Sokna\Local\Domain\Update\LocalUpdateException;
+            use Sokna\Local\Domain\Update\LocalUpdateService;
+            [$script,$source,$exceptionFile,$mode]=$argv;
+            require_once $exceptionFile;require_once $source;
+            $tmp=sys_get_temp_dir().'/sokna-r20-'.bin2hex(random_bytes(6));
+            foreach(['pkg','Web','data/lifecycle/local'] as $d) mkdir($tmp.'/'.$d,0700,true);
+            $prior='3.0.0-g6.2-workspace.231bs';
+            $target='3.0.0-g6.2-workspace.231bt-r17-sourceqa';
+            $state=$mode==='rollback'?$target:$prior;
+            $web=$mode==='rollback'?$prior:$target;
+            if($mode==='normal')$state=$target;
+            file_put_contents($tmp.'/pkg/VERSION.txt',$state."\n");
+            file_put_contents($tmp.'/Web/VERSION.txt',$web."\n");
+            file_put_contents($tmp.'/config.php','<?php return [];');
+            file_put_contents($tmp.'/data/lifecycle/local/state.json',json_encode(['format'=>'sokna-local-update-state-v1','schema_version'=>1,'active_version'=>$state]));
+            $bootstrap=<<<'BOOT'
+          <?php
+          class R20FakeCore {
+            public function systemDiagnostics(): array {return [];}
+            public function localUpdates(): self {return $this;}
+            public function snapshot(): array {return [];}
+            public function publicEdgePublisher(): self {return $this;}
+            public function businessBackup(): self {return $this;}
+            public function publicReenrollment(): self {return $this;}
+          }
+          function sokna_local_bootstrap(array $config): R20FakeCore {return new R20FakeCore();}
+          BOOT;
+            if($mode==='mismatch')$bootstrap.="\necho 'SPOOFED-OUTPUT';\n";
+            file_put_contents($tmp.'/Web/bootstrap.php',$bootstrap);
+            $service=new LocalUpdateService(new Observability($tmp.'/data'),new Migrations(),$tmp.'/pkg',$tmp.'/Web',$tmp.'/compat.json',$tmp.'/trust.json');
+            $result='PASS';$code='';
+            try{(new \ReflectionMethod(LocalUpdateService::class,'freshProcessHealthCheck'))->invoke($service,PHP_BINARY);}
+            catch(LocalUpdateException $e){$result='REJECT';$code=$e->errorCode;}
+            catch(\Throwable $e){$result='ERROR';$code=get_class($e).':'.$e->getMessage();}
+            echo json_encode(['scenario'=>$mode,'result'=>$result,'code'=>$code],JSON_THROW_ON_ERROR)."\n";
+            $it=new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($tmp,\FilesystemIterator::SKIP_DOTS),\RecursiveIteratorIterator::CHILD_FIRST);
+            foreach($it as $f){if($f->isDir())rmdir($f->getPathname());else unlink($f->getPathname());}rmdir($tmp);
+            if($result==='ERROR')exit(1);
+          }
+          PHP
+          python3 - <<'PY'
+          import subprocess,json
+          cases={
+            'r17':{'activation':'REJECT','rollback':'REJECT','normal':'PASS','mismatch':'REJECT'},
+            'r20':{'activation':'PASS','rollback':'PASS','normal':'PASS','mismatch':'REJECT'}
+          }
+          result={}
+          for key,scenarios in cases.items():
+            source='/tmp/r20-original/LocalUpdateService.php' if key=='r17' else '/tmp/r20-candidate/LocalUpdateService.php'
+            result[key]={}
+            for scenario,want in scenarios.items():
+              text=subprocess.check_output(['php','/tmp/r20-probe.php',source,'/tmp/r20-original/LocalUpdateException.php',scenario],text=True)
+              row=json.loads(text)
+              assert row['result']==want,(key,scenario,row,want)
+              result[key][scenario]=row['result']
+          report={'status':'PASS','classification':'CI_ONLY_NOT_INSTALLABLE','scenarios':result,'count':8,'full_activation_tested':False,'windows_tested':False,'real_host_tested':False}
+          import pathlib
+          pathlib.Path('/tmp/r20-readback-results.json').write_text(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r20-readback-regression-ci-only
+          path: /tmp/r20-readback-results.json
+          retention-days: 14
