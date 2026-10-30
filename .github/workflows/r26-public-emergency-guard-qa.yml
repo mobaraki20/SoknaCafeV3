@@ -1,0 +1,31 @@
+name: R26 Public Emergency disk truth and forward fence (QA only)
+on:
+  push:
+    branches: [work/r26-uup01-public-emergency-hardening-20261030]
+    paths:
+      - 'apps/public/src/Emergency/PublicUpdateService.php'
+      - 'apps/public/tests/test-uup01-emergency-fail-closed.php'
+      - '.github/workflows/r26-public-emergency-guard-qa.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  emergency-source-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, sodium
+          coverage: none
+      - name: PHP source syntax
+        run: |
+          php -l apps/public/src/Emergency/PublicUpdateService.php
+          php -l apps/public/tests/test-uup01-emergency-fail-closed.php
+      - name: Stage identical ZIP from two distinct actual disk-version fixtures and block legacy recovery crossing Routine boundary
+        run: php apps/public/tests/test-uup01-emergency-fail-closed.php
+      - name: Verify existing Public Emergency app source identity is not published by this QA
+        run: |
+          test -f apps/public/src/Emergency/PublicUpdateService.php
+          echo 'QA ONLY: no Public host owner was modified; no installable ZIP produced.'
