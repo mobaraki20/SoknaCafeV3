@@ -36,7 +36,7 @@ jobs:
           if($LASTEXITCODE-ne0){throw 'Update Engine build failure'}
           dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release --nologo
           if($LASTEXITCODE-ne0){throw 'Supervisor build failure'}
-      - name: Evidence: no production install qualification claimed
+      - name: 'Evidence: no production install qualification claimed'
         shell: pwsh
         run: |
           New-Item -ItemType Directory out-r25 -Force|Out-Null
