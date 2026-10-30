@@ -243,7 +243,12 @@ try {
 
   $manifestEntries=@()
   Get-ChildItem $work -File -Recurse|Where-Object{$_.FullName-ne(Join-Path $work 'bundle-manifest.json')}|ForEach-Object{
-    $rel=$_.FullName.Substring($work.Length+1).Replace('\','/')
+    # Normalize the actual filesystem root before building archive identities.
+    $rootPath=[IO.Path]::GetFullPath($work).TrimEnd('\','/')
+    $filePath=[IO.Path]::GetFullPath($_.FullName)
+    $prefix=$rootPath+[IO.Path]::DirectorySeparatorChar
+    if(-not$filePath.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Unsafe support manifest path outside bundle root.'}
+    $rel=$filePath.Substring($prefix.Length).Replace('\','/')
     $manifestEntries+=([ordered]@{path=$rel;size=[int64]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()})
   }
   WriteJson (Join-Path $work 'bundle-manifest.json') ([ordered]@{format='sokna-support-bundle-manifest-v1';created_at_utc=[DateTime]::UtcNow.ToString('o');completeness=$completeness;collection_errors=$collectionErrors;entries=$manifestEntries})
