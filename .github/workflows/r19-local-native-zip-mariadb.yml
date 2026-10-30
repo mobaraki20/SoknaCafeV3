@@ -1,0 +1,93 @@
+name: R19 Local R17 Exact ZIP MariaDB Qualification (CI-only)
+
+on:
+  push:
+    branches: [ci/r19-local-native-zip-mariadb-20261030]
+    paths:
+      - '.github/workflows/r19-local-native-zip-mariadb.yml'
+      - 'ci/tests/r19-local-native-zip-mariadb.php'
+      - 'ci/fixtures/r19-local-r17-part-*.bin'
+  workflow_dispatch:
+
+permissions: { contents: read }
+
+jobs:
+  r19-local:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      SOKNA_TEST_DB_HOST: '127.0.0.1'
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_NAME: sokna_m2
+      SOKNA_TEST_DB_USER: sokna
+      SOKNA_TEST_DB_PASS: sokna
+      R19_LOCAL_R17_ZIP: /tmp/sokna-r17-local-exact.zip
+      R19_PACKAGE_SHA256: 9525ecbfb256a62b782b768e510dccab5bc81941c2eb93fa56f5c704b403b5f4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native PHP ZipArchive and PDO MySQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-zip php-mysql
+          php -r 'exit(extension_loaded("zip") && in_array("mysql",PDO::getAvailableDrivers(),true) ? 0 : 1);'
+      - name: Reassemble exact R17 Local ZIP from pinned binary Git blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls ci/fixtures/r19-local-r17-part-*.bin
+          test "$(find ci/fixtures -maxdepth 1 -name 'r19-local-r17-part-*.bin' | wc -l)" -eq 7
+          cat ci/fixtures/r19-local-r17-part-*.bin > "$R19_LOCAL_R17_ZIP"
+          echo "$R19_PACKAGE_SHA256  $R19_LOCAL_R17_ZIP" | sha256sum --check
+          unzip -tqq "$R19_LOCAL_R17_ZIP"
+          python3 - <<'PY'
+          import zipfile, json
+          z=zipfile.ZipFile('/tmp/sokna-r17-local-exact.zip')
+          m=json.loads(z.read('manifest.json'))
+          assert m['component']=='local' and len(m['files'])==534
+          assert all(x['path'].startswith(('src/','database/','resources/','public/','assets/','tools/')) or x['path'] in ('README.md','VERSION.txt','bootstrap.php') for x in m['files'])
+          print('Exact managed file inventory',len(m['files']))
+          PY
+      - name: Mount tested Local R17 payload as disposable CI app source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sokna-r19-payload
+          unzip -q "$R19_LOCAL_R17_ZIP" -d /tmp/sokna-r19-payload
+          rm -rf apps/local-web
+          mv /tmp/sokna-r19-payload/payload apps/local-web
+          test -f apps/local-web/bootstrap.php
+          test -f apps/local-web/database/migrations/0076_late_served_accounting.sql
+          test -f apps/local-web/src/Domain/Update/LocalUpdateService.php
+          find apps/local-web/src apps/local-web/bootstrap.php -type f -name '*.php' -print0 | xargs -0 -n1 php -l > /tmp/r19-lint.txt
+          tail -n 3 /tmp/r19-lint.txt
+      - name: R19 MariaDB 11.4 clean install, 76 migrations, seed and idempotence
+        run: php tests/local-mysql-migration-selftest.php
+      - name: R19 exact universal ZIP stage from two synthetic baselines and negative guards
+        run: php ci/tests/r19-local-native-zip-mariadb.php | tee /tmp/r19-local-results.json
+      - name: Record scoped CI evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/r19-evidence
+          cp /tmp/r19-local-results.json /tmp/r19-evidence/results.json 2>/dev/null || true
+          cp /tmp/r19-lint.txt /tmp/r19-evidence/lint.txt 2>/dev/null || true
+          echo "CI-only native PHP ZIP + MariaDB; exact R17 Local ZIP $R19_PACKAGE_SHA256. Synthetic stage baselines, no activation or host UAT." > /tmp/r19-evidence/scope.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r19-local-native-zip-mariadb-evidence
+          path: /tmp/r19-evidence/
+          retention-days: 14
