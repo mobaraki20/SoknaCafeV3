@@ -176,7 +176,7 @@ try{
   $script:Resolved=@($manifest.components|ForEach-Object{Resolve-One $_})
   $supervisor=Service-Info 'SoknaMaintenanceSupervisor'
   if(-not$supervisor.Installed -or -not$supervisor.WasRunning -or -not(Owned ([string]$supervisor.ImagePath) (Join-Path $InstallRoot 'Maintenance\App'))){throw 'EXISTING_RUNNING_OWNED_MAINTENANCE_REQUIRED'}
-  $baseSuper=VersionOf (Join-Path $InstallRoot 'Maintenance\App\SoknaMaintenanceSupervisor.exe');$baseEngine=VersionOf (Join-Path $InstallRoot 'Maintenance\App\SoknaMaintenanceUpdateEngine.exe');if($baseSuper-notin @('0.3.15','0.3.16') -or $baseEngine-ne$baseSuper){throw 'EXPECTED_MAINTENANCE_0315_OR_0316_BASELINE_REQUIRED'}
+  $baseSuper=VersionOf (Join-Path $InstallRoot 'Maintenance\App\SoknaMaintenanceSupervisor.exe');$baseEngine=VersionOf (Join-Path $InstallRoot 'Maintenance\App\SoknaMaintenanceUpdateEngine.exe');if($baseSuper-notin @('0.3.12','0.3.15','0.3.16') -or $baseEngine-ne$baseSuper){throw 'EXPECTED_MAINTENANCE_0312_0315_OR_0316_BASELINE_REQUIRED'}
 foreach($child in @($script:Resolved|Where-Object{-not$_.Primary-and$_.Parent})){if($child.Action-eq'BLOCKED'){$p=@($script:Resolved|Where-Object{$_.Id-eq$child.Parent})[0];$p.Action='BLOCKED';$p.Reason='subordinate_blocked'}elseif($child.Action-in@('INSTALL','UPDATE','REPAIR')){$p=@($script:Resolved|Where-Object{$_.Id-eq$child.Parent})[0];if($p.Action-eq'KEEP'){$p.Action='REPAIR';$p.Reason='subordinate_requires_sync'}}}
 $recoveryMutation=@($script:Resolved|Where-Object{$_.Id-eq'maintenance-recovery-console'-and$_.Action-ne'KEEP'})|Select-Object -First 1
 if($recoveryMutation){throw 'Recovery Console mutation requires a dedicated recovery lifecycle; refusing to mutate Maintenance App.'}
