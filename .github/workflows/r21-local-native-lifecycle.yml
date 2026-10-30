@@ -90,6 +90,9 @@ jobs:
           cp -a /tmp/r21/updated/payload /tmp/r21/patched/Web
           printf '%s\n' '3.0.0-g6.2-workspace.231bs' > /tmp/r21/old/Web/VERSION.txt
           printf '%s\n' '3.0.0-g6.2-workspace.231bs' > /tmp/r21/patched/Web/VERSION.txt
+          # Stable host-owned recovery entrypoint is not shipped inside managed ZIPs.
+          # Provision a harmless placeholder ONLY in disposable CI fixture roots.
+          for case in old patched; do printf '%s\n' '<?php // R21 CI stable recovery entrypoint placeholder' > "/tmp/r21/$case/Web/public/local-recovery.php"; done
           test -f /tmp/r21/old/Web/src/Domain/Update/LocalUpdateService.php
           php -l /tmp/r21/patched/Web/src/Domain/Update/LocalUpdateService.php
       - name: Establish genuine MariaDB 11.4 with 76 migrations
