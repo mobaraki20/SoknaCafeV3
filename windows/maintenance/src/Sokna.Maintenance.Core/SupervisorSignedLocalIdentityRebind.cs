@@ -26,10 +26,10 @@ public sealed class SupervisorSignedLocalIdentityRebind
             throw new InvalidDataException("LOCAL_REBIND_VERIFIED_R8_JUNCTION_REQUIRED");
         ProductionLocalSlotMigrationBridge.RequireProductionSlotPath(
             physical.ActiveSlotTarget, physical.PackageRoot);
-        RoutineLocalBinding.RequireCurrent(physical.WebRoot, physical.PackageRoot, physical.Build);
-        RoutineLocalBinding.RequireTarget(
-            Path.Combine(physical.PackageRoot, "LocalWeb", "persistent"),
-            physical.ActiveSlotTarget, physical.PackageRoot, physical.Build);
+        // The active binding can still name the previous build when an operator
+        // copied managed Web files by hand. Do not demand the new marker before
+        // proving the exact physical tree and unchanged schema from the release.
+        // The installation-id checks and marker repair happen after verification.
         var tree = LocalManagedTreeAttestation.Compute(physical.WebRoot,
             physical.ManagedFileCount);
         if (previous.Local.Version == physical.Build &&
@@ -101,6 +101,14 @@ public sealed class SupervisorSignedLocalIdentityRebind
         // Both records are written atomically; an interrupted adoption leaves
         // the original identity or a traceable signed receipt for readback.
         AtomicFile.WriteJson(receiptPath, receipt);
+        // This is the only permitted repair of the stale active build marker.
+        // VerifyOnly above already proved operator authorization, exact
+        // physical code baseline and the *unchanged* trusted schema/migration
+        // identity; arbitrary version edits and DB-forward adoption stay denied.
+        RoutineLocalBinding.AdoptVerifiedExternalBuild(
+            Path.Combine(physical.PackageRoot, "LocalWeb", "persistent"),
+            physical.ActiveSlotTarget, physical.PackageRoot,
+            previous.Local.Version, physical.Build);
         AtomicFile.WriteJson(_paths.InstalledReleaseIdentityPath, verifiedCandidate);
         var readback = AtomicFile.ReadJson<InstalledReleaseIdentity>(
             _paths.InstalledReleaseIdentityPath);
