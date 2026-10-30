@@ -39,7 +39,7 @@ if($mode==='original'){
  checkR21(trim(file_get_contents($root.'/Web/VERSION.txt'))===$stagedVersion,'Expected target files to remain');
  $result=['case'=>'old_R17_active_code_to_R20','outcome'=>'EXPECTED_BLOCK','error'=>$caught->errorCode,'recovery_required'=>true];
 }else{
- $r=$svc->activateStaged(21);
+ try{$r=$svc->activateStaged(21);}catch(\Sokna\Local\Domain\Update\LocalUpdateException $e){fwrite(STDERR,"R21_ACTIVATE_CAUSE=".json_encode(['code'=>$e->errorCode,'message'=>$e->getMessage(),'details'=>$e->details],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n");throw $e;}
  checkR21(($r['action']??'')==='activate'&&($r['active_version']??'')===$stagedVersion,'Activate result mismatch');
  checkR21($svc->currentVersion()===$stagedVersion,'Activate readback incorrect');
  $snap=$svc->snapshot();checkR21(($snap['rollback']['allowed']??false)===true,'Rollback should be allowed when no new migrations');
