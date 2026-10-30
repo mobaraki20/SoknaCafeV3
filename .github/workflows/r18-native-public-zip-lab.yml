@@ -34,6 +34,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "8d83f208a6886ada32caeca99a412bef31b6793de850b0231b3bb54a3bf6fabe  /tmp/r18-public-native/test_native_zip.php" | sha256sum -c -
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/r18-public-native/test_native_zip.php')
+          s=p.read_text()
+          old="'Commit pending');"
+          new="'Commit pending snapshot='.json_encode($c,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));"
+          assert s.count(old)==1, 'Expected one diagnostic assertion'
+          p.write_text(s.replace(old,new))
+          PY
           php /tmp/r18-public-native/test_native_zip.php | tee /tmp/r18-public-native/result.json
           php -r '$r=json_decode(file_get_contents("/tmp/r18-public-native/result.json"),true,32,JSON_THROW_ON_ERROR);if(($r["status"]??"")!=="PASS"||($r["native_zip"]??false)!==true||($r["cases_count"]??0)!==11)exit(1);'
       - name: Store test evidence
