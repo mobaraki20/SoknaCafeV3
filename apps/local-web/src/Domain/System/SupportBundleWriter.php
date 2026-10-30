@@ -30,6 +30,7 @@ final class SupportBundleWriter
             'notice'=>'Operational diagnostics only. Secrets and credentials are intentionally excluded/redacted.',
             'snapshot'=>$this->observability->redact($bundleSnapshot),
             'known_state'=>$this->knownState(),
+            'local_source_identity'=>$this->localSourceIdentity(),
             'recent_logs'=>$recentLogs,
             'bundle_profile'=>['log_tail_elapsed_ms'=>$logElapsed,'log_rows'=>count($recentLogs)],
         ];
@@ -102,6 +103,55 @@ final class SupportBundleWriter
         return $out;
     }
 
+
+    /**
+     * Installed Local truth is ALWAYS captured by the ordinary support export,
+     * never a one-off host probe. No file bodies, credentials or machine paths.
+     */
+    private function localSourceIdentity(): array
+    {
+        $root=dirname(__DIR__,3);
+        $source=$root.'/src/Domain/Update/LocalUpdateService.php';
+        $versionFile=$root.'/VERSION.txt';
+        $sha=is_file($source)&&is_readable($source)?@hash_file('sha256',$source):false;
+        $valid=is_string($sha)&&preg_match('/^[a-f0-9]{64}$/D',$sha)===1;
+        $version='unknown';
+        if(is_file($versionFile)&&is_readable($versionFile)){
+            $raw=@file_get_contents($versionFile);
+            if(is_string($raw)&&strlen($raw)<=160){
+                $candidate=trim($raw);
+                if(preg_match('/^[A-Za-z0-9_.+\-]{1,128}$/D',$candidate)===1)$version=$candidate;
+            }
+        }
+        $embeddedVersion='unknown';
+        $release=$root.'/resources/release-identity-v1.json';
+        if(is_file($release)&&is_readable($release)){
+            $size=@filesize($release);
+            if(is_int($size)&&$size>0&&$size<=65536){
+                try{
+                    $data=json_decode((string)file_get_contents($release),true,32,JSON_THROW_ON_ERROR);
+                    if(is_array($data)){
+                        $candidate=$data['version']??null;
+                        if(is_string($candidate)&&preg_match('/^[A-Za-z0-9_.+\-]{1,128}$/D',$candidate)===1)
+                            $embeddedVersion=$candidate;
+                    }
+                }catch(Throwable){}
+            }
+        }
+        $coherence=$version==='unknown'||$embeddedVersion==='unknown'?'unknown':
+            ($version===$embeddedVersion?'match':'mismatch');
+        return [
+            'format'=>'sokna-local-updater-source-fingerprint-v1',
+            'status'=>$valid?'verified':'unknown',
+            'path'=>'src/Domain/Update/LocalUpdateService.php',
+            'sha256'=>$valid?$sha:null,
+            'version'=>$version,
+            'embedded_release_version'=>$embeddedVersion,
+            'version_coherence'=>$coherence,
+            'file_contents_collected'=>false,
+            'machine_identity_collected'=>false
+        ];
+    }
 
     private function bundleDir(): string{return $this->observability->dataRoot().DIRECTORY_SEPARATOR.'support-bundles';}
 
