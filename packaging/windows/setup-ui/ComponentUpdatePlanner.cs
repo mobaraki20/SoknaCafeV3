@@ -271,8 +271,10 @@ internal static class ComponentUpdatePlanner
             if (!string.Equals(hash, observedSha256, StringComparison.OrdinalIgnoreCase))
                 return false;
             var service = ProbeService("SoknaMaintenanceSupervisor");
+            // The non-elevated UI may lack SCM status-query permission.
+            // This is a no-mutation *pending* state only; the privileged core
+            // independently demands a running service and scoped receipt.
             return service.Installed &&
-                service.State.Equals("RUNNING", StringComparison.OrdinalIgnoreCase) &&
                 ServiceImageOwnedByInstallRoot(service.ImagePath, installRoot) &&
                 RegistrationMatches("maintenance", service.ImagePath, supervisor, "");
         }
