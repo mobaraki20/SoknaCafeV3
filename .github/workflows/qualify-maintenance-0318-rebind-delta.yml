@@ -1,4 +1,4 @@
-name: SOKNA Maintenance 0.3.18 Delta Rebind UAT
+name: SOKNA Maintenance 0.3.18 Delta Rebind UAT REV2
 on:
   push:
     branches: [work/maintenance-0318-rebind-local-delta-20261030]
@@ -120,12 +120,12 @@ jobs:
           name: SOKNA-Maintenance-Only-0.3.18-Delta-Rebind-UAT
           path: new/dist/*
           if-no-files-found: error
-      - name: Release qualified installer as pre-release
+      - name: Release qualified installer as pre-release REV2
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag='maintenance-only-v0.3.18-delta-rebind-uat'
+          $tag='maintenance-only-v0.3.18-delta-rebind-uat.rev2'
           $exe=@(Get-ChildItem new/dist -Filter '*0.3.18*.exe')[0]
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null|Out-Null
           if($LASTEXITCODE -eq 0){throw 'Refuse release overwrite'}
