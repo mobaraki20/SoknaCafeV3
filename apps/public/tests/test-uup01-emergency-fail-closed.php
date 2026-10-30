@@ -69,11 +69,11 @@ try {
     $stageB=$b->stageUploadedZip($package,'qa:b');
     expect($stageA['package_sha256']===$digest&&$stageB['package_sha256']===$digest,'same immutable ZIP stages from two distinct on-disk versions');
     $same=zipped($root.'/same.zip','3.0.0-g3.6-workspace.35fh-real-like-source');
-    rejected(fn()=>$a->stageUploadedZip($root.'/same.zip'),'qa:a'),'downgrade_or_reinstall_forbidden');
+    rejected(fn()=>$a->stageUploadedZip($root.'/same.zip','qa:a'),'downgrade_or_reinstall_forbidden');
     zipped($root.'/old.zip','3.0.0-g3.6-workspace.35fg-old');
-    rejected(fn()=>$a->stageUploadedZip($root.'/old.zip'),'qa:a'),'downgrade_or_reinstall_forbidden');
+    rejected(fn()=>$a->stageUploadedZip($root.'/old.zip','qa:a'),'downgrade_or_reinstall_forbidden');
     zipped($root.'/uncomparable.zip','different-format');
-    rejected(fn()=>$a->stageUploadedZip($root.'/uncomparable.zip'),'qa:a'),'unverifiable_version_order');
+    rejected(fn()=>$a->stageUploadedZip($root.'/uncomparable.zip','qa:a'),'unverifiable_version_order');
     $bad=$root.'/bad.zip';zipped($bad,$target,true);
     rejected(fn()=>$a->stageUploadedZip($bad,'qa:a'),'hash_mismatch');
     $f=fixture($root.'/forward-fence','3.0.0-g3.6-workspace.35fh-readback',true);
