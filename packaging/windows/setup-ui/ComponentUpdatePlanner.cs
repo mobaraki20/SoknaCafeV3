@@ -166,8 +166,8 @@ internal static class ComponentUpdatePlanner
             // verifying the exact scoped-install receipt, both executables,
             // and the running owned Supervisor service. All other downgrades
             // remain blocked.
-            var keepIndependentMaintenance = !forceRepair && cmp >= 0 && IsVerifiedIndependentMaintenancePair(
-                id, currentVersion, installedHash, registrationHealthy, installRoot, dataRoot);
+            var keepIndependentMaintenance = cmp >= 0 && IsVerifiedIndependentMaintenancePair(
+                id, currentVersion, targetVersion, installedHash, registrationHealthy, installRoot, dataRoot);
             if (cmp > 0 && !keepIndependentMaintenance)
             {
                 action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = $"نسخه نصب‌شده {currentVersion} از نسخه هدف {targetVersion} جدیدتر است؛ downgrade خودکار مجاز نیست.";
@@ -175,7 +175,7 @@ internal static class ComponentUpdatePlanner
             else if (keepIndependentMaintenance)
             {
                 action = ComponentAction.Keep; state = "independent_compatible_keep";
-                reason = $"Maintenance مستقل {currentVersion} با رسید نصب و سلامت هر دو جزء تأیید شد؛ بدون جایگزینی باقی می‌ماند.";
+                reason = $"Maintenance مستقل {currentVersion} با رسید نصب و سلامت هر دو جزء تأیید شد؛ با نسخهٔ Windows Services سازگار و بدون تغییر باقی می‌ماند.";
             }
             else if (CanKeepFrozenRecovery(id, currentVersion, targetVersion, compatibleInstalledHash, registrationHealthy))
             {
@@ -234,16 +234,15 @@ internal static class ComponentUpdatePlanner
         return false;
     }
 
-    // Only the exact independently released 0.3.10 pair is recognized by
-    // this legacy Windows Services shell. Do not generalize this exception
-    // to unqualified future versions. A missing, invalid or mismatched proof
-    // must fail closed without altering any installed files.
+    // Maintenance-only has an independent lifecycle. Preserve any newer
+    // independently released pair ONLY when a scoped receipt proves matching
+    // physical SHA256s, file versions and owned running service. Never downgrade.
     private static bool IsVerifiedIndependentMaintenancePair(
-        string componentId, string observedVersion, string observedSha256,
+        string componentId, string observedVersion, string targetVersion, string observedSha256,
         bool registrationHealthy, string installRoot, string dataRoot)
     {
         if (componentId is not ("maintenance" or "maintenance-update-engine") ||
-            !string.Equals(observedVersion, "0.3.10", StringComparison.Ordinal) ||
+            CompareVersions(observedVersion, targetVersion) < 0 ||
             !registrationHealthy || observedSha256.Length != 64)
             return false;
 
@@ -261,7 +260,7 @@ internal static class ComponentUpdatePlanner
             if (receipt.GetProperty("format").GetString() != "sokna-maintenance-only-component-receipt-v1" ||
                 receipt.GetProperty("schema_version").GetInt32() != 1 ||
                 receipt.GetProperty("release_scope").GetString() != "maintenance_only" ||
-                receipt.GetProperty("version").GetString() != "0.3.10" ||
+                receipt.GetProperty("version").GetString() != observedVersion ||
                 !Guid.TryParseExact(receipt.GetProperty("transaction_id").GetString(), "N", out _) ||
                 !receipt.GetProperty("windows_shell_state_unchanged").GetBoolean() ||
                 !receipt.GetProperty("runtime_unchanged").GetBoolean() ||
@@ -272,8 +271,8 @@ internal static class ComponentUpdatePlanner
             var supervisorHash = HashIfExists(supervisor);
             var engineHash = HashIfExists(engine);
             if (supervisorHash.Length != 64 || engineHash.Length != 64 ||
-                !string.Equals(LifecycleFileVersion(supervisor), "0.3.10", StringComparison.Ordinal) ||
-                !string.Equals(LifecycleFileVersion(engine), "0.3.10", StringComparison.Ordinal) ||
+                !string.Equals(LifecycleFileVersion(supervisor), observedVersion, StringComparison.Ordinal) ||
+                !string.Equals(LifecycleFileVersion(engine), observedVersion, StringComparison.Ordinal) ||
                 !string.Equals(supervisorHash, receipt.GetProperty("supervisor_sha256").GetString(), StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(engineHash, receipt.GetProperty("engine_sha256").GetString(), StringComparison.OrdinalIgnoreCase))
                 return false;
