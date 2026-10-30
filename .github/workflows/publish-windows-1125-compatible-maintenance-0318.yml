@@ -1,0 +1,223 @@
+name: Windows Services 1.1.25 independently installed Maintenance 0.3.18 compatibility
+on:
+  push:
+    branches: ['work/windows-1125-independent-maintenance-0318-20261030']
+    paths:
+      - 'packaging/windows/windows-services-component-manifest-v2.json'
+      - '.github/workflows/publish-windows-1125-compatible-maintenance-0318.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-1125-maintenance-0315
+  cancel-in-progress: false
+
+jobs:
+  qualify-and-build:
+    runs-on: windows-2022
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          ref: release/maintenance-0317-home-direct-20261030
+          path: baseline-maintenance
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Freeze five-component versions and prevent unrelated changes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $expected=@{
+            runtime='1.0.7'
+            'print-agent'='6.2.10'
+            maintenance='0.3.15'
+            'maintenance-update-engine'='0.3.15'
+            'maintenance-recovery-console'='0.1.3'
+          }
+          $v=(Get-Content packaging/windows/WINDOWS_SERVICES_VERSION.txt -Raw).Trim()
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          if($v-ne'1.1.25'-or$m.package_version-ne$v-or@($m.components).Count-ne5){throw 'Wrong full installer version or component count'}
+          foreach($c in $m.components){
+            if(-not$expected.ContainsKey([string]$c.component_id)-or$expected[[string]$c.component_id]-ne[string]$c.version){throw "Component mismatch: $($c.component_id)"}
+          }
+          $super=@($m.components|Where-Object component_id -eq maintenance)[0]
+          if(@($super.dependencies|Where-Object { $_.component_id -eq 'maintenance-update-engine' -and $_.version -eq '0.3.15' }).Count-ne1){throw 'Maintenance/Engine atomic version contract mismatch'}
+          foreach($x in @('Supervisor','UpdateEngine')){
+            $p="windows/maintenance/src/Sokna.Maintenance.$x/Sokna.Maintenance.$x.csproj"
+            if(-not(Get-Content $p -Raw).Contains('<Version>0.3.15</Version>')){throw "Maintenance source version mismatch: $x"}
+          }
+          python tests/g6-component-release-contract.py
+          if($LASTEXITCODE-ne0){throw 'G6 component gate failed'}
+          python tests/m10-release-qualification.py
+          if($LASTEXITCODE-ne0){throw 'M10 component gate failed'}
+      - name: Maintenance repeated upload and independent recovery safety
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.InboxRetryHarness -c Release -- "$env:RUNNER_TEMP/inbox-retry"
+          if($LASTEXITCODE-ne0){throw 'Completed ZIP retry regression'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.RecoveryOverlayHarness -c Release -- "$env:RUNNER_TEMP/recovery-overlay"
+          if($LASTEXITCODE-ne0){throw 'Stable recovery regression'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness -c Release --nologo
+          if($LASTEXITCODE-ne0){throw 'Operator upload/preflight stage regression'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.ActivationWorkerHarness -c Release --nologo
+          if($LASTEXITCODE-ne0){throw 'Activation worker regression'}
+      - name: Iran UI date presentation regression
+        shell: pwsh
+        run: |
+          dotnet run --project windows/shared/tests/IranPresentationTests.csproj
+          if($LASTEXITCODE-ne0){throw 'Iran presentation regression'}
+      - name: Prepare canonical Inno toolchain
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if($LASTEXITCODE-ne0){throw 'Inno Setup missing'}
+      - name: Build five-component Windows Services 1.1.25 EXE from this commit
+        shell: pwsh
+        timeout-minutes: 55
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path $_ -PathType Leaf)}|Select-Object -First 1
+          if(-not$iscc){throw 'ISCC compiler missing'}
+          & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot "$env:RUNNER_TEMP/windows-1125-final" -IsccExe $iscc
+          if($LASTEXITCODE-ne0){throw 'Canonical full Windows package build failed'}
+      - name: Verify final distributable identity, compiled executables and planner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out="$env:RUNNER_TEMP/windows-1125-final"
+          $idx=Get-Content "$out/artifact-index.json" -Raw|ConvertFrom-Json
+          $sha=(& git rev-parse HEAD).Trim()
+          if($idx.source_commit-ne$sha-or$idx.package_version-ne'1.1.25'-or$idx.component_count-ne5-or$idx.installer_kind-ne'unified-v4-bootstrap'){throw 'Source or installer index mismatch'}
+          $name=[string]$idx.windows_services.file
+          if($name-ne'SOKNA-Windows-Services-Setup-1.1.25.exe'){throw 'Unexpected filename'}
+          $exe=Join-Path $out $name
+          if(-not(Test-Path $exe -PathType Leaf)-or(Get-Item $exe).Length-lt100000000){throw 'Incomplete Windows Services installer'}
+          $digest=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($digest-ne[string]$idx.windows_services.sha256){throw 'Installer SHA256 mismatch'}
+          if(([Diagnostics.FileVersionInfo]::GetVersionInfo($exe)).FileVersion-ne'1.1.25.0'){throw 'Installer Windows FileVersion mismatch'}
+          $m=Get-Content "$out/unified-shell-v4/windows-services-component-manifest-v2.json" -Raw|ConvertFrom-Json
+          $versions=@{};foreach($row in $m.components){$versions[[string]$row.component_id]=[string]$row.version}
+          if($versions.runtime-ne'1.0.7'-or$versions.'print-agent'-ne'6.2.10'-or$versions.maintenance-ne'0.3.15'-or$versions.'maintenance-update-engine'-ne'0.3.15'-or$versions.'maintenance-recovery-console'-ne'0.1.3'){throw 'Built payload component versions mismatched'}
+          $ui=Join-Path $out 'SoknaSetupUi.exe'
+          $p=Start-Process -FilePath $ui -ArgumentList '--planner-self-test' -PassThru -Wait
+          if($p.ExitCode-ne0){throw 'Five-component lifecycle planner self-test failed'}
+          "$digest  $name"|Set-Content "$out/SHA256SUMS.txt" -Encoding ascii
+          Write-Host 'WINDOWS_1125_MAINTENANCE_0315_INTEGRATED_DISTRIBUTABLE_PASS'
+      - name: Real Windows Maintenance-only 0.3.18 receipt and native UI proof
+        shell: pwsh
+        timeout-minutes: 25
+        run: |
+          $ErrorActionPreference='Stop'
+          $source=(Resolve-Path .).Path
+          $out=Join-Path $env:RUNNER_TEMP 'windows-1125-final'
+          $app=Join-Path $env:RUNNER_TEMP 'SOKNA-1125-install/Maintenance/App'
+          New-Item -ItemType Directory -Path $app -Force|Out-Null
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine')){
+            dotnet publish "baseline-maintenance/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $app
+            if($LASTEXITCODE -ne 0){throw 'Maintenance 0.3.17 fixture build failed'}
+          }
+          $root=Split-Path (Split-Path $app -Parent) -Parent
+          $data=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
+          $identity=Join-Path $data 'Maintenance/installed-release-identity.json'
+          New-Item -ItemType Directory -Path (Split-Path $identity -Parent) -Force|Out-Null
+          $state=@{local=@{release_id='local-unchanged';version='231bz';managed_tree_sha256=('a'*64);authority_epoch_policy='preserved'};public=@{release_id='public-unchanged';version='35fk'};maintenance_supervisor_version='0.3.17';update_engine_version='0.3.17';backup_recovery_engine_version=$null;public_maintenance_kernel_version=$null}
+          [IO.File]::WriteAllText($identity,($state|ConvertTo-Json -Depth 12))
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Unexpected Maintenance service on runner'}
+          try{
+            New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+(Join-Path $app 'SoknaMaintenanceSupervisor.exe')+'"') -StartupType Automatic|Out-Null
+            Start-Service SoknaMaintenanceSupervisor
+            $exe=Join-Path $env:RUNNER_TEMP 'SOKNA-Maintenance-Only-0.3.18-HOME-UAT-REV2.exe'
+            $url='https://github.com/mobaraki20/SoknaCafeV3/releases/download/maintenance-only-v0.3.18-delta-rebind-uat.rev2/SOKNA-Maintenance-Only-0.3.18-HOME-UAT-REV2.exe'
+            Invoke-WebRequest -Uri $url -OutFile $exe -MaximumRedirection 10
+            if((Get-Item $exe).Length -lt 40000000){throw 'Fixture download incomplete'}
+            $p=Start-Process $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+            if($p.ExitCode -ne 0){
+              $errorFile=Join-Path $data 'setup/maintenance-only-last-error.txt'
+              if(Test-Path $errorFile){Get-Content $errorFile|Out-Host}
+              throw 'Maintenance-only 0.3.18 installation failed'
+            }
+            $shell=Join-Path $out 'unified-shell-v4'
+            $recovery=Join-Path $root 'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe'
+            New-Item -ItemType Directory -Path (Split-Path $recovery -Parent) -Force|Out-Null
+            Copy-Item (Join-Path $shell '_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe') $recovery
+            $visual=Join-Path $out 'visual'
+            New-Item -ItemType Directory -Path $visual -Force|Out-Null
+            $ui=Join-Path $out 'SoknaSetupUi.exe'
+            $check=Start-Process $ui -ArgumentList @('--independent-maintenance-self-test',$shell,$root,$data,$visual) -Wait -PassThru
+            if($check.ExitCode -ne 0){
+              $errorFile=Join-Path $visual 'compatibility-error.txt'
+              if(Test-Path $errorFile){Get-Content $errorFile|Out-Host}
+              throw 'Windows Services still blocks healthy 0.3.18 Maintenance'
+            }
+            Get-Content (Join-Path $visual 'compatibility-result.txt') | Out-Host
+          }finally{
+            Stop-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue
+            & "$env:WINDIR/System32/sc.exe" delete SoknaMaintenanceSupervisor|Out-Null
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-services-1125-maintenance-0315-qualified
+          path: |
+            ${{ runner.temp }}/windows-1125-final/SOKNA-Windows-Services-Setup-1.1.25.exe
+            ${{ runner.temp }}/windows-1125-final/artifact-index.json
+            ${{ runner.temp }}/windows-1125-final/SHA256SUMS.txt
+            ${{ runner.temp }}/windows-1125-final/visual/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-prerelease:
+    needs: qualify-and-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-services-1125-maintenance-0315-qualified
+          path: publish
+      - name: Publish immutable tag without modifying existing releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=windows-services-v1.1.25-maintenance-0318-compat-uat
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing overwrite"; exit 1
+          fi
+          cat > publish/RELEASE_NOTES.md <<EOF
+          # SOKNA Windows Services 1.1.25 - integrated UAT
+          Source commit: $RELEASE_SHA
+          Full 5-component Windows Services installer:
+          - Runtime 1.0.7
+          - Print Agent 6.2.10
+          - Maintenance Supervisor 0.3.15
+          - Maintenance Update Engine 0.3.15
+          - independent Recovery Console 0.1.3
+
+          Aligns normal unified Windows Setup with Maintenance-only 0.3.15, including
+          completed-ZIP reupload handling and stable Local recovery overlay.
+          This is a Windows Services UAT pre-release, not a proven Home/Cafe installation.
+          The installer does not update Local Web, Public Web or external Prerequisites.
+          Verify host baseline and lifecycle planner before installation.
+          EOF
+          gh release create "$tag" publish/SOKNA-Windows-Services-Setup-1.1.25.exe publish/artifact-index.json publish/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" --prerelease --latest=false --title 'SOKNA Windows Services 1.1.25 / compatible independent Maintenance 0.3.18 (UAT)' --notes-file publish/RELEASE_NOTES.md
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft,assets > release-verify.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('release-verify.json'))
+          assert d['tagName']=='windows-services-v1.1.25-rc.1' and d['isPrerelease'] and not d['isDraft']
+          assert {a['name'] for a in d['assets']}=={'SOKNA-Windows-Services-Setup-1.1.25.exe','artifact-index.json','SHA256SUMS.txt'}
+          print('SOKNA_WINDOWS_1125_GITHUB_PUBLISHED_AND_VERIFIED')
+          PY
