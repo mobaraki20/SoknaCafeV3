@@ -101,9 +101,13 @@ def assess(windows_zip: Path, public_json: Path, local_gzip: Path | None = None,
             actual_version != routine.get("current_version") or \
             actual_version != routine.get("active_version"):
         block("PUBLIC_DISK_ROUTINE_VERSION_DRIFT")
+    # Canonical U-02: two independent owners, one *artifact*. The Legacy
+    # Emergency state is a different history from the Routine managed tree.
+    # 35ES (legacy) next to 35FH (Routine) can be valid. Do not infer
+    # corruption or install permission from equality/difference of labels.
+    # Proof of the protected Emergency owner is a separate fingerprint and
+    # behavioral-qualification gate below, never a version-string equality.
     emergency_version = obj(health.get("update")).get("active_version")
-    if not emergency_version or emergency_version != actual_version:
-        block("PUBLIC_EMERGENCY_ROUTINE_OWNER_DRIFT")
     if routine.get("managed_tree_matches_expected") is not True or \
             not present_hash(routine.get("managed_tree_sha256")) or \
             routine.get("managed_tree_sha256") != routine.get("expected_managed_tree_sha256"):
@@ -186,6 +190,11 @@ def assess(windows_zip: Path, public_json: Path, local_gzip: Path | None = None,
         except ValueError:
             block(label + "_SUPPORT_TIMESTAMP_UNVERIFIED")
 
+    # No reported hashes can independently attest the historical stable
+    # Emergency implementation. Treat the five hashes as *evidence to
+    # compare*, not as proof that the deployed owner is compatible.
+    block("PUBLIC_STABLE_EMERGENCY_OWNER_RUNTIME_NOT_QUALIFIED")
+    
     # Support bundles can prove host observations, NOT actual activation/
     # recovery or backup consistency. Never turn this analyzer into an
     # executable permit, even if a caller edits these input JSON files.
@@ -205,7 +214,8 @@ def assess(windows_zip: Path, public_json: Path, local_gzip: Path | None = None,
             "windows_standard_source_inventory_available": inventory is not None,
             "windows_local_updater_sha256": source_sha,
             "local_support_coherent": local_bundle_ok,
-            "stable_emergency_owner_proven": "PUBLIC_STABLE_EMERGENCY_OWNER_UNVERIFIED" not in blockers
+            "stable_emergency_owner_fingerprints_exported": "PUBLIC_STABLE_EMERGENCY_OWNER_UNVERIFIED" not in blockers,
+            "stable_emergency_owner_host_behavior_qualified": False
         },
         "blockers": sorted(blockers)
     }
