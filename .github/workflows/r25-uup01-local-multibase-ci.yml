@@ -7,6 +7,7 @@ on:
       - 'windows/maintenance/src/Sokna.Maintenance.Core/ReleaseSetVerifierStager.cs'
       - 'windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Program.cs'
       - 'packaging/windows/qualification/verify-local-release-contract-v21.py'
+      - 'release/build-local-u01.py'
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -26,6 +27,39 @@ jobs:
         run: |
           python -m unittest discover -s packaging/windows/qualification -p test_verify_local_release_contract_v21.py -v
           if($LASTEXITCODE-ne0){throw 'UUP01 source release gate unit tests failed'}
+      - name: Build one deterministic ZIP from two independent source declarations
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'r25-publisher'
+          New-Item -ItemType Directory -Force $root|Out-Null
+          @'
+          import json,sys
+          from pathlib import Path
+          base=json.loads(Path('release/local-u01/m06-baseline.json').read_text())
+          other=dict(base)
+          other['release_id']='qa-different-source-identity'
+          other['version']='3.0.0-g6.2-workspace.231bd-qa'
+          other['managed_tree_sha256']='f'*64
+          root=Path(sys.argv[1])
+          (root/'sources-a.json').write_text(json.dumps([base,other]))
+          (root/'sources-b.json').write_text(json.dumps([other,base]))
+          '@ | Set-Content (Join-Path $root 'make-inputs.py') -Encoding utf8
+          python (Join-Path $root 'make-inputs.py') $root
+          if($LASTEXITCODE-ne0){throw 'UUP01 test source declarations failed'}
+          foreach($case in @('a','b')){
+            python release/build-local-u01.py --output (Join-Path $root $case) --supported-baselines-json (Join-Path $root "sources-$case.json") --universal
+            if($LASTEXITCODE-ne0){throw 'UUP01 publisher refused two-source candidate'}
+            $zip=Join-Path $root "$case/SOKNA-Local-231bf-U01-Panel-Update.zip"
+            python packaging/windows/qualification/verify-local-release-contract-v21.py $zip --universal
+            if($LASTEXITCODE-ne0){throw 'UUP01 publisher output did not pass structural universal validator'}
+          }
+          $a=(Get-FileHash (Join-Path $root 'a/SOKNA-Local-231bf-U01-Panel-Update.zip')).Hash
+          $b=(Get-FileHash (Join-Path $root 'b/SOKNA-Local-231bf-U01-Panel-Update.zip')).Hash
+          if($a-ne$b){throw 'Source declaration ordering changed immutable destination ZIP bytes'}
+          Write-Host "UUP01_ONE_ZIP_TWO_SOURCES_REPRODUCIBLE_SHA_PASS=$a"
+          New-Item -ItemType Directory out-r25 -Force|Out-Null
+          @{qa_only=$true;sha256=$a;source_count=2;source_identities='synthetic_for_ci';installable=$false}|ConvertTo-Json|Set-Content out-r25/publisher-proof.json -Encoding utf8
       - name: Execute existing panel ZIP preflight and stage with two independently simulated sources
         shell: pwsh
         run: |
