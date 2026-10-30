@@ -62,9 +62,9 @@ function initSite(string $name): array {
     file_put_contents($root.'/trust.json','{}');
     return [$web,$storage,$root.'/trust.json'];
 }
-function routine(string $name,?callable $migrationPending=null): RoutinePublicUpdateService {
+function routine(string $name,?callable $migrate=null,?callable $migrationPending=null): RoutinePublicUpdateService {
     [$web,$storage,$trust]=initSite($name);
-    return new RoutinePublicUpdateService($web,$storage,$trust,static fn()=>true,null,null,$migrationPending);
+    return new RoutinePublicUpdateService($web,$storage,$trust,static fn()=>true,$migrate,null,$migrationPending);
 }
 function guard(string $name): PublicUpdateService {
     [$web,$storage,$trust]=initSite($name);
@@ -92,7 +92,7 @@ $r3=routine('routine-mutated');$ref=new ReflectionClass($r3);$property=$ref->get
 file_put_contents($web.'/assets/product-ui.css','\nMUTATED',FILE_APPEND);
 deny(fn()=>$r3->stageUploadedDeltaZip(__DIR__.'/r17-public.zip','ci',true),'base_not_qualified');
 $cases[]='routine_mutated_baseline_denied';
-$r4=routine('routine-preflight');$r4->stageUploadedDeltaZip(__DIR__.'/r17-public.zip','ci',true);$r4->activateStaged('ci');
+$r4=routine('routine-preflight',static fn()=>['simulated-DDL']);$r4->stageUploadedDeltaZip(__DIR__.'/r17-public.zip','ci',true);$r4->activateStaged('ci');
 deny(fn()=>$r4->commitActivation('ci'),'migration_preflight_unavailable');
 must(is_array($r4->snapshot()['pending_verification']??null),'Preflight failure discarded pending state');
 $cases[]='routine_db_inventory_fail_closed';
