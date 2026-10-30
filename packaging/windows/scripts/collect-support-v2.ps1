@@ -61,7 +61,12 @@ function PortListening([int]$port){
 }
 function FileMeta([string]$path){
   if(-not(Test-Path -LiteralPath $path -PathType Leaf)){return $null}
-  try{$f=Get-Item -LiteralPath $path -ErrorAction Stop;return [ordered]@{name=$f.Name;length=[int64]$f.Length;last_write_utc=$f.LastWriteTimeUtc.ToString('o');sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()}}catch{AddError 'file-meta' $_.Exception.Message;return $null}
+  try{
+    # Live MariaDB storage files can be held exclusively by the DB service.
+    # Support collection needs only non-invasive metadata, never their bytes/hash.
+    $f=Get-Item -LiteralPath $path -ErrorAction Stop
+    return [ordered]@{name=$f.Name;length=[int64]$f.Length;last_write_utc=$f.LastWriteTimeUtc.ToString('o');sha256=$null;hash_policy='not_hashed_live_database'}
+  }catch{AddError 'file-meta' $_.Exception.Message;return $null}
 }
 
 # R24: universal, read-only inventory belongs to the existing support bundle,
