@@ -18,6 +18,14 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: UUP-01 structural source-release gate tests
+        shell: pwsh
+        run: |
+          python -m unittest discover -s packaging/windows/qualification -p test_verify_local_release_contract_v21.py -v
+          if($LASTEXITCODE-ne0){throw 'UUP01 source release gate unit tests failed'}
       - name: Execute existing panel ZIP preflight and stage with two independently simulated sources
         shell: pwsh
         run: |
