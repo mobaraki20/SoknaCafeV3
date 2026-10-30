@@ -39,7 +39,7 @@ function Verified-IndependentMaintenancePair($m,[string]$actual){
     if([string]::IsNullOrWhiteSpace($physicalVersion)-or$physicalVersion-ne(VersionOf $engine)-or
       (Compare-Version $physicalVersion $targetVersion)-lt0 -or (Compare-Version $physicalVersion '0.3.10')-lt0){return $false}
     $tx=[Guid]::Empty
-    if([string]$receipt.format-ne'sokna-maintenance-only-component-receipt-v1'-or[int]$receipt.schema_version-ne1-or[string]$receipt.release_scope-ne'maintenance_only'-or[string]$receipt.version-ne$physicalVersion-or-not[Guid]::TryParseExact([string]$receipt.transaction_id,'N',[ref]$tx)-or-not[bool]$receipt.windows_shell_state_unchanged-or-not[bool]$receipt.runtime_unchanged-or-not[bool]$receipt.print_agent_unchanged-or-not[bool]$receipt.recovery_console_unchanged){return $false}
+    if([string]$receipt.format-ne'sokna-maintenance-only-component-receipt-v1'-or[int]$receipt.schema_version-ne1-or[string]$receipt.release_scope-ne'maintenance_only'-or(Compare-Version ([string]$receipt.version) $physicalVersion)-ne0-or-not[Guid]::TryParseExact([string]$receipt.transaction_id,'N',[ref]$tx)-or-not[bool]$receipt.windows_shell_state_unchanged-or-not[bool]$receipt.runtime_unchanged-or-not[bool]$receipt.print_agent_unchanged-or-not[bool]$receipt.recovery_console_unchanged){return $false}
     $supervisorHash=Sha $supervisor
     $engineHash=Sha $engine
     if($supervisorHash.Length-ne64-or$engineHash.Length-ne64-or$supervisorHash-ne[string]$receipt.supervisor_sha256-or$engineHash-ne[string]$receipt.engine_sha256-or(VersionOf $supervisor)-ne$physicalVersion-or(VersionOf $engine)-ne$physicalVersion){return $false}
