@@ -74,6 +74,33 @@ try {
     rejected(fn()=>$a->activateStaged('qa:a'),'same_version_requires_repair');
     zipped($root.'/old.zip','3.0.0-g3.6-workspace.35fg-old');
     rejected(fn()=>$a->stageUploadedZip($root.'/old.zip','qa:a'),'downgrade_or_reinstall_forbidden');
+
+    // Routine and Emergency MUST serialize on the SAME canonical storage lock.
+    $lockPath=$root.'/install-a/storage/public-update-lifecycle.lock';
+    $held=fopen($lockPath,'c+');
+    if(!is_resource($held)||!flock($held,LOCK_EX|LOCK_NB))throw new RuntimeException('QA_SHARED_LOCK_UNAVAILABLE');
+    try{
+        rejected(fn()=>$a->stageUploadedZip($package,'qa:busy'),'lifecycle_busy');
+        rejected(fn()=>$a->activateStaged('qa:busy'),'lifecycle_busy');
+        rejected(fn()=>$a->repairStaged('qa:busy'),'lifecycle_busy');
+        rejected(fn()=>$a->rollback('qa:busy'),'lifecycle_busy');
+    }finally{flock($held,LOCK_UN);fclose($held);}
+    expect(file_get_contents($root.'/install-a/web/VERSION.txt')===
+        "3.0.0-g3.6-workspace.35fh-real-like-source\n",
+        'shared lock rejection never altered live Web');
+    // A Routine active identity that disagrees with physical code requires
+    // explicit reconciliation before any Emergency work can proceed.
+    $drift=fixture($root.'/unreconciled','3.0.0-g3.6-workspace.35fh-disk');
+    put($root.'/unreconciled/storage/routine-update-v2/state.json',[
+        'format'=>'sokna-public-routine-update-state-v2',
+        'schema_version'=>2,
+        'active_version'=>'3.0.0-g3.6-workspace.35fg-routine-stale',
+        'db_forward_fence'=>null,
+        'pending_verification'=>null,
+        'activation_journal'=>null
+    ]);
+    rejected(fn()=>$drift->stageUploadedZip($package,'qa:drift'),'routine_owner_not_reconciled');
+
     zipped($root.'/uncomparable.zip','different-format');
     rejected(fn()=>$a->stageUploadedZip($root.'/uncomparable.zip','qa:a'),'unverifiable_version_order');
     $bad=$root.'/bad.zip';zipped($bad,$target,true);
