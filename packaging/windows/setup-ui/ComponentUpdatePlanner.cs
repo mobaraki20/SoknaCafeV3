@@ -166,16 +166,31 @@ internal static class ComponentUpdatePlanner
             // verifying the exact scoped-install receipt, both executables,
             // and the running owned Supervisor service. All other downgrades
             // remain blocked.
-            var keepIndependentMaintenance = !forceRepair && cmp >= 0 && IsVerifiedIndependentMaintenancePair(
-                id, currentVersion, installedHash, registrationHealthy, installRoot, dataRoot);
-            if (cmp > 0 && !keepIndependentMaintenance)
+            var keepIndependentMaintenance = cmp >= 0 && IsVerifiedIndependentMaintenancePair(
+                id, currentVersion, targetVersion, installedHash, registrationHealthy, installRoot, dataRoot);
+            // The standalone receipt is guarded by Windows ACLs. The ordinary
+            // asInvoker UI is not an authority to read it or to decide whether
+            // a newer Maintenance can be overwritten. If the physical pair
+            // matches, display a read-only KEEP candidate; the elevated
+            // executor must REATTEST the exact scoped receipt and hashes or
+            // reject the entire plan before touching any service.
+            var pendingPrivilegedProof = !keepIndependentMaintenance && cmp > 0 &&
+                IsReadOnlyIndependentMaintenanceCandidate(
+                    id, currentVersion, targetVersion, installedHash,
+                    registrationHealthy, installRoot);
+            if (cmp > 0 && !keepIndependentMaintenance && !pendingPrivilegedProof)
             {
                 action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = $"نسخه نصب‌شده {currentVersion} از نسخه هدف {targetVersion} جدیدتر است؛ downgrade خودکار مجاز نیست.";
             }
             else if (keepIndependentMaintenance)
             {
                 action = ComponentAction.Keep; state = "independent_compatible_keep";
-                reason = $"Maintenance مستقل {currentVersion} با رسید نصب و سلامت هر دو جزء تأیید شد؛ بدون جایگزینی باقی می‌ماند.";
+                reason = $"Maintenance مستقل {currentVersion} با رسید نصب و سلامت هر دو جزء تأیید شد؛ با نسخهٔ Windows Services سازگار و بدون تغییر باقی می‌ماند.";
+            }
+            else if (pendingPrivilegedProof)
+            {
+                action = ComponentAction.Keep; state = "independent_privileged_verification_required";
+                reason = $"Maintenance مستقل {currentVersion} جدیدتر است و جایگزین نمی‌شود؛ تأیید نهایی رسید و هش‌ها فقط در مرحلهٔ بررسی مدیریتی انجام می‌شود.";
             }
             else if (CanKeepFrozenRecovery(id, currentVersion, targetVersion, compatibleInstalledHash, registrationHealthy))
             {
@@ -234,16 +249,51 @@ internal static class ComponentUpdatePlanner
         return false;
     }
 
-    // Only the exact independently released 0.3.10 pair is recognized by
-    // this legacy Windows Services shell. Do not generalize this exception
-    // to unqualified future versions. A missing, invalid or mismatched proof
-    // must fail closed without altering any installed files.
+    // Read-only classification only. It can NEVER authorize a mutation;
+    // the elevated installer recomputes the full scoped receipt attestation.
+    private static bool IsReadOnlyIndependentMaintenanceCandidate(
+        string componentId, string observedVersion, string targetVersion,
+        string observedSha256, bool registrationHealthy, string installRoot)
+    {
+        if (componentId is not ("maintenance" or "maintenance-update-engine") ||
+            CompareVersions(observedVersion, targetVersion) <= 0 ||
+            observedSha256.Length != 64 || !registrationHealthy) return false;
+        try
+        {
+            var app = Path.Combine(installRoot, "Maintenance", "App");
+            var supervisor = Path.Combine(app, "SoknaMaintenanceSupervisor.exe");
+            var engine = Path.Combine(app, "SoknaMaintenanceUpdateEngine.exe");
+            if (!File.Exists(supervisor) || !File.Exists(engine) ||
+                CompareVersions(LifecycleFileVersion(supervisor), observedVersion) != 0 ||
+                CompareVersions(LifecycleFileVersion(engine), observedVersion) != 0)
+                return false;
+            var hash = HashIfExists(componentId == "maintenance" ? supervisor : engine);
+            if (!string.Equals(hash, observedSha256, StringComparison.OrdinalIgnoreCase))
+                return false;
+            var service = ProbeService("SoknaMaintenanceSupervisor");
+            // The non-elevated UI may lack SCM status-query permission.
+            // This is a no-mutation *pending* state only; the privileged core
+            // independently demands a running service and scoped receipt.
+            return service.Installed &&
+                ServiceImageOwnedByInstallRoot(service.ImagePath, installRoot) &&
+                RegistrationMatches("maintenance", service.ImagePath, supervisor, "");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                   ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    // Maintenance-only has an independent lifecycle. Preserve any newer
+    // independently released pair ONLY when a scoped receipt proves matching
+    // physical SHA256s, file versions and owned running service. Never downgrade.
     private static bool IsVerifiedIndependentMaintenancePair(
-        string componentId, string observedVersion, string observedSha256,
+        string componentId, string observedVersion, string targetVersion, string observedSha256,
         bool registrationHealthy, string installRoot, string dataRoot)
     {
         if (componentId is not ("maintenance" or "maintenance-update-engine") ||
-            !string.Equals(observedVersion, "0.3.10", StringComparison.Ordinal) ||
+            CompareVersions(observedVersion, targetVersion) < 0 ||
             !registrationHealthy || observedSha256.Length != 64)
             return false;
 
@@ -261,7 +311,7 @@ internal static class ComponentUpdatePlanner
             if (receipt.GetProperty("format").GetString() != "sokna-maintenance-only-component-receipt-v1" ||
                 receipt.GetProperty("schema_version").GetInt32() != 1 ||
                 receipt.GetProperty("release_scope").GetString() != "maintenance_only" ||
-                receipt.GetProperty("version").GetString() != "0.3.10" ||
+                receipt.GetProperty("version").GetString() != observedVersion ||
                 !Guid.TryParseExact(receipt.GetProperty("transaction_id").GetString(), "N", out _) ||
                 !receipt.GetProperty("windows_shell_state_unchanged").GetBoolean() ||
                 !receipt.GetProperty("runtime_unchanged").GetBoolean() ||
@@ -272,8 +322,8 @@ internal static class ComponentUpdatePlanner
             var supervisorHash = HashIfExists(supervisor);
             var engineHash = HashIfExists(engine);
             if (supervisorHash.Length != 64 || engineHash.Length != 64 ||
-                !string.Equals(LifecycleFileVersion(supervisor), "0.3.10", StringComparison.Ordinal) ||
-                !string.Equals(LifecycleFileVersion(engine), "0.3.10", StringComparison.Ordinal) ||
+                !string.Equals(LifecycleFileVersion(supervisor), observedVersion, StringComparison.Ordinal) ||
+                !string.Equals(LifecycleFileVersion(engine), observedVersion, StringComparison.Ordinal) ||
                 !string.Equals(supervisorHash, receipt.GetProperty("supervisor_sha256").GetString(), StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(engineHash, receipt.GetProperty("engine_sha256").GetString(), StringComparison.OrdinalIgnoreCase))
                 return false;
