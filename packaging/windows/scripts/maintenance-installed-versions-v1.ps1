@@ -31,11 +31,11 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
  $versions=@();$hashes=@()
  foreach($p in @($super,$engine)){
   $v=[string]([Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion)
-  if($v-ne'0.3.17.0'){throw 'COMPONENT_IDENTITY_PHYSICAL_0317_REQUIRED'}
-  $versions+='0.3.17'
+  if($v-ne'0.3.18.0'){throw 'COMPONENT_IDENTITY_PHYSICAL_0318_REQUIRED'}
+  $versions+='0.3.18'
   $hashes+=(ComponentSha256 $p)
  }
- Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.17' -Attempts 10
+ Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.18' -Attempts 10
  $update=Join-Path $store 'update'
  New-Item -ItemType Directory -Path $update -Force|Out-Null
  $lockPath=Join-Path $update 'machine-mutation.lock'
@@ -73,7 +73,7 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
     throw 'COMPONENT_IDENTITY_PREVIOUS_VERSION_UNQUALIFIED'
    }
   }
-  if($doc.maintenance_supervisor_version-eq'0.3.17' -and $doc.update_engine_version-eq'0.3.17'){return}
+  if($doc.maintenance_supervisor_version-eq'0.3.18' -and $doc.update_engine_version-eq'0.3.18'){return}
   $beforeSemantic=$doc|ConvertTo-Json -Depth 100 -Compress
   $prior=@([string]$doc.maintenance_supervisor_version,[string]$doc.update_engine_version)
   $doc.maintenance_supervisor_version=$versions[0];$doc.update_engine_version=$versions[1]
