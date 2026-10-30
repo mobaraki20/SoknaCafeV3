@@ -11,6 +11,7 @@ on:
       - 'release/qualification/uup01_standard_support_gate.py'
       - 'release/qualification/test_uup01_standard_support_gate.py'
       - 'tests/r27-local-standard-support-selftest.php'
+      - 'tests/r27-public-standard-diagnostics-owner-selftest.php'
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -35,6 +36,8 @@ jobs:
           php -l tests/r27-local-standard-support-selftest.php
       - name: Standard Local support exports source identity automatically
         run: php tests/r27-local-standard-support-selftest.php
+      - name: Standard signed Public diagnostics read five immutable owner file fingerprints
+        run: php tests/r27-public-standard-diagnostics-owner-selftest.php
       - name: Regress Public Emergency repair/downgrade/forward-only safety
         run: php apps/public/tests/test-uup01-emergency-fail-closed.php
       - name: Reject bad, stale, divergent and missing ordinary support evidence
