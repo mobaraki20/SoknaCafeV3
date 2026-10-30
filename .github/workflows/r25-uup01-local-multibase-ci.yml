@@ -1,0 +1,61 @@
+name: R25 UUP-01 one ZIP / multi-baseline Local Maintenance regression (CI-only)
+on:
+  push:
+    branches: [work/r25-uup01-universal-local-20261030]
+    paths:
+      - '.github/workflows/r25-uup01-local-multibase-ci.yml'
+      - 'windows/maintenance/src/Sokna.Maintenance.Core/ReleaseSetVerifierStager.cs'
+      - 'windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Program.cs'
+      - 'packaging/windows/qualification/verify-local-release-contract-v21.py'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  same-package-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Execute existing panel ZIP preflight and stage with two independently simulated sources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Sokna.Maintenance.OperatorUploadHarness.csproj -c Release --nologo
+          if($LASTEXITCODE-ne0){throw 'UUP01 multi-baseline same immutable ZIP failed'}
+      - name: Preserve existing durable activation worker regression
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.ActivationWorkerHarness/Sokna.Maintenance.ActivationWorkerHarness.csproj -c Release --nologo
+          if($LASTEXITCODE-ne0){throw 'Existing Maintenance activation worker regression failed'}
+      - name: Compile Update Engine and Supervisor with unchanged execution boundaries
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release --nologo
+          if($LASTEXITCODE-ne0){throw 'Update Engine build failure'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release --nologo
+          if($LASTEXITCODE-ne0){throw 'Supervisor build failure'}
+      - name: Evidence: no production install qualification claimed
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory out-r25 -Force|Out-Null
+          @'
+          {
+            "format": "sokna-r25-uup01-qualification-v1",
+            "scope": "two synthetic but distinct installed exact identities, same ZIP bytes",
+            "same_zip_two_sources": true,
+            "negative_mismatch_downgrade_duplicate": true,
+            "activation_on_real_host": false,
+            "real_two_baselines_mariadb_qualified": false,
+            "public_emergency_qualified": false,
+            "universal_installable": false,
+            "no_main_or_production_changes": true
+          }
+          '@ | Set-Content out-r25/ci-scope.json -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r25-uup01-multi-baseline-ci-only
+          path: out-r25
+          retention-days: 14
