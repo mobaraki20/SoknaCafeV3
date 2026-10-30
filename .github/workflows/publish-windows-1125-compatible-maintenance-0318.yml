@@ -138,6 +138,21 @@ jobs:
           New-Item -ItemType Directory -Path (Split-Path $identity -Parent) -Force|Out-Null
           $state=@{local=@{release_id='local-unchanged';version='231bz';managed_tree_sha256=('a'*64);authority_epoch_policy='preserved'};public=@{release_id='public-unchanged';version='35fk'};maintenance_supervisor_version='0.3.17';update_engine_version='0.3.17';backup_recovery_engine_version=$null;public_maintenance_kernel_version=$null}
           [IO.File]::WriteAllText($identity,($state|ConvertTo-Json -Depth 12))
+          # Standalone Maintenance precheck requires the existing managed Windows
+          # installation to contain Runtime, Print and independent Recovery.
+          # Exact binaries come from the just-built qualified five-part shell.
+          $shell=Join-Path $out 'unified-shell-v4'
+          foreach($pair in @(
+            @('_payload/runtime/SoknaRuntimeService.exe','Runtime/SoknaRuntimeService.exe'),
+            @('_payload/print-worker/Service/Sokna.PrintAgent.Service.exe','PrintAgent/Service/Sokna.PrintAgent.Service.exe'),
+            @('_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe','Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe')
+          )){
+            $src=Join-Path $shell $pair[0]
+            $dst=Join-Path $root $pair[1]
+            if(-not(Test-Path -LiteralPath $src -PathType Leaf)){throw ("Qualified component fixture missing: "+$src)}
+            New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force|Out-Null
+            Copy-Item -LiteralPath $src -Destination $dst -Force
+          }
           if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Unexpected Maintenance service on runner'}
           try{
             New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+(Join-Path $app 'SoknaMaintenanceSupervisor.exe')+'"') -StartupType Automatic|Out-Null
@@ -153,9 +168,6 @@ jobs:
               throw 'Maintenance-only 0.3.18 installation failed'
             }
             $shell=Join-Path $out 'unified-shell-v4'
-            $recovery=Join-Path $root 'Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe'
-            New-Item -ItemType Directory -Path (Split-Path $recovery -Parent) -Force|Out-Null
-            Copy-Item (Join-Path $shell '_payload/maintenance/recovery/SoknaMaintenanceRecoveryConsole.exe') $recovery
             $visual=Join-Path $out 'visual'
             New-Item -ItemType Directory -Path $visual -Force|Out-Null
             $ui=Join-Path $out 'SoknaSetupUi.exe'
