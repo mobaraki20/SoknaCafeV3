@@ -43,7 +43,7 @@ jobs:
       - name: Native ZIP Routine + Emergency guard functional lifecycle
         run: |
           cp ci/tests/r18-native-public-lifecycle.php /tmp/sokna-r18-zip-ci/test_native_zip.php
-          echo '8dde9bc2d08d9bcad04153b0b795b869dbab10b0a44dc612fe3d2c31e45cea55  /tmp/sokna-r18-zip-ci/test_native_zip.php' | sha256sum --check
+          echo '882d5c943a50093a1ecfe060dc7493a88d210d88f227df8d8d782fbb48dbbb31  /tmp/sokna-r18-zip-ci/test_native_zip.php' | sha256sum --check
           php /tmp/sokna-r18-zip-ci/test_native_zip.php
       - name: State explicit release boundaries
         if: always()
