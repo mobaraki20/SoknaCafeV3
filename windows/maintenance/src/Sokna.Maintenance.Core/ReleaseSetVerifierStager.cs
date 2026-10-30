@@ -346,7 +346,62 @@ public sealed class ReleaseSetVerifierStager
         ValidateMinimumVersion(installed.UpdateEngineVersion, manifest.Requirements.UpdateEngineMin, "Update Engine");
         ValidateOptionalMinimumVersion(installed.BackupRecoveryEngineVersion, manifest.Requirements.BackupRecoveryEngineMin, "Backup & Recovery Engine");
         ValidateOptionalMinimumVersion(installed.PublicMaintenanceKernelVersion, manifest.Requirements.PublicMaintenanceKernelMin, "Public Maintenance Kernel");
+        // A multi-baseline UUP-01 Local package is a SINGLE immutable ZIP.
+        // Every declared source must be strictly older than its destination;
+        // unknown build ordering is rejected before creating any Stage state.
+        RequireMultiBaselineLocalOrder(manifest);
         if (!MatchesAnyBaseline(manifest, installed)) throw new InvalidDataException("Installed release identity does not match any exact supported baseline.");
+    }
+
+    // UUP-01 multi-baseline discipline. Earlier single-baseline packages
+    // retain their legacy contract; publication of those as "universal"
+    // is separately forbidden by the release gate.
+    private static void RequireMultiBaselineLocalOrder(ReleaseSetManifest manifest)
+    {
+        if (manifest.ReleaseType != "local_only" || manifest.SupportedBaselines.Length < 2)
+            return;
+        if (manifest.SupportedBaselines.Length > 64)
+            throw new InvalidDataException("UUP01_TOO_MANY_BASELINES");
+        if (manifest.Targets.ValueKind != JsonValueKind.Object ||
+            !manifest.Targets.TryGetProperty("local", out var local) ||
+            local.ValueKind != JsonValueKind.Object ||
+            !local.TryGetProperty("version", out var targetValue) ||
+            targetValue.ValueKind != JsonValueKind.String)
+            throw new InvalidDataException("UUP01_LOCAL_TARGET_VERSION_MISSING");
+        var target = ParseWorkspaceOrder(targetValue.GetString());
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var baseline in manifest.SupportedBaselines)
+        {
+            var id = baseline.Local ?? throw new InvalidDataException("UUP01_LOCAL_BASELINE_MISSING");
+            var current = ParseWorkspaceOrder(id.Version);
+            if (!string.Equals(current.Family, target.Family, StringComparison.Ordinal) ||
+                current.Number > target.Number ||
+                current.Number == target.Number && current.Alpha >= target.Alpha)
+                throw new InvalidDataException("UUP01_DOWNGRADE_OR_INCOMPARABLE_SOURCE");
+            var fingerprint = string.Join("\n", id.ReleaseId, id.Version,
+                id.ManagedTreeSha256.ToLowerInvariant(), id.SchemaFingerprint,
+                id.MigrationHead, id.AuthorityEpochPolicy ?? "");
+            if (!seen.Add(fingerprint))
+                throw new InvalidDataException("UUP01_DUPLICATE_SOURCE_BASELINE");
+        }
+    }
+
+    private static (string Family, long Number, long Alpha) ParseWorkspaceOrder(string? version)
+    {
+        // The official Local build convention is gN.M-workspace.231br[-qualifier].
+        // Do not guess an order for unknown/pre-release families.
+        var m = System.Text.RegularExpressions.Regex.Match(version ?? "",
+            @"^(?<family>[A-Za-z0-9.+-]+-workspace\.)(?<number>[0-9]{1,12})(?<letters>[a-z]{1,6})(?:-[A-Za-z0-9_.-]+)?$",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        if (!m.Success ||
+            !long.TryParse(m.Groups["number"].Value,
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var number))
+            throw new InvalidDataException("UUP01_WORKSPACE_VERSION_ORDER_UNKNOWN");
+        long suffix = 0;
+        foreach (var ch in m.Groups["letters"].Value)
+            suffix = checked(suffix * 26 + ch - 'a' + 1);
+        return (m.Groups["family"].Value, number, suffix);
     }
 
     private static void ValidateForInstallGate(ReleaseSetManifest manifest)
