@@ -1,0 +1,50 @@
+name: R18 Public R17 Native PHP ZIP Qualification (CI-only)
+
+on:
+  push:
+    branches:
+      - ci/r18-native-zip-public-20261030
+    paths:
+      - '.github/workflows/r18-public-native-zip.yml'
+      - 'ci/fixtures/r18-public-native-qualification.tar.gz'
+  workflow_dispatch:
+
+permissions: { contents: read }
+
+jobs:
+  native-public-zip:
+    name: Exact 35FH to R17 / Routine + Guard / native ZipArchive
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native PHP ZipArchive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-zip
+          php -r 'exit(extension_loaded("zip") && class_exists(ZipArchive::class) ? 0 : 3);'
+      - name: Validate exact source fixture bytes before test
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'f8166d7780a8dce98ad9a5e7242db70a5a4179601bdeb89413c0cbcd82b368ce  ci/fixtures/r18-public-native-qualification.tar.gz' | sha256sum --check
+          mkdir -p /tmp/sokna-r18-zip-ci
+          tar -tzf ci/fixtures/r18-public-native-qualification.tar.gz | tee /tmp/sokna-r18-archive-list.txt
+          ! grep -E '(^/|(^|/)\\.\\.(/|$))' /tmp/sokna-r18-archive-list.txt
+          tar -xzf ci/fixtures/r18-public-native-qualification.tar.gz --no-same-owner --no-same-permissions -C /tmp/sokna-r18-zip-ci
+          test -f /tmp/sokna-r18-zip-ci/test_native_zip.php
+          test -f /tmp/sokna-r18-zip-ci/GuardCandidate.php
+      - name: PHP lint test and protected owner candidate
+        run: |
+          php -l /tmp/sokna-r18-zip-ci/test_native_zip.php
+          php -l /tmp/sokna-r18-zip-ci/GuardCandidate.php
+          php -l /tmp/sokna-r18-zip-ci/RoutinePublicUpdateService.php
+      - name: Native ZIP Routine + Emergency guard functional lifecycle
+        run: php /tmp/sokna-r18-zip-ci/test_native_zip.php
+      - name: State explicit release boundaries
+        if: always()
+        run: |
+          echo 'CI scope only: 35FH byte-exact fixture -> R17 Public ZIP; native ext-zip.'
+          echo 'Emergency owner is a source-only candidate, NOT the verified live owner.'
+          echo 'No live MariaDB schema or db_forward_fence lifted. No host or production changes.'
+          echo 'Second distinct baseline and install release authorization remain unqualified.'
