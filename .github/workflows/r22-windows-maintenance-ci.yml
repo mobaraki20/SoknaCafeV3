@@ -1,0 +1,90 @@
+name: R22 Windows Maintenance & R20 Source Compatibility (CI-only)
+on:
+  push:
+    branches: [ci/r21-local-native-lifecycle-20261030]
+    paths: ['.github/workflows/r22-windows-maintenance-ci.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  windows-maintenance:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Verify pinned R17 ZIP and R20 patched source on Windows filesystem
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import glob,zipfile,hashlib
+          chunks=sorted(glob.glob('ci/fixtures/r19-local-r17-part-*.bin'))
+          assert len(chunks)==7,len(chunks)
+          data=b''.join(open(p,'rb').read() for p in chunks)
+          assert hashlib.sha256(data).hexdigest()=='9525ecbfb256a62b782b768e510dccab5bc81941c2eb93fa56f5c704b403b5f4'
+          import io
+          with zipfile.ZipFile(io.BytesIO(data)) as z:
+            assert z.testzip() is None
+            source=z.read('payload/src/Domain/Update/LocalUpdateService.php')
+            assert hashlib.sha256(source).hexdigest()=='1befeeb23d842ba76f25bef12840fa20e427b761de50219e4eb05b859e56ee2f'
+            assert b'fresh_process_version_mismatch' in source
+            import json
+            manifest=json.loads(z.read('manifest.json'))
+            assert len(manifest['files'])==534
+            for entry in manifest['files']:
+              b=z.read('payload/'+entry['path'])
+              assert len(b)==entry['size'] and hashlib.sha256(b).hexdigest()==entry['sha256'],entry['path']
+          print('WINDOWS_R17_ZIP_AND_534_HASHES_PASS')
+          '@ | Set-Content r22_zip_check.py -Encoding utf8
+          python r22_zip_check.py
+          if($LASTEXITCODE-ne0){throw 'Windows ZIP/hash verification failed'}
+      - name: PowerShell 5.1 maintenance parser qualification
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $paths=@(
+            'packaging/windows/scripts/queue-local-slot-adoption-r8.ps1',
+            'packaging/windows/scripts/prepare-shell-payload-v9.ps1',
+            'packaging/windows/scripts/setup-windows-components-v9.ps1',
+            'packaging/windows/scripts/collect-support-v3.ps1'
+          )
+          foreach($p in $paths){
+            $tokens=$null;$errors=$null
+            [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors)
+            if($errors.Count){$errors|ForEach-Object{Write-Host $_.Message};throw "PS5.1 parse failed: $p"}
+          }
+          Write-Host 'WINDOWS_PS51_PARSER_PASS'
+      - name: Build Windows Maintenance core engine and supervisor
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($p in @(
+            'windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj'
+          )){
+            dotnet build $p -c Release --nologo
+            if($LASTEXITCODE-ne0){throw "Windows build failed: $p"}
+          }
+      - name: Windows R7 durable migration and R8 slot-path harness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R7ReliabilityHarness/Sokna.Maintenance.R7ReliabilityHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'R7 Windows reliability regression failed'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.R8SlotPathHarness/Sokna.Maintenance.R8SlotPathHarness.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'R8 Windows slot-path regression failed'}
+          Write-Host 'WINDOWS_MAINTENANCE_R7_R8_PASS'
+      - name: Record limited Windows scope
+        if: always()
+        shell: pwsh
+        run: |
+          "Windows-2022 CI-only. No service installation on real host, no target home/cafe slot adoption, no live database, no Windows ZIP activation claim." | Set-Content r22_scope.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r22-windows-maintenance-ci-evidence
+          path: r22_scope.txt
+          retention-days: 14
