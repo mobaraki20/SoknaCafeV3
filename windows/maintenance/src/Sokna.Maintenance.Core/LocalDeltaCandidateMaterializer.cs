@@ -80,13 +80,13 @@ public static class LocalDeltaCandidateMaterializer
         var deleted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in manifest.ChangedPaths)
         {
-            if (!changed.Add(SafePath(path)))
+            if (SafePath(path) == "delta-manifest.json" || !changed.Add(SafePath(path)))
                 throw new InvalidDataException("LOCAL_DELTA_DUPLICATE_CHANGE");
         }
         foreach (var path in manifest.DeletedPaths)
         {
             var rel = SafePath(path);
-            if (!deleted.Add(rel) || changed.Contains(rel) || !basePaths.Contains(rel))
+            if (rel == "delta-manifest.json" || !deleted.Add(rel) || changed.Contains(rel) || !basePaths.Contains(rel))
                 throw new InvalidDataException("LOCAL_DELTA_INVALID_DELETION");
         }
         if (!changed.Contains("VERSION.txt") ||
@@ -158,7 +158,7 @@ public static class LocalDeltaCandidateMaterializer
         if (parts.Any(static p => p is "" or "." or ".." || p.EndsWith(' ') || p.EndsWith('.')))
             throw new InvalidDataException("LOCAL_DELTA_UNSAFE_PATH");
         var normalized = string.Join('/', parts);
-        if (normalized is "delta-manifest.json" or ".sokna-installation.json" or "config.php" or "install.lock" or
+        if (normalized is ".sokna-installation.json" or "config.php" or "install.lock" or
             "public/local-update-runner.php" or "public/local-recovery.php")
             throw new InvalidDataException("LOCAL_DELTA_PROTECTED_PATH");
         return normalized;
