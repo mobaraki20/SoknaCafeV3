@@ -251,7 +251,7 @@ sealed class TestEnv : IDisposable
     }
 
     public LocalSlotAdoptionWorker Worker(IProductionLocalSlotMigrationCoordinator coordinator, LocalSlotAdoptionQueue? queue = null)
-        => new(queue ?? Queue, coordinator, Journal, State, _options);
+        => new(queue ?? Queue, coordinator, new MaintenanceOperationStore(Paths), Journal, State, _options);
 
     public void Dispose()
     {
