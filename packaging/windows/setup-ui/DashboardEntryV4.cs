@@ -33,6 +33,8 @@ internal static class DashboardEntryV4
                 return 31;
             }
         }
+        if (args.Length == 5 && args[0].Equals("--independent-maintenance-self-test", StringComparison.OrdinalIgnoreCase))
+            return RunIndependentMaintenanceSelfTest(args[1], args[2], args[3], args[4]);
         if (args.Length == 1 && args[0].Equals("--planner-self-test", StringComparison.OrdinalIgnoreCase))
         {
             ComponentPlannerSelfTest.Run();
@@ -44,6 +46,40 @@ internal static class DashboardEntryV4
         DashboardUiPolish.Apply(form);
         Application.Run(form);
         return 0;
+    }
+
+    private static int RunIndependentMaintenanceSelfTest(string shellRoot,
+        string installRoot, string dataRoot, string outputRoot)
+    {
+        try
+        {
+            Directory.CreateDirectory(outputRoot);
+            var plan = ComponentUpdatePlanner.Build(shellRoot, installRoot, dataRoot);
+            var maintenance = plan.Rows.Single(x => x.ComponentId == "maintenance");
+            var engine = plan.Rows.Single(x => x.ComponentId == "maintenance-update-engine");
+            if (maintenance.CurrentVersion != "0.3.18" ||
+                engine.CurrentVersion != "0.3.18" ||
+                maintenance.Action != ComponentAction.Keep ||
+                engine.Action != ComponentAction.Keep ||
+                plan.IsBlocked)
+                throw new InvalidOperationException(
+                    $"independent_maintenance_compatibility_fail: {maintenance.Action}/{engine.Action}; {maintenance.Reason}; {engine.Reason}");
+            using var dlg = new ComponentPlanDialog(plan);
+            dlg.StartPosition = FormStartPosition.Manual;
+            dlg.Location = new Point(12, 12);
+            CreateControlTree(dlg);
+            PerformLayoutTree(dlg);
+            CapturePainted(dlg, Path.Combine(outputRoot, "windows-1125-maintenance-0318-plan.png"), 25);
+            File.WriteAllLines(Path.Combine(outputRoot, "compatibility-result.txt"),
+                new[] {"PASS", $"WindowsServices={plan.PackageVersion}", $"Maintenance={maintenance.CurrentVersion}/{maintenance.Action}",
+                    $"Engine={engine.CurrentVersion}/{engine.Action}", $"Blocked={plan.IsBlocked}"});
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            try { Directory.CreateDirectory(outputRoot); File.WriteAllText(Path.Combine(outputRoot, "compatibility-error.txt"), ex.ToString()); } catch {}
+            return 37;
+        }
     }
 
     private static int RunLayoutSelfTest(string output)
