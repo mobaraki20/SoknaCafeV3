@@ -90,11 +90,30 @@ class GateTests(unittest.TestCase):
 
     def test_best_possible_self_report_still_not_release_permit(self):
         d = self.evaluate()
-        self.assertEqual(d["blockers"], ["REAL_MULTI_BASELINE_ACTIVATION_RECOVERY_UAT_NOT_ATTESTED"])
+        self.assertEqual(d["blockers"], [
+            "PUBLIC_STABLE_EMERGENCY_OWNER_RUNTIME_NOT_QUALIFIED",
+            "REAL_MULTI_BASELINE_ACTIVATION_RECOVERY_UAT_NOT_ATTESTED"])
+        self.assertTrue(d["observations"]["stable_emergency_owner_fingerprints_exported"])
+        self.assertFalse(d["observations"]["stable_emergency_owner_host_behavior_qualified"])
 
-    def test_real_case_emergency_35es_stale_after_35fh(self):
-        self.public["system"]["health"]["update"]["active_version"] = "35es"
-        self.assertBlocked("PUBLIC_EMERGENCY_ROUTINE_OWNER_DRIFT")
+    def test_two_independent_public_owners_are_not_forced_to_same_version(self):
+        self.public["system"]["health"]["update"]["active_version"] = "3.0.0-g3.6-workspace.35es-stable-owner"
+        d = self.evaluate()
+        self.assertNotIn("PUBLIC_EMERGENCY_ROUTINE_OWNER_DRIFT", d["blockers"])
+        self.assertEqual(d["observations"]["public_emergency_recorded_version"],
+                         "3.0.0-g3.6-workspace.35es-stable-owner")
+        self.assertIn("PUBLIC_STABLE_EMERGENCY_OWNER_RUNTIME_NOT_QUALIFIED", d["blockers"])
+        self.assertFalse(d["installation_authorized"])
+
+    def test_disk_vs_routine_active_version_drift_still_fails_closed(self):
+        self.public["system"]["routine_update"]["active_version"] = "35fg-stale-routine"
+        self.assertBlocked("PUBLIC_DISK_ROUTINE_VERSION_DRIFT")
+
+    def test_exported_owner_hashes_are_not_host_runtime_proof(self):
+        d = self.evaluate()
+        self.assertTrue(d["observations"]["stable_emergency_owner_fingerprints_exported"])
+        self.assertFalse(d["observations"]["stable_emergency_owner_host_behavior_qualified"])
+        self.assertIn("PUBLIC_STABLE_EMERGENCY_OWNER_RUNTIME_NOT_QUALIFIED", d["blockers"])
 
     def test_forward_fence_never_ignored_even_when_no_pending_migration(self):
         self.public["system"]["routine_update"]["db_forward_fence"] = {
