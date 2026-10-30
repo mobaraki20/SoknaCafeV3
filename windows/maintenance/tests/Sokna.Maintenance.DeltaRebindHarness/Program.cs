@@ -20,11 +20,11 @@ static void MustFail(Action action, string code)
     catch (InvalidDataException) { return; }
     throw new Exception("unsafe delta/rebind accepted: " + code);
 }
-static string[] Current = {
+string[] Current = {
     "VERSION.txt", "resources/local-managed-files-v1.json",
     "public/keep.php", "public/changed.php", "public/deleted.php"
 };
-static string[] Target = {
+string[] Target = {
     "VERSION.txt", "resources/local-managed-files-v1.json",
     "public/keep.php", "public/changed.php", "public/new.php"
 };
