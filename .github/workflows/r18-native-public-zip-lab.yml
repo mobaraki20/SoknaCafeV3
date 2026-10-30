@@ -1,0 +1,48 @@
+name: R18 Native ZIP Public QA (CI only)
+on:
+  push:
+    branches:
+      - ci/r18-native-public-zip-20261030
+    paths:
+      - '.github/workflows/r18-native-public-zip-lab.yml'
+      - 'ci/fixtures/r18-public-native-zip-lab.tar.gz'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  native-zip:
+    name: Public Routine and Emergency real ZipArchive lab
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native ZIP PHP extension
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-zip
+          php -r 'exit(extension_loaded("zip") && class_exists("ZipArchive") ? 0 : 1);'
+      - name: Verify and extract pinned engineering fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "f8166d7780a8dce98ad9a5e7242db70a5a4179601bdeb89413c0cbcd82b368ce  ci/fixtures/r18-public-native-zip-lab.tar.gz" | sha256sum -c -
+          mkdir -p /tmp/r18-public-native
+          tar -tzf ci/fixtures/r18-public-native-zip-lab.tar.gz | sort > /tmp/r18-public-native/inventory.txt
+          test "$(wc -l < /tmp/r18-public-native/inventory.txt)" -eq 7
+          tar -xzf ci/fixtures/r18-public-native-zip-lab.tar.gz -C /tmp/r18-public-native --no-same-owner --no-same-permissions
+          php -l /tmp/r18-public-native/test_native_zip.php
+      - name: Run R17 exact-Public security and recovery scenarios
+        shell: bash
+        run: |
+          set -euo pipefail
+          php /tmp/r18-public-native/test_native_zip.php | tee /tmp/r18-public-native/result.json
+          php -r '$r=json_decode(file_get_contents("/tmp/r18-public-native/result.json"),true,32,JSON_THROW_ON_ERROR);if(($r["status"]??"")!=="PASS"||($r["native_zip"]??false)!==true||($r["cases_count"]??0)!==11)exit(1);'
+      - name: Store test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r18-public-native-zip-results
+          path: |
+            /tmp/r18-public-native/result.json
+            /tmp/r18-public-native/inventory.txt
+          if-no-files-found: warn
+          retention-days: 14
