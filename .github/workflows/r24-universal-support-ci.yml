@@ -1,0 +1,99 @@
+name: R24 Universal Windows Support Bundle Contract (CI only)
+on:
+  push:
+    branches: [work/r24-universal-support-contract-20261030]
+    paths:
+      - 'packaging/windows/scripts/collect-support-v2.ps1'
+      - '.github/workflows/r24-universal-support-ci.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  support-collector:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell 5.1 syntax and no host-specific package coupling
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $file='packaging/windows/scripts/collect-support-v2.ps1'
+          $tokens=$null;$errors=$null
+          $ast=[Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file),[ref]$tokens,[ref]$errors)
+          if($errors.Count){$errors|ForEach-Object{Write-Host $_.Message};throw 'Support collector PowerShell 5.1 syntax failure'}
+          foreach($f in @('UniversalFileFingerprint','UniversalServiceExe','UniversalLocalCandidateRoots','CollectUniversalSupport')){
+            if(-not @($ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $f},$true)).Count){throw "Missing universal support function: $f"}
+          }
+          if($ast.Extent.Text-notmatch'universal-source-inventory.json'){throw 'Not integrated with standard support ZIP'}
+          Write-Host 'R24_STANDARD_SUPPORT_CONTRACT_PASS'
+      - name: Test generic service and Local fingerprint collector with disposable fixture
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $source=Get-Content packaging/windows/scripts/collect-support-v2.ps1 -Raw
+          $head=$source.Substring(0,$source.IndexOf('$DataRoot=Full $DataRoot'))
+          Invoke-Expression $head
+          $root=Join-Path $env:RUNNER_TEMP 'r24-synthetic-source'
+          $web=Join-Path $root 'SOKNA\Web'
+          $service=Join-Path $root 'AnyVersion\PrintWorker\Agent.exe'
+          New-Item -ItemType Directory -Force -Path (Join-Path $web 'src\Domain\Update'),([IO.Path]::GetDirectoryName($service))|Out-Null
+          $php=Join-Path $web 'src\Domain\Update\LocalUpdateService.php'
+          [IO.File]::WriteAllText($php,'<?php // generic source identity' + [Environment]::NewLine)
+          [IO.File]::WriteAllText((Join-Path $web 'VERSION.txt'),'generic-version-999.2')
+          [IO.File]::WriteAllBytes($service,[byte[]](0,1,2,3,4,5))
+          $env:SOKNA_LOCAL_WEB_ROOT=$web
+          $svc=@([pscustomobject]@{name='SoknaPrintWorker';path_name=('"'+$service+'" --service')})
+          $script:collectionErrors=@()
+          $report=CollectUniversalSupport $root $svc
+          if($report.format-ne'sokna-support-universal-fingerprints-v1'){throw 'Format mismatch'}
+          if($report.package_identity_policy-ne'universal_multi_baseline_not_host_specific'){throw 'Package scope drift'}
+          if($report.local.status-ne'verified'-or@($report.local.matches).Count-ne1){throw 'Generic Local discovery failed'}
+          if($report.local.matches[0].version-ne'generic-version-999.2'){throw 'Captured wrong version'}
+          $expected=(Get-FileHash $php -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($report.local.matches[0].source.sha256-ne$expected){throw 'Local source sha mismatch'}
+          $print=@($report.services|Where-Object{$_.component-eq'print-agent'})[0]
+          if($print.sha256-ne(Get-FileHash $service -Algorithm SHA256).Hash.ToLowerInvariant()){throw 'Generic installed service path parsing/hash failure'}
+          if($report.database_rows_collected-or$report.secret_file_contents_collected){throw 'Sensitive data contract violated'}
+          Remove-Item Env:SOKNA_LOCAL_WEB_ROOT
+          $missing=CollectUniversalSupport (Join-Path $root 'unknown-root') @()
+          if($missing.local.status-ne'unknown'){throw 'Unknown source must fail closed, not report verified'}
+          New-Item -ItemType Directory -Force out-r24|Out-Null
+          $report|ConvertTo-Json -Depth 16|Set-Content out-r24/universal-fixture-evidence.json -Encoding utf8
+          Write-Host 'R24_GENERIC_LAYOUT_SHA_VERSION_AND_UNKNOWN_PASS'
+      - name: End-to-end ordinary v2 support ZIP includes source fingerprints
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $data=Join-Path $env:RUNNER_TEMP 'r24-empty-data'
+          $dest=Join-Path $env:RUNNER_TEMP 'r24-standard-support'
+          New-Item -ItemType Directory -Force $data,$dest|Out-Null
+          $web=Join-Path $env:RUNNER_TEMP 'r24-fake-web'
+          New-Item -ItemType Directory -Force (Join-Path $web 'src\Domain\Update')|Out-Null
+          [IO.File]::WriteAllText((Join-Path $web 'src\Domain\Update\LocalUpdateService.php'),'<?php // QA only')
+          [IO.File]::WriteAllText((Join-Path $web 'VERSION.txt'),'v1.0.0-synthetic')
+          $env:SOKNA_LOCAL_WEB_ROOT=$web
+          & ./packaging/windows/scripts/collect-support-v2.ps1 -DataRoot $data -OutputRoot $dest -InstallerTransactions 1
+          if($LASTEXITCODE-ne0){throw 'Normal support generator failed'}
+          $zip=Get-ChildItem $dest -Filter 'SOKNA-Support-v2-*.zip'|Select-Object -First 1
+          if($null-eq$zip){throw 'Standard support ZIP missing'}
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $z=[IO.Compression.ZipFile]::OpenRead($zip.FullName)
+          try{
+            $inventory=$z.Entries|Where-Object{$_.FullName.Replace('\','/')-eq'windows/universal-source-inventory.json'}|Select-Object -First 1
+            if($null-eq$inventory){throw 'Universal support inventory missing from normal support ZIP'}
+            $reader=[IO.StreamReader]::new($inventory.Open())
+            try{$data=$reader.ReadToEnd()|ConvertFrom-Json}finally{$reader.Dispose()}
+            if($data.local.status-ne'verified'){throw 'Standard ZIP failed to capture Local installed identity'}
+            $manifest=$z.Entries|Where-Object{$_.FullName-eq'bundle-manifest.json'}|Select-Object -First 1
+            if($null-eq$manifest){throw 'Support manifest missing'}
+            $read=[IO.StreamReader]::new($manifest.Open())
+            try{$m=$read.ReadToEnd()|ConvertFrom-Json}finally{$read.Dispose()}
+            if(-not@($m.entries|Where-Object{$_.path-eq'windows/universal-source-inventory.json'}).Count){throw 'Support hash manifest does not cover identity file'}
+          }finally{$z.Dispose()}
+          Write-Host 'R24_REAL_STANDARD_SUPPORT_ZIP_PASS'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r24-universal-support-ci-only
+          path: out-r24
+          retention-days: 14
