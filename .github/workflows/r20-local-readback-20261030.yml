@@ -33,8 +33,8 @@ jobs:
           from pathlib import Path
           p=Path('/tmp/r20-candidate/LocalUpdateService.php')
           s=p.read_text()
-          old='$reported=trim(implode("\\n",$out));$expected=$this->currentVersion();if($reported===\'\'||!str_contains($reported,$expected))throw new LocalUpdateException(\'fresh_process_version_mismatch\',\'PHP process تازه نسخه هدف را تأیید نکرد.\',500,[\'expected\'=>$expected,\'output\'=>substr($reported,0,1000)]);'
-          new='$reported=trim(implode("\\n",$out));\n        // The lifecycle state still holds the previous version during activation,\n        // and holds the target version during rollback restoration. Verify the\n        // code that a fresh PHP process actually loaded, not the state journal.\n        $expected=$this->webVersion();\n        if($expected===\'unknown\'||$reported!==$expected)throw new LocalUpdateException(\'fresh_process_version_mismatch\',\'PHP process تازه نسخه هدف را تأیید نکرد.\',500,[\'expected\'=>$expected,\'output\'=>substr($reported,0,1000)]);'
+          old='$reported=trim(implode("\\\\n",$out));$expected=$this->currentVersion();if($reported===\'\'||!str_contains($reported,$expected))throw new LocalUpdateException(\'fresh_process_version_mismatch\',\'PHP process تازه نسخه هدف را تأیید نکرد.\',500,[\'expected\'=>$expected,\'output\'=>substr($reported,0,1000)]);'
+          new='$reported=trim(implode("\\\\n",$out));\n        // The lifecycle state still holds the previous version during activation,\n        // and holds the target version during rollback restoration. Verify the\n        // code that a fresh PHP process actually loaded, not the state journal.\n        $expected=$this->webVersion();\n        if($expected===\'unknown\'||$reported!==$expected)throw new LocalUpdateException(\'fresh_process_version_mismatch\',\'PHP process تازه نسخه هدف را تأیید نکرد.\',500,[\'expected\'=>$expected,\'output\'=>substr($reported,0,1000)]);'
           assert s.count(old)==1, 'unmatched original R17 source; fail closed'
           p.write_text(s.replace(old,new))
           PY
