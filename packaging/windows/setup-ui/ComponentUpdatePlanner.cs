@@ -168,7 +168,17 @@ internal static class ComponentUpdatePlanner
             // remain blocked.
             var keepIndependentMaintenance = cmp >= 0 && IsVerifiedIndependentMaintenancePair(
                 id, currentVersion, targetVersion, installedHash, registrationHealthy, installRoot, dataRoot);
-            if (cmp > 0 && !keepIndependentMaintenance)
+            // The standalone receipt is guarded by Windows ACLs. The ordinary
+            // asInvoker UI is not an authority to read it or to decide whether
+            // a newer Maintenance can be overwritten. If the physical pair
+            // matches, display a read-only KEEP candidate; the elevated
+            // executor must REATTEST the exact scoped receipt and hashes or
+            // reject the entire plan before touching any service.
+            var pendingPrivilegedProof = !keepIndependentMaintenance && cmp > 0 &&
+                IsReadOnlyIndependentMaintenanceCandidate(
+                    id, currentVersion, targetVersion, installedHash,
+                    registrationHealthy, installRoot);
+            if (cmp > 0 && !keepIndependentMaintenance && !pendingPrivilegedProof)
             {
                 action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = $"نسخه نصب‌شده {currentVersion} از نسخه هدف {targetVersion} جدیدتر است؛ downgrade خودکار مجاز نیست.";
             }
@@ -176,6 +186,11 @@ internal static class ComponentUpdatePlanner
             {
                 action = ComponentAction.Keep; state = "independent_compatible_keep";
                 reason = $"Maintenance مستقل {currentVersion} با رسید نصب و سلامت هر دو جزء تأیید شد؛ با نسخهٔ Windows Services سازگار و بدون تغییر باقی می‌ماند.";
+            }
+            else if (pendingPrivilegedProof)
+            {
+                action = ComponentAction.Keep; state = "independent_privileged_verification_required";
+                reason = $"Maintenance مستقل {currentVersion} جدیدتر است و جایگزین نمی‌شود؛ تأیید نهایی رسید و هش‌ها فقط در مرحلهٔ بررسی مدیریتی انجام می‌شود.";
             }
             else if (CanKeepFrozenRecovery(id, currentVersion, targetVersion, compatibleInstalledHash, registrationHealthy))
             {
@@ -232,6 +247,40 @@ internal static class ComponentUpdatePlanner
             if (string.Equals(item.GetString(), installedHash, StringComparison.OrdinalIgnoreCase)) return true;
         }
         return false;
+    }
+
+    // Read-only classification only. It can NEVER authorize a mutation;
+    // the elevated installer recomputes the full scoped receipt attestation.
+    private static bool IsReadOnlyIndependentMaintenanceCandidate(
+        string componentId, string observedVersion, string targetVersion,
+        string observedSha256, bool registrationHealthy, string installRoot)
+    {
+        if (componentId is not ("maintenance" or "maintenance-update-engine") ||
+            CompareVersions(observedVersion, targetVersion) <= 0 ||
+            observedSha256.Length != 64 || !registrationHealthy) return false;
+        try
+        {
+            var app = Path.Combine(installRoot, "Maintenance", "App");
+            var supervisor = Path.Combine(app, "SoknaMaintenanceSupervisor.exe");
+            var engine = Path.Combine(app, "SoknaMaintenanceUpdateEngine.exe");
+            if (!File.Exists(supervisor) || !File.Exists(engine) ||
+                CompareVersions(LifecycleFileVersion(supervisor), observedVersion) != 0 ||
+                CompareVersions(LifecycleFileVersion(engine), observedVersion) != 0)
+                return false;
+            var hash = HashIfExists(componentId == "maintenance" ? supervisor : engine);
+            if (!string.Equals(hash, observedSha256, StringComparison.OrdinalIgnoreCase))
+                return false;
+            var service = ProbeService("SoknaMaintenanceSupervisor");
+            return service.Installed &&
+                service.State.Equals("RUNNING", StringComparison.OrdinalIgnoreCase) &&
+                ServiceImageOwnedByInstallRoot(service.ImagePath, installRoot) &&
+                RegistrationMatches("maintenance", service.ImagePath, supervisor, "");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                   ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     // Maintenance-only has an independent lifecycle. Preserve any newer
