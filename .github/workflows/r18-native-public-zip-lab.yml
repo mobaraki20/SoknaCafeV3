@@ -34,16 +34,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "8d83f208a6886ada32caeca99a412bef31b6793de850b0231b3bb54a3bf6fabe  /tmp/r18-public-native/test_native_zip.php" | sha256sum -c -
+          echo "1a161fd5fa24632909336b3071161bc2eeb97e31adf552caad3a52ce8be4fb7e  /tmp/r18-public-native/test_native_zip.php" | sha256sum -c -
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/r18-public-native/test_native_zip.php')
           s=p.read_text()
-          old="'Commit pending');"
-          new="'Commit pending snapshot='.json_encode($c,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));"
-          assert s.count(old)==1, 'Expected one diagnostic assertion'
-          p.write_text(s.replace(old,new))
+          replacements=[
+            ('function routine(string $name,?callable $migrationPending=null): RoutinePublicUpdateService {','function routine(string $name,?callable $migrate=null,?callable $migrationPending=null): RoutinePublicUpdateService {'),
+            ('return new RoutinePublicUpdateService($web,$storage,$trust,static fn()=>true,null,null,$migrationPending);','return new RoutinePublicUpdateService($web,$storage,$trust,static fn()=>true,$migrate,null,$migrationPending);'),
+            ("must(($c['pending_verification']??1)===null,'Commit pending');","must(array_key_exists('pending_verification',$c)&&$c['pending_verification']===null,'Commit pending');"),
+            ("$r4=routine('routine-preflight');","$r4=routine('routine-preflight',static fn()=>['simulated-DDL']);")
+          ]
+          for before,after in replacements:
+            assert s.count(before)==1, 'Unexpected R18 test harness source'
+            s=s.replace(before,after)
+          p.write_text(s)
           PY
+          echo "8d83f208a6886ada32caeca99a412bef31b6793de850b0231b3bb54a3bf6fabe  /tmp/r18-public-native/test_native_zip.php" | sha256sum -c -
           php /tmp/r18-public-native/test_native_zip.php | tee /tmp/r18-public-native/result.json
           php -r '$r=json_decode(file_get_contents("/tmp/r18-public-native/result.json"),true,32,JSON_THROW_ON_ERROR);if(($r["status"]??"")!=="PASS"||($r["native_zip"]??false)!==true||($r["cases_count"]??0)!==11)exit(1);'
       - name: Store test evidence
