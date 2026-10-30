@@ -1,0 +1,41 @@
+name: Publish visibility of qualified Maintenance 0.3.17 Home prerelease
+on:
+  push:
+    branches: [release/maintenance-0317-home-direct-20261030]
+    paths: ['.github/workflows/publish-maintenance-0317-visible-release.yml']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  promote-tested-asset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify exact successful Windows Inno EXE qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(gh api repos/$GITHUB_REPOSITORY/actions/runs/41010594255)"
+          echo "$result" | jq -e '.status=="completed" and .conclusion=="success" and .head_sha=="b6084ead014a9e21e9a382982288c42a8b9fdeea"'
+          echo "EXACT_WINDOWS_INSTALLER_0312_TO_0317_QA_PASS"
+      - name: Verify original GitHub asset digest and make existing release visible
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='maintenance-only-v0.3.17-home-uat.rev2'
+          asset='SOKNA-Maintenance-Only-0.3.17-HOME-UAT-REV2.exe'
+          expected='sha256:772e178369a45699d0358f32e5ed980b24ae7a41107455c9c0c847d9eeb3a3b2'
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
+          echo "$release" | jq -e --arg name "$asset" --arg digest "$expected" '
+            .tag_name=="maintenance-only-v0.3.17-home-uat.rev2" and
+            .prerelease==true and
+            ([.assets[]|select(.name==$name and .digest==$digest and .size==53379306)]|length)==1'
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+          visible="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
+          echo "$visible" | jq -e '.draft==false and .prerelease==true'
+          echo "$visible" | jq -r --arg name "$asset" '.assets[]|select(.name==$name)|.browser_download_url'
+          echo 'SOKNA_MAINTENANCE_0317_HOME_REV2_VISIBLE_PRERELEASE_PASS'
