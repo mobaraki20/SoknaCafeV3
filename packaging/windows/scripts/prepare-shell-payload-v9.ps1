@@ -27,18 +27,22 @@ $oldProp="function Prop(`$o,[string]`$n,`$default=`$null){if(`$null-ne`$o-and`$o
 $independentProof=@'
 function Verified-IndependentMaintenancePair($m,[string]$actual){
   $id=[string](Prop $m 'component_id' '')
-  if($id-notin@('maintenance','maintenance-update-engine')-or[string](Prop $m 'version' '')-ne'0.3.10'-or$actual.Length-ne64){return $false}
+  if($id-notin@('maintenance','maintenance-update-engine')-or$actual.Length-ne64){return $false}
   try{
     $receiptPath=Join-Path $DataRoot 'setup\maintenance-only-component-receipt-v1.json'
     $supervisor=Join-Path $InstallRoot 'Maintenance\App\SoknaMaintenanceSupervisor.exe'
     $engine=Join-Path $InstallRoot 'Maintenance\App\SoknaMaintenanceUpdateEngine.exe'
     if(-not(Test-Path -LiteralPath $receiptPath -PathType Leaf)-or-not(Test-Path -LiteralPath $supervisor -PathType Leaf)-or-not(Test-Path -LiteralPath $engine -PathType Leaf)){return $false}
     $receipt=Get-Content -LiteralPath $receiptPath -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
+    $physicalVersion=VersionOf $supervisor
+    $targetVersion=[string](Prop $m 'version' '')
+    if([string]::IsNullOrWhiteSpace($physicalVersion)-or$physicalVersion-ne(VersionOf $engine)-or
+      (Compare-Version $physicalVersion $targetVersion)-lt0 -or (Compare-Version $physicalVersion '0.3.10')-lt0){return $false}
     $tx=[Guid]::Empty
-    if([string]$receipt.format-ne'sokna-maintenance-only-component-receipt-v1'-or[int]$receipt.schema_version-ne1-or[string]$receipt.release_scope-ne'maintenance_only'-or[string]$receipt.version-ne'0.3.10'-or-not[Guid]::TryParseExact([string]$receipt.transaction_id,'N',[ref]$tx)-or-not[bool]$receipt.windows_shell_state_unchanged-or-not[bool]$receipt.runtime_unchanged-or-not[bool]$receipt.print_agent_unchanged-or-not[bool]$receipt.recovery_console_unchanged){return $false}
+    if([string]$receipt.format-ne'sokna-maintenance-only-component-receipt-v1'-or[int]$receipt.schema_version-ne1-or[string]$receipt.release_scope-ne'maintenance_only'-or[string]$receipt.version-ne$physicalVersion-or-not[Guid]::TryParseExact([string]$receipt.transaction_id,'N',[ref]$tx)-or-not[bool]$receipt.windows_shell_state_unchanged-or-not[bool]$receipt.runtime_unchanged-or-not[bool]$receipt.print_agent_unchanged-or-not[bool]$receipt.recovery_console_unchanged){return $false}
     $supervisorHash=Sha $supervisor
     $engineHash=Sha $engine
-    if($supervisorHash.Length-ne64-or$engineHash.Length-ne64-or$supervisorHash-ne[string]$receipt.supervisor_sha256-or$engineHash-ne[string]$receipt.engine_sha256-or(VersionOf $supervisor)-ne'0.3.10'-or(VersionOf $engine)-ne'0.3.10'){return $false}
+    if($supervisorHash.Length-ne64-or$engineHash.Length-ne64-or$supervisorHash-ne[string]$receipt.supervisor_sha256-or$engineHash-ne[string]$receipt.engine_sha256-or(VersionOf $supervisor)-ne$physicalVersion-or(VersionOf $engine)-ne$physicalVersion){return $false}
     $svc=Service-Info 'SoknaMaintenanceSupervisor'
     if(-not$svc.Installed-or[string]$svc.State-ne'Running'-or-not(Owned ([string]$svc.ImagePath) $InstallRoot)-or-not(Registration-Matches 'maintenance' ([string]$svc.ImagePath) $supervisor $DataRoot)){return $false}
     return ($actual-eq$(if($id-eq'maintenance'){$supervisorHash}else{$engineHash}))
@@ -61,7 +65,7 @@ if(([regex]::Matches($coreRaw,[regex]::Escape($oldProp))).Count-ne1){throw 'Expe
 $coreRaw=$coreRaw.Replace($oldProp,$newProp)
 
 $oldCoreLine="if([string]`$plan.mode-eq'repair'-and`$action-eq'KEEP'){`$action='REPAIR';`$reason='explicit_repair'}"
-$newCoreLine="if([string]`$plan.mode-eq'repair'-and`$action-eq'KEEP'-and`$id-ne'maintenance-recovery-console'){`$action='REPAIR';`$reason='explicit_repair'}"
+$newCoreLine="if([string]`$plan.mode-eq'repair'-and`$action-eq'KEEP'-and`$id-ne'maintenance-recovery-console'-and-not(Verified-IndependentMaintenancePair `$m `$ih)){`$action='REPAIR';`$reason='explicit_repair'}"
 if(-not$coreRaw.Contains($oldCoreLine)){throw 'Expected R8 explicit-repair core contract was not found; refusing an unbounded core rewrite.'}
 if(([regex]::Matches($coreRaw,[regex]::Escape($oldCoreLine))).Count-ne1){throw 'Expected exactly one R8 explicit-repair core contract occurrence.'}
 $coreRaw=$coreRaw.Replace($oldCoreLine,$newCoreLine)
@@ -74,6 +78,12 @@ $coreRaw=$coreRaw.Replace($oldHashDrift,$newHashDrift)
 
 # Keep released, SHA256-allowlisted Recovery Console 0.1.1 under the separately
 # frozen Recovery lifecycle. Unknown versions/hashes remain fail-closed.
+# Verified independent Maintenance of a newer version must never be downgraded.
+$oldVersionNewer="if(`$cmp-gt0){`$action='BLOCKED';`$reason='installed_newer'}"
+$newVersionNewer="if(`$cmp-gt0){if(Verified-IndependentMaintenancePair `$m `$ih){`$action='KEEP';`$reason='verified_independent_maintenance_newer'}else{`$action='BLOCKED';`$reason='installed_newer'}}"
+if(([regex]::Matches($coreRaw,[regex]::Escape($oldVersionNewer))).Count-ne1){throw 'Expected exactly one newer-version guard.'}
+$coreRaw=$coreRaw.Replace($oldVersionNewer,$newVersionNewer)
+
 $oldVersionOlder="elseif(`$cmp-lt0){`$action='UPDATE';`$reason='version_older'}"
 $newVersionOlder="elseif(`$cmp-lt0){if(`$id-eq'maintenance-recovery-console'-and`$current-eq'0.1.1'-and(Compatible-Fingerprint `$m `$ih `$targetHash)){`$action='KEEP';`$reason='accepted_frozen_recovery_011'}else{`$action='UPDATE';`$reason='version_older'}}"
 if(([regex]::Matches($coreRaw,[regex]::Escape($oldVersionOlder))).Count-ne1){throw 'Expected exactly one Recovery version-older contract; refusing unsafe shell rewrite.'}
