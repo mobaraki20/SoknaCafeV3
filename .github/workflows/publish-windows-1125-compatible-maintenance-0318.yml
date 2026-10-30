@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: windows-1125-maintenance-0318
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   qualify-and-build:
