@@ -9,14 +9,19 @@ try
 {
     var paths = new MaintenancePaths(Path.Combine(root, "instance-one"));
     Directory.CreateDirectory(paths.InboxRoot);
-    var source = new ReleaseComponentIdentity("previous-release", "3.0.0.test-previous",
+    var source = new ReleaseComponentIdentity("previous-release", "3.0.0-g6.2-workspace.231br-qa",
         new string('1', 64), "schema1", "001", "preserved");
+    var secondSource = source with {
+        ReleaseId = "different-compatible-release",
+        Version = "3.0.0-g6.2-workspace.231bs-qa",
+        ManagedTreeSha256 = new string('2', 64)
+    };
     var installed = new InstalledReleaseIdentity(source, null, "0.3.10", "0.3.10", null, null);
-    var webBytes = CreateZip(("VERSION.txt", "3.0.0.test-target\n"),
+    var webBytes = CreateZip(("VERSION.txt", "3.0.0-g6.2-workspace.231bt-qa\n"),
         ("database/migrations/001.sql", "-- fixture\n"));
     var innerFiles = new Dictionary<string, byte[]>
     {
-        ["VERSION.txt"] = Encoding.UTF8.GetBytes("3.0.0.test-target\n"),
+        ["VERSION.txt"] = Encoding.UTF8.GetBytes("3.0.0-g6.2-workspace.231bt-qa\n"),
         ["database/migrations/001.sql"] = Encoding.UTF8.GetBytes("-- fixture\n")
     };
     var treeCanonical = string.Concat(innerFiles.OrderBy(x => x.Key, StringComparer.Ordinal)
@@ -35,11 +40,11 @@ try
         for_install = false,
         production_pass = false,
         requirements = new { maintenance_supervisor_min = "0.3.10", update_engine_min = "0.3.10" },
-        supported_baselines = new[] { new { local = source, @public = (object?)null } },
+        supported_baselines = new[] { new { local = source, @public = (object?)null }, new { local = secondSource, @public = (object?)null } },
         targets = new
         {
             local = new { release_id = "operator-update-test",
-                version = "3.0.0.test-target", managed_tree_sha256 = targetTree,
+                version = "3.0.0-g6.2-workspace.231bt-qa", managed_tree_sha256 = targetTree,
                 schema_fingerprint = "schema1", migration_head = "001",
                 authority_epoch_policy = "preserved", managed_files = 2 }
         },
@@ -107,6 +112,46 @@ try
     Check(repeated.PackageSha256 == staged.PackageSha256 &&
         repeated.OperatorAuthorized, "idempotent Stage readback");
     Console.WriteLine("PASS unsigned Local Stage/receipt and idempotency, no private/public signer key");
+
+    // The SAME immutable uploaded ZIP must be accepted from TWO different
+    // exact installed identities; no per-host or per-baseline repackaging.
+    var otherPaths = new MaintenancePaths(Path.Combine(root, "independent-install-two"));
+    Directory.CreateDirectory(otherPaths.InboxRoot);
+    var secondInstalled = installed with { Local = secondSource };
+    var secondPath = Path.Combine(otherPaths.InboxRoot, packageHash + ".zip");
+    File.Copy(uploaded, secondPath);
+    var secondVerifier = new ReleaseSetVerifierStager(otherPaths);
+    var secondReceipt = secondVerifier.VerifyAndStage(secondPath, secondInstalled);
+    Check(secondReceipt.ExactBaselineVerified == true &&
+        secondReceipt.ArtifactIntegrityVerified && secondReceipt.OperatorAuthorized &&
+        secondReceipt.PackageSha256 == staged.PackageSha256,
+        "one immutable ZIP stages on two independent valid source identities");
+    Console.WriteLine("UUP01_SAME_ZIP_TWO_BASELINES_PASS");
+    // Different source trees that are not in the manifest must fail closed.
+    var forged = secondInstalled with { Local = secondSource with { ManagedTreeSha256 = new string('f',64) } };
+    ExpectReject(() => secondVerifier.VerifyOnly(secondPath, forged));
+    // No target or same/newer source build can be sneaked into the universal
+    // source list, even if a source hash and release_id otherwise agree.
+    using (var parse = JsonDocument.Parse(manifestBytes))
+    {
+        var unknown = System.Text.Json.Nodes.JsonNode.Parse(parse.RootElement.GetRawText())!;
+        unknown["targets"]!["local"]!["version"] = "3.0.0-g6.2-workspace.231br-qa";
+        var body = Encoding.UTF8.GetBytes(unknown.ToJsonString());
+        var zip = CreateZipBytes(("release-set.json", body), ("artifacts/local/web.zip", webBytes));
+        var file = Path.Combine(paths.InboxRoot, Sha(zip) + ".zip");
+        File.WriteAllBytes(file, zip);
+        ExpectReject(() => inspector.VerifyOnly(file, installed));
+        Console.WriteLine("UUP01_EQUAL_OR_OLDER_TARGET_BLOCKED");
+        var duplicates = System.Text.Json.Nodes.JsonNode.Parse(parse.RootElement.GetRawText())!;
+        var list = duplicates["supported_baselines"]!.AsArray();
+        list.Add(list[0]!.DeepClone());
+        body = Encoding.UTF8.GetBytes(duplicates.ToJsonString());
+        zip = CreateZipBytes(("release-set.json", body), ("artifacts/local/web.zip", webBytes));
+        file = Path.Combine(paths.InboxRoot, Sha(zip) + ".zip");
+        File.WriteAllBytes(file, zip);
+        ExpectReject(() => inspector.VerifyOnly(file, installed));
+        Console.WriteLine("UUP01_DUPLICATE_SOURCE_BLOCKED");
+    }
 
     var foreign = Path.Combine(root, "outside-inbox.zip");
     File.WriteAllBytes(foreign, unsignedZip);
