@@ -69,7 +69,9 @@ try {
     $stageB=$b->stageUploadedZip($package,'qa:b');
     expect($stageA['package_sha256']===$digest&&$stageB['package_sha256']===$digest,'same immutable ZIP stages from two distinct on-disk versions');
     $same=zipped($root.'/same.zip','3.0.0-g3.6-workspace.35fh-real-like-source');
-    rejected(fn()=>$a->stageUploadedZip($root.'/same.zip','qa:a'),'downgrade_or_reinstall_forbidden');
+    $repairStage=$a->stageUploadedZip($root.'/same.zip','qa:a');
+    expect($repairStage['version']===$a->currentVersion(),'exact-version package may stage for explicit Repair');
+    rejected(fn()=>$a->activateStaged('qa:a'),'same_version_requires_repair');
     zipped($root.'/old.zip','3.0.0-g3.6-workspace.35fg-old');
     rejected(fn()=>$a->stageUploadedZip($root.'/old.zip','qa:a'),'downgrade_or_reinstall_forbidden');
     zipped($root.'/uncomparable.zip','different-format');
@@ -79,6 +81,7 @@ try {
     $f=fixture($root.'/forward-fence','3.0.0-g3.6-workspace.35fh-readback',true);
     rejected(fn()=>$f->stageUploadedZip($package,'qa:forward'),'db_forward_recovery_required');
     rejected(fn()=>$f->rollback('qa:forward'),'db_forward_recovery_required');
+    rejected(fn()=>$f->repairStaged('qa:forward'),'db_forward_recovery_required');
     $staged=fixture($root.'/older-staged','3.0.0-g3.6-workspace.35fh-actual');
     put($root.'/older-staged/storage/emergency/update/state.json',[
         'format'=>'sokna-public-update-state-v1','staged'=>['version'=>'3.0.0-g3.6-workspace.35fg-older']
