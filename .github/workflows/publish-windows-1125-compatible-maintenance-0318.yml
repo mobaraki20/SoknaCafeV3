@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: windows-1125-maintenance-0315
+  group: windows-1125-maintenance-0318
   cancel-in-progress: false
 
 jobs:
@@ -197,7 +197,7 @@ jobs:
             echo "Release already exists; refusing overwrite"; exit 1
           fi
           cat > publish/RELEASE_NOTES.md <<EOF
-          # SOKNA Windows Services 1.1.25 - integrated UAT
+          # SOKNA Windows Services 1.1.25 - independent Maintenance compatibility UAT
           Source commit: $RELEASE_SHA
           Full 5-component Windows Services installer:
           - Runtime 1.0.7
@@ -206,7 +206,7 @@ jobs:
           - Maintenance Update Engine 0.3.15
           - independent Recovery Console 0.1.3
 
-          Aligns normal unified Windows Setup with Maintenance-only 0.3.15, including
+          Allows newer standalone Maintenance 0.3.18 with exact receipt / binary SHA256 / service health, including
           completed-ZIP reupload handling and stable Local recovery overlay.
           This is a Windows Services UAT pre-release, not a proven Home/Cafe installation.
           The installer does not update Local Web, Public Web or external Prerequisites.
@@ -217,7 +217,7 @@ jobs:
           python3 - <<'PY'
           import json
           d=json.load(open('release-verify.json'))
-          assert d['tagName']=='windows-services-v1.1.25-rc.1' and d['isPrerelease'] and not d['isDraft']
+          assert d['tagName']=='windows-services-v1.1.25-maintenance-0318-compat-uat' and d['isPrerelease'] and not d['isDraft']
           assert {a['name'] for a in d['assets']}=={'SOKNA-Windows-Services-Setup-1.1.25.exe','artifact-index.json','SHA256SUMS.txt'}
           print('SOKNA_WINDOWS_1125_GITHUB_PUBLISHED_AND_VERIFIED')
           PY
