@@ -4,6 +4,10 @@ on:
     branches: ['work/windows-1125-independent-maintenance-0318-20261030']
     paths:
       - 'packaging/windows/windows-services-component-manifest-v2.json'
+      - 'packaging/windows/setup-ui/**'
+      - 'packaging/windows/scripts/prepare-shell-payload-v9.ps1'
+      - 'release/compatibility-v2.json'
+      - 'COMPONENTS.json'
       - '.github/workflows/publish-windows-1125-compatible-maintenance-0318.yml'
   workflow_dispatch:
 
