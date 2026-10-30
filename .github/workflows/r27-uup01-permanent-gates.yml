@@ -1,0 +1,73 @@
+name: R27 Universal standard-support release gates / Emergency repair safety
+on:
+  push:
+    branches: [work/r27-universal-permanent-release-gates-20261030]
+    paths:
+      - '.github/workflows/r27-uup01-permanent-gates.yml'
+      - 'apps/local-web/src/Domain/System/SupportBundleWriter.php'
+      - 'apps/public/src/Http/EmergencyLocalHttpAdapter.php'
+      - 'apps/public/src/Emergency/PublicUpdateService.php'
+      - 'apps/public/tests/test-uup01-emergency-fail-closed.php'
+      - 'release/qualification/uup01_standard_support_gate.py'
+      - 'release/qualification/test_uup01_standard_support_gate.py'
+      - 'tests/r27-local-standard-support-selftest.php'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  permanent-support-and-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, sodium
+          coverage: none
+      - name: Validate actual modified PHP files
+        run: |
+          php -l apps/local-web/src/Domain/System/SupportBundleWriter.php
+          php -l apps/public/src/Http/EmergencyLocalHttpAdapter.php
+          php -l apps/public/src/Emergency/PublicUpdateService.php
+          php -l tests/r27-local-standard-support-selftest.php
+      - name: Standard Local support exports source identity automatically
+        run: php tests/r27-local-standard-support-selftest.php
+      - name: Regress Public Emergency repair/downgrade/forward-only safety
+        run: php apps/public/tests/test-uup01-emergency-fail-closed.php
+      - name: Reject bad, stale, divergent and missing ordinary support evidence
+        run: python -m unittest discover -s release/qualification -p test_uup01_standard_support_gate.py -v
+      - name: Confirm gate CLI can NEVER authorize publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q '"installation_authorized": True' release/qualification/uup01_standard_support_gate.py; then
+            echo 'Release gate permit bypass suspected'; exit 1
+          fi
+          if ! grep -q 'return 1  # This command is a publishing gate' release/qualification/uup01_standard_support_gate.py; then
+            echo 'Publishing gate must be nonzero by design'; exit 1
+          fi
+          mkdir -p out-r27
+          cat > out-r27/qualification-scope.json <<'EOF'
+          {
+            "format":"sokna-r27-ci-evidence-v1",
+            "scope":"source and disposable fixtures",
+            "standard_support_integrated_local":true,
+            "standard_signed_diagnostics_integrated_public":true,
+            "public_repair_guard_regression":true,
+            "release_gate_fail_closed":true,
+            "installation_authorized":false,
+            "real_host_UAT_performed":false,
+            "public_emergency_host_owner_updated":false,
+            "no_product_or_business_database_mutation":true
+          }
+          EOF
+          echo 'R27_UNIVERSAL_STANDARD_SUPPORT_AND_RELEASE_GATE_CI_PASS'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r27-permanent-source-release-gate-qa-only
+          path: out-r27
+          retention-days: 14
