@@ -93,11 +93,13 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
             // A signed manifest MUST identify the exact nested Local Web ZIP.
             // The old generic 'payload.bin' is explicitly NOT a Web tree.
             var artifacts = manifest.Artifacts.Values
-                .Where(static x => x.Component == "local-web" && x.Kind == "web-tree-zip-v1")
+                .Where(static x => x.Component == "local-web" &&
+                    x.Kind is "web-tree-zip-v1" or LocalDeltaCandidateMaterializer.ArtifactKind)
                 .ToArray();
             if (artifacts.Length != 1 ||
                 manifest.Artifacts.Values.Any(static x =>
-                    x.Component == "local-web" && x.Kind != "web-tree-zip-v1"))
+                    x.Component == "local-web" &&
+                    x.Kind is not ("web-tree-zip-v1" or LocalDeltaCandidateMaterializer.ArtifactKind)))
                 throw new InvalidDataException("LOCAL_WEB_ZIP_MAPPING_UNQUALIFIED");
             var artifact = artifacts[0];
             if (artifact.SizeBytes is <= 0 or > MaxInnerArchive)
@@ -160,7 +162,35 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
             Directory.CreateDirectory(candidatePath = Path.Combine(incoming, "source-web"));
             // Intentionally leave an incomplete incoming tree quarantined
             // on every extraction or receipt/commit error.
-            ExtractBoundedArchive(archivePath, candidatePath);
+            if (artifact.Kind == LocalDeltaCandidateMaterializer.ArtifactKind)
+            {
+                // Same signed Stage and exact installed identity as full install.
+                // Build a complete target under the PRIVATE candidate directory.
+                // The active junction, persistent paths and DB are never mutated.
+                var physical = new LocalSlotManager(_paths).InspectHealthyCurrent();
+                if (!physical.WebIsReparsePoint || physical.ActiveSlotTarget is null)
+                    throw new InvalidDataException("LOCAL_DELTA_VERIFIED_ACTIVE_SLOT_REQUIRED");
+                var bound = AtomicFile.ReadJson<InstalledReleaseIdentity>(
+                    _paths.InstalledReleaseIdentityPath);
+                var baseTree = LocalManagedTreeAttestation.Compute(
+                    physical.ActiveSlotTarget, physical.ManagedFileCount);
+                if (bound.Local is null || bound.Local.Version != physical.Build ||
+                    !string.Equals(bound.Local.ManagedTreeSha256, baseTree,
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("LOCAL_DELTA_INSTALLED_IDENTITY_REBIND_REQUIRED");
+                var matchingBaselines = manifest.SupportedBaselines
+                    .Where(x => x.Local is not null &&
+                        x.Local.Version == physical.Build &&
+                        string.Equals(x.Local.ManagedTreeSha256, baseTree,
+                            StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (matchingBaselines.Length != 1)
+                    throw new InvalidDataException("LOCAL_DELTA_UNIQUE_BASELINE_REQUIRED");
+                LocalDeltaCandidateMaterializer.Materialize(
+                    archivePath, candidatePath, physical.ActiveSlotTarget,
+                    physical.Build, baseTree, version, tree, managedCount);
+            }
+            else
+                ExtractBoundedArchive(archivePath, candidatePath);
             ValidateCandidateTree(candidatePath, version, tree, managedCount);
             if (!string.Equals(Sha256File(archivePath), artifact.Sha256, StringComparison.OrdinalIgnoreCase) ||
                 Sha256File(operation.StageReceiptPath) != receiptSha ||
