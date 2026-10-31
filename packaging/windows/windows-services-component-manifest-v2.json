@@ -2,7 +2,7 @@
   "format": "sokna-windows-component-manifest-v2",
   "schema_version": 2,
   "package_component": "windows-services-packaging",
-  "package_version": "1.1.25",
+  "package_version": "1.1.26",
   "planner_contract": "1.1",
   "components": [
     {
@@ -49,7 +49,7 @@
       "kind": "service",
       "primary": true,
       "required": true,
-      "version": "0.3.15",
+      "version": "0.3.18",
       "service_name": "SoknaMaintenanceSupervisor",
       "payload_primary": "_payload/maintenance/app/SoknaMaintenanceSupervisor.exe",
       "installed_primary": "Maintenance/App/SoknaMaintenanceSupervisor.exe",
@@ -59,7 +59,7 @@
       "dependencies": [
         {
           "component_id": "maintenance-update-engine",
-          "version": "0.3.15"
+          "version": "0.3.18"
         },
         {
           "component_id": "maintenance-recovery-console",
@@ -77,7 +77,7 @@
       "primary": false,
       "required": true,
       "parent_component": "maintenance",
-      "version": "0.3.15",
+      "version": "0.3.18",
       "payload_primary": "_payload/maintenance/app/SoknaMaintenanceUpdateEngine.exe",
       "installed_primary": "Maintenance/App/SoknaMaintenanceUpdateEngine.exe",
       "restart_scope": "process",
@@ -110,7 +110,7 @@
   ],
   "rules": {
     "version_only_is_sufficient": false,
-    "same_version_hash_drift": "REPAIR_UNLESS_ACCEPTED_FINGERPRINT",
+    "same_version_hash_drift": "KEEP_HEALTHY_OWNED_OR_EXPLICIT_REPAIR_ELSE_BLOCKED",
     "service_registration_drift": "REPAIR",
     "unsafe_service_image_outside_owned_root": "BLOCKED",
     "unsupported_newer_component": "BLOCKED",
