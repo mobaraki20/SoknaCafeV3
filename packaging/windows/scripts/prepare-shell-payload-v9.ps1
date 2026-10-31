@@ -71,7 +71,7 @@ if(([regex]::Matches($coreRaw,[regex]::Escape($oldCoreLine))).Count-ne1){throw '
 $coreRaw=$coreRaw.Replace($oldCoreLine,$newCoreLine)
 
 $oldHashDrift="elseif(`$ih-ne`$targetHash){`$action='REPAIR';`$reason='hash_drift'}"
-$newHashDrift="elseif(`$ih-ne`$targetHash){if(Compatible-Fingerprint `$m `$ih `$targetHash){`$action='KEEP';`$reason='accepted_legacy_fingerprint'}else{`$action='REPAIR';`$reason='hash_drift'}}"
+$newHashDrift="elseif(`$ih-ne`$targetHash){if(Compatible-Fingerprint `$m `$ih `$targetHash){`$action='KEEP';`$reason='accepted_legacy_fingerprint'}elseif([string]`$plan.mode-eq'repair'-and`$id-ne'maintenance-recovery-console'){`$action='REPAIR';`$reason='explicit_same_version_repair'}elseif(`$id-in@('runtime','print-agent')-and[bool]`$svc.Installed-and[string]`$svc.State-eq'Running'-and(Registration-Matches `$id ([string]`$svc.ImagePath) `$installed `$DataRoot)){`$action='KEEP';`$reason='healthy_same_version_unverified_fingerprint'}else{`$action='BLOCKED';`$reason='same_version_unverified_fingerprint_requires_review'}}"
 if(-not$coreRaw.Contains($oldHashDrift)){throw 'Expected R8 hash-drift core contract was not found; refusing an unbounded core rewrite.'}
 if(([regex]::Matches($coreRaw,[regex]::Escape($oldHashDrift))).Count-ne1){throw 'Expected exactly one R8 hash-drift core contract occurrence.'}
 $coreRaw=$coreRaw.Replace($oldHashDrift,$newHashDrift)

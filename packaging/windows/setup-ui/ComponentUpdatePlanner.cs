@@ -207,7 +207,25 @@ internal static class ComponentUpdatePlanner
             }
             else if (!string.Equals(installedHash, targetHash, StringComparison.OrdinalIgnoreCase))
             {
-                action = ComponentAction.Repair; state = "repair_required"; reason = "نسخه یکسان است اما fingerprint فایل اجرایی با release هدف یکسان نیست.";
+                // Never silently repair a running, owned service merely because a
+                // same-version rebuild generated different executable bytes.
+                if (forceRepair && id != "maintenance-recovery-console")
+                {
+                    action = ComponentAction.Repair; state = "repair_requested_explicitly";
+                    reason = "جایگزینی فایل اجرایی با درخواست صریح تعمیر انجام می‌شود.";
+                }
+                else if ((id == "runtime" || id == "print-agent") &&
+                         service.State.Equals("RUNNING", StringComparison.OrdinalIgnoreCase) &&
+                         registrationHealthy)
+                {
+                    action = ComponentAction.Keep; state = "healthy_same_version_unverified_fingerprint";
+                    reason = "نسخه و سرویس سالم‌اند، اما اثرانگشت فایل با بیلد داخل بسته متفاوت است؛ بدون تعمیر اجباری نگه داشته می‌شود. برای جایگزینی، تعمیر را صریحاً انتخاب کنید.";
+                }
+                else
+                {
+                    action = ComponentAction.Blocked; state = "same_version_unverified_fingerprint_requires_review";
+                    reason = "نسخه یکسان است، ولی هویت بیلد یا سلامت جزء تأیید نشده؛ بدون تعمیر صریح چیزی جایگزین نمی‌شود.";
+                }
             }
             else if (!registrationHealthy)
             {
