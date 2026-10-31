@@ -145,6 +145,59 @@ function Delete-Svc([string]$name,[string]$ownedRoot){
 function Create-Svc([string]$name,[string]$cmd,[string]$display,[bool]$auto){New-Service -Name $name -BinaryPathName $cmd -DisplayName $display -StartupType $(if($auto){'Automatic'}else{'Manual'}) -ErrorAction Stop|Out-Null;if($auto){Set-ItemProperty ("HKLM:\SYSTEM\CurrentControlSet\Services\"+$name) -Name DelayedAutoStart -Type DWord -Value 1 -Force}}
 function Start-Svc([string]$name){Start-Service $name -ErrorAction Stop;$s=Get-Service $name -ErrorAction Stop;try{$s.WaitForStatus('Running',[TimeSpan]::FromSeconds(25))}finally{$s.Dispose()}}
 function Copy-TreeAtomic([string]$src,[string]$dst){if(-not(Test-Path $src -PathType Container)){throw "Payload root missing: $src"};$parent=[IO.Path]::GetDirectoryName($dst);New-Item -ItemType Directory -Path $parent -Force|Out-Null;$stage=$dst+'.__incoming.'+[guid]::NewGuid().ToString('N');$backup=$dst+'.__old.'+[guid]::NewGuid().ToString('N');Copy-Item $src $stage -Recurse -Force;$old=$false;try{if(Test-Path $dst){Move-Item $dst $backup -Force;$old=$true};Move-Item $stage $dst -Force;if($old-and(Test-Path $backup)){Remove-Item $backup -Recurse -Force}}catch{if(Test-Path $stage){Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue};if($old-and-not(Test-Path $dst)-and(Test-Path $backup)){Move-Item $backup $dst -Force};throw}}
+
+# Print files are copied inside their existing owned root; replacing the whole
+# folder by rename fails on healthy Windows installations with inherited ACLs.
+# Exact file snapshots and readback protect rollback after partial copies.
+function Owned-TreeHash([string]$root){
+  if(-not(Test-Path -LiteralPath $root -PathType Container)){return ''}
+  $prefix=[IO.Path]::GetFullPath($root).TrimEnd('\')+'\'
+  $rows=@(Get-ChildItem -LiteralPath $root -File -Recurse|Sort-Object FullName|ForEach-Object{
+    $relative=$_.FullName.Substring($prefix.Length).Replace('\','/')
+    $hash=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    ($relative+'='+$hash)
+  })
+  $sha=[Security.Cryptography.SHA256]::Create()
+  try{return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(($rows -join [char]10))))).Replace('-','').ToLowerInvariant()}
+  finally{$sha.Dispose()}
+}
+function Copy-PrintTreeInPlace([string]$src,[string]$dst){
+  if(-not(Test-Path -LiteralPath $src -PathType Container)){throw 'PRINT_AGENT_PAYLOAD_MISSING'}
+  New-Item -ItemType Directory -Path $dst -Force|Out-Null
+  $probe=Join-Path $dst ('.sokna-write-probe-'+[guid]::NewGuid().ToString('N'))
+  try{[IO.File]::WriteAllText($probe,'probe')}catch{throw ('PRINT_AGENT_DIRECTORY_ACCESS_DENIED: '+$_.Exception.Message)}
+  finally{if(Test-Path -LiteralPath $probe){Remove-Item -LiteralPath $probe -Force}}
+  $prefix=[IO.Path]::GetFullPath($src).TrimEnd('\')+'\'
+  $items=@(Get-ChildItem -LiteralPath $src -File -Recurse)
+  foreach($file in $items){
+    $rel=$file.FullName.Substring($prefix.Length);$dest=Join-Path $dst $rel
+    if(Test-Path -LiteralPath $dest -PathType Leaf){
+      try{$f=[IO.File]::Open($dest,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);$f.Dispose()}
+      catch{throw ('PRINT_AGENT_LOCK_OR_FILE_ACL: '+$rel+' / '+$_.Exception.Message)}
+    }
+  }
+  foreach($file in $items){
+    $rel=$file.FullName.Substring($prefix.Length);$dest=Join-Path $dst $rel
+    New-Item -ItemType Directory -Path (Split-Path $dest -Parent) -Force|Out-Null
+    Copy-Item -LiteralPath $file.FullName -Destination $dest -Force -ErrorAction Stop
+    if((Sha $dest)-ne(Sha $file.FullName)){throw ('PRINT_AGENT_COPY_HASH_MISMATCH: '+$rel)}
+  }
+}
+function Restore-PrintTree([string]$backup,[string]$dst,[bool]$existed,[string]$expected){
+  if(-not$existed){
+    if(Test-Path -LiteralPath $dst){Remove-Item -LiteralPath $dst -Recurse -Force}
+    return
+  }
+  if((Owned-TreeHash $dst)-eq$expected){return}
+  Copy-PrintTreeInPlace $backup $dst
+  $prefix=[IO.Path]::GetFullPath($dst).TrimEnd('\')+'\'
+  foreach($file in @(Get-ChildItem -LiteralPath $dst -File -Recurse)){
+    $relative=$file.FullName.Substring($prefix.Length)
+    if(-not(Test-Path -LiteralPath (Join-Path $backup $relative) -PathType Leaf)){Remove-Item -LiteralPath $file.FullName -Force}
+  }
+  if((Owned-TreeHash $dst)-ne$expected){throw 'PRINT_AGENT_ROLLBACK_EXACT_HASH_MISMATCH'}
+}
+
 function Snapshot([string]$src,[string]$dst){if(Test-Path $src -PathType Container){Copy-Item $src $dst -Recurse -Force;return $true};$false}
 function WriteJson([string]$p,$o){$o|ConvertTo-Json -Depth 12|Set-Content $p -Encoding UTF8}
 
@@ -186,11 +239,11 @@ foreach($r in $script:Resolved){if($r.Action-eq'BLOCKED'){throw "Unsafe componen
 Event 'installed_component_inventory_built' 'completed' @{components=@($script:Resolved|ForEach-Object{@{id=$_.Id;version=$_.CurrentVersion;action=$_.Action;reason=$_.Reason}})}
 
 $runtimeRoot=Join-Path $InstallRoot 'Runtime';$runtimeExe=Join-Path $runtimeRoot 'SoknaRuntimeService.exe';$runtimeCfg=Join-Path $DataRoot 'runtime\runtime-config.json';$printRoot=Join-Path $InstallRoot 'PrintAgent';$printExe=Join-Path $printRoot 'Service\Sokna.PrintAgent.Service.exe';$maintRoot=Join-Path $InstallRoot 'Maintenance';$maintApp=Join-Path $maintRoot 'App';$maintRecovery=Join-Path $maintRoot 'Recovery';$maintExe=Join-Path $maintApp 'SoknaMaintenanceSupervisor.exe'
-function SaveSnap([string]$id,[string]$root,[string]$svcName){$dst=Join-Path $Backup $id;$ex=Snapshot $root $dst;$svc=$(if($svcName){Service-Info $svcName}else{$null});$Snapshots[$id]=[pscustomobject]@{Root=$root;Backup=$dst;Existed=$ex;Service=$svcName;WasInstalled=$(if($svc){[bool]$svc.Installed}else{$false});WasRunning=$(if($svc){[bool]$svc.WasRunning}else{$false})}}
-function Restore([string]$id){if(-not$Snapshots.ContainsKey($id)){return};$s=$Snapshots[$id];if($s.Service){Delete-Svc $s.Service $s.Root};if(Test-Path $s.Root){Remove-Item $s.Root -Recurse -Force};if($s.Existed){Copy-Item $s.Backup $s.Root -Recurse -Force};if($s.WasInstalled-and$s.Existed){switch($id){'runtime'{Create-Svc 'SoknaRuntime' (Runtime-Cmd $runtimeExe $runtimeCfg) 'SOKNA Runtime' $s.WasRunning;if($s.WasRunning){Start-Svc 'SoknaRuntime'}};'print-agent'{Create-Svc 'SoknaPrintWorker' (Simple-Cmd $printExe) 'SOKNA Print Worker' $true;if($s.WasRunning){Start-Svc 'SoknaPrintWorker'}};'maintenance'{Create-Svc 'SoknaMaintenanceSupervisor' (Simple-Cmd $maintExe) 'SOKNA Maintenance Supervisor' $true;if($s.WasRunning){Start-Svc 'SoknaMaintenanceSupervisor'}}}}}
+function SaveSnap([string]$id,[string]$root,[string]$svcName){$dst=Join-Path $Backup $id;$before=Owned-TreeHash $root;$ex=Snapshot $root $dst;if($ex-and(Owned-TreeHash $dst)-ne$before){throw "SNAPSHOT_HASH_MISMATCH: $id"};$svc=$(if($svcName){Service-Info $svcName}else{$null});$Snapshots[$id]=[pscustomobject]@{Root=$root;Backup=$dst;Existed=$ex;BeforeHash=$before;Service=$svcName;WasInstalled=$(if($svc){[bool]$svc.Installed}else{$false});WasRunning=$(if($svc){[bool]$svc.WasRunning}else{$false})}}
+function Restore([string]$id){if(-not$Snapshots.ContainsKey($id)){return};$s=$Snapshots[$id];if($s.Service){Delete-Svc $s.Service $s.Root};if($id-eq'print-agent'){Restore-PrintTree $s.Backup $s.Root $s.Existed $s.BeforeHash}else{if(Test-Path $s.Root){Remove-Item $s.Root -Recurse -Force};if($s.Existed){Copy-Item $s.Backup $s.Root -Recurse -Force}};if((Owned-TreeHash $s.Root)-ne$s.BeforeHash){throw "ROLLBACK_FILE_READBACK_FAILED: $id"};if($s.WasInstalled-and$s.Existed){switch($id){'runtime'{Create-Svc 'SoknaRuntime' (Runtime-Cmd $runtimeExe $runtimeCfg) 'SOKNA Runtime' $s.WasRunning;if($s.WasRunning){Start-Svc 'SoknaRuntime'}};'print-agent'{Create-Svc 'SoknaPrintWorker' (Simple-Cmd $printExe) 'SOKNA Print Worker' $true;if($s.WasRunning){Start-Svc 'SoknaPrintWorker'}};'maintenance'{Create-Svc 'SoknaMaintenanceSupervisor' (Simple-Cmd $maintExe) 'SOKNA Maintenance Supervisor' $true;if($s.WasRunning){Start-Svc 'SoknaMaintenanceSupervisor'}}}};$after=$(if($s.Service){Service-Info $s.Service}else{$null});if($s.WasInstalled-and(-not$after.Installed-or([bool]$after.WasRunning-ne[bool]$s.WasRunning))){throw "ROLLBACK_SERVICE_READBACK_FAILED: $id"};if(-not$s.WasInstalled-and$after-and$after.Installed){throw "ROLLBACK_UNEXPECTED_SERVICE: $id"}}
 function Rollback(){Event 'rollback_started' 'started';$ok=$true;for($i=$Applied.Count-1;$i-ge0;$i--){$id=$Applied[$i];try{$script:CurrentComponent=$id;$script:CurrentPhase='Rollback';Restore $id;Event 'rollback_step' 'completed'}catch{$ok=$false;Event 'rollback_step' 'failed' @{error=(Safe $_.Exception.Message)}}};Event 'rollback_completed' $(if($ok){'completed'}else{'failed'});$ok}
 function ApplyRuntime($r){$script:CurrentComponent='runtime';SaveSnap 'runtime' $runtimeRoot 'SoknaRuntime';$Applied.Add('runtime');$script:CurrentPhase='Service stop';Event 'component_action_started' 'started' @{action=$r.Action};if((Service-Info 'SoknaRuntime').Installed){Stop-Svc 'SoknaRuntime' $runtimeRoot};$script:CurrentPhase='Files';New-Item -ItemType Directory -Path $runtimeRoot -Force|Out-Null;Copy-Item $r.TargetPath $runtimeExe -Force;if((Sha $runtimeExe)-ne$r.TargetHash){throw 'Runtime hash verification failed.'};$script:CurrentPhase='Service registration';Delete-Svc 'SoknaRuntime' $runtimeRoot;Create-Svc 'SoknaRuntime' (Runtime-Cmd $runtimeExe $runtimeCfg) 'SOKNA Runtime' $paired;if($paired){$script:CurrentPhase='Health verification';Start-Svc 'SoknaRuntime'};Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $runtimeExe);shutdown_proof='service-status+process-exit+owned-process-exit'}}
-function ApplyPrint($r){$script:CurrentComponent='print-agent';SaveSnap 'print-agent' $printRoot 'SoknaPrintWorker';$Applied.Add('print-agent');$script:CurrentPhase='Service stop';Event 'component_action_started' 'started' @{action=$r.Action};if((Service-Info 'SoknaPrintWorker').Installed){Stop-Svc 'SoknaPrintWorker' $printRoot};$script:CurrentPhase='Files';$source=(Split-Path (Split-Path $r.TargetPath -Parent) -Parent);Copy-TreeAtomic $source $printRoot;if((Sha $printExe)-ne$r.TargetHash){throw 'Print Agent hash verification failed.'};$script:CurrentPhase='Service registration';Delete-Svc 'SoknaPrintWorker' $printRoot;Create-Svc 'SoknaPrintWorker' (Simple-Cmd $printExe) 'SOKNA Print Worker' $true;$script:CurrentPhase='Health verification';Start-Svc 'SoknaPrintWorker';Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $printExe);shutdown_proof='service-status+process-exit+owned-process-exit'}}
+function ApplyPrint($r){$script:CurrentComponent='print-agent';SaveSnap 'print-agent' $printRoot 'SoknaPrintWorker';$Applied.Add('print-agent');$script:CurrentPhase='Service stop';Event 'component_action_started' 'started' @{action=$r.Action};if((Service-Info 'SoknaPrintWorker').Installed){Stop-Svc 'SoknaPrintWorker' $printRoot};$script:CurrentPhase='Files';$source=(Split-Path (Split-Path $r.TargetPath -Parent) -Parent);Copy-PrintTreeInPlace $source $printRoot;if((Sha $printExe)-ne$r.TargetHash){throw 'Print Agent hash verification failed.'};$script:CurrentPhase='Service registration';Delete-Svc 'SoknaPrintWorker' $printRoot;Create-Svc 'SoknaPrintWorker' (Simple-Cmd $printExe) 'SOKNA Print Worker' $true;$script:CurrentPhase='Health verification';Start-Svc 'SoknaPrintWorker';Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $printExe);shutdown_proof='service-status+process-exit+owned-process-exit';replacement='owned_root_in_place_acl_preflight'}}
 function ApplyMaintenance($r){$script:CurrentComponent='maintenance';SaveSnap 'maintenance' $maintApp 'SoknaMaintenanceSupervisor';$Applied.Add('maintenance');$script:CurrentPhase='Service stop';Event 'component_action_started' 'started' @{action=$r.Action};if((Service-Info 'SoknaMaintenanceSupervisor').Installed){Stop-Svc 'SoknaMaintenanceSupervisor' $maintApp};$script:CurrentPhase='Files';$source=(Split-Path $r.TargetPath -Parent);Copy-TreeAtomic $source $maintApp;if((Sha $maintExe)-ne$r.TargetHash){throw 'Maintenance hash verification failed.'};$script:CurrentPhase='Service registration';Delete-Svc 'SoknaMaintenanceSupervisor' $maintApp;Create-Svc 'SoknaMaintenanceSupervisor' (Simple-Cmd $maintExe) 'SOKNA Maintenance Supervisor' $true;$script:CurrentPhase='Health verification';Start-Svc 'SoknaMaintenanceSupervisor';Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $maintExe);shutdown_proof='service-status+process-exit+owned-process-exit'}}
 
 try{
@@ -203,5 +256,5 @@ try{
    if((Sha $r.InstalledPath)-ne$r.TargetHash){throw "Maintenance subordinate fingerprint mismatch: $($r.Id)"}
    Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $r.InstalledPath)}
  }
- $CurrentComponent='—';$CurrentPhase='Commit';New-Item -ItemType Directory -Path (Join-Path $DataRoot 'setup') -Force|Out-Null;$state=[ordered]@{format='sokna-windows-services-install-state-v2';package_owner='windows-services-packaging';package_version=[string]$plan.package_version;installed_at_utc=[DateTime]::UtcNow.ToString('o');install_root=$InstallRoot;data_root=$DataRoot;paired=$paired;local_base_url=[string](Prop $oldState 'local_base_url' '');paired_at_utc=[string](Prop $oldState 'paired_at_utc' '');pairing_lifecycle=[string](Prop $oldState 'pairing_lifecycle' '');runtime_service='SoknaRuntime';print_service='SoknaPrintWorker';maintenance_service='SoknaMaintenanceSupervisor';component_actions=@($script:Resolved|Where-Object{$_.Primary}|ForEach-Object{@{component_id=$_.Id;action=$_.Action;version=$_.TargetVersion;sha256=(Sha $_.InstalledPath)}});shutdown_proof='per-mutated-component:service-status+process-exit+owned-process-exit';external_infrastructure_mutated=$false;business_data_mutated=$false;transaction_id=$Tx};WriteJson $statePath $state;Event 'transaction_commit_completed' 'completed';Finish 'completed' 0 'Windows Services component plan completed successfully.' $false $false;exit 0
+ $CurrentComponent='—';$CurrentPhase='Commit';New-Item -ItemType Directory -Path (Join-Path $DataRoot 'setup') -Force|Out-Null;$state=[ordered]@{format='sokna-windows-services-install-state-v2';package_owner='windows-services-packaging';package_version=[string]$plan.package_version;installed_at_utc=[DateTime]::UtcNow.ToString('o');install_root=$InstallRoot;data_root=$DataRoot;paired=$paired;local_base_url=[string](Prop $oldState 'local_base_url' '');paired_at_utc=[string](Prop $oldState 'paired_at_utc' '');pairing_lifecycle=[string](Prop $oldState 'pairing_lifecycle' '');runtime_service='SoknaRuntime';print_service='SoknaPrintWorker';maintenance_service='SoknaMaintenanceSupervisor';component_actions=@($script:Resolved|Where-Object{$_.Primary}|ForEach-Object{@{component_id=$_.Id;action=$_.Action;version=$(if($_.Action-eq'KEEP'){$_.CurrentVersion}else{$_.TargetVersion});sha256=(Sha $_.InstalledPath)}});shutdown_proof='per-mutated-component:service-status+process-exit+owned-process-exit';external_infrastructure_mutated=$false;business_data_mutated=$false;transaction_id=$Tx};WriteJson $statePath $state;Event 'transaction_commit_completed' 'completed';Finish 'completed' 0 'Windows Services component plan completed successfully.' $false $false;exit 0
 }catch{$failedId=[string]$CurrentComponent;$failedStage=[string]$CurrentPhase;$msg=Safe $_.Exception.Message;Event 'component_action_failed' 'failed' @{error=$msg};$rb=Rollback;Finish 'failed' 2 $msg $rb $false $failedId $failedStage;Write-Error $msg;exit 2}
