@@ -28,8 +28,8 @@ try{
       $blocked=([string]$_.Exception.Message).Contains('PRINT_AGENT_LOCK_OR_FILE_ACL')
     }
     if(-not$blocked){throw 'ISSUE55_LOCK_WAS_NOT_DETECTED'}
-    if((Owned-TreeHash $dst)-ne$original){throw 'ISSUE55_LOCK_TEST_MUTATED_SOURCE'}
   }finally{$handle.Dispose()}
+  if((Owned-TreeHash $dst)-ne$original){throw 'ISSUE55_LOCK_TEST_MUTATED_SOURCE'}
   Copy-PrintTreeInPlace $src $dst
   if((Sha (Join-Path $src 'Service\Sokna.PrintAgent.Service.exe'))-ne(Sha (Join-Path $dst 'Service\Sokna.PrintAgent.Service.exe'))){throw 'ISSUE55_SERVICE_COPY_HASH'}
   if((Sha (Join-Path $src 'Worker\Sokna.PrintAgent.Worker.exe'))-ne(Sha (Join-Path $dst 'Worker\Sokna.PrintAgent.Worker.exe'))){throw 'ISSUE55_WORKER_COPY_HASH'}
