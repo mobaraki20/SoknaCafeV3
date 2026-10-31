@@ -1,0 +1,21 @@
+name: Issue55 PrintAgent locked file and rollback fast gate
+on:
+  push:
+    branches: ['work/windows-services-1126-issue55-final-20261031']
+    paths:
+      - 'packaging/windows/scripts/setup-windows-components-v5.ps1'
+      - 'packaging/windows/tests/issue55-print-owned-root-tests.ps1'
+      - '.github/workflows/ci-windows-services-issue55-print-fast.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  issue55-print:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locked file preflight and exact rollback readback
+        shell: pwsh
+        run: |
+          & ./packaging/windows/tests/issue55-print-owned-root-tests.ps1
