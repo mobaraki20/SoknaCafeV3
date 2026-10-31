@@ -174,7 +174,12 @@ internal static class ComponentUpdatePlanner
             // matches, display a read-only KEEP candidate; the elevated
             // executor must REATTEST the exact scoped receipt and hashes or
             // reject the entire plan before touching any service.
-            var pendingPrivilegedProof = !keepIndependentMaintenance && cmp > 0 &&
+            // The non-elevated UI cannot read a protected standalone receipt.
+            // Same-version 0.3.18 independent installs can also have different
+            // build hashes, so defer both equal-version and newer-version
+            // candidates to the privileged receipt attestation (never mutation).
+            var pendingPrivilegedProof = !keepIndependentMaintenance &&
+                (cmp > 0 || (cmp == 0 && !string.Equals(installedHash, targetHash, StringComparison.OrdinalIgnoreCase))) &&
                 IsReadOnlyIndependentMaintenanceCandidate(
                     id, currentVersion, targetVersion, installedHash,
                     registrationHealthy, installRoot);
@@ -274,7 +279,7 @@ internal static class ComponentUpdatePlanner
         string observedSha256, bool registrationHealthy, string installRoot)
     {
         if (componentId is not ("maintenance" or "maintenance-update-engine") ||
-            CompareVersions(observedVersion, targetVersion) <= 0 ||
+            CompareVersions(observedVersion, targetVersion) < 0 ||
             observedSha256.Length != 64 || !registrationHealthy) return false;
         try
         {
