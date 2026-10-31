@@ -1,0 +1,86 @@
+name: Publish verified SOKNA Windows Services 1.1.26 final
+on:
+  push:
+    branches: ['work/windows-services-1126-issue55-final-20261031']
+    paths:
+      - '.github/workflows/publish-windows-services-1126-final.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: sokna-windows-services-1126-final
+  cancel-in-progress: false
+jobs:
+  promote-tested-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Verify immutable successful Windows CI source and RC assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          rc="windows-services-v1.1.26-issue55-rc.1"
+          stable="windows-services-v1.1.26"
+          tested="4c6e5dde946befc409b7ce7da1cfcf8e99a8da1d"
+          runid="41169910298"
+          test "$(gh api "repos/$repo/actions/runs/$runid" --jq .conclusion)" = "success"
+          test "$(gh api "repos/$repo/actions/runs/$runid" --jq .head_sha)" = "$tested"
+          test "$(gh api "repos/$repo/releases/tags/$rc" --jq .target_commitish)" = "$tested"
+          gh release view "$rc" --repo "$repo" --json tagName,isPrerelease,isDraft,assets \
+            | jq -e --arg rc "$rc" '.tagName==$rc and .isPrerelease and (.isDraft|not) and ([.assets[].name]|sort)==(["SOKNA-Windows-Services-Setup-1.1.26.exe","SHA256SUMS.txt","artifact-index.json"]|sort)'
+          if gh release view "$stable" --repo "$repo" >/dev/null 2>&1; then
+            echo "Refusing overwrite of existing stable GitHub release" >&2; exit 1
+          fi
+          mkdir -p verified
+          gh release download "$rc" --repo "$repo" --dir verified
+          (cd verified && sha256sum -c SHA256SUMS.txt)
+          python3 - <<'PY'
+          import json,hashlib,pathlib
+          root=pathlib.Path('verified')
+          idx=json.loads((root/'artifact-index.json').read_text(encoding='utf-8-sig'))
+          exe=root/'SOKNA-Windows-Services-Setup-1.1.26.exe'
+          assert idx['package_version']=='1.1.26'
+          assert idx['source_commit']=='4c6e5dde946befc409b7ce7da1cfcf8e99a8da1d'
+          assert exe.stat().st_size > 100_000_000
+          assert idx['windows_services']['file']==exe.name
+          assert idx['windows_services']['sha256']==hashlib.sha256(exe.read_bytes()).hexdigest()
+          print('FINAL_WINDOWS_1126_IMMUTABLE_ARTIFACT_VERIFIED')
+          PY
+      - name: Publish stable GitHub release from exactly the qualified binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          rc="windows-services-v1.1.26-issue55-rc.1"
+          stable="windows-services-v1.1.26"
+          tested="4c6e5dde946befc409b7ce7da1cfcf8e99a8da1d"
+          cat >RELEASE_NOTES.md <<'EOF'
+          # SOKNA Windows Services 1.1.26 — final installer
+          
+          One unified Windows x64 installer, built and tested from commit 4c6e5dde946befc409b7ce7da1cfcf8e99a8da1d.
+          
+          Components: Runtime 1.0.7; Print Agent 6.2.10; Maintenance Supervisor 0.3.18; Maintenance Update Engine 0.3.18; Recovery Console 0.1.3.
+          
+          Issue #55 corrections:
+          - No unrequested same-version hash-drift repair of a healthy, registered Runtime or Print service.
+          - In-place Print Agent replacement, preflight checks for locked files and write access, and SHA256 verified file/service rollback.
+          - Preserve separately installed Maintenance 0.3.18 after privileged verification of its receipt and executable hashes.
+          - Persist actual versions of kept components in installation state.
+          
+          GitHub Windows CI completed successfully, including version/manifest qualification, installer binary validation, native independent-Maintenance test, and locked Print Agent/rollback regression.
+          
+          This release **has not been installed or acceptance-tested on the actual Home or Cafe Windows machines**. The installer is not deployed automatically. Before using it on the live Cafe system, validate an update on the Home test machine and check Runtime/Print health, data preservation and rollback.
+          
+          The exact verified files were promoted without rebuilding from the qualified pre-release.
+          EOF
+          gh release create "$stable" \
+            verified/SOKNA-Windows-Services-Setup-1.1.26.exe \
+            verified/SHA256SUMS.txt verified/artifact-index.json \
+            --repo "$GITHUB_REPOSITORY" --target "$tested" --latest \
+            --title "SOKNA Windows Services 1.1.26 — Final" --notes-file RELEASE_NOTES.md
+          gh release view "$stable" --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft,assets \
+            | jq -e --arg stable "$stable" '.tagName==$stable and (.isPrerelease|not) and (.isDraft|not) and ([.assets[].name]|sort)==(["SOKNA-Windows-Services-Setup-1.1.26.exe","SHA256SUMS.txt","artifact-index.json"]|sort)'
+          echo "SOKNA_WINDOWS_1126_FINAL_RELEASE_PUBLISHED_VERIFIED"
