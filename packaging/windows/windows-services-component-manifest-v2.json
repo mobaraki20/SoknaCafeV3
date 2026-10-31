@@ -2,7 +2,7 @@
   "format": "sokna-windows-component-manifest-v2",
   "schema_version": 2,
   "package_component": "windows-services-packaging",
-  "package_version": "1.1.24",
+  "package_version": "1.1.25",
   "planner_contract": "1.1",
   "components": [
     {
