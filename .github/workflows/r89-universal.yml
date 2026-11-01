@@ -1,0 +1,124 @@
+name: R89 Universal Local and Public qualification
+on:
+  push:
+    branches: [work/r89-universal-20261101]
+    paths: [release/r89/**, .github/workflows/r89-universal.yml]
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: write
+jobs:
+  real-db:
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: r89-test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DB_PASSWORD: r89-test
+      DB_PORT: '3306'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP and DB client
+        run: sudo apt-get update -qq && sudo apt-get install -y php-cli php-mysql php-sqlite3 php-zip mariadb-client
+      - name: Reconstruct exact Local R87 and Public R86 baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release/r84/baselines release/r85/baselines release/r86/baselines release/r87/baselines release/r88/baselines release/r89/baselines
+          gh release download local-public-r83-communication-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r84/baselines -p SOKNA-R83-LOCAL-R81-TO-R83-DELTA-HOME-UAT.zip -p SOKNA-R83-PUBLIC-R81-TO-R83-ROUTINE-DELTA-HOME-UAT.zip
+          gh release download local-public-r84-causal-read-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r85/baselines -p SOKNA-R84-LOCAL-R83-TO-R84-DELTA-HOME-UAT.zip -p SOKNA-R84-PUBLIC-R83-TO-R84-ROUTINE-DELTA-HOME-UAT.zip
+          gh release download local-public-r85-hall-policy-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r86/baselines -p SOKNA-R85-LOCAL-R84-TO-R85-DELTA-HOME-UAT.zip -p SOKNA-R85-PUBLIC-R84-TO-R85-ROUTINE-DELTA-HOME-UAT.zip
+          gh release download local-public-r86-dashboard-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r87/baselines -p SOKNA-R86-LOCAL-R85-TO-R86-DELTA-HOME-UAT.zip -p SOKNA-R86-PUBLIC-R85-TO-R86-ROUTINE-DELTA-HOME-UAT.zip
+          gh release download local-r87-hall-snapshot-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r88/baselines -p SOKNA-R87-LOCAL-R86-TO-R87-DELTA-HOME-UAT.zip
+          gh release download local-public-r88-hall-controls-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r89/baselines -p SOKNA-R88-LOCAL-R87-TO-R88-DELTA-HOME-UAT.zip -p SOKNA-R88-PUBLIC-R86-TO-R88-ROUTINE-DELTA-HOME-UAT.zip
+          python3 release/r89/prepare.py
+          mkdir -p release/r89/build/qa
+      - name: Create isolated databases
+        run: mysql -h127.0.0.1 -uroot -pr89-test -e 'CREATE DATABASE r84_time; CREATE DATABASE r83_local; CREATE DATABASE r83_public; CREATE DATABASE r84_guest; CREATE DATABASE r86_finance; CREATE DATABASE r87_hall; CREATE DATABASE r88_actions; CREATE DATABASE r88_actions_public; CREATE DATABASE r88_actions_red; CREATE DATABASE r88_actions_red_public; CREATE DATABASE r87_hall_public;'
+      - name: Existing transaction, Guest and time regressions
+        run: |
+          php release/r84/tests/runtime-time.php release/r89/build/source > release/r89/build/qa/time.json
+          php release/r84/tests/guest-list.php release/r89/build/source > release/r89/build/qa/guest-list.json
+          node release/r84/tests/guest-list.js release/r89/build/source > release/r89/build/qa/guest-list-js.json
+          php release/r83/tests/pure.php release/r89/build/source > release/r89/build/qa/pure.json
+          php release/r83/tests/encoding.php release/r89/build/source > release/r89/build/qa/encoding.json
+          node release/r83/tests/guest.js release/r89/build/source > release/r89/build/qa/guest.json
+          php release/r83/tests/local.php release/r89/build/source > release/r89/build/qa/local.json
+          php release/r83/tests/public.php release/r89/build/source > release/r89/build/qa/public.json
+      - name: Public Hall controls and canonical command lifecycle
+        run: |
+          php release/r88/tests/features.php release/r89/build/source > release/r89/build/qa/features-after.json
+          php release/r88/tests/actions.php release/r89/build/source | tee release/r89/build/qa/actions.json
+          node release/r88/tests/actions.js release/r89/build/source > release/r89/build/qa/actions-js.json
+      - name: Full and partial settlement, concurrent order, ownership and recovery
+        run: |
+          php release/r87/tests/hall.php release/r89/build/source | tee release/r89/build/qa/hall-after.json
+          php release/r86/tests/finance.php release/r89/build/source > release/r89/build/qa/finance-after.json
+          php release/r85/tests/settings.php release/r89/build/source > release/r89/build/qa/settings-after.json
+          node release/r85/tests/settings.js release/r89/build/source > release/r89/build/qa/settings-js-after.json
+      - name: Complete candidate syntax
+        run: |
+          python3 - <<'PY'
+          import pathlib,subprocess,json
+          files=[p for p in pathlib.Path('release/r89/build/source').rglob('*') if p.suffix in ('.php','.js')]
+          for p in files:subprocess.run(['php','-l',str(p)] if p.suffix=='.php' else ['node','--check',str(p)],check=True,capture_output=True)
+          pathlib.Path('release/r89/build/qa/syntax.json').write_text(json.dumps({'passed':len(files),'failed':0}))
+          PY
+      - name: Build one universal archive per component
+        run: python3 release/r89/package.py
+      - name: Native same-ZIP Public lifecycle from every qualified source
+        run: |
+          for base in r53 r81 r83 r84 r85 r86 r88; do
+            for route in routine emergency; do
+              php release/r89/tests/public-lifecycle.php release/r89/build release/r89/build/dist "$base" "$route" > "release/r89/build/qa/lifecycle-$base-$route.json"
+            done
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r89-source-qa
+          path: release/r89/build/qa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r89-candidate
+          path: release/r89/build/dist
+  windows-native:
+    needs: real-db
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 586fdf2abeab4d11283f2c65d9130f31f7830ea0
+          path: maintenance0318
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: r89-candidate
+          path: release/r89/native-input
+      - name: Same universal Local ZIP through native Maintenance 0.3.18
+        run: |
+          dotnet run --project release/r89/tests/native/Native.csproj -c Release -p:MaintenanceRoot="$($PWD.Path)/maintenance0318" -- "$($PWD.Path)/release/r89/native-input/SOKNA-LOCAL-UNIVERSAL-UPDATE.zip" "$($PWD.Path)/release/r89/native-qa/native-local.json"
+          if($LASTEXITCODE -ne 0){throw 'Universal native Local qualification failed'}
+      - name: Existing guarded external-copy identity reconciliation regression
+        run: |
+          dotnet run --project maintenance0318/windows/maintenance/tests/Sokna.Maintenance.DeltaRebindHarness -c Release
+          if($LASTEXITCODE -ne 0){throw 'Existing Delta/rebind regression failed'}
+          '[{"test":"Maintenance 0.3.18 existing guarded identity and Delta regression","pass":true}]' | Set-Content release/r89/native-qa/rebind.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r89-native-qa
+          path: release/r89/native-qa
