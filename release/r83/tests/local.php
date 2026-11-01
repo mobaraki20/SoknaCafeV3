@@ -3,7 +3,7 @@ declare(strict_types=1);
 $root=$argv[1];require $root.'/local/bootstrap.php';
 use Sokna\Local\Domain\LanStaff\LanStaffRealtimeReceiptService;
 use Sokna\Local\Domain\Orders\WaiterCallException;
-$cfg=['app'=>['timezone'=>'Asia/Tehran','data_dir'=>sys_get_temp_dir().'/r83-local-'.bin2hex(random_bytes(4))], 'installation'=>['id'=>'r83-test'], 'db'=>['host'=>'127.0.0.1','port'=>(string)(getenv('DB_PORT')?:3306),'name'=>'r83_local','charset'=>'utf8mb4','user'=>'root','pass'=>(string)(getenv('DB_PASSWORD')?:'r83-test')]];
+$cfg=['app'=>['timezone'=>'Asia/Tehran','data_dir'=>sys_get_temp_dir().'/r83-local-'.bin2hex(random_bytes(4))], 'installation'=>['id'=>'r83-test'], 'db'=>['host'=>'127.0.0.1','port'=>(string)(getenv('DB_PORT')?:3306),'name'=>(string)(getenv('DB_NAME')?:'r83_local'),'charset'=>'utf8mb4','user'=>'root','pass'=>(string)(getenv('DB_PASSWORD')?:'r83-test')]];
 $core=sokna_local_bootstrap($cfg);
 // Catalog reconciliation migrations require the canonical initial catalog.
 $core->migrations()->migrate('0059_menu_business_reconciliation_v4');
@@ -15,6 +15,9 @@ $user=function(string $name)use($p):array{$p->prepare('INSERT INTO users(usernam
 $a=$user('r83-a');$b=$user('r83-b');
 $p->exec("INSERT INTO categories(category_key,name,audience,sort_order,active) VALUES('r83','R83','guest_staff',10,1)");$cat=(int)$p->lastInsertId();
 $item=$core->sellables()->create(['category_id'=>$cat,'name'=>'R83 coffee','price'=>1000,'preparation_station'=>'bar','sellable_kind'=>'menu_item','staff_only'=>false,'takeaway_allowed'=>true]);
+$menu=(int)$p->query("SELECT id FROM menus WHERE status='active' ORDER BY id LIMIT 1")->fetchColumn();
+$p->prepare('INSERT INTO menu_categories(menu_id,category_id,sort_order) VALUES(?,?,900)')->execute([$menu,$cat]);
+$p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$menu,$item]);
 $table=function(int $i)use($p):int{$p->prepare('INSERT INTO cafe_tables(name,table_number,code,access_token,active,sort_order) VALUES(?,?,?,?,1,?)')->execute(['R83 '.$i,830+$i,'R83-'.$i,'r83-table-'.$i,$i]);return (int)$p->lastInsertId();};
 $t1=$table(1);$t2=$table(2);
 $p->exec("INSERT INTO settings(setting_key,setting_value) VALUES('waiter_call_enabled','1') ON DUPLICATE KEY UPDATE setting_value='1'");

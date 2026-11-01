@@ -3,6 +3,7 @@ declare(strict_types=1);
 $root=$argv[1];
 require $root.'/public/src/Guest/GuestCompatibilityService.php';
 require $root.'/public/src/Remote/PublicDashboardFinance.php';
+require $root.'/public/src/Core/ResumablePublicSchema.php';
 use Sokna\PublicEdge\Guest\GuestCompatibilityService as G;
 use Sokna\PublicEdge\Remote\PublicDashboardFinance as F;
 $results=[];
@@ -24,5 +25,12 @@ $f=F::reconcile($r,'2026-11-01');
 check($f['today_available']&&$f['daily']['2026-11-01']===0,'explicit Local zero is usable on Public');
 $r['archive']=['from'=>'2026-10-26','to'=>'2026-11-01','sales'=>[['date'=>'2026-11-01','net_sales'=>900]]];
 check(F::reconcile($r,'2026-11-01')['daily_conflicts']===['2026-11-01'],'conflicting report sources remain visible');
+$method=(new ReflectionClass(Sokna\PublicEdge\Core\ResumablePublicSchema::class))->getMethod('assertColumn');
+$row=['COLUMN_TYPE'=>'datetime(6)','IS_NULLABLE'=>'YES','COLUMN_DEFAULT'=>'NULL'];$accepted=true;
+try{$method->invoke(null,'installations','authority_changed_at',$row,'datetime(6)','YES',null);}catch(Throwable){$accepted=false;}
+check($accepted,'MariaDB SQL NULL metadata accepted as null default');
+$row['COLUMN_DEFAULT']="'NULL'";$rejected=false;
+try{$method->invoke(null,'installations','authority_changed_at',$row,'datetime(6)','YES',null);}catch(Throwable){$rejected=true;}
+check($rejected,'quoted literal NULL remains incompatible');
 echo json_encode($results,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE).PHP_EOL;
 exit(count(array_filter($results,fn($r)=>!$r['pass']))?1:0);
