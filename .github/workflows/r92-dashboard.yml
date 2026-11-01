@@ -13,6 +13,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 48080b646766c4bcdcb9cd7675de32ddc7669380
+          path: app-baselines
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -42,8 +46,8 @@ jobs:
           mkdir -p release/r92/build/lifecycle/current release/r92/build/lifecycle/source
           cp -r release/r92/build/before/public release/r92/build/lifecycle/current/public
           cp -r release/r92/build/before/local release/r92/build/lifecycle/source/local
-          php release/r89/tests/public-lifecycle.php release/r92/build/lifecycle release/r92/build/dist current routine > release/r92/build/public-routine.json
-          php release/r89/tests/public-lifecycle.php release/r92/build/lifecycle release/r92/build/dist current emergency > release/r92/build/public-emergency.json
+          php app-baselines/release/r89/tests/public-lifecycle.php release/r92/build/lifecycle release/r92/build/dist current routine > release/r92/build/public-routine.json
+          php app-baselines/release/r89/tests/public-lifecycle.php release/r92/build/lifecycle release/r92/build/dist current emergency > release/r92/build/public-emergency.json
       - name: Assemble verified evidence
         run: python3 release/r92/finalize.py
       - name: Publish tested Local and Public chart correction
