@@ -33,7 +33,7 @@ public sealed class PrintAgentService : BackgroundService
     private readonly BridgeRuntimeState _bridgeRuntime;
     private readonly WorkerSupervisor _workerSupervisor;
     private readonly DateTimeOffset _started=DateTimeOffset.UtcNow;
-    private readonly Mutex _mutex=new(false,@"Global\SoknaPrintAgentV6Service");
+    private const string SingletonMutexName=@"Global\SoknaPrintAgentV6Service";
     private readonly SemaphoreSlim _coordinatorGate=new(1,1);
     private readonly SingleFlightWork<ReportDispatchSummary> _reportWork=new();
     private readonly SingleFlightWork<ApiResult> _heartbeatWork=new();
@@ -99,16 +99,12 @@ public sealed class PrintAgentService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
-        {
-            if(!_mutex.WaitOne(TimeSpan.Zero))throw new InvalidOperationException("نمونه دیگری از Sokna Print Agent فعال است.");
-        }
-        catch(AbandonedMutexException e)
-        {
-            // Windows grants ownership to this thread when an abandoned mutex is observed.
-            // Treat it as recoverable residue from a crashed/terminated previous instance.
-            _log.LogWarning(e,"Recovered abandoned Sokna Print Agent singleton mutex.");
-        }
+        // A named Mutex must be released on its acquiring OS thread. ExecuteAsync
+        // contains awaits and is not guaranteed to resume on that same thread.
+        using var singletonLease=ThreadOwnedMutexLease.Acquire(SingletonMutexName);
+        if(singletonLease.RecoveredAbandoned)
+            _log.LogWarning("Recovered abandoned Sokna Print Agent singleton mutex.");
+
         try
         {
             await _store.InitializeAsync(stoppingToken);
@@ -175,7 +171,6 @@ public sealed class PrintAgentService : BackgroundService
         {
             try{await WriteLocalHealthAsync("stopped",_api is not null,File.Exists(_paths.SecretPath),null,CancellationToken.None);}catch{}
             _http?.Dispose();
-            _mutex.ReleaseMutex();
         }
     }
 
