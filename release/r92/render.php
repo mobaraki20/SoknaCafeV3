@@ -5,7 +5,7 @@ $reportsError=null;$todayProjectionUnavailable=false;$financeConflictDays=[];$we
 $weekDaily=array_map(fn($v)=>['value'=>$v,'label'=>'روز','known'=>true],[400000,0,0,0,640000,0,770000]);
 $dashUrl=fn($x)=>htmlspecialchars($x);$dashE=fn($x)=>htmlspecialchars($x);
 ob_start();eval('?>'.$fragment);$body=ob_get_clean();
-$asset=$kind==='local'?'/public/assets':'/assets';
 $html='<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
-foreach(['/scds/tokens.css','/scds/components.css',...($kind==='public'?['/scds/remote-staff.css']:[]),'/product-ui.css'] as $p)$html.='<link rel="stylesheet" href="'.$asset.$p.'">';
+$styles=$kind==='local'?['/assets/scds/tokens.css','/assets/scds/components.css','/public/assets/product-ui.css']:['/assets/scds/tokens.css','/assets/scds/components.css','/assets/scds/remote-staff.css','/assets/product-ui.css'];
+foreach($styles as $p)$html.='<link rel="stylesheet" href="'.$p.'">';
 $html.='<body data-page="home" data-staff-ui-mode="'.$kind.'"><main class="sc-dashboard"><div class="sc-dashboard-main">'.$body.'</div></main></body></html>';file_put_contents($output,$html);
