@@ -85,8 +85,8 @@ function Select-SupportComponentIdentity($value){
 }
 function Get-SupportInstalledIdentity([string]$path){
   $result=[ordered]@{format='sokna-installed-release-identity-support-v1';schema_version=1;captured_at_utc=[DateTime]::UtcNow.ToString('o');state='missing';evidence_available=$false;identity=$null;error_code='INSTALLED_IDENTITY_MISSING'}
-  if(-not(Test-Path -LiteralPath $path -PathType Leaf)){return $result}
   try{
+    if(-not(Test-Path -LiteralPath $path -PathType Leaf -ErrorAction Stop)){return $result}
     $file=Get-Item -LiteralPath $path -Force -ErrorAction Stop
     if(($file.Attributes-band[IO.FileAttributes]::ReparsePoint)-ne0 -or $file.Length-gt65536){throw 'INSTALLED_IDENTITY_FILE_UNSAFE'}
     $raw=[IO.File]::ReadAllText($path)|ConvertFrom-Json -ErrorAction Stop

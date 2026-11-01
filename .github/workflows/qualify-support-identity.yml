@@ -2,7 +2,7 @@ name: Qualify support bundle installed identity evidence
 on:
   push:
     branches: [fix/support-installed-identity-20261101]
-    paths: [packaging/windows/scripts/collect-support-v2.ps1, release/support-identity-20261101/**, .github/workflows/qualify-support-identity.yml]
+    paths: [packaging/windows/scripts/collect-support-v2.ps1, packaging/windows/scripts/collect-support-v3.ps1, release/support-identity-20261101/**, .github/workflows/qualify-support-identity.yml]
 permissions:
   contents: read
 jobs:
