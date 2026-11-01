@@ -30,7 +30,7 @@ jobs:
       - name: Reconstruct exact R81 and candidate source
         run: python3 release/r83/prepare.py
       - name: Create isolated databases
-        run: mysql -h127.0.0.1 -uroot -pr83-test -e 'CREATE DATABASE r83_local; CREATE DATABASE r83_public;'
+        run: mysql -h127.0.0.1 -uroot -pr83-test -e 'CREATE DATABASE r83_local; CREATE DATABASE r83_public; CREATE DATABASE r83_local_red;'
       - name: PHP and JS syntax
         run: |
           python3 - <<'PY'
@@ -45,10 +45,20 @@ jobs:
           if php release/r83/tests/pure.php release/r83/build/baseline > release/r83/build/qa/baseline.json; then echo 'Baseline unexpectedly passed defect reproduction'; exit 1; fi
           php release/r83/tests/pure.php release/r83/build/source > release/r83/build/qa/pure.json
           php release/r83/tests/encoding.php release/r83/build/source > release/r83/build/qa/encoding.json
+          if node release/r83/tests/guest.js release/r83/build/baseline > release/r83/build/qa/guest-baseline.json; then exit 1; fi
+          node release/r83/tests/guest.js release/r83/build/source > release/r83/build/qa/guest.json
+      - name: Reproduce waiter ownership defect on exact baseline
+        run: |
+          if DB_NAME=r83_local_red php release/r83/tests/local.php release/r83/build/baseline > release/r83/build/qa/local-baseline.log 2>&1; then exit 1; fi
+          grep -F 'another waiter cannot claim success' release/r83/build/qa/local-baseline.log
       - name: Local MariaDB transaction and account tests
         run: php release/r83/tests/local.php release/r83/build/source | tee release/r83/build/qa/local-mariadb.json
       - name: Public MariaDB projection and wire tests
         run: php release/r83/tests/public.php release/r83/build/source | tee release/r83/build/qa/public-mariadb.json
+      - name: Build deltas and verify native receiver stage
+        run: |
+          python3 release/r83/package.py
+          php release/r83/tests/package.php release/r83/build/source release/r83/build/dist > release/r83/build/qa/package.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

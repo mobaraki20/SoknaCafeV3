@@ -299,7 +299,7 @@ final class GuestCompatibilityService
             // ended or was never created. Relay the read-only status to Local
             // when available; otherwise keep the caller's last known state.
             $confirmed=$view===null?null:self::waiterProjectionStatus($view,(int)($table['id']??0),$payload['call_code']);
-            if($confirmed!==null)return $this->response(200,['success'=>true,'call_code'=>$payload['call_code'],'status'=>$confirmed,'owned'=>true,'degraded'=>false,'last_sync_at'=>(string)($view['last_sync_at']??'')]);
+            if($confirmed!==null)return $this->response(200,['success'=>true,'call_code'=>$payload['call_code'],'status'=>$confirmed,'degraded'=>false,'last_sync_at'=>(string)($view['last_sync_at']??'')]);
             $requestId = self::requestId('waiter_call.status', [
                 'call_code' => $payload['call_code'],
                 'table_token' => $payload['table_token'],

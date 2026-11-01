@@ -62,7 +62,7 @@ check((int)$p->query("SELECT COUNT(*) FROM late_served_accounting_receipts WHERE
 $dash=$core->reporting()->dashboardSnapshot('2026-11-01');
 check(count($dash['daily'])===7,'dashboard emits seven authoritative business dates');
 check(array_reduce($dash['daily'],fn($ok,$r)=>$ok&&array_key_exists('net_sales',$r),true),'inactive days have explicit Local zero');
-$payload=['session_id'=>$sid,'destination'=>'direct','mode'=>'full','request_id'=>'r83-payment-0000001','expected_session_id'=>$sid,'expected_remaining_total'=>$after['remaining_total'],'expected_signature'=>$after['signature']];
+$payload=['session_id'=>$sid,'destination'=>'direct','mode'=>'full','tenders'=>[['type'=>'cash','amount'=>$after['remaining_total']]],'request_id'=>'r83-payment-0000001','expected_session_id'=>$sid,'expected_remaining_total'=>$after['remaining_total'],'expected_signature'=>$after['signature']];
 $paid=$core->settlements()->settle($payload,$a);$repaid=$core->settlements()->settle($payload,$a);
 check(!empty($repaid['idempotent'])&&$paid['settlement_id']===$repaid['settlement_id'],'lost payment response cannot duplicate settlement');
 check($core->settlements()->requestStatus($sid,$payload['request_id'],$a)['state']==='committed','unknown payment outcome resolves canonically');
