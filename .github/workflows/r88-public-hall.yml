@@ -76,6 +76,16 @@ jobs:
           for p in files:subprocess.run(['php','-l',str(p)] if p.suffix=='.php' else ['node','--check',str(p)],check=True,capture_output=True)
           pathlib.Path('release/r88/build/qa/syntax.json').write_text(json.dumps({'passed':len(files),'failed':0}))
           PY
+      - name: Build exact-base deltas and test native Public receiver
+        run: |
+          python3 release/r88/package.py
+          php release/r88/tests/package.php release/r88/build/source release/r88/build/dist > release/r88/build/qa/package.json
+          python3 release/r88/finalize.py
+      - name: Publish verified independent Home UAT deltas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create local-public-r88-hall-controls-uat-20261101 release/r88/build/dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "SOKNA R88 — Public Hall controls and canonical correction readback" --notes-file release/r88/build/dist/REPORT-FA.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:
