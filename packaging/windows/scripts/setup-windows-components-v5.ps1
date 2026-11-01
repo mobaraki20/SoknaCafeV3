@@ -275,5 +275,13 @@ try{
    if((Sha $r.InstalledPath)-ne$r.TargetHash){throw "Maintenance subordinate fingerprint mismatch: $($r.Id)"}
    Event 'component_action_completed' 'completed' @{action=$r.Action;after_sha256=(Sha $r.InstalledPath)}
  }
+ # Record observed component versions only after the existing lifecycle has
+ # verified the installed pair. Preserve all business release identities.
+ if(@($script:Resolved|Where-Object{$_.Id-eq'maintenance'}).Count-eq1){
+   $CurrentComponent='maintenance';$CurrentPhase='Component identity synchronization'
+   . (Join-Path $ShellRoot 'maintenance-signed-health-v1.ps1')
+   . (Join-Path $ShellRoot 'maintenance-installed-versions-v1.ps1')
+   Sync-MaintenanceInstalledVersions -AppRoot $maintApp -EvidenceRoot $TxDir
+ }
  $CurrentComponent='—';$CurrentPhase='Commit';New-Item -ItemType Directory -Path (Join-Path $DataRoot 'setup') -Force|Out-Null;$state=[ordered]@{format='sokna-windows-services-install-state-v2';package_owner='windows-services-packaging';package_version=[string]$plan.package_version;installed_at_utc=[DateTime]::UtcNow.ToString('o');install_root=$InstallRoot;data_root=$DataRoot;paired=$paired;local_base_url=[string](Prop $oldState 'local_base_url' '');paired_at_utc=[string](Prop $oldState 'paired_at_utc' '');pairing_lifecycle=[string](Prop $oldState 'pairing_lifecycle' '');runtime_service='SoknaRuntime';print_service='SoknaPrintWorker';maintenance_service='SoknaMaintenanceSupervisor';component_actions=@($script:Resolved|Where-Object{$_.Primary}|ForEach-Object{@{component_id=$_.Id;action=$_.Action;version=$(if($_.Action-eq'KEEP'){$_.CurrentVersion}else{$_.TargetVersion});sha256=(Sha $_.InstalledPath)}});shutdown_proof='per-mutated-component:service-status+process-exit+owned-process-exit';external_infrastructure_mutated=$false;business_data_mutated=$false;transaction_id=$Tx};WriteJson $statePath $state;Event 'transaction_commit_completed' 'completed';Finish 'completed' 0 'Windows Services component plan completed successfully.' $false $false;exit 0
 }catch{$failedId=[string]$CurrentComponent;$failedStage=[string]$CurrentPhase;$msg=Safe $_.Exception.Message;Event 'component_action_failed' 'failed' @{error=$msg};$rb=Rollback;Finish 'failed' 2 $msg $rb $false $failedId $failedStage;Write-Error $msg;exit 2}

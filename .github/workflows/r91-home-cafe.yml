@@ -110,6 +110,9 @@ jobs:
           "$hash  $name"|Set-Content "$out/SHA256SUMS.txt" -Encoding ascii
           $shell=Join-Path $out 'unified-shell-v4'
           $components=Get-Content (Join-Path $shell 'windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
+          foreach($helper in @('maintenance-installed-versions-v1.ps1','maintenance-signed-health-v1.ps1')){if(-not(Test-Path (Join-Path $shell $helper))){throw 'Full installer missing qualified identity lifecycle'}}
+          if((Get-Content (Join-Path $shell 'setup-windows-components-core-v5.ps1') -Raw)-notmatch 'Sync-MaintenanceInstalledVersions -AppRoot'){throw 'Full installer does not synchronize observed engine metadata'}
+
           foreach($id in @('runtime','print-agent','maintenance-recovery-console')){
             $row=@($components.components|Where-Object{$_.component_id-eq$id})[0]
             $source=Join-Path $shell $row.payload_primary
