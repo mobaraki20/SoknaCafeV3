@@ -1,0 +1,64 @@
+name: R85 canonical Hall settings
+on:
+  push:
+    branches: [work/r85-hall-settings-20261101]
+    paths: [release/r85/**, .github/workflows/r85-hall-settings.yml]
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: write
+jobs:
+  real-db:
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: r85-test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DB_PASSWORD: r85-test
+      DB_PORT: '3306'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP and DB client
+        run: sudo apt-get update -qq && sudo apt-get install -y php-cli php-mysql php-sqlite3 php-zip mariadb-client
+      - name: Reconstruct exact R84 baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release/r84/baselines release/r85/baselines
+          gh release download local-public-r83-communication-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r84/baselines -p SOKNA-R83-LOCAL-R81-TO-R83-DELTA-HOME-UAT.zip -p SOKNA-R83-PUBLIC-R81-TO-R83-ROUTINE-DELTA-HOME-UAT.zip
+          gh release download local-public-r84-causal-read-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r85/baselines -p SOKNA-R84-LOCAL-R83-TO-R84-DELTA-HOME-UAT.zip -p SOKNA-R84-PUBLIC-R83-TO-R84-ROUTINE-DELTA-HOME-UAT.zip
+          python3 release/r85/prepare.py
+          mkdir -p release/r85/build/qa
+      - name: Create isolated databases
+        run: mysql -h127.0.0.1 -uroot -pr85-test -e 'CREATE DATABASE r84_time; CREATE DATABASE r83_local; CREATE DATABASE r83_public; CREATE DATABASE r84_guest; CREATE DATABASE r85_local_red;'
+      - name: Existing transaction, Guest and time regressions
+        run: |
+          php release/r84/tests/runtime-time.php release/r85/build/source > release/r85/build/qa/time.json
+          php release/r84/tests/guest-list.php release/r85/build/source > release/r85/build/qa/guest-list.json
+          node release/r84/tests/guest-list.js release/r85/build/source > release/r85/build/qa/guest-list-js.json
+          php release/r83/tests/pure.php release/r85/build/source > release/r85/build/qa/pure.json
+          php release/r83/tests/encoding.php release/r85/build/source > release/r85/build/qa/encoding.json
+          node release/r83/tests/guest.js release/r85/build/source > release/r85/build/qa/guest.json
+          php release/r83/tests/local.php release/r85/build/source > release/r85/build/qa/local.json
+          php release/r83/tests/public.php release/r85/build/source > release/r85/build/qa/public.json
+      - name: Reproduce baseline policy gaps
+        run: |
+          DB_NAME=r85_local_red php release/r83/tests/local.php release/r85/build/baseline > release/r85/build/qa/baseline-fixture.json
+          if DB_NAME=r85_local_red php release/r85/tests/settings.php release/r85/build/baseline > release/r85/build/qa/settings-before.json; then exit 1; fi
+          if node release/r85/tests/settings.js release/r85/build/baseline > release/r85/build/qa/settings-js-before.json; then exit 1; fi
+      - name: Canonical policy, atomic invalidation and rollback
+        run: |
+          php release/r85/tests/settings.php release/r85/build/source | tee release/r85/build/qa/settings-after.json
+          node release/r85/tests/settings.js release/r85/build/source > release/r85/build/qa/settings-js-after.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r85-qa
+          path: release/r85/build/qa
