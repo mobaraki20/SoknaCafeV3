@@ -66,6 +66,23 @@ try {
         "foreign file accepted");
     Need(HashFile(files[0]) == approved && File.ReadAllText(files[1]) == "foreign-content",
         "foreign pair was mutated");
+    foreach(var scenario in new[]{"persistent-only","active-only","both-legacy","mixed-trusted","foreign"})
+    {
+        var lab=Path.Combine(temp,"verified-"+scenario);var per=Path.Combine(lab,"LocalWeb","persistent","public");var act=Path.Combine(lab,"Web.release.new","public");Directory.CreateDirectory(per);Directory.CreateDirectory(act);
+        var pair=new[]{Path.Combine(per,"local-recovery.php"),Path.Combine(act,"local-recovery.php")};
+        if(scenario!="active-only")File.WriteAllBytes(pair[0],old);
+        if(scenario is "active-only" or "both-legacy")File.WriteAllBytes(pair[1],old);
+        if(scenario=="mixed-trusted")File.WriteAllBytes(pair[1],trusted);
+        if(scenario=="foreign")File.WriteAllText(pair[1],"never-overwrite-foreign");
+        bool denied=false;bool migrated=false;
+        try{migrated=KnownCafeRecoveryOverlayMigration.TryMigrateVerifiedCurrentCore(lab,"3.0.0-verified-current",new string('a',64),pair,trusted,approved,old.Length);}catch(InvalidDataException){denied=true;}
+        if(scenario=="foreign") {Need(denied&&HashFile(pair[0])==approved&&File.ReadAllText(pair[1])=="never-overwrite-foreign","verified-current foreign pair was changed");continue;}
+        Need(!denied&&migrated,"verified-current known legacy did not migrate "+scenario);
+        foreach(var file in pair.Where(File.Exists))Need(HashFile(file)==Hash(trusted),"verified-current trusted readback failed");
+        if(scenario=="persistent-only")Need(!File.Exists(pair[1]),"legacy migration fabricated a missing file instead of using owner provisioning");
+        if(scenario=="active-only")Need(!File.Exists(pair[0]),"legacy migration fabricated a missing file instead of using owner provisioning");
+        Need(!KnownCafeRecoveryOverlayMigration.TryMigrateVerifiedCurrentCore(lab,"3.0.0-verified-current",new string('a',64),pair,trusted,approved,old.Length),"verified-current repeated migration rewrote bytes");
+    }
     Console.WriteLine("PASS: exact pair migration; backup/readback; idempotence; safe partial resume; foreign/wrong baseline fail-closed");
 }
 finally { try { Directory.Delete(temp, recursive:true); } catch {} }

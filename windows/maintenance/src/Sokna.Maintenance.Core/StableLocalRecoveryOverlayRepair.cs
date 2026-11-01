@@ -93,7 +93,7 @@ public static class StableLocalRecoveryOverlayRepair
         var files = new[] { Path.Combine(persistent, Relative), Path.Combine(slot, Relative) };
         // Exact, narrowly scoped Cafe 231bf migration. Unknown overlays still
         // fail closed; the old pair is backed up outside the HTTP webroot first.
-        var migrated = KnownCafeRecoveryOverlayMigration.TryMigrate(
+        var migrated = KnownCafeRecoveryOverlayMigration.TryMigrateVerifiedCurrent(
             root, layout.Build, identity.Local.ManagedTreeSha256, files, payload);
         // Validate BOTH paths before creating either: no overwrite, no redirected
         // parent, no presence-equality shortcut that accepts two absent files.
@@ -129,7 +129,7 @@ public static class StableLocalRecoveryOverlayRepair
             CheckAllowed(file, expected);
         }
         LocalManagedTreeAttestation.RequireExact(slot, layout.ManagedFileCount, identity.Local.ManagedTreeSha256);
-        return migrated ? "migrated_known_cafe_231bf" : created == 0 ? "verified_unchanged" : "repaired_and_verified";
+        return migrated ? "migrated_known_legacy_overlay" : created == 0 ? "verified_unchanged" : "repaired_and_verified";
     }
 
     private static void RequirePlainDirectory(string path)

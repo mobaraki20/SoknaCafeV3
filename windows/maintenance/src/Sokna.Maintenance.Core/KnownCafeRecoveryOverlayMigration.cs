@@ -144,6 +144,87 @@ internal static class KnownCafeRecoveryOverlayMigration
         return true;
     }
 
+    // Called only after EnsureVerifiedInstallation has verified the actual current
+    // junction, complete managed tree, installed identity, binding and lifecycle.
+    // The legacy byte identity is global; no host/build-name exception is added.
+    internal static bool TryMigrateVerifiedCurrent(string packageRoot, string version, string treeSha,
+        string[] files, byte[] trustedPayload) =>
+        TryMigrateVerifiedCurrentCore(packageRoot, version, treeSha, files,
+            trustedPayload, LegacySha256, LegacyLength);
+
+    internal static bool TryMigrateVerifiedCurrentCore(string packageRoot, string version, string treeSha,
+        string[] files, byte[] trustedPayload, string approvedLegacySha256, int approvedLegacyLength)
+    {
+        if (string.IsNullOrWhiteSpace(version) || treeSha.Length != 64 ||
+            files.Length != 2 || trustedPayload.Length is < 100 or > 65536)
+            throw new InvalidDataException(Invalid);
+        var trusted = Hash(trustedPayload); var legacy = Convert.FromHexString(approvedLegacySha256);
+        var old = new bool[2]; var original = new byte[2][];
+        // Missing files are left for the existing embedded-asset provisioner.
+        // Qualify BOTH paths before changing either existing file.
+        for (var i = 0; i < 2; i++)
+        {
+            var parent = Path.GetDirectoryName(files[i])!;
+            if ((Directory.Exists(parent) && (File.GetAttributes(parent) & FileAttributes.ReparsePoint) != 0) ||
+                File.Exists(parent) || Directory.Exists(files[i]))
+                throw new InvalidDataException(Invalid);
+            if (!File.Exists(files[i])) continue;
+            if ((File.GetAttributes(files[i]) & FileAttributes.ReparsePoint) != 0 ||
+                new FileInfo(files[i]).Length > 65536) throw new InvalidDataException(Invalid);
+            original[i] = File.ReadAllBytes(files[i]);
+            var hash = Hash(original[i]);
+            old[i] = original[i].Length == approvedLegacyLength && Equal(hash, legacy);
+            if (!old[i] && !Equal(hash, trusted)) throw new InvalidDataException(Invalid);
+        }
+        if (!old.Any(x => x)) return false;
+        var localWeb = Path.Combine(packageRoot, "LocalWeb");
+        if (!Directory.Exists(localWeb) || (File.GetAttributes(localWeb) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_BACKUP_ROOT_UNSAFE");
+        var backupRoot = Path.Combine(localWeb, "recovery-overlay-migration-" + approvedLegacySha256[..16]);
+        Directory.CreateDirectory(backupRoot);
+        if ((File.GetAttributes(backupRoot) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_BACKUP_ROOT_UNSAFE");
+        var backups = new[] { Path.Combine(backupRoot,"persistent.before.bin"), Path.Combine(backupRoot,"active.before.bin") };
+        for (var i = 0; i < 2; i++)
+        {
+            if (!old[i]) continue;
+            if (!File.Exists(backups[i])) WriteNew(backups[i],original[i]);
+            if ((File.GetAttributes(backups[i]) & FileAttributes.ReparsePoint) != 0 ||
+                !Equal(Hash(File.ReadAllBytes(backups[i])),legacy))
+                throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_BACKUP_CONFLICT");
+        }
+        var changed = new List<int>();
+        try
+        {
+            for (var i = 0; i < 2; i++)
+            {
+                if (!old[i]) continue;
+                ReplaceAtomically(files[i],trustedPayload); changed.Add(i);
+                if (!Equal(Hash(File.ReadAllBytes(files[i])),trusted))
+                    throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_READBACK_FAILED");
+            }
+        }
+        catch
+        {
+            var restored = true;
+            foreach (var i in changed.AsEnumerable().Reverse())
+            {
+                try { ReplaceAtomically(files[i],original[i]); if(!Equal(Hash(File.ReadAllBytes(files[i])),legacy))restored=false; }
+                catch { restored=false; }
+            }
+            if(!restored)throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_ROLLBACK_UNPROVEN");
+            throw;
+        }
+        var receipt=Path.Combine(backupRoot,"verified-current-migration-receipt.json");
+        if(!File.Exists(receipt))WriteNew(receipt,JsonSerializer.SerializeToUtf8Bytes(new {
+            format="sokna-stable-recovery-known-bytes-migration-v2",baseline_version=version,
+            baseline_tree_sha256=treeSha,old_sha256=approvedLegacySha256,
+            new_sha256=Convert.ToHexString(trusted).ToLowerInvariant(),
+            backed_up_existing_legacy_files=old,activation_performed=false,database_mutation_performed=false
+        }));
+        return true;
+    }
+
     private static void ReplaceAtomically(string target, byte[] content)
     {
         var incoming = target + ".incoming." + Guid.NewGuid().ToString("N");

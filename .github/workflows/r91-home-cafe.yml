@@ -45,6 +45,10 @@ jobs:
           $ErrorActionPreference='Stop'
           dotnet run --project windows/maintenance/tests/Sokna.Maintenance.DeltaRebindHarness -c Release
           if($LASTEXITCODE -ne 0){throw 'Existing Delta and binding regression failed'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.CafeOverlayHarness -c Release
+          if($LASTEXITCODE -ne 0){throw 'Known legacy overlay migration regression failed'}
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.RecoveryOverlayHarness -c Release -- "$env:RUNNER_TEMP/r91-overlay"
+          if($LASTEXITCODE -ne 0){throw 'Recovery ownership and missing-file qualification failed'}
           python tests/g6-component-release-contract.py
           if($LASTEXITCODE -ne 0){throw 'G6 component source versions failed'}
           python tests/m10-release-qualification.py
