@@ -4,7 +4,11 @@ $root=$argv[1];require $root.'/local/bootstrap.php';
 use Sokna\Local\Domain\LanStaff\LanStaffRealtimeReceiptService;
 use Sokna\Local\Domain\Orders\WaiterCallException;
 $cfg=['app'=>['timezone'=>'Asia/Tehran','data_dir'=>sys_get_temp_dir().'/r83-local-'.bin2hex(random_bytes(4))], 'installation'=>['id'=>'r83-test'], 'db'=>['host'=>'127.0.0.1','port'=>(string)(getenv('DB_PORT')?:3306),'name'=>'r83_local','charset'=>'utf8mb4','user'=>'root','pass'=>(string)(getenv('DB_PASSWORD')?:'r83-test')]];
-$core=sokna_local_bootstrap($cfg);$core->migrations()->migrate();$p=$core->database();
+$core=sokna_local_bootstrap($cfg);
+// Catalog reconciliation migrations require the canonical initial catalog.
+$core->migrations()->migrate('0059_menu_business_reconciliation_v4');
+$core->defaultContentSeeder()->seed();
+$core->migrations()->migrate();$p=$core->database();
 $results=[];
 function check(bool $v,string $name):void{global $results;$results[]=['test'=>$name,'pass'=>$v];if(!$v)throw new RuntimeException($name);}
 $user=function(string $name)use($p):array{$p->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)')->execute([$name,password_hash('test',PASSWORD_DEFAULT),$name,'admin']);return ['id'=>(int)$p->lastInsertId(),'role'=>'admin','display_name'=>$name];};

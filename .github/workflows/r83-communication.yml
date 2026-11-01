@@ -3,6 +3,9 @@ on:
   push:
     branches: [work/r83-communication-root-causes-20261101]
     paths: [release/r83/**, .github/workflows/r83-communication.yml]
+defaults:
+  run:
+    shell: bash
 permissions:
   contents: read
 jobs:
