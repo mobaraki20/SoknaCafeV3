@@ -25,4 +25,21 @@ var verifier=new ReleaseSetVerifierStager(paths);Denied(()=>verifier.VerifyOnly(
 // of this transition runs separately against the embedded production PHP helper.
 var qualified=installed with{Local=current};var pre=verifier.VerifyOnly(inbox,qualified);Need(pre.ExactBaselineVerified==true&&pre.OperatorAuthorized&&!pre.DatabaseMutationPerformed,"Core consumes reconciled exact tuple without DB mutation");
 var staged=verifier.VerifyAndStage(inbox,qualified);Need(staged.PreflightIdentityMatch&&staged.OperatorAuthorized,"Core Stage accepts only verified physical tuple");
+using(var inner=zip.GetEntry("artifacts/local/web.zip")!.Open())
+{
+    var innerFile=Path.Combine(lab,"target.zip");using(var f=File.Create(innerFile))inner.CopyTo(f);
+    var targetRoot=Path.Combine(lab,"target");System.IO.Compression.ZipFile.ExtractToDirectory(innerFile,targetRoot);
+    using var raw=JsonDocument.Parse(JsonSerializer.Serialize(manifest,AtomicFile.JsonOptions));
+    var target=raw.RootElement.GetProperty("targets").GetProperty("local");
+    Need(LocalManagedTreeAttestation.Compute(targetRoot,534)==target.GetProperty("managed_tree_sha256").GetString(),"native target attestation includes all updated UI and identity bytes");
+}
+int index=0;
+foreach(var baseNode in manifest.SupportedBaselines)
+{
+    var matrix=new MaintenancePaths(Path.Combine(lab,"matrix-"+(++index)));Directory.CreateDirectory(matrix.InboxRoot);var file=Path.Combine(matrix.InboxRoot,hash+".zip");File.Copy(package,file);
+    var oldTuple=installed with{Local=baseNode.Local};var core=new ReleaseSetVerifierStager(matrix);
+    Need(core.VerifyOnly(file,oldTuple).ExactBaselineVerified==true,"universal native preflight "+baseNode.Local!.Version);
+    Need(core.VerifyAndStage(file,oldTuple).PreflightIdentityMatch,"universal native stage "+baseNode.Local!.Version);
+    Denied(()=>core.VerifyOnly(file,oldTuple with{Local=oldTuple.Local! with{ManagedTreeSha256=new string('0',64)}}),"universal wrong physical hash rejected "+baseNode.Local!.Version);
+}
 Directory.CreateDirectory(Path.GetDirectoryName(output)!);File.WriteAllText(output,JsonSerializer.Serialize(rows,new JsonSerializerOptions{WriteIndented=true}));Console.WriteLine("R91_NATIVE_PASS "+rows.Count);
