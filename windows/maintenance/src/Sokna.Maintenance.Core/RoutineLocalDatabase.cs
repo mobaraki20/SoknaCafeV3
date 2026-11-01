@@ -28,6 +28,18 @@ public static class RoutineLocalDatabase
         return new(Fingerprint(source), Fingerprint(target), source.Keys.Last(), target.Keys.Last(), source.Count, target.Count);
     }
 
+    public static void RequireHistoricalPrefix(string verifiedRoot, string previousFingerprint, string previousHead)
+    {
+        var catalog = Catalog(verifiedRoot);
+        if (string.IsNullOrWhiteSpace(previousHead) || !catalog.ContainsKey(previousHead))
+            throw new InvalidDataException("LOCAL_REBIND_HISTORICAL_HEAD_NOT_IN_CATALOG");
+        var prefix = new SortedDictionary<string, string>(catalog
+            .Where(p => string.CompareOrdinal(p.Key, previousHead) <= 0)
+            .ToDictionary(p => p.Key, p => p.Value), StringComparer.Ordinal);
+        if (Fingerprint(prefix) != previousFingerprint)
+            throw new InvalidDataException("LOCAL_REBIND_HISTORICAL_CATALOG_MISMATCH");
+    }
+
     private static SortedDictionary<string, string> Catalog(string root)
     {
         var dir = Path.Combine(root, "database", "migrations");

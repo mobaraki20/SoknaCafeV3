@@ -1,0 +1,15 @@
+{
+    "backup_recovery_engine_version":  null,
+    "local":  {
+                  "authority_epoch_policy":  null,
+                  "managed_tree_sha256":  "80fd968a9e4f1642c3f1519f66d7ab6a2fb1bb64f1a8c0a26444d0d8da1712be",
+                  "migration_head":  "0074_iran_time_notification_boundaries",
+                  "release_id":  "sokna-local-231bf-u01-iran-time-updater-20261023",
+                  "schema_fingerprint":  "migration-ledger-sha256-v1:43e4572dea9709b4dcd278497f0373962bb4e2460022d7400ef51d8b317fdcbf",
+                  "version":  "3.0.0-g6.2-workspace.231bf-u01-iran-time-updater-rc1"
+              },
+    "maintenance_supervisor_version":  "0.3.18",
+    "public":  null,
+    "public_maintenance_kernel_version":  null,
+    "update_engine_version":  "0.3.18"
+}

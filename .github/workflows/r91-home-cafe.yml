@@ -1,0 +1,242 @@
+name: SOKNA coordinated Home Cafe Windows and Web UAT
+on:
+  push:
+    branches: [work/r91-home-cafe-20261102]
+    paths:
+      - 'windows/print-agent/**'
+      - 'windows/maintenance/**'
+      - 'release/r91/**'
+      - 'packaging/windows/scripts/collect-support*'
+      - '.github/workflows/r91-home-cafe.yml'
+      - 'packaging/windows/WINDOWS_SERVICES_VERSION.txt'
+      - 'packaging/windows/windows-services-component-manifest-v2.json'
+      - 'packaging/windows/windows-services-compatibility-v1.json'
+      - 'release/compatibility-v2.json'
+      - 'COMPONENTS.json'
+      - 'tests/m8-print-agent-gate.py'
+      - '.github/workflows/r91-home-cafe.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: sokna-windows-1128-print-stop-hotfix
+  cancel-in-progress: false
+jobs:
+  qualify:
+    name: Windows print regression and five-component installer
+    runs-on: windows-2022
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check component source version registry and static print contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.DeltaRebindHarness -c Release
+          if($LASTEXITCODE -ne 0){throw 'Existing Delta and binding regression failed'}
+          python tests/g6-component-release-contract.py
+          if($LASTEXITCODE -ne 0){throw 'G6 component source versions failed'}
+          python tests/m10-release-qualification.py
+          if($LASTEXITCODE -ne 0){throw 'M10 packaging source checks failed'}
+          python tests/m8-print-agent-gate.py
+          if($LASTEXITCODE -ne 0){throw 'M8 print source boundary failed'}
+          $manifest=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          $props=[xml](Get-Content windows/print-agent/source/Directory.Build.props -Raw)
+          $print=@($manifest.components|Where-Object component_id -eq 'print-agent')
+          if($manifest.package_version -ne '1.1.28' -or $print.Count -ne 1 -or
+             $print[0].version -ne '6.2.11' -or
+             [string]$props.Project.PropertyGroup.SoknaAgentVersion -ne '6.2.11'){throw 'Print version mismatch'}
+      - name: A52 cross-thread Mutex release and existing print-service regression
+        shell: pwsh
+        working-directory: windows/print-agent/source
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case A52 --results "$env:RUNNER_TEMP/print-a52"
+          if($LASTEXITCODE -ne 0){throw 'A52 cross-thread mutex release failed'}
+          dotnet run --project tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case A12 --results "$env:RUNNER_TEMP/print-a12"
+          if($LASTEXITCODE -ne 0){throw 'A12 service regression failed'}
+      - name: Preserve owned Print Agent folder and exact rollback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./packaging/windows/tests/issue55-print-owned-root-tests.ps1
+          # This PowerShell script throws on failure; $LASTEXITCODE can retain
+          # a nonzero value from its deliberately failing locked-file fixture.
+      - name: Install Inno Setup and build unified installer from exact commit
+        shell: pwsh
+        timeout-minutes: 60
+        run: |
+          $ErrorActionPreference='Stop'
+          choco install innosetup --yes --no-progress
+          if($LASTEXITCODE -ne 0){throw 'Inno Setup failed'}
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+          if(-not $iscc){throw 'Inno Setup ISCC not found'}
+          & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot "$env:RUNNER_TEMP/sokna-1128" -IsccExe $iscc
+          if($LASTEXITCODE -ne 0){throw 'Canonical full installer build failed'}
+      - name: Verify installer manifest, exact SHA and executable versions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out="$env:RUNNER_TEMP/sokna-1128"
+          $index=Get-Content "$out/artifact-index.json" -Raw|ConvertFrom-Json
+          $source=(& git rev-parse HEAD).Trim()
+          if($index.source_commit -cne $source -or $index.package_version -cne '1.1.28' -or $index.component_count -ne 5 -or $index.installer_kind -cne 'unified-v4-bootstrap'){throw 'Unqualified installer identity'}
+          if($index.print_agent.version -cne '6.2.11'){throw 'Incorrect Print Agent compiled artifact version'}
+          $name='SOKNA-Windows-Services-Setup-1.1.28.exe'
+          if($index.windows_services.file -cne $name){throw 'Installer file identity mismatch'}
+          $exe=Join-Path $out $name
+          if(-not(Test-Path $exe) -or (Get-Item $exe).Length -lt 100000000){throw 'Truncated installer'}
+          $hash=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($hash -cne $index.windows_services.sha256){throw 'Installer hash mismatch'}
+          if(([Diagnostics.FileVersionInfo]::GetVersionInfo($exe)).FileVersion -cne '1.1.28.0'){throw 'Installer Windows FileVersion mismatch'}
+          $ui=Join-Path $out 'SoknaSetupUi.exe'
+          & $ui --planner-self-test
+          if($LASTEXITCODE -ne 0){throw 'Component planner regression failed'}
+          "$hash  $name"|Set-Content "$out/SHA256SUMS.txt" -Encoding ascii
+          Write-Host 'SOKNA_1128_PRINT_STOP_HOTFIX_WINDOWS_QUALIFIED'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r91-windows-candidate
+          path: |
+            ${{ runner.temp }}/sokna-1128/SOKNA-Windows-Services-Setup-1.1.28.exe
+            ${{ runner.temp }}/sokna-1128/artifact-index.json
+            ${{ runner.temp }}/sokna-1128/SHA256SUMS.txt
+            ${{ runner.temp }}/sokna-1128/maintenance-app/*
+          if-no-files-found: error
+          retention-days: 30
+  web:
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: r91-test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 4f429ec5153d0fe30b6fc5d081a2706fafc4e299
+          path: app-baselines
+      - name: Prepare actual app sources and universal Web archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y php-cli php-mysql php-zip mariadb-client
+          mkdir -p release/r91/baseline release/r91/build/qa
+          gh release download local-public-r89-universal-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r91/baseline -p SOKNA-LOCAL-UNIVERSAL-UPDATE.zip -p SOKNA-PUBLIC-UNIVERSAL-UPDATE.zip
+          python3 release/r91/web-package.py
+          python3 release/r91/fixture.py
+      - name: Real MariaDB live-ledger attestation and incomplete-ledger refusal
+        run: |
+          mysql -h127.0.0.1 -uroot -pr91-test -e 'CREATE DATABASE r91_rebind;'
+          php release/r91/tests/database.php release/r91/build/cafe-web windows/maintenance/src/Sokna.Maintenance.Core/RoutineLocalDatabase.php /tmp/r91-db-proof > release/r91/build/qa/database.json
+      - name: Update UI and safe rejection evidence regressions
+        run: |
+          node app-baselines/release/r90/tests/update-ui.js release/r91/build/source/local > release/r91/build/qa/update-ui.json
+          php app-baselines/release/r90/tests/evidence.php release/r91/build/source/local > release/r91/build/qa/evidence.json
+          python3 - <<'PY'
+          import pathlib,subprocess,json
+          paths=[p for p in pathlib.Path('release/r91/build/source/local').rglob('*') if p.suffix in ('.php','.js')]
+          for p in paths:subprocess.run(['php','-l',str(p)] if p.suffix=='.php' else ['node','--check',str(p)],check=True,capture_output=True)
+          pathlib.Path('release/r91/build/qa/syntax.json').write_text(json.dumps({'passed':len(paths),'failed':0}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r91-web-candidate
+          path: release/r91/build/dist
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r91-web-qa
+          path: release/r91/build/qa
+  native-link:
+    needs: [qualify, web]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: cc51f679546195a467da8ecc78f2ffc74ed14564
+          path: previous
+      - uses: actions/checkout@v4
+        with:
+          ref: 48080b646766c4bcdcb9cd7675de32ddc7669380
+          path: app-baselines
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: r91-windows-candidate
+          path: windows-candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: r91-web-candidate
+          path: web-candidate
+      - name: Prepare exact previous service and final scoped EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($name in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine')){
+            dotnet publish "previous/windows/maintenance/src/$name/$name.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o "$env:RUNNER_TEMP/previous-app"
+            if($LASTEXITCODE -ne 0){throw 'Previous service build failed'}
+          }
+          & packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1 -RepoRoot $PWD.Path -MaintenanceAppBundle "$PWD/windows-candidate/maintenance-app" -OutputRoot "$env:RUNNER_TEMP/scoped-payload"
+          $iscc='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if(-not(Test-Path $iscc)){choco install innosetup -y --no-progress|Out-Host}
+          & $iscc "/DPayloadRoot=$env:RUNNER_TEMP/scoped-payload" "/DOutputDir=$env:RUNNER_TEMP/scoped-dist" packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss
+          if($LASTEXITCODE -ne 0){throw 'Final scoped EXE build failed'}
+          python release/r91/fixture.py
+      - name: Actual EXE upgrade preserves Cafe tuple then native Core consumes its output
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'SOKNA-r91-scoped';$app=Join-Path $root 'Maintenance/App'
+          New-Item -ItemType Directory -Force $app|Out-Null
+          Copy-Item "$env:RUNNER_TEMP/previous-app/*" $app -Recurse -Force
+          $identity=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/Maintenance/installed-release-identity.json'
+          New-Item -ItemType Directory -Force (Split-Path $identity -Parent)|Out-Null
+          Copy-Item release/r91/fixtures/installed-cafe-identity.json $identity
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'Unexpected pre-existing service'}
+          try{
+            New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+(Join-Path $app 'SoknaMaintenanceSupervisor.exe')+'"') -StartupType Automatic|Out-Null
+            Start-Service SoknaMaintenanceSupervisor
+            $exe=@(Get-ChildItem "$env:RUNNER_TEMP/scoped-dist" -Filter '*0.3.19*.exe')[0].FullName
+            $p=Start-Process $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
+            if(-not$p.WaitForExit(120000)-or$p.ExitCode-ne0){throw 'Final EXE native service upgrade failed'}
+            foreach($name in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')){
+              if(([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $app $name))).FileVersion-ne'0.3.19.0'){throw 'Wrong installed PE version'}
+            }
+            $readback=Get-Content $identity -Raw|ConvertFrom-Json
+            if($readback.local.version-ne'3.0.0-g6.2-workspace.231bf-u01-iran-time-updater-rc1'-or$readback.local.migration_head-ne'0074_iran_time_notification_boundaries'-or$null-ne$readback.local.authority_epoch_policy){throw 'Installer fabricated Cafe business identity'}
+            dotnet run --project release/r91/tests/native/Native.csproj -c Release -- "$PWD/release/r91/build/cafe-web" $identity "$PWD/web-candidate/SOKNA-LOCAL-UNIVERSAL-UPDATE.zip" "$PWD/release/r91/build/qa/native.json"
+            if($LASTEXITCODE-ne0){throw 'Native current/stale identity regression failed'}
+          }finally{Stop-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue;& "$env:WINDIR/System32/sc.exe" delete SoknaMaintenanceSupervisor|Out-Null}
+      - name: Support ZIP qualification on updated source
+        shell: powershell
+        run: |
+          & release/support-identity-20261101/tests/identity.ps1 -Collector packaging/windows/scripts/collect-support-v2.ps1 | Set-Content release/r91/build/qa/support-identity.json -Encoding UTF8
+          & release/support-identity-20261101/tests/bundle.ps1 -RepoRoot . | Set-Content release/r91/build/qa/support-zip.json -Encoding UTF8
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r91-native-qa
+          path: release/r91/build/qa
