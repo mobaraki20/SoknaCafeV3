@@ -108,6 +108,15 @@ jobs:
           & $ui --planner-self-test
           if($LASTEXITCODE -ne 0){throw 'Component planner regression failed'}
           "$hash  $name"|Set-Content "$out/SHA256SUMS.txt" -Encoding ascii
+          $shell=Join-Path $out 'unified-shell-v4'
+          $components=Get-Content (Join-Path $shell 'windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
+          foreach($id in @('runtime','print-agent','maintenance-recovery-console')){
+            $row=@($components.components|Where-Object{$_.component_id-eq$id})[0]
+            $source=Join-Path $shell $row.payload_primary
+            $destination=Join-Path (Join-Path $out 'native-kept') $row.installed_primary
+            New-Item -ItemType Directory -Force (Split-Path $destination -Parent)|Out-Null
+            Copy-Item $source $destination
+          }
           Write-Host 'SOKNA_1128_PRINT_STOP_HOTFIX_WINDOWS_QUALIFIED'
       - uses: actions/upload-artifact@v4
         with:
@@ -117,6 +126,7 @@ jobs:
             ${{ runner.temp }}/sokna-1128/artifact-index.json
             ${{ runner.temp }}/sokna-1128/SHA256SUMS.txt
             ${{ runner.temp }}/sokna-1128/maintenance-app/*
+            ${{ runner.temp }}/sokna-1128/native-kept/**
           if-no-files-found: error
           retention-days: 30
   web:
@@ -221,6 +231,7 @@ jobs:
           $root=Join-Path $env:RUNNER_TEMP 'SOKNA-r91-scoped';$app=Join-Path $root 'Maintenance/App'
           New-Item -ItemType Directory -Force $app|Out-Null
           Copy-Item "$env:RUNNER_TEMP/previous-app/*" $app -Recurse -Force
+          Copy-Item "$PWD/windows-candidate/native-kept/*" $root -Recurse -Force
           $identity=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/Maintenance/installed-release-identity.json'
           New-Item -ItemType Directory -Force (Split-Path $identity -Parent)|Out-Null
           Copy-Item release/r91/fixtures/installed-cafe-identity.json $identity
@@ -229,8 +240,12 @@ jobs:
             New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+(Join-Path $app 'SoknaMaintenanceSupervisor.exe')+'"') -StartupType Automatic|Out-Null
             Start-Service SoknaMaintenanceSupervisor
             $exe=@(Get-ChildItem "$env:RUNNER_TEMP/scoped-dist" -Filter '*0.3.19*.exe')[0].FullName
-            $p=Start-Process $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
-            if(-not$p.WaitForExit(120000)-or$p.ExitCode-ne0){throw 'Final EXE native service upgrade failed'}
+            $p=Start-Process $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG='+$env:RUNNER_TEMP+'/r91-scoped-inno.log')) -PassThru
+            if(-not$p.WaitForExit(120000)-or$p.ExitCode-ne0){
+              $setup=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup'
+              Get-ChildItem $setup -Recurse -File -ErrorAction SilentlyContinue|Where-Object{$_.Name-in @('maintenance-only-last-error.txt','install-result.json','system-events.jsonl')}|ForEach-Object{Write-Host $_.Name;Get-Content $_.FullName -Tail 25|Write-Host}
+              throw ('Final EXE native service upgrade failed; exit='+$p.ExitCode)
+            }
             foreach($name in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')){
               if(([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $app $name))).FileVersion-ne'0.3.19.0'){throw 'Wrong installed PE version'}
             }
