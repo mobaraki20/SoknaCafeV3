@@ -58,6 +58,8 @@ public sealed class SupervisorSignedLocalIdentityRebind
             .Where(x => x is not null && x.Version == physical.Build &&
                 string.Equals(x.ManagedTreeSha256, tree, StringComparison.OrdinalIgnoreCase))
             .ToArray();
+        if (eligible.Length == 0)
+            throw new InvalidDataException("LOCAL_REBIND_PHYSICAL_BASELINE_NOT_FOUND: build=" + physical.Build + "; managed_tree_sha256=" + tree);
         if (eligible.Length != 1)
             throw new InvalidDataException("LOCAL_REBIND_UNIQUE_SIGNED_BASELINE_REQUIRED");
         var baseline = eligible[0]!;
@@ -76,14 +78,8 @@ public sealed class SupervisorSignedLocalIdentityRebind
         // External installations may have legitimately applied append-only migrations
         // while leaving Maintenance metadata stale. Reconcile only after the live
         // database exactly matches that verified physical catalog, with no writes.
-        var databaseReconciled = RequiresLiveDatabaseReconciliation(
-            previous.Local, baseline, physical.WebRoot);
-        if (databaseReconciled)
-        {
-            var plan = RoutineLocalDatabase.Plan(physical.WebRoot, physical.WebRoot);
-            RoutineLocalDatabase.RequireBaseline(physical.PackageRoot,
-                physical.WebRoot, physical.WebRoot, plan);
-        }
+        var databaseReconciled = AttestExternalBaseline(previous.Local, baseline,
+            physical.WebRoot, physical.PackageRoot);
 
         LocalManagedTreeAttestation.RequireExact(physical.WebRoot, physical.ManagedFileCount, tree);
         if (File.ReadAllText(Path.Combine(physical.WebRoot, "VERSION.txt")).Trim() != physical.Build)
@@ -130,6 +126,18 @@ public sealed class SupervisorSignedLocalIdentityRebind
         if (readback != verifiedCandidate)
             throw new InvalidDataException("LOCAL_REBIND_ATOMIC_READBACK_MISMATCH");
         return receipt;
+    }
+
+    public static bool AttestExternalBaseline(ReleaseComponentIdentity previous,
+        ReleaseComponentIdentity candidate, string verifiedWebRoot, string packageRoot)
+    {
+        var required = RequiresLiveDatabaseReconciliation(previous, candidate, verifiedWebRoot);
+        if (required)
+        {
+            var plan = RoutineLocalDatabase.Plan(verifiedWebRoot, verifiedWebRoot);
+            RoutineLocalDatabase.RequireBaseline(packageRoot, verifiedWebRoot, verifiedWebRoot, plan);
+        }
+        return required;
     }
 
     public static bool RequiresLiveDatabaseReconciliation(

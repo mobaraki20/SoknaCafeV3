@@ -20,7 +20,7 @@ permissions:
   contents: write
 concurrency:
   group: sokna-windows-1128-print-stop-hotfix
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   qualify:
     name: Windows print regression and five-component installer
@@ -141,6 +141,11 @@ jobs:
           gh release download local-public-r89-universal-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r91/baseline -p SOKNA-LOCAL-UNIVERSAL-UPDATE.zip -p SOKNA-PUBLIC-UNIVERSAL-UPDATE.zip
           python3 release/r91/web-package.py
           python3 release/r91/fixture.py
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build actual CSharp reconciliation database integration
+        run: dotnet build release/r91/tests/database/Database.csproj -c Release
       - name: Real MariaDB live-ledger attestation and incomplete-ledger refusal
         run: |
           mysql -h127.0.0.1 -uroot -pr91-test -e 'CREATE DATABASE r91_rebind;'
@@ -225,6 +230,9 @@ jobs:
             foreach($name in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')){
               if(([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $app $name))).FileVersion-ne'0.3.19.0'){throw 'Wrong installed PE version'}
             }
+            $engine=Join-Path $app 'SoknaMaintenanceUpdateEngine.exe'
+            $help=(& $engine --help|Out-String)
+            if($LASTEXITCODE-ne0-or$help-notmatch'Engine 0\.3\.19 '-or$help-notmatch'verify-only --package'-or$help-notmatch'local-slot-inspect'){throw 'Actual compiled Engine help contract mismatch'}
             $readback=Get-Content $identity -Raw|ConvertFrom-Json
             if($readback.local.version-ne'3.0.0-g6.2-workspace.231bf-u01-iran-time-updater-rc1'-or$readback.local.migration_head-ne'0074_iran_time_notification_boundaries'-or$null-ne$readback.local.authority_epoch_policy){throw 'Installer fabricated Cafe business identity'}
             dotnet run --project release/r91/tests/native/Native.csproj -c Release -- "$PWD/release/r91/build/cafe-web" $identity "$PWD/web-candidate/SOKNA-LOCAL-UNIVERSAL-UPDATE.zip" "$PWD/release/r91/build/qa/native.json"
@@ -240,3 +248,31 @@ jobs:
         with:
           name: r91-native-qa
           path: release/r91/build/qa
+  publish:
+    needs: [qualify, web, native-link]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: r91-windows-candidate
+          path: publish
+      - uses: actions/download-artifact@v4
+        with:
+          name: r91-web-candidate
+          path: publish
+      - uses: actions/download-artifact@v4
+        with:
+          name: r91-web-qa
+          path: publish/qa
+      - uses: actions/download-artifact@v4
+        with:
+          name: r91-native-qa
+          path: publish/qa
+      - name: Verify coherent source and all package gates
+        run: python3 release/r91/finalize.py
+      - name: Publish coordinated universal UAT release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create sokna-r91-windows-web-home-cafe-uat-20261102 publish/SOKNA-Windows-Services-Setup-1.1.28.exe publish/SOKNA-LOCAL-UNIVERSAL-UPDATE.zip publish/SOKNA-PUBLIC-UNIVERSAL-UPDATE.zip publish/SHA256SUMS.txt publish/PACKAGE-VERIFICATION.json publish/artifact-index.json publish/QA-RESULTS.json publish/R91-QA-EVIDENCE.zip publish/REPORT-FA.md --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "SOKNA — Windows and universal Local/Public coordinated update" --notes-file publish/REPORT-FA.md
