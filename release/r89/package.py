@@ -1,4 +1,4 @@
-"""Build exact-base deltas. Rebuild and compare every target byte before delivery."""
+"""Build universal full managed snapshots with exact source allowlists."""
 import copy, hashlib, io, json, os, pathlib, zipfile
 from prepare import ROOT, OUT, digest
 DIST=OUT/'dist';DIST.mkdir(exist_ok=True)
@@ -23,7 +23,7 @@ for kind,version in [('local','3.0.0-g6.2-workspace.231cm-r89-universal-uat'),('
  root=OUT/'source'/kind;rid='sokna-r89-universal-20261101-'+kind
  (root/'VERSION.txt').write_text(version+'\n')
  p=root/'resources/build-provenance.json';j=json.loads(p.read_bytes());j.update(version=version,release_set_id=rid,classification='R89_UNIVERSAL_UAT',source_commit=commit,scope='Same qualified package per component; R88 application fixes preserved',target_host_install_verified=False);p.write_bytes(jb(j))
- p=root/'resources/release-identity-v1.json';j=json.loads(p.read_bytes());j.update(version=version,release_set_id=rid);j['source'].update(source_ref=commit,canonical_tree_sha256=canonical(files(root),j['source']['digest_excludes']));j['qualification']={'tier':'universal_known_baselines_uat','claim_rule':'Native receiver lab gates; actual host readback still required'};p.write_bytes(jb(j))
+ p=root/'resources/release-identity-v1.json';j=json.loads(p.read_bytes());j.update(version=version,release_set_id=rid,baseline={'mode':'exact_compatible_allowlist','source_labels':baselines[kind]});j['source'].update(source_ref=commit,canonical_tree_sha256=canonical(files(root),j['source']['digest_excludes']));j['qualification']={'tier':'universal_known_baselines_uat','claim_rule':'Native receiver lab gates; actual host readback still required'};p.write_bytes(jb(j))
  target=files(root);bases=[]
  for label in baselines[kind]:
   old=files(OUT/label/kind);assert len(old)==len(target)

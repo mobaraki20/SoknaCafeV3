@@ -122,3 +122,26 @@ jobs:
         with:
           name: r89-native-qa
           path: release/r89/native-qa
+  publish:
+    needs: [real-db, windows-native]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: r89-candidate
+          path: release/r89/build/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: r89-source-qa
+          path: release/r89/build/qa
+      - uses: actions/download-artifact@v4
+        with:
+          name: r89-native-qa
+          path: release/r89/build/qa
+      - name: Verify all gates and package checksums
+        run: python3 release/r89/finalize.py
+      - name: Publish qualified universal UAT packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create local-public-r89-universal-uat-20261101 release/r89/build/dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "SOKNA — Universal Local and Public update" --notes-file release/r89/build/dist/REPORT-FA.md
