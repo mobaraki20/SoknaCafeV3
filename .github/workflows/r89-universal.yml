@@ -6,8 +6,12 @@ on:
 defaults:
   run:
     shell: bash
+concurrency:
+  group: r89-universal-qualification
+  cancel-in-progress: true
 permissions:
   contents: write
+  actions: write
 jobs:
   real-db:
     runs-on: ubuntu-24.04
@@ -24,6 +28,13 @@ jobs:
       DB_PASSWORD: r89-test
       DB_PORT: '3306'
     steps:
+      - name: Cancel superseded qualification runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in $(gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=work%2Fr89-universal-20261101&per_page=30" --jq ' .workflow_runs[] | select(.path == ".github/workflows/r89-universal.yml" and .status != "completed") | .id'); do
+            if [ "$id" != "$GITHUB_RUN_ID" ] && [ "$id" -lt "$GITHUB_RUN_ID" ]; then gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/cancel" || true; fi
+          done
       - uses: actions/checkout@v4
       - name: Install PHP and DB client
         run: sudo apt-get update -qq && sudo apt-get install -y php-cli php-mysql php-sqlite3 php-zip mariadb-client
