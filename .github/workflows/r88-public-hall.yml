@@ -40,7 +40,7 @@ jobs:
           python3 release/r88/prepare.py
           mkdir -p release/r88/build/qa
       - name: Create isolated databases
-        run: mysql -h127.0.0.1 -uroot -pr88-test -e 'CREATE DATABASE r84_time; CREATE DATABASE r83_local; CREATE DATABASE r83_public; CREATE DATABASE r84_guest; CREATE DATABASE r86_finance; CREATE DATABASE r87_hall; CREATE DATABASE r88_actions; CREATE DATABASE r88_actions_public; CREATE DATABASE r87_hall_public;'
+        run: mysql -h127.0.0.1 -uroot -pr88-test -e 'CREATE DATABASE r84_time; CREATE DATABASE r83_local; CREATE DATABASE r83_public; CREATE DATABASE r84_guest; CREATE DATABASE r86_finance; CREATE DATABASE r87_hall; CREATE DATABASE r88_actions; CREATE DATABASE r88_actions_public; CREATE DATABASE r88_actions_red; CREATE DATABASE r88_actions_red_public; CREATE DATABASE r87_hall_public;'
       - name: Existing transaction, Guest and time regressions
         run: |
           php release/r84/tests/runtime-time.php release/r88/build/source > release/r88/build/qa/time.json
@@ -54,6 +54,9 @@ jobs:
       - name: Reproduce disabled Public Hall controls
         run: |
           if php release/r88/tests/features.php release/r88/build/baseline > release/r88/build/qa/features-before.json; then exit 1; fi
+      - name: Reproduce missing canonical correction readback
+        run: |
+          if ACTIONS_DB=r88_actions_red php release/r88/tests/actions.php release/r88/build/baseline > release/r88/build/qa/actions-before.json; then exit 1; fi
       - name: Public Hall controls and canonical command lifecycle
         run: |
           php release/r88/tests/features.php release/r88/build/source > release/r88/build/qa/features-after.json

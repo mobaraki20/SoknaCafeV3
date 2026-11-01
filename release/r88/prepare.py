@@ -7,6 +7,7 @@ def prepare():
  subprocess.run(['python3',str(ROOT.parent/'r87/prepare.py')],check=True)
  for kind in ['local','public']:
   old=files(ROOT.parent/'r87/build/baseline'/kind);data=dict(old)
+  write(OUT/'r86'/kind,old)
   for version in ['r81','r83','r84','r85']:write(OUT/version/kind,files(ROOT.parent/'r87/build'/version/kind))
   if kind=='local':
    path=ROOT/'baselines/SOKNA-R87-LOCAL-R86-TO-R87-DELTA-HOME-UAT.zip'
