@@ -4,6 +4,7 @@ $root=$argv[1];require $root.'/local/bootstrap.php';
 require $root.'/public/src/Remote/PublicDashboardFinance.php';
 require $root.'/public/src/Http/PublicReportArchiveRange.php';
 use Sokna\PublicEdge\Remote\PublicDashboardFinance as F;
+use Sokna\PublicEdge\Remote\PublicDashboardFinance;
 $db=(string)(getenv('FINANCE_DB')?:'r86_finance');$port=(string)(getenv('DB_PORT')?:3306);$password=(string)(getenv('DB_PASSWORD')?:'r86-test');
 $cfg=['app'=>['timezone'=>'Asia/Tehran','data_dir'=>sys_get_temp_dir().'/r86-finance-'.bin2hex(random_bytes(4))],'installation'=>['id'=>'r86-test'],'db'=>['host'=>'127.0.0.1','port'=>$port,'name'=>$db,'charset'=>'utf8mb4','user'=>'root','pass'=>$password]];
 $core=sokna_local_bootstrap($cfg);$core->migrations()->migrate('0059_menu_business_reconciliation_v4');$core->defaultContentSeeder()->seed();$core->migrations()->migrate();$p=$core->database();
@@ -30,8 +31,8 @@ check(array_map('intval',array_column($snapshot['daily'],'net_sales'))===$expect
 check($snapshot['today_summary']['net_sales']===4000&&$snapshot['today_summary']['avg_ticket']===2000&&$snapshot['today_summary']['completed_settlements']===2,'partial payments preserve existing average-per-successful-settlement contract');
 $report=$core->reporting()->report($days[0],$today);$archive=$core->reporting()->remoteArchive();$projection=['dashboard'=>$snapshot,'archive'=>$archive];
 $public=F::reconcile($projection,$today);
-check($public['today']===$snapshot['today_summary'],'Public today metrics exactly match Local ledger snapshot');
-check($public['yesterday']===$snapshot['yesterday_summary'],'Public reversal-only previous day equals Local');
+check($public['today']==$snapshot['today_summary'],'Public today metrics exactly match Local ledger snapshot');
+check($public['yesterday']==$snapshot['yesterday_summary'],'Public reversal-only previous day equals Local');
 check($public['yesterday_has_receipt']===false,'reversal-only day never masquerades as a successful receipt for average display');
 foreach($days as $i=>$day)check(($public['daily'][$day]??null)===$expected[$i],'Public chart equals Local for '.$day);
 $range=Sokna\PublicEdge\Http\PublicReportArchiveRange::aggregate($projection,$days[0],$today);
