@@ -1,0 +1,38 @@
+<?php
+declare(strict_types=1);
+$root=$argv[1];date_default_timezone_set('UTC');
+spl_autoload_register(function(string $class)use($root):void{$prefix='Sokna\\PublicEdge\\';if(str_starts_with($class,$prefix)){$p=$root.'/public/src/'.str_replace('\\','/',substr($class,strlen($prefix))).'.php';if(is_file($p))require_once $p;}});
+require $root.'/public/src/Shared/IranTime.php';
+use Sokna\PublicEdge\Guest\{GuestRuntimeService,GuestCompatibilityService};
+use Sokna\PublicEdge\Remote\RemoteReadModelService;
+use Sokna\PublicEdge\Realtime\RealtimeService;
+use Sokna\PublicEdge\Connectivity\ConnectivityService;
+$p=new PDO('mysql:host=127.0.0.1;port='.(getenv('DB_PORT')?:3306).';dbname='.(getenv('GUEST_DB')?:'r84_guest').';charset=utf8mb4','root',getenv('DB_PASSWORD')?:'r84-test',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);
+(new Sokna\PublicEdge\Core\Migrations($p,$root.'/public/database/migrations'))->migrate();
+$p->exec("INSERT INTO installations(installation_id,display_name) VALUES('r84-test','R84')");
+$connectivity=new ConnectivityService($p);$connectivity->heartbeat('r84-test','r84-test','running');
+$models=new RemoteReadModelService($p,$connectivity);$guest=new GuestCompatibilityService(new GuestRuntimeService($p),new RealtimeService($p,$connectivity,$models),$models);
+$method=(new ReflectionClass($guest))->getMethod('guestOrderListFromProjection');$seq=0;
+$store=function(array $payload)use($models,&$seq):void{$r=$models->syncModelV2('r84-test',['format'=>'sokna-read-model-v2','up_to_sequence'=>++$seq,'model'=>['format'=>'sokna-remote-read-v1','model_key'=>'guest_operational','generated_at'=>gmdate('c'),'source_version'=>Sokna\PublicEdge\Core\CanonicalJson::sha256($payload),'payload'=>$payload]]);if($r['status']!==200)throw new RuntimeException(json_encode($r));};
+$base=['device_token'=>'device-own','session_token'=>'session-1','known_order_code'=>''];$table=['id'=>1];$results=[];
+function check(bool $v,string $test):void{global $results;$results[]=['test'=>$test,'pass'=>$v];}
+$store(['tables'=>['1'=>[]],'orders'=>[]]);
+check($models->readInternal('r84-test','guest_operational')['body']['stale']===false,'fixture is genuinely fresh, not a stale-model shortcut');
+check($method->invoke($guest,'r84-test',$table,$base)===null,'fresh pre-commit model cannot prove requested session absent');
+$payload=['tables'=>['1'=>['active_session'=>['id'=>1,'token'=>'session-1','status'=>'active']]],'orders'=>[]];$store($payload);
+check($method->invoke($guest,'r84-test',$table,$base)===null,'fresh session with no own projected orders resolves at Local');
+$order=fn(string $code,string $device='device-own'):array=>['session_id'=>1,'device_hash'=>hash('sha256',$device),'public'=>['order_code'=>$code,'order_number'=>1,'created_at'=>gmdate('c'),'status'=>'pending_approval']];
+$payload['orders']=[$order('O-old'),$order('O-other','device-other')];$store($payload);
+$b=$base;$b['known_order_code']='O-new';
+check($method->invoke($guest,'r84-test',$table,$b)===null,'nonempty pre-commit model cannot hide known newer receipt');
+$b['known_order_code']='O-old';$r=$method->invoke($guest,'r84-test',$table,$b);
+check($r['status']===200&&count($r['body']['orders'])===1&&$r['body']['orders'][0]['order_code']==='O-old','known projected receipt uses fast path without leaking another device');
+$payload['orders'][]=$order('O-new');$store($payload);$b['known_order_code']='O-new';$r=$method->invoke($guest,'r84-test',$table,$b);
+check($r['status']===200&&count($r['body']['orders'])===2,'known receipt becomes readable after projection arrives');
+$b['session_token']='other-session';check($method->invoke($guest,'r84-test',$table,$b)===null,'unmatched requested session cannot become empty success');
+$p->exec("UPDATE installation_heartbeats SET last_seen_at=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 HOUR)");
+$b=$base;$b['known_order_code']='O-old';$r=$method->invoke($guest,'r84-test',$table,$b);
+check($r['status']===200&&$r['body']['degraded']===true,'offline existing orders remain readable with explicit stale flag');
+$payload['orders']=[];$store($payload);check($method->invoke($guest,'r84-test',$table,$base)===null,'offline absence is unresolved, not authoritative empty');
+echo json_encode($results,JSON_PRETTY_PRINT).PHP_EOL;
+exit(count(array_filter($results,fn($x)=>!$x['pass']))?1:0);

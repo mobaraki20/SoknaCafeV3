@@ -36,11 +36,17 @@ jobs:
           python3 release/r84/prepare.py
           mkdir -p release/r84/build/qa
       - name: Create isolated databases
-        run: mysql -h127.0.0.1 -uroot -pr84-test -e 'CREATE DATABASE r84_time; CREATE DATABASE r83_local; CREATE DATABASE r83_public;'
+        run: mysql -h127.0.0.1 -uroot -pr84-test -e 'CREATE DATABASE r84_time; CREATE DATABASE r83_local; CREATE DATABASE r83_public; CREATE DATABASE r84_guest; CREATE DATABASE r84_guest_red;'
       - name: Reproduce and fix runtime time contract
         run: |
           if php release/r84/tests/runtime-time.php release/r84/build/baseline > release/r84/build/qa/time-before.json; then echo 'Baseline unexpectedly passed'; exit 1; fi
           php release/r84/tests/runtime-time.php release/r84/build/source | tee release/r84/build/qa/time-after.json
+      - name: Reproduce and fix guest list causal reads
+        run: |
+          if GUEST_DB=r84_guest_red php release/r84/tests/guest-list.php release/r84/build/baseline > release/r84/build/qa/guest-list-before.json; then echo 'Baseline unexpectedly passed'; exit 1; fi
+          php release/r84/tests/guest-list.php release/r84/build/source | tee release/r84/build/qa/guest-list-after.json
+          if node release/r84/tests/guest-list.js release/r84/build/baseline > release/r84/build/qa/guest-list-js-before.json; then exit 1; fi
+          node release/r84/tests/guest-list.js release/r84/build/source > release/r84/build/qa/guest-list-js-after.json
       - name: Existing MariaDB and guest regressions
         run: |
           php release/r83/tests/pure.php release/r84/build/source > release/r84/build/qa/pure.json
