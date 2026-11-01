@@ -54,6 +54,24 @@ jobs:
           node release/r83/tests/guest.js release/r84/build/source > release/r84/build/qa/guest.json
           php release/r83/tests/local.php release/r84/build/source > release/r84/build/qa/local.json
           php release/r83/tests/public.php release/r84/build/source > release/r84/build/qa/public.json
+      - name: Syntax of complete candidate
+        run: |
+          python3 - <<'PY'
+          import pathlib,subprocess,json
+          files=[p for p in pathlib.Path('release/r84/build/source').rglob('*') if p.suffix in ('.php','.js')]
+          for p in files:subprocess.run(['php','-l',str(p)] if p.suffix=='.php' else ['node','--check',str(p)],check=True,capture_output=True)
+          pathlib.Path('release/r84/build/qa/syntax.json').write_text(json.dumps({'passed':len(files),'failed':0}))
+          PY
+      - name: Build exact deltas and native receiver stage
+        run: |
+          python3 release/r84/package.py
+          php release/r84/tests/package.php release/r84/build/source release/r84/build/dist > release/r84/build/qa/package.json
+          python3 release/r84/finalize.py
+      - name: Publish verified independent Local and Public deltas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create local-public-r84-causal-read-uat-20261101 release/r84/build/dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "SOKNA R84 — Runtime time and Guest causal reads" --notes-file release/r84/build/dist/REPORT-FA.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:
