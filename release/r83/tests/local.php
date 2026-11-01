@@ -79,6 +79,9 @@ $payload=['session_id'=>$sid,'destination'=>'direct','mode'=>'full','tenders'=>[
 $paid=$core->settlements()->settle($payload,$a);$repaid=$core->settlements()->settle($payload,$a);
 check(!empty($repaid['idempotent'])&&$paid['settlement_id']===$repaid['settlement_id'],'lost payment response cannot duplicate settlement');
 check($core->settlements()->requestStatus($sid,$payload['request_id'],$a)['state']==='committed','unknown payment outcome resolves canonically');
+$reports=$core->publicProjectionBuilder()->remoteModelsFor(['reports']);
+$rp=$reports[0]['payload'];$net=[];foreach($rp['archive']['sales'] as $day)$net[$day['date']]=(int)$day['net_sales'];
+check(array_reduce($rp['dashboard']['daily'],fn($ok,$day)=>$ok&&(int)$day['net_sales']===($net[$day['business_date']]??0),true),'seven-day dashboard and archive agree in same MariaDB snapshot');
 $publisher=$core->publicEdgePublisher();$rc=new ReflectionClass($publisher);
 $record=$rc->getMethod('recordProjectionModelSuccess');$record->invoke($publisher,'operations',20,str_repeat('b',64));$record->invoke($publisher,'operations',10,str_repeat('a',64));
 $row=$p->query("SELECT ack_sequence,source_version FROM public_projection_model_delivery WHERE model_key='operations'")->fetch(PDO::FETCH_ASSOC);

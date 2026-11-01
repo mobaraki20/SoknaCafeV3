@@ -35,7 +35,9 @@ $old=$body;$old['model']['payload']=['old'=>true];$old['model']['source_version'
 $resp=$service->syncModelV2('r83-test',$old);check($resp['status']===409&&$resp['body']['error']==='projection_model_sequence_conflict','older delivery cannot roll back Public cursor');
 check(json_decode($pdo->query("SELECT payload_json FROM remote_read_models WHERE model_key='reports'")->fetchColumn(),true)===$payload,'older delivery cannot replace newer Public content');
 $session=['installation_id'=>'r83-test','capabilities'=>['reports.read']];
-check($service->read($session,'reports')['status']===200,'Public report remains readable with Local offline');
+$offline=$service->read($session,'reports');
+check($offline['status']===200,'Public report remains readable with Local offline');
+check($offline['body']['stale']===true,'offline Public data is explicitly stale, not healthy current data');
 check($service->read(['installation_id'=>'r83-test','capabilities'=>[]],'reports')['status']===403,'Public role guard remains enforced');
 $pdo->exec("UPDATE remote_read_models SET payload_json='null' WHERE model_key='reports'");
 check($service->read($session,'reports')['status']===502,'invalid stored report is not empty success');

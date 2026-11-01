@@ -7,7 +7,7 @@ defaults:
   run:
     shell: bash
 permissions:
-  contents: read
+  contents: write
 jobs:
   real-db:
     runs-on: ubuntu-24.04
@@ -59,6 +59,13 @@ jobs:
         run: |
           python3 release/r83/package.py
           php release/r83/tests/package.php release/r83/build/source release/r83/build/dist > release/r83/build/qa/package.json
+      - name: Assemble verified report and evidence
+        run: python3 release/r83/finalize.py
+      - name: Publish tested Home UAT update packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create local-public-r83-communication-uat-20261101 release/r83/build/dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "SOKNA R83 — Local/Public communication Home UAT" --notes-file release/r83/build/dist/REPORT-FA.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:
