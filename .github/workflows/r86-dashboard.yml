@@ -65,6 +65,16 @@ jobs:
           for p in files:subprocess.run(['php','-l',str(p)] if p.suffix=='.php' else ['node','--check',str(p)],check=True,capture_output=True)
           pathlib.Path('release/r86/build/qa/syntax.json').write_text(json.dumps({'passed':len(files),'failed':0}))
           PY
+      - name: Build independent deltas and test native receiver
+        run: |
+          python3 release/r86/package.py
+          php release/r86/tests/package.php release/r86/build/source release/r86/build/dist > release/r86/build/qa/package.json
+          python3 release/r86/finalize.py
+      - name: Publish verified Home UAT packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create local-public-r86-dashboard-uat-20261101 release/r86/build/dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "SOKNA R86 — Coherent financial dashboards" --notes-file release/r86/build/dist/REPORT-FA.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:
