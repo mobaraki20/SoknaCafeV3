@@ -65,7 +65,8 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           & ./packaging/windows/tests/issue55-print-owned-root-tests.ps1
-          if($LASTEXITCODE -ne 0){throw 'Print Agent locked-file / rollback gate failed'}
+          # This PowerShell script throws on failure; $LASTEXITCODE can retain
+          # a nonzero value from its deliberately failing locked-file fixture.
       - name: Install Inno Setup and build unified installer from exact commit
         shell: pwsh
         timeout-minutes: 60
