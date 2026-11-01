@@ -1,0 +1,36 @@
+name: R90 update feedback source qualification
+on:
+  push:
+    branches: [work/r90-update-feedback-20261101]
+    paths: [release/r90/**, .github/workflows/r90-update-feedback.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read exact published Local source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release/r90/baseline
+          gh release download local-public-r89-universal-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r90/baseline -p SOKNA-LOCAL-UNIVERSAL-UPDATE.zip
+          python3 release/r90/prepare.py
+      - name: Qualify notice priority and readiness controls
+        run: node release/r90/tests/update-ui.js release/r90/build/source > release/r90/build/qa/update-ui.json
+      - name: Qualify safe engine reason and support evidence
+        run: php release/r90/tests/evidence.php release/r90/build/source > release/r90/build/qa/evidence.json
+      - name: Complete Local syntax
+        run: |
+          python3 - <<'PY'
+          import pathlib,subprocess,json
+          files=[p for p in pathlib.Path('release/r90/build/source').rglob('*') if p.suffix in ('.php','.js')]
+          for p in files:subprocess.run(['php','-l',str(p)] if p.suffix=='.php' else ['node','--check',str(p)],check=True,capture_output=True)
+          pathlib.Path('release/r90/build/qa/syntax.json').write_text(json.dumps({'passed':len(files),'failed':0}))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r90-source-only-qa
+          path: release/r90/build/qa
