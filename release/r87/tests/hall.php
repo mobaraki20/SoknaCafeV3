@@ -62,7 +62,7 @@ check($view!==null&&$view['signature']===$reference['signature']&&$view['remaini
 check($can&&!array_filter(R87Statement::$sql,fn($sql)=>str_contains($sql,'FOR UPDATE')),'read-only projection contains no current-read write locks');
 $joined=false;try{$m=$read();$joined=$reader->inTransaction()&&($account($m,$t['session'])['remaining_total']??null)===3000;}catch(Throwable){}
 check($joined,'operations builder joins caller transaction without nesting or committing it');if($reader->inTransaction())$reader->rollBack();
-R87Statement::$sql=[];$readCore->settlements()->account($t['session']);check(count(array_filter(R87Statement::$sql,fn($sql)=>str_contains($sql,'FOR UPDATE')))>=3,'cashier account retains session, order and line write locks');
+R87Statement::$sql=[];$readCore->settlements()->account($t['session']);check(count(array_filter(array_unique(R87Statement::$sql),fn($sql)=>str_contains($sql,'FOR UPDATE')))>=3,'cashier account retains session, order and line write locks');
 R87Statement::$fail=true;$failed=false;try{$read();}catch(Throwable){$failed=true;}
 check($failed&&!$reader->inTransaction(),'account error aborts whole projection and rolls back builder-owned snapshot');
 $reader->beginTransaction();$failed=false;try{$read();}catch(Throwable){$failed=true;}

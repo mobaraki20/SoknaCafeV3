@@ -67,6 +67,15 @@ jobs:
           for p in files:subprocess.run(['php','-l',str(p)] if p.suffix=='.php' else ['node','--check',str(p)],check=True,capture_output=True)
           pathlib.Path('release/r87/build/qa/syntax.json').write_text(json.dumps({'passed':len(files),'failed':0}))
           PY
+      - name: Reconstruct every exact-base Local delta
+        run: |
+          python3 release/r87/package.py
+          python3 release/r87/finalize.py
+      - name: Publish verified Local Home UAT deltas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create local-r87-hall-snapshot-uat-20261101 release/r87/build/dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "SOKNA Local R87 — Coherent Hall and settlement snapshots" --notes-file release/r87/build/dist/REPORT-FA.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:
