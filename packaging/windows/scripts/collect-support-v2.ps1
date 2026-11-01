@@ -64,6 +64,48 @@ function FileMeta([string]$path){
   try{$f=Get-Item -LiteralPath $path -ErrorAction Stop;return [ordered]@{name=$f.Name;length=[int64]$f.Length;last_write_utc=$f.LastWriteTimeUtc.ToString('o');sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()}}catch{AddError 'file-meta' $_.Exception.Message;return $null}
 }
 
+# Whitelist-only installed identity evidence. Never read configuration or secrets.
+function Select-SupportIdentityText($value,[string]$pattern){
+  if($null-eq$value){return $null}
+  if($value-isnot[string] -or $value.Length-gt240 -or $value-notmatch$pattern){throw 'INSTALLED_IDENTITY_FIELD_INVALID'}
+  return $value
+}
+function Select-SupportComponentIdentity($value){
+  if($null-eq$value){return $null}
+  if($value-isnot[pscustomobject]){throw 'INSTALLED_COMPONENT_IDENTITY_INVALID'}
+  return [ordered]@{
+    release_id=(Select-SupportIdentityText $value.release_id '^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$')
+    version=(Select-SupportIdentityText $value.version '^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$')
+    managed_tree_sha256=(Select-SupportIdentityText $value.managed_tree_sha256 '^[a-fA-F0-9]{64}$')
+    schema_fingerprint=(Select-SupportIdentityText $value.schema_fingerprint '^[A-Za-z0-9][A-Za-z0-9._:+-]{0,199}$')
+    migration_head=(Select-SupportIdentityText $value.migration_head '^[0-9]{4}_[a-z0-9_]{1,155}$')
+    authority_epoch_policy=(Select-SupportIdentityText $value.authority_epoch_policy '^[A-Za-z][A-Za-z0-9._-]{0,79}$')
+  }
+}
+function Get-SupportInstalledIdentity([string]$path){
+  $result=[ordered]@{format='sokna-installed-release-identity-support-v1';schema_version=1;captured_at_utc=[DateTime]::UtcNow.ToString('o');state='missing';evidence_available=$false;identity=$null;error_code='INSTALLED_IDENTITY_MISSING'}
+  if(-not(Test-Path -LiteralPath $path -PathType Leaf)){return $result}
+  try{
+    $file=Get-Item -LiteralPath $path -Force -ErrorAction Stop
+    if(($file.Attributes-band[IO.FileAttributes]::ReparsePoint)-ne0 -or $file.Length-gt65536){throw 'INSTALLED_IDENTITY_FILE_UNSAFE'}
+    $raw=[IO.File]::ReadAllText($path)|ConvertFrom-Json -ErrorAction Stop
+    if($raw-isnot[pscustomobject]){throw 'INSTALLED_IDENTITY_INVALID'}
+    $identity=[ordered]@{local=(Select-SupportComponentIdentity $raw.local);public=(Select-SupportComponentIdentity $raw.public)}
+    foreach($name in @('maintenance_supervisor_version','update_engine_version','backup_recovery_engine_version','public_maintenance_kernel_version')){
+      $identity[$name]=Select-SupportIdentityText $raw.$name '^[A-Za-z0-9][A-Za-z0-9._+-]{0,79}$'
+    }
+    $result.state='available';$result.evidence_available=$true;$result.identity=$identity;$result.error_code=''
+  }catch{
+    $result.state='unavailable';$result.error_code='INSTALLED_IDENTITY_UNREADABLE_OR_INVALID'
+    # Never serialize exception text, private paths or unrecognized raw fields.
+  }
+  return $result
+}
+function Get-SupportNullableBoolean($value){
+  if($value-is[bool]){return $value}
+  return $null
+}
+
 $DataRoot=Full $DataRoot 'DataRoot';$OutputRoot=Full $OutputRoot 'OutputRoot';New-Item -ItemType Directory -Path $OutputRoot -Force|Out-Null
 $stamp=(Get-Date).ToString('yyyyMMdd-HHmmss');$work=Join-Path $env:TEMP ("SOKNA-Support-v2-$stamp-"+[guid]::NewGuid().ToString('N'));New-Item -ItemType Directory -Path $work -Force|Out-Null
 $zip=Join-Path $OutputRoot "SOKNA-Support-v2-$stamp.zip";$collectionErrors=@()
@@ -147,6 +189,9 @@ try {
   # raw database rows, credentials or private operation payloads.
   # This prevents repeated one-file-at-a-time operator diagnostics.
   $maintDir=Join-Path $work 'maintenance';New-Item -ItemType Directory -Path $maintDir -Force|Out-Null
+  $identityEvidence=Get-SupportInstalledIdentity (Join-Path $DataRoot 'Maintenance\installed-release-identity.json')
+  WriteJson (Join-Path $maintDir 'installed-release-identity.json') $identityEvidence
+  if(-not$identityEvidence.evidence_available){AddError 'maintenance-installed-identity' $identityEvidence.error_code}
   try{
     $recent=@()
     $ops=Join-Path $DataRoot 'Maintenance\operations'
@@ -159,8 +204,8 @@ try {
             state=[string]$op.state;result_code=[string]$op.result_code
             result_message=(Redact ([string]$op.result_message))
             updated_at_utc=[string]$op.updated_at_utc
-            activation_performed=[bool]$op.activation_performed
-            database_mutation_performed=[bool]$op.database_mutation_performed
+            activation_performed=(Get-SupportNullableBoolean $op.activation_performed)
+            database_mutation_performed=(Get-SupportNullableBoolean $op.database_mutation_performed)
           })
         }catch{AddError 'maintenance-operation-summary' $_.Exception.Message}
       }

@@ -1,0 +1,30 @@
+name: Qualify support bundle installed identity evidence
+on:
+  push:
+    branches: [fix/support-installed-identity-20261101]
+    paths: [packaging/windows/scripts/collect-support-v2.ps1, release/support-identity-20261101/**, .github/workflows/qualify-support-identity.yml]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell 5.1 actual Cafe identity and privacy regression
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force release/support-identity-20261101/qa | Out-Null
+          & release/support-identity-20261101/tests/identity.ps1 -Collector packaging/windows/scripts/collect-support-v2.ps1 | Set-Content release/support-identity-20261101/qa/powershell51.json -Encoding UTF8
+      - name: PowerShell 7 compatibility
+        shell: pwsh
+        run: |
+          & release/support-identity-20261101/tests/identity.ps1 -Collector packaging/windows/scripts/collect-support-v2.ps1 | Set-Content release/support-identity-20261101/qa/powershell7.json -Encoding UTF8
+      - name: Real production wrapper and final support ZIP
+        shell: powershell
+        run: |
+          & release/support-identity-20261101/tests/bundle.ps1 -RepoRoot . | Set-Content release/support-identity-20261101/qa/full-bundle.json -Encoding UTF8
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: support-identity-qualification
+          path: release/support-identity-20261101/qa
