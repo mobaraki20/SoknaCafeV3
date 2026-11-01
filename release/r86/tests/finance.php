@@ -4,7 +4,6 @@ $root=$argv[1];require $root.'/local/bootstrap.php';
 require $root.'/public/src/Remote/PublicDashboardFinance.php';
 require $root.'/public/src/Http/PublicReportArchiveRange.php';
 use Sokna\PublicEdge\Remote\PublicDashboardFinance as F;
-use Sokna\PublicEdge\Remote\PublicDashboardFinance;
 $db=(string)(getenv('FINANCE_DB')?:'r86_finance');$port=(string)(getenv('DB_PORT')?:3306);$password=(string)(getenv('DB_PASSWORD')?:'r86-test');
 $cfg=['app'=>['timezone'=>'Asia/Tehran','data_dir'=>sys_get_temp_dir().'/r86-finance-'.bin2hex(random_bytes(4))],'installation'=>['id'=>'r86-test'],'db'=>['host'=>'127.0.0.1','port'=>$port,'name'=>$db,'charset'=>'utf8mb4','user'=>'root','pass'=>$password]];
 $core=sokna_local_bootstrap($cfg);$core->migrations()->migrate('0059_menu_business_reconciliation_v4');$core->defaultContentSeeder()->seed();$core->migrations()->migrate();$p=$core->database();
@@ -44,7 +43,7 @@ check(method_exists(F::class,'businessDate')&&F::businessDate([])===null,'missin
 // Execute the actual renderer date-selection fragment: an old snapshot must not
 // label its old day as today even while the heartbeat remains recent.
 $source=file_get_contents($root.'/public/src/Remote/RemoteStaffPageRenderer.php');$a=strpos($source,'$dashboard=is_array(');$b=strpos($source,'        $financeView=', $a);$reports=['business_clock'=>['cutoff'=>'04:00','business_date'=>$date->modify('-2 days')->format('Y-m-d')]];
-$rendererDate=(static function($fragment,$reports){eval($fragment);return $todayKey;})(substr($source,$a,$b-$a),$reports);check($rendererDate===$today,'actual Public renderer advances current business date past an old snapshot');
+$rendererDate=(static function($fragment,$reports){eval('namespace Sokna\\PublicEdge\\Remote;'.$fragment);return $todayKey;})(substr($source,$a,$b-$a),$reports);check($rendererDate===$today,'actual Public renderer advances current business date past an old snapshot');
 $bad=$projection;$bad['dashboard']['today_summary']['net_sales']+=100;check(F::reconcile($bad,$today)['today_available']===false,'KPI conflicts with same-day chart/archive do not display as trustworthy sales');
 $partial=['dashboard'=>['range'=>['from'=>$days[0],'to'=>$today],'today_summary'=>['net_sales'=>4000,'completed_settlements'=>2]]];$view=F::reconcile($partial,$today);
 check(($view['today_avg_available']??false)===false,'incomplete average is unknown rather than zero');check(($view['today_orders_available']??false)===false,'incomplete order count is unknown rather than zero');
