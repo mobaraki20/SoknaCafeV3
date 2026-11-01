@@ -69,5 +69,27 @@ $reader->beginTransaction();$failed=false;try{$read();}catch(Throwable){$failed=
 check($failed&&$reader->inTransaction(),'projection failure never rolls back caller-owned transaction');if($reader->inTransaction())$reader->rollBack();R87Statement::$fail=false;
 $m=$read();check($m['source_version']===Sokna\Local\Domain\PublicEdge\PublicProjectionBuilder::hash($m['payload']),'canonical model hash covers complete coherent operations payload');
 check(is_array($account($m,$t['session']))&&!$reader->inTransaction(),'complete model recovers after injected failure with no stranded transaction');
+// Use the actual publisher cache and actual Public MariaDB model receiver.
+$publisher=$readCore->publicEdgePublisher();$reflection=new ReflectionClass($publisher);
+$prepare=$reflection->getMethod('preparedProjectionModel');$record=$reflection->getMethod('recordProjectionModelSuccess');$retire=$reflection->getMethod('markFullyAckedProjectionRows');
+$core->publicEdgePublisher()->seedProjectionInvalidations(['operations'],'r87.test.snapshot');
+$sequence=(int)$publisher->captureVisibilityRequirements(['operations'])[0]['min_sequence'];
+$before=$core->settlements()->account($t['session']);$beforeTotal=$before['total'];R87Statement::$after=$tablesQuery;
+R87Statement::$hook=function()use($core,$t,$actor,$item,&$n){$core->staffQuickOrders()->commit(['table_id'=>$t['table'],'expected_session_id'=>$t['session'],'request_token'=>'r87-cache-added-'.(++$n).'-000000000000','items'=>[['id'=>$item,'quantity'=>1,'expected_price'=>1000]]],$actor);};
+$cached=$prepare->invoke($publisher,'operations',$sequence);$newSequence=(int)$publisher->captureVisibilityRequirements(['operations'])[0]['min_sequence'];
+check($newSequence>$sequence&&($account($cached,$t['session'])['account']['total']??null)===$beforeTotal&&($table($cached,$t['table'])['account_total']??null)===$beforeTotal,'prepared publisher model binds old cursor to one coherent snapshot while newer invalidation remains');
+$replay=$prepare->invoke($publisher,'operations',$sequence);check($replay===$cached,'retry of same cursor reuses identical cached model bytes and hash');
+$record->invoke($publisher,'operations',$sequence,$cached['source_version']);$retire->invoke($publisher,1000);
+$q=$p->prepare('SELECT delivered_at FROM public_projection_outbox WHERE sequence_id=?');$q->execute([$newSequence]);check($q->fetchColumn()===null,'old model ACK cannot retire the concurrent newer outbox event');
+R87Statement::$fail=true;$failed=false;try{$prepare->invoke($publisher,'operations',$newSequence);}catch(Throwable){$failed=true;}R87Statement::$fail=false;
+check($failed&&$prepare->invoke($publisher,'operations',$sequence)===$cached,'failed new snapshot preserves previous cached model and cursor for safe retry');
+$fresh=$prepare->invoke($publisher,'operations',$newSequence);check(($account($fresh,$t['session'])['account']['total']??null)===$beforeTotal+1000&&$fresh['source_version']!==$cached['source_version'],'next cursor rebuilds complete model including concurrent committed order');
+spl_autoload_register(function(string $class)use($root):void{$prefix='Sokna\\PublicEdge\\';if(str_starts_with($class,$prefix)){$path=$root.'/public/src/'.str_replace('\\','/',substr($class,strlen($prefix))).'.php';if(is_file($path))require_once $path;}});
+$pub=new PDO('mysql:host=127.0.0.1;port='.$port.';dbname='.$db.'_public;charset=utf8mb4','root',$password,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);
+(new Sokna\PublicEdge\Core\Migrations($pub,$root.'/public/database/migrations'))->migrate();$pub->exec("INSERT INTO installations(installation_id,display_name) VALUES('r87-test','R87')");
+$receiver=new Sokna\PublicEdge\Remote\RemoteReadModelService($pub,new Sokna\PublicEdge\Connectivity\ConnectivityService($pub));
+$valid=$reflection->getMethod('validProjectionModelAck');
+foreach([[$sequence,$cached],[$newSequence,$fresh]] as [$seq,$model]){$response=$receiver->syncModelV2('r87-test',['format'=>'sokna-read-model-v2','up_to_sequence'=>$seq,'model'=>$model]);check($response['status']===200&&$valid->invoke(null,$response['body'],'operations',$seq,$model['source_version']),'actual Public receiver returns exact coherent model cursor/hash ACK '.$seq);}
+$response=$receiver->syncModelV2('r87-test',['format'=>'sokna-read-model-v2','up_to_sequence'=>$sequence,'model'=>$cached]);check($response['status']===409,'late older operations delivery cannot replace newer Public model');
 echo json_encode($results,JSON_PRETTY_PRINT).PHP_EOL;
 exit(count(array_filter($results,fn($r)=>!$r['pass']))?1:0);

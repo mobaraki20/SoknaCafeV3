@@ -39,7 +39,7 @@ jobs:
           python3 release/r87/prepare.py
           mkdir -p release/r87/build/qa
       - name: Create isolated databases
-        run: mysql -h127.0.0.1 -uroot -pr87-test -e 'CREATE DATABASE r84_time; CREATE DATABASE r83_local; CREATE DATABASE r83_public; CREATE DATABASE r84_guest; CREATE DATABASE r86_finance; CREATE DATABASE r87_hall; CREATE DATABASE r87_hall_red;'
+        run: mysql -h127.0.0.1 -uroot -pr87-test -e 'CREATE DATABASE r84_time; CREATE DATABASE r83_local; CREATE DATABASE r83_public; CREATE DATABASE r84_guest; CREATE DATABASE r86_finance; CREATE DATABASE r87_hall; CREATE DATABASE r87_hall_red; CREATE DATABASE r87_hall_public; CREATE DATABASE r87_hall_red_public;'
       - name: Existing transaction, Guest and time regressions
         run: |
           php release/r84/tests/runtime-time.php release/r87/build/source > release/r87/build/qa/time.json

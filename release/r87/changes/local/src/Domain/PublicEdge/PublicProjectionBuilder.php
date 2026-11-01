@@ -604,18 +604,19 @@ final class PublicProjectionBuilder
 
     private function hallWorkspaceTx(): array
     {
-            $hall=$this->orderWorkspace?->publicHallProjection()??[];
-            $hall['order_acceptance']=$this->orderAcceptance?->snapshot();
-            $hall['print_quick_preferences']=$this->orderActions?->printQuickPreferencesSnapshot();
-            $hall['accommodation_enabled']=$this->accommodationEnabled;
-            $hall['hall_settings_available']=$this->orderAcceptance!==null&&$this->orderActions!==null;
-            return [
-                'orders'=>$this->operationOrders(),
-                'waiter_calls'=>$hall['waiter_calls']??$this->rows("SELECT w.id,w.public_code,w.status,w.created_at,t.name table_name FROM waiter_calls w JOIN cafe_tables t ON t.id=w.table_id WHERE w.status IN ('new','accepted') ORDER BY w.id DESC LIMIT 50"),
-                'settlement_accounts'=>$this->settlementAccounts(),
-                'hall'=>$hall,
-            ];
+        $hall=$this->orderWorkspace?->publicHallProjection()??[];
+        $hall['order_acceptance']=$this->orderAcceptance?->snapshot();
+        $hall['print_quick_preferences']=$this->orderActions?->printQuickPreferencesSnapshot();
+        $hall['accommodation_enabled']=$this->accommodationEnabled;
+        $hall['hall_settings_available']=$this->orderAcceptance!==null&&$this->orderActions!==null;
+        return [
+            'orders'=>$this->operationOrders(),
+            'waiter_calls'=>$hall['waiter_calls']??$this->rows("SELECT w.id,w.public_code,w.status,w.created_at,t.name table_name FROM waiter_calls w JOIN cafe_tables t ON t.id=w.table_id WHERE w.status IN ('new','accepted') ORDER BY w.id DESC LIMIT 50"),
+            'settlement_accounts'=>$this->settlementAccounts(),
+            'hall'=>$hall,
+        ];
     }
+
 
     private function settlementAccounts(): array
     {
