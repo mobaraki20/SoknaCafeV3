@@ -28,14 +28,17 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
   try{return ([BitConverter]::ToString($algorithm.ComputeHash($stream))-replace'-','').ToLowerInvariant()}
   finally{$algorithm.Dispose();$stream.Dispose()}
  }
- $versions=@();$hashes=@()
+ $versions=@();$hashes=@();$targetVersion=$null
  foreach($p in @($super,$engine)){
   $v=[string]([Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion)
-  if($v-ne'0.3.18.0'){throw 'COMPONENT_IDENTITY_PHYSICAL_0318_REQUIRED'}
-  $versions+='0.3.18'
+  try{$parsed=[Version]$v}catch{throw 'COMPONENT_IDENTITY_PHYSICAL_VERSION_INVALID'}
+  if($parsed.Major-ne0-or$parsed.Minor-ne3-or$parsed.Build-lt0-or$parsed.Revision-ne0){throw 'COMPONENT_IDENTITY_PHYSICAL_VERSION_INVALID'}
+  $semantic=('{0}.{1}.{2}'-f$parsed.Major,$parsed.Minor,$parsed.Build)
+  if($null-eq$targetVersion){$targetVersion=$semantic}elseif($semantic-cne$targetVersion){throw 'COMPONENT_IDENTITY_PHYSICAL_VERSION_MISMATCH'}
+  $versions+=$semantic
   $hashes+=(ComponentSha256 $p)
  }
- Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.18' -Attempts 10
+ Assert-MaintenanceSignedHealth -ExpectedVersion $targetVersion -Attempts 10
  $update=Join-Path $store 'update'
  New-Item -ItemType Directory -Path $update -Force|Out-Null
  $lockPath=Join-Path $update 'machine-mutation.lock'
@@ -69,11 +72,11 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
   $doc=[Text.Encoding]::UTF8.GetString($before)|ConvertFrom-Json -ErrorAction Stop
   $names=@('maintenance_supervisor_version','update_engine_version')
   foreach($name in $names){
-   if(-not$doc.PSObject.Properties[$name] -or [string]$doc.$name-notmatch'^0\.3\.(?:[0-9]|1[0-7])$'){
+   if(-not$doc.PSObject.Properties[$name] -or [string]$doc.$name-notmatch'^0\.3\.[0-9]{1,6}$' -or [Version]([string]$doc.$name)-gt[Version]$targetVersion){
     throw 'COMPONENT_IDENTITY_PREVIOUS_VERSION_UNQUALIFIED'
    }
   }
-  if($doc.maintenance_supervisor_version-eq'0.3.18' -and $doc.update_engine_version-eq'0.3.18'){return}
+  if($doc.maintenance_supervisor_version-ceq$versions[0] -and $doc.update_engine_version-ceq$versions[1]){return}
   $beforeSemantic=$doc|ConvertTo-Json -Depth 100 -Compress
   $prior=@([string]$doc.maintenance_supervisor_version,[string]$doc.update_engine_version)
   $doc.maintenance_supervisor_version=$versions[0];$doc.update_engine_version=$versions[1]
