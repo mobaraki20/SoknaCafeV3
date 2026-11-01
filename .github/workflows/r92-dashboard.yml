@@ -46,6 +46,7 @@ jobs:
           mkdir -p release/r92/build/lifecycle/current release/r92/build/lifecycle/source
           cp -r release/r92/build/before/public release/r92/build/lifecycle/current/public
           cp -r release/r92/build/before/local release/r92/build/lifecycle/source/local
+          rm release/r92/build/lifecycle/current/public/chart.html release/r92/build/lifecycle/source/local/chart.html
           php app-baselines/release/r89/tests/public-lifecycle.php release/r92/build/lifecycle release/r92/build/dist current routine > release/r92/build/public-routine.json
           php app-baselines/release/r89/tests/public-lifecycle.php release/r92/build/lifecycle release/r92/build/dist current emergency > release/r92/build/public-emergency.json
       - name: Assemble verified evidence
