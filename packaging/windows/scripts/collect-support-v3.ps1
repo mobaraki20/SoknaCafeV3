@@ -59,8 +59,10 @@ try{
   $manifestPath=Join-Path $temp 'bundle-manifest.json'
   if(Test-Path -LiteralPath $manifestPath){Remove-Item -LiteralPath $manifestPath -Force}
   $entries=@()
-  Get-ChildItem $temp -File -Recurse|Sort-Object FullName|ForEach-Object{
-    $rel=$_.FullName.Substring($temp.Length+1).Replace('\','/')
+  $manifestDirectory=[IO.DirectoryInfo]$temp
+  $manifestPrefix=$manifestDirectory.FullName.TrimEnd('\')+'\'
+  $manifestDirectory.GetFiles('*',[IO.SearchOption]::AllDirectories)|Sort-Object FullName|ForEach-Object{
+    $rel=$_.FullName.Substring($manifestPrefix.Length).Replace('\','/')
     $entries+=([ordered]@{path=$rel;size=[int64]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()})
   }
   WriteJson $manifestPath ([ordered]@{format='sokna-support-bundle-manifest-v1';created_at_utc=[DateTime]::UtcNow.ToString('o');collector_extension='windows-services-diagnostics-v2';technician_report='sokna-technician-findings-v1';entries=$entries})

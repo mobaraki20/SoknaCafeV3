@@ -21,6 +21,7 @@ try{
  Check (-not(($r|ConvertTo-Json -Depth 8).Contains('must-never-be-exported'))) 'unrecognized private fields are excluded'
  Check ((Get-FileHash -LiteralPath $file).Hash-eq$sha) 'collecting identity never mutates it'
  $r=Get-SupportInstalledIdentity (Join-Path $root 'missing.json');Check (-not$r.evidence_available-and$r.state-eq'missing') 'missing identity is explicit evidence gap'
+ '{}'|Set-Content $file;$empty=Get-SupportInstalledIdentity $file;Check (-not$empty.evidence_available) 'empty identity never becomes healthy evidence'
  '{invalid'|Set-Content $file;$r=Get-SupportInstalledIdentity $file;Check (-not$r.evidence_available-and$r.state-eq'unavailable') 'corrupt identity is explicit unknown, never healthy'
  $fixture.local.version='private/password=secret';$fixture|ConvertTo-Json -Depth 8|Set-Content $file;$r=Get-SupportInstalledIdentity $file;Check (-not$r.evidence_available-and-not(($r|ConvertTo-Json -Depth 8).Contains('password'))) 'unsafe identity is rejected without leaking raw content'
  Check ($null-eq(Get-SupportNullableBoolean $null)) 'missing mutation evidence stays null'

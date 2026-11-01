@@ -73,6 +73,7 @@ function Select-SupportIdentityText($value,[string]$pattern){
 function Select-SupportComponentIdentity($value){
   if($null-eq$value){return $null}
   if($value-isnot[pscustomobject]){throw 'INSTALLED_COMPONENT_IDENTITY_INVALID'}
+  foreach($required in @('release_id','version','managed_tree_sha256','schema_fingerprint','migration_head')){if($null-eq$value.$required){throw 'INSTALLED_COMPONENT_IDENTITY_FIELD_MISSING'}}
   return [ordered]@{
     release_id=(Select-SupportIdentityText $value.release_id '^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$')
     version=(Select-SupportIdentityText $value.version '^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$')
@@ -90,6 +91,7 @@ function Get-SupportInstalledIdentity([string]$path){
     if(($file.Attributes-band[IO.FileAttributes]::ReparsePoint)-ne0 -or $file.Length-gt65536){throw 'INSTALLED_IDENTITY_FILE_UNSAFE'}
     $raw=[IO.File]::ReadAllText($path)|ConvertFrom-Json -ErrorAction Stop
     if($raw-isnot[pscustomobject]){throw 'INSTALLED_IDENTITY_INVALID'}
+    if($null-eq$raw.local-and$null-eq$raw.public){throw 'INSTALLED_IDENTITY_COMPONENTS_MISSING'}
     $identity=[ordered]@{local=(Select-SupportComponentIdentity $raw.local);public=(Select-SupportComponentIdentity $raw.public)}
     foreach($name in @('maintenance_supervisor_version','update_engine_version','backup_recovery_engine_version','public_maintenance_kernel_version')){
       $identity[$name]=Select-SupportIdentityText $raw.$name '^[A-Za-z0-9][A-Za-z0-9._+-]{0,79}$'
@@ -302,8 +304,10 @@ try {
   WriteJson (Join-Path $work 'support-v2-summary.json') $summary
 
   $manifestEntries=@()
-  Get-ChildItem $work -File -Recurse|Where-Object{$_.FullName-ne(Join-Path $work 'bundle-manifest.json')}|ForEach-Object{
-    $rel=$_.FullName.Substring($work.Length+1).Replace('\','/')
+  $manifestDirectory=[IO.DirectoryInfo]$work
+  $manifestPrefix=$manifestDirectory.FullName.TrimEnd('\')+'\'
+  $manifestDirectory.GetFiles('*',[IO.SearchOption]::AllDirectories)|Where-Object{$_.FullName-ne(Join-Path $work 'bundle-manifest.json')}|ForEach-Object{
+    $rel=$_.FullName.Substring($manifestPrefix.Length).Replace('\','/')
     $manifestEntries+=([ordered]@{path=$rel;size=[int64]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()})
   }
   WriteJson (Join-Path $work 'bundle-manifest.json') ([ordered]@{format='sokna-support-bundle-manifest-v1';created_at_utc=[DateTime]::UtcNow.ToString('o');completeness=$completeness;collection_errors=$collectionErrors;entries=$manifestEntries})
