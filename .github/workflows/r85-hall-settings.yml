@@ -57,6 +57,24 @@ jobs:
         run: |
           php release/r85/tests/settings.php release/r85/build/source | tee release/r85/build/qa/settings-after.json
           node release/r85/tests/settings.js release/r85/build/source > release/r85/build/qa/settings-js-after.json
+      - name: Complete candidate syntax
+        run: |
+          python3 - <<'PY'
+          import pathlib,subprocess,json
+          files=[p for p in pathlib.Path('release/r85/build/source').rglob('*') if p.suffix in ('.php','.js')]
+          for p in files:subprocess.run(['php','-l',str(p)] if p.suffix=='.php' else ['node','--check',str(p)],check=True,capture_output=True)
+          pathlib.Path('release/r85/build/qa/syntax.json').write_text(json.dumps({'passed':len(files),'failed':0}))
+          PY
+      - name: Build independent deltas and test native receiver
+        run: |
+          python3 release/r85/package.py
+          php release/r85/tests/package.php release/r85/build/source release/r85/build/dist > release/r85/build/qa/package.json
+          python3 release/r85/finalize.py
+      - name: Publish verified Home UAT packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create local-public-r85-hall-policy-uat-20261101 release/r85/build/dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "SOKNA R85 — Canonical Hall settings and atomic publication" --notes-file release/r85/build/dist/REPORT-FA.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:

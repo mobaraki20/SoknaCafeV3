@@ -8,6 +8,8 @@ def prepare():
  subprocess.run(['python3',str(ROOT.parent/'r84/prepare.py')],check=True)
  for kind in ['local','public']:
   old=files(ROOT.parent/'r84/build/baseline'/kind);data=dict(old)
+  write(OUT/'r81'/kind,files(ROOT.parent/'r84/build/r81'/kind))
+  write(OUT/'r83'/kind,old)
   path=ROOT/'baselines'/('SOKNA-R84-LOCAL-R83-TO-R84-DELTA-HOME-UAT.zip' if kind=='local' else 'SOKNA-R84-PUBLIC-R83-TO-R84-ROUTINE-DELTA-HOME-UAT.zip')
   with zipfile.ZipFile(path) as z:
    assert z.testzip() is None
