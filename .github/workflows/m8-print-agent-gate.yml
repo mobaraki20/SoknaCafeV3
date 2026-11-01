@@ -42,6 +42,7 @@ jobs:
         run: |
           dotnet run --project tests/Sokna.PrintAgent.TransportAcceptance/Sokna.PrintAgent.TransportAcceptance.csproj -c Release -- --case A06 --results "$env:RUNNER_TEMP\sokna-print-a06"
           dotnet run --project tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case A12 --results "$env:RUNNER_TEMP\sokna-print-a12"
+          dotnet run --project tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case A52 --results "$env:RUNNER_TEMP\sokna-print-a52"
       - name: Windows submission-fence crash recovery acceptance
         working-directory: windows/print-agent/source
         run: |
