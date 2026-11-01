@@ -2,7 +2,7 @@
   "format": "sokna-windows-component-manifest-v2",
   "schema_version": 2,
   "package_component": "windows-services-packaging",
-  "package_version": "1.1.26",
+  "package_version": "1.1.27",
   "planner_contract": "1.1",
   "components": [
     {
@@ -31,7 +31,7 @@
       "kind": "service",
       "primary": true,
       "required": true,
-      "version": "6.2.10",
+      "version": "6.2.11",
       "service_name": "SoknaPrintWorker",
       "payload_primary": "_payload/print-worker/Service/Sokna.PrintAgent.Service.exe",
       "installed_primary": "PrintAgent/Service/Sokna.PrintAgent.Service.exe",

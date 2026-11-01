@@ -11,7 +11,7 @@ var parsed=ParseArgs(args);
 if(!parsed.TryGetValue("case",out var caseId)||string.IsNullOrWhiteSpace(caseId) ||
    !parsed.TryGetValue("results",out var resultsDirectory)||string.IsNullOrWhiteSpace(resultsDirectory))
 {
-    Console.Error.WriteLine("Usage: --case A12|A13|A14|A15|A16|A19|A20|A21|A22|A23|A30|A48|A49|A50|A51 --results <directory>");
+    Console.Error.WriteLine("Usage: --case A12|A13|A14|A15|A16|A19|A20|A21|A22|A23|A30|A48|A49|A50|A51|A52 --results <directory>");
     return 64;
 }
 
@@ -43,6 +43,7 @@ try
         case "A49": await RunA49(); break;
         case "A50": await RunA50(); break;
         case "A51": await RunA51(); break;
+        case "A52": await RunA52(); break;
         default:
             await WriteResult("NOT_RUN",3,$"Service acceptance case {caseId} is not implemented.");
             return 3;
@@ -63,6 +64,43 @@ catch(Exception e)
     Log($"FAIL {e.GetType().Name}: {SafeLogText.Sanitize(e.Message,400)}");
     await WriteResult("FAIL",1,$"{e.GetType().Name}: {SafeLogText.Sanitize(e.Message,400)}");
     return 1;
+}
+
+// Regression: the service must release its legacy global named Mutex safely after
+// async work switches threads. A ReleaseMutex from an async continuation used to
+// throw ApplicationException during Windows Service stop.
+async Task RunA52()
+{
+    var leaseType=typeof(PrintAgentService).Assembly.GetType("Sokna.PrintAgent.Service.ThreadOwnedMutexLease");
+    Check(leaseType is not null,"A52 singleton mutex lease exists");
+    if(leaseType is null)return;
+    var acquire=leaseType.GetMethod("Acquire",BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic);
+    Check(acquire is not null,"A52 mutex lease acquisition is available");
+    if(acquire is null)return;
+    var mutexName=@"Global\SoknaPrintAgentA52_"+Guid.NewGuid().ToString("N");
+    var first=(IDisposable)acquire.Invoke(null,[mutexName])!;
+    try
+    {
+        try
+        {
+            var duplicate=(IDisposable)acquire.Invoke(null,[mutexName])!;
+            duplicate.Dispose();
+            Check(false,"A52 simultaneous process owner is rejected");
+        }
+        catch(TargetInvocationException e) when(e.InnerException is InvalidOperationException)
+        {
+            Check(true,"A52 simultaneous process owner is rejected");
+        }
+
+        // Dispose on a different ThreadPool thread, as ExecuteAsync does after awaits.
+        await Task.Run(first.Dispose);
+        using var again=(IDisposable)acquire.Invoke(null,[mutexName])!;
+        Check(again is not null,"A52 mutex can be reacquired after cross-thread disposal");
+    }
+    finally
+    {
+        first.Dispose();
+    }
 }
 
 async Task RunA48()

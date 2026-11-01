@@ -3,6 +3,9 @@ Set-StrictMode -Version Latest
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $core=(Join-Path $repo 'packaging\windows\scripts\setup-windows-components-v5.ps1')
 $raw=[IO.File]::ReadAllText($core,[Text.Encoding]::UTF8)
+# Refused STOP is not final while the legacy 6.2.10 service is still
+# unwinding: insist on bounded SCM reconciliation before declaring failure.
+if(-not$raw.Contains("service_stop_settle_poll")-or-not$raw.Contains("service_stop_restart_observed")-or-not$raw.Contains("AddSeconds(18)")){throw 'ISSUE55_SCM_STOP_SETTLE_RECOVERY_MISSING'}
 $start=$raw.IndexOf('function Owned-TreeHash(',[StringComparison]::Ordinal)
 $end=$raw.IndexOf('function Snapshot(',[StringComparison]::Ordinal)
 if($start-lt0-or$end-le$start){throw 'ISSUE55_CORE_HELPERS_NOT_FOUND'}

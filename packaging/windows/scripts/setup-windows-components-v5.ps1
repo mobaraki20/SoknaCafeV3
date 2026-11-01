@@ -117,7 +117,26 @@ function Stop-Svc([string]$name,[string]$ownedRoot){
         if($svc.Status-eq'StopPending'){
           try{$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(15))}catch{$svc.Refresh()}
         }
+        # Legacy 6.2.10 can crash on SCM Stop while unwinding a thread-affine
+        # Mutex. Stop-Service then throws before SCM observes the process exit.
+        # Give the same owned PID a bounded window to settle; do not force-kill
+        # or mutate any unrelated service. New PID means an intervening restart.
         $svc.Refresh()
+        if($svc.Status-ne'Stopped'){
+          $settleDeadline=[DateTime]::UtcNow.AddSeconds(18)
+          while([DateTime]::UtcNow-lt$settleDeadline){
+            $svc.Refresh()
+            if($svc.Status-eq'Stopped'){break}
+            $observed=Service-Info $name
+            if($processId-gt0-and[uint32]$observed.ProcessId-gt0-and[uint32]$observed.ProcessId-ne$processId){
+              Event 'service_stop_restart_observed' 'failed' @{service=$name;old_pid=$processId;new_pid=$observed.ProcessId}
+              break
+            }
+            Start-Sleep -Milliseconds 250
+          }
+          $svc.Refresh()
+          Event 'service_stop_settle_poll' $(if($svc.Status-eq'Stopped'){'completed'}else{'failed'}) @{service=$name;pid=$processId;state=[string]$svc.Status}
+        }
         if($svc.Status-ne'Stopped'){
           Event 'service_stop_rejected' 'failed' @{
             service=$name;service_state=[string]$svc.Status;
