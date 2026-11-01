@@ -32,7 +32,7 @@ $bad=$packed;$m=$model;$m['payload']['rows'][0]['price']=1;$bad['model_gzip']=ba
 $bad=$packed;$bad['model_gzip']=base64_encode(gzencode(str_repeat('x',2097154)));check($service->syncModelV2('r83-test',$bad)['status']===413,'bounded decompression rejects oversized output');
 $bad=$packed;$bad['model']=$model;check($service->syncModelV2('r83-test',$bad)['status']===422,'ambiguous compressed and uncompressed model rejected');
 $old=$body;$old['model']['payload']=['old'=>true];$old['model']['source_version']=Sokna\PublicEdge\Core\CanonicalJson::sha256($old['model']['payload']);
-$resp=$service->syncModelV2('r83-test',$old);check($resp['status']===200&&$resp['body']['ack_sequence']===2,'older delivery cannot roll back Public cursor');
+$resp=$service->syncModelV2('r83-test',$old);check($resp['status']===409&&$resp['body']['error']==='projection_model_sequence_conflict','older delivery cannot roll back Public cursor');
 check(json_decode($pdo->query("SELECT payload_json FROM remote_read_models WHERE model_key='reports'")->fetchColumn(),true)===$payload,'older delivery cannot replace newer Public content');
 $session=['installation_id'=>'r83-test','capabilities'=>['reports.read']];
 check($service->read($session,'reports')['status']===200,'Public report remains readable with Local offline');

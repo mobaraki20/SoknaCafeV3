@@ -4,9 +4,9 @@ $root=$argv[1];require $root.'/local/bootstrap.php';
 $pdo=new PDO('sqlite::memory:');
 $config=Sokna\Local\Core\Config::fromArray(['installation'=>['id'=>'r83-test'],'public'=>['base_url'=>'https://example.invalid/sokna','shared_secret'=>'test']]);
 $obs=new Sokna\Local\Core\Observability(sys_get_temp_dir().'/r83-encoding-'.bin2hex(random_bytes(5)));
-$client=new Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient($config);
-$publisher=new Sokna\Local\Domain\PublicEdge\PublicEdgePublisherService($pdo,$client,new Sokna\Local\Domain\PublicEdge\PublicProjectionBuilder($pdo),$obs);
-$rc=new ReflectionClass($publisher);$encode=$rc->getMethod('projectionWirePayload');$remember=$rc->getMethod('rememberProjectionEncoding');
+$client=new Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient($config,null,$obs);
+$publisher=$client;
+$rc=new ReflectionClass($client);$encode=$rc->getMethod('projectionWirePayload');$remember=$rc->getMethod('rememberProjectionEncoding');
 $model=['payload'=>['sample'=>str_repeat('سکنا ',20000)],'source_version'=>str_repeat('a',64)];
 $payload=['format'=>'sokna-read-model-v2','up_to_sequence'=>1,'model'=>$model];
 $results=[];function ck(bool $b,string $n):void{global $results;$results[]=['test'=>$n,'pass'=>$b];if(!$b)throw new RuntimeException($n);}
