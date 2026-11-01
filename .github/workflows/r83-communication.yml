@@ -1,0 +1,53 @@
+name: R83 communication root causes
+on:
+  push:
+    branches: [work/r83-communication-root-causes-20261101]
+    paths: [release/r83/**, .github/workflows/r83-communication.yml]
+permissions:
+  contents: read
+jobs:
+  real-db:
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: r83-test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DB_PASSWORD: r83-test
+      DB_PORT: '3306'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP and DB client
+        run: sudo apt-get update -qq && sudo apt-get install -y php-cli php-mysql php-sqlite3 php-zip mariadb-client
+      - name: Reconstruct exact R81 and candidate source
+        run: python3 release/r83/prepare.py
+      - name: Create isolated databases
+        run: mysql -h127.0.0.1 -uroot -pr83-test -e 'CREATE DATABASE r83_local; CREATE DATABASE r83_public;'
+      - name: PHP and JS syntax
+        run: |
+          python3 - <<'PY'
+          import pathlib,subprocess
+          files=[p for p in pathlib.Path('release/r83/build/source').rglob('*') if p.suffix in ('.php','.js')]
+          for p in files:subprocess.run(['php','-l',str(p)] if p.suffix=='.php' else ['node','--check',str(p)],check=True,capture_output=True)
+          print('Syntax PASS:',len(files))
+          PY
+      - name: Regression before and after
+        run: |
+          mkdir -p release/r83/build/qa
+          if php release/r83/tests/pure.php release/r83/build/baseline > release/r83/build/qa/baseline.json; then echo 'Baseline unexpectedly passed defect reproduction'; exit 1; fi
+          php release/r83/tests/pure.php release/r83/build/source > release/r83/build/qa/pure.json
+          php release/r83/tests/encoding.php release/r83/build/source > release/r83/build/qa/encoding.json
+      - name: Local MariaDB transaction and account tests
+        run: php release/r83/tests/local.php release/r83/build/source | tee release/r83/build/qa/local-mariadb.json
+      - name: Public MariaDB projection and wire tests
+        run: php release/r83/tests/public.php release/r83/build/source | tee release/r83/build/qa/public-mariadb.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r83-qa
+          path: release/r83/build/qa
