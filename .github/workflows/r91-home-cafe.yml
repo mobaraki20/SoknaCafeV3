@@ -6,7 +6,7 @@ on:
       - 'windows/print-agent/**'
       - 'windows/maintenance/**'
       - 'release/r91/**'
-      - 'packaging/windows/scripts/collect-support*'
+      - 'packaging/windows/**'
       - '.github/workflows/r91-home-cafe.yml'
       - 'packaging/windows/WINDOWS_SERVICES_VERSION.txt'
       - 'packaging/windows/windows-services-component-manifest-v2.json'
@@ -279,4 +279,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/work/r91-home-cafe-20261102" --jq .object.sha)
+          test "$current" = "$GITHUB_SHA"
           gh release create sokna-r91-windows-web-home-cafe-uat-20261102 publish/SOKNA-Windows-Services-Setup-1.1.28.exe publish/SOKNA-LOCAL-UNIVERSAL-UPDATE.zip publish/SOKNA-PUBLIC-UNIVERSAL-UPDATE.zip publish/SHA256SUMS.txt publish/PACKAGE-VERIFICATION.json publish/artifact-index.json publish/QA-RESULTS.json publish/R91-QA-EVIDENCE.zip publish/REPORT-FA.md --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "SOKNA — Windows and universal Local/Public coordinated update" --notes-file publish/REPORT-FA.md
