@@ -1,0 +1,39 @@
+name: R92 Dashboard CSP and open issue review
+on:
+  push:
+    branches: [work/r92-dashboard-20261102]
+    paths: [release/r92/**, .github/workflows/r92-dashboard.yml]
+permissions:
+  contents: read
+concurrency:
+  group: r92-dashboard
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reconstruct exact installed Local and Public bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release/r92/baseline
+          gh release download sokna-r91-windows-web-home-cafe-uat-20261102 --repo "$GITHUB_REPOSITORY" --dir release/r92/baseline -p SOKNA-LOCAL-UNIVERSAL-UPDATE.zip -p SOKNA-PUBLIC-UNIVERSAL-UPDATE.zip
+          python3 release/r92/prepare.py
+          sudo apt-get update -qq && sudo apt-get install -y php-cli
+          for mode in before after; do for kind in local public; do php release/r92/render.php release/r92/build/$mode/$kind release/r92/build/$mode/$kind/chart.html $kind; done; done
+      - name: Real Chromium regression under unchanged production CSP
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          node release/r92/browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r92-browser-evidence
+          path: |
+            release/r92/build/*.json
+            release/r92/build/*.png
