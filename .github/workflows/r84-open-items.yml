@@ -1,0 +1,55 @@
+name: R84 sequential open item closure
+on:
+  push:
+    branches: [work/r84-open-items-20261101]
+    paths: [release/r84/**, .github/workflows/r84-open-items.yml]
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: write
+jobs:
+  real-db:
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: r84-test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DB_PASSWORD: r84-test
+      DB_PORT: '3306'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP and DB client
+        run: sudo apt-get update -qq && sudo apt-get install -y php-cli php-mysql php-sqlite3 php-zip mariadb-client
+      - name: Obtain exact published R83 baselines
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release/r84/baselines
+          gh release download local-public-r83-communication-uat-20261101 --repo "$GITHUB_REPOSITORY" --dir release/r84/baselines -p SOKNA-R83-LOCAL-R81-TO-R83-DELTA-HOME-UAT.zip -p SOKNA-R83-PUBLIC-R81-TO-R83-ROUTINE-DELTA-HOME-UAT.zip
+          python3 release/r84/prepare.py
+          mkdir -p release/r84/build/qa
+      - name: Create isolated databases
+        run: mysql -h127.0.0.1 -uroot -pr84-test -e 'CREATE DATABASE r84_time; CREATE DATABASE r83_local; CREATE DATABASE r83_public;'
+      - name: Reproduce and fix runtime time contract
+        run: |
+          if php release/r84/tests/runtime-time.php release/r84/build/baseline > release/r84/build/qa/time-before.json; then echo 'Baseline unexpectedly passed'; exit 1; fi
+          php release/r84/tests/runtime-time.php release/r84/build/source | tee release/r84/build/qa/time-after.json
+      - name: Existing MariaDB and guest regressions
+        run: |
+          php release/r83/tests/pure.php release/r84/build/source > release/r84/build/qa/pure.json
+          php release/r83/tests/encoding.php release/r84/build/source > release/r84/build/qa/encoding.json
+          node release/r83/tests/guest.js release/r84/build/source > release/r84/build/qa/guest.json
+          php release/r83/tests/local.php release/r84/build/source > release/r84/build/qa/local.json
+          php release/r83/tests/public.php release/r84/build/source > release/r84/build/qa/public.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r84-qa
+          path: release/r84/build/qa
