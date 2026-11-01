@@ -1,0 +1,161 @@
+name: SOKNA Windows 1.1.27 Print Stop Hotfix Qualification and Canary
+on:
+  push:
+    branches: [fix/print-worker-cross-thread-mutex-release-20261101]
+    paths:
+      - 'windows/print-agent/**'
+      - 'packaging/windows/WINDOWS_SERVICES_VERSION.txt'
+      - 'packaging/windows/windows-services-component-manifest-v2.json'
+      - 'packaging/windows/windows-services-compatibility-v1.json'
+      - 'release/compatibility-v2.json'
+      - 'COMPONENTS.json'
+      - 'tests/m8-print-agent-gate.py'
+      - '.github/workflows/ci-windows-1127-print-stop-release.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: sokna-windows-1127-print-stop-hotfix
+  cancel-in-progress: false
+jobs:
+  qualify:
+    name: Windows print regression and five-component installer
+    runs-on: windows-2022
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check component source version registry and static print contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python tests/g6-component-release-contract.py
+          if($LASTEXITCODE -ne 0){throw 'G6 component source versions failed'}
+          python tests/m10-release-qualification.py
+          if($LASTEXITCODE -ne 0){throw 'M10 packaging source checks failed'}
+          python tests/m8-print-agent-gate.py
+          if($LASTEXITCODE -ne 0){throw 'M8 print source boundary failed'}
+          $manifest=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          $props=[xml](Get-Content windows/print-agent/source/Directory.Build.props -Raw)
+          $print=@($manifest.components|Where-Object component_id -eq 'print-agent')
+          if($manifest.package_version -ne '1.1.27' -or $print.Count -ne 1 -or
+             $print[0].version -ne '6.2.11' -or
+             [string]$props.Project.PropertyGroup.SoknaAgentVersion -ne '6.2.11'){throw 'Print version mismatch'}
+      - name: A52 cross-thread Mutex release and existing print-service regression
+        shell: pwsh
+        working-directory: windows/print-agent/source
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case A52 --results "$env:RUNNER_TEMP/print-a52"
+          if($LASTEXITCODE -ne 0){throw 'A52 cross-thread mutex release failed'}
+          dotnet run --project tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case A12 --results "$env:RUNNER_TEMP/print-a12"
+          if($LASTEXITCODE -ne 0){throw 'A12 service regression failed'}
+      - name: Preserve owned Print Agent folder and exact rollback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./packaging/windows/tests/issue55-print-owned-root-tests.ps1
+          if($LASTEXITCODE -ne 0){throw 'Print Agent locked-file / rollback gate failed'}
+      - name: Install Inno Setup and build unified installer from exact commit
+        shell: pwsh
+        timeout-minutes: 60
+        run: |
+          $ErrorActionPreference='Stop'
+          choco install innosetup --yes --no-progress
+          if($LASTEXITCODE -ne 0){throw 'Inno Setup failed'}
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe")|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+          if(-not $iscc){throw 'Inno Setup ISCC not found'}
+          & ./release/build-windows-release.ps1 -RepoRoot $PWD.Path -OutputRoot "$env:RUNNER_TEMP/sokna-1127" -IsccExe $iscc
+          if($LASTEXITCODE -ne 0){throw 'Canonical full installer build failed'}
+      - name: Verify installer manifest, exact SHA and executable versions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out="$env:RUNNER_TEMP/sokna-1127"
+          $index=Get-Content "$out/artifact-index.json" -Raw|ConvertFrom-Json
+          $source=(& git rev-parse HEAD).Trim()
+          if($index.source_commit -cne $source -or $index.package_version -cne '1.1.27' -or $index.component_count -ne 5 -or $index.installer_kind -cne 'unified-v4-bootstrap'){throw 'Unqualified installer identity'}
+          if($index.print_agent.version -cne '6.2.11'){throw 'Incorrect Print Agent compiled artifact version'}
+          $name='SOKNA-Windows-Services-Setup-1.1.27.exe'
+          if($index.windows_services.file -cne $name){throw 'Installer file identity mismatch'}
+          $exe=Join-Path $out $name
+          if(-not(Test-Path $exe) -or (Get-Item $exe).Length -lt 100000000){throw 'Truncated installer'}
+          $hash=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($hash -cne $index.windows_services.sha256){throw 'Installer hash mismatch'}
+          if(([Diagnostics.FileVersionInfo]::GetVersionInfo($exe)).FileVersion -cne '1.1.27.0'){throw 'Installer Windows FileVersion mismatch'}
+          $ui=Join-Path $out 'SoknaSetupUi.exe'
+          & $ui --planner-self-test
+          if($LASTEXITCODE -ne 0){throw 'Component planner regression failed'}
+          "$hash  $name"|Set-Content "$out/SHA256SUMS.txt" -Encoding ascii
+          Write-Host 'SOKNA_1127_PRINT_STOP_HOTFIX_WINDOWS_QUALIFIED'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-windows-1127-print-stop-qualified
+          path: |
+            ${{ runner.temp }}/sokna-1127/SOKNA-Windows-Services-Setup-1.1.27.exe
+            ${{ runner.temp }}/sokna-1127/artifact-index.json
+            ${{ runner.temp }}/sokna-1127/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+  publish-canary:
+    needs: qualify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-windows-1127-print-stop-qualified
+          path: publish
+      - name: Verify immutable source and publish UAT prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/fix/print-worker-cross-thread-mutex-release-20261101'
+          tag='windows-services-v1.1.27-print-stop-rc.1'
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Existing immutable tag; refusing to overwrite' >&2; exit 1
+          fi
+          (cd publish && sha256sum -c SHA256SUMS.txt)
+          python3 - <<'PY'
+          import json,os,pathlib,hashlib
+          p=pathlib.Path('publish'); i=json.loads((p/'artifact-index.json').read_text(encoding='utf-8-sig'))
+          n='SOKNA-Windows-Services-Setup-1.1.27.exe'
+          assert i['source_commit']==os.environ['GITHUB_SHA']
+          assert i['package_version']=='1.1.27' and i['print_agent']['version']=='6.2.11'
+          assert i['component_count']==5 and i['installer_kind']=='unified-v4-bootstrap'
+          assert i['windows_services']['file']==n
+          assert hashlib.sha256((p/n).read_bytes()).hexdigest()==i['windows_services']['sha256']
+          print('SOKNA_1127_CANARY_RELEASE_IDENTITY_VERIFIED')
+          PY
+          cat > publish/RELEASE_NOTES.md <<EOF
+          # SOKNA Windows Services 1.1.27 — Print Worker Stop/Mutex hotfix (UAT)
+          
+          Exact source SHA: $GITHUB_SHA
+          
+          Fix: The Print Agent's legacy named Windows Mutex is now acquired and released on a dedicated owning OS thread, preventing the recurrent Object synchronization exception when Stop moves across async continuations.
+          A52 exercises cross-thread disposal, duplicate singleton exclusion and reacquisition on Windows.
+          Other components retained: Runtime 1.0.7, Maintenance Supervisor/Update Engine 0.3.18, Recovery Console 0.1.3.
+          Print Agent updated from 6.2.10 to 6.2.11; Windows Services package updated from 1.1.26 to 1.1.27.
+          
+          CI validates the Print Agent, rollback/locked-file handling, version manifest and rebuilt unified installer. It does NOT claim unrelated Local/Public CI issues are resolved.
+          This is a prerelease for Home Windows testing first, not a production/Cafe-approved release. Business data, Local and Public are out of this installer scope.
+          EOF
+          gh release create "$tag" publish/SOKNA-Windows-Services-Setup-1.1.27.exe publish/artifact-index.json publish/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "SOKNA Windows Services 1.1.27 — Print Stop Hotfix (UAT)" \
+            --notes-file publish/RELEASE_NOTES.md
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft,assets \
+            | jq -e --arg tag "$tag" '.tagName==$tag and .isPrerelease and (.isDraft|not) and ([.assets[].name]|sort)==(["SOKNA-Windows-Services-Setup-1.1.27.exe","artifact-index.json","SHA256SUMS.txt"]|sort)'
+          echo 'SOKNA_1127_RELEASE_PUBLISHED_AND_VERIFIED'

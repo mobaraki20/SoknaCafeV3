@@ -4,7 +4,7 @@
       "version": "3.0.0-g6.2-workspace.231bf-u01-iran-time-updater-rc1"
     },
     "print-agent": {
-      "version": "6.2.10"
+      "version": "6.2.11"
     },
     "public-edge": {
       "version": "3.0.0-g3.6-uat.1"
@@ -16,7 +16,7 @@
       "version": "1.0.7"
     },
     "windows-services-packaging": {
-      "version": "1.1.26"
+      "version": "1.1.27"
     }
   },
   "contracts": {

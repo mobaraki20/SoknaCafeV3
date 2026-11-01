@@ -12,7 +12,9 @@ need((src/'src/Sokna.PrintAgent.Service/LoopbackBridgeServer.cs').exists(),'loop
 need((src/'src/Sokna.PrintAgent.Core/LocalQueueStore.cs').exists(),'durable local queue missing')
 text='\n'.join(p.read_text(encoding='utf-8',errors='ignore') for p in src.rglob('*.cs'))
 svc=(src/'src/Sokna.PrintAgent.Service/PrintAgentService.cs').read_text(encoding='utf-8')
-need('catch(AbandonedMutexException' in svc and 'Recovered abandoned Sokna Print Agent singleton mutex' in svc,'Print Agent must recover abandoned singleton mutex after crashed prior instance')
+lease=(src/'src/Sokna.PrintAgent.Service/ThreadOwnedMutexLease.cs').read_text(encoding='utf-8')
+need('catch (AbandonedMutexException)' in lease and 'RecoveredAbandoned = true' in lease and 'mutex!.ReleaseMutex()' in lease, 'Print Agent must recover abandoned singleton mutex on owning OS thread')
+need('ThreadOwnedMutexLease.Acquire(SingletonMutexName)' in svc and 'Recovered abandoned Sokna Print Agent singleton mutex' in svc and '_mutex.ReleaseMutex()' not in svc,'Print Agent must not release thread-affine mutex from async continuation')
 for token in ['local_receipt','recovery_hold','unknown','content_sha256','127.0.0.1']:
     need(token.lower() in text.lower(),'retained Print Agent missing '+token)
 local=(R/'apps/local-web/src/Domain/Printing/PrintService.php').read_text(encoding='utf-8')
