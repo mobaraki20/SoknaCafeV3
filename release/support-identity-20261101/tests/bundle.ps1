@@ -20,6 +20,7 @@ try{
  Check ($ops.operations[0].result_message-eq'LOCAL_REBIND_UNIQUE_SIGNED_BASELINE_REQUIRED') 'same ZIP contains detailed cause of rejected operation'
  Check ($ops.operations[0].activation_performed-eq$false-and$ops.operations[0].database_mutation_performed-eq$false) 'same ZIP preserves explicit non-mutation evidence'
  $manifest=Get-Content (Join-Path $expanded 'bundle-manifest.json') -Raw|ConvertFrom-Json
+ Write-Host ('MANIFEST_DEBUG '+(@{format=$manifest.format;count=@($manifest.entries).Count;paths=@($manifest.entries|ForEach-Object {$_.path}|Where-Object {$_-match'identity|maintenance'})}|ConvertTo-Json -Compress))
  Check (@($manifest.entries|Where-Object {$_.path.Replace('\','/') -eq 'maintenance/installed-release-identity.json'}).Count-eq1) 'final wrapper manifest indexes identity evidence'
  $exported=Get-Content (Join-Path $expanded 'maintenance\installed-release-identity.json') -Raw
  Check (-not$exported.Contains('NEVER_EXPORT_PRIVATE_IDENTITY_VALUE')) 'real archive excludes extra private identity fields'
