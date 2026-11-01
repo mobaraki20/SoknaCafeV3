@@ -70,6 +70,7 @@ check($failed&&$reader->inTransaction(),'projection failure never rolls back cal
 $m=$read();check($m['source_version']===Sokna\Local\Domain\PublicEdge\PublicProjectionBuilder::hash($m['payload']),'canonical model hash covers complete coherent operations payload');
 check(is_array($account($m,$t['session']))&&!$reader->inTransaction(),'complete model recovers after injected failure with no stranded transaction');
 // Use the actual publisher cache and actual Public MariaDB model receiver.
+$t=$create(2); // normal new orders require a session without an itemized receipt.
 $publisher=$readCore->publicEdgePublisher();$reflection=new ReflectionClass($publisher);
 $prepare=$reflection->getMethod('preparedProjectionModel');$record=$reflection->getMethod('recordProjectionModelSuccess');$retire=$reflection->getMethod('markFullyAckedProjectionRows');
 $core->publicEdgePublisher()->seedProjectionInvalidations(['operations'],'r87.test.snapshot');
