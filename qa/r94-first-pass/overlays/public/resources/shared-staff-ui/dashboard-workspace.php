@@ -30,3 +30,5 @@ if(!isset($dashE,$dashUrl,$dashIcon,$dashFaNum,$dashDegraded,$dashClock,$dashNot
   </div>
   <?php endif; ?>
 </section>
+
+<script src="<?=htmlspecialchars(\Sokna\Local\UI\ProductShell::asset('assets/staff-app/dashboard-recovery.js'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>" defer></script>
