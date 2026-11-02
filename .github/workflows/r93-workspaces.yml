@@ -4,7 +4,7 @@ on:
     branches: [work/r93-workspaces-20261102]
     paths: [release/r93/**, .github/workflows/r93-workspaces.yml]
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: r93-workspaces
   cancel-in-progress: true
@@ -59,6 +59,23 @@ jobs:
         run: |
           python3 release/r93/package.py
           dotnet run --project release/r93/native/Native.csproj -c Release -- release/r93/build/dist/SOKNA-LOCAL-UNIVERSAL-UPDATE.zip release/r93/build/native.json
+      - name: Qualify Public routine and protected emergency lifecycle
+        run: |
+          find release/r93/changes -name '*.php' -exec php -l {} \;
+          mkdir -p release/r93/build/lifecycle/current release/r93/build/lifecycle/source
+          cp -r release/r93/build/before/public release/r93/build/lifecycle/current/public
+          cp -r release/r93/build/before/local release/r93/build/lifecycle/source/local
+          php app-baselines/release/r89/tests/public-lifecycle.php release/r93/build/lifecycle release/r93/build/dist current routine > release/r93/build/public-routine.json
+          php app-baselines/release/r89/tests/public-lifecycle.php release/r93/build/lifecycle release/r93/build/dist current emergency > release/r93/build/public-emergency.json
+      - name: Assemble verified evidence
+        run: python3 release/r93/finalize.py
+      - name: Publish qualified universal Local and Public update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/work/r93-workspaces-20261102" --jq .object.sha)
+          test "$current" = "$GITHUB_SHA"
+          gh release create local-public-r93-workspace-sync-uat-20261102 release/r93/build/dist/SOKNA-LOCAL-UNIVERSAL-UPDATE.zip release/r93/build/dist/SOKNA-PUBLIC-UNIVERSAL-UPDATE.zip release/r93/build/dist/SHA256SUMS.txt release/r93/build/dist/PACKAGE-VERIFICATION.json release/r93/build/dist/QA-RESULTS.json release/r93/build/dist/R93-QA-EVIDENCE.zip release/r93/build/dist/REPORT-FA.md --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "SOKNA — هماهنگی گردش کار لوکال و پابلیک" --notes-file release/r93/build/dist/REPORT-FA.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:
