@@ -130,3 +130,15 @@ Next acceptance gate: exact R93 source/recipe replay in a fresh workspace, then 
 
 **Status and limits**: forward code prepared on a QA branch, NOT INSTALLED. PHP lint passed on the Local candidate; syntax-only JS proxy passed using the same untouched anchors in R92. A matching SHA-fenced recipe for exact R93 JS is delivered in the A-02 source-only archive. Do not report Chrome/R93 compiled JS, Home WAN, MariaDB, host UAT or a real restaurant transaction as PASS. The actual Local/Public reconciled monetary data and TLS/503 root cause remain open. This group does **not** replace A-01 and must be composed with earlier B-group files before building a new release.
 
+
+## Group A-03 — watcher recovery + per-model freshness (candidate, not installed)
+
+**Why this was needed:** R93 Public `public-hall-transport.js` long polls read-models and sleeps as long as 15 seconds on connection errors. The A-02 `online` event aborts the watcher, but its prior `await sleep(delay)` was not abortable, meaning reconnection could still wait until the old sleep ended. Separately, `acceptPublicModel` and `acceptLanModel` stored **one global** `stale/lastSync` value for unrelated models; a later fresh `operations` response could incorrectly overwrite the stale status of the `preparation` page.
+
+**Fix:** `overlays/public/assets/staff-app/public-hall-transport.js` now aborts backoff immediately on watcher cancellation, and tracks freshness per named model. The preparation page reads **its own** model status; Hall global status is changed only on operations/draft model reads. Permission checks and Local-confirmed writes are unchanged.
+
+**Reproducible provenance:** A-03 recipe `recipes/apply-a03-over-a02.cjs` requires exact A-02 Git blob `bf73b9bafa54b87bd45e5516f2a52a45dbf9c263` and validates output blob `07dd30c2b41ea0ebb1a2cd42974855a9e87b0620`, matching the reviewed GitHub QA overlay. Apply A-02 first to the **R93 managed Public override**, never to R92 `apps/public` code. Existing A-01/B-01..B-03 and Local A-02 are not overwritten.
+
+**Regression preservation discovery:** R93 **managed Local** `PublicEdgePublisherService.php` Git blob `3667eb1c6ef473ad978f8248b61400418f84170b` **already** has exact model-key/cursor/hash ACK verification and safe `source_version` monotonic assignment. The older GitHub `apps/` tree lacks these upgrades; never replace the managed publisher with that older file. `guards/managed-projection-source-guard.cjs` checks baseline + invariants. No modification to this PHP class was needed.
+
+**Scope status:** JS source candidate staged, syntax proxy and recipe syntax PASS, managed Publisher protection PASS, Local A-02 PHP syntax PASS. Full R93 staged JS browser execution, interruption during a real 15-second timeout, end-to-end finance/order readback and UAT remain NOT_RUN. No installed code/release changed. TLS/503 root cause and actual cross-environment sales discrepancy remain OPEN.
