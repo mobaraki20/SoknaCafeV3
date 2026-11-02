@@ -1,6 +1,6 @@
 # FR-01 / FR-02 — Ingredient Cost Preview & All-Products Pricing Report
 
-Status: **newly requested capabilities / source review done / implementation NOT_STARTED** (2026-11-02). These are **not** bugs confirmed in production and do not alter the original U-01..U-44 or S-001..S-162 counts.
+Status: **SOURCE CANDIDATES IMPLEMENTED / NOT INSTALLED / UAT NOT RUN** (2026-11-02). These are **not** bugs confirmed in production and do not alter the original U-01..U-44 or S-001..S-162 counts.
 
 ## Grounded current implementation
 - Local canonical `inventory_recipe_versions` / `inventory_recipe_components` already store active ingredient quantities in g, ml or count; recipe versions support reviewed / estimated / incomplete provenance.
@@ -18,3 +18,13 @@ New management-only view for all current sellable catalog SKUs including those *
 FC-01..FC-14 cover unit normalization, cost provenance, quantity × unit cost, coverage, safe nonmutating preview, variants/bundles, whole catalog including no-sales, comparability columns, filters, cost basis date, permission-gated export, separate historic vs current cost views and optional packaging/wastage without invented estimates. See the updated spreadsheet and Markdown master inventory in Project Library.
 
 Owner groups: **G + E + D**. Priority suggested **P1**. No code, UAT or install has been performed for these FR entries. Existing R94 grouped fixes continue without being superseded.
+
+## Forward-only source delivery — FR-01 + FR-02
+
+Full SHA-fenced managed-source candidate files are staged separately under `qa/r94-first-pass/forward-foodcost/local/` (10 changed files). This separate subtree is intentional: existing root `overlays/local/src/Domain/Reporting/ReportingService.php` and `overlays/local/assets/catalog-workspace.js` were assembled from **different earlier baselines** and may not be overwritten blindly.
+
+The forward ReportingService is composed over the R94 sales/day-coverage candidate, and forward Catalog JS is composed over the B-03 catalog warning candidate. New `CatalogFoodCost.php` is explicitly included from `bootstrap.php` (manual require architecture, not PSR-4 auto-discovery). Report GET is restricted to **both** `shift_supervision` AND `inventory_cost_view`. Catalog recipe snapshot only includes costs for actors with `inventory_cost_view` and existing `inventory_manage` rights; otherwise amounts are masked. No raw ingredient costs reach Guest/Public.
+
+The catalog editor gets a read-only approximate materials subtotal/food cost ratio preview. The Local manager's Reports workspace gets an independent current-catalog pricing section with all active SKUs, including those without sales, filters, search, CSV, and per-item cost-quality coverage. Bundles are deliberately marked for manual review instead of summing potentially duplicated components. Source-only ZIP and Persian ledger are in the project Library under `/SoknaCafeV3-Recovery-20261029/R94-Grouped-Fixes`.
+
+18 calculator unit assertions and PHP/JS syntax checks passed. **No live MariaDB integration, browser end-to-end, budget calculation completeness for composite bundles, Windows host acceptance, or installer/delta has occurred.** Keep the prior U-list open and perform comprehensive QA only after all queued fixes.
