@@ -15,5 +15,6 @@
   "public/resources/shared-staff-ui/dashboard-workspace.php": "7147197bc4a03dee669046c68cfcaa63360a561b7467c45e038e77bb0a5d48a6",
   "public/assets/product-ui.css": "c48c9e6052d6e3f05a9f52a4a1921e9be62c58a77102acdb034cb20e26b4a0c2",
   "public/src/Http/PublicHttpKernel.php": "60a8ba19418a8f3638396c7270ed6c9199220f313c57e4a1afbc78bc69d0754d",
-  "local/src/Domain/LanStaff/LanStaffGatewayService.php": "ffe3db1d98615ec579ec062845991efd5435573b55874693574fcd23568ee025"
+  "local/src/Domain/LanStaff/LanStaffGatewayService.php": "ffe3db1d98615ec579ec062845991efd5435573b55874693574fcd23568ee025",
+  "local/src/Relay/OperationsRealtimeAdapter.php": "6259e9d7710fb6ffd9066162eec4a197522c4a8c48453ba97768ae52042eed44"
 }
