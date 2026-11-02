@@ -91,3 +91,19 @@ The candidate records only 14 business-day *aggregated* Local settlement totals,
 **QA:** PHP 8.4 lint PASS, 19 mocked-PDO assertions PASS. The tests exercise confirmed-zero vs unavailable, negative reversals, duplicated/malformed/out-of-range rows and privacy. Actual MariaDB query, real host support-bundle export, source-to-archive integration and performance still NOT_RUN. The existing SupportBundleWriter is deliberately untouched to preserve unrelated recent identity and triage improvements.
 
 **Next requirement:** a matching Public-side read-model export (with its projection revision and staleness metadata) must be added and tested before concluding that Local/Public daily totals are equal. Do not mark #18 resolved from this candidate alone.
+
+## Public support read-model parity candidate (new)
+
+The installed Public `assets/staff-app/public-health.js` (R93 managed source SHA256 `0401d84803e035521a93e682481cf41ea17562db48ea065ab9b5dd95cb43c052`) currently downloads only connectivity and system state. A forward-only SHA-fenced transformation now exists at `recipes/public-sales-support-apply.cjs`.
+
+```sh
+node qa/r94-first-pass/recipes/public-sales-support-apply.cjs /extracted-R93-public/assets/staff-app/public-health.js qa/r94-first-pass/overlays/public/assets/staff-app/public-health.js
+node --check qa/r94-first-pass/overlays/public/assets/staff-app/public-health.js
+node qa/r94-first-pass/tests/public-sales-support.test.cjs
+```
+
+The candidate appends `sales_reconciliation` when the authorized user downloads the Public support report. It reads the **Public reports projection**, not Local's authority and not a new backend endpoint. A 4.5-second bounded same-origin read with the user's existing permission is attempted only on download. Failures result in `unavailable`; missing dates remain `missing`, conflicting day values become `conflict`, and a stale projection remains `stale`. Amounts are limited to 14 daily aggregates. No invoice, customer, individual ledger or raw report payload is exported.
+
+Local and Public candidates together support a future day-by-day, same-business-clock comparison. The two support exports occur at different times; any numerical difference **requires timed readback**, not an automatic finding of wrong finance arithmetic. Public source-only candidate passed Node syntax plus 19 fake-projection checks; no actual deployment, browser/role integration or MariaDB readback has occurred.
+
+Both recipes are strictly tied to managed ZIP source SHA, not the GitHub `apps/` source tree; fail if mismatched. The Public support recipe does not change any order or payment write path.
