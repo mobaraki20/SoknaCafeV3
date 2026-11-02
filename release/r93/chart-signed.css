@@ -1,0 +1,2 @@
+
+.sc-dashboard-column.is-negative .sc-dashboard-column__start{stop-color:color-mix(in srgb,var(--sc-danger) 50%,white)}.sc-dashboard-column.is-negative .sc-dashboard-column__end{stop-color:var(--sc-danger)}.sc-dashboard-zero-axis{stroke:var(--sc-muted);stroke-width:.6;vector-effect:non-scaling-stroke}

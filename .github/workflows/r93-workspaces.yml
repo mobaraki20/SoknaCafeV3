@@ -1,0 +1,69 @@
+name: R93 Canonical Staff workflows and durable offline commands
+on:
+  push:
+    branches: [work/r93-workspaces-20261102]
+    paths: [release/r93/**, .github/workflows/r93-workspaces.yml]
+permissions:
+  contents: read
+concurrency:
+  group: r93-workspaces
+  cancel-in-progress: true
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: r93-test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DB_PASSWORD: r93-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 48080b646766c4bcdcb9cd7675de32ddc7669380
+          path: app-baselines
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore exact Library-derived published source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release/r93/baseline
+          gh release download local-public-r92-dashboard-csp-uat-20261102 --repo "$GITHUB_REPOSITORY" --dir release/r93/baseline -p SOKNA-LOCAL-UNIVERSAL-UPDATE.zip -p SOKNA-PUBLIC-UNIVERSAL-UPDATE.zip
+          python3 release/r93/prepare.py
+          sudo apt-get update -qq && sudo apt-get install -y php-cli php-mysql php-sqlite3 php-xml php-zip mariadb-client
+          mysql -h127.0.0.1 -uroot -pr93-test -e 'CREATE DATABASE r93_local; CREATE DATABASE r93_public; CREATE DATABASE r88_actions;'
+      - name: Actual MariaDB deferred Local-off, replay, conflict, revoke and supervision
+        run: |
+          php release/r93/tests/database.php release/r93/build/after > release/r93/build/database.json
+          php release/r93/tests/presentation.php release/r93/build/after > release/r93/build/presentation.json
+          node release/r93/tests/deferred-client.cjs release/r93/build/after > release/r93/build/client.json
+          DB_PASSWORD=r93-test php app-baselines/release/r88/tests/actions.php release/r93/build/after > release/r93/build/hall-regression.json
+      - name: Real Chromium signed trend and strict CSP regression
+        run: |
+          for kind in local public; do php release/r93/render.php release/r93/build/after/$kind release/r93/build/after/$kind/chart.html $kind; php release/r93/render.php release/r93/build/after/$kind release/r93/build/after/$kind/chart-signed.html $kind signed; done
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          node release/r93/browser.cjs
+      - name: Native package receiver validation
+        run: |
+          python3 release/r93/package.py
+          dotnet run --project release/r93/native/Native.csproj -c Release -- release/r93/build/dist/SOKNA-LOCAL-UNIVERSAL-UPDATE.zip release/r93/build/native.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r93-qualified-evidence
+          path: |
+            release/r93/build/*.json
+            release/r93/build/*.png
+            release/r93/build/dist/*

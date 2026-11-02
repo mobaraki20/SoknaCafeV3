@@ -1,0 +1,19 @@
+{
+  "local/src/Domain/Orders/OrderAcceptanceService.php": "f8e37c57daeee3b23909a2a70e66184cbb9a28e67edc505db8c4c33abc8a0231",
+  "local/src/Relay/HallStaffRealtimeAdapter.php": "353449cea861a7b6b5535ef530ef59785ad09d3817f2a28ec7a11efdb893aeaf",
+  "local/src/Core/Bootstrap.php": "6d86fb229b204b5159e28203904b68c843bee166dc7f5dc3f22804e4680811f2",
+  "local/src/Relay/RealtimeDispatchService.php": "a6661a5a615ef8c4143338a5a1a34be3c60913c0c55e09f82e328e1daf2f3469",
+  "local/src/Shared/DailySupply.php": "040e242dc0596902d91d2f6ed38a846a063b2dbdae63a1b8ee1b5e65afc14de3",
+  "public/src/Realtime/RealtimeService.php": "095ab015391b8ee2855f27cd0c7dda38c866e0465978322a6acb7d20bba08702",
+  "public/src/Deferred/DeferredService.php": "5a85c1bf85fe95cda5a524b1f53b93d102c37274c199237e6b19906e41d01dd6",
+  "public/src/Remote/RemoteStaffPageRenderer.php": "bd3cdb647cd158c5f992dcd17e95a02207705718932e3b7efcb6ce88a2d1f4ad",
+  "public/assets/staff-app/public-hall-transport.js": "f83d86295087456f3672f243bd3cbac04ec970e67b5b9b574bdc3ff2f2c6569f",
+  "public/assets/operations-workspace.js": "7477c99c20f293229858fa096c71f7163cb9328c804c5d2d92f4335a45227dd8",
+  "public/assets/subscribers-workspace.js": "ea73ef69ffd311781a30ec46dda91889b8f67f714353e2c36bfb49ec8ce19a95",
+  "local/resources/shared-staff-ui/dashboard-workspace.php": "56064c52fe2f501056640fca7c8c77cee36d46fbcb1718dea4768b043b81b2de",
+  "local/public/assets/product-ui.css": "c48c9e6052d6e3f05a9f52a4a1921e9be62c58a77102acdb034cb20e26b4a0c2",
+  "public/resources/shared-staff-ui/dashboard-workspace.php": "7147197bc4a03dee669046c68cfcaa63360a561b7467c45e038e77bb0a5d48a6",
+  "public/assets/product-ui.css": "c48c9e6052d6e3f05a9f52a4a1921e9be62c58a77102acdb034cb20e26b4a0c2",
+  "public/src/Http/PublicHttpKernel.php": "60a8ba19418a8f3638396c7270ed6c9199220f313c57e4a1afbc78bc69d0754d",
+  "local/src/Domain/LanStaff/LanStaffGatewayService.php": "ffe3db1d98615ec579ec062845991efd5435573b55874693574fcd23568ee025"
+}
