@@ -38,7 +38,7 @@ final class ReportingService
             WHERE i.active=1 ORDER BY c.name,i.name,i.id",[]);
         $recipeRows=$this->all("SELECT v.id recipe_id,v.menu_item_id,v.review_status,v.completeness_status,
             rc.inventory_item_id,rc.quantity_base,rc.quantity_status,ii.name inventory_item_name,
-            ii.base_unit,ii.review_status inventory_review_status,b.average_unit_cost,b.cost_status,b.updated_at cost_updated_at
+            ii.base_unit,ii.active inventory_active,ii.review_status inventory_review_status,b.average_unit_cost,b.cost_status,b.updated_at cost_updated_at
             FROM inventory_recipe_versions v
             JOIN inventory_recipe_components rc ON rc.recipe_version_id=v.id
             JOIN inventory_items ii ON ii.id=rc.inventory_item_id
