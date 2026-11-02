@@ -42,7 +42,7 @@ jobs:
           gh release download local-public-r92-dashboard-csp-uat-20261102 --repo "$GITHUB_REPOSITORY" --dir release/r93/baseline -p SOKNA-LOCAL-UNIVERSAL-UPDATE.zip -p SOKNA-PUBLIC-UNIVERSAL-UPDATE.zip
           python3 release/r93/prepare.py
           sudo apt-get update -qq && sudo apt-get install -y php-cli php-mysql php-sqlite3 php-xml php-zip mariadb-client
-          mysql -h127.0.0.1 -uroot -pr93-test -e 'CREATE DATABASE r93_local; CREATE DATABASE r93_public; CREATE DATABASE r88_actions;'
+          mysql -h127.0.0.1 -uroot -pr93-test -e 'CREATE DATABASE r93_local; CREATE DATABASE r93_public; CREATE DATABASE r88_actions; CREATE DATABASE r88_actions_public;'
       - name: Actual MariaDB deferred Local-off, replay, conflict, revoke and supervision
         run: |
           php release/r93/tests/database.php release/r93/build/after > release/r93/build/database.json
