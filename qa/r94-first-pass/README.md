@@ -119,3 +119,14 @@ Historical R93 preflight source evidence `SOKNA-QA-R93-PREFLIGHT-DIAGNOSTICS-R93
 The old 2026-11-02 paired Local/Public support exports have no `sales_reconciliation`: offline comparison returns `BLOCKED_EVIDENCE`, **not a financial equality or inequality determination**.
 
 Next acceptance gate: exact R93 source/recipe replay in a fresh workspace, then read-only host preflight, controlled Home UAT against Local MariaDB and Public model with timed readback. Merge and install remain blocked.
+
+## Group A-02 — connectivity and model publication source fixes
+
+**Evidence from R93**: the fast Local relay sends terminal business ACKs before model publication (preserved), but `PublicEdgeRelayService::flushCommittedRealtimeState` requested just one fast model and sent `$models[0]`. Operations, guest and table drafts may be invalidated by the *same* Local command; only the first was immediately sent. The prior `liveProjectionWorkerFresh()` shortcut could defer a new invalidation merely because an independent worker completed during the last ten seconds. `hall.table_move` was not explicitly mapped to `table_draft_context` in the fast projection target keys.
+
+**Forward candidate**: `overlays/local/src/Domain/PublicEdge/PublicEdgeRelayService.php`, based on R93's unchanged Local-managed source (Git blob `accf210adfb6f27c7e9891ef75d35f76513793c1`), sends at most two independent models within the existing time budget, validates each receipt separately, records progress per-model, preserves existing logging fields and retry state, leaves the remaining invalidations durable, and includes `table_draft_context` after `hall.table_move`. A recent worker receipt no longer suppresses a newer invalidation; the existing non-blocking per-model snapshot lock and monotonic ACK protect concurrent paths.
+
+**Public candidate**: `overlays/public/assets/staff-app/public-hall-transport.js`, based on the **R93-specific override** (Git blob `582989ec422a1c6f6c5e29ebdcb3b9e26e5f8272`). An online network transition revalidates via read-only GET and safely restarts an interrupted model watcher (3-second throttle); a preparation page also refreshes its view after the projection-change event. No command POST/retry policy changed.
+
+**Status and limits**: forward code prepared on a QA branch, NOT INSTALLED. PHP lint passed on the Local candidate; syntax-only JS proxy passed using the same untouched anchors in R92. A matching SHA-fenced recipe for exact R93 JS is delivered in the A-02 source-only archive. Do not report Chrome/R93 compiled JS, Home WAN, MariaDB, host UAT or a real restaurant transaction as PASS. The actual Local/Public reconciled monetary data and TLS/503 root cause remain open. This group does **not** replace A-01 and must be composed with earlier B-group files before building a new release.
+
