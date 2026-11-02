@@ -11,6 +11,11 @@ for(const [i,p] of patches.entries()){
  if(code.split(p.old).length!==2)throw new Error('Anchor count mismatch '+i);
  code=code.replace(p.old,p.new);
 }
+
+const inlineOld="const lines=payloadLines(); if(!lines.length)return;\n    const localTotal=cartTotal();";
+const inlineNew="const lines=payloadLines(); if(!lines.length&&cartCount()===0)return;\n    if(!cartPayloadConsistent()){if(quoteEls.state)quoteEls.state.textContent='برخی اقلام یا گزینه‌های سبد معتبر نیستند؛ آن‌ها را دوباره بررسی کن.';return;}\n    const localTotal=cartTotal();";
+if(code.split(inlineOld).length!==2)throw new Error('Invalid quote warning anchor');
+code=code.replace(inlineOld,inlineNew);
 if(path.resolve(input)===path.resolve(output))throw new Error('No in-place baseline overwrite');
 fs.mkdirSync(path.dirname(output),{recursive:true});
 fs.writeFileSync(output,code);
