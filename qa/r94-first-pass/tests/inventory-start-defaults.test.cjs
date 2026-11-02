@@ -1,0 +1,15 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const src=fs.readFileSync(path.join(__dirname,'../overlays/local/assets/operations-workspace.js'),'utf8');
+const begin=src.indexOf('function countStartDefaults('),end=src.indexOf('function updateCountScope(){',begin);
+assert(begin>=0&&end>begin);
+const get=vm.runInNewContext(src.slice(begin,end)+'\ncountStartDefaults;');
+const eq=(actual,expected,label)=>assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,label);
+const first={title:'موجودی اولیه',session_type:'opening',scope_type:'full'};
+const regular={title:'شمارش دوره‌ای',session_type:'periodic',scope_type:'full'};
+eq(get({inventory_initialized:false,inventory_enabled:true,inventory_reconciliation_required:false},false),first,'opening defaults');
+eq(get({inventory_initialized:true,inventory_enabled:true,inventory_reconciliation_required:false},false),regular,'ongoing stock');
+eq(get({inventory_initialized:false,inventory_enabled:true,inventory_reconciliation_required:false},true),regular,'Public forbids opening count');
+eq(get({inventory_initialized:false,inventory_enabled:true,inventory_reconciliation_required:true},false),regular,'reconciliation is distinct');
+assert(src.includes('شمارش موجودی اولیه باز است؛ اقلام باقی‌مانده را تکمیل'),'active count guidance present');
+console.log('PASS 5 inventory onboarding checks');

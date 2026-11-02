@@ -1,0 +1,32 @@
+'use strict';
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
+const src=fs.readFileSync(path.join(__dirname,'../overlays/local/assets/staff-app/hall-workspace.js'),'utf8');
+const php=fs.readFileSync(path.join(__dirname,'../overlays/local/src/Domain/Orders/OrderWorkspaceService.php'),'utf8');
+let pass=0;const ok=(v,msg)=>{assert.ok(v,msg);pass++;};
+function body(name){const start=src.indexOf('function '+name+'(');assert(start>=0);let at=src.indexOf('{',start),depth=0;for(let i=at;i<src.length;i++){if(src[i]==='{')depth++;if(src[i]==='}'&&--depth===0)return src.slice(start,i+1)}throw Error('Missing function body '+name)}
+// This function uses closures only for account and accountEditorLine; all mutations under test are pure.
+const ctx={account:{lines:[]},Number,Math,String};vm.createContext(ctx);vm.runInContext(body('accountEditorLine')+'\n'+body('accountEditorGroup'),ctx);
+const evaluate=id=>vm.runInContext('accountEditorGroup('+id+')',ctx);
+const one={order_item_id:101,order_id:1,order_number:23,created_at:'2026-11-01 23:59:59',item_id:7,name:'چای',unit_price:30000,note:'',preparation_station:'bar',quantity:1,fulfillment_mode:'dine_in'};
+const two={...one,order_item_id:102,order_id:2,created_at:'2026-11-02 23:59:59',quantity:3};
+const three={...one,order_item_id:103,quantity:2,fulfillment_mode:'takeaway'};
+ctx.account.lines=[one,two,three];let g=evaluate(101);
+ok(g.lines.length===2,'one order only, not next-day reused order number');
+ok(g.total===3,'order 1 quantity only');
+ok(g.distribution.dine_in===1,'dine-in detail');
+ok(g.distribution.takeaway===2,'takeaway detail');
+ok(evaluate(102).total===3,'order 2 remains independent');
+ctx.account.lines=[{...one,order_id:0},{...two,order_id:0},{...three,order_id:0}];g=evaluate(101);
+ok(g.lines.length===2,'legacy fallback requires original timestamp');
+ok(g.total===3,'legacy same-day rows grouped');
+ctx.account.lines=[{...one,order_id:0,created_at:''},{...two,order_id:0,created_at:''}];g=evaluate(101);
+ok(g.lines.length===1,'missing timestamp cannot merge independent lines');
+ok(g.total===1,'missing timestamp retains selected line');
+ok(!src.includes('Number(l.ordered_quantity||l.quantity)'),'explicit ordered_quantity zero is not coalesced away');
+ok(src.includes("financial.discount>0||financial.tax>0"),'tax-only breakdown includes base');
+ok(src.includes("financial.paid>0?'مانده اقلام':'جمع اقلام'"),'part-paid subtotal labeled accurately');
+ok(php.includes("'order_item_id'=>(int)$r['order_item_id'],'order_id'=>(int)$r['order_id']"),'Local output has canonical per-line order id');
+ok(php.includes("'order_id'=>$orderId,'order_number'=>(int)$r['business_order_number'],'accounting_origin'"),'late-served origin propagated to round lines');
+const accountLine=body('accountLine');
+ok(accountLine.includes("l.ordered_quantity??l.quantity"),'zero original quantity retained in both checks');
+console.log('PASS '+pass+' targeted account grouping/price display assertions');
