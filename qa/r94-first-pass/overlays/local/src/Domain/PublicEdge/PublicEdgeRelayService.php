@@ -200,7 +200,9 @@ final class PublicEdgeRelayService
             'projection_models'=>0,'delivered_events'=>0,'model_keys'=>[],
             'pending_acks'=>$this->pendingRealtimeAckCount(),'reconcile_acks'=>$this->pendingRealtimeAckReconciliationCount()];
         if(($processedKinds===[]&&!$retryDirty)||!$this->supportsRealtimeProjectionFastPath())return $out;
-        if($this->publisher->liveProjectionWorkerFresh())return $out+['deferred'=>true,'reason'=>'independent_live_projection'];
+        // A recently completed projection worker is not proof that a NEW mutation's
+        // outbox invalidations were published. Per-model cursor and locks below skip
+        // acknowledged models and prevent unsafe competing snapshots.
         $retry=$this->projectionRetryState();
         if($retry===null)return $out+['deferred'=>true,'reason'=>'projection_retry_state_unavailable'];
         if($retry['next_attempt_epoch']>time())return $out+['deferred'=>true,'reason'=>'projection_retry_backoff','retry_after_seconds'=>$retry['next_attempt_epoch']-time()];
@@ -314,6 +316,7 @@ final class PublicEdgeRelayService
             if(str_starts_with($kind,'operations.')){$add($keys,['operations_workspace','inventory','inventory_cost','deferred_context']);continue;}
             if(str_starts_with($kind,'guest_order.')||str_starts_with($kind,'order.')){$add($keys,['guest_operational','operations']);continue;}
             if(str_starts_with($kind,'table_draft.')){$add($keys,['operations','table_draft_context']);continue;}
+            if($kind==='hall.table_move'){$add($keys,['operations','table_draft_context','guest_operational']);continue;}
             if(str_starts_with($kind,'waiter_call.')||$kind==='hall.waiter_status'){$add($keys,['guest_operational','operations']);continue;}
             if(str_starts_with($kind,'settlement.')){$add($keys,['operations','guest_operational']);continue;}
             if($kind==='preparation.mutate'){$add($keys,['preparation','operations']);continue;}
