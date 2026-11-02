@@ -225,3 +225,15 @@ Three source issues addressed:
 **Safety:** no Local PHP/SQL, permissions, calculations, mutation, ledger or printing changes. `tests/c05-account-bill-smoke.cjs` contains 26 focused actual-source assertions (dynamic summary, financial read guard, stale warning, old C01/C04 code preservation), all passed. Source `node --check` PASS. Home, Cafe and MariaDB UAT remain **NOT RUN**; U-16 stays OPEN until end-to-end confirmation.
 
 Source-only ZIP `SOKNA-R94-GROUP-C05-BILL-FINANCE-SOURCE-ONLY-20261102.zip` and Persian ledger were saved at `/SoknaCafeV3-Recovery-20261029/R94-Grouped-Fixes`. **Do not install**; include in eventual pinned Local delta composition and only then comprehensive regression.
+
+## C-06 — table-session scoped edits / stale account prevention (2026-11-02)
+
+**Source-confirmed defect:** existing `loadAccount` cleared item adjustment/notes/service drafts only when the **table ID** changed. The same table can be closed and reopened with a different session while the table ID stays constant; edits, discount preview and modal state could leak across sessions. Additionally, an account read was verified against the selected table ID but not the `snapshot.tables[].session_id` known by the Hall.
+
+**Fix:** `qa/r94-first-pass/overlays/local/assets/staff-app/hall-workspace.js` now scopes editor drafts to `table_id:session_id`. Normal same-session background refresh preserves unfinished edits. A validated session change closes old edit/discount dialogs, discards only the previous session's draft state and resets bill scroll; a genuine table switch also hides the previous account while loading. If a snapshot and detail both carry session IDs but disagree, the read is rejected and a clear retry warning is shown—no old financial account is accepted. In-flight reads remain protected by the existing `accountLoadSeq` guard; read failure does not prematurely discard drafts.
+
+**Exact provenance:** source input Git blob `1d7e55432c98af7c7a21a837a46f7e9fa39c6288` (C-05 with all prior C-01/C-04/SKU price protections) -> output Git blob `da82a098b6be9d87f141b7c3521fe7ba96c3c893`. No HTML/layout, SQL, business mutations, tax or receipt calculations, database migrations or printing behavior changed.
+
+**Checks:** `node --check` PASS; `tests/c06-session-scope-smoke.cjs` 22 targeted assertions PASS on the exact source (normal edit preservation, same-table session rollover, selected-table change, stale snapshot mismatch, wrong-table response, network failure, out-of-order responses and empty snapshot). Earlier C-05 dynamic regression assertions: 26 PASS. **NOT RUN:** browser/live MariaDB, Windows hosts, real Local/Public readback, full UAT, installer and delta. U-16 remains open for remaining reported account-display defects and end-to-end confirmation.
+
+Source-only archive `SOKNA-R94-GROUP-C06-SESSION-SCOPE-SOURCE-ONLY-20261102.zip` and Persian ledger are retained in `/SoknaCafeV3-Recovery-20261029/R94-Grouped-Fixes`. Build installation only after merging all earlier A/B/D/FR/K/C fixes with pinned managed R93 sources; do not install this source-only archive directly.
