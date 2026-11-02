@@ -212,3 +212,16 @@ Current QA source candidates:
 No layout or account visual redesign, API write, DB migration, new settlement rule or POS printer change. `tests/account-display-pr-smoke.cjs` checks 15 focused source/logic guards; local PHP and JS syntax checks pass. Real Home/Café browser, database and comprehensive QA are still **NOT RUN**. U-16 remains open for any unrelated duplication and manual confirmation after all master-list fixes.
 
 The complete source-only archive `SOKNA-R94-GROUP-C04-BILL-SOURCE-ONLY-20261102.zip` and Persian ledger are saved in Project Library `/SoknaCafeV3-Recovery-20261029/R94-Grouped-Fixes`.
+
+## C-05 — table account summary and finance read provenance (2026-11-02)
+
+**Grounded in the C-04 reviewed Hall source**, Git blob `756c7bf68bc80711d77e02218e7ea2f8f6d3052a`. The merged output is `1d7e55432c98af7c7a21a837a46f7e9fa39c6288` at `overlays/local/assets/staff-app/hall-workspace.js`, preserving earlier historical-SKU, grouping and pending-cart fixes.
+
+Three source issues addressed:
+1. Tax-only bill formerly displayed a spurious **zero discount** line because both the base and the discount row shared `financial.discount>0||financial.tax>0`. Separate conditions now render actual nonzero discounts only. Tax, base and payable amounts are unchanged.
+2. `loadFinanceAccount` formerly accepted `j.account` without validating `account.session.id` against the selected table's session. It now rejects absent/foreign session financial data (no phantom payable, settlement stays disabled).
+3. If financial read failed, the UI used fallback `table.account_total` with no visible disclaimer despite that being order subtotal, not verified payable after partial settlements. The cashier now sees a clear in-panel warning; no financial estimate is fabricated.
+
+**Safety:** no Local PHP/SQL, permissions, calculations, mutation, ledger or printing changes. `tests/c05-account-bill-smoke.cjs` contains 26 focused actual-source assertions (dynamic summary, financial read guard, stale warning, old C01/C04 code preservation), all passed. Source `node --check` PASS. Home, Cafe and MariaDB UAT remain **NOT RUN**; U-16 stays OPEN until end-to-end confirmation.
+
+Source-only ZIP `SOKNA-R94-GROUP-C05-BILL-FINANCE-SOURCE-ONLY-20261102.zip` and Persian ledger were saved at `/SoknaCafeV3-Recovery-20261029/R94-Grouped-Fixes`. **Do not install**; include in eventual pinned Local delta composition and only then comprehensive regression.
