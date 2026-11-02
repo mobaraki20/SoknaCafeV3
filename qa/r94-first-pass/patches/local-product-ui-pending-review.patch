@@ -1,0 +1,11 @@
+--- a/local/public/assets/product-ui.css
++++ b/local/public/assets/product-ui.css
+@@ -4557,7 +4557,7 @@
+ body[data-page="operator"] .sc-pending-review-line>span{min-width:0;display:grid;gap:2px}
+ body[data-page="operator"] .sc-pending-review-line>span strong{overflow-wrap:anywhere}
+ body[data-page="operator"] .sc-pending-review-line>span small{color:var(--sc-muted)}
+-body[data-page="operator"] .sc-pending-review-line>b:last-child{grid-column:1/-1;justify-self:end;color:var(--sc-accent);font-variant-numeric:tabular-nums}
++body[data-page="operator"] .sc-pending-review-line>b:last-child{grid-column:auto;justify-self:end;color:var(--sc-accent);font-variant-numeric:tabular-nums}
+ body[data-page="operator"] .sc-pending-review-card>footer{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+ body[data-page="operator"] .sc-pending-review-card>footer>.sc-button{min-width:0;min-height:40px;padding-inline:6px;font-size:.72rem}
+ body[data-page="operator"] .sc-pending-review-note{margin:0;color:var(--sc-muted);font-size:.7rem;overflow-wrap:anywhere}
