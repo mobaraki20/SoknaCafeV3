@@ -326,7 +326,16 @@ async function reprintPreparationRound(orderId){if(orderId<1)return;const result
 async function reprintPreparationFromMenu(){const rounds=(Array.isArray(account?.order_rounds)?account.order_rounds:[]).filter(r=>Number(r.order_id)>0&&String(r.status||'accounted')==='accounted');if(!rounds.length){toast('فیش آماده‌سازی قابل چاپی برای این حساب وجود ندارد.','warning','چاپ مجدد');return}let orderId=Number(rounds[rounds.length-1].order_id);if(rounds.length>1){const picked=await SoknaUI.choose('فیش آماده‌سازی',rounds.slice().reverse().map(r=>({label:`نوبت ${L.integer(r.round_index||1)} · سفارش ${L.integer(r.order_number||r.order_id)}`,value:String(r.order_id)})),{message:'کدام نوبت دوباره چاپ شود؟'});if(picked===null)return;orderId=Number(picked||0)}await reprintPreparationRound(orderId)}
 async function reprintCustomerReceiptFromMenu(){const receipts=Array.isArray(financeAccount?.receipts)?financeAccount.receipts:[];if(!receipts.length){toast('هنوز فیش مشتری ثبت‌شده‌ای برای چاپ مجدد وجود ندارد.','warning','چاپ مجدد');return}let settlementId=Number(receipts[0].id||0);if(receipts.length>1){const picked=await SoknaUI.choose('فیش مشتری',receipts.map(r=>({label:`${r.invoice_number||'فیش مشتری'} · ${money(r.total||0)}`,value:String(r.id)})),{message:'کدام سند دوباره چاپ شود؟'});if(picked===null)return;settlementId=Number(picked||0)}if(settlementId<1)return;const j=await financeMutate({action:'receipt_reprint',settlement_id:settlementId,request_id:clientRequestId('receipt-reprint')});const st=String(j.result?.status||'');if(st==='blocked')toast('درخواست ثبت شد اما مقصد چاپ آماده نیست؛ وضعیت چاپ را بررسی کن.','warning','فیش مشتری');else toast('فیش مشتری برای چاپ مجدد ارسال شد.','success','فیش مشتری')}
 function closePrintMenu(){const menu=accountPane.querySelector('[data-account-print-menu]'),toggle=accountPane.querySelector('[data-account-print-toggle]');if(menu)menu.hidden=true;if(toggle)toggle.setAttribute('aria-expanded','false')}
-let accountLoadSeq=0,hallLoadSeq=0;
+let accountLoadSeq=0,hallLoadSeq=0,accountDraftScope='';
+// Drafts belong to one table session, not merely one reusable table number.
+function accountScope(tableId,sessionId){const table=Number(tableId),session=Number(sessionId);return Number.isSafeInteger(table)&&table>0&&Number.isSafeInteger(session)&&session>0?`${table}:${session}`:''}
+function resetAccountEditorForSession(){
+ closeAccountItemEditor();closeDiscountDialog();
+ accountAdjustmentDrafts.clear();accountAdjustmentReasons.clear();accountAdjustmentNotes.clear();accountAdjustmentModes.clear();
+ accountServiceDistributionDrafts.clear();accountItemNoteDrafts.clear();accountEditFeedback=null;
+ discountOpen=false;discountDraftType='percent';discountDraftValue='';accountBillScrollTop=0;
+}
+
 async function loadFinanceAccount(sessionId,loadSeq=accountLoadSeq){
     financeAccount=null;financeError='';
     if(!canCashier||sessionId<1)return;
@@ -360,8 +369,9 @@ async function loadAccount(id){
     if(desired<1||desired!==Number(selectedTableId))return;
     const loadSeq=++accountLoadSeq;
     const previousTableId=Number(account?.table?.id||0);
-    if(previousTableId&&previousTableId!==desired){
-        accountEditingItemId=0;accountAdjustmentDrafts.clear();accountAdjustmentReasons.clear();accountAdjustmentNotes.clear();accountAdjustmentModes.clear();accountServiceDistributionDrafts.clear();accountItemNoteDrafts.clear();accountEditFeedback=null;accountBillScrollTop=0;
+    if((previousTableId&&previousTableId!==desired)||(accountDraftScope&&!accountDraftScope.startsWith(desired+':'))){
+        // Never display the previous table's bill while the newly selected table loads.
+        closeAccountItemEditor();closeDiscountDialog();
         account=null;financeAccount=null;financeError='';renderAccountEmpty('در حال دریافت حساب میز…');
     }
     accountPane.setAttribute('aria-busy','true');
@@ -369,6 +379,15 @@ async function loadAccount(id){
         const latest=await request(`${api}?action=account&table_id=${encodeURIComponent(desired)}`);
         if(loadSeq!==accountLoadSeq||desired!==Number(selectedTableId))return;
         if(Number(latest?.table?.id)!==desired)throw new Error('پاسخ حساب با میز انتخاب‌شده تطبیق ندارد؛ دوباره تازه‌سازی کنید.');
+        const incomingSession=Number(latest?.table?.session_id||0),incomingScope=accountScope(desired,incomingSession);
+        const snapshotTable=(snap?.tables||[]).find(row=>Number(row.id)===desired);
+        // The snapshot and detail must name the same session. A lagging Public
+        // projection cannot silently reopen a settled/previous session.
+        if(snapshotTable&&Object.prototype.hasOwnProperty.call(snapshotTable,'session_id')&&
+           Number(snapshotTable.session_id||0)!==incomingSession)throw new Error('نشست حساب با وضعیت فعلی میز یکسان نیست؛ نمایش اطلاعات قدیمی متوقف شد.');
+        if(accountDraftScope!==incomingScope){
+            resetAccountEditorForSession();accountDraftScope=incomingScope;
+        }
         account=latest;financeAccount=null;financeError='';
         if(Number(account?.table?.session_id)>0)await loadFinanceAccount(Number(account.table.session_id),loadSeq);
         if(loadSeq!==accountLoadSeq||desired!==Number(selectedTableId))return;
