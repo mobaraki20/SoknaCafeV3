@@ -75,7 +75,11 @@ final class PublicDashboardFinance
                 'available' => $known, 'has_receipt' => $known && $closed > 0,
                 'avg_available'=>$has($raw,'avg_ticket')||($has($fallback,'completed_sales')&&$has($fallback,'completed_settlements')),
                 'orders_available'=>$has($raw,'order_count')||$has($fallback,'order_count'),
-                'conflict'=>$has($raw,'net_sales')&&$has($fallback,'net_sales')&&(int)$raw['net_sales']!==(int)$fallback['net_sales']];
+                'conflict'=>($has($raw,'net_sales')&&$has($fallback,'net_sales')&&(int)$raw['net_sales']!==(int)$fallback['net_sales'])
+                    ||($has($raw,'completed_settlements')&&$has($fallback,'completed_settlements')&&(int)$raw['completed_settlements']!==(int)$fallback['completed_settlements'])
+                    ||($has($raw,'avg_ticket')&&$has($fallback,'completed_settlements')&&$has($fallback,'completed_sales')
+                        &&(int)$raw['avg_ticket']!==((int)$fallback['completed_settlements']>0
+                            ?(int)round((int)$fallback['completed_sales']/(int)$fallback['completed_settlements']):0))];
         };
         $todayView = $resolve($today, 'today_summary');
         $yesterdayView = $resolve($yesterday, 'yesterday_summary');
