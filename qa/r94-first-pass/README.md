@@ -62,3 +62,12 @@ Local isolated validation of the equivalent exact-source candidate: Node syntax 
 - Existing builder `PublicProjectionBuilder::remoteReportWorkspace()` reads dashboard and archive inside one Local REPEATABLE READ transaction. The change is coverage encoding, **not** a new source of truth or a fix for WAN/TLS outages.
 - **Limits**: production MariaDB and actual archived read-model values have not been compared. Browser and installed-identity UAT, Public source freshness recovery, payload-size/performance, re-publish and rollback remain NOT_RUN. No source candidate is eligible for installation yet.
 
+
+## Inventory first-run usability (issue #22)
+
+- Source shows `operations-workspace.js` previously defaulted `count-start` to **periodic** even when `module_state.inventory_initialized===false`.
+- Candidate `overlays/local/assets/operations-workspace.js` preselects **opening inventory** only for an uninitialized Local, not on Public and not during reconciliation. Once initialized, periodic is retained.
+- When an opening count is already active, the inline notice now says to continue and finalize that existing count instead of prompting a new count.
+- `tests/inventory-start-defaults.test.cjs`: 5 static/simulated Node checks PASS plus `node --check` PASS on the corresponding local managed source.
+- **Not a final inventory redesign**; count persistence, workflow completion, unit conversion, receipt and reconciliation tests against a real installation remain NOT_RUN. No inventory DB or business rules changed.
+
