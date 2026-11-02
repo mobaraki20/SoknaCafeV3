@@ -107,3 +107,15 @@ The candidate appends `sales_reconciliation` when the authorized user downloads 
 Local and Public candidates together support a future day-by-day, same-business-clock comparison. The two support exports occur at different times; any numerical difference **requires timed readback**, not an automatic finding of wrong finance arithmetic. Public source-only candidate passed Node syntax plus 19 fake-projection checks; no actual deployment, browser/role integration or MariaDB readback has occurred.
 
 Both recipes are strictly tied to managed ZIP source SHA, not the GitHub `apps/` source tree; fail if mismatched. The Public support recipe does not change any order or payment write path.
+
+## R94 phase 6 revalidation (2026-11-02)
+
+A **portable, source-only offline kit** was rebuilt from previously extracted managed sources with PHP/JS/Python fixture tests. Replay passed **96 logical assertions/scenarios**: Local support 19, Public support 23, finance parity 26, offline comparator 8, guest readiness 10, inventory first-start 5, dashboard recovery 5. Syntax validation for included PHP/JS passed. This does **not** establish MariaDB host integration, browser E2E, live installed identity or upgrade/rollback PASS.
+
+Public support projection parsing now fails closed for duplicate dates even if values are equal, an absent Local-derived business cutoff, and missing source version. Updated recipe and unit tests are in this PR.
+
+Historical R93 preflight source evidence `SOKNA-QA-R93-PREFLIGHT-DIAGNOSTICS-R93-20261102-085559-a2a9de92.zip` was re-read: **P00 failed** on a text username selector because the current login UI presents account cards and a hidden username input. A previous V5 runner package statically addresses that mismatch; it has not been validated by a fresh Windows host run. Do not claim P01-P29 were executed.
+
+The old 2026-11-02 paired Local/Public support exports have no `sales_reconciliation`: offline comparison returns `BLOCKED_EVIDENCE`, **not a financial equality or inequality determination**.
+
+Next acceptance gate: exact R93 source/recipe replay in a fresh workspace, then read-only host preflight, controlled Home UAT against Local MariaDB and Public model with timed readback. Merge and install remain blocked.
