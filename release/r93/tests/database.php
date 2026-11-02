@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
-$root=$argv[1];require $root.'/public/bootstrap.php';require $root.'/local/bootstrap.php';$pass=getenv('DB_PASSWORD')?:'r93-test';$cfg=fn($db)=>['app'=>['timezone'=>'Asia/Tehran','data_dir'=>sys_get_temp_dir().'/r93-'.bin2hex(random_bytes(4))],'installation'=>['id'=>'r93-house-fixture'],'db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>$db,'charset'=>'utf8mb4','user'=>'root','pass'=>$pass]];
-$l=sokna_local_bootstrap($cfg('r93_local'));$l->migrations()->migrate('0059_menu_business_reconciliation_v4');$l->defaultContentSeeder()->seed();$l->migrations()->migrate();$p=$l->database();$e=sokna_public_bootstrap($cfg('r93_public'));$e->migrations()->migrate();$q=$e->database();$rows=[];
+$root=$argv[1];require __DIR__.'/autoload-public.php';require $root.'/local/bootstrap.php';$pass=getenv('DB_PASSWORD')?:'r93-test';$cfg=fn($db)=>['app'=>['timezone'=>'Asia/Tehran','data_dir'=>sys_get_temp_dir().'/r93-'.bin2hex(random_bytes(4))],'installation'=>['id'=>'r93-house-fixture'],'db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>$db,'charset'=>'utf8mb4','user'=>'root','pass'=>$pass]];
+$l=sokna_local_bootstrap($cfg('r93_local'));$l->migrations()->migrate('0059_menu_business_reconciliation_v4');$l->defaultContentSeeder()->seed();$l->migrations()->migrate();$p=$l->database();$e=\Sokna\PublicEdge\Core\Bootstrap::fromArray($cfg('r93_public'));$e->migrations()->migrate();$q=$e->database();$rows=[];
 function check(bool $ok,string $test):void{global $rows;$rows[]=['test'=>$test,'pass'=>$ok];if(!$ok)throw new RuntimeException($test);}
 $p->exec("INSERT INTO users(username,password_hash,display_name,role,active) VALUES('r93','fixture','R93 admin','admin',1)");$id=(int)$p->lastInsertId();$user=['id'=>$id,'role'=>'admin','display_name'=>'R93'];$projection='user:'.$id;
 $q->prepare('INSERT INTO installations(installation_id,display_name,active,remote_enabled,authority_epoch) VALUES(?,?,1,1,1)')->execute(['r93-house-fixture','R93 fixture']);

@@ -201,8 +201,8 @@ final class RemoteStaffPageRenderer
 
     private function operations(array $session): void
     {
-        // Public runs the exact Local Operations workspace, but capabilities are
-        // deliberately read-only until a mutation has a dedicated safe relay.
+        // Read models stay on the workspace adapter; approved supply intents use
+        // the existing durable Deferred lane and canonical Local owners.
         $isAdmin=false;$canOps=false;$canManage=false;$canFinalize=false;$canBuy=$this->has($session,'supply.manage.defer');$csrf='';$workspaceReadOnly=!$canBuy&&!$this->has($session,'supply.need.defer');
         $workspaceApi=$this->u('/staff/operations-adapter');$workspaceAsset=static fn(string $path):string=>ProductShell::asset($path);
         require dirname(__DIR__,2).'/resources/shared-staff-ui/operations-workspace.php';
