@@ -16,7 +16,7 @@ final class CatalogFoodCost
             $qty=(int)($component['quantity_base']??0);
             $status=(string)($component['cost_status']??'unknown');
             $unit=$component['average_unit_cost']??null;
-            $valid=$qty>0&&in_array($status,['known','estimated'],true)&&$unit!==null&&is_numeric($unit)&&is_finite((float)$unit)&&(float)$unit>=0;
+            $valid=$qty>0&&((int)($component['inventory_active']??1)===1)&&in_array($status,['known','estimated'],true)&&$unit!==null&&is_numeric($unit)&&is_finite((float)$unit)&&(float)$unit>=0;
             $amount=$valid?$qty*(float)$unit:null;
             if($amount!==null&&is_finite($amount))$known+=$amount;
             else{$amount=null;$partial=true;}
