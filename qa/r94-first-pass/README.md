@@ -175,3 +175,15 @@ The full R93-managed line-of-development files, correctly composed with the **B-
 **Evidence:** PHP / JS syntax PASS; 9 source invariants and 27 isolated arithmetic examples PASS. Live MariaDB, Windows, Local/Public financial parity, account session vs receipt semantics and exhaustive end-to-end tests are **NOT RUN**. These are source-only candidates. Finance service date range vs financial-period accounting axes still need matched-interval review.
 
 The ZIP `SOKNA-R94-FINANCE-D02-C02-SOURCE-ONLY-20261102.zip` and the Persian ledger are in Project Library `/SoknaCafeV3-Recovery-20261029/R94-Grouped-Fixes`. Do not promote or install before finishing the master fix list and release assembly.
+
+## Group C-02 / D-02 — table price-change identity and cross-KPI finance conflicts
+
+**Managed-source forward candidates, source-only, not installed** (2026-11-02).
+
+`overlays/local/assets/staff-app/hall-workspace.js` (Git blob `c3644a07154bb0af7b6b0d1756ebffbbaac321f2`) now respects `item_id` when grouping changed-price account lines. Previously the UI grouped by identical names/prices and merged two distinct size/SKU rows even though Local supplied canonical item identifiers. Existing bill layout, historical pricing, discounts and command routes remain unchanged.
+
+`overlays/public/src/Remote/PublicDashboardFinance.php` (Git blob `38aae28d19a4ef508f5982db97d56caf3fe4f5ab`) now flags a day when archived and dashboard completed settlement count or average differ, **even when net sales match**. Missing/unknown fields are not treated as zero. Existing signed sale bars, day/date conflict behavior and source-only logic are retained.
+
+Required narrow checks: PHP/JS syntax PASS; 8 same-name SKU/price grouping checks PASS and 8 finance count/average cross-projection checks PASS. Scripts: `tests/hall-identity.test.cjs` and `tests/finance-cross-kpi.test.php`. No real MariaDB, browser, cashier or Home/Cafe UAT was performed. The definition of `avg_ticket` is currently average of *completed settlement documents*, NOT average closed table bill across split settlements; do not silently redefine it before accounting policy is specified and implemented.
+
+Source ZIP + Persian ledger in project Library: `/SoknaCafeV3-Recovery-20261029/R94-Grouped-Fixes/SOKNA-R94-GROUP-C02-D02-SOURCE-ONLY-20261102.zip` and `...-FIX-LEDGER-20261102-FA.md`. Remaining work: U-16 other account duplications, U-18 actual Local/Public mismatch, U-23 invoice/customer navigation, plus A/B issues. Full QA/deployment only after remediation list is closed.
