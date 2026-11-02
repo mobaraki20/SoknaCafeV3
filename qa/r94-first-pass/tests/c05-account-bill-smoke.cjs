@@ -1,0 +1,57 @@
+'use strict';
+const fs=require('fs'),assert=require('node:assert/strict'),vm=require('node:vm');
+const s=fs.readFileSync(require('path').join(__dirname,'../overlays/local/assets/staff-app/hall-workspace.js'),'utf8');
+let count=0;const ok=(value,label)=>{assert.ok(value,label);count++};
+const summaryStart=s.indexOf('summary=`<div class="sc-hall-payable sui-account-summary');
+const summaryEnd=s.indexOf(',discountType=',summaryStart);
+ok(summaryStart>=0&&summaryEnd>summaryStart,'expected summary template');
+const renderSummary=new Function('financial','money','esc','return '+s.slice(summaryStart+'summary='.length,summaryEnd));
+const base={gross:1000,discount:0,discountLabel:'',tax:80,amount:1080,paid:0,label:'قابل پرداخت'};
+const m=x=>`${Number(x)} تومان`,esc=x=>String(x);
+const onlyTax=renderSummary(base,m,esc);
+ok(onlyTax.includes('جمع اقلام'),'tax-only bill includes base label');
+ok(onlyTax.includes('مالیات'),'tax-only bill includes tax');
+ok(!onlyTax.includes('is-discount'),'tax-only bill must not render zero discount');
+ok(onlyTax.includes('1080 تومان'),'tax-only bill keeps payable total');
+const withDiscount=renderSummary({...base,discount:100,tax:20,amount:920,discountLabel:'۱۰٪'},m,esc);
+ok(withDiscount.includes('is-discount'),'nonzero discount retains own row');
+ok(withDiscount.includes('100 تومان'),'discount unchanged');
+const afterPayment=renderSummary({...base,paid:600,gross:400,tax:32,amount:432},m,esc);
+ok(afterPayment.includes('مانده اقلام'),'paid account labels remaining subtotal');
+ok(afterPayment.includes('پرداخت‌شده تا این لحظه'),'paid account still shows previous paid amount');
+const noTax=renderSummary({...base,tax:0,discount:0,amount:1000},m,esc);
+ok(!noTax.includes('sc-hall-summary-row is-tax'),'no false tax row');
+ok(!noTax.includes('sc-hall-summary-row is-discount'),'no false discount row');
+const alertStart=s.indexOf("alert=canCashier&&financeError?");
+const alertEnd=s.indexOf(',summary=`',alertStart);
+ok(alertStart>=0&&alertEnd>alertStart,'financial warning is present');
+const renderAlert=new Function('canCashier','financeError','esc','return '+s.slice(alertStart+'alert='.length,alertEnd));
+ok(renderAlert(true,'قطعی نیست',esc).includes('مانده قطعی تسویه نیست'),'warning differentiates provisional total');
+ok(renderAlert(true,'',esc)==='','healthy account has no warning');
+ok(renderAlert(false,'خطا',esc)==='','only cashier sees finance error warning');
+ok(renderAlert(true,'<script>',v=>String(v).replaceAll('<','&lt;')).includes('&lt;script>'),'finance error text escaped');
+const begin=s.indexOf('async function loadFinanceAccount('),end=s.indexOf('const discountDialog=',begin);
+ok(begin>=0&&end>begin,'finance loader extracted');
+const loader=s.slice(begin,end);
+async function exercise(receipt,session=12){
+ const ctx={canCashier:true,account:{table:{id:7,session_id:12},lines:[{quantity:2}],pending_orders:[]},
+ financeAccount:null,financeError:'',accountLoadSeq:3,selectedTableId:7,financeApi:'/finance',request:async()=>receipt};
+ vm.createContext(ctx);vm.runInContext(loader,ctx);await vm.runInContext(`loadFinanceAccount(${session},3)`,ctx);
+ return ctx;
+}
+(async()=>{
+ let r=await exercise({account:{session:{id:12},remaining_total:300}});
+ ok(r.financeAccount?.remaining_total===300,'matching financial session accepted');
+ ok(r.financeError==='','matching session no error');
+ r=await exercise({account:{session:{id:13},remaining_total:100}});
+ ok(r.financeAccount===null,'mismatched financial session is rejected');
+ ok(r.financeError.includes('تطبیق ندارد'),'mismatched financial session explains error');
+ r=await exercise({account:{remaining_total:500}});
+ ok(r.financeAccount===null,'missing session ID rejected');
+ r=await exercise({account:null});
+ ok(r.financeAccount===null&&r.financeError.length>0,'missing account payload must not silently succeed');
+ ok(s.includes('function accountPriceChangeRows(){'),'C04 item-id price grouping retained');
+ ok(s.includes('const anchorCreatedAt=String(anchor.created_at||'),'C04 day-bound order grouping retained');
+ ok(s.includes('pending.length>1?'),'C01 pending order price dedup retained');
+ console.log('PASS',count,'focused bill read/display assertions');
+})().catch(e=>{console.error(e);process.exitCode=1});
