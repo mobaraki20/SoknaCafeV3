@@ -213,10 +213,32 @@ function pendingAccountSummary(){
  }).join('');
  return `<section class="sc-hall-pending-account" data-pending-account-summary><header class="sc-pending-review-heading"><span class="sc-badge sc-badge--warning">${L.integer(pending.length)} سفارش منتظر</span><strong>پیش از تأیید، اقلام را بررسی کنید</strong><b>${money(sum)}</b></header>${cards}</section>`
 }
-function accountPriceChangeSummary(){const changes=Array.isArray(account?.price_changes)?account.price_changes:[];if(!changes.length)return '';const names=[...new Set(changes.map(x=>String(x.name||'')))];return `<section class="sc-hall-account-price-change" data-account-price-change><div><strong>قیمت ${L.integer(names.length)} عنوان محصول پس از ثبت حساب تغییر کرده است.</strong><small>اقلام موجود با قیمت زمان ثبت باقی می‌مانند.</small></div><button type="button" class="sc-button sc-button--secondary" data-price-details>جزئیات تغییر قیمت</button></section>`}
-function openAccountPriceChanges(){const priceRows=Array.isArray(account?.price_changes)?account.price_changes:[];if(!priceRows.length)return;
- const grouped=new Map();for(const row of priceRows){const name=String(row.name||''),recorded=Number(row.recorded_price||0),current=Number(row.current_price||0),key=JSON.stringify([name,recorded,current]),prior=grouped.get(key);if(prior){prior.quantity+=Math.max(0,Number(row.quantity||0))}else{grouped.set(key,{name,recorded_price:recorded,current_price:current,quantity:Math.max(0,Number(row.quantity||0))})}}
- const changes=[...grouped.values()];const dialog=document.createElement('dialog');dialog.className='sc-price-review-dialog';dialog.setAttribute('aria-label','تغییر قیمت اقلام حساب');dialog.innerHTML=`<div class="sc-price-review-head"><strong>تغییرات قیمت · میز ${L.integer(account?.table?.table_number||account?.table?.id||0)}</strong><button type="button" class="sc-icon-button" data-price-close aria-label="بستن">×</button></div><p class="sc-price-review-note">قیمت سفارش ثبت‌شده تغییر نمی‌کند. سفارش جدید با قیمت فعلی ثبت می‌شود.</p><div class="sc-price-review-rows">${changes.map(x=>`<div class="sc-price-review-row"><strong>${esc(x.name)}</strong><small>${L.integer(x.quantity||0)} عدد</small><span>هنگام ثبت: <b>${money(x.recorded_price)}</b></span><span>اکنون: <b>${money(x.current_price)}</b></span></div>`).join('')}</div><button type="button" class="sc-button" data-price-close>بستن</button>`;document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.querySelectorAll('[data-price-close]').forEach(btn=>btn.addEventListener('click',()=>dialog.close()));if(window.SoknaUI?.showDialog){window.SoknaUI.showDialog(dialog,{focusTitle:true})}else dialog.showModal()}
+function accountPriceChangeRows(){
+ // Local already projects price changes by item_id and historical/current prices.
+ // Do not collapse distinct SKUs or sizes solely because their display names match.
+ const raw=Array.isArray(account?.price_changes)?account.price_changes:[],grouped=new Map();
+ for(const row of raw){
+  const itemId=Number(row.item_id||0),name=String(row.name||'').trim()||'محصول',recorded=Number(row.recorded_price),current=Number(row.current_price),quantity=Number(row.quantity||0);
+  if(!Number.isSafeInteger(recorded)||recorded<0||!Number.isSafeInteger(current)||current<0||recorded===current||!Number.isSafeInteger(quantity)||quantity<=0)continue;
+  const identity=itemId>0?`item:${itemId}`:`legacy:${name}`;
+  const key=JSON.stringify([identity,recorded,current]),prior=grouped.get(key);
+  if(prior)prior.quantity+=quantity;
+  else grouped.set(key,{item_id:itemId,name,recorded_price:recorded,current_price:current,quantity});
+ }
+ return [...grouped.values()];
+}
+function accountPriceChangeSummary(){
+ const changes=accountPriceChangeRows();if(!changes.length)return '';
+ const count=new Set(changes.map(x=>x.item_id>0?`item:${x.item_id}`:`legacy:${x.name}`)).size;
+ return `<section class="sc-hall-account-price-change" data-account-price-change><div><strong>قیمت ${L.integer(count)} محصول پس از ثبت حساب تغییر کرده است.</strong><small>اقلام موجود با قیمت زمان ثبت باقی می‌مانند.</small></div><button type="button" class="sc-button sc-button--secondary" data-price-details>جزئیات تغییر قیمت</button></section>`;
+}
+function openAccountPriceChanges(){
+ const changes=accountPriceChangeRows();if(!changes.length)return;
+ const dialog=document.createElement('dialog');dialog.className='sc-price-review-dialog';dialog.setAttribute('aria-label','تغییر قیمت اقلام حساب');
+ dialog.innerHTML=`<div class="sc-price-review-head"><strong>تغییرات قیمت · میز ${L.integer(account?.table?.table_number||account?.table?.id||0)}</strong><button type="button" class="sc-icon-button" data-price-close aria-label="بستن">×</button></div><p class="sc-price-review-note">قیمت سفارش ثبت‌شده تغییر نمی‌کند. سفارش جدید با قیمت فعلی ثبت می‌شود.</p><div class="sc-price-review-rows">${changes.map(x=>`<div class="sc-price-review-row"><strong>${esc(x.name)}</strong><small>${L.integer(x.quantity||0)} عدد</small><span>هنگام ثبت: <b>${money(x.recorded_price)}</b></span><span>اکنون: <b>${money(x.current_price)}</b></span></div>`).join('')}</div><button type="button" class="sc-button" data-price-close>بستن</button>`;
+ document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.querySelectorAll('[data-price-close]').forEach(btn=>btn.addEventListener('click',()=>dialog.close()));
+ if(window.SoknaUI?.showDialog)window.SoknaUI.showDialog(dialog,{focusTitle:true});else dialog.showModal();
+}
 
 function accountNotices(){const html=accountPriceChangeSummary();return html?`<div class="sc-hall-account-notices">${html}</div>`:''}
 function accountRounds(){const rounds=Array.isArray(account?.order_rounds)?account.order_rounds:[];if(rounds.length)return rounds.map((r,i)=>accountRound(r,i,rounds.length)).join('');return account?.lines?.length?`<div class="sc-hall-bill-flat-fallback">${account.lines.map(accountLine).join('')}</div>`:'<div class="sc-empty">هنوز قلم تأییدشده‌ای وارد حساب نشده است.</div>'}
