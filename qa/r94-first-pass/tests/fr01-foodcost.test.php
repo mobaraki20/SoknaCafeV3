@@ -31,5 +31,6 @@ $ok($r['ingredient_cost']===2550,'zero sale price cost still known');
 $ok($r['components'][0]['line_cost']===2550,'line calculation');
 $ok($r['oldest_cost_updated_at']==='2026-11-01 01:00:00','cost basis');
 $ok(CatalogFoodCost::estimate([array_replace($c,['cost_status'=>'partial'])],$recipe,9000)['ingredient_cost']===null,'partial cost excluded');
+$ok(CatalogFoodCost::estimate([array_replace($c,['inventory_active'=>0])],$recipe,9000)['ingredient_cost']===null,'inactive ingredient cannot claim known total');
 $ok(CatalogFoodCost::estimate([$c,array_replace($c,['inventory_item_id'=>2,'average_unit_cost'=>'1.25','quantity_base'=>10])],$recipe,9000)['ingredient_cost']===2563,'multiple ingredient rounding once');
 echo "PASS {$n} calculator assertions\n";
