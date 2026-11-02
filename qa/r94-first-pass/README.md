@@ -53,3 +53,12 @@ node qa/r94-first-pass/tests/guest-safety.test.cjs ./candidate-guest.js
 ```
 
 Local isolated validation of the equivalent exact-source candidate: Node syntax PASS and 10 readiness/cart assertions PASS. This is **NOT** evidence of browser/DB/host UAT; #40/#41 remain open for MariaDB order receipt and timeline measurements. Do not deploy the recipe output as a standalone PHP/ZIP package or publish it over R93; create a new identity-fenced Public delta release after full tests.
+
+## Sales reconciliation work item #18 / #43
+
+- **Root-level code evidence**: Local `dashboardSnapshotTx()` already emits a seven-day dense list with explicit zero-sale days; `remoteArchive()` emitted only days that had settlement rows. Public reconciliation refuses to infer zeros from a missing row. This discrepancy affects reported coverage, particularly an archive-only date.
+- QA candidate `overlays/local/src/Domain/Reporting/ReportingService.php` keeps the same SQL ledger authority and adds explicit zero rows only after Local has queried the *complete* 365-day range. It rejects duplicate/out-of-range/malformed source rows. No business write, schema, or financial formula changes.
+- `tests/sales-reconcile.php` exercises Local authoritative zero/positive/negative values, leap dates, duplicate/out-of-bound rows, Public summary/trend reconciliation, conflicting snapshots and Iranian business-day cutoff. The corresponding 26-assertion offline PHP fixture suite passed on PHP 8.4, and `php -l` passed.
+- Existing builder `PublicProjectionBuilder::remoteReportWorkspace()` reads dashboard and archive inside one Local REPEATABLE READ transaction. The change is coverage encoding, **not** a new source of truth or a fix for WAN/TLS outages.
+- **Limits**: production MariaDB and actual archived read-model values have not been compared. Browser and installed-identity UAT, Public source freshness recovery, payload-size/performance, re-publish and rollback remain NOT_RUN. No source candidate is eligible for installation yet.
+
