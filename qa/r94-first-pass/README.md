@@ -142,3 +142,16 @@ Next acceptance gate: exact R93 source/recipe replay in a fresh workspace, then 
 **Regression preservation discovery:** R93 **managed Local** `PublicEdgePublisherService.php` Git blob `3667eb1c6ef473ad978f8248b61400418f84170b` **already** has exact model-key/cursor/hash ACK verification and safe `source_version` monotonic assignment. The older GitHub `apps/` tree lacks these upgrades; never replace the managed publisher with that older file. `guards/managed-projection-source-guard.cjs` checks baseline + invariants. No modification to this PHP class was needed.
 
 **Scope status:** JS source candidate staged, syntax proxy and recipe syntax PASS, managed Publisher protection PASS, Local A-02 PHP syntax PASS. Full R93 staged JS browser execution, interruption during a real 15-second timeout, end-to-end finance/order readback and UAT remain NOT_RUN. No installed code/release changed. TLS/503 root cause and actual cross-environment sales discrepancy remain OPEN.
+
+## Group D-01 / C-01 (2026-11-02): finance daily integrity and uncluttered pending bill
+
+Source candidates added to this QA-only branch:
+- `overlays/public/src/Remote/PublicDashboardFinance.php` (exact staged blob `395ac23b47a5ab868c25ff86b0ade510020fe59e`). Duplicate date rows from any of archive summary, archive sales or dashboard daily are flagged as conflicts even if amounts are identical. Archive summary and daily sales are compared for *all covered days*, not only today's/yesterday's. No Local financial calculation changed.
+- `overlays/local/assets/staff-app/hall-workspace.js` (exact staged blob `5702004b5daa5ef4f91feb36e451579171e49d1f`). Pending order UI shows quantity and line total once, while keeping the existing account/bill layout; per-order subtotal remains when two or more pending orders exist.
+- `patches/local-product-ui-pending-review.patch` changes a single grid-column rule within the existing Local product CSS. Original managed CSS SHA256 `c48c9e6052d6e3f05a9f52a4a1921e9be62c58a77102acdb034cb20e26b4a0c2`; do not apply to mismatched inputs.
+
+Previous R94 Public dashboard overlays were amended to distinguish a *data conflict* from a merely stale or missing day in the trend tooltip. Retain R94 signed net bars, unknown/zero states and dashboard freshness recovery from prior QA changes.
+
+**Grounded scope:** User issues U-18, U-16 and related D/C candidate scenarios. PublicDashboardFinance / Hall / CSS files are unchanged between the exact R92 managed archives and R93's release overlays. The finance 12-case isolated fixture `tests/d01-reconciliation-smoke.php`, PHP syntax, and Hall JavaScript syntax passed locally. The amended Public dashboard renderer still needs a full exact-R93 PHP syntax and browser review when composing a qualified release. No MariaDB readback or Home/Cafe UAT occurred. Actual reported sales disagreement and other account redundancy remain OPEN.
+
+The complete three-file SOURCE-ONLY archive, hashes and remediation ledger are stored in the project's Library folder `/SoknaCafeV3-Recovery-20261029/R94-Grouped-Fixes` with filename `SOKNA-R94-GROUP-D01-C01-SOURCE-ONLY-20261102.zip`. Nothing was installed or released. Do not confuse the other A/B overlays with these files; future release assembly must compose all prior fixes and make distinct Local/Public delta packages.
