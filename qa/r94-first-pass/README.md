@@ -71,3 +71,23 @@ Local isolated validation of the equivalent exact-source candidate: Node syntax 
 - `tests/inventory-start-defaults.test.cjs`: 5 static/simulated Node checks PASS plus `node --check` PASS on the corresponding local managed source.
 - **Not a final inventory redesign**; count persistence, workflow completion, unit conversion, receipt and reconciliation tests against a real installation remain NOT_RUN. No inventory DB or business rules changed.
 
+
+## Support-bundle sales parity diagnostics (new QA candidate)
+
+**Observed gap:** the R93 Local support ZIP carries update/connection/queue metadata but no authoritative daily settlement ledger totals. In the current 2026-11-02 Local and Public snapshots, day-level net sales cannot be compared. The installed Local 231cp and Public 35fx versions match R93. This is a diagnostic limitation, not proof of a particular financial miscalculation.
+
+**Forward-only source transform:** `recipes/sales-support-apply.cjs` is SHA-fenced to the **R92 managed Local Web** `src/Domain/System/SystemDiagnosticsService.php` SHA256 `a3365f46afe5fa602f6cc8d87613fadbc4ac31ad356b1c1e967ea5c220ab0ac3`, which is what R93 packaging uses for this unchanged file. The `apps/local-web/` GitHub worktree file is **not** that managed baseline. Do not patch or deploy the wrong source.
+
+When building an isolated forward candidate from the exact R93 Local managed archive:
+
+```sh
+node qa/r94-first-pass/recipes/sales-support-apply.cjs /extracted-R93-local/src/Domain/System/SystemDiagnosticsService.php qa/r94-first-pass/overlays/local/src/Domain/System/SystemDiagnosticsService.php
+php -l qa/r94-first-pass/overlays/local/src/Domain/System/SystemDiagnosticsService.php
+php qa/r94-first-pass/tests/sales-support.test.php
+```
+
+The candidate records only 14 business-day *aggregated* Local settlement totals, counts and reversals under `snapshot.sales_reconciliation` when the administrator explicitly creates the support bundle. Missing/failed ledger or unavailable business clock yields `status=unavailable`, never invented zero. It captures no invoice numbers, customer names or per-transaction data. The read is indexed, local-only, one aggregate SQL query; no WAN dependency, SQL write or extra periodic Health cost.
+
+**QA:** PHP 8.4 lint PASS, 19 mocked-PDO assertions PASS. The tests exercise confirmed-zero vs unavailable, negative reversals, duplicated/malformed/out-of-range rows and privacy. Actual MariaDB query, real host support-bundle export, source-to-archive integration and performance still NOT_RUN. The existing SupportBundleWriter is deliberately untouched to preserve unrelated recent identity and triage improvements.
+
+**Next requirement:** a matching Public-side read-model export (with its projection revision and staleness metadata) must be added and tested before concluding that Local/Public daily totals are equal. Do not mark #18 resolved from this candidate alone.
