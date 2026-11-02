@@ -193,7 +193,7 @@ final class FinanceWorkspaceService
         if($from!==''&&$to!==''&&$from>$to)throw new SettlementException('invalid_invoice_range','تاریخ شروع نباید پس از پایان باشد.',422);
         $limit=30;$offset=max(0,min(30000,(int)($filter['offset']??0)));
         $where=['l.subscriber_id=?'];$params=[$subscriberId];
-        if($query!==''){$where[]='r.invoice_number LIKE ?';$params[]='%'.$query.'%';}
+        if($query!==''){$where[]="r.invoice_number LIKE ? ESCAPE '!'";$params[]='%'.str_replace(['!','%','_'],['!!','!%','!_'],$query).'%';}
         if($from!==''){$where[]='r.created_at>=?';$params[]=$from.' 00:00:00';}
         if($to!==''){$where[]='r.created_at<DATE_ADD(?,INTERVAL 1 DAY)';$params[]=$to.' 00:00:00';}
         $scope=' FROM settlement_records r JOIN subscriber_ledger l ON l.id=r.subscriber_ledger_entry_id WHERE '.implode(' AND ',$where);
