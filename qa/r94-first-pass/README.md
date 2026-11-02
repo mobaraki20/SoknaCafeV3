@@ -187,3 +187,17 @@ The ZIP `SOKNA-R94-FINANCE-D02-C02-SOURCE-ONLY-20261102.zip` and the Persian led
 Required narrow checks: PHP/JS syntax PASS; 8 same-name SKU/price grouping checks PASS and 8 finance count/average cross-projection checks PASS. Scripts: `tests/hall-identity.test.cjs` and `tests/finance-cross-kpi.test.php`. No real MariaDB, browser, cashier or Home/Cafe UAT was performed. The definition of `avg_ticket` is currently average of *completed settlement documents*, NOT average closed table bill across split settlements; do not silently redefine it before accounting policy is specified and implemented.
 
 Source ZIP + Persian ledger in project Library: `/SoknaCafeV3-Recovery-20261029/R94-Grouped-Fixes/SOKNA-R94-GROUP-C02-D02-SOURCE-ONLY-20261102.zip` and `...-FIX-LEDGER-20261102-FA.md`. Remaining work: U-16 other account duplications, U-18 actual Local/Public mismatch, U-23 invoice/customer navigation, plus A/B issues. Full QA/deployment only after remediation list is closed.
+
+## K-01 / C-03 — customer invoice access (U-23, source-only)
+
+Grounded R93 issue: Local `FinanceWorkspaceService::subscriberDetail()` returned only subscriber ledger rows, even though finalized `settlement_records` and `settlement_record_lines` already retain invoice number, date and itemized contents. The Public read projection also had invoices, but the old `PublicStaffWorkspaceHttpAdapter::subscribers(detail)` discarded them.
+
+**Forward sources (not merged into installable roots):** under `qa/r94-first-pass/forward-subscriber/`:
+- Local `src/Domain/Finance/FinanceWorkspaceService.php`: read-only customer-ID-scoped finalized invoice list, invoice-number/date filtering, bounded pages, and original settlement itemized lines. Data and financial mutations are untouched.
+- Local `public/subscribers/api.php` and `public/assets/subscribers-workspace.js`: pass only GET search filters and display number/date/total/lines with safe missing-data messages.
+- Public `src/Http/PublicStaffWorkspaceHttpAdapter.php`: pass cached, actor-authorized subscriber invoice records, per-customer coverage and stale status from the **existing Local-authored read model**, not a new remote read.
+- Public R93 **managed override** `assets/subscribers-workspace.js`: show detailed invoices and search within the **bounded synced subset** only. Partial/stale coverage never implies the Local history is absent.
+
+**Safety/evidence:** no new write API, migration, payment retry, or cross-tenant browse; the Local queries remain scoped to `l.subscriber_id=?`, with normalized literal invoice-number queries and validated date ranges. Local PHP / Public PHP lint and Local JS syntax checks passed; 19 isolated mocked-PDO invoice assertions passed. The Public JS was parsed in the same V8 GitHub staging step from its exact R93 managed override (base Git blob `79a393b26c64a0f92e4d8ad2096ffe838a0caae2`). No browser, MariaDB, hosted Local/Public or comprehensive UAT has run.
+
+Package `SOKNA-R94-GROUP-K01-C03-CUSTOMER-INVOICES-SOURCE-ONLY-20261102.zip` and Persian ledger are retained in Project Library `/SoknaCafeV3-Recovery-20261029/R94-Grouped-Fixes`. The ZIP holds full Local sources and Public PHP adapter; the exact R93 Public JS candidate is available in this GitHub branch (the archive points to it and never silently substitutes older code). **U-23 remains provisional; U-16 other bill duplicate details remain open.** Do not install or promote until all master-list remediations are composed and later comprehensive acceptance is performed.
