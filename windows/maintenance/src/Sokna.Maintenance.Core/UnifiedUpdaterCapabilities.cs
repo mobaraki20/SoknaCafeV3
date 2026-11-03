@@ -46,6 +46,20 @@ public static class UnifiedUpdaterCapabilities
             // Read-only checks are available independently of activation.
             BlockingCode = code,
             Detail = detail,
+            // The host inspector already returns a strict set of diagnostic
+            // codes, never filesystem paths, user input or DB contents. Expose
+            // these in the signed capabilities contract so the operator sees
+            // the exact failed prerequisite instead of one generic warning.
+            HostBlockers = host.Blockers.Where(static item => item is
+                "UPDATER_MUTATION_OR_RECOVERY_PENDING" or
+                "MUTATION_LEDGER_EVIDENCE_UNAVAILABLE" or
+                "SOKNA_APACHE_DISCOVERY_OR_HEALTH_UNPROVEN" or
+                "ACTIVE_R8_JUNCTION_UNQUALIFIED" or
+                "INSTALLED_LOCAL_IDENTITY_OR_TREE_MISMATCH" or
+                "MACHINE_BINDING_OR_INSTALL_LOCK_MISMATCH" or
+                "PERSISTENT_MACHINE_LOCAL_OVERLAY_DRIFT" or
+                "LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN")
+                .Distinct(StringComparer.Ordinal).OrderBy(static x => x, StringComparer.Ordinal).ToArray(),
             PanelUpdateReady = host.PanelUpdateReady && host.ActivationAllowed &&
                 blocking.Count == 0,
             LocalRoutine = new LocalRoutineActions(true, true,
@@ -81,4 +95,5 @@ public sealed record UnifiedUpdaterCapabilitiesResult(
     [property: JsonPropertyName("blocking_code")] string BlockingCode,
     [property: JsonPropertyName("detail")] string Detail,
     [property: JsonPropertyName("inbox_transport_available")] bool InboxTransportAvailable,
-    [property: JsonPropertyName("local_activation_workflow")] string LocalActivationWorkflow = "supervisor-durable-prepare-v1");
+    [property: JsonPropertyName("local_activation_workflow")] string LocalActivationWorkflow = "supervisor-durable-prepare-v1",
+    [property: JsonPropertyName("host_blockers")] string[]? HostBlockers = null);
