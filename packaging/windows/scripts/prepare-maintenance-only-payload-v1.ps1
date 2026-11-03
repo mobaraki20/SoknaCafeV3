@@ -12,6 +12,13 @@ if(-not(Test-Path -LiteralPath $MaintenanceAppBundle -PathType Container)){throw
 if(Test-Path -LiteralPath $OutputRoot){throw 'Refusing to overwrite existing component release staging.'}
 New-Item -ItemType Directory -Path (Join-Path $OutputRoot 'maintenance\app') -Force|Out-Null
 Copy-Item -Path (Join-Path $MaintenanceAppBundle '*') -Destination (Join-Path $OutputRoot 'maintenance\app') -Recurse -Force
+# Maintenance-owned support utility is deployed beside Supervisor/Engine, not
+# into Runtime/Print/RecoveryConsole or any Local/Public application tree.
+foreach($diagnostic in @('collect-support-unified-v1.ps1','collect-support-v2.ps1')){
+ $src=Join-Path $RepoRoot ('packaging\windows\scripts\'+$diagnostic)
+ if(-not(Test-Path -LiteralPath $src -PathType Leaf)){throw "One-ZIP support collector dependency missing: $diagnostic"}
+ Copy-Item -LiteralPath $src -Destination (Join-Path $OutputRoot ('maintenance\app\'+$diagnostic)) -Force
+}
 foreach($p in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')){
  $candidate=Join-Path $OutputRoot ('maintenance\app\'+$p)
  if(-not(Test-Path -LiteralPath $candidate -PathType Leaf)){throw "Missing required release component: $p"}
