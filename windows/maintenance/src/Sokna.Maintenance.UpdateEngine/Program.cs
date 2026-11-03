@@ -7,6 +7,7 @@ using Sokna.Maintenance.Core;
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
     Console.WriteLine($"SOKNA Maintenance Update Engine {EngineBuild.Version} (R8 sibling-release activation; verified append-only database forward recovery)");
+    Console.WriteLine("host-readiness [--data-root <path>] (read-only, safe codes; no activation or DB mutation)");
     Console.WriteLine("verify-only --package <zip> --identity <json> [--data-root <path>] (read-only; no stage or sequence mutation)");
     Console.WriteLine("cutover-attest --transaction-id <id> --stage-operation-id <id> --data-root <path> --delegation-id <id> (Supervisor-delegated read-only evidence only)");
     Console.WriteLine("cutover-lab-switch --transaction-id <id> --stage-operation-id <id> --data-root <path> --lab-case <name> --lab-mode <mode> --delegation-id <id> (disposable CI fixture ONLY)");
@@ -27,6 +28,62 @@ var dataRoot = options.TryGetValue("--data-root", out var dataRootText)
     ? Path.GetFullPath(dataRootText)
     : MaintenancePaths.DefaultDataRoot();
 var paths = new MaintenancePaths(dataRoot);
+
+// An on-box, strictly read-only host diagnostic for the single ZIP support
+// collector. It requires no signing secret and grants NO staging or activation
+// authority; unlike full operation receipts, it exports only fixed machine-safe
+// readiness booleans and reason codes.
+if (command == "host-readiness")
+{
+    if (args.Length != 1 && (args.Length != 3 || args[1] != "--data-root"))
+    {
+        Console.Error.WriteLine(JsonSerializer.Serialize(new {
+            ok = false, code = "HOST_READINESS_OPTIONS_INVALID",
+            activation_performed = false, database_mutation_performed = false }));
+        Environment.ExitCode = 64;
+        return;
+    }
+    try
+    {
+        if (!Directory.Exists(paths.OperationsRoot))
+            throw new InvalidDataException("HOST_READINESS_OPERATION_LEDGER_MISSING");
+        var operations = new MaintenanceOperationStore(paths);
+        var host = new InactiveLocalHostReadinessInspector(paths, operations).Inspect();
+        var caps = UnifiedUpdaterCapabilities.Current(host, operations.ListBlocking());
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            format = "sokna-host-readiness-safe-v1",
+            ok = true, host_checked_at_utc = host.CheckedAtUtc,
+            host_preparation_preconditions_met = host.HostPreparationPreconditionsMet,
+            apache_healthy = host.ApacheDiscoveryAndHttpHealthy,
+            active_junction_qualified = host.ActiveJunctionQualified,
+            installed_identity_and_tree_qualified = host.InstalledIdentityAndTreeQualified,
+            machine_binding_qualified = host.MachineLocalBindingQualified,
+            persistent_overlay_qualified = host.PersistentOverlayQualified,
+            local_lifecycle_idle = host.LocalLifecycleIdle,
+            mutation_ledger_idle = host.MutationLedgerIdle,
+            blocking_code = caps.BlockingCode,
+            blockers = caps.HostBlockers ?? Array.Empty<string>(),
+            panel_update_ready = caps.PanelUpdateReady,
+            activation_performed = false, database_mutation_performed = false
+        }, AtomicFile.JsonOptions));
+        return;
+    }
+    catch (Exception ex) when (ex is InvalidDataException or IOException or
+        UnauthorizedAccessException or InvalidOperationException or TimeoutException or
+        JsonException or System.ComponentModel.Win32Exception or ArgumentException)
+    {
+        // Never print full paths, error text, keys, DB credentials or tokens.
+        Console.Error.WriteLine(JsonSerializer.Serialize(new {
+            format = "sokna-host-readiness-safe-v1",
+            ok = false, code = "HOST_READINESS_EVIDENCE_UNAVAILABLE",
+            error_type = ex.GetType().Name,
+            activation_performed = false, database_mutation_performed = false
+        }, AtomicFile.JsonOptions));
+        Environment.ExitCode = 74;
+        return;
+    }
+}
 
 // F1-S7D5B: physically switches ONLY an isolated NTFS junction in a
 // disposable signed Windows CI fixture. No production execution path.

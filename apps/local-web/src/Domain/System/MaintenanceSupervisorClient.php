@@ -212,9 +212,28 @@ final class MaintenanceSupervisorClient
         $verificationReady = $inbox && $actions['preflight']===true && $actions['stage']===true;
         $ready = $verificationReady && $actions['activate']===true
             && $data['panel_update_ready']===true && $data['blocking_code']==='';
+        // The signed Supervisor only advertises allowlisted, machine-safe
+        // prerequisite codes (no paths, keys, credentials or host IDs).
+        // A legacy Supervisor may omit this optional field; that is unknown,
+        // never a reason to pretend the host is ready.
+        $allowedBlockers = [
+            'UPDATER_MUTATION_OR_RECOVERY_PENDING',
+            'MUTATION_LEDGER_EVIDENCE_UNAVAILABLE',
+            'SOKNA_APACHE_DISCOVERY_OR_HEALTH_UNPROVEN',
+            'ACTIVE_R8_JUNCTION_UNQUALIFIED',
+            'INSTALLED_LOCAL_IDENTITY_OR_TREE_MISMATCH',
+            'MACHINE_BINDING_OR_INSTALL_LOCK_MISMATCH',
+            'PERSISTENT_MACHINE_LOCAL_OVERLAY_DRIFT',
+            'LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN',
+        ];
+        $blockers = array_values(array_unique(array_filter(
+            (array)($data['host_blockers']??[]),
+            static fn($v): bool => is_string($v) && in_array($v,$allowedBlockers,true)
+        )));
         return ['ready'=>$ready,'verification_ready'=>$verificationReady,
             'state'=>$ready?'ready':($verificationReady?'verification_only':'foundation_required'),
             'code'=>$ready?'OK':((string)$data['blocking_code'] ?: 'FOUNDATION_UPDATE_REQUIRED'),
+            'host_blockers'=>$blockers,'host_blockers_available'=>is_array($data['host_blockers']??null),
             'inbox_transport_available'=>$inbox,
             'local_routine'=>[ 'preflight'=>$actions['preflight'] ?? false,
                 'stage'=>$actions['stage'] ?? false,'activate'=>$actions['activate'] ?? false,

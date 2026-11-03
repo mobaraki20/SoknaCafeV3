@@ -37,9 +37,43 @@ try{
             $slotMode=($center['value']['local']['legacy_local_blocked']??true)===true;
             $verificationBound=$slotMode&&($capability['verification_ready']??false)===true;
             $panelBound=$slotMode&&($capability['ready']??false)===true&&$verificationBound;
+            // Recover an already STAGED operator-owned Maintenance package from
+            // the signed durable ledger. Session storage is not installation
+            // evidence and losing a browser tab must not force re-upload.
+            // This read-only discovery does not authorize Activate.
+            $ownedStage=null;
+            if($slotMode && (string)($user['role']??'')==='admin'){
+                try {
+                    $operations=$core->maintenanceSupervisor()->updateOperations();
+                    if(($operations['ok']??false)===true &&
+                        ($operations['history_available']??false)===true){
+                        foreach((array)($operations['recent_operations']??[]) as $op){
+                            if(!is_array($op) ||
+                                ($op['operation_type']??'')!=='update.local-stage' ||
+                                ($op['state']??'')!=='staged' ||
+                                ($op['operator_id']??'')!=='user:'.$actorId)continue;
+                            $id=(string)($op['operation_id']??'');
+                            if(preg_match('/^[a-f0-9]{32}$/Di',$id)!==1)continue;
+                            $proof=$core->maintenanceSupervisor()->operationById($id);
+                            $record=(array)($proof['data']??[]);
+                            if(($proof['ok']??false)===true &&
+                                ($record['operation_id']??'')===$id &&
+                                ($record['operation_type']??'')==='update.local-stage' &&
+                                ($record['state']??'')==='staged' &&
+                                ($record['operator_id']??'')==='user:'.$actorId){
+                                $ownedStage=['operation_id'=>$id,'state'=>'staged'];
+                                break;
+                            }
+                        }
+                    }
+                }catch(\Throwable){
+                    // No inferred success from missing/corrupt evidence.
+                }
+            }
             WebAction::json(['success'=>true,'snapshot'=>$health,'update_center'=>$center['value'],
                 'maintenance_updater'=>$capability,'legacy_local_blocked'=>$slotMode,
-                'maintenance_panel_bound'=>$panelBound,'maintenance_verification_bound'=>$verificationBound,'public_update_refresh'=>$publicRefresh,'nonfatal_errors'=>$errors]);
+                'maintenance_panel_bound'=>$panelBound,'maintenance_verification_bound'=>$verificationBound,
+                'maintenance_owned_stage'=>$ownedStage,'public_update_refresh'=>$publicRefresh,'nonfatal_errors'=>$errors]);
         }
         if($section==='recovery')WebAction::json(['success'=>true,'recovery'=>$core->recoveryWorkspace()->snapshot()]);
         if($section==='maintenance_operation'){

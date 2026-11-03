@@ -46,6 +46,12 @@ final class MaintenanceSupportEvidence
             'capabilities'=>[
                 'state'=>self::shortCode($cap['state']??'unavailable'),
                 'blocking_code'=>$capCode,
+                // Safe, bounded Supervisor codes explain WHICH host gate failed.
+                // Missing field is UNKNOWN, not an empty/no-blocker assertion.
+                'host_blockers_available'=>($cap['host_blockers_available']??false)===true,
+                'host_blockers'=>array_slice(array_map(
+                    static fn($v): string => self::shortCode($v),
+                    array_filter((array)($cap['host_blockers']??[]),'is_string')),0,8),
                 'install_ready'=>($cap['ready']??false)===true,
                 'verification_ready'=>($cap['verification_ready']??false)===true,
                 'inbox_transport_available'=>($cap['inbox_transport_available']??false)===true,

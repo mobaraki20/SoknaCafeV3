@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory=$true)][string]$DataRoot,
   [Parameter(Mandatory=$true)][string]$OutputRoot,
-  [ValidateRange(1,10)][int]$InstallerTransactions=5
+  [ValidateRange(1,10)][int]$InstallerTransactions=5,
+  [string]$InstallRootOverride=''
 )
 $ErrorActionPreference='Stop'
 
@@ -168,38 +169,56 @@ try {
     WriteJson (Join-Path $maintDir 'recent-operations.json') ([ordered]@{format='sokna-maintenance-recent-operations-v1';operations=$recent})
   }catch{AddError 'maintenance-operations' $_.Exception.Message}
   try{
-    $roots=@(Get-PSDrive -PSProvider FileSystem|ForEach-Object{Join-Path $_.Root 'SOKNA'}|Select-Object -Unique)
+    # Override is only used by the synthetic Windows regression fixture.
+    # Production collection retains automatic install-root discovery.
+    $roots=if($InstallRootOverride){@([IO.Path]::GetFullPath($InstallRootOverride))}
+      else{@(Get-PSDrive -PSProvider FileSystem|ForEach-Object{Join-Path $_.Root 'SOKNA'}|Select-Object -Unique)}
     $snapshots=@()
     foreach($root in $roots){
       $web=Join-Path $root 'Web'
       $persistent=Join-Path $root 'LocalWeb\persistent'
       if(-not(Test-Path -LiteralPath $web -PathType Container) -and -not(Test-Path -LiteralPath $persistent -PathType Container)){continue}
-      $paths=@(
-        (Join-Path $web 'public\local-recovery.php'),
-        (Join-Path $persistent 'public\local-recovery.php')
-      )
+      # Field incident 2026-11-03: recovery.php matched, but the active
+      # local-update-runner.php was ABSENT while the persistent copy existed.
+      # Both pairs MUST be collected in the ordinary Windows support ZIP.
+      # Only hashes/sizes/presence: never include executable PHP bytes.
       $entry=@()
-      foreach($candidate in $paths){
-        $meta=FileMeta $candidate
-        $reparse=$false
-        if(Test-Path -LiteralPath $candidate){
-          $reparse=[bool]((Get-Item -LiteralPath $candidate -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)
+      $pairs=@()
+      foreach($rel in @('public\local-recovery.php','public\local-update-runner.php')){
+        $states=@()
+        foreach($target in @($web,$persistent)){
+          $candidate=Join-Path $target $rel
+          $meta=FileMeta $candidate
+          $reparse=$false
+          if(Test-Path -LiteralPath $candidate){
+            $reparse=[bool]((Get-Item -LiteralPath $candidate -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)
+          }
+          $item=[ordered]@{
+            role=$(if($target-eq$web){'active'}else{'persistent'})
+            name=$rel;present=($null-ne$meta);size_bytes=$(if($meta){$meta.length}else{$null})
+            sha256=$(if($meta){$meta.sha256}else{$null});reparse_point=$reparse
+          }
+          $states+=([pscustomobject]$item)
+          $entry+=([pscustomobject]$item)
         }
-        $entry+=([ordered]@{
-          path=$candidate;present=($null-ne$meta);size_bytes=$(if($meta){$meta.length}else{$null})
-          sha256=$(if($meta){$meta.sha256}else{$null});reparse_point=$reparse
-        })
+        $a=$states[0];$b=$states[1]
+        $pairStatus=if(-not$a.present -and -not$b.present){'BOTH_MISSING'}
+          elseif($a.present -ne $b.present){'ONE_MISSING'}
+          elseif($a.reparse_point -or $b.reparse_point){'REPARSE_UNSAFE'}
+          elseif($a.sha256 -and $b.sha256 -and $a.sha256-eq$b.sha256){'MATCH'}
+          else{'DRIFT_OR_UNREADABLE'}
+        $pairs+=([ordered]@{name=$rel;status=$pairStatus;active=$a;persistent=$b})
       }
-      $snapshots+=([ordered]@{install_root=$root;files=$entry})
+      $snapshots+=([ordered]@{install_root=$root;files=$entry;overlay_pairs=$pairs})
     }
     WriteJson (Join-Path $maintDir 'stable-recovery-overlay.json') ([ordered]@{
-      format='sokna-stable-recovery-overlay-diagnostics-v1'
+      format='sokna-machine-local-overlay-diagnostics-v2'
       captured_at_utc=[DateTime]::UtcNow.ToString('o')
       reference_0315_sha256='fd36bf0170a357aa3d0a283e9989fa0b442607f238bb70b659c2def8f5791598'
       legacy_cafe_sha256='e23949e5522c42fc8e6cf661b302a2fbb23f0c2d6138a873bef8644c2a5ee7a9'
       installations=$snapshots
     })
-  }catch{AddError 'maintenance-stable-recovery-overlay' $_.Exception.Message}
+  }catch{AddError 'maintenance-machine-local-overlay' $_.Exception.Message}
 
   # BK-2b whitelist-only diagnostic evidence. Never bundle DPAPI, policy, bearer or passphrase.
   try {

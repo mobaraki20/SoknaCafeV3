@@ -100,6 +100,37 @@ catch (Exception ex)
             ["public_mutated"] = false
         });
 }
+// Cafe 231bz: safely restore ONLY a pinned, known machine-local update
+// runner that is missing from the active R8 slot. Previously the signed
+// Package/Stage passed, but host readiness stayed blocked forever because
+// the persistent counterpart existed while the active file did not.
+// On an unsupported baseline or foreign hash, leave the host unchanged.
+try
+{
+    var runnerRepair=KnownCafeUpdateRunnerOverlayRepair.RepairCurrentInstallation(paths);
+    journal.Append("update.local_known_cafe_runner.reconcile",state.InstanceId,
+        state.InstallGeneration,new Dictionary<string,object?>
+        {
+            ["result"] = runnerRepair,
+            ["activation_performed"] = false,
+            ["database_mutation_performed"] = false,
+            ["public_mutated"] = false
+        });
+}
+catch(Exception ex) when (ex is InvalidDataException or IOException or
+    UnauthorizedAccessException or InvalidOperationException or
+    System.Security.Cryptography.CryptographicException or
+    System.ComponentModel.Win32Exception)
+{
+    journal.Append("update.local_known_cafe_runner.blocked",state.InstanceId,
+        state.InstallGeneration,new Dictionary<string,object?>
+        {
+            ["reason_code"] = ex is InvalidDataException ? ex.Message : ex.GetType().Name,
+            ["no_unqualified_mutation"] = true,
+            ["activation_performed"] = false,
+            ["database_mutation_performed"] = false
+        });
+}
 var adoptionQueue = new LocalSlotAdoptionQueue(paths);
 var codeOnlyActivationWorker = new LocalCodeOnlyActivationWorker(
     codeOnlyExecution, operations, inactiveSlotCoordinator);
