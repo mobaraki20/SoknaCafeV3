@@ -3,7 +3,7 @@ name: SOKNA Maintenance 0.3.20 scoped UAT build
 on:
   push:
     branches:
-      - fix/maintenance-0320-r94-preflight-20261103
+      - fix/maintenance-0319-r94-preflight-20261103
   workflow_dispatch:
 
 permissions:
