@@ -8,6 +8,7 @@ on:
       - apps/local-web/public/system/**
       - apps/local-web/src/Domain/System/MaintenanceSupervisorClient.php
       - apps/local-web/src/Domain/System/MaintenanceSupportEvidence.php
+      - apps/local-web/src/Domain/System/SupportBundleWriter.php
       - windows/maintenance/src/Sokna.Maintenance.Core/**
       - windows/maintenance/src/Sokna.Maintenance.UpdateEngine/**
       - packaging/windows/scripts/collect-support-unified-v1.ps1
@@ -88,7 +89,8 @@ jobs:
             'apps/local-web/public/system/index.php',
             'apps/local-web/public/system/api.php',
             'apps/local-web/src/Domain/System/MaintenanceSupervisorClient.php',
-            'apps/local-web/src/Domain/System/MaintenanceSupportEvidence.php')){
+            'apps/local-web/src/Domain/System/MaintenanceSupportEvidence.php',
+            'apps/local-web/src/Domain/System/SupportBundleWriter.php')){
             & $php -l $file
             if($LASTEXITCODE-ne0){throw "PHP lint failed: $file"}
           }
