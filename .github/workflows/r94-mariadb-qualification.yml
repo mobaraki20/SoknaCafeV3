@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - qa/r94-mariadb-20261103
+  pull_request:
+    branches:
+      - qa/r93-source-baseline-20261102
+    paths:
+      - qa/r94-mariadb-20261103/**
+      - .github/workflows/r94-mariadb-qualification.yml
   workflow_dispatch:
 
 permissions:
