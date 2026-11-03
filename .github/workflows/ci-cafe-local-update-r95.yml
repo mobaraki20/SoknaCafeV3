@@ -62,12 +62,12 @@ jobs:
           $file=(Resolve-Path 'packaging/windows/scripts/collect-support-unified-v1.ps1').Path
           $env:SOKNA_PARSE_TARGET=$file
           $test=@'
-$p=$env:SOKNA_PARSE_TARGET
-$tokens=$null
-$errors=$null
-[Management.Automation.Language.Parser]::ParseFile($p,[ref]$tokens,[ref]$errors)|Out-Null
-if($errors.Count){$errors|ForEach-Object{Write-Error $_.Message};exit 1}
-'@
+          $p=$env:SOKNA_PARSE_TARGET
+          $tokens=$null
+          $errors=$null
+          [Management.Automation.Language.Parser]::ParseFile($p,[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count){$errors|ForEach-Object{Write-Error $_.Message};exit 1}
+          '@
           $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($test))
           & powershell.exe -NoProfile -NonInteractive -EncodedCommand $encoded
           if($LASTEXITCODE-ne0){throw 'Collector PowerShell 5.1 parse failed'}
