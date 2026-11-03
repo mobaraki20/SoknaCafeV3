@@ -55,8 +55,14 @@ ProductShell::start($core,$user,'پشتیبانی و نگهداری','system','�
         <div class="sc-actions"><button class="sc-button sc-button--secondary" type="submit" disabled>انتقال امن و پیش‌بررسی</button>
           <button class="sc-button" type="button" data-maintenance-activate disabled>نصب نسخه تأییدشده</button></div>
       </form>
-      <div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-maintenance-connection-check>آزمایش اتصال Maintenance</button></div>
-      <div class="sc-alert sc-alert--info" role="status" aria-live="polite" data-maintenance-connection-result hidden></div>
+      <div class="sc-list-item" data-maintenance-stage-status hidden aria-live="polite"></div>
+      <details class="sc-disclosure sc-system-emergency-disclosure" data-maintenance-advanced>
+        <summary><span>جزئیات فنی اتصال Maintenance</span></summary>
+        <div class="sc-stack sc-details-body">
+          <div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-maintenance-connection-check>آزمایش اتصال</button></div>
+          <div class="sc-alert sc-alert--info" role="status" aria-live="polite" data-maintenance-connection-result hidden></div>
+        </div>
+      </details>
       <div class="sc-alert sc-alert--info" role="status" aria-live="polite" data-maintenance-upload-message hidden></div>
       <div class="sc-alert sc-event-feedback sc-alert--info" role="status" aria-live="polite" data-local-update-feedback hidden></div>
       <div class="sc-stack" data-maintenance-progress hidden aria-live="polite">
