@@ -53,6 +53,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Delta/Rebind fixture failed' }
           dotnet run --project windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Sokna.Maintenance.OperatorUploadHarness.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Operator-uploaded package fixture failed' }
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.CafeOverlayHarness/Sokna.Maintenance.CafeOverlayHarness.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Cafe known legacy/missing overlay regression failed' }
+          $overlayRoot=Join-Path $env:RUNNER_TEMP 'sokna-recovery-overlay-regressions'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.RecoveryOverlayHarness/Sokna.Maintenance.RecoveryOverlayHarness.csproj -c Release -- $overlayRoot
+          if ($LASTEXITCODE -ne 0) { throw 'General stable recovery overlay regression failed' }
       - name: Publish only Supervisor and Update Engine for win-x64
         shell: pwsh
         run: |
@@ -118,7 +123,7 @@ jobs:
             engine_version='0.3.19'
             installer_file=$exe.Name
             installer_sha256=$sha
-            source_unit_harness='PASS'
+            source_unit_harness='PASS'\n            legacy_missing_overlay_harness='PASS'\n            stable_recovery_overlay_harness='PASS'
             powershell_parse='PASS'
             windows_installer_compiled=$true
             real_cafe_host_install='NOT_RUN'
@@ -128,7 +133,7 @@ jobs:
           } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $out 'UAT-BUILD-REPORT.json') -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
-          name: sokna-maintenance-only-0319-r94-uat-candidate
+          name: sokna-maintenance-only-0319-r94-overlay-rev2-uat
           path: ${{ runner.temp }}/sokna-maintenance-0319-output/*
           if-no-files-found: error
           retention-days: 20
