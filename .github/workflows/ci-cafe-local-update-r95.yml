@@ -13,6 +13,7 @@ on:
       - windows/maintenance/src/Sokna.Maintenance.UpdateEngine/**
       - packaging/windows/scripts/collect-support-unified-v1.ps1
       - tests/local-r95-update-panel-selftest.js
+      - windows/maintenance/tests/Sokna.Maintenance.CafeRunnerHarness/**
       - .github/workflows/ci-cafe-local-update-r95.yml
   workflow_dispatch:
 permissions:
@@ -39,6 +40,11 @@ jobs:
             dotnet build $project -c Release --nologo
             if($LASTEXITCODE-ne0){throw "Build failed: $project"}
           }
+      - name: Test scoped Cafe missing runner automatic repair and all fail-closed cases
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.CafeRunnerHarness/Sokna.Maintenance.CafeRunnerHarness.csproj -c Release --nologo
+          if($LASTEXITCODE -ne 0){throw 'Cafe runner repair harness failed'}
       - name: Test read-only on-box host-readiness diagnostic denial on absent fixture
         shell: pwsh
         run: |
