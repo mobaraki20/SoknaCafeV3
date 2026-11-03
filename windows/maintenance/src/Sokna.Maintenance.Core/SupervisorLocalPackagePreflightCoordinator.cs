@@ -155,10 +155,42 @@ public sealed class SupervisorLocalPackagePreflightCoordinator
                         throw new InvalidDataException("LOCAL_LEGACY_RECOVERY_RECONCILIATION_REQUIRED");
                 }
 
-                // Preflight is genuinely read-only: detect nonqualified Local
-                // recovery overlay before returning a verified installation
-                // receipt, rather than failing after Stage/activation reservation.
-                StableLocalRecoveryOverlayRepair.RequireReadyForPreflight(_paths);
+                // The package and physical Local baseline are now verified.
+                // The existing guard formerly only reported an old/missing
+                // recovery overlay here. Startup could not repair it while the
+                // Maintenance identity was still stale 231bf; after rebind the
+                // next preflight would remain blocked forever. Allow ONLY the
+                // Machine-local recovery entrypoint to be reconciled under a
+                // fresh machine mutation lease, without Stage/Activate/DB writes.
+                try
+                {
+                    StableLocalRecoveryOverlayRepair.RequireReadyForPreflight(_paths);
+                }
+                catch (InvalidDataException ex) when (ex.Message is
+                    "STABLE_RECOVERY_OVERLAY_PREFLIGHT_MISSING" or
+                    "STABLE_RECOVERY_EXISTING_OVERLAY_NOT_QUALIFIED")
+                {
+                    using var overlayLease = MachineMutationLease.Acquire(
+                        _paths, "supervisor-local-preflight-verified-recovery-overlay");
+                    if (_operations.ListBlocking().Any(op => op.OperationId != operation.OperationId))
+                        throw new InvalidDataException("LOCAL_RECOVERY_OVERLAY_OPERATION_BUSY");
+                    var layout = new LocalSlotManager(_paths).InspectHealthyCurrent();
+                    RoutineLocalLifecycle.Open(layout.PackageRoot,
+                        _paths.LocalSlotStateRoot, layout.Build).RequireIdle();
+                    var repair = StableLocalRecoveryOverlayRepair.EnsureVerifiedInstallation(
+                        _paths, layout);
+                    StableLocalRecoveryOverlayRepair.RequireReadyForPreflight(_paths);
+                    _journal.Append("update.local_stable_recovery.repaired_after_baseline_proof",
+                        _state.InstanceId, _state.InstallGeneration,
+                        new Dictionary<string, object?>
+                        {
+                            ["operation_id"] = operation.OperationId,
+                            ["result"] = repair,
+                            ["proof"] = "verified_exact_physical_tree_identity_and_idle_lifecycle",
+                            ["database_mutation_performed"] = false,
+                            ["public_mutated"] = false
+                        });
+                }
 
                 var receiptPath = ReceiptPath(operation.OperationId);
                 if (operation.State == "verified")
