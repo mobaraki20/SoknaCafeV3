@@ -70,6 +70,21 @@ jobs:
             assert hashlib.sha256(Path(rel).read_bytes()).hexdigest()==sha, f'Source hash drift: {rel}'
           print(f'R94 source identity PASS: {len(metadata["files"])} exact PHP/SQL files, ZIP SHA {metadata["full_R94_candidate_sha256"]}')
           PY
+      - name: Rehydrate original default menu resources for exact clean-setup order
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p local/resources/default-content/v1
+          cp -a apps/local-web/resources/default-content/v1/. local/resources/default-content/v1/
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib
+          doc=json.loads(Path('qa/r94-mariadb-20261103/R94_SEED_RESOURCES_SHA256.json').read_text())
+          assert doc['full_R94_zip_sha256']=='6b76a07b3df67e0360c5754c4cd18fe5ac822f509d27d7312052dcd7acb28dfc'
+          for rel,digest in doc['files'].items():
+            assert hashlib.sha256(Path(rel).read_bytes()).hexdigest()==digest, f'R94 resource mismatch: {rel}'
+          print(f'Canonical default catalog, icons and media SHA PASS: {len(doc["files"])} source files')
+          PY
       - name: PHP source syntax
         run: |
           set -euo pipefail

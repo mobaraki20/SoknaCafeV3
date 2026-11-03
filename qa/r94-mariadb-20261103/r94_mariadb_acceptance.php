@@ -32,8 +32,21 @@ try{
  ck(preg_match('/^[+-]\\d{2}:\\d{2}$/',$offset)===1,'Iran DB session timezone explicit: '.$offset);
  $catalog=array_keys($core->migrations()->catalog());
  ck(count($catalog)>=70,'R94 full Local migration catalog has at least 70 files');
- $applied=$core->migrations()->migrate();
- ck($applied===$catalog,'R94 full SQL migrations applied in order');
+ // BrowserSetupService runs a two-phase migration around canonical catalog seeding.
+ $boundary='0059_menu_business_reconciliation_v4';
+ $cut=array_search($boundary,$catalog,true);
+ ck(is_int($cut)&&$cut>0,'real BrowserSetupService catalog-seed migration boundary exists');
+ $before=$core->migrations()->migrate($boundary);
+ ck($before===array_slice($catalog,0,$cut),'pre-catalog SQL migrations applied in order');
+ $pdo->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'admin',1)")
+     ->execute(['r94-qa-admin',password_hash('ci-only',PASSWORD_DEFAULT),'R94 QA admin']);
+ $adminId=(int)$pdo->lastInsertId();
+ ck($adminId>0,'synthetic CI admin created before canonical seed');
+ $seed=$core->defaultContentSeeder()->seed($adminId);
+ ck(($seed['status']??'')==='complete','canonical audited catalog seeded into MariaDB');
+ ck((int)$pdo->query('SELECT COUNT(*) FROM items')->fetchColumn()>=135,'canonical catalog contains at least 135 items');
+ $after=$core->migrations()->migrate();
+ ck($after===array_slice($catalog,$cut),'post-catalog SQL migrations applied in order');
  ck($core->migrations()->migrate()===[],'second full migration is idempotent');
  $recorded=$core->migrations()->appliedVersions();
  ck($recorded===$catalog,'migration ledger equals candidate catalog exactly');
