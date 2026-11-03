@@ -1,12 +1,15 @@
 param(
   [string]$OutputRoot = [Environment]::GetFolderPath('Desktop'),
+  [string]$DataRoot = '',
+  [string]$LocalRoot = '',
+  [switch]$SkipLegacyCollector,
   [ValidateRange(1,15)][int]$RecentOperations = 12
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 # Support Bundle One: no credentials, DB rows, recovery PHP content or raw
 # installed-identity secrets are exported. Errors are represented explicitly.
-$base = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
+$base = $(if($DataRoot){[IO.Path]::GetFullPath($DataRoot)}else{Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'})
 if(-not(Test-Path -LiteralPath $OutputRoot -PathType Container)) {
   $OutputRoot = [Environment]::GetFolderPath('MyDocuments')
 }
@@ -54,7 +57,7 @@ function Observe([string]$path) {
 }
 function Info([string]$path) {
   $observed=Observe $path
-  if($observed.present -and -not $observed.redirected -and -not $observed.readback_error) {
+  if($observed.Contains('sha256')) {
     $observed.version=[string]([Diagnostics.FileVersionInfo]::GetVersionInfo($path).FileVersion)
   }
   return $observed
@@ -104,7 +107,8 @@ try {
   # Exact read-only Local physical inventory and migration catalogue. The
   # active Web may be a junction: read it, never repair/rename it here.
   $installRoot=''
-  foreach($root in @('D:\SOKNA','C:\SOKNA')) {
+  foreach($root in @($LocalRoot,'D:\SOKNA','C:\SOKNA')) {
+    if(!$root){continue}
     if(Test-Path -LiteralPath (Join-Path $root 'Web\VERSION.txt') -PathType Leaf){$installRoot=$root;break}
   }
   $physical=[ordered]@{format='sokna-local-read-only-evidence-v1';install_root=$installRoot;version='';inventory_count=0;managed_tree_sha256='';migration_catalog_count=0;migration_head='';migration_catalog_fingerprint='';status='NOT_COLLECTED'}
@@ -115,11 +119,12 @@ try {
     try {
       $inv=ReadSafe (Join-Path $web 'resources\local-managed-files-v1.json') 'local-managed-inventory'
       if($null -eq $inv -or [string]$inv.format -ne 'sokna-local-managed-files-v1'){throw 'INVALID_INVENTORY'}
-      $names=@($inv.files)
+      [string[]]$names=@($inv.files)
+      [Array]::Sort($names,[StringComparer]::Ordinal)
       if($names.Count -lt 1 -or $names.Count -gt 30000){throw 'INVENTORY_COUNT_INVALID'}
       $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
       $lines=New-Object 'System.Collections.Generic.List[string]'
-      foreach($name in ($names|Sort-Object -CaseSensitive)){
+      foreach($name in $names){
         $rel=[string]$name
         if(!$seen.Add($rel) -or $rel -match '(^[/\\]|:|(^|[/\\])\.\.([/\\]|$))'){throw 'INVENTORY_PATH_UNSAFE'}
         $file=Join-Path $web $rel.Replace('/','\')
@@ -184,7 +189,7 @@ try {
     }
   }
   JsonSafe (Join-Path $diagnostics 'maintenance-only-transactions.json') ([ordered]@{format='sokna-maintenance-only-transactions-v1';transactions=@($history.ToArray())})
-  $backup=ReadSafe (Join-Path $base 'Maintenance\backup\state.json') 'backup-state'
+  $backup=ReadSafe (Join-Path $base 'Maintenance\backups\schedule-state.json') 'backup-state'
   JsonSafe (Join-Path $diagnostics 'backup-readiness.json') ([ordered]@{state=$(if($null -eq $backup){'NO_BACKUP_STATE'}else{'PRESENT__REQUIRES_VERIFICATION'});backup_state_present=($null -ne $backup)})
 
   # Bundle the existing Windows Services collector INSIDE this ZIP, if the
@@ -193,7 +198,7 @@ try {
   $legacyDir=Join-Path $work 'existing-windows-support'
   New-Item -ItemType Directory -Path $legacyDir -Force|Out-Null
   $oldCollected=$false
-  if(Test-Path -LiteralPath $legacyScript -PathType Leaf) {
+  if(-not $SkipLegacyCollector -and (Test-Path -LiteralPath $legacyScript -PathType Leaf)) {
     try {
       & $legacyScript -DataRoot $base -OutputRoot $legacyDir -InstallerTransactions 5 6>$null | Out-Null
       $oldCollected=@(Get-ChildItem -LiteralPath $legacyDir -Filter 'SOKNA-Support-v2-*.zip' -File).Count -gt 0
