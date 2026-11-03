@@ -44,19 +44,26 @@ jobs:
           $ErrorActionPreference='Stop'
           $fixture=Join-Path $env:RUNNER_TEMP 'host-readiness-no-ledger-fixture'
           New-Item -ItemType Directory -Path $fixture -Force|Out-Null
-          $exe='windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.exe'
-          if(-not(Test-Path $exe)){throw 'Missing built Engine'}
-          $text=& $exe host-readiness --data-root $fixture 2>&1 | Out-String
-          if($LASTEXITCODE-ne74 -or $text -notmatch 'HOST_READINESS_EVIDENCE_UNAVAILABLE'){
-            throw 'Unknown host evidence must fail closed with safe status'
+          $dll='windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.dll'
+          if(-not(Test-Path $dll)){throw 'Missing built Engine assembly'}
+          $stdout=Join-Path $env:RUNNER_TEMP 'host-readiness-out.txt'
+          $stderr=Join-Path $env:RUNNER_TEMP 'host-readiness-err.txt'
+          $command='dotnet'
+          $args=@(('"' + (Resolve-Path $dll).Path + '"'),'host-readiness','--data-root',('"' + $fixture + '"'))
+          $process=Start-Process -FilePath $command -ArgumentList $args -NoNewWindow -PassThru -Wait -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $text=Get-Content $stdout,$stderr -Raw -ErrorAction SilentlyContinue | Out-String
+          if($process.ExitCode-ne74 -or $text -notmatch 'HOST_READINESS_EVIDENCE_UNAVAILABLE'){
+            throw ('Unknown host evidence must fail closed with safe status; exit='+$process.ExitCode+'; output='+$text)
           }
           if(Test-Path (Join-Path $fixture 'operations')){throw 'Read-only diagnostic created an operation ledger'}
       - name: PowerShell 5.1 support collector parse and scope
         shell: pwsh
         run: |
           $file=(Resolve-Path 'packaging/windows/scripts/collect-support-unified-v1.ps1').Path
-          $test='param([string]$p) $tokens=$null;$errors=$null;[Management.Automation.Language.Parser]::ParseFile($p,[ref]$tokens,[ref]$errors)|Out-Null;if($errors.Count){$errors|ForEach-Object{Write-Error $_.Message};exit 1}'
-          & powershell.exe -NoProfile -NonInteractive -Command $test -args $file
+          $escaped=$file.Replace("'","''")
+          $test='$p='+"'"+'$escaped'+"'"+';$tokens=$null;$errors=$null;[Management.Automation.Language.Parser]::ParseFile($p,[ref]$tokens,[ref]$errors)|Out-Null;if($errors.Count){$errors|ForEach-Object{Write-Error $_.Message};exit 1}'
+          $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($test))
+          & powershell.exe -NoProfile -NonInteractive -EncodedCommand $encoded
           if($LASTEXITCODE-ne0){throw 'Collector PowerShell 5.1 parse failed'}
       - name: Browser script syntax and compact UI regression
         shell: pwsh
