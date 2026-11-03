@@ -30,6 +30,8 @@ final class SupportBundleWriter
             'notice'=>'Operational diagnostics only. Secrets and credentials are intentionally excluded/redacted.',
             'snapshot'=>$this->observability->redact($bundleSnapshot),
             'known_state'=>$this->knownState(),
+            // Read-only, bounded, no executable PHP body or Windows credentials.
+            'machine_local_overlays'=>$this->machineLocalOverlayReadiness(),
             'recent_logs'=>$recentLogs,
             'bundle_profile'=>['log_tail_elapsed_ms'=>$logElapsed,'log_rows'=>count($recentLogs)],
         ];
@@ -83,6 +85,44 @@ final class SupportBundleWriter
         return $rows;
     }
 
+
+    /**
+     * Included by the NORMAL Local support button, never a separate operator script.
+     * Distinguish missing and drift for BOTH machine-local PHP entrypoints.
+     * The active Web is an R8 junction; its lexical parent is the package root.
+     */
+    private function machineLocalOverlayReadiness(): array
+    {
+        $web=dirname(__DIR__,3);
+        $persistent=dirname($web).DIRECTORY_SEPARATOR.'LocalWeb'.DIRECTORY_SEPARATOR.'persistent';
+        $observe=static function(string $file): array {
+            if(is_link($file))return ['status'=>'unsafe_redirect'];
+            if(!file_exists($file))return ['status'=>'missing'];
+            if(!is_file($file)||!is_readable($file))return ['status'=>'unavailable'];
+            $size=@filesize($file);
+            if(!is_int($size)||$size<0||$size>1048576)return ['status'=>'out_of_scope'];
+            $sha=@hash_file('sha256',$file);
+            if(!is_string($sha)||preg_match('/^[a-f0-9]{64}$/D',$sha)!==1)
+                return ['status'=>'unavailable'];
+            return ['status'=>'observed','size_bytes'=>$size,'sha256'=>$sha];
+        };
+        $pairs=[];
+        foreach(['local-recovery.php','local-update-runner.php'] as $name){
+            $rel=DIRECTORY_SEPARATOR.'public'.DIRECTORY_SEPARATOR.$name;
+            $a=$observe($web.$rel);
+            $b=$observe($persistent.$rel);
+            $status=$a['status']==='missing'&&$b['status']==='missing'?'BOTH_MISSING':
+                (($a['status']==='missing'&&$b['status']==='observed')||
+                 ($b['status']==='missing'&&$a['status']==='observed')?'ONE_MISSING':
+                 ($a['status']==='observed'&&$b['status']==='observed'?
+                    (hash_equals($a['sha256'],$b['sha256'])?'MATCH':'DRIFT'):'NOT_VERIFIED'));
+            $pairs[$name]=['status'=>$status,'active'=>$a,'persistent'=>$b];
+        }
+        return ['format'=>'sokna-machine-local-overlays-v1',
+            'authority'=>'read_only_local_file_metadata','installation_authorized'=>false,
+            'local_recovery'=>$pairs['local-recovery.php'],
+            'local_update_runner'=>$pairs['local-update-runner.php']];
+    }
 
     private function knownState(): array
     {
