@@ -279,14 +279,37 @@ $('[data-maintenance-connection-check]')?.addEventListener('click',async()=>{
   }catch(err){eventFeedback('[data-maintenance-connection-result]',`آزمایش اتصال انجام نشد: ${String(err.message||'خطای ارتباط')}`,'warning')}
   finally{button.disabled=false}
 });
+const hostBlockerText={
+ 'UPDATER_MUTATION_OR_RECOVERY_PENDING':'عملیات نصب یا بازیابی دیگری باز است',
+ 'MUTATION_LEDGER_EVIDENCE_UNAVAILABLE':'وضعیت ثبت عملیات نصب قابل تأیید نیست',
+ 'SOKNA_APACHE_DISCOVERY_OR_HEALTH_UNPROVEN':'سلامت وب‌سرور محلی تأیید نشده است',
+ 'ACTIVE_R8_JUNCTION_UNQUALIFIED':'مسیر فعال نسخهٔ محلی تأیید نشده است',
+ 'INSTALLED_LOCAL_IDENTITY_OR_TREE_MISMATCH':'هویت نصب یا فایل‌های اصلی با نسخهٔ ثبت‌شده تطبیق ندارند',
+ 'MACHINE_BINDING_OR_INSTALL_LOCK_MISMATCH':'شناسهٔ نصب محلی با قفل نصب مطابقت ندارد',
+ 'PERSISTENT_MACHINE_LOCAL_OVERLAY_DRIFT':'فایل‌های دائمی و فعال بازیابی یکسان نیستند',
+ 'LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN':'وضعیت چرخهٔ به‌روزرسانی محلی آزاد و قابل تأیید نیست'
+};
+function maintenanceBlockingReason(v){
+ const codes=Array.isArray(v?.host_blockers)?v.host_blockers.filter(code=>Object.prototype.hasOwnProperty.call(hostBlockerText,code)).slice(0,3):[];
+ if(codes.length)return 'مانع: '+codes.map(code=>hostBlockerText[code]).join('؛ ')+'.';
+ const c=String(v?.code||'');
+ if(c==='LOCAL_HOST_PRECONDITIONS_UNPROVEN')
+   return 'یک پیش‌نیاز نصب در سیستم تأیید نشده است؛ موتور فعلی دلیل جزئی را به پنل گزارش نداده است.';
+ if(c==='LOCAL_RECOVERY_REQUIRED')return 'یک عملیات بازیابی‌نشده وجود دارد؛ تا تعیین وضعیت آن نصب مجدد مجاز نیست.';
+ if(c==='LOCAL_OPERATION_IN_PROGRESS')return 'عملیات دیگری در جریان است؛ نصب جدید شروع نکن.';
+ if(c==='LOCAL_INSTALLED_IDENTITY_REBIND_REQUIRED')return 'نسخهٔ نصب‌شده با هویت ثبت‌شده مطابقت ندارد.';
+ return c&&c!=='OK'?'کد وضعیت: '+c+'.':'';
+}
 function renderUnifiedUpdaterReadiness(v){
  const n=$('[data-unified-updater-readiness]');if(!n)return;
  const ready=v?.ready===true&&v?.panel_bound===true;
  n.className='sc-alert '+(ready?'sc-alert--success':'sc-alert--warning');
- n.textContent=ready?'سامانه برای بررسی و نصب امن بسته به‌روزرسانی آماده است.':
-   v?.verification_ready===true?'فایل به‌روزرسانی قابل بررسی و آماده‌سازی است، اما نصب نهایی فعلاً مجاز نیست. برای عیب‌یابی، بسته پشتیبانی را دریافت کن.':
-   'نصب نسخه جدید فعلاً مجاز نیست. وضعیت بازیابی و سرویس نگهداری باید بررسی شود؛ برای پشتیبانی گزارش بگیر.';
-} async function loadUpdates(msg=''){root.setAttribute('aria-busy','true');try{const j=await request(`${api}?section=updates`);updates=j.update_center;legacyLocalBlocked=j.legacy_local_blocked!==false;maintenanceReady=j.maintenance_updater?.ready===true&&j.maintenance_panel_bound===true&&!trackedMaintenanceKey();maintenanceVerifyReady=j.maintenance_updater?.verification_ready===true&&j.maintenance_verification_bound===true;renderUnifiedUpdaterReadiness({...j.maintenance_updater,panel_bound:j.maintenance_panel_bound===true});if(j.snapshot?.components)snap.components={...(snap.components||{}),...j.snapshot.components};sectionErrors.updates=null;renderUpdates();if(trackedMaintenanceKey())void refreshMaintenanceProgress();const pr=j.public_update_refresh||{};if(pr.status==='failed'){const code=String(pr.error_code||'public_update_probe_failed');eventFeedback('[data-public-update-feedback]',`وضعیت زنده Public در این بررسی دریافت نشد؛ اطلاعات نمایش‌داده‌شده ممکن است کش‌شده باشد. کد: ${code}`,'warning')}else if(pr.status==='fresh'){const r=pr.routine_update||{},v=String(r.active_version||r.current_version||'').trim();if(v)eventFeedback('[data-public-update-feedback]',`وضعیت زنده Public تأیید شد: ${shortVersion(v)}`,'info')}setStatus('');if(msg)toast(msg)}catch(e){sectionErrors.updates={message:e.message};renderUpdates();setStatus(e.message,true)}finally{root.removeAttribute('aria-busy')}}
+ const explanation=maintenanceBlockingReason(v);
+ n.textContent=ready?'Maintenance آمادهٔ نصب نسخهٔ تأییدشده است.':
+   v?.verification_ready===true
+     ?'بررسی و آماده‌سازی فایل ممکن است، اما نصب نهایی هنوز مجاز نیست. '+explanation
+     :'نصب در حال حاضر مجاز نیست. '+explanation;
+} async function loadUpdates(msg=''){root.setAttribute('aria-busy','true');try{const j=await request(`${api}?section=updates`);updates=j.update_center;legacyLocalBlocked=j.legacy_local_blocked!==false;maintenanceCapability=j.maintenance_updater||null;maintenanceReady=j.maintenance_updater?.ready===true&&j.maintenance_panel_bound===true&&!trackedMaintenanceKey();maintenanceVerifyReady=j.maintenance_updater?.verification_ready===true&&j.maintenance_verification_bound===true;const ownedStage=String(j.maintenance_owned_stage?.operation_id||'');if(/^[a-fA-F0-9]{32}$/.test(ownedStage)){verifiedMaintenanceStage=ownedStage;persistMaintenanceStage(ownedStage)}renderUnifiedUpdaterReadiness({...j.maintenance_updater,panel_bound:j.maintenance_panel_bound===true});if(j.snapshot?.components)snap.components={...(snap.components||{}),...j.snapshot.components};sectionErrors.updates=null;renderUpdates();if(trackedMaintenanceKey())void refreshMaintenanceProgress();const pr=j.public_update_refresh||{};if(pr.status==='failed'){const code=String(pr.error_code||'public_update_probe_failed');eventFeedback('[data-public-update-feedback]',`وضعیت زنده Public در این بررسی دریافت نشد؛ اطلاعات نمایش‌داده‌شده ممکن است کش‌شده باشد. کد: ${code}`,'warning')}else if(pr.status==='fresh'){const n=$('[data-public-update-feedback]');if(n)n.hidden=true;}setStatus('');if(msg)toast(msg)}catch(e){sectionErrors.updates={message:e.message};renderUpdates();setStatus(e.message,true)}finally{root.removeAttribute('aria-busy')}}
 async function loadRecovery(msg=''){root.setAttribute('aria-busy','true');try{const j=await request(`${api}?section=recovery`);recovery=j.recovery;sectionErrors.recovery=null;renderRecovery();setStatus('');if(msg)toast(msg)}catch(e){sectionErrors.recovery={message:e.message};renderRecovery();setStatus(e.message,true)}finally{root.removeAttribute('aria-busy')}}
 function forceTab(name){if(name==='maintenance')name='updates';if(!['health','updates','recovery'].includes(name))return;$$('[data-tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===name?'true':'false'));$$('[data-panel]').forEach(p=>p.hidden=p.dataset.panel!==name)}const requestedTab=new URLSearchParams(location.search).get('tab');if(requestedTab)forceTab(requestedTab);
 function activeTab(){return root.querySelector('[data-tab][aria-selected="true"]')?.dataset.tab||'health'}
