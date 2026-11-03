@@ -7,6 +7,17 @@ param(
 # Does not invoke Stage, Activate, MariaDB, maintenance repair or service control.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
+# Protected Maintenance identity and operation ledger usually require admin.
+# Fixture runs specifying both roots never elevate.
+if (-not $InstallRoot -and -not $DataRoot) {
+    $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal=New-Object Security.Principal.WindowsPrincipal($identity)
+    if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        $self='"'+$PSCommandPath+'"'
+        Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File '+$self) -Wait
+        exit 0
+    }
+}
 function Fp([string]$p) {
     if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { return $null }
     try {
