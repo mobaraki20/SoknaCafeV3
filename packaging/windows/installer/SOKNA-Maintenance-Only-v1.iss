@@ -7,8 +7,8 @@
 [Setup]
 AppId={{965FF692-4DAD-4C58-B76D-3F3A70A687CB}
 AppName=SOKNA Maintenance Component Update (UAT)
-AppVersion=0.3.18
-AppVerName=SOKNA Maintenance Only 0.3.18 UAT
+AppVersion=0.3.20
+AppVerName=SOKNA Maintenance Only 0.3.20 UAT
 AppPublisher=SOKNA
 AppCopyright=SOKNA
 DefaultDirName={autopf}\SOKNA Windows Services
@@ -22,7 +22,7 @@ MinVersion=10.0
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=SOKNA-Maintenance-Only-0.3.18-HOME-UAT-REV2
+OutputBaseFilename=SOKNA-Maintenance-Only-0.3.20-R94-UAT-REV3-IDENTITY-SUPPORT
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -44,6 +44,16 @@ Source: "{#PayloadRoot}\setup-windows-components-maintenance-v1.ps1"; DestDir: "
 Source: "{#PayloadRoot}\\maintenance-signed-health-v1.ps1"; DestDir: "{tmp}\\SOKNA-maintenance-only"; Flags: ignoreversion deleteafterinstall
 
 Source: "{#PayloadRoot}\maintenance-installed-versions-v1.ps1"; DestDir: "{tmp}\SOKNA-maintenance-only"; Flags: ignoreversion deleteafterinstall
+; Keep read-only diagnosis available even when a future component-only upgrade
+; fails and rolls the Maintenance App directory back. Program Files ACL protects
+; the support entrypoint from user modification before elevation.
+Source: "{#PayloadRoot}\maintenance\app\collect-support-unified-v1.ps1"; DestDir: "{autopf}\SOKNA Windows Services\Maintenance\Support"; Flags: ignoreversion
+Source: "{#PayloadRoot}\maintenance\app\collect-support-v2.ps1"; DestDir: "{autopf}\SOKNA Windows Services\Maintenance\Support"; Flags: ignoreversion
+
+[Icons]
+; The support shortcut is deployed with Maintenance only. It produces ONE ZIP
+; on the operator's desktop (and preserves existing Windows diagnostics inside).
+Name: "{autoprograms}\SOKNA - One Support ZIP"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{autopf}\SOKNA Windows Services\Maintenance\Support\collect-support-unified-v1.ps1"""; WorkingDir: "{autopf}\SOKNA Windows Services\Maintenance\Support"; Comment: "SOKNA unified read-only support diagnostics"
 
 [Code]
 var

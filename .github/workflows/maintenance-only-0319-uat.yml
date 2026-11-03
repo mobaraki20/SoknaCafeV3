@@ -1,0 +1,189 @@
+name: SOKNA Maintenance 0.3.20 scoped UAT build
+
+on:
+  push:
+    branches:
+      - fix/maintenance-0319-r94-preflight-20261103
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  maintenance-only:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Verify Windows PowerShell 5.1 syntax and scoped versions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($rel in @(
+            'packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1',
+            'packaging/windows/scripts/invoke-maintenance-only-v1.ps1',
+            'packaging/windows/scripts/setup-windows-components-maintenance-v1.ps1',
+            'packaging/windows/scripts/maintenance-installed-versions-v1.ps1',
+            'packaging/windows/scripts/maintenance-signed-health-v1.ps1',
+            'packaging/windows/scripts/collect-support-unified-v1.ps1'
+          )) {
+            $tokens=$null; $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $rel).Path,[ref]$tokens,[ref]$errors) | Out-Null
+            if (@($errors).Count) { throw "PowerShell source did not parse: $rel" }
+          }
+          $super = [xml](Get-Content 'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj' -Raw)
+          $engine = [xml](Get-Content 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj' -Raw)
+          foreach ($component in @($super,$engine)) {
+            if ([string]$component.Project.PropertyGroup.Version -ne '0.3.20' -or
+                [string]$component.Project.PropertyGroup.FileVersion -ne '0.3.20.0') {
+              throw 'Supervisor and Update Engine must both be physically 0.3.20.0'
+            }
+          }
+          $scope = Get-Content 'packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1' -Raw
+          if ($scope -notmatch 'runtime_changes=\$false;print_agent_changes=\$false;recovery_console_changes=\$false') {
+            throw 'Maintenance-only release scope guard was removed'
+          }
+      - name: Compile & run exact-baseline and keyless package regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.DeltaRebindHarness/Sokna.Maintenance.DeltaRebindHarness.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Delta/Rebind fixture failed' }
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.CafeSchemaRebindHarness/Sokna.Maintenance.CafeSchemaRebindHarness.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Cafe historical schema identity rebind contract failed' }
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Sokna.Maintenance.OperatorUploadHarness.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Operator-uploaded package fixture failed' }
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.CafeOverlayHarness/Sokna.Maintenance.CafeOverlayHarness.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Cafe known legacy/missing overlay regression failed' }
+          $overlayRoot=Join-Path $env:RUNNER_TEMP 'sokna-recovery-overlay-regressions'
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.RecoveryOverlayHarness/Sokna.Maintenance.RecoveryOverlayHarness.csproj -c Release -- $overlayRoot
+          if ($LASTEXITCODE -ne 0) { throw 'General stable recovery overlay regression failed' }
+      - name: One-ZIP support collection regression on Windows PowerShell 5.1
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'sokna-one-support-fixture'
+          $data=Join-Path $root 'data'
+          $local=Join-Path $root 'local'
+          $out=Join-Path $root 'out'
+          New-Item -ItemType Directory -Path $data,$local,$out -Force|Out-Null
+          $maint=Join-Path $data 'Maintenance'
+          New-Item -ItemType Directory -Path $maint -Force|Out-Null
+          [IO.File]::WriteAllText((Join-Path $maint 'installed-release-identity.json'), '{"local":{"release_id":"old-fixture","version":"231bf","managed_tree_sha256":"abc","schema_fingerprint":"old","migration_head":"0074","authority_epoch_policy":null},"maintenance_supervisor_version":"0.3.19","update_engine_version":"0.3.19"}')
+          $ops=Join-Path $maint 'operations'
+          New-Item -ItemType Directory -Path $ops -Force|Out-Null
+          [IO.File]::WriteAllText((Join-Path $ops 'op-111.json'), '{"operation_id":"111","operation_type":"update.local-package-preflight","state":"rejected_pre_mutation","result_code":"PACKAGE_PREFLIGHT_REJECTED","result_message":"LOCAL_REBIND_UNIQUE_SIGNED_BASELINE_REQUIRED token=SECRET-CANARY","updated_at_utc":"2026-11-03T13:13:10Z","activation_performed":false,"database_mutation_performed":false}')
+          $setup=Join-Path $data 'setup'
+          $tx=Join-Path $setup 'component-transactions/maintenance-fixture'
+          New-Item -ItemType Directory -Path $tx -Force|Out-Null
+          [IO.File]::WriteAllText((Join-Path $setup 'maintenance-only-last-error.txt'), 'MAINTENANCE_ONLY_PRECHECK: fixture_failure')
+          [IO.File]::WriteAllText((Join-Path $tx 'install-result.json'), '{"status":"failed","exit_code":2,"failed_component":"maintenance","failed_phase":"Health verification","summary":"fixture failure","rollback_complete":true}')
+          $web=Join-Path $local 'Web'
+          New-Item -ItemType Directory -Path (Join-Path $web 'resources'),(Join-Path $web 'database/migrations') -Force|Out-Null
+          [IO.File]::WriteAllText((Join-Path $web 'VERSION.txt'),'231bz')
+          [IO.File]::WriteAllText((Join-Path $web 'resources/local-managed-files-v1.json'), '{"format":"sokna-local-managed-files-v1","files":["VERSION.txt","resources/local-managed-files-v1.json"]}')
+          [IO.File]::WriteAllText((Join-Path $web 'database/migrations/0076_test.sql'),'-- fixture')
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/windows/scripts/collect-support-unified-v1.ps1 -DataRoot $data -LocalRoot $local -OutputRoot $out -SkipLegacyCollector
+          if($LASTEXITCODE-ne0){throw 'Unified support collector failed on Windows PowerShell 5.1'}
+          $zip=@(Get-ChildItem -LiteralPath $out -Filter 'SOKNA-ONE-SUPPORT-*.zip' -File)
+          if($zip.Count-ne1){throw 'Collector did not produce exactly ONE ZIP'}
+          $expanded=Join-Path $root 'expanded'
+          Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath $expanded
+          $details=Join-Path $expanded 'unified'
+          $localResult=Get-Content (Join-Path $details 'local-physical-readonly.json') -Raw|ConvertFrom-Json
+          $identity=Get-Content (Join-Path $details 'installed-identity-safe.json') -Raw|ConvertFrom-Json
+          $opsResult=Get-Content (Join-Path $details 'maintenance-operations-safe.json') -Raw|ConvertFrom-Json
+          $txResult=Get-Content (Join-Path $details 'maintenance-only-transactions.json') -Raw|ConvertFrom-Json
+          if($localResult.status -notlike 'PHYSICAL_CATALOG_ATTESTED*' -or
+              $localResult.inventory_count-ne2 -or $localResult.migration_catalog_count-ne1 -or
+              $identity.local.version-ne'231bf' -or
+              $opsResult.operations[0].result_message-notmatch 'LOCAL_REBIND' -or
+              $txResult.transactions[0].failed_phase-ne'Health verification') { throw 'ONE-ZIP support evidence incomplete' }
+          $allText=Get-ChildItem -LiteralPath $details -File|ForEach-Object{Get-Content $_.FullName -Raw}
+          if(($allText-join '') -match 'SECRET-CANARY'){throw 'Sensitive diagnostic canary was not redacted'}
+      - name: Publish only Supervisor and Update Engine for win-x64
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $app=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0320-app'
+          New-Item -ItemType Directory -Path $app -Force|Out-Null
+          foreach ($project in @(
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj'
+          )) {
+            dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $app
+            if ($LASTEXITCODE -ne 0) { throw "Failed maintenance-only publish: $project" }
+          }
+          foreach ($name in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')) {
+            $file=Join-Path $app $name
+            if (!(Test-Path $file)) { throw "Missing compiled executable: $name" }
+            if ([string]([Diagnostics.FileVersionInfo]::GetVersionInfo($file).FileVersion) -ne '0.3.20.0') {
+              throw "Compiled file version mismatch: $name"
+            }
+          }
+      - name: Prepare scoped manifest and compile maintenance-only Inno Setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          $iscc=@(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if (!$iscc) { throw 'ISCC not found' }
+          $repo=(Resolve-Path .).Path
+          $app=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0320-app'
+          $payload=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0320-payload'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0320-output'
+          New-Item -ItemType Directory -Path $out -Force|Out-Null
+          & 'packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1' -RepoRoot $repo -MaintenanceAppBundle $app -OutputRoot $payload
+          if ($LASTEXITCODE -ne 0) { throw 'Scoped payload failed' }
+          & $iscc "/DPayloadRoot=$payload" "/DOutputDir=$out" 'packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed' }
+          $exe=Get-ChildItem -LiteralPath $out -Filter 'SOKNA-Maintenance-Only-0.3.20-*.exe' | Select-Object -First 1
+          if (!$exe -or $exe.Length -lt 10000000) { throw 'Installer missing or truncated' }
+          $payloadManifest=Get-Content (Join-Path $payload 'component-install-manifest-v1.json') -Raw | ConvertFrom-Json
+          $components=Get-Content (Join-Path $payload 'windows-services-component-manifest-v2.json') -Raw | ConvertFrom-Json
+          if ($payloadManifest.release_scope -ne 'maintenance_only' -or
+              $payloadManifest.component_version -ne '0.3.20' -or
+              @($components.components).Count -ne 2 -or
+              $components.package_version -ne '0.3.20') { throw 'Unqualified installer payload' }
+          foreach ($row in $components.components) {
+            if ($row.component_id -notin @('maintenance','maintenance-update-engine')) {
+              throw 'Out-of-scope component in installer'
+            }
+          }
+          Copy-Item -LiteralPath (Join-Path $payload 'component-install-manifest-v1.json') -Destination (Join-Path $out 'component-install-manifest-v1.json')
+          Copy-Item -LiteralPath (Join-Path $payload 'windows-services-component-manifest-v2.json') -Destination (Join-Path $out 'windows-services-component-manifest-v2.json')
+          $sha=(Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  $($exe.Name)" | Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
+          [ordered]@{
+            format='sokna-maintenance-only-r94-uat-candidate-v1'
+            source_commit=$env:GITHUB_SHA
+            release_scope='maintenance_only'
+            supervisor_version='0.3.20'
+            engine_version='0.3.20'
+            installer_file=$exe.Name
+            installer_sha256=$sha
+            source_unit_harness='PASS'
+            cafe_schema_rebind_harness='PASS'
+            legacy_missing_overlay_harness='PASS'
+            stable_recovery_overlay_harness='PASS'
+            one_zip_support_harness='PASS'
+            powershell_parse='PASS'
+            windows_installer_compiled=$true
+            real_cafe_host_install='NOT_RUN'
+            rollback_and_recovery_on_real_host='NOT_RUN'
+            local_r94_preflight_on_real_host='NOT_RUN'
+            production_qualified=$false
+          } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $out 'UAT-BUILD-REPORT.json') -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-maintenance-only-0320-r94-rebind-support-rev3-uat
+          path: ${{ runner.temp }}/sokna-maintenance-0320-output/*
+          if-no-files-found: error
+          retention-days: 20

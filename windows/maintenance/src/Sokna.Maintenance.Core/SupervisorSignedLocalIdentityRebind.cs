@@ -58,17 +58,44 @@ public sealed class SupervisorSignedLocalIdentityRebind
         if (manifest.ReleaseType != "local_only" ||
             manifest.SupportedBaselines is null)
             throw new InvalidDataException("LOCAL_REBIND_QUALIFIED_LOCAL_ONLY_SIGNER_REQUIRED");
-        var eligible = manifest.SupportedBaselines
+        var physicalCandidates = manifest.SupportedBaselines
             .Select(x => x.Local)
             .Where(x => x is not null && x.Version == physical.Build &&
-                string.Equals(x.ManagedTreeSha256, tree, StringComparison.OrdinalIgnoreCase) &&
-                x.SchemaFingerprint == previous.Local.SchemaFingerprint &&
-                x.MigrationHead == previous.Local.MigrationHead &&
-                x.AuthorityEpochPolicy == previous.Local.AuthorityEpochPolicy)
+                string.Equals(x.ManagedTreeSha256, tree, StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        if (eligible.Length != 1)
-            throw new InvalidDataException("LOCAL_REBIND_UNIQUE_SIGNED_BASELINE_REQUIRED");
-        var verifiedCandidate = previous with { Local = eligible[0] };
+        // A unique exact physical baseline is necessary before any schema
+        // reconciliation. The old 231bf registration was head 0074/null
+        // authority policy, while Cafe 231bz has 76 applied migrations.
+        if (physicalCandidates.Length != 1)
+            throw new InvalidDataException("LOCAL_REBIND_UNIQUE_PHYSICAL_BASELINE_REQUIRED");
+        var selected = physicalCandidates[0]!;
+        bool liveLedgerAttested = false;
+        if (selected.SchemaFingerprint != previous.Local.SchemaFingerprint ||
+            selected.MigrationHead != previous.Local.MigrationHead ||
+            selected.AuthorityEpochPolicy != previous.Local.AuthorityEpochPolicy)
+        {
+            if (!KnownCafeSchemaForwardRebindGate.IsApprovedHistoricalPair(
+                    previous.Local, selected))
+                throw new InvalidDataException("LOCAL_REBIND_SCHEMA_FORWARD_NOT_QUALIFIED");
+            var active = Path.GetFullPath(physical.ActiveSlotTarget);
+            // Compare the physically attested PHP/SQL catalog with the single
+            // pinned 231bz baseline, then read the actual MariaDB ledger.
+            // Neither a version footer nor an uploaded manifest can replace it.
+            var dbPlan = RoutineLocalDatabase.Plan(active, active);
+            KnownCafeSchemaForwardRebindGate.RequirePhysicalCatalog(selected, dbPlan);
+            try
+            {
+                RoutineLocalDatabase.RequireBaseline(physical.PackageRoot,
+                    active, active, dbPlan);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or
+                InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                throw new InvalidDataException("LOCAL_REBIND_LIVE_DB_LEDGER_NOT_VERIFIED", ex);
+            }
+            liveLedgerAttested = true;
+        }
+        var verifiedCandidate = previous with { Local = selected };
         var proven = new ReleaseSetVerifierStager(_paths)
             .VerifyOnly(packagePath, verifiedCandidate);
         if (!OperatorUploadedLocalPackage.HasTrustedPackageEvidence(
@@ -93,8 +120,12 @@ public sealed class SupervisorSignedLocalIdentityRebind
             verifiedCandidate.Local.ManagedTreeSha256, verifiedCandidate.Local.MigrationHead,
             proven.ReleaseSetId, proven.PackageSha256, proven.ManifestSha256,
             physical.ActiveSlotTarget, proven.OperatorAuthorized
-                ? "operator_uploaded_exact_live_code_only_baseline"
-                : "publisher_signed_exact_live_code_only_baseline",
+                ? (liveLedgerAttested
+                    ? "operator_uploaded_exact_live_code_and_readonly_db_ledger_attested"
+                    : "operator_uploaded_exact_live_code_only_baseline")
+                : (liveLedgerAttested
+                    ? "publisher_signed_exact_live_code_and_readonly_db_ledger_attested"
+                    : "publisher_signed_exact_live_code_only_baseline"),
             OperatorAuthorized: proven.OperatorAuthorized);
         var receiptPath = Path.Combine(_paths.OperationsRoot, "identity-rebind-" +
             receipt.PreviousIdentitySha256 + "-" + proven.ManifestSha256 + ".json");
