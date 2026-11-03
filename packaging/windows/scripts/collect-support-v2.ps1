@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory=$true)][string]$DataRoot,
   [Parameter(Mandatory=$true)][string]$OutputRoot,
-  [ValidateRange(1,10)][int]$InstallerTransactions=5
+  [ValidateRange(1,10)][int]$InstallerTransactions=5,
+  [string]$InstallRootOverride=''
 )
 $ErrorActionPreference='Stop'
 
@@ -168,7 +169,10 @@ try {
     WriteJson (Join-Path $maintDir 'recent-operations.json') ([ordered]@{format='sokna-maintenance-recent-operations-v1';operations=$recent})
   }catch{AddError 'maintenance-operations' $_.Exception.Message}
   try{
-    $roots=@(Get-PSDrive -PSProvider FileSystem|ForEach-Object{Join-Path $_.Root 'SOKNA'}|Select-Object -Unique)
+    # Override is only used by the synthetic Windows regression fixture.
+    # Production collection retains automatic install-root discovery.
+    $roots=if($InstallRootOverride){@([IO.Path]::GetFullPath($InstallRootOverride))}
+      else{@(Get-PSDrive -PSProvider FileSystem|ForEach-Object{Join-Path $_.Root 'SOKNA'}|Select-Object -Unique)}
     $snapshots=@()
     foreach($root in $roots){
       $web=Join-Path $root 'Web'
