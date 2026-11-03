@@ -1,0 +1,80 @@
+name: SOKNA standard support bundle overlay coverage
+on:
+  push:
+    branches:
+      - fix/cafe-local-update-readiness-r95-20261103
+    paths:
+      - packaging/windows/scripts/collect-support-v2.ps1
+      - packaging/windows/scripts/collect-support-unified-v1.ps1
+      - .github/workflows/sokna-support-one-click-overlays-ci.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  standard-collectors:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove standard support collectors parse on Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          foreach($file in @(
+            'packaging/windows/scripts/collect-support-v2.ps1',
+            'packaging/windows/scripts/collect-support-unified-v1.ps1')){
+            $tokens=$null;$errors=$null
+            [Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file).Path,[ref]$tokens,[ref]$errors)|Out-Null
+            if($errors.Count -gt 0){$errors | ForEach-Object{Write-Host $_.Message};throw "Invalid PS5 syntax: $file"}
+          }
+      - name: Both normal support ZIPs must report active runner missing without copying PHP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $fixture=Join-Path $env:RUNNER_TEMP 'sokna-support-overlay-fixture'
+          $local=Join-Path $fixture 'SOKNA'
+          $data=Join-Path $fixture 'ProgramData/SOKNA'
+          $out1=Join-Path $fixture 'out-main'
+          $out2=Join-Path $fixture 'out-one'
+          $web=Join-Path $local 'Web'
+          $persistent=Join-Path $local 'LocalWeb/persistent'
+          foreach($d in @($data,$out1,$out2,(Join-Path $web 'public'),
+            (Join-Path $web 'resources'),(Join-Path $web 'database/migrations'),
+            (Join-Path $persistent 'public'))){
+            New-Item -ItemType Directory -Path $d -Force|Out-Null
+          }
+          $phpSecret='PRIVATE_PHP_PAYLOAD_SHOULD_NOT_LEAK'
+          [IO.File]::WriteAllText((Join-Path $web 'VERSION.txt'),'3.0.0-test')
+          [IO.File]::WriteAllText((Join-Path $web 'resources/local-managed-files-v1.json'),
+            '{"format":"sokna-local-managed-files-v1","files":["VERSION.txt","resources/local-managed-files-v1.json"]}')
+          [IO.File]::WriteAllText((Join-Path $web 'database/migrations/0076_fixture.sql'),'-- fixture')
+          [IO.File]::WriteAllText((Join-Path $web 'public/local-recovery.php'),$phpSecret)
+          [IO.File]::WriteAllText((Join-Path $persistent 'public/local-recovery.php'),$phpSecret)
+          [IO.File]::WriteAllText((Join-Path $persistent 'public/local-update-runner.php'),$phpSecret)
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File packaging/windows/scripts/collect-support-v2.ps1 -DataRoot $data -OutputRoot $out1 -InstallRootOverride $local -InstallerTransactions 1
+          if($LASTEXITCODE -ne 0){throw 'Primary Windows support collector failed'}
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File packaging/windows/scripts/collect-support-unified-v1.ps1 -DataRoot $data -LocalRoot $local -OutputRoot $out2 -SkipLegacyCollector
+          if($LASTEXITCODE -ne 0){throw 'Unified one-click support collector failed'}
+          $one=@(Get-ChildItem $out1 -Filter 'SOKNA-Support-v2-*.zip' -File)
+          $two=@(Get-ChildItem $out2 -Filter 'SOKNA-ONE-SUPPORT-*.zip' -File)
+          if($one.Count-ne1 -or $two.Count-ne1){throw 'Each standard collector must produce exactly one ZIP'}
+          $unpack1=Join-Path $fixture 'primary'
+          $unpack2=Join-Path $fixture 'unified'
+          Expand-Archive $one[0].FullName $unpack1
+          Expand-Archive $two[0].FullName $unpack2
+          $report1=Get-Content (Join-Path $unpack1 'maintenance/stable-recovery-overlay.json') -Raw|ConvertFrom-Json
+          $report2=Get-Content (Join-Path $unpack2 'unified/machine-local-overlay-pairs.json') -Raw|ConvertFrom-Json
+          $runner1=@($report1.installations[0].overlay_pairs|Where-Object{$_.name -like '*local-update-runner.php'})
+          $runner2=@($report2.pairs|Where-Object{$_.relative_name -like '*local-update-runner.php'})
+          if($runner1.Count-ne1 -or $runner2.Count-ne1 -or
+            $runner1[0].status-ne'ONE_MISSING' -or $runner2[0].state-ne'ONE_MISSING' -or
+            $runner1[0].active.present-ne$false -or $runner2[0].active.present-ne$false -or
+            $runner1[0].persistent.present-ne$true -or $runner2[0].persistent.present-ne$true){
+            throw 'The normal support ZIP omitted the exact Cafe active-runner-missing incident'
+          }
+          foreach($expanded in @($unpack1,$unpack2)){
+            $combined=Get-ChildItem $expanded -File -Recurse |
+              ForEach-Object{Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue}
+            if(($combined -join '') -match $phpSecret){throw 'PHP file contents leaked into Support ZIP'}
+          }
+          Write-Host 'PASS: both standard collectors capture runner ONE_MISSING, recovery MATCH, no PHP content'
