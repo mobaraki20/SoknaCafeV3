@@ -1,0 +1,81 @@
+name: R95 Cafe updater stalled Stage and exact host diagnostics
+on:
+  push:
+    branches:
+      - fix/cafe-local-update-readiness-r95-20261103
+    paths:
+      - apps/local-web/public/assets/system-diagnostics.js
+      - apps/local-web/public/system/**
+      - apps/local-web/src/Domain/System/MaintenanceSupervisorClient.php
+      - apps/local-web/src/Domain/System/MaintenanceSupportEvidence.php
+      - windows/maintenance/src/Sokna.Maintenance.Core/**
+      - windows/maintenance/src/Sokna.Maintenance.UpdateEngine/**
+      - packaging/windows/scripts/collect-support-unified-v1.ps1
+      - tests/local-r95-update-panel-selftest.js
+      - .github/workflows/ci-cafe-local-update-r95.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-readiness-and-ui:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile Maintenance Supervisor and Engine with signed safe blocker contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($project in @(
+            'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj',
+            'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj')){
+            dotnet build $project -c Release --nologo
+            if($LASTEXITCODE-ne0){throw "Build failed: $project"}
+          }
+      - name: Test read-only on-box host-readiness diagnostic denial on absent fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $fixture=Join-Path $env:RUNNER_TEMP 'host-readiness-no-ledger-fixture'
+          New-Item -ItemType Directory -Path $fixture -Force|Out-Null
+          $exe='windows/maintenance/src/Sokna.Maintenance.UpdateEngine/bin/Release/net8.0-windows/SoknaMaintenanceUpdateEngine.exe'
+          if(-not(Test-Path $exe)){throw 'Missing built Engine'}
+          $text=& $exe host-readiness --data-root $fixture 2>&1 | Out-String
+          if($LASTEXITCODE-ne74 -or $text -notmatch 'HOST_READINESS_EVIDENCE_UNAVAILABLE'){
+            throw 'Unknown host evidence must fail closed with safe status'
+          }
+          if(Test-Path (Join-Path $fixture 'operations')){throw 'Read-only diagnostic created an operation ledger'}
+      - name: PowerShell 5.1 support collector parse and scope
+        shell: pwsh
+        run: |
+          $file=(Resolve-Path 'packaging/windows/scripts/collect-support-unified-v1.ps1').Path
+          $test='param([string]$p) $tokens=$null;$errors=$null;[Management.Automation.Language.Parser]::ParseFile($p,[ref]$tokens,[ref]$errors)|Out-Null;if($errors.Count){$errors|ForEach-Object{Write-Error $_.Message};exit 1}'
+          & powershell.exe -NoProfile -NonInteractive -Command $test -args $file
+          if($LASTEXITCODE-ne0){throw 'Collector PowerShell 5.1 parse failed'}
+      - name: Browser script syntax and compact UI regression
+        shell: pwsh
+        run: |
+          node --check apps/local-web/public/assets/system-diagnostics.js
+          if($LASTEXITCODE-ne0){throw 'System JS syntax invalid'}
+          node tests/local-r95-update-panel-selftest.js
+          if($LASTEXITCODE-ne0){throw 'R95 compact Update Center contract failed'}
+      - name: PHP 8.2 syntax and explicit immutable safety conditions
+        shell: pwsh
+        run: |
+          choco install php --version=8.2.24 -y --no-progress | Out-Host
+          $php=(Get-Command php -ErrorAction SilentlyContinue).Source
+          if(-not$php){throw 'PHP CLI not installed'}
+          foreach($file in @(
+            'apps/local-web/public/system/index.php',
+            'apps/local-web/public/system/api.php',
+            'apps/local-web/src/Domain/System/MaintenanceSupervisorClient.php',
+            'apps/local-web/src/Domain/System/MaintenanceSupportEvidence.php')){
+            & $php -l $file
+            if($LASTEXITCODE-ne0){throw "PHP lint failed: $file"}
+          }
