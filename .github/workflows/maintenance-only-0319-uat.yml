@@ -1,9 +1,9 @@
-name: SOKNA Maintenance 0.3.20 scoped UAT build
+name: SOKNA Maintenance 0.3.21 R95 one-support auto-runner UAT
 
 on:
   push:
     branches:
-      - fix/maintenance-0319-r94-preflight-20261103
+      - fix/cafe-local-update-readiness-r95-20261103
   workflow_dispatch:
 
 permissions:
@@ -37,9 +37,9 @@ jobs:
           $super = [xml](Get-Content 'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj' -Raw)
           $engine = [xml](Get-Content 'windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj' -Raw)
           foreach ($component in @($super,$engine)) {
-            if ([string]$component.Project.PropertyGroup.Version -ne '0.3.20' -or
-                [string]$component.Project.PropertyGroup.FileVersion -ne '0.3.20.0') {
-              throw 'Supervisor and Update Engine must both be physically 0.3.20.0'
+            if ([string]$component.Project.PropertyGroup.Version -ne '0.3.21' -or
+                [string]$component.Project.PropertyGroup.FileVersion -ne '0.3.21.0') {
+              throw 'Supervisor and Update Engine must both be physically 0.3.21.0'
             }
           }
           $scope = Get-Content 'packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1' -Raw
@@ -56,6 +56,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cafe historical schema identity rebind contract failed' }
           dotnet run --project windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Sokna.Maintenance.OperatorUploadHarness.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Operator-uploaded package fixture failed' }
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.CafeRunnerHarness/Sokna.Maintenance.CafeRunnerHarness.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Known Cafe missing-active runner harness failed' }
           dotnet run --project windows/maintenance/tests/Sokna.Maintenance.CafeOverlayHarness/Sokna.Maintenance.CafeOverlayHarness.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Cafe known legacy/missing overlay regression failed' }
           $overlayRoot=Join-Path $env:RUNNER_TEMP 'sokna-recovery-overlay-regressions'
@@ -108,7 +110,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $app=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0320-app'
+          $app=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0321-app'
           New-Item -ItemType Directory -Path $app -Force|Out-Null
           foreach ($project in @(
             'windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj',
@@ -120,7 +122,7 @@ jobs:
           foreach ($name in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')) {
             $file=Join-Path $app $name
             if (!(Test-Path $file)) { throw "Missing compiled executable: $name" }
-            if ([string]([Diagnostics.FileVersionInfo]::GetVersionInfo($file).FileVersion) -ne '0.3.20.0') {
+            if ([string]([Diagnostics.FileVersionInfo]::GetVersionInfo($file).FileVersion) -ne '0.3.21.0') {
               throw "Compiled file version mismatch: $name"
             }
           }
@@ -136,22 +138,22 @@ jobs:
           ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
           if (!$iscc) { throw 'ISCC not found' }
           $repo=(Resolve-Path .).Path
-          $app=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0320-app'
-          $payload=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0320-payload'
-          $out=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0320-output'
+          $app=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0321-app'
+          $payload=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0321-payload'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-maintenance-0321-output'
           New-Item -ItemType Directory -Path $out -Force|Out-Null
           & 'packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1' -RepoRoot $repo -MaintenanceAppBundle $app -OutputRoot $payload
           if ($LASTEXITCODE -ne 0) { throw 'Scoped payload failed' }
           & $iscc "/DPayloadRoot=$payload" "/DOutputDir=$out" 'packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss'
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed' }
-          $exe=Get-ChildItem -LiteralPath $out -Filter 'SOKNA-Maintenance-Only-0.3.20-*.exe' | Select-Object -First 1
+          $exe=Get-ChildItem -LiteralPath $out -Filter 'SOKNA-Maintenance-Only-0.3.21-*.exe' | Select-Object -First 1
           if (!$exe -or $exe.Length -lt 10000000) { throw 'Installer missing or truncated' }
           $payloadManifest=Get-Content (Join-Path $payload 'component-install-manifest-v1.json') -Raw | ConvertFrom-Json
           $components=Get-Content (Join-Path $payload 'windows-services-component-manifest-v2.json') -Raw | ConvertFrom-Json
           if ($payloadManifest.release_scope -ne 'maintenance_only' -or
-              $payloadManifest.component_version -ne '0.3.20' -or
+              $payloadManifest.component_version -ne '0.3.21' -or
               @($components.components).Count -ne 2 -or
-              $components.package_version -ne '0.3.20') { throw 'Unqualified installer payload' }
+              $components.package_version -ne '0.3.21') { throw 'Unqualified installer payload' }
           foreach ($row in $components.components) {
             if ($row.component_id -notin @('maintenance','maintenance-update-engine')) {
               throw 'Out-of-scope component in installer'
@@ -165,8 +167,8 @@ jobs:
             format='sokna-maintenance-only-r94-uat-candidate-v1'
             source_commit=$env:GITHUB_SHA
             release_scope='maintenance_only'
-            supervisor_version='0.3.20'
-            engine_version='0.3.20'
+            supervisor_version='0.3.21'
+            engine_version='0.3.21'
             installer_file=$exe.Name
             installer_sha256=$sha
             source_unit_harness='PASS'
@@ -174,6 +176,7 @@ jobs:
             legacy_missing_overlay_harness='PASS'
             stable_recovery_overlay_harness='PASS'
             one_zip_support_harness='PASS'
+            cafe_runner_repair_harness='PASS'
             powershell_parse='PASS'
             windows_installer_compiled=$true
             real_cafe_host_install='NOT_RUN'
@@ -183,7 +186,7 @@ jobs:
           } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $out 'UAT-BUILD-REPORT.json') -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
-          name: sokna-maintenance-only-0320-r94-rebind-support-rev3-uat
-          path: ${{ runner.temp }}/sokna-maintenance-0320-output/*
+          name: sokna-maintenance-only-0321-r95-auto-runner-standard-support-rev4-uat
+          path: ${{ runner.temp }}/sokna-maintenance-0321-output/*
           if-no-files-found: error
           retention-days: 20
