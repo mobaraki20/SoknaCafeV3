@@ -223,6 +223,26 @@ try {
       persistent=(Observe (Join-Path $installRoot 'LocalWeb\persistent\public\local-recovery.php'))
     }
     JsonSafe (Join-Path $diagnostics 'stable-recovery-overlay.json') $overlay
+    # A separate manual audit found an absent *active* updater runner even
+    # though local-recovery matched. Never require such an audit again: the
+    # installed standard support collector always probes BOTH machine overlays.
+    $pairs=New-Object Collections.Generic.List[object]
+    foreach($relative in @('public\local-recovery.php','public\local-update-runner.php')){
+      $live=Observe (Join-Path $web $relative)
+      $persistentFile=Observe (Join-Path $installRoot ('LocalWeb\persistent\'+$relative))
+      $state=if(-not $live.present -and -not $persistentFile.present){'BOTH_MISSING'}
+        elseif($live.present -ne $persistentFile.present){'ONE_MISSING'}
+        elseif($live.Contains('sha256') -and $persistentFile.Contains('sha256') -and
+               $live.sha256 -eq $persistentFile.sha256){'MATCH'}
+        else{'DRIFT_OR_UNREADABLE'}
+      $pairs.Add([ordered]@{relative_name=$relative;state=$state;active=$live;persistent=$persistentFile})
+    }
+    JsonSafe (Join-Path $diagnostics 'machine-local-overlay-pairs.json') ([ordered]@{
+      format='sokna-machine-local-overlay-pairs-v1'
+      evidence_available=$true
+      pairs=@($pairs.ToArray())
+      warning='read_only_evidence_not_activation_authorization'
+    })
   }
   JsonSafe (Join-Path $diagnostics 'local-physical-readonly.json') $physical
 
@@ -281,6 +301,7 @@ try {
     host_preparation_blockers=$(if($hostResult.evidence_available){'COLLECTED_WITH_EXACT_CODES'}else{'NOT_COLLECTED'})
     local_installed_identity='COLLECTED_IF_PRESENT'
     local_physical_files='COLLECTED_IF_AVAILABLE'
+    local_machine_overlay_pairs=$(if($installRoot){'COLLECTED_BOTH_RECOVERY_AND_UPDATE_RUNNER'}else{'NOT_COLLECTED'})
     live_database_rows_or_credentials='NEVER_COLLECTED'
     live_database_migration_ledger='NOT_COLLECTED'
     maintenance_component_only_history='COLLECTED_IF_PRESENT'
