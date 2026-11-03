@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
-using System.Text.Json;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Sokna.Maintenance.CafeRunnerHarness")]
 
 namespace Sokna.Maintenance.Core;
 
