@@ -123,7 +123,9 @@ jobs:
             engine_version='0.3.19'
             installer_file=$exe.Name
             installer_sha256=$sha
-            source_unit_harness='PASS'\n            legacy_missing_overlay_harness='PASS'\n            stable_recovery_overlay_harness='PASS'
+            source_unit_harness='PASS'
+            legacy_missing_overlay_harness='PASS'
+            stable_recovery_overlay_harness='PASS'
             powershell_parse='PASS'
             windows_installer_compiled=$true
             real_cafe_host_install='NOT_RUN'
