@@ -45,6 +45,11 @@ Source: "{#PayloadRoot}\\maintenance-signed-health-v1.ps1"; DestDir: "{tmp}\\SOK
 
 Source: "{#PayloadRoot}\maintenance-installed-versions-v1.ps1"; DestDir: "{tmp}\SOKNA-maintenance-only"; Flags: ignoreversion deleteafterinstall
 
+[Icons]
+; The support shortcut is deployed with Maintenance only. It produces ONE ZIP
+; on the operator's desktop (and preserves existing Windows diagnostics inside).
+Name: "{autoprograms}\SOKNA - One Support ZIP"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{autopf}\SOKNA Windows Services\Maintenance\App\collect-support-unified-v1.ps1"""; WorkingDir: "{autopf}\SOKNA Windows Services\Maintenance\App"; Comment: "SOKNA unified read-only support diagnostics"
+
 [Code]
 var
   MaintenanceFailureExitCode: Integer;
