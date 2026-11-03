@@ -1,0 +1,81 @@
+name: R94 source-only MariaDB qualification (isolated)
+
+on:
+  push:
+    branches:
+      - qa/r94-mariadb-20261103
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_r94_qa
+          MARIADB_USER: sokna_ci
+          MARIADB_PASSWORD: ci_only_test_2026
+          MARIADB_ROOT_PASSWORD: ci_only_root_2026
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PHP MySQL PDO extension
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -qi '^pdo_mysql$'; then
+            sudo apt-get update
+            sudo apt-get install -y php-mysql
+          fi
+          php -r 'if(!in_array("mysql",PDO::getAvailableDrivers(),true)) {fwrite(STDERR,"pdo_mysql unavailable\n");exit(1);} echo "pdo_mysql OK\n";'
+      - name: Rehydrate exact R94 Local PHP+SQL subset and verify SHA256 of every source file
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json, base64, io, tarfile
+          root=Path('qa/r94-mariadb-20261103')
+          parts=sorted((root/'transfer').glob('part-*.b64'))
+          assert len(parts)==17, f'Unexpected source chunk count: {len(parts)}'
+          data=base64.b64decode(''.join(p.read_text().strip() for p in parts),validate=True)
+          expected='ff698fecc5d5cc71df4c4a493282623d184c0885b52396d612e445d7243684b2'
+          assert hashlib.sha256(data).hexdigest()==expected, 'CI archive SHA mismatch'
+          metadata=json.loads((root/'SOURCE_PROVENANCE.json').read_text())
+          assert metadata['full_R94_candidate_sha256']=='6b76a07b3df67e0360c5754c4cd18fe5ac822f509d27d7312052dcd7acb28dfc'
+          with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as tar:
+            names={m.name for m in tar.getmembers() if m.isfile()}
+            assert names==set(metadata['files']), 'Unexpected or missing source files'
+            for member in tar.getmembers():
+              assert member.isfile() and not member.name.startswith('/') and '..' not in Path(member.name).parts, 'Unsafe tar entry'
+            tar.extractall(path='.', filter='data')
+          for rel,sha in metadata['files'].items():
+            assert hashlib.sha256(Path(rel).read_bytes()).hexdigest()==sha, f'Source hash drift: {rel}'
+          print(f'R94 source identity PASS: {len(metadata["files"])} exact PHP/SQL files, ZIP SHA {metadata["full_R94_candidate_sha256"]}')
+          PY
+      - name: PHP source syntax
+        run: |
+          set -euo pipefail
+          php -l local/bootstrap.php
+          php -l qa/r94-mariadb-20261103/r94_mariadb_acceptance.php
+      - name: R94 exact Local real MariaDB schema and identity smoke
+        env:
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_r94_qa
+          SOKNA_TEST_DB_USER: sokna_ci
+          SOKNA_TEST_DB_PASS: ci_only_test_2026
+        run: |
+          set -euo pipefail
+          php qa/r94-mariadb-20261103/r94_mariadb_acceptance.php
