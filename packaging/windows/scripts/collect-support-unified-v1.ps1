@@ -7,6 +7,15 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# The Start Menu one-click entry self-elevates only on real installations.
+# Fixture runs with -DataRoot do not require admin privileges.
+if(-not $DataRoot -and -not $SkipLegacyCollector) {
+  $admin=[Security.Principal.WindowsPrincipal]([Security.Principal.WindowsIdentity]::GetCurrent())
+  if(-not $admin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "'+$PSCommandPath+'"')
+    exit 0
+  }
+}
 # Support Bundle One: no credentials, DB rows, recovery PHP content or raw
 # installed-identity secrets are exported. Errors are represented explicitly.
 $base = $(if($DataRoot){[IO.Path]::GetFullPath($DataRoot)}else{Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'})
@@ -221,6 +230,9 @@ try {
   [IO.Compression.ZipFile]::CreateFromDirectory($work,$zipOutput)
   Write-Host ('SOKNA_ONE_SUPPORT='+$zipOutput)
   Write-Host ('SOKNA_ONE_SUPPORT_SHA256='+(Sha $zipOutput))
+  if(-not $DataRoot -and (Test-Path -LiteralPath (Join-Path $env:WINDIR 'explorer.exe'))) {
+    Start-Process -FilePath (Join-Path $env:WINDIR 'explorer.exe') -ArgumentList ('/select,"'+$zipOutput+'"') -ErrorAction SilentlyContinue | Out-Null
+  }
 } finally {
   Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }
