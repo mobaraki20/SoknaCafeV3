@@ -108,7 +108,7 @@ internal static class KnownCafeRecoveryOverlayMigration
                 !Equal(Hash(File.ReadAllBytes(previous)), legacy))
                 throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_BACKUP_CONFLICT");
         }
-        else WriteNew(previous, original);
+        else CreateAtomically(previous, original);
         if (!Equal(Hash(File.ReadAllBytes(previous)), legacy))
             throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_BACKUP_READBACK_FAILED");
 
@@ -118,7 +118,7 @@ internal static class KnownCafeRecoveryOverlayMigration
                 !File.ReadAllBytes(absent).SequenceEqual(marker))
                 throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_ABSENCE_PROOF_CONFLICT");
         }
-        else WriteNew(absent, marker);
+        else CreateAtomically(absent, marker);
         if (!File.ReadAllBytes(absent).SequenceEqual(marker))
             throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_ABSENCE_PROOF_FAILED");
 
@@ -138,7 +138,7 @@ internal static class KnownCafeRecoveryOverlayMigration
             changedOld = true;
             if (!Equal(Hash(File.ReadAllBytes(files[oldIndex])), expected))
                 throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_READBACK_FAILED");
-            WriteNew(files[absentIndex], trustedPayload); // CreateNew; never overwrite.
+            CreateAtomically(files[absentIndex], trustedPayload); // Verified temp + no-overwrite rename.
             createdNew = true;
             if (files.Any(file => !File.Exists(file) || !Equal(Hash(File.ReadAllBytes(file)), expected)))
                 throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_PAIR_INCOMPLETE");
@@ -154,7 +154,7 @@ internal static class KnownCafeRecoveryOverlayMigration
                 activation_performed = false, database_mutation_performed = false,
                 created_at_utc = DateTimeOffset.UtcNow.ToString("O")
             });
-            WriteNew(receipt, System.Text.Encoding.UTF8.GetBytes(json));
+            CreateAtomically(receipt, System.Text.Encoding.UTF8.GetBytes(json));
             return true;
         }
         catch
@@ -301,6 +301,21 @@ internal static class KnownCafeRecoveryOverlayMigration
             WriteNew(receipt, System.Text.Encoding.UTF8.GetBytes(json));
         }
         return true;
+    }
+
+    // Never expose a half-written PHP endpoint or an incomplete evidence file:
+    // flush a new sibling, verify its bytes, then rename without overwrite.
+    private static void CreateAtomically(string target, byte[] content)
+    {
+        var incoming = target + ".incoming." + Guid.NewGuid().ToString("N");
+        try
+        {
+            WriteNew(incoming, content);
+            if (!Equal(Hash(File.ReadAllBytes(incoming)), Hash(content)))
+                throw new InvalidDataException("STABLE_RECOVERY_MIGRATION_INCOMING_READBACK_FAILED");
+            File.Move(incoming, target, overwrite: false);
+        }
+        finally { if (File.Exists(incoming)) File.Delete(incoming); }
     }
 
     private static void ReplaceAtomically(string target, byte[] content)
