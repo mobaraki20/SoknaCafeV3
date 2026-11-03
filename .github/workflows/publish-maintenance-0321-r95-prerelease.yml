@@ -1,0 +1,117 @@
+name: Publish Maintenance 0.3.21 R95 visible UAT prerelease
+on:
+  push:
+    branches:
+      - fix/cafe-local-update-readiness-r95-20261103
+    paths:
+      - .github/workflows/publish-maintenance-0321-r95-prerelease.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish-successful-exact-binary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify real Windows CI run and retrieve immutable artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id="41667662757"
+          origin_commit="29ddb97c2c10c5c7ab282ed9d2edc0fdcd7f2e01"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" |
+            jq -e --arg sha "$origin_commit" '
+              .status=="completed" and .conclusion=="success" and .head_sha==$sha'
+          mkdir -p dist
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+            --name "sokna-maintenance-only-0321-r95-auto-runner-standard-support-rev4-uat" --dir dist
+          ls -lah dist
+      - name: Verify EXE, SHA256SUMS, two-component manifest and UAT evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          exe="SOKNA-Maintenance-Only-0.3.21-R95-UAT-REV4-AUTO-RUNNER-SUPPORT.exe"
+          expected="d683fdd9642b089d0f15934ab51821e16fd67c086e33fd8b88188347e1d46258"
+          test -f "$exe"
+          test "$(stat -c %s "$exe")" = "53413352"
+          test "$(sha256sum "$exe" | cut -d' ' -f1)" = "$expected"
+          test "$(awk 'NR==1{print $1}' SHA256SUMS.txt)" = "$expected"
+          jq -e --arg sha "$expected" '
+            .source_commit=="29ddb97c2c10c5c7ab282ed9d2edc0fdcd7f2e01"
+            and .release_scope=="maintenance_only"
+            and .supervisor_version=="0.3.21"
+            and .engine_version=="0.3.21"
+            and .installer_sha256==$sha
+            and .source_unit_harness=="PASS"
+            and .cafe_schema_rebind_harness=="PASS"
+            and .legacy_missing_overlay_harness=="PASS"
+            and .stable_recovery_overlay_harness=="PASS"
+            and .one_zip_support_harness=="PASS"
+            and .cafe_runner_repair_harness=="PASS"
+            and .powershell_parse=="PASS"
+            and .windows_installer_compiled==true
+            and .real_cafe_host_install=="NOT_RUN"
+            and .production_qualified==false' UAT-BUILD-REPORT.json
+          jq -e '.release_scope=="maintenance_only"
+            and .component_version=="0.3.21"
+            and .runtime_changes==false and .print_agent_changes==false
+            and .recovery_console_changes==false' component-install-manifest-v1.json
+          jq -e '.package_version=="0.3.21"
+            and .release_scope=="maintenance_only"
+            and ([.components[].component_id] | sort)
+                == ["maintenance","maintenance-update-engine"]' windows-services-component-manifest-v2.json
+      - name: Publish verified executable to ordinary GitHub Releases (NOT workflow artifact)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="maintenance-only-v0.3.21-r95-rev4-uat"
+          target="29ddb97c2c10c5c7ab282ed9d2edc0fdcd7f2e01"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Refusing overwrite of existing release tag.'
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          ## SOKNA Maintenance-only 0.3.21 R95 REV4 (UAT candidate)
+
+          This is a scoped **Maintenance Supervisor + Update Engine** Windows installer
+          replacing the installed 0.3.20; no reinstall of Windows Runtime, Print
+          Worker, Recovery Console or Local/Public Web.
+
+          The Café 231bz installation was verified with matching physical managed
+          tree, active R8 junction and running Apache/Maintenance. The exact
+          field-observed issue was a **missing active local-update-runner.php**
+          with a persistent counterpart. 0.3.21 can reconcile that exact
+          installation only if the full pinned identity/tree, machine binding,
+          idle operation ledger, safe slot path and source SHA all match.
+          It never overwrites an unexpected PHP file. It does not activate
+          R94, migrate a database or mutate Public.
+
+          The standard Windows and one-ZIP support collectors now include
+          **both** update runner and recovery overlay status. Synthetic
+          Windows QA: PASS; actual Cafe installation/activation: **NOT RUN**.
+          An unknown prerequisite or a missing verified backup must remain
+          a blocker. This is **not production qualified**.
+
+          EXE SHA256:
+          `d683fdd9642b089d0f15934ab51821e16fd67c086e33fd8b88188347e1d46258`
+
+          QA: https://github.com/mobaraki20/SoknaCafeV3/actions/runs/41667662757
+          PR: https://github.com/mobaraki20/SoknaCafeV3/pull/64
+          NOTES
+          gh release create "$tag" \
+            "dist/SOKNA-Maintenance-Only-0.3.21-R95-UAT-REV4-AUTO-RUNNER-SUPPORT.exe" \
+            "dist/SHA256SUMS.txt" "dist/UAT-BUILD-REPORT.json" \
+            --repo "$GITHUB_REPOSITORY" --target "$target" \
+            --title "SOKNA Maintenance 0.3.21 R95 REV4 — automatic Cafe runner repair (UAT)" \
+            --notes-file release-notes.md --prerelease
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" |
+            jq -e '.draft==false and .prerelease==true and
+              ([.assets[] | select(.name ==
+                "SOKNA-Maintenance-Only-0.3.21-R95-UAT-REV4-AUTO-RUNNER-SUPPORT.exe"
+                and .size==53413352)] | length)==1'
