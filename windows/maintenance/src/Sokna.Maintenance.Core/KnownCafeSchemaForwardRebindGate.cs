@@ -1,3 +1,7 @@
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Sokna.Maintenance.CafeSchemaRebindHarness")]
+
 namespace Sokna.Maintenance.Core;
 
 /// <summary>
