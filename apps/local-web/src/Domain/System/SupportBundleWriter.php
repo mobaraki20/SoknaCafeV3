@@ -95,6 +95,15 @@ final class SupportBundleWriter
     {
         $web=dirname(__DIR__,3);
         $persistent=dirname($web).DIRECTORY_SEPARATOR.'LocalWeb'.DIRECTORY_SEPARATOR.'persistent';
+        return self::inspectMachineLocalOverlays($web,$persistent);
+    }
+
+    /**
+     * Pure two-root support fixture seam: prevents regression to the old
+     * recovery.php-only bundle. Not callable by public HTTP/maintenance input.
+     */
+    private static function inspectMachineLocalOverlays(string $web,string $persistent): array
+    {
         $observe=static function(string $file): array {
             if(is_link($file))return ['status'=>'unsafe_redirect'];
             if(!file_exists($file))return ['status'=>'missing'];
