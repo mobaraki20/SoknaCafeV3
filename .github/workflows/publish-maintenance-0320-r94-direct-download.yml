@@ -1,0 +1,101 @@
+name: Publish SOKNA Maintenance 0.3.20 R94 direct-download prerelease
+on:
+  push:
+    branches:
+      - fix/maintenance-0319-r94-preflight-20261103
+    paths:
+      - .github/workflows/publish-maintenance-0320-r94-direct-download.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  promote-verified-windows-installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify the exact successful Windows CI build, and download its artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_commit="4a6d8886db00ebd35cd6ca565dea3f7734d5f253"
+          run_id="41648317414"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+            | jq -e --arg sha "$expected_commit" \
+            '.status=="completed" and .conclusion=="success" and .head_sha==$sha'
+          mkdir -p dist
+          gh run download "$run_id" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "sokna-maintenance-only-0320-r94-rebind-support-rev3-uat" \
+            --dir dist
+          ls -lh dist
+      - name: Verify exact physical EXE hash, scope, and report (before making download public)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          exe="SOKNA-Maintenance-Only-0.3.20-R94-UAT-REV3-IDENTITY-SUPPORT.exe"
+          expected="dce417b12f510ca21e75e168361ec27210f9f458cf07b462dd49bac40954a97b"
+          test -f "$exe"
+          test "$(stat -c %s "$exe")" = "53405862"
+          test "$(sha256sum "$exe" | awk '{print $1}')" = "$expected"
+          test "$(awk 'NR==1{print $1}' SHA256SUMS.txt)" = "$expected"
+          jq -e --arg sha "$expected" \
+            '.source_commit=="4a6d8886db00ebd35cd6ca565dea3f7734d5f253" and
+             .release_scope=="maintenance_only" and
+             .supervisor_version=="0.3.20" and .engine_version=="0.3.20" and
+             .installer_sha256==$sha and
+             .source_unit_harness=="PASS" and
+             .cafe_schema_rebind_harness=="PASS" and
+             .legacy_missing_overlay_harness=="PASS" and
+             .stable_recovery_overlay_harness=="PASS" and
+             .one_zip_support_harness=="PASS" and
+             .windows_installer_compiled==true and
+             .production_qualified==false and
+             .real_cafe_host_install=="NOT_RUN"' UAT-BUILD-REPORT.json
+          jq -e '.release_scope=="maintenance_only" and .component_version=="0.3.20" and
+             .runtime_changes==false and .print_agent_changes==false and
+             .recovery_console_changes==false' component-install-manifest-v1.json
+          jq -e '.package_version=="0.3.20" and
+             ([.components[].component_id]|sort)==["maintenance","maintenance-update-engine"]' windows-services-component-manifest-v2.json
+      - name: Publish visible GitHub prerelease with direct browser-download EXE
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="maintenance-only-v0.3.20-r94-rev3-uat"
+          target="4a6d8886db00ebd35cd6ca565dea3f7734d5f253"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "The immutable release tag already exists; refusing to overwrite it."
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          ## SOKNA Maintenance 0.3.20 — R94 REV3 (UAT only)
+
+          Download the EXE asset directly from this GitHub release. This installer updates **only Maintenance Supervisor and Update Engine**, not Runtime, Print Worker, Recovery Console, Local/Public Web, or the business database.
+
+          Included: exact Cafe 231bf -> 231bz identity rebind with live read-only MariaDB ledger proof; old/missing recovery overlay repair after verified identity; one Windows Support ZIP collector via Start Menu.
+
+          Windows build and synthetic regressions: PASS. Cafe on-host UAT, Local R94 preflight, and disaster rollback: NOT RUN. The operator should **not activate Local R94** until verified backup readiness is established.
+
+          ### Verified Windows installer SHA256
+          `dce417b12f510ca21e75e168361ec27210f9f458cf07b462dd49bac40954a97b`
+
+          [Windows CI qualification](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/41648317414) | [Change review](https://github.com/mobaraki20/SoknaCafeV3/pull/62)
+          NOTES
+          gh release create "$tag" \
+            "dist/SOKNA-Maintenance-Only-0.3.20-R94-UAT-REV3-IDENTITY-SUPPORT.exe" \
+            "dist/SHA256SUMS.txt" \
+            "dist/UAT-BUILD-REPORT.json" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$target" \
+            --title "SOKNA Maintenance 0.3.20 R94 REV3 — direct download UAT" \
+            --notes-file release-notes.md \
+            --prerelease
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" \
+            | jq -e '.draft==false and .prerelease==true and
+              ([.assets[] | select(.name=="SOKNA-Maintenance-Only-0.3.20-R94-UAT-REV3-IDENTITY-SUPPORT.exe" and .size==53405862)]|length)==1'
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets
