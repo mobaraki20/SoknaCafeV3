@@ -112,6 +112,67 @@ try {
   if($binary){$maintApp=Split-Path -Parent $binary}
   $components=[ordered]@{format='sokna-physical-component-versions-v1';service_state=$(if($null -ne $service){[string]$service.State}else{'missing'});binary_origin='SCM Win32_Service.PathName';supervisor=$(if($binary){Info $binary}else{@{present=$false}});update_engine=$(if($maintApp){Info (Join-Path $maintApp 'SoknaMaintenanceUpdateEngine.exe')}else{@{present=$false}})}
   JsonSafe (Join-Path $diagnostics 'maintenance-physical-versions.json') $components
+  # This read-only diagnostic runs the installed Engine INSPECTOR. It reports
+  # which of the host's seven concrete prerequisites actually failed. No
+  # database rows, token, signed HMAC key or local file contents are exported.
+  $hostResult=[ordered]@{format='sokna-host-readiness-safe-v1';evidence_available=$false;status='NOT_COLLECTED';blocking_code='';blockers=@()}
+  $enginePath=$(if($maintApp){Join-Path $maintApp 'SoknaMaintenanceUpdateEngine.exe'}else{''})
+  if($enginePath -and (Test-Path -LiteralPath $enginePath -PathType Leaf)) {
+    try {
+      $psi=New-Object Diagnostics.ProcessStartInfo
+      $psi.FileName=$enginePath
+      $psi.Arguments='host-readiness --data-root "'+(Join-Path $base 'Maintenance')+'"'
+      $psi.UseShellExecute=$false
+      $psi.CreateNoWindow=$true
+      $psi.RedirectStandardOutput=$true
+      $psi.RedirectStandardError=$true
+      $p=[Diagnostics.Process]::Start($psi)
+      if($null -eq $p){throw 'ENGINE_DIAGNOSTIC_START_FAILED'}
+      try{
+        $stdout=$p.StandardOutput.ReadToEndAsync()
+        $stderr=$p.StandardError.ReadToEndAsync()
+        if(-not $p.WaitForExit(30000)){
+          $p.Kill();throw 'ENGINE_DIAGNOSTIC_TIMEOUT'
+        }
+        [Threading.Tasks.Task]::WaitAll(@($stdout,$stderr),5000)|Out-Null
+        if($p.ExitCode -ne 0){throw 'ENGINE_DIAGNOSTIC_NONZERO'}
+        if($stdout.Result.Length -gt 16384){throw 'ENGINE_DIAGNOSTIC_OVERSIZE'}
+        $report=$stdout.Result|ConvertFrom-Json -ErrorAction Stop
+        if([string]$report.format -ne 'sokna-host-readiness-safe-v1' -or
+           $report.ok -ne $true){throw 'ENGINE_DIAGNOSTIC_CONTRACT_INVALID'}
+        $allowed=@('UPDATER_MUTATION_OR_RECOVERY_PENDING',
+          'MUTATION_LEDGER_EVIDENCE_UNAVAILABLE',
+          'SOKNA_APACHE_DISCOVERY_OR_HEALTH_UNPROVEN',
+          'ACTIVE_R8_JUNCTION_UNQUALIFIED',
+          'INSTALLED_LOCAL_IDENTITY_OR_TREE_MISMATCH',
+          'MACHINE_BINDING_OR_INSTALL_LOCK_MISMATCH',
+          'PERSISTENT_MACHINE_LOCAL_OVERLAY_DRIFT',
+          'LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN')
+        $codes=@($report.blockers|Where-Object{$_ -is[string] -and $_ -in $allowed}|Select-Object -Unique)
+        $hostResult=[ordered]@{
+          format='sokna-host-readiness-safe-v1'
+          evidence_available=$true
+          status='LIVE_READ_ONLY_ENGINE_INSPECTION'
+          checked_at_utc=(Safe $report.host_checked_at_utc)
+          blocking_code=(Safe $report.blocking_code)
+          blockers=$codes
+          host_preparation_preconditions_met=($report.host_preparation_preconditions_met -eq $true)
+          apache_healthy=($report.apache_healthy -eq $true)
+          active_junction_qualified=($report.active_junction_qualified -eq $true)
+          installed_identity_and_tree_qualified=($report.installed_identity_and_tree_qualified -eq $true)
+          machine_binding_qualified=($report.machine_binding_qualified -eq $true)
+          persistent_overlay_qualified=($report.persistent_overlay_qualified -eq $true)
+          local_lifecycle_idle=($report.local_lifecycle_idle -eq $true)
+          mutation_ledger_idle=($report.mutation_ledger_idle -eq $true)
+        }
+      } finally {$p.Dispose()}
+    }catch {
+      $script:errors.Add([ordered]@{source='host-readiness';reason=(Safe $_.Exception.GetType().Name)})
+      $hostResult.status='INSPECTION_UNAVAILABLE'
+    }
+  }
+  JsonSafe (Join-Path $diagnostics 'maintenance-host-readiness-safe.json') $hostResult
+
 
   # Exact read-only Local physical inventory and migration catalogue. The
   # active Web may be a junction: read it, never repair/rename it here.
@@ -217,6 +278,7 @@ try {
     format='sokna-unified-support-coverage-v1'
     created_at_utc=[DateTime]::UtcNow.ToString('o')
     physical_component_versions='COLLECTED'
+    host_preparation_blockers=$(if($hostResult.evidence_available){'COLLECTED_WITH_EXACT_CODES'}else{'NOT_COLLECTED'})
     local_installed_identity='COLLECTED_IF_PRESENT'
     local_physical_files='COLLECTED_IF_AVAILABLE'
     live_database_rows_or_credentials='NEVER_COLLECTED'
