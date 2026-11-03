@@ -35,13 +35,13 @@ function Json([string]$p) {
         return (Get-Content -LiteralPath $p -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop)
     } catch { return $null }
 }
-function Data([string]$path) {
+function FileState([string]$path) {
     $hash=Fp $path
     return [ordered]@{ exists=($null -ne $hash); sha256=$hash }
 }
 function Pair([string]$web,[string]$persistent,[string]$name) {
-    $a=Data (Join-Path $web $name)
-    $b=Data (Join-Path $persistent $name)
+    $a=FileState (Join-Path $web $name)
+    $b=FileState (Join-Path $persistent $name)
     $match=if(-not $a.exists -and -not $b.exists){'BOTH_MISSING'}
            elseif(-not $a.exists -or -not $b.exists){'ONE_MISSING'}
            elseif($a.sha256 -in @('REDIRECTED','OVERSIZED','UNREADABLE') -or
