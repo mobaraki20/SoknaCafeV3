@@ -8,6 +8,7 @@ spl_autoload_register(static function(string $class) use($base):void {
         if(is_file($path))require_once $path;
     }
 });
+require_once $base.'/src/Domain/Finance/SettlementException.php';
 require_once __DIR__.'/FinanceProjectionAudit.php';
 $pdo=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_r115_full;charset=utf8mb4','sokna','sokna',[
     PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,
