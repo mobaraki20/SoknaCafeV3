@@ -72,6 +72,7 @@ jobs:
           set -euo pipefail
           patch --batch --forward -d /tmp/sokna-r115-exact/local -p1 < qa/sokna-r115/fix-order-accounting-no-backfill.patch
           php -l /tmp/sokna-r115-exact/local/src/Domain/Inventory/InventoryOrderService.php
+          echo '7d06e4f6781d54d983340b7c1219bb5470ba02e61d5bbe8d760cd5b317c3bcf3  /tmp/sokna-r115-exact/local/src/Domain/Inventory/InventoryOrderService.php' | sha256sum -c -
       - name: PHP syntax for exact R115 backend
         shell: bash
         run: |
