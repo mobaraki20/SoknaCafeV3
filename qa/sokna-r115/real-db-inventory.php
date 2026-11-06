@@ -75,7 +75,10 @@ $eventDay1=$ordering->enqueueAccountedTx($orderDay1,$actorId);
 $pdo->commit();
 if($eventDay1===null)throw new RuntimeException('Day-one event was not enqueued');
 $eventStatus=(string)$pdo->query("SELECT status FROM inventory_order_events WHERE id=$eventDay1")->fetchColumn();
-if($eventStatus!=='done')throw new RuntimeException('Day-one inventory event not processed: '.$eventStatus);
+if($eventStatus!=='done'){
+    $reason=(string)$pdo->query("SELECT last_error FROM inventory_order_events WHERE id=$eventDay1")->fetchColumn();
+    throw new RuntimeException('Day-one inventory event not processed: '.$eventStatus.' / '.$reason);
+}
 $getRecipeQty=static function(int $ingredient)use($pdo):int{
     $q=$pdo->prepare("SELECT COALESCE(SUM(quantity_base),0) FROM inventory_movements WHERE inventory_item_id=? AND movement_type='recipe_consumption'");
     $q->execute([$ingredient]);return (int)$q->fetchColumn();
