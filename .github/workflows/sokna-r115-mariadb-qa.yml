@@ -128,6 +128,11 @@ jobs:
         run: |
           set -o pipefail
           bash qa/sokna-r121/test-real-mariadb.sh 2>&1 | tee sokna-r121-mariadb.log
+      - name: R121 sanitized staff permissions real MariaDB test
+        shell: bash
+        run: |
+          set -o pipefail
+          bash qa/sokna-r121/test-staff-mariadb.sh 2>&1 | tee sokna-r121-staff-mariadb.log
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -139,5 +144,6 @@ jobs:
             sokna-r115-inventory-integration.log
             sokna-r117-finance-audit.log
             sokna-r121-mariadb.log
+            sokna-r121-staff-mariadb.log
           if-no-files-found: warn
           retention-days: 14
