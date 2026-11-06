@@ -92,6 +92,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sokna-r115-migration-0077-mariadb-11-4
-          path: |\n            sokna-r115-mariadb.log\n            sokna-r115-full-migration.log
+          path: |
+            sokna-r115-mariadb.log
+            sokna-r115-full-migration.log
           if-no-files-found: warn
           retention-days: 14
