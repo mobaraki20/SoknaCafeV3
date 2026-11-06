@@ -94,8 +94,8 @@ jobs:
               ->execute([password_hash('test-only',PASSWORD_DEFAULT)]);
           $actor=(int)$pdo->lastInsertId();
           $root='/tmp/sokna-r115-exact/local/resources/default-content/v1';
-          $seeder=new Sokna\\Local\\Domain\\Sellables\\DefaultContentSeeder(
-              $pdo,new Sokna\\Local\\Domain\\Sellables\\CategoryIconLibrary($root.'/category-icons.json'),
+          $seeder=new Sokna\Local\Domain\Sellables\DefaultContentSeeder(
+              $pdo,new Sokna\Local\Domain\Sellables\CategoryIconLibrary($root.'/category-icons.json'),
               $root,'/tmp/sokna-r115-seeded-media'
           );
           $seeder->seed($actor);
