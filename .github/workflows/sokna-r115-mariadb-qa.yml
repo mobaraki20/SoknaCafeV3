@@ -117,6 +117,11 @@ jobs:
         run: |
           set -o pipefail
           php qa/sokna-r115/real-db-inventory.php 2>&1 | tee sokna-r115-inventory-integration.log
+      - name: Audit finance conflict reason safely on MariaDB
+        shell: bash
+        run: |
+          set -o pipefail
+          php qa/sokna-r115/real-db-finance-audit.php 2>&1 | tee sokna-r117-finance-audit.log
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -126,5 +131,6 @@ jobs:
             sokna-r115-mariadb.log
             sokna-r115-full-migration.log
             sokna-r115-inventory-integration.log
+            sokna-r117-finance-audit.log
           if-no-files-found: warn
           retention-days: 14
