@@ -1,0 +1,50 @@
+--- a/src/Domain/Inventory/InventoryOrderService.php
++++ b/src/Domain/Inventory/InventoryOrderService.php
+@@ -149,19 +149,36 @@
+     {
+         if(!$this->pdo->inTransaction())throw new \LogicException('Inventory order enqueue requires an open transaction.');
+         try{
+-            if(!$this->inventory->runtimeReadyTx())return null;
++            // The order itself is the serialization lock: a replay must not
++            // re-snapshot ingredients after their initial count or a recipe edit.
++            $lock=$this->pdo->prepare('SELECT id FROM orders WHERE id=? FOR UPDATE');
++            $lock->execute([$orderId]);
++            if($lock->fetchColumn()===false)return null;
++            $previous=$this->pdo->prepare(
++                "SELECT id FROM inventory_order_events WHERE order_id=? AND event_type='accounted' ORDER BY id ASC LIMIT 1 FOR UPDATE"
++            );
++            $previous->execute([$orderId]);
++            $previousId=(int)($previous->fetchColumn()?:0);
++            if($previousId>0){
++                if($this->inventory->runtimeReadyTx())$this->attemptProcessTx($previousId);
++                return $previousId;
++            }
++            // Even before the first ingredient count, preserve a durable
++            // immutable accounting snapshot with all ingredients untracked.
++            // This prevents historical orders from backfilling after activation.
++            $readyAtAccounting=$this->inventory->runtimeReadyTx();
+             $snapshot=$this->orderRecipeSnapshotTx($orderId);
+             // Freeze per-ingredient eligibility at order accounting time: later activation
+             // must never retroactively subtract consumption from a previously unknown stock.
+             foreach($snapshot as &$line){
+                 foreach($line['components'] as &$component){
+-                    $eligible=$this->inventory->initialItemReadyTx((int)($component['inventory_item_id']??0));
++                    $eligible=$readyAtAccounting&&$this->inventory->initialItemReadyTx((int)($component['inventory_item_id']??0));
+                     $component['opening_eligible_at_order']=$eligible;
+                     if(!$eligible){$component['unit_cost_snapshot']=null;$component['cost_status']='unknown';$component['opening_untracked']=true;}
+                 }unset($component);
+             }unset($line);
+             $payload=['recipe_snapshot'=>$snapshot];
+-            $key='accounted:order:'.$orderId.':'.hash('sha256',json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
++            $key='accounted:order:'.$orderId.':v2';
+             $stmt=$this->pdo->prepare(
+                 "INSERT IGNORE INTO inventory_order_events(event_type,order_id,order_item_id,payload_json,idempotency_key,status,actor_user_id)
+                  VALUES('accounted',?,NULL,?,?,'pending',?)"
+@@ -178,7 +195,7 @@
+                 $find->execute([substr($key,0,190)]);
+                 $eventId=(int)($find->fetchColumn()?:0);
+             }
+-            if($eventId>0)$this->attemptProcessTx($eventId);
++            if($eventId>0&&$readyAtAccounting)$this->attemptProcessTx($eventId);
+             return $eventId>0?$eventId:null;
+         }catch(Throwable $e){
