@@ -4,9 +4,16 @@ declare(strict_types=1);
 $root='/tmp/sokna-r115-exact/local';
 spl_autoload_register(static function(string $class)use($root):void{
     $prefix='Sokna\\Local\\';
-    if(!str_starts_with($class,$prefix))return;
-    $path=$root.'/src/'.str_replace('\\','/',substr($class,strlen($prefix))).'.php';
-    if(is_file($path))require_once $path;
+    if(str_starts_with($class,$prefix)){
+        $path=$root.'/src/'.str_replace('\\','/',substr($class,strlen($prefix))).'.php';
+        if(is_file($path))require_once $path;
+        return;
+    }
+    $shared='Sokna\\Shared\\';
+    if(str_starts_with($class,$shared)){
+        $path=$root.'/src/Shared/'.str_replace('\\','/',substr($class,strlen($shared))).'.php';
+        if(is_file($path))require_once $path;
+    }
 });
 $pdo=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_r115_full;charset=utf8mb4','sokna','sokna',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
 $actorId=(int)$pdo->query("SELECT id FROM users WHERE username='qa'")->fetchColumn();
