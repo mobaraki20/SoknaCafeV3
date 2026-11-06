@@ -45,6 +45,36 @@ try{
 }catch(Sokna\Local\Domain\Inventory\InventoryException $e){
     if($e->errorCode!=='inventory_item_not_counted')throw $e;
 }
+
+$ordering=new Sokna\Local\Domain\Inventory\InventoryOrderService($pdo,$inventory);
+$menuId=(int)$pdo->query("SELECT id FROM items WHERE active=1 AND sellable_kind='menu_item' ORDER BY id LIMIT 1")->fetchColumn();
+$tableId=(int)$pdo->query("SELECT id FROM cafe_tables WHERE active=1 ORDER BY id LIMIT 1")->fetchColumn();
+if($menuId<1||$tableId<1)throw new RuntimeException('Default seed lacks sample menu/table');
+$ordering->saveRecipe($menuId,[
+    ['inventory_item_id'=>$idA,'quantity_base'=>2,'quantity_status'=>'known'],
+    ['inventory_item_id'=>$idB,'quantity_base'=>3,'quantity_status'=>'known']
+],$actor);
+$makeOrder=static function(int $number)use($pdo,$tableId,$menuId):int{
+    $request=$pdo->prepare("INSERT INTO orders(public_code,client_token,table_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,'staff','accepted',1000,?,CURDATE(),'qa','QA','04:00')");
+    $request->execute(['qa-'.$number,'qa-client-'.$number,$tableId,$number]);
+    $orderId=(int)$pdo->lastInsertId();
+    $pdo->prepare("INSERT INTO order_items(order_id,item_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?, 'QA item',500,2,2,'bar',1000)")
+        ->execute([$orderId,$menuId]);
+    return $orderId;
+};
+$orderDay1=$makeOrder(991101);
+$pdo->beginTransaction();
+$eventDay1=$ordering->enqueueAccountedTx($orderDay1,$actorId);
+$pdo->commit();
+if($eventDay1===null)throw new RuntimeException('Day-one event was not enqueued');
+$eventStatus=(string)$pdo->query("SELECT status FROM inventory_order_events WHERE id=$eventDay1")->fetchColumn();
+if($eventStatus!=='done')throw new RuntimeException('Day-one inventory event not processed: '.$eventStatus);
+$getRecipeQty=static function(int $ingredient)use($pdo):int{
+    $q=$pdo->prepare("SELECT COALESCE(SUM(quantity_base),0) FROM inventory_movements WHERE inventory_item_id=? AND movement_type='recipe_consumption'");
+    $q->execute([$ingredient]);return (int)$q->fetchColumn();
+};
+if($getRecipeQty($idA)!==-4||$getRecipeQty($idB)!==0)throw new RuntimeException('Day-one recipe deduction violated unknown inventory');
+
 $session2=$count->start(['session_type'=>'opening','title'=>'QA day 2'],$actor);
 if((int)$session2['line_count']!==1)throw new RuntimeException('Day two did not isolate uncounted material');
 $sid2=(int)$session2['session_id'];
@@ -59,4 +89,18 @@ if(!in_array(strtolower($done),['1','true','yes'],true))throw new RuntimeExcepti
 $waste=$inventory->recordManualAdjustment(['item_id'=>$idB,'kind'=>'waste','quantity_major'=>'1','request_id'=>'qa-day2-waste'],$actor);
 $remaining=(int)$pdo->query("SELECT quantity_base FROM inventory_balances WHERE inventory_item_id=$idB")->fetchColumn();
 if($remaining!==9||!isset($waste['movement_id']))throw new RuntimeException('Post-activation usage did not subtract material');
+
+$pdo->beginTransaction();
+$replayed=$ordering->enqueueAccountedTx($orderDay1,$actorId);
+$pdo->commit();
+if($replayed!==$eventDay1)throw new RuntimeException('Same accounted order created a new event after activation');
+if($getRecipeQty($idB)!==0)throw new RuntimeException('Historical order retroactively consumed ingredient B');
+
+$orderDay2=$makeOrder(991102);
+$pdo->beginTransaction();
+$eventDay2=$ordering->enqueueAccountedTx($orderDay2,$actorId);
+$pdo->commit();
+if($eventDay2===null||$getRecipeQty($idA)!==-8||$getRecipeQty($idB)!==-6)throw new RuntimeException('Day-two recipe deduction did not include activated ingredients');
+echo "PASS R115 real MariaDB: pending ingredient not backfilled, new orders deduct activated materials\n";
+
 echo "PASS R115 real MariaDB: day1 zero+unknown, day2 activation, uncounted write blocked, movement subtracts stock\n";
