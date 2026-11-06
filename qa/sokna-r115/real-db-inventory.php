@@ -22,6 +22,7 @@ $caps=new Sokna\Local\Core\Capabilities($identity);
 $inventory=new Sokna\Local\Domain\Inventory\InventoryService($pdo,$identity,$caps);
 $count=new Sokna\Local\Domain\Inventory\InventoryCountService($pdo,$inventory);
 $actor=['id'=>$actorId,'role'=>'admin'];
+$pdo->exec("UPDATE inventory_items SET active=0");
 $pdo->exec("INSERT INTO inventory_items(item_code,name,category,base_unit,default_department,active) VALUES('QA-A','ingredient A','ingredient','count','bar',1),('QA-B','ingredient B','ingredient','count','bar',1)");
 $idA=(int)$pdo->query("SELECT id FROM inventory_items WHERE item_code='QA-A'")->fetchColumn();
 $idB=(int)$pdo->query("SELECT id FROM inventory_items WHERE item_code='QA-B'")->fetchColumn();
