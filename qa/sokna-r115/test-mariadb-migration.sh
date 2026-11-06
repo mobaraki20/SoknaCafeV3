@@ -6,6 +6,7 @@ cd "$(git rev-parse --show-toplevel)"
 : "${MYSQL_USER:=sokna}"
 : "${MYSQL_PASSWORD:=sokna}"
 : "${MYSQL_DATABASE:=sokna_migration_qa}"
+export MYSQL_HOST MYSQL_PORT MYSQL_USER MYSQL_PASSWORD MYSQL_DATABASE
 export MYSQL_PWD="$MYSQL_PASSWORD"
 mysql_cmd=(mariadb --protocol=tcp -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" "$MYSQL_DATABASE" --batch --skip-column-names)
 
@@ -18,7 +19,7 @@ CREATE TABLE inventory_count_sessions (id BIGINT UNSIGNED NOT NULL PRIMARY KEY) 
 CREATE TABLE inventory_count_lines (id BIGINT UNSIGNED NOT NULL PRIMARY KEY) ENGINE=InnoDB;
 INSERT INTO inventory_items (id,name) VALUES (1,'zero confirmed'),(2,'uncounted'),(3,'later day');
 INSERT INTO inventory_count_sessions (id) VALUES (10),(11);
-INSERT INTO inventory_count_lines (id) VALUES (100),(101);
+INSERT INTO inventory_count_lines (id) VALUES (100),(101),(102);
 SQL
 "${mysql_cmd[@]}" < /tmp/sokna-r115-qa-schema.sql
 "${mysql_cmd[@]}" < qa/sokna-r115/0077_incremental_opening_inventory.sql
