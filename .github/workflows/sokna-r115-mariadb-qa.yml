@@ -1,0 +1,59 @@
+name: Sokna R115 isolated MariaDB migration qualification
+
+on:
+  push:
+    branches:
+      - qa/sokna-r115-mariadb-20261106
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migration-0077:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_ROOT_HOST: "%"
+          MARIADB_DATABASE: sokna_migration_qa
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: sokna
+      MYSQL_PASSWORD: sokna
+      MYSQL_DATABASE: sokna_migration_qa
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MariaDB client and PHP MySQL driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y mariadb-client php-cli php-mysql
+          php -r 'if (!in_array("mysql",PDO::getAvailableDrivers(),true)) {fwrite(STDERR,"pdo_mysql unavailable\n");exit(1);}'
+      - name: Verify exact R115 migration and exercise MariaDB 11.4 behavior
+        shell: bash
+        run: |
+          set -o pipefail
+          bash qa/sokna-r115/test-mariadb-migration.sh 2>&1 | tee sokna-r115-mariadb.log
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r115-migration-0077-mariadb-11-4
+          path: sokna-r115-mariadb.log
+          if-no-files-found: warn
+          retention-days: 14
