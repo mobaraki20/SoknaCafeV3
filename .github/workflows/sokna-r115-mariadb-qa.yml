@@ -133,6 +133,11 @@ jobs:
         run: |
           set -o pipefail
           bash qa/sokna-r121/test-staff-mariadb.sh 2>&1 | tee sokna-r121-staff-mariadb.log
+      - name: R124 anonymous staff bootstrap real MariaDB qualification
+        shell: bash
+        run: |
+          set -o pipefail
+          bash qa/sokna-r124/test-staff-bootstrap.sh 2>&1 | tee sokna-r124-staff-db.log
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -145,5 +150,6 @@ jobs:
             sokna-r117-finance-audit.log
             sokna-r121-mariadb.log
             sokna-r121-staff-mariadb.log
+            sokna-r124-staff-db.log
           if-no-files-found: warn
           retention-days: 14
