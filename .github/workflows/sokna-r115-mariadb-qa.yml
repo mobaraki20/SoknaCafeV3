@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - qa/sokna-r115-mariadb-20261106
+      - qa/sokna-r121-tea-herbal-20261106
   workflow_dispatch:
 
 permissions:
