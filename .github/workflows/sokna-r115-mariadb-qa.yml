@@ -122,6 +122,11 @@ jobs:
         run: |
           set -o pipefail
           php qa/sokna-r115/real-db-finance-audit.php 2>&1 | tee sokna-r117-finance-audit.log
+      - name: R121 tea and herbal three-size MariaDB test
+        shell: bash
+        run: |
+          set -o pipefail
+          bash qa/sokna-r121/test-real-mariadb.sh 2>&1 | tee sokna-r121-mariadb.log
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -132,5 +137,6 @@ jobs:
             sokna-r115-full-migration.log
             sokna-r115-inventory-integration.log
             sokna-r117-finance-audit.log
+            sokna-r121-mariadb.log
           if-no-files-found: warn
           retention-days: 14
