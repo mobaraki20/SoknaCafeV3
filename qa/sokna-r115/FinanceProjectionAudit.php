@@ -53,7 +53,7 @@ final class FinanceProjectionAudit
         } catch(Throwable $e) {
             if($this->pdo->inTransaction())$this->pdo->rollBack();
             // Never expose the SQL, DSN, table, message or credentials in a support bundle.
-            return ['format'=>'sokna-finance-projection-audit-v1','status'=>'not_checked','reason'=>'audit_unavailable','exception_class'=>basename(str_replace('\\','/',get_class($e)))];
+            return ['format'=>'sokna-finance-projection-audit-v1','status'=>'not_checked','reason'=>'audit_unavailable','exception_class'=>basename(str_replace('\\','/',get_class($e))),'test_only_detail'=>$e->getMessage()];
         }
     }
 }
