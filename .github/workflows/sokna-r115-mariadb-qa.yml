@@ -66,6 +66,12 @@ jobs:
           tar -xzf /tmp/sokna-r115-seed.tar.gz -C /tmp/sokna-r115-exact
           test -f /tmp/sokna-r115-exact/local/resources/default-content/v1/catalog.json
           echo "Verified original R115 backend and default content"
+      - name: Apply candidate no-backfill fix to exact R115 backend in isolated workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch --batch --forward -d /tmp/sokna-r115-exact/local -p1 < qa/sokna-r115/fix-order-accounting-no-backfill.patch
+          php -l /tmp/sokna-r115-exact/local/src/Domain/Inventory/InventoryOrderService.php
       - name: PHP syntax for exact R115 backend
         shell: bash
         run: |
