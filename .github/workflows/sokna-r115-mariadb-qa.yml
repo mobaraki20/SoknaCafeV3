@@ -105,6 +105,11 @@ jobs:
           echo 'PASS R115 staged migrations: '.count($base).' pre-seed + '.count($applied)." post-seed, idempotent rerun\n";
           PHP
           php /tmp/sokna-r115-full-migrate.php 2>&1 | tee sokna-r115-full-migration.log
+      - name: Test actual R115 inventory services and two-day count on MariaDB
+        shell: bash
+        run: |
+          set -o pipefail
+          php qa/sokna-r115/real-db-inventory.php 2>&1 | tee sokna-r115-inventory-integration.log
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -113,5 +118,6 @@ jobs:
           path: |
             sokna-r115-mariadb.log
             sokna-r115-full-migration.log
+            sokna-r115-inventory-integration.log
           if-no-files-found: warn
           retention-days: 14
