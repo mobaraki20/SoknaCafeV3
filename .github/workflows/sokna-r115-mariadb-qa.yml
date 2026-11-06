@@ -49,11 +49,49 @@ jobs:
         run: |
           set -o pipefail
           bash qa/sokna-r115/test-mariadb-migration.sh 2>&1 | tee sokna-r115-mariadb.log
+      - name: Reconstruct exact R115 Local backend snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat qa/sokna-r115/source-b64/part-*.txt > /tmp/sokna-r115-backend.b64
+          base64 -d /tmp/sokna-r115-backend.b64 > /tmp/sokna-r115-backend.tar.gz
+          echo '6baa0f3e22aad24fa172fadca2ac583a45864f1cf0df073754a482a8d90e96fa  /tmp/sokna-r115-backend.tar.gz' | sha256sum -c -
+          mkdir -p /tmp/sokna-r115-exact
+          tar -xzf /tmp/sokna-r115-backend.tar.gz -C /tmp/sokna-r115-exact
+          test -f /tmp/sokna-r115-exact/local/src/Core/Migrations.php
+          echo "Verified original R115 backend source archive"
+      - name: PHP syntax for exact R115 backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          find /tmp/sokna-r115-exact/local/src -type f -name '*.php' -print0 |
+            xargs -0 -n1 php -l > /tmp/sokna-r115-backend-lint.log
+          echo "Verified $(wc -l < /tmp/sokna-r115-backend-lint.log) PHP source files"
+      - name: Run complete Local R115 migration chain on clean MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          export MYSQL_PWD=root
+          mariadb --protocol=tcp -h127.0.0.1 -P3306 -uroot -e "CREATE DATABASE sokna_r115_full CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON sokna_r115_full.* TO 'sokna'@'%'; FLUSH PRIVILEGES;"
+          unset MYSQL_PWD
+          cat > /tmp/sokna-r115-full-migrate.php <<'PHP'
+          <?php
+          declare(strict_types=1);
+          require '/tmp/sokna-r115-exact/local/src/Core/MigrationExecutionException.php';
+          require '/tmp/sokna-r115-exact/local/src/Core/Migrations.php';
+          $pdo=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_r115_full;charset=utf8mb4','sokna','sokna',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES=>false]);
+          $runner=new Sokna\Local\Core\Migrations($pdo,'/tmp/sokna-r115-exact/local/database/migrations');
+          $applied=$runner->migrate();
+          if(!in_array('0077_incremental_opening_inventory',$applied,true))throw new RuntimeException('R115 final migration missing');
+          if($runner->migrate()!==[])throw new RuntimeException('Second migration pass is not idempotent');
+          echo 'PASS full R115 migrations: '.count($applied)." applied, idempotent rerun\n";
+          PHP
+          php /tmp/sokna-r115-full-migrate.php 2>&1 | tee sokna-r115-full-migration.log
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sokna-r115-migration-0077-mariadb-11-4
-          path: sokna-r115-mariadb.log
+          path: |\n            sokna-r115-mariadb.log\n            sokna-r115-full-migration.log
           if-no-files-found: warn
           retention-days: 14
