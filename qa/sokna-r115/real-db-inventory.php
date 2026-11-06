@@ -47,9 +47,16 @@ try{
 }
 
 $ordering=new Sokna\Local\Domain\Inventory\InventoryOrderService($pdo,$inventory);
-$menuId=(int)$pdo->query("SELECT id FROM items WHERE active=1 AND sellable_kind='menu_item' ORDER BY id LIMIT 1")->fetchColumn();
-$tableId=(int)$pdo->query("SELECT id FROM cafe_tables WHERE active=1 ORDER BY id LIMIT 1")->fetchColumn();
-if($menuId<1||$tableId<1)throw new RuntimeException('Default seed lacks sample menu/table');
+$categoryId=(int)$pdo->query("SELECT id FROM categories ORDER BY id LIMIT 1")->fetchColumn();
+if($categoryId<1){
+    $pdo->exec("INSERT INTO categories(category_key,name) VALUES('qa-sellables','QA sellables')");
+    $categoryId=(int)$pdo->lastInsertId();
+}
+$pdo->prepare("INSERT INTO items(item_code,category_id,name,price,available,active,preparation_station) VALUES('qa-menu-inventory',?,'QA recipe item',500,1,1,'bar')")->execute([$categoryId]);
+$menuId=(int)$pdo->lastInsertId();
+$pdo->exec("INSERT INTO cafe_tables(name,table_number,code,access_token,active) VALUES('QA table',999,'qa-table-999','qa-access-token-999',1)");
+$tableId=(int)$pdo->lastInsertId();
+if($menuId<1||$tableId<1)throw new RuntimeException('QA fixtures could not be inserted');
 $ordering->saveRecipe($menuId,[
     ['inventory_item_id'=>$idA,'quantity_base'=>2,'quantity_status'=>'known'],
     ['inventory_item_id'=>$idB,'quantity_base'=>3,'quantity_status'=>'known']
