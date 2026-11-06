@@ -138,6 +138,11 @@ jobs:
         run: |
           set -o pipefail
           bash qa/sokna-r124/test-staff-bootstrap.sh 2>&1 | tee sokna-r124-staff-db.log
+      - name: R125 synthetic emergency revert invariants on MariaDB 11.4
+        shell: bash
+        run: |
+          set -o pipefail
+          bash qa/sokna-r125/test-emergency-revert.sh 2>&1 | tee sokna-r125-emergency-revert.log
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -151,5 +156,6 @@ jobs:
             sokna-r121-mariadb.log
             sokna-r121-staff-mariadb.log
             sokna-r124-staff-db.log
+            sokna-r125-emergency-revert.log
           if-no-files-found: warn
           retention-days: 14
