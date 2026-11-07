@@ -294,14 +294,14 @@ public sealed class SupervisorInactiveLocalCandidateCoordinator
         if (manifest.ReleaseType != "local_only" ||
             string.IsNullOrWhiteSpace(manifest.Status))
             throw new InvalidDataException("LOCAL_RELEASE_CONTRACT_INVALID");
-        // Authorization here is a fact proven by authenticated Local Inbox ->
-        // Preflight -> Stage receipts, not a flag read from the selected ZIP.
-        if (operatorAuthorized) return;
+        // An authenticated upload proves provenance, not release qualification.
+        // The same invariant applies to signed and operator-uploaded packages,
+        // including old Stage receipts retained across Maintenance upgrades.
         if (!manifest.ForInstall || !manifest.ProductionPass ||
-            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase) ||
-            manifest.Status.Contains("ENGINEERING", StringComparison.OrdinalIgnoreCase) ||
-            manifest.Status.Contains("SOURCE_ONLY", StringComparison.OrdinalIgnoreCase) ||
-            manifest.Status.Contains("DESIGN", StringComparison.OrdinalIgnoreCase))
+            System.Text.RegularExpressions.Regex.IsMatch(manifest.Status,
+                @"(?:^|[_\-\s])(?:UAT|NOT[_\-]?PRODUCTION|NOT[_\-]?FIELD[_\-]?APPROVED|NO[_\-]?PRODUCTION[_\-]?APPROVAL|NOT[_\-]?FOR[_\-]?INSTALL|TEST[_\-]?ONLY|ENGINEERING|SOURCE[_\-]?ONLY|DESIGN)(?:$|[_\-\s])",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant))
             throw new InvalidDataException("LEGACY_RELEASE_NOT_QUALIFIED_FOR_INSTALL");
         ReleaseInstallQualificationGate.Require(manifest);
     }
