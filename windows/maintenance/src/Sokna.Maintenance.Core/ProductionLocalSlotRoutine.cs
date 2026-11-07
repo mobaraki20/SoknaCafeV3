@@ -161,6 +161,9 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             if (identity.Local?.SchemaFingerprint != migrations.SourceFingerprint || identity.Local.MigrationHead != migrations.SourceHead)
                 throw new InvalidDataException("LOCAL_MIGRATION_BASELINE_IDENTITY_MISMATCH");
             RoutineLocalDatabase.RequireBaseline(layout.PackageRoot, previousSlot, targetSlot, migrations);
+            // Same live data, not a fixture: reject incompatible migration guards
+            // before disrupting Apache. The DB helper runs SELECT-only preflight.
+            RoutineLocalDatabase.RequireReadOnlyGuardPreflight(layout.PackageRoot, previousSlot, targetSlot, migrations);
         }
 
         var events = new List<RoutineLocalSlotEvent>();
@@ -202,6 +205,10 @@ public sealed partial class ProductionLocalSlotMigrationBridge
                 state = RoutineEvent(state, events, "DATABASE_BACKUP_INTENT");
                 var backup = RoutineLocalDatabase.Backup(layout.PackageRoot, previousSlot, targetSlot, migrations, _paths.LocalSlotStateRoot);
                 RoutineLocalDatabase.RequireBackup(backup, _paths.LocalSlotStateRoot);
+                // Recheck after writes have been drained and immediately before
+                // the irreversible forward boundary. A failing guard has made no
+                // schema change; the existing pre-DB rollback restores Apache.
+                RoutineLocalDatabase.RequireReadOnlyGuardPreflight(layout.PackageRoot, previousSlot, targetSlot, migrations);
                 state = state with { DatabaseBackup = backup };
                 state = RoutineEvent(state, events, "DATABASE_BACKUP_VERIFIED", backup.Sha256);
                 // Write the forward boundary BEFORE the first migration statement.
