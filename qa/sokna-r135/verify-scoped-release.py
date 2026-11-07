@@ -18,6 +18,19 @@ for p in ["packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1",
     assert "Runtime" not in p and "PrintAgent" not in p
 inv=read("packaging/windows/scripts/invoke-maintenance-only-v1.ps1")
 assert "'0.3.20','0.3.21','0.3.22'" in inv
+# The post-upgrade identity-sync gate must permit the previous 0.3.21 and
+# the already-upgraded 0.3.22. Merely compiling the installer misses this.
+sync=read("packaging/windows/scripts/maintenance-installed-versions-v1.ps1")
+m=re.search(r"\$doc\.\$name-notmatch'([^']+)'",sync)
+assert m, "Missing installed identity prior-version gate"
+allowed=m.group(1)
+assert all(re.fullmatch(allowed,v) for v in (
+    "0.3.12","0.3.15","0.3.20","0.3.21","0.3.22")), allowed
+assert all(re.fullmatch(allowed,v) is None for v in (
+    "0.3.23","0.4.0","1.0.0","3.0.21")), allowed
+assert "COMPONENT_IDENTITY_PHYSICAL_0322_REQUIRED" in sync
+assert "if($doc.maintenance_supervisor_version-eq'0.3.22' -and $doc.update_engine_version-eq'0.3.22'){return}" in sync
+
 assert "if($installedVersion-eq'0.3.22')" in inv
 assert "Assert-MaintenanceSignedHealth" in inv
 assert "release_scope='maintenance_only'" in inv
