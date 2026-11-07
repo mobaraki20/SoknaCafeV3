@@ -43,6 +43,14 @@ class Contract(unittest.TestCase):
         self.assertIn("SOKNA_DB_SAFE_FAILURE migration=", s)
         self.assertNotIn("$e->databaseMessage", s)
 
+    def test_candidate_path_cannot_bypass_release_qualification(self):
+        s=source("SupervisorInactiveLocalCandidateCoordinator.cs")
+        p=s.index("public static void RequireInstallableLegacyRelease(")
+        candidate=s[p:s.index("private static void RequireExisting(",p)]
+        self.assertNotIn("if (operatorAuthorized) return;",candidate)
+        self.assertIn("!manifest.ForInstall || !manifest.ProductionPass",candidate)
+        self.assertIn("ReleaseInstallQualificationGate.Require(manifest);",candidate)
+
     def test_durable_recovery_stays_fail_closed(self):
         s=source("ProductionLocalSlotRoutine.cs")
         self.assertIn("if (state.DatabaseMutationPerformed)", s)
