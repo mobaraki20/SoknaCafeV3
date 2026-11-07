@@ -26,3 +26,4 @@ jobs:
           $report=Get-Content ./qa/sokna-r130/SOKNA-R130-CAFE-PREFLIGHT-RESULT.txt -Raw
           if($report -notmatch 'BLOCKED: IDENTITY_MISSING'){throw 'Did not reject unqualified machine'}
           Write-Output 'PASS: R130 preflight blocks non-Sokna Windows host without modification'
+          exit 0
