@@ -44,7 +44,7 @@ assert "release_scope='maintenance_only'" in prepare
 assert "SoknaMaintenanceSupervisor.exe" in prepare and "SoknaMaintenanceUpdateEngine.exe" in prepare
 iss=read("packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss")
 assert "AppVersion=0.3.22" in iss
-assert "OutputBaseFilename=SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT" in iss
+assert "OutputBaseFilename=SOKNA-Maintenance-Only-0.3.22-R135-REV2-RECOVERY-SAFETY-UAT" in iss
 stage=read("windows/maintenance/src/Sokna.Maintenance.Core/SupervisorLocalReleaseStageCoordinator.cs")
 assert stage.index("RequireInstallableLegacyRelease(") < stage.index("_operations.GetOrCreate("), "Stage must reject before durable allocation"
 print("R135_SCOPED_SOURCE_RELEASE_CONTRACT_PASS")
