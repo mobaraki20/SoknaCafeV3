@@ -143,6 +143,7 @@ public sealed class SupervisorLocalCodeOnlyPreExecution
             if (manifest.PreUpdateBackupPolicy.RequireRemoteVerifiedBeforeDbBoundary)
                 throw new InvalidDataException("LOCAL_REMOTE_BACKUP_POLICY_UNSUPPORTED");
             RoutineLocalDatabase.RequireBaseline(packageRoot, layout.WebRoot, target, migrations);
+            RoutineLocalDatabase.RequireReadOnlyGuardPreflight(packageRoot, layout.WebRoot, target, migrations);
         }
         RoutineLocalLifecycle.RequireTargetSetupBoot(packageRoot, target);
         if (Sha(_paths.InstalledReleaseIdentityPath) != installedHash ||
