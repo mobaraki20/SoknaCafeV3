@@ -101,13 +101,27 @@ try
     var store = new MaintenanceOperationStore(paths);
     var journal = new DurableJournal(paths.JournalPath);
     var supervisor = new SupervisorStateStore(paths).LoadOrCreate();
-    var preflightOutcome = new SupervisorLocalPackagePreflightCoordinator(
-        paths, store, journal, supervisor).Verify(packageHash + ".zip",
-            "user:1", "r133-uat-preflight");
-    Check(preflightOutcome.Operation.State == "verified", "UAT diagnostic VerifyOnly unavailable");
+    // Preflight normally checks physical Local recovery overlays as well.
+    // This pure Stage fixture intentionally has no installed Local Web slot.
+    // Build only a source-verified preflight receipt using the real VerifyOnly
+    // result, to exercise the real Stage gate without lying about host health.
+    var identitySha = Sha(File.ReadAllBytes(paths.InstalledReleaseIdentityPath));
+    var (preflightOp, _) = store.GetOrCreate(
+        "r133-uat-preflight",
+        MaintenanceOperationStore.CanonicalRequestHash(
+            "update.local-package-preflight", packageHash + ".zip", "user:1"),
+        "update.local-package-preflight", packageHash + ".zip", "user:1");
+    var preflightPath = Path.Combine(paths.OperationsRoot,
+        "preflight-" + preflightOp.OperationId + ".json");
+    AtomicFile.WriteJson(preflightPath, new LocalPackagePreflightReceipt(
+        "sokna-local-package-preflight-v1", 1, preflightOp.OperationId,
+        packageHash + ".zip", identitySha, preflight, DateTimeOffset.UtcNow));
+    preflightOp = store.Update(preflightOp, "verified",
+        "PACKAGE_INTEGRITY_VERIFIED", "synthetic test receipt only",
+        preflightReceiptPath: preflightPath);
     ExpectReject(() => new SupervisorLocalReleaseStageCoordinator(
         paths, store, journal, supervisor).Stage(
-            preflightOutcome.Operation.OperationId, "user:1", "r133-rejected-stage"));
+            preflightOp.OperationId, "user:1", "r133-rejected-stage"));
     var stageAllocated = Directory.EnumerateFiles(paths.OperationsRoot, "op-*.json")
         .Select(file => AtomicFile.ReadJson<MaintenanceOperation>(file))
         .Any(op => op.OperationType == "update.local-stage");
