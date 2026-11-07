@@ -67,3 +67,33 @@ grep -qx 'SOKNA_DATABASE_OK' "$temp/passed.out"
 test "$(mariadb --protocol=tcp -h127.0.0.1 -usokna_r132 -N -B sokna_r132_test -e 'SELECT eligible FROM demo_guard_data WHERE id=1')" = 1
 test "$(mariadb --protocol=tcp -h127.0.0.1 -usokna_r132 -N -B sokna_r132_test -e 'SELECT COUNT(*) FROM schema_migration_statements')" = 0
 echo 'PASS: eligible guard succeeds without applying target DML'
+# Simulate data changing between preflight and the first SQL statement.
+# The genuine forward migration engine must fail-closed, preserve its WAL,
+# then resume from the same signed statements after safe external repair.
+mariadb --protocol=tcp -h127.0.0.1 -usokna_r132 sokna_r132_test -e 'UPDATE demo_guard_data SET eligible=0 WHERE id=1'
+set +e
+php -r "$php_source" "$temp/root" "$temp/old" "$temp/next" apply "$plan" '' '' > "$temp/forward.fail.out" 2>"$temp/forward.fail.err"
+status=$?
+set -e
+test "$status" -eq 78
+grep -q 'migration=0002_guard ordinal=1' "$temp/forward.fail.err"
+test "$(mariadb --protocol=tcp -h127.0.0.1 -usokna_r132 -N -B sokna_r132_test -e "SELECT state FROM schema_migration_statements WHERE version='0002_guard' AND ordinal_no=1")" = 'running'
+test "$(mariadb --protocol=tcp -h127.0.0.1 -usokna_r132 -N -B sokna_r132_test -e 'SELECT COUNT(*) FROM schema_migrations')" = 1
+echo 'PASS: failed DB forward leaves an explicit RUNNING statement, not fake rollback'
+# Preflight must not silently paper over a partial migration.
+set +e
+php -r "$php_source" "$temp/root" "$temp/old" "$temp/next" preflight "$plan" '' '' > "$temp/partial.out" 2>"$temp/partial.err"
+status=$?
+set -e
+test "$status" -eq 68
+echo 'PASS: interrupted migration remains blocked for an ordinary new activation'
+mariadb --protocol=tcp -h127.0.0.1 -usokna_r132 sokna_r132_test -e 'UPDATE demo_guard_data SET eligible=1 WHERE id=1'
+php -r "$php_source" "$temp/root" "$temp/old" "$temp/next" apply "$plan" '' '' > "$temp/forward.passed.out" 2>"$temp/forward.passed.err"
+grep -qx 'SOKNA_DATABASE_OK' "$temp/forward.passed.out"
+test "$(mariadb --protocol=tcp -h127.0.0.1 -usokna_r132 -N -B sokna_r132_test -e 'SELECT eligible FROM demo_guard_data WHERE id=1')" = 2
+test "$(mariadb --protocol=tcp -h127.0.0.1 -usokna_r132 -N -B sokna_r132_test -e "SELECT COUNT(*) FROM schema_migration_statements WHERE state<>'applied'")" = 0
+test "$(mariadb --protocol=tcp -h127.0.0.1 -usokna_r132 -N -B sokna_r132_test -e 'SELECT COUNT(*) FROM schema_migrations')" = 2
+php -r "$php_source" "$temp/root" "$temp/old" "$temp/next" apply "$plan" '' '' > "$temp/forward.idempotent.out" 2>"$temp/forward.idempotent.err"
+grep -qx 'SOKNA_DATABASE_OK' "$temp/forward.idempotent.out"
+echo 'PASS: externally reconciled failed guard resumes forward safely and rerun is idempotent'
+
