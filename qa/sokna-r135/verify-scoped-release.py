@@ -23,6 +23,8 @@ assert "'0.3.20','0.3.21','0.3.22'" in inv
 sync=read("packaging/windows/scripts/maintenance-installed-versions-v1.ps1")
 m=re.search(r"\$doc\.\$name-notmatch'([^']+)'",sync)
 assert m, "Missing installed identity prior-version gate"
+assert sync.count("$doc.$name-notmatch") == 1, "Duplicated or malformed identity gate"
+assert sync.count("COMPONENT_IDENTITY_PREVIOUS_VERSION_UNQUALIFIED") == 1, "Duplicated trailing script detected"
 allowed=m.group(1)
 assert all(re.fullmatch(allowed,v) for v in (
     "0.3.12","0.3.15","0.3.20","0.3.21","0.3.22")), allowed
