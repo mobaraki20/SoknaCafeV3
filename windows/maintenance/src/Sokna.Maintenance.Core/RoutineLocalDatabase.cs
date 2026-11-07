@@ -51,6 +51,14 @@ public static class RoutineLocalDatabase
     internal static void RequireBaseline(string packageRoot, string sourceRoot, string targetRoot, RoutineMigrationPlan plan)
         => Run(packageRoot, sourceRoot, targetRoot, "inspect", plan, "", "");
 
+    /// <summary>
+    /// Execute only the leading read-only SELECT guards of newly added migrations,
+    /// before Apache is stopped and again immediately before the DB forward intent.
+    /// Never modifies schema, migration journals, or business records.
+    /// </summary>
+    internal static void RequireReadOnlyGuardPreflight(string packageRoot, string sourceRoot, string targetRoot, RoutineMigrationPlan plan)
+        => Run(packageRoot, sourceRoot, targetRoot, "preflight", plan, "", "");
+
     internal static RoutineDatabaseBackup Backup(string packageRoot, string sourceRoot, string targetRoot,
         RoutineMigrationPlan plan, string evidenceRoot)
     {
@@ -116,7 +124,17 @@ public static class RoutineLocalDatabase
         if (!process.WaitForExit(600_000)) { process.Kill(entireProcessTree: true); process.WaitForExit(); throw new TimeoutException("LOCAL_DATABASE_HELPER_TIMEOUT"); }
         Task.WaitAll(output, errors);
         if (process.ExitCode != 0 || output.Result.Trim() != "SOKNA_DATABASE_OK")
-            throw new InvalidDataException("LOCAL_DATABASE_" + mode.ToUpperInvariant() + "_FAILED_STATUS_" + process.ExitCode);
+        {
+            var code = "LOCAL_DATABASE_" + mode.ToUpperInvariant() + "_FAILED_STATUS_" + process.ExitCode;
+            // PHP intentionally emits only migration ID, ordinal, SQLSTATE and errno;
+            // never forward arbitrary stderr containing SQL, secrets or DB row values.
+            var safe = errors.Result.Trim();
+            if (safe.Length <= 240 && Regex.IsMatch(safe,
+                    @"\ASOKNA_DB_SAFE_FAILURE migration=\d{4}_[a-z0-9_]{1,156} ordinal=[1-9]\d* state=[A-Z0-9]{5} errno=\d+\z",
+                    RegexOptions.CultureInvariant))
+                throw new InvalidDataException(code + " " + safe);
+            throw new InvalidDataException(code);
+        }
     }
 
     internal static string FindBinary(string root, params string[] names)
