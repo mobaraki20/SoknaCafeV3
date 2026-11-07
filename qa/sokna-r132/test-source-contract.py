@@ -43,6 +43,15 @@ class Contract(unittest.TestCase):
         self.assertIn("SOKNA_DB_SAFE_FAILURE migration=", s)
         self.assertNotIn("$e->databaseMessage", s)
 
+    def test_rejected_stage_never_allocates_operation(self):
+        s=source("SupervisorLocalReleaseStageCoordinator.cs")
+        p=s.index("public LocalReleaseStageOutcome Stage(")
+        body=s[p:]
+        check=body.index("RequireInstallableLegacyRelease(")
+        durable=body.index("_operations.GetOrCreate(")
+        self.assertLess(check,durable)
+        self.assertIn("ZipFile.OpenRead(packagePath)",body[:durable])
+
     def test_candidate_path_cannot_bypass_release_qualification(self):
         s=source("SupervisorInactiveLocalCandidateCoordinator.cs")
         p=s.index("public static void RequireInstallableLegacyRelease(")
