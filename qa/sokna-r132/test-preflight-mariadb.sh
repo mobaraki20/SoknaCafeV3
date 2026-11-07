@@ -42,7 +42,7 @@ def cat(p):
     return {x.stem:hashlib.sha256(x.read_bytes()).hexdigest()
             for x in sorted((p/'database/migrations').glob('*.sql'))}
 def sha(c):
-    data=''.join(k+'\\0'+c[k]+'\\n' for k in sorted(c)).encode()
+    data=''.join(k+chr(0)+c[k]+chr(10) for k in sorted(c)).encode()
     return 'migration-ledger-sha256-v1:'+hashlib.sha256(data).hexdigest()
 a=cat(t/'old');b=cat(t/'next')
 print(json.dumps({'SourceFingerprint':sha(a),'TargetFingerprint':sha(b),
