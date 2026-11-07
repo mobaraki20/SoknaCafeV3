@@ -99,6 +99,32 @@ jobs:
         run: |
           python qa/sokna-r133/qualify-disposable-u01-fixture.py "$env:RUNNER_TEMP/u01-local/SOKNA-Local-231bf-U01-Panel-Update.zip"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install official pinned PHP x64 Thread Safe in disposable runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://downloads.php.net/~windows/releases/archives/php-8.4.24-Win32-vs17-x64.zip'
+          $sha='7b57fc9840273ab153834d0e2bd06e0bcf4fead36e381182b4b8fe9cedff3174'
+          $folder=Join-Path $env:RUNNER_TEMP 'sokna-r133-php-ts'
+          New-Item -ItemType Directory -Force -Path $folder | Out-Null
+          $zip=Join-Path $env:RUNNER_TEMP 'sokna-r133-php-ts.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha) {
+            throw 'R133_PHP_OFFICIAL_DOWNLOAD_HASH_MISMATCH'
+          }
+          Expand-Archive -LiteralPath $zip -DestinationPath $folder
+          $php=Join-Path $folder 'php.exe'
+          $module=Join-Path $folder 'php8apache2_4.dll'
+          if (-not (Test-Path -LiteralPath $php) -or -not (Test-Path -LiteralPath $module)) {
+            throw 'R133_PHP_TS_APACHE_MODULE_MISSING'
+          }
+          Copy-Item (Join-Path $folder 'php.ini-development') (Join-Path $folder 'php.ini')
+          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value "extension_dir=\"$folder/ext`""
+          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value 'extension=pdo_mysql'
+          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value 'extension=mbstring'
+          & $php -c (Join-Path $folder 'php.ini') -r 'if(!extension_loaded("pdo_mysql"))exit(1);'
+          if ($LASTEXITCODE -ne 0) { throw 'R133_PHP_PDO_MYSQL_DRIVER_MISSING' }
+          Add-Content -Path $env:GITHUB_ENV -Value "SOKNA_R133_PHP_TS=$folder"
       - name: Actual Windows SCM Apache/PHP, MariaDB and Maintenance forward recovery faults
         shell: pwsh
         env:
