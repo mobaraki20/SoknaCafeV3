@@ -2,7 +2,12 @@ name: R135 Maintenance-only 0.3.22 QA
 on:
   push:
     branches: [qa/sokna-r135-maintenance-only-20261107]
-    paths: [.github/workflows/sokna-r135-maintenance-only-qa.yml]
+    paths:
+      - .github/workflows/sokna-r135-maintenance-only-qa.yml
+      - packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss
+      - packaging/windows/scripts/*maintenance-only*
+      - windows/maintenance/src/**
+      - qa/sokna-r135/**
   workflow_dispatch:
 permissions:
   contents: read
