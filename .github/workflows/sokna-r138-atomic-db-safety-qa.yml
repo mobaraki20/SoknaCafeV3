@@ -29,11 +29,13 @@ jobs:
       - name: Install disposable PDO MySQL runtime
         run: |
           sudo apt-get update -qq
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq php-cli php-mysql
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq php-cli php-mysql php-gd
       - name: Syntax and isolated-source guard contract
         run: |
           php -l apps/local-web/src/Core/Migrations.php
           php -l qa/sokna-r138/test-atomic-migrations.php
+          php -l apps/local-web/src/Core/CafePhotoBundle.php
+          php -l qa/sokna-r138/test-photos.php
           python3 - <<'PY'
           from pathlib import Path
           s=Path('apps/local-web/src/Core/Migrations.php').read_text()
@@ -43,3 +45,5 @@ jobs:
           PY
       - name: Real MariaDB 11.4 data/ledger atomicity and failed-guard forward recovery
         run: php qa/sokna-r138/test-atomic-migrations.php
+      - name: Real MariaDB 11.4 photo import, dedupe, hash and exact item-code/name matching
+        run: php qa/sokna-r138/test-photos.php
