@@ -71,7 +71,7 @@ JOIN items i1 ON i1.id=m1.item_id
 JOIN item_variant_members m2 ON m2.family_id=f.id AND m2.label='دو نفره'
 JOIN items i2 ON i2.id=m2.item_id
 JOIN items lg ON lg.item_code=CONCAT('szlarge-',LEFT(SHA2(f.family_key,256),20))
-JOIN guest_media_references mr ON mr.owner_type='item' AND mr.owner_id=CAST(i2.id AS CHAR) AND mr.slot_key='card'
+JOIN guest_media_references mr ON mr.owner_type='item' AND BINARY mr.owner_id = BINARY CAST(i2.id AS CHAR) AND mr.slot_key='card'
 WHERE f.active=1 AND m1.item_id<>m2.item_id AND i1.lifecycle_status='active' AND i2.lifecycle_status='active'
 ;
 
