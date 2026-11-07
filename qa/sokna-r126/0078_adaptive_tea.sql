@@ -13,7 +13,11 @@ SELECT (SELECT x FROM (SELECT 1 x UNION ALL SELECT 2 x) fail WHERE
  JOIN item_variant_members m2 ON m2.family_id=f.id AND m2.label='دو نفره'
  JOIN items i2 ON i2.id=m2.item_id AND i2.lifecycle_status='active'
  WHERE f.active=1 AND m1.item_id<>m2.item_id
- AND (SELECT COUNT(*) FROM item_variant_members x WHERE x.family_id=f.id)=2));
+ AND ((SELECT COUNT(*) FROM item_variant_members x WHERE x.family_id=f.id)=2
+   OR ((SELECT COUNT(*) FROM item_variant_members x WHERE x.family_id=f.id)=3
+       AND (SELECT COUNT(*) FROM item_variant_members m3 JOIN items lg ON lg.id=m3.item_id
+            WHERE m3.family_id=f.id AND m3.label='بزرگ'
+             AND lg.item_code=CONCAT('szlarge-',LEFT(SHA2(f.family_key,256),20)))=1))));
 
 INSERT INTO audit_log(actor_user_id,actor_display_name_snapshot,action,entity_type,entity_id,details_json)
 SELECT NULL,NULL,'catalog.size_expansion_r121','variant_family',CAST(f.id AS CHAR),
