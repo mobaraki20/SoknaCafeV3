@@ -21,6 +21,20 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      - name: Parse all Maintenance-only PowerShell update scripts before compiling installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($p in @('packaging/windows/scripts/invoke-maintenance-only-v1.ps1',
+                          'packaging/windows/scripts/setup-windows-components-maintenance-v1.ps1',
+                          'packaging/windows/scripts/maintenance-installed-versions-v1.ps1',
+                          'packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $p).Path,[ref]$tokens,[ref]$errors)
+            if($errors.Count -ne 0){throw "Invalid PowerShell syntax in $p : $($errors[0])"}
+          }
+          Write-Host 'R135_POWERSHELL_PACKAGING_SYNTAX_PASS'
       - name: Source version and component scope
         shell: pwsh
         run: |
@@ -86,7 +100,7 @@ jobs:
           New-Item -ItemType Directory -Path $output -Force | Out-Null
           & $iscc "/DPayloadRoot=$(Join-Path $env:RUNNER_TEMP 'r135-payload')" "/DOutputDir=$output" 'packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss'
           if($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
-          $exe=Join-Path $output 'SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe'
+          $exe=Join-Path $output 'SOKNA-Maintenance-Only-0.3.22-R135-REV2-RECOVERY-SAFETY-UAT.exe'
           if(-not(Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Installer missing' }
           $version=([string]([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)).Trim()
           if($version -ne '0.3.22.0') { throw ('Wrong installer version: '+$version) }
@@ -118,7 +132,7 @@ jobs:
         with:
           name: r135-maintenance-only-0322-windows-uat
           path: |
-            ${{ runner.temp }}/r135-dist/SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe
+            ${{ runner.temp }}/r135-dist/SOKNA-Maintenance-Only-0.3.22-R135-REV2-RECOVERY-SAFETY-UAT.exe
             ${{ runner.temp }}/r135-dist/SHA256SUMS.txt
             ${{ runner.temp }}/r135-dist/UAT-BUILD-REPORT.json
             ${{ runner.temp }}/r135-dist/component-install-manifest-v1.json
