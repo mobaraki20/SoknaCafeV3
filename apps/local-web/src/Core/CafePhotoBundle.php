@@ -128,7 +128,7 @@ final class CafePhotoBundle
             // marker is saved. Maintenance itself owns the machine-wide lock.
             $assetByFile = [];
             $assetQuery = $this->pdo->prepare('SELECT id,media_key FROM guest_media_assets WHERE sha256=? FOR UPDATE');
-            $assetInsert = $this->pdo->prepare('INSERT INTO guest_media_assets(media_key,sha256,mime,extension,byte_size,width_px,height_px,original_name,alt_text,original_relpath,active,created_by_user_id) VALUES(?,? ,\'image/webp\',\'webp\',1600,1600,1600,?,?,?,1,NULL)');
+            $assetInsert = $this->pdo->prepare('INSERT INTO guest_media_assets(media_key,sha256,mime,extension,byte_size,width_px,height_px,original_name,alt_text,original_relpath,active,created_by_user_id) VALUES(?,?,\'image/webp\',\'webp\',?,1600,1600,?,?,?,1,NULL)');
             $derivativeInsert = $this->pdo->prepare("INSERT INTO guest_media_derivatives(media_id,variant_key,sha256,mime,extension,byte_size,width_px,height_px,path_relpath,processor) VALUES(?,'guest-card',?,'image/webp','webp',?,1600,1600,?,'bundle-passthrough') ON DUPLICATE KEY UPDATE sha256=VALUES(sha256),byte_size=VALUES(byte_size),width_px=VALUES(width_px),height_px=VALUES(height_px),path_relpath=VALUES(path_relpath),processor=VALUES(processor)");
             foreach ($byFile as $file=>$asset) {
                 $assetQuery->execute([$asset['sha']]);
