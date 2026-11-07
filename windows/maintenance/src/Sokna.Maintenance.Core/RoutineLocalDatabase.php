@@ -20,9 +20,37 @@ try {
     $before=$old->catalog();$after=$next->catalog();
     if ($fingerprint($before)!==$plan['SourceFingerprint'] || $fingerprint($after)!==$plan['TargetFingerprint']) exit(66);
     $applied=$next->appliedVersions();$original=array_keys($before);$expected=array_keys($after);
-    if ($mode==='inspect' || $mode==='backup') {
+    if ($mode==='inspect' || $mode==='backup' || $mode==='preflight') {
         if ($applied!==$original) exit(67);
         if ((int)$pdo->query("SELECT COUNT(*) FROM schema_migration_statements WHERE state<>'applied'")->fetchColumn()!==0) exit(68);
+        if ($mode==='preflight') {
+            // Safely probe leading SELECT guards in each pending signed migration
+            // while Apache is still running. Never execute DDL/DML in preflight.
+            // SQL files are from the target tree whose bytes were already attested.
+            $pdo->exec('SET TRANSACTION READ ONLY');
+            $pdo->beginTransaction();
+            try {
+                foreach ($after as $version=>$path) {
+                    if (isset($before[$version])) continue;
+                    $sql=@file_get_contents($path);
+                    if (!is_string($sql) || trim($sql)==='') exit(79);
+                    foreach (\Sokna\Local\Core\Migrations::splitStatements($sql) as $ordinal=>$statement) {
+                        if (preg_match('/^SELECT\\b/i',ltrim($statement))!==1) break;
+                        try {
+                            $result=$pdo->query($statement);
+                            if (!$result) exit(80);
+                            do { while ($result->fetch(PDO::FETCH_NUM)!==false) {} }
+                            while ($result->nextRowset());
+                            $result->closeCursor();
+                        } catch (PDOException $error) {
+                            throw new \Sokna\Local\Core\MigrationExecutionException($version,$ordinal+1,$error);
+                        }
+                    }
+                }
+            } finally {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+            }
+        }
     } elseif ($mode==='apply') {
         if (array_diff($original,$applied) || array_diff($applied,$expected)) exit(69);
         // An interrupted journal may only concern the exact target catalog.
@@ -50,4 +78,15 @@ try {
         } finally { @unlink($options);@unlink($backup.'.stdout');@unlink($backup.'.stderr'); }
     }
     echo 'SOKNA_DATABASE_OK';
-} catch (Throwable $e) { exit(78); }
+} catch (Throwable $e) {
+    // No SQL text, credentials, database messages or business rows on stderr.
+    // The Engine may include this strict, redacted envelope in support receipts.
+    if ($e instanceof \Sokna\Local\Core\MigrationExecutionException) {
+        $version=preg_match('/^\\d{4}_[a-z0-9_]{1,156}$/D',$e->migrationVersion)
+            ? $e->migrationVersion : 'invalid_migration_id';
+        $state=preg_match('/^[A-Z0-9]{5}$/D',$e->sqlState) ? $e->sqlState : '00000';
+        fwrite(STDERR,'SOKNA_DB_SAFE_FAILURE migration='.$version.' ordinal='.max(1,$e->statementOrdinal)
+            .' state='.$state.' errno='.max(0,$e->mysqlErrno).PHP_EOL);
+    }
+    exit(78);
+}
