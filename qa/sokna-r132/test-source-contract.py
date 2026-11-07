@@ -22,7 +22,7 @@ class Contract(unittest.TestCase):
 
     def test_guard_checks_are_before_stop_and_before_forward(self):
         s = source("ProductionLocalSlotRoutine.cs")
-        p = s.index("public RoutineLocalSlotResult ActivateRoutine(")
+        p = s.index("public RoutineLocalSlotResult ActivateRoutineSiblingRelease(")
         active = s[p:s.index("public RoutineLocalSlotResult RecoverRoutine(", p)]
         checks = [m.start() for m in re.finditer(
             r"RoutineLocalDatabase\.RequireReadOnlyGuardPreflight", active)]
