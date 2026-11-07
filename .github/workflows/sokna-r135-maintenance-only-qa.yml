@@ -88,7 +88,7 @@ jobs:
           if($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
           $exe=Join-Path $output 'SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe'
           if(-not(Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Installer missing' }
-          $version=([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)
+          $version=([string]([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)).Trim()
           if($version -ne '0.3.22.0') { throw ('Wrong installer version: '+$version) }
           $sha=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$sha  $([IO.Path]::GetFileName($exe))" | Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding Ascii
