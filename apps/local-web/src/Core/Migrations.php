@@ -34,14 +34,45 @@ final class Migrations
                     throw new RuntimeException("Migration '{$version}' is empty or unreadable.");
                 }
 
-                // MySQL DDL may implicitly commit. Each statement is journaled so a process
-                // crash can reconcile a statement that committed before its ledger update.
-                foreach (self::splitStatements($sql) as $ordinal => $statement) {
-                    $this->applyStatement($version, $ordinal + 1, $statement);
+                $statements = self::splitStatements($sql);
+                $atomicDataOnly = str_starts_with($version, '0078_') || str_starts_with($version, '0079_');
+                if ($atomicDataOnly) {
+                    foreach ($statements as $statement) {
+                        if (preg_match('/^(?:SELECT|INSERT|UPDATE|DELETE)\\b/i', ltrim($statement)) !== 1) {
+                            throw new RuntimeException('Data-only migration includes a nontransactional statement.');
+                        }
+                    }
+                    $this->requireInnoDbForAtomicMigrations();
+                    $pending = $this->pdo->prepare(
+                        "SELECT COUNT(*) FROM schema_migration_statements WHERE version=? AND state='running'"
+                    );
+                    $pending->execute([$version]);
+                    $unreconciled = (int)$pending->fetchColumn();
+                    $pending->closeCursor();
+                    if ($unreconciled !== 0) {
+                        throw new RuntimeException('Unverified old data-migration journal requires recovery, not blind replay.');
+                    }
+                    $this->pdo->beginTransaction();
+                    try {
+                        foreach ($statements as $ordinal => $statement) {
+                            $this->applyStatement($version, $ordinal + 1, $statement);
+                        }
+                        $stmt = $this->pdo->prepare('INSERT INTO schema_migrations(version) VALUES(?)');
+                        $stmt->execute([$version]);
+                        $stmt->closeCursor();
+                        $this->pdo->commit();
+                    } catch (Throwable $error) {
+                        if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+                        throw $error;
+                    }
+                } else {
+                    foreach ($statements as $ordinal => $statement) {
+                        $this->applyStatement($version, $ordinal + 1, $statement);
+                    }
+                    $stmt = $this->pdo->prepare('INSERT INTO schema_migrations(version) VALUES(?)');
+                    $stmt->execute([$version]);
+                    $stmt->closeCursor();
                 }
-                $stmt = $this->pdo->prepare('INSERT INTO schema_migrations(version) VALUES(?)');
-                $stmt->execute([$version]);
-                $stmt->closeCursor();
                 $newlyApplied[] = $version;
             }
             return $newlyApplied;
@@ -78,6 +109,14 @@ final class Migrations
         $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
         $stmt->closeCursor();
         return array_values(array_map('strval', $rows));
+    }
+
+    private function requireInnoDbForAtomicMigrations(): void
+    {
+        $q = $this->pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND TABLE_TYPE='BASE TABLE' AND ENGINE<>'InnoDB'");
+        $nonTransactional = (int)$q->fetchColumn();
+        $q->closeCursor();
+        if ($nonTransactional !== 0) throw new RuntimeException('Atomic data migration requires all business tables to use InnoDB.');
     }
 
     private function ensureLedger(): void
