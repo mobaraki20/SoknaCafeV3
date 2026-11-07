@@ -88,14 +88,49 @@ internal static class ReceiptRenderer
             {
                 var sectionTitle=Get(section,"title","");if(_showSectionTitles&&sectionTitle.Length>0)Text(sectionTitle,Math.Max(20,_base),true,StringAlignment.Center,2);
                 if(!section.TryGetProperty("items",out var items)||items.ValueKind!=JsonValueKind.Array)continue;
+                var layout=_layout=="responsive-receipt"?(_paperWidth<=60?"columnar-compact":"columnar"):_layout;
+                if(layout is "columnar" or "columnar-compact"){DrawPreparationColumns(items,layout=="columnar-compact");continue;}
                 foreach(var item in items.EnumerateArray())
                 {
                     var quantity=FaDigits(Get(item,"quantity","1"));var name=Get(item,"name","—");Text(quantity+" × "+name,Math.Max(28,_table),true,StringAlignment.Far,_density=="comfortable"?3:2);
-                    if(item.TryGetProperty("previous_quantity",out var previous)&&previous.ValueKind!=JsonValueKind.Null){var oldQuantity=FaDigits(previous.ToString());BoxText($"{Label("adjustment","اصلاح")}: قبلی {oldQuantity} ← جدید {quantity}",Math.Max(17,_base-3),true);}
-                    var mode=Get(item,"fulfillment_mode","");if(mode=="takeaway")BoxText(Label("takeaway","بیرون‌بر"),Math.Max(18,_base-2),true);
-                    var note=Get(item,"note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,Math.Max(18,_base-2),true);Hairline();
+                    DrawPreparationAnnotations(item,quantity);Hairline();
                 }
             }
+        }
+        private void DrawPreparationColumns(JsonElement items,bool compact)
+        {
+            var usable=Math.Max(1,_width-_marginX*2);
+            var qtyWidth=Math.Max(Px(compact?72:60),(int)(usable*(compact?.28:.22)));
+            qtyWidth=Math.Min(qtyWidth,usable/3);
+            var nameWidth=usable-qtyWidth;
+            using(var headerFont=MakeFont(Math.Max(18,_base-3),true))
+            {
+                var headerHeight=Math.Max(Py(34),(int)Math.Ceiling(headerFont.GetHeight(_g))+Py(8));
+                DrawCell("شرح",_marginX+qtyWidth,Y,nameWidth,headerFont,StringAlignment.Far,headerHeight);
+                DrawCell("تعداد",_marginX,Y,qtyWidth,headerFont,StringAlignment.Near,headerHeight);
+                Y+=headerHeight;Hairline();
+            }
+            foreach(var item in items.EnumerateArray())
+            {
+                var quantity=FaDigits(Get(item,"quantity","1"));var name=Get(item,"name","—");
+                using(var nameFont=MakeFont(Math.Max(20,_table-2),true))
+                using(var qtyFont=MakeFont(Math.Max(20,_base),true))
+                {
+                    var height=Math.Max(Py(_density=="comfortable"?48:39),
+                        Math.Max(MeasureCellHeight(name,nameWidth,nameFont,StringAlignment.Far),
+                            MeasureCellHeight(quantity,qtyWidth,qtyFont,StringAlignment.Near)));
+                    DrawCell(name,_marginX+qtyWidth,Y,nameWidth,nameFont,StringAlignment.Far,height);
+                    DrawCell(quantity,_marginX,Y,qtyWidth,qtyFont,StringAlignment.Near,height);
+                    Y+=height;
+                }
+                DrawPreparationAnnotations(item,quantity);Hairline();
+            }
+        }
+        private void DrawPreparationAnnotations(JsonElement item,string quantity)
+        {
+            if(item.TryGetProperty("previous_quantity",out var previous)&&previous.ValueKind!=JsonValueKind.Null){var oldQuantity=FaDigits(previous.ToString());BoxText($"{Label("adjustment","اصلاح")}: قبلی {oldQuantity} ← جدید {quantity}",Math.Max(17,_base-3),true);}
+            var mode=Get(item,"fulfillment_mode","");if(mode=="takeaway")BoxText(Label("takeaway","بیرون‌بر"),Math.Max(18,_base-2),true);
+            var note=Get(item,"note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,Math.Max(18,_base-2),true);
         }
         private void DrawCustomerNote(JsonElement root){var note=Get(root,"customer_note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,Math.Max(19,_base-1),true);}
         private void DrawCustomerItems(JsonElement root)
