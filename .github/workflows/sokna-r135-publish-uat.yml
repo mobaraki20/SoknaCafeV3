@@ -105,7 +105,30 @@ jobs:
 
           The release is Windows UAT only, not production approval.
           NOTES
-          gh release create "$tag"             dist/SOKNA-Maintenance-Only-0.3.22-R135-REV2-RECOVERY-SAFETY-UAT.exe             dist/SHA256SUMS.txt dist/UAT-BUILD-REPORT.json             dist/component-install-manifest-v1.json dist/windows-services-component-manifest-v2.json             --repo "$GITHUB_REPOSITORY" --target "8252ea8ef9328b9b5b695963bfbb420d66e09746"             --title "SOKNA Maintenance-only 0.3.22 R135 REV2 — recovery safety (UAT)"             --notes-file release-notes.md --prerelease
+          # GitHub's release endpoint rejects workflow-changing target_commitish
+          # with GITHUB_TOKEN even if Contents:write is granted. Pre-create the
+          # immutable verified SHA tag using the Git refs endpoint, then publish
+          # against that existing tag without --target. Never target main.
+          source_sha=8252ea8ef9328b9b5b695963bfbb420d66e09746
+          ref_path="repos/$GITHUB_REPOSITORY/git/ref/tags/$tag"
+          if gh api "$ref_path" --jq '.object.sha' > existing-tag-sha.txt 2>/dev/null; then
+            test "$(cat existing-tag-sha.txt)" = "$source_sha" || {
+              echo 'TAG_SHA_MISMATCH: refusing to publish'; exit 1;
+            }
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$tag" -f "sha=$source_sha" > new-tag.json
+            jq -e --arg sha "$source_sha" --arg tag "$tag" \
+              '.ref==("refs/tags/"+$tag) and .object.sha==$sha' new-tag.json
+          fi
+          test "$(gh api "$ref_path" --jq '.object.sha')" = "$source_sha"
+          gh release create "$tag" \
+            dist/SOKNA-Maintenance-Only-0.3.22-R135-REV2-RECOVERY-SAFETY-UAT.exe \
+            dist/SHA256SUMS.txt dist/UAT-BUILD-REPORT.json \
+            dist/component-install-manifest-v1.json dist/windows-services-component-manifest-v2.json \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "SOKNA Maintenance-only 0.3.22 R135 REV2 — recovery safety (UAT)" \
+            --notes-file release-notes.md --prerelease
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" |
             jq -e '.draft==false and .prerelease==true
               and ([.assets[]|select(.name=="SOKNA-Maintenance-Only-0.3.22-R135-REV2-RECOVERY-SAFETY-UAT.exe")]|length)==1'
