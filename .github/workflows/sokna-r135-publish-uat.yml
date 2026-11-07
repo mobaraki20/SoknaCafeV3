@@ -1,0 +1,109 @@
+name: Publish R135 Maintenance-only 0.3.22 UAT after independently successful QA
+on:
+  push:
+    branches: [qa/sokna-r135-maintenance-only-20261107]
+    paths: [.github/workflows/sokna-r135-publish-uat.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  verify-and-publish-immutable-uat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Require exact successful immutable R135 QA run including real Windows and MariaDB
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_id=42404692464
+          origin_commit=c0e7b8c84a05901e273c415a4b29c74d51d5f11c
+          for attempt in $(seq 1 55); do
+            result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.conclusion // "pending"')
+            if [ "$result" = success ]; then break; fi
+            if [ "$result" = failure ] || [ "$result" = cancelled ] || [ "$result" = timed_out ]; then
+              echo "R135_QA_NOT_SUCCESS:$result"; exit 1
+            fi
+            sleep 10
+          done
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" |
+            jq -e --arg sha "$origin_commit" '.status=="completed" and .conclusion=="success" and .head_sha==$sha'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" > jobs.json
+          for job in scoped-installer-build actual-mariadb-guards-and-restore windows-12-recovery-cycles; do
+            jq -e --arg name "$job" '[.jobs[] | select(.name==$name and .conclusion=="success")] | length==1' jobs.json
+          done
+          mkdir -p dist
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name r135-maintenance-only-0322-windows-uat --dir dist
+      - name: Verify exact installer, source SHA, component-only scope and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          exe=SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe
+          test -f "$exe"
+          test -f UAT-BUILD-REPORT.json
+          test -f SHA256SUMS.txt
+          test -f component-install-manifest-v1.json
+          test -f windows-services-component-manifest-v2.json
+          expected=$(awk 'NR==1{print $1}' SHA256SUMS.txt)
+          test "$(sha256sum "$exe" | awk '{print $1}')" = "$expected"
+          test "$(stat -c %s "$exe")" -gt 500000
+          jq -e --arg sha "c0e7b8c84a05901e273c415a4b29c74d51d5f11c" --arg file "$exe" --arg digest "$expected" '
+            .source_commit==$sha and .installer_file==$file and .installer_sha256==$digest
+            and .maintenance_only==true and .windows_compilation=="PASS"
+            and .operator_stage_negative=="PASS" and .source_contract=="PASS"
+            and .supervisor_version=="0.3.22" and .engine_version=="0.3.22"
+            and .production_install_qualified==false and .real_cafe_host_installed==false
+            and .local_web_mutation==false and .public_mutation==false
+            and .runtime_or_print_agent_mutation==false' UAT-BUILD-REPORT.json
+          jq -e '.format=="sokna-maintenance-only-installer-v1" and .release_scope=="maintenance_only"
+                 and .component_version=="0.3.22" and .runtime_changes==false
+                 and .print_agent_changes==false and .recovery_console_changes==false' component-install-manifest-v1.json
+          jq -e '.release_scope=="maintenance_only" and .package_version=="0.3.22"
+                 and ([.components[].component_id]|sort)==["maintenance","maintenance-update-engine"]
+                 and ([.components[].version]|unique)==["0.3.22"]' windows-services-component-manifest-v2.json
+          echo "R135_FINAL_ASSET_SCOPE_AND_SHA256_PASS"
+      - name: Publish exact verified UAT EXE to ordinary GitHub Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=maintenance-only-v0.3.22-r135-safety-uat
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Refusing to overwrite immutable existing release tag"; exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          # سامانه سکنا — Maintenance-only 0.3.22 / R135 (UAT)
+
+          **پیش‌انتشار آزمایشی است؛ برای نصب روی کافه هنوز مجوز Production ندارد.**
+
+          تغییرات فقط در Maintenance Supervisor و Update Engine انجام شده است.
+          Runtime، Print Agent، Recovery Console، Local Web، Public Web و دیتابیس کافه
+          در این بسته نصب یا به‌روزرسانی نمی‌شوند.
+
+          اصلاحات:
+          - رد بسته‌های UAT و فاقد صلاحیت پیش از ایجاد عملیات ماندگار نصب؛
+          - جلوگیری از دور زدن کنترل از مسیر آپلود اپراتور و کاندید قدیمی؛
+          - اجرای گاردهای اولیه فقط‌خواندنی مهاجرت، قبل از خاموشی Apache و قبل از SQL؛
+          - گزارش محدود و بدون افشای داده از خطای مهاجرت.
+
+          شواهد: Windows .NET build، آزمون واقعی Windows برای Stage و رد UAT،
+          MariaDB 11.4 و Restore آزمایشی، ۱۲ چرخه شکست/بازیابی با Apache/PHP/
+          MariaDB در محیط موقت. این آزمون‌ها نصب روی کافه یا Restore بک‌آپ
+          واقعی کافه را اثبات نمی‌کنند.
+
+          Local R134 کاندید QA مستقلی است و در این نصب‌کننده قرار ندارد.
+          مهاجرت اختصاصی کارکنان 0079 در بسته عمومی توزیع نمی‌شود.
+          نصب‌کننده را صرفاً برای آزمون کنترل‌شده نگه دارید؛ روی رایانه کافه
+          بدون آزمون میدانی و اثبات سلامت نسخه و بک‌آپ اجرا نکنید.
+
+          The release is Windows UAT only, not production approval.
+          NOTES
+          gh release create "$tag"             dist/SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe             dist/SHA256SUMS.txt dist/UAT-BUILD-REPORT.json             dist/component-install-manifest-v1.json dist/windows-services-component-manifest-v2.json             --repo "$GITHUB_REPOSITORY" --target "c0e7b8c84a05901e273c415a4b29c74d51d5f11c"             --title "SOKNA Maintenance-only 0.3.22 R135 — recovery safety (UAT)"             --notes-file release-notes.md --prerelease
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" |
+            jq -e '.draft==false and .prerelease==true
+              and ([.assets[]|select(.name=="SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe")]|length)==1'
+          echo "PUBLISHED_R135_UAT: https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag"
