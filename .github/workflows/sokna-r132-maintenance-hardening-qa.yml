@@ -68,3 +68,38 @@ jobs:
         run: |
           dotnet run --project windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Sokna.Maintenance.OperatorUploadHarness.csproj -c Release --nologo
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  windows-apache-mariadb-recovery-lab:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build an original U01 UAT artifact only inside RUNNER_TEMP
+        shell: pwsh
+        run: |
+          python release/build-local-u01.py --output "$env:RUNNER_TEMP/u01-local"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Requalify ONLY isolated synthetic fixture (no signing, no export)
+        shell: pwsh
+        env:
+          SOKNA_R133_LAB_ONLY: '1'
+        run: |
+          python qa/sokna-r133/qualify-disposable-u01-fixture.py "$env:RUNNER_TEMP/u01-local/SOKNA-Local-231bf-U01-Panel-Update.zip"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Actual Windows SCM Apache/PHP, MariaDB and Maintenance forward recovery faults
+        shell: pwsh
+        env:
+          SOKNA_R133_LAB_ONLY: '1'
+        run: |
+          & ./windows/maintenance/tests/u01-windows-full-cycle.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve only non-sensitive CI state summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r133-disposable-only-windows-recovery-summary
+          path: ${{ runner.temp }}/U01-WINDOWS-CYCLES.json
+          if-no-files-found: ignore
+          retention-days: 7
