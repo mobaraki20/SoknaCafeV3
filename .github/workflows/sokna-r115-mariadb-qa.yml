@@ -143,6 +143,11 @@ jobs:
         run: |
           set -o pipefail
           bash qa/sokna-r125/test-emergency-revert.sh 2>&1 | tee sokna-r125-emergency-revert.log
+      - name: R126 adaptive tea migration on 9-family and empty catalog MariaDB
+        shell: bash
+        run: |
+          set -o pipefail
+          bash qa/sokna-r126/test-adaptive-0078.sh 2>&1 | tee sokna-r126-home-adaptive-mariadb.log
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -157,5 +162,6 @@ jobs:
             sokna-r121-staff-mariadb.log
             sokna-r124-staff-db.log
             sokna-r125-emergency-revert.log
+            sokna-r126-home-adaptive-mariadb.log
           if-no-files-found: warn
           retention-days: 14
