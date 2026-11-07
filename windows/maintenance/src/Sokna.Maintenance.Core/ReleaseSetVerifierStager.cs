@@ -171,9 +171,17 @@ public sealed class ReleaseSetVerifierStager
         // VerifyOnly may authenticate test-only packages, but Stage writes a
         // durable anti-rollback sequence. Deny non-installable packages before
         // any sequence, receipt, directory or operation is created.
-        if (!operatorAuthorized && (!manifest.ForInstall || !manifest.ProductionPass ||
-            manifest.Status.Contains("NOT_FOR_INSTALL", StringComparison.OrdinalIgnoreCase)))
+        // Operator-authenticated origin is NOT a substitute for production readiness.
+        // Keep VerifyOnly usable for UAT diagnostics, but reject every non-production
+        // package before Stage allocates durable state, regardless of upload route.
+        if (!manifest.ForInstall || !manifest.ProductionPass ||
+            Regex.IsMatch(manifest.Status,
+                @"(?:^|[_\-\s])(?:UAT|NOT[_\-]?PRODUCTION|NOT[_\-]?FIELD[_\-]?APPROVED|NO[_\-]?PRODUCTION[_\-]?APPROVAL|NOT[_\-]?FOR[_\-]?INSTALL|TEST[_\-]?ONLY)(?:$|[_\-\s])",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             throw new InvalidDataException("RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN");
+        // Release quality proof is required on both signed and operator-uploaded paths.
+        // It must not be waived by a hash-addressed Inbox filename.
+        ReleaseInstallQualificationGate.Require(manifest);
 
         // A signed VerifyOnly/test-only package must not even allocate the
         // trusted Stage root. Only install-qualified manifests may reach it.
