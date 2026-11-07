@@ -1,0 +1,33 @@
+name: R135 Guard - Cancel obsolete UAT publish attempts
+on:
+  push:
+    branches: [qa/sokna-r135-maintenance-only-20261107]
+    paths: [.github/workflows/sokna-r135-cancel-stale-publish.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  refuse-stale-binary-publication:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel publishers pinned to R135 installer before identity compatibility fix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run_id in 42404867163 42405225823; do
+            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq .status)
+            if [ "$status" = completed ]; then
+              echo "Already completed: $run_id"
+              continue
+            fi
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel"
+            echo "CANCEL_REQUEST_SENT $run_id"
+          done
+          if gh release view maintenance-only-v0.3.22-r135-safety-uat --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "CRITICAL: obsolete R135 UAT public release exists; requires immediate withdrawal!"
+            exit 1
+          fi
+          echo "R135_STALE_PUBLISH_CANCEL_AND_RELEASE_ABSENCE_CHECK_PASS"
