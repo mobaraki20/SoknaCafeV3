@@ -1,0 +1,55 @@
+name: R132 Maintenance preflight and release safety QA
+on:
+  push:
+    branches:
+      - qa/sokna-r132-maintenance-preflight-recovery-20261107
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-and-php-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Source invariants and redaction contracts
+        run: python3 qa/sokna-r132/test-source-contract.py
+      - name: Embedded migration helper syntax
+        run: php -l windows/maintenance/src/Sokna.Maintenance.Core/RoutineLocalDatabase.php
+  mariadb-readonly-guards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r132_test
+          MARIADB_USER: sokna_r132
+          MARIADB_PASSWORD: ci-only-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated PHP MariaDB test clients
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-cli php-mysql mariadb-client
+      - name: Fail before mutation and succeed without applying DML
+        run: bash qa/sokna-r132/test-preflight-mariadb.sh
+  windows-maintenance-build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build real UpdateEngine with embedded PHP preflight
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
