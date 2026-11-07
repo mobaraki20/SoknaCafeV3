@@ -1,0 +1,206 @@
+name: R135 Maintenance-only 0.3.22 QA
+on:
+  push:
+    branches: [qa/sokna-r135-maintenance-only-20261107]
+    paths: [.github/workflows/sokna-r135-maintenance-only-qa.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  scoped-installer-build:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Source version and component scope
+        shell: pwsh
+        run: |
+          python qa/sokna-r135/verify-scoped-release.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python qa/sokna-r132/test-source-contract.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows actual Maintenance verifier, UAT denied before durable stage
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Sokna.Maintenance.OperatorUploadHarness.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.CafeRunnerHarness/Sokna.Maintenance.CafeRunnerHarness.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build exact Maintenance-only 0.3.22 native Windows binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $app=Join-Path $env:RUNNER_TEMP 'r135-app'
+          New-Item -ItemType Directory -Path $app -Force | Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $app
+          if ($LASTEXITCODE -ne 0) { throw 'Supervisor publish failed' }
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $app
+          if ($LASTEXITCODE -ne 0) { throw 'Engine publish failed' }
+          foreach($n in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')) {
+            $p=Join-Path $app $n
+            if(-not(Test-Path -LiteralPath $p -PathType Leaf)) { throw ('EXE missing: '+$n) }
+            $v=([Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion)
+            if ($v -ne '0.3.22.0') { throw ('EXE wrong version: '+$n+'='+$v) }
+          }
+      - name: Prepare exact two-component Maintenance-only payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1 -RepoRoot $PWD.Path -MaintenanceAppBundle (Join-Path $env:RUNNER_TEMP 'r135-app') -OutputRoot (Join-Path $env:RUNNER_TEMP 'r135-payload')
+          if ($LASTEXITCODE -ne 0) { throw 'Payload creation failed' }
+          $p=Join-Path $env:RUNNER_TEMP 'r135-payload'
+          $m=Get-Content (Join-Path $p 'component-install-manifest-v1.json') -Raw | ConvertFrom-Json
+          $group=Get-Content (Join-Path $p 'windows-services-component-manifest-v2.json') -Raw | ConvertFrom-Json
+          if($m.release_scope -ne 'maintenance_only' -or $m.component_version -ne '0.3.22' -or $group.package_version -ne '0.3.22') { throw 'Version/scope mismatch' }
+          if(@($group.components).Count -ne 2) { throw 'Expected only Maintenance Supervisor and Engine' }
+          if($m.runtime_changes -or $m.print_agent_changes -or $m.recovery_console_changes) { throw 'Out of scope component changes' }
+          foreach($f in $m.files) {
+            $file=Join-Path $p ([string]$f.path).Replace('/','\')
+            if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $f.sha256) { throw ('HASH MISMATCH: '+$f.path) }
+          }
+      - name: Install Inno Setup on disposable Windows runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not $iscc) {
+            choco install innosetup -y --no-progress
+            if($LASTEXITCODE -ne 0) { throw 'Inno Setup unavailable' }
+          }
+      - name: Compile Maintenance-only installer and verify complete file integrity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=@("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe","$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+          if(-not $iscc) { throw 'ISCC missing' }
+          $output=Join-Path $env:RUNNER_TEMP 'r135-dist'
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          & $iscc "/DPayloadRoot=$(Join-Path $env:RUNNER_TEMP 'r135-payload')" "/DOutputDir=$output" 'packaging/windows/installer/SOKNA-Maintenance-Only-v1.iss'
+          if($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+          $exe=Join-Path $output 'SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe'
+          if(-not(Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Installer missing' }
+          $version=([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)
+          if($version -ne '0.3.22.0') { throw ('Wrong installer version: '+$version) }
+          $sha=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  $([IO.Path]::GetFileName($exe))" | Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding Ascii
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'r135-payload/component-install-manifest-v1.json') $output
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'r135-payload/windows-services-component-manifest-v2.json') $output
+          $report=[ordered]@{
+            format='sokna-r135-maintenance-only-qa-v1'
+            source_commit='$'+'{{ github.sha }}'
+            installer_file=[IO.Path]::GetFileName($exe)
+            installer_sha256=$sha
+            installer_bytes=(Get-Item $exe).Length
+            maintenance_only=$true
+            supervisor_version='0.3.22'
+            engine_version='0.3.22'
+            windows_compilation='PASS'
+            operator_stage_negative='PASS'
+            source_contract='PASS'
+            production_install_qualified=$false
+            real_cafe_host_installed=$false
+            local_web_mutation=$false
+            public_mutation=$false
+            runtime_or_print_agent_mutation=$false
+          }
+          $report|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $output 'UAT-BUILD-REPORT.json') -Encoding UTF8
+          Write-Host ('R135_WINDOWS_MAINTENANCE_ONLY_UAT_BUILD_PASS sha256='+$sha)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r135-maintenance-only-0322-windows-uat
+          path: |
+            ${{ runner.temp }}/r135-dist/SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe
+            ${{ runner.temp }}/r135-dist/SHA256SUMS.txt
+            ${{ runner.temp }}/r135-dist/UAT-BUILD-REPORT.json
+            ${{ runner.temp }}/r135-dist/component-install-manifest-v1.json
+            ${{ runner.temp }}/r135-dist/windows-services-component-manifest-v2.json
+          if-no-files-found: error
+          retention-days: 30
+  actual-mariadb-guards-and-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r132_test
+          MARIADB_USER: sokna_r132
+          MARIADB_PASSWORD: ci-only-password
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install scoped MariaDB and PHP clients
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq php-cli php-mysql mariadb-client openssl
+      - name: Execute preflight, forward failure, WAL/resume against real MariaDB
+        run: bash qa/sokna-r132/test-preflight-mariadb.sh
+      - name: Independently verify real logical backup/restore
+        env: &mariadb_lab
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: ci-root-only
+          SOKNA_MARIADB_CI_ONLY: '1'
+        run: bash windows/maintenance/tests/s7e1-disposable-mariadb-restore-drill.sh
+      - name: Kill after actual DDL and prove forward recovery and encrypted restore
+        env: *mariadb_lab
+        run: python3 windows/maintenance/tests/s7e2b-mariadb-forward-crash-ci.py
+  windows-12-recovery-cycles:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Prepare synthetic U01 package in disposable RUNNER_TEMP
+        shell: pwsh
+        run: |
+          python release/build-local-u01.py --output "$env:RUNNER_TEMP/u01-local"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare CI-only synthetic qualification, never export package
+        shell: pwsh
+        env:
+          SOKNA_R133_LAB_ONLY: '1'
+        run: |
+          python qa/sokna-r133/qualify-disposable-u01-fixture.py "$env:RUNNER_TEMP/u01-local/SOKNA-Local-231bf-U01-Panel-Update.zip"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Use hash-pinned official PHP Thread Safe for real Windows Apache
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://downloads.php.net/~windows/releases/archives/php-8.4.24-Win32-vs17-x64.zip'
+          $sha='7b57fc9840273ab153834d0e2bd06e0bcf4fead36e381182b4b8fe9cedff3174'
+          $folder=Join-Path $env:RUNNER_TEMP 'sokna-r135-php-ts'
+          New-Item -ItemType Directory -Force -Path $folder | Out-Null
+          $zip=Join-Path $env:RUNNER_TEMP 'sokna-r135-php-ts.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          if((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha) { throw 'Pinned PHP hash mismatch' }
+          Expand-Archive -LiteralPath $zip -DestinationPath $folder
+          if(-not(Test-Path (Join-Path $folder 'php8apache2_4.dll'))) { throw 'Missing TS Apache PHP module' }
+          Copy-Item (Join-Path $folder 'php.ini-development') (Join-Path $folder 'php.ini')
+          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value ('extension_dir="' + $folder.Replace('\','/') + '/ext"')
+          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value 'extension=pdo_mysql'
+          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value 'extension=mbstring'
+          Add-Content -Path $env:GITHUB_ENV -Value "SOKNA_R133_PHP_TS=$folder"
+      - name: Full real Windows Apache PHP MariaDB Recovery fault matrix
+        shell: pwsh
+        env:
+          SOKNA_R133_LAB_ONLY: '1'
+        run: |
+          & ./windows/maintenance/tests/u01-windows-full-cycle.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r135-disposable-12-cycles-summary
+          path: ${{ runner.temp }}/U01-WINDOWS-CYCLES.json
+          if-no-files-found: ignore
+          retention-days: 10
