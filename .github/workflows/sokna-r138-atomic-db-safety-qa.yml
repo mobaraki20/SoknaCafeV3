@@ -1,0 +1,45 @@
+name: R138 DB atomicity and forward-recovery QA
+on:
+  push:
+    branches: [qa/sokna-r138-db-atomic-20261108]
+    paths:
+      - .github/workflows/sokna-r138-atomic-db-safety-qa.yml
+      - apps/local-web/src/Core/Migrations.php
+      - qa/sokna-r138/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mariadb-post-guard-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r138_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install disposable PDO MySQL runtime
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq php-cli php-mysql
+      - name: Syntax and isolated-source guard contract
+        run: |
+          php -l apps/local-web/src/Core/Migrations.php
+          php -l qa/sokna-r138/test-atomic-migrations.php
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('apps/local-web/src/Core/Migrations.php').read_text()
+          for x in ['requireInnoDbForAtomicMigrations','beginTransaction()','rollBack()','Unverified old data-migration journal','str_starts_with($version, \'0078_\')','str_starts_with($version, \'0079_\')']:
+              assert x in s,x
+          print('R138_ATOMIC_SQL_SOURCE_CONTRACT_PASS')
+          PY
+      - name: Real MariaDB 11.4 data/ledger atomicity and failed-guard forward recovery
+        run: php qa/sokna-r138/test-atomic-migrations.php
