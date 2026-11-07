@@ -176,7 +176,7 @@ public sealed class ReleaseSetVerifierStager
         // package before Stage allocates durable state, regardless of upload route.
         if (!manifest.ForInstall || !manifest.ProductionPass ||
             Regex.IsMatch(manifest.Status,
-                @"(?:^|[_\-\s])(?:UAT|NOT[_\-]?PRODUCTION|NOT[_\-]?FIELD[_\-]?APPROVED|NO[_\-]?PRODUCTION[_\-]?APPROVAL|NOT[_\-]?FOR[_\-]?INSTALL|TEST[_\-]?ONLY)(?:$|[_\-\s])",
+                @"(?:^|[_\-\s])(?:UAT|NOT[_\-]?PRODUCTION|NOT[_\-]?FIELD[_\-]?APPROVED|NO[_\-]?PRODUCTION[_\-]?APPROVAL|NOT[_\-]?FOR[_\-]?INSTALL|TEST[_\-]?ONLY|ENGINEERING|SOURCE[_\-]?ONLY|DESIGN)(?:$|[_\-\s])",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             throw new InvalidDataException("RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN");
         // Release quality proof is required on both signed and operator-uploaded paths.
