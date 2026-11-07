@@ -31,7 +31,7 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
  $versions=@();$hashes=@()
  foreach($p in @($super,$engine)){
   $v=[string]([Diagnostics.FileVersionInfo]::GetVersionInfo($p).FileVersion)
-  if($v-ne'0.3.22.0'){throw 'COMPONENT_IDENTITY_PHYSICAL_0320_REQUIRED'}
+  if($v-ne'0.3.22.0'){throw 'COMPONENT_IDENTITY_PHYSICAL_0322_REQUIRED'}
   $versions+='0.3.22'
   $hashes+=(ComponentSha256 $p)
  }
@@ -69,7 +69,41 @@ function Sync-MaintenanceInstalledVersions([string]$AppRoot,[string]$EvidenceRoo
   $doc=[Text.Encoding]::UTF8.GetString($before)|ConvertFrom-Json -ErrorAction Stop
   $names=@('maintenance_supervisor_version','update_engine_version')
   foreach($name in $names){
-   if(-not$doc.PSObject.Properties[$name] -or [string]$doc.$name-notmatch'^0\.3\.(?:[0-9]|1[0-9]|20)$'){
+   if(-not$doc.PSObject.Properties[$name] -or [string]$doc.$name-notmatch'^0\.3\.(?:[0-9]|1[0-9]|2[012])){
+    throw 'COMPONENT_IDENTITY_PREVIOUS_VERSION_UNQUALIFIED'
+   }
+  }
+  if($doc.maintenance_supervisor_version-eq'0.3.22' -and $doc.update_engine_version-eq'0.3.22'){return}
+  $beforeSemantic=$doc|ConvertTo-Json -Depth 100 -Compress
+  $prior=@([string]$doc.maintenance_supervisor_version,[string]$doc.update_engine_version)
+  $doc.maintenance_supervisor_version=$versions[0];$doc.update_engine_version=$versions[1]
+  $after=($doc|ConvertTo-Json -Depth 100)+"`n"
+  # Prove the only semantic changes are the two component versions.
+  $check=$after|ConvertFrom-Json
+  $check.maintenance_supervisor_version=$prior[0];$check.update_engine_version=$prior[1]
+  if(($check|ConvertTo-Json -Depth 100 -Compress)-cne$beforeSemantic){throw 'COMPONENT_IDENTITY_SCOPE_VIOLATION'}
+  New-Item -ItemType Directory -Path $EvidenceRoot -Force|Out-Null
+  $backup=Join-Path $EvidenceRoot 'installed-release-identity.before.json'
+  $out=[IO.File]::Open($backup,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+  try{$out.Write($before,0,$before.Length);$out.Flush($true)}finally{$out.Dispose()}
+  if([Convert]::ToBase64String([IO.File]::ReadAllBytes($identityPath))-cne[Convert]::ToBase64String($before)){throw 'COMPONENT_IDENTITY_CHANGED_DURING_SYNC'}
+  foreach($i in @(0,1)){
+   $p=@($super,$engine)[$i]
+   if((ComponentSha256 $p)-cne$hashes[$i]){throw 'COMPONENT_IDENTITY_BINARY_CHANGED'}
+  }
+  $temp=$identityPath+'.tmp.'+[Guid]::NewGuid().ToString('N')
+  $bytes=[Text.UTF8Encoding]::new($false).GetBytes($after)
+  $out=[IO.FileStream]::new($temp,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None,4096,[IO.FileOptions]::WriteThrough)
+  try{$out.Write($bytes,0,$bytes.Length);$out.Flush($true)}finally{$out.Dispose()}
+  # Atomic replace on the existing volume; the original also remains in evidence.
+  [IO.File]::Replace($temp,$identityPath,(Join-Path $EvidenceRoot 'installed-release-identity.atomic-before.json'))
+  if([IO.File]::ReadAllText($identityPath)-cne$after){throw 'COMPONENT_IDENTITY_READBACK_UNPROVEN'}
+  $receipt=[ordered]@{format='sokna-maintenance-installed-version-sync-v1';at_utc=[DateTime]::UtcNow.ToString('o');previous_versions=$prior;observed_versions=$versions;observed_binary_sha256=$hashes;local_identity_changed=$false;public_identity_changed=$false;services_changed=$false;database_mutation_performed=$false;outstanding_recovery_required_operation_ids=@($unresolvedRecoveryIds.ToArray());recovery_records_unchanged=$true}
+  [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'component-version-sync.json'),($receipt|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
+ }finally{$lease.Dispose()}
+}
+
+){
     throw 'COMPONENT_IDENTITY_PREVIOUS_VERSION_UNQUALIFIED'
    }
   }
