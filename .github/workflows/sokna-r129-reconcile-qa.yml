@@ -1,0 +1,32 @@
+name: R129 exact cafe recovery evidence reconciliation QA
+on:
+  push:
+    branches:
+      - qa/sokna-r129-cafe-reconcile-20261107
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-static-gate:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: none
+      - name: Check exact, no-service, read-only-database reconciliation
+        shell: pwsh
+        run: |
+          php -l qa/sokna-r129-cafe/SOKNA-RECONCILE.php
+          php -l qa/sokna-r129-cafe/QA-READONLY-GATES.php
+          php qa/sokna-r129-cafe/QA-READONLY-GATES.php
+      - name: Check launcher's expected user confirmations
+        shell: pwsh
+        run: |
+          $cmd = Get-Content qa/sokna-r129-cafe/START-R129-RECONCILE-MAINTENANCE.cmd -Raw
+          foreach ($phrase in @('Run as administrator','RECONCILE-R112','SOKNA-R129-RECONCILE-RESULT.txt','SOKNA-RECONCILE.php')) {
+            if (-not $cmd.Contains($phrase)) { throw "CMD launch gate missing" }
+          }
+          Write-Output 'PASS Windows command launcher static guards'
