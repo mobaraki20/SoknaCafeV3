@@ -8,6 +8,8 @@
 AppId={{965FF692-4DAD-4C58-B76D-3F3A70A687CB}
 AppName=SOKNA Maintenance Component Update (UAT)
 AppVersion=0.3.22
+VersionInfoVersion=0.3.22.0
+VersionInfoTextVersion=SOKNA Maintenance 0.3.22 UAT
 AppVerName=SOKNA Maintenance Only 0.3.22 UAT
 AppPublisher=SOKNA
 AppCopyright=SOKNA
