@@ -27,3 +27,4 @@ foreach($name in 'SOKNA-HOME-SELECTED-LOCAL-UAT.zip','SOKNA-HOME-SELECTED-PUBLIC
  if(Test-Path (Join-Path $PSScriptRoot $name)){throw 'Unsafe selector output created'}
 }
 Write-Host 'PASS Windows PowerShell syntax; unknown baseline and recovery_required blocked without selecting packages'
+exit 0
