@@ -22,7 +22,13 @@ $psi=[Diagnostics.ProcessStartInfo]::new((Join-Path $mdb 'bin/mariadbd.exe'))
 $psi.UseShellExecute=$false;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
 foreach($a in @('--no-defaults',"--basedir=$mdb","--datadir=$dbData","--port=$dbPort",'--bind-address=127.0.0.1','--console')){$psi.ArgumentList.Add($a)}
 $db=[Diagnostics.Process]::Start($psi);$dbOut=$db.StandardOutput.ReadToEndAsync();$dbErr=$db.StandardError.ReadToEndAsync()
-$phpExe=(Get-Command php.exe).Source;$phpRoot=Split-Path -Parent $phpExe
+# R133 CI pins a verified thread-safe PHP build so Apache really runs PHP.
+$phpExe=if($env:SOKNA_R133_LAB_ONLY -eq '1'){
+  $candidate=Join-Path ([string]$env:SOKNA_R133_PHP_TS) 'php.exe'
+  Need (Test-Path -LiteralPath $candidate -PathType Leaf) 'PINNED_PHP_TS_MISSING'
+  $candidate
+}else{(Get-Command php.exe).Source}
+$phpRoot=Split-Path -Parent $phpExe
 Need (Test-Path (Join-Path $phpRoot 'php8apache2_4.dll')) 'THREAD_SAFE_PHP_APACHE_MODULE_MISSING'
 $apacheCandidates=@('C:\tools\Apache24','C:\tools\apache','C:\ProgramData\chocolatey\lib\apache-httpd')
 $apacheExe=$null
