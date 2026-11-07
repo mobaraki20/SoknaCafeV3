@@ -1,0 +1,28 @@
+name: R130 cafe read-only preflight Windows parser QA
+on:
+  push:
+    branches:
+      - qa/sokna-r130-preflight-syntax-20261107
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  syntax-and-safe-block:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell parse, then verify fail-closed on empty test machine
+        shell: pwsh
+        run: |
+          $path='qa/sokna-r130/R130-WINDOWS-SYNTAX-REDACTED.ps1'
+          $tokens=$null
+          $issues=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path).Path,[ref]$tokens,[ref]$issues) | Out-Null
+          if($issues.Count -ne 0){ $issues | Format-List | Out-String | Write-Output; throw 'PowerShell parse failed' }
+          Write-Output 'PASS: Windows PowerShell parser'
+          & ./qa/sokna-r130/R130-WINDOWS-SYNTAX-REDACTED.ps1
+          if($LASTEXITCODE -ne 19){throw "Unexpected exit: $LASTEXITCODE"}
+          $report=Get-Content ./qa/sokna-r130/SOKNA-R130-CAFE-PREFLIGHT-RESULT.txt -Raw
+          if($report -notmatch 'BLOCKED: IDENTITY_MISSING'){throw 'Did not reject unqualified machine'}
+          Write-Output 'PASS: R130 preflight blocks non-Sokna Windows host without modification'
