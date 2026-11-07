@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -136,6 +137,22 @@ public sealed class SupervisorLocalReleaseStageCoordinator
             // authenticated policy under its own filesystem lock.
             if (!verified.SignedInstallIntent && !verified.OperatorAuthorized)
                 throw new InvalidDataException("RELEASE_SET_NOT_INSTALLABLE_STAGE_FORBIDDEN");
+            // VerifyOnly is intentionally diagnostic; an authenticated UAT ZIP
+            // still needs production qualification before recording a Stage
+            // operation. Reuse the same fail-closed candidate contract.
+            using (var archive = ZipFile.OpenRead(packagePath))
+            {
+                var entry = archive.GetEntry("release-set.json")
+                    ?? throw new InvalidDataException("RELEASE_SET_MANIFEST_MISSING");
+                if (entry.Length > 2 * 1024 * 1024)
+                    throw new InvalidDataException("RELEASE_SET_MANIFEST_TOO_LARGE");
+                using var stream = entry.Open();
+                var manifest = JsonSerializer.Deserialize<ReleaseSetManifest>(
+                    stream, AtomicFile.JsonOptions)
+                    ?? throw new InvalidDataException("RELEASE_SET_MANIFEST_INVALID");
+                SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
+                    manifest, verified.OperatorAuthorized);
+            }
 
             var requestHash = MaintenanceOperationStore.CanonicalRequestHash(
                 "update.local-stage." + preflightOperationId, preflight.PackageRef, operatorId);
