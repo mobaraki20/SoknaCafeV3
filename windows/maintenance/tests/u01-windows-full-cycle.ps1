@@ -53,8 +53,8 @@ $nextTarget=Join-Path $nextRoot 'target.json';$nextPackage=Join-Path $nextRoot '
 # New R133 CI uses one disposable RUNNER_TEMP root and four fault checkpoints.
 # Historical U01 24-cycle behavior remains unchanged outside this explicit mode.
 $labMode=($env:SOKNA_R133_LAB_ONLY -eq '1')
-$roots=if($labMode){@((Join-Path $env:RUNNER_TEMP 'sokna-r133-windows-fixture'))}else{@('D:\سامانه کافه آزمون U01','C:\SoknaU01-CI','C:\Sokna U01 CI With Spaces','D:\SoknaU01-CI')}
-$faults=if($labMode){@('none','APACHE_STOPPED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED')}else{@('none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')}
+$roots=if($labMode){@((Join-Path $env:RUNNER_TEMP 'sokna-r133-windows-fixture'),(Join-Path $env:RUNNER_TEMP 'سکنا آزمون مسیر با فاصله'))}else{@('D:\سامانه کافه آزمون U01','C:\SoknaU01-CI','C:\Sokna U01 CI With Spaces','D:\SoknaU01-CI')}
+$faults=@('none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')
 $results=@()
 try {
   for($attempt=0;$attempt-lt60;$attempt++){
@@ -140,7 +140,7 @@ PidFile "$ar/logs/httpd.pid"
       if(Test-Path $root){Remove-Item $root -Recurse -Force}
     }
   }}
-  $expectedCycles=if($labMode){4}else{24}
+  $expectedCycles=if($labMode){12}else{24}
   Need ($results.Count-eq$expectedCycles) 'U01_REQUIRED_CYCLES_INCOMPLETE'
   $results|ConvertTo-Json -Depth 8|Set-Content (Join-Path $env:RUNNER_TEMP 'U01-WINDOWS-CYCLES.json') -Encoding utf8NoBOM
   Write-Host "U01_WINDOWS_REAL_APACHE_PHP_MARIADB_$($expectedCycles)_CYCLES_PASS"
