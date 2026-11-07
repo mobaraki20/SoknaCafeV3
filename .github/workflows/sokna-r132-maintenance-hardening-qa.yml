@@ -119,7 +119,7 @@ jobs:
             throw 'R133_PHP_TS_APACHE_MODULE_MISSING'
           }
           Copy-Item (Join-Path $folder 'php.ini-development') (Join-Path $folder 'php.ini')
-          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value ('extension_dir="' + $folder.Replace('\\','/') + '/ext"')
+          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value ('extension_dir="' + $folder.Replace('\','/') + '/ext"')
           Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value 'extension=pdo_mysql'
           Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value 'extension=mbstring'
           & $php -c (Join-Path $folder 'php.ini') -r 'if(!extension_loaded("pdo_mysql"))exit(1);'
