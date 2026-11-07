@@ -18,8 +18,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          run_id=42404692464
-          origin_commit=c0e7b8c84a05901e273c415a4b29c74d51d5f11c
+          run_id=42404940213
+          origin_commit=9451e4c7e25b1c804717ec80bc2334d7104f6454
           for attempt in $(seq 1 55); do
             result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.conclusion // "pending"')
             if [ "$result" = success ]; then break; fi
@@ -50,7 +50,7 @@ jobs:
           expected=$(awk 'NR==1{print $1}' SHA256SUMS.txt)
           test "$(sha256sum "$exe" | awk '{print $1}')" = "$expected"
           test "$(stat -c %s "$exe")" -gt 500000
-          jq -e --arg sha "c0e7b8c84a05901e273c415a4b29c74d51d5f11c" --arg file "$exe" --arg digest "$expected" '
+          jq -e --arg sha "9451e4c7e25b1c804717ec80bc2334d7104f6454" --arg file "$exe" --arg digest "$expected" '
             .source_commit==$sha and .installer_file==$file and .installer_sha256==$digest
             and .maintenance_only==true and .windows_compilation=="PASS"
             and .operator_stage_negative=="PASS" and .source_contract=="PASS"
@@ -102,7 +102,7 @@ jobs:
 
           The release is Windows UAT only, not production approval.
           NOTES
-          gh release create "$tag"             dist/SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe             dist/SHA256SUMS.txt dist/UAT-BUILD-REPORT.json             dist/component-install-manifest-v1.json dist/windows-services-component-manifest-v2.json             --repo "$GITHUB_REPOSITORY" --target "c0e7b8c84a05901e273c415a4b29c74d51d5f11c"             --title "SOKNA Maintenance-only 0.3.22 R135 — recovery safety (UAT)"             --notes-file release-notes.md --prerelease
+          gh release create "$tag"             dist/SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe             dist/SHA256SUMS.txt dist/UAT-BUILD-REPORT.json             dist/component-install-manifest-v1.json dist/windows-services-component-manifest-v2.json             --repo "$GITHUB_REPOSITORY" --target "9451e4c7e25b1c804717ec80bc2334d7104f6454"             --title "SOKNA Maintenance-only 0.3.22 R135 — recovery safety (UAT)"             --notes-file release-notes.md --prerelease
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" |
             jq -e '.draft==false and .prerelease==true
               and ([.assets[]|select(.name=="SOKNA-Maintenance-Only-0.3.22-R135-RECOVERY-SAFETY-UAT.exe")]|length)==1'
