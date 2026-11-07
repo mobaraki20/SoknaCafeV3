@@ -20,25 +20,34 @@ final class Migrations
     }
 
     /** @return list<string> versions applied during this call */
-    public function migrate(): array
+    public function migrate(?string $stopBefore = null): array
     {
         $this->ensureLedger();
         $this->acquireLock();
         try {
             $applied = array_fill_keys($this->appliedVersions(), true);
             $newlyApplied = [];
-            foreach ($this->catalog() as $version => $path) {
+            $catalog = $this->catalog();
+            if ($stopBefore !== null && !isset($catalog[$stopBefore])) {
+                throw new RuntimeException("Unknown Local migration boundary '{$stopBefore}'.");
+            }
+            foreach ($catalog as $version => $path) {
+                if ($stopBefore !== null && strcmp($version, $stopBefore) >= 0) break;
                 if (isset($applied[$version])) continue;
                 $sql = @file_get_contents($path);
                 if (!is_string($sql) || trim($sql) === '') {
                     throw new RuntimeException("Migration '{$version}' is empty or unreadable.");
                 }
 
+                // Only the two audited data-only migrations are wrapped as
+                // whole, durable InnoDB transactions. Their post-write SELECT
+                // guards then rollback all DML plus the statement ledger on error.
+                // DDL (0077) retains the separate forward-only recovery lifecycle.
                 $statements = self::splitStatements($sql);
                 $atomicDataOnly = str_starts_with($version, '0078_') || str_starts_with($version, '0079_');
                 if ($atomicDataOnly) {
                     foreach ($statements as $statement) {
-                        if (preg_match('/^(?:SELECT|INSERT|UPDATE|DELETE)\\b/i', ltrim($statement)) !== 1) {
+                        if (preg_match('/^(?:SELECT|INSERT|UPDATE|DELETE)\b/i', ltrim($statement)) !== 1) {
                             throw new RuntimeException('Data-only migration includes a nontransactional statement.');
                         }
                     }
@@ -66,6 +75,8 @@ final class Migrations
                         throw $error;
                     }
                 } else {
+                    // DDL may implicitly commit. Its statement journal and
+                    // duplicate-DDL reconciliation must remain intact.
                     foreach ($statements as $ordinal => $statement) {
                         $this->applyStatement($version, $ordinal + 1, $statement);
                     }
@@ -75,6 +86,7 @@ final class Migrations
                 }
                 $newlyApplied[] = $version;
             }
+            if ($stopBefore === null) $this->installBundledCafePhotos();
             return $newlyApplied;
         } finally {
             $this->releaseLock();
@@ -99,6 +111,13 @@ final class Migrations
             $catalog[$version] = $this->directory . DIRECTORY_SEPARATOR . $name;
         }
         ksort($catalog, SORT_STRING);
+        // Preflight calls catalog() while Apache is still running; detect
+        // damaged photo assets before any database/Apache mutation.
+        $installer = $this->photoInstaller();
+        if ($installer !== null) {
+            $installer->validate();
+            $installer->validateHostReadiness();
+        }
         return $catalog;
     }
 
@@ -117,6 +136,26 @@ final class Migrations
         $nonTransactional = (int)$q->fetchColumn();
         $q->closeCursor();
         if ($nonTransactional !== 0) throw new RuntimeException('Atomic data migration requires all business tables to use InnoDB.');
+    }
+
+    private function bundleFile(): ?string
+    {
+        $candidate = dirname($this->directory, 2) . '/resources/cafe-photo-bundle-15aban/manifest.json';
+        return is_file($candidate) ? $candidate : null;
+    }
+
+    private function photoInstaller(): ?CafePhotoBundle
+    {
+        $file = $this->bundleFile();
+        if ($file === null) return null;
+        require_once __DIR__ . '/CafePhotoBundle.php';
+        return new CafePhotoBundle($this->pdo, $file);
+    }
+
+    private function installBundledCafePhotos(): void
+    {
+        $installer = $this->photoInstaller();
+        if ($installer !== null) $installer->apply();
     }
 
     private function ensureLedger(): void
