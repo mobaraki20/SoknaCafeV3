@@ -44,8 +44,11 @@ $baseline=Join-Path $repo 'release/local-u01/m06-baseline.json'
 $nextRoot=Join-Path $env:RUNNER_TEMP 'u01-next-local'
 Run python @('windows/maintenance/tests/u01-next-package.py',(Join-Path $env:RUNNER_TEMP 'u01-local'),$nextRoot)
 $nextTarget=Join-Path $nextRoot 'target.json';$nextPackage=Join-Path $nextRoot 'SOKNA-Local-231bf-U01-Panel-Update.zip'
-$roots=@('D:\سامانه کافه آزمون U01','C:\SoknaU01-CI','C:\Sokna U01 CI With Spaces','D:\SoknaU01-CI')
-$faults=@('none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')
+# New R133 CI uses one disposable RUNNER_TEMP root and four fault checkpoints.
+# Historical U01 24-cycle behavior remains unchanged outside this explicit mode.
+$labMode=($env:SOKNA_R133_LAB_ONLY -eq '1')
+$roots=if($labMode){@((Join-Path $env:RUNNER_TEMP 'sokna-r133-windows-fixture'))}else{@('D:\سامانه کافه آزمون U01','C:\SoknaU01-CI','C:\Sokna U01 CI With Spaces','D:\SoknaU01-CI')}
+$faults=if($labMode){@('none','APACHE_STOPPED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED')}else{@('none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')}
 $results=@()
 try {
   for($attempt=0;$attempt-lt60;$attempt++){
@@ -131,9 +134,12 @@ PidFile "$ar/logs/httpd.pid"
       if(Test-Path $root){Remove-Item $root -Recurse -Force}
     }
   }}
-  Need ($results.Count-eq24) 'REQUIRE_24_COMPLETED_CYCLES'
+  $expectedCycles=if($labMode){4}else{24}
+  Need ($results.Count-eq$expectedCycles) 'U01_REQUIRED_CYCLES_INCOMPLETE'
   $results|ConvertTo-Json -Depth 8|Set-Content (Join-Path $env:RUNNER_TEMP 'U01-WINDOWS-CYCLES.json') -Encoding utf8NoBOM
-  Write-Host 'U01_WINDOWS_REAL_APACHE_PHP_MARIADB_24_CYCLES_PASS'
+  Write-Host "U01_WINDOWS_REAL_APACHE_PHP_MARIADB_$($expectedCycles)_CYCLES_PASS"
+  # R133 tests Maintenance only; do not build unrelated Home software.
+  if(-not$labMode){
   # Run the actual Home bridge PHP+Go result parsers on Windows against this
   # disposable MariaDB, then build the two Win10-compatible entrypoints.
   Run python @('release/build-home-u01.py','--panel-directory',"$env:RUNNER_TEMP/u01-local")
@@ -148,6 +154,7 @@ PidFile "$ar/logs/httpd.pid"
     Run go @('build','-buildvcs=false','-trimpath','-ldflags=-H=windowsgui -s -w -X main.allowMutationBuild=true','-o',"$homeOut/SOKNA-Home-231au-to-231bf-UPDATE-UAT.exe",'.')
     Get-ChildItem $homeOut -Filter *.exe | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content (Join-Path $homeOut 'SHA256SUMS-HOME.txt') -Encoding ascii
   } finally { Pop-Location }
+  }
 } finally {
   if(-not$db.HasExited){$db.Kill($true);$db.WaitForExit()}
   $dbOut.Result|Set-Content (Join-Path $lab 'mariadb-stdout.log');$dbErr.Result|Set-Content (Join-Path $lab 'mariadb-stderr.log')
