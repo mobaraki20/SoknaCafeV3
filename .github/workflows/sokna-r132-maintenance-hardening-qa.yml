@@ -42,6 +42,17 @@ jobs:
           sudo apt-get install -y -qq php-cli php-mysql mariadb-client
       - name: Fail before mutation and succeed without applying DML
         run: bash qa/sokna-r132/test-preflight-mariadb.sh
+      - name: Real logical backup, SHA-256 and independent restore in disposable MariaDB
+        env: &r133_mariadb
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_ROOT_USER: root
+          SOKNA_TEST_DB_ROOT_PASS: ci-root-only
+          SOKNA_MARIADB_CI_ONLY: '1'
+        run: bash windows/maintenance/tests/s7e1-disposable-mariadb-restore-drill.sh
+      - name: Crash after actual DDL and verify forward-only recovery and intact encrypted backup
+        env: *r133_mariadb
+        run: python3 windows/maintenance/tests/s7e2b-mariadb-forward-crash-ci.py
   windows-maintenance-build:
     runs-on: windows-latest
     timeout-minutes: 20
