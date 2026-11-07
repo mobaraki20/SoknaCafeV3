@@ -95,6 +95,24 @@ try
     ExpectReject(() => inspector.VerifyAndStage(uploaded, installed));
     Check(!Directory.Exists(paths.StagingRoot), "UAT Stage allocated durable staging directory");
     Console.WriteLine("PASS both candidate ownership paths reject unsigned Local UAT before Stage");
+    // Use actual Supervisor preflight/Stage coordinators; a UAT rejection must
+    // not leave a durable failed Stage operation that blocks future updates.
+    AtomicFile.WriteJson(paths.InstalledReleaseIdentityPath, installed);
+    var store = new MaintenanceOperationStore(paths);
+    var journal = new DurableJournal(paths.JournalPath);
+    var supervisor = new SupervisorStateStore(paths).LoadOrCreate();
+    var preflightOutcome = new SupervisorLocalPackagePreflightCoordinator(
+        paths, store, journal, supervisor).Verify(packageHash + ".zip",
+            "user:1", "r133-uat-preflight");
+    Check(preflightOutcome.Operation.State == "verified", "UAT diagnostic VerifyOnly unavailable");
+    ExpectReject(() => new SupervisorLocalReleaseStageCoordinator(
+        paths, store, journal, supervisor).Stage(
+            preflightOutcome.Operation.OperationId, "user:1", "r133-rejected-stage"));
+    var stageAllocated = Directory.EnumerateFiles(paths.OperationsRoot, "op-*.json")
+        .Select(file => AtomicFile.ReadJson<MaintenanceOperation>(file))
+        .Any(op => op.OperationType == "update.local-stage");
+    Check(!stageAllocated, "UAT rejection allocated a blocking durable Stage operation");
+    Console.WriteLine("PASS UAT supervisor preflight remains readable; Stage rejection creates no durable operation");
 
     // Deliberately synthetic CI claims: this is NOT a real production artifact.
     // These flags are used only in a random temp Inbox. Publisher signatures
