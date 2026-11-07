@@ -85,28 +85,57 @@ try
     Check(preflight.OperatorAuthorized && !preflight.SignatureVerified &&
         preflight.ArtifactIntegrityVerified && preflight.ExactBaselineVerified == true &&
         !preflight.SignedInstallIntent, "operator provenance without any signature");
-    Console.WriteLine("PASS operator-uploaded unsigned Local, expired/test flags ignored");
-    // A valid operator-authorized Local Stage must remain installable all
-    // the way to inactive candidate promotion; the old publisher failure
-    // matrix/production flag must not reappear as a downstream blocker.
+    Console.WriteLine("PASS operator-origin VerifiedOnly still works for an explicitly UAT package");
     var parsed = JsonSerializer.Deserialize<ReleaseSetManifest>(manifestBytes,
         AtomicFile.JsonOptions) ?? throw new InvalidDataException("TEST_MANIFEST_PARSE_FAILED");
+    ExpectReject(() => SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
+        parsed, operatorAuthorized: true));
+    ExpectReject(() => SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
+        parsed, operatorAuthorized: false));
+    ExpectReject(() => inspector.VerifyAndStage(uploaded, installed));
+    Check(!Directory.Exists(paths.StagingRoot), "UAT Stage allocated durable staging directory");
+    Console.WriteLine("PASS both candidate ownership paths reject unsigned Local UAT before Stage");
+
+    // Deliberately synthetic CI claims: this is NOT a real production artifact.
+    // These flags are used only in a random temp Inbox. Publisher signatures
+    // and production install qualification must be established independently.
+    var qualifiedNode = System.Text.Json.Nodes.JsonNode.Parse(manifestBytes)!.AsObject();
+    qualifiedNode["status"] = "PRODUCTION_CANDIDATE_CI_FIXTURE";
+    qualifiedNode["for_install"] = true;
+    qualifiedNode["production_pass"] = true;
+    qualifiedNode["qualification"] = new System.Text.Json.Nodes.JsonObject
+    {
+        ["failure_matrix_id"] = "ci-fixture-not-a-production-witness",
+        ["failure_matrix_cases_required"] = 80,
+        ["real_windows"] = true,
+        ["real_mariadb"] = true,
+        ["real_public_host"] = false,
+        ["canary"] = true,
+        ["recovery_console_web_down"] = true,
+        ["business_backup_consistency_real_mariadb"] = true,
+        ["remote_vault_real_host"] = false,
+        ["clean_machine_remote_restore"] = false
+    };
+    var qualifiedBytes = JsonSerializer.SerializeToUtf8Bytes(qualifiedNode);
+    var qualifiedZip = CreateZipBytes(("release-set.json", qualifiedBytes),
+        ("artifacts/local/web.zip", webBytes));
+    var qualifiedSha = Sha(qualifiedZip);
+    var qualifiedPath = Path.Combine(paths.InboxRoot, qualifiedSha + ".zip");
+    File.WriteAllBytes(qualifiedPath, qualifiedZip);
+    var qualifiedManifest = JsonSerializer.Deserialize<ReleaseSetManifest>(
+        qualifiedBytes, AtomicFile.JsonOptions) ?? throw new InvalidDataException("QUALIFIED_CI_MANIFEST_PARSE_FAILED");
     SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
-        parsed, operatorAuthorized: true);
-    ExpectReject(() =>
-        SupervisorInactiveLocalCandidateCoordinator.RequireInstallableLegacyRelease(
-            parsed, operatorAuthorized: false));
-    Console.WriteLine("PASS downstream Local candidate qualification without issuer flags");
-    var staged = inspector.VerifyAndStage(uploaded, installed);
+        qualifiedManifest, operatorAuthorized: true);
+    var staged = inspector.VerifyAndStage(qualifiedPath, installed);
     Check(staged.OperatorAuthorized && !staged.SignatureVerified &&
         staged.ArtifactIntegrityVerified && staged.PreflightIdentityMatch,
-        "unsigned Stage receipt explicitly records operator authority");
+        "synthetic qualified Local Stage not recorded");
     Check(File.Exists(Path.Combine(staged.StageRoot, "artifacts", "local", "web.zip")),
-        "staged artifact exists");
-    var repeated = inspector.VerifyAndStage(uploaded, installed);
-    Check(repeated.PackageSha256 == staged.PackageSha256 &&
-        repeated.OperatorAuthorized, "idempotent Stage readback");
-    Console.WriteLine("PASS unsigned Local Stage/receipt and idempotency, no private/public signer key");
+        "qualified synthetic Stage artifact exists");
+    var repeated = inspector.VerifyAndStage(qualifiedPath, installed);
+    Check(repeated.PackageSha256 == staged.PackageSha256 && repeated.OperatorAuthorized,
+        "synthetic qualification stage replay mismatch");
+    Console.WriteLine("PASS synthetic approved Local Stage is possible, UAT Stage remains blocked");
 
     var foreign = Path.Combine(root, "outside-inbox.zip");
     File.WriteAllBytes(foreign, unsignedZip);
@@ -128,7 +157,7 @@ try
 
     Check(!Directory.Exists(paths.ReleaseSigningTrustRoot),
         "keyless Local upload does not create or read signing trust");
-    Console.WriteLine("KEYLESS_OPERATOR_LOCAL_CONTRACT_PASS");
+    Console.WriteLine("OPERATOR_LOCAL_UAT_DENIAL_AND_SYNTHETIC_STAGE_CONTRACT_PASS");
 }
 finally
 {
