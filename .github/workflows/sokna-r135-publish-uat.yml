@@ -83,6 +83,13 @@ jobs:
 
           SHA-256 verified: `9ca0ddd68d2db3f2bb084c0647e95255b2836f898ac4719ecef4bbcccdaeaac2`
 
+          **منشأ فایل:** شاخهٔ آزمایشی `qa/sokna-r135-maintenance-only-20261107`،
+          کامیت `8252ea8ef9328b9b5b695963bfbb420d66e09746`،
+          اجرای CI شمارهٔ `42405964654` (PASS).
+          **توجه: تگ این Release فقط برای توزیع فایل به main اشاره می‌کند؛ آرشیو Source Code
+          خودکار GitHub سورس سازندهٔ این EXE نیست.** برای منشأ واقعی فایل،
+          `SOURCE-PROVENANCE-R135-REV2.json` و `UAT-BUILD-REPORT.json` را ببینید.
+
           تغییرات فقط در Maintenance Supervisor و Update Engine انجام شده است.
           Runtime، Print Agent، Recovery Console، Local Web، Public Web و دیتابیس کافه
           در این بسته نصب یا به‌روزرسانی نمی‌شوند.
@@ -105,31 +112,34 @@ jobs:
 
           The release is Windows UAT only, not production approval.
           NOTES
-          # GitHub's release endpoint rejects workflow-changing target_commitish
-          # with GITHUB_TOKEN even if Contents:write is granted. Pre-create the
-          # immutable verified SHA tag using the Git refs endpoint, then publish
-          # against that existing tag without --target. Never target main.
-          source_sha=8252ea8ef9328b9b5b695963bfbb420d66e09746
-          ref_path="repos/$GITHUB_REPOSITORY/git/ref/tags/$tag"
-          if gh api "$ref_path" --jq '.object.sha' > existing-tag-sha.txt 2>/dev/null; then
-            test "$(cat existing-tag-sha.txt)" = "$source_sha" || {
-              echo 'TAG_SHA_MISMATCH: refusing to publish'; exit 1;
-            }
-          else
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-              -f "ref=refs/tags/$tag" -f "sha=$source_sha" > new-tag.json
-            jq -e --arg sha "$source_sha" --arg tag "$tag" \
-              '.ref==("refs/tags/"+$tag) and .object.sha==$sha' new-tag.json
-          fi
-          test "$(gh api "$ref_path" --jq '.object.sha')" = "$source_sha"
+          # The source-build commit changes .github/workflows relative to main.
+          # GITHUB_TOKEN cannot create refs/releases pointing at that commit.
+          # Publish exact QA assets under a distribution-only release tag anchored
+          # to main, and EXPLICITLY preserve the actual build SHA as provenance.
+          # The generated GitHub source archive DOES NOT correspond to the EXE.
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq '.commit.sha')
+          jq -n \
+            --arg source_commit "8252ea8ef9328b9b5b695963bfbb420d66e09746" \
+            --arg source_branch "qa/sokna-r135-maintenance-only-20261107" \
+            --arg main_ref_commit "$main_sha" \
+            --arg exe "SOKNA-Maintenance-Only-0.3.22-R135-REV2-RECOVERY-SAFETY-UAT.exe" \
+            --arg sha256 "9ca0ddd68d2db3f2bb084c0647e95255b2836f898ac4719ecef4bbcccdaeaac2" \
+            '{format:"sokna-qa-binary-provenance-v1",source_commit:$source_commit,
+              source_branch:$source_branch,release_tag_target:"main",
+              release_tag_target_commit:$main_ref_commit,
+              github_generated_source_archive_is_not_installer_source:true,
+              installer_name:$exe,installer_sha256:$sha256,
+              build_run:42405964654,production_approved:false}' > dist/SOURCE-PROVENANCE-R135-REV2.json
           gh release create "$tag" \
             dist/SOKNA-Maintenance-Only-0.3.22-R135-REV2-RECOVERY-SAFETY-UAT.exe \
             dist/SHA256SUMS.txt dist/UAT-BUILD-REPORT.json \
             dist/component-install-manifest-v1.json dist/windows-services-component-manifest-v2.json \
-            --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "SOKNA Maintenance-only 0.3.22 R135 REV2 — recovery safety (UAT)" \
+            dist/SOURCE-PROVENANCE-R135-REV2.json \
+            --repo "$GITHUB_REPOSITORY" --target main \
+            --title "SOKNA Maintenance-only 0.3.22 R135 REV2 — recovery safety (UAT binary)" \
             --notes-file release-notes.md --prerelease
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" |
             jq -e '.draft==false and .prerelease==true
-              and ([.assets[]|select(.name=="SOKNA-Maintenance-Only-0.3.22-R135-REV2-RECOVERY-SAFETY-UAT.exe")]|length)==1'
+              and ([.assets[]|select(.name=="SOKNA-Maintenance-Only-0.3.22-R135-REV2-RECOVERY-SAFETY-UAT.exe" and .size==53410519)]|length)==1
+              and ([.assets[]|select(.name=="SOURCE-PROVENANCE-R135-REV2.json")]|length)==1'
           echo "PUBLISHED_R135_UAT: https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag"
