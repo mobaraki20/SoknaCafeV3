@@ -165,3 +165,13 @@ jobs:
             sokna-r126-home-adaptive-mariadb.log
           if-no-files-found: warn
           retention-days: 14
+
+  home-r126-windows-selector:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: R126 PowerShell selector syntax and blocked-state gates
+        shell: pwsh
+        run: |
+          & ./qa/sokna-r126/test-windows-selector.ps1
