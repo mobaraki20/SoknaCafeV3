@@ -51,7 +51,7 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           & ./packaging/windows/scripts/prepare-maintenance-only-payload-v1.ps1 -RepoRoot $PWD.Path -MaintenanceAppBundle (Join-Path $env:RUNNER_TEMP 'r135-app') -OutputRoot (Join-Path $env:RUNNER_TEMP 'r135-payload')
-          if ($LASTEXITCODE -ne 0) { throw 'Payload creation failed' }
+          if (-not (Test-Path -LiteralPath (Join-Path $env:RUNNER_TEMP 'r135-payload/component-install-manifest-v1.json') -PathType Leaf)) { throw 'Payload creation failed' }
           $p=Join-Path $env:RUNNER_TEMP 'r135-payload'
           $m=Get-Content (Join-Path $p 'component-install-manifest-v1.json') -Raw | ConvertFrom-Json
           $group=Get-Content (Join-Path $p 'windows-services-component-manifest-v2.json') -Raw | ConvertFrom-Json
@@ -91,7 +91,7 @@ jobs:
           Copy-Item (Join-Path $env:RUNNER_TEMP 'r135-payload/windows-services-component-manifest-v2.json') $output
           $report=[ordered]@{
             format='sokna-r135-maintenance-only-qa-v1'
-            source_commit='$'+'{{ github.sha }}'
+            source_commit=$env:GITHUB_SHA
             installer_file=[IO.Path]::GetFileName($exe)
             installer_sha256=$sha
             installer_bytes=(Get-Item $exe).Length
