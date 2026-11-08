@@ -51,6 +51,7 @@ var inactiveSlotCoordinator = new SupervisorInactiveLocalSlotCoordinator(paths, 
 var codeOnlyPreExecution = new SupervisorLocalCodeOnlyPreExecution(
     paths, operations, localStageRecoveryCoordinator);
 var inactiveHostInspector = new InactiveLocalHostReadinessInspector(paths, operations);
+var r125EvidenceReconciler = new SupervisorR125LifecycleEvidenceReconciler(paths, operations, journal, state);
 var legacySlotReconciler = new SupervisorLegacySlotReconciler(paths, operations, journal, state);
 // No listening/regular update writes until interrupted Stage evidence is quarantined.
 _ = stageRestartReconciler.ReconcileStoppedProcess();
@@ -180,6 +181,7 @@ app.Use(async (context, next) =>
     var isLocalStageRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/reconcile-stage", StringComparison.Ordinal);
     var isLocalCodeOnlyActivation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/activate-code-only", StringComparison.Ordinal);
     var isLocalCodeOnlyRecovery = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/recover-code-only", StringComparison.Ordinal);
+    var isR125Reconciliation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-updates/reconcile-r125-lifecycle", StringComparison.Ordinal);
     var isStageMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/update/stage", StringComparison.Ordinal);
     var isLocalSlotMutation = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/home-cycle", StringComparison.Ordinal);
     var isProductionMigration = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/local-slots/migrate", StringComparison.Ordinal);
@@ -187,11 +189,11 @@ app.Use(async (context, next) =>
     var isBackupProvision = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/backups/configure", StringComparison.Ordinal);
     var isBackupDisable = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/backups/disable", StringComparison.Ordinal);
     var isBackupRenewal = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/v1/backups/renew-upload-credential", StringComparison.Ordinal);
-    var isMutation = isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isLocalCodeOnlyActivation || isLocalCodeOnlyRecovery || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery || isBackupProvision || isBackupDisable || isBackupRenewal;
+    var isMutation = isLocalInboxChunk || isLocalPackagePreflight || isLocalReleaseStage || isLocalActivationPlan || isInactiveCandidate || isInactiveSlot || isLocalStageRecovery || isLocalCodeOnlyActivation || isLocalCodeOnlyRecovery || isR125Reconciliation || isStageMutation || isLocalSlotMutation || isProductionMigration || isProductionRecovery || isBackupProvision || isBackupDisable || isBackupRenewal;
     if (!HttpMethods.IsGet(context.Request.Method) && !isMutation)
     {
         await WriteEnvelope(context, StatusCodes.Status405MethodNotAllowed, false, "p3_local_slots", "METHOD_NOT_ALLOWED", false,
-            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/inbox-chunk", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/activation-plan", "POST /v1/local-updates/prepare-inactive", "POST /v1/local-updates/prepare-inactive-slot", "POST /v1/local-updates/reconcile-stage", "POST /v1/local-updates/activate-code-only", "POST /v1/local-updates/recover-code-only", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
+            new { allowed_methods = new[] { "GET", "POST /v1/local-updates/inbox-chunk", "POST /v1/local-updates/preflight", "POST /v1/local-updates/stage", "POST /v1/local-updates/activation-plan", "POST /v1/local-updates/prepare-inactive", "POST /v1/local-updates/prepare-inactive-slot", "POST /v1/local-updates/reconcile-stage", "POST /v1/local-updates/activate-code-only", "POST /v1/local-updates/recover-code-only", "POST /v1/local-updates/reconcile-r125-lifecycle", "POST /v1/update/stage", "POST /v1/local-slots/migrate", "POST /v1/local-slots/recover", "POST /v1/local-slots/home-cycle" }, activation_enabled = false, database_mutation_enabled = false });
         return;
     }
 
@@ -259,7 +261,7 @@ app.Use(async (context, next) =>
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "WEB_ADAPTER_KEY_REQUIRED", false, new { });
         return;
     }
-    if ((isLocalStageRecovery || isLocalCodeOnlyRecovery || isProductionRecovery) && keyId != "recovery-console")
+    if ((isLocalStageRecovery || isLocalCodeOnlyRecovery || isR125Reconciliation || isProductionRecovery) && keyId != "recovery-console")
     {
         await WriteEnvelope(context, StatusCodes.Status403Forbidden, false, "forbidden", "RECOVERY_CONSOLE_KEY_REQUIRED", true, new { });
         return;
@@ -1284,6 +1286,64 @@ app.MapPost("/v1/local-slots/migrate", async context =>
     {
         var code = ex.Message.Contains("Idempotency key was already used", StringComparison.Ordinal) ? "IDEMPOTENCY_CONFLICT" : "REQUEST_INVALID";
         await WriteEnvelope(context, code == "IDEMPOTENCY_CONFLICT" ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest, false, "rejected", code, false, new { error = ex.Message });
+    }
+});
+
+// R125: strictly signed Recovery Console authority; no Web-adapter / browser
+// access. This only archives a byte-exact recovered lifecycle proof after the
+// real MariaDB migration ledger has been inspected READ-ONLY.
+app.MapPost("/v1/local-updates/reconcile-r125-lifecycle", async context =>
+{
+    if (!TrySingleHeader(context, HmacProtocol.HeaderIdempotencyKey, out var idempotencyKey))
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "IDEMPOTENCY_KEY_REQUIRED", true, new { });
+        return;
+    }
+    try
+    {
+        var raw = context.Items[SignedBodyItem] as byte[] ?? Array.Empty<byte>();
+        var request = JsonSerializer.Deserialize<R125LifecycleReconciliationRequest>(
+            raw, AtomicFile.JsonOptions) ??
+            throw new InvalidDataException("R125_RECONCILIATION_REQUEST_MISSING");
+        var result = r125EvidenceReconciler.Reconcile(request, idempotencyKey);
+        var committed = result.Operation.State == "committed";
+        await WriteEnvelope(context,
+            committed ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable,
+            committed, result.Operation.State,
+            result.Operation.ResultCode ?? "R125_RECONCILIATION_UNPROVEN",
+            !committed, new
+            {
+                result.Operation, result.Created, result.Reconciled,
+                proof_sha256 = result.ProofSha256,
+                archive_is_not_database_backup = true,
+                database_mutation_performed = false,
+                public_mutation_performed = false,
+                local_web_mutation_performed = false,
+                windows_service_mutation_performed = false,
+                panel_update_ready = false
+            }, result.Operation.OperationId);
+    }
+    catch (JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status400BadRequest, false,
+            "rejected", "REQUEST_JSON_INVALID", true, new { });
+    }
+    catch (InvalidOperationException ex) when (ex.Message is
+        "UPDATER_OPERATION_BUSY" or MachineMutationLease.ConflictCode)
+    {
+        await WriteEnvelope(context, StatusCodes.Status409Conflict, false,
+            "blocked", "UPDATER_OPERATION_BUSY", true,
+            new { panel_update_ready = false });
+    }
+    catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException or
+        IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or
+        System.Security.Cryptography.CryptographicException or TimeoutException)
+    {
+        // No exception messages, DB credentials, absolute paths or snapshot bytes.
+        await WriteEnvelope(context, StatusCodes.Status422UnprocessableEntity, false,
+            "blocked", "R125_EVIDENCE_RECONCILIATION_UNQUALIFIED", true,
+            new { error_type = ex.GetType().Name, panel_update_ready = false });
     }
 });
 
