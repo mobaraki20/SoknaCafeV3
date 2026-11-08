@@ -63,6 +63,38 @@ internal sealed class RoutineLocalLifecycle
             maintenancePaths, signedReleaseSetId, targetTreeSha256);
     }
 
+    // P0 read-only diagnostics: return only bounded, predefined reason codes.
+    // Never log/serialize exception messages (which can contain private paths).
+    // The gating logic in Open/RequireIdle is deliberately unchanged.
+    internal static string ClassifyIdleFailure(Exception error)
+    {
+        if (error is InvalidDataException)
+        {
+            var message = error.Message;
+            if (message == "Local updater has a recovery-required marker.")
+                return "LOCAL_LIFECYCLE_RECOVERY_MARKER_PRESENT";
+            if (message == "Prior routine lifecycle rollback evidence still exists; inspect/recover before a new activation.")
+                return "LOCAL_LIFECYCLE_ROLLBACK_PROOF_PRESENT";
+            if (message == "Local lifecycle version/format does not match the active Web release.")
+                return "LOCAL_LIFECYCLE_VERSION_OR_FORMAT_MISMATCH";
+            if (message == "Local lifecycle is not idle: staged")
+                return "LOCAL_LIFECYCLE_PENDING_STAGE";
+            if (message == "Local lifecycle is not idle: activation_journal")
+                return "LOCAL_LIFECYCLE_PENDING_ACTIVATION_JOURNAL";
+            if (message == "Local lifecycle is not idle: recovery_mode")
+                return "LOCAL_LIFECYCLE_RECOVERY_MODE_ACTIVE";
+            if (message == "Local lifecycle state drifted during cross-version activation.")
+                return "LOCAL_LIFECYCLE_STATE_CHANGED";
+            if (message == "Local managed inventory drifted during cross-version activation.")
+                return "LOCAL_LIFECYCLE_MANAGED_INVENTORY_CHANGED";
+            if (message == "Local lifecycle JSON is invalid.")
+                return "LOCAL_LIFECYCLE_STATE_JSON_INVALID";
+            if (message.StartsWith("Local data-root discovery failed (CLI status ", StringComparison.Ordinal))
+                return "LOCAL_LIFECYCLE_DATA_ROOT_DISCOVERY_FAILED";
+        }
+        return "LOCAL_LIFECYCLE_EVIDENCE_UNAVAILABLE";
+    }
+
     public static RoutineLocalLifecycle Resume(string packageRoot, string evidenceRoot, string currentBuild,
         MaintenancePaths? maintenancePaths, string? releaseSetId, string targetTree)
     {
