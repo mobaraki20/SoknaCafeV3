@@ -88,7 +88,11 @@ if($lab){
  $dataRoot=Join-Path $LabRoot 'ProgramData\SOKNA'
 }else{
  $svc=Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'" -ErrorAction Stop
- if(-not$svc -or [string]$svc.State-ne'Running'){Fail 'R125_BASELINE_SERVICE_NOT_RUNNING'}
+ if(-not$svc){Fail 'R125_BASELINE_SERVICE_MISSING'}
+  $existingPending=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA\setup\r125-0323-three-component\active.json'
+  if([string]$svc.State-ne'Running' -and -not(Test-Path -LiteralPath $existingPending -PathType Leaf)){
+   Fail 'R125_BASELINE_SERVICE_NOT_RUNNING'
+  }
  $image=[Environment]::ExpandEnvironmentVariables(([string]$svc.PathName).Trim())
  if($image-match'^"([^"]+\.exe)"'){$exe=$Matches[1]}
  elseif($image-match'^([^\s"]+\.exe)'){$exe=$Matches[1]}
