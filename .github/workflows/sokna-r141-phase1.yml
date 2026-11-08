@@ -1,0 +1,40 @@
+name: SOKNA R141 Phase 1 catalog and Push read-only audit QA
+on:
+  push:
+    branches:
+      - qa/sokna-r141-phase1-catalog-push-20261108
+  workflow_dispatch:
+jobs:
+  phase1-read-only-catalog-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: phase1-ci-root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native PHP 8 CLI, MySQL driver
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y php-cli php-mysql
+          php -m | grep -i pdo_mysql
+      - name: Confirm audit is read-only and source is syntax clean
+        run: |
+          php -l apps/local-web/src/Domain/System/CatalogPushReadOnlyAudit.php
+          php -l apps/local-web/src/Domain/System/SupportBundleWriter.php
+          php -l apps/local-web/src/Core/Bootstrap.php
+          php -l apps/local-web/bootstrap.php
+          php -l qa/sokna-r141/test-catalog-push-readonly.php
+          php -l qa/sokna-r141/test-catalog-push-mariadb.php
+          php qa/sokna-r141/test-catalog-push-readonly.php
+      - name: MariaDB 11.4 exact nine-family + push-configuration read-only regression
+        env:
+          SOKNA_PHASE1_DISPOSABLE: '1'
+        run: php qa/sokna-r141/test-catalog-push-mariadb.php
