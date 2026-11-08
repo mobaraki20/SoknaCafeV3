@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - qa/sokna-p0-diagnostics-release-gate-20261108
+      - qa/sokna-p0-r125-lifecycle-safe-assessment-20261108
   workflow_dispatch:
 permissions:
   contents: read
