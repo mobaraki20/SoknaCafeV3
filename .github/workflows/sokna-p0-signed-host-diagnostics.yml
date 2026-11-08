@@ -54,3 +54,23 @@ jobs:
         run: |
           echo 'Static source+archive diagnostics passed.'
           echo 'Actual Windows signed readback, backup restore, and installed Commit remain NOT VERIFIED.'
+
+  windows-standard-support-bridge:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell parser of real and QA support collectors
+        shell: pwsh
+        run: |
+          $paths=@('packaging/windows/scripts/collect-support-v3.ps1',
+                   'packaging/windows/scripts/collect-support-unified-v1.ps1',
+                   'qa/sokna-p0-diagnostics/test_windows_support_bridge.ps1')
+          foreach($path in $paths) {
+            $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path $path),[ref]$null,[ref]$errors)|Out-Null
+            if($errors){$errors|ForEach-Object{Write-Host $_};throw ("POWERSHELL_PARSE_FAILED: "+$path)}
+          }
+      - name: Full safe support ZIP with exact host reason and missing-inspector negative control
+        shell: pwsh
+        run: ./qa/sokna-p0-diagnostics/test_windows_support_bridge.ps1
