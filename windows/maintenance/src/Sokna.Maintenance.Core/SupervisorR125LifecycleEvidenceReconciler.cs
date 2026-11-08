@@ -28,11 +28,27 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
     private readonly MaintenanceOperationStore _operations;
     private readonly DurableJournal _journal;
     private readonly SupervisorState _supervisor;
+    // The production constructor ALWAYS performs the live read-only host/DB gate.
+    // Internal test seam only: disposable CI can exercise the exact journal,
+    // lease, archive and crash/retry logic without connecting to a cafe database.
+    private readonly Action<string, string, string> _qualify;
+    private readonly Action? _afterMoveTestHook;
 
     public SupervisorR125LifecycleEvidenceReconciler(MaintenancePaths paths,
         MaintenanceOperationStore operations, DurableJournal journal, SupervisorState supervisor)
     {
         _paths = paths; _operations = operations; _journal = journal; _supervisor = supervisor;
+        _qualify = RequireReadOnlyQualification;
+    }
+
+    internal SupervisorR125LifecycleEvidenceReconciler(MaintenancePaths paths,
+        MaintenanceOperationStore operations, DurableJournal journal,
+        SupervisorState supervisor, Action<string, string, string> testQualification,
+        Action? testAfterMove = null)
+        : this(paths, operations, journal, supervisor)
+    {
+        _qualify = testQualification ?? throw new ArgumentNullException(nameof(testQualification));
+        _afterMoveTestHook = testAfterMove;
     }
 
     /// <summary>
@@ -87,9 +103,14 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
                 var receiptPath = Path.Combine(_paths.LocalSlotStateRoot,
                     "reconciled-lifecycle-evidence", "proof-" + prior.OperationId + ".receipt.json");
                 VerifySourceSha(saved, sha);
-                if (!File.Exists(receiptPath) ||
-                    (File.GetAttributes(receiptPath) & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidDataException("R125_COMMITTED_ARCHIVE_RECEIPT_MISSING");
+                var committedRoot = Path.Combine(_paths.LocalSlotStateRoot,
+                    "reconciled-lifecycle-evidence");
+                if (File.Exists(Path.Combine(_paths.LocalSlotStateRoot, ProofFile)))
+                    throw new InvalidDataException("R125_COMMITTED_SOURCE_PROOF_REAPPEARED");
+                VerifyIntent(Path.Combine(committedRoot,
+                    "proof-" + prior.OperationId + ".intent.json"),
+                    prior.OperationId, sha, request.ExpectedBuild);
+                VerifyReceipt(receiptPath, prior.OperationId, sha, request.ExpectedBuild);
                 return new(prior, false, true, sha, false, false);
             }
             if (prior is not null && prior.State == "failed_pre_mutation")
@@ -106,7 +127,7 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
 
             // All preconditions are read-only, including a live SELECT-only
             // migration ledger check.  Failure here never moves a file.
-            RequireReadOnlyQualification(evidence, request.ExpectedBuild, sha);
+            _qualify(evidence, request.ExpectedBuild, sha);
             var (operation, created) = prior is null
                 ? _operations.GetOrCreate(idempotencyKey, requestHash, OperationType,
                     requestRef, request.OperatorId)
@@ -133,13 +154,13 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
                     if (File.Exists(source) || !File.Exists(intent))
                         throw new InvalidDataException("R125_RECOVERY_DUAL_OR_MISSING_PROOF");
                     VerifyIntent(intent, operation.OperationId, sha, request.ExpectedBuild);
-                    RequireReadOnlyQualification(archive, request.ExpectedBuild, sha);
+                    _qualify(archive, request.ExpectedBuild, sha);
                 }
                 else
                 {
                     if (!File.Exists(source))
                         throw new InvalidDataException("R125_RECOVERY_PROOF_DISAPPEARED");
-                    RequireReadOnlyQualification(source, request.ExpectedBuild, sha);
+                    _qualify(source, request.ExpectedBuild, sha);
                     if (File.Exists(intent))
                         VerifyIntent(intent, operation.OperationId, sha, request.ExpectedBuild);
                     else
@@ -150,6 +171,7 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
                     VerifySourceSha(source, sha);
                     File.Move(source, archive); // Same disk; never delete evidence.
                     VerifySourceSha(archive, sha);
+                    _afterMoveTestHook?.Invoke();
                 }
                 AtomicFile.WriteJson(receipt, new R125ArchiveReceipt(
                     "sokna-r125-lifecycle-archive-receipt-v1",
@@ -244,6 +266,23 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
         var hash = Convert.ToHexString(SHA256.HashData(s)).ToLowerInvariant();
         if (!string.Equals(hash, expected, StringComparison.Ordinal))
             throw new InvalidDataException("R125_PROOF_SHA256_MISMATCH");
+    }
+
+    private static void VerifyReceipt(string path, string operationId, string sha, string build)
+    {
+        if (!File.Exists(path) ||
+            (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0 ||
+            new FileInfo(path).Length is <= 0 or > 16_384)
+            throw new InvalidDataException("R125_COMMITTED_ARCHIVE_RECEIPT_MISSING");
+        var receipt = AtomicFile.ReadJson<R125ArchiveReceipt>(path);
+        if (receipt.Format != "sokna-r125-lifecycle-archive-receipt-v1" ||
+            receipt.OperationId != operationId || receipt.ExpectedBuild != build ||
+            receipt.ProofSha256 != sha ||
+            receipt.FinalLifecyclePhase != "RECOVERED_TO_PREVIOUS_SLOT" ||
+            !receipt.BytesExact || !receipt.ActiveIdentityQualified ||
+            !receipt.LiveDbMigrationLedgerQualified ||
+            receipt.DatabaseMutationPerformed || receipt.PublicMutationPerformed)
+            throw new InvalidDataException("R125_COMMITTED_ARCHIVE_RECEIPT_UNQUALIFIED");
     }
 
     private static void VerifyIntent(string path, string operationId, string sha, string build)
