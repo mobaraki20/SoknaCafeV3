@@ -10,8 +10,11 @@ $web=$lab.'/'.($phase==='baseline'?'r75-web':'r140-web');
 if(!is_file($web.'/src/Core/Migrations.php')) exit(65);
 require_once $web.'/src/Core/MigrationExecutionException.php';
 require_once $web.'/src/Core/Migrations.php';
-$dsn='mysql:host=127.0.0.1;port=3306;charset=utf8mb4';
-$pdo=new PDO($dsn,'root','ci-root-only',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);
+$port=getenv('SOKNA_R140_PORT') ?: '3306';
+$pass=getenv('SOKNA_R140_PASSWORD');
+if($pass===false)$pass='ci-root-only';
+$dsn='mysql:host=127.0.0.1;port='.$port.';charset=utf8mb4';
+$pdo=new PDO($dsn,'root',$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);
 if($phase==='baseline') {
     $pdo->exec('DROP DATABASE IF EXISTS sokna_r140_exact');
     $pdo->exec('CREATE DATABASE sokna_r140_exact CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
@@ -22,7 +25,7 @@ if($phase!=='baseline'){
     $dataDir=$lab.'/ci-data';
     $mediaRoot=$dataDir.'/guest-media';
     if(!is_dir($mediaRoot) && !mkdir($mediaRoot,0700,true))throw new RuntimeException('CI media vault creation failed');
-    $cfg=['app'=>['data_dir'=>$dataDir], 'db'=>['host'=>'127.0.0.1','port'=>3306,'name'=>'sokna_r140_exact','user'=>'root','pass'=>'ci-root-only']];
+    $cfg=['app'=>['data_dir'=>$dataDir], 'db'=>['host'=>'127.0.0.1','port'=>$port,'name'=>'sokna_r140_exact','user'=>'root','pass'=>$pass]];
     file_put_contents($lab.'/config.php','<?php return '.var_export($cfg,true).';');
 }
 $m=new Sokna\Local\Core\Migrations($pdo,$web.'/database/migrations');
