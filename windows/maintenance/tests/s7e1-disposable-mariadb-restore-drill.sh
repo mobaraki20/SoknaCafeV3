@@ -5,7 +5,7 @@
 set -euo pipefail
 
 if [[ "${GITHUB_ACTIONS:-}" != "true" || "${RUNNER_OS:-}" != "Linux" ||
-      "${GITHUB_WORKFLOW:-}" != "M10 Release Qualification" && "${GITHUB_WORKFLOW:-}" != "R132 Maintenance preflight and release safety QA" && "${GITHUB_WORKFLOW:-}" != "R135 Maintenance-only 0.3.22 QA" ||
+      "${GITHUB_WORKFLOW:-}" != "M10 Release Qualification" && "${GITHUB_WORKFLOW:-}" != "R132 Maintenance preflight and release safety QA" && "${GITHUB_WORKFLOW:-}" != "R135 Maintenance-only 0.3.22 QA" && "${GITHUB_WORKFLOW:-}" != "SOKNA R125 signed lifecycle recovery reconciliation QA (NO PRODUCTION)" ||
       "${SOKNA_TEST_DB_HOST:-}" != "127.0.0.1" ||
       "${SOKNA_TEST_DB_PORT:-}" != "3306" ||
       "${SOKNA_TEST_DB_ROOT_USER:-}" != "root" ||
