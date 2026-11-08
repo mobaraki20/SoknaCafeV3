@@ -71,6 +71,13 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path $path),[ref]$null,[ref]$errors)|Out-Null
             if($errors){$errors|ForEach-Object{Write-Host $_};throw ("POWERSHELL_PARSE_FAILED: "+$path)}
           }
+      - name: Compile read-only Engine diagnostics and classify lifecycle failures
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'ENGINE_DIAGNOSTICS_COMPILE_FAILED'}
+          dotnet run --project qa/sokna-p0-diagnostics/LifecycleReasonProbe/LifecycleReasonProbe.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'LIFECYCLE_CAUSE_REGRESSION_FAILED'}
       - name: Full safe support ZIP with exact host reason and missing-inspector negative control
         shell: pwsh
         run: ./qa/sokna-p0-diagnostics/test_windows_support_bridge.ps1
