@@ -1,0 +1,26 @@
+name: SOKNA R149 Public exact R126-to-R149 Routine full-package QA
+on:
+  push:
+    branches: [qa/sokna-r151-public-routine-20261108]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-public-full-zip-routine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP with ZipArchive
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y php-cli php-zip
+          php -m | grep -i '^zip$'
+      - name: Prove exact R126 source, exact R149 package, strict baseline, activation, rollback, rejection
+        env:
+          SOKNA_PUBLIC_QA_DISPOSABLE: 'YES'
+        run: |
+          php -l qa/sokna-r151/test-public-routine.php
+          php -l qa/sokna-r151/PublicUpdateException.php
+          php -l qa/sokna-r151/public/RoutinePublicUpdateService.php
+          php qa/sokna-r151/test-public-routine.php
