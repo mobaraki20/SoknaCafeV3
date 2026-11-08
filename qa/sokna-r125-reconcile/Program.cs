@@ -49,6 +49,7 @@ Allowed("settled R125 previous build", baseState, previous);
 Refused("database forward intent", baseState with { DatabaseMutationPerformed = true }, previous);
 Refused("public mutation", baseState with { PublicMutationPerformed = true }, previous);
 Refused("recovery still required", baseState with { RecoveryRequired = true }, previous);
+Refused("unsigned legacy lifecycle", baseState with { MaintenanceIdentityCommitExpected = false }, previous);
 Refused("Windows reboot pending", baseState with { WindowsRebootRequired = true }, previous);
 Refused("interrupted cutover", baseState with { Phase = "DATABASE_FORWARD_INTENT" }, previous);
 Refused("committed newer release", baseState with { Phase = "COMMITTED",
@@ -59,4 +60,4 @@ Refused("last event mismatch", baseState with { Events = new[] {
     new RoutineLocalSlotEvent("RECOVERY_REQUIRED", DateTimeOffset.UtcNow) } }, previous);
 Refused("wrong schema", baseState with { SchemaVersion = 2 }, previous);
 Refused("wrong format", baseState with { Format = "wrong" }, previous);
-Console.WriteLine("PASS all 12 R125 reconciliation safety policy scenarios");
+Console.WriteLine("PASS all 13 R125 reconciliation safety policy scenarios");
