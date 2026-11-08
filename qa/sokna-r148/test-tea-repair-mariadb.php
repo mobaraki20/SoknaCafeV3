@@ -148,6 +148,22 @@ try{
         ok(scalar($pdo,"SELECT COUNT(*) FROM schema_migration_statements WHERE state='applied'")===10,'ten migration statements journaled atomically');
         ok($migrations->migrate()===[],'real migration ledger rerun is no-op');
         ok(scalar($pdo,'SELECT COUNT(*) FROM item_variant_members')===27,'ledger pathway fully expanded nine families');
+        // The exact production journal pathway must also roll back completely
+        // when a write fails, and then be able to retry after the cause is removed.
+        fixture($pdo,[]);
+        $pdo->exec("CREATE TRIGGER stop_ledger_large BEFORE INSERT ON items FOR EACH ROW BEGIN IF NEW.item_code LIKE 'szlarge-%' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='CI_ONLY_LEDGER_FAULT'; END IF; END");
+        try {$migrations->migrate();throw new RuntimeException('Expected ledger pathway fault');}
+        catch(Throwable $error){
+            if(str_contains($error->getMessage(),'Expected ledger pathway fault'))throw $error;
+            ok(true,'actual Migrations write fault correctly raises an error');
+        }
+        ok(scalar($pdo,'SELECT COUNT(*) FROM schema_migrations')===0,'failed 0080 did not mark migration applied');
+        ok(scalar($pdo,'SELECT COUNT(*) FROM schema_migration_statements')===0,'failed 0080 left no running journal');
+        ok(scalar($pdo,'SELECT COUNT(*) FROM audit_log')===0,'failed ledger pathway rolled back audit log');
+        ok(scalar($pdo,'SELECT COUNT(*) FROM items')===18,'failed ledger pathway rolled back all new items');
+        $pdo->exec('DROP TRIGGER stop_ledger_large');
+        ok($migrations->migrate()===['0080_tea_herbal_legacy_family_repair'],'safe retry after removing fault applies 0080 once');
+        ok(scalar($pdo,'SELECT COUNT(*) FROM item_variant_members')===27,'retry fully expands nine families');
     }finally{unlink($migrationFile);rmdir($tmp);}
     echo "R148 MariaDB 11.4 integration tests PASS\n";
 }finally{$pdo->exec("DROP DATABASE IF EXISTS `$db`");}
