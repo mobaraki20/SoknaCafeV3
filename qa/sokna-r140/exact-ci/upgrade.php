@@ -17,6 +17,14 @@ if($phase==='baseline') {
     $pdo->exec('CREATE DATABASE sokna_r140_exact CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 }
 $pdo->exec('USE sokna_r140_exact');
+if($phase!=='baseline'){
+    // Exact R140 photo bundle demands real writable host vault preflight; fixture only.
+    $dataDir=$lab.'/ci-data';
+    $mediaRoot=$dataDir.'/guest-media';
+    if(!is_dir($mediaRoot) && !mkdir($mediaRoot,0700,true))throw new RuntimeException('CI media vault creation failed');
+    $cfg=['app'=>['data_dir'=>$dataDir], 'db'=>['host'=>'127.0.0.1','port'=>3306,'name'=>'sokna_r140_exact','user'=>'root','pass'=>'ci-root-only']];
+    file_put_contents($lab.'/config.php','<?php return '.var_export($cfg,true).';');
+}
 $m=new Sokna\Local\Core\Migrations($pdo,$web.'/database/migrations');
 $catalog=$m->catalog();
 $head=array_key_last($catalog);
