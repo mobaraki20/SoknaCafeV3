@@ -173,11 +173,17 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
                     VerifySourceSha(archive, sha);
                     _afterMoveTestHook?.Invoke();
                 }
-                AtomicFile.WriteJson(receipt, new R125ArchiveReceipt(
-                    "sokna-r125-lifecycle-archive-receipt-v1",
-                    operation.OperationId, request.ExpectedBuild, sha,
-                    "RECOVERED_TO_PREVIOUS_SLOT", true, true, true,
-                    false, false, DateTimeOffset.UtcNow));
+                if (File.Exists(receipt))
+                    VerifyReceipt(receipt, operation.OperationId, sha, request.ExpectedBuild);
+                else
+                {
+                    AtomicFile.WriteJson(receipt, new R125ArchiveReceipt(
+                        "sokna-r125-lifecycle-archive-receipt-v1",
+                        operation.OperationId, request.ExpectedBuild, sha,
+                        "RECOVERED_TO_PREVIOUS_SLOT", true, true, true,
+                        false, false, DateTimeOffset.UtcNow));
+                    VerifyReceipt(receipt, operation.OperationId, sha, request.ExpectedBuild);
+                }
                 _journal.Append("update.local_r125_lifecycle.reconciled",
                     _supervisor.InstanceId, _supervisor.InstallGeneration,
                     new Dictionary<string, object?>
