@@ -64,7 +64,7 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Inno compilation failure'}
           $exe=Join-Path $dist 'SOKNA-ONE-SUPPORT-R125-READONLY-DIAGNOSTICS-UAT.exe'
           if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Built EXE missing'}
-            $observedVersion=[string]([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)
+            $observedVersion=([string]([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)).Trim()
           if($observedVersion -notmatch '^1\.0\.0(\.0)?$'){
             throw ('EXE version not expected: '+$observedVersion)
           }
