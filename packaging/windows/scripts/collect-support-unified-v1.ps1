@@ -156,8 +156,11 @@ try {
           'LOCAL_LIFECYCLE_STATE_CHANGED','LOCAL_LIFECYCLE_MANAGED_INVENTORY_CHANGED',
           'LOCAL_LIFECYCLE_STATE_JSON_INVALID','LOCAL_LIFECYCLE_DATA_ROOT_DISCOVERY_FAILED',
           'LOCAL_LIFECYCLE_EVIDENCE_UNAVAILABLE')
-        $lifecycleReason=$(if([string]$report.local_lifecycle_reason_code -in $allowedLifecycle){
-          [string]$report.local_lifecycle_reason_code
+        $rawReason=''
+        $reasonProperty=$report.PSObject.Properties['local_lifecycle_reason_code']
+        if($null-ne$reasonProperty){$rawReason=[string]$reasonProperty.Value}
+        $lifecycleReason=$(if($rawReason -in $allowedLifecycle){
+          $rawReason
         }else{'DETAIL_NOT_AVAILABLE_ON_INSTALLED_ENGINE'})
         $hostResult=[ordered]@{
           format='sokna-host-readiness-safe-v1'
