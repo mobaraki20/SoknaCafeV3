@@ -1,0 +1,56 @@
+name: SOKNA P0 signed host diagnosis and package integrity gate
+on:
+  push:
+    branches:
+      - qa/sokna-p0-diagnostics-release-gate-20261108
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-and-archive-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP CLI
+        run: sudo apt-get update -qq && sudo apt-get install -y php-cli
+      - name: Syntax and safe support contract
+        run: |
+          php -l apps/local-web/src/Domain/System/MaintenanceSupervisorClient.php
+          php -l apps/local-web/src/Domain/System/MaintenanceSupportEvidence.php
+          php -l qa/sokna-p0-diagnostics/test_host_reasons.php
+          php qa/sokna-p0-diagnostics/test_host_reasons.php
+      - name: Diagnostic propagation must exist in current source
+        run: python3 qa/sokna-p0-diagnostics/test_p0_diagnostic_contract.py --source-root apps/local-web
+      - name: Exact nested release payload gate and negative control
+        run: |
+          python3 - <<'PY'
+          import io, pathlib, subprocess, sys, tempfile, zipfile
+          root=pathlib.Path("apps/local-web")
+          names=("src/Domain/System/MaintenanceSupervisorClient.php",
+                 "src/Domain/System/MaintenanceSupportEvidence.php")
+          tool="qa/sokna-p0-diagnostics/test_p0_diagnostic_contract.py"
+          def make(out, legacy=False):
+              payload=io.BytesIO()
+              with zipfile.ZipFile(payload,"w") as web:
+                  for name in names:
+                      text=(root/name).read_text("utf-8")
+                      if legacy:
+                          text=text.replace("'host_blockers'=>$blockers","'lost_diagnostic'=>$blockers")
+                          text=text.replace("'host_blockers'=>array_slice","'lost_diagnostic'=>array_slice")
+                      web.writestr(name,text)
+              with zipfile.ZipFile(out,"w") as pkg:
+                  pkg.writestr("artifacts/local/web.zip",payload.getvalue())
+          with tempfile.TemporaryDirectory() as temp:
+              good=pathlib.Path(temp)/"good.zip"
+              bad=pathlib.Path(temp)/"historical-omission.zip"
+              make(good)
+              make(bad,legacy=True)
+              subprocess.run([sys.executable,tool,"--release-zip",str(good)],check=True)
+              subprocess.run([sys.executable,tool,"--release-zip",str(bad),
+                              "--expect-legacy-missing"],check=True)
+          PY
+      - name: Readiness truth - this QA is not a production installer
+        run: |
+          echo 'Static source+archive diagnostics passed.'
+          echo 'Actual Windows signed readback, backup restore, and installed Commit remain NOT VERIFIED.'
