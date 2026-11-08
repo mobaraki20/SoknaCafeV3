@@ -8,7 +8,7 @@ import shutil
 import sys
 import zipfile
 
-BASE = Path(__file__).resolve().parents[2]
+BASE = Path(__file__).resolve().parents[1]
 OUT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd() / "r140-exact-ci"
 DEFS = (
     ("r75", "exact-r75-fragments", "cbab0538d9ea8034f43c1e3202adb7f079b12f6d33f6bf0bc1a992033264c5f6", 534),
@@ -53,7 +53,7 @@ def load_archive(name, folder, digest, managed_files):
         files = [n for n in inner.namelist() if not n.endswith("/")]
         if len(files) != managed_files or len(files) != len(set(files)):
             raise ValueError(name + " managed files mismatch")
-        catalog = "".join(n + "\\0" + sha(inner.read(n)) + "\\n" for n in sorted(files)).encode()
+        catalog = "".join(n + "\0" + sha(inner.read(n)) + "\n" for n in sorted(files)).encode()
         if sha(catalog) != manifest["targets"]["local"]["managed_tree_sha256"]:
             raise ValueError(name + " managed-tree digest mismatch")
         root = OUT / (name + "-web")
