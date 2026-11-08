@@ -41,7 +41,7 @@ try{
  need($updater->currentVersion()===$b['version'] && $updater->managedTreeDigest()===$expectedTargetTree,'full ZIP exact target activation');
  need(is_array($started['pending_verification']??null),'pending external verification required');
  $committed=$updater->commitActivation('ci');
- need(($committed['active_version']??'')===$b['version'] && ($committed['active_managed_tree_sha256']??'')===$expectedTargetTree,'routine commit complete');
+ need(($committed['active_version']??'')===$b['version'] && ($committed['expected_managed_tree_sha256']??'')===$expectedTargetTree,'routine commit complete');
  need(!is_file($updater->maintenanceLockPath()),'routine maintenance lock released');
  need(trim((string)file_get_contents($site.'/emergency.php'))==='<?php // stable emergency owner, untouched','stable emergency path unchanged');
  // New test for safe failure: fresh baseline, fail health after applying delta and enforce preimage restore.
