@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Build exact R149B from source-qualified R140 and an audited 21-path overlay.
+"""Build exact R149B from source-qualified R140 and an audited 22-path overlay.
 Used identically offline and on isolated GitHub Windows runners. Never mutates a real host.
 """
 import hashlib, io, json, pathlib, sys, zipfile
 BASE_SHA = '4734b918f7e2273627f0ba5f8d16992cba05ee198b0afcbee631cc78fdb0dfb9'
-OVERLAY_SHA = '2c1298033d0ce1a9f06aba9e8d0da2122209989d81383474c4c1187c73335e4d'
-R149_WEB_SHA = '909478271d8f9a05c96db77668581849ebbe33613142ccba14c017ea6c6ef19a'
+OVERLAY_SHA = 'd53a7f2f8ea76eb7ec869ea3eedff46026e298e646a3cda4b5120f5c653cae76'
+R149_WEB_SHA = 'b3ffb286600a6cf26820464dd3b762404fef3533a2acd50908b3ce8e6a1b1a4d'
 R140_TREE = '398905b1a3540e410be6bc1a4bb96561d978a7312eb02dbe6f08d3d7f57d01ea'
 OUT_DATE = (2026,11,8,12,0,0)
 sha=lambda b:hashlib.sha256(b).hexdigest()
@@ -41,22 +41,24 @@ def main():
     oldpath,ovpath,out=(pathlib.Path(x).resolve() for x in sys.argv[1:])
     out.mkdir(parents=True,exist_ok=True)
     check(sha(oldpath.read_bytes())==BASE_SHA,'Exact R140 install-qualified source SHA')
-    check(sha(ovpath.read_bytes())==OVERLAY_SHA,'Exact 21-path overlay SHA')
+    check(sha(ovpath.read_bytes())==OVERLAY_SHA,'Exact 22-path overlay SHA')
     with zipfile.ZipFile(oldpath) as z:
         check(z.testzip() is None,'Source R140 integrity')
         previous=json.loads(z.read('release-set.json'))
         old_web=z.read('artifacts/local/web.zip')
     old=byte_map(old_web); overlays=byte_map(ovpath.read_bytes())
     check(len(old)==579 and tree(old)==R140_TREE,'R140 byte-exact 579-file tree')
-    check(len(overlays)==21,'21 reviewed new/changed paths')
+    check(len(overlays)==22,'22 reviewed new/changed paths')
     check(set(p for p in overlays if p not in old)=={'database/migrations/0080_tea_herbal_legacy_family_repair.sql','src/Domain/System/CatalogPushReadOnlyAudit.php'},'Only two new paths')
     check(all(overlays[n]!=old[n] for n in overlays if n in old),'Every overlay truly changes source')
     files=old|overlays
     for name,body in old.items():
         if name.startswith('database/migrations/') and name in files:check(body==files[name],'Historical SQL immutable '+name) if name[-17:-4] in ('0078','0079') else None
     check(len(files)==581,'581 target files')
+    inventory=json.loads(files['resources/local-managed-files-v1.json'])
+    check(inventory['files']==sorted(files),'Installed inventory exactly enumerates 581 files')
     web=archive(files)
-    check(sha(web)==R149_WEB_SHA,'Exact original R149 nested source payload reproducible')
+    check(sha(web)==R149_WEB_SHA,'Exact R149B corrected managed inventory payload reproducible')
     check(files['VERSION.txt'].decode().strip()=='3.0.0-g6.2-workspace.231eb-r149-catalog-ui-multibase-uat','Version readback matches payload')
     schema,count=ledger(files)
     check(count==80,'80 SQL migrations')

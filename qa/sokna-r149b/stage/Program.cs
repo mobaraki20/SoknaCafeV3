@@ -77,6 +77,10 @@ using(var z=ZipFile.OpenRead(args[2]))
     using var m=new MemoryStream(web);
     using var inner=new ZipArchive(m,ZipArchiveMode.Read);
     Need(Encoding.UTF8.GetString(Entry(inner,"VERSION.txt")).Trim()==target.GetProperty("version").GetString(),"INNER_VERSION_TARGET_MATCH");
+    using var inventoryJson=JsonDocument.Parse(Entry(inner,"resources/local-managed-files-v1.json"));
+    var listed=inventoryJson.RootElement.GetProperty("files").EnumerateArray().Select(x=>x.GetString()!).ToArray();
+    var actual=inner.Entries.Select(x=>x.FullName).OrderBy(x=>x,StringComparer.Ordinal).ToArray();
+    Need(listed.SequenceEqual(actual,StringComparer.Ordinal),"INTERNAL_MANAGED_INVENTORY_MATCHES_ALL_581_FILES");
 }
 var baseCount=qualified.GetProperty("supported_baselines").EnumerateArray().Count(x=>
     x.GetProperty("local").GetProperty("version").GetString()==baseline.Version &&

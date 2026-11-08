@@ -35,6 +35,7 @@ run('qual scoping Local only',prod['release_type']=='local_only' and all(x['publ
 run('exact version progression',old['targets']['local']['version'].split('.231ea-')[0]==prod['targets']['local']['version'].split('.231eb-')[0])
 run('only two added files',sorted(set(pf)-set(of))==['database/migrations/0080_tea_herbal_legacy_family_repair.sql','src/Domain/System/CatalogPushReadOnlyAudit.php'])
 run('historical 79 migrations byte-identical',all(of[n]==pf[n] for n in of if n.startswith('database/migrations/') and n.endswith('.sql')))
+run('internal managed inventory 581 equals payload',json.loads(pf['resources/local-managed-files-v1.json'])['files']==sorted(pf))
 run('R148 transactional 0080 embedded',b'family-03' in pf['database/migrations/0080_tea_herbal_legacy_family_repair.sql'] and b'family-11' in pf['database/migrations/0080_tea_herbal_legacy_family_repair.sql'])
 run('R148 migrations driver embedded',b'str_starts_with($version, \'0080_\')' in pf['src/Core/Migrations.php'])
 for baseline in prod['supported_baselines']:

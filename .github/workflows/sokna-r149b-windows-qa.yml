@@ -67,7 +67,7 @@ jobs:
           python qa/sokna-r149b/test-manifest-matrix.py (Join-Path $lab 'qualified-r140.zip') (Join-Path $lab 'r149b-candidate.zip') (Join-Path $lab 'r149b-qualified.zip')
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           $hash=(Get-FileHash (Join-Path $lab 'r149b-qualified.zip') -Algorithm SHA256).Hash.ToLowerInvariant()
-          if($hash -ne 'ac3080b9baa2bde5bedb772ca687d466e66414037f9b4ba443a39375c0649505'){throw "Final SHA mismatch $hash"}
+          if($hash -ne '968e11771ec85c02fe4284498ba8d857d2c740958b9103bc45d6f727e20f04d4'){throw "Final SHA mismatch $hash"}
           Add-Content $env:GITHUB_ENV ("SOKNA_R149B_EXACT=$lab")
       - name: Actual Maintenance 0.3.22 VerifyOnly, Stage and 43-baseline acceptance
         shell: pwsh
