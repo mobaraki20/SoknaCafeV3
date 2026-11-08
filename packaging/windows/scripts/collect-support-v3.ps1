@@ -67,6 +67,15 @@ try{
     format='sokna-physical-component-versions-v1';evidence_available=$false
     supervisor=@{present=$false};update_engine=@{present=$false}
   }
+  $p0Lifecycle=[ordered]@{
+    format='sokna-read-only-local-lifecycle-reconcile-evidence-v1'
+    evidence_available=$false;assessment='NOT_COLLECTED'
+    backup_proof_present=$false;backup_proof_sha256=''
+    routine_phase='OTHER_OR_UNKNOWN';external_recovery_settled_marker=$false
+    backup_proof_header_matches_active=$false
+    live_db_ledger_validated=$false;automatic_reconciliation_authorized=$false
+    action='INSPECT_ONLY_NO_DELETE_NO_DB_MUTATION'
+  }
   $oneScript=Join-Path $PSScriptRoot 'collect-support-unified-v1.ps1'
   $stage=Join-Path $env:TEMP ('sokna-p0-safe-'+[guid]::NewGuid().ToString('N'))
   try {
@@ -85,6 +94,36 @@ try{
        -not(Test-Path -LiteralPath $verPath -PathType Leaf)){throw 'P0_INSPECTOR_INCOMPLETE'}
     $observedHost=Get-Content -LiteralPath $hostPath -Raw|ConvertFrom-Json -ErrorAction Stop
     $vers=Get-Content -LiteralPath $verPath -Raw|ConvertFrom-Json -ErrorAction Stop
+    $lifePath=Join-Path $expanded 'unified\local-lifecycle-reconciliation-safe.json'
+    if(Test-Path -LiteralPath $lifePath -PathType Leaf) {
+      $life=Get-Content -LiteralPath $lifePath -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
+      if([string]$life.format -eq 'sokna-read-only-local-lifecycle-reconcile-evidence-v1'){
+        $assessmentAllow=@('POSSIBLE_R125_STALE_PROOF__FURTHER_VALIDATION_REQUIRED',
+          'PROOF_PRESENT__ORIGIN_OR_RECOVERY_UNPROVEN',
+          'NO_ROLLBACK_PROOF_OBSERVED__CHECK_OTHER_LIFECYCLE_CONDITIONS')
+        $phaseAllow=@('RECOVERED_TO_PREVIOUS_SLOT','ROLLED_BACK',
+          'COMMITTED','RECOVERY_REQUIRED','READY_TO_ACTIVATE','OTHER_OR_UNKNOWN')
+        $proofHash=[string]$life.backup_proof_observation.sha256
+        if($proofHash -notmatch '^[a-fA-F0-9]{64}$'){$proofHash=''}
+        $phaseValue=[string]$life.routine_phase
+        if($phaseValue -notin $phaseAllow){$phaseValue='OTHER_OR_UNKNOWN'}
+        $assessmentValue=[string]$life.assessment
+        if($assessmentValue -notin $assessmentAllow){$assessmentValue='UNKNOWN'}
+        # Never forward arbitrary source JSON, which might contain paths or
+        # base64 snapshots. We intentionally DO NOT infer permission to repair.
+        $p0Lifecycle=[ordered]@{
+          format='sokna-read-only-local-lifecycle-reconcile-evidence-v1'
+          evidence_available=$true;assessment=$assessmentValue
+          backup_proof_present=($life.backup_proof_present -eq $true)
+          backup_proof_sha256=$proofHash
+          routine_phase=$phaseValue
+          external_recovery_settled_marker=($life.external_recovery_settled_marker -eq $true)
+          backup_proof_header_matches_active=($life.backup_proof_header_matches_active -eq $true)
+          live_db_ledger_validated=$false;automatic_reconciliation_authorized=$false
+          action='INSPECT_ONLY_NO_DELETE_NO_DB_MUTATION'
+        }
+      }
+    }
     if([string]$observedHost.format -ne 'sokna-host-readiness-safe-v1' -or
        [string]$vers.format -ne 'sokna-physical-component-versions-v1'){throw 'P0_CONTRACT_MISMATCH'}
     $allowed=@('UPDATER_MUTATION_OR_RECOVERY_PENDING',
@@ -151,6 +190,7 @@ try{
   New-Item -ItemType Directory -Path $p0Dir -Force|Out-Null
   WriteJson (Join-Path $p0Dir 'host-readiness-safe.json') $p0Host
   WriteJson (Join-Path $p0Dir 'physical-versions-safe.json') $p0Versions
+  WriteJson (Join-Path $p0Dir 'lifecycle-reconciliation-safe.json') $p0Lifecycle
 
   $manifestPath=Join-Path $temp 'bundle-manifest.json'
   if(Test-Path -LiteralPath $manifestPath){Remove-Item -LiteralPath $manifestPath -Force}
