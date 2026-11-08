@@ -44,8 +44,9 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
     {
         if (state is null || state.Format != "sokna-local-slot-routine-state-v1" ||
             state.SchemaVersion != 1 || state.Phase != "RECOVERED_TO_PREVIOUS_SLOT" ||
-            state.RecoveryRequired || state.DatabaseMutationPerformed ||
-            state.PublicMutationPerformed || state.WindowsRebootRequired ||
+            state.RecoveryRequired || !state.MaintenanceIdentityCommitExpected ||
+            state.DatabaseMutationPerformed || state.PublicMutationPerformed ||
+            state.WindowsRebootRequired ||
             state.Events is null || state.Events.Count == 0 ||
             state.Events[^1].State != "RECOVERED_TO_PREVIOUS_SLOT" ||
             !string.Equals(state.CurrentBuild, expectedBuild, StringComparison.Ordinal))
@@ -80,10 +81,20 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
             if (other.Length != 0)
                 throw new InvalidOperationException("UPDATER_OPERATION_BUSY");
             if (prior is not null && prior.State == "committed")
+            {
+                var saved = Path.Combine(_paths.LocalSlotStateRoot,
+                    "reconciled-lifecycle-evidence", "proof-" + prior.OperationId + ".json");
+                var receiptPath = Path.Combine(_paths.LocalSlotStateRoot,
+                    "reconciled-lifecycle-evidence", "proof-" + prior.OperationId + ".receipt.json");
+                VerifySourceSha(saved, sha);
+                if (!File.Exists(receiptPath) ||
+                    (File.GetAttributes(receiptPath) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("R125_COMMITTED_ARCHIVE_RECEIPT_MISSING");
                 return new(prior, false, true, sha, false, false);
-            if (prior is not null && prior.State is "failed_pre_mutation" or "recovery_required")
+            }
+            if (prior is not null && prior.State == "failed_pre_mutation")
                 return new(prior, false, true, sha, false, false);
-            if (prior is not null && prior.State is not ("accepted" or "running"))
+            if (prior is not null && prior.State is not ("accepted" or "running" or "recovery_required"))
                 throw new InvalidDataException("R125_RECOVERY_OPERATION_STATE_INVALID");
 
             var root = Path.Combine(_paths.LocalSlotStateRoot, "reconciled-lifecycle-evidence");
@@ -145,9 +156,6 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
                     operation.OperationId, request.ExpectedBuild, sha,
                     "RECOVERED_TO_PREVIOUS_SLOT", true, true, true,
                     false, false, DateTimeOffset.UtcNow));
-                operation = _operations.Update(operation, "committed",
-                    "R125_RESIDUAL_PROOF_ARCHIVED_AND_DB_BASELINE_VERIFIED",
-                    "Original R125 proof retained under protected Maintenance evidence; no DB/Public/Local mutation.");
                 _journal.Append("update.local_r125_lifecycle.reconciled",
                     _supervisor.InstanceId, _supervisor.InstallGeneration,
                     new Dictionary<string, object?>
@@ -161,6 +169,9 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
                         ["public_mutated"] = false,
                         ["service_mutated"] = false
                     });
+                operation = _operations.Update(operation, "committed",
+                    "R125_RESIDUAL_PROOF_ARCHIVED_AND_DB_BASELINE_VERIFIED",
+                    "Original R125 proof retained under protected Maintenance evidence; no DB/Public/Local mutation.");
                 return new(operation, created, false, sha, false, false);
             }
             catch (Exception ex) when (ex is InvalidDataException or IOException or
