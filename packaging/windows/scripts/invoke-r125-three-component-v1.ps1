@@ -268,8 +268,10 @@ try{
   Fault 'after-identity'
   foreach($rel in $names){Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))}
   Live '0.3.23'
-  $state.phase='COMMITTED';Save $marker $state
+  # Durable complete receipt precedes the commit marker: a crash in the gap
+  # is safely recoverable rather than falsely advertising committed install.
   Save $result ([ordered]@{format='sokna-r125-0323-result-v1';status='COMMITTED';supervisor_version='0.3.23';engine_version='0.3.23';recovery_console_version='0.1.4';archive_reconciled=$false;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
+  $state.phase='COMMITTED';Save $marker $state
   Write-Host 'R125_0323_INSTALL_COMMITTED'
   exit 0
  }catch{
