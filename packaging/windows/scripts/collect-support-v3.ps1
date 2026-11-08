@@ -103,8 +103,11 @@ try{
       'LOCAL_LIFECYCLE_STATE_CHANGED','LOCAL_LIFECYCLE_MANAGED_INVENTORY_CHANGED',
       'LOCAL_LIFECYCLE_STATE_JSON_INVALID','LOCAL_LIFECYCLE_DATA_ROOT_DISCOVERY_FAILED',
       'LOCAL_LIFECYCLE_EVIDENCE_UNAVAILABLE','DETAIL_NOT_AVAILABLE_ON_INSTALLED_ENGINE')
-    $lifecycleReason=$(if([string]$observedHost.local_lifecycle_reason_code -in $allowedLifecycle){
-      [string]$observedHost.local_lifecycle_reason_code
+    $rawReason=''
+    $reasonProperty=$observedHost.PSObject.Properties['local_lifecycle_reason_code']
+    if($null-ne$reasonProperty){$rawReason=[string]$reasonProperty.Value}
+    $lifecycleReason=$(if($rawReason -in $allowedLifecycle){
+      $rawReason
     }else{'DETAIL_NOT_AVAILABLE_ON_INSTALLED_ENGINE'})
     $code=[string]$observedHost.blocking_code
     if($code -notmatch '^[A-Z][A-Z0-9_]{0,99}$'){$code='invalid_or_redacted'}
