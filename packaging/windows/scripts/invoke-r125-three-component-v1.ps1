@@ -262,6 +262,9 @@ try{
   if(($roundTrip|ConvertTo-Json -Depth 100 -Compress)-cne
     ($oldDoc|ConvertTo-Json -Depth 100 -Compress)){Fail 'R125_IDENTITY_SCOPE_DRIFT'}
   Save $identity $doc
+  if($lab -and $FailAt-eq'crash-after-identity'){
+   [Diagnostics.Process]::GetCurrentProcess().Kill()
+  }
   Fault 'after-identity'
   foreach($rel in $names){Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))}
   Live '0.3.23'
