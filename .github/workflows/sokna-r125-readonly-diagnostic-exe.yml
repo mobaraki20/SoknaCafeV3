@@ -1,0 +1,187 @@
+name: SOKNA R125 support-only diagnostic exe build QA and prerelease
+on:
+  push:
+    branches: [qa/sokna-p0-r125-lifecycle-safe-assessment-20261108]
+    paths: [.github/workflows/sokna-r125-readonly-diagnostic-exe.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows-exact-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit Inno for four temporary scripts and zero persistent components
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iss=Get-Content 'packaging/windows/installer/SOKNA-One-Support-R125-ReadOnly-v1.iss' -Raw
+          $rows=@($iss -split "\r?\n" | Where-Object {$_ -match '^\s*Source:'})
+          if($rows.Count -ne 4){throw 'Expected exactly four diagnostic source files'}
+          foreach($row in $rows){
+            if($row -notmatch 'DestDir:\s*"\{tmp\}\\SOKNA-One-Support-R125"' -or
+               $row -notmatch 'deleteafterinstall' -or $row -notmatch '\.ps1"'){
+              throw ('Non-TEMP Inno payload: '+$row)
+            }
+          }
+          foreach($key in @('CreateAppDir=no','Uninstallable=no','CreateUninstallRegKey=no','PrivilegesRequired=admin')){
+            if(-not $iss.Contains($key)){throw ('Missing security property: '+$key)}
+          }
+          if($iss -match '(?m)^\[(Run|Registry|Dirs|Icons)\]' -or
+             $iss -match 'SoknaMaintenanceSupervisor.exe|SoknaMaintenanceUpdateEngine.exe|Stop-Service|Start-Service'){
+            throw 'Installer attempts prohibited persistent mutation'
+          }
+          Write-Host 'PASS temporary support script scope'
+      - name: PowerShell 5.1 R125 lifecycle evidence regression
+        shell: powershell
+        run: |
+          .\qa\sokna-p0-diagnostics\test_lifecycle_evidence_support.ps1
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Support wrapper and sensitive field redaction regression
+        shell: pwsh
+        run: |
+          ./qa/sokna-p0-diagnostics/test_windows_support_bridge.ps1
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Compile exact TEMP-only Inno Support EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $paths=@(
+            (Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'),
+            (Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe'))
+          $iscc=$paths|Where-Object{Test-Path -LiteralPath $_ -PathType Leaf}|Select-Object -First 1
+          if(-not $iscc){
+            choco install innosetup -y --no-progress
+            if($LASTEXITCODE -ne 0){throw 'Unable to install Inno compiler on disposable runner'}
+            $iscc=$paths|Where-Object{Test-Path -LiteralPath $_ -PathType Leaf}|Select-Object -First 1
+          }
+          if(-not $iscc){throw 'ISCC.exe unavailable'}
+          $dist=Join-Path $env:RUNNER_TEMP 'r125-readonly-dist'
+          New-Item -ItemType Directory -Path $dist -Force|Out-Null
+          $src=Join-Path $PWD.Path 'packaging/windows/scripts'
+          & $iscc "/DSupportScriptRoot=$src" "/DOutputDir=$dist" 'packaging/windows/installer/SOKNA-One-Support-R125-ReadOnly-v1.iss'
+          if($LASTEXITCODE -ne 0){throw 'Inno compilation failure'}
+          $exe=Join-Path $dist 'SOKNA-ONE-SUPPORT-R125-READONLY-DIAGNOSTICS-UAT.exe'
+          if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Built EXE missing'}
+          if(([string]([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)) -ne '1.0.0.0'){
+            throw 'EXE version not expected'
+          }
+          "SOKNA_DIAGNOSTIC_EXE=$exe"|Out-File -LiteralPath $env:GITHUB_ENV -Append -Encoding UTF8
+      - name: Run exact EXE on disposable Windows and inspect resulting One Support ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $locations=@([Environment]::GetFolderPath('Desktop'),
+            [Environment]::GetFolderPath('MyDocuments'),$env:TEMP)|Where-Object{$_}|Select-Object -Unique
+          $before=@($locations|Where-Object{Test-Path $_ -PathType Container}|
+            ForEach-Object{Get-ChildItem $_ -Filter 'SOKNA-ONE-SUPPORT-*.zip' -File -ErrorAction SilentlyContinue|
+              Select-Object -ExpandProperty FullName})
+          $servicesBefore=@(Get-CimInstance Win32_Service -Filter "Name like 'Sokna%'" -ErrorAction SilentlyContinue|
+            ConvertTo-Json -Compress)
+          $exe=$env:SOKNA_DIAGNOSTIC_EXE
+          $p=Start-Process -FilePath $exe -Wait -PassThru -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-')
+          if($p.ExitCode -ne 0){throw ('Diagnostic EXE failed with '+$p.ExitCode)}
+          $new=@($locations|Where-Object{Test-Path $_ -PathType Container}|
+            ForEach-Object{Get-ChildItem $_ -Filter 'SOKNA-ONE-SUPPORT-*.zip' -File -ErrorAction SilentlyContinue|
+              Where-Object{$_.FullName -notin $before}})
+          if($new.Count -ne 1){throw ('Expected one newly created report ZIP; got '+$new.Count)}
+          $temp=Join-Path $env:RUNNER_TEMP 'r125-exe-result'
+          Expand-Archive -LiteralPath $new[0].FullName -DestinationPath $temp -Force
+          $entry=Join-Path $temp 'unified/local-lifecycle-reconciliation-safe.json'
+          if(-not(Test-Path -LiteralPath $entry -PathType Leaf)){throw 'ZIP lacks lifecycle evidence'}
+          $report=Get-Content -LiteralPath $entry -Raw|ConvertFrom-Json
+          if($report.format -ne 'sokna-read-only-local-lifecycle-reconcile-evidence-v1' -or
+             $report.action -ne 'INSPECT_ONLY_NO_DELETE_NO_DB_MUTATION' -or
+             $report.automatic_reconciliation_authorized -ne $false){
+            throw 'EXE output failed no-mutation assessment safety'
+          }
+          $servicesAfter=@(Get-CimInstance Win32_Service -Filter "Name like 'Sokna%'" -ErrorAction SilentlyContinue|
+            ConvertTo-Json -Compress)
+          if(($servicesBefore -join '|') -ne ($servicesAfter -join '|')){throw 'SOKNA service changed'}
+          Remove-Item -LiteralPath $new[0].FullName -Force
+          Write-Host 'PASS exact EXE creates safe report and did not alter services'
+      - name: SHA256 and QA provenance of exact EXE
+        shell: pwsh
+        run: |
+          $exe=$env:SOKNA_DIAGNOSTIC_EXE
+          $dist=Split-Path -Parent $exe
+          $hash=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $([IO.Path]::GetFileName($exe))"|Set-Content (Join-Path $dist 'SHA256SUMS.txt') -Encoding Ascii
+          [ordered]@{
+            format='sokna-r125-readonly-diagnostics-qa-v1'
+            source_commit=$env:GITHUB_SHA;branch=$env:GITHUB_REF_NAME
+            exe_name=[IO.Path]::GetFileName($exe);sha256=$hash;bytes=(Get-Item $exe).Length
+            powershell_51_tests='PASS';exact_exe_windows_smoke='PASS'
+            scope='temporary_read_only_support_only'
+            maintenance_binaries_modified=$false
+            local_public_db_modified=$false;services_modified=$false
+            cafe_host_executed=$false;recovery_evidence_settled=$false
+            production_approved=$false;authenticode_signed=$false
+          }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $dist 'QA-BUILD-REPORT.json') -Encoding UTF8
+          Write-Host ('PASS exact diagnostic SHA256 '+$hash)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r125-readonly-diagnostics-exe-uat
+          path: |
+            ${{ runner.temp }}/r125-readonly-dist/SOKNA-ONE-SUPPORT-R125-READONLY-DIAGNOSTICS-UAT.exe
+            ${{ runner.temp }}/r125-readonly-dist/SHA256SUMS.txt
+            ${{ runner.temp }}/r125-readonly-dist/QA-BUILD-REPORT.json
+          if-no-files-found: error
+          retention-days: 30
+  publish-prerelease:
+    needs: [windows-exact-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-r125-readonly-diagnostics-exe-uat
+          path: dist
+      - name: Validate exact checksum, build provenance, and no-mutation scope
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -c SHA256SUMS.txt
+          jq -e --arg commit "$GITHUB_SHA" '
+            .format=="sokna-r125-readonly-diagnostics-qa-v1"
+            and .source_commit==$commit
+            and .scope=="temporary_read_only_support_only"
+            and .powershell_51_tests=="PASS" and .exact_exe_windows_smoke=="PASS"
+            and .maintenance_binaries_modified==false
+            and .local_public_db_modified==false and .services_modified==false
+            and .cafe_host_executed==false and .recovery_evidence_settled==false
+            and .production_approved==false and .authenticode_signed==false
+          ' QA-BUILD-REPORT.json
+      - name: Publish immutable UAT pre-release for direct EXE download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          short=$(printf '%s' "$GITHUB_SHA"|cut -c1-12)
+          tag="sokna-support-r125-readonly-qa-$short"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Immutable release already exists; do not overwrite'; exit 1
+          fi
+          cat > notes.md <<'NOTES'
+          # SOKNA R125 — one-click READ-ONLY support diagnostics (UAT)
+          This Windows EXE temporarily extracts existing support scripts and creates
+          SOKNA-ONE-SUPPORT-*.zip, without installing binaries or changing Windows
+          services, Maintenance, Local, Public, MariaDB or print agents.
+          It does NOT delete, reconcile or unlock recovery evidence.
+          PowerShell 5.1 and the exact EXE passed disposable Windows QA.
+          It has NOT been run on the cafe computer and is not Authenticode-signed.
+          Check SHA256SUMS.txt against the downloaded EXE.
+          Upload only the resulting SOKNA-ONE-SUPPORT ZIP to continue diagnosis.
+          The source_commit field in QA-BUILD-REPORT.json identifies the real
+          source; GitHub's automatic source archive is not authoritative for this EXE.
+          NOTES
+          gh release create "$tag" \
+            dist/SOKNA-ONE-SUPPORT-R125-READONLY-DIAGNOSTICS-UAT.exe \
+            dist/SHA256SUMS.txt dist/QA-BUILD-REPORT.json \
+            --repo "$GITHUB_REPOSITORY" --target main \
+            --title 'SOKNA R125 temporary read-only diagnostics UAT' \
+            --notes-file notes.md --prerelease
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" |
+            jq -e '[.assets[]|select(.name=="SOKNA-ONE-SUPPORT-R125-READONLY-DIAGNOSTICS-UAT.exe" and .size>100000)]|length==1'
+          echo "PUBLISHED_R125_READONLY_RELEASE: https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag"
