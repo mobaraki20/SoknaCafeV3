@@ -61,7 +61,7 @@ try{
   # old or absent Engine. Never expose raw envelopes, keys, paths or DB rows.
   $p0Host=[ordered]@{
     format='sokna-host-readiness-safe-v1';evidence_available=$false
-    status='NOT_COLLECTED';blocking_code='';blockers=@()
+    status='NOT_COLLECTED';blocking_code='';blockers=@();local_lifecycle_reason_code='NOT_COLLECTED'
   }
   $p0Versions=[ordered]@{
     format='sokna-physical-component-versions-v1';evidence_available=$false
@@ -96,6 +96,16 @@ try{
       'PERSISTENT_MACHINE_LOCAL_OVERLAY_DRIFT',
       'LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN')
     $reasonCodes=@($observedHost.blockers|Where-Object{$_ -is[string] -and $_ -in $allowed}|Select-Object -Unique)
+    $allowedLifecycle=@('IDLE','NOT_EVALUATED','LOCAL_LIFECYCLE_HOST_LAYOUT_UNAVAILABLE',
+      'LOCAL_LIFECYCLE_RECOVERY_MARKER_PRESENT','LOCAL_LIFECYCLE_ROLLBACK_PROOF_PRESENT',
+      'LOCAL_LIFECYCLE_VERSION_OR_FORMAT_MISMATCH','LOCAL_LIFECYCLE_PENDING_STAGE',
+      'LOCAL_LIFECYCLE_PENDING_ACTIVATION_JOURNAL','LOCAL_LIFECYCLE_RECOVERY_MODE_ACTIVE',
+      'LOCAL_LIFECYCLE_STATE_CHANGED','LOCAL_LIFECYCLE_MANAGED_INVENTORY_CHANGED',
+      'LOCAL_LIFECYCLE_STATE_JSON_INVALID','LOCAL_LIFECYCLE_DATA_ROOT_DISCOVERY_FAILED',
+      'LOCAL_LIFECYCLE_EVIDENCE_UNAVAILABLE','DETAIL_NOT_AVAILABLE_ON_INSTALLED_ENGINE')
+    $lifecycleReason=$(if([string]$observedHost.local_lifecycle_reason_code -in $allowedLifecycle){
+      [string]$observedHost.local_lifecycle_reason_code
+    }else{'DETAIL_NOT_AVAILABLE_ON_INSTALLED_ENGINE'})
     $code=[string]$observedHost.blocking_code
     if($code -notmatch '^[A-Z][A-Z0-9_]{0,99}$'){$code='invalid_or_redacted'}
     $evidence=($observedHost.evidence_available -eq $true)
@@ -104,6 +114,7 @@ try{
       status=$(if($evidence){'LIVE_READ_ONLY_ENGINE_INSPECTION'}else{'INSPECTION_UNAVAILABLE'})
       blocking_code=$(if($evidence){$code}else{''})
       blockers=@(if($evidence){$reasonCodes}else{@()})
+      local_lifecycle_reason_code=$(if($evidence){$lifecycleReason}else{'INSPECTION_UNAVAILABLE'})
       host_preparation_preconditions_met=($evidence -and $observedHost.host_preparation_preconditions_met -eq $true)
       apache_healthy=($evidence -and $observedHost.apache_healthy -eq $true)
       active_junction_qualified=($evidence -and $observedHost.active_junction_qualified -eq $true)
