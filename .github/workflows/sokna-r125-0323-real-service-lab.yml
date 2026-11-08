@@ -1,0 +1,134 @@
+name: SOKNA R125 real Windows Supervisor 0322 to 0323 UAT lab
+on:
+  push:
+    branches: [qa/sokna-r125-maintenance-0323-package-20261109]
+    paths:
+      - .github/workflows/sokna-r125-0323-real-service-lab.yml
+      - packaging/windows/scripts/invoke-r125-three-component-v1.ps1
+      - packaging/windows/scripts/prepare-r125-three-component-v1.ps1
+      - windows/maintenance/src/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actual-windows-service-lab:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-p0-r125-lifecycle-safe-assessment-20261108
+          path: old-0322-source
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish actual old 0.3.22 Windows Supervisor, Engine, Console
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'r125-real-service-lab'
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')){
+            $dir=Join-Path $root ('baseline-'+$n)
+            dotnet publish "old-0322-source/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $dir
+            if($LASTEXITCODE-ne0){throw ('OLD_BASELINE_PUBLISH_FAILED:'+ $n)}
+          }
+          "R125_SERVICE_LAB_ROOT=$root"|Out-File -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Append
+      - name: Publish actual target 0.3.23 Windows Supervisor, Engine, Console
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=$env:R125_SERVICE_LAB_ROOT
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')){
+            $dir=Join-Path $root ('target-'+$n)
+            dotnet publish "windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $dir
+            if($LASTEXITCODE-ne0){throw ('NEW_TARGET_PUBLISH_FAILED:'+ $n)}
+          }
+          & ./packaging/windows/scripts/prepare-r125-three-component-v1.ps1 -RepoRoot $PWD.Path -Supervisor (Join-Path $root 'target-Sokna.Maintenance.Supervisor/SoknaMaintenanceSupervisor.exe') -Engine (Join-Path $root 'target-Sokna.Maintenance.UpdateEngine/SoknaMaintenanceUpdateEngine.exe') -RecoveryConsole (Join-Path $root 'target-Sokna.Maintenance.RecoveryConsole/SoknaMaintenanceRecoveryConsole.exe') -OutputRoot (Join-Path $root 'payload')
+          if(-not(Test-Path (Join-Path $root 'payload/r125-component-manifest.json'))){throw 'PAYLOAD_NOT_READY'}
+      - name: Install and start REAL Windows Supervisor 0.3.22 service on isolated runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=$env:R125_SERVICE_LAB_ROOT
+          $install=Join-Path $root 'SOKNA Windows Services'
+          $app=Join-Path $install 'Maintenance/App'
+          $recovery=Join-Path $install 'Maintenance/Recovery'
+          $runtime=Join-Path $install 'Runtime'
+          $print=Join-Path $install 'PrintAgent/Service'
+          New-Item -ItemType Directory -Path $app,$recovery,$runtime,$print -Force|Out-Null
+          foreach($x in @(
+            @{n='SoknaMaintenanceSupervisor.exe';p='Sokna.Maintenance.Supervisor';d=$app},
+            @{n='SoknaMaintenanceUpdateEngine.exe';p='Sokna.Maintenance.UpdateEngine';d=$app},
+            @{n='SoknaMaintenanceRecoveryConsole.exe';p='Sokna.Maintenance.RecoveryConsole';d=$recovery})){
+            Copy-Item -LiteralPath (Join-Path $root ("baseline-"+$x.p+"/"+$x.n)) -Destination (Join-Path $x.d $x.n) -ErrorAction Stop
+          }
+          'CI_RUNTIME_SENTINEL'|Set-Content (Join-Path $runtime 'SoknaRuntimeService.exe')
+          'CI_PRINT_SENTINEL'|Set-Content (Join-Path $print 'Sokna.PrintAgent.Service.exe')
+          $dataRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
+          $identityDir=Join-Path $dataRoot 'Maintenance'
+          $setup=Join-Path $dataRoot 'setup'
+          New-Item -ItemType Directory -Path $identityDir,$setup -Force|Out-Null
+          [ordered]@{
+            maintenance_supervisor_version='0.3.22'
+            update_engine_version='0.3.22'
+            local=@{version='synthetic-R112';preserve='yes'}
+            public=@{version='synthetic-public';preserve='yes'}
+          }|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $identityDir 'installed-release-identity.json')
+          [ordered]@{
+            format='sokna-maintenance-only-component-receipt-v1';version='0.3.22'
+            supervisor_sha256=(Get-FileHash (Join-Path $app 'SoknaMaintenanceSupervisor.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+            engine_sha256=(Get-FileHash (Join-Path $app 'SoknaMaintenanceUpdateEngine.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+          }|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $setup 'maintenance-only-component-receipt-v1.json')
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'RUNNER_ALREADY_HAS_SOKNA_SERVICE'}
+          $exe=Join-Path $app 'SoknaMaintenanceSupervisor.exe'
+          New-Service -Name SoknaMaintenanceSupervisor -BinaryPathName ('"'+$exe+'"') -DisplayName 'SOKNA Supervisor CI' -StartupType Automatic|Out-Null
+          Start-Service -Name SoknaMaintenanceSupervisor -ErrorAction Stop
+          . ./packaging/windows/scripts/maintenance-signed-health-v1.ps1
+          Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.22' -Attempts 35
+          Write-Host 'PASS genuine Windows Supervisor 0.3.22 started; signed health valid'
+      - name: Real transactional upgrade of running Windows service to three new executables
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=$env:R125_SERVICE_LAB_ROOT
+          $dataRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
+          $before=Get-Content (Join-Path $dataRoot 'Maintenance/installed-release-identity.json') -Raw|ConvertFrom-Json
+          & ./packaging/windows/scripts/invoke-r125-three-component-v1.ps1 -PayloadRoot (Join-Path $root 'payload')
+          if($LASTEXITCODE-ne0){throw ('REAL_WINDOWS_SERVICE_UPGRADE_FAILED:'+ $LASTEXITCODE)}
+          . ./packaging/windows/scripts/maintenance-signed-health-v1.ps1
+          Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.23' -Attempts 35
+          $after=Get-Content (Join-Path $dataRoot 'Maintenance/installed-release-identity.json') -Raw|ConvertFrom-Json
+          if($after.maintenance_supervisor_version-ne'0.3.23' -or
+             $after.update_engine_version-ne'0.3.23' -or
+             $before.local.version-ne$after.local.version -or
+             $before.public.version-ne$after.public.version){
+            throw 'REAL_SERVICE_IDENTITY_SCOPE_INVALID'
+          }
+          $record=Get-Content (Join-Path $dataRoot 'setup/r125-0323-three-component/active.json') -Raw|ConvertFrom-Json
+          if($record.phase-ne'COMMITTED'){throw 'REAL_SERVICE_TRANSACTION_NOT_COMMITTED'}
+          Write-Host 'PASS real 0.3.22 to 0.3.23 Supervisor Windows service upgrade with signed health and preserved identities'
+      - name: Emit strictly lab-scoped attestation
+        shell: pwsh
+        run: |
+          $out=Join-Path $env:RUNNER_TEMP 'r125-real-service-lab-result'
+          New-Item -ItemType Directory -Path $out -Force|Out-Null
+          [ordered]@{
+            format='sokna-r125-0323-real-windows-service-lab-v1'
+            source_commit=$env:GITHUB_SHA
+            actual_win32_service_started=$true
+            actual_windows_supervisor_0322_to_0323_upgrade='PASS'
+            real_signed_health_before_after='PASS'
+            local_public_identity_preserved='PASS'
+            print_service_mutated=$false
+            source_cafe_database_accessed=$false
+            physical_cafe_host_tested=$false
+            physical_cafe_backup_restored=$false
+            production_install_approved=$false
+          }|ConvertTo-Json|Set-Content (Join-Path $out 'REAL-SERVICE-UAT.json') -Encoding UTF8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r125-0323-real-service-lab-no-production
+          path: ${{ runner.temp }}/r125-real-service-lab-result/REAL-SERVICE-UAT.json
+          if-no-files-found: error
+          retention-days: 30
