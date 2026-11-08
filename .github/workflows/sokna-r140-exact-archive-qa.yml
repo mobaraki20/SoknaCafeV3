@@ -1,0 +1,60 @@
+name: SOKNA R140 Exact R75 Archive Windows MariaDB QA
+on:
+  push:
+    branches:
+      - qa/sokna-r140-exact-zip-lab-20261108
+  workflow_dispatch:
+
+jobs:
+  exact-r75-r140-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP 8.x and PDO MySQL
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y php-cli php-mysql
+          php -m | grep -i pdo_mysql
+      - name: Rebuild exact R75 and R140 ZIPs and validate all bytes
+        run: python3 qa/sokna-r140/exact-ci/reconstruct.py "$RUNNER_TEMP/r140-exact"
+      - name: PHP lint exact archived R75/R140 migration drivers
+        run: |
+          php -l "$RUNNER_TEMP/r140-exact/r75-web/src/Core/Migrations.php"
+          php -l "$RUNNER_TEMP/r140-exact/r140-web/src/Core/Migrations.php"
+          php -l qa/sokna-r140/exact-ci/upgrade.php
+      - name: Exact R75 historical SQL to MariaDB 11.4
+        run: php qa/sokna-r140/exact-ci/upgrade.php baseline "$RUNNER_TEMP/r140-exact"
+      - name: Exact R140 0077/0078/0079 on same MariaDB 11.4
+        run: php qa/sokna-r140/exact-ci/upgrade.php upgrade "$RUNNER_TEMP/r140-exact"
+      - name: Exact R140 migrations idempotent on MariaDB
+        run: php qa/sokna-r140/exact-ci/upgrade.php verify "$RUNNER_TEMP/r140-exact"
+
+  exact-windows-maintenance-stage:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Rebuild exact R75/R140 ZIP and verify SHA-256 on Windows
+        shell: pwsh
+        run: |
+          python qa/sokna-r140/exact-ci/reconstruct.py "$env:RUNNER_TEMP/r140-exact"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows exact archive Maintenance 0.3.22 VerifyOnly/Stage gate
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-r140/exact-ci/R140ExactStage.csproj -c Release --no-launch-profile -- "$env:RUNNER_TEMP/r140-exact/r75.zip" "$env:RUNNER_TEMP/r140-exact/r140.zip"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
