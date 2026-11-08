@@ -1,0 +1,105 @@
+name: SOKNA R125 0323 one-click Inno QA not production
+on:
+  push:
+    branches: [qa/sokna-r125-maintenance-0323-package-20261109]
+    paths:
+      - .github/workflows/sokna-r125-0323-inno-build-qa.yml
+      - packaging/windows/installer/SOKNA-R125-Maintenance-0323-ThreeComponent-QA.iss
+      - packaging/windows/scripts/invoke-r125-three-component-v1.ps1
+      - packaging/windows/scripts/prepare-r125-three-component-v1.ps1
+      - qa/sokna-r125-reconcile/test-three-component-transaction.ps1
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-qa-exe:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Nine PowerShell 5.1 transaction rollback scenarios
+        shell: powershell
+        run: |
+          .\qa\sokna-r125-reconcile\test-three-component-transaction.ps1
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - name: Build exact three self-contained Windows binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TEMP 'r125-0323-inno'
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')){
+            $out=Join-Path $dir $n
+            dotnet publish "windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $out
+            if($LASTEXITCODE-ne0){throw ('R125_PUBLISH_FAILED_'+$n)}
+          }
+          "R125_QA_DIR=$dir"|Out-File -LiteralPath $env:GITHUB_ENV -Append -Encoding UTF8
+      - name: Build exact three-component SHA256-signed-scope manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $r=$env:R125_QA_DIR
+          & ./packaging/windows/scripts/prepare-r125-three-component-v1.ps1 -RepoRoot $PWD.Path -Supervisor (Join-Path $r 'Sokna.Maintenance.Supervisor/SoknaMaintenanceSupervisor.exe') -Engine (Join-Path $r 'Sokna.Maintenance.UpdateEngine/SoknaMaintenanceUpdateEngine.exe') -RecoveryConsole (Join-Path $r 'Sokna.Maintenance.RecoveryConsole/SoknaMaintenanceRecoveryConsole.exe') -OutputRoot (Join-Path $r 'payload')
+          if($LASTEXITCODE-ne0){throw 'R125_PAYLOAD_PREP_FAILED'}
+      - name: Compile real single-click Inno Setup installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $roots=@([Environment]::GetFolderPath('ProgramFilesX86'),$env:ProgramFiles)
+          $iscc=$roots|ForEach-Object{Join-Path $_ 'Inno Setup 6\ISCC.exe'}|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
+          if(-not$iscc){
+            choco install innosetup -y --no-progress
+            if($LASTEXITCODE-ne0){throw 'INNO_INSTALL_FAILED'}
+            $iscc=$roots|ForEach-Object{Join-Path $_ 'Inno Setup 6\ISCC.exe'}|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
+          }
+          if(-not$iscc){throw 'INNO_COMPILER_MISSING'}
+          $payload=Join-Path $env:R125_QA_DIR 'payload'
+          $dist=Join-Path $env:R125_QA_DIR 'dist'
+          New-Item -ItemType Directory -Path $dist -Force|Out-Null
+          & $iscc "/DPayloadRoot=$payload" "/DOutputDir=$dist" 'packaging/windows/installer/SOKNA-R125-Maintenance-0323-ThreeComponent-QA.iss'
+          if($LASTEXITCODE-ne0){throw 'R125_INNO_COMPILE_FAILED'}
+          $exe=Join-Path $dist 'SOKNA-R125-Maintenance-0323-Three-Component-QA-NOT-PRODUCTION.exe'
+          if(-not(Test-Path $exe -PathType Leaf)){throw 'R125_COMPILED_INSTALLER_MISSING'}
+          if(([string]([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)).Trim()-ne'0.3.23.0'){
+            throw 'R125_COMPILED_INSTALLER_VERSION_INVALID'
+          }
+          "R125_QA_EXE=$exe"|Out-File -LiteralPath $env:GITHUB_ENV -Append -Encoding UTF8
+      - name: Exact EXE must reject untrusted Windows host with no service or data changes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'R125_CI_HOST_UNEXPECTED_SERVICE'}
+          $proc=Start-Process -FilePath $env:R125_QA_EXE -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -PassThru -Wait
+          if($proc.ExitCode-ne52){throw ("R125_CI_EXE_NOT_FAIL_CLOSED:"+$proc.ExitCode)}
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'R125_CI_EXE_UNAUTHORIZED_SERVICE'}
+          Write-Host 'PASS compiled exact EXE safely refused missing baseline'
+      - name: Record QA-only SHA256 and missing production gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=$env:R125_QA_EXE
+          $out=Split-Path -Parent $exe
+          $hash=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $([IO.Path]::GetFileName($exe))"|Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding Ascii
+          [ordered]@{
+            format='sokna-r125-0323-inno-qa-v1';source_commit=$env:GITHUB_SHA
+            filename=[IO.Path]::GetFileName($exe);sha256=$hash;bytes=(Get-Item $exe).Length
+            windows_native_binary_build='PASS';nine_rollback_cases='PASS'
+            inno_one_click_compiled='PASS';unknown_baseline_rejected='PASS'
+            real_0322_supervisor_windows_service_upgrade='NOT_TESTED'
+            real_cafe_backup_qualified=$false;process_crash_recovery_complete=$false
+            production_approved=$false;local_public_print_modified=$false
+          }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $out 'QA-RESULT.json') -Encoding UTF8
+          Copy-Item (Join-Path $env:R125_QA_DIR 'payload/r125-component-manifest.json') (Join-Path $out 'COMPONENT-MANIFEST.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r125-0323-one-click-inno-qa-NOT-PRODUCTION
+          path: |
+            ${{ runner.temp }}/r125-0323-inno/dist/SOKNA-R125-Maintenance-0323-Three-Component-QA-NOT-PRODUCTION.exe
+            ${{ runner.temp }}/r125-0323-inno/dist/SHA256SUMS.txt
+            ${{ runner.temp }}/r125-0323-inno/dist/QA-RESULT.json
+            ${{ runner.temp }}/r125-0323-inno/dist/COMPONENT-MANIFEST.json
+          if-no-files-found: error
+          retention-days: 30
