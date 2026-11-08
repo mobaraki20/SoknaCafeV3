@@ -55,12 +55,13 @@ qa['install_qualification_evidence']='GITHUB_ACTIONS_EXACT_R140_WINDOWS_RUN_4245
 qa.pop('no_install_authorization',None)
 assert original['signature'] is None  # Operator-approved panel upload with SHA-addressed inbox.
 
-with zipfile.ZipFile(dst,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as archive:
+with zipfile.ZipFile(dst,'w',compression=zipfile.ZIP_STORED) as archive:
     def put(name, data):
         info=zipfile.ZipInfo(name,date_time=(2026,11,8,7,0,0))
-        info.compress_type=zipfile.ZIP_DEFLATED
+        info.create_system=3
+        info.compress_type=zipfile.ZIP_STORED
         info.external_attr=0o644<<16
-        archive.writestr(info,data,compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
+        archive.writestr(info,data,compress_type=zipfile.ZIP_STORED)
     put('release-set.json',json.dumps(original,ensure_ascii=False,sort_keys=True,separators=(',',':')))
     put('artifacts/local/web.zip',web)
 with zipfile.ZipFile(dst) as archive:
