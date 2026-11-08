@@ -78,3 +78,7 @@ Compress-Archive -Path (Join-Path $root '*') -DestinationPath (Join-Path $Output
 }finally {
   Remove-Item -LiteralPath $workspace -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# Successful positive and negative assertions should not inherit the
+# nonzero exit code of a harmless sc.exe query on a disposable CI runner.
+$global:LASTEXITCODE=0
