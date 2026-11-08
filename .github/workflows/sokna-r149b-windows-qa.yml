@@ -1,0 +1,105 @@
+name: SOKNA R149B exact 43-base Local Maintenance Windows + MariaDB safety gate
+on:
+  push:
+    branches: [qa/sokna-r150-exact-windows-20261108]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-archive-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP CLI and MariaDB driver
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y php-cli php-mysql
+      - name: Reproduce approved R140 and exact corrected R149B release bytes
+        run: |
+          python qa/sokna-r140/exact-ci/reconstruct.py "$RUNNER_TEMP/r149b-exact"
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$RUNNER_TEMP/r149b-exact/r140.zip" "$RUNNER_TEMP/r149b-exact/qualified-r140.zip"
+          python qa/sokna-r149b/build_r149b.py "$RUNNER_TEMP/r149b-exact/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$RUNNER_TEMP/r149b-exact"
+          python qa/sokna-r149b/test-manifest-matrix.py "$RUNNER_TEMP/r149b-exact/qualified-r140.zip" "$RUNNER_TEMP/r149b-exact/r149b-candidate.zip" "$RUNNER_TEMP/r149b-exact/r149b-qualified.zip"
+          unzip -q "$RUNNER_TEMP/r149b-exact/r149b-qualified.zip" -d "$RUNNER_TEMP/r149b-outer"
+          unzip -q "$RUNNER_TEMP/r149b-outer/artifacts/local/web.zip" -d "$RUNNER_TEMP/r149b-exact/r149b-web"
+      - name: Exact R75 76 migrations and R140 79 migrations on disposable MariaDB
+        run: |
+          php qa/sokna-r140/exact-ci/upgrade.php baseline "$RUNNER_TEMP/r149b-exact"
+          php qa/sokna-r140/exact-ci/upgrade.php upgrade "$RUNNER_TEMP/r149b-exact"
+          php qa/sokna-r140/exact-ci/upgrade.php verify "$RUNNER_TEMP/r149b-exact"
+      - name: Exact R149B 0080 migrate then verify all 9 tea/herbal families with 27 exact prices
+        env:
+          SOKNA_R149B_DISPOSABLE: 'YES'
+        run: |
+          php -l qa/sokna-r149b/test-exact-upgrade.php
+          php qa/sokna-r149b/test-exact-upgrade.php upgrade "$RUNNER_TEMP/r149b-exact"
+          php qa/sokna-r149b/test-exact-upgrade.php verify "$RUNNER_TEMP/r149b-exact"
+
+  windows-exact-maintenance-stager:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Reconstruct original certified R140, exact original R149 source and corrected R149B packages
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lab=Join-Path $env:RUNNER_TEMP 'r149b-exact'
+          python qa/sokna-r140/exact-ci/reconstruct.py $lab
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py (Join-Path $lab 'r140.zip') (Join-Path $lab 'qualified-r140.zip')
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          python qa/sokna-r149b/build_r149b.py (Join-Path $lab 'qualified-r140.zip') qa/sokna-r149b/overlay.zip $lab
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          python qa/sokna-r149b/test-manifest-matrix.py (Join-Path $lab 'qualified-r140.zip') (Join-Path $lab 'r149b-candidate.zip') (Join-Path $lab 'r149b-qualified.zip')
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          $hash=(Get-FileHash (Join-Path $lab 'r149b-qualified.zip') -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($hash -ne 'ac3080b9baa2bde5bedb772ca687d466e66414037f9b4ba443a39375c0649505'){throw "Final SHA mismatch $hash"}
+          Add-Content $env:GITHUB_ENV ("SOKNA_R149B_EXACT=$lab")
+      - name: Actual Maintenance 0.3.22 VerifyOnly, Stage and 43-baseline acceptance
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-r149b/stage/R149BStage.csproj -c Release --no-launch-profile -- (Join-Path $env:SOKNA_R149B_EXACT 'qualified-r140.zip') (Join-Path $env:SOKNA_R149B_EXACT 'r149b-candidate.zip') (Join-Path $env:SOKNA_R149B_EXACT 'r149b-qualified.zip')
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+
+  windows-real-activation-recovery:
+    needs: [exact-archive-mariadb,windows-exact-maintenance-stager]
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Windows shell syntax check
+        shell: pwsh
+        run: |
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path 'qa/sokna-r149b/windows-r149b-activation.ps1'),[ref]$null,[ref]$errors) | Out-Null
+          if($errors){$errors|ForEach-Object{Write-Host $_};throw 'R149B_POWERSHELL_PARSE_FAILED'}
+      - name: Exact R140 to R149B Windows Apache PHP MariaDB activation and four recovery cycles
+        shell: pwsh
+        env:
+          SOKNA_R149B_DISPOSABLE: 'YES'
+        run: |
+          & ./qa/sokna-r149b/windows-r149b-activation.ps1
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: r149b-exact-windows-recovery-summary
+          path: ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/r149b-windows-cycles.json
+          retention-days: 7
