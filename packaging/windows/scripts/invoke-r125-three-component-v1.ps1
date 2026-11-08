@@ -111,6 +111,18 @@ if($lab){
  FileSafe $health
  . $health
 }
+if(-not$lab){
+ foreach($part in @($installRoot,
+   (Join-Path $installRoot 'Maintenance'),
+   (Join-Path $installRoot 'Maintenance\App'),
+   (Join-Path $installRoot 'Maintenance\Recovery'),
+   (Join-Path $dataRoot 'Maintenance'))){
+  if(-not(Test-Path -LiteralPath $part -PathType Container) -or
+    ((Get-Item -LiteralPath $part -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){
+    Fail 'R125_INSTALL_OWNED_DIRECTORY_UNQUALIFIED'
+  }
+ }
+}
 # Crash recovery runs before checking the installed version/health: after an
 # unexpected process kill, the service may be stopped and the EXEs mixed.
 $crashRoot=Join-Path $dataRoot 'setup\r125-0323-three-component'
@@ -198,9 +210,32 @@ foreach($rel in $names){
 if((Version $installed[$names[0]])-ne'0.3.22' -or
  (Version $installed[$names[1]])-ne'0.3.22' -or
  (Version $installed[$names[2]])-ne'0.1.3'){Fail 'R125_ONLY_0322_AND_013_BASELINE_QUALIFIED'}
+# The actual cafe's installed 0.3.22 components must match the last scoped
+# privileged install receipt. Version numbers alone are not provenance.
+if(-not$lab){
+ $receiptPath=Join-Path $dataRoot 'setup\maintenance-only-component-receipt-v1.json'
+ FileSafe $receiptPath
+ $receipt=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json -ErrorAction Stop
+ if($receipt.format-ne'sokna-maintenance-only-component-receipt-v1' -or
+    $receipt.version-ne'0.3.22' -or
+    [string]$receipt.supervisor_sha256 -notmatch '^[a-f0-9]{64}$' -or
+    [string]$receipt.engine_sha256 -notmatch '^[a-f0-9]{64}$' -or
+    $receipt.supervisor_sha256-cne$original[$names[0]] -or
+    $receipt.engine_sha256-cne$original[$names[1]]){
+  Fail 'R125_INSTALLED_BINARIES_NOT_RECEIPT_ATTESTED'
+ }
+}
 $identity=Join-Path $dataRoot 'Maintenance\installed-release-identity.json'
 FileSafe $identity
 $identityHash=Hash $identity
+# Runtime and Print Agent are outside the transaction: snapshot hashes before
+# touching any Maintenance components and recheck before commit/rollback receipt.
+$otherHashes=@{}
+if(-not$lab){
+ foreach($rel in @('Runtime\SoknaRuntimeService.exe','PrintAgent\Service\Sokna.PrintAgent.Service.exe')){
+  $otherHashes[$rel]=Hash (Join-Path $installRoot $rel)
+ }
+}
 $oldDoc=Get-Content -LiteralPath $identity -Raw|ConvertFrom-Json
 if($oldDoc.maintenance_supervisor_version-ne'0.3.22' -or
  $oldDoc.update_engine_version-ne'0.3.22'){Fail 'R125_INSTALLED_IDENTITY_NOT_0322'}
@@ -268,6 +303,7 @@ try{
   Fault 'after-identity'
   foreach($rel in $names){Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))}
   Live '0.3.23'
+  foreach($rel in $otherHashes.Keys){Same (Join-Path $installRoot $rel) $otherHashes[$rel]}
   # Durable complete receipt precedes the commit marker: a crash in the gap
   # is safely recoverable rather than falsely advertising committed install.
   Save $result ([ordered]@{format='sokna-r125-0323-result-v1';status='COMMITTED';supervisor_version='0.3.23';engine_version='0.3.23';recovery_console_version='0.1.4';archive_reconciled=$false;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
@@ -290,6 +326,7 @@ try{
    Same $identity $identityHash
    StartMaintenanceService
    Live '0.3.22'
+   foreach($rel in $otherHashes.Keys){Same (Join-Path $installRoot $rel) $otherHashes[$rel]}
    $state.phase='ROLLED_BACK';Save $marker $state
    Save $result ([ordered]@{format='sokna-r125-0323-result-v1';status='ROLLED_BACK';original_files_restored=$true;identity_restored=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
    Write-Host 'R125_0323_INSTALL_ROLLED_BACK'
