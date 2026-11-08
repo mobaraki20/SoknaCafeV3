@@ -31,7 +31,8 @@ public sealed record InactiveLocalHostReadiness(
     [property: JsonPropertyName("panel_update_ready")] bool PanelUpdateReady,
     [property: JsonPropertyName("activation_performed")] bool ActivationPerformed,
     [property: JsonPropertyName("database_mutation_performed")] bool DatabaseMutationPerformed,
-    [property: JsonPropertyName("public_mutation_performed")] bool PublicMutationPerformed);
+    [property: JsonPropertyName("public_mutation_performed")] bool PublicMutationPerformed,
+    [property: JsonPropertyName("local_lifecycle_reason_code")] string LocalLifecycleReasonCode = "NOT_EVALUATED");
 
 public sealed class InactiveLocalHostReadinessInspector
 {
@@ -51,6 +52,7 @@ public sealed class InactiveLocalHostReadinessInspector
         var binding = false;
         var overlay = false;
         var lifecycle = false;
+        var lifecycleReason = "NOT_EVALUATED";
         string? version = null;
 
         lock (LocalUpdateOperationGate.Sync)
@@ -154,9 +156,13 @@ public sealed class InactiveLocalHostReadinessInspector
                         layout.PackageRoot, _paths.LocalSlotStateRoot, layout.Build);
                     state.RequireIdle();
                     lifecycle = true;
+                    lifecycleReason = "IDLE";
                 }
                 catch (Exception ex) when (IsEvidenceUnavailable(ex))
-                { blockers.Add("LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN"); }
+                {
+                    blockers.Add("LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN");
+                    lifecycleReason = RoutineLocalLifecycle.ClassifyIdleFailure(ex);
+                }
             }
             else
             {
@@ -165,6 +171,7 @@ public sealed class InactiveLocalHostReadinessInspector
                 blockers.Add("MACHINE_BINDING_OR_INSTALL_LOCK_MISMATCH");
                 blockers.Add("PERSISTENT_MACHINE_LOCAL_OVERLAY_DRIFT");
                 blockers.Add("LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN");
+                lifecycleReason = "LOCAL_LIFECYCLE_HOST_LAYOUT_UNAVAILABLE";
             }
         }
 
@@ -182,7 +189,8 @@ public sealed class InactiveLocalHostReadinessInspector
             DatabaseQualified: false, PublicPairQualified: false,
             ActivationAllowed: preconditions, PanelUpdateReady: preconditions,
             ActivationPerformed: false, DatabaseMutationPerformed: false,
-            PublicMutationPerformed: false);
+            PublicMutationPerformed: false,
+            LocalLifecycleReasonCode: lifecycleReason);
     }
 
     private static bool FileContentsEqual(string a, string b)
