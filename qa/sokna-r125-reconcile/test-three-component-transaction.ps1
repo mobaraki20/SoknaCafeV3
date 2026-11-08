@@ -92,7 +92,11 @@ foreach($case in $all){
    }
    'happy'{
     $r=RunLab $f
-    if($r.Code-ne0){throw ("R125_QA_HAPPY_FAILED:"+ $r.Code + ":" + $r.Stderr)}
+    if($r.Code-ne0){
+     $res=Get-ChildItem -LiteralPath $f.Root -Filter result.json -File -Recurse -ErrorAction SilentlyContinue|Select-Object -First 1
+     $stateDump=$(if($res){Get-Content $res.FullName -Raw}else{'NO_RECEIPT'})
+     throw ("R125_QA_HAPPY_FAILED:"+ $r.Code + ":" + $r.Stderr + " OUTPUT=" + $r.Stdout + " RECEIPT=" + $stateDump)
+    }
     VerifyCommitted $f
    }
    default{
