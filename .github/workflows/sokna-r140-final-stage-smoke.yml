@@ -1,0 +1,50 @@
+name: SOKNA R140 exact final install-qualified release Stage gate
+on:
+  push:
+    branches:
+      - qa/sokna-r140-final-stage-smoke-20261108
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  final-r140-maintenance-panel-stage:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Require prior exact Windows Apache MariaDB recovery matrix successful
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $record=gh api repos/$env:GITHUB_REPOSITORY/actions/runs/42457017038 | ConvertFrom-Json
+          if($record.status -ne 'completed' -or $record.conclusion -ne 'success' -or
+             $record.head_sha -ne 'e66ccd2c4424decc1a90b1368c5c76ae62d7d216'){
+            throw 'R140_EXACT_308_AND_WINDOWS_RECOVERY_QUALIFICATION_EVIDENCE_MISSING'
+          }
+          Write-Host 'PASS R140 prior 308-case matrix + 4 Windows cycles + real MariaDB backup restore'
+      - name: Reconstruct byte-exact R140 and build install-qualified panel ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lab=Join-Path $env:RUNNER_TEMP 'r140-final-stage'
+          python qa/sokna-r140/exact-ci/reconstruct.py $lab
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py (Join-Path $lab 'r140.zip') (Join-Path $lab 'qualified.zip')
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          $sha=(Get-FileHash (Join-Path $lab 'qualified.zip') -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected='c24ae0e58e6e1283154ed9b80d6b7b0c96138b0ffc9a9a0d42d7260febd4522f'
+          if($sha -ne $expected){throw "R140_FINAL_ZIP_SHA_NOT_REPRODUCIBLE actual=$sha expected=$expected"}
+          Add-Content $env:GITHUB_ENV ('SOKNA_R140_FINAL_LAB='+$lab)
+          Write-Host ('PASS exact final R140 install-qualified ZIP SHA256='+$sha)
+      - name: Actual Maintenance 0.3.22 final ReleaseSet VerifyOnly and VerifyAndStage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project qa/sokna-r140/final-ci/R140FinalVerify.csproj -c Release --nologo -- (Join-Path $env:SOKNA_R140_FINAL_LAB 'r75.zip') (Join-Path $env:SOKNA_R140_FINAL_LAB 'qualified.zip')
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          Write-Host 'R140_FINAL_DISTRIBUTABLE_PANEL_ZIP_STAGE_PASS'
