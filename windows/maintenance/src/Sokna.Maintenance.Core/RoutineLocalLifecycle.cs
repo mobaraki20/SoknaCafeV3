@@ -346,6 +346,44 @@ internal sealed class RoutineLocalLifecycle
             Path.Combine(lifeRoot, "managed-files.json"), installedIdentityPath);
     }
 
+
+    /// <summary>
+    /// R125 post-recovery archival gate. This NEVER restores a snapshot.
+    /// The previous bytes, including installed identity, must already be
+    /// present on disk exactly as saved before the failed activation.
+    /// </summary>
+    internal static void RequireRecoveredByteExact(string packageRoot, string evidenceRoot,
+        string previousBuild, string installedIdentityPath, string backupPath)
+    {
+        var root = ResolveLifecycleRoot(packageRoot);
+        var statePath = Path.Combine(root, "state.json");
+        var managedPath = Path.Combine(root, "managed-files.json");
+        RoutineLocalBackupProof.ValidateSnapshot(backupPath, previousBuild,
+            statePath, managedPath, installedIdentityPath);
+        var proof = ReadObject(File.ReadAllBytes(backupPath));
+        static void Same(string path, string? encoded, long limit)
+        {
+            if (string.IsNullOrEmpty(encoded) || !File.Exists(path) ||
+                (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0 ||
+                new FileInfo(path).Length > limit)
+                throw new InvalidDataException("LOCAL_LIFECYCLE_RECOVERED_BYTES_NOT_EXACT");
+            byte[] expected;
+            try { expected = Convert.FromBase64String(encoded); }
+            catch (FormatException) { throw new InvalidDataException("LOCAL_LIFECYCLE_RECOVERED_BYTES_NOT_EXACT"); }
+            if (expected.LongLength > limit ||
+                !CryptographicOperations.FixedTimeEquals(
+                    SHA256.HashData(expected), SHA256.HashData(File.ReadAllBytes(path))))
+                throw new InvalidDataException("LOCAL_LIFECYCLE_RECOVERED_BYTES_NOT_EXACT");
+        }
+
+        Same(statePath, (string?)proof["state_base64"], 4_000_000);
+        var managed = (string?)proof["managed_base64"];
+        if (managed is not null) Same(managedPath, managed, 4_000_000);
+        else if (File.Exists(managedPath))
+            throw new InvalidDataException("LOCAL_LIFECYCLE_RECOVERED_BYTES_NOT_EXACT");
+        Same(installedIdentityPath, (string?)proof["installed_identity_base64"], 100_000);
+    }
+
     public static void CompleteCrashBackup(string evidenceRoot)
     {
         var backupPath = Path.Combine(evidenceRoot, "routine-local-lifecycle-before.json");
