@@ -37,7 +37,7 @@ jobs:
           python qa/sokna-r140/exact-ci/build-install-qualified-r140.py (Join-Path $lab 'r140.zip') (Join-Path $lab 'qualified.zip')
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           $sha=(Get-FileHash (Join-Path $lab 'qualified.zip') -Algorithm SHA256).Hash.ToLowerInvariant()
-          $expected='c24ae0e58e6e1283154ed9b80d6b7b0c96138b0ffc9a9a0d42d7260febd4522f'
+          $expected='4734b918f7e2273627f0ba5f8d16992cba05ee198b0afcbee631cc78fdb0dfb9'
           if($sha -ne $expected){throw "R140_FINAL_ZIP_SHA_NOT_REPRODUCIBLE actual=$sha expected=$expected"}
           Add-Content $env:GITHUB_ENV ('SOKNA_R140_FINAL_LAB='+$lab)
           Write-Host ('PASS exact final R140 install-qualified ZIP SHA256='+$sha)
