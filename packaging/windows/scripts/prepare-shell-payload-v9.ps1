@@ -111,11 +111,15 @@ $coreRaw=$coreRaw.Replace($oldSubordinateKeep,$newSubordinateKeep)
 $setupSource=Join-Path $RepoRoot 'packaging\windows\scripts\setup-windows-components-v9.ps1'
 $supportSource=Join-Path $RepoRoot 'packaging\windows\scripts\collect-support-v3.ps1'
 $supportCoreSource=Join-Path $RepoRoot 'packaging\windows\scripts\collect-support-v2.ps1'
+$supportUnifiedSource=Join-Path $RepoRoot 'packaging\windows\scripts\collect-support-unified-v1.ps1'
 $technicianSource=Join-Path $RepoRoot 'packaging\windows\scripts\write-technician-report-v1.ps1'
-foreach($p in @($setupSource,$supportSource,$supportCoreSource,$technicianSource)){if(-not(Test-Path -LiteralPath $p -PathType Leaf)){throw "Windows Services shell source missing: $p"}}
+foreach($p in @($setupSource,$supportSource,$supportCoreSource,$supportUnifiedSource,$technicianSource)){if(-not(Test-Path -LiteralPath $p -PathType Leaf)){throw "Windows Services shell source missing: $p"}}
 Copy-Item -LiteralPath $setupSource -Destination (Join-Path $OutputRoot 'setup-windows-components-v4.ps1') -Force
 Copy-Item -LiteralPath $supportCoreSource -Destination (Join-Path $OutputRoot 'collect-support-v2-core.ps1') -Force
 Copy-Item -LiteralPath $supportSource -Destination (Join-Path $OutputRoot 'collect-support-v2.ps1') -Force
+# P0: keep the read-only Engine inspector next to the normal one-click
+# Support collector. Otherwise all normal ZIPs silently report UNKNOWN.
+Copy-Item -LiteralPath $supportUnifiedSource -Destination (Join-Path $OutputRoot 'collect-support-unified-v1.ps1') -Force
 Copy-Item -LiteralPath $technicianSource -Destination (Join-Path $OutputRoot 'write-technician-report-v1.ps1') -Force
 
 $utf8Bom=New-Object Text.UTF8Encoding($true)
