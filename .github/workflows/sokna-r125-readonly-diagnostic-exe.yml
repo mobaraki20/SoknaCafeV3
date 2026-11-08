@@ -2,7 +2,15 @@ name: SOKNA R125 support-only diagnostic exe build QA and prerelease
 on:
   push:
     branches: [qa/sokna-p0-r125-lifecycle-safe-assessment-20261108]
-    paths: [.github/workflows/sokna-r125-readonly-diagnostic-exe.yml]
+    paths:
+      - .github/workflows/sokna-r125-readonly-diagnostic-exe.yml
+      - packaging/windows/installer/SOKNA-One-Support-R125-ReadOnly-v1.iss
+      - packaging/windows/scripts/collect-support-unified-v1.ps1
+      - packaging/windows/scripts/collect-support-v3.ps1
+      - packaging/windows/scripts/collect-support-v2.ps1
+      - packaging/windows/scripts/write-technician-report-v1.ps1
+      - qa/sokna-p0-diagnostics/test_lifecycle_evidence_support.ps1
+      - qa/sokna-p0-diagnostics/test_windows_support_bridge.ps1
   workflow_dispatch:
 permissions:
   contents: write
