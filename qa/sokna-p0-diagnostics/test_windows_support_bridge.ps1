@@ -54,6 +54,19 @@ $v=[ordered]@{format='sokna-physical-component-versions-v1'
 }
 $hostResult|ConvertTo-Json -Depth 10|Set-Content -LiteralPath (Join-Path $path 'maintenance-host-readiness-safe.json') -Encoding UTF8
 $v|ConvertTo-Json -Depth 10|Set-Content -LiteralPath (Join-Path $path 'maintenance-physical-versions.json') -Encoding UTF8
+
+$life=[ordered]@{
+ format='sokna-read-only-local-lifecycle-reconcile-evidence-v1'
+ assessment='POSSIBLE_R125_STALE_PROOF__FURTHER_VALIDATION_REQUIRED'
+ backup_proof_present=$true
+ backup_proof_observation=@{present=$true;sha256=('c'*64)}
+ routine_phase='RECOVERED_TO_PREVIOUS_SLOT'
+ external_recovery_settled_marker=$true
+ backup_proof_header_matches_active=$true
+ unsafe_secret='PRIVATE_SUPERVISOR_PATH'
+}
+$life|ConvertTo-Json -Depth 10|Set-Content -LiteralPath (Join-Path $path 'local-lifecycle-reconciliation-safe.json') -Encoding UTF8
+
 Compress-Archive -Path (Join-Path $root '*') -DestinationPath (Join-Path $OutputRoot 'SOKNA-ONE-SUPPORT-fixture.zip') -Force
 '@ | Set-Content -LiteralPath (Join-Path $scripts 'collect-support-unified-v1.ps1') -Encoding UTF8
   function TestBundle([string]$kind) {
@@ -66,11 +79,22 @@ Compress-Archive -Path (Join-Path $root '*') -DestinationPath (Join-Path $Output
     Expand-Archive -LiteralPath $archive.FullName -DestinationPath $ex -Force
     $observedHost=Get-Content -LiteralPath (Join-Path $ex 'maintenance/host-readiness-safe.json') -Raw|ConvertFrom-Json
     $versions=Get-Content -LiteralPath (Join-Path $ex 'maintenance/physical-versions-safe.json') -Raw|ConvertFrom-Json
+    $lifeEvidence=Get-Content -LiteralPath (Join-Path $ex 'maintenance/lifecycle-reconciliation-safe.json') -Raw|ConvertFrom-Json
     if($kind-eq'positive'){
       if($observedHost.evidence_available-ne$true){throw 'No real readiness flag from fixture'}
       if($observedHost.local_lifecycle_reason_code-ne'DETAIL_NOT_AVAILABLE_ON_INSTALLED_ENGINE'){throw 'Legacy 0.3.22 Engine must retain readiness evidence but mark new detail missing'}
       if($observedHost.blockers.Count-ne1 -or $observedHost.blockers[0]-ne'ACTIVE_R8_JUNCTION_UNQUALIFIED'){throw 'Whitelist leaked or lost reason'}
       if($versions.supervisor.sha256-ne('a'*64)){throw 'Binary identity not preserved'}
+
+      if($lifeEvidence.evidence_available-ne$true -or
+         $lifeEvidence.assessment-ne'POSSIBLE_R125_STALE_PROOF__FURTHER_VALIDATION_REQUIRED' -or
+         $lifeEvidence.backup_proof_sha256-ne('c'*64) -or
+         $lifeEvidence.automatic_reconciliation_authorized-ne$false){
+        throw 'R125 read-only lifecycle evidence was lost or misrepresented'
+      }
+      if(($lifeEvidence|ConvertTo-Json -Depth 10)-match 'PRIVATE_SUPERVISOR_PATH|unsafe_secret'){
+        throw 'Private lifecycle fields leaked into normal Support ZIP'
+      }
       if(($observedHost|ConvertTo-Json -Depth 10)-match 'sensitive|UNSAFE_MALICIOUS_CODE'){throw 'Private diagnostic escaped whitelist'}
       if(($versions|ConvertTo-Json -Depth 10)-match 'sensitive'){throw 'Private binary path leaked'}
     }else{
