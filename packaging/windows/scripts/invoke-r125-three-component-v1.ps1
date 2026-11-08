@@ -186,6 +186,7 @@ try{
   Write-Host 'R125_0323_INSTALL_COMMITTED'
   exit 0
  }catch{
+  if($lab){Write-Host ('R125_CI_ORIGINAL_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
   $state.phase='ROLLING_BACK';Save $marker $state
   try{
    Stop
@@ -205,6 +206,7 @@ try{
    Write-Host 'R125_0323_INSTALL_ROLLED_BACK'
    exit 65
   }catch{
+   if($lab){Write-Host ('R125_CI_ROLLBACK_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
    $state.phase='RECOVERY_REQUIRED';Save $marker $state
    Save $result ([ordered]@{format='sokna-r125-0323-result-v1';status='RECOVERY_REQUIRED';backup_retained=$true;auto_retry_forbidden=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false})
    Write-Host 'R125_0323_RECOVERY_REQUIRED'
