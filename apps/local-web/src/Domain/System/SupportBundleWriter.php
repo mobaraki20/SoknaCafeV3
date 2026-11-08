@@ -13,7 +13,7 @@ final class SupportBundleWriter
     private const MAX_BUNDLES=5;
     private const MAX_LOG_LINES=200;
 
-    public function __construct(private readonly Observability $observability) {}
+    public function __construct(private readonly Observability $observability,private readonly ?\Closure $financeAudit=null,private readonly ?\Closure $catalogPushAudit=null) {}
 
     public function create(array $snapshot): array
     {
@@ -24,14 +24,23 @@ final class SupportBundleWriter
         $tmp=$path.'.tmp-'.bin2hex(random_bytes(3));
         $bundleSnapshot=$snapshot;unset($bundleSnapshot['recent_logs']);
         $logStarted=microtime(true);$recentLogs=$this->recentLogs(self::MAX_LOG_LINES);$logElapsed=(int)round((microtime(true)-$logStarted)*1000);
+        $known=$this->knownState();
+        $financeAudit=['status'=>'not_checked','reason'=>'audit_not_configured'];
+        if($this->financeAudit!==null){
+            try{$financeAudit=($this->financeAudit)();}catch(Throwable){$financeAudit=['status'=>'not_checked','reason'=>'audit_unavailable'];}
+        }
         $payload=[
             'format'=>self::FORMAT,
             'generated_at'=>gmdate('c'),
             'notice'=>'Operational diagnostics only. Secrets and credentials are intentionally excluded/redacted.',
             'snapshot'=>$this->observability->redact($bundleSnapshot),
-            'known_state'=>$this->knownState(),
-            // Read-only, bounded, no executable PHP body or Windows credentials.
-            'machine_local_overlays'=>$this->machineLocalOverlayReadiness(),
+            'known_state'=>$known,
+            'triage_index'=>$this->triageIndex($bundleSnapshot,$known,$recentLogs),
+            'finance_account_audit'=>$this->observability->redact($financeAudit),
+            'catalog_push_readonly_audit'=>$this->observability->redact($this->catalogPushEvidence()),
+            // Independent, bounded facts from this installed Local: no private paths or credentials.
+            'installed_release_identity'=>$this->installedReleaseIdentity($known),
+            'connection_failure_timeline'=>$this->connectionFailureTimeline($recentLogs),
             'recent_logs'=>$recentLogs,
             'bundle_profile'=>['log_tail_elapsed_ms'=>$logElapsed,'log_rows'=>count($recentLogs)],
         ];
@@ -42,6 +51,14 @@ final class SupportBundleWriter
         $elapsed=(int)round((microtime(true)-$started)*1000);
         $this->observability->logEvent('info','system.support_bundle_created',['bundle_id'=>$id,'size_bytes'=>$size,'generation_ms'=>$elapsed,'log_tail_ms'=>$logElapsed]);
         return ['id'=>$id,'file_name'=>basename($path),'size_bytes'=>$size,'sha256'=>$sha,'generation_ms'=>$elapsed,'download'=>'/system/download.php?id='.rawurlencode($id)];
+    }
+
+    /** Optional read-only evidence; a failed audit cannot block support collection. */
+    private function catalogPushEvidence(): array
+    {
+        if($this->catalogPushAudit===null)return ['status'=>'not_checked','reason'=>'audit_not_configured'];
+        try{return ($this->catalogPushAudit)();}
+        catch(Throwable){return ['status'=>'not_checked','reason'=>'audit_unavailable'];}
     }
 
     public function resolve(string $id): string
@@ -86,53 +103,6 @@ final class SupportBundleWriter
     }
 
 
-    /**
-     * Included by the NORMAL Local support button, never a separate operator script.
-     * Distinguish missing and drift for BOTH machine-local PHP entrypoints.
-     * The active Web is an R8 junction; its lexical parent is the package root.
-     */
-    private function machineLocalOverlayReadiness(): array
-    {
-        $web=dirname(__DIR__,3);
-        $persistent=dirname($web).DIRECTORY_SEPARATOR.'LocalWeb'.DIRECTORY_SEPARATOR.'persistent';
-        return self::inspectMachineLocalOverlays($web,$persistent);
-    }
-
-    /**
-     * Pure two-root support fixture seam: prevents regression to the old
-     * recovery.php-only bundle. Not callable by public HTTP/maintenance input.
-     */
-    private static function inspectMachineLocalOverlays(string $web,string $persistent): array
-    {
-        $observe=static function(string $file): array {
-            if(is_link($file))return ['status'=>'unsafe_redirect'];
-            if(!file_exists($file))return ['status'=>'missing'];
-            if(!is_file($file)||!is_readable($file))return ['status'=>'unavailable'];
-            $size=@filesize($file);
-            if(!is_int($size)||$size<0||$size>1048576)return ['status'=>'out_of_scope'];
-            $sha=@hash_file('sha256',$file);
-            if(!is_string($sha)||preg_match('/^[a-f0-9]{64}$/D',$sha)!==1)
-                return ['status'=>'unavailable'];
-            return ['status'=>'observed','size_bytes'=>$size,'sha256'=>$sha];
-        };
-        $pairs=[];
-        foreach(['local-recovery.php','local-update-runner.php'] as $name){
-            $rel=DIRECTORY_SEPARATOR.'public'.DIRECTORY_SEPARATOR.$name;
-            $a=$observe($web.$rel);
-            $b=$observe($persistent.$rel);
-            $status=$a['status']==='missing'&&$b['status']==='missing'?'BOTH_MISSING':
-                (($a['status']==='missing'&&$b['status']==='observed')||
-                 ($b['status']==='missing'&&$a['status']==='observed')?'ONE_MISSING':
-                 ($a['status']==='observed'&&$b['status']==='observed'?
-                    (hash_equals($a['sha256'],$b['sha256'])?'MATCH':'DRIFT'):'NOT_VERIFIED'));
-            $pairs[$name]=['status'=>$status,'active'=>$a,'persistent'=>$b];
-        }
-        return ['format'=>'sokna-machine-local-overlays-v1',
-            'authority'=>'read_only_local_file_metadata','installation_authorized'=>false,
-            'local_recovery'=>$pairs['local-recovery.php'],
-            'local_update_runner'=>$pairs['local-update-runner.php']];
-    }
-
     private function knownState(): array
     {
         $out=[];$errors=[];
@@ -151,6 +121,163 @@ final class SupportBundleWriter
         return $out;
     }
 
+
+    /**
+     * Operator-safe navigation inside ONE downloaded support file. Values come only
+     * from read-only supervisor evidence that was already included in this bundle.
+     * Never infer success from missing evidence or include raw Windows/DB exceptions.
+     */
+    private function triageIndex(array $snapshot,array $known,array $recentLogs): array
+    {
+        $maintenance=$snapshot['maintenance_update_diagnostics']??[];
+        $operations=is_array($maintenance)?($maintenance['operations']??[]):[];
+        $cap=is_array($maintenance)?($maintenance['capabilities']??[]):[];
+        $local=$known['local_update_state']??[];
+        $safeCode=static function(mixed $v): string {
+            if(!is_string($v)||preg_match('/^[A-Za-z0-9._-]{1,100}$/D',$v)!==1)return 'unavailable';
+            return $v;
+        };
+        $recent=[];
+        if(is_array($operations))foreach(array_slice(is_array($operations['recent']??null)?$operations['recent']:[],0,15) as $o){
+            if(!is_array($o))continue;
+            $recent[]=['state'=>$safeCode($o['state']??null),
+                'result_code'=>$safeCode($o['result_code']??null),
+                'operation_type'=>$safeCode($o['operation_type']??null),
+                'at'=>substr((string)($o['updated_at_utc']??''),0,48)];
+        }
+        $out=[
+            'format'=>'sokna-support-triage-index-v1',
+            'local_version'=>substr((string)($local['active_version']??''),0,180),
+            'maintenance'=>[
+                'evidence_available'=>($operations['evidence_available']??false)===true,
+                'ready'=>($cap['install_ready']??false)===true,
+                'state'=>$safeCode($operations['state']??null),
+                'requires_recovery'=>$operations['requires_recovery']??null,
+                'blocking_count'=>$operations['blocking_count']??null,
+                'recent_operations'=>$recent,
+            ],
+            'last_local_failure'=>$this->observability->redact($local['last_failure']??null),
+            'finance_projection'=>$this->financeProjectionTriage($recentLogs),            'evidence_limit'=>'Detailed Windows engine causes beyond Supervisor read-only API are unavailable in this file; never request operator scripts.',
+        ];
+        return $this->observability->redact($out);
+    }
+
+
+    /**
+     * Reports a bounded, already-redacted reason for a blocked financial projection.
+     * A missing entry is explicitly inconclusive, never evidence that finance is healthy.
+     * No database, receipt, price, or customer record is opened by support collection.
+     *
+     * @param list<array<string,mixed>> $recentLogs
+     */
+    private function financeProjectionTriage(array $recentLogs): array
+    {
+        $fallback=null;
+        foreach($recentLogs as $row){
+            if(!is_array($row))continue;
+            $event=(string)($row['event']??'');
+            if(!in_array($event,['public.finance_projection_blocked','public.realtime_projection_prepare_failed','public.projection_model_preparation_failed'],true))continue;
+            $context=is_array($row['context']??null)?$row['context']:[];
+            if((string)($context['model_key']??'')!=='operations')continue;
+            $code=trim((string)($context['reason_code']??''));
+            if(preg_match('/^[a-z][a-z0-9_]{0,79}$/D',$code)!==1)$code='not_reported';
+            $id=(int)($context['session_id']??0);
+            $entry=[
+                'evidence'=>'recent_log_only',
+                'event'=>$event,
+                'reason_code'=>$code,
+                'session_id'=>$id>0?$id:null,
+                'observed_at'=>substr((string)($row['ts']??''),0,40),
+                'meaning'=>'A blocked or failed operations projection is not evidence of an empty account; inspect the canonical finance ledger before any repair.',
+            ];
+            // Recent generic failures must not hide an older, precise code.
+            // We retain the newest generic failure only as a fallback.
+            if($code!=='not_reported')return $entry;
+            $fallback??=$entry;
+        }
+        return $fallback??['evidence'=>'not_observed_in_recent_logs','meaning'=>'No matching recent log was found; this does not prove that finance is healthy.'];
+    }
+
+    /**
+     * Installed version evidence, not a claim that all managed files were verified.
+     * Hash only a few predictable application files; never traverse customer data.
+     */
+    private function installedReleaseIdentity(array $known): array
+    {
+        $state=is_array($known['local_update_state']??null)?$known['local_update_state']:[];
+        $inventory=is_array($known['local_managed_files']??null)?$known['local_managed_files']:[];
+        $root=dirname(__DIR__,3);
+        $files=[];
+        foreach(['VERSION.txt','bootstrap.php','src/Domain/System/SupportBundleWriter.php'] as $relative){
+            $path=$root.DIRECTORY_SEPARATOR.str_replace('/',DIRECTORY_SEPARATOR,$relative);
+            if(!is_file($path)||!is_readable($path)||is_link($path)){$files[$relative]=['status'=>'unavailable'];continue;}
+            $size=@filesize($path);
+            if(!is_int($size)||$size<0||$size>2000000){$files[$relative]=['status'=>'not_checked'];continue;}
+            $hash=@hash_file('sha256',$path);
+            $files[$relative]=is_string($hash)&&preg_match('/^[a-f0-9]{64}$/D',$hash)===1
+                ? ['status'=>'verified','size_bytes'=>$size,'sha256'=>$hash]
+                : ['status'=>'unavailable'];
+        }
+        $versionPath=$root.DIRECTORY_SEPARATOR.'VERSION.txt';
+        $version=is_file($versionPath)&&!is_link($versionPath)&&is_readable($versionPath)&&@filesize($versionPath)<=4096
+            ?trim((string)@file_get_contents($versionPath)):'';
+        return [
+            'format'=>'sokna-installed-release-evidence-v1',
+            'active_version'=>substr((string)($state['active_version']??''),0,180),
+            'version_file'=>substr($version,0,180),
+            'version_match'=>isset($state['active_version'])&&$version!=='' ? hash_equals((string)$state['active_version'],$version) : null,
+            'managed_inventory_entry_count'=>is_array($inventory['files']??null)?count($inventory['files']):null,
+            'managed_inventory_updated_at'=>substr((string)($inventory['updated_at']??''),0,48),
+            'file_hash_scope'=>'selected_application_files_only; not a full managed-tree verification',
+            'selected_files'=>$files,
+        ];
+    }
+
+    /** Bounded, field-allowlisted summary of already-redacted logs; no message text or customer data. */
+    private function connectionFailureTimeline(array $recentLogs): array
+    {
+        $records=[];
+        $safe=static function(mixed $value,int $limit=100): string {
+            if(!is_string($value))return '';
+            return preg_match('/^[A-Za-z0-9._:-]{1,100}$/D',$value)===1?substr($value,0,$limit):'';
+        };
+        foreach($recentLogs as $row){
+            if(!is_array($row))continue;
+            $ctx=is_array($row['context']??null)?$row['context']:[];
+            $event=$safe($row['event']??null);
+            $code=$safe($ctx['error_code']??$ctx['detail_code']??$ctx['failure_class']??null);
+            $trigger=$safe($ctx['trigger_key']??null);
+            $workerFailed=$event==='runtime.trigger_http_timing'&&($ctx['worker_success']??null)===false
+                &&in_array($trigger,['public.relay_sync','public.projection_sync'],true);
+            $http=$ctx['http_status']??$ctx['status_code']??null;
+            // Runtime trigger logs use `status` for HTTP (often 200 even when worker failed).
+            if($workerFailed&&$http===null)$http=$ctx['status']??null;
+            $http=is_numeric($http)?(int)$http:null;
+            if($http===null||$http<100||$http>599)$http=null;
+            // A successful trigger HTTP response must not hide failed WAN/TLS work.
+            $haystack=strtolower($event.' '.$code);
+            if(!$workerFailed&&preg_match('/(tls|ssl|handshake|unreachable|timeout|connection|sync_failed|http_error|public.*fail|edge.*fail|network)/',$haystack)!==1 && $http!==503)continue;
+            if(!$workerFailed&&preg_match('/(fail|error|timeout|unreach|handshake|tls|ssl|503)/',$haystack)!==1&&$http!==503)continue;
+            $records[]=[
+                'at'=>$safe($row['ts']??null,48),
+                'event'=>$event,
+                'error_code'=>$code!==''?$code:($workerFailed?'worker_reported_failure':null),
+                'http_status'=>$http,
+                'worker_success'=>$workerFailed?false:null,
+                'trigger_key'=>$workerFailed?$trigger:null,
+                'correlation_id'=>$safe($row['correlation_id']??null,95),
+            ];
+            if(count($records)>=30)break;
+        }
+        return [
+            'format'=>'sokna-support-connection-timeline-v1',
+            'source'=>'recent_local_logs_only',
+            'sampled_log_rows'=>count($recentLogs),
+            'status'=>$recentLogs===[]?'no_log_evidence':($records===[]?'no_matching_failure_in_sample':'failure_evidence_found'),
+            'events'=>$records,
+            'scope_note'=>'No matching log does not prove connection health; Public and Windows evidence remain separate.',
+        ];
+    }
 
     private function bundleDir(): string{return $this->observability->dataRoot().DIRECTORY_SEPARATOR.'support-bundles';}
 
