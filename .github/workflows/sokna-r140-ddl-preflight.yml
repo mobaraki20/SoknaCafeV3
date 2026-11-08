@@ -36,3 +36,40 @@ jobs:
           php qa/sokna-r140/test-0077-preflight.php
       - name: Real MariaDB 11.4 inventory DDL read-only preflight
         run: php qa/sokna-r140/test-0077-mariadb.php
+
+  r140-windows-php-and-maintenance-guard:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Fetch hash-pinned PHP 8.4 Windows binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://downloads.php.net/~windows/releases/archives/php-8.4.24-Win32-vs17-x64.zip'
+          $sha='7b57fc9840273ab153834d0e2bd06e0bcf4fead36e381182b4b8fe9cedff3174'
+          $archive=Join-Path $env:RUNNER_TEMP 'php84-r140.zip'
+          $folder=Join-Path $env:RUNNER_TEMP 'php84-r140'
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha) { throw 'PHP archive digest mismatch' }
+          Expand-Archive -LiteralPath $archive -DestinationPath $folder
+          Add-Content -Path $env:GITHUB_ENV -Value "R140_PHP=$folder/php.exe"
+      - name: Windows R140 real PHP syntax plus ten DB guard simulations
+        shell: pwsh
+        run: |
+          & $env:R140_PHP -l apps/local-web/src/Core/Migrations.php
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $env:R140_PHP qa/sokna-r140/test-0077-preflight.php
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host 'R140_WINDOWS_PHP_GUARD_PASS'
+      - name: Windows Maintenance operator-upload and canary-rejection contracts
+        shell: pwsh
+        run: |
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.OperatorUploadHarness/Sokna.Maintenance.OperatorUploadHarness.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project windows/maintenance/tests/Sokna.Maintenance.CafeRunnerHarness/Sokna.Maintenance.CafeRunnerHarness.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host 'R140_WINDOWS_MAINTENANCE_EXISTING_ENGINE_GUARDS_PASS'
