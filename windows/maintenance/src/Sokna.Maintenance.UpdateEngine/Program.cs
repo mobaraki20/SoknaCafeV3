@@ -64,6 +64,8 @@ if (command == "host-readiness")
             mutation_ledger_idle = host.MutationLedgerIdle,
             blocking_code = caps.BlockingCode,
             blockers = caps.HostBlockers ?? Array.Empty<string>(),
+            // Only a fixed allowlisted code, never the original exception or file path.
+            local_lifecycle_reason_code = host.LocalLifecycleReasonCode,
             panel_update_ready = caps.PanelUpdateReady,
             activation_performed = false, database_mutation_performed = false
         }, AtomicFile.JsonOptions));
