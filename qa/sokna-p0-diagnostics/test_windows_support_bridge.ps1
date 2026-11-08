@@ -58,16 +58,16 @@ Compress-Archive -Path (Join-Path $root '*') -DestinationPath (Join-Path $Output
     if($null-eq$archive){throw ('No ZIP in '+$kind)}
     $ex=Join-Path $out 'extracted'
     Expand-Archive -LiteralPath $archive.FullName -DestinationPath $ex -Force
-    $host=Get-Content -LiteralPath (Join-Path $ex 'maintenance/host-readiness-safe.json') -Raw|ConvertFrom-Json
+    $observedHost=Get-Content -LiteralPath (Join-Path $ex 'maintenance/host-readiness-safe.json') -Raw|ConvertFrom-Json
     $versions=Get-Content -LiteralPath (Join-Path $ex 'maintenance/physical-versions-safe.json') -Raw|ConvertFrom-Json
     if($kind-eq'positive'){
-      if($host.evidence_available-ne$true){throw 'No real readiness flag from fixture'}
-      if($host.blockers.Count-ne1 -or $host.blockers[0]-ne'ACTIVE_R8_JUNCTION_UNQUALIFIED'){throw 'Whitelist leaked or lost reason'}
+      if($observedHost.evidence_available-ne$true){throw 'No real readiness flag from fixture'}
+      if($observedHost.blockers.Count-ne1 -or $observedHost.blockers[0]-ne'ACTIVE_R8_JUNCTION_UNQUALIFIED'){throw 'Whitelist leaked or lost reason'}
       if($versions.supervisor.sha256-ne('a'*64)){throw 'Binary identity not preserved'}
-      if(($host|ConvertTo-Json -Depth 10)-match 'sensitive|UNSAFE_MALICIOUS_CODE'){throw 'Private diagnostic escaped whitelist'}
+      if(($observedHost|ConvertTo-Json -Depth 10)-match 'sensitive|UNSAFE_MALICIOUS_CODE'){throw 'Private diagnostic escaped whitelist'}
       if(($versions|ConvertTo-Json -Depth 10)-match 'sensitive'){throw 'Private binary path leaked'}
     }else{
-      if($host.evidence_available-ne$false -or $host.status-ne'INSPECTION_UNAVAILABLE'){throw 'Missing inspector reported as success'}
+      if($observedHost.evidence_available-ne$false -or $observedHost.status-ne'INSPECTION_UNAVAILABLE'){throw 'Missing inspector reported as success'}
     }
     Write-Host ('PASS P0 support '+$kind)
   }
