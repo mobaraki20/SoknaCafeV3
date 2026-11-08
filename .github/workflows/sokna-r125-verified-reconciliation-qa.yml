@@ -37,7 +37,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $console='windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/bin/Release/net8.0-windows/Sokna.Maintenance.RecoveryConsole.dll'
+          $console='windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/bin/Release/net8.0-windows/SoknaMaintenanceRecoveryConsole.dll'
           if(-not(Test-Path $console)){throw 'Recovery Console DLL missing'}
           $out=Join-Path $env:RUNNER_TEMP 'r125-console-out.txt'
           $err=Join-Path $env:RUNNER_TEMP 'r125-console-err.txt'
