@@ -4,6 +4,9 @@ on:
     branches:
       - qa/sokna-r140-local-ddl-preflight-20261108
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
 jobs:
   r140-real-mariadb-preflight:
     runs-on: ubuntu-latest
