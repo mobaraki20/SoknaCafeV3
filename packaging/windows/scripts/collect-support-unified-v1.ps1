@@ -53,6 +53,28 @@ function ReadSafe([string]$path,[string]$category) {
     return $null
   }
 }
+# Windows PowerShell 5.1 on a restricted/support host may not autoload
+# Get-FileHash. The existing nested v2/v3 support scripts also call it.
+# Use an ephemeral, read-only SHA256 implementation only when missing.
+if(-not(Get-Command -Name Get-FileHash -ErrorAction SilentlyContinue)){
+  function Get-FileHash {
+    param([string]$Path,[string]$LiteralPath,[string]$Algorithm='SHA256')
+    if($Algorithm -ne 'SHA256' -or (($Path -ne '') -eq ($LiteralPath -ne ''))){
+      throw 'SOKNA_DIAGNOSTIC_HASH_ARGUMENTS_INVALID'
+    }
+    $file=$(if($LiteralPath){$LiteralPath}else{$Path})
+    $stream=[IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+    try {
+      $hasher=[Security.Cryptography.SHA256]::Create()
+      try {
+        return [pscustomobject]@{
+          Hash=([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-','')
+          Algorithm='SHA256'
+        }
+      } finally { $hasher.Dispose() }
+    } finally { $stream.Dispose() }
+  }
+}
 function Sha([string]$path) {
   return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
