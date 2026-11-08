@@ -159,3 +159,8 @@ try{
   Write-Host ('SOKNA_SUPPORT_BUNDLE='+$zip.FullName)
   Write-Host ('SOKNA_SUPPORT_SHA256='+$hash)
 }finally{Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue}
+
+# A missing optional Windows service may make sc.exe return nonzero while
+# the inspected Support ZIP was successfully finalized. Keep the collector
+# process result tied to the ZIP outcome, not to an unrelated probe exit code.
+$global:LASTEXITCODE=0
