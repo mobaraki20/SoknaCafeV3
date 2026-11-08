@@ -16,6 +16,7 @@ $repo=$PWD.Path
 $lab=Join-Path $env:RUNNER_TEMP 'sokna-r140-windows-exact-e2e'
 New-Item -ItemType Directory -Force $lab | Out-Null
 Run python @('qa/sokna-r140/exact-ci/reconstruct.py',$lab)
+Run python @('qa/sokna-r140/exact-ci/verify-failure-matrix-308.py',$lab)
 $phpUrl='https://downloads.php.net/~windows/releases/archives/php-8.4.24-Win32-vs17-x64.zip'
 $phpZip=Join-Path $lab 'php-ts.zip'; $phpRoot=Join-Path $lab 'php-ts'
 Invoke-WebRequest $phpUrl -OutFile $phpZip
