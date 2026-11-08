@@ -1,0 +1,85 @@
+name: SOKNA R125 signed lifecycle recovery reconciliation QA (NO PRODUCTION)
+on:
+  push:
+    branches: [qa/sokna-r125-verified-lifecycle-reconciliation-20261109]
+    paths:
+      - .github/workflows/sokna-r125-verified-reconciliation-qa.yml
+      - windows/maintenance/src/**
+      - qa/sokna-r125-reconcile/**
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  windows-core-and-supervisor:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile full Windows Supervisor and Engine with R125 reconciliation
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'SUPERVISOR_BUILD_FAILED'}
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'ENGINE_BUILD_FAILED'}
+      - name: Execute 12 safety policy tests, including DB forward refusal
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-r125-reconcile/PolicyProbe.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'R125_SAFETY_POLICY_FAILED'}
+      - name: Inspect exact Recovery Console HMAC authority and no-snapshot-deletion contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $api=Get-Content 'windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs' -Raw
+          $svc=Get-Content 'windows/maintenance/src/Sokna.Maintenance.Core/SupervisorR125LifecycleEvidenceReconciler.cs' -Raw
+          $life=Get-Content 'windows/maintenance/src/Sokna.Maintenance.Core/RoutineLocalLifecycle.cs' -Raw
+          if($api -notmatch 'isR125Reconciliation \|\| isProductionRecovery'){
+            throw 'R125 endpoint not restricted to recovery-console HMAC identity'
+          }
+          if($api -notmatch 'app.MapPost\("/v1/local-updates/reconcile-r125-lifecycle"'){
+            throw 'Signed R125 recovery endpoint missing'
+          }
+          foreach($required in @('RequireSettledRoutine','RequirePreviousSettled',
+            'RequireRecoveredByteExact','RequireBaseline','MachineMutationLease.Acquire',
+            'VerifySourceSha','GetByIdempotencyKey','File.Move(source, archive)',
+            'AtomicFile.WriteJson(receipt','R125_ARCHIVE_OUTCOME_REQUIRES_RECONCILIATION')){
+            if(-not $svc.Contains($required)){throw ('Missing safety gate: '+$required)}
+          }
+          if($svc -match 'File.Delete\(|Directory.Delete\(|StopApache|StartApache|RoutineLocalDatabase.Apply\('){
+            throw 'Unsafe delete or application/database mutation in R125 archive path'
+          }
+          if($life -notmatch 'CryptographicOperations.FixedTimeEquals'){
+            throw 'Exact recovered byte comparison absent'
+          }
+          Write-Host 'PASS protected archive only; no Delete, Apache cutover, or database writes'
+      - name: Emit QA-only scope and results
+        shell: pwsh
+        run: |
+          $output=Join-Path $env:RUNNER_TEMP 'r125-safe-reconcile-qa'
+          New-Item -ItemType Directory -Path $output -Force|Out-Null
+          [ordered]@{
+            format='sokna-r125-verified-reconciliation-qa-v1'
+            source_commit=$env:GITHUB_SHA
+            supervisor_build='PASS'
+            engine_build='PASS'
+            safety_cases=12
+            signed_recovery_console_authority='CHECKED'
+            live_host_recovery_performed=$false
+            real_database_restore_tested=$false
+            actual_cafe_proof_archived=$false
+            production_approved=$false
+            local_public_database_modified=$false
+            windows_services_modified=$false
+            update_package_released=$false
+          }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $output 'R125-RECOVERY-QA-STATUS.json') -Encoding UTF8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r125-reconciliation-qa-status
+          path: ${{ runner.temp }}/r125-safe-reconcile-qa/R125-RECOVERY-QA-STATUS.json
+          if-no-files-found: error
+          retention-days: 30
