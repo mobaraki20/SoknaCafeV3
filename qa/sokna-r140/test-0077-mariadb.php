@@ -56,9 +56,12 @@ try {
       INDEX idx_opening_activation_session (count_session_id, activated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
     $check(true,'already-created correct interrupted DDL resumes');
+    // MariaDB requires an index supporting the FK when the expected composite index is dropped.
+    $pdo->exec('ALTER TABLE inventory_opening_activations ADD INDEX fk_session_support_tmp(count_session_id)');
     $pdo->exec('ALTER TABLE inventory_opening_activations DROP INDEX idx_opening_activation_session');
     $check(false,'wrong existing index rejected');
     $pdo->exec('ALTER TABLE inventory_opening_activations ADD INDEX idx_opening_activation_session(count_session_id,activated_at)');
+    $pdo->exec('ALTER TABLE inventory_opening_activations DROP INDEX fk_session_support_tmp');
     $pdo->exec('ALTER TABLE inventory_opening_activations DROP FOREIGN KEY fk_opening_activation_line');
     $check(false,'wrong existing foreign key rejected');
     $pdo->exec('ALTER TABLE inventory_opening_activations ADD CONSTRAINT fk_opening_activation_line FOREIGN KEY (count_line_id) REFERENCES inventory_count_lines(id) ON UPDATE CASCADE ON DELETE RESTRICT');
