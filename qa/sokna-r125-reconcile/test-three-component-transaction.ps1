@@ -62,10 +62,23 @@ function VerifyCommitted($f){
  if($identity.maintenance_supervisor_version-ne'0.3.23' -or $identity.update_engine_version-ne'0.3.23' -or
     $identity.local.version-ne'local-r112' -or $identity.public.version-ne'public-current'){throw 'R125_QA_IDENTITY_SCOPE'}
 }
-$all=@('happy','after-copy-1','after-copy-2','after-copy-3','after-service-start','after-identity','corrupt','unresolved','baseline')
+$all=@('happy','after-copy-1','after-copy-2','after-copy-3','after-service-start','after-identity','corrupt','unresolved','baseline','crash-after-copy-1','crash-after-identity')
 foreach($case in $all){
  $f=SetupLab
  try{
+  if($case -like 'crash-after-*'){
+   $killed=RunLab $f $case
+   if($killed.Code-eq0){throw 'R125_QA_KILL_FAILED_TO_TERMINATE'}
+   $recovery=RunLab $f
+   if($recovery.Code-ne67){
+    throw ('R125_QA_POWERLOSS_RECOVERY_FAILED:'+ $case +':'+$recovery.Code+':'+$recovery.Stdout+':'+$recovery.Stderr)
+   }
+   VerifyOld $f
+   $marker=Get-Content (Join-Path $f.Root 'ProgramData\SOKNA\setup\r125-0323-three-component\active.json') -Raw|ConvertFrom-Json
+   if($marker.phase-ne'ROLLED_BACK'){throw 'R125_QA_CRASH_ROLLBACK_NOT_DURABLE'}
+   Write-Host ('PASS R125_TXN_'+$case)
+   continue
+  }
   switch($case){
    'corrupt'{
     Add-Content -LiteralPath (Join-Path $f.Payload $names[0].Replace('/','\')) -Value 'tampered'
@@ -112,4 +125,4 @@ foreach($case in $all){
   Remove-Item -LiteralPath $f.Root -Recurse -Force -ErrorAction SilentlyContinue
  }
 }
-Write-Host 'PASS all nine dedicated three-component installation and rollback cases on actual Windows filesystem'
+Write-Host 'PASS all eleven Windows three-component installation, rollback and hard process-kill recovery cases'
