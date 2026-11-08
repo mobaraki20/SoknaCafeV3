@@ -11,6 +11,37 @@ permissions:
   contents: read
 
 jobs:
+  disposable-mariadb-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r132_test
+          MARIADB_USER: sokna_r132
+          MARIADB_PASSWORD: ci-only-password
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_PORT: '3306'
+      SOKNA_TEST_DB_ROOT_USER: root
+      SOKNA_TEST_DB_ROOT_PASS: ci-root-only
+      SOKNA_MARIADB_CI_ONLY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated MariaDB/PHP crypto tooling
+        run: |
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq php-cli php-mysql mariadb-client openssl
+      - name: Test actual migration preflight, interrupted ledger and forward resume
+        run: bash qa/sokna-r132/test-preflight-mariadb.sh
+      - name: Test independent logical backup and exact restore
+        run: bash windows/maintenance/tests/s7e1-disposable-mariadb-restore-drill.sh
+      - name: Test DDL crash, encrypted backup and separate restore
+        run: python3 windows/maintenance/tests/s7e2b-mariadb-forward-crash-ci.py
   compile-and-verify-qa-payload:
     runs-on: windows-latest
     timeout-minutes: 45
