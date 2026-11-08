@@ -103,7 +103,7 @@ try{
       format='sokna-host-readiness-safe-v1';evidence_available=$evidence
       status=$(if($evidence){'LIVE_READ_ONLY_ENGINE_INSPECTION'}else{'INSPECTION_UNAVAILABLE'})
       blocking_code=$(if($evidence){$code}else{''})
-      blockers=$(if($evidence){$reasonCodes}else{@()})
+      blockers=@(if($evidence){$reasonCodes}else{@()})
       host_preparation_preconditions_met=($evidence -and $observedHost.host_preparation_preconditions_met -eq $true)
       apache_healthy=($evidence -and $observedHost.apache_healthy -eq $true)
       active_junction_qualified=($evidence -and $observedHost.active_junction_qualified -eq $true)
