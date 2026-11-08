@@ -43,6 +43,29 @@ jobs:
         run: |
           ./qa/sokna-p0-diagnostics/test_windows_support_bridge.ps1
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Diagnose embedded Windows PowerShell 5.1 collector with no installed SOKNA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TEMP 'r125-embedded-collector'
+          New-Item -ItemType Directory -Path $dir -Force|Out-Null
+          Copy-Item 'packaging/windows/scripts/collect-support-unified-v1.ps1' (Join-Path $dir 'collect-support-unified-v1.ps1')
+          Copy-Item 'packaging/windows/scripts/collect-support-v3.ps1' (Join-Path $dir 'collect-support-v2.ps1')
+          Copy-Item 'packaging/windows/scripts/collect-support-v2.ps1' (Join-Path $dir 'collect-support-v2-core.ps1')
+          Copy-Item 'packaging/windows/scripts/write-technician-report-v1.ps1' (Join-Path $dir 'write-technician-report-v1.ps1')
+          $out=Join-Path $env:RUNNER_TEMP 'r125-ps5-stdout.txt'
+          $err=Join-Path $env:RUNNER_TEMP 'r125-ps5-stderr.txt'
+          $args=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',
+            ('"'+(Join-Path $dir 'collect-support-unified-v1.ps1')+'"'),
+            '-OutputRoot',('"'+$env:RUNNER_TEMP+'"'))
+          $p=Start-Process -FilePath 'powershell.exe' -ArgumentList $args -Wait -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $err
+          if($p.ExitCode -ne 0){
+            Write-Host "PS5 embedded exit: $($p.ExitCode)"
+            Get-Content -LiteralPath $err|Select-Object -Last 25|ForEach-Object{Write-Host $_}
+            throw 'EMBEDDED_R125_PS5_COLLECTOR_FAILED'
+          }
+          Get-Content -LiteralPath $out|Select-Object -Last 5|ForEach-Object{Write-Host $_}
+          Get-ChildItem $env:RUNNER_TEMP -Filter 'SOKNA-ONE-SUPPORT-*.zip' -File|Remove-Item -Force
       - name: Compile exact TEMP-only Inno Support EXE
         shell: pwsh
         run: |
