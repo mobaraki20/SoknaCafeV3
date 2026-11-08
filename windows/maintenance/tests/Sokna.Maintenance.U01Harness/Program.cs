@@ -33,13 +33,14 @@ switch(command)
     case "prepare":
         Directory.CreateDirectory(paths.InboxRoot);
         if(!File.Exists(paths.InstalledReleaseIdentityPath))
-            AtomicFile.WriteJson(paths.InstalledReleaseIdentityPath,new InstalledReleaseIdentity(baseline,null,"0.3.13","0.3.13",null,null));
+            AtomicFile.WriteJson(paths.InstalledReleaseIdentityPath,new InstalledReleaseIdentity(baseline,null,"0.3.22","0.3.22",null,null));
         else if(AtomicFile.ReadJson<InstalledReleaseIdentity>(paths.InstalledReleaseIdentityPath).Local!=baseline)
             throw new InvalidDataException("SECOND_UPGRADE_DID_NOT_RETAIN_FIRST_COMMITTED_IDENTITY");
         new SecretStore(paths).EnsureKeys();
         var package=args[6];var sha=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(package))).ToLowerInvariant();
         File.Copy(package,Path.Combine(paths.InboxRoot,sha+".zip"));
         var preflight=new SupervisorLocalPackagePreflightCoordinator(paths,operations,journal,state).Verify(sha+".zip","user:1","u01-preflight-"+suffix);
+        Console.WriteLine("R140_CI_PREFLIGHT "+JsonSerializer.Serialize(preflight.Operation,AtomicFile.JsonOptions));
         var stage=new SupervisorLocalReleaseStageCoordinator(paths,operations,journal,state).Stage(preflight.Operation.OperationId,"user:1","u01-stage-"+suffix);
         // Fault-injection cases deliberately exercise the lower Engine bridge.
         // Normal case must prepare ONLY after its durable parent is reserved.
