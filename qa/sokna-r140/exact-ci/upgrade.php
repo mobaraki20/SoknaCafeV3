@@ -22,9 +22,20 @@ $catalog=$m->catalog();
 $head=array_key_last($catalog);
 if($phase==='baseline') {
     if($head!=='0076_late_served_accounting')throw new RuntimeException('R75 exact head mismatch');
-    $result=$m->migrate();
+    // R75 intentionally seeds its 135 canonical menu items before H319/0059.
+    // Skipping this ordering causes 0059's real data guard to correctly fail.
+    $first=$m->migrate('0059_menu_business_reconciliation_v4');
+    require_once $web.'/src/Domain/Sellables/CategoryIconLibrary.php';
+    require_once $web.'/src/Domain/Sellables/DefaultContentSeeder.php';
+    $icons=new Sokna\\Local\\Domain\\Sellables\\CategoryIconLibrary($web.'/resources/default-content/v1/category-icons.json');
+    $seeder=new Sokna\\Local\\Domain\\Sellables\\DefaultContentSeeder(
+        $pdo,$icons,$web.'/resources/default-content/v1',$lab.'/seed-media');
+    $seedResult=$seeder->seed();
+    if(($seedResult['seeded']??false)!==true)throw new RuntimeException('R75 canonical menu seed not executed');
+    $last=$m->migrate();
     if($m->appliedVersions()!==array_keys($catalog))throw new RuntimeException('R75 ledger not exact');
-    echo "PASS exact R75 real SQL baseline migrations: ".count($result).PHP_EOL;
+    echo "PASS R75 canonical menu seed between migration batches".PHP_EOL;
+    echo "PASS exact R75 real SQL baseline migrations: ".(count($first)+count($last)).PHP_EOL;
 } else {
     if($head!=='0079_cafe_staff_initial_accounts')throw new RuntimeException('R140 exact head mismatch');
     $expected=array_keys($catalog);
