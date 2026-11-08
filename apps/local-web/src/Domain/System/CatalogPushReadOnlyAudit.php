@@ -36,12 +36,18 @@ final class CatalogPushReadOnlyAudit
         return $out;
     }
 
+    /**
+     * Both upgrade paths are first-class: 0055 seeded family-03..11; clean
+     * installs use h297-03..11. Never infer family identity from a localized
+     * name or overwrite a manually edited item.
+     */
     private function catalog(): array
     {
         try {
             $expected=self::REFERENCE;
             $keys=array_keys($expected);
-            $ph=implode(',',array_fill(0,count($keys),'?'));
+            $allKeys=array_merge($keys,array_map(static fn(string $key):string=>'family-'.substr($key,5),$keys));
+            $ph=implode(',',array_fill(0,count($allKeys),'?'));
             $sql="SELECT f.family_key,f.active,c.category_key,m.label,i.item_code,i.lifecycle_status,i.available,i.guest_visible,i.price
                 FROM item_variant_families f
                 LEFT JOIN categories c ON c.id=f.category_id
@@ -49,29 +55,41 @@ final class CatalogPushReadOnlyAudit
                 LEFT JOIN items i ON i.id=m.item_id
                 WHERE f.family_key IN ($ph)
                 ORDER BY f.family_key,m.sort_order,m.item_id";
-            $st=$this->pdo->prepare($sql);$st->execute($keys);
+            $st=$this->pdo->prepare($sql);$st->execute($allKeys);
             $members=[];
             foreach($st->fetchAll(PDO::FETCH_ASSOC)?:[] as $r) {
-                $key=(string)($r['family_key']??'');
-                if(!isset($expected[$key]))continue;
-                $members[$key][]=$r;
+                $actual=(string)($r['family_key']??'');
+                $key=str_starts_with($actual,'family-') ? 'h297-'.substr($actual,7) : $actual;
+                if(isset($expected[$key]))$members[$key][$actual][]=$r;
             }
-            $candidateCodes=[];
-            foreach($expected as $family)foreach($family['codes'] as $code)$candidateCodes[$code]=true;
-            $codes=array_keys($candidateCodes);$ph=implode(',',array_fill(0,count($codes),'?'));
-            $st=$this->pdo->prepare("SELECT i.item_code,i.lifecycle_status,i.available,i.guest_visible,c.category_key
+            $codes=[];
+            foreach($expected as $family)foreach($family['codes'] as $code)$codes[$code]=true;
+            $codes=array_keys($codes);$ph=implode(',',array_fill(0,count($codes),'?'));
+            $st=$this->pdo->prepare("SELECT i.item_code,i.lifecycle_status,i.available,i.guest_visible,i.price,c.category_key
                 FROM items i LEFT JOIN categories c ON c.id=i.category_id
                 WHERE i.item_code IN ($ph)");$st->execute($codes);
             $items=[];
             foreach($st->fetchAll(PDO::FETCH_ASSOC)?:[] as $r)$items[(string)$r['item_code']]=$r;
+            $st=$this->pdo->prepare("SELECT i.item_code,mi.menu_id
+                FROM items i JOIN menu_items mi ON mi.item_id=i.id WHERE i.item_code IN ($ph)");
+            $st->execute($codes);$menus=[];
+            foreach($st->fetchAll(PDO::FETCH_ASSOC)?:[] as $r)$menus[(string)$r['item_code']][(int)$r['menu_id']]=true;
             $statusCounts=[];$families=[];
             foreach($expected as $key=>$source) {
-                $rows=$members[$key]??[];$first=$rows[0]??null;
-                $memberList=[];$issues=[];$labels=[];
+                $variants=$members[$key]??[];
+                $actualKeys=array_keys($variants);
+                $actualKey=count($actualKeys)===1?$actualKeys[0]:null;
+                $rows=$actualKey!==null?($variants[$actualKey]??[]):[];
+                $first=$rows[0]??null;
+                $issues=[];$memberList=[];$labels=[];$membersByCode=[];
+                if(count($actualKeys)>1)$issues[]='duplicate_legacy_and_canonical_family';
                 foreach($rows as $r){
                     if($r['item_code']===null)continue;
-                    $label=$this->label((string)($r['label']??''));$labels[$label]=($labels[$label]??0)+1;
-                    $memberList[]=['label'=>$label,'item_code'=>(string)$r['item_code'],
+                    $label=$this->label((string)($r['label']??''));
+                    $code=(string)$r['item_code'];
+                    $labels[$label]=($labels[$label]??0)+1;
+                    $membersByCode[$code]=['label'=>$label,'price'=>(int)($r['price']??0)];
+                    $memberList[]=['label'=>$label,'item_code'=>$code,'price_toman'=>(int)($r['price']??0),
                         'active'=>(string)($r['lifecycle_status']??'')==='active',
                         'available'=>(int)($r['available']??0)===1,
                         'guest_visible'=>(int)($r['guest_visible']??0)===1,
@@ -79,29 +97,60 @@ final class CatalogPushReadOnlyAudit
                 }
                 if($first===null)$issues[]='canonical_family_missing';
                 else {
-                    if((int)$first['active']!==1)$issues[]='canonical_family_disabled';
+                    if((int)$first['active']!==1)$issues[]='family_disabled';
                     if((string)$first['category_key']!=='tea-herbal')$issues[]='wrong_category';
                     if(count($memberList)!==3)$issues[]='member_count_not_three';
-                    foreach(['تک نفره','دو نفره','بزرگ'] as $label)if(($labels[$label]??0)!==1)$issues[]='label_missing_or_duplicate:'.($label==='تک نفره'?'single':($label==='دو نفره'?'two':'large'));
-                    foreach($memberList as $item) {
+                    foreach(['تک نفره','دو نفره','بزرگ'] as $label){
+                        if(($labels[$label]??0)!==1)$issues[]='label_missing_or_duplicate:'.($label==='تک نفره'?'single':($label==='دو نفره'?'two':'large'));
+                    }
+                    foreach($source['codes'] as $idx=>$code){
+                        if(!isset($membersByCode[$code]))$issues[]='expected_member_code_missing:'.['single','two','large'][$idx];
+                    }
+                    foreach($memberList as $item){
                         if(!$item['active']){$issues[]='member_inactive';break;}
                     }
-                    foreach($memberList as $item)if(!$item['guest_visible']){$issues[]='member_hidden_from_guest';break;}
+                    foreach($memberList as $item){
+                        if(!$item['guest_visible']){$issues[]='member_hidden_from_guest';break;}
+                    }
                 }
-                $sourceRows=[];
+                $single=(int)($membersByCode[$source['codes'][0]]['price']??0);
+                $expectedPrices=$single>0?[$single,(int)(round($single*1.7/5000)*5000),(int)(round($single*2.3/5000)*5000)]:[];
+                if($single>0){
+                    foreach([1,2] as $i){
+                        $code=$source['codes'][$i];
+                        if(isset($membersByCode[$code]) && $membersByCode[$code]['price']!==$expectedPrices[$i])$issues[]='price_mismatch:'.($i===1?'two':'large');
+                    }
+                }
+                $two=$source['codes'][1];$large=$source['codes'][2];
+                if(isset($membersByCode[$large])){
+                    $twoMenus=array_keys($menus[$two]??[]);
+                    $largeMenus=array_keys($menus[$large]??[]);
+                    if($twoMenus===[]||array_diff($twoMenus,$largeMenus)!==[])$issues[]='large_menu_link_missing';
+                }
+                $referenceItems=[];
                 foreach($source['codes'] as $code){
-                    $c=$items[$code]??null;
-                    $sourceRows[]=['code'=>$code,'exists'=>$c!==null,'active'=>$c!==null&&(string)$c['lifecycle_status']==='active',
-                       'guest_visible'=>$c!==null&&(int)$c['guest_visible']===1,'category_ok'=>$c!==null&&(string)$c['category_key']==='tea-herbal'];
+                    $item=$items[$code]??null;
+                    $referenceItems[]=['code'=>$code,'exists'=>$item!==null,
+                        'active'=>$item!==null&&(string)$item['lifecycle_status']==='active',
+                        'guest_visible'=>$item!==null&&(int)$item['guest_visible']===1,
+                        'category_ok'=>$item!==null&&(string)$item['category_key']==='tea-herbal',
+                        'price_toman'=>$item!==null?(int)$item['price']:null];
                 }
-                $state=$issues===[]?'complete':'needs_review';$statusCounts[$state]=($statusCounts[$state]??0)+1;
-                $families[]=['family_key'=>$key,'reference_name'=>$source['name'],'status'=>$state,
-                    'issues'=>array_values(array_unique($issues)),'members'=>$memberList,'expected_reference_items'=>$sourceRows];
+                $state=$issues===[]?'complete':'needs_review';
+                $statusCounts[$state]=($statusCounts[$state]??0)+1;
+                $families[]=['family_key'=>$key,'actual_family_key'=>$actualKey,
+                    'legacy_family_detected'=>$actualKey!==null&&str_starts_with($actualKey,'family-'),
+                    'reference_name'=>$source['name'],'status'=>$state,
+                    'issues'=>array_values(array_unique($issues)),'members'=>$memberList,
+                    'expected_price_toman'=>$expectedPrices===[]?null:[
+                        'single'=>$expectedPrices[0],'two'=>$expectedPrices[1],'large'=>$expectedPrices[2]],
+                    'expected_reference_items'=>$referenceItems];
             }
             return ['status'=>'checked','expected_families'=>9,
-                'complete'=>(int)($statusCounts['complete']??0),'needs_review'=>(int)($statusCounts['needs_review']??0),
+                'complete'=>(int)($statusCounts['complete']??0),
+                'needs_review'=>(int)($statusCounts['needs_review']??0),
                 'families'=>$families,
-                'interpretation'=>'Migration ledger alone does not prove that any three-size family is present or visible. Reference codes are identifiers, not proof that live catalog must be overwritten.'];
+                'interpretation'=>'Checks legacy family-03..11 and canonical h297-03..11. An applied migration is not evidence of 27 visible, linked and correctly priced items.'];
         }catch(Throwable){return ['status'=>'unavailable','reason'=>'catalog_readonly_query_failed'];}
     }
 

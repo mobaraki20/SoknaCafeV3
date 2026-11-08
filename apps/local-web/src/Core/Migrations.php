@@ -39,12 +39,12 @@ final class Migrations
                     throw new RuntimeException("Migration '{$version}' is empty or unreadable.");
                 }
 
-                // Only the two audited data-only migrations are wrapped as
+                // Only the audited data-only migrations (0078/0079/0080) are wrapped as
                 // whole, durable InnoDB transactions. Their post-write SELECT
                 // guards then rollback all DML plus the statement ledger on error.
                 // DDL (0077) retains the separate forward-only recovery lifecycle.
                 $statements = self::splitStatements($sql);
-                $atomicDataOnly = str_starts_with($version, '0078_') || str_starts_with($version, '0079_');
+                $atomicDataOnly = str_starts_with($version, '0078_') || str_starts_with($version, '0079_') || str_starts_with($version, '0080_');
                 if ($atomicDataOnly) {
                     foreach ($statements as $statement) {
                         if (preg_match('/^(?:SELECT|INSERT|UPDATE|DELETE)\b/i', ltrim($statement)) !== 1) {
@@ -147,7 +147,8 @@ final class Migrations
 
         // An inventory opening migration requires existing InnoDB parent tables,
         // correct unsigned primary keys, and collision-free foreign key names.
-        $parents = [            'inventory_items' => 'int',
+        $parents = [
+            'inventory_items' => 'int',
             'inventory_count_sessions' => 'bigint',
             'inventory_count_lines' => 'bigint',
         ];
@@ -296,7 +297,8 @@ final class Migrations
             "state VARCHAR(16) NOT NULL DEFAULT 'running'," .
             'started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,' .
             'applied_at DATETIME NULL,' .
-            'PRIMARY KEY(version,ordinal_no),' .            'CONSTRAINT ck_schema_migration_statement_state CHECK (state IN (\'running\',\'applied\'))' .
+            'PRIMARY KEY(version,ordinal_no),' .
+            'CONSTRAINT ck_schema_migration_statement_state CHECK (state IN (\'running\',\'applied\'))' .
             ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
         $this->ensureVersionCapacity('schema_migrations');
@@ -445,7 +447,8 @@ final class Migrations
                     continue;
                 }
                 if ($char === "'" || $char === '"' || $char === '`') {
-                    $quote = $char;                    $buffer .= $char;
+                    $quote = $char;
+                    $buffer .= $char;
                     continue;
                 }
                 if ($char === ';') {

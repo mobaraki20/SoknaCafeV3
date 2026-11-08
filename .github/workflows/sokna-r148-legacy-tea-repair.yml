@@ -1,0 +1,40 @@
+name: SOKNA R148 isolated legacy tea/herbal repair QA
+on:
+  push:
+    branches: [qa/sokna-r148-legacy-tea-20261108]
+  workflow_dispatch:
+jobs:
+  test-legacy-tea:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: phase1-ci-root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP CLI + PDO MySQL
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y php-cli php-mysql
+          php -m | grep -i pdo_mysql
+      - name: Syntax and catalog audit (synthetic)
+        run: |
+          php -l apps/local-web/src/Core/Migrations.php
+          php -l apps/local-web/src/Domain/System/CatalogPushReadOnlyAudit.php
+          php -l qa/sokna-r148/test-catalog-push-readonly.php
+          php -l qa/sokna-r148/test-catalog-push-mariadb.php
+          php -l qa/sokna-r148/test-tea-repair-mariadb.php
+          php qa/sokna-r148/test-catalog-push-readonly.php
+      - name: MariaDB 11.4 read-only audit and transactional repair
+        env:
+          SOKNA_PHASE1_DISPOSABLE: '1'
+          SOKNA_R148_DISPOSABLE: '1'
+        run: |
+          php qa/sokna-r148/test-catalog-push-mariadb.php
+          php qa/sokna-r148/test-tea-repair-mariadb.php
