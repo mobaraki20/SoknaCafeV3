@@ -26,7 +26,7 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'SUPERVISOR_BUILD_FAILED'}
           dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
           if($LASTEXITCODE -ne 0){throw 'ENGINE_BUILD_FAILED'}
-      - name: Execute 12 safety policy tests, including DB forward refusal
+      - name: Execute 13 safety policy tests, including DB forward refusal
         shell: pwsh
         run: |
           dotnet run --project qa/sokna-r125-reconcile/PolicyProbe.csproj -c Release
@@ -67,7 +67,7 @@ jobs:
             source_commit=$env:GITHUB_SHA
             supervisor_build='PASS'
             engine_build='PASS'
-            safety_cases=12
+            safety_cases=13
             signed_recovery_console_authority='CHECKED'
             live_host_recovery_performed=$false
             real_database_restore_tested=$false
