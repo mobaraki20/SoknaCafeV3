@@ -42,7 +42,12 @@ jobs:
           $ErrorActionPreference='Stop'
           $r=$env:R125_QA_DIR
           & ./packaging/windows/scripts/prepare-r125-three-component-v1.ps1 -RepoRoot $PWD.Path -Supervisor (Join-Path $r 'Sokna.Maintenance.Supervisor/SoknaMaintenanceSupervisor.exe') -Engine (Join-Path $r 'Sokna.Maintenance.UpdateEngine/SoknaMaintenanceUpdateEngine.exe') -RecoveryConsole (Join-Path $r 'Sokna.Maintenance.RecoveryConsole/SoknaMaintenanceRecoveryConsole.exe') -OutputRoot (Join-Path $r 'payload')
-          if($LASTEXITCODE-ne0){throw 'R125_PAYLOAD_PREP_FAILED'}
+          $manifest=Join-Path $r 'payload/r125-component-manifest.json'
+          if(-not(Test-Path -LiteralPath $manifest -PathType Leaf)){throw 'R125_PAYLOAD_PREP_MISSING_MANIFEST'}
+          $m=Get-Content -LiteralPath $manifest -Raw|ConvertFrom-Json
+          if(@($m.files).Count-ne3 -or $m.target_version-ne'0.3.23' -or $m.recovery_console_version-ne'0.1.4'){
+            throw 'R125_PAYLOAD_PREP_MANIFEST_INVALID'
+          }
       - name: Compile real single-click Inno Setup installer
         shell: pwsh
         run: |
