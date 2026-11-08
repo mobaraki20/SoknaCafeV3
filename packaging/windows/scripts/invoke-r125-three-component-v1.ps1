@@ -111,6 +111,83 @@ if($lab){
  FileSafe $health
  . $health
 }
+# Crash recovery runs before checking the installed version/health: after an
+# unexpected process kill, the service may be stopped and the EXEs mixed.
+$crashRoot=Join-Path $dataRoot 'setup\r125-0323-three-component'
+$crashMarker=Join-Path $crashRoot 'active.json'
+if(Test-Path -LiteralPath $crashMarker -PathType Leaf){
+ ArchiveDir $crashRoot
+ $crashLock=[IO.File]::Open((Join-Path $crashRoot 'transaction.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+ try{
+  $pending=Get-Content -LiteralPath $crashMarker -Raw|ConvertFrom-Json -ErrorAction Stop
+  if($pending.phase-eq'RECOVERY_REQUIRED'){Fail 'R125_PREVIOUS_CRASH_REQUIRES_MANUAL_RECOVERY'}
+  if($pending.phase-notin@('COMMITTED','ROLLED_BACK','FAILED_BEFORE_MUTATION')){
+   if($pending.format-ne'sokna-r125-0323-transaction-v1' -or
+      [string]$pending.id -notmatch '^[a-f0-9]{32}$' -or
+      $pending.baseline-ne'0.3.22' -or $pending.target-ne'0.3.23'){
+    Fail 'R125_CRASH_INTENT_UNQUALIFIED'
+   }
+   $crashDir=Join-Path $crashRoot ('tx-'+$pending.id)
+   $backup=Join-Path $crashDir 'before'
+   ArchiveDir $crashDir
+   ArchiveDir $backup
+   $snap=Join-Path $crashDir 'snapshot.json'
+   FileSafe $snap
+   $snapshot=Get-Content -LiteralPath $snap -Raw|ConvertFrom-Json -ErrorAction Stop
+   if($snapshot.format-ne'sokna-r125-0323-snapshot-v1' -or
+      [string]$snapshot.identity_sha256 -notmatch '^[a-f0-9]{64}$' -or
+      @($snapshot.files).Count-ne3){Fail 'R125_CRASH_SNAPSHOT_UNQUALIFIED'}
+   $oldHashes=@{}
+   foreach($row in $snapshot.files){
+    $name=[string]$row.name
+    if($name-notin$names -or $oldHashes.ContainsKey($name) -or
+       [string]$row.sha256 -notmatch '^[a-f0-9]{64}$'){
+      Fail 'R125_CRASH_SNAPSHOT_FILES_INVALID'
+    }
+    $file=Join-Path $backup ([IO.Path]::GetFileName($name))
+    FileSafe $file
+    Same $file ([string]$row.sha256)
+    $oldHashes[$name]=[string]$row.sha256
+   }
+   if($oldHashes.Count-ne3){Fail 'R125_CRASH_SNAPSHOT_INCOMPLETE'}
+   $oldIdentity=Join-Path $backup 'installed-release-identity.json'
+   FileSafe $oldIdentity
+   Same $oldIdentity ([string]$snapshot.identity_sha256)
+   $doc=Get-Content -LiteralPath $oldIdentity -Raw|ConvertFrom-Json -ErrorAction Stop
+   if($doc.maintenance_supervisor_version-ne'0.3.22' -or
+      $doc.update_engine_version-ne'0.3.22'){Fail 'R125_CRASH_ORIGINAL_IDENTITY_INVALID'}
+   try{
+    StopMaintenanceService
+    foreach($name in $names){
+     $to=Join-Path $installRoot ($name.Replace('/','\'))
+     $from=Join-Path $backup ([IO.Path]::GetFileName($name))
+     Copy-Item -LiteralPath $from -Destination $to -Force -ErrorAction Stop
+     Same $to $oldHashes[$name]
+    }
+    $idDest=Join-Path $dataRoot 'Maintenance\installed-release-identity.json'
+    Copy-Item -LiteralPath $oldIdentity -Destination $idDest -Force -ErrorAction Stop
+    Same $idDest ([string]$snapshot.identity_sha256)
+    StartMaintenanceService
+    Live '0.3.22'
+    $pending.phase='ROLLED_BACK'
+    Save $crashMarker $pending
+    Save (Join-Path $crashDir 'result.json') ([ordered]@{
+      format='sokna-r125-0323-result-v1';status='ROLLED_BACK_AFTER_PROCESS_CRASH'
+      original_files_restored=$true;identity_restored=$true
+      local_mutated=$false;public_mutated=$false;database_mutated=$false;print_mutated=$false
+    })
+    Write-Host 'R125_0323_PREVIOUS_PROCESS_CRASH_RECOVERED'
+    exit 67
+   }catch{
+    if($lab){Write-Host ('R125_CI_CRASH_RECOVERY_FAILURE='+$_.Exception.GetType().Name)}
+    $pending.phase='RECOVERY_REQUIRED'
+    Save $crashMarker $pending
+    Write-Host 'R125_0323_CRASH_RECOVERY_UNPROVEN'
+    exit 68
+   }
+  }
+ }finally{$crashLock.Dispose()}
+}
 $installed=@{}
 $original=@{}
 foreach($rel in $names){
@@ -165,6 +242,9 @@ try{
    $rel=$names[$i]
    Copy-Item -LiteralPath (Join-Path $PayloadRoot ($rel.Replace('/','\'))) -Destination $installed[$rel] -Force
    Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))
+   if($lab -and $i-eq0 -and $FailAt-eq'crash-after-copy-1'){
+    [Diagnostics.Process]::GetCurrentProcess().Kill()
+   }
    Fault ('after-copy-'+($i+1))
   }
   $state.phase='STARTING';Save $marker $state
