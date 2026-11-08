@@ -188,6 +188,57 @@ try {
   JsonSafe (Join-Path $diagnostics 'maintenance-host-readiness-safe.json') $hostResult
 
 
+  # P0 R125/R129: explicit *read-only* forensic summary of the durable
+  # routine lifecycle backup and state. No key, path, SQL, base64 snapshot,
+  # or business record enters support ZIP. In particular: DO NOT delete or
+  # auto-reconcile a backup merely because Maintenance operations are idle.
+  $slotRoot=Join-Path $base 'Maintenance\local-slots'
+  $priorPath=Join-Path $slotRoot 'routine-local-lifecycle-before.json'
+  $routinePath=Join-Path $slotRoot 'routine-state.json'
+  $proofObserved=Observe $priorPath
+  $routineState=ReadSafe $routinePath 'routine-lifecycle-state'
+  $proof=$null
+  if($proofObserved.present -and $proofObserved.Contains('sha256')){
+    $proof=ReadSafe $priorPath 'routine-lifecycle-backup-proof'
+  }
+  $phase=(StringProperty $routineState 'phase')
+  $build=(StringProperty $routineState 'current_build')
+  $activeBuild=(StringProperty $local 'version')
+  $settled=($null-ne$routineState -and
+    [string]$routineState.format -eq 'sokna-local-slot-routine-state-v1' -and
+    $phase -eq 'RECOVERED_TO_PREVIOUS_SLOT' -and
+    $routineState.recovery_required -eq $false -and
+    $activeBuild -ne '' -and $build -eq $activeBuild)
+  $proofFormat=$(if($null-ne$proof){(StringProperty $proof 'format')}else{''})
+  $proofBuild=$(if($null-ne$proof){(StringProperty $proof 'active_build')}else{''})
+  $proofHeaderMatches=($null-ne$proof -and
+    $proofFormat -eq 'sokna-routine-local-lifecycle-backup-v1' -and
+    $proofBuild -eq $activeBuild -and $activeBuild -ne '')
+  $proofPresent=($proofObserved.present -eq $true)
+  $p0Assessment=[ordered]@{
+    format='sokna-read-only-local-lifecycle-reconcile-evidence-v1'
+    backup_proof_present=$proofPresent
+    backup_proof_observation=$proofObserved
+    backup_proof_header_matches_active=$proofHeaderMatches
+    routine_state_present=($null-ne$routineState)
+    routine_phase=$(if($phase -in @('RECOVERED_TO_PREVIOUS_SLOT','ROLLED_BACK',
+      'COMMITTED','RECOVERY_REQUIRED','READY_TO_ACTIVATE')){$phase}else{'OTHER_OR_UNKNOWN'})
+    routine_recovery_required=$(if($null-ne$routineState){
+      ($routineState.recovery_required -eq $true)}else{$null})
+    recovered_build_matches_installed=($activeBuild -ne '' -and $build -eq $activeBuild)
+    external_recovery_settled_marker=$settled
+    state_bytes_match_proof='NOT_CHECKED'
+    live_db_ledger_validated=$false
+    database_restore_qualified=$false
+    automatic_reconciliation_authorized=$false
+    action='INSPECT_ONLY_NO_DELETE_NO_DB_MUTATION'
+    assessment=$(if($proofPresent -and $settled -and $proofHeaderMatches){
+       'POSSIBLE_R125_STALE_PROOF__FURTHER_VALIDATION_REQUIRED'
+      }elseif($proofPresent){'PROOF_PRESENT__ORIGIN_OR_RECOVERY_UNPROVEN'}
+       else{'NO_ROLLBACK_PROOF_OBSERVED__CHECK_OTHER_LIFECYCLE_CONDITIONS'})
+  }
+  JsonSafe (Join-Path $diagnostics 'local-lifecycle-reconciliation-safe.json') $p0Assessment
+
   # Exact read-only Local physical inventory and migration catalogue. The
   # active Web may be a junction: read it, never repair/rename it here.
   $installRoot=''
