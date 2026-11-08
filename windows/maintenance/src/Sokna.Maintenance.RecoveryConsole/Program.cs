@@ -3,17 +3,45 @@ using Sokna.Maintenance.Core;
 
 var dataRoot = MaintenancePaths.DefaultDataRoot();
 var command = "status";
+string? operatorId = null, expectedBuild = null, expectedSha = null, idempotencyKey = null;
+var explicitlyConfirmed = false;
 for (var i = 0; i < args.Length; i++)
 {
-    if (string.Equals(args[i], "--data-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+    switch (args[i].ToLowerInvariant())
     {
-        dataRoot = Path.GetFullPath(args[++i]);
-    }
-    else if (!args[i].StartsWith("--", StringComparison.Ordinal))
-    {
-        command = args[i].ToLowerInvariant();
+        case "--data-root" when i + 1 < args.Length:
+            dataRoot = Path.GetFullPath(args[++i]); break;
+        case "--operator-id" when i + 1 < args.Length:
+            operatorId = args[++i]; break;
+        case "--expected-build" when i + 1 < args.Length:
+            expectedBuild = args[++i]; break;
+        case "--expected-proof-sha256" when i + 1 < args.Length:
+            expectedSha = args[++i]; break;
+        case "--idempotency-key" when i + 1 < args.Length:
+            idempotencyKey = args[++i]; break;
+        case "--confirm-preserve-and-archive":
+            explicitlyConfirmed = true; break;
+        default:
+            if (args[i].StartsWith("--", StringComparison.Ordinal))
+                throw new InvalidDataException("RECOVERY_CONSOLE_ARGUMENT_UNKNOWN");
+            command = args[i].ToLowerInvariant();
+            break;
     }
 }
+var isReconciliation = command == "reconcile-r125-lifecycle";
+if (isReconciliation &&
+    (!explicitlyConfirmed ||
+     !MaintenanceOperationStore.IsValidIdempotencyKey(operatorId) ||
+     !MaintenanceOperationStore.IsValidIdempotencyKey(idempotencyKey) ||
+     string.IsNullOrWhiteSpace(expectedBuild) ||
+     expectedBuild.Length > 180 ||
+     expectedSha is null || expectedSha.Length != 64 ||
+     expectedSha.Any(c => !char.IsAsciiHexDigit(c))))
+    throw new InvalidDataException("R125_RECOVERY_CONSOLE_EXPLICIT_CONFIRMATION_REQUIRED");
+if (!isReconciliation &&
+    (explicitlyConfirmed || operatorId is not null || expectedBuild is not null ||
+     expectedSha is not null || idempotencyKey is not null))
+    throw new InvalidDataException("RECOVERY_CONSOLE_MUTATION_FLAGS_NOT_ALLOWED_FOR_READONLY");
 
 var relativePath = command switch
 {
@@ -22,7 +50,8 @@ var relativePath = command switch
     "components" => "v1/components",
     "recovery" => "v1/recovery",
     "journal" => "v1/journal/head",
-    _ => throw new InvalidOperationException("Command must be one of: status, health, components, recovery, journal.")
+    "reconcile-r125-lifecycle" => "v1/local-updates/reconcile-r125-lifecycle",
+    _ => throw new InvalidOperationException("Unsupported Recovery Console operation.")
 };
 
 var paths = new MaintenancePaths(dataRoot);
@@ -42,8 +71,13 @@ try
 
     var secretStore = new SecretStore(paths);
     var key = secretStore.LoadKey("recovery-console");
-    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-    using var request = HmacProtocol.CreateSignedGet(baseUri, relativePath, "recovery-console", key);
+    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(isReconciliation ? 90 : 5) };
+    using var request = isReconciliation
+        ? HmacProtocol.CreateSignedJson(baseUri, relativePath, "recovery-console", key,
+            JsonSerializer.SerializeToUtf8Bytes(new R125LifecycleReconciliationRequest(
+                operatorId!, expectedBuild!, expectedSha!.ToLowerInvariant())),
+            idempotencyKey!)
+        : HmacProtocol.CreateSignedGet(baseUri, relativePath, "recovery-console", key);
     using var response = await client.SendAsync(request);
     var body = await response.Content.ReadAsStringAsync();
     Console.WriteLine(body);
