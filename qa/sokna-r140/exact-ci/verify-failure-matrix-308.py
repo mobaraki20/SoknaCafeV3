@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='sokna-r140-offline-') as td:
     for p in set(of)-set(nf):(candidate/p).unlink()
     for p,b in nf.items():
         x=candidate/p;x.parent.mkdir(parents=True,exist_ok=True);x.write_bytes(b)
-    inspect=lambda r:{str(x.relative_to(r)):x.read_bytes() for x in r.rglob('*') if x.is_file()}
+    inspect=lambda r:{x.relative_to(r).as_posix():x.read_bytes() for x in r.rglob('*') if x.is_file()}
     test('R140_inactive_slot_target_hash',tree(inspect(candidate))==new['targets']['local']['managed_tree_sha256'])
     test('HOME_R75_prior_slot_unchanged',tree(inspect(oldroot))==old_id['managed_tree_sha256'])
     changed='src/Core/Migrations.php';(candidate/changed).write_bytes(nf[changed]+b'\x00TAMPER')
