@@ -18,7 +18,10 @@ function Save([string]$p,[object]$value){
  $tmp=$p+'.tmp.'+[Guid]::NewGuid().ToString('N')
  $stream=[IO.FileStream]::new($tmp,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None,4096,[IO.FileOptions]::WriteThrough)
  try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
- if(Test-Path -LiteralPath $p -PathType Leaf){[IO.File]::Replace($tmp,$p,$null)}else{[IO.File]::Move($tmp,$p)}
+ if(Test-Path -LiteralPath $p -PathType Leaf){
+  $prior=$p+'.atomic-before.'+[Guid]::NewGuid().ToString('N')
+  [IO.File]::Replace($tmp,$p,$prior)
+ }else{[IO.File]::Move($tmp,$p)}
 }
 function Version([string]$p){
  if($lab){if($p -match 'Recovery'){return '0.1.3'}else{return '0.3.22'}}
