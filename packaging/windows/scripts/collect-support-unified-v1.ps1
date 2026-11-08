@@ -115,7 +115,7 @@ try {
   # This read-only diagnostic runs the installed Engine INSPECTOR. It reports
   # which of the host's seven concrete prerequisites actually failed. No
   # database rows, token, signed HMAC key or local file contents are exported.
-  $hostResult=[ordered]@{format='sokna-host-readiness-safe-v1';evidence_available=$false;status='NOT_COLLECTED';blocking_code='';blockers=@()}
+  $hostResult=[ordered]@{format='sokna-host-readiness-safe-v1';evidence_available=$false;status='NOT_COLLECTED';blocking_code='';blockers=@();local_lifecycle_reason_code='NOT_COLLECTED'}
   $enginePath=$(if($maintApp){Join-Path $maintApp 'SoknaMaintenanceUpdateEngine.exe'}else{''})
   if($enginePath -and (Test-Path -LiteralPath $enginePath -PathType Leaf)) {
     try {
@@ -149,6 +149,16 @@ try {
           'PERSISTENT_MACHINE_LOCAL_OVERLAY_DRIFT',
           'LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN')
         $codes=@($report.blockers|Where-Object{$_ -is[string] -and $_ -in $allowed}|Select-Object -Unique)
+        $allowedLifecycle=@('IDLE','NOT_EVALUATED','LOCAL_LIFECYCLE_HOST_LAYOUT_UNAVAILABLE',
+          'LOCAL_LIFECYCLE_RECOVERY_MARKER_PRESENT','LOCAL_LIFECYCLE_ROLLBACK_PROOF_PRESENT',
+          'LOCAL_LIFECYCLE_VERSION_OR_FORMAT_MISMATCH','LOCAL_LIFECYCLE_PENDING_STAGE',
+          'LOCAL_LIFECYCLE_PENDING_ACTIVATION_JOURNAL','LOCAL_LIFECYCLE_RECOVERY_MODE_ACTIVE',
+          'LOCAL_LIFECYCLE_STATE_CHANGED','LOCAL_LIFECYCLE_MANAGED_INVENTORY_CHANGED',
+          'LOCAL_LIFECYCLE_STATE_JSON_INVALID','LOCAL_LIFECYCLE_DATA_ROOT_DISCOVERY_FAILED',
+          'LOCAL_LIFECYCLE_EVIDENCE_UNAVAILABLE')
+        $lifecycleReason=$(if([string]$report.local_lifecycle_reason_code -in $allowedLifecycle){
+          [string]$report.local_lifecycle_reason_code
+        }else{'DETAIL_NOT_AVAILABLE_ON_INSTALLED_ENGINE'})
         $hostResult=[ordered]@{
           format='sokna-host-readiness-safe-v1'
           evidence_available=$true
@@ -156,6 +166,7 @@ try {
           checked_at_utc=(Safe $report.host_checked_at_utc)
           blocking_code=(Safe $report.blocking_code)
           blockers=$codes
+          local_lifecycle_reason_code=$lifecycleReason
           host_preparation_preconditions_met=($report.host_preparation_preconditions_met -eq $true)
           apache_healthy=($report.apache_healthy -eq $true)
           active_junction_qualified=($report.active_junction_qualified -eq $true)
