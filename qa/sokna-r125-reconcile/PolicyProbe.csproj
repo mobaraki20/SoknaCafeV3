@@ -4,9 +4,11 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Program.cs" />
     <ProjectReference Include="../../windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj" />
   </ItemGroup>
 </Project>
