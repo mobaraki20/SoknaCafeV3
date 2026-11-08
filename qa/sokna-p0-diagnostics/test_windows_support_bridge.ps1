@@ -68,6 +68,7 @@ Compress-Archive -Path (Join-Path $root '*') -DestinationPath (Join-Path $Output
     $versions=Get-Content -LiteralPath (Join-Path $ex 'maintenance/physical-versions-safe.json') -Raw|ConvertFrom-Json
     if($kind-eq'positive'){
       if($observedHost.evidence_available-ne$true){throw 'No real readiness flag from fixture'}
+      if($observedHost.local_lifecycle_reason_code-ne'DETAIL_NOT_AVAILABLE_ON_INSTALLED_ENGINE'){throw 'Legacy 0.3.22 Engine must retain readiness evidence but mark new detail missing'}
       if($observedHost.blockers.Count-ne1 -or $observedHost.blockers[0]-ne'ACTIVE_R8_JUNCTION_UNQUALIFIED'){throw 'Whitelist leaked or lost reason'}
       if($versions.supervisor.sha256-ne('a'*64)){throw 'Binary identity not preserved'}
       if(($observedHost|ConvertTo-Json -Depth 10)-match 'sensitive|UNSAFE_MALICIOUS_CODE'){throw 'Private diagnostic escaped whitelist'}
