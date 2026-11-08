@@ -31,7 +31,7 @@ function run(PDO $pdo,array $statements):void{
     catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
 }
 function fixture(PDO $pdo,array $families):void{
-    foreach(['guest_media_references','menu_items','item_variant_members','item_variant_families','audit_log','items','categories','order_items'] as $t){
+    foreach(['schema_migration_statements','schema_migrations','guest_media_references','menu_items','item_variant_members','item_variant_families','audit_log','items','categories','order_items'] as $t){
         try{$pdo->exec("DROP TABLE IF EXISTS `$t`");}catch(Throwable){}
     }
     $ddl=[
@@ -88,6 +88,24 @@ try{
     ok($ids===$pdo->query("SELECT id,item_code FROM items WHERE item_code IN('801','802') ORDER BY item_code")->fetchAll(),'existing item identities unchanged');
     ok(scalar($pdo,"SELECT price FROM items WHERE item_code='802'")===240000,'two-person price rounded from live single price');
     ok(scalar($pdo,"SELECT price FROM items WHERE item_code='szlarge-b724399f870d48634919'")===320000,'canonical large code and price match');
+
+    $expected=[['03','801','802',140000],['04','803','804',190000],['05','805','806',155000],
+        ['06','807','808',170000],['07','701','713',190000],['08','703','712',190000],
+        ['09','705','711',180000],['10','707','708',180000],['11','709','710',195000]];
+    foreach($expected as [$suffix,$singleCode,$twoCode,$singlePrice]){
+        $largeCode='szlarge-'.substr(hash('sha256','h297-'.$suffix),0,20);
+        $twoPrice=(int)(round($singlePrice*1.7/5000)*5000);
+        $largePrice=(int)(round($singlePrice*2.3/5000)*5000);
+        $prices=$pdo->prepare('SELECT item_code,price FROM items WHERE item_code IN(?,?,?)');
+        $prices->execute([$singleCode,$twoCode,$largeCode]);
+        $found=[];foreach($prices->fetchAll() as $row)$found[$row['item_code']]=(int)$row['price'];
+        ok($found===[$singleCode=>$singlePrice,$twoCode=>$twoPrice,$largeCode=>$largePrice] ||
+            count($found)===3 && $found[$singleCode]===$singlePrice && $found[$twoCode]===$twoPrice && $found[$largeCode]===$largePrice,
+            'all exact prices '.$suffix);
+        $q=$pdo->prepare("SELECT COUNT(*) FROM item_variant_families f JOIN item_variant_members m ON m.family_id=f.id JOIN items i ON i.id=m.item_id WHERE f.family_key=? AND i.item_code=? AND m.label='بزرگ'");
+        $q->execute(['family-'.$suffix,$largeCode]);ok((int)$q->fetchColumn()===1,'large linked to original family '.$suffix);
+    }
+
     $pdo->exec("UPDATE items SET price=246000 WHERE item_code='802'");
     run($pdo,$statements);
     ok(scalar($pdo,'SELECT COUNT(*) FROM items')===27,'rerun creates no duplicates');
@@ -118,5 +136,18 @@ try{
     ok(scalar($pdo,'SELECT COUNT(*) FROM items')===18,'item creation rollback verified');
     ok(scalar($pdo,'SELECT COUNT(*) FROM item_variant_members')===18,'member records rollback verified');
     $pdo->exec('DROP TRIGGER IF EXISTS stop_new_large');
+    fixture($pdo,[]);
+    $tmp=sys_get_temp_dir().'/sokna-r148-'.bin2hex(random_bytes(5));
+    mkdir($tmp,0700,true);
+    $migrationFile=$tmp.'/0080_tea_herbal_legacy_family_repair.sql';
+    copy($path,$migrationFile);
+    try{
+        $migrations=new Migrations($pdo,$tmp);
+        $applied=$migrations->migrate();
+        ok($applied===['0080_tea_herbal_legacy_family_repair'],'real Migrations lifecycle applies 0080');
+        ok(scalar($pdo,"SELECT COUNT(*) FROM schema_migration_statements WHERE state='applied'")===10,'ten migration statements journaled atomically');
+        ok($migrations->migrate()===[],'real migration ledger rerun is no-op');
+        ok(scalar($pdo,'SELECT COUNT(*) FROM item_variant_members')===27,'ledger pathway fully expanded nine families');
+    }finally{unlink($migrationFile);rmdir($tmp);}
     echo "R148 MariaDB 11.4 integration tests PASS\n";
 }finally{$pdo->exec("DROP DATABASE IF EXISTS `$db`");}
