@@ -27,8 +27,8 @@ if($phase==='baseline') {
     $first=$m->migrate('0059_menu_business_reconciliation_v4');
     require_once $web.'/src/Domain/Sellables/CategoryIconLibrary.php';
     require_once $web.'/src/Domain/Sellables/DefaultContentSeeder.php';
-    $icons=new Sokna\\Local\\Domain\\Sellables\\CategoryIconLibrary($web.'/resources/default-content/v1/category-icons.json');
-    $seeder=new Sokna\\Local\\Domain\\Sellables\\DefaultContentSeeder(
+    $icons=new Sokna\Local\Domain\Sellables\CategoryIconLibrary($web.'/resources/default-content/v1/category-icons.json');
+    $seeder=new Sokna\Local\Domain\Sellables\DefaultContentSeeder(
         $pdo,$icons,$web.'/resources/default-content/v1',$lab.'/seed-media');
     $seedResult=$seeder->seed();
     if(($seedResult['seeded']??false)!==true)throw new RuntimeException('R75 canonical menu seed not executed');
