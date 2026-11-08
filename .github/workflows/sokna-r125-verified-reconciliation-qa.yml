@@ -45,8 +45,8 @@ jobs:
           $args=@($console,'reconcile-r125-lifecycle','--operator-id','qa',
             '--expected-build','synthetic','--expected-proof-sha256',$sha,
             '--idempotency-key','qa-case-1')
-          & dotnet @args 1>$out 2>$err
-          if($LASTEXITCODE -eq 0){throw 'Recovery Console bypassed explicit confirmation'}
+          $process=Start-Process -FilePath 'dotnet.exe' -ArgumentList $args -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          if($process.ExitCode -eq 0){throw 'Recovery Console bypassed explicit confirmation'}
           if((Get-Content $err -Raw) -notmatch 'R125_RECOVERY_CONSOLE_EXPLICIT_CONFIRMATION_REQUIRED'){
             throw 'Unexpected Recovery Console rejection'
           }
