@@ -1,0 +1,35 @@
+name: SOKNA R140 Local DDL Preflight Gate
+on:
+  push:
+    branches:
+      - qa/sokna-r140-local-ddl-preflight-20261108
+  workflow_dispatch:
+jobs:
+  r140-real-mariadb-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install disposable PHP PDO MySQL
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y php-cli php-mysql
+          php -m | grep -i pdo_mysql
+      - name: Static syntax and 10 isolated preflight guards
+        run: |
+          php -l apps/local-web/src/Core/Migrations.php
+          php -l qa/sokna-r140/test-0077-preflight.php
+          php -l qa/sokna-r140/test-0077-mariadb.php
+          php qa/sokna-r140/test-0077-preflight.php
+      - name: Real MariaDB 11.4 inventory DDL read-only preflight
+        run: php qa/sokna-r140/test-0077-mariadb.php
