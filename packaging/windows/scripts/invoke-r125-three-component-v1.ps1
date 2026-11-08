@@ -33,12 +33,12 @@ function Live([string]$version){
  if($lab){if(-not(Test-Path -LiteralPath (Join-Path $LabRoot 'service-running.marker'))){Fail 'R125_LAB_NOT_RUNNING'};return}
  Assert-MaintenanceSignedHealth -ExpectedVersion $version -Attempts 40
 }
-function Stop(){
+function StopMaintenanceService(){
  if($lab){Remove-Item -LiteralPath (Join-Path $LabRoot 'service-running.marker') -Force -ErrorAction SilentlyContinue;return}
  $svc=Get-Service -Name SoknaMaintenanceSupervisor -ErrorAction Stop
  try{if($svc.Status-ne'Stopped'){Stop-Service -Name SoknaMaintenanceSupervisor -ErrorAction Stop;$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(40))}}finally{$svc.Dispose()}
 }
-function Start(){
+function StartMaintenanceService(){
  if($lab){Set-Content -LiteralPath (Join-Path $LabRoot 'service-running.marker') -Value 'TEST' -Encoding Ascii;return}
  Start-Service -Name SoknaMaintenanceSupervisor -ErrorAction Stop
  $svc=Get-Service -Name SoknaMaintenanceSupervisor -ErrorAction Stop
@@ -155,7 +155,7 @@ try{
  Save $marker $state
  try{
   $state.phase='STOPPING';Save $marker $state
-  Stop
+  StopMaintenanceService
   $state.phase='REPLACING';Save $marker $state
   for($i=0;$i-lt3;$i++){
    $rel=$names[$i]
@@ -164,7 +164,7 @@ try{
    Fault ('after-copy-'+($i+1))
   }
   $state.phase='STARTING';Save $marker $state
-  Start
+  StartMaintenanceService
   Live '0.3.23'
   Fault 'after-service-start'
   $state.phase='IDENTITY';Save $marker $state
@@ -189,7 +189,7 @@ try{
   if($lab){Write-Host ('R125_CI_ORIGINAL_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
   $state.phase='ROLLING_BACK';Save $marker $state
   try{
-   Stop
+   StopMaintenanceService
    foreach($rel in $names){
     $src=Join-Path $backup ([IO.Path]::GetFileName($rel))
     Same $src $original[$rel]
@@ -199,7 +199,7 @@ try{
    Same $idBackup $identityHash
    Copy-Item -LiteralPath $idBackup -Destination $identity -Force
    Same $identity $identityHash
-   Start
+   StartMaintenanceService
    Live '0.3.22'
    $state.phase='ROLLED_BACK';Save $marker $state
    Save $result ([ordered]@{format='sokna-r125-0323-result-v1';status='ROLLED_BACK';original_files_restored=$true;identity_restored=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
