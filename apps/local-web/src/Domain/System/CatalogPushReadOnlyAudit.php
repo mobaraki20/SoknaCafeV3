@@ -12,6 +12,19 @@ use Throwable;
  */
 final class CatalogPushReadOnlyAudit
 {
+    /** Canonical nine families from exact R140 release; never inferred from live mutable catalog. */
+    private const REFERENCE = [
+        'h297-03'=>['name'=>'چای ساده','codes'=>['801','802','szlarge-b724399f870d48634919']],
+        'h297-04'=>['name'=>'چای مراکش','codes'=>['803','804','szlarge-f175529f9377c369796f']],
+        'h297-05'=>['name'=>'چای هل و دارچین','codes'=>['805','806','szlarge-4bea3602d814e040394b']],
+        'h297-06'=>['name'=>'چای زعفران','codes'=>['807','808','szlarge-c09968a088cc7c85f35c']],
+        'h297-07'=>['name'=>'دمنوش فرش قرمز','codes'=>['701','713','szlarge-a49ad2e7ad488144cc37']],
+        'h297-08'=>['name'=>'دمنوش آرام دل','codes'=>['703','712','szlarge-0057052b652ae5fe9d62']],
+        'h297-09'=>['name'=>'دمنوش آویشن','codes'=>['705','711','szlarge-3abe1f688ec6e9ea96b4']],
+        'h297-10'=>['name'=>'دمنوش گل نوش','codes'=>['707','708','szlarge-5dc06120c9e6d741e617']],
+        'h297-11'=>['name'=>'دمنوش طلا','codes'=>['709','710','szlarge-6f471f8f80e872d1788a']],
+    ];
+
     public function __construct(private readonly PDO $pdo) {}
 
     public function inspect(): array
@@ -26,20 +39,7 @@ final class CatalogPushReadOnlyAudit
     private function catalog(): array
     {
         try {
-            $catalogPath = dirname(__DIR__, 3).'/resources/default-content/v1/catalog.json';
-            $reference = json_decode((string)file_get_contents($catalogPath), true, 128, JSON_THROW_ON_ERROR);
-            $expected = [];
-            foreach ((array)($reference['variant_families']??[]) as $f) {
-                $key=(string)($f['family_key']??'');
-                if (!preg_match('/^h297-(?:0[3-9]|1[01])$/D',$key)) continue;
-                $codes=[];
-                foreach ((array)($f['members']??[]) as $m) {
-                    $codes[]=(string)($m['item_code']??'');
-                }
-                if(count($codes)!==3||in_array('',$codes,true)) throw new \RuntimeException('reference_incomplete');
-                $expected[$key]=['codes'=>$codes,'name'=>(string)($f['name']??'')];
-            }
-            if(count($expected)!==9) throw new \RuntimeException('reference_family_count');
+            $expected=self::REFERENCE;
             $keys=array_keys($expected);
             $ph=implode(',',array_fill(0,count($keys),'?'));
             $sql="SELECT f.family_key,f.active,c.category_key,m.label,i.item_code,i.lifecycle_status,i.available,i.guest_visible,i.price
