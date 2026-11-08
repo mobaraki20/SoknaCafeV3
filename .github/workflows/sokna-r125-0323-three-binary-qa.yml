@@ -1,0 +1,98 @@
+name: SOKNA R125 0.3.23 three-binary QA candidate (NOT INSTALLABLE)
+on:
+  push:
+    branches: [qa/sokna-r125-maintenance-0323-package-20261109]
+    paths:
+      - .github/workflows/sokna-r125-0323-three-binary-qa.yml
+      - windows/maintenance/src/**
+      - qa/sokna-r125-reconcile/**
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  compile-and-verify-qa-payload:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Real Windows R125 protected proof archive and crash resume
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-r125-reconcile/ArchiveIntegrationProbe.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'R125_ARCHIVE_INTEGRATION_FAILED'}
+      - name: R125 state safety policy must reject DB forward events
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-r125-reconcile/PolicyProbe.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'R125_POLICY_PROBE_FAILED'}
+      - name: Publish exact three native Windows binaries without installing anything
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'sokna-r125-0323-candidate'
+          $app=Join-Path $root 'payload/Maintenance/App'
+          $recovery=Join-Path $root 'payload/Maintenance/Recovery'
+          New-Item -ItemType Directory -Path $app,$recovery -Force|Out-Null
+          $projects=@(
+            @{name='SoknaMaintenanceSupervisor.exe';dir='Sokna.Maintenance.Supervisor';dest=$app;version='0.3.23.0'},
+            @{name='SoknaMaintenanceUpdateEngine.exe';dir='Sokna.Maintenance.UpdateEngine';dest=$app;version='0.3.23.0'},
+            @{name='SoknaMaintenanceRecoveryConsole.exe';dir='Sokna.Maintenance.RecoveryConsole';dest=$recovery;version='0.1.4.0'}
+          )
+          foreach($item in $projects){
+            $out=Join-Path $root ('publish-'+$item.dir)
+            $csproj="windows/maintenance/src/$($item.dir)/$($item.dir).csproj"
+            dotnet publish $csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $out
+            if($LASTEXITCODE -ne 0){throw ("Native Windows build failed: "+$item.dir)}
+            $exe=Join-Path $out $item.name
+            if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw ("EXE absent: "+$item.name)}
+            $version=([string]([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion)).Trim()
+            if($version-ne$item.version){throw ("Incorrect file version: "+$item.name+"="+$version)}
+            Copy-Item -LiteralPath $exe -Destination (Join-Path $item.dest $item.name)
+          }
+          foreach($name in @('collect-support-unified-v1.ps1','collect-support-v2.ps1')){
+            Copy-Item -LiteralPath (Join-Path 'packaging/windows/scripts' $name) -Destination (Join-Path $app $name)
+          }
+          "SOKNA_CANDIDATE_ROOT=$root"|Out-File -LiteralPath $env:GITHUB_ENV -Append -Encoding UTF8
+      - name: Verify exact bytes, immutable build identity, QA-only manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=$env:SOKNA_CANDIDATE_ROOT
+          $payload=Join-Path $root 'payload'
+          $files=@(Get-ChildItem -LiteralPath $payload -Recurse -File|Sort-Object FullName|ForEach-Object{
+            $rel=$_.FullName.Substring($payload.Length+1).Replace('\','/')
+            [ordered]@{path=$rel;bytes=[long]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+          })
+          if($files.Count-ne5){throw 'Expected three executables and two read-only support scripts'}
+          $report=[ordered]@{
+            format='sokna-r125-0323-three-binary-qa-candidate-v1'
+            source_branch=$env:GITHUB_REF_NAME;source_commit=$env:GITHUB_SHA
+            original_installed_supervisor_version='0.3.22'
+            target_supervisor_version='0.3.23';target_engine_version='0.3.23'
+            target_recovery_console_version='0.1.4'
+            actual_windows_archive_crash_recovery='PASS_SYNTHETIC'
+            policy_regression='PASS'
+            windows_binary_versions='PASS'
+            installer_created=$false;installer_transaction_tested=$false
+            real_cafe_host_uat=$false;real_cafe_db_restore_qualified=$false
+            no_runtime_or_print_changes=$true
+            local_public_db_not_touched=$true
+            no_production_release_approval=$true
+            requires_new_three_component_rollback_installer=$true
+            files=$files
+          }
+          $report|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $root 'QA-CANDIDATE-MANIFEST.json') -Encoding UTF8
+          Compress-Archive -Path (Join-Path $root 'payload'),(Join-Path $root 'QA-CANDIDATE-MANIFEST.json') -DestinationPath (Join-Path $root 'SOKNA-R125-MAINTENANCE-0323-3COMPONENT-QA-DO-NOT-INSTALL.zip') -CompressionLevel Optimal
+          Write-Host 'PASS three exact binaries built; ZIP explicitly NOT INSTALLABLE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r125-0323-qa-binaries-not-installable
+          path: |
+            ${{ runner.temp }}/sokna-r125-0323-candidate/SOKNA-R125-MAINTENANCE-0323-3COMPONENT-QA-DO-NOT-INSTALL.zip
+            ${{ runner.temp }}/sokna-r125-0323-candidate/QA-CANDIDATE-MANIFEST.json
+          if-no-files-found: error
+          retention-days: 30
