@@ -111,6 +111,7 @@ final class Migrations
             $catalog[$version] = $this->directory . DIRECTORY_SEPARATOR . $name;
         }
         ksort($catalog, SORT_STRING);
+        $this->preflightOpeningActivationSchema($catalog);
         // Preflight calls catalog() while Apache is still running; detect
         // damaged photo assets before any database/Apache mutation.
         $installer = $this->photoInstaller();
@@ -119,6 +120,127 @@ final class Migrations
             $installer->validateHostReadiness();
         }
         return $catalog;
+    }
+
+    /**
+     * Read-only compatibility gate for the only non-transactional DDL after 0076.
+     * Called by catalog() during the installed Maintenance's existing preflight,
+     * before Apache is stopped and before any backup/DDL. No SQL migration file
+     * is edited: their historical checksums remain byte-identical.
+     *
+     * Clean installs (no 0076 yet), already-updated 0077 hosts, and post-0077
+     * forward recovery are intentionally not rejected by a premature guard.
+     */
+    private function preflightOpeningActivationSchema(array $catalog): void
+    {
+        if (!isset($catalog['0077_incremental_opening_inventory'])) return;
+        $exists = $this->pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='schema_migrations'");
+        $hasLedger = (int)$exists->fetchColumn() === 1;
+        $exists->closeCursor();
+        if (!$hasLedger) return;
+
+        $historyStmt = $this->pdo->query("SELECT version FROM schema_migrations WHERE version IN ('0076_late_served_accounting','0077_incremental_opening_inventory')");
+        $history = $historyStmt->fetchAll(PDO::FETCH_COLUMN);
+        $historyStmt->closeCursor();
+        if (!in_array('0076_late_served_accounting', $history, true) ||
+            in_array('0077_incremental_opening_inventory', $history, true)) return;
+
+        // An inventory opening migration requires existing InnoDB parent tables,
+        // correct unsigned primary keys, and collision-free foreign key names.
+        $parents = [            'inventory_items' => 'int',
+            'inventory_count_sessions' => 'bigint',
+            'inventory_count_lines' => 'bigint',
+        ];
+        $parentStmt = $this->pdo->query(
+            "SELECT t.TABLE_NAME AS table_name,t.ENGINE AS engine,c.COLUMN_TYPE AS column_type,c.COLUMN_KEY AS column_key " .
+            "FROM information_schema.TABLES t JOIN information_schema.COLUMNS c ON c.TABLE_SCHEMA=t.TABLE_SCHEMA " .
+            "AND c.TABLE_NAME=t.TABLE_NAME AND c.COLUMN_NAME='id' WHERE t.TABLE_SCHEMA=DATABASE() " .
+            "AND t.TABLE_NAME IN ('inventory_items','inventory_count_sessions','inventory_count_lines')"
+        );
+        $actual = [];
+        foreach ($parentStmt->fetchAll(PDO::FETCH_ASSOC) as $row) $actual[(string)$row['table_name']] = $row;
+        $parentStmt->closeCursor();
+        foreach ($parents as $name => $type) {
+            $row = $actual[$name] ?? null;
+            if (!is_array($row) || strcasecmp((string)$row['engine'], 'InnoDB') !== 0 ||
+                !preg_match('/^' . $type . '(?:\\(\\d+\\))? unsigned$/i', (string)$row['column_type']) ||
+                (string)$row['column_key'] !== 'PRI') {
+                throw new RuntimeException('LOCAL_0077_PARENT_SCHEMA_PREFLIGHT_FAILED:' . $name);
+            }
+        }
+
+        $existingStmt = $this->pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='inventory_opening_activations'");
+        $targetExists = (int)$existingStmt->fetchColumn() === 1;
+        $existingStmt->closeCursor();
+        if (!$targetExists) {
+            $constraints = $this->pdo->query(
+                "SELECT CONSTRAINT_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS " .
+                "WHERE CONSTRAINT_SCHEMA=DATABASE() AND CONSTRAINT_NAME IN (" .
+                "'fk_opening_activation_item','fk_opening_activation_session','fk_opening_activation_line')"
+            );
+            $collision = $constraints->fetch(PDO::FETCH_ASSOC);
+            $constraints->closeCursor();
+            if ($collision !== false) throw new RuntimeException('LOCAL_0077_FOREIGN_KEY_NAME_COLLISION');
+            return;
+        }
+
+        // A previous interrupted CREATE TABLE IF NOT EXISTS may already have
+        // committed the table. Allow forward resume only for an exact structure.
+        $columnsStmt = $this->pdo->query(
+            "SELECT COLUMN_NAME AS column_name,COLUMN_TYPE AS column_type,IS_NULLABLE AS nullable " .
+            "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() " .
+            "AND TABLE_NAME='inventory_opening_activations'"
+        );
+        $columns = [];
+        foreach ($columnsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) $columns[(string)$row['column_name']] = $row;
+        $columnsStmt->closeCursor();
+        $expected = [
+            'inventory_item_id' => ['int', 'NO'],
+            'count_session_id' => ['bigint', 'NO'],
+            'count_line_id' => ['bigint', 'NO'],
+            'activated_at' => ['datetime', 'NO'],
+            'actor_user_id' => ['int', 'YES'],
+        ];
+        if (count($columns) !== count($expected)) throw new RuntimeException('LOCAL_0077_EXISTING_TABLE_SHAPE_MISMATCH');
+        foreach ($expected as $name => [$type, $nullable]) {
+            $row = $columns[$name] ?? null;
+            $pattern = $type === 'datetime' ? '/^datetime(?:\\(\\d+\\))?$/i'
+                : '/^' . $type . '(?:\\(\\d+\\))? unsigned$/i';
+            if (!is_array($row) || !preg_match($pattern, (string)$row['column_type']) ||
+                (string)$row['nullable'] !== $nullable) {
+                throw new RuntimeException('LOCAL_0077_EXISTING_TABLE_SHAPE_MISMATCH');
+            }
+        }
+        $idxStmt = $this->pdo->query(
+            "SELECT INDEX_NAME AS idx,SEQ_IN_INDEX AS seq,COLUMN_NAME AS col,NON_UNIQUE AS non_unique " .
+            "FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() " .
+            "AND TABLE_NAME='inventory_opening_activations' ORDER BY INDEX_NAME,SEQ_IN_INDEX"
+        );
+        $indexes = [];
+        foreach ($idxStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $indexes[(string)$row['idx']]['columns'][] = (string)$row['col'];
+            $indexes[(string)$row['idx']]['non_unique'] = (int)$row['non_unique'];
+        }
+        $idxStmt->closeCursor();
+        if (($indexes['PRIMARY']['columns'] ?? []) !== ['inventory_item_id'] ||
+            !array_filter($indexes, static fn(array $i): bool => $i['non_unique'] === 0 && $i['columns'] === ['count_line_id']) ||
+            !array_filter($indexes, static fn(array $i): bool => $i['columns'] === ['count_session_id','activated_at'])) {
+            throw new RuntimeException('LOCAL_0077_EXISTING_TABLE_INDEX_MISMATCH');
+        }
+        $fkStmt = $this->pdo->query(
+            "SELECT COLUMN_NAME AS col,REFERENCED_TABLE_NAME AS ref_table,REFERENCED_COLUMN_NAME AS ref_col " .
+            "FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() " .
+            "AND TABLE_NAME='inventory_opening_activations' AND REFERENCED_TABLE_NAME IS NOT NULL"
+        );
+        $foreignKeys = [];
+        foreach ($fkStmt->fetchAll(PDO::FETCH_ASSOC) as $row) $foreignKeys[(string)$row['col']] = [(string)$row['ref_table'],(string)$row['ref_col']];
+        $fkStmt->closeCursor();
+        if (count($foreignKeys) !== 3 ||
+            ($foreignKeys['inventory_item_id'] ?? []) !== ['inventory_items','id'] ||
+            ($foreignKeys['count_session_id'] ?? []) !== ['inventory_count_sessions','id'] ||
+            ($foreignKeys['count_line_id'] ?? []) !== ['inventory_count_lines','id']) {
+            throw new RuntimeException('LOCAL_0077_EXISTING_TABLE_FOREIGN_KEY_MISMATCH');
+        }
     }
 
     /** @return list<string> */
@@ -174,8 +296,7 @@ final class Migrations
             "state VARCHAR(16) NOT NULL DEFAULT 'running'," .
             'started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,' .
             'applied_at DATETIME NULL,' .
-            'PRIMARY KEY(version,ordinal_no),' .
-            'CONSTRAINT ck_schema_migration_statement_state CHECK (state IN (\'running\',\'applied\'))' .
+            'PRIMARY KEY(version,ordinal_no),' .            'CONSTRAINT ck_schema_migration_statement_state CHECK (state IN (\'running\',\'applied\'))' .
             ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
         $this->ensureVersionCapacity('schema_migrations');
@@ -324,8 +445,7 @@ final class Migrations
                     continue;
                 }
                 if ($char === "'" || $char === '"' || $char === '`') {
-                    $quote = $char;
-                    $buffer .= $char;
+                    $quote = $char;                    $buffer .= $char;
                     continue;
                 }
                 if ($char === ';') {
