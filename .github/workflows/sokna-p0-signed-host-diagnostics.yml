@@ -82,6 +82,9 @@ jobs:
       - name: Read-only historical R125 lifecycle proof in ordinary One Support ZIP
         shell: pwsh
         run: ./qa/sokna-p0-diagnostics/test_lifecycle_evidence_support.ps1
+      - name: Same one-click collector under Windows PowerShell 5.1 (cafe shortcut runtime)
+        shell: powershell
+        run: .\\qa\\sokna-p0-diagnostics\\test_lifecycle_evidence_support.ps1
       - name: Full safe support ZIP with exact host reason and missing-inspector negative control
         shell: pwsh
         run: ./qa/sokna-p0-diagnostics/test_windows_support_bridge.ps1
