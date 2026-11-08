@@ -33,6 +33,11 @@ jobs:
         run: |
           dotnet run --project qa/sokna-r125-reconcile/PolicyProbe.csproj -c Release
           if($LASTEXITCODE -ne 0){throw 'R125_SAFETY_POLICY_FAILED'}
+      - name: Run exact Windows archive transaction integration (safe synthetic proof)
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-r125-reconcile/ArchiveIntegrationProbe.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'R125_ARCHIVE_TRANSACTION_INTEGRATION_FAILED'}
       - name: Recovery Console must reject R125 settlement without explicit confirmation
         shell: pwsh
         run: |
@@ -88,6 +93,8 @@ jobs:
             supervisor_build='PASS'
             engine_build='PASS'
             safety_cases=13
+            archive_transaction_e2e='DISPOSABLE_WINDOWS_REAL_FS_AND_LEDGER'
+            real_live_db_qualification='NOT_PERFORMED_ON_CAFE'
             signed_recovery_console_authority='CHECKED'
             live_host_recovery_performed=$false
             real_database_restore_tested=$false
