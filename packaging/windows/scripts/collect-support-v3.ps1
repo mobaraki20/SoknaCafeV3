@@ -56,10 +56,9 @@ try{
   if(-not(Test-Path -LiteralPath (Join-Path $temp 'TECHNICIAN-REPORT.html') -PathType Leaf)){throw 'Technician HTML report was not generated.'}
   if(-not(Test-Path -LiteralPath (Join-Path $temp 'technician-findings.json') -PathType Leaf)){throw 'Technician findings JSON was not generated.'}
 
-  # P0: include existing on-box read-only Engine diagnostics in the *same*
-  # standard support ZIP. Reuse the ONE SUPPORT inspector rather than building
-  # another diagnostic engine or asking an operator to run a separate script.
-  # Fail closed: missing/old Engine means UNKNOWN, NEVER "host healthy".
+  # P0: reuse the installed ONE SUPPORT read-only host inspector.
+  # The user still receives one normal Support ZIP, with explicit UNKNOWN on
+  # old or absent Engine. Never expose raw envelopes, keys, paths or DB rows.
   $p0Host=[ordered]@{
     format='sokna-host-readiness-safe-v1';evidence_available=$false
     status='NOT_COLLECTED';blocking_code='';blockers=@()
@@ -68,35 +67,27 @@ try{
     format='sokna-physical-component-versions-v1';evidence_available=$false
     supervisor=@{present=$false};update_engine=@{present=$false}
   }
-  $oneSupport=Join-Path $PSScriptRoot 'collect-support-unified-v1.ps1'
-  $p0Temp=Join-Path $env:TEMP ('sokna-p0-evidence-'+[guid]::NewGuid().ToString('N'))
+  $oneScript=Join-Path $PSScriptRoot 'collect-support-unified-v1.ps1'
+  $stage=Join-Path $env:TEMP ('sokna-p0-safe-'+[guid]::NewGuid().ToString('N'))
   try {
-    if(-not(Test-Path -LiteralPath $oneSupport -PathType Leaf)) {
-      throw 'P0_READONLY_INSPECTOR_MISSING'
-    }
-    New-Item -ItemType Directory -Path $p0Temp -Force|Out-Null
-    # SkipLegacyCollector prevents recursion into this same v2/v3 collector.
-    & $oneSupport -DataRoot $DataRoot -OutputRoot $p0Temp -SkipLegacyCollector 6>$null|Out-Null
-    $oneZip=Get-ChildItem -LiteralPath $p0Temp -Filter 'SOKNA-ONE-SUPPORT-*.zip' -File |
+    if(-not(Test-Path -LiteralPath $oneScript -PathType Leaf)){throw 'P0_INSPECTOR_MISSING'}
+    New-Item -ItemType Directory -Path $stage -Force|Out-Null
+    # Prevent recursion to the very same standard v2/v3 collector.
+    & $oneScript -DataRoot $DataRoot -OutputRoot $stage -SkipLegacyCollector 6>$null|Out-Null
+    $oneZip=Get-ChildItem -LiteralPath $stage -Filter 'SOKNA-ONE-SUPPORT-*.zip' -File |
       Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1
-    if($null-eq$oneZip){throw 'P0_READONLY_INSPECTOR_ARCHIVE_MISSING'}
-    $extract=Join-Path $p0Temp 'extracted'
-    Expand-Archive -LiteralPath $oneZip.FullName -DestinationPath $extract -Force
-    $hostFile=Join-Path $extract 'unified\maintenance-host-readiness-safe.json'
-    $versionFile=Join-Path $extract 'unified\maintenance-physical-versions.json'
-    if(-not(Test-Path -LiteralPath $hostFile -PathType Leaf) -or
-       -not(Test-Path -LiteralPath $versionFile -PathType Leaf)) {
-      throw 'P0_READONLY_INSPECTOR_OUTPUT_MISSING'
-    }
-    $hostRaw=Get-Content -LiteralPath $hostFile -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
-    $versionsRaw=Get-Content -LiteralPath $versionFile -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
-    if([string]$hostRaw.format -ne 'sokna-host-readiness-safe-v1' -or
-       [string]$versionsRaw.format -ne 'sokna-physical-component-versions-v1') {
-      throw 'P0_READONLY_INSPECTOR_CONTRACT_MISMATCH'
-    }
-    # Whitelist only fixed machine-safe codes. No paths, journal messages,
-    # private request envelopes, DB rows or HMAC secrets cross this boundary.
-    $allowedCodes=@('UPDATER_MUTATION_OR_RECOVERY_PENDING',
+    if($null-eq$oneZip){throw 'P0_INSPECTOR_NO_OUTPUT'}
+    $expanded=Join-Path $stage 'expanded'
+    Expand-Archive -LiteralPath $oneZip.FullName -DestinationPath $expanded -Force
+    $hostPath=Join-Path $expanded 'unified\maintenance-host-readiness-safe.json'
+    $verPath=Join-Path $expanded 'unified\maintenance-physical-versions.json'
+    if(-not(Test-Path -LiteralPath $hostPath -PathType Leaf) -or
+       -not(Test-Path -LiteralPath $verPath -PathType Leaf)){throw 'P0_INSPECTOR_INCOMPLETE'}
+    $host=Get-Content -LiteralPath $hostPath -Raw|ConvertFrom-Json -ErrorAction Stop
+    $vers=Get-Content -LiteralPath $verPath -Raw|ConvertFrom-Json -ErrorAction Stop
+    if([string]$host.format -ne 'sokna-host-readiness-safe-v1' -or
+       [string]$vers.format -ne 'sokna-physical-component-versions-v1'){throw 'P0_CONTRACT_MISMATCH'}
+    $allowed=@('UPDATER_MUTATION_OR_RECOVERY_PENDING',
       'MUTATION_LEDGER_EVIDENCE_UNAVAILABLE',
       'SOKNA_APACHE_DISCOVERY_OR_HEALTH_UNPROVEN',
       'ACTIVE_R8_JUNCTION_UNQUALIFIED',
@@ -104,112 +95,43 @@ try{
       'MACHINE_BINDING_OR_INSTALL_LOCK_MISMATCH',
       'PERSISTENT_MACHINE_LOCAL_OVERLAY_DRIFT',
       'LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN')
-    $safeCodes=@($hostRaw.blockers|Where-Object{
-      $_ -is [string] -and $_ -in $allowedCodes
-    }|Select-Object -Unique)
-    $globalCode=[string]$hostRaw.blocking_code
-    if($globalCode -notmatch '^[A-Z][A-Z0-9_]{0,99}
-  if(Test-Path -LiteralPath $manifestPath){Remove-Item -LiteralPath $manifestPath -Force}
-  $entries=@()
-  Get-ChildItem $temp -File -Recurse|Sort-Object FullName|ForEach-Object{
-    $rel=$_.FullName.Substring($temp.Length+1).Replace('\','/')
-    $entries+=([ordered]@{path=$rel;size=[int64]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()})
-  }
-  WriteJson $manifestPath ([ordered]@{format='sokna-support-bundle-manifest-v1';created_at_utc=[DateTime]::UtcNow.ToString('o');collector_extension='windows-services-diagnostics-v2';technician_report='sokna-technician-findings-v1';entries=$entries})
-
-  $leaks=@()
-  Get-ChildItem $temp -File -Recurse|Where-Object{$_.Extension -in @('.json','.jsonl','.log','.txt','.html')}|ForEach-Object{
-    try{$raw=Get-Content -LiteralPath $_.FullName -Raw -ErrorAction Stop;if($raw-match'(?i)ws1_[a-f0-9]{24}_[a-f0-9]{48}'){$leaks+=$_.FullName};if($raw-match'(?i)(password|passwd|pwd|token|secret|credential)\s*[:=]\s*(?!\[REDACTED\])\S+'){$leaks+=$_.FullName}}catch{}
-  }
-  if($leaks.Count-gt0){throw ('Support bundle secret-canary scan failed: '+(($leaks|Select-Object -Unique)-join', '))}
-
-  Remove-Item -LiteralPath $zip.FullName -Force
-  Compress-Archive -Path (Join-Path $temp '*') -DestinationPath $zip.FullName -CompressionLevel Optimal -Force
-  $hash=(Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-  Write-Host ('SOKNA_SUPPORT_BUNDLE='+$zip.FullName)
-  Write-Host ('SOKNA_SUPPORT_SHA256='+$hash)
-}finally{Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue}
-){$globalCode='invalid_or_redacted'}
-    $found=($hostRaw.evidence_available -eq $true)
+    $reasonCodes=@($host.blockers|Where-Object{$_ -is[string] -and $_ -in $allowed}|Select-Object -Unique)
+    $code=[string]$host.blocking_code
+    if($code -notmatch '^[A-Z][A-Z0-9_]{0,99}$'){$code='invalid_or_redacted'}
+    $evidence=($host.evidence_available -eq $true)
     $p0Host=[ordered]@{
-      format='sokna-host-readiness-safe-v1'
-      evidence_available=$found
-      status=$(if($found){'LIVE_READ_ONLY_ENGINE_INSPECTION'}else{'INSPECTION_UNAVAILABLE'})
-      blocking_code=$(if($found){$globalCode}else{''})
-      blockers=$(if($found){$safeCodes}else{@()})
-      host_preparation_preconditions_met=($found -and $hostRaw.host_preparation_preconditions_met -eq $true)
-      apache_healthy=($found -and $hostRaw.apache_healthy -eq $true)
-      active_junction_qualified=($found -and $hostRaw.active_junction_qualified -eq $true)
-      installed_identity_and_tree_qualified=($found -and $hostRaw.installed_identity_and_tree_qualified -eq $true)
-      machine_binding_qualified=($found -and $hostRaw.machine_binding_qualified -eq $true)
-      persistent_overlay_qualified=($found -and $hostRaw.persistent_overlay_qualified -eq $true)
-      local_lifecycle_idle=($found -and $hostRaw.local_lifecycle_idle -eq $true)
-      mutation_ledger_idle=($found -and $hostRaw.mutation_ledger_idle -eq $true)
+      format='sokna-host-readiness-safe-v1';evidence_available=$evidence
+      status=$(if($evidence){'LIVE_READ_ONLY_ENGINE_INSPECTION'}else{'INSPECTION_UNAVAILABLE'})
+      blocking_code=$(if($evidence){$code}else{''})
+      blockers=$(if($evidence){$reasonCodes}else{@()})
+      host_preparation_preconditions_met=($evidence -and $host.host_preparation_preconditions_met -eq $true)
+      apache_healthy=($evidence -and $host.apache_healthy -eq $true)
+      active_junction_qualified=($evidence -and $host.active_junction_qualified -eq $true)
+      installed_identity_and_tree_qualified=($evidence -and $host.installed_identity_and_tree_qualified -eq $true)
+      machine_binding_qualified=($evidence -and $host.machine_binding_qualified -eq $true)
+      persistent_overlay_qualified=($evidence -and $host.persistent_overlay_qualified -eq $true)
+      local_lifecycle_idle=($evidence -and $host.local_lifecycle_idle -eq $true)
+      mutation_ledger_idle=($evidence -and $host.mutation_ledger_idle -eq $true)
     }
-    $versionsOut=[ordered]@{}
+    $binaryInfo=[ordered]@{}
     foreach($kind in @('supervisor','update_engine')) {
-      $entry=$versionsRaw.$kind
-      $sha=$(if([string]$entry.sha256 -match '^[a-fA-F0-9]{64}
-  if(Test-Path -LiteralPath $manifestPath){Remove-Item -LiteralPath $manifestPath -Force}
-  $entries=@()
-  Get-ChildItem $temp -File -Recurse|Sort-Object FullName|ForEach-Object{
-    $rel=$_.FullName.Substring($temp.Length+1).Replace('\','/')
-    $entries+=([ordered]@{path=$rel;size=[int64]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()})
-  }
-  WriteJson $manifestPath ([ordered]@{format='sokna-support-bundle-manifest-v1';created_at_utc=[DateTime]::UtcNow.ToString('o');collector_extension='windows-services-diagnostics-v2';technician_report='sokna-technician-findings-v1';entries=$entries})
-
-  $leaks=@()
-  Get-ChildItem $temp -File -Recurse|Where-Object{$_.Extension -in @('.json','.jsonl','.log','.txt','.html')}|ForEach-Object{
-    try{$raw=Get-Content -LiteralPath $_.FullName -Raw -ErrorAction Stop;if($raw-match'(?i)ws1_[a-f0-9]{24}_[a-f0-9]{48}'){$leaks+=$_.FullName};if($raw-match'(?i)(password|passwd|pwd|token|secret|credential)\s*[:=]\s*(?!\[REDACTED\])\S+'){$leaks+=$_.FullName}}catch{}
-  }
-  if($leaks.Count-gt0){throw ('Support bundle secret-canary scan failed: '+(($leaks|Select-Object -Unique)-join', '))}
-
-  Remove-Item -LiteralPath $zip.FullName -Force
-  Compress-Archive -Path (Join-Path $temp '*') -DestinationPath $zip.FullName -CompressionLevel Optimal -Force
-  $hash=(Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-  Write-Host ('SOKNA_SUPPORT_BUNDLE='+$zip.FullName)
-  Write-Host ('SOKNA_SUPPORT_SHA256='+$hash)
-}finally{Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue}
-){[string]$entry.sha256}else{''})
-      $ver=[string]$entry.version
-      if($ver -notmatch '^[0-9a-zA-Z._+-]{0,100}
-  if(Test-Path -LiteralPath $manifestPath){Remove-Item -LiteralPath $manifestPath -Force}
-  $entries=@()
-  Get-ChildItem $temp -File -Recurse|Sort-Object FullName|ForEach-Object{
-    $rel=$_.FullName.Substring($temp.Length+1).Replace('\','/')
-    $entries+=([ordered]@{path=$rel;size=[int64]$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()})
-  }
-  WriteJson $manifestPath ([ordered]@{format='sokna-support-bundle-manifest-v1';created_at_utc=[DateTime]::UtcNow.ToString('o');collector_extension='windows-services-diagnostics-v2';technician_report='sokna-technician-findings-v1';entries=$entries})
-
-  $leaks=@()
-  Get-ChildItem $temp -File -Recurse|Where-Object{$_.Extension -in @('.json','.jsonl','.log','.txt','.html')}|ForEach-Object{
-    try{$raw=Get-Content -LiteralPath $_.FullName -Raw -ErrorAction Stop;if($raw-match'(?i)ws1_[a-f0-9]{24}_[a-f0-9]{48}'){$leaks+=$_.FullName};if($raw-match'(?i)(password|passwd|pwd|token|secret|credential)\s*[:=]\s*(?!\[REDACTED\])\S+'){$leaks+=$_.FullName}}catch{}
-  }
-  if($leaks.Count-gt0){throw ('Support bundle secret-canary scan failed: '+(($leaks|Select-Object -Unique)-join', '))}
-
-  Remove-Item -LiteralPath $zip.FullName -Force
-  Compress-Archive -Path (Join-Path $temp '*') -DestinationPath $zip.FullName -CompressionLevel Optimal -Force
-  $hash=(Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-  Write-Host ('SOKNA_SUPPORT_BUNDLE='+$zip.FullName)
-  Write-Host ('SOKNA_SUPPORT_SHA256='+$hash)
-}finally{Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue}
-){$ver=''}
-      $versionsOut[$kind]=[ordered]@{
-        present=($entry.present -eq $true);sha256=$sha;version=$ver
+      $unit=$vers.$kind
+      $digest=[string]$unit.sha256
+      if($digest -notmatch '^[a-fA-F0-9]{64}$'){$digest=''}
+      $version=[string]$unit.version
+      if($version -notmatch '^[0-9a-zA-Z._+-]{0,100}$'){$version=''}
+      $binaryInfo[$kind]=[ordered]@{
+        present=($unit.present -eq $true);sha256=$digest;version=$version
       }
     }
     $p0Versions=[ordered]@{
-      format='sokna-physical-component-versions-v1'
-      evidence_available=$true
-      supervisor=$versionsOut.supervisor
-      update_engine=$versionsOut.update_engine
+      format='sokna-physical-component-versions-v1';evidence_available=$true
+      supervisor=$binaryInfo.supervisor;update_engine=$binaryInfo.update_engine
     }
   }catch {
-    # Expose type only; exception Message may contain private host paths.
     $p0Host.status='INSPECTION_UNAVAILABLE'
-    $p0Host.error_type=$_.Exception.GetType().Name
   }finally {
-    Remove-Item -LiteralPath $p0Temp -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
   }
   $p0Dir=Join-Path $temp 'maintenance'
   New-Item -ItemType Directory -Path $p0Dir -Force|Out-Null
