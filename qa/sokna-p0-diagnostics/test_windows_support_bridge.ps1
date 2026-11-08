@@ -5,7 +5,7 @@ $repo=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $source=Join-Path $repo 'packaging/windows/scripts/collect-support-v3.ps1'
 $builderSource=Join-Path $repo 'packaging/windows/scripts/prepare-shell-payload-v9.ps1'
 $builder=Get-Content -LiteralPath $builderSource -Raw -ErrorAction Stop
-if(-not $builder.Contains("Copy-Item -LiteralPath $supportUnifiedSource")) {
+if(-not $builder.Contains('Copy-Item -LiteralPath $supportUnifiedSource')) {
   throw 'P0 one-click collector omitted from Windows shell payload'
 }
 
