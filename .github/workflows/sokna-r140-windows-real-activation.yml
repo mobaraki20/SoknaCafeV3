@@ -1,0 +1,34 @@
+name: SOKNA R140 Exact Windows Apache MariaDB Activation and Recovery
+on:
+  push:
+    branches:
+      - qa/sokna-r140-real-windows-activation-20261108
+  workflow_dispatch:
+jobs:
+  r140-windows-real-activation-recovery:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: CI-only PowerShell syntax parse
+        shell: pwsh
+        run: |
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path 'qa/sokna-r140/exact-ci/windows-exact-activation.ps1'),[ref]$null,[ref]$errors) | Out-Null
+          if($errors){$errors|ForEach-Object{Write-Host $_};throw 'R140_POWERSHELL_PARSE_FAILED'}
+      - name: Exact R75 to R140 Windows Apache PHP 8.4 MariaDB 11.4.7 activation and interrupted-recovery cycles
+        shell: pwsh
+        env:
+          SOKNA_R140_LAB_ONLY: '1'
+        run: |
+          & ./qa/sokna-r140/exact-ci/windows-exact-activation.ps1
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: r140-exact-windows-cycle-summary
+          path: ${{ runner.temp }}/sokna-r140-windows-exact-e2e/artifacts/r140-windows-cycles.json
+          retention-days: 7
