@@ -1,0 +1,50 @@
+name: SOKNA R125 0323 three-component installer transaction QA (no production)
+on:
+  push:
+    branches: [qa/sokna-r125-maintenance-0323-package-20261109]
+    paths:
+      - .github/workflows/sokna-r125-0323-installer-qa.yml
+      - packaging/windows/installer/SOKNA-R125-Maintenance-0323-ThreeComponent-QA.iss
+      - packaging/windows/scripts/invoke-r125-three-component-v1.ps1
+      - packaging/windows/scripts/prepare-r125-three-component-v1.ps1
+      - qa/sokna-r125-reconcile/test-three-component-transaction.ps1
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-rollback-fixtures:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse exact PowerShell scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($path in @('packaging/windows/scripts/invoke-r125-three-component-v1.ps1',
+              'packaging/windows/scripts/prepare-r125-three-component-v1.ps1',
+              'qa/sokna-r125-reconcile/test-three-component-transaction.ps1')){
+            $errors=$null
+            [void][Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path).Path,[ref]$null,[ref]$errors)
+            if(@($errors).Count-ne0){throw ("POWERSHELL_PARSE_FAILED:"+$path+":"+$errors[0])}
+          }
+      - name: Nine real filesystem rollback and integrity scenarios using Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          .\qa\sokna-r125-reconcile\test-three-component-transaction.ps1
+          if($LASTEXITCODE -ne0){exit $LASTEXITCODE}
+      - name: Validate Inno Setup exact TEMP-only extraction
+        shell: pwsh
+        run: |
+          $s=Get-Content 'packaging/windows/installer/SOKNA-R125-Maintenance-0323-ThreeComponent-QA.iss' -Raw
+          $files=@($s -split '[\r\n]+'|Where-Object{$_ -match '^Source:'})
+          if($files.Count-ne6){throw 'INNO_EXPECTED_SIX_TEMP_FILES'}
+          foreach($line in $files){
+            if($line -notmatch 'DestDir: "\{tmp\}\\SOKNA-R125-0323' -or
+               $line -notmatch 'deleteafterinstall'){throw 'INNO_PERSISTENT_EXTRACTION_FORBIDDEN'}
+          }
+          if($s -match '(?m)^\[(Run|Registry|Icons|Dirs)\]' -or $s -notmatch 'PrivilegesRequired=admin'){
+            throw 'INNO_SCOPE_FORBIDDEN'
+          }
+          Write-Host 'PASS Inno TEMP-only extraction / no direct Windows service changes'
