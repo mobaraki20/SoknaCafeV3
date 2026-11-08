@@ -45,6 +45,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          dotnet run --project qa/sokna-r140/final-ci/R140FinalVerify.csproj -c Release --nologo -- (Join-Path $env:SOKNA_R140_FINAL_LAB 'r75.zip') (Join-Path $env:SOKNA_R140_FINAL_LAB 'qualified.zip')
+          $r75=Join-Path $env:SOKNA_R140_FINAL_LAB 'r75.zip'
+          $qualified=Join-Path $env:SOKNA_R140_FINAL_LAB 'qualified.zip'
+          dotnet run --project qa/sokna-r140/final-ci/R140FinalVerify.csproj -c Release --no-launch-profile -- $r75 $qualified
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           Write-Host 'R140_FINAL_DISTRIBUTABLE_PANEL_ZIP_STAGE_PASS'
