@@ -30,6 +30,8 @@ use Sokna\Local\Domain\Finance\FinancialPeriodIdentityService;
 use Sokna\Local\Domain\Finance\FinancialPeriodService;
 use Sokna\Local\Domain\Finance\FinanceWorkspaceService;
 use Sokna\Local\Domain\Finance\SettlementService;
+use Sokna\Local\Domain\Finance\FinanceProjectionAudit;
+use Sokna\Local\Domain\Finance\LateServedAccountingService;
 use Sokna\Local\Domain\Finance\FinancialPeriodCloseService;
 use Sokna\Local\Domain\Integrations\SubscriberService;
 use Sokna\Local\Domain\Integrations\SubscriberAccountService;
@@ -48,6 +50,7 @@ use Sokna\Local\Domain\Expenses\ExpenseService;
 use Sokna\Local\Domain\Operations\OperationsWorkspaceService;
 use Sokna\Local\Domain\Recovery\BusinessBackupService;
 use Sokna\Local\Domain\System\SupportBundleWriter;
+use Sokna\Local\Domain\System\CatalogPushReadOnlyAudit;
 use Sokna\Local\Domain\System\SystemDiagnosticsService;
 use Sokna\Local\Domain\System\MaintenanceSupervisorClient;
 use Sokna\Local\Domain\System\WindowsServicesPairingService;
@@ -154,8 +157,7 @@ final class Bootstrap
     private ?TableDraftRealtimeAdapter $tableDraftRealtime = null;
     private ?PreparationAccessService $preparationAccess = null;
     private ?PreparationService $preparation = null;
-    private ?PreparationRealtimeAdapter $preparationRealtime = null;
-    private ?InventoryService $inventory = null;
+    private ?PreparationRealtimeAdapter $preparationRealtime = null;    private ?InventoryService $inventory = null;
     private ?InventoryCountService $inventoryCounts = null;
     private ?InventoryOrderService $inventoryOrders = null;
     private ?InventoryDeferredAdapter $inventoryDeferred = null;
@@ -165,6 +167,7 @@ final class Bootstrap
     private ?FinanceWorkspaceService $financeWorkspace = null;
     private ?SnapshotGuard $snapshotGuard = null;
     private ?SettlementService $settlements = null;
+    private ?LateServedAccountingService $lateServed = null;
     private ?FinancialPeriodCloseService $financialPeriodClose = null;
     private ?SubscriberService $subscribers = null;
     private ?SubscriberAccountService $subscriberAccounts = null;
@@ -314,7 +317,6 @@ final class Bootstrap
     {
         return $this->staffBenefits ??= new StaffBenefitRepository($this->database());
     }
-
     public function staffBenefitCalculator(): StaffBenefitCalculator
     {
         return $this->staffBenefitCalculator ??= new StaffBenefitCalculator();
@@ -454,13 +456,14 @@ final class Bootstrap
     public function orderStaffActions(): OrderStaffActionService
     {
         return $this->orderStaffActions ??= new OrderStaffActionService(
-            $this->database(),$this->identityRepository(),$this->capabilities(),$this->inventoryOrders(),$this->printing(),$this->preparation()
+            $this->database(),$this->identityRepository(),$this->capabilities(),$this->inventoryOrders(),$this->printing(),$this->preparation(),
+            fn()=>$this->publicEdgePublisher()->seedProjectionInvalidations(['operations'],'hall.policy.printing')
         );
     }
 
     public function orderAcceptance(): OrderAcceptanceService
     {
-        return $this->orderAcceptance ??= new OrderAcceptanceService($this->database(),$this->identityRepository(),$this->capabilities());
+        return $this->orderAcceptance ??= new OrderAcceptanceService($this->database(),$this->identityRepository(),$this->capabilities(),fn()=>$this->publicEdgePublisher()->seedProjectionInvalidations(['operations'],'hall.policy.acceptance'));
     }
 
     public function waiterCallStaff(): WaiterCallStaffService
@@ -472,7 +475,6 @@ final class Bootstrap
     {
         return $this->orderWorkspace ??= new OrderWorkspaceService($this->database(),$this->identityRepository(),$this->capabilities(),$this->orderCatalog());
     }
-
     public function tableChanges(): TableChangeService
     {
         return $this->tableChanges ??= new TableChangeService(
@@ -540,6 +542,14 @@ final class Bootstrap
     public function financeWorkspace(): FinanceWorkspaceService
     {
         return $this->financeWorkspace ??= new FinanceWorkspaceService($this->database(),$this->snapshotGuard());
+    }
+
+    public function lateServed(): LateServedAccountingService
+    {
+        return $this->lateServed ??= new LateServedAccountingService(
+            $this->database(),$this->identityRepository(),$this->capabilities(),
+            $this->settlements(),$this->orderCatalog(),$this->orders()
+        );
     }
 
     public function settlements(): SettlementService
@@ -624,8 +634,7 @@ final class Bootstrap
                         $dedicatedRelay=($runtimeProbe['status']??'')==='ok'&&(int)($relayTrigger['effective_interval_seconds']??0)===1;
                         if($dedicatedRelay){
                             // The fast realtime circuit can fail while the Public heartbeat
-                            // endpoint remains healthy. Always keep this 15-second fallback
-                            // independent from Public relay/projection backoff.
+                            // endpoint remains healthy. Always keep this 15-second fallback                            // independent from Public relay/projection backoff.
                             $public['attempted']=true;
                             $public['heartbeat']=$this->publicEdgePublisher()->syncHeartbeatIfDue(15,2);
                             $public['success']=($public['heartbeat']['success']??false)===true;
@@ -771,7 +780,11 @@ final class Bootstrap
 
     public function supportBundles(): SupportBundleWriter
     {
-        return $this->supportBundles ??= new SupportBundleWriter($this->observability);
+        return $this->supportBundles ??= new SupportBundleWriter(
+            $this->observability,
+            fn():array=>(new FinanceProjectionAudit($this->database(),$this->settlements()))->inspect(),
+            fn():array=>(new CatalogPushReadOnlyAudit($this->database()))->inspect()
+        );
     }
 
     public function systemDiagnostics(): SystemDiagnosticsService
@@ -781,7 +794,6 @@ final class Bootstrap
             dirname(__DIR__,3),dirname(__DIR__,2),dirname(__DIR__,2).'/VERSION.txt',$this->publicEdgeSyncClient(),$this->runtimeHealthClient(),$this->time(),$this->businessClock(),$this->notifications(),$this->maintenanceSupervisor()
         );
     }
-
     public function maintenanceSupervisor(): MaintenanceSupervisorClient
     {
         return $this->maintenanceSupervisor ??= new MaintenanceSupervisorClient();
@@ -866,7 +878,7 @@ final class Bootstrap
 
     public function publicProjectionBuilder(): PublicProjectionBuilder
     {
-        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent(),$this->marketing(),$this->reporting(),$this->notifications(),$this->categoryIcons(),$this->orderCatalog(),$this->preparation(),$this->orderWorkspace());
+        return $this->publicProjectionBuilder ??= new PublicProjectionBuilder($this->database(),$this->settlements(),$this->supply(),$this->guestContent(),$this->marketing(),$this->reporting(),$this->notifications(),$this->categoryIcons(),$this->orderCatalog(),$this->preparation(),$this->orderWorkspace(),$this->businessClock(),$this->orderAcceptance(),$this->orderStaffActions(),(bool)$this->config()->get('integrations.accommodation.enabled',false));
     }
 
     public function publicEdgePublisher(): PublicEdgePublisherService
@@ -940,10 +952,9 @@ final class Bootstrap
             $this->supplyDeferred(), $this->inventoryDeferred(), $this->expenseDeferred(), $this->subscriberPaymentDeferred(), new \Sokna\Local\Relay\DailyOperationsDeferredAdapter($this->database(),$this->operationsCommands(),new \Sokna\Local\Relay\DeferredReceiptService($this->database()),$this->inventory())
         );
     }
-
     public function settlementRealtime(): SettlementRealtimeAdapter
     {
-        return $this->settlementRealtime ??= new SettlementRealtimeAdapter($this->identityRepository(), $this->settlements());
+        return $this->settlementRealtime ??= new SettlementRealtimeAdapter($this->identityRepository(), $this->settlements(), $this->lateServed());
     }
 
 
@@ -975,7 +986,7 @@ final class Bootstrap
     public function hallStaffRealtime(): HallStaffRealtimeAdapter
     {
         return $this->hallStaffRealtime ??= new HallStaffRealtimeAdapter(
-            $this->identityRepository(), $this->waiterCallStaff(), $this->tableChanges(), $this->orderStaffActions()
+            $this->identityRepository(), $this->waiterCallStaff(), $this->tableChanges(), $this->orderStaffActions(), $this->orderAcceptance()
         );
     }
 
