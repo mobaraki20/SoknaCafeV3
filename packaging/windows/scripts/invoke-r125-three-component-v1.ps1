@@ -239,6 +239,32 @@ if(-not$lab){
 $oldDoc=Get-Content -LiteralPath $identity -Raw|ConvertFrom-Json
 if($oldDoc.maintenance_supervisor_version-ne'0.3.22' -or
  $oldDoc.update_engine_version-ne'0.3.22'){Fail 'R125_INSTALLED_IDENTITY_NOT_0322'}
+# Do not stop a Supervisor that is executing a Local/Public maintenance
+# operation. Historical recovered/failed records remain untouched.
+if(-not$lab){
+ $operationsRoot=Join-Path $dataRoot 'Maintenance\operations'
+ if(-not(Test-Path -LiteralPath $operationsRoot -PathType Container)){Fail 'R125_OPERATION_LEDGER_UNAVAILABLE'}
+ $operations=@(Get-ChildItem -LiteralPath $operationsRoot -Filter 'op-*.json' -File -ErrorAction Stop)
+ if($operations.Count-gt20000){Fail 'R125_OPERATION_LEDGER_LIMIT'}
+ foreach($entry in $operations){
+  FileSafe $entry.FullName
+  $op=Get-Content -LiteralPath $entry.FullName -Raw|ConvertFrom-Json -ErrorAction Stop
+  if($op.format-ne'sokna-maintenance-operation-v1' -or
+     [string]$op.operation_id -notmatch '^[a-f0-9]{32}$' -or
+     $entry.Name-cne('op-'+$op.operation_id+'.json')){Fail 'R125_OPERATION_LEDGER_CORRUPT'}
+  if($op.state-in @('accepted','running','activating','recovering')){
+    Fail 'R125_ACTIVE_UPDATE_OPERATION_NOT_IDLE'
+  }
+ }
+ $machineLock=Join-Path $dataRoot 'Maintenance\update\machine-mutation.lock'
+ if(Test-Path -LiteralPath $machineLock -PathType Leaf){
+  FileSafe $machineLock
+  try{
+   $leaseProbe=[IO.File]::Open($machineLock,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+   $leaseProbe.Dispose()
+  }catch{Fail 'R125_MACHINE_MUTATION_LEASE_BUSY'}
+ }
+}
 $root=Join-Path $dataRoot 'setup\r125-0323-three-component'
 ArchiveDir $root
 $exclusive=Join-Path $root 'transaction.lock'
