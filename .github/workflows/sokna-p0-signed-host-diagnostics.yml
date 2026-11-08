@@ -78,6 +78,9 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'ENGINE_DIAGNOSTICS_COMPILE_FAILED'}
           dotnet run --project qa/sokna-p0-diagnostics/LifecycleReasonProbe/LifecycleReasonProbe.csproj -c Release
           if($LASTEXITCODE -ne 0){throw 'LIFECYCLE_CAUSE_REGRESSION_FAILED'}
+      - name: Read-only historical R125 lifecycle proof in ordinary One Support ZIP
+        shell: pwsh
+        run: ./qa/sokna-p0-diagnostics/test_lifecycle_evidence_support.ps1
       - name: Full safe support ZIP with exact host reason and missing-inspector negative control
         shell: pwsh
         run: ./qa/sokna-p0-diagnostics/test_windows_support_bridge.ps1
