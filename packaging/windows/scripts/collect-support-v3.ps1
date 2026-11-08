@@ -83,9 +83,9 @@ try{
     $verPath=Join-Path $expanded 'unified\maintenance-physical-versions.json'
     if(-not(Test-Path -LiteralPath $hostPath -PathType Leaf) -or
        -not(Test-Path -LiteralPath $verPath -PathType Leaf)){throw 'P0_INSPECTOR_INCOMPLETE'}
-    $host=Get-Content -LiteralPath $hostPath -Raw|ConvertFrom-Json -ErrorAction Stop
+    $observedHost=Get-Content -LiteralPath $hostPath -Raw|ConvertFrom-Json -ErrorAction Stop
     $vers=Get-Content -LiteralPath $verPath -Raw|ConvertFrom-Json -ErrorAction Stop
-    if([string]$host.format -ne 'sokna-host-readiness-safe-v1' -or
+    if([string]$observedHost.format -ne 'sokna-host-readiness-safe-v1' -or
        [string]$vers.format -ne 'sokna-physical-component-versions-v1'){throw 'P0_CONTRACT_MISMATCH'}
     $allowed=@('UPDATER_MUTATION_OR_RECOVERY_PENDING',
       'MUTATION_LEDGER_EVIDENCE_UNAVAILABLE',
@@ -95,23 +95,23 @@ try{
       'MACHINE_BINDING_OR_INSTALL_LOCK_MISMATCH',
       'PERSISTENT_MACHINE_LOCAL_OVERLAY_DRIFT',
       'LOCAL_LIFECYCLE_NOT_IDLE_OR_UNPROVEN')
-    $reasonCodes=@($host.blockers|Where-Object{$_ -is[string] -and $_ -in $allowed}|Select-Object -Unique)
-    $code=[string]$host.blocking_code
+    $reasonCodes=@($observedHost.blockers|Where-Object{$_ -is[string] -and $_ -in $allowed}|Select-Object -Unique)
+    $code=[string]$observedHost.blocking_code
     if($code -notmatch '^[A-Z][A-Z0-9_]{0,99}$'){$code='invalid_or_redacted'}
-    $evidence=($host.evidence_available -eq $true)
+    $evidence=($observedHost.evidence_available -eq $true)
     $p0Host=[ordered]@{
       format='sokna-host-readiness-safe-v1';evidence_available=$evidence
       status=$(if($evidence){'LIVE_READ_ONLY_ENGINE_INSPECTION'}else{'INSPECTION_UNAVAILABLE'})
       blocking_code=$(if($evidence){$code}else{''})
       blockers=$(if($evidence){$reasonCodes}else{@()})
-      host_preparation_preconditions_met=($evidence -and $host.host_preparation_preconditions_met -eq $true)
-      apache_healthy=($evidence -and $host.apache_healthy -eq $true)
-      active_junction_qualified=($evidence -and $host.active_junction_qualified -eq $true)
-      installed_identity_and_tree_qualified=($evidence -and $host.installed_identity_and_tree_qualified -eq $true)
-      machine_binding_qualified=($evidence -and $host.machine_binding_qualified -eq $true)
-      persistent_overlay_qualified=($evidence -and $host.persistent_overlay_qualified -eq $true)
-      local_lifecycle_idle=($evidence -and $host.local_lifecycle_idle -eq $true)
-      mutation_ledger_idle=($evidence -and $host.mutation_ledger_idle -eq $true)
+      host_preparation_preconditions_met=($evidence -and $observedHost.host_preparation_preconditions_met -eq $true)
+      apache_healthy=($evidence -and $observedHost.apache_healthy -eq $true)
+      active_junction_qualified=($evidence -and $observedHost.active_junction_qualified -eq $true)
+      installed_identity_and_tree_qualified=($evidence -and $observedHost.installed_identity_and_tree_qualified -eq $true)
+      machine_binding_qualified=($evidence -and $observedHost.machine_binding_qualified -eq $true)
+      persistent_overlay_qualified=($evidence -and $observedHost.persistent_overlay_qualified -eq $true)
+      local_lifecycle_idle=($evidence -and $observedHost.local_lifecycle_idle -eq $true)
+      mutation_ledger_idle=($evidence -and $observedHost.mutation_ledger_idle -eq $true)
     }
     $binaryInfo=[ordered]@{}
     foreach($kind in @('supervisor','update_engine')) {
