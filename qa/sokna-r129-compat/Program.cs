@@ -138,7 +138,7 @@ static class LiveR129{
   if(plan.SourceHead!="0076_late_served_accounting")throw new Exception("REQUIRE_NATIVE_76_CATALOG");
   var original=Original(root,paths,layout.Build,identity);
   var backup=RoutineLocalDatabase.Backup(root,layout.WebRoot,layout.WebRoot,plan,paths.LocalSlotStateRoot);
-  var lifecycle=RoutineLocalLifecycle.Open(root,paths.LocalSlotStateRoot,build,paths,"ci-r129-failed-release",identity.Local.ManagedTreeSha256);
+  var lifecycle=RoutineLocalLifecycle.Open(root,paths.LocalSlotStateRoot,build,paths,"ci-r129-failed-release",identity.Local!.ManagedTreeSha256);
   lifecycle.SaveRollbackEvidence();
   var proof=Path.Combine(paths.LocalSlotStateRoot,"routine-local-lifecycle-before.json");
   var sha=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(proof))).ToLowerInvariant();
