@@ -71,7 +71,7 @@ public static class R125RecoveryWorkflow
             if(!confirmed){report["status"]="READY_AWAITING_CONFIRMATION";report["code"]="R125_OPERATOR_CONFIRMATION_REQUIRED";return(0,report);}
             step="SIGNED_SUPERVISOR_RECONCILIATION";
             var descriptor=AtomicFile.ReadJson<ControlPlaneDescriptor>(paths.DescriptorPath);
-            if(descriptor.Protocol!=HmacProtocol.Protocol||!descriptor.ReadOnlyP1||
+            if(descriptor.Protocol!=HmacProtocol.Protocol||descriptor.ReadOnlyP1||
                 !Uri.TryCreate(descriptor.BaseUrl,UriKind.Absolute,out var uri)||!uri.IsLoopback)
                 throw new InvalidDataException("R125_SIGNED_CONTROL_PLANE_UNQUALIFIED");
             var idempotency=resume?.IdempotencyKey??"r125-integrated-"+Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(layout.Build+"\n"+sha256))).ToLowerInvariant();

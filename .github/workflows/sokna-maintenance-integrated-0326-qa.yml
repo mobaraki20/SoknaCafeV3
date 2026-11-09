@@ -89,6 +89,7 @@ jobs:
           path: |
             ${{ runner.temp }}/maintenance-0326/Sokna.Maintenance.UpdateEngine/SoknaMaintenanceUpdateEngine.exe
             ${{ runner.temp }}/maintenance-0326/dist/COMPONENT-MANIFEST.json
+            ${{ runner.temp }}/maintenance-0326/dist/SOKNA-Maintenance-0326-INTEGRATED-QA-NOT-PRODUCTION.exe
           if-no-files-found: error
   maintenance-0326-real-services:
     needs: maintenance-0326-build
@@ -145,6 +146,8 @@ jobs:
     env: {SOKNA_R149B_DISPOSABLE: 'YES'}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: {ref: b8b1cc4e91772692d92d6f7aa10b0657d2aa5427, path: old-0322-source}
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
       - uses: actions/download-artifact@v4
@@ -154,6 +157,15 @@ jobs:
       - name: Exact installer Engine, native R129 qualification, two baselines and 12 fault cycles
         shell: pwsh
         run: |
+          $old=Join-Path $env:RUNNER_TEMP 'old-0322'
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')){
+            dotnet publish "old-0322-source/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $old $n)
+            if($LASTEXITCODE-ne0){throw 'OLD_NATIVE_BASELINE_BUILD_FAILED'}
+          }
+          $env:SOKNA_TEST_OLD_0322_ROOT=$old
+          $installer=Get-ChildItem exact-engine -Recurse -Filter SOKNA-Maintenance-0326-INTEGRATED-QA-NOT-PRODUCTION.exe|Select-Object -First 1
+          if(-not$installer){throw 'EXACT_INTEGRATED_INSTALLER_MISSING'}
+          $env:SOKNA_TEST_INTEGRATED_INSTALLER=$installer.FullName
           $engine=Get-ChildItem exact-engine -Recurse -Filter SoknaMaintenanceUpdateEngine.exe|Select-Object -First 1
           $manifest=Get-ChildItem exact-engine -Recurse -Filter COMPONENT-MANIFEST.json|Select-Object -First 1
           $env:SOKNA_TEST_INSTALLED_ENGINE_EXE=$engine.FullName
@@ -164,5 +176,7 @@ jobs:
         if: success()
         with:
           name: maintenance-0326-exact-engine-r129-12cycles-three-restores-no-field-approval
-          path: ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/r149b-windows-cycles.json
+          path: |
+            ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/r149b-windows-cycles.json
+            ${{ runner.temp }}/integrated-r125-native.json
           if-no-files-found: error

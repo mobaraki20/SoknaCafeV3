@@ -39,7 +39,11 @@ Source: "{#PayloadRoot}\maintenance-component-manifest-v2.json"; DestDir: "{tmp}
 Source: "{#PayloadRoot}\invoke-maintenance-components-v4.ps1"; DestDir: "{tmp}\SOKNA-0326"; Flags: ignoreversion deleteafterinstall
 Source: "{#PayloadRoot}\maintenance-signed-health-v1.ps1"; DestDir: "{tmp}\SOKNA-0326"; Flags: ignoreversion deleteafterinstall
 [Code]
-var ConfirmArchive: Boolean;
+var ConfirmArchive: Boolean; WorkflowExitCode: Integer;
+function GetCustomSetupExitCode: Integer;
+begin
+  Result := WorkflowExitCode;
+end;
 procedure InitializeWizard;
 begin
   ConfirmArchive := ExpandConstant('{param:CONFIRM-R125-ARCHIVE|NO}') = 'YES';
@@ -51,6 +55,7 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var PS, Params: String; ResultCode: Integer;
 begin
   if CurStep <> ssPostInstall then Exit;
+  WorkflowExitCode := 2;
   PS := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
   Params := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' +
     ExpandConstant('{tmp}\SOKNA-0326\invoke-maintenance-components-v4.ps1') +
@@ -65,5 +70,6 @@ begin
     RaiseException('Maintenance is upgraded; recovery verification could not start.');
   if ResultCode <> 0 then
     RaiseException('Maintenance is upgraded; recovery is blocked. A report is saved on the Desktop.');
+  WorkflowExitCode := 0;
   WizardForm.FinishedLabel.Caption := 'Maintenance is verified. Recovery status is recorded in the Desktop report. This is not approval for an application or database upgrade.';
 end;

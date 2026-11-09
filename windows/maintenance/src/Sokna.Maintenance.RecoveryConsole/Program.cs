@@ -89,7 +89,7 @@ if (!File.Exists(paths.DescriptorPath))
 try
 {
     var descriptor = AtomicFile.ReadJson<ControlPlaneDescriptor>(paths.DescriptorPath);
-    if (descriptor.Protocol != HmacProtocol.Protocol || descriptor.ReadOnlyP1 is false)
+    if (descriptor.Protocol != HmacProtocol.Protocol || (isReconciliation && descriptor.ReadOnlyP1))
         throw new InvalidDataException("Unsupported control-plane descriptor.");
     if (!Uri.TryCreate(descriptor.BaseUrl, UriKind.Absolute, out var baseUri) || !baseUri.IsLoopback)
         throw new InvalidDataException("Control-plane base URL is not loopback.");

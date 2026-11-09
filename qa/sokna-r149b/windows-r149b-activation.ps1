@@ -180,6 +180,10 @@ PidFile "$ar/logs/httpd.pid"
             Run $harness (@('prepare')+$common)
             if($sourceName-eq'r75' -and $fault-eq'none'){
                 Run $compat @('exercise-live-r129',$root,$oldVersion)
+                if($env:SOKNA_TEST_INTEGRATED_INSTALLER){
+                    & ./qa/sokna-r129-compat/test-integrated-host.ps1 -Root $root -Package $package -Probe $compat
+                    if($LASTEXITCODE-ne0){throw 'NATIVE_INTEGRATED_INSTALLER_FAILED'}
+                }
             }
             if($fault -eq 'none') {Run $harness (@('panel-activate')+$common)}
             else {

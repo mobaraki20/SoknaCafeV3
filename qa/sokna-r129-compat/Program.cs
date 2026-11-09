@@ -10,12 +10,13 @@ if (args.Length == 3 && args[0] == "verify-installed-maintenance-identity") {
 }
 if(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")!="true" || Environment.GetEnvironmentVariable("RUNNER_OS")!="Windows")
     throw new InvalidOperationException("DISPOSABLE_WINDOWS_ONLY");
-if(args.Length==3 && args[0]=="exercise-live-r129"){
+if(args.Length==3 && args[0] is "exercise-live-r129" or "exercise-integrated-r125"){
     var root=Path.GetFullPath(args[1]);
     var temp=Path.GetFullPath(Environment.GetEnvironmentVariable("RUNNER_TEMP")!)+Path.DirectorySeparatorChar;
     if(!root.StartsWith(temp,StringComparison.OrdinalIgnoreCase)||!File.Exists(Path.Combine(root,".u01-ci-only")))
         throw new InvalidOperationException("REFUSE_NON_CI_NATIVE_ROOT");
-    LiveR129.Run(root);return;
+    if(args[0]=="exercise-integrated-r125") await IntegratedR125.RunAsync(root,args[2]);
+    else LiveR129.Run(root);return;
 }
 void Need(bool ok,string label){if(!ok)throw new Exception(label);Console.WriteLine("PASS "+label);}
 void Reject(Action action,string label){try{action();}catch(Exception e)when(e is IOException or InvalidDataException or InvalidOperationException or System.Text.Json.JsonException){Console.WriteLine("PASS reject "+label);return;}throw new Exception("UNSAFE "+label);}
@@ -115,15 +116,10 @@ sealed class Fixture:IDisposable{
 }
 
 static class LiveR129{
- public static void Run(string root){
-  var paths=new MaintenancePaths(Path.Combine(root,"Maintenance"));
-  Directory.CreateDirectory(paths.LocalSlotStateRoot);Directory.CreateDirectory(paths.OperationsRoot);
+ public static JsonObject Original(string root,MaintenancePaths paths,string build,InstalledReleaseIdentity identity){
   var layout=new LocalSlotManager(paths).InspectHealthyCurrent();
-  var build=layout.Build;var identity=AtomicFile.ReadJson<InstalledReleaseIdentity>(paths.InstalledReleaseIdentityPath);
-  var plan=RoutineLocalDatabase.Plan(layout.WebRoot,layout.WebRoot);
-  if(plan.SourceHead!="0076_late_served_accounting")throw new Exception("REQUIRE_NATIVE_76_CATALOG");
   var inventory=JsonNode.Parse(File.ReadAllBytes(Path.Combine(layout.WebRoot,"resources","local-managed-files-v1.json")))!.AsObject()["files"]!.AsArray().Count;
-  var original=new JsonObject{["format"]="sokna-local-slot-routine-state-v1",["schema_version"]=1,
+  return new JsonObject{["format"]="sokna-local-slot-routine-state-v1",["schema_version"]=1,
    ["phase"]="RECOVERY_REQUIRED",["package_root"]=layout.PackageRoot,["stable_web_root"]=layout.WebRoot,
    ["apache_executable"]=Path.Combine(root,"Infrastructure","Apache","bin","httpd.exe"),["health_url"]="http://127.0.0.1:39831/login.php",
    ["previous_slot"]=layout.ActiveSlotTarget,["target_slot"]=Path.Combine(root,"Web.release.failed"),
@@ -132,6 +128,15 @@ static class LiveR129{
    ["activation_performed"]=false,["database_mutation_performed"]=true,["public_mutation_performed"]=false,["windows_reboot_required"]=false,
    ["recovery_required"]=true,["maintenance_identity_commit_expected"]=true,["updated_at_utc"]="2026-11-06T00:00:00Z",
    ["events"]=new JsonArray(new JsonObject{["state"]="RECOVERY_REQUIRED",["at_utc"]="2026-11-06T00:00:00Z"})};
+ }
+ public static void Run(string root){
+  var paths=new MaintenancePaths(Path.Combine(root,"Maintenance"));
+  Directory.CreateDirectory(paths.LocalSlotStateRoot);Directory.CreateDirectory(paths.OperationsRoot);
+  var layout=new LocalSlotManager(paths).InspectHealthyCurrent();
+  var build=layout.Build;var identity=AtomicFile.ReadJson<InstalledReleaseIdentity>(paths.InstalledReleaseIdentityPath);
+  var plan=RoutineLocalDatabase.Plan(layout.WebRoot,layout.WebRoot);
+  if(plan.SourceHead!="0076_late_served_accounting")throw new Exception("REQUIRE_NATIVE_76_CATALOG");
+  var original=Original(root,paths,layout.Build,identity);
   var backup=RoutineLocalDatabase.Backup(root,layout.WebRoot,layout.WebRoot,plan,paths.LocalSlotStateRoot);
   var lifecycle=RoutineLocalLifecycle.Open(root,paths.LocalSlotStateRoot,build,paths,"ci-r129-failed-release",identity.Local.ManagedTreeSha256);
   lifecycle.SaveRollbackEvidence();
