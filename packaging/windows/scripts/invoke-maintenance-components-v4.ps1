@@ -3,7 +3,9 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $targetVersion='0.3.26';$targetRecovery='0.1.7'
 $baselineVersion=$LabBaseline;$baselineRecovery=if($baselineVersion-eq'0.3.22'){'0.1.3'}elseif($baselineVersion-eq'0.3.23'){'0.1.4'}elseif($baselineVersion-eq'0.3.24'){'0.1.5'}else{'0.1.6'}
-function Fail([string]$code){throw [InvalidDataException]::new($code)}
+$script:InstallerStage='ARGUMENTS'
+function Stage([string]$name){$script:InstallerStage=$name;Write-Host ('SOKNA_INSTALLER_STAGE='+$name)}
+function Fail([string]$code){Write-Host ('SOKNA_INSTALLER_FAILURE_STAGE='+$script:InstallerStage);Write-Host ('SOKNA_INSTALLER_FAILURE='+$code);throw [IO.InvalidDataException]::new($code)}
 function Hash([string]$p){
  if(-not(Test-Path -LiteralPath $p -PathType Leaf)){return ''}
  $f=[IO.File]::OpenRead($p)
@@ -63,6 +65,7 @@ if($lab){
     -not$r.StartsWith($temp,[StringComparison]::OrdinalIgnoreCase) -or
     [IO.Path]::GetFileName($r)-notlike'sokna-maint-txn-lab-*'){Fail 'R125_LAB_GUARD_DENIED'}
 }elseif($FailAt-ne''){Fail 'R125_FAULT_ARGUMENT_PROHIBITED'}
+Stage 'PAYLOAD'
 $PayloadRoot=[IO.Path]::GetFullPath($PayloadRoot)
 $manifestPath=Join-Path $PayloadRoot 'maintenance-component-manifest-v2.json'
 FileSafe $manifestPath
@@ -85,6 +88,7 @@ foreach($item in $files){
 }
 if(@(Get-ChildItem -LiteralPath (Join-Path $PayloadRoot 'Maintenance') -File -Recurse).Count-ne3){Fail 'R125_PAYLOAD_EXTRAS_FORBIDDEN'}
 foreach($n in $names){if(-not$seen.Contains($n)){Fail 'R125_PAYLOAD_MISSING'}}
+Stage 'SERVICE_LAYOUT'
 if($lab){
  $installRoot=Join-Path $LabRoot 'SOKNA Windows Services'
  $dataRoot=Join-Path $LabRoot 'ProgramData\SOKNA'
@@ -127,6 +131,7 @@ if(-not$lab){
 }
 # Never overlap this service upgrade with any Local/Public mutation. A probe
 # followed by closing the handle would leave a race; keep this handle to exit.
+Stage 'MACHINE_LEASE'
 $leaseRoot=Join-Path $dataRoot 'Maintenance\update'
 ArchiveDir $leaseRoot
 $leasePath=Join-Path $leaseRoot 'machine-mutation.lock'
@@ -139,6 +144,7 @@ try{
 catch{Fail 'MAINTENANCE_MACHINE_MUTATION_LEASE_BUSY'}
 try {
 # A previous v1 service upgrade must be terminal before the v2 owner may proceed.
+Stage 'PRIOR_TRANSACTION'
 $legacyMarker=Join-Path $dataRoot 'setup\r125-0323-three-component\active.json'
 if(Test-Path -LiteralPath $legacyMarker){
  FileSafe $legacyMarker
@@ -227,6 +233,7 @@ if(Test-Path -LiteralPath $crashMarker -PathType Leaf){
   }
  }finally{$crashLock.Dispose()}
 }
+Stage 'CURRENT_COMPONENTS'
 $installed=@{}
 $original=@{}
 foreach($rel in $names){
@@ -251,6 +258,7 @@ if(-not$lab -and $baselineVersion-eq$targetVersion){
  Write-Host 'MAINTENANCE_0326_ALREADY_VERIFIED_NO_CHANGES' 
  exit 0
 }
+Stage 'BASELINE_VERSION'
 if($baselineVersion-notin@('0.3.22','0.3.23','0.3.24','0.3.25')){Fail 'MAINTENANCE_BASELINE_UNSUPPORTED_OR_REINSTALL'}
 $baselineRecovery=if($baselineVersion-eq'0.3.22'){'0.1.3'}elseif($baselineVersion-eq'0.3.23'){'0.1.4'}elseif($baselineVersion-eq'0.3.24'){'0.1.5'}else{'0.1.6'}
 if((Version $installed[$names[0]])-ne$baselineVersion -or
@@ -281,6 +289,7 @@ if(-not$lab){
   }
  }
 }
+Stage 'INSTALLED_IDENTITY'
 $identity=Join-Path $dataRoot 'Maintenance\installed-release-identity.json'
 FileSafe $identity
 $identityHash=Hash $identity
@@ -297,6 +306,7 @@ if($oldDoc.maintenance_supervisor_version-ne$baselineVersion -or
  $oldDoc.update_engine_version-ne$baselineVersion){Fail 'MAINTENANCE_INSTALLED_IDENTITY_BASELINE_MISMATCH'}
 # Do not stop a Supervisor that is executing a Local/Public maintenance
 # operation. Historical recovered/failed records remain untouched.
+Stage 'OPERATION_LEDGER'
 $operationsRoot=Join-Path $dataRoot 'Maintenance\operations'
 if(-not$lab -and -not(Test-Path -LiteralPath $operationsRoot -PathType Container)){Fail 'R125_OPERATION_LEDGER_UNAVAILABLE'}
 if(Test-Path -LiteralPath $operationsRoot -PathType Container){
@@ -328,6 +338,7 @@ try{
    Fail 'R125_PREVIOUS_TRANSACTION_REQUIRES_RECOVERY'
   }
  }
+Stage 'BASELINE_SIGNED_HEALTH'
  Live $baselineVersion
  $id=[Guid]::NewGuid().ToString('N')
  $dir=Join-Path $root ('tx-'+$id)
@@ -347,8 +358,10 @@ try{
  Save (Join-Path $dir 'snapshot.json') ([ordered]@{format='sokna-maintenance-components-snapshot-v2';identity_sha256=$identityHash;files=@($names|ForEach-Object{@{name=$_;sha256=$original[$_]}})})
  Save $marker $state
  try{
+Stage 'STOP_SERVICE'
   $state.phase='STOPPING';Save $marker $state
   StopMaintenanceService
+Stage 'REPLACE_COMPONENTS'
   $state.phase='REPLACING';Save $marker $state
   for($i=0;$i-lt3;$i++){
    $rel=$names[$i]
@@ -359,10 +372,12 @@ try{
    }
    Fault ('after-copy-'+($i+1))
   }
+Stage 'START_SERVICE'
   $state.phase='STARTING';Save $marker $state
   StartMaintenanceService
   Live $targetVersion
   Fault 'after-service-start'
+Stage 'COMMIT_IDENTITY'
   $state.phase='IDENTITY';Save $marker $state
   $doc=Get-Content -LiteralPath $identity -Raw|ConvertFrom-Json
   if((Hash $identity)-cne$identityHash){Fail 'R125_IDENTITY_CHANGED_DURING_INSTALL'}
@@ -388,7 +403,10 @@ try{
   Write-Host 'MAINTENANCE_0326_INSTALL_COMMITTED'
   exit 0
  }catch{
+  if($_.Exception-isnot[IO.InvalidDataException]){Write-Host ('SOKNA_INSTALLER_FAILURE_STAGE='+$script:InstallerStage);Write-Host 'SOKNA_INSTALLER_FAILURE=R125_COMPONENT_TRANSACTION_FAILED'}
+  [Console]::Error.WriteLine($_.Exception.ToString())
   if($lab){Write-Host ('R125_CI_ORIGINAL_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
+Stage 'ROLLBACK'
   $state.phase='ROLLING_BACK';Save $marker $state
   try{
    StopMaintenanceService
