@@ -1,7 +1,5 @@
 name: SOKNA Maintenance ledger exact EXE QA - no production
 on:
-  push:
-    branches: [qa/sokna-r125-ledger-compat-20261110]
   workflow_dispatch:
 permissions: {contents: read, actions: read}
 jobs:
