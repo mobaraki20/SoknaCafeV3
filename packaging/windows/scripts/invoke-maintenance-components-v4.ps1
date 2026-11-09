@@ -405,7 +405,7 @@ if(Test-Path -LiteralPath $operationsRoot -PathType Container){
         Fail 'R125_HISTORICAL_STAGE_PROOF_MISSING'
       }
       $stagePath=[IO.Path]::GetFullPath([string]$op.stage_receipt_path)
-      $stageRoot=[IO.Path]::GetFullPath((Join-Path $dataRoot 'staging\release-sets')).TrimEnd('\')+'\'
+      $stageRoot=[IO.Path]::GetFullPath((Join-Path $dataRoot 'Maintenance\staging\release-sets')).TrimEnd('\')+'\'
       if(-not$stagePath.StartsWith($stageRoot,[StringComparison]::OrdinalIgnoreCase) -or
          [IO.Path]::GetFileName($stagePath)-cne'stage-receipt.json'){
         Fail 'R125_HISTORICAL_STAGE_PROOF_UNTRUSTED'
