@@ -190,6 +190,7 @@ foreach($case in @('0.3.22-preserved011','0.3.22','0.3.23','0.3.24','0.3.25')){
     $reported=$false
     foreach($errorFile in $freshErrors){
       $ferr=Get-Content -LiteralPath $errorFile.FullName -Raw|ConvertFrom-Json
+      Write-Host ('QA_EXACT_EXE_OBSERVED_FAILURE='+[string]$ferr.safe_code+';stage='+[string]$ferr.failed_stage)
       if($ferr.safe_code-eq'R125_HISTORICAL_STAGE_PROOF_INVALID' -and $ferr.failed_stage-eq'OPERATION_LEDGER'){
        $reported=$true
       }
