@@ -9,7 +9,7 @@ on:
       - packaging/windows/installer/SOKNA-R125-ReadOnly-Live-DB-Preflight-QA.iss
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows-standalone-readonly:
@@ -139,3 +139,70 @@ jobs:
             ${{ runner.temp }}/r125-readonly-db-preflight/dist/QA-RESULT.json
           if-no-files-found: error
           retention-days: 30
+
+  publish-qa-only-readonly-diagnostic:
+    needs: [windows-standalone-readonly]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-r125-readonly-live-db-preflight-qa
+          path: dist
+      - name: Match source commit, SHA and absence of production approval
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -c SHA256SUMS.txt
+          jq -e --arg head "$GITHUB_SHA" '
+            .format=="sokna-r125-live-db-readonly-preflight-qa-v1"
+            and .source_commit==$head
+            and .compiled_self_contained_exe=="PASS"
+            and .negative_readonly_fixture=="PASS"
+            and .exact_inno_one_click_exe=="PASS"
+            and .unsupported_host_fail_closed=="PASS"
+            and .real_cafe_mariadb_ledger=="NOT_CHECKED"
+            and .real_cafe_backup_restored==false
+            and .actual_r125_reconciliation_performed==false
+            and .local_public_db_services_modified==false
+            and .production_upgrade_approved==false
+            and .authenticode_signed==false
+          ' QA-RESULT.json
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          echo 'PASS strictly readonly QA qualification'
+      - name: Publish immutable read-only GitHub prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="sokna-r125-live-db-readonly-qa-$(echo "$GITHUB_SHA"|cut -c1-12)"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Existing immutable tag will not be replaced'; exit 1
+          fi
+          cat > notes-fa.md <<'NOTES'
+          # سکنا — پیش‌بررسی R125 و دیتابیس، فقط‌خواندنی
+
+          این بسته یک ابزار تشخیص است، نه بسته به‌روزرسانی یا رفع خودکار قفل R125.
+          با یک کلیک روی ویندوز، یک گزارش JSON روی دسکتاپ تولید می‌شود.
+          ابزار شواهد بازگشت R125، نسخه فعال و دفتر مهاجرت MariaDB را با
+          روش read-only inspect موجود در Maintenance ارزیابی می‌کند.
+
+          هیچ داده فروش، رمز، متن SQL یا محتوای فایل حفاظتی در گزارش کپی نمی‌شود.
+          سرویس، دیتابیس، Local یا Public و خود فایل بازیابی تغییر داده نمی‌شوند.
+          بسته فاقد امضای Authenticode ناشر است. هش SHA256 را بررسی کنید.
+
+          تشخیص وجود رکورد بک‌آپ اثبات بازگردانی موفق بک‌آپ واقعی نیست.
+          تأیید نصب Production و اجرای بازیابی R125 همچنان نیازمند بررسی واقعی است.
+
+          تنها خروجی مورد نیاز از ویندوز کافه:
+          SOKNA-R125-READONLY-DB-PREFLIGHT-*.json روی Desktop.
+          NOTES
+          gh release create "$tag" \
+            dist/SOKNA-R125-READONLY-LIVE-DB-PREFLIGHT-QA-NOT-PRODUCTION.exe \
+            dist/SHA256SUMS.txt dist/QA-RESULT.json \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'SOKNA R125 Live DB Read-only Preflight — QA Diagnostic' \
+            --notes-file notes-fa.md --prerelease
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '[.assets[] | select(.size>0)] | length')" -eq 3
