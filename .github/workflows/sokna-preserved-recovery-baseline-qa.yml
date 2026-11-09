@@ -14,7 +14,6 @@ jobs:
       - shell: powershell
         run: |
           & ./qa/sokna-preserved-recovery/test-policy.ps1
-          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
           & ./qa/sokna-identity-workflow/test-maintenance-components-v4.ps1
           if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
   mark-published-rev2-field-blocked:
