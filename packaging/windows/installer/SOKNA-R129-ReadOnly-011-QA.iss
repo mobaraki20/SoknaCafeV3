@@ -47,7 +47,7 @@ var
   ExecutablePath: String;
   ResultCode: Integer;
 begin
-  if CurStep <> ssPostInstall then RaiseException('Read-only check was blocked; see the generated report.');
+  if CurStep <> ssPostInstall then Exit;
   ExecutablePath := ExpandConstant('{tmp}\SOKNA-R125-READONLY\SOKNA-R125-READONLY-LIVE-DB-PREFLIGHT-UAT.exe');
   Log('SOKNA_R125_READONLY_PREFLIGHT_START');
   if not Exec(ExecutablePath, '', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then

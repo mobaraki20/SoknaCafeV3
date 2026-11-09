@@ -85,6 +85,9 @@ try {
     Run dotnet @('publish','windows/maintenance/tests/Sokna.Maintenance.U01Harness/Sokna.Maintenance.U01Harness.csproj','-c','Release','-r','win-x64','--self-contained','false','-o',$harnessOut)
     $harness=Join-Path $harnessOut 'Sokna.Maintenance.U01Harness.exe';$engine=Join-Path $engineOut 'SoknaMaintenanceUpdateEngine.exe'
     Need (Test-Path $harness) 'HARNESS_MISSING';Need (Test-Path $engine) 'ENGINE_MISSING'
+    $compatOut=Join-Path $lab 'compat-probe'
+    Run dotnet @('publish','qa/sokna-r129-compat/CompatProbe.csproj','-c','Release','-r','win-x64','--self-contained','false','-o',$compatOut)
+    $compat=Join-Path $compatOut 'Sokna.R125ArchiveIntegrationProbe.exe'
     $engineHash=(Get-FileHash $engine -Algorithm SHA256).Hash.ToLowerInvariant()
     $engineVersion=(Get-Item $engine).VersionInfo.FileVersion
     Need (-not [string]::IsNullOrWhiteSpace($engineVersion)) 'ENGINE_PHYSICAL_VERSION_MISSING'
@@ -167,6 +170,9 @@ PidFile "$ar/logs/httpd.pid"
             Start-Service SoknaApache
             $common=@($root,$baseline,$target,$engine,$fault,$package)
             Run $harness (@('prepare')+$common)
+            if($sourceName-eq'r75' -and $fault-eq'none'){
+                Run $compat @('exercise-live-r129',$root,$oldVersion)
+            }
             if($fault -eq 'none') {Run $harness (@('panel-activate')+$common)}
             else {
                 & $harness @(@('activate')+$common)
