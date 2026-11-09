@@ -62,7 +62,7 @@ function VerifyCommitted($f){
  if($identity.maintenance_supervisor_version-ne'0.3.23' -or $identity.update_engine_version-ne'0.3.23' -or
     $identity.local.version-ne'local-r112' -or $identity.public.version-ne'public-current'){throw 'R125_QA_IDENTITY_SCOPE'}
 }
-$all=@('happy','after-copy-1','after-copy-2','after-copy-3','after-service-start','after-identity','corrupt','unresolved','baseline','crash-after-copy-1','crash-after-identity')
+$all=@('happy','after-copy-1','after-copy-2','after-copy-3','after-service-start','after-identity','corrupt','unresolved','baseline','crash-after-copy-1','crash-after-identity','recovery-required-operation','unknown-operation-state')
 foreach($case in $all){
  $f=SetupLab
  try{
@@ -92,6 +92,26 @@ foreach($case in $all){
     @{phase='RECOVERY_REQUIRED'}|ConvertTo-Json|Set-Content (Join-Path $priorDir 'active.json')
     $r=RunLab $f
     if($r.Code-eq0){throw 'R125_QA_ACCEPTED_UNRESOLVED_CRASH'}
+    VerifyOld $f
+   }
+   'recovery-required-operation'{
+    $ops=Join-Path $f.Root 'ProgramData\SOKNA\Maintenance\operations'
+    New-Item -ItemType Directory -Path $ops -Force|Out-Null
+    $id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    @{format='sokna-maintenance-operation-v1';operation_id=$id;state='recovery_required'}|
+      ConvertTo-Json|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+    $r=RunLab $f
+    if($r.Code-eq0){throw 'R125_QA_RECONCILIATION_BYPASSED_RECOVERY_REQUIRED'}
+    VerifyOld $f
+   }
+   'unknown-operation-state'{
+    $ops=Join-Path $f.Root 'ProgramData\SOKNA\Maintenance\operations'
+    New-Item -ItemType Directory -Path $ops -Force|Out-Null
+    $id='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    @{format='sokna-maintenance-operation-v1';operation_id=$id;state='unknown_future_state'}|
+      ConvertTo-Json|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+    $r=RunLab $f
+    if($r.Code-eq0){throw 'R125_QA_UNKNOWN_STATE_ACCEPTED_AS_IDLE'}
     VerifyOld $f
    }
    'baseline'{
@@ -125,4 +145,4 @@ foreach($case in $all){
   Remove-Item -LiteralPath $f.Root -Recurse -Force -ErrorAction SilentlyContinue
  }
 }
-Write-Host 'PASS all eleven Windows three-component installation, rollback and hard process-kill recovery cases'
+Write-Host 'PASS all thirteen Windows three-component installation, rollback and fail-closed safety cases'
