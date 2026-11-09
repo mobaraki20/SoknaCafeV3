@@ -48,8 +48,11 @@ public static class RoutineLocalDatabase
         "migration-ledger-sha256-v1:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             string.Concat(catalog.Select(p => p.Key + "\0" + p.Value + "\n"))))).ToLowerInvariant();
 
-    internal static void RequireBaseline(string packageRoot, string sourceRoot, string targetRoot, RoutineMigrationPlan plan)
+    public static void RequireBaseline(string packageRoot, string sourceRoot, string targetRoot, RoutineMigrationPlan plan)
         => Run(packageRoot, sourceRoot, targetRoot, "inspect", plan, "", "");
+
+    public static void RequireExternalRollbackBaseline(string packageRoot, string webRoot, RoutineMigrationPlan plan)
+        => Run(packageRoot, webRoot, webRoot, "inspect-external-rollback", plan, "", "");
 
     /// <summary>
     /// Execute only the leading read-only SELECT guards of newly added migrations,
@@ -164,4 +167,5 @@ public static class RoutineLocalDatabase
         throw new FileNotFoundException("LOCAL_INFRASTRUCTURE_BINARY_MISSING");
     }
 }
+
 

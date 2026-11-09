@@ -30,10 +30,16 @@ try {
     };
     $before=$old->catalog();$after=$next->catalog();
     if ($fingerprint($before)!==$plan['SourceFingerprint'] || $fingerprint($after)!==$plan['TargetFingerprint']) exit(66);
+    if ($mode==='inspect' || $mode==='inspect-external-rollback') { $pdo->exec('SET TRANSACTION READ ONLY'); $pdo->beginTransaction(); }
     $applied=$next->appliedVersions();$original=array_keys($before);$expected=array_keys($after);
-    if ($mode==='inspect' || $mode==='backup' || $mode==='preflight' || $mode==='backup-preflight') {
+    if ($mode==='inspect' || $mode==='inspect-external-rollback' || $mode==='backup' || $mode==='preflight' || $mode==='backup-preflight') {
         if ($applied!==$original) exit(67);
         if ((int)$pdo->query("SELECT COUNT(*) FROM schema_migration_statements WHERE state<>'applied'")->fetchColumn()!==0) exit(68);
+        if ($mode==='inspect-external-rollback') {
+            if ($plan['SourceHead']!=='0076_late_served_accounting') exit(84);
+            if ((int)$pdo->query("SELECT COUNT(*) FROM schema_migration_statements WHERE version >= '0077'")->fetchColumn()!==0) exit(85);
+            if ((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='inventory_opening_activations'")->fetchColumn()!==0) exit(86);
+        }
         if ($mode==='preflight') {
             // Safely probe leading SELECT guards in each pending signed migration
             // while Apache is still running. Never execute DDL/DML in preflight.
@@ -104,4 +110,5 @@ try {
     }
     exit(78);
 }
+
 

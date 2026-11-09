@@ -1,0 +1,51 @@
+name: SOKNA R129 recovery evidence compatibility QA
+on:
+  push:
+    branches: [qa/sokna-update-safety-20261109]
+    paths: ['qa/sokna-r129-compat/**','windows/maintenance/src/**','.github/workflows/sokna-r129-compat-qa.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-native-compatibility:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-r129-compat/CompatProbe.csproj -c Release
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+          dotnet run --project qa/sokna-r125-reconcile/PolicyProbe.csproj -c Release
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+          dotnet run --project qa/sokna-r125-reconcile/ArchiveIntegrationProbe.csproj -c Release
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - name: Build actual standalone report binary
+        shell: pwsh
+        run: |
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.R125Preflight/Sokna.Maintenance.R125Preflight.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "$env:RUNNER_TEMP/r129-report-payload"
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r129-readonly-report-011-qa-no-host-approval
+          path: ${{ runner.temp }}/r129-report-payload/*.exe
+          if-no-files-found: error
+  mariadb-readonly-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env: {MARIADB_ROOT_PASSWORD: ci-root-only}
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq php-cli php-mysql mariadb-client
+      - run: php -l windows/maintenance/src/Sokna.Maintenance.Core/RoutineLocalDatabase.php
+      - run: python3 qa/sokna-r129-compat/test-live-ledger.py
+        env: {SOKNA_SAFETY_DISPOSABLE: 'YES'}

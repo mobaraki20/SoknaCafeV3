@@ -1,0 +1,84 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json.Nodes;
+using Sokna.Maintenance.Core;
+
+if (args.Length == 3 && args[0] == "verify-installed-maintenance-identity") {
+    var paths = new MaintenancePaths(args[2]);
+    MaintenanceIdentityVersionProof.Require(File.ReadAllBytes(args[1]), paths.InstalledReleaseIdentityPath, paths.DataRoot);
+    Console.WriteLine("PASS actual installed binaries, commit receipt and identity scope"); return;
+}
+if(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")!="true" || Environment.GetEnvironmentVariable("RUNNER_OS")!="Windows")
+    throw new InvalidOperationException("DISPOSABLE_WINDOWS_ONLY");
+void Need(bool ok,string label){if(!ok)throw new Exception(label);Console.WriteLine("PASS "+label);}
+void Reject(Action action,string label){try{action();}catch(Exception e)when(e is IOException or InvalidDataException or InvalidOperationException or System.Text.Json.JsonException){Console.WriteLine("PASS reject "+label);return;}throw new Exception("UNSAFE "+label);}
+using(var f=new Fixture()){
+ var before=SHA256.HashData(File.ReadAllBytes(f.State));
+ f.Check();
+ Need(SHA256.HashData(File.ReadAllBytes(f.State)).SequenceEqual(before),"R129 qualification is read only; historical DB flag retained");
+ Need(JsonNode.Parse(File.ReadAllText(f.State))!["database_mutation_performed"]!.GetValue<bool>(),"historical mutation remains true");
+}
+foreach(var test in new[]{"no-receipt","duplicate-receipt","original-tamper","receipt-scope","current-local-change","flag-cleared","extra-history","operation-changed","backup-tampered","intent-changed","original-public-mutation"}){
+ using var f=new Fixture();
+ switch(test){
+ case "no-receipt":File.Delete(f.Receipt);break;
+ case "duplicate-receipt":File.Copy(f.Receipt,Path.Combine(f.Paths.LocalSlotStateRoot,"r125-reconcile-intent-other.json"));break;
+ case "original-tamper":File.AppendAllText(f.Original," ");break;
+ case "receipt-scope":f.Edit(f.Receipt,x=>x["db_schema_head"]="0079_wrong");break;
+ case "current-local-change":f.Edit(f.State,x=>x["current_managed_tree_sha256"]="different");break;
+ case "flag-cleared":f.Edit(f.State,x=>x["database_mutation_performed"]=false);break;
+ case "extra-history":f.Edit(f.State,x=>(x["events"] as JsonArray)!.Add(new JsonObject{["state"]="OTHER"}));break;
+ case "operation-changed":f.Edit(f.Operation,x=>x["package_ref"]="wrong");break;
+ case "backup-tampered":File.AppendAllText(f.Backup," ");break;
+ case "intent-changed":f.Edit(f.Intent,x=>x["reason"]="anything");break;
+ case "original-public-mutation":f.Edit(f.Original,x=>x["public_mutation_performed"]=true);f.RehashOriginal();break;
+ }
+ Reject(f.Check,test);
+}
+var oldIdentity=Encoding.UTF8.GetBytes("{\"maintenance_supervisor_version\":\"0.3.22\",\"update_engine_version\":\"0.3.22\",\"local\":{\"version\":\"R112\"},\"public\":{\"keep\":true}}");
+var current=Encoding.UTF8.GetBytes("{\"maintenance_supervisor_version\":\"0.3.25\",\"update_engine_version\":\"0.3.25\",\"local\":{\"version\":\"R112\"},\"public\":{\"keep\":true}}");
+Need(MaintenanceIdentityVersionProof.RequireOnlyVersionChange(oldIdentity,current)=="0.3.25","only two Maintenance identity fields can differ");
+Reject(()=>MaintenanceIdentityVersionProof.RequireOnlyVersionChange(oldIdentity,Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(current).Replace("R112","R149"))),"Local identity cannot be masked by Maintenance upgrade");
+Need(R125ReadOnlyAssessment.Code(new InvalidDataException("password=secret/private/path"))=="R125_READONLY_EVIDENCE_UNAVAILABLE","unknown error details are redacted");
+Console.WriteLine("PASS R129 full evidence chain and identity compatibility regressions; no physical café approval");
+
+sealed class Fixture:IDisposable{
+ public MaintenancePaths Paths{get;} public string State{get;} public string Receipt{get;} public string Original{get;}
+ public string Operation{get;} public string Backup{get;} public string Intent{get;}
+ readonly string root; readonly RoutineMigrationPlan plan;
+ const string Build="3.0.0-g6.2-workspace.231dg-r112-guest-safe-append-uat";
+ static string Sha(byte[] b)=>Convert.ToHexString(SHA256.HashData(b)).ToLowerInvariant();
+ static void Write(string p,JsonObject d)=>File.WriteAllText(p,d.ToJsonString());
+ public Fixture(){
+  root=Path.Combine(Environment.GetEnvironmentVariable("RUNNER_TEMP")!,"sokna-r129-evidence-"+Guid.NewGuid().ToString("N"));
+  Paths=new MaintenancePaths(Path.Combine(root,"Maintenance"));Directory.CreateDirectory(Paths.LocalSlotStateRoot);Directory.CreateDirectory(Paths.OperationsRoot);
+  var suffix="fixture";var id=Guid.NewGuid().ToString("N");
+  State=Path.Combine(Paths.LocalSlotStateRoot,"routine-state.json");Original=Path.Combine(Paths.LocalSlotStateRoot,"r125-reconcile-original-"+suffix+".json");
+  Receipt=Path.Combine(Paths.LocalSlotStateRoot,"r125-reconcile-intent-"+suffix+".json");
+  Operation=Path.Combine(Paths.OperationsRoot,"op-"+id+".json");
+  Directory.CreateDirectory(Path.Combine(Paths.LocalSlotStateRoot,"private-db-backups"));
+  Backup=Path.Combine(Paths.LocalSlotStateRoot,"private-db-backups","before.sql");File.WriteAllText(Backup,new string('-',256));var bh=Sha(File.ReadAllBytes(Backup));
+  plan=new("migration-ledger-sha256-v1:"+new string('a',64),"migration-ledger-sha256-v1:"+new string('a',64),"0076_late_served_accounting","0076_late_served_accounting",76,76);
+  var old=new JsonObject{["format"]="sokna-local-slot-routine-state-v1",["schema_version"]=1,["phase"]="RECOVERY_REQUIRED",["current_build"]=Build,
+   ["target_build"]="R125",["recovery_required"]=true,["database_mutation_performed"]=true,["public_mutation_performed"]=false,
+   ["windows_reboot_required"]=false,["activation_performed"]=false,["maintenance_identity_commit_expected"]=true,
+   ["updated_at_utc"]="2026-11-06T00:00:00Z",["current_managed_tree_sha256"]="source-tree",
+   ["events"]=new JsonArray(new JsonObject{["state"]="RECOVERY_REQUIRED"}),
+   ["migrationPlan"]=new JsonObject{["sourceFingerprint"]=plan.SourceFingerprint,["sourceHead"]=plan.SourceHead,["sourceCount"]=76},
+   ["databaseBackup"]=new JsonObject{["path"]=Backup,["sha256"]=bh,["bytes"]=256}};
+  Write(Original,old);
+  var originalOp=new JsonObject{["format"]="sokna-maintenance-operation-v1",["schema_version"]=1,["operation_id"]=id,["operation_type"]="update.local-code-only-activate",
+   ["state"]="recovery_required",["result_code"]="CODE_ONLY_EXECUTION_OUTCOME_UNPROVEN",["database_mutation_performed"]=true,["activation_performed"]=true,["package_ref"]="fixture-package"};
+  var opBefore=Path.Combine(Paths.LocalSlotStateRoot,"r125-reconcile-original-operation-"+suffix+".json");Write(opBefore,originalOp);
+  Write(Receipt,new JsonObject{["format"]="sokna-r129-external-recovery-reconciliation-v1",["at_utc"]="2026-11-07T00:00:00Z",["recovered_build"]=Build,
+   ["blocked_operation_id"]=id,["db_schema_head"]=plan.SourceHead,["backup_sha256"]=bh,["routine_state_original_sha256"]=Sha(File.ReadAllBytes(Original)),["operation_original_sha256"]=Sha(File.ReadAllBytes(opBefore))});
+  old["phase"]="RECOVERED_TO_PREVIOUS_SLOT";old["recovery_required"]=false;old["updated_at_utc"]="2026-11-07T00:00:00Z";
+  (old["events"] as JsonArray)!.Add(new JsonObject{["state"]="RECOVERED_TO_PREVIOUS_SLOT",["at_utc"]="2026-11-07T00:00:00Z",["detail"]="R125_EXTERNAL_EXACT_ROLLBACK_R112_PROVEN_BY_R129"});Write(State,old);
+  originalOp["state"]="failed";originalOp["result_code"]="CODE_ONLY_ENGINE_ROLLED_BACK_VERIFIED";originalOp["database_mutation_performed"]=false;Write(Operation,originalOp);
+  Intent=Path.Combine(Paths.LocalSlotStateRoot,"r125-emergency-recovery-intent.json");Write(Intent,new JsonObject{["format"]="sokna-r125-emergency-exact-revert-v1",["to_version"]=Build,["from_version"]="R125",["backup_sha256"]=bh,["reason"]="0078_FIRST_GUARD_AND_ONLY_0077_EMPTY_TABLE"});
+ }
+ public void Edit(string path,Action<JsonObject> mutate){var j=JsonNode.Parse(File.ReadAllText(path))!.AsObject();mutate(j);Write(path,j);}
+ public void RehashOriginal()=>Edit(Receipt,x=>x["routine_state_original_sha256"]=Sha(File.ReadAllBytes(Original)));
+ public void Check()=>R129ExternalRollbackEvidence.Require(Paths,Build,plan);
+ public void Dispose()=>Directory.Delete(root,true);
+}

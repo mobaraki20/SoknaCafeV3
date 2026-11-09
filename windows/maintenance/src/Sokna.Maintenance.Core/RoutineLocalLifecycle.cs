@@ -381,7 +381,19 @@ internal sealed class RoutineLocalLifecycle
         if (managed is not null) Same(managedPath, managed, 4_000_000);
         else if (File.Exists(managedPath))
             throw new InvalidDataException("LOCAL_LIFECYCLE_RECOVERED_BYTES_NOT_EXACT");
-        Same(installedIdentityPath, (string?)proof["installed_identity_base64"], 100_000);
+        var encodedIdentity = (string?)proof["installed_identity_base64"];
+        if (string.IsNullOrEmpty(encodedIdentity))
+            throw new InvalidDataException("LOCAL_LIFECYCLE_RECOVERED_BYTES_NOT_EXACT");
+        var oldIdentity = Convert.FromBase64String(encodedIdentity);
+        var currentIdentity = File.ReadAllBytes(installedIdentityPath);
+        if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(oldIdentity), SHA256.HashData(currentIdentity)))
+        {
+            if (oldIdentity.Length > 100_000 || currentIdentity.Length > 100_000 ||
+                (File.GetAttributes(installedIdentityPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("LOCAL_LIFECYCLE_RECOVERED_BYTES_NOT_EXACT");
+            MaintenanceIdentityVersionProof.Require(oldIdentity, installedIdentityPath,
+                Path.GetDirectoryName(evidenceRoot)!);
+        }
     }
 
     public static void CompleteCrashBackup(string evidenceRoot)
@@ -397,3 +409,4 @@ internal sealed class RoutineLocalLifecycle
         finally { if(File.Exists(tmp))File.Delete(tmp); }
     }
 }
+

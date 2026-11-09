@@ -239,7 +239,15 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
             (File.GetAttributes(statePath) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("R125_RECOVERY_STATE_MISSING");
         var state = AtomicFile.ReadJson<RoutineLocalSlotState>(statePath);
-        RequireSettledRoutine(state, layout.Build);
+        var external = state.DatabaseMutationPerformed;
+        var baseline = RoutineLocalDatabase.Plan(layout.WebRoot, layout.WebRoot);
+        if (external)
+        {
+            // Historical R129 mutation is not current DB state. Require the entire
+            // protected evidence chain; never clear or reinterpret the stored flag.
+            R129ExternalRollbackEvidence.Require(paths, layout.Build, baseline);
+        }
+        else RequireSettledRoutine(state, layout.Build);
         ProductionLocalSlotMigrationBridge.RoutineLocalSlotSafety.RequirePreviousSettled(
             _paths, layout.PackageRoot, layout.WebRoot, layout.ActiveSlotTarget, layout.Build);
         LocalManagedTreeAttestation.RequireExact(
@@ -255,11 +263,12 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
 
         // No DDL, DML, new backup, rollback or restore; this helper strictly
         // SELECTs the real live migration ledger and rejects partial statements.
-        var baseline = RoutineLocalDatabase.Plan(layout.WebRoot, layout.WebRoot);
         if (baseline.RequiresMigration)
             throw new InvalidDataException("R125_UNEXPECTED_MIGRATION_PLAN");
         RoutineLocalDatabase.RequireBaseline(layout.PackageRoot, layout.WebRoot,
             layout.WebRoot, baseline);
+        if (external) RoutineLocalDatabase.RequireExternalRollbackBaseline(
+            layout.PackageRoot, layout.WebRoot, baseline);
     }
 
     private static void VerifySourceSha(string path, string expected)
@@ -347,3 +356,4 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
         bool DatabaseMutationPerformed, bool PublicMutationPerformed,
         DateTimeOffset CompletedAtUtc);
 }
+
