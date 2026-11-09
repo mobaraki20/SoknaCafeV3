@@ -59,7 +59,10 @@ try{
  # Detailed exception stays private where possible; never copy it to Desktop.
  if($privateReady){try{[IO.File]::WriteAllText((Join-Path $DiagnosticRoot ('maintenance-install-'+$runId+'.log')),$raw+[Environment]::NewLine+$_.Exception.ToString(),[Text.UTF8Encoding]::new($false));$privateLogWritten=$true}catch{}}
 }
-$report=[ordered]@{format='sokna-maintenance-component-install-failure-v1';run_id=$runId;started_at_utc=$started.ToString('O');status='BLOCKED';safe_code=$safeCode;failed_stage=$stage;component_exit_code=$exitCode;transaction_outcome=$outcome;rollback_verified=$null;private_diagnostic_log_written=$privateLogWritten;recovery_requested=$false;database_schema_data_mutated=$false;public_mutated=$false;production_approved=$false}
+$observedVersions=$null
+$observed=[regex]::Matches($raw,'(?m)^SOKNA_INSTALLER_OBSERVED_VERSIONS=(\d{1,4}\.\d{1,4}\.\d{1,4}),(\d{1,4}\.\d{1,4}\.\d{1,4}),(\d{1,4}\.\d{1,4}\.\d{1,4})\r?$')
+if($observed.Count-gt0){$last=$observed[$observed.Count-1];$observedVersions=@{supervisor=$last.Groups[1].Value;engine=$last.Groups[2].Value;recovery=$last.Groups[3].Value;source='physical_pe'}}
+$report=[ordered]@{format='sokna-maintenance-component-install-failure-v1';run_id=$runId;started_at_utc=$started.ToString('O');status='BLOCKED';safe_code=$safeCode;failed_stage=$stage;component_exit_code=$exitCode;transaction_outcome=$outcome;rollback_verified=$null;private_diagnostic_log_written=$privateLogWritten;observed_versions=$observedVersions;recovery_requested=$false;database_schema_data_mutated=$false;public_mutated=$false;production_approved=$false}
 New-Item -ItemType Directory -Path $DesktopRoot -Force|Out-Null
 $reportPath=Join-Path $DesktopRoot ('SOKNA-MAINTENANCE-INSTALL-FAILED-'+$runId+'.json')
 $bytes=[Text.UTF8Encoding]::new($false).GetBytes(($report|ConvertTo-Json -Depth 5))
