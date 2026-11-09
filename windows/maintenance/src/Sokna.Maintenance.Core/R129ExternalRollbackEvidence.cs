@@ -19,6 +19,8 @@ internal static class R129ExternalRollbackEvidence
             "EVIDENCE_MISSING_OR_REPARSE");
         Need(new FileInfo(path).Length is > 0 && new FileInfo(path).Length <= limit,
             "EVIDENCE_SIZE_INVALID");
+        for (var dir = Path.GetDirectoryName(Path.GetFullPath(path)); dir is not null; dir = Path.GetDirectoryName(dir))
+            Need((File.GetAttributes(dir) & FileAttributes.ReparsePoint) == 0, "EVIDENCE_MISSING_OR_REPARSE");
         return File.ReadAllBytes(path);
     }
     private static JsonObject Object(string path) =>

@@ -73,6 +73,15 @@ foreach($baseline in @('0.3.22','0.3.23','0.3.24')){
   Need ($state.phase-eq'COMMITTED' -and $state.baseline-eq$baseline) 'COMMIT_RECEIPT_INVALID'
   dotnet run --project qa/sokna-r129-compat/CompatProbe.csproj -c Release -- verify-installed-maintenance-identity $beforeIdentity (Join-Path $data 'Maintenance')
   Need ($LASTEXITCODE-eq0) 'ACTUAL_COMPONENT_IDENTITY_PROOF_REJECTED'
+  $resultFile=Join-Path (Split-Path $marker -Parent) ('tx-'+$state.id+'/result.json')
+  $resultOriginal=[IO.File]::ReadAllBytes($resultFile)
+  try{
+   $broken=Get-Content $resultFile -Raw|ConvertFrom-Json
+   $broken.files[0].sha256=('f'*64)
+   $broken|ConvertTo-Json -Depth 30|Set-Content $resultFile
+   dotnet run --project qa/sokna-r129-compat/CompatProbe.csproj -c Release -- verify-installed-maintenance-identity $beforeIdentity (Join-Path $data 'Maintenance')
+   Need ($LASTEXITCODE-ne0) 'TAMPERED_COMPONENT_RECEIPT_ACCEPTED'
+  }finally{[IO.File]::WriteAllBytes($resultFile,$resultOriginal)}
   $beforeReplay=@($names|ForEach-Object{Hash (Join-Path $install $_)})
   Need ((InvokeInstaller $Installer)-ne0) 'EQUAL_VERSION_REINSTALL_ACCEPTED'
   foreach($i in 0..2){Need ((Hash (Join-Path $install $names[$i]))-eq$beforeReplay[$i]) 'REJECTED_REINSTALL_MUTATED_FILES'}

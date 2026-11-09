@@ -16,6 +16,8 @@ internal static class MaintenanceIdentityVersionProof
     {
         Need(File.Exists(p) && new FileInfo(p).Length is > 0 and < 1_000_000 &&
             (File.GetAttributes(p) & FileAttributes.ReparsePoint) == 0);
+        for (var dir = Path.GetDirectoryName(Path.GetFullPath(p)); dir is not null; dir = Path.GetDirectoryName(dir))
+            Need((File.GetAttributes(dir) & FileAttributes.ReparsePoint) == 0);
         return JsonNode.Parse(File.ReadAllBytes(p)) as JsonObject ?? throw new InvalidDataException("R125_MAINTENANCE_IDENTITY_UPGRADE_UNPROVEN");
     }
     internal static string RequireOnlyVersionChange(byte[] before, byte[] current)
