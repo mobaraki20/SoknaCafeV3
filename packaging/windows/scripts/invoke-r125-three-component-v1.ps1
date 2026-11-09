@@ -252,8 +252,11 @@ if(-not$lab){
   if($op.format-ne'sokna-maintenance-operation-v1' -or
      [string]$op.operation_id -notmatch '^[a-f0-9]{32}$' -or
      $entry.Name-cne('op-'+$op.operation_id+'.json')){Fail 'R125_OPERATION_LEDGER_CORRUPT'}
-  if($op.state-in @('accepted','running','activating','recovering')){
-    Fail 'R125_ACTIVE_UPDATE_OPERATION_NOT_IDLE'
+  if($op.state-in @('accepted','running','activating','recovering','recovery_required')){
+    Fail 'R125_ACTIVE_OR_UNRESOLVED_UPDATE_OPERATION'
+  }
+  if($op.state-notin @('committed','failed_pre_mutation','failed','code_only_engine_rolled_back_verified','rolled_back','recovered','cancelled')){
+    Fail 'R125_UNKNOWN_OPERATION_STATE_NOT_IDLE'
   }
  }
  $machineLock=Join-Path $dataRoot 'Maintenance\update\machine-mutation.lock'
