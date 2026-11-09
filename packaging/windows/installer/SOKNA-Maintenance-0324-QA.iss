@@ -10,6 +10,7 @@ AppId={{EDDA9110-521F-468D-BC09-0324EC25A171}
 AppName=SOKNA Maintenance R125 Recovery Component Upgrade (QA)
 AppVersion=0.3.24
 VersionInfoVersion=0.3.24.0
+VersionInfoTextVersion=0.3.24.0
 AppVerName=SOKNA Maintenance 0.3.24 and Recovery Console 0.1.5 QA
 AppPublisher=SOKNA
 AppCopyright=SOKNA

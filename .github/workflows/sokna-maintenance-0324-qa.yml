@@ -43,7 +43,9 @@ jobs:
           & $iscc ("/DPayloadRoot="+(Join-Path $env:MAINTENANCE_QA_ROOT 'payload')) "/DOutputDir=$dist" packaging/windows/installer/SOKNA-Maintenance-0324-QA.iss
           if($LASTEXITCODE-ne0){throw 'INNO_COMPILE_FAILED'}
           $exe=Join-Path $dist 'SOKNA-Maintenance-0324-MultiBaseline-QA-NOT-PRODUCTION.exe'
-          if((Get-Item $exe).VersionInfo.FileVersion-ne'0.3.24.0'){throw 'INSTALLER_VERSION_MISMATCH'}
+          $v=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+          $physical="$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"
+          if($physical-ne'0.3.24.0'){throw ('INSTALLER_VERSION_MISMATCH:'+ $physical)}
           if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'UNEXPECTED_SERVICE'}
           $p=Start-Process $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -Wait -PassThru
           if($p.ExitCode-eq0){throw 'UNSUPPORTED_HOST_ACCEPTED'}
