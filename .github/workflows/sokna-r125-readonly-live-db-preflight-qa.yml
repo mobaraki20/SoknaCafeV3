@@ -1,0 +1,141 @@
+name: SOKNA R125 standalone read-only live MariaDB preflight QA
+on:
+  push:
+    branches: [qa/sokna-r125-readonly-live-db-preflight-20261109]
+    paths:
+      - .github/workflows/sokna-r125-readonly-live-db-preflight-qa.yml
+      - windows/maintenance/src/Sokna.Maintenance.Core/**
+      - windows/maintenance/src/Sokna.Maintenance.R125Preflight/**
+      - packaging/windows/installer/SOKNA-R125-ReadOnly-Live-DB-Preflight-QA.iss
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  windows-standalone-readonly:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Audit read-only data flow and no production mutation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $src=Get-Content 'windows/maintenance/src/Sokna.Maintenance.R125Preflight/Program.cs' -Raw
+          $core=Get-Content 'windows/maintenance/src/Sokna.Maintenance.Core/SupervisorR125LifecycleEvidenceReconciler.cs' -Raw
+          $php=Get-Content 'windows/maintenance/src/Sokna.Maintenance.Core/RoutineLocalDatabase.php' -Raw
+          $iss=Get-Content 'packaging/windows/installer/SOKNA-R125-ReadOnly-Live-DB-Preflight-QA.iss' -Raw
+          if($src -match 'File\.Delete\(|File\.Move\(|Stop-Service|Start-Service|\.Reconcile\(|RoutineLocalDatabase\.Backup\(|RoutineLocalDatabase\.Apply\('){throw 'READONLY_PREFLIGHT_MUTATION_FORBIDDEN'}
+          if($src -notmatch 'RequireReadOnlyQualification' -or
+             $core -notmatch 'RoutineLocalDatabase.RequireBaseline' -or
+             $php -notmatch "\$mode==='inspect'"){throw 'EXACT_READONLY_SQL_GUARD_NOT_USED'}
+          if($iss -match '(?m)^\[(Run|Registry|Icons|Dirs)\]' -or
+             @($iss -split '[\r\n]+'|Where-Object{$_ -match '^Source:'}).Count -ne1){throw 'INNO_EXTRACTION_SCOPE_INVALID'}
+          Write-Host 'PASS exact R125 proof and MariaDB SELECT-only inspector, no host mutations'
+      - name: Build exact standalone self-contained Windows EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'r125-readonly-db-preflight'
+          $out=Join-Path $root 'payload'
+          New-Item -ItemType Directory -Path $out -Force|Out-Null
+          dotnet publish windows/maintenance/src/Sokna.Maintenance.R125Preflight/Sokna.Maintenance.R125Preflight.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $out
+          if($LASTEXITCODE-ne0){throw 'R125_READONLY_BUILD_FAILED'}
+          $exe=Join-Path $out 'SOKNA-R125-READONLY-LIVE-DB-PREFLIGHT-UAT.exe'
+          if(-not(Test-Path $exe -PathType Leaf)){throw 'R125_READONLY_EXE_NOT_CREATED'}
+          "R125_READONLY_ROOT=$root"|Out-File -LiteralPath $env:GITHUB_ENV -Append -Encoding UTF8
+      - name: Execute negative fixture; verify NO source alteration and redacted JSON
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=$env:R125_READONLY_ROOT
+          $scratch=Join-Path $env:RUNNER_TEMP 'sokna-r125-readonly-fixture'
+          $local=Join-Path $scratch 'local-slots'
+          New-Item -ItemType Directory -Path $local -Force|Out-Null
+          $file=Join-Path $local 'routine-local-lifecycle-before.json'
+          '{"format":"synthetic-not-a-real-db-proof"}'|Set-Content -LiteralPath $file -Encoding UTF8
+          $hash=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+          $out=Join-Path $scratch 'safe-report.json'
+          $exe=Join-Path $root 'payload/SOKNA-R125-READONLY-LIVE-DB-PREFLIGHT-UAT.exe'
+          $p=Start-Process -FilePath $exe -ArgumentList @('--qa-data-root',$scratch,'--qa-output',$out) -PassThru -Wait
+          if($p.ExitCode-ne2){throw ('R125_UNSAFE_PREFLIGHT_RETURN:'+ $p.ExitCode)}
+          if(-not(Test-Path $out -PathType Leaf)){throw 'R125_REPORT_ABSENT'}
+          $report=Get-Content -LiteralPath $out -Raw|ConvertFrom-Json
+          if($report.status-ne'BLOCKED' -or $report.backup_restore_proven-ne$false -or
+            $report.ready_for_production_or_upgrade-ne$false -or
+            $report.actual_reconciliation_performed-ne$false -or
+            $report.database_schema_data_mutated-ne$false -or
+            $report.maintenance_backup_state-ne'NO_SCHEDULE_RECORD_NOT_A_PROOF_OF_NO_EXTERNAL_BACKUP'){
+            throw 'R125_FAIL_CLOSED_REPORT_INVALID'
+          }
+          if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash-ne$hash){throw 'R125_ORIGINAL_PROOF_WAS_CHANGED'}
+          if($report.PSObject.Properties.Name -contains 'password' -or $report.PSObject.Properties.Name -contains 'dsn'){
+            throw 'R125_SENSITIVE_FIELD_LEAK'
+          }
+          Write-Host 'PASS actual Windows EXE fails closed with safe JSON and no original proof edits'
+      - name: Build TEMP-only elevated one-click QA wrapper
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $roots=@([Environment]::GetFolderPath('ProgramFilesX86'),$env:ProgramFiles)
+          $iscc=$roots|ForEach-Object{Join-Path $_ 'Inno Setup 6/ISCC.exe'}|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
+          if(-not$iscc){
+            choco install innosetup -y --no-progress
+            if($LASTEXITCODE-ne0){throw 'INNO_DOWNLOAD_FAILED'}
+            $iscc=$roots|ForEach-Object{Join-Path $_ 'Inno Setup 6/ISCC.exe'}|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
+          }
+          if(-not$iscc){throw 'INNO_COMPILER_MISSING'}
+          $payload=Join-Path $env:R125_READONLY_ROOT 'payload'
+          $dist=Join-Path $env:R125_READONLY_ROOT 'dist'
+          New-Item -ItemType Directory -Path $dist -Force|Out-Null
+          & $iscc "/DPayloadRoot=$payload" "/DOutputDir=$dist" 'packaging/windows/installer/SOKNA-R125-ReadOnly-Live-DB-Preflight-QA.iss'
+          if($LASTEXITCODE-ne0){throw 'R125_READONLY_INNO_BUILD_FAILED'}
+          $exe=Join-Path $dist 'SOKNA-R125-READONLY-LIVE-DB-PREFLIGHT-QA-NOT-PRODUCTION.exe'
+          if(-not(Test-Path $exe -PathType Leaf)){throw 'R125_READONLY_ONE_CLICK_MISSING'}
+      - name: Real Inno EXE must refuse missing proof and leave Windows services alone
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=Join-Path $env:R125_READONLY_ROOT 'dist/SOKNA-R125-READONLY-LIVE-DB-PREFLIGHT-QA-NOT-PRODUCTION.exe'
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'CI_HOST_NOT_CLEAN'}
+          $r=Start-Process -FilePath $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -PassThru -Wait
+          if($r.ExitCode-ne52){throw ('R125_READONLY_ONE_CLICK_DID_NOT_BLOCK:'+ $r.ExitCode)}
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'READONLY_TOOL_CREATED_WINDOWS_SERVICE'}
+          Write-Host 'PASS one-click wrapper only writes safe report, no SOKNA service created'
+      - name: Immutable checksums and transparent non-production report
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dist=Join-Path $env:R125_READONLY_ROOT 'dist'
+          $exe=Join-Path $dist 'SOKNA-R125-READONLY-LIVE-DB-PREFLIGHT-QA-NOT-PRODUCTION.exe'
+          $sha=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  $([IO.Path]::GetFileName($exe))"|Set-Content -LiteralPath (Join-Path $dist 'SHA256SUMS.txt') -Encoding Ascii
+          [ordered]@{
+            format='sokna-r125-live-db-readonly-preflight-qa-v1'
+            source_commit=$env:GITHUB_SHA
+            filename=[IO.Path]::GetFileName($exe)
+            sha256=$sha
+            bytes=(Get-Item $exe).Length
+            compiled_self_contained_exe='PASS'
+            negative_readonly_fixture='PASS'
+            exact_inno_one_click_exe='PASS'
+            unsupported_host_fail_closed='PASS'
+            real_cafe_mariadb_ledger='NOT_CHECKED'
+            real_cafe_backup_restored=$false
+            actual_r125_reconciliation_performed=$false
+            local_public_db_services_modified=$false
+            production_upgrade_approved=$false
+            authenticode_signed=$false
+          }|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $dist 'QA-RESULT.json') -Encoding UTF8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r125-readonly-live-db-preflight-qa
+          path: |
+            ${{ runner.temp }}/r125-readonly-db-preflight/dist/SOKNA-R125-READONLY-LIVE-DB-PREFLIGHT-QA-NOT-PRODUCTION.exe
+            ${{ runner.temp }}/r125-readonly-db-preflight/dist/SHA256SUMS.txt
+            ${{ runner.temp }}/r125-readonly-db-preflight/dist/QA-RESULT.json
+          if-no-files-found: error
+          retention-days: 30
