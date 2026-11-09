@@ -3,7 +3,14 @@
     "version": "0.3.22",
     "engine_version": "0.3.22",
     "recovery_console_version": "0.1.3",
-    "proof": "privileged_install_receipt_v1"
+    "proof": "privileged_install_receipt_v1",
+    "accepted_preserved_recovery": [
+      {
+        "version": "0.1.1",
+        "sha256": "368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd",
+        "proof": "official_component_fingerprint_and_committed_KEEP_history"
+      }
+    ]
   },
   {
     "version": "0.3.23",

@@ -6,6 +6,20 @@ $baselineVersion=$LabBaseline;$baselineRecovery=if($baselineVersion-eq'0.3.22'){
 $script:InstallerStage='ARGUMENTS'
 function Stage([string]$name){$script:InstallerStage=$name;Write-Host ('SOKNA_INSTALLER_STAGE='+$name)}
 function Fail([string]$code){Write-Host ('SOKNA_INSTALLER_FAILURE_STAGE='+$script:InstallerStage);Write-Host ('SOKNA_INSTALLER_FAILURE='+$code);throw [IO.InvalidDataException]::new($code)}
+function AssertMaintenanceBaselineTuple([string]$SupervisorVersion,[string]$EngineVersion,[string]$RecoveryVersion,[string]$RecoverySha256){
+ if($SupervisorVersion-notin@('0.3.22','0.3.23','0.3.24','0.3.25')){Fail 'MAINTENANCE_BASELINE_UNSUPPORTED_OR_REINSTALL'}
+ if($EngineVersion-ne$SupervisorVersion){Fail 'MAINTENANCE_BASELINE_COMPONENT_VERSION_MISMATCH'}
+ # The previous 0322 maintenance-only updater deliberately kept Recovery.
+ # This globally qualified 0.1.1 fingerprint is also in the official Windows
+ # component manifest and actual committed KEEP receipts. No machine exception.
+ if($SupervisorVersion-eq'0.3.22' -and $RecoveryVersion-eq'0.1.1'){
+  if($RecoverySha256-cne'368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd'){Fail 'MAINTENANCE_PRESERVED_RECOVERY_FINGERPRINT_MISMATCH'}
+  return '0.1.1'
+ }
+ $expected=if($SupervisorVersion-eq'0.3.22'){'0.1.3'}elseif($SupervisorVersion-eq'0.3.23'){'0.1.4'}elseif($SupervisorVersion-eq'0.3.24'){'0.1.5'}else{'0.1.6'}
+ if($RecoveryVersion-ne$expected){Fail 'MAINTENANCE_BASELINE_COMPONENT_VERSION_MISMATCH'}
+ return $expected
+}
 function Hash([string]$p){
  if(-not(Test-Path -LiteralPath $p -PathType Leaf)){return ''}
  $f=[IO.File]::OpenRead($p)
@@ -257,10 +271,11 @@ if(-not$lab -and $baselineVersion-eq$targetVersion){
 }
 Stage 'BASELINE_VERSION'
 if($baselineVersion-notin@('0.3.22','0.3.23','0.3.24','0.3.25')){Fail 'MAINTENANCE_BASELINE_UNSUPPORTED_OR_REINSTALL'}
-$baselineRecovery=if($baselineVersion-eq'0.3.22'){'0.1.3'}elseif($baselineVersion-eq'0.3.23'){'0.1.4'}elseif($baselineVersion-eq'0.3.24'){'0.1.5'}else{'0.1.6'}
-if((Version $installed[$names[0]])-ne$baselineVersion -or
- (Version $installed[$names[1]])-ne$baselineVersion -or
- (Version $installed[$names[2]])-ne$baselineRecovery){Fail 'MAINTENANCE_BASELINE_COMPONENT_VERSION_MISMATCH'}
+$observedSupervisor=Version $installed[$names[0]]
+$observedEngine=Version $installed[$names[1]]
+$observedRecovery=Version $installed[$names[2]]
+Write-Host ('SOKNA_INSTALLER_OBSERVED_VERSIONS='+$observedSupervisor+','+$observedEngine+','+$observedRecovery)
+$baselineRecovery=AssertMaintenanceBaselineTuple -SupervisorVersion $observedSupervisor -EngineVersion $observedEngine -RecoveryVersion $observedRecovery -RecoverySha256 $original[$names[2]]
 # Versions alone never attest a baseline. 0322 uses the existing privileged
 # receipt; 0323 must match the three exact published binary hashes in this payload.
 if(-not$lab){
