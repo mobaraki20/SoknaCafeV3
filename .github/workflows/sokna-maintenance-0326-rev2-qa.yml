@@ -125,3 +125,38 @@ jobs:
           name: maintenance-0326-rev2-four-real-baselines-no-field-approval
           path: dist/REAL-SERVICE-QA.json
           if-no-files-found: error
+  publish-qa-prerelease:
+    needs: [build-rev2, real-services-rev2]
+    runs-on: ubuntu-latest
+    permissions: {contents: write, actions: read}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: maintenance-0326-rev2-built-qa-not-production, path: dist}
+      - uses: actions/download-artifact@v4
+        with: {name: maintenance-0326-rev2-four-real-baselines-no-field-approval, path: dist}
+      - name: Validate exact built and tested bytes
+        run: |
+          python3 - <<'PY'
+          import json,hashlib,pathlib,os
+          d=pathlib.Path('dist')
+          build=json.loads((d/'BUILD-QA.json').read_text(encoding='utf-8-sig'))
+          checks=json.loads((d/'REAL-SERVICE-QA.json').read_text(encoding='utf-8-sig'))
+          exe=d/'SOKNA-Maintenance-0326-INTEGRATED-QA-REV2-NOT-PRODUCTION.exe'
+          sha=hashlib.sha256(exe.read_bytes()).hexdigest()
+          assert sha==build['sha256'] and build['payload_byte_exact']
+          assert build['wrapper_source_commit']==os.environ['GITHUB_SHA']
+          assert len(checks)==4 and all(x['installer_sha256']==sha and x['precise_pretransaction_rejection_report']=='PASS' and x['real_service_upgrade']=='PASS' and x['real_file_lock_rollback']=='PASS' and not x['production_approved'] for x in checks)
+          assert {x['component_layout'] for x in checks}=={'separate_registered_paths','siblings_absent','legacy_sibling_files'}
+          PY
+      - name: Publish immutable QA prerelease in GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: mobaraki20/SoknaCafeV3
+        run: |
+          release_tag="maintenance-0326-integrated-rev2-qa-${GITHUB_SHA:0:12}"
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            echo 'Refusing to overwrite an existing release.'
+            exit 1
+          fi
+          gh release create "$release_tag" --target "$GITHUB_SHA" --prerelease --latest=false --title 'SOKNA Maintenance 0.3.26 Installer REV2 - QA NOT PRODUCTION' --notes-file qa/sokna-wrapper-rev2/RELEASE-NOTES-FA.md dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV2-NOT-PRODUCTION.exe dist/SHA256SUMS.txt dist/BUILD-QA.json dist/REAL-SERVICE-QA.json dist/COMPONENT-MANIFEST.json dist/UNKNOWN-HOST-REPORT.json
