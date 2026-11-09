@@ -110,9 +110,6 @@ if($lab){
  Fail 'R125_BASELINE_SERVICE_OWNER_FAILED'}
  $installRoot=Split-Path (Split-Path (Split-Path $exe -Parent) -Parent) -Parent
  $dataRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
- foreach($p in @('Runtime\SoknaRuntimeService.exe','PrintAgent\Service\Sokna.PrintAgent.Service.exe')){
-  FileSafe (Join-Path $installRoot $p)
- }
  $health=Join-Path $PayloadRoot 'maintenance-signed-health-v1.ps1'
  FileSafe $health
  . $health
@@ -295,10 +292,32 @@ FileSafe $identity
 $identityHash=Hash $identity
 # Runtime and Print Agent are outside the transaction: snapshot hashes before
 # touching any Maintenance components and recheck before commit/rollback receipt.
-$otherHashes=@{}
+$otherHashes=@{};$otherServices=@{}
 if(-not$lab){
+ # Maintenance owns only its three files. Other components may be installed
+ # separately or absent. Observe actual SCM paths without repairing/restarting.
+ foreach($name in @('SoknaRuntime','SoknaPrintWorker')){
+  $other=Get-CimInstance Win32_Service -Filter ("Name='"+$name+"'") -ErrorAction Stop
+  if($other){
+   $otherServices[$name]=[string]$other.PathName
+   $image=[Environment]::ExpandEnvironmentVariables(([string]$other.PathName).Trim())
+   if($image-match'^"([^"]+\.exe)"(?:\s|$)'){$p=$Matches[1]}
+   elseif($image-match'^([^\s"]+\.exe)(?:\s|$)'){$p=$Matches[1]}
+   else{Fail 'R125_UNTOUCHED_SERVICE_IMAGE_UNQUALIFIED'}
+   $p=[IO.Path]::GetFullPath($p);FileSafe $p;$otherHashes[$p]=Hash $p
+  }
+ }
+ # Preserve legacy unregistered sibling files too, when they actually exist.
  foreach($rel in @('Runtime\SoknaRuntimeService.exe','PrintAgent\Service\Sokna.PrintAgent.Service.exe')){
-  $otherHashes[$rel]=Hash (Join-Path $installRoot $rel)
+  $p=Join-Path $installRoot $rel
+  if(Test-Path -LiteralPath $p){FileSafe $p;$otherHashes[$p]=Hash $p}
+ }
+}
+function AssertOtherComponents(){
+ foreach($p in $otherHashes.Keys){Same $p $otherHashes[$p]}
+ foreach($name in $otherServices.Keys){
+  $actual=Get-CimInstance Win32_Service -Filter ("Name='"+$name+"'") -ErrorAction Stop
+  if(-not$actual -or [string]$actual.PathName-cne$otherServices[$name]){Fail 'R125_UNTOUCHED_SERVICE_REGISTRATION_CHANGED'}
  }
 }
 $oldDoc=Get-Content -LiteralPath $identity -Raw|ConvertFrom-Json
@@ -395,7 +414,7 @@ Stage 'COMMIT_IDENTITY'
   Fault 'after-identity'
   foreach($rel in $names){Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))}
   Live $targetVersion
-  foreach($rel in $otherHashes.Keys){Same (Join-Path $installRoot $rel) $otherHashes[$rel]}
+  AssertOtherComponents
   # Durable complete receipt precedes the commit marker: a crash in the gap
   # is safely recoverable rather than falsely advertising committed install.
   Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='COMMITTED';supervisor_version=$targetVersion;engine_version=$targetVersion;recovery_console_version=$targetRecovery;source_version=$baselineVersion;source_commit=$manifest.source_commit;files=$files;archive_reconciled=$false;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
@@ -421,7 +440,7 @@ Stage 'ROLLBACK'
    Same $identity $identityHash
    StartMaintenanceService
    Live $baselineVersion
-   foreach($rel in $otherHashes.Keys){Same (Join-Path $installRoot $rel) $otherHashes[$rel]}
+   AssertOtherComponents
    $state.phase='ROLLED_BACK';Save $marker $state
    Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='ROLLED_BACK';original_files_restored=$true;identity_restored=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
    Write-Host 'MAINTENANCE_0326_INSTALL_ROLLED_BACK'

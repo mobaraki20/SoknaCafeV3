@@ -71,6 +71,22 @@ foreach($baseline in @('0.3.22','0.3.23','0.3.24','0.3.25')){
    dotnet run --project qa/sokna-r129-compat/CompatProbe.csproj -c Release -- verify-installed-maintenance-identity $legacyBefore (Join-Path $data 'Maintenance')
    Need ($LASTEXITCODE-eq0) 'ACTUAL_LEGACY_IDENTITY_RECEIPT_REJECTED'
   }
+  $externalFiles=@{}
+  if($baseline-in@('0.3.22','0.3.23')){
+   foreach($rel in @('Runtime/SoknaRuntimeService.exe','PrintAgent/Service/Sokna.PrintAgent.Service.exe')){
+    Move-Item (Join-Path $install $rel) ((Join-Path $install $rel)+'.qa-preserved')
+   }
+   if($baseline-eq'0.3.22'){
+    foreach($name in @('SoknaRuntime','SoknaPrintWorker')){
+     Need (-not(Get-Service $name -ErrorAction SilentlyContinue)) 'REFUSE_EXISTING_UNRELATED_SERVICE'
+     $external=Join-Path $env:RUNNER_TEMP ('separate-layout/'+$name+'/Separate.exe')
+     New-Item -ItemType Directory -Force (Split-Path $external -Parent)|Out-Null
+     Set-Content $external 'CI_NOT_EXECUTED_COMPONENT'
+     New-Service -Name $name -BinaryPathName ('"'+$external+'"') -StartupType Manual|Out-Null
+     $externalFiles[$name]=@{path=$external;hash=(Hash $external);image=('"'+$external+'"')}
+    }
+   }
+  }
   $beforeIdentity=Join-Path $install 'identity-before-maintenance-upgrade.json'
   Copy-Item $identity $beforeIdentity
   # REV2: same exact installed binaries, but an intentionally mismatched
@@ -91,7 +107,7 @@ foreach($baseline in @('0.3.22','0.3.23','0.3.24','0.3.25')){
   }finally{[IO.File]::WriteAllBytes($identity,$identityBytes)}
   $oldHashes=@($names|ForEach-Object{Hash (Join-Path $install $_)})
   $oldIdentity=Hash $identity
-  $other=@{};foreach($rel in @('Runtime/SoknaRuntimeService.exe','PrintAgent/Service/Sokna.PrintAgent.Service.exe')){$other[$rel]=Hash (Join-Path $install $rel)}
+  $other=@{};foreach($rel in @('Runtime/SoknaRuntimeService.exe','PrintAgent/Service/Sokna.PrintAgent.Service.exe')){if(Test-Path (Join-Path $install $rel)){$other[$rel]=Hash (Join-Path $install $rel)}}
   # Exercise REAL copy failure through the exact Inno EXE. A readable but
   # write-locked unchanged Engine must not prevent restoring the Supervisor.
   $held=[IO.File]::Open((Join-Path $install $names[1]),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
@@ -123,9 +139,15 @@ foreach($baseline in @('0.3.22','0.3.23','0.3.24','0.3.25')){
   Need ((InvokeInstaller $Installer)-eq0) 'EXACT_VERIFIED_REPLAY_NOT_IDEMPOTENT'
   foreach($i in 0..2){Need ((Hash (Join-Path $install $names[$i]))-eq$beforeReplay[$i]) 'REJECTED_REINSTALL_MUTATED_FILES'}
   foreach($rel in $other.Keys){Need ((Hash (Join-Path $install $rel))-eq$other[$rel]) 'UNRELATED_COMPONENT_CHANGED'}
-  $results+=@{baseline=$baseline;target='0.3.26';installer_sha256=$installerHash;precise_pretransaction_rejection_report='PASS';real_service_upgrade='PASS';real_file_lock_rollback='PASS';exact_replay_verified_without_changes=$true;local_public_identity_preserved=$true;runtime_print_files_preserved=$true;physical_host_tested=$false;production_approved=$false}
+  foreach($name in $externalFiles.Keys){
+   Need ((Hash $externalFiles[$name].path)-eq$externalFiles[$name].hash) 'SEPARATE_COMPONENT_CHANGED'
+   $registered=Get-CimInstance Win32_Service -Filter ("Name='"+$name+"'")
+   Need ($registered.PathName-eq$externalFiles[$name].image -and $registered.State-eq'Stopped') 'SEPARATE_COMPONENT_SERVICE_CHANGED'
+  }
+  $results+=@{baseline=$baseline;target='0.3.26';component_layout=$(if($baseline-eq'0.3.22'){'separate_registered_paths'}elseif($baseline-eq'0.3.23'){'siblings_absent'}else{'legacy_sibling_files'});installer_sha256=$installerHash;precise_pretransaction_rejection_report='PASS';real_service_upgrade='PASS';real_file_lock_rollback='PASS';exact_replay_verified_without_changes=$true;local_public_identity_preserved=$true;runtime_print_files_preserved=$true;physical_host_tested=$false;production_approved=$false}
   Write-Host ('PASS REAL EXACT INNO EXE UPGRADE AND ROLLBACK baseline='+$baseline)
  }finally{
+  foreach($name in @('SoknaRuntime','SoknaPrintWorker')){if($baseline-eq'0.3.22' -and $externalFiles.ContainsKey($name)){& sc.exe delete $name|Out-Null}}
   if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){
    Stop-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue
    & sc.exe delete SoknaMaintenanceSupervisor|Out-Null
