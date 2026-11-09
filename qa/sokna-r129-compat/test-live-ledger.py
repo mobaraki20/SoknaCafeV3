@@ -34,6 +34,15 @@ try:
   # that happened not to issue a write: a trigger SELECT doing DML must fail.
   sql(f'USE {DB};DELETE FROM schema_migrations WHERE version>=\'0077\'')
   run(0)
+  native=web/'src/Core/Migrations.php'
+  text=native.read_text()
+  import re
+  changed,n=re.subn(r'(public function appliedVersions\(\): array\s*\{)',r"\1\n        $this->pdo->exec('UPDATE business_rows SET qty=999');",text,count=1)
+  assert n==1
+  native.write_text(changed)
+  run(78)
+  assert sql(f'USE {DB};SELECT qty FROM business_rows')=='129'
+  native.write_text(text)
   assert not (p/'never-created.sql').exists()
 finally:sql(f'DROP DATABASE {DB}')
 print('PASS native PHP/MariaDB R129 ledger boundaries; business sentinel preserved; no host approval')
