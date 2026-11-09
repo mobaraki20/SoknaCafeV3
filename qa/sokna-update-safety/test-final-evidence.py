@@ -21,8 +21,10 @@ class FinalEvidence(unittest.TestCase):
         self.manifest=self.read()['release-set.json']
         self.manifest=json.loads(self.manifest)
         self.manifest['signature']=None
-        self.manifest['supported_baselines']=[{'local':{'version':'A','managed_tree_sha256':'a'*64}},
-                                               {'local':{'version':'B','managed_tree_sha256':'b'*64}}]
+        sql_identity={k:self.manifest['targets']['local'][k] for k in ['schema_fingerprint','migration_head']}
+        self.manifest['supported_baselines']=[{'local':{'version':'A','managed_tree_sha256':'a'*64,**sql_identity}},
+                                               {'local':{'version':'B','managed_tree_sha256':'b'*64,**sql_identity}}]
+        self.manifest['database']['local']['migration_dag']=[]
         self.write_manifest()
 
     def read(self):
@@ -85,9 +87,13 @@ class FinalEvidence(unittest.TestCase):
                 self.assertEqual(gate.examine(self.path,self.evidence())[0],2)
                 self.manifest=original;self.write_manifest()
 
-    def test_migration_dag_cannot_omit_new_sql(self):
-        self.manifest['database']['local']['migration_dag']=[];self.write_manifest()
+    def test_migration_dag_must_match_supported_baseline_suffix(self):
+        self.manifest['database']['local']['migration_dag']=['9999_missing'];self.write_manifest()
         self.assertIn('MIGRATION_DAG_MISMATCH',gate.examine(self.path)[1]['structural_failures'])
+
+    def test_baseline_sql_drift_rejected(self):
+        self.manifest['supported_baselines'][0]['local']['schema_fingerprint']='drifted';self.write_manifest()
+        self.assertIn('BASELINE_SQL_PREFIX_MISMATCH',gate.examine(self.path)[1]['structural_failures'])
 
     def test_windows_case_collision_rejected(self):
         files=self.read();files['Release-set.json']=files['release-set.json'];self.write(files)

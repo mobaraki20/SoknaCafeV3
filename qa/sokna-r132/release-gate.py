@@ -87,7 +87,22 @@ def examine(zip_path, evidence=None):
                 if target.get("schema_fingerprint")!=fingerprint or target.get("migration_head")!=max(sql,default=""):
                     bad.append("MIGRATION_IDENTITY_MISMATCH")
                 dag=(((m.get("database") or {}).get("local") or {}).get("migration_dag"))
-                if dag!=sorted(sql):bad.append("MIGRATION_DAG_MISMATCH")
+                baselines=m.get("supported_baselines") or []
+                heads=[]
+                for baseline in baselines:
+                    identity=baseline.get("local") or {}
+                    head=identity.get("migration_head")
+                    if head not in sql:
+                        bad.append("BASELINE_MIGRATION_HEAD_UNKNOWN");continue
+                    prefix="migration-ledger-sha256-v1:"+sha("".join(
+                        n+chr(0)+sql[n]+chr(10) for n in sorted(sql) if n<=head).encode())
+                    if identity.get("schema_fingerprint")!=prefix:
+                        bad.append("BASELINE_SQL_PREFIX_MISMATCH")
+                    heads.append(head)
+                # The DAG describes pending migrations, not all historical SQL.
+                # Its union must cover every supported baseline's full suffix.
+                expected_dag=[n for n in sorted(sql) if not heads or n>min(heads)]
+                if dag!=expected_dag:bad.append("MIGRATION_DAG_MISMATCH")
             if m.get("for_install") is not True:not_ready.append("NOT_FOR_INSTALL")
             if m.get("production_pass") is not True:not_ready.append("NO_PRODUCTION_PASS")
             if re.search(r"(UAT|NOT[_ -]?PRODUCTION|NOT[_ -]?FIELD[_ -]?APPROVED|TEST[_ -]?ONLY|NOT[_ -]?FOR[_ -]?INSTALL)",result["status"],re.I):
