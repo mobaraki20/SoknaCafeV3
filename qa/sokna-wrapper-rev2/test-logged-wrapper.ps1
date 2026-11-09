@@ -37,6 +37,7 @@ $ast=[Management.Automation.Language.Parser]::ParseFile($script,[ref]$tokens,[re
 if($errors.Count-ne0){throw 'COMPONENT_SCRIPT_SYNTAX'}
 $fn=$ast.Find({param($n) $n-is[Management.Automation.Language.FunctionDefinitionAst] -and $n.Name-eq'Fail'},$true)
 . ([scriptblock]::Create($fn.Extent.Text))
+$script:InstallerStage='TEST'
 $caught=$false
 try{Fail 'R125_REQUIRED_FILE_MISSING'}catch{
  if($_.Exception-isnot[IO.InvalidDataException] -or $_.Exception.Message-ne'R125_REQUIRED_FILE_MISSING'){throw 'FAILURE_TYPE_MASKS_ORIGINAL_REASON'}
