@@ -67,7 +67,7 @@ function AddHistoricalLedger($f,[string]$fault=''){
  }
  for($i=1;$i-le9;$i++){
   $id=('{0:x32}' -f (100+$i))
-  $stageDir=Join-Path $data ('staging\release-sets\'+('{0:d20}'-f $i)+'-test-'+$i)
+  $stageDir=Join-Path $data ('Maintenance\staging\release-sets\'+('{0:d20}'-f $i)+'-test-'+$i)
   New-Item -ItemType Directory -Path $stageDir -Force|Out-Null
   $stagePath=Join-Path $stageDir 'stage-receipt.json'
   @{format='sokna-maintenance-staged-release-v1';schema_version=1;release_set_id=('test-'+$i);
