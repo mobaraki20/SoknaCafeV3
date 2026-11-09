@@ -15,6 +15,13 @@ jobs:
         with: {path: wrapper-fix}
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
+      - name: Bind tested wrapper to pinned disposable component worktree
+        shell: pwsh
+        run: |
+          Copy-Item ./wrapper-fix/packaging/windows/scripts/invoke-maintenance-components-v4.ps1 ./packaging/windows/scripts/invoke-maintenance-components-v4.ps1 -Force
+          $a=(Get-FileHash ./wrapper-fix/packaging/windows/scripts/invoke-maintenance-components-v4.ps1 -Algorithm SHA256).Hash
+          $b=(Get-FileHash ./packaging/windows/scripts/invoke-maintenance-components-v4.ps1 -Algorithm SHA256).Hash
+          if($a-ne$b){throw 'TESTED_WRAPPER_NOT_IDENTICAL_TO_EMBEDDED'}
       - name: Windows PowerShell 5.1 failure report boundaries
         shell: powershell
         run: |
