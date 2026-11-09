@@ -108,7 +108,7 @@ def main():
             d=json.loads(z.read('release-set.json'))
             check(d['targets']['local']==tgt and sha(z.read(d['artifacts']['local-web']['path']))==d['artifacts']['local-web']['sha256'],name+' exact target matches payload')
         _,inspection=gate.examine(dest)
-        check(inspection['structurally_valid'],name+' shared FINAL ZIP inventory/version/schema gate')
+        check(inspection['structurally_valid'],name+' shared FINAL ZIP inventory/version/schema gate '+','.join(inspection['structural_failures']))
         check(not inspection['offline_production_fields_valid'],name+' is NOT a production qualification')
         print('PACKAGE',name,'BYTES',dest.stat().st_size,'SHA256',sha(dest.read_bytes()),flush=True)
     evidence={'source_r140_sha256':BASE_SHA,'overlay_sha256':OVERLAY_SHA,'exact_r149_web_sha256':sha(web),'r149b_candidate_sha256':sha((out/'r149b-candidate.zip').read_bytes()),'r149b_qualified_sha256':sha((out/'r149b-qualified.zip').read_bytes()) if lab else None,'target':tgt,'baseline_count':43,'scope':'disposable_ci_fixture' if lab else 'source_qa','production_qualified':False,'physical_cafe_host_tested':False,'real_cafe_backup_restored':False}
