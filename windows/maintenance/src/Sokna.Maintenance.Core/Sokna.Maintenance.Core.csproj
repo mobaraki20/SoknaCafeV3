@@ -5,10 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>SoknaMaintenanceCore</AssemblyName>
-    <Version>0.3.23</Version>
-    <AssemblyVersion>0.3.23.0</AssemblyVersion>
-    <FileVersion>0.3.23.0</FileVersion>
-    <InformationalVersion>0.3.23</InformationalVersion>
+    <Version>0.3.24</Version>
+    <AssemblyVersion>0.3.24.0</AssemblyVersion>
+    <FileVersion>0.3.24.0</FileVersion>
+    <InformationalVersion>0.3.24</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="ProductionLocalSlotMigration.cs" />
@@ -22,4 +22,5 @@
                       LogicalName="Sokna.Maintenance.Core.StableLocalRecoveryPhp" />
   </ItemGroup>
 </Project>
+
 
