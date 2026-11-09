@@ -2,7 +2,7 @@
 """Build exact R149B from source-qualified R140 and an audited 22-path overlay.
 Used identically offline and on isolated GitHub Windows runners. Never mutates a real host.
 """
-import hashlib, io, json, pathlib, sys, zipfile
+import hashlib, io, json, pathlib, sys, zipfile, importlib.util, os
 BASE_SHA = '4734b918f7e2273627f0ba5f8d16992cba05ee198b0afcbee631cc78fdb0dfb9'
 OVERLAY_SHA = 'd53a7f2f8ea76eb7ec869ea3eedff46026e298e646a3cda4b5120f5c653cae76'
 R149_WEB_SHA = 'b3ffb286600a6cf26820464dd3b762404fef3533a2acd50908b3ce8e6a1b1a4d'
@@ -40,6 +40,15 @@ def main():
     if len(sys.argv)!=4:raise SystemExit('usage: build_r149b.py exact-qualified-r140.zip audited-overlay.zip output-directory')
     oldpath,ovpath,out=(pathlib.Path(x).resolve() for x in sys.argv[1:])
     out.mkdir(parents=True,exist_ok=True)
+    gate_path=pathlib.Path(__file__).resolve().parents[1]/'sokna-r132/release-gate.py'
+    spec=importlib.util.spec_from_file_location('final_archive_gate',gate_path)
+    gate=importlib.util.module_from_spec(spec);spec.loader.exec_module(gate)
+    # Historical positive Stage fixtures must remain inside an isolated runner.
+    # A normal invocation can only emit an honest non-installable candidate.
+    temporary=os.environ.get('RUNNER_TEMP')
+    lab=(os.environ.get('SOKNA_R149B_DISPOSABLE')=='YES' and temporary is not None
+         and out.is_relative_to(pathlib.Path(temporary).resolve()))
+    check(not (out/'r149b-qualified.zip').exists(),'Output has no stale qualified artifact')
     check(sha(oldpath.read_bytes())==BASE_SHA,'Exact R140 install-qualified source SHA')
     check(sha(ovpath.read_bytes())==OVERLAY_SHA,'Exact 22-path overlay SHA')
     with zipfile.ZipFile(oldpath) as z:
@@ -90,14 +99,18 @@ def main():
     qa['qualification']={**qa['qualification'], 'canary':False,'real_windows':False,'failure_matrix_cases_required':0,'failure_matrix_id':'R149B_BEFORE_EXACT_WINDOWS_CHECK'}
     qualified=manifest.copy();qualified['for_install']=True;qualified['production_pass']=True;qualified['status']='R149B_LOCAL_43BASE_PANEL_QUALIFIED_HOME_CANARY'
     qualified['qualification']={**qualified['qualification'],'canary':True,'real_windows':True,'real_mariadb':True,'failure_matrix_cases_required':308,'failure_matrix_id':'R149B_EXACT_308_AND_WIN32_MARIADB_RECOVERY_CI'}
-    for name,obj in [('candidate',qa),('qualified',qualified)]:
+    outputs=[('candidate',qa)]+([('qualified',qualified)] if lab else [])
+    for name,obj in outputs:
         dest=out/('r149b-'+name+'.zip')
         dest.write_bytes(outer(obj,web))
         with zipfile.ZipFile(dest) as z:
             check(z.testzip() is None,name+' outer CRC')
             d=json.loads(z.read('release-set.json'))
             check(d['targets']['local']==tgt and sha(z.read(d['artifacts']['local-web']['path']))==d['artifacts']['local-web']['sha256'],name+' exact target matches payload')
+        _,inspection=gate.examine(dest)
+        check(inspection['structurally_valid'],name+' shared FINAL ZIP inventory/version/schema gate')
+        check(not inspection['offline_production_fields_valid'],name+' is NOT a production qualification')
         print('PACKAGE',name,'BYTES',dest.stat().st_size,'SHA256',sha(dest.read_bytes()),flush=True)
-    evidence={'source_r140_sha256':BASE_SHA,'overlay_sha256':OVERLAY_SHA,'exact_r149_web_sha256':sha(web),'r149b_candidate_sha256':sha((out/'r149b-candidate.zip').read_bytes()),'r149b_qualified_sha256':sha((out/'r149b-qualified.zip').read_bytes()),'target':tgt,'baseline_count':43}
+    evidence={'source_r140_sha256':BASE_SHA,'overlay_sha256':OVERLAY_SHA,'exact_r149_web_sha256':sha(web),'r149b_candidate_sha256':sha((out/'r149b-candidate.zip').read_bytes()),'r149b_qualified_sha256':sha((out/'r149b-qualified.zip').read_bytes()) if lab else None,'target':tgt,'baseline_count':43,'scope':'disposable_ci_fixture' if lab else 'source_qa','production_qualified':False,'physical_cafe_host_tested':False,'real_cafe_backup_restored':False}
     (out/'r149b-exact-evidence.json').write_text(json.dumps(evidence,ensure_ascii=False,sort_keys=True,indent=2),encoding='utf-8')
 if __name__=='__main__':main()

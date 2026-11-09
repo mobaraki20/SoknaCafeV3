@@ -31,10 +31,12 @@ def archive(path, missing=False, approved=False):
     qualification={"failure_matrix_id":"test-only-placeholder","failure_matrix_cases_required":80,
          "real_windows":True,"real_mariadb":True,"canary":True,
          "recovery_console_web_down":True,"business_backup_consistency_real_mariadb":True}
+    schema='migration-ledger-sha256-v1:'+hashlib.sha256(('0001_fake\0'+hashlib.sha256(present['database/migrations/0001_fake.sql']).hexdigest()+'\n').encode()).hexdigest()
     manifest={"release_type":"local_only","status":"PRODUCTION_CANDIDATE" if approved else "R130_UAT_NOT_FIELD_APPROVED",
               "for_install":True,"production_pass":approved,
               "artifacts":{"local-web":{"sha256":hashlib.sha256(payload).hexdigest(),"size_bytes":len(payload)}},
-              "targets":{"local":{"managed_files":len(present),"managed_tree_sha256":digest.hexdigest()}},
+              "targets":{"local":{"version":"0.0.0-qa","managed_files":len(present),"managed_tree_sha256":digest.hexdigest(),"migration_head":"0001_fake","schema_fingerprint":schema}},
+              "database":{"local":{"migration_dag":["0001_fake"]}},
               "qualification":qualification if approved else {},
               "signature":{"algorithm":"ecdsa-p256-sha256","key_id":"qa","value":"synthetic-not-cryptographically-verified"} if approved else None,
               "pre_update_backup_policy":{"required":True}}
@@ -60,8 +62,10 @@ class Regression(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             name=Path(td)/"ok.zip";archive(name,approved=True)
             code,result=gate.examine(name)
-            self.assertEqual(code,0)
-            self.assertTrue(result["offline_production_fields_valid"])
+            self.assertEqual(code,3)
+            self.assertIn("INDEPENDENT_QUALIFICATION_EVIDENCE_MISSING",result["production_failures"])
+            self.assertFalse(result["offline_production_fields_valid"])
             self.assertFalse(result["deployment_authorized"])
 
 if __name__=="__main__":unittest.main(verbosity=2)
+

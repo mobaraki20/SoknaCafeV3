@@ -59,6 +59,16 @@ public static class RoutineLocalDatabase
     internal static void RequireReadOnlyGuardPreflight(string packageRoot, string sourceRoot, string targetRoot, RoutineMigrationPlan plan)
         => Run(packageRoot, sourceRoot, targetRoot, "preflight", plan, "", "");
 
+    /// <summary>Fail before stopping Apache if the dump tool, live connection,
+    /// port or table engines cannot support the actual backup. No dump, private
+    /// credential file or database write is performed by this check.</summary>
+    internal static void RequireBackupPreflight(string packageRoot, string sourceRoot,
+        string targetRoot, RoutineMigrationPlan plan)
+    {
+        var dump = FindBinary(Path.Combine(packageRoot, "Infrastructure"), "mariadb-dump.exe", "mysqldump.exe");
+        Run(packageRoot, sourceRoot, targetRoot, "backup-preflight", plan, "", dump);
+    }
+
     internal static RoutineDatabaseBackup Backup(string packageRoot, string sourceRoot, string targetRoot,
         RoutineMigrationPlan plan, string evidenceRoot)
     {
@@ -154,3 +164,4 @@ public static class RoutineLocalDatabase
         throw new FileNotFoundException("LOCAL_INFRASTRUCTURE_BINARY_MISSING");
     }
 }
+

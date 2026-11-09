@@ -5,6 +5,10 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  # Required by the builder only for historical positive test fixtures. Such
+  # fixtures are confined to RUNNER_TEMP and never count as field approval.
+  SOKNA_R149B_DISPOSABLE: 'YES'
 jobs:
   exact-archive-mariadb:
     runs-on: ubuntu-latest
