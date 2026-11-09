@@ -76,8 +76,10 @@ static class IntegratedR125
         _=RoutineLocalLifecycle.Open(root,paths.LocalSlotStateRoot,layout.Build);
         var replay=Install(installer,true);
         Need(replay["status"]!.GetValue<string>()=="ALREADY_RECONCILED"&&operations.ListBlocking().Count==0,"same integrated installer replay verifies committed archive without duplicate operation");
-        Directory.CreateDirectory(paths.InboxRoot);File.Copy(package,Path.Combine(paths.InboxRoot,"next.zip"));
-        var outcome=new SupervisorLocalPackagePreflightCoordinator(paths,operations,journal,supervisor).Verify("next.zip","ci:integrated","ci-integrated-next");
+        var packageRef=Sha(package)+".zip";
+        Directory.CreateDirectory(paths.InboxRoot);File.Copy(package,Path.Combine(paths.InboxRoot,packageRef));
+        var outcome=new SupervisorLocalPackagePreflightCoordinator(paths,operations,journal,supervisor).Verify(packageRef,"ci:integrated","ci-integrated-next");
+        Console.WriteLine("INTEGRATED_NEXT_PREFLIGHT "+System.Text.Json.JsonSerializer.Serialize(outcome.Operation,AtomicFile.JsonOptions));
         Need(outcome.Operation.State=="verified"&&outcome.Receipt is not null,"next actual Core package preflight accepts installed 0326 identity");
         var evidence=new JsonObject{["status"]="PASS",["exact_installer_sha256"]=Sha(installer),["native_mariadb_source_migrations"]=76,
             ["legacy_0322_receipt"]=true,["no_consent_preserved"]=true,["interrupted_archive_signed_resume"]=true,
