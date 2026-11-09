@@ -38,7 +38,7 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
         MaintenanceOperationStore operations, DurableJournal journal, SupervisorState supervisor)
     {
         _paths = paths; _operations = operations; _journal = journal; _supervisor = supervisor;
-        _qualify = RequireReadOnlyQualification;
+        _qualify = (proof, build, sha) => RequireReadOnlyQualification(_paths, proof, build, sha);
     }
 
     internal SupervisorR125LifecycleEvidenceReconciler(MaintenancePaths paths,
@@ -227,31 +227,34 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
         }
     }
 
-    private void RequireReadOnlyQualification(string proof, string expectedBuild, string sha)
+    // Used by the standalone evidence collector and by the signed recovery
+    // path; no operation creation, journal write, backup, or proof archive.
+    public static void RequireReadOnlyQualification(MaintenancePaths paths,
+        string proof, string expectedBuild, string sha)
     {
         VerifySourceSha(proof, sha);
-        var layout = new LocalSlotManager(_paths).InspectHealthyCurrent();
+        var layout = new LocalSlotManager(paths).InspectHealthyCurrent();
         if (layout.Build != expectedBuild || layout.ActiveSlotTarget is null ||
             !layout.WebIsReparsePoint)
             throw new InvalidDataException("R125_ACTIVE_BUILD_OR_LAYOUT_MISMATCH");
-        var statePath = Path.Combine(_paths.LocalSlotStateRoot, "routine-state.json");
+        var statePath = Path.Combine(paths.LocalSlotStateRoot, "routine-state.json");
         if (!File.Exists(statePath) ||
             (File.GetAttributes(statePath) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("R125_RECOVERY_STATE_MISSING");
         var state = AtomicFile.ReadJson<RoutineLocalSlotState>(statePath);
         RequireSettledRoutine(state, layout.Build);
         ProductionLocalSlotMigrationBridge.RoutineLocalSlotSafety.RequirePreviousSettled(
-            _paths, layout.PackageRoot, layout.WebRoot, layout.ActiveSlotTarget, layout.Build);
+            paths, layout.PackageRoot, layout.WebRoot, layout.ActiveSlotTarget, layout.Build);
         LocalManagedTreeAttestation.RequireExact(
             layout.WebRoot, state.CurrentManagedFiles, state.CurrentManagedTreeSha256);
-        var identityPath = _paths.InstalledReleaseIdentityPath;
+        var identityPath = paths.InstalledReleaseIdentityPath;
         var identity = AtomicFile.ReadJson<InstalledReleaseIdentity>(identityPath);
         if (identity.Local?.Version != layout.Build ||
             !string.Equals(identity.Local.ManagedTreeSha256, state.CurrentManagedTreeSha256,
                 StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("R125_INSTALLED_IDENTITY_NOT_QUALIFIED");
         RoutineLocalLifecycle.RequireRecoveredByteExact(
-            layout.PackageRoot, _paths.LocalSlotStateRoot, layout.Build, identityPath, proof);
+            layout.PackageRoot, paths.LocalSlotStateRoot, layout.Build, identityPath, proof);
 
         // No DDL, DML, new backup, rollback or restore; this helper strictly
         // SELECTs the real live migration ledger and rejects partial statements.
