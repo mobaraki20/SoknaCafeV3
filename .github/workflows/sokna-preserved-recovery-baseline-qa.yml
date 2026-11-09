@@ -1,0 +1,28 @@
+name: SOKNA preserved Recovery 011 policy QA - no installer publication
+on:
+  push:
+    branches: [qa/sokna-update-safety-20261109]
+    paths: ['qa/sokna-preserved-recovery/**','packaging/windows/scripts/invoke-maintenance-components-v4.ps1','.github/workflows/sokna-preserved-recovery-baseline-qa.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  policy-and-existing-transaction-regressions:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - shell: powershell
+        run: |
+          & ./qa/sokna-preserved-recovery/test-policy.ps1
+          & ./qa/sokna-identity-workflow/test-maintenance-components-v4.ps1
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+  mark-published-rev2-field-blocked:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: mobaraki20/SoknaCafeV3
+        run: |
+          gh release edit maintenance-0326-integrated-rev2-qa-6ec5fd012211 --prerelease --latest=false --title 'SOKNA Maintenance 0326 REV2 - QA BLOCKED: preserved Recovery baseline' --notes-file qa/sokna-preserved-recovery/STATUS-FA.md

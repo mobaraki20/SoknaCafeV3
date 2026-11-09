@@ -38,7 +38,7 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
         MaintenanceOperationStore operations, DurableJournal journal, SupervisorState supervisor)
     {
         _paths = paths; _operations = operations; _journal = journal; _supervisor = supervisor;
-        _qualify = RequireReadOnlyQualification;
+        _qualify = (proof, build, sha) => RequireReadOnlyQualification(_paths, proof, build, sha);
     }
 
     internal SupervisorR125LifecycleEvidenceReconciler(MaintenancePaths paths,
@@ -227,39 +227,60 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
         }
     }
 
-    private void RequireReadOnlyQualification(string proof, string expectedBuild, string sha)
+    public static void RequireReadOnlyQualification(MaintenancePaths paths, string proof, string expectedBuild, string sha)
     {
         VerifySourceSha(proof, sha);
-        var layout = new LocalSlotManager(_paths).InspectHealthyCurrent();
+        var layout = new LocalSlotManager(paths).InspectHealthyCurrent();
         if (layout.Build != expectedBuild || layout.ActiveSlotTarget is null ||
             !layout.WebIsReparsePoint)
             throw new InvalidDataException("R125_ACTIVE_BUILD_OR_LAYOUT_MISMATCH");
-        var statePath = Path.Combine(_paths.LocalSlotStateRoot, "routine-state.json");
+        var statePath = Path.Combine(paths.LocalSlotStateRoot, "routine-state.json");
         if (!File.Exists(statePath) ||
             (File.GetAttributes(statePath) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("R125_RECOVERY_STATE_MISSING");
         var state = AtomicFile.ReadJson<RoutineLocalSlotState>(statePath);
-        RequireSettledRoutine(state, layout.Build);
+        var external = state.DatabaseMutationPerformed;
+        var baseline = RoutineLocalDatabase.Plan(layout.WebRoot, layout.WebRoot);
+        if (external)
+        {
+            // Historical R129 mutation is not current DB state. Require the entire
+            // protected evidence chain; never clear or reinterpret the stored flag.
+            R129ExternalRollbackEvidence.Require(paths, layout.Build, baseline);
+        }
+        else RequireSettledRoutine(state, layout.Build);
         ProductionLocalSlotMigrationBridge.RoutineLocalSlotSafety.RequirePreviousSettled(
-            _paths, layout.PackageRoot, layout.WebRoot, layout.ActiveSlotTarget, layout.Build);
+            paths, layout.PackageRoot, layout.WebRoot, layout.ActiveSlotTarget, layout.Build);
         LocalManagedTreeAttestation.RequireExact(
             layout.WebRoot, state.CurrentManagedFiles, state.CurrentManagedTreeSha256);
-        var identityPath = _paths.InstalledReleaseIdentityPath;
+        var identityPath = paths.InstalledReleaseIdentityPath;
         var identity = AtomicFile.ReadJson<InstalledReleaseIdentity>(identityPath);
         if (identity.Local?.Version != layout.Build ||
             !string.Equals(identity.Local.ManagedTreeSha256, state.CurrentManagedTreeSha256,
                 StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("R125_INSTALLED_IDENTITY_NOT_QUALIFIED");
         RoutineLocalLifecycle.RequireRecoveredByteExact(
-            layout.PackageRoot, _paths.LocalSlotStateRoot, layout.Build, identityPath, proof);
+            layout.PackageRoot, paths.LocalSlotStateRoot, layout.Build, identityPath, proof);
 
         // No DDL, DML, new backup, rollback or restore; this helper strictly
         // SELECTs the real live migration ledger and rejects partial statements.
-        var baseline = RoutineLocalDatabase.Plan(layout.WebRoot, layout.WebRoot);
         if (baseline.RequiresMigration)
             throw new InvalidDataException("R125_UNEXPECTED_MIGRATION_PLAN");
         RoutineLocalDatabase.RequireBaseline(layout.PackageRoot, layout.WebRoot,
             layout.WebRoot, baseline);
+        if (external) RoutineLocalDatabase.RequireExternalRollbackBaseline(
+            layout.PackageRoot, layout.WebRoot, baseline);
+    }
+
+    public static void VerifyCommittedArchive(MaintenancePaths paths, MaintenanceOperation operation, string build, string sha)
+    {
+        if (operation.State != "committed" || operation.OperationType != OperationType ||
+            operation.PackageRef != build + ":" + sha || operation.DatabaseMutationPerformed ||
+            File.Exists(Path.Combine(paths.LocalSlotStateRoot, ProofFile)))
+            throw new InvalidDataException("R125_COMMITTED_ARCHIVE_RECEIPT_UNQUALIFIED");
+        var root=Path.Combine(paths.LocalSlotStateRoot,"reconciled-lifecycle-evidence");
+        VerifySourceSha(Path.Combine(root,"proof-"+operation.OperationId+".json"),sha);
+        VerifyIntent(Path.Combine(root,"proof-"+operation.OperationId+".intent.json"),operation.OperationId,sha,build);
+        VerifyReceipt(Path.Combine(root,"proof-"+operation.OperationId+".receipt.json"),operation.OperationId,sha,build);
     }
 
     private static void VerifySourceSha(string path, string expected)
@@ -347,3 +368,4 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
         bool DatabaseMutationPerformed, bool PublicMutationPerformed,
         DateTimeOffset CompletedAtUtc);
 }
+

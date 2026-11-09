@@ -1,0 +1,160 @@
+name: SOKNA Maintenance 0326 REV2 precise installer failure diagnostics
+on:
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  build-rev2:
+    if: github.sha == '6ec5fd012211acd8285cf8f318a892be3e6e131d'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: aba774d67e9d3890aa0f69d00f214ae82b395927}
+      - uses: actions/checkout@v4
+        with: {ref: 6ec5fd012211acd8285cf8f318a892be3e6e131d, path: wrapper-fix}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Windows PowerShell 5.1 failure report boundaries
+        shell: powershell
+        run: |
+          & ./wrapper-fix/qa/sokna-wrapper-rev2/test-logged-wrapper.ps1
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+          & ./wrapper-fix/qa/sokna-identity-workflow/test-maintenance-components-v4.ps1
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - name: Reproduce exact original components and add reporting wrapper
+        shell: pwsh
+        run: |
+          $root=Join-Path $env:RUNNER_TEMP 'maintenance-rev2'
+          $expected=@('88ba73a97e273a4f818f0200bcc32f7b8cc9df4522b554cca6b88e32e0832aae','d9f8295976a1a549191797303f6a6046877a96d3f1e23fe022bf3ebcfce61199','2a788e33838b9159b720362baa8a09f81cacdbfd67e2863e7213cce19a7659bd')
+          $names=@('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')
+          $exes=@('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe','SoknaMaintenanceRecoveryConsole.exe')
+          for($i=0;$i-lt3;$i++){
+            dotnet publish "windows/maintenance/src/$($names[$i])/$($names[$i]).csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $root $names[$i])
+            if($LASTEXITCODE-ne0){throw 'PINNED_COMPONENT_BUILD_FAILED'}
+            $p=Join-Path $root ($names[$i]+'/'+$exes[$i])
+            if((Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()-ne$expected[$i]){throw ('PINNED_COMPONENT_NOT_BYTE_EXACT_'+$names[$i])}
+          }
+          $payload=Join-Path $root 'payload'
+          & ./packaging/windows/scripts/prepare-maintenance-components-v4.ps1 -RepoRoot $PWD.Path -Supervisor (Join-Path $root 'Sokna.Maintenance.Supervisor/SoknaMaintenanceSupervisor.exe') -Engine (Join-Path $root 'Sokna.Maintenance.UpdateEngine/SoknaMaintenanceUpdateEngine.exe') -RecoveryConsole (Join-Path $root 'Sokna.Maintenance.RecoveryConsole/SoknaMaintenanceRecoveryConsole.exe') -OutputRoot $payload
+          $manifest=Join-Path $payload 'maintenance-component-manifest-v2.json'
+          $m=Get-Content $manifest -Raw|ConvertFrom-Json
+          $m.source_commit='aba774d67e9d3890aa0f69d00f214ae82b395927'
+          $m|Add-Member wrapper_source_commit $env:GITHUB_SHA
+          $m|ConvertTo-Json -Depth 12|Set-Content $manifest -Encoding utf8
+          foreach($file in @('invoke-maintenance-components-v4.ps1','invoke-maintenance-install-logged-v1.ps1')){
+            Copy-Item (Join-Path $PWD.Path ('wrapper-fix/packaging/windows/scripts/'+$file)) $payload -Force
+          }
+      - name: Compile exact REV2 and verify unknown-host safe report
+        shell: pwsh
+        run: |
+          $root=Join-Path $env:RUNNER_TEMP 'maintenance-rev2'
+          $iscc=@("${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe","$env:ProgramFiles/Inno Setup 6/ISCC.exe")|Where-Object{Test-Path $_}|Select-Object -First 1
+          if(-not$iscc){choco install innosetup -y --no-progress;if($LASTEXITCODE-ne0){throw 'INNO_INSTALL_FAILED'};$iscc="${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"}
+          & $iscc "/DPayloadRoot=$root/payload" "/DOutputDir=$root/dist" wrapper-fix/packaging/windows/installer/SOKNA-Maintenance-0326-Integrated-Rev2-QA.iss
+          if($LASTEXITCODE-ne0){throw 'REV2_COMPILE_FAILED'}
+          $exe=Join-Path $root 'dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV2-NOT-PRODUCTION.exe'
+          $v=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+          if("$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"-ne'0.3.26.2'){throw 'REV2_VERSION_WRONG'}
+          $p=Start-Process $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -Wait -PassThru
+          if($p.ExitCode-eq0){throw 'UNKNOWN_HOST_ACCEPTED'}
+          $desktop=[Environment]::GetFolderPath('DesktopDirectory')
+          $reports=@(Get-ChildItem $desktop -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json')
+          if($reports.Count-ne1){throw 'UNKNOWN_HOST_REPORT_MISSING'}
+          $failure=Get-Content $reports[0].FullName -Raw|ConvertFrom-Json
+          if($failure.safe_code-ne'R125_BASELINE_SERVICE_MISSING' -or $failure.failed_stage-ne'SERVICE_LAYOUT' -or $failure.recovery_requested -or $null-ne$failure.rollback_verified){throw 'UNKNOWN_HOST_REPORT_UNTRUE'}
+          Copy-Item $reports[0].FullName (Join-Path $root 'dist/UNKNOWN-HOST-REPORT.json')
+          Copy-Item (Join-Path $root 'payload/maintenance-component-manifest-v2.json') (Join-Path $root 'dist/COMPONENT-MANIFEST.json')
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  $([IO.Path]::GetFileName($exe))"|Set-Content (Join-Path $root 'dist/SHA256SUMS.txt')
+          @{wrapper_source_commit=$env:GITHUB_SHA;payload_source_commit='aba774d67e9d3890aa0f69d00f214ae82b395927';sha256=$sha;payload_byte_exact=$true;component_upgrade_cases=60;physical_cafe_verified=$false;production_approved=$false}|ConvertTo-Json|Set-Content (Join-Path $root 'dist/BUILD-QA.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-0326-rev2-built-qa-not-production
+          path: ${{ runner.temp }}/maintenance-rev2/dist/*
+          if-no-files-found: error
+  real-services-rev2:
+    needs: build-rev2
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions: {contents: read, actions: read}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: aba774d67e9d3890aa0f69d00f214ae82b395927}
+      - uses: actions/checkout@v4
+        with: {ref: b8b1cc4e91772692d92d6f7aa10b0657d2aa5427, path: old-0322-source}
+      - uses: actions/checkout@v4
+        with: {ref: 6ec5fd012211acd8285cf8f318a892be3e6e131d, path: wrapper-fix}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with: {name: maintenance-0326-rev2-built-qa-not-production, path: dist}
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-0324-built-qa-not-production
+          run-id: 42576660029
+          github-token: ${{ github.token }}
+          path: old-0324-artifact
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-0325-built-qa-not-production
+          run-id: 42631664373
+          github-token: ${{ github.token }}
+          path: old-0325-artifact
+      - name: Exact prior baseline binaries
+        shell: pwsh
+        run: |
+          $old=Join-Path $env:RUNNER_TEMP 'old-0322'
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')){
+            dotnet publish "old-0322-source/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $old $n)
+            if($LASTEXITCODE-ne0){throw 'OLD_BASELINE_BUILD_FAILED'}
+          }
+          Invoke-WebRequest 'https://github.com/mobaraki20/SoknaCafeV3/releases/download/sokna-maintenance-r125-0323-qa-02dd6431a3fe/SOKNA-R125-Maintenance-0323-Three-Component-QA-NOT-PRODUCTION.exe' -OutFile "$env:RUNNER_TEMP/old-0323.exe" -TimeoutSec 180
+          if((Get-FileHash "$env:RUNNER_TEMP/old-0323.exe" -Algorithm SHA256).Hash.ToLowerInvariant()-ne'3a4c6e1c09174bf79aa29115588a2f6ba8eddfa58929d54a61a528cbd4feca2a'){throw 'OLD_0323_HASH_MISMATCH'}
+          if((Get-FileHash 'old-0324-artifact/SOKNA-Maintenance-0324-MultiBaseline-QA-NOT-PRODUCTION.exe' -Algorithm SHA256).Hash.ToLowerInvariant()-ne'7712cccc855dd55bd5956224db778cba67b825269e440642733097368a62db12'){throw 'OLD_0324_HASH_MISMATCH'}
+          if((Get-FileHash 'old-0325-artifact/SOKNA-Maintenance-0325-MultiBaseline-QA-NOT-PRODUCTION.exe' -Algorithm SHA256).Hash.ToLowerInvariant()-ne'fa196597150dff0045c7e42ab6a59a335438b48ab491651947c44e873f5bbac7'){throw 'OLD_0325_HASH_MISMATCH'}
+      - name: Same exact integrated EXE on four real service baselines
+        shell: pwsh
+        run: |
+          & ./wrapper-fix/qa/sokna-wrapper-rev2/test-real-installer-rev2.ps1 -Installer (Join-Path $PWD.Path 'dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV2-NOT-PRODUCTION.exe') -ComponentManifest (Join-Path $PWD.Path 'dist/COMPONENT-MANIFEST.json') -BaselineRoot "$env:RUNNER_TEMP/old-0322" -Old0323Installer "$env:RUNNER_TEMP/old-0323.exe" -Old0324Installer (Join-Path $PWD.Path 'old-0324-artifact/SOKNA-Maintenance-0324-MultiBaseline-QA-NOT-PRODUCTION.exe') -Old0325Installer (Join-Path $PWD.Path 'old-0325-artifact/SOKNA-Maintenance-0325-MultiBaseline-QA-NOT-PRODUCTION.exe') -Output (Join-Path $PWD.Path 'dist/REAL-SERVICE-QA.json')
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: maintenance-0326-rev2-four-real-baselines-no-field-approval
+          path: dist/REAL-SERVICE-QA.json
+          if-no-files-found: error
+  publish-qa-prerelease:
+    needs: [build-rev2, real-services-rev2]
+    runs-on: ubuntu-latest
+    permissions: {contents: write, actions: read}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: maintenance-0326-rev2-built-qa-not-production, path: dist}
+      - uses: actions/download-artifact@v4
+        with: {name: maintenance-0326-rev2-four-real-baselines-no-field-approval, path: dist}
+      - name: Validate exact built and tested bytes
+        run: |
+          python3 - <<'PY'
+          import json,hashlib,pathlib,os
+          d=pathlib.Path('dist')
+          build=json.loads((d/'BUILD-QA.json').read_text(encoding='utf-8-sig'))
+          checks=json.loads((d/'REAL-SERVICE-QA.json').read_text(encoding='utf-8-sig'))
+          exe=d/'SOKNA-Maintenance-0326-INTEGRATED-QA-REV2-NOT-PRODUCTION.exe'
+          sha=hashlib.sha256(exe.read_bytes()).hexdigest()
+          assert sha==build['sha256'] and build['payload_byte_exact']
+          assert build['wrapper_source_commit']==os.environ['GITHUB_SHA']
+          assert len(checks)==4 and all(x['installer_sha256']==sha and x['precise_pretransaction_rejection_report']=='PASS' and x['real_service_upgrade']=='PASS' and x['real_file_lock_rollback']=='PASS' and not x['production_approved'] for x in checks)
+          assert {x['component_layout'] for x in checks}=={'separate_registered_paths','siblings_absent','legacy_sibling_files'}
+          PY
+      - name: Publish immutable QA prerelease in GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: mobaraki20/SoknaCafeV3
+        run: |
+          release_tag="maintenance-0326-integrated-rev2-qa-${GITHUB_SHA:0:12}"
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            echo 'Refusing to overwrite an existing release.'
+            exit 1
+          fi
+          gh release create "$release_tag" --target "$GITHUB_SHA" --prerelease --latest=false --title 'SOKNA Maintenance 0.3.26 Installer REV2 - QA NOT PRODUCTION' --notes-file qa/sokna-wrapper-rev2/RELEASE-NOTES-FA.md dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV2-NOT-PRODUCTION.exe dist/SHA256SUMS.txt dist/BUILD-QA.json dist/REAL-SERVICE-QA.json dist/COMPONENT-MANIFEST.json dist/UNKNOWN-HOST-REPORT.json

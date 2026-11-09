@@ -1,0 +1,78 @@
+[
+  {
+    "version": "0.3.22",
+    "engine_version": "0.3.22",
+    "recovery_console_version": "0.1.3",
+    "proof": "privileged_install_receipt_v1",
+    "accepted_preserved_recovery": [
+      {
+        "version": "0.1.1",
+        "sha256": "368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd",
+        "proof": "official_component_fingerprint_and_committed_KEEP_history"
+      }
+    ]
+  },
+  {
+    "version": "0.3.23",
+    "engine_version": "0.3.23",
+    "recovery_console_version": "0.1.4",
+    "proof": "published_exact_three_file_hashes",
+    "source_commit": "02dd6431a3fe2952ea1da2e3e04e625c4b75ab78",
+    "files": [
+      {
+        "path": "Maintenance/App/SoknaMaintenanceSupervisor.exe",
+        "sha256": "0cf0d9928542399ddd6e04d1b4bef2d8bb752431ed08a32b1ca919500cf73580"
+      },
+      {
+        "path": "Maintenance/App/SoknaMaintenanceUpdateEngine.exe",
+        "sha256": "72a82d0b9f4e1556bf0686eed72ec0e9073f7bdf064663dab6dc6bc33a231871"
+      },
+      {
+        "path": "Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe",
+        "sha256": "7b09d80dca2577101092c55134a25ded0f6f3ddcd1eabe5e7edfccda35ab3a1c"
+      }
+    ]
+  },
+  {
+    "version": "0.3.24",
+    "engine_version": "0.3.24",
+    "recovery_console_version": "0.1.5",
+    "proof": "built_and_two_real_service_baselines",
+    "source_commit": "573c97322fa11616c4251c928f3a05e166a22f84",
+    "files": [
+      {
+        "path": "Maintenance/App/SoknaMaintenanceSupervisor.exe",
+        "sha256": "c3bf177ce0fc598106efa084a8db471b20a66c24988077b07b265fa08e7667c5"
+      },
+      {
+        "path": "Maintenance/App/SoknaMaintenanceUpdateEngine.exe",
+        "sha256": "b266b66524b0f499b3f3542e32dd14d51768d22e53def6ddb010ef4af391bcff"
+      },
+      {
+        "path": "Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe",
+        "sha256": "75c3fcd4be5e1a4b6f81a896f71371b01ae063c0333fdc930fb95077ce90b9ee"
+      }
+    ]
+  },
+  {
+    "version": "0.3.25",
+    "engine_version": "0.3.25",
+    "recovery_console_version": "0.1.6",
+    "proof": "exact_three_baseline_qa_artifact",
+    "source_commit": "3530811ab9117c6787a19a3a4186d23769425a6d",
+    "files": [
+      {
+        "path": "Maintenance/App/SoknaMaintenanceSupervisor.exe",
+        "sha256": "df545209796a0e66a91dea486a08ee1291a8fcf185888b563b177012eea42845"
+      },
+      {
+        "path": "Maintenance/App/SoknaMaintenanceUpdateEngine.exe",
+        "sha256": "ebe9eb94eaa2fc72d24822e381a07d3428923c8def1e7e2655201c784334dab8"
+      },
+      {
+        "path": "Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe",
+        "sha256": "30c1020a395958c398b818b5d9c58ccd9ea4feda1a894cdadb5acfd7c4b94841"
+      }
+    ]
+  }
+]

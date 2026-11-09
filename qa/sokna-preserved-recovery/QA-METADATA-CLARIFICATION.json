@@ -1,0 +1,26 @@
+{
+  "format": "sokna-rev3-qa-metadata-clarification-v1",
+  "installer_sha256": "4d6294d6a76128e9982d5ffd42b692e2fbf72b41718c4b66eec3f9d9885483f8",
+  "original_receipt_sha256": "9e6ebeaae594d16b6c8655d4b66493ec5bc315a7eed07c940316b134c6cadc15",
+  "field": "baseline_recovery_sha256",
+  "actual_sampling_point": "initial_0322_bootstrap_before_optional_0323_0324_0325_installer",
+  "preserved011_case_correct_and_byte_exact": true,
+  "real_installer_post_bootstrap_version_and_manifest_hash_gates_passed": true,
+  "physical_cafe_verified": false,
+  "production_approved": false,
+  "note": "For the 0323/0324/0325 rows this field records the initial 0322 Recovery binary, not the post-bootstrap baseline. The actual installer independently read PE versions and checked all three post-bootstrap files against the published baseline manifest before mutation. The raw result is retained unchanged. The harness now samples after optional bootstrap.",
+  "baseline_recovery_hashes_required_by_installer": [
+    {
+      "baseline": "0.3.23",
+      "expected_sha256": "7b09d80dca2577101092c55134a25ded0f6f3ddcd1eabe5e7edfccda35ab3a1c"
+    },
+    {
+      "baseline": "0.3.24",
+      "expected_sha256": "75c3fcd4be5e1a4b6f81a896f71371b01ae063c0333fdc930fb95077ce90b9ee"
+    },
+    {
+      "baseline": "0.3.25",
+      "expected_sha256": "30c1020a395958c398b818b5d9c58ccd9ea4feda1a894cdadb5acfd7c4b94841"
+    }
+  ]
+}

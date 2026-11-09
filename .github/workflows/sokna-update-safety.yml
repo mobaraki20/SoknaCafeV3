@@ -1,0 +1,120 @@
+name: SOKNA update safety regressions (no production approval)
+on:
+  push:
+    branches: [qa/sokna-update-safety-20261109]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  final-archive-and-receipts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 qa/sokna-r132/test-release-gate.py
+      - run: python3 qa/sokna-update-safety/test-final-evidence.py
+      - name: Rebuild exact candidate with mandatory final-byte gate
+        run: |
+          python3 qa/sokna-r140/exact-ci/reconstruct.py "$RUNNER_TEMP/safety-exact"
+          python3 qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$RUNNER_TEMP/safety-exact/r140.zip" "$RUNNER_TEMP/safety-exact/source-r140.zip"
+          python3 qa/sokna-r149b/build_r149b.py "$RUNNER_TEMP/safety-exact/source-r140.zip" qa/sokna-r149b/overlay.zip "$RUNNER_TEMP/safety-exact/candidate"
+          test ! -e "$RUNNER_TEMP/safety-exact/candidate/r149b-qualified.zip"
+          set +e
+          python3 qa/sokna-r132/release-gate.py "$RUNNER_TEMP/safety-exact/candidate/r149b-candidate.zip" --json "$RUNNER_TEMP/final-candidate-gate.json"
+          code=$?
+          set -e
+          test "$code" -eq 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: safety-candidate-summary-not-for-install
+          path: ${{ runner.temp }}/final-candidate-gate.json
+          if-no-files-found: error
+  mariadb-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r132_test
+          MARIADB_USER: sokna_r132
+          MARIADB_PASSWORD: ci-only-password
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP and disposable SQL clients
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-cli php-mysql mariadb-client
+      - run: php -l windows/maintenance/src/Sokna.Maintenance.Core/RoutineLocalDatabase.php
+      - name: M06 backup prerequisites and actual SQL parser regressions
+        env:
+          SOKNA_SAFETY_DISPOSABLE: 'YES'
+        run: python3 qa/sokna-update-safety/test-backup-preflight.py
+      - name: R125 guard failure, concurrent data change and forward resume
+        run: bash qa/sokna-r132/test-preflight-mariadb.sh
+      - name: R137 data and migration journal atomicity after DML
+        env:
+          MYSQL_PWD: ci-root-only
+        run: |
+          mariadb --protocol=tcp -h127.0.0.1 -uroot -e 'CREATE DATABASE sokna_r138_ci'
+          php qa/sokna-r138/test-atomic-migrations.php
+      - name: R140 DDL preconditions and interrupted-DDL state
+        run: php qa/sokna-r140/test-0077-mariadb.php
+  windows-engine-and-recovery:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build changed actual UpdateEngine and embedded helper
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj -c Release
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Retain strict R125 policy and crash-safe archive behavior
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-r125-reconcile/PolicyProbe.csproj -c Release
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          dotnet run --project qa/sokna-r125-reconcile/ArchiveIntegrationProbe.csproj -c Release
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Verify preflight call remains before Apache stop intent
+        shell: pwsh
+        run: |
+          python qa/sokna-update-safety/test-engine-order.py
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+  windows-two-baseline-activation:
+    needs: [final-archive-and-receipts,mariadb-regressions,windows-engine-and-recovery]
+    runs-on: windows-latest
+    timeout-minutes: 55
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Parse two-baseline Windows script
+        shell: pwsh
+        run: |
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path 'qa/sokna-r149b/windows-r149b-activation.ps1'),[ref]$null,[ref]$errors)|Out-Null
+          if($errors){$errors|ForEach-Object{Write-Host $_};throw 'WINDOWS_SCRIPT_PARSE_FAILED'}
+      - name: Same exact target ZIP from R75 and R140 through 12 Windows fault/recovery cycles
+        shell: pwsh
+        run: |
+          & ./qa/sokna-r149b/windows-r149b-activation.ps1
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: two-baseline-12-cycles-no-field-approval
+          path: ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/r149b-windows-cycles.json
+          if-no-files-found: error

@@ -164,6 +164,7 @@ public sealed partial class ProductionLocalSlotMigrationBridge
             // Same live data, not a fixture: reject incompatible migration guards
             // before disrupting Apache. The DB helper runs SELECT-only preflight.
             RoutineLocalDatabase.RequireReadOnlyGuardPreflight(layout.PackageRoot, previousSlot, targetSlot, migrations);
+            RoutineLocalDatabase.RequireBackupPreflight(layout.PackageRoot, previousSlot, targetSlot, migrations);
         }
 
         var events = new List<RoutineLocalSlotEvent>();
@@ -544,3 +545,4 @@ public static class RoutineLocalSlotSafety
             state.RecoveryRequired,
             RoutineStatePath);
 }
+

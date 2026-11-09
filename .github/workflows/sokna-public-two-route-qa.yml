@@ -1,0 +1,46 @@
+name: SOKNA Public exact ZIP two adapter QA (no live endpoint approval)
+on:
+  push:
+    branches: [qa/sokna-update-safety-20261109]
+    paths: ['qa/sokna-public-two-route/**', '.github/workflows/sokna-public-two-route-qa.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  same-zip-two-baselines-two-adapters:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP with actual ZIP and PDO MariaDB support
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-cli php-mysql php-zip
+      - name: Rebuild final bytes twice and require reproducibility
+        run: |
+          python3 qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip qa/sokna-public-two-route/candidate.zip
+          python3 qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip "$RUNNER_TEMP/second.zip"
+          cmp qa/sokna-public-two-route/candidate.zip "$RUNNER_TEMP/second.zip"
+          php -l qa/sokna-public-two-route/test-two-route.php
+      - name: Native owner factory reproduction and real DB activation with fresh process commit
+        env:
+          SOKNA_PUBLIC_QA_DISPOSABLE: 'YES'
+        run: php qa/sokna-public-two-route/test-two-route.php
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-owner-same-zip-qa-not-production
+          path: |
+            qa/sokna-public-two-route/candidate.zip
+            qa/sokna-public-two-route/candidate.json
+            qa/sokna-public-two-route/two-route-summary.json
+          if-no-files-found: error

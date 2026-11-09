@@ -1,0 +1,29 @@
+[
+  {
+    "version": "0.3.22",
+    "engine_version": "0.3.22",
+    "recovery_console_version": "0.1.3",
+    "proof": "privileged_install_receipt_v1"
+  },
+  {
+    "version": "0.3.23",
+    "engine_version": "0.3.23",
+    "recovery_console_version": "0.1.4",
+    "proof": "published_exact_three_file_hashes",
+    "source_commit": "02dd6431a3fe2952ea1da2e3e04e625c4b75ab78",
+    "files": [
+      {
+        "path": "Maintenance/App/SoknaMaintenanceSupervisor.exe",
+        "sha256": "0cf0d9928542399ddd6e04d1b4bef2d8bb752431ed08a32b1ca919500cf73580"
+      },
+      {
+        "path": "Maintenance/App/SoknaMaintenanceUpdateEngine.exe",
+        "sha256": "72a82d0b9f4e1556bf0686eed72ec0e9073f7bdf064663dab6dc6bc33a231871"
+      },
+      {
+        "path": "Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe",
+        "sha256": "7b09d80dca2577101092c55134a25ded0f6f3ddcd1eabe5e7edfccda35ab3a1c"
+      }
+    ]
+  }
+]

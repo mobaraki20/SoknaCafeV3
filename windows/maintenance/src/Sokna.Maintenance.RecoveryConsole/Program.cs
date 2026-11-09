@@ -5,6 +5,7 @@ var dataRoot = MaintenancePaths.DefaultDataRoot();
 var command = "status";
 string? operatorId = null, expectedBuild = null, expectedSha = null, idempotencyKey = null;
 var explicitlyConfirmed = false;
+string? workflowReport = null;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i].ToLowerInvariant())
@@ -19,6 +20,8 @@ for (var i = 0; i < args.Length; i++)
             expectedSha = args[++i]; break;
         case "--idempotency-key" when i + 1 < args.Length:
             idempotencyKey = args[++i]; break;
+        case "--report-file" when i + 1 < args.Length:
+            workflowReport = Path.GetFullPath(args[++i]); break;
         case "--confirm-preserve-and-archive":
             explicitlyConfirmed = true; break;
         default:
@@ -28,6 +31,28 @@ for (var i = 0; i < args.Length; i++)
             break;
     }
 }
+if(command == "finish-r125-recovery")
+{
+    if(operatorId is not null || expectedBuild is not null || expectedSha is not null || idempotencyKey is not null)
+        throw new InvalidDataException("R125_GUIDED_WORKFLOW_ARGUMENT_OVERRIDE_FORBIDDEN");
+    var output = workflowReport ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+        $"SOKNA-MAINTENANCE-WORKFLOW-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.json");
+    if(workflowReport is not null &&
+       (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true" || Environment.GetEnvironmentVariable("RUNNER_OS") != "Windows" ||
+        !output.StartsWith(Path.GetFullPath(Environment.GetEnvironmentVariable("RUNNER_TEMP")!) + Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)))
+        throw new InvalidDataException("R125_GUIDED_REPORT_OVERRIDE_ONLY_DISPOSABLE_CI");
+    var (code, report) = await R125RecoveryWorkflow.RunAsync(new MaintenancePaths(dataRoot), explicitlyConfirmed);
+    var bytes = JsonSerializer.SerializeToUtf8Bytes(report,new JsonSerializerOptions{WriteIndented=true});
+    using(var file=new FileStream(output,FileMode.CreateNew,FileAccess.Write,FileShare.None,4096,FileOptions.WriteThrough))
+    {file.Write(bytes);file.Flush(true);}
+    Console.WriteLine(JsonSerializer.Serialize(report));
+    Environment.ExitCode=code;
+    if(workflowReport is null){try{System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe"){
+        UseShellExecute=true,ArgumentList={"/select,"+output}});}catch{}}
+    return;
+}
+if(workflowReport is not null)throw new InvalidDataException("REPORT_OUTPUT_ONLY_ALLOWED_FOR_GUIDED_WORKFLOW");
+
 var isReconciliation = command == "reconcile-r125-lifecycle";
 if (isReconciliation &&
     (!explicitlyConfirmed ||
@@ -64,7 +89,7 @@ if (!File.Exists(paths.DescriptorPath))
 try
 {
     var descriptor = AtomicFile.ReadJson<ControlPlaneDescriptor>(paths.DescriptorPath);
-    if (descriptor.Protocol != HmacProtocol.Protocol || descriptor.ReadOnlyP1 is false)
+    if (descriptor.Protocol != HmacProtocol.Protocol || (isReconciliation && descriptor.ReadOnlyP1))
         throw new InvalidDataException("Unsupported control-plane descriptor.");
     if (!Uri.TryCreate(descriptor.BaseUrl, UriKind.Absolute, out var baseUri) || !baseUri.IsLoopback)
         throw new InvalidDataException("Control-plane base URL is not loopback.");
@@ -131,3 +156,4 @@ static void WriteFallback(MaintenancePaths paths, string reason)
     Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
     Environment.ExitCode = state is null ? 3 : 1;
 }
+

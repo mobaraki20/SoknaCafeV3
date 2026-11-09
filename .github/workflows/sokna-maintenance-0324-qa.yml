@@ -1,0 +1,101 @@
+name: SOKNA Maintenance 0324 exact installer build and two-baseline service QA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-exact-installer:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 573c97322fa11616c4251c928f3a05e166a22f84
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: 30 transaction, rollback, crash, lease and locked-file cases under PowerShell 5.1
+        shell: powershell
+        run: |
+          & ./qa/sokna-update-safety/test-maintenance-components-v2.ps1
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - name: Publish exact three component executables and prepare scope manifest
+        shell: pwsh
+        run: |
+          $root=Join-Path $env:RUNNER_TEMP 'maintenance-0324'
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')){
+            dotnet publish "windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $root $n)
+            if($LASTEXITCODE-ne0){throw 'COMPONENT_PUBLISH_FAILED'}
+          }
+          & ./packaging/windows/scripts/prepare-maintenance-components-v2.ps1 -RepoRoot $PWD.Path -Supervisor (Join-Path $root 'Sokna.Maintenance.Supervisor/SoknaMaintenanceSupervisor.exe') -Engine (Join-Path $root 'Sokna.Maintenance.UpdateEngine/SoknaMaintenanceUpdateEngine.exe') -RecoveryConsole (Join-Path $root 'Sokna.Maintenance.RecoveryConsole/SoknaMaintenanceRecoveryConsole.exe') -OutputRoot (Join-Path $root 'payload')
+          "MAINTENANCE_QA_ROOT=$root"|Out-File $env:GITHUB_ENV -Append -Encoding UTF8
+      - name: Compile Inno installer and reject unsupported host with the exact EXE
+        shell: pwsh
+        run: |
+          $iscc=@("${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe","$env:ProgramFiles/Inno Setup 6/ISCC.exe")|Where-Object{Test-Path $_}|Select-Object -First 1
+          if(-not$iscc){choco install innosetup -y --no-progress;if($LASTEXITCODE-ne0){throw 'INNO_INSTALL_FAILED'};$iscc="${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"}
+          $dist=Join-Path $env:MAINTENANCE_QA_ROOT 'dist'
+          & $iscc ("/DPayloadRoot="+(Join-Path $env:MAINTENANCE_QA_ROOT 'payload')) "/DOutputDir=$dist" packaging/windows/installer/SOKNA-Maintenance-0324-QA.iss
+          if($LASTEXITCODE-ne0){throw 'INNO_COMPILE_FAILED'}
+          $exe=Join-Path $dist 'SOKNA-Maintenance-0324-MultiBaseline-QA-NOT-PRODUCTION.exe'
+          $v=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+          $physical="$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"
+          if($physical-ne'0.3.24.0'){throw ('INSTALLER_VERSION_MISMATCH:'+ $physical)}
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'UNEXPECTED_SERVICE'}
+          $p=Start-Process $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -Wait -PassThru
+          if($p.ExitCode-eq0){throw 'UNSUPPORTED_HOST_ACCEPTED'}
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'UNAUTHORIZED_SERVICE_CREATED'}
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  $([IO.Path]::GetFileName($exe))"|Set-Content (Join-Path $dist 'SHA256SUMS.txt')
+          Copy-Item (Join-Path $env:MAINTENANCE_QA_ROOT 'payload/maintenance-component-manifest-v2.json') (Join-Path $dist 'COMPONENT-MANIFEST.json')
+          @{source_commit=$env:GITHUB_SHA;installer_sha256=$sha;native_build='PASS';transaction_scenarios=30;unsupported_host_rejected=$true;production_approved=$false;physical_cafe_host_tested=$false}|ConvertTo-Json|Set-Content (Join-Path $dist 'BUILD-QA.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-0324-built-qa-not-production
+          path: ${{ runner.temp }}/maintenance-0324/dist/*
+          if-no-files-found: error
+          retention-days: 30
+  exact-exe-real-services:
+    needs: build-exact-installer
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 573c97322fa11616c4251c928f3a05e166a22f84
+      - uses: actions/checkout@v4
+        with:
+          ref: 573c97322fa11616c4251c928f3a05e166a22f84
+        with:
+          ref: b8b1cc4e91772692d92d6f7aa10b0657d2aa5427
+          path: old-0322-source
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-0324-built-qa-not-production
+          path: dist
+      - name: Build real old 0322 baseline and fetch hash-pinned published 0323 installer
+        shell: pwsh
+        run: |
+          $old=Join-Path $env:RUNNER_TEMP 'maintenance-old-0322'
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')){
+            dotnet publish "old-0322-source/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $old $n)
+            if($LASTEXITCODE-ne0){throw 'OLD_BASELINE_BUILD_FAILED'}
+          }
+          $oldExe=Join-Path $env:RUNNER_TEMP 'published-0323.exe'
+          Invoke-WebRequest 'https://github.com/mobaraki20/SoknaCafeV3/releases/download/sokna-maintenance-r125-0323-qa-02dd6431a3fe/SOKNA-R125-Maintenance-0323-Three-Component-QA-NOT-PRODUCTION.exe' -OutFile $oldExe -TimeoutSec 180
+          if((Get-FileHash $oldExe -Algorithm SHA256).Hash.ToLowerInvariant()-ne'3a4c6e1c09174bf79aa29115588a2f6ba8eddfa58929d54a61a528cbd4feca2a'){throw 'PUBLISHED_0323_INSTALLER_HASH_MISMATCH'}
+          "OLD_BASELINE_ROOT=$old"|Out-File $env:GITHUB_ENV -Append -Encoding UTF8
+          "OLD_0323_INSTALLER=$oldExe"|Out-File $env:GITHUB_ENV -Append -Encoding UTF8
+      - name: Same compiled EXE upgrades and rolls back two genuine Windows service baselines
+        shell: pwsh
+        run: |
+          & ./qa/sokna-update-safety/test-maintenance-real-installer.ps1 -Installer (Join-Path $PWD.Path 'dist/SOKNA-Maintenance-0324-MultiBaseline-QA-NOT-PRODUCTION.exe') -ComponentManifest (Join-Path $PWD.Path 'dist/COMPONENT-MANIFEST.json') -BaselineRoot $env:OLD_BASELINE_ROOT -Old0323Installer $env:OLD_0323_INSTALLER -Output (Join-Path $PWD.Path 'dist/REAL-SERVICE-QA.json')
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-0324-two-real-baselines-no-field-approval
+          path: dist/REAL-SERVICE-QA.json
+          if-no-files-found: error

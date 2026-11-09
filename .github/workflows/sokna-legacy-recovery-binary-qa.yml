@@ -1,0 +1,111 @@
+name: SOKNA acquire exact archived Recovery 011 binary - no installer publication
+on:
+  push:
+    branches: [qa/sokna-update-safety-20261109]
+    paths: ['.github/workflows/sokna-legacy-recovery-binary-qa.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  acquire-exact-legacy-binary:
+    runs-on: windows-latest
+    permissions: {contents: write}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original qualification archive by immutable asset id
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $out=Join-Path $env:RUNNER_TEMP 'legacy-recovery-archive'
+          New-Item -ItemType Directory -Force $out|Out-Null
+          & gh api -H 'Accept: application/octet-stream' repos/mobaraki20/SoknaCafeV3/releases/assets/648914610 > "$out/original.zip"
+          if($LASTEXITCODE-ne0){throw 'LEGACY_ARCHIVE_DOWNLOAD_FAILED'}
+          if((Get-FileHash "$out/original.zip" -Algorithm SHA256).Hash.ToLowerInvariant()-ne'1283193b1f5326793241c7d55049cfd1abcde44fb4695ffdd8c439737364e2e6'){throw 'LEGACY_ARCHIVE_DIGEST_MISMATCH'}
+      - name: Find exact known preserved binary without executing it
+        shell: pwsh
+        run: |
+          $out=Join-Path $env:RUNNER_TEMP 'legacy-recovery-archive'
+          $env:SOKNA_LEGACY_ARCHIVE_ROOT=$out
+          @'
+          import os,pathlib,zipfile,hashlib,json,io
+          root=pathlib.Path(os.environ['SOKNA_LEGACY_ARCHIVE_ROOT'])
+          wanted='368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd'
+          inventory=[];found=[]
+          def scan(blob,label,depth=0):
+            with zipfile.ZipFile(blob) as z:
+              for e in z.infolist():
+                if e.is_dir(): continue
+                inventory.append({'archive':label,'name':e.filename,'bytes':e.file_size})
+                if e.file_size>500_000_000: continue
+                if e.filename.lower().endswith('soknamaintenancerecoveryconsole.exe'):
+                  data=z.read(e);sha=hashlib.sha256(data).hexdigest()
+                  print('RECOVERY_CANDIDATE',label,e.filename,len(data),sha)
+                  if sha==wanted:
+                    (root/'SoknaMaintenanceRecoveryConsole.exe').write_bytes(data);found.append({'archive':label,'entry':e.filename,'sha256':sha,'bytes':len(data)})
+                elif depth<2 and e.filename.lower().endswith('.zip'):
+                  scan(io.BytesIO(z.read(e)),label+'!'+e.filename,depth+1)
+          scan(root/'original.zip','original.zip')
+          report={'format':'sokna-exact-legacy-recovery-acquisition-v1','found_exact_binary':bool(found),'matches':found,'inventory':inventory,'physical_cafe_verified':False}
+          (root/'ACQUISITION.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+          print(json.dumps(report,indent=2))
+          '@ | python
+          if($LASTEXITCODE-ne0){throw 'ARCHIVE_SCAN_FAILED'}
+          $exe=Join-Path $out 'SoknaMaintenanceRecoveryConsole.exe'
+          if(Test-Path $exe){
+            $v=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+            if("$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"-ne'0.1.1.0'){throw 'LEGACY_PHYSICAL_VERSION_MISMATCH'}
+            Write-Host 'PASS exact original Recovery SHA256 and physical 0.1.1.0'
+          }
+      - name: Recover original embedded payload in disposable Windows only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS-ne'true' -or $env:RUNNER_OS-ne'Windows'){throw 'DISPOSABLE_WINDOWS_ONLY'}
+          if(@(Get-Service 'Sokna*' -ErrorAction SilentlyContinue).Count){throw 'REFUSE_EXISTING_SOKNA_SERVICES'}
+          $data=Join-Path $env:ProgramData 'SOKNA'
+          if(Test-Path $data){throw 'REFUSE_EXISTING_SOKNA_DATA'}
+          $out=Join-Path $env:RUNNER_TEMP 'legacy-recovery-archive'
+          Expand-Archive "$out/original.zip" "$out/bundle"
+          $setup="$out/bundle/SOKNA-Windows-Services-Setup-1.1.2.exe"
+          if((Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()-ne'8b0100dea27a569c2beb0c0d11db47fa5d3195f99cf38768722636d1ecb12a0d'){throw 'ORIGINAL_SETUP_HASH_MISMATCH'}
+          # The archived bootstrap ignores silent arguments. Capture its embedded
+          # Inno core, terminate the UI process tree, then run only that core silently.
+          $tmp=Join-Path ([IO.Path]::GetTempPath()) 'SOKNA/Installer'
+          if(Test-Path $tmp){throw 'REFUSE_EXISTING_BOOTSTRAP_TEMP'}
+          $p=Start-Process $setup -PassThru
+          try{
+            $copied=$false
+            for($i=0;$i-lt300;$i++){
+              $candidate=Get-ChildItem $tmp -Recurse -Filter 'SOKNA-Windows-Services-Core.exe' -ErrorAction SilentlyContinue|Select-Object -First 1
+              if($candidate){
+                try{
+                  $f=[IO.File]::Open($candidate.FullName,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+                  try{$dest=[IO.File]::Create("$out/core.exe");try{$f.CopyTo($dest)}finally{$dest.Dispose()}}finally{$f.Dispose()}
+                  $copied=$true;break
+                }catch{}
+              }
+              Start-Sleep -Milliseconds 100
+            }
+            if(-not$copied){throw 'EMBEDDED_CORE_NOT_CAPTURED'}
+          }finally{& taskkill.exe /PID $p.Id /T /F|Out-Null}
+          $origin="$out/extracted-shell"
+          $core=Start-Process "$out/core.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/DIR="'+$origin+'"')) -PassThru
+          if(-not$core.WaitForExit(180000)){$core.Kill();throw 'ORIGINAL_CORE_TIMEOUT'}
+          if($core.ExitCode-ne0){throw ('ORIGINAL_CORE_FAILED_'+$core.ExitCode)}
+          if(@(Get-Service 'Sokna*' -ErrorAction SilentlyContinue).Count){throw 'UNEXPECTED_SERVICE_CREATED'}
+          $matches=@(Get-ChildItem $origin -Recurse -Filter 'SoknaMaintenanceRecoveryConsole.exe'|Where-Object{(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()-eq'368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd'})
+          if($matches.Count-ne1){throw 'EXACT_PRESERVED_RECOVERY_NOT_FOUND'}
+          Copy-Item $matches[0].FullName "$out/SoknaMaintenanceRecoveryConsole.exe"
+          $v=[Diagnostics.FileVersionInfo]::GetVersionInfo("$out/SoknaMaintenanceRecoveryConsole.exe")
+          if("$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"-ne'0.1.1.0'){throw 'EXACT_RECOVERY_PE_VERSION_WRONG'}
+          @{format='sokna-exact-legacy-recovery-acquisition-v2';found_exact_binary=$true;sha256='368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd';physical_pe_version='0.1.1.0';archive_asset_id=648914610;core_sha256=(Get-FileHash "$out/core.exe" -Algorithm SHA256).Hash.ToLowerInvariant();physical_cafe_verified=$false}|ConvertTo-Json|Set-Content "$out/ACQUISITION.json"
+          Write-Host 'PASS exact original Recovery SHA256 and physical 0.1.1.0 from immutable original installer'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exact-legacy-recovery-011-acquisition
+          path: |
+            ${{ runner.temp }}/legacy-recovery-archive/ACQUISITION.json
+            ${{ runner.temp }}/legacy-recovery-archive/SoknaMaintenanceRecoveryConsole.exe
+          if-no-files-found: error

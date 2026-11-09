@@ -8,6 +8,17 @@ try {
     $plan=json_decode($json,true,32,JSON_THROW_ON_ERROR);
     $cfg=require $root.'/config.php';
     if (!is_array($cfg)) exit(65);
+    // BrowserSetupService persists a numeric string. Reject invalid ports
+    // before connecting, and normalize again for the actual backup, so a
+    // changed config cannot reuse an earlier preflight result (M06 regression).
+    if ($mode==='backup-preflight' || $mode==='backup') {
+        $port=$cfg['db']['port']??3306;
+        if ((!is_int($port) && !is_string($port)) ||
+            !preg_match('/^[0-9]{1,5}$/D',(string)$port) ||
+            (int)$port<1 || (int)$port>65535) exit(81);
+        $cfg['db']['port']=(int)$port;
+        if (!is_file($dump) || !is_readable($dump)) exit(82);
+    }
     foreach (['Config','Database','MigrationExecutionException','Migrations'] as $class)
         require_once $target.'/src/Core/'.$class.'.php';
     $pdo=\Sokna\Local\Core\Database::connect(\Sokna\Local\Core\Config::fromArray($cfg));
@@ -19,10 +30,16 @@ try {
     };
     $before=$old->catalog();$after=$next->catalog();
     if ($fingerprint($before)!==$plan['SourceFingerprint'] || $fingerprint($after)!==$plan['TargetFingerprint']) exit(66);
+    if ($mode==='inspect' || $mode==='inspect-external-rollback') { $pdo->exec('SET TRANSACTION READ ONLY'); $pdo->beginTransaction(); }
     $applied=$next->appliedVersions();$original=array_keys($before);$expected=array_keys($after);
-    if ($mode==='inspect' || $mode==='backup' || $mode==='preflight') {
+    if ($mode==='inspect' || $mode==='inspect-external-rollback' || $mode==='backup' || $mode==='preflight' || $mode==='backup-preflight') {
         if ($applied!==$original) exit(67);
         if ((int)$pdo->query("SELECT COUNT(*) FROM schema_migration_statements WHERE state<>'applied'")->fetchColumn()!==0) exit(68);
+        if ($mode==='inspect-external-rollback') {
+            if ($plan['SourceHead']!=='0076_late_served_accounting') exit(84);
+            if ((int)$pdo->query("SELECT COUNT(*) FROM schema_migration_statements WHERE version >= '0077'")->fetchColumn()!==0) exit(85);
+            if ((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='inventory_opening_activations'")->fetchColumn()!==0) exit(86);
+        }
         if ($mode==='preflight') {
             // Safely probe leading SELECT guards in each pending signed migration
             // while Apache is still running. Never execute DDL/DML in preflight.
@@ -59,10 +76,13 @@ try {
         $next->migrate();
         if ($next->appliedVersions()!==$expected || (int)$pdo->query("SELECT COUNT(*) FROM schema_migration_statements WHERE state<>'applied'")->fetchColumn()!==0) exit(71);
     } else exit(72);
-    if ($mode==='backup') {
+    if ($mode==='backup' || $mode==='backup-preflight') {
         // --single-transaction is valid only for transactional application tables.
         $q=$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND TABLE_TYPE='BASE TABLE' AND ENGINE<>'InnoDB'");
         if ((int)$q->fetchColumn()!==0) exit(73);
+        // Success here means backup prerequisites only, never RESTORE_VERIFIED.
+        // Do not allocate credentials/dump files during read-only preflight.
+        if ($mode==='backup-preflight') { echo 'SOKNA_DATABASE_OK'; exit(0); }
         $options=$backup.'.credentials';
         $quote=static fn($v)=>'"'.str_replace(["\\","\"","\r","\n"],["\\\\","\\\"","\\r","\\n"],(string)$v).'"';
         $db=$cfg['db'];
@@ -90,3 +110,5 @@ try {
     }
     exit(78);
 }
+
+
