@@ -355,6 +355,433 @@ if(Test-Path -LiteralPath $operationsRoot -PathType Container){
   if($op.state-in @('accepted','running','activating','recovering','recovery_required')){
     Fail 'R125_ACTIVE_OR_UNRESOLVED_UPDATE_OPERATION'
   }
+  # Older Supervisor releases produce 'verified' and 'staged' as completed,
+  # non-mutating inspection steps. Qualify their exact origin and durable proof;
+  # never equate an arbitrary unknown status with an idle updater.
+  if($op.state-in @('verified','staged')){
+    if(-not$op.PSObject.Properties['operation_type'] -or -not$op.PSObject.Properties['result_code'] -or
+       -not$op.PSObject.Properties['activation_performed'] -or -not$op.PSObject.Properties['database_mutation_performed'] -or
+       $op.activation_performed -isnot [bool] -or $op.database_mutation_performed -isnot [bool] -or
+       $op.activation_performed -or $op.database_mutation_performed){
+      Fail 'R125_HISTORICAL_LEDGER_MUTATION_OR_IDENTITY_UNPROVEN'
+    }
+    if($op.state-eq'verified'){
+      if($op.operation_type-cne'update.local-package-preflight' -or $op.result_code-cne'PACKAGE_INTEGRITY_VERIFIED'){
+        Fail 'R125_HISTORICAL_LEDGER_STATE_TYPE_MISMATCH'
+      }
+    }elseif($op.operation_type-cne'update.local-stage' -or $op.result_code-cne'STAGED'){
+      Fail 'R125_HISTORICAL_LEDGER_STATE_TYPE_MISMATCH'
+    }
+    if(-not$op.PSObject.Properties['preflight_receipt_path'] -or
+       [string]::IsNullOrWhiteSpace([string]$op.preflight_receipt_path)){
+      Fail 'R125_HISTORICAL_PREFLIGHT_PROOF_MISSING'
+    }
+    $proofPath=[IO.Path]::GetFullPath([string]$op.preflight_receipt_path)
+    $proofRoot=[IO.Path]::GetFullPath($operationsRoot).TrimEnd('\')+'\'
+    if(-not$proofPath.StartsWith($proofRoot,[StringComparison]::OrdinalIgnoreCase) -or
+       [IO.Path]::GetFileName($proofPath) -cnotmatch '^preflight-[a-f0-9]{32}\.json    Fail 'R125_UNKNOWN_OPERATION_STATE_NOT_IDLE'
+  }
+ }
+}
+$root=Join-Path $dataRoot 'setup\maintenance-components-v2'
+ArchiveDir $root
+$exclusive=Join-Path $root 'transaction.lock'
+$lock=[IO.File]::Open($exclusive,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+try{
+ $marker=Join-Path $root 'active.json'
+ if(Test-Path -LiteralPath $marker -PathType Leaf){
+  $prior=Get-Content -LiteralPath $marker -Raw|ConvertFrom-Json
+  if($prior.phase-notin@('COMMITTED','ROLLED_BACK','FAILED_BEFORE_MUTATION')){
+   Fail 'R125_PREVIOUS_TRANSACTION_REQUIRES_RECOVERY'
+  }
+ }
+Stage 'BASELINE_SIGNED_HEALTH'
+ Live $baselineVersion
+ $id=[Guid]::NewGuid().ToString('N')
+ $dir=Join-Path $root ('tx-'+$id)
+ ArchiveDir $dir
+ $backup=Join-Path $dir 'before'
+ ArchiveDir $backup
+ $result=Join-Path $dir 'result.json'
+ $state=[ordered]@{format='sokna-maintenance-components-transaction-v2';id=$id;phase='PREPARED';baseline=$baselineVersion;target=$targetVersion;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false}
+ foreach($rel in $names){
+  $dst=Join-Path $backup ([IO.Path]::GetFileName($rel))
+  Copy-Item -LiteralPath $installed[$rel] -Destination $dst
+  Same $dst $original[$rel]
+ }
+ $idBackup=Join-Path $backup 'installed-release-identity.json'
+ Copy-Item -LiteralPath $identity -Destination $idBackup
+ Same $idBackup $identityHash
+ Save (Join-Path $dir 'snapshot.json') ([ordered]@{format='sokna-maintenance-components-snapshot-v2';identity_sha256=$identityHash;files=@($names|ForEach-Object{@{name=$_;sha256=$original[$_]}})})
+ Save $marker $state
+ try{
+Stage 'STOP_SERVICE'
+  $state.phase='STOPPING';Save $marker $state
+  StopMaintenanceService
+Stage 'REPLACE_COMPONENTS'
+  $state.phase='REPLACING';Save $marker $state
+  for($i=0;$i-lt3;$i++){
+   $rel=$names[$i]
+   Copy-Item -LiteralPath (Join-Path $PayloadRoot ($rel.Replace('/','\'))) -Destination $installed[$rel] -Force
+   Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))
+   if($lab -and $i-eq0 -and $FailAt-eq'crash-after-copy-1'){
+    [Diagnostics.Process]::GetCurrentProcess().Kill()
+   }
+   Fault ('after-copy-'+($i+1))
+  }
+Stage 'START_SERVICE'
+  $state.phase='STARTING';Save $marker $state
+  StartMaintenanceService
+  Live $targetVersion
+  Fault 'after-service-start'
+Stage 'COMMIT_IDENTITY'
+  $state.phase='IDENTITY';Save $marker $state
+  $doc=Get-Content -LiteralPath $identity -Raw|ConvertFrom-Json
+  if((Hash $identity)-cne$identityHash){Fail 'R125_IDENTITY_CHANGED_DURING_INSTALL'}
+  $doc.maintenance_supervisor_version=$targetVersion
+  $doc.update_engine_version=$targetVersion
+  $roundTrip=($doc|ConvertTo-Json -Depth 100 -Compress)|ConvertFrom-Json
+  $roundTrip.maintenance_supervisor_version=$baselineVersion
+  $roundTrip.update_engine_version=$baselineVersion
+  if(($roundTrip|ConvertTo-Json -Depth 100 -Compress)-cne
+    ($oldDoc|ConvertTo-Json -Depth 100 -Compress)){Fail 'R125_IDENTITY_SCOPE_DRIFT'}
+  Save $identity $doc
+  if($lab -and $FailAt-eq'crash-after-identity'){
+   [Diagnostics.Process]::GetCurrentProcess().Kill()
+  }
+  Fault 'after-identity'
+  foreach($rel in $names){Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))}
+  Live $targetVersion
+  AssertOtherComponents
+  # Durable complete receipt precedes the commit marker: a crash in the gap
+  # is safely recoverable rather than falsely advertising committed install.
+  Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='COMMITTED';supervisor_version=$targetVersion;engine_version=$targetVersion;recovery_console_version=$targetRecovery;source_version=$baselineVersion;source_commit=$manifest.source_commit;files=$files;archive_reconciled=$false;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
+  $state.phase='COMMITTED';Save $marker $state
+  Write-Host 'MAINTENANCE_0326_INSTALL_COMMITTED'
+  exit 0
+ }catch{
+  if($_.Exception-isnot[IO.InvalidDataException]){Write-Host ('SOKNA_INSTALLER_FAILURE_STAGE='+$script:InstallerStage);Write-Host 'SOKNA_INSTALLER_FAILURE=R125_COMPONENT_TRANSACTION_FAILED'}
+  [Console]::Error.WriteLine($_.Exception.ToString())
+  if($lab){Write-Host ('R125_CI_ORIGINAL_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
+Stage 'ROLLBACK'
+  $state.phase='ROLLING_BACK';Save $marker $state
+  try{
+   StopMaintenanceService
+   foreach($rel in $names){
+    $src=Join-Path $backup ([IO.Path]::GetFileName($rel))
+    Same $src $original[$rel]
+    if((Hash $installed[$rel])-cne$original[$rel]){Copy-Item -LiteralPath $src -Destination $installed[$rel] -Force}
+    Same $installed[$rel] $original[$rel]
+   }
+   Same $idBackup $identityHash
+   Copy-Item -LiteralPath $idBackup -Destination $identity -Force
+   Same $identity $identityHash
+   StartMaintenanceService
+   Live $baselineVersion
+   AssertOtherComponents
+   $state.phase='ROLLED_BACK';Save $marker $state
+   Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='ROLLED_BACK';original_files_restored=$true;identity_restored=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
+   Write-Host 'MAINTENANCE_0326_INSTALL_ROLLED_BACK'
+   exit 65
+  }catch{
+   if($lab){Write-Host ('R125_CI_ROLLBACK_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
+   $state.phase='RECOVERY_REQUIRED';Save $marker $state
+   Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='RECOVERY_REQUIRED';backup_retained=$true;auto_retry_forbidden=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false})
+   Write-Host 'MAINTENANCE_0326_RECOVERY_REQUIRED'
+   exit 66
+  }
+ }
+}finally{$lock.Dispose()}
+
+
+}finally{$machineLease.Dispose()}
+){
+      Fail 'R125_HISTORICAL_PREFLIGHT_PROOF_UNTRUSTED'
+    }
+    $preflightId=[IO.Path]::GetFileNameWithoutExtension($proofPath).Substring(10)
+    if($op.state-eq'verified' -and $preflightId-cne[string]$op.operation_id){
+      Fail 'R125_HISTORICAL_PREFLIGHT_PROOF_UNTRUSTED'
+    }
+    FileSafe $proofPath
+    $proof=Get-Content -LiteralPath $proofPath -Raw|ConvertFrom-Json -ErrorAction Stop
+    if($proof.format-cne'sokna-local-package-preflight-v1' -or
+       $proof.schema_version-ne1 -or $proof.operation_id-cne$preflightId -or
+       $proof.package_ref-cne$op.package_ref -or
+       [string]$proof.installed_identity_sha256 -cnotmatch '^[a-f0-9]{64}    Fail 'R125_UNKNOWN_OPERATION_STATE_NOT_IDLE'
+  }
+ }
+}
+$root=Join-Path $dataRoot 'setup\maintenance-components-v2'
+ArchiveDir $root
+$exclusive=Join-Path $root 'transaction.lock'
+$lock=[IO.File]::Open($exclusive,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+try{
+ $marker=Join-Path $root 'active.json'
+ if(Test-Path -LiteralPath $marker -PathType Leaf){
+  $prior=Get-Content -LiteralPath $marker -Raw|ConvertFrom-Json
+  if($prior.phase-notin@('COMMITTED','ROLLED_BACK','FAILED_BEFORE_MUTATION')){
+   Fail 'R125_PREVIOUS_TRANSACTION_REQUIRES_RECOVERY'
+  }
+ }
+Stage 'BASELINE_SIGNED_HEALTH'
+ Live $baselineVersion
+ $id=[Guid]::NewGuid().ToString('N')
+ $dir=Join-Path $root ('tx-'+$id)
+ ArchiveDir $dir
+ $backup=Join-Path $dir 'before'
+ ArchiveDir $backup
+ $result=Join-Path $dir 'result.json'
+ $state=[ordered]@{format='sokna-maintenance-components-transaction-v2';id=$id;phase='PREPARED';baseline=$baselineVersion;target=$targetVersion;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false}
+ foreach($rel in $names){
+  $dst=Join-Path $backup ([IO.Path]::GetFileName($rel))
+  Copy-Item -LiteralPath $installed[$rel] -Destination $dst
+  Same $dst $original[$rel]
+ }
+ $idBackup=Join-Path $backup 'installed-release-identity.json'
+ Copy-Item -LiteralPath $identity -Destination $idBackup
+ Same $idBackup $identityHash
+ Save (Join-Path $dir 'snapshot.json') ([ordered]@{format='sokna-maintenance-components-snapshot-v2';identity_sha256=$identityHash;files=@($names|ForEach-Object{@{name=$_;sha256=$original[$_]}})})
+ Save $marker $state
+ try{
+Stage 'STOP_SERVICE'
+  $state.phase='STOPPING';Save $marker $state
+  StopMaintenanceService
+Stage 'REPLACE_COMPONENTS'
+  $state.phase='REPLACING';Save $marker $state
+  for($i=0;$i-lt3;$i++){
+   $rel=$names[$i]
+   Copy-Item -LiteralPath (Join-Path $PayloadRoot ($rel.Replace('/','\'))) -Destination $installed[$rel] -Force
+   Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))
+   if($lab -and $i-eq0 -and $FailAt-eq'crash-after-copy-1'){
+    [Diagnostics.Process]::GetCurrentProcess().Kill()
+   }
+   Fault ('after-copy-'+($i+1))
+  }
+Stage 'START_SERVICE'
+  $state.phase='STARTING';Save $marker $state
+  StartMaintenanceService
+  Live $targetVersion
+  Fault 'after-service-start'
+Stage 'COMMIT_IDENTITY'
+  $state.phase='IDENTITY';Save $marker $state
+  $doc=Get-Content -LiteralPath $identity -Raw|ConvertFrom-Json
+  if((Hash $identity)-cne$identityHash){Fail 'R125_IDENTITY_CHANGED_DURING_INSTALL'}
+  $doc.maintenance_supervisor_version=$targetVersion
+  $doc.update_engine_version=$targetVersion
+  $roundTrip=($doc|ConvertTo-Json -Depth 100 -Compress)|ConvertFrom-Json
+  $roundTrip.maintenance_supervisor_version=$baselineVersion
+  $roundTrip.update_engine_version=$baselineVersion
+  if(($roundTrip|ConvertTo-Json -Depth 100 -Compress)-cne
+    ($oldDoc|ConvertTo-Json -Depth 100 -Compress)){Fail 'R125_IDENTITY_SCOPE_DRIFT'}
+  Save $identity $doc
+  if($lab -and $FailAt-eq'crash-after-identity'){
+   [Diagnostics.Process]::GetCurrentProcess().Kill()
+  }
+  Fault 'after-identity'
+  foreach($rel in $names){Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))}
+  Live $targetVersion
+  AssertOtherComponents
+  # Durable complete receipt precedes the commit marker: a crash in the gap
+  # is safely recoverable rather than falsely advertising committed install.
+  Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='COMMITTED';supervisor_version=$targetVersion;engine_version=$targetVersion;recovery_console_version=$targetRecovery;source_version=$baselineVersion;source_commit=$manifest.source_commit;files=$files;archive_reconciled=$false;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
+  $state.phase='COMMITTED';Save $marker $state
+  Write-Host 'MAINTENANCE_0326_INSTALL_COMMITTED'
+  exit 0
+ }catch{
+  if($_.Exception-isnot[IO.InvalidDataException]){Write-Host ('SOKNA_INSTALLER_FAILURE_STAGE='+$script:InstallerStage);Write-Host 'SOKNA_INSTALLER_FAILURE=R125_COMPONENT_TRANSACTION_FAILED'}
+  [Console]::Error.WriteLine($_.Exception.ToString())
+  if($lab){Write-Host ('R125_CI_ORIGINAL_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
+Stage 'ROLLBACK'
+  $state.phase='ROLLING_BACK';Save $marker $state
+  try{
+   StopMaintenanceService
+   foreach($rel in $names){
+    $src=Join-Path $backup ([IO.Path]::GetFileName($rel))
+    Same $src $original[$rel]
+    if((Hash $installed[$rel])-cne$original[$rel]){Copy-Item -LiteralPath $src -Destination $installed[$rel] -Force}
+    Same $installed[$rel] $original[$rel]
+   }
+   Same $idBackup $identityHash
+   Copy-Item -LiteralPath $idBackup -Destination $identity -Force
+   Same $identity $identityHash
+   StartMaintenanceService
+   Live $baselineVersion
+   AssertOtherComponents
+   $state.phase='ROLLED_BACK';Save $marker $state
+   Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='ROLLED_BACK';original_files_restored=$true;identity_restored=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
+   Write-Host 'MAINTENANCE_0326_INSTALL_ROLLED_BACK'
+   exit 65
+  }catch{
+   if($lab){Write-Host ('R125_CI_ROLLBACK_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
+   $state.phase='RECOVERY_REQUIRED';Save $marker $state
+   Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='RECOVERY_REQUIRED';backup_retained=$true;auto_retry_forbidden=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false})
+   Write-Host 'MAINTENANCE_0326_RECOVERY_REQUIRED'
+   exit 66
+  }
+ }
+}finally{$lock.Dispose()}
+
+
+}finally{$machineLease.Dispose()}
+ -or
+       -not$proof.PSObject.Properties['verification'] -or
+       $proof.verification.activation_performed -ne$false -or
+       $proof.verification.database_mutation_performed -ne$false -or
+       $proof.verification.artifact_integrity_verified -ne$true -or
+       [string]$proof.verification.package_sha256 -cnotmatch '^[a-f0-9]{64}    Fail 'R125_UNKNOWN_OPERATION_STATE_NOT_IDLE'
+  }
+ }
+}
+$root=Join-Path $dataRoot 'setup\maintenance-components-v2'
+ArchiveDir $root
+$exclusive=Join-Path $root 'transaction.lock'
+$lock=[IO.File]::Open($exclusive,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+try{
+ $marker=Join-Path $root 'active.json'
+ if(Test-Path -LiteralPath $marker -PathType Leaf){
+  $prior=Get-Content -LiteralPath $marker -Raw|ConvertFrom-Json
+  if($prior.phase-notin@('COMMITTED','ROLLED_BACK','FAILED_BEFORE_MUTATION')){
+   Fail 'R125_PREVIOUS_TRANSACTION_REQUIRES_RECOVERY'
+  }
+ }
+Stage 'BASELINE_SIGNED_HEALTH'
+ Live $baselineVersion
+ $id=[Guid]::NewGuid().ToString('N')
+ $dir=Join-Path $root ('tx-'+$id)
+ ArchiveDir $dir
+ $backup=Join-Path $dir 'before'
+ ArchiveDir $backup
+ $result=Join-Path $dir 'result.json'
+ $state=[ordered]@{format='sokna-maintenance-components-transaction-v2';id=$id;phase='PREPARED';baseline=$baselineVersion;target=$targetVersion;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false}
+ foreach($rel in $names){
+  $dst=Join-Path $backup ([IO.Path]::GetFileName($rel))
+  Copy-Item -LiteralPath $installed[$rel] -Destination $dst
+  Same $dst $original[$rel]
+ }
+ $idBackup=Join-Path $backup 'installed-release-identity.json'
+ Copy-Item -LiteralPath $identity -Destination $idBackup
+ Same $idBackup $identityHash
+ Save (Join-Path $dir 'snapshot.json') ([ordered]@{format='sokna-maintenance-components-snapshot-v2';identity_sha256=$identityHash;files=@($names|ForEach-Object{@{name=$_;sha256=$original[$_]}})})
+ Save $marker $state
+ try{
+Stage 'STOP_SERVICE'
+  $state.phase='STOPPING';Save $marker $state
+  StopMaintenanceService
+Stage 'REPLACE_COMPONENTS'
+  $state.phase='REPLACING';Save $marker $state
+  for($i=0;$i-lt3;$i++){
+   $rel=$names[$i]
+   Copy-Item -LiteralPath (Join-Path $PayloadRoot ($rel.Replace('/','\'))) -Destination $installed[$rel] -Force
+   Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))
+   if($lab -and $i-eq0 -and $FailAt-eq'crash-after-copy-1'){
+    [Diagnostics.Process]::GetCurrentProcess().Kill()
+   }
+   Fault ('after-copy-'+($i+1))
+  }
+Stage 'START_SERVICE'
+  $state.phase='STARTING';Save $marker $state
+  StartMaintenanceService
+  Live $targetVersion
+  Fault 'after-service-start'
+Stage 'COMMIT_IDENTITY'
+  $state.phase='IDENTITY';Save $marker $state
+  $doc=Get-Content -LiteralPath $identity -Raw|ConvertFrom-Json
+  if((Hash $identity)-cne$identityHash){Fail 'R125_IDENTITY_CHANGED_DURING_INSTALL'}
+  $doc.maintenance_supervisor_version=$targetVersion
+  $doc.update_engine_version=$targetVersion
+  $roundTrip=($doc|ConvertTo-Json -Depth 100 -Compress)|ConvertFrom-Json
+  $roundTrip.maintenance_supervisor_version=$baselineVersion
+  $roundTrip.update_engine_version=$baselineVersion
+  if(($roundTrip|ConvertTo-Json -Depth 100 -Compress)-cne
+    ($oldDoc|ConvertTo-Json -Depth 100 -Compress)){Fail 'R125_IDENTITY_SCOPE_DRIFT'}
+  Save $identity $doc
+  if($lab -and $FailAt-eq'crash-after-identity'){
+   [Diagnostics.Process]::GetCurrentProcess().Kill()
+  }
+  Fault 'after-identity'
+  foreach($rel in $names){Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))}
+  Live $targetVersion
+  AssertOtherComponents
+  # Durable complete receipt precedes the commit marker: a crash in the gap
+  # is safely recoverable rather than falsely advertising committed install.
+  Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='COMMITTED';supervisor_version=$targetVersion;engine_version=$targetVersion;recovery_console_version=$targetRecovery;source_version=$baselineVersion;source_commit=$manifest.source_commit;files=$files;archive_reconciled=$false;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
+  $state.phase='COMMITTED';Save $marker $state
+  Write-Host 'MAINTENANCE_0326_INSTALL_COMMITTED'
+  exit 0
+ }catch{
+  if($_.Exception-isnot[IO.InvalidDataException]){Write-Host ('SOKNA_INSTALLER_FAILURE_STAGE='+$script:InstallerStage);Write-Host 'SOKNA_INSTALLER_FAILURE=R125_COMPONENT_TRANSACTION_FAILED'}
+  [Console]::Error.WriteLine($_.Exception.ToString())
+  if($lab){Write-Host ('R125_CI_ORIGINAL_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
+Stage 'ROLLBACK'
+  $state.phase='ROLLING_BACK';Save $marker $state
+  try{
+   StopMaintenanceService
+   foreach($rel in $names){
+    $src=Join-Path $backup ([IO.Path]::GetFileName($rel))
+    Same $src $original[$rel]
+    if((Hash $installed[$rel])-cne$original[$rel]){Copy-Item -LiteralPath $src -Destination $installed[$rel] -Force}
+    Same $installed[$rel] $original[$rel]
+   }
+   Same $idBackup $identityHash
+   Copy-Item -LiteralPath $idBackup -Destination $identity -Force
+   Same $identity $identityHash
+   StartMaintenanceService
+   Live $baselineVersion
+   AssertOtherComponents
+   $state.phase='ROLLED_BACK';Save $marker $state
+   Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='ROLLED_BACK';original_files_restored=$true;identity_restored=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
+   Write-Host 'MAINTENANCE_0326_INSTALL_ROLLED_BACK'
+   exit 65
+  }catch{
+   if($lab){Write-Host ('R125_CI_ROLLBACK_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
+   $state.phase='RECOVERY_REQUIRED';Save $marker $state
+   Save $result ([ordered]@{format='sokna-maintenance-components-result-v2';status='RECOVERY_REQUIRED';backup_retained=$true;auto_retry_forbidden=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false})
+   Write-Host 'MAINTENANCE_0326_RECOVERY_REQUIRED'
+   exit 66
+  }
+ }
+}finally{$lock.Dispose()}
+
+
+}finally{$machineLease.Dispose()}
+){
+      Fail 'R125_HISTORICAL_PREFLIGHT_PROOF_INVALID'
+    }
+    if($op.state-eq'staged'){
+      if(-not$op.PSObject.Properties['stage_receipt_path'] -or
+         [string]::IsNullOrWhiteSpace([string]$op.stage_receipt_path)){
+        Fail 'R125_HISTORICAL_STAGE_PROOF_MISSING'
+      }
+      $stagePath=[IO.Path]::GetFullPath([string]$op.stage_receipt_path)
+      $stageRoot=[IO.Path]::GetFullPath((Join-Path $dataRoot 'staging\release-sets')).TrimEnd('\')+'\'
+      if(-not$stagePath.StartsWith($stageRoot,[StringComparison]::OrdinalIgnoreCase) -or
+         [IO.Path]::GetFileName($stagePath)-cne'stage-receipt.json'){
+        Fail 'R125_HISTORICAL_STAGE_PROOF_UNTRUSTED'
+      }
+      $stageDir=Split-Path -Parent $stagePath
+      if(-not(Test-Path -LiteralPath $stageDir -PathType Container) -or
+         ((Get-Item -LiteralPath $stageDir -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){
+        Fail 'R125_HISTORICAL_STAGE_PROOF_UNTRUSTED'
+      }
+      FileSafe $stagePath
+      $stageProof=Get-Content -LiteralPath $stagePath -Raw|ConvertFrom-Json -ErrorAction Stop
+      if($stageProof.format-cne'sokna-maintenance-staged-release-v1' -or
+         $stageProof.schema_version-ne1 -or
+         [IO.Path]::GetFullPath([string]$stageProof.stage_root)-cne$stageDir -or
+         $stageProof.package_sha256-cne$proof.verification.package_sha256 -or
+         $stageProof.manifest_sha256-cne$proof.verification.manifest_sha256 -or
+         $stageProof.release_set_id-cne$proof.verification.release_set_id -or
+         $stageProof.sequence-ne$proof.verification.sequence -or
+         $stageProof.activation_performed-ne$false -or
+         $stageProof.database_mutation_performed-ne$false -or
+         $stageProof.preflight_identity_match-ne$true -or
+         $stageProof.artifact_integrity_verified-ne$true -or
+         (-not$stageProof.signature_verified -and -not$stageProof.operator_authorized)){
+        Fail 'R125_HISTORICAL_STAGE_PROOF_INVALID'
+      }
+    }
+    continue
+  }
   if($op.state-notin @('committed','failed_pre_mutation','failed','code_only_engine_rolled_back_verified','rolled_back','recovered','cancelled')){
     Fail 'R125_UNKNOWN_OPERATION_STATE_NOT_IDLE'
   }
