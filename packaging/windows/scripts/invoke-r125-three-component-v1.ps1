@@ -241,9 +241,9 @@ if($oldDoc.maintenance_supervisor_version-ne'0.3.22' -or
  $oldDoc.update_engine_version-ne'0.3.22'){Fail 'R125_INSTALLED_IDENTITY_NOT_0322'}
 # Do not stop a Supervisor that is executing a Local/Public maintenance
 # operation. Historical recovered/failed records remain untouched.
-if(-not$lab){
- $operationsRoot=Join-Path $dataRoot 'Maintenance\operations'
- if(-not(Test-Path -LiteralPath $operationsRoot -PathType Container)){Fail 'R125_OPERATION_LEDGER_UNAVAILABLE'}
+$operationsRoot=Join-Path $dataRoot 'Maintenance\operations'
+if(-not$lab -and -not(Test-Path -LiteralPath $operationsRoot -PathType Container)){Fail 'R125_OPERATION_LEDGER_UNAVAILABLE'}
+if(Test-Path -LiteralPath $operationsRoot -PathType Container){
  $operations=@(Get-ChildItem -LiteralPath $operationsRoot -Filter 'op-*.json' -File -ErrorAction Stop)
  if($operations.Count-gt20000){Fail 'R125_OPERATION_LEDGER_LIMIT'}
  foreach($entry in $operations){
@@ -259,6 +259,8 @@ if(-not$lab){
     Fail 'R125_UNKNOWN_OPERATION_STATE_NOT_IDLE'
   }
  }
+}
+if(-not$lab){
  $machineLock=Join-Path $dataRoot 'Maintenance\update\machine-mutation.lock'
  if(Test-Path -LiteralPath $machineLock -PathType Leaf){
   FileSafe $machineLock
