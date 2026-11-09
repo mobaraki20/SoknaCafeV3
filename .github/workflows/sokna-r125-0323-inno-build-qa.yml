@@ -10,7 +10,7 @@ on:
       - qa/sokna-r125-reconcile/test-three-component-transaction.ps1
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   native-qa-exe:
     runs-on: windows-latest
@@ -91,11 +91,12 @@ jobs:
           [ordered]@{
             format='sokna-r125-0323-inno-qa-v1';source_commit=$env:GITHUB_SHA
             filename=[IO.Path]::GetFileName($exe);sha256=$hash;bytes=(Get-Item $exe).Length
-            windows_native_binary_build='PASS';nine_rollback_cases='PASS'
+            windows_native_binary_build='PASS';thirteen_rollback_and_safety_cases='PASS'
             inno_one_click_compiled='PASS';unknown_baseline_rejected='PASS'
             real_0322_supervisor_windows_service_upgrade='NOT_TESTED'
-            real_cafe_backup_qualified=$false;process_crash_recovery_complete=$false
+            real_cafe_backup_qualified=$false;disposable_process_crash_recovery='PASS'
             production_approved=$false;local_public_print_modified=$false
+            publisher_authenticode_signed=$false;physical_cafe_host_tested=$false
           }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $out 'QA-RESULT.json') -Encoding UTF8
           Copy-Item (Join-Path $env:R125_QA_DIR 'payload/r125-component-manifest.json') (Join-Path $out 'COMPONENT-MANIFEST.json')
       - uses: actions/upload-artifact@v4
@@ -108,3 +109,86 @@ jobs:
             ${{ runner.temp }}/r125-0323-inno/dist/COMPONENT-MANIFEST.json
           if-no-files-found: error
           retention-days: 30
+
+  publish-immutable-qa-prerelease:
+    needs: [native-qa-exe]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-r125-0323-one-click-inno-qa-NOT-PRODUCTION
+          path: dist
+      - name: Check exact QA source, asset SHA256, no-production gates, three-component manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -c SHA256SUMS.txt
+          jq -e --arg head "$GITHUB_SHA" '
+            .format=="sokna-r125-0323-inno-qa-v1"
+            and .source_commit==$head
+            and .windows_native_binary_build=="PASS"
+            and .thirteen_rollback_and_safety_cases=="PASS"
+            and .disposable_process_crash_recovery=="PASS"
+            and .inno_one_click_compiled=="PASS"
+            and .unknown_baseline_rejected=="PASS"
+            and .real_cafe_backup_qualified==false
+            and .production_approved==false
+            and .publisher_authenticode_signed==false
+            and .physical_cafe_host_tested==false
+            and .local_public_print_modified==false
+          ' QA-RESULT.json
+          jq -e '
+            .format=="sokna-r125-three-component-installer-v1"
+            and .target_version=="0.3.23"
+            and .recovery_console_version=="0.1.4"
+            and .scope=="maintenance_three_components_only"
+            and (.files | length)==3
+            and ([.files[].path] | sort)==([
+             "Maintenance/App/SoknaMaintenanceSupervisor.exe",
+             "Maintenance/App/SoknaMaintenanceUpdateEngine.exe",
+             "Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe"
+            ] | sort)
+            and all(.files[]; (.sha256|test("^[0-9a-f]{64}$")) and .bytes>10000000)
+          ' COMPONENT-MANIFEST.json
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 4
+          test "$(stat -c%s SOKNA-R125-Maintenance-0323-Three-Component-QA-NOT-PRODUCTION.exe)" -gt 70000000
+          test "$(jq -r '.sha256' QA-RESULT.json)" = "$(cut -d ' ' -f1 SHA256SUMS.txt)"
+          echo 'PASS immutable QA and precise R125 scope'
+      - name: Publish immutable GitHub UAT pre-release only
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="sokna-maintenance-r125-0323-qa-$(echo "$GITHUB_SHA"|cut -c1-12)"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Existing immutable tag will not be replaced'; exit 1
+          fi
+          cat > notes-fa.md <<'NOTES'
+          # سامانه سکنا — پیش‌انتشار آزمایشی Maintenance 0.3.23
+          **فقط QA / UAT. برای نصب عملیاتی روی رایانه کافه تأیید نشده است.**
+
+          Supervisor 0.3.23، Engine 0.3.23 و Recovery Console 0.1.4.
+          ارتقا فقط از پایه دقیق Supervisor/Engine 0.3.22 و Recovery Console 0.1.3
+          پشتیبانی می‌شود؛ این فایل یونیورسال برای همه نسخه‌ها نیست.
+
+          آزمون تراکنش و بازگشت ۱۳ سناریو، قطع ناگهانی فرایند، سرویس واقعی ویندوز
+          و رد نصب روی میزبان نامعتبر موفق بوده‌اند. این نتایج به معنای تأیید
+          بک‌آپ یا وضعیت دیتابیس واقعی کافه نیستند.
+
+          قفل R125 به‌طور خودکار حذف یا تغییر نمی‌کند.
+          این EXE امضای Authenticode ناشر ندارد؛ SHA256 و فایل QA-RESULT.json
+          تنها به تطبیق فایل و منشأ ساخت کمک می‌کنند.
+          تا تطبیق دقیق رسید نسخه نصب‌شده، شواهد واقعی دیتابیس و شرایط بازیابی
+          انجام نشده است، آن را روی سیستم کافه اجرا نکنید.
+          NOTES
+          gh release create "$tag" \
+            dist/SOKNA-R125-Maintenance-0323-Three-Component-QA-NOT-PRODUCTION.exe \
+            dist/SHA256SUMS.txt dist/QA-RESULT.json dist/COMPONENT-MANIFEST.json \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'SOKNA Maintenance 0.3.23 / Recovery Console 0.1.4 — QA ONLY' \
+            --notes-file notes-fa.md --prerelease
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '[.assets[] | select(.size>0)] | length')" -eq 4
+          echo "SOKNA_R125_QA_RELEASE=https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag"
