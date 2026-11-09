@@ -81,9 +81,17 @@ try {
     Need ([bool]$apacheExe) 'APACHE_BINARY_MISSING'
     $apacheSource=Split-Path -Parent (Split-Path -Parent $apacheExe.FullName)
     $engineOut=Join-Path $lab 'engine';$harnessOut=Join-Path $lab 'harness'
-    Run dotnet @('publish','windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj','-c','Release','-r','win-x64','--self-contained','false','-o',$engineOut)
+    if(-not$env:SOKNA_TEST_INSTALLED_ENGINE_EXE){
+        Run dotnet @('publish','windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj','-c','Release','-r','win-x64','--self-contained','false','-o',$engineOut)
+    }
     Run dotnet @('publish','windows/maintenance/tests/Sokna.Maintenance.U01Harness/Sokna.Maintenance.U01Harness.csproj','-c','Release','-r','win-x64','--self-contained','false','-o',$harnessOut)
     $harness=Join-Path $harnessOut 'Sokna.Maintenance.U01Harness.exe';$engine=Join-Path $engineOut 'SoknaMaintenanceUpdateEngine.exe'
+    if($env:SOKNA_TEST_INSTALLED_ENGINE_EXE){
+        $engine=[IO.Path]::GetFullPath($env:SOKNA_TEST_INSTALLED_ENGINE_EXE)
+        $manifest=Get-Content $env:SOKNA_TEST_COMPONENT_MANIFEST -Raw|ConvertFrom-Json
+        $row=@($manifest.files|Where-Object{$_.path-eq'Maintenance/App/SoknaMaintenanceUpdateEngine.exe'})
+        Need ($row.Count-eq1 -and (Get-FileHash $engine -Algorithm SHA256).Hash.ToLowerInvariant()-eq$row[0].sha256) 'EXACT_INSTALLER_ENGINE_HASH_MISMATCH'
+    }
     Need (Test-Path $harness) 'HARNESS_MISSING';Need (Test-Path $engine) 'ENGINE_MISSING'
     $compatOut=Join-Path $lab 'compat-probe'
     Run dotnet @('publish','qa/sokna-r129-compat/CompatProbe.csproj','-c','Release','-r','win-x64','--self-contained','false','-o',$compatOut)
@@ -198,8 +206,10 @@ PidFile "$ar/logs/httpd.pid"
                 $dbBackupRoot=Join-Path $root 'Maintenance/local-slots/private-db-backups'
                 Need (Test-Path $dbBackupRoot) 'R149B_ENGINE_BACKUP_ROOT_MISSING'
                 $backups=@(Get-ChildItem -LiteralPath $dbBackupRoot -Filter '*.sql' -File)
-                Need ($backups.Count -eq 1) 'R149B_ENGINE_BACKUP_AMBIGUOUS'
-                $backup=$backups[0].FullName
+                $expectedBackups=if($sourceName-eq'r75'){2}else{1}
+                Need ($backups.Count -eq $expectedBackups) 'R149B_ENGINE_BACKUP_AMBIGUOUS'
+                foreach($oneBackup in $backups){
+                $backup=$oneBackup.FullName
                 Need ((Get-Item $backup).Length -gt 500) 'R149B_ENGINE_BACKUP_EMPTY'
                 $backupHash=(Get-FileHash $backup -Algorithm SHA256).Hash
                 $mysqlExe=Join-Path $mdb 'bin/mariadb.exe'
@@ -223,10 +233,11 @@ PidFile "$ar/logs/httpd.pid"
                 $liveLedger= & $mysqlExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r140_exact.schema_migrations;'
                 Need ($LASTEXITCODE -eq 0 -and [string]$liveLedger -eq '80') 'ISOLATED_RESTORE_CHANGED_LIVE_DATABASE'
                 Write-Host "ISOLATED_ENGINE_BACKUP_RESTORED_WITH_LIVE_DB_PRESERVED source=$sourceName"
+                }
             }
             $liveQty= & $mysqlExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT qty FROM sokna_r140_exact.ci_upgrade_sentinel WHERE id=1;'
             Need ($LASTEXITCODE -eq 0 -and [string]$liveQty -eq [string]$sentinelQty) 'UPGRADE_OR_RECOVERY_LOST_SENTINEL_DATA'
-            $results+=@{source=$sourceName;source_migrations=$sourceCount;target_migrations=[int]$actualCount;package_sha256=$packageHash;engine_sha256=$engineHash;engine_physical_version=$engineVersion;fault=$fault;phase=$state.phase;db_forward=$forward;sentinel_preserved=$true;isolated_restore_verified=($fault -eq 'none');physical_host_tested=$false;status='PASS'}
+            $results+=@{source=$sourceName;source_migrations=$sourceCount;target_migrations=[int]$actualCount;package_sha256=$packageHash;engine_sha256=$engineHash;engine_physical_version=$engineVersion;fault=$fault;phase=$state.phase;db_forward=$forward;sentinel_preserved=$true;isolated_restore_verified=($fault -eq 'none');r129_native_evidence_verified=($sourceName-eq'r75' -and $fault-eq'none');exact_installer_engine=([bool]$env:SOKNA_TEST_INSTALLED_ENGINE_EXE);physical_host_tested=$false;status='PASS'}
             Write-Host "R149B_EXACT_WINDOWS_APACHE_MARIADB_CYCLE_PASS source=$sourceName fault=$fault phase=$($state.phase)"
         } finally {
             if(Get-Service SoknaApache -ErrorAction SilentlyContinue){Stop-Service SoknaApache -ErrorAction SilentlyContinue;& sc.exe delete SoknaApache|Out-Null;Start-Sleep -Milliseconds 500}

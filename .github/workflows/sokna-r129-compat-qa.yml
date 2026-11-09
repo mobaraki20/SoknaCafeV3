@@ -113,6 +113,13 @@ jobs:
           name: maintenance-0325-built-qa-not-production
           path: ${{ runner.temp }}/maintenance-0325/dist/*
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-0325-exact-installer-engine
+          path: |
+            ${{ runner.temp }}/maintenance-0325/Sokna.Maintenance.UpdateEngine/SoknaMaintenanceUpdateEngine.exe
+            ${{ runner.temp }}/maintenance-0325/dist/COMPONENT-MANIFEST.json
+          if-no-files-found: error
   maintenance-0325-real-services:
     needs: maintenance-0325-build
     runs-on: windows-latest
@@ -153,4 +160,32 @@ jobs:
         with:
           name: maintenance-0325-three-real-baselines-no-field-approval
           path: dist/REAL-SERVICE-QA.json
+          if-no-files-found: error
+  exact-installer-engine-live-stack:
+    needs: maintenance-0325-build
+    runs-on: windows-latest
+    timeout-minutes: 55
+    env: {SOKNA_R149B_DISPOSABLE: 'YES'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-0325-exact-installer-engine
+          path: exact-engine
+      - name: Exact installer Engine, native R129 qualification, two baselines and 12 fault cycles
+        shell: pwsh
+        run: |
+          $engine=Get-ChildItem exact-engine -Recurse -Filter SoknaMaintenanceUpdateEngine.exe|Select-Object -First 1
+          $manifest=Get-ChildItem exact-engine -Recurse -Filter COMPONENT-MANIFEST.json|Select-Object -First 1
+          $env:SOKNA_TEST_INSTALLED_ENGINE_EXE=$engine.FullName
+          $env:SOKNA_TEST_COMPONENT_MANIFEST=$manifest.FullName
+          & ./qa/sokna-r149b/windows-r149b-activation.ps1
+          if($LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: maintenance-0325-exact-engine-r129-12cycles-three-restores-no-field-approval
+          path: ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/r149b-windows-cycles.json
           if-no-files-found: error
