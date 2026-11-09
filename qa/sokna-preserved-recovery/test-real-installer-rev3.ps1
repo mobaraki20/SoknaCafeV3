@@ -25,7 +25,7 @@ foreach($case in @('0.3.22-preserved011','0.3.22','0.3.23','0.3.24','0.3.25')){
  $preserved011=$case-eq'0.3.22-preserved011'
  $baseline=if($preserved011){'0.3.22'}else{$case}
  $folder=if($baseline-eq'0.3.22'){'آزمون سرویس خانه'}else{'service-cafe-lab'}
- $install=Join-Path $env:RUNNER_TEMP ($folder+'-'+$baseline)
+ $install=Join-Path $env:RUNNER_TEMP ($folder+'-'+$case)
  New-Item -ItemType Directory -Path $install,(Join-Path $data 'Maintenance/operations'),(Join-Path $data 'setup') -Force|Out-Null
  foreach($i in 0..2){
   $to=Join-Path $install $names[$i]

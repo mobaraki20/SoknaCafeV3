@@ -1,12 +1,10 @@
 name: SOKNA Maintenance REV3 exact preserved Recovery 011 qualification
 on:
-  push:
-    branches: [qa/sokna-update-safety-20261109]
-    paths: ['.github/workflows/sokna-maintenance-0326-rev3-qa.yml', 'qa/sokna-preserved-recovery/test-real-installer-rev3.ps1', 'packaging/windows/scripts/invoke-maintenance-install-logged-v1.ps1']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
   build-rev3:
+    if: github.sha == 'ac863401ac88210811db57287153c305c8f7f9d5'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
