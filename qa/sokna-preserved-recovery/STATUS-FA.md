@@ -1,3 +1,19 @@
+# نتیجه REV3 با باینری اصلی Recovery
+
+وضعیت: QA نصب/بازیابی آزمایشگاهی PASS؛ پذیرش کافه و Production باز.
+
+- بسته GitHub: https://github.com/mobaraki20/SoknaCafeV3/releases/tag/maintenance-0326-integrated-rev3-qa-ac863401ac88
+- SHA256 نصاب: `4d6294d6a76128e9982d5ffd42b692e2fbf72b41718c4b66eec3f9d9885483f8`؛ PE `0.3.26.3`.
+- Recovery اصلی از asset `643841631`؛ PE `0.1.1.0` و SHA `368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd`.
+- پنج ترکیب واقعی سرویس Windows، قفل فایل/rollback/replay: job `129408596688`، run `42690483173`، PASS.
+- native R125 با همان Recovery اصلی، signed crash resume و next Core Preflight؛ دو مبدأ/۱۲ چرخه/سه Restore آزمایشگاهی: job `129405693766`، run `42688967400`، PASS.
+- ۱۱ حالت سیاست + fixture اجباری میزبان + ۶۰ تراکنش: job ساخت `129403296903`، PASS.
+- انتشار دقیق فایل آزموده‌شده: run `42691981726`، PASS. Release target، commit تکمیل انتشار است؛ wrapper_source_commit در BUILD-QA همان `ac863401ac88210811db57287153c305c8f7f9d5` است.
+- توضیح نمونه‌برداری هش اولیه در رسید پنج مبدأ: `QA-METADATA-CLARIFICATION.json`. خود نصاب نسخه و هش پس از bootstrap را مستقل کنترل کرده؛ محل نمونه‌برداری harness اصلاح شده است. رسید خام/EXE بازنویسی نشده‌اند.
+- اجرای میدانی، Restore داده واقعی کافه و پذیرش عملیاتی Local/Public همچنان NOT RUN. REV2 توصیه نمی‌شود. این checkpoint مجوز Production نیست.
+
+## سابقه پیش از آزمون باینری فیزیکی
+
 # توقف تحویل REV2 — ترکیب قدیمیِ معتبر پوشش داده نشده بود
 
 کاربر پس از نصب REV2 کد `MAINTENANCE_BASELINE_COMPONENT_VERSION_MISMATCH` در مرحله `BASELINE_VERSION` را گزارش کرد. این انتشار، رفع‌شده روی دستگاه کاربر نیست؛ فعلاً دوباره اجرا نشود.
