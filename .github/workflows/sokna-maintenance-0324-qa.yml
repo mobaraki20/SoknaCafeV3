@@ -1,12 +1,5 @@
 name: SOKNA Maintenance 0324 exact installer build and two-baseline service QA
 on:
-  push:
-    branches: [qa/sokna-update-safety-20261109]
-    paths:
-      - .github/workflows/sokna-maintenance-0324-qa.yml
-      - packaging/windows/**
-      - windows/maintenance/src/**
-      - qa/sokna-update-safety/test-maintenance*.ps1
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,6 +9,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 573c97322fa11616c4251c928f3a05e166a22f84
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
@@ -66,7 +61,11 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 573c97322fa11616c4251c928f3a05e166a22f84
       - uses: actions/checkout@v4
+        with:
+          ref: 573c97322fa11616c4251c928f3a05e166a22f84
         with:
           ref: b8b1cc4e91772692d92d6f7aa10b0657d2aa5427
           path: old-0322-source
