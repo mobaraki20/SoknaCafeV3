@@ -1,0 +1,23 @@
+name: SOKNA REV3 QA evidence metadata clarification
+on:
+  push:
+    branches: [qa/sokna-update-safety-20261109]
+    paths: ['.github/workflows/sokna-rev3-evidence-clarification.yml']
+permissions: {contents: write}
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preserve existing assets and attach sampling clarification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: mobaraki20/SoknaCafeV3
+        run: |
+          gh release upload maintenance-0326-integrated-rev3-qa-ac863401ac88 qa/sokna-preserved-recovery/QA-METADATA-CLARIFICATION.json
+          gh release view maintenance-0326-integrated-rev3-qa-ac863401ac88 --json body --jq .body > /tmp/notes.md
+          cat >> /tmp/notes.md <<'NOTE'
+
+          توضیح متادیتای آزمون: در REAL-SERVICE-QA.json، فیلد baseline_recovery_sha256 برای ردیف‌های 0.3.23 تا 0.3.25 پیش از bootstrap نمونه‌برداری شده است؛ هش اولیهٔ Recovery۰٫۱٫۳ را نشان می‌دهد. کنترل مستقل نسخه و هش باینری‌های واقعی پس از bootstrap در خود نصاب اجرا و PASS شده است. ردیف اصلی 0.3.22/Recovery0.1.1 دقیق و صحیح است. فایل QA-METADATA-CLARIFICATION.json جزئیات را ثبت می‌کند و نمونه‌برداری harness اصلاح شده است. فایل EXE و رسید خام بازنویسی نشده‌اند.
+          NOTE
+          gh release edit maintenance-0326-integrated-rev3-qa-ac863401ac88 --notes-file /tmp/notes.md

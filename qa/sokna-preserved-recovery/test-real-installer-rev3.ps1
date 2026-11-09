@@ -38,7 +38,6 @@ foreach($case in @('0.3.22-preserved011','0.3.22','0.3.23','0.3.24','0.3.25')){
   Set-Content $to 'UNTOUCHED_CI_COMPONENT'
  }
  if($preserved011){Copy-Item $LegacyRecovery011 (Join-Path $install $names[2]) -Force}
- $originalRecoveryHash=Hash (Join-Path $install $names[2])
  $identity=Join-Path $data 'Maintenance/installed-release-identity.json'
  @{maintenance_supervisor_version='0.3.22';update_engine_version='0.3.22';local=@{version='synthetic-R112';keep='local'};public=@{version='synthetic-public';keep='public'}}|
   ConvertTo-Json -Depth 8|Set-Content $identity
@@ -61,6 +60,8 @@ foreach($case in @('0.3.22-preserved011','0.3.22','0.3.23','0.3.24','0.3.25')){
    Need ((InvokeInstaller $Old0325Installer)-eq0) 'BUILT_0325_BOOTSTRAP_FAILED'
    Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.25' -Attempts 40
   }
+  # Read the actual baseline after any 0323/0324/0325 bootstrap completed.
+  $originalRecoveryHash=Hash (Join-Path $install $names[2])
   $legacyBefore=$null
   if($baseline-eq'0.3.22'){
    . ./packaging/windows/scripts/maintenance-installed-versions-v1.ps1

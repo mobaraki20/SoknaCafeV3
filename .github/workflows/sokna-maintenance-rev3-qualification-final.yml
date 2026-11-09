@@ -1,11 +1,10 @@
 name: SOKNA REV3 final qualification of exact built candidate
 on:
-  push:
-    branches: [qa/sokna-update-safety-20261109]
-    paths: ['.github/workflows/sokna-maintenance-rev3-qualification-final.yml', 'qa/sokna-preserved-recovery/test-real-installer-rev3.ps1']
+  workflow_dispatch:
 permissions: {contents: read, actions: read}
 jobs:
   real-services-rev3:
+    if: github.sha == 'cdf773494a696cc6d741e19586b3ca2d475f3ef5'
     runs-on: windows-latest
     timeout-minutes: 35
     permissions: {contents: read, actions: read}
