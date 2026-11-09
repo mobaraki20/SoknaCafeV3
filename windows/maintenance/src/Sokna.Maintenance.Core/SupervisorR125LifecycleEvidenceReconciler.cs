@@ -271,6 +271,18 @@ public sealed class SupervisorR125LifecycleEvidenceReconciler
             layout.PackageRoot, layout.WebRoot, baseline);
     }
 
+    public static void VerifyCommittedArchive(MaintenancePaths paths, MaintenanceOperation operation, string build, string sha)
+    {
+        if (operation.State != "committed" || operation.OperationType != OperationType ||
+            operation.PackageRef != build + ":" + sha || operation.DatabaseMutationPerformed ||
+            File.Exists(Path.Combine(paths.LocalSlotStateRoot, ProofFile)))
+            throw new InvalidDataException("R125_COMMITTED_ARCHIVE_RECEIPT_UNQUALIFIED");
+        var root=Path.Combine(paths.LocalSlotStateRoot,"reconciled-lifecycle-evidence");
+        VerifySourceSha(Path.Combine(root,"proof-"+operation.OperationId+".json"),sha);
+        VerifyIntent(Path.Combine(root,"proof-"+operation.OperationId+".intent.json"),operation.OperationId,sha,build);
+        VerifyReceipt(Path.Combine(root,"proof-"+operation.OperationId+".receipt.json"),operation.OperationId,sha,build);
+    }
+
     private static void VerifySourceSha(string path, string expected)
     {
         if (!File.Exists(path) ||

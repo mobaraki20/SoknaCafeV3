@@ -1,8 +1,5 @@
 name: SOKNA R129 recovery evidence compatibility QA
 on:
-  push:
-    branches: [qa/sokna-update-safety-20261109]
-    paths: ['qa/sokna-r129-compat/**','windows/maintenance/src/**','.github/workflows/sokna-r129-compat-qa.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,6 +9,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 3530811ab9117c6787a19a3a4186d23769425a6d
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
       - shell: pwsh
@@ -65,6 +64,8 @@ jobs:
           --health-interval=10s --health-timeout=5s --health-retries=15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 3530811ab9117c6787a19a3a4186d23769425a6d
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq php-cli php-mysql mariadb-client
       - run: php -l windows/maintenance/src/Sokna.Maintenance.Core/RoutineLocalDatabase.php
       - run: python3 qa/sokna-r129-compat/test-live-ledger.py
@@ -75,6 +76,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 3530811ab9117c6787a19a3a4186d23769425a6d
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
       - name: 45 transaction, crash, rollback and lease cases
@@ -127,7 +130,11 @@ jobs:
     permissions: {contents: read, actions: read}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 3530811ab9117c6787a19a3a4186d23769425a6d
       - uses: actions/checkout@v4
+        with:
+          ref: 3530811ab9117c6787a19a3a4186d23769425a6d
         with: {ref: b8b1cc4e91772692d92d6f7aa10b0657d2aa5427, path: old-0322-source}
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
@@ -168,6 +175,8 @@ jobs:
     env: {SOKNA_R149B_DISPOSABLE: 'YES'}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 3530811ab9117c6787a19a3a4186d23769425a6d
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
       - uses: actions/download-artifact@v4

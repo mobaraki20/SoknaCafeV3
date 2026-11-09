@@ -47,6 +47,14 @@ var current=Encoding.UTF8.GetBytes("{\"maintenance_supervisor_version\":\"0.3.25
 Need(MaintenanceIdentityVersionProof.RequireOnlyVersionChange(oldIdentity,current)=="0.3.25","only two Maintenance identity fields can differ");
 Reject(()=>MaintenanceIdentityVersionProof.RequireOnlyVersionChange(oldIdentity,Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(current).Replace("R112","R149"))),"Local identity cannot be masked by Maintenance upgrade");
 Need(R125ReadOnlyAssessment.Code(new InvalidDataException("password=secret/private/path"))=="R125_READONLY_EVIDENCE_UNAVAILABLE","unknown error details are redacted");
+Reject(()=>MaintenanceIdentityVersionProof.RequireOnlyVersionChange(current,oldIdentity),"component version downgrade");
+var missingNullable=Encoding.UTF8.GetBytes("{\"maintenance_supervisor_version\":\"0.3.22\",\"update_engine_version\":\"0.3.22\",\"local\":{\"version\":\"R112\"}}");
+var withNullable=Encoding.UTF8.GetBytes("{\"maintenance_supervisor_version\":\"0.3.26\",\"update_engine_version\":\"0.3.26\",\"local\":{\"version\":\"R112\",\"authority_epoch_policy\":null},\"backup_recovery_engine_version\":null}");
+Need(MaintenanceIdentityVersionProof.RequireOnlyVersionChange(missingNullable,withNullable)=="0.3.26","known optional absent/null identity fields preserve meaning");
+Reject(()=>MaintenanceIdentityVersionProof.RequireOnlyVersionChange(missingNullable,Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(withNullable).Replace("\"authority_epoch_policy\":null","\"authority_epoch_policy\":\"changed\""))),"non-null identity authority cannot be ignored");
+var emptyRoot=Path.Combine(Environment.GetEnvironmentVariable("RUNNER_TEMP")!,"sokna-no-r125-"+Guid.NewGuid().ToString("N"));
+var noProof=await R125RecoveryWorkflow.RunAsync(new MaintenancePaths(emptyRoot),false);
+Need(noProof.ExitCode==0&&(string?)noProof.Report["status"]=="NOT_REQUIRED"&&!Directory.Exists(emptyRoot),"no-proof workflow creates no state and sends no mutation");
 Console.WriteLine("PASS R129 full evidence chain and identity compatibility regressions; no physical café approval");
 
 sealed class Fixture:IDisposable{
@@ -81,8 +89,13 @@ sealed class Fixture:IDisposable{
   old["migrationPlan"]=new JsonObject{["sourceFingerprint"]=plan.SourceFingerprint,["sourceHead"]=plan.SourceHead,["sourceCount"]=plan.SourceCount};
   old["databaseBackup"]=new JsonObject{["path"]=Backup,["sha256"]=bh,["bytes"]=new FileInfo(Backup).Length};
   Write(Original,old);
-  var originalOp=new JsonObject{["format"]="sokna-maintenance-operation-v1",["schema_version"]=1,["operation_id"]=id,["operation_type"]="update.local-code-only-activate",
-   ["state"]="recovery_required",["result_code"]="CODE_ONLY_EXECUTION_OUTCOME_UNPROVEN",["database_mutation_performed"]=true,["activation_performed"]=true,["package_ref"]="fixture-package"};
+  var packageRef=Guid.NewGuid().ToString("N");const string priorActor="ci:external-recovery";
+  var opRecord=new MaintenanceOperation("sokna-maintenance-operation-v1",1,id,"ci-old-"+id,
+   MaintenanceOperationStore.CanonicalRequestHash("update.local-code-only-activate",packageRef,priorActor),
+   "update.local-code-only-activate",priorActor,"recovery_required",packageRef,
+   DateTimeOffset.Parse("2026-11-06T00:00:00Z"),DateTimeOffset.Parse("2026-11-06T00:00:00Z"),1,
+   "CODE_ONLY_EXECUTION_OUTCOME_UNPROVEN","synthetic native recovery incident",null,true,true);
+  var originalOp=System.Text.Json.JsonSerializer.SerializeToNode(opRecord,AtomicFile.JsonOptions)!.AsObject();
   var opBefore=Path.Combine(Paths.LocalSlotStateRoot,"r125-reconcile-original-operation-"+suffix+".json");Write(opBefore,originalOp);
   Write(Receipt,new JsonObject{["format"]="sokna-r129-external-recovery-reconciliation-v1",["at_utc"]="2026-11-07T00:00:00Z",["recovered_build"]=Build,
    ["blocked_operation_id"]=id,["db_schema_head"]=plan.SourceHead,["backup_sha256"]=bh,["routine_state_original_sha256"]=Sha(File.ReadAllBytes(Original)),["operation_original_sha256"]=Sha(File.ReadAllBytes(opBefore))});

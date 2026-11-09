@@ -71,8 +71,10 @@ public static class R125ReadOnlyAssessment
         if (e is TimeoutException) return "R125_READONLY_TIMEOUT";
         if (e is UnauthorizedAccessException) return "R125_READ_ACCESS_DENIED";
         if (e is InvalidDataException) {
+            if (MaintenanceIdentityVersionProof.SafeCodes.Contains(e.Message)) return e.Message;
             // Export only literal application codes. Never an arbitrary exception message.
-            string[] allowed = [ "R125_RECOVERY_STATE_NOT_QUALIFIED", "R125_ROUTINE_UNSAFE", "R125_ROUTINE_INVALID",
+            string[] allowed = [ "R125_ARCHIVE_HISTORY_LIMIT", "R125_UNFINISHED_ARCHIVE_STATE", "R125_COMMITTED_ARCHIVE_RECEIPT_UNQUALIFIED",
+                "R125_SIGNED_CONTROL_PLANE_UNQUALIFIED", "R125_SIGNED_RESPONSE_UNQUALIFIED", "R125_SIGNED_RECONCILIATION_BLOCKED", "R125_RECOVERY_STATE_NOT_QUALIFIED", "R125_ROUTINE_UNSAFE", "R125_ROUTINE_INVALID",
                 "R125_ACTIVE_BUILD_OR_LAYOUT_MISMATCH", "R125_INSTALLED_IDENTITY_NOT_QUALIFIED",
                 "R125_MAINTENANCE_IDENTITY_UPGRADE_UNPROVEN", "LOCAL_LIFECYCLE_RECOVERED_BYTES_NOT_EXACT",
                 "R129_EVIDENCE_MISSING_OR_REPARSE", "R129_EVIDENCE_ROOT_UNSAFE", "R129_EVIDENCE_SIZE_INVALID",
