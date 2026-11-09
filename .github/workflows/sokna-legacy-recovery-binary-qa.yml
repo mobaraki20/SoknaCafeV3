@@ -1,0 +1,66 @@
+name: SOKNA acquire exact archived Recovery 011 binary - no installer publication
+on:
+  push:
+    branches: [qa/sokna-update-safety-20261109]
+    paths: ['.github/workflows/sokna-legacy-recovery-binary-qa.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  acquire-exact-legacy-binary:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original qualification archive by immutable asset id
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $out=Join-Path $env:RUNNER_TEMP 'legacy-recovery-archive'
+          New-Item -ItemType Directory -Force $out|Out-Null
+          & gh api -H 'Accept: application/octet-stream' repos/mobaraki20/SoknaCafeV3/releases/assets/648914610 > "$out/original.zip"
+          if($LASTEXITCODE-ne0){throw 'LEGACY_ARCHIVE_DOWNLOAD_FAILED'}
+          if((Get-FileHash "$out/original.zip" -Algorithm SHA256).Hash.ToLowerInvariant()-ne'1283193b1f5326793241c7d55049cfd1abcde44fb4695ffdd8c439737364e2e6'){throw 'LEGACY_ARCHIVE_DIGEST_MISMATCH'}
+      - name: Find exact known preserved binary without executing it
+        shell: pwsh
+        run: |
+          $out=Join-Path $env:RUNNER_TEMP 'legacy-recovery-archive'
+          $env:SOKNA_LEGACY_ARCHIVE_ROOT=$out
+          @'
+          import os,pathlib,zipfile,hashlib,json,io
+          root=pathlib.Path(os.environ['SOKNA_LEGACY_ARCHIVE_ROOT'])
+          wanted='368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd'
+          inventory=[];found=[]
+          def scan(blob,label,depth=0):
+            with zipfile.ZipFile(blob) as z:
+              for e in z.infolist():
+                if e.is_dir(): continue
+                inventory.append({'archive':label,'name':e.filename,'bytes':e.file_size})
+                if e.file_size>500_000_000: continue
+                if e.filename.lower().endswith('soknamaintenancerecoveryconsole.exe'):
+                  data=z.read(e);sha=hashlib.sha256(data).hexdigest()
+                  print('RECOVERY_CANDIDATE',label,e.filename,len(data),sha)
+                  if sha==wanted:
+                    (root/'SoknaMaintenanceRecoveryConsole.exe').write_bytes(data);found.append({'archive':label,'entry':e.filename,'sha256':sha,'bytes':len(data)})
+                elif depth<2 and e.filename.lower().endswith('.zip'):
+                  scan(io.BytesIO(z.read(e)),label+'!'+e.filename,depth+1)
+          scan(root/'original.zip','original.zip')
+          report={'format':'sokna-exact-legacy-recovery-acquisition-v1','found_exact_binary':bool(found),'matches':found,'inventory':inventory,'physical_cafe_verified':False}
+          (root/'ACQUISITION.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+          print(json.dumps(report,indent=2))
+          '@ | python
+          if($LASTEXITCODE-ne0){throw 'ARCHIVE_SCAN_FAILED'}
+          $exe=Join-Path $out 'SoknaMaintenanceRecoveryConsole.exe'
+          if(Test-Path $exe){
+            $v=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+            if("$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"-ne'0.1.1.0'){throw 'LEGACY_PHYSICAL_VERSION_MISMATCH'}
+            Write-Host 'PASS exact original Recovery SHA256 and physical 0.1.1.0'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exact-legacy-recovery-011-acquisition
+          path: |
+            ${{ runner.temp }}/legacy-recovery-archive/ACQUISITION.json
+            ${{ runner.temp }}/legacy-recovery-archive/SoknaMaintenanceRecoveryConsole.exe
+          if-no-files-found: error
