@@ -1,0 +1,27 @@
+{
+  "format": "sokna-preserved-recovery-baseline-evidence-v1",
+  "source_archive": "SOKNA-ONE-SUPPORT-20261109-000544.zip",
+  "source_archive_sha256": "3cc2f62287b091684da1b00cf19ab54c9d4acce1c53ae27bfc9dde4af1677201",
+  "supervisor": {
+    "physical_version": "0.3.22.0",
+    "sha256": "b8e5702b61796736bcd61acccbcc4acc58aa14eab071bc2fba91c0d41adf69f3"
+  },
+  "engine": {
+    "physical_version": "0.3.22.0",
+    "sha256": "fa67b133d64a9061ca68690c970a517d84e383d121c2c2ec3279b5405bde68a5"
+  },
+  "recovery": {
+    "recorded_version": "0.1.1",
+    "recorded_sha256": "368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd",
+    "evidence_kind": "committed_KEEP_receipts_not_fresh_physical_measurement",
+    "receipt_dates": [
+      "2026-10-23",
+      "2026-10-24",
+      "2026-11-01"
+    ]
+  },
+  "requires_fresh_physical_hash_match": true,
+  "requires_privileged_supervisor_engine_receipt": true,
+  "physical_legacy_installation_tested": false,
+  "production_approved": false
+}

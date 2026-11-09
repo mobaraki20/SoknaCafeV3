@@ -11,7 +11,15 @@ foreach($name in @('Fail','AssertMaintenanceBaselineTuple')){
  . ([scriptblock]::Create($fn.Extent.Text))
 }
 $script:InstallerStage='TEST'
-$known='368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd'
+$fixture=Get-Content (Join-Path $PSScriptRoot 'host-baseline-sanitized.json') -Raw|ConvertFrom-Json
+$known=[string]$fixture.recovery.recorded_sha256
+$manifest=Get-Content (Join-Path $root 'packaging/windows/windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
+$official=@($manifest.components|Where-Object{$_.component_id-eq'maintenance-recovery-console'})
+if($official.Count-ne1 -or $known-notin$official[0].accepted_installed_sha256){throw 'HOST_FIXTURE_NOT_AN_OFFICIAL_PRESERVED_FINGERPRINT'}
+if($fixture.physical_legacy_installation_tested -or $fixture.production_approved -or -not$fixture.requires_fresh_physical_hash_match -or -not$fixture.requires_privileged_supervisor_engine_receipt){throw 'HOST_FIXTURE_SCOPE_INCORRECT'}
+$hostDecision=AssertMaintenanceBaselineTuple -SupervisorVersion ($fixture.supervisor.physical_version-replace'\.0$','') -EngineVersion ($fixture.engine.physical_version-replace'\.0$','') -RecoveryVersion $fixture.recovery.recorded_version -RecoverySha256 $known
+if($hostDecision-ne'0.1.1'){throw 'PREVIOUSLY_SUPPLIED_PRESERVED_BASELINE_DROPPED'}
+Write-Host 'PASS mandatory independent host-history fixture and official manifest agreement' 
 $valid=@(@('0.3.22','0.3.22','0.1.1',$known),@('0.3.22','0.3.22','0.1.3',('a'*64)),@('0.3.23','0.3.23','0.1.4',('a'*64)),@('0.3.24','0.3.24','0.1.5',('a'*64)),@('0.3.25','0.3.25','0.1.6',('a'*64)))
 foreach($v in $valid){
  $actual=AssertMaintenanceBaselineTuple -SupervisorVersion $v[0] -EngineVersion $v[1] -RecoveryVersion $v[2] -RecoverySha256 $v[3]
