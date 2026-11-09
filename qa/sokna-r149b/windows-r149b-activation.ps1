@@ -46,6 +46,7 @@ $psi=[Diagnostics.ProcessStartInfo]::new((Join-Path $mdb 'bin/mariadbd.exe'))
 $psi.UseShellExecute=$false;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
 foreach($arg in @('--no-defaults',"--basedir=$mdb","--datadir=$dbData","--port=$dbPort",'--bind-address=127.0.0.1','--console')){$psi.ArgumentList.Add($arg)}
 $db=[Diagnostics.Process]::Start($psi);$dbOut=$db.StandardOutput.ReadToEndAsync();$dbErr=$db.StandardError.ReadToEndAsync()
+$restoreDb=$null;$restoreOut=$null;$restoreErr=$null;$restorePort=39734
 try {
     $ready=$false
     for($i=0;$i -lt 90;$i++){
@@ -53,6 +54,21 @@ try {
         if($LASTEXITCODE -eq 0){$ready=$true;break};Start-Sleep -Milliseconds 300
     }
     Need $ready 'MARIADB_STARTUP_FAILED'
+    # A separate server/datadir is the restore target. Never DROP or restore
+    # over the application's live database while Apache is running, even in CI.
+    $restoreData=Join-Path $lab 'isolated-restore-data'
+    Run (Join-Path $mdb 'bin/mariadb-install-db.exe') @("--datadir=$restoreData","--port=$restorePort")
+    $restorePsi=[Diagnostics.ProcessStartInfo]::new((Join-Path $mdb 'bin/mariadbd.exe'))
+    $restorePsi.UseShellExecute=$false;$restorePsi.RedirectStandardOutput=$true;$restorePsi.RedirectStandardError=$true
+    foreach($arg in @('--no-defaults',"--basedir=$mdb","--datadir=$restoreData","--port=$restorePort",'--bind-address=127.0.0.1','--console')){$restorePsi.ArgumentList.Add($arg)}
+    $restoreDb=[Diagnostics.Process]::Start($restorePsi)
+    $restoreOut=$restoreDb.StandardOutput.ReadToEndAsync();$restoreErr=$restoreDb.StandardError.ReadToEndAsync()
+    $ready=$false
+    for($i=0;$i -lt 90;$i++){
+        & (Join-Path $mdb 'bin/mariadb-admin.exe') --protocol=tcp --host=127.0.0.1 "--port=$restorePort" --user=root ping 2>$null | Out-Null
+        if($LASTEXITCODE -eq 0){$ready=$true;break};Start-Sleep -Milliseconds 300
+    }
+    Need $ready 'ISOLATED_RESTORE_SERVER_STARTUP_FAILED'
     $apacheExe=$null
     foreach($a in @('C:\tools\Apache24','C:\tools\apache','C:\ProgramData\chocolatey\lib\apache-httpd')){
         if(Test-Path $a){$apacheExe=Get-ChildItem $a -Recurse -Filter httpd.exe -File | Select-Object -First 1;if($apacheExe){break}}
@@ -69,16 +85,28 @@ try {
     Run dotnet @('publish','windows/maintenance/tests/Sokna.Maintenance.U01Harness/Sokna.Maintenance.U01Harness.csproj','-c','Release','-r','win-x64','--self-contained','false','-o',$harnessOut)
     $harness=Join-Path $harnessOut 'Sokna.Maintenance.U01Harness.exe';$engine=Join-Path $engineOut 'SoknaMaintenanceUpdateEngine.exe'
     Need (Test-Path $harness) 'HARNESS_MISSING';Need (Test-Path $engine) 'ENGINE_MISSING'
+    $engineHash=(Get-FileHash $engine -Algorithm SHA256).Hash.ToLowerInvariant()
+    $engineVersion=(Get-Item $engine).VersionInfo.FileVersion
+    Need (-not [string]::IsNullOrWhiteSpace($engineVersion)) 'ENGINE_PHYSICAL_VERSION_MISSING'
+    Run $engine @('--help')
     $artifacts=Join-Path $lab 'artifacts';New-Item -ItemType Directory -Force $artifacts | Out-Null
-    Run python @('qa/sokna-r149b/make_fixture.py',$lab)
     $baseline=Join-Path $artifacts 'baseline.json';$target=Join-Path $artifacts 'target.json';$package=Join-Path $artifacts 'temporary-ci-qualified.zip'
     $results=@()
-    foreach($fault in @('none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT')){
-        $root=Join-Path $lab ('host-'+$fault)
+    $sharedPackageHash=$null
+    foreach($sourceName in @('r75','r140')){
+    Run python @('qa/sokna-r149b/make_fixture.py',$lab,$sourceName)
+    $packageHash=(Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
+    if($null -eq $sharedPackageHash){$sharedPackageHash=$packageHash}
+    Need ($packageHash -eq $sharedPackageHash) 'UNIVERSAL_TARGET_ZIP_CHANGED_BETWEEN_BASELINES'
+    $sourceCount=if($sourceName -eq 'r75'){76}else{79}
+    $sentinelQty=if($sourceName -eq 'r75'){75}else{140}
+    foreach($fault in @('none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')){
+        $folder=if($sourceName -eq 'r75'){'آزمون خانه '+$sourceName+'-'+$fault}else{'host-'+$sourceName+'-'+$fault}
+        $root=Join-Path $lab $folder
         New-Item -ItemType Directory -Force $root | Out-Null
         Set-Content (Join-Path $root '.u01-ci-only') 'disposable' -Encoding ascii
-        $old=Join-Path $root 'Web.release.r140'
-        Copy-Item (Join-Path $lab 'r140-web') $old -Recurse
+        $old=Join-Path $root ('Web.release.'+$sourceName)
+        Copy-Item (Join-Path $lab ($sourceName+'-web')) $old -Recurse
         $infra=Join-Path $root 'Infrastructure'
         Copy-Item $phpRoot (Join-Path $infra 'PHP') -Recurse
         New-Item -ItemType Directory -Force (Join-Path $infra 'MariaDB') | Out-Null
@@ -88,7 +116,12 @@ try {
         Run $localPhp @('-c','php.ini','-r','if(!in_array("mysql",PDO::getAvailableDrivers(),true))exit(74);')
         $env:SOKNA_R140_PORT=[string]$dbPort;$env:SOKNA_R140_PASSWORD=''
         Run $localPhp @('-c','php.ini',(Join-Path $repo 'qa/sokna-r140/exact-ci/upgrade.php'),'baseline',$lab)
-        Run $localPhp @('-c','php.ini',(Join-Path $repo 'qa/sokna-r140/exact-ci/upgrade.php'),'upgrade',$lab)
+        if($sourceName -eq 'r140'){
+            Run $localPhp @('-c','php.ini',(Join-Path $repo 'qa/sokna-r140/exact-ci/upgrade.php'),'upgrade',$lab)
+        }
+        $mysqlExe=Join-Path $mdb 'bin/mariadb.exe'
+        Run $mysqlExe @('--no-defaults','--protocol=tcp','--host=127.0.0.1',"--port=$dbPort",'--user=root',
+            "--execute=CREATE TABLE sokna_r140_exact.ci_upgrade_sentinel(id INT PRIMARY KEY,qty INT NOT NULL) ENGINE=InnoDB; INSERT INTO sokna_r140_exact.ci_upgrade_sentinel VALUES(1,$sentinelQty)")
         $dataDir=P (Join-Path $root 'Data')
         $config="<?php return ['installation'=>['id'=>'r140-disposable-ci'],'app'=>['data_dir'=>'$dataDir','timezone'=>'Asia/Tehran'],'db'=>['host'=>'127.0.0.1','port'=>$dbPort,'name'=>'sokna_r140_exact','charset'=>'utf8mb4','user'=>'root','pass'=>'']];"
         Set-Content (Join-Path $root 'config.php') $config -Encoding utf8NoBOM
@@ -141,7 +174,7 @@ PidFile "$ar/logs/httpd.pid"
                 Run $harness (@('recover')+$common)
             }
             $state=Get-Content (Join-Path $root 'Maintenance/local-slots/routine-state.json') -Raw | ConvertFrom-Json
-            $forward=$fault -in @('none','DATABASE_FORWARD_INTENT')
+            $forward=$fault -in @('none','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')
             $expectedPhase=if($forward){'COMMITTED'}else{'RECOVERED_TO_PREVIOUS_SLOT'}
             Need ($state.phase -eq $expectedPhase) "PHASE_MISMATCH_$fault actual=$($state.phase)"
             Need ($state.database_mutation_performed -eq $forward) "DB_MUTATION_FLAG_WRONG_$fault"
@@ -149,13 +182,13 @@ PidFile "$ar/logs/httpd.pid"
             Need ((Get-Content (Join-Path $root 'Data/guest-media/sentinel.txt') -Raw).Trim() -eq 'preserved') 'MEDIA_LOST'
             $mdbExe=Join-Path $mdb 'bin/mariadb.exe'
             $actualCount= & $mdbExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r140_exact.schema_migrations;'
-            $expectedCount=if($forward){80}else{79}
+            $expectedCount=if($forward){80}else{$sourceCount}
             Need ($LASTEXITCODE -eq 0 -and [string]$actualCount -eq [string]$expectedCount) "R149B_MIGRATION_LEDGER_BAD fault=$fault expected=$expectedCount got=$actualCount"
             if($forward){
                 Run $localPhp @('-c','php.ini',(Join-Path $repo 'qa/sokna-r149b/test-exact-upgrade.php'),'verify',$lab)
             }
             if($fault -eq 'none'){
-                # Restore the exact pre-0077 backup generated by the real Windows Maintenance Engine.
+                # Restore the actual Engine backup on the separate server.
                 $dbBackupRoot=Join-Path $root 'Maintenance/local-slots/private-db-backups'
                 Need (Test-Path $dbBackupRoot) 'R149B_ENGINE_BACKUP_ROOT_MISSING'
                 $backups=@(Get-ChildItem -LiteralPath $dbBackupRoot -Filter '*.sql' -File)
@@ -164,10 +197,10 @@ PidFile "$ar/logs/httpd.pid"
                 Need ((Get-Item $backup).Length -gt 500) 'R149B_ENGINE_BACKUP_EMPTY'
                 $backupHash=(Get-FileHash $backup -Algorithm SHA256).Hash
                 $mysqlExe=Join-Path $mdb 'bin/mariadb.exe'
-                Run $mysqlExe @('--no-defaults','--protocol=tcp','--host=127.0.0.1',"--port=$dbPort",'--user=root','--execute=DROP DATABASE IF EXISTS sokna_r140_exact')
+                Run $mysqlExe @('--no-defaults','--protocol=tcp','--host=127.0.0.1',"--port=$restorePort",'--user=root','--execute=DROP DATABASE IF EXISTS sokna_r140_exact')
                 $restore=[Diagnostics.ProcessStartInfo]::new($mysqlExe)
                 $restore.UseShellExecute=$false;$restore.RedirectStandardInput=$true
-                foreach($arg in @('--no-defaults','--protocol=tcp','--host=127.0.0.1',"--port=$dbPort",'--user=root')){$restore.ArgumentList.Add($arg)}
+                foreach($arg in @('--no-defaults','--protocol=tcp','--host=127.0.0.1',"--port=$restorePort",'--user=root')){$restore.ArgumentList.Add($arg)}
                 $process=[Diagnostics.Process]::Start($restore)
                 $inputStream=[IO.File]::OpenRead($backup)
                 try{$inputStream.CopyTo($process.StandardInput.BaseStream)}
@@ -175,23 +208,33 @@ PidFile "$ar/logs/httpd.pid"
                 Need ($process.WaitForExit(120000)) 'R149B_BACKUP_RESTORE_TIMEOUT'
                 Need ($process.ExitCode -eq 0) 'R149B_BACKUP_RESTORE_FAILED'
                 Need ((Get-FileHash $backup -Algorithm SHA256).Hash -eq $backupHash) 'R149B_BACKUP_TAMPERED_DURING_RESTORE'
-                $ledger= & $mysqlExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r140_exact.schema_migrations;'
-                Need ($LASTEXITCODE -eq 0 -and [string]$ledger -eq '79') ('R149B_RESTORED_BASELINE_LEDGER_BAD '+$ledger)
-                $items= & $mysqlExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r140_exact.items;'
+                $ledger= & $mysqlExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$restorePort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r140_exact.schema_migrations;'
+                Need ($LASTEXITCODE -eq 0 -and [string]$ledger -eq [string]$sourceCount) ('R149B_RESTORED_BASELINE_LEDGER_BAD '+$ledger)
+                $items= & $mysqlExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$restorePort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r140_exact.items;'
                 Need ($LASTEXITCODE -eq 0 -and [int]$items -gt 100) 'R149B_BACKUP_RESTORED_MENU_MISSING'
-                Write-Host 'R140_EXACT_REAL_MARIADB_ENGINE_PRE_DB_BACKUP_RESTORED_PASS'
+                $restoredQty= & $mysqlExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$restorePort" --user=root --skip-column-names --execute='SELECT qty FROM sokna_r140_exact.ci_upgrade_sentinel WHERE id=1;'
+                Need ($LASTEXITCODE -eq 0 -and [string]$restoredQty -eq [string]$sentinelQty) 'RESTORED_SENTINEL_DATA_MISMATCH'
+                $liveLedger= & $mysqlExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r140_exact.schema_migrations;'
+                Need ($LASTEXITCODE -eq 0 -and [string]$liveLedger -eq '80') 'ISOLATED_RESTORE_CHANGED_LIVE_DATABASE'
+                Write-Host "ISOLATED_ENGINE_BACKUP_RESTORED_WITH_LIVE_DB_PRESERVED source=$sourceName"
             }
-            $results+=@{fault=$fault;phase=$state.phase;db_forward=$forward;status='PASS'}
-            Write-Host "R149B_EXACT_WINDOWS_APACHE_MARIADB_CYCLE_PASS fault=$fault phase=$($state.phase)"
+            $liveQty= & $mysqlExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT qty FROM sokna_r140_exact.ci_upgrade_sentinel WHERE id=1;'
+            Need ($LASTEXITCODE -eq 0 -and [string]$liveQty -eq [string]$sentinelQty) 'UPGRADE_OR_RECOVERY_LOST_SENTINEL_DATA'
+            $results+=@{source=$sourceName;source_migrations=$sourceCount;target_migrations=[int]$actualCount;package_sha256=$packageHash;engine_sha256=$engineHash;engine_physical_version=$engineVersion;fault=$fault;phase=$state.phase;db_forward=$forward;sentinel_preserved=$true;isolated_restore_verified=($fault -eq 'none');physical_host_tested=$false;status='PASS'}
+            Write-Host "R149B_EXACT_WINDOWS_APACHE_MARIADB_CYCLE_PASS source=$sourceName fault=$fault phase=$($state.phase)"
         } finally {
             if(Get-Service SoknaApache -ErrorAction SilentlyContinue){Stop-Service SoknaApache -ErrorAction SilentlyContinue;& sc.exe delete SoknaApache|Out-Null;Start-Sleep -Milliseconds 500}
             if(Test-Path (Join-Path $root 'Web')){[IO.Directory]::Delete((Join-Path $root 'Web'))}
         }
     }
-    Need ($results.Count -eq 4) 'R140_CYCLE_MATRIX_INCOMPLETE'
+    }
+    Need ($results.Count -eq 12) 'TWO_BASELINE_CYCLE_MATRIX_INCOMPLETE'
     $results|ConvertTo-Json -Depth 6|Set-Content (Join-Path $artifacts 'r149b-windows-cycles.json') -Encoding utf8NoBOM
     Write-Host 'R140_EXACT_REAL_WINDOWS_FULL_ACTIVATION_RECOVERY_PASS'
 } finally {
+    if($null -ne $restoreDb -and -not $restoreDb.HasExited){$restoreDb.Kill($true);$restoreDb.WaitForExit()}
+    if($null -ne $restoreOut){try{$restoreOut.Result|Set-Content (Join-Path $lab 'restore-stdout.log')}catch{}}
+    if($null -ne $restoreErr){try{$restoreErr.Result|Set-Content (Join-Path $lab 'restore-stderr.log')}catch{}}
     if(-not $db.HasExited){$db.Kill($true);$db.WaitForExit()}
     try{$dbOut.Result|Set-Content (Join-Path $lab 'mariadb-stdout.log')}catch{}
     try{$dbErr.Result|Set-Content (Join-Path $lab 'mariadb-stderr.log')}catch{}
