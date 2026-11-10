@@ -1,0 +1,73 @@
+name: Publish exact SOKNA Maintenance 0.3.27 R125 tested QA prerelease
+on:
+  push:
+    branches: [qa/sokna-r125-0327-permanent-fix-20261110]
+    paths:
+      - .github/workflows/sokna-maintenance-0327-publish-qa.yml
+permissions: {contents: write, actions: read}
+jobs:
+  pinned-release:
+    permissions: {contents: write, actions: read}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: '42870528935'
+      SOURCE_SHA: d4bf92845de03dbf781510deb34d313fe7b09724
+      RELEASE_TAG: sokna-maintenance-0327-r125-compat-qa-20261110
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact completed native Windows test and download immutable artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" |
+            jq -e --arg sha "$SOURCE_SHA" '.status=="completed" and .conclusion=="success" and .head_sha==$sha'
+          mkdir -p dist
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" -n SOKNA-MAINTENANCE-0327-R125-COMPAT-TESTED-QA -D dist
+      - name: Bind release to byte-exact tested EXEs and actual Windows service evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          installer='SOKNA-Maintenance-Only-0327-Independent-R1-QA-NOT-PRODUCTION.exe'
+          client='SOKNA-R125-Guided-OneClick-0327.exe'
+          test -s "$installer" && test -s "$client"
+          jq -e --arg sha "$SOURCE_SHA" '.source_commit==$sha and .target_version=="0.3.27" and .production_approved==false and .physical_cafe_tested==false and .recovery_preserved==true and .local_public_untouched==true' BUILD-QA.json
+          jq -e '.real_service_activation=="PASS" and .locked_binary_rollback=="PASS" and .rerun_idempotent=="PASS" and .recovery_sha_preserved==true and .local_public_identity_preserved==true and .r125_history_retained==true and .live_cafe_host_tested==false and .production_approved==false' REAL-SERVICE-QA.json
+          sha256sum -c SHA256SUMS.txt
+          jq -e '.target_version=="0.3.27" and .scope=="maintenance_pair_only" and .recovery_console_action=="KEEP_UNCHANGED" and (.files|length)==2 and (.supported_baselines|length)==1 and .supported_baselines[0].version=="0.3.26"' COMPONENT-MANIFEST.json
+          echo 'PASS EXACT TWO EXEs AND REAL SERVICE GATE'
+          cat > README-FA.txt <<'NOTES'
+          سامانه سکنا — پری‌ریلیز آزمایشی اصلاح R125 برای Maintenance 0.3.27
+
+          این بسته Production تأیید نشده و روی کافه هنوز اجرا نشده است.
+          فقط از Maintenance 0.3.26 با باینری‌های دقیق منتشرشده ارتقا می‌دهد.
+          ابتدا SOKNA-Maintenance-Only-0327-Independent-R1-QA-NOT-PRODUCTION.exe
+          و فقط در صورت نصب و صحت سرویس، سپس SOKNA-R125-Guided-OneClick-0327.exe اجرا شود.
+          هیچ حذف دستی، ویرایش دیتابیس، تعویض Recovery یا تغییر Local/Public لازم نیست.
+          ابزار R125 فقط پس از احراز مدارک و دفتر مهاجرت زنده اجازه بایگانی شاهد تاریخی را دارد.
+          اگر هر مرحله خطا داد، عملیات متوقف شود و فقط گزارش JSON دسکتاپ بررسی گردد.
+          این مرحله، به‌روزرسانی Local/Public R152 را خودکار نصب نمی‌کند.
+          مرجع آزمون واقعی سرویس ویندوز:
+          https://github.com/mobaraki20/SoknaCafeV3/actions/runs/42870528935
+          NOTES
+          test -s README-FA.txt
+      - name: Publish exact binaries as safe QA-only prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'REFUSE_OVERWRITE_EXISTING_0327_RELEASE'
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            SOKNA-Maintenance-Only-0327-Independent-R1-QA-NOT-PRODUCTION.exe \
+            SOKNA-R125-Guided-OneClick-0327.exe \
+            SHA256SUMS.txt BUILD-QA.json REAL-SERVICE-QA.json COMPONENT-MANIFEST.json README-FA.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --prerelease --latest=false \
+            --title 'SOKNA Maintenance 0.3.27 R125 compatibility — QA ONLY, NOT PRODUCTION' \
+            --notes-file README-FA.txt
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url,isPrerelease,assets |
+            jq -e '.isPrerelease==true and ([.assets[].name]|index("SOKNA-Maintenance-Only-0327-Independent-R1-QA-NOT-PRODUCTION.exe")!=null) and ([.assets[].name]|index("SOKNA-R125-Guided-OneClick-0327.exe")!=null)'
