@@ -1,0 +1,64 @@
+name: "SOKNA R125 independent 0.3.26 Maintenance proof compatibility — Windows QA only"
+on:
+  push:
+    branches: [qa/sokna-r125-independent-proof-compat-20261110]
+    paths:
+      - windows/maintenance/src/Sokna.Maintenance.Core/MaintenanceIdentityVersionProof.cs
+      - qa/sokna-r125-independent-proof/**
+      - .github/workflows/sokna-r125-independent-proof-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  independent-pair-proof:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Compile patched Maintenance Core without installer
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'MAINTENANCE_CORE_PATCH_COMPILE_FAILED'}
+      - name: Build physical prior 0.3.25 Supervisor and Update Engine reference EXEs
+        shell: pwsh
+        run: |
+          $root=Join-Path $env:RUNNER_TEMP 'r125-pair-versions'
+          New-Item -ItemType Directory -Force $root|Out-Null
+          foreach($name in @('Supervisor','UpdateEngine')){
+            $proj="windows/maintenance/src/Sokna.Maintenance.$name/Sokna.Maintenance.$name.csproj"
+            $out=Join-Path $root ('before-'+$name)
+            dotnet publish $proj -c Release -r win-x64 --self-contained false -p:FileVersion=0.3.25.0 -p:AssemblyVersion=0.3.25.0 -o $out
+            if($LASTEXITCODE-ne0){throw ('R125_PRIOR_0325_EXE_BUILD_FAILED_'+$name)}
+          }
+          "R125_FIXTURE_ROOT=$root"|Out-File -Append -FilePath $env:GITHUB_ENV
+      - name: Build patched 0.3.26 Supervisor and Engine with preserved 0.1.7 Recovery
+        shell: pwsh
+        run: |
+          $root=$env:R125_FIXTURE_ROOT
+          foreach($name in @('Supervisor','UpdateEngine','RecoveryConsole')){
+            $proj="windows/maintenance/src/Sokna.Maintenance.$name/Sokna.Maintenance.$name.csproj"
+            $out=Join-Path $root ('current-'+$name)
+            $version=if($name-eq'RecoveryConsole'){'0.1.7.0'}else{'0.3.26.0'}
+            dotnet publish $proj -c Release -r win-x64 --self-contained false "-p:FileVersion=$version" "-p:AssemblyVersion=$version" -o $out
+            if($LASTEXITCODE-ne0){throw ('R125_CURRENT_BINARY_BUILD_FAILED_'+$name)}
+          }
+      - name: Native Windows positive and fail-closed receipt matrix
+        shell: pwsh
+        run: |
+          $p=$env:R125_FIXTURE_ROOT
+          $a=@(
+            (Join-Path $p 'current-Supervisor/SoknaMaintenanceSupervisor.exe'),
+            (Join-Path $p 'current-UpdateEngine/SoknaMaintenanceUpdateEngine.exe'),
+            (Join-Path $p 'current-RecoveryConsole/SoknaMaintenanceRecoveryConsole.exe'),
+            (Join-Path $p 'before-Supervisor/SoknaMaintenanceSupervisor.exe'),
+            (Join-Path $p 'before-UpdateEngine/SoknaMaintenanceUpdateEngine.exe')
+          )
+          dotnet run --project qa/sokna-r125-independent-proof/IndependentProof.csproj -c Release --no-launch-profile -- @a
+          if($LASTEXITCODE-ne0){throw 'R125_INDEPENDENT_PAIR_NATIVE_PROOF_MATRIX_FAILED'}
+      - name: Explicit production block and no installed customer mutation
+        shell: pwsh
+        run: |
+          Write-Host 'PASS independent two-component proof source compatibility QA ONLY'
+          Write-Host 'NOT RUN: actual cafe proof archive, signed supervisor rollout, live DB restore or production upgrade'
