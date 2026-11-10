@@ -277,8 +277,32 @@ foreach($case in @('0.3.22-preserved011','0.3.22-preserved011-variant','0.3.22',
   Need ((Hash $identity)-eq$oldIdentity) 'REAL_ROLLBACK_IDENTITY_MISMATCH'
   $marker=Join-Path $data 'setup/maintenance-components-v2/active.json'
   Need ((Get-Content $marker -Raw|ConvertFrom-Json).phase-eq'ROLLED_BACK') 'REAL_ROLLBACK_RECEIPT_MISSING'
+  # An R125 Local recovery assessment is separate from the already
+  # verified Maintenance upgrade. A blocked R125 read-only assessment must
+  # leave an honest report without claiming that Maintenance installation
+  # itself failed. Never clear or auto-reconcile the simulated proof.
+  $r125Probe=$null
+  $priorWorkflowReports=@()
+  if($opaqueRecoveryVariant){
+   $r125Probe=Join-Path $data 'Maintenance/local-slots/routine-local-lifecycle-before.json'
+   New-Item -ItemType Directory -Path (Split-Path -Parent $r125Probe) -Force|Out-Null
+   [IO.File]::WriteAllText($r125Probe,'CI_INVALID_R125_PROOF_FOR_NONDESTRUCTIVE_GUARD',[Text.Encoding]::ASCII)
+   $priorWorkflowReports=@(Get-ChildItem $desktop -Filter 'SOKNA-MAINTENANCE-WORKFLOW-*.json' -ErrorAction SilentlyContinue|ForEach-Object{$_.FullName})
+  }
   Need ((InvokeInstaller $Installer)-eq0) 'EXACT_INSTALLER_UPGRADE_FAILED'
   Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.26' -Attempts 40
+  if($opaqueRecoveryVariant){
+   $newReports=@(Get-ChildItem $desktop -Filter 'SOKNA-MAINTENANCE-WORKFLOW-*.json' -ErrorAction SilentlyContinue|Where-Object{$_.FullName-notin$priorWorkflowReports})
+   Need ($newReports.Count-eq1) 'R125_BLOCKED_WORKFLOW_REPORT_MISSING'
+   $workflowReport=Get-Content $newReports[0].FullName -Raw|ConvertFrom-Json
+   Need ($workflowReport.status-eq'BLOCKED' -and
+     $workflowReport.code-ne'R125_NO_ACTIVE_PROOF' -and
+     $workflowReport.production_approved-eq$false -and
+     $workflowReport.database_schema_data_mutated-eq$false) 'R125_BLOCKED_WORKFLOW_WRONGLY_SUCCESSFUL'
+   Need (Test-Path -LiteralPath $r125Probe) 'R125_PROOF_WAS_WRONGLY_DELETED'
+   Remove-Item -LiteralPath $r125Probe -Force
+   Write-Host 'PASS MAINTENANCE COMMITTED WHILE OPTIONAL R125 RECOVERY REMAINED BLOCKED WITH HONEST REPORT'
+  }
   foreach($entry in $target.files){Need ((Hash (Join-Path $install $entry.path))-eq$entry.sha256) 'TARGET_BINARY_HASH_MISMATCH'}
   $doc=Get-Content $identity -Raw|ConvertFrom-Json
   Need ($doc.maintenance_supervisor_version-eq'0.3.26' -and $doc.update_engine_version-eq'0.3.26' -and $doc.local.keep-eq'local' -and $doc.public.keep-eq'public') 'IDENTITY_SCOPE_CHANGED'
