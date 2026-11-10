@@ -84,7 +84,7 @@ public sealed class SupervisorUniversalUpgradeFence
         if (!File.Exists(Receipt)) return null;
         var f = AtomicFile.ReadJson<UniversalUpgradeFence>(Receipt);
         if (f.Format != Format ||
-            f.OperationId.Length != 32 || f.OperationId.Any(static c => !char.IsAsciiHexDigit(c)) ||
+            f.OperationId is not { Length: 32 } || f.OperationId.Any(static c => !char.IsAsciiHexDigit(c)) ||
             f.Phase is not (Reserved or Forward or PublicObserved) ||
             f.GlobalCommitVerified || f.ProductionAuthorized ||
             f.RecoveryRequired != (f.Phase != Reserved) ||
