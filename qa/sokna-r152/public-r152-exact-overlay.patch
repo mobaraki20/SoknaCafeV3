@@ -1,0 +1,48 @@
+--- a/VERSION.txt
++++ b/VERSION.txt
+@@ -1 +1 @@
+-3.0.0-g3.6-workspace.35hi-safety-owner-qa
++3.0.0-g3.6-workspace.35hj-r152-guest-ux-qa
+--- a/assets/scds/guest.css
++++ b/assets/scds/guest.css
+@@ -542,3 +542,18 @@
+ /* Focus remains visible on the outer rounded search field, never on an inner browser control. */
+ .sg-search-input-wrap input:focus,.sg-search-input-wrap input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important}
+ .sg-search-input-wrap:focus-within{outline:2px solid color-mix(in srgb,var(--sg-primary) 24%,transparent);outline-offset:1px}
++
++/* R152 guest UX: compact optional global fulfillment and responsive content */
++.sg-body details.sg-fulfillment-review--compact{display:block;padding:9px 12px;min-inline-size:0}
++.sg-body details.sg-fulfillment-review--compact>summary{list-style:none;cursor:pointer;min-block-size:42px;display:flex;align-items:center;gap:8px;min-inline-size:0}
++.sg-body details.sg-fulfillment-review--compact>summary::-webkit-details-marker{display:none}
++.sg-body details.sg-fulfillment-review--compact>summary::after{content:'⌄';color:var(--sg-primary);font-size:1rem;font-weight:900;margin-inline-start:auto;flex:0 0 auto}
++.sg-body details.sg-fulfillment-review--compact[open]>summary::after{transform:rotate(180deg)}
++.sg-body details.sg-fulfillment-review--compact>summary>div{min-inline-size:0;flex:1 1 auto}
++.sg-body details.sg-fulfillment-review--compact>summary>span{flex:0 1 auto;max-inline-size:44%;text-align:end}
++.sg-body .sg-fulfillment-review__body{display:grid;gap:9px;padding-block-start:10px}
++.sg-body .sg-fulfillment-review__body>p{margin:0;color:var(--sg-muted);font-size:.72rem;line-height:1.7}
++.sg-body .sg-cart-lines,.sg-body .sg-cart-line{min-inline-size:0}
++@media(max-width:560px){.sg-body .sg-drawer-body{padding:10px 12px 16px;gap:10px}.sg-body .sg-fulfillment-review__body>p{font-size:.68rem}}
++/* R152: an attached dock must not leave a full-width blank strip when the cart is empty. */
++.sg-theme-v2.sg-v-action-dock-attached .sg-action-dock:not(:has(.sg-basket:not([hidden]))){inline-size:max-content;max-inline-size:calc(100% - 24px);padding:0;background:transparent;border:0;box-shadow:none}
+--- a/assets/scds/guest.js
++++ b/assets/scds/guest.js
+@@ -1352,7 +1352,7 @@
+     if((next?.call_code||'')===(prev?.call_code||'')&&(next?.client_token||'')===(prev?.client_token||'')&&(next?.status||'')===(prev?.status||'')&&(next?.owned??null)===(prev?.owned??null))return;
+     waiterState=next;waiterOwnershipVerificationPending=Boolean(next?.call_code);renderWaiter();startWaiterTracking();
+   });
+-  const renderWaiter=()=>{if(!waiter||!waiterLabel)return;const status=String(waiterState?.status||'none');const isActive=status==='new'||status==='accepted';waiter.hidden=!waiterPolicyEnabled&&!isActive;const dock=waiter.closest('.sg-action-dock');if(dock&&!hasOrderContext)dock.hidden=waiter.hidden;if(status==='new'){waiterLabel.textContent=waiterSentLabel;waiter.disabled=!endpoints.waiter;}else if(status==='accepted'){waiterLabel.textContent=waiterAcceptedLabel;waiter.disabled=!endpoints.waiter;}else{waiterLabel.textContent='فراخوان گارسون';waiter.disabled=!endpoints.waiter||!waiterPolicyEnabled;}if(waiterConfirm)waiterConfirm.disabled=!unsafeAllowed()||!waiterPolicyEnabled;};
++  const renderWaiter=()=>{if(!waiter||!waiterLabel)return;const status=String(waiterState?.status||'none');const isActive=status==='new'||status==='accepted';waiter.hidden=(!waiterPolicyEnabled||!endpoints.waiter||!unsafeAllowed())&&!isActive;const dock=waiter.closest('.sg-action-dock');if(dock&&!hasOrderContext)dock.hidden=waiter.hidden;if(status==='new'){waiterLabel.textContent=waiterSentLabel;waiter.disabled=!endpoints.waiter;}else if(status==='accepted'){waiterLabel.textContent=waiterAcceptedLabel;waiter.disabled=!endpoints.waiter;}else{waiterLabel.textContent='فراخوان گارسون';waiter.disabled=!endpoints.waiter||!waiterPolicyEnabled;}if(waiterConfirm)waiterConfirm.disabled=!unsafeAllowed()||!waiterPolicyEnabled;};
+   const createWaiter=async(publicTableId=0)=>{
+     if(!unsafeAllowed())throw new Error('ارتباط زنده با کافه هنوز آماده نیست.');
+     // Capture the table at dispatch. An in-flight request must never write its
+--- a/src/Guest/GuestPageRenderer.php
++++ b/src/Guest/GuestPageRenderer.php
+@@ -465,7 +465,7 @@
+         if ($orderUiEligible) {
+             $html .= '<section class="sg-drawer" data-sg-cart-drawer role="dialog" aria-modal="true" aria-labelledby="sgCartTitle" hidden>'
+                 . '<header><div><small>سبد سفارش</small><h2 id="sgCartTitle">' . self::e($this->copy($copy,'cart_title','مرور سفارش')) . '</h2></div><button type="button" class="sg-icon-button" data-sg-close-layer aria-label="بستن">×</button></header>'
+-                . '<div class="sg-drawer-body"><section class="sg-fulfillment-review" data-sg-fulfillment-review><div class="sg-fulfillment-review__head"><div><small>نحوه تحویل</small><strong data-sg-fulfillment-summary>همین‌جا در سکنا</strong></div><span data-sg-fulfillment-counts></span></div><div class="sg-fulfillment-presets" role="group" aria-label="انتخاب نحوه تحویل سفارش"><button type="button" data-sg-fulfillment-all="dinein">همه همین‌جا</button><button type="button" data-sg-fulfillment-all="takeaway">همه بیرون‌بر</button></div><p>برای سفارش ترکیبی، تعداد بیرون‌بر هر آیتم را جداگانه تنظیم کن.</p></section><div data-sg-cart-lines class="sg-cart-lines"></div>'
++                . '<div class="sg-drawer-body"><details class="sg-fulfillment-review sg-fulfillment-review--compact" data-sg-fulfillment-review><summary class="sg-fulfillment-review__head"><div><small>نحوه تحویل</small><strong data-sg-fulfillment-summary>همین‌جا در سکنا</strong></div><span data-sg-fulfillment-counts></span></summary><div class="sg-fulfillment-review__body"><div class="sg-fulfillment-presets" role="group" aria-label="انتخاب نحوه تحویل سفارش"><button type="button" data-sg-fulfillment-all="dinein">همه همین‌جا</button><button type="button" data-sg-fulfillment-all="takeaway">همه بیرون‌بر</button></div><p>برای سفارش ترکیبی، تعداد بیرون‌بر هر آیتم را جداگانه تنظیم کن.</p></div></details><div data-sg-cart-lines class="sg-cart-lines"></div>'
+                 . '<label class="sg-field"><span>یادداشت برای سفارش</span><textarea rows="2" maxlength="1000" data-sg-customer-note placeholder="' . self::e($this->copy($copy,'order_note_placeholder','چیزی هست که دوست داری بدونیم؟')) . '"></textarea></label>'
+                 . '<section class="sg-quote" data-sg-quote><div data-sg-quote-subtotal-row hidden><span>جمع آیتم‌ها</span><strong data-sg-quote-subtotal>—</strong></div><div data-sg-quote-discount-row hidden><span>تخفیف</span><strong data-sg-quote-discount>—</strong></div><div data-sg-quote-tax-row hidden><span>مالیات</span><strong data-sg-quote-tax>—</strong></div><div class="sg-quote-total"><span>مبلغ نهایی</span><strong data-sg-quote-total>—</strong></div><small data-sg-quote-state>برای دیدن مبلغ نهایی، سبد را بررسی می‌کنیم.</small></section>'
+                 . '</div><footer><button type="button" class="sg-button sg-button--secondary" data-sg-close-layer>ادامه انتخاب</button><button type="button" class="sg-button sg-button--primary" data-sg-order-submit' . (($endpointReady && $canOrder) ? '' : ' disabled') . '>' . self::e($this->copy($copy,'submit_order','ثبت سفارش')) . '</button></footer></section>';
