@@ -77,6 +77,18 @@ def main():
 
     # The only mutable object is a throwaway test fixture in RUNNER_TEMP. Never
     # upload, distribute, tag, or call it an installable Production ZIP.
+    # Delivered R152 QA ZIP is intentionally not a valid install-plan manifest:
+    # never alter its exact bytes or present VerifyOnly as successful.
+    # Build a separate disabled+contract-complete test ZIP to exercise the
+    # underlying 44-baseline engine gates on a disposable runner.
+    disabled = dict(qa)
+    disabled["install_plan"] = parent["install_plan"]
+    disabled["status"] = "R152_CI_SYNTHETIC_DISABLED_FIXTURE"
+    disabled_path = out_path.parent / "CI-SYNTHETIC-DISABLED-CANDIDATE-NEVER-DISTRIBUTE.zip"
+    disabled_path.write_bytes(archive({"release-set.json": manifest_bytes(disabled),
+                                       "artifacts/local/web.zip": web}))
+    must(sha(web) == sha(zipfile.ZipFile(disabled_path).read("artifacts/local/web.zip")),
+         "DISABLED_FIXTURE_SOURCE_STILL_EXACT")
     temporary = dict(qa)
     temporary["for_install"] = True
     temporary["production_pass"] = True
