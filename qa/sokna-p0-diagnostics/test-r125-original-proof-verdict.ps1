@@ -78,6 +78,17 @@ try{
   state_base64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($state));
   managed_base64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($managed));
   installed_identity_base64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($identity))}
+ # HOME-LIKE versus CAFE-LIKE: one auditor/ledger, different R125
+ # lifecycle evidence. These are disposable states, not actual host attestations.
+ $syntheticClean=(Join-Path $out 'qa-removed-proof-temporarily.json')
+ Move-Item -LiteralPath $proof -Destination $syntheticClean
+ try{
+  $homeLike=Check 'RECEIPTS_CROSS_CHECKED_NO_INSTALL_APPROVAL'
+  Need ($homeLike.operation_ledger.total-eq25 -and $homeLike.operation_ledger.blocking-eq0) 'HOME_LIKE_OP_LEDGER_INCORRECTLY_BLOCKED'
+  Need ($homeLike.r125.rollback_proof_present-eq$false -and $homeLike.r125.bytes_match-eq'NOT_PROVEN' -and
+        $homeLike.authorizes_install-eq$false) 'HOME_LIKE_ABSENT_R125_MUST_NOT_MEAN_AUTO_INSTALL'
+  Write-Host 'PASS HOME_LIKE_0322_CLEAN_R125_EVIDENCE_NOT_BLOCKED_BY_HISTORICAL_LEDGER'
+ }finally{Move-Item -LiteralPath $syntheticClean -Destination $proof}
  $before=(Get-FileHash -LiteralPath $proof -Algorithm SHA256).Hash
  $ok=Check 'RECEIPTS_CROSS_CHECKED_NO_INSTALL_APPROVAL'
  Need ($ok.operation_ledger.total-eq25 -and $ok.operation_ledger.verified-eq9 -and
