@@ -184,7 +184,7 @@ if($Mode -eq 'install'){
               $record.common_three_component_commit_rollback_verified -eq $false) 'INSTALLED_ENGINE_LOCAL_PUBLIC_EVIDENCE_MISMATCH'
     }
     $before.local_public_test_executed=$true
-    $before.co_host_local_profiles=@('r75','r140')
+    $before|Add-Member -NotePropertyName 'co_host_local_profiles' -NotePropertyValue @('r75','r140') -ErrorAction Stop
     $before.global_three_component_commit_rollback_verified=$false
     $before.production_authorized=$false
     $before|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $proof -Encoding utf8NoBOM
