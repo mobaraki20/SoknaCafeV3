@@ -22,7 +22,10 @@ function Refuse([string]$why) { throw [IO.InvalidDataException]::new($why) }
 function Fingerprint([string]$path){
  if(-not(Test-Path -LiteralPath $path -PathType Leaf)){Refuse 'MAINTENANCE_REQUIRED_BINARY_MISSING'}
  if((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){Refuse 'MAINTENANCE_REPARSE_FILE_BLOCKED'}
- (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+ $stream=[IO.File]::OpenRead($path)
+ $digest=[Security.Cryptography.SHA256]::Create()
+ try{return ([BitConverter]::ToString($digest.ComputeHash($stream))).Replace('-','').ToLowerInvariant()}
+ finally{$digest.Dispose();$stream.Dispose()}
 }
 function ReadVersion([string]$path){
  [string]$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($path).FileVersion
