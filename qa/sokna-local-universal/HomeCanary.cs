@@ -53,7 +53,7 @@ try
         var id=Identity(row.GetProperty("local"));
         first??=id;
         var result=verifier.VerifyOnly(inbox,Installed(id));
-        Need(result.ExactBaselineVerified && result.ArtifactIntegrityVerified &&
+        Need(result.ExactBaselineVerified == true && result.ArtifactIntegrityVerified &&
             result.OperatorAuthorized && !result.DatabaseMutationPerformed && !result.StagePerformed,
             "NATIVE_PREFLIGHT_BASELINE_"+(++count));
     }
