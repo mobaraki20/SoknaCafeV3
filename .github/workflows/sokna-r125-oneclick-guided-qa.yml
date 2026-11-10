@@ -1,0 +1,92 @@
+name: SOKNA R125 guarded standalone one-click recovery client QA
+on:
+  push:
+    branches: [qa/sokna-r152-final-release-gates-20261110]
+    paths:
+      - qa/sokna-r125-oneclick/**
+      - .github/workflows/sokna-r125-oneclick-guided-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  oneclick-windows-real-build-negative-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Verify source has UAC admin, no direct mutation or arbitrary arguments
+        shell: pwsh
+        run: |
+          $src=Get-Content qa/sokna-r125-oneclick/Program.cs -Raw
+          $manifest=Get-Content qa/sokna-r125-oneclick/app.manifest -Raw
+          if($manifest -notmatch 'requestedExecutionLevel level="requireAdministrator"'){throw 'R125_UAC_ADMIN_REQUIRED'}
+          foreach($marker in @('R125_ONE_CLICK_NO_ARGUMENTS_ALLOWED','R125_INSTALLED_HOST_EVIDENCE_MISSING','R125RecoveryWorkflow.RunAsync','confirmed: true','R125_UNEXPECTED_CONDITION_NOT_MODIFIED')){
+            if(-not $src.Contains($marker)){throw "R125_SOURCE_GUARD_MISSING: $marker"}
+          }
+          foreach($forbidden in @('File.Delete(','Directory.Delete(','Process.Start("powershell','Stop-Service','Start-Service','ExecuteNonQuery(')){
+            if($src.Contains($forbidden)){throw "R125_CLIENT_MUTATION_FORBIDDEN: $forbidden"}
+          }
+          Write-Host 'PASS client contains no direct service, database or proof-removal calls'
+      - name: Publish exact self-contained win-x64 portable EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $output=Join-Path $PWD.Path 'qa/sokna-r125-oneclick/dist'
+          dotnet publish qa/sokna-r125-oneclick/R125OneClick.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=false -o $output
+          if($LASTEXITCODE-ne0){throw 'R125_PORTABLE_EXE_BUILD_FAILED'}
+          $exe=Join-Path $output 'SOKNA-R125-Guided-OneClick.exe'
+          if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'R125_OUTPUT_EXE_MISSING'}
+          if((Get-Item $exe).Length -lt 1000000){throw 'R125_SELF_CONTAINED_EXE_TOO_SMALL'}
+          $hash=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $info=@{
+            format='sokna-r125-guarded-standalone-qa-v1'
+            sha256=$hash
+            bytes=(Get-Item $exe).Length
+            source_commit=$env:GITHUB_SHA
+            local_public_modified=$false
+            maintenance_installed=$false
+            production_approved=$false
+            cafe_host_tested=$false
+            no_host_negative_test='PENDING'
+            read_only_preflight_before_signed_archive=$true
+          }
+          $info|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $output 'QA-STATUS.json') -Encoding UTF8
+          "R125_BIN=$exe" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "R125_FOLDER=$output" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "EXACT_EXE_SHA256=$hash"
+      - name: Execute exact portable EXE on blank disposable Windows and verify fail-closed report
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $desktop=[Environment]::GetFolderPath('DesktopDirectory')
+          if(-not $desktop){$desktop=[Environment]::GetFolderPath('Desktop')}
+          $before=@(Get-CimInstance Win32_Service -Filter "Name like 'Sokna%'"|ForEach-Object{"$($_.Name)|$($_.State)|$($_.PathName)"})
+          $old=@(Get-ChildItem -LiteralPath $desktop -Filter 'SOKNA-R125-ONECLICK-RESULT-*.json' -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+          $p=Start-Process -FilePath $env:R125_BIN -Wait -PassThru -NoNewWindow
+          if($p.ExitCode -ne 2){throw "R125_BLANK_HOST_MUST_BLOCK_GOT_$($p.ExitCode)"}
+          $new=@(Get-ChildItem -LiteralPath $desktop -Filter 'SOKNA-R125-ONECLICK-RESULT-*.json' -File |Where-Object{$_.FullName -notin $old})
+          if($new.Count -ne 1){throw 'R125_SAFE_REPORT_NOT_UNIQUE'}
+          $result=Get-Content -LiteralPath $new[0].FullName -Raw|ConvertFrom-Json
+          if($result.status -ne 'BLOCKED' -or $result.code -ne 'R125_UNEXPECTED_CONDITION_NOT_MODIFIED' -or
+             $result.reconciliation_performed -ne $false -or $result.production_approved -ne $false){
+              throw 'R125_BLANK_HOST_FALSE_SUCCESS_OR_UNSAFE_ACTION'
+          }
+          $after=@(Get-CimInstance Win32_Service -Filter "Name like 'Sokna%'"|ForEach-Object{"$($_.Name)|$($_.State)|$($_.PathName)"})
+          if(($before -join '|') -cne ($after -join '|')){throw 'R125_WINDOWS_SERVICE_MUTATED'}
+          $statusPath=Join-Path $env:R125_FOLDER 'QA-STATUS.json'
+          $status=Get-Content -LiteralPath $statusPath -Raw|ConvertFrom-Json
+          $status.no_host_negative_test='PASS'
+          $status|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $statusPath -Encoding UTF8
+          Write-Host 'PASS actual self-contained UAC EXE fails closed with one report and without touching services on no-Sokna host'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-R125-GUIDED-ONECLICK-QA-NOT-PRODUCTION
+          path: |
+            qa/sokna-r125-oneclick/dist/SOKNA-R125-Guided-OneClick.exe
+            qa/sokna-r125-oneclick/dist/QA-STATUS.json
+          if-no-files-found: error
+          retention-days: 14
