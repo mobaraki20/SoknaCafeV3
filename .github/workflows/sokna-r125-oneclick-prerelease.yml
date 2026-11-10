@@ -10,10 +10,11 @@ permissions:
   actions: read
 jobs:
   pin-reviewed-binary-only:
+    permissions: {contents: write, actions: read}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
       SOURCE_RUN: '42858848924'
       EXACT_SOURCE_SHA: '1eaea65cbe96e9a5a808fef3d98877c5c4518b1b'
       RELEASE_TAG: 'sokna-r125-guarded-oneclick-qa-20261110'
