@@ -68,12 +68,22 @@ begin
     Log('Maintenance component failure: ' + String(FailureCode));
     RaiseException('Maintenance upgrade failed: ' + String(FailureCode) + '. See the SOKNA report on the Desktop. Recovery was not requested.');
   end;
+  { The Maintenance service upgrade has already committed, passed signed
+    health, file SHA and installed-identity readback. R125 reconciliation is
+    a separate optional Local recovery assessment; NEVER turn its BLOCKED
+    result into a false statement that Maintenance installation failed. }
+  WorkflowExitCode := 0;
   Params := 'finish-r125-recovery';
   if ConfirmArchive then Params := Params + ' --confirm-preserve-and-archive';
-  if not Exec(ExpandConstant('{tmp}\SOKNA-0326\Maintenance\Recovery\SoknaMaintenanceRecoveryConsole.exe'), Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    RaiseException('Maintenance is upgraded; recovery verification could not start.');
-  if ResultCode <> 0 then
-    RaiseException('Maintenance is upgraded; recovery is blocked. A report is saved on the Desktop.');
-  WorkflowExitCode := 0;
-  WizardForm.FinishedLabel.Caption := 'Maintenance is verified. Recovery status is recorded in the Desktop report. This is not approval for an application or database upgrade.';
+  if not Exec(ExpandConstant('{tmp}\SOKNA-0326\Maintenance\Recovery\SoknaMaintenanceRecoveryConsole.exe'), Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then begin
+    Log('Maintenance committed and verified; R125 recovery assessment could not start.');
+    WizardForm.FinishedLabel.Caption := 'Maintenance updated. Previous Local recovery requires a separate check; no Local database update was attempted.';
+    Exit;
+  end;
+  if ResultCode <> 0 then begin
+    Log('Maintenance committed and verified; separate R125 recovery assessment blocked: ' + IntToStr(ResultCode));
+    WizardForm.FinishedLabel.Caption := 'Maintenance updated. Previous Local recovery is still blocked; see the Desktop SOKNA workflow report. No Local database update was attempted.';
+    Exit;
+  end;
+  WizardForm.FinishedLabel.Caption := 'Maintenance verified. Previous Local recovery status is recorded in the Desktop report. No application or database upgrade was performed.';
 end;
