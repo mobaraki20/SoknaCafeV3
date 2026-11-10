@@ -1,0 +1,39 @@
+name: SOKNA exact R153 Local universal real Windows activation and rollback (QA lab only)
+on:
+  push:
+    branches: [qa/sokna-local-universal-release-contract-20261110]
+    paths:
+      - qa/sokna-local-universal/**
+      - .github/workflows/sokna-local-universal-real-activation-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  real-windows-apache-mariadb-local:
+    runs-on: windows-latest
+    timeout-minutes: 85
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Preflight exact Windows PowerShell of real activation harness
+        shell: pwsh
+        run: |
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path 'qa/sokna-local-universal/windows-r153-real-activation.ps1'),[ref]$null,[ref]$errors)|Out-Null
+          if(@($errors).Count-ne0){$errors|ForEach-Object{Write-Host $_};throw 'R153_WINDOWS_SCRIPT_PARSE_FAILED'}
+          Write-Host 'PASS R153 WINDOWS POWERHELL PARSE'
+      - name: Real Windows Apache/PHP/MariaDB R153 activation from R75 and R140, fault rollback and isolated SQL restore
+        shell: pwsh
+        run: |
+          & ./qa/sokna-local-universal/windows-r153-real-activation.ps1
+          if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
+          Write-Host 'PASS R153 real Windows + Apache PHP MariaDB double-source activation, fault matrix and backup restore in isolated CI ONLY'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-R153-LOCAL-WINDOWS-ACTIVATION-ROLLBACK-QA-NOT-PRODUCTION
+          path: ${{ runner.temp }}/sokna-r153-windows-exact-e2e/artifacts/r149b-windows-cycles.json
+          if-no-files-found: error
+          retention-days: 14
