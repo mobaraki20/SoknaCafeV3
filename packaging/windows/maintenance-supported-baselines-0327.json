@@ -1,0 +1,21 @@
+[
+  {
+    "version": "0.3.26",
+    "engine_version": "0.3.26",
+    "recovery_console_version": "preserved",
+    "proof": "exact_0326_published_components_plus_on_host_committed_independent_receipt",
+    "source_commit": "aba774d67e9d3890aa0f69d00f214ae82b395927",
+    "files": [
+      {
+        "path": "Maintenance/App/SoknaMaintenanceSupervisor.exe",
+        "bytes": 97080095,
+        "sha256": "88ba73a97e273a4f818f0200bcc32f7b8cc9df4522b554cca6b88e32e0832aae"
+      },
+      {
+        "path": "Maintenance/App/SoknaMaintenanceUpdateEngine.exe",
+        "bytes": 69374456,
+        "sha256": "d9f8295976a1a549191797303f6a6046877a96d3f1e23fe022bf3ebcfce61199"
+      }
+    ]
+  }
+]
