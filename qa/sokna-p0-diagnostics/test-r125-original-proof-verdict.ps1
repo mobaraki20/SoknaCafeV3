@@ -54,7 +54,7 @@ try{
  for($i=1;$i-le7;$i++){
   $id=('{0:x32}' -f (200+$i))
   Save (Join-Path $ops ('op-'+$id+'.json')) @{format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$id;
-   operation_type='update.local-code-only-activate';state=$(if($i-le3){'failed'}else{'committed'});package_ref=$pkg}
+   operation_type='update.local-code-only-activate';state=$(if($i-le3){'failed'}else{'committed'});package_ref=$pkg;activation_performed=$true;database_mutation_performed=$false}
  }
  $state=Join-Path $local 'lifecycle\local\state.json'
  $managed=Join-Path $local 'lifecycle\local\managed-files.json'
