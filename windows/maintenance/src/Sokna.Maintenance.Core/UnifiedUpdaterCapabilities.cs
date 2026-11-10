@@ -96,4 +96,27 @@ public sealed record UnifiedUpdaterCapabilitiesResult(
     [property: JsonPropertyName("detail")] string Detail,
     [property: JsonPropertyName("inbox_transport_available")] bool InboxTransportAvailable,
     [property: JsonPropertyName("local_activation_workflow")] string LocalActivationWorkflow = "supervisor-durable-prepare-v1",
-    [property: JsonPropertyName("host_blockers")] string[]? HostBlockers = null);
+    [property: JsonPropertyName("host_blockers")] string[]? HostBlockers = null)
+{
+    // Simple operator wording is derived from existing live safety evidence.
+    // It never overrides the technical blocking code or grants activation.
+    [JsonPropertyName("user_status")]
+    public string UserStatus => BlockingCode switch
+    {
+        "LOCAL_OPERATION_IN_PROGRESS" => "checking",
+        "LOCAL_RECOVERY_REQUIRED" => "needs_action",
+        _ => PanelUpdateReady ? "ready_to_check_package" : "needs_action"
+    };
+
+    [JsonPropertyName("user_message")]
+    public string UserMessage => BlockingCode switch
+    {
+        "LOCAL_OPERATION_IN_PROGRESS" => "عملیات قبلی هنوز در حال بررسی است.",
+        "LOCAL_RECOVERY_REQUIRED" => "به‌روزرسانی کامل نشده است. برای حفظ اطلاعات، ادامهٔ خودکار متوقف شده است.",
+        "LOCAL_INSTALLED_IDENTITY_REBIND_REQUIRED" => "نسخهٔ نصب‌شده نیاز به بررسی دارد.",
+        "LOCAL_HOST_PRECONDITIONS_UNPROVEN" => "پیش از به‌روزرسانی، وضعیت سامانه باید بررسی شود.",
+        _ => PanelUpdateReady
+            ? "وضعیت اولیه مناسب است؛ سازگاری بسته و بک‌آپ پیش از نصب بررسی می‌شود."
+            : "به‌روزرسانی خودکار هنوز آمادهٔ اجرا نیست."
+    };
+}
