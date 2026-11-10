@@ -4,6 +4,7 @@ on:
     branches: [qa/sokna-r125-ledger-compat-20261110]
     paths:
       - qa/sokna-universal/real-maintenance-exe-cohost.ps1
+      - qa/sokna-preserved-recovery/test-real-installer-rev3.ps1
       - windows/maintenance/src/Sokna.Maintenance.Core/SupervisorUniversalUpgradeFence.cs
       - qa/sokna-universal/UniversalOwnerCoreProbe.cs
       - qa/sokna-universal/UniversalOwnerCoreProbe.csproj
@@ -14,6 +15,7 @@ on:
     branches: [qa/sokna-update-safety-20261109]
     paths:
       - qa/sokna-universal/real-maintenance-exe-cohost.ps1
+      - qa/sokna-preserved-recovery/test-real-installer-rev3.ps1
       - windows/maintenance/src/Sokna.Maintenance.Core/SupervisorUniversalUpgradeFence.cs
       - qa/sokna-universal/UniversalOwnerCoreProbe.cs
       - qa/sokna-universal/UniversalOwnerCoreProbe.csproj
@@ -136,3 +138,73 @@ jobs:
         shell: pwsh
         run: |
           & ./qa/sokna-universal/real-maintenance-exe-cohost.ps1 -Mode cleanup
+  exact-historical-0326-five-baselines:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions: {contents: read, actions: read}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: aba774d67e9d3890aa0f69d00f214ae82b395927}
+      - uses: actions/checkout@v4
+        with: {ref: b8b1cc4e91772692d92d6f7aa10b0657d2aa5427, path: old-0322-source}
+      - uses: actions/checkout@v4
+        with: {path: wrapper-fix}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-0326-ledger-compat-built-qa-not-for-install
+          path: dist
+          run-id: 42706765928
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-0324-built-qa-not-production
+          run-id: 42576660029
+          github-token: ${{ github.token }}
+          path: old-0324-artifact
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-0325-built-qa-not-production
+          run-id: 42631664373
+          github-token: ${{ github.token }}
+          path: old-0325-artifact
+      - uses: actions/download-artifact@v4
+        with:
+          name: exact-recovery-011-643841631
+          run-id: 42688606509
+          github-token: ${{ github.token }}
+          path: exact-011
+      - name: Exact prior baseline binaries
+        shell: pwsh
+        run: |
+          $old=Join-Path $env:RUNNER_TEMP 'old-0322'
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')){
+            dotnet publish "old-0322-source/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $old $n)
+            if($LASTEXITCODE-ne0){throw 'OLD_BASELINE_BUILD_FAILED'}
+          }
+          Invoke-WebRequest 'https://github.com/mobaraki20/SoknaCafeV3/releases/download/sokna-maintenance-r125-0323-qa-02dd6431a3fe/SOKNA-R125-Maintenance-0323-Three-Component-QA-NOT-PRODUCTION.exe' -OutFile "$env:RUNNER_TEMP/old-0323.exe" -TimeoutSec 180
+          if((Get-FileHash "$env:RUNNER_TEMP/old-0323.exe" -Algorithm SHA256).Hash.ToLowerInvariant()-ne'3a4c6e1c09174bf79aa29115588a2f6ba8eddfa58929d54a61a528cbd4feca2a'){throw 'OLD_0323_HASH_MISMATCH'}
+          if((Get-FileHash 'old-0324-artifact/SOKNA-Maintenance-0324-MultiBaseline-QA-NOT-PRODUCTION.exe' -Algorithm SHA256).Hash.ToLowerInvariant()-ne'7712cccc855dd55bd5956224db778cba67b825269e440642733097368a62db12'){throw 'OLD_0324_HASH_MISMATCH'}
+          if((Get-FileHash 'old-0325-artifact/SOKNA-Maintenance-0325-MultiBaseline-QA-NOT-PRODUCTION.exe' -Algorithm SHA256).Hash.ToLowerInvariant()-ne'fa196597150dff0045c7e42ab6a59a335438b48ab491651947c44e873f5bbac7'){throw 'OLD_0325_HASH_MISMATCH'}
+      - name: Same exact integrated EXE on five real service baselines including original 011
+        shell: pwsh
+        run: |
+          & ./wrapper-fix/qa/sokna-preserved-recovery/test-real-installer-rev3.ps1 -Installer (Join-Path $PWD.Path 'dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe') -ComponentManifest (Join-Path $PWD.Path 'dist/COMPONENT-MANIFEST.json') -BaselineRoot "$env:RUNNER_TEMP/old-0322" -Old0323Installer "$env:RUNNER_TEMP/old-0323.exe" -Old0324Installer (Join-Path $PWD.Path 'old-0324-artifact/SOKNA-Maintenance-0324-MultiBaseline-QA-NOT-PRODUCTION.exe') -Old0325Installer (Join-Path $PWD.Path 'old-0325-artifact/SOKNA-Maintenance-0325-MultiBaseline-QA-NOT-PRODUCTION.exe') -LegacyRecovery011 (Join-Path $PWD.Path 'exact-011/SoknaMaintenanceRecoveryConsole.exe') -Output (Join-Path $PWD.Path 'dist/REAL-SERVICE-QA.json')
+          if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: maintenance-0326-five-real-baselines-verified-qa-only
+          path: dist/REAL-SERVICE-QA.json
+          if-no-files-found: error
+      - name: Archive safe error receipts even on a qualified failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-0326-five-baselines-safe-rejection-reports-qa
+          path: |
+            C:/Users/runneradmin/Desktop/SOKNA-MAINTENANCE-INSTALL-FAILED-*.json
+            dist/REAL-SERVICE-QA.json
+          if-no-files-found: warn
+          retention-days: 14
