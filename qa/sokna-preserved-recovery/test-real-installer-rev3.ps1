@@ -204,6 +204,7 @@ foreach($case in @('0.3.22-preserved011','0.3.22','0.3.23','0.3.24','0.3.25')){
     # must not be misread as the result of this historical-ledger test.
     $beforeForge=@(Get-ChildItem -LiteralPath $desktop -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json' -ErrorAction SilentlyContinue|
       ForEach-Object{$_.FullName})
+    Write-Host ('QA_FORGED_HISTORICAL_REPORTS_BEFORE='+$beforeForge.Count)
     $badInstall=InvokeInstaller $Installer
     Need ($badInstall-ne0) 'EXACT_INNO_ACCEPTED_FORGED_HISTORICAL_STAGE'
     $freshErrors=@(Get-ChildItem -LiteralPath $desktop -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json' -ErrorAction SilentlyContinue|
