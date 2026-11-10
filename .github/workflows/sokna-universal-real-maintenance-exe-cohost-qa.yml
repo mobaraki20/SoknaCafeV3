@@ -203,8 +203,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: maintenance-0326-five-baselines-safe-rejection-reports-qa
-          path: |
-            C:/Users/runneradmin/Desktop/SOKNA-MAINTENANCE-INSTALL-FAILED-*.json
-            dist/REAL-SERVICE-QA.json
+          # Keep Desktop receipts in one filesystem root. The verified JSON
+          # result is already uploaded by the preceding successful step.
+          path: C:/Users/runneradmin/Desktop/SOKNA-MAINTENANCE-INSTALL-FAILED-*.json
           if-no-files-found: warn
           retention-days: 14
