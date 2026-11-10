@@ -299,209 +299,7 @@ if(-not$lab){
   $pm=Get-Content -LiteralPath $previousMarker -Raw|ConvertFrom-Json -ErrorAction Stop
   if($pm.format-ne'sokna-maintenance-independent-transaction-v1' -or
      $pm.phase-ne'COMMITTED' -or $pm.target-ne'0.3.26' -or
-     [string]$pm.id -notmatch '^[a-f0-9]{32}
-  FileSafe $receiptPath
-  $receipt=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
-  if($receipt.format-ne'sokna-maintenance-only-component-receipt-v1' -or
-     $receipt.version-ne$baselineVersion -or
-     $receipt.supervisor_sha256-cne$original[$names[0]] -or
-     $receipt.engine_sha256-cne$original[$names[1]]){Fail 'INSTALLED_BINARIES_NOT_RECEIPT_ATTESTED'}
- }else{
-  $approved=@($manifest.supported_baselines|Where-Object{$_.version-eq$baselineVersion})
-  if($approved.Count-ne1 -or @($approved[0].files).Count-ne2){Fail 'PUBLISHED_BASELINE_PROOF_MISSING'}
-  foreach($rel in $names){
-   $match=@($approved[0].files|Where-Object{$_.path-eq$rel})
-   if($match.Count-ne1 -or $match[0].sha256-cne$original[$rel] -or [long]$match[0].bytes-ne(Get-Item -LiteralPath $installed[$rel]).Length){Fail 'PUBLISHED_BASELINE_BINARY_DRIFT'}
-  }
- }
-}
-Stage 'INSTALLED_IDENTITY'
-$identity=Join-Path $dataRoot 'Maintenance\installed-release-identity.json'
-FileSafe $identity
-$identityHash=Hash $identity
-# Runtime and Print Agent are outside the transaction: snapshot hashes before
-# touching any Maintenance components and recheck before commit/rollback receipt.
-$otherHashes=@{};$otherServices=@{}
-if(-not$lab){
- # Maintenance owns only its three files. Other components may be installed
- # separately or absent. Observe actual SCM paths without repairing/restarting.
- foreach($name in @('SoknaRuntime','SoknaPrintWorker')){
-  $other=Get-CimInstance Win32_Service -Filter ("Name='"+$name+"'") -ErrorAction Stop
-  if($other){
-   $otherServices[$name]=[string]$other.PathName
-   $image=[Environment]::ExpandEnvironmentVariables(([string]$other.PathName).Trim())
-   if($image-match'^"([^"]+\.exe)"(?:\s|$)'){$p=$Matches[1]}
-   elseif($image-match'^([^\s"]+\.exe)(?:\s|$)'){$p=$Matches[1]}
-   else{Fail 'R125_UNTOUCHED_SERVICE_IMAGE_UNQUALIFIED'}
-   $p=[IO.Path]::GetFullPath($p);FileSafe $p;$otherHashes[$p]=Hash $p
-  }
- }
- # Preserve legacy unregistered sibling files too, when they actually exist.
- foreach($rel in @('Runtime\SoknaRuntimeService.exe','PrintAgent\Service\Sokna.PrintAgent.Service.exe')){
-  $p=Join-Path $installRoot $rel
-  if(Test-Path -LiteralPath $p){FileSafe $p;$otherHashes[$p]=Hash $p}
- }
-}
-function AssertOtherComponents(){
- foreach($p in $otherHashes.Keys){Same $p $otherHashes[$p]}
- foreach($name in $otherServices.Keys){
-  $actual=Get-CimInstance Win32_Service -Filter ("Name='"+$name+"'") -ErrorAction Stop
-  if(-not$actual -or [string]$actual.PathName-cne$otherServices[$name]){Fail 'R125_UNTOUCHED_SERVICE_REGISTRATION_CHANGED'}
- }
-}
-$oldDoc=Get-Content -LiteralPath $identity -Raw|ConvertFrom-Json
-if($oldDoc.maintenance_supervisor_version-ne$baselineVersion -or
- $oldDoc.update_engine_version-ne$baselineVersion){Fail 'MAINTENANCE_INSTALLED_IDENTITY_BASELINE_MISMATCH'}
-# Do not stop a Supervisor that is executing a Local/Public maintenance
-# operation. Historical recovered/failed records remain untouched.
-# Historical Local recovery belongs to Local, NOT this independent Maintenance upgrade.
-# Never delete/modify that journal or grant Local readiness. Only *active* writer
-# operations block a Maintenance service restart. Hold the OS mutation lease.
-Stage 'MAINTENANCE_INDEPENDENT_ACTIVITY'
-$operationsRoot=Join-Path $dataRoot 'Maintenance\operations'
-$historicalUnknownCount=0
-if(-not$lab -and -not(Test-Path -LiteralPath $operationsRoot -PathType Container)){
- Fail 'MAINTENANCE_OPERATION_LEDGER_UNAVAILABLE'
-}
-if(Test-Path -LiteralPath $operationsRoot -PathType Container){
- $operations=@(Get-ChildItem -LiteralPath $operationsRoot -Filter 'op-*.json' -File -ErrorAction Stop)
- if($operations.Count-gt20000){Fail 'MAINTENANCE_OPERATION_LEDGER_LIMIT'}
- foreach($entry in $operations){
-  FileSafe $entry.FullName
-  $op=Get-Content -LiteralPath $entry.FullName -Raw|ConvertFrom-Json -ErrorAction Stop
-  if($op.format-ne'sokna-maintenance-operation-v1' -or
-     [string]$op.operation_id -notmatch '^[a-f0-9]{32}$' -or
-     $entry.Name-cne('op-'+$op.operation_id+'.json') -or
-     [string]::IsNullOrWhiteSpace([string]$op.state)){
-    Fail 'MAINTENANCE_HISTORY_RECORD_UNREADABLE'
-  }
-  if($op.state-in @('accepted','running','activating','recovering')){
-    Fail 'MAINTENANCE_IN_FLIGHT_MUTATION_BLOCKED'
-  }
-  if($op.state-notin @('committed','failed_pre_mutation','failed','code_only_engine_rolled_back_verified','rolled_back','recovered','cancelled','staged','verified','recovery_required')){
-    # The unknown Local record remains untouched and still blocks Local
-    # activation under its own verifier. The independent Maintenance-only
-    # component upgrade neither reconciles nor interprets that state.
-    $historicalUnknownCount++
-  }
- }
-}
-Write-Host ('SOKNA_MAINTENANCE_ONLY_HISTORICAL_UNKNOWN_RETAINED='+$historicalUnknownCount)
-$root=Join-Path $dataRoot 'setup\maintenance-independent-pair-027-v1'
-ArchiveDir $root
-$exclusive=Join-Path $root 'transaction.lock'
-$lock=[IO.File]::Open($exclusive,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
-try{
- $marker=Join-Path $root 'active.json'
- if(Test-Path -LiteralPath $marker -PathType Leaf){
-  $prior=Get-Content -LiteralPath $marker -Raw|ConvertFrom-Json
-  if($prior.phase-notin@('COMMITTED','ROLLED_BACK','FAILED_BEFORE_MUTATION')){
-   Fail 'R125_PREVIOUS_TRANSACTION_REQUIRES_RECOVERY'
-  }
- }
-Stage 'BASELINE_SIGNED_HEALTH'
- Live $baselineVersion
- $id=[Guid]::NewGuid().ToString('N')
- $dir=Join-Path $root ('tx-'+$id)
- ArchiveDir $dir
- $backup=Join-Path $dir 'before'
- ArchiveDir $backup
- $result=Join-Path $dir 'result.json'
- $state=[ordered]@{format='sokna-maintenance-independent-transaction-v1';id=$id;phase='PREPARED';baseline=$baselineVersion;target=$targetVersion;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false}
- foreach($rel in $names){
-  $dst=Join-Path $backup ([IO.Path]::GetFileName($rel))
-  Copy-Item -LiteralPath $installed[$rel] -Destination $dst
-  Same $dst $original[$rel]
- }
- $idBackup=Join-Path $backup 'installed-release-identity.json'
- Copy-Item -LiteralPath $identity -Destination $idBackup
- Same $idBackup $identityHash
- Save (Join-Path $dir 'snapshot.json') ([ordered]@{format='sokna-maintenance-independent-snapshot-v1';identity_sha256=$identityHash;recovery_sha256=$recoveryBeforeSha;files=@($names|ForEach-Object{@{name=$_;sha256=$original[$_]}})})
- Save $marker $state
- try{
-Stage 'STOP_SERVICE'
-  $state.phase='STOPPING';Save $marker $state
-  StopMaintenanceService
-Stage 'REPLACE_COMPONENTS'
-  $state.phase='REPLACING';Save $marker $state
-  for($i=0;$i-lt2;$i++){
-   $rel=$names[$i]
-   Copy-Item -LiteralPath (Join-Path $PayloadRoot ($rel.Replace('/','\'))) -Destination $installed[$rel] -Force
-   Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))
-   if($lab -and $i-eq0 -and $FailAt-eq'crash-after-copy-1'){
-    [Diagnostics.Process]::GetCurrentProcess().Kill()
-   }
-   Fault ('after-copy-'+($i+1))
-  }
-Stage 'START_SERVICE'
-  $state.phase='STARTING';Save $marker $state
-  StartMaintenanceService
-  Live $targetVersion
-  Fault 'after-service-start'
-Stage 'COMMIT_IDENTITY'
-  $state.phase='IDENTITY';Save $marker $state
-  $doc=Get-Content -LiteralPath $identity -Raw|ConvertFrom-Json
-  if((Hash $identity)-cne$identityHash){Fail 'R125_IDENTITY_CHANGED_DURING_INSTALL'}
-  $doc.maintenance_supervisor_version=$targetVersion
-  $doc.update_engine_version=$targetVersion
-  $roundTrip=($doc|ConvertTo-Json -Depth 100 -Compress)|ConvertFrom-Json
-  $roundTrip.maintenance_supervisor_version=$baselineVersion
-  $roundTrip.update_engine_version=$baselineVersion
-  if(($roundTrip|ConvertTo-Json -Depth 100 -Compress)-cne
-    ($oldDoc|ConvertTo-Json -Depth 100 -Compress)){Fail 'R125_IDENTITY_SCOPE_DRIFT'}
-  Save $identity $doc
-  if($lab -and $FailAt-eq'crash-after-identity'){
-   [Diagnostics.Process]::GetCurrentProcess().Kill()
-  }
-  Fault 'after-identity'
-  foreach($rel in $names){Same $installed[$rel] ([string](@($files|Where-Object{$_.path-eq$rel})[0].sha256))}
-  Live $targetVersion
-  AssertOtherComponents
-  Same $recoveryPath $recoveryBeforeSha
-  # Durable complete receipt precedes the commit marker: a crash in the gap
-  # is safely recoverable rather than falsely advertising committed install.
-  Save $result ([ordered]@{format='sokna-maintenance-independent-result-v1';status='COMMITTED';supervisor_version=$targetVersion;engine_version=$targetVersion;recovery_console_version=$observedRecovery;recovery_preserved=$true;source_version=$baselineVersion;source_commit=$manifest.source_commit;files=$files;archive_reconciled=$false;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
-  $state.phase='COMMITTED';Save $marker $state
-  Write-Host 'MAINTENANCE_PAIR_0326_INSTALL_COMMITTED'
-  exit 0
- }catch{
-  if($_.Exception-isnot[IO.InvalidDataException]){Write-Host ('SOKNA_INSTALLER_FAILURE_STAGE='+$script:InstallerStage);Write-Host 'SOKNA_INSTALLER_FAILURE=R125_COMPONENT_TRANSACTION_FAILED'}
-  [Console]::Error.WriteLine($_.Exception.ToString())
-  if($lab){Write-Host ('R125_CI_ORIGINAL_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
-Stage 'ROLLBACK'
-  $state.phase='ROLLING_BACK';Save $marker $state
-  try{
-   StopMaintenanceService
-   foreach($rel in $names){
-    $src=Join-Path $backup ([IO.Path]::GetFileName($rel))
-    Same $src $original[$rel]
-    if((Hash $installed[$rel])-cne$original[$rel]){Copy-Item -LiteralPath $src -Destination $installed[$rel] -Force}
-    Same $installed[$rel] $original[$rel]
-   }
-   Same $idBackup $identityHash
-   Copy-Item -LiteralPath $idBackup -Destination $identity -Force
-   Same $identity $identityHash
-   StartMaintenanceService
-   Live $baselineVersion
-   AssertOtherComponents
-   Same $recoveryPath $recoveryBeforeSha
-   $state.phase='ROLLED_BACK';Save $marker $state
-   Save $result ([ordered]@{format='sokna-maintenance-independent-result-v1';status='ROLLED_BACK';original_files_restored=$true;identity_restored=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false;print_mutated=$false})
-   Write-Host 'MAINTENANCE_0327_INSTALL_ROLLED_BACK'
-   exit 65
-  }catch{
-   if($lab){Write-Host ('R125_CI_ROLLBACK_FAILURE='+$_.Exception.GetType().Name+':'+$_.Exception.Message)}
-   $state.phase='RECOVERY_REQUIRED';Save $marker $state
-   Save $result ([ordered]@{format='sokna-maintenance-independent-result-v1';status='RECOVERY_REQUIRED';backup_retained=$true;auto_retry_forbidden=$true;database_mutated=$false;local_mutated=$false;public_mutated=$false})
-   Write-Host 'MAINTENANCE_0327_RECOVERY_REQUIRED'
-   exit 66
-  }
- }
-}finally{$lock.Dispose()}
-
-
-}finally{$machineLease.Dispose()}
-){Fail 'MAINTENANCE_0326_RECEIPT_UNQUALIFIED'}
+     [string]$pm.id -notmatch '^[a-f0-9]{32}$'){Fail 'MAINTENANCE_0326_RECEIPT_UNQUALIFIED'}
   $previousResult=Join-Path $previousRoot ('tx-'+$pm.id+'\result.json')
   FileSafe $previousResult
   $pr=Get-Content -LiteralPath $previousResult -Raw|ConvertFrom-Json -ErrorAction Stop
@@ -510,9 +308,7 @@ Stage 'ROLLBACK'
      $pr.engine_version-ne'0.3.26' -or $pr.source_commit-ne'aba774d67e9d3890aa0f69d00f214ae82b395927' -or
      $pr.recovery_preserved-ne$true -or $pr.database_mutated-ne$false -or
      $pr.local_mutated-ne$false -or $pr.public_mutated-ne$false -or
-     $pr.print_mutated-ne$false -or @($pr.files).Count-ne2){
-    Fail 'MAINTENANCE_0326_RECEIPT_UNQUALIFIED'
-  }
+     $pr.print_mutated-ne$false -or @($pr.files).Count-ne2){Fail 'MAINTENANCE_0326_RECEIPT_UNQUALIFIED'}
   foreach($rel in $names){
     $row=@($pr.files|Where-Object{$_.path-eq$rel})
     if($row.Count-ne1 -or [string]$row[0].sha256-cne$original[$rel] -or
@@ -527,26 +323,17 @@ Stage 'ROLLBACK'
   $ps=Get-Content -LiteralPath $previousSnap -Raw|ConvertFrom-Json -ErrorAction Stop
   if($ps.format-ne'sokna-maintenance-independent-snapshot-v1' -or
      $ps.identity_sha256-cne(Hash $previousOriginal) -or
-     $ps.recovery_sha256-cne$recoveryBeforeSha){
-    Fail 'MAINTENANCE_0326_PREIMAGE_OR_RECOVERY_MISMATCH'
+     $ps.recovery_sha256-cne$recoveryBeforeSha){Fail 'MAINTENANCE_0326_PREIMAGE_OR_RECOVERY_MISMATCH'}
+}
+$approved=@($manifest.supported_baselines|Where-Object{$_.version-eq$baselineVersion})
+if($approved.Count-ne1 -or @($approved[0].files).Count-ne2){Fail 'PUBLISHED_BASELINE_PROOF_MISSING'}
+foreach($rel in $names){
+  $match=@($approved[0].files|Where-Object{$_.path-eq$rel})
+  if($match.Count-ne1 -or $match[0].sha256-cne$original[$rel] -or
+     [long]$match[0].bytes-ne(Get-Item -LiteralPath $installed[$rel]).Length){
+    Fail 'PUBLISHED_BASELINE_BINARY_DRIFT'
   }
- }
- if($baselineVersion-eq'0.3.22'){
-  $receiptPath=Join-Path $dataRoot 'setup\maintenance-only-component-receipt-v1.json'
-  FileSafe $receiptPath
-  $receipt=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
-  if($receipt.format-ne'sokna-maintenance-only-component-receipt-v1' -or
-     $receipt.version-ne$baselineVersion -or
-     $receipt.supervisor_sha256-cne$original[$names[0]] -or
-     $receipt.engine_sha256-cne$original[$names[1]]){Fail 'INSTALLED_BINARIES_NOT_RECEIPT_ATTESTED'}
- }else{
-  $approved=@($manifest.supported_baselines|Where-Object{$_.version-eq$baselineVersion})
-  if($approved.Count-ne1 -or @($approved[0].files).Count-ne2){Fail 'PUBLISHED_BASELINE_PROOF_MISSING'}
-  foreach($rel in $names){
-   $match=@($approved[0].files|Where-Object{$_.path-eq$rel})
-   if($match.Count-ne1 -or $match[0].sha256-cne$original[$rel] -or [long]$match[0].bytes-ne(Get-Item -LiteralPath $installed[$rel]).Length){Fail 'PUBLISHED_BASELINE_BINARY_DRIFT'}
-  }
- }
+}
 }
 Stage 'INSTALLED_IDENTITY'
 $identity=Join-Path $dataRoot 'Maintenance\installed-release-identity.json'
