@@ -51,8 +51,8 @@ try{
  if($stages.Count-gt0){$stage=$stages[$stages.Count-1].Groups[1].Value}
  $failedStages=[regex]::Matches($raw,'(?m)^SOKNA_INSTALLER_FAILURE_STAGE=([A-Z0-9_]{1,80})\r?$')
  if($failedStages.Count-gt0){$stage=$failedStages[$failedStages.Count-1].Groups[1].Value}
- if($raw.Contains('MAINTENANCE_0326_RECOVERY_REQUIRED')){$outcome='RECOVERY_REQUIRED'}
- elseif($raw.Contains('MAINTENANCE_0326_INSTALL_ROLLED_BACK')){$outcome='SCRIPT_REPORTED_ROLLBACK'}
+ if($raw.Contains('MAINTENANCE_0327_RECOVERY_REQUIRED')){$outcome='RECOVERY_REQUIRED'}
+ elseif($raw.Contains('MAINTENANCE_0327_INSTALL_ROLLED_BACK')){$outcome='SCRIPT_REPORTED_ROLLBACK'}
 }catch{
  if($stage-eq'DIAGNOSTIC_STORAGE'){$safeCode='MAINTENANCE_DIAGNOSTIC_STORAGE_UNAVAILABLE'}
  elseif($stage-eq'COMPONENT_SCRIPT'){$safeCode='MAINTENANCE_COMPONENT_PROCESS_UNAVAILABLE'}
