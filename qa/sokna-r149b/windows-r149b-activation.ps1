@@ -260,7 +260,9 @@ PidFile "$ar/logs/httpd.pid"
                 $env:SOKNA_PUBLIC_QA_DB_PORT=[string]$dbPort
                 $env:SOKNA_PUBLIC_QA_DB_PASSWORD=''
                 try{
-                    Run $localPhp @('-c','php.ini',(Join-Path $repo 'qa/sokna-public-two-route/test-two-route.php'))
+                    # Start Public using ASCII-path QA toolchain PHP, not the Local Persian fixture path.
+                    # PHP's native Win32 CreateProcess can fail even for argv-array when PHP_BINARY contains non-ASCII.
+                    Run $phpExe @('-c','php.ini',(Join-Path $repo 'qa/sokna-public-two-route/test-two-route.php'))
                     Need (Test-Path -LiteralPath $publicSummary -PathType Leaf) 'PUBLIC_NATIVE_SUMMARY_MISSING'
                     $summary=Get-Content -LiteralPath $publicSummary -Raw|ConvertFrom-Json
                     Need (@($summary.cases).Count -eq 4) 'PUBLIC_ROUTINE_EMERGENCY_MATRIX_INCOMPLETE'
