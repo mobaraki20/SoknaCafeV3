@@ -537,3 +537,100 @@ jobs:
             dist/SHA256SUMS.txt dist/BUILD-QA.json dist/REAL-SERVICE-QA.json
           gh api "repos/$GH_REPO/releases/tags/$tag" | jq -e '.prerelease==true and .draft==false and ([.assets[].name]|index("SOKNA-Maintenance-Only-0326-Independent-R1-QA-NOT-PRODUCTION.exe")!=null)'
           echo "DIRECT_RELEASE_URL=https://github.com/$GH_REPO/releases/download/$tag/SOKNA-Maintenance-Only-0326-Independent-R1-QA-NOT-PRODUCTION.exe"
+  publish-independent-qa-prerelease:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: {contents: write, actions: read}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: mobaraki20/SoknaCafeV3
+      TARGET_TAG: sokna-maintenance-only-0326-independent-qa-20261110
+      EXE_NAME: SOKNA-Maintenance-Only-0326-Independent-R1-QA-NOT-PRODUCTION.exe
+      EXPECTED_SHA: 93981643923860e9d78bb7280be7d6d9f8e960bdbba4ffb9dea166bd59197874
+    steps:
+      - name: Confirm exact successful Windows installation qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,subprocess
+          repo='mobaraki20/SoknaCafeV3'
+          def get(url):
+              return json.loads(subprocess.check_output(['gh','api',url],text=True))
+          run=get(f'repos/{repo}/actions/runs/42806860062')
+          assert run['status']=='completed' and run['conclusion']=='success','WINDOWS_QA_NOT_SUCCESSFUL'
+          assert run['head_sha']=='928d29b0590fc7f8348b794003f9cc8a4603cc30','UNPINNED_QA_BUILD'
+          jobs=get(f'repos/{repo}/actions/runs/42806860062/jobs?per_page=100')['jobs']
+          match=[j for j in jobs if j['name']=='Real Windows two-component Maintenance-only Inno']
+          assert len(match)==1 and match[0]['conclusion']=='success','INDEPENDENT_QA_JOB_FAILED'
+          print('PASS VERIFIED EXACT WINDOWS QA')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-only-0326-independent-two-exe-qa-not-for-production
+          run-id: 42806860062
+          github-token: ${{ github.token }}
+          path: dist
+      - name: Verify exact EXE SHA and all six real Windows QA cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,hashlib,pathlib
+          d=pathlib.Path('dist')
+          exe=d/os.environ['EXE_NAME']
+          assert exe.is_file(),'EXE_MISSING'
+          sha=hashlib.sha256(exe.read_bytes()).hexdigest()
+          assert sha==os.environ['EXPECTED_SHA'],'EXE_SHA_NOT_QUALIFIED'
+          assert exe.stat().st_size==53331660,'EXE_SIZE_DRIFT'
+          build=json.loads((d/'BUILD-QA.json').read_text(encoding='utf-8-sig'))
+          assert build['sha256']==sha and build['size_bytes']==53331660,'BUILD_QA_INVALID'
+          assert build['scope']=='MAINTENANCE_ONLY_SUPERVISOR_AND_ENGINE'
+          assert build['recovery_preserved'] and build['local_public_unchanged']
+          assert not build['real_field_tested'] and not build['production_authorized']
+          cases=json.loads((d/'REAL-SERVICE-QA.json').read_text(encoding='utf-8-sig'))
+          assert len(cases)==6,'INCOMPLETE_WINDOWS_QA'
+          assert {x['baseline_case'] for x in cases}=={
+             '0.3.22-preserved011','0.3.22-preserved011-variant',
+             '0.3.22','0.3.23','0.3.24','0.3.25'},'BASELINE_DRIFT'
+          for x in cases:
+              assert x['installer_sha256']==sha,'UNTESTED_INSTALLER_BYTES'
+              assert x['real_service_upgrade']=='PASS' and x['real_file_lock_rollback']=='PASS'
+              assert x['recovery_hash_unchanged'] and x['historical_local_ledger_preserved']
+              assert x['local_public_identity_preserved'] and x['runtime_print_files_preserved']
+              assert not x['production_approved'] and not x['physical_host_tested']
+          assert (sha+'  '+exe.name) in (d/'SHA256SUMS.txt').read_text(),'CHECKSUM_FILE_DRIFT'
+          print('PASS EXACT INSTALLER SHA256='+sha)
+          print('PASS SIX REAL WINDOWS BASELINES; RECOVERY AND R125 HISTORY UNCHANGED')
+          PY
+      - name: Create GitHub prerelease with direct EXE download asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TARGET_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo 'REFUSE_OVERWRITE_EXISTING_RELEASE'
+            exit 1
+          fi
+          cat > notes-fa.md <<'NOTES'
+          # سکنا — پیش‌انتشار Maintenance مستقل 0.3.26.5
+
+          نسخهٔ آزمایشی QA؛ هنوز مجوز Production ندارد.
+
+          فایل مستقل فقط Supervisor و Update Engine را ارتقا می‌دهد.
+          Recovery فعلی را حفظ می‌کند و هیچ تغییری در Local، Public،
+          دیتابیس، سرویس چاپ یا سوابق قدیمی R125 ایجاد نمی‌کند.
+
+          آزمون Windows روی شش حالت تاریخی، شامل Recovery 0.1.1
+          با دو هش متفاوت، وضعیت ناشناختهٔ قدیمی و رد عملیات در حال اجرا،
+          با موفقیت انجام شده است. نصب روی دستگاه واقعی کافه هنوز تأیید نشده.
+
+          منشأ و آزمون دقیق:
+          https://github.com/mobaraki20/SoknaCafeV3/actions/runs/42806860062
+
+          نسخهٔ سه‌جزئی REV4 را دوباره اجرا نکنید.
+          SHA256SUMS.txt و گزارش آزمون ضمیمه‌اند.
+          NOTES
+          gh release create "$TARGET_TAG" --repo "$GH_REPO"             --target qa/sokna-r125-ledger-compat-20261110             --title "SOKNA Maintenance 0.3.26.5 - Independent two-component QA prerelease"             --prerelease --latest=false --notes-file notes-fa.md             "dist/$EXE_NAME" dist/SHA256SUMS.txt dist/BUILD-QA.json dist/REAL-SERVICE-QA.json
+          gh release view "$TARGET_TAG" --repo "$GH_REPO" --json url,isPrerelease,assets |
+            jq -e --arg file "$EXE_NAME" '.isPrerelease == true and ([.assets[].name]|index($file)!=null)'
+          echo "PUBLISHED_URL=https://github.com/$GH_REPO/releases/tag/$TARGET_TAG"
