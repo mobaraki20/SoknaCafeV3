@@ -76,7 +76,7 @@ $manifestPath=Join-Path $PayloadRoot 'maintenance-independent-manifest-v1.json'
 FileSafe $manifestPath
 $manifest=Get-Content -LiteralPath $manifestPath -Raw|ConvertFrom-Json -ErrorAction Stop
 if($manifest.format-ne'sokna-maintenance-independent-installer-v1' -or
- $manifest.target_version-ne$targetVersion -or $manifest.recovery_console_version-ne$targetRecovery -or
+ $manifest.target_version-ne$targetVersion -or $manifest.recovery_console_action-ne'KEEP_UNCHANGED' -or
  $manifest.scope-ne'maintenance_pair_only'){Fail 'R125_MANIFEST_SCOPE_FAILED'}
 $names=@('Maintenance/App/SoknaMaintenanceSupervisor.exe','Maintenance/App/SoknaMaintenanceUpdateEngine.exe')
 $files=@($manifest.files)
