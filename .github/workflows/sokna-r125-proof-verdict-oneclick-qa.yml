@@ -73,7 +73,7 @@ jobs:
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $z=[IO.Compression.ZipFile]::OpenRead($new[0].FullName)
           try{
-            $entry=$z.GetEntry('unified/r125-proof-verdict-safe.json')
+            $entry=@($z.Entries|Where-Object{($_.FullName -replace '\','/') -eq 'unified/r125-proof-verdict-safe.json'}|Select-Object -First 1)
             if(-not$entry){throw 'QA_VERDICT_MISSING'}
             $reader=New-Object IO.StreamReader($entry.Open())
             try{$j=$reader.ReadToEnd()|ConvertFrom-Json}finally{$reader.Dispose()}
