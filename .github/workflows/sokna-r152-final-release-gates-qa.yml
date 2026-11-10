@@ -1,0 +1,107 @@
+name: "SOKNA R152 final source and 44-baseline native stage gates (QA only)"
+on:
+  push:
+    branches: [qa/sokna-r152-final-release-gates-20261110]
+    paths:
+      - qa/sokna-r152/ci_stage_fixture.py
+      - .github/workflows/sokna-r152-final-release-gates-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-r152-full-language-syntax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exact historic parents and R152 source reconstruction
+        run: |
+          set -euo pipefail
+          d="$RUNNER_TEMP/r152-source"
+          mkdir -p "$d" "$RUNNER_TEMP/r152-output"
+          python3 qa/sokna-r140/exact-ci/reconstruct.py "$d"
+          python3 qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$d/r140.zip" "$d/qualified-r140.zip"
+          python3 qa/sokna-r149b/build_r149b.py "$d/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$d"
+          python3 qa/sokna-r149b/test-manifest-matrix.py "$d/qualified-r140.zip" "$d/r149b-candidate.zip" "$d/r149b-qualified.zip"
+          python3 qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip "$d/35hi.zip"
+          python3 qa/sokna-r152/build_r152_from_exact_r149.py "$d/r149b-qualified.zip" "$d/35hi.zip" "$RUNNER_TEMP/r152-output"
+          echo "R152_OUT=$RUNNER_TEMP/r152-output" >> "$GITHUB_ENV"
+      - name: Verify every PHP and JS file in exact R152 target sources
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,subprocess,collections
+          root=pathlib.Path(os.environ['R152_OUT'])/'_build'
+          checked=collections.Counter()
+          for side in ('local','public'):
+            for path in (root/side).rglob('*'):
+              if path.suffix not in ('.php','.js') or not path.is_file():continue
+              cmd=['php','-l',str(path)] if path.suffix=='.php' else ['node','--check',str(path)]
+              result=subprocess.run(cmd,text=True,capture_output=True)
+              if result.returncode:raise SystemExit('R152_LANGUAGE_FAILURE '+str(path)+' '+result.stdout+' '+result.stderr)
+              checked[path.suffix]+=1
+          assert checked['.php']>=360 and checked['.js']>=80,checked
+          print('PASS R152_ALL_LANGUAGE_SYNTAX',dict(checked))
+          PY
+      - name: Explicit non-deployment assertion
+        run: |
+          echo "PASS Exact R152 source builds and syntax only. R125 real host, DB restore, live Public HTTP and Production install are NOT authorized."
+  windows-r152-44-baseline-native-stage:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Rebuild exact historical R149B and R152 source on Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $gitTools='C:\Program Files\Git\usr\bin'
+          if(Test-Path $gitTools){$env:PATH=$gitTools+';'+$env:PATH}
+          if(-not(Get-Command patch -ErrorAction SilentlyContinue)){throw 'WINDOWS_PATCH_TOOL_UNAVAILABLE'}
+          $lab=Join-Path $env:RUNNER_TEMP 'sokna-r152-final-stage'
+          $r152=Join-Path $lab 'r152'
+          New-Item -ItemType Directory -Force $lab,$r152|Out-Null
+          python qa/sokna-r140/exact-ci/reconstruct.py $lab
+          if($LASTEXITCODE-ne0){throw 'HISTORICAL_SOURCE_RECONSTRUCT_FAILED'}
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py (Join-Path $lab 'r140.zip') (Join-Path $lab 'qualified-r140.zip')
+          if($LASTEXITCODE-ne0){throw 'R140_EXACT_PARENT_FAILED'}
+          python qa/sokna-r149b/build_r149b.py (Join-Path $lab 'qualified-r140.zip') qa/sokna-r149b/overlay.zip $lab
+          if($LASTEXITCODE-ne0){throw 'R149B_EXACT_PARENT_FAILED'}
+          python qa/sokna-r149b/test-manifest-matrix.py (Join-Path $lab 'qualified-r140.zip') (Join-Path $lab 'r149b-candidate.zip') (Join-Path $lab 'r149b-qualified.zip')
+          if($LASTEXITCODE-ne0){throw 'R149B_EXACT_MANIFEST_FAILED'}
+          python qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip (Join-Path $lab '35hi.zip')
+          if($LASTEXITCODE-ne0){throw '35HI_EXACT_PARENT_FAILED'}
+          python qa/sokna-r152/build_r152_from_exact_r149.py (Join-Path $lab 'r149b-qualified.zip') (Join-Path $lab '35hi.zip') $r152
+          if($LASTEXITCODE-ne0){throw 'R152_EXACT_SOURCE_FAILED'}
+          "R152_STAGE_LAB=$lab"|Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Confirm source identity and create throwaway stage-only fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lab=$env:R152_STAGE_LAB
+          $qa=Join-Path $lab 'r152/SOKNA-R152-LOCAL-231EC-44BASE-QA-DO-NOT-INSTALL.zip'
+          $out=Join-Path $lab 'CI-SYNTHETIC-STAGE-FIXTURE-NEVER-DISTRIBUTE.zip'
+          python qa/sokna-r152/ci_stage_fixture.py (Join-Path $lab 'r149b-qualified.zip') $qa $out qa/sokna-r149b/stage/Program.cs
+          if($LASTEXITCODE-ne0){throw 'R152_STAGE_FIXTURE_FAILED'}
+          "R152_SYNTHETIC_STAGE=$out"|Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Native Maintenance Core VerifyOnly for 44 origins and Stage denial on real QA ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lab=$env:R152_STAGE_LAB
+          dotnet run --project qa/sokna-r149b/stage/R149BStage.csproj -c Release --no-launch-profile -- (Join-Path $lab 'qualified-r140.zip') (Join-Path $lab 'r152/SOKNA-R152-LOCAL-231EC-44BASE-QA-DO-NOT-INSTALL.zip') $env:R152_SYNTHETIC_STAGE
+          if($LASTEXITCODE-ne0){throw 'R152_REAL_CORE_VERIFY_AND_STAGE_FAILED'}
+          Write-Host 'PASS: R152 exact source, 44 distinct baselines, unknown origin refusal, delivered-QA-stage refusal, and synthetic-only isolated stage.'
+          Write-Host 'NOT TESTED: live cafe R125 proof, real cafe DB restore, Public HTTP credentials, field activation.'
+      - name: Do not upload synthetic fixture or customer-reachable install ZIP
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host 'NO BINARY PUBLISHED. CI-only synthetic qualified manifest must not be released.'
