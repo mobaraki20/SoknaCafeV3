@@ -6,6 +6,24 @@ if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw '
 $data=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
 if(Test-Path $data){throw 'REFUSE_EXISTING_SOKNA_DATA'}
 . ./packaging/windows/scripts/maintenance-signed-health-v1.ps1
+function NewHistoricalOperation([string]$id,[string]$kind,[string]$state,[string]$result,[string]$preflightPath,[string]$stagePath,[bool]$activated){
+ $pkg=('c'*64)
+ $operator='qa-ledger'
+ $canonical=$kind.ToLowerInvariant()+[char]10+$pkg+[char]10+$operator
+ $sha=[Security.Cryptography.SHA256]::Create()
+ try{$requestHash=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))).Replace('-','')).ToLowerInvariant()}
+ finally{$sha.Dispose()}
+ $when=[DateTimeOffset]::UtcNow.ToString('O')
+ return @{
+  format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$id;
+  idempotency_key=('qa-ledger-'+$id);canonical_request_sha256=$requestHash;
+  operation_type=$kind;operator_id=$operator;state=$state;package_ref=$pkg;
+  created_at_utc=$when;updated_at_utc=$when;attempt_count=1;
+  result_code=$result;result_message='Disposable QA only';
+  stage_receipt_path=$stagePath;preflight_receipt_path=$preflightPath;
+  activation_performed=$activated;database_mutation_performed=$false
+ }
+}
 function AddHistoricalLedger([string]$data,[string]$fault=''){
  $ops=Join-Path $data 'Maintenance\operations'
  New-Item -ItemType Directory -Path $ops -Force|Out-Null
@@ -19,9 +37,7 @@ function AddHistoricalLedger([string]$data,[string]$fault=''){
   @{format='sokna-local-package-preflight-v1';schema_version=1;operation_id=$id;
     package_ref=$pkg;installed_identity_sha256=$identity;verification=$verify}|
     ConvertTo-Json -Depth 12|Set-Content -LiteralPath $proofPath
-  $op=@{format='sokna-maintenance-operation-v1';operation_id=$id;operation_type='update.local-package-preflight';
-    state='verified';result_code='PACKAGE_INTEGRITY_VERIFIED';activation_performed=$false;
-    database_mutation_performed=$false;package_ref=$pkg;preflight_receipt_path=$proofPath}
+  $op=NewHistoricalOperation $id 'update.local-package-preflight' 'verified' 'PACKAGE_INTEGRITY_VERIFIED' $proofPath $null $false
   $op|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
   $preflights+=@{id=$id;path=$proofPath}
  }
@@ -35,17 +51,14 @@ function AddHistoricalLedger([string]$data,[string]$fault=''){
     activation_performed=$false;database_mutation_performed=$false;preflight_identity_match=$true;
     artifact_integrity_verified=$true;signature_verified=$false;operator_authorized=$true}|
     ConvertTo-Json -Depth 12|Set-Content -LiteralPath $stagePath
-  @{format='sokna-maintenance-operation-v1';operation_id=$id;operation_type='update.local-stage';
-    state='staged';result_code='STAGED';activation_performed=$false;database_mutation_performed=$false;
-    package_ref=$pkg;preflight_receipt_path=$preflights[$i-1].path;stage_receipt_path=$stagePath}|
-    ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+  $stageOp=NewHistoricalOperation $id 'update.local-stage' 'staged' 'STAGED' $preflights[$i-1].path $stagePath $false
+  $stageOp|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
  }
  for($i=1;$i-le7;$i++){
   $id=('{0:x32}' -f (200+$i))
   $s=if($i-le3){'failed'}else{'committed'}
-  @{format='sokna-maintenance-operation-v1';operation_id=$id;operation_type='update.local-code-only-activate';
-    state=$s;activation_performed=$true;database_mutation_performed=$false}|
-    ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+  $activation=NewHistoricalOperation $id 'update.local-code-only-activate' $s 'QA_HISTORICAL_ACTIVATION' $null $null $true
+  $activation|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
  }
  $stagedId=('{0:x32}' -f 101)
  $stagedPath=Join-Path $ops ('op-'+$stagedId+'.json')
@@ -177,6 +190,9 @@ foreach($case in @('0.3.22-preserved011','0.3.22','0.3.23','0.3.24','0.3.25')){
   # Private original device receipts were not included in Support-v2 archives.
   if($preserved011){
    $history=AddHistoricalLedger $data
+   Assert-MaintenanceSignedHealth -ExpectedVersion $baseline -Attempts 40
+   Need ((Get-Service SoknaMaintenanceSupervisor -ErrorAction Stop).Status-eq'Running') 'QA_HISTORICAL_LEDGER_NOT_LIVE_SAFE'
+   Write-Host 'QA_HISTORICAL_25_RECORDS_REAL_SUPERVISOR_HEALTHY'
    $receiptHash=Hash $history.FirstStageReceipt
    $savedReceipt=[IO.File]::ReadAllBytes($history.FirstStageReceipt)
    try{
