@@ -167,3 +167,71 @@ jobs:
           name: sokna-maintenance-universal-0322-to-0327-real-windows-evidence
           path: qa-dist-universal/REAL-0322-TO-0327.json
           if-no-files-found: warn
+
+  qa-prerelease:
+    needs: [universal-real-exe-and-0326-upgrade, legacy-0322-real-windows]
+    if: github.ref == 'refs/heads/qa/sokna-maintenance-universal-0327-20261111'
+    runs-on: ubuntu-latest
+    permissions: {contents: write, actions: read}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-maintenance-0327-universal-bridge-qa-NOT-PRODUCTION
+          path: qa-dist-universal
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-maintenance-universal-0322-to-0327-real-windows-evidence
+          path: qa-dist-universal
+      - name: Verify exact fully tested EXE and both native Windows evidence files
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib, hashlib
+          root=pathlib.Path('qa-dist-universal')
+          exe=root/'SOKNA-Maintenance-Universal-0327-QA-NOT-PRODUCTION.exe'
+          build=json.loads((root/'BUILD-QA.json').read_text())
+          a=json.loads((root/'REAL-0326-TO-0327.json').read_text())
+          b=json.loads((root/'REAL-0322-TO-0327.json').read_text())
+          sha=hashlib.sha256(exe.read_bytes()).hexdigest()
+          assert sha==build['sha256'], 'FINAL_TESTED_EXE_HASH_MISMATCH'
+          assert build['qa_only'] and not build['production_approved'], 'FINAL_STATUS_NOT_QA'
+          assert a['real_service_activation']=='PASS', 'BASE_0326_ACTIVATION_NOT_PASS'
+          assert a['locked_binary_rollback']=='PASS', 'BASE_0326_ROLLBACK_NOT_PASS'
+          assert a['rerun_idempotent']=='PASS', 'BASE_0326_RERUN_NOT_PASS'
+          assert b['real_windows_service_upgrade']=='PASS', 'LEGACY_0322_UPGRADE_NOT_PASS'
+          assert b['replay_without_changes']=='PASS', 'LEGACY_0322_REPLAY_NOT_PASS'
+          assert b['recovery_011_preserved'] and not b['production_approved'], 'LEGACY_0322_SCOPE_NOT_QUALIFIED'
+          assert sha in (root/'SHA256SUMS.txt').read_text(), 'RELEASE_CHECKSUM_FILE_MISMATCH'
+          print('PASS SHA-BOUND ONE-EXE QA WITH 0322 AND 0326 REAL WINDOWS SERVICE EVIDENCE:',sha)
+          PY
+      - name: Create immutable-named QA pre-release only, never Production
+        env:
+          GH_TOKEN: \${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="sokna-maintenance-universal-0327-bridge-qa-20261111"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::QA tag already exists; refusing to replace any published asset"
+            exit 1
+          fi
+          cat > qa-dist-universal/README-FA.txt <<'TXT'
+          SOKNA Maintenance Universal 0.3.27 — QA ONLY, NOT PRODUCTION
+          This is a Maintenance-only single-file installer: 0.3.22/23/24/25 -> 0.3.26 -> 0.3.27; 0.3.26 -> 0.3.27; exact replay 0.3.27.
+          It does not update Local, Public, databases, Recovery Console, historical R125, Runtime or Print Agent.
+          The exact EXE was tested on disposable real Windows services from 0.3.22 with synthetic preserved Recovery 0.1.1 and from 0.3.26. A synthetic Recovery 0.1.1 fixture is NOT the actual Home Recovery binary.
+          No user's physical Home or Cafe machine was tested; Production approval=false.
+          Unknown, mixed, unqualified or active-state baselines are blocked without a guessed repair or manual reinstall.
+          SHA-256 is listed in SHA256SUMS.txt.
+          TXT
+          gh release create "$tag" \
+            qa-dist-universal/SOKNA-Maintenance-Universal-0327-QA-NOT-PRODUCTION.exe \
+            qa-dist-universal/SHA256SUMS.txt \
+            qa-dist-universal/BUILD-QA.json \
+            qa-dist-universal/REAL-0322-TO-0327.json \
+            qa-dist-universal/REAL-0326-TO-0327.json \
+            qa-dist-universal/README-FA.txt \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "SOKNA Maintenance 0.3.27 Universal — QA ONLY / NOT PRODUCTION" \
+            --notes-file qa-dist-universal/README-FA.txt
