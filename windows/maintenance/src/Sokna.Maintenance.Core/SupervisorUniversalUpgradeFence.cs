@@ -29,7 +29,23 @@ public sealed record UniversalUpgradeInspection(
     [property: JsonPropertyName("blocked")] bool Blocked,
     [property: JsonPropertyName("database_forward_reported")] bool DatabaseForwardReported,
     [property: JsonPropertyName("recovery_required")] bool RecoveryRequired,
-    [property: JsonPropertyName("production_authorized")] bool ProductionAuthorized);
+    [property: JsonPropertyName("production_authorized")] bool ProductionAuthorized)
+{
+    // A human-facing explanation over the existing signed status endpoint.
+    // Never turns a QA reservation into production install permission.
+    [JsonPropertyName("user_status")]
+    public string UserStatus => RecoveryRequired || Phase != "NONE" ? "needs_action" : "not_ready";
+
+    [JsonPropertyName("user_message")]
+    public string UserMessage => RecoveryRequired
+        ? "به‌روزرسانی کامل نشده است. ادامهٔ خودکار برای حفظ اطلاعات متوقف شده است."
+        : Phase == "NONE"
+            ? "به‌روزرسانی خودکار هنوز آمادهٔ اجرا نیست."
+            : "یک عملیات به‌روزرسانی ثبت شده و نتیجهٔ آن باید بررسی شود.";
+
+    [JsonPropertyName("can_start_update")]
+    public bool CanStartUpdate => false;
+}
 
 public sealed class SupervisorUniversalUpgradeFence
 {
