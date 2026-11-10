@@ -5,8 +5,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="UniversalOwnerCoreProbe.cs" />
     <ProjectReference Include="../../windows/maintenance/src/Sokna.Maintenance.Core/Sokna.Maintenance.Core.csproj" />
   </ItemGroup>
 </Project>
