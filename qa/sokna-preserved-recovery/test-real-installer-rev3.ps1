@@ -199,19 +199,25 @@ foreach($case in @('0.3.22-preserved011','0.3.22','0.3.23','0.3.24','0.3.25')){
     $badReceipt=Get-Content -LiteralPath $history.FirstStageReceipt -Raw|ConvertFrom-Json
     $badReceipt.release_set_id='FORGED-NOT-THE-PREFLIGHT'
     $badReceipt|ConvertTo-Json -Depth 20|Set-Content -LiteralPath $history.FirstStageReceipt
+    # Inspect ONLY the report for this exact installer invocation. The earlier
+    # deliberately bad installed-identity case also writes a Desktop JSON and
+    # must not be misread as the result of this historical-ledger test.
+    $beforeForge=@(Get-ChildItem -LiteralPath $desktop -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json' -ErrorAction SilentlyContinue|
+      ForEach-Object{$_.FullName})
     $badInstall=InvokeInstaller $Installer
     Need ($badInstall-ne0) 'EXACT_INNO_ACCEPTED_FORGED_HISTORICAL_STAGE'
-    $freshErrors=@(Get-ChildItem $desktop -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json' -ErrorAction SilentlyContinue |
-      Where-Object {$_.FullName-notin$priorReports})
-    $reported=$false
-    foreach($errorFile in $freshErrors){
-      $ferr=Get-Content -LiteralPath $errorFile.FullName -Raw|ConvertFrom-Json
-      Write-Host ('QA_EXACT_EXE_OBSERVED_FAILURE='+[string]$ferr.safe_code+';stage='+[string]$ferr.failed_stage)
-      if($ferr.safe_code-eq'R125_HISTORICAL_STAGE_PROOF_INVALID' -and $ferr.failed_stage-eq'OPERATION_LEDGER'){
-       $reported=$true
-      }
-    }
-    Need $reported 'EXACT_INNO_HISTORICAL_REJECT_REASON_WRONG'
+    $freshErrors=@(Get-ChildItem -LiteralPath $desktop -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json' -ErrorAction SilentlyContinue|
+      Where-Object{$_.FullName-notin$beforeForge})
+    Write-Host ('QA_FORGED_HISTORICAL_EXIT='+[string]$badInstall+';NEW_REPORT_COUNT='+$freshErrors.Count)
+    Need ($freshErrors.Count-eq1) 'EXACT_INNO_FORGED_HISTORICAL_ERROR_REPORT_MISSING_OR_DUPLICATE'
+    $ferr=Get-Content -LiteralPath $freshErrors[0].FullName -Raw|ConvertFrom-Json
+    Write-Host ('QA_EXACT_EXE_OBSERVED_FAILURE='+[string]$ferr.safe_code+';stage='+[string]$ferr.failed_stage+
+      ';private_log_written='+[string]$ferr.private_diagnostic_log_written)
+    Need ($ferr.safe_code-eq'R125_HISTORICAL_STAGE_PROOF_INVALID' -and
+          $ferr.failed_stage-eq'OPERATION_LEDGER' -and
+          $ferr.recovery_requested-eq$false -and
+          $null-eq$ferr.rollback_verified -and
+          $ferr.database_schema_data_mutated-eq$false) 'EXACT_INNO_HISTORICAL_REJECT_REASON_WRONG'
     Assert-MaintenanceSignedHealth -ExpectedVersion $baseline -Attempts 40
     Need ((Hash $identity)-eq$oldIdentity) 'EXACT_INNO_BAD_STAGE_IDENTITY_CHANGED'
     for($i=0;$i-lt3;$i++){Need ((Hash (Join-Path $install $names[$i]))-eq$oldHashes[$i]) 'EXACT_INNO_BAD_STAGE_COMPONENT_CHANGED'}
