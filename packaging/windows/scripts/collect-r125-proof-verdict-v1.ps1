@@ -109,9 +109,19 @@ try{
   $ledger.total++
   try{
    $op=ReadJson $e.FullName 1048576
-   if($op.format-cne'sokna-maintenance-operation-v1' -or
+   if($op.format-cne'sokna-maintenance-operation-v1' -or $op.schema_version-ne1 -or
       [string]$op.operation_id -cnotmatch '^[a-f0-9]{32}$' -or
-      $e.Name-cne('op-'+[string]$op.operation_id+'.json')){
+      $e.Name-cne('op-'+[string]$op.operation_id+'.json') -or
+      [string]$op.idempotency_key -cnotmatch '^[A-Za-z0-9_.:-]{1,128}$' -or
+      [string]$op.operator_id -cnotmatch '^[A-Za-z0-9_.:-]{1,128}$' -or
+      [string]$op.operation_type -cnotmatch '^[A-Za-z0-9_.:-]{1,128}$' -or
+      [string]$op.state -cnotmatch '^[A-Za-z0-9_.:-]{1,64}$' -or
+      [string]$op.canonical_request_sha256 -cnotmatch '^[a-fA-F0-9]{64}$' -or
+      [string]$op.package_ref -eq '' -or [string]$op.package_ref -match '^.{4097}' -or
+      $null-eq$op.attempt_count -or [int]$op.attempt_count-lt0 -or
+      [string]::IsNullOrWhiteSpace([string]$op.created_at_utc) -or
+      [string]::IsNullOrWhiteSpace([string]$op.updated_at_utc) -or
+      [DateTimeOffset]::Parse([string]$op.updated_at_utc)-lt[DateTimeOffset]::Parse([string]$op.created_at_utc)){
      throw 'R125_OPERATION_LEDGER_CORRUPT'
    }
    if($op.state-in @('accepted','running','activating','recovering','recovery_required')){
