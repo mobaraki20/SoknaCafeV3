@@ -1,0 +1,79 @@
+name: Publish R125 guarded one-click exact tested QA artifact as prerelease
+on:
+  push:
+    branches: [qa/sokna-r152-final-release-gates-20261110]
+    paths:
+      - .github/workflows/sokna-r125-oneclick-prerelease.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  pin-reviewed-binary-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_RUN: '42858848924'
+      EXACT_SOURCE_SHA: '1eaea65cbe96e9a5a808fef3d98877c5c4518b1b'
+      RELEASE_TAG: 'sokna-r125-guarded-oneclick-qa-20261110'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require completed source run with two successful safety gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run view "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --json conclusion,headSha |
+            jq -e --arg sha "$EXACT_SOURCE_SHA" '.conclusion=="success" and .headSha==$sha'
+          mkdir -p "$RUNNER_TEMP/r125-release"
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
+            -n SOKNA-R125-GUIDED-ONECLICK-QA-NOT-PRODUCTION \
+            -D "$RUNNER_TEMP/r125-release"
+      - name: Verify preserved EXE SHA and negative safety run before publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/r125-release"
+          test -s SOKNA-R125-Guided-OneClick.exe
+          test -s QA-STATUS.json
+          jq -e --arg sha "$EXACT_SOURCE_SHA" \
+            '.format=="sokna-r125-guarded-standalone-qa-v1" and .source_commit==$sha and
+             .no_host_negative_test=="PASS" and .production_approved==false and
+             .cafe_host_tested==false and .read_only_preflight_before_signed_archive==true' QA-STATUS.json
+          want=$(jq -r '.sha256' QA-STATUS.json)
+          got=$(sha256sum SOKNA-R125-Guided-OneClick.exe | awk '{print $1}')
+          test "$want" = "$got"
+          printf '%s  %s\n' "$got" SOKNA-R125-Guided-OneClick.exe > SHA256SUMS.txt
+          cat > README-FA.txt <<'EOF'
+          سامانه سکنا — ابزار مستقل تعیین تکلیف محافظ R125
+          نسخه QA فقط؛ نصب Production و ارتقای لوکال/پابلیک نیست.
+          این فایل Maintenance را نصب یا تغییر نمی دهد.
+          اجرای واقعی روی رایانه کافه هنوز آزموده نشده است.
+          ابتدا مدارک R129، هویت نصب، فایل شاهد و تاریخچه زنده DB فقط خواندنی ارزیابی می شوند.
+          اگر همه شرط ها پاس شوند، فقط شاهد محافظ R125 از طریق سرویس نصب شده
+          با امضای HMAC در آرشیو محافظت شده نگهداری می شود.
+          هیچ SQL تغییردهنده، پاک کردن مدرک، یا تغییر سرویس/لوکال/پابلیک در کلاینت وجود ندارد.
+          در هر ابهام عملیات BLOCKED و نتیجه JSON روی دسکتاپ ایجاد می شود.
+          این فایل نباید برای دور زدن بک آپ معتبر یا مجوز نصب R152 استفاده شود.
+          پرونده آزمون: https://github.com/mobaraki20/SoknaCafeV3/actions/runs/42858848924
+          EOF
+          test -s README-FA.txt
+          echo "PASS exact immutable CI EXE with byte-verified sha and negative run"
+      - name: Create SHA-pinned prerelease without rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/r125-release"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'PRE_RELEASE_TAG_ALREADY_EXISTS_ABORT_TO_AVOID_OVERWRITE'
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            SOKNA-R125-Guided-OneClick.exe QA-STATUS.json SHA256SUMS.txt README-FA.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title 'SOKNA R125 guarded standalone recovery — QA ONLY, NOT PRODUCTION' \
+            --notes 'Only the exact tested one-click R125 recovery client. Windows negative test PASS; physical Café execution and R152 Production install NOT approved. The tool fails closed on unverified evidence.' \
+            --prerelease
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url,isPrerelease,assets |
+            jq -e '.isPrerelease==true and ([.assets[].name] | index("SOKNA-R125-Guided-OneClick.exe")!=null)'
