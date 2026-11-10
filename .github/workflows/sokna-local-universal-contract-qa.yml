@@ -65,6 +65,12 @@ jobs:
           if($LASTEXITCODE-ne0){throw 'FINAL_DOWNLOADABLE_ZIP_CONTRACT_INVALID'}
           "SOKNA_LOCAL_UNIVERSAL_ZIP=$out"|Out-File -FilePath $env:GITHUB_ENV -Append
           "SOKNA_LOCAL_UNIVERSAL_ORIGINAL=$source"|Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Final ZIP release gate negative matrix - reject original empty plan and forged installable QA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python qa/sokna-local-universal/test_final_release_gate.py $env:SOKNA_LOCAL_UNIVERSAL_ORIGINAL $env:SOKNA_LOCAL_UNIVERSAL_ZIP (Join-Path $env:R152_STAGE_LAB 'r149b-qualified.zip')
+          if($LASTEXITCODE-ne0){throw 'PERMANENT_RELEASE_GUARD_MATRIX_FAILED'}
       - name: Real Maintenance Core against the exact delivered QA ZIP - all 44 baselines and one unknown
         shell: pwsh
         run: |
