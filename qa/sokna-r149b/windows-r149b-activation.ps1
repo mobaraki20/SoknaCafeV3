@@ -297,6 +297,7 @@ PidFile "$ar/logs/httpd.pid"
                     $blockedText=(& python @resumeArgs | Out-String)
                     $blockedCode=$LASTEXITCODE
                     Need ($blockedCode -eq 24 -and $blockedText.Contains('DB_FORWARD_NEEDS_QUALIFIED_THREE_COMPONENT_RECOVERY')) 'DB_FORWARD_CRASH_RESUME_IMPROPERLY_ALLOWED'
+                    $global:LASTEXITCODE=0  # Expected negative test is not an orchestration command failure.
                     $forwardFence=Get-Content (Join-Path $fenceRoot 'forward-fence.json') -Raw|ConvertFrom-Json
                     Need ($forwardFence.phase -ceq 'PUBLIC_NATIVE_DONE_MAINTENANCE_PENDING' -and
                         $forwardFence.recovery_required -eq $true -and
