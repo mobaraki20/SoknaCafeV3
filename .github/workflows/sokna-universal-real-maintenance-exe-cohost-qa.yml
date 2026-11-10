@@ -1,0 +1,112 @@
+name: SOKNA exact Maintenance EXE with real Local and Public on one Windows QA host
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths:
+      - qa/sokna-universal/real-maintenance-exe-cohost.ps1
+      - qa/sokna-r149b/windows-r149b-activation.ps1
+      - qa/sokna-universal/native-forward-fence-qa.py
+      - .github/workflows/sokna-universal-real-maintenance-exe-cohost-qa.yml
+  workflow_dispatch:
+permissions: {contents: read, actions: read}
+jobs:
+  exact-maintenance-inno-local-public:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES'
+      SOKNA_NATIVE_COLOCATED_PUBLIC_QA: 'YES'
+      SOKNA_REAL_MAINTENANCE_COHOST_QA: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: b8b1cc4e91772692d92d6f7aa10b0657d2aa5427
+          path: legacy-maint-0322
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-0326-ledger-compat-built-qa-not-for-install
+          run-id: 42706765928
+          github-token: ${{ github.token }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: exact-recovery-011-643841631
+          run-id: 42688606509
+          github-token: ${{ github.token }}
+          path: legacy-recovery-011
+      - name: Verify exact immutable QA EXE and original 0322/011 service binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=Join-Path $PWD.Path 'dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe'
+          if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'EXACT_PREVIOUSLY_TESTED_MAINTENANCE_EXE_NOT_FOUND'}
+          $line=Get-Content dist/SHA256SUMS.txt|Select-Object -First 1
+          $expected=($line -split '\s+')[0].ToLowerInvariant()
+          if($expected-notmatch '^[a-f0-9]{64}$' -or (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected){throw 'EXACT_MAINTENANCE_EXE_HASH_MISMATCH'}
+          $m=Get-Content dist/COMPONENT-MANIFEST.json -Raw|ConvertFrom-Json
+          if(@($m.files).Count-ne3){throw 'EXACT_THREE_COMPONENT_EXE_PAYLOAD_MANIFEST_MISSING'}
+          $old=Join-Path $env:RUNNER_TEMP 'original-0322-binaries'
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine')){
+            dotnet publish "legacy-maint-0322/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $old $n)
+            if($LASTEXITCODE-ne0){throw 'EXACT_0322_BASELINE_BUILD_FAILED'}
+          }
+          Write-Host ('PASS PINNED REAL MAINTENANCE INSTALLER SHA256='+$expected)
+      - name: Install actual Inno Maintenance EXE onto clean 0322/011 Windows services
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $installParams=@{
+            Mode='install'
+            Installer=(Join-Path $PWD.Path 'dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe')
+            ComponentManifest=(Join-Path $PWD.Path 'dist/COMPONENT-MANIFEST.json')
+            BaselineRoot=(Join-Path $env:RUNNER_TEMP 'original-0322-binaries')
+            LegacyRecovery011=(Join-Path $PWD.Path 'legacy-recovery-011/SoknaMaintenanceRecoveryConsole.exe')
+          }
+          & ./qa/sokna-universal/real-maintenance-exe-cohost.ps1 @installParams
+          if($LASTEXITCODE -and $LASTEXITCODE-ne0){throw 'REAL_INNO_COHOST_INSTALL_FAILED'}
+          $engine=Join-Path $env:RUNNER_TEMP 'sokna-native-maintenance-cohost/SOKNA Windows Services/Maintenance/App/SoknaMaintenanceUpdateEngine.exe'
+          if(-not(Test-Path -LiteralPath $engine -PathType Leaf)){throw 'INSTALLED_REAL_ENGINE_MISSING'}
+          "SOKNA_TEST_INSTALLED_ENGINE_EXE=$engine"|Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "SOKNA_TEST_COMPONENT_MANIFEST=$((Resolve-Path dist/COMPONENT-MANIFEST.json).Path)"|Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Exact native Public owner candidate hash
+        shell: pwsh
+        run: |
+          python qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip qa/sokna-public-two-route/candidate.zip
+          if($LASTEXITCODE-ne0){throw 'PUBLIC_CANDIDATE_BUILD_FAILED'}
+          $h=(Get-FileHash qa/sokna-public-two-route/candidate.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($h-cne'1131d89c98e05c9597f372ed1d480e5637c3ad1969bc8733d2a837b644e57584'){throw 'PUBLIC_CANDIDATE_HASH_DRIFT'}
+      - name: Run installed Maintenance Engine and real Local Apache MariaDB plus Public Routine Emergency
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./qa/sokna-r149b/windows-r149b-activation.ps1
+          if($LASTEXITCODE -and $LASTEXITCODE-ne0){throw 'REAL_INSTALLED_MAINTENANCE_ENGINE_LOCAL_PUBLIC_RUN_FAILED'}
+      - name: Signed Supervisor and exact installed Maintenance binaries unchanged after native Local Public
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./qa/sokna-universal/real-maintenance-exe-cohost.ps1 -Mode verify -ComponentManifest (Join-Path $PWD.Path 'dist/COMPONENT-MANIFEST.json')
+          if($LASTEXITCODE -and $LASTEXITCODE-ne0){throw 'REAL_MAINTENANCE_COHOST_POST_VERIFICATION_FAILED'}
+          dotnet run --project qa/sokna-universal/NativeGateProbe.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'THREE_COMPONENT_RELEASE_GATE_INCORRECTLY_OPENED'}
+          Write-Host 'EXACT MAINTENANCE EXE AND INSTALLED ENGINE COHOST PASS. SHARED ATOMIC COMMIT/ROLLBACK NOT IMPLEMENTED.'
+      - name: Upload verified QA-only evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-real-maintenance-inno-exe-native-local-public-cohost-not-production
+          path: |
+            ${{ runner.temp }}/sokna-native-maintenance-cohost/real-maintenance-cohost.json
+            ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/native-colocated-*.json
+            ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/native-forward-*/forward-fence.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove only owned temporary Windows QA Maintenance service
+        if: always()
+        shell: pwsh
+        run: |
+          & ./qa/sokna-universal/real-maintenance-exe-cohost.ps1 -Mode cleanup
