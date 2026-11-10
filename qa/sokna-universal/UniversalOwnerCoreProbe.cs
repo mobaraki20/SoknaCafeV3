@@ -227,6 +227,23 @@ try
     Deny(() => new SupervisorUniversalUpgradeFence(unknown, unknownOps)
         .Reserve("qa:operator", "unknown-history", localSha, publicSha, maintSha),
         "UNKNOWN_HISTORICAL_STATE_NOT_IDLE");
+    var orphan = new MaintenancePaths(Path.Combine(dir, "orphaned-universal"));
+    AtomicFile.WriteJson(orphan.InstalledReleaseIdentityPath, new { version = "qa" });
+    var orphanOps = new MaintenanceOperationStore(orphan);
+    var oldRef = localSha + ":" + publicSha + ":" + maintSha;
+    var (orphanOp, _) = orphanOps.GetOrCreate("qa-old-universal",
+        MaintenanceOperationStore.CanonicalRequestHash(
+            SupervisorUniversalUpgradeFence.OperationType, oldRef, "qa:operator"),
+        SupervisorUniversalUpgradeFence.OperationType, oldRef, "qa:operator");
+    // Simulates a malformed repair marking a real owner terminal while
+    // its corresponding durable reservation receipt has disappeared.
+    orphanOps.Update(orphanOp, "committed", activationPerformed: true);
+    var orphanGate = new SupervisorUniversalUpgradeFence(orphan, orphanOps);
+    Need(orphanGate.Inspect().Status == "UNIVERSAL_ORPHANED_OWNER_UNQUALIFIED" &&
+        orphanGate.Inspect().RecoveryRequired && !orphanGate.Inspect().ProductionAuthorized,
+        "MISSING_UNIVERSAL_OWNER_RECEIPT_NEVER_BECOMES_IDLE");
+    Deny(() => orphanGate.Reserve("qa:operator", "second-owner-after-orphan",
+        localSha, publicSha, maintSha), "FORGED_TERMINAL_UNIVERSAL_OWNER_CANNOT_REOPEN");
     Console.WriteLine("PASS REAL_CORE_DURABLE_UNIVERSAL_FENCE_NEGATIVE_MATRIX_RELEASE_BLOCKED");
 }
 finally
