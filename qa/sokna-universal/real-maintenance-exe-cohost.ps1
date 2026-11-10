@@ -165,11 +165,19 @@ if($Mode -eq 'install'){
           (Hash (Installed $names[0])) -ceq $before.maintenance_native_supervisor_sha256 -and
           (Hash (Installed $names[2])) -ceq $before.maintenance_native_recovery_sha256) 'MAINTENANCE_CHANGED_DURING_LOCAL_PUBLIC_RUN'
     $localRoot=Join-Path $env:RUNNER_TEMP 'sokna-r149b-windows-exact-e2e/artifacts'
+    $cyclePath=Join-Path $localRoot 'r149b-windows-cycles.json'
+    Need (Test-Path -LiteralPath $cyclePath -PathType Leaf) 'MISSING_REAL_LOCAL_CYCLE_REPORT'
+    $cycles=@(Get-Content -LiteralPath $cyclePath -Raw|ConvertFrom-Json)
+    Need ($cycles.Count -eq 2) 'INSTALLED_ENGINE_TWO_SOURCE_CYCLE_MATRIX_INCOMPLETE'
     foreach($source in @('r75','r140')){
         $p=Join-Path $localRoot ('native-colocated-'+$source+'.json')
         Need (Test-Path -LiteralPath $p -PathType Leaf) 'MISSING_NATIVE_LOCAL_PUBLIC_REPORT'
         $record=Get-Content -LiteralPath $p -Raw|ConvertFrom-Json
-        Need ($record.exact_installer_engine -eq $true -and
+        $cycle=@($cycles|Where-Object{$_.source -ceq $source})
+        Need ($cycle.Count -eq 1 -and
+              $cycle[0].exact_installer_engine -eq $true -and
+              $cycle[0].engine_sha256 -ceq $before.maintenance_native_engine_sha256 -and
+              $cycle[0].phase -ceq 'COMMITTED' -and
               $record.local_engine_sha256 -ceq $before.maintenance_native_engine_sha256 -and
               $record.database_forward_fence_unresolved -eq $true -and
               $record.production_authorized -eq $false -and
