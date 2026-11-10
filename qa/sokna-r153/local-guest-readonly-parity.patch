@@ -1,0 +1,108 @@
+--- a/public/assets/scds/guest.js
++++ b/public/assets/scds/guest.js
+@@ -45,6 +45,8 @@
+   const transportMode = root.dataset.transportMode || 'public_edge';
+   const localLanTransport = transportMode === 'local_lan';
+   const tableToken = root.dataset.tableToken || '';
++  // Display-only menus are informational: no size, bundle or cart controls.
++  const hasOrderContext = Boolean(tableToken) && document.body.classList.contains('sg-mode-table');
+   const endpoints = {
+     order: root.dataset.orderEndpoint || '',
+     orders: root.dataset.ordersEndpoint || '',
+@@ -536,6 +538,7 @@
+   const lineFor=(id,choice=null)=>{const rows=rowsForItem(id);if(choice===null)return rows[0]||null;return cart.get(cartLineKey(id,choice))||null;};
+   const itemQty=(id)=>rowsForItem(id).reduce((sum,line)=>sum+Number(line.quantity||0),0);
+   const setCartQty = (id, quantity, options = {}) => {
++    if(!hasOrderContext)return; // no cart changes in informational guest menu
+     id = Number(id);
+     const item = itemMap.get(id);
+     if (!item) return;
+@@ -697,16 +700,45 @@
+     ids.slice(0,2).forEach((raw)=>{const suggested=itemMap.get(Number(raw));if(!suggested||!suggested.available)return;const b=document.createElement('button');b.type='button';b.className='sg-suggestion';b.dataset.sgSuggestionItem=String(suggested.id);b.textContent=`کنارش خوبه با ${suggested.name} · ${formatMoney(suggested.price)}`;suggestions.append(b);});suggestions.hidden=!suggestions.childElementCount;
+   };
+   const renderDetailOptions=(item,resetDraft)=>{
+-    if(!detailOptions)return;detailOptions.replaceChildren();detailOptions.hidden=true;const members=familyMembers(item);const choices=bundleChoices(item);
++    if(!detailOptions)return;
++    detailOptions.replaceChildren();detailOptions.hidden=true;
++    const members=familyMembers(item),choices=bundleChoices(item);
+     if(resetDraft){detailSelectedItemId=members.length?0:Number(item.id||0);detailBundleChoiceItemId=0;detailDraftUnitPrice=Number(item.price||0);}
+     if(members.length){
+-      detailOptions.hidden=false;const title=document.createElement('strong');title.textContent='اندازه / نوع را انتخاب کن';detailOptions.append(title);const row=document.createElement('div');row.className='sg-detail-option-row';
+-      members.forEach((member)=>{const b=document.createElement('button');b.type='button';b.className='sg-detail-option';b.disabled=!member.order_available;b.dataset.sgVariantItem=String(member.id);b.innerHTML=`<span>${member.variant_label||member.name}</span><small>${formatMoney(member.price)}</small>`;if(Number(detailSelectedItemId)===Number(member.id))b.classList.add('is-selected');row.append(b);});detailOptions.append(row);
++      detailOptions.hidden=false;
++      const title=document.createElement('strong');
++      title.textContent=hasOrderContext?'اندازه / نوع را انتخاب کن':'اندازه‌ها و قیمت‌ها';detailOptions.append(title);
++      const row=document.createElement('div');row.className='sg-detail-option-row'+(hasOrderContext?'':' sg-detail-option-row--static');
++      members.forEach((member)=>{
++        const option=document.createElement(hasOrderContext?'button':'div');
++        option.className='sg-detail-option'+(hasOrderContext?'':' sg-detail-option--static');
++        if(hasOrderContext){option.type='button';option.disabled=!member.order_available;option.dataset.sgVariantItem=String(member.id);}
++        const name=document.createElement('span');name.textContent=member.variant_label||member.name;
++        const price=document.createElement('small');price.textContent=formatMoney(member.price);
++        option.append(name,price);
++        if(hasOrderContext&&Number(detailSelectedItemId)===Number(member.id))option.classList.add('is-selected');
++        row.append(option);
++      });
++      detailOptions.append(row);
+       const selected=itemMap.get(Number(detailSelectedItemId));detailDraftUnitPrice=Number(selected?.price||0);return;
+     }
+     if(item.is_bundle&&choices.length){
+-      detailOptions.hidden=false;const title=document.createElement('strong');title.textContent=item.bundle_choice_label||'یک انتخاب';detailOptions.append(title);const row=document.createElement('div');row.className='sg-detail-option-row';
+-      choices.forEach((choice)=>{const b=document.createElement('button');b.type='button';b.className='sg-detail-option';b.disabled=!choice.available;b.dataset.sgBundleChoice=String(choice.item_id);const final=Number(item.base_price||item.price||0)+fixedBundleDelta(item)+Number(choice.price_delta||0);b.dataset.finalPrice=String(final);b.innerHTML=`<span>${choice.name||'انتخاب'}</span><small>${formatMoney(final)}</small>`;if(Number(detailBundleChoiceItemId)===Number(choice.item_id))b.classList.add('is-selected');row.append(b);});detailOptions.append(row);detailDraftUnitPrice=detailBundleChoiceItemId?Number(q(`[data-sg-bundle-choice="${CSS.escape(String(detailBundleChoiceItemId))}"]`,detailOptions)?.dataset.finalPrice||0):Number(item.price||0);return;
++      detailOptions.hidden=false;
++      const title=document.createElement('strong');title.textContent=hasOrderContext?(item.bundle_choice_label||'یک انتخاب'):(item.bundle_choice_label||'مدل‌ها و قیمت‌ها');detailOptions.append(title);
++      const row=document.createElement('div');row.className='sg-detail-option-row'+(hasOrderContext?'':' sg-detail-option-row--static');
++      choices.forEach((choice)=>{
++        const option=document.createElement(hasOrderContext?'button':'div');
++        option.className='sg-detail-option'+(hasOrderContext?'':' sg-detail-option--static');
++        const final=Number(item.base_price||item.price||0)+fixedBundleDelta(item)+Number(choice.price_delta||0);
++        if(hasOrderContext){option.type='button';option.disabled=!choice.available;option.dataset.sgBundleChoice=String(choice.item_id);option.dataset.finalPrice=String(final);}
++        const name=document.createElement('span');name.textContent=choice.name||'مدل';
++        const price=document.createElement('small');price.textContent=formatMoney(final);
++        option.append(name,price);
++        if(hasOrderContext&&Number(detailBundleChoiceItemId)===Number(choice.item_id))option.classList.add('is-selected');
++        row.append(option);
++      });
++      detailOptions.append(row);
++      detailDraftUnitPrice=detailBundleChoiceItemId?Number(q(`[data-sg-bundle-choice="${CSS.escape(String(detailBundleChoiceItemId))}"]`,detailOptions)?.dataset.finalPrice||0):Number(item.price||0);return;
+     }
+     detailSelectedItemId=Number(item.id||0);detailDraftUnitPrice=Number(item.price||0);
+   };
+@@ -715,17 +747,17 @@
+     const members=familyMembers(item),selected=members.length?itemMap.get(Number(detailSelectedItemId)):item;const displayName=members.length?(item.variant_family_name||item.name):item.name;const displayDescription=members.length?(item.variant_family_description||item.description):item.description;
+     if(detailMedia){detailMedia.replaceChildren();const mediaItem=selected||item;if(mediaItem.image){const img=document.createElement('img');img.src=mediaItem.image;img.alt=mediaItem.image_alt||displayName||'';if(mediaItem.image_focal){const x=Math.round(Math.max(0,Math.min(1,Number(mediaItem.image_focal.x??.5)))*100),y=Math.round(Math.max(0,Math.min(1,Number(mediaItem.image_focal.y??.5)))*100);img.classList.add(`sg-focal-x-${x}`,`sg-focal-y-${y}`);}img.addEventListener('error',()=>{if(img.isConnected)img.replaceWith(mediaPlaceholder());},{once:true});detailMedia.append(img);}else detailMedia.append(mediaPlaceholder());}
+     detailTitle&&(detailTitle.textContent=displayName||'آیتم منو');detailPrice&&(detailPrice.textContent=(members.length&&!detailSelectedItemId)?`از ${formatMoney(Math.min(...members.map(m=>Number(m.price||0))))}`:formatMoney(detailDraftUnitPrice||item.price));detailDescription&&(detailDescription.textContent=displayDescription||'');detailQty&&(detailQty.textContent=numberFa(detailDraftQty));
+-    const selectedItem=members.length?itemMap.get(Number(detailSelectedItemId)):item;const choiceRequired=item.is_bundle&&bundleChoices(item).length>0;const selectionReady=(!members.length||detailSelectedItemId>0)&&(!choiceRequired||detailBundleChoiceItemId>0);const canAdd=unsafeAllowed()&&orderingEnabled&&selectionReady&&Boolean((selectedItem||item).order_available);
+-    if(detailControls)detailControls.hidden=!canAdd;if(detailAdd){const existingLine=lineFor(detailSelectedItemId||item.id,item.is_bundle?detailBundleChoiceItemId:0);detailAdd.hidden=false;detailAdd.disabled=!canAdd;detailAdd.textContent=members.length&&!detailSelectedItemId?'ابتدا یک گزینه انتخاب کن':(choiceRequired&&!detailBundleChoiceItemId?'ابتدا یک گزینه انتخاب کن':(existingLine?'به‌روزرسانی سبد':'افزودن به سفارش'));}
+-    if(detailNoteWrap)detailNoteWrap.hidden=!selectionReady;if(detailNote){const existing=lineFor(detailSelectedItemId||item.id,item.is_bundle?detailBundleChoiceItemId:0);detailNote.value=existing?.note||'';}
+-    if(detailState){detailState.textContent=!item.available?'این آیتم فعلاً ناموجود است.':(!selectionReady?'انتخاب یکی از گزینه‌ها الزامی است.':(!((selectedItem||item).order_available)?((selectedItem||item).unavailable_message||'این بخش فعلاً سفارش تازه نمی‌پذیرد.') : ''));detailState.hidden=detailState.textContent==='';}
+-    renderSuggestions(selectedItem||item);
++    const selectedItem=members.length?itemMap.get(Number(detailSelectedItemId)):item;const choiceRequired=item.is_bundle&&bundleChoices(item).length>0;const selectionReady=(!members.length||detailSelectedItemId>0)&&(!choiceRequired||detailBundleChoiceItemId>0);const canAdd=hasOrderContext&&unsafeAllowed()&&orderingEnabled&&selectionReady&&Boolean((selectedItem||item).order_available);
++    if(detailControls)detailControls.hidden=!hasOrderContext;const detailFooter=q('.sg-item-detail-footer',detailModal);if(detailFooter)detailFooter.hidden=!hasOrderContext;if(detailAdd){const existingLine=lineFor(detailSelectedItemId||item.id,item.is_bundle?detailBundleChoiceItemId:0);detailAdd.hidden=!hasOrderContext;detailAdd.disabled=!canAdd;detailAdd.textContent=members.length&&!detailSelectedItemId?'ابتدا یک گزینه انتخاب کن':(choiceRequired&&!detailBundleChoiceItemId?'ابتدا یک گزینه انتخاب کن':(existingLine?'به‌روزرسانی سبد':'افزودن به سفارش'));}
++    if(detailNoteWrap)detailNoteWrap.hidden=!hasOrderContext||!selectionReady;if(detailNote){const existing=lineFor(detailSelectedItemId||item.id,item.is_bundle?detailBundleChoiceItemId:0);detailNote.value=existing?.note||'';}
++    if(detailState){detailState.textContent=!hasOrderContext?(item.available?'':'این آیتم فعلاً ناموجود است.'):(!item.available?'این آیتم فعلاً ناموجود است.':(!selectionReady?'انتخاب یکی از گزینه‌ها الزامی است.':(!((selectedItem||item).order_available)?((selectedItem||item).unavailable_message||'این بخش فعلاً سفارش تازه نمی‌پذیرد.') : '')));detailState.hidden=detailState.textContent==='';}
++    if(hasOrderContext)renderSuggestions(selectedItem||item);else if(suggestions){suggestions.replaceChildren();suggestions.hidden=true;}
+   };
+   root.addEventListener('click',(event)=>{const opener=event.target.closest('[data-sg-open-detail]');if(!opener)return;event.preventDefault();event.stopPropagation();renderDetail(Number(opener.dataset.sgOpenDetail));openLayer(detailModal,opener);});
+-  detailOptions?.addEventListener('click',(event)=>{const variant=event.target.closest('[data-sg-variant-item]');if(variant){detailSelectedItemId=Number(variant.dataset.sgVariantItem||0);renderDetail(currentDetailId,false);return;}const choice=event.target.closest('[data-sg-bundle-choice]');if(choice){detailBundleChoiceItemId=Number(choice.dataset.sgBundleChoice||0);detailDraftUnitPrice=Number(choice.dataset.finalPrice||0);renderDetail(currentDetailId,false);}});
+-  q('[data-sg-detail-inc]')?.addEventListener('click',()=>{detailDraftQty=clampInt(detailDraftQty+1,1,99);detailQty&&(detailQty.textContent=numberFa(detailDraftQty));});
+-  q('[data-sg-detail-dec]')?.addEventListener('click',()=>{detailDraftQty=clampInt(detailDraftQty-1,1,99);detailQty&&(detailQty.textContent=numberFa(detailDraftQty));});
+-  detailAdd?.addEventListener('click',()=>{const rootItem=itemMap.get(Number(currentDetailId));if(!rootItem)return;const id=detailSelectedItemId||Number(rootItem.id);if(!id)return;setCartQty(id,detailDraftQty,{note:detailNote?.value||lineFor(id,rootItem.is_bundle?detailBundleChoiceItemId:0)?.note||'',bundle_choice_item_id:rootItem.is_bundle?detailBundleChoiceItemId:0,unit_price:detailDraftUnitPrice||itemMap.get(id)?.price||0});closeLayer();});
++  detailOptions?.addEventListener('click',(event)=>{if(!hasOrderContext)return;const variant=event.target.closest('[data-sg-variant-item]');if(variant){detailSelectedItemId=Number(variant.dataset.sgVariantItem||0);renderDetail(currentDetailId,false);return;}const choice=event.target.closest('[data-sg-bundle-choice]');if(choice){detailBundleChoiceItemId=Number(choice.dataset.sgBundleChoice||0);detailDraftUnitPrice=Number(choice.dataset.finalPrice||0);renderDetail(currentDetailId,false);}});
++  q('[data-sg-detail-inc]')?.addEventListener('click',()=>{if(!hasOrderContext)return;detailDraftQty=clampInt(detailDraftQty+1,1,99);detailQty&&(detailQty.textContent=numberFa(detailDraftQty));});
++  q('[data-sg-detail-dec]')?.addEventListener('click',()=>{if(!hasOrderContext)return;detailDraftQty=clampInt(detailDraftQty-1,1,99);detailQty&&(detailQty.textContent=numberFa(detailDraftQty));});
++  detailAdd?.addEventListener('click',()=>{if(!hasOrderContext)return;const rootItem=itemMap.get(Number(currentDetailId));if(!rootItem)return;const id=detailSelectedItemId||Number(rootItem.id);if(!id)return;setCartQty(id,detailDraftQty,{note:detailNote?.value||lineFor(id,rootItem.is_bundle?detailBundleChoiceItemId:0)?.note||'',bundle_choice_item_id:rootItem.is_bundle?detailBundleChoiceItemId:0,unit_price:detailDraftUnitPrice||itemMap.get(id)?.price||0});closeLayer();});
+   suggestions?.addEventListener('click',(event)=>{const b=event.target.closest('[data-sg-suggestion-item]');const id=Number(b?.dataset.sgSuggestionItem||0);if(!id)return;setCartQty(id,(lineFor(id)?.quantity||0)+1);});
+ 
+   const trackerKey = tableToken ? `sokna.guest.latest-order.${tableToken}` : '';
+--- a/public/assets/scds/guest.css
++++ b/public/assets/scds/guest.css
+@@ -213,3 +213,8 @@
+ .sg-body .sg-menu-tail .sg-scan-table{margin:0;color:var(--sg-muted);font-size:.72rem}
+ .sg-body .sg-menu-tail .sg-menu-back-top{color:var(--sg-primary);font-size:.72rem;text-decoration:none;font-weight:750}
+ @media(max-width:560px){.sg-body .sg-menu-tail{margin-block-start:16px;border-radius:17px}.sg-body .sg-menu-tail-main{padding:16px 15px 12px}.sg-body .sg-menu-tail-bottom{padding:8px 15px}.sg-body .sg-menu-tail .sg-scan-table{max-inline-size:62%;font-size:.68rem}}
++
++/* Display-only guest menu: prices and sizes are facts, not buttons. */
++.sg-mode-public .sg-detail-option-row--static{display:grid;gap:7px}
++.sg-mode-public .sg-detail-option--static{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border:1px solid var(--sg-line);border-radius:12px;background:var(--sg-surface-soft);color:var(--sg-text);cursor:default;box-shadow:none;min-block-size:44px}
++.sg-mode-public .sg-detail-option--static small{color:var(--sg-primary);font-weight:850;white-space:nowrap}
