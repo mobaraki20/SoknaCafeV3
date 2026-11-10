@@ -27,6 +27,32 @@ static void Deny(Action call, string label)
 }
 static string ShaFile(string path)
     => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant();
+
+// The same signed response used by the update panel must expose simple operator
+// wording without claiming that an unqualified universal installer is ready.
+var defaultCapability = UnifiedUpdaterCapabilities.Current();
+Need(!defaultCapability.PanelUpdateReady &&
+    defaultCapability.UserStatus == "needs_action" &&
+    !string.IsNullOrWhiteSpace(defaultCapability.UserMessage),
+    "SIMPLE_UPDATE_STATUS_NOT_FALSE_READY");
+var busyCapability = defaultCapability with { BlockingCode = "LOCAL_OPERATION_IN_PROGRESS" };
+Need(busyCapability.UserStatus == "checking" &&
+    busyCapability.UserMessage.Contains("عملیات", StringComparison.Ordinal),
+    "SIMPLE_UPDATE_BUSY_MESSAGE");
+var recoveryCapability = defaultCapability with { BlockingCode = "LOCAL_RECOVERY_REQUIRED" };
+Need(recoveryCapability.UserStatus == "needs_action" &&
+    recoveryCapability.UserMessage.Contains("حفظ اطلاعات", StringComparison.Ordinal),
+    "SIMPLE_UPDATE_RECOVERY_MESSAGE");
+var universalNoPackage = new UniversalUpgradeInspection(
+    "UNIVERSAL_NOT_QUALIFIED", "NONE", true, false, false, false);
+var universalRecovery = new UniversalUpgradeInspection(
+    "DB_FORWARD_RECOVERY_NOT_QUALIFIED", "LOCAL_DB_FORWARD_REQUIRES_RECONCILIATION",
+    true, true, true, false);
+Need(universalNoPackage.UserStatus == "not_ready" &&
+    !universalNoPackage.CanStartUpdate &&
+    universalRecovery.UserStatus == "needs_action" &&
+    !universalRecovery.CanStartUpdate,
+    "SIMPLE_UNIVERSAL_UPDATE_NEVER_PRETENDS_INSTALLABLE");
 static string GetString(string path, string key)
 {
     using var doc = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
