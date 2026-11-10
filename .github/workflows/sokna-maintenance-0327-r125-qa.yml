@@ -1,0 +1,103 @@
+name: SOKNA 0.3.27 R125 protected Maintenance pair QA
+on:
+  push:
+    branches: [qa/sokna-r125-0327-permanent-fix-20261110]
+    paths:
+      - qa/sokna-r125-0327/**
+      - packaging/windows/**
+      - windows/maintenance/src/Sokna.Maintenance.Core/**
+      - windows/maintenance/src/Sokna.Maintenance.Supervisor/**
+      - windows/maintenance/src/Sokna.Maintenance.UpdateEngine/**
+      - .github/workflows/sokna-maintenance-0327-r125-qa.yml
+permissions: {contents: read}
+jobs:
+  windows-r125-fix:
+    runs-on: windows-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: aba774d67e9d3890aa0f69d00f214ae82b395927
+          path: old-0326
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Reproduce old pinned component binaries and build new pair
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force 'qa-dist-0327'|Out-Null
+          $names=@('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine')
+          $exes=@('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')
+          $expected=@('88ba73a97e273a4f818f0200bcc32f7b8cc9df4522b554cca6b88e32e0832aae','d9f8295976a1a549191797303f6a6046877a96d3f1e23fe022bf3ebcfce61199')
+          for($i=0;$i-lt2;$i++){
+            $n=$names[$i]
+            dotnet publish "old-0326/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "qa-dist-0327/old-$i"
+            if($LASTEXITCODE-ne0){throw 'OLD_SOURCE_COMPILE_FAILED'}
+            if((Get-FileHash "qa-dist-0327/old-$i/$($exes[$i])" -Algorithm SHA256).Hash.ToLowerInvariant()-ne$expected[$i]){throw 'PINNED_0326_HASH_MISMATCH'}
+            dotnet publish "windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "qa-dist-0327/new-$i"
+            if($LASTEXITCODE-ne0){throw 'NEW_0327_COMPILE_FAILED'}
+            dotnet publish "old-0326/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained false -p:FileVersion=0.3.25.0 -p:AssemblyVersion=0.3.25.0 -o "qa-dist-0327/v25-$i"
+            if($LASTEXITCODE-ne0){throw 'PREIMAGE_FIXTURE_COMPILE_FAILED'}
+          }
+          dotnet publish old-0326/windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o qa-dist-0327/recovery
+          if($LASTEXITCODE-ne0){throw 'PRESERVED_RECOVERY_FIXTURE_FAILED'}
+          Write-Host 'PASS exact published 0.3.26 binaries'
+      - name: Windows R125 0.3.26 to 0.3.27 immutable evidence chain and six tamper cases
+        shell: pwsh
+        run: |
+          $a=@(
+            (Join-Path $PWD.Path 'qa-dist-0327/new-0/SoknaMaintenanceSupervisor.exe'),
+            (Join-Path $PWD.Path 'qa-dist-0327/new-1/SoknaMaintenanceUpdateEngine.exe'),
+            (Join-Path $PWD.Path 'qa-dist-0327/old-0/SoknaMaintenanceSupervisor.exe'),
+            (Join-Path $PWD.Path 'qa-dist-0327/old-1/SoknaMaintenanceUpdateEngine.exe'),
+            (Join-Path $PWD.Path 'qa-dist-0327/v25-0/SoknaMaintenanceSupervisor.exe'),
+            (Join-Path $PWD.Path 'qa-dist-0327/v25-1/SoknaMaintenanceUpdateEngine.exe'),
+            (Join-Path $PWD.Path 'qa-dist-0327/recovery/SoknaMaintenanceRecoveryConsole.exe')
+          )
+          dotnet run --project qa/sokna-r125-0327/ProofChain.csproj -c Release --no-launch-profile -- @a
+          if($LASTEXITCODE-ne0){throw 'R125_TWO_GENERATION_PROOF_FAILED'}
+          & ./packaging/windows/scripts/prepare-maintenance-independent-0327.ps1 -RepoRoot $PWD.Path -Supervisor $a[0] -Engine $a[1] -OutputRoot (Join-Path $PWD.Path 'qa-dist-0327/payload')
+          if($LASTEXITCODE-ne0){throw '0327_PACKAGE_PREP_FAILED'}
+          $m=Get-Content qa-dist-0327/payload/maintenance-independent-manifest-v1.json -Raw|ConvertFrom-Json
+          if($m.target_version-ne'0.3.27' -or @($m.files).Count-ne2 -or @($m.supported_baselines).Count-ne1 -or $m.recovery_console_action-ne'KEEP_UNCHANGED' -or (Test-Path qa-dist-0327/payload/Maintenance/Recovery)){throw 'MAINTENANCE_RELEASE_SCOPE_FAILED'}
+          Copy-Item qa-dist-0327/payload/maintenance-independent-manifest-v1.json qa-dist-0327/COMPONENT-MANIFEST.json
+      - name: Build actual Inno EXE and verify refusal on unknown host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=@((Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'),(Join-Path $env:ProgramFiles 'Inno Setup 6/ISCC.exe'))|Where-Object{Test-Path $_}|Select-Object -First 1
+          if(-not$iscc){choco install innosetup -y --no-progress;if($LASTEXITCODE-ne0){throw 'INNO_INSTALL_FAILED'};$iscc=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'}
+          $payload=Join-Path $PWD.Path 'qa-dist-0327/payload'
+          $dist=Join-Path $PWD.Path 'qa-dist-0327'
+          & $iscc "/DPayloadRoot=$payload" "/DOutputDir=$dist" packaging/windows/installer/SOKNA-Maintenance-0327-R125-Compat-QA.iss
+          if($LASTEXITCODE-ne0){throw 'INNO_BUILD_FAILED'}
+          $exe=Join-Path $dist 'SOKNA-Maintenance-Only-0327-Independent-R1-QA-NOT-PRODUCTION.exe'
+          if(-not(Test-Path $exe)){throw 'INNO_OUTPUT_MISSING'}
+          $v=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+          if("$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"-ne'0.3.27.1'){throw 'PHYSICAL_INSTALLER_VERSION_BAD'}
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'NOT_CLEAN_QA_HOST'}
+          $prior=@(Get-ChildItem ([Environment]::GetFolderPath('DesktopDirectory')) -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json' -ErrorAction SilentlyContinue|Select-Object -ExpandProperty FullName)
+          $p=Start-Process $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -Wait -PassThru
+          if($p.ExitCode-eq0){throw 'UNKNOWN_WINDOWS_HOST_FALSE_SUCCESS'}
+          $reports=@(Get-ChildItem ([Environment]::GetFolderPath('DesktopDirectory')) -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json' -ErrorAction SilentlyContinue|Where-Object{$_.FullName-notin$prior})
+          if($reports.Count-ne1){throw 'NO_SAFE_FAILURE_REPORT'}
+          $r=Get-Content $reports[0].FullName -Raw|ConvertFrom-Json
+          if($r.safe_code-ne'R125_BASELINE_SERVICE_MISSING' -or $r.failed_stage-ne'SERVICE_LAYOUT'){throw 'UNSAFE_HOST_REJECTION_CLASSIFICATION'}
+          Copy-Item $reports[0].FullName qa-dist-0327/UNKNOWN-HOST-RESULT.json
+          $hash=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $([IO.Path]::GetFileName($exe))"|Set-Content qa-dist-0327/SHA256SUMS.txt
+          @{sha256=$hash;source_commit=$env:GITHUB_SHA;target_version='0.3.27';physical_cafe_tested=$false;production_approved=$false;recovery_preserved=$true;local_public_untouched=$true}|ConvertTo-Json|Set-Content qa-dist-0327/BUILD-QA.json
+          Write-Host "QA_INSTALLER_SHA256=$hash"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-MAINTENANCE-0327-R125-COMPAT-TESTED-QA
+          path: |
+            qa-dist-0327/SOKNA-Maintenance-Only-0327-Independent-R1-QA-NOT-PRODUCTION.exe
+            qa-dist-0327/COMPONENT-MANIFEST.json
+            qa-dist-0327/SHA256SUMS.txt
+            qa-dist-0327/BUILD-QA.json
+            qa-dist-0327/UNKNOWN-HOST-RESULT.json
+          if-no-files-found: error
+          retention-days: 14
