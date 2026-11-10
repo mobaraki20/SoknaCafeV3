@@ -290,10 +290,16 @@ PidFile "$ar/logs/httpd.pid"
                     $afterLocalQty=& $mdbExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT qty FROM sokna_r140_exact.ci_upgrade_sentinel WHERE id=1;'
                     Need ($LASTEXITCODE -eq 0 -and [string]$afterLocalQty -eq [string]$sentinelQty) 'PUBLIC_NATIVE_TEST_MUTATED_LOCAL_BUSINESS_DATA'
                     # Public evidence does NOT qualify Maintenance or full recovery.
+                    # The source checkout is NOT a trusted host-evidence directory.
+                    # Snapshot Public's native summary into runner-temp before binding it.
+                    $publicSafeCopy=Join-Path $artifacts ("public-native-summary-"+$sourceName+".json")
+                    Copy-Item -LiteralPath $publicSummary -Destination $publicSafeCopy -Force
+                    Need ((Get-FileHash $publicSummary -Algorithm SHA256).Hash -eq
+                          (Get-FileHash $publicSafeCopy -Algorithm SHA256).Hash) 'PUBLIC_QA_PROOF_COPY_CHANGED'
                     Run python @($fenceScript,'public','--root',$fenceRoot,'--state',$nativeState,
-                        '--backup',$verifiedBackup,'--public-proof',$publicSummary)
+                        '--backup',$verifiedBackup,'--public-proof',$publicSafeCopy)
                     $resumeArgs=@($fenceScript,'resume','--root',$fenceRoot,'--state',$nativeState,
-                        '--backup',$verifiedBackup,'--public-proof',$publicSummary)
+                        '--backup',$verifiedBackup,'--public-proof',$publicSafeCopy)
                     $blockedText=(& python @resumeArgs | Out-String)
                     $blockedCode=$LASTEXITCODE
                     Need ($blockedCode -eq 24 -and $blockedText.Contains('DB_FORWARD_NEEDS_QUALIFIED_THREE_COMPONENT_RECOVERY')) 'DB_FORWARD_CRASH_RESUME_IMPROPERLY_ALLOWED'
