@@ -112,7 +112,11 @@ try {
     Need ($packageHash -eq $sharedPackageHash) 'UNIVERSAL_TARGET_ZIP_CHANGED_BETWEEN_BASELINES'
     $sourceCount=if($sourceName -eq 'r75'){76}else{79}
     $sentinelQty=if($sourceName -eq 'r75'){75}else{140}
-    foreach($fault in @('none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')){
+    # This cohost workflow reuses the established native fault/restore matrix;
+    # it runs only the two successful Local sources while adding Public native flows.
+    # Standalone historical R149B CI retains all six fault scenarios per source.
+    $faultMatrix=if($env:SOKNA_NATIVE_COLOCATED_PUBLIC_QA -eq 'YES'){@('none')}else{@('none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')}
+    foreach($fault in @($faultMatrix)){
         $folder=if($sourceName -eq 'r75'){'آزمون خانه '+$sourceName+'-'+$fault}else{'host-'+$sourceName+'-'+$fault}
         $root=Join-Path $lab $folder
         New-Item -ItemType Directory -Force $root | Out-Null
@@ -304,9 +308,14 @@ PidFile "$ar/logs/httpd.pid"
         }
     }
     }
-    Need ($results.Count -eq 12) 'TWO_BASELINE_CYCLE_MATRIX_INCOMPLETE'
+    $expectedCycles=if($env:SOKNA_NATIVE_COLOCATED_PUBLIC_QA -eq 'YES'){2}else{12}
+    Need ($results.Count -eq $expectedCycles) 'TWO_BASELINE_CYCLE_MATRIX_INCOMPLETE'
     $results|ConvertTo-Json -Depth 6|Set-Content (Join-Path $artifacts 'r149b-windows-cycles.json') -Encoding utf8NoBOM
-    Write-Host 'R140_EXACT_REAL_WINDOWS_FULL_ACTIVATION_RECOVERY_PASS'
+    if($env:SOKNA_NATIVE_COLOCATED_PUBLIC_QA -eq 'YES'){
+        Write-Host 'PASS NATIVE_COHOST_TWO_REAL_LOCAL_SOURCES_WITH_PUBLIC; FULL_FAULT_MATRIX_HISTORICAL_ONLY'
+    }else{
+        Write-Host 'R140_EXACT_REAL_WINDOWS_FULL_ACTIVATION_RECOVERY_PASS'
+    }
 } finally {
     if($null -ne $restoreDb -and -not $restoreDb.HasExited){$restoreDb.Kill($true);$restoreDb.WaitForExit()}
     if($null -ne $restoreOut){try{$restoreOut.Result|Set-Content (Join-Path $lab 'restore-stdout.log')}catch{}}
