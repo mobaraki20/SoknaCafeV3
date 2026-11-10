@@ -207,7 +207,7 @@ jobs:
           PY
       - name: Create immutable-named QA pre-release only, never Production
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
