@@ -97,7 +97,6 @@ def main():
     swaps = [
         ("==581", "==583"),
         ("581_FILE", "583_FILE"),
-        ("581_FILES", "583_FILES"),
         ("==43", "==44"),
         ("43_KNOWN_BASELINES", "44_KNOWN_BASELINES"),
         ("3.0.0-g6.2-workspace.231eb-r149-catalog-ui-multibase-uat",
