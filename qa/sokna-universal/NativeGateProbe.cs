@@ -39,8 +39,7 @@ const string shape = """
 """;
 var all = JsonSerializer.Deserialize<ReleaseSetManifest>(shape)
     ?? throw new InvalidDataException("NATIVE_PROBE_MANIFEST_PARSE_FAILED");
-Need(all.Qualification is not null, "NATIVE_PROBE_QUALIFICATION_MISSING");
-var q = all.Qualification;
+var q = all.Qualification ?? throw new InvalidDataException("NATIVE_PROBE_QUALIFICATION_MISSING");
 ReleaseInstallQualificationGate.Require(all);
 Console.WriteLine("PASS NATIVE_QUALIFICATION_SHAPE_FULL_PAIRED_ONLY_NOT_ACTIVATION");
 Reject(all with { Qualification = q with { RealPublicHost = false } }, "RELEASE_PAIRED_QUALIFICATION_INCOMPLETE");
