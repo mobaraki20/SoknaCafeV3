@@ -1,0 +1,102 @@
+name: SOKNA native Local+Public one disposable Windows host QA (NOT a universal installer)
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths:
+      - qa/sokna-r149b/windows-r149b-activation.ps1
+      - qa/sokna-public-two-route/test-two-route.php
+      - qa/sokna-universal/native-forward-fence-qa.py
+      - qa/sokna-public-two-route/build-candidate.py
+      - .github/workflows/sokna-universal-native-colocated-local-public-qa.yml
+  pull_request:
+    branches: [qa/sokna-update-safety-20261109]
+    paths:
+      - qa/sokna-r149b/windows-r149b-activation.ps1
+      - qa/sokna-public-two-route/test-two-route.php
+      - qa/sokna-universal/native-forward-fence-qa.py
+      - .github/workflows/sokna-universal-native-colocated-local-public-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  native-local-public-same-windows-host:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES'
+      SOKNA_NATIVE_COLOCATED_PUBLIC_QA: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Rebuild exact Public QA candidate without changing its source archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m py_compile qa/sokna-universal/native-forward-fence-qa.py
+          if($LASTEXITCODE-ne0){throw 'DB_FORWARD_FENCE_PYTHON_PARSE_FAILED'}
+          python qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip qa/sokna-public-two-route/candidate.zip
+          if($LASTEXITCODE-ne0){throw 'PUBLIC_CANDIDATE_REBUILD_FAILED'}
+          $got=(Get-FileHash qa/sokna-public-two-route/candidate.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($got-ne'1131d89c98e05c9597f372ed1d480e5637c3ad1969bc8733d2a837b644e57584'){throw 'EXACT_PUBLIC_FINAL_SHA_CHANGED'}
+      - name: Execute native Local Windows/Apache/MariaDB cycles with native Public Routine/Emergency on same host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./qa/sokna-r149b/windows-r149b-activation.ps1
+          if($LASTEXITCODE -and $LASTEXITCODE-ne0){throw 'NATIVE_LOCAL_PUBLIC_COHOST_FAILED'}
+      - name: Independently verify 2 native cohost results and fail-closed classification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'sokna-r149b-windows-exact-e2e/artifacts'
+          foreach($source in @('r75','r140')){
+            $p=Join-Path $root ("native-colocated-"+$source+".json")
+            if(-not(Test-Path -LiteralPath $p -PathType Leaf)){throw ('MISSING_ACTUAL_COHOST_RESULT_'+$source)}
+            $j=Get-Content -LiteralPath $p -Raw|ConvertFrom-Json
+            if($j.source_local -cne $source -or $j.local_migration_head -ne 80 -or
+               $j.local_archive_sha256 -cne '968e11771ec85c02fe4284498ba8d857d2c740958b9103bc45d6f727e20f04d4' -or
+               $j.public_archive_sha256 -cne '1131d89c98e05c9597f372ed1d480e5637c3ad1969bc8733d2a837b644e57584' -or
+               $j.public_native_case_count -ne 4 -or @($j.public_native_cases).Count -ne 4 -or
+               $j.local_sentinel_preserved -ne $true -or $j.local_native_phase -cne 'COMMITTED'){
+                 throw ('NATIVE_COHOST_PROOF_INCOMPLETE_'+$source)
+            }
+            if($j.production_authorized -ne $false -or $j.common_three_component_commit_rollback_verified -ne $false -or
+               $j.public_r112_exact_source_tested -ne $false -or $j.maintenance_supervisor_recovery_exe_installed -ne $false -or
+               $j.real_public_http_auth_verified -ne $false -or $j.physical_customer_host_tested -ne $false){
+                 throw ('QA_ILLEGITIMATELY_CLAIMS_PRODUCTION_'+$source)
+            }
+            $forwardPath=Join-Path $root ("native-forward-"+$source+"/forward-fence.json")
+            if(-not(Test-Path -LiteralPath $forwardPath -PathType Leaf)){throw ('NATIVE_DB_FORWARD_FENCE_MISSING_'+$source)}
+            $fence=Get-Content -LiteralPath $forwardPath -Raw|ConvertFrom-Json
+            $fenceHash=(Get-FileHash -LiteralPath $forwardPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($fence.format -cne 'sokna-native-db-forward-fence-qa-v1' -or
+               $fence.source_profile -cne $source -or
+               $fence.phase -cne 'PUBLIC_NATIVE_DONE_MAINTENANCE_PENDING' -or
+               $fence.database_forward_performed -ne $true -or
+               $fence.public_native_commit_verified -ne $true -or
+               $fence.recovery_required -ne $true -or
+               $fence.global_commit_rollback_verified -ne $false -or
+               $fence.maintenance_supervisor_recovery_exe_qualified -ne $false -or
+               $fence.production_authorized -ne $false -or
+               $j.database_forward_fence_phase -cne $fence.phase -or
+               $j.database_forward_fence_unresolved -ne $true -or
+               $j.database_forward_fence_sha256 -cne $fenceHash){
+                 throw ('NATIVE_DB_FORWARD_RECOVERY_UNSAFE_OR_UNPROVEN_'+$source)
+            }
+          }
+          Write-Host 'PASS TWO REAL NATIVE LOCAL+PUBLIC COHOST EXECUTIONS; GLOBAL THREE COMPONENT TRANSACTION NOT TESTED'
+      - name: Real Maintenance Core paired release qualification must remain blocked
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-universal/NativeGateProbe.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'NATIVE_MAINTENANCE_RELEASE_GATE_FAILED'}
+          Write-Host 'NO USER INSTALL OR PRODUCTION RELEASE AUTHORIZED'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: sokna-native-local-public-cohost-qa-safe-proofs-not-production
+          path: |
+            ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/native-colocated-*.json
+            ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/native-forward-*/forward-fence.json
+          if-no-files-found: error
+          retention-days: 14

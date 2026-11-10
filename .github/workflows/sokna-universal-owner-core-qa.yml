@@ -1,0 +1,39 @@
+name: SOKNA real Supervisor universal operation-store owner gate QA (no install)
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths:
+      - windows/maintenance/src/Sokna.Maintenance.Core/SupervisorUniversalUpgradeFence.cs
+      - windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs
+      - qa/sokna-universal/UniversalOwnerCoreProbe.cs
+      - qa/sokna-universal/UniversalOwnerCoreProbe.csproj
+      - .github/workflows/sokna-universal-owner-core-qa.yml
+  pull_request:
+    branches: [qa/sokna-update-safety-20261109]
+    paths:
+      - windows/maintenance/src/Sokna.Maintenance.Core/SupervisorUniversalUpgradeFence.cs
+      - windows/maintenance/src/Sokna.Maintenance.Supervisor/Program.cs
+      - qa/sokna-universal/UniversalOwnerCoreProbe.cs
+      - qa/sokna-universal/UniversalOwnerCoreProbe.csproj
+      - .github/workflows/sokna-universal-owner-core-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  supervisor-native-shared-operation-fence:
+    runs-on: windows-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Compile actual Maintenance Core and Supervisor signed read-only endpoint
+        shell: pwsh
+        run: |
+          dotnet build windows/maintenance/src/Sokna.Maintenance.Supervisor/Sokna.Maintenance.Supervisor.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'REAL_SUPERVISOR_UNIVERSAL_FENCE_COMPILE_FAILED'}
+      - name: Execute actual Supervisor Core operation store lease and DB-forward negative matrix
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-universal/UniversalOwnerCoreProbe.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'REAL_SUPERVISOR_UNIVERSAL_DURABLE_OWNER_TESTS_FAILED'}
+          Write-Host 'REAL SUPERVISOR CONTRACT VERIFIED. NO THREE-COMPONENT DEPLOYMENT, COMMIT OR RECOVERY AUTHORIZED'

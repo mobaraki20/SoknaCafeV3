@@ -1,0 +1,35 @@
+name: SOKNA universal old-bundle release blocker QA
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths:
+      - qa/sokna-universal/**
+      - .github/workflows/sokna-universal-old-bundle-fail-closed.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  do-not-ship-unsafe-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build corrected Public QA source reproducibly, never publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-public-two-route/build-candidate.py \
+            qa/sokna-public-two-route/r149.zip qa/sokna-public-two-route/candidate.zip
+      - name: Reject old three-file bundle and prove corrected owner not included
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-universal/test-old-bundle-release-gate.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('qa/sokna-universal/release-blockers-safe.json')
+          m=json.loads(p.read_text())
+          assert len(m['blockers'])==5 and m['release_authorized'] is False
+          assert m['public_original']['zip'] != m['public_corrected_qa']['zip']
+          print('PASS RELEASE_GATE_DOES_NOT_MISTAKE_INDEPENDENT_COMPONENT_QA_FOR_UNIVERSAL_PRODUCTION')
+          PY

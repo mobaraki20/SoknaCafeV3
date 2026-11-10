@@ -1,0 +1,34 @@
+name: SOKNA R125 ledger historical-state compatibility QA only
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  historical-ledger-fail-closed:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parser check for exact wrapper and fixture
+        shell: powershell
+        run: |
+          foreach($path in @('packaging/windows/scripts/invoke-maintenance-components-v4.ps1','qa/sokna-identity-workflow/test-maintenance-components-v4.ps1')){
+            $errors=$null
+            [Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path $path),[ref]$null,[ref]$errors)|Out-Null
+            if($errors){$errors|ForEach-Object{Write-Host $_};throw "PARSE_FAILED:$path"}
+          }
+      - name: 92 actual PowerShell 5.1 disposable host scenarios
+        shell: powershell
+        run: |
+          & ./qa/sokna-identity-workflow/test-maintenance-components-v4.ps1
+          if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - name: Static non-production scope invariant
+        shell: pwsh
+        run: |
+          $source=Get-Content packaging/windows/scripts/invoke-maintenance-components-v4.ps1 -Raw
+          if($source-notmatch 'R125_ACTIVE_OR_UNRESOLVED_UPDATE_OPERATION' -or
+             $source-notmatch 'R125_UNKNOWN_OPERATION_STATE_NOT_IDLE' -or
+             $source-notmatch 'R125_HISTORICAL_LEDGER_STATE_TYPE_MISMATCH'){
+            throw 'R125_FALLBACK_GATES_REMOVED'
+          }

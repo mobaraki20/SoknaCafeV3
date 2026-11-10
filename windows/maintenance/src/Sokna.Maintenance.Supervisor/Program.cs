@@ -43,6 +43,8 @@ var state = stateStore.LoadOrCreate();
 stateStore.Save(state);
 var journal = new DurableJournal(paths.JournalPath);
 var operations = new MaintenanceOperationStore(paths);
+// Read-only at runtime. Reservation/DB-forward methods have NO HTTP activation route.
+var universalUpgradeFence = new SupervisorUniversalUpgradeFence(paths, operations);
 var stageRestartReconciler = new SupervisorStageRestartReconciler(operations, journal, state);
 var localStageRecoveryCoordinator = new SupervisorLocalStageRecoveryCoordinator(paths, operations, journal, state);
 var localActivationPlanCoordinator = new SupervisorLocalActivationPlanCoordinator(paths, operations, localStageRecoveryCoordinator, journal, state);
@@ -320,6 +322,28 @@ app.Use(async (context, next) =>
 
     context.Items[AuthKeyItem] = keyId;
     await next();
+});
+
+// Signed, read-only view of the shared Local/Public/Maintenance durable fence.
+// The API never reserves, clears, activates or marks a three-component update committed.
+app.MapGet("/v1/universal-updates/status", async context =>
+{
+    try
+    {
+        var inspection = universalUpgradeFence.Inspect();
+        await WriteEnvelope(context, StatusCodes.Status200OK, true,
+            "blocked", inspection.Status, inspection.RecoveryRequired, inspection);
+    }
+    catch (Exception ex) when (ex is InvalidDataException or IOException or
+        UnauthorizedAccessException or InvalidOperationException or JsonException)
+    {
+        await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
+            "evidence_unavailable", "UNIVERSAL_FENCE_EVIDENCE_UNTRUSTED", true,
+            new { production_authorized = false, recovery_required = true,
+                user_status = "needs_action",
+                user_message = "وضعیت به‌روزرسانی قابل تأیید نیست. برای حفظ اطلاعات، ادامه متوقف شده است.",
+                can_start_update = false, error_type = ex.GetType().Name });
+    }
 });
 
 // Read-only signed recovery inspection. A durable recovery_required flag never

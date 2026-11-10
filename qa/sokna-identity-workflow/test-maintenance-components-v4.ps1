@@ -42,6 +42,79 @@ function RunLab($fixture,[string]$injection=''){
  $proc=Start-Process -FilePath 'powershell.exe' -Wait -PassThru -ArgumentList $args -RedirectStandardOutput $out -RedirectStandardError $err
  [pscustomobject]@{Code=$proc.ExitCode;Stdout=$(if(Test-Path $out){Get-Content $out -Raw}else{''});Stderr=$(if(Test-Path $err){Get-Content $err -Raw}else{''})}
 }
+
+# Sanitized reconstruction of 25 operations in the 2026-11-09 One Support
+# archive: 9 verified, 9 staged, 3 failed, 4 committed. No production IDs.
+function NewHistoricalOperation([string]$id,[string]$kind,[string]$state,[string]$result,[string]$preflightPath,[string]$stagePath,[bool]$activated){
+ $pkg=('c'*64)
+ $operator='qa-ledger'
+ $canonical=$kind.ToLowerInvariant()+[char]10+$pkg+[char]10+$operator
+ $sha=[Security.Cryptography.SHA256]::Create()
+ try{$requestHash=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))).Replace('-','')).ToLowerInvariant()}
+ finally{$sha.Dispose()}
+ $when=[DateTimeOffset]::UtcNow.ToString('O')
+ return @{
+  format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$id;
+  idempotency_key=('qa-ledger-'+$id);canonical_request_sha256=$requestHash;
+  operation_type=$kind;operator_id=$operator;state=$state;package_ref=$pkg;
+  created_at_utc=$when;updated_at_utc=$when;attempt_count=1;
+  result_code=$result;result_message='Disposable QA only';
+  stage_receipt_path=$stagePath;preflight_receipt_path=$preflightPath;
+  activation_performed=$activated;database_mutation_performed=$false
+ }
+}
+function AddHistoricalLedger($f,[string]$fault=''){
+ $data=Join-Path $f.Root 'ProgramData\SOKNA'
+ $ops=Join-Path $data 'Maintenance\operations'
+ New-Item -ItemType Directory -Path $ops -Force|Out-Null
+ $pkg=('c'*64);$manifest=('d'*64);$identity=('e'*64)
+ $preflights=@()
+ for($i=1;$i-le9;$i++){
+  $id=('{0:x32}' -f $i)
+  $proofPath=Join-Path $ops ('preflight-'+$id+'.json')
+  $verify=@{release_set_id=('test-'+$i);sequence=$i;package_sha256=$pkg;manifest_sha256=$manifest;
+    activation_performed=$false;database_mutation_performed=$false;artifact_integrity_verified=$true}
+  @{format='sokna-local-package-preflight-v1';schema_version=1;operation_id=$id;
+    package_ref=$pkg;installed_identity_sha256=$identity;verification=$verify}|
+    ConvertTo-Json -Depth 12|Set-Content -LiteralPath $proofPath
+  $op=NewHistoricalOperation $id 'update.local-package-preflight' 'verified' 'PACKAGE_INTEGRITY_VERIFIED' $proofPath $null $false
+  $op|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+  $preflights+=@{id=$id;path=$proofPath}
+ }
+ for($i=1;$i-le9;$i++){
+  $id=('{0:x32}' -f (100+$i))
+  $stageDir=Join-Path $data ('Maintenance\staging\release-sets\'+('{0:d20}'-f $i)+'-test-'+$i)
+  New-Item -ItemType Directory -Path $stageDir -Force|Out-Null
+  $stagePath=Join-Path $stageDir 'stage-receipt.json'
+  @{format='sokna-maintenance-staged-release-v1';schema_version=1;release_set_id=('test-'+$i);
+    sequence=$i;manifest_sha256=$manifest;package_sha256=$pkg;stage_root=$stageDir;
+    activation_performed=$false;database_mutation_performed=$false;preflight_identity_match=$true;
+    artifact_integrity_verified=$true;signature_verified=$false;operator_authorized=$true}|
+    ConvertTo-Json -Depth 12|Set-Content -LiteralPath $stagePath
+  $stageOp=NewHistoricalOperation $id 'update.local-stage' 'staged' 'STAGED' $preflights[$i-1].path $stagePath $false
+  $stageOp|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+ }
+ for($i=1;$i-le7;$i++){
+  $id=('{0:x32}' -f (200+$i))
+  $s=if($i-le3){'failed'}else{'committed'}
+  $activation=NewHistoricalOperation $id 'update.local-code-only-activate' $s 'QA_HISTORICAL_ACTIVATION' $null $null $true
+  $activation|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+ }
+ $stagedId=('{0:x32}' -f 101)
+ $stagedPath=Join-Path $ops ('op-'+$stagedId+'.json')
+ $staged=Get-Content $stagedPath -Raw|ConvertFrom-Json
+ switch($fault){
+  'mutated'{$staged.database_mutation_performed=$true}
+  'wrong-kind'{$staged.operation_type='update.local-code-only-activate'}
+  'wrong-result'{$staged.result_code='NOT_STAGED'}
+  'missing-proof'{Remove-Item -LiteralPath $staged.stage_receipt_path -Force}
+  'foreign-proof'{$staged.stage_receipt_path=Join-Path $ops 'stage-receipt.json'}
+  'unknown-state'{$staged.state='future_state'}
+  'active-state'{$staged.state='recovery_required'}
+ }
+ $staged|ConvertTo-Json -Depth 12|Set-Content -LiteralPath $stagedPath
+}
+
 function VerifyOld($f){
  for($i=0;$i-lt$names.Count;$i++){
   $p=Join-Path $f.Install $names[$i].Replace('/','\')
@@ -63,7 +136,7 @@ function VerifyCommitted($f){
  if($identity.maintenance_supervisor_version-ne'0.3.26' -or $identity.update_engine_version-ne'0.3.26' -or
     $identity.local.version-ne'local-r112' -or $identity.public.version-ne'public-current'){throw 'R125_QA_IDENTITY_SCOPE'}
 }
-$all=@('happy','after-copy-1','after-copy-2','after-copy-3','after-service-start','after-identity','corrupt','unresolved','baseline','crash-after-copy-1','crash-after-identity','recovery-required-operation','unknown-operation-state','machine-lease-busy','locked-unchanged-engine')
+$all=@('happy','after-copy-1','after-copy-2','after-copy-3','after-service-start','after-identity','corrupt','unresolved','baseline','crash-after-copy-1','crash-after-identity','recovery-required-operation','unknown-operation-state','machine-lease-busy','locked-unchanged-engine','history-25-valid','history-25-mutated','history-25-wrong-kind','history-25-wrong-result','history-25-missing-proof','history-25-foreign-proof','history-25-unknown-state','history-25-active-state')
 foreach($script:baselineVersion in @('0.3.22','0.3.23','0.3.24','0.3.25')){
 foreach($case in $all){
  $f=SetupLab
@@ -82,6 +155,21 @@ foreach($case in $all){
    continue
   }
   switch($case){
+   {$_ -like 'history-25-*'}{
+    $fault=if($case-eq'history-25-valid'){''}else{$case.Substring('history-25-'.Length)}
+    AddHistoricalLedger $f $fault
+    $r=RunLab $f
+    if($case-eq'history-25-valid'){
+     if($r.Code-ne0){throw ('R125_HISTORY_VALID_REJECTED:'+ $r.Code+':'+$r.Stdout+':'+$r.Stderr)}
+     VerifyCommitted $f
+    }else{
+     if($r.Code-eq0){throw ('R125_HISTORY_INVALID_ACCEPTED:'+ $case)}
+     if($r.Stdout-notmatch 'SOKNA_INSTALLER_FAILURE=R125_'){
+      throw ('R125_HISTORY_SAFE_FAILURE_NOT_REPORTED:'+ $case+':'+$r.Stdout)
+     }
+     VerifyOld $f
+    }
+   }
    'machine-lease-busy'{
     $dir=Join-Path $f.Root 'ProgramData\SOKNA\Maintenance\update'
     New-Item -ItemType Directory -Path $dir -Force|Out-Null
@@ -159,5 +247,5 @@ foreach($case in $all){
  }
 }
 }
-Write-Host 'PASS all 60 Windows three-component installation, rollback and fail-closed safety cases'
+Write-Host 'PASS all 92 Windows three-component installation, history, rollback and fail-closed safety cases'
 

@@ -1,0 +1,109 @@
+name: SOKNA R112-equivalent Local 0077-0080 migration and DB restore QA
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths:
+      - qa/sokna-r149b/test-r112-migration-faults.php
+      - .github/workflows/sokna-r112-migration-fault-restore-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+env:
+  SOKNA_R149B_DISPOSABLE: 'YES'
+  SOKNA_R112_DB_MATRIX_ONLY: 'YES'
+  SOKNA_R140_PASSWORD: 'ci-root-only'
+jobs:
+  full-migration-fail-closed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      primary:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      isolated_restore:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+        ports: ['3307:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install disposable PHP MySQL connector and client
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y php-cli php-mysql mariadb-client unzip
+      - name: Reconstruct exact 76-SQL source and immutable 80-SQL target
+        shell: bash
+        run: |
+          set -euo pipefail
+          lab="$RUNNER_TEMP/sokna-r112-database-qa"
+          mkdir -p "$lab"
+          python qa/sokna-r140/exact-ci/reconstruct.py "$lab"
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$lab/r140.zip" "$lab/qualified-r140.zip"
+          python qa/sokna-r149b/build_r149b.py "$lab/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$lab"
+          python qa/sokna-r149b/test-manifest-matrix.py "$lab/qualified-r140.zip" "$lab/r149b-candidate.zip" "$lab/r149b-qualified.zip"
+          python - "$lab" <<'PY'
+          import pathlib,zipfile,io,json,hashlib,sys
+          d=pathlib.Path(sys.argv[1])
+          with zipfile.ZipFile(d/'r75.zip') as z:
+              src=json.loads(z.read('release-set.json'))['targets']['local']
+          actual=src['schema_fingerprint']
+          archived='migration-ledger-sha256-v1:deb5af9ad17f91af67360dd7a89de3b00b84be171675f4fb710ca1dd73e52ed9'
+          if actual!=archived:raise SystemExit('R75_76_SQL_DIFFERENT_FROM_ARCHIVED_R112_SOURCE: '+actual)
+          expect='968e11771ec85c02fe4284498ba8d857d2c740958b9103bc45d6f727e20f04d4'
+          h=hashlib.sha256((d/'r149b-qualified.zip').read_bytes()).hexdigest()
+          if h!=expect:raise SystemExit('R149B_TARGET_SHA_MISMATCH')
+          print('PASS EXACT_R112_ARCHIVED_76_SQL_SCHEMA_FINGERPRINT_EQ_R75; SAME R149B TARGET SHA',h)
+          PY
+          unzip -q "$lab/r149b-qualified.zip" -d "$lab/outer"
+          unzip -q "$lab/outer/artifacts/local/web.zip" -d "$lab/r149b-web"
+          echo "CI_LAB=$lab" >> "$GITHUB_ENV"
+      - name: Positive full 0077 to 0080 migration on R112-equivalent historical schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l qa/sokna-r149b/test-r112-migration-faults.php
+          php qa/sokna-r140/exact-ci/upgrade.php baseline "$CI_LAB"
+          php qa/sokna-r149b/test-r112-migration-faults.php inspect "$CI_LAB"
+          php qa/sokna-r149b/test-r112-migration-faults.php normalize "$CI_LAB"
+          php qa/sokna-r149b/test-r112-migration-faults.php upgrade "$CI_LAB"
+          php qa/sokna-r149b/test-r112-migration-faults.php verify "$CI_LAB"
+      - name: Fresh 76-schema recovery scenario, pre-mutation SQL backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r140/exact-ci/upgrade.php baseline "$CI_LAB"
+          php qa/sokna-r149b/test-r112-migration-faults.php normalize "$CI_LAB"
+          php qa/sokna-r149b/test-r112-migration-faults.php break "$CI_LAB"
+          mariadb-dump --protocol=tcp --host=127.0.0.1 --port=3306 --user=root --password=ci-root-only \
+            --single-transaction --no-tablespaces --routines --events --triggers sokna_r140_exact > "$CI_LAB/r112-malformed-pre-migration.sql"
+          test -s "$CI_LAB/r112-malformed-pre-migration.sql"
+          sha256sum "$CI_LAB/r112-malformed-pre-migration.sql" | tee "$CI_LAB/backup.sha256"
+          echo 'PASS PRE_MUTATION_DB_BACKUP_CREATED_WITH_CHECKSUM'
+      - name: Exact 0078 or 0080 data guard must reject missing legacy item mapping
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r149b/test-r112-migration-faults.php expect-fail "$CI_LAB"
+      - name: Restore real pre-mutation SQL backup into isolated second MariaDB service
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd "$CI_LAB" && sha256sum -c backup.sha256)
+          mariadb --protocol=tcp --host=127.0.0.1 --port=3307 --user=root --password=ci-root-only -e \
+            'CREATE DATABASE sokna_r140_exact CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;'
+          mariadb --protocol=tcp --host=127.0.0.1 --port=3307 --user=root --password=ci-root-only sokna_r140_exact < "$CI_LAB/r112-malformed-pre-migration.sql"
+          (cd "$CI_LAB" && sha256sum -c backup.sha256)
+          php qa/sokna-r149b/test-r112-migration-faults.php verify-restored "$CI_LAB"
+          echo 'PASS MALFORMED_R112_NEVER_APPROVED_AND_ISOLATED_RESTORE_RETAINED_BUSINESS_SENTINEL'
+      - name: Explicit NO production or real-cafe claims
+        run: |
+          echo "QA ONLY: original real R112 code is in Library, represented here by byte-identical 76-SQL R75 baseline."
+          echo "QA ONLY: historical family data synthesized; no real customer DB or complete Café system was used."
+          echo "QA ONLY: no integrated Windows/Public/Maintenance deployment qualification."

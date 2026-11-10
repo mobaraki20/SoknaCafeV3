@@ -6,6 +6,76 @@ if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw '
 $data=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
 if(Test-Path $data){throw 'REFUSE_EXISTING_SOKNA_DATA'}
 . ./packaging/windows/scripts/maintenance-signed-health-v1.ps1
+function NewHistoricalOperation([string]$id,[string]$kind,[string]$state,[string]$result,[string]$preflightPath,[string]$stagePath,[bool]$activated){
+ $pkg=('c'*64)
+ $operator='qa-ledger'
+ $canonical=$kind.ToLowerInvariant()+[char]10+$pkg+[char]10+$operator
+ $sha=[Security.Cryptography.SHA256]::Create()
+ try{$requestHash=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))).Replace('-','')).ToLowerInvariant()}
+ finally{$sha.Dispose()}
+ $when=[DateTimeOffset]::UtcNow.ToString('O')
+ return @{
+  format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$id;
+  idempotency_key=('qa-ledger-'+$id);canonical_request_sha256=$requestHash;
+  operation_type=$kind;operator_id=$operator;state=$state;package_ref=$pkg;
+  created_at_utc=$when;updated_at_utc=$when;attempt_count=1;
+  result_code=$result;result_message='Disposable QA only';
+  stage_receipt_path=$stagePath;preflight_receipt_path=$preflightPath;
+  activation_performed=$activated;database_mutation_performed=$false
+ }
+}
+function AddHistoricalLedger([string]$data,[string]$fault=''){
+ $ops=Join-Path $data 'Maintenance\operations'
+ New-Item -ItemType Directory -Path $ops -Force|Out-Null
+ $pkg=('c'*64);$manifest=('d'*64);$identity=('e'*64)
+ $preflights=@()
+ for($i=1;$i-le9;$i++){
+  $id=('{0:x32}' -f $i)
+  $proofPath=Join-Path $ops ('preflight-'+$id+'.json')
+  $verify=@{release_set_id=('test-'+$i);sequence=$i;package_sha256=$pkg;manifest_sha256=$manifest;
+    activation_performed=$false;database_mutation_performed=$false;artifact_integrity_verified=$true}
+  @{format='sokna-local-package-preflight-v1';schema_version=1;operation_id=$id;
+    package_ref=$pkg;installed_identity_sha256=$identity;verification=$verify}|
+    ConvertTo-Json -Depth 12|Set-Content -LiteralPath $proofPath
+  $op=NewHistoricalOperation $id 'update.local-package-preflight' 'verified' 'PACKAGE_INTEGRITY_VERIFIED' $proofPath $null $false
+  $op|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+  $preflights+=@{id=$id;path=$proofPath}
+ }
+ for($i=1;$i-le9;$i++){
+  $id=('{0:x32}' -f (100+$i))
+  $stageDir=Join-Path $data ('Maintenance\staging\release-sets\'+('{0:d20}'-f $i)+'-test-'+$i)
+  New-Item -ItemType Directory -Path $stageDir -Force|Out-Null
+  $stagePath=Join-Path $stageDir 'stage-receipt.json'
+  @{format='sokna-maintenance-staged-release-v1';schema_version=1;release_set_id=('test-'+$i);
+    sequence=$i;manifest_sha256=$manifest;package_sha256=$pkg;stage_root=$stageDir;
+    activation_performed=$false;database_mutation_performed=$false;preflight_identity_match=$true;
+    artifact_integrity_verified=$true;signature_verified=$false;operator_authorized=$true}|
+    ConvertTo-Json -Depth 12|Set-Content -LiteralPath $stagePath
+  $stageOp=NewHistoricalOperation $id 'update.local-stage' 'staged' 'STAGED' $preflights[$i-1].path $stagePath $false
+  $stageOp|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+ }
+ for($i=1;$i-le7;$i++){
+  $id=('{0:x32}' -f (200+$i))
+  $s=if($i-le3){'failed'}else{'committed'}
+  $activation=NewHistoricalOperation $id 'update.local-code-only-activate' $s 'QA_HISTORICAL_ACTIVATION' $null $null $true
+  $activation|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+ }
+ $stagedId=('{0:x32}' -f 101)
+ $stagedPath=Join-Path $ops ('op-'+$stagedId+'.json')
+ $staged=Get-Content $stagedPath -Raw|ConvertFrom-Json
+ switch($fault){
+  'mutated'{$staged.database_mutation_performed=$true}
+  'wrong-kind'{$staged.operation_type='update.local-code-only-activate'}
+  'wrong-result'{$staged.result_code='NOT_STAGED'}
+  'missing-proof'{Remove-Item -LiteralPath $staged.stage_receipt_path -Force}
+  'foreign-proof'{$staged.stage_receipt_path=Join-Path $ops 'stage-receipt.json'}
+  'unknown-state'{$staged.state='future_state'}
+  'active-state'{$staged.state='recovery_required'}
+ }
+ $staged|ConvertTo-Json -Depth 12|Set-Content -LiteralPath $stagedPath
+ return [pscustomobject]@{FirstStageReceipt=(Join-Path $data 'Maintenance\staging\release-sets\00000000000000000001-test-1\stage-receipt.json')}
+}
+
 $names=@('Maintenance/App/SoknaMaintenanceSupervisor.exe','Maintenance/App/SoknaMaintenanceUpdateEngine.exe','Maintenance/Recovery/SoknaMaintenanceRecoveryConsole.exe')
 $projects=@('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')
 $target=Get-Content $ComponentManifest -Raw|ConvertFrom-Json
@@ -116,6 +186,46 @@ foreach($case in @('0.3.22-preserved011','0.3.22','0.3.23','0.3.24','0.3.25')){
   $oldHashes=@($names|ForEach-Object{Hash (Join-Path $install $_)})
   $oldIdentity=Hash $identity
   $other=@{};foreach($rel in @('Runtime/SoknaRuntimeService.exe','PrintAgent/Service/Sokna.PrintAgent.Service.exe')){if(Test-Path (Join-Path $install $rel)){$other[$rel]=Hash (Join-Path $install $rel)}}
+  # Real Inno EXE consumes this disposable 25-operation ledger, not just PS.
+  # Private original device receipts were not included in Support-v2 archives.
+  if($preserved011){
+   $history=AddHistoricalLedger $data
+   Assert-MaintenanceSignedHealth -ExpectedVersion $baseline -Attempts 40
+   Need ((Get-Service SoknaMaintenanceSupervisor -ErrorAction Stop).Status-eq'Running') 'QA_HISTORICAL_LEDGER_NOT_LIVE_SAFE'
+   Write-Host 'QA_HISTORICAL_25_RECORDS_REAL_SUPERVISOR_HEALTHY'
+   $receiptHash=Hash $history.FirstStageReceipt
+   $savedReceipt=[IO.File]::ReadAllBytes($history.FirstStageReceipt)
+   try{
+    $badReceipt=Get-Content -LiteralPath $history.FirstStageReceipt -Raw|ConvertFrom-Json
+    $badReceipt.release_set_id='FORGED-NOT-THE-PREFLIGHT'
+    $badReceipt|ConvertTo-Json -Depth 20|Set-Content -LiteralPath $history.FirstStageReceipt
+    # Inspect ONLY the report for this exact installer invocation. The earlier
+    # deliberately bad installed-identity case also writes a Desktop JSON and
+    # must not be misread as the result of this historical-ledger test.
+    $beforeForge=@(Get-ChildItem -LiteralPath $desktop -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json' -ErrorAction SilentlyContinue|
+      ForEach-Object{$_.FullName})
+    Write-Host ('QA_FORGED_HISTORICAL_REPORTS_BEFORE='+$beforeForge.Count)
+    $badInstall=InvokeInstaller $Installer
+    Need ($badInstall-ne0) 'EXACT_INNO_ACCEPTED_FORGED_HISTORICAL_STAGE'
+    $freshErrors=@(Get-ChildItem -LiteralPath $desktop -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json' -ErrorAction SilentlyContinue|
+      Where-Object{$_.FullName-notin$beforeForge})
+    Write-Host ('QA_FORGED_HISTORICAL_EXIT='+[string]$badInstall+';NEW_REPORT_COUNT='+$freshErrors.Count)
+    Need ($freshErrors.Count-eq1) 'EXACT_INNO_FORGED_HISTORICAL_ERROR_REPORT_MISSING_OR_DUPLICATE'
+    $ferr=Get-Content -LiteralPath $freshErrors[0].FullName -Raw|ConvertFrom-Json
+    Write-Host ('QA_EXACT_EXE_OBSERVED_FAILURE='+[string]$ferr.safe_code+';stage='+[string]$ferr.failed_stage+
+      ';private_log_written='+[string]$ferr.private_diagnostic_log_written)
+    Need ($ferr.safe_code-eq'R125_HISTORICAL_STAGE_PROOF_INVALID' -and
+          $ferr.failed_stage-eq'OPERATION_LEDGER' -and
+          $ferr.recovery_requested-eq$false -and
+          $null-eq$ferr.rollback_verified -and
+          $ferr.database_schema_data_mutated-eq$false) 'EXACT_INNO_HISTORICAL_REJECT_REASON_WRONG'
+    Assert-MaintenanceSignedHealth -ExpectedVersion $baseline -Attempts 40
+    Need ((Hash $identity)-eq$oldIdentity) 'EXACT_INNO_BAD_STAGE_IDENTITY_CHANGED'
+    for($i=0;$i-lt3;$i++){Need ((Hash (Join-Path $install $names[$i]))-eq$oldHashes[$i]) 'EXACT_INNO_BAD_STAGE_COMPONENT_CHANGED'}
+    Write-Host 'PASS EXACT INNO EXE FORGED HISTORICAL STAGE REJECTED BEFORE MUTATION'
+   }finally{[IO.File]::WriteAllBytes($history.FirstStageReceipt,$savedReceipt)}
+   Need ((Hash $history.FirstStageReceipt)-eq$receiptHash) 'EXACT_INNO_STAGE_FIXTURE_RESTORE_FAILED'
+  }
   # Exercise REAL copy failure through the exact Inno EXE. A readable but
   # write-locked unchanged Engine must not prevent restoring the Supervisor.
   $held=[IO.File]::Open((Join-Path $install $names[1]),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)

@@ -110,6 +110,12 @@ public sealed class MaintenanceOperationStore
         }
     }
 
+    // Universal qualification must inspect the FULL bounded history, not just
+    // active operations or a recent page. Historical verified/staged operations
+    // require their own original trusted receipts before a real universal install.
+    internal IReadOnlyList<MaintenanceOperation> ListAllForUniversalQualification()
+        => LoadAllOperations();
+
     public IReadOnlyList<MaintenanceOperation> ListRecent(int max = 30)
     {
         if (max is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(max));

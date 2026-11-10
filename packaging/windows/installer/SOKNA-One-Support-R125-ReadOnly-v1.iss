@@ -45,6 +45,7 @@ Source: "{#SupportScriptRoot}\collect-support-unified-v1.ps1"; DestDir: "{tmp}\S
 Source: "{#SupportScriptRoot}\collect-support-v3.ps1"; DestDir: "{tmp}\SOKNA-One-Support-R125"; DestName: "collect-support-v2.ps1"; Flags: ignoreversion deleteafterinstall
 Source: "{#SupportScriptRoot}\collect-support-v2.ps1"; DestDir: "{tmp}\SOKNA-One-Support-R125"; DestName: "collect-support-v2-core.ps1"; Flags: ignoreversion deleteafterinstall
 Source: "{#SupportScriptRoot}\write-technician-report-v1.ps1"; DestDir: "{tmp}\SOKNA-One-Support-R125"; Flags: ignoreversion deleteafterinstall
+Source: "{#SupportScriptRoot}\collect-r125-proof-verdict-v1.ps1"; DestDir: "{tmp}\SOKNA-One-Support-R125"; Flags: ignoreversion deleteafterinstall
 
 [Code]
 var

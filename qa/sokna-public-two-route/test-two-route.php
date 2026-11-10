@@ -1,11 +1,19 @@
 <?php
 declare(strict_types=1);
 // Real native updater + native SQL in disposable MariaDB. No HTTP/auth/stable-owner claim.
-if(getenv('SOKNA_PUBLIC_QA_DISPOSABLE')!=='YES')throw new RuntimeException('DISPOSABLE_ONLY');
+if(getenv('GITHUB_ACTIONS')!=='true' || getenv('SOKNA_PUBLIC_QA_DISPOSABLE')!=='YES')throw new RuntimeException('DISPOSABLE_GITHUB_CI_ONLY');
 function need(bool $ok,string $label):void{if(!$ok)throw new RuntimeException('FAIL '.$label);echo 'PASS '.$label.PHP_EOL;}
+// Support the native Windows Local/MariaDB QA host without changing the Linux baseline.
+// Never accept a remote DB address or a customer database name.
+function qaDsn(?string $name=null):string{
+ $raw=getenv('SOKNA_PUBLIC_QA_DB_PORT');$port=$raw===false?'3306':$raw;
+ if(!preg_match('/^[0-9]{4,5}$/D',$port) || (int)$port<1024 || (int)$port>65535)throw new RuntimeException('DISPOSABLE_DB_PORT_INVALID');
+ return 'mysql:host=127.0.0.1;port='.$port.($name===null?'':';dbname='.$name);
+}
+function qaPass():string{$p=getenv('SOKNA_PUBLIC_QA_DB_PASSWORD');return $p===false?'ci-root-only':$p;}
 function db(string $name):PDO{
  if(!preg_match('/^sokna_public_qa_[a-z0-9_]+$/D',$name))throw new RuntimeException('DB_SCOPE');
- return new PDO('mysql:host=127.0.0.1;port=3306;dbname='.$name,'root','ci-root-only',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+ return new PDO(qaDsn($name),'root',qaPass(),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 }
 function loadNative(string $site):void{
  require_once __DIR__.'/PublicUpdateException.php';
@@ -70,7 +78,7 @@ function ownerFactory(string $site,string $store):array{
 }
 $dir=sys_get_temp_dir().'/sokna-public-two-route-'.bin2hex(random_bytes(4));mkdir($dir,0700,true);
 $dbNames=[];$results=[];
-$server=new PDO('mysql:host=127.0.0.1;port=3306','root','ci-root-only',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+$server=new PDO(qaDsn(),'root',qaPass(),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 try{
  $target=__DIR__.'/candidate.zip';$targetHash=hash_file('sha256',$target);
  need($targetHash==='1131d89c98e05c9597f372ed1d480e5637c3ad1969bc8733d2a837b644e57584','same immutable Public ZIP');
@@ -124,8 +132,22 @@ try{
    reject(fn()=>$stale->commitPending(),'stale health refuses commit','emergency_target_health_not_qualified');
    need(is_array($routine->snapshot()['pending_verification']),'stale health retains pending proof');
   }
-  $cmd=escapeshellarg(PHP_BINARY).' '.escapeshellarg(__FILE__).' commit '.implode(' ',array_map('escapeshellarg',[$site,$store,$database,$channel,$targetM['version']]));
-  passthru($cmd,$exit);need($exit===0,'fresh separate PHP process committed '.$case);
+  // PHP proc_open's argv array bypasses cmd.exe; the Windows disposable
+  // Local fixture deliberately has Persian characters and spaces in its path.
+  // Avoid lossy shell codepages and escape/quote ambiguities.
+  $childArgs=[PHP_BINARY,'-c',php_ini_loaded_file()?:'php.ini',__FILE__,'commit',
+   $site,$store,$database,$channel,$targetM['version']];
+  $pipes=[];
+  $child=proc_open($childArgs,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],
+   $pipes,null,null,['bypass_shell'=>true]);
+  if(!is_resource($child))throw new RuntimeException('DIRECT_FRESH_PHP_PROCESS_START_FAILED');
+  fclose($pipes[0]);
+  $stdout=stream_get_contents($pipes[1]);fclose($pipes[1]);
+  $stderr=stream_get_contents($pipes[2]);fclose($pipes[2]);
+  $exit=proc_close($child);
+  echo $stdout;
+  if($stderr!=='')fwrite(STDERR,$stderr);
+  need($exit===0,'fresh separate PHP process committed '.$case);
   [$after,, $targetMigration,$freshPdo]=updater($site,$store,$database);
   need($after->snapshot()['managed_tree_matches_expected']===true&&$after->snapshot()['pending_verification']===null,'durable committed exact target');
   need($targetMigration->pendingVersions()===[]&&(int)$freshPdo->query('SELECT qty FROM qa_business_sentinel WHERE id=1')->fetchColumn()===$qty,'real DB ledger and business sentinel preserved');
