@@ -55,6 +55,6 @@ var scoped = all with
 };
 ReleaseInstallQualificationGate.Require(scoped);
 Console.WriteLine("PASS NATIVE_LOCAL_ONLY_NOT_IMPROPERLY_DEPENDENT_ON_PUBLIC");
-Reject(scoped with { Qualification = scoped.Qualification with { RecoveryConsoleWebDown = false } },
+Reject(scoped with { Qualification = scoped.Qualification! with { RecoveryConsoleWebDown = false } },
     "RELEASE_LOCAL_QUALIFICATION_INCOMPLETE");
 Console.WriteLine("PASS REAL_MAINTENANCE_CORE_PAIRED_RELEASE_GATE_POLICY_QA_ONLY");
