@@ -1,0 +1,49 @@
+name: SOKNA universal Public native routine and emergency two-source QA
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths:
+      - .github/workflows/sokna-universal-public-two-adapters-qa.yml
+      - qa/sokna-public-two-route/**
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  native-routes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP native DB/ZIP dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y php-cli php-mysql php-zip
+      - name: Build immutable Public QA target twice and verify old source bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip qa/sokna-public-two-route/candidate.zip
+          python qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip "$RUNNER_TEMP/public-candidate-second.zip"
+          cmp qa/sokna-public-two-route/candidate.zip "$RUNNER_TEMP/public-candidate-second.zip"
+          php -l qa/sokna-public-two-route/test-two-route.php
+      - name: Native routine and emergency adapter, DB ledger and recovery verification
+        shell: bash
+        env:
+          SOKNA_PUBLIC_QA_DISPOSABLE: 'YES'
+        run: |
+          set -euo pipefail
+          php qa/sokna-public-two-route/test-two-route.php
+      - name: Explicitly gate real Public R112 and HTTP safety
+        shell: bash
+        run: |
+          echo 'PASS QA: target Public under native R115 and R126 DB routes, not field HTTP.'
+          echo 'NOT_VERIFIED: actual Public R112 source HTTP/admin authentication and stable entrypoint integration.'
+          echo 'NOT_AUTHORIZED: Production/Customer deployment.'
