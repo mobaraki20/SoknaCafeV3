@@ -89,11 +89,23 @@ jobs:
           "$hash  $([IO.Path]::GetFileName($exe))"|Set-Content qa-dist-0327/SHA256SUMS.txt
           @{sha256=$hash;source_commit=$env:GITHUB_SHA;target_version='0.3.27';physical_cafe_tested=$false;production_approved=$false;recovery_preserved=$true;local_public_untouched=$true}|ConvertTo-Json|Set-Content qa-dist-0327/BUILD-QA.json
           Write-Host "QA_INSTALLER_SHA256=$hash"
-      - name: Native real Windows service: exact 0326 to 0327, locked-engine rollback, repeat
+      - name: "Native real Windows service - exact 0326 to 0327, locked-engine rollback, repeat"
         shell: pwsh
         run: |
           & ./qa/sokna-r125-0327/test-real-service-activation.ps1 -Installer (Join-Path $PWD.Path 'qa-dist-0327/SOKNA-Maintenance-Only-0327-Independent-R1-QA-NOT-PRODUCTION.exe') -BuildRoot (Join-Path $PWD.Path 'qa-dist-0327') -Output (Join-Path $PWD.Path 'qa-dist-0327/REAL-SERVICE-QA.json')
           if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - name: Build matching one-click R125 client from the exact patched 0.3.27 Core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet publish qa/sokna-r125-oneclick/R125OneClick.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=false -o qa-dist-0327/r125-client
+          if($LASTEXITCODE-ne0){throw 'MATCHED_0327_ONECLICK_CLIENT_BUILD_FAILED'}
+          $exe='qa-dist-0327/r125-client/SOKNA-R125-Guided-OneClick.exe'
+          if(-not(Test-Path $exe)){throw 'MATCHED_0327_ONECLICK_BINARY_MISSING'}
+          Copy-Item $exe qa-dist-0327/SOKNA-R125-Guided-OneClick-0327.exe
+          $hash=(Get-FileHash qa-dist-0327/SOKNA-R125-Guided-OneClick-0327.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          Add-Content qa-dist-0327/SHA256SUMS.txt "$hash  SOKNA-R125-Guided-OneClick-0327.exe"
+          Write-Host "MATCHED_R125_CLIENT_SHA256=$hash"
       - uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -104,6 +116,7 @@ jobs:
             qa-dist-0327/SHA256SUMS.txt
             qa-dist-0327/BUILD-QA.json
             qa-dist-0327/REAL-SERVICE-QA.json
+            qa-dist-0327/SOKNA-R125-Guided-OneClick-0327.exe
             qa-dist-0327/UNKNOWN-HOST-RESULT.json
           if-no-files-found: error
           retention-days: 14
