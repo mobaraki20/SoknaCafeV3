@@ -1,0 +1,44 @@
+name: SOKNA native DB-forward fence process regression (QA only)
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths:
+      - qa/sokna-universal/native-forward-fence-qa.py
+      - qa/sokna-universal/test-native-forward-fence-qa.py
+      - .github/workflows/sokna-native-db-forward-fence-qa.yml
+  pull_request:
+    branches: [qa/sokna-update-safety-20261109]
+    paths:
+      - qa/sokna-universal/native-forward-fence-qa.py
+      - qa/sokna-universal/test-native-forward-fence-qa.py
+      - .github/workflows/sokna-native-db-forward-fence-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  immutable-forward-fence:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    env:
+      SOKNA_NATIVE_COLOCATED_PUBLIC_QA: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile both QA-only modules
+        shell: pwsh
+        run: |
+          python -m py_compile qa/sokna-universal/native-forward-fence-qa.py qa/sokna-universal/test-native-forward-fence-qa.py
+          if($LASTEXITCODE-ne0){throw 'QA_NATIVE_FENCE_PYTHON_PARSE_FAILED'}
+      - name: Two historical profiles, process replay, tamper and unproven recovery denial
+        shell: pwsh
+        run: |
+          python qa/sokna-universal/test-native-forward-fence-qa.py
+          if($LASTEXITCODE-ne0){throw 'QA_NATIVE_DB_FORWARD_FENCE_NEGATIVE_TEST_FAILED'}
+      - name: Must not authorize production or mutate customer hosts
+        shell: pwsh
+        run: |
+          $source=Get-Content qa/sokna-universal/native-forward-fence-qa.py -Raw
+          foreach($proof in @('DB_FORWARD_NEEDS_QUALIFIED_THREE_COMPONENT_RECOVERY',
+            'production_authorized','maintenance_supervisor_recovery_exe_qualified',
+            'EVIDENCE_OUTSIDE_RUNNER_TEMP','isolated_restore_backup_sha256')){
+            if(-not $source.Contains($proof)){throw ('NATIVE_FENCE_GUARD_MISSING_'+$proof)}
+          }
+          Write-Host 'PASS: QA evidence only. Actual Maintenance 3-component recovery remains UNQUALIFIED'
