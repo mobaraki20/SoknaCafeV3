@@ -1,0 +1,95 @@
+name: SOKNA R154 exact R153 Public 35hh and 35hi routine activation verification (QA)
+on:
+  push:
+    branches: [qa/sokna-r154-field-qualification-20261110]
+    paths:
+      - qa/sokna-r154/**
+      - .github/workflows/sokna-r154-public-activation-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  source-rebuild-lint-and-attestation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild exactly pinned Local R152 and Public R152 parents
+        shell: bash
+        run: |
+          set -euo pipefail
+          d="$RUNNER_TEMP/r153-parents"
+          mkdir -p "$d" qa/sokna-r153/artifacts
+          python3 qa/sokna-r140/exact-ci/reconstruct.py "$d"
+          python3 qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$d/r140.zip" "$d/qualified-r140.zip"
+          python3 qa/sokna-r149b/build_r149b.py "$d/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$d"
+          python3 qa/sokna-r149b/test-manifest-matrix.py "$d/qualified-r140.zip" "$d/r149b-candidate.zip" "$d/r149b-qualified.zip"
+          python3 qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip "$d/35hi.zip"
+          python3 qa/sokna-r152/build_r152_from_exact_r149.py "$d/r149b-qualified.zip" "$d/35hi.zip" "$d/r152"
+          cp "$d/r152/SOKNA-R152-LOCAL-231EC-44BASE-QA-DO-NOT-INSTALL.zip" qa/sokna-r153/artifacts/SOKNA-R152-LOCAL-231EC-44BASE-INVENTORY-CORRECTED-QA-NOT-INSTALL.zip
+          cp "$d/r152/SOKNA-R152-PUBLIC-35HJ-31BASE-CI-QA-NOT-FIELD-APPROVED.zip" qa/sokna-r153/artifacts/SOKNA-R152-PUBLIC-35HJ-31BASE-NEW-QA-NOT-INSTALL.zip
+          cp qa/sokna-r153/local-guest-readonly-parity.patch qa/sokna-r153/artifacts/R152-LOCAL-guest-readonly-parity.patch
+          echo "SOKNA_R153_SOURCE_DIR=$PWD/qa/sokna-r153/artifacts" >> "$GITHUB_ENV"
+      - name: Exact SHA R152 parents and build corrected R153 source-only candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 qa/sokna-r153/build_r153_source_qa.py
+          cd qa/sokna-r153/artifacts/r153-source-qa
+          sha256sum -c SHA256SUMS.txt
+          echo 'PASS QA SOURCE; DO NOT INSTALL'
+      - name: Actual PHP Public disk identity verifier and all 369 PHP and 87 JS syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 qa/sokna-r153/test_r153_source_qa.py
+          echo 'No installed cafe backup, live DB restore, signed field activation or all-request verification has been claimed.'
+      - name: Prepare two byte-exact previous Public versions for native Routine engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y php-cli php-zip
+          lab="$RUNNER_TEMP/r153-parents"
+          python3 - "$lab" "$SOKNA_R153_SOURCE_DIR/r153-source-qa/SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip" <<'PY'
+          import pathlib,zipfile,hashlib,sys
+          lab=pathlib.Path(sys.argv[1]); pkg=pathlib.Path(sys.argv[2])
+          with zipfile.ZipFile(pkg) as z:
+            new={n[8:]:z.read(n) for n in z.namelist() if n.startswith("payload/") and not n.endswith("/")}
+          def sha(raw):return hashlib.sha256(raw).hexdigest()
+          def tree(files):return sha("".join(name+"\0"+sha(files[name])+"\n" for name in sorted(files)).encode())
+          for name,p in [("35hh",pathlib.Path("qa/sokna-public-two-route/r149.zip")),("35hi",lab/"35hi.zip")]:
+            with zipfile.ZipFile(p) as z:
+              old={n[8:]:z.read(n) for n in z.namelist() if n.startswith("payload/") and not n.endswith("/")}
+            if len(old)!=222 or len(new)!=222:raise Exception("WRONG_ORIGIN_FILE_COUNTS")
+            host=lab/("host-"+name);host.mkdir(exist_ok=True)
+            for key,data in old.items():
+              f=host/key;f.parent.mkdir(exist_ok=True,parents=True);f.write_bytes(data)
+            changed=len({key for key in old.keys()|new.keys() if old.get(key)!=new.get(key)})
+            if not 2<=changed<=25:raise Exception("UNEXPECTED_PUBLIC_DELTA_"+name+"_"+str(changed))
+            (lab/("case-"+name+".txt")).write_text("\n".join([str(host),old["VERSION.txt"].decode().strip(),tree(old),str(changed)])+"\n")
+            print("PASS EXACT PUBLIC SOURCE "+name+" delta files "+str(changed))
+          PY
+          echo "R154_PUBLIC_LAB=$lab" >> "$GITHUB_ENV"
+      - name: Native PHP Public stage, activate, commit from 35hh and 35hi
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l qa/sokna-r152/test_public_r152_disposable.php
+          for name in 35hh 35hi; do
+            mapfile -t case_info < "$R154_PUBLIC_LAB/case-$name.txt"
+            php qa/sokna-r152/test_public_r152_disposable.php "${case_info[0]}" "$SOKNA_R153_SOURCE_DIR/r153-source-qa/SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip" "${case_info[1]}" "${case_info[2]}" "${case_info[3]}"
+          done
+          echo 'PASS ACTUAL PHP ROUTINE STAGE ACTIVATE COMMIT FROM TWO EXACT PUBLIC BASELINES; NO LIVE FIELD APPROVAL'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-R153-SOURCE-ONLY-QA-NOT-INSTALL
+          path: |
+            qa/sokna-r153/artifacts/r153-source-qa/SOKNA-R153-LOCAL-231ED-44BASE-SOURCE-QA-NOT-INSTALL.zip
+            qa/sokna-r153/artifacts/r153-source-qa/SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip
+            qa/sokna-r153/artifacts/r153-source-qa/QA-SUMMARY.json
+            qa/sokna-r153/artifacts/r153-source-qa/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
