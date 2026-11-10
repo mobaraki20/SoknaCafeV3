@@ -208,6 +208,24 @@ try
         localSha, publicSha, maintSha), "HISTORICAL_R125_RECOVERY_BLOCKER");
     Need(g2.Inspect().Blocked && !g2.Inspect().ProductionAuthorized,
         "HISTORICAL_R125_CANNOT_CLEAR_WITH_UNIVERSAL");
+    var ambiguous = new MaintenancePaths(Path.Combine(dir, "historical-unqualified"));
+    AtomicFile.WriteJson(ambiguous.InstalledReleaseIdentityPath, new { version = "qa" });
+    var ambiguousOps = new MaintenanceOperationStore(ambiguous);
+    var (stageRecord, _) = ambiguousOps.GetOrCreate("historical-stage",
+        "b" + new string('0', 63), "update.local-stage", "old-staged-r112", "qa:operator");
+    ambiguousOps.Update(stageRecord, "staged", "STAGED");
+    Deny(() => new SupervisorUniversalUpgradeFence(ambiguous, ambiguousOps)
+        .Reserve("qa:operator", "unqualified-history", localSha, publicSha, maintSha),
+        "OLD_STAGE_WITHOUT_DURABLE_RECEIPTS_NOT_UNIVERSAL_SAFE");
+    var unknown = new MaintenancePaths(Path.Combine(dir, "historical-unknown"));
+    AtomicFile.WriteJson(unknown.InstalledReleaseIdentityPath, new { version = "qa" });
+    var unknownOps = new MaintenanceOperationStore(unknown);
+    var (unknownRecord, _) = unknownOps.GetOrCreate("historical-unknown",
+        "c" + new string('0', 63), "update.local-stage", "old-unknown", "qa:operator");
+    unknownOps.Update(unknownRecord, "unexpected_legacy_state");
+    Deny(() => new SupervisorUniversalUpgradeFence(unknown, unknownOps)
+        .Reserve("qa:operator", "unknown-history", localSha, publicSha, maintSha),
+        "UNKNOWN_HISTORICAL_STATE_NOT_IDLE");
     Console.WriteLine("PASS REAL_CORE_DURABLE_UNIVERSAL_FENCE_NEGATIVE_MATRIX_RELEASE_BLOCKED");
 }
 finally
