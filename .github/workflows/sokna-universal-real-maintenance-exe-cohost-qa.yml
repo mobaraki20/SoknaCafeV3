@@ -20,6 +20,10 @@ on:
       - packaging/windows/scripts/invoke-maintenance-independent-v1.ps1
       - packaging/windows/scripts/invoke-maintenance-independent-logged-v1.ps1
       - packaging/windows/installer/SOKNA-Maintenance-Only-0326-Independent-R1-QA.iss
+      - qa/sokna-r152/build_r152_from_exact_r149.py
+      - qa/sokna-r152/local-r152-exact-overlay.patch
+      - qa/sokna-r152/public-r152-exact-overlay.patch
+      - qa/sokna-r152/test_public_r152_disposable.php
       - .github/workflows/sokna-universal-real-maintenance-exe-cohost-qa.yml
   pull_request:
     branches: [qa/sokna-update-safety-20261109]
@@ -41,6 +45,10 @@ on:
       - packaging/windows/scripts/invoke-maintenance-independent-v1.ps1
       - packaging/windows/scripts/invoke-maintenance-independent-logged-v1.ps1
       - packaging/windows/installer/SOKNA-Maintenance-Only-0326-Independent-R1-QA.iss
+      - qa/sokna-r152/build_r152_from_exact_r149.py
+      - qa/sokna-r152/local-r152-exact-overlay.patch
+      - qa/sokna-r152/public-r152-exact-overlay.patch
+      - qa/sokna-r152/test_public_r152_disposable.php
       - .github/workflows/sokna-universal-real-maintenance-exe-cohost-qa.yml
   workflow_dispatch:
 permissions: {contents: read, actions: read}
@@ -634,3 +642,104 @@ jobs:
           gh release view "$TARGET_TAG" --repo "$GH_REPO" --json url,isPrerelease,assets |
             jq -e --arg file "$EXE_NAME" '.isPrerelease == true and ([.assets[].name]|index($file)!=null)'
           echo "PUBLISHED_URL=https://github.com/$GH_REPO/releases/tag/$TARGET_TAG"
+
+  r152-current-local-public-qa:
+    name: R152 latest exact Local 44-base and Public 31-base PHP QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES'
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native PHP ZIP and MariaDB test engines
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq php-cli php-mysql php-zip
+          php -m | grep -qi '^zip$'
+      - name: Rebuild exact qualified historical R149B and Public 35hi base
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sokna-r152" "$RUNNER_TEMP/sokna-r152-qa"
+          python3 qa/sokna-r140/exact-ci/reconstruct.py "$RUNNER_TEMP/sokna-r152"
+          python3 qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$RUNNER_TEMP/sokna-r152/r140.zip" "$RUNNER_TEMP/sokna-r152/qualified-r140.zip"
+          python3 qa/sokna-r149b/build_r149b.py "$RUNNER_TEMP/sokna-r152/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$RUNNER_TEMP/sokna-r152"
+          python3 qa/sokna-r149b/test-manifest-matrix.py "$RUNNER_TEMP/sokna-r152/qualified-r140.zip" "$RUNNER_TEMP/sokna-r152/r149b-candidate.zip" "$RUNNER_TEMP/sokna-r152/r149b-qualified.zip"
+          python3 qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip "$RUNNER_TEMP/sokna-r152/35hi.zip"
+          echo "R152_ROOT=$RUNNER_TEMP/sokna-r152" >> "$GITHUB_ENV"
+      - name: Reproduce exact R152 target packages twice, deny field install
+        run: |
+          set -euo pipefail
+          python3 qa/sokna-r152/build_r152_from_exact_r149.py "$R152_ROOT/r149b-qualified.zip" "$R152_ROOT/35hi.zip" "$RUNNER_TEMP/sokna-r152-qa"
+          python3 qa/sokna-r152/build_r152_from_exact_r149.py "$R152_ROOT/r149b-qualified.zip" "$R152_ROOT/35hi.zip" "$RUNNER_TEMP/sokna-r152-qa-second"
+          for name in SOKNA-R152-LOCAL-231EC-44BASE-QA-DO-NOT-INSTALL.zip SOKNA-R152-PUBLIC-35HJ-31BASE-CI-QA-NOT-FIELD-APPROVED.zip; do
+            cmp "$RUNNER_TEMP/sokna-r152-qa/$name" "$RUNNER_TEMP/sokna-r152-qa-second/$name"
+          done
+          python3 - <<'PY'
+          import os,json,zipfile,hashlib,pathlib,io
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'sokna-r152-qa'
+          local=root/'SOKNA-R152-LOCAL-231EC-44BASE-QA-DO-NOT-INSTALL.zip'
+          public=root/'SOKNA-R152-PUBLIC-35HJ-31BASE-CI-QA-NOT-FIELD-APPROVED.zip'
+          with zipfile.ZipFile(local) as z:
+            m=json.loads(z.read('release-set.json'));web=z.read('artifacts/local/web.zip')
+            assert m['for_install'] is False and m['production_pass'] is False and m['install_plan']==[]
+            assert len(m['supported_baselines'])==44 and m['targets']['local']['managed_files']==583
+            assert m['artifacts']['local-web']['sha256']==hashlib.sha256(web).hexdigest()
+            with zipfile.ZipFile(io.BytesIO(web)) as w:
+              inv=json.loads(w.read('resources/local-managed-files-v1.json'))
+              assert set(inv['files'])==set(w.namelist()) and len(inv['files'])==583
+          with zipfile.ZipFile(public) as z:
+            m=json.loads(z.read('manifest.json'))
+            assert len(m['compatibility']['supported_baselines'])==31
+            assert m['provenance']['production_status']=='QA_ONLY_NOT_FOR_PRODUCTION'
+          print('PASS LATEST R152 SOURCE 44+31 EXACT BASELINES, INTEGRITY AND DENY FIELD INSTALL')
+          PY
+      - name: PHP and JavaScript syntax of latest source changes
+        run: |
+          set -euo pipefail
+          php -l "$RUNNER_TEMP/sokna-r152-qa/_build/local/src/Domain/GuestLan/GuestLanPageRenderer.php"
+          php -l "$RUNNER_TEMP/sokna-r152-qa/_build/public/src/Guest/GuestPageRenderer.php"
+          node --check "$RUNNER_TEMP/sokna-r152-qa/_build/local/public/assets/scds/guest.js"
+          node --check "$RUNNER_TEMP/sokna-r152-qa/_build/public/assets/scds/guest.js"
+      - name: Native Public Routine stage activate commit from cafe 35hh and newer 35hi
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile,pathlib,os
+          sources=[('35hh','qa/sokna-public-two-route/r149.zip'),('35hi',str(pathlib.Path(os.environ['R152_ROOT'])/'35hi.zip'))]
+          for name,source in sources:
+            dest=pathlib.Path(os.environ['RUNNER_TEMP'])/('sokna-pub-'+name)
+            dest.mkdir(parents=True,exist_ok=True)
+            with zipfile.ZipFile(source) as z:
+              for n in z.namelist():
+                if n.startswith('payload/'):
+                  p=n[8:];assert p and not p.startswith('/') and '..' not in p.split('/')
+                  f=dest/p;f.parent.mkdir(parents=True,exist_ok=True);f.write_bytes(z.read(n))
+          PY
+          PKG="$RUNNER_TEMP/sokna-r152-qa/SOKNA-R152-PUBLIC-35HJ-31BASE-CI-QA-NOT-FIELD-APPROVED.zip"
+          php -l qa/sokna-r152/test_public_r152_disposable.php
+          php qa/sokna-r152/test_public_r152_disposable.php "$RUNNER_TEMP/sokna-pub-35hh" "$PKG" \
+            "3.0.0-g3.6-workspace.35hh-r149-guest-ui-multibase-uat" \
+            "7ece93e252813d9d7a4f2c799e56d18a3835d51f0e783aa7f5187669bf9c3c7c" 5
+          php qa/sokna-r152/test_public_r152_disposable.php "$RUNNER_TEMP/sokna-pub-35hi" "$PKG" \
+            "3.0.0-g3.6-workspace.35hi-safety-owner-qa" \
+            "f91aecbf83c2672a4be6527e474f70f0452b8affa8da43c9590886b893a50082" 4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sokna-r152-latest-exact-source-QA-only-not-to-install
+          path: |
+            ${{ runner.temp }}/sokna-r152-qa/SOKNA-R152-LOCAL-231EC-44BASE-QA-DO-NOT-INSTALL.zip
+            ${{ runner.temp }}/sokna-r152-qa/SOKNA-R152-PUBLIC-35HJ-31BASE-CI-QA-NOT-FIELD-APPROVED.zip
+            ${{ runner.temp }}/sokna-r152-qa/QA-BUILD-EVIDENCE.json
+            ${{ runner.temp }}/sokna-r152-qa/SHA256SUMS.txt
+          if-no-files-found: warn
+          retention-days: 14
