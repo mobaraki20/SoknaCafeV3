@@ -1,0 +1,91 @@
+name: SOKNA R125 original proof one-click diagnostics QA only
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths:
+      - packaging/windows/scripts/collect-r125-proof-verdict-v1.ps1
+      - packaging/windows/scripts/collect-support-unified-v1.ps1
+      - packaging/windows/installer/SOKNA-One-Support-R125-ReadOnly-v1.iss
+      - qa/sokna-p0-diagnostics/test-r125-original-proof-verdict.ps1
+      - .github/workflows/sokna-r125-proof-verdict-oneclick-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  readonly-one-click:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse exact Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          foreach($path in @('packaging/windows/scripts/collect-r125-proof-verdict-v1.ps1','packaging/windows/scripts/collect-support-unified-v1.ps1','qa/sokna-p0-diagnostics/test-r125-original-proof-verdict.ps1')){
+            $err=$null
+            [Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path $path),[ref]$null,[ref]$err)|Out-Null
+            if($err){$err|ForEach-Object{Write-Host $_};throw "PS51_PARSE_FAILURE:$path"}
+          }
+      - name: Verify real PowerShell 5.1 25-record and R125 proof fixture
+        shell: powershell
+        run: |
+          & ./qa/sokna-p0-diagnostics/test-r125-original-proof-verdict.ps1
+          if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - name: Assert 5 temporary scripts only, with no installer mutation
+        shell: pwsh
+        run: |
+          $iss=Get-Content packaging/windows/installer/SOKNA-One-Support-R125-ReadOnly-v1.iss -Raw
+          $files=@($iss -split "\r?\n" | Where-Object{$_ -match '^Source:'})
+          if($files.Count-ne5){throw 'QA_ONE_CLICK_PAYLOAD_NOT_FIVE_SCRIPTS'}
+          foreach($f in $files){if($f-notmatch '\{tmp\}\\SOKNA-One-Support-R125' -or $f-notmatch 'deleteafterinstall' -or $f-notmatch '\.ps1'){throw 'QA_UNSAFE_PERSISTENT_FILE'}}
+          foreach($bad in @('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe','Stop-Service','Start-Service')){
+            if($iss.Contains($bad)){throw 'QA_DIAGNOSTIC_MUTATION_FORBIDDEN'}
+          }
+          $proof=Get-Content packaging/windows/scripts/collect-r125-proof-verdict-v1.ps1 -Raw
+          if($proof-notmatch 'authorizes_install=\$false' -or $proof-notmatch 'authorizes_cleanup=\$false'){throw 'QA_VERDICT_POLICY_UNSAFE'}
+      - name: Compile one-click QA EXE without release or publishing
+        shell: pwsh
+        run: |
+          $x86=[Environment]::GetFolderPath('ProgramFilesX86')
+          $x64=$env:ProgramFiles
+          $iscc=@((Join-Path $x86 'Inno Setup 6\ISCC.exe'),(Join-Path $x64 'Inno Setup 6\ISCC.exe'))|Where-Object{Test-Path -LiteralPath $_}|Select-Object -First 1
+          if(-not$iscc){choco install innosetup -y --no-progress;if($LASTEXITCODE-ne0){throw 'INNO_SETUP_MISSING'};$iscc=@((Join-Path $x86 'Inno Setup 6\ISCC.exe'),(Join-Path $x64 'Inno Setup 6\ISCC.exe'))|Where-Object{Test-Path -LiteralPath $_}|Select-Object -First 1}
+          if(-not$iscc){throw 'INNO_SETUP_MISSING'}
+          $out=Join-Path $PWD.Path 'r125-readonly-one-click'
+          New-Item -ItemType Directory -Path $out -Force|Out-Null
+          $src=Join-Path $PWD.Path 'packaging/windows/scripts'
+          & $iscc "/DSupportScriptRoot=$src" "/DOutputDir=$out" packaging/windows/installer/SOKNA-One-Support-R125-ReadOnly-v1.iss
+          if($LASTEXITCODE-ne0){throw 'EXACT_INNO_COMPILE_FAILED'}
+          $exe=Join-Path $out 'SOKNA-ONE-SUPPORT-R125-READONLY-DIAGNOSTICS-UAT.exe'
+          if(-not(Test-Path $exe)){throw 'NO_QA_EXE'}
+          $sha=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{format='sokna-r125-original-proof-qa-v1';sha256=$sha;source_commit=$env:GITHUB_SHA;production_approved=$false;physical_cafe_tested=$false;read_only=$true}|ConvertTo-Json|Set-Content (Join-Path $out 'QA-ONLY-MANIFEST.json')
+          "QA_EXE=$exe"|Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host ('QA_READONLY_EXE_SHA256='+$sha)
+      - name: Execute exact one-click EXE with no SOKNA on disposable Windows
+        shell: pwsh
+        run: |
+          $before=@(Get-CimInstance Win32_Service -Filter "Name like 'Sokna%'" | ForEach-Object{"$($_.Name)|$($_.State)|$($_.PathName)"})
+          $dirs=@([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('MyDocuments'),$env:TEMP)|Where-Object{$_}|Select-Object -Unique
+          $old=@($dirs|Where-Object{Test-Path $_}|ForEach-Object{Get-ChildItem $_ -Filter 'SOKNA-ONE-SUPPORT-*.zip' -File -ErrorAction SilentlyContinue|Select-Object -ExpandProperty FullName})
+          $p=Start-Process $env:QA_EXE -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -PassThru -Wait
+          if($p.ExitCode-ne0){throw ('QA_EXE_FAILED_'+$p.ExitCode)}
+          $new=@($dirs|Where-Object{Test-Path $_}|ForEach-Object{Get-ChildItem $_ -Filter 'SOKNA-ONE-SUPPORT-*.zip' -File -ErrorAction SilentlyContinue|Where-Object{$_.FullName-notin$old}})
+          if($new.Count-ne1){throw 'QA_OUTPUT_ZIP_NOT_UNIQUE'}
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $z=[IO.Compression.ZipFile]::OpenRead($new[0].FullName)
+          try{
+            $entry=$z.GetEntry('unified/r125-proof-verdict-safe.json')
+            if(-not$entry){throw 'QA_VERDICT_MISSING'}
+            $reader=New-Object IO.StreamReader($entry.Open())
+            try{$j=$reader.ReadToEnd()|ConvertFrom-Json}finally{$reader.Dispose()}
+            if($j.authorizes_install-ne$false -or $j.authorizes_cleanup-ne$false -or
+               $j.operation_ledger.status-eq'RECEIPTS_CROSS_CHECKED_NO_INSTALL_APPROVAL'){throw 'QA_UNKNOWN_HOST_UNSAFE'}
+          }finally{$z.Dispose()}
+          $after=@(Get-CimInstance Win32_Service -Filter "Name like 'Sokna%'"|ForEach-Object{"$($_.Name)|$($_.State)|$($_.PathName)"})
+          if(($before -join '|')-cne($after -join '|')){throw 'QA_SERVICE_WAS_CHANGED'}
+          Write-Host 'PASS exact one-click EXE read-only fail-closed, no SOKNA service change'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: r125-original-proof-readonly-oneclick-qa-not-for-field
+          path: r125-readonly-one-click/*
+          if-no-files-found: error
