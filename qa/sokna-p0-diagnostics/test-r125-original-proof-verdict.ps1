@@ -18,6 +18,20 @@ function Save([string]$p,$obj){
  New-Item -ItemType Directory -Path (Split-Path -Parent $p) -Force|Out-Null
  [IO.File]::WriteAllText($p,($obj|ConvertTo-Json -Depth 25),[Text.UTF8Encoding]::new($false))
 }
+function NewOp([string]$id,[string]$kind,[string]$state,[string]$result,[bool]$activated,[string]$preflight='',[string]$stage=''){
+ $time=[DateTimeOffset]::UtcNow.ToString('O')
+ $payload=[Text.Encoding]::UTF8.GetBytes($kind.ToLowerInvariant()+[char]10+('c'*64)+[char]10+'qa-evidence')
+ $hasher=[Security.Cryptography.SHA256]::Create()
+ try{$requestHash=([BitConverter]::ToString($hasher.ComputeHash($payload))).Replace('-','').ToLowerInvariant()}
+ finally{$hasher.Dispose()}
+ return @{format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$id;
+   idempotency_key=('qa-proof-'+$id);canonical_request_sha256=$requestHash;operator_id='qa-evidence';
+   operation_type=$kind;state=$state;result_code=$result;result_message='QA_DISPOSABLE';
+   package_ref=('c'*64);attempt_count=1;created_at_utc=$time;updated_at_utc=$time;
+   activation_performed=$activated;database_mutation_performed=$false;
+   preflight_receipt_path=$(if($preflight){$preflight}else{$null});
+   stage_receipt_path=$(if($stage){$stage}else{$null})}
+}
 function Check([string]$expected){
  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $auditor -DataRoot $base -LocalRoot $local -OutputFile $report
  Need ($LASTEXITCODE-eq0) 'R125_AUDITOR_PROCESS_FAILED'
@@ -37,9 +51,7 @@ try{
     installed_identity_sha256=$identityHash;verification=@{release_set_id=('test-'+$i);sequence=$i;package_sha256=$pkg;
       manifest_sha256=$manifest;activation_performed=$false;database_mutation_performed=$false;artifact_integrity_verified=$true}}
   $proofs+=@{path=$p;id=$id}
-  Save (Join-Path $ops ('op-'+$id+'.json')) @{format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$id;
-   operation_type='update.local-package-preflight';state='verified';result_code='PACKAGE_INTEGRITY_VERIFIED';
-   package_ref=$pkg;activation_performed=$false;database_mutation_performed=$false;preflight_receipt_path=$p}
+  Save (Join-Path $ops ('op-'+$id+'.json')) (NewOp $id 'update.local-package-preflight' 'verified' 'PACKAGE_INTEGRITY_VERIFIED' $false $p)
  }
  for($i=1;$i-le9;$i++){
   $id=('{0:x32}' -f (100+$i))
@@ -48,15 +60,11 @@ try{
   Save $st @{format='sokna-maintenance-staged-release-v1';schema_version=1;release_set_id=('test-'+$i);sequence=$i;
     manifest_sha256=$manifest;package_sha256=$pkg;stage_root=$dir;activation_performed=$false;
     database_mutation_performed=$false;preflight_identity_match=$true;artifact_integrity_verified=$true;signature_verified=$false;operator_authorized=$true}
-  Save (Join-Path $ops ('op-'+$id+'.json')) @{format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$id;
-    operation_type='update.local-stage';state='staged';result_code='STAGED';package_ref=$pkg;
-    activation_performed=$false;database_mutation_performed=$false;preflight_receipt_path=$proofs[$i-1].path;
-    stage_receipt_path=$st}
+  Save (Join-Path $ops ('op-'+$id+'.json')) (NewOp $id 'update.local-stage' 'staged' 'STAGED' $false $proofs[$i-1].path $st)
  }
  for($i=1;$i-le7;$i++){
   $id=('{0:x32}' -f (200+$i))
-  Save (Join-Path $ops ('op-'+$id+'.json')) @{format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$id;
-   operation_type='update.local-code-only-activate';state=$(if($i-le3){'failed'}else{'committed'});package_ref=$pkg;activation_performed=$true;database_mutation_performed=$false}
+  Save (Join-Path $ops ('op-'+$id+'.json')) (NewOp $id 'update.local-code-only-activate' $(if($i-le3){'failed'}else{'committed'}) 'QA_PRIOR_RESULT' $true)
  }
  $state=Join-Path $local 'lifecycle\local\state.json'
  $managed=Join-Path $local 'lifecycle\local\managed-files.json'
@@ -88,6 +96,16 @@ try{
   Need ($blocked.operation_ledger.first_blocker_code-eq'R125_HISTORICAL_STAGE_CONTENT_INVALID' -and
         $blocked.operation_ledger.first_blocker_id-eq('{0:x32}' -f 101)) 'AUDITOR_DID_NOT_LOCATE_FORGED_STAGE'
  }finally{[IO.File]::WriteAllBytes($stagePath,$stageBytes)}
+ # Incomplete original operation records must be rejected before any update.
+ $incomplete=Join-Path $ops ('op-'+('{0:x32}' -f 2)+'.json')
+ $savedOp=[IO.File]::ReadAllBytes($incomplete)
+ try{
+  $bad=Get-Content -LiteralPath $incomplete -Raw|ConvertFrom-Json
+  $bad.canonical_request_sha256='not-a-sha'
+  Save $incomplete $bad
+  $unsafe=Check 'BLOCKED_OR_UNPROVEN'
+  Need ($unsafe.operation_ledger.first_blocker_code-eq'R125_OPERATION_LEDGER_CORRUPT') 'QA_DURABLE_RECORD_CORRUPTION_ACCEPTED'
+ }finally{[IO.File]::WriteAllBytes($incomplete,$savedOp)}
  $one=Join-Path $ops ('op-'+('{0:x32}' -f 101)+'.json')
  $op=Get-Content $one -Raw|ConvertFrom-Json
  $original=[IO.File]::ReadAllBytes($one)
