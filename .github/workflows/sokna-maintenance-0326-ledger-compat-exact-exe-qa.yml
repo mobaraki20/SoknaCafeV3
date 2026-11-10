@@ -1,17 +1,18 @@
-name: SOKNA Maintenance real Inno 0.3.26 five baselines - QA only
+name: SOKNA Maintenance real Inno 0.3.26 REV4 six baseline cases - QA only
 on:
   push:
     branches: [qa/sokna-r125-ledger-compat-20261110]
     paths:
       - .github/workflows/sokna-maintenance-0326-ledger-compat-exact-exe-qa.yml
-      - qa/sokna-preserved-recovery/test-real-installer-rev3.ps1
+      - qa/sokna-preserved-recovery/test-real-installer-rev4.ps1
+      - qa/sokna-preserved-recovery/test-policy-rev4.ps1
       - packaging/windows/scripts/invoke-maintenance-install-logged-v1.ps1
       - packaging/windows/scripts/invoke-maintenance-components-v4.ps1
-      - packaging/windows/installer/SOKNA-Maintenance-0326-Integrated-Rev3-QA.iss
+      - packaging/windows/installer/SOKNA-Maintenance-0326-Integrated-Rev4-QA.iss
   workflow_dispatch:
 permissions: {contents: read, actions: read}
 jobs:
-  build-rev3:
+  build-rev4:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -33,14 +34,14 @@ jobs:
         run: |
           & ./wrapper-fix/qa/sokna-wrapper-rev2/test-logged-wrapper.ps1
           if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
-          & ./wrapper-fix/qa/sokna-preserved-recovery/test-policy.ps1
+          & ./wrapper-fix/qa/sokna-preserved-recovery/test-policy-rev4.ps1
           if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
           & ./wrapper-fix/qa/sokna-identity-workflow/test-maintenance-components-v4.ps1
           if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
       - name: Reproduce exact original components and add reporting wrapper
         shell: pwsh
         run: |
-          $root=Join-Path $env:RUNNER_TEMP 'maintenance-rev3'
+          $root=Join-Path $env:RUNNER_TEMP 'maintenance-rev4'
           $expected=@('88ba73a97e273a4f818f0200bcc32f7b8cc9df4522b554cca6b88e32e0832aae','d9f8295976a1a549191797303f6a6046877a96d3f1e23fe022bf3ebcfce61199','2a788e33838b9159b720362baa8a09f81cacdbfd67e2863e7213cce19a7659bd')
           $names=@('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine','Sokna.Maintenance.RecoveryConsole')
           $exes=@('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe','SoknaMaintenanceRecoveryConsole.exe')
@@ -64,14 +65,14 @@ jobs:
       - name: Compile exact REV3 and verify unknown-host safe report
         shell: pwsh
         run: |
-          $root=Join-Path $env:RUNNER_TEMP 'maintenance-rev3'
+          $root=Join-Path $env:RUNNER_TEMP 'maintenance-rev4'
           $iscc=@("${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe","$env:ProgramFiles/Inno Setup 6/ISCC.exe")|Where-Object{Test-Path $_}|Select-Object -First 1
           if(-not$iscc){choco install innosetup -y --no-progress;if($LASTEXITCODE-ne0){throw 'INNO_INSTALL_FAILED'};$iscc="${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"}
-          & $iscc "/DPayloadRoot=$root/payload" "/DOutputDir=$root/dist" wrapper-fix/packaging/windows/installer/SOKNA-Maintenance-0326-Integrated-Rev3-QA.iss
-          if($LASTEXITCODE-ne0){throw 'REV3_COMPILE_FAILED'}
-          $exe=Join-Path $root 'dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe'
+          & $iscc "/DPayloadRoot=$root/payload" "/DOutputDir=$root/dist" wrapper-fix/packaging/windows/installer/SOKNA-Maintenance-0326-Integrated-Rev4-QA.iss
+          if($LASTEXITCODE-ne0){throw 'REV4_COMPILE_FAILED'}
+          $exe=Join-Path $root 'dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV4-NOT-PRODUCTION.exe'
           $v=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
-          if("$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"-ne'0.3.26.3'){throw 'REV3_VERSION_WRONG'}
+          if("$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"-ne'0.3.26.4'){throw 'REV4_VERSION_WRONG'}
           $p=Start-Process $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -Wait -PassThru
           if($p.ExitCode-eq0){throw 'UNKNOWN_HOST_ACCEPTED'}
           $desktop=[Environment]::GetFolderPath('DesktopDirectory')
@@ -87,11 +88,11 @@ jobs:
           Copy-Item (Join-Path $root 'Sokna.Maintenance.UpdateEngine/SoknaMaintenanceUpdateEngine.exe') (Join-Path $root 'dist/SoknaMaintenanceUpdateEngine.exe')
       - uses: actions/upload-artifact@v4
         with:
-          name: maintenance-0326-ledger-compat-built-qa-not-for-install
-          path: ${{ runner.temp }}/maintenance-rev3/dist/*
+          name: maintenance-0326-rev4-built-qa-not-for-install
+          path: ${{ runner.temp }}/maintenance-rev4/dist/*
           if-no-files-found: error
-  real-services-rev3:
-    needs: build-rev3
+  real-services-rev4:
+    needs: build-rev4
     runs-on: windows-latest
     timeout-minutes: 35
     permissions: {contents: read, actions: read}
@@ -105,7 +106,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
       - uses: actions/download-artifact@v4
-        with: {name: maintenance-0326-ledger-compat-built-qa-not-for-install, path: dist}
+        with: {name: maintenance-0326-rev4-built-qa-not-for-install, path: dist}
       - uses: actions/download-artifact@v4
         with:
           name: maintenance-0324-built-qa-not-production
@@ -136,14 +137,14 @@ jobs:
           if((Get-FileHash "$env:RUNNER_TEMP/old-0323.exe" -Algorithm SHA256).Hash.ToLowerInvariant()-ne'3a4c6e1c09174bf79aa29115588a2f6ba8eddfa58929d54a61a528cbd4feca2a'){throw 'OLD_0323_HASH_MISMATCH'}
           if((Get-FileHash 'old-0324-artifact/SOKNA-Maintenance-0324-MultiBaseline-QA-NOT-PRODUCTION.exe' -Algorithm SHA256).Hash.ToLowerInvariant()-ne'7712cccc855dd55bd5956224db778cba67b825269e440642733097368a62db12'){throw 'OLD_0324_HASH_MISMATCH'}
           if((Get-FileHash 'old-0325-artifact/SOKNA-Maintenance-0325-MultiBaseline-QA-NOT-PRODUCTION.exe' -Algorithm SHA256).Hash.ToLowerInvariant()-ne'fa196597150dff0045c7e42ab6a59a335438b48ab491651947c44e873f5bbac7'){throw 'OLD_0325_HASH_MISMATCH'}
-      - name: Same exact integrated EXE on five real service baselines including original 011
+      - name: Same exact integrated EXE on six real service baseline cases including alternate Recovery 011 SHA
         shell: pwsh
         run: |
-          & ./wrapper-fix/qa/sokna-preserved-recovery/test-real-installer-rev3.ps1 -Installer (Join-Path $PWD.Path 'dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe') -ComponentManifest (Join-Path $PWD.Path 'dist/COMPONENT-MANIFEST.json') -BaselineRoot "$env:RUNNER_TEMP/old-0322" -Old0323Installer "$env:RUNNER_TEMP/old-0323.exe" -Old0324Installer (Join-Path $PWD.Path 'old-0324-artifact/SOKNA-Maintenance-0324-MultiBaseline-QA-NOT-PRODUCTION.exe') -Old0325Installer (Join-Path $PWD.Path 'old-0325-artifact/SOKNA-Maintenance-0325-MultiBaseline-QA-NOT-PRODUCTION.exe') -LegacyRecovery011 (Join-Path $PWD.Path 'exact-011/SoknaMaintenanceRecoveryConsole.exe') -Output (Join-Path $PWD.Path 'dist/REAL-SERVICE-QA.json')
+          & ./wrapper-fix/qa/sokna-preserved-recovery/test-real-installer-rev4.ps1 -Installer (Join-Path $PWD.Path 'dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV4-NOT-PRODUCTION.exe') -ComponentManifest (Join-Path $PWD.Path 'dist/COMPONENT-MANIFEST.json') -BaselineRoot "$env:RUNNER_TEMP/old-0322" -Old0323Installer "$env:RUNNER_TEMP/old-0323.exe" -Old0324Installer (Join-Path $PWD.Path 'old-0324-artifact/SOKNA-Maintenance-0324-MultiBaseline-QA-NOT-PRODUCTION.exe') -Old0325Installer (Join-Path $PWD.Path 'old-0325-artifact/SOKNA-Maintenance-0325-MultiBaseline-QA-NOT-PRODUCTION.exe') -LegacyRecovery011 (Join-Path $PWD.Path 'exact-011/SoknaMaintenanceRecoveryConsole.exe') -Output (Join-Path $PWD.Path 'dist/REAL-SERVICE-QA.json')
           if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: maintenance-0326-rev3-five-real-baselines-no-field-approval
+          name: maintenance-0326-rev4-six-baseline-cases-no-field-approval
           path: dist/REAL-SERVICE-QA.json
           if-no-files-found: error
