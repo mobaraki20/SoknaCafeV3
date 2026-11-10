@@ -28,8 +28,14 @@ Dictionary<string,object?> report;
 int code;
 try
 {
-    var result = await R125RecoveryWorkflow.RunAsync(
-        new MaintenancePaths(MaintenancePaths.DefaultDataRoot()), confirmed: true);
+    // A blank Windows host is not a completed R125 recovery. Require the
+    // installed authority and historical state before calling the workflow.
+    var paths = new MaintenancePaths(MaintenancePaths.DefaultDataRoot());
+    if (!File.Exists(paths.DescriptorPath) ||
+        !File.Exists(paths.InstalledReleaseIdentityPath) ||
+        !File.Exists(Path.Combine(paths.LocalSlotStateRoot, "routine-state.json")))
+        throw new InvalidDataException("R125_INSTALLED_HOST_EVIDENCE_MISSING");
+    var result = await R125RecoveryWorkflow.RunAsync(paths, confirmed: true);
     report = result.Report;
     code = result.ExitCode;
 }
