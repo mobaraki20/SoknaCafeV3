@@ -32,6 +32,7 @@ static string ShaFile(string path)
 // wording without claiming that an unqualified universal installer is ready.
 var defaultCapability = UnifiedUpdaterCapabilities.Current();
 Need(!defaultCapability.PanelUpdateReady &&
+    !defaultCapability.LocalRoutine.Activate &&
     defaultCapability.UserStatus == "needs_action" &&
     !string.IsNullOrWhiteSpace(defaultCapability.UserMessage),
     "SIMPLE_UPDATE_STATUS_NOT_FALSE_READY");
