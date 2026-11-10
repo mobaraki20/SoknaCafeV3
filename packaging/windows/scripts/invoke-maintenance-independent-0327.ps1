@@ -174,7 +174,7 @@ if(Test-Path -LiteralPath $crashMarker -PathType Leaf){
   if($pending.phase-notin@('COMMITTED','ROLLED_BACK','FAILED_BEFORE_MUTATION')){
    if($pending.baseline-notin@('0.3.26')){Fail 'CRASH_BASELINE_UNKNOWN'}
    $baselineVersion=[string]$pending.baseline
-   $baselineRecovery=if($baselineVersion-eq'0.3.22'){'0.1.3'}elseif($baselineVersion-eq'0.3.23'){'0.1.4'}elseif($baselineVersion-eq'0.3.24'){'0.1.5'}else{'0.1.6'}
+   $baselineRecovery='0.1.7'
   }
   if($pending.phase-eq'RECOVERY_REQUIRED'){Fail 'R125_PREVIOUS_CRASH_REQUIRES_MANUAL_RECOVERY'}
   if($pending.phase-notin@('COMMITTED','ROLLED_BACK','FAILED_BEFORE_MUTATION')){
