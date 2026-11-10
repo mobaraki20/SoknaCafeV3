@@ -63,7 +63,7 @@ public static class UnifiedUpdaterCapabilities
             PanelUpdateReady = host.PanelUpdateReady && host.ActivationAllowed &&
                 blocking.Count == 0,
             LocalRoutine = new LocalRoutineActions(true, true,
-                host.ActivationAllowed && blocking.Count == 0, false)
+                host.PanelUpdateReady && host.ActivationAllowed && blocking.Count == 0, false)
         };
     }
 
@@ -73,7 +73,7 @@ public static class UnifiedUpdaterCapabilities
         // truthfully. This is NOT permission to mutate installed Local.
         // HTTP actions enforce signed Stage, host/backup/identity and
         // one-use Engine permit on every request.
-        new LocalRoutineActions(true, true, true, false),
+        new LocalRoutineActions(true, true, false, false),
         false,
         "LOCAL_CROSS_VERSION_UAT_REQUIRED",
         "Windows Foundation is installed, but Local cross-version Stage/Activate and recovery have not passed real-host UAT. Signed inbox transport alone does not authorize activation.",
