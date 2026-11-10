@@ -95,6 +95,7 @@ def verify(path,expected_web_sha=None):
   must(m['for_install'] is False and m['production_pass'] is False and 'QA' in m['status'],'FINAL_ZIP_MISLABELED_QA')
   approved=False
  else:
+  must(not re.search(r'(QA|SYNTHETIC|NOT[_-]?INSTALL|SOURCE[_-]?ONLY|NOT[_-]?PRODUCTION|TEST[_-]?ONLY)', m['status'], re.I), 'FINAL_ZIP_PRODUCTION_STATUS_UNSAFE')
   q=m['qualification']
   required=['canary','real_windows','real_mariadb','business_backup_consistency_real_mariadb','recovery_console_web_down']
   must(all(q.get(k) is True for k in required) and q.get('failure_matrix_cases_required',0)>=80 and q.get('failure_matrix_id'),'FINAL_ZIP_PRODUCTION_EVIDENCE_MISSING')
@@ -108,8 +109,10 @@ def main():
  sub=a.add_subparsers(dest='command',required=True)
  b=sub.add_parser('prepare-qa');b.add_argument('--source',required=True);b.add_argument('--template',required=True);b.add_argument('--out',required=True)
  v=sub.add_parser('verify');v.add_argument('zip_path')
+ g=sub.add_parser('require-installable');g.add_argument('zip_path')
  args=a.parse_args()
  if args.command=='prepare-qa':build_qa(args.source,args.template,args.out)
+ elif args.command=='require-installable':must(verify(args.zip_path),'FINAL_ZIP_QA_NOT_INSTALLABLE_CANNOT_RELEASE_AS_UPDATE')
  else:verify(args.zip_path)
 
 if __name__=='__main__':main()
