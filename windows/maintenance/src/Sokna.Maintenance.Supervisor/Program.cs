@@ -340,7 +340,9 @@ app.MapGet("/v1/universal-updates/status", async context =>
         await WriteEnvelope(context, StatusCodes.Status503ServiceUnavailable, false,
             "evidence_unavailable", "UNIVERSAL_FENCE_EVIDENCE_UNTRUSTED", true,
             new { production_authorized = false, recovery_required = true,
-                error_type = ex.GetType().Name });
+                user_status = "needs_action",
+                user_message = "وضعیت به‌روزرسانی قابل تأیید نیست. برای حفظ اطلاعات، ادامه متوقف شده است.",
+                can_start_update = false, error_type = ex.GetType().Name });
     }
 });
 
