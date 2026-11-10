@@ -280,7 +280,7 @@ Stage 'BASELINE_VERSION'
 if($baselineVersion-notin@('0.3.22','0.3.23','0.3.24','0.3.25')){Fail 'MAINTENANCE_BASELINE_UNSUPPORTED_OR_REINSTALL'}
 $observedSupervisor=Version $installed[$names[0]]
 $observedEngine=Version $installed[$names[1]]
-$observedRecovery=Version $installed[$names[2]]
+$observedRecovery=Version $recoveryPath
 Write-Host ('SOKNA_INSTALLER_OBSERVED_VERSIONS='+$observedSupervisor+','+$observedEngine+','+$observedRecovery)
 $baselinePair=AssertMaintenanceBaselinePair -SupervisorVersion $observedSupervisor -EngineVersion $observedEngine
 # Versions alone never attest a baseline. 0322 uses the existing privileged
@@ -372,14 +372,9 @@ if(Test-Path -LiteralPath $operationsRoot -PathType Container){
     Fail 'MAINTENANCE_IN_FLIGHT_MUTATION_BLOCKED'
   }
   if($op.state-notin @('committed','failed_pre_mutation','failed','code_only_engine_rolled_back_verified','rolled_back','recovered','cancelled','staged','verified','recovery_required')){
-    # Unknown state remains exactly as stored. Allow a Maintenance-only
-    # service replacement if it is historical, not recent, and the OS writer
-    # lease was acquired. Never regard it as approved for Local activation.
-    $stamp=[DateTimeOffset]::MinValue
-    if(-not[DateTimeOffset]::TryParse([string]$op.updated_at_utc,[ref]$stamp) -or
-       $stamp-gt([DateTimeOffset]::UtcNow.AddMinutes(-30))){
-      Fail 'MAINTENANCE_RECENT_UNKNOWN_OPERATION_BLOCKED'
-    }
+    # The unknown Local record remains untouched and still blocks Local
+    # activation under its own verifier. The independent Maintenance-only
+    # component upgrade neither reconciles nor interprets that state.
     $historicalUnknownCount++
   }
  }
