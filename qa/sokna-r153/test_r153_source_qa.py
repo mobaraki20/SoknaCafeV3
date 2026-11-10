@@ -1,5 +1,4 @@
 import zipfile,io,json,hashlib,subprocess,tempfile,pathlib,concurrent.futures,collections,os
-from playwright.sync_api import sync_playwright
 root=pathlib.Path(os.environ.get('SOKNA_R153_SOURCE_DIR','/mnt/data/sokna-current-r152'))/'r153-source-qa'
 pub=root/'SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip';loc=root/'SOKNA-R153-LOCAL-231ED-44BASE-SOURCE-QA-NOT-INSTALL.zip'
 sha=lambda b:hashlib.sha256(b).hexdigest()
