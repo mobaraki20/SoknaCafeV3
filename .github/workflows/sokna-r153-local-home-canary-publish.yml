@@ -1,0 +1,115 @@
+name: SOKNA R153 Local 44-baseline Home Canary panel ZIP
+on:
+  push:
+    branches: [qa/sokna-local-universal-release-contract-20261110]
+    paths:
+      - qa/sokna-local-universal/promote_home_canary.py
+      - qa/sokna-local-universal/HomeCanary.cs
+      - qa/sokna-local-universal/HomeCanary.csproj
+      - .github/workflows/sokna-r153-local-home-canary-publish.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  rebuild-verify-stage-publish:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Reconstruct pinned historical source and exact R153 Local
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $gitTools='C:\Program Files\Git\usr\bin'
+          if(Test-Path $gitTools){$env:PATH=$gitTools+';'+$env:PATH}
+          if(-not(Get-Command patch -ErrorAction SilentlyContinue)){throw 'PATCH_TOOL_REQUIRED'}
+          $lab=Join-Path $env:RUNNER_TEMP 'sokna-r153-canary'
+          $r152=Join-Path $lab 'r152'
+          New-Item -ItemType Directory -Force $lab,$r152|Out-Null
+          python qa/sokna-r140/exact-ci/reconstruct.py $lab
+          if($LASTEXITCODE-ne0){throw 'R140_SOURCE_RECONSTRUCT_FAILED'}
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py (Join-Path $lab 'r140.zip') (Join-Path $lab 'qualified-r140.zip')
+          if($LASTEXITCODE-ne0){throw 'R140_QUALIFIED_FAILED'}
+          python qa/sokna-r149b/build_r149b.py (Join-Path $lab 'qualified-r140.zip') qa/sokna-r149b/overlay.zip $lab
+          if($LASTEXITCODE-ne0){throw 'R149B_BUILD_FAILED'}
+          python qa/sokna-r149b/test-manifest-matrix.py (Join-Path $lab 'qualified-r140.zip') (Join-Path $lab 'r149b-candidate.zip') (Join-Path $lab 'r149b-qualified.zip')
+          if($LASTEXITCODE-ne0){throw 'R149B_308_CASES_FAILED'}
+          python qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip (Join-Path $lab '35hi.zip')
+          if($LASTEXITCODE-ne0){throw 'PUBLIC_SOURCE_PARENT_FAILED'}
+          python qa/sokna-r152/build_r152_from_exact_r149.py (Join-Path $lab 'r149b-qualified.zip') (Join-Path $lab '35hi.zip') $r152
+          if($LASTEXITCODE-ne0){throw 'R152_SOURCE_FAILED'}
+          New-Item -ItemType Directory -Force qa/sokna-r153/artifacts|Out-Null
+          Copy-Item (Join-Path $r152 'SOKNA-R152-LOCAL-231EC-44BASE-QA-DO-NOT-INSTALL.zip') qa/sokna-r153/artifacts/SOKNA-R152-LOCAL-231EC-44BASE-INVENTORY-CORRECTED-QA-NOT-INSTALL.zip
+          Copy-Item (Join-Path $r152 'SOKNA-R152-PUBLIC-35HJ-31BASE-CI-QA-NOT-FIELD-APPROVED.zip') qa/sokna-r153/artifacts/SOKNA-R152-PUBLIC-35HJ-31BASE-NEW-QA-NOT-INSTALL.zip
+          Copy-Item qa/sokna-r153/local-guest-readonly-parity.patch qa/sokna-r153/artifacts/R152-LOCAL-guest-readonly-parity.patch
+          $env:SOKNA_R153_SOURCE_DIR=(Resolve-Path qa/sokna-r153/artifacts).Path
+          python qa/sokna-r153/build_r153_source_qa.py
+          if($LASTEXITCODE-ne0){throw 'R153_SOURCE_BUILD_FAILED'}
+          $src=Join-Path $env:SOKNA_R153_SOURCE_DIR 'r153-source-qa/SOKNA-R153-LOCAL-231ED-44BASE-SOURCE-QA-NOT-INSTALL.zip'
+          $contract=Join-Path $lab 'R153-CONTRACT-QA.zip'
+          python qa/sokna-local-universal/universal_local_release_contract.py prepare-qa --source $src --template (Join-Path $lab 'r149b-qualified.zip') --out $contract
+          if($LASTEXITCODE-ne0){throw 'CONTRACT_BUILD_FAILED'}
+          $contractHash=(Get-FileHash $contract -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($contractHash-ne'4f98e7eb948e78c49b09f4f41299ec7b4c68b562cfac8dbe72e0c827a69ef613'){throw 'PINNED_R153_QA_HASH_MISMATCH'}
+          "SOKNA_R153_CONTRACT=$contract"|Out-File $env:GITHUB_ENV -Append
+          "SOKNA_R153_TEMPLATE=$(Join-Path $lab 'r149b-qualified.zip')"|Out-File $env:GITHUB_ENV -Append
+          "SOKNA_R153_LAB=$lab"|Out-File $env:GITHUB_ENV -Append
+      - name: Independently verify the two exact R153 Windows QA conclusions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $one=(gh api repos/mobaraki20/SoknaCafeV3/actions/runs/42896959119 --jq '.conclusion').Trim()
+          $two=(gh api repos/mobaraki20/SoknaCafeV3/actions/runs/42896278262 --jq '.conclusion').Trim()
+          if($one-ne'success' -or $two-ne'success'){throw "INCOMPLETE_REAL_WINDOWS_EVIDENCE preflight=$one activation=$two"}
+          @{
+           exact_qa_sha256='4f98e7eb948e78c49b09f4f41299ec7b4c68b562cfac8dbe72e0c827a69ef613'
+           ci_verified_against_github_api=$true
+           ci_runs=@{
+            '44_native_windows_preflight'=@{run_id='42896959119';conclusion='success'}
+            '12_native_activation_restore'=@{run_id='42896278262';conclusion='success'}
+           }
+          }|ConvertTo-Json -Depth 8 | Set-Content (Join-Path $env:SOKNA_R153_LAB 'EVIDENCE.json') -Encoding utf8NoBOM
+      - name: Build exact universal 44-baseline Home Canary ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:SOKNA_R153_LAB 'SOKNA-R153-LOCAL-231ED-44BASE-HOME-CANARY-PANEL-UPLOAD.zip'
+          python qa/sokna-local-universal/promote_home_canary.py --qa $env:SOKNA_R153_CONTRACT --parent-qualified $env:SOKNA_R153_TEMPLATE --evidence (Join-Path $env:SOKNA_R153_LAB 'EVIDENCE.json') --out $out
+          if($LASTEXITCODE-ne0){throw 'R153_CANARY_PROMOTION_GATE_FAILED'}
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable $out
+          if($LASTEXITCODE-ne0){throw 'FINAL_INSTALLABLE_ZIP_GATE_FAILED'}
+          $sha=(Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha-ne'61383cf48c88760d7e201130408bf0a3853e665507d40a0ea06ffe7107498e13'){throw "DETERMINISTIC_ZIP_HASH_DRIFT $sha"}
+          "SOKNA_CANARY_OUT=$out"|Out-File $env:GITHUB_ENV -Append
+          "$sha *SOKNA-R153-LOCAL-231ED-44BASE-HOME-CANARY-PANEL-UPLOAD.zip"|Set-Content (Join-Path $env:SOKNA_R153_LAB 'SHA256SUMS.txt') -Encoding ascii
+      - name: Native Windows Maintenance positive VerifyOnly 44 bases and Stage exact ZIP
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-local-universal/HomeCanary.csproj -c Release --no-launch-profile -- $env:SOKNA_CANARY_OUT
+          if($LASTEXITCODE-ne0){throw 'REAL_NATIVE_MAINTENANCE_STAGE_BLOCKED'}
+      - name: Publish controlled Home Canary pre-release after all checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='sokna-r153-local-44base-home-canary-20261111'
+          $notes=Join-Path $env:SOKNA_R153_LAB 'README-FA.md'
+          @'
+          # Local R153 / 231ed - Home Canary only
+          Installable operator-upload Local ZIP for controlled Home Canary, NOT café Production clearance.
+          Supports 44 exact Local source identities, including café R112 and Home R149B. Unknown identities fail closed.
+          All 80 SQL migration files are byte-identical to R149B Home-Canary-qualified source.
+          Native Maintenance VerifyOnly + Stage of this exact file must pass on disposable real Windows CI.
+          The host-specific DB backup and recovery snapshot are required before any mutation and fail closed if unavailable.
+          Café Production field restore and full business UI acceptance have NOT been proven; do not install on café Production.
+          Maintenance, Public, Print, and Windows services are unchanged.
+          '@ | Set-Content $notes -Encoding utf8NoBOM
+          gh release create $tag $env:SOKNA_CANARY_OUT (Join-Path $env:SOKNA_R153_LAB 'SHA256SUMS.txt') $notes --title 'SOKNA R153 Local 231ed - 44-base Home Canary (NOT cafe Production)' --prerelease --notes-file $notes --target $env:GITHUB_SHA
+          if($LASTEXITCODE-ne0){throw 'GITHUB_RELEASE_UPLOAD_FAILED'}
+          gh release view $tag --json url,isPrerelease,assets
+          if($LASTEXITCODE-ne0){throw 'GITHUB_RELEASE_READBACK_FAILED'}
