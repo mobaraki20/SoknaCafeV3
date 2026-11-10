@@ -1,0 +1,86 @@
+name: Publish SHA-pinned R153 Local/Public QA evidence only - NOT INSTALL
+on:
+  push:
+    branches: [qa/sokna-r154-field-qualification-20261110]
+    paths:
+      - .github/workflows/sokna-r154-publish-qa.yml
+permissions: {contents: write, actions: read}
+jobs:
+  immutable-qa-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN: '42879039243'
+      SOURCE_SHA: f5bd46e02a2de091a2bc0ba46f050bb8c308f0aa
+      R154_MARIADB_RUN: '42889867431'
+      R154_PUBLIC_RUN: '42890304637'
+      R154_WINDOWS_RUN: '42891018504'
+      RELEASE_TAG: sokna-r153-local-public-source-qa-20261110
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require successful exact-source, real MariaDB, native Public and Windows staging evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run in "$R154_MARIADB_RUN" "$R154_PUBLIC_RUN" "$R154_WINDOWS_RUN" ; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" |
+              jq -e --arg b "qa/sokna-r154-field-qualification-20261110" \
+                '.status=="completed" and .conclusion=="success" and .head_branch==$b'
+          done
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" |
+            jq -e --arg sha "$SOURCE_SHA" '.status=="completed" and .conclusion=="success" and .head_sha==$sha'
+      - name: Download exact pretested QA files and inspect intrinsically blocked manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
+            -n SOKNA-R153-SOURCE-ONLY-QA-NOT-INSTALL -D dist
+          cd dist
+          sha256sum -c SHA256SUMS.txt
+          local_name='SOKNA-R153-LOCAL-231ED-44BASE-SOURCE-QA-NOT-INSTALL.zip'
+          public_name='SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip'
+          test -s "$local_name" && test -s "$public_name"
+          unzip -p "$local_name" release-set.json |
+            jq -e '.for_install==false and .production_pass==false and .install_plan==[] and .signature==null and (.supported_baselines|length)==44'
+          unzip -p "$public_name" manifest.json |
+            jq -e '.provenance.ready_for_production==false and .provenance.production_status=="QA_ONLY_NOT_FOR_PRODUCTION" and (.compatibility.supported_baselines|length)==31'
+          cat > README-FA.md <<'EOF'
+          # سکنا — R153 Local و Public: صرفاً سورس آزمایشی، نه بسته نصب
+          این پری‌ریلیز فقط برای بایگانی بایت‌دقیق دو ZIP و گزارش‌های QA است.
+          **هیچ‌کدام از دو فایل نباید در پنل Updates سیستم کافه یا خانه نصب شوند.**
+          در Local فلگ‌های for_install=false, production_pass=false, install_plan=[] مانع نصب‌اند.
+          در Public، وضعیت QA_ONLY_NOT_FOR_PRODUCTION برقرار است.
+          ## شواهد آزمون مستقل
+          - MariaDB R112-equivalent: 0077–0080، رد دیتابیس ناسازگار و بازگردانی بک‌آپ روی سرور ایزوله: PASS
+          - Public 35hh و 35hi: Stage/Activate/Commit روی سورس دقیق با ۷ تغییر فایل: PASS
+          - Windows Maintenance Core: تأیید مبدأهای شناخته‌شده و رد مرحله نصب بسته QA: PASS
+          ## کارهای مسدودکننده انتشار عملیاتی
+          - بک‌آپ و بازیابی امروزِ دیتابیس واقعی کافه در دسترس/تأیید نشده است.
+          - همه درخواست‌های منوی مهمان، انبار، سفارش، چاپ، اعلان‌ها و UI با پذیرش عملیاتی تأیید نشده‌اند.
+          - Public زنده و Emergency/Auth و فرمان Local↔Public آزمون انتهابه‌انتها نشده‌اند.
+          - هیچ امضای Production یا ادعای نصب موفق واقعی وجود ندارد.
+          ## شواهد
+          https://github.com/mobaraki20/SoknaCafeV3/actions/runs/42889867431
+          https://github.com/mobaraki20/SoknaCafeV3/actions/runs/42890304637
+          https://github.com/mobaraki20/SoknaCafeV3/actions/runs/42891018504
+          EOF
+      - name: Publish immutable QA-only prerelease (never Production or install-ready)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'REFUSE_OVERWRITE_EXISTING_QA_RELEASE'
+            exit 1
+          fi
+          cd dist
+          gh release create "$RELEASE_TAG" \
+            SOKNA-R153-LOCAL-231ED-44BASE-SOURCE-QA-NOT-INSTALL.zip \
+            SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip \
+            SHA256SUMS.txt QA-SUMMARY.json README-FA.md \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+            --title 'SOKNA R153 Local/Public exact source QA — DO NOT INSTALL' \
+            --notes-file README-FA.md --prerelease --latest=false
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url,isPrerelease,assets |
+            jq -e '.isPrerelease==true and ([.assets[].name]|index("SOKNA-R153-LOCAL-231ED-44BASE-SOURCE-QA-NOT-INSTALL.zip")!=null) and ([.assets[].name]|index("SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip")!=null)'
