@@ -45,6 +45,24 @@ function RunLab($fixture,[string]$injection=''){
 
 # Sanitized reconstruction of 25 operations in the 2026-11-09 One Support
 # archive: 9 verified, 9 staged, 3 failed, 4 committed. No production IDs.
+function NewHistoricalOperation([string]$id,[string]$kind,[string]$state,[string]$result,[string]$preflightPath,[string]$stagePath,[bool]$activated){
+ $pkg=('c'*64)
+ $operator='qa-ledger'
+ $canonical=$kind.ToLowerInvariant()+[char]10+$pkg+[char]10+$operator
+ $sha=[Security.Cryptography.SHA256]::Create()
+ try{$requestHash=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))).Replace('-','')).ToLowerInvariant()}
+ finally{$sha.Dispose()}
+ $when=[DateTimeOffset]::UtcNow.ToString('O')
+ return @{
+  format='sokna-maintenance-operation-v1';schema_version=1;operation_id=$id;
+  idempotency_key=('qa-ledger-'+$id);canonical_request_sha256=$requestHash;
+  operation_type=$kind;operator_id=$operator;state=$state;package_ref=$pkg;
+  created_at_utc=$when;updated_at_utc=$when;attempt_count=1;
+  result_code=$result;result_message='Disposable QA only';
+  stage_receipt_path=$stagePath;preflight_receipt_path=$preflightPath;
+  activation_performed=$activated;database_mutation_performed=$false
+ }
+}
 function AddHistoricalLedger($f,[string]$fault=''){
  $data=Join-Path $f.Root 'ProgramData\SOKNA'
  $ops=Join-Path $data 'Maintenance\operations'
@@ -59,9 +77,7 @@ function AddHistoricalLedger($f,[string]$fault=''){
   @{format='sokna-local-package-preflight-v1';schema_version=1;operation_id=$id;
     package_ref=$pkg;installed_identity_sha256=$identity;verification=$verify}|
     ConvertTo-Json -Depth 12|Set-Content -LiteralPath $proofPath
-  $op=@{format='sokna-maintenance-operation-v1';operation_id=$id;operation_type='update.local-package-preflight';
-    state='verified';result_code='PACKAGE_INTEGRITY_VERIFIED';activation_performed=$false;
-    database_mutation_performed=$false;package_ref=$pkg;preflight_receipt_path=$proofPath}
+  $op=NewHistoricalOperation $id 'update.local-package-preflight' 'verified' 'PACKAGE_INTEGRITY_VERIFIED' $proofPath $null $false
   $op|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
   $preflights+=@{id=$id;path=$proofPath}
  }
@@ -75,17 +91,14 @@ function AddHistoricalLedger($f,[string]$fault=''){
     activation_performed=$false;database_mutation_performed=$false;preflight_identity_match=$true;
     artifact_integrity_verified=$true;signature_verified=$false;operator_authorized=$true}|
     ConvertTo-Json -Depth 12|Set-Content -LiteralPath $stagePath
-  @{format='sokna-maintenance-operation-v1';operation_id=$id;operation_type='update.local-stage';
-    state='staged';result_code='STAGED';activation_performed=$false;database_mutation_performed=$false;
-    package_ref=$pkg;preflight_receipt_path=$preflights[$i-1].path;stage_receipt_path=$stagePath}|
-    ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+  $stageOp=NewHistoricalOperation $id 'update.local-stage' 'staged' 'STAGED' $preflights[$i-1].path $stagePath $false
+  $stageOp|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
  }
  for($i=1;$i-le7;$i++){
   $id=('{0:x32}' -f (200+$i))
   $s=if($i-le3){'failed'}else{'committed'}
-  @{format='sokna-maintenance-operation-v1';operation_id=$id;operation_type='update.local-code-only-activate';
-    state=$s;activation_performed=$true;database_mutation_performed=$false}|
-    ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
+  $activation=NewHistoricalOperation $id 'update.local-code-only-activate' $s 'QA_HISTORICAL_ACTIVATION' $null $null $true
+  $activation|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $ops ('op-'+$id+'.json'))
  }
  $stagedId=('{0:x32}' -f 101)
  $stagedPath=Join-Path $ops ('op-'+$stagedId+'.json')
