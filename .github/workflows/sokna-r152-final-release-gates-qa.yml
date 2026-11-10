@@ -96,7 +96,7 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $lab=$env:R152_STAGE_LAB
-          dotnet run --project qa/sokna-r149b/stage/R149BStage.csproj -c Release --no-launch-profile -- (Join-Path $lab 'qualified-r140.zip') (Join-Path $lab 'r152/SOKNA-R152-LOCAL-231EC-44BASE-QA-DO-NOT-INSTALL.zip') $env:R152_SYNTHETIC_STAGE
+          dotnet run --project qa/sokna-r149b/stage/R149BStage.csproj -c Release --no-launch-profile -- (Join-Path $lab 'qualified-r140.zip') (Join-Path $lab 'CI-SYNTHETIC-DISABLED-CANDIDATE-NEVER-DISTRIBUTE.zip') $env:R152_SYNTHETIC_STAGE
           if($LASTEXITCODE-ne0){throw 'R152_REAL_CORE_VERIFY_AND_STAGE_FAILED'}
           Write-Host 'PASS: R152 exact source, 44 distinct baselines, unknown origin refusal, delivered-QA-stage refusal, and synthetic-only isolated stage.'
           Write-Host 'NOT TESTED: live cafe R125 proof, real cafe DB restore, Public HTTP credentials, field activation.'
