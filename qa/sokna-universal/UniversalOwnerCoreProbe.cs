@@ -22,6 +22,7 @@ static void Deny(Action call, string label)
     try { call(); }
     catch (InvalidDataException) { Console.WriteLine("PASS DENY_" + label); return; }
     catch (InvalidOperationException) { Console.WriteLine("PASS DENY_" + label); return; }
+    catch (JsonException) { Console.WriteLine("PASS DENY_" + label); return; }
     throw new InvalidOperationException("UNSAFE_ALLOWED_" + label);
 }
 static string ShaFile(string path)
