@@ -1,0 +1,56 @@
+name: SOKNA R153 exact latest Local/Public source continuity gate - QA NOT INSTALL
+on:
+  push:
+    branches: [qa/sokna-r153-source-audit-20261110]
+    paths:
+      - qa/sokna-r153/**
+      - .github/workflows/sokna-r153-source-contract-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  source-rebuild-lint-and-attestation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild exactly pinned Local R152 and Public R152 parents
+        shell: bash
+        run: |
+          set -euo pipefail
+          d="$RUNNER_TEMP/r153-parents"
+          mkdir -p "$d" qa/sokna-r153/artifacts
+          python3 qa/sokna-r140/exact-ci/reconstruct.py "$d"
+          python3 qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$d/r140.zip" "$d/qualified-r140.zip"
+          python3 qa/sokna-r149b/build_r149b.py "$d/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$d"
+          python3 qa/sokna-r149b/test-manifest-matrix.py "$d/qualified-r140.zip" "$d/r149b-candidate.zip" "$d/r149b-qualified.zip"
+          python3 qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip "$d/35hi.zip"
+          python3 qa/sokna-r152/build_r152_from_exact_r149.py "$d/r149b-qualified.zip" "$d/35hi.zip" "$d/r152"
+          cp "$d/r152/SOKNA-R152-LOCAL-231EC-44BASE-QA-DO-NOT-INSTALL.zip" qa/sokna-r153/artifacts/SOKNA-R152-LOCAL-231EC-44BASE-INVENTORY-CORRECTED-QA-NOT-INSTALL.zip
+          cp "$d/r152/SOKNA-R152-PUBLIC-35HJ-31BASE-CI-QA-NOT-FIELD-APPROVED.zip" qa/sokna-r153/artifacts/SOKNA-R152-PUBLIC-35HJ-31BASE-NEW-QA-NOT-INSTALL.zip
+          cp qa/sokna-r153/local-guest-readonly-parity.patch qa/sokna-r153/artifacts/R152-LOCAL-guest-readonly-parity.patch
+          echo "SOKNA_R153_SOURCE_DIR=$PWD/qa/sokna-r153/artifacts" >> "$GITHUB_ENV"
+      - name: Exact SHA R152 parents and build corrected R153 source-only candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 qa/sokna-r153/build_r153_source_qa.py
+          cd qa/sokna-r153/artifacts/r153-source-qa
+          sha256sum -c SHA256SUMS.txt
+          echo 'PASS QA SOURCE; DO NOT INSTALL'
+      - name: Actual PHP Public disk identity verifier and all 369 PHP and 87 JS syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 qa/sokna-r153/test_r153_source_qa.py
+          echo 'No installed cafe backup, live DB restore, signed field activation or all-request verification has been claimed.'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-R153-SOURCE-ONLY-QA-NOT-INSTALL
+          path: |
+            qa/sokna-r153/artifacts/r153-source-qa/SOKNA-R153-LOCAL-231ED-44BASE-SOURCE-QA-NOT-INSTALL.zip
+            qa/sokna-r153/artifacts/r153-source-qa/SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip
+            qa/sokna-r153/artifacts/r153-source-qa/QA-SUMMARY.json
+            qa/sokna-r153/artifacts/r153-source-qa/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
