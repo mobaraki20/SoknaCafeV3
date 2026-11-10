@@ -1,0 +1,92 @@
+name: "SOKNA universal Local 44-baseline actual final ZIP contract and Windows preflight (QA)"
+on:
+  push:
+    branches: [qa/sokna-local-universal-release-contract-20261110]
+    paths:
+      - qa/sokna-local-universal/**
+      - .github/workflows/sokna-local-universal-contract-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-universal-44-baseline-real-maintenance-preflight:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Rebuild exact historical R149B and R152 source on Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $gitTools='C:\Program Files\Git\usr\bin'
+          if(Test-Path $gitTools){$env:PATH=$gitTools+';'+$env:PATH}
+          if(-not(Get-Command patch -ErrorAction SilentlyContinue)){throw 'WINDOWS_PATCH_TOOL_UNAVAILABLE'}
+          $lab=Join-Path $env:RUNNER_TEMP 'sokna-r152-final-stage'
+          $r152=Join-Path $lab 'r152'
+          New-Item -ItemType Directory -Force $lab,$r152|Out-Null
+          python qa/sokna-r140/exact-ci/reconstruct.py $lab
+          if($LASTEXITCODE-ne0){throw 'HISTORICAL_SOURCE_RECONSTRUCT_FAILED'}
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py (Join-Path $lab 'r140.zip') (Join-Path $lab 'qualified-r140.zip')
+          if($LASTEXITCODE-ne0){throw 'R140_EXACT_PARENT_FAILED'}
+          python qa/sokna-r149b/build_r149b.py (Join-Path $lab 'qualified-r140.zip') qa/sokna-r149b/overlay.zip $lab
+          if($LASTEXITCODE-ne0){throw 'R149B_EXACT_PARENT_FAILED'}
+          python qa/sokna-r149b/test-manifest-matrix.py (Join-Path $lab 'qualified-r140.zip') (Join-Path $lab 'r149b-candidate.zip') (Join-Path $lab 'r149b-qualified.zip')
+          if($LASTEXITCODE-ne0){throw 'R149B_EXACT_MANIFEST_FAILED'}
+          python qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip (Join-Path $lab '35hi.zip')
+          if($LASTEXITCODE-ne0){throw '35HI_EXACT_PARENT_FAILED'}
+          python qa/sokna-r152/build_r152_from_exact_r149.py (Join-Path $lab 'r149b-qualified.zip') (Join-Path $lab '35hi.zip') $r152
+          if($LASTEXITCODE-ne0){throw 'R152_EXACT_SOURCE_FAILED'}
+          New-Item -ItemType Directory -Force qa/sokna-r153/artifacts|Out-Null
+          Copy-Item (Join-Path $r152 'SOKNA-R152-LOCAL-231EC-44BASE-QA-DO-NOT-INSTALL.zip') qa/sokna-r153/artifacts/SOKNA-R152-LOCAL-231EC-44BASE-INVENTORY-CORRECTED-QA-NOT-INSTALL.zip
+          Copy-Item (Join-Path $r152 'SOKNA-R152-PUBLIC-35HJ-31BASE-CI-QA-NOT-FIELD-APPROVED.zip') qa/sokna-r153/artifacts/SOKNA-R152-PUBLIC-35HJ-31BASE-NEW-QA-NOT-INSTALL.zip
+          Copy-Item qa/sokna-r153/local-guest-readonly-parity.patch qa/sokna-r153/artifacts/R152-LOCAL-guest-readonly-parity.patch
+          $env:SOKNA_R153_SOURCE_DIR=(Resolve-Path qa/sokna-r153/artifacts).Path
+          python qa/sokna-r153/build_r153_source_qa.py
+          if($LASTEXITCODE-ne0){throw 'R153_PINNED_BUILD_FAILED'}
+          $r153=Join-Path $env:SOKNA_R153_SOURCE_DIR 'r153-source-qa'
+          "R153_STAGE_OUT=$r153"|Out-File -FilePath $env:GITHUB_ENV -Append
+          "R152_STAGE_LAB=$lab"|Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Prepare exact same R153 source bytes with a valid 3-phase universal release contract but QA flags unchanged
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lab=$env:R152_STAGE_LAB
+          $source=Join-Path $env:R153_STAGE_OUT 'SOKNA-R153-LOCAL-231ED-44BASE-SOURCE-QA-NOT-INSTALL.zip'
+          $template=Join-Path $lab 'r149b-qualified.zip'
+          $out=Join-Path $lab 'SOKNA-R153-LOCAL-231ED-44BASE-CONTRACT-COMPLETE-QA-NOT-INSTALL.zip'
+          python qa/sokna-local-universal/universal_local_release_contract.py prepare-qa --source $source --template $template --out $out
+          if($LASTEXITCODE-ne0){throw 'UNIVERSAL_LOCAL_CONTRACT_BUILD_FAILED'}
+          python qa/sokna-local-universal/universal_local_release_contract.py verify $out
+          if($LASTEXITCODE-ne0){throw 'FINAL_DOWNLOADABLE_ZIP_CONTRACT_INVALID'}
+          "SOKNA_LOCAL_UNIVERSAL_ZIP=$out"|Out-File -FilePath $env:GITHUB_ENV -Append
+          "SOKNA_LOCAL_UNIVERSAL_ORIGINAL=$source"|Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Real Maintenance Core against the exact delivered QA ZIP - all 44 baselines and one unknown
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project qa/sokna-local-universal/UniversalLocal.csproj -c Release --no-launch-profile -- $env:SOKNA_LOCAL_UNIVERSAL_ORIGINAL $env:SOKNA_LOCAL_UNIVERSAL_ZIP (Join-Path $env:R152_STAGE_LAB 'r149b-qualified.zip')
+          if($LASTEXITCODE-ne0){throw 'FINAL_UNIVERSAL_LOCAL_44_WINDOWS_PREFLIGHT_FAILED'}
+          Write-Host 'PASS same byte-exact target: 44 known host identities, unknown source fail-closed, no business mutation or stage for QA release'
+      - name: Check the exact final ZIP still cannot authorize Production installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $report=Join-Path $env:R152_STAGE_LAB 'CONTRACT-TEST-RESULT.txt'
+          @('PASS exact R153 web bytes','PASS all 44 Local baselines native Windows Maintenance','PASS unknown Local source rejected','PASS QA Stage forbidden, no Production approval','TODO host backup/restore, real Windows activation and requested-feature operational acceptance')|Set-Content $report
+          $m=Get-Content (Join-Path $env:R153_STAGE_OUT 'QA-SUMMARY.json') -Raw|ConvertFrom-Json
+          if($m.production_authorized -or $m.all_business_changes_verified){throw 'UNSUPPORTED_PRODUCTION_CLAIM'}
+          Write-Host 'PASS no ability to mark missing field evidence as qualified'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          path: |
+            ${{ runner.temp }}/sokna-r152-final-stage/SOKNA-R153-LOCAL-231ED-44BASE-CONTRACT-COMPLETE-QA-NOT-INSTALL.zip
+            ${{ runner.temp }}/sokna-r152-final-stage/CONTRACT-TEST-RESULT.txt
+          if-no-files-found: error
+          retention-days: 14
