@@ -1,0 +1,112 @@
+name: SOKNA Maintenance 0.3.27 universal bridge - Windows QA ONLY
+on:
+  push:
+    branches: [qa/sokna-maintenance-universal-0327-20261111]
+    paths:
+      - packaging/windows/scripts/*maintenance-universal-0327.ps1
+      - packaging/windows/scripts/Get-SoknaMaintenanceUpgradePlan.ps1
+      - packaging/windows/installer/SOKNA-Maintenance-Universal-0327-QA.iss
+      - qa/sokna-maintenance-universal-0327/**
+      - .github/workflows/sokna-maintenance-universal-0327-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  universal-real-exe-and-0326-upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: {ref: aba774d67e9d3890aa0f69d00f214ae82b395927, path: old-0326}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Syntax and exact version routing
+        shell: pwsh
+        run: |
+          foreach($path in @('packaging/windows/scripts/Get-SoknaMaintenanceUpgradePlan.ps1','packaging/windows/scripts/invoke-maintenance-universal-0327.ps1','qa/sokna-maintenance-universal-0327/test-route.ps1')){
+            $t=$null;$e=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path $path),[ref]$t,[ref]$e)|Out-Null
+            if(@($e).Count-ne0){throw ('INVALID_POWERSHELL_'+$path)}
+          }
+          & ./qa/sokna-maintenance-universal-0327/test-route.ps1
+      - name: Pin and download both prior approved-for-QA independent EXE files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force qa-dist-universal/payload | Out-Null
+          $prefix='https://github.com/mobaraki20/SoknaCafeV3/releases/download/'
+          $pairs=@(
+            @{tag='sokna-maintenance-only-0326-independent-r1-qa-20261110';name='SOKNA-Maintenance-Only-0326-Independent-R1-QA-NOT-PRODUCTION.exe';sha='93981643923860e9d78bb7280be7d6d9f8e960bdbba4ffb9dea166bd59197874'},
+            @{tag='sokna-maintenance-0327-r125-compat-qa-20261110';name='SOKNA-Maintenance-Only-0327-Independent-R1-QA-NOT-PRODUCTION.exe';sha='cd55273e84cba349cc59fc260a7457f720f3b2752876277ad4f404868e598dd5'}
+          )
+          foreach($p in $pairs){
+            $url=$prefix+$p.tag+'/'+$p.name
+            $file=Join-Path $PWD.Path ('qa-dist-universal/payload/'+$p.name)
+            Invoke-WebRequest -Uri $url -OutFile $file -MaximumRedirection 10 -TimeoutSec 300
+            if((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()-cne$p.sha){throw ('UNQUALIFIED_STAGE_DIGEST_'+$p.name)}
+          }
+          Copy-Item packaging/windows/scripts/Get-SoknaMaintenanceUpgradePlan.ps1 qa-dist-universal/payload/
+          Copy-Item packaging/windows/scripts/invoke-maintenance-universal-0327.ps1 qa-dist-universal/payload/
+      - name: Compile the actual outer Inno EXE
+        shell: pwsh
+        run: |
+          $iscc=@((Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'),(Join-Path $env:ProgramFiles 'Inno Setup 6/ISCC.exe'))|Where-Object{Test-Path $_}|Select-Object -First 1
+          if(-not$iscc){choco install innosetup -y --no-progress;if($LASTEXITCODE-ne0){throw 'INNO_DEPENDENCY_FAILED'};$iscc=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'}
+          $payload=Join-Path $PWD.Path 'qa-dist-universal/payload'
+          $dist=Join-Path $PWD.Path 'qa-dist-universal'
+          & $iscc "/DPayloadRoot=$payload" "/DOutputDir=$dist" packaging/windows/installer/SOKNA-Maintenance-Universal-0327-QA.iss
+          if($LASTEXITCODE-ne0){throw 'UNIVERSAL_INNO_BUILD_FAILED'}
+          $exe=Join-Path $dist 'SOKNA-Maintenance-Universal-0327-QA-NOT-PRODUCTION.exe'
+          if(-not(Test-Path $exe)){throw 'UNIVERSAL_INSTALLER_MISSING'}
+          $v=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+          if("$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"-ne'0.3.27.2'){throw 'UNIVERSAL_INSTALLER_VERSION_WRONG'}
+          $digest=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$digest  $([IO.Path]::GetFileName($exe))"|Set-Content (Join-Path $dist 'SHA256SUMS.txt')
+          @{sha256=$digest;source_commit=$env:GITHUB_SHA;qa_only=$true;production_approved=$false;two_immutable_stages=$true;host_agnostic_route=$true;real_cafe_tested=$false}|ConvertTo-Json|Set-Content (Join-Path $dist 'BUILD-QA.json')
+          Write-Host ('BUILT_UNIVERSAL_INSTALLER_SHA256='+$digest)
+      - name: Clean host must reject and record its diagnostic safely
+        shell: pwsh
+        run: |
+          if(Get-Service SoknaMaintenanceSupervisor -ErrorAction SilentlyContinue){throw 'NONDISPOSABLE_RUNNER'}
+          $exe=Join-Path $PWD.Path 'qa-dist-universal/SOKNA-Maintenance-Universal-0327-QA-NOT-PRODUCTION.exe'
+          $prior=@(Get-ChildItem ([Environment]::GetFolderPath('DesktopDirectory')) -Filter 'SOKNA-MAINTENANCE-UNIVERSAL-FAILED-*.json' -ErrorAction SilentlyContinue|Select-Object -ExpandProperty FullName)
+          $p=Start-Process $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -Wait -PassThru
+          if($p.ExitCode-eq0){throw 'UNKNOWN_HOST_FALSE_SUCCESS'}
+          $reports=@(Get-ChildItem ([Environment]::GetFolderPath('DesktopDirectory')) -Filter 'SOKNA-MAINTENANCE-UNIVERSAL-FAILED-*.json'|Where-Object{$_.FullName-notin$prior})
+          if($reports.Count-ne1){throw 'SAFE_UNKNOWN_HOST_REPORT_MISSING'}
+          $r=Get-Content $reports[0].FullName -Raw|ConvertFrom-Json
+          if($r.safe_code-ne'MAINTENANCE_SERVICE_NOT_FOUND' -or $r.failed_stage-ne'DETECT_INSTALLED_MAINTENANCE' -or $r.transaction_outcome-ne'NO_MUTATION_ATTEMPTED'){throw 'UNKNOWN_HOST_REPORT_INCORRECT'}
+          Copy-Item $reports[0].FullName qa-dist-universal/UNKNOWN-HOST-RESULT.json
+      - name: Reproduce real 0.3.26 baseline fixture and pinned recovery
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force qa-dist-0327 | Out-Null
+          $names=@('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine')
+          $exes=@('SoknaMaintenanceSupervisor.exe','SoknaMaintenanceUpdateEngine.exe')
+          $hashes=@('88ba73a97e273a4f818f0200bcc32f7b8cc9df4522b554cca6b88e32e0832aae','d9f8295976a1a549191797303f6a6046877a96d3f1e23fe022bf3ebcfce61199')
+          for($i=0;$i-lt2;$i++){
+            $n=$names[$i]
+            dotnet publish "old-0326/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o "qa-dist-0327/old-$i"
+            if($LASTEXITCODE-ne0){throw 'BUILD_0326_BASELINE_FAILED'}
+            if((Get-FileHash "qa-dist-0327/old-$i/$($exes[$i])" -Algorithm SHA256).Hash.ToLowerInvariant()-ne$hashes[$i]){throw 'PINNED_0326_BINARY_MISMATCH'}
+            dotnet publish "old-0326/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained false -p:FileVersion=0.3.25.0 -p:AssemblyVersion=0.3.25.0 -o "qa-dist-0327/v25-$i"
+            if($LASTEXITCODE-ne0){throw 'BUILD_0325_FIXTURE_FAILED'}
+          }
+          dotnet publish "old-0326/windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o qa-dist-0327/recovery
+          if($LASTEXITCODE-ne0){throw 'RECOVERY_FIXTURE_FAILED'}
+      - name: Real Windows service from 0.3.26 to 0.3.27 with rollback and rerun
+        shell: pwsh
+        run: |
+          & ./qa/sokna-r125-0327/test-real-service-activation.ps1 -Installer (Join-Path $PWD.Path 'qa-dist-universal/SOKNA-Maintenance-Universal-0327-QA-NOT-PRODUCTION.exe') -BuildRoot (Join-Path $PWD.Path 'qa-dist-0327') -Output (Join-Path $PWD.Path 'qa-dist-universal/REAL-0326-TO-0327.json')
+          if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sokna-maintenance-0327-universal-bridge-qa-NOT-PRODUCTION
+          path: |
+            qa-dist-universal/SOKNA-Maintenance-Universal-0327-QA-NOT-PRODUCTION.exe
+            qa-dist-universal/BUILD-QA.json
+            qa-dist-universal/SHA256SUMS.txt
+            qa-dist-universal/UNKNOWN-HOST-RESULT.json
+            qa-dist-universal/REAL-0326-TO-0327.json
+          if-no-files-found: warn
+          retention-days: 14
