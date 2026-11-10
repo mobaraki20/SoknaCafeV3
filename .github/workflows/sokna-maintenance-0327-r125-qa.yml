@@ -83,6 +83,7 @@ jobs:
           $reports=@(Get-ChildItem ([Environment]::GetFolderPath('DesktopDirectory')) -Filter 'SOKNA-MAINTENANCE-INSTALL-FAILED-*.json' -ErrorAction SilentlyContinue|Where-Object{$_.FullName-notin$prior})
           if($reports.Count-ne1){throw 'NO_SAFE_FAILURE_REPORT'}
           $r=Get-Content $reports[0].FullName -Raw|ConvertFrom-Json
+          Write-Host ('SAFE_QA_CODE='+[string]$r.safe_code+';SAFE_QA_STAGE='+[string]$r.failed_stage)
           if($r.safe_code-ne'R125_BASELINE_SERVICE_MISSING' -or $r.failed_stage-ne'SERVICE_LAYOUT'){throw 'UNSAFE_HOST_REJECTION_CLASSIFICATION'}
           Copy-Item $reports[0].FullName qa-dist-0327/UNKNOWN-HOST-RESULT.json
           $hash=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
