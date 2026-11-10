@@ -8,8 +8,8 @@
 AppId={{EDDA9110-521F-468D-BC09-0327EC25A171}
 AppName=SOKNA Maintenance R125 Compatibility Fix (QA)
 AppVersion=0.3.27
-VersionInfoVersion=0.3.27.5
-VersionInfoTextVersion=0.3.27.5
+VersionInfoVersion=0.3.27.1
+VersionInfoTextVersion=0.3.27.1
 DefaultDirName={autopf}\SOKNA Windows Services
 CreateAppDir=no
 Uninstallable=no
