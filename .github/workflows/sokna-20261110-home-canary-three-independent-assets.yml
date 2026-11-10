@@ -15,7 +15,7 @@ jobs:
       group: sokna-20261110-home-canary-three-assets
       cancel-in-progress: false
     env:
-      GH_TOKEN: \${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
       GH_REPO: mobaraki20/SoknaCafeV3
       SOKNA_R149B_DISPOSABLE: 'YES'
     steps:
@@ -45,19 +45,19 @@ jobs:
         with:
           name: maintenance-0326-ledger-compat-built-qa-not-for-install
           run-id: 42706765928
-          github-token: \${{ github.token }}
+          github-token: ${{ github.token }}
           path: windows-bin
       - uses: actions/download-artifact@v4
         with:
           name: maintenance-0326-five-real-baselines-verified-qa-only
           run-id: 42791904801
-          github-token: \${{ github.token }}
+          github-token: ${{ github.token }}
           path: evidence/five-baselines
       - uses: actions/download-artifact@v4
         with:
           name: sokna-real-maintenance-inno-exe-native-local-public-cohost-not-production
           run-id: 42791904801
-          github-token: \${{ github.token }}
+          github-token: ${{ github.token }}
           path: evidence/cohost
       - name: Rebuild exact 43-baseline Local and 30-baseline Public from tracked sources
         shell: bash
