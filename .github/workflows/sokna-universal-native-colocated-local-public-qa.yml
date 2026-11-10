@@ -7,6 +7,12 @@ on:
       - qa/sokna-public-two-route/test-two-route.php
       - qa/sokna-public-two-route/build-candidate.py
       - .github/workflows/sokna-universal-native-colocated-local-public-qa.yml
+  pull_request:
+    branches: [qa/sokna-update-safety-20261109]
+    paths:
+      - qa/sokna-r149b/windows-r149b-activation.ps1
+      - qa/sokna-public-two-route/test-two-route.php
+      - .github/workflows/sokna-universal-native-colocated-local-public-qa.yml
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
