@@ -75,6 +75,11 @@ jobs:
           if($reports.Count-ne1){throw 'SAFE_UNKNOWN_HOST_REPORT_MISSING'}
           $r=Get-Content $reports[0].FullName -Raw|ConvertFrom-Json
           Write-Host ('SANITIZED_UNKNOWN_HOST_REPORT='+($r|ConvertTo-Json -Depth 6 -Compress))
+          if($r.safe_code-eq'MAINTENANCE_UNIVERSAL_PROCESS_FAILED'){
+            $diagnosticRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA/setup/install-diagnostics'
+            $logs=@(Get-ChildItem -LiteralPath $diagnosticRoot -Filter 'maintenance-universal-*.log' -ErrorAction SilentlyContinue|Sort-Object LastWriteTime -Descending)
+            if($logs.Count-gt0){Write-Host ('DISPOSABLE_QA_PRIVATE_DIAGNOSTIC='+([IO.File]::ReadAllText($logs[0].FullName)))}
+          }
           if($r.safe_code-ne'MAINTENANCE_SERVICE_NOT_FOUND' -or $r.failed_stage-ne'DETECT_INSTALLED_MAINTENANCE' -or $r.transaction_outcome-ne'NO_MUTATION_ATTEMPTED'){throw 'UNKNOWN_HOST_REPORT_INCORRECT'}
           Copy-Item $reports[0].FullName qa-dist-universal/UNKNOWN-HOST-RESULT.json
       - name: Reproduce real 0.3.26 baseline fixture and pinned recovery
