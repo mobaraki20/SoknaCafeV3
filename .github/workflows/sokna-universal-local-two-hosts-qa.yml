@@ -1,0 +1,55 @@
+name: SOKNA universal Local R112 cafe and R140 home exact same release QA
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths:
+      - qa/sokna-r149b/stage/Program.cs
+      - qa/sokna-r149b/stage/R149BStage.csproj
+      - .github/workflows/sokna-universal-local-two-hosts-qa.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  same-package-two-hosts:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Reconstruct original R140 and final R149B exact target ZIPs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lab=Join-Path $env:RUNNER_TEMP 'sokna-universal-two-hosts'
+          New-Item -ItemType Directory -Force $lab|Out-Null
+          python qa/sokna-r140/exact-ci/reconstruct.py $lab
+          if($LASTEXITCODE-ne0){throw 'SOURCE_ARCHIVE_REBUILD_FAILED'}
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py (Join-Path $lab 'r140.zip') (Join-Path $lab 'qualified-r140.zip')
+          if($LASTEXITCODE-ne0){throw 'R140_APPROVED_REBUILD_FAILED'}
+          python qa/sokna-r149b/build_r149b.py (Join-Path $lab 'qualified-r140.zip') qa/sokna-r149b/overlay.zip $lab
+          if($LASTEXITCODE-ne0){throw 'R149B_CANDIDATE_REBUILD_FAILED'}
+          python qa/sokna-r149b/test-manifest-matrix.py (Join-Path $lab 'qualified-r140.zip') (Join-Path $lab 'r149b-candidate.zip') (Join-Path $lab 'r149b-qualified.zip')
+          if($LASTEXITCODE-ne0){throw 'R149B_PACKAGE_INTEGRITY_FAILED'}
+          $archive=Join-Path $lab 'r149b-qualified.zip'
+          $sha=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha-ne'968e11771ec85c02fe4284498ba8d857d2c740958b9103bc45d6f727e20f04d4'){
+            throw ('FINAL_R149B_IMMUTABLE_SHA_MISMATCH: '+$sha)
+          }
+          "EXACT_PACKAGES=$lab"|Out-File $env:GITHUB_ENV -Append
+          Write-Host ('PASS SAME EXACT RELEASE SHA256='+$sha)
+      - name: Actual 0.3.22 Maintenance verify and stage from both recorded identities
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lab=$env:EXACT_PACKAGES
+          dotnet run --project qa/sokna-r149b/stage/R149BStage.csproj -c Release --no-launch-profile -- (Join-Path $lab 'qualified-r140.zip') (Join-Path $lab 'r149b-candidate.zip') (Join-Path $lab 'r149b-qualified.zip')
+          if($LASTEXITCODE-ne0){throw 'UNIVERSAL_R112_R140_STAGE_MATRIX_FAILED'}
+      - name: QA-only gate never claims Live DB or production activation
+        shell: pwsh
+        run: |
+          $code=Get-Content qa/sokna-r149b/stage/Program.cs -Raw
+          foreach($marker in @('CAFE_R112_EXACT_BASELINE_PRESENT_ON_SAME_ZIP','CAFE_R112_STAGE_NO_DB_OR_ACTIVATION','HOME_R140_AND_CAFE_R112_STAGE_THE_IDENTICAL_TARGET','CAFE_R112_UNRECOGNIZED_SCHEMA_REFUSED_BEFORE_MUTATION')){
+            if(-not$code.Contains($marker)){throw ('MISSING_QA_INVARIANT: '+$marker)}
+          }
+          Write-Host 'PASS QA same package supported baselines; full R112 activation and field install remain NOT_VERIFIED'
