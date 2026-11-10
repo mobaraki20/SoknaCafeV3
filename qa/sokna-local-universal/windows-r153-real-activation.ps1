@@ -37,7 +37,7 @@ Run python @('qa/sokna-local-universal/universal_local_release_contract.py','pre
 Run python @('qa/sokna-local-universal/make_synthetic_stage.py',$contract,(Join-Path $lab 'r149b-qualified.zip'),$lab)
 Need ((Get-FileHash $contract -Algorithm SHA256).Hash.ToLowerInvariant() -eq '4f98e7eb948e78c49b09f4f41299ec7b4c68b562cfac8dbe72e0c827a69ef613') 'SAME_PINNED_R153_UNIVERSAL_SOURCE'
 Expand-Archive (Join-Path $lab 'r153-synthetic-qualified.zip') (Join-Path $lab 'r149b-outer')
-Expand-Archive (Join-Path $lab 'r149b-outer/artifacts/local/web.zip') (Join-Path $lab 'r153-web')
+Expand-Archive (Join-Path $lab 'r149b-outer/artifacts/local/web.zip') (Join-Path $lab 'r149b-web')
 $phpUrl='https://downloads.php.net/~windows/releases/archives/php-8.4.24-Win32-vs17-x64.zip'
 $phpZip=Join-Path $lab 'php-ts.zip'; $phpRoot=Join-Path $lab 'php-ts'
 Invoke-WebRequest $phpUrl -OutFile $phpZip
