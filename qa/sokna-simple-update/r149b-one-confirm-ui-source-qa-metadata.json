@@ -1,0 +1,64 @@
+{
+  "format": "sokna-r149b-small-cafe-one-confirm-source-qa-v1",
+  "scope": "SOURCE_PATCH_QA_ONLY_NOT_FOR_INSTALL",
+  "baseline": "SOKNA-R149B-LOCAL-43BASE-MAINTENANCE-HOME-CANARY-QUALIFIED.zip",
+  "baseline_sha256": "968e11771ec85c02fe4284498ba8d857d2c740958b9103bc45d6f727e20f04d4",
+  "files": [
+    {
+      "path": "public/system/index.php",
+      "sha256_before": "070b392ba47bb151a4a51895d99405fde343f69a4ab8aa58422091d43ff96fc1",
+      "sha256_after": "93c21ad0fa6ca7940d1c35986ac0839cb6e84beb13b549cd8f3c8682c32a4fb0",
+      "bytes_after": 17832
+    },
+    {
+      "path": "public/assets/system-diagnostics.js",
+      "sha256_before": "8cfc4fade3ff5dd843a6bf172163408b3effd693bf6195b25d8f6a070bb533bc",
+      "sha256_after": "96685f9bfb2d8f90dbd03c93559da789d754957358bb800207afbdb4e41f9e5d",
+      "bytes_after": 85513
+    }
+  ],
+  "validation": {
+    "syntax": [
+      {
+        "command": [
+          "node",
+          "--check"
+        ],
+        "exit_code": 0,
+        "output": ""
+      },
+      {
+        "command": [
+          "php",
+          "-l"
+        ],
+        "exit_code": 0,
+        "output": "No syntax errors detected in /mnt/data/sokna_work/local/public/system/index.php"
+      }
+    ],
+    "invariants": {
+      "one_confirmed_local_maintenance_submit": true,
+      "one_confirmed_public_routine_submit": true,
+      "no_replay_on_ambiguous_public_result": true,
+      "fresh_public_probe_required": true,
+      "public_active_tree_readback": true,
+      "local_durable_id_before_disruptive_post": true,
+      "one_click_legacy_upload_when_unblocked": true,
+      "ready_gates_respected": true,
+      "no_cross_component_atomicity_claim": true,
+      "no_new_http_route": true,
+      "one_submit_button_visible": true,
+      "old_manual_continuations_are_fallback": true
+    },
+    "real_windows_install_tested": false,
+    "real_cafe_r125_tested": false,
+    "production_authorized": false
+  },
+  "notes": [
+    "No release-set.json or production installer is included.",
+    "Only two Local Web source files changed.",
+    "Uses existing server-side Preflight/Stage/Activate and native Public Routine.",
+    "Does not automatically download latest release or run a three-component universal update.",
+    "Business DB/files untouched; a deployable release requires original release attestation, complete Windows QA and cafe-state reconciliation."
+  ]
+}
