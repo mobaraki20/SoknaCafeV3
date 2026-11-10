@@ -344,6 +344,29 @@ try {
   }
   JsonSafe (Join-Path $diagnostics 'maintenance-operations-safe.json') ([ordered]@{format='sokna-recent-maintenance-operations-v1';operations=@($recent.ToArray())})
 
+  # Single standard One Support archive: inspect original receipts locally,
+  # emit only a bounded verdict. Never embed raw ledger/proof/base64/DB data.
+  $proofScript=Join-Path $PSScriptRoot 'collect-r125-proof-verdict-v1.ps1'
+  $proofOutput=Join-Path $diagnostics 'r125-proof-verdict-safe.json'
+  $proofCollection='NOT_COLLECTED'
+  if(Test-Path -LiteralPath $proofScript -PathType Leaf){
+    try{
+      & $proofScript -DataRoot $base -LocalRoot $installRoot -OutputFile $proofOutput
+      if(-not(Test-Path -LiteralPath $proofOutput -PathType Leaf)){throw 'R125_PROOF_VERDICT_OUTPUT_MISSING'}
+      $result=ReadSafe $proofOutput 'r125-proof-verdict'
+      if($null-eq$result -or $result.format -ne 'sokna-r125-local-proof-verdict-v1' -or
+         $result.read_only -ne $true -or $result.authorizes_install -ne $false -or
+         $result.authorizes_cleanup -ne $false){throw 'R125_PROOF_VERDICT_CONTRACT_INVALID'}
+      $proofCollection='COLLECTED_FAIL_CLOSED'
+    }catch{
+      $script:errors.Add([ordered]@{source='r125-proof-verdict';reason=(Safe $_.Exception.GetType().Name)})
+      JsonSafe $proofOutput ([ordered]@{format='sokna-r125-local-proof-verdict-v1';read_only=$true;authorizes_install=$false;authorizes_cleanup=$false;collection_status='ERROR_FAIL_CLOSED';operation_ledger=@{status='NOT_PROVEN'};r125=@{lifecycle_clearance='BLOCKED';live_db_ledger='NOT_CHECKED';isolated_db_restore='NOT_CHECKED'}})
+    }
+  }else{
+    $script:errors.Add([ordered]@{source='r125-proof-verdict';reason='COLLECTOR_MODULE_UNAVAILABLE'})
+    JsonSafe $proofOutput ([ordered]@{format='sokna-r125-local-proof-verdict-v1';read_only=$true;authorizes_install=$false;authorizes_cleanup=$false;collection_status='MODULE_UNAVAILABLE_FAIL_CLOSED';operation_ledger=@{status='NOT_PROVEN'};r125=@{lifecycle_clearance='BLOCKED';live_db_ledger='NOT_CHECKED';isolated_db_restore='NOT_CHECKED'}})
+  }
+
   # This historical gap was the reason the operator was asked for two files.
   # Aggregate Windows installer logs do NOT include Maintenance-only attempts.
   $setup=Join-Path $base 'setup'
@@ -392,6 +415,7 @@ try {
     live_database_rows_or_credentials='NEVER_COLLECTED'
     live_database_migration_ledger='NOT_COLLECTED'
     maintenance_component_only_history='COLLECTED_IF_PRESENT'
+    r125_original_receipt_verdict=$proofCollection
     prior_windows_aggregate_support=$(if($oldCollected){'EMBEDDED_IN_SAME_ZIP'}else{'NOT_AVAILABLE'})
     collection_errors=@($script:errors.ToArray())
     note='Support is read-only. Missing evidence is not success.'
