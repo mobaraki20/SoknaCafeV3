@@ -1,0 +1,183 @@
+name: SOKNA publish three independent Home Canary QA assets - no field install
+on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths: ['.github/workflows/sokna-20261110-home-canary-three-independent-assets.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  independently-qualified-home-candidates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: sokna-20261110-home-canary-three-assets
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: \${{ github.token }}
+      GH_REPO: mobaraki20/SoknaCafeV3
+      SOKNA_R149B_DISPOSABLE: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert immutable actual Windows installer QA successes, not field acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,subprocess
+          def get(url):
+              return json.loads(subprocess.check_output(['gh','api',url]))
+          for run_id,exact_jobs in (
+            (42791904801,{'exact-maintenance-inno-local-public','exact-historical-0326-five-baselines'}),
+            (42706765928,{'build-rev3'})
+          ):
+              run=get(f'repos/mobaraki20/SoknaCafeV3/actions/runs/{run_id}')
+              jobs=get(f'repos/mobaraki20/SoknaCafeV3/actions/runs/{run_id}/jobs?per_page=100')['jobs']
+              assert run['head_repository']['full_name']=='mobaraki20/SoknaCafeV3'
+              names={j['name'] for j in jobs if j['conclusion']=='success'}
+              assert exact_jobs<=names,(run_id,exact_jobs-names)
+              if run_id==42791904801:
+                  assert run['status']=='completed' and run['conclusion']=='success'
+          print('PASS PINNED REAL WINDOWS SERVICE AND FIVE BASELINES')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-0326-ledger-compat-built-qa-not-for-install
+          run-id: 42706765928
+          github-token: \${{ github.token }}
+          path: windows-bin
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-0326-five-real-baselines-verified-qa-only
+          run-id: 42791904801
+          github-token: \${{ github.token }}
+          path: evidence/five-baselines
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-real-maintenance-inno-exe-native-local-public-cohost-not-production
+          run-id: 42791904801
+          github-token: \${{ github.token }}
+          path: evidence/cohost
+      - name: Rebuild exact 43-baseline Local and 30-baseline Public from tracked sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/sokna-home-canary-release"
+          mkdir -p "$root" dist
+          python3 qa/sokna-r140/exact-ci/reconstruct.py "$root"
+          python3 qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$root/r140.zip" "$root/qualified-r140.zip"
+          python3 qa/sokna-r149b/build_r149b.py "$root/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$root"
+          python3 qa/sokna-r149b/test-manifest-matrix.py "$root/qualified-r140.zip" "$root/r149b-candidate.zip" "$root/r149b-qualified.zip"
+          python3 qa/sokna-public-two-route/build-candidate.py qa/sokna-public-two-route/r149.zip "$root/r149-public-35hi.zip"
+          cp "$root/r149b-qualified.zip" dist/SOKNA-R149B-LOCAL-43BASE-HOME-CANARY-QA.zip
+          cp "$root/r149-public-35hi.zip" dist/SOKNA-R149-PUBLIC-35HI-OWNER-QA.zip
+          cp "$root/r149b-exact-evidence.json" dist/LOCAL-QA-BUILD-EVIDENCE.json
+          cp "$root/r149-public-35hi.json" dist/PUBLIC-QA-BUILD-EVIDENCE.json
+          cp windows-bin/SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe dist/
+      - name: Verify exact three binaries and all QA scopes before making any release
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,hashlib,json,zipfile
+          d=pathlib.Path('dist')
+          maint=d/'SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe'
+          local=d/'SOKNA-R149B-LOCAL-43BASE-HOME-CANARY-QA.zip'
+          public=d/'SOKNA-R149-PUBLIC-35HI-OWNER-QA.zip'
+          sha=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          expected={
+            maint:'69b524abb727b2066574c17d716ceea6cc49326ce7c4283b02df6871d9998b0b',
+            local:'968e11771ec85c02fe4284498ba8d857d2c740958b9103bc45d6f727e20f04d4',
+            public:'1131d89c98e05c9597f372ed1d480e5637c3ad1969bc8733d2a837b644e57584'
+          }
+          for p,want in expected.items():
+              assert p.is_file() and sha(p)==want,(str(p),sha(p) if p.is_file() else 'missing')
+          with zipfile.ZipFile(local) as z:
+              assert z.testzip() is None
+              lm=json.loads(z.read('release-set.json'))
+              assert lm['release_type']=='local_only' and len(lm['supported_baselines'])==43
+              assert lm['targets']['local']['managed_files']==581
+          with zipfile.ZipFile(public) as z:
+              assert z.testzip() is None
+              pm=json.loads(z.read('manifest.json'))
+              assert len(pm['compatibility']['supported_baselines'])==30
+              assert pm['version']=='3.0.0-g3.6-workspace.35hi-safety-owner-qa'
+              assert pm['provenance']['production_status']=='QA_ONLY_NOT_FOR_PRODUCTION'
+          baselines=json.loads(pathlib.Path('evidence/five-baselines/REAL-SERVICE-QA.json').read_text(encoding='utf-8-sig'))
+          assert len(baselines)==5 and {x['baseline_case'] for x in baselines}=={
+            '0.3.22-preserved011','0.3.22','0.3.23','0.3.24','0.3.25'}
+          assert all(x['installer_sha256']==expected[maint] and
+             x['real_service_upgrade']=='PASS' and x['real_file_lock_rollback']=='PASS' and
+             x['precise_pretransaction_rejection_report']=='PASS' and
+             x['local_public_identity_preserved'] and
+             x['runtime_print_files_preserved'] and not x['production_approved'] for x in baselines)
+          cohost=json.loads(next(pathlib.Path('evidence/cohost').rglob('real-maintenance-cohost.json')).read_text(encoding='utf-8-sig'))
+          assert cohost['installer_sha256']==expected[maint] and
+             cohost['maintenance_real_exe_installed'] and cohost['local_public_test_executed'] and
+             not cohost['production_authorized'] and
+             not cohost['global_three_component_commit_rollback_verified']
+          report={
+              'format':'sokna-home-canary-three-independent-assets-qa-v1',
+              'source_commit':__import__('os').environ['GITHUB_SHA'],
+              'maintenance_build_run':42706765928,
+              'actual_windows_qualification_run':42791904801,
+              'assets':{p.name:{'sha256':sha(p),'bytes':p.stat().st_size} for p in expected},
+              'operator_workflow':'MANUAL_LOCAL_ZIP_AND_UPDATE;SEPARATE_MANUAL_PUBLIC_ZIP_AND_UPDATE',
+              'maintenance_install_verified_on_field':False,
+              'cafe_historical_r125_recovery_resolved':False,
+              'production_authorized':False,
+              'local_home_canary_only':True,
+              'public_emergency_live_verified':False,
+          }
+          (d/'QA-PROVENANCE-AND-BLOCKERS.json').write_text(
+              json.dumps(report,ensure_ascii=False,sort_keys=True,indent=2)+'\n',encoding='utf-8')
+          (d/'SHA256SUMS.txt').write_text(''.join(
+              f'{sha(p)}  {p.name}\n' for p in expected),encoding='utf-8')
+          print('PASS EXACT THREE ASSETS; QA ONLY; NO PRODUCTION APPROVAL')
+          PY
+      - name: Publish one QA prerelease containing THREE SEPARATE update files
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="sokna-home-canary-m0326-local-r149b-public-35hi-20261110"
+          if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "Refuse to overwrite previously published immutable release."
+            exit 1
+          fi
+          cat > notes-fa.md <<'NOTES'
+          # سکنا — سه فایل مستقل؛ فقط پیش‌انتشار آزمایشی ۱۰ نوامبر ۲۰۲۶
+
+          **این بسته‌ها هنوز مجوز نصب روی کافه یا محیط Production ندارند.**
+          این صفحه، نصب‌کنندهٔ سه‌جزئی مشترک نیست؛ هر فایل مستقل است.
+
+          - **Maintenance 0.3.26 (EXE)** — آزمون Windows واقعی با مبناهای 0.3.22/Recovery 0.1.1، 0.3.22، 0.3.23، 0.3.24 و 0.3.25 موفق؛ نصب و بازیابی روی رایانهٔ واقعی خانه یا کافه تأیید نشده.
+          - **Local R149B / 231eb (ZIP)** — ۴۳ مبنای دقیق؛ فقط Home Canary؛ روی مبنای ناشناخته باید بدون تغییر رد شود؛ بک‌آپ و وضعیت R125 کافه هنوز نیازمند تأیید هستند.
+          - **Public R149 / 35hi (ZIP)** — ۳۰ مبنای دقیق؛ اصلاح مالک Emergency در سورس، اما نصب روی Public واقعی، احراز هویت و Emergency زنده هنوز تأیید نشده است.
+
+          **روال کار مورد توافق:** در پنل Local فایل ZIP لوکال را جدا انتخاب و یک بار «به‌روزرسانی» می‌زنید. در پنل Public فایل ZIP پابلیک را جدا انتخاب و یک بار «به‌روزرسانی» می‌زنید. انتخاب خودکار نسخه، کاتالوگ، یا یک دکمهٔ مشترک وجود ندارد. Maintenance فقط پیش‌نیاز اجرایی و مستقل است.
+
+          **هش و منشأ:** فایل SHA256SUMS.txt و QA-PROVENANCE-AND-BLOCKERS.json را ببینید. تگ این صفحه برای توزیع فایل به main متصل است؛ سورس خودکار GitHub با سورس سازندهٔ فایل‌ها برابر نیست. منشأ واقعی دقیقاً در JSON آمده است.
+
+          **موانع:** وضعیت واقعی R125 دیتابیس کافه، تست Public R112 از مسیر HTTP و بازیابی حقیقی دیتابیس کافه هنوز حل‌شده تلقی نمی‌شوند. روی دستگاه کافه اجرا نکنید. این پیش‌انتشار، انتشار Production نیست.
+
+          GitHub Windows QA: https://github.com/mobaraki20/SoknaCafeV3/actions/runs/42791904801
+          NOTES
+          # GitHub's GITHUB_TOKEN may not target a feature-branch commit
+          # while creating tags. Distribution-only tag points to main;
+          # the exact immutable QA source and build SHA are in provenance.
+          gh release create "$tag" \
+            --repo "$GH_REPO" --target main --prerelease --latest=false \
+            --title "SOKNA Home Canary — Maintenance 0.3.26 / Local R149B / Public R149 35hi (QA ONLY)" \
+            --notes-file notes-fa.md \
+            dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe \
+            dist/SOKNA-R149B-LOCAL-43BASE-HOME-CANARY-QA.zip \
+            dist/SOKNA-R149-PUBLIC-35HI-OWNER-QA.zip \
+            dist/SHA256SUMS.txt dist/QA-PROVENANCE-AND-BLOCKERS.json \
+            dist/LOCAL-QA-BUILD-EVIDENCE.json dist/PUBLIC-QA-BUILD-EVIDENCE.json
+          gh api "repos/$GH_REPO/releases/tags/$tag" |
+            jq -e '.draft==false and .prerelease==true and
+              ([.assets[].name]|index("SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe")!=null) and
+              ([.assets[].name]|index("SOKNA-R149B-LOCAL-43BASE-HOME-CANARY-QA.zip")!=null) and
+              ([.assets[].name]|index("SOKNA-R149-PUBLIC-35HI-OWNER-QA.zip")!=null)'
+          echo "PUBLISHED_GITHUB_QA_RELEASE=https://github.com/$GH_REPO/releases/tag/$tag"
