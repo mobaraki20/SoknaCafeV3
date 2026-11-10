@@ -1,0 +1,213 @@
+--- a/VERSION.txt
++++ b/VERSION.txt
+@@ -1 +1 @@
+-3.0.0-g6.2-workspace.231eb-r149-catalog-ui-multibase-uat
++3.0.0-g6.2-workspace.231ec-r152-guest-ux-qa
+--- a/public/assets/scds/guest.css
++++ b/public/assets/scds/guest.css
+@@ -192,3 +192,24 @@
+ html.sg-layer-open{overflow:hidden;scrollbar-gutter:stable}
+ body.sg-layer-scroll-locked{position:fixed;inset-inline:0;top:var(--sg-layer-scroll-y,0px);width:100%;overflow:hidden}
+ body.sg-layer-scroll-locked .sg-modal-card,body.sg-layer-scroll-locked .sg-drawer{touch-action:pan-y}
++
++/* R152 guest UX: preserve small-screen cart readability; never affect staff desktop panels */
++.sg-body .sg-cart-lines,.sg-body .sg-cart-line{min-inline-size:0}
++.sg-action-dock[hidden],.sg-action-dock .sg-waiter[hidden]{display:none!important}
++@media(max-width:560px){.sg-body .sg-drawer-body{padding:10px 12px 16px;gap:10px}}
++/* R152: an attached dock must not leave a full-width blank strip when the cart is empty. */
++.sg-theme-v2.sg-v-action-dock-attached .sg-action-dock:not(:has(.sg-basket:not([hidden]))){inline-size:max-content;max-inline-size:calc(100% - 24px);padding:0;background:transparent;border:0;box-shadow:none}
++
++/* R152: Local guest footer mirrors Public, without changing staff desktop views. */
++.sg-body .sg-menu-tail{inline-size:min(920px,100%);margin:22px auto 0;border:1px solid var(--sg-line);border-radius:20px;background:var(--sg-surface);overflow:hidden}
++.sg-body .sg-menu-tail-main{padding:20px clamp(15px,3vw,25px);display:flex;align-items:center;gap:12px}
++.sg-body .sg-menu-tail-brand{display:flex;align-items:center;gap:12px;min-inline-size:0}
++.sg-body .sg-menu-tail-brand-mark{display:grid;place-items:center;flex:0 0 42px;inline-size:42px;block-size:42px;border-radius:13px;overflow:hidden;background:var(--sg-primary)}
++.sg-body .sg-menu-tail-brand-mark img{inline-size:100%;block-size:100%;object-fit:contain}
++.sg-body .sg-menu-tail-brand-copy{display:grid;gap:3px;min-inline-size:0}
++.sg-body .sg-menu-tail-brand-copy strong{font-size:1rem;color:var(--sg-text)}
++.sg-body .sg-menu-tail-brand-copy span{font-size:.73rem;color:var(--sg-muted)}
++.sg-body .sg-menu-tail-bottom{padding:10px clamp(15px,3vw,25px);border-block-start:1px solid var(--sg-line);display:flex;justify-content:space-between;align-items:center;gap:10px}
++.sg-body .sg-menu-tail .sg-scan-table{margin:0;color:var(--sg-muted);font-size:.72rem}
++.sg-body .sg-menu-tail .sg-menu-back-top{color:var(--sg-primary);font-size:.72rem;text-decoration:none;font-weight:750}
++@media(max-width:560px){.sg-body .sg-menu-tail{margin-block-start:16px;border-radius:17px}.sg-body .sg-menu-tail-main{padding:16px 15px 12px}.sg-body .sg-menu-tail-bottom{padding:8px 15px}.sg-body .sg-menu-tail .sg-scan-table{max-inline-size:62%;font-size:.68rem}}
+--- a/public/assets/scds/guest.js
++++ b/public/assets/scds/guest.js
+@@ -55,6 +55,7 @@
+     changes: root.dataset.changesEndpoint || '',
+     metric: root.dataset.metricEndpoint || '',
+   };
++  const waiterPolicyEnabled = root.dataset.waiterPolicyEnabled === '1';
+   const analyticsEnabled = root.dataset.analyticsEnabled === '1';
+   const metric = (event, meta = {}) => {
+     if (!analyticsEnabled || !endpoints.metric || !event) return;
+@@ -951,7 +952,7 @@
+     if((next?.call_code||'')===(prev?.call_code||'')&&(next?.client_token||'')===(prev?.client_token||'')&&(next?.status||'')===(prev?.status||'')&&(next?.owned??null)===(prev?.owned??null))return;
+     waiterState=next;renderWaiter();startWaiterTracking();
+   });
+-  const renderWaiter=()=>{if(!waiter||!waiterLabel)return;const status=String(waiterState?.status||'none');if(status==='new'){waiterLabel.textContent=waiterSentLabel;waiter.disabled=!endpoints.waiter;}else if(status==='accepted'){waiterLabel.textContent=waiterAcceptedLabel;waiter.disabled=!endpoints.waiter;}else{waiterLabel.textContent='فراخوان گارسون';waiter.disabled=!endpoints.waiter||!waiterPolicyEnabled;}if(waiterConfirm)waiterConfirm.disabled=!unsafeAllowed()||!waiterPolicyEnabled;};
++  const renderWaiter=()=>{if(!waiter||!waiterLabel)return;const status=String(waiterState?.status||'none');const isActive=status==='new'||status==='accepted';waiter.hidden=(!waiterPolicyEnabled||!endpoints.waiter||!unsafeAllowed())&&!isActive;const dock=waiter.closest('.sg-action-dock');if(dock&&!tableToken)dock.hidden=waiter.hidden;if(status==='new'){waiterLabel.textContent=waiterSentLabel;waiter.disabled=!endpoints.waiter;}else if(status==='accepted'){waiterLabel.textContent=waiterAcceptedLabel;waiter.disabled=!endpoints.waiter;}else{waiterLabel.textContent='فراخوان گارسون';waiter.disabled=!endpoints.waiter||!waiterPolicyEnabled;}if(waiterConfirm)waiterConfirm.disabled=!unsafeAllowed()||!waiterPolicyEnabled;};
+   const createWaiter=async(publicTableId=0)=>{const tokenKey=`sokna.guest.pending-waiter.${tableToken||publicTableId}`;const signature=JSON.stringify({table:tableToken,public_table_id:publicTableId,action:'create'});const clientToken=operationToken(tokenKey,signature);const body=apiOk(await postJson(endpoints.waiter,{action:'create',table_token:tableToken,public_table_id:publicTableId,session_token:sessionToken,device_token:deviceToken,client_token:clientToken},15000),'ارسال فراخوان انجام نشد.');const confirmedCode=String(body.call_code||'').trim();if(!confirmedCode)throw new Error('رسید فراخوان کامل دریافت نشد؛ برای جلوگیری از ثبت دوباره، همان درخواست باید بررسی شود.');clearOperationToken(tokenKey);waiterState={call_code:confirmedCode,status:body.status||'new',owned:body.owned!==false,public_table_id:publicTableId,client_token:clientToken};saveWaiter();renderWaiter();toast(body.shared?'گارسون از قبل برای این میز فراخوان شده بود.':'گارسون مطلع شد.');startWaiterTracking();};
+   const cancelWaiter=async()=>{const tracked=waiterState;if(!waiterState?.owned||!waiterState.call_code)return;const body=apiOk(await postJson(endpoints.waiter,{action:'cancel',table_token:tableToken,public_table_id:waiterState.public_table_id||0,session_token:sessionToken,device_token:deviceToken,client_token:waiterState.client_token||'',call_code:waiterState.call_code},10000),'لغو فراخوان انجام نشد.');if(!waiterState||waiterState.call_code!==tracked.call_code||waiterState.client_token!==tracked.client_token)return;if(body.status==='cancelled'){waiterState=null;saveWaiter();renderWaiter();toast('فراخوان لغو شد.');}else if(body.status==='unchanged'){await pollWaiter();toast('فراخوان دیگر قابل لغو نیست یا وضعیت آن تغییر کرده؛ وضعیت تازه بررسی شد.');}};
+   const pollWaiter=async()=>{const tracked=waiterState;if(!tracked?.call_code||!endpoints.waiter)return false;try{const body=apiOk(await postJson(endpoints.waiter,{action:'status',table_token:tableToken,public_table_id:tracked.public_table_id||0,session_token:sessionToken,device_token:deviceToken,client_token:tracked.client_token||'',call_code:tracked.call_code},8000),'');if(!waiterState||waiterState.call_code!==tracked.call_code||waiterState.client_token!==tracked.client_token)return !!waiterState?.call_code;if(['none','done','completed','cancelled'].includes(body.status)){waiterState=null;saveWaiter();renderWaiter();return false;}if(!['new','accepted'].includes(body.status)||(tracked.status==='accepted'&&body.status==='new'))return true;waiterState.status=body.status;waiterState.owned=body.owned??waiterState.owned;saveWaiter();renderWaiter();return true;}catch(_){return true;}};
+--- /dev/null
++++ b/resources/guest-themes/sokna-coastal-clarity/theme.json
+@@ -0,0 +1,63 @@
++{
++  "format": "sokna-guest-theme-v2",
++  "engine_contract": "sokna-guest-theme-engine-v2",
++  "contract_revision": 1,
++  "theme_key": "sokna-coastal-clarity",
++  "name": "سکنا | روشنی ساحل",
++  "version": "2.0.0",
++  "description": "فهرست خوانا با دسته‌بندی خطی، رنگ‌های ساحلی و داک متصل؛ انتخاب این قالب اختیاری است.",
++  "layout": "cards",
++  "media_aspect": "4:3",
++  "composition": [
++    "campaigns",
++    "featured",
++    "catalog",
++    "more"
++  ],
++  "variants": {
++    "header": "brand-forward",
++    "category_nav": "tabs",
++    "catalog": "list",
++    "item_media": "leading",
++    "featured": "grid",
++    "campaigns": "banner",
++    "surfaces": "soft",
++    "density": "airy",
++    "detail": "editorial",
++    "action_dock": "attached",
++    "content_width": "wide",
++    "typography": "large",
++    "motion": "none"
++  },
++  "tokens": {
++    "canvas": "#E9F2EF",
++    "surface": "#FFFCF6",
++    "surface_soft": "#E1EBE7",
++    "text": "#1D2927",
++    "muted": "#52645F",
++    "border": "#C9D9D1",
++    "primary": "#0E6265",
++    "primary_contrast": "#FFFFFF",
++    "accent": "#9B533E",
++    "accent_contrast": "#FFFFFF",
++    "focus": "#0E6265",
++    "ready_bg": "#E7F0EA",
++    "ready_text": "#24533C",
++    "degraded_bg": "#FFF0D7",
++    "degraded_text": "#68440F",
++    "danger": "#A33C35",
++    "danger_contrast": "#FFFFFF",
++    "radius_md": "12px",
++    "radius_lg": "20px"
++  },
++  "editable_tokens": [
++    "canvas",
++    "surface",
++    "surface_soft",
++    "primary",
++    "accent",
++    "focus",
++    "radius_md",
++    "radius_lg"
++  ]
++}
+--- /dev/null
++++ b/resources/guest-themes/sokna-modern/theme.json
+@@ -0,0 +1,63 @@
++{
++  "format": "sokna-guest-theme-v2",
++  "engine_contract": "sokna-guest-theme-engine-v2",
++  "contract_revision": 1,
++  "theme_key": "sokna-modern",
++  "name": "سکنا | امروزی",
++  "version": "2.0.0",
++  "description": "چیدمان کاربردی با زمینه کرمی، دسته‌های سریع و داک شناور؛ انتخاب این قالب اختیاری است.",
++  "layout": "cards",
++  "media_aspect": "4:3",
++  "composition": [
++    "campaigns",
++    "featured",
++    "catalog",
++    "more"
++  ],
++  "variants": {
++    "header": "compact",
++    "category_nav": "pills",
++    "catalog": "cards",
++    "item_media": "leading",
++    "featured": "rail",
++    "campaigns": "cards",
++    "surfaces": "outlined",
++    "density": "comfortable",
++    "detail": "sheet",
++    "action_dock": "floating",
++    "content_width": "standard",
++    "typography": "standard",
++    "motion": "subtle"
++  },
++  "tokens": {
++    "canvas": "#F4F0E8",
++    "surface": "#FFFEFB",
++    "surface_soft": "#EDE7DE",
++    "text": "#242824",
++    "muted": "#5B625D",
++    "border": "#D8D3CB",
++    "primary": "#116A71",
++    "primary_contrast": "#FFFFFF",
++    "accent": "#876957",
++    "accent_contrast": "#FFFFFF",
++    "focus": "#116A71",
++    "ready_bg": "#E7F0EA",
++    "ready_text": "#24533C",
++    "degraded_bg": "#FFF0D7",
++    "degraded_text": "#68440F",
++    "danger": "#A33C35",
++    "danger_contrast": "#FFFFFF",
++    "radius_md": "14px",
++    "radius_lg": "22px"
++  },
++  "editable_tokens": [
++    "canvas",
++    "surface",
++    "surface_soft",
++    "primary",
++    "accent",
++    "focus",
++    "radius_md",
++    "radius_lg"
++  ]
++}
+--- a/src/Domain/GuestLan/GuestLanPageRenderer.php
++++ b/src/Domain/GuestLan/GuestLanPageRenderer.php
+@@ -217,6 +217,7 @@
+             . ' data-status-endpoint="' . self::e($statusEndpoint) . '"'
+             . ' data-context-endpoint="' . self::e($contextEndpoint) . '"'
+             . ' data-waiter-endpoint="' . self::e($waiterEndpoint) . '"'
++            . ' data-waiter-policy-enabled="' . ($waiterUiEligible ? '1' : '0') . '"'
+             . ' data-changes-endpoint="' . self::e($changesEndpoint) . '"'
+             . ' data-metric-endpoint="' . self::e($metricEndpoint) . '"'
+             . ' data-analytics-enabled="' . ($analyticsEnabled ? '1' : '0') . '"'
+@@ -412,7 +413,18 @@
+         foreach($composition as $slot)$html.=(string)($sectionHtml[$slot]??'');
+         if($moreHtml!==''&&!in_array('more',$composition,true))$html.=$moreHtml;
+ 
+-        if($table===null)$html.='<p class="sg-scan-table">'.self::e($this->copy($copy,'scan_table','برای سفارش QR میز را اسکن کنید')).'</p>';
++        // The same close-to-menu footer used by Public; keep any existing Local 'more' content above it.
++        $footerCaption = $table===null
++            ? $this->copy($copy,'scan_table','برای سفارش QR میز را اسکن کنید')
++            : 'از حضورتان در سکنا خوشحالیم.';
++        $html .= '<footer class="sg-menu-tail" aria-label="پایان منو">'
++            . '<div class="sg-menu-tail-main"><div class="sg-menu-tail-brand">'
++            . '<span class="sg-menu-tail-brand-mark"><img src="'.self::e((string)$brand['logo-256']).'" alt="" loading="lazy"></span>'
++            . '<div class="sg-menu-tail-brand-copy"><strong>'.self::e($displayName).'</strong><span>منوی دیجیتال کافه</span></div>'
++            . '</div></div>'
++            . '<div class="sg-menu-tail-bottom"><p class="sg-scan-table">'.self::e($footerCaption).'</p>'
++            . '<a class="sg-menu-back-top" href="#sg-menu-search">بازگشت به بالای منو <span aria-hidden="true">↑</span></a>'
++            . '</div></footer>';
+         $html .= '<div class="sg-no-results" data-sg-no-results hidden>' . self::e($this->copy($copy,'no_results','نتیجه‌ای پیدا نشد.')) . '</div></main>';
+ 
+         if ($orderUiEligible || $waiterUiEligible) $html .= '<div class="sg-action-dock" aria-label="اقدام‌های سریع منو">';
