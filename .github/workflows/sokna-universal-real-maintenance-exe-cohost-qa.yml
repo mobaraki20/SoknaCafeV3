@@ -462,3 +462,78 @@ jobs:
           path: ${{ runner.temp }}/maintenance-only-0326/dist/*
           if-no-files-found: error
           retention-days: 14
+
+  publish-maintenance-independent-prerelease:
+    name: Publish qualified Maintenance-only EXE as GitHub pre-release
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-maintenance-only-prerelease]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: mobaraki20/SoknaCafeV3
+    steps:
+      - name: Verify successful exact independent Windows QA before publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/$GH_REPO/actions/runs/42806860062 > /tmp/sokna-run.json
+          jq -e '.status=="completed" and .conclusion=="success"' /tmp/sokna-run.json
+          gh api repos/$GH_REPO/actions/runs/42806860062/jobs?per_page=100 > /tmp/sokna-jobs.json
+          jq -e '[.jobs[]|select(.name=="Real Windows two-component Maintenance-only Inno" and .conclusion=="success")]|length==1' /tmp/sokna-jobs.json
+          echo "PASS PINNED EXACT WINDOWS SIX BASELINE QA"
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-only-0326-independent-two-exe-qa-not-for-production
+          run-id: 42806860062
+          github-token: ${{ github.token }}
+          path: dist
+      - name: Verify exact EXE bytes and explicit QA blockers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          d=pathlib.Path('dist')
+          p=d/'SOKNA-Maintenance-Only-0326-Independent-R1-QA-NOT-PRODUCTION.exe'
+          assert p.is_file(), 'MISSING_EXE'
+          b=p.read_bytes()
+          assert len(b)==53331660, 'INCORRECT_EXE_SIZE'
+          assert hashlib.sha256(b).hexdigest()=='93981643923860e9d78bb7280be7d6d9f8e960bdbba4ffb9dea166bd59197874', 'INCORRECT_EXE_HASH'
+          proof=json.loads((d/'REAL-SERVICE-QA.json').read_text(encoding='utf-8-sig'))
+          assert len(proof)==6, 'MISSING_SIX_CASES'
+          assert all(x['installer_sha256']==hashlib.sha256(b).hexdigest() and x['real_service_upgrade']=='PASS' and x['real_file_lock_rollback']=='PASS' and x['recovery_hash_unchanged'] and x['historical_local_ledger_preserved'] and x['local_public_identity_preserved'] and x['runtime_print_files_preserved'] and not x['production_approved'] for x in proof), 'UNQUALIFIED_INSTALLER'
+          report=json.loads((d/'BUILD-QA.json').read_text(encoding='utf-8-sig'))
+          assert report['sha256']==hashlib.sha256(b).hexdigest() and not report['production_authorized'] and report['recovery_preserved'], 'BAD_BUILD_REPORT'
+          print('PASS EXACT QA PRE-RELEASE BYTES')
+          PY
+      - name: Publish GitHub pre-release (explicitly NOT production)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='sokna-maintenance-only-0326-independent-r1-qa-20261110'
+          if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "REFUSE_IMMUTABLE_EXISTING_RELEASE"
+            exit 1
+          fi
+          cat > notes-fa.md <<'NOTES'
+          # Maintenance مستقل سکنا — پیش‌انتشار آزمایشی
+
+          **نسخهٔ QA، نه انتشار Production.**
+          فایل EXE فقط Supervisor و Update Engine را به 0.3.26 ارتقا می‌دهد. فایل Recovery قدیمی 0.1.1، سوابق R125، دیتابیس، Local، Public و سرویس چاپ بدون تغییر می‌مانند.
+          این نسخه برخلاف نصب‌کنندهٔ REV4، وابستگی غیرضروری به وضعیت تاریخی Local ندارد؛ عملیات فعال را همچنان مسدود می‌کند.
+          شش سناریوی نصب واقعی Windows، بازگشت فایل‌ها و حفظ تاریخچه آزمایش و موفق ثبت شده‌اند. نصب موفق روی دستگاه کافه هنوز تأیید نشده و مشکل Local R125 همچنان باز است.
+          **پس از نصب Maintenance، تأیید Local و Public همچنان دو مرحلهٔ جداگانه با فایل ZIP انتخابی کاربر است.**
+          SHA-256: 93981643923860e9d78bb7280be7d6d9f8e960bdbba4ffb9dea166bd59197874
+          منبع آزمون: https://github.com/mobaraki20/SoknaCafeV3/actions/runs/42806860062
+          NOTES
+          gh release create "$tag" --repo "$GH_REPO" --target "$GITHUB_SHA" \
+            --prerelease --latest=false \
+            --title 'SOKNA Maintenance Only 0.3.26.5 R1 — QA pre-release' \
+            --notes-file notes-fa.md \
+            dist/SOKNA-Maintenance-Only-0326-Independent-R1-QA-NOT-PRODUCTION.exe \
+            dist/SHA256SUMS.txt dist/BUILD-QA.json dist/REAL-SERVICE-QA.json
+          gh api "repos/$GH_REPO/releases/tags/$tag" | jq -e '.prerelease==true and .draft==false and ([.assets[].name]|index("SOKNA-Maintenance-Only-0326-Independent-R1-QA-NOT-PRODUCTION.exe")!=null)'
+          echo "DIRECT_RELEASE_URL=https://github.com/$GH_REPO/releases/download/$tag/SOKNA-Maintenance-Only-0326-Independent-R1-QA-NOT-PRODUCTION.exe"
