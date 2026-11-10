@@ -1,11 +1,19 @@
 <?php
 declare(strict_types=1);
 // Real native updater + native SQL in disposable MariaDB. No HTTP/auth/stable-owner claim.
-if(getenv('SOKNA_PUBLIC_QA_DISPOSABLE')!=='YES')throw new RuntimeException('DISPOSABLE_ONLY');
+if(getenv('GITHUB_ACTIONS')!=='true' || getenv('SOKNA_PUBLIC_QA_DISPOSABLE')!=='YES')throw new RuntimeException('DISPOSABLE_GITHUB_CI_ONLY');
 function need(bool $ok,string $label):void{if(!$ok)throw new RuntimeException('FAIL '.$label);echo 'PASS '.$label.PHP_EOL;}
+// Support the native Windows Local/MariaDB QA host without changing the Linux baseline.
+// Never accept a remote DB address or a customer database name.
+function qaDsn(?string $name=null):string{
+ $raw=getenv('SOKNA_PUBLIC_QA_DB_PORT');$port=$raw===false?'3306':$raw;
+ if(!preg_match('/^[0-9]{4,5}$/D',$port) || (int)$port<1024 || (int)$port>65535)throw new RuntimeException('DISPOSABLE_DB_PORT_INVALID');
+ return 'mysql:host=127.0.0.1;port='.$port.($name===null?'':';dbname='.$name);
+}
+function qaPass():string{$p=getenv('SOKNA_PUBLIC_QA_DB_PASSWORD');return $p===false?'ci-root-only':$p;}
 function db(string $name):PDO{
  if(!preg_match('/^sokna_public_qa_[a-z0-9_]+$/D',$name))throw new RuntimeException('DB_SCOPE');
- return new PDO('mysql:host=127.0.0.1;port=3306;dbname='.$name,'root','ci-root-only',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+ return new PDO(qaDsn($name),'root',qaPass(),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 }
 function loadNative(string $site):void{
  require_once __DIR__.'/PublicUpdateException.php';
@@ -70,7 +78,7 @@ function ownerFactory(string $site,string $store):array{
 }
 $dir=sys_get_temp_dir().'/sokna-public-two-route-'.bin2hex(random_bytes(4));mkdir($dir,0700,true);
 $dbNames=[];$results=[];
-$server=new PDO('mysql:host=127.0.0.1;port=3306','root','ci-root-only',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+$server=new PDO(qaDsn(),'root',qaPass(),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 try{
  $target=__DIR__.'/candidate.zip';$targetHash=hash_file('sha256',$target);
  need($targetHash==='1131d89c98e05c9597f372ed1d480e5637c3ad1969bc8733d2a837b644e57584','same immutable Public ZIP');
