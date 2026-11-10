@@ -132,8 +132,22 @@ try{
    reject(fn()=>$stale->commitPending(),'stale health refuses commit','emergency_target_health_not_qualified');
    need(is_array($routine->snapshot()['pending_verification']),'stale health retains pending proof');
   }
-  $cmd=escapeshellarg(PHP_BINARY).' '.escapeshellarg(__FILE__).' commit '.implode(' ',array_map('escapeshellarg',[$site,$store,$database,$channel,$targetM['version']]));
-  passthru($cmd,$exit);need($exit===0,'fresh separate PHP process committed '.$case);
+  // PHP proc_open's argv array bypasses cmd.exe; the Windows disposable
+  // Local fixture deliberately has Persian characters and spaces in its path.
+  // Avoid lossy shell codepages and escape/quote ambiguities.
+  $childArgs=[PHP_BINARY,'-c',php_ini_loaded_file()?:'php.ini',__FILE__,'commit',
+   $site,$store,$database,$channel,$targetM['version']];
+  $pipes=[];
+  $child=proc_open($childArgs,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],
+   $pipes,null,null,['bypass_shell'=>true]);
+  if(!is_resource($child))throw new RuntimeException('DIRECT_FRESH_PHP_PROCESS_START_FAILED');
+  fclose($pipes[0]);
+  $stdout=stream_get_contents($pipes[1]);fclose($pipes[1]);
+  $stderr=stream_get_contents($pipes[2]);fclose($pipes[2]);
+  $exit=proc_close($child);
+  echo $stdout;
+  if($stderr!=='')fwrite(STDERR,$stderr);
+  need($exit===0,'fresh separate PHP process committed '.$case);
   [$after,, $targetMigration,$freshPdo]=updater($site,$store,$database);
   need($after->snapshot()['managed_tree_matches_expected']===true&&$after->snapshot()['pending_verification']===null,'durable committed exact target');
   need($targetMigration->pendingVersions()===[]&&(int)$freshPdo->query('SELECT qty FROM qa_business_sentinel WHERE id=1')->fetchColumn()===$qty,'real DB ledger and business sentinel preserved');
