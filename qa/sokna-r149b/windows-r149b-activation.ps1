@@ -31,6 +31,7 @@ Copy-Item (Join-Path $phpRoot 'php.ini-development') (Join-Path $phpRoot 'php.in
 Add-Content (Join-Path $phpRoot 'php.ini') -Value ('extension_dir="' + (P (Join-Path $phpRoot 'ext')) + '"')
 Add-Content (Join-Path $phpRoot 'php.ini') -Value 'extension=pdo_mysql'
 Add-Content (Join-Path $phpRoot 'php.ini') -Value 'extension=mbstring'
+Add-Content (Join-Path $phpRoot 'php.ini') -Value 'extension=zip'
 $phpExe=Join-Path $phpRoot 'php.exe'
 $mdbUrl='https://archive.mariadb.org/mariadb-11.4.7/winx64-packages/'
 $mdbZip=Join-Path $lab 'mariadb.zip'
@@ -242,6 +243,58 @@ PidFile "$ar/logs/httpd.pid"
             $liveQty= & $mysqlExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT qty FROM sokna_r140_exact.ci_upgrade_sentinel WHERE id=1;'
             Need ($LASTEXITCODE -eq 0 -and [string]$liveQty -eq [string]$sentinelQty) 'UPGRADE_OR_RECOVERY_LOST_SENTINEL_DATA'
             $results+=@{source=$sourceName;source_migrations=$sourceCount;target_migrations=[int]$actualCount;package_sha256=$packageHash;engine_sha256=$engineHash;engine_physical_version=$engineVersion;fault=$fault;phase=$state.phase;db_forward=$forward;sentinel_preserved=$true;isolated_restore_verified=($fault -eq 'none');r129_native_evidence_verified=($sourceName-eq'r75' -and $fault-eq'none');exact_installer_engine=([bool]$env:SOKNA_TEST_INSTALLED_ENGINE_EXE);physical_host_tested=$false;status='PASS'}
+            # Run both real native update paths in ONE disposable Windows host:
+            # an already activated Local (Engine + Apache + MariaDB) and Public
+            # Routine/Emergency against separate databases on that same server.
+            # THIS IS NOT a common atomic commit or a real Maintenance EXE upgrade.
+            if($env:SOKNA_NATIVE_COLOCATED_PUBLIC_QA -eq 'YES' -and $fault -eq 'none'){
+                Need ($state.phase -eq 'COMMITTED' -and [int]$actualCount -eq 80) 'LOCAL_MUST_COMMIT_BEFORE_PUBLIC_QA'
+                Need ($packageHash -eq '968e11771ec85c02fe4284498ba8d857d2c740958b9103bc45d6f727e20f04d4') 'LOCAL_IMMUTABLE_PACKAGE_MISMATCH'
+                $publicTarget=Join-Path $repo 'qa/sokna-public-two-route/candidate.zip'
+                Need (Test-Path -LiteralPath $publicTarget -PathType Leaf) 'PUBLIC_QA_CANDIDATE_MISSING'
+                $publicHash=(Get-FileHash -LiteralPath $publicTarget -Algorithm SHA256).Hash.ToLowerInvariant()
+                Need ($publicHash -eq '1131d89c98e05c9597f372ed1d480e5637c3ad1969bc8733d2a837b644e57584') 'PUBLIC_IMMUTABLE_CANDIDATE_MISMATCH'
+                $publicSummary=Join-Path $repo 'qa/sokna-public-two-route/two-route-summary.json'
+                if(Test-Path -LiteralPath $publicSummary){Remove-Item -LiteralPath $publicSummary -Force}
+                $env:SOKNA_PUBLIC_QA_DISPOSABLE='YES'
+                $env:SOKNA_PUBLIC_QA_DB_PORT=[string]$dbPort
+                $env:SOKNA_PUBLIC_QA_DB_PASSWORD=''
+                try{
+                    Run $localPhp @('-c','php.ini',(Join-Path $repo 'qa/sokna-public-two-route/test-two-route.php'))
+                    Need (Test-Path -LiteralPath $publicSummary -PathType Leaf) 'PUBLIC_NATIVE_SUMMARY_MISSING'
+                    $summary=Get-Content -LiteralPath $publicSummary -Raw|ConvertFrom-Json
+                    Need (@($summary.cases).Count -eq 4) 'PUBLIC_ROUTINE_EMERGENCY_MATRIX_INCOMPLETE'
+                    foreach($case in @($summary.cases)){
+                        Need ($case.target_zip_sha256 -ceq $publicHash -and $case.fresh_process_commit -eq $true -and
+                            $case.baseline -in @('r115','r126') -and $case.channel -in @('routine','emergency')) 'PUBLIC_NATIVE_RECEIPT_UNQUALIFIED'
+                    }
+                    Need ($summary.production_authorized -eq $false -and $summary.physical_cafe_verified -eq $false) 'PUBLIC_QA_CLAIMS_FIELD_APPROVAL'
+                    $afterLocalLedger=& $mdbExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r140_exact.schema_migrations;'
+                    Need ($LASTEXITCODE -eq 0 -and [string]$afterLocalLedger -eq '80') 'PUBLIC_NATIVE_TEST_MUTATED_LOCAL_LEDGER'
+                    $afterLocalQty=& $mdbExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT qty FROM sokna_r140_exact.ci_upgrade_sentinel WHERE id=1;'
+                    Need ($LASTEXITCODE -eq 0 -and [string]$afterLocalQty -eq [string]$sentinelQty) 'PUBLIC_NATIVE_TEST_MUTATED_LOCAL_BUSINESS_DATA'
+                    $proof=[ordered]@{
+                        format='sokna-colocated-native-qa-v1';source_local=$sourceName
+                        local_archive_sha256=$packageHash;local_migration_head=80
+                        local_engine_sha256=$engineHash;local_engine_physical_version=$engineVersion
+                        local_apache_service='SoknaApache';local_native_phase=$state.phase
+                        public_archive_sha256=$publicHash;public_native_cases=@($summary.cases)
+                        public_native_case_count=4;local_sentinel_preserved=$true
+                        production_authorized=$false;physical_customer_host_tested=$false
+                        public_r112_exact_source_tested=$false
+                        maintenance_supervisor_recovery_exe_installed=$false
+                        common_three_component_commit_rollback_verified=$false
+                        real_public_http_auth_verified=$false
+                        source_disclosure='r75 is exact R112 76 SQL fingerprint, NOT original R112 web binary'
+                    }
+                    $proof|ConvertTo-Json -Depth 10|Set-Content (Join-Path $artifacts ("native-colocated-"+$sourceName+".json")) -Encoding utf8NoBOM
+                    Write-Host ("PASS NATIVE_LOCAL_PUBLIC_ONE_WINDOWS_HOST SOURCE="+$sourceName+" PUBLIC_CASES=4; THREE_COMPONENT_RELEASE_BLOCKED")
+                }finally{
+                    Remove-Item Env:SOKNA_PUBLIC_QA_DISPOSABLE -ErrorAction SilentlyContinue
+                    Remove-Item Env:SOKNA_PUBLIC_QA_DB_PORT -ErrorAction SilentlyContinue
+                    Remove-Item Env:SOKNA_PUBLIC_QA_DB_PASSWORD -ErrorAction SilentlyContinue
+                }
+            }
             Write-Host "R149B_EXACT_WINDOWS_APACHE_MARIADB_CYCLE_PASS source=$sourceName fault=$fault phase=$($state.phase)"
         } finally {
             if(Get-Service SoknaApache -ErrorAction SilentlyContinue){Stop-Service SoknaApache -ErrorAction SilentlyContinue;& sc.exe delete SoknaApache|Out-Null;Start-Sleep -Milliseconds 500}
