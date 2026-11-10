@@ -33,6 +33,15 @@ $web=$lab.'/r149b-web';
 if(!is_file($web.'/src/Core/Migrations.php'))throw new RuntimeException('R149B_EXACT_WEB_NOT_EXTRACTED');
 require_once $web.'/src/Core/MigrationExecutionException.php';
 require_once $web.'/src/Core/Migrations.php';
+// Exact equivalent of the documented R149B disposable host photo-vault
+// preflight. This creates only a runner-temporary directory and config file.
+$dataDir=$lab.'/r149b-data';
+if(!is_dir($dataDir.'/guest-media') && !mkdir($dataDir.'/guest-media',0700,true) && !is_dir($dataDir.'/guest-media')){
+  throw new RuntimeException('QA_DISPOSABLE_PHOTO_VAULT_UNAVAILABLE');
+}
+$cfg=['app'=>['data_dir'=>$dataDir],'db'=>[
+ 'host'=>'127.0.0.1','port'=>$port,'name'=>'sokna_r140_exact','user'=>'root','pass'=>$pass]];
+file_put_contents($lab.'/config.php','<?php return '.var_export($cfg,true).';');
 function migrate(PDO $db,string $web):array{
   $m=new Sokna\Local\Core\Migrations($db,$web.'/database/migrations');
   must(count($m->catalog())===80,'TARGET_CATALOG_NOT_80');
