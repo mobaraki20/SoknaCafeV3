@@ -4,6 +4,9 @@ on:
     branches: [qa/sokna-r125-ledger-compat-20261110]
     paths:
       - qa/sokna-universal/real-maintenance-exe-cohost.ps1
+      - windows/maintenance/src/Sokna.Maintenance.Core/SupervisorUniversalUpgradeFence.cs
+      - qa/sokna-universal/UniversalOwnerCoreProbe.cs
+      - qa/sokna-universal/UniversalOwnerCoreProbe.csproj
       - qa/sokna-r149b/windows-r149b-activation.ps1
       - qa/sokna-universal/native-forward-fence-qa.py
       - .github/workflows/sokna-universal-real-maintenance-exe-cohost-qa.yml
@@ -11,6 +14,9 @@ on:
     branches: [qa/sokna-update-safety-20261109]
     paths:
       - qa/sokna-universal/real-maintenance-exe-cohost.ps1
+      - windows/maintenance/src/Sokna.Maintenance.Core/SupervisorUniversalUpgradeFence.cs
+      - qa/sokna-universal/UniversalOwnerCoreProbe.cs
+      - qa/sokna-universal/UniversalOwnerCoreProbe.csproj
       - qa/sokna-r149b/windows-r149b-activation.ps1
       - qa/sokna-universal/native-forward-fence-qa.py
       - .github/workflows/sokna-universal-real-maintenance-exe-cohost-qa.yml
@@ -101,6 +107,18 @@ jobs:
           dotnet run --project qa/sokna-universal/NativeGateProbe.csproj -c Release
           if($LASTEXITCODE-ne0){throw 'THREE_COMPONENT_RELEASE_GATE_INCORRECTLY_OPENED'}
           Write-Host 'EXACT MAINTENANCE EXE AND INSTALLED ENGINE COHOST PASS. SHARED ATOMIC COMMIT/ROLLBACK NOT IMPLEMENTED.'
+      - name: Bind physically installed Maintenance operation store to native Local Public receipts and prove no global commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $native=Join-Path $env:RUNNER_TEMP 'sokna-r149b-windows-exact-e2e/artifacts'
+          $maint=Join-Path $env:RUNNER_TEMP 'sokna-native-maintenance-cohost/real-maintenance-cohost.json'
+          dotnet run --project qa/sokna-universal/UniversalOwnerCoreProbe.csproj -c Release -- --real-native-evidence $native $maint
+          if($LASTEXITCODE-ne0){throw 'ACTUAL_SUPERVISOR_OPERATION_LEDGER_UNIVERSAL_OWNER_BINDING_FAILED'}
+          # Guard only; this signed probe does NOT remove the persisted recovery-required blocker.
+          . ./packaging/windows/scripts/maintenance-signed-health-v1.ps1
+          Assert-MaintenanceSignedHealth -ExpectedVersion '0.3.26' -Attempts 10
+          Write-Host 'PASS REAL SUPERVISOR STORE CROSS-PROCESS DB FORWARD FENCE; GLOBAL COMMIT STILL BLOCKED'
       - name: Upload verified QA-only evidence
         if: success()
         uses: actions/upload-artifact@v4
@@ -108,6 +126,7 @@ jobs:
           name: sokna-real-maintenance-inno-exe-native-local-public-cohost-not-production
           path: |
             ${{ runner.temp }}/sokna-native-maintenance-cohost/real-maintenance-cohost.json
+            ${{ runner.temp }}/sokna-native-maintenance-cohost/universal-owner-core-qa.json
             ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/native-colocated-*.json
             ${{ runner.temp }}/sokna-r149b-windows-exact-e2e/artifacts/native-forward-*/forward-fence.json
           if-no-files-found: error
