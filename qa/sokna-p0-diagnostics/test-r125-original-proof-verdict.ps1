@@ -11,6 +11,8 @@ $ops=Join-Path $base 'Maintenance\operations'
 $out=Join-Path $root 'output'
 $report=Join-Path $out 'verdict.json'
 New-Item -ItemType Directory -Path $ops,$out,(Join-Path $local 'lifecycle\local') -Force|Out-Null
+New-Item -ItemType Directory -Path (Join-Path $local 'Web') -Force|Out-Null
+[IO.File]::WriteAllText((Join-Path $local 'Web\VERSION.txt'),'QA-R125-READONLY-ONLY')
 function Need([bool]$ok,[string]$message){if(-not$ok){throw $message}}
 function Save([string]$p,$obj){
  New-Item -ItemType Directory -Path (Split-Path -Parent $p) -Force|Out-Null
