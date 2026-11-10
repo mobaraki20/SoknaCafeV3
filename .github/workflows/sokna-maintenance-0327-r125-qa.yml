@@ -22,6 +22,15 @@ jobs:
           path: old-0326
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
+      - name: Windows PowerShell syntax gate for all three packaged scripts
+        shell: pwsh
+        run: |
+          foreach($p in @('packaging/windows/scripts/invoke-maintenance-independent-0327.ps1','packaging/windows/scripts/invoke-maintenance-independent-logged-0327.ps1','packaging/windows/scripts/prepare-maintenance-independent-0327.ps1')){
+            $t=$null;$errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path $p),[ref]$t,[ref]$errors)|Out-Null
+            if(@($errors).Count-ne0){throw ("0327_POWERSHELL_SYNTAX_FAILED: "+$p)}
+          }
+          Write-Host 'PASS syntax of exact 0327 embedded PowerShell files'
       - name: Reproduce old pinned component binaries and build new pair
         shell: pwsh
         run: |
