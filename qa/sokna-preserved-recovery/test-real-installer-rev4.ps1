@@ -182,6 +182,7 @@ foreach($case in @('0.3.22-preserved011','0.3.22-preserved011-variant','0.3.22',
   }
   $beforeIdentity=Join-Path $install 'identity-before-maintenance-upgrade.json'
   Copy-Item $identity $beforeIdentity
+  $desktop=[Environment]::GetFolderPath('DesktopDirectory')
   # A different retained Recovery hash cannot bypass the stronger
   # physical Supervisor/Engine receipt binding. Reject a forged receipt
   # before any file replacement, while leaving old Recovery intact.
