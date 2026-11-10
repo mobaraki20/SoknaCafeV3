@@ -40,8 +40,10 @@ function Installed([string]$rel){return Join-Path $install $rel}
 function SafeService {
     $svc=Get-CimInstance Win32_Service -Filter "Name='SoknaMaintenanceSupervisor'" -ErrorAction Stop
     Need ($null -ne $svc) 'REAL_MAINTENANCE_SERVICE_NOT_REGISTERED'
-    $want='\"'+(Installed $names[0])+'\"'
-    Need ([string]$svc.PathName -ceq $want -and $svc.State -eq 'Running') 'REAL_MAINTENANCE_SERVICE_NOT_OWNED_OR_RUNNING'
+    $want='"'+(Installed $names[0])+'"'
+    $samePath=[string]::Equals(([string]$svc.PathName),$want,[StringComparison]::OrdinalIgnoreCase)
+    Write-Host ('QA_MAINTENANCE_SERVICE_OBSERVED_STATE='+[string]$svc.State+';path_is_qualified='+[string]$samePath)
+    Need ($samePath -and $svc.State -eq 'Running') 'REAL_MAINTENANCE_SERVICE_NOT_OWNED_OR_RUNNING'
 }
 function AssertSigned([string]$version){
     . ./packaging/windows/scripts/maintenance-signed-health-v1.ps1
@@ -121,6 +123,13 @@ if($Mode -eq 'install'){
     $proc=Start-Process -FilePath $Installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -PassThru
     Need ($proc.WaitForExit(180000)) 'EXACT_INNO_INSTALLER_TIMEOUT'
     Need ($proc.ExitCode -eq 0) ('EXACT_INNO_INSTALLER_FAILED_'+$proc.ExitCode)
+    $rawMarker=Join-Path $data 'setup/maintenance-components-v2/active.json'
+    $phase='ABSENT'
+    if(Test-Path -LiteralPath $rawMarker -PathType Leaf){
+      $operation=Get-Content -LiteralPath $rawMarker -Raw|ConvertFrom-Json
+      $phase=[string]$operation.phase
+    }
+    Write-Host ('QA_EXACT_INNO_EXIT_0_TRANSACTION_PHASE='+$phase)
     $j=CheckTarget $m
     $result=[ordered]@{
         format='sokna-real-maintenance-exe-cohost-qa-v1'
