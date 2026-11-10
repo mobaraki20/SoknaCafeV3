@@ -41,10 +41,9 @@ function migrate(PDO $db,string $web):array{
 if($mode==='inspect'){
  baseline($db);
  $l=legacy($db);
- echo 'QA_SOURCE_LEGACY_NINE_SNAPSHOT='.json_encode($l,JSON_UNESCAPED_UNICODE).PHP_EOL;
- must(count($l)===9,'R112_REPRESENTATIVE_LEGACY_NINE_ABSENT');
- echo "PASS QA_R112_EQUIVALENT_76_SQL_BASELINE_PRESENT\n";
- exit;
+ echo 'QA_SOURCE_LEGACY_FAMILY_SNAPSHOT='.json_encode($l,JSON_UNESCAPED_UNICODE).PHP_EOL;
+ must(val($db,'SELECT COUNT(*) FROM items')>=100,'R112_REPRESENTATIVE_SOURCE_MENU_TOO_SMALL');
+ echo "PASS QA_R112_EQUIVALENT_76_SQL_BASELINE_AND_REAL_MENU_PRESENT\n";exit;
 }
 $pair=[
  ['03','801','802'],['04','803','804'],['05','805','806'],['06','807','808'],
@@ -52,28 +51,41 @@ $pair=[
 ];
 if($mode==='normalize'){
  baseline($db);
+ // Reconstruct exactly the missing/legacy nine family state on a disposable
+ // full 0076 schema, instead of pretending the R75 canonical seed itself
+ // reproduces an actual Café database. Never run this against customer data.
  $db->beginTransaction();
  try{
-   $stmt=$db->prepare("UPDATE item_variant_members m JOIN item_variant_families f ON f.id=m.family_id
-      JOIN items i ON i.id=m.item_id SET m.label=?
-      WHERE f.family_key=? AND i.item_code=?");
+   $get=$db->prepare('SELECT id,category_id,name,price,lifecycle_status FROM items WHERE item_code=?');
+   $delCanonical=$db->prepare('DELETE FROM item_variant_families WHERE family_key=?');
+   $delMember=$db->prepare('DELETE FROM item_variant_members WHERE item_id=?');
+   $getFamily=$db->prepare('SELECT id FROM item_variant_families WHERE family_key=?');
+   $create=$db->prepare('INSERT INTO item_variant_families(family_key,category_id,name,sort_order,featured,active)
+     VALUES(?,?,?,?,0,1)');
+   $add=$db->prepare('INSERT INTO item_variant_members(family_id,item_id,label,sort_order) VALUES(?,?,?,?)');
    foreach($pair as [$suffix,$single,$two]){
      $fam='family-'.$suffix;
-     $stmt->execute(['تک نفره',$fam,$single]);must($stmt->rowCount()<=1,'DUPLICATE_SINGLE_'.$fam);
-     $stmt->execute(['دو نفره',$fam,$two]);must($stmt->rowCount()<=1,'DUPLICATE_TWO_'.$fam);
-     $check=$db->prepare("SELECT COUNT(*) FROM item_variant_members m JOIN item_variant_families f ON f.id=m.family_id
-       JOIN items i ON i.id=m.item_id WHERE f.family_key=? AND i.item_code IN (?,?)");
-     $check->execute([$fam,$single,$two]);
-     must((int)$check->fetchColumn()===2,'PAIR_MISSING_'.$fam);
+     $a=$get->execute([$single]) ? $get->fetch(PDO::FETCH_ASSOC) : false;
+     $b=$get->execute([$two]) ? $get->fetch(PDO::FETCH_ASSOC) : false;
+     must((bool)$a && (bool)$b,'CANONICAL_ITEM_CODE_MISSING_'.$fam);
+     must((int)$a['category_id']===(int)$b['category_id'] && (int)$a['price']>0,'CANONICAL_ITEM_INVALID_'.$fam);
+     $delCanonical->execute(['h297-'.$suffix]);
+     $getFamily->execute([$fam]);$f=$getFamily->fetchColumn();
+     if(!$f){$create->execute([$fam,$a['category_id'],$a['name'],(int)$suffix*10]);$f=$db->lastInsertId();}
+     // Existing R75 canonical membership is not the historical café pattern.
+     $delMember->execute([$a['id']]);$delMember->execute([$b['id']]);
+     $add->execute([$f,$a['id'],'تک نفره',10]);
+     $add->execute([$f,$b['id'],'دو نفره',20]);
    }
    $db->commit();
  }catch(Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
- // A disposable business sentinel. Never use a real customer's records.
+ // A disposable business sentinel, never any real customer records.
  $db->exec("CREATE TABLE IF NOT EXISTS ci_r112_business_sentinel(id INT PRIMARY KEY,qty INT NOT NULL,order_note VARCHAR(128) NOT NULL) ENGINE=InnoDB");
  $db->exec("INSERT INTO ci_r112_business_sentinel(id,qty,order_note) VALUES(1,112,'order-snapshot-preserved')
-   ON DUPLICATE KEY UPDATE qty=112,order_note='order-snapshot-preserved'");
- must(val($db,'SELECT COUNT(*) FROM item_variant_families WHERE family_key BETWEEN \'family-03\' AND \'family-11\'')===9,'LEGACY_NINE_COUNT');
- echo "PASS QA_R112_REPRESENTATIVE_NINE_NORMALIZED_NO_SCHEMA_MUTATION\n";exit;
+    ON DUPLICATE KEY UPDATE qty=112,order_note='order-snapshot-preserved'");
+ must(val($db,"SELECT COUNT(*) FROM item_variant_families WHERE family_key IN
+  ('family-03','family-04','family-05','family-06','family-07','family-08','family-09','family-10','family-11')")===9,'LEGACY_NINE_COUNT');
+ echo "PASS QA_R112_NINE_LEGACY_FAMILIES_ON_DISPOSABLE_76_SQL_BASELINE\n";exit;
 }
 if($mode==='break'){
  baseline($db);
