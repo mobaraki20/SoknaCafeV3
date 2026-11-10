@@ -11,7 +11,7 @@ if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true" ||
 var temp = Path.GetFullPath(Environment.GetEnvironmentVariable("RUNNER_TEMP")!);
 const string localSha = "968e11771ec85c02fe4284498ba8d857d2c740958b9103bc45d6f727e20f04d4";
 const string publicSha = "1131d89c98e05c9597f372ed1d480e5637c3ad1969bc8733d2a837b644e57584";
-const string maintSha = "69b524abb727b2066574c17d716ceea6cc49326e7c4283b02df6871d9998b0b";
+const string maintSha = "69b524abb727b2066574c17d716ceea6cc49326ce7c4283b02df6871d9998b0b";
 static void Need(bool condition, string label)
 {
     if (!condition) throw new InvalidOperationException("FAIL_" + label);
