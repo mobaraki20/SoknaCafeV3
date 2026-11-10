@@ -105,7 +105,7 @@ try{
  Add-Type -AssemblyName System.IO.Compression.FileSystem
  $z=[IO.Compression.ZipFile]::OpenRead($zip.FullName)
  try{
-  $entry=$z.GetEntry('unified/r125-proof-verdict-safe.json')
+  $entry=@($z.Entries|Where-Object{($_.FullName -replace '\','/') -eq 'unified/r125-proof-verdict-safe.json'}|Select-Object -First 1)
   Need ($null-ne$entry) 'ONE_SUPPORT_PROOF_VERDICT_MISSING'
   $stream=$entry.Open();$reader=New-Object IO.StreamReader($stream)
   try{$payload=$reader.ReadToEnd()}finally{$reader.Dispose();$stream.Dispose()}
