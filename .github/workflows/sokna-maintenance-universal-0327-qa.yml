@@ -99,6 +99,13 @@ jobs:
           }
           dotnet publish "old-0326/windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o qa-dist-0327/recovery
           if($LASTEXITCODE-ne0){throw 'RECOVERY_FIXTURE_FAILED'}
+      - name: Verify exact published 0.3.27 component manifest for binary QA
+        shell: pwsh
+        run: |
+          $url='https://github.com/mobaraki20/SoknaCafeV3/releases/download/sokna-maintenance-0327-r125-compat-qa-20261110/COMPONENT-MANIFEST.json'
+          $path=Join-Path $PWD.Path 'qa-dist-0327/COMPONENT-MANIFEST.json'
+          Invoke-WebRequest -Uri $url -OutFile $path -TimeoutSec 180
+          if((Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()-ne'dcc5f7008e3f0e1fe8848a5136926278469a3847ea1f232fc0b2ace8690d86a3'){throw '0327_MANIFEST_PUBLISHED_DIGEST_CHANGED'}
       - name: Real Windows service from 0.3.26 to 0.3.27 with rollback and rerun
         shell: pwsh
         run: |
