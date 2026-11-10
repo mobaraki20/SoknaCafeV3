@@ -111,3 +111,48 @@ jobs:
             qa-dist-universal/REAL-0326-TO-0327.json
           if-no-files-found: warn
           retention-days: 14
+  legacy-0322-real-windows:
+    needs: universal-real-exe-and-0326-upgrade
+    runs-on: windows-latest
+    timeout-minutes: 50
+    permissions: {contents: read, actions: read}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: {ref: b8b1cc4e91772692d92d6f7aa10b0657d2aa5427, path: old-0322-source}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-maintenance-0327-universal-bridge-qa-NOT-PRODUCTION
+          path: qa-dist-universal
+      - uses: actions/download-artifact@v4
+        with:
+          name: exact-recovery-011-643841631
+          run-id: 42688606509
+          github-token: \${{ github.token }}
+          path: exact-011
+      - name: Rebuild original 0.3.22 Windows Supervisor and Engine
+        shell: pwsh
+        run: |
+          $root=Join-Path $env:RUNNER_TEMP 'sokna-original-0322'
+          foreach($n in @('Sokna.Maintenance.Supervisor','Sokna.Maintenance.UpdateEngine')){
+            dotnet publish "old-0322-source/windows/maintenance/src/$n/$n.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $root $n)
+            if($LASTEXITCODE-ne0){throw ('LEGACY_COMPONENT_BUILD_FAILED_'+$n)}
+          }
+          $v=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $root 'Sokna.Maintenance.Supervisor/SoknaMaintenanceSupervisor.exe'))
+          if("$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"-ne'0.3.22.0'){throw 'LEGACY_COMPONENT_WRONG_VERSION'}
+          $rec='exact-011/SoknaMaintenanceRecoveryConsole.exe'
+          if(-not(Test-Path $rec)){throw 'EXACT_011_ARTIFACT_MISSING'}
+          if((Get-FileHash $rec -Algorithm SHA256).Hash.ToLowerInvariant()-ne'368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd'){throw 'EXACT_011_FINGERPRINT_MISMATCH'}
+      - name: Real Windows 0.3.22 preserved Recovery 0.1.1 -> 0.3.27 and replay
+        shell: pwsh
+        run: |
+          & ./qa/sokna-maintenance-universal-0327/test-real-legacy-0322-to-0327.ps1 -Installer (Join-Path $PWD.Path 'qa-dist-universal/SOKNA-Maintenance-Universal-0327-QA-NOT-PRODUCTION.exe') -BaselineRoot (Join-Path $env:RUNNER_TEMP 'sokna-original-0322') -LegacyRecovery011 (Join-Path $PWD.Path 'exact-011/SoknaMaintenanceRecoveryConsole.exe') -Output (Join-Path $PWD.Path 'qa-dist-universal/REAL-0322-TO-0327.json')
+          if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sokna-maintenance-universal-0322-to-0327-real-windows-evidence
+          path: qa-dist-universal/REAL-0322-TO-0327.json
+          if-no-files-found: warn
