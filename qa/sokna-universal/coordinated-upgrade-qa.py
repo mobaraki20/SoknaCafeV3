@@ -79,7 +79,8 @@ def expected(before):
  return {name:sha(p.read_bytes()) for name,p in before.items()}
 
 def fixture(root,profile):
- if root.exists() and any(root.iterdir()):raise Blocked("REFUSE_EXISTING_DISPOSABLE_STATE")
+ if root.exists() and any(p.name!="coordination.lock" for p in root.iterdir()):
+  raise Blocked("REFUSE_EXISTING_DISPOSABLE_STATE")
  root.mkdir(parents=True,exist_ok=True)
  if profile not in ("home","cafe"):raise Blocked("UNKNOWN_HOST_PROFILE")
  old={"maintenance":{"version":"0.3.22","recovery":"0.1.1" if profile=="cafe" else "0.1.3"},
@@ -123,7 +124,7 @@ def prepare(root):
  journal={"format":"sokna-universal-qa-journal-v1","phase":"PREPARED",
   "before_hashes":expected(b),"source":{name:old[name]["version"] for name in COMPONENTS},
   "target":TARGET,"package_sha256":EXACT_PAYLOAD_SHA,
-  "completed":[],"recovery_required":False,"production_approved":False}
+  "completed":[],"after_hashes":{},"recovery_required":False,"production_approved":False}
  jsonwrite(record(root),journal)
  return journal
 
@@ -153,6 +154,18 @@ def apply(root,j,name):
 
 def restore(root,j):
  snapshot_valid(root,j)
+ # Never overwrite unknown changes that occurred after a process crash.
+ # An in-flight intent with an unrecorded mutation must be manually reviewed.
+ for name,p in paths(root).items():
+  current=sha(p.read_bytes()) if p.exists() else ""
+  prior=j["before_hashes"][name]
+  if name=="database":
+   expected=j.get("after_hashes",{}).get(name) if "local" in j["completed"] else prior
+  elif name in j["completed"]:
+   expected=j.get("after_hashes",{}).get(name)
+  else:expected=prior
+  if current!=expected or not expected:
+   raise Blocked("LIVE_STATE_CHANGED_OR_INTENT_NOT_PROVED")
  for name,p in paths(root).items():write(p,snapshots(root)[name].read_bytes())
  for name,p in paths(root).items():
   if sha(p.read_bytes())!=j["before_hashes"][name]:raise Blocked("ROLLBACK_BYTE_PROOF_FAILED")
@@ -188,6 +201,8 @@ def execute(root,fault="none"):
   for name in COMPONENTS:
    j["phase"]=name.upper()+"_INTENT";jsonwrite(record(root),j)
    apply(root,j,name)
+   j["after_hashes"][name]=sha(paths(root)[name].read_bytes())
+   if name=="local":j["after_hashes"]["database"]=sha(paths(root)["database"].read_bytes())
    j["completed"].append(name);j["phase"]=name.upper()+"_DONE";jsonwrite(record(root),j)
    if fault=="crash_after_"+name:
     os._exit(79)  # actual process termination, durable journal retained
