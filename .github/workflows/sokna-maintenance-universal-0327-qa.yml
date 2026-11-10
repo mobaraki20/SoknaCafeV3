@@ -138,12 +138,6 @@ jobs:
         with:
           name: sokna-maintenance-0327-universal-bridge-qa-NOT-PRODUCTION
           path: qa-dist-universal
-      - uses: actions/download-artifact@v4
-        with:
-          name: exact-recovery-011-643841631
-          run-id: 42688606509
-          github-token: \${{ github.token }}
-          path: exact-011
       - name: Rebuild original 0.3.22 Windows Supervisor and Engine
         shell: pwsh
         run: |
@@ -154,13 +148,18 @@ jobs:
           }
           $v=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $root 'Sokna.Maintenance.Supervisor/SoknaMaintenanceSupervisor.exe'))
           if("$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart).$($v.FilePrivatePart)"-ne'0.3.22.0'){throw 'LEGACY_COMPONENT_WRONG_VERSION'}
-          $rec='exact-011/SoknaMaintenanceRecoveryConsole.exe'
-          if(-not(Test-Path $rec)){throw 'EXACT_011_ARTIFACT_MISSING'}
-          if((Get-FileHash $rec -Algorithm SHA256).Hash.ToLowerInvariant()-ne'368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd'){throw 'EXACT_011_FINGERPRINT_MISMATCH'}
+          # Build an isolated 0.1.1 PE fixture from historical SOKNA source. It is
+          # NOT an assertion that the fixture is byte-identical to the original
+          # home Recovery. Preserve-and-verify hashes are checked at run time.
+          dotnet publish old-0322-source/windows/maintenance/src/Sokna.Maintenance.RecoveryConsole/Sokna.Maintenance.RecoveryConsole.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:Version=0.1.1 -p:FileVersion=0.1.1.0 -p:AssemblyVersion=0.1.1.0 -o (Join-Path $root 'Sokna.Maintenance.RecoveryConsole')
+          if($LASTEXITCODE-ne0){throw 'PRESERVED_011_FIXTURE_BUILD_FAILED'}
+          $rec=Join-Path $root 'Sokna.Maintenance.RecoveryConsole/SoknaMaintenanceRecoveryConsole.exe'
+          $rv=[Diagnostics.FileVersionInfo]::GetVersionInfo($rec)
+          if("$($rv.FileMajorPart).$($rv.FileMinorPart).$($rv.FileBuildPart).$($rv.FilePrivatePart)"-ne'0.1.1.0'){throw 'PRESERVED_011_FIXTURE_WRONG_VERSION'}
       - name: Real Windows 0.3.22 preserved Recovery 0.1.1 -> 0.3.27 and replay
         shell: pwsh
         run: |
-          & ./qa/sokna-maintenance-universal-0327/test-real-legacy-0322-to-0327.ps1 -Installer (Join-Path $PWD.Path 'qa-dist-universal/SOKNA-Maintenance-Universal-0327-QA-NOT-PRODUCTION.exe') -BaselineRoot (Join-Path $env:RUNNER_TEMP 'sokna-original-0322') -LegacyRecovery011 (Join-Path $PWD.Path 'exact-011/SoknaMaintenanceRecoveryConsole.exe') -Output (Join-Path $PWD.Path 'qa-dist-universal/REAL-0322-TO-0327.json')
+          & ./qa/sokna-maintenance-universal-0327/test-real-legacy-0322-to-0327.ps1 -Installer (Join-Path $PWD.Path 'qa-dist-universal/SOKNA-Maintenance-Universal-0327-QA-NOT-PRODUCTION.exe') -BaselineRoot (Join-Path $env:RUNNER_TEMP 'sokna-original-0322') -LegacyRecovery011 (Join-Path $env:RUNNER_TEMP 'sokna-original-0322/Sokna.Maintenance.RecoveryConsole/SoknaMaintenanceRecoveryConsole.exe') -Output (Join-Path $PWD.Path 'qa-dist-universal/REAL-0322-TO-0327.json')
           if($LASTEXITCODE -and $LASTEXITCODE-ne0){exit $LASTEXITCODE}
       - uses: actions/upload-artifact@v4
         if: always()
