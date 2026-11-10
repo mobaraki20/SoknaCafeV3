@@ -12,6 +12,8 @@ jobs:
   same-package-two-hosts:
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      SOKNA_R149B_DISPOSABLE: 'YES' # Restricted to RUNNER_TEMP by the builder itself
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
