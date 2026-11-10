@@ -80,6 +80,11 @@ internal static class MaintenanceIdentityVersionProof
         // installation: Recovery is preserved, not installed a third time.
         // Never try to interpret its receipt as a three-component v2 receipt,
         // and never manufacture old receipts to satisfy the R125 archive gate.
+        if (version == "0.3.27")
+        {
+            RequireIndependentPair27(before, install, setup);
+            return;
+        }
         var independentRoot = Path.Combine(setup, "maintenance-independent-pair-v1");
         if (version == "0.3.26" && File.Exists(Path.Combine(independentRoot, "active.json")))
         {
@@ -131,7 +136,7 @@ internal static class MaintenanceIdentityVersionProof
     /// rewrite the R125 rollback proof or any historical operation. Unknown,
     /// incomplete or reparse-point records fail closed.
     /// </summary>
-    private static void RequireIndependentPair(byte[] before, string install, string root, string version)
+    private static void RequireIndependentPair(byte[] before, string install, string root, string version, string? archivedCurrentBinaries = null)
     {
         Need(version == "0.3.26", "R125_IDENTITY_INSTALL_RECEIPT_UNQUALIFIED");
         var marker = Read(Path.Combine(root, "active.json"));
@@ -167,7 +172,9 @@ internal static class MaintenanceIdentityVersionProof
             var rows = installedFiles!.OfType<JsonObject>()
                 .Where(x => x["path"]?.GetValue<string>() == rel).ToArray();
             Need(rows.Length == 1);
-            var p = Path.Combine(install, rel.Replace('/', Path.DirectorySeparatorChar));
+            var p = archivedCurrentBinaries is null
+                ? Path.Combine(install, rel.Replace('/', Path.DirectorySeparatorChar))
+                : Path.Combine(archivedCurrentBinaries, Path.GetFileName(rel));
             Need(File.Exists(p) && (File.GetAttributes(p) & FileAttributes.ReparsePoint) == 0,
                 "R125_IDENTITY_INSTALLED_BINARY_MISMATCH");
             for (var dir = Path.GetDirectoryName(p); dir is not null; dir = Path.GetDirectoryName(dir))
@@ -222,6 +229,92 @@ internal static class MaintenanceIdentityVersionProof
             Need($"{pe.FileMajorPart}.{pe.FileMinorPart}.{pe.FileBuildPart}" == baseline,
                 "R125_IDENTITY_PREIMAGE_MISMATCH");
         }
+    }
+
+
+    // The 0.3.27 two-component hotfix MUST preserve and attest the complete
+    // 0.3.26 independent-install record. There is no "shortcut to settled":
+    // each predecessor receipt remains mandatory and is checked byte-exact.
+    private static void RequireIndependentPair27(byte[] before, string install, string setup)
+    {
+        var root = Path.Combine(setup, "maintenance-independent-pair-027-v1");
+        var marker = Read(Path.Combine(root, "active.json"));
+        var id = marker["id"]?.GetValue<string>() ?? "";
+        Need(marker["format"]?.GetValue<string>() == "sokna-maintenance-independent-transaction-v1" &&
+             marker["phase"]?.GetValue<string>() == "COMMITTED" &&
+             marker["baseline"]?.GetValue<string>() == "0.3.26" &&
+             marker["target"]?.GetValue<string>() == "0.3.27" &&
+             Regex.IsMatch(id, "^[a-f0-9]{32}$"));
+        foreach (var name in new[] { "local_mutated", "public_mutated", "database_mutated", "print_mutated" })
+            Need(marker[name]?.GetValue<bool>() == false);
+        var tx = Path.Combine(root, "tx-" + id);
+        var result = Read(Path.Combine(tx, "result.json"));
+        Need(result["format"]?.GetValue<string>() == "sokna-maintenance-independent-result-v1" &&
+             result["status"]?.GetValue<string>() == "COMMITTED" &&
+             result["supervisor_version"]?.GetValue<string>() == "0.3.27" &&
+             result["engine_version"]?.GetValue<string>() == "0.3.27" &&
+             result["source_version"]?.GetValue<string>() == "0.3.26" &&
+             result["recovery_preserved"]?.GetValue<bool>() == true &&
+             result["archive_reconciled"]?.GetValue<bool>() == false &&
+             result["source_commit"]?.GetValue<string>() ==
+                "59eb342eb3980aa0f02412392dbb9304ae650b9b");
+        foreach (var name in new[] { "local_mutated", "public_mutated", "database_mutated", "print_mutated" })
+            Need(result[name]?.GetValue<bool>() == false);
+        var current = result["files"] as JsonArray;
+        Need(current is not null && current.Count == 2);
+        var names = new [] { "Maintenance/App/SoknaMaintenanceSupervisor.exe",
+                            "Maintenance/App/SoknaMaintenanceUpdateEngine.exe" };
+        var snapshot = Read(Path.Combine(tx, "snapshot.json"));
+        var preimage = Path.Combine(tx, "before", "installed-release-identity.json");
+        _ = Read(preimage);
+        Need(snapshot["format"]?.GetValue<string>() == "sokna-maintenance-independent-snapshot-v1" &&
+             snapshot["identity_sha256"]?.GetValue<string>() == Hash(preimage),
+             "R125_IDENTITY_PREIMAGE_MISMATCH");
+        _ = RequireOnlyVersionChange(before, File.ReadAllBytes(preimage));
+        var preimageNode = Read(preimage);
+        Need(preimageNode["maintenance_supervisor_version"]?.GetValue<string>() == "0.3.26" &&
+             preimageNode["update_engine_version"]?.GetValue<string>() == "0.3.26",
+             "R125_IDENTITY_PREIMAGE_MISMATCH");
+        var priorFiles = snapshot["files"] as JsonArray;
+        Need(priorFiles is not null && priorFiles.Count == 2);
+        foreach (var rel in names)
+        {
+            var rows = current!.OfType<JsonObject>().Where(x => x["path"]?.GetValue<string>() == rel).ToArray();
+            Need(rows.Length == 1);
+            var actual = Path.Combine(install, rel.Replace('/', Path.DirectorySeparatorChar));
+            ReadSafeBinaryForProof(actual);
+            Need(Hash(actual) == rows[0]["sha256"]?.GetValue<string>() &&
+                 new FileInfo(actual).Length == rows[0]["bytes"]?.GetValue<long>(),
+                 "R125_IDENTITY_INSTALLED_BINARY_MISMATCH");
+            var pe = FileVersionInfo.GetVersionInfo(actual);
+            Need($"{pe.FileMajorPart}.{pe.FileMinorPart}.{pe.FileBuildPart}" == "0.3.27",
+                 "R125_IDENTITY_INSTALLED_BINARY_MISMATCH");
+            var oldRows = priorFiles!.OfType<JsonObject>()
+                .Where(x => x["name"]?.GetValue<string>() == rel).ToArray();
+            Need(oldRows.Length == 1);
+            var prior = Path.Combine(tx, "before", Path.GetFileName(rel));
+            ReadSafeBinaryForProof(prior);
+            Need(Hash(prior) == oldRows[0]["sha256"]?.GetValue<string>(),
+                "R125_IDENTITY_PREIMAGE_MISMATCH");
+            var oldPe = FileVersionInfo.GetVersionInfo(prior);
+            Need($"{oldPe.FileMajorPart}.{oldPe.FileMinorPart}.{oldPe.FileBuildPart}" == "0.3.26",
+                 "R125_IDENTITY_PREIMAGE_MISMATCH");
+        }
+        var recovery = Path.Combine(install, "Maintenance", "Recovery",
+                                    "SoknaMaintenanceRecoveryConsole.exe");
+        ReadSafeBinaryForProof(recovery);
+        Need(snapshot["recovery_sha256"]?.GetValue<string>() == Hash(recovery),
+            "R125_IDENTITY_INSTALLED_BINARY_MISMATCH");
+        var recoveryInfo = FileVersionInfo.GetVersionInfo(recovery);
+        Need(result["recovery_console_version"]?.GetValue<string>() ==
+                $"{recoveryInfo.FileMajorPart}.{recoveryInfo.FileMinorPart}.{recoveryInfo.FileBuildPart}",
+            "R125_IDENTITY_INSTALLED_BINARY_MISMATCH");
+
+        // The original 0.3.26 predecessor receipt must still be committed and
+        // its exact binary hashes must match 0.3.27's frozen BEFORE files.
+        RequireIndependentPair(before, install,
+            Path.Combine(setup, "maintenance-independent-pair-v1"),
+            "0.3.26", Path.Combine(tx, "before"));
     }
 
     private static long ReadSafeBinaryForProof(string path)
