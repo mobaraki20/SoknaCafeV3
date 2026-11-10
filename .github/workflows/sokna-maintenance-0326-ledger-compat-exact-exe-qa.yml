@@ -1,5 +1,13 @@
-name: SOKNA Maintenance ledger exact EXE QA - no production
+name: SOKNA Maintenance real Inno 0.3.26 five baselines - QA only
 on:
+  push:
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths:
+      - .github/workflows/sokna-maintenance-0326-ledger-compat-exact-exe-qa.yml
+      - qa/sokna-preserved-recovery/test-real-installer-rev3.ps1
+      - packaging/windows/scripts/invoke-maintenance-install-logged-v1.ps1
+      - packaging/windows/scripts/invoke-maintenance-components-v4.ps1
+      - packaging/windows/installer/SOKNA-Maintenance-0326-Integrated-Rev3-QA.iss
   workflow_dispatch:
 permissions: {contents: read, actions: read}
 jobs:
