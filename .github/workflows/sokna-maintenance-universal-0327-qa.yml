@@ -74,6 +74,7 @@ jobs:
           $reports=@(Get-ChildItem ([Environment]::GetFolderPath('DesktopDirectory')) -Filter 'SOKNA-MAINTENANCE-UNIVERSAL-FAILED-*.json'|Where-Object{$_.FullName-notin$prior})
           if($reports.Count-ne1){throw 'SAFE_UNKNOWN_HOST_REPORT_MISSING'}
           $r=Get-Content $reports[0].FullName -Raw|ConvertFrom-Json
+          Write-Host ('SANITIZED_UNKNOWN_HOST_REPORT='+($r|ConvertTo-Json -Depth 6 -Compress))
           if($r.safe_code-ne'MAINTENANCE_SERVICE_NOT_FOUND' -or $r.failed_stage-ne'DETECT_INSTALLED_MAINTENANCE' -or $r.transaction_outcome-ne'NO_MUTATION_ATTEMPTED'){throw 'UNKNOWN_HOST_REPORT_INCORRECT'}
           Copy-Item $reports[0].FullName qa-dist-universal/UNKNOWN-HOST-RESULT.json
       - name: Reproduce real 0.3.26 baseline fixture and pinned recovery
