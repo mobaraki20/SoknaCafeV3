@@ -150,6 +150,18 @@ public sealed class SupervisorUniversalUpgradeFence
         {
             using var lease = MachineMutationLease.Acquire(_paths, "supervisor-universal-reserve");
             LocalUpdateOperationGate.RequireNoPendingMutation(_operations);
+            // A non-blocking state can still be unsafe after a historical DB
+            // failure or when 'verified'/'staged' lacks original signed receipts.
+            // Do NOT let the new owner bypass the café's R125 recovery ledger.
+            foreach (var historical in _operations.ListAllForUniversalQualification())
+            {
+                if (historical.State is not ("committed" or "rolled_back" or
+                    "recovered" or "cancelled" or "failed_pre_mutation"))
+                    throw new InvalidOperationException("UNIVERSAL_HISTORICAL_LEDGER_NOT_QUALIFIED");
+                if (historical.State != "committed" &&
+                    (historical.DatabaseMutationPerformed || historical.ActivationPerformed))
+                    throw new InvalidOperationException("UNIVERSAL_HISTORICAL_RECOVERY_PROOF_REQUIRED");
+            }
             if (LoadValidated() is not null)
                 throw new InvalidOperationException("UNIVERSAL_PREVIOUS_RESERVATION_REQUIRES_RECONCILIATION");
             RequireSafeFile(_paths.InstalledReleaseIdentityPath);
