@@ -23,7 +23,7 @@ jobs:
       - name: Syntax and exact version routing
         shell: pwsh
         run: |
-          foreach($path in @('packaging/windows/scripts/Get-SoknaMaintenanceUpgradePlan.ps1','packaging/windows/scripts/invoke-maintenance-universal-0327.ps1','qa/sokna-maintenance-universal-0327/test-route.ps1')){
+          foreach($path in @('packaging/windows/scripts/Get-SoknaMaintenanceUpgradePlan.ps1','packaging/windows/scripts/invoke-maintenance-universal-0327.ps1','qa/sokna-maintenance-universal-0327/test-route.ps1','qa/sokna-maintenance-universal-0327/test-real-legacy-0322-to-0327.ps1')){
             $t=$null;$e=$null
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD.Path $path),[ref]$t,[ref]$e)|Out-Null
             if(@($e).Count-ne0){throw ('INVALID_POWERSHELL_'+$path)}
