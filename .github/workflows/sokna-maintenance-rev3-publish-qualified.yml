@@ -1,72 +1,106 @@
-name: SOKNA publish byte-pinned fully qualified Maintenance REV3
+name: SOKNA publish verified independent Maintenance 0.3.26.5 QA prerelease
 on:
   push:
-    branches: [qa/sokna-update-safety-20261109]
-    paths: ['.github/workflows/sokna-maintenance-rev3-publish-qualified.yml']
-permissions: {contents: read, actions: read}
+    branches: [qa/sokna-r125-ledger-compat-20261110]
+    paths: [.github/workflows/sokna-maintenance-rev3-publish-qualified.yml]
+permissions:
+  contents: write
+  actions: read
 jobs:
-  publish-qa-prerelease:
+  publish-independent-qa-prerelease:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions: {contents: write, actions: read}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: mobaraki20/SoknaCafeV3
+      TARGET_TAG: sokna-maintenance-only-0326-independent-qa-20261110
+      EXE_NAME: SOKNA-Maintenance-Only-0326-Independent-R1-QA-NOT-PRODUCTION.exe
+      EXPECTED_SHA: 93981643923860e9d78bb7280be7d6d9f8e960bdbba4ffb9dea166bd59197874
     steps:
-      - name: Require completed exact independent QA jobs
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Confirm exact successful Windows installation qualification
+        shell: bash
         run: |
-          python3 - <<'VERIFY'
-          import subprocess,json
-          for run,expected in [(42688967400,{'build-rev3','exact-installer-engine-live-stack'}),(42690483173,{'real-services-rev3','verify-native-evidence'})]:
-              data=json.loads(subprocess.check_output(['gh','api',f'repos/mobaraki20/SoknaCafeV3/actions/runs/{run}/jobs']))
-              checked={j['name'] for j in data['jobs'] if j['name'] in expected and j['status']=='completed' and j['conclusion']=='success'}
-              assert checked==expected
-          VERIFY
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: maintenance-0326-rev3-built-qa-not-production
-          run-id: 42688967400
-          github-token: ${{ github.token }}
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          name: maintenance-0326-rev3-five-real-baselines-no-field-approval
-          run-id: 42690483173
-          github-token: ${{ github.token }}
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          name: maintenance-0326-rev3-exact011-native-12cycles-three-restores
-          run-id: 42688967400
-          github-token: ${{ github.token }}
-          path: native-evidence
-      - name: Validate exact built and tested bytes
-        run: |
+          set -euo pipefail
           python3 - <<'PY'
-          import json,hashlib,pathlib,os
-          d=pathlib.Path('dist')
-          native=json.loads(next(pathlib.Path('native-evidence').rglob('integrated-r125-native.json')).read_text(encoding='utf-8-sig'))
-          assert native['status']=='PASS' and native['exact_installer_sha256']=='4d6294d6a76128e9982d5ffd42b692e2fbf72b41718c4b66eec3f9d9885483f8' and native['next_core_preflight']
-          assert list(pathlib.Path('native-evidence').rglob('r149b-windows-cycles.json'))
-          build=json.loads((d/'BUILD-QA.json').read_text(encoding='utf-8-sig'))
-          checks=json.loads((d/'REAL-SERVICE-QA.json').read_text(encoding='utf-8-sig'))
-          exe=d/'SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe'
-          sha=hashlib.sha256(exe.read_bytes()).hexdigest()
-          assert sha==build['sha256'] and build['payload_byte_exact']
-          assert build['wrapper_source_commit']=='ac863401ac88210811db57287153c305c8f7f9d5' and sha=='4d6294d6a76128e9982d5ffd42b692e2fbf72b41718c4b66eec3f9d9885483f8'
-          assert len(checks)==5 and all(x['installer_sha256']==sha and x['precise_pretransaction_rejection_report']=='PASS' and x['real_service_upgrade']=='PASS' and x['real_file_lock_rollback']=='PASS' and not x['production_approved'] for x in checks)
-          assert sum(x['preserved_original_011'] and x['baseline_recovery_sha256']=='368ea590a52b895d409d0bbc23926eebd58f512ac73a75dffac8163e5dc682dd' for x in checks)==1
-          assert {x['component_layout'] for x in checks}=={'separate_registered_paths','siblings_absent','legacy_sibling_files'}
+          import json,subprocess
+          repo='mobaraki20/SoknaCafeV3'
+          def get(url):
+              return json.loads(subprocess.check_output(['gh','api',url],text=True))
+          run=get(f'repos/{repo}/actions/runs/42806860062')
+          assert run['status']=='completed' and run['conclusion']=='success','WINDOWS_QA_NOT_SUCCESSFUL'
+          assert run['head_sha']=='928d29b0590fc7f8348b794003f9cc8a4603cc30','UNPINNED_QA_BUILD'
+          jobs=get(f'repos/{repo}/actions/runs/42806860062/jobs?per_page=100')['jobs']
+          match=[j for j in jobs if j['name']=='Real Windows two-component Maintenance-only Inno']
+          assert len(match)==1 and match[0]['conclusion']=='success','INDEPENDENT_QA_JOB_FAILED'
+          print('PASS VERIFIED EXACT WINDOWS QA')
           PY
-      - name: Assemble exact native evidence
-        run: zip -jr dist/NATIVE-EVIDENCE.zip native-evidence
-      - name: Publish immutable QA prerelease in GitHub
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: mobaraki20/SoknaCafeV3
+      - uses: actions/download-artifact@v4
+        with:
+          name: maintenance-only-0326-independent-two-exe-qa-not-for-production
+          run-id: 42806860062
+          github-token: ${{ github.token }}
+          path: dist
+      - name: Verify exact EXE SHA and all six real Windows QA cases
+        shell: bash
         run: |
-          release_tag="maintenance-0326-integrated-rev3-qa-ac863401ac88"
-          if gh release view "$release_tag" >/dev/null 2>&1; then
-            echo 'Refusing to overwrite an existing release.'
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,hashlib,pathlib
+          d=pathlib.Path('dist')
+          exe=d/os.environ['EXE_NAME']
+          assert exe.is_file(),'EXE_MISSING'
+          sha=hashlib.sha256(exe.read_bytes()).hexdigest()
+          assert sha==os.environ['EXPECTED_SHA'],'EXE_SHA_NOT_QUALIFIED'
+          assert exe.stat().st_size==53331660,'EXE_SIZE_DRIFT'
+          build=json.loads((d/'BUILD-QA.json').read_text(encoding='utf-8-sig'))
+          assert build['sha256']==sha and build['size_bytes']==53331660,'BUILD_QA_INVALID'
+          assert build['scope']=='MAINTENANCE_ONLY_SUPERVISOR_AND_ENGINE'
+          assert build['recovery_preserved'] and build['local_public_unchanged']
+          assert not build['real_field_tested'] and not build['production_authorized']
+          cases=json.loads((d/'REAL-SERVICE-QA.json').read_text(encoding='utf-8-sig'))
+          assert len(cases)==6,'INCOMPLETE_WINDOWS_QA'
+          assert {x['baseline_case'] for x in cases}=={
+             '0.3.22-preserved011','0.3.22-preserved011-variant',
+             '0.3.22','0.3.23','0.3.24','0.3.25'},'BASELINE_DRIFT'
+          for x in cases:
+              assert x['installer_sha256']==sha,'UNTESTED_INSTALLER_BYTES'
+              assert x['real_service_upgrade']=='PASS' and x['real_file_lock_rollback']=='PASS'
+              assert x['recovery_hash_unchanged'] and x['historical_local_ledger_preserved']
+              assert x['local_public_identity_preserved'] and x['runtime_print_files_preserved']
+              assert not x['production_approved'] and not x['physical_host_tested']
+          assert (sha+'  '+exe.name) in (d/'SHA256SUMS.txt').read_text(),'CHECKSUM_FILE_DRIFT'
+          print('PASS EXACT INSTALLER SHA256='+sha)
+          print('PASS SIX REAL WINDOWS BASELINES; RECOVERY AND R125 HISTORY UNCHANGED')
+          PY
+      - name: Create GitHub prerelease with direct EXE download asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TARGET_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo 'REFUSE_OVERWRITE_EXISTING_RELEASE'
             exit 1
           fi
-          gh release create "$release_tag" --target "$GITHUB_SHA" --prerelease --latest=false --title 'SOKNA Maintenance 0.3.26 Installer REV3 - QA NOT PRODUCTION' --notes-file qa/sokna-preserved-recovery/RELEASE-NOTES-REV3-FA.md dist/SOKNA-Maintenance-0326-INTEGRATED-QA-REV3-NOT-PRODUCTION.exe dist/SHA256SUMS.txt dist/BUILD-QA.json dist/REAL-SERVICE-QA.json dist/COMPONENT-MANIFEST.json dist/UNKNOWN-HOST-REPORT.json dist/NATIVE-EVIDENCE.zip
+          cat > notes-fa.md <<'NOTES'
+          # سکنا — پیش‌انتشار Maintenance مستقل 0.3.26.5
+
+          نسخهٔ آزمایشی QA؛ هنوز مجوز Production ندارد.
+
+          فایل مستقل فقط Supervisor و Update Engine را ارتقا می‌دهد.
+          Recovery فعلی را حفظ می‌کند و هیچ تغییری در Local، Public،
+          دیتابیس، سرویس چاپ یا سوابق قدیمی R125 ایجاد نمی‌کند.
+
+          آزمون Windows روی شش حالت تاریخی، شامل Recovery 0.1.1
+          با دو هش متفاوت، وضعیت ناشناختهٔ قدیمی و رد عملیات در حال اجرا،
+          با موفقیت انجام شده است. نصب روی دستگاه واقعی کافه هنوز تأیید نشده.
+
+          منشأ و آزمون دقیق:
+          https://github.com/mobaraki20/SoknaCafeV3/actions/runs/42806860062
+
+          نسخهٔ سه‌جزئی REV4 را دوباره اجرا نکنید.
+          SHA256SUMS.txt و گزارش آزمون ضمیمه‌اند.
+          NOTES
+          gh release create "$TARGET_TAG" --repo "$GH_REPO"             --target qa/sokna-r125-ledger-compat-20261110             --title "SOKNA Maintenance 0.3.26.5 - Independent two-component QA prerelease"             --prerelease --latest=false --notes-file notes-fa.md             "dist/$EXE_NAME" dist/SHA256SUMS.txt dist/BUILD-QA.json dist/REAL-SERVICE-QA.json
+          gh release view "$TARGET_TAG" --repo "$GH_REPO" --json url,isPrerelease,assets |
+            jq -e --arg file "$EXE_NAME" '.isPrerelease == true and ([.assets[].name]|index($file)!=null)'
+          echo "PUBLISHED_URL=https://github.com/$GH_REPO/releases/tag/$TARGET_TAG"
