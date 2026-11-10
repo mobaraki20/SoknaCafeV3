@@ -260,6 +260,16 @@ PidFile "$ar/logs/httpd.pid"
                 Need ($publicHash -eq '1131d89c98e05c9597f372ed1d480e5637c3ad1969bc8733d2a837b644e57584') 'PUBLIC_IMMUTABLE_CANDIDATE_MISMATCH'
                 $publicSummary=Join-Path $repo 'qa/sokna-public-two-route/two-route-summary.json'
                 if(Test-Path -LiteralPath $publicSummary){Remove-Item -LiteralPath $publicSummary -Force}
+                # Durable journal starts from the native Engine's COMMITTED
+                # DB-forward receipt and SQL backup already restored in isolated MariaDB.
+                # A later Public failure must never imply database rollback.
+                $fenceRoot=Join-Path $artifacts ("native-forward-"+$sourceName)
+                $nativeState=Join-Path $root 'Maintenance/local-slots/routine-state.json'
+                $verifiedBackup=@($backups | Sort-Object FullName | Select-Object -First 1)[0].FullName
+                $fenceScript=Join-Path $repo 'qa/sokna-universal/native-forward-fence-qa.py'
+                Run python @($fenceScript,'local','--root',$fenceRoot,'--state',$nativeState,
+                    '--backup',$verifiedBackup,'--profile',$sourceName)
+                Need (Test-Path -LiteralPath (Join-Path $fenceRoot 'forward-fence.json')) 'DB_FORWARD_FENCE_MISSING_BEFORE_PUBLIC'
                 $env:SOKNA_PUBLIC_QA_DISPOSABLE='YES'
                 $env:SOKNA_PUBLIC_QA_DB_PORT=[string]$dbPort
                 $env:SOKNA_PUBLIC_QA_DB_PASSWORD=''
@@ -279,6 +289,19 @@ PidFile "$ar/logs/httpd.pid"
                     Need ($LASTEXITCODE -eq 0 -and [string]$afterLocalLedger -eq '80') 'PUBLIC_NATIVE_TEST_MUTATED_LOCAL_LEDGER'
                     $afterLocalQty=& $mdbExe --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT qty FROM sokna_r140_exact.ci_upgrade_sentinel WHERE id=1;'
                     Need ($LASTEXITCODE -eq 0 -and [string]$afterLocalQty -eq [string]$sentinelQty) 'PUBLIC_NATIVE_TEST_MUTATED_LOCAL_BUSINESS_DATA'
+                    # Public evidence does NOT qualify Maintenance or full recovery.
+                    Run python @($fenceScript,'public','--root',$fenceRoot,'--state',$nativeState,
+                        '--backup',$verifiedBackup,'--public-proof',$publicSummary)
+                    $resumeArgs=@($fenceScript,'resume','--root',$fenceRoot,'--state',$nativeState,
+                        '--backup',$verifiedBackup,'--public-proof',$publicSummary)
+                    $blockedText=(& python @resumeArgs | Out-String)
+                    $blockedCode=$LASTEXITCODE
+                    Need ($blockedCode -eq 24 -and $blockedText.Contains('DB_FORWARD_NEEDS_QUALIFIED_THREE_COMPONENT_RECOVERY')) 'DB_FORWARD_CRASH_RESUME_IMPROPERLY_ALLOWED'
+                    $forwardFence=Get-Content (Join-Path $fenceRoot 'forward-fence.json') -Raw|ConvertFrom-Json
+                    Need ($forwardFence.phase -ceq 'PUBLIC_NATIVE_DONE_MAINTENANCE_PENDING' -and
+                        $forwardFence.recovery_required -eq $true -and
+                        $forwardFence.production_authorized -eq $false -and
+                        $forwardFence.global_commit_rollback_verified -eq $false) 'FENCE_DID_NOT_RETAIN_CROSS_COMPONENT_RECOVERY_BLOCKER'
                     $proof=[ordered]@{
                         format='sokna-colocated-native-qa-v1';source_local=$sourceName
                         local_archive_sha256=$packageHash;local_migration_head=80
@@ -286,6 +309,9 @@ PidFile "$ar/logs/httpd.pid"
                         local_apache_service='SoknaApache';local_native_phase=$state.phase
                         public_archive_sha256=$publicHash;public_native_cases=@($summary.cases)
                         public_native_case_count=4;local_sentinel_preserved=$true
+                        database_forward_fence_phase=$forwardFence.phase
+                        database_forward_fence_unresolved=$true
+                        database_forward_fence_sha256=(Get-FileHash (Join-Path $fenceRoot 'forward-fence.json') -Algorithm SHA256).Hash.ToLowerInvariant()
                         production_authorized=$false;physical_customer_host_tested=$false
                         public_r112_exact_source_tested=$false
                         maintenance_supervisor_recovery_exe_installed=$false
