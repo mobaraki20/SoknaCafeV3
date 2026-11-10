@@ -125,9 +125,16 @@ public sealed class SupervisorUniversalUpgradeFence
         var f = LoadValidated();
         var blockers = _operations.ListBlocking();
         if (f is null)
+        {
+            // A forged terminal operation or missing receipt can never make
+            // an earlier universal attempt disappear from the eligibility view.
+            var orphan = _operations.ListAllForUniversalQualification()
+                .Any(static op => op.OperationType == OperationType);
             return new UniversalUpgradeInspection(
-                blockers.Count != 0 ? "UPDATER_OPERATION_BUSY" : "UNIVERSAL_NOT_QUALIFIED",
-                "NONE", true, false, blockers.Count != 0, false);
+                orphan ? "UNIVERSAL_ORPHANED_OWNER_UNQUALIFIED" :
+                    blockers.Count != 0 ? "UPDATER_OPERATION_BUSY" : "UNIVERSAL_NOT_QUALIFIED",
+                "NONE", true, false, orphan || blockers.Count != 0, false);
+        }
         if (blockers.Count != 1 || blockers[0].OperationId != f.OperationId)
             throw new InvalidDataException("UNIVERSAL_CONCURRENT_OPERATION_UNRECONCILED");
         return new UniversalUpgradeInspection(
@@ -155,6 +162,8 @@ public sealed class SupervisorUniversalUpgradeFence
             // Do NOT let the new owner bypass the café's R125 recovery ledger.
             foreach (var historical in _operations.ListAllForUniversalQualification())
             {
+                if (historical.OperationType == OperationType)
+                    throw new InvalidOperationException("UNIVERSAL_ORPHANED_OWNER_REQUIRES_RECONCILIATION");
                 if (historical.State is not ("committed" or "rolled_back" or
                     "recovered" or "cancelled" or "failed_pre_mutation"))
                     throw new InvalidOperationException("UNIVERSAL_HISTORICAL_LEDGER_NOT_QUALIFIED");
