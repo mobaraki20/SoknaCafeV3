@@ -87,6 +87,27 @@ var baseCount=qualified.GetProperty("supported_baselines").EnumerateArray().Coun
     x.GetProperty("local").GetProperty("schema_fingerprint").GetString()==baseline.SchemaFingerprint &&
     x.GetProperty("local").GetProperty("managed_tree_sha256").GetString()==baseline.ManagedTreeSha256);
 Need(baseCount==1,"R140_HOME_BASELINE_UNIQUE");
+
+// A different actual host identity from the 2026-11-09 Café One Support
+// archive must be recognized by this SAME immutable target ZIP. It does not
+// authorize activation of a host with unresolved R125 recovery evidence.
+const string cafeVersion = "3.0.0-g6.2-workspace.231dg-r112-guest-safe-append-uat";
+const string cafeRelease = "sokna-r112-guest-safe-append-uat-20261105";
+const string cafeTree = "04ee10c8315c20b7c046c2fd954589f271934530d4c92d701405a98f938c0770";
+const string cafeSchema = "migration-ledger-sha256-v1:deb5af9ad17f91af67360dd7a89de3b00b84be171675f4fb710ca1dd73e52ed9";
+var legacyRows=qualified.GetProperty("supported_baselines").EnumerateArray()
+    .Where(x=>x.GetProperty("local").GetProperty("version").GetString()==cafeVersion)
+    .ToArray();
+Need(legacyRows.Length==1,"CAFE_R112_EXACT_BASELINE_PRESENT_ON_SAME_ZIP");
+var cafeId=Identity(legacyRows[0].GetProperty("local"));
+Need(cafeId.Version==cafeVersion &&
+     cafeId.ReleaseId==cafeRelease &&
+     cafeId.ManagedTreeSha256==cafeTree &&
+     cafeId.SchemaFingerprint==cafeSchema &&
+     cafeId.MigrationHead=="0076_late_served_accounting" &&
+     cafeId.AuthorityEpochPolicy=="preserved",
+     "CAFE_R112_ARCHIVED_IDENTITY_MATCHES_MANIFEST");
+
 var root=Path.Combine(Path.GetTempPath(),"sokna-r149b-exact-stage-"+Guid.NewGuid().ToString("N"));
 try
 {
@@ -125,6 +146,36 @@ try
     Need(File.Exists(Path.Combine(staged.StageRoot,"stage-receipt.json")),"DURABLE_STAGE_RECEIPT_WRITTEN");
     Need(Sha(File.ReadAllBytes(Path.Combine(staged.StageRoot,"artifacts/local/web.zip")))==qualified.GetProperty("artifacts").GetProperty("local-web").GetProperty("sha256").GetString(),"STAGED_SOURCE_EXACT_PAYLOAD");
     Need(!staged.DatabaseMutationPerformed && !staged.ActivationPerformed,"VERIFY_STAGE_DOES_NOT_MUTATE_LIVE_DB");
+
+// Same exact ZIP and same real 0.3.22 ReleaseSetVerifierStager on the archived
+// R112 identity. This is Verify+Stage only, NOT real R112->R149B activation.
+var cafeRoot=Path.Combine(root,"cafe-r112-isolated");
+var cafePaths=new MaintenancePaths(cafeRoot);
+Directory.CreateDirectory(cafePaths.InboxRoot);
+var qualifiedBytes=File.ReadAllBytes(args[2]);
+var cafeCandidate=Path.Combine(cafePaths.InboxRoot,Sha(qualifiedBytes)+".zip");
+File.WriteAllBytes(cafeCandidate,qualifiedBytes);
+var cafeVerifier=new ReleaseSetVerifierStager(cafePaths);
+var cafeVerified=cafeVerifier.VerifyOnly(cafeCandidate,Installed(cafeId));
+Need(cafeVerified.ArtifactIntegrityVerified && cafeVerified.ExactBaselineVerified==true && cafeVerified.OperatorAuthorized,
+    "CAFE_R112_VERIFY_ONLY_EXACT_PACKAGE_ON_0322");
+var cafeStaged=cafeVerifier.VerifyAndStage(cafeCandidate,Installed(cafeId));
+Need(cafeStaged.ArtifactIntegrityVerified && cafeStaged.OperatorAuthorized &&
+     !cafeStaged.ActivationPerformed && !cafeStaged.DatabaseMutationPerformed,
+     "CAFE_R112_STAGE_NO_DB_OR_ACTIVATION");
+Need(File.Exists(Path.Combine(cafeStaged.StageRoot,"stage-receipt.json")),
+    "CAFE_R112_DURABLE_STAGE_RECEIPT");
+Need(Sha(File.ReadAllBytes(Path.Combine(cafeStaged.StageRoot,"artifacts/local/web.zip"))) ==
+     qualified.GetProperty("artifacts").GetProperty("local-web").GetProperty("sha256").GetString(),
+    "HOME_R140_AND_CAFE_R112_STAGE_THE_IDENTICAL_TARGET");
+var badCafe=new ReleaseComponentIdentity(cafeId.ReleaseId,cafeId.Version,cafeId.ManagedTreeSha256,
+    "migration-ledger-sha256-v1:"+new string('0',64),cafeId.MigrationHead,cafeId.AuthorityEpochPolicy);
+var changedSchemaRefused=false;
+try{cafeVerifier.VerifyOnly(cafeCandidate,Installed(badCafe));}
+catch(InvalidDataException){changedSchemaRefused=true;}
+Need(changedSchemaRefused,"CAFE_R112_UNRECOGNIZED_SCHEMA_REFUSED_BEFORE_MUTATION");
+Console.WriteLine("PASS identical SHA R149B verified and staged for actual recorded R112 and known R140 identities; R125 proof and live DB still NOT tested");
+
     Console.WriteLine("SOKNA_R149B_EXACT_WINDOWS_MAINTENANCE_0322_QUALIFIED_STAGE_PASS");
 }
 finally{try{Directory.Delete(root,true);}catch{}}
