@@ -1,0 +1,117 @@
+name: SOKNA R160 actual catalog viewport and guest visual isolated cumulative CI
+on:
+  push:
+    branches: [qa/sokna-r160-catalog-viewport-guest-visual-20261111]
+    paths:
+      - 'qa/sokna-r160-catalog/**'
+      - '.github/workflows/sokna-r160-catalog.yml'
+permissions:
+  contents: write
+jobs:
+  exact-source-public-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, gd, zip
+      - name: Retrieve only genuine published R159 parents
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r160-parents" "$RUNNER_TEMP/r160"
+          gh release download sokna-r159-scroll-dialog-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R159-LOCAL-231EJ-CAFE-47BASE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/r160-parents"
+          gh release download sokna-r159-scroll-dialog-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R158-PUBLIC-35HO-FROM-35HL-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/r160-parents"
+          echo "2b5335bbc0bd654d9dbab34bb385d0bed34aef61e64dacd875eab208a785aa1f  $RUNNER_TEMP/r160-parents/SOKNA-R159-LOCAL-231EJ-CAFE-47BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "53864de2306dc25104b29fe18cb416d67ac680e298076b3ebed125131d10ecac  $RUNNER_TEMP/r160-parents/SOKNA-R158-PUBLIC-35HO-FROM-35HL-PANEL-UPDATE.zip" | sha256sum -c -
+      - name: Build pinned R160 Local and four Public bridges and validate exact ZIP digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r160-catalog/build_r160.py \
+            --local-r159 "$RUNNER_TEMP/r160-parents/SOKNA-R159-LOCAL-231EJ-CAFE-47BASE-PANEL-UPDATE.zip" \
+            --public-r158 "$RUNNER_TEMP/r160-parents/SOKNA-R158-PUBLIC-35HO-FROM-35HL-PANEL-UPDATE.zip" \
+            --local-patch qa/sokna-r160-catalog/R159-TO-R160-local.patch.gz.b64 \
+            --public-patch qa/sokna-r160-catalog/R159-TO-R160-public.patch.gz.b64 \
+            --outdir "$RUNNER_TEMP/r160"
+          echo "7df605c1bc3642176406b90008329a6d3d4986e589bf28e8787a30074d26f73a  $RUNNER_TEMP/r160/SOKNA-R160-LOCAL-231EK-CAFE-48BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "9f5cd66f6fab8f519d09dbf46199d486dab6936f99f4207de02f5ce920c1d96f  $RUNNER_TEMP/r160/SOKNA-R159-PUBLIC-35HP-FROM-35HL-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "1e630479cb1b68ed7ac85fc311ffa3ffba96291b7e4f15ac4baf5eb8552e9583  $RUNNER_TEMP/r160/SOKNA-R159-PUBLIC-35HP-FROM-35HK-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "5bccd22fe80aece5d489e45000757885a2d8e348df84a8ea6a11d46dea20a640  $RUNNER_TEMP/r160/SOKNA-R159-PUBLIC-35HP-FROM-35HN-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "6ebccb3dc235ea16bcff87da5f754d8589afc0284ca283f683423df547f350d4  $RUNNER_TEMP/r160/SOKNA-R159-PUBLIC-35HP-FROM-35HO-PANEL-UPDATE.zip" | sha256sum -c -
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$RUNNER_TEMP/r160/SOKNA-R160-LOCAL-231EK-CAFE-48BASE-PANEL-UPDATE.zip"
+          mkdir -p "$RUNNER_TEMP/r160-local" "$RUNNER_TEMP/r158-public" "$RUNNER_TEMP/r158-public-outer"
+          unzip -p "$RUNNER_TEMP/r160/SOKNA-R160-LOCAL-231EK-CAFE-48BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/r160-local-web.zip"
+          unzip -q "$RUNNER_TEMP/r160-local-web.zip" -d "$RUNNER_TEMP/r160-local"
+          unzip -q "$RUNNER_TEMP/r160-parents/SOKNA-R158-PUBLIC-35HO-FROM-35HL-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/r158-public-outer"
+          cp -a "$RUNNER_TEMP/r158-public-outer/payload/." "$RUNNER_TEMP/r158-public/"
+          echo "R160_OUT=$RUNNER_TEMP/r160" >> "$GITHUB_ENV"
+          echo "R160_LOCAL=$RUNNER_TEMP/r160-local" >> "$GITHUB_ENV"
+          echo "R158_PUBLIC=$RUNNER_TEMP/r158-public" >> "$GITHUB_ENV"
+      - name: PHP and JavaScript syntax; 35HL 35HK 35HN 35HO exact Public preflight and true receiver
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$R160_LOCAL" -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+          find "$R160_LOCAL" -name '*.js' -print0 | xargs -0 -n1 node --check > /dev/null
+          find "$R158_PUBLIC" -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+          php -l qa/sokna-r160-catalog/test_public_preflight.php
+          php qa/sokna-r160-catalog/test_public_preflight.php \
+            "$R160_OUT/SOKNA-R159-PUBLIC-35HP-FROM-35HL-PANEL-UPDATE.zip" \
+            "$R160_OUT/SOKNA-R159-PUBLIC-35HP-FROM-35HK-PANEL-UPDATE.zip" \
+            "$R160_OUT/SOKNA-R159-PUBLIC-35HP-FROM-35HN-PANEL-UPDATE.zip" \
+            "$R160_OUT/SOKNA-R159-PUBLIC-35HP-FROM-35HO-PANEL-UPDATE.zip" \
+            "$R160_LOCAL" "$R158_PUBLIC"
+      - name: Upload exactly verified package artifacts for native Windows gate
+        uses: actions/upload-artifact@v4
+        with:
+          name: r160-exact-source-candidates
+          path: |
+            ${{ runner.temp }}/r160/*.zip
+            ${{ runner.temp }}/r160/*.json
+          if-no-files-found: error
+          retention-days: 14
+  native-windows-prerelease:
+    needs: exact-source-public-preflight
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r160-exact-source-candidates
+          path: r160-out
+      - name: Native 48 baseline VerifyOnly and Stage R153 R112 R155 R158 R159 on disposable Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $package=(Get-ChildItem r160-out -Recurse -Filter 'SOKNA-R160-LOCAL-231EK-CAFE-48BASE-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if(-not $package){throw 'R160_LOCAL_PACKAGE_NOT_FOUND'}
+          dotnet run --project qa/sokna-r160-catalog/R160Stage.csproj -c Release --no-launch-profile -- $package
+          if($LASTEXITCODE-ne0){throw 'R160_NATIVE_WINDOWS_STAGE_FAILED'}
+      - name: Publish prerelease only after both isolated jobs pass
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $files=Get-ChildItem r160-out -Recurse -File | Where-Object {$_.Name -like 'SOKNA-R160-*.zip' -or $_.Name -like 'SOKNA-R159-PUBLIC-*.zip' -or $_.Name -eq 'R160-PACKAGE-IDENTITY.json'}
+          if($files.Count -ne 6){throw "R160_EXPECTED_SIX_ASSETS_GOT_$($files.Count)"}
+          $notes=Join-Path $env:RUNNER_TEMP 'R160-RELEASE-NOTES.md'
+          @'
+          # SOKNA R160 Local 231ek + R159 Public 35hp — isolated UAT
+          Fix catalog editor modal scroll lock / row-viewport loss for direct photo edit, quick edit, full edit, cancel and nested media. Prior R159 real-DOM regression was 2/10; candidate R160 real-DOM regression was 10/10 (2 viewport widths). Public and Local guest cards: image corner masking, featured picture containment and shorter default badge. Preserve all other pinned files from published R159 / Public 35HO parents.
+          Exact 48 Local baseline staged checks, four Public exact 35HL/35HK/35HN/35HO bridge packages. No database migration changed. This is PRE-RELEASE UAT, NOT confirmation of Firefox production behavior or host installation, not verification of all historical 130 chat entries. A recoverable backup and successful exact baseline preflight are mandatory before any field mutation. main and CURRENT are unchanged.
+          '@ | Set-Content $notes -Encoding utf8NoBOM
+          $tag='sokna-r160-catalog-viewport-guest-visual-uat-20261111'
+          $args=@('release','create',$tag,'--repo','mobaraki20/SoknaCafeV3','--title','SOKNA R160 catalog viewport + R159 guest visual isolated UAT','--prerelease','--notes-file',$notes,'--target',$env:GITHUB_SHA)
+          foreach($f in $files){$args+=@($f.FullName)}
+          & gh @args
+          if($LASTEXITCODE-ne0){throw 'R160_RELEASE_FAILED'}
