@@ -59,6 +59,9 @@ jobs:
           unzip -q "$RUNNER_TEMP/r162-local-web.zip" -d "$RUNNER_TEMP/r162-local"
           unzip -q "$RUNNER_TEMP/r162/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/public-package"
           cp -a "$RUNNER_TEMP/public-package/payload/." "$RUNNER_TEMP/r162-public/"
+          mkdir -p "$RUNNER_TEMP/r159-public-outer" "$RUNNER_TEMP/r159-public"
+          unzip -q "$RUNNER_TEMP/parents/SOKNA-R159-PUBLIC-35HP-FROM-35HO-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/r159-public-outer"
+          cp -a "$RUNNER_TEMP/r159-public-outer/payload/." "$RUNNER_TEMP/r159-public/"
           echo "R162_DIR=$RUNNER_TEMP/r162" >> "$GITHUB_ENV"
           echo "R162_LOCAL=$RUNNER_TEMP/r162-local" >> "$GITHUB_ENV"
           echo "R162_PUBLIC=$RUNNER_TEMP/r162-public" >> "$GITHUB_ENV"
@@ -74,7 +77,7 @@ jobs:
             "$R162_DIR/SOKNA-R160-PUBLIC-35HR-FROM-35HN-PANEL-UPDATE.zip" \
             "$R162_DIR/SOKNA-R160-PUBLIC-35HR-FROM-35HO-PANEL-UPDATE.zip" \
             "$R162_DIR/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" \
-            "$R162_LOCAL" "$RUNNER_TEMP/r162-public"
+            "$R162_LOCAL" "$RUNNER_TEMP/r159-public"
           # The Public bootstrap must require all destructive-route dependencies.
           grep -q "src/Maintenance/GoLiveResetEngine.php" "$R162_PUBLIC/bootstrap.php"
           grep -q "src/Http/GoLiveResetHttpAdapter.php" "$R162_PUBLIC/bootstrap.php"
