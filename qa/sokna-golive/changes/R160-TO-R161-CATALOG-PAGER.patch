@@ -1,0 +1,98 @@
+--- a/public/catalog/index.php
++++ b/public/catalog/index.php
+@@ -37,11 +37,11 @@
+       <div class="sc-catalog-filterbar__result"><strong data-item-result-count>۰ نتیجه</strong><button class="sc-button sc-button--secondary" type="button" data-clear-item-filters>پاک‌کردن فیلتر</button></div>
+     </div>
+     <div class="sc-catalog-bulk" data-item-bulk hidden><strong><span data-bulk-count>۰</span> آیتم انتخاب شده</strong><select class="sc-control" data-bulk-field aria-label="عملیات گروهی"><option value="available:1">موجود کن</option><option value="available:0">ناموجود کن</option><option value="guest_visible:1">نمایش مهمان</option><option value="guest_visible:0">مخفی از مهمان</option><option value="staff_visible:1">نمایش کارکنان</option><option value="staff_visible:0">مخفی از کارکنان</option><option value="featured:1">ویژه کن</option><option value="featured:0">ویژه را بردار</option></select><button class="sc-button" type="button" data-bulk-apply>اعمال</button><button class="sc-button sc-button--secondary" type="button" data-bulk-clear>لغو انتخاب</button></div>
+     <p class="sc-hint" data-item-reorder-hint hidden>برای تغییر ترتیب، یک دسته مشخص انتخاب کن و فیلترهای دیگر را خالی بگذار؛ سپس ردیف‌ها را بکش یا از دکمه‌های بالا/پایین استفاده کن.</p>
+     <div class="sc-table-wrap sc-data-panel__table"><table class="sc-table sc-table--responsive"><thead><tr><th><span class="sc-visually-hidden">انتخاب</span><input type="checkbox" data-select-all-items aria-label="انتخاب همه آیتم‌های همین صفحه"></th><th>آیتم</th><th>دسته / نوع</th><th>قیمت</th><th>وضعیت</th><th>منوها</th><th><span class="sc-visually-hidden">عملیات</span></th></tr></thead><tbody data-items></tbody></table></div>
+-    <nav class="sc-data-pager" data-item-pager aria-label="صفحه‌بندی آیتم‌ها" hidden><button class="sc-button sc-button--secondary" type="button" data-item-page-prev>صفحه قبل</button><span data-item-page-label></span><button class="sc-button sc-button--secondary" type="button" data-item-page-next>صفحه بعد</button></nav>
++    <nav class="sc-data-pager" data-item-pager aria-label="صفحه‌بندی آیتم‌ها" hidden><button class="sc-button sc-button--secondary" type="button" data-item-page-prev>صفحه قبل</button><span data-item-page-label></span><span class="sc-data-pager__numbers" data-item-page-numbers role="group" aria-label="انتخاب شماره صفحه"></span><button class="sc-button sc-button--secondary" type="button" data-item-page-next>صفحه بعد</button></nav>
+   </section>
+ 
+   <section class="sc-work-panel sc-data-panel" data-panel="archive" hidden>
+     <div class="sc-section-head"><div><h2>آرشیو کاتالوگ</h2><p>آرشیو به‌معنای حذف کامل نیست؛ سابقه آیتم حفظ می‌شود و بازگردانی آن به حالت غیرفعال و مخفی انجام می‌شود.</p></div></div>
+     <div class="sc-catalog-filterbar sc-catalog-filterbar--compact"><label class="sc-field sc-catalog-search"><span class="sc-field__label">جستجو در آرشیو</span><input class="sc-control" type="search" data-archive-search placeholder="نام یا کد…"></label><div class="sc-catalog-filterbar__result"><strong data-archive-result-count>۰ نتیجه</strong></div></div>
+--- a/public/assets/catalog-workspace.js
++++ b/public/assets/catalog-workspace.js
+@@ -245,11 +245,45 @@
+ function itemIdentityCell(tr,i){const td=document.createElement('td');td.dataset.label='آیتم';const wrap=el('div','sc-catalog-identity');const key=mediaKey(i.image_path);let visual;if(key){const img=document.createElement('img');img.src=imageUrl(key);img.alt='';img.loading='lazy';img.addEventListener('error',()=>{if(!img.isConnected)return;img.replaceWith(el('span','sc-catalog-media-placeholder',String(i.name||'؟').trim().slice(0,1)||'؟'))},{once:true});visual=img}else visual=el('span','sc-catalog-media-placeholder',String(i.name||'؟').trim().slice(0,1)||'؟');wrap.append(mediaTrigger('item',i,key,visual));const text=el('div');text.append(el('strong','',i.name),el('small','',[(i.item_code?(L.humanDigits?L.humanDigits(i.item_code):i.item_code):''),(i.tag_ids||[]).map(tagName).join('، ')].filter(Boolean).join(' · ')));wrap.append(text);td.append(wrap);tr.append(td)}
+ function renderMenus(){const body=$('[data-menus]');body.replaceChildren();const rows=filteredMenus();setResult('[data-menu-result-count]',rows.length,snap.menus.length);if(!rows.length){tableEmpty(body,5,snap.menus.length?'منویی با این فیلتر پیدا نشد.':'هنوز منویی ثبت نشده است.');return}for(const m of rows){const tr=document.createElement('tr');tr.dataset.searchTarget=`menu:${m.id}`;cell(tr,'نام',m.name);const st=document.createElement('td');st.dataset.label='وضعیت';st.append(badge(m.status==='active'?'فعال':m.status==='draft'?'پیش‌نویس':'غیرفعال',m.status==='active'?'success':'neutral'));tr.append(st);cell(tr,'زمان سرو',scheduleText(m));cell(tr,'ترتیب',L.integer(m.sort_order));const ac=document.createElement('td');ac.dataset.label='عملیات';const a=rowActions();a.append(button('ویرایش',()=>editMenu(m)));ac.append(a);tr.append(ac);body.append(tr)}}
+ function renderCategories(){const body=$('[data-categories]');body.replaceChildren();const rows=filteredCategories(),ctx=categoryOrderContext();setResult('[data-category-result-count]',rows.length,snap.categories.length);const categoryHint=$('[data-category-reorder-hint]');categoryHint.hidden=false;categoryHint.textContent=ctx?'دستگیره یا دکمه‌های بالا/پایین ترتیب را فقط در منوی انتخاب‌شده تغییر می‌دهند.':'برای مرتب‌سازی دسته‌ها، دکمه «مرتب‌سازی دسته‌ها» بالای فهرست را انتخاب کن؛ فیلترهای فعلی نیاز به تغییر ندارند.';if(!rows.length){tableEmpty(body,5,snap.categories.length?'دسته‌ای با این فیلتر پیدا نشد.':'هنوز دسته‌بندی‌ای ثبت نشده است.');return}for(const c of rows){const tr=document.createElement('tr');tr.dataset.searchTarget=`category:${c.id}`;if(ctx)enableDrop(tr,'category',c.id,rows);const nameCell=document.createElement('td');nameCell.dataset.label='نام';const nameWrap=el('span','sc-category-name sc-catalog-category-title');if(ctx)nameWrap.append(dragHandle('category',c.id));const ck=mediaKey(c.image_path);let visual;if(ck){const img=document.createElement('img');img.src=imageUrl(ck);img.alt='';visual=img}else visual=categoryIconSvg(resolveCategoryIcon(c));nameWrap.append(mediaTrigger('category',c,ck,visual));const copy=el('span');copy.append(document.createTextNode(c.name),el('small','',`${L.integer(snap.items.filter(i=>Number(i.category_id)===Number(c.id)).length)} آیتم`));nameWrap.append(copy);nameCell.append(nameWrap);tr.append(nameCell);cell(tr,'مخاطب',[c.guest_visible?'مهمان':'',c.staff_visible?'کارکنان':''].filter(Boolean).join(' و ')||'مخفی');cell(tr,'منوها',(c.menu_ids||[]).map(menuName).join('، ')||'—');const st=document.createElement('td');st.dataset.label='وضعیت';st.append(badge(c.lifecycle_status==='active'?'فعال':'غیرفعال',c.lifecycle_status==='active'?'success':'neutral'));tr.append(st);const ac=document.createElement('td');ac.dataset.label='عملیات';const a=rowActions();if(ctx)a.append(rowMoveButtons('category',c.id,rows));a.append(button('ویرایش',()=>editCategory(c)),button('آرشیو',()=>retireCategory(c)));ac.append(a);tr.append(ac);body.append(tr)}}
+ function itemReorderContext(){const cat=Number($('[data-item-category-filter]')?.value||0),q=$('[data-item-search]')?.value||'',st=$('[data-item-status]')?.value||'active',aud=$('[data-item-audience]')?.value||'all';return cat&&selectedMenuId===0&&normalizedText(q)===''&&st==='all'&&aud==='all'?cat:0}
+ function currentItemPage(){const all=filteredItems(),ctx=itemReorderContext();if(ctx)return{all,rows:all,page:1,pages:1,ctx};const pages=Math.max(1,Math.ceil(all.length/ITEM_PAGE_SIZE));itemPage=Math.min(Math.max(1,itemPage),pages);const start=(itemPage-1)*ITEM_PAGE_SIZE;return{all,rows:all.slice(start,start+ITEM_PAGE_SIZE),page:itemPage,pages,ctx}}
+-function renderItemPager(state){const nav=$('[data-item-pager]');if(!nav)return;const visible=!state.ctx&&state.all.length>ITEM_PAGE_SIZE;nav.hidden=!visible;if(!visible)return;$('[data-item-page-label]').textContent=`صفحه ${L.integer(state.page)} از ${L.integer(state.pages)} · ${L.integer(state.all.length)} آیتم`;$('[data-item-page-prev]').disabled=state.page<=1;$('[data-item-page-next]').disabled=state.page>=state.pages}
++function setItemPage(page){
++ const state=currentItemPage();
++ const target=Math.min(state.pages,Math.max(1,Number(page)||1));
++ if(target===state.page)return;
++ itemPage=target;
++ renderItems();
++ // Page navigation is deliberate; the catalog filters should remain visible.
++ $('[data-item-filters]')?.scrollIntoView?.({block:'start'});
++}
++function renderItemPager(state){
++ const nav=$('[data-item-pager]');if(!nav)return;
++ const visible=!state.ctx&&state.all.length>ITEM_PAGE_SIZE;
++ nav.hidden=!visible;
++ if(!visible)return;
++ $('[data-item-page-label]').textContent=`صفحه ${L.integer(state.page)} از ${L.integer(state.pages)} · ${L.integer(state.all.length)} آیتم`;
++ $('[data-item-page-prev]').disabled=state.page<=1;
++ $('[data-item-page-next]').disabled=state.page>=state.pages;
++ const numbers=$('[data-item-page-numbers]');if(!numbers)return;
++ numbers.replaceChildren();
++ const selected=new Set([1,state.pages]);
++ for(let n=Math.max(1,state.page-2);n<=Math.min(state.pages,state.page+2);n++)selected.add(n);
++ let previous=0;
++ for(const page of [...selected].sort((a,b)=>a-b)){
++   if(page-previous>1){const dots=el('span','sc-data-pager__gap','…');dots.setAttribute('aria-hidden','true');numbers.append(dots)}
++   const current=page===state.page;
++   const b=el('button',`sc-data-pager__page${current?' is-current':''}`,L.integer(page));
++   b.type='button';
++   b.setAttribute('aria-label',`صفحه ${L.integer(page)}`);
++   if(current)b.setAttribute('aria-current','page');
++   b.disabled=current;
++   b.addEventListener('click',()=>setItemPage(page));
++   numbers.append(b);
++   previous=page;
++ }
++}
+ function renderBulk(){const bar=$('[data-item-bulk]'),count=selectedItems.size;bar.hidden=count===0;$('[data-bulk-count]').textContent=L.integer(count);const all=$('[data-select-all-items]'),visible=currentItemPage().rows.map(i=>Number(i.id));if(all){all.checked=visible.length>0&&visible.every(id=>selectedItems.has(id));all.indeterminate=visible.some(id=>selectedItems.has(id))&&!all.checked}}
+ function renderItems(){const body=$('[data-items]');body.replaceChildren();const state=currentItemPage(),rows=state.rows,ctx=state.ctx;setResult('[data-item-result-count]',state.all.length,snap.items.length);const itemHint=$('[data-item-reorder-hint]');itemHint.hidden=false;itemHint.textContent=ctx?'با دستگیره یا دکمه‌های بالا/پایین ترتیب همین دسته را تغییر بده.':'برای مرتب‌سازی آیتم‌ها، دکمه بالای فهرست یا گزینه «مرتب‌سازی این دسته» در منوی هر آیتم را انتخاب کن؛ نیازی به تغییر فیلتر نیست.';renderItemPager(state);if(!state.all.length){tableEmpty(body,7,snap.items.length?'آیتمی با این فیلتر پیدا نشد.':'هنوز آیتمی در کاتالوگ ثبت نشده است.');renderBulk();return}for(const i of rows){const tr=document.createElement('tr');tr.dataset.searchTarget=`item:${i.id}`;if(ctx)enableDrop(tr,'item',i.id,rows);const sel=document.createElement('td');sel.dataset.label='انتخاب';const cb=document.createElement('input');cb.type='checkbox';cb.checked=selectedItems.has(Number(i.id));cb.setAttribute('aria-label',`انتخاب ${i.name}`);cb.addEventListener('change',()=>{cb.checked?selectedItems.add(Number(i.id)):selectedItems.delete(Number(i.id));renderBulk()});sel.append(cb);tr.append(sel);itemIdentityCell(tr,i);cell(tr,'دسته / نوع',`${i.category_name} · ${i.sellable_kind_label}`);cell(tr,'قیمت',L.money(i.price));const st=document.createElement('td');st.dataset.label='وضعیت';const states=statusLine(),isActive=i.lifecycle_status==='active';const lifecycleToggle=stateToggle(isActive?'فعال':'غیرفعال',isActive,()=>toggleItemLifecycle(i,!isActive)),availableToggle=stateToggle(i.available?'موجود':'ناموجود',!!i.available,()=>toggleItem(i,'available',!i.available));if(!isActive){availableToggle.disabled=true;availableToggle.title='برای تغییر موجودی، ابتدا آیتم را فعال کن.'}states.append(lifecycleToggle,availableToggle);if(i.guest_visible)states.append(badge('مهمان','neutral'));if(i.staff_visible)states.append(badge('کارکنان','neutral'));const fam=familyForItem(i.id);if(fam)states.append(badge(`خانواده سایز/مدل: ${fam.name}`,'neutral'));if(bundleForItem(i.id))states.append(badge('ترکیب','neutral'));st.append(states);tr.append(st);cell(tr,'منوها',(i.menu_ids||[]).map(menuName).join('، ')||'—');const ac=document.createElement('td');ac.dataset.label='عملیات';const a=rowActions();if(ctx)a.append(dragHandle('item',i.id),rowMoveButtons('item',i.id,rows));a.append(button('ویرایش',()=>editQuick(i)),rowOverflow([{label:'ویرایش کامل',hint:'تصویر، زمان‌بندی، رسپی و تنظیمات کامل',run:()=>editItem(i)},{label:'مرتب‌سازی این دسته',hint:'نمایش تمام آیتم‌های جاری همین دسته',run:()=>openOrdering('item',Number(i.category_id))},{label:'کپی',hint:'ساخت یک پیش‌نویس جدید از این آیتم',run:()=>copyItem(i)},{label:'آرشیو',hint:'خارج‌کردن از کاتالوگ جاری',danger:true,run:()=>retireItem(i)}],`عملیات بیشتر برای ${i.name}`));ac.append(a);tr.append(ac);body.append(tr)}renderBulk()}
+ function renderTags(){const body=$('[data-tags]');body.replaceChildren();if(!snap.tags.length){tableEmpty(body,5,'هنوز برچسبی ساخته نشده است.');return}for(const t of snap.tags){const tr=document.createElement('tr');cell(tr,'نام',t.name);cell(tr,'استفاده',L.integer(snap.items.filter(i=>(i.tag_ids||[]).includes(Number(t.id))).length));const st=document.createElement('td');st.dataset.label='وضعیت';st.append(badge(t.active?'فعال':'غیرفعال',t.active?'success':'neutral'));tr.append(st);cell(tr,'ترتیب',L.integer(t.sort_order));const ac=document.createElement('td');ac.dataset.label='عملیات';const a=rowActions();a.append(button('ویرایش',()=>editTag(t)));ac.append(a);tr.append(ac);body.append(tr)}}
+ function render(){renderSectionStatus();renderSummary();renderMenuStrip();refillCategoryFilters();renderMenus();renderCategories();renderItems();renderArchive();renderTags()}
+ async function refresh(done='',view=null){
+@@ -290,12 +324,12 @@
+ $$('[data-open-ordering]').forEach(b=>b.addEventListener('click',()=>openOrdering(b.dataset.openOrdering)));$('[data-order-scope]')?.addEventListener('change',renderOrderDialog);
+ $('[data-refresh]').addEventListener('click',()=>refresh());bindFilters();
+ $('[data-clear-item-filters]').addEventListener('click',()=>{selectedMenuId=0;itemPage=1;$('[data-item-search]').value='';$('[data-item-category-filter]').value='0';$('[data-item-status]').value='all';$('[data-item-audience]').value='all';renderMenuStrip();renderItems()});
+ $('[data-clear-category-filters]').addEventListener('click',()=>{$('[data-category-search]').value='';$('[data-category-audience]').value='all';$('[data-category-status]').value='all';$('[data-category-order-menu]').value='0';renderCategories()});
+ $('[data-clear-menu-filters]').addEventListener('click',()=>{$('[data-menu-search]').value='';$('[data-menu-status]').value='all';renderMenus()});
+-$('[data-item-page-prev]')?.addEventListener('click',()=>{itemPage=Math.max(1,itemPage-1);renderItems();$('[data-item-filters]')?.scrollIntoView?.({block:'start'})});
+-$('[data-item-page-next]')?.addEventListener('click',()=>{itemPage+=1;renderItems();$('[data-item-filters]')?.scrollIntoView?.({block:'start'})});
++$('[data-item-page-prev]')?.addEventListener('click',()=>setItemPage(itemPage-1));
++$('[data-item-page-next]')?.addEventListener('click',()=>setItemPage(itemPage+1));
+ $('[data-select-all-items]').addEventListener('change',e=>{for(const i of currentItemPage().rows){e.target.checked?selectedItems.add(Number(i.id)):selectedItems.delete(Number(i.id))}renderItems()});
+ $('[data-bulk-clear]').addEventListener('click',()=>{selectedItems.clear();renderItems()});
+ $('[data-bulk-apply]').addEventListener('click',async()=>{if(!selectedItems.size)return;const [field,val]=$('[data-bulk-field]').value.split(':');try{await post({action:'item_bulk',ids:[...selectedItems],field,enabled:val==='1'});selectedItems.clear();await refresh('تغییر گروهی اعمال شد.')}catch(e){actionError(e,'تغییر گروهی انجام نشد')}});
+ $('[data-item-category]').addEventListener('change',()=>refillItemMenus(null));
+ $('[data-menu-form]').addEventListener('submit',async e=>{e.preventDefault();if(e.submitter?.value!=='submit'){closeDialog(e.currentTarget);return}const f=e.currentTarget;await SoknaUI.busy(f,async()=>{try{await post({action:'menu_save',id:Number(f.elements.id.value||0),name:f.elements.name.value,status:f.elements.status.value,sort_order:Number(f.elements.sort_order.value||0),schedule_days:checkedValues(f,'schedule_days'),daily_start:f.elements.daily_start.value,daily_end:f.elements.daily_end.value});closeDialog(f);await refresh('منو ذخیره شد.')}catch(err){actionError(err)}})});
+--- a/assets/scds/components.css
++++ b/assets/scds/components.css
+@@ -276,10 +276,16 @@
+ .sc-management-notification-form{max-inline-size:52rem}
+ 
+ 
+ /* H161 data-workspace scale / progressive disclosure */
+ .sc-data-pager{display:flex;align-items:center;justify-content:center;gap:12px;padding:12px 4px;flex-wrap:wrap}.sc-data-pager>span{min-inline-size:150px;text-align:center;font-weight:700;color:var(--sc-muted)}
++.sc-data-pager__numbers{display:flex;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap;min-inline-size:0!important}
++.sc-data-pager__page{font:inherit;font-weight:700;border:1px solid var(--sc-border);border-radius:10px;background:var(--sc-surface-raised);color:var(--sc-text);min-inline-size:36px;min-block-size:36px;padding:5px 8px;cursor:pointer}
++.sc-data-pager__page:hover:not(:disabled){border-color:var(--sc-primary);background:var(--sc-surface)}
++.sc-data-pager__page.is-current{background:var(--sc-primary);color:#fff;border-color:var(--sc-primary);cursor:default}
++.sc-data-pager__gap{padding-inline:4px;color:var(--sc-muted);min-inline-size:0!important}
++
+ .sc-entity-editor__advanced{grid-column:1/-1;border:1px solid var(--sc-border);border-radius:var(--sc-radius-lg);background:var(--sc-surface-raised);overflow:clip}.sc-entity-editor__advanced>summary{cursor:pointer;padding:14px 16px;display:flex;align-items:center;justify-content:space-between}.sc-entity-editor__advanced>summary span{display:grid;gap:3px}.sc-entity-editor__advanced>summary small{font-weight:400;color:var(--sc-muted)}.sc-entity-editor__advanced[open]>summary{border-block-end:1px solid var(--sc-border)}.sc-entity-editor__advanced>.sc-entity-editor__section{border:0;border-radius:0;background:transparent}
+ .sc-theme-technical{margin-block-start:8px}.sc-theme-semantic-color .sc-theme-color-picker{inline-size:100%;block-size:44px;padding:4px;border:1px solid var(--sc-border);border-radius:10px;background:var(--sc-surface)}.sc-theme-readability{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--sc-border);border-radius:12px}.sc-theme-readability.is-warning{border-color:var(--sc-warning)}.sc-theme-readability.is-pass{border-color:var(--sc-success)}.sc-theme-contrast-details{margin-block-start:8px}.sc-media-owner-card{border-style:dashed}
+ @media(max-width:760px){.sc-data-pager{position:sticky;inset-block-end:8px;z-index:5;background:color-mix(in srgb,var(--sc-surface-raised) 94%,transparent);border:1px solid var(--sc-border);border-radius:14px;margin:8px}.sc-entity-editor__advanced>summary{padding:12px}.sc-theme-readability{align-items:flex-start;flex-direction:column}}
+ 
+ /* H162 on-demand QR detail: keep management lists dense and move visual payload to detail context. */
