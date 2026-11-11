@@ -90,7 +90,9 @@ def main(a):
     meta['artifacts']['local-web'].update({'sha256':H(local_web),'size_bytes':len(local_web)})
     local_out=zbytes({'release-set.json':jb(meta),'artifacts/local/web.zip':local_web})
     # Public base must match the live café's exact active managed-tree identity.
-    pubold=readzip(pathlib.Path(a.public_parent).read_bytes())
+    public_outer=readzip(pathlib.Path(a.public_parent).read_bytes())
+    need('manifest.json' in public_outer and len(public_outer)==223,'PUBLISHED_PUBLIC_SOURCE_OUTER_FORMAT')
+    pubold={name[8:]:blob for name,blob in public_outer.items() if name.startswith('payload/')}
     print('PUBLIC_R153_GITHUB_ACTUAL',len(pubold),tree(pubold),tree(pubold,'canonical'),pubold.get('VERSION.txt',b'').decode().strip(),flush=True)
     need(len(pubold)==222 and tree(pubold)=='0fd94f725670f521c60557137aab38e518e72c1c4cd9a0b0b6861e65f9fa7537','PUBLIC_R153_CAFE_BASE_MISMATCH')
     public=apply(dict(pubold),base/'R155-public-FULL-CUMULATIVE.patch','public')

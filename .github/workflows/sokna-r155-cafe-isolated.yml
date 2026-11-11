@@ -50,7 +50,9 @@ jobs:
           unzip -p "$RUNNER_TEMP/r155-result/SOKNA-R155-LOCAL-231EF-CAFE-45BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/r155-local-web.zip"
           mkdir -p "$RUNNER_TEMP/r155-local-web" "$RUNNER_TEMP/r155-public-web"
           unzip -q "$RUNNER_TEMP/r155-local-web.zip" -d "$RUNNER_TEMP/r155-local-web"
-          unzip -q "$RUNNER_TEMP/r155-parent/SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip" -d "$RUNNER_TEMP/r155-public-web"
+          mkdir -p "$RUNNER_TEMP/r155-public-outer"
+          unzip -q "$RUNNER_TEMP/r155-parent/SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip" -d "$RUNNER_TEMP/r155-public-outer"
+          cp -a "$RUNNER_TEMP/r155-public-outer/payload/." "$RUNNER_TEMP/r155-public-web/"
           export SOKNA_R155_RESULT="$RUNNER_TEMP/r155-result"
           export SOKNA_R155_LOCAL_WEB="$RUNNER_TEMP/r155-local-web"
           export SOKNA_R155_PUBLIC_BASE="$RUNNER_TEMP/r155-public-web"
@@ -97,8 +99,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          MYSQL_PWD=ci-root-only mysql -h 127.0.0.1 -u root -e 'CREATE DATABASE IF NOT EXISTS sokna_r154_ci'
-          SOKNA_R154_CI_PASS=ci-root-only php qa/sokna-r154/test_theme_immutable_mariadb.php "$SOKNA_R155_LOCAL_WEB"
+          if ! command -v mysql >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y mariadb-client; fi
+          MYSQL_PWD=ci-root-only mysql -h 127.0.0.1 -u root -e "CREATE DATABASE IF NOT EXISTS sokna_r154_ci; ALTER USER 'root'@'%' IDENTIFIED BY 'r154-ci-only'"
+          php qa/sokna-r154/test_theme_immutable_mariadb.php "$SOKNA_R155_LOCAL_WEB"
       - uses: actions/upload-artifact@v4
         with:
           name: r155-isolated-package-candidates
