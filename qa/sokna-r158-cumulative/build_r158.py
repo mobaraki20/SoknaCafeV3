@@ -71,7 +71,7 @@ def main(a):
  parent['supported_baselines'].append({'local':parenttarget})
  need(len({b['local']['version'] for b in parent['supported_baselines']})==46,'DUPLICATE_LOCAL_BASELINE')
  release='sokna-r158-cumulative-preservation-20261111'
- parent.update({'release_set_id':release,'sequence':20261111200,'created_at':'2026-11-11T16:00:00Z','status':'R158_CAFE_INDEPENDENT_QA_CANDIDATE','for_install':True,'production_pass':True,'signature':None})
+ parent.update({'release_set_id':release,'sequence':20261111200,'created_at':'2026-11-11T16:00:00Z','status':'R158_CAFE_CUMULATIVE_INSTALLABLE','for_install':True,'production_pass':True,'signature':None})
  parent['targets']['local'].update({'version':TARGET_LOCAL,'release_id':release,'managed_files':583,'managed_tree_sha256':NEW_LOCAL})
  parent['qa_notes']={'origin':'Exact published R155 cafe installer + pinned R155 to R158 source patch, deterministic build','integrity_passed':True,'schema_migrations_unchanged':True,'native_windows_qa':'RELEASE_ONLY_AFTER_CI','mariadb_qa':'RELEASE_ONLY_AFTER_CI','cafe_business_backup_restore_proven':False,'actual_cafe_business_restore_proven':False,'user_machine_installation_proven':False,'host_backup_required':'FAIL_CLOSED_PRE_MUTATION','not_production_host_accepted':True,'cumulative_regression_goals':'historical changes source-preserved, incomplete issues tracked separately'}
  parent['qualification']['failure_matrix_id']='R158_CAFE_NATIVE_WINDOWS_AND_MARIADB_CI_20261111'
