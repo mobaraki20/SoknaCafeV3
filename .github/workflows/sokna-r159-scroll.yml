@@ -38,7 +38,7 @@ jobs:
             --local-patch qa/sokna-r159-scroll/R158-TO-R159-local.patch.gz.b64 \
             --public-patch qa/sokna-r159-scroll/R157-TO-R158-public.patch.gz.b64 \
             --outdir "$RUNNER_TEMP/r159"
-          echo "7c16c8ca1186ba55de8b10c5ecf897a1aa32815b28e0f82220d56078d53fbcae  $RUNNER_TEMP/r159/SOKNA-R159-LOCAL-231EJ-CAFE-47BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "2b5335bbc0bd654d9dbab34bb385d0bed34aef61e64dacd875eab208a785aa1f  $RUNNER_TEMP/r159/SOKNA-R159-LOCAL-231EJ-CAFE-47BASE-PANEL-UPDATE.zip" | sha256sum -c -
           echo "53864de2306dc25104b29fe18cb416d67ac680e298076b3ebed125131d10ecac  $RUNNER_TEMP/r159/SOKNA-R158-PUBLIC-35HO-FROM-35HL-PANEL-UPDATE.zip" | sha256sum -c -
           echo "84efa86c36236a7e009a9747ee87112f9f10e69d7847d93ded1dd49dcded545f  $RUNNER_TEMP/r159/SOKNA-R158-PUBLIC-35HO-FROM-35HK-PANEL-UPDATE.zip" | sha256sum -c -
           echo "399c88bd2b2bf63b6c20b19c78e79bac553bcab98fbe5aaa56b443d83bc1ee6b  $RUNNER_TEMP/r159/SOKNA-R158-PUBLIC-35HO-FROM-35HN-PANEL-UPDATE.zip" | sha256sum -c -
