@@ -1,0 +1,536 @@
+{
+  "schema": "sokna-golive-readonly-classification-v1",
+  "baseline": {
+    "local": "R160/231ek",
+    "public": "R159/35hp"
+  },
+  "safety": [
+    "This policy contains zero DELETE/UPDATE/TRUNCATE statements.",
+    "Review tables are never auto-cleared.",
+    "No live cleanup without tested full DB and file backups, paused writers, Public epoch plan and on-host identity match."
+  ],
+  "local": {
+    "accommodation_transfers": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0013_m5_integrations.sql"
+    },
+    "audit_log": {
+      "action": "REVIEW",
+      "first_migration": "0001_m2_platform_core.sql"
+    },
+    "auth_login_rate_limits": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0027_auth_login_rate_limits.sql"
+    },
+    "cafe_tables": {
+      "action": "PRESERVE",
+      "first_migration": "0003_m5_orders.sql"
+    },
+    "catalog_tags": {
+      "action": "PRESERVE",
+      "first_migration": "0028_catalog_tags.sql"
+    },
+    "categories": {
+      "action": "PRESERVE",
+      "first_migration": "0002_m5_sellables.sql"
+    },
+    "deferred_review_items": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0008_m5_deferred_receipts.sql"
+    },
+    "deferred_work_receipts": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0008_m5_deferred_receipts.sql"
+    },
+    "expense_categories": {
+      "action": "PRESERVE",
+      "first_migration": "0010_m5_expenses.sql"
+    },
+    "expenses": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0010_m5_expenses.sql"
+    },
+    "financial_period_close_overrides": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0011_m5_financial_periods.sql"
+    },
+    "financial_periods": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0010_m5_expenses.sql"
+    },
+    "guest_content_config": {
+      "action": "PRESERVE",
+      "first_migration": "0023_g4_guest_content_platform.sql"
+    },
+    "guest_content_revisions": {
+      "action": "PRESERVE",
+      "first_migration": "0033_guest_theme_lifecycle.sql"
+    },
+    "guest_media_assets": {
+      "action": "PRESERVE",
+      "first_migration": "0023_g4_guest_content_platform.sql"
+    },
+    "guest_media_derivatives": {
+      "action": "PRESERVE",
+      "first_migration": "0023_g4_guest_content_platform.sql"
+    },
+    "guest_media_references": {
+      "action": "PRESERVE",
+      "first_migration": "0023_g4_guest_content_platform.sql"
+    },
+    "guest_theme_packages": {
+      "action": "PRESERVE",
+      "first_migration": "0033_guest_theme_lifecycle.sql"
+    },
+    "inventory_balances": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0006_m5_inventory.sql"
+    },
+    "inventory_categories": {
+      "action": "PRESERVE",
+      "first_migration": "0006_m5_inventory.sql"
+    },
+    "inventory_count_lines": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0006_m5_inventory.sql"
+    },
+    "inventory_count_sessions": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0006_m5_inventory.sql"
+    },
+    "inventory_item_aliases": {
+      "action": "PRESERVE",
+      "first_migration": "0047_purchase_vocabulary_aliases.sql"
+    },
+    "inventory_items": {
+      "action": "PRESERVE",
+      "first_migration": "0006_m5_inventory.sql"
+    },
+    "inventory_movements": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0006_m5_inventory.sql"
+    },
+    "inventory_opening_activations": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0077_incremental_opening_inventory.sql"
+    },
+    "inventory_order_events": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0006_m5_inventory.sql"
+    },
+    "inventory_purchase_price_events": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0066_purchase_price_change_history.sql"
+    },
+    "inventory_purchase_units": {
+      "action": "PRESERVE",
+      "first_migration": "0006_m5_inventory.sql"
+    },
+    "inventory_recipe_components": {
+      "action": "PRESERVE",
+      "first_migration": "0006_m5_inventory.sql"
+    },
+    "inventory_recipe_versions": {
+      "action": "PRESERVE",
+      "first_migration": "0006_m5_inventory.sql"
+    },
+    "inventory_supply_needs": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0007_m5_supply.sql"
+    },
+    "inventory_supply_purchases": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0073_offhours_daily_operations.sql"
+    },
+    "inventory_supply_receipt_allocations": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0007_m5_supply.sql"
+    },
+    "inventory_supply_receipts": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0007_m5_supply.sql"
+    },
+    "invoice_discount_audit": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0012_m5_settlement.sql"
+    },
+    "item_bundle_components": {
+      "action": "PRESERVE",
+      "first_migration": "0055_menu_variant_suggestion_bundle.sql"
+    },
+    "item_bundles": {
+      "action": "PRESERVE",
+      "first_migration": "0055_menu_variant_suggestion_bundle.sql"
+    },
+    "item_suggestions": {
+      "action": "PRESERVE",
+      "first_migration": "0055_menu_variant_suggestion_bundle.sql"
+    },
+    "item_tags": {
+      "action": "PRESERVE",
+      "first_migration": "0028_catalog_tags.sql"
+    },
+    "item_variant_families": {
+      "action": "PRESERVE",
+      "first_migration": "0055_menu_variant_suggestion_bundle.sql"
+    },
+    "item_variant_members": {
+      "action": "PRESERVE",
+      "first_migration": "0055_menu_variant_suggestion_bundle.sql"
+    },
+    "items": {
+      "action": "PRESERVE",
+      "first_migration": "0002_m5_sellables.sql"
+    },
+    "lan_staff_realtime_receipts": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0037_lan_staff_realtime_receipts.sql"
+    },
+    "late_served_accounting_receipts": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0076_late_served_accounting.sql"
+    },
+    "marketing_campaigns": {
+      "action": "PRESERVE",
+      "first_migration": "0024_g4_business_extensions.sql"
+    },
+    "marketing_events": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0024_g4_business_extensions.sql"
+    },
+    "menu_categories": {
+      "action": "PRESERVE",
+      "first_migration": "0002_m5_sellables.sql"
+    },
+    "menu_items": {
+      "action": "PRESERVE",
+      "first_migration": "0002_m5_sellables.sql"
+    },
+    "menus": {
+      "action": "PRESERVE",
+      "first_migration": "0002_m5_sellables.sql"
+    },
+    "notification_domain_events": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0063_notification_domain_event_outbox.sql"
+    },
+    "notification_inbox": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0024_g4_business_extensions.sql"
+    },
+    "notification_outbox": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0024_g4_business_extensions.sql"
+    },
+    "notification_preferences": {
+      "action": "PRESERVE",
+      "first_migration": "0024_g4_business_extensions.sql"
+    },
+    "notification_push_deliveries": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0064_notification_push_endpoint_delivery_receipts.sql"
+    },
+    "notification_push_endpoint_owners": {
+      "action": "REVIEW",
+      "first_migration": "0060_notification_push_endpoint_ownership.sql"
+    },
+    "notification_push_subscriptions": {
+      "action": "REVIEW",
+      "first_migration": "0024_g4_business_extensions.sql"
+    },
+    "operations_command_clock": {
+      "action": "REVIEW",
+      "first_migration": "0073_offhours_daily_operations.sql"
+    },
+    "operations_command_journal": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0073_offhours_daily_operations.sql"
+    },
+    "order_business_sequences": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0003_m5_orders.sql"
+    },
+    "order_item_adjustments": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0030_order_item_adjustments.sql"
+    },
+    "order_item_bundle_components": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0055_menu_variant_suggestion_bundle.sql"
+    },
+    "order_items": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0003_m5_orders.sql"
+    },
+    "order_preparation_claims": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0005_m5_preparation.sql"
+    },
+    "order_status_history": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0003_m5_orders.sql"
+    },
+    "orders": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0003_m5_orders.sql"
+    },
+    "personnel": {
+      "action": "PRESERVE",
+      "first_migration": "0017_g1_admin_controls.sql"
+    },
+    "print_agents": {
+      "action": "PRESERVE",
+      "first_migration": "0015_m8_printing.sql"
+    },
+    "print_attempts": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0015_m8_printing.sql"
+    },
+    "print_claim_reconciliations": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0015_m8_printing.sql"
+    },
+    "print_claim_requests": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0015_m8_printing.sql"
+    },
+    "print_destinations": {
+      "action": "PRESERVE",
+      "first_migration": "0015_m8_printing.sql"
+    },
+    "print_jobs": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0015_m8_printing.sql"
+    },
+    "print_template_activations": {
+      "action": "PRESERVE",
+      "first_migration": "0025_g4_print_template_packages.sql"
+    },
+    "print_template_packages": {
+      "action": "PRESERVE",
+      "first_migration": "0025_g4_print_template_packages.sql"
+    },
+    "public_authority_state": {
+      "action": "REVIEW",
+      "first_migration": "0065_public_authority_epoch_state.sql"
+    },
+    "public_projection_model_catalog": {
+      "action": "REVIEW",
+      "first_migration": "0062_projection_model_target_watermarks.sql"
+    },
+    "public_projection_model_delivery": {
+      "action": "REVIEW",
+      "first_migration": "0052_public_transport_v2.sql"
+    },
+    "public_projection_model_targets": {
+      "action": "REVIEW",
+      "first_migration": "0062_projection_model_target_watermarks.sql"
+    },
+    "public_projection_outbox": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0050_public_projection_outbox.sql"
+    },
+    "public_realtime_ack_outbox": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0052_public_transport_v2.sql"
+    },
+    "public_sync_state": {
+      "action": "REVIEW",
+      "first_migration": "0022_g3_public_edge_sync.sql"
+    },
+    "remote_user_credentials": {
+      "action": "PRESERVE",
+      "first_migration": "0026_q3_remote_credentials.sql"
+    },
+    "runtime_trigger_receipts": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0014_m7_runtime.sql"
+    },
+    "settings": {
+      "action": "PRESERVE",
+      "first_migration": "0001_m2_platform_core.sql"
+    },
+    "settlement_followup_events": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0039_settlement_followup_table_release.sql"
+    },
+    "settlement_record_lines": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0012_m5_settlement.sql"
+    },
+    "settlement_records": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0012_m5_settlement.sql"
+    },
+    "settlement_tender_allocations": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0031_settlement_tenders.sql"
+    },
+    "staff_account_ledger": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0019_f1_staff_consumption_foundation.sql"
+    },
+    "staff_benefit_overrides": {
+      "action": "PRESERVE",
+      "first_migration": "0019_f1_staff_consumption_foundation.sql"
+    },
+    "staff_benefit_policies": {
+      "action": "PRESERVE",
+      "first_migration": "0019_f1_staff_consumption_foundation.sql"
+    },
+    "staff_benefit_policy_rules": {
+      "action": "PRESERVE",
+      "first_migration": "0019_f1_staff_consumption_foundation.sql"
+    },
+    "staff_benefit_profiles": {
+      "action": "PRESERVE",
+      "first_migration": "0019_f1_staff_consumption_foundation.sql"
+    },
+    "staff_consumption_lines": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0019_f1_staff_consumption_foundation.sql"
+    },
+    "staff_consumptions": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0019_f1_staff_consumption_foundation.sql"
+    },
+    "subscriber_ledger": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0013_m5_integrations.sql"
+    },
+    "subscribers": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0013_m5_integrations.sql"
+    },
+    "table_draft_items": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0004_m5_table_drafts.sql"
+    },
+    "table_drafts": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0004_m5_table_drafts.sql"
+    },
+    "table_session_clients": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0016_g1_guest_waiter.sql"
+    },
+    "table_sessions": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0003_m5_orders.sql"
+    },
+    "tax_item_policy_versions": {
+      "action": "PRESERVE",
+      "first_migration": "0009_m5_tax.sql"
+    },
+    "tax_rate_versions": {
+      "action": "PRESERVE",
+      "first_migration": "0009_m5_tax.sql"
+    },
+    "user_capabilities": {
+      "action": "PRESERVE",
+      "first_migration": "0001_m2_platform_core.sql"
+    },
+    "user_preparation_areas": {
+      "action": "PRESERVE",
+      "first_migration": "0005_m5_preparation.sql"
+    },
+    "user_ui_preferences": {
+      "action": "PRESERVE",
+      "first_migration": "0067_user_ui_preferences.sql"
+    },
+    "users": {
+      "action": "PRESERVE",
+      "first_migration": "0001_m2_platform_core.sql"
+    },
+    "waiter_calls": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0016_g1_guest_waiter.sql"
+    }
+  },
+  "public": {
+    "auth_login_throttle": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0001_m3_public_edge_core.sql"
+    },
+    "auth_projections": {
+      "action": "PRESERVE",
+      "first_migration": "0001_m3_public_edge_core.sql"
+    },
+    "auth_security_audit": {
+      "action": "PRESERVE",
+      "first_migration": "0001_m3_public_edge_core.sql"
+    },
+    "deferred_work": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0001_m3_public_edge_core.sql"
+    },
+    "guest_active_revisions": {
+      "action": "PRESERVE",
+      "first_migration": "0002_m4_guest_public_projection.sql"
+    },
+    "guest_availability_state": {
+      "action": "REVIEW",
+      "first_migration": "0002_m4_guest_public_projection.sql"
+    },
+    "guest_publish_revisions": {
+      "action": "PRESERVE",
+      "first_migration": "0002_m4_guest_public_projection.sql"
+    },
+    "installation_authority_reenrollments": {
+      "action": "REVIEW",
+      "first_migration": "0007_authority_epoch_fencing.sql"
+    },
+    "installation_heartbeats": {
+      "action": "REVIEW",
+      "first_migration": "0001_m3_public_edge_core.sql"
+    },
+    "installation_pairing_secrets": {
+      "action": "PRESERVE",
+      "first_migration": "0003_g3_emergency_update_takeover.sql"
+    },
+    "installation_takeovers": {
+      "action": "REVIEW",
+      "first_migration": "0003_g3_emergency_update_takeover.sql"
+    },
+    "installations": {
+      "action": "PRESERVE",
+      "first_migration": "0001_m3_public_edge_core.sql"
+    },
+    "public_emergency_audit": {
+      "action": "PRESERVE",
+      "first_migration": "0003_g3_emergency_update_takeover.sql"
+    },
+    "public_sessions": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0001_m3_public_edge_core.sql"
+    },
+    "public_user_ui_preferences": {
+      "action": "PRESERVE",
+      "first_migration": "0008_public_user_ui_preferences.sql"
+    },
+    "realtime_requests": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0001_m3_public_edge_core.sql"
+    },
+    "remote_projection_cursors": {
+      "action": "REVIEW",
+      "first_migration": "0004_remote_read_event_cursor.sql"
+    },
+    "remote_projection_events": {
+      "action": "REVIEW",
+      "first_migration": "0004_remote_read_event_cursor.sql"
+    },
+    "remote_projection_model_cursors": {
+      "action": "REVIEW",
+      "first_migration": "0005_transport_v2.sql"
+    },
+    "remote_read_models": {
+      "action": "PRESERVE",
+      "first_migration": "0002_m4_guest_public_projection.sql"
+    },
+    "request_nonces": {
+      "action": "PURGE_CANDIDATE",
+      "first_migration": "0001_m3_public_edge_core.sql"
+    }
+  }
+}
