@@ -26,5 +26,5 @@ need($service->managedTreeDigest()===$tree,'REAL_R162_PUBLIC_RECEIVER_SOURCE');
 $reflection=new ReflectionMethod(RoutinePublicUpdateService::class,'verifyZip');
 $verified=$reflection->invoke($service,$zip);$manifest=$verified['manifest'];
 need($manifest['version']===$target && $manifest['target']['managed_tree_sha256']===$targetTree,'REAL_PUBLIC_RECEIVER_TARGET');
-need(count($manifest['files'])===225,'PUBLIC_FULL_SOURCE_PRESERVED');
+need((int)($manifest['provenance']['file_count']??0)===225 && count($manifest['files'])>0 && count($manifest['deletes'])===0,'PUBLIC_FULL_SOURCE_PRESERVED_AND_DELTA_SAFE');
 need(is_file($publicNew.'/src/Maintenance/GoLiveResetEngine.php'),'GOLIVE_RESET_PUBLIC_ENGINE_PRESENT');
