@@ -1,0 +1,145 @@
+name: SOKNA R162 go-live one-time reset and catalog pager MariaDB + Windows QA
+on:
+  push:
+    branches: [qa/sokna-r162-golive-oneclick-20261111]
+    paths:
+      - 'qa/sokna-r162-golive/**'
+      - '.github/workflows/sokna-r162-golive.yml'
+permissions:
+  contents: write
+jobs:
+  build-and-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOKNA_R149B_DISPOSABLE: YES
+      SOKNA_R162_DISPOSABLE: YES
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r140_exact
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=ci-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, gd, zip
+      - name: Retrieve EXACT published R160 Local and Public 35HP parents
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/parents" "$RUNNER_TEMP/r162"
+          gh release download sokna-r160-catalog-viewport-guest-visual-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R160-LOCAL-231EK-CAFE-48BASE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parents"
+          gh release download sokna-r160-catalog-viewport-guest-visual-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R159-PUBLIC-35HP-FROM-35HO-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parents"
+          echo "7df605c1bc3642176406b90008329a6d3d4986e589bf28e8787a30074d26f73a  $RUNNER_TEMP/parents/SOKNA-R160-LOCAL-231EK-CAFE-48BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "6ebccb3dc235ea16bcff87da5f754d8589afc0284ca283f683423df547f350d4  $RUNNER_TEMP/parents/SOKNA-R159-PUBLIC-35HP-FROM-35HO-PANEL-UPDATE.zip" | sha256sum -c -
+      - name: Reconstruct byte-exact R162 Local and five Public bridge packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r162-golive/build_r162.py \
+            --local-r160 "$RUNNER_TEMP/parents/SOKNA-R160-LOCAL-231EK-CAFE-48BASE-PANEL-UPDATE.zip" \
+            --public-r159 "$RUNNER_TEMP/parents/SOKNA-R159-PUBLIC-35HP-FROM-35HO-PANEL-UPDATE.zip" \
+            --local-patch qa/sokna-r162-golive/local-patch.gz.b64 \
+            --local-added qa/sokna-r162-golive/local-added.zip.b64 \
+            --public-patch qa/sokna-r162-golive/public-patch.gz.b64 \
+            --public-added qa/sokna-r162-golive/public-added.zip.b64 \
+            --outdir "$RUNNER_TEMP/r162"
+          echo "16adab9910c017d97ebc256e721bfbc22e26103979adc59763c6bf978b6f5471  $RUNNER_TEMP/r162/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$RUNNER_TEMP/r162/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip"
+          mkdir -p "$RUNNER_TEMP/r162-local" "$RUNNER_TEMP/r162-public" "$RUNNER_TEMP/public-package"
+          unzip -p "$RUNNER_TEMP/r162/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/r162-local-web.zip"
+          unzip -q "$RUNNER_TEMP/r162-local-web.zip" -d "$RUNNER_TEMP/r162-local"
+          unzip -q "$RUNNER_TEMP/r162/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/public-package"
+          cp -a "$RUNNER_TEMP/public-package/payload/." "$RUNNER_TEMP/r162-public/"
+          echo "R162_DIR=$RUNNER_TEMP/r162" >> "$GITHUB_ENV"
+          echo "R162_LOCAL=$RUNNER_TEMP/r162-local" >> "$GITHUB_ENV"
+          echo "R162_PUBLIC=$RUNNER_TEMP/r162-public" >> "$GITHUB_ENV"
+      - name: Lint all php and JS, five exact Public preflights and target receiver
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$R162_LOCAL" "$R162_PUBLIC" -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+          find "$R162_LOCAL" "$R162_PUBLIC" -name '*.js' -print0 | xargs -0 -n1 node --check > /dev/null
+          php qa/sokna-r162-golive/test_public_preflight.php \
+            "$R162_DIR/SOKNA-R160-PUBLIC-35HR-FROM-35HL-PANEL-UPDATE.zip" \
+            "$R162_DIR/SOKNA-R160-PUBLIC-35HR-FROM-35HK-PANEL-UPDATE.zip" \
+            "$R162_DIR/SOKNA-R160-PUBLIC-35HR-FROM-35HN-PANEL-UPDATE.zip" \
+            "$R162_DIR/SOKNA-R160-PUBLIC-35HR-FROM-35HO-PANEL-UPDATE.zip" \
+            "$R162_DIR/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" \
+            "$R162_LOCAL" "$RUNNER_TEMP/r162-public"
+          # The Public bootstrap must require all destructive-route dependencies.
+          grep -q "src/Maintenance/GoLiveResetEngine.php" "$R162_PUBLIC/bootstrap.php"
+          grep -q "src/Http/GoLiveResetHttpAdapter.php" "$R162_PUBLIC/bootstrap.php"
+      - name: Real MariaDB 11.4 schema migrations and non-production CLEAR/PRESERVE tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          LAB="$RUNNER_TEMP/r162-maria"
+          python qa/sokna-r140/exact-ci/reconstruct.py "$LAB"
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$LAB/r140.zip" "$LAB/qualified-r140.zip"
+          python qa/sokna-r149b/build_r149b.py "$LAB/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$LAB"
+          python qa/sokna-r149b/test-manifest-matrix.py "$LAB/qualified-r140.zip" "$LAB/r149b-candidate.zip" "$LAB/r149b-qualified.zip"
+          unzip -q "$LAB/r149b-qualified.zip" -d "$LAB/r149b-outer"
+          unzip -q "$LAB/r149b-outer/artifacts/local/web.zip" -d "$LAB/r149b-web"
+          python qa/sokna-r155-cafe-isolated/compare_migrations.py "$LAB/r149b-web" "$R162_LOCAL"
+          php qa/sokna-r140/exact-ci/upgrade.php baseline "$LAB"
+          php qa/sokna-r140/exact-ci/upgrade.php upgrade "$LAB"
+          php qa/sokna-r149b/test-exact-upgrade.php upgrade "$LAB"
+          php qa/sokna-r149b/test-exact-upgrade.php verify "$LAB"
+          php qa/sokna-r162-golive/test_golive_mariadb.php "$R162_LOCAL" "$R162_PUBLIC"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r162-exact-source-qualified-only
+          path: |
+            ${{ runner.temp }}/r162/*.zip
+            ${{ runner.temp }}/r162/*.json
+          if-no-files-found: error
+          retention-days: 14
+  native-windows-prerelease:
+    needs: build-and-mariadb
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r162-exact-source-qualified-only
+          path: r162-out
+      - name: Native Windows 49 baseline VerifyOnly + Stage on disposable runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $package=(Get-ChildItem r162-out -Recurse -Filter 'SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if(-not $package){throw 'R162_PACKAGE_MISSING'}
+          dotnet run --project qa/sokna-r162-golive/R162Stage.csproj -c Release --no-launch-profile -- $package
+          if($LASTEXITCODE-ne0){throw 'R162_NATIVE_WINDOWS_STAGE_FAILED'}
+      - name: Publish *UAT pre-release* only after real disposable DB and Windows tests succeed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $assets=Get-ChildItem r162-out -Recurse -File | Where-Object {$_.Name -like 'SOKNA-R162-LOCAL-*.zip' -or $_.Name -like 'SOKNA-R160-PUBLIC-*.zip' -or $_.Name -eq 'R162-PACKAGE-IDENTITY.json'}
+          if($assets.Count -ne 7){throw "R162_EXPECTED_SEVEN_ASSETS_GOT_$($assets.Count)"}
+          $notes=Join-Path $env:RUNNER_TEMP 'R162-UAT.md'
+          @'
+          # SOKNA R162 go-live reset Local 231em / Public 35hr — isolated UAT
+          One-time admin-panel testing-data clear across Local/Public, careful schema and preserved users, menu, recipe, pictures and configuration. Existing café/home production databases ARE NOT remotely accessed by CI. Run only during planned switch from test to operational use on the real café Local system, after both matching Local and Public versions have been installed. All existing business entries have been declared disposable TEST DATA by the system owner; no business-test-data backup prerequisite. The updater still retains its independent installation integrity protection. User-triggered one-time action only: installing this release DOES NOT delete data. Exact catalog numeric pagination also included.
+          Not certified against unknown databases or the actual café host. If preview refuses due to unknown schema, STOP instead of bypassing checks. main branch and Library CURRENT were not changed.
+          '@ | Set-Content $notes -Encoding utf8NoBOM
+          $tag='sokna-r162-golive-oneclick-uat-20261111'
+          $args=@('release','create',$tag,'--repo','mobaraki20/SoknaCafeV3','--title','SOKNA R162 go-live one-time clearance + catalog pager isolated UAT','--prerelease','--notes-file',$notes,'--target',$env:GITHUB_SHA)
+          foreach($asset in $assets){$args+=@($asset.FullName)}
+          & gh @args
+          if($LASTEXITCODE-ne0){throw 'R162_PRERELEASE_FAILED'}
