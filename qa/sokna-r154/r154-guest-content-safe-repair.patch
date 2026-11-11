@@ -1,0 +1,215 @@
+--- a/src/Domain/GuestContent/GuestContentService.php
++++ b/src/Domain/GuestContent/GuestContentService.php
+@@ -150,6 +150,7 @@
+         }
+         return [
+             'themes' => $this->themeCatalog(),
++            'media_upload_limit_bytes' => self::effectiveMediaUploadLimitBytes(),
+             'draft_theme' => $this->resolveStateTheme($state,'draft',$draftSettings),
+             'published_theme' => $this->resolveStateTheme($state,'published',$publishedSettings),
+             'theme_history' => $this->themeHistoryRows(),
+@@ -678,14 +679,60 @@
+ 
+     private function ensureBuiltinThemePackages(): void
+     {
++        // A historical (theme_key, version) row may already be referenced by a
++        // published revision.  Never overwrite/delete it when a bundled theme
++        // changes: register a new immutable patch version instead.
++        $lookup=$this->pdo->prepare('SELECT fingerprint FROM guest_theme_packages WHERE theme_key=? AND version=? LIMIT 1');
++        $insert=$this->pdo->prepare("INSERT IGNORE INTO guest_theme_packages(theme_key,version,name,fingerprint,package_json,source_kind,installed_by_user_id) VALUES(?,?,?,?,?,'builtin',NULL)");
+         foreach($this->themes->packages() as $manifest){
+-            $payload=$this->themeManifestPayload($manifest);
+-            $insert=$this->pdo->prepare("INSERT IGNORE INTO guest_theme_packages(theme_key,version,name,fingerprint,package_json,source_kind,installed_by_user_id) VALUES(?,?,?,?,?,'builtin',NULL)");
+-            $insert->execute([(string)$manifest['theme_key'],(string)$manifest['version'],(string)$manifest['name'],(string)$manifest['fingerprint'],$this->json($payload)]);
+-            $q=$this->pdo->prepare('SELECT fingerprint FROM guest_theme_packages WHERE theme_key=? AND version=? LIMIT 1');
+-            $q->execute([(string)$manifest['theme_key'],(string)$manifest['version']]);$actual=(string)($q->fetchColumn()?:'');
+-            if($actual===''||!hash_equals((string)$manifest['fingerprint'],$actual))throw new GuestContentException('builtin_theme_conflict','بسته داخلی تم با نسخه ثبت‌شده سازگار نیست.',500,['theme_key'=>$manifest['theme_key'],'version'=>$manifest['version']]);
+-        }
++            $key=(string)$manifest['theme_key'];
++            $baseVersion=(string)$manifest['version'];
++            $parts=array_map('intval',explode('.',$baseVersion));
++            $registered=false;
++            // Probe the original version, then immutable .patch successors.
++            // The same bundle always resolves to the same existing fingerprint;
++            // concurrent installations cannot change an older published row.
++            for($attempt=0;$attempt<256;$attempt++){
++                $candidate=$this->themeManifestPayload($manifest);
++                if($attempt>0)$candidate['version']=$parts[0].'.'.$parts[1].'.'.($parts[2]+$attempt);
++                $normalized=$attempt===0?$manifest:$this->themes->validateManifest($candidate);
++                $fingerprint=(string)$normalized['fingerprint'];
++                $version=(string)$normalized['version'];
++                $lookup->execute([$key,$version]);
++                $actual=$lookup->fetchColumn();
++                if($actual!==false){
++                    if(hash_equals($fingerprint,(string)$actual)){$registered=true;break;}
++                    continue;
++                }
++                $insert->execute([$key,$version,(string)$normalized['name'],$fingerprint,$this->json($candidate)]);
++                // INSERT IGNORE can lose a race to another worker.  Recheck
++                // the exact pair, never silently mutate historical contents.
++                $lookup->execute([$key,$version]);
++                $actual=$lookup->fetchColumn();
++                if($actual!==false&&hash_equals($fingerprint,(string)$actual)){$registered=true;break;}
++            }
++            if(!$registered)throw new GuestContentException('builtin_theme_conflict','نسخه تازهٔ امن برای یکی از قالب‌های داخلی قابل ثبت نیست.',500,['theme_key'=>$key,'version'=>$baseVersion]);
++        }
++    }
++
++    private static function phpByteLimit(string $setting): int
++    {
++        $raw=trim((string)ini_get($setting));
++        if(!preg_match('/^(\d+)([KMG]?)$/iD',$raw,$m))return 0;
++        $value=(int)$m[1];
++        $multiplier=match(strtoupper($m[2]??'')){'G'=>1073741824,'M'=>1048576,'K'=>1024,default=>1};
++        return $value>0?$value*$multiplier:0;
++    }
++
++    private static function effectiveMediaUploadLimitBytes(): int
++    {
++        $limit=self::MAX_MEDIA_BYTES;
++        $upload=self::phpByteLimit('upload_max_filesize');
++        $post=self::phpByteLimit('post_max_size');
++        if($upload>0)$limit=min($limit,$upload);
++        // Leave room for multipart fields and the CSRF token.
++        if($post>0)$limit=min($limit,max(1,$post-65536));
++        return max(1,$limit);
+     }
+ 
+     /** @return list<array<string,mixed>> */
+--- a/public/guest-content/index.php
++++ b/public/guest-content/index.php
+@@ -5,13 +5,14 @@
+ ProductShell::start($core,$user,'منوی مهمان','guest-content','ظاهر، متن‌ها و تصاویر منوی مهمان را با ذخیره و انتشار خودکار مدیریت کن.',true);
+ ?>
+ <section class="sc-workspace" data-guest-content data-api="guest-content/api.php" data-upload="guest-content/upload.php" data-theme-upload="guest-content/theme-upload.php" data-csrf="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>">
+-  <div class="sc-toolbar sc-local-nav"><div class="sc-tabs" role="tablist" aria-label="منوی مهمان"><button class="sc-tab" type="button" role="tab" aria-selected="true" data-tab="theme">ظاهر</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="copy">متن‌ها</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="settings">اطلاعات و امکانات</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="media">تصاویر</button></div><div class="sc-actions"><a class="sc-button sc-button--secondary" href="catalog/">مدیریت آیتم‌های منو</a><span class="sc-badge" data-published>منتشرنشده</span></div></div>
++  <div class="sc-toolbar sc-local-nav"><div class="sc-tabs" role="tablist" aria-label="منوی مهمان"><button class="sc-tab" type="button" role="tab" aria-selected="true" data-tab="theme">ظاهر</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="copy">متن‌ها</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="settings">اطلاعات و امکانات</button><button class="sc-tab" type="button" role="tab" aria-selected="false" data-tab="media">تصاویر</button></div><div class="sc-actions"><a class="sc-button sc-button--secondary" href="catalog/">مدیریت آیتم‌های منو</a><span class="sc-badge" data-published>در حال بارگذاری</span></div></div>
+   <div class="sc-alert" role="status" aria-live="polite" data-status hidden></div>
++  <div class="sc-alert sc-alert--danger" role="alert" data-load-error hidden><span>اطلاعات منوی مهمان بارگیری نشد؛ آمارِ خالی به معنی حذف داده‌ها نیست.</span> <button class="sc-button sc-button--secondary" type="button" data-load-retry>تلاش دوباره</button></div>
+   <section class="sc-summary-grid sc-guest-menu-summary" aria-label="خلاصه منوی مهمان">
+     <article class="sc-metric"><span>انتشار</span><strong data-guest-metric="revision">—</strong><small data-guest-metric-note="published">وضعیت نسخه عمومی</small></article>
+     <article class="sc-metric"><span>تم پیش‌نویس</span><strong data-guest-metric="theme">—</strong><small>ظاهر نسخه بعدی</small></article>
+-    <article class="sc-metric"><span>آیتم‌های مهمان</span><strong data-guest-metric="items">۰</strong><small>آیتم‌های فعال و عمومی</small></article>
+-    <article class="sc-metric"><span>دارای تصویر</span><strong data-guest-metric="images">۰</strong><small>از آیتم‌های مهمان</small></article>
++    <article class="sc-metric"><span>آیتم‌های مهمان</span><strong data-guest-metric="items">—</strong><small>آیتم‌های فعال و عمومی</small></article>
++    <article class="sc-metric"><span>دارای تصویر</span><strong data-guest-metric="images">—</strong><small>از آیتم‌های مهمان</small></article>
+   </section>
+   <section class="sc-card sc-public-sync-card" aria-label="وضعیت انتشار وب عمومی">
+     <div class="sc-card__body sc-public-sync-row">
+@@ -47,17 +48,17 @@
+     <section class="sc-card sc-brand-identity-card" aria-label="هویت تصویری برند"><div class="sc-card__body sc-stack">
+       <div class="sc-section-head"><div><h2>نشان و آیکون مجموعه</h2><p>یک تصویر اصلی از آلبوم انتخاب کن. نسخه‌های لوگو و favicon خودکار از همان تصویر ساخته می‌شوند.</p></div><span class="sc-badge" data-identity-status>پیش‌فرض</span></div>
+       <div class="sc-brand-identity">
+-        <div class="sc-brand-identity__preview" data-identity-preview><img data-identity-preview-img alt="پیش‌نمایش نشان مجموعه"><span data-identity-fallback>نشان پیش‌فرض سکنا</span></div>
++        <div class="sc-brand-identity__preview" data-identity-preview><img data-identity-preview-img alt="پیش‌نمایش نشان مجموعه" hidden><span data-identity-fallback>نشان پیش‌فرض سکنا</span></div>
+         <div class="sc-brand-identity__copy"><strong data-identity-name>نشان پیش‌فرض</strong><span class="sc-muted" data-identity-meta>برای تغییر، یک تصویر از آلبوم انتخاب کن.</span><small class="sc-muted" data-identity-publish-state>با ذخیره هویت تصویری، انتشار خودکار انجام می‌شود.</small></div>
+         <div class="sc-actions sc-brand-identity__actions"><button class="sc-button" type="button" data-identity-pick>انتخاب از آلبوم</button><button class="sc-button sc-button--secondary" type="button" data-identity-reset>بازگشت به نشان پیش‌فرض</button></div>
+       </div>
+     </div></section>
+ 
+     <section class="sc-media-summary" aria-label="نمای سریع کتابخانه رسانه">
+-      <button class="sc-media-stat is-active" type="button" data-media-quick-filter="active" aria-pressed="true"><span>همه تصاویر فعال</span><strong data-media-metric="active">۰</strong><small>کتابخانه جاری</small></button>
+-      <button class="sc-media-stat" type="button" data-media-quick-filter="used" aria-pressed="false"><span>در حال استفاده</span><strong data-media-metric="used">۰</strong><small>متصل به منو یا برند</small></button>
+-      <button class="sc-media-stat" type="button" data-media-quick-filter="unused" aria-pressed="false"><span>بدون استفاده</span><strong data-media-metric="unused">۰</strong><small>آماده آرشیو یا استفاده</small></button>
+-      <button class="sc-media-stat" type="button" data-media-quick-filter="archived" aria-pressed="false"><span>آرشیو</span><strong data-media-metric="archived">۰</strong><small>خارج از انتخاب روزمره</small></button>
++      <button class="sc-media-stat is-active" type="button" data-media-quick-filter="active" aria-pressed="true"><span>همه تصاویر فعال</span><strong data-media-metric="active">—</strong><small>کتابخانه جاری</small></button>
++      <button class="sc-media-stat" type="button" data-media-quick-filter="used" aria-pressed="false"><span>در حال استفاده</span><strong data-media-metric="used">—</strong><small>متصل به منو یا برند</small></button>
++      <button class="sc-media-stat" type="button" data-media-quick-filter="unused" aria-pressed="false"><span>بدون استفاده</span><strong data-media-metric="unused">—</strong><small>آماده آرشیو یا استفاده</small></button>
++      <button class="sc-media-stat" type="button" data-media-quick-filter="archived" aria-pressed="false"><span>آرشیو</span><strong data-media-metric="archived">—</strong><small>خارج از انتخاب روزمره</small></button>
+     </section>
+ 
+     <section class="sc-card sc-media-library-card"><div class="sc-card__body sc-stack">
+@@ -136,7 +137,7 @@
+       <form class="sc-media-dialog__panel" data-upload-form enctype="multipart/form-data">
+         <header class="sc-media-dialog__head"><div><h2 id="mediaUploadTitle">بارگذاری تصاویر</h2><p>چند فایل را با هم انتخاب کن؛ وضعیت و خطای هر فایل جداگانه نمایش داده می‌شود.</p></div><button class="sc-icon-button" type="button" data-media-upload-close aria-label="بستن"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header>
+         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>">
+-        <label class="sc-media-dropzone" data-media-dropzone><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-media-upload-file aria-label="انتخاب تصاویر برای بارگذاری"><span class="sc-media-dropzone__icon">＋</span><strong>تصاویر را اینجا بکش و رها کن یا انتخاب کن</strong><small>JPG، PNG، WebP یا GIF؛ حداکثر ۸ مگابایت. برای منو بهتر است ضلع کوتاه حداقل ۱۲۰۰ پیکسل باشد. فایل اصلی حفظ و نسخه سبک وب جداگانه ساخته می‌شود.</small></label>
++        <label class="sc-media-dropzone" data-media-dropzone><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-media-upload-file aria-label="انتخاب تصاویر برای بارگذاری"><span class="sc-media-dropzone__icon">＋</span><strong>تصاویر را اینجا بکش و رها کن یا انتخاب کن</strong><small>JPG، PNG، WebP یا GIF؛ <span data-media-upload-limit>حد مجاز پس از بارگذاری تنظیمات نمایش داده می‌شود.</span> برای منو بهتر است ضلع کوتاه حداقل ۱۲۰۰ پیکسل باشد. فایل اصلی حفظ و نسخه سبک وب جداگانه ساخته می‌شود.</small></label>
+         <section class="sc-media-upload-batch" data-media-upload-batch aria-live="polite">
+           <div class="sc-media-upload-batch__head"><div><strong data-media-upload-summary>هنوز فایلی انتخاب نشده است.</strong><small>آماده‌شدن تصویر در لوکال با دریافت آن در وب عمومی فرق دارد؛ پس از ثبت تغییر، انتقال خودکار آغاز می‌شود.</small></div><progress max="100" value="0" data-media-upload-overall aria-label="پیشرفت کل بارگذاری"></progress></div>
+           <div class="sc-media-upload-queue" data-media-upload-queue></div>
+--- a/public/assets/guest-content-workspace.js
++++ b/public/assets/guest-content-workspace.js
+@@ -6,6 +6,21 @@
+   const L=window.SoknaLocale||{integer:v=>new Intl.NumberFormat('fa-IR').format(Number(v||0)),dateTime:v=>String(v??'')};
+   let mediaFilter='active',mediaQuery='',mediaType='all',mediaOrientation='all',mediaSort='newest',mediaView='grid',mediaPage=1,mediaDetailKey='',pickerMode='identity',pickerItemId=0,pickerSelectedKey='',pickerQuery='',pickerReturnToUpload=false,uploadQueue=[],uploadSeq=0,uploadPumping=false,lastUploadedMediaKey='',focalMediaKey='',focalX=.5,focalY=.5;
+   const MEDIA_PAGE_SIZE=24;
++  function reflectLoadState(ok,error){
++    root.dataset.contentReady=ok?'true':'false';
++    root.setAttribute('aria-busy','false');
++    const banner=$('[data-load-error]');if(banner)banner.hidden=ok;
++    const retry=$('[data-load-retry]');if(retry)retry.disabled=ok;
++    // Do not allow destructive changes when no authoritative snapshot exists.
++    $$('[data-theme-form] button,[data-public-settings-form] button,[data-copy-form] button,[data-media-upload-open],[data-identity-pick],[data-identity-reset],[data-gc-run],[data-gc-preview]').forEach(b=>b.disabled=!ok);
++    if(!ok){
++      $$('[data-guest-metric],[data-media-metric]').forEach(e=>e.textContent='—');
++      const published=$('[data-published]');if(published)published.textContent='نامشخص';
++      const badge=$('[data-public-sync-badge]');if(badge)badge.textContent='بارگیری ناموفق';
++      const note=$('[data-public-sync-message]');if(note)note.textContent='تا بازیابی اطلاعات، وضعیت انتشار قابل تأیید نیست.';
++      status(error?.message||'دریافت اطلاعات منوی مهمان انجام نشد.',true);
++    }
++  }
+   const toast=(message,tone='success',title='')=>window.SoknaUI?.toast?.(message,{tone,title});
+   function status(message,bad=false){const e=$('[data-status]');e.textContent=message||'';e.hidden=!message;e.className='sc-alert '+(bad?'sc-alert--danger':'sc-alert--info')}
+   async function request(url,opt={}){const r=await fetch(url,{credentials:'same-origin',headers:{Accept:'application/json',...(opt.headers||{})},...opt});let j={};try{j=await r.json()}catch(_){throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false)throw new Error(j.message||'عملیات انجام نشد.');return j}
+@@ -110,7 +125,7 @@
+   function mediaOrientationOf(m){const w=Number(m.width_px||0),h=Number(m.height_px||0);if(w<=0||h<=0)return 'unknown';const ratio=w/h;if(ratio>=.9&&ratio<=1.1)return 'square';return ratio>1.1?'landscape':'portrait'}
+   function mediaCreatedValue(m){const raw=String(m.created_at||'').trim();if(!raw)return 0;const normalized=raw.includes('T')?raw:raw.replace(' ','T')+'Z';const v=Date.parse(normalized);return Number.isFinite(v)?v:0}
+   function renderMediaSummary(){const all=snap.media||[],active=all.filter(m=>Number(m.active)===1),used=active.filter(m=>Number(m.reference_count||0)>0),unused=active.filter(m=>Number(m.reference_count||0)===0),archived=all.filter(m=>Number(m.active)!==1);[['active',active.length],['used',used.length],['unused',unused.length],['archived',archived.length]].forEach(([key,count])=>{const metric=$(`[data-media-metric="${key}"]`);if(metric)metric.textContent=L.integer(count)});$$('[data-media-quick-filter]').forEach(b=>{const on=b.dataset.mediaQuickFilter===mediaFilter;b.classList.toggle('is-active',on);b.setAttribute('aria-pressed',on?'true':'false')})}
+-  function renderIdentity(){const draft=snap.draft_identity||{},published=snap.published_identity||{},active=Boolean(draft.active),media=active?mediaByKey(draft.media_key):null,img=$('[data-identity-preview-img]'),fallback=$('[data-identity-fallback]'),name=$('[data-identity-name]'),meta=$('[data-identity-meta]'),state=$('[data-identity-status]'),pub=$('[data-identity-publish-state]'),reset=$('[data-identity-reset]');if(img){img.hidden=!media;if(media){img.src=imageUrl(media);img.alt=media.alt_text||'نشان مجموعه'}else img.removeAttribute('src')}if(fallback)fallback.hidden=Boolean(media);if(name)name.textContent=media?(media.original_name||'نشان انتخاب‌شده'):'نشان پیش‌فرض';if(meta)meta.textContent=media?`${L.integer(media.width_px||0)}×${L.integer(media.height_px||0)} · نسخه ${String(draft.version||'').slice(0,12)}…`:'از نشان داخلی سکنا استفاده می‌شود.';const same=Boolean(draft.active)===Boolean(published.active)&&String(draft.media_key||'')===String(published.media_key||'')&&String(draft.version||'fallback')===String(published.version||'fallback');if(state){state.textContent=same?'همگام با نسخه عمومی':'تغییر منتشرنشده';state.className=`sc-badge ${same?'sc-badge--success':'sc-badge--warning'}`}if(pub)pub.textContent=same?'هویت تصویری منتشرشده با پیش‌نویس یکی است.':'این تغییر فعلاً فقط در سیستم اصلی کافه دیده می‌شود؛ برای وب عمومی «انتشار پیش‌نویس» را بزن.';if(reset)reset.hidden=!active}
++  function renderIdentity(){const draft=snap.draft_identity||{},published=snap.published_identity||{},active=Boolean(draft.active),media=active?mediaByKey(draft.media_key):null,img=$('[data-identity-preview-img]'),fallback=$('[data-identity-fallback]'),name=$('[data-identity-name]'),meta=$('[data-identity-meta]'),state=$('[data-identity-status]'),pub=$('[data-identity-publish-state]'),reset=$('[data-identity-reset]');if(img){img.hidden=!media;if(media){img.src=imageUrl(media);img.alt=media.alt_text||'نشان مجموعه'}else img.removeAttribute('src')}if(fallback)fallback.hidden=Boolean(media);if(name)name.textContent=media?(media.original_name||'نشان انتخاب‌شده'):'نشان پیش‌فرض';if(meta)meta.textContent=media?`${L.integer(media.width_px||0)}×${L.integer(media.height_px||0)} · نسخه ${String(draft.version||'').slice(0,12)}…`:'از نشان داخلی سکنا استفاده می‌شود.';const same=Boolean(draft.active)===Boolean(published.active)&&String(draft.media_key||'')===String(published.media_key||'')&&String(draft.version||'fallback')===String(published.version||'fallback');if(state){state.textContent=same?'همگام با نسخه عمومی':'تغییر منتشرنشده';state.className=`sc-badge ${same?'sc-badge--success':'sc-badge--warning'}`}if(pub)pub.textContent=same?'هویت تصویری منتشرشده با پیش‌نویس یکی است.':'با ذخیره تغییر، انتشار خودکار آغاز می‌شود؛ وضعیت وب عمومی را در بالای صفحه بررسی کن.';if(reset)reset.hidden=!active}
+   function openIdentityPicker(){pickerMode='identity';pickerItemId=0;pickerSelectedKey=String(snap.draft_identity?.media_key||'');pickerQuery='';const search=$('[data-media-picker-search]');if(search)search.value='';renderPicker();{const d=$('[data-media-picker-dialog]');if(!window.SoknaUI?.showDialog?.(d,{initialFocus:'[data-media-picker-search]'}))d?.showModal?.()}}
+   const IDENTITY_SIZES={'logo-256':256,'icon-16':16,'icon-32':32,'icon-48':48,'icon-180':180,'icon-192':192,'icon-512':512};
+   function loadIdentityImage(media){return new Promise((resolve,reject)=>{const image=new Image();image.decoding='async';image.onload=()=>resolve(image);image.onerror=()=>reject(new Error('خواندن تصویر برای ساخت نشان انجام نشد.'));image.src=imageUrl(media)})}
+@@ -143,7 +158,7 @@
+   async function applyPicker(){if(pickerMode==='identity'){const media=mediaByKey(pickerSelectedKey);if(!media){toast('یک تصویر فعال از آلبوم انتخاب کن.','warning');return}const button=$('[data-media-picker-apply]');await SoknaUI.busy(button,async()=>{try{const variants=await buildIdentityVariants(media);await post({action:'identity_save',media_key:media.media_key,variants});closePicker();await refresh('نشان مجموعه در پیش‌نویس ذخیره شد.');toast('نشان مجموعه آماده شد؛ برای اعمال روی وب عمومی پیش‌نویس را منتشر کن.','success')}catch(e){status('');toast(e.message,'danger','ذخیره نشان انجام نشد')}});return}if(!pickerItemId)return;try{await post({action:'media_assign',item_id:pickerItemId,media_key:pickerSelectedKey});const item=(snap.items||[]).find(i=>Number(i.id)===pickerItemId);closePicker();await refresh('تصویر آیتم به‌روز شد.');toast(`تصویر ${item?.name||'آیتم'} ذخیره شد.`,'success')}catch(e){status('');toast(e.message,'danger','ذخیره تصویر انجام نشد')}}
+   async function clearPicker(){if(pickerMode==='identity'){try{await post({action:'identity_reset'});closePicker();await refresh('نشان پیش‌فرض برای پیش‌نویس فعال شد.');toast('نشان پیش‌فرض فعال شد؛ برای وب عمومی پیش‌نویس را منتشر کن.','success')}catch(e){status('');toast(e.message,'danger','بازنشانی نشان انجام نشد')}return}pickerSelectedKey='';await applyPicker()}
+ 
+-  const MEDIA_TYPES=new Set(['image/jpeg','image/png','image/webp','image/gif']),MAX_MEDIA_BYTES=8*1024*1024,UPLOAD_CONCURRENCY=2;
++  const MEDIA_TYPES=new Set(['image/jpeg','image/png','image/webp','image/gif']),UPLOAD_CONCURRENCY=2;let MAX_MEDIA_BYTES=8*1024*1024;
+   function uploadStateLabel(state){return ({queued:'در صف',validating:'در حال بررسی',uploading:'در حال ارسال',processing:'در حال پردازش',ready:'آماده در Local',failed:'خطا',cancelled:'لغوشده'})[state]||state}
+   function uploadStateTone(state){return ({ready:'success',failed:'danger',processing:'warning',uploading:'info',validating:'info',cancelled:'neutral',queued:'neutral'})[state]||'neutral'}
+   function uploadProgress(entry){if(entry.state==='ready')return 100;if(entry.state==='processing')return Math.max(95,entry.progress||0);if(entry.state==='validating')return 4;if(entry.state==='uploading')return Math.max(5,Math.min(94,entry.progress||0));return entry.progress||0}
+@@ -161,7 +176,7 @@
+   function addUploadFiles(files){for(const file of files){uploadQueue.push({id:++uploadSeq,file,state:'queued',progress:0,error:'',altText:'',dimensions:null,warning:'',xhr:null,cancelRequested:false,mediaKey:'',deduplicated:false})}renderUploadQueue()}
+   function openUpload(fromPicker=false){pickerReturnToUpload=fromPicker;$('[data-media-upload-file]').value='';renderUploadQueue();{const d=$('[data-media-upload-dialog]');if(!window.SoknaUI?.showDialog?.(d,{focusTitle:true}))d?.showModal?.()}}
+   function closeUpload(){const d=$('[data-media-upload-dialog]');if(d?.open)d.close();if(pickerReturnToUpload&&(pickerMode==='identity'||pickerItemId)){if(lastUploadedMediaKey)pickerSelectedKey=lastUploadedMediaKey;renderPicker();{const p=$('[data-media-picker-dialog]');if(!window.SoknaUI?.showDialog?.(p,{initialFocus:'[data-media-picker-search]'}))p?.showModal?.()}}pickerReturnToUpload=false}
+-  function validateImageFile(entry){return new Promise((resolve,reject)=>{const file=entry.file;if(file.size<1||file.size>MAX_MEDIA_BYTES){reject(new Error('حجم این فایل باید حداکثر ۸ مگابایت باشد.'));return}if(file.type&& !MEDIA_TYPES.has(file.type)){reject(new Error('فرمت این فایل پشتیبانی نمی‌شود؛ JPG، PNG، WebP یا GIF انتخاب کن.'));return}const url=URL.createObjectURL(file),img=new Image();let settled=false;const finish=(err)=>{if(settled)return;settled=true;URL.revokeObjectURL(url);if(err)reject(err);else resolve()};img.onload=()=>{if(entry.cancelRequested){finish(new Error('cancelled'));return}if(!img.naturalWidth||!img.naturalHeight){finish(new Error('فایل انتخاب‌شده تصویر معتبر نیست.'));return}entry.dimensions={width:img.naturalWidth,height:img.naturalHeight};const shortSide=Math.min(img.naturalWidth,img.naturalHeight),ratio=Math.max(img.naturalWidth,img.naturalHeight)/Math.max(1,shortSide);entry.warning=shortSide<800?'کیفیت پایین: ضلع کوتاه کمتر از ۸۰۰ پیکسل است. بارگذاری مجاز است، ولی برای منو نسخه بزرگ‌تر بهتر است.':shortSide<1200?'کیفیت قابل استفاده است؛ برای آزادی بیشتر در برش، ضلع کوتاه ۱۲۰۰ پیکسل یا بیشتر پیشنهاد می‌شود.':ratio>3?'نسبت تصویر خیلی کشیده است؛ قبل از استفاده، کانون/برش کارت را بررسی کن.':'';finish()};img.onerror=()=>finish(new Error('فایل انتخاب‌شده قابل خواندن به‌عنوان تصویر نیست.'));img.src=url})}
++  function validateImageFile(entry){return new Promise((resolve,reject)=>{const file=entry.file;if(file.size<1||file.size>MAX_MEDIA_BYTES){reject(new Error(`حجم این فایل باید حداکثر ${fileSize(MAX_MEDIA_BYTES)} باشد.`));return}if(file.type&& !MEDIA_TYPES.has(file.type)){reject(new Error('فرمت این فایل پشتیبانی نمی‌شود؛ JPG، PNG، WebP یا GIF انتخاب کن.'));return}const url=URL.createObjectURL(file),img=new Image();let settled=false;const finish=(err)=>{if(settled)return;settled=true;URL.revokeObjectURL(url);if(err)reject(err);else resolve()};img.onload=()=>{if(entry.cancelRequested){finish(new Error('cancelled'));return}if(!img.naturalWidth||!img.naturalHeight){finish(new Error('فایل انتخاب‌شده تصویر معتبر نیست.'));return}entry.dimensions={width:img.naturalWidth,height:img.naturalHeight};const shortSide=Math.min(img.naturalWidth,img.naturalHeight),ratio=Math.max(img.naturalWidth,img.naturalHeight)/Math.max(1,shortSide);entry.warning=shortSide<800?'کیفیت پایین: ضلع کوتاه کمتر از ۸۰۰ پیکسل است. بارگذاری مجاز است، ولی برای منو نسخه بزرگ‌تر بهتر است.':shortSide<1200?'کیفیت قابل استفاده است؛ برای آزادی بیشتر در برش، ضلع کوتاه ۱۲۰۰ پیکسل یا بیشتر پیشنهاد می‌شود.':ratio>3?'نسبت تصویر خیلی کشیده است؛ قبل از استفاده، کانون/برش کارت را بررسی کن.':'';finish()};img.onerror=()=>finish(new Error('فایل انتخاب‌شده قابل خواندن به‌عنوان تصویر نیست.'));img.src=url})}
+   function uploadEntryRequest(entry){return new Promise(resolve=>{const fd=new FormData();fd.append('csrf_token',csrf);fd.append('media',entry.file,entry.file.name);fd.append('alt_text',entry.altText||'');const xhr=new XMLHttpRequest();entry.xhr=xhr;entry.state='uploading';entry.progress=5;renderUploadQueue();xhr.open('POST',uploadUrl,true);xhr.withCredentials=true;xhr.timeout=60000;xhr.setRequestHeader('Accept','application/json');xhr.upload.onprogress=e=>{if(e.lengthComputable&&entry.state==='uploading'){entry.progress=Math.max(5,Math.min(94,Math.round(e.loaded/e.total*90)));renderUploadQueue()}};xhr.upload.onload=()=>{if(entry.state==='uploading'){entry.state='processing';entry.progress=95;renderUploadQueue()}};xhr.onload=()=>{let data={};try{data=JSON.parse(xhr.responseText||'{}')}catch(_){data={success:false,message:'پاسخ بارگذاری قابل خواندن نیست.'}}if(xhr.status>=200&&xhr.status<300&&data.success!==false){entry.state='ready';entry.progress=100;entry.mediaKey=String(data.result?.media_key||'');entry.deduplicated=Boolean(data.result?.deduplicated);entry.error='';if(entry.mediaKey)lastUploadedMediaKey=entry.mediaKey}else{entry.state='failed';entry.error=data.message||`بارگذاری با خطای ${xhr.status||'شبکه'} متوقف شد.`}entry.xhr=null;renderUploadQueue();resolve()};xhr.onerror=()=>{entry.state='failed';entry.error='ارتباط هنگام بارگذاری قطع شد؛ فقط همین فایل را دوباره تلاش کن.';entry.xhr=null;renderUploadQueue();resolve()};xhr.ontimeout=()=>{entry.state='failed';entry.error='زمان بارگذاری این فایل تمام شد؛ دوباره تلاش کن.';entry.xhr=null;renderUploadQueue();resolve()};xhr.onabort=()=>{entry.state='cancelled';entry.error='';entry.xhr=null;renderUploadQueue();resolve()};xhr.send(fd)})}
+   async function processUploadEntry(entry){entry.cancelRequested=false;entry.state='validating';entry.error='';entry.progress=0;renderUploadQueue();try{await validateImageFile(entry)}catch(err){if(entry.cancelRequested||err.message==='cancelled'){entry.state='cancelled';entry.error=''}else{entry.state='failed';entry.error=err.message||'اعتبارسنجی فایل انجام نشد.'}renderUploadQueue();return}if(entry.cancelRequested){entry.state='cancelled';renderUploadQueue();return}await uploadEntryRequest(entry)}
+   async function pumpUploadQueue(){if(uploadPumping)return;uploadPumping=true;try{while(true){const active=uploadQueue.filter(e=>['validating','uploading','processing'].includes(e.state)).length;if(active>=UPLOAD_CONCURRENCY){await new Promise(r=>setTimeout(r,30));continue}const next=uploadQueue.find(e=>e.state==='queued');if(!next){if(active===0)break;await new Promise(r=>setTimeout(r,30));continue}processUploadEntry(next).finally(()=>{});await new Promise(r=>setTimeout(r,0))}}finally{uploadPumping=false;renderUploadQueue();await refresh().catch(()=>{});const ready=uploadQueue.filter(e=>e.state==='ready').length,failed=uploadQueue.filter(e=>e.state==='failed').length;if(ready)toast(`${L.integer(ready)} تصویر در سیستم اصلی کافه آماده است.${failed?' بعضی فایل‌ها نیاز به تلاش دوباره دارند.':''}`,failed?'warning':'success');if(pickerReturnToUpload&&(pickerMode==='identity'||pickerItemId)&&lastUploadedMediaKey){pickerSelectedKey=lastUploadedMediaKey;if($('[data-media-picker-dialog]')?.open)renderPicker()}}}
+@@ -182,6 +197,9 @@
+   async function refresh(){
+     const [r,c]=await Promise.all([request(api),request(api+'?action=preview_catalog').catch(()=>null)]);
+     snap=r.snapshot;
++    MAX_MEDIA_BYTES=Math.max(1,Math.min(8*1024*1024,Number(snap.media_upload_limit_bytes)||8*1024*1024));
++    const uploadHint=$('[data-media-upload-limit]');if(uploadHint)uploadHint.textContent=`حداکثر ${fileSize(MAX_MEDIA_BYTES)} برای هر تصویر.`;
++    reflectLoadState(true);
+     if(c?.catalog){previewCatalog=c.catalog;previewCatalogReady=true;}
+     render();status('');
+     if(!previewCatalogReady){const note=$('[data-theme-preview-scale-note]');if(note)note.textContent='کاتالوگ واقعی در دسترس نیست؛ قبل از تأیید پیش‌نمایش، اتصال را بررسی کن.';}
+@@ -250,5 +268,8 @@
+   $('[data-gc-run]')?.addEventListener('click',async e=>{await SoknaUI.busy(e.currentTarget,async()=>{if(!await SoknaUI.confirm('حذف فایل‌های آرشیوشده','فایل‌های آرشیوشده و بدون استفاده برای همیشه حذف شوند؟',true))return;try{const r=await post({action:'media_gc',dry_run:false}),count=(r.result.removed||[]).length;$('[data-gc-result]').textContent=`حذف شد: ${L.integer(count)}`;await refresh('پاک‌سازی رسانه انجام شد.');void 0}catch(e){status('');toast(e.message,'danger','پاک‌سازی انجام نشد')}})});
+ 
+   root.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if($('[data-media-focal-dialog]')?.open){e.preventDefault();closeFocal();return}if($('[data-media-detail-dialog]')?.open){e.preventDefault();closeMediaDetail();return}if($('[data-media-upload-dialog]')?.open){e.preventDefault();closeUpload();return}if($('[data-media-picker-dialog]')?.open){e.preventDefault();closePicker()}});
+-  refresh().catch(e=>{status('');toast(e.message,'danger','بارگذاری محتوا انجام نشد')});
++  $('[data-load-retry]')?.addEventListener('click',async e=>{e.currentTarget.disabled=true;try{await refresh()}catch(err){reflectLoadState(false,err)}finally{e.currentTarget.disabled=false}});
++  root.setAttribute('aria-busy','true');
++  $$('[data-theme-form] button,[data-public-settings-form] button,[data-copy-form] button,[data-media-upload-open],[data-identity-pick],[data-identity-reset],[data-gc-run],[data-gc-preview]').forEach(b=>b.disabled=true);
++  refresh().catch(e=>{reflectLoadState(false,e);toast(e.message,'danger','بارگذاری محتوا انجام نشد')});
+ })();
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6041,3 +6041,11 @@
+ body[data-page="reports"] .sc-pricing-overview__item strong{font-size:1.35rem;font-weight:800;line-height:1.4;font-variant-numeric:tabular-nums}
+ body[data-page="reports"] .sc-pricing-overview__item span{font-size:.74rem;line-height:1.65;color:var(--sc-muted);overflow-wrap:anywhere}
+ @media(max-width:760px){body[data-page="reports"] .sc-pricing-overview{grid-template-columns:1fr}body[data-page="reports"] .sc-pricing-overview__item{padding:10px 12px}}
++
++/* R154 Guest Content: keep the side preview and long helper labels inside the workspace. */
++body[data-page="guest-content"] .sc-guest-theme-layout > *,
++body[data-page="guest-content"] .sc-guest-theme-side > *,
++body[data-page="guest-content"] .sc-guest-theme-side .sc-section-head > div {min-inline-size:0;max-inline-size:100%;}
++body[data-page="guest-content"] .sc-guest-theme-side .sc-section-head p,
++body[data-page="guest-content"] .sc-guest-theme-side .sc-muted {overflow-wrap:anywhere;}
++body[data-page="guest-content"] [data-load-error]:not([hidden]){display:flex;align-items:center;flex-wrap:wrap;gap:10px;justify-content:space-between;}
