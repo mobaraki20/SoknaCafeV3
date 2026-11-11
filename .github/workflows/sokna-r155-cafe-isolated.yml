@@ -1,0 +1,154 @@
+name: SOKNA R155 Cafe isolated exact source, MariaDB and native Windows gates
+on:
+  push:
+    branches: [qa/sokna-r155-cafe-isolated-20261111]
+    paths:
+      - 'qa/sokna-r155-cafe-isolated/**'
+      - '.github/workflows/sokna-r155-cafe-isolated.yml'
+permissions:
+  contents: write
+jobs:
+  source-and-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      GH_TOKEN: ${{ github.token }}
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r140_exact
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=ci-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, gd, zip
+      - name: Download exact historical released parents
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r155-parent" "$RUNNER_TEMP/r155-result"
+          gh release download sokna-r154-local-45base-guest-content-home-canary-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R154-LOCAL-231EE-45BASE-HOME-CANARY-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/r155-parent"
+          gh release download sokna-r153-local-public-source-qa-20261110 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip' --dir "$RUNNER_TEMP/r155-parent"
+          echo 'c8834418d0ce8679768d8ae07c02a7f3956520da975770febc5c745a99b177a8  '"$RUNNER_TEMP/r155-parent/SOKNA-R154-LOCAL-231EE-45BASE-HOME-CANARY-PANEL-UPDATE.zip" | sha256sum -c -
+          echo '63fa3052430b9ee5c5a52fc90ac3132053fb7af7b8ca50552a3d5d5b222ec2c7  '"$RUNNER_TEMP/r155-parent/SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip" | sha256sum -c -
+      - name: Build exact R155 Local and Public packages (isolated branch only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r155-cafe-isolated/build_r155.py \
+            --local-parent "$RUNNER_TEMP/r155-parent/SOKNA-R154-LOCAL-231EE-45BASE-HOME-CANARY-PANEL-UPDATE.zip" \
+            --public-parent "$RUNNER_TEMP/r155-parent/SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip" \
+            --outdir "$RUNNER_TEMP/r155-result"
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$RUNNER_TEMP/r155-result/SOKNA-R155-LOCAL-231EF-CAFE-45BASE-PANEL-UPDATE.zip"
+          unzip -p "$RUNNER_TEMP/r155-result/SOKNA-R155-LOCAL-231EF-CAFE-45BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/r155-local-web.zip"
+          mkdir -p "$RUNNER_TEMP/r155-local-web" "$RUNNER_TEMP/r155-public-web"
+          unzip -q "$RUNNER_TEMP/r155-local-web.zip" -d "$RUNNER_TEMP/r155-local-web"
+          unzip -q "$RUNNER_TEMP/r155-parent/SOKNA-R153-PUBLIC-35HK-31BASE-SOURCE-QA-NOT-INSTALL.zip" -d "$RUNNER_TEMP/r155-public-web"
+          export SOKNA_R155_RESULT="$RUNNER_TEMP/r155-result"
+          export SOKNA_R155_LOCAL_WEB="$RUNNER_TEMP/r155-local-web"
+          export SOKNA_R155_PUBLIC_BASE="$RUNNER_TEMP/r155-public-web"
+          echo "SOKNA_R155_RESULT=$SOKNA_R155_RESULT" >> "$GITHUB_ENV"
+          echo "SOKNA_R155_LOCAL_WEB=$SOKNA_R155_LOCAL_WEB" >> "$GITHUB_ENV"
+          echo "SOKNA_R155_PUBLIC_BASE=$SOKNA_R155_PUBLIC_BASE" >> "$GITHUB_ENV"
+      - name: Exact code syntax and Local preflight provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS= read -r -d '' file; do php -l "$file" >/dev/null; count=$((count+1)); done < <(find "$SOKNA_R155_LOCAL_WEB" -name '*.php' -print0)
+          test "$count" -eq 276
+          count=0
+          while IFS= read -r -d '' file; do node --check "$file" >/dev/null; count=$((count+1)); done < <(find "$SOKNA_R155_LOCAL_WEB" -name '*.js' -print0)
+          test "$count" -eq 49
+          echo "PASS Local 276 PHP / 49 JS"
+      - name: Public real PHP preflight against exact café baseline and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r155-cafe-isolated/test_public_preflight.php \
+            "$SOKNA_R155_RESULT/SOKNA-R155-PUBLIC-35HL-CAFE-R153-PANEL-UPDATE.zip" \
+            "$SOKNA_R155_LOCAL_WEB" "$SOKNA_R155_PUBLIC_BASE"
+      - name: Exact R76 to R80 migration test with MariaDB 11.4 (published unchanged SQL)
+        shell: bash
+        env:
+          SOKNA_R149B_DISPOSABLE: 'YES'
+        run: |
+          set -euo pipefail
+          LAB="$RUNNER_TEMP/r155-r76-r80"
+          python qa/sokna-r140/exact-ci/reconstruct.py "$LAB"
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$LAB/r140.zip" "$LAB/qualified-r140.zip"
+          python qa/sokna-r149b/build_r149b.py "$LAB/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$LAB"
+          python qa/sokna-r149b/test-manifest-matrix.py "$LAB/qualified-r140.zip" "$LAB/r149b-candidate.zip" "$LAB/r149b-qualified.zip"
+          unzip -q "$LAB/r149b-qualified.zip" -d "$LAB/r149b-outer"
+          unzip -q "$LAB/r149b-outer/artifacts/local/web.zip" -d "$LAB/r149b-web"
+          python qa/sokna-r155-cafe-isolated/compare_migrations.py "$LAB/r149b-web" "$SOKNA_R155_LOCAL_WEB"
+          php qa/sokna-r140/exact-ci/upgrade.php baseline "$LAB"
+          php qa/sokna-r140/exact-ci/upgrade.php upgrade "$LAB"
+          php qa/sokna-r149b/test-exact-upgrade.php upgrade "$LAB"
+          php qa/sokna-r149b/test-exact-upgrade.php verify "$LAB"
+      - name: Preserve published historical themes in disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          MYSQL_PWD=ci-root-only mysql -h 127.0.0.1 -u root -e 'CREATE DATABASE IF NOT EXISTS sokna_r154_ci'
+          SOKNA_R154_CI_PASS=ci-root-only php qa/sokna-r154/test_theme_immutable_mariadb.php "$SOKNA_R155_LOCAL_WEB"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r155-isolated-package-candidates
+          path: |
+            ${{ runner.temp }}/r155-result/*.zip
+            ${{ runner.temp }}/r155-result/*.json
+          if-no-files-found: error
+          retention-days: 14
+  native-windows-and-publish:
+    needs: source-and-mariadb
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r155-isolated-package-candidates
+          path: r155-out
+      - name: Native Windows exact 45-baseline VerifyOnly and R112/R153 Stage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $local=(Get-ChildItem r155-out -Recurse -Filter 'SOKNA-R155-LOCAL-231EF-CAFE-45BASE-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if(-not $local){throw 'R155_LOCAL_PACKAGE_MISSING'}
+          dotnet run --project qa/sokna-r154/R154Stage.csproj -c Release --no-launch-profile -- $local
+          if($LASTEXITCODE-ne0){throw 'R155_NATIVE_WINDOWS_STAGE_FAILED'}
+      - name: Publish isolated pre-release only after all gates passed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='sokna-r155-cafe-isolated-install-candidate-20261111'
+          $local=(Get-ChildItem r155-out -Recurse -Filter 'SOKNA-R155-LOCAL-231EF-CAFE-45BASE-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          $public=(Get-ChildItem r155-out -Recurse -Filter 'SOKNA-R155-PUBLIC-35HL-CAFE-R153-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          $identity=(Get-ChildItem r155-out -Recurse -Filter 'SOKNA-R155-Cafe-Package-Identity.json' | Select-Object -First 1).FullName
+          if(-not $local -or -not $public -or -not $identity){throw 'R155_RELEASE_ARTIFACTS_MISSING'}
+          $notes=Join-Path $env:RUNNER_TEMP 'R155-CAFE-README-FA.md'
+          @'
+          # R155 Local 231ef + Public 35hl — isolated café upgrade candidate
+          This release does not alter GitHub main or the concurrent development branch.
+          Exact R155 Library source payloads, validated against R154 Local and R153 Public released parent identities.
+          Local upgrade supports the exact R112 café identity and preserves R154's exact supported baseline policy. Public upgrade is pinned to the exact observed 35hk managed-tree SHA256.
+          Automated gates: exact source patch and canonical tree identities, PHP/JS syntax, MariaDB 11.4 R76-R80 unchanged SQL, Public preflight, native Windows Maintenance 45 VerifyOnly and R112/R153 Stage.
+          **This is an operator-selected café UAT candidate, not physical café Production acceptance.** Host-specific backup and restore proof are still required and must fail closed. No user's actual café database has been modified or restore-tested. Install Local first, then Public, only after a verified host backup.
+          Do not force any rejected preflight, edit manifests or switch files manually. Later releases must include the exact target managed-tree digests shown in Identity JSON.
+          '@ | Set-Content $notes -Encoding utf8NoBOM
+          gh release create $tag $local $public $identity $notes --repo mobaraki20/SoknaCafeV3 --title 'SOKNA R155 Local/Public café isolated installation candidate (not Production-approved)' --prerelease --notes-file $notes --target $env:GITHUB_SHA
+          if($LASTEXITCODE-ne0){throw 'R155_RELEASE_UPLOAD_FAILED'}
+          gh release view $tag --repo mobaraki20/SoknaCafeV3 --json url,assets,isPrerelease
