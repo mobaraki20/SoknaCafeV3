@@ -1,0 +1,141 @@
+name: SOKNA R163 cumulative post-go-live UI exact source MariaDB Windows
+on:
+  push:
+    branches: [qa/sokna-r163-cumulative-post-golive-20261112]
+    paths:
+      - 'qa/sokna-r163-cumulative/**'
+      - '.github/workflows/sokna-r163-cumulative.yml'
+permissions:
+  contents: write
+jobs:
+  exact-source-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOKNA_R149B_DISPOSABLE: YES
+      SOKNA_R162_DISPOSABLE: YES
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r140_exact
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=ci-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, gd, zip
+      - name: Retrieve ONLY published R162 packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/parents" "$RUNNER_TEMP/r163"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parents"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parents"
+          echo "16adab9910c017d97ebc256e721bfbc22e26103979adc59763c6bf978b6f5471  $RUNNER_TEMP/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "96e976c43644f62e1246a29752af3fab5fff62978421f93db8065d8460a67503  $RUNNER_TEMP/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" | sha256sum -c -
+      - name: Rebuild exact R163 and validate byte-for-byte package identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r163-cumulative/build_r163.py \
+            --local-r162 "$RUNNER_TEMP/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" \
+            --public-r160 "$RUNNER_TEMP/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" \
+            --local-patch qa/sokna-r163-cumulative/local-patch.gz.b64 \
+            --public-patch qa/sokna-r163-cumulative/public-patch.gz.b64 \
+            --outdir "$RUNNER_TEMP/r163"
+          echo "39fbd4c918b0d2888023848b9726ca8d2868207d2a8d38cc32fb629027ebe177  $RUNNER_TEMP/r163/SOKNA-R163-LOCAL-231EN-50BASE-POST-GOLIVE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "c6fc506579497e9870df2be4be472fc9e835ab189c8ee6d6d1c60046915eb4d4  $RUNNER_TEMP/r163/SOKNA-R161-PUBLIC-35HS-FROM-35HR-POST-GOLIVE-PANEL-UPDATE.zip" | sha256sum -c -
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$RUNNER_TEMP/r163/SOKNA-R163-LOCAL-231EN-50BASE-POST-GOLIVE-PANEL-UPDATE.zip"
+          mkdir -p "$RUNNER_TEMP/r163-local" "$RUNNER_TEMP/r163-public" "$RUNNER_TEMP/r162-local" "$RUNNER_TEMP/r162-public"
+          unzip -p "$RUNNER_TEMP/r163/SOKNA-R163-LOCAL-231EN-50BASE-POST-GOLIVE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/r163-local-web.zip"
+          unzip -q "$RUNNER_TEMP/r163-local-web.zip" -d "$RUNNER_TEMP/r163-local"
+          unzip -p "$RUNNER_TEMP/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/r162-local-web.zip"
+          unzip -q "$RUNNER_TEMP/r162-local-web.zip" -d "$RUNNER_TEMP/r162-local"
+          unzip -q "$RUNNER_TEMP/r163/SOKNA-R161-PUBLIC-35HS-FROM-35HR-POST-GOLIVE-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/r163-package"
+          cp -a "$RUNNER_TEMP/r163-package/payload/." "$RUNNER_TEMP/r163-public/"
+          unzip -q "$RUNNER_TEMP/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/r162-package"
+          cp -a "$RUNNER_TEMP/r162-package/payload/." "$RUNNER_TEMP/r162-public/"
+          echo "R163_LOCAL=$RUNNER_TEMP/r163-local" >> "$GITHUB_ENV"
+          echo "R163_PUBLIC=$RUNNER_TEMP/r163-public" >> "$GITHUB_ENV"
+          echo "R162_LOCAL=$RUNNER_TEMP/r162-local" >> "$GITHUB_ENV"
+          echo "R162_PUBLIC=$RUNNER_TEMP/r162-public" >> "$GITHUB_ENV"
+      - name: Real syntax and exact source-change/clearance preservation assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$R163_LOCAL" "$R163_PUBLIC" -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+          find "$R163_LOCAL" "$R163_PUBLIC" -name '*.js' -print0 | xargs -0 -n1 node --check > /dev/null
+          python qa/sokna-r163-cumulative/test_r163_static.py "$R163_LOCAL" "$R163_PUBLIC" "$R162_LOCAL" "$R162_PUBLIC"
+          php qa/sokna-r163-cumulative/test_public_preflight.php \
+            "$RUNNER_TEMP/r163/SOKNA-R161-PUBLIC-35HS-FROM-35HR-POST-GOLIVE-PANEL-UPDATE.zip" \
+            "$R163_LOCAL" "$R162_PUBLIC" "$R163_PUBLIC"
+      - name: Real disposable MariaDB test of unchanged go-live reset engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          LAB="$RUNNER_TEMP/r163-maria"
+          python qa/sokna-r140/exact-ci/reconstruct.py "$LAB"
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$LAB/r140.zip" "$LAB/qualified-r140.zip"
+          python qa/sokna-r149b/build_r149b.py "$LAB/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$LAB"
+          python qa/sokna-r149b/test-manifest-matrix.py "$LAB/qualified-r140.zip" "$LAB/r149b-candidate.zip" "$LAB/r149b-qualified.zip"
+          unzip -q "$LAB/r149b-qualified.zip" -d "$LAB/r149b-outer"
+          unzip -q "$LAB/r149b-outer/artifacts/local/web.zip" -d "$LAB/r149b-web"
+          python qa/sokna-r155-cafe-isolated/compare_migrations.py "$LAB/r149b-web" "$R163_LOCAL"
+          php qa/sokna-r140/exact-ci/upgrade.php baseline "$LAB"
+          php qa/sokna-r140/exact-ci/upgrade.php upgrade "$LAB"
+          php qa/sokna-r149b/test-exact-upgrade.php upgrade "$LAB"
+          php qa/sokna-r149b/test-exact-upgrade.php verify "$LAB"
+          php qa/sokna-r162-golive/test_golive_mariadb.php "$R163_LOCAL" "$R163_PUBLIC"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r163-scoped-ui-packages-after-purge
+          path: |
+            ${{ runner.temp }}/r163/*.zip
+            ${{ runner.temp }}/r163/*.json
+          retention-days: 14
+          if-no-files-found: error
+  native-windows-release:
+    needs: exact-source-mariadb
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r163-scoped-ui-packages-after-purge
+          path: r163-out
+      - name: Native 50 exact baseline VerifyOnly and R162 disposable Stage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=(Get-ChildItem r163-out -Recurse -Filter 'SOKNA-R163-LOCAL-231EN-50BASE-POST-GOLIVE-PANEL-UPDATE.zip'|Select-Object -First 1).FullName
+          if(-not $p){throw 'R163_PACKAGE_MISSING'}
+          dotnet run --project qa/sokna-r163-cumulative/R163Stage.csproj -c Release --no-launch-profile -- $p
+          if($LASTEXITCODE-ne0){throw 'R163_NATIVE_WINDOWS_STAGE_FAILED'}
+      - name: Publish UAT pre-release only when both isolated jobs succeed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $assets=Get-ChildItem r163-out -Recurse -File | Where-Object {$_.Name -like 'SOKNA-R163-LOCAL-*.zip' -or $_.Name -like 'SOKNA-R161-PUBLIC-*.zip' -or $_.Name -eq 'R163-PACKAGE-IDENTITY.json'}
+          if($assets.Count -ne 3){throw "R163_EXPECTED_THREE_ASSETS_GOT_$($assets.Count)"}
+          $notes=Join-Path $env:RUNNER_TEMP 'R163-UAT.md'
+          @'
+          # SOKNA R163 Local 231en / Public 35hs — install AFTER R162 go-live clearing
+          Scoped cumulative fix to exact published R162 binaries, not old main. Fixes CHAT14-076 catalog search Enter (single result: full edit; multiple results: focus first edit), CHAT14-105 report refresh on return after 30s without background polling, and CHAT14-058 compact waiter-confirm modal (Local/Public matching). All reset engines, policy, schema/migrations, users, catalog/recipes/media source files preserved byte-for-byte. Installation does not clear data. The R162 one-time reset is still operator-triggered from Local panel and MUST occur first. Public 35hs only from exact installed 35hr. Local 50 exact baselines and Windows Stage; MariaDB disposable go-live preservation. UAT pre-release: no claim of actual café/browser acceptance. DO NOT install before clearing test data. CURRENT/main untouched.
+          '@ | Set-Content $notes -Encoding utf8NoBOM
+          $args=@('release','create','sokna-r163-ui-post-golive-uat-20261112','--repo','mobaraki20/SoknaCafeV3','--title','SOKNA R163 cumulative UI fixes after go-live reset UAT','--prerelease','--notes-file',$notes,'--target',$env:GITHUB_SHA)
+          foreach($a in $assets){$args+=@($a.FullName)}
+          & gh @args
+          if($LASTEXITCODE-ne0){throw 'R163_RELEASE_FAILED'}
