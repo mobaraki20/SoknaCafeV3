@@ -1,0 +1,157 @@
+name: SOKNA R158 cumulative exact source + MariaDB + native Windows QA
+on:
+  push:
+    branches: [qa/sokna-r158-cumulative-install-qualification-20261111]
+    paths:
+      - 'qa/sokna-r158-cumulative/**'
+      - '.github/workflows/sokna-r158-cumulative.yml'
+permissions:
+  contents: write
+jobs:
+  build-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    env:
+      GH_TOKEN: ${{ github.token }}
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r140_exact
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=ci-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, gd, zip
+      - name: Download released R155 CAFÉ installer parents (NOT old GitHub main)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/parents" "$RUNNER_TEMP/r158"
+          gh release download sokna-r155-cafe-isolated-install-candidate-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R155-LOCAL-231EF-CAFE-45BASE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parents"
+          gh release download sokna-r155-cafe-isolated-install-candidate-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R155-PUBLIC-35HL-CAFE-R153-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parents"
+          echo '35f71977b018504429655f862bddbf173d668cd3ff22166d71e82b62b1e71965  '"$RUNNER_TEMP/parents/SOKNA-R155-LOCAL-231EF-CAFE-45BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo '91af980a8757eb3d2b2beb219bb137b4e25cc3b96c31f216db0e8e31771439ec  '"$RUNNER_TEMP/parents/SOKNA-R155-PUBLIC-35HL-CAFE-R153-PANEL-UPDATE.zip" | sha256sum -c -
+      - name: Build R158 exact cumulative source-matched native installer shapes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r158-cumulative/build_r158.py \
+            --local-r155 "$RUNNER_TEMP/parents/SOKNA-R155-LOCAL-231EF-CAFE-45BASE-PANEL-UPDATE.zip" \
+            --public-r155 "$RUNNER_TEMP/parents/SOKNA-R155-PUBLIC-35HL-CAFE-R153-PANEL-UPDATE.zip" \
+            --local-patch qa/sokna-r158-cumulative/R155-TO-R158-local.patch.gz.b64 \
+            --public-patch qa/sokna-r158-cumulative/R155-TO-R158-public.patch.gz.b64 \
+            --outdir "$RUNNER_TEMP/r158"
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$RUNNER_TEMP/r158/SOKNA-R158-LOCAL-231EI-CAFE-46BASE-PANEL-UPDATE.zip"
+          mkdir -p "$RUNNER_TEMP/r158-local" "$RUNNER_TEMP/r155-public"
+          unzip -p "$RUNNER_TEMP/r158/SOKNA-R158-LOCAL-231EI-CAFE-46BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/local-web.zip"
+          unzip -q "$RUNNER_TEMP/local-web.zip" -d "$RUNNER_TEMP/r158-local"
+          unzip -q "$RUNNER_TEMP/parents/SOKNA-R155-PUBLIC-35HL-CAFE-R153-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/r155-public-package"
+          cp -a "$RUNNER_TEMP/r155-public-package/payload/." "$RUNNER_TEMP/r155-public/"
+          echo "R158_DIR=$RUNNER_TEMP/r158" >> "$GITHUB_ENV"
+          echo "R158_LOCAL=$RUNNER_TEMP/r158-local" >> "$GITHUB_ENV"
+          echo "R155_PUBLIC=$RUNNER_TEMP/r155-public" >> "$GITHUB_ENV"
+      - name: PHP / JS syntax and true Public 35hl preflight and receiver validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$R158_LOCAL" -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+          find "$R158_LOCAL" -name '*.js' -print0 | xargs -0 -n1 node --check > /dev/null
+          find "$R155_PUBLIC" -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+          php qa/sokna-r158-cumulative/test_public_preflight.php \
+            "$R158_DIR/SOKNA-R157-PUBLIC-35HN-FROM-35HL-CAFE-PANEL-UPDATE.zip" \
+            "$R158_DIR/SOKNA-R157-PUBLIC-35HN-FROM-35HK-CAFE-PANEL-UPDATE.zip" \
+            "$R158_LOCAL" "$R155_PUBLIC"
+      - name: Execute unchanged R76-R80 real MariaDB 11.4 migrations and theme persistence tests
+        shell: bash
+        env:
+          SOKNA_R149B_DISPOSABLE: 'YES'
+        run: |
+          set -euo pipefail
+          LAB="$RUNNER_TEMP/r158-r76-r80"
+          python qa/sokna-r140/exact-ci/reconstruct.py "$LAB"
+          python qa/sokna-r140/exact-ci/build-install-qualified-r140.py "$LAB/r140.zip" "$LAB/qualified-r140.zip"
+          python qa/sokna-r149b/build_r149b.py "$LAB/qualified-r140.zip" qa/sokna-r149b/overlay.zip "$LAB"
+          python qa/sokna-r149b/test-manifest-matrix.py "$LAB/qualified-r140.zip" "$LAB/r149b-candidate.zip" "$LAB/r149b-qualified.zip"
+          unzip -q "$LAB/r149b-qualified.zip" -d "$LAB/r149b-outer"
+          unzip -q "$LAB/r149b-outer/artifacts/local/web.zip" -d "$LAB/r149b-web"
+          python qa/sokna-r155-cafe-isolated/compare_migrations.py "$LAB/r149b-web" "$R158_LOCAL"
+          php qa/sokna-r140/exact-ci/upgrade.php baseline "$LAB"
+          php qa/sokna-r140/exact-ci/upgrade.php upgrade "$LAB"
+          php qa/sokna-r149b/test-exact-upgrade.php upgrade "$LAB"
+          php qa/sokna-r149b/test-exact-upgrade.php verify "$LAB"
+          if ! command -v mysql >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y mariadb-client; fi
+          MYSQL_PWD=ci-root-only mysql -h 127.0.0.1 -u root -e "CREATE DATABASE IF NOT EXISTS sokna_r154_ci; ALTER USER 'root'@'%' IDENTIFIED BY 'r154-ci-only'"
+          php qa/sokna-r154/test_theme_immutable_mariadb.php "$R158_LOCAL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r158-qualified-exact-cafe-packages
+          path: |
+            ${{ runner.temp }}/r158/*.zip
+            ${{ runner.temp }}/r158/*.json
+          if-no-files-found: error
+          retention-days: 14
+  native-windows-publish:
+    needs: build-mariadb
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r158-qualified-exact-cafe-packages
+          path: r158-out
+      - name: Read-only 46-baseline VerifyOnly; exact R153/R112 stage on disposable Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $package=(Get-ChildItem r158-out -Recurse -Filter 'SOKNA-R158-LOCAL-231EI-CAFE-46BASE-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if(-not $package){throw 'R158_LOCAL_MISSING'}
+          $old=Get-Content qa/sokna-r154/R154Stage.cs -Raw
+          $new=$old.Replace('45','46').Replace('R154_','R158_')
+          $extra=@'
+          var installedR155=baselines.SingleOrDefault(x=>x.Version.Contains("231ef-r155",StringComparison.Ordinal));
+          Need(installedR155 is not null,"R155_TARGET_BASELINE_INCLUDED");
+          var third=new MaintenancePaths(root+"-r155");
+          Directory.CreateDirectory(third.InboxRoot);
+          var thirdInbox=Path.Combine(third.InboxRoot,Sha(bytes)+".zip");
+          File.WriteAllBytes(thirdInbox,bytes);
+          var thirdStage=new ReleaseSetVerifierStager(third).VerifyAndStage(thirdInbox,Installed(installedR155!));
+          Need(thirdStage.OperatorAuthorized,"R155_EXACT_WINDOWS_STAGE");
+          try{Directory.Delete(root+"-r155",true);}catch{}
+          Console.WriteLine("PASS R158_EXACT_PACKAGE_46_BASELINE_VERIFY_AND_R153_R112_R155_STAGE");
+          '@
+          $new=$new.Replace('Console.WriteLine("PASS R158_EXACT_PACKAGE_46_BASELINE_VERIFY_AND_R153_R112_STAGE");',$extra.Trim())
+          Set-Content qa/sokna-r154/R158Stage.cs -Value $new -Encoding utf8
+          $csproj=(Get-Content qa/sokna-r154/R154Stage.csproj -Raw).Replace('R154Stage.cs','R158Stage.cs')
+          Set-Content qa/sokna-r154/R158Stage.csproj -Value $csproj -Encoding utf8
+          dotnet run --project qa/sokna-r154/R158Stage.csproj -c Release --no-launch-profile -- $package
+          if($LASTEXITCODE-ne0){throw 'R158_NATIVE_WINDOWS_QA_FAILED'}
+      - name: Publish pre-release only if exact-source MariaDB and Windows checks PASS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='sokna-r158-cumulative-preservation-ci-20261111'
+          $files=Get-ChildItem r158-out -Recurse -File | Where-Object {$_.Name -like 'SOKNA-R158-*.zip' -or $_.Name -like 'SOKNA-R157-PUBLIC-*.zip' -or $_.Name -eq 'R158-CUMULATIVE-IDENTITY.json'}
+          if($files.Count -ne 4){throw "R158_EXPECTED_FOUR_ASSETS_GOT_$($files.Count)"}
+          $notes=Join-Path $env:RUNNER_TEMP 'R158-CAFE-NOTES.md'
+          @'
+          # SOKNA R158 exact cumulative Local + R157 Public, isolated UAT package set
+          The web payload is fully reconstructed from the published R155 café installer, with an exact pinned cumulative overlay through R158. No historical source files dropped, MariaDB and native Windows Stage gated by CI. Local is 46 exact baselines; Public separate exact 35HL and 35HK bridges, to avoid unsafe legacy multi-baseline assumptions.
+          These are operator-selected installation candidates, not confirmation on the actual café host. Host-specific backup and restore evidence are required before any mutation, fail closed. Do not bypass failed preflight. Main source branch remains untouched.
+          '@ | Set-Content $notes -Encoding utf8NoBOM
+          $args=@('release','create',$tag,'--repo','mobaraki20/SoknaCafeV3','--title','SOKNA R158 cumulative source-exact Local/Public isolated UAT','--prerelease','--notes-file',$notes,'--target',$env:GITHUB_SHA)
+          foreach($f in $files){$args+=@($f.FullName)}
+          & gh @args
+          if($LASTEXITCODE-ne0){throw 'R158_RELEASE_PUBLISH_FAILED'}
