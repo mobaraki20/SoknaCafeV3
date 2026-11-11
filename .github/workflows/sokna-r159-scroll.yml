@@ -1,0 +1,115 @@
+name: SOKNA R159 cumulative scroll continuity and dialog exact installer QA
+on:
+  push:
+    branches: [qa/sokna-r159-scroll-dialog-continuity-20261111]
+    paths:
+      - 'qa/sokna-r159-scroll/**'
+      - '.github/workflows/sokna-r159-scroll.yml'
+permissions:
+  contents: write
+jobs:
+  exact-source-public-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, gd, zip
+      - name: Download only qualified published R158 and R157 parent binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r159-parents" "$RUNNER_TEMP/r159"
+          gh release download sokna-r158-cumulative-preservation-ci-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R158-LOCAL-231EI-CAFE-46BASE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/r159-parents"
+          gh release download sokna-r158-cumulative-preservation-ci-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R157-PUBLIC-35HN-FROM-35HL-CAFE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/r159-parents"
+          echo "028003c2fc88c016b0f644df64fe04ab4d8a7f69a06788f9e63fb7747373b31e  $RUNNER_TEMP/r159-parents/SOKNA-R158-LOCAL-231EI-CAFE-46BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "eae6bf89a0865fa905311a72d0320976864fa1c0f697a5f0bfd5eb5b5b9b2d34  $RUNNER_TEMP/r159-parents/SOKNA-R157-PUBLIC-35HN-FROM-35HL-CAFE-PANEL-UPDATE.zip" | sha256sum -c -
+      - name: Build exact R159 source-matched Local and three separate Public bridges
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r159-scroll/build_r159.py \
+            --local-r158 "$RUNNER_TEMP/r159-parents/SOKNA-R158-LOCAL-231EI-CAFE-46BASE-PANEL-UPDATE.zip" \
+            --public-r157 "$RUNNER_TEMP/r159-parents/SOKNA-R157-PUBLIC-35HN-FROM-35HL-CAFE-PANEL-UPDATE.zip" \
+            --local-patch qa/sokna-r159-scroll/R158-TO-R159-local.patch.gz.b64 \
+            --public-patch qa/sokna-r159-scroll/R157-TO-R158-public.patch.gz.b64 \
+            --outdir "$RUNNER_TEMP/r159"
+          echo "7c16c8ca1186ba55de8b10c5ecf897a1aa32815b28e0f82220d56078d53fbcae  $RUNNER_TEMP/r159/SOKNA-R159-LOCAL-231EJ-CAFE-47BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "53864de2306dc25104b29fe18cb416d67ac680e298076b3ebed125131d10ecac  $RUNNER_TEMP/r159/SOKNA-R158-PUBLIC-35HO-FROM-35HL-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "84efa86c36236a7e009a9747ee87112f9f10e69d7847d93ded1dd49dcded545f  $RUNNER_TEMP/r159/SOKNA-R158-PUBLIC-35HO-FROM-35HK-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "399c88bd2b2bf63b6c20b19c78e79bac553bcab98fbe5aaa56b443d83bc1ee6b  $RUNNER_TEMP/r159/SOKNA-R158-PUBLIC-35HO-FROM-35HN-PANEL-UPDATE.zip" | sha256sum -c -
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$RUNNER_TEMP/r159/SOKNA-R159-LOCAL-231EJ-CAFE-47BASE-PANEL-UPDATE.zip"
+          mkdir -p "$RUNNER_TEMP/r159-local" "$RUNNER_TEMP/r157-public" "$RUNNER_TEMP/r157-public-outer"
+          unzip -p "$RUNNER_TEMP/r159/SOKNA-R159-LOCAL-231EJ-CAFE-47BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/r159-local-web.zip"
+          unzip -q "$RUNNER_TEMP/r159-local-web.zip" -d "$RUNNER_TEMP/r159-local"
+          unzip -q "$RUNNER_TEMP/r159-parents/SOKNA-R157-PUBLIC-35HN-FROM-35HL-CAFE-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/r157-public-outer"
+          cp -a "$RUNNER_TEMP/r157-public-outer/payload/." "$RUNNER_TEMP/r157-public/"
+          echo "R159_OUT=$RUNNER_TEMP/r159" >> "$GITHUB_ENV"
+          echo "R159_LOCAL=$RUNNER_TEMP/r159-local" >> "$GITHUB_ENV"
+          echo "R157_PUBLIC=$RUNNER_TEMP/r157-public" >> "$GITHUB_ENV"
+      - name: Syntax and exact Public 35HL 35HK 35HN preflight with real receiver
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$R159_LOCAL" -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          find "$R159_LOCAL" -name '*.js' -print0 | xargs -0 -n1 node --check >/dev/null
+          find "$R157_PUBLIC" -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          php -l qa/sokna-r159-scroll/test_public_preflight.php
+          php qa/sokna-r159-scroll/test_public_preflight.php \
+            "$R159_OUT/SOKNA-R158-PUBLIC-35HO-FROM-35HL-PANEL-UPDATE.zip" \
+            "$R159_OUT/SOKNA-R158-PUBLIC-35HO-FROM-35HK-PANEL-UPDATE.zip" \
+            "$R159_OUT/SOKNA-R158-PUBLIC-35HO-FROM-35HN-PANEL-UPDATE.zip" \
+            "$R159_LOCAL" "$R157_PUBLIC"
+      - name: Publish exact verified package artifacts to Windows staging gate
+        uses: actions/upload-artifact@v4
+        with:
+          name: r159-exact-source-verified-candidates
+          path: |
+            ${{ runner.temp }}/r159/*.zip
+            ${{ runner.temp }}/r159/*.json
+          if-no-files-found: error
+          retention-days: 14
+  native-windows-prerelease:
+    needs: exact-source-public-preflight
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r159-exact-source-verified-candidates
+          path: r159-out
+      - name: Native 47 baseline VerifyOnly and R153 R112 R155 R158 Stage on disposable Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $package=(Get-ChildItem r159-out -Recurse -Filter 'SOKNA-R159-LOCAL-231EJ-CAFE-47BASE-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if(-not $package){throw 'R159_LOCAL_PACKAGE_NOT_FOUND'}
+          dotnet run --project qa/sokna-r159-scroll/R159Stage.csproj -c Release --no-launch-profile -- $package
+          if($LASTEXITCODE-ne0){throw 'R159_WINDOWS_STAGE_FAILED'}
+      - name: Pre-release only if Linux and Windows gates are successful
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $files=Get-ChildItem r159-out -Recurse -File | Where-Object {$_.Name -like 'SOKNA-R159-*.zip' -or $_.Name -like 'SOKNA-R158-PUBLIC-*.zip' -or $_.Name -eq 'R159-PACKAGE-IDENTITY.json'}
+          if($files.Count -ne 5){throw "EXPECTED_FIVE_RELEASE_ASSETS_GOT_$($files.Count)"}
+          $notes=Join-Path $env:RUNNER_TEMP 'R159-RELEASE-NOTES.md'
+          @'
+          # Sokna R159 scroll continuity and dialog QA, isolated UAT
+          Local 231ej: catalog image/row focus after refresh, scroll continuity across list workspaces, shared dialog corner clip. Public 35ho: same shared dialog CSS/JS. Rebuilt from released R158/35hn and byte-pinned source patches. Exact 47 Local baselines, separate 35HL/35HK/35HN Public bridges.
+          Source integrity and disposable native Windows/receiver verification are CI qualified. No migration changed. This is NOT production host acceptance, not proof every historical request has been behaviorally accepted, and not a backup/restore approval. Before field installation, verify current exact baseline and recoverable backup; reject any failed preflight. main and CURRENT stay unchanged.
+          '@ | Set-Content $notes -Encoding utf8NoBOM
+          $tag='sokna-r159-scroll-dialog-uat-20261111'
+          $args=@('release','create',$tag,'--repo','mobaraki20/SoknaCafeV3','--title','SOKNA R159 Local and R158 Public — catalog scroll and dialog isolated UAT','--prerelease','--notes-file',$notes,'--target',$env:GITHUB_SHA)
+          foreach($f in $files){$args+=@($f.FullName)}
+          & gh @args
+          if($LASTEXITCODE-ne0){throw 'R159_RELEASE_FAILED'}
