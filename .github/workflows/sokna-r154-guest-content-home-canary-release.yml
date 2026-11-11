@@ -1,0 +1,131 @@
+name: SOKNA R154 Local 45-baseline guest-content safe repair Home Canary
+on:
+  push:
+    branches: [qa/sokna-r154-guest-content-safe-repair-20261111]
+    paths:
+      - qa/sokna-r154/**
+      - .github/workflows/sokna-r154-guest-content-home-canary-release.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  real-mariadb-immutable-themes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r154-ci-only
+          MARIADB_DATABASE: sokna_r154_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=r154-ci-only"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, gd
+          coverage: none
+      - name: Exact R153 download and R154 45-baseline source build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r154-ci"
+          gh release download sokna-r153-local-44base-home-canary-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R153-LOCAL-231ED-44BASE-HOME-CANARY-PANEL-UPLOAD.zip' --dir "$RUNNER_TEMP/r154-ci"
+          parent="$RUNNER_TEMP/r154-ci/SOKNA-R153-LOCAL-231ED-44BASE-HOME-CANARY-PANEL-UPLOAD.zip"
+          out="$RUNNER_TEMP/r154-ci/SOKNA-R154-LOCAL-231EE-45BASE-HOME-CANARY-PANEL-UPDATE.zip"
+          python qa/sokna-r154/build_r154.py --source "$parent" --patch qa/sokna-r154/r154-guest-content-safe-repair.patch --out "$out"
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$out"
+          echo 'c8834418d0ce8679768d8ae07c02a7f3956520da975770febc5c745a99b177a8  '"$out" | sha256sum -c -
+          unzip -p "$out" artifacts/local/web.zip > "$RUNNER_TEMP/r154-ci/web.zip"
+          mkdir -p "$RUNNER_TEMP/r154-ci/web"
+          unzip -q "$RUNNER_TEMP/r154-ci/web.zip" -d "$RUNNER_TEMP/r154-ci/web"
+          echo "SOKNA_R154_WEB=$RUNNER_TEMP/r154-ci/web" >> "$GITHUB_ENV"
+      - name: Actual PHP and JS syntax over target source
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS= read -r -d '' f; do php -l "$f" > /dev/null; count=$((count+1)); done < <(find "$SOKNA_R154_WEB" -name '*.php' -print0)
+          test "$count" -eq 276
+          node --check "$SOKNA_R154_WEB/public/assets/guest-content-workspace.js"
+          echo "PASS $count PHP syntax and guest-content JS syntax"
+      - name: Real MariaDB 11.4 immutability/idempotency/published history regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r154/test_theme_immutable_mariadb.php "$SOKNA_R154_WEB"
+  native-windows-stage-and-publish:
+    needs: real-mariadb-immutable-themes
+    runs-on: windows-latest
+    timeout-minutes: 65
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Rebuild exactly same source and package on independent Windows runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $gitTools='C:\Program Files\Git\usr\bin'
+          if(Test-Path $gitTools){$env:PATH=$gitTools+';'+$env:PATH}
+          if(-not(Get-Command patch -ErrorAction SilentlyContinue)){throw 'PATCH_TOOL_MISSING'}
+          $outDir=Join-Path $env:RUNNER_TEMP 'sokna-r154-qualified'
+          New-Item -ItemType Directory -Force $outDir | Out-Null
+          gh release download sokna-r153-local-44base-home-canary-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R153-LOCAL-231ED-44BASE-HOME-CANARY-PANEL-UPLOAD.zip' --dir $outDir
+          if($LASTEXITCODE-ne0){throw 'R153_RELEASE_SOURCE_DOWNLOAD_FAILED'}
+          $parent=Join-Path $outDir 'SOKNA-R153-LOCAL-231ED-44BASE-HOME-CANARY-PANEL-UPLOAD.zip'
+          $out=Join-Path $outDir 'SOKNA-R154-LOCAL-231EE-45BASE-HOME-CANARY-PANEL-UPDATE.zip'
+          python qa/sokna-r154/build_r154.py --source $parent --patch qa/sokna-r154/r154-guest-content-safe-repair.patch --out $out
+          if($LASTEXITCODE-ne0){throw 'R154_BUILD_FAILED'}
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable $out
+          if($LASTEXITCODE-ne0){throw 'R154_FINAL_MANIFEST_INSTALL_GATE_FAILED'}
+          $sha=(Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha-ne'c8834418d0ce8679768d8ae07c02a7f3956520da975770febc5c745a99b177a8'){throw "R154_CROSS_PLATFORM_BYTE_HASH_MISMATCH $sha"}
+          "R154_LOCAL_PACKAGE=$out" | Out-File $env:GITHUB_ENV -Append
+          "R154_LOCAL_DIR=$outDir" | Out-File $env:GITHUB_ENV -Append
+      - name: Native Windows Maintenance 45 identities, unknown rejection, exact R153 and R112 Stage
+        shell: pwsh
+        run: |
+          dotnet run --project qa/sokna-r154/R154Stage.csproj -c Release --no-launch-profile -- $env:R154_LOCAL_PACKAGE
+          if($LASTEXITCODE-ne0){throw 'R154_NATIVE_WINDOWS_STAGE_FAILED'}
+      - name: Reusable exact ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R154-LOCAL-231EE-45BASE-TESTED-HOME-CANARY
+          path: ${{ env.R154_LOCAL_PACKAGE }}
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish R154 Home Canary prerelease only after Linux MariaDB and Windows Stage PASS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='sokna-r154-local-45base-guest-content-home-canary-20261111'
+          $readme=Join-Path $env:R154_LOCAL_DIR 'README-FA.md'
+          @'
+          # سکنا لوکال R154 / 231ee — فقط Home Canary
+
+          اصلاح ریشه‌ای خطای builtin_theme_conflict بدون حذف رکورد قالب قدیمی، بازنویسی fingerprint یا حذف تاریخچه انتشار.
+          بهبود صفحه‌های ظاهر و تصاویر: نمایش خطای صریح و Retry، حذف صفرهای کاذب و پیش‌نمایش لوگوی شکسته، اصلاح متن انتشار خودکار، حد آپلود مطابق تنظیمات PHP.
+          ۴۵ مبدأ دقیق شامل R112 کافه و R153 خانه. ۸۰ فایل SQL بدون تغییر؛ Public، چاپ و Maintenance دست‌نخورده‌اند.
+          آزمون واقعی MariaDB 11.4 برای حفظ ردیف قالب تاریخی و FK تاریخچه و آزمون واقعی ویندوز Maintenance برای ۴۵ پیش‌بررسی و دو Stage الزامی و موفق هستند.
+          **این نسخه برای آزمایش کنترل‌شده خانه است؛ برای Production کافه تأیید نشده.** روی میزبان، بکاپ باید پیش از هر جهش داده توسط سامانه تأیید شود؛ اگر نشد نصب متوقف می‌شود.
+          '@ | Set-Content $readme -Encoding utf8NoBOM
+          $sha=(Get-FileHash $env:R154_LOCAL_PACKAGE -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha *SOKNA-R154-LOCAL-231EE-45BASE-HOME-CANARY-PANEL-UPDATE.zip" | Set-Content (Join-Path $env:R154_LOCAL_DIR 'SHA256SUMS.txt') -Encoding ascii
+          gh release create $tag $env:R154_LOCAL_PACKAGE $readme (Join-Path $env:R154_LOCAL_DIR 'SHA256SUMS.txt') --title 'SOKNA R154 Local 231ee — Guest Theme Repair 45-Base Home Canary (NOT Café Production)' --prerelease --notes-file $readme --target $env:GITHUB_SHA
+          if($LASTEXITCODE-ne0){throw 'R154_GITHUB_RELEASE_UPLOAD_FAILED'}
+          $asset=gh release view $tag --json assets,url,isPrerelease | ConvertFrom-Json
+          if($LASTEXITCODE-ne0){throw 'R154_RELEASE_READBACK_FAILED'}
+          $zip=@($asset.assets|Where-Object{$_.name-eq'SOKNA-R154-LOCAL-231EE-45BASE-HOME-CANARY-PANEL-UPDATE.zip'})
+          if($zip.Count-ne1){throw 'R154_RELEASE_ASSET_NOT_FOUND'}
+          Write-Host ('PASS GITHUB_R154_PUBLISHED '+$asset.url)
