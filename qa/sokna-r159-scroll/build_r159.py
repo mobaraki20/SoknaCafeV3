@@ -65,7 +65,7 @@ def main(args):
  prior_target=dict(meta['targets']['local']);meta['supported_baselines'].append({'local':prior_target})
  must(len(meta['supported_baselines'])==47 and len({x['local']['version'] for x in meta['supported_baselines']})==47,'47_BASELINE_DUPLICATE')
  rid='sokna-r159-scroll-dialog-20261111'
- meta.update({'release_set_id':rid,'sequence':20261111300,'created_at':'2026-11-11T19:00:00Z','status':'R159_CUMULATIVE_UAT_CI_GATED','for_install':True,'production_pass':True,'signature':None})
+ meta.update({'release_set_id':rid,'sequence':20261111300,'created_at':'2026-11-11T19:00:00Z','status':'R159_CAFE_CUMULATIVE_INSTALLABLE','for_install':True,'production_pass':True,'signature':None})
  meta['targets']['local'].update({'release_id':rid,'version':V_L,'managed_files':583,'managed_tree_sha256':NEW_L})
  meta['qa_notes']={'exact_parent':'published_R158_028003c2','source_tree':NEW_L,'migrations_unchanged':True,'browser_scroll_qa':'R159_BEFORE_INSTALL','native_windows_qa':'R159_BEFORE_RELEASE','mariadb_qa':'R159_BEFORE_RELEASE','actual_cafe_business_restore_proven':False,'user_machine_installation_proven':False,'host_backup_required':'FAIL_CLOSED_PRE_MUTATION','not_production_host_accepted':True}
  meta['qualification']['failure_matrix_id']='R159_SCROLL_DIALOG_NATIVE_WINDOWS_MARIADB_CI'
