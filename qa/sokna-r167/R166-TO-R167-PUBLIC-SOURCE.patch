@@ -1,0 +1,92 @@
+--- a/assets/scds/guest.js
++++ b/assets/scds/guest.js
+@@ -908,7 +908,7 @@
+       quoteEls.discount&&(quoteEls.discount.textContent=`− ${formatMoney(f.discount||0)}`); if(quoteEls.discountRow)quoteEls.discountRow.hidden=!(Number(f.discount)>0);
+       quoteEls.tax&&(quoteEls.tax.textContent=formatMoney(f.tax||0)); if(quoteEls.taxRow)quoteEls.taxRow.hidden=!(Number(f.tax)>0);
+       if(quoteEls.subtotalRow)quoteEls.subtotalRow.hidden=!(Number(f.discount||0)>0||Number(f.tax||0)>0||Number(f.subtotal??cartTotal())!==Number(f.total??cartTotal()));quoteEls.total&&(quoteEls.total.textContent=formatMoney(f.total??cartTotal())); if(quoteEls.state)quoteEls.state.textContent='مبلغ با وضعیت فعلی حساب محاسبه شد.';
+-    } catch(error) { if(seq!==quoteSeq||signature!==quoteFingerprint())return;if(quoteEls.state)quoteEls.state.textContent=error?.message||'پیش‌نمایش مبلغ در دسترس نیست.'; }
++    } catch(error) { if(seq!==quoteSeq||signature!==quoteFingerprint())return;if(quoteEls.state)quoteEls.state.textContent=error?.code==='price_changed'?'قیمت منو تغییر کرده است؛ هنگام ثبت می‌توانی مبلغ جدید را تأیید کنی.':(error?.message||'پیش‌نمایش مبلغ در دسترس نیست.'); }
+   };
+   customerNote?.addEventListener('input', () => { saveGuestDraft();globalThis.clearTimeout(customerNote.__quoteTimer); customerNote.__quoteTimer=globalThis.setTimeout(refreshQuote,300); });
+ 
+@@ -1038,9 +1038,55 @@
+     if(note.length>1000)throw new Error('یادداشت سفارش از حد مجاز بیشتر است.');
+     return {action:'append',append_only:true,table_token:tableToken,session_token:sessionToken,device_token:deviceToken,order_code:String(order.order_code),expected_signature:String(order.edit_signature),customer_note:note,items:lines};
+   };
+-  const submitOrder = async () => {
++  // A definitive price-conflict is *not* an order receipt. Before any new
++  // mutation, collect all current prices through read-only Local quotes and
++  // require the guest to approve the new amount; keep the cart if declined.
++  const priceRecoverySignature=()=>JSON.stringify({session_token:sessionToken,editing_order:editingOrder?.order_code||'',cart:Array.from(cart.entries()).map(([key,line])=>[key,line.id,line.quantity,line.takeaway_quantity,line.note,line.bundle_choice_item_id,line.unit_price])});
++  const resolveCartPriceConflict=async(initialError)=>{
++    if(initialError?.code!=='price_changed'||editingOrder||!endpoints.quote||!unsafeAllowed()||loadPendingMutation()||loadPendingSubmission())return 'unavailable';
++    const before=priceRecoverySignature(),lines=payloadLines().map(line=>({...line}));
++    if(!lines.length)return 'unavailable';
++    const replacements=new Map();let conflict=initialError,preview=null;
++    // A read-only quote can discover another changed line; never probe forever.
++    for(let attempt=0;attempt<=cart.size;attempt++){
++      if(conflict){
++        const details=conflict?.body?.details||{};
++        const itemId=Number(details.item_id),price=Number(details.current_price);
++        if(!Number.isSafeInteger(itemId)||itemId<1||!Number.isSafeInteger(price)||price<0)return 'unavailable';
++        const possible=Array.from(cart.entries()).filter(([,line])=>Number(line.id)===itemId);
++        const specified=Object.prototype.hasOwnProperty.call(details,'bundle_choice_item_id');
++        const choiceId=Number(details.bundle_choice_item_id||0);
++        const matching=specified?possible.filter(([,line])=>Number(line.bundle_choice_item_id||0)===choiceId):possible;
++        // Older Local releases do not include the choice id. Reprice only
++        // when the choice can be determined unambiguously.
++        const unique=new Set(matching.map(([,line])=>Number(line.bundle_choice_item_id||0)));
++        if(matching.length!==1||unique.size!==1)return 'unavailable';
++        const [cartKey,line]=matching[0],key=`${itemId}|${Number(line.bundle_choice_item_id||0)}`;
++        if(replacements.has(key)||price===Number(line.unit_price))return 'unavailable';
++        replacements.set(key,{cartKey,itemId,choiceId:Number(line.bundle_choice_item_id||0),price,name:String(itemMap.get(itemId)?.name||'آیتم')});
++        lines.forEach(row=>{if(Number(row.id)===itemId&&Number(row.bundle_choice_item_id||0)===Number(line.bundle_choice_item_id||0))row.expected_price=price;});
++      }
++      if(!endpoints.quote||!unsafeAllowed()||before!==priceRecoverySignature())return 'unavailable';
++      try{
++        const body=apiOk(await postJson(endpoints.quote,{quote_mode:'create',table_token:tableToken,session_token:sessionToken,device_token:deviceToken,client_token:'',customer_note:customerNote?.value||'',items:lines},10000),'مبلغ جدید سفارش دریافت نشد.');
++        preview=body.financial_preview;break;
++      }catch(error){if(error?.code!=='price_changed'||!definitiveClientFailure(error))return 'unavailable';conflict=error;}
++    }
++    if(!preview||!Number.isSafeInteger(Number(preview.total))||Number(preview.total)<0||!replacements.size)return 'unavailable';
++    const names=Array.from(replacements.values()).map(x=>x.name).slice(0,3).join('، ');
++    const accepted=await guestConfirm('تأیید مبلغ جدید سفارش',`قیمت ${names} به‌روز شده است. جمع نهایی سفارش ${formatMoney(preview.total)} است. با این مبلغ ثبت کنیم؟`,{confirmLabel:'تأیید مبلغ و ثبت سفارش'});
++    if(!accepted){if(orderMessage){orderMessage.classList.remove('is-error');orderMessage.textContent='سبد حفظ شد؛ می‌توانی مبلغ جدید را بررسی و دوباره ثبت کنی.';}return 'declined';}
++    if(!unsafeAllowed()||before!==priceRecoverySignature()||loadPendingMutation()||loadPendingSubmission())return 'unavailable';
++    for(const x of replacements.values()){
++      const line=cart.get(x.cartKey);
++      if(!line||Number(line.id)!==x.itemId||Number(line.bundle_choice_item_id||0)!==x.choiceId)return 'unavailable';
++    }
++    for(const x of replacements.values())cart.get(x.cartKey).unit_price=x.price;
++    saveGuestDraft();renderCart();return 'accepted';
++  };
++  const submitOrder = async (priceRetry=false) => {
+     const lines=payloadLines();if(!lines.length||!cartPayloadConsistent()){toast('بعضی اقلام یا انتخاب‌های سفارش معتبر نیستند؛ آن‌ها را دوباره بررسی کن.',true);return;}if(!orderCommitAllowed()||loadPendingMutation()||(!editingOrder&&loadPendingSubmission()))return;
+-    let keepBusy=false;
++    let keepBusy=false, submittedAsCreate=false;
+     if(submit){submit.dataset.busy='1';submit.disabled=true;} if(orderMessage){orderMessage.classList.remove('is-error');orderMessage.textContent=editingOrder?'در حال ذخیره تغییرات…':'در حال ارسال سفارش…';}
+     try {
+       let body;let autoMerged=false;
+@@ -1057,6 +1103,7 @@
+         preparePendingMutation('update',payload);
+         try{body=apiOk(await postJson(endpoints.orders,payload,15000),'ذخیره تغییرات سفارش انجام نشد.');savePendingMutation(null);}catch(error){if(definitiveClientFailure(error)){savePendingMutation(null);throw error;}keepBusy=true;closeLayer();if(orderMessage)orderMessage.textContent='نتیجه ذخیره تغییرات در حال بازیابی است؛ تغییر را دوباره نفرست.';toast('وضعیت تغییر سفارش در حال بازیابی است.');schedulePendingMutationRecovery();return;}
+       }else{
++        submittedAsCreate=true;
+         const clientToken=randomToken();
+         const prepared=preparePendingSubmission(clientToken,lines);
+         try{
+@@ -1081,6 +1128,14 @@
+       if(!wasEditing&&successModal){if(successCode)successCode.textContent=body.order_number?`سفارش ${numberFa(body.order_number)}`:(body.order_code?`کد ${body.order_code}`:'');applySuccessStatus(body.status||'new');openLayer(successModal,submit);metric('order_success',{status:String(body.status||'')});}
+       await refreshContext();await refreshOrders(false);startOrderTracking();
+     } catch(error) {
++      if(!priceRetry&&submittedAsCreate&&definitiveClientFailure(error)&&error?.code==='price_changed'){
++        const resolution=await resolveCartPriceConflict(error);
++        if(resolution==='accepted'){
++          if(orderMessage){orderMessage.classList.remove('is-error');orderMessage.textContent='قیمت‌ها تأیید شدند؛ سفارش با مبلغ جدید در حال ثبت است.';}
++          globalThis.setTimeout(()=>submitOrder(true),0);return;
++        }
++        if(resolution==='declined')return;
++      }
+       const msg=error?.message||'ثبت سفارش انجام نشد.';if(orderMessage){orderMessage.classList.add('is-error');orderMessage.textContent=msg;}toast(msg,true);
+       if(error?.code==='pending_order_exists'){closeLayer();await refreshOrders(true);}
+       if(error?.code==='order_changed'){saveGuestDraft();await refreshOrders(false);toast('سفارش قبلی هم‌زمان تغییر کرده است؛ اقلام جدید در سبد حفظ شدند، دوباره ثبت کن.',true);}
