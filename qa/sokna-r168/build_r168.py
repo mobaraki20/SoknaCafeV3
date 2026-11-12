@@ -84,7 +84,7 @@ def main():
  r162baseline={'local':oldlocal,'public':None}
  rel['supported_baselines']+=[homealias,r162baseline]
  assert len({(b.get('local') or {}).get('release_id','') for b in rel['supported_baselines']})==len(rel['supported_baselines'])
- rel['release_set_id']=ID;rel['sequence']=20261112600;rel['created_at']=TS;rel['status']='R168_POST_GOLIVE_ISOLATED_UAT_INSTALLABLE_PENDING_HOST';rel['production_pass']=True
+ rel['release_set_id']=ID;rel['sequence']=20261112600;rel['created_at']=TS;rel['status']='R168_CAFE_CUMULATIVE_INSTALLABLE';rel['production_pass']=True
  rel['qualification'].update({'real_public_host':False,'clean_machine_remote_restore':False,'canary':True})
  rel['qa_notes'].update({'scope':'R168 cumulative guest mobile UX, price reconciliation, idempotency, account list, optional print template, home 231ed identity exact-base fix','previous_published_R162_unchanged':True,'actual_cafe_business_restore_proven':False,'home_canary_release_id_exact_included':True,'field_install_pending':True})
  rel['targets']['local'].update({'managed_files':len(local),'managed_tree_sha256':ltree,'version':LV,'release_id':ID})
