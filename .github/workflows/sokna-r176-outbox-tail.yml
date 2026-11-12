@@ -1,0 +1,69 @@
+name: SOKNA R176 outbox tail cleanup recovery regression
+on:
+  push:
+    branches: [qa/sokna-r176-golive-outbox-tail-20261112]
+    paths:
+      - 'qa/sokna-r176/**'
+      - '.github/workflows/sokna-r176-outbox-tail.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  r176-real-mariadb-trigger-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GITHUB_ACTIONS: 'true'
+      SOKNA_R176_DISPOSABLE: YES
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=ci-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: r175-real-windows-stage-qualified-canary-local-only
+          run-id: 43252752795
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r175
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql,mbstring,zip
+      - name: Pin actual R175 release archive and apply one-file R176 repair
+        run: |
+          set -euo pipefail
+          PACKAGE="$(find "$RUNNER_TEMP/r175" -name 'SOKNA-R175-LOCAL-231EQ-53BASE-GOLIVE-CANARY-PANEL-UPDATE.zip' -type f -print -quit)"
+          test -n "$PACKAGE"
+          echo "0dfc8d876c98536f18fca13f5ac08e3e1404447705310b61b324cbd6f50f140e  $PACKAGE" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/r176-source"
+          unzip -p "$PACKAGE" artifacts/local/web.zip > "$RUNNER_TEMP/r175-web.zip"
+          unzip -q "$RUNNER_TEMP/r175-web.zip" -d "$RUNNER_TEMP/r176-source"
+          echo "df5b33d4923f3424e2513ad8fd366c6d2e76a0f8b059be722704c6c453718be4  $RUNNER_TEMP/r176-source/src/Domain/System/GoLiveResetEngine.php" | sha256sum -c -
+          (cd "$RUNNER_TEMP/r176-source" && patch -p1 --fuzz=0 --batch < "$GITHUB_WORKSPACE/qa/sokna-r176/R175-TO-R176-LOCAL-GOLIVE-OUTBOX-TAIL.patch")
+          echo "8b4eef35a60f7253c9366b6cf25a71fc111fa1a82a4edd750e2abadfebc47871  $RUNNER_TEMP/r176-source/src/Domain/System/GoLiveResetEngine.php" | sha256sum -c -
+          echo "R176_SOURCE=$RUNNER_TEMP/r176-source" >> "$GITHUB_ENV"
+      - name: PHP syntax and fixed policy/trigger order proof
+        run: |
+          php -l "$R176_SOURCE/src/Domain/System/GoLiveResetEngine.php"
+          python3 - "$R176_SOURCE" <<'PY'
+          import sys,pathlib,json
+          root=pathlib.Path(sys.argv[1]); actions=json.loads((root/'resources/golive-clearance-policy.json').read_text())['actions']
+          clear=[k for k,v in sorted(actions.items()) if v=='CLEAR']
+          assert len(actions)==111 and len(clear)==62
+          assert clear[44]=='public_projection_outbox' and clear[54]=='staff_consumptions'
+          assert 'AFTER DELETE ON staff_consumptions' in (root/'database/migrations/0053_public_projection_invalidation_coverage.sql').read_text()
+          assert 'GOLIVE_OUTBOX_TAIL_DELETE_FAILED' in (root/'src/Domain/System/GoLiveResetEngine.php').read_text()
+          print('PASS OUTBOX_CLEARED_BEFORE_POST_OUTBOX_DELETE_TRIGGERS')
+          PY
+      - name: Real disposable MariaDB triggered late outbox and interrupted checkpoint
+        run: |
+          php qa/sokna-r176/test_r176_disposable_mariadb.php "$R176_SOURCE"
