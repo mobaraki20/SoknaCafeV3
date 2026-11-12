@@ -114,13 +114,23 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $p=(Get-ChildItem r171-out -Filter 'SOKNA-R171-LOCAL-231EO-52BASE-PANEL-UPDATE.zip' -Recurse | Select-Object -First 1).FullName
-          if(-not $p){throw 'R171_LOCAL_ZIP_MISSING'}
+          # Only after the disposable MariaDB/source job passed, create a distinct
+          # canary-install metadata variant; retain byte-identical Local web and Public payloads.
+          python qa/sokna-r171/promote_r171_canary.py --source-dir r171-out --output-dir r171-canary --ci-run $env:GITHUB_RUN_ID
+          if($LASTEXITCODE-ne0){throw 'R171_CANARY_PROMOTION_FAILED'}
+          $p=(Get-ChildItem r171-canary -Filter 'SOKNA-R171-CANARY-LOCAL-231EO-52BASE-PANEL-UPDATE.zip' -Recurse | Select-Object -First 1).FullName
+          if(-not $p){throw 'R171_CANARY_ZIP_MISSING'}
           $source=Get-Content qa/sokna-r168/R168Stage.cs -Raw
           $source=$source.Replace('==51','==52').Replace('==588','==589').Replace('Count==51','Count==52').Replace('R168','R171').Replace('51_BASELINE','52_BASELINE').Replace('51BASE','52BASE')
           Set-Content qa/sokna-r168/R168Stage.cs -Value $source -Encoding utf8NoBOM
           dotnet run --project qa/sokna-r168/R168Stage.csproj -c Release --no-launch-profile -- $p
           if($LASTEXITCODE-ne0){throw 'R171_WINDOWS_STAGE_FAILED'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r171-canary-exact-windows-stage-passed-installable-candidates
+          path: r171-canary/*
+          if-no-files-found: error
+          retention-days: 30
       - name: Try creating GitHub UAT prerelease (optional, never weaken release permissions)
         shell: pwsh
         continue-on-error: true
@@ -128,15 +138,15 @@ jobs:
           $ErrorActionPreference='Stop'
           $notes=Join-Path $env:RUNNER_TEMP 'R171-UAT.md'
           @'
-          # SOKNA R171 cumulative — Local 231eo / Public 35ht (UAT)
+          # SOKNA R171 cumulative — Local 231eo / Public 35ht (exact-source canary)
           Exact R162 → R168 cumulative plus R169 notifications/RTL, R170 expense role,
           R171 4-digit local-only staff PIN onboarding for named café employee.
           Only one new data-only migration (0081) applied atomically; all earlier
           80 Local migrations and 8 Public migrations byte-identical. No real
-          home/café host installation has been verified. UAT only, not field certified.
+          home/café host installation has been verified. Canary install QA only; not field certified.
           '@ | Set-Content $notes -Encoding utf8NoBOM
-          $assets=Get-ChildItem r171-out -File | Where-Object {$_.Name -like 'SOKNA-R171-*.zip' -or $_.Name -eq 'R171-PACKAGE-IDENTITY.json'}
-          $a=@('release','create','sokna-r171-cumulative-staff-expenses-uat-20261112','--repo','mobaraki20/SoknaCafeV3','--title','SOKNA R171 cumulative cafe UAT','--prerelease','--target',$env:GITHUB_SHA,'--notes-file',$notes)
+          $assets=Get-ChildItem r171-canary -File | Where-Object {$_.Name -like 'SOKNA-R171-*.zip' -or $_.Name -eq 'R171-CANARY-PACKAGE-IDENTITY.json'}
+          $a=@('release','create','sokna-r171-cafe-canary-uat-20261112','--repo','mobaraki20/SoknaCafeV3','--title','SOKNA R171 cumulative cafe UAT','--prerelease','--target',$env:GITHUB_SHA,'--notes-file',$notes)
           foreach($asset in $assets){$a+=@($asset.FullName)}
           & gh @a
           if($LASTEXITCODE-ne0){Write-Warning 'GH release permission refused. Artifact remains available and qualified.'}
