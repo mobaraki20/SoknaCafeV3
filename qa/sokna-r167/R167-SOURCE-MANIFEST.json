@@ -1,0 +1,56 @@
+{
+  "local": {
+    "files": 588,
+    "changed_files": [
+      "public/assets/login.js",
+      "public/assets/product-ui.css",
+      "public/assets/scds/guest.js",
+      "src/Domain/Orders/GuestOrderService.php",
+      "src/Domain/Orders/OrderCatalogService.php"
+    ],
+    "unchanged_files": 583,
+    "migration_count_untouched": 80,
+    "parent_tree_sha256": "f4d6511b6bf961cc66d43ed56a4d3c6575de022959b44a3d6f76b7f8883ff495",
+    "new_tree_sha256": "f8e887de231e86031f6881c99b3b3fe786ee877d393f1510d905f3934132383e",
+    "file_sha256": {
+      "public/assets/login.js": {
+        "before": "0a51035f84c9c0f33c519221ddb70f523fb5ed897eccecfa825dc27c7f9de2a8",
+        "after": "73666b4dd356d8f84c642a37dafd61d65639fe2e80218ec6cc7bceab9097c357"
+      },
+      "public/assets/product-ui.css": {
+        "before": "d999a45c4e6a25745badda0b9949df8cb27a9aa74ff53d12a69dca5aa5215330",
+        "after": "76d49b1e0cf97b3366e871eb586d8e582c45a3620d68473fdfd72e2f03b4c4bc"
+      },
+      "public/assets/scds/guest.js": {
+        "before": "b594cd78edd9be1c7315faff8a50a63f01b4d06488435aab921af589e0d9a29c",
+        "after": "5b7535de77c858ab6874210efd6ab3ed5c2b0ee9b2f7b0f88f0d19cdd23661d8"
+      },
+      "src/Domain/Orders/GuestOrderService.php": {
+        "before": "f5800943d4db185e50efdd91c8a50d80b71210a3df302e21b7dc284dd5e3441a",
+        "after": "835a6a8595559273a72d5859e3c2c53dd28904adfee03322d943abaa0da8b399"
+      },
+      "src/Domain/Orders/OrderCatalogService.php": {
+        "before": "b6df4a30de95e2057a8b825805f64cc56c0853e5b51683c25495124b6b9ecb13",
+        "after": "d7ed2a03b85b36c8f7e25d8eabaa13c7215633f7d11d7ab90d0a5751165c788c"
+      }
+    },
+    "patch_sha256": "b8fd477fd8564ae6b238da499e8913958f783c17796d129d8c86dc4b86685e06"
+  },
+  "public": {
+    "files": 225,
+    "changed_files": [
+      "assets/scds/guest.js"
+    ],
+    "unchanged_files": 224,
+    "migration_count_untouched": 8,
+    "parent_tree_sha256": "a4797d25cbd1fc4cc2b5c3ff5ac4856966bd319fa60626a5e9a7f06830fe068f",
+    "new_tree_sha256": "ab7d6891fc4b6ed62f9aebfbc62ad288eb763074f405bc4eb2b8e1c2591089fe",
+    "file_sha256": {
+      "assets/scds/guest.js": {
+        "before": "ab47a08c5ebd5cf6a56c4413b57c690ffd3c6b3dc6f0c8cfade56b4b0555e818",
+        "after": "e3acb80b9b26328799a8c95dc99d7350910c2d32ed0d10874adf61d2c714318b"
+      }
+    },
+    "patch_sha256": "1f7c991cce3c14bfed0fc25df99cc5ead49a95caa67dfaca08b637132028eb3d"
+  }
+}
