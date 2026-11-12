@@ -1,0 +1,281 @@
+--- a/src/Domain/System/GoLiveResetEngine.php
++++ b/src/Domain/System/GoLiveResetEngine.php
+@@ -76,6 +76,146 @@
+         return $deleted;
+     }
+ 
++    /**
++     * Initiate a resumable, explicitly fenced one-time cleanup. This method is
++     * read-only: the coordinator persists the returned state BEFORE the first
++     * chunk is ever deleted. Do not use for an unfenced ordinary application.
++     */
++    public function beginBatched(string $installationId, int $newEpoch): array
++    {
++        $inspection = $this->inspect();
++        if (preg_match('/^[A-Za-z0-9._:-]{1,96}$/D', $installationId) !== 1 || $newEpoch < 2) {
++            throw new RuntimeException('GOLIVE_AUTHORITY_INVALID');
++        }
++        $this->requireLocalEpoch($installationId, $newEpoch - 1);
++        $policy = $this->policy();
++        return [
++            'format' => 'sokna-golive-local-resumable-v1',
++            'policy_sha256' => $inspection['policy_sha256'],
++            'schema_fingerprint' => $inspection['schema_fingerprint'],
++            'preserved_before' => $this->fingerprints($policy),
++            // Use the pre-clear snapshot for human-readable totals; after a
++            // network loss, the same chunk may be safely replayed and the
++            // number of committed DELETE rows is not a reliable audit total.
++            'initial_counts' => array_map(static fn(array $row): int => $row['rows'],
++                array_filter($inspection['counts'], static fn(array $row): bool => $row['action'] === 'CLEAR')),
++            'table_index' => 0,
++            'deleted' => [],
++            'chunks' => 0,
++        ];
++    }
++
++    /**
++     * Execute at most 12 bounded chunks per HTTP request. Every DELETE is its
++     * own transaction; the coordinator persists the returned cursor. If PHP
++     * exits after COMMIT but before cursor persistence, replay deletes only
++     * remaining rows and never repeats Public clearance or increments epoch.
++     *
++     * A pending marker blocks all business Web routes while this runs.
++     * The Public side was already fenced by the coordinator.
++     */
++    public function advanceBatched(string $installationId, int $newEpoch, array $state): array
++    {
++        $policy = $this->policy();
++        $names = array_keys(array_filter($policy, static fn(string $action): bool => $action === 'CLEAR'));
++        if (($state['format'] ?? null) !== 'sokna-golive-local-resumable-v1' ||
++            !hash_equals((string)hash_file('sha256', $this->policyPath), (string)($state['policy_sha256'] ?? '')) ||
++            !is_array($state['preserved_before'] ?? null) || !is_array($state['deleted'] ?? null) ||
++            !is_int($state['table_index'] ?? null) || $state['table_index'] < 0 ||
++            $state['table_index'] > count($names) ||
++            !is_int($state['chunks'] ?? null) || $state['chunks'] < 0 ||
++            ($state['schema_fingerprint'] ?? '') !== $this->schemaFingerprintOnly($policy)) {
++            throw new RuntimeException('GOLIVE_BATCH_STATE_INVALID');
++        }
++        $this->requireLocalEpoch($installationId, $newEpoch - 1);
++        $this->pdo->exec('SET SESSION innodb_lock_wait_timeout=5');
++        $done = 0;
++        $rowLimit = 1500;
++        while ($done < 12 && $state['table_index'] < count($names)) {
++            $table = $names[$state['table_index']]; // exclusively from fixed, checked policy
++            $disabled = false;
++            try {
++                $this->pdo->beginTransaction();
++                $this->pdo->exec('SET FOREIGN_KEY_CHECKS=0');
++                $disabled = true;
++                $n = $this->pdo->exec('DELETE FROM `'.$table.'` LIMIT '.$rowLimit);
++                if ($n === false) throw new RuntimeException('GOLIVE_DELETE_FAILED');
++                $this->pdo->exec('SET FOREIGN_KEY_CHECKS=1');
++                $disabled = false;
++                $this->pdo->commit();
++            } catch (Throwable $e) {
++                if ($disabled) { try {$this->pdo->exec('SET FOREIGN_KEY_CHECKS=1');} catch (Throwable) {} }
++                if ($this->pdo->inTransaction()) $this->pdo->rollBack();
++                throw $e;
++            }
++            $state['deleted'][$table] = (int)($state['deleted'][$table] ?? 0) + $n;
++            $state['chunks']++;
++            $done++;
++            if ($n < $rowLimit) $state['table_index']++;
++        }
++        if ($state['table_index'] < count($names)) {
++            return ['completed' => false, 'state' => $state, 'cleared_tables' => $state['table_index'], 'total_tables' => count($names)];
++        }
++        // Verify every CLEAR table is empty and every PRESERVE table has the
++        // same rows before advancing the Local authority epoch (once only).
++        $verification = $this->inspect();
++        if ($verification['schema_fingerprint'] !== $state['schema_fingerprint'])
++            throw new RuntimeException('GOLIVE_BATCH_SCHEMA_DRIFT');
++        foreach ($verification['counts'] as $record) {
++            if ($record['action'] === 'CLEAR' && $record['rows'] !== 0)
++                throw new RuntimeException('GOLIVE_RESIDUAL_DATA');
++        }
++        if ($state['preserved_before'] !== $this->fingerprints($policy))
++            throw new RuntimeException('GOLIVE_PRESERVED_DATA_CHANGED');
++        try {
++            $this->pdo->beginTransaction();
++            $row = $this->pdo->prepare('SELECT authority_epoch,phase FROM public_authority_state WHERE installation_id=? FOR UPDATE');
++            $row->execute([$installationId]);
++            $current = $row->fetch(PDO::FETCH_ASSOC);
++            if (!is_array($current) || (int)$current['authority_epoch'] !== $newEpoch - 1 ||
++                !in_array($current['phase'], ['active', 'reenroll_required'], true))
++                throw new RuntimeException('GOLIVE_LOCAL_AUTHORITY_EPOCH_MISMATCH');
++            $stmt = $this->pdo->prepare("UPDATE public_authority_state SET authority_epoch=?,phase='resync_required',reason='go_live_reset',reenrolled_at=UTC_TIMESTAMP(6),activated_at=NULL WHERE installation_id=?");
++            $stmt->execute([$newEpoch, $installationId]);
++            if ($stmt->rowCount() !== 1) throw new RuntimeException('GOLIVE_LOCAL_AUTHORITY_EPOCH_MISMATCH');
++            $this->pdo->commit();
++        } catch (Throwable $e) {
++            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
++            throw $e;
++        }
++        return ['completed' => true, 'state' => $state, 'cleared_tables' => count($names), 'total_tables' => count($names)];
++    }
++
++    private function requireLocalEpoch(string $installationId, int $expectedEpoch): void
++    {
++        if (preg_match('/^[A-Za-z0-9._:-]{1,96}$/D', $installationId) !== 1 || $expectedEpoch < 1)
++            throw new RuntimeException('GOLIVE_AUTHORITY_INVALID');
++        $row = $this->pdo->prepare('SELECT authority_epoch,phase FROM public_authority_state WHERE installation_id=?');
++        $row->execute([$installationId]);
++        $current = $row->fetch(PDO::FETCH_ASSOC);
++        if (!is_array($current) || (int)$current['authority_epoch'] !== $expectedEpoch ||
++            !in_array($current['phase'], ['active', 'reenroll_required'], true))
++            throw new RuntimeException('GOLIVE_LOCAL_AUTHORITY_EPOCH_MISMATCH');
++    }
++
++    private function schemaFingerprintOnly(array $policy): string
++    {
++        $schema = (string)$this->pdo->query('SELECT DATABASE()')->fetchColumn();
++        if ($schema === '') throw new RuntimeException('GOLIVE_DATABASE_NOT_SELECTED');
++        $rows = $this->pdo->query("SELECT TABLE_NAME,ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME")->fetchAll(PDO::FETCH_ASSOC);
++        $actual = [];
++        foreach ($rows as $row) {
++            $name = (string)$row['TABLE_NAME'];
++            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $name) !== 1 ||
++                strtoupper((string)$row['ENGINE']) !== 'INNODB')
++                throw new RuntimeException('GOLIVE_SCHEMA_MISMATCH');
++            $actual[$name] = true;
++        }
++        if (array_diff(array_keys($policy), array_keys($actual)) || array_diff(array_keys($actual), array_keys($policy)))
++            throw new RuntimeException('GOLIVE_SCHEMA_MISMATCH');
++        return hash('sha256', $schema.'|'.implode(',', array_keys($actual)));
++    }
++
+     private function policy():array
+     {
+         $raw=file_get_contents($this->policyPath);
+--- a/src/Domain/System/GoLiveResetCoordinator.php
++++ b/src/Domain/System/GoLiveResetCoordinator.php
+@@ -31,7 +31,22 @@
+         $pending=$this->pending();
+         if(is_array($pending)){
+             $remote=$client->post('/api/v1/local/go-live/status',['purpose'=>'go_live_test_data_clear_20261111'],12);
+-            return ['local'=>$local,'public'=>['table_count'=>21,'counts'=>[]],'installation'=>$remote['body']['installation']??[],'pending'=>true,'phase'=>(string)($pending['stage']??'unknown')];
++            // During a Public intake fence, the signed status route does NOT
++            // return counts. Never substitute an invented zero for real rows.
++            $remoteInstallation=(array)($remote['body']['installation']??[]);
++            if(($remoteInstallation['installation_id']??'')!==$client->installationId())
++                throw new RuntimeException('GOLIVE_PUBLIC_STATUS_IDENTITY_MISMATCH');
++            return [
++                'local'=>$local,
++                'public'=>['table_count'=>null,'counts'=>null,'counts_verified'=>false],
++                'installation'=>$remoteInstallation,
++                'pending'=>true,
++                'phase'=>(string)($pending['stage']??'unknown'),
++                'batch_progress'=>is_array($pending['batch']??null)?[
++                    'table_index'=>(int)($pending['batch']['table_index']??0),
++                    'chunks'=>(int)($pending['batch']['chunks']??0),
++                ]:null,
++            ];
+         }
+         $remote=$client->post('/api/v1/local/go-live/inspect',['purpose'=>'go_live_test_data_clear_20261111'],12);
+         $public=(array)($remote['body']['inspection']??[]);
+@@ -77,7 +92,7 @@
+             }elseif(($status['authority_state']??'')==='resync_required'){
+                 // Response to Public purge may have been lost. Signed /status is
+                 // read-only and accepts the previous epoch only for recovery.
+-                if(!in_array($state['stage']??'',['prepared','public_cleared','local_cleared','resync_pending'],true))throw new RuntimeException('GOLIVE_REMOTE_STATUS_UNEXPECTED');
++                if(!in_array($state['stage']??'',['prepared','public_cleared','local_batching','local_cleared','resync_pending'],true))throw new RuntimeException('GOLIVE_REMOTE_STATUS_UNEXPECTED');
+                 if(isset($state['new_epoch'])&&(int)$state['new_epoch']!==$newEpoch)throw new RuntimeException('GOLIVE_EPOCH_DRIFT');
+                 $state['stage']=($state['stage']==='prepared')?'public_cleared':$state['stage'];
+                 $state['new_epoch']=$newEpoch;$this->writeMarker($state);
+@@ -86,14 +101,43 @@
+             if($state['stage']==='public_cleared'){
+                 $localEpoch=$this->core->publicAuthorityState()->epoch();
+                 if($newEpoch===$localEpoch){
++                    // Old synchronous cleanup may have committed while its
++                    // browser response was lost. Do NOT delete it again.
+                     $inspection=$this->engine->inspect();
+                     foreach($inspection['counts'] as $record)if($record['action']==='CLEAR'&&$record['rows']>0)throw new RuntimeException('GOLIVE_RECOVERY_HAS_UNCLEARED_ROWS');
+-                    $deleted=$state['deleted_local']??[];
++                    $state['stage']='local_cleared';
++                    $this->writeMarker($state);
+                 }elseif($newEpoch===$localEpoch+1){
+-                    $deleted=$this->engine->execute($installationId,$newEpoch);
++                    // Persist the resumable state BEFORE any Local data write.
++                    // A crash between this marker and the first DELETE is safe.
++                    $state['batch']=$this->engine->beginBatched($installationId,$newEpoch);
++                    $state['stage']='local_batching';
++                    $this->writeMarker($state);
+                 }else throw new RuntimeException('GOLIVE_LOCAL_REMOTE_EPOCH_MISMATCH');
+-                $state['stage']='local_cleared';$state['deleted_local']=$deleted;
+-                $this->writeMarker($state);
++            }
++            if($state['stage']==='local_batching'){
++                $localEpoch=$this->core->publicAuthorityState()->epoch();
++                if($newEpoch===$localEpoch){
++                    // Last chunk/epoch commit succeeded but receipt persistence
++                    // was interrupted; prove rows are cleared, then advance.
++                    $inspection=$this->engine->inspect();
++                    foreach($inspection['counts'] as $record)if($record['action']==='CLEAR'&&$record['rows']>0)throw new RuntimeException('GOLIVE_RECOVERY_HAS_UNCLEARED_ROWS');
++                    $state['stage']='local_cleared';
++                    $state['deleted_local']=$state['batch']['initial_counts']??[];
++                    $this->writeMarker($state);
++                }elseif($newEpoch===$localEpoch+1){
++                    $next=$this->engine->advanceBatched($installationId,$newEpoch,(array)($state['batch']??[]));
++                    $state['batch']=$next['state'];
++                    if(!$next['completed']){
++                        $this->writeMarker($state);
++                        return ['status'=>'in_progress','phase'=>'local_batching',
++                            'cleared_tables'=>$next['cleared_tables'],'total_tables'=>$next['total_tables'],
++                            'chunks'=>$state['batch']['chunks']];
++                    }
++                    $state['deleted_local']=$state['batch']['initial_counts'];
++                    $state['stage']='local_cleared';
++                    $this->writeMarker($state);
++                }else throw new RuntimeException('GOLIVE_LOCAL_REMOTE_EPOCH_MISMATCH');
+             }
+             if(in_array($state['stage'],['local_cleared','resync_pending'],true)){
+                 $state['stage']='resync_pending';$this->writeMarker($state);
+--- a/public/system/go-live.php
++++ b/public/system/go-live.php
+@@ -30,21 +30,41 @@
+ async function request(payload){const config={credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/json'}};
+  if(payload){config.method='POST';config.headers['Content-Type']='application/json';config.body=JSON.stringify({...payload,csrf_token:csrf});}
+  const response=await fetch(api,config);const result=await response.json().catch(()=>null);
++ if(result===null)throw new Error('GOLIVE_NON_JSON_HTTP_'+response.status);
+  if(!response.ok||result?.success!==true)throw new Error(result?.code||'GOLIVE_REQUEST_FAILED');return result;}
+ const setState=(message,good=false)=>{status.textContent=message;status.className='sc-alert '+(good?'sc-alert--success':'sc-alert--info');};
+ check.addEventListener('click',async()=>{if(running)return;running=true;check.disabled=true;go.disabled=true;checked=false;try{
+  setState('در حال شناسایی پایگاه داده و صف‌های Local و Public…');const result=await request();
+  const l=result.inspection.local,p=result.inspection.public;
+  const count=(x)=>Object.values(x?.counts||{}).filter(y=>y.action==='CLEAR').reduce((a,y)=>a+Number(y.rows||0),0);
+- summary.hidden=false;summary.textContent='Local: '+l.table_count+' جدول | '+count(l)+' ردیف نامزد پاکسازی\nPublic: '+p.table_count+' جدول | '+count(p)+' ردیف نامزد پاکسازی';
+- checked=!result.inspection.already_completed;go.disabled=!checked;setState(result.inspection.already_completed?'پاکسازی عملیاتی قبلاً انجام شده است. این ابزار برای جلوگیری از حذف فروش واقعی دوباره فعال نمی‌شود.':result.inspection.pending?'عملیات قبلی نیمه‌کاره مانده است؛ دکمهٔ قرمز آن را از مرحلهٔ امن قبلی ادامه می‌دهد.':'بررسی هر دو سامانه انجام شد. برای پاکسازی از دکمه قرمز استفاده کن.',true);
++ const pending=!!result.inspection.pending;
++ const publicLine=p?.counts_verified===false||!p?.counts?'Public: تعداد ردیف‌ها در وضعیت نیمه‌تمام قابل تأیید نیست؛ صفر فرض نمی‌شود.':'Public: '+p.table_count+' جدول | '+count(p)+' ردیف نامزد پاکسازی';
++ const phase=result.inspection.phase||'unknown',remote=result.inspection.installation?.authority_state||'نامشخص';
++ summary.hidden=false;summary.textContent='Local: '+l.table_count+' جدول | '+count(l)+' ردیف نامزد پاکسازی\n'+publicLine+(pending?'\nمرحله ثبت‌شده: '+phase+' | وضعیت Public: '+remote:'');
++ checked=!result.inspection.already_completed;go.disabled=!checked;
++ go.textContent=pending?'ادامه امن عملیات نیمه‌تمام':'پاکسازی داده‌های آزمایشی و شروع فعالیت';
++ setState(result.inspection.already_completed?'پاکسازی قبلاً به پایان رسیده است. اجرای دوباره مسدود است.':pending?'عملیات نیمه‌تمام شناسایی شد. ادامه فقط از مرحله ثبت‌شده انجام می‌شود و می‌تواند چند درخواست طول بکشد.':'بررسی هر دو سامانه انجام شد. برای پاکسازی از دکمه قرمز استفاده کن.',true);
+  }catch(e){setState('پاکسازی مسدود است: '+e.message);}finally{running=false;check.disabled=false;}});
+ go.addEventListener('click',async()=>{if(running||!checked)return;
+  const accepted=window.SoknaUI?.confirm?await window.SoknaUI.confirm('شروع فعالیت واقعی','تمام داده‌های آزمایشی Local و Public حذف شوند؟ کاربران، منو و رسپی‌ها محفوظ می‌مانند.',true):window.confirm('اطلاعات تستی Local و Public برای همیشه حذف شوند؟');
+  if(!accepted)return;running=true;go.disabled=true;check.disabled=true;
+- try{setState('پاکسازی و بازسازی همگام‌سازی در حال انجام است. این صفحه را نبند.');const res=await request({action:'go_live_clear_approved_test_data',ack:'CLEAR_TEST_DATA'});
+- setState(res.reset?.status==='completed'?'پاکسازی تکمیل شد؛ سامانه برای ثبت فروش واقعی آماده است.':'پاکسازی کامل نشده است؛ وضعیت را بررسی کن.',res.reset?.status==='completed');
+- }catch(e){setState('پاکسازی کامل نشده: '+e.message+' — در مرحله بعدی «بررسی آمادگی» را بزن و وضعیت را پیگیری کن.');}
++ try{
++ setState('پاکسازی مرحله‌ای در حال انجام است. هنگام اجرای هر مرحله، سفارش‌گیری متوقف می‌ماند.');
++ let completed=false;
++ for(let attempt=0;attempt<150;attempt++){
++   const res=await request({action:'go_live_clear_approved_test_data',ack:'CLEAR_TEST_DATA'});
++   const reset=res.reset||{};
++   if(reset.status==='completed'){
++     completed=true;
++     setState('پاکسازی تکمیل شد؛ سامانه برای ثبت فروش واقعی آماده است.',true);
++     break;
++   }
++   if(reset.status!=='in_progress')throw new Error('GOLIVE_UNEXPECTED_RESPONSE_STATE');
++   setState('پاکسازی مرحله‌ای Local: '+Number(reset.cleared_tables||0)+' از '+Number(reset.total_tables||0)+' جدول بررسی شده؛ '+Number(reset.chunks||0)+' بسته پردازش شده. صفحه را نبند.');
++   await new Promise(resolve=>setTimeout(resolve,100));
++ }
++ if(!completed)setState('پاکسازی هنوز کامل نشده است. با «بررسی آمادگی» وضعیت ثبت‌شده را ببین؛ دکمه ادامه فقط از همان مرحله کار می‌کند.');
++ }catch(e){setState('پاکسازی کامل نشده: '+e.message+' — هیچ عملیات تازه‌ای از ابتدا شروع نکن؛ «بررسی آمادگی» وضعیت ثبت‌شده را نشان می‌دهد.');}
+  finally{running=false;check.disabled=false;}});
+ })();
+ </script>
