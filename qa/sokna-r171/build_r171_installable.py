@@ -104,7 +104,8 @@ fn='SOKNA-R171-PUBLIC-35HT-FROM-35HS-PANEL-UPDATE.zip'
 publics.append({'name':fn,'sha256':H((OUT/fn).read_bytes()),'from_version':old_pv,'from_tree_sha256':tree(oldpublic)})
 report={'release_id':NEWID,'version_local':LV,'version_public':PV,'package_classification':'UAT_INSTALLABLE_CANDIDATE_NOT_FIELD_APPROVED','local_name':local_name,'local_sha256':H((OUT/local_name).read_bytes()),'local_baselines':len(rel['supported_baselines']),'public_bridges':publics,'source_old_sha256':H(parentlocalbytes),'source_delta_local':local_deltas,'source_delta_public':public_deltas,'schema_fingerprint':new_fp,'migration_head':'0081_mohammad_buyer_inventory_expenses','migration_files_count':81,'all_old_migrations_unchanged':True,'password_plaintext_never_embedded':True,'mariadb_qa':'PENDING','windows_qa':'PENDING','physical_host_install':'NOT_TESTED'}
 (OUT/'R171-PACKAGE-IDENTITY.json').write_bytes(J(report))
-allfiles={p.name:p.read_bytes() for p in OUT.iterdir() if p.is_file() and p.suffix=='.zip'}
+allfiles={p.name:p.read_bytes() for p in OUT.iterdir() if p.is_file() and p.suffix=='.zip' and p.name.startswith('SOKNA-R171-') and p.name!='SOKNA-R171-LOCAL-PUBLIC-CUMULATIVE-UAT-ALL.zip'}
+assert len(allfiles)==8, ('EXPECTED_EIGHT_INSTALLER_ZIPS', sorted(allfiles))
 allfiles['R171-PACKAGE-IDENTITY.json']=(OUT/'R171-PACKAGE-IDENTITY.json').read_bytes()
 (OUT/'SOKNA-R171-LOCAL-PUBLIC-CUMULATIVE-UAT-ALL.zip').write_bytes(zipbytes(allfiles))
 print(json.dumps(report,ensure_ascii=False,indent=2))
