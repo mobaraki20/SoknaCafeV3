@@ -1,6 +1,8 @@
+diff --git a/public/admin/index.php b/public/admin/index.php
+index 0c42767..6b5c85b 100644
 --- a/public/admin/index.php
 +++ b/public/admin/index.php
-@@ -48,7 +48,7 @@
+@@ -48,7 +48,7 @@ ProductShell::start($core,$user,'مدیریت','admin','اعضای تیم، دس
      <div class="sc-entity-editor__body">
        <section class="sc-entity-editor__section" aria-labelledby="team-identity"><div class="sc-entity-editor__section-head"><div><h3 id="team-identity">مشخصات عضو</h3><p>هویت پرسنلی مستقل از داشتن یا نداشتن حساب ورود باقی می‌ماند.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">نام</span><input class="sc-control" name="display_name" maxlength="120" required></label><label class="sc-field"><span class="sc-field__label">سمت / عنوان</span><input class="sc-control" name="job_title" maxlength="120"></label><label class="sc-field"><span class="sc-field__label">کد پرسنلی (اختیاری)</span><input class="sc-control" name="personnel_code" maxlength="40"></label><label class="sc-field sc-toggle-field"><span class="sc-field__label">وضعیت عضو</span><span><input type="checkbox" name="active" checked> عضو فعال باشد</span></label><label class="sc-field sc-entity-editor__span-2"><span class="sc-field__label">یادداشت</span><textarea class="sc-control" name="notes" maxlength="500" rows="3"></textarea></label></div></section>
        <section class="sc-entity-editor__section" aria-labelledby="team-login"><div class="sc-entity-editor__section-head"><div><h3 id="team-login">ورود به سامانه</h3><p>هر عضو تیم با همان حساب و رمز، در سامانه داخلی و وب عمومی وارد می‌شود.</p></div></div><fieldset class="sc-field sc-team-access"><legend class="sc-visually-hidden">فعال‌سازی ورود</legend><label class="sc-inline"><input type="checkbox" name="system_access" data-team-system-access> این عضو امکان ورود به سامانه داشته باشد</label><small>اگر خاموش باشد، اطلاعات پرسنلی و سوابق باقی می‌مانند و فقط ورود حساب متصل غیرفعال می‌شود.</small></fieldset><div class="sc-stack" data-team-login-fields hidden><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">نام کاربری</span><input class="sc-control" name="username" maxlength="80" autocomplete="off" dir="ltr"></label><label class="sc-field"><span class="sc-field__label">رمز ورود</span><input class="sc-control" name="password" type="password" minlength="8" autocomplete="new-password"><small>برای عضو موجود فقط هنگام تغییر رمز پر شود.</small></label></div><p class="sc-note" data-team-remote-state>دسترسی اینترنتی از مسئولیت‌ها فعال می‌شود؛ رمز جداگانه‌ای ندارد.</p></div></section>
@@ -9,9 +11,11 @@
      </div>
      <footer class="sc-entity-editor__footer"><span class="sc-entity-editor__footer-hint">preset انتخاب‌شده ذخیره نمی‌شود؛ فقط capabilityهای نهایی و ناحیه آماده‌سازی ثبت می‌شوند.</span><div class="sc-actions"><button class="sc-button" type="submit" value="submit">ذخیره عضو تیم</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></div></footer>
    </form></dialog>
+diff --git a/public/assets/admin-workspace.js b/public/assets/admin-workspace.js
+index 3b64246..b5874a3 100644
 --- a/public/assets/admin-workspace.js
 +++ b/public/assets/admin-workspace.js
-@@ -4,9 +4,9 @@
+@@ -4,9 +4,9 @@ const root=document.querySelector('[data-admin-workspace]');if(!root)return;cons
  const appPath=v=>window.SoknaURL?.path?.(v)||v;const api=root.dataset.api,csrf=root.dataset.csrf,I=window.SoknaInteractions;let snap=null,qrPreviewTableId=0;
  const toast=(m,tone='success',title='')=>window.SoknaUI?.toast?.(m,{tone,title});
  const $=(s,r=root)=>r.querySelector(s),$$=(s,r=root)=>[...r.querySelectorAll(s)];
@@ -24,6 +28,8 @@
  function status(t,bad=false){const e=$('[data-status]');e.textContent=t||'';e.hidden=!t;e.classList.toggle('sc-alert--danger',bad)}
  function actionError(err,title='عملیات انجام نشد'){status('');toast(err?.message||'عملیات انجام نشد.','danger',title)}
  async function request(url,opt={}){let r;try{r=await fetch(url,{credentials:'same-origin',headers:{'Accept':'application/json','Content-Type':'application/json',...(opt.headers||{})},...opt})}catch{throw new Error('ارتباط با سامانه برقرار نشد. دوباره تلاش کنید.')}let j={};try{j=await r.json()}catch(_){throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false){const sid=String(j.support_id||'').trim(),err=new Error((j.message||'عملیات انجام نشد.')+(sid?` · کد پیگیری ${sid}`:''));err.code=String(j.code||'');err.details=j.details&&typeof j.details==='object'?j.details:{};throw err}return j}
+diff --git a/public/assets/operations-workspace.js b/public/assets/operations-workspace.js
+index 010f7e8..06035ee 100644
 --- a/public/assets/operations-workspace.js
 +++ b/public/assets/operations-workspace.js
 @@ -1,6 +1,6 @@
@@ -34,7 +40,7 @@
  const $=(s,c=root)=>c.querySelector(s),$$=(s,c=root)=>[...c.querySelectorAll(s)];if(window.matchMedia?.('(max-width:640px)').matches){const m=root.querySelector('.sc-ops-more');if(m)m.open=true;}let activeTask=null,taskOpener=null,taskScroll=0,taskBackPending=false,pendingWrites=0,countLocked=false;let operationsMeta=null;let snap=null,movementRows=null,movementOffset=0,movementHasMore=false,movementScope='recent',activeReceiveGroup=null,activeWorkflow='attention',inventoryVisibleLimit=50,countVisibleLimit=40,stockManagementExpanded=false;const countDrafts=new Map(),countSaveTimers=new Map(),countSavePromises=new Map();let countSessionId=0,refreshPromise=null,committedSnapshot=null,committedFence='',committedSequence=0;const C=window.SoknaOperationsCore,owner=window.__SOKNA_UI_PREFERENCES__?.owner||root.dataset.actor||'local';let safeSessionStorage=null;try{safeSessionStorage=window.sessionStorage}catch{}const intents=new C.IntentRegistry({storage:safeSessionStorage,key:'sokna.ops.intents.v1:'+owner+':'+api,uid:()=>crypto.randomUUID()});const fallbackNf=new Intl.NumberFormat('fa-IR',{maximumFractionDigits:3});const L=window.SoknaLocale||{dateTime:v=>String(v??''),number:v=>fallbackNf.format(Number(v||0)),integer:v=>new Intl.NumberFormat('fa-IR',{maximumFractionDigits:0}).format(Number(v||0)),money:v=>new Intl.NumberFormat('fa-IR',{maximumFractionDigits:0}).format(Number(v||0))+' تومان'};
  const el=(t,c,txt)=>{const x=document.createElement(t);if(c)x.className=c;if(txt!==undefined)x.textContent=txt;return x};
  const money=n=>L.money(n);const displayStamp=v=>/Z$|[+-]\d{2}:\d{2}$/.test(String(v))&&L.instantDateTime?L.instantDateTime(v):L.dateTime(v);
-@@ -82,9 +82,9 @@
+@@ -82,9 +82,9 @@ async function requestTaskClose({fromHistory=false}={}){
  function formData(form){return Object.fromEntries(new FormData(form).entries())}
  function nowLocal(){return window.SoknaLocale.localDateTimeNow()}
  function renderReviews(){const section=$('[data-deferred-review-section]'),body=$('[data-deferred-reviews]');if(!section||!body)return;const rows=!isPublic?(snap.deferred_reviews||[]):[],error=snap.errors?.deferred_reviews;section.hidden=isPublic||(!rows.length&&!error);body.replaceChildren();const count=$('[data-deferred-review-badge]');if(count)count.textContent=error?'—':L.integer(rows.length);if(error){tableEmpty(body,5,error.message||'فهرست بررسی فعلاً در دسترس نیست.');return}for(const r of rows){const tr=document.createElement('tr');cell(tr,'زمان',L.dateTime(r.occurred_at));cell(tr,'نوع',r.kind==='operations.daily'?'عملیات روزانه':r.kind);cell(tr,'کاربر',r.actor_name||'عضو تیم');cell(tr,'توضیح',r.message);const actions=document.createElement('td');actions.dataset.label='عملیات';for(const [decision,labelText,variant] of [['approve','پذیرش پس از بررسی','primary'],['reject','رد ثبت','danger']])actions.append(button(labelText,async()=>{if(tr.dataset.reviewBusy==='1')return;tr.dataset.reviewBusy='1';try{const reason=await SoknaUI.prompt(labelText,{label:'دلیل تصمیم؛ اطلاعات و زمان واقعی رخداد را مرور کن'});if(!reason)return;for(const b of actions.querySelectorAll('button'))b.disabled=true;try{const response=await post({action:'deferred_resolve',review_id:Number(r.review_id),kind:r.kind,decision,reason});const allowed=decision==='approve'?['committed','approved']:['rejected'];if(!allowed.includes(String(response?.result?.state||'')))throw new Error('نتیجه ثبت با تصمیم درخواستی یکسان نیست؛ آخرین وضعیت را بررسی کن.');await refresh('تصمیم ثبت شد؛ نتیجه خودکار به Public منتقل می‌شود.')}catch(e){actionError(e);try{await refresh()}catch(_){}}}finally{tr.dataset.reviewBusy='0';for(const b of actions.querySelectorAll('button'))b.disabled=false;}},variant));tr.append(actions);body.append(tr)}}
@@ -46,7 +52,7 @@
  
  function parseUiNumber(value){try{return Number(C.numberText(value))||0}catch{return NaN}}
  function majorToBaseUi(value,unit){try{return C.quantityBase(value,unit)}catch{return 0}}
-@@ -223,7 +223,7 @@
+@@ -223,7 +223,7 @@ function renderAttention(){const box=$('[data-ops-attention-list]');if(!box)retu
  function renderConsumeList(){const b=$('[data-inventory-consume-list]');if(!b)return;b.replaceChildren();const error=sectionError('inventory'),moduleError=sectionError('module_state'),state=snap.module_state||{},ready=state.inventory_runtime_ready===true;if(error){tableEmpty(b,4,(error.message||'اطلاعات انبار فعلاً در دسترس نیست.')+supportText(error));return}const rows=(snap.inventory.items||[]).filter(i=>Number(i.active)===1);if(!rows.length){tableEmpty(b,4,'کالای فعالی برای ثبت ضایعات/اصلاح وجود ندارد.');return}for(const i of rows){const tr=document.createElement('tr');cell(tr,'کالا',i.name);cell(tr,'موجودی',ready&&(state.inventory_initialized||Number(i.opening_counted)===1)?`${majorText(i.quantity_base,i.base_unit)} ${majorUnitLabel(i.base_unit)}`:'موجودی نامشخص؛ شمارش نشده');cell(tr,'بخش',departmentLabel(i.default_department));const td=document.createElement('td');td.dataset.label='عملیات';if(canOps){const waste=button('ثبت ضایعات',()=>openInventoryWaste(i),'danger'),adjust=button('اصلاح موجودی',()=>openInventoryAdjust(i),'secondary');waste.disabled=!!moduleError||!ready;adjust.disabled=!!moduleError||!ready;td.append(waste,adjust)}tr.append(td);b.append(tr)}}
  function updateExpensePreview(){const f=$('[data-form="expense-create"]');if(!f)return;const amount=parseUiNumber(f.elements.amount?.value||'');setPreviewValue('[data-expense-preview-amount]',amount>0?money(Math.round(amount)):'—');const submit=f.querySelector('[data-ops-submit]');if(submit)submit.disabled=amount<1}
  function renderExpenseReverseContext(r){const box=$('[data-reverse-expense]');if(!box)return;box.replaceChildren();box.append(el('strong','',r.category_name||'هزینه'),el('span','sc-muted',`${money(r.amount)} · ${L.dateTime(r.occurred_at)}${r.period_title?` · ${r.period_title}`:''}`));if(r.description)box.append(el('p','',r.description))}
@@ -55,9 +61,11 @@
  async function loadMovementHistory({append=false}={}){
   const pageSize=window.matchMedia?.('(max-width:640px)').matches?50:300,offset=append?movementOffset:0;
   const q=new URLSearchParams({action:'inventory_movements',limit:String(pageSize+1),offset:String(offset)});
+diff --git a/public/operations/index.php b/public/operations/index.php
+index a04f7cc..574fd91 100644
 --- a/public/operations/index.php
 +++ b/public/operations/index.php
-@@ -4,7 +4,7 @@
+@@ -4,7 +4,7 @@ use Sokna\Local\UI\LocalPage;use Sokna\Local\UI\ProductShell;use Sokna\Local\UI\
  $core=require dirname(__DIR__).'/_app.php';
  $user=LocalPage::requireAny($core,['inventory_view','inventory_cost_view','inventory_operations','inventory_finalize','inventory_manage','preparation','shift_supervision']);
  $isAdmin=(string)($user['role']??'')==='admin';$canOps=$isAdmin||$core->auth()->hasCapability('inventory_operations',$user);$canManage=$isAdmin||$core->auth()->hasCapability('inventory_manage',$user);$canFinalize=$isAdmin||$core->auth()->hasCapability('inventory_finalize',$user);$canBuy=$isAdmin||$canOps||$canManage||$canFinalize;$csrf=WebAction::csrfToken();
@@ -66,6 +74,8 @@
  $workspaceApi='operations/api.php';$workspaceAsset=static fn(string $path):string=>ProductShell::asset($path);
  ProductShell::start($core,$user,'انبار، تأمین و هزینه‌ها','operations','موجودی، نیازهای خرید و هزینه‌های کافه را از یک فضای کاری مدیریت کن.',true);
  require dirname(__DIR__,2).'/resources/shared-staff-ui/operations-workspace.php';
+diff --git a/resources/shared-staff-ui/operations-workspace.php b/resources/shared-staff-ui/operations-workspace.php
+index 24b1e84..c2e9d41 100644
 --- a/resources/shared-staff-ui/operations-workspace.php
 +++ b/resources/shared-staff-ui/operations-workspace.php
 @@ -2,9 +2,9 @@
@@ -80,7 +90,7 @@
    <div class="sc-alert" role="status" aria-live="polite" data-status hidden></div>
    <div class="sc-alert sc-alert--warning" data-pending-operations hidden aria-live="polite"></div>
    <div class="sc-alert sc-alert--warning" role="status" aria-live="polite" data-ops-section-status hidden></div>
-@@ -74,7 +74,7 @@
+@@ -74,7 +74,7 @@ declare(strict_types=1);
        <section class="sc-card sc-ledger-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h3>تاریخچه حرکت‌های انبار</h3><p>ورود، تحویل خرید، مصرف دستور، ضایعات، شمارش و اصلاح در یک دفتر کل.</p></div></div><div class="sc-alert sc-alert--info" data-history-scope hidden></div><details class="sc-ops-history-filters" data-ops-history-filters open><summary>فیلتر دفتر حرکت‌ها</summary><div class="sc-toolbar sc-toolbar--wrap" data-movement-filters><label class="sc-field sc-field--compact"><span class="sc-field__label">کالا</span><select class="sc-control" data-movement-item-filter><option value="0">همه کالاها</option></select></label><label class="sc-field sc-field--compact"><span class="sc-field__label">نوع</span><select class="sc-control" data-movement-type-filter><option value="">همه حرکت‌ها</option><option value="manual_receive">ورود دستی</option><option value="purchase_receive">تحویل خرید</option><option value="waste">ضایعات</option><option value="count_adjustment">اصلاح شمارش</option><option value="opening_balance">موجودی اولیه</option><option value="recipe_consumption">مصرف دستور</option></select></label><label class="sc-field sc-field--compact"><span class="sc-field__label">از تاریخ</span><input class="sc-control" type="date" data-movement-from></label><label class="sc-field sc-field--compact"><span class="sc-field__label">تا تاریخ</span><input class="sc-control" type="date" data-movement-to></label><button class="sc-button sc-button--secondary" type="button" data-movement-apply>اعمال فیلتر</button><button class="sc-button sc-button--ghost" type="button" data-movement-reset>پاک‌کردن</button></div></details><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>زمان</th><th>کالا</th><th>نوع</th><th>مقدار</th><th>بخش</th><th>جزئیات</th></tr></thead><tbody data-movement-list></tbody></table></div></div></section>
      </section>
    </section>
@@ -89,7 +99,7 @@
  
    <section hidden data-ops-task-page class="sc-card sc-ops-task-page" data-dialog="item-create" aria-labelledby="sc-dialog-title-operations-item-create" data-dialog-size="md">
      <form data-dirty-guard data-dirty-label="عملیات انبار" method="post" class="sc-dialog-frame" data-form="item-create">
-@@ -176,8 +176,8 @@
+@@ -176,8 +176,8 @@ declare(strict_types=1);
      </form>
    </section>
    <?php endif; ?>
@@ -100,9 +110,11 @@
  
  </section>
  <link rel="stylesheet" href="<?=htmlspecialchars($workspaceAsset('assets/operations-daily.css'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>">
+diff --git a/src/Core/Bootstrap.php b/src/Core/Bootstrap.php
+index cab690c..ea92183 100644
 --- a/src/Core/Bootstrap.php
 +++ b/src/Core/Bootstrap.php
-@@ -763,7 +763,7 @@
+@@ -763,7 +763,7 @@ final class Bootstrap
  
      public function expenses(): ExpenseService
      {
@@ -111,9 +123,11 @@
      }
  
      public function operationsWorkspace(): OperationsWorkspaceService
+diff --git a/src/Core/Capabilities.php b/src/Core/Capabilities.php
+index fd457bf..28059e3 100644
 --- a/src/Core/Capabilities.php
 +++ b/src/Core/Capabilities.php
-@@ -15,6 +15,7 @@
+@@ -15,6 +15,7 @@ final class Capabilities
          'inventory_operations',
          'inventory_finalize',
          'inventory_manage',
@@ -121,9 +135,11 @@
          'staff_consumption_self',
          'staff_consumption_proxy',
          'staff_benefit_manage',
+diff --git a/src/Domain/Expenses/ExpenseService.php b/src/Domain/Expenses/ExpenseService.php
+index 71602be..5dde27f 100644
 --- a/src/Domain/Expenses/ExpenseService.php
 +++ b/src/Domain/Expenses/ExpenseService.php
-@@ -5,6 +5,7 @@
+@@ -5,6 +5,7 @@ namespace Sokna\Local\Domain\Expenses;
  
  use PDO;
  use Sokna\Local\Core\IdentityRepository;
@@ -131,7 +147,7 @@
  use Sokna\Local\Domain\Finance\FinancialPeriodIdentityService;
  use Sokna\Local\Domain\Finance\FinancialPeriodException;
  use Throwable;
-@@ -15,13 +16,14 @@
+@@ -15,13 +16,14 @@ final class ExpenseService
          private readonly PDO $pdo,
          private readonly IdentityRepository $identity,
          private readonly FinancialPeriodIdentityService $periods,
@@ -147,7 +163,7 @@
              $result=$this->createTx($data,(int)$actor['id']);
              $this->pdo->commit();
              return $result;
-@@ -217,6 +219,27 @@
+@@ -217,6 +219,27 @@ final class ExpenseService
          return date('Y-m-d H:i:s',$ts);
      }
  
@@ -175,9 +191,11 @@
      private function assertAdmin(array $user): array
      {
          $id=(int)($user['id']??0);
+diff --git a/src/Domain/Operations/OperationsWorkspaceService.php b/src/Domain/Operations/OperationsWorkspaceService.php
+index d24bb57..2d18bc5 100644
 --- a/src/Domain/Operations/OperationsWorkspaceService.php
 +++ b/src/Domain/Operations/OperationsWorkspaceService.php
-@@ -25,7 +25,7 @@
+@@ -25,7 +25,7 @@ final class OperationsWorkspaceService
      }
      private function snapshotTx(array $user): array
      {
@@ -186,7 +204,7 @@
          $moduleState=$this->guard->capture('operations','module_state',[
              'inventory_enabled'=>true,'supply_enabled'=>true,'inventory_initialized'=>false,
              'inventory_reconciliation_required'=>false,'inventory_runtime_ready'=>false,'supply_runtime_ready'=>false,
-@@ -59,7 +59,7 @@
+@@ -59,7 +59,7 @@ final class OperationsWorkspaceService
              'missing_cost_receipt_count'=>0,'missing_cost_receipts'=>[],
          ],'صف کیفیت داده فعلاً در دسترس نیست.',fn():array=>$this->dataQuality());
  
@@ -195,9 +213,11 @@
              'categories'=>[],'recent'=>[],
          ],'اطلاعات هزینه‌ها فعلاً در دسترس نیست.',fn():array=>[
              'categories'=>$this->expenses->categories(true),
+diff --git a/src/Domain/PublicEdge/PublicProjectionBuilder.php b/src/Domain/PublicEdge/PublicProjectionBuilder.php
+index f530d8b..ec1ff99 100644
 --- a/src/Domain/PublicEdge/PublicProjectionBuilder.php
 +++ b/src/Domain/PublicEdge/PublicProjectionBuilder.php
-@@ -52,6 +52,7 @@
+@@ -52,6 +52,7 @@ final class PublicProjectionBuilder
          if($has('shift_supervision'))$add($out,'operations.read','reports.read','preparation.read','preparation.monitor');
          if($has('inventory_view')||$has('inventory_operations')||$has('inventory_manage')||$has('inventory_finalize'))$add($out,'inventory.read');
          if($has('inventory_cost_view'))$add($out,'inventory.cost.read');
@@ -205,9 +225,11 @@
          if($has('inventory_operations')||$has('inventory_manage')||$has('inventory_finalize'))$add($out,'supply.need.defer','supply.manage.defer','deferred.context');
          if($has('staff_consumption_reports'))$add($out,'reports.read');
          if($has('inventory_view')||$has('inventory_cost_view')||$has('inventory_operations')||$has('inventory_manage')||$has('inventory_finalize')||$has('preparation')||$has('shift_supervision'))$add($out,'operations.workspace.read');
+diff --git a/src/Relay/ExpenseDeferredAdapter.php b/src/Relay/ExpenseDeferredAdapter.php
+index 2ae4b13..3ab1fb8 100644
 --- a/src/Relay/ExpenseDeferredAdapter.php
 +++ b/src/Relay/ExpenseDeferredAdapter.php
-@@ -38,7 +38,7 @@
+@@ -38,7 +38,7 @@ final class ExpenseDeferredAdapter
                  $this->pdo->rollBack();
                  return ['state'=>'rejected','result'=>[],'error_code'=>'actor_invalid','idempotent'=>false];
              }
@@ -216,7 +238,7 @@
                  $out=$this->receipts->rejectedTx($installationId,$envelope,$actor,'permission_denied');
                  $this->pdo->commit();
                  return $out;
-@@ -46,6 +46,11 @@
+@@ -46,6 +46,11 @@ final class ExpenseDeferredAdapter
  
              $occurredAt=$this->expenses->normalizeOccurredAt((string)$envelope['occurred_at']);
              $period=$this->periods->forDateTx(substr($occurredAt,0,10),(int)$actor['id']);
@@ -228,9 +250,11 @@
              if((string)$period['status']==='closed'){
                  $out=$this->receipts->reviewTx(
                      $installationId,$envelope,$actor,
+diff --git a/src/Relay/OperationsRealtimeAdapter.php b/src/Relay/OperationsRealtimeAdapter.php
+index 64e9cae..eb3920a 100644
 --- a/src/Relay/OperationsRealtimeAdapter.php
 +++ b/src/Relay/OperationsRealtimeAdapter.php
-@@ -17,11 +17,13 @@
+@@ -17,11 +17,13 @@ final class OperationsRealtimeAdapter
      }
      private function recordExpenseTx(array $data,array $user,bool $allowClosed): array
      {
