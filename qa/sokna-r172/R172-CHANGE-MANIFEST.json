@@ -1,0 +1,65 @@
+{
+  "source": "R171 exact canary package bytes",
+  "local_zip_sha256": "c69f65c121101b82e69a74e54e0cf06b9e6270b3afe0d244837056633ed94e6e",
+  "local_files": 589,
+  "public_zip_sha256": "16d83db4adde30f30378bae6b1e0cdc7f60c9bed66377b59859a791cfd4ca43a",
+  "all_local_match": true,
+  "all_public_match": true,
+  "public_files": 225,
+  "target": "R172 isolated QA only, not installable",
+  "changed_files": [
+    {
+      "component": "Local",
+      "path": "public/assets/scds/guest.css",
+      "original_sha256": "580682fb5a0465f0ef3c94c81d43b5065e35d28866e6cc9b69ac79200ae90192",
+      "patched_sha256": "d65bc383f06cb816d49312bce030dfc720b006138fb773685889aa0b499189eb",
+      "size_before": 82804,
+      "size_after": 82840
+    },
+    {
+      "component": "Local",
+      "path": "assets/scds/components.css",
+      "original_sha256": "ebe6c9cceffbb863ef1efbc52e6594987af677a7e0a7357c347e2c93a41305c8",
+      "patched_sha256": "89e8e473139a513e0193810348f67a63d9a26df0d3924721719986266f7f5313",
+      "size_before": 104927,
+      "size_after": 104924
+    },
+    {
+      "component": "Public",
+      "path": "assets/scds/components.css",
+      "original_sha256": "3f8022a57bf8528954fc9288026a9b31b05972bcb2ee064dd981694dc4f38caf",
+      "patched_sha256": "c4af96940813f5ddba38e4ccddc419ccc58ba1bd1f5b56a0f0ff2fcd7a37cbea",
+      "size_before": 104250,
+      "size_after": 104247
+    },
+    {
+      "component": "Public",
+      "path": "assets/scds/staff-components.css",
+      "original_sha256": "580626072afe60c56f965d3ca271aa18c0fb2b1651a82eac4c7d126968a3628b",
+      "patched_sha256": "12725e2c27a3e9d3860648937388b6eb7c23e483d880684c57dbd70ac76b10d9",
+      "size_before": 43397,
+      "size_after": 43396
+    },
+    {
+      "component": "Public",
+      "path": "assets/scds/staff-product-ui.css",
+      "original_sha256": "8b2a20d36afe71085ba12a812af5a45a61e8997b542ab8e9163a2877597599a2",
+      "patched_sha256": "b5e974314e969653cbdfcae0e1d0405a29b992f668f5ac86eb66be95fc7b4a2c",
+      "size_before": 439986,
+      "size_after": 439977
+    },
+    {
+      "component": "Public",
+      "path": "assets/scds/guest.css",
+      "original_sha256": "4e05ecd5a3fb6f9af22c5aa50fc9f7f58b9369e65773de92bce03bd723ce0681",
+      "patched_sha256": "9eeda6e7a59f47c74abc5ae4366001d9e4e9656afa79fdf5554f73a090dd4609",
+      "size_before": 110248,
+      "size_after": 110283
+    }
+  ],
+  "count_modified": 6,
+  "count_untouched": 808,
+  "source_migrations_changed": false,
+  "source_php_js_changed": false,
+  "source_main_changed": false
+}
