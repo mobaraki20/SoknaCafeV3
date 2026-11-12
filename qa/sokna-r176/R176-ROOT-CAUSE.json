@@ -1,0 +1,13 @@
+{
+  "source_parent": "R175/231eq",
+  "affected_table": "public_projection_outbox",
+  "residual_records": 271,
+  "policy_clear_index": 44,
+  "resume_table_index": 54,
+  "root_cause": "DELETE triggers on CLEAR tables after projection outbox in alphabetic cleanup order refill outbox",
+  "changed_product_files": [
+    "src/Domain/System/GoLiveResetEngine.php"
+  ],
+  "fix": "verify other CLEAR and PRESERVE, bounded transactional tail outbox drain, resume safe without restarting Public, revalidate before epoch transition",
+  "test_requirement": "disposable MariaDB with real AFTER DELETE trigger, interrupted stale marker, no data loss, exact source Windows Stage"
+}
