@@ -1,0 +1,148 @@
+diff --git a/database/migrations/0081_mohammad_buyer_inventory_expenses.sql b/database/migrations/0081_mohammad_buyer_inventory_expenses.sql
+new file mode 100644
+index 0000000..e401a0a
+--- /dev/null
++++ b/database/migrations/0081_mohammad_buyer_inventory_expenses.sql
+@@ -0,0 +1,69 @@
++-- R171 cafe-only named employee onboarding. Local operator; Public remote access disabled.
++-- One-time, all-DML atomic migration; no existing password is reset or overwritten.
++-- Four-digit credential stored only as a salted bcrypt hash, never plaintext.
++-- This customer-specific migration must not be transplanted to a generic product release.
++SELECT (SELECT x FROM (SELECT 1 x UNION ALL SELECT 2 x) fail WHERE EXISTS (
++ SELECT 1 FROM users WHERE username='mohammad.mobaraki'
++ AND (display_name<>'محمد مبارکی' OR role<>'operator')
++));
++SELECT (SELECT x FROM (SELECT 1 x UNION ALL SELECT 2 x) fail WHERE EXISTS (
++ SELECT 1 FROM users WHERE display_name='محمد مبارکی' AND username<>'mohammad.mobaraki'
++));
++SELECT (SELECT x FROM (SELECT 1 x UNION ALL SELECT 2 x) fail WHERE EXISTS (
++ SELECT 1 FROM personnel WHERE display_name='محمد مبارکی' AND linked_user_id IS NOT NULL
++ AND linked_user_id<>COALESCE((SELECT id FROM users WHERE username='mohammad.mobaraki' LIMIT 1),0)
++));
++SELECT (SELECT x FROM (SELECT 1 x UNION ALL SELECT 2 x) fail WHERE EXISTS (
++ SELECT 1 FROM personnel WHERE display_name='محمد مبارکی' AND (SELECT COUNT(*) FROM personnel p2 WHERE p2.display_name='محمد مبارکی')>1
++));
++INSERT INTO users(username,password_hash,display_name,role,active)
++SELECT 'mohammad.mobaraki','$2y$12$VGe75b/2Ddyuc3NcXoUrmOc14BujCGaRI.iGJPg9BYKKqF.vhGtG.','محمد مبارکی','operator',1
++WHERE NOT EXISTS(SELECT 1 FROM users WHERE username='mohammad.mobaraki');
++INSERT INTO user_capabilities(user_id,capability,enabled)
++SELECT u.id,v.capability,v.enabled FROM users u JOIN (
++SELECT 'orders_floor' capability,0 enabled
++UNION ALL
++SELECT 'cashier_accounts' capability,0 enabled
++UNION ALL
++SELECT 'preparation' capability,0 enabled
++UNION ALL
++SELECT 'shift_supervision' capability,0 enabled
++UNION ALL
++SELECT 'inventory_view' capability,1 enabled
++UNION ALL
++SELECT 'inventory_cost_view' capability,1 enabled
++UNION ALL
++SELECT 'inventory_operations' capability,1 enabled
++UNION ALL
++SELECT 'inventory_finalize' capability,1 enabled
++UNION ALL
++SELECT 'inventory_manage' capability,1 enabled
++UNION ALL
++SELECT 'expenses_record' capability,1 enabled
++UNION ALL
++SELECT 'staff_consumption_self' capability,0 enabled
++UNION ALL
++SELECT 'staff_consumption_proxy' capability,0 enabled
++UNION ALL
++SELECT 'staff_benefit_manage' capability,0 enabled
++UNION ALL
++SELECT 'staff_account_manage' capability,0 enabled
++UNION ALL
++SELECT 'staff_consumption_reports' capability,0 enabled
++UNION ALL
++SELECT 'remote_access' capability,0 enabled
++) v WHERE u.username='mohammad.mobaraki' AND u.display_name='محمد مبارکی' AND u.role='operator'
++ON DUPLICATE KEY UPDATE enabled=VALUES(enabled);
++UPDATE personnel p JOIN users u ON u.username='mohammad.mobaraki' AND u.display_name='محمد مبارکی'
++SET p.linked_user_id=u.id,p.active=1,p.job_title='مسئول خرید، انبار و هزینه‌ها'
++WHERE p.display_name='محمد مبارکی' AND p.linked_user_id IS NULL;
++INSERT INTO personnel(display_name,job_title,linked_user_id,active)
++SELECT 'محمد مبارکی','مسئول خرید، انبار و هزینه‌ها',u.id,1
++FROM users u WHERE u.username='mohammad.mobaraki' AND u.display_name='محمد مبارکی'
++AND NOT EXISTS(SELECT 1 FROM personnel p WHERE p.linked_user_id=u.id OR p.display_name='محمد مبارکی');
++-- Ensure identity is singular, linked, active and Local-only. Never delete existing users.
++SELECT (SELECT x FROM (SELECT 1 x UNION ALL SELECT 2 x) fail WHERE
++ (SELECT COUNT(*) FROM users WHERE username='mohammad.mobaraki' AND display_name='محمد مبارکی' AND role='operator' AND active=1)<>1
++ OR (SELECT COUNT(*) FROM personnel p JOIN users u ON u.id=p.linked_user_id WHERE u.username='mohammad.mobaraki' AND p.display_name='محمد مبارکی' AND p.active=1)<>1
++ OR EXISTS(SELECT 1 FROM user_capabilities c JOIN users u ON u.id=c.user_id WHERE u.username='mohammad.mobaraki' AND c.capability='remote_access' AND c.enabled=1)
++);
+diff --git a/public/admin/index.php b/public/admin/index.php
+index 6b5c85b..6a5b507 100644
+--- a/public/admin/index.php
++++ b/public/admin/index.php
+@@ -47,7 +47,7 @@ ProductShell::start($core,$user,'مدیریت','admin','اعضای تیم، دس
+     <input type="hidden" name="personnel_id"><input type="hidden" name="user_id">
+     <div class="sc-entity-editor__body">
+       <section class="sc-entity-editor__section" aria-labelledby="team-identity"><div class="sc-entity-editor__section-head"><div><h3 id="team-identity">مشخصات عضو</h3><p>هویت پرسنلی مستقل از داشتن یا نداشتن حساب ورود باقی می‌ماند.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">نام</span><input class="sc-control" name="display_name" maxlength="120" required></label><label class="sc-field"><span class="sc-field__label">سمت / عنوان</span><input class="sc-control" name="job_title" maxlength="120"></label><label class="sc-field"><span class="sc-field__label">کد پرسنلی (اختیاری)</span><input class="sc-control" name="personnel_code" maxlength="40"></label><label class="sc-field sc-toggle-field"><span class="sc-field__label">وضعیت عضو</span><span><input type="checkbox" name="active" checked> عضو فعال باشد</span></label><label class="sc-field sc-entity-editor__span-2"><span class="sc-field__label">یادداشت</span><textarea class="sc-control" name="notes" maxlength="500" rows="3"></textarea></label></div></section>
+-      <section class="sc-entity-editor__section" aria-labelledby="team-login"><div class="sc-entity-editor__section-head"><div><h3 id="team-login">ورود به سامانه</h3><p>هر عضو تیم با همان حساب و رمز، در سامانه داخلی و وب عمومی وارد می‌شود.</p></div></div><fieldset class="sc-field sc-team-access"><legend class="sc-visually-hidden">فعال‌سازی ورود</legend><label class="sc-inline"><input type="checkbox" name="system_access" data-team-system-access> این عضو امکان ورود به سامانه داشته باشد</label><small>اگر خاموش باشد، اطلاعات پرسنلی و سوابق باقی می‌مانند و فقط ورود حساب متصل غیرفعال می‌شود.</small></fieldset><div class="sc-stack" data-team-login-fields hidden><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">نام کاربری</span><input class="sc-control" name="username" maxlength="80" autocomplete="off" dir="ltr"></label><label class="sc-field"><span class="sc-field__label">رمز ورود</span><input class="sc-control" name="password" type="password" minlength="8" autocomplete="new-password"><small>برای عضو موجود فقط هنگام تغییر رمز پر شود.</small></label></div><p class="sc-note" data-team-remote-state>دسترسی اینترنتی از مسئولیت‌ها فعال می‌شود؛ رمز جداگانه‌ای ندارد.</p></div></section>
++      <section class="sc-entity-editor__section" aria-labelledby="team-login"><div class="sc-entity-editor__section-head"><div><h3 id="team-login">ورود به سامانه</h3><p>هر عضو تیم با همان حساب و رمز، در سامانه داخلی و وب عمومی وارد می‌شود.</p></div></div><fieldset class="sc-field sc-team-access"><legend class="sc-visually-hidden">فعال‌سازی ورود</legend><label class="sc-inline"><input type="checkbox" name="system_access" data-team-system-access> این عضو امکان ورود به سامانه داشته باشد</label><small>اگر خاموش باشد، اطلاعات پرسنلی و سوابق باقی می‌مانند و فقط ورود حساب متصل غیرفعال می‌شود.</small></fieldset><div class="sc-stack" data-team-login-fields hidden><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">نام کاربری</span><input class="sc-control" name="username" maxlength="80" autocomplete="off" dir="ltr"></label><label class="sc-field"><span class="sc-field__label">رمز ورود</span><input class="sc-control" name="password" type="password" minlength="4" autocomplete="new-password"><small>رمز چهاررقمی فقط برای عضو غیرمدیر بدون دسترسی اینترنتی؛ در سایر حالت‌ها حداقل ۸ کاراکتر. برای عضو موجود فقط هنگام تغییر رمز پر شود.</small></label></div><p class="sc-note" data-team-remote-state>دسترسی اینترنتی از مسئولیت‌ها فعال می‌شود؛ رمز جداگانه‌ای ندارد.</p></div></section>
+       <section class="sc-entity-editor__section sc-entity-editor__wide sc-team-responsibilities" data-team-responsibilities hidden aria-labelledby="team-responsibilities"><div class="sc-entity-editor__section-head"><div><h3 id="team-responsibilities">مسئولیت‌ها و دسترسی‌ها</h3><p>یک یا چند پیشنهاد را اعمال کن، سپس در جزئیات هر دسترسی را آزادانه تغییر بده.</p></div></div><div class="sc-responsibility-presets" data-team-presets><button class="sc-responsibility-preset" type="button" data-team-preset="kitchen"><strong>آشپزخانه</strong><span>صف آماده‌سازی آشپزخانه</span></button><button class="sc-responsibility-preset" type="button" data-team-preset="bar"><strong>بار گرم/سرد</strong><span>صف آماده‌سازی بار</span></button><button class="sc-responsibility-preset" type="button" data-team-preset="cashier"><strong>صندوق</strong><span>حساب، تسویه و مشتری</span></button><button class="sc-responsibility-preset" type="button" data-team-preset="supervisor"><strong>سرپرست شیفت</strong><span>سالن، صندوق و نظارت</span></button><button class="sc-responsibility-preset" type="button" data-team-preset="inventory"><strong>انبار و تأمین</strong><span>عملیات و مدیریت موجودی</span></button><button class="sc-responsibility-preset" type="button" data-team-preset="buyer_expenses"><strong>خرید، انبار و هزینه‌ها</strong><span>دسترسی عملیاتی بدون مدیریت کل</span></button><button class="sc-responsibility-preset sc-responsibility-preset--overlay" type="button" data-team-preset="remote"><strong>راه‌دور</strong><span>overlay متناسب با مسئولیت‌های فعلی</span></button></div><p class="sc-note" data-team-preset-status aria-live="polite">presetها چیزی را حذف نمی‌کنند؛ فقط دسترسی‌های پیشنهادی را اضافه می‌کنند.</p><details class="sc-team-capability-details" data-team-capability-details><summary>جزئیات دسترسی‌ها</summary><div class="sc-stack sc-team-capability-groups" data-team-capabilities></div></details><fieldset class="sc-field sc-team-preparation-areas"><legend>ناحیه آماده‌سازی</legend><div class="sc-check-grid"><label><input type="checkbox" name="preparation_areas" value="kitchen"> آشپزخانه</label><label><input type="checkbox" name="preparation_areas" value="bar"> بار</label></div><small>فقط برای اعضایی که دسترسی «آماده‌سازی» دارند استفاده می‌شود.</small></fieldset></section>
+     </div>
+     <footer class="sc-entity-editor__footer"><span class="sc-entity-editor__footer-hint">preset انتخاب‌شده ذخیره نمی‌شود؛ فقط capabilityهای نهایی و ناحیه آماده‌سازی ثبت می‌شوند.</span><div class="sc-actions"><button class="sc-button" type="submit" value="submit">ذخیره عضو تیم</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></div></footer>
+diff --git a/src/Core/Migrations.php b/src/Core/Migrations.php
+index d48deba..1a4e1e2 100644
+--- a/src/Core/Migrations.php
++++ b/src/Core/Migrations.php
+@@ -39,12 +39,12 @@ final class Migrations
+                     throw new RuntimeException("Migration '{$version}' is empty or unreadable.");
+                 }
+ 
+-                // Only the audited data-only migrations (0078/0079/0080) are wrapped as
++                // Only the audited data-only migrations (0078/0079/0080/0081) are wrapped as
+                 // whole, durable InnoDB transactions. Their post-write SELECT
+                 // guards then rollback all DML plus the statement ledger on error.
+                 // DDL (0077) retains the separate forward-only recovery lifecycle.
+                 $statements = self::splitStatements($sql);
+-                $atomicDataOnly = str_starts_with($version, '0078_') || str_starts_with($version, '0079_') || str_starts_with($version, '0080_');
++                $atomicDataOnly = str_starts_with($version, '0078_') || str_starts_with($version, '0079_') || str_starts_with($version, '0080_') || str_starts_with($version, '0081_');
+                 if ($atomicDataOnly) {
+                     foreach ($statements as $statement) {
+                         if (preg_match('/^(?:SELECT|INSERT|UPDATE|DELETE)\b/i', ltrim($statement)) !== 1) {
+diff --git a/src/Domain/Admin/AdminControlService.php b/src/Domain/Admin/AdminControlService.php
+index ef85eea..d5b9f69 100644
+--- a/src/Domain/Admin/AdminControlService.php
++++ b/src/Domain/Admin/AdminControlService.php
+@@ -107,6 +107,14 @@ final class AdminControlService
+         ];
+     }
+ 
++    /** A legacy-style staff PIN is available only to a non-admin Local-only account. */
++    private static function validStaffPassword(string $password, string $role, array $caps): bool
++    {
++        if (strlen($password) >= 8) return true;
++        return $role !== 'admin' && !in_array('remote_access', $caps, true)
++            && preg_match('/^[0-9]{4}$/D', $password) === 1;
++    }
++
+     public function saveTeamMember(array $data,array $actor): array
+     {
+         $admin=$this->assertAdmin($actor);
+@@ -129,8 +137,8 @@ final class AdminControlService
+                 if($username==='')throw new AdminControlException('username_required','برای ورود به سامانه نام کاربری لازم است.',422);
+                 if($role!=='admin'&&$caps===[])throw new AdminControlException('capability_required','برای عضو دارای دسترسی، حداقل یک دسترسی انتخاب کن.',422);
+                 if(in_array('preparation',$caps,true)&&$areas===[])throw new AdminControlException('preparation_area_required','برای آماده‌سازی، آشپزخانه، بار یا هر دو را انتخاب کن.',422);
+-                if($userId===0&&strlen($password)<8)throw new AdminControlException('password_short','برای حساب تازه رمز حداقل ۸ کاراکتری لازم است.',422);
+-                if($userId>0&&$password!==''&&strlen($password)<8)throw new AdminControlException('password_short','رمز تازه حداقل ۸ کاراکتر باشد.',422);
++                if($userId===0&&!self::validStaffPassword($password,$role,$caps))throw new AdminControlException('password_short','رمز چهاررقمی فقط برای پرسنل بدون دسترسی اینترنتی مجاز است؛ سایر حساب‌ها حداقل ۸ کاراکتر نیاز دارند.',422);
++                if($userId>0&&$password!==''&&!self::validStaffPassword($password,$role,$caps))throw new AdminControlException('password_short','رمز چهاررقمی فقط برای پرسنل بدون دسترسی اینترنتی مجاز است؛ سایر حساب‌ها حداقل ۸ کاراکتر نیاز دارند.',422);
+                 if($userId>0&&$password===''&&self::isStagedPasswordHash((string)($existingUser['password_hash']??'')))throw new AdminControlException('password_setup_required','برای نخستین فعال‌سازی این حساب، یک رمز اختصاصی حداقل ۸ کاراکتری تعیین کن.',422);
+                 if($userId>0){
+                     if($password!==''){$q=$this->pdo->prepare('UPDATE users SET username=?,display_name=?,active=1,password_hash=? WHERE id=?');$q->execute([$username,$name,password_hash($password,PASSWORD_DEFAULT),$userId]);$this->remoteCredentials?->syncFromPassword($userId,$password);}
+@@ -193,8 +201,8 @@ final class AdminControlService
+             if($role==='admin'){$caps=Capabilities::DEFINITIONS;$areas=['kitchen','bar'];$active=true;}
+             if($active&&$role!=='admin'&&$caps===[])throw new AdminControlException('capability_required','برای حساب فعال حداقل یک دسترسی انتخاب کن.',422);
+             if(in_array('preparation',$caps,true)&&$areas===[])throw new AdminControlException('preparation_area_required','برای آماده‌سازی، آشپزخانه، بار یا هر دو را انتخاب کن.',422);
+-            if($id===0&&strlen($password)<8)throw new AdminControlException('password_short','برای حساب تازه رمز حداقل ۸ کاراکتری لازم است.',422);
+-            if($id>0&&$password!==''&&strlen($password)<8)throw new AdminControlException('password_short','رمز تازه حداقل ۸ کاراکتر باشد.',422);
++            if($id===0&&!self::validStaffPassword($password,$role,$caps))throw new AdminControlException('password_short','رمز چهاررقمی فقط برای پرسنل بدون دسترسی اینترنتی مجاز است؛ سایر حساب‌ها حداقل ۸ کاراکتر نیاز دارند.',422);
++            if($id>0&&$password!==''&&!self::validStaffPassword($password,$role,$caps))throw new AdminControlException('password_short','رمز چهاررقمی فقط برای پرسنل بدون دسترسی اینترنتی مجاز است؛ سایر حساب‌ها حداقل ۸ کاراکتر نیاز دارند.',422);
+             if($id>0&&$active&&$password===''&&self::isStagedPasswordHash((string)($existing['password_hash']??'')))throw new AdminControlException('password_setup_required','برای نخستین فعال‌سازی این حساب، یک رمز اختصاصی حداقل ۸ کاراکتری تعیین کن.',422);
+             if($id>0){
+                 if($password!==''){$q=$this->pdo->prepare('UPDATE users SET username=?,display_name=?,active=?,password_hash=? WHERE id=?');$q->execute([$username,$display,$active?1:0,password_hash($password,PASSWORD_DEFAULT),$id]);$this->remoteCredentials?->syncFromPassword($id,$password);}
