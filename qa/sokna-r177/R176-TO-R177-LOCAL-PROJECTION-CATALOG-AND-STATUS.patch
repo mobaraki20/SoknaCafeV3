@@ -1,0 +1,98 @@
+--- a/src/Domain/PublicEdge/PublicEdgePublisherService.php
++++ b/src/Domain/PublicEdge/PublicEdgePublisherService.php
+@@ -207,6 +207,14 @@
+             $results['guest_publish']=['ok'=>false,'code'=>$e instanceof PublicEdgeSyncException?$e->errorCode:'public_guest_internal','message'=>'انتشار منوی مهمان کامل نشد.'];
+         }
+ 
++        // A one-time test-data reset clears the *system* model catalog as well as
++        // transactional outboxes. The AFTER INSERT invalidation trigger joins that
++        // catalog; without reseeding it, fresh invalidations silently have NO
++        // target watermark and Public cannot receive a read-model snapshot.
++        // Only rehydrate the 11 fixed, source-declared model keys while the
++        // signed Local authority is explicitly fenced as resync_required.
++        $this->restoreProjectionCatalogAfterGoLive();
++
+         // Manual Full Sync uses the same durable per-model transport as automatic replication.
+         // Seed authoritative invalidations, then drain each model independently; one slow model
+         // cannot roll back unrelated models and no monolithic read-model transaction is created.
+@@ -297,6 +305,41 @@
+             'success'=>$failed===[]&&!$unreachable,'transport_unreachable'=>$unreachable,
+             'failed_channels'=>$failed,'channels'=>$results,'support_id'=>$supportId,'synced_at'=>gmdate('c'),
+         ];
++    }
++
++    /**
++     * Repair ONLY static transport metadata after the one-time go-live purge.
++     * No business rows, authority epochs, Public settings, or migration ledger
++     * are modified. This is idempotent across interrupted resync attempts.
++     * The catalog remains necessary for the normal AFTER INSERT trigger.
++     */
++    private function restoreProjectionCatalogAfterGoLive(): void
++    {
++        if ($this->authorityState === null || !$this->authorityState->resyncRequired()) return;
++        $keys = $this->builder->remoteModelKeys();
++        if (count($keys) !== 11 || count(array_unique($keys)) !== 11) {
++            throw new \RuntimeException('GOLIVE_PROJECTION_MODEL_CATALOG_INVALID');
++        }
++        foreach ($keys as $key) {
++            if (preg_match('/^[a-z][a-z0-9_]{0,63}$/D', $key) !== 1)
++                throw new \RuntimeException('GOLIVE_PROJECTION_MODEL_CATALOG_INVALID');
++        }
++        $this->pdo->beginTransaction();
++        try {
++            $actual = $this->pdo->query('SELECT model_key FROM public_projection_model_catalog ORDER BY model_key')->fetchAll(PDO::FETCH_COLUMN) ?: [];
++            if (array_diff($actual, $keys))
++                throw new \RuntimeException('GOLIVE_PROJECTION_MODEL_CATALOG_UNEXPECTED');
++            $insert = $this->pdo->prepare('INSERT IGNORE INTO public_projection_model_catalog(model_key) VALUES(?)');
++            foreach ($keys as $key) $insert->execute([$key]);
++            $after = $this->pdo->query('SELECT model_key FROM public_projection_model_catalog ORDER BY model_key')->fetchAll(PDO::FETCH_COLUMN) ?: [];
++            $expected = $keys; sort($expected, SORT_STRING);
++            if ($after !== $expected)
++                throw new \RuntimeException('GOLIVE_PROJECTION_MODEL_CATALOG_RESTORE_FAILED');
++            $this->pdo->commit();
++        } catch (Throwable $e) {
++            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
++            throw $e;
++        }
+     }
+ 
+     /**
+--- a/src/Domain/System/GoLiveResetCoordinator.php
++++ b/src/Domain/System/GoLiveResetCoordinator.php
+@@ -42,6 +42,7 @@
+                 'installation'=>$remoteInstallation,
+                 'pending'=>true,
+                 'phase'=>(string)($pending['stage']??'unknown'),
++                'resync_diagnostics'=>is_array($pending['resync_diagnostics']??null)?$pending['resync_diagnostics']:null,
+                 'batch_progress'=>is_array($pending['batch']??null)?[
+                     'table_index'=>(int)($pending['batch']['table_index']??0),
+                     'chunks'=>(int)($pending['batch']['chunks']??0),
+@@ -144,6 +145,28 @@
+                 // A failed Public resync leaves the intake fenced; retrying is
+                 // safe and never clears new data after the local_cleared stage.
+                 $result=$this->core->publicEdgePublisher()->syncAll(12);
++                // Persist *codes only* so a passive GET can explain the last
++                // failed recovery attempt without exposing credentials, payloads,
++                // customer details or requiring another destructive retry.
++                $failed=array_values(array_filter(array_map('strval',(array)($result['failed_channels']??[])),
++                    static fn(string $v):bool=>preg_match('/^[a-z_]{1,48}$/D',$v)===1));
++                $models=(array)($result['channels']['read_models']['detail']??[]);
++                $modelErrors=[];
++                foreach((array)($models['models']??[]) as $key=>$entry) {
++                    if(!is_string($key)||preg_match('/^[a-z_]{1,48}$/D',$key)!==1||!is_array($entry))continue;
++                    $error=(string)($entry['error_code']??'');
++                    if($error!==''&&preg_match('/^[a-z0-9_]{1,80}$/D',$error)===1)$modelErrors[$key]=$error;
++                }
++                $activationCode=(string)($result['channels']['authority_activate']['code']??'');
++                $state['resync_diagnostics']=[
++                    'attempted_at'=>gmdate('c'),
++                    'success'=>($result['success']??false)===true,
++                    'failed_channels'=>$failed,
++                    'model_failure_codes'=>$modelErrors,
++                    'model_attempt_count'=>(int)($models['attempted_models']??0),
++                    'authority_activate_code'=>preg_match('/^[a-z0-9_]{1,80}$/D',$activationCode)===1?$activationCode:'',
++                ];
++                $this->writeMarker($state);
+                 if(($result['success']??false)!==true)throw new RuntimeException('GOLIVE_PUBLIC_RESYNC_PENDING');
+                 $state['stage']='completed';$state['finished_at']=gmdate('c');
+                 $this->writeMarker($state);

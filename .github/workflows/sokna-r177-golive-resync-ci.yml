@@ -1,0 +1,120 @@
+name: SOKNA R177 Go-live Catalog Resync Exact Source MariaDB and Windows Candidate
+on:
+  push:
+    branches: [qa/sokna-r177-golive-resync-catalog-20261112]
+    paths:
+      - 'qa/sokna-r177/**'
+      - '.github/workflows/sokna-r177-golive-resync-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  source-real-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GITHUB_ACTIONS: 'true'
+      SOKNA_R177_DISPOSABLE: 'YES'
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=ci-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: r176-real-windows-candidate-and-stage-passed
+          run-id: 43260963539
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r176
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql,mbstring,zip
+      - name: Byte-pin installed R176 parent, real two-file patch, and unchanged migrations
+        run: |
+          set -euo pipefail
+          PARENT="$(find "$RUNNER_TEMP/r176" -name 'SOKNA-R176-LOCAL-231ER-54BASE-GOLIVE-OUTBOX-CANARY-PANEL-UPDATE.zip' -type f -print -quit)"
+          test -n "$PARENT"
+          echo "a3ea536b2a4a492fdd0ad2e2cd86adb9ff9c6f20846765d9efa8d53375d421ec  $PARENT" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/r177-src" "$RUNNER_TEMP/r177-package"
+          unzip -p "$PARENT" artifacts/local/web.zip > "$RUNNER_TEMP/r176-web.zip"
+          unzip -q "$RUNNER_TEMP/r176-web.zip" -d "$RUNNER_TEMP/r177-src"
+          (cd "$RUNNER_TEMP/r177-src" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r177/R176-TO-R177-LOCAL-PROJECTION-CATALOG-AND-STATUS.patch")
+          php -l "$RUNNER_TEMP/r177-src/src/Domain/PublicEdge/PublicEdgePublisherService.php"
+          php -l "$RUNNER_TEMP/r177-src/src/Domain/System/GoLiveResetCoordinator.php"
+          python3 - "$RUNNER_TEMP/r177-src" <<'PY'
+          import pathlib,sys,hashlib
+          root=pathlib.Path(sys.argv[1]);expected={
+           'src/Domain/PublicEdge/PublicEdgePublisherService.php':'d9e283376347ccc97314298d201b420d762f67ff43ec7a823b87e9cb5303aaea',
+           'src/Domain/System/GoLiveResetCoordinator.php':'d5a223fe87b221dc268a24b9f5f4a1bb163baea899b62491d9b0682c8be93fa4'}
+          for key,sha in expected.items():
+            assert hashlib.sha256((root/key).read_bytes()).hexdigest()==sha,key
+          assert b'"public_projection_model_catalog": "CLEAR"' in (root/'resources/golive-clearance-policy.json').read_bytes()
+          print('PASS R177 EXPLICIT_TWO_FILE_SCOPE_AND_LEGACY_POLICY_UNCHANGED')
+          PY
+          echo "R177_PARENT=$PARENT" >> "$GITHUB_ENV"
+          echo "R177_SOURCE=$RUNNER_TEMP/r177-src" >> "$GITHUB_ENV"
+      - name: Real disposable MariaDB migration-0062 trigger, empty catalog and retry repair
+        run: |
+          set -euo pipefail
+          php qa/sokna-r177/test_r177_disposable_mariadb.php "$R177_SOURCE"
+      - name: Build reproducible exact cumulative Local package and check install identity
+        run: |
+          set -euo pipefail
+          python3 qa/sokna-r177/build_r177.py --parent "$R177_PARENT" --patched-tree "$R177_SOURCE" --out "$RUNNER_TEMP/r177-package"
+          PACKAGE="$RUNNER_TEMP/r177-package/SOKNA-R177-LOCAL-231ES-55BASE-GOLIVE-RESYNC-CANARY-PANEL-UPDATE.zip"
+          echo "bb14b9bc93d7a37059331e24692c3bd60cc338c36e336a8cdcab6cb123b30286  $PACKAGE" | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py --require-installable "$PACKAGE"
+          python3 - "$PACKAGE" <<'PY'
+          import zipfile,sys,io,json
+          with zipfile.ZipFile(sys.argv[1]) as z:
+            manifest=json.loads(z.read('release-set.json'))
+            with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as web:
+              names=web.namelist();inv=json.loads(web.read('resources/local-managed-files-v1.json'))['files']
+              assert len(names)==len(inv)==manifest['targets']['local']['managed_files']==589
+              assert set(names)==set(inv) and len(manifest['supported_baselines'])==55
+              assert any('231er-r176' in i['local']['version'] for i in manifest['supported_baselines'])
+              assert len([n for n in names if n.startswith('database/migrations/') and n.endswith('.sql')])==81
+          print('PASS R177 EXACT_589_FILES_55_BASELINES_81_MIGRATIONS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r177-exact-package-tested-in-mariadb-awaiting-windows
+          path: ${{ runner.temp }}/r177-package/*
+          retention-days: 14
+          if-no-files-found: error
+  native-windows-stage:
+    needs: source-real-mariadb
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-exact-package-tested-in-mariadb-awaiting-windows
+          path: r177
+      - name: Windows actual private Candidate, 55 VerifyOnly and Stage from installed R176
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $file=(Get-ChildItem r177 -Recurse -Filter 'SOKNA-R177-LOCAL-231ES-55BASE-GOLIVE-RESYNC-CANARY-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if(!$file){throw 'R177_FILE_MISSING'}
+          dotnet run --project qa/sokna-r177/R177Stage.csproj -c Release --no-launch-profile -- $file
+          if($LASTEXITCODE-ne0){throw 'R177_NATIVE_CANDIDATE_STAGE_FAILED'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          path: r177/*
+          if-no-files-found: error
+          retention-days: 14
