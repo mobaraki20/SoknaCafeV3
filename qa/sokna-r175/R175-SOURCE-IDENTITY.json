@@ -10,7 +10,7 @@
     {
       "path": "src/Domain/System/GoLiveResetCoordinator.php",
       "base_sha256": "e51723c1021b03a7a6b3b99795b66f328e00e24134c55f2def97726253bc1241",
-      "target_sha256": "1c11cbf304e73ad30bf60a76514c5e122a33de0a73d52b51d5aebbce98f6369c"
+      "target_sha256": "dce098c4045701f3d40582498af01984a4d1b7b99de5540f5da16838fc594159"
     },
     {
       "path": "public/system/go-live.php",
