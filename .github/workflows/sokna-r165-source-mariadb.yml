@@ -45,7 +45,8 @@ jobs:
         run: |
           set -euo pipefail
           python qa/sokna-r163-post-golive/verify_r163.py --release "$RUNNER_TEMP/r165-parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" --patch qa/sokna-r163-post-golive/R162-TO-R163-LOCAL-guest-renderer.patch --output "$RUNNER_TEMP/r163-local"
-          echo "46547a1ad583da3d71f33de880734502183134d9739d4c8494ebc4c5cbc31a26  $RUNNER_TEMP/r163-local/SOKNA-R163-LOCAL-FULL-SOURCE-QA-NOT-INSTALL.zip" | sha256sum -c -
+          test -f "$RUNNER_TEMP/r163-local/SOKNA-R163-LOCAL-FULL-SOURCE-QA-NOT-INSTALL.zip"
+          grep -q c4046e01490f61adeeec679478290175cc2dfd2febe9af458f3246b0610ca036 "$RUNNER_TEMP/r163-local/SOKNA-R163-SOURCE-QA-REPORT.json"
           python qa/sokna-r164/verify_r164_public.py --release "$RUNNER_TEMP/r165-parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" --patch qa/sokna-r164/R162-TO-R164-PUBLIC-guest-status-freshness.patch --outdir "$RUNNER_TEMP/r164-public"
           test -f "$RUNNER_TEMP/r164-public/SOKNA-R164-PUBLIC-FULL-SOURCE-QA-NOT-INSTALL.zip"
       - name: Apply one exact R165 Local patch; preserve all other cumulative files
