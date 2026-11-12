@@ -1,0 +1,142 @@
+name: SOKNA R171 cafe cumulative four-digit staff PIN and native install qualification
+on:
+  push:
+    branches: [qa/sokna-r171-cumulative-pin-install-20261112]
+    paths:
+      - 'qa/sokna-r171/**'
+      - '.github/workflows/sokna-r171-cumulative-pin-install.yml'
+permissions:
+  contents: write
+jobs:
+  exact-source-and-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOKNA_R171_DISPOSABLE: YES
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r171_fresh
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=ci-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring,pdo_mysql,zip,gd
+      - name: Retrieve immutable published R162 parents
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/parents" "$RUNNER_TEMP/r168" "$RUNNER_TEMP/r171" "$RUNNER_TEMP/local" "$RUNNER_TEMP/public" "$RUNNER_TEMP/public-outer"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parents"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parents"
+          echo "16adab9910c017d97ebc256e721bfbc22e26103979adc59763c6bf978b6f5471  $RUNNER_TEMP/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "96e976c43644f62e1246a29752af3fab5fff62978421f93db8065d8460a67503  $RUNNER_TEMP/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" | sha256sum -c -
+      - name: Reconstruct exact R168 then scoped R169 R170 R171 sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d qa/sokna-r168/local_r168_overlay.zip.b64 > "$RUNNER_TEMP/overlay-local.zip"
+          base64 -d qa/sokna-r168/public_r168_overlay.zip.b64 > "$RUNNER_TEMP/overlay-public.zip"
+          python qa/sokna-r168/build_r168.py \
+            --local_parent "$RUNNER_TEMP/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" \
+            --public_parent "$RUNNER_TEMP/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" \
+            --local_overlay "$RUNNER_TEMP/overlay-local.zip" --public_overlay "$RUNNER_TEMP/overlay-public.zip" \
+            --manifest qa/sokna-r168/r168_source_delta_manifest.json --outdir "$RUNNER_TEMP/r168"
+          echo "1ecea6835c0e63958fb940c2486e3d4a777f4e572590f8c298c6947cf73ca628  $RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          unzip -p "$RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/local.zip"
+          unzip -q "$RUNNER_TEMP/local.zip" -d "$RUNNER_TEMP/local"
+          unzip -q "$RUNNER_TEMP/r168/SOKNA-R168-PUBLIC-35HS-FROM-35HP-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/public-outer"
+          cp -a "$RUNNER_TEMP/public-outer/payload/." "$RUNNER_TEMP/public/"
+          (cd "$RUNNER_TEMP/local" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r169/R168-TO-R169-LOCAL-SCOPED-SOURCE.patch")
+          (cd "$RUNNER_TEMP/public" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r169/R168-TO-R169-PUBLIC-SCOPED-SOURCE.patch")
+          (cd "$RUNNER_TEMP/local" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r170/R169-TO-R170-LOCAL-EXPENSE-ROLE.patch")
+          (cd "$RUNNER_TEMP/public" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r170/R169-TO-R170-PUBLIC-EXPENSE-ROLE.patch")
+          (cd "$RUNNER_TEMP/local" && git apply --check "$GITHUB_WORKSPACE/qa/sokna-r171/R170-TO-R171-LOCAL-PIN-ONBOARDING.patch" && git apply "$GITHUB_WORKSPACE/qa/sokna-r171/R170-TO-R171-LOCAL-PIN-ONBOARDING.patch")
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile,os
+          src=Path(os.environ['RUNNER_TEMP'])/'r168';out=Path(os.environ['RUNNER_TEMP'])/'R168-UAT-cumulative-candidates.zip'
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.glob('*'):
+                  if p.is_file() and (p.name.endswith('.zip') or p.name=='R168-PACKAGE-IDENTITY.json'):z.write(p,p.name)
+          print('Exact parent R168 artifact reconstructed:',out)
+          PY
+          export SOKNA_R171_R168_ARCHIVE="$RUNNER_TEMP/R168-UAT-cumulative-candidates.zip"
+          export SOKNA_R171_LOCAL="$RUNNER_TEMP/local" SOKNA_R171_PUBLIC="$RUNNER_TEMP/public" SOKNA_R171_OUT="$RUNNER_TEMP/r171"
+          python qa/sokna-r171/build_r171_installable.py
+          echo "eaa7284c07096bcb8c869007b64586c869ece7eadf3f8322b1cc65e958f30179  $RUNNER_TEMP/r171/SOKNA-R171-LOCAL-231EO-52BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$RUNNER_TEMP/r171/SOKNA-R171-LOCAL-231EO-52BASE-PANEL-UPDATE.zip"
+          echo "SOKNA_R171_LOCAL=$RUNNER_TEMP/local" >> "$GITHUB_ENV"
+          echo "SOKNA_R171_OUT=$RUNNER_TEMP/r171" >> "$GITHUB_ENV"
+      - name: Source syntax and role boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$SOKNA_R171_LOCAL" "$RUNNER_TEMP/public" -name '*.php' -print0 | xargs -0 -n1 -P 8 php -l > /dev/null
+          find "$SOKNA_R171_LOCAL" "$RUNNER_TEMP/public" -name '*.js' -print0 | xargs -0 -n1 -P 8 node --check > /dev/null
+          SOKNA_R170_LOCAL="$SOKNA_R171_LOCAL" php qa/sokna-r170/test_r170_access.php
+          php qa/sokna-r171/test_r171_pin_contract.php "$SOKNA_R171_LOCAL"
+      - name: Real disposable MariaDB employee migration, replay, collision rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r171/r171_migration_smoke_disposable.php "$SOKNA_R171_LOCAL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r171-exact-cumulative-windows-cafe-uat-candidates
+          path: ${{ runner.temp }}/r171/*
+          if-no-files-found: error
+          retention-days: 30
+  native-windows-stage:
+    needs: exact-source-and-mariadb
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r171-exact-cumulative-windows-cafe-uat-candidates
+          path: r171-out
+      - name: Native Windows VerifyOnly all 52 exact identities and stage from home/cafe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=(Get-ChildItem r171-out -Filter 'SOKNA-R171-LOCAL-231EO-52BASE-PANEL-UPDATE.zip' -Recurse | Select-Object -First 1).FullName
+          if(-not $p){throw 'R171_LOCAL_ZIP_MISSING'}
+          $source=Get-Content qa/sokna-r168/R168Stage.cs -Raw
+          $source=$source.Replace('==51','==52').Replace('==588','==589').Replace('Count==51','Count==52').Replace('R168','R171').Replace('51_BASELINE','52_BASELINE').Replace('51BASE','52BASE')
+          Set-Content qa/sokna-r168/R168Stage.cs -Value $source -Encoding utf8NoBOM
+          dotnet run --project qa/sokna-r168/R168Stage.csproj -c Release --no-launch-profile -- $p
+          if($LASTEXITCODE-ne0){throw 'R171_WINDOWS_STAGE_FAILED'}
+      - name: Try creating GitHub UAT prerelease (optional, never weaken release permissions)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference='Stop'
+          $notes=Join-Path $env:RUNNER_TEMP 'R171-UAT.md'
+          @'
+          # SOKNA R171 cumulative — Local 231eo / Public 35ht (UAT)
+          Exact R162 → R168 cumulative plus R169 notifications/RTL, R170 expense role,
+          R171 4-digit local-only staff PIN onboarding for named café employee.
+          Only one new data-only migration (0081) applied atomically; all earlier
+          80 Local migrations and 8 Public migrations byte-identical. No real
+          home/café host installation has been verified. UAT only, not field certified.
+          '@ | Set-Content $notes -Encoding utf8NoBOM
+          $assets=Get-ChildItem r171-out -File | Where-Object {$_.Name -like 'SOKNA-R171-*.zip' -or $_.Name -eq 'R171-PACKAGE-IDENTITY.json'}
+          $a=@('release','create','sokna-r171-cumulative-staff-expenses-uat-20261112','--repo','mobaraki20/SoknaCafeV3','--title','SOKNA R171 cumulative cafe UAT','--prerelease','--target',$env:GITHUB_SHA,'--notes-file',$notes)
+          foreach($asset in $assets){$a+=@($asset.FullName)}
+          & gh @a
+          if($LASTEXITCODE-ne0){Write-Warning 'GH release permission refused. Artifact remains available and qualified.'}
