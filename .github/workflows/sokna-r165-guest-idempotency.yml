@@ -1,0 +1,71 @@
+name: SOKNA R165 real MariaDB guest receipt and retry audit — QA only
+on:
+  push:
+    branches: [qa/sokna-r165-guest-idempotency-audit-20261112]
+    paths:
+      - 'qa/sokna-r165-guest-idempotency/**'
+      - '.github/workflows/sokna-r165-guest-idempotency.yml'
+permissions:
+  contents: read
+jobs:
+  real-idempotency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_ACTIONS: 'true'
+      SOKNA_R165_DISPOSABLE: 'YES'
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r165_initial
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=ci-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring
+      - name: Retrieve exact published R162 Local and Public (not outdated main)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r165/parents" "$RUNNER_TEMP/r165/local" "$RUNNER_TEMP/r165/public" "$RUNNER_TEMP/r165/public-outer"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/r165/parents"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/r165/parents"
+          echo "16adab9910c017d97ebc256e721bfbc22e26103979adc59763c6bf978b6f5471  $RUNNER_TEMP/r165/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "96e976c43644f62e1246a29752af3fab5fff62978421f93db8065d8460a67503  $RUNNER_TEMP/r165/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" | sha256sum -c -
+          unzip -p "$RUNNER_TEMP/r165/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/r165/local-web.zip"
+          unzip -q "$RUNNER_TEMP/r165/local-web.zip" -d "$RUNNER_TEMP/r165/local"
+          unzip -q "$RUNNER_TEMP/r165/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/r165/public-outer"
+          cp -a "$RUNNER_TEMP/r165/public-outer/payload/." "$RUNNER_TEMP/r165/public/"
+          echo "R165_LOCAL=$RUNNER_TEMP/r165/local" >> "$GITHUB_ENV"
+          echo "R165_PUBLIC=$RUNNER_TEMP/r165/public" >> "$GITHUB_ENV"
+      - name: Verify receipt and realtime source bytes match carried-forward R164
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '30cdbd2a4ac145b32fae5de8208b8f66c30bdb2df6522ee1e6a3f499a9f0d010  '"$R165_LOCAL/src/Domain/LanStaff/LanStaffRealtimeReceiptService.php" | sha256sum -c -
+          echo '35c5499c984425b540478952864c45f827b6a439476386e6534fdb5351a501d4  '"$R165_PUBLIC/src/Realtime/RealtimeService.php" | sha256sum -c -
+          echo '39c19642fd6b1fc7382444f4bc13e2fa040d0795fe812d06b66fc06e087f367b  '"$R165_LOCAL/database/migrations/0037_lan_staff_realtime_receipts.sql" | sha256sum -c -
+          echo 'b4da2e8a0de5d9f6d64a2ae0727079fc5f9c1fcf57b05aeb9cbf512e121fe877  '"$R165_PUBLIC/database/migrations/0001_m3_public_edge_core.sql" | sha256sum -c -
+          php -l qa/sokna-r165-guest-idempotency/test_real_guest_idempotency.php
+          php -l "$R165_LOCAL/src/Domain/LanStaff/LanStaffRealtimeReceiptService.php"
+          php -l "$R165_PUBLIC/src/Realtime/RealtimeService.php"
+      - name: Actual MariaDB migration, LAN/WAN duplicate, ACK and rollback test
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r165-guest-idempotency/test_real_guest_idempotency.php "$R165_LOCAL" "$R165_PUBLIC" | tee "$RUNNER_TEMP/r165/idempotency.log"
+          grep -q 'PASS R165_REAL_MARIADB_GUEST_IDEMPOTENCY_END_TO_END_SEPARATE_DB' "$RUNNER_TEMP/r165/idempotency.log"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r165-guest-idempotency-ci-evidence
+          path: ${{ runner.temp }}/r165/idempotency.log
+          retention-days: 30
+          if-no-files-found: error
