@@ -1,0 +1,90 @@
+name: SOKNA R175 bounded go-live Local canary exact package and native Windows Stage QA
+on:
+  push:
+    branches: [qa/sokna-r175-golive-resume-20261112]
+    paths:
+      - 'qa/sokna-r175/build_r175.py'
+      - 'qa/sokna-r175/R175Stage.*'
+      - '.github/workflows/sokna-r175-golive-install-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  source-and-cumulative-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: r174-native-windows-candidate-inventory-repair-passed
+          run-id: 43233127876
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r174
+      - name: Rebuild immutable R174 source, exact patch and bounded R175 canary
+        run: |
+          set -euo pipefail
+          PARENT="$(find "$RUNNER_TEMP/r174" -name 'SOKNA-R174-CANARY-LOCAL-231EP-52BASE-PANEL-UPDATE.zip' -print -quit)"
+          test -n "$PARENT"
+          echo "b8e15174670240c082a78bf7c87b43d6d72ba33590d1e645f601e7bc45336088  $PARENT" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/r175-base" "$RUNNER_TEMP/r175-package"
+          unzip -p "$PARENT" artifacts/local/web.zip > "$RUNNER_TEMP/r174-web.zip"
+          unzip -q "$RUNNER_TEMP/r174-web.zip" -d "$RUNNER_TEMP/r175-base"
+          (cd "$RUNNER_TEMP/r175-base" && patch -p1 --fuzz=0 --batch < "$GITHUB_WORKSPACE/qa/sokna-r175/R174-TO-R175-LOCAL-GOLIVE-RECOVERY.patch")
+          python3 - "$RUNNER_TEMP/r175-base" <<'PY'
+          import pathlib,hashlib,json,sys
+          src=pathlib.Path(sys.argv[1]);manifest=json.loads(pathlib.Path('qa/sokna-r175/R175-SOURCE-IDENTITY.json').read_text())
+          assert len(manifest['changed'])==3
+          for x in manifest['changed']:
+            assert hashlib.sha256((src/x['path']).read_bytes()).hexdigest()==x['target_sha256'],x['path']
+          print('PASS R175 EXACT_THREE_FILE_PATCH')
+          PY
+          python3 qa/sokna-r175/build_r175.py --parent "$PARENT" --patched-tree "$RUNNER_TEMP/r175-base" --out "$RUNNER_TEMP/r175-package" --canary
+          PACKAGE="$RUNNER_TEMP/r175-package/SOKNA-R175-LOCAL-231EQ-53BASE-GOLIVE-CANARY-PANEL-UPDATE.zip"
+          python3 packaging/windows/release-gates/check_local_release_set.py --require-installable "$PACKAGE"
+          python3 - "$PACKAGE" <<'PY'
+          import zipfile,io,json,sys
+          with zipfile.ZipFile(sys.argv[1]) as z:
+            manifest=json.loads(z.read('release-set.json'))
+            with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as inner:
+              names=inner.namelist()
+              inventory=json.loads(inner.read('resources/local-managed-files-v1.json'))['files']
+              assert len(names)==len(inventory)==manifest['targets']['local']['managed_files']==589
+              assert set(names)==set(inventory)
+              assert len(manifest['supported_baselines'])==53
+          print('PASS R175 EXACT_589_FILES_53_BASELINES')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r175-cumulative-canary-requires-windows-stage
+          path: ${{ runner.temp }}/r175-package/*
+          if-no-files-found: error
+          retention-days: 14
+  native-windows-stage:
+    needs: source-and-cumulative-artifact
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r175-cumulative-canary-requires-windows-stage
+          path: r175
+      - name: Windows actual private Candidate, 53 VerifyOnly, and Stage from exact R174
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $file=(Get-ChildItem -Path r175 -Recurse -Filter 'SOKNA-R175-LOCAL-231EQ-53BASE-GOLIVE-CANARY-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if(!$file){throw 'R175_CANDIDATE_FILE_MISSING'}
+          dotnet run --project qa/sokna-r175/R175Stage.csproj -c Release --no-launch-profile -- $file
+          if($LASTEXITCODE-ne0){throw 'R175_NATIVE_CANDIDATE_STAGE_FAILED'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r175-real-windows-stage-qualified-canary-local-only
+          path: r175/*
+          if-no-files-found: error
+          retention-days: 14
