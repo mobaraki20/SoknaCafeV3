@@ -63,9 +63,17 @@ jobs:
           set -euo pipefail
           php qa/sokna-r165-guest-idempotency/test_real_guest_idempotency.php "$R165_LOCAL" "$R165_PUBLIC" | tee "$RUNNER_TEMP/r165/idempotency.log"
           grep -q 'PASS R165_REAL_MARIADB_GUEST_IDEMPOTENCY_END_TO_END_SEPARATE_DB' "$RUNNER_TEMP/r165/idempotency.log"
+      - name: Inventory count input / missing cost contracts from exact Local source
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r165-guest-idempotency/test_inventory_cost_pure.php "$R165_LOCAL" | tee "$RUNNER_TEMP/r165/inventory-input.log"
+          grep -q 'PASS R165_INVENTORY_INPUT_AND_COST_PURE_CONTRACTS' "$RUNNER_TEMP/r165/inventory-input.log"
       - uses: actions/upload-artifact@v4
         with:
           name: r165-guest-idempotency-ci-evidence
-          path: ${{ runner.temp }}/r165/idempotency.log
+          path: |
+            ${{ runner.temp }}/r165/idempotency.log
+            ${{ runner.temp }}/r165/inventory-input.log
           retention-days: 30
           if-no-files-found: error
