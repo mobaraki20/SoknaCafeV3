@@ -1,0 +1,152 @@
+{
+  "baseline": "R169 source-only based on R168 exact source",
+  "result": "R170 SOURCE-QA / NOT INSTALLABLE",
+  "changed": [
+    {
+      "side": "local",
+      "path": "public/admin/index.php",
+      "before_sha256": "4879901e252bbb6c034184d19e66999589aa4a5e514d8f63cecb560fafa9a436",
+      "after_sha256": "6b6bd2bbbab9e98533ef006276a93ca19ce368c939bf87875c9b9ea2101c4576"
+    },
+    {
+      "side": "local",
+      "path": "public/assets/admin-workspace.js",
+      "before_sha256": "9cef96ac74405ec9efbf2f130d6cdd9191ab2c44311d4c5b691d4c5cc8f8caaa",
+      "after_sha256": "796b85a0ba0afd87cafc32240af65f26815296319e7314dbefdf2646a8b169b2"
+    },
+    {
+      "side": "local",
+      "path": "public/assets/operations-workspace.js",
+      "before_sha256": "f8a0914f5183dca98143288c8153317cdf3f6fe7a37a7cd233f3f489cfb1c53d",
+      "after_sha256": "61a18b2872fc644f1a21afede8e715b013fd047a15b97bfe24c1096b92091943"
+    },
+    {
+      "side": "local",
+      "path": "public/operations/index.php",
+      "before_sha256": "aae34bf46c636a7840b81068613317fee728fc9b55819a087df862a17ac38621",
+      "after_sha256": "e128b73956f30118c3045e0ef011000d5ade81175dcbcdc2e24691e181e5ac01"
+    },
+    {
+      "side": "local",
+      "path": "resources/shared-staff-ui/operations-workspace.php",
+      "before_sha256": "8a5b73bc3e3b2e5990aa51df449d59d12d284f8c281a113dd49c2bacb5731eae",
+      "after_sha256": "3d72cc50f9f69c41fc9482b6bd7aed9bf8b2150d29163f719494eebd1db0195d"
+    },
+    {
+      "side": "local",
+      "path": "src/Core/Bootstrap.php",
+      "before_sha256": "9f7a3d8589e334ea8bb57c5b0df15d915c7a0376e1377b6a780c2409fafe5bcc",
+      "after_sha256": "fbd34f8c4a26509c89ad3232667c9d0affddee9d4587f2bc5a5776000a8dfccb"
+    },
+    {
+      "side": "local",
+      "path": "src/Core/Capabilities.php",
+      "before_sha256": "8e938dc24c653ccaafdef121ed0562acad0f70630996889187a386250da55a38",
+      "after_sha256": "4aa7a24f5a7d2e0bb30631cbea914f6aad4a6d24d898730e0ac09f6c1e625060"
+    },
+    {
+      "side": "local",
+      "path": "src/Domain/Expenses/ExpenseService.php",
+      "before_sha256": "554a5b6b565f06d95924b70965d58da85a1338ebcc9ff6b18771439a63bf69e2",
+      "after_sha256": "4b99727a1613ab888fac21ba138b66fbabbc54d45fccc4172b5515f36c9e84a2"
+    },
+    {
+      "side": "local",
+      "path": "src/Domain/Operations/OperationsWorkspaceService.php",
+      "before_sha256": "a838a1ee564d0ddda6d068853ee566a8cb4d74c6d923c3aa669d10620d36ee90",
+      "after_sha256": "c89fc8d597d7223693def5b7349a84cc939bdd66c9f516b94e7c6eafe43aaa9f"
+    },
+    {
+      "side": "local",
+      "path": "src/Domain/PublicEdge/PublicProjectionBuilder.php",
+      "before_sha256": "2b8d9d64caf962b225fd783e33449d2733abb106a65ca3c62cda8aefda7d51c7",
+      "after_sha256": "a9a25805b27db21686c89f2b0d789e94ef53d6aa7ebfd06dc2b05e93a79a7ef5"
+    },
+    {
+      "side": "local",
+      "path": "src/Relay/ExpenseDeferredAdapter.php",
+      "before_sha256": "65f344968b18932ef52504374bf023692db618f3a0caafbfcd6629d9b6376e5a",
+      "after_sha256": "20f049d83f8133a04a7bfb825a0fde0b64e37e8c5f1f66a3e085bd45d43f5df3"
+    },
+    {
+      "side": "local",
+      "path": "src/Relay/OperationsRealtimeAdapter.php",
+      "before_sha256": "f8f1ae47692a8d833f710697e57be9b23558253ff93b0a59474e0c7217dd2b51",
+      "after_sha256": "8faf1ea58a019bd3c6ba906284790ce496ba48d6d622ba909a5f53cdba722996"
+    },
+    {
+      "side": "public",
+      "path": "assets/operations-workspace.js",
+      "before_sha256": "c33476b3931a92d837ae96ab750db1f80363d4c9047327e58f49ed121238ca54",
+      "after_sha256": "f5525c9e8dbe6cba40dc843c0970b7247c7e4956b6bfa001aedbc9cea2d90873"
+    },
+    {
+      "side": "public",
+      "path": "resources/shared-staff-ui/operations-workspace.php",
+      "before_sha256": "79f5bc408e9aead85a50c295bdc566d876e76a00c7c798ce25e1c0ae37fe859e",
+      "after_sha256": "94d80a3730b8d5e7f7de237712058660aee42d041b33cbedd650b62ac7da0fc4"
+    },
+    {
+      "side": "public",
+      "path": "src/Remote/RemoteReadModelService.php",
+      "before_sha256": "431984599f66584f1c1f966f9b0266af6347c4f9be4db823a0b4f726071ceee8",
+      "after_sha256": "e5b1a3273de227eea82373c9e279cafa7beadb38ceb7f66f7f76ac4d42649e8d"
+    },
+    {
+      "side": "public",
+      "path": "src/Remote/RemoteStaffPageRenderer.php",
+      "before_sha256": "db73a9e943b7de5805ab7f0be64c02a8955d7bc4afee0c9d84e9decafbb700ea",
+      "after_sha256": "653a96d6aa547175e89be0e6715173cbf9e6bbda5f30093aaf42ee7533a04adc"
+    }
+  ],
+  "counts": {
+    "local": {
+      "files": 588,
+      "modified": [
+        "public/admin/index.php",
+        "public/assets/admin-workspace.js",
+        "public/assets/operations-workspace.js",
+        "public/operations/index.php",
+        "resources/shared-staff-ui/operations-workspace.php",
+        "src/Core/Bootstrap.php",
+        "src/Core/Capabilities.php",
+        "src/Domain/Expenses/ExpenseService.php",
+        "src/Domain/Operations/OperationsWorkspaceService.php",
+        "src/Domain/PublicEdge/PublicProjectionBuilder.php",
+        "src/Relay/ExpenseDeferredAdapter.php",
+        "src/Relay/OperationsRealtimeAdapter.php"
+      ],
+      "untouched": 576
+    },
+    "public": {
+      "files": 225,
+      "modified": [
+        "assets/operations-workspace.js",
+        "resources/shared-staff-ui/operations-workspace.php",
+        "src/Remote/RemoteReadModelService.php",
+        "src/Remote/RemoteStaffPageRenderer.php"
+      ],
+      "untouched": 221
+    }
+  },
+  "account": {
+    "display_name": "محمد مبارکی",
+    "created_on_cafe": false,
+    "password_published": false
+  },
+  "security": {
+    "no_admin_promotion": true,
+    "expense_create_capability": "expenses_record",
+    "reversal_remains_admin": true,
+    "closed_period_admin_only": true,
+    "public_expense_remote_opt_in": true
+  },
+  "checks": {
+    "php_js_syntax": "PASS 462 files (prior run, final will rerun)",
+    "expense_role_unit": "PASS",
+    "rendered_3_roles_x_2_viewports": "PASS",
+    "mariadb_transaction_qa": "NOT_RUN",
+    "actual_host_install": "NOT_RUN",
+    "production_release": "NOT_CREATED"
+  }
+}
