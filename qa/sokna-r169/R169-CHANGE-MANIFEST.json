@@ -1,0 +1,29 @@
+{
+  "source": "R168 byte-exact extracted UAT package",
+  "scope": "NOTIF local checkbox and no-negative-tracking headings in Local+Public",
+  "disclaimer": "QA SOURCE ONLY. Not a final installable package. No DB or maintenance changes. Existing R168 Main/Current untouched.",
+  "deltas": {
+    "local": [
+      {
+        "path": "public/assets/account-workspace.js",
+        "original_sha256": "5ed0a18253fc9222a10d74a4ed633eb42b2abef7348b6ec4ab47af6241bfb8cd",
+        "patched_sha256": "db030e9b27236550e3d2a1ed0aa942b27e616ac0556a1be9292d8cd753bec045",
+        "diff_bytes": 2757
+      },
+      {
+        "path": "public/assets/product-ui.css",
+        "original_sha256": "76d49b1e0cf97b3366e871eb586d8e582c45a3620d68473fdfd72e2f03b4c4bc",
+        "patched_sha256": "dabdc1fa9135feb9605f7797a6e1908e743b7e5ea48cf934164e515015608657",
+        "diff_bytes": 6797
+      }
+    ],
+    "public": [
+      {
+        "path": "assets/product-ui.css",
+        "original_sha256": "a4c2ba2bc67afaf4b96f7fdef737e51ea868636ba62ed8c4ab830f75199781dc",
+        "patched_sha256": "cd49f5fcca0d06638cc70e104d90d1cec5deadcf1207fae275a1babbf21c2035",
+        "diff_bytes": 6783
+      }
+    ]
+  }
+}
