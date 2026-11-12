@@ -51,7 +51,7 @@ try{
  var verifier=new ReleaseSetVerifierStager(paths);
  foreach(var id in baselines){
    var outcome=verifier.VerifyOnly(inbox,Installed(id));
-   Check(outcome.ExactBaselineVerified && outcome.ArtifactIntegrityVerified && outcome.OperatorAuthorized &&
+   Check(outcome.ExactBaselineVerified == true && outcome.ArtifactIntegrityVerified && outcome.OperatorAuthorized &&
          !outcome.StagePerformed && !outcome.DatabaseMutationPerformed,"EXACT_READ_ONLY_"+id.ReleaseId);
  }
  Check(true,"ALL_53_KNOWN_BASELINES_PASS");
