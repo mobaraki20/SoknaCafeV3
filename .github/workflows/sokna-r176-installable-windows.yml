@@ -1,0 +1,83 @@
+name: SOKNA R176 exact outbox-tail cumulative Local canary and Windows Stage
+on:
+  push:
+    branches: [qa/sokna-r176-golive-outbox-tail-20261112]
+    paths:
+      - 'qa/sokna-r176/build_r176.py'
+      - 'qa/sokna-r176/R176Stage.*'
+      - '.github/workflows/sokna-r176-installable-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  source-and-cumulative-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: r175-real-windows-stage-qualified-canary-local-only
+          run-id: 43252752795
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r175
+      - name: Byte-pin R175 parent and rebuild R176 exact one-file source delta
+        run: |
+          set -euo pipefail
+          PARENT="$(find "$RUNNER_TEMP/r175" -name 'SOKNA-R175-LOCAL-231EQ-53BASE-GOLIVE-CANARY-PANEL-UPDATE.zip' -type f -print -quit)"
+          test -n "$PARENT"
+          echo "0dfc8d876c98536f18fca13f5ac08e3e1404447705310b61b324cbd6f50f140e  $PARENT" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/r176-patched" "$RUNNER_TEMP/r176-package"
+          unzip -p "$PARENT" artifacts/local/web.zip > "$RUNNER_TEMP/r175-web.zip"
+          unzip -q "$RUNNER_TEMP/r175-web.zip" -d "$RUNNER_TEMP/r176-patched"
+          (cd "$RUNNER_TEMP/r176-patched" && patch -p1 --fuzz=0 --batch < "$GITHUB_WORKSPACE/qa/sokna-r176/R175-TO-R176-LOCAL-GOLIVE-OUTBOX-TAIL.patch")
+          python3 qa/sokna-r176/build_r176.py --parent "$PARENT" --patched-engine "$RUNNER_TEMP/r176-patched/src/Domain/System/GoLiveResetEngine.php" --out "$RUNNER_TEMP/r176-package"
+          PACKAGE="$RUNNER_TEMP/r176-package/SOKNA-R176-LOCAL-231ER-54BASE-GOLIVE-OUTBOX-CANARY-PANEL-UPDATE.zip"
+          echo "a3ea536b2a4a492fdd0ad2e2cd86adb9ff9c6f20846765d9efa8d53375d421ec  $PACKAGE" | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py --require-installable "$PACKAGE"
+          python3 - "$PACKAGE" <<'PY'
+          import json,io,sys,zipfile,hashlib
+          with zipfile.ZipFile(sys.argv[1]) as z:
+            m=json.loads(z.read('release-set.json'))
+            with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as i:
+              names=i.namelist();inv=json.loads(i.read('resources/local-managed-files-v1.json'))['files']
+              assert len(names)==len(inv)==m['targets']['local']['managed_files']==589
+              assert set(names)==set(inv) and len(m['supported_baselines'])==54
+              assert any('231eq-r175' in x['local']['version'] for x in m['supported_baselines'])
+              assert len([x for x in names if x.startswith('database/migrations/') and x.endswith('.sql')])==81
+          print('PASS R176 589 INVENTORY 54 BASELINES 81 UNCHANGED MIGRATIONS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r176-exact-canary-awaiting-windows
+          path: ${{ runner.temp }}/r176-package/*
+          if-no-files-found: error
+          retention-days: 14
+  native-windows-stage:
+    needs: source-and-cumulative-artifact
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r176-exact-canary-awaiting-windows
+          path: r176
+      - name: Native Windows private Candidate, 54 VerifyOnly and Stage from exact R175
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $file=(Get-ChildItem r176 -Recurse -Filter 'SOKNA-R176-LOCAL-231ER-54BASE-GOLIVE-OUTBOX-CANARY-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if(!$file){throw 'R176_FILE_MISSING'}
+          dotnet run --project qa/sokna-r176/R176Stage.csproj -c Release --no-launch-profile -- $file
+          if($LASTEXITCODE-ne0){throw 'R176_NATIVE_CANDIDATE_STAGE_FAILED'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r176-real-windows-candidate-and-stage-passed
+          path: r176/*
+          if-no-files-found: error
+          retention-days: 14
