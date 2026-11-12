@@ -1,0 +1,30 @@
+name: SOKNA R179 print preview and station grouping QA
+on:
+  push:
+    branches: [qa/sokna-r179-print-audit-20261112]
+    paths:
+      - 'qa/sokna-r179/**'
+      - '.github/workflows/sokna-r179-print-visual-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  print-render-and-ui-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact nonproduction CSS patch applies to actual real Local source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check qa/sokna-r179/R177-TO-R179-LOCAL-PRINT-PREVIEW-PAPER-WIDTH.patch
+          git apply qa/sokna-r179/R177-TO-R179-LOCAL-PRINT-PREVIEW-PAPER-WIDTH.patch
+          python3 qa/sokna-r179/test_preview_paper_width.py apps/local-web/public/assets/product-ui.css
+      - name: Reproduce four-line station title in actual PHP source
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l apps/local-web/src/Domain/Printing/PrintService.php
+          php qa/sokna-r179/test_preparation_sections.php
+          test "$(grep -c 'private static function preparationSections' apps/local-web/src/Domain/Printing/PrintService.php)" -eq 1

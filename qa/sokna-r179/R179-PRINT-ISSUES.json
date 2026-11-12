@@ -1,0 +1,76 @@
+{
+  "audit_id": "PRINT-R179-20261112",
+  "scope": "actual screenshot trio, user supplied support gzip, GitHub R177 code; R178 remains QA only",
+  "file_sha256": "e8e21fbcc98ad259cca7a1bfc171aecb4f77b1992df872e586618d1f50937046",
+  "support_generated_at": "2026-11-12T17:47:42+00:00",
+  "installed_local_version": "3.0.0-g6.2-workspace.231es-r177-golive-resync-catalog-canary",
+  "agent": {
+    "version": "6.2.11",
+    "active": true,
+    "connected": false,
+    "last_heartbeat_at": "2026-11-12 20:57:56",
+    "heartbeat_age_seconds": 1184,
+    "supervisor_state": "running",
+    "windows_cash_queue_last_reported_ready": true,
+    "connected_agent_count": 0,
+    "destinations_ready": 0,
+    "destinations_total": 2
+  },
+  "test_jobs": [
+    {
+      "id": 48,
+      "type": "customer_test",
+      "status": "submitted",
+      "created_to_claim_s": 3,
+      "claim_to_submitted_s": 5,
+      "created_to_submitted_s": 8,
+      "attempt_count": 1
+    },
+    {
+      "id": 49,
+      "type": "preparation_test",
+      "status": "submitted",
+      "created_to_claim_s": 13,
+      "claim_to_submitted_s": 1,
+      "created_to_submitted_s": 14,
+      "attempt_count": 1
+    }
+  ],
+  "evidence_gaps": [
+    "Four-item physical preparation receipt not present in this support file",
+    "No source print_job payload / order_items.preparation_station for affected actual order",
+    "Last printer readiness signal stale, physical printer state later unverified"
+  ],
+  "issues": [
+    {
+      "id": "PRINT-STALENESS",
+      "priority": "P0",
+      "state": "confirmed in support",
+      "cause": "Agent heartbeat stale despite Windows runtime supervisor process running; transport/authentication/heartbeat outcome unknown"
+    },
+    {
+      "id": "PRINT-LATENCY",
+      "priority": "P1",
+      "state": "measured on two test jobs only",
+      "cause": "Two latency segments: claim wait vs worker processing"
+    },
+    {
+      "id": "PRINT-PREP-HEADER",
+      "priority": "P1",
+      "state": "user physical observation confirmed; exact mechanism unresolved",
+      "cause": "Renderer main ticket title once per job; second generic section title for unknown station, or second job from order/adjustment"
+    },
+    {
+      "id": "PRINT-PREVIEW-PNG-SCALE",
+      "priority": "P2",
+      "state": "reproduced CSS and patched in QA",
+      "cause": "Preview img forced to stage width and height; PDF uses its own viewer scaling"
+    },
+    {
+      "id": "PRINT-COLUMNAR-MISMATCH",
+      "priority": "P2",
+      "state": "image evidence, active template setting absent",
+      "cause": "Template labeled columnar but visual sample shows two-line layout; verify item_layout"
+    }
+  ]
+}

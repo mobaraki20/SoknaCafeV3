@@ -1,0 +1,9 @@
+diff --git a/apps/local-web/public/assets/product-ui.css b/apps/local-web/public/assets/product-ui.css
+--- a/apps/local-web/public/assets/product-ui.css
++++ b/apps/local-web/public/assets/product-ui.css
+@@ -3911,3 +3911,4 @@
+-.sc-print-preview-stage{min-block-size:0;block-size:min(66dvh,650px);display:grid;place-items:stretch;border:1px solid var(--sc-border);border-radius:12px;overflow:hidden;background:var(--sc-surface-subtle)}
++.sc-print-preview-stage{min-block-size:0;block-size:min(66dvh,650px);display:grid;place-items:start center;border:1px solid var(--sc-border);border-radius:12px;overflow:auto;background:var(--sc-surface-subtle)}
+ .sc-print-preview-stage .sc-empty{place-self:center}
+ .sc-print-preview-stage .sc-print-preview{inline-size:100%;block-size:100%;max-block-size:none;margin:0;border:0;object-fit:contain}
++.sc-print-preview-stage .sc-print-preview--image{inline-size:min(100%,340px);block-size:auto;max-inline-size:100%;max-block-size:none;justify-self:center;align-self:start;object-fit:contain}
