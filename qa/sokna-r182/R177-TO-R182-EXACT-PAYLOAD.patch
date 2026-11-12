@@ -1,0 +1,520 @@
+--- a/VERSION.txt
++++ b/VERSION.txt
+@@ -1 +1 @@
+-3.0.0-g6.2-workspace.231es-r177-golive-resync-catalog-canary
++3.0.0-g6.2-workspace.231eu-r181-home-followup-uat
+--- a/public/assets/account-workspace.js
++++ b/public/assets/account-workspace.js
+@@ -16,7 +16,9 @@
+   const notifApi=notifRoot.dataset.api,notifCsrf=notifRoot.dataset.csrf,form=notifRoot.querySelector('[data-notification-pref-form]'),pushState=notifRoot.querySelector('[data-notification-push-state]');let notificationSnapshot={};
+   async function notifReq(opt={}){let r;try{r=await fetch(notifApi,{cache:'no-store',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json'},...opt})}catch{throw new Error('ارتباط با سامانه برقرار نشد. دوباره تلاش کنید.')}let j={};try{j=await r.json()}catch{throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false)throw new Error(j.message||'عملیات اعلان انجام نشد.');return j}
+   const notifPost=d=>notifReq({method:'POST',body:JSON.stringify({...d,csrf_token:notifCsrf})});
+-  function renderNotificationPreferences(){const p=notificationSnapshot.preferences||{};form.elements.in_app_enabled.checked=Number(p.in_app_enabled)!==0;form.elements.push_enabled.checked=Number(p.push_enabled)===1;form.elements.push_operations_enabled.checked=Number(p.push_operations_enabled)!==0;form.elements.push_management_enabled.checked=Number(p.push_management_enabled)!==0;const enabled=form.elements.push_enabled.checked;form.elements.push_operations_enabled.disabled=!enabled;form.elements.push_management_enabled.disabled=!enabled;pushState.textContent=enabled?'دریافت Push برای حساب روشن است؛ ثبت یا قطع هر دستگاه از «اپ سکنا» روی همان دستگاه انجام می‌شود.':'دریافت Push برای این حساب خاموش است؛ اعلان داخل سامانه مستقل می‌ماند.'}
++  function renderNotificationPreferences(){const p=notificationSnapshot.preferences||{};form.elements.in_app_enabled.checked=Number(p.in_app_enabled)!==0;form.elements.push_enabled.checked=Number(p.push_enabled)===1;form.elements.push_operations_enabled.checked=Number(p.push_operations_enabled)!==0;form.elements.push_management_enabled.checked=Number(p.push_management_enabled)!==0;const enabled=form.elements.push_enabled.checked;form.elements.push_operations_enabled.disabled=!enabled;form.elements.push_management_enabled.disabled=!enabled;const push=notificationSnapshot.push||{};
++    const environment=push.origin_rebind_pending?'انتقال دامنه پابلیک کامل نشده و ارسال دستگاه موقتاً متوقف است.':!push.binding_ready?'اتصال اعلان به دامنه پابلیک هنوز آماده نیست.':!push.bridge_configured?'مسیر ارسال اعلان دستگاه تنظیم نشده است.':!push.vapid_public_key?'کلید امن اعلان دستگاه تنظیم نشده است.':Number(push.subscriptions||0)===0?'هیچ دستگاه فعالی برای این حساب ثبت نشده؛ ثبت دستگاه از «اپ سکنا» انجام می‌شود.':`${Number(push.subscriptions)} دستگاه برای اعلان ثبت شده است.`;
++    pushState.textContent=(enabled?'دریافت اعلان دستگاه برای حساب روشن است. ':'اعلان دستگاه برای این حساب خاموش است. ')+environment}
+   async function loadNotificationPreferences(){try{notificationSnapshot=(await notifReq()).snapshot||{};renderNotificationPreferences()}catch(e){pushState.textContent=e.message||'وضعیت اعلان‌ها دریافت نشد.'}}
+   form.addEventListener('submit',async e=>{e.preventDefault();await SoknaUI.busy(form,async()=>{try{await notifPost({action:'preferences',in_app_enabled:form.elements.in_app_enabled.checked,push_enabled:form.elements.push_enabled.checked,push_operations_enabled:form.elements.push_operations_enabled.checked,push_management_enabled:form.elements.push_management_enabled.checked});await loadNotificationPreferences();toast('تنظیم دریافت اعلان ذخیره شد.')}catch(err){actionError(err,'تنظیم اعلان ذخیره نشد')}})});
+   // A change is an unsaved user choice: never render the last server snapshot over it.
+--- a/public/assets/catalog-workspace.js
++++ b/public/assets/catalog-workspace.js
+@@ -54,22 +54,22 @@
+   catalogViewSnapshot={x:window.scrollX,y:window.scrollY,key:rect&&rect.bottom>0&&rect.top<innerHeight?target.dataset.searchTarget:'',top:rect?.top??null,scrollers};
+   return catalogViewSnapshot;
+ }
+-function restoreCatalogView(view){
++function restoreCatalogView(view,{restoreAnchor=false}={}){
+   if(!view)return;
+   for(const saved of view.scrollers){if(saved.node.isConnected){saved.node.scrollTop=saved.top;saved.node.scrollLeft=saved.left}}
+-  window.scrollTo(view.x,view.y);
+-  if(view.key&&Number.isFinite(view.top)){
++  if(Math.abs(window.scrollY-view.y)>1||Math.abs(window.scrollX-view.x)>1)window.scrollTo(view.x,view.y);
++  if(restoreAnchor&&view.key&&Number.isFinite(view.top)){
+     const anchor=[...root.querySelectorAll('[data-search-target]')].find(n=>n.dataset.searchTarget===view.key);
+     if(anchor){const d=anchor.getBoundingClientRect().top-view.top;if(Math.abs(d)>1&&Math.abs(d)<window.innerHeight*3)window.scrollBy(0,d)}
+   }
+ }
+-function settleCatalogView(view,{clear=true}={}){
++function settleCatalogView(view,{clear=true,restoreAnchor=false}={}){
+   if(!view)return;
+   // A native <dialog> closes asynchronously; after two layout frames both the
+   // scroll lock and its focus restoration have settled. No global scroll hacks.
+   requestAnimationFrame(()=>requestAnimationFrame(()=>{
+     if(root.querySelector('dialog[open]')||catalogRefreshPending)return;
+-    restoreCatalogView(view);
++    restoreCatalogView(view,{restoreAnchor});
+     if(clear&&catalogViewSnapshot===view)catalogViewSnapshot=null;
+   }));
+ }
+@@ -95,18 +95,39 @@
+ function suggestionIdsFor(id){return (snap.suggestions?.[String(Number(id))]||[]).map(Number)}
+ function activeStructureItems(excludeId=0){return (snap.items||[]).filter(i=>i.lifecycle_status!=='retired'&&Number(i.id)!==Number(excludeId))}
+ function optionSelect(items,selected=0,placeholder='انتخاب آیتم…'){const s=document.createElement('select');s.className='sc-control';const z=document.createElement('option');z.value='0';z.textContent=placeholder;s.append(z);for(const i of items){const o=document.createElement('option');o.value=String(i.id);o.textContent=`${i.name} · ${L.money(i.price)}${i.lifecycle_status==='inactive'?' · غیرفعال':''}`;s.append(o)}s.value=String(selected||0);return s}
+-function productSearchControl(select,items,label='جستجوی آیتم'){
+-  const wrap=el('div','sc-catalog-product-lookup'),query=document.createElement('input');query.type='search';query.className='sc-control';query.placeholder='جستجوی نام یا کد کالا…';query.setAttribute('aria-label',label);query.autocomplete='off';
+-  const placeholder=select.options[0]?.textContent||'انتخاب آیتم…';
+-  const update=()=>{const current=String(select.value||'0'),match=items.filter(i=>includesText([i.name,i.item_code,i.price].join(' '),query.value));
+-    const display=match.slice(0,80);const chosen=items.find(i=>String(i.id)===current);
+-    if(chosen&&!display.some(i=>String(i.id)===current))display.unshift(chosen);
+-    select.replaceChildren();const empty=document.createElement('option');empty.value='0';empty.textContent=match.length?placeholder:(query.value?'موردی پیدا نشد':placeholder);select.append(empty);
+-    for(const item of display){const opt=document.createElement('option');opt.value=String(item.id);opt.textContent=`${item.name} · ${L.money(item.price)}${item.lifecycle_status==='inactive'?' · غیرفعال':''}`;select.append(opt)}
+-    select.value=display.some(i=>String(i.id)===current)?current:'0';
+-    query.setAttribute('aria-description',`${L.integer(match.length)} نتیجه؛ حداکثر ۸۰ مورد نمایش داده می‌شود`);
+-  };
+-  query.addEventListener('input',update);wrap.append(query,select);return wrap;
++function productSearchControl(select,items,label='انتخاب آیتم'){
++  const wrap=el('div','sc-product-combobox'),input=document.createElement('input'),list=el('div','sc-product-combobox__list');
++  const id='sc-product-combo-'+Math.random().toString(36).slice(2);
++  input.type='search';input.className='sc-control sc-product-combobox__input';input.setAttribute('role','combobox');
++  input.setAttribute('aria-label',label);input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-controls',id);
++  input.setAttribute('aria-expanded','false');input.autocomplete='off';input.placeholder='نام یا کد محصول را بنویسید یا انتخاب کنید';
++  list.id=id;list.setAttribute('role','listbox');list.hidden=true;
++  select.classList.add('sc-product-combobox__value');select.tabIndex=-1;select.setAttribute('aria-hidden','true');
++  let cursor=0;
++  const chosen=()=>items.find(i=>Number(i.id)===Number(select.value));
++  const labelFor=i=>`${i.name} · ${L.money(i.price)}`;
++  const sync=()=>{const value=chosen();if(value)input.value=labelFor(value)};
++  const close=()=>{list.hidden=true;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant')};
++  function render(){const found=items.filter(i=>includesText([i.name,i.item_code,i.price].join(' '),input.value)).slice(0,80);
++    list.replaceChildren();if(!found.length)list.append(el('div','sc-product-combobox__empty','موردی پیدا نشد'));
++    found.forEach((i,index)=>{const option=el('button','sc-product-combobox__option',labelFor(i));option.type='button';option.id=`${id}-opt-${index}`;
++      option.setAttribute('role','option');option.setAttribute('aria-selected',String(Number(select.value)===Number(i.id)));
++      option.addEventListener('mousedown',e=>e.preventDefault());option.addEventListener('click',()=>{
++        select.value=String(i.id);select.dispatchEvent(new Event('change',{bubbles:true}));sync();close();input.focus({preventScroll:true});
++      });list.append(option)});
++    cursor=Math.min(cursor,Math.max(0,found.length-1));list.hidden=false;input.setAttribute('aria-expanded','true');
++    const options=[...list.querySelectorAll('[role="option"]')];options.forEach((o,i)=>o.classList.toggle('is-active',i===cursor));
++    if(options[cursor])input.setAttribute('aria-activedescendant',options[cursor].id);
++  }
++  input.addEventListener('focus',()=>{input.select();render()});input.addEventListener('click',render);
++  input.addEventListener('input',()=>{cursor=0;render()});
++  input.addEventListener('keydown',e=>{
++    if(e.key==='Escape'){close();sync();return}
++    if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();cursor=Math.max(0,Math.min(list.querySelectorAll('[role="option"]').length-1,cursor+(e.key==='ArrowDown'?1:-1)));render();return}
++    if(e.key==='Enter'&&!list.hidden){e.preventDefault();list.querySelectorAll('[role="option"]')[cursor]?.click()}
++  });
++  input.addEventListener('blur',()=>setTimeout(()=>{if(!wrap.contains(document.activeElement)){close();sync()}},0));
++  wrap.append(input,list,select);sync();return wrap;
+ }
+ function setupProductStructureEditor(item){const id=Number(item?.id||0),family=id?familyForItem(id):null,bundle=id?bundleForItem(id):null;variantDraft=family?(family.members||[]).map(m=>({item_id:Number(m.item_id),label:String(m.label||''),sort_order:Number(m.sort_order||0)})):(id?[{item_id:id,label:'',sort_order:10}]:[]);bundleDraft=bundle?(bundle.components||[]).map(c=>({component_item_id:Number(c.component_item_id),mode:String(c.mode||'fixed'),quantity:Number(c.quantity||1),price_delta:Number(c.price_delta||0),sort_order:Number(c.sort_order||0)})):[];const ve=$('[data-variant-enabled]');if(ve)ve.checked=!!family;const editor=$('[data-variant-editor]');if(editor)editor.hidden=!family;const vn=$('[data-variant-name]');if(vn)vn.value=family?.name||item?.name||'';const vd=$('[data-variant-description]');if(vd)vd.value=family?.description||'';const be=$('[data-bundle-enabled]');if(be)be.checked=!!bundle;const bed=$('[data-bundle-editor]');if(bed)bed.hidden=!bundle;const bl=$('[data-bundle-choice-label]');if(bl)bl.value=bundle?.choice_label||'';renderVariantMembers(id);renderBundleComponents(id);renderSuggestionSelectors(id)}
+ function renderVariantMembers(currentId=0){const box=$('[data-variant-members]');if(!box)return;box.replaceChildren();const items=activeStructureItems();variantDraft.forEach((r,idx)=>{const row=el('div','sc-product-structure-row');const sel=optionSelect(items,r.item_id);sel.dataset.variantItem=String(idx);sel.required=true;sel.addEventListener('change',()=>{r.item_id=Number(sel.value||0);renderVariantMembers(currentId);I?.markDirty?.($('[data-item-form]'))});const label=document.createElement('input');label.className='sc-control';label.placeholder='عنوان مثل کوچک / بزرگ';label.value=r.label||'';label.maxLength=80;label.addEventListener('input',()=>{r.label=label.value;I?.markDirty?.($('[data-item-form]'))});const del=button('حذف',()=>{variantDraft.splice(idx,1);renderVariantMembers(currentId);I?.markDirty?.($('[data-item-form]'))},'secondary');row.append(productSearchControl(sel,items,'جستجوی گزینه سایز یا مدل'),label,del);box.append(row)});if(!variantDraft.length)box.append(el('div','sc-empty','حداقل دو گزینه سایز یا مدل اضافه کن.'));
+@@ -123,10 +144,21 @@
+   }
+ }
+ function renderBundleComponents(currentId=0){const box=$('[data-bundle-components]');if(!box)return;box.replaceChildren();const items=activeStructureItems(currentId);bundleDraft.forEach((r,idx)=>{const row=el('div','sc-product-structure-row sc-product-structure-row--bundle');const sel=optionSelect(items,r.component_item_id);sel.addEventListener('change',()=>{r.component_item_id=Number(sel.value||0);I?.markDirty?.($('[data-item-form]'))});const mode=document.createElement('select');mode.className='sc-control';for(const [v,l] of [['fixed','ثابت'],['choice','انتخاب']]){const o=document.createElement('option');o.value=v;o.textContent=l;mode.append(o)}mode.value=r.mode||'fixed';mode.addEventListener('change',()=>{r.mode=mode.value;I?.markDirty?.($('[data-item-form]'))});const qty=document.createElement('input');qty.className='sc-control';qty.type='number';qty.min='1';qty.max='100';qty.value=String(r.quantity||1);qty.setAttribute('aria-label','تعداد');qty.addEventListener('input',()=>{r.quantity=Math.max(1,Number(qty.value||1));I?.markDirty?.($('[data-item-form]'))});const delta=document.createElement('input');delta.className='sc-control';delta.type='text';delta.inputMode='numeric';delta.dataset.moneyInput='1';delta.dataset.moneySigned='1';delta.value=String(r.price_delta||0);delta.setAttribute('aria-label','تغییر قیمت');delta.addEventListener('input',()=>{r.price_delta=Math.trunc(L.numericValue(delta.value,{decimal:false,signed:true})||0);I?.markDirty?.($('[data-item-form]'))});const del=button('حذف',()=>{bundleDraft.splice(idx,1);renderBundleComponents(currentId);I?.markDirty?.($('[data-item-form]'))},'secondary');row.append(productSearchControl(sel,items,'جستجوی جزء ترکیب'),mode,qty,delta,del);box.append(row)});if(!bundleDraft.length)box.append(el('div','sc-empty','جزء ثابت یا انتخابی اضافه کن.'))}
+-function renderSuggestionSelectors(currentId=0){const candidates=activeStructureItems(currentId);for(let idx=0;idx<2;idx++){const old=$(`[data-suggestion="${idx}"]`);if(!old)continue;const selected=Number(suggestionIdsFor(currentId)[idx]||0);old.replaceChildren();const z=document.createElement('option');z.value='0';z.textContent='بدون پیشنهاد';old.append(z);for(const i of candidates){const o=document.createElement('option');o.value=String(i.id);o.textContent=i.name;old.append(o)}old.value=String(selected);let lookup=old.previousElementSibling;
+-    if(!lookup?.matches?.(`[data-catalog-suggestion-search="${idx}"]`)){lookup=document.createElement('input');lookup.type='search';lookup.className='sc-control sc-catalog-suggestion-search';lookup.dataset.catalogSuggestionSearch=String(idx);lookup.placeholder='جستجوی محصول پیشنهادی…';lookup.setAttribute('aria-label',`جستجوی پیشنهاد ${idx+1}`);old.before(lookup)}
+-    lookup.value='';lookup.oninput=()=>{const prev=String(old.value||'0'),found=candidates.filter(i=>includesText([i.name,i.item_code].join(' '),lookup.value)),shown=found.slice(0,80);const chosen=candidates.find(i=>String(i.id)===prev);if(chosen&&!shown.some(i=>String(i.id)===prev))shown.unshift(chosen);old.replaceChildren();const none=document.createElement('option');none.value='0';none.textContent=found.length?'بدون پیشنهاد':(lookup.value?'نتیجه‌ای یافت نشد':'بدون پیشنهاد');old.append(none);for(const item of shown){const option=document.createElement('option');option.value=String(item.id);option.textContent=item.name;old.append(option)}old.value=shown.some(i=>String(i.id)===prev)?prev:'0'};
+-  }}
++function renderSuggestionSelectors(currentId=0){
++ const candidates=activeStructureItems(currentId);
++ for(let idx=0;idx<2;idx++){
++   const select=$(`[data-suggestion="${idx}"]`);if(!select)continue;
++   const selected=Number(suggestionIdsFor(currentId)[idx]||0);
++   for(const old of [...select.parentElement.querySelectorAll('.sc-product-combobox,[data-catalog-suggestion-search]')]){
++      if(old.contains(select))old.before(select);old.remove();
++   }
++   select.replaceChildren();const none=document.createElement('option');none.value='0';none.textContent='بدون پیشنهاد';select.append(none);
++   for(const item of candidates){const option=document.createElement('option');option.value=String(item.id);option.textContent=item.name;select.append(option)}
++   select.value=String(selected);
++   // Present one combobox field, but keep the original select for readback/saving.
++   const control=productSearchControl(select,candidates,`پیشنهاد ${idx+1}`);select.parentElement.append(control);
++ }
++}
+ async function saveProductStructure(itemId){const f=$('[data-item-form]'),family=familyForItem(itemId),variantEnabled=!!$('[data-variant-enabled]')?.checked;if(variantEnabled){const members=variantDraft.map((r,idx)=>({item_id:Number(r.item_id),label:String(r.label||'').trim(),sort_order:(idx+1)*10})).filter(r=>r.item_id>0);if(members.length<2||members.some(r=>!r.label))throw new Error('برای خانواده سایز/مدل حداقل دو آیتم با عنوان کامل لازم است.');if(!members.some(r=>Number(r.item_id)===Number(itemId)))throw new Error('خود این آیتم باید یکی از گزینه‌های سایز/مدل خانواده باشد.');await post({action:'variant_family_save',id:Number(family?.id||0),name:$('[data-variant-name]').value,description:$('[data-variant-description]').value,category_id:Number(f.elements.category_id.value),sort_order:Number(f.elements.sort_order.value||0),featured:f.elements.featured.checked,members})}else if(family){await post({action:'variant_family_remove',id:Number(family.id)})}const suggestions=[0,1].map(idx=>Number($(`[data-suggestion="${idx}"]`)?.value||0)).filter(Boolean);if(new Set(suggestions).size!==suggestions.length)throw new Error('دو پیشنهاد باید متفاوت باشند.');await post({action:'suggestions_save',source_item_id:itemId,suggested_item_ids:suggestions});const bundle=bundleForItem(itemId),bundleEnabled=!!$('[data-bundle-enabled]')?.checked;if(bundleEnabled){const comps=bundleDraft.map((r,idx)=>({component_item_id:Number(r.component_item_id),mode:r.mode,quantity:Number(r.quantity||1),price_delta:Number(r.price_delta||0),sort_order:(idx+1)*10})).filter(r=>r.component_item_id>0);if(!comps.length)throw new Error('برای ترکیب حداقل یک جزء لازم است.');await post({action:'bundle_save',bundle_item_id:itemId,choice_label:$('[data-bundle-choice-label]').value,components:comps})}else if(bundle){await post({action:'bundle_remove',bundle_item_id:itemId})}}
+ async function retireItem(i){if(!confirm(`«${i.name}» از فروش روزمره خارج و به آرشیو منتقل شود؟ تاریخچه حذف نمی‌شود.`))return;const note=prompt('یادداشت آرشیو (اختیاری):','');if(note===null)return;try{await post({action:'item_retire',id:Number(i.id),note});selectedItems.delete(Number(i.id));await refresh('آیتم به آرشیو منتقل شد.')}catch(e){actionError(e,'آرشیو آیتم انجام نشد')}}
+ async function retireCategory(c){if(!confirm(`دسته «${c.name}» به آرشیو منتقل شود؟ ابتدا باید آیتم جاری نداشته باشد.`))return;const note=prompt('یادداشت آرشیو (اختیاری):','');if(note===null)return;try{await post({action:'category_retire',id:Number(c.id),note});await refresh('دسته به آرشیو منتقل شد.')}catch(e){actionError(e,'آرشیو دسته انجام نشد')}}
+@@ -299,7 +331,7 @@
+   }catch(e){catalogReady=false;setCreateReady(false);status(e.message,true)}
+   finally{
+     root.removeAttribute('aria-busy');catalogRefreshPending--;
+-    if(!root.querySelector('dialog[open]'))settleCatalogView(previous);
++    if(!root.querySelector('dialog[open]'))settleCatalogView(previous,{restoreAnchor:true});
+   }
+ }
+ function editMenu(m=null){recordCatalogView(m?`menu:${m.id}`:'');const f=$('[data-menu-form]');f.reset();const count=m?itemCountForMenu(m.id):0;$('[data-menu-dialog-title]').textContent=m?`ویرایش منوی ${m.name}`:'منوی جدید';$('[data-menu-dialog-context]').textContent=m?`${L.integer(count)} آیتم در این منو · ${scheduleText(m)}`:'نام، وضعیت و زمان سرو این منو را مشخص کن.';f.elements.id.value=m?.id||'';f.elements.name.value=m?.name||'';f.elements.status.value=m?.status||'draft';f.elements.sort_order.value=m?.sort_order||0;f.elements.daily_start.value=m?.daily_start?String(m.daily_start).slice(0,5):'';f.elements.daily_end.value=m?.daily_end?String(m.daily_end).slice(0,5):'';dayChecks('menu-days','schedule_days',m?.schedule_days||[]);openDialog('menu')}
+@@ -314,7 +346,15 @@
+ function editTag(t=null){recordCatalogView();const f=$('[data-tag-form]');f.reset();const used=t?snap.items.filter(i=>(i.tag_ids||[]).includes(Number(t.id))).length:0;$('[data-tag-dialog-title]').textContent=t?`ویرایش برچسب ${t.name}`:'برچسب جدید';$('[data-tag-dialog-context]').textContent=t?`${L.integer(used)} آیتم از این برچسب استفاده می‌کنند.`:'برچسب برای جستجو و گروه‌بندی آیتم‌ها استفاده می‌شود.';f.elements.id.value=t?.id||'';f.elements.name.value=t?.name||'';f.elements.sort_order.value=t?.sort_order||0;f.elements.active.checked=t?!!t.active:true;openDialog('tag')}
+ async function toggleItem(i,field,enabled){try{await post({action:'item_state',id:Number(i.id),field,enabled});await refresh(enabled?'آیتم موجود شد.':'آیتم ناموجود شد.')}catch(e){actionError(e)}}
+ async function toggleItemLifecycle(i,enabled){try{await post({action:'item_lifecycle',id:Number(i.id),enabled});await refresh(enabled?'آیتم فعال شد؛ وضعیت موجودی را در صورت نیاز روشن کن.':'آیتم غیرفعال و ناموجود شد.')}catch(e){actionError(e)}}
+-async function copyItem(i){try{await post({action:'item_copy',id:Number(i.id)});await refresh(`کپی ${i.name} به‌صورت پیش‌نویس ساخته شد.`)}catch(e){actionError(e,'کپی آیتم انجام نشد')}}
++async function copyItem(i){try{
++  const result=await post({action:'item_copy',id:Number(i.id)}),copiedId=Number(result?.result?.id||0);
++  // Copies are intentionally created inactive: show the result instead of leaving
++  // the user on the active-only filter with an apparently inert button.
++  selectedMenuId=0;const statusFilter=$('[data-item-status]'),search=$('[data-item-search]'),category=$('[data-item-category-filter]');
++  if(statusFilter)statusFilter.value='inactive';if(search)search.value='';if(category)category.value='0';
++  itemPage=1;await refresh(`کپی ${i.name} به‌صورت پیش‌نویس غیرفعال ساخته شد.`);
++  if(copiedId){const row=root.querySelector(`[data-search-target="item:${copiedId}"]`);if(row){row.classList.add('sc-command-target');row.scrollIntoView({block:'nearest'})}}
++}catch(e){actionError(e,'کپی آیتم انجام نشد')}}
+ function fullPayload(i,override={}){return{action:'item_save',id:Number(i.id),name:i.name,description:i.description||'',price:i.price,category_id:Number(i.category_id),sellable_kind:i.sellable_kind,preparation_station:i.preparation_station,sort_order:Number(i.sort_order||0),lifecycle_status:i.lifecycle_status||'active',available:!!i.available,guest_visible:!!i.guest_visible,staff_visible:!!i.staff_visible,featured:!!i.featured,takeaway_allowed:!!i.takeaway_allowed,menu_ids:i.menu_ids||[],tag_ids:i.tag_ids||[],schedule_days:i.schedule_days||[],daily_start:i.daily_start?String(i.daily_start).slice(0,5):'',daily_end:i.daily_end?String(i.daily_end).slice(0,5):'',schedule_start:dtLocal(i.schedule_start),schedule_end:dtLocal(i.schedule_end),...override}}
+ function openMediaPicker(type,row){recordCatalogView(`${type==='item'?'item':'category'}:${row.id}`);mediaTarget={type,id:Number(row.id)};mediaSelected=mediaKey(row.image_path);$('[data-media-context]').textContent=`${type==='item'?'آیتم':'دسته'}: ${row.name}`;$('[data-media-search]').value='';renderMediaPicker();openDialog('media')}
+ function renderMediaPicker(){const grid=$('[data-media-grid]'),q=$('[data-media-search]')?.value||'';grid.replaceChildren();const rows=(snap.media||[]).filter(m=>includesText([m.original_name,m.alt_text].join(' '),q));if(!rows.length){grid.append(el('div','sc-empty','تصویر فعالی در آلبوم پیدا نشد.'));return}for(const m of rows){const b=el('button','sc-media-picker-card');b.type='button';b.dataset.mediaKey=m.media_key;b.setAttribute('role','option');b.setAttribute('aria-selected',m.media_key===mediaSelected?'true':'false');if(m.media_key===mediaSelected)b.classList.add('is-selected');const img=document.createElement('img');img.src=imageUrl(m.media_key);img.alt=m.alt_text||m.original_name||'';b.append(img,el('span','',m.original_name||'تصویر'));b.addEventListener('click',()=>{mediaSelected=m.media_key;renderMediaPicker()});grid.append(b)}}
+@@ -342,7 +382,19 @@
+ $('[data-item-form]').addEventListener('input',e=>{if(e.target.matches(':invalid'))return;const fields=invalidItemFields(e.currentTarget);itemValidation(fields.length?`این بخش‌ها را کامل یا اصلاح کن: ${[...new Set(fields)].join('، ')}`:'')});
+ $('[data-item-form]').addEventListener('submit',async e=>{e.preventDefault();if(e.submitter?.value!=='submit'){itemValidation('');closeDialog(e.currentTarget);return}const f=e.currentTarget;itemValidation('');await SoknaUI.busy(f,async()=>{let itemSaved=false;try{const saved=await post({action:'item_save',id:Number(f.elements.id.value||0),name:f.elements.name.value,description:f.elements.description.value,price:f.elements.price.value,category_id:Number(f.elements.category_id.value||0),sellable_kind:f.elements.sellable_kind.value,preparation_station:f.elements.preparation_station.value,sort_order:Number(f.elements.sort_order.value||0),lifecycle_status:f.elements.lifecycle_status.value,available:f.elements.available.checked,guest_visible:f.elements.guest_visible.checked,staff_visible:f.elements.staff_visible.checked,featured:f.elements.featured.checked,takeaway_allowed:f.elements.takeaway_allowed.checked,menu_ids:checkedValues(f,'menu_ids'),tag_ids:checkedValues(f,'tag_ids'),schedule_days:checkedValues(f,'schedule_days'),daily_start:f.elements.daily_start.value,daily_end:f.elements.daily_end.value,schedule_start:f.elements.schedule_start.value,schedule_end:f.elements.schedule_end.value});itemSaved=true;const itemId=Number(saved?.result?.id||f.elements.id.value||0);const recipeUnavailable=!!sectionError('inventory_recipe');if(!recipeUnavailable)await post({action:'recipe_save',menu_item_id:itemId,reviewed:!!recipeReviewState.reviewed,complete:!!recipeReviewState.complete,components:recipeDraft.map(c=>({inventory_item_id:Number(c.inventory_item_id),quantity_base:typeof L.normalizeNumber==='function'?L.normalizeNumber(c.quantity_base||'',{decimal:false,signed:false}):String(c.quantity_base||''),quantity_status:String(c.quantity_status||'known'),source_note:c.source_note||null}))});await saveProductStructure(itemId);I?.markClean?.(f);closeDialog(f);await refresh(recipeUnavailable?'آیتم ذخیره شد؛ دستور مصرف به‌دلیل در دسترس نبودن انبار بدون تغییر ماند.':'آیتم و ساختار محصول ذخیره شد.')}catch(err){itemValidation(err?.message||'ذخیره انجام نشد.');actionError(err,itemSaved?'آیتم ذخیره شد؛ یکی از تنظیمات تکمیلی ذخیره نشد':'ذخیره آیتم انجام نشد')}})});
+ $('[data-item-quick-form]').addEventListener('submit',async e=>{e.preventDefault();if(e.submitter?.value!=='submit'){closeDialog(e.currentTarget);return}const f=e.currentTarget,i=itemById(Number(f.elements.id.value));if(!i)return;await SoknaUI.busy(f,async()=>{try{const categoryId=Number(f.elements.category_id.value),allowed=categoryById(categoryId)?.menu_ids||[],menus=(i.menu_ids||[]).filter(id=>allowed.includes(Number(id)));await post(fullPayload(i,{name:f.elements.name.value,price:f.elements.price.value,category_id:categoryId,menu_ids:menus,lifecycle_status:f.elements.lifecycle_status.value,guest_visible:f.elements.guest_visible.checked,staff_visible:f.elements.staff_visible.checked,available:f.elements.available.checked,featured:f.elements.featured.checked}));closeDialog(f);await refresh('ویرایش سریع ذخیره شد.')}catch(err){actionError(err)}})});
+-$('[data-open-full-from-quick]').addEventListener('click',()=>{const id=Number($('[data-item-quick-form]').elements.id.value),i=itemById(id);closeDialog($('[data-dialog="item-quick"]'));if(i)editItem(i)});
++$('[data-open-full-from-quick]').addEventListener('click',()=>{
++  const quick=$('[data-item-quick-form]'),id=Number(quick.elements.id.value),item=itemById(id);
++  if(!item)return;
++  // The quick form contains unsaved changes; carry them into the full editor,
++  // without writing to the database or silently discarding the user's draft.
++  const categoryId=Number(quick.elements.category_id.value),allowed=(categoryById(categoryId)?.menu_ids||[]).map(Number);
++  const draft={...item,name:quick.elements.name.value,price:quick.elements.price.value,category_id:categoryId,
++    menu_ids:(item.menu_ids||[]).map(Number).filter(x=>allowed.includes(x)),lifecycle_status:quick.elements.lifecycle_status.value,
++    guest_visible:quick.elements.guest_visible.checked,staff_visible:quick.elements.staff_visible.checked,
++    available:quick.elements.available.checked,featured:quick.elements.featured.checked};
++  closeDialog($('[data-dialog="item-quick"]'));
++  editItem(draft);I?.markDirty?.($('[data-item-form]'));
++});
+ $('[data-tag-form]').addEventListener('submit',async e=>{e.preventDefault();if(e.submitter?.value!=='submit'){closeDialog(e.currentTarget);return}const f=e.currentTarget;try{await post({action:'tag_save',id:Number(f.elements.id.value||0),name:f.elements.name.value,sort_order:Number(f.elements.sort_order.value||0),active:f.elements.active.checked});closeDialog(f);await refresh('برچسب ذخیره شد.')}catch(err){actionError(err)}});
+ $('[data-pick-item-media]').addEventListener('click',()=>{if(sectionError('media')){toast('آلبوم تصاویر فعلاً در دسترس نیست.','warning');return}const id=Number($('[data-item-form]').elements.id.value);if(!id){toast('ابتدا آیتم جدید را ذخیره کن، سپس تصویر را انتخاب کن.','warning');return}const i=itemById(id);if(i)openMediaPicker('item',i)});
+ $('[data-pick-category-media]').addEventListener('click',()=>{if(sectionError('media')){toast('آلبوم تصاویر فعلاً در دسترس نیست.','warning');return}const id=Number($('[data-category-form]').elements.id.value);if(!id){toast('ابتدا دسته جدید را ذخیره کن، سپس تصویر را انتخاب کن.','warning');return}const c=snap.categories.find(x=>Number(x.id)===id);if(c)openMediaPicker('category',c)});
+--- a/public/assets/guest-content-workspace.js
++++ b/public/assets/guest-content-workspace.js
+@@ -51,7 +51,7 @@
+   function render(){renderPublished();renderOverview();renderPublicSync();renderTheme();renderThemeHistory();renderCopy();renderPublicSettings();renderIdentity();renderMediaSummary();renderMedia();if($('[data-media-picker-dialog]')?.open)renderPicker()}
+   function renderOverview(){const metric=(key,value)=>{const n=$(`[data-guest-metric="${key}"]`);if(n)n.textContent=String(value)};const revision=Number(snap.published_revision||0);metric('revision',revision>0?`نسخه ${L.integer(revision)}`:'منتشرنشده');const theme=snap.draft_theme||{};metric('theme',theme.name||theme.title||theme.theme_key||'—');const items=snap.items||[];metric('items',L.integer(items.length));const withImage=items.filter(i=>String(i.image_path||'').trim()!=='').length;metric('images',`${L.integer(withImage)} / ${L.integer(items.length)}`);const note=$('[data-guest-metric-note="published"]');if(note)note.textContent=revision>0?(snap.published_at?`آخرین انتشار: ${L.dateTime(snap.published_at)}`:'نسخه عمومی آماده است'):'هنوز نسخه عمومی منتشر نشده'}
+   function renderPublished(){const e=$('[data-published]');const r=Number(snap.published_revision||0);e.textContent=r>0?(snap.published_at?`منتشرشده · ${L.dateTime(snap.published_at)}`:'منتشرشده'):'هنوز منتشر نشده'}
+-  function renderPublicSync(){const state=snap.public_sync||{},status=String(state.status||'pending'),badge=$('[data-public-sync-badge]'),message=$('[data-public-sync-message]'),meta=$('[data-public-sync-meta]'),retry=$('[data-public-sync-retry]');const map={synced:['همگام','success'],pending:['در انتظار','warning'],partial:['ناقص','warning'],error:['خطا','danger'],not_configured:['متصل نیست','info']},entry=map[status]||map.pending;badge.textContent=entry[0];badge.className=`sc-badge sc-badge--${entry[1]}`;message.textContent=state.message||'وضعیت همگام‌سازی مشخص نیست.';const bits=[];if(state.last_ack_at)bits.push(`آخرین تأیید: ${L.dateTime(state.last_ack_at)}`);if(state.failed_channel)bits.push(`بخش: ${channelLabel(state.failed_channel)}`);if(state.error_code)bits.push(`کد: ${state.error_code}`);if(state.support_id)bits.push(`شناسه پشتیبانی: ${state.support_id}`);meta.textContent=bits.join(' · ');retry.hidden=!['pending','partial','error'].includes(status)||!state.configured}
++  function renderPublicSync(){const state=snap.public_sync||{},status=String(state.status||'pending'),badge=$('[data-public-sync-badge]'),message=$('[data-public-sync-message]'),meta=$('[data-public-sync-meta]'),retry=$('[data-public-sync-retry]');const map={synced:['همگام','success'],pending:['در انتظار','warning'],partial:['ناقص','warning'],error:['خطا','danger'],not_configured:['متصل نیست','info']},entry=map[status]||map.pending;badge.textContent=entry[0];badge.className=`sc-badge sc-badge--${entry[1]}`;message.textContent=state.message||'وضعیت همگام‌سازی مشخص نیست.';const bits=[];if(state.last_ack_at)bits.push(`آخرین تأیید: ${L.dateTime(state.last_ack_at)}`);if(state.failed_channel)bits.push(`بخش: ${channelLabel(state.failed_channel)}`);if(state.error_code)bits.push(`کد: ${state.error_code}`);if(state.support_id)bits.push(`شناسه پشتیبانی: ${state.support_id}`);meta.textContent=bits.join(' · ');retry.hidden=!state.configured;retry.textContent=status==='synced'?'بررسی و همگام‌سازی دوباره':'تلاش دوباره همگام‌سازی'}
+   function channelLabel(key){return ({guest_media:'تصاویر منو',guest_publish:'انتشار منو',availability:'موجودی منو',heartbeat:'اتصال وب عمومی'})[key]||key}
+   function renderTheme(preferCurrent=false){
+     const select=$('[data-theme-select]'),prior=select.value;select.replaceChildren();(snap.themes||[]).forEach(t=>{const o=document.createElement('option');o.value=String(t.package_id);const source=t.source_kind==='builtin'?'داخلی':'نصب‌شده';o.textContent=`${t.name} · v${t.version} · ${source}`;select.append(o)});const draft=snap.draft_theme||{},draftId=Number(draft.package_id||0);if(preferCurrent&&prior&&themeByPackageId(Number(prior)))select.value=prior;else if(draftId>0&&themeByPackageId(draftId))select.value=String(draftId);else{const legacy=themeByKey(draft.theme_key);if(legacy)select.value=String(legacy.package_id)}
+--- a/public/assets/operations-workspace.js
++++ b/public/assets/operations-workspace.js
+@@ -3,6 +3,44 @@
+ const api=root.dataset.api,csrf=root.dataset.csrf,isAdmin=root.dataset.admin==='1',canExpenses=root.dataset.canExpenses==='1',canOps=root.dataset.canOps==='1',canManage=root.dataset.canManage==='1',canFinalize=root.dataset.canFinalize==='1',canBuy=root.dataset.canBuy==='1',remoteReadonly=root.dataset.readOnly==='1',isPublic=root.dataset.host==='public',canReport=root.dataset.canReport==='1',canCost=root.dataset.canCost==='1';
+ const $=(s,c=root)=>c.querySelector(s),$$=(s,c=root)=>[...c.querySelectorAll(s)];if(window.matchMedia?.('(max-width:640px)').matches){const m=root.querySelector('.sc-ops-more');if(m)m.open=true;}let activeTask=null,taskOpener=null,taskScroll=0,taskBackPending=false,pendingWrites=0,countLocked=false;let operationsMeta=null;let snap=null,movementRows=null,movementOffset=0,movementHasMore=false,movementScope='recent',activeReceiveGroup=null,activeWorkflow='attention',inventoryVisibleLimit=50,countVisibleLimit=40,stockManagementExpanded=false;const countDrafts=new Map(),countSaveTimers=new Map(),countSavePromises=new Map();let countSessionId=0,refreshPromise=null,committedSnapshot=null,committedFence='',committedSequence=0;const C=window.SoknaOperationsCore,owner=window.__SOKNA_UI_PREFERENCES__?.owner||root.dataset.actor||'local';let safeSessionStorage=null;try{safeSessionStorage=window.sessionStorage}catch{}const intents=new C.IntentRegistry({storage:safeSessionStorage,key:'sokna.ops.intents.v1:'+owner+':'+api,uid:()=>crypto.randomUUID()});const fallbackNf=new Intl.NumberFormat('fa-IR',{maximumFractionDigits:3});const L=window.SoknaLocale||{dateTime:v=>String(v??''),number:v=>fallbackNf.format(Number(v||0)),integer:v=>new Intl.NumberFormat('fa-IR',{maximumFractionDigits:0}).format(Number(v||0)),money:v=>new Intl.NumberFormat('fa-IR',{maximumFractionDigits:0}).format(Number(v||0))+' تومان'};
+ const el=(t,c,txt)=>{const x=document.createElement(t);if(c)x.className=c;if(txt!==undefined)x.textContent=txt;return x};
++// A single searchable chooser: keep the existing SELECT as the authoritative form value,
++// reuse established server-side filtering, and present options beside the search field.
++function enhanceInventoryCombobox(searchSelector,selectSelector){
++ const input=$(searchSelector),select=$(selectSelector);if(!input||!select)return;
++ const field=input.closest('label'),nativeField=select.closest('label');if(!field||!nativeField)return;
++ const helper=nativeField.querySelector('[data-need-item-help]');if(helper)field.append(helper);
++ nativeField.hidden=true;nativeField.setAttribute('aria-hidden','true');
++ const holder=el('div','sc-ops-inventory-combo'),list=el('div','sc-ops-inventory-combo__options');
++ list.hidden=true;list.setAttribute('role','listbox');list.id='sc-inventory-options-'+Math.random().toString(36).slice(2);
++ field.insertBefore(holder,input);holder.append(input,list);input.setAttribute('aria-controls',list.id);
++ input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-expanded','false');
++ input.autocomplete='off';
++ let choosing=false;
++ function close(){list.hidden=true;input.setAttribute('aria-expanded','false')}
++ function show(){
++  if(choosing)return;
++  list.replaceChildren();
++  for(const option of [...select.options].filter(o=>!o.disabled&&o.value&&o.value!=='0').slice(0,70)){
++   const b=el('button','sc-ops-inventory-combo__option',option.textContent);b.type='button';b.setAttribute('role','option');
++   b.setAttribute('aria-selected',String(select.value===option.value));
++   b.addEventListener('pointerdown',e=>e.preventDefault());
++   b.addEventListener('click',()=>{choosing=true;select.value=option.value;input.value=option.textContent.split(' · ')[0];select.dispatchEvent(new Event('change',{bubbles:true}));choosing=false;close();});
++   list.append(b);
++  }
++  if(!list.children.length)list.append(el('div','sc-ops-inventory-combo__option','موردی پیدا نشد.'));
++  list.hidden=false;input.setAttribute('aria-expanded','true');
++ }
++ input.addEventListener('focus',()=>{if(select.value&&select.value!=='0')input.select();queueMicrotask(show)});
++ input.addEventListener('input',()=>queueMicrotask(show));
++ input.addEventListener('keydown',e=>{
++  if(e.key==='Escape'){close();return}
++  if(e.key==='ArrowDown'){e.preventDefault();if(list.hidden)show();list.querySelector('button')?.focus();}
++  if(e.key==='Enter'&&!list.hidden){const first=list.querySelector('button');if(first){e.preventDefault();first.click()}}
++ });
++ list.addEventListener('keydown',e=>{if(e.key==='Escape'){close();input.focus();return}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const buttons=[...list.querySelectorAll('button')],i=buttons.indexOf(document.activeElement);buttons[(i+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();}});
++ document.addEventListener('pointerdown',e=>{if(!holder.contains(e.target))close()});
++}
++
+ const money=n=>L.money(n);const displayStamp=v=>/Z$|[+-]\d{2}:\d{2}$/.test(String(v))&&L.instantDateTime?L.instantDateTime(v):L.dateTime(v);
+ const unitLabel=u=>u==='g'?'گرم':u==='ml'?'میلی‌لیتر':'عدد';
+ const majorUnitLabel=u=>u==='g'?'کیلوگرم':u==='ml'?'لیتر':'عدد';
+@@ -305,4 +343,8 @@
+ 
+ if(isPublic)setInterval(()=>{if(!document.hidden&&!activeTask&&!pendingWrites&&!C.hasUnsaved(countDrafts,countSavePromises)&&!intents.list().length)void refresh()},10000);
+ renderPendingIntents();updateExpensePreview();const params=new URLSearchParams(location.search),rawTab=params.get('tab'),tab=rawTab==='deferred'?'inventory':rawTab,workflow=params.get('workflow');if(tab&&tab!=='supply'){const b=$$('[data-tab]').find(x=>x.dataset.tab===tab);b?.click()}switchWorkflow(tab==='supply'?'purchase':(workflow||'attention'));(async()=>{await refresh();if(!workflow&&tab!=='supply'&&snap?.inventory?.open_count)switchWorkflow('stock',{updateUrl:true});const id=params.get('inventory_item');if(id){const target=(tab==='supply'||workflow==='purchase')?'purchase':'stock';switchWorkflow(target);const row=target==='purchase'?root.querySelector(`[data-supply-item-id="${id}"]`):root.querySelector(`[data-search-target="inventory:${id}"]`);if(row){row.classList.add('sc-command-target');row.scrollIntoView({block:'center'})}}})();
++
++// R181 unified inventory item selectors: both search and select inside one control.
++enhanceInventoryCombobox('[data-need-item-search]','[data-item-select]');
++enhanceInventoryCombobox('[data-inventory-receive-item-search]','[data-inventory-receive-item-select]');
+ })();
+--- a/public/assets/preparation-workspace.js
++++ b/public/assets/preparation-workspace.js
+@@ -53,7 +53,15 @@
+ }
+ function groupBlock(title,copy,orders,monitor,kind){
+   const section=make('section',undefined,'sc-preparation-group sc-preparation-group--'+kind),head=make('div',undefined,'sc-preparation-group__head');head.append(make('div',undefined));head.firstElementChild.append(make('h2',title),make('p',copy));head.append(make('span',L.integer(orders.length),'sc-preparation-group__count'));section.append(head);
+-  const list=make('div',undefined,'sc-preparation-group__list');orders.forEach(order=>list.append(renderOrder(order,monitor)));section.append(list);return section;
++  const list=make('div',undefined,'sc-preparation-group__list');orders.forEach(order=>list.append(renderOrder(order,monitor)));
++  if(kind==='handled'){
++    // Separate handled tickets from actionable work and start collapsed.
++    const toggle=make('button','نمایش دریافت‌شده‌ها','sc-button sc-button--secondary sc-preparation-handled-toggle');toggle.type='button';
++    toggle.setAttribute('aria-expanded','false');list.hidden=true;
++    toggle.addEventListener('click',()=>{list.hidden=!list.hidden;toggle.setAttribute('aria-expanded',String(!list.hidden));toggle.textContent=list.hidden?'نمایش دریافت‌شده‌ها':'پنهان‌کردن دریافت‌شده‌ها'});
++    section.append(toggle);
++  }
++  section.append(list);return section;
+ }
+ function render(data){
+  const wrap=root.querySelector('[data-preparation-list]');wrap.replaceChildren();const orders=Array.isArray(data.orders)?data.orders:[],monitor=data.permissions?.monitor_only===true;renderSummary(orders);
+@@ -63,6 +71,11 @@
+  if(handled.length)wrap.append(groupBlock('دریافت‌شده امروز','سفارش‌هایی که همهٔ بخش‌های قابل مشاهدهٔ آن‌ها دریافت شده‌اند.',handled,monitor,'handled'));
+  if(monitor)setStatus('حالت پایش: مشاهده مجاز است، اقدام عملیاتی برای این حساب فعال نیست.');else setStatus('')
+ }
+-async function load(){root.setAttribute('aria-busy','true');try{const next=await request();const restore=window.SoknaUI?.captureScroll?.(root);render(next);restore?.()}catch(e){setStatus(e.message,'danger')}finally{root.removeAttribute('aria-busy')}}
+-root.querySelector('[data-refresh]').addEventListener('click',()=>load());load();const timer=setInterval(()=>{if(!document.hidden)load()},8000);window.addEventListener('beforeunload',()=>clearInterval(timer));
++let currentLoad=null,loadAgain=false;
++async function load(){
++ if(currentLoad){loadAgain=true;return currentLoad}
++ currentLoad=(async()=>{root.setAttribute('aria-busy','true');try{const next=await request({cache:'no-store'});const restore=window.SoknaUI?.captureScroll?.(root);render(next);restore?.()}catch(e){setStatus(e.message,'danger')}finally{root.removeAttribute('aria-busy')}})();
++ try{await currentLoad}finally{currentLoad=null;if(loadAgain){loadAgain=false;void load()}}
++}
++root.querySelector('[data-refresh]').addEventListener('click',()=>load());load();const timer=setInterval(()=>{if(!document.hidden)load()},4000);window.addEventListener('beforeunload',()=>clearInterval(timer));
+ })();
+--- a/public/assets/printing-workspace.js
++++ b/public/assets/printing-workspace.js
+@@ -93,7 +93,23 @@
+ function renderPrinterOptions(current='',kind='primary'){const fallback=kind==='fallback',select=$(fallback?'[data-fallback-printer-select]':'[data-printer-select]'),help=$(fallback?'[data-fallback-printer-help]':'[data-printer-help]'),agent=selectedAgent(kind);if(!select)return;select.replaceChildren();if(fallback){const none=document.createElement('option');none.value='';none.textContent='بدون چاپگر پشتیبان';select.append(none)}const printers=Array.isArray(agent?.printers)?agent.printers:[];if(!printers.length){if(!fallback){const o=document.createElement('option');o.value='';o.textContent=agent?'هیچ چاپگری از این دستگاه گزارش نشده است':'ابتدا دستگاه چاپ را انتخاب کن';select.append(o)}select.disabled=!fallback;if(help)help.textContent=agent?'سرویس چاپ باید ابتدا وضعیت و فهرست چاپگرهای ویندوز را دریافت کند.':(fallback?'مسیر پشتیبان اختیاری است.':'ابتدا دستگاه چاپ را انتخاب کن.');return}select.disabled=false;const exists=printers.some(p=>String(p.name||'').toLowerCase()===String(current||'').toLowerCase());if(current&&!exists){const old=document.createElement('option');old.value=current;old.textContent=`${current} — گزارش نشده؛ یک چاپگر واقعی انتخاب کن`;old.disabled=true;old.selected=true;select.append(old)}printers.forEach(p=>{const o=document.createElement('option');o.value=String(p.name||'');o.textContent=`${p.name} — ${p.readiness_label||'نامشخص'}`;o.disabled=!p.automation_capable;if(String(p.name||'').toLowerCase()===String(current||'').toLowerCase())o.selected=true;select.append(o)});if(!select.value&&!fallback){const first=[...select.options].find(o=>!o.disabled&&o.value);if(first)select.value=first.value}const chosen=printers.find(p=>String(p.name||'')===select.value);if(help)help.textContent=chosen?`${chosen.readiness_label} · ${printerMeta(chosen)}`:(fallback?'مسیر پشتیبان فقط هنگام خرابی مسیر اصلی استفاده می‌شود.':'چاپگر واقعی را از فهرست انتخاب کن.')}
+ function openDestination(d){const dialog=$('[data-dialog="destination"]'),form=$('[data-form="destination"]');form.elements.destination_key.value=d.destination_key;form.elements.agent_id.value=d.agent_id||'';form.elements.fallback_agent_id.value=d.fallback_agent_id||'';form.elements.copies.value=d.copies||1;form.elements.paper_width_mm.value=d.paper_width_mm||80;form.elements.printable_width_mm.value=d.printable_width_mm||72.1;form.elements.required_for_operation.checked=Number(d.required_for_operation)===1;form.elements.active.checked=Number(d.active)===1;$('[data-destination-label]').textContent=`${d.label}${d.readiness_label?` · ${d.readiness_label}`:''}`;renderPrinterOptions(d.windows_queue_name||'','primary');renderPrinterOptions(d.fallback_windows_queue_name||'','fallback');if(!window.SoknaUI?.showDialog?.(dialog,{focusTitle:true}))dialog.showModal()}
+ 
+-async function printTest(key,packageId=null){try{status('در حال بررسی مسیر چاپ آزمایشی…');const j=await post({action:'print_test',destination_key:key,request_id:'webtest-'+crypto.randomUUID().replaceAll('-',''),...(packageId?{package_id:packageId}:{})});const id=Number(j.result.job_id||0);if(!id){await refresh();throw new Error('کار چاپ آزمایشی ایجاد نشد.')}status('درخواست آزمایشی ثبت شد؛ وضعیت سرویس چاپ را بررسی می‌کنیم.');await waitForJob(id)}catch(e){sectionState(e.message||'چاپ آزمایشی انجام نشد.',true);status('')}}
++// Advisory wake for test jobs only. Durable queue is authoritative, polling stays the fallback.
++async function wakePrintTestAgent(key,jobId){
++ try{
++  if(!Number.isSafeInteger(jobId)||jobId<1)return false;
++  const dest=(snap?.destinations||[]).find(d=>d.destination_key===key);
++  const agentId=Number(dest?.agent_id||0);
++  if(!Number.isSafeInteger(agentId)||agentId<1)return false;
++  const bridge=await pdfTestBridge(agentId),port=Number(bridge.port);
++  if(!Number.isInteger(port)||port<1||port>65535||!bridge.pairing_id)return false;
++  const wake={type:'print.wake',protocol_version:1,request_id:'test-wake-'+crypto.randomUUID(),job_ids:[jobId],expires_at:new Date(Date.now()+30000).toISOString()};
++  const response=await fetch(`http://127.0.0.1:${port}/v1/wake`,{method:'POST',headers:{'Content-Type':'application/json','X-Sokna-Bridge-Pairing':bridge.pairing_id},body:JSON.stringify(wake),signal:AbortSignal.timeout(1500)});
++  if(!response.ok)return false;
++  const data=await response.json().catch(()=>null);
++  return data?.success===true&&data?.accepted===true;
++ }catch{return false}
++}
++async function printTest(key,packageId=null){try{status('در حال بررسی مسیر چاپ آزمایشی…');const j=await post({action:'print_test',destination_key:key,request_id:'webtest-'+crypto.randomUUID().replaceAll('-',''),...(packageId?{package_id:packageId}:{})});const id=Number(j.result.job_id||0);if(!id){await refresh();throw new Error('کار چاپ آزمایشی ایجاد نشد.')}void wakePrintTestAgent(key,id);status('درخواست آزمایشی ثبت شد؛ وضعیت سرویس چاپ را بررسی می‌کنیم.');await waitForJob(id)}catch(e){sectionState(e.message||'چاپ آزمایشی انجام نشد.',true);status('')}}
+ async function waitForJob(jobId){for(let i=0;i<8;i++){await sleep(i===0?500:1200);const j=await request(api);snap={...(j.snapshot||{}),_error:j.error||null};const restore=window.SoknaUI?.captureScroll?.(root);renderPrinting();restore?.();const job=snap.recent_jobs?.find(x=>Number(x.id)===Number(jobId));if(!job)continue;status(`چاپ آزمایشی: ${printStatusLabel(job.status)} — ${jobDetail(job)}`);if(job.status==='submitted'){status('چاپ به صف ویندوز تحویل شد؛ خروج کاغذ را روی چاپگر بررسی کن.');return}if(['failed','blocked','unknown','recovery_hold','cancelled'].includes(job.status)){sectionState(jobDetail(job),true);return}}sectionState('کار چاپ هنوز تکمیل نشده است؛ وضعیت دستگاه و مقصد را بررسی کن.',true)}
+ async function cancelPrintJob(j){
+  if(!['pending','failed','blocked'].includes(j.status)){sectionState('وضعیت این چاپ تغییر کرده است؛ قبل از تصمیم دوباره تازه‌سازی کن.',true);return}
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6109,3 +6109,59 @@
+ .sc-login-picker-search{inline-size:100%;min-block-size:44px}
+ .sc-login-picker-count{color:var(--sc-muted);font-size:.75rem}
+ .sc-login-picker-panel .sc-login-account-grid{max-block-size:min(46vh,390px);overflow-y:auto;overscroll-behavior:contain;padding:2px;scrollbar-gutter:stable}
++
++/* R180 scoped UI corrections: prevent sparse in-service cards stretching across a row. */
++@media (min-width:981px){
++ body[data-page="operator"] .sc-hall-workspace[data-operator-workspace][data-hall-density="normal"] .sc-hall-open-grid{
++  grid-template-columns:repeat(auto-fill,minmax(245px, min(100%, 295px)))!important;
++  justify-content:start!important;
++ }
++ body[data-page="operator"] .sc-hall-workspace[data-operator-workspace][data-hall-density="compact"] .sc-hall-open-grid{
++  grid-template-columns:repeat(auto-fill,minmax(190px,min(100%,235px)))!important;justify-content:start!important;
++ }
++ body[data-page="operator"] .sc-hall-workspace[data-operator-workspace][data-hall-density="overview"] .sc-hall-open-grid{
++  grid-template-columns:repeat(auto-fill,minmax(155px,min(100%,190px)))!important;justify-content:start!important;
++ }
++}
++/* Keep the five bundle controls in five actual columns, and restore responsive labels. */
++@media(min-width:901px){.sc-product-structure-row--bundle{grid-template-columns:minmax(220px,2fr) minmax(88px,.75fr) minmax(70px,.45fr) minmax(115px,.85fr) auto;align-items:center}}
++@media(min-width:701px) and (max-width:900px){.sc-product-structure-row--bundle{grid-template-columns:minmax(0,2fr) minmax(90px,1fr) minmax(68px,.5fr);align-items:center}.sc-product-structure-row--bundle>.sc-button{grid-column:auto}}
++/* Search and selection share one accessible single-field overlay; the hidden select remains the form value. */
++.sc-product-combobox{position:relative;min-inline-size:0}
++.sc-product-combobox__input{inline-size:100%;min-inline-size:0}
++.sc-product-combobox__value{position:absolute!important;inline-size:1px!important;block-size:1px!important;padding:0!important;clip-path:inset(50%)!important;opacity:0!important;pointer-events:none!important}
++.sc-product-combobox__list{position:absolute;z-index:20;inset-block-start:calc(100% + 3px);inset-inline:0;max-block-size:min(255px,45vh);overflow:auto;overscroll-behavior:contain;background:var(--sc-surface-raised,#fff);border:1px solid var(--sc-border,#ddd);border-radius:11px;box-shadow:0 12px 30px #0002;padding:4px}
++.sc-product-combobox__list[hidden]{display:none!important}
++.sc-product-combobox__option{display:block;inline-size:100%;min-block-size:38px;text-align:start;padding:8px 10px;border:0;background:transparent;color:var(--sc-text);font:inherit;border-radius:7px;cursor:pointer}
++.sc-product-combobox__option:is(:hover,.is-active,:focus-visible){background:var(--sc-accent-soft);outline:1px solid var(--sc-accent)}
++.sc-product-combobox__empty{padding:12px;color:var(--sc-muted)}
++/* Clear primary actions in the quick editor instead of burying the full editor in body copy. */
++.sc-catalog-quick-dialog .sc-dialog-frame__foot{gap:10px!important;flex-wrap:wrap}
++.sc-catalog-quick-dialog .sc-catalog-full-edit{margin-inline-start:auto;font-weight:800}
++@media (min-width:760px){.sc-catalog-quick-dialog .sc-check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
++/* Less unused visual space in full editor, while preserving scrollable sections and sticky actions. */
++@media(min-width:1080px){.sc-entity-editor{inline-size:min(1040px,calc(100vw - 40px))!important}.sc-entity-editor__fields{gap:10px}.sc-entity-editor__body{padding-inline:16px}}
++
++/* R180: iOS Safari hall should scroll as a page, not clip the second service-card row. */
++@media(max-width:760px){
++ body[data-page="operator"] .sc-hall-workspace[data-operator-workspace] .sc-hall-scroll,
++ body[data-page="operator"] .sc-hall-view-v107 .sc-hall-scroll{
++  max-block-size:none!important;block-size:auto!important;min-block-size:0!important;
++  overflow:visible!important;overscroll-behavior:auto!important;
++ }
++ body[data-page="operator"] .sc-shell__content{padding-block-end:calc(92px + env(safe-area-inset-bottom))!important}
++ body[data-page="operator"] .sc-hall-workspace[data-operator-workspace] .sc-hall-open-grid{
++  grid-auto-rows:auto!important;align-items:stretch!important;
++ }
++}
++
++.sc-preparation-group--handled .sc-preparation-handled-toggle{margin:10px 12px;min-block-size:40px}
++.sc-preparation-group--handled .sc-preparation-group__list[hidden]{display:none!important}
++
++/* R181: controls and option lists consistently inherit Sokna typography. */
++.sc-control:is(select,input),select.sc-control,select.sc-control option,.sc-product-combobox__input,.sc-product-combobox__option,.sc-ops-inventory-combo input,.sc-ops-inventory-combo__option{font-family:var(--sc-font,inherit)!important;font-size:inherit;}
++.sc-ops-inventory-combo{position:relative;min-width:0;width:100%;}
++.sc-ops-inventory-combo__options{position:absolute;z-index:90;inset-inline:0;inset-block-start:calc(100% + 4px);max-block-size:240px;overflow:auto;box-sizing:border-box;padding:4px;display:grid;gap:3px;background:var(--sc-surface,#fff);color:var(--sc-text,#123);border:1px solid var(--sc-border,#ccd);border-radius:12px;box-shadow:0 9px 25px rgba(0,0,0,.15)}
++.sc-ops-inventory-combo__options[hidden]{display:none!important}
++.sc-ops-inventory-combo__option{width:100%;text-align:right;padding:9px;border:0;border-radius:8px;background:transparent;color:inherit;cursor:pointer;line-height:1.65}
++.sc-ops-inventory-combo__option:hover,.sc-ops-inventory-combo__option:focus-visible{background:var(--sc-accent-soft,#e6f4f2);outline:none}
+--- a/public/catalog/index.php
++++ b/public/catalog/index.php
+@@ -89,7 +89,7 @@
+ 
+   <dialog class="sc-dialog sc-catalog-task-dialog sc-catalog-category-dialog" data-dialog="category" aria-labelledby="sc-dialog-title-catalog-category" data-dialog-size="lg"><form method="dialog" class="sc-dialog-frame" data-category-form><header class="sc-dialog-frame__head"><div><h2 id="sc-dialog-title-catalog-category" data-category-dialog-title tabindex="-1">دسته جدید</h2><p data-category-dialog-context>نام، مخاطب، ظاهر و منوهای این دسته را مشخص کن.</p></div><button class="sc-icon-button" type="button" data-dialog-close aria-label="بستن"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="sc-dialog-frame__body"><input type="hidden" name="id"><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">نام دسته</span><input class="sc-control" name="name" maxlength="120" required></label><label class="sc-field"><span class="sc-field__label">مخاطب</span><select class="sc-control" name="audience"><option value="guest_staff">مهمان و کارکنان</option><option value="staff_only">فقط کارکنان</option></select></label></div><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">چرخه عمر</span><select class="sc-control" name="lifecycle_status"><option value="active">فعال</option><option value="inactive">غیرفعال</option></select></label><fieldset class="sc-field"><legend>نمایش</legend><div class="sc-check-grid"><label><input type="checkbox" name="guest_visible" checked> مهمان</label><label><input type="checkbox" name="staff_visible" checked> کارکنان</label></div></fieldset></div><section class="sc-dialog-section"><div class="sc-dialog-section__head"><strong>ظاهر دسته</strong><small>تصویر، نمایش بصری اصلی است؛ آیکن به‌عنوان fallback باقی می‌ماند.</small></div><input type="hidden" name="icon_key" value=""><div class="sc-catalog-media-inline" data-category-media-current></div><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-pick-category-media>انتخاب تصویر دسته</button></div><details class="sc-disclosure sc-catalog-icon-disclosure"><summary><span><strong>آیکن fallback</strong><small>در نبود تصویر یا در نمایش‌های فشرده استفاده می‌شود.</small></span></summary><div class="sc-category-icon-picker" data-category-icons></div></details></section><section class="sc-dialog-section"><div class="sc-dialog-section__head"><strong>عضویت در منوها</strong><small>این دسته در کدام منوهای اصلی نمایش داده شود.</small></div><div class="sc-check-grid" data-category-menus></div></section><details class="sc-disclosure"><summary><span><strong>ترتیب پیش‌فرض</strong><small>در صورت نیاز به مرتب‌سازی دستی تغییر بده.</small></span></summary><label class="sc-field"><span class="sc-field__label">ترتیب</span><input class="sc-control" name="sort_order" inputmode="numeric" value="0"></label></details></div><footer class="sc-dialog-frame__foot"><button class="sc-button" type="submit" value="submit">ذخیره دسته</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></footer></form></dialog>
+ 
+-  <dialog class="sc-dialog sc-catalog-task-dialog sc-catalog-quick-dialog" data-dialog="item-quick" aria-labelledby="sc-dialog-title-item-quick" data-dialog-size="md"><form method="dialog" class="sc-dialog-frame is-short" data-item-quick-form><header class="sc-dialog-frame__head"><div><h2 id="sc-dialog-title-item-quick" tabindex="-1">ویرایش سریع آیتم</h2><p data-item-quick-context>فقط اطلاعات روزمره را تغییر بده؛ تنظیمات کامل در ویرایش کامل است.</p></div><button class="sc-icon-button" type="button" data-dialog-close aria-label="بستن"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="sc-dialog-frame__body"><input type="hidden" name="id"><label class="sc-field"><span class="sc-field__label">نام</span><input class="sc-control" name="name" maxlength="160" required></label><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">قیمت</span><input class="sc-control" name="price" inputmode="numeric" data-money-input="1" required></label><label class="sc-field"><span class="sc-field__label">دسته</span><select class="sc-control" name="category_id" required data-quick-category></select></label></div><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">چرخه عمر</span><select class="sc-control" name="lifecycle_status"><option value="active">فعال</option><option value="inactive">غیرفعال</option></select></label><fieldset class="sc-field"><legend>نمایش و موجودی</legend><div class="sc-check-grid"><label><input type="checkbox" name="guest_visible"> مهمان</label><label><input type="checkbox" name="staff_visible"> کارکنان</label><label><input type="checkbox" name="available"> موجود</label><label><input type="checkbox" name="featured"> ویژه</label></div></fieldset></div><button class="sc-button sc-button--ghost sc-catalog-full-edit" type="button" data-open-full-from-quick>نیاز به تصویر، زمان‌بندی، رسپی یا تنظیمات کامل داری؟ ویرایش کامل</button></div><footer class="sc-dialog-frame__foot"><button class="sc-button" type="submit" value="submit">ذخیره سریع</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></footer></form></dialog>
++  <dialog class="sc-dialog sc-catalog-task-dialog sc-catalog-quick-dialog" data-dialog="item-quick" aria-labelledby="sc-dialog-title-item-quick" data-dialog-size="md"><form method="dialog" class="sc-dialog-frame is-short" data-item-quick-form><header class="sc-dialog-frame__head"><div><h2 id="sc-dialog-title-item-quick" tabindex="-1">ویرایش سریع آیتم</h2><p data-item-quick-context>فقط اطلاعات روزمره را تغییر بده؛ تنظیمات کامل در ویرایش کامل است.</p></div><button class="sc-icon-button" type="button" data-dialog-close aria-label="بستن"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="sc-dialog-frame__body"><input type="hidden" name="id"><label class="sc-field"><span class="sc-field__label">نام</span><input class="sc-control" name="name" maxlength="160" required></label><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">قیمت</span><input class="sc-control" name="price" inputmode="numeric" data-money-input="1" required></label><label class="sc-field"><span class="sc-field__label">دسته</span><select class="sc-control" name="category_id" required data-quick-category></select></label></div><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">چرخه عمر</span><select class="sc-control" name="lifecycle_status"><option value="active">فعال</option><option value="inactive">غیرفعال</option></select></label><fieldset class="sc-field"><legend>نمایش و موجودی</legend><div class="sc-check-grid"><label><input type="checkbox" name="guest_visible"> مهمان</label><label><input type="checkbox" name="staff_visible"> کارکنان</label><label><input type="checkbox" name="available"> موجود</label><label><input type="checkbox" name="featured"> ویژه</label></div></fieldset></div></div><footer class="sc-dialog-frame__foot"><button class="sc-button sc-button--secondary sc-catalog-full-edit" type="button" data-open-full-from-quick>ویرایش کامل ←</button><button class="sc-button" type="submit" value="submit">ذخیره سریع</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></footer></form></dialog>
+ 
+   <dialog class="sc-dialog sc-entity-editor" data-dialog="item" aria-labelledby="sc-dialog-title-catalog-item"><form method="dialog" class="sc-entity-editor__form" data-item-form data-dirty-guard data-dirty-label="آیتم کاتالوگ">
+     <header class="sc-entity-editor__head"><div><h2 id="sc-dialog-title-catalog-item">ویرایش آیتم منو</h2><p>اطلاعات، نمایش، زمان‌بندی، تصویر و دستور مصرف را بدون خروج از همین فضای کاری مدیریت کن.</p></div></header>
+--- a/resources/build-provenance.json
++++ b/resources/build-provenance.json
+@@ -1 +1 @@
+-{"classification":"R177_GOLIVE_RESYNC_MODEL_CATALOG_CANARY","created_at":"2026-11-12T13:45:00Z","current_cafe_backup_restored_in_lab":false,"format":"sokna-build-provenance-v1","full_business_acceptance":false,"installed_host_accepted":false,"production_host_install_verified":false,"public_unchanged":false,"release_set_id":"sokna-r177-golive-resync-catalog-canary-20261112","source":"Immutable R171 code + repaired 589/589 managed inventory + new exact release identity; no product behavior changes","source_recovery_mode":"forward-only-after-ddl","staff_accounts_included":true,"staff_data_private_cafe_only":true,"universality_limited_to":"42 verified historical 0076/0077 identities; post-0078 conflict intentionally rejected","version":"3.0.0-g6.2-workspace.231es-r177-golive-resync-catalog-canary","workspace_source_only":false}
++{"classification":"R181_HOME_UAT_NOT_PRODUCTION","created_at":"2026-11-13T03:00:00+03:30","current_cafe_backup_restored_in_lab":false,"format":"sokna-build-provenance-v1","full_business_acceptance":false,"installed_host_accepted":false,"production_host_install_verified":false,"public_unchanged":false,"release_set_id":"sokna-r181-home-followup-20261113-uat","source":"R180 target payload + scoped R181 changes; NOT native Windows/MariaDB certified","source_recovery_mode":"forward-only-after-ddl","staff_accounts_included":true,"staff_data_private_cafe_only":true,"universality_limited_to":"42 verified historical 0076/0077 identities; post-0078 conflict intentionally rejected","version":"3.0.0-g6.2-workspace.231eu-r181-home-followup-uat","workspace_source_only":false}
+--- a/resources/release-identity-v1.json
++++ b/resources/release-identity-v1.json
+@@ -1 +1 @@
+-{"baseline":{"mode":"exact_compatible_allowlist","source_versions":["3.0.0-g6.2-workspace.231bz-r38-87-integrated-panel-uat","3.0.0-g6.2-workspace.231ca-r39-hall-reports-uat","3.0.0-g6.2-workspace.231cb-r53-cumulative-ux-home-uat","3.0.0-g6.2-workspace.231cc-r66-cumulative-home-uat","3.0.0-g6.2-workspace.231cd-r75-four-audit-fixes-home-uat","3.0.0-g6.2-workspace.231ce-r81-integrated-home-uat","3.0.0-g6.2-workspace.231cf-r82-late-served-atomic-home-uat","3.0.0-g6.2-workspace.231cg-r83-communication-uat","3.0.0-g6.2-workspace.231ch-r84-causal-read-uat","3.0.0-g6.2-workspace.231ci-r85-hall-policy-uat","3.0.0-g6.2-workspace.231cj-r86-dashboard-uat","3.0.0-g6.2-workspace.231ck-r87-hall-snapshot-uat","3.0.0-g6.2-workspace.231cl-r88-hall-controls-uat","3.0.0-g6.2-workspace.231cm-r89-universal-uat","3.0.0-g6.2-workspace.231cn-r91-universal-ready-uat","3.0.0-g6.2-workspace.231co-r92-dashboard-csp-uat","3.0.0-g6.2-workspace.231cp-r93-workspace-sync-uat","3.0.0-g6.2-workspace.231cq-r94-consolidated-home-uat","3.0.0-g6.2-workspace.231cr-r94-dashboard-hover-uat","3.0.0-g6.2-workspace.231cs-r94-universal-zero-tooltip-uat","3.0.0-g6.2-workspace.231ct-r96-table-move-draft-uat","3.0.0-g6.2-workspace.231cu-r97-authenticated-public-clock-uat","3.0.0-g6.2-workspace.231cv-r98-operator-draft-and-guest-relay-uat","3.0.0-g6.2-workspace.231cw-r99-hall-ui-scoped-uat","3.0.0-g6.2-workspace.231cx-r101-menu-autopublish-live-preview-uat","3.0.0-g6.2-workspace.231cy-r102-mobile-cart-scoped-uat","3.0.0-g6.2-workspace.231cz-r103-relay-recovery-mobile-hall-uat","3.0.0-g6.2-workspace.231da-r104-inventory-mobile-history-uat","3.0.0-g6.2-workspace.231db-r106-mobile-hall-flow-uat","3.0.0-g6.2-workspace.231dc-r108-mobile-flow-uat","3.0.0-g6.2-workspace.231dd-r109-mobile-bottom-nav-guest-uat","3.0.0-g6.2-workspace.231de-r110-multibase-package-repair-uat","3.0.0-g6.2-workspace.231df-r111-integrated-cafe-uat","3.0.0-g6.2-workspace.231dg-r112-guest-safe-append-uat","3.0.0-g6.2-workspace.231dh-r113-inventory-progressive-uat","3.0.0-g6.2-workspace.231di-r114-qa-diagnostics-uat","3.0.0-g6.2-workspace.231dj-r115-staff-account-ux-uat","3.0.0-g6.2-workspace.231dk-r116-safe-inventory-followup-uat","3.0.0-g6.2-workspace.231dl-r117-header-finance-audit-uat","3.0.0-g6.2-workspace.231dm-r118-support-bootstrap-fix-uat","3.0.0-g6.2-workspace.231dn-r119-consolidated-ux-uat","3.0.0-g6.2-workspace.231do-r120-system-modules-catalog-ux-uat","3.0.0-g6.2-workspace.231ea-r140-ddl-preflight-qa","3.0.0-g6.2-workspace.231eb-r149-catalog-ui-multibase-uat","3.0.0-g6.2-workspace.231ed-r153-guest-readonly-meta-qa","3.0.0-g6.2-workspace.231ee-r154-guest-theme-immutable-repair-canary","3.0.0-g6.2-workspace.231ei-r158-invoice-business-day-source-qa","3.0.0-g6.2-workspace.231ej-r159-scroll-continuity-and-dialog-qa","3.0.0-g6.2-workspace.231ek-r160-catalog-viewport-preservation-qa","3.0.0-g6.2-workspace.231em-r162-golive-reset-catalog-pagination-qa","3.0.0-g6.2-workspace.231en-r168-post-golive-guest-ux-print-qa"]},"component":"local","contracts":{"authority_epoch":"sokna-authority-epoch-v1","catalog_row_actions":"sokna-catalog-row-actions-v1","connection_association_lifecycle":"sokna-connection-association-lifecycle-v1","deployment_rebind":"sokna-local-public-origin-rebind-v2","freshness_contract":"projection-heartbeat-v1","guest_order_experience":"sokna-guest-order-experience-v1","guest_routing":"public-first-no-split-dns-v1","guest_theme_contract_revision":2,"guest_theme_engine":"sokna-guest-theme-engine-v2","human_numeric_display":"sokna-human-numeric-display-v2","inventory_count_ux":"sokna-inventory-count-session-autosave-v1","iran_time":"sokna-iran-time-v1","local_public_contract":1,"maintenance_control_protocol":"1.0","maintenance_web_adapter":"sokna-maintenance-web-adapter-v1","marketing_media":"sokna-marketing-media-v1","media_image_workflow":"sokna-media-image-workflow-v1","money_display_consistency":"sokna-money-display-consistency-v1","money_input_consistency":"sokna-money-input-consistency-v1","notification_experience":"sokna-notification-experience-v1","order_submit_reliability":"sokna-order-submit-reliability-v1","product_copy_governance":"sokna-product-copy-governance-v1","pwa_origin_lan_lifecycle":"sokna-pwa-origin-lan-lifecycle-v1","release_line":"v3","reports_marketing_ui":"sokna-reports-marketing-ui-v1","signed_http_transport_profile":"sokna-signed-http-v1","staff_lan_policy":"lan-preferred-public-fallback-v1","table_qr_lifecycle":"sokna-table-qr-lifecycle-v1","trace_contract":"sokna-trace-v1"},"format":"sokna-release-component-identity-v1","qualification":{"claim_rule":"Go-live reset is one-time admin-only with signed Public intake fence; user-approved test-data loss, no mandatory test-data backup; live installation and DB schema still require on-host preflight.","tier":"R177_GOLIVE_RESYNC_STAGE_CANDIDATE"},"release_set_id":"sokna-r177-golive-resync-catalog-canary-20261112","schema_version":1,"source":{"canonical_file_count":587,"canonical_tree_sha256":"ae1c74d4455a6d04a94d1e1f928b0520913cf1c625f830ef8d49a4bd93ff00f6","digest_algorithm":"sha256(path\\0size\\0file_sha256\\n), lexical path order","digest_excludes":["resources/build-provenance.json","resources/release-identity-v1.json"],"managed_file_count":589,"source_ref":"Exact R176 589-file source + 2 scoped PHP resync catalog/diagnostic changes; policy/migrations/Public unchanged"},"version":"3.0.0-g6.2-workspace.231es-r177-golive-resync-catalog-canary"}
++{"baseline":{"mode":"exact_compatible_allowlist","source_versions":["3.0.0-g6.2-workspace.231bz-r38-87-integrated-panel-uat","3.0.0-g6.2-workspace.231ca-r39-hall-reports-uat","3.0.0-g6.2-workspace.231cb-r53-cumulative-ux-home-uat","3.0.0-g6.2-workspace.231cc-r66-cumulative-home-uat","3.0.0-g6.2-workspace.231cd-r75-four-audit-fixes-home-uat","3.0.0-g6.2-workspace.231ce-r81-integrated-home-uat","3.0.0-g6.2-workspace.231cf-r82-late-served-atomic-home-uat","3.0.0-g6.2-workspace.231cg-r83-communication-uat","3.0.0-g6.2-workspace.231ch-r84-causal-read-uat","3.0.0-g6.2-workspace.231ci-r85-hall-policy-uat","3.0.0-g6.2-workspace.231cj-r86-dashboard-uat","3.0.0-g6.2-workspace.231ck-r87-hall-snapshot-uat","3.0.0-g6.2-workspace.231cl-r88-hall-controls-uat","3.0.0-g6.2-workspace.231cm-r89-universal-uat","3.0.0-g6.2-workspace.231cn-r91-universal-ready-uat","3.0.0-g6.2-workspace.231co-r92-dashboard-csp-uat","3.0.0-g6.2-workspace.231cp-r93-workspace-sync-uat","3.0.0-g6.2-workspace.231cq-r94-consolidated-home-uat","3.0.0-g6.2-workspace.231cr-r94-dashboard-hover-uat","3.0.0-g6.2-workspace.231cs-r94-universal-zero-tooltip-uat","3.0.0-g6.2-workspace.231ct-r96-table-move-draft-uat","3.0.0-g6.2-workspace.231cu-r97-authenticated-public-clock-uat","3.0.0-g6.2-workspace.231cv-r98-operator-draft-and-guest-relay-uat","3.0.0-g6.2-workspace.231cw-r99-hall-ui-scoped-uat","3.0.0-g6.2-workspace.231cx-r101-menu-autopublish-live-preview-uat","3.0.0-g6.2-workspace.231cy-r102-mobile-cart-scoped-uat","3.0.0-g6.2-workspace.231cz-r103-relay-recovery-mobile-hall-uat","3.0.0-g6.2-workspace.231da-r104-inventory-mobile-history-uat","3.0.0-g6.2-workspace.231db-r106-mobile-hall-flow-uat","3.0.0-g6.2-workspace.231dc-r108-mobile-flow-uat","3.0.0-g6.2-workspace.231dd-r109-mobile-bottom-nav-guest-uat","3.0.0-g6.2-workspace.231de-r110-multibase-package-repair-uat","3.0.0-g6.2-workspace.231df-r111-integrated-cafe-uat","3.0.0-g6.2-workspace.231dg-r112-guest-safe-append-uat","3.0.0-g6.2-workspace.231dh-r113-inventory-progressive-uat","3.0.0-g6.2-workspace.231di-r114-qa-diagnostics-uat","3.0.0-g6.2-workspace.231dj-r115-staff-account-ux-uat","3.0.0-g6.2-workspace.231dk-r116-safe-inventory-followup-uat","3.0.0-g6.2-workspace.231dl-r117-header-finance-audit-uat","3.0.0-g6.2-workspace.231dm-r118-support-bootstrap-fix-uat","3.0.0-g6.2-workspace.231dn-r119-consolidated-ux-uat","3.0.0-g6.2-workspace.231do-r120-system-modules-catalog-ux-uat","3.0.0-g6.2-workspace.231ea-r140-ddl-preflight-qa","3.0.0-g6.2-workspace.231eb-r149-catalog-ui-multibase-uat","3.0.0-g6.2-workspace.231ed-r153-guest-readonly-meta-qa","3.0.0-g6.2-workspace.231ee-r154-guest-theme-immutable-repair-canary","3.0.0-g6.2-workspace.231ei-r158-invoice-business-day-source-qa","3.0.0-g6.2-workspace.231ej-r159-scroll-continuity-and-dialog-qa","3.0.0-g6.2-workspace.231ek-r160-catalog-viewport-preservation-qa","3.0.0-g6.2-workspace.231em-r162-golive-reset-catalog-pagination-qa","3.0.0-g6.2-workspace.231en-r168-post-golive-guest-ux-print-qa"]},"component":"local","contracts":{"authority_epoch":"sokna-authority-epoch-v1","catalog_row_actions":"sokna-catalog-row-actions-v1","connection_association_lifecycle":"sokna-connection-association-lifecycle-v1","deployment_rebind":"sokna-local-public-origin-rebind-v2","freshness_contract":"projection-heartbeat-v1","guest_order_experience":"sokna-guest-order-experience-v1","guest_routing":"public-first-no-split-dns-v1","guest_theme_contract_revision":2,"guest_theme_engine":"sokna-guest-theme-engine-v2","human_numeric_display":"sokna-human-numeric-display-v2","inventory_count_ux":"sokna-inventory-count-session-autosave-v1","iran_time":"sokna-iran-time-v1","local_public_contract":1,"maintenance_control_protocol":"1.0","maintenance_web_adapter":"sokna-maintenance-web-adapter-v1","marketing_media":"sokna-marketing-media-v1","media_image_workflow":"sokna-media-image-workflow-v1","money_display_consistency":"sokna-money-display-consistency-v1","money_input_consistency":"sokna-money-input-consistency-v1","notification_experience":"sokna-notification-experience-v1","order_submit_reliability":"sokna-order-submit-reliability-v1","product_copy_governance":"sokna-product-copy-governance-v1","pwa_origin_lan_lifecycle":"sokna-pwa-origin-lan-lifecycle-v1","release_line":"v3","reports_marketing_ui":"sokna-reports-marketing-ui-v1","signed_http_transport_profile":"sokna-signed-http-v1","staff_lan_policy":"lan-preferred-public-fallback-v1","table_qr_lifecycle":"sokna-table-qr-lifecycle-v1","trace_contract":"sokna-trace-v1"},"format":"sokna-release-component-identity-v1","qualification":{"claim_rule":"Go-live reset is one-time admin-only with signed Public intake fence; user-approved test-data loss, no mandatory test-data backup; live installation and DB schema still require on-host preflight.","tier":"R181_HOME_UAT_NOT_PRODUCTION"},"release_set_id":"sokna-r181-home-followup-20261113-uat","schema_version":1,"source":{"canonical_file_count":587,"canonical_tree_sha256":"32ba8bafb648b7f0a02f415fdd85208e32d656cab698d3cef35262a28f7f91c0","digest_algorithm":"sha256(path\\0size\\0file_sha256\\n), lexical path order","digest_excludes":["resources/build-provenance.json","resources/release-identity-v1.json"],"managed_file_count":589,"source_ref":"Exact R180 full cumulative payload + R181 claim/adjustment/print-test/notification/inventory-selector scoped changes; unchanged SQL"},"version":"3.0.0-g6.2-workspace.231eu-r181-home-followup-uat"}
+--- a/src/Domain/GuestContent/GuestContentService.php
++++ b/src/Domain/GuestContent/GuestContentService.php
+@@ -679,40 +679,66 @@
+ 
+     private function ensureBuiltinThemePackages(): void
+     {
+-        // A historical (theme_key, version) row may already be referenced by a
+-        // published revision.  Never overwrite/delete it when a bundled theme
+-        // changes: register a new immutable patch version instead.
++        // Historical theme releases are immutable: never overwrite a version already
++        // published to guests. The legacy sequential 0..255 scan can exhaust after
++        // repeated cumulative releases; inspect the registry before choosing a patch.
+         $lookup=$this->pdo->prepare('SELECT fingerprint FROM guest_theme_packages WHERE theme_key=? AND version=? LIMIT 1');
++        $versions=$this->pdo->prepare('SELECT version FROM guest_theme_packages WHERE theme_key=?');
+         $insert=$this->pdo->prepare("INSERT IGNORE INTO guest_theme_packages(theme_key,version,name,fingerprint,package_json,source_kind,installed_by_user_id) VALUES(?,?,?,?,?,'builtin',NULL)");
+         foreach($this->themes->packages() as $manifest){
+             $key=(string)$manifest['theme_key'];
+             $baseVersion=(string)$manifest['version'];
+-            $parts=array_map('intval',explode('.',$baseVersion));
++            $versions->execute([$key]);
++            $existing=array_map('strval',$versions->fetchAll(\PDO::FETCH_COLUMN)?:[]);
++            $next=self::nextBuiltinThemePatch($baseVersion,$existing);
+             $registered=false;
+-            // Probe the original version, then immutable .patch successors.
+-            // The same bundle always resolves to the same existing fingerprint;
+-            // concurrent installations cannot change an older published row.
+-            for($attempt=0;$attempt<256;$attempt++){
++            // First check whether the exact original revision is already installed.
++            // Only conflicting historical versions require an immutable successor.
++            $base=(string)$manifest['fingerprint'];
++            $lookup->execute([$key,$baseVersion]);
++            $actual=$lookup->fetchColumn();
++            if($actual!==false&&hash_equals($base,(string)$actual))continue;
++            for($attempt=0;$attempt<32;$attempt++){
+                 $candidate=$this->themeManifestPayload($manifest);
+-                if($attempt>0)$candidate['version']=$parts[0].'.'.$parts[1].'.'.($parts[2]+$attempt);
+-                $normalized=$attempt===0?$manifest:$this->themes->validateManifest($candidate);
++                if($actual!==false||$attempt>0)$candidate['version']=$next; $next=self::incrementBuiltinThemePatch($next);
++                $normalized=$this->themes->validateManifest($candidate);
+                 $fingerprint=(string)$normalized['fingerprint'];
+                 $version=(string)$normalized['version'];
+                 $lookup->execute([$key,$version]);
+-                $actual=$lookup->fetchColumn();
+-                if($actual!==false){
+-                    if(hash_equals($fingerprint,(string)$actual)){$registered=true;break;}
++                $found=$lookup->fetchColumn();
++                if($found!==false){
++                    if(hash_equals($fingerprint,(string)$found)){$registered=true;break;}
+                     continue;
+                 }
+                 $insert->execute([$key,$version,(string)$normalized['name'],$fingerprint,$this->json($candidate)]);
+-                // INSERT IGNORE can lose a race to another worker.  Recheck
+-                // the exact pair, never silently mutate historical contents.
+                 $lookup->execute([$key,$version]);
+-                $actual=$lookup->fetchColumn();
+-                if($actual!==false&&hash_equals($fingerprint,(string)$actual)){$registered=true;break;}
++                $found=$lookup->fetchColumn();
++                if($found!==false&&hash_equals($fingerprint,(string)$found)){$registered=true;break;}
++                // INSERT IGNORE may also mask a schema or integrity constraint
++                // error. Do not silently loop through hundreds of version numbers.
++                if($found===false)throw new GuestContentException('builtin_theme_registry_write_blocked','قالب داخلی قابل ثبت نیست؛ بررسی ساختار مخزن قالب لازم است.',500,['theme_key'=>$key,'version'=>$version]);
+             }
+             if(!$registered)throw new GuestContentException('builtin_theme_conflict','نسخه تازهٔ امن برای یکی از قالب‌های داخلی قابل ثبت نیست.',500,['theme_key'=>$key,'version'=>$baseVersion]);
+         }
++    }
++
++    private static function incrementBuiltinThemePatch(string $version): string
++    {
++        $parts=array_map('intval',explode('.',$version));
++        return $parts[0].'.'.$parts[1].'.'.($parts[2]+1);
++    }
++
++    /** Allocate after the highest occupied patch; published rows are never rewritten. */
++    private static function nextBuiltinThemePatch(string $baseVersion,array $existing): string
++    {
++        $parts=array_map('intval',explode('.',$baseVersion));
++        if(count($parts)!==3)throw new \InvalidArgumentException('Invalid builtin version');
++        $next=$parts[2]+1;
++        foreach($existing as $v){
++            if(!preg_match('/^(\d+)\.(\d+)\.(\d+)$/D',(string)$v,$match))continue;
++            if((int)$match[1]===$parts[0]&&(int)$match[2]===$parts[1])$next=max($next,(int)$match[3]+1);
++        }
++        return $parts[0].'.'.$parts[1].'.'.$next;
+     }
+ 
+     private static function phpByteLimit(string $setting): int
+--- a/src/Domain/Orders/OrderStaffActionService.php
++++ b/src/Domain/Orders/OrderStaffActionService.php
+@@ -191,7 +191,9 @@
+                 $claim=$this->preparation->claimStateForAdjustmentTx($orderId,$area);
+                 if($claim['has_claim']&&!$claim['current'])throw new OrderStaffActionException('preparation_state_changed','آماده‌سازی این سفارش تغییر کرده است؛ ابتدا وضعیت بخش آماده‌سازی را بررسی کنید.',409,['area'=>$area]);
+                 $claimedBefore=$claim['has_claim']&&$claim['current'];
+-                if($claimedBefore){$pending=$this->pdo->prepare("SELECT id FROM order_item_adjustments WHERE order_id=? AND area_key=? AND preparation_ack_status='pending' LIMIT 1 FOR UPDATE");$pending->execute([$orderId,$area]);if($pending->fetchColumn()!==false)throw new OrderStaffActionException('preparation_adjustment_pending','یک اصلاح قبلی این سفارش هنوز در بخش آماده‌سازی تأیید نشده است.',409,['area'=>$area]);}
++                // Prior pending corrections remain individually auditable and visible to preparation.
++                // A later correction must not depend on a colleague acknowledging an earlier correction.
++                // Order-item row locks, current preparation signature and request_id still guard races/replays.
+             }
+ 
+             $byMode=['dine_in'=>[],'takeaway'=>[]];foreach($rows as $r){$m=(string)($r['fulfillment_mode']??'dine_in')==='takeaway'?'takeaway':'dine_in';$byMode[$m][]=$r;}
+@@ -276,10 +278,8 @@
+                 $claim=$this->preparation->claimStateForAdjustmentTx($orderId,$area);
+                 if($claim['has_claim']&&!$claim['current'])throw new OrderStaffActionException('preparation_state_changed','آماده‌سازی این سفارش تغییر کرده است؛ ابتدا وضعیت بخش آماده‌سازی را بررسی کنید.',409,['area'=>$area]);
+                 $claimedBefore=$claim['has_claim']&&$claim['current'];
+-                if($claimedBefore){
+-                    $pending=$this->pdo->prepare("SELECT id FROM order_item_adjustments WHERE order_id=? AND area_key=? AND preparation_ack_status='pending' LIMIT 1 FOR UPDATE");
+-                    $pending->execute([$orderId,$area]);if($pending->fetchColumn()!==false)throw new OrderStaffActionException('preparation_adjustment_pending','یک اصلاح قبلی این سفارش هنوز در بخش آماده‌سازی تأیید نشده است.',409,['area'=>$area]);
+-                }
++                // Each correction gets a unique event and independent pending acknowledgement.
++                // Never make a later staff action wait for the earlier preparation acknowledgement.
+             }
+ 
+             $delta=$quantityChanged?$toQuantity-$fromQuantity:0;$lineTotal=(int)$row['unit_price']*$toQuantity;
+--- a/src/Domain/Preparation/PreparationService.php
++++ b/src/Domain/Preparation/PreparationService.php
+@@ -311,12 +311,16 @@
+                     'claimed_by_user_id'=>$actorId,'item_signature'=>$signature,
+                 ];
+             }
+-            throw new PreparationException(
+-                'already_claimed',
+-                'این بخش قبلاً توسط '.((string)($existing['claimed_by']??'یکی از همکاران')).' گرفته شده است.',
+-                409,
+-                ['claimed_by_user_id'=>$existing['claimed_by_user_id']!==null?(int)$existing['claimed_by_user_id']:null]
+-            );
++            // A claim is shared state, not a per-person acknowledgement. If another
++            // staff member already claimed the current signature, return the
++            // authoritative existing claim without a duplicate write or audit row.
++            return [
++                'success'=>true,'duplicate'=>true,'already_claimed'=>true,
++                'order_id'=>$orderId,'area'=>$area,
++                'claimed_by_user_id'=>$existing['claimed_by_user_id']!==null?(int)$existing['claimed_by_user_id']:null,
++                'claimed_by'=>(string)($existing['claimed_by']??''),
++                'item_signature'=>$signature,
++            ];
+         }
+ 
+         $upsert=$this->pdo->prepare(
