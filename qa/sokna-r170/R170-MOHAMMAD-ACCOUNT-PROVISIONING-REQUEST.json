@@ -1,0 +1,22 @@
+{
+  "display_name": "محمد مبارکی",
+  "username_proposal": "mohammad.mobaraki",
+  "job_title": "مسئول خرید، انبار و هزینه‌ها",
+  "role": "operator",
+  "capabilities": [
+    "inventory_view",
+    "inventory_cost_view",
+    "inventory_operations",
+    "inventory_finalize",
+    "inventory_manage",
+    "expenses_record"
+  ],
+  "preparation_areas": [],
+  "remote_access": false,
+  "expense_reverse": false,
+  "account_state": "REQUEST_RECORDED_NOT_CREATED_ON_REAL_HOST",
+  "password_status": "NOT_STORED_OR_PUBLISHED",
+  "required_password_policy": "Minimum eight characters; short requested PIN incompatible with current account creation",
+  "install_action": "After approved Local+Public update, administrator creates or reconciles user in Team/Users via scoped preset, avoiding duplicates",
+  "database_touched": false
+}
