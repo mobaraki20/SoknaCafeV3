@@ -1,0 +1,76 @@
+name: SOKNA R170 cumulative source and expense-role QA
+on:
+  push:
+    branches: [qa/sokna-r170-expense-role-audit-20261112]
+    paths:
+      - 'qa/sokna-r170/**'
+      - 'qa/sokna-r169/**'
+      - 'qa/sokna-r168/**'
+      - '.github/workflows/sokna-r170-cumulative-access-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-source-and-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring,pdo_mysql,zip
+      - name: Verify immutable R162 parents and reconstruct exact R168 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/parents" "$RUNNER_TEMP/r168" "$RUNNER_TEMP/local" "$RUNNER_TEMP/public" "$RUNNER_TEMP/public-outer"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parents"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parents"
+          echo "16adab9910c017d97ebc256e721bfbc22e26103979adc59763c6bf978b6f5471  $RUNNER_TEMP/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "96e976c43644f62e1246a29752af3fab5fff62978421f93db8065d8460a67503  $RUNNER_TEMP/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" | sha256sum -c -
+          base64 -d qa/sokna-r168/local_r168_overlay.zip.b64 > "$RUNNER_TEMP/overlay-local.zip"
+          base64 -d qa/sokna-r168/public_r168_overlay.zip.b64 > "$RUNNER_TEMP/overlay-public.zip"
+          python qa/sokna-r168/build_r168.py \
+            --local_parent "$RUNNER_TEMP/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" \
+            --public_parent "$RUNNER_TEMP/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" \
+            --local_overlay "$RUNNER_TEMP/overlay-local.zip" --public_overlay "$RUNNER_TEMP/overlay-public.zip" \
+            --manifest qa/sokna-r168/r168_source_delta_manifest.json --outdir "$RUNNER_TEMP/r168"
+          echo "016e2e9b5fda1bd3b8aebda5ff1210f3b60cd567a7716e19d2bde130408df009  $RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          unzip -p "$RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/local-web.zip"
+          unzip -q "$RUNNER_TEMP/local-web.zip" -d "$RUNNER_TEMP/local"
+          unzip -q "$RUNNER_TEMP/r168/SOKNA-R168-PUBLIC-35HS-FROM-35HP-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/public-outer"
+          cp -a "$RUNNER_TEMP/public-outer/payload/." "$RUNNER_TEMP/public/"
+      - name: Apply bounded R169 notification/RTL and R170 expenses patches to real trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd "$RUNNER_TEMP/local" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r169/R168-TO-R169-LOCAL-SCOPED-SOURCE.patch")
+          (cd "$RUNNER_TEMP/public" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r169/R168-TO-R169-PUBLIC-SCOPED-SOURCE.patch")
+          (cd "$RUNNER_TEMP/local" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r170/R169-TO-R170-LOCAL-EXPENSE-ROLE.patch")
+          (cd "$RUNNER_TEMP/public" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r170/R169-TO-R170-PUBLIC-EXPENSE-ROLE.patch")
+          echo "SOKNA_R170_LOCAL=$RUNNER_TEMP/local" >> "$GITHUB_ENV"
+      - name: SHA256 verify actual scoped source files against R170 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,hashlib,os,pathlib
+          m=json.loads(pathlib.Path('qa/sokna-r170/R170-SOURCE-AND-ACCESS-MANIFEST.json').read_text())
+          roots={'local':pathlib.Path(os.environ['RUNNER_TEMP'])/'local','public':pathlib.Path(os.environ['RUNNER_TEMP'])/'public'}
+          for change in m['changed']:
+            p=roots[change['side']]/change['path']
+            actual=hashlib.sha256(p.read_bytes()).hexdigest()
+            assert actual==change['after_sha256'],f'SOURCE_HASH_DIFFERENT_{change["side"]}_{change["path"]}'
+          print('PASS',len(m['changed']),'exact source hashes')
+          PY
+      - name: Verify PHP/JS syntax and employee expense capability boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$RUNNER_TEMP/local" "$RUNNER_TEMP/public" -name '*.php' -print0 | xargs -0 -n1 -P 6 php -l > /dev/null
+          find "$RUNNER_TEMP/local" "$RUNNER_TEMP/public" -name '*.js' -print0 | xargs -0 -n1 -P 6 node --check > /dev/null
+          php -d zend.assertions=1 -d assert.exception=1 qa/sokna-r170/test_r170_access.php
+          echo 'PASS R170 462 PHP+JS syntax and role gate mock regression'
