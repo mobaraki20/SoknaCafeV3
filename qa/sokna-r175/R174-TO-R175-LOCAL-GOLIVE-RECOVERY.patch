@@ -149,7 +149,14 @@
          $raw=file_get_contents($this->policyPath);
 --- a/src/Domain/System/GoLiveResetCoordinator.php
 +++ b/src/Domain/System/GoLiveResetCoordinator.php
-@@ -31,7 +31,22 @@
+@@ -25,13 +25,28 @@
+     public function inspect():array
+     {
+         $local=$this->engine->inspect();
+-        if(is_file($this->receipt))return ['local'=>$local,'public'=>['table_count'=>21,'counts'=>[]],'installation'=>[],'pending'=>false,'already_completed'=>true];
++        if(is_file($this->receipt))return ['local'=>$local,'public'=>['table_count'=>null,'counts'=>null,'counts_verified'=>false],'installation'=>[],'pending'=>false,'already_completed'=>true];
+         $client=$this->core->publicEdgeSyncClient();
+         if(!$client->configured())throw new RuntimeException('GOLIVE_PUBLIC_NOT_CONFIGURED');
          $pending=$this->pending();
          if(is_array($pending)){
              $remote=$client->post('/api/v1/local/go-live/status',['purpose'=>'go_live_test_data_clear_20261111'],12);
