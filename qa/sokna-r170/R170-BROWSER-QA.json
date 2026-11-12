@@ -1,0 +1,44 @@
+[
+  {
+    "role": "buyer",
+    "viewport": 390,
+    "expense_panel": true,
+    "create_dialog": true,
+    "reverse_dialog": false
+  },
+  {
+    "role": "buyer",
+    "viewport": 1280,
+    "expense_panel": true,
+    "create_dialog": true,
+    "reverse_dialog": false
+  },
+  {
+    "role": "denied",
+    "viewport": 390,
+    "expense_panel": false,
+    "create_dialog": false,
+    "reverse_dialog": false
+  },
+  {
+    "role": "denied",
+    "viewport": 1280,
+    "expense_panel": false,
+    "create_dialog": false,
+    "reverse_dialog": false
+  },
+  {
+    "role": "admin",
+    "viewport": 390,
+    "expense_panel": true,
+    "create_dialog": true,
+    "reverse_dialog": true
+  },
+  {
+    "role": "admin",
+    "viewport": 1280,
+    "expense_panel": true,
+    "create_dialog": true,
+    "reverse_dialog": true
+  }
+]
