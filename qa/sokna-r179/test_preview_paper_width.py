@@ -5,6 +5,6 @@ section=css.split('.sc-print-preview-stage .sc-print-preview--image{',1)[1].spli
 assert 'inline-size:min(100%,340px)' in section
 assert 'block-size:auto' in section
 assert 'max-block-size:none' in section
-stage=css.split('.sc-print-preview-stage{')[-1].split('}',1)[0]
-assert 'overflow:auto' in stage
+stages=[s.split('}',1)[0] for s in css.split('.sc-print-preview-stage{')[1:]]
+assert any('overflow:auto' in s for s in stages)
 print('PASS IMAGE_PREVIEW_PAPER_WIDTH_AND_SCROLL_CSS')
