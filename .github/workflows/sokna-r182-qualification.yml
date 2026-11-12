@@ -1,0 +1,93 @@
+name: SOKNA R182 exact-source guarded qualification
+on:
+  push:
+    branches: [qa/sokna-r182-qualification-20261113]
+    paths:
+      - 'qa/sokna-r182/**'
+      - '.github/workflows/sokna-r182-qualification.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-mariadb-theme-registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SOKNA_R182_DISPOSABLE: 'YES'
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r182
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=ci-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177
+      - name: Rebuild exact R182 source from byte-pinned R177 package
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG="$(find "$RUNNER_TEMP/r177" -name 'SOKNA-R177-LOCAL-231ES-55BASE-GOLIVE-RESYNC-CANARY-PANEL-UPDATE.zip' -print -quit)"
+          test -n "$PKG"
+          echo "bb14b9bc93d7a37059331e24692c3bd60cc338c36e336a8cdcab6cb123b30286  $PKG" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/r182"
+          unzip -p "$PKG" artifacts/local/web.zip > "$RUNNER_TEMP/r177-web.zip"
+          unzip -q "$RUNNER_TEMP/r177-web.zip" -d "$RUNNER_TEMP/r182"
+          (cd "$RUNNER_TEMP/r182" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r182/R177-TO-R182-EXACT-PAYLOAD.patch")
+          echo "R182_SOURCE=$RUNNER_TEMP/r182" >> "$GITHUB_ENV"
+          php -l "$RUNNER_TEMP/r182/src/Domain/GuestContent/GuestContentService.php"
+          find "$RUNNER_TEMP/r182/src" -name '*.php' -print0 | xargs -0 -n1 php -l > "$RUNNER_TEMP/r182-lint.log"
+          php qa/sokna-r182/test_theme_version_allocator.php "$RUNNER_TEMP/r182"
+      - name: MariaDB 11.4 immutable theme 400 revision conflict and idempotency
+        run: php qa/sokna-r182/test_builtin_theme_mariadb.php "$R182_SOURCE"
+      - name: Explicit installation policy rejection remains enforced
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 qa/sokna-r182/test_install_gate_r182.py
+  native-windows-source-and-gate:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: r177
+      - name: Windows native exact R177 release regression and source patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = (Get-ChildItem r177 -Recurse -Filter 'SOKNA-R177-LOCAL-231ES-55BASE-GOLIVE-RESYNC-CANARY-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if (-not $package) { throw 'SOURCE_PACKAGE_MISSING' }
+          dotnet run --project qa/sokna-r177/R177Stage.csproj -c Release --no-launch-profile -- "$package"
+          if ($LASTEXITCODE -ne 0) { throw 'R177_NATIVE_BASELINE_REGRESSION_FAILED' }
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/r182" | Out-Null
+          Push-Location "$env:RUNNER_TEMP/r182"
+          try {
+            tar -xf "$package" artifacts/local/web.zip
+            Copy-Item 'artifacts/local/web.zip' 'web.zip'
+            Expand-Archive -Path 'web.zip' -DestinationPath 'web' -Force
+            Push-Location 'web'
+            try {
+              git apply --check "$env:GITHUB_WORKSPACE/qa/sokna-r182/R177-TO-R182-EXACT-PAYLOAD.patch"
+              git apply "$env:GITHUB_WORKSPACE/qa/sokna-r182/R177-TO-R182-EXACT-PAYLOAD.patch"
+            } finally { Pop-Location }
+            Write-Host 'PASS R182_WINDOWS_SOURCE_PATCH_FROM_PINNED_R177'
+          } finally { Pop-Location }
