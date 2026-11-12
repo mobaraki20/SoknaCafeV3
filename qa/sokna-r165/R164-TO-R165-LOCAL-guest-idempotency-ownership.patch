@@ -1,0 +1,29 @@
+--- a/src/Domain/Orders/GuestOrderService.php
++++ b/src/Domain/Orders/GuestOrderService.php
+@@ -36,7 +36,16 @@
+ 
+         $duplicate=$this->findOrderByClient($ctx['client_token'],true);
+         if($duplicate!==null){
+-            if((int)$duplicate['table_id']!==(int)$table['id'])throw new GuestOrderException('invalid_order','شناسه این ارسال با میز دیگری ثبت شده است.',409);
++            // The globally unique client token identifies *one* request, not any
++            // order at the same table. Do not disclose a Staff/other-device
++            // receipt when the token is reused or a browser replays it wrongly.
++            // A genuine retry from the original device remains idempotent,
++            // including after the session has subsequently closed.
++            if((int)$duplicate['table_id']!==(int)$table['id']
++                || (string)$duplicate['order_source']!=='guest'
++                || !hash_equals((string)($duplicate['device_token']??''),$ctx['device_token'])){
++                throw new GuestOrderException('idempotency_conflict','شناسه این ارسال متعلق به سفارش دیگری است.',409);
++            }
+             return $this->orderResponse($duplicate,true);
+         }
+ 
+@@ -339,7 +348,7 @@
+ 
+     private function findOrderByClient(string $token,bool $lock): ?array
+     {
+-        $stmt=$this->pdo->prepare('SELECT id,public_code,client_token,table_id,status,business_order_number,total_amount,updated_at FROM orders WHERE client_token=? LIMIT 1'.($lock?' FOR UPDATE':''));$stmt->execute([$token]);$row=$stmt->fetch(PDO::FETCH_ASSOC);return is_array($row)?$row:null;
++        $stmt=$this->pdo->prepare('SELECT id,public_code,client_token,table_id,device_token,order_source,status,business_order_number,total_amount,updated_at FROM orders WHERE client_token=? LIMIT 1'.($lock?' FOR UPDATE':''));$stmt->execute([$token]);$row=$stmt->fetch(PDO::FETCH_ASSOC);return is_array($row)?$row:null;
+     }
+ 
+     private function orderLines(int $orderId,bool $lock): array
