@@ -1,0 +1,16 @@
+{
+  "audit_id": "QR-LEGACY-001-R173-CORRECTED-20261112",
+  "source": "https://www.soknaspace.ir/Menu/",
+  "destination": "https://www.soknaspace.ir/menu",
+  "status": "SOURCE_CONFIG_TESTED_APACHE_NOT_APPLIED_TO_HOST",
+  "test_http_count": 32,
+  "source_case_sensitive": true,
+  "redirect_302_passed": true,
+  "redirect_301_passed": true,
+  "target_loop_prevented": true,
+  "query_preserved": true,
+  "production_host_changed": false,
+  "managed_htaccess_changed": false,
+  "old_destination": "https://www.soknagroup.ir/public/menu",
+  "old_destination_superseded": true
+}

@@ -1,0 +1,21 @@
+{
+  "id": "QR-LEGACY-001",
+  "source": "https://www.soknaspace.ir/Menu/",
+  "target": "https://www.soknaspace.ir/menu",
+  "temporary_status": 302,
+  "permanent_status_after_field_approval": 301,
+  "preserve_query": true,
+  "allowed_source_hosts": [
+    "soknaspace.ir",
+    "www.soknaspace.ir"
+  ],
+  "host_scope": "old-domain-host-owned-outside-sokna-managed-tree",
+  "local_public_managed_htaccess_modified": false,
+  "release_package_modified": false,
+  "real_host_applied": false,
+  "real_qr_scan_verified": false,
+  "status": "APACHE_LOCAL_TESTED_WAITING_HOST_DEPLOYMENT",
+  "strict_case_source_path": true,
+  "canonical_target_must_not_redirect": true,
+  "update_note": "2026-11-12 user corrected target to same host lowercase /menu; supersedes all soknagroup target drafts"
+}

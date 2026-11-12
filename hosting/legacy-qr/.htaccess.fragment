@@ -1,0 +1,10 @@
+# SOKNA legacy printed QR compatibility — host-only configuration.
+# PLACE ONLY in the old soknaspace.ir DocumentRoot, OUTSIDE every managed
+# SOKNA Local/Public release tree. Never patch a release-owned .htaccess.
+# Redirect only uppercase /Menu or /Menu/; lowercase /menu MUST NOT redirect.
+# Temporary during verification; switch ONLY R=302 to R=301 after field checks.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteCond %{HTTP_HOST} ^(www\.)?soknaspace\.ir(:[0-9]+)?$ [NC]
+RewriteRule ^Menu/?$ https://www.soknaspace.ir/menu [R=302,L]
+</IfModule>
