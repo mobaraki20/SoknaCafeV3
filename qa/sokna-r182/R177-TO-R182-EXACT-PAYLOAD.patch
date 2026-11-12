@@ -383,7 +383,7 @@
 +{"baseline":{"mode":"exact_compatible_allowlist","source_versions":["3.0.0-g6.2-workspace.231bz-r38-87-integrated-panel-uat","3.0.0-g6.2-workspace.231ca-r39-hall-reports-uat","3.0.0-g6.2-workspace.231cb-r53-cumulative-ux-home-uat","3.0.0-g6.2-workspace.231cc-r66-cumulative-home-uat","3.0.0-g6.2-workspace.231cd-r75-four-audit-fixes-home-uat","3.0.0-g6.2-workspace.231ce-r81-integrated-home-uat","3.0.0-g6.2-workspace.231cf-r82-late-served-atomic-home-uat","3.0.0-g6.2-workspace.231cg-r83-communication-uat","3.0.0-g6.2-workspace.231ch-r84-causal-read-uat","3.0.0-g6.2-workspace.231ci-r85-hall-policy-uat","3.0.0-g6.2-workspace.231cj-r86-dashboard-uat","3.0.0-g6.2-workspace.231ck-r87-hall-snapshot-uat","3.0.0-g6.2-workspace.231cl-r88-hall-controls-uat","3.0.0-g6.2-workspace.231cm-r89-universal-uat","3.0.0-g6.2-workspace.231cn-r91-universal-ready-uat","3.0.0-g6.2-workspace.231co-r92-dashboard-csp-uat","3.0.0-g6.2-workspace.231cp-r93-workspace-sync-uat","3.0.0-g6.2-workspace.231cq-r94-consolidated-home-uat","3.0.0-g6.2-workspace.231cr-r94-dashboard-hover-uat","3.0.0-g6.2-workspace.231cs-r94-universal-zero-tooltip-uat","3.0.0-g6.2-workspace.231ct-r96-table-move-draft-uat","3.0.0-g6.2-workspace.231cu-r97-authenticated-public-clock-uat","3.0.0-g6.2-workspace.231cv-r98-operator-draft-and-guest-relay-uat","3.0.0-g6.2-workspace.231cw-r99-hall-ui-scoped-uat","3.0.0-g6.2-workspace.231cx-r101-menu-autopublish-live-preview-uat","3.0.0-g6.2-workspace.231cy-r102-mobile-cart-scoped-uat","3.0.0-g6.2-workspace.231cz-r103-relay-recovery-mobile-hall-uat","3.0.0-g6.2-workspace.231da-r104-inventory-mobile-history-uat","3.0.0-g6.2-workspace.231db-r106-mobile-hall-flow-uat","3.0.0-g6.2-workspace.231dc-r108-mobile-flow-uat","3.0.0-g6.2-workspace.231dd-r109-mobile-bottom-nav-guest-uat","3.0.0-g6.2-workspace.231de-r110-multibase-package-repair-uat","3.0.0-g6.2-workspace.231df-r111-integrated-cafe-uat","3.0.0-g6.2-workspace.231dg-r112-guest-safe-append-uat","3.0.0-g6.2-workspace.231dh-r113-inventory-progressive-uat","3.0.0-g6.2-workspace.231di-r114-qa-diagnostics-uat","3.0.0-g6.2-workspace.231dj-r115-staff-account-ux-uat","3.0.0-g6.2-workspace.231dk-r116-safe-inventory-followup-uat","3.0.0-g6.2-workspace.231dl-r117-header-finance-audit-uat","3.0.0-g6.2-workspace.231dm-r118-support-bootstrap-fix-uat","3.0.0-g6.2-workspace.231dn-r119-consolidated-ux-uat","3.0.0-g6.2-workspace.231do-r120-system-modules-catalog-ux-uat","3.0.0-g6.2-workspace.231ea-r140-ddl-preflight-qa","3.0.0-g6.2-workspace.231eb-r149-catalog-ui-multibase-uat","3.0.0-g6.2-workspace.231ed-r153-guest-readonly-meta-qa","3.0.0-g6.2-workspace.231ee-r154-guest-theme-immutable-repair-canary","3.0.0-g6.2-workspace.231ei-r158-invoice-business-day-source-qa","3.0.0-g6.2-workspace.231ej-r159-scroll-continuity-and-dialog-qa","3.0.0-g6.2-workspace.231ek-r160-catalog-viewport-preservation-qa","3.0.0-g6.2-workspace.231em-r162-golive-reset-catalog-pagination-qa","3.0.0-g6.2-workspace.231en-r168-post-golive-guest-ux-print-qa"]},"component":"local","contracts":{"authority_epoch":"sokna-authority-epoch-v1","catalog_row_actions":"sokna-catalog-row-actions-v1","connection_association_lifecycle":"sokna-connection-association-lifecycle-v1","deployment_rebind":"sokna-local-public-origin-rebind-v2","freshness_contract":"projection-heartbeat-v1","guest_order_experience":"sokna-guest-order-experience-v1","guest_routing":"public-first-no-split-dns-v1","guest_theme_contract_revision":2,"guest_theme_engine":"sokna-guest-theme-engine-v2","human_numeric_display":"sokna-human-numeric-display-v2","inventory_count_ux":"sokna-inventory-count-session-autosave-v1","iran_time":"sokna-iran-time-v1","local_public_contract":1,"maintenance_control_protocol":"1.0","maintenance_web_adapter":"sokna-maintenance-web-adapter-v1","marketing_media":"sokna-marketing-media-v1","media_image_workflow":"sokna-media-image-workflow-v1","money_display_consistency":"sokna-money-display-consistency-v1","money_input_consistency":"sokna-money-input-consistency-v1","notification_experience":"sokna-notification-experience-v1","order_submit_reliability":"sokna-order-submit-reliability-v1","product_copy_governance":"sokna-product-copy-governance-v1","pwa_origin_lan_lifecycle":"sokna-pwa-origin-lan-lifecycle-v1","release_line":"v3","reports_marketing_ui":"sokna-reports-marketing-ui-v1","signed_http_transport_profile":"sokna-signed-http-v1","staff_lan_policy":"lan-preferred-public-fallback-v1","table_qr_lifecycle":"sokna-table-qr-lifecycle-v1","trace_contract":"sokna-trace-v1"},"format":"sokna-release-component-identity-v1","qualification":{"claim_rule":"Go-live reset is one-time admin-only with signed Public intake fence; user-approved test-data loss, no mandatory test-data backup; live installation and DB schema still require on-host preflight.","tier":"R181_HOME_UAT_NOT_PRODUCTION"},"release_set_id":"sokna-r181-home-followup-20261113-uat","schema_version":1,"source":{"canonical_file_count":587,"canonical_tree_sha256":"32ba8bafb648b7f0a02f415fdd85208e32d656cab698d3cef35262a28f7f91c0","digest_algorithm":"sha256(path\\0size\\0file_sha256\\n), lexical path order","digest_excludes":["resources/build-provenance.json","resources/release-identity-v1.json"],"managed_file_count":589,"source_ref":"Exact R180 full cumulative payload + R181 claim/adjustment/print-test/notification/inventory-selector scoped changes; unchanged SQL"},"version":"3.0.0-g6.2-workspace.231eu-r181-home-followup-uat"}
 --- a/src/Domain/GuestContent/GuestContentService.php
 +++ b/src/Domain/GuestContent/GuestContentService.php
-@@ -679,40 +679,66 @@
+@@ -679,40 +679,82 @@
  
      private function ensureBuiltinThemePackages(): void
      {
@@ -394,15 +394,31 @@
 +        // published to guests. The legacy sequential 0..255 scan can exhaust after
 +        // repeated cumulative releases; inspect the registry before choosing a patch.
          $lookup=$this->pdo->prepare('SELECT fingerprint FROM guest_theme_packages WHERE theme_key=? AND version=? LIMIT 1');
-+        $versions=$this->pdo->prepare('SELECT version FROM guest_theme_packages WHERE theme_key=?');
++        $versions=$this->pdo->prepare('SELECT version,package_json,source_kind FROM guest_theme_packages WHERE theme_key=?');
          $insert=$this->pdo->prepare("INSERT IGNORE INTO guest_theme_packages(theme_key,version,name,fingerprint,package_json,source_kind,installed_by_user_id) VALUES(?,?,?,?,?,'builtin',NULL)");
          foreach($this->themes->packages() as $manifest){
              $key=(string)$manifest['theme_key'];
              $baseVersion=(string)$manifest['version'];
 -            $parts=array_map('intval',explode('.',$baseVersion));
 +            $versions->execute([$key]);
-+            $existing=array_map('strval',$versions->fetchAll(\PDO::FETCH_COLUMN)?:[]);
++            $entries=$versions->fetchAll(\PDO::FETCH_ASSOC)?:[];
++            $existing=array_map(static fn(array $row):string=>(string)$row['version'],$entries);
 +            $next=self::nextBuiltinThemePatch($baseVersion,$existing);
++            // An immutable successor may already contain this exact template
++            // under a different patch number. Ignore version/fingerprint only;
++            // never rewrite a published row or accept a different template.
++            $desired=$manifest;
++            unset($desired['version'],$desired['fingerprint']);
++            $alreadyRegistered=false;
++            foreach($entries as $entry){
++                if((string)($entry['source_kind']??'')!=='builtin')continue;
++                $raw=json_decode((string)($entry['package_json']??''),true);
++                if(!is_array($raw))continue;
++                try{$normalized=$this->themes->validateManifest($raw);}catch(Throwable){continue;}
++                unset($normalized['version'],$normalized['fingerprint']);
++                if($normalized==$desired){$alreadyRegistered=true;break;}
++            }
++            if($alreadyRegistered)continue;
              $registered=false;
 -            // Probe the original version, then immutable .patch successors.
 -            // The same bundle always resolves to the same existing fingerprint;
