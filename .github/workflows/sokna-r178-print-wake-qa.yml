@@ -1,0 +1,54 @@
+name: SOKNA R178 print latency scoped wake contract QA
+on:
+  push:
+    branches: [qa/sokna-r178-print-latency-20261112]
+    paths:
+      - 'qa/sokna-r178/**'
+      - '.github/workflows/sokna-r178-print-wake-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  source-and-advisory-wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177
+      - name: Reconstruct exact R177 package and scoped printing page
+        run: |
+          set -euo pipefail
+          PKG="$(find "$RUNNER_TEMP/r177" -type f -name 'SOKNA-R177-LOCAL-231ES-55BASE-GOLIVE-RESYNC-CANARY-PANEL-UPDATE.zip' -print -quit)"
+          test -n "$PKG"
+          echo "bb14b9bc93d7a37059331e24692c3bd60cc338c36e336a8cdcab6cb123b30286  $PKG" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/r178"
+          unzip -p "$PKG" artifacts/local/web.zip > "$RUNNER_TEMP/web.zip"
+          unzip -q "$RUNNER_TEMP/web.zip" -d "$RUNNER_TEMP/r178"
+          echo "07a3422c797263c638550d4f08c22e7d3ef935bc9a220f60599749cf1740cdd6  $RUNNER_TEMP/r178/public/assets/printing-workspace.js" | sha256sum -c -
+          (cd "$RUNNER_TEMP/r178" && patch -p1 --fuzz=0 --batch < "$GITHUB_WORKSPACE/qa/sokna-r178/R177-TO-R178-PRINT-TEST-WAKE.patch")
+          echo "a9fbb780e7e4a9cb74d6c01c254d3b1dbd6c11ace9e0d254772a172dc2f5061e  $RUNNER_TEMP/r178/public/assets/printing-workspace.js" | sha256sum -c -
+      - name: Validate wake non-duplication and silent fallback
+        run: |
+          set -euo pipefail
+          node --check "$RUNNER_TEMP/r178/public/assets/printing-workspace.js"
+          node qa/sokna-r178/test_print_test_wake.js "$RUNNER_TEMP/r178/public/assets/printing-workspace.js"
+          python3 - "$RUNNER_TEMP/r178" <<'PY'
+          from pathlib import Path
+          import sys
+          root=Path(sys.argv[1])
+          js=(root/'public/assets/printing-workspace.js').read_text()
+          assert js.count("async function wakePrintTestAgent(")==1
+          assert js.count('void wakePrintTestAgent(key,id)')==1
+          bridge=Path('windows/print-agent/source/src/Sokna.PrintAgent.Service/LocalBridgeService.cs').read_text()
+          assert 'request.Path=="/v1/wake"' in bridge
+          assert 'FixedTimeEquals' in bridge
+          assert 'request.Header("Origin")' in bridge
+          assert '_wake.Pulse()' in bridge
+          print('PASS R178_ORIGIN_PAIRING_BOUND_AGENT_WAKE_ADVISORY_ONLY')
+          PY

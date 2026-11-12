@@ -1,0 +1,33 @@
+{
+  "format": "sokna-print-latency-source-audit-v1",
+  "date": "2026-11-12",
+  "basis": "user-supplied support-20261112-172907-755ee5a4.json.gz",
+  "installed_local_version": "3.0.0-g6.2-workspace.231es-r177-golive-resync-catalog-canary",
+  "agent_version": "6.2.11",
+  "agent_connected": true,
+  "printer": "Cash / POS-80C / USB002",
+  "tests": [
+    {
+      "job_type": "preparation_test",
+      "created_to_claimed_s": 13,
+      "claimed_to_submitted_s": 1,
+      "created_to_submitted_s": 14
+    },
+    {
+      "job_type": "customer_test",
+      "created_to_claimed_s": 3,
+      "claimed_to_submitted_s": 5,
+      "created_to_submitted_s": 8
+    }
+  ],
+  "backlog": 0,
+  "server_claim_poll_default_ms": 4000,
+  "diagnosis": "Panel test page enqueues durably but does not issue existing localhost authenticated wake hint; additional post-claim time requires PrintAgent worker timing evidence.",
+  "scope": "Only panel print-test UI receives advisory wake. Production order/settlement paths remain unchanged.",
+  "parent_sha256": "bb14b9bc93d7a37059331e24692c3bd60cc338c36e336a8cdcab6cb123b30286",
+  "changed_path": "public/assets/printing-workspace.js",
+  "before_sha256": "07a3422c797263c638550d4f08c22e7d3ef935bc9a220f60599749cf1740cdd6",
+  "after_sha256": "a9fbb780e7e4a9cb74d6c01c254d3b1dbd6c11ace9e0d254772a172dc2f5061e",
+  "field_verified": false,
+  "installable_release": false
+}

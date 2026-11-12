@@ -1,0 +1,30 @@
+--- a/public/assets/printing-workspace.js
++++ b/public/assets/printing-workspace.js
+@@ -93,7 +93,26 @@
+ function renderPrinterOptions(current='',kind='primary'){const fallback=kind==='fallback',select=$(fallback?'[data-fallback-printer-select]':'[data-printer-select]'),help=$(fallback?'[data-fallback-printer-help]':'[data-printer-help]'),agent=selectedAgent(kind);if(!select)return;select.replaceChildren();if(fallback){const none=document.createElement('option');none.value='';none.textContent='بدون چاپگر پشتیبان';select.append(none)}const printers=Array.isArray(agent?.printers)?agent.printers:[];if(!printers.length){if(!fallback){const o=document.createElement('option');o.value='';o.textContent=agent?'هیچ چاپگری از این دستگاه گزارش نشده است':'ابتدا دستگاه چاپ را انتخاب کن';select.append(o)}select.disabled=!fallback;if(help)help.textContent=agent?'سرویس چاپ باید ابتدا وضعیت و فهرست چاپگرهای ویندوز را دریافت کند.':(fallback?'مسیر پشتیبان اختیاری است.':'ابتدا دستگاه چاپ را انتخاب کن.');return}select.disabled=false;const exists=printers.some(p=>String(p.name||'').toLowerCase()===String(current||'').toLowerCase());if(current&&!exists){const old=document.createElement('option');old.value=current;old.textContent=`${current} — گزارش نشده؛ یک چاپگر واقعی انتخاب کن`;old.disabled=true;old.selected=true;select.append(old)}printers.forEach(p=>{const o=document.createElement('option');o.value=String(p.name||'');o.textContent=`${p.name} — ${p.readiness_label||'نامشخص'}`;o.disabled=!p.automation_capable;if(String(p.name||'').toLowerCase()===String(current||'').toLowerCase())o.selected=true;select.append(o)});if(!select.value&&!fallback){const first=[...select.options].find(o=>!o.disabled&&o.value);if(first)select.value=first.value}const chosen=printers.find(p=>String(p.name||'')===select.value);if(help)help.textContent=chosen?`${chosen.readiness_label} · ${printerMeta(chosen)}`:(fallback?'مسیر پشتیبان فقط هنگام خرابی مسیر اصلی استفاده می‌شود.':'چاپگر واقعی را از فهرست انتخاب کن.')}
+ function openDestination(d){const dialog=$('[data-dialog="destination"]'),form=$('[data-form="destination"]');form.elements.destination_key.value=d.destination_key;form.elements.agent_id.value=d.agent_id||'';form.elements.fallback_agent_id.value=d.fallback_agent_id||'';form.elements.copies.value=d.copies||1;form.elements.paper_width_mm.value=d.paper_width_mm||80;form.elements.printable_width_mm.value=d.printable_width_mm||72.1;form.elements.required_for_operation.checked=Number(d.required_for_operation)===1;form.elements.active.checked=Number(d.active)===1;$('[data-destination-label]').textContent=`${d.label}${d.readiness_label?` · ${d.readiness_label}`:''}`;renderPrinterOptions(d.windows_queue_name||'','primary');renderPrinterOptions(d.fallback_windows_queue_name||'','fallback');if(!window.SoknaUI?.showDialog?.(dialog,{focusTitle:true}))dialog.showModal()}
+ 
+-async function printTest(key,packageId=null){try{status('در حال بررسی مسیر چاپ آزمایشی…');const j=await post({action:'print_test',destination_key:key,request_id:'webtest-'+crypto.randomUUID().replaceAll('-',''),...(packageId?{package_id:packageId}:{})});const id=Number(j.result.job_id||0);if(!id){await refresh();throw new Error('کار چاپ آزمایشی ایجاد نشد.')}status('درخواست آزمایشی ثبت شد؛ وضعیت سرویس چاپ را بررسی می‌کنیم.');await waitForJob(id)}catch(e){sectionState(e.message||'چاپ آزمایشی انجام نشد.',true);status('')}}
++// Advisory wake: the durable server queue remains authoritative and polling is the fallback.
++// A wake never creates or submits a print job; the Agent validates origin and pairing.
++async function wakePrintTestAgent(key,jobId){
++ try{
++  if(!Number.isSafeInteger(jobId)||jobId<1)return false;
++  const dest=(snap?.destinations||[]).find(d=>d.destination_key===key);
++  const agentId=Number(dest?.agent_id||0);
++  if(!Number.isSafeInteger(agentId)||agentId<1)return false;
++  const bridge=await pdfTestBridge(agentId);
++  const port=Number(bridge.port);
++  if(!Number.isInteger(port)||port<1||port>65535||!bridge.pairing_id)return false;
++  const wake={type:'print.wake',protocol_version:1,request_id:'test-wake-'+crypto.randomUUID(),job_ids:[jobId],expires_at:new Date(Date.now()+30000).toISOString()};
++  const response=await fetch(`http://127.0.0.1:${port}/v1/wake`,{method:'POST',headers:{'Content-Type':'application/json','X-Sokna-Bridge-Pairing':bridge.pairing_id},body:JSON.stringify(wake),signal:AbortSignal.timeout(1500)});
++  if(!response.ok)return false;
++  const data=await response.json().catch(()=>null);
++  return data?.success===true&&data?.accepted===true;
++ }catch{return false;}
++}
++
++async function printTest(key,packageId=null){try{status('در حال بررسی مسیر چاپ آزمایشی…');const j=await post({action:'print_test',destination_key:key,request_id:'webtest-'+crypto.randomUUID().replaceAll('-',''),...(packageId?{package_id:packageId}:{})});const id=Number(j.result.job_id||0);if(!id){await refresh();throw new Error('کار چاپ آزمایشی ایجاد نشد.')}void wakePrintTestAgent(key,id);status('درخواست آزمایشی ثبت شد؛ وضعیت سرویس چاپ را بررسی می‌کنیم.');await waitForJob(id)}catch(e){sectionState(e.message||'چاپ آزمایشی انجام نشد.',true);status('')}}
+ async function waitForJob(jobId){for(let i=0;i<8;i++){await sleep(i===0?500:1200);const j=await request(api);snap={...(j.snapshot||{}),_error:j.error||null};const restore=window.SoknaUI?.captureScroll?.(root);renderPrinting();restore?.();const job=snap.recent_jobs?.find(x=>Number(x.id)===Number(jobId));if(!job)continue;status(`چاپ آزمایشی: ${printStatusLabel(job.status)} — ${jobDetail(job)}`);if(job.status==='submitted'){status('چاپ به صف ویندوز تحویل شد؛ خروج کاغذ را روی چاپگر بررسی کن.');return}if(['failed','blocked','unknown','recovery_hold','cancelled'].includes(job.status)){sectionState(jobDetail(job),true);return}}sectionState('کار چاپ هنوز تکمیل نشده است؛ وضعیت دستگاه و مقصد را بررسی کن.',true)}
+ async function cancelPrintJob(j){
+  if(!['pending','failed','blocked'].includes(j.status)){sectionState('وضعیت این چاپ تغییر کرده است؛ قبل از تصمیم دوباره تازه‌سازی کن.',true);return}

@@ -1,0 +1,48 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const source=fs.readFileSync(process.argv[2],'utf8');
+function extract(start,end){const a=source.indexOf(start),b=source.indexOf(end,a+start.length);assert(a>=0&&b>a,`missing ${start}`);return source.slice(a,b);}
+const impl=extract('async function wakePrintTestAgent(', 'async function waitForJob(');
+const destinations=[{destination_key:'prep_shared',agent_id:1},{destination_key:'customer_receipt',agent_id:1}];
+const callTrace=[];
+let wakeCount=0,enqueueCount=0,waitCount=0,bridgeCount=0;
+let mode='ok';
+const pdfTestBridge=async id=>{bridgeCount++;assert.equal(id,1);if(mode==='bridge-down')throw Error('bridge_unavailable');return {port:17653,pairing_id:'test-pairing',origin:'http://127.0.0.1:18080'}};
+const fetch=async (url,opt)=>{
+ wakeCount++; assert.equal(url,'http://127.0.0.1:17653/v1/wake');assert.equal(opt.method,'POST');
+ assert.equal(opt.headers['X-Sokna-Bridge-Pairing'],'test-pairing');
+ assert.equal(opt.headers['Content-Type'],'application/json');
+ const body=JSON.parse(opt.body);assert.equal(body.type,'print.wake');assert.equal(body.protocol_version,1);
+ assert.deepEqual(body.job_ids,[249]);assert.ok(body.request_id.startsWith('test-wake-'));
+ assert.ok(Date.parse(body.expires_at)-Date.now()>10000);
+ assert.ok(Date.parse(body.expires_at)-Date.now()<30001);
+ callTrace.push('wake');
+ if(mode==='reject')return {ok:false,status:503};
+ return {ok:true,json:async()=>({success:true,accepted:true})};
+};
+const crypto={randomUUID:()=> 'f1b23c45-d67a-4890-8abc-123456789abc'};
+const post=async req=>{enqueueCount++;assert.equal(req.action,'print_test');callTrace.push('enqueue');return {result:{job_id:249}}};
+const status=()=>{};const toast=()=>{};const refresh=async()=>{};const sectionState=()=>{};
+const waitForJob=async id=>{waitCount++;assert.equal(id,249);callTrace.push('status_poll')};
+const sleep=async()=>{};
+const sandbox=new Function('snap','pdfTestBridge','fetch','crypto','post','status','toast','refresh','sectionState','waitForJob','sleep','AbortSignal', 'Date', `${impl}\nreturn {wakePrintTestAgent,printTest};`);
+const {wakePrintTestAgent,printTest}=sandbox({destinations},pdfTestBridge,fetch,crypto,post,status,toast,refresh,sectionState,waitForJob,sleep,AbortSignal,Date);
+(async()=>{
+ assert.equal(await wakePrintTestAgent('prep_shared',249),true);
+ assert.equal(wakeCount,1);
+ assert.equal(await wakePrintTestAgent('unknown',249),false);
+ assert.equal(await wakePrintTestAgent('prep_shared',0),false);
+ assert.equal(wakeCount,1,'bad job must never wake');
+ mode='bridge-down';assert.equal(await wakePrintTestAgent('prep_shared',249),false);
+ assert.equal(wakeCount,1,'bridge failure must use ordinary durable queue');
+ mode='reject';assert.equal(await wakePrintTestAgent('prep_shared',249),false);
+ mode='ok';enqueueCount=0;wakeCount=0;waitCount=0;callTrace.length=0;
+ await printTest('customer_receipt');
+ await new Promise(r=>setImmediate(r));
+ assert.equal(enqueueCount,1,'no duplicate enqueue');assert.equal(wakeCount,1,'exactly one advisory wake');
+ assert.equal(waitCount,1,'status monitoring retained');
+ assert.deepEqual(callTrace,['enqueue','status_poll','wake'],'wake hint must follow committed job and not block status checks');
+ assert.equal(callTrace[0],'enqueue');
+ console.log('PASS R178_UI_ADVISORY_WAKE_CONTRACT_WAKES_ONCE_AND_NEVER_DUPLICATES_PRINT');
+})();
