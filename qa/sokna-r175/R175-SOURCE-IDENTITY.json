@@ -1,0 +1,24 @@
+{
+  "parent": "R174 Local 231ep byte-pinned",
+  "parent_zip_sha256": "b8e15174670240c082a78bf7c87b43d6d72ba33590d1e645f601e7bc45336088",
+  "changed": [
+    {
+      "path": "src/Domain/System/GoLiveResetEngine.php",
+      "base_sha256": "d00fc3f68d15410b14b1e979085305859129c059d2cabc574837a4b8c10bbf70",
+      "target_sha256": "df5b33d4923f3424e2513ad8fd366c6d2e76a0f8b059be722704c6c453718be4"
+    },
+    {
+      "path": "src/Domain/System/GoLiveResetCoordinator.php",
+      "base_sha256": "e51723c1021b03a7a6b3b99795b66f328e00e24134c55f2def97726253bc1241",
+      "target_sha256": "1c11cbf304e73ad30bf60a76514c5e122a33de0a73d52b51d5aebbce98f6369c"
+    },
+    {
+      "path": "public/system/go-live.php",
+      "base_sha256": "b9c88c8a6db95a67b62c3bcb2c4cda95123578f91a438005d32718edd40472a6",
+      "target_sha256": "726915dcc07f62ff6cdd46bf256bfd77482d9318ecd14f6e5545c707249e7436"
+    }
+  ],
+  "scope": "local-only",
+  "no_public_change": true,
+  "production_approved": false
+}
