@@ -1,0 +1,133 @@
+name: SOKNA R168 cumulative guest UX exact-source installation QA
+on:
+  push:
+    branches: [qa/sokna-r168-guest-ux-install-qualification-20261112]
+    paths:
+      - 'qa/sokna-r168/**'
+      - '.github/workflows/sokna-r168-cumulative-uat.yml'
+permissions:
+  contents: write
+jobs:
+  source-and-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring,pdo_mysql,zip,gd
+      - name: Retrieve EXACT R162 installers (immutable parents)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r168-parents" "$RUNNER_TEMP/r168" "$RUNNER_TEMP/r168-local" "$RUNNER_TEMP/r168-public"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/r168-parents"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/r168-parents"
+          echo "16adab9910c017d97ebc256e721bfbc22e26103979adc59763c6bf978b6f5471  $RUNNER_TEMP/r168-parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "96e976c43644f62e1246a29752af3fab5fff62978421f93db8065d8460a67503  $RUNNER_TEMP/r168-parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" | sha256sum -c -
+      - name: Byte-pinned R162-to-R168 reconstruction and installer gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d qa/sokna-r168/local_r168_overlay.zip.b64 > "$RUNNER_TEMP/overlay-local.zip"
+          base64 -d qa/sokna-r168/public_r168_overlay.zip.b64 > "$RUNNER_TEMP/overlay-public.zip"
+          python qa/sokna-r168/build_r168.py \
+            --local_parent "$RUNNER_TEMP/r168-parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" \
+            --public_parent "$RUNNER_TEMP/r168-parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" \
+            --local_overlay "$RUNNER_TEMP/overlay-local.zip" --public_overlay "$RUNNER_TEMP/overlay-public.zip" \
+            --manifest qa/sokna-r168/r168_source_delta_manifest.json \
+            --outdir "$RUNNER_TEMP/r168"
+          echo '016e2e9b5fda1bd3b8aebda5ff1210f3b60cd567a7716e19d2bde130408df009  '"$RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip"
+          unzip -p "$RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/r168-local-web.zip"
+          unzip -q "$RUNNER_TEMP/r168-local-web.zip" -d "$RUNNER_TEMP/r168-local"
+          unzip -q "$RUNNER_TEMP/r168/SOKNA-R168-PUBLIC-35HS-FROM-35HP-PANEL-UPDATE.zip" -d "$RUNNER_TEMP/r168-public-outer"
+          cp -a "$RUNNER_TEMP/r168-public-outer/payload/." "$RUNNER_TEMP/r168-public/"
+          echo "R168_LOCAL=$RUNNER_TEMP/r168-local" >> "$GITHUB_ENV"
+          echo "R168_PUBLIC=$RUNNER_TEMP/r168-public" >> "$GITHUB_ENV"
+      - name: Full source syntax, existing idempotency/price guard, regression invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$R168_LOCAL" "$R168_PUBLIC" -name '*.php' -print0 | xargs -0 -n1 -P 8 php -l > /dev/null
+          find "$R168_LOCAL" "$R168_PUBLIC" -name '*.js' -print0 | xargs -0 -n1 -P 8 node --check > /dev/null
+          mkdir -p "$RUNNER_TEMP/local/public" "$RUNNER_TEMP/public"
+          ln -s "$R168_LOCAL/public/assets" "$RUNNER_TEMP/local/public/assets"
+          ln -s "$R168_PUBLIC/assets" "$RUNNER_TEMP/public/assets"
+          node qa/sokna-r167/test_r167_replay_guard.js "$RUNNER_TEMP"
+          python - "$R168_LOCAL" "$R168_PUBLIC" <<'PY'
+          import pathlib,sys
+          local,public=map(pathlib.Path,sys.argv[1:]);L=(local/'public/assets/scds/guest.js').read_text();P=(public/'assets/scds/guest.js').read_text()
+          for source in (L,P):
+              assert "data-sg-waiter-confirm" in source
+              assert "لغو فراخوان" in source and "لغو از این دستگاه مجاز نیست" in source
+              assert "loadPendingMutation()" in source and "loadPendingSubmission()" in source
+              assert "sg-visual-height" in source
+          for root,renderer in [(local,'src/Domain/GuestLan/GuestLanPageRenderer.php'),(public,'src/Guest/GuestPageRenderer.php')]:
+              h=(root/renderer).read_text()
+              assert 'sg-waiter-status-icon' in h and 'data-sg-detail-note' in h
+              assert 'data-sg-quote-total' in h
+              css=(root/('public/assets/scds/guest.css' if root==local else 'assets/scds/guest.css')).read_text()
+              assert '[data-sg-close-layer]' in css and '.sg-order-total strong' in css and ':focus-within' in css
+          print('PASS R168 local/public waiter, mobile keyboard, total/receipt and replay source contracts')
+          PY
+          php -r 'require $argv[1]."/src/Domain/Printing/PrintTemplatePackageService.php"; $obj=(new ReflectionClass("Sokna\\Local\\Domain\\Printing\\PrintTemplatePackageService"))->newInstanceWithoutConstructor();$m=(new ReflectionClass($obj))->getMethod("standardPackage");$p=$m->invoke($obj,"preparation");if($p["version"]!=="1.1.0"||$p["template"]["design"]["item_layout"]!=="columnar"||$p["template"]["show_prices"]!==false)exit(29);echo "PASS R168 versioned optional columnar preparation template\n";' "$R168_LOCAL"
+      - name: Browser smoke test on genuine guest JS including price recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q playwright==1.55.0
+          python -m playwright install --with-deps chromium > /dev/null
+          # The genuine Local/Public assets are already linked for the replay-guard step.
+          python qa/sokna-r167/test_r167_browser.py "$RUNNER_TEMP"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r168-exact-installable-uat-qualified-candidates
+          path: |
+            ${{ runner.temp }}/r168/*.zip
+            ${{ runner.temp }}/r168/*.json
+          if-no-files-found: error
+          retention-days: 14
+  native-windows-prerelease:
+    needs: source-and-web
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: r168-exact-installable-uat-qualified-candidates
+          path: r168-out
+      - name: Native Windows VerifyOnly all 51 exact baselines and Stage Home Canary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $package=(Get-ChildItem r168-out -Recurse -Filter 'SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if(-not $package){throw 'R168_LOCAL_MISSING'}
+          dotnet run --project qa/sokna-r168/R168Stage.csproj -c Release --no-launch-profile -- $package
+          if($LASTEXITCODE-ne0){throw 'R168_WINDOWS_NATIVE_TEST_FAILED'}
+      - name: Publish isolated UAT pre-release only after complete gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $assets=Get-ChildItem r168-out -Recurse -File | Where-Object {$_.Name -like 'SOKNA-R168-*.zip' -or $_.Name -eq 'R168-PACKAGE-IDENTITY.json'}
+          if($assets.Count -ne 8){throw "R168_EXPECTED_EIGHT_ASSETS_GOT_$($assets.Count)"}
+          $notes=Join-Path $env:RUNNER_TEMP 'R168-UAT.md'
+          @'
+          # SOKNA R168 cumulative Local 231en / Public 35hs — isolated UAT
+          Preserves published R162 one-time Go-Live clearance and migrations, plus the R163-R167 scoped fixes. Guest waiter modal icon/clear cancel ownership, accessible controls, better cart/total contrast, keyboard note access, compact review; adds versioned columnar preparation receipt template 1.1.0 (does not overwrite active customized template). Retains exact client_token, append/ACK, price-reconciliation safeguards.
+          **Home Local 231ed install repair:** explicitly recognizes the real home-canary release_id alongside audited R153 when the VERSION, managed-tree SHA256, schema fingerprint, epoch policy and migration head all agree; unknown identities still fail closed.
+          Exact Public bridges from 35hk, 35hl, 35hn, 35ho, 35hp and 35hr, NEVER a generic unsafe Public update. The source and native Windows installation tests pass but café/home installation and printer/device UAT remain unverified. No database deletion on package install; the user-triggered go-live clearance remains a separate one-time admin action.
+          '@ | Set-Content $notes -Encoding utf8NoBOM
+          $args=@('release','create','sokna-r168-post-golive-guest-ux-uat-20261112','--repo','mobaraki20/SoknaCafeV3','--title','SOKNA R168 cumulative guest UX + verified home baseline UAT','--prerelease','--notes-file',$notes,'--target',$env:GITHUB_SHA)
+          foreach($asset in $assets){$args+=@($asset.FullName)}
+          & gh @args
+          if($LASTEXITCODE-ne0){throw 'R168_RELEASE_FAILED'}
