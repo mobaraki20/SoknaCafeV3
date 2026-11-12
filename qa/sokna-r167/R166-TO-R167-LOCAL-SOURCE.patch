@@ -1,0 +1,170 @@
+--- a/public/assets/login.js
++++ b/public/assets/login.js
+@@ -4,6 +4,29 @@
+ const key=root.dataset.loginStorageKey||'sokna.login.last-account',explicit=root.dataset.selectedExplicit==='1';
+ function accountKey(card){return card?.dataset.accountKey||card?.dataset.username||card?.querySelector('input[type="radio"]')?.value||''}
+ function choose(card,{focus=false}={}){if(!card)return;cards.forEach(c=>{const on=c===card;c.classList.toggle('is-selected',on);const radio=c.querySelector('input[type="radio"]');if(radio)radio.checked=on});const value=accountKey(card);if(hidden)hidden.value=value;try{localStorage.setItem(key,value)}catch{}const theme=card.dataset.themePreference;if(theme&&window.SoknaTheme?.setPreference)window.SoknaTheme.setPreference(theme,{persist:true,announceChange:false});if(focus)card.querySelector('input')?.focus()}
+-if(cards.length){let preferred='';try{preferred=localStorage.getItem(key)||''}catch{}const checked=cards.find(c=>c.querySelector('input[type="radio"]')?.checked);const explicitKey=explicit?accountKey(checked):'';const target=(explicitKey&&cards.find(c=>accountKey(c)===explicitKey))||cards.find(c=>accountKey(c)===preferred)||checked||cards[0];choose(target);cards.forEach(card=>{card.tabIndex=0;card.addEventListener('click',()=>choose(card));card.addEventListener('keydown',e=>{if(!['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Enter',' '].includes(e.key))return;e.preventDefault();if(e.key==='Enter'||e.key===' '){choose(card);return}const i=cards.indexOf(card),columns=window.matchMedia('(max-width:430px)').matches?1:window.matchMedia('(max-width:760px)').matches?2:3;let delta=0;if(e.key==='ArrowLeft')delta=1;if(e.key==='ArrowRight')delta=-1;if(e.key==='ArrowDown')delta=columns;if(e.key==='ArrowUp')delta=-columns;choose(cards[(i+delta+cards.length)%cards.length],{focus:true})})})}
++if(cards.length){let preferred='';try{preferred=localStorage.getItem(key)||''}catch{}const checked=cards.find(c=>c.querySelector('input[type="radio"]')?.checked);const explicitKey=explicit?accountKey(checked):'';const target=(explicitKey&&cards.find(c=>accountKey(c)===explicitKey))||cards.find(c=>accountKey(c)===preferred)||checked||cards[0];choose(target);cards.forEach(card=>{card.tabIndex=0;card.addEventListener('click',()=>choose(card));card.addEventListener('keydown',e=>{if(!['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Enter',' '].includes(e.key))return;e.preventDefault();if(e.key==='Enter'||e.key===' '){choose(card);return}const navCards=cards.filter(c=>!c.hidden),i=navCards.indexOf(card),columns=window.matchMedia('(max-width:430px)').matches?1:window.matchMedia('(max-width:760px)').matches?2:3;let delta=0;if(e.key==='ArrowLeft')delta=1;if(e.key==='ArrowRight')delta=-1;if(e.key==='ArrowDown')delta=columns;if(e.key==='ArrowUp')delta=-columns;if(i>=0&&navCards.length)choose(navCards[(i+delta+navCards.length)%navCards.length],{focus:true})})})}
++// Large-account login stays a quick selection, not a page full of account cards.
++// Progressive enhancement: without JavaScript the original native radio list remains.
++if(cards.length>8){
++  const fieldset=root.querySelector('[data-login-accounts]'),grid=fieldset?.querySelector('.sc-login-account-grid');
++  if(fieldset&&grid){
++    const toggle=document.createElement('button');toggle.type='button';toggle.className='sc-button sc-button--secondary sc-login-picker-toggle';toggle.setAttribute('aria-expanded','false');
++    const panel=document.createElement('div');panel.className='sc-login-picker-panel';panel.hidden=true;
++    const search=document.createElement('input');search.type='search';search.className='sc-control sc-login-picker-search';search.placeholder='جست‌وجوی نام یا حساب کاربری';search.setAttribute('aria-label','جست‌وجوی حساب کاربری');search.autocomplete='off';
++    const count=document.createElement('small');count.className='sc-login-picker-count';count.setAttribute('role','status');count.setAttribute('aria-live','polite');
++    fieldset.insertBefore(toggle,grid);fieldset.insertBefore(panel,grid);panel.append(search,count,grid);
++    const visible=()=>cards.filter(card=>!card.hidden);
++    const selected=()=>cards.find(card=>card.querySelector('input[type="radio"]')?.checked)||cards[0];
++    const selectedLabel=()=>selected()?.querySelector('.sc-login-account__copy strong')?.textContent?.trim()||'انتخاب کاربر';
++    const label=()=>{toggle.textContent='حساب: '+selectedLabel()+'  ▾';};
++    const filter=()=>{const needle=search.value.trim().toLocaleLowerCase('fa-IR');let n=0;cards.forEach(card=>{const name=(accountKey(card)+' '+(card.querySelector('.sc-login-account__copy')?.textContent||'')).toLocaleLowerCase('fa-IR');card.hidden=Boolean(needle)&&!name.includes(needle);if(!card.hidden)n++;});count.textContent=n?`${n} حساب پیدا شد`:'حسابی با این نام پیدا نشد.';};
++    const close=(focusPassword=false)=>{panel.hidden=true;toggle.setAttribute('aria-expanded','false');label();if(focusPassword)form?.querySelector('input[name="password"]')?.focus();else toggle.focus();};
++    toggle.addEventListener('click',()=>{if(!panel.hidden){close();return;}panel.hidden=false;toggle.setAttribute('aria-expanded','true');search.value='';filter();search.focus();});
++    search.addEventListener('input',filter);
++    panel.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();return;}if(e.key==='ArrowDown'&&document.activeElement===search){e.preventDefault();visible()[0]?.focus();}});
++    cards.forEach(card=>card.addEventListener('click',()=>close(true)));
++    label();
++  }
++}
+ form?.addEventListener('submit',()=>{const button=form.querySelector('button[type="submit"]');if(button){button.disabled=true;button.setAttribute('aria-busy','true')}});
+ })();
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6101,3 +6101,11 @@
+  .sc-finance-invoice-row__main>small{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.6}
+  .sc-finance-invoice-row__value{display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;justify-items:start;text-align:start;white-space:normal;gap:8px}
+ }
++
++/* Large-user login picker: native radio cards remain intact behind a searchable drawer. */
++.sc-login-picker-toggle{inline-size:100%;justify-content:space-between;text-align:start;min-block-size:44px}
++.sc-login-picker-panel{display:grid;gap:8px;margin-block-start:10px}
++.sc-login-picker-panel[hidden],.sc-login-account[hidden]{display:none!important}
++.sc-login-picker-search{inline-size:100%;min-block-size:44px}
++.sc-login-picker-count{color:var(--sc-muted);font-size:.75rem}
++.sc-login-picker-panel .sc-login-account-grid{max-block-size:min(46vh,390px);overflow-y:auto;overscroll-behavior:contain;padding:2px;scrollbar-gutter:stable}
+--- a/public/assets/scds/guest.js
++++ b/public/assets/scds/guest.js
+@@ -696,7 +696,7 @@
+       quoteEls.discount&&(quoteEls.discount.textContent=`− ${formatMoney(f.discount||0)}`); if(quoteEls.discountRow)quoteEls.discountRow.hidden=!(Number(f.discount)>0);
+       quoteEls.tax&&(quoteEls.tax.textContent=formatMoney(f.tax||0)); if(quoteEls.taxRow)quoteEls.taxRow.hidden=!(Number(f.tax)>0);
+       if(quoteEls.subtotalRow)quoteEls.subtotalRow.hidden=!(Number(f.discount||0)>0||Number(f.tax||0)>0||Number(f.subtotal??cartTotal())!==Number(f.total??cartTotal()));quoteEls.total&&(quoteEls.total.textContent=formatMoney(f.total??cartTotal())); if(quoteEls.state)quoteEls.state.textContent='مبلغ با وضعیت فعلی حساب محاسبه شد.';
+-    } catch(error) { if(seq!==quoteSeq)return;if(quoteEls.state)quoteEls.state.textContent=error?.message||'پیش‌نمایش مبلغ در دسترس نیست.'; }
++    } catch(error) { if(seq!==quoteSeq)return;if(quoteEls.state)quoteEls.state.textContent=error?.code==='price_changed'?'قیمت منو تغییر کرده است؛ هنگام ثبت می‌توانی مبلغ جدید را تأیید کنی.':(error?.message||'پیش‌نمایش مبلغ در دسترس نیست.'); }
+   };
+   customerNote?.addEventListener('input', () => { saveGuestDraft();globalThis.clearTimeout(customerNote.__quoteTimer); customerNote.__quoteTimer=globalThis.setTimeout(refreshQuote,300); });
+ 
+@@ -826,9 +826,55 @@
+     if(note.length>1000)throw new Error('یادداشت سفارش از حد مجاز بیشتر است.');
+     return {action:'append',append_only:true,table_token:tableToken,session_token:sessionToken,device_token:deviceToken,order_code:String(order.order_code),expected_signature:String(order.edit_signature),customer_note:note,items:lines};
+   };
+-  const submitOrder = async () => {
++  // A definitive price-conflict is *not* an order receipt. Before any new
++  // mutation, collect all current prices through read-only Local quotes and
++  // require the guest to approve the new amount; keep the cart if declined.
++  const priceRecoverySignature=()=>JSON.stringify({session_token:sessionToken,editing_order:editingOrder?.order_code||'',cart:Array.from(cart.entries()).map(([key,line])=>[key,line.id,line.quantity,line.takeaway_quantity,line.note,line.bundle_choice_item_id,line.unit_price])});
++  const resolveCartPriceConflict=async(initialError)=>{
++    if(initialError?.code!=='price_changed'||editingOrder||!endpoints.quote||!unsafeAllowed()||loadPendingMutation()||loadPendingSubmission())return 'unavailable';
++    const before=priceRecoverySignature(),lines=payloadLines().map(line=>({...line}));
++    if(!lines.length)return 'unavailable';
++    const replacements=new Map();let conflict=initialError,preview=null;
++    // A read-only quote can discover another changed line; never probe forever.
++    for(let attempt=0;attempt<=cart.size;attempt++){
++      if(conflict){
++        const details=conflict?.body?.details||{};
++        const itemId=Number(details.item_id),price=Number(details.current_price);
++        if(!Number.isSafeInteger(itemId)||itemId<1||!Number.isSafeInteger(price)||price<0)return 'unavailable';
++        const possible=Array.from(cart.entries()).filter(([,line])=>Number(line.id)===itemId);
++        const specified=Object.prototype.hasOwnProperty.call(details,'bundle_choice_item_id');
++        const choiceId=Number(details.bundle_choice_item_id||0);
++        const matching=specified?possible.filter(([,line])=>Number(line.bundle_choice_item_id||0)===choiceId):possible;
++        // Older Local releases do not include the choice id. Reprice only
++        // when the choice can be determined unambiguously.
++        const unique=new Set(matching.map(([,line])=>Number(line.bundle_choice_item_id||0)));
++        if(matching.length!==1||unique.size!==1)return 'unavailable';
++        const [cartKey,line]=matching[0],key=`${itemId}|${Number(line.bundle_choice_item_id||0)}`;
++        if(replacements.has(key)||price===Number(line.unit_price))return 'unavailable';
++        replacements.set(key,{cartKey,itemId,choiceId:Number(line.bundle_choice_item_id||0),price,name:String(itemMap.get(itemId)?.name||'آیتم')});
++        lines.forEach(row=>{if(Number(row.id)===itemId&&Number(row.bundle_choice_item_id||0)===Number(line.bundle_choice_item_id||0))row.expected_price=price;});
++      }
++      if(!endpoints.quote||!unsafeAllowed()||before!==priceRecoverySignature())return 'unavailable';
++      try{
++        const body=apiOk(await postJson(endpoints.quote,{quote_mode:'create',table_token:tableToken,session_token:sessionToken,device_token:deviceToken,client_token:'',customer_note:customerNote?.value||'',items:lines},10000),'مبلغ جدید سفارش دریافت نشد.');
++        preview=body.financial_preview;break;
++      }catch(error){if(error?.code!=='price_changed'||!definitiveClientFailure(error))return 'unavailable';conflict=error;}
++    }
++    if(!preview||!Number.isSafeInteger(Number(preview.total))||Number(preview.total)<0||!replacements.size)return 'unavailable';
++    const names=Array.from(replacements.values()).map(x=>x.name).slice(0,3).join('، ');
++    const accepted=await guestConfirm('تأیید مبلغ جدید سفارش',`قیمت ${names} به‌روز شده است. جمع نهایی سفارش ${formatMoney(preview.total)} است. با این مبلغ ثبت کنیم؟`,{confirmLabel:'تأیید مبلغ و ثبت سفارش'});
++    if(!accepted){if(orderMessage){orderMessage.classList.remove('is-error');orderMessage.textContent='سبد حفظ شد؛ می‌توانی مبلغ جدید را بررسی و دوباره ثبت کنی.';}return 'declined';}
++    if(!unsafeAllowed()||before!==priceRecoverySignature()||loadPendingMutation()||loadPendingSubmission())return 'unavailable';
++    for(const x of replacements.values()){
++      const line=cart.get(x.cartKey);
++      if(!line||Number(line.id)!==x.itemId||Number(line.bundle_choice_item_id||0)!==x.choiceId)return 'unavailable';
++    }
++    for(const x of replacements.values())cart.get(x.cartKey).unit_price=x.price;
++    saveGuestDraft();renderCart();return 'accepted';
++  };
++  const submitOrder = async (priceRetry=false) => {
+     const lines=payloadLines();if(!lines.length||!unsafeAllowed()||!orderingEnabled||loadPendingSubmission()||loadPendingMutation())return;
+-    let keepBusy=false;
++    let keepBusy=false, submittedAsCreate=false;
+     if(submit){submit.dataset.busy='1';submit.disabled=true;} if(orderMessage){orderMessage.classList.remove('is-error');orderMessage.textContent=editingOrder?'در حال ذخیره تغییرات…':'در حال ارسال سفارش…';}
+     try {
+       let body;let autoMerged=false;
+@@ -844,6 +890,7 @@
+         preparePendingMutation('update',payload);
+         try{body=apiOk(await postJson(endpoints.orders,payload,15000),'ذخیره تغییرات سفارش انجام نشد.');savePendingMutation(null);}catch(error){if(definitiveClientFailure(error)){savePendingMutation(null);throw error;}keepBusy=true;closeLayer();if(orderMessage)orderMessage.textContent='نتیجه ذخیره تغییرات در حال بازیابی است؛ تغییر را دوباره نفرست.';toast('وضعیت تغییر سفارش در حال بازیابی است.');schedulePendingMutationRecovery();return;}
+       }else{
++        submittedAsCreate=true;
+         const clientToken=randomToken();
+         const prepared=preparePendingSubmission(clientToken,lines);
+         try{
+@@ -868,6 +915,14 @@
+       if(!wasEditing&&successModal){if(successCode)successCode.textContent=body.order_number?`سفارش ${numberFa(body.order_number)}`:(body.order_code?`کد ${body.order_code}`:'');applySuccessStatus(body.status||'new');openLayer(successModal,submit);metric('order_success',{status:String(body.status||'')});}
+       await refreshContext();await refreshOrders(false);startOrderTracking();
+     } catch(error) {
++      if(!priceRetry&&submittedAsCreate&&definitiveClientFailure(error)&&error?.code==='price_changed'){
++        const resolution=await resolveCartPriceConflict(error);
++        if(resolution==='accepted'){
++          if(orderMessage){orderMessage.classList.remove('is-error');orderMessage.textContent='قیمت‌ها تأیید شدند؛ سفارش با مبلغ جدید در حال ثبت است.';}
++          globalThis.setTimeout(()=>submitOrder(true),0);return;
++        }
++        if(resolution==='declined')return;
++      }
+       const msg=error?.message||'ثبت سفارش انجام نشد.';if(orderMessage){orderMessage.classList.add('is-error');orderMessage.textContent=msg;}toast(msg,true);
+       if(error?.code==='pending_order_exists'){closeLayer();await refreshOrders(true);}
+       if(error?.code==='order_changed'){clearGuestDraft();editingOrder=null;cart.clear();if(customerNote)customerNote.value='';renderCart();await refreshOrders(true);}
+--- a/src/Domain/Orders/GuestOrderService.php
++++ b/src/Domain/Orders/GuestOrderService.php
+@@ -62,7 +62,7 @@
+ 
+         $rows=$this->catalog->normalizeRows($data['items']??null,false);
+         $this->assertExpectedPrices($rows);
+-        $snapshots=$this->catalog->snapshotRowsTx($rows,'guest');
++        try{$snapshots=$this->catalog->snapshotRowsTx($rows,'guest');}catch(OrderCommitException $e){throw new GuestOrderException($e->errorCode,$e->getMessage(),$e->httpStatus,$e->details);}
+         $this->assertStationsAvailable($snapshots);
+         $status='pending_approval'; // H241: every guest order requires explicit staff review before accounting.
+         $result=$this->orders->commitTx([
+@@ -233,7 +233,7 @@
+ 
+     private function snapshotDraft(array $rows): array
+     {
+-        $snapshots=$this->catalog->snapshotRowsTx($rows,'guest');$this->assertStationsAvailable($snapshots);$at=date('Y-m-d H:i:s');
++        try{$snapshots=$this->catalog->snapshotRowsTx($rows,'guest');}catch(OrderCommitException $e){throw new GuestOrderException($e->errorCode,$e->getMessage(),$e->httpStatus,$e->details);}$this->assertStationsAvailable($snapshots);$at=date('Y-m-d H:i:s');
+         foreach($snapshots as &$line){$tax=$this->tax->orderLineSnapshotTx((int)$line['item_id'],$at);$line['tax_policy_snapshot']=$tax['policy'];$line['tax_rate_bps_snapshot']=$tax['rate_bps'];$line['tax_rate_version_id']=$tax['rate_version_id'];$line['tax_item_policy_version_id']=$tax['policy_version_id'];}unset($line);return $snapshots;
+     }
+ 
+--- a/src/Domain/Orders/OrderCatalogService.php
++++ b/src/Domain/Orders/OrderCatalogService.php
+@@ -145,7 +145,7 @@
+             $bundle=$this->bundleSelectionTx((int)$item['id'],(int)($requested['bundle_choice_item_id']??0),$source,(int)$requested['quantity']);
+             $unit=(int)$item['price']+(int)$bundle['price_delta'];
+             if($requested['expected_price']!==null&&$requested['expected_price']!==$unit){
+-                throw new OrderCommitException('price_changed','قیمت یکی از آیتم‌ها یا انتخاب‌های ترکیب تغییر کرده است.',409,['item_id'=>$requested['id'],'current_price'=>$unit]);
++                throw new OrderCommitException('price_changed','قیمت یکی از آیتم‌ها یا انتخاب‌های ترکیب تغییر کرده است.',409,['item_id'=>$requested['id'],'bundle_choice_item_id'=>(int)($requested['bundle_choice_item_id']??0),'current_price'=>$unit]);
+             }
+             $lines[]=[
+                 'item_id'=>(int)$item['id'],
