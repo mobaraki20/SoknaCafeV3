@@ -1,3 +1,5 @@
+diff --git a/assets/operations-workspace.js b/assets/operations-workspace.js
+index eb6078d..df44dd0 100644
 --- a/assets/operations-workspace.js
 +++ b/assets/operations-workspace.js
 @@ -1,6 +1,6 @@
@@ -8,7 +10,7 @@
  window.SoknaPublicRealtime?.mountDeferred?.(root);
  const $=(s,c=root)=>c.querySelector(s),$$=(s,c=root)=>[...c.querySelectorAll(s)];let snap=null,movementRows=null,movementOffset=0,movementHasMore=false,movementScope='recent',activeReceiveGroup=null,activeWorkflow='attention',inventoryVisibleLimit=50,countVisibleLimit=40,stockManagementExpanded=false;const countDrafts=new Map(),countSaveTimers=new Map(),countSavePromises=new Map();const fallbackNf=new Intl.NumberFormat('fa-IR',{maximumFractionDigits:3});const L=window.SoknaLocale||{dateTime:v=>String(v??''),number:v=>fallbackNf.format(Number(v||0)),integer:v=>new Intl.NumberFormat('fa-IR',{maximumFractionDigits:0}).format(Number(v||0)),money:v=>new Intl.NumberFormat('fa-IR',{maximumFractionDigits:0}).format(Number(v||0))+' تومان'};
  const el=(t,c,txt)=>{const x=document.createElement(t);if(c)x.className=c;if(txt!==undefined)x.textContent=txt;return x};
-@@ -33,9 +33,9 @@
+@@ -33,9 +33,9 @@ function openDialog(id){const d=$(`[data-dialog="${id}"]`);if(d instanceof HTMLD
  function closeDialog(form){const d=form.closest('dialog');if(d instanceof HTMLDialogElement)d.close()}
  function formData(form){return Object.fromEntries(new FormData(form).entries())}
  function nowLocal(){return window.SoknaLocale.localDateTimeNow()}
@@ -20,7 +22,7 @@
  
  function parseUiNumber(value){const parsed=L.numericValue?.(value,{decimal:true,signed:false});if(Number.isFinite(parsed)&&parsed>=0)return parsed;const fa='۰۱۲۳۴۵۶۷۸۹',ar='٠١٢٣٤٥٦٧٨٩',raw=String(value??'').trim().replace(/[۰-۹]/g,ch=>String(fa.indexOf(ch))).replace(/[٠-٩]/g,ch=>String(ar.indexOf(ch))).replace(/[٬, ]/g,'').replace('٫','.');const n=Number(raw);return Number.isFinite(n)&&n>=0?n:0}
  function majorToBaseUi(value,unit){const n=parseUiNumber(value);return unit==='count'?Math.round(n):Math.round(n*1000)}
-@@ -118,7 +118,7 @@
+@@ -118,7 +118,7 @@ function renderAttention(){const box=$('[data-ops-attention-list]');if(!box)retu
  function renderConsumeList(){const b=$('[data-inventory-consume-list]');if(!b)return;b.replaceChildren();const error=sectionError('inventory'),moduleError=sectionError('module_state'),state=snap.module_state||{},ready=state.inventory_runtime_ready===true;if(error){tableEmpty(b,4,(error.message||'اطلاعات انبار فعلاً در دسترس نیست.')+supportText(error));return}const rows=(snap.inventory.items||[]).filter(i=>Number(i.active)===1);if(!rows.length){tableEmpty(b,4,'کالای فعالی برای ثبت ضایعات/اصلاح وجود ندارد.');return}for(const i of rows){const tr=document.createElement('tr');cell(tr,'کالا',i.name);cell(tr,'موجودی',ready&&(snap.module_state?.inventory_initialized||Number(i.opening_counted)===1)?`${majorText(i.quantity_base,i.base_unit)} ${majorUnitLabel(i.base_unit)}`:'موجودی نامشخص؛ شمارش نشده');cell(tr,'بخش',departmentLabel(i.default_department));const td=document.createElement('td');td.dataset.label='عملیات';if(canOps){const waste=button('ثبت ضایعات',()=>openInventoryWaste(i),'danger'),adjust=button('اصلاح موجودی',()=>openInventoryAdjust(i),'secondary');waste.disabled=!!moduleError||!ready;adjust.disabled=!!moduleError||!ready;td.append(waste,adjust)}tr.append(td);b.append(tr)}}
  function updateExpensePreview(){const f=$('[data-form="expense-create"]');if(!f)return;const amount=parseUiNumber(f.elements.amount?.value||'');setPreviewValue('[data-expense-preview-amount]',amount>0?money(Math.round(amount)):'—');const submit=f.querySelector('[data-ops-submit]');if(submit)submit.disabled=amount<1}
  function renderExpenseReverseContext(r){const box=$('[data-reverse-expense]');if(!box)return;box.replaceChildren();box.append(el('strong','',r.category_name||'هزینه'),el('span','sc-muted',`${money(r.amount)} · ${L.dateTime(r.occurred_at)}${r.period_title?` · ${r.period_title}`:''}`));if(r.description)box.append(el('p','',r.description))}
@@ -29,6 +31,8 @@
  async function loadMovementHistory({append=false}={}){
   const pageSize=window.matchMedia?.('(max-width:640px)').matches?50:300,offset=append?movementOffset:0;
   const q=new URLSearchParams({action:'inventory_movements',limit:String(pageSize+1),offset:String(offset)});
+diff --git a/resources/shared-staff-ui/operations-workspace.php b/resources/shared-staff-ui/operations-workspace.php
+index 3df540b..7a86080 100644
 --- a/resources/shared-staff-ui/operations-workspace.php
 +++ b/resources/shared-staff-ui/operations-workspace.php
 @@ -2,8 +2,8 @@
@@ -42,7 +46,7 @@
    <div class="sc-alert" role="status" aria-live="polite" data-status hidden></div>
    <div class="sc-alert sc-alert--warning" role="status" aria-live="polite" data-ops-section-status hidden></div>
  
-@@ -73,7 +73,7 @@
+@@ -73,7 +73,7 @@ declare(strict_types=1);
        <section class="sc-card sc-ledger-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h3>تاریخچه حرکت‌های انبار</h3><p>ورود، تحویل خرید، مصرف دستور، ضایعات، شمارش و اصلاح در یک دفتر کل.</p></div></div><div class="sc-alert sc-alert--info" data-history-scope hidden></div><details class="sc-ops-history-filters" data-ops-history-filters open><summary>فیلتر دفتر حرکت‌ها</summary><div class="sc-toolbar sc-toolbar--wrap" data-movement-filters><label class="sc-field sc-field--compact"><span class="sc-field__label">کالا</span><select class="sc-control" data-movement-item-filter><option value="0">همه کالاها</option></select></label><label class="sc-field sc-field--compact"><span class="sc-field__label">نوع</span><select class="sc-control" data-movement-type-filter><option value="">همه حرکت‌ها</option><option value="manual_receive">ورود دستی</option><option value="purchase_receive">تحویل خرید</option><option value="waste">ضایعات</option><option value="count_adjustment">اصلاح شمارش</option><option value="opening_balance">موجودی اولیه</option><option value="recipe_consumption">مصرف دستور</option></select></label><label class="sc-field sc-field--compact"><span class="sc-field__label">از تاریخ</span><input class="sc-control" type="date" data-movement-from></label><label class="sc-field sc-field--compact"><span class="sc-field__label">تا تاریخ</span><input class="sc-control" type="date" data-movement-to></label><button class="sc-button sc-button--secondary" type="button" data-movement-apply>اعمال فیلتر</button><button class="sc-button sc-button--ghost" type="button" data-movement-reset>پاک‌کردن</button></div></details><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>زمان</th><th>کالا</th><th>نوع</th><th>مقدار</th><th>بخش</th><th>جزئیات</th></tr></thead><tbody data-movement-list></tbody></table></div></div></section>
      </section>
    </section>
@@ -51,7 +55,7 @@
  
    <dialog class="sc-dialog sc-ops-task-dialog" data-dialog="item-create" aria-labelledby="sc-dialog-title-operations-item-create" data-dialog-size="md">
      <form method="dialog" class="sc-dialog-frame" data-form="item-create">
-@@ -165,8 +165,8 @@
+@@ -165,8 +165,8 @@ declare(strict_types=1);
        <footer class="sc-dialog-frame__foot"><button class="sc-button" type="submit" value="submit">ثبت اقلام انتخاب‌شده</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></footer>
      </form></dialog>
  
@@ -62,9 +66,11 @@
  
  </section>
  <script src="<?=htmlspecialchars($workspaceAsset('assets/staff-app/data-panels.js'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>" defer></script>
+diff --git a/src/Remote/RemoteReadModelService.php b/src/Remote/RemoteReadModelService.php
+index 8e15f75..651eb0c 100644
 --- a/src/Remote/RemoteReadModelService.php
 +++ b/src/Remote/RemoteReadModelService.php
-@@ -560,7 +560,7 @@
+@@ -560,7 +560,7 @@ final class RemoteReadModelService
      private function filterOperationsWorkspace(array $payload,array $session): array
      {
          $caps=is_array($session['capabilities']??null)?array_values(array_map('strval',$session['capabilities'])):[];
@@ -73,9 +79,11 @@
          return $payload;
      }
  
+diff --git a/src/Remote/RemoteStaffPageRenderer.php b/src/Remote/RemoteStaffPageRenderer.php
+index 81b7f9b..53b3462 100644
 --- a/src/Remote/RemoteStaffPageRenderer.php
 +++ b/src/Remote/RemoteStaffPageRenderer.php
-@@ -197,7 +197,7 @@
+@@ -197,7 +197,7 @@ final class RemoteStaffPageRenderer
      {
          // Read models stay on the workspace adapter; approved supply intents use
          // the existing durable Deferred lane and canonical Local owners.
