@@ -40,7 +40,7 @@ jobs:
             --local_overlay "$RUNNER_TEMP/overlay-local.zip" --public_overlay "$RUNNER_TEMP/overlay-public.zip" \
             --manifest qa/sokna-r168/r168_source_delta_manifest.json \
             --outdir "$RUNNER_TEMP/r168"
-          echo '016e2e9b5fda1bd3b8aebda5ff1210f3b60cd567a7716e19d2bde130408df009  '"$RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo '1ecea6835c0e63958fb940c2486e3d4a777f4e572590f8c298c6947cf73ca628  '"$RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip" | sha256sum -c -
           python packaging/windows/release-gates/check_local_release_set.py --require-installable "$RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip"
           unzip -p "$RUNNER_TEMP/r168/SOKNA-R168-LOCAL-231EN-51BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/r168-local-web.zip"
           unzip -q "$RUNNER_TEMP/r168-local-web.zip" -d "$RUNNER_TEMP/r168-local"
