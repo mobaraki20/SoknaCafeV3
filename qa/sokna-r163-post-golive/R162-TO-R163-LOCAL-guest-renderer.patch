@@ -1,0 +1,29 @@
+--- a/src/Domain/GuestLan/GuestLanPageRenderer.php
++++ b/src/Domain/GuestLan/GuestLanPageRenderer.php
+@@ -40,7 +40,7 @@
+         if($invalidTable)$html.='<div class="sg-public-warning" role="alert"><strong>لینک میز معتبر نیست</strong><p>برای ادامه سفارش، QR میز فعلی را دوباره اسکن کن.</p></div>';
+         $html.='<header class="sg-public-hero"><a class="sg-public-brand" href="'.self::e($menuHref).'"><img src="'.self::e((string)$brand['logo-256']).'" alt=""><strong>'.self::e($displayName).'</strong></a><div><span>آشنایی بیشتر</span><h1>'.self::e($title).'</h1><p>'.nl2br(self::e($intro)).'</p></div></header><section class="sg-public-info">';
+         if($address!=='')$html.='<article><span>نشانی</span><p>'.nl2br(self::e($address)).'</p></article>';if($phone!==''){$tel=preg_replace('/[^0-9+]/','',str_replace(['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'],['0','1','2','3','4','5','6','7','8','9'],$phone))??'';$html.='<article><span>تماس</span><a href="tel:'.self::e($tel).'" dir="ltr">'.self::e($phone).'</a></article>';}
+-        $html.='<article><span>'.($table!==null?'منوی میز':'منوی کافه').'</span><a href="'.self::e($menuHref).'">'.($table!==null?'بازگشت به '.self::e((string)($table['name']??'میز')):'دیدن منوی عمومی').'</a></article></section>';
++        $html.='<article><span>'.($table!==null?'منوی میز':'منوی کافه').'</span><a href="'.self::e($menuHref).'">'.($table!==null?'بازگشت به '.self::e(self::faDigits((string)($table['name']??'میز'))):'دیدن منوی عمومی').'</a></article></section>';
+         if($accommodationEnabled&&$site!==''){$html.='<section class="sg-public-accommodation"><div><span>بیشتر از سکنا</span><h2>'.self::e($this->plainSetting($settings,'accommodation_card_title','خانه سکنا رو هم می‌شناسی؟',100)).'</h2><p>'.self::e($this->plainSetting($settings,'accommodation_card_text','اقامت، گشت‌وگذار و تجربه غرب هرمزگان',300)).'</p></div><div class="sg-public-actions"><a class="sg-button sg-button--primary" target="_blank" rel="noopener" href="'.self::e($site).'">سایت خانه سکنا</a>';if($rooms!=='')$html.='<a class="sg-button sg-button--secondary" target="_blank" rel="noopener" href="'.self::e($rooms).'">اتاق‌ها</a>';if($tours!=='')$html.='<a class="sg-button sg-button--secondary" target="_blank" rel="noopener" href="'.self::e($tours).'">گشت‌ها</a>';$html.='</div></section>';}
+         $social=[];if($instagramCafe!=='')$social[]=['اینستاگرام کافه',$instagramCafe];if($instagramHouse!=='')$social[]=['اینستاگرام اقامتگاه',$instagramHouse];if($whatsapp!=='')$social[]=['واتس‌اپ',$whatsapp];if($social!==[]){$html.='<section class="sg-public-social"><span>راه‌های ارتباط</span><div>';foreach($social as [$label,$url])$html.='<a target="_blank" rel="noopener" href="'.self::e($url).'">'.self::e($label).'</a>';$html.='</div></section>';}
+         $html.='<footer class="sg-public-footer"><a href="'.self::e($menuHref).'">بازگشت به منو</a>'.($site!==''?'<a target="_blank" rel="noopener" href="'.self::e($site).'">خانه سکنا</a>':'').'</footer></main></body></html>';
+@@ -237,7 +237,7 @@
+             if ($events !== []) $html .= '<button type="button" class="sg-header-events" data-sg-open-events aria-label="دیدن رویدادهای سکنا"><span aria-hidden="true">▣</span><b>رویدادها</b></button>';
+             if ($table !== null) {
+                 $tableName = trim((string)($table['name'] ?? ''));
+-                $html .= '<span class="sg-table-badge">' . self::e($tableName !== '' ? $tableName : 'میز') . '</span>';
++                $html .= '<span class="sg-table-badge">' . self::e(self::faDigits($tableName !== '' ? $tableName : 'میز')) . '</span>';
+             }
+             $html .= '</div>';
+         }
+@@ -260,7 +260,7 @@
+         $html .= '<main class="sg-main">';
+         $searchIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg>';
+         $closeIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>';
+-        $html .= '<section class="sg-search" data-sg-search-zone aria-label="جست‌وجوی منو"><div class="sg-search-panel">'
++        $html .= '<section id="sg-menu-search" class="sg-search" data-sg-search-zone aria-label="جست‌وجوی منو"><div class="sg-search-panel">'
+             . '<div class="sg-search-input-wrap"><button type="button" class="sg-search-open" data-sg-search-open aria-label="شروع جست‌وجو">'.$searchIcon.'</button><input id="sgMenuSearch" data-sg-search type="search" inputmode="search" enterkeyhint="search" autocomplete="off" aria-label="' . self::e($this->copy($copy,'search_label','جست‌وجوی منو')) . '" placeholder="' . self::e($this->copy($copy,'search_placeholder','نام نوشیدنی یا غذا را بنویسید')) . '"><button type="button" class="sg-search-clear" data-sg-search-clear aria-label="پاک‌کردن جست‌وجو" hidden>'.$closeIcon.'</button></div>'
+             . '<div class="sg-search-results" data-sg-search-results hidden><div class="sg-search-results-head"><div><strong>نتایج جست‌وجو</strong><small data-sg-search-count></small></div><button type="button" data-sg-search-back>بازگشت به منو</button></div><div class="sg-search-result-list" data-sg-search-result-list></div></div>'
+             . '</div></section>';
