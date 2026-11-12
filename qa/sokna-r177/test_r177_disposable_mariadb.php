@@ -19,7 +19,7 @@ $pdo->exec('DROP DATABASE IF EXISTS `'.$db.'`');
 $pdo->exec('CREATE DATABASE `'.$db.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 $pdo->exec('USE `'.$db.'`');
 try {
-$pdo->exec("CREATE TABLE public_authority_state(installation_id VARCHAR(96) PRIMARY KEY, authority_epoch INT NOT NULL DEFAULT 1, phase VARCHAR(40) NOT NULL DEFAULT 'active') ENGINE=InnoDB");
+$pdo->exec("CREATE TABLE public_authority_state(installation_id VARCHAR(96) PRIMARY KEY, authority_epoch INT NOT NULL DEFAULT 1, phase VARCHAR(40) NOT NULL DEFAULT 'active', reason VARCHAR(96) NULL, blocked_at DATETIME(6) NULL, reenrolled_at DATETIME(6) NULL, activated_at DATETIME(6) NULL, updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)) ENGINE=InnoDB");
 $pdo->exec("INSERT INTO public_authority_state(installation_id,authority_epoch,phase) VALUES('ci-installation',2,'active')");
 $pdo->exec("CREATE TABLE public_projection_outbox(sequence_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, event_type VARCHAR(96) NOT NULL,aggregate_type VARCHAR(96) NOT NULL, aggregate_id VARCHAR(96) NOT NULL,model_keys VARCHAR(255) NOT NULL,delivered_at DATETIME(6) DEFAULT NULL) ENGINE=InnoDB");
 $sql=(string)file_get_contents($root.'/database/migrations/0062_projection_model_target_watermarks.sql');
