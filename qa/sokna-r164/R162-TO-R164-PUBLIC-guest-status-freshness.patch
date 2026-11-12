@@ -1,0 +1,38 @@
+--- a/src/Guest/GuestCompatibilityService.php
++++ b/src/Guest/GuestCompatibilityService.php
+@@ -76,14 +76,19 @@
+ 
+         if ($action === 'list') {
+             $projection=$this->guestOrderListFromProjection($installationId,$table,$base);
+-            if($projection!==null)return $projection;
++            // A stale projection can still show a pending order after Local has
++            // accepted or cancelled it. Prefer the authoritative Local read when
++            // available; keep the cached list only if that read is unavailable.
++            if($projection!==null&&($projection['body']['degraded']??false)!==true)return $projection;
+             // A bounded projection cannot prove absence, even when recently synced.
+             // Resolve empty/incomplete lists through the same canonical Local read.
+             $requestId = self::requestId('guest_order.list', [
+                 'table_token' => $base['table_token'],
+                 'device_token' => $base['device_token'],
+             ], false);
+-            return $this->relay($installationId, 'guest_order.list', $base + ['action' => 'list'], $requestId, false, 30, 7000);
++            $canonical=$this->relay($installationId, 'guest_order.list', $base + ['action' => 'list'], $requestId, false, 30, 7000);
++            if($projection!==null&&in_array((int)($canonical['status']??0),[502,503,504],true))return $projection;
++            return $canonical;
+         }
+ 
+         if (!in_array($action, ['update', 'append', 'cancel'], true)) {
+@@ -158,9 +163,11 @@
+             return $this->response(422,['success'=>false,'code'=>'invalid_tracking','message'=>'اطلاعات پیگیری معتبر نیست.']);
+         }
+         $projection=$this->guestOrderStatusFromProjection($installationId,$payload);
+-        if($projection!==null)return $projection;
++        if($projection!==null&&($projection['body']['degraded']??false)!==true)return $projection;
+         $requestId = self::requestId('guest_order.status', $payload, false);
+-        return $this->relay($installationId, 'guest_order.status', $payload, $requestId, false, 30, 7000);
++        $canonical=$this->relay($installationId, 'guest_order.status', $payload, $requestId, false, 30, 7000);
++        if($projection!==null&&in_array((int)($canonical['status']??0),[502,503,504],true))return $projection;
++        return $canonical;
+     }
+ 
+     public function tableContext(string $installationId, array $data): array
