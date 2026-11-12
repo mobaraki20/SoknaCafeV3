@@ -1,0 +1,18 @@
+{
+  "local": {
+    "public/assets/product-ui.css": "76d49b1e0cf97b3366e871eb586d8e582c45a3620d68473fdfd72e2f03b4c4bc",
+    "public/assets/login.js": "73666b4dd356d8f84c642a37dafd61d65639fe2e80218ec6cc7bceab9097c357",
+    "public/assets/scds/guest.js": "b25bdbc077671c4d150ed94b7eec9faeb6cb83e1eaca1062c531e037f1a385e0",
+    "public/assets/scds/guest.css": "580682fb5a0465f0ef3c94c81d43b5065e35d28866e6cc9b69ac79200ae90192",
+    "src/Domain/GuestLan/GuestLanPageRenderer.php": "6761f22804de573f10a5e5e27a260a31486145908213891c9121fd0d5a837e52",
+    "src/Domain/Printing/PrintTemplatePackageService.php": "1a13d270ea2c3b7f1689fe50ae9d04d4d2db779f3b71bb23c7297f1c364863b7",
+    "src/Domain/Orders/OrderCatalogService.php": "d7ed2a03b85b36c8f7e25d8eabaa13c7215633f7d11d7ab90d0a5751165c788c",
+    "src/Domain/Orders/GuestOrderService.php": "835a6a8595559273a72d5859e3c2c53dd28904adfee03322d943abaa0da8b399"
+  },
+  "public": {
+    "assets/scds/guest.js": "eb8e2570935256263b97ada05b0bace29765d8c3d302326f7fed27ee878c87ea",
+    "assets/scds/guest.css": "4e05ecd5a3fb6f9af22c5aa50fc9f7f58b9369e65773de92bce03bd723ce0681",
+    "src/Guest/GuestPageRenderer.php": "957d5d151bbf1e2522a15c6d669a9c3d1b4b1c653b39821fdfc37e7e47013f68",
+    "src/Guest/GuestCompatibilityService.php": "bc3b560a106c34128a399438e7668f1d235d7a6f624c6f0d11320d8d6ff5a69a"
+  }
+}
