@@ -10,7 +10,7 @@ def tree(d):return H(''.join(f'{p}\0{H(b)}\n' for p,b in sorted(d.items())).enco
 def main():
  p=argparse.ArgumentParser();p.add_argument('--release',required=True);p.add_argument('--patch',required=True);p.add_argument('--output',required=True);a=p.parse_args()
  f=pathlib.Path(a.release);assert H(f.read_bytes())==PARENT_SHA,'R162 release changed'
- patch=pathlib.Path(a.patch);assert H(patch.read_bytes())==PATCH_SHA,'unexpected source patch'
+ patch=pathlib.Path(a.patch).resolve();assert H(patch.read_bytes())==PATCH_SHA,'unexpected source patch'
  with zipfile.ZipFile(f) as z:
   manifest=json.loads(z.read('release-set.json'))
   assert manifest['targets']['local']['managed_tree_sha256']==PARENT_TREE
