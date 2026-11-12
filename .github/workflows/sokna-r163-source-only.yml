@@ -1,0 +1,58 @@
+name: SOKNA R163 incremental source-only post-go-live QA
+on:
+  push:
+    branches: [qa/sokna-r163-post-golive-cumulative-20261112]
+    paths:
+      - 'qa/sokna-r163-post-golive/**'
+      - '.github/workflows/sokna-r163-source-only.yml'
+permissions:
+  contents: read
+jobs:
+  exact-source-behavior:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring
+      - name: Retrieve only the genuine published R162 install parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/parent" "$RUNNER_TEMP/r163"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern 'SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip' --dir "$RUNNER_TEMP/parent"
+          echo "16adab9910c017d97ebc256e721bfbc22e26103979adc59763c6bf978b6f5471  $RUNNER_TEMP/parent/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" | sha256sum -c -
+      - name: Reconstruct only single-file source delta; migrations and rest must match byte-for-byte
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r163-post-golive/verify_r163.py \
+            --release "$RUNNER_TEMP/parent/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" \
+            --patch qa/sokna-r163-post-golive/R162-TO-R163-LOCAL-guest-renderer.patch \
+            --output "$RUNNER_TEMP/r163"
+          unzip -q "$RUNNER_TEMP/r163/SOKNA-R163-LOCAL-FULL-SOURCE-QA-NOT-INSTALL.zip" -d "$RUNNER_TEMP/r163/extracted"
+          find "$RUNNER_TEMP/r163/extracted" -name '*.php' -print0 | xargs -0 -n1 -P 8 php -l > /dev/null
+          find "$RUNNER_TEMP/r163/extracted" -name '*.js' -print0 | xargs -0 -n1 -P 8 node --check > /dev/null
+      - name: Real PHP guest-page rendering must FAIL on R162 and PASS after targeted source fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -p "$RUNNER_TEMP/parent/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" artifacts/local/web.zip > "$RUNNER_TEMP/parent/web.zip"
+          unzip -p "$RUNNER_TEMP/parent/web.zip" src/Domain/GuestLan/GuestLanPageRenderer.php > "$RUNNER_TEMP/parent/GuestLanPageRenderer.php"
+          if php qa/sokna-r163-post-golive/test_guest_render_real.php "$RUNNER_TEMP/parent/GuestLanPageRenderer.php"; then
+            echo 'EXPECTED_OLD_R162_REGRESSION_NOT_REPRODUCED'; exit 1
+          fi
+          php qa/sokna-r163-post-golive/test_guest_render_real.php "$RUNNER_TEMP/r163/extracted/src/Domain/GuestLan/GuestLanPageRenderer.php"
+          grep -q '"changed_paths": \[' "$RUNNER_TEMP/r163/SOKNA-R163-SOURCE-QA-REPORT.json"
+          echo 'PASS R162_REGRESSION_REPRODUCED_R163_PHP_RENDERER_FIX_VERIFIED'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r163-source-qa-not-install
+          path: |
+            ${{ runner.temp }}/r163/SOKNA-R163-SOURCE-QA-REPORT.json
+            ${{ runner.temp }}/r163/SOKNA-R163-LOCAL-FULL-SOURCE-QA-NOT-INSTALL.zip
+          retention-days: 14
