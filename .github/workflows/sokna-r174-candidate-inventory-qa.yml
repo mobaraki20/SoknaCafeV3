@@ -1,0 +1,92 @@
+name: SOKNA R174 exact R171 candidate inventory repair and native Windows
+on:
+  push:
+    branches: [qa/sokna-r174-candidate-inventory-repair-20261112]
+    paths:
+      - 'qa/sokna-r174/**'
+      - '.github/workflows/sokna-r174-candidate-inventory-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-source-and-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: r171-canary-exact-windows-stage-passed-installable-candidates
+          run-id: 43205002445
+          github-token: ${{ github.token }}
+          path: r171-immutable
+      - name: Verify exact R171 source and build R174 without editing product code
+        shell: bash
+        run: |
+          set -euo pipefail
+          old='r171-immutable/SOKNA-R171-CANARY-LOCAL-231EO-52BASE-PANEL-UPDATE.zip'
+          test -f "$old"
+          echo "c69f65c121101b82e69a74e54e0cf06b9e6270b3afe0d244837056633ed94e6e  $old" | sha256sum -c -
+          python qa/sokna-r174/build_r174.py "$old" r174-out
+          new='r174-out/SOKNA-R174-CANARY-LOCAL-231EP-52BASE-PANEL-UPDATE.zip'
+          echo "b8e15174670240c082a78bf7c87b43d6d72ba33590d1e645f601e7bc45336088  $new" | sha256sum -c -
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$new"
+          python qa/sokna-r174/test_candidate_inventory.py "$old" "$new" | tee r174-out/candidate-inventory-evidence.log
+          python - "$old" "$new" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('qa/sokna-r174').resolve()))
+          from test_candidate_inventory import check
+          old,new=map(check,sys.argv[1:]); assert len(old['missing_in_inventory'])==6 and old['inventory_count']==583
+          assert new['inventory_count']==589 and new['archive_count']==new['managed_declared']==589
+          assert not new['missing_in_inventory'] and not new['extra_in_inventory'] and new['tree_match']
+          print('PASS R171_BROKEN_AND_R174_FIXED_EXACT_INVENTORY_GATE')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r174-immutable-r171-source-plus-repaired-candidate
+          path: |
+            r171-immutable/SOKNA-R171-CANARY-LOCAL-231EO-52BASE-PANEL-UPDATE.zip
+            r174-out/SOKNA-R174-CANARY-LOCAL-231EP-52BASE-PANEL-UPDATE.zip
+            r174-out/R174-REPAIR-IDENTITY.json
+            r174-out/candidate-inventory-evidence.log
+          if-no-files-found: error
+          retention-days: 14
+  native-windows-candidate-and-stage:
+    needs: exact-source-and-inventory
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: r174-immutable-r171-source-plus-repaired-candidate
+          path: r174-artifacts
+      - name: Actual private Candidate validation reproduces R171 failure and verifies R174 fix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $old=(Get-ChildItem r174-artifacts -Recurse -Filter 'SOKNA-R171-CANARY-LOCAL-231EO-52BASE-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          $new=(Get-ChildItem r174-artifacts -Recurse -Filter 'SOKNA-R174-CANARY-LOCAL-231EP-52BASE-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          if(-not $old -or -not $new){throw 'R174_SOURCE_FILES_MISSING'}
+          dotnet run --project qa/sokna-r174/R174Candidate.csproj -c Release --no-launch-profile -- $old $new
+          if($LASTEXITCODE -ne 0){throw 'R174_CANDIDATE_VALIDATION_FAILED'}
+      - name: Native Windows 52 exact source preflights and Stage repaired R174 only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $new=(Get-ChildItem r174-artifacts -Recurse -Filter 'SOKNA-R174-CANARY-LOCAL-231EP-52BASE-PANEL-UPDATE.zip' | Select-Object -First 1).FullName
+          dotnet run --project qa/sokna-r174/R174Stage.csproj -c Release --no-launch-profile -- $new
+          if($LASTEXITCODE -ne 0){throw 'R174_NATIVE_WINDOWS_STAGE_FAILED'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r174-native-windows-candidate-inventory-repair-passed
+          path: |
+            r174-artifacts/**/SOKNA-R174-CANARY-LOCAL-231EP-52BASE-PANEL-UPDATE.zip
+            r174-artifacts/**/R174-REPAIR-IDENTITY.json
+          if-no-files-found: error
+          retention-days: 14
