@@ -1,0 +1,54 @@
+--- a/src/Domain/System/GoLiveResetEngine.php
++++ b/src/Domain/System/GoLiveResetEngine.php
+@@ -161,12 +161,48 @@
+         $verification = $this->inspect();
+         if ($verification['schema_fingerprint'] !== $state['schema_fingerprint'])
+             throw new RuntimeException('GOLIVE_BATCH_SCHEMA_DRIFT');
+-        foreach ($verification['counts'] as $record) {
+-            if ($record['action'] === 'CLEAR' && $record['rows'] !== 0)
+-                throw new RuntimeException('GOLIVE_RESIDUAL_DATA');
++        // The projection outbox is alphabetically earlier than several CLEAR
++        // sources (staff_consumptions, table_sessions, waiter_calls, etc.).
++        // DELETE triggers on those later sources enqueue fresh invalidations.
++        // Reconcile the outbox ONLY after every source table is cleared, and
++        // only when every OTHER CLEAR table is already empty. No new operation,
++        // policy change, FK bypass, or Public deletion is permitted here.
++        $outboxRows = 0;
++        if (($policy['public_projection_outbox'] ?? null) !== 'CLEAR')
++            throw new RuntimeException('GOLIVE_OUTBOX_POLICY_INVALID');
++        foreach ($verification['counts'] as $name => $record) {
++            if ($record['action'] !== 'CLEAR' || $record['rows'] === 0) continue;
++            if ($name === 'public_projection_outbox') {
++                $outboxRows = (int)$record['rows'];
++                continue;
++            }
++            throw new RuntimeException('GOLIVE_RESIDUAL_DATA');
+         }
+         if ($state['preserved_before'] !== $this->fingerprints($policy))
+             throw new RuntimeException('GOLIVE_PRESERVED_DATA_CHANGED');
++        if ($outboxRows > 0) {
++            // One bounded, atomic tail deletion per call. If the HTTP process
++            // dies after COMMIT but before the cursor marker is persisted,
++            // replay from the same state is safe. Never treat this as finished
++            // until a subsequent full inspection observes a genuinely empty
++            // outbox, all other CLEAR tables empty, and PRESERVE hashes equal.
++            $this->pdo->beginTransaction();
++            try {
++                $removed = $this->pdo->exec('DELETE FROM `public_projection_outbox` LIMIT 1500');
++                if ($removed === false) throw new RuntimeException('GOLIVE_OUTBOX_TAIL_DELETE_FAILED');
++                $this->pdo->commit();
++            } catch (Throwable $e) {
++                if ($this->pdo->inTransaction()) $this->pdo->rollBack();
++                throw $e;
++            }
++            $state['deleted']['public_projection_outbox'] =
++                (int)($state['deleted']['public_projection_outbox'] ?? 0) + $removed;
++            $state['chunks']++;
++            return [
++                'completed' => false, 'state' => $state,
++                'cleared_tables' => count($names), 'total_tables' => count($names),
++            ];
++        }
+         try {
+             $this->pdo->beginTransaction();
+             $row = $this->pdo->prepare('SELECT authority_epoch,phase FROM public_authority_state WHERE installation_id=? FOR UPDATE');
