@@ -1,0 +1,114 @@
+name: SOKNA R167 post go-live safe repricing and user picker source QA
+on:
+  push:
+    branches: [qa/sokna-r167-post-golive-price-login-20261112]
+    paths:
+      - 'qa/sokna-r167/**'
+      - '.github/workflows/sokna-r167-price-login-ci.yml'
+permissions:
+  contents: read
+jobs:
+  historical-source-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_ACTIONS: 'true'
+      SOKNA_R165_DISPOSABLE: 'YES'
+      SOKNA_R165_DB_PASS: 'r165-ci-only'
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r165-ci-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping --protocol=tcp --host=127.0.0.1 --user=root --password=r165-ci-only"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring,pdo_mysql,zip
+      - name: Retrieve immutable R162 Local/Public parents and verify SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/parents" "$RUNNER_TEMP/r163-local" "$RUNNER_TEMP/r164-public" "$RUNNER_TEMP/r165"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip --dir "$RUNNER_TEMP/parents"
+          gh release download sokna-r162-golive-oneclick-uat-20261111 --repo mobaraki20/SoknaCafeV3 --pattern SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip --dir "$RUNNER_TEMP/parents"
+          echo "16adab9910c017d97ebc256e721bfbc22e26103979adc59763c6bf978b6f5471  $RUNNER_TEMP/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" | sha256sum -c -
+          echo "96e976c43644f62e1246a29752af3fab5fff62978421f93db8065d8460a67503  $RUNNER_TEMP/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" | sha256sum -c -
+      - name: Recover exactly previously QA-tested R163 Local and R164 Public sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r163-post-golive/verify_r163.py --release "$RUNNER_TEMP/parents/SOKNA-R162-LOCAL-231EM-49BASE-PANEL-UPDATE.zip" --patch qa/sokna-r163-post-golive/R162-TO-R163-LOCAL-guest-renderer.patch --output "$RUNNER_TEMP/r163-local"
+          grep -q c4046e01490f61adeeec679478290175cc2dfd2febe9af458f3246b0610ca036 "$RUNNER_TEMP/r163-local/SOKNA-R163-SOURCE-QA-REPORT.json"
+          python qa/sokna-r164/verify_r164_public.py --release "$RUNNER_TEMP/parents/SOKNA-R160-PUBLIC-35HR-FROM-35HP-PANEL-UPDATE.zip" --patch qa/sokna-r164/R162-TO-R164-PUBLIC-guest-status-freshness.patch --outdir "$RUNNER_TEMP/r164-public"
+      - name: Reconstruct R165 Local without altering established receipt/ACK semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r165/verify_r165.py --parent "$RUNNER_TEMP/r163-local/SOKNA-R163-LOCAL-FULL-SOURCE-QA-NOT-INSTALL.zip" --patch qa/sokna-r165/R164-TO-R165-LOCAL-guest-idempotency-ownership.patch --outdir "$RUNNER_TEMP/r165"
+          php -l qa/sokna-r165/test_guest_idempotency_ownership.php
+          php qa/sokna-r165/test_guest_idempotency_ownership.php baseline "$RUNNER_TEMP/r165/r164-local-parent"
+          php qa/sokna-r165/test_guest_idempotency_ownership.php candidate "$RUNNER_TEMP/r165/r165-local-candidate"
+      - name: Build the strictly two-JS R166 candidate from byte-pinned reconstructed trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r166/build_r166_from_roots.py --local-root "$RUNNER_TEMP/r165/r165-local-candidate" --public-root "$RUNNER_TEMP/r164-public/public-candidate" --output "$RUNNER_TEMP/r166"
+          test -f "$RUNNER_TEMP/r166/SOKNA-R166-LOCAL-SOURCE-QA-NOT-INSTALL.zip"
+          test -f "$RUNNER_TEMP/r166/SOKNA-R166-PUBLIC-SOURCE-QA-NOT-INSTALL.zip"
+      - name: Reproduce old double-submit window and prove guard on real JS handler in both environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          node qa/sokna-r166/test_guest_append_recovery_lock.js "$RUNNER_TEMP/r166/original" "$RUNNER_TEMP/r166/candidate"
+          node --check "$RUNNER_TEMP/r166/candidate/local.js"
+          node --check "$RUNNER_TEMP/r166/candidate/public.js"
+          sha256sum "$RUNNER_TEMP/r166"/candidate/*.js
+      - name: Preserve all other PHP JS SQL including the R162 go-live feature
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -p "$RUNNER_TEMP/r166/SOKNA-R166-LOCAL-SOURCE-QA-NOT-INSTALL.zip" src/Domain/System/GoLiveResetEngine.php | wc -c | grep -q -v '^0$'
+          unzip -p "$RUNNER_TEMP/r166/SOKNA-R166-PUBLIC-SOURCE-QA-NOT-INSTALL.zip" src/Maintenance/GoLiveResetEngine.php | wc -c | grep -q -v '^0$'
+          python - <<'PY'
+          import hashlib,json,pathlib,zipfile,os
+          d=pathlib.Path(os.environ['RUNNER_TEMP'])/'r166'
+          for name,n,m in [('LOCAL',588,80),('PUBLIC',225,8)]:
+           with zipfile.ZipFile(d/f'SOKNA-R166-{name}-SOURCE-QA-NOT-INSTALL.zip') as z:
+            fs=z.namelist();mig=[p for p in fs if p.startswith('database/migrations/')]
+            assert len(fs)==n and len(mig)==m
+            assert 'VERSION.txt' in fs
+           print('PASS',name,n,'files',m,'migration files unchanged')
+          PY
+      - name: Exact R167 two-environment rebuild and full source lint; R166 safety guards retained
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-r167/reconstruct_r167.py \
+            --local-parent "$RUNNER_TEMP/r166/SOKNA-R166-LOCAL-SOURCE-QA-NOT-INSTALL.zip" \
+            --public-parent "$RUNNER_TEMP/r166/SOKNA-R166-PUBLIC-SOURCE-QA-NOT-INSTALL.zip" \
+            --local-patch qa/sokna-r167/R166-TO-R167-LOCAL-SOURCE.patch \
+            --public-patch qa/sokna-r167/R166-TO-R167-PUBLIC-SOURCE.patch \
+            --outdir "$RUNNER_TEMP/r167"
+          find "$RUNNER_TEMP/r167/local" "$RUNNER_TEMP/r167/public" -name '*.php' -print0 | xargs -0 -n1 -P 8 php -l >/dev/null
+          find "$RUNNER_TEMP/r167/local" "$RUNNER_TEMP/r167/public" -name '*.js' -print0 | xargs -0 -n1 -P 8 node --check >/dev/null
+          node qa/sokna-r167/test_r167_replay_guard.js "$RUNNER_TEMP/r167"
+          grep -q "quote_mode:'create'" "$RUNNER_TEMP/r167/public/assets/scds/guest.js"
+          grep -q "definitiveClientFailure(error)" "$RUNNER_TEMP/r167/local/public/assets/scds/guest.js"
+          test -f "$RUNNER_TEMP/r167/local/src/Domain/System/GoLiveResetEngine.php"
+          test -f "$RUNNER_TEMP/r167/public/src/Maintenance/GoLiveResetEngine.php"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r167-post-golive-cumulative-SOURCE-QA-NOT-INSTALLABLE
+          path: |
+            ${{ runner.temp }}/r166/*.zip
+            ${{ runner.temp }}/r166/*-tree.json
+            ${{ runner.temp }}/r167/*-NOT-INSTALL.zip
+          if-no-files-found: error
+          retention-days: 14
