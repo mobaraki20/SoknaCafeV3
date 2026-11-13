@@ -26,8 +26,17 @@ Ok(m.GetProperty("for_install").GetBoolean()&&m.GetProperty("production_pass").G
 Ok(m.GetProperty("targets").GetProperty("local").GetProperty("managed_files").GetInt32()==589,"EXACT_589_FILES");
 var b=m.GetProperty("supported_baselines").EnumerateArray().Select(x=>ToIdentity(x.GetProperty("local"))).ToArray();
 Ok(b.Length==56,"EXACT_56_BASELINES");
-var home=b.FirstOrDefault(x=>x.Version.Contains("231ed-r153",StringComparison.Ordinal))
-     ??throw new InvalidDataException("HOME_231ED_BASELINE_NOT_FOUND");
+// Match ALL six authoritative identity fields from the 2026-11-13 home Support-v2.
+// 231ed occurs twice as separate release identities; choosing by version alone is unsafe.
+var home=b.SingleOrDefault(x=>
+     x.ReleaseId=="sokna-r153-local-44base-home-canary-20261111" &&
+     x.Version=="3.0.0-g6.2-workspace.231ed-r153-guest-readonly-meta-qa" &&
+     x.ManagedTreeSha256=="69e888a46cf1ed0ae763c2e83999957f5f067a2ef09a2bc68f0f189532259b96" &&
+     x.SchemaFingerprint=="migration-ledger-sha256-v1:fd316c493e1f5a122f83859662b106a0f8329e9d6fa2accd1ad685440d9ec863" &&
+     x.MigrationHead=="0080_tea_herbal_legacy_family_repair" &&
+     x.AuthorityEpochPolicy=="preserved")
+     ??throw new InvalidDataException("ACTUAL_HOME_20261113_EXACT_RELEASE_IDENTITY_NOT_FOUND");
+Ok(true,"EXACT_HOME_20261113_SIX_FIELD_IDENTITY_MATCH");
 var payload=Entry(z,"artifacts/local/web.zip");
 Ok(Sha(payload)==m.GetProperty("artifacts").GetProperty("local-web").GetProperty("sha256").GetString(),"WEB_BYTES_PINNED");
 string root=Path.Combine(Path.GetTempPath(),"sokna-r184-stage-qa-"+Guid.NewGuid().ToString("N"));
