@@ -1,0 +1,16 @@
+{
+  "label": "Public 35hx display digits only",
+  "source_files": {
+    "before": 230,
+    "after": 230
+  },
+  "changed": [
+    {
+      "file": "assets/scds/guest.js",
+      "before": "db5b56f66dcbfa62f50a2302c39334697b9c49d2cbcf8968a86f88689dad927b",
+      "after": "a6c0a5d3e3c14905c3ac4eb9236c5ad521340a802269f3d00e22d24cf8037d85",
+      "size": 159407
+    }
+  ],
+  "patch_sha256": "69d78e8720ccc5cf6e1652c3f956802c83d7f343b8d1c62ea3627c2477e2e138"
+}
