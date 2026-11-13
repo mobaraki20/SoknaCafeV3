@@ -25,12 +25,12 @@ Expand-Archive $oldPackage $oldOuter
 Expand-Archive (Join-Path $oldOuter 'artifacts/local/web.zip') $old
 Expand-Archive $newPackage $newOuter
 $m=Get-Content (Join-Path $newOuter 'release-set.json') -Raw|ConvertFrom-Json
-$home=@($m.supported_baselines|Where-Object {$_.local.release_id -eq 'sokna-r153-local-44base-home-canary-20261111'})
-Need ($home.Count -eq 1 -and $home[0].local.managed_files -eq 583) 'EXACT_HOME_BASELINE_AMBIGUOUS'
+$homeBaseline=@($m.supported_baselines|Where-Object {$_.local.release_id -eq 'sokna-r153-local-44base-home-canary-20261111'})
+Need ($homeBaseline.Count -eq 1 -and $homeBaseline[0].local.managed_files -eq 583) 'EXACT_HOME_BASELINE_AMBIGUOUS'
 $baseline=Join-Path $lab 'baseline.json';$target=Join-Path $lab 'target.json'
-$home[0].local|ConvertTo-Json -Depth 7|Set-Content $baseline -Encoding utf8NoBOM
+$homeBaseline[0].local|ConvertTo-Json -Depth 7|Set-Content $baseline -Encoding utf8NoBOM
 $m.targets.local|ConvertTo-Json -Depth 7|Set-Content $target -Encoding utf8NoBOM
-Need ((Get-Content (Join-Path $old 'VERSION.txt') -Raw).Trim() -ceq $home[0].local.version) 'OLD_SOURCE_VERSION_WRONG'
+Need ((Get-Content (Join-Path $old 'VERSION.txt') -Raw).Trim() -ceq $homeBaseline[0].local.version) 'OLD_SOURCE_VERSION_WRONG'
 $phpUrl='https://downloads.php.net/~windows/releases/archives/php-8.4.24-Win32-vs17-x64.zip'
 $phpZip=Join-Path $lab 'php-ts.zip';$phpRoot=Join-Path $lab 'php-ts'
 Invoke-WebRequest $phpUrl -OutFile $phpZip
