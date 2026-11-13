@@ -116,4 +116,30 @@ echo "PASS_R196_DETACHED_ACCOUNT_GUARD\n";
 ensure(countQ($pdo,'SELECT COUNT(*) FROM settlement_records')===0,'STILL_NO_SETTLEMENT');
 ensure(countQ($pdo,'SELECT COUNT(*) FROM financial_periods')===0,'STILL_NO_PERIOD');
 ensure(countQ($pdo,'SELECT COUNT(*) FROM audit_log WHERE action=?',['settlement.open_account_preview_requested'])===3,'AUDIT_PER_NEW_PRINT_ONLY');
-echo "PASS_R196_REAL_MARIADB_81_MIGRATIONS_8_SCENARIOS\n";
+// I. A table with a genuinely settled PART of its account still receives a clearly marked
+// preliminary bill with gross, already-paid and remaining totals; no new financial document.
+[$pt,$ps,$po]=fixture($pdo,$uid,250);
+addOrder($pdo,$uid,$pt,$ps,300,false,'partial-other');
+$beforePartial=$settlements->account($ps);
+$firstId=(int)$beforePartial['items'][0]['id'];
+$paidResult=$settlements->settle([
+ 'session_id'=>$ps,'expected_session_id'=>$ps,
+ 'expected_remaining_total'=>(int)$beforePartial['remaining_total'],
+ 'expected_signature'=>(string)$beforePartial['signature'],
+ 'destination'=>'direct','mode'=>'itemized','selection'=>[['order_item_id'=>$firstId,'quantity'=>1]],
+ 'tenders'=>[['type'=>'cash','amount'=>250]],'print_receipt'=>false,'request_id'=>'r196-ci-partial-pay-009'
+],$actor);
+ensure((int)($paidResult['remaining_total']??-1)===300,'PARTIAL_SETTLEMENT_REMAINDER');
+$afterPartial=$settlements->account($ps);
+ensure($afterPartial['paid_total']===250&&$afterPartial['remaining_total']===300,'PARTIAL_ACCOUNT_RECALCULATED');
+$receiptsBefore=countQ($pdo,'SELECT COUNT(*) FROM settlement_records');
+$periodSeq=$pdo->query('SELECT COALESCE(SUM(next_invoice_sequence),0) FROM financial_periods')->fetchColumn();
+$partial=printWith($settlements,$ps,$afterPartial,'r196-preview-partial-009',$actor);
+$p=queuePayload($pdo,(int)$partial['job_id']);
+ensure($p['total']===550&&$p['document_role']==='account_preview','PARTIAL_FULL_ACCOUNT_SHOWN');
+ensure(str_contains((string)$p['footer'],'250')&&str_contains((string)$p['footer'],'300'),'PARTIAL_PAID_AND_REMAINING_DISCLOSED');
+ensure(($p['invoice_number']??null)===''&&!isset($p['settlement_id']),'PARTIAL_PREVIEW_NON_FISCAL');
+ensure(countQ($pdo,'SELECT COUNT(*) FROM settlement_records')===$receiptsBefore,'PARTIAL_NO_EXTRA_SETTLEMENT');
+ensure((string)$pdo->query('SELECT COALESCE(SUM(next_invoice_sequence),0) FROM financial_periods')->fetchColumn()===(string)$periodSeq,'PARTIAL_NO_INVOICE_SEQUENCE');
+echo "PASS_R196_PARTIAL_SETTLEMENT_GROSS_PAID_REMAINING_NO_FINANCIAL_SIDE_EFFECT\n";
+echo "PASS_R196_REAL_MARIADB_81_MIGRATIONS_9_SCENARIOS\n";
