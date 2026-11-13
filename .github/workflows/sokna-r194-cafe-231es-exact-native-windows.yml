@@ -1,0 +1,58 @@
+name: SOKNA R194 exact cafe 231es to 231ey upgrade - isolated native Windows QA
+on:
+  push:
+    branches: [qa/sokna-r194-exact-native-windows-20261113]
+    paths:
+      - 'qa/sokna-r194/windows_r194_from_r177.ps1'
+      - '.github/workflows/sokna-r194-cafe-231es-exact-native-windows.yml'
+  pull_request:
+    branches: [qa/sokna-r193-cafe-unsettled-qa-20261113]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-cafe-r177-to-r194:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: R153 original 231ed disposable setup package
+        uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - name: R177 exact cafe 231es package qualified on Windows
+        uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177-parent
+      - name: R194 exact previous Windows-tested cumulative candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: R194-EXACT-WINDOWS-QUALIFIED-QA-NO-CAFE-AUTO-DEPLOY
+          run-id: 43460281516
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r194-package
+      - name: Exact Windows R153 to cafe 231es to R194 231ey, full native lifecycle twice
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          "R186_R153_DIR=${{ runner.temp }}/r153-parent" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "R194_R177_DIR=${{ runner.temp }}/r177-parent" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "R194_TARGET_DIR=${{ runner.temp }}/r194-package" | Out-File -Append -FilePath $env:GITHUB_ENV
+          $env:R186_R153_DIR='${{ runner.temp }}/r153-parent'
+          $env:R194_R177_DIR='${{ runner.temp }}/r177-parent'
+          $env:R194_TARGET_DIR='${{ runner.temp }}/r194-package'
+          & ./qa/sokna-r194/windows_r194_from_r177.ps1
+          if($LASTEXITCODE -ne 0){throw 'R194_CAFE_231ES_NATIVE_UPGRADE_FAILED'}
+          Write-Host 'PASS_R194_NATIVE_CAFE_231ES_TO_231EY_EXACT_UPGRADE'
