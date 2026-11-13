@@ -1,0 +1,45 @@
+name: SOKNA R195 exact R194 print-section regression - QA ONLY
+on:
+  push:
+    branches: [qa/sokna-r195-print-section-20261113]
+    paths:
+      - 'qa/sokna-r195/**'
+      - '.github/workflows/sokna-r195-print-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  print-section:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_mysql, zip
+      - uses: actions/download-artifact@v4
+        with:
+          name: R194-EXACT-WINDOWS-QUALIFIED-QA-NO-CAFE-AUTO-DEPLOY
+          run-id: 43460281516
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r194
+      - name: Verify SHA-pinned R194 parent, apply one exact patch, test all 590 source identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARENT=$(find "$RUNNER_TEMP/r194" -type f -name 'SOKNA-R194-LOCAL-231EY-58BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$PARENT"
+          echo "3444b9febcde490cc3f2a5a9d0f3bf1c7d270e3844e7bec6d60fb5b0d560ea0b  $PARENT" | sha256sum -c -
+          ROOT="$RUNNER_TEMP/r195"
+          mkdir -p "$ROOT/local" "$ROOT/qa"
+          unzip -p "$PARENT" artifacts/local/web.zip > "$ROOT/web.zip"
+          unzip -q "$ROOT/web.zip" -d "$ROOT/local"
+          (cd "$ROOT/local" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r195/R194-TO-R195-PREPARATION-SECTION-TITLE-QA.patch")
+          python qa/sokna-r195/verify_r195.py "$ROOT/local" "$PARENT" qa/sokna-r195/R194-TO-R195-PREPARATION-SECTION-TITLE-QA.patch
+          php -l "$ROOT/local/src/Domain/Printing/PrintService.php"
+          cp qa/sokna-r195/test_preparation_sections.php "$ROOT/qa/test_preparation_sections.php"
+          # Unit test expects a sibling local/ folder.
+          php "$ROOT/qa/test_preparation_sections.php"
+          echo 'PASS_R195_EXACT_SOURCE_AND_EIGHT_PREPARATION_CASES'

@@ -1,0 +1,23 @@
+--- a/src/Domain/Printing/PrintService.php
++++ b/src/Domain/Printing/PrintService.php
+@@ -651,7 +651,10 @@
+         $groups=[];$order=[];
+         foreach($rows as $row){
+             if(!is_array($row))continue;
+-            $station=trim((string)($row['preparation_station']??'other'));if($station==='')$station='other';
++            $station=trim((string)($row['preparation_station']??'other'));
++            // Real catalog stations hot_bar and cold_bar must remain distinct.
++            // Only invalid legacy values enter the neutral 'other' section.
++            if(!in_array($station,['bar','hot_bar','cold_bar','kitchen','other'],true))$station='other';
+             if(!isset($groups[$station])){$groups[$station]=[];$order[]=$station;}
+             $groups[$station][]=[
+                 'name'=>(string)($row['item_name']??$row['name']??'—'),
+@@ -660,7 +663,7 @@
+                 'fulfillment_mode'=>(string)($row['fulfillment_mode']??'dine_in'),
+             ];
+         }
+-        $titles=['kitchen'=>'آشپزخانه','bar'=>'بار','other'=>'سایر'];$out=[];
++        $titles=['kitchen'=>'آشپزخانه','bar'=>'بار','hot_bar'=>'بار گرم','cold_bar'=>'بار سرد','other'=>'سایر'];$out=[];
+         foreach($order as $station)$out[]=['title'=>$titles[$station]??'آماده‌سازی','items'=>$groups[$station]];
+         return $out;
+     }
