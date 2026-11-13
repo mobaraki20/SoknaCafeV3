@@ -1,0 +1,127 @@
+--- a/src/Domain/Orders/OrderStaffActionService.php
++++ b/src/Domain/Orders/OrderStaffActionService.php
+@@ -130,6 +130,124 @@
+ 
+         $this->audit('order.status_changed',$orderId,$actor,['from_status'=>$old,'to_status'=>$target,'table_id'=>$tableId,'session_id'=>$sessionId]);
+         return ['success'=>true,'idempotent'=>false,'order_id'=>$orderId,'status'=>$target,'table_id'=>$tableId,'table_name'=>(string)$tableRow['name']];
++    }
++
++    /**
++     * Experimental, deliberately scoped whole-order cancellation for staff orders
++     * while the table is still open and NO payment or preparation claim exists.
++     * Every correction runs inside one DB transaction; there is no hard delete.
++     * Not for settled orders, guest orders, or already claimed preparation.
++     */
++    public function cancelUnsettledStaffOrder(array $data,array $user): array
++    {
++        $actor=$this->actor($user);
++        if(!$this->capabilities->has('shift_supervision',$actor))
++            throw new OrderStaffActionException('forbidden','لغو کامل سفارش به سرپرست شیفت نیاز دارد.',403);
++        $orderId=self::validatedOrderItemId($data['order_id']??null);
++        $requestId=$this->requestId((string)($data['request_id']??''));
++        $reason=self::cutText(trim((string)($data['reason']??'')),250);
++        if($reason==='')throw new OrderStaffActionException('reason_required','دلیل لغو کل سفارش را ثبت کنید.',422);
++        $ownsTransaction=!$this->pdo->inTransaction();
++        if($ownsTransaction)$this->pdo->beginTransaction();
++        try{
++            // Same locking order as the approval/settlement paths: table -> session -> order.
++            $probe=$this->pdo->prepare('SELECT table_id,session_id FROM orders WHERE id=? LIMIT 1');
++            $probe->execute([$orderId]);$ids=$probe->fetch(PDO::FETCH_ASSOC);
++            if(!is_array($ids))throw new OrderStaffActionException('not_found','سفارش پیدا نشد.',404);
++            $tableId=(int)$ids['table_id'];$sessionId=(int)($ids['session_id']??0);
++            $table=$this->pdo->prepare('SELECT id FROM cafe_tables WHERE id=? FOR UPDATE');
++            $table->execute([$tableId]);if($table->fetchColumn()===false)
++                throw new OrderStaffActionException('table_missing','میز سفارش پیدا نشد.',409);
++            $session=$this->pdo->prepare('SELECT id,status,table_id,live_table_guard,service_detached_at FROM table_sessions WHERE id=? FOR UPDATE');
++            $session->execute([$sessionId]);$sess=$session->fetch(PDO::FETCH_ASSOC);
++            $orderStmt=$this->pdo->prepare('SELECT id,status,table_id,session_id,order_source,accounting_origin,total_amount FROM orders WHERE id=? FOR UPDATE');
++            $orderStmt->execute([$orderId]);$order=$orderStmt->fetch(PDO::FETCH_ASSOC);
++            if(!is_array($order)||(int)$order['table_id']!==$tableId||(int)$order['session_id']!==$sessionId||$sessionId<1)
++                throw new OrderStaffActionException('order_changed','هویت سفارش در حین رسیدگی تغییر کرد.',409);
++            if((string)$order['status']==='cancelled'){
++                if($ownsTransaction)$this->pdo->commit();
++                return ['success'=>true,'idempotent'=>true,'order_id'=>$orderId,'status'=>'cancelled'];
++            }
++            if((string)$order['status']!=='accounted'||(string)$order['order_source']!=='staff'||(string)($order['accounting_origin']??'regular')==='late_served')
++                throw new OrderStaffActionException('unsafe_order','فقط سفارش کارکنان که ثبت و هنوز تسویه نشده است در این مسیر قابل لغو است.',409);
++            if(!is_array($sess)||(int)$sess['table_id']!==$tableId||(string)$sess['status']!=='active'||(int)($sess['live_table_guard']??0)!==$tableId||!empty($sess['service_detached_at']))
++                throw new OrderStaffActionException('session_closed','لغو کل سفارش در حساب بسته یا جداشده مجاز نیست.',409);
++            // Block the entire session once any receipt is present, even if a
++            // previous receipt was reversed; its finance history needs review.
++            $paid=$this->pdo->prepare('SELECT id FROM settlement_records WHERE session_id=? LIMIT 1 FOR UPDATE');
++            $paid->execute([$sessionId]);if($paid->fetchColumn()!==false)
++                throw new OrderStaffActionException('settlement_exists','برای این حساب سند مالی وجود دارد؛ لغو باید از مسیر حسابداری انجام شود.',409);
++            $claimed=$this->pdo->prepare('SELECT order_id FROM order_preparation_claims WHERE order_id=? LIMIT 1 FOR UPDATE');
++            $claimed->execute([$orderId]);if($claimed->fetchColumn()!==false)
++                throw new OrderStaffActionException('preparation_claimed','آماده‌سازی این سفارش دریافت شده است؛ لغو خودکار مجاز نیست.',409);
++            $pending=$this->pdo->prepare("SELECT id FROM order_item_adjustments WHERE order_id=? AND preparation_ack_status='pending' LIMIT 1 FOR UPDATE");
++            $pending->execute([$orderId]);if($pending->fetchColumn()!==false)
++                throw new OrderStaffActionException('pending_adjustment','این سفارش اصلاحیه در انتظار تأیید دارد.',409);
++            $events=$this->pdo->prepare("SELECT id FROM inventory_order_events WHERE order_id=? AND status<>'done' LIMIT 1 FOR UPDATE");
++            $events->execute([$orderId]);if($events->fetchColumn()!==false)
++                throw new OrderStaffActionException('inventory_pending','ثبت مصرف انبار این سفارش هنوز کامل نشده است.',409);
++            $items=$this->pdo->prepare('SELECT id,quantity,line_total,preparation_station FROM order_items WHERE order_id=? ORDER BY id FOR UPDATE');
++            $items->execute([$orderId]);$lines=$items->fetchAll(PDO::FETCH_ASSOC);
++            if(!$lines)throw new OrderStaffActionException('order_empty','سفارش قلمی ندارد؛ بازبینی دستی لازم است.',409);
++            $total=0;$active=[];$hasPreparation=false;
++            foreach($lines as $line){
++                $total+=(int)$line['line_total'];
++                if((int)$line['quantity']>0){$active[]=$line;$hasPreparation=$hasPreparation||PreparationService::areaForPreparationStation((string)$line['preparation_station'])!==null;}
++            }
++            if($total!==(int)$order['total_amount']||!$active)
++                throw new OrderStaffActionException('order_amount_mismatch','اقلام و مبلغ سفارش قابل تطبیق نیستند؛ لغو متوقف شد.',409);
++            if($hasPreparation&&!$this->preparationAutoPrintEnabled())
++                throw new OrderStaffActionException('correction_print_disabled','چاپ اصلاحیه آماده‌سازی غیرفعال است؛ لغو ایمن نیست.',409);
++            $snapshot=$this->inventoryOrders->accountedRecipeSnapshotTx($orderId);
++            $tracked=[];
++            foreach($snapshot as $recipeRow){
++                foreach((array)($recipeRow['components']??[]) as $component){
++                    if(!empty($component['opening_eligible_at_order']))$tracked[(int)($recipeRow['order_item_id']??0)]=true;
++                }
++            }
++            $printJobIds=[];$adjustmentIds=[];
++            foreach($active as $line){
++                $itemId=(int)$line['id'];
++                $childId='cancel:'.substr(hash('sha256',$requestId.':'.$itemId),0,48);
++                $adjust=$this->adjustSingleItem([
++                    'order_item_id'=>$itemId,'quantity'=>0,'request_id'=>$childId,
++                    'reason'=>'لغو کامل سفارش: '.$reason,
++                ],$actor);
++                if(empty($adjust['success'])||(int)($adjust['to_quantity']??-1)!==0)
++                    throw new OrderStaffActionException('adjustment_failed','اصلاح یکی از اقلام سفارش تکمیل نشد.',409);
++                if(isset($tracked[$itemId])&&(int)($adjust['inventory_event_id']??0)<1)
++                    throw new OrderStaffActionException('inventory_event_missing','برگشت مصرف انبار ثبت نشد؛ تمام تغییرات بازگردانده شد.',409);
++                $adjustmentIds[]=(int)($adjust['adjustment_id']??0);
++                if(PreparationService::areaForPreparationStation((string)$line['preparation_station'])!==null){
++                    $printStatus=(string)($adjust['correction_print_status']??'');
++                    if((int)($adjust['correction_print_job_id']??0)<1||!in_array($printStatus,['pending','submitted','completed'],true))
++                        throw new OrderStaffActionException('correction_print_not_ready','اصلاحیه چاپی برای آماده‌سازی در صف معتبر قرار نگرفت؛ لغو متوقف شد.',409);
++                    $printJobIds[]=(int)$adjust['correction_print_job_id'];
++                }
++            }
++            $changed=$this->pdo->prepare("UPDATE orders SET status='cancelled',updated_at=NOW() WHERE id=? AND status='accounted' AND total_amount=0");
++            $changed->execute([$orderId]);if($changed->rowCount()!==1)
++                throw new OrderStaffActionException('order_changed','لغو هم‌زمان سفارش یا جمع نادرست آن مشاهده شد.',409);
++            $this->pdo->prepare("INSERT INTO order_status_history(order_id,from_status,to_status,actor_user_id) VALUES(?,'accounted','cancelled',?)")->execute([$orderId,(int)$actor['id']]);
++            $remaining=$this->pdo->prepare("SELECT COUNT(*) FROM orders WHERE session_id=? AND id<>? AND status IN('new','pending_approval','accounted')");
++            $remaining->execute([$sessionId,$orderId]);$hasOther=(int)$remaining->fetchColumn()>0;
++            if(!$hasOther){
++                $draft=$this->pdo->prepare("SELECT id FROM table_drafts WHERE table_id=? AND state='active' LIMIT 1 FOR UPDATE");
++                $draft->execute([$tableId]);if($draft->fetchColumn()!==false)
++                    throw new OrderStaffActionException('active_draft','میز سفارش پیش‌نویس فعال دارد؛ بسته‌شدن خودکار حساب امن نیست.',409);
++                $this->pdo->prepare("UPDATE waiter_calls SET status='cancelled',active_table_guard=NULL,cancelled_at=COALESCE(cancelled_at,NOW()),cancel_reason='order_cancelled',cancelled_by_user_id=? WHERE session_id=? AND status IN('new','accepted')")->execute([(int)$actor['id'],$sessionId]);
++                $close=$this->pdo->prepare("UPDATE table_sessions SET status='closed',live_table_guard=NULL,ended_at=NOW(),ended_reason='order_cancelled',closed_by_user_id=? WHERE id=? AND status='active' AND live_table_guard=?");
++                $close->execute([(int)$actor['id'],$sessionId,$tableId]);
++                if($close->rowCount()!==1)throw new OrderStaffActionException('session_changed','بستن حساب بدون سفارش ناموفق بود.',409);
++            }
++            $this->audit('order.cancelled_unsettled_staff',$orderId,$actor,[
++                'session_id'=>$sessionId,'table_id'=>$tableId,'reason'=>$reason,'request_id'=>$requestId,
++                'adjustment_ids'=>$adjustmentIds,'correction_print_job_ids'=>$printJobIds,'session_closed'=>!$hasOther,
++            ]);
++            if($ownsTransaction)$this->pdo->commit();
++            return ['success'=>true,'idempotent'=>false,'order_id'=>$orderId,'status'=>'cancelled',
++                'session_closed'=>!$hasOther,'adjustment_ids'=>$adjustmentIds,'correction_print_job_ids'=>$printJobIds];
++        }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+     }
+ 
+     public function adjustItemQuantity(array $data,array $user): array
