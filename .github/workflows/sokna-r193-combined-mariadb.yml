@@ -1,0 +1,89 @@
+name: SOKNA R193 combined source verification MariaDB and UI QA - NOT INSTALLABLE
+on:
+  push:
+    branches: [qa/sokna-r193-cafe-unsettled-qa-20261113]
+    paths:
+      - 'qa/sokna-r193/**'
+      - '.github/workflows/sokna-r193-combined-mariadb.yml'
+  pull_request:
+    branches: [qa/sokna-r192-unsettled-cancel-mariadb-20261113]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  r193-combined-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r193-disposable-only-password
+          MARIADB_DATABASE: sokna_r192_disposable
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R192_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R192_DB_HOST: '127.0.0.1'
+      SOKNA_R192_DB_PASSWORD: 'r193-disposable-only-password'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql, mbstring, curl, gd, zip
+          coverage: none
+      - name: Wait for disposable MariaDB PDO readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{$p=new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R192_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then
+              echo 'PASS_R193_DISPOSABLE_MARIADB_READY'; exit 0
+            fi
+            sleep 2
+          done
+          echo 'R193_MARIADB_STARTUP_FAILED'; exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R189-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43418286650
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r189-parent
+      - name: Rebuild exactly R191 and apply only scoped R193 QA code
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/r193"
+          mkdir -p "$ROOT"/{outer,local,qa}
+          ARCHIVE=$(find "${RUNNER_TEMP}/r189-parent" -type f -name 'SOKNA-R189-LOCAL-231EX-57BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' | head -n1)
+          test -n "$ARCHIVE"
+          echo "61366cf4b7970bd2fadf5955264daaa59629f0508f94b30e04586cc5c1996229  $ARCHIVE" | sha256sum -c -
+          unzip -q "$ARCHIVE" -d "$ROOT/outer"
+          unzip -q "$ROOT/outer/artifacts/local/web.zip" -d "$ROOT/local"
+          (cd "$ROOT/local" && patch --fuzz=0 -p1 --batch < "${GITHUB_WORKSPACE}/qa/sokna-r193/R189-TO-R191-LOCAL-QA-PATCH-NOT-INSTALL.patch")
+          (cd "$ROOT/local" && patch --fuzz=0 -p1 --batch < "${GITHUB_WORKSPACE}/qa/sokna-r193/R191-TO-R193-QA-API-UI-AND-CANCEL.patch")
+          python qa/sokna-r193/verify_combined.py "$ROOT/local"
+          cp qa/sokna-r193/test_*.php qa/sokna-r193/test_*.js "$ROOT/qa/"
+          echo "SOKNA_R193_WEB=$ROOT/local" >> "$GITHUB_ENV"
+          echo "SOKNA_R192_WEB=$ROOT/local" >> "$GITHUB_ENV"
+          echo "SOKNA_R193_QA_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo 'PASS_R193_RECONSTRUCTED_FULL_SOURCE'
+      - name: Run auth, server cancel guard and browser-action isolated QA
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$SOKNA_R193_QA_ROOT"
+          php "$ROOT/qa/test_remember_device.php"
+          php "$ROOT/qa/test_auth_restore.php"
+          php "$ROOT/qa/test_cancel_unsettled_guards.php"
+          php "$ROOT/qa/test_cancel_atomic_stub.php"
+          node "$ROOT/qa/test_hall_cancellation.js"
+          echo 'PASS_R193_AUTH_CANCEL_API_UI_ISOLATED'
+      - name: Execute full genuine migrations and nine MariaDB cancellation scenarios
+        shell: bash
+        run: |
+          set -euo pipefail
+          php "$SOKNA_R193_QA_ROOT/qa/test_cancel_mariadb.php"
+          echo 'PASS_R193_REAL_MARIADB_NINE_SCENARIOS'
