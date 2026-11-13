@@ -1,0 +1,97 @@
+name: SOKNA R201 exact 231es cafe to 231fa Native Windows QA - NO CAFE AUTO DEPLOY
+on:
+  push:
+    branches: [qa/sokna-r201-cafe-cash-refund-native-windows-20261113]
+    paths:
+      - 'qa/sokna-r201/**'
+      - '.github/workflows/sokna-r201-exact-native-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-r201-source-and-zip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring,zip
+      - uses: actions/download-artifact@v4
+        with:
+          name: R197-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43473665017
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r197-parent
+      - name: Rebuild 590-file R201 from exact Windows-approved R197 plus three R200 changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/r201";mkdir -p "$R/outer" "$R/web" "$R/out"
+          BASE=$(find "$RUNNER_TEMP/r197-parent" -type f -name 'SOKNA-R197-LOCAL-231EZ-59BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$BASE"
+          echo "282a7cee20f7fa5e0ba99cf9383a5f019e6e2b7f18a54712cdaeb87749af860f  $BASE" | sha256sum -c -
+          unzip -q "$BASE" -d "$R/outer"
+          unzip -q "$R/outer/artifacts/local/web.zip" -d "$R/web"
+          (cd "$R/web" && git init -q && git config core.autocrlf false && git apply --check "$GITHUB_WORKSPACE/qa/sokna-r200/R197-TO-R200-REFUNDED-CASH-CANCEL-QA-ONLY.patch" && git apply "$GITHUB_WORKSPACE/qa/sokna-r200/R197-TO-R200-REFUNDED-CASH-CANCEL-QA-ONLY.patch")
+          rm -rf "$R/web/.git"
+          php -l "$R/web/src/Domain/Orders/OrderStaffActionService.php"
+          php -l "$R/web/public/operator/api.php"
+          node --check "$R/web/public/assets/staff-app/hall-workspace.js"
+          SOKNA_R201_WEB="$R/web" node qa/sokna-r201/test_r201_cash_refund_ui.js
+          SOKNA_R201_PARENT_ZIP="$BASE" SOKNA_R201_SRC="$R/web" SOKNA_R201_OUT="$R/out" python3 qa/sokna-r201/build_r201.py
+          PKG="$R/out/SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip"
+          echo "911ea673dc1863bee3ce372dbc692602aa3a32439d2fc9ccba69dc2a6c243897  $PKG" | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py --require-installable "$PKG"
+          echo 'PASS_R201_SOURCE_590_FILES_3_SAFE_CHANGED_60_BASELINE_MANIFEST'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R201-EXACT-SOURCE-MANIFEST-QA-FOR-WINDOWS
+          path: ${{ runner.temp }}/r201/out/*
+          if-no-files-found: error
+          retention-days: 14
+  cafe-r177-to-r201-native-windows:
+    needs: exact-r201-source-and-zip
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-SOURCE-MANIFEST-QA-FOR-WINDOWS
+          path: ${{ runner.temp }}/r201-package
+      - name: Exact Windows R153 to actual cafe R177 231es to R201 231fa, whole Maintenance cycle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:R186_R153_DIR='${{ runner.temp }}/r153-parent'
+          $env:R201_R177_DIR='${{ runner.temp }}/r177-parent'
+          $env:R201_TARGET_DIR='${{ runner.temp }}/r201-package'
+          & ./qa/sokna-r201/windows_r201_from_r177.ps1
+          if($LASTEXITCODE -ne 0){throw 'R201_CAFE_231ES_NATIVE_UPGRADE_FAILED'}
+          Write-Host 'PASS_R201_NATIVE_CAFE_231ES_TO_231FA_EXACT_UPGRADE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          path: ${{ runner.temp }}/r201-package/*
+          if-no-files-found: error
+          retention-days: 14
