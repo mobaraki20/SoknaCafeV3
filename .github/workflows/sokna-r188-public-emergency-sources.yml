@@ -1,0 +1,33 @@
+name: SOKNA R188 verify missing Public Emergency prerequisites
+on:
+  push:
+    branches:
+      - qa/sokna-r188-public-root-qr-audit-20261113
+    paths:
+      - .github/workflows/sokna-r188-public-emergency-sources.yml
+jobs:
+  extract-reference:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact five PHP prerequisite files from pinned QA branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f apps/public/src/Emergency/PublicUpdateException.php
+          test -f apps/public/src/Emergency/EmergencyAccessService.php
+          test -f apps/public/src/Emergency/PairingSecretStore.php
+          test -f apps/public/src/Emergency/PublicTakeoverService.php
+          test -f apps/public/src/Emergency/PublicUpdateService.php
+          mkdir -p r188-reference/src/Emergency
+          cp apps/public/src/Emergency/*.php r188-reference/src/Emergency/
+          find r188-reference -type f | sort
+          (cd r188-reference && find . -type f -print0 | sort -z | xargs -0 sha256sum) > r188-reference/SHA256SUMS.txt
+          (cd r188-reference && find src/Emergency -type f -name '*.php' | sort | xargs -n1 php -l)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r188-public-missing-prerequisites-reference-qa-only
+          path: r188-reference/
+          retention-days: 1
