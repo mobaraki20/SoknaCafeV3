@@ -1,0 +1,10 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const file=process.env.SOKNA_R202_WEB+'/public/assets/settlement-tender.js';
+const ctx={window:{}};vm.createContext(ctx);vm.runInContext(fs.readFileSync(file,'utf8'),ctx);const T=ctx.window.SoknaSettlementTender;
+let s=T.fresh();T.sync(s,0);assert.strictEqual(T.valid(s),true);assert.deepStrictEqual(Array.from(T.rows(s)),[]);console.log('PASS_R202_ZERO_REQUIRES_NO_TENDER');
+T.toggle(s,'pos',0);assert.strictEqual(T.valid(s),true);assert.deepStrictEqual(Array.from(T.rows(s)),[]);console.log('PASS_R202_ZERO_TENDER_SELECTION_NOT_FAKED');
+s=T.fresh();T.sync(s,500);assert.strictEqual(T.valid(s),false);T.toggle(s,'cash',500);assert.strictEqual(T.valid(s),true);assert.strictEqual(T.rows(s)[0].amount,500);console.log('PASS_R202_POSITIVE_TENDER_STILL_REQUIRED');
+T.sync(s,250);assert.strictEqual(T.valid(s),true);assert.strictEqual(T.rows(s)[0].amount,250);console.log('PASS_R202_NORMAL_AMOUNT_RESYNC');
+const html=fs.readFileSync(process.env.SOKNA_R202_WEB+'/public/assets/hall-settlement-v32.js','utf8');
+assert(html.includes('نیازی به انتخاب روش پرداخت نیست.')&&html.includes("if(!T.valid(state.tender))throw new Error"));console.log('PASS_R202_SAME_SETTLEMENT_CTA_NO_ADDITIONAL_BUTTON');
+const panels=fs.readFileSync(process.env.SOKNA_R202_WEB+'/public/assets/staff-app/data-panels.js','utf8');assert(panels.includes("['discount_total','تخفیف'")&&panels.includes("['net_sales','فروش نهایی'"));console.log('PASS_R202_REPORT_KPI_DISPLAY');
