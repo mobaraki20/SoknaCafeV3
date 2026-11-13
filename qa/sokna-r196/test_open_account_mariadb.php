@@ -16,7 +16,7 @@ $pdo->exec('USE sokna_r196_disposable');
 $migrations=new \Sokna\Local\Core\Migrations($pdo,$web.'/database/migrations');
 $migrations->migrate('0059_menu_business_reconciliation_v4');
 $pdo->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)')->execute(['qa.r196',password_hash('only-in-CI',PASSWORD_DEFAULT),'QA Admin','admin']);
-$uid=(int)$pdo->lastInsertId();$actor=['id'=>$uid];
+$uid=(int)$pdo->lastInsertId();$actor=['id'=>$uid,'role'=>'admin'];
 $icons=new \Sokna\Local\Domain\Sellables\CategoryIconLibrary($web.'/resources/default-content/v1/category-icons.json');
 $seeder=new \Sokna\Local\Domain\Sellables\DefaultContentSeeder($pdo,$icons,$web.'/resources/default-content/v1',$ciMedia);
 if(($seeder->seed($uid)['status']??'')!=='complete')throw new RuntimeException('R196_SEED_INCOMPLETE');
