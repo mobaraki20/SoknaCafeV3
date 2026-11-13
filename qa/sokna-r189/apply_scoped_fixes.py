@@ -38,7 +38,7 @@ for root,csspath in [(L,'public/assets/product-ui.css'),(P,'assets/product-ui.cs
  change(path,'@media(min-width:761px){.sc-account-item-edit-dialog .sc-dialog-frame__body{overflow-y:visible!important}}','/* The edit form can exceed 660px after adjustment details expand: retain the internal scroll track. */\n.sc-account-item-edit-dialog .sc-dialog-frame__body{min-block-size:0;overflow-y:auto!important;overscroll-behavior:contain;scrollbar-gutter:stable}')
  # A final scoped override, leaving PDF preview behavior untouched
  with path.open('a',encoding='utf-8',newline='\n') as f:
-  f.write('''\n/* R189/190 QA: preparation PNG preview fits 80mm visually; PDF iframe untouched. */\n.sc-print-preview-stage:has(>img.sc-print-preview){overflow-y:auto;overflow-x:hidden;place-items:start center}\n.sc-print-preview-stage>img.sc-print-preview{inline-size:min(100%,340px);block-size:auto;max-block-size:none;object-fit:contain;justify-self:center}\n''')
+  f.write('''\n/* R189/190 QA: preparation PNG preview fits 80mm visually; PDF iframe untouched. */\n.sc-print-preview-stage:has(>img.sc-print-preview:not([hidden])){overflow-y:auto;overflow-x:hidden;place-items:start center}\n.sc-print-preview-stage>img.sc-print-preview{inline-size:min(100%,340px);block-size:auto;max-block-size:none;object-fit:contain;justify-self:center}\n''')
 # preserve modal scroll position across quantity/reason re-renders, all relevant shared JS copies
 for path in [L/'assets/staff-app/hall-workspace.js',L/'public/assets/staff-app/hall-workspace.js',P/'assets/staff-app/hall-workspace.js']:
  x=path.read_text('utf-8'); b=x.index('function renderAccountItemEditor(){'); t=x.index('function openAccountItemEditor',b); s=x[b:t]
