@@ -1,5 +1,7 @@
 name: SOKNA R189 exact Local scoped UI candidate - native Windows admission
 on:
+  pull_request:
+    branches: [qa/sokna-r187-home-canary-publish-20261113]
   push:
     branches: [qa/sokna-r189-login-modal-native-windows-20261113]
     paths:
