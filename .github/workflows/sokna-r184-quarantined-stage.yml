@@ -41,16 +41,17 @@ jobs:
           (cd "$RUNNER_TEMP/r184-src" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r182/R177-TO-R182-EXACT-PAYLOAD.patch")
           (cd "$RUNNER_TEMP/r184-src" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r183/R182-TO-R183-PREUPLOAD-BROWSER-GATE.patch")
           python qa/sokna-r184/build_r184_candidate.py --r177 "$PKG" --source "$RUNNER_TEMP/r184-src" --out "$RUNNER_TEMP/r184-out" > "$RUNNER_TEMP/r184-out/provenance-print.json"
-          python qa/sokna-r183/release_gate.py "$RUNNER_TEMP/r184-out/SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip" --output "$RUNNER_TEMP/r184-out/admission-static.json"
+          python qa/sokna-r184/release_gate.py "$RUNNER_TEMP/r184-out/SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip" --output "$RUNNER_TEMP/r184-out/admission-static.json" || test "$?" -eq 2
           python - "$RUNNER_TEMP/r184-out/admission-static.json" <<'PY'
           import json,sys
-          j=json.load(open(sys.argv[1]));assert j['all_static_checks_pass'];assert not j['ready_for_production_install']
-          print('PASS_R184_GATE_STATIC_ONLY_NOT_PRODUCTION_READY')
+          j=json.load(open(sys.argv[1]));assert not j['all_static_checks_pass'];assert not j['ready_for_production_install']
+          assert 'QUARANTINED_CI_PACKAGE_NOT_FOR_DELIVERY' in j['checks'][0]['reasons']
+          print('PASS_R184_QUARANTINE_DENIED_DELIVERY_WHILE_WINDOWS_STAGE_PROBE_ALLOWED')
           PY
           find "$RUNNER_TEMP/r184-src" -name '*.php' -type f -print0 | xargs -0 -n 1 -P 8 php -l > "$RUNNER_TEMP/r184-php-syntax.log"
           while IFS= read -r -d '' file; do node --check "$file" > /dev/null; done < <(find "$RUNNER_TEMP/r184-src" -name '*.js' -type f -print0)
           php qa/sokna-r182/test_theme_version_allocator.php "$RUNNER_TEMP/r184-src"
-          python qa/sokna-r183/test_release_gate.py
+          python qa/sokna-r184/test_release_gate.py
           echo "R184_QUARANTINED_PACKAGE=$RUNNER_TEMP/r184-out/SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip" >> "$GITHUB_ENV"
           echo 'PASS_R184_589_FILES_EXACT_PATCHES_SYNTAX_AND_STATIC_GATE'
       - uses: actions/upload-artifact@v4
