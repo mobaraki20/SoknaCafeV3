@@ -66,7 +66,11 @@ jobs:
       - name: Validate R195 preparation grouping regression
         shell: bash
         run: |
-          php qa/sokna-r195/test_preparation_sections.php
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r196/qa"
+          cp -a "$RUNNER_TEMP/r196/web" "$RUNNER_TEMP/r196/local"
+          cp qa/sokna-r195/test_preparation_sections.php "$RUNNER_TEMP/r196/qa/test_preparation_sections.php"
+          php "$RUNNER_TEMP/r196/qa/test_preparation_sections.php"
       - name: Run real Sokna migrations and prepayment printing scenarios
         shell: bash
         run: |
