@@ -1,0 +1,85 @@
+name: SOKNA R198 Print Agent 6.2.12 heartbeat component binary - QA NOT INSTALL
+on:
+  push:
+    branches: [qa/sokna-r198-heartbeat-component-package-20261113]
+    paths:
+      - 'windows/print-agent/**'
+      - 'qa/sokna-r198/**'
+      - '.github/workflows/sokna-r198-component-package-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  component-qa:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Lock branch-only version and refuse a production Services release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          [xml]$p=Get-Content windows/print-agent/source/Directory.Build.props -Raw
+          if([string]$p.Project.PropertyGroup.SoknaAgentVersion -ne '6.2.12'){throw 'R198_QA_VERSION_WRONG'}
+          $m=Get-Content packaging/windows/windows-services-component-manifest-v2.json -Raw|ConvertFrom-Json
+          $print=@($m.components|Where-Object {$_.component_id -eq 'print-agent'})
+          if($print.Count -ne 1 -or [string]$print[0].version -ne '6.2.10'){throw 'R198_PRODUCTION_MANIFEST_WAS_MUTATED'}
+          Write-Host 'PASS_R198_ISOLATED_PACKAGE_NO_SERVICES_MANIFEST_MUTATION'
+      - name: Run bounded SQLite heartbeat and service integration, print safety
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project qa/sokna-r198/Sokna.HeartbeatMetrics.QA.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'R198_HEARTBEAT_REGRESSION'}
+          foreach($case in @('A52','A12','A49','A50','A51')){
+            dotnet run --project windows/print-agent/source/tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case $case --results (Join-Path $env:RUNNER_TEMP ('r198-'+$case))
+            if($LASTEXITCODE -ne 0){throw ('R198_PRINT_ACCEPTANCE_'+$case)}
+          }
+          Write-Host 'PASS_R198_PACKAGED_SOURCE_HEARTBEAT_AND_PRINT_SAFETY_13_SCENARIOS'
+      - name: Build complete self-contained Service plus Worker component ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-r198-component'
+          ./windows/print-agent/build-component-package.ps1 -RepoRoot $PWD.Path -OutputDir $out
+          if($LASTEXITCODE -ne 0){throw 'R198_COMPONENT_BUILDER_FAILED'}
+          $zip=Join-Path $out 'SoknaPrintAgent-6.2.12-win-x64.zip'
+          if(!(Test-Path $zip)){throw 'R198_EXACT_COMPONENT_MISSING'}
+          $expanded=Join-Path $env:RUNNER_TEMP 'r198-expanded'
+          Expand-Archive $zip -DestinationPath $expanded
+          $m=Get-Content (Join-Path $expanded 'component-manifest.json') -Raw|ConvertFrom-Json
+          if($m.format -ne 'sokna-print-agent-component-v1' -or $m.version -ne '6.2.12' -or $m.component -ne 'print-agent'){throw 'R198_COMPONENT_MANIFEST_INVALID'}
+          $paths=@($m.files|ForEach-Object {[string]$_.path})
+          if($paths -notcontains 'Service/Sokna.PrintAgent.Service.exe' -or $paths -notcontains 'Worker/Sokna.PrintAgent.Worker.exe'){throw 'R198_BINARY_FILES_MISSING'}
+          foreach($f in $m.files){
+            $path=Join-Path $expanded ([string]$f.path)
+            if(!(Test-Path $path)){throw 'R198_MANAGED_FILE_MISSING'}
+            $sha=(Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($sha -ne [string]$f.sha256 -or (Get-Item $path).Length -ne [long]$f.size){throw 'R198_COMPONENT_FILE_IDENTITY_MISMATCH'}
+          }
+          $sha=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $artifact=Get-Content (Join-Path $out 'print-agent-artifact.json') -Raw|ConvertFrom-Json
+          if($artifact.sha256 -ne $sha){throw 'R198_ZIP_SHA_MISMATCH'}
+          @{
+            format='sokna-r198-heartbeat-qa-package-identity-v1'
+            version='6.2.12'
+            sha256=$sha
+            source_sha=$env:GITHUB_SHA
+            installed_6_2_11_source_reconciled=$false
+            production_install_allowed=$false
+            note='For QA source and binary qualification only; no cafe deployment until 6.2.11 source/byte reconciliation and installer lifecycle pass'
+          }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $out 'R198-QA-ONLY-DO-NOT-INSTALL.json') -Encoding utf8
+          Write-Host "PASS_R198_EXACT_BINARY_COMPONENT_PACKAGE $sha"
+          "R198_BINARY_OUT=$out"|Out-File -FilePath $env:GITHUB_ENV -Append
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R198-PRINT-AGENT-6.2.12-BINARY-QA-NOT-INSTALL
+          path: |
+            ${{ env.R198_BINARY_OUT }}/SoknaPrintAgent-6.2.12-win-x64.zip
+            ${{ env.R198_BINARY_OUT }}/print-agent-artifact.json
+            ${{ env.R198_BINARY_OUT }}/R198-QA-ONLY-DO-NOT-INSTALL.json
+          if-no-files-found: error
+          retention-days: 14
