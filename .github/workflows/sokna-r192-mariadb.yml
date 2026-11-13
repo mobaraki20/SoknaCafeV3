@@ -1,0 +1,80 @@
+name: SOKNA R192 scoped cancellation real MariaDB QA - NOT INSTALLABLE
+on:
+  push:
+    branches: [qa/sokna-r192-unsettled-cancel-mariadb-20261113]
+    paths:
+      - 'qa/sokna-r192/**'
+      - '.github/workflows/sokna-r192-mariadb.yml'
+  pull_request:
+    branches: [qa/sokna-r189-login-modal-native-windows-20261113]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  r192-real-mariadb-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r192-only-ci-password
+          MARIADB_DATABASE: sokna_r192_disposable
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R192_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R192_DB_HOST: '127.0.0.1'
+      SOKNA_R192_DB_PASSWORD: 'r192-only-ci-password'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql, mbstring, curl, gd, zip
+          coverage: none
+      - name: Wait for disposable MariaDB to accept authenticated PDO connections
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{$p=new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R192_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then
+              echo 'PASS_R192_CI_MARIADB_READY'; exit 0
+            fi
+            sleep 2
+          done
+          echo 'R192_CI_MARIADB_NOT_READY'; exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R189-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43418286650
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r189-artifact
+      - name: Verify exact R189 Windows-tested archive and apply only one surgical source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/r192"
+          mkdir -p "$ROOT"/{local,qa,outer}
+          ARCHIVE=$(find "${RUNNER_TEMP}/r189-artifact" -type f -name '*231EX*ZIP' -o -name '*231EX*.zip' | head -n1)
+          test -n "$ARCHIVE"
+          echo "61366cf4b7970bd2fadf5955264daaa59629f0508f94b30e04586cc5c1996229  $ARCHIVE" | sha256sum -c -
+          unzip -q "$ARCHIVE" -d "$ROOT/outer"
+          unzip -q "$ROOT/outer/artifacts/local/web.zip" -d "$ROOT/local"
+          test "$(cat "$ROOT/local/VERSION.txt" | tr -d '\r\n')" = '3.0.0-g6.2-workspace.231ex-r189-login-modal-qa'
+          (cd "$ROOT/local" && patch -p1 --batch --fuzz=0 --forward < "${GITHUB_WORKSPACE}/qa/sokna-r192/R191-TO-R192-CANCEL-UNSETTLED-QA.patch")
+          cp qa/sokna-r192/test_cancel_unsettled_guards.php "$ROOT/qa/"
+          cp qa/sokna-r192/test_cancel_atomic_stub.php "$ROOT/qa/"
+          export SOKNA_R192_WEB="$ROOT/local"
+          echo "SOKNA_R192_WEB=$SOKNA_R192_WEB" >> "$GITHUB_ENV"
+          php -l "$ROOT/local/src/Domain/Orders/OrderStaffActionService.php"
+          php "$ROOT/qa/test_cancel_unsettled_guards.php"
+          php "$ROOT/qa/test_cancel_atomic_stub.php"
+          echo 'PASS_R192_EXACT_PARENT_AND_NEGATIVE_ATOMIC_MOCK_GATES'
+      - name: Migrate full real Sokna schema and exercise cancellation with MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r192/test_cancel_mariadb.php
+          echo 'PASS_R192_REAL_MARIADB_SEVEN_SCENARIOS'
