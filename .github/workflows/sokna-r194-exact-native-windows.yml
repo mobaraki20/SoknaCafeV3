@@ -1,0 +1,103 @@
+name: SOKNA R194 exact combined Local candidate - native Windows Maintenance gate (QA only)
+on:
+  push:
+    branches: [qa/sokna-r194-exact-native-windows-20261113]
+    paths:
+      - 'qa/sokna-r194/**'
+      - '.github/workflows/sokna-r194-exact-native-windows.yml'
+  pull_request:
+    branches: [qa/sokna-r193-cafe-unsettled-qa-20261113]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  r194-exact-native-windows:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Download R153 pinned original setup archive
+        uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - name: Download exact R189 already Windows-qualified archive
+        uses: actions/download-artifact@v4
+        with:
+          name: R189-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43418286650
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r189-parent
+      - name: Reconstruct 590-file R193 source and byte-exact R194 panel candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $r189=Get-ChildItem '${{ runner.temp }}/r189-parent' -Recurse -File -Filter 'SOKNA-R189-LOCAL-231EX-57BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' | Select-Object -First 1 -ExpandProperty FullName
+          if(!$r189){throw 'R189_EXACT_PARENT_ARCHIVE_MISSING'}
+          $actual=(Get-FileHash -LiteralPath $r189 -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actual -ne '61366cf4b7970bd2fadf5955264daaa59629f0508f94b30e04586cc5c1996229'){throw 'R189_PARENT_SHA_MISMATCH'}
+          $root=Join-Path '${{ runner.temp }}' 'r194-build'
+          $outer=Join-Path $root 'outer';$web=Join-Path $root 'web';$out=Join-Path $root 'out'
+          New-Item -ItemType Directory -Force $outer,$web,$out | Out-Null
+          Expand-Archive -LiteralPath $r189 -DestinationPath $outer
+          Expand-Archive -LiteralPath (Join-Path $outer 'artifacts/local/web.zip') -DestinationPath $web
+          & git -C $web init -q
+          if($LASTEXITCODE -ne 0){throw 'GIT_INIT_FOR_PATCH_FAILED'}
+          foreach($patch in @('qa/sokna-r193/R189-TO-R191-LOCAL-QA-PATCH-NOT-INSTALL.patch','qa/sokna-r193/R191-TO-R193-QA-API-UI-AND-CANCEL.patch')){
+            $patchFile=Join-Path $env:GITHUB_WORKSPACE $patch
+            & git -C $web apply --check --whitespace=nowarn $patchFile
+            if($LASTEXITCODE -ne 0){throw "R194_PATCH_CHECK_FAILED $patch"}
+            & git -C $web apply --whitespace=nowarn $patchFile
+            if($LASTEXITCODE -ne 0){throw "R194_PATCH_APPLY_FAILED $patch"}
+          }
+          Remove-Item -LiteralPath (Join-Path $web '.git') -Recurse -Force
+          python qa/sokna-r193/verify_combined.py $web
+          if($LASTEXITCODE -ne 0){throw 'R194_FULL_590_SOURCE_PROOF_FAILED'}
+          $env:SOKNA_R194_PARENT_ZIP=$r189
+          $env:SOKNA_R194_SRC=$web
+          $env:SOKNA_R194_OUT=$out
+          python qa/sokna-r194/build_r194.py
+          if($LASTEXITCODE -ne 0){throw 'R194_PACKAGE_BUILD_FAILED'}
+          $pkg=Join-Path $out 'SOKNA-R194-LOCAL-231EY-58BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip'
+          $sha=(Get-FileHash -LiteralPath $pkg -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha -ne '87bf9eac332d378eef720148d454a3bb8906b229143a6d64bd8a3ca527f5651e'){throw "R194_EXACT_ZIP_IDENTITY_DRIFT $sha"}
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable $pkg
+          if($LASTEXITCODE -ne 0){throw 'R194_NATIVE_MAINTENANCE_MANIFEST_REJECTED'}
+          python qa/sokna-r183/release_gate.py $pkg --expect-version '3.0.0-g6.2-workspace.231ey-r194-combined-canary' --output (Join-Path $out 'R194-static-gate.json')
+          if($LASTEXITCODE -ne 0){throw 'R194_STATIC_FAIL_CLOSED_GATE_REJECTED'}
+          "R194_TARGET_DIR=$out" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "R186_R153_DIR=${{ runner.temp }}/r153-parent" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "SOKNA_R194_PKG=$pkg" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "SOKNA_R194_OUT=$out" | Out-File -Append -FilePath $env:GITHUB_ENV
+          Write-Host 'PASS_R194_PINNED_590_SOURCE_AND_NATIVE_PANEL_MANIFEST'
+      - name: Actual Windows Maintenance Stage Activate HTTP readback and MariaDB migration ledger
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./qa/sokna-r194/windows_r194_exact_activate.ps1
+          if($LASTEXITCODE -ne 0){throw 'R194_EXACT_NATIVE_WINDOWS_ACTIVATION_FAILED'}
+      - name: Verify post-activation exact package identity
+        shell: pwsh
+        run: |
+          $sha=(Get-FileHash -LiteralPath $env:SOKNA_R194_PKG -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha -ne '87bf9eac332d378eef720148d454a3bb8906b229143a6d64bd8a3ca527f5651e'){throw 'POST_CI_R194_PACKAGE_HASH_DRIFT'}
+          "$sha *SOKNA-R194-LOCAL-231EY-58BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip" | Set-Content (Join-Path $env:SOKNA_R194_OUT 'SHA256SUMS.txt') -Encoding ascii
+          Write-Host 'PASS_R194_EXACT_WINDOWS_STAGE_ACTIVATE_HTTP_READBACK'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: R194-EXACT-WINDOWS-QUALIFIED-QA-NO-CAFE-AUTO-DEPLOY
+          path: |
+            ${{ runner.temp }}/r194-build/out/SOKNA-R194-LOCAL-231EY-58BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip
+            ${{ runner.temp }}/r194-build/out/SHA256SUMS.txt
+            ${{ runner.temp }}/r194-build/out/R194-STATIC-EVIDENCE.json
+            ${{ runner.temp }}/r194-build/out/R194-static-gate.json
+          if-no-files-found: error
