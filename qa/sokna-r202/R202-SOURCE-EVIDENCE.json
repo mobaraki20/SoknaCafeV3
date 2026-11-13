@@ -1,0 +1,29 @@
+{
+  "parent_zip_sha256": "911ea673dc1863bee3ce372dbc692602aa3a32439d2fc9ccba69dc2a6c243897",
+  "managed_files": 590,
+  "changed": [
+    "public/assets/hall-settlement-v32.js",
+    "public/assets/reports-workspace.js",
+    "public/assets/settlement-tender.js",
+    "public/assets/staff-app/data-panels.js",
+    "src/Domain/Finance/SettlementService.php",
+    "src/Domain/Reporting/ReportingService.php"
+  ],
+  "modified_sha256": {
+    "public/assets/hall-settlement-v32.js": "bf84d64f50913a2377cf29cac15dc3544b56d47dca495310f1c5308c8d8203b6",
+    "public/assets/reports-workspace.js": "49cbbf9a9d4cceefb941fb74bf3683f65b528265c36b3932515cc926343edf50",
+    "public/assets/settlement-tender.js": "c362a6c0b749b3bdb7e4c4b397ab85583ce91d8a76eabdbf3a0145238df57492",
+    "public/assets/staff-app/data-panels.js": "63092edad5d595723cf9869ea5ddcf3399c512cfd7ea1fe537e048032c074dc0",
+    "src/Domain/Finance/SettlementService.php": "2b8f657e75de5d64c4db2728a0cc354ea6652a5e4310c45abd0e41d72f6e10e4",
+    "src/Domain/Reporting/ReportingService.php": "04dd867cb9df637eb4ab25d3bb25da19fd33d95e82e0a4c753d45ed0c7833087"
+  },
+  "parent_file_sha256": {
+    "public/assets/hall-settlement-v32.js": "e58981a3a4cc8d21d39f715a6865c845a259b48c48b2a8fd46670a5bab452975",
+    "public/assets/reports-workspace.js": "7fe4822eb89bd8e763e238db4d64375d9d4cae902c968253380e3e293e113e38",
+    "public/assets/settlement-tender.js": "5ab7a9b1a5cb5c88ba84d8c31bad57418ce5af0137f0ed897d581e7d115d0b70",
+    "public/assets/staff-app/data-panels.js": "6e2fe6161922f727f2af6a969bced14bcfc94db7e1f890a30c1b98370bc92e44",
+    "src/Domain/Finance/SettlementService.php": "96286936f6db346a1046c6cb15c6b51f73eda334699a0f48356f537b77aebb26",
+    "src/Domain/Reporting/ReportingService.php": "fc2046dd956792c75a03d5199509456ee9d57540b2cacfb08c49e7ea9cbb7b1b"
+  },
+  "patch_sha256": "933ed64624b4d690ac399d8b8668d6167a6ffa4e37bd1ddb66a863dd0f58e484"
+}
