@@ -1,0 +1,19 @@
+{
+  "basis": "R197 exact qualified parent; no installable release",
+  "zip_sha256": "282a7cee20f7fa5e0ba99cf9383a5f019e6e2b7f18a54712cdaeb87749af860f",
+  "changed_file": "src/Domain/Orders/OrderStaffActionService.php",
+  "before_sha256": "c449de3005f1bc175e03c607aa43c81691e5a3b4f4644eca79aedc1050b028c0",
+  "after_sha256": "dd5a202465b227eea5f8521dd6f750e2add73d221c8b47e313f6aa60707315d8",
+  "payload_file_count": 590,
+  "production_install_allowed": false,
+  "limits": [
+    "direct_cash_only",
+    "single fully reversed receipt",
+    "one order per receipt",
+    "no discount or tax",
+    "explicit physical refund acknowledgement",
+    "no claimed preparation",
+    "no pending inventory or finance followup",
+    "no changes to original financial ledger"
+  ]
+}
