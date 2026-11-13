@@ -125,21 +125,23 @@ echo "PASS_R200_PARTIAL_RECEIPT_LIFO_REFUND_GUARD\n";
 // R200: Complete cash reversal already exists; explicit physical cash refund confirmation
 // permits only THIS single-order receipt to be voided, with no financial mutations.
 $refundNumber=(string)$pdo->query("SELECT invoice_number FROM settlement_records WHERE reverses_settlement_id={$receipt} AND status='reversal'")->fetchColumn();
-function expectCancelReject(\Sokna\Local\Domain\Orders\OrderStaffActionService $service,array $payload,array $actor,string $code):void{
- try{$service->cancelUnsettledStaffOrder($payload,$actor);}catch(\Sokna\Local\Domain\Orders\OrderStaffActionException $e){ensure($e->errorCode===$code,'CANCEL_GUARD_'.$code.'_GOT_'.$e->errorCode);return;}
+function expectCancelReject(\Sokna\Local\Domain\Orders\OrderStaffActionService $service,array $payload,array $actor,string $code,bool $refundMode=false):void{
+ try{$service->cancelUnsettledStaffOrder($payload,$actor,$refundMode);}catch(\Sokna\Local\Domain\Orders\OrderStaffActionException $e){ensure($e->errorCode===$code,'CANCEL_GUARD_'.$code.'_GOT_'.$e->errorCode);return;}
  throw new RuntimeException('R200_EXPECTED_CANCEL_REJECT_'.$code);
 }
 $payload=['order_id'=>$order,'reason'=>'تصحیح سفارش اشتباه پس از برگشت کامل وجه','request_id'=>'r200-refund-final-a','refund_document_number'=>$refundNumber];
-expectCancelReject($orderActions,$payload,$actor,'cash_refund_confirmation_required');
+expectCancelReject($orderActions,[...$payload,'cash_refund_physically_confirmed'=>true],$actor,'settlement_exists');
+expectCancelReject($orderActions,$payload,$actor,'settlement_exists');
+try{$orderActions->cancelUnsettledStaffOrder($payload,$actor,true);throw new RuntimeException('R200_MISSING_CASH_ACK_ACCEPTED');}catch(\Sokna\Local\Domain\Orders\OrderStaffActionException $e){ensure($e->errorCode==='cash_refund_confirmation_required','F_REQUIRE_PHYSICAL_REFUND_ATTESTATION');}
 ensure(state($pdo,'orders',$order)==='accounted','F_NO_CHANGE_WHEN_NO_CASH_ATTESTATION');
-expectCancelReject($orderActions,[...$payload,'cash_refund_physically_confirmed'=>true,'refund_document_number'=>'R-wrong'],$actor,'refund_document_mismatch');
+expectCancelReject($orderActions,[...$payload,'cash_refund_physically_confirmed'=>true,'refund_document_number'=>'R-wrong'],$actor,'refund_document_mismatch',true);
 $financeBefore=countQ($pdo,'SELECT COUNT(*) FROM settlement_records WHERE session_id=?',[$sid]);
-$done=$orderActions->cancelUnsettledStaffOrder([...$payload,'cash_refund_physically_confirmed'=>true],$actor);
+$done=$orderActions->cancelUnsettledStaffOrder([...$payload,'cash_refund_physically_confirmed'=>true],$actor,true);
 ensure(($done['success']??false)===true&&($done['status']??'')==='cancelled'&&($done['refund_document_number']??'')===$refundNumber,'F_FULL_REFUNDED_CASH_CANCEL_WORKS');
 ensure(state($pdo,'orders',$order)==='cancelled'&&state($pdo,'table_sessions',$sid)==='closed','F_CANCEL_CLOSES_EMPTY_SESSION');
 ensure(countQ($pdo,'SELECT COUNT(*) FROM settlement_records WHERE session_id=?',[$sid])===$financeBefore,'F_NO_NEW_FINANCIAL_DOCS');
 ensure(countQ($pdo,'SELECT COUNT(*) FROM order_status_history WHERE order_id=? AND to_status=\'cancelled\'',[$order])===1,'F_CANCELLED_ONCE');
-$again=$orderActions->cancelUnsettledStaffOrder([...$payload,'cash_refund_physically_confirmed'=>true],$actor);
+$again=$orderActions->cancelUnsettledStaffOrder([...$payload,'cash_refund_physically_confirmed'=>true],$actor,true);
 ensure(($again['idempotent']??false)===true,'F_IDEMPOTENT_CANCEL');
 echo "PASS_R200_SINGLE_ORDER_CONFIRMED_CASH_REFUND_CANCELS_WITHOUT_EXTRA_LEDGER\n";
 // A mixed receipt has already been paid; reversing it still cannot authorize
@@ -149,7 +151,7 @@ $mixNo=(string)$pdo->query("SELECT invoice_number FROM settlement_records WHERE 
 expectCancelReject($orderActions,[
  'order_id'=>$o2,'reason'=>'mixed cannot target one order','request_id'=>'r200-mixed-refund-deny',
  'cash_refund_physically_confirmed'=>true,'refund_document_number'=>$mixNo
-],$actor,'refund_mixed_order_receipt');
+],$actor,'refund_mixed_order_receipt',true);
 ensure(state($pdo,'orders',$o2)==='accounted'&&state($pdo,'orders',$o3)==='accounted','G_MIXED_ORDERS_PRESERVED');
 echo "PASS_R200_MIXED_ORDER_RECEIPT_REFUNDED_STILL_BLOCKED\n";
 // Multi-receipt histories remain unsupported even if all payments are later reversed.
@@ -159,6 +161,6 @@ $multipleNo=(string)$pdo->query("SELECT invoice_number FROM settlement_records W
 expectCancelReject($orderActions,[
  'order_id'=>$o4,'reason'=>'multi receipt blocked','request_id'=>'r200-multi-refund-deny',
  'cash_refund_physically_confirmed'=>true,'refund_document_number'=>$multipleNo
-],$actor,'refund_history_ambiguous');
+],$actor,'refund_history_ambiguous',true);
 echo "PASS_R200_MULTIRECEIPT_FINANCE_FAIL_CLOSED\n";
 echo "PASS_R200_REAL_MARIADB_81_MIGRATIONS_5_LEGACY_GATES_PLUS_3_REFUNDED_CASH_GATES\n";
