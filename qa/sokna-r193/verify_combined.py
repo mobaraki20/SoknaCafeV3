@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import sys,hashlib,subprocess,json,pathlib
 root=pathlib.Path(sys.argv[1]);want='fedec898ab8f42d29874bc3ab7c3dfbedec0f6747537dc3d3799260f48613461'
-files=sorted(x for x in root.rglob('*') if x.is_file());assert len(files)==590,len(files)
+files=sorted((x for x in root.rglob('*') if x.is_file()),key=lambda p:p.relative_to(root).as_posix());assert len(files)==590,len(files)
 for ext,cmd in [('php',['php','-l']),('js',['node','--check'])]:
  selected=[p for p in files if p.suffix=='.'+ext]
  expected=281 if ext=='php' else 49
