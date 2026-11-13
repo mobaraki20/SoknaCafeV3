@@ -41,6 +41,16 @@ jobs:
           dotnet run --project windows/print-agent/source/tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case A52 --results $results
           if($LASTEXITCODE -ne 0){throw 'R198_REAL_SERVICE_HEARTBEAT_A52_FAILED'}
           Write-Host 'PASS_R198_REAL_SERVICE_SQLITE_OUTAGE_HEARTBEAT_RECOVERY'
+      - name: Regress claim/accept and no-double-print safety paths on the same Agent build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach($case in @('A12','A49','A50','A51')){
+            $results=Join-Path $env:RUNNER_TEMP ('r198-'+$case)
+            dotnet run --project windows/print-agent/source/tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case $case --results $results
+            if($LASTEXITCODE -ne 0){throw ('R198_PRINT_REGRESSION_FAILED_'+$case)}
+          }
+          Write-Host 'PASS_R198_ACCEPT_START_CLAIM_PRINT_SAFETY_4_CASES'
       - name: Guard critical print mutation methods unchanged
         shell: pwsh
         run: |
