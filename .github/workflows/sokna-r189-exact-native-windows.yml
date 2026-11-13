@@ -1,0 +1,97 @@
+name: SOKNA R189 exact Local scoped UI candidate - native Windows admission
+on:
+  push:
+    branches: [qa/sokna-r189-login-modal-native-windows-20261113]
+    paths:
+      - 'qa/sokna-r189/**'
+      - '.github/workflows/sokna-r189-exact-native-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-r189-windows:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Fetch exact pinned R153 and R184 QA sources
+        uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: r184-internal-only-stage-probe-DO-NOT-INSTALL
+          run-id: 43379786737
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r184-source
+      - name: Rebuild byte-pinned R187, then apply exact scoped R189 source edits
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $r184=Join-Path '${{ runner.temp }}/r184-source' 'SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip'
+          $parent=Join-Path '${{ runner.temp }}' 'r187-home'
+          python qa/sokna-r187/promote_home_r187.py --r184 $r184 --out $parent
+          if($LASTEXITCODE-ne0){throw 'R187_REBUILD_FAILED'}
+          $r187=Join-Path $parent 'SOKNA-R187-LOCAL-231EW-56BASE-HOME-CANARY-PANEL-UPDATE.zip'
+          if((Get-FileHash $r187 -Algorithm SHA256).Hash.ToLowerInvariant() -ne '31639f21012c90ec990bf3abdd775c3555e60ad4c6d948177b92b1dc5e7541e8'){throw 'R187_PARENT_HASH_DRIFT'}
+          $root=Join-Path '${{ runner.temp }}' 'r189-build'
+          $local=Join-Path $root 'local';$public=Join-Path $root 'public';$files=Join-Path $root 'files';$out=Join-Path $root 'out'
+          New-Item -ItemType Directory -Force $local,$public,$files,$out,(Join-Path $public 'assets/staff-app')|Out-Null
+          Copy-Item $r187 (Join-Path $files (Split-Path $r187 -Leaf))
+          $outer=Join-Path $root 'r187-extracted';Expand-Archive $r187 $outer
+          Expand-Archive (Join-Path $outer 'artifacts/local/web.zip') $local
+          Copy-Item (Join-Path $local 'public/assets/product-ui.css') (Join-Path $public 'assets/product-ui.css')
+          Copy-Item (Join-Path $local 'public/assets/staff-app/hall-workspace.js') (Join-Path $public 'assets/staff-app/hall-workspace.js')
+          $patch=Get-Content 'qa/sokna-r189/apply_scoped_fixes.py' -Raw
+          $patch=$patch.Replace('from pathlib import Path',"from pathlib import Path`nimport os")
+          $patch=$patch.Replace("L=Path('/mnt/data/sokna_audit/local'); P=Path('/mnt/data/sokna_audit/public')","L=Path(os.environ['SOKNA_R189_LOCAL_ROOT']); P=Path(os.environ['SOKNA_R189_PUBLIC_ROOT'])")
+          $patchFile=Join-Path $root 'apply_scoped_fixes_ci.py';Set-Content $patchFile $patch -Encoding utf8NoBOM -NoNewline
+          $env:SOKNA_R189_LOCAL_ROOT=$local;$env:SOKNA_R189_PUBLIC_ROOT=$public;$env:SOKNA_R189_ROOT=$root;$env:SOKNA_R189_BASE=$files;$env:SOKNA_R189_OUT=$out
+          python $patchFile
+          if($LASTEXITCODE-ne0){throw 'R189_SCOPED_PATCH_FAILED'}
+          python qa/sokna-r189/build_local_r189_windows.py
+          if($LASTEXITCODE-ne0){throw 'R189_DETERMINISTIC_BUILD_FAILED'}
+          $pkg=Join-Path $out 'SOKNA-R189-LOCAL-231EX-57BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip'
+          $actual=(Get-FileHash $pkg -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actual -ne '33748cda989b2aa0c579b9557419f4bee019c7385eddf2cf21dc952a1f90b1cd'){throw "R189_PACKAGE_BYTE_DRIFT $actual"}
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable $pkg
+          if($LASTEXITCODE-ne0){throw 'MAINTENANCE_INSTALL_CONTRACT_DENIED'}
+          python qa/sokna-r183/release_gate.py $pkg --expect-version '3.0.0-g6.2-workspace.231ex-r189-login-modal-qa' --output (Join-Path $out 'R189-static-gate.json')
+          if($LASTEXITCODE-ne0){throw 'FAIL_CLOSED_RELEASE_GATE_DENIED'}
+          "R189_TARGET_DIR=$out"|Out-File -Append -FilePath $env:GITHUB_ENV
+          "R186_R153_DIR=${{ runner.temp }}/r153-parent"|Out-File -Append -FilePath $env:GITHUB_ENV
+          "SOKNA_R189_PKG=$pkg"|Out-File -Append -FilePath $env:GITHUB_ENV
+          "SOKNA_R189_OUT=$out"|Out-File -Append -FilePath $env:GITHUB_ENV
+          Write-Host 'PASS_R189_EXACT_PACKAGE_AND_STATIC_MAINTENANCE_ADMISSION'
+      - name: Windows MariaDB 80-81 migration, Maintenance Stage Activate and HTTP readback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./qa/sokna-r189/windows_r189_exact_activate.ps1
+          if($LASTEXITCODE-ne0){throw 'R189_EXACT_NATIVE_WINDOWS_ACTIVATION_FAILED'}
+      - name: Preserve only the exact native-tested R189 package for review
+        if: success()
+        shell: pwsh
+        run: |
+          $sha=(Get-FileHash $env:SOKNA_R189_PKG -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha -ne '33748cda989b2aa0c579b9557419f4bee019c7385eddf2cf21dc952a1f90b1cd'){throw 'POST_CI_HASH_DRIFT'}
+          "$sha *SOKNA-R189-LOCAL-231EX-57BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip"|Set-Content (Join-Path $env:SOKNA_R189_OUT 'SHA256SUMS.txt') -Encoding ascii
+          Write-Host 'PASS_R189_EXACT_WINDOWS_STAGE_ACTIVATE_HTTP_READBACK'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: R189-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          path: |
+            ${{ runner.temp }}/r189-build/out/SOKNA-R189-LOCAL-231EX-57BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip
+            ${{ runner.temp }}/r189-build/out/SHA256SUMS.txt
+            ${{ runner.temp }}/r189-build/out/R189-static-gate.json
+          if-no-files-found: error
