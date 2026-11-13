@@ -1,0 +1,88 @@
+name: SOKNA R203 integrated catalog, reporting, zero settlement, empty table - QA only
+on:
+  push:
+    branches: [qa/sokna-r203-cafe-ux-empty-table-20261114]
+    paths:
+      - 'qa/sokna-r203/**'
+      - '.github/workflows/sokna-r203-integrated-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  local-source-and-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r202-disposable-only
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R202_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R202_DB_PASSWORD: r202-disposable-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql,mbstring,curl,gd,zip
+          coverage: none
+      - name: MariaDB ephemeral readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R202_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then echo PASS_R203_DISPOSABLE_MARIADB_READY;exit 0;fi
+            sleep 2
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r201-parent
+      - name: Verify exact R201 bytes and apply only R202+R203 changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE=$(find "$RUNNER_TEMP/r201-parent" -type f -name 'SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$ARCHIVE"
+          echo "911ea673dc1863bee3ce372dbc692602aa3a32439d2fc9ccba69dc2a6c243897  $ARCHIVE" | sha256sum -c -
+          ROOT="$RUNNER_TEMP/r203"; mkdir -p "$ROOT/outer" "$ROOT/web"
+          unzip -q "$ARCHIVE" -d "$ROOT/outer"
+          unzip -q "$ROOT/outer/artifacts/local/web.zip" -d "$ROOT/web"
+          (cd "$ROOT/web" && git init -q && git config core.autocrlf false && git apply --check "$GITHUB_WORKSPACE/qa/sokna-r203/R201-TO-R203-LOCAL-INTEGRATED-QA.patch" && git apply "$GITHUB_WORKSPACE/qa/sokna-r203/R201-TO-R203-LOCAL-INTEGRATED-QA.patch")
+          python3 - "$ROOT" "$GITHUB_WORKSPACE/qa/sokna-r203/R201-TO-R203-LOCAL-INTEGRATED-QA-SHA256.json" <<'PY'
+          import sys,json,pathlib,zipfile,hashlib
+          root=pathlib.Path(sys.argv[1]);proof=json.loads(pathlib.Path(sys.argv[2]).read_text())
+          files=[];changed=[]
+          with zipfile.ZipFile(root/'outer/artifacts/local/web.zip') as z:
+              files=z.namelist()
+              for name in files:
+                  b=(root/'web'/name).read_bytes()
+                  if b!=z.read(name):changed.append(name)
+          expect={x['file']:x for x in proof['changed']}
+          assert len(files)==590 and len(changed)==18 and set(changed)==set(expect),(len(files),changed)
+          for f in changed:
+              assert hashlib.sha256((root/'web'/f).read_bytes()).hexdigest()==expect[f]['after'],f
+          print('PASS_R203_590_MANAGED_FILES_18_EXACT_CHANGES')
+          PY
+          while IFS= read -r -d '' p; do php -l "$p" > /dev/null; done < <(find "$ROOT/web" -name '*.php' -type f -print0)
+          while IFS= read -r -d '' p; do node --check "$p"; done < <(find "$ROOT/web" -name '*.js' -type f -print0)
+          echo "SOKNA_R202_WEB=$ROOT/web" >> "$GITHUB_ENV"
+          echo PASS_R203_PHP_JS_SYNTAX_ALL
+      - name: Six existing zero tender UI cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          node qa/sokna-r203/test_zero_tender.js
+      - name: Real financial and guarded empty-close tests (81 migrations)
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r203/test_r203_finance_empty_close.php
+          echo PASS_R203_ZERO_SETTLEMENT_REPORTING_AND_EMPTY_TABLE_MARIADB
