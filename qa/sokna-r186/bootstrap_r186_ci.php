@@ -12,6 +12,11 @@ $input = ['db'=>['host'=>'127.0.0.1','port'=>$dbPort,'name'=>'sokna_r186_exact',
     'create_database'=>true,'data_dir'=>$packageRoot.'/Data','timezone'=>'Asia/Tehran','admin_user'=>'ci.admin',
     'admin_password'=>'R186-Disposable-Only','cafe_name'=>'Sokna CI Only','table_count'=>3];
 $setup=new \Sokna\Local\Setup\BrowserSetupService($packageRoot,$old);
+$preflight=$setup->preflight($packageRoot.'/Data');
+if (($preflight['ok']??false)!==true) {
+    $failed=array_map(fn($v)=>['name'=>$v['key']??$v['id']??$v['name']??'unknown','reason'=>$v['actual']??$v['detail']??'failed'],array_values(array_filter((array)($preflight['checks']??[]),fn($v)=>(($v['ok']??null)===false))));
+    throw new RuntimeException('R186_SETUP_PREFLIGHT_FAILED_'.json_encode($failed,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+}
 $result=$setup->installNew($input);
 $status=$setup->status();
 if (($status['installed']??false)!==true || ($status['binding_current']??false)!==true) throw new RuntimeException('R186_BROWSER_SETUP_DID_NOT_BIND_INSTALLED_WEB');
