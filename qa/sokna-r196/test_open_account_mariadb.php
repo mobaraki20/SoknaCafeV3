@@ -137,7 +137,7 @@ $periodSeq=$pdo->query('SELECT COALESCE(SUM(next_invoice_sequence),0) FROM finan
 $partial=printWith($settlements,$ps,$afterPartial,'r196-preview-partial-009',$actor);
 $p=queuePayload($pdo,(int)$partial['job_id']);
 ensure($p['total']===550&&$p['document_role']==='account_preview','PARTIAL_FULL_ACCOUNT_SHOWN');
-ensure(str_contains((string)$p['footer'],'250')&&str_contains((string)$p['footer'],'300'),'PARTIAL_PAID_AND_REMAINING_DISCLOSED');
+ensure(str_contains((string)$p['footer'],'۲۵۰')&&str_contains((string)$p['footer'],'۳۰۰'),'PARTIAL_PAID_AND_REMAINING_DISCLOSED');
 ensure(($p['invoice_number']??null)===''&&!isset($p['settlement_id']),'PARTIAL_PREVIEW_NON_FISCAL');
 ensure(countQ($pdo,'SELECT COUNT(*) FROM settlement_records')===$receiptsBefore,'PARTIAL_NO_EXTRA_SETTLEMENT');
 ensure((string)$pdo->query('SELECT COALESCE(SUM(next_invoice_sequence),0) FROM financial_periods')->fetchColumn()===(string)$periodSeq,'PARTIAL_NO_INVOICE_SEQUENCE');
