@@ -4,6 +4,7 @@ on:
     branches: [qa/sokna-r198-heartbeat-metrics-failsoft-20261113]
     paths:
       - 'qa/sokna-r198/**'
+      - 'windows/print-agent/source/tests/Sokna.PrintAgent.ServiceAcceptance/Program.cs'
       - 'windows/print-agent/source/src/Sokna.PrintAgent.Service/HeartbeatMetricsSampler.cs'
       - 'windows/print-agent/source/src/Sokna.PrintAgent.Service/PrintAgentService.cs'
       - '.github/workflows/sokna-r198-heartbeat-qa.yml'
