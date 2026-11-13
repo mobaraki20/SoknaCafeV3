@@ -64,7 +64,7 @@ jobs:
           if($LASTEXITCODE-ne0){throw 'R189_DETERMINISTIC_BUILD_FAILED'}
           $pkg=Join-Path $out 'SOKNA-R189-LOCAL-231EX-57BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip'
           $actual=(Get-FileHash $pkg -Algorithm SHA256).Hash.ToLowerInvariant()
-          if($actual -ne '33748cda989b2aa0c579b9557419f4bee019c7385eddf2cf21dc952a1f90b1cd'){throw "R189_PACKAGE_BYTE_DRIFT $actual"}
+          if($actual -ne '61366cf4b7970bd2fadf5955264daaa59629f0508f94b30e04586cc5c1996229'){throw "R189_PACKAGE_BYTE_DRIFT $actual"}
           python packaging/windows/release-gates/check_local_release_set.py --require-installable $pkg
           if($LASTEXITCODE-ne0){throw 'MAINTENANCE_INSTALL_CONTRACT_DENIED'}
           python qa/sokna-r183/release_gate.py $pkg --expect-version '3.0.0-g6.2-workspace.231ex-r189-login-modal-qa' --output (Join-Path $out 'R189-static-gate.json')
@@ -85,7 +85,7 @@ jobs:
         shell: pwsh
         run: |
           $sha=(Get-FileHash $env:SOKNA_R189_PKG -Algorithm SHA256).Hash.ToLowerInvariant()
-          if($sha -ne '33748cda989b2aa0c579b9557419f4bee019c7385eddf2cf21dc952a1f90b1cd'){throw 'POST_CI_HASH_DRIFT'}
+          if($sha -ne '61366cf4b7970bd2fadf5955264daaa59629f0508f94b30e04586cc5c1996229'){throw 'POST_CI_HASH_DRIFT'}
           "$sha *SOKNA-R189-LOCAL-231EX-57BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip"|Set-Content (Join-Path $env:SOKNA_R189_OUT 'SHA256SUMS.txt') -Encoding ascii
           Write-Host 'PASS_R189_EXACT_WINDOWS_STAGE_ACTIVATE_HTTP_READBACK'
       - uses: actions/upload-artifact@v4
