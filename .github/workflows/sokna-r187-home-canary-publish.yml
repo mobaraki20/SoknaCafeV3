@@ -1,0 +1,96 @@
+name: SOKNA R187 Home Canary exact Windows installation and gated prerelease
+on:
+  push:
+    branches: [qa/sokna-r187-home-canary-publish-20261113]
+    paths:
+      - 'qa/sokna-r187/**'
+      - '.github/workflows/sokna-r187-home-canary-publish.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  exact-home-stage-activate-readback-publish:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Fetch pinned exact R153 Home source archive (QA fixture only)
+        uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - name: Fetch pinned R184 functional source (quarantined input only)
+        uses: actions/download-artifact@v4
+        with:
+          name: r184-internal-only-stage-probe-DO-NOT-INSTALL
+          run-id: 43379786737
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r184-source
+      - name: Build one exact Home-only R187 ZIP; never a multi-package wrapper
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $r184=Join-Path '${{ runner.temp }}/r184-source' 'SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip'
+          $out=Join-Path '${{ runner.temp }}' 'r187-home-package'
+          python qa/sokna-r187/promote_home_r187.py --r184 $r184 --out $out
+          if($LASTEXITCODE -ne 0){throw 'R187_BUILD_FAILED'}
+          $package=Join-Path $out 'SOKNA-R187-LOCAL-231EW-56BASE-HOME-CANARY-PANEL-UPDATE.zip'
+          $sha=(Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha -ne '31639f21012c90ec990bf3abdd775c3555e60ad4c6d948177b92b1dc5e7541e8'){throw 'R187_PACKAGE_SHA256_DRIFT'}
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable $package
+          if($LASTEXITCODE -ne 0){throw 'R187_NATIVE_MANIFEST_STATIC_GATE_DENIED'}
+          python qa/sokna-r183/release_gate.py $package --expect-version '3.0.0-g6.2-workspace.231ew-r187-home-canary-20261113' --output (Join-Path $out 'R187-static-gate.json')
+          if($LASTEXITCODE -ne 0){throw 'R187_FAIL_CLOSED_STATIC_GUARD_DENIED'}
+          "SOKNA_R187_PACKAGE=$package" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "SOKNA_R187_OUT=$out" | Out-File -Append -FilePath $env:GITHUB_ENV
+          Write-Host 'PASS_R187_PINNED_PACKAGE_AND_BOTH_STATIC_GATES'
+      - name: Exact Windows R153 Home 231ed to R187 231ew Stage Activate MariaDB HTTP readback
+        shell: pwsh
+        env:
+          R186_R153_DIR: ${{ runner.temp }}/r153-parent
+          R187_TARGET_DIR: ${{ runner.temp }}/r187-home-package
+        run: |
+          & ./qa/sokna-r187/windows_r187_exact_activate.ps1
+          if($LASTEXITCODE -ne 0){throw 'R187_EXACT_WINDOWS_STAGE_ACTIVATE_FAILED'}
+      - name: Final exact ZIP hash after CI; attach Home-only release notes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $sha=(Get-FileHash -LiteralPath $env:SOKNA_R187_PACKAGE -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($sha -ne '31639f21012c90ec990bf3abdd775c3555e60ad4c6d948177b92b1dc5e7541e8'){throw 'R187_POST_CI_ZIP_DRIFT'}
+          "$sha *SOKNA-R187-LOCAL-231EW-56BASE-HOME-CANARY-PANEL-UPDATE.zip" | Set-Content (Join-Path $env:SOKNA_R187_OUT 'SHA256SUMS.txt') -Encoding ascii
+          Write-Host 'PASS_R187_EXACT_WINDOWS_ACTIVATE_AND_POST_CI_PACKAGE_IDENTITY'
+      - name: Publish Home-only Canary prerelease AFTER successful exact native Windows install test
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='sokna-r187-local-home-canary-20261113'
+          $notes='qa/sokna-r187/README-R187-HOME-ONLY-FA.md'
+          gh release create $tag $env:SOKNA_R187_PACKAGE (Join-Path $env:SOKNA_R187_OUT 'SHA256SUMS.txt') $notes --title 'SOKNA Local R187 231ew - Home Canary only (NOT cafe Production)' --prerelease --notes-file $notes --target $env:GITHUB_SHA
+          if($LASTEXITCODE -ne 0){throw 'R187_GITHUB_HOME_CANARY_RELEASE_UPLOAD_FAILED'}
+          $release=gh release view $tag --json url,isPrerelease,assets,tagName | ConvertFrom-Json
+          if($LASTEXITCODE -ne 0 -or $release.isPrerelease -ne $true){throw 'R187_RELEASE_NOT_READABLE_OR_NOT_PRERELEASE'}
+          $found=@($release.assets|Where-Object{$_.name -eq 'SOKNA-R187-LOCAL-231EW-56BASE-HOME-CANARY-PANEL-UPDATE.zip'})
+          if($found.Count -ne 1){throw 'R187_EXACT_PANEL_ZIP_NOT_FOUND_IN_RELEASE'}
+          Write-Host ('PASS_R187_HOME_ONLY_GITHUB_PRERELEASE_READBACK '+$release.url)
+      - name: Preserve the exact user-installable Home Canary ZIP and independent evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R187-EXACT-56BASE-HOME-ONLY-PANEL-ZIP-CI-PASSED
+          path: |
+            ${{ runner.temp }}/r187-home-package/SOKNA-R187-LOCAL-231EW-56BASE-HOME-CANARY-PANEL-UPDATE.zip
+            ${{ runner.temp }}/r187-home-package/SHA256SUMS.txt
+            ${{ runner.temp }}/r187-home-package/R187-package-identity.json
+            ${{ runner.temp }}/r187-home-package/R187-static-gate.json
+          if-no-files-found: error
