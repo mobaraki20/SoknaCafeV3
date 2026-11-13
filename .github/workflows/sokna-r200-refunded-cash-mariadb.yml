@@ -1,0 +1,72 @@
+name: SOKNA R200 strict refunded cash order cancellation exact R197 MariaDB QA
+on:
+  push:
+    branches: [qa/sokna-r200-refunded-cash-order-cancel-20261113]
+    paths:
+      - 'qa/sokna-r200/**'
+      - '.github/workflows/sokna-r200-refunded-cash-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  r200-safe-refund:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r200-disposable-only
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R200_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R200_DB_PASSWORD: r200-disposable-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql,mbstring,curl,gd,zip
+          coverage: none
+      - name: Verify disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R200_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then
+              echo PASS_R200_DISPOSABLE_MARIADB_READY; exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R197-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43473665017
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r197-artifact
+      - name: Rebuild one-file R200 QA change from SHA-pinned real R197
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE=$(find "$RUNNER_TEMP/r197-artifact" -type f -name 'SOKNA-R197-LOCAL-231EZ-59BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$ARCHIVE"
+          echo "282a7cee20f7fa5e0ba99cf9383a5f019e6e2b7f18a54712cdaeb87749af860f  $ARCHIVE" | sha256sum -c -
+          ROOT="$RUNNER_TEMP/r200"
+          mkdir -p "$ROOT/outer" "$ROOT/web"
+          unzip -q "$ARCHIVE" -d "$ROOT/outer"
+          unzip -q "$ROOT/outer/artifacts/local/web.zip" -d "$ROOT/web"
+          test "$(find "$ROOT/web" -type f | wc -l)" -eq 590
+          (cd "$ROOT/web" && git init -q && git config core.autocrlf false && git apply --check "$GITHUB_WORKSPACE/qa/sokna-r200/R197-TO-R200-REFUNDED-CASH-CANCEL-QA-ONLY.patch" && git apply "$GITHUB_WORKSPACE/qa/sokna-r200/R197-TO-R200-REFUNDED-CASH-CANCEL-QA-ONLY.patch")
+          echo "dd5a202465b227eea5f8521dd6f750e2add73d221c8b47e313f6aa60707315d8  $ROOT/web/src/Domain/Orders/OrderStaffActionService.php" | sha256sum -c -
+          php -l "$ROOT/web/src/Domain/Orders/OrderStaffActionService.php"
+          echo "SOKNA_R200_WEB=$ROOT/web" >> "$GITHUB_ENV"
+          echo PASS_R200_ORIGIN_EXACT_ONE_FILE_CHANGE
+      - name: Eight financial scenarios on real disposable Sokna migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r200/test_r200_cash_refund_mariadb.php
+          echo PASS_R200_FINANCE_REAL_MARIADB_EXACT_SOURCE
