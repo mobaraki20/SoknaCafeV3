@@ -1,0 +1,102 @@
+--- a/src/Domain/Orders/OrderStaffActionService.php
++++ b/src/Domain/Orders/OrderStaffActionService.php
+@@ -175,9 +175,12 @@
+                 throw new OrderStaffActionException('session_closed','لغو کل سفارش در حساب بسته یا جداشده مجاز نیست.',409);
+             // Block the entire session once any receipt is present, even if a
+             // previous receipt was reversed; its finance history needs review.
+-            $paid=$this->pdo->prepare('SELECT id FROM settlement_records WHERE session_id=? LIMIT 1 FOR UPDATE');
+-            $paid->execute([$sessionId]);if($paid->fetchColumn()!==false)
+-                throw new OrderStaffActionException('settlement_exists','برای این حساب سند مالی وجود دارد؛ لغو باید از مسیر حسابداری انجام شود.',409);
++            $financial=$this->pdo->prepare('SELECT * FROM settlement_records WHERE session_id=? ORDER BY id FOR UPDATE');
++            $financial->execute([$sessionId]);$financialHistory=$financial->fetchAll(PDO::FETCH_ASSOC);
++            $cashRefund=null;
++            if($financialHistory){
++                $cashRefund=$this->requireConfirmedSingleOrderCashRefundTx($financialHistory,$orderId,$sessionId,$data,$actor);
++            }
+             // Even with no receipt, a session under recovery/followup is not
+             // safe for a domain-level cancellation to close or alter.
+             $followup=$this->pdo->prepare('SELECT id FROM settlement_followup_events WHERE session_id=? LIMIT 1 FOR UPDATE');
+@@ -246,14 +249,81 @@
+                 $close->execute([(int)$actor['id'],$sessionId,$tableId]);
+                 if($close->rowCount()!==1)throw new OrderStaffActionException('session_changed','بستن حساب بدون سفارش ناموفق بود.',409);
+             }
+-            $this->audit('order.cancelled_unsettled_staff',$orderId,$actor,[
++            $this->audit($cashRefund?'order.cancelled_after_confirmed_cash_refund':'order.cancelled_unsettled_staff',$orderId,$actor,[
+                 'session_id'=>$sessionId,'table_id'=>$tableId,'reason'=>$reason,'request_id'=>$requestId,
++                'refund_document_number'=>$cashRefund['refund_document_number']??null,
++                'original_invoice_number'=>$cashRefund['original_invoice_number']??null,
++                'physical_cash_refund_confirmation'=>$cashRefund?'operator_attested':null,
+                 'adjustment_ids'=>$adjustmentIds,'correction_print_job_ids'=>$printJobIds,'session_closed'=>!$hasOther,
+             ]);
+             if($ownsTransaction)$this->pdo->commit();
+             return ['success'=>true,'idempotent'=>false,'order_id'=>$orderId,'status'=>'cancelled',
+-                'session_closed'=>!$hasOther,'adjustment_ids'=>$adjustmentIds,'correction_print_job_ids'=>$printJobIds];
++                'session_closed'=>!$hasOther,'adjustment_ids'=>$adjustmentIds,'correction_print_job_ids'=>$printJobIds,
++                'refund_document_number'=>$cashRefund['refund_document_number']??null];
+         }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
++    }
++
++    /**
++     * A limited POST-refund path. This does not issue R, perform a refund, or
++     * reverse an invoice. The operator must first refund direct CASH in reality
++     * and reverse that one receipt in Finance. Mixed/multi-receipt, POS, tax,
++     * discount, external and preparation-claimed orders deliberately fail closed.
++     * Never weaken this into a general paid-order cancellation without a new
++     * line-allocation ledger and physical inventory disposition policy.
++     * Caller must own the same transaction and table/session/order locks.
++     * @param list<array<string,mixed>> $history
++     * @return array{refund_document_number:string,original_invoice_number:string}
++     */
++    private function requireConfirmedSingleOrderCashRefundTx(array $history,int $orderId,int $sessionId,array $data,array $actor): array
++    {
++        if(!$this->capabilities->has('cashier_accounts',$actor))
++            throw new OrderStaffActionException('refund_cashier_required','لغو پس از برگشت وجه به دسترسی صندوق نیاز دارد.',403);
++        if(($data['cash_refund_physically_confirmed']??null)!==true)
++            throw new OrderStaffActionException('cash_refund_confirmation_required','ابتدا برگشت واقعی وجه نقد به مشتری را تأیید کنید.',409);
++        if(count($history)!==2)
++            throw new OrderStaffActionException('refund_history_ambiguous','برای این حساب چند سند مالی وجود دارد؛ لغو سفارش نیازمند بررسی حسابداری است.',409);
++        $receipt=null;$reversal=null;
++        foreach($history as $record){
++            if((int)$record['session_id']!==$sessionId)
++                throw new OrderStaffActionException('refund_session_mismatch','هویت پرونده مالی تغییر کرده است.',409);
++            if((string)$record['status']==='completed'&&$receipt===null)$receipt=$record;
++            elseif((string)$record['status']==='reversal'&&$reversal===null)$reversal=$record;
++            else throw new OrderStaffActionException('refund_history_ambiguous','نوع اسناد مالی با برگشت کامل وجه سازگار نیست.',409);
++        }
++        if(!is_array($receipt)||!is_array($reversal)||(int)$reversal['reverses_settlement_id']!==(int)$receipt['id']||empty($receipt['voided_at']))
++            throw new OrderStaffActionException('refund_not_fully_reversed','ابتدا سند برگشت کاملِ همان رسید را در حسابداری ثبت کنید.',409);
++        $rNumber=(string)$reversal['invoice_number'];
++        if(!preg_match('/^R-/',$rNumber)||trim((string)($data['refund_document_number']??''))!==$rNumber)
++            throw new OrderStaffActionException('refund_document_mismatch','شماره سند برگشت معتبر را از حسابداری وارد کنید.',409);
++        if((string)$receipt['destination']!=='direct'||(string)$reversal['destination']!=='direct'||
++            (int)$receipt['closes_session']!==1||(int)$receipt['total']<1||
++            (int)$receipt['discount']!==0||(int)$receipt['tax_amount']!==0||
++            (int)$receipt['subtotal']!==(int)$receipt['total']||
++            (int)$reversal['total']!==(int)$receipt['total'])
++            throw new OrderStaffActionException('refund_scope_unsupported','فقط برگشت کامل رسید نقدی بدون تخفیف/مالیات در این مسیر مجاز است.',409);
++        $lines=$this->pdo->prepare('SELECT order_id,quantity,final_amount FROM settlement_record_lines WHERE settlement_id=? ORDER BY id FOR UPDATE');
++        $lines->execute([(int)$receipt['id']]);$receiptLines=$lines->fetchAll(PDO::FETCH_ASSOC);
++        if(!$receiptLines)throw new OrderStaffActionException('refund_lines_missing','اقلام رسید قابل تطبیق نیستند.',409);
++        $amount=0;
++        foreach($receiptLines as $line){
++            if((int)$line['order_id']!==$orderId||(int)$line['quantity']<1)
++                throw new OrderStaffActionException('refund_mixed_order_receipt','این رسید اقلام سفارش دیگری را هم دارد؛ لغو خودکار مجاز نیست.',409);
++            $amount+=(int)$line['final_amount'];
++        }
++        if($amount!==(int)$receipt['total'])
++            throw new OrderStaffActionException('refund_amount_mismatch','مبلغ رسید و اقلام برگشتی برابر نیست.',409);
++        $tenders=$this->pdo->prepare('SELECT tender_type,amount FROM settlement_tender_allocations WHERE settlement_id=? ORDER BY id FOR UPDATE');
++        $tenders->execute([(int)$receipt['id']]);$payments=$tenders->fetchAll(PDO::FETCH_ASSOC);
++        if(!$payments)throw new OrderStaffActionException('refund_tender_missing','نحوه پرداخت اصلی مشخص نیست.',409);
++        $cashTotal=0;
++        foreach($payments as $payment){
++            if((string)$payment['tender_type']!=='cash'||(int)$payment['amount']<1)
++                throw new OrderStaffActionException('refund_noncash_tender','برگشت پرداخت کارت/اعتباری نیاز به تأیید مستقل دارد.',409);
++            $cashTotal+=(int)$payment['amount'];
++        }
++        if($cashTotal!==(int)$receipt['total'])
++            throw new OrderStaffActionException('refund_cash_amount_mismatch','مبلغ وجه نقد با رسید اصلی سازگار نیست.',409);
++        return ['refund_document_number'=>$rNumber,'original_invoice_number'=>(string)$receipt['invoice_number']];
+     }
+ 
+     public function adjustItemQuantity(array $data,array $user): array
