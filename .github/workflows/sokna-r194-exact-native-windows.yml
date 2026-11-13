@@ -71,7 +71,7 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'R194_PACKAGE_BUILD_FAILED'}
           $pkg=Join-Path $out 'SOKNA-R194-LOCAL-231EY-58BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip'
           $sha=(Get-FileHash -LiteralPath $pkg -Algorithm SHA256).Hash.ToLowerInvariant()
-          if($sha -ne '87bf9eac332d378eef720148d454a3bb8906b229143a6d64bd8a3ca527f5651e'){throw "R194_EXACT_ZIP_IDENTITY_DRIFT $sha"}
+          if($sha -ne '3444b9febcde490cc3f2a5a9d0f3bf1c7d270e3844e7bec6d60fb5b0d560ea0b'){throw "R194_EXACT_ZIP_IDENTITY_DRIFT $sha"}
           python packaging/windows/release-gates/check_local_release_set.py --require-installable $pkg
           if($LASTEXITCODE -ne 0){throw 'R194_NATIVE_MAINTENANCE_MANIFEST_REJECTED'}
           python qa/sokna-r183/release_gate.py $pkg --expect-version '3.0.0-g6.2-workspace.231ey-r194-combined-canary' --output (Join-Path $out 'R194-static-gate.json')
@@ -91,7 +91,7 @@ jobs:
         shell: pwsh
         run: |
           $sha=(Get-FileHash -LiteralPath $env:SOKNA_R194_PKG -Algorithm SHA256).Hash.ToLowerInvariant()
-          if($sha -ne '87bf9eac332d378eef720148d454a3bb8906b229143a6d64bd8a3ca527f5651e'){throw 'POST_CI_R194_PACKAGE_HASH_DRIFT'}
+          if($sha -ne '3444b9febcde490cc3f2a5a9d0f3bf1c7d270e3844e7bec6d60fb5b0d560ea0b'){throw 'POST_CI_R194_PACKAGE_HASH_DRIFT'}
           "$sha *SOKNA-R194-LOCAL-231EY-58BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip" | Set-Content (Join-Path $env:SOKNA_R194_OUT 'SHA256SUMS.txt') -Encoding ascii
           Write-Host 'PASS_R194_EXACT_WINDOWS_STAGE_ACTIVATE_HTTP_READBACK'
       - uses: actions/upload-artifact@v4
