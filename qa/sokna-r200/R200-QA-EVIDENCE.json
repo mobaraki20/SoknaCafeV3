@@ -1,19 +1,12 @@
 {
-  "basis": "R197 exact qualified parent; no installable release",
-  "zip_sha256": "282a7cee20f7fa5e0ba99cf9383a5f019e6e2b7f18a54712cdaeb87749af860f",
-  "changed_file": "src/Domain/Orders/OrderStaffActionService.php",
-  "before_sha256": "c449de3005f1bc175e03c607aa43c81691e5a3b4f4644eca79aedc1050b028c0",
-  "after_sha256": "dd5a202465b227eea5f8521dd6f750e2add73d221c8b47e313f6aa60707315d8",
-  "payload_file_count": 590,
-  "production_install_allowed": false,
-  "limits": [
-    "direct_cash_only",
-    "single fully reversed receipt",
-    "one order per receipt",
-    "no discount or tax",
-    "explicit physical refund acknowledgement",
-    "no claimed preparation",
-    "no pending inventory or finance followup",
-    "no changes to original financial ledger"
-  ]
+  "baseline_sha256": "282a7cee20f7fa5e0ba99cf9383a5f019e6e2b7f18a54712cdaeb87749af860f",
+  "changed_file_sha256": {
+    "public/assets/staff-app/hall-workspace.js": "d2a2abf84d7805cda1ec89a93e5ab7ed4a2fd731273679c4a1a88606ced06212",
+    "public/operator/api.php": "5fb17ff4e14528295cf917e7118bb7f7d8517eb1ca46a443852f05af97c3f21d",
+    "src/Domain/Orders/OrderStaffActionService.php": "94e1000ef06cec161120ae820da5b78b646a07128e896cfe40be3edbe39f2695"
+  },
+  "changed_file_count": 3,
+  "managed_file_count": 590,
+  "install_ready": false,
+  "finance_scope": "single receipt fully reversed direct CASH, no tax/discount, one order, no prep claim, explicit physical cash refund acknowledgement, accounting R and I untouched"
 }
