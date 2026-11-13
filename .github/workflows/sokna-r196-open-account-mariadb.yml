@@ -1,0 +1,74 @@
+name: SOKNA R196 open account customer slip exact source MariaDB QA - NOT INSTALLABLE
+on:
+  push:
+    branches: [qa/sokna-r196-open-account-prepayment-print-20261113]
+    paths:
+      - 'qa/sokna-r196/**'
+      - '.github/workflows/sokna-r196-open-account-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  open-account-print-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r196-only-disposable-password
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R196_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R196_DB_PASSWORD: r196-only-disposable-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql,mbstring,curl,gd,zip
+          coverage: none
+      - name: Confirm disposable MariaDB is ready
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R196_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then
+              echo 'PASS_R196_DISPOSABLE_MARIADB_READY';exit 0
+            fi
+            sleep 2
+          done
+          echo 'R196_DISPOSABLE_MARIADB_UNAVAILABLE';exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R194-EXACT-WINDOWS-QUALIFIED-QA-NO-CAFE-AUTO-DEPLOY
+          run-id: 43460281516
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r194-exact
+      - name: Reconstruct R195 and R196 on byte-pinned R194 then verify 590 files
+        shell: bash
+        run: |
+          set -euo pipefail
+          R196="$RUNNER_TEMP/r196"; mkdir -p "$R196/outer" "$R196/web"
+          PACKAGE=$(find "$RUNNER_TEMP/r194-exact" -type f -name 'SOKNA-R194-LOCAL-231EY-58BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$PACKAGE"
+          echo "3444b9febcde490cc3f2a5a9d0f3bf1c7d270e3844e7bec6d60fb5b0d560ea0b  $PACKAGE" | sha256sum -c -
+          unzip -q "$PACKAGE" -d "$R196/outer"
+          unzip -q "$R196/outer/artifacts/local/web.zip" -d "$R196/web"
+          test "$(tr -d '\r\n' < "$R196/web/VERSION.txt")" = '3.0.0-g6.2-workspace.231ey-r194-combined-canary'
+          (cd "$R196/web" && patch -p1 --fuzz=0 --batch < "$GITHUB_WORKSPACE/qa/sokna-r195/R194-TO-R195-PREPARATION-SECTION-TITLE-QA.patch")
+          (cd "$R196/web" && patch -p1 --fuzz=0 --batch < "$GITHUB_WORKSPACE/qa/sokna-r196/R195-TO-R196-OPEN-ACCOUNT-PRINT-QA.patch")
+          python qa/sokna-r196/verify_r196.py "$R196/web"
+          echo "SOKNA_R196_WEB=$R196/web" >> "$GITHUB_ENV"
+          echo 'PASS_R196_RECONSTRUCTED_590_FULL_SOURCE_FROM_EXACT_WINDOWS_R194'
+      - name: Validate R195 preparation grouping regression
+        shell: bash
+        run: |
+          php qa/sokna-r195/test_preparation_sections.php
+      - name: Run real Sokna migrations and prepayment printing scenarios
+        shell: bash
+        run: |
+          php qa/sokna-r196/test_open_account_mariadb.php
+          echo 'PASS_R196_REAL_MARIADB_ACCOUNT_PREVIEW_INTEGRATION'
