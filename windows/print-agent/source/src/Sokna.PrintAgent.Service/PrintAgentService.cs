@@ -17,7 +17,7 @@ public sealed class PrintAgentService : BackgroundService
     private const string LegacyServerScope="legacy-unbound";
 
     private static readonly TimeSpan ReportIoBudget=TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan HeartbeatIoBudget=TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan HeartbeatIoBudget=TimeSpan.FromSeconds(8);
     private static readonly TimeSpan DestinationRefreshIoBudget=TimeSpan.FromSeconds(5);
     private static readonly TimeSpan EmptyReportInterval=TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ActiveReportInterval=TimeSpan.FromMilliseconds(500);
@@ -37,6 +37,7 @@ public sealed class PrintAgentService : BackgroundService
     private readonly SemaphoreSlim _coordinatorGate=new(1,1);
     private readonly SingleFlightWork<ReportDispatchSummary> _reportWork=new();
     private readonly SingleFlightWork<ApiResult> _heartbeatWork=new();
+    private readonly HeartbeatMetricsSampler _heartbeatMetrics=new(TimeSpan.FromSeconds(2));
     private readonly SingleFlightWork<ProbeResponse> _destinationRefreshWork=new();
 
     private AgentOptions _options=new();
@@ -458,7 +459,17 @@ public sealed class PrintAgentService : BackgroundService
 
     private async Task<ApiResult> SendHeartbeatAsync(IPrintTransport api,HeartbeatSeed seed,CancellationToken ct)
     {
-        var reportCounts=await _store.GetReportStateCountsAsync(ct);
+        var metrics=await _heartbeatMetrics.CaptureAsync(async metricsToken =>
+        {
+            var counts=await _store.GetReportStateCountsAsync(metricsToken);
+            var open=await _store.CountOpenAsync(metricsToken);
+            var ambiguous=await _store.CountAmbiguousAsync(metricsToken);
+            return new HeartbeatMetricsSnapshot(
+                open,ambiguous,counts.Pending+counts.Backoff,
+                counts.AuthBlocked,counts.ReconciliationRequired,"ok");
+        },ct);
+        if(metrics.HealthStatus!="ok")
+            _fileLog.Info("heartbeat_metrics",$"SQLite telemetry degraded: {metrics.HealthStatus}; last-known counts retained.");
         var payload=new HeartbeatPayload(
             CryptoUtil.NewRequestId(),
             Environment.MachineName,
@@ -466,10 +477,10 @@ public sealed class PrintAgentService : BackgroundService
             Environment.OSVersion.VersionString,
             seed.UptimeSeconds,
             seed.LastPollSuccessAt,
-            await _store.CountOpenAsync(ct),
-            await _store.CountAmbiguousAsync(ct),
+            metrics.OpenCount,
+            metrics.UnknownCount,
             seed.LastSubmissionAt,
-            "ok",
+            metrics.HealthStatus,
             seed.DiskFreeMb,
             seed.WorkerOk,
             true,
@@ -485,9 +496,9 @@ public sealed class PrintAgentService : BackgroundService
             seed.Bridge.Port,
             seed.Bridge.PairingId,
             seed.Bridge.Origin,
-            reportCounts.Pending+reportCounts.Backoff,
-            reportCounts.AuthBlocked,
-            reportCounts.ReconciliationRequired,
+            metrics.PendingReportCount,
+            metrics.AuthBlockedReportCount,
+            metrics.ReconciliationReportCount,
             seed.PrinterHealth.LastFailureAt?.ToString("O"),
             seed.PrinterHealth.LastError,
             seed.PrinterHealth.AgeMilliseconds,
