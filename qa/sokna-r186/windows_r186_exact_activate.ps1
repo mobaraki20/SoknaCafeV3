@@ -131,3 +131,6 @@ PidFile "$ar/logs/httpd.pid"
  try{$dbOut.Result|Set-Content (Join-Path $lab 'mariadb-stdout.log')}catch{}
  try{$dbErr.Result|Set-Content (Join-Path $lab 'mariadb-stderr.log')}catch{}
 }
+
+# Reset stale status from CI-only Apache service cleanup. Reached only after all checks succeeded.
+$global:LASTEXITCODE=0
