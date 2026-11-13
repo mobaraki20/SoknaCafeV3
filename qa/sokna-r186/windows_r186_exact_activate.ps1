@@ -38,7 +38,7 @@ Need ((Get-FileHash $phpZip -Algorithm SHA256).Hash.ToLowerInvariant() -eq '7b57
 Expand-Archive $phpZip $phpRoot
 Copy-Item (Join-Path $phpRoot 'php.ini-development') (Join-Path $phpRoot 'php.ini')
 Add-Content (Join-Path $phpRoot 'php.ini') -Value ('extension_dir="'+(P (Join-Path $phpRoot 'ext'))+'"')
-foreach($e in @('pdo_mysql','mbstring','zip')){Add-Content (Join-Path $phpRoot 'php.ini') -Value ('extension='+$e)}
+foreach($e in @('pdo_mysql','mbstring','zip','sodium')){Add-Content (Join-Path $phpRoot 'php.ini') -Value ('extension='+$e)}
 $mdbUrl='https://archive.mariadb.org/mariadb-11.4.7/winx64-packages/'
 $mdbZip=Join-Path $lab 'mariadb.zip';Invoke-WebRequest ($mdbUrl+'mariadb-11.4.7-winx64.zip') -OutFile $mdbZip
 $sums=(Invoke-WebRequest ($mdbUrl+'sha256sums.txt')).Content
