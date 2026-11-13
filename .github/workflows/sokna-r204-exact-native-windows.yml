@@ -1,0 +1,100 @@
+name: SOKNA R204 Local 231fb exact cafe 231fa Windows qualification - QA NO AUTO DEPLOY
+on:
+  push:
+    branches: [qa/sokna-r204-exact-cafe-231fa-upgrade-20261114]
+    paths:
+      - 'qa/sokna-r204/**'
+      - '.github/workflows/sokna-r204-exact-native-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reconstruct-r204-source-zip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring,zip
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r201-parent
+      - name: Reconstruct R201 exact 590 files + 18 reviewed UX, report and empty-close changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/r204";mkdir -p "$R/outer" "$R/web" "$R/out"
+          BASE=$(find "$RUNNER_TEMP/r201-parent" -type f -name 'SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$BASE"
+          echo "911ea673dc1863bee3ce372dbc692602aa3a32439d2fc9ccba69dc2a6c243897  $BASE" | sha256sum -c -
+          unzip -q "$BASE" -d "$R/outer"
+          unzip -q "$R/outer/artifacts/local/web.zip" -d "$R/web"
+          (cd "$R/web" && git init -q && git config core.autocrlf false && git apply --check "$GITHUB_WORKSPACE/qa/sokna-r203/R201-TO-R203-LOCAL-INTEGRATED-QA.patch" && git apply "$GITHUB_WORKSPACE/qa/sokna-r203/R201-TO-R203-LOCAL-INTEGRATED-QA.patch")
+          rm -rf "$R/web/.git"
+          SOKNA_R204_PARENT_ZIP="$BASE" SOKNA_R204_SRC="$R/web" SOKNA_R204_OUT="$R/out" SOKNA_R204_PROOF="$GITHUB_WORKSPACE/qa/sokna-r203/R201-TO-R203-LOCAL-INTEGRATED-QA-SHA256.json" python3 qa/sokna-r204/build_r204.py
+          PKG="$R/out/SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip"
+          echo "279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3  $PKG" | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py --require-installable "$PKG"
+          echo PASS_R204_EXACT_MANAGED_590_FILES_18_CHANGED_61_BASES
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R204-EXACT-SOURCE-AND-MANIFEST-READY-FOR-WINDOWS
+          path: ${{ runner.temp }}/r204/out/*
+          if-no-files-found: error
+          retention-days: 14
+  installed-cafe-r201-to-r204-windows:
+    needs: reconstruct-r204-source-zip
+    runs-on: windows-latest
+    timeout-minutes: 95
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r201-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R204-EXACT-SOURCE-AND-MANIFEST-READY-FOR-WINDOWS
+          path: ${{ runner.temp }}/r204-target
+      - name: Exact Windows three-hop R153 to R177 to installed cafe R201 231fa to R204 231fb
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:R186_R153_DIR='${{ runner.temp }}/r153-parent'
+          $env:R201_R177_DIR='${{ runner.temp }}/r177-parent'
+          $env:R201_TARGET_DIR='${{ runner.temp }}/r201-parent'
+          $env:R204_TARGET_DIR='${{ runner.temp }}/r204-target'
+          & ./qa/sokna-r204/windows_r204_from_actual_231fa.ps1
+          if($LASTEXITCODE -ne 0){throw 'R204_REAL_CAFE_ORIGIN_WINDOWS_FAILURE'}
+          Write-Host PASS_R204_NATIVE_WINDOWS_CAFE_231FA_TO_231FB
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R204-EXACT-WINDOWS-CANDIDATE-NO-CAFE-AUTO-DEPLOY
+          path: ${{ runner.temp }}/r204-target/*
+          if-no-files-found: error
+          retention-days: 14
