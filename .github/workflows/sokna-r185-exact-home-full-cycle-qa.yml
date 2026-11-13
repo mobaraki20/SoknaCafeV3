@@ -1,0 +1,178 @@
+name: SOKNA R185 exact Home origin, MariaDB restore, Windows activation fault matrix
+
+on:
+  push:
+    branches: [qa/sokna-r185-activation-restore-20261113]
+    paths:
+      - 'qa/sokna-r185/**'
+      - '.github/workflows/sokna-r185-exact-home-full-cycle-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  exact-home-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153
+      - uses: actions/download-artifact@v4
+        with:
+          name: r184-internal-only-stage-probe-DO-NOT-INSTALL
+          run-id: 43379786737
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r184
+      - name: Exact archived 583-file home origin to 589-file CI candidate; no old migrations changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          old="$(find "$RUNNER_TEMP/r153" -type f -name 'SOKNA-R153-LOCAL-231ED-44BASE-CONTRACT-COMPLETE-QA-NOT-INSTALL.zip' -print -quit)"
+          new="$(find "$RUNNER_TEMP/r184" -type f -name 'SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip' -print -quit)"
+          test -n "$old" -a -n "$new"
+          # The R153 artifact wrapper itself is not the inner ZIP; build pinned wrapper without network.
+          python qa/sokna-r185/exact_231ed_to_231ev.py --r153 "$old" --r184 "$new" --out "$RUNNER_TEMP/R185-EXACT-SOURCE.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r185-exact-home-archive-identity-evidence
+          path: ${{ runner.temp }}/R185-EXACT-SOURCE.json
+          if-no-files-found: ignore
+
+  disposable-mariadb-restore-and-migration:
+    needs: exact-home-source
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: sokna_r182
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=3s --health-retries=18
+    env:
+      SOKNA_R185_DISPOSABLE: 'YES'
+      SOKNA_R182_DISPOSABLE: 'YES'
+      SOKNA_R177_DISPOSABLE: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring
+      - uses: actions/download-artifact@v4
+        with:
+          name: r184-internal-only-stage-probe-DO-NOT-INSTALL
+          run-id: 43379786737
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r184
+      - name: Prepare exact candidate source and MariaDB client
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq mariadb-client
+          pkg="$(find "$RUNNER_TEMP/r184" -type f -name 'SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip' -print -quit)"
+          test -n "$pkg"
+          mkdir -p "$RUNNER_TEMP/r185-src"
+          unzip -p "$pkg" 'artifacts/local/web.zip' > "$RUNNER_TEMP/r184-web.zip"
+          unzip -q "$RUNNER_TEMP/r184-web.zip" -d "$RUNNER_TEMP/r185-src"
+          echo "R185_EXACT_SRC=$RUNNER_TEMP/r185-src" >> "$GITHUB_ENV"
+      - name: Actual SQL migration 0081 idempotency, collisions and no remote enable
+        shell: bash
+        run: php qa/sokna-r185/test_0081_migration.php "$R185_EXACT_SRC"
+      - name: Real MariaDB consistent backup / independent restore / tamper denial
+        shell: bash
+        run: bash qa/sokna-r185/backup_restore_mariadb.sh
+      - name: Real MariaDB 400 theme versions and repeatable registration
+        shell: bash
+        run: php qa/sokna-r182/test_builtin_theme_mariadb.php "$R185_EXACT_SRC"
+      - name: Actual catalog resync MariaDB regression on exact candidate
+        shell: bash
+        run: php qa/sokna-r177/test_r177_disposable_mariadb.php "$R185_EXACT_SRC"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r185-real-mariadb-restore-evidence-only
+          path: |
+            ${{ runner.temp }}/R185-MARIADB-0081-RESULT.json
+            ${{ runner.temp }}/R185-RESTORE-RESULT.json
+          if-no-files-found: ignore
+
+  windows-full-activation-and-fault-recovery:
+    needs: exact-home-source
+    runs-on: windows-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: r184-internal-only-stage-probe-DO-NOT-INSTALL
+          run-id: 43379786737
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r184
+      - name: Recheck exact current Home 231ed -> R184 Windows Stage (NOT Activate)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=(Get-ChildItem "$env:RUNNER_TEMP/r184" -Recurse -Filter 'SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip' | Select-Object -First 1).FullName
+          if(!$p){throw 'R185_PINNED_R184_CANDIDATE_MISSING'}
+          if((Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'da884efc86b3801d11d3842411d6189d916ff2736451aefe3801dafbea7a59ec'){throw 'R185_R184_CANDIDATE_SHA_DRIFT'}
+          dotnet run --project qa/sokna-r184/R184Stage.csproj -c Release --no-launch-profile -- $p
+          if($LASTEXITCODE -ne 0){throw 'R185_R184_STAGE_FAILED'}
+      - name: Create isolated U01 real Apache/PHP/MariaDB engine regression fixture
+        shell: pwsh
+        run: |
+          python release/build-local-u01.py --output "$env:RUNNER_TEMP/u01-local"
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Qualify U01 fixture without releasing packages
+        shell: pwsh
+        env:
+          SOKNA_R133_LAB_ONLY: '1'
+        run: |
+          python qa/sokna-r133/qualify-disposable-u01-fixture.py "$env:RUNNER_TEMP/u01-local/SOKNA-Local-231bf-U01-Panel-Update.zip"
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Install byte-pinned official PHP Thread Safe for real Apache
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://downloads.php.net/~windows/releases/archives/php-8.4.24-Win32-vs17-x64.zip'
+          $sha='7b57fc9840273ab153834d0e2bd06e0bcf4fead36e381182b4b8fe9cedff3174'
+          $folder=Join-Path $env:RUNNER_TEMP 'r185-php-ts';New-Item -ItemType Directory -Force $folder|Out-Null
+          $zip=Join-Path $env:RUNNER_TEMP 'r185-php-ts.zip'
+          Invoke-WebRequest $url -OutFile $zip
+          if((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha){throw 'R185_PHP_HASH_DRIFT'}
+          Expand-Archive $zip $folder
+          if(-not(Test-Path (Join-Path $folder 'php8apache2_4.dll'))){throw 'R185_TS_PHP_APACHE_MODULE_MISSING'}
+          Copy-Item (Join-Path $folder 'php.ini-development') (Join-Path $folder 'php.ini')
+          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value ('extension_dir="'+ $folder.Replace('\','/') + '/ext"')
+          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value 'extension=pdo_mysql'
+          Add-Content -LiteralPath (Join-Path $folder 'php.ini') -Value 'extension=mbstring'
+          Add-Content -Path $env:GITHUB_ENV -Value "SOKNA_R133_PHP_TS=$folder"
+      - name: Real Windows SCM/Apache/PHP/MariaDB full Activate, readback, 12 fault recoveries (historical engine fixture)
+        shell: pwsh
+        env:
+          SOKNA_R133_LAB_ONLY: '1'
+        run: |
+          & ./windows/maintenance/tests/u01-windows-full-cycle.ps1
+          if($LASTEXITCODE -ne 0){throw 'R185_REAL_ENGINE_FULL_CYCLE_FAILED'}
+          Write-Host 'PASS_R185_REAL_WINDOWS_APACHE_PHP_MARIADB_12_FAULT_SCENARIOS_HISTORICAL_U01_ONLY'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r185-windows-12-cycle-engine-only-evidence
+          path: ${{ runner.temp }}/U01-WINDOWS-CYCLES.json
+          if-no-files-found: ignore
