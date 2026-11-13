@@ -68,49 +68,46 @@ catch(Exception e)
 
 async Task RunA52()
 {
-    // Full production service with real local SQLite store and an isolated fake transport.
-    // No print claim/start/worker; only the heartbeat side channel is exercised.
+    // Fully isolated, real SQLite LocalQueueStore + real PrintAgentService.
+    // Begin with an UNINITIALIZED database (no OS file relocation/locks), then
+    // initialize it to simulate recovery. All messages go only to fake transport.
     using var env=await ServiceTestEnvironment.CreateAsync("a52-heartbeat-sqlite");
-    var transport=new CoordinatorTransport(null,new ConcurrentQueue<string>());
-    var service=env.CreateService(transport,true,new CountingNoStartFactory());
-    var capture=typeof(PrintAgentService).GetMethod("CaptureHeartbeatSeed",BindingFlags.Instance|BindingFlags.NonPublic)
-        ??throw new MissingMethodException("CaptureHeartbeatSeed");
-    var send=typeof(PrintAgentService).GetMethod("SendHeartbeatAsync",BindingFlags.Instance|BindingFlags.NonPublic)
-        ??throw new MissingMethodException("SendHeartbeatAsync");
-    var seed=capture.Invoke(service,[1L])??throw new InvalidOperationException("heartbeat seed missing");
-
-    async Task<ApiResult> DeliverAsync()
-    {
-        var task=send.Invoke(service,[transport,seed,CancellationToken.None]) as Task<ApiResult>
-            ??throw new InvalidOperationException("heartbeat send task missing");
-        return await task;
-    }
-
-    var first=await DeliverAsync();
-    Check(first.Success&&transport.HeartbeatCount==1&&transport.LastHeartbeat?.SqliteHealth=="ok",
-        "healthy SQLite produces authenticated heartbeat");
-    var dbRoot=Path.GetDirectoryName(env.DatabasePath)
-        ??throw new InvalidOperationException("db root missing");
-    var hidden=dbRoot+"-a52-held";
-    Directory.Move(dbRoot,hidden);
+    var root=Path.Combine(Path.GetTempPath(),"sokna-a52-uninitialized-"+Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
     try
     {
-        // A missing SQLite directory cannot block heartbeat; diagnostics may also be unwritable.
-        var second=await DeliverAsync();
-        Check(second.Success&&transport.HeartbeatCount==2,
-            "SQLite unavailable still sends heartbeat exactly once");
+        var uninitialized=new LocalQueueStore(Path.Combine(root,"queue.db"),env.Protector);
+        var transport=new CoordinatorTransport(null,new ConcurrentQueue<string>());
+        var service=env.CreateService(transport,true,new CountingNoStartFactory(),store:uninitialized);
+        var capture=typeof(PrintAgentService).GetMethod("CaptureHeartbeatSeed",BindingFlags.Instance|BindingFlags.NonPublic)
+            ??throw new MissingMethodException("CaptureHeartbeatSeed");
+        var send=typeof(PrintAgentService).GetMethod("SendHeartbeatAsync",BindingFlags.Instance|BindingFlags.NonPublic)
+            ??throw new MissingMethodException("SendHeartbeatAsync");
+        var seed=capture.Invoke(service,[1L])??throw new InvalidOperationException("heartbeat seed missing");
+
+        async Task<ApiResult> DeliverAsync()
+        {
+            var task=send.Invoke(service,[transport,seed,CancellationToken.None]) as Task<ApiResult>
+                ??throw new InvalidOperationException("heartbeat send task missing");
+            return await task;
+        }
+
+        var failedMetrics=await DeliverAsync();
+        Check(failedMetrics.Success&&transport.HeartbeatCount==1,
+            "uninitialized SQLite cannot suppress authenticated heartbeat");
         Check(transport.LastHeartbeat?.SqliteHealth=="metrics_error",
-            "SQLite unavailable is explicitly reported as degraded, not healthy");
+            "unavailable SQLite telemetry has explicit degraded health status");
         Check(transport.ClaimCount==0&&transport.StartCount==0&&transport.ReportCount==0,
-            "metrics failure never claims or prints");
+            "diagnostic failure causes no claim, report or print mutation");
+        await uninitialized.InitializeAsync();
+        var recovered=await DeliverAsync();
+        Check(recovered.Success&&transport.HeartbeatCount==2&&transport.LastHeartbeat?.SqliteHealth=="ok",
+            "same service recovers normal heartbeat telemetry after SQLite initialized");
     }
     finally
     {
-        Directory.Move(hidden,dbRoot);
+        try{Directory.Delete(root,true);}catch{}
     }
-    var recovered=await DeliverAsync();
-    Check(recovered.Success&&transport.HeartbeatCount==3&&transport.LastHeartbeat?.SqliteHealth=="ok",
-        "health telemetry recovers after SQLite restored");
 }
 
 async Task RunA48()
