@@ -45,7 +45,7 @@ $print=new \Sokna\Local\Domain\Printing\PrintService($pdo,$id,$templates);
 $prepAccess=new \Sokna\Local\Domain\Preparation\PreparationAccessService($pdo,$id,$caps);
 $prep=new \Sokna\Local\Domain\Preparation\PreparationService($pdo,$prepAccess,new \Sokna\Local\Domain\Orders\BusinessClock($pdo));
 $service=new \Sokna\Local\Domain\Orders\OrderStaffActionService($pdo,$id,$caps,$inventoryOrders,$print,$prep);
-function fixture(PDO $pdo,int $actor,string $station='other',bool $other=false):array{
+function fixture(PDO $pdo,int $actor,string $station='none',bool $other=false):array{
  static $n=0;$n++;
  $pdo->prepare('INSERT INTO cafe_tables(name,table_number,code,access_token,active) VALUES(?,?,?,?,1)')->execute(['QA table '.$n,$n,'R192-T-'.$n,'R192-TOKEN-'.$n]);$tableId=(int)$pdo->lastInsertId();
  $pdo->prepare("INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,opened_by_user_id,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,'active',?,?,CURDATE(),'day','QA','05:00')")
@@ -75,7 +75,7 @@ ensure(countRows($pdo,'SELECT COUNT(*) FROM order_status_history WHERE order_id=
 ensure(cancel($service,$oid,$actor,'A')['idempotent']===true,'IDEMPOTENT_REPLAY');
 echo "PASS_R192_MARIADB_SINGLE_CANCEL\n";
 // B. Cancel one order while the other remains accounted in same session.
-[$table,$sid,$oid,$other]=fixture($pdo,$userId,'other',true);$out=cancel($service,$oid,$actor,'B');
+[$table,$sid,$oid,$other]=fixture($pdo,$userId,'none',true);$out=cancel($service,$oid,$actor,'B');
 ensure(($out['success']??false)&&($out['session_closed']??true)===false,'MULTI_KEEP_SESSION');
 ensure(status($pdo,'table_sessions',$sid)==='active'&&status($pdo,'orders',$other)==='accounted','MULTI_PRESERVE_OTHER');
 ensure(countRows($pdo,"SELECT COALESCE(SUM(total_amount),0) FROM orders WHERE session_id=? AND status='accounted'",[$sid])===250,'MULTI_AMOUNT');
