@@ -1,0 +1,118 @@
+{
+  "label": "Local R201 to R203 including R202",
+  "source_files": {
+    "before": 590,
+    "after": 590
+  },
+  "changed": [
+    {
+      "file": "public/assets/catalog-workspace.js",
+      "before": "238c93c09316564d6a924b62b55133a9d724af0e1cadd404a0db8e2612bb5783",
+      "after": "fa9716f1c22c8c7c50d43c7a18b1398821f01ae3c4ac4c0b7297ac442aacb19e",
+      "size": 100301
+    },
+    {
+      "file": "public/assets/connections-workspace.js",
+      "before": "3d9a1f97b6d67f611f955dd884deeede2f01e9bc63918a320921900f75a185bf",
+      "after": "1eb394fa1744a14cbda8456d440e5ad6461dac26576cf5d7e25a736d1a1251df",
+      "size": 37556
+    },
+    {
+      "file": "public/assets/guest-content-workspace.js",
+      "before": "e707ac27db1cd15fc19de4e739a672700e47dbb6b0ab0babd3aaacaf10a3f289",
+      "after": "d295ed797d1b90bbe86f377344298d1c172fe372950d4e38bfe7375e05ca2ca3",
+      "size": 92626
+    },
+    {
+      "file": "public/assets/hall-settlement-v32.js",
+      "before": "e58981a3a4cc8d21d39f715a6865c845a259b48c48b2a8fd46670a5bab452975",
+      "after": "bf84d64f50913a2377cf29cac15dc3544b56d47dca495310f1c5308c8d8203b6",
+      "size": 60465
+    },
+    {
+      "file": "public/assets/printing-workspace.js",
+      "before": "7d8f5ba3555afc5878b32fc85baf7de025a6a07854528646b13e0f2565f69738",
+      "after": "e191f38eee0d12e72380cf7c187b04e20d3e0dcc2a19e726d4b5d9bf5d4b684d",
+      "size": 54935
+    },
+    {
+      "file": "public/assets/product-ui.css",
+      "before": "bb065f37396bc2d3b7f6d3fc3b98ec95b4e50e8c3d87a629d3f9f195016ed3f4",
+      "after": "f2a36e6bdbf329cf52b73ad380e18ef8c0cde4f7841637ae144f3b12ec523e7d",
+      "size": 629692
+    },
+    {
+      "file": "public/assets/reports-workspace.js",
+      "before": "7fe4822eb89bd8e763e238db4d64375d9d4cae902c968253380e3e293e113e38",
+      "after": "49cbbf9a9d4cceefb941fb74bf3683f65b528265c36b3932515cc926343edf50",
+      "size": 63060
+    },
+    {
+      "file": "public/assets/scds/guest.js",
+      "before": "b25bdbc077671c4d150ed94b7eec9faeb6cb83e1eaca1062c531e037f1a385e0",
+      "after": "36d74b427b29745fc0e721c414260df0b11e6725247ad0f47d2c768f3fc2674f",
+      "size": 125448
+    },
+    {
+      "file": "public/assets/settlement-tender.js",
+      "before": "5ab7a9b1a5cb5c88ba84d8c31bad57418ce5af0137f0ed897d581e7d115d0b70",
+      "after": "c362a6c0b749b3bdb7e4c4b397ab85583ce91d8a76eabdbf3a0145238df57492",
+      "size": 2606
+    },
+    {
+      "file": "public/assets/staff-app/data-panels.js",
+      "before": "6e2fe6161922f727f2af6a969bced14bcfc94db7e1f890a30c1b98370bc92e44",
+      "after": "63092edad5d595723cf9869ea5ddcf3399c512cfd7ea1fe537e048032c074dc0",
+      "size": 13561
+    },
+    {
+      "file": "public/assets/staff-app/hall-workspace.js",
+      "before": "d2a2abf84d7805cda1ec89a93e5ab7ed4a2fd731273679c4a1a88606ced06212",
+      "after": "ff6e909af8ae4ba2191a1d6d412ddb62c9d32253155ffeed4d2fa57409e7ba77",
+      "size": 133693
+    },
+    {
+      "file": "public/assets/staff-app/preparation-workspace.js",
+      "before": "a1382a61d59223d2fda1d0d2e9771b7e64c79eaa9eb55752319cc97f41ff0a50",
+      "after": "bd8aa6c62fa63851b093d0f91c3e7b5910b89c6f3d8b66c67ebfa78df96370e8",
+      "size": 13226
+    },
+    {
+      "file": "public/catalog/index.php",
+      "before": "bfe6ff8d97f4ea9341a8f95b55fb1dc2d4238d4bf06a040751114170b0f45d37",
+      "after": "484d9e06ab09bccc8eb5053570430b35ec6aa036fb929b73a4c9ebb50b92c1ed",
+      "size": 41824
+    },
+    {
+      "file": "public/operator/api.php",
+      "before": "5fb17ff4e14528295cf917e7118bb7f7d8517eb1ca46a443852f05af97c3f21d",
+      "after": "05aaf2945cb47ac43e568bde1769594011b11b6061706fb380eb9f6f045fc1eb",
+      "size": 3860
+    },
+    {
+      "file": "public/printing/index.php",
+      "before": "040ab944eaafcbe1300b2d744d2a3d8ac164d7034750ce3ee0f6f69222c0e100",
+      "after": "d412c8730720c1232053eda213ed568c9080a9162c313e771e1554bc8e1eed7c",
+      "size": 25606
+    },
+    {
+      "file": "src/Domain/Finance/SettlementService.php",
+      "before": "96286936f6db346a1046c6cb15c6b51f73eda334699a0f48356f537b77aebb26",
+      "after": "2b8f657e75de5d64c4db2728a0cc354ea6652a5e4310c45abd0e41d72f6e10e4",
+      "size": 82174
+    },
+    {
+      "file": "src/Domain/Orders/TableChangeService.php",
+      "before": "229e4a6673f21c563492f309ede04929793f4e5f41d7999750ae427ef885a211",
+      "after": "fa8bfdcaf49c0dda46d960187688da7d6a5d89c84747c807d98265ad4bd887e1",
+      "size": 33309
+    },
+    {
+      "file": "src/Domain/Reporting/ReportingService.php",
+      "before": "fc2046dd956792c75a03d5199509456ee9d57540b2cacfb08c49e7ea9cbb7b1b",
+      "after": "04dd867cb9df637eb4ab25d3bb25da19fd33d95e82e0a4c753d45ed0c7833087",
+      "size": 112577
+    }
+  ],
+  "patch_sha256": "5724e7c4a6274d5b0e1dc618eb813ab927bb1bd0ea64ba27a0dd3b496ba4356e"
+}
