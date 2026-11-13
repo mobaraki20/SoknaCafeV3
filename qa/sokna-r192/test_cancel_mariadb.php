@@ -6,6 +6,18 @@ if(getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_R192_DISPOSABLE_ONLY')!=='YE
 }
 $web=(string)getenv('SOKNA_R192_WEB');
 if($web===''||!is_file($web.'/bootstrap.php'))throw new RuntimeException('R192_WEB_MISSING');
+// In a throwaway CI workspace, satisfy the photo-bundle migration preflight
+// with an isolated, writable media vault. No production host or credentials.
+$ciTemp=(string)getenv('RUNNER_TEMP');
+if($ciTemp===''||!str_starts_with(realpath($web)?:'',realpath($ciTemp).DIRECTORY_SEPARATOR))
+    throw new RuntimeException('R192_NOT_IN_DISPOSABLE_RUNNER_TEMP');
+$ciRoot=dirname($web);$ciData=$ciRoot.'/Data';$ciMedia=$ciData.'/guest-media';
+if(!is_dir($ciMedia)&&!mkdir($ciMedia,0700,true)&&!is_dir($ciMedia))
+    throw new RuntimeException('R192_CI_MEDIA_DIR_UNAVAILABLE');
+$ciConfig=$ciRoot.'/config.php';
+if(file_exists($ciConfig)||is_link($ciConfig))throw new RuntimeException('R192_EXISTING_HOST_CONFIG_REFUSED');
+if(file_put_contents($ciConfig,'<?php return '.var_export(['app'=>['data_dir'=>$ciData]],true).';')===false)
+    throw new RuntimeException('R192_CI_HOST_CONFIG_CREATE_FAILED');
 require $web.'/bootstrap.php';
 $host=(string)(getenv('SOKNA_R192_DB_HOST')?:'127.0.0.1');$pass=(string)getenv('SOKNA_R192_DB_PASSWORD');
 $pdo=new PDO('mysql:host='.$host.';port=3306;charset=utf8mb4','root',$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);
