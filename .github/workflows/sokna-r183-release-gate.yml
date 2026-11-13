@@ -1,0 +1,96 @@
+name: SOKNA R183 Fail-Closed Release Admission
+
+on:
+  push:
+    branches: [qa/sokna-r183-release-gate-20261113]
+    paths:
+      - 'qa/sokna-r183/**'
+      - '.github/workflows/sokna-r183-release-gate.yml'
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      candidate_artifact_name:
+        description: 'Artifact in this run containing exactly one standalone Local Release Set ZIP'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  standalone-gate-contract:
+    name: Gate contract / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run fail-closed gate tests
+        shell: bash
+        run: python qa/sokna-r183/test_release_gate.py
+      - name: Verify browser syntax and package test policy code
+        shell: bash
+        run: |
+          python -m py_compile qa/sokna-r183/release_gate.py
+          if command -v node >/dev/null; then node --check qa/sokna-r183/browser-file-probe.js; fi
+
+  historical-reference-regression:
+    name: Existing R177 exact ZIP / read-only policy
+    needs: standalone-gate-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177
+      - name: Verify exact R177 historical ZIP static guard (NOT installation proof)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG="$(find "$RUNNER_TEMP/r177" -type f -name 'SOKNA-R177-LOCAL-231ES-55BASE-GOLIVE-RESYNC-CANARY-PANEL-UPDATE.zip' -print -quit)"
+          test -n "$PKG"
+          echo "bb14b9bc93d7a37059331e24692c3bd60cc338c36e336a8cdcab6cb123b30286  $PKG" | sha256sum -c -
+          python qa/sokna-r183/release_gate.py "$PKG" --output "$RUNNER_TEMP/r177-static-result.json"
+          python - "$RUNNER_TEMP/r177-static-result.json" <<'PY'
+          import json,sys
+          j=json.load(open(sys.argv[1]))
+          assert j['all_static_checks_pass'] is True
+          assert j['ready_for_production_install'] is False
+          assert j['checks'][0]['maintenance_stage_authorized'] is False
+          print('PASS PINNED_R177_STATIC_ONLY_NO_FALSE_INSTALL_CLAIM')
+          PY
+
+  candidate-admission:
+    name: Candidate ZIP static admission; never publish
+    needs: standalone-gate-contract
+    if: ${{ inputs.candidate_artifact_name != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.candidate_artifact_name }}
+          path: candidate
+      - name: Fail before delivery for wrappers, UAT, wrong file type or missing qualification
+        run: |
+          set -euo pipefail
+          mapfile -d '' -t PACKAGES < <(find candidate -type f -name '*.zip' -print0)
+          test "${#PACKAGES[@]}" -eq 1 || { echo 'DENY candidate must contain exactly one standalone ZIP'; exit 2; }
+          python qa/sokna-r183/release_gate.py "${PACKAGES[0]}" --output admission.json
+          echo 'PASS_STATIC_ONLY: signature, Stage, Activate, DB readback and restore still require separate evidence.'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r183-static-admission-no-install-permit
+          path: admission.json
+          if-no-files-found: ignore
