@@ -1,0 +1,94 @@
+name: SOKNA R197 exact 231es cafe to 231ez Native Windows QA - NO CAFE AUTO DEPLOY
+on:
+  push:
+    branches: [qa/sokna-r197-open-account-native-windows-20261113]
+    paths:
+      - 'qa/sokna-r197/**'
+      - '.github/workflows/sokna-r197-exact-native-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-r197-source-and-panel-zip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring,zip
+      - uses: actions/download-artifact@v4
+        with:
+          name: R194-EXACT-WINDOWS-QUALIFIED-QA-NO-CAFE-AUTO-DEPLOY
+          run-id: 43460281516
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r194-parent
+      - name: Rebuild actual R195 and R196 from exact R194, then R197 native package
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="${RUNNER_TEMP}/r197"; mkdir -p "$R/outer" "$R/web" "$R/out"
+          BASE=$(find "${RUNNER_TEMP}/r194-parent" -type f -name 'SOKNA-R194-LOCAL-231EY-58BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$BASE"
+          echo "3444b9febcde490cc3f2a5a9d0f3bf1c7d270e3844e7bec6d60fb5b0d560ea0b  $BASE" | sha256sum -c -
+          unzip -q "$BASE" -d "$R/outer"
+          unzip -q "$R/outer/artifacts/local/web.zip" -d "$R/web"
+          (cd "$R/web" && patch -p1 --fuzz=0 --batch < "$GITHUB_WORKSPACE/qa/sokna-r195/R194-TO-R195-PREPARATION-SECTION-TITLE-QA.patch")
+          (cd "$R/web" && patch -p1 --fuzz=0 --batch < "$GITHUB_WORKSPACE/qa/sokna-r196/R195-TO-R196-OPEN-ACCOUNT-PRINT-QA.patch")
+          python qa/sokna-r196/verify_r196.py "$R/web"
+          SOKNA_R197_PARENT_ZIP="$BASE" SOKNA_R197_SRC="$R/web" SOKNA_R197_OUT="$R/out" python qa/sokna-r197/build_r197.py
+          PACKAGE="$R/out/SOKNA-R197-LOCAL-231EZ-59BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip"
+          echo "282a7cee20f7fa5e0ba99cf9383a5f019e6e2b7f18a54712cdaeb87749af860f  $PACKAGE" | sha256sum -c -
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$PACKAGE"
+          echo 'PASS_R197_EXACT_590_SOURCE_AND_59_BASELINE_NATIVE_PANEL_MANIFEST'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R197-EXACT-SOURCE-AND-MANIFEST-QUALIFIED-FOR-WINDOWS
+          path: ${{ runner.temp }}/r197/out/*
+          retention-days: 14
+          if-no-files-found: error
+  actual-cafe-r177-to-r197-windows:
+    needs: exact-r197-source-and-panel-zip
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R197-EXACT-SOURCE-AND-MANIFEST-QUALIFIED-FOR-WINDOWS
+          path: ${{ runner.temp }}/r197-package
+      - name: Exact Windows R153 to cafe R177 231es to R197 231ez, complete Maintenance cycle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:R186_R153_DIR='${{ runner.temp }}/r153-parent'
+          $env:R197_R177_DIR='${{ runner.temp }}/r177-parent'
+          $env:R197_TARGET_DIR='${{ runner.temp }}/r197-package'
+          & ./qa/sokna-r197/windows_r197_from_r177.ps1
+          if($LASTEXITCODE -ne 0){throw 'R197_CAFE_231ES_NATIVE_UPGRADE_FAILED'}
+          Write-Host 'PASS_R197_NATIVE_CAFE_231ES_TO_231EZ_EXACT_UPGRADE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R197-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          path: ${{ runner.temp }}/r197-package/*
+          if-no-files-found: error
+          retention-days: 14
