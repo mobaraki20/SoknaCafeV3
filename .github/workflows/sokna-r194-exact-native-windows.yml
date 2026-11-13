@@ -51,6 +51,9 @@ jobs:
           Expand-Archive -LiteralPath (Join-Path $outer 'artifacts/local/web.zip') -DestinationPath $web
           & git -C $web init -q
           if($LASTEXITCODE -ne 0){throw 'GIT_INIT_FOR_PATCH_FAILED'}
+          & git -C $web config core.autocrlf false
+          & git -C $web config core.eol lf
+          if($LASTEXITCODE -ne 0){throw 'GIT_EOL_CONFIGURATION_FAILED'}
           foreach($patch in @('qa/sokna-r193/R189-TO-R191-LOCAL-QA-PATCH-NOT-INSTALL.patch','qa/sokna-r193/R191-TO-R193-QA-API-UI-AND-CANCEL.patch')){
             $patchFile=Join-Path $env:GITHUB_WORKSPACE $patch
             & git -C $web apply --check --whitespace=nowarn $patchFile
