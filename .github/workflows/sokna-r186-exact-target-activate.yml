@@ -15,8 +15,6 @@ jobs:
     timeout-minutes: 75
     env:
       SOKNA_R186_CI_ONLY: 'YES'
-      R186_R153_DIR: ${{ runner.temp }}/r153-parent
-      R186_R184_DIR: ${{ runner.temp }}/r184-target
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -38,6 +36,9 @@ jobs:
           path: ${{ runner.temp }}/r184-target
       - name: Real full Windows exact R153 source -> R184 target; Activate, MariaDB, HTTP, readback
         shell: pwsh
+        env:
+          R186_R153_DIR: ${{ runner.temp }}/r153-parent
+          R186_R184_DIR: ${{ runner.temp }}/r184-target
         run: |
           & ./qa/sokna-r186/windows_r186_exact_activate.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
