@@ -1,0 +1,88 @@
+name: SOKNA R202 zero settlement and daily discount exact R201 MariaDB QA
+on:
+  push:
+    branches: [qa/sokna-r202-zero-settlement-daily-discounts-20261114]
+    paths:
+      - 'qa/sokna-r202/**'
+      - '.github/workflows/sokna-r202-zero-discount-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  r202-zero-complimentary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r202-disposable-only
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R202_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R202_DB_PASSWORD: r202-disposable-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql,mbstring,curl,gd,zip
+          coverage: none
+      - name: Confirm disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R202_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then
+              echo PASS_R202_DISPOSABLE_MARIADB; exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r201-parent
+      - name: Reconstruct real R201 source and validate six-file R202 diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE=$(find "$RUNNER_TEMP/r201-parent" -type f -name 'SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$ARCHIVE"
+          echo "911ea673dc1863bee3ce372dbc692602aa3a32439d2fc9ccba69dc2a6c243897  $ARCHIVE" | sha256sum -c -
+          ROOT="$RUNNER_TEMP/r202"; mkdir -p "$ROOT/outer" "$ROOT/web"
+          unzip -q "$ARCHIVE" -d "$ROOT/outer"
+          unzip -q "$ROOT/outer/artifacts/local/web.zip" -d "$ROOT/web"
+          test "$(find "$ROOT/web" -type f | wc -l)" -eq 590
+          (cd "$ROOT/web" && git init -q && git config core.autocrlf false && git apply --check "$GITHUB_WORKSPACE/qa/sokna-r202/R201-TO-R202-ZERO-DISCOUNT-REPORTS-QA.patch" && git apply "$GITHUB_WORKSPACE/qa/sokna-r202/R201-TO-R202-ZERO-DISCOUNT-REPORTS-QA.patch")
+          python3 - "$ROOT" "$GITHUB_WORKSPACE/qa/sokna-r202/R202-SOURCE-EVIDENCE.json" <<'PY'
+          import pathlib,zipfile,json,hashlib,sys
+          root=pathlib.Path(sys.argv[1]); evidence=json.loads(pathlib.Path(sys.argv[2]).read_text())
+          changed=[]
+          with zipfile.ZipFile(root/'outer/artifacts/local/web.zip') as p:
+              files=p.namelist()
+              for n in files:
+                  current=(root/'web'/n).read_bytes()
+                  if current != p.read(n): changed.append(n)
+                  if n in evidence['modified_sha256'] and hashlib.sha256(current).hexdigest()!=evidence['modified_sha256'][n]:raise RuntimeError('R202 bad new SHA '+n)
+              assert len(files)==590 and set(changed)==set(evidence['changed']),changed
+          print('PASS_R202_SOURCE_590_BYTE_EXACT_SIX_CHANGED')
+          PY
+          php -l "$ROOT/web/src/Domain/Finance/SettlementService.php"
+          php -l "$ROOT/web/src/Domain/Reporting/ReportingService.php"
+          for p in public/assets/settlement-tender.js public/assets/hall-settlement-v32.js public/assets/reports-workspace.js public/assets/staff-app/data-panels.js; do node --check "$ROOT/web/$p"; done
+          echo "SOKNA_R202_WEB=$ROOT/web" >> "$GITHUB_ENV"
+      - name: Confirm no new button and correct tender input behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          node qa/sokna-r202/test_zero_tender.js
+      - name: Financial account and report tests using real 81-migration database
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r202/test_zero_discount_real_db.php
