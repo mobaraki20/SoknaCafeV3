@@ -43,6 +43,7 @@ try
         case "A49": await RunA49(); break;
         case "A50": await RunA50(); break;
         case "A51": await RunA51(); break;
+        case "A52": await RunA52(); break;
         default:
             await WriteResult("NOT_RUN",3,$"Service acceptance case {caseId} is not implemented.");
             return 3;
@@ -63,6 +64,53 @@ catch(Exception e)
     Log($"FAIL {e.GetType().Name}: {SafeLogText.Sanitize(e.Message,400)}");
     await WriteResult("FAIL",1,$"{e.GetType().Name}: {SafeLogText.Sanitize(e.Message,400)}");
     return 1;
+}
+
+async Task RunA52()
+{
+    // Full production service with real local SQLite store and an isolated fake transport.
+    // No print claim/start/worker; only the heartbeat side channel is exercised.
+    using var env=await ServiceTestEnvironment.CreateAsync("a52-heartbeat-sqlite");
+    var transport=new CoordinatorTransport(null,new ConcurrentQueue<string>());
+    var service=env.CreateService(transport,true,new CountingNoStartFactory());
+    var capture=typeof(PrintAgentService).GetMethod("CaptureHeartbeatSeed",BindingFlags.Instance|BindingFlags.NonPublic)
+        ??throw new MissingMethodException("CaptureHeartbeatSeed");
+    var send=typeof(PrintAgentService).GetMethod("SendHeartbeatAsync",BindingFlags.Instance|BindingFlags.NonPublic)
+        ??throw new MissingMethodException("SendHeartbeatAsync");
+    var seed=capture.Invoke(service,[1L])??throw new InvalidOperationException("heartbeat seed missing");
+
+    async Task<ApiResult> DeliverAsync()
+    {
+        var task=send.Invoke(service,[transport,seed,CancellationToken.None]) as Task<ApiResult>
+            ??throw new InvalidOperationException("heartbeat send task missing");
+        return await task;
+    }
+
+    var first=await DeliverAsync();
+    Check(first.Success&&transport.HeartbeatCount==1&&transport.LastHeartbeat?.SqliteHealth=="ok",
+        "healthy SQLite produces authenticated heartbeat");
+    var dbRoot=Path.GetDirectoryName(env.DatabasePath)
+        ??throw new InvalidOperationException("db root missing");
+    var hidden=dbRoot+"-a52-held";
+    Directory.Move(dbRoot,hidden);
+    try
+    {
+        // A missing SQLite directory cannot block heartbeat; diagnostics may also be unwritable.
+        var second=await DeliverAsync();
+        Check(second.Success&&transport.HeartbeatCount==2,
+            "SQLite unavailable still sends heartbeat exactly once");
+        Check(transport.LastHeartbeat?.SqliteHealth=="metrics_error",
+            "SQLite unavailable is explicitly reported as degraded, not healthy");
+        Check(transport.ClaimCount==0&&transport.StartCount==0&&transport.ReportCount==0,
+            "metrics failure never claims or prints");
+    }
+    finally
+    {
+        Directory.Move(hidden,dbRoot);
+    }
+    var recovered=await DeliverAsync();
+    Check(recovered.Success&&transport.HeartbeatCount==3&&transport.LastHeartbeat?.SqliteHealth=="ok",
+        "health telemetry recovers after SQLite restored");
 }
 
 async Task RunA48()
@@ -853,6 +901,7 @@ sealed class CoordinatorTransport:IPrintTransport
     public int StartCount=>Volatile.Read(ref _startCount);
     public int ReportCount=>Volatile.Read(ref _reportCount);
     public int HeartbeatCount=>Volatile.Read(ref _heartbeatCount);
+    public HeartbeatPayload? LastHeartbeat{get;private set;}
     public int ProbeCount=>Volatile.Read(ref _probeCount);
     public int AttemptStatusCount=>Volatile.Read(ref _attemptStatusCount);
     public AttemptStatusResult? AttemptStatus{get;set;}
@@ -907,6 +956,7 @@ sealed class CoordinatorTransport:IPrintTransport
 
     public async Task<ApiResult> HeartbeatAsync(HeartbeatPayload payload,CancellationToken ct)
     {
+        LastHeartbeat=payload;
         Interlocked.Increment(ref _heartbeatCount);
         _events.Enqueue("heartbeat");
         HeartbeatEntered.TrySetResult(true);
