@@ -5,6 +5,8 @@ on:
       - qa/sokna-r188-public-root-qr-audit-20261113
     paths:
       - .github/workflows/sokna-r188-public-qr-native-qa.yml
+      - qa/sokna-r188/qa_integration_apache_mariadb.py
+      - qa/sokna-r188/qa_rebuild_exact.py
 jobs:
   apache-mariadb-and-package-identity:
     runs-on: ubuntu-latest
