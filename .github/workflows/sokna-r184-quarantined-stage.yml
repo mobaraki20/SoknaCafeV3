@@ -1,0 +1,83 @@
+name: SOKNA R184 Quarantined Exact Home Stage Probe
+
+on:
+  push:
+    branches: [qa/sokna-r184-home-stage-20261113]
+    paths:
+      - 'qa/sokna-r184/**'
+      - '.github/workflows/sokna-r184-quarantined-stage.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-source-and-static-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177
+      - name: Reconstruct exact 589-file R184 source from byte-pinned R177
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG="$(find "$RUNNER_TEMP/r177" -type f -name 'SOKNA-R177-LOCAL-231ES-55BASE-GOLIVE-RESYNC-CANARY-PANEL-UPDATE.zip' -print -quit)"
+          test -n "$PKG"
+          echo "bb14b9bc93d7a37059331e24692c3bd60cc338c36e336a8cdcab6cb123b30286  $PKG" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/r184-src" "$RUNNER_TEMP/r184-out"
+          unzip -p "$PKG" artifacts/local/web.zip > "$RUNNER_TEMP/r184-web.zip"
+          unzip -q "$RUNNER_TEMP/r184-web.zip" -d "$RUNNER_TEMP/r184-src"
+          (cd "$RUNNER_TEMP/r184-src" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r182/R177-TO-R182-EXACT-PAYLOAD.patch")
+          (cd "$RUNNER_TEMP/r184-src" && patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-r183/R182-TO-R183-PREUPLOAD-BROWSER-GATE.patch")
+          python qa/sokna-r184/build_r184_candidate.py --r177 "$PKG" --source "$RUNNER_TEMP/r184-src" --out "$RUNNER_TEMP/r184-out" > "$RUNNER_TEMP/r184-out/provenance-print.json"
+          python qa/sokna-r183/release_gate.py "$RUNNER_TEMP/r184-out/SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip" --output "$RUNNER_TEMP/r184-out/admission-static.json"
+          python - "$RUNNER_TEMP/r184-out/admission-static.json" <<'PY'
+          import json,sys
+          j=json.load(open(sys.argv[1]));assert j['all_static_checks_pass'];assert not j['ready_for_production_install']
+          print('PASS_R184_GATE_STATIC_ONLY_NOT_PRODUCTION_READY')
+          PY
+          find "$RUNNER_TEMP/r184-src" -name '*.php' -type f -print0 | xargs -0 -n 1 -P 8 php -l > "$RUNNER_TEMP/r184-php-syntax.log"
+          while IFS= read -r -d '' file; do node --check "$file" > /dev/null; done < <(find "$RUNNER_TEMP/r184-src" -name '*.js' -type f -print0)
+          php qa/sokna-r182/test_theme_version_allocator.php "$RUNNER_TEMP/r184-src"
+          python qa/sokna-r183/test_release_gate.py
+          echo "R184_QUARANTINED_PACKAGE=$RUNNER_TEMP/r184-out/SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip" >> "$GITHUB_ENV"
+          echo 'PASS_R184_589_FILES_EXACT_PATCHES_SYNTAX_AND_STATIC_GATE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r184-internal-only-stage-probe-DO-NOT-INSTALL
+          path: ${{ runner.temp }}/r184-out/*
+          retention-days: 1
+
+  native-windows-stage-home-231ed:
+    needs: exact-source-and-static-gate
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: r184-internal-only-stage-probe-DO-NOT-INSTALL
+          path: r184-temp
+      - name: Actual disposable Windows VerifyOnly + Stage using home 231ed baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $pkg=(Get-ChildItem r184-temp -Filter 'SOKNA-R184-CI-QUARANTINED-STAGE-PROBE-NOT-FOR-INSTALL.zip' | Select-Object -First 1).FullName
+          if(!$pkg){throw 'R184_TEMP_PROBE_NOT_FOUND'}
+          dotnet run --project qa/sokna-r184/R184Stage.csproj -c Release --no-launch-profile -- $pkg
+          if($LASTEXITCODE -ne 0){throw 'R184_NATIVE_STAGE_FAILED'}
+          Write-Host 'PASS_R184_WINDOWS_STAGE_ISOLATED_HOME_231ED_NO_ACTIVATION'
