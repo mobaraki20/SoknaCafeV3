@@ -1,0 +1,106 @@
+name: SOKNA R188 Public QR exact root clean and cumulative native QA
+on:
+  push:
+    branches:
+      - qa/sokna-r188-public-root-qr-audit-20261113
+    paths:
+      - .github/workflows/sokna-r188-public-qr-native-qa.yml
+jobs:
+  apache-mariadb-and-package-identity:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r188_disposable_ci_database_password
+          MARIADB_DATABASE: sokna_r188_qa
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Obtain exact archived R171 ancestor; never use GitHub main Public source
+        uses: actions/download-artifact@v4
+        with:
+          name: r171-exact-cumulative-windows-cafe-uat-candidates
+          run-id: 43205002445
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: mobaraki20/SoknaCafeV3
+          path: ${{ runner.temp }}/r171
+      - name: Install PHP and Apache 2.4 for real HTTP and MariaDB tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq apache2 libapache2-mod-php php-cli php-mysql php-zip php-mbstring php-curl php-xml unzip
+          php -v | head -2
+          php -m | grep -Ei '^PDO$|^pdo_mysql$|^sodium$|^zip$'
+          apache2 -v | head -2
+          sudo a2enmod rewrite headers
+      - name: Rebuild byte-identical R188 clean and 35hv / 35ht cumulative packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 qa/sokna-r188/qa_rebuild_exact.py "$RUNNER_TEMP/r188" "$(find "$RUNNER_TEMP/r171" -type f -name "SOKNA-R171-PUBLIC-35HT-FROM-35HR-PANEL-UPDATE.zip" -print -quit)"
+          python3 - <<'PY'
+          import zipfile,subprocess,glob
+          path=glob.glob('/home/runner/work/_temp/r188/r188-clean.zip')
+          if not path:
+              import os
+              path=[os.path.join(os.environ['RUNNER_TEMP'],'r188','r188-clean.zip')]
+          with zipfile.ZipFile(path[0]) as z:
+              for name in z.namelist():
+                  if name.endswith('.php'):
+                      open('/tmp/r188-check.php','wb').write(z.read(name))
+                      x=subprocess.run(['php','-l','/tmp/r188-check.php'],capture_output=True,text=True)
+                      if x.returncode: raise RuntimeError(name+' '+x.stderr)
+          print('PASS_R188_ALL_100_PHP_FILES_LINTED')
+          PY
+      - name: Install exact flat archive at empty Apache DocumentRoot
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /var/www/sokna-r188-public
+          test -z "$(ls -A /var/www/sokna-r188-public)"
+          sudo unzip -q "$RUNNER_TEMP/r188/r188-clean.zip" -d /var/www/sokna-r188-public
+          sudo mkdir -p /var/www/sokna-r188-public/Menu
+          sudo chown -R www-data:www-data /var/www/sokna-r188-public
+          cat <<'CONF' | sudo tee /etc/apache2/sites-available/sokna-r188-qa.conf >/dev/null
+          <VirtualHost *:80>
+             ServerName www.soknaspace.ir
+             ServerAlias soknaspace.ir
+             DocumentRoot /var/www/sokna-r188-public
+             <Directory /var/www/sokna-r188-public>
+                Options FollowSymLinks
+                AllowOverride All
+                Require all granted
+                DirectoryIndex index.php
+             </Directory>
+             ErrorLog ${APACHE_LOG_DIR}/sokna-r188-qa-error.log
+          </VirtualHost>
+          CONF
+          sudo a2dissite 000-default || true
+          sudo a2ensite sokna-r188-qa
+          sudo apache2ctl configtest
+          sudo systemctl restart apache2
+      - name: Run real Apache + MariaDB 11.4 clean setup pairing QR and guest-menu tests
+        shell: bash
+        env:
+          SOKNA_R188_TEST_DB_PASSWORD: r188_disposable_ci_database_password
+          R188_APACHE_PORT: '80'
+        run: |
+          set -euo pipefail
+          python3 qa/sokna-r188/qa_integration_apache_mariadb.py
+          echo 'PASS_R188_NATIVE_APACHE_24_MARIADB_114_ALL_REQUIRED_QR_AND_SETUP_CHECKS'
+      - name: Publish only non-secret QA result files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r188-apache-mariadb-qa-receipt-no-secrets
+          path: ${{ runner.temp }}/r188/r188-target-tree.json
+          retention-days: 7
