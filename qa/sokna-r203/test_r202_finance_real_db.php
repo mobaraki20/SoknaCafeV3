@@ -40,7 +40,8 @@ function pay($service,int $sid,array $actor,string $requestId,array $tenders):ar
 [$sid,$order]=fixture($pdo,$uid,550000);
 $settlements->setDiscount($sid,'percent',100,$actor);
 $a=$settlements->account($sid);ok((int)$a['remaining_total']===0 && (int)$a['discount']===550000,'FREE_CALC');
-$first=pay($settlements,$sid,$actor,'r202-full-discount-0001',[]);
+$freePayload=['session_id'=>$sid,'expected_session_id'=>$sid,'expected_remaining_total'=>(int)$a['remaining_total'],'expected_signature'=>(string)$a['signature'],'destination'=>'direct','mode'=>'full','tenders'=>[],'print_receipt'=>false,'request_id'=>'r202-full-discount-0001'];
+$first=$settlements->settle($freePayload,$actor);
 $receipt=(int)$first['settlement_id'];
 ok((string)scalar($pdo,"SELECT status FROM table_sessions WHERE id=?",[$sid])==='closed','FREE_TABLE_CLOSED');
 ok((string)scalar($pdo,"SELECT status FROM orders WHERE id=?",[$order])==='completed','FREE_ORDER_COMPLETED');
@@ -51,7 +52,7 @@ ok((int)scalar($pdo,'SELECT COUNT(*) FROM settlement_tender_allocations WHERE se
 ok(str_starts_with((string)scalar($pdo,'SELECT invoice_number FROM settlement_records WHERE id=?',[$receipt]),'I-'),'FREE_INVOICE_EXISTS');
 ok((int)scalar($pdo,'SELECT COUNT(*) FROM settlement_record_lines WHERE settlement_id=? AND gross_amount=550000 AND discount_amount=550000 AND final_amount=0',[$receipt])===1,'FREE_LINE_TRACE');
 echo "PASS_R202_FULL_DISCOUNT_ZERO_SETTLEMENT_CLOSES_WITHOUT_FAKE_TENDER\n";
-$again=pay($settlements,$sid,$actor,'r202-full-discount-0001',[]);ok(($again['idempotent']??false)===true,'FREE_REPEAT_IDEMPOTENT');
+$again=$settlements->settle($freePayload,$actor);ok(($again['idempotent']??false)===true,'FREE_REPEAT_IDEMPOTENT');
 echo "PASS_R202_FREE_REQUEST_IDEMPOTENT\n";
 // Positive balance without payment method is still forbidden.
 [$sid2,$order2]=fixture($pdo,$uid,200000);
