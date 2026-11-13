@@ -68,6 +68,7 @@ try{
  Copy-Item (Join-Path $mdb 'bin') (Join-Path $infra 'MariaDB/bin') -Recurse
  Copy-Item $apacheSource (Join-Path $infra 'Apache') -Recurse
  $php=Join-Path $infra 'PHP/php.exe'
+ New-Item -ItemType Directory -Force (Join-Path $root 'Data/guest-media')|Out-Null
  # Setup the actual original R153 Web source against disposable MariaDB (80 migrations).
  $env:SOKNA_R186_CI_ONLY='YES'
  Run $php @('-c','php.ini',(Join-Path $PWD.Path 'qa/sokna-r186/bootstrap_r186_ci.php'),$old,$root,"$dbPort")
