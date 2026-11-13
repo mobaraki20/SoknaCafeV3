@@ -1,0 +1,74 @@
+--- a/public/assets/system-diagnostics.js
++++ b/public/assets/system-diagnostics.js
+@@ -246,6 +246,61 @@
+ function safeB64(bytes){let raw='';for(let i=0;i<bytes.length;i+=8192)
+  raw+=String.fromCharCode(...bytes.subarray(i,Math.min(i+8192,bytes.length)));
+  return btoa(raw)}
++// Browser-only preliminary ZIP check. Never substitutes for the signed Maintenance gate.
++async function inspectMaintenanceReleaseFile(data){
++ const reject=message=>({ok:false,message});
++ if(!(data instanceof Uint8Array)||data.length<22)return reject('فایل انتخاب‌شده ZIP قابل بررسی نیست.');
++ const view=new DataView(data.buffer,data.byteOffset,data.byteLength);
++ let end=-1;
++ for(let p=data.length-22;p>=Math.max(0,data.length-65557);p--){
++  if(view.getUint32(p,true)===0x06054b50&&p+22+view.getUint16(p+20,true)===data.length){end=p;break}
++ }
++ if(end<0)return reject('ساختار ZIP معتبر نیست. فقط فایل مستقل به‌روزرسانی را انتخاب کن.');
++ const count=view.getUint16(end+10,true),offset=view.getUint32(end+16,true),centralSize=view.getUint32(end+12,true);
++ if(!count||count===65535||offset===0xffffffff||centralSize===0xffffffff||offset+centralSize>end)
++  return reject('ساختار ZIP این بسته قابل شناسایی نیست؛ فایل مستقل مناسب سامانه لازم است.');
++ const decoder=new TextDecoder('utf-8');let at=offset,manifest=null,nested=0;
++ for(let i=0;i<count;i++){
++  if(at+46>end||view.getUint32(at,true)!==0x02014b50)return reject('فهرست داخلی ZIP معتبر نیست.');
++  const nameLength=view.getUint16(at+28,true),extra=view.getUint16(at+30,true),comment=view.getUint16(at+32,true);
++  const next=at+46+nameLength+extra+comment;
++  if(next>end)return reject('ساختار ورودی‌های ZIP ناقص است.');
++  const name=decoder.decode(data.subarray(at+46,at+46+nameLength));
++  if(name.endsWith('.zip'))nested++;
++  if(name==='release-set.json'){
++   if(manifest)return reject('فایل به‌روزرسانی چند مانفیست تکراری دارد.');
++   manifest={method:view.getUint16(at+10,true),compressed:view.getUint32(at+20,true),uncompressed:view.getUint32(at+24,true),localOffset:view.getUint32(at+42,true)};
++  }
++  at=next;
++ }
++ if(!manifest)return reject(nested
++  ?'این فایل مجموعه چند بسته است، نه بسته نصب مستقل. ZIP مخصوص Local را جدا انتخاب کن.'
++  :'این فایل بسته نصب Local نیست؛ release-set.json در ریشه آن وجود ندارد.');
++ if(manifest.uncompressed>2097152||manifest.compressed>2097152)return reject('مانفیست به‌روزرسانی بیش از حد مجاز است.');
++ if(typeof DecompressionStream!=='function')return {ok:true,policyChecked:false};
++ try{
++  const p=manifest.localOffset;
++  if(p+30>data.length||view.getUint32(p,true)!==0x04034b50)throw Error('local zip header');
++  const start=p+30+view.getUint16(p+26,true)+view.getUint16(p+28,true);
++  if(start+manifest.compressed>data.length)throw Error('local zip size');
++  const compressed=data.slice(start,start+manifest.compressed);
++  const raw=manifest.method===0?compressed:
++   manifest.method===8?new Uint8Array(await new Response(new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()):null;
++  if(!raw||raw.length!==manifest.uncompressed)throw Error('zip method or size');
++  const policy=JSON.parse(decoder.decode(raw));
++  const bad=policy.for_install!==true||policy.production_pass!==true||
++   /(?:^|[_\-\s])(?:UAT|NOT[_\-]?PRODUCTION|TEST[_\-]?ONLY|ENGINEERING|DESIGN)(?:$|[_\-\s])/i.test(String(policy.status||''))||
++   policy.qualification?.real_windows!==true||policy.qualification?.real_mariadb!==true;
++  if(bad)return reject('این بسته فقط آزمون/سورس است یا تأیید نصب ندارد. بررسی فایل به معنی اجازه نصب نیست؛ این فایل را بارگذاری نکن.');
++  if(policy.release_type!=='local_only')return reject('این فایل به‌روزرسانی مستقل Local نیست.');
++  return {ok:true,policyChecked:true};
++ }catch{
++  // Browser ZIP inspection is advisory; never infer installation readiness.
++  return {ok:true,policyChecked:false};
++ }
++}
++
++
+ function maintenanceUploadMessage(text,tone='info'){const readiness=$('[data-unified-updater-readiness]');if(readiness)readiness.hidden=true;const n=$('[data-maintenance-upload-message]');if(!n)return;
+  n.hidden=!text;n.className='sc-alert sc-alert--'+tone;n.textContent=text}
+ $('[data-maintenance-upload]')?.addEventListener('submit',async e=>{
+@@ -258,6 +313,9 @@
+  try{
+    maintenanceUploadMessage('در حال بررسی فایل…');
+    const arrayBuffer=await file.arrayBuffer(),data=new Uint8Array(arrayBuffer);
++   const early=await inspectMaintenanceReleaseFile(data);
++   if(!early.ok)throw new Error(early.message);
++   if(!early.policyChecked)maintenanceUploadMessage('ساختار فایل اولیه بررسی شد؛ تأیید نصب فقط با Maintenance انجام می‌شود.');
+    const sha=await sha256ForMaintenance(arrayBuffer);
+    const uploadId=newMaintenanceId();let last=null;
+    for(let offset=0;offset<data.length;offset+=131072){
