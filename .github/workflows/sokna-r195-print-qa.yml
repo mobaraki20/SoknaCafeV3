@@ -42,4 +42,4 @@ jobs:
           cp qa/sokna-r195/test_preparation_sections.php "$ROOT/qa/test_preparation_sections.php"
           # Unit test expects a sibling local/ folder.
           php "$ROOT/qa/test_preparation_sections.php"
-          echo 'PASS_R195_EXACT_SOURCE_AND_SIX_PREPARATION_CASES'
+          echo 'PASS_R195_EXACT_SOURCE_AND_EIGHT_PREPARATION_CASES'
