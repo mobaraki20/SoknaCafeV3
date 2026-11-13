@@ -1,0 +1,48 @@
+name: SOKNA R186 exact home R153 to R184 real Windows full activation QA
+on:
+  push:
+    branches: [qa/sokna-r186-exact-target-activate-20261113]
+    paths:
+      - 'qa/sokna-r186/**'
+      - '.github/workflows/sokna-r186-exact-target-activate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native-exact-target-activate:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+      R186_R153_DIR: ${{ runner.temp }}/r153-parent
+      R186_R184_DIR: ${{ runner.temp }}/r184-target
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Fetch pinned actual home source archive R153 (not installable QA)
+        uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - name: Fetch pinned quarantined R184 exact source + manifest (never release)
+        uses: actions/download-artifact@v4
+        with:
+          name: r184-internal-only-stage-probe-DO-NOT-INSTALL
+          run-id: 43379786737
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r184-target
+      - name: Real full Windows exact R153 source -> R184 target; Activate, MariaDB, HTTP, readback
+        shell: pwsh
+        run: |
+          & ./qa/sokna-r186/windows_r186_exact_activate.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Only source and test logs eligible for publication, not executable update ZIP
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host 'R186 CI-only result: no installer and no production qualification issued.'
