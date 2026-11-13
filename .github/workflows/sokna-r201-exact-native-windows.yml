@@ -40,6 +40,7 @@ jobs:
           php -l "$R/web/src/Domain/Orders/OrderStaffActionService.php"
           php -l "$R/web/public/operator/api.php"
           node --check "$R/web/public/assets/staff-app/hall-workspace.js"
+          SOKNA_R201_WEB="$R/web" node qa/sokna-r201/test_r201_cash_refund_ui.js
           SOKNA_R201_PARENT_ZIP="$BASE" SOKNA_R201_SRC="$R/web" SOKNA_R201_OUT="$R/out" python3 qa/sokna-r201/build_r201.py
           PKG="$R/out/SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip"
           echo "911ea673dc1863bee3ce372dbc692602aa3a32439d2fc9ccba69dc2a6c243897  $PKG" | sha256sum -c -
