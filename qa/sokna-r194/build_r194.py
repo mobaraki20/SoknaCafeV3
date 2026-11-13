@@ -65,7 +65,7 @@ i['baseline']['source_versions']=list(dict.fromkeys(i['baseline'].get('source_ve
 source['resources/release-identity-v1.json']=J(i)
 assert len(source)==590
 manifest=json.loads(json.dumps(parent_manifest)); assert len(manifest['supported_baselines'])==57
-manifest.update(release_set_id=RELEASE_ID,sequence=20261113994,status='R194_EXACT_WINDOWS_QA_PENDING',created_at='2026-11-13T16:30:00Z',for_install=True,production_pass=True)
+manifest.update(release_set_id=RELEASE_ID,sequence=20261113994,status='R194_LOCAL_COMBINED_CANARY',created_at='2026-11-13T16:30:00Z',for_install=True,production_pass=True)
 manifest['targets']['local'].update(version=VERSION,release_id=RELEASE_ID,managed_tree_sha256=tree(source),managed_files=590)
 manifest['supported_baselines'].append({'local':parent_manifest['targets']['local'],'public':None})
 assert len(manifest['supported_baselines'])==58
