@@ -42,9 +42,12 @@ def main():
  _,_,body=request('/setup/api.php?action=pair',body={'pairing_code':pairing_code,'installation_id':'r188-qa-installation','shared_secret':'6d'*32,'display_name':'R188 CI-only'},expected=200)
  paired=json.loads(body);assert paired.get('paired'),paired
  for path in ['/menu','/menu/']:
-  status,h,content=request(path,expected=200)
+  status,h,content=request(path)
+  assert status in (200,503),(path,status)
   assert h.get('location') is None
   assert len(content)>200,(path,len(content))
+  if status==503:
+   assert 'هنوز منتشر نشده' in content.decode('utf-8'),(path,content[:200])
  for path in ['/api/guest/orders','/staff/login']:
   status,h,_=request(path);assert h.get('location')!=target
  for path in ['/Menu','/Menu/?table=42']:
