@@ -47,7 +47,7 @@ jobs:
           run-id: 43473665017
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/r197-artifact
-      - name: Rebuild one-file R200 QA change from SHA-pinned real R197
+      - name: Rebuild exact three-file R200 QA change from SHA-pinned real R197
         shell: bash
         run: |
           set -euo pipefail
@@ -60,11 +60,25 @@ jobs:
           unzip -q "$ROOT/outer/artifacts/local/web.zip" -d "$ROOT/web"
           test "$(find "$ROOT/web" -type f | wc -l)" -eq 590
           (cd "$ROOT/web" && git init -q && git config core.autocrlf false && git apply --check "$GITHUB_WORKSPACE/qa/sokna-r200/R197-TO-R200-REFUNDED-CASH-CANCEL-QA-ONLY.patch" && git apply "$GITHUB_WORKSPACE/qa/sokna-r200/R197-TO-R200-REFUNDED-CASH-CANCEL-QA-ONLY.patch")
-          echo "dd5a202465b227eea5f8521dd6f750e2add73d221c8b47e313f6aa60707315d8  $ROOT/web/src/Domain/Orders/OrderStaffActionService.php" | sha256sum -c -
+          python3 - "$ROOT" "$GITHUB_WORKSPACE/qa/sokna-r200/R200-QA-EVIDENCE.json" <<'PY'
+          import sys,pathlib,zipfile,json,hashlib
+          root=pathlib.Path(sys.argv[1]);expected=json.loads(pathlib.Path(sys.argv[2]).read_text())
+          with zipfile.ZipFile(root/'outer/artifacts/local/web.zip') as parent:
+              files=parent.namelist();changed=[]
+              for name in files:
+                  payload=(root/'web'/name).read_bytes()
+                  if payload!=parent.read(name):changed.append(name)
+                  sha=expected['changed_file_sha256'].get(name)
+                  if sha and hashlib.sha256(payload).hexdigest()!=sha:raise RuntimeError('R200_BAD_SHA_'+name)
+              assert len(files)==590 and set(changed)==set(expected['changed_file_sha256']), (len(files),changed)
+          print('PASS_R200_590_FILE_SCOPE_THREE_EXACT_HASHES')
+          PY
           php -l "$ROOT/web/src/Domain/Orders/OrderStaffActionService.php"
+          php -l "$ROOT/web/public/operator/api.php"
+          node --check "$ROOT/web/public/assets/staff-app/hall-workspace.js"
           echo "SOKNA_R200_WEB=$ROOT/web" >> "$GITHUB_ENV"
-          echo PASS_R200_ORIGIN_EXACT_ONE_FILE_CHANGE
-      - name: Eight financial scenarios on real disposable Sokna migrations
+          echo PASS_R200_ORIGIN_EXACT_THREE_FILE_CHANGE
+      - name: Nine financial guards and refund scenarios on real disposable Sokna migrations
         shell: bash
         run: |
           set -euo pipefail
