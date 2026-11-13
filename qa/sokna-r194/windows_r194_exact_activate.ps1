@@ -17,7 +17,7 @@ $oldPackage=(Get-ChildItem $env:R186_R153_DIR -Recurse -Filter 'SOKNA-R153-LOCAL
 $newPackage=(Get-ChildItem $env:R194_TARGET_DIR -Recurse -Filter 'SOKNA-R194-LOCAL-231EY-58BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip'|Select-Object -First 1).FullName
 Need ([bool]$oldPackage -and [bool]$newPackage) 'EXACT_ARCHIVES_MISSING'
 Need ((Get-FileHash $oldPackage -Algorithm SHA256).Hash.ToLowerInvariant() -eq '4f98e7eb948e78c49b09f4f41299ec7b4c68b562cfac8dbe72e0c827a69ef613') 'OLD_ARCHIVE_HASH'
-Need ((Get-FileHash $newPackage -Algorithm SHA256).Hash.ToLowerInvariant() -eq '87bf9eac332d378eef720148d454a3bb8906b229143a6d64bd8a3ca527f5651e') 'TARGET_ARCHIVE_HASH'
+Need ((Get-FileHash $newPackage -Algorithm SHA256).Hash.ToLowerInvariant() -eq '3444b9febcde490cc3f2a5a9d0f3bf1c7d270e3844e7bec6d60fb5b0d560ea0b') 'TARGET_ARCHIVE_HASH'
 New-Item -ItemType Directory -Force $root,$old|Out-Null
 Set-Content (Join-Path $root '.u01-ci-only') 'disposable-r186' -Encoding ascii
 $oldOuter=Join-Path $lab 'old-outer';$newOuter=Join-Path $lab 'new-outer'
