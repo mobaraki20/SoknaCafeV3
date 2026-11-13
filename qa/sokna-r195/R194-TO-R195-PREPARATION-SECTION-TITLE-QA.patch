@@ -1,0 +1,16 @@
+--- a/src/Domain/Printing/PrintService.php
++++ b/src/Domain/Printing/PrintService.php
+@@ -651,7 +651,12 @@
+         $groups=[];$order=[];
+         foreach($rows as $row){
+             if(!is_array($row))continue;
+-            $station=trim((string)($row['preparation_station']??'other'));if($station==='')$station='other';
++            $station=trim((string)($row['preparation_station']??'other'));
++            // Unknown historical station values must not add a second generic
++            // 'preparation' heading inside the one preparation ticket.
++            // Preserve every item, its order, quantity, and note by folding
++            // unrecognized labels into the existing 'other' section.
++            if(!in_array($station,['bar','kitchen','other'],true))$station='other';
+             if(!isset($groups[$station])){$groups[$station]=[];$order[]=$station;}
+             $groups[$station][]=[
+                 'name'=>(string)($row['item_name']??$row['name']??'—'),
