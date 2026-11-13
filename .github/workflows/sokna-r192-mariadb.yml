@@ -23,11 +23,6 @@ jobs:
           MARIADB_DATABASE: sokna_r192_disposable
         ports:
           - 3306:3306
-        options: >-
-          --health-cmd='healthcheck.sh --connect --innodb_initialized'
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=12
     env:
       SOKNA_R192_DISPOSABLE_ONLY: 'YES'
       SOKNA_R192_DB_HOST: '127.0.0.1'
@@ -39,6 +34,17 @@ jobs:
           php-version: '8.4'
           extensions: pdo_mysql, mbstring, curl, gd, zip
           coverage: none
+      - name: Wait for disposable MariaDB to accept authenticated PDO connections
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{$p=new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R192_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then
+              echo 'PASS_R192_CI_MARIADB_READY'; exit 0
+            fi
+            sleep 2
+          done
+          echo 'R192_CI_MARIADB_NOT_READY'; exit 1
       - uses: actions/download-artifact@v4
         with:
           name: R189-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
