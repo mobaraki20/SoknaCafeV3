@@ -1,0 +1,61 @@
+name: SOKNA R198 Print Agent heartbeat fail-soft and recovery - QA only
+on:
+  push:
+    branches: [qa/sokna-r198-heartbeat-metrics-failsoft-20261113]
+    paths:
+      - 'qa/sokna-r198/**'
+      - 'windows/print-agent/source/tests/Sokna.PrintAgent.ServiceAcceptance/Program.cs'
+      - 'windows/print-agent/source/src/Sokna.PrintAgent.Service/HeartbeatMetricsSampler.cs'
+      - 'windows/print-agent/source/src/Sokna.PrintAgent.Service/PrintAgentService.cs'
+      - '.github/workflows/sokna-r198-heartbeat-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  r198-heartbeat:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Exercise heartbeat telemetry fallback against slow or invalid SQLite samples
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet run --project qa/sokna-r198/Sokna.HeartbeatMetrics.QA.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'R198_METRICS_TEST_FAILED'}
+      - name: Compile full production Print Agent Service including R198 changes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet build windows/print-agent/source/src/Sokna.PrintAgent.Service/Sokna.PrintAgent.Service.csproj -c Release -r win-x64 -p:SelfContained=false
+          if($LASTEXITCODE -ne 0){throw 'R198_AGENT_SERVICE_BUILD_FAILED'}
+          Write-Host 'PASS_R198_FULL_PRINT_AGENT_WINDOWS_BUILD'
+      - name: A52 real PrintAgentService SQLite-loss and heartbeat-delivery integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $results=Join-Path $env:RUNNER_TEMP 'r198-a52'
+          dotnet run --project windows/print-agent/source/tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case A52 --results $results
+          if($LASTEXITCODE -ne 0){throw 'R198_REAL_SERVICE_HEARTBEAT_A52_FAILED'}
+          Write-Host 'PASS_R198_REAL_SERVICE_SQLITE_OUTAGE_HEARTBEAT_RECOVERY'
+      - name: Regress claim/accept and no-double-print safety paths on the same Agent build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach($case in @('A12','A49','A50','A51')){
+            $results=Join-Path $env:RUNNER_TEMP ('r198-'+$case)
+            dotnet run --project windows/print-agent/source/tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case $case --results $results
+            if($LASTEXITCODE -ne 0){throw ('R198_PRINT_REGRESSION_FAILED_'+$case)}
+          }
+          Write-Host 'PASS_R198_ACCEPT_START_CLAIM_PRINT_SAFETY_4_CASES'
+      - name: Guard critical print mutation methods unchanged
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src=Get-Content windows/print-agent/source/src/Sokna.PrintAgent.Service/PrintAgentService.cs -Raw
+          if($src -notmatch 'RunCoordinatorWorkAsync' -or $src -notmatch 'ProcessOneAsync' -or $src -notmatch 'ClaimAsync') {throw 'R198_PRINT_CORE_MISSING'}
+          if($src -notmatch 'metrics\.HealthStatus' -or $src -notmatch 'HeartbeatMetricsSampler') {throw 'R198_TELEMETRY_GUARD_MISSING'}
+          Write-Host 'PASS_R198_HEARTBEAT_DEGRADED_STATUS_WIRED'
