@@ -11,7 +11,12 @@ for ext,cmd in [('php',['php','-l']),('js',['node','--check'])]:
   if check.returncode:raise RuntimeError(str(p)+': '+check.stderr.decode()[:350])
  print('PASS_R193_SYNTAX_'+ext.upper()+'_'+str(len(selected)))
 actual=hashlib.sha256(''.join(str(p.relative_to(root)).replace('\\','/')+'\0'+hashlib.sha256(p.read_bytes()).hexdigest()+'\n' for p in files).encode()).hexdigest()
-assert actual==want, (actual,want)
+if actual!=want:
+ expected=json.loads((pathlib.Path(__file__).parent/'expected-source-hashes.json').read_text())
+ got={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
+ mismatches=[(k,expected.get(k),got.get(k)) for k in sorted(set(got)|set(expected)) if expected.get(k)!=got.get(k)]
+ print('R193_BYTEMISMATCH_FILES', json.dumps(mismatches[:30],ensure_ascii=False))
+ raise AssertionError((actual,want,len(mismatches)))
 assert (root/'VERSION.txt').read_text().strip()=='3.0.0-g6.2-workspace.231ex-r189-login-modal-qa'
 assert 'order_cancel_unsettled' in (root/'public/operator/api.php').read_text()
 assert (root/'src/Core/RememberDeviceStore.php').exists()
