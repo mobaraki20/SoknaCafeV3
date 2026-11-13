@@ -7,6 +7,15 @@ if (PHP_SAPI !== 'cli' || getenv('GITHUB_ACTIONS') !== 'true' || getenv('RUNNER_
 [$_, $old, $packageRoot, $dbPort] = array_pad($argv,4,'');
 if (!is_dir($old) || !is_dir($packageRoot) || !$dbPort || !is_file($packageRoot.'/.u01-ci-only')) throw new RuntimeException('R186_FIXTURE_ROOT_INVALID');
 require_once $old.'/bootstrap.php';
+// CI-only diagnostic instrumentation of a temporary extracted source copy.
+// Restore original bytes on process shutdown; the real Stage byte proof remains exact.
+$setupPhp=$old.'/src/Setup/BrowserSetupService.php';
+$originalSetup=(string)file_get_contents($setupPhp);
+$needle='if ($e instanceof SetupException) throw $e;';
+if (substr_count($originalSetup,$needle)!==1) throw new RuntimeException('R186_SETUP_SOURCE_DIAGNOSTIC_NEEDLE_MISMATCH');
+$instrumented=str_replace($needle,'fwrite(STDERR, "R186_SETUP_CAUSE ".get_class($e)." ".substr($e->getMessage(),0,300)."\n"); '.$needle,$originalSetup);
+if (file_put_contents($setupPhp,$instrumented)===false) throw new RuntimeException('R186_SETUP_DIAGNOSTIC_INSTRUMENTATION_FAILED');
+register_shutdown_function(static function()use($setupPhp,$originalSetup):void{ file_put_contents($setupPhp,$originalSetup); });
 require_once $old.'/src/Setup/BrowserSetupService.php';
 $input = ['db'=>['host'=>'127.0.0.1','port'=>$dbPort,'name'=>'sokna_r186_exact','user'=>'root','pass'=>''],
     'create_database'=>true,'data_dir'=>$packageRoot.'/Data','timezone'=>'Asia/Tehran','admin_user'=>'ci.admin',
