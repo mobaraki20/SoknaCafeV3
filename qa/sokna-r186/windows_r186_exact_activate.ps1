@@ -113,7 +113,7 @@ PidFile "$ar/logs/httpd.pid"
  Run dotnet @('publish','qa/sokna-r186/R186Harness.csproj','-c','Release','-r','win-x64','--self-contained','false','-o',(Join-Path $build 'harness'))
  Run dotnet @('publish','windows/maintenance/src/Sokna.Maintenance.UpdateEngine/Sokna.Maintenance.UpdateEngine.csproj','-c','Release','-r','win-x64','--self-contained','false','-o',(Join-Path $build 'engine'))
  $harness=Join-Path $build 'harness/R186Harness.exe';$engine=Join-Path $build 'engine/SoknaMaintenanceUpdateEngine.exe'
- Need (Test-Path $harness -and(Test-Path $engine)) 'ENGINE_OR_HARNESS_MISSING'
+ Need ((Test-Path $harness) -and (Test-Path $engine)) 'ENGINE_OR_HARNESS_MISSING'
  $common=@($root,$baseline,$target,$engine,'none',$newPackage)
  Run $harness (@('prepare')+$common)
  Run $harness (@('panel-activate')+$common)
