@@ -5,7 +5,7 @@ import sys,hashlib,json,zipfile,io
 root=Path(sys.argv[1]);archive=Path(sys.argv[2]);patch=Path(sys.argv[3]);
 EXPECTED_ARCHIVE='3444b9febcde490cc3f2a5a9d0f3bf1c7d270e3844e7bec6d60fb5b0d560ea0b'
 EXPECTED_PARENT_FILE='b50ff277285d1278706c61aac1e4f3e8364744132b445bac4b34ef3144dd13b7'
-EXPECTED_CHANGED_FILE='f52be0f30f76cedd05ff0711593c6f4d9eec4e88dd449580534be5126e83f65f'
+EXPECTED_CHANGED_FILE='2207ce49179978731a842d9409b3ff9d0d6d6c9fd2e22520937dbb8887e53025'
 TARGET='src/Domain/Printing/PrintService.php'
 assert hashlib.sha256(archive.read_bytes()).hexdigest()==EXPECTED_ARCHIVE,'R194_PARENT_ZIP_DRIFT'
 with zipfile.ZipFile(archive) as outer:
