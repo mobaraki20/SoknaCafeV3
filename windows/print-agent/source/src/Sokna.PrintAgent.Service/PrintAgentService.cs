@@ -469,7 +469,11 @@ public sealed class PrintAgentService : BackgroundService
                 counts.AuthBlocked,counts.ReconciliationRequired,"ok");
         },ct);
         if(metrics.HealthStatus!="ok")
-            _fileLog.Info("heartbeat_metrics",$"SQLite telemetry degraded: {metrics.HealthStatus}; last-known counts retained.");
+        {
+            // Diagnostics must never block the authenticated heartbeat, even if the log disk fails.
+            try{_fileLog.Info("heartbeat_metrics",$"SQLite telemetry degraded: {metrics.HealthStatus}; last-known counts retained.");}
+            catch(Exception){_log.LogWarning("Print heartbeat telemetry degraded and file log unavailable.");}
+        }
         var payload=new HeartbeatPayload(
             CryptoUtil.NewRequestId(),
             Environment.MachineName,
