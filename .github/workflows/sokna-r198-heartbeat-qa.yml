@@ -32,6 +32,14 @@ jobs:
           dotnet build windows/print-agent/source/src/Sokna.PrintAgent.Service/Sokna.PrintAgent.Service.csproj -c Release -r win-x64 -p:SelfContained=false
           if($LASTEXITCODE -ne 0){throw 'R198_AGENT_SERVICE_BUILD_FAILED'}
           Write-Host 'PASS_R198_FULL_PRINT_AGENT_WINDOWS_BUILD'
+      - name: A52 real PrintAgentService SQLite-loss and heartbeat-delivery integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $results=Join-Path $env:RUNNER_TEMP 'r198-a52'
+          dotnet run --project windows/print-agent/source/tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj -c Release -- --case A52 --results $results
+          if($LASTEXITCODE -ne 0){throw 'R198_REAL_SERVICE_HEARTBEAT_A52_FAILED'}
+          Write-Host 'PASS_R198_REAL_SERVICE_SQLITE_OUTAGE_HEARTBEAT_RECOVERY'
       - name: Guard critical print mutation methods unchanged
         shell: pwsh
         run: |
