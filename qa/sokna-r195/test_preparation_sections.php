@@ -19,6 +19,16 @@ ensure(array_column($s[1]['items'],'name')===['قلم ۴'],'fourth_preserved');
 ensure($s[1]['items'][0]['note']==='یادداشت چهار','fourth_note_preserved');
 ensure(!in_array('آماده‌سازی',array_column($s,'title'),true),'duplicate_generic_title');
 $cases++;
+// Real catalog stations are distinct and must not be collapsed into other.
+$s=$method->invoke(null,[$make('چای','hot_bar',2),$make('آیس لاته','cold_bar',1,'کم یخ'),$make('غذا','kitchen'),$make('معمولی','bar')]);
+ensure(array_column($s,'title')===['بار گرم','بار سرد','آشپزخانه','بار'],'real_station_titles');
+ensure($s[0]['items'][0]['quantity']===2 && $s[1]['items'][0]['note']==='کم یخ','real_station_content');
+$cases++;
+// Report-like three cold bar items followed by one hot bar item.
+$s=$method->invoke(null,[$make('سرد۱','cold_bar'),$make('سرد۲','cold_bar'),$make('سرد۳','cold_bar'),$make('گرم۴','hot_bar')]);
+ensure(array_column($s,'title')===['بار سرد','بار گرم'],'four_item_real_station_titles');
+ensure(count($s[0]['items'])===3 && count($s[1]['items'])===1,'four_item_real_station_count');
+$cases++;
 // Unknown station identifiers may be from old catalog versions and should merge with other.
 $s=$method->invoke(null,[$make('X','unknown_A'),$make('Y','other'),$make('Z','unknown_B')]);
 ensure(count($s)===1 && $s[0]['title']==='سایر','unknown_station_merging');
