@@ -65,4 +65,5 @@ jobs:
         run: |
           set -euo pipefail
           php qa/sokna-r212/test_r212_media_real_mariadb.php
+          php qa/sokna-r212/test_r212_order_acceptance_real_mariadb.php
           echo PASS_R212_REAL_MARIADB_NO_PRODUCTION_DATA
