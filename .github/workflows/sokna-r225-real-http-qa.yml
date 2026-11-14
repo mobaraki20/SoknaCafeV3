@@ -76,6 +76,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Temporary diagnostic mutation confined to throwaway runner, AFTER exact source hash is proven.
+          # This exposes the original exception hidden by BrowserSetup's generic setup_failed wrapper.
+          python3 - <<'PY'
+          import pathlib,os
+          p=pathlib.Path(os.environ['SOKNA_R213_WEB'])/'src/Setup/BrowserSetupService.php'
+          s=p.read_text()
+          old="throw new SetupException('setup_failed','نصب کامل نشد. وضعیت Setup برای تلاش دوباره حفظ شده است.',500);"
+          assert old in s
+          p.write_text(s.replace(old,"throw $e;"))
+          print("PASS_R225_TEMP_DIAGNOSTIC_ONLY")
+          PY
           php qa/sokna-r225/setup_r213_disposable.php
           php qa/sokna-r225/fixture_r225.php
       - name: Real admin auth CSRF image album and Guest quote-submit-retry to accounted stock
