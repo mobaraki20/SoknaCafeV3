@@ -1,0 +1,43 @@
+--- a/src/Domain/GuestContent/GuestContentService.php
++++ b/src/Domain/GuestContent/GuestContentService.php
+@@ -416,10 +416,37 @@
+         }
+         $sha = hash_file('sha256', $tmpPath);
+         if (!is_string($sha)) throw new GuestContentException('media_hash','خواندن تصویر کامل نشد.',500);
+-        $existing = $this->pdo->prepare('SELECT media_key FROM guest_media_assets WHERE sha256=? LIMIT 1');
++        $existing = $this->pdo->prepare('SELECT id,media_key,active,original_relpath FROM guest_media_assets WHERE sha256=? LIMIT 1');
+         $existing->execute([$sha]);
+-        $key = $existing->fetchColumn();
+-        if (is_string($key) && $key !== '') return ['deduplicated'=>true,'media_key'=>$key];
++        $stored = $existing->fetch(PDO::FETCH_ASSOC);
++        if (is_array($stored) && (string)($stored['media_key'] ?? '') !== '') {
++            $key = (string)$stored['media_key'];
++            if ((int)($stored['active'] ?? 0) === 1) return ['deduplicated'=>true,'media_key'=>$key];
++            // The unique SHA row survives archiving. A second upload must make it
++            // visible again, not report a successful upload of a hidden image.
++            $this->pdo->beginTransaction();
++            try {
++                $locked = $this->pdo->prepare('SELECT id,media_key,active,original_relpath FROM guest_media_assets WHERE sha256=? LIMIT 1 FOR UPDATE');
++                $locked->execute([$sha]);
++                $row = $locked->fetch(PDO::FETCH_ASSOC);
++                if (!is_array($row)) throw new GuestContentException('media_changed','وضعیت تصویر تغییر کرده؛ دوباره تلاش کن.',409);
++                $key = (string)$row['media_key'];
++                $restored = (int)$row['active'] !== 1;
++                if ($restored) {
++                    $original = $this->path((string)($row['original_relpath'] ?? ''));
++                    if (!is_file($original) || !is_readable($original)) {
++                        throw new GuestContentException('media_archived_file_missing','فایل آرشیوشده روی دیسک پیدا نشد؛ ابتدا وضعیت آرشیو را بررسی کن.',409);
++                    }
++                    $this->pdo->prepare('UPDATE guest_media_assets SET active=1,archived_at=NULL WHERE id=? AND active=0')->execute([(int)$row['id']]);
++                    $this->audit('guest.media_restored_on_upload','guest_media',$key,(int)$admin['id'],['sha256'=>$sha]);
++                }
++                $this->pdo->commit();
++                return ['deduplicated'=>true,'restored'=>$restored,'media_key'=>$key];
++            } catch (Throwable $e) {
++                if ($this->pdo->inTransaction()) $this->pdo->rollBack();
++                throw $e;
++            }
++        }
+         $mediaKey = 'm_' . substr($sha, 0, 24);
+         $originalName = $this->plain($originalName, 255, 'تصویر');
+         $altText = $this->plain($altText, 180, '');
