@@ -1,0 +1,54 @@
+{
+  "local": {
+    "base_files": 591,
+    "after_files": 593,
+    "unchanged_files": 579,
+    "changed_paths": [
+      "public/operator/api.php",
+      "public/admin/index.php",
+      "public/finance/api.php",
+      "public/assets/finance-workspace.js",
+      "public/assets/hall-settlement-v32.js",
+      "public/assets/admin-workspace.js",
+      "public/assets/settlement-display-currency.js",
+      "public/assets/staff-app/hall-workspace.js",
+      "src/UI/ProductShell.php",
+      "src/Core/Bootstrap.php",
+      "src/Relay/AccountPasswordRealtimeAdapter.php",
+      "src/Relay/RealtimeDispatchService.php",
+      "src/Domain/PublicEdge/PublicProjectionBuilder.php",
+      "src/Domain/Admin/AdminControlService.php"
+    ],
+    "changed_files": 14,
+    "removed_paths": [],
+    "base_tree_sha256": "7da46924681b40500e3f63e0f1ce6593d925426ff3d3126c0916415221c3fdca",
+    "source_tree_sha256": "ec0471f447f9adbe71b484fe160d53e5b9e076c313cde28ddd26903ed8800fba",
+    "baseline_zip_sha256": "d972495722627447b578d375fde993379df7c7cc92c7222cc686b88c43b4fbb3",
+    "patch_sha256": "76b761cd12218b3016575a40b6774443f278c9a52d75db006bf5276486f02305",
+    "patch_b64_path": "/mnt/data/sokna_r233/qa/R232-to-R233-local.patch.gz.b64"
+  },
+  "public": {
+    "base_files": 230,
+    "after_files": 233,
+    "unchanged_files": 223,
+    "changed_paths": [
+      "assets/hall-settlement-v32.js",
+      "assets/settlement-display-currency.js",
+      "assets/staff-app/public-hall-transport.js",
+      "assets/staff-app/hall-workspace.js",
+      "assets/staff-app/public-account.js",
+      "src/UI/ProductShell.php",
+      "src/Http/PublicHttpKernel.php",
+      "src/Auth/PublicAccountPasswordService.php",
+      "src/Remote/RemoteStaffPageRenderer.php",
+      "src/Realtime/RealtimeService.php"
+    ],
+    "changed_files": 10,
+    "removed_paths": [],
+    "base_tree_sha256": "373c0d89554a8ca606d4da553d5e9dd60fb6e80684f30588a9680e589c97daac",
+    "source_tree_sha256": "42d7b06e347ce649370159bbe1036f8650510f6c0e5f9fe8b0f4df03161a3df3",
+    "baseline_zip_sha256": "448e089de02eee01dc07a7ff9e6a61ce85b294ca586cee758b788fb5a98541ac",
+    "patch_sha256": "d8a240e084f502f1d5862b91df041e384c266314e3d5dbff70a33c45cade0832",
+    "patch_b64_path": "/mnt/data/sokna_r233/qa/R232-to-R233-public.patch.gz.b64"
+  }
+}
