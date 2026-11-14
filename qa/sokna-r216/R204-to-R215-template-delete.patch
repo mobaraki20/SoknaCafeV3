@@ -1,0 +1,39 @@
+--- a/src/Domain/Printing/PrintTemplatePackageService.php
++++ b/src/Domain/Printing/PrintTemplatePackageService.php
+@@ -106,6 +106,36 @@
+     {
+         $uid=$this->admin($actor);$row=$this->packageRow($packageId);$this->setActive($packageId,$uid,'printing.template_activated');
+         return ['package_id'=>$packageId,'document_kind'=>(string)$row['document_kind'],'version'=>(string)$row['version']];
++    }
++
++    /** Permanently remove only a non-active template version. No print history is modified. */
++    public function delete(int $packageId,array $actor): array
++    {
++        $uid=$this->admin($actor);
++        if($packageId<1)throw new PrintException('print_template_not_found','قالب چاپ پیدا نشد.',404);
++        $this->pdo->beginTransaction();
++        try{
++            $q=$this->pdo->prepare('SELECT id,template_key,display_name,version,document_kind,content_sha256 FROM print_template_packages WHERE id=? FOR UPDATE');
++            $q->execute([$packageId]);$row=$q->fetch(PDO::FETCH_ASSOC);
++            if(!is_array($row))throw new PrintException('print_template_not_found','قالب چاپ پیدا نشد.',404);
++            $active=$this->pdo->prepare('SELECT document_kind FROM print_template_activations WHERE package_id=? LIMIT 1 FOR UPDATE');
++            $active->execute([$packageId]);
++            if($active->fetchColumn()!==false)throw new PrintException('print_template_delete_active','قالب فعال را نمی‌توان حذف کرد. ابتدا قالب دیگری را فعال کنید.',409);
++            $del=$this->pdo->prepare('DELETE FROM print_template_packages WHERE id=?');
++            $del->execute([$packageId]);
++            if($del->rowCount()!==1)throw new PrintException('print_template_delete_conflict','حذف قالب انجام نشد؛ وضعیت آن را دوباره بررسی کنید.',409);
++            $this->audit($uid,'printing.template_deleted','print_template_package',(string)$packageId,[
++                'template_key'=>(string)$row['template_key'],'version'=>(string)$row['version'],
++                'document_kind'=>(string)$row['document_kind'],'sha256'=>(string)$row['content_sha256'],
++            ]);
++            $this->pdo->commit();
++            return ['package_id'=>$packageId,'deleted'=>true,'document_kind'=>(string)$row['document_kind']];
++        }catch(\Throwable $e){
++            if($this->pdo->inTransaction())$this->pdo->rollBack();
++            if($e instanceof \PDOException && (string)$e->getCode()==='23000')
++                throw new PrintException('print_template_delete_referenced','این قالب هنوز در بخش دیگری استفاده می‌شود و قابل حذف نیست.',409);
++            throw $e;
++        }
+     }
+ 
+     public function applyActive(array $payload): array
