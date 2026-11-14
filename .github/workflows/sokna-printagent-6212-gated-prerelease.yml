@@ -1,0 +1,152 @@
+name: SOKNA Print Agent 6.2.12 gated prerelease - immutable binary QA only
+on:
+  push:
+    branches:
+      - qa/sokna-printagent-6212-prerelease-gate-20261114
+    paths:
+      - qa/sokna-printagent-prerelease/**
+      - .github/workflows/sokna-printagent-6212-gated-prerelease.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-component-on-windows:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Retrieve exact R198 Windows-qualified Service and Worker binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: R198-PRINT-AGENT-6.2.12-BINARY-QA-NOT-INSTALL
+          run-id: 43489066238
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r198-binary
+      - name: Verify frozen binary identity and all per-file manifest hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=Join-Path $env:RUNNER_TEMP 'r198-binary'
+          $zip=Join-Path $p 'SoknaPrintAgent-6.2.12-win-x64.zip'
+          $expect='464eb276b446ffe6e30bdf05e36a4ef08671324ac0784f830f241d142d19efb5'
+          if(!(Test-Path $zip)){throw 'R198_BINARY_MISSING'}
+          if((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expect){throw 'R198_BINARY_SHA_MISMATCH'}
+          $old=Get-Content (Join-Path $p 'R198-QA-ONLY-DO-NOT-INSTALL.json') -Raw | ConvertFrom-Json
+          if($old.production_install_allowed -ne $false -or $old.installed_6_2_11_source_reconciled -ne $false){throw 'R198_QA_ONLY_GUARD_DRIFT'}
+          $artifact=Get-Content (Join-Path $p 'print-agent-artifact.json') -Raw | ConvertFrom-Json
+          if($artifact.sha256 -ne $expect -or $artifact.version -ne '6.2.12'){throw 'R198_ARTIFACT_CONTRACT_DRIFT'}
+          $expanded=Join-Path $env:RUNNER_TEMP 'r198-manifest'
+          Expand-Archive -LiteralPath $zip -DestinationPath $expanded
+          $manifest=Get-Content (Join-Path $expanded 'component-manifest.json') -Raw | ConvertFrom-Json
+          if($manifest.format -ne 'sokna-print-agent-component-v1' -or $manifest.component -ne 'print-agent' -or $manifest.version -ne '6.2.12'){throw 'R198_COMPONENT_MANIFEST_DRIFT'}
+          foreach($f in @($manifest.files)){
+            $path=Join-Path $expanded ([string]$f.path)
+            if(!(Test-Path $path -PathType Leaf)){throw 'R198_COMPONENT_FILE_MISSING'}
+            if((Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$f.sha256){throw 'R198_COMPONENT_FILE_HASH_DRIFT'}
+            if((Get-Item $path).Length -ne [long]$f.size){throw 'R198_COMPONENT_FILE_SIZE_DRIFT'}
+          }
+          if(!(Test-Path (Join-Path $expanded 'Service/Sokna.PrintAgent.Service.exe')) -or !(Test-Path (Join-Path $expanded 'Worker/Sokna.PrintAgent.Worker.exe'))){throw 'R198_SERVICE_WORKER_MISSING'}
+          [xml]$props=Get-Content 'windows/print-agent/source/Directory.Build.props' -Raw
+          if([string]$props.Project.PropertyGroup.SoknaAgentVersion -ne '6.2.12'){throw 'R198_SOURCE_VERSION_DRIFT'}
+          Write-Host 'PASS_PRINTAGENT_6212_IMMUTABLE_BINARY_AND_PER_FILE_INTEGRITY'
+      - name: Validate safe read-only 6.2.11 identity collector without any service mutation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $script=(Resolve-Path 'qa/sokna-printagent-prerelease/Inspect-Sokna-PrintAgent-ReadOnly.ps1').Path
+          $tokens=$null;$errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile($script,[ref]$tokens,[ref]$errors)|Out-Null
+          if(@($errors).Count -ne 0){$errors|ForEach-Object{Write-Host $_.Message};throw 'PREFLIGHT_PARSER_REJECTED'}
+          $folder=Join-Path $env:RUNNER_TEMP 'readonly-audit'
+          New-Item -ItemType Directory -Force $folder|Out-Null
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -OutputDir $folder
+          if($LASTEXITCODE -ne 0){throw 'PREFLIGHT_TOOL_CRASHED'}
+          $reports=@(Get-ChildItem $folder -Filter 'SOKNA-PrintAgent-ReadOnly-*.json')
+          if($reports.Count -ne 1){throw 'PREFLIGHT_REPORT_NOT_CREATED'}
+          $v=Get-Content $reports[0].FullName -Raw|ConvertFrom-Json
+          if($v.installation_permitted -ne $false -or $v.code -notin @('PRINT_SERVICE_NOT_FOUND','CANNOT_APPROVE_WITHOUT_FULL_BASELINE_ATTESTATION')){throw 'PREFLIGHT_UNEXPECTED_APPROVAL'}
+          if($v.programdata_preserved_unmodified -ne $true){throw 'PREFLIGHT_DATA_SAFETY_FAILED'}
+          Write-Host 'PASS_PRINTAGENT_6211_READONLY_FAIL_CLOSED_GATE'
+      - name: Existing Windows receipt and heartbeat regression tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/print-agent/source/tests/Sokna.PrintAgent.Worker.Tests/Sokna.PrintAgent.Worker.Tests.csproj -c Release -r win-x64
+          if($LASTEXITCODE -ne 0){throw 'PRINTAGENT_WORKER_QA_FAILED'}
+          dotnet run --project qa/sokna-r198/Sokna.HeartbeatMetrics.QA.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'PRINTAGENT_HEARTBEAT_QA_FAILED'}
+          Write-Host 'PASS_PRINTAGENT_6212_WORKER_AND_HEARTBEAT_REGRESSION'
+      - name: Package a download-only preview with explicit NO-INSTALL gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $src=Join-Path $env:RUNNER_TEMP 'r198-binary'
+          $out=Join-Path $env:RUNNER_TEMP 'release-qa'
+          New-Item -ItemType Directory -Force $out|Out-Null
+          Copy-Item (Join-Path $src 'SoknaPrintAgent-6.2.12-win-x64.zip') $out
+          Copy-Item (Join-Path $src 'R198-QA-ONLY-DO-NOT-INSTALL.json') $out
+          Copy-Item 'qa/sokna-printagent-prerelease/RELEASE-NOTICE-FA.md' $out
+          $audit=Join-Path $env:RUNNER_TEMP 'preflight-scripts'
+          New-Item -ItemType Directory -Force $audit|Out-Null
+          Copy-Item 'qa/sokna-printagent-prerelease/Inspect-Sokna-PrintAgent-ReadOnly.ps1' $audit
+          Copy-Item 'qa/sokna-printagent-prerelease/Run-ReadOnly-PrintAgent-Audit.cmd' $audit
+          Compress-Archive -Path (Join-Path $audit '*') -DestinationPath (Join-Path $out 'SOKNA-PrintAgent-ReadOnly-Audit.zip') -CompressionLevel Optimal
+          $rows=@(Get-ChildItem $out -File | Sort-Object Name | ForEach-Object { ((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()+'  '+$_.Name) })
+          [IO.File]::WriteAllLines((Join-Path $out 'SHA256SUMS.txt'),$rows)
+          Write-Host 'PASS_PRINTAGENT_PRERELEASE_ASSETS_FROZEN_NOT_INSTALLABLE'
+          'PRINTAGENT_QA_RELEASE_DIR='+$out|Out-File -FilePath $env:GITHUB_ENV -Append
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-PrintAgent-6.2.12-GATED-PRE-RELEASE-ASSETS
+          path: ${{ runner.temp }}/release-qa/*
+          if-no-files-found: error
+          retention-days: 30
+  publish-prerelease:
+    needs: verify-component-on-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PrintAgent-6.2.12-GATED-PRE-RELEASE-ASSETS
+          path: dist
+      - name: Verify immutable prerelease payload and publish with explicit install block
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+          echo '464eb276b446ffe6e30bdf05e36a4ef08671324ac0784f830f241d142d19efb5  SoknaPrintAgent-6.2.12-win-x64.zip' | sha256sum --check
+          python3 - <<'PY'
+          import json
+          with open('R198-QA-ONLY-DO-NOT-INSTALL.json') as f: a=json.load(f)
+          assert a['production_install_allowed'] is False
+          assert a['installed_6_2_11_source_reconciled'] is False
+          assert a['version']=='6.2.12'
+          print('PASS_QA_ONLY_6211_SOURCE_GAP_IS_EXPLICIT')
+          PY
+          tag="sokna-print-agent-v6.2.12-qa-hold-20261114"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets,isPrerelease
+            exit 0
+          fi
+          gh release create "$tag" \
+            SoknaPrintAgent-6.2.12-win-x64.zip \
+            SOKNA-PrintAgent-ReadOnly-Audit.zip \
+            R198-QA-ONLY-DO-NOT-INSTALL.json \
+            RELEASE-NOTICE-FA.md \
+            SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "SOKNA Print Agent 6.2.12 — QA prerelease (upgrade blocked pending 6.2.11 proof)" \
+            --notes-file RELEASE-NOTICE-FA.md --prerelease
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets,isPrerelease
