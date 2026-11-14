@@ -70,4 +70,9 @@ $ok(($deleted['deleted']??false)===true&&$one('SELECT id FROM print_template_pac
 $ok((int)$one("SELECT COUNT(*) FROM audit_log WHERE action='printing.template_deleted' AND entity_id=?",[(string)$inactive])===1,'TEMPLATE_DELETE_AUDIT_RECORDED');
 $ok((int)$one('SELECT COUNT(*) FROM print_jobs WHERE id=?',[$first])===1,'EXISTING_JOB_NOT_DELETED_WITH_TEMPLATE');
 $ok(!$pdo->inTransaction(),'NO_LEFTOVER_TRANSACTION');
+// Seed an additional inactive version for the authenticated HTTP route test.
+$httpKey='r226-http-inactive-'.$nonce;
+$insert->execute([$httpKey,'R226 HTTP inactive test',hash('sha256',$httpKey),(int)$admin['id']]);
+$httpInactive=(int)$pdo->lastInsertId();
+file_put_contents($runner.'/r226-template-http.json',json_encode(['active'=>$active,'inactive'=>$httpInactive],JSON_THROW_ON_ERROR));
 echo 'PASS_R226_REAL_MARIADB_PRINT_QUEUE_TEMPLATE_'.$testCount."_CHECKS\n";
