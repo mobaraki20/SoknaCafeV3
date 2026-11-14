@@ -1,0 +1,33 @@
+name: SOKNA R215 actual PrintAgent renderer Windows QA only
+on:
+  push:
+    branches:
+      - qa/sokna-r215-print-windows-verify-20261114
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  renderer:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify columnar thermal render and exact text notes on 58 and 80 mm
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:SOKNA_R214_PAYLOAD='qa/sokna-r215/R214-PREPARATION-PRINT-FIXTURE.json'
+          $env:SOKNA_R214_SCREENSHOT_DIR=Join-Path $env:RUNNER_TEMP 'r215-print-qa'
+          dotnet run --project windows/print-agent/source/tests/Sokna.PrintAgent.Worker.Tests/Sokna.PrintAgent.Worker.Tests.csproj -c Release -r win-x64
+          if($LASTEXITCODE -ne 0){throw 'R215_PRINT_RENDER_TEST_FAILED'}
+          Write-Host PASS_R215_WINDOWS_PRINT_AGENT_RENDER_TEST
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-R215-RENDERED-SLIPS-QA-ONLY
+          path: ${{ runner.temp }}/r215-print-qa/*.png
+          retention-days: 10
+          if-no-files-found: error
