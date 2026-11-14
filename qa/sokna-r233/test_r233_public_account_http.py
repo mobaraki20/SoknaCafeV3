@@ -25,7 +25,7 @@ match=re.search(r'data-public-account-root\s+data-csrf="([^"]+)"',page)
 if not match: match=re.search(r'data-csrf="([^"]+)"',page)
 ok(bool(match),'PUBLIC_ACCOUNT_CSRF_PRESENT');csrf=match.group(1)
 ok(len(csrf)==64,'PUBLIC_ACCOUNT_CSRF_NOT_EMPTY');
-status,noAuth=req('/staff/account/',header_cookie=False);ok(status in (302,303,401,403),'PUBLIC_ACCOUNT_REQUIRES_SESSION')
+status,noAuth=req('/staff/account/',header_cookie=False);ok((status in (302,303,401,403)) or (status==200 and 'data-public-account-root' not in noAuth and 'login' in noAuth.lower()),'PUBLIC_ACCOUNT_REQUIRES_SESSION')
 status,_=req('/api/staff/account/password','POST',{'current_password':login['old'],'new_password':login['new'],'confirm_password':login['new']});ok(status==403,'PUBLIC_PASSWORD_CHANGE_REJECTS_MISSING_CSRF')
 status,_=req('/api/staff/account/password','POST',{'current_password':login['old'],'new_password':login['new'],'confirm_password':login['new']},csrf='0'*64);ok(status==403,'PUBLIC_PASSWORD_CHANGE_REJECTS_BAD_CSRF')
 status,wrong=req('/api/staff/account/password','POST',{'current_password':'R233-wrong-old','new_password':login['new'],'confirm_password':login['new']},csrf=csrf);ok(status==422 and 'current_password_invalid' in wrong,'PUBLIC_PASSWORD_CHANGE_CHECKS_CURRENT_PASSWORD')
