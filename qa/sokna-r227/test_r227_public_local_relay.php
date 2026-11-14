@@ -15,6 +15,8 @@ $local=sokna_local_bootstrap($cfg);
 $localDb=$local->database();$localDb->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
 $testCount=0;$ok=static function(bool $cond,string $label)use(&$testCount):void {if(!$cond)throw new RuntimeException('FAIL_R227_'.$label);++$testCount;echo 'PASS_R227_'.$label."\n";};
 $fixture=json_decode((string)file_get_contents($tmp.'/r225-fixture.json'),true,512,JSON_THROW_ON_ERROR);
+// R225 intentionally repriced the synthetic inventory to 9. Reset for new order cost QA.
+$localDb->prepare("UPDATE inventory_balances SET average_unit_cost=3.000000,cost_status='known' WHERE inventory_item_id=?")->execute([(int)$fixture['inventory']]);
 $rootDb=new PDO('mysql:host=127.0.0.1;port=3306;charset=utf8mb4','root',(string)getenv('SOKNA_R213_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);
 $rootDb->exec('CREATE DATABASE `sokna_r227_public_disposable` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 $pubDb=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_r227_public_disposable;charset=utf8mb4','root',(string)getenv('SOKNA_R213_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
@@ -76,6 +78,9 @@ $ok($balance()===$before-48,'BRIDGED_ORDER_STOCK_DEBIT_EXACTLY_ONCE');
 $mov=$localDb->prepare("SELECT quantity_base,total_cost_delta FROM inventory_movements m JOIN order_items oi ON oi.id=m.source_id WHERE m.source_type='order_item' AND oi.order_id=? ORDER BY m.id");$mov->execute([$localOrderId]);$movement=$mov->fetchAll();
 $ok(count($movement)===2&&array_map('intval',array_column($movement,'quantity_base'))===[-40,-8],'BRIDGED_BUNDLE_BOTH_CHILD_MOVEMENTS');
 $ok(array_sum(array_map('intval',array_column($movement,'total_cost_delta')))===-144,'BRIDGED_HISTORICAL_MATERIAL_COST');
+$localDb->prepare('UPDATE inventory_balances SET average_unit_cost=9.000000 WHERE inventory_item_id=?')->execute([(int)$fixture['inventory']]);
+$mov->execute([$localOrderId]);$historicNow=$mov->fetchAll();
+$ok(array_sum(array_map('intval',array_column($historicNow,'total_cost_delta')))===-144,'BRIDGED_COST_REMAINS_FROZEN_AFTER_AVERAGE_CHANGE');
 $replayed=$edge->enqueueGuest($installation,$envelope($payload,$requestId,time()+4));
 $ok(($replayed['body']['deduplicated']??false)===true&&$balance()===$before-48,'AFTER_ACCOUNTING_REPLAY_HAS_NO_SIDE_EFFECT');
 // A never-claimed expired request cannot be dispatched to Local.
