@@ -1,4 +1,4 @@
-name: SOKNA R225 exact R224 source real HTTP + MariaDB qualification (disposable)
+name: SOKNA R225 exact R225 source real HTTP + MariaDB qualification (disposable)
 on:
   push:
     branches: [qa/sokna-r225-real-http-20261114]
@@ -47,7 +47,7 @@ jobs:
           run-id: 43513196061
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/r204-parent
-      - name: Reconstruct and prove EXACT 591-file R224 Local source from pinned R204 artifact
+      - name: Reconstruct and prove EXACT 591-file R225 Local source from pinned R204 artifact
         shell: bash
         run: |
           set -euo pipefail
@@ -63,30 +63,22 @@ jobs:
           base64 -d "$GITHUB_WORKSPACE/qa/sokna-r225/R222-to-R224-exact.patch.gz.b64" | gzip -d > "$R/r224.patch"
           echo "1ee11d6fb244a59dc9fecc3685317c6c0688ea8623d6560fd2bf6db0bd32d38e  $R/r224.patch" | sha256sum -c -
           (cd "$R/web" && git apply --check "$R/r224.patch" && git apply "$R/r224.patch")
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r225/R224-to-R225-clean-setup.patch.gz.b64" | gzip -d > "$R/r225.patch"
+          echo "4d05e072c1a06c1319c6e20e4f583ac654b1138ec51c2522b033e8bf95b46985  $R/r225.patch" | sha256sum -c -
+          (cd "$R/web" && git apply --check "$R/r225.patch" && git apply "$R/r225.patch")
           python3 - "$R/web" <<'PY'
           import pathlib,hashlib,sys
           p=pathlib.Path(sys.argv[1]);files={str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in p.rglob('*') if f.is_file() and '.git' not in f.parts}
           digest=hashlib.sha256(''.join(x+':'+files[x]+'\n' for x in sorted(files)).encode()).hexdigest()
           assert len(files)==591,(len(files),digest)
-          assert digest=='5ae4ff6413f15b37dfc7af209593c9070718ac6aac547ea03ad213de3c979d00',digest
-          print('PASS_R225_EXACT_591_FILE_R224_SOURCE_TREE')
+          assert digest=='e0217a5d0004b13301ae058b2a17c79402ae1b0c3dcc424cab804bd3abc4d721',digest
+          print('PASS_R225_EXACT_591_FILE_R225_SOURCE_TREE')
           PY
           echo "SOKNA_R213_WEB=$R/web" >> "$GITHUB_ENV"
       - name: Real BrowserSetup - 81 migrations - synthetic bundle and inventory fixture
         shell: bash
         run: |
           set -euo pipefail
-          # Temporary diagnostic mutation confined to throwaway runner, AFTER exact source hash is proven.
-          # This exposes the original exception hidden by BrowserSetup's generic setup_failed wrapper.
-          python3 - <<'PY'
-          import pathlib,os
-          p=pathlib.Path(os.environ['SOKNA_R213_WEB'])/'src/Setup/BrowserSetupService.php'
-          s=p.read_text()
-          old="throw new SetupException('setup_failed','نصب کامل نشد. وضعیت Setup برای تلاش دوباره حفظ شده است.',500);"
-          assert old in s
-          p.write_text(s.replace(old,"throw $e;"))
-          print("PASS_R225_TEMP_DIAGNOSTIC_ONLY")
-          PY
           php qa/sokna-r225/setup_r213_disposable.php
           php qa/sokna-r225/fixture_r225.php
       - name: Real admin auth CSRF image album and Guest quote-submit-retry to accounted stock
