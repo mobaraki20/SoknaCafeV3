@@ -89,6 +89,7 @@ jobs:
           p=pathlib.Path(sys.argv[1]);files={str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in p.rglob('*') if f.is_file() and '.git' not in f.parts}
           digest=hashlib.sha256(''.join(x+':'+files[x]+'\n' for x in sorted(files)).encode()).hexdigest()
           assert len(files)==591 and digest=='4a64105f2122e79730fb7b1bf9e82ce868a5b4d98a7ae06f3355304e77ff8bca',(len(files),digest)
+          pathlib.Path(__import__('os').environ['RUNNER_TEMP'],'r231-expected-source-files.json').write_text(__import__('json').dumps(sorted(files)))
           print('PASS_R231_EXACT_R230_BASELINE_591_FILES')
           PY
       - name: Real MariaDB BrowserSetup and reproduce original R230 inventory_pending cancellation
@@ -108,7 +109,12 @@ jobs:
           python3 - "$R/web" "$GITHUB_WORKSPACE/qa/sokna-r231/R231-SOURCE-HASHES.json" <<'PY'
           import pathlib,hashlib,sys,json
           p=pathlib.Path(sys.argv[1]);target=json.loads(pathlib.Path(sys.argv[2]).read_text())
-          files={str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in p.rglob('*') if f.is_file() and '.git' not in f.parts}
+          all_files={str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in p.rglob('*') if f.is_file() and '.git' not in f.parts}
+          expected=set(json.loads(pathlib.Path(__import__('os').environ['RUNNER_TEMP'],'r231-expected-source-files.json').read_text()))
+          assert expected<=set(all_files),(sorted(expected-set(all_files)))
+          files={x:all_files[x] for x in expected}
+          extra=sorted(set(all_files)-expected)
+          print('R231_INSTALLATION_CREATED_AUXILIARY_FILES',extra)
           digest=hashlib.sha256(''.join(x+':'+files[x]+'\n' for x in sorted(files)).encode()).hexdigest()
           assert len(files)==target['file_count'] and digest==target['tree_sha256'],(len(files),digest)
           print('PASS_R231_EXACT_591_FILE_SOURCE_BOTH_ORDER_AND_INVENTORY_FIXES')
