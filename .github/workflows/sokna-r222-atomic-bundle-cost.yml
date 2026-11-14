@@ -58,7 +58,7 @@ jobs:
           base64 -d "$GITHUB_WORKSPACE/qa/sokna-r222/R204-to-R222-exact-cumulative.patch.gz.b64" | gzip -d > "$R/r222.patch"
           echo "56ab7c800a3b0a14c869374095806e4bac821c92647a26d78309b125edb083c5  $R/r222.patch" | sha256sum -c -
           (cd "$R/web" && git init -q && git config core.autocrlf false && git apply --check "$R/r222.patch" && git apply "$R/r222.patch")
-          test "$(find "$R/web" -type f | wc -l)" -eq 591
+          test "$(find "$R/web" -type f -not -path '*/.git/*' | wc -l)" -eq 591
           echo PASS_R222_ALL_591_FILES_EXACT_SOURCE_RECONSTRUCTED
           php -l "$R/web/src/Domain/GuestContent/GuestContentService.php"
           echo "SOKNA_R212_WEB=$R/web" >> "$GITHUB_ENV"
