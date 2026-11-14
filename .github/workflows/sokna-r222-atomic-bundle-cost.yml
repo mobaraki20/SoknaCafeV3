@@ -1,0 +1,74 @@
+name: SOKNA R222 bundle complete editor atomic save and cost - exact 591 file real MariaDB QA
+on:
+  push:
+    branches: [qa/sokna-r222-atomic-bundle-cost-20261114]
+    paths:
+      - 'qa/sokna-r222/**'
+      - '.github/workflows/sokna-r222-atomic-bundle-cost.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-local-media-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r212-disposable-only
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R212_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R212_DB_PASSWORD: r212-disposable-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql,mbstring,curl,gd,zip
+          coverage: none
+      - name: Wait for disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R212_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then echo PASS_R212_DISPOSABLE_MARIADB_READY;exit 0;fi
+            sleep 2
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R204-EXACT-SOURCE-AND-MANIFEST-READY-FOR-WINDOWS
+          run-id: 43513196061
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r204-verified
+      - name: Recover exact R204 source, prove unchanged media service, apply reviewed R212 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/r212";mkdir -p "$R/outer" "$R/web"
+          ARCHIVE=$(find "$RUNNER_TEMP/r204-verified" -type f -name 'SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$ARCHIVE"
+          echo "279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3  $ARCHIVE" | sha256sum -c -
+          unzip -q "$ARCHIVE" -d "$R/outer"
+          unzip -q "$R/outer/artifacts/local/web.zip" -d "$R/web"
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r222/R204-to-R222-exact-cumulative.patch.gz.b64" | gzip -d > "$R/r222.patch"
+          echo "56ab7c800a3b0a14c869374095806e4bac821c92647a26d78309b125edb083c5  $R/r222.patch" | sha256sum -c -
+          (cd "$R/web" && git init -q && git config core.autocrlf false && git apply --check "$R/r222.patch" && git apply "$R/r222.patch")
+          test "$(find "$R/web" -type f | wc -l)" -eq 591
+          echo PASS_R222_ALL_591_FILES_EXACT_SOURCE_RECONSTRUCTED
+          php -l "$R/web/src/Domain/GuestContent/GuestContentService.php"
+          echo "SOKNA_R212_WEB=$R/web" >> "$GITHUB_ENV"
+          echo PASS_R212_EXACT_R204_MEDIA_SOURCE_AND_REVIEWED_PATCH
+      - name: Run actual 81 migrations and archived-image upload/restore on MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r212/test_r212_media_real_mariadb.php
+          php qa/sokna-r212/test_r212_order_acceptance_real_mariadb.php
+          php qa/sokna-r222/test_r222_atomic_mariadb.php
+          node qa/sokna-r222/test_bundle_cost.cjs "$SOKNA_R212_WEB/public/assets/catalog-workspace.js"
+          echo PASS_R212_REAL_MARIADB_NO_PRODUCTION_DATA
