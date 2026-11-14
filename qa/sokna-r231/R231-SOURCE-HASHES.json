@@ -1,0 +1,10 @@
+{
+  "file_count": 591,
+  "tree_sha256": "3f92e32b426c7fcfc5e1b11ad46a44526cd9d7b1cece2a9c3582347272417eaf",
+  "changed_files": [
+    "src/Domain/Inventory/InventoryOrderService.php",
+    "src/Domain/Orders/OrderStaffActionService.php"
+  ],
+  "r225_to_r230_patch_sha256": "49dc365bf643bec64c5257a010f76a4edd2967cefff8702bc5984b1fe53ec708",
+  "r230_to_r231_patch_sha256": "346adb091e0dc7994db81dfd7a88066a902ba48119485116b5e6a38ad761edec"
+}
