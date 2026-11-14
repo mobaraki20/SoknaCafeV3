@@ -72,5 +72,19 @@ if($phase==='online'){
  $idem=$edge->enqueueGuest($pair['installation'],['request_id'=>$command['id'],'kind'=>'guest_order.submit','actor_projection_id'=>$command['actor'],'created_at'=>gmdate('c'),'expires_at'=>gmdate('c',time()+120),'payload'=>['table_token'=>$fixture['table_token'],'session_token'=>'','device_token'=>'r228-http-web-device','client_token'=>$command['client'],'customer_note'=>'R228 signed HTTP QA','items'=>[['id'=>$fixture['parent'],'quantity'=>2,'expected_price'=>$fixture['unit_price'],'bundle_choice_item_id'=>$fixture['choice']]]]]);
  $ok(($idem['body']['deduplicated']??false)===true,'AFTER_RECONNECT_CLIENT_RETRY_DEDUP');
  $q=$localDb->prepare('SELECT status FROM orders WHERE id=?');$q->execute([$command['order_id']]);$ok($q->fetchColumn()==='pending_approval','RECOVERY_SAME_ORDER_STILL_PENDING');
+ $actor=['id'=>(int)$fixture['admin_id'],'role'=>'admin'];
+ $approved=$local->orderStaffActions()->changeStatus(['order_id'=>$command['order_id'],'status'=>'accounted'],$actor);
+ $ok(($approved['status']??'')==='accounted','RECOVERED_ORDER_STAFF_APPROVED');
+ $again=$local->orderStaffActions()->changeStatus(['order_id'=>$command['order_id'],'status'=>'accounted'],$actor);
+ $ok(($again['idempotent']??false)===true,'RECOVERED_ORDER_APPROVAL_IDEMPOTENT');
+ $s=$localDb->prepare('SELECT quantity_base FROM inventory_balances WHERE inventory_item_id=?');$s->execute([(int)$fixture['inventory']]);
+ $ok((int)$s->fetchColumn()===99952,'RECOVERED_ORDER_EXACT_STOCK_DEBIT');
+ $mv=$localDb->prepare("SELECT m.quantity_base,m.total_cost_delta FROM inventory_movements m JOIN order_items oi ON oi.id=m.source_id WHERE m.source_type='order_item' AND oi.order_id=? ORDER BY m.id");$mv->execute([$command['order_id']]);$moves=$mv->fetchAll();
+ $ok(count($moves)===2 && array_map('intval',array_column($moves,'quantity_base'))===[-40,-8],'RECOVERED_ORDER_ALL_CHILD_COMPONENTS');
+ $ok(array_sum(array_map('intval',array_column($moves,'total_cost_delta')))===-144,'RECOVERED_ORDER_HISTORICAL_COST');
+ $localDb->prepare('UPDATE inventory_balances SET average_unit_cost=9.000000 WHERE inventory_item_id=?')->execute([(int)$fixture['inventory']]);
+ $mv->execute([$command['order_id']]);$afterPrice=$mv->fetchAll();
+ $ok(array_sum(array_map('intval',array_column($afterPrice,'total_cost_delta')))===-144,'RECOVERED_ORDER_COST_FROZEN_AFTER_REPRICING');
+ $s->execute([(int)$fixture['inventory']]);$ok((int)$s->fetchColumn()===99952,'RECOVERED_ORDER_NO_SECOND_INVENTORY_MOVEMENT');
  echo 'PASS_R228_RECOVERY_'.$count."_CHECKS\n";
 }else{throw new RuntimeException('UNKNOWN_PHASE');}
