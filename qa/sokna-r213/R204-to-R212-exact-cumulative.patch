@@ -1,0 +1,445 @@
+--- a/public/assets/login.js
++++ b/public/assets/login.js
+@@ -1,27 +1,106 @@
+ (()=>{'use strict';
++// R207: inline two-step account selection; identical Local/Public behavior.
++// Keeps the original radio inputs and hidden username/projection_id, authentication untouched.
+ const root=document.querySelector('[data-login-root]');if(!root)return;
+-const form=root.querySelector('[data-login-form]'),hidden=form?.querySelector('[data-login-selection]'),cards=[...root.querySelectorAll('[data-login-account]')];
+-const key=root.dataset.loginStorageKey||'sokna.login.last-account',explicit=root.dataset.selectedExplicit==='1';
+-function accountKey(card){return card?.dataset.accountKey||card?.dataset.username||card?.querySelector('input[type="radio"]')?.value||''}
+-function choose(card,{focus=false}={}){if(!card)return;cards.forEach(c=>{const on=c===card;c.classList.toggle('is-selected',on);const radio=c.querySelector('input[type="radio"]');if(radio)radio.checked=on});const value=accountKey(card);if(hidden)hidden.value=value;try{localStorage.setItem(key,value)}catch{}const theme=card.dataset.themePreference;if(theme&&window.SoknaTheme?.setPreference)window.SoknaTheme.setPreference(theme,{persist:true,announceChange:false});if(focus)card.querySelector('input')?.focus()}
+-if(cards.length){let preferred='';try{preferred=localStorage.getItem(key)||''}catch{}const checked=cards.find(c=>c.querySelector('input[type="radio"]')?.checked);const explicitKey=explicit?accountKey(checked):'';const target=(explicitKey&&cards.find(c=>accountKey(c)===explicitKey))||cards.find(c=>accountKey(c)===preferred)||checked||cards[0];choose(target);cards.forEach(card=>{card.tabIndex=0;card.addEventListener('click',()=>choose(card));card.addEventListener('keydown',e=>{if(!['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Enter',' '].includes(e.key))return;e.preventDefault();if(e.key==='Enter'||e.key===' '){choose(card);return}const navCards=cards.filter(c=>!c.hidden),i=navCards.indexOf(card),columns=window.matchMedia('(max-width:430px)').matches?1:window.matchMedia('(max-width:760px)').matches?2:3;let delta=0;if(e.key==='ArrowLeft')delta=1;if(e.key==='ArrowRight')delta=-1;if(e.key==='ArrowDown')delta=columns;if(e.key==='ArrowUp')delta=-columns;if(i>=0&&navCards.length)choose(navCards[(i+delta+navCards.length)%navCards.length],{focus:true})})})}
+-// Same collapsed, search-free staff account selection policy as Public, regardless of count.
+-// The HTML radio list remains available when JavaScript is disabled.
++const form=root.querySelector('[data-login-form]');
++const hidden=form?.querySelector('[data-login-selection]');
++const fieldset=root.querySelector('[data-login-accounts]');
++const grid=fieldset?.querySelector('.sc-login-account-grid');
++const cards=grid?[...grid.querySelectorAll('[data-login-account]')]:[];
++const key=root.dataset.loginStorageKey||'sokna.login.last-account';
++const explicit=root.dataset.selectedExplicit==='1';
++const accountKey=c=>c?.dataset.accountKey||c?.dataset.username||c?.querySelector('input[type="radio"]')?.value||'';
++const accountName=c=>c?.querySelector('.sc-login-account__copy strong, strong')?.textContent?.trim()||'انتخاب حساب';
++const password=form?.querySelector('input[name="password"]');
++const brand=root.querySelector('.sc-auth__brand h2');
++let preferred='';try{preferred=localStorage.getItem(key)||'';}catch{}
++function selected(){return cards.find(c=>c.querySelector('input[type="radio"]')?.checked)||cards[0];}
++function choose(card){
++ if(!card)return;
++ for(const c of cards){const on=c===card;c.classList.toggle('is-selected',on);const radio=c.querySelector('input[type="radio"]');if(radio)radio.checked=on;}
++ const value=accountKey(card);if(hidden)hidden.value=value;
++ try{localStorage.setItem(key,value);}catch{}
++ const theme=card.dataset.themePreference;
++ if(theme&&window.SoknaTheme?.setPreference)window.SoknaTheme.setPreference(theme,{persist:true,announceChange:false});
++}
+ if(cards.length){
+- const fieldset=root.querySelector('[data-login-accounts]'),grid=fieldset?.querySelector('.sc-login-account-grid');
+- if(fieldset&&grid){
+-  const toggle=document.createElement('button');toggle.type='button';toggle.className='sc-button sc-button--secondary sc-login-picker-toggle';toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-controls','sc-local-account-list');
+-  const panel=document.createElement('div');panel.className='sc-login-picker-panel';panel.id='sc-local-account-list';panel.hidden=true;
+-  const selected=()=>cards.find(c=>c.querySelector('input[type="radio"]')?.checked)||cards[0];
+-  const selectedLabel=()=>selected()?.querySelector('.sc-login-account__copy strong')?.textContent?.trim()||'انتخاب حساب';
+-  const label=()=>{toggle.textContent=selectedLabel()+'  ▾'};
+-  const close=(moveToPassword=false)=>{panel.hidden=true;toggle.setAttribute('aria-expanded','false');label();if(moveToPassword)form?.querySelector('input[name="password"]')?.focus({preventScroll:true});};
+-  toggle.addEventListener('click',()=>{panel.hidden=!panel.hidden;toggle.setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden)selected()?.focus({preventScroll:true});});
+-  fieldset.insertBefore(toggle,grid);fieldset.insertBefore(panel,toggle.nextSibling);panel.append(grid);
+-  cards.forEach(card=>{card.addEventListener('click',()=>{choose(card);close(true);});});
+-  panel.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();toggle.focus()}});
+-  label();
++ const checked=cards.find(c=>c.querySelector('input[type="radio"]')?.checked);
++ const specified=explicit?accountKey(checked):'';
++ choose((specified&&cards.find(c=>accountKey(c)===specified))||cards.find(c=>accountKey(c)===preferred)||checked||cards[0]);
++}
++if(fieldset&&grid&&cards.length){
++ const chooserId='sc-login-choose-account';
++ const row=document.createElement('div');row.className='sc-login-flow-current-row';
++ const display=document.createElement('div');display.className='sc-login-flow-current';
++ const avatar=document.createElement('span');avatar.className='sc-login-flow-avatar';avatar.setAttribute('aria-hidden','true');
++ const info=document.createElement('span');info.className='sc-login-flow-info';
++ const hint=document.createElement('small');hint.textContent='حساب انتخاب‌شده';
++ const name=document.createElement('strong');info.append(hint,name);display.append(avatar,info);
++ const change=document.createElement('button');change.type='button';change.className='sc-login-flow-change';change.textContent='تغییر حساب';change.setAttribute('aria-controls',chooserId);change.setAttribute('aria-expanded','false');
++ row.append(display,change);fieldset.insertBefore(row,grid);
++ const chooser=document.createElement('div');chooser.className='sc-login-flow-chooser';chooser.id=chooserId;chooser.hidden=true;
++ const header=document.createElement('div');header.className='sc-login-flow-head';
++ const back=document.createElement('button');back.type='button';back.className='sc-login-flow-back';back.textContent='بازگشت به ورود';
++ const label=document.createElement('strong');label.textContent='انتخاب حساب';header.append(label,back);
++ const search=document.createElement('input');search.type='search';search.className='sc-control sc-login-flow-search';search.placeholder='جست‌وجوی نام حساب';search.setAttribute('aria-label','جست‌وجوی نام حساب');search.autocomplete='off';search.spellcheck=false;
++ const status=document.createElement('small');status.className='sc-login-flow-status';status.setAttribute('aria-live','polite');
++ const empty=document.createElement('p');empty.className='sc-login-flow-empty';empty.textContent='حسابی با این نام پیدا نشد.';empty.hidden=true;
++ const nav=document.createElement('div');nav.className='sc-login-flow-nav';
++ const next=document.createElement('button');next.type='button';next.className='sc-login-flow-page';next.textContent='بعدی';
++ const previous=document.createElement('button');previous.type='button';previous.className='sc-login-flow-page';previous.textContent='قبلی';
++ const pageLabel=document.createElement('span');pageLabel.className='sc-login-flow-page-label';nav.append(next,pageLabel,previous);
++ chooser.append(header,search,status,grid,empty,nav);fieldset.append(chooser);
++ grid.setAttribute('aria-label','انتخاب حساب کاربری');
++ const normalize=s=>(s||'').toLocaleLowerCase('fa').normalize('NFKC').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\u064B-\u065F]/g,'').trim();
++ let index=0;const limit=5;
++ const match=()=>{const q=normalize(search.value);return cards.filter(c=>normalize(accountName(c)).includes(q));};
++ function render(){
++  const found=match(),max=Math.max(0,Math.ceil(found.length/limit)-1);index=Math.min(index,max);
++  for(const c of cards)c.hidden=true;
++  for(const c of found.slice(index*limit,(index+1)*limit))c.hidden=false;
++  status.textContent=found.length?`${found.length} حساب`:'نتیجه‌ای پیدا نشد';
++  pageLabel.textContent=found.length>limit?`صفحه ${index+1} از ${max+1}`:'';
++  nav.hidden=found.length<=limit;previous.disabled=index===0;next.disabled=index===max;empty.hidden=found.length!==0;
+  }
++ const refresh=()=>{const c=selected();name.textContent=accountName(c);avatar.textContent=accountName(c).charAt(0)||'ح';change.setAttribute('aria-label','تغییر حساب؛ '+accountName(c));};
++ const defaultHeading=brand?.textContent||'';
++ function backToLogin({focusPassword=false}={}){
++  chooser.hidden=true;row.hidden=false;root.classList.remove('sc-login-flow-selecting');
++  change.setAttribute('aria-expanded','false');if(brand)brand.textContent='ورود به حساب';
++  if(focusPassword)password?.focus({preventScroll:true});else change.focus({preventScroll:true});
++ }
++ function openChooser(){
++  chooser.hidden=false;row.hidden=true;root.classList.add('sc-login-flow-selecting');
++  change.setAttribute('aria-expanded','true');if(brand)brand.textContent='حساب خودت را انتخاب کن';
++  index=0;search.value='';render();search.focus({preventScroll:true});
++ }
++ change.addEventListener('click',openChooser);back.addEventListener('click',()=>backToLogin());
++ next.addEventListener('click',()=>{index++;render();search.focus();});
++ previous.addEventListener('click',()=>{index--;render();search.focus();});
++ search.addEventListener('input',()=>{index=0;render();});
++ search.addEventListener('keydown',e=>{
++  if(e.key==='ArrowDown'){e.preventDefault();match().slice(index*limit,(index+1)*limit)[0]?.focus();}
++  if(e.key==='Enter'){e.preventDefault();const first=match()[index*limit];if(first)selectAccount(first);}
++ });
++ function selectAccount(c){
++  const old=accountKey(selected()),nextKey=accountKey(c);
++  choose(c);if(password&&old!==nextKey)password.value='';refresh();backToLogin({focusPassword:true});
++ }
++ for(const card of cards){card.tabIndex=0;
++  card.addEventListener('click',()=>selectAccount(card));
++  card.addEventListener('keydown',e=>{
++   if(e.key==='Enter'||e.key===' '){e.preventDefault();selectAccount(card);}
++   else if(e.key==='ArrowDown'||e.key==='ArrowUp'){
++    e.preventDefault();const visible=cards.filter(c=>!c.hidden),i=visible.indexOf(card),delta=e.key==='ArrowDown'?1:-1;
++    if(visible.length&&i>=0)visible[(i+delta+visible.length)%visible.length].focus();
++   }
++  });
++ }
++ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!chooser.hidden){e.preventDefault();backToLogin();}});
++ form?.addEventListener('submit',e=>{if(!chooser.hidden){e.preventDefault();return;}});
++ fieldset.classList.add('sc-login-flow-ready');if(cards.length===1)change.hidden=true;refresh();
++ if(brand)brand.textContent='ورود به حساب';
++ // No-JS fallback remains the server-rendered radio grid and normal form.
+ }
+-form?.addEventListener('submit',()=>{const button=form.querySelector('button[type="submit"]');if(button){button.disabled=true;button.setAttribute('aria-busy','true')}});
++form?.addEventListener('submit',()=>{const b=form.querySelector('button[type="submit"]');if(b){b.disabled=true;b.setAttribute('aria-busy','true');}});
+ })();
+--- a/public/assets/printing-workspace.js
++++ b/public/assets/printing-workspace.js
+@@ -65,9 +65,14 @@
+ const templateLabelLabels={adjustment:'اصلاح',discount:'تخفیف',note:'یادداشت',reprint:'چاپ مجدد',settlement:'روش تسویه',subtotal:'جمع جزء',takeaway:'بیرون‌بر',tax:'مالیات',taxable:'مشمول مالیات',ticket_title:'عنوان فیش',total:'مبلغ نهایی'};
+ let templateEditorBase=null,templateSectionOrder=[],templateSectionEnabled=new Set();
+ function activeTemplateForKind(p,kind){return p.templates?.active?.[kind]||null}
+ function renderPrintTemplates(p){const box=$('[data-print-template-list]');if(!box)return;box.replaceChildren();const rows=p.templates?.packages||[],current=rows.filter(r=>Number(r.active)===1),archived=rows.filter(r=>Number(r.active)!==1);if(!rows.length){box.append(el('div','sc-empty','هنوز قالب چاپی اضافه نشده است. از قالب‌های استاندارد سکنا یا یک فایل .soknaprint شروع کن.'));return}current.forEach(r=>{const card=el('article','sc-list-item'),h=el('div','sc-list-item__head'),copy=el('div'),kindLabel=r.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';copy.append(el('strong','',r.display_name),el('div','sc-list-item__meta',`${kindLabel} · نسخه ${r.version||'—'} · ${r.created_at?L.dateTime(r.created_at):'—'}`));h.append(copy,badge(Number(r.active)===1?'فعال':'غیرفعال',Number(r.active)===1?'success':'neutral'));card.append(h);if(r.description)card.append(el('p','sc-muted',r.description));const actions=el('div','sc-actions'),dest=templateDestination(p,r),active=activeTemplateForKind(p,r.document_kind);actions.append(button('ویرایش به نسخه جدید',()=>openTemplateEditor(r.id),'secondary'));if(Number(r.active)!==1){if(active&&active.template_key===r.template_key)actions.append(button('بازگردانی این نسخه',()=>rollbackPrintTemplate(r),'secondary'));else actions.append(button('فعال‌سازی',()=>activatePrintTemplate(r.id),'primary'))}actions.append(button('پیش‌نمایش',()=>previewPrintTemplate(r,dest,'pdf'),'secondary'));if(dest){if(Number(dest.active)===1&&dest.operational)actions.append(button('چاپ آزمایشی',()=>printTest(dest.destination_key,Number(r.id)),'secondary'));else if(Number(dest.active)===1){const test=button('چاپ آزمایشی',()=>{},'secondary');test.disabled=true;test.title=dest.readiness_label||'این مقصد هنوز آماده چاپ نیست.';actions.append(test)}}else actions.append(el('span','sc-muted','پیش‌نمایش با پروفایل استاندارد ۸۰mm انجام می‌شود؛ برای چاپ آزمایشی باید مقصد تعریف شود.'));card.append(actions);box.append(card)});
+- if(archived.length){const archive=el('details','sc-history-archive'),summary=el('summary','',`آرشیو نسخه‌های قدیمی قالب چاپ (${L.integer(archived.length)})`),body=el('div','sc-history-archive__body');archive.append(summary,body);archived.forEach(r=>{const card=el('article','sc-list-item'),h=el('div','sc-list-item__head'),name=el('strong','',r.display_name||r.name||'قالب چاپ'),kind=r.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';h.append(name,badge('بایگانی‌شده'));card.append(h,el('div','sc-list-item__meta',`${kind} · نسخه ${r.version||'—'}`));const actions=el('div','sc-actions'),active=activeTemplateForKind(p,r.document_kind);actions.append(button('ویرایش به نسخه جدید',()=>openTemplateEditor(r.id),'secondary'));if(active&&active.template_key===r.template_key)actions.append(button('بازگردانی نسخه',()=>rollbackPrintTemplate(r),'secondary'));else actions.append(button('فعال‌سازی',()=>activatePrintTemplate(r.id),'secondary'));actions.append(button('پیش‌نمایش واقعی',()=>previewPrintTemplate(r,templateDestination(p,r),'pdf'),'secondary'));card.append(actions);body.append(card)});box.append(archive)}
++ if(archived.length){const archive=el('details','sc-history-archive'),summary=el('summary','',`آرشیو نسخه‌های قدیمی قالب چاپ (${L.integer(archived.length)})`),body=el('div','sc-history-archive__body');archive.append(summary,body);archived.forEach(r=>{const card=el('article','sc-list-item'),h=el('div','sc-list-item__head'),name=el('strong','',r.display_name||r.name||'قالب چاپ'),kind=r.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';h.append(name,badge('بایگانی‌شده'));card.append(h,el('div','sc-list-item__meta',`${kind} · نسخه ${r.version||'—'}`));const actions=el('div','sc-actions'),active=activeTemplateForKind(p,r.document_kind);actions.append(button('ویرایش به نسخه جدید',()=>openTemplateEditor(r.id),'secondary'));if(active&&active.template_key===r.template_key)actions.append(button('بازگردانی نسخه',()=>rollbackPrintTemplate(r),'secondary'));else actions.append(button('فعال‌سازی',()=>activatePrintTemplate(r.id),'secondary'));actions.append(button('پیش‌نمایش واقعی',()=>previewPrintTemplate(r,templateDestination(p,r),'pdf'),'secondary'));actions.append(button('حذف دائمی',()=>deletePrintTemplate(r),'secondary'));card.append(actions);body.append(card)});box.append(archive)}
++}
++async function deletePrintTemplate(row){
++ const ok=await SoknaUI.confirm('حذف دائمی قالب چاپ',`نسخه ${row.version} از «${row.display_name}» برای همیشه حذف شود؟ این عملیات برگشت‌پذیر نیست و فقط برای نسخه غیرفعال مجاز است.`);
++ if(!ok)return;
++ try{await post({action:'print_template_delete',package_id:Number(row.id)});await refresh('نسخه غیرفعال قالب چاپ حذف شد.')}catch(e){sectionState(e.message||'حذف قالب چاپ انجام نشد.',true)}
+ }
+ async function importPrintTemplate(file){if(!file)return;if(file.size>65536){sectionState('بسته چاپ باید کمتر از ۶۴ کیلوبایت باشد.',true);return}try{const raw=await file.text();status('در حال وارد کردن قالب چاپ…');const j=await post({action:'print_template_import',package_json:raw});await refresh(j.result.deduplicated?'این نسخه از قبل وجود داشت.':'قالب چاپ ذخیره شد.')}catch(e){sectionState(e.message||'وارد کردن قالب چاپ انجام نشد.',true)}finally{$('[data-print-template-file]').value=''}}
+ async function installStandardTemplate(kind){try{const j=await post({action:'print_template_standard_install',document_kind:kind});await refresh(j.result.deduplicated?'قالب استاندارد از قبل ثبت شده بود.':'قالب استاندارد سکنا اضافه شد.');activatePrintTab('templates')}catch(e){sectionState(e.message||'افزودن قالب استاندارد انجام نشد.',true)}}
+ async function activatePrintTemplate(id){try{await post({action:'print_template_activate',package_id:Number(id)});await refresh('قالب چاپ فعال شد.')}catch(e){sectionState(e.message||'فعال‌سازی قالب چاپ انجام نشد.',true)}}
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6206,4 +6206,64 @@
+ .sc-template-live-paper.is-compact .sc-template-live-row{padding:1px 0}
+ .sc-template-live-paper.is-dashed h4{border-bottom-style:dashed}
+ .sc-template-live-paper.is-minimal h4{border-bottom:0}
+ .sc-template-live-footer{text-align:center;margin:14px 0 0;padding-top:7px;border-top:1px solid #ddd;white-space:pre-wrap}
++
++
++/* R205 shared Local/Public account picker. Native radio grid remains usable without JS. */
++.sc-login-picker-ready .sc-login-picker-toggle{inline-size:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;min-block-size:46px;text-align:start;font-weight:800}
++.sc-login-picker-current{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
++.sc-login-picker-chevron{font-size:1.2rem;line-height:1}
++.sc-login-picker-panel{position:fixed;z-index:10002;display:flex;flex-direction:column;gap:10px;margin:0;padding:14px;border:1px solid var(--sc-border);border-radius:16px;background:var(--sc-surface-raised);box-shadow:0 20px 55px rgb(12 34 30 / .19);overflow:hidden;box-sizing:border-box;direction:rtl}
++.sc-login-picker-panel[hidden],.sc-login-picker-backdrop[hidden],.sc-login-picker-panel .sc-login-account[hidden],.sc-login-picker-panel .sc-login-picker-empty[hidden]{display:none!important}
++.sc-login-picker-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
++.sc-login-picker-head strong{font-size:.9rem}
++.sc-login-picker-dismiss{border:0;background:transparent;color:var(--sc-muted);font:inherit;font-size:1.65rem;cursor:pointer;line-height:1;padding:2px 8px;border-radius:8px}
++.sc-login-picker-dismiss:focus-visible,.sc-login-picker-toggle:focus-visible,.sc-login-picker-search:focus-visible{outline:2px solid var(--sc-focus);outline-offset:2px}
++.sc-login-picker-search{inline-size:100%;min-block-size:42px;flex-shrink:0}
++.sc-login-picker-count{color:var(--sc-muted);font-size:.73rem;flex-shrink:0}
++.sc-login-picker-panel .sc-login-account-grid{min-block-size:0;max-block-size:none;flex:1;overflow-y:auto;overscroll-behavior:contain;display:grid;grid-template-columns:1fr;align-content:start;gap:7px;padding:2px;scrollbar-gutter:stable}
++.sc-login-picker-panel .sc-login-account{min-block-size:52px;min-height:52px;grid-template-columns:36px minmax(0,1fr) 18px}
++.sc-login-picker-panel .sc-login-account__copy strong{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
++.sc-login-picker-empty{margin:0;text-align:center;color:var(--sc-muted);padding:10px 0}
++.sc-login-picker-backdrop{display:none}
++@media(max-width:640px){
++ body.sc-login-picker-open{overflow:hidden}
++ .sc-login-picker-backdrop:not([hidden]){display:block;position:fixed;inset:0;z-index:10001;background:rgb(5 16 15 / .5)}
++ .sc-login-picker-panel{inset-inline:12px!important;inset-block:auto 12px!important;inline-size:auto!important;max-block-size:min(82dvh,620px)!important;padding:16px;border-radius:20px}
++ .sc-login-picker-panel .sc-login-account-grid{grid-template-columns:1fr}
++}
++
++
++/* R207 scoped two-step account chooser: no floating popover, modal, or internal scroll. */
++.sc-login-flow-ready{border:0;margin:0;padding:0;min-width:0}
++.sc-login-flow-ready>legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
++.sc-login-flow-current-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--sc-border);border-radius:12px;background:var(--sc-surface-raised);padding:12px;min-height:72px}
++.sc-login-flow-current{display:flex;align-items:center;gap:10px;min-width:0}
++.sc-login-flow-avatar{display:grid;place-items:center;min-width:40px;width:40px;height:40px;border-radius:12px;background:var(--sc-accent-soft,#e4f3f1);color:var(--sc-text);font-weight:800}
++.sc-login-flow-info{display:flex;flex-direction:column;gap:3px;min-width:0}
++.sc-login-flow-info small,.sc-login-flow-status,.sc-login-flow-page-label{color:var(--sc-muted);font-size:.78rem}
++.sc-login-flow-info strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
++.sc-login-flow-change,.sc-login-flow-back,.sc-login-flow-page{font:inherit;cursor:pointer;color:var(--sc-accent,#087b73);border:1px solid var(--sc-border);background:var(--sc-surface);border-radius:10px;padding:8px 10px;white-space:nowrap;font-size:.85rem}
++.sc-login-flow-change:hover,.sc-login-flow-back:hover,.sc-login-flow-page:hover:not(:disabled){background:var(--sc-accent-soft,#e6f5f3)}
++.sc-login-flow-change:focus-visible,.sc-login-flow-back:focus-visible,.sc-login-flow-page:focus-visible,.sc-login-flow-search:focus-visible{outline:2px solid var(--sc-focus);outline-offset:2px}
++.sc-login-flow-chooser{display:grid;gap:10px}
++.sc-login-flow-chooser[hidden],.sc-login-flow-current-row[hidden],.sc-login-flow-change[hidden],.sc-login-flow-empty[hidden],.sc-login-flow-nav[hidden],.sc-login-flow-chooser .sc-login-account[hidden]{display:none!important}
++.sc-login-flow-head,.sc-login-flow-nav{display:flex;align-items:center;justify-content:space-between;gap:10px}
++.sc-login-flow-head strong{font-size:1rem}
++.sc-login-flow-search{width:100%;min-height:44px}
++.sc-login-flow-chooser .sc-login-account-grid{display:grid;grid-template-columns:1fr!important;gap:7px;max-height:none!important;overflow:visible!important;padding:0!important}
++.sc-login-flow-chooser .sc-login-account{min-height:51px;padding:8px 10px;grid-template-columns:36px minmax(0,1fr) 18px}
++.sc-login-flow-chooser .sc-login-account__copy strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.sc-login-flow-empty{text-align:center;color:var(--sc-muted);padding:10px 0;margin:0}
++.sc-login-flow-page:disabled{opacity:.4;cursor:not-allowed}
++.sc-login-flow-selecting [data-login-form] > :not([data-login-accounts]){display:none!important}
++.sc-login-flow-selecting .sc-login-flow-ready>.sc-login-flow-current-row{display:none!important}
++@media(max-width:640px){.sc-login-flow-current-row{padding:10px;gap:8px}.sc-login-flow-avatar{width:36px;min-width:36px;height:36px}.sc-login-flow-change{font-size:.8rem;padding:7px 8px}}
++
++/* R208 — Catalog searchable product picker uses a single clear control.
++   Chromium's native search cancel glyph was shown beside the app-owned × button.
++   Suppress the UA glyph only inside this picker; preserve native search elsewhere. */
++.sc-product-combobox__input::-webkit-search-decoration,
++.sc-product-combobox__input::-webkit-search-cancel-button,
++.sc-product-combobox__input::-webkit-search-results-button,
++.sc-product-combobox__input::-webkit-search-results-decoration{display:none!important;-webkit-appearance:none!important;appearance:none!important}
+--- a/public/assets/scds/guest.css
++++ b/public/assets/scds/guest.css
+@@ -297,4 +297,19 @@
+  .sg-modal.sg-waiter-confirm-modal .sg-waiter-confirm-card{padding:18px 20px 20px}
+  .sg-orders-list{padding:8px 10px 14px}
+  .sg-order-card{border-radius:14px}
+ }
++
++/* R209: Local guest informational fixed-bundle details match Public. */
++
++.sg-bundle-fixed-list{display:grid;gap:6px}
++.sg-bundle-fixed-part{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid var(--sg-line);border-radius:9px;background:var(--sg-surface-soft,#f7f6f2)}
++.sg-bundle-fixed-part span{font-weight:700}
++.sg-bundle-fixed-part small{font-size:.7rem;white-space:nowrap}
++
++/* R210: details without image keep desktop text in one compact column. */
++@media (min-width:721px){
++ .sg-item-detail-card.sg-item-detail-card--no-media{inline-size:min(660px,calc(100vw - 32px))!important;grid-template-columns:minmax(0,1fr)!important}
++ .sg-item-detail-card.sg-item-detail-card--no-media .sg-item-detail-media{display:none!important}
++ .sg-item-detail-card.sg-item-detail-card--no-media .sg-item-detail-copy{grid-column:1!important;padding:28px 30px!important}
++ .sg-item-detail-card.sg-item-detail-card--no-media .sg-item-detail-scroll{grid-column:1!important;grid-template-columns:minmax(0,1fr)!important}
++}
+--- a/public/assets/scds/guest.js
++++ b/public/assets/scds/guest.js
+@@ -520,10 +520,25 @@
+     const cafeOpen = acceptance.cafe !== false;
+     itemMap.forEach((item, id) => {
+       const scope = itemScope(item);
+       const scopeOpen = acceptance[scope] !== false;
+-      item.order_available = Boolean(item.available) && cafeOpen && scopeOpen;
+-      item.blocked_scope = !cafeOpen ? 'cafe' : (!scopeOpen ? scope : '');
++      // Keep stock availability distinct from accepting new orders, including
++      // fixed and choice components of a bundle (same semantics as Public).
++      const components = item.is_bundle && Array.isArray(item.bundle_components) ? item.bundle_components : [];
++      let fixedOrderOpen = true, hasChoice = false, choiceOrderOpen = false, componentBlockedScope = '';
++      for (const component of components) {
++        const physical = component.available !== false;
++        const cScope = itemScope(component);
++        const accepted = physical && cafeOpen && acceptance[cScope] !== false;
++        component.order_available = accepted;
++        if (String(component.mode || 'fixed') === 'choice') {
++          hasChoice = true;
++          if (accepted) choiceOrderOpen = true;
++        } else if (!accepted) fixedOrderOpen = false;
++        if (physical && !accepted && !componentBlockedScope) componentBlockedScope = !cafeOpen ? 'cafe' : cScope;
++      }
++      item.order_available = Boolean(item.available) && cafeOpen && (item.is_bundle ? fixedOrderOpen && (!hasChoice || choiceOrderOpen) : scopeOpen);
++      item.blocked_scope = !cafeOpen ? 'cafe' : (!item.order_available && item.available && item.is_bundle ? componentBlockedScope : (!scopeOpen && !item.is_bundle ? scope : ''));
+       if (item.blocked_scope) {
+         item.unavailable_message = item.blocked_scope === 'kitchen' ? 'آشپزخانه فعلاً سفارش تازه نمی‌پذیرد.' : item.blocked_scope === 'bar' ? 'بار فعلاً سفارش تازه نمی‌پذیرد.' : 'سفارش‌گیری فعلاً متوقف است.';
+       } else item.unavailable_message = '';
+       qa(`[data-item-id="${CSS.escape(String(id))}"]`).forEach((card) => {
+@@ -706,8 +721,9 @@
+     const configured=Array.isArray(item.variant_members)?item.variant_members:[];
+     return configured.map((m)=>{const row=itemMap.get(Number(m.item_id));return row?{...row,variant_label:String(m.label||row.variant_label||'')}:null}).filter(Boolean);
+   };
+   const bundleChoices = (item) => (Array.isArray(item?.bundle_components)?item.bundle_components:[]).filter((c)=>String(c.mode||'')==='choice');
++  const fixedBundleParts = (item) => (Array.isArray(item?.bundle_components)?item.bundle_components:[]).filter((c)=>String(c.mode||'')==='fixed');
+   const bundleChoiceName=(item,choice)=>{const row=bundleChoices(item).find(c=>Number(c.item_id)===Number(choice||0));return String(row?.name||'');};
+   const fixedBundleDelta=(item)=>(Array.isArray(item?.bundle_components)?item.bundle_components:[]).filter((c)=>String(c.mode||'')==='fixed').reduce((sum,c)=>sum+Number(c.price_delta||0),0);
+   const renderSuggestions=(item)=>{
+     if(!suggestions)return;const ids=Array.isArray(item?.suggested_item_ids)&&item.suggested_item_ids.length?item.suggested_item_ids:(item?.suggested_item_id?[item.suggested_item_id]:[]);suggestions.replaceChildren();
+@@ -715,9 +731,17 @@
+   };
+   const renderDetailOptions=(item,resetDraft)=>{
+     if(!detailOptions)return;
+     detailOptions.replaceChildren();detailOptions.hidden=true;
+-    const members=familyMembers(item),choices=bundleChoices(item);
++    const members=familyMembers(item),choices=bundleChoices(item),fixedParts=fixedBundleParts(item);
++    if(fixedParts.length){
++      detailOptions.hidden=false;const heading=document.createElement('strong');heading.textContent='این ترکیب شامل';detailOptions.append(heading);
++      const row=document.createElement('div');row.className='sg-bundle-fixed-list';
++      for(const part of fixedParts){const line=document.createElement('div');line.className='sg-bundle-fixed-part';
++        const name=document.createElement('span');name.textContent=`${part.name||'جزء ترکیب'}${Number(part.quantity||1)>1?' × '+numberFa(part.quantity):''}`;line.append(name);
++        if(Number(part.price_delta||0)!==0){const price=document.createElement('small');price.textContent=`تغییر قیمت: ${formatMoney(Math.abs(Number(part.price_delta)))}`;line.append(price)}
++        row.append(line)}detailOptions.append(row)
++    }
+     if(resetDraft){const remembered=hasOrderContext?detailChoiceMemory.get(Number(item.id)||0):null;detailSelectedItemId=members.length?(members.some(m=>Number(m.id)===Number(remembered?.variant||0)&&m.order_available)?Number(remembered.variant):0):Number(item.id||0);detailBundleChoiceItemId=choices.some(c=>Number(c.item_id)===Number(remembered?.bundle||0)&&c.available)?Number(remembered.bundle):0;detailDraftUnitPrice=Number(item.price||0);}
+     if(members.length){
+       detailOptions.hidden=false;
+       const title=document.createElement('strong');
+@@ -759,15 +783,15 @@
+   const renderDetail = (id, resetDraft = true) => {
+     const item=itemMap.get(Number(id));if(!item)return;currentDetailId=Number(id);if(resetDraft)detailDraftQty=Math.max(1,Number(lineFor(id)?.quantity||1));renderDetailOptions(item,resetDraft);
+     if(resetDraft&&detailSelectedItemId>0&&familyMembers(item).length)detailDraftQty=Math.max(1,Number(lineFor(detailSelectedItemId,0)?.quantity||1));
+     const members=familyMembers(item),selected=members.length?itemMap.get(Number(detailSelectedItemId)):item;const displayName=members.length?(item.variant_family_name||item.name):item.name;const displayDescription=members.length?(item.variant_family_description||item.description):item.description;
+-    if(detailMedia){detailMedia.replaceChildren();const mediaItem=selected||item;if(mediaItem.image){const img=document.createElement('img');img.src=mediaItem.image;img.alt=mediaItem.image_alt||displayName||'';if(mediaItem.image_focal){const x=Math.round(Math.max(0,Math.min(1,Number(mediaItem.image_focal.x??.5)))*100),y=Math.round(Math.max(0,Math.min(1,Number(mediaItem.image_focal.y??.5)))*100);img.classList.add(`sg-focal-x-${x}`,`sg-focal-y-${y}`);}img.addEventListener('error',()=>{if(img.isConnected)img.replaceWith(mediaPlaceholder());},{once:true});detailMedia.append(img);}else detailMedia.append(mediaPlaceholder());}
++    if(detailMedia){detailMedia.replaceChildren();const mediaItem=selected||item;detailModal?.querySelector('.sg-item-detail-card')?.classList.toggle('sg-item-detail-card--no-media',!mediaItem.image);if(mediaItem.image){const img=document.createElement('img');img.src=mediaItem.image;img.alt=mediaItem.image_alt||displayName||'';if(mediaItem.image_focal){const x=Math.round(Math.max(0,Math.min(1,Number(mediaItem.image_focal.x??.5)))*100),y=Math.round(Math.max(0,Math.min(1,Number(mediaItem.image_focal.y??.5)))*100);img.classList.add(`sg-focal-x-${x}`,`sg-focal-y-${y}`);}img.addEventListener('error',()=>{if(img.isConnected)img.replaceWith(mediaPlaceholder());},{once:true});detailMedia.append(img);}else detailMedia.append(mediaPlaceholder());}
+     detailTitle&&(detailTitle.textContent=faDigits(displayName||'آیتم منو'));detailPrice&&(detailPrice.textContent=(members.length&&!detailSelectedItemId)?`از ${formatMoney(Math.min(...members.map(m=>Number(m.price||0))))}`:formatMoney(detailDraftUnitPrice||item.price));detailDescription&&(detailDescription.textContent=faDigits(displayDescription||''));detailQty&&(detailQty.textContent=numberFa(detailDraftQty));
+     const selectedItem=members.length?itemMap.get(Number(detailSelectedItemId)):item;const choiceRequired=item.is_bundle&&bundleChoices(item).length>0;const selectionReady=(!members.length||detailSelectedItemId>0)&&(!choiceRequired||detailBundleChoiceItemId>0);const canAdd=hasOrderContext&&unsafeAllowed()&&orderingEnabled&&selectionReady&&Boolean((selectedItem||item).order_available);
+     if(detailControls)detailControls.hidden=!hasOrderContext;const detailFooter=q('.sg-item-detail-footer',detailModal);if(detailFooter)detailFooter.hidden=!hasOrderContext;if(detailAdd){const existingLine=lineFor(detailSelectedItemId||item.id,item.is_bundle?detailBundleChoiceItemId:0);detailAdd.hidden=!hasOrderContext;detailAdd.disabled=!canAdd;detailAdd.textContent=members.length&&!detailSelectedItemId?'ابتدا یک گزینه انتخاب کن':(choiceRequired&&!detailBundleChoiceItemId?'ابتدا یک گزینه انتخاب کن':(existingLine?'به‌روزرسانی سبد':'افزودن به سفارش'));}
+     if(detailNoteWrap)detailNoteWrap.hidden=!hasOrderContext||!selectionReady;if(detailNote){const noteKey=cartLineKey(detailSelectedItemId||item.id,item.is_bundle?detailBundleChoiceItemId:0);if(resetDraft||detailNote.dataset.sgDraftNoteKey!==noteKey){const existing=lineFor(detailSelectedItemId||item.id,item.is_bundle?detailBundleChoiceItemId:0);detailNote.value=existing?.note||'';detailNote.dataset.sgDraftNoteKey=noteKey;}}
+     if(detailState){detailState.textContent=!hasOrderContext?(item.available?'':'این آیتم فعلاً ناموجود است.'):(!item.available?'این آیتم فعلاً ناموجود است.':(!selectionReady?'انتخاب یکی از گزینه‌ها الزامی است.':(!((selectedItem||item).order_available)?((selectedItem||item).unavailable_message||'این بخش فعلاً سفارش تازه نمی‌پذیرد.') : '')));detailState.hidden=detailState.textContent==='';}
+-    if(hasOrderContext)renderSuggestions(selectedItem||item);else if(suggestions){suggestions.replaceChildren();suggestions.hidden=true;}
++    renderSuggestions(selectedItem||item);
+   };
+   root.addEventListener('click',(event)=>{const opener=event.target.closest('[data-sg-open-detail]');if(!opener)return;event.preventDefault();event.stopPropagation();renderDetail(Number(opener.dataset.sgOpenDetail));openLayer(detailModal,opener);});
+   detailOptions?.addEventListener('click',(event)=>{if(!hasOrderContext)return;const variant=event.target.closest('[data-sg-variant-item]');if(variant){detailSelectedItemId=Number(variant.dataset.sgVariantItem||0);detailChoiceMemory.set(Number(currentDetailId),{variant:detailSelectedItemId,bundle:0});detailDraftQty=Math.max(1,Number(lineFor(detailSelectedItemId,0)?.quantity||1));renderDetail(currentDetailId,false);return;}const choice=event.target.closest('[data-sg-bundle-choice]');if(choice){detailBundleChoiceItemId=Number(choice.dataset.sgBundleChoice||0);detailChoiceMemory.set(Number(currentDetailId),{variant:0,bundle:detailBundleChoiceItemId});detailDraftQty=Math.max(1,Number(lineFor(currentDetailId,detailBundleChoiceItemId)?.quantity||1));detailDraftUnitPrice=Number(choice.dataset.finalPrice||0);renderDetail(currentDetailId,false);}});
+   q('[data-sg-detail-inc]')?.addEventListener('click',()=>{if(!hasOrderContext)return;detailDraftQty=clampInt(detailDraftQty+1,1,99);detailQty&&(detailQty.textContent=numberFa(detailDraftQty));});
+@@ -784,9 +808,9 @@
+     if(event.key!=='Enter'||event.isComposing||!event.target.matches?.('[data-sg-line-note]'))return;
+     event.preventDefault();event.stopPropagation();
+     event.target.blur(); // the input handler has already saved the note
+   });
+-  suggestions?.addEventListener('click',(event)=>{const b=event.target.closest('[data-sg-suggestion-item]');const id=Number(b?.dataset.sgSuggestionItem||0);if(!id)return;setCartQty(id,(lineFor(id)?.quantity||0)+1);});
++  suggestions?.addEventListener('click',(event)=>{const b=event.target.closest('[data-sg-suggestion-item]');const id=Number(b?.dataset.sgSuggestionItem||0);if(!id)return;if(!hasOrderContext){renderDetail(id);openLayer(detailModal,b);return;}setCartQty(id,(lineFor(id)?.quantity||0)+1);});
+ 
+   const trackerKey = tableToken ? `sokna.guest.latest-order.${tableToken}` : '';
+   const saveTracker=(value)=>{if(!trackerKey)return;try{value?sessionStorage.setItem(trackerKey,JSON.stringify(value)):sessionStorage.removeItem(trackerKey);}catch(_){}};
+   const loadTracker=()=>{if(!trackerKey)return null;try{return JSON.parse(sessionStorage.getItem(trackerKey)||'null')}catch(_){return null}};
+--- a/public/printing/api.php
++++ b/public/printing/api.php
+@@ -16,8 +16,9 @@
+     if($action==='print_template_import')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->import((string)($data['package_json']??''),$user)]);
+     if($action==='print_template_version_save')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->saveVersion((int)($data['base_package_id']??0),(array)($data['package']??[]),$user)]);
+     if($action==='print_template_standard_install')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->installStandard((string)($data['document_kind']??''),$user)]);
+     if($action==='print_template_rollback')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->rollback((int)($data['package_id']??0),$user)]);
++    if($action==='print_template_delete')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->delete((int)($data['package_id']??0),$user)]);
+     if($action==='print_template_activate')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->activate((int)($data['package_id']??0),$user)]);
+     if($action==='print_template_preview')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->preview((int)($data['package_id']??0),(string)($data['destination_key']??''),$user,(string)($data['output_format']??'pdf'))]);
+     if($action==='pdf_test_bridge')WebAction::json(['success'=>true,'result'=>$core->printing()->pdfTestBridge($user,(int)($data['agent_id']??0))]);
+     if($action==='print_test')WebAction::json(['success'=>true,'result'=>$core->printing()->enqueueTest((string)($data['destination_key']??''),(string)($data['request_id']??''),$user,isset($data['package_id'])?(int)$data['package_id']:null)]);
+--- a/src/Domain/GuestContent/GuestContentService.php
++++ b/src/Domain/GuestContent/GuestContentService.php
+@@ -415,12 +415,39 @@
+             throw new GuestContentException('media_invalid_image','فایل انتخاب‌شده تصویر معتبر نیست.',422);
+         }
+         $sha = hash_file('sha256', $tmpPath);
+         if (!is_string($sha)) throw new GuestContentException('media_hash','خواندن تصویر کامل نشد.',500);
+-        $existing = $this->pdo->prepare('SELECT media_key FROM guest_media_assets WHERE sha256=? LIMIT 1');
++        $existing = $this->pdo->prepare('SELECT id,media_key,active,original_relpath FROM guest_media_assets WHERE sha256=? LIMIT 1');
+         $existing->execute([$sha]);
+-        $key = $existing->fetchColumn();
+-        if (is_string($key) && $key !== '') return ['deduplicated'=>true,'media_key'=>$key];
++        $stored = $existing->fetch(PDO::FETCH_ASSOC);
++        if (is_array($stored) && (string)($stored['media_key'] ?? '') !== '') {
++            $key = (string)$stored['media_key'];
++            if ((int)($stored['active'] ?? 0) === 1) return ['deduplicated'=>true,'media_key'=>$key];
++            // The unique SHA row survives archiving. A second upload must make it
++            // visible again, not report a successful upload of a hidden image.
++            $this->pdo->beginTransaction();
++            try {
++                $locked = $this->pdo->prepare('SELECT id,media_key,active,original_relpath FROM guest_media_assets WHERE sha256=? LIMIT 1 FOR UPDATE');
++                $locked->execute([$sha]);
++                $row = $locked->fetch(PDO::FETCH_ASSOC);
++                if (!is_array($row)) throw new GuestContentException('media_changed','وضعیت تصویر تغییر کرده؛ دوباره تلاش کن.',409);
++                $key = (string)$row['media_key'];
++                $restored = (int)$row['active'] !== 1;
++                if ($restored) {
++                    $original = $this->path((string)($row['original_relpath'] ?? ''));
++                    if (!is_file($original) || !is_readable($original)) {
++                        throw new GuestContentException('media_archived_file_missing','فایل آرشیوشده روی دیسک پیدا نشد؛ ابتدا وضعیت آرشیو را بررسی کن.',409);
++                    }
++                    $this->pdo->prepare('UPDATE guest_media_assets SET active=1,archived_at=NULL WHERE id=? AND active=0')->execute([(int)$row['id']]);
++                    $this->audit('guest.media_restored_on_upload','guest_media',$key,(int)$admin['id'],['sha256'=>$sha]);
++                }
++                $this->pdo->commit();
++                return ['deduplicated'=>true,'restored'=>$restored,'media_key'=>$key];
++            } catch (Throwable $e) {
++                if ($this->pdo->inTransaction()) $this->pdo->rollBack();
++                throw $e;
++            }
++        }
+         $mediaKey = 'm_' . substr($sha, 0, 24);
+         $originalName = $this->plain($originalName, 255, 'تصویر');
+         $altText = $this->plain($altText, 180, '');
+         $originalRel = 'original/' . $sha . '.' . $extension;
+--- a/src/Domain/GuestLan/GuestLanPageRenderer.php
++++ b/src/Domain/GuestLan/GuestLanPageRenderer.php
+@@ -150,15 +150,16 @@
+             $id=(int)($item['id']??0);if($id<1)continue;$source=(string)($item['image_path']??'');$station=(string)($item['preparation_station']??'other');
+             $live=is_array($availabilityItems[(string)$id]??null)?$availabilityItems[(string)$id]:[];$available=array_key_exists('available',$live)?(bool)$live['available']:!empty($item['available']);
+             $scope=$station==='kitchen'?'kitchen':(in_array($station,['hot_bar','cold_bar'],true)?'bar':'cafe');
+             $scopeOpen=!array_key_exists($scope,$acceptanceMap)||(bool)$acceptanceMap[$scope];$cafeOpen=!array_key_exists('cafe',$acceptanceMap)||(bool)$acceptanceMap['cafe'];
+-            $bundle=is_array($item['bundle']??null)?$item['bundle']:null;$bundleComponents=[];$fixedDelta=0;$bundleAvailable=true;$choiceConfigured=false;$choiceAvailable=false;
++            $bundle=is_array($item['bundle']??null)?$item['bundle']:null;$bundleComponents=[];$fixedDelta=0;$bundleAvailable=true;$bundleOrderAvailable=true;$choiceConfigured=false;$choiceAvailable=false;$choiceOrderAvailable=false;$componentBlockedScope='';
+             if($bundle!==null){
+-                foreach((array)($bundle['components']??[]) as $component){if(!is_array($component))continue;$componentId=(int)($component['item_id']??0);$cr=is_array($catalogById[$componentId]??null)?$catalogById[$componentId]:[];$clive=is_array($availabilityItems[(string)$componentId]??null)?$availabilityItems[(string)$componentId]:[];$ca=array_key_exists('available',$clive)?(bool)$clive['available']:!empty($cr['available']);$cs=(string)($cr['preparation_station']??'none');$cScope=$cs==='kitchen'?'kitchen':(in_array($cs,['hot_bar','cold_bar'],true)?'bar':'cafe');$cOpen=!array_key_exists($cScope,$acceptanceMap)||(bool)$acceptanceMap[$cScope];$mode=(string)($component['mode']??'fixed');$ok=$ca&&$cOpen&&$cafeOpen&&$cr!==[];$entry=['item_id'=>$componentId,'name'=>(string)($cr['name']??''),'mode'=>$mode,'quantity'=>max(1,(int)($component['quantity']??1)),'price_delta'=>(int)($component['price_delta']??0),'available'=>$ok,'preparation_station'=>$cs];$bundleComponents[]=$entry;if($mode==='fixed'){if(!$ok)$bundleAvailable=false;$fixedDelta+=(int)$entry['price_delta'];}else{$choiceConfigured=true;if($ok)$choiceAvailable=true;}}
++                foreach((array)($bundle['components']??[]) as $component){if(!is_array($component))continue;$componentId=(int)($component['item_id']??0);$cr=is_array($catalogById[$componentId]??null)?$catalogById[$componentId]:[];$clive=is_array($availabilityItems[(string)$componentId]??null)?$availabilityItems[(string)$componentId]:[];$ca=array_key_exists('available',$clive)?(bool)$clive['available']:!empty($cr['available']);$cs=(string)($cr['preparation_station']??'none');$cScope=$cs==='kitchen'?'kitchen':(in_array($cs,['hot_bar','cold_bar'],true)?'bar':'cafe');$cOpen=!array_key_exists($cScope,$acceptanceMap)||(bool)$acceptanceMap[$cScope];$mode=(string)($component['mode']??'fixed');$componentAvailable=$ca&&$cr!==[];$serviceOk=$componentAvailable&&$cOpen&&$cafeOpen;if($componentAvailable&&!$serviceOk&&$componentBlockedScope==='')$componentBlockedScope=!$cafeOpen?'cafe':$cScope;$entry=['item_id'=>$componentId,'name'=>(string)($cr['name']??''),'mode'=>$mode,'quantity'=>max(1,(int)($component['quantity']??1)),'price_delta'=>(int)($component['price_delta']??0),'available'=>$componentAvailable,'order_available'=>$serviceOk,'preparation_station'=>$cs];$bundleComponents[]=$entry;if($mode==='fixed'){if(!$componentAvailable)$bundleAvailable=false;if(!$serviceOk)$bundleOrderAvailable=false;$fixedDelta+=(int)$entry['price_delta'];}else{$choiceConfigured=true;if($componentAvailable)$choiceAvailable=true;if($serviceOk)$choiceOrderAvailable=true;}}
+                 if($choiceConfigured&&!$choiceAvailable)$bundleAvailable=false;
++                if($choiceConfigured&&!$choiceOrderAvailable)$bundleOrderAvailable=false;
+             }
+             $effectivePrice=max(0,(int)($item['price']??0)+$fixedDelta);$available=$available&&$bundleAvailable;
+-            $orderAvailable=$available&&$cafeOpen&&($bundle!==null?true:$scopeOpen);$blockedScope=!$cafeOpen?'cafe':(!$scopeOpen&&$bundle===null?$scope:'');
++            $orderAvailable=$available&&$cafeOpen&&($bundle!==null?$bundleOrderAvailable:$scopeOpen);$blockedScope=!$cafeOpen?'cafe':(!$scopeOpen&&$bundle===null?$scope:($bundle!==null&&!$bundleOrderAvailable?$componentBlockedScope:''));
+             $clientItems[(string)$id]=[
+                 'id'=>$id,'name'=>(string)($item['name']??''),'description'=>(string)($item['description']??''),'category'=>(string)($item['category_name']??''),
+                 'price'=>$effectivePrice,'base_price'=>max(0,(int)($item['price']??0)),'available'=>$available,'order_available'=>$orderAvailable,'blocked_scope'=>$blockedScope,
+                 'unavailable_message'=>$blockedScope!==''?(string)($acceptanceMessages[$blockedScope]??'این بخش فعلاً سفارش تازه نمی‌پذیرد.'):(!$available?'این ترکیب یا یکی از اجزای آن فعلاً قابل سفارش نیست.':''),
+--- a/src/Domain/Printing/PrintTemplatePackageService.php
++++ b/src/Domain/Printing/PrintTemplatePackageService.php
+@@ -105,8 +105,38 @@
+     public function activate(int $packageId,array $actor): array
+     {
+         $uid=$this->admin($actor);$row=$this->packageRow($packageId);$this->setActive($packageId,$uid,'printing.template_activated');
+         return ['package_id'=>$packageId,'document_kind'=>(string)$row['document_kind'],'version'=>(string)$row['version']];
++    }
++
++    /** Permanently remove only a non-active template version. No print history is modified. */
++    public function delete(int $packageId,array $actor): array
++    {
++        $uid=$this->admin($actor);
++        if($packageId<1)throw new PrintException('print_template_not_found','قالب چاپ پیدا نشد.',404);
++        $this->pdo->beginTransaction();
++        try{
++            $q=$this->pdo->prepare('SELECT id,template_key,display_name,version,document_kind,content_sha256 FROM print_template_packages WHERE id=? FOR UPDATE');
++            $q->execute([$packageId]);$row=$q->fetch(PDO::FETCH_ASSOC);
++            if(!is_array($row))throw new PrintException('print_template_not_found','قالب چاپ پیدا نشد.',404);
++            $active=$this->pdo->prepare('SELECT document_kind FROM print_template_activations WHERE package_id=? LIMIT 1 FOR UPDATE');
++            $active->execute([$packageId]);
++            if($active->fetchColumn()!==false)throw new PrintException('print_template_delete_active','قالب فعال را نمی‌توان حذف کرد. ابتدا قالب دیگری را فعال کنید.',409);
++            $del=$this->pdo->prepare('DELETE FROM print_template_packages WHERE id=?');
++            $del->execute([$packageId]);
++            if($del->rowCount()!==1)throw new PrintException('print_template_delete_conflict','حذف قالب انجام نشد؛ وضعیت آن را دوباره بررسی کنید.',409);
++            $this->audit($uid,'printing.template_deleted','print_template_package',(string)$packageId,[
++                'template_key'=>(string)$row['template_key'],'version'=>(string)$row['version'],
++                'document_kind'=>(string)$row['document_kind'],'sha256'=>(string)$row['content_sha256'],
++            ]);
++            $this->pdo->commit();
++            return ['package_id'=>$packageId,'deleted'=>true,'document_kind'=>(string)$row['document_kind']];
++        }catch(\Throwable $e){
++            if($this->pdo->inTransaction())$this->pdo->rollBack();
++            if($e instanceof \PDOException && (string)$e->getCode()==='23000')
++                throw new PrintException('print_template_delete_referenced','این قالب هنوز در بخش دیگری استفاده می‌شود و قابل حذف نیست.',409);
++            throw $e;
++        }
+     }
+ 
+     public function applyActive(array $payload): array
+     {
