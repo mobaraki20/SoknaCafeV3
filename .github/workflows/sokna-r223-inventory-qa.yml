@@ -1,0 +1,77 @@
+name: SOKNA R223 exact 591 source bundle inventory MariaDB QA (disposable only)
+on:
+  push:
+    branches: [qa/sokna-r223-guest-inventory-20261114]
+    paths:
+      - 'qa/sokna-r223/**'
+      - '.github/workflows/sokna-r223-inventory-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  r223-full-bundle-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r212-disposable-only
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R212_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R212_DB_PASSWORD: r212-disposable-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql,mbstring,curl,gd,zip
+          coverage: none
+      - name: Wait for disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R212_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then echo PASS_R223_DISPOSABLE_MARIADB_READY;exit 0;fi
+            sleep 2
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R204-EXACT-SOURCE-AND-MANIFEST-READY-FOR-WINDOWS
+          run-id: 43513196061
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r204-verified
+      - name: Reconstruct exact R222 and apply R223 one-file inventory fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/r223";mkdir -p "$R/outer" "$R/web"
+          ARCHIVE=$(find "$RUNNER_TEMP/r204-verified" -type f -name 'SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$ARCHIVE"
+          echo "279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3  $ARCHIVE" | sha256sum -c -
+          unzip -q "$ARCHIVE" -d "$R/outer"
+          unzip -q "$R/outer/artifacts/local/web.zip" -d "$R/web"
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r222/R204-to-R222-exact-cumulative.patch.gz.b64" | gzip -d > "$R/r222.patch"
+          echo "56ab7c800a3b0a14c869374095806e4bac821c92647a26d78309b125edb083c5  $R/r222.patch" | sha256sum -c -
+          (cd "$R/web" && git init -q && git config core.autocrlf false && git apply --check "$R/r222.patch" && git apply "$R/r222.patch")
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r223/R222-to-R223-inventory.patch.gz.b64" | gzip -d > "$R/r223.patch"
+          echo "3ff7211dfd9d3ea7db62b3e6a2033091e351c3c1c11ab6a0086b8edcd3a51838  $R/r223.patch" | sha256sum -c -
+          (cd "$R/web" && git apply --check "$R/r223.patch" && git apply "$R/r223.patch")
+          test "$(find "$R/web" -type f -not -path '*/.git/*' | wc -l)" -eq 591
+          php -l "$R/web/src/Domain/Inventory/InventoryOrderService.php"
+          echo "SOKNA_R212_WEB=$R/web" >> "$GITHUB_ENV"
+          echo PASS_R223_EXACT_R222_PATCHED_591_FILES
+      - name: Run 81 migrations, R212 media and order acceptance, R222 editor and cost, R223 inventory lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r212/test_r212_media_real_mariadb.php
+          php qa/sokna-r212/test_r212_order_acceptance_real_mariadb.php
+          php qa/sokna-r222/test_r222_atomic_mariadb.php
+          node qa/sokna-r222/test_bundle_cost.cjs "$SOKNA_R212_WEB/public/assets/catalog-workspace.js" "$RUNNER_TEMP/R222-db-recipe-cost.json"
+          php qa/sokna-r223/test_r223_inventory_mariadb.php
+          echo PASS_R223_ALL_CI_DB_TESTS
