@@ -92,4 +92,5 @@ jobs:
           python3 qa/sokna-r225/test_r225_guest_http.py
           php qa/sokna-r225/approve_r225.php
           php qa/sokna-r226/test_r226_print_real_mariadb.php
+          python3 qa/sokna-r226/test_r226_template_http.py
           echo PASS_R226_REAL_PRINT_QUEUE_AND_TEMPLATES_DB_TESTS
