@@ -1,0 +1,72 @@
+{
+    "schema": "sokna-print-document-v2",
+    "document_kind": "preparation",
+    "title": "کافه سکنا",
+    "badge": "فیش آماده‌سازی",
+    "order_number": 401,
+    "table_name": "میز ۱۲",
+    "display_date": "۱۴۰۵/۰۸/۲۳",
+    "sections": [
+        {
+            "title": "",
+            "items": [
+                {
+                    "name": "سالاد سزار",
+                    "quantity": 2,
+                    "note": "بدون سس",
+                    "fulfillment_mode": "dine_in"
+                },
+                {
+                    "name": "پاستا",
+                    "quantity": 1,
+                    "note": "بدون قارچ",
+                    "fulfillment_mode": "dine_in"
+                },
+                {
+                    "name": "کاپوچینو",
+                    "quantity": 1,
+                    "note": "دارچین اضافه",
+                    "fulfillment_mode": "dine_in"
+                },
+                {
+                    "name": "لیموناد",
+                    "quantity": 2,
+                    "note": "یخ کم",
+                    "fulfillment_mode": "dine_in"
+                }
+            ]
+        }
+    ],
+    "template": {
+        "base_font_size": 24,
+        "title_font_size": 30,
+        "table_font_size": 28,
+        "line_spacing": 5,
+        "margin": 8,
+        "show_actor": false,
+        "show_time": true,
+        "show_order_number": true,
+        "show_section_titles": true,
+        "show_prices": false,
+        "footer": "",
+        "design": {
+            "density": "compact",
+            "header_alignment": "right",
+            "separator_style": "solid",
+            "item_layout": "columnar",
+            "section_order": [
+                "status",
+                "meta",
+                "items",
+                "notes",
+                "footer"
+            ],
+            "labels": {
+                "ticket_title": "فیش آماده‌سازی",
+                "note": "یادداشت",
+                "takeaway": "بیرون‌بر"
+            }
+        }
+    }
+}
+
