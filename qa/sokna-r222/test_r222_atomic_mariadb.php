@@ -78,4 +78,20 @@ $check(!$pdo->inTransaction(),'COMPOSITE_NO_LEFTOVER_TRANSACTION');
 // Legacy one-step API must still commit independently, preserving backwards compatibility.
 $catalog->saveSuggestions($parent,[$choice],$actor);
 $check((int)$pdo->query('SELECT suggested_item_id FROM item_suggestions WHERE source_item_id='.$parent)->fetchColumn()===$choice,'LEGACY_STANDALONE_API_COMMITS');
+// Cost preview uses the same active component recipes as inventory order snapshots.
+// Parent recipe (5 units) is intentionally different, and must NOT be used for the bundle.
+$orders->saveRecipeEditor($fixed,[['inventory_item_id'=>$inv,'quantity_base'=>10,'quantity_status'=>'known']],$actor,true,true);
+$orders->saveRecipeEditor($choice,[['inventory_item_id'=>$inv,'quantity_base'=>4,'quantity_status'=>'known']],$actor,true,true);
+$source=$orders->recipeEditorSnapshot($actor);
+$fixedRow=$pdo->query('SELECT id,name,preparation_station FROM items WHERE id='.$fixed)->fetch();
+$choiceRow=$pdo->query('SELECT id,name,preparation_station FROM items WHERE id='.$choice)->fetch();
+$fixture=[
+ 'components'=>[['component_item_id'=>$fixed,'mode'=>'fixed','quantity'=>2,'price_delta'=>3000],['component_item_id'=>$choice,'mode'=>'choice','quantity'=>1,'price_delta'=>-1000]],
+ 'basePrice'=>35000,'items'=>[$fixedRow,$choiceRow],
+ 'recipes'=>$source['recipes'],'inventory'=>$source['inventory_items'],
+ 'expectedPrice'=>37000,'expectedCost'=>72,
+];
+$fixtureFile=(string)getenv('RUNNER_TEMP').'/R222-db-recipe-cost.json';
+file_put_contents($fixtureFile,json_encode($fixture,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));
+$check(is_file($fixtureFile),'REAL_DB_COST_FIXTURE_CREATED');
 echo 'PASS_R222_ATOMIC_EDITOR_REAL_MARIADB_'.$checkCount."_CHECKS\n";
