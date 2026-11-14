@@ -97,7 +97,7 @@ setting($pdo,'inventory_reconciliation_required','0');
 $r=cancel($core,$trackedOrder,$actor,'TRACKED_RESUMED');
 ok(($r['status']??'')==='cancelled','TRACKED_AFTER_RESUME_CANCEL_SUCCESS');
 ok(status($pdo,'inventory_order_events',$trackedEvent)==='done','TRACKED_ORIGINAL_EVENT_POSTED');
-$rows=$pdo->prepare('SELECT quantity_base FROM inventory_movements WHERE source_type=\'order_item\' AND source_id=? ORDER BY id');$rows->execute([$trackedOi]);
+$rows=$pdo->prepare('SELECT quantity_base FROM inventory_movements WHERE inventory_item_id=? ORDER BY id');$rows->execute([$inv]);
 $moves=array_map('intval',$rows->fetchAll(PDO::FETCH_COLUMN));sort($moves);
 ok($moves===[-6,6],'TRACKED_CONSUMPTION_AND_EXACT_REVERSAL');
 ok((int)one($pdo,'SELECT quantity_base FROM inventory_balances WHERE inventory_item_id=?',[$inv])===100,'TRACKED_STOCK_RETURNED_EXACTLY');
