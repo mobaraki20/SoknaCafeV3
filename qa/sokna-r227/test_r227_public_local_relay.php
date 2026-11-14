@@ -8,6 +8,7 @@ $tmp=realpath((string)getenv('RUNNER_TEMP'));
 if (!$localWeb || !$publicRoot || !$tmp || !str_starts_with($localWeb,$tmp.DIRECTORY_SEPARATOR) || !str_starts_with($publicRoot,$tmp.DIRECTORY_SEPARATOR)) throw new RuntimeException('R227_NON_TEMP_FORBIDDEN');
 $files=['src/Core/CanonicalJson.php','src/Core/Migrations.php','src/Connectivity/ConnectivityService.php','src/Remote/RemoteReadModelService.php','src/Realtime/RealtimeService.php','src/Guest/GuestCompatibilityService.php'];
 require_once $localWeb.'/bootstrap.php';
+require_once $localWeb.'/src/Domain/GuestLan/GuestLanGatewayService.php';
 foreach($files as $file) require_once $publicRoot.'/'.$file;
 $cfg=require dirname($localWeb).'/config.php';
 $local=sokna_local_bootstrap($cfg);
