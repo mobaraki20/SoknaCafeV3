@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Text;
+using System.Text.Json.Nodes;
 using Sokna.PrintAgent.Core;
 using Sokna.PrintAgent.Worker;
 
@@ -95,6 +96,46 @@ try
 finally
 {
     try{Directory.Delete(pdfRoot,true);}catch{}
+}
+
+
+var r214PayloadPath=Environment.GetEnvironmentVariable("SOKNA_R214_PAYLOAD");
+if(!string.IsNullOrWhiteSpace(r214PayloadPath))
+{
+    var prepared=await File.ReadAllTextAsync(r214PayloadPath);
+    var after=JsonNode.Parse(prepared)!.AsObject();
+    var sections=after["sections"]!.AsArray();
+    Check(sections.Count==1 && sections[0]!["title"]!.ToString()=="","r214_one_section_without_printed_group_heading");
+    var items=sections[0]!["items"]!.AsArray();
+    Check(items.Count==4 && items[0]!["name"]!.ToString()=="سالاد سزار" && items[1]!["name"]!.ToString()=="پاستا" && items[2]!["name"]!.ToString()=="کاپوچینو" && items[3]!["name"]!.ToString()=="لیموناد","r214_kitchen_before_both_bars");
+    Check(items[0]!["note"]!.ToString()=="بدون سس" && items[2]!["note"]!.ToString()=="دارچین اضافه","r214_notes_remain_attached_to_correct_items");
+    var noNotes=JsonNode.Parse(prepared)!.AsObject();
+    foreach(var row in noNotes["sections"]![0]!["items"]!.AsArray())row!["note"]="";
+    var legacy=JsonNode.Parse(prepared)!.AsObject();
+    var oldItems=legacy["sections"]![0]!["items"]!.AsArray();
+    legacy["sections"]=new JsonArray(
+        new JsonObject{["title"]="آشپزخانه",["items"]=new JsonArray(oldItems[0]!.DeepClone(),oldItems[1]!.DeepClone())},
+        new JsonObject{["title"]="بار گرم",["items"]=new JsonArray(oldItems[2]!.DeepClone())},
+        new JsonObject{["title"]="بار سرد",["items"]=new JsonArray(oldItems[3]!.DeepClone())}
+    );
+    using var slip80=ReceiptRenderer.Render(prepared,72,80,203,203);
+    using var slip58=ReceiptRenderer.Render(prepared,50,58,203,203);
+    using var slipWithoutNotes=ReceiptRenderer.Render(noNotes.ToJsonString(),72,80,203,203);
+    using var legacySlip=ReceiptRenderer.Render(legacy.ToJsonString(),72,80,203,203);
+    Check(slip80.Height>slipWithoutNotes.Height,"r214_item_notes_are_actually_drawn_in_columns");
+    Check(legacySlip.Height>slip80.Height,"r214_single_section_saves_vertical_paper_vs_three_sections");
+    Check(slip58.Width==(int)Math.Round(50/25.4*203),"r214_columnar_compact_58mm_output_width");
+    Check(slip80.Width==(int)Math.Round(72/25.4*203),"r214_columnar_80mm_output_width");
+    var dir=Environment.GetEnvironmentVariable("SOKNA_R214_SCREENSHOT_DIR");
+    if(!string.IsNullOrWhiteSpace(dir))
+    {
+        Directory.CreateDirectory(dir);
+        slip80.Save(Path.Combine(dir,"R214-preparation-80mm.png"),ImageFormat.Png);
+        slip58.Save(Path.Combine(dir,"R214-preparation-58mm.png"),ImageFormat.Png);
+        legacySlip.Save(Path.Combine(dir,"R214-previous-three-section-80mm.png"),ImageFormat.Png);
+        Check(File.Exists(Path.Combine(dir,"R214-preparation-80mm.png")),"r214_visual_evidence_written");
+        Console.WriteLine($"PASS_R214_PREPARATION_RENDER heights_single={slip80.Height} heights_previous_three_sections={legacySlip.Height} without_notes={slipWithoutNotes.Height}");
+    }
 }
 
 if(failures.Count>0){Console.Error.WriteLine("FAIL "+string.Join(",",failures));return 1;}Console.WriteLine("PASS Sokna.PrintAgent.Worker.Tests");return 0;
