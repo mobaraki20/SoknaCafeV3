@@ -22,7 +22,7 @@ $result = [ordered]@{
   manifest_version = $null
   manifest_valid = $false
   programdata_preserved_unmodified = $true
-  programdata_present = (Test-Path (Join-Path $env:ProgramData 'Sokna\\PrintAgent'))
+  programdata_present = (Test-Path (Join-Path $env:ProgramData 'Sokna\PrintAgent'))
   warnings = @()
 }
 $svc = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
@@ -35,20 +35,20 @@ if ($null -eq $svc) {
   $result.service_name = [string]$svc.Name
   $raw = [Environment]::ExpandEnvironmentVariables(([string]$svc.PathName).Trim())
   $exe = $null
-  if ($raw -match '^"([^"]+\\.exe)"') { $exe = $Matches[1] }
-  elseif ($raw -match '^([^\\s"]+\\.exe)(?:\\s|$)') { $exe = $Matches[1] }
+  if ($raw -match '^"([^"]+\.exe)"') { $exe = $Matches[1] }
+  elseif ($raw -match '^([^\s"]+\.exe)(?:\s|$)') { $exe = $Matches[1] }
   if (!$exe -or !(Test-Path -LiteralPath $exe -PathType Leaf)) {
     $result.code = 'SERVICE_IMAGE_PATH_UNREADABLE'
   } else {
     $full = [IO.Path]::GetFullPath($exe)
-    if (!$full.EndsWith('\\PrintAgent\\Service\\Sokna.PrintAgent.Service.exe',[StringComparison]::OrdinalIgnoreCase)) {
+    if (!$full.EndsWith('\PrintAgent\Service\Sokna.PrintAgent.Service.exe',[StringComparison]::OrdinalIgnoreCase)) {
       $result.code = 'UNRECOGNIZED_SERVICE_IMAGE_PATH'
     } else {
       $result.image_path = $full
       $result.service_exe_sha256 = (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash.ToLowerInvariant()
       $result.installed_version = [string](Get-Item -LiteralPath $full).VersionInfo.ProductVersion
       $componentRoot = Split-Path (Split-Path $full -Parent) -Parent
-      $worker = Join-Path $componentRoot 'Worker\\Sokna.PrintAgent.Worker.exe'
+      $worker = Join-Path $componentRoot 'Worker\Sokna.PrintAgent.Worker.exe'
       if (Test-Path -LiteralPath $worker -PathType Leaf) {
         $result.worker_exe_sha256 = (Get-FileHash -LiteralPath $worker -Algorithm SHA256).Hash.ToLowerInvariant()
       } else {
@@ -70,7 +70,7 @@ if ($null -eq $svc) {
             $rel = [string]$file.path
             if (!$rel -or [IO.Path]::IsPathRooted($rel) -or $rel.Contains('..')) { throw 'unsafe_manifest_path' }
             $path = [IO.Path]::GetFullPath((Join-Path $componentRoot $rel))
-            if (!$path.StartsWith(($componentRoot.TrimEnd('\\')+'\\'),[StringComparison]::OrdinalIgnoreCase)) { throw 'outside_manifest_root' }
+            if (!$path.StartsWith(($componentRoot.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase)) { throw 'outside_manifest_root' }
             if (!(Test-Path -LiteralPath $path -PathType Leaf)) { $ok=$false;continue }
             if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$file.sha256) { $ok=$false }
           }
