@@ -22,3 +22,12 @@ c=calc([{mode:'choice',component_item_id:9,quantity:1,price_delta:0}],5000,items
 assert.strictEqual(c[0].cost,20);assert.strictEqual(c[0].estimated,true);console.log('PASS_R222_UNREVIEWED_RECIPE_ESTIMATED');
 c=calc([{mode:'choice',component_item_id:999,quantity:1,price_delta:0}],5000,items,recipes,inv);
 assert.strictEqual(c[0].cost,null);console.log('PASS_R222_MISSING_COMPONENT_NOT_ZERO_COST');
+
+if(process.argv[3]){
+ const fixture=JSON.parse(fs.readFileSync(process.argv[3],'utf8'));
+ const actual=calc(fixture.components,fixture.basePrice,fixture.items,fixture.recipes,fixture.inventory);
+ assert.strictEqual(actual.length,1);
+ assert.strictEqual(actual[0].price,fixture.expectedPrice);
+ assert.strictEqual(actual[0].cost,fixture.expectedCost);
+ console.log('PASS_R222_REAL_MARIADB_COMPONENT_RECIPE_COST_AND_PRICE');
+}
