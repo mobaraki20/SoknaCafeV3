@@ -70,5 +70,5 @@ jobs:
           php qa/sokna-r212/test_r212_media_real_mariadb.php
           php qa/sokna-r212/test_r212_order_acceptance_real_mariadb.php
           php qa/sokna-r222/test_r222_atomic_mariadb.php
-          node qa/sokna-r222/test_bundle_cost.cjs "$SOKNA_R212_WEB/public/assets/catalog-workspace.js"
+          node qa/sokna-r222/test_bundle_cost.cjs "$SOKNA_R212_WEB/public/assets/catalog-workspace.js" "$RUNNER_TEMP/R222-db-recipe-cost.json"
           echo PASS_R212_REAL_MARIADB_NO_PRODUCTION_DATA
