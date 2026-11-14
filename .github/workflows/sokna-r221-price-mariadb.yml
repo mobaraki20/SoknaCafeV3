@@ -1,0 +1,78 @@
+name: SOKNA R221 bundle price constraints - disposable 81-migration MariaDB
+on:
+  push:
+    branches: [qa/sokna-r221-bundle-price-guard-20261114]
+    paths:
+      - 'qa/sokna-r221/**'
+      - '.github/workflows/sokna-r221-price-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-local-media-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r212-disposable-only
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R212_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R212_DB_PASSWORD: r212-disposable-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql,mbstring,curl,gd,zip
+          coverage: none
+      - name: Wait for disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R212_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then echo PASS_R212_DISPOSABLE_MARIADB_READY;exit 0;fi
+            sleep 2
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R204-EXACT-SOURCE-AND-MANIFEST-READY-FOR-WINDOWS
+          run-id: 43513196061
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r204-verified
+      - name: Recover exact R204 source, prove unchanged media service, apply reviewed R212 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/r212";mkdir -p "$R/outer" "$R/web"
+          ARCHIVE=$(find "$RUNNER_TEMP/r204-verified" -type f -name 'SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$ARCHIVE"
+          echo "279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3  $ARCHIVE" | sha256sum -c -
+          unzip -q "$ARCHIVE" -d "$R/outer"
+          unzip -q "$R/outer/artifacts/local/web.zip" -d "$R/web"
+          echo "58ab2b1b44cf68609931ac6ea73f8bdc643fabe6dd85c1d17a6387a7426c2141  $R/web/src/Domain/GuestContent/GuestContentService.php" | sha256sum -c -
+          (cd "$R/web" && git init -q && git config core.autocrlf false && git apply --check "$GITHUB_WORKSPACE/qa/sokna-r212/R204-R211-to-R212-guest-media-reupload.patch" && git apply "$GITHUB_WORKSPACE/qa/sokna-r212/R204-R211-to-R212-guest-media-reupload.patch")
+          php -l "$R/web/src/Domain/GuestContent/GuestContentService.php"
+          echo "SOKNA_R212_WEB=$R/web" >> "$GITHUB_ENV"
+          echo PASS_R212_EXACT_R204_MEDIA_SOURCE_AND_REVIEWED_PATCH
+      - name: Run actual 81 migrations and archived-image upload/restore on MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r212/test_r212_media_real_mariadb.php
+          php qa/sokna-r212/test_r212_order_acceptance_real_mariadb.php
+          php qa/sokna-r220/test_r220_bundle_mariadb.php
+          # R221 patch applies only after R220 historical source-gate tests.
+          echo "84059667ad6b368ca48ad95cc6217be7291ae465f14306cdca735c746d9b9efd  $SOKNA_R212_WEB/src/Domain/Sellables/CatalogAdminService.php" | sha256sum -c -
+          echo "d7ed2a03b85b36c8f7e25d8eabaa13c7215633f7d11d7ab90d0a5751165c788c  $SOKNA_R212_WEB/src/Domain/Orders/OrderCatalogService.php" | sha256sum -c -
+          (cd "$SOKNA_R212_WEB" && git apply --check "$GITHUB_WORKSPACE/qa/sokna-r221/R220-to-R221-bnd06-price-guard.patch" && git apply "$GITHUB_WORKSPACE/qa/sokna-r221/R220-to-R221-bnd06-price-guard.patch")
+          php -l "$SOKNA_R212_WEB/src/Domain/Sellables/CatalogAdminService.php"
+          php -l "$SOKNA_R212_WEB/src/Domain/Orders/OrderCatalogService.php"
+          php qa/sokna-r221/test_r221_bundle_price_mariadb.php
+          echo PASS_R221_BUNDLE_PRICE_GUARD_REAL_MARIADB
+          echo PASS_R212_REAL_MARIADB_NO_PRODUCTION_DATA
