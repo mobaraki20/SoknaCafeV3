@@ -1,0 +1,123 @@
+name: SOKNA R231 safe whole-order cancel queued inventory MariaDB QA (disposable)
+on:
+  push:
+    branches: [qa/sokna-r231-cancel-inventory-20261114]
+    paths:
+      - 'qa/sokna-r231/**'
+      - '.github/workflows/sokna-r231-cancel-inventory-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  r225-exact-source-real-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r225-disposable-only
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R225_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R231_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R213_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R213_DB_PASSWORD: r225-disposable-only
+      SOKNA_R213_ADMIN_PASSWORD: only-in-r225-disposable-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql,mbstring,curl,gd,zip,fileinfo,sodium
+          coverage: none
+      - name: Wait for disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R213_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then exit 0;fi
+            sleep 2
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R204-EXACT-SOURCE-AND-MANIFEST-READY-FOR-WINDOWS
+          run-id: 43513196061
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r204-parent
+      - name: Reconstruct and prove EXACT 591-file R225 Local source from pinned R204 artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/r225";mkdir -p "$R/outer" "$R/web"
+          ARCHIVE=$(find "$RUNNER_TEMP/r204-parent" -type f -name 'SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$ARCHIVE"
+          echo "279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3  $ARCHIVE" | sha256sum -c -
+          unzip -q "$ARCHIVE" -d "$R/outer"
+          unzip -q "$R/outer/artifacts/local/web.zip" -d "$R/web"
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r222/R204-to-R222-exact-cumulative.patch.gz.b64" | gzip -d > "$R/r222.patch"
+          echo "56ab7c800a3b0a14c869374095806e4bac821c92647a26d78309b125edb083c5  $R/r222.patch" | sha256sum -c -
+          (cd "$R/web" && git init -q && git config core.autocrlf false && git apply --check "$R/r222.patch" && git apply "$R/r222.patch")
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r225/R222-to-R224-exact.patch.gz.b64" | gzip -d > "$R/r224.patch"
+          echo "1ee11d6fb244a59dc9fecc3685317c6c0688ea8623d6560fd2bf6db0bd32d38e  $R/r224.patch" | sha256sum -c -
+          (cd "$R/web" && git apply --check "$R/r224.patch" && git apply "$R/r224.patch")
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r225/R224-to-R225-clean-setup.patch.gz.b64" | gzip -d > "$R/r225.patch"
+          echo "4d05e072c1a06c1319c6e20e4f583ac654b1138ec51c2522b033e8bf95b46985  $R/r225.patch" | sha256sum -c -
+          (cd "$R/web" && git apply --check "$R/r225.patch" && git apply "$R/r225.patch")
+          python3 - "$R/web" <<'PY'
+          import pathlib,hashlib,sys
+          p=pathlib.Path(sys.argv[1]);files={str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in p.rglob('*') if f.is_file() and '.git' not in f.parts}
+          digest=hashlib.sha256(''.join(x+':'+files[x]+'\n' for x in sorted(files)).encode()).hexdigest()
+          assert len(files)==591,(len(files),digest)
+          assert digest=='e0217a5d0004b13301ae058b2a17c79402ae1b0c3dcc424cab804bd3abc4d721',digest
+          print('PASS_R225_EXACT_591_FILE_R225_SOURCE_TREE')
+          PY
+          echo "SOKNA_R213_WEB=$R/web" >> "$GITHUB_ENV"
+      - name: EXACT R230 cumulative Local from immutable R225 and baseline photographed cancel failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/r225"
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r231/R225-to-R230.patch.gz.b64" | gzip -d > "$R/r230.patch"
+          echo "49dc365bf643bec64c5257a010f76a4edd2967cefff8702bc5984b1fe53ec708  $R/r230.patch" | sha256sum -c -
+          (cd "$R/web" && git apply --check "$R/r230.patch" && git apply "$R/r230.patch")
+          python3 - "$R/web" <<'PY'
+          import pathlib,hashlib,sys
+          p=pathlib.Path(sys.argv[1]);files={str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in p.rglob('*') if f.is_file() and '.git' not in f.parts}
+          digest=hashlib.sha256(''.join(x+':'+files[x]+'\\n' for x in sorted(files)).encode()).hexdigest()
+          assert len(files)==591 and digest=='4a64105f2122e79730fb7b1bf9e82ce868a5b4d98a7ae06f3355304e77ff8bca',(len(files),digest)
+          print('PASS_R231_EXACT_R230_BASELINE_591_FILES')
+          PY
+      - name: Real MariaDB BrowserSetup and reproduce original R230 inventory_pending cancellation
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r225/setup_r213_disposable.php
+          php qa/sokna-r231/test_r231_cancel_mariadb.php baseline
+      - name: Apply ONLY safe R231 inventory cancellation patch and exact source proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/r225"
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r231/R230-to-R231.patch.gz.b64" | gzip -d > "$R/r231.patch"
+          echo "346adb091e0dc7994db81dfd7a88066a902ba48119485116b5e6a38ad761edec  $R/r231.patch" | sha256sum -c -
+          (cd "$R/web" && git apply --check "$R/r231.patch" && git apply "$R/r231.patch")
+          python3 - "$R/web" "$GITHUB_WORKSPACE/qa/sokna-r231/R231-SOURCE-HASHES.json" <<'PY'
+          import pathlib,hashlib,sys,json
+          p=pathlib.Path(sys.argv[1]);target=json.loads(pathlib.Path(sys.argv[2]).read_text())
+          files={str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in p.rglob('*') if f.is_file() and '.git' not in f.parts}
+          digest=hashlib.sha256(''.join(x+':'+files[x]+'\\n' for x in sorted(files)).encode()).hexdigest()
+          assert len(files)==target['file_count'] and digest==target['tree_sha256'],(len(files),digest)
+          print('PASS_R231_EXACT_591_FILE_SOURCE_BOTH_ORDER_AND_INVENTORY_FIXES')
+          PY
+          php -l "$R/web/src/Domain/Inventory/InventoryOrderService.php"
+          php -l "$R/web/src/Domain/Orders/OrderStaffActionService.php"
+      - name: Cancel previously blocked real R230 order after R231 upgrade; test fail-closed tracked/failed/legacy and exact stock reversal
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r231/test_r231_cancel_mariadb.php full
+          echo PASS_R231_ALL_REAL_MARIADB_CANCELLATION_REGRESSION_CHECKS
