@@ -94,4 +94,33 @@ $fixture=[
 $fixtureFile=(string)getenv('RUNNER_TEMP').'/R222-db-recipe-cost.json';
 file_put_contents($fixtureFile,json_encode($fixture,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));
 $check(is_file($fixtureFile),'REAL_DB_COST_FIXTURE_CREATED');
+// Compare the preview against the actual order inventory snapshot builder, not
+// a second hand-maintained cost formula. The order and bundle rows are disposable.
+$tableId=(int)$pdo->query('SELECT id FROM cafe_tables ORDER BY id LIMIT 1')->fetchColumn();
+if($tableId<1){$pdo->prepare('INSERT INTO cafe_tables(name,table_number,code,access_token) VALUES(?,?,?,?)')->execute(['R222 disposable table',800,'r222-table-'.bin2hex(random_bytes(3)),'r222-token-'.bin2hex(random_bytes(12))]);$tableId=(int)$pdo->lastInsertId();}
+$token='r222-'.bin2hex(random_bytes(10));
+$pdo->prepare("INSERT INTO orders(public_code,client_token,table_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,'guest','accounted',74000,999999,CURDATE(),'r222','R222 QA','04:00')")
+    ->execute(['R222'.bin2hex(random_bytes(6)),$token,$tableId]);
+$orderId=(int)$pdo->lastInsertId();
+$pdo->prepare("INSERT INTO order_items(order_id,item_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?,?,37000,2,2,'kitchen',74000)")
+    ->execute([$orderId,$parent,'R222 bundle parent']);
+$orderItemId=(int)$pdo->lastInsertId();
+$cinsert=$pdo->prepare("INSERT INTO order_item_bundle_components(order_item_id,component_item_id,item_name_snapshot,quantity,preparation_station_snapshot,component_mode) VALUES(?,?,?,?,?,?)");
+$cinsert->execute([$orderItemId,$fixed,'R222 cake',4,'kitchen','fixed']);
+$cinsert->execute([$orderItemId,$choice,'R222 tea',2,'kitchen','choice']);
+$pdo->beginTransaction();
+try{
+ $snapshot=$orders->orderRecipeSnapshotTx($orderId);
+ $check(count($snapshot)===2,'REAL_ORDER_SNAPSHOT_HAS_TWO_COMPONENTS_NOT_PARENT');
+ $ids=array_map(static fn(array $v):int=>(int)$v['menu_item_id'],$snapshot);
+ $check(in_array($fixed,$ids,true)&&in_array($choice,$ids,true)&&!in_array($parent,$ids,true),'REAL_ORDER_SNAPSHOT_USES_CHILD_RECIPES');
+ $expectedQty=[$fixed=>4,$choice=>2];$totalCost=0;
+ foreach($snapshot as $line){
+  $componentId=(int)$line['menu_item_id'];$check((int)$line['order_quantity']===$expectedQty[$componentId],'REAL_ORDER_SNAPSHOT_COMPONENT_QTY_'.$componentId);
+  foreach($line['components'] as $rc)$totalCost+=(int)$line['order_quantity']*(int)$rc['quantity_base']*(float)$rc['unit_cost_snapshot'];
+ }
+ $check(abs($totalCost-144)<0.001,'REAL_ORDER_SNAPSHOT_COST_EQUALS_PREVIEW_TIMES_2');
+ $pdo->rollBack();
+}catch(\Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
+
 echo 'PASS_R222_ATOMIC_EDITOR_REAL_MARIADB_'.$checkCount."_CHECKS\n";
