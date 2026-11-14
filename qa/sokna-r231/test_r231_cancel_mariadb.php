@@ -15,7 +15,7 @@ function ok(bool $condition,string $name):void{global $checks;if(!$condition)thr
 function one(PDO $pdo,string $sql,array $args=[]):mixed{$q=$pdo->prepare($sql);$q->execute($args);return $q->fetchColumn();}
 function setting(PDO $pdo,string $key,string $value):void{$pdo->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)')->execute([$key,$value]);}
 function fixture(PDO $pdo,int $uid,string $tag,int $qty=1,int $price=1000):array {
-  $n=random_int(10000000,99999999);$token='r231:'.$tag.':'.bin2hex(random_bytes(4));
+  static $seq=0;$n=32000+(++$seq);$token='r231:'.$tag.':'.bin2hex(random_bytes(4));
   $pdo->prepare('INSERT INTO cafe_tables(name,table_number,code,access_token,active) VALUES(?,?,?,?,1)')->execute(['R231 Table '.$tag,$n,'R231-T-'.$n,$token]);$tid=(int)$pdo->lastInsertId();
   $pdo->prepare("INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,opened_by_user_id,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,'active',?,?,CURDATE(),'day','R231','05:00')")->execute(['R231-S-'.$n,$tid,$tid,$uid]);$sid=(int)$pdo->lastInsertId();
   $pdo->prepare("INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,total_amount,accepted_by_user_id,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,?,'staff','accounted',?,?, ?,CURDATE(),'day','R231','05:00')")
