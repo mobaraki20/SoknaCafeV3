@@ -140,6 +140,11 @@ jobs:
             gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets,isPrerelease
             exit 0
           fi
+          # An explicit tag creation distinguishes ref-write denial from release-write denial.
+          if ! gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA"; then
+            echo "QA_RELEASE_TAG_WRITE_DENIED: repository integration cannot publish a prerelease"
+            exit 1
+          fi
           gh release create "$tag" \
             SoknaPrintAgent-6.2.12-win-x64.zip \
             SOKNA-PrintAgent-ReadOnly-Audit.zip \
