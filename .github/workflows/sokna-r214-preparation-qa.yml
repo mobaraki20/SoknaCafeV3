@@ -1,0 +1,37 @@
+name: SOKNA R214 preparation slip layout and notes - Windows QA only
+on:
+  push:
+    branches: [qa/sokna-r214-print-preparation-20261114]
+    paths:
+      - 'qa/sokna-r214/**'
+      - 'windows/print-agent/source/tests/Sokna.PrintAgent.Worker.Tests/Program.cs'
+      - '.github/workflows/sokna-r214-preparation-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preparation-render-windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      SOKNA_R214_PAYLOAD: ${{ github.workspace }}\\qa\\sokna-r214\\R214-PREPARATION-PRINT-FIXTURE.json
+      SOKNA_R214_SCREENSHOT_DIR: ${{ runner.temp }}\\r214-receipt-images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Render actual 58/80mm slips with Print Agent source and all existing worker regression checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project windows/print-agent/source/tests/Sokna.PrintAgent.Worker.Tests/Sokna.PrintAgent.Worker.Tests.csproj -c Release -r win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'R214_PRINT_RENDER_TEST_FAILED' }
+          Write-Host PASS_R214_WINDOWS_RENDER_AND_EXISTING_WORKER_TESTS
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-R214-RENDER-58-80-AND-BASELINE-QA-NOT-INSTALL
+          path: ${{ runner.temp }}\\r214-receipt-images\\*.png
+          retention-days: 10
+          if-no-files-found: error
