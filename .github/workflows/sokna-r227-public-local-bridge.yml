@@ -1,0 +1,121 @@
+name: SOKNA R227 exact Public R220 queue to Local R225 order relay MariaDB QA
+on:
+  push:
+    branches: [qa/sokna-r227-public-local-20261114]
+    paths:
+      - 'qa/sokna-r227/**'
+      - '.github/workflows/sokna-r227-public-local-bridge.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  r225-exact-source-real-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r225-disposable-only
+        ports:
+          - 3306:3306
+    env:
+      SOKNA_R225_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R227_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R213_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R213_DB_PASSWORD: r225-disposable-only
+      SOKNA_R213_ADMIN_PASSWORD: only-in-r225-disposable-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql,mbstring,curl,gd,zip,fileinfo,sodium
+          coverage: none
+      - name: Wait for disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_R213_DB_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then exit 0;fi
+            sleep 2
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: R204-EXACT-SOURCE-AND-MANIFEST-READY-FOR-WINDOWS
+          run-id: 43513196061
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r204-parent
+      - name: Reconstruct and prove EXACT 591-file R225 Local source from pinned R204 artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/r225";mkdir -p "$R/outer" "$R/web"
+          ARCHIVE=$(find "$RUNNER_TEMP/r204-parent" -type f -name 'SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -n "$ARCHIVE"
+          echo "279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3  $ARCHIVE" | sha256sum -c -
+          unzip -q "$ARCHIVE" -d "$R/outer"
+          unzip -q "$R/outer/artifacts/local/web.zip" -d "$R/web"
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r222/R204-to-R222-exact-cumulative.patch.gz.b64" | gzip -d > "$R/r222.patch"
+          echo "56ab7c800a3b0a14c869374095806e4bac821c92647a26d78309b125edb083c5  $R/r222.patch" | sha256sum -c -
+          (cd "$R/web" && git init -q && git config core.autocrlf false && git apply --check "$R/r222.patch" && git apply "$R/r222.patch")
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r225/R222-to-R224-exact.patch.gz.b64" | gzip -d > "$R/r224.patch"
+          echo "1ee11d6fb244a59dc9fecc3685317c6c0688ea8623d6560fd2bf6db0bd32d38e  $R/r224.patch" | sha256sum -c -
+          (cd "$R/web" && git apply --check "$R/r224.patch" && git apply "$R/r224.patch")
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r225/R224-to-R225-clean-setup.patch.gz.b64" | gzip -d > "$R/r225.patch"
+          echo "4d05e072c1a06c1319c6e20e4f583ac654b1138ec51c2522b033e8bf95b46985  $R/r225.patch" | sha256sum -c -
+          (cd "$R/web" && git apply --check "$R/r225.patch" && git apply "$R/r225.patch")
+          python3 - "$R/web" <<'PY'
+          import pathlib,hashlib,sys
+          p=pathlib.Path(sys.argv[1]);files={str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in p.rglob('*') if f.is_file() and '.git' not in f.parts}
+          digest=hashlib.sha256(''.join(x+':'+files[x]+'\n' for x in sorted(files)).encode()).hexdigest()
+          assert len(files)==591,(len(files),digest)
+          assert digest=='e0217a5d0004b13301ae058b2a17c79402ae1b0c3dcc424cab804bd3abc4d721',digest
+          print('PASS_R225_EXACT_591_FILE_R225_SOURCE_TREE')
+          PY
+          echo "SOKNA_R213_WEB=$R/web" >> "$GITHUB_ENV"
+      - name: Real BrowserSetup - 81 migrations - synthetic bundle and inventory fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r225/setup_r213_disposable.php
+          php qa/sokna-r225/fixture_r225.php
+      - name: Real admin auth CSRF image album and Guest quote-submit-retry to accounted stock
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -d display_errors=0 -S 127.0.0.1:18080 -t "$SOKNA_R213_WEB/public" qa/sokna-r225/router_r225.php > "$RUNNER_TEMP/r225-http.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID >/dev/null 2>&1 || true; if [ -s "$RUNNER_TEMP/r225-http.log" ]; then tail -n 35 "$RUNNER_TEMP/r225-http.log" | sed -E "s/(password|token|secret)=[^& ]+/\\1=REDACTED/g"; fi' EXIT
+          python3 qa/sokna-r225/test_r213_http_real_auth_mariadb.py
+          python3 qa/sokna-r225/test_r225_guest_http.py
+          php qa/sokna-r225/approve_r225.php
+          echo PASS_R225_ALL_HTTP_DB_TESTS_AND_NO_PRODUCTION_DATA
+      - name: Verify exact Public R220 relayer and all 8 Public migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          P="$RUNNER_TEMP/r227-public"
+          mkdir -p "$P"
+          base64 -d "$GITHUB_WORKSPACE/qa/sokna-r227/R220-PUBLIC-EXACT-RELAY-COMPONENTS.zip.b64" > "$RUNNER_TEMP/r227-public-components.zip"
+          echo "18e00c31f18434f83ce4301a408e1498b9a12db9c0e4f5810ec75a097719935e  $RUNNER_TEMP/r227-public-components.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/r227-public-components.zip" -d "$P"
+          python3 - "$P" "$GITHUB_WORKSPACE/qa/sokna-r227/R220-RELAY-EXACT-HASHES.json" <<'PY'
+          import sys,pathlib,hashlib,json
+          root=pathlib.Path(sys.argv[1]); hashes=json.loads(pathlib.Path(sys.argv[2]).read_text())
+          files={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}
+          assert files==set(hashes),(len(files),len(hashes))
+          for name,digest in hashes.items():
+              assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,name
+          print('PASS_R227_EXACT_16_PUBLIC_R220_FILES_AND_8_MIGRATIONS')
+          PY
+          php -l qa/sokna-r227/test_r227_public_local_relay.php
+          echo "SOKNA_R227_PUBLIC=$P" >> "$GITHUB_ENV"
+      - name: Run Public realtime queue claim Local real dispatcher ACK receipts retries and inventory (two real MariaDB schemas)
+        shell: bash
+        run: |
+          set -euo pipefail
+          php qa/sokna-r227/test_r227_public_local_relay.php
+          echo PASS_R227_DISPOSABLE_PUBLIC_R220_LOCAL_R225_BRIDGE_DB_COMPLETE
