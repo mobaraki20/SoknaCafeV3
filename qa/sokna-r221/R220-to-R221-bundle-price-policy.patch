@@ -1,0 +1,154 @@
+diff --git a/bootstrap.php b/bootstrap.php
+--- a/bootstrap.php
++++ b/bootstrap.php
+@@ -22,10 +22,11 @@
+ require_once __DIR__ . '/src/Core/LoginAccessService.php';
+ require_once __DIR__ . '/src/Core/MigrationExecutionException.php';
+ require_once __DIR__ . '/src/Core/Migrations.php';
+ require_once __DIR__ . '/src/Core/TimeAuthority.php';
+ require_once __DIR__ . '/src/Domain/Sellables/SellableKind.php';
++require_once __DIR__ . '/src/Domain/Sellables/BundlePricePolicy.php';
+ require_once __DIR__ . '/src/Domain/Sellables/SellableRepository.php';
+ require_once __DIR__ . '/src/Domain/Sellables/CategoryIconLibrary.php';
+ require_once __DIR__ . '/src/Domain/Sellables/DefaultContentSeeder.php';
+ require_once __DIR__ . '/src/Domain/Sellables/CatalogAdminException.php';
+ require_once __DIR__ . '/src/Domain/Sellables/CatalogAdminService.php';
+diff --git a/src/Domain/Sellables/BundlePricePolicy.php b/src/Domain/Sellables/BundlePricePolicy.php
+new file mode 100644
+--- /dev/null
++++ b/src/Domain/Sellables/BundlePricePolicy.php
+@@ -0,0 +1,43 @@
++<?php
++declare(strict_types=1);
++
++namespace Sokna\Local\Domain\Sellables;
++
++/**
++ * Financially safe, exact-integer bundle pricing.
++ * Maximum order quantity is 100; the bound keeps the resulting order total
++ * within JavaScript's safe integer range, including after multiplication.
++ */
++final class BundlePricePolicy
++{
++    public const MAX_SAFE_ORDER_TOTAL = 9_007_199_254_740_991;
++    public const MAX_UNIT_PRICE = 90_071_992_547_409; // intdiv(MAX_SAFE_ORDER_TOTAL, 100)
++
++    /** @param list<int> $deltas */
++    public static function deltaSum(array $deltas): ?int
++    {
++        $plus = 0;
++        $minus = 0;
++        foreach ($deltas as $delta) {
++            if (!is_int($delta)) return null;
++            if ($delta >= 0) {
++                if ($delta > self::MAX_SAFE_ORDER_TOTAL - $plus) return null;
++                $plus += $delta;
++            } else {
++                if ($delta < -self::MAX_SAFE_ORDER_TOTAL - $minus) return null;
++                $minus += $delta;
++            }
++        }
++        return $plus + $minus;
++    }
++
++    /** @param list<int> $deltas */
++    public static function unitPrice(int $parentPrice, array $deltas): ?int
++    {
++        if ($parentPrice < 0 || $parentPrice > self::MAX_UNIT_PRICE) return null;
++        $delta = self::deltaSum($deltas);
++        if ($delta === null) return null;
++        $price = $parentPrice + $delta;
++        return $price >= 0 && $price <= self::MAX_UNIT_PRICE ? $price : null;
++    }
++}
+diff --git a/src/Domain/Sellables/CatalogAdminService.php b/src/Domain/Sellables/CatalogAdminService.php
+--- a/src/Domain/Sellables/CatalogAdminService.php
++++ b/src/Domain/Sellables/CatalogAdminService.php
+@@ -263,11 +263,23 @@
+     public function saveBundle(array $data,array $actor): array
+     {
+         $admin=$this->assertAdmin($actor);$bundleItemId=(int)($data['bundle_item_id']??0);$choiceLabel=$this->nullableText($data['choice_label']??null,160);$components=is_array($data['components']??null)?$data['components']:[];if($bundleItemId<1||$components===[]||count($components)>20)throw new CatalogAdminException('bundle_invalid','ترکیب باید parent و حداقل یک جزء داشته باشد.',422);$norm=[];$choice=0;
+         foreach($components as $row){if(!is_array($row))throw new CatalogAdminException('bundle_component_invalid','جزء ترکیب باید اطلاعات معتبر داشته باشد.',422);$itemId=(int)($row['component_item_id']??0);$mode=(string)($row['mode']??'fixed');$qty=$this->strictBundleQuantity($row['quantity']??1);$delta=$this->strictBundlePriceDelta($row['price_delta']??0);if($itemId<1||$itemId===$bundleItemId||!in_array($mode,['fixed','choice'],true))throw new CatalogAdminException('bundle_component_invalid','جزء ترکیب معتبر نیست.',422);$key=$itemId.':'.$mode;if(isset($norm[$key]))throw new CatalogAdminException('bundle_component_duplicate','جزء تکراری در ترکیب وجود دارد.',409);$norm[$key]=['component_item_id'=>$itemId,'mode'=>$mode,'quantity'=>$qty,'price_delta'=>$delta,'sort_order'=>(int)($row['sort_order']??((count($norm)+1)*10))];if($mode==='choice')$choice++;}
+         if($norm===[])throw new CatalogAdminException('bundle_invalid','ترکیب بدون جزء معتبر قابل ذخیره نیست.',422);if($choice>0&&$choiceLabel===null)$choiceLabel='انتخاب';
+-        $this->pdo->beginTransaction();try{$ids=array_values(array_unique(array_merge([$bundleItemId],array_column($norm,'component_item_id'))));$ph=implode(',',array_fill(0,count($ids),'?'));$q=$this->pdo->prepare("SELECT i.id,i.lifecycle_status,i.guest_visible,i.staff_visible,EXISTS(SELECT 1 FROM item_bundles b WHERE b.bundle_item_id=i.id) is_bundle FROM items i WHERE i.id IN($ph) FOR UPDATE");$q->execute($ids);$rows=$q->fetchAll(PDO::FETCH_ASSOC);if(count($rows)!==count($ids))throw new CatalogAdminException('bundle_item_missing','یکی از آیتم‌های ترکیب پیدا نشد.',404);$byId=[];foreach($rows as $r)$byId[(int)$r['id']]=$r;$parent=$byId[$bundleItemId]??null;if(!is_array($parent)||((string)$parent['lifecycle_status']==='retired'))throw new CatalogAdminException('bundle_parent_invalid','آیتم اصلی ترکیب معتبر نیست.',409);foreach($rows as $r){$rid=(int)$r['id'];if($rid===$bundleItemId)continue;if((string)$r['lifecycle_status']!=='active')throw new CatalogAdminException('bundle_component_inactive','جزء ترکیب باید در کاتالوگ فعال باشد.',409);if((int)$r['is_bundle']===1)throw new CatalogAdminException('nested_bundle','ترکیب تو در تو مجاز نیست.',409);if((int)$parent['guest_visible']===1&&(int)$r['guest_visible']!==1)throw new CatalogAdminException('bundle_guest_visibility','جزء ترکیب مهمان باید برای مهمان قابل نمایش باشد.',409);if((int)$parent['staff_visible']===1&&(int)$r['staff_visible']!==1)throw new CatalogAdminException('bundle_staff_visibility','جزء ترکیب کارکنان باید برای کارکنان قابل نمایش باشد.',409);}$this->pdo->prepare('INSERT INTO item_bundles(bundle_item_id,choice_label,choice_min,choice_max) VALUES(?,?,1,1) ON DUPLICATE KEY UPDATE choice_label=VALUES(choice_label),choice_min=1,choice_max=1')->execute([$bundleItemId,$choiceLabel]);$this->pdo->prepare('DELETE FROM item_bundle_components WHERE bundle_item_id=?')->execute([$bundleItemId]);$ins=$this->pdo->prepare('INSERT INTO item_bundle_components(bundle_item_id,component_item_id,mode,quantity,price_delta,sort_order) VALUES(?,?,?,?,?,?)');foreach($norm as $r)$ins->execute([$bundleItemId,$r['component_item_id'],$r['mode'],$r['quantity'],$r['price_delta'],$r['sort_order']]);$this->audit('catalog.bundle_saved','menu_item',$bundleItemId,(int)$admin['id'],['choice_label'=>$choiceLabel,'components'=>array_values($norm)]);$this->pdo->commit();return ['bundle_item_id'=>$bundleItemId];}catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
++        $this->pdo->beginTransaction();try{$ids=array_values(array_unique(array_merge([$bundleItemId],array_column($norm,'component_item_id'))));$ph=implode(',',array_fill(0,count($ids),'?'));$q=$this->pdo->prepare("SELECT i.id,i.price,i.lifecycle_status,i.guest_visible,i.staff_visible,EXISTS(SELECT 1 FROM item_bundles b WHERE b.bundle_item_id=i.id) is_bundle FROM items i WHERE i.id IN($ph) FOR UPDATE");$q->execute($ids);$rows=$q->fetchAll(PDO::FETCH_ASSOC);if(count($rows)!==count($ids))throw new CatalogAdminException('bundle_item_missing','یکی از آیتم‌های ترکیب پیدا نشد.',404);$byId=[];foreach($rows as $r)$byId[(int)$r['id']]=$r;$parent=$byId[$bundleItemId]??null;if(!is_array($parent)||((string)$parent['lifecycle_status']==='retired'))throw new CatalogAdminException('bundle_parent_invalid','آیتم اصلی ترکیب معتبر نیست.',409);foreach($rows as $r){$rid=(int)$r['id'];if($rid===$bundleItemId)continue;if((string)$r['lifecycle_status']!=='active')throw new CatalogAdminException('bundle_component_inactive','جزء ترکیب باید در کاتالوگ فعال باشد.',409);if((int)$r['is_bundle']===1)throw new CatalogAdminException('nested_bundle','ترکیب تو در تو مجاز نیست.',409);if((int)$parent['guest_visible']===1&&(int)$r['guest_visible']!==1)throw new CatalogAdminException('bundle_guest_visibility','جزء ترکیب مهمان باید برای مهمان قابل نمایش باشد.',409);if((int)$parent['staff_visible']===1&&(int)$r['staff_visible']!==1)throw new CatalogAdminException('bundle_staff_visibility','جزء ترکیب کارکنان باید برای کارکنان قابل نمایش باشد.',409);}$basePrice=(int)$parent['price'];
++            $fixedDeltas=[];$choiceDeltas=[];
++            foreach($norm as $component){
++                if($component['mode']==='fixed')$fixedDeltas[]=$component['price_delta'];
++                else $choiceDeltas[]=$component['price_delta'];
++            }
++            $possible=$choiceDeltas===[]?[$fixedDeltas]:array_map(static fn(int $d):array=>array_merge($fixedDeltas,[$d]),$choiceDeltas);
++            foreach($possible as $deltas){
++                if(BundlePricePolicy::unitPrice($basePrice,$deltas)===null){
++                    throw new CatalogAdminException('bundle_price_invalid','قیمت نهایی یکی از حالت‌های ترکیب منفی یا خارج از محدوده مجاز است.',422);
++                }
++            }
++            $this->pdo->prepare('INSERT INTO item_bundles(bundle_item_id,choice_label,choice_min,choice_max) VALUES(?,?,1,1) ON DUPLICATE KEY UPDATE choice_label=VALUES(choice_label),choice_min=1,choice_max=1')->execute([$bundleItemId,$choiceLabel]);$this->pdo->prepare('DELETE FROM item_bundle_components WHERE bundle_item_id=?')->execute([$bundleItemId]);$ins=$this->pdo->prepare('INSERT INTO item_bundle_components(bundle_item_id,component_item_id,mode,quantity,price_delta,sort_order) VALUES(?,?,?,?,?,?)');foreach($norm as $r)$ins->execute([$bundleItemId,$r['component_item_id'],$r['mode'],$r['quantity'],$r['price_delta'],$r['sort_order']]);$this->audit('catalog.bundle_saved','menu_item',$bundleItemId,(int)$admin['id'],['choice_label'=>$choiceLabel,'components'=>array_values($norm)]);$this->pdo->commit();return ['bundle_item_id'=>$bundleItemId];}catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+     }
+ 
+     public function removeBundle(int $bundleItemId,array $actor): array
+     {
+         $admin=$this->assertAdmin($actor);if($bundleItemId<1)throw new CatalogAdminException('bundle_invalid','ترکیب معتبر نیست.',422);$this->pdo->beginTransaction();try{$this->pdo->prepare('DELETE FROM item_bundles WHERE bundle_item_id=?')->execute([$bundleItemId]);$this->audit('catalog.bundle_removed','menu_item',$bundleItemId,(int)$admin['id'],[]);$this->pdo->commit();return ['bundle_item_id'=>$bundleItemId,'removed'=>true];}catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+diff --git a/src/Domain/Orders/OrderCatalogService.php b/src/Domain/Orders/OrderCatalogService.php
+--- a/src/Domain/Orders/OrderCatalogService.php
++++ b/src/Domain/Orders/OrderCatalogService.php
+@@ -3,10 +3,11 @@
+ 
+ namespace Sokna\Local\Domain\Orders;
+ 
+ use PDO;
+ use Sokna\Local\Domain\Sellables\SellableKind;
++use Sokna\Local\Domain\Sellables\BundlePricePolicy;
+ 
+ final class OrderCatalogService
+ {
+     public function __construct(private readonly PDO $pdo) {}
+ 
+@@ -141,11 +142,14 @@
+             }
+             if($requested['fulfillment_mode']==='takeaway'&&(int)($item['takeaway_allowed']??1)!==1){
+                 throw new OrderCommitException('takeaway_not_allowed','این آیتم فقط داخل کافه قابل سرو است.',409,['item_id'=>$requested['id']]);
+             }
+             $bundle=$this->bundleSelectionTx((int)$item['id'],(int)($requested['bundle_choice_item_id']??0),$source,(int)$requested['quantity']);
+-            $unit=(int)$item['price']+(int)$bundle['price_delta'];
++            $unit=$bundle['is_bundle']
++                ? BundlePricePolicy::unitPrice((int)$item['price'],[(int)$bundle['price_delta']])
++                : (int)$item['price'];
++            if($unit===null)throw new OrderCommitException('bundle_price_invalid','قیمت این ترکیب معتبر نیست؛ تنظیمات قیمت را اصلاح کنید.',409,['item_id'=>(int)$item['id']]);
+             if($requested['expected_price']!==null&&$requested['expected_price']!==$unit){
+                 throw new OrderCommitException('price_changed','قیمت یکی از آیتم‌ها یا انتخاب‌های ترکیب تغییر کرده است.',409,['item_id'=>$requested['id'],'bundle_choice_item_id'=>(int)($requested['bundle_choice_item_id']??0),'current_price'=>$unit]);
+             }
+             $lines[]=[
+                 'item_id'=>(int)$item['id'],
+@@ -186,11 +190,14 @@
+             if(!$this->isOrderable($item,'staff'))
+                 throw new OrderCommitException('item_unavailable','یکی از آیتم‌های انتخاب‌شده دیگر قابل سفارش نیست.',409,['item_id'=>$requested['id']]);
+             if($requested['fulfillment_mode']==='takeaway'&&(int)($item['takeaway_allowed']??1)!==1)
+                 throw new OrderCommitException('takeaway_not_allowed','این آیتم فقط داخل کافه قابل سرو است.',409,['item_id'=>$requested['id']]);
+             $bundle=$this->bundleSelectionTx((int)$item['id'],(int)($requested['bundle_choice_item_id']??0),'staff',(int)$requested['quantity']);
+-            $current=(int)$item['price']+(int)$bundle['price_delta'];
++            $current=$bundle['is_bundle']
++                ? BundlePricePolicy::unitPrice((int)$item['price'],[(int)$bundle['price_delta']])
++                : (int)$item['price'];
++            if($current===null)throw new OrderCommitException('bundle_price_invalid','قیمت این ترکیب معتبر نیست؛ تنظیمات قیمت را اصلاح کنید.',409,['item_id'=>(int)$item['id']]);
+             $requestedPrice=$requested['expected_price'];
+             $unit=$current;
+             if($requestedPrice!==null&&$requestedPrice!==$current){
+                 $key=(int)$requested['id'].'|'.$requested['fulfillment_mode'].'|'.(int)($requested['bundle_choice_item_id']??0).'|'.(int)$requestedPrice;
+                 $allowed=max(0,(int)($preservedQuantities[$key]??0));
+@@ -259,11 +266,14 @@
+     {
+         $b=$this->pdo->prepare('SELECT bundle_item_id,choice_label FROM item_bundles WHERE bundle_item_id=? LIMIT 1 FOR UPDATE');$b->execute([$itemId]);$bundle=$b->fetch(PDO::FETCH_ASSOC);if(!is_array($bundle)){if($choiceItemId>0)throw new OrderCommitException('bundle_choice_invalid','این آیتم انتخاب ترکیب ندارد.',422,['item_id'=>$itemId]);return ['is_bundle'=>false,'price_delta'=>0,'choice_label'=>null,'components'=>[]];}
+         $q=$this->pdo->prepare("SELECT c.component_item_id,c.mode,c.quantity,c.price_delta,c.sort_order,i.name,i.available,i.lifecycle_status,i.guest_visible,i.staff_visible,i.preparation_station FROM item_bundle_components c JOIN items i ON i.id=c.component_item_id WHERE c.bundle_item_id=? ORDER BY c.sort_order,c.id FOR UPDATE");$q->execute([$itemId]);$rows=$q->fetchAll(PDO::FETCH_ASSOC)?:[];$fixed=[];$choices=[];$choiceConfigured=0;
+         foreach($rows as $r){$visible=$source==='guest'?(int)$r['guest_visible']===1:(int)$r['staff_visible']===1;$ok=(string)$r['lifecycle_status']==='active'&&(int)$r['available']===1&&$visible;if((string)$r['mode']==='fixed'){if(!$ok)throw new OrderCommitException('bundle_unavailable','یکی از اجزای ثابت ترکیب ناموجود است.',409,['item_id'=>$itemId,'component_item_id'=>(int)$r['component_item_id']]);$fixed[]=$r;}else{$choiceConfigured++;if($ok)$choices[(int)$r['component_item_id']]=$r;}}
+         $selected=null;if($choiceConfigured>0){if($choices===[])throw new OrderCommitException('bundle_unavailable','هیچ انتخاب قابل سفارشی برای این ترکیب باقی نمانده است.',409,['item_id'=>$itemId]);if($choiceItemId<1||!isset($choices[$choiceItemId]))throw new OrderCommitException('bundle_choice_required','یکی از انتخاب‌های موجود ترکیب را انتخاب کن.',409,['item_id'=>$itemId,'available_choice_ids'=>array_keys($choices)]);$selected=$choices[$choiceItemId];}elseif($choiceItemId>0)throw new OrderCommitException('bundle_choice_invalid','این ترکیب انتخاب جداگانه ندارد.',422,['item_id'=>$itemId]);
+-        $selectedRows=$fixed;if(is_array($selected))$selectedRows[]=$selected;$components=[];$delta=0;foreach($selectedRows as $r){$delta+=(int)$r['price_delta'];$components[]=['component_item_id'=>(int)$r['component_item_id'],'item_name'=>(string)$r['name'],'mode'=>(string)$r['mode'],'quantity_per_bundle'=>(int)$r['quantity'],'quantity_total'=>(int)$r['quantity']*max(1,$parentQuantity),'price_delta'=>(int)$r['price_delta'],'preparation_station'=>self::normalizeStation((string)($r['preparation_station']??'none'))];}
++        $selectedRows=$fixed;if(is_array($selected))$selectedRows[]=$selected;
++        $delta=BundlePricePolicy::deltaSum(array_map(static fn(array $r):int=>(int)$r['price_delta'],$selectedRows));
++        if($delta===null)throw new OrderCommitException('bundle_price_invalid','مجموع تغییر قیمت اجزای ترکیب خارج از محدوده مجاز است.',409,['item_id'=>$itemId]);
++        $components=[];foreach($selectedRows as $r){$components[]=['component_item_id'=>(int)$r['component_item_id'],'item_name'=>(string)$r['name'],'mode'=>(string)$r['mode'],'quantity_per_bundle'=>(int)$r['quantity'],'quantity_total'=>(int)$r['quantity']*max(1,$parentQuantity),'price_delta'=>(int)$r['price_delta'],'preparation_station'=>self::normalizeStation((string)($r['preparation_station']??'none'))];}
+         return ['is_bundle'=>true,'price_delta'=>$delta,'choice_label'=>$selected!==null?(string)($bundle['choice_label']??'انتخاب'):null,'components'=>$components];
+     }
+ 
+     private static function normalizeStation(string $station): string
+     {
