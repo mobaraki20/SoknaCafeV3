@@ -1,0 +1,18 @@
+{
+  "src/Shared/IranTime.php": "7c2b8b81d1ce7e161876147aef873f754f4386aac4ac48dba91c18093cb6113f",
+  "src/Core/CanonicalJson.php": "50b19783863d060d920ec1746b24dea39d0d0a98d1dbf06cc30e010e9a748555",
+  "src/Core/Migrations.php": "08eeaa29e53c051a2f7834da3ac0de0dbced5ec8bdec0f9cbf1ca4e46bbfab91",
+  "src/Core/ResumablePublicSchema.php": "806ada610de23b4e36a59a9e0190bd156da4969fc74cc3dd9ecde8bdaaeaab26",
+  "src/Connectivity/ConnectivityService.php": "a18af7dfcfa526b6103a15eabfd2d240ba534839520cb614452a0dae8ecf9138",
+  "src/Remote/RemoteReadModelService.php": "e5b1a3273de227eea82373c9e279cafa7beadb38ceb7f66f7f76ac4d42649e8d",
+  "src/Realtime/RealtimeService.php": "35c5499c984425b540478952864c45f827b6a439476386e6534fdb5351a501d4",
+  "src/Guest/GuestCompatibilityService.php": "bc3b560a106c34128a399438e7668f1d235d7a6f624c6f0d11320d8d6ff5a69a",
+  "database/migrations/0001_m3_public_edge_core.sql": "b4da2e8a0de5d9f6d64a2ae0727079fc5f9c1fcf57b05aeb9cbf512e121fe877",
+  "database/migrations/0002_m4_guest_public_projection.sql": "b47733907911306fa8b380778e575df29534ccbefa98f7728757cc3dc899b6f3",
+  "database/migrations/0003_g3_emergency_update_takeover.sql": "eb89c8dc847665f15bd135de0345c3105bba6bea570edf714b287faa72c3e16e",
+  "database/migrations/0004_remote_read_event_cursor.sql": "03236b951ff24405bb90b5faeea0ddb636933487088b22ea04ed76d4e3c36435",
+  "database/migrations/0005_transport_v2.sql": "ed625f9a4ef082dcdba945166b096f7117f8d8824f16c2c2c276e26e876ab020",
+  "database/migrations/0006_lan_staff_browser_credentials.sql": "653cf1fe988a0236fc263b65da52053e7e01295a8abb2b6adff044322c8384f5",
+  "database/migrations/0007_authority_epoch_fencing.sql": "5321b5aaf5f980e3559cf4493531d2254a973f7144c183e1882271403c4a0d54",
+  "database/migrations/0008_public_user_ui_preferences.sql": "e1f896996172c50016c2b8235eb74caceece9e79a4dd966abf2d9aaee951cf9d"
+}
