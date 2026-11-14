@@ -15,7 +15,7 @@ $icons=new \Sokna\Local\Domain\Sellables\CategoryIconLibrary($web.'/resources/de
 $catalog=new \Sokna\Local\Domain\Sellables\CatalogAdminService($pdo,$identity,$icons);
 $inventory=new \Sokna\Local\Domain\Inventory\InventoryService($pdo,$identity,new \Sokna\Local\Core\Capabilities($identity));
 $recipes=new \Sokna\Local\Domain\Inventory\InventoryOrderService($pdo,$inventory);
-$pdo->prepare("INSERT INTO inventory_items(item_code,name,category,base_unit,active) VALUES(?,'R221 inventory ingredient','ingredient','g',1)")->execute(['R221-CI-'+bin2hex(random_bytes(5))]);
+$pdo->prepare("INSERT INTO inventory_items(item_code,name,category,base_unit,active) VALUES(?,'R221 inventory ingredient','ingredient','g',1)")->execute(['R221-CI-'.bin2hex(random_bytes(5))]);
 $ingredientId=(int)$pdo->lastInsertId();
 $seq=0;$pass=function(bool $ok,string $name)use(&$seq):void{if(!$ok)throw new RuntimeException('FAIL_R221_ATOMIC_'.$name);$seq++;echo "PASS_R221_ATOMIC_{$name}\n";};
 $create=function(string $name)use($catalog,$cid,$mid,$user):int{
