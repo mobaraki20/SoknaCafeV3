@@ -35,8 +35,8 @@ def derive(p,out):
  d['VERSION.txt']=(TARGET_VERSION+'\n').encode()
  inner=Z(d)
  new=copy.deepcopy(m)
- new.update(release_set_id='sokna-r240-local-authority-recovery-inventory-qa-only-20261115',sequence=202611150240,created_at='2026-11-15T10:00:00Z',status='R240_QA_INVENTORY_FIX_DO_NOT_INSTALL',for_install=False,production_pass=False)
- new['targets']['local'].update(version=TARGET_VERSION,managed_files=593,managed_tree_sha256=tree(d),release_id='sokna-r240-authority-recovery-managed-inventory-qa-not-installable')
+ new.update(release_set_id='sokna-r240-local-authority-recovery-inventory-qa-rev2-20261115',sequence=202611150240,created_at='2026-11-15T10:00:00Z',status='R240_QA_REV2_AUTHORITY_PRESERVED_DO_NOT_INSTALL',for_install=False,production_pass=False)
+ new['targets']['local'].update(version=TARGET_VERSION,managed_files=593,managed_tree_sha256=tree(d),release_id='sokna-r240-authority-recovery-managed-inventory-qa-not-installable',authority_epoch_policy='preserved')
  new['artifacts']['local-web'].update(sha256=H(inner),size_bytes=len(inner))
  new['qa_notes']['R240_windows_issue']='R239 package failed native Windows local managed inventory 590 instead of 593; corrected by verifying exact 593 paths'
  blob=Z({'release-set.json':J(new),'artifacts/local/web.zip':inner})
