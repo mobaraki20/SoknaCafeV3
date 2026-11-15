@@ -1,0 +1,63 @@
+name: SOKNA R253 Public Move One-Time Authorization Ledger (QA ONLY)
+on:
+  push:
+    branches: [qa/sokna-r253-migration-approval-ledger-20261116]
+    paths:
+      - apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalLedger.php
+      - r253/**
+      - .github/workflows/sokna-r253-public-move-ledger.yml
+  workflow_dispatch:
+jobs:
+  real-mariadb-ledger:
+    name: MariaDB 11.4 one-time approval and tenant isolation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-r253-only
+          MARIADB_DATABASE: sokna_r253_qa
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP MySQL driver if absent
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -Eiq '^pdo_mysql$'; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq php-mysql
+          fi
+          php -r 'if (!extension_loaded("pdo_mysql") || !extension_loaded("sodium")) exit(1);'
+      - name: Validate PHP and prohibit customer constants
+        run: |
+          set -euo pipefail
+          php -l apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalLedger.php
+          php -l r253/test-public-move-approval-ledger.php
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic|cafe-alpha|bistro-beta' apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalLedger.php
+          python3 r251/check_decisions.py
+      - name: Real MariaDB exactly-once authorization lifecycle
+        env:
+          SOKNA_R253_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=sokna_r253_qa;charset=utf8mb4
+          SOKNA_R253_TEST_USER: root
+          SOKNA_R253_TEST_PASSWORD: qa-r253-only
+        run: |
+          set -euo pipefail
+          php r253/test-public-move-approval-ledger.php | tee /tmp/sokna-r253-ledger.txt
+          grep -q 'R253_MARIADB_LEDGER_PASS checks=' /tmp/sokna-r253-ledger.txt
+          echo 'PASS_R253_REAL_MARIADB_NO_HOST_DEPLOY'
+      - name: Preserve R252/R251 regression coverage
+        run: |
+          set -euo pipefail
+          php r252/test-public-move-attestation.php | tee /tmp/sokna-r252.txt
+          grep -q 'R252_PUBLIC_MOVE_ATTESTATION_TESTS_PASS count=57' /tmp/sokna-r252.txt
+          php r251/test-public-move-decision.php | tee /tmp/sokna-r251.txt
+          grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=55' /tmp/sokna-r251.txt
+          echo PASS_R253_ALL_PRIOR_QA_NO_HOST_DEPLOY
