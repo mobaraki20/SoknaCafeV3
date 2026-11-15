@@ -1,0 +1,96 @@
+name: SOKNA R256 Real R249 Public Owner Setup Integration (QA ONLY)
+on:
+  push:
+    branches: [qa/sokna-r256-real-public-setup-owner-20261116]
+    paths:
+      - r256/**
+      - apps/public/src/Setup/PublicMoveOwnerPrivatePath.php
+      - .github/workflows/sokna-r256-real-public-owner.yml
+  workflow_dispatch:
+jobs:
+  actual-public-setup:
+    name: Exact R249 payload + 9 migrations + owner setup/consent E2E
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-r256-only
+          MARIADB_DATABASE: sokna_r256_qa
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install disposable PHP dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-mysql php-zip
+          php -r 'foreach (["pdo_mysql","sodium","zip"] as $x) if (!extension_loaded($x)) exit(1);'
+          php -l apps/public/src/Setup/PublicMoveOwnerPrivatePath.php
+          php -l r256/test_integrated_setup.php
+          python3 -m py_compile r256/integrate_real_public.py
+      - name: Retrieve exact R249 CI artifact (never from a mutable release link)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r249"
+          gh run download 43749990301 -R "$GITHUB_REPOSITORY" -n sokna-r249-dual-baseline-gated-public-candidate -D "$RUNNER_TEMP/r249"
+          find "$RUNNER_TEMP/r249" -maxdepth 4 -type f -printf '%P %s bytes\n'
+          python3 - <<'PY'
+          import hashlib,os,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r249'
+          pin='5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4'
+          # Pin below is additionally checked by the integration script against R249 manifest/tree.
+          matches=[]
+          for p in root.rglob('*'):
+           if p.is_file() and p.suffix.lower()=='.zip':
+            d=hashlib.sha256(p.read_bytes()).hexdigest()
+            print('found',p.name,d)
+            if d==pin:matches.append(p)
+          if len(matches)!=1:raise SystemExit('R256_R249_EXACT_ARTIFACT_NOT_FOUND')
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'r249_path.txt'
+          out.write_text(str(matches[0]))
+          PY
+      - name: Integrate only into pinned 228-file R249 source; never deploy
+        run: |
+          set -euo pipefail
+          BASE="$(cat "$RUNNER_TEMP/r249_path.txt")"
+          python3 r256/integrate_real_public.py --r249 "$BASE" --repo . --out "$RUNNER_TEMP/r256"
+          python3 -m json.tool "$RUNNER_TEMP/r256/R256-REAL-R249-INTEGRATION-QA-PROOF.json" >/dev/null
+          root="$RUNNER_TEMP/r256/qa-public-payload"
+          for f in "$root"/bootstrap.php "$root"/src/Setup/PublicSetupService.php "$root"/src/Http/PublicHttpKernel.php "$root"/src/Setup/PublicMoveOwnerPrivatePath.php "$root"/src/Http/PublicMoveOwnerHttpAdapter.php; do php -l "$f"; done
+          test "$(find "$root/database/migrations" -name '*.sql' | wc -l)" -eq 9
+          echo PASS_R256_ACTUAL_35IC_SOURCE_OVERLAY_NO_INSTALLER_ZIP
+      - name: Live MariaDB setup and consent from actual R249 source
+        env:
+          GITHUB_ACTIONS: 'true'
+          R256_QA_DB_PASSWORD: qa-r256-only
+        run: |
+          set -euo pipefail
+          export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r256/qa-public-payload"
+          php r256/test_integrated_setup.php | tee /tmp/r256-setup.txt
+          grep -q 'R256_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r256-setup.txt
+          echo PASS_R256_REAL_MARIADB_QA_NO_HOST_DEPLOY
+      - name: Verify universal decision register and established security primitives
+        run: |
+          set -euo pipefail
+          python3 r251/check_decisions.py
+          php r252/test-public-move-attestation.php | tail -1
+          php r251/test-public-move-decision.php | tail -1
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Setup/PublicMoveOwnerPrivatePath.php
+          echo PASS_R256_NO_CUSTOMER_RUNTIME_HARDCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r256-real-public-source-audit-only
+          path: ${{ runner.temp }}/r256/R256-REAL-R249-INTEGRATION-QA-PROOF.json
+          retention-days: 30
