@@ -44,9 +44,22 @@ jobs:
           if(@($errors).Count -ne 0){$errors|ForEach-Object{Write-Host ('PARSE_ERROR_LINE='+$_.Extent.StartLineNumber+' COL='+$_.Extent.StartColumnNumber+' TEXT='+$_.Extent.Text.Substring(0,[Math]::Min(180,$_.Extent.Text.Length))+' MESSAGE='+$_.Message)};throw 'R239_UNIVERSAL_LIVE_SCRIPT_PARSER_FAILED'}
 
           $guardOut=Join-Path $root 'guard'
-          dotnet publish qa/sokna-printagent-universal/Sokna.PrintAgent.UpgradeGuard.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $guardOut
+          dotnet publish qa/sokna-printagent-universal/Sokna.PrintAgent.UpgradeGuard.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o $guardOut
           if($LASTEXITCODE -ne 0){throw 'R239_SQLITE_GUARD_PUBLISH_FAILED'}
           Copy-Item (Join-Path $guardOut 'Sokna.PrintAgent.UpgradeGuard.exe') (Join-Path $payload 'Sokna.PrintAgent.UpgradeGuard.exe')
+          # Test the EXACT EXE that will be embedded, without its publish-folder native DLLs.
+          $single=Join-Path $root 'single-file-native-test'
+          New-Item -ItemType Directory -Path $single -Force|Out-Null
+          Copy-Item (Join-Path $guardOut 'Sokna.PrintAgent.UpgradeGuard.exe') (Join-Path $single 'Sokna.PrintAgent.UpgradeGuard.exe')
+          $dbdir=Join-Path $root 'real-sqlite-guard-fixture'
+          New-Item -ItemType Directory -Path $dbdir -Force|Out-Null
+          python -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("CREATE TABLE local_jobs (state TEXT NOT NULL)"); c.execute("INSERT INTO local_jobs(state) VALUES (?)",("RecoveryHold",)); c.commit(); c.close()' (Join-Path $dbdir 'queue.db')
+          if($LASTEXITCODE -ne 0){throw 'REAL_SQLITE_GUARD_FIXTURE_FAILED'}
+          & (Join-Path $single 'Sokna.PrintAgent.UpgradeGuard.exe') --data-root $dbdir | Out-Host
+          if($LASTEXITCODE -ne 0){throw 'R239_SINGLE_FILE_SQLITE_NATIVE_RUNTIME_FAILED'}
+          $global:LASTEXITCODE=0
+          Write-Host 'PASS_R239_SINGLE_FILE_SQLITE_NATIVE_EMBEDDED_AND_VERIFIED'
+
           if(!(Test-Path (Join-Path $payload 'Sokna.PrintAgent.UpgradeGuard.exe'))){throw 'R239_QUEUE_GUARD_FILE_MISSING'}
           $roots=@([Environment]::GetFolderPath('ProgramFilesX86'),$env:ProgramFiles)
           $iscc=$roots|ForEach-Object{Join-Path $_ 'Inno Setup 6/ISCC.exe'}|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
