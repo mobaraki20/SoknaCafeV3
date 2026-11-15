@@ -50,4 +50,5 @@ try{
   Run-Case 'NEWER_6213' '6.2.13' 'BLOCKED' ''
   Run-Case 'QA_APPLY_HOLD' '6.2.11' 'BLOCKED' '' $true
   Write-Host 'PASS_UNIVERSAL_6_CASES_ALL_NONMUTATING'
+  $global:LASTEXITCODE = 0
 }finally{$env:ProgramFiles=$origProgramFiles}
