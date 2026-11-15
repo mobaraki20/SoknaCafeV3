@@ -48,7 +48,8 @@ qa(trim(file_get_contents($root.'/VERSION.txt'))===$version,'stage_does_not_chan
 $activated=$bridge->activateStaged('r249_ci');
 qa(is_array($activated['pending_verification']??null),'activation_pending_not_committed');
 qa(trim(file_get_contents($root.'/VERSION.txt'))===$m['version'],'target_code_active');
-qa(($activated['managed_tree_matches_expected']??null)===true,'target_tree_readback');
+qa(($activated['managed_tree_sha256']??null)===$m['target_managed_tree_sha256'],'pending_target_tree_readback');
+qa(($activated['managed_tree_matches_expected']??null)===false,'pending_not_misreported_committed');
 qa(hash_file('sha256',$root.'/emergency.php')===$emergencyHash,'emergency_stable_unchanged');
 qa(hash_file('sha256',$root.'/recovery.php')===$recoveryHash,'recovery_owner_unchanged');
 qa((require $root.'/config.php')['app']['base_path']==='/public','subdirectory_config_preserved');
