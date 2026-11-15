@@ -35,6 +35,7 @@ jobs:
           & $exe --data-root $folder
           if($LASTEXITCODE -eq 0){throw 'QUEUE_GUARD_CORRUPT_WAS_ACCEPTED'}
           Write-Host 'PASS_R239_SQLITE_QUEUE_GUARD_COMPILE_CLEAN_AND_CORRUPT_FAIL_CLOSED'
+          $global:LASTEXITCODE=0
       - name: Inspect guard for direct database mutations
         shell: pwsh
         run: |
