@@ -169,8 +169,11 @@ try{
     New-Item -Path $receiptDir -ItemType Directory -Force|Out-Null
     $temp=Join-Path $receiptDir ('pending-'+$tx+'.tmp')
     $script:pending | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temp -Encoding UTF8 -ErrorAction Stop
-    if(Test-Path -LiteralPath $journal){Remove-Item -LiteralPath $journal -Force -ErrorAction Stop}
-    Move-Item -LiteralPath $temp -Destination $journal -ErrorAction Stop
+    if(Test-Path -LiteralPath $journal){
+      [IO.File]::Replace($temp,$journal,$null)
+    }else{
+      [IO.File]::Move($temp,$journal)
+    }
   }
   function IsOld([string]$path,$j){
     if(!(Test-Path -LiteralPath $path -PathType Container)){return $false}
@@ -235,25 +238,46 @@ try{
     }
     $rtRecover=Get-CimInstance Win32_Service -Filter "Name='SoknaRuntime'" -ErrorAction SilentlyContinue
     $runRuntime=($rtRecover -and [string]$rtRecover.State-eq'Running')
-    if($runRuntime){
+    $shouldRestoreRuntime=([string]$j.runtime_previously_running-eq'True')
+    if($shouldRestoreRuntime -and !$rtRecover){Fail 'JOURNAL_RUNTIME_SERVICE_MISSING'}
+    if($runRuntime -or $shouldRestoreRuntime){
       if((ReadServiceExe ([string]$rtRecover.PathName)) -ne
           (Full (Join-Path $parent 'Runtime\SoknaRuntimeService.exe'))){Fail 'JOURNAL_RUNTIME_OWNER_UNSAFE'}
-      Stop-Service SoknaRuntime -ErrorAction Stop
-      (Get-Service SoknaRuntime).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
-      $runtimeStopped=$true;$runtimeWasRunning=$true
+      if($runRuntime){
+        Stop-Service SoknaRuntime -ErrorAction Stop
+        (Get-Service SoknaRuntime).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
+      }
+      $runtimeStopped=$shouldRestoreRuntime;$runtimeWasRunning=$shouldRestoreRuntime
     }
     if($restoreSvc -and [string]$restoreSvc.State-eq'Running'){
       Stop-Service $serviceName -ErrorAction Stop
       (Get-Service $serviceName).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
     }
-    if($backupPresent){
+    $committedReceipt=$null
+    if($targetHere -and (Test-Path -LiteralPath $receiptPath -PathType Leaf)){
+      $committedReceipt=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
+    }
+    $committedTarget=($targetHere -and $committedReceipt -and
+      [string]$committedReceipt.status-eq'COMMITTED' -and
+      [string]$committedReceipt.target_version-eq'6.2.12' -and
+      [string]$committedReceipt.service_sha256-eq'b28f0028f3be5f0bf4a1ee49d5ddce06e60b95a56f28300d4ac17b05f9f6051b' -and
+      [string]$committedReceipt.worker_sha256-eq'cc638a50f191374a015341b27b48b5dccdf0f3017481a7b0454e2c67ea95873b')
+    if($backupPresent -and $committedTarget){
+      # Crash after successful commit: keep committed target; only remove an exact backup.
+      Remove-Item -LiteralPath $restoredBackup -Recurse -Force -ErrorAction Stop
+      $report.rollback='not_required'
+    }elseif($backupPresent){
       if($targetHere){Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction Stop}
       if($originalHere){Remove-Item -LiteralPath $restoredBackup -Recurse -Force -ErrorAction Stop}
       else{Move-Item -LiteralPath $restoredBackup -Destination $install -ErrorAction Stop}
       if(!(IsOld $install $j)){Fail 'JOURNAL_OLD_RESTORE_READBACK_FAILED'}
       $report.rollback='verified'
     }elseif(!$oldPresent -and $targetHere){
-      if($restoreSvc){Fail 'JOURNAL_CLEAN_SERVICE_REGISTERED_REQUIRES_MANUAL_RECOVERY'}
+      if($restoreSvc){
+        Stop-Service -Name $serviceName -ErrorAction SilentlyContinue
+        & "$env:SystemRoot\System32\sc.exe" delete $serviceName|Out-Null
+        if($LASTEXITCODE -ne 0){Fail 'JOURNAL_CLEAN_SERVICE_DELETE_FAILED'}
+      }
       Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction Stop
       $report.rollback='verified'
     }elseif($oldPresent -and $targetHere){
@@ -378,6 +402,7 @@ try{
     old_service_sha=$(if($snap){Hash (Join-Path $install 'Service\Sokna.PrintAgent.Service.exe')}else{''})
     old_worker_sha=$(if($snap){Hash (Join-Path $install 'Worker\Sokna.PrintAgent.Worker.exe')}else{''})
     print_previously_running=[string]$wasRunning
+    runtime_previously_running=[string]$runtimeWasRunning
   }
   WritePending 'PREPARED'
   StopIfNeeded
