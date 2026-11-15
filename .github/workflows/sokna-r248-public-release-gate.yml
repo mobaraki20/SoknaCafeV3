@@ -1,0 +1,139 @@
+name: SOKNA R248 Public release gate + R247C stable owner integration (NO AUTO DEPLOY)
+on:
+  push:
+    branches: [qa/sokna-r248-public-release-gate-20261115]
+    paths: [ 'r245/**', 'r246/**', 'r247/**', 'r248/**', '.github/workflows/sokna-r248-public-release-gate.yml' ]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-r171-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: zip,mbstring,curl,pdo_mysql,sodium,fileinfo
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: r171-exact-cumulative-windows-cafe-uat-candidates
+          run-id: 43205002445
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r171-artifact
+      - name: Exact known R171 baseline and R233 immutable sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/r245"
+          mkdir -p "$D/r171" "$D/r233-src"
+          OLD=$(find "$RUNNER_TEMP/r171-artifact" -name 'SOKNA-R171-PUBLIC-35HT-FROM-35HK-PANEL-UPDATE.zip' -print -quit)
+          test -n "$OLD"
+          echo "ea1d2f7d90242d5b45fe232da7ff5510f03ee55c835e2dabe5f61980430be157  $OLD" | sha256sum -c -
+          unzip -q "$OLD" -d "$D/r171-outer"
+          (cd "$D/r171-outer/payload" && tar cf - .) | (cd "$D/r171" && tar xf -)
+          base64 -d qa/sokna-r228/R220-PUBLIC-EXACT-HTTP-SERVER-SOURCES.zip.b64 > "$D/r220.zip"
+          echo "f9392dcfbcbba521bf6f372552080005ba7ff0a94f3369c291090fe8294024a0  $D/r220.zip" | sha256sum -c -
+          unzip -q "$D/r220.zip" -d "$D/r233-src"
+          base64 -d qa/sokna-r233/R220-TO-R233-PUBLIC-EXACT-OVERLAY.zip.b64 > "$D/r233-overlay.zip"
+          echo "0acc5a47811b9a9cc65e1484a1dc47eda8a7bcd305964131b3fe6df6d832a6ab  $D/r233-overlay.zip" | sha256sum -c -
+          unzip -o -q "$D/r233-overlay.zip" -d "$D/r233-src"
+          python3 r245/assemble_r233.py "$D/r233-src" "$D/r233-routine.zip"
+          base64 -d r245/overlay-241.zip.b64 > "$D/overlay-241.zip"
+          base64 -d r245/verifier-242.zip.b64 > "$D/verifier-242.zip"
+          echo 'PASS_R245_SOURCE_ROOTS_VERIFIED'
+      - name: Rebuild exact QA package from pinned parents and check SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/r245"
+          cp r245/patch_recovery_compat.py "$D/patch_recovery_compat.py"
+          cp r245/build_r245.py "$D/build_r245.py"
+          cp "$RUNNER_TEMP/r171-artifact/SOKNA-R171-PUBLIC-35HT-FROM-35HK-PANEL-UPDATE.zip" "$D/SOKNA-R171-PUBLIC-35HT-FROM-35HK-PANEL-UPDATE.zip"
+          SOKNA_R245_HOME="$D" SOKNA_R245_R233="$D/r233-routine.zip" SOKNA_R245_OVERLAY="$D/overlay-241.zip" SOKNA_R245_R242="$D/verifier-242.zip" python3 "$D/build_r245.py" > "$D/build.log"
+          TARGET="$D/out/SOKNA-R245-PUBLIC-35IA-FROM-EXACT-35HT-GROUP-QA-DO-NOT-INSTALL.zip"
+          echo 'e3719ce3f37316e6635f537e9b600e7686cd76c6f7041db9d96aa0d170978c7b  '"$TARGET" | sha256sum -c -
+          python3 - "$TARGET" <<'PY'
+          import zipfile,sys
+          z=zipfile.ZipFile(sys.argv[1]);assert z.testzip() is None
+          print('PASS_R245_EXACT_ZIP_CRC')
+          PY
+      - name: Build exact R246 strict Emergency target and prove SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/r245"
+          SOKNA_R246_DIR="$D/r246" SOKNA_R246_PARENT="$D/out/SOKNA-R245-PUBLIC-35IA-FROM-EXACT-35HT-GROUP-QA-DO-NOT-INSTALL.zip" python3 r246/build_r246.py
+          R="$D/r246/SOKNA-R246-PUBLIC-35IB-FROM-35HT-EMERGENCY-BRIDGE-QA-DO-NOT-INSTALL.zip"
+          echo "db51819e2fd7fed99be194e17a884100a5f076d1820925bfecdb632a40a10a76  $R" | sha256sum -c -
+          cp "$R" "$D/"
+          echo PASS_R246_FULL_ZIP_EXACT_SHA
+      - name: Real PHP ZipArchive R171 stage, activate, commit, and rejection tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/r245"
+          cp r245/test_r245.php "$D/test_r245.php"
+          cp r239/public/PublicUpdateException.php "$D/public-update-exception.php"
+          cp "$D/r171/src/Update/RoutinePublicUpdateService.php" "$D/r171-service.php"
+          cp "$D/out/SOKNA-R245-PUBLIC-35IA-FROM-EXACT-35HT-GROUP-QA-DO-NOT-INSTALL.zip" "$D/"
+          python3 - "$D" <<'PY'
+          from pathlib import Path
+          import zipfile,sys
+          p=Path(sys.argv[1]);z=zipfile.ZipFile(p/'SOKNA-R245-PUBLIC-35IA-FROM-EXACT-35HT-GROUP-QA-DO-NOT-INSTALL.zip');(p/'candidate-manifest.json').write_bytes(z.read('manifest.json'))
+          PY
+          php -l "$D/test_r245.php"
+          php "$D/test_r245.php"
+          echo PASS_R245_NATIVE_PHP_ZIPARCHIVE_ROUTINE_UPGRADE_QA
+      - name: Real R171 Independent Emergency bridge strict protocol Stage Activate Commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/r245"
+          cp r246/test_emergency_bridge.php "$D/test_emergency_bridge.php"
+          cp "$D/r171/src/Update/IndependentEmergencyRoutineBridge.php" "$D/r171-bridge.php"
+          php -l "$D/test_emergency_bridge.php"
+          php "$D/test_emergency_bridge.php"
+          echo PASS_R246_INDEPENDENT_EMERGENCY_BRIDGE_CI
+      - name: Lint entire candidate PHP and JavaScript source
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/r245"
+          mkdir -p "$D/target"
+          unzip -q "$D/out/SOKNA-R245-PUBLIC-35IA-FROM-EXACT-35HT-GROUP-QA-DO-NOT-INSTALL.zip" -d "$D/target-package"
+          cp -r "$D/target-package/payload/." "$D/target/"
+          find "$D/target" -name '*.php' -print0 | xargs -0 -P 4 -n 1 php -l >/dev/null
+          find "$D/target" -name '*.js' -print0 | xargs -0 -P 4 -n 1 node --check >/dev/null
+          echo PASS_R245_PHP_JS_SYNTAX
+      - name: Export proof ONLY — no operator install ZIP in this QA run
+        shell: bash
+        run: |
+          echo 'Source/build evidence available in run logs; no deployment actions performed.'
+      - name: R248 R247C exact owner plus immutable R246 payload read-only gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/r245"
+          python3 r248/sokna_public_release_gate.py \
+            --baseline "$D/SOKNA-R171-PUBLIC-35HT-FROM-35HK-PANEL-UPDATE.zip" \
+            --candidate "$D/r246/SOKNA-R246-PUBLIC-35IB-FROM-35HT-EMERGENCY-BRIDGE-QA-DO-NOT-INSTALL.zip" \
+            --stable-owner-source "r247/source/emergency.php" \
+            --stable-access-source "r247/source/EmergencyAccessService.php" \
+            --out "$D/r248"
+          python3 - "$D/r248/R248-READONLY-RELEASE-GATE.json" <<'PY'
+          import json,sys
+          evidence=json.load(open(sys.argv[1]))
+          assert evidence["offline_pass"] is True
+          assert evidence["safe_operational_go"] is False
+          print("PASS_R248_OFFLINE_GATE_WITH_PRODUCTION_NO_GO",len(evidence["gates"]))
+          PY
+      - name: Export R248 gate only (NEVER installable ZIP)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r248-readonly-gate-proof
+          path: ${{ runner.temp }}/r245/r248/R248-READONLY-RELEASE-GATE.json
+          if-no-files-found: error
