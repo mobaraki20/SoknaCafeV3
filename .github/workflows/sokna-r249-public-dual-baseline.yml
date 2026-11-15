@@ -159,13 +159,46 @@ jobs:
           print('PASS_R249_DETERMINISTIC_TWO_BASELINE_BUNDLE')
           PY
           cp r249/SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip "$D/"
-      - name: R249 genuine PHP ZipArchive Stage Activate pending Commit under preserved DB fence
+      - name: Reconstruct byte-pinned R153 35HK from exact R171 and audited historical overlay
         shell: bash
         run: |
           set -euo pipefail
           D="$RUNNER_TEMP/r245"
-          R249_QA_FIXTURE="$D" php -d display_errors=1 r249/test_r249.php
-          echo PASS_R249_EXACT_R171_FORWARD_ONLY_REAL_PHP_ZIPARCHIVE
+          python3 - "$D" <<'PY'
+          import base64,hashlib,io,json,pathlib,shutil,sys,zipfile
+          d=pathlib.Path(sys.argv[1])
+          p=d/'r153'
+          shutil.copytree(d/'r171',p)
+          fixture=pathlib.Path('r249/fixtures')
+          parts=sorted(fixture.glob('r153-source-overlay.part*.b64'))
+          assert len(parts)==9,len(parts)
+          encoded=''.join(x.read_text().strip() for x in parts)
+          b=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(b).hexdigest()=='b9d3326e522c3646d1e831cea738352664ab69b6a49f418db32fc88f49c65997'
+          names=set(json.loads((fixture/'R153-35HK-SOURCE-FILES.json').read_text()))
+          for x in p.rglob('*'):
+              if x.is_file() and str(x.relative_to(p)).replace('\\','/') not in names:x.unlink()
+          with zipfile.ZipFile(io.BytesIO(b)) as z:
+              assert z.testzip() is None
+              for name in z.namelist():
+                  dest=p/name
+                  dest.parent.mkdir(parents=True,exist_ok=True)
+                  dest.write_bytes(z.read(name))
+          actual={str(x.relative_to(p)).replace('\\','/'):x.read_bytes() for x in p.rglob('*') if x.is_file()}
+          assert set(actual)==names,(len(actual),len(names))
+          tree=hashlib.sha256(''.join(n+'\\0'+hashlib.sha256(actual[n]).hexdigest()+'\\n' for n in sorted(actual)).encode()).hexdigest()
+          assert tree=='0fd94f725670f521c60557137aab38e518e72c1c4cd9a0b0b6861e65f9fa7537',tree
+          assert actual['VERSION.txt'].decode().strip()=='3.0.0-g3.6-workspace.35hk-r153-identity-reconciled-qa'
+          print('PASS_R249_REAL_R153_EXACT_SOURCE_TREE')
+          PY
+      - name: R249 real PHP ZipArchive Stage Activate Commit for BOTH exact baselines with DB forward fence
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/r245"
+          R249_QA_FIXTURE="$D" R249_QA_BASELINE=35ht php -d display_errors=1 r249/test_r249.php
+          R249_QA_FIXTURE="$D" R249_QA_BASELINE=35hk php -d display_errors=1 r249/test_r249.php
+          echo PASS_R249_BOTH_EXACT_BASELINES_REAL_PHP_ZIPARCHIVE
       - name: Publish R249 candidate and proof (no host deploy)
         uses: actions/upload-artifact@v4
         with:
