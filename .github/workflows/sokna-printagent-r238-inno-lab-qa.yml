@@ -1,0 +1,100 @@
+name: SOKNA R238 Print Agent independent universal Inno EXE - isolated QA only
+on:
+  push:
+    branches:
+      - qa/sokna-printagent-universal-installer-20261115
+    paths:
+      - packaging/windows/installer/SOKNA-PrintAgent-6212-IndependentLab-QA.iss
+      - .github/workflows/sokna-printagent-r238-inno-lab-qa.yml
+      - qa/sokna-printagent-universal/Invoke-PrintAgentIndependentLab.ps1
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inno-real-qa:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R198-PRINT-AGENT-6.2.12-BINARY-QA-NOT-INSTALL
+          run-id: 43489066238
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/immutable-r238
+      - name: Build standalone QA Inno executable from immutable component ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $source=Join-Path $env:RUNNER_TEMP 'immutable-r238/SoknaPrintAgent-6.2.12-win-x64.zip'
+          if((Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant() -ne '464eb276b446ffe6e30bdf05e36a4ef08671324ac0784f830f241d142d19efb5'){throw 'IMMUTABLE_6212_MISMATCH'}
+          $root=Join-Path $env:RUNNER_TEMP 'r238-inno'
+          $payload=Join-Path $root 'payload';$dist=Join-Path $root 'dist'
+          New-Item -ItemType Directory -Path $payload,$dist -Force|Out-Null
+          Copy-Item $source (Join-Path $payload 'SoknaPrintAgent-6.2.12-win-x64.zip')
+          Copy-Item qa/sokna-printagent-universal/Invoke-PrintAgentIndependentLab.ps1 (Join-Path $payload 'Invoke-PrintAgentIndependentLab.ps1')
+          $roots=@([Environment]::GetFolderPath('ProgramFilesX86'),$env:ProgramFiles)
+          $iscc=$roots|ForEach-Object{Join-Path $_ 'Inno Setup 6/ISCC.exe'}|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1
+          if(!$iscc){choco install innosetup -y --no-progress;if($LASTEXITCODE -ne 0){throw 'INNO_SETUP_INSTALL_FAILED'};$iscc=$roots|ForEach-Object{Join-Path $_ 'Inno Setup 6/ISCC.exe'}|Where-Object{Test-Path $_ -PathType Leaf}|Select-Object -First 1}
+          if(!$iscc){throw 'ISCC_NOT_FOUND'}
+          & $iscc "/DPayloadRoot=$payload" "/DOutputDir=$dist" 'packaging/windows/installer/SOKNA-PrintAgent-6212-IndependentLab-QA.iss'
+          if($LASTEXITCODE -ne 0){throw 'R238_INNO_COMPILE_FAILED'}
+          $exe=Join-Path $dist 'SOKNA-PrintAgent-6.2.12-Universal-Lab-QA-NOT-FOR-CAFE.exe'
+          if(!(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'R238_QA_EXE_NOT_FOUND'}
+          Write-Host ('QA_EXE_SHA256='+(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant())
+          "R238_QA_EXE=$exe"|Out-File -FilePath $env:GITHUB_ENV -Append
+          "R238_QA_DIST=$dist"|Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host 'PASS_R238_EXE_BUILT_QA_NOT_FOR_CAFE'
+      - name: Standalone EXE must reject any host without explicit runner-only lab root
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if(Get-Service SoknaPrintWorker -ErrorAction SilentlyContinue){throw 'UNEXPECTED_TEST_SERVICE'}
+          $proc=Start-Process -FilePath $env:R238_QA_EXE -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -PassThru -Wait
+          if($proc.ExitCode -eq 0){throw 'INNO_SILENT_UNTRUSTED_HOST_WAS_ACCEPTED'}
+          if(Get-Service SoknaPrintWorker -ErrorAction SilentlyContinue){throw 'EXE_UNAUTHORIZED_SERVICE_CREATED'}
+          Write-Host 'PASS_R238_UNTRUSTED_QA_EXE_INVOCATION_REFUSED'
+      - name: One-file EXE actual isolated service activation and idempotent replay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $lab=Join-Path $env:RUNNER_TEMP 'SoknaPrintOneClickLab'
+          try{
+            foreach($mode in @('initial','repeat')){
+              $proc=Start-Process -FilePath $env:R238_QA_EXE -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/LABROOT='+$lab)) -PassThru -Wait
+              if($proc.ExitCode -ne 0){throw ('R238_INNO_'+$mode+'_FAILED_'+$proc.ExitCode)}
+              if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw ('R238_INNO_SERVICE_NOT_RUNNING_'+$mode)}
+              $receipt=Join-Path $lab 'ProgramData/SOKNA/setup/print-agent-independent-v1/active.json'
+              $r=Get-Content $receipt -Raw|ConvertFrom-Json
+              if($r.status -ne 'COMMITTED' -or $r.target_version -ne '6.2.12'){throw 'R238_INNO_RECEIPT_FAILED'}
+              if($mode -eq 'initial'){
+                $initialPid=(Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'").ProcessId
+                $initialReceipt=(Get-FileHash $receipt -Algorithm SHA256).Hash
+              }else{
+                $afterPid=(Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'").ProcessId
+                if($afterPid -ne $initialPid -or (Get-FileHash $receipt -Algorithm SHA256).Hash -ne $initialReceipt){throw 'R238_INNO_IDEMPOTENCE_UNPROVEN'}
+              }
+              Write-Host ('PASS_R238_INNO_'+$mode+'_SERVICE_AND_RECEIPT')
+            }
+          }finally{
+            $s=Get-Service SoknaPrintWorker -ErrorAction SilentlyContinue
+            if($s){if($s.Status -ne 'Stopped'){Stop-Service SoknaPrintWorker -ErrorAction SilentlyContinue}; & "$env:SystemRoot/System32/sc.exe" delete SoknaPrintWorker|Out-Host}
+          }
+      - name: Record QA-only status and immutable EXE identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=$env:R238_QA_EXE
+          $hash=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $([IO.Path]::GetFileName($exe))"|Set-Content (Join-Path $env:R238_QA_DIST 'SHA256SUMS.txt') -Encoding Ascii
+          @{format='sokna-r238-inno-independent-lab-v1';source_commit=$env:GITHUB_SHA;file_name=[IO.Path]::GetFileName($exe);sha256=$hash;production_install_allowed=$false;lab_only_reject_without_runner='PASS';actual_service_clean_setup='PASS';idempotent_replay='PASS';real_6211_binary_upgrade='NOT_TESTED';printer_output='NOT_TESTED';windows_services_integrated_release='NOT_TESTED'}|ConvertTo-Json -Depth 6|Set-Content (Join-Path $env:R238_QA_DIST 'QA-RESULT.json') -Encoding UTF8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-PrintAgent-6.2.12-UNIVERSAL-WIN64-EXE-QA-NOT-FOR-CAFE
+          path: |
+            ${{ runner.temp }}/r238-inno/dist/SOKNA-PrintAgent-6.2.12-Universal-Lab-QA-NOT-FOR-CAFE.exe
+            ${{ runner.temp }}/r238-inno/dist/QA-RESULT.json
+            ${{ runner.temp }}/r238-inno/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
