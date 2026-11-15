@@ -4,6 +4,7 @@ param(
   [Parameter(Mandatory=$true)][string]$PackageZip,
   [string]$OutputDir = "$env:TEMP\SOKNA-PrintAgent-QA-Reports",
   [string]$FixtureJson,
+  [string]$FixtureProgramFiles,
   [switch]$AllowMutation
 )
 $ErrorActionPreference = 'Stop'
@@ -86,8 +87,10 @@ $failed = $false; $root = $null
 try {
   if (!(Test-Path -LiteralPath $PackageZip -PathType Leaf)) { Fail 'PAYLOAD_ZIP_MISSING' }
   if ((Get-FileHash -LiteralPath $PackageZip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ExpectedZipSha) { Fail 'PAYLOAD_ZIP_IDENTITY_MISMATCH' }
+  if ($FixtureProgramFiles -and (!$FixtureJson -or $Action -ne 'Probe')) { Fail 'QA_FIXTURE_PATH_NEVER_ALLOWED_FOR_MUTATION' }
   $snap = Get-ServiceSnapshot
-  $parent = Canon (Join-Path $env:ProgramFiles $TargetPrefix)
+  $programRoot = $(if ($FixtureProgramFiles) { $FixtureProgramFiles } else { $env:ProgramFiles })
+  $parent = Canon (Join-Path $programRoot $TargetPrefix)
   $root = Canon (Join-Path $parent 'PrintAgent')
   Assert-NoReparse $parent
   Assert-NoReparse $root
