@@ -142,7 +142,7 @@ def main():
                 return $this->publicOwnerAction($moveMatch[1], $headers, $rawBody);
             }
 """
-    anchor="            if ($method === 'POST' && $path === '/api/v1/pairing/initial') {"
+    anchor="            if ($method === 'GET' && $path === '/health') {"
     edit_one(files,'src/Http/PublicHttpKernel.php',anchor,route+anchor)
     method="""
     /** Server-side only: challenge/owner scope must never be taken from client identity fields. */
