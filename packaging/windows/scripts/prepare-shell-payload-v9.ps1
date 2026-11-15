@@ -108,6 +108,14 @@ $coreRaw=$coreRaw.Replace($oldSubordinateKeep,$newSubordinateKeep)
 
 [IO.File]::WriteAllText($corePath,$coreRaw,(New-Object Text.UTF8Encoding($true)))
 
+# R238: Windows Services must accept an independently committed Print Agent 6.2.12.
+# Fail closed if exact owner-core contracts changed; do not rewrite main or installed files.
+$printOwnerBridge=Join-Path $RepoRoot 'qa\sokna-printagent-universal\Add-PrintAgentIndependentOwnerBridge.ps1'
+if(-not(Test-Path -LiteralPath $printOwnerBridge -PathType Leaf)){throw 'R238_PRINT_OWNER_BRIDGE_REQUIRED'}
+& $printOwnerBridge -CorePath $corePath
+if(-not $?){throw 'R238_PRINT_OWNER_BRIDGE_APPLICATION_FAILED'}
+
+
 $setupSource=Join-Path $RepoRoot 'packaging\windows\scripts\setup-windows-components-v9.ps1'
 $supportSource=Join-Path $RepoRoot 'packaging\windows\scripts\collect-support-v3.ps1'
 $supportCoreSource=Join-Path $RepoRoot 'packaging\windows\scripts\collect-support-v2.ps1'
