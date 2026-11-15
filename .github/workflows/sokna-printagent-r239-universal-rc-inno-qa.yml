@@ -39,6 +39,10 @@ jobs:
           New-Item -ItemType Directory -Path $payload,$dist -Force|Out-Null
           Copy-Item $source (Join-Path $payload 'SoknaPrintAgent-6.2.12-win-x64.zip')
           Copy-Item qa/sokna-printagent-universal/Invoke-PrintAgentIndependentUniversal.ps1 (Join-Path $payload 'Invoke-PrintAgentIndependentUniversal.ps1')
+          $tokens=$null;$errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'qa/sokna-printagent-universal/Invoke-PrintAgentIndependentUniversal.ps1').Path,[ref]$tokens,[ref]$errors)|Out-Null
+          if(@($errors).Count -ne 0){$errors|ForEach-Object{Write-Host $_.Message};throw 'R239_UNIVERSAL_LIVE_SCRIPT_PARSER_FAILED'}
+
           $guardOut=Join-Path $root 'guard'
           dotnet publish qa/sokna-printagent-universal/Sokna.PrintAgent.UpgradeGuard.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $guardOut
           if($LASTEXITCODE -ne 0){throw 'R239_SQLITE_GUARD_PUBLISH_FAILED'}
@@ -85,7 +89,11 @@ jobs:
                 }
               }
 
-              if($proc.ExitCode -ne 0){throw ('R239_INNO_'+$mode+'_FAILED_'+$proc.ExitCode)}
+              if($proc.ExitCode -ne 0){
+                $q=@(Get-ChildItem (Join-Path $lab 'reports') -Filter 'SOKNA-PRINT-TRANSACTION-*.json' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+                if($q.Count -gt 0){$j=Get-Content $q[0].FullName -Raw|ConvertFrom-Json;Write-Host ("R239_SAFE_FAILURE_CODE="+$j.reason+" STATUS="+$j.status+" MODE="+$mode)}
+                throw ('R239_INNO_'+$mode+'_FAILED_'+$proc.ExitCode)
+              }
               if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw ('R239_INNO_SERVICE_NOT_RUNNING_'+$mode)}
               $receipt=Join-Path $lab 'ProgramData/SOKNA/setup/print-agent-independent-v1/active.json'
               $r=Get-Content $receipt -Raw|ConvertFrom-Json
