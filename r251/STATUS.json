@@ -36,8 +36,8 @@
     },
     {
       "item": "decision validity checker",
-      "status": "CODE_CREATED_AWAITING_CI",
-      "evidence": "r251/check_decisions.py"
+      "status": "CI_PASS",
+      "evidence": "r251/check_decisions.py and GitHub Actions run 43764380870"
     }
   ],
   "pending": [
@@ -93,6 +93,13 @@
     "Use expired/superseded decisions as active",
     "Claim a read-only classifier constitutes functional migration"
   ],
-  "next_action": "Run decision-validator in CI, then design and implement generic signed per-installation destination verification and an idempotent approval flow before mutation; keep simple UX and no operational host changes.",
-  "handoff_instruction": "Read r251/DECISIONS-FA.md, r251/decisions.json, r251/START-HERE-FA.md, r251/STATUS.json and current QA branch code before modifying. Continue at next_action; append decisions and mark superseded entries instead of overwriting history."
+  "next_action": "Implement generic per-installation ownership/identity attestation and read-only destination probe with cryptographically bound source/target (no case-specific URL, tenant, version); then durable idempotent approval/cutover and E2E multi-customer tests.",
+  "handoff_instruction": "Read r251/DECISIONS-FA.md, r251/decisions.json, r251/START-HERE-FA.md, r251/STATUS.json and current QA branch code before modifying. Continue at next_action; append decisions and mark superseded entries instead of overwriting history.",
+  "verification": {
+    "last_successful_ci_run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43764380870",
+    "multi_customer_discovery_assertions": 55,
+    "decision_register_checked": true,
+    "production_transfer_tested": false,
+    "production_host_modified": false
+  }
 }
