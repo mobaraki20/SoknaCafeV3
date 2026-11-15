@@ -29,7 +29,7 @@ jobs:
           $p=Join-Path $env:RUNNER_TEMP 'binary/SoknaPrintAgent-6.2.12-win-x64.zip'
           if(!(Test-Path $p)){throw 'MISSING_IMMUTABLE_PRINT_BINARY'}
           if((Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant() -ne '464eb276b446ffe6e30bdf05e36a4ef08671324ac0784f830f241d142d19efb5'){throw 'WRONG_PRINT_BINARY_SHA'}
-          foreach($n in @('Invoke-SoknaPrintAgentUniversal.ps1','Test-SoknaPrintAgentUniversal.ps1')){
+          foreach($n in @('Invoke-SoknaPrintAgentUniversal.ps1','Test-SoknaPrintAgentUniversal.ps1','Test-WindowsServicesOwnerContract.ps1')){
             $script=Join-Path 'qa/sokna-printagent-universal' $n
             $tokens=$null;$errors=$null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script).Path,[ref]$tokens,[ref]$errors)|Out-Null
@@ -43,6 +43,12 @@ jobs:
           $p=Join-Path $env:RUNNER_TEMP 'binary/SoknaPrintAgent-6.2.12-win-x64.zip'
           & 'qa/sokna-printagent-universal/Test-SoknaPrintAgentUniversal.ps1' -PackageZip $p -ScriptPath (Resolve-Path 'qa/sokna-printagent-universal/Invoke-SoknaPrintAgentUniversal.ps1').Path
           if($LASTEXITCODE -ne 0){throw 'UNIVERSAL_QA_FAILED'}
+      - name: Verify Windows Services ownership contract against Maintenance precedent
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & 'qa/sokna-printagent-universal/Test-WindowsServicesOwnerContract.ps1'
+          if($LASTEXITCODE -ne 0){throw 'WINDOWS_SERVICES_OWNER_CONTRACT_QA_FAILED'}
       - name: Keep explicit QA HOLD report
         shell: pwsh
         run: |
