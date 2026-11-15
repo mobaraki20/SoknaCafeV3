@@ -12,7 +12,7 @@ $expectedZip='464eb276b446ffe6e30bdf05e36a4ef08671324ac0784f830f241d142d19efb5'
 $serviceName='SoknaPrintWorker'
 $tx=[guid]::NewGuid().ToString('N')
 $report=[ordered]@{format='sokna-printagent-independent-lab-v1';transaction_id=$tx;mode=$Mode;status='BLOCKED';reason='NOT_STARTED';old_version=$null;new_version='6.2.12';service_name=$serviceName;rollback='not_required';data_preserved=$false;other_services_untouched=$false;production_allowed=$false}
-$oldMoved=$false;$newActivated=$false;$createdSvc=$false;$wasRunning=$false;$lock=$null;$staging=$null;$backup=$null;$oldReceipt=$null;$targetDir=$null
+$oldMoved=$false;$newActivated=$false;$createdSvc=$false;$wasRunning=$false;$lock=$null;$staging=$null;$backup=$null;$oldReceipt=$null;$targetDir=$null;$runtimeStopped=$false;$runtimeWasRunning=$false
 function Fail([string]$code){throw $code}
 function Full([string]$path){[IO.Path]::GetFullPath($path).TrimEnd('\')}
 function Hash([string]$path){
@@ -162,6 +162,21 @@ try{
   $maint=(Get-Service 'SoknaMaintenanceSupervisor' -ErrorAction SilentlyContinue)
   $rtState=$(if($rt){[string]$rt.Status}else{'absent'})
   $maintState=$(if($maint){[string]$maint.Status}else{'absent'})
+  # Windows Runtime auto-restarts SoknaPrintWorker every ~2 sec. To avoid a racing
+  # restart while its owned binaries are renamed, temporarily quiesce only this
+  # known supervisor. Its executable, settings and durable data are never changed.
+  $runtimeWasRunning=($null -ne $rt -and [string]$rt.Status -eq 'Running')
+  if($runtimeWasRunning){
+    $rinfo=Get-CimInstance Win32_Service -Filter "Name='SoknaRuntime'" -ErrorAction Stop
+    $runtimeImage=ReadServiceExe ([string]$rinfo.PathName)
+    $expectedRuntime=Full (Join-Path $parent 'Runtime\SoknaRuntimeService.exe')
+    if($runtimeImage -ne $expectedRuntime){Fail 'FOREIGN_RUNTIME_SUPERVISOR_OWNER'}
+    Stop-Service -Name 'SoknaRuntime' -ErrorAction Stop
+    $rservice=Get-Service -Name 'SoknaRuntime' -ErrorAction Stop
+    try{$rservice.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(40))}finally{$rservice.Dispose()}
+    $runtimeStopped=$true
+    Write-Host 'PASS_PRINT_R238_RUNTIME_SUPERVISION_QUIESCED_WITHOUT_BINARY_MUTATION'
+  }
   $marker=Join-Path $agentData 'qa-preserve-marker.bin'
   $markerBefore=$(if(Test-Path -LiteralPath $marker){Hash $marker}else{''})
   $staging=Join-Path $parent ('PrintAgent.__incoming.'+$tx)
@@ -185,6 +200,12 @@ try{
   $nowSvc=CurrentService
   if(!$nowSvc -or (ReadServiceExe ([string]$nowSvc.PathName)) -ne (Full (Join-Path $install 'Service\Sokna.PrintAgent.Service.exe'))){Fail 'SERVICE_READBACK_MISMATCH'}
   if(($wasRunning -or $createdSvc) -and [string]$nowSvc.State -ne 'Running'){Fail 'SERVICE_NOT_RUNNING_AFTER_APPLY'}
+  if($runtimeStopped){
+    Start-Service -Name 'SoknaRuntime' -ErrorAction Stop
+    $rservice=Get-Service -Name 'SoknaRuntime' -ErrorAction Stop
+    try{$rservice.WaitForStatus('Running',[TimeSpan]::FromSeconds(35))}finally{$rservice.Dispose()}
+    $runtimeStopped=$false
+  }
   $rtAfter=Get-Service 'SoknaRuntime' -ErrorAction SilentlyContinue
   if($(if($rtAfter){[string]$rtAfter.Status}else{'absent'}) -ne $rtState){Fail 'RUNTIME_STATUS_CHANGED'}
   $maintAfter=Get-Service 'SoknaMaintenanceSupervisor' -ErrorAction SilentlyContinue
@@ -217,6 +238,18 @@ try{
   }else{$report.status='BLOCKED'}
   Write-Host ('PRINT_INDEPENDENT_LAB_ERROR='+$report.reason)
 }finally{
+  if($runtimeStopped -and $runtimeWasRunning){
+    try{
+      Start-Service -Name 'SoknaRuntime' -ErrorAction Stop
+      $rservice=Get-Service 'SoknaRuntime' -ErrorAction Stop
+      try{$rservice.WaitForStatus('Running',[TimeSpan]::FromSeconds(35))}finally{$rservice.Dispose()}
+      $runtimeStopped=$false
+    }catch{
+      $report.status='RUNTIME_RESTORE_FAILED'
+      $report.reason=[string]$report.reason+' | RUNTIME_RESTART_FAILED: '+$_.Exception.Message
+      $report.other_services_untouched=$false
+    }
+  }
   if($lock){$lock.Dispose()}
   if($staging -and (Test-Path -LiteralPath $staging)){Remove-Item -LiteralPath $staging -Force -Recurse -ErrorAction SilentlyContinue}
   if($backup -and $report.status -eq 'COMMITTED_LAB' -and (Test-Path -LiteralPath $backup)){Remove-Item -LiteralPath $backup -Force -Recurse -ErrorAction SilentlyContinue}
