@@ -1,13 +1,13 @@
 <?php
 declare(strict_types=1);
-require dirname(__DIR__, 2).'/apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php';
-require dirname(__DIR__, 2).'/apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalMac.php';
-require dirname(__DIR__, 2).'/apps/local-web/src/Domain/PublicEdge/PublicMoveIdentityVerifier.php';
-require dirname(__DIR__, 2).'/apps/public/src/Security/PublicMoveOwnerConsentGuard.php';
-require dirname(__DIR__, 2).'/apps/public/src/Security/PublicMoveAttestationIssuer.php';
-require dirname(__DIR__, 2).'/apps/public/src/Security/PublicMoveInstanceKeyStore.php';
-require dirname(__DIR__, 2).'/apps/public/src/Security/PublicMoveOwnerBootstrapService.php';
-require dirname(__DIR__, 2).'/apps/public/src/Security/PublicMoveIndependentOwnerBridge.php';
+require dirname(__DIR__).'/apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php';
+require dirname(__DIR__).'/apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalMac.php';
+require dirname(__DIR__).'/apps/local-web/src/Domain/PublicEdge/PublicMoveIdentityVerifier.php';
+require dirname(__DIR__).'/apps/public/src/Security/PublicMoveOwnerConsentGuard.php';
+require dirname(__DIR__).'/apps/public/src/Security/PublicMoveAttestationIssuer.php';
+require dirname(__DIR__).'/apps/public/src/Security/PublicMoveInstanceKeyStore.php';
+require dirname(__DIR__).'/apps/public/src/Security/PublicMoveOwnerBootstrapService.php';
+require dirname(__DIR__).'/apps/public/src/Security/PublicMoveIndependentOwnerBridge.php';
 
 use Sokna\Local\Domain\PublicEdge\PublicMoveIdentityVerifier as V;
 use Sokna\PublicEdge\Security\PublicMoveOwnerBootstrapService as S;
