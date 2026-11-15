@@ -42,7 +42,7 @@ $transport=function(string $url,string $method,array $headers,string $raw)use($a
         $response=$auth->complete((string)$v['new_installation_id'],(string)$v['enrollment_code'],(string)$v['new_shared_secret'],(string)$v['display_name']);
         $remoteCommits++;
         if($dropLocalPhaseOnce){$dropLocalPhaseOnce=false;
-            $local->exec("CREATE TRIGGER r239_failure BEFORE UPDATE ON public_authority_state FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected local storage failure'");
+            $local->exec("CREATE TRIGGER r239_failure BEFORE UPDATE ON public_authority_state FOR EACH ROW BEGIN IF NEW.phase='resync_required' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected local storage failure'; END IF; END");
         }
         if($loseRemoteReply){$loseRemoteReply=false;throw new PublicEdgeSyncException('public_unreachable','Intentional lost 2xx',503);}
         return ['status'=>200,'body'=>$response];
@@ -87,7 +87,8 @@ try{$svc->recoverReplacement('https://www.soknaspace.ir',$offer['enrollment_code
 catch(Throwable $e){$failed=true;echo 'EXPECTED_RECOVERY_FAULT '.get_class($e).' '.($e instanceof PublicEdgeSyncException?$e->errorCode:(string)$e->getCode()).' '.substr($e->getMessage(),0,160)."\n";}
 ck('local-db-trigger-injected-after-remote-success',$failed);
 ck('remote-committed-once',$remoteCommits===1);
-echo 'TEST_LOCAL_CONFIG_SECRET_LENGTH '.strlen((string)((require $cfgPath)['public']['shared_secret']??'' )).' OLD_LENGTH '.strlen($oldSecret).' JOURNAL '.(is_file($cfgPath.'.public-recovery-pending.json')?'yes':'no')."\n";\nck('local-config-committed-before-db-trigger',(require $cfgPath)['public']['shared_secret']!==$oldSecret);
+echo 'TEST_LOCAL_CONFIG_SECRET_LENGTH '.strlen((string)((require $cfgPath)['public']['shared_secret']??'' )).' OLD_LENGTH '.strlen($oldSecret).' JOURNAL '.(is_file($cfgPath.'.public-recovery-pending.json')?'yes':'no')."\n";
+ck('local-config-committed-before-db-trigger',(require $cfgPath)['public']['shared_secret']!==$oldSecret);
 ck('local-phase-stays-fenced',$localState->phase()==='reenroll_required'&&$localState->epoch()===2);
 ck('journal-retained-after-db-failure',is_file($cfgPath.'.public-recovery-pending.json'));
 ck('new-code-overwrite-blocked',expectError(fn()=>$svc->recoverReplacement('https://www.soknaspace.ir','other-code','Cafe',1,'REPLACE_PUBLIC',2),'public_recovery_pending_resume_required'));
