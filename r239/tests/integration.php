@@ -26,7 +26,7 @@ $key=base64_encode(random_bytes(SODIUM_CRYPTO_SECRETBOX_KEYBYTES));$secretStore=
 $accessDir=sys_get_temp_dir().'/sokna-r239-db-access-'.bin2hex(random_bytes(6));mkdir($accessDir,0700,true);
 $auth=new AuthorityEpochService($public,$secretStore,new EmergencyAccessService($accessDir));
 $localState=new PublicAuthorityStateService($local,$ins);
-$oldSecret='old-secret-for-qa-only';$secretStore->put($ins,$oldSecret);
+$oldSecret='old-secret-for-qa-only-0123456789abcdef';$secretStore->put($ins,$oldSecret);
 $cfgDir=sys_get_temp_dir().'/sokna-r239-db-local-'.bin2hex(random_bytes(6));mkdir($cfgDir,0700,true);$cfgPath=$cfgDir.'/config.php';
 $cfg=['installation'=>['id'=>$ins],'public'=>['base_url'=>'https://www.soknaspace.ir','shared_secret'=>$oldSecret]];
 file_put_contents($cfgPath,'<?php return '.var_export($cfg,true).';');
