@@ -329,7 +329,7 @@ final class PublicReenrollmentService
         $backup = $this->configPath . '.pairing-backup-' . bin2hex(random_bytes(4));
         $hadOriginal = is_file($this->configPath);
         if ($hadOriginal && !@rename($this->configPath, $backup)) {
-            @unlink($staged);
+            // Remote pairing may have committed; keep the staged secret for safe resume.
             throw new PublicEdgeSyncException('config_write_failed', 'قفل جایگزینی تنظیمات اتصال باز نشد.', 500);
         }
         try {
@@ -340,7 +340,7 @@ final class PublicReenrollmentService
             @chmod($this->configPath, 0600);
             if ($hadOriginal) @unlink($backup);
         } catch (Throwable $error) {
-            @unlink($staged);
+            // Preserve the staged credential after failed Windows filesystem replacement.
             throw $error;
         }
     }
