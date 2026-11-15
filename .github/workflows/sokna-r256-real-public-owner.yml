@@ -78,6 +78,11 @@ jobs:
         run: |
           set -euo pipefail
           export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r256/qa-public-payload"
+          # R249 operator ZIP intentionally excludes protected Emergency owner files.
+          # Supply preexisting compatible fixtures ONLY in disposable QA runtime,
+          # never merge them into the managed payload or distribution proof.
+          mkdir -p "$R256_QA_PUBLIC_ROOT/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$R256_QA_PUBLIC_ROOT/src/Emergency/"
           php r256/test_integrated_setup.php | tee /tmp/r256-setup.txt
           grep -q 'R256_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r256-setup.txt
           echo PASS_R256_REAL_MARIADB_QA_NO_HOST_DEPLOY
