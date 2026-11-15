@@ -1,0 +1,27 @@
+name: Sokna R251 read-only Public move discovery QA (NO DEPLOY)
+on:
+  push:
+    branches:
+      - qa/sokna-r251-migration-start-20261116
+    paths:
+      - apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php
+      - r251/**
+      - .github/workflows/sokna-r251-migration-discovery.yml
+  workflow_dispatch:
+jobs:
+  read-only-discovery:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax, safe target selection, distinct-instance classification
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -v
+          php -l apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php
+          php -l r251/test-public-move-decision.php
+          php r251/test-public-move-decision.php | tee /tmp/sokna-r251-discovery.txt
+          grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=30' /tmp/sokna-r251-discovery.txt
+          echo PASS_R251_PHASE_A_READONLY_ONLY_NO_HOST_MUTATION
