@@ -1,0 +1,169 @@
+{
+  "scope": "public only",
+  "mode": "read_only",
+  "host_touched": false,
+  "database_touched": false,
+  "gates": [
+    {
+      "gate": "baseline_archive_pin",
+      "status": "PASS",
+      "detail": "ea1d2f7d90242d5b45fe232da7ff5510f03ee55c835e2dabe5f61980430be157"
+    },
+    {
+      "gate": "candidate_archive_pin",
+      "status": "PASS",
+      "detail": "db51819e2fd7fed99be194e17a884100a5f076d1820925bfecdb632a40a10a76"
+    },
+    {
+      "gate": "baseline_version",
+      "status": "PASS",
+      "detail": "3.0.0-g3.6-workspace.35ht-r171-cumulative-staff-expenses-uat"
+    },
+    {
+      "gate": "source_tree",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "target_version",
+      "status": "PASS",
+      "detail": "3.0.0-g3.6-workspace.35ib-r246-emergency-bridge"
+    },
+    {
+      "gate": "single_exact_registered_baseline",
+      "status": "PASS",
+      "detail": "Only R171 registered; NOT a universal all-version package"
+    },
+    {
+      "gate": "emergency_protocol",
+      "status": "PASS",
+      "detail": "Routine and Emergency share ZIP transport"
+    },
+    {
+      "gate": "no_unsafe_deletions",
+      "status": "PASS",
+      "detail": "additional managed files: assets/settlement-display-currency.js, assets/staff-app/public-account.js, src/Auth/PublicAccountPasswordService.php"
+    },
+    {
+      "gate": "migration_files_preserved",
+      "status": "PASS",
+      "detail": "Migrations in managed payload not introduced"
+    },
+    {
+      "gate": "protected_emergency_paths_omitted",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "version_file_matches_manifest",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "owner_metadata_target_aligned",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "owner_candidate_unchanged",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "shared_routine_bridge_unchanged",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "gui_stays_protected",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "preserves_subdirectory_base_path",
+      "status": "PASS",
+      "detail": "Existing deployment config remains outside managed package"
+    },
+    {
+      "gate": "r247c_stable_owner_pin",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "r247c_access_owner_pin",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "r247c_r171_exception_scoped",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "r247c_same_forward_bridge",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "r247c_forward_only_rollback_guard",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "r247c_installer_explicitly_external_to_target",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "disposable_managed_tree_after_upgrade",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "disposable_stable_owner_retained",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "disposable_unmanaged_config_unmodified",
+      "status": "PASS",
+      "detail": "No config from operator zip"
+    },
+    {
+      "gate": "php_lint_all_target",
+      "status": "PASS",
+      "detail": "98 PHP; errors=[]"
+    },
+    {
+      "gate": "js_parse_all_target",
+      "status": "PASS",
+      "detail": "40 JS; errors=[]"
+    },
+    {
+      "gate": "negative_wrong_baseline_rejected",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "negative_unknown_source_hash_rejected",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "gate": "negative_unsigned_zip_not_misrepresented_signed",
+      "status": "PASS",
+      "detail": ""
+    }
+  ],
+  "offline_pass": true,
+  "known_blockers": [
+    "Artifact explicitly marks production_host_qualified=false and QA_DO_NOT_INSTALL",
+    "R247C confirmed visually on live host, but cannot independently read host Routine ledger, DB mutation fence, current tree, or pending stage",
+    "Current R246 package enumerates only one exact R171 baseline; it is not a universal multi-version installer",
+    "Real host independent Stage/Activate/Commit readback not demonstrated (and must not be inferred from CI)",
+    "R244 WAF budget work was QA-only and inclusion in R246 is not proven"
+  ],
+  "safe_operational_go": false,
+  "candidate_filename": "SOKNA-R246-PUBLIC-35IB-FROM-35HT-EMERGENCY-BRIDGE-QA-DO-NOT-INSTALL.zip",
+  "baseline_filename": "SOKNA-R171-PUBLIC-35HT-FROM-35HK-PANEL-UPDATE.zip"
+}
