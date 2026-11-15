@@ -25,6 +25,12 @@ jobs:
           run-id: 43489066238
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/immutable-print-agent
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R239-PRINTAGENT-6211-CAFE-SHA-VERIFIED-REFERENCE
+          run-id: 43705494921
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/verified-cafe-print-agent-6211
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -55,7 +61,7 @@ jobs:
             if(@($errors).Count -ne 0){$errors|ForEach-Object{Write-Host $_.Message};throw ('SCRIPT_PARSER_FAILED_'+$f)}
           }
           Write-Host 'PASS_R238_SOURCE_AND_BINARY_IDENTITY'
-      - name: Isolated real Windows service install, synthetic old-version upgrade and rollback
+      - name: Isolated real Windows service install, real cafe 6.2.11 binary upgrade and rollback
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -127,19 +133,28 @@ jobs:
             # Disable supervision while fabricating a synthetic 6.2.11 baseline.
             Stop-Service SoknaRuntime
             (Get-Service SoknaRuntime).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
-            # Synthetic older manifest: the real binary remains 6.2.12, not historical 6.2.11 bytes.
+            # Exact 6.2.11 reference extracted from the official original installer.
+            $oldZip=Join-Path $env:RUNNER_TEMP 'verified-cafe-print-agent-6211/SoknaPrintAgent-6.2.11-CAFE-MATCHED-REFERENCE.zip'
+            if(!(Test-Path $oldZip)){throw 'REAL_CAFE_6211_REFERENCE_ZIP_MISSING'}
+            $oldFixture=Join-Path $root 'actual-cafe-6211'
+            Expand-Archive $oldZip -DestinationPath $oldFixture
+            $oldService=(Get-FileHash (Join-Path $oldFixture 'Service/Sokna.PrintAgent.Service.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+            $oldWorker=(Get-FileHash (Join-Path $oldFixture 'Worker/Sokna.PrintAgent.Worker.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($oldService -ne '9f4559d2d15188863212c1cf1c8ea786ed8aa0e2cf5bcee08f40738344dd29b5' -or
+               $oldWorker -ne '6538ce93eec690e21f0901e08c3031d14059781493306870f13b952406249284'){throw 'REAL_CAFE_6211_REFERENCE_SHA_NOT_MATCHED'}
             Stop-Service SoknaPrintWorker -ErrorAction Stop
             (Get-Service SoknaPrintWorker).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
+            Remove-Item $agentRoot -Recurse -Force
+            New-Item $agentRoot -ItemType Directory -Force|Out-Null
+            Copy-Item (Join-Path $oldFixture '*') -Destination $agentRoot -Recurse -Force
             $manifest=Join-Path $agentRoot 'component-manifest.json'
-            $j=Get-Content $manifest -Raw|ConvertFrom-Json
-            $j.version='6.2.11'
-            $j|ConvertTo-Json -Depth 20|Set-Content $manifest -Encoding UTF8
+            if((Get-Content $manifest -Raw|ConvertFrom-Json).version -ne '6.2.11'){throw 'REAL_CAFE_6211_MANIFEST_INVALID'}
             Remove-Item -LiteralPath $receipt -Force
             Start-Service SoknaPrintWorker
             (Get-Service SoknaPrintWorker).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
             Start-Service SoknaRuntime
             (Get-Service SoknaRuntime).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
-                        Invoke-Lab 'SYNTHETIC_6211_TO_6212'
+                        Invoke-Lab 'REAL_6211_TO_6212'
             & $verify -ReceiptPath $receipt -ExpectedPrintRoot $agentRoot -RequireRunning|Out-Host
             Write-Host 'PASS_R238_UPGRADE_RECEIPT_READBACK'
             dotnet run --no-build -c Release -r win-x64 --project qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -- verify $database
@@ -148,10 +163,12 @@ jobs:
             # Restore synthetic old baseline before intentional rollback test.
             Stop-Service SoknaRuntime
             (Get-Service SoknaRuntime).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
-            # Inject a failure after activation with rollback to the valid synthetic old version.
+            # Inject failure against the same real historical bytes, not synthetic version metadata.
             Stop-Service SoknaPrintWorker -ErrorAction Stop
             (Get-Service SoknaPrintWorker).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
-            $j=Get-Content $manifest -Raw|ConvertFrom-Json;$j.version='6.2.11';$j|ConvertTo-Json -Depth 20|Set-Content $manifest -Encoding UTF8
+            Remove-Item $agentRoot -Recurse -Force
+            New-Item $agentRoot -ItemType Directory -Force|Out-Null
+            Copy-Item (Join-Path $oldFixture '*') -Destination $agentRoot -Recurse -Force
             Remove-Item -LiteralPath $receipt -Force
             Start-Service SoknaPrintWorker
             (Get-Service SoknaPrintWorker).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
@@ -170,7 +187,7 @@ jobs:
             if((Get-Service SoknaRuntime).Status -ne 'Running'){throw 'RUNTIME_NOT_RESTORED_AFTER_ROLLBACK'}
             if((Get-FileHash $runtimeExe -Algorithm SHA256).Hash -ne $runtimeHash){throw 'RUNTIME_BINARY_MUTATED'}
             Write-Host 'PASS_R238_RUNTIME_SUPERVISION_COORDINATED_AND_RESTORED'
-            @{format='sokna-r238-native-lab-v1';production_approved=$false;real_windows_service_lifecycle='PASS';clean_install='PASS';idempotent_replay_no_restart='PASS';synthetic_6211_upgrade='PASS';rollback_after_swap='PASS';durable_marker_preserved='PASS';sqlite_unknown_attempt_and_pending_outbox_preserved='PASS';real_6211_binary_upgrade='NOT_TESTED';actual_printer_jobs='NOT_TESTED';windows_services_owner_integration='NOT_TESTED'}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $qa 'QA-RESULT.json') -Encoding UTF8
+            @{format='sokna-r238-native-lab-v1';production_approved=$false;real_windows_service_lifecycle='PASS';clean_install='PASS';idempotent_replay_no_restart='PASS';actual_cafe_6211_binary_upgrade='PASS';rollback_after_swap='PASS';durable_marker_preserved='PASS';sqlite_unknown_attempt_and_pending_outbox_preserved='PASS';real_6211_binary_upgrade='PASS';actual_printer_jobs='NOT_TESTED';windows_services_owner_integration='NOT_TESTED'}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $qa 'QA-RESULT.json') -Encoding UTF8
           }finally{
             $rt=Get-Service SoknaRuntime -ErrorAction SilentlyContinue
             if($rt){
