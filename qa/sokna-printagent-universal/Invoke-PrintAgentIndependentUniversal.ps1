@@ -170,7 +170,10 @@ try{
     $temp=Join-Path $receiptDir ('pending-'+$tx+'.tmp')
     $script:pending | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temp -Encoding UTF8 -ErrorAction Stop
     if(Test-Path -LiteralPath $journal){
-      [IO.File]::Replace($temp,$journal,$null)
+      # .NET Framework/PowerShell 5.1 requires an actual backup path here.
+      $prior=Join-Path $receiptDir ('pending-'+$tx+'.prev')
+      [IO.File]::Replace($temp,$journal,$prior)
+      if(Test-Path -LiteralPath $prior){Remove-Item -LiteralPath $prior -Force -ErrorAction Stop}
     }else{
       [IO.File]::Move($temp,$journal)
     }
