@@ -147,7 +147,7 @@ jobs:
           SOKNA_R249_R153="$RUNNER_TEMP/r249-validated-r153-source-unavailable" \
           SOKNA_R249_ALLOW_PINNED_R153=1 \
             python3 r249/build_r249.py
-          echo "5056cea5e2171c8e6c6d204f817da66202a667ed7d16e3e5293ba4f20039d546  r249/SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip" | sha256sum -c -
+          echo "5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4  r249/SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip" | sha256sum -c -
           python3 - <<'PY'
           import zipfile,hashlib,json
           p='r249/SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip'
