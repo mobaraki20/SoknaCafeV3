@@ -26,4 +26,5 @@ jobs:
           grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=55' /tmp/sokna-r251-discovery.txt
           # The production decision engine must never refer to one customer, URL or version.
           ! grep -Eiq 'soknaspace|soknagroup|35ic|231ff|cafe-alpha|bistro-beta|coffee-gamma' apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php
+          python3 r251/check_decisions.py
           echo PASS_R251_UNIVERSAL_MULTI_CUSTOMER_DISCOVERY_NO_HOST_MUTATION
