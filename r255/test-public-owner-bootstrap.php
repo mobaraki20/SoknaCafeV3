@@ -20,7 +20,7 @@ $db=new PDO($dsn,getenv('SOKNA_R255_TEST_USER')?:'root',getenv('SOKNA_R255_TEST_
  [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
 foreach(['public_move_owner_sessions','public_move_owner_accounts','public_move_owner_setup_claims',
  'public_move_owner_slots'] as $table) $db->exec('DROP TABLE IF EXISTS '.$table);
-$sql=(string)file_get_contents(__DIR__.'/owner-bootstrap-schema-fixture.sql');
+$sql=preg_replace('/^--.*$/m','',(string)file_get_contents(__DIR__.'/owner-bootstrap-schema-fixture.sql'));
 foreach(explode(';',$sql) as $statement) if(trim($statement)!=='') $db->exec($statement);
 $checks=0;
 function ok255(bool $v,string $name):void{global $checks;if(!$v)throw new RuntimeException('FAIL '.$name);$checks++;echo "PASS $name\n";}
