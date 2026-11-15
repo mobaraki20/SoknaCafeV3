@@ -38,7 +38,7 @@ final class PublicMoveOwnerHttpAdapter
                 return self::reply(403,['ok'=>false,'code'=>'request_not_allowed']);
             }
             $body=json_decode($rawBody,true);
-            if (!is_array($body) || array_is_list($body)) {
+            if (!is_array($body) || !str_starts_with(ltrim($rawBody), '{')) {
                 return self::reply(400,['ok'=>false,'code'=>'invalid_request']);
             }
             $token=$this->cookieToken($headers);
