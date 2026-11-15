@@ -7,7 +7,9 @@ param(
   [Parameter(Mandatory=$true)][string]$QueueGuardExe,
   [ValidateSet('Probe','Apply')][string]$Mode='Probe',
   [switch]$AllowMutation,
-  [switch]$InjectFailureAfterSwap
+  [switch]$InjectFailureAfterSwap,
+  [switch]$InjectHardCrashAfterOldMove,
+  [switch]$InjectHardCrashAfterSwap
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -117,11 +119,145 @@ try{
     $report.test_mode=$false
   }
   $install=Join-Path $parent 'PrintAgent'
+  if(($InjectHardCrashAfterOldMove -or $InjectHardCrashAfterSwap) -and
+      (!$LabRoot -or $env:GITHUB_ACTIONS -ne 'true')){Fail 'HARD_CRASH_INJECTION_QA_ONLY'}
   if($Mode -eq 'Apply' -and !$AllowMutation){Fail 'MUTATION_NOT_AUTHORIZED'}
   # A customized queue location must be read, never overwritten or reset.
   if($agentData.Length -lt 10 -or !([IO.Path]::IsPathRooted($agentData))){Fail 'UNQUALIFIED_QUEUE_DATA_ROOT'}
   $receiptDir=Join-Path $data 'setup\print-agent-independent-v1';$receiptPath=Join-Path $receiptDir 'active.json'
   foreach($p in @($LabRoot,$parent,$install,$data,$agentData,$receiptDir)){CheckNoLink $p}
+
+  $journal=Join-Path $receiptDir 'pending.json'
+  CheckNoLink $journal
+  function AcquireLease {
+    if($script:lock){return}
+    New-Item -Path (Join-Path $data 'Maintenance\update') -ItemType Directory -Force|Out-Null
+    $lockPath=Join-Path $data 'Maintenance\update\machine-mutation.lock'
+    CheckNoLink $lockPath
+    try{
+      $script:lock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+      $bytes=[Text.Encoding]::UTF8.GetBytes('format=sokna-machine-mutation-lease-v1;owner=printagent-independent;transaction='+$tx)
+      $script:lock.SetLength(0);$script:lock.Write($bytes,0,$bytes.Length);$script:lock.Flush($true)
+    }catch{Fail 'MACHINE_MUTATION_LEASE_BUSY'}
+  }
+  function WritePending([string]$phase){
+    if(!$script:pending){Fail 'JOURNAL_NOT_PREPARED'}
+    $script:pending.phase=$phase
+    New-Item -Path $receiptDir -ItemType Directory -Force|Out-Null
+    $temp=Join-Path $receiptDir ('pending-'+$tx+'.tmp')
+    $script:pending | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temp -Encoding UTF8 -ErrorAction Stop
+    if(Test-Path -LiteralPath $journal){Remove-Item -LiteralPath $journal -Force -ErrorAction Stop}
+    Move-Item -LiteralPath $temp -Destination $journal -ErrorAction Stop
+  }
+  function IsOld([string]$path,$j){
+    if(!(Test-Path -LiteralPath $path -PathType Container)){return $false}
+    try{
+      $v=VerifyPayload $path
+      return ([string]$v.version -eq [string]$j.old_version -and
+        (Hash (Join-Path $path 'component-manifest.json')) -eq [string]$j.old_manifest_sha -and
+        (Hash (Join-Path $path 'Service\Sokna.PrintAgent.Service.exe')) -eq [string]$j.old_service_sha -and
+        (Hash (Join-Path $path 'Worker\Sokna.PrintAgent.Worker.exe')) -eq [string]$j.old_worker_sha)
+    }catch{return $false}
+  }
+  function IsTarget([string]$path){
+    if(!(Test-Path -LiteralPath $path -PathType Container)){return $false}
+    try{
+      $v=VerifyPayload $path
+      return ([string]$v.version -eq '6.2.12' -and
+        (Hash (Join-Path $path 'Service\Sokna.PrintAgent.Service.exe')) -eq 'b28f0028f3be5f0bf4a1ee49d5ddce06e60b95a56f28300d4ac17b05f9f6051b' -and
+        (Hash (Join-Path $path 'Worker\Sokna.PrintAgent.Worker.exe')) -eq 'cc638a50f191374a015341b27b48b5dccdf0f3017481a7b0454e2c67ea95873b')
+    }catch{return $false}
+  }
+  # Only a recorded, SHA-pinned in-flight transaction may be recovered.
+  # No unrecognized PrintAgent.__backup/incoming path is ever assumed safe.
+  if(Test-Path -LiteralPath $journal -PathType Leaf){
+    $j=Get-Content -LiteralPath $journal -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
+    $oldId=[Guid]::Empty
+    if([string]$j.format-ne'sokna-printagent-pending-transaction-v1' -or
+       -not[Guid]::TryParseExact([string]$j.transaction_id,'N',[ref]$oldId) -or
+       [string]$j.target_version-ne'6.2.12' -or
+       [string]$j.service_name-ne'SoknaPrintWorker' -or
+       [string]$j.phase-notin@('PREPARED','OLD_MOVED','NEW_ACTIVE','COMMITTED')){
+      Fail 'PENDING_JOURNAL_NOT_QUALIFIED'
+    }
+    $restoredBackup=Join-Path $parent ('PrintAgent.__backup.'+[string]$j.transaction_id)
+    $incoming=Join-Path $parent ('PrintAgent.__incoming.'+[string]$j.transaction_id)
+    foreach($p in @($restoredBackup,$incoming)){CheckNoLink $p}
+    AcquireLease
+    $oldPresent=([string]$j.old_version -ne '')
+    $backupPresent=Test-Path -LiteralPath $restoredBackup -PathType Container
+    if($backupPresent -and (!$oldPresent -or !(IsOld $restoredBackup $j))){Fail 'JOURNAL_BACKUP_IDENTITY_UNQUALIFIED'}
+    $originalHere=($oldPresent -and (IsOld $install $j))
+    $targetHere=IsTarget $install
+    if((Test-Path -LiteralPath $install -PathType Container) -and !$originalHere -and !$targetHere){Fail 'JOURNAL_CURRENT_INSTALL_IDENTITY_UNQUALIFIED'}
+    if($oldPresent -and !$backupPresent -and !$originalHere){
+      # Commit may have finished before cleanup, accept only an exact signed receipt.
+      $previousReceipt=$null
+      if(Test-Path -LiteralPath $receiptPath -PathType Leaf){
+        $previousReceipt=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
+      }
+      if(!$targetHere -or !$previousReceipt -or
+         [string]$previousReceipt.status-ne'COMMITTED' -or
+         [string]$previousReceipt.service_sha256-ne'b28f0028f3be5f0bf4a1ee49d5ddce06e60b95a56f28300d4ac17b05f9f6051b'){
+        Fail 'JOURNAL_OLD_BACKUP_MISSING'
+      }
+    }
+    $restoreSvc=Get-CimInstance Win32_Service -Filter "Name='$serviceName'" -ErrorAction SilentlyContinue
+    if($restoreSvc){
+      if([string]$restoreSvc.StartName-ne'LocalSystem' -or
+         (ReadServiceExe ([string]$restoreSvc.PathName)) -ne
+            (Full (Join-Path $install 'Service\Sokna.PrintAgent.Service.exe'))){
+        Fail 'JOURNAL_SERVICE_OWNER_UNSAFE'
+      }
+    }
+    $rtRecover=Get-CimInstance Win32_Service -Filter "Name='SoknaRuntime'" -ErrorAction SilentlyContinue
+    $runRuntime=($rtRecover -and [string]$rtRecover.State-eq'Running')
+    if($runRuntime){
+      if((ReadServiceExe ([string]$rtRecover.PathName)) -ne
+          (Full (Join-Path $parent 'Runtime\SoknaRuntimeService.exe'))){Fail 'JOURNAL_RUNTIME_OWNER_UNSAFE'}
+      Stop-Service SoknaRuntime -ErrorAction Stop
+      (Get-Service SoknaRuntime).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
+      $runtimeStopped=$true;$runtimeWasRunning=$true
+    }
+    if($restoreSvc -and [string]$restoreSvc.State-eq'Running'){
+      Stop-Service $serviceName -ErrorAction Stop
+      (Get-Service $serviceName).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
+    }
+    if($backupPresent){
+      if($targetHere){Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction Stop}
+      if($originalHere){Remove-Item -LiteralPath $restoredBackup -Recurse -Force -ErrorAction Stop}
+      else{Move-Item -LiteralPath $restoredBackup -Destination $install -ErrorAction Stop}
+      if(!(IsOld $install $j)){Fail 'JOURNAL_OLD_RESTORE_READBACK_FAILED'}
+      $report.rollback='verified'
+    }elseif(!$oldPresent -and $targetHere){
+      if($restoreSvc){Fail 'JOURNAL_CLEAN_SERVICE_REGISTERED_REQUIRES_MANUAL_RECOVERY'}
+      Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction Stop
+      $report.rollback='verified'
+    }elseif($oldPresent -and $targetHere){
+      # Committed new bits, matching receipt; keep target.
+      $report.rollback='not_required'
+    }elseif($oldPresent -and $originalHere){
+      $report.rollback='not_required'
+    }elseif($oldPresent){
+      Fail 'JOURNAL_UNEXPECTED_FILESYSTEM_STATE'
+    }
+    if(Test-Path -LiteralPath $incoming -PathType Container){
+      if(!(IsTarget $incoming)){Fail 'JOURNAL_INCOMING_FILES_UNQUALIFIED'}
+      Remove-Item -LiteralPath $incoming -Recurse -Force -ErrorAction Stop
+    }
+    if($restoreSvc -and [string]$j.print_previously_running-eq'True'){
+      Start-Service -Name $serviceName -ErrorAction Stop
+      (Get-Service $serviceName).WaitForStatus('Running',[TimeSpan]::FromSeconds(35))
+    }
+    if($runtimeStopped){
+      Start-Service SoknaRuntime -ErrorAction Stop
+      (Get-Service SoknaRuntime).WaitForStatus('Running',[TimeSpan]::FromSeconds(35))
+      $runtimeStopped=$false
+    }
+    Remove-Item -LiteralPath $journal -Force -ErrorAction Stop
+    Write-Host 'PASS_PRINT_INDEPENDENT_PREVIOUS_CRASH_RECOVERED'
+    $report.previous_crash_recovered=$true
+  }
   $targetDir=Join-Path $LabRoot ('target-'+$tx)
   Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
   [IO.Compression.ZipFile]::ExtractToDirectory($PackageZip,$targetDir)
@@ -182,14 +318,7 @@ try{
   if($Mode -eq 'Probe'){Write-Host 'PASS_PRINT_INDEPENDENT_LAB_PREFLIGHT';return}
   $principal=[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
   if(!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){Fail 'ADMIN_REQUIRED'}
-  New-Item -Path (Join-Path $data 'Maintenance\update') -ItemType Directory -Force|Out-Null
-  $lockPath=Join-Path $data 'Maintenance\update\machine-mutation.lock'
-  CheckNoLink $lockPath
-  try{
-    $lock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
-    $msg=[Text.Encoding]::UTF8.GetBytes('format=sokna-machine-mutation-lease-v1;owner=printagent-independent-lab;transaction='+$tx)
-    $lock.SetLength(0);$lock.Write($msg,0,$msg.Length);$lock.Flush($true)
-  }catch{Fail 'MACHINE_MUTATION_LEASE_BUSY'}
+  AcquireLease
   # Only the agent's own service may be stopped, and no data file is opened/changed here.
   $rt=(Get-Service 'SoknaRuntime' -ErrorAction SilentlyContinue)
   $maint=(Get-Service 'SoknaMaintenanceSupervisor' -ErrorAction SilentlyContinue)
@@ -217,6 +346,17 @@ try{
   New-Item -Path $staging -ItemType Directory -Force|Out-Null
   Copy-Item -Path (Join-Path $targetDir '*') -Destination $staging -Recurse -Force
   $null=VerifyPayload $staging
+  # Durable rollback identity is committed before stopping the old process.
+  $pending=[ordered]@{
+    format='sokna-printagent-pending-transaction-v1';transaction_id=$tx;phase='PREPARED'
+    service_name=$serviceName;target_version='6.2.12'
+    old_version=$(if($snap){[string]$old.version}else{''})
+    old_manifest_sha=$(if($snap){Hash (Join-Path $install 'component-manifest.json')}else{''})
+    old_service_sha=$(if($snap){Hash (Join-Path $install 'Service\Sokna.PrintAgent.Service.exe')}else{''})
+    old_worker_sha=$(if($snap){Hash (Join-Path $install 'Worker\Sokna.PrintAgent.Worker.exe')}else{''})
+    print_previously_running=[string]$wasRunning
+  }
+  WritePending 'PREPARED'
   StopIfNeeded
   # Windows print spooler must be idle before replacing binaries; fail closed.
   $pendingSpool=@(Get-CimInstance Win32_PrintJob -ErrorAction Stop)
@@ -225,7 +365,11 @@ try{
   if($workers.Count -gt 0){Fail 'PRINT_WORKER_PROCESS_NOT_QUIESCENT'}
   CheckQueueIdle
   if(Test-Path -LiteralPath $install){Move-Item -LiteralPath $install -Destination $backup -ErrorAction Stop;$oldMoved=$true}
+  WritePending 'OLD_MOVED'
+  if($InjectHardCrashAfterOldMove){Stop-Process -Id $PID -Force}
   Move-Item -LiteralPath $staging -Destination $install -ErrorAction Stop;$newActivated=$true
+  WritePending 'NEW_ACTIVE'
+  if($InjectHardCrashAfterSwap){Stop-Process -Id $PID -Force}
   if($InjectFailureAfterSwap){Fail 'QA_INJECTED_AFTER_SWAP'}
   if(!$snap){
     $exe=Join-Path $install 'Service\Sokna.PrintAgent.Service.exe'
@@ -265,6 +409,7 @@ try{
   $receipt|ConvertTo-Json -Depth 9 |Set-Content -LiteralPath $receiptPath -Encoding UTF8
   $written=Get-Content -LiteralPath $receiptPath -Raw |ConvertFrom-Json
   if($written.transaction_id -ne $tx -or $written.status -ne 'COMMITTED'){Fail 'RECEIPT_READBACK_FAILED'}
+  WritePending 'COMMITTED'
   $report.status='COMMITTED';$report.reason='LAB_APPLY_PASS';$report.rollback='not_required'
   Write-Host 'PASS_PRINT_INDEPENDENT_LAB_TRANSACTION'
 }catch{
@@ -315,6 +460,12 @@ try{
   if($lock){$lock.Dispose()}
   if($staging -and (Test-Path -LiteralPath $staging)){Remove-Item -LiteralPath $staging -Force -Recurse -ErrorAction SilentlyContinue}
   if($backup -and $report.status -eq 'COMMITTED' -and (Test-Path -LiteralPath $backup)){Remove-Item -LiteralPath $backup -Force -Recurse -ErrorAction SilentlyContinue}
+  if($journal -and (Test-Path -LiteralPath $journal) -and $report.status -in @('COMMITTED','ROLLED_BACK','BLOCKED_RESTORED','BLOCKED')){
+    # Leave the journal if any verified old backup is still present.
+    if(!$backup -or !(Test-Path -LiteralPath $backup)){
+      Remove-Item -LiteralPath $journal -Force -ErrorAction SilentlyContinue
+    }
+  }
   if($targetDir -and (Test-Path -LiteralPath $targetDir)){Remove-Item -LiteralPath $targetDir -Force -Recurse -ErrorAction SilentlyContinue}
   SaveReport
 }
