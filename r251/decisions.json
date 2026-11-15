@@ -207,6 +207,26 @@
       "date": "2026-11-16",
       "superseded_by": "MIG-015",
       "reason": "Applicable only to already-paired Public. Fresh independent Public owner must be scoped to its own Public instance and independently authorize the signed Local challenge."
+    },
+    {
+      "id": "MIG-016",
+      "scope": "implementation",
+      "status": "ACTIVE",
+      "summary": "Public migration features must be integrated and tested against the actual immutable release payload and its full versioned migration catalog, not a shorter legacy source tree. Public owner setup occurs inside the normal authenticated install flow and obtains an instance identity independent of Local; signing keys must be outside the effective document root. The owner HTTP API remains fail-closed and cannot create setup claims or authorize cutover.",
+      "date": "2026-11-16",
+      "reason": "R256 source audit found apps/public had 3 schema files while R249/35IC real operator release contains 8 migrations and 228 payload files. A generic legacy patch could break production or omit accepted changes.",
+      "acceptance": "Pinned 35IC ZIP sha256 and 228-byte-content checks; 8 migrations retained byte-identically plus new forward-only migration 0009; disposable MariaDB install/login/consent proof; independent CI test for upgrade/preexisting owner and real host qualification before release.",
+      "superseded_by": null,
+      "implementation_status": "R256 QA overlay candidate only, exact R249 source pinned. Production deployment and real multi-tenant migration/cutover NO-GO."
+    },
+    {
+      "id": "OLD-009",
+      "scope": "historical",
+      "status": "SUPERSEDED",
+      "summary": "Treat the 3-migration apps/public source tree as sufficient authoritative source for extending the currently deployed 35IC/R249 Public.",
+      "date": "2026-11-16",
+      "reason": "Source-of-truth mismatch: actual R249 release has 8 migrations, protected Emergency ownership and a different setup/kernel implementation.",
+      "superseded_by": "MIG-016"
     }
   ],
   "fixtures": [
