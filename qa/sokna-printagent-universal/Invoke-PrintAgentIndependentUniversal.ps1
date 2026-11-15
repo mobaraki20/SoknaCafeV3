@@ -119,7 +119,7 @@ try{
   $install=Join-Path $parent 'PrintAgent'
   if($Mode -eq 'Apply' -and !$AllowMutation){Fail 'MUTATION_NOT_AUTHORIZED'}
   # A customized queue location must be read, never overwritten or reset.
-  if($agentData.Length -lt 10 -or ![IO.Path]::IsPathFullyQualified($agentData)){Fail 'UNQUALIFIED_QUEUE_DATA_ROOT'}
+  if($agentData.Length -lt 10 -or !([IO.Path]::IsPathRooted($agentData))){Fail 'UNQUALIFIED_QUEUE_DATA_ROOT'}
   $receiptDir=Join-Path $data 'setup\print-agent-independent-v1';$receiptPath=Join-Path $receiptDir 'active.json'
   foreach($p in @($LabRoot,$parent,$install,$data,$agentData,$receiptDir)){CheckNoLink $p}
   $targetDir=Join-Path $LabRoot ('target-'+$tx)
