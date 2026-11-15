@@ -26,7 +26,7 @@ function Run-Case([string]$Name,[string]$Version,[string]$ExpectedStatus,[string
     @{Name='SoknaPrintWorker';PathName=('"'+(Join-Path $install 'Service\Sokna.PrintAgent.Service.exe')+'"');StartName='LocalSystem';State='Running'} | ConvertTo-Json | Set-Content $fixture -Encoding UTF8
   }
   $args=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$ScriptPath,'-PackageZip',$PackageZip,'-OutputDir',$reports,'-Action',$(if($Apply){'Apply'}else{'Probe'}))
-  if($fixture){$args+=@('-FixtureJson',$fixture)}
+  if($fixture){$args+=@('-FixtureJson',$fixture,'-FixtureProgramFiles',$env:ProgramFiles)}
   if($Apply){$args+='-AllowMutation'}
   & powershell.exe @args | Out-Host
   $exit=$LASTEXITCODE
