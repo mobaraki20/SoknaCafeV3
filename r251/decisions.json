@@ -1,0 +1,175 @@
+{
+  "format": "sokna-migration-decision-register-v1",
+  "schema_version": 1,
+  "updated_on": "2026-11-16",
+  "canonical_human_doc": "r251/DECISIONS-FA.md",
+  "change_policy": {
+    "append_only_history": true,
+    "all_new_decisions_require_id_scope_status_rationale": true,
+    "superseded_decisions_must_reference_active_replacement": true,
+    "fixtures_never_product_defaults": true,
+    "update_status_on_code_change": true
+  },
+  "decisions": [
+    {
+      "id": "MIG-001",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "Engine is installation/customer/domain/version/host agnostic",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "MIG-002",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "Minimal operator UX: target, ownership confirmation, start/resume",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "MIG-003",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "Automatic target classification rather than operator choosing technical mode",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "MIG-004",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "Runtime-discovered installation IDs, URL, keys, authority epoch",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "MIG-005",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "Durable idempotent transfer with preflight, single active authority, verified commit",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "MIG-006",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "No normal-path SSH, database edits, manual ZIP, or Emergency",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "MIG-007",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "Record every new decision and supersession without deleting old records",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "MIG-008",
+      "scope": "implementation",
+      "status": "ACTIVE",
+      "summary": "Public transfer first, then Local; phase A read-only classification",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "MIG-009",
+      "scope": "implementation",
+      "status": "ACTIVE",
+      "summary": "Cross-customer, multi-version, full end-to-end tests before release",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "MIG-010",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "Small-cafe UX for any customer, not special handling for a named cafe",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "MIG-011",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "Cryptographically enforced independent per-installation ownership boundaries",
+      "date": "2026-11-16",
+      "superseded_by": null
+    },
+    {
+      "id": "OLD-001",
+      "scope": "historical",
+      "status": "SUPERSEDED",
+      "summary": "Fixed cafe identity and R241 as product default",
+      "date": "2026-11-16",
+      "superseded_by": "MIG-001"
+    },
+    {
+      "id": "OLD-002",
+      "scope": "historical",
+      "status": "SUPERSEDED",
+      "summary": "Fixed Public target soknagroup.ir/public",
+      "date": "2026-11-16",
+      "superseded_by": "MIG-004"
+    },
+    {
+      "id": "OLD-003",
+      "scope": "historical",
+      "status": "SUPERSEDED",
+      "summary": "Fixed Public source soknaspace.ir and QR path",
+      "date": "2026-11-16",
+      "superseded_by": "MIG-003"
+    },
+    {
+      "id": "OLD-004",
+      "scope": "historical",
+      "status": "SUPERSEDED",
+      "summary": "Only R241 to R249 is an adequate acceptance matrix",
+      "date": "2026-11-16",
+      "superseded_by": "MIG-009"
+    },
+    {
+      "id": "OLD-005",
+      "scope": "historical",
+      "status": "REJECTED",
+      "summary": "Treat rebind, initial pair, and independent transfer as equivalent",
+      "date": "2026-11-16",
+      "superseded_by": "MIG-003"
+    },
+    {
+      "id": "OLD-006",
+      "scope": "historical",
+      "status": "REJECTED",
+      "summary": "Force operator to use DB/cPanel/manual emergency flow",
+      "date": "2026-11-16",
+      "superseded_by": "MIG-006"
+    },
+    {
+      "id": "OLD-007",
+      "scope": "historical",
+      "status": "SUPERSEDED",
+      "summary": "Small-cafe product means the named Sokna cafe only",
+      "date": "2026-11-16",
+      "superseded_by": "MIG-010"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "FIXTURE-SOKNA-20261115",
+      "kind": "regression_only",
+      "source": "https://www.soknaspace.ir",
+      "target": "https://www.soknagroup.ir/public",
+      "local": "R241",
+      "public": "R249"
+    },
+    {
+      "id": "FIXTURE-BISTRO-BETA",
+      "kind": "regression_only",
+      "source": "https://old.bistro-beta.example",
+      "target": "https://new.bistro-beta.example"
+    }
+  ]
+}
