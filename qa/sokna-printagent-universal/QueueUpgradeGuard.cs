@@ -72,7 +72,12 @@ internal static class Program
         }
         catch(Exception ex)
         {
-            result["reason"]=ex is InvalidDataException or ArgumentException or InvalidOperationException ? ex.Message : "QUEUE_READ_ONLY_INSPECTION_FAILED";
+            result["reason"]=ex switch
+            {
+                SqliteException se => "QUEUE_SQLITE_ERROR_"+se.SqliteErrorCode,
+                InvalidDataException or ArgumentException or InvalidOperationException => ex.Message,
+                _ => "QUEUE_READ_ONLY_INSPECTION_FAILED"
+            };
             Console.WriteLine(JsonSerializer.Serialize(result));
             return 24;
         }
