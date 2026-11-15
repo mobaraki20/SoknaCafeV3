@@ -29,6 +29,8 @@ def replay(base,parts,out):
   with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
    old={n:w.read(n) for n in w.namelist()}
  assert len(old)==590 and tree(old)==manifest['targets']['local']['managed_tree_sha256'],'R201_MANAGED_IDENTITY_INVALID'
+ parts=sorted(q for p in parts for q in (p.parent.glob(p.name) if '*' in p.name else [p]))
+ assert len(parts)==5,'EXPECTED_FIVE_PINNED_PATCH_CHUNKS'
  patch=gzip.decompress(base64.b64decode(''.join(''.join(p.read_text().split()) for p in parts)))
  assert H(patch)=='480b7bdcb74979e3003e97185bcbb78c24dc0eb3186e8cb0ffdfe0698b9fccc3','PINNED_PATCH_SHA_INVALID'
  with tempfile.TemporaryDirectory(prefix='sokna-r239-replay-') as td:
