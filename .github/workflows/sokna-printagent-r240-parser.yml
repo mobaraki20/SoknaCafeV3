@@ -1,0 +1,24 @@
+name: SOKNA PrintAgent R240 standalone PowerShell parser gate
+on:
+  push:
+    branches: [qa/sokna-printagent-universal-installer-20261115]
+    paths: [qa/sokna-printagent-universal/Invoke-PrintAgentIndependentUniversal.ps1, .github/workflows/sokna-printagent-r240-parser.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  parse:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse Windows PowerShell 5.1 exact delivered script
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $file='qa/sokna-printagent-universal/Invoke-PrintAgentIndependentUniversal.ps1'
+          $tok=$null;$errs=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path,[ref]$tok,[ref]$errs)|Out-Null
+          foreach($e in @($errs)){Write-Host ('PARSER_LINE='+$e.Extent.StartLineNumber+' COL='+$e.Extent.StartColumnNumber+' TEXT='+$e.Extent.Text+' ERROR='+$e.Message)}
+          if(@($errs).Count -ne 0){throw 'PRINTAGENT_UNIVERSAL_POWERSHELL_51_PARSE_FAILED'}
+          Write-Host 'PASS_PRINTAGENT_UNIVERSAL_POWERSHELL51_PARSER'
