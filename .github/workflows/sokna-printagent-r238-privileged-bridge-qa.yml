@@ -1,0 +1,40 @@
+name: SOKNA R238 Print Agent privileged Windows Services owner bridge QA
+on:
+  push:
+    branches:
+      - qa/sokna-printagent-universal-installer-20261115
+    paths:
+      - qa/sokna-printagent-universal/Add-PrintAgentIndependentOwnerBridge.ps1
+      - qa/sokna-printagent-universal/Prepare-WindowsServicesOwnerBridgeQa.ps1
+      - .github/workflows/sokna-printagent-r238-privileged-bridge-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-privileged-bridge:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch canonical core fixture and verify exact guarded transformations
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $core=Join-Path $env:RUNNER_TEMP 'r238-core-fixture.ps1'
+          $raw=Get-Content 'packaging/windows/scripts/setup-windows-components-v4.ps1' -Raw
+          $compat='function Compatible-Fingerprint($m,[string]$actual,[string]$target){return (Verified-IndependentMaintenancePair $m $actual)}'
+          if(!$raw.Contains("if(`$cmp-gt0){`$action='BLOCKED';`$reason='installed_newer'}")){throw 'CORE_FIXTURE_BASELINE_DRIFT'}
+          [IO.File]::WriteAllText($core,($raw+"`r`n"+$compat),[Text.UTF8Encoding]::new($true))
+          & '.\qa\sokna-printagent-universal\Add-PrintAgentIndependentOwnerBridge.ps1' -CorePath $core
+          if(!$?){throw 'R238_BRIDGE_MUTATION_FAILED'}
+          $result=Get-Content $core -Raw
+          foreach($needle in @('function Verified-IndependentPrintAgentReceipt','independent_print_agent_6212','Verified-IndependentMaintenancePair $m $actual','Verified-IndependentPrintAgentReceipt $m $actual')){
+            if(!$result.Contains($needle)){throw ('BRIDGE_MISSING_'+$needle)}
+          }
+          $tokens=$null;$errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile($core,[ref]$tokens,[ref]$errors)|Out-Null
+          if(@($errors).Count -ne 0){$errors|ForEach-Object{Write-Host $_.Message};throw 'R238_COMPOSED_BRIDGE_PARSER_FAILED'}
+          $orig=Get-Content 'packaging/windows/scripts/setup-windows-components-v4.ps1' -Raw
+          if($orig.Contains('independent_print_agent_6212')){throw 'ORIGINAL_SOURCE_WAS_MUTATED'}
+          Write-Host 'PASS_R238_PRIVILEGED_KEEP_VERIFIER_STATIC_REWRITE'
+          Write-Host 'PENDING real v9 shell composition and owner readback; no production install authorized.'
