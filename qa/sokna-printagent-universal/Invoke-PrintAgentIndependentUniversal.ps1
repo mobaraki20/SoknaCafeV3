@@ -114,7 +114,7 @@ try{
     # process Environment (primary/fallback), then Local registry, then legacy
     # PrintAgent registry. Never assume a newer default when upgrading old data.
     $configured=''
-    if($snap -or (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)){
+    if(Get-Service -Name $serviceName -ErrorAction SilentlyContinue){
       $envKey='HKLM:\SYSTEM\CurrentControlSet\Services\'+$serviceName
       $entries=@((Get-ItemProperty -LiteralPath $envKey -Name Environment -ErrorAction SilentlyContinue).Environment)
       foreach($key in @('SOKNA_PRINT_WORKER_DATA_ROOT','SOKNA_PRINT_AGENT_DATA_ROOT')){
