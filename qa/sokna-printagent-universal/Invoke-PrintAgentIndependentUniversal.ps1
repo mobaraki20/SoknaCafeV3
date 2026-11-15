@@ -357,9 +357,178 @@ try{
   }
   # Preflight must be read-only and block any in-flight print work or corrupt SQLite.
   # This check is repeated after quiescing services to close the claim/stop race.
+  $queueGuardChecks=0
   function CheckQueueIdle {
-    & $QueueGuardExe --data-root $agentData | Out-Host
-    if($LASTEXITCODE -ne 0){Fail 'PENDING_OR_UNREADABLE_PRINT_QUEUE_BLOCKED'}
+    $script:queueGuardChecks++
+    $output=@(& $QueueGuardExe --data-root $agentData)
+    $exitCode=$LASTEXITCODE
+    $safeReason='UNKNOWN'
+    try{
+      $json=($output -join '')|ConvertFrom-Json -ErrorAction Stop
+      $safeReason=[string]$json.reason
+      if($safeReason -notmatch '^[A-Z0-9_]{2,64}
+  if($snap -and !(Test-Path -LiteralPath (Join-Path $agentData 'queue.db') -PathType Leaf)){Fail 'EXISTING_AGENT_QUEUE_DATABASE_MISSING'}
+  CheckQueueIdle
+  $report.status='READY_FOR_GATED_APPLY';$report.reason='PREFLIGHT_PASS'
+  if($Mode -eq 'Probe'){Write-Host 'PASS_PRINT_INDEPENDENT_LAB_PREFLIGHT';return}
+  $principal=[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+  if(!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){Fail 'ADMIN_REQUIRED'}
+  AcquireLease
+  # Only the agent's own service may be stopped, and no data file is opened/changed here.
+  $rt=(Get-Service 'SoknaRuntime' -ErrorAction SilentlyContinue)
+  $maint=(Get-Service 'SoknaMaintenanceSupervisor' -ErrorAction SilentlyContinue)
+  $rtState=$(if($rt){[string]$rt.Status}else{'absent'})
+  $maintState=$(if($maint){[string]$maint.Status}else{'absent'})
+  # Windows Runtime auto-restarts SoknaPrintWorker every ~2 sec. To avoid a racing
+  # restart while its owned binaries are renamed, temporarily quiesce only this
+  # known supervisor. Its executable, settings and durable data are never changed.
+  $runtimeWasRunning=($null -ne $rt -and [string]$rt.Status -eq 'Running')
+  $marker=Join-Path $agentData 'qa-preserve-marker.bin'
+  $markerBefore=$(if(Test-Path -LiteralPath $marker){Hash $marker}else{''})
+  $staging=Join-Path $parent ('PrintAgent.__incoming.'+$tx)
+  $backup=Join-Path $parent ('PrintAgent.__backup.'+$tx)
+  New-Item -Path $staging -ItemType Directory -Force|Out-Null
+  Copy-Item -Path (Join-Path $targetDir '*') -Destination $staging -Recurse -Force
+  $null=VerifyPayload $staging
+  # Durable rollback identity is committed before stopping the old process.
+  $pending=[ordered]@{
+    format='sokna-printagent-pending-transaction-v1';transaction_id=$tx;phase='PREPARED'
+    service_name=$serviceName;target_version='6.2.12'
+    old_version=$(if($snap){[string]$old.version}else{''})
+    old_manifest_sha=$(if($snap){Hash (Join-Path $install 'component-manifest.json')}else{''})
+    old_service_sha=$(if($snap){Hash (Join-Path $install 'Service\Sokna.PrintAgent.Service.exe')}else{''})
+    old_worker_sha=$(if($snap){Hash (Join-Path $install 'Worker\Sokna.PrintAgent.Worker.exe')}else{''})
+    print_previously_running=[string]$wasRunning
+    runtime_previously_running=[string]$runtimeWasRunning
+  }
+  WritePending 'PREPARED'
+  if($runtimeWasRunning){
+    $rinfo=Get-CimInstance Win32_Service -Filter "Name='SoknaRuntime'" -ErrorAction Stop
+    $runtimeImage=ReadServiceExe ([string]$rinfo.PathName)
+    $expectedRuntime=Full (Join-Path $parent 'Runtime\SoknaRuntimeService.exe')
+    if($runtimeImage -ne $expectedRuntime){Fail 'FOREIGN_RUNTIME_SUPERVISOR_OWNER'}
+    Stop-Service -Name 'SoknaRuntime' -ErrorAction Stop
+    $rservice=Get-Service -Name 'SoknaRuntime' -ErrorAction Stop
+    try{$rservice.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(40))}finally{$rservice.Dispose()}
+    $runtimeStopped=$true
+    Write-Host 'PASS_PRINT_R238_RUNTIME_SUPERVISION_QUIESCED_WITHOUT_BINARY_MUTATION'
+  }
+  StopIfNeeded
+  # Windows print spooler must be idle before replacing binaries; fail closed.
+  $pendingSpool=@(Get-CimInstance Win32_PrintJob -ErrorAction Stop)
+  if($pendingSpool.Count -gt 0){Fail 'WINDOWS_SPOOLER_JOBS_PENDING'}
+  $workers=@(Get-CimInstance Win32_Process -Filter "Name='Sokna.PrintAgent.Worker.exe'" -ErrorAction Stop)
+  if($workers.Count -gt 0){Fail 'PRINT_WORKER_PROCESS_NOT_QUIESCENT'}
+  CheckQueueIdle
+  if(Test-Path -LiteralPath $install){Move-Item -LiteralPath $install -Destination $backup -ErrorAction Stop;$oldMoved=$true}
+  WritePending 'OLD_MOVED'
+  if($InjectHardCrashAfterOldMove){Stop-Process -Id $PID -Force}
+  Move-Item -LiteralPath $staging -Destination $install -ErrorAction Stop;$newActivated=$true
+  WritePending 'NEW_ACTIVE'
+  if($InjectHardCrashAfterSwap){Stop-Process -Id $PID -Force}
+  if($InjectFailureAfterSwap){Fail 'QA_INJECTED_AFTER_SWAP'}
+  if(!$snap){
+    $exe=Join-Path $install 'Service\Sokna.PrintAgent.Service.exe'
+    New-Service -Name $serviceName -DisplayName 'SOKNA Print Worker' -BinaryPathName ('"'+$exe+'"') -StartupType Manual -ErrorAction Stop|Out-Null
+    $createdSvc=$true
+    $reg='HKLM:\SYSTEM\CurrentControlSet\Services\'+$serviceName
+    if($report.test_mode){
+      New-ItemProperty -LiteralPath $reg -Name Environment -PropertyType MultiString -Value @('SOKNA_PRINT_WORKER_DATA_ROOT='+$agentData) -Force|Out-Null
+    }else{
+      $cfg='HKLM:\SOFTWARE\Sokna\Local\PrintWorker'
+      New-Item -Path $cfg -Force|Out-Null
+      New-ItemProperty -LiteralPath $cfg -Name DataRoot -PropertyType String -Value $agentData -Force|Out-Null
+      Set-Service -Name $serviceName -StartupType Automatic -ErrorAction Stop
+    }
+  }
+  StartIfNeeded
+  $readback=VerifyPayload $install
+  $nowSvc=CurrentService
+  if(!$nowSvc -or (ReadServiceExe ([string]$nowSvc.PathName)) -ne (Full (Join-Path $install 'Service\Sokna.PrintAgent.Service.exe'))){Fail 'SERVICE_READBACK_MISMATCH'}
+  if(($wasRunning -or $createdSvc) -and [string]$nowSvc.State -ne 'Running'){Fail 'SERVICE_NOT_RUNNING_AFTER_APPLY'}
+  if($runtimeStopped){
+    Start-Service -Name 'SoknaRuntime' -ErrorAction Stop
+    $rservice=Get-Service -Name 'SoknaRuntime' -ErrorAction Stop
+    try{$rservice.WaitForStatus('Running',[TimeSpan]::FromSeconds(35))}finally{$rservice.Dispose()}
+    $runtimeStopped=$false
+  }
+  $rtAfter=Get-Service 'SoknaRuntime' -ErrorAction SilentlyContinue
+  if($(if($rtAfter){[string]$rtAfter.Status}else{'absent'}) -ne $rtState){Fail 'RUNTIME_STATUS_CHANGED'}
+  $maintAfter=Get-Service 'SoknaMaintenanceSupervisor' -ErrorAction SilentlyContinue
+  if($(if($maintAfter){[string]$maintAfter.Status}else{'absent'}) -ne $maintState){Fail 'MAINTENANCE_STATUS_CHANGED'}
+  $markerAfter=$(if(Test-Path -LiteralPath $marker){Hash $marker}else{''})
+  if($markerBefore -ne $markerAfter){Fail 'DURABLE_DATA_MARKER_CHANGED'}
+  $report.data_preserved=$true;$report.other_services_untouched=$true
+  New-Item -Path $receiptDir -ItemType Directory -Force|Out-Null
+  $receipt=[ordered]@{format='sokna-printagent-independent-receipt-v1';schema_version=1;status='COMMITTED';transaction_id=$tx;source_version=$report.old_version;target_version='6.2.12';service_name=$serviceName;image_path=[string]$nowSvc.PathName;installed_root=$install;component_manifest_sha256=(Hash (Join-Path $install 'component-manifest.json'));service_sha256=(Hash (Join-Path $install 'Service\Sokna.PrintAgent.Service.exe'));worker_sha256=(Hash (Join-Path $install 'Worker\Sokna.PrintAgent.Worker.exe'));programdata_preserved=$true;runtime_unchanged=$true;maintenance_unchanged=$true;data_root=$agentData;completed_at_utc=[DateTime]::UtcNow.ToString('o')}
+  if(Test-Path -LiteralPath $receiptPath){Copy-Item -LiteralPath $receiptPath -Destination (Join-Path $receiptDir ('previous-'+$tx+'.json')) -ErrorAction Stop}
+  $receipt|ConvertTo-Json -Depth 9 |Set-Content -LiteralPath $receiptPath -Encoding UTF8
+  $written=Get-Content -LiteralPath $receiptPath -Raw |ConvertFrom-Json
+  if($written.transaction_id -ne $tx -or $written.status -ne 'COMMITTED'){Fail 'RECEIPT_READBACK_FAILED'}
+  WritePending 'COMMITTED'
+  $report.status='COMMITTED';$report.reason='LAB_APPLY_PASS';$report.rollback='not_required'
+  Write-Host 'PASS_PRINT_INDEPENDENT_LAB_TRANSACTION'
+}catch{
+  $errorCode=$_.Exception.Message;$report.reason=$errorCode
+  if($newActivated -or $oldMoved -or $createdSvc){
+    try{
+      $svc=Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+      if($svc -and $svc.Status -ne 'Stopped'){Stop-Service -Name $serviceName -ErrorAction Stop;WaitService 'Stopped' 35}
+      if($createdSvc){& "$env:SystemRoot\System32\sc.exe" delete $serviceName |Out-Null;if($LASTEXITCODE -ne 0){Fail 'QA_SERVICE_DELETE_FAILED'}}
+      if($newActivated -and (Test-Path -LiteralPath $install)){Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction Stop}
+      if($oldMoved){if(!(Test-Path -LiteralPath $backup)){Fail 'ROLLBACK_BACKUP_MISSING'};Move-Item -LiteralPath $backup -Destination $install -ErrorAction Stop}
+      if($wasRunning){Start-Service -Name $serviceName -ErrorAction Stop;WaitService 'Running' 25}
+      if($oldMoved){$null=VerifyPayload $install}
+      $report.rollback='verified';$report.status='ROLLED_BACK'
+      Write-Host 'PASS_PRINT_INDEPENDENT_LAB_ROLLBACK'
+    }catch{$report.rollback='FAILED';$report.status='ROLLBACK_FAILED';$report.reason=$errorCode+' | '+$_.Exception.Message}
+  }else{
+    # A failed preflight after quiescing services must restore Print before
+    # the Runtime supervisor is restarted; never leave a healthy cafe offline.
+    if($wasRunning){
+      try{
+        $previous=Get-Service -Name $serviceName -ErrorAction Stop
+        if([string]$previous.Status -ne 'Running'){
+          Start-Service -Name $serviceName -ErrorAction Stop
+          WaitService 'Running' 35
+        }
+        $report.status='BLOCKED_RESTORED'
+      }catch{
+        $report.status='PREFLIGHT_RESTORE_FAILED'
+        $report.reason=[string]$report.reason+' | PRINT_RESTART_FAILED: '+$_.Exception.Message
+      }
+    }else{$report.status='BLOCKED'}
+  }
+  Write-Host ('PRINT_INDEPENDENT_UPDATER_ERROR='+$report.reason)
+}finally{
+  if($runtimeStopped -and $runtimeWasRunning){
+    try{
+      Start-Service -Name 'SoknaRuntime' -ErrorAction Stop
+      $rservice=Get-Service 'SoknaRuntime' -ErrorAction Stop
+      try{$rservice.WaitForStatus('Running',[TimeSpan]::FromSeconds(35))}finally{$rservice.Dispose()}
+      $runtimeStopped=$false
+    }catch{
+      $report.status='RUNTIME_RESTORE_FAILED'
+      $report.reason=[string]$report.reason+' | RUNTIME_RESTART_FAILED: '+$_.Exception.Message
+      $report.other_services_untouched=$false
+    }
+  }
+  if($lock){$lock.Dispose()}
+  if($staging -and (Test-Path -LiteralPath $staging)){Remove-Item -LiteralPath $staging -Force -Recurse -ErrorAction SilentlyContinue}
+  if($backup -and $report.status -eq 'COMMITTED' -and (Test-Path -LiteralPath $backup)){Remove-Item -LiteralPath $backup -Force -Recurse -ErrorAction SilentlyContinue}
+  if($journal -and (Test-Path -LiteralPath $journal) -and $report.status -in @('COMMITTED','ROLLED_BACK','BLOCKED_RESTORED','BLOCKED')){
+    # Leave the journal if any verified old backup is still present.
+    if(!$backup -or !(Test-Path -LiteralPath $backup)){
+      Remove-Item -LiteralPath $journal -Force -ErrorAction SilentlyContinue
+    }
+  }
+  if($targetDir -and (Test-Path -LiteralPath $targetDir)){Remove-Item -LiteralPath $targetDir -Force -Recurse -ErrorAction SilentlyContinue}
+  SaveReport
+}
+if($report.status -notin @('READY_FOR_GATED_APPLY','COMMITTED','UNCHANGED')){exit 1}){$safeReason='UNREADABLE'}
+    }catch{$safeReason='UNREADABLE'}
+    Write-Host ('PRINT_QUEUE_INSPECTION_PHASE='+$script:queueGuardChecks+' STATUS='+$safeReason+' EXIT='+$exitCode)
+    if($exitCode -ne 0){Fail ('PRINT_QUEUE_BLOCKED_PHASE_'+$script:queueGuardChecks+'_CODE_'+$exitCode+'_REASON_'+$safeReason)}
     $global:LASTEXITCODE=0
   }
   if($snap -and !(Test-Path -LiteralPath (Join-Path $agentData 'queue.db') -PathType Leaf)){Fail 'EXISTING_AGENT_QUEUE_DATABASE_MISSING'}
