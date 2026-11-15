@@ -23,5 +23,7 @@ jobs:
           php -l apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php
           php -l r251/test-public-move-decision.php
           php r251/test-public-move-decision.php | tee /tmp/sokna-r251-discovery.txt
-          grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=30' /tmp/sokna-r251-discovery.txt
-          echo PASS_R251_PHASE_A_READONLY_ONLY_NO_HOST_MUTATION
+          grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=55' /tmp/sokna-r251-discovery.txt
+          # The production decision engine must never refer to one customer, URL or version.
+          ! grep -Eiq 'soknaspace|soknagroup|35ic|231ff|cafe-alpha|bistro-beta|coffee-gamma' apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php
+          echo PASS_R251_UNIVERSAL_MULTI_CUSTOMER_DISCOVERY_NO_HOST_MUTATION
