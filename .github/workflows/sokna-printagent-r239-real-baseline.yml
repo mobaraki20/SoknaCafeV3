@@ -52,7 +52,35 @@ jobs:
           $output=Join-Path $env:R239_REF_DIR 'extracted-install-1127'
           New-Item -ItemType Directory -Path $output -Force|Out-Null
           $exe=Join-Path $env:R239_REF_DIR 'SOKNA-Windows-Services-Setup-1.1.27.exe'
-          & $env:R239_INNOUNP '-x' ('-d'+$output) $exe
+          # .NET single-file bootstrap embeds the real Inno core as a raw managed resource.
+          # Scan only valid PE headers, never run the bootstrap. innounp validates setup data.
+          $script=Join-Path $env:R239_REF_DIR 'carve-inner-setup.py'
+          @'
+import sys,struct,mmap,os
+outer, dest = sys.argv[1:]
+with open(outer,'rb') as f:
+    mm=mmap.mmap(f.fileno(),0,access=mmap.ACCESS_READ)
+    valid=[]; i=512*1024
+    while True:
+        i=mm.find(b'MZ',i)
+        if i<0: break
+        if i+0x40<len(mm):
+            off=struct.unpack_from('<I',mm,i+0x3c)[0]
+            if off<0x2000 and i+off+0x80<len(mm) and mm[i+off:i+off+4]==b'PE\x00\x00':
+                valid.append(i)
+        i+=2
+    print('R239_VALID_EMBEDDED_PE_OFFSETS',valid[-50:], 'outer_size',len(mm))
+    if len(valid)<2:sys.exit(5)
+    # The assembly resource is very large; nearest PE to the end is likely Inno core.
+    start=valid[-1]
+    if len(mm)-start<60*1024*1024:sys.exit(6)
+    with open(dest,'wb') as out:out.write(mm[start:])
+    print('R239_CARVED_CORE',start,len(mm)-start)
+'@ | Set-Content -LiteralPath $script -Encoding UTF8
+          $core=Join-Path $env:R239_REF_DIR 'carved-core-inno.exe'
+          python $script $exe $core
+          if($LASTEXITCODE -ne 0){throw 'R239_NO_VALID_EMBEDDED_INNO_CORE'}
+          & $env:R239_INNOUNP '-x' ('-d'+$output) $core
           if($LASTEXITCODE -ne 0){throw ('REFERENCE_INNO_UNPACK_FAILED_'+$LASTEXITCODE)}
           $files=@(Get-ChildItem $output -Recurse -File)
           Write-Host ('EXTRACTED_FILE_COUNT='+$files.Count)
