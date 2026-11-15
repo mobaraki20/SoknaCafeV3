@@ -4,7 +4,7 @@ The ephemeral test flag is NEVER published or offered to a user.
 """
 from pathlib import Path
 import argparse,json,copy,hashlib,io,zipfile
-Q_SHA='195d8513acbfa4792e2d87dd6ef26d26d3b56a6e8652b46faa48ea73d1080f5a'
+Q_SHA='0e4b054903c990605a6c5bc0018f83b47e725ea654ab11a0790007e50ea20cc5'
 TREE='28f537b7761a9bf527205340171eb2df336b35298c21b4c164ce00939ed8085b'
 VERSION='3.0.0-g6.2-workspace.231fe-r240-managed-inventory-recovery-qa'
 def H(b):return hashlib.sha256(b).hexdigest()
