@@ -1,0 +1,123 @@
+{
+  "format": "sokna-universal-migration-progress-v1",
+  "updated_on": "2026-11-16",
+  "project_id": "SOKNA-UNIVERSAL-MIGRATION-R256",
+  "branch": "qa/sokna-r256-real-public-setup-owner-20261116",
+  "predecessor": "qa/sokna-r255-owner-bootstrap-20261116",
+  "product_scope": "Any independent cafe/installation, any valid host/path/Local and Public versions; small-cafe minimal UX and runtime-discovered tenant identity",
+  "decisions": {
+    "active_through": "MIG-016",
+    "superseded_through": "OLD-009",
+    "read_first": [
+      "r251/DECISIONS-FA.md",
+      "r251/decisions.json"
+    ]
+  },
+  "checkpoint": "r256/START-HERE-FA.md",
+  "phase": "REAL_R249_PUBLIC_NEW_INSTALL_OWNER_SETUP_QA_PASS__PRODUCTION_NO_GO",
+  "source_baseline": {
+    "name": "R249/35IC",
+    "purpose": "versioned immutable QA source acceptance pin only",
+    "sha256": "5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4",
+    "managed_tree_sha256": "1a5d041fd63ec5425ed9f01f0eff63c86c90c5c76f26530b773784c74884c928",
+    "existing_files": 228,
+    "existing_migrations": 8,
+    "existing_migrations_byte_identical": true,
+    "qa_candidate_files": 236,
+    "qa_candidate_migrations": 9,
+    "operator_zip_created": false
+  },
+  "completed": [
+    {
+      "item": "Fixed version-specific source discrepancy",
+      "result": "R249 real 8 migration/228 file ZIP audited vs legacy 3-migration apps/public",
+      "status": "DONE"
+    },
+    {
+      "item": "Pinned QA-only source overlay and ninth forward-only owner schema",
+      "status": "QA_PASS",
+      "paths": [
+        "r256/integrate_real_public.py",
+        "r256/overlay/database/migrations/0009_public_move_owner_setup.sql"
+      ]
+    },
+    {
+      "item": "Private destination owner signer and normal installer ownership creation in original R249 browser setup",
+      "status": "QA_PASS",
+      "path": "apps/public/src/Setup/PublicMoveOwnerPrivatePath.php"
+    },
+    {
+      "item": "Actual Public kernel login/logout and signed consent API (no anonymous setup claim route)",
+      "status": "QA_PASS_DISPOSABLE_HOST"
+    },
+    {
+      "item": "End-to-end actual R249 installer + nine migrations + owner HTTP + Ed25519 consent for host in /public",
+      "status": "CI_PASS",
+      "assertions": 25
+    },
+    {
+      "item": "End-to-end second independent cafe installation at domain root",
+      "status": "CI_PASS",
+      "assertions": 25
+    },
+    {
+      "item": "Earlier generic discovery and signed proof regression",
+      "status": "CI_PASS",
+      "assertions": {
+        "r251": 55,
+        "r252": 57
+      }
+    },
+    {
+      "item": "MIG-016 and OLD-009 decision history",
+      "status": "DONE"
+    }
+  ],
+  "latest_verified_ci": {
+    "url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43777266812",
+    "conclusion": "success",
+    "new_qa_assertions": 50,
+    "regression_assertions": 112
+  },
+  "hold": [
+    {
+      "item": "Owner authentication onboarding for an EXISTING Public installation after update (not clean install)",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Independent authenticated owner approval receipt transport and Local-side MAC + nonce R253 ledger",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Official Local migration/updater and universal safe cutover orchestration",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Backfill, pending guest order reconciliation, authority epoch/fencing and read-back",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Small-cafe Public consent screen and Local move wizard",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Full protected Emergency owner match on real host and Windows/hosting private-key ACL/recovery",
+      "status": "NOT_QUALIFIED"
+    },
+    {
+      "item": "Production cumulative updater, clean installer package, host end-to-end and deployment",
+      "status": "NOT_RELEASED"
+    }
+  ],
+  "guarded_outcomes": {
+    "no_production_install": true,
+    "no_new_public_intake": true,
+    "no_local_binding_change": true,
+    "no_main_or_current_change": true,
+    "no_operator_installable_zip": true,
+    "no_legacy_migration_change": true,
+    "verified_signed_target_is_not_authorization_to_cutover": true
+  },
+  "next_action": "R257: safely onboard owner on existing Public upgrade with authenticated installer/admin, generate and persist signed destination consent receipt and bind it to R253 Local MAC/nonce ledger, then minimal two-page Local/Public UI; afterward multi-customer real-world cutover E2E.",
+  "handoff": "Read r251/DECISIONS-FA.md, r251/decisions.json, r256/START-HERE-FA.md, r256/STATUS.json, source overlay and CI. Do NOT restart with stale 3-migration source or example domain. Continue next_action."
+}
