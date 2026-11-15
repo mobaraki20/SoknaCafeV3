@@ -82,6 +82,38 @@ def replay(base,parts,out):
  (out/'R239-PROOF.json').write_text(json.dumps(checks,indent=2)+'\n')
  print('PASS_PINNED_SOURCE_REPLAY_R239',json.dumps(checks))
 
+def stage_from_qa(qa,out):
+    assert H(qa.read_bytes())==Q_SHA,'TRANSFERRED_QA_ZIP_SHA_MISMATCH'
+    with zipfile.ZipFile(qa) as o:
+        assert o.testzip() is None,'QA_OUTER_CRC_ERROR'
+        assert set(o.namelist())=={'release-set.json','artifacts/local/web.zip'},'QA_PACKAGE_UNEXPECTED_FILES'
+        m=json.loads(o.read('release-set.json'));inner=o.read('artifacts/local/web.zip')
+    assert m['for_install'] is False and m['production_pass'] is False,'QA_PACKAGE_MUST_NOT_BE_INSTALLABLE'
+    with zipfile.ZipFile(io.BytesIO(inner)) as z:
+        assert z.testzip() is None
+        d={k:z.read(k) for k in z.namelist()}
+    assert len(d)==593 and tree(d)==SOURCE_TREE and d['VERSION.txt'].decode().strip()==VERSION,'TRANSFERRED_QA_MANAGED_TREE_MISMATCH'
+    assert H(inner)==m['artifacts']['local-web']['sha256']
+    ci=copy.deepcopy(m)
+    ci['for_install']=True;ci['production_pass']=True;ci['status']='R239_WINDOWS_EPHEMERAL_CI_STAGE'
+    for k in ('real_windows','business_backup_consistency_real_mariadb','recovery_console_web_down'):ci['qualification'][k]=True
+    ci['qa_notes']['ephemeral'] = 'CI_ONLY_ON_DISPOSABLE_WINDOWS_RUNNER_NO_EXPORT_NO_USER_INSTALL'
+    b=zipbytes({'release-set.json':J(ci),'artifacts/local/web.zip':inner})
+    out.mkdir(parents=True,exist_ok=True)
+    (out/'EPHEMERAL-WINDOWS-R239-STAGE.zip').write_bytes(b)
+    (out/'CI-SHA256.txt').write_text(H(b)+'\n')
+    print('PASS_R239_TRANSFERRED_QA_PAYLOAD_SHA',Q_SHA,'SOURCE_TREE',SOURCE_TREE)
+
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--base',type=pathlib.Path,required=True);p.add_argument('--parts',type=pathlib.Path,nargs='+',required=True);p.add_argument('--out',type=pathlib.Path,required=True)
- a=p.parse_args();replay(a.base,a.parts,a.out)
+    p=argparse.ArgumentParser()
+    p.add_argument('--base',type=pathlib.Path)
+    p.add_argument('--parts',type=pathlib.Path,nargs='+')
+    p.add_argument('--from-qa',type=pathlib.Path)
+    p.add_argument('--out',type=pathlib.Path,required=True)
+    a=p.parse_args()
+    if a.from_qa:
+        if a.base or a.parts:p.error('--from-qa must be used alone')
+        stage_from_qa(a.from_qa,a.out)
+    else:
+        if not a.base or not a.parts:p.error('base and parts required for exact replay')
+        replay(a.base,a.parts,a.out)
