@@ -229,7 +229,9 @@ jobs:
               if($hardExit -eq 0){throw ('R240_CRASH_INJECTION_DID_NOT_KILL_'+$phase)}
               if(!(Test-Path $pendingJournal -PathType Leaf)){throw ('R240_CRASH_NO_DURABLE_JOURNAL_'+$phase)}
               $j=Get-Content $pendingJournal -Raw|ConvertFrom-Json
-              if($j.phase -ne $phase){throw ('R240_CRASH_JOURNAL_PHASE_INVALID_'+$phase+'_'+$j.phase)}
+              if($j.phase -ne 'PREPARED'){throw ('R240_CRASH_PREPARED_JOURNAL_MISSING_'+$phase)}
+              $phaseFile=Join-Path (Split-Path $pendingJournal -Parent) ('stage-'+$j.transaction_id+'-'+$phase+'.json')
+              if(!(Test-Path -LiteralPath $phaseFile -PathType Leaf)){throw ('R240_CRASH_APPEND_ONLY_PHASE_MISSING_'+$phase)}
               $global:LASTEXITCODE=0
               Invoke-Lab ('R240_RECOVER_'+$phase)
               if(Test-Path $pendingJournal){throw ('R240_CRASH_JOURNAL_NOT_CLEARED_'+$phase)}
