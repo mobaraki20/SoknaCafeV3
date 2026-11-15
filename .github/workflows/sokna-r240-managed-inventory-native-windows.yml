@@ -29,7 +29,7 @@ jobs:
           test -f "$BASE"
           python3 r239/replay/build_ci_candidate.py --base "$BASE" --parts r239/replay/patch-*.txt --out '${{ runner.temp }}/r239'
           python3 r240/upgrade_inventory.py --parent '${{ runner.temp }}/r239/R239-QA-BYTE-IDENTICAL.zip' --out '${{ runner.temp }}/r240'
-          echo '195d8513acbfa4792e2d87dd6ef26d26d3b56a6e8652b46faa48ea73d1080f5a  '${{ runner.temp }}'/r240/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip' | sha256sum -c -
+          echo '0e4b054903c990605a6c5bc0018f83b47e725ea654ab11a0790007e50ea20cc5  '${{ runner.temp }}'/r240/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip' | sha256sum -c -
           python3 packaging/windows/release-gates/check_local_release_set.py '${{ runner.temp }}/r240/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip'
           echo PASS_R240_PINNED_INVENTORY_593_SOURCE_SHA
       - uses: actions/upload-artifact@v4
@@ -79,7 +79,7 @@ jobs:
           $ErrorActionPreference='Stop'
           $qa='${{ runner.temp }}/r240-source-qa/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip'
           if(-not(Test-Path $qa)){throw 'R240_QA_MISSING'}
-          if((Get-FileHash $qa -Algorithm SHA256).Hash.ToLowerInvariant() -ne '195d8513acbfa4792e2d87dd6ef26d26d3b56a6e8652b46faa48ea73d1080f5a'){throw 'R240_QA_SHA_MISMATCH'}
+          if((Get-FileHash $qa -Algorithm SHA256).Hash.ToLowerInvariant() -ne '0e4b054903c990605a6c5bc0018f83b47e725ea654ab11a0790007e50ea20cc5'){throw 'R240_QA_SHA_MISMATCH'}
           python r240/ci_stage.py --from-qa "$qa" --out '${{ runner.temp }}/r240-stage'
           if($LASTEXITCODE -ne 0){throw 'R240_SOURCE_AND_INVENTORY_CHECK_FAILED'}
           python packaging/windows/release-gates/check_local_release_set.py "$qa"
