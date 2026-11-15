@@ -1,0 +1,14 @@
+CREATE TABLE installations (installation_id VARCHAR(96) PRIMARY KEY,active TINYINT NOT NULL DEFAULT 1,revoked_at DATETIME NULL,authority_epoch BIGINT UNSIGNED NOT NULL DEFAULT 1,authority_state VARCHAR(24) NOT NULL DEFAULT 'active',authority_epoch_required TINYINT NOT NULL DEFAULT 0,authority_changed_at DATETIME(6),remote_enabled TINYINT NOT NULL DEFAULT 0,order_intake_enabled TINYINT NOT NULL DEFAULT 0,display_name VARCHAR(255)) ENGINE=InnoDB;
+CREATE TABLE installation_authority_reenrollments (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96) NOT NULL,from_epoch BIGINT UNSIGNED NOT NULL,to_epoch BIGINT UNSIGNED NOT NULL,code_hash VARCHAR(255) NOT NULL,status VARCHAR(20) NOT NULL DEFAULT 'pending',expires_at DATETIME NOT NULL,completed_at DATETIME NULL,created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,INDEX idx_authority_reenroll_pending(installation_id,status,expires_at),CONSTRAINT fk_authority_reenroll_installation FOREIGN KEY(installation_id) REFERENCES installations(installation_id) ON DELETE CASCADE) ENGINE=InnoDB;
+CREATE TABLE installation_pairing_secrets (installation_id VARCHAR(96) PRIMARY KEY,secret_ciphertext TEXT,rotated_at DATETIME) ENGINE=InnoDB;
+CREATE TABLE realtime_requests (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96),authority_epoch BIGINT UNSIGNED NOT NULL DEFAULT 1,state VARCHAR(32),error_code VARCHAR(120),lease_token_hash VARCHAR(128),lease_expires_at DATETIME) ENGINE=InnoDB;
+CREATE TABLE deferred_work (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96),authority_epoch BIGINT UNSIGNED NOT NULL DEFAULT 1,state VARCHAR(32),error_code VARCHAR(120),lease_token VARCHAR(128),lease_expires_at DATETIME) ENGINE=InnoDB;
+CREATE TABLE public_sessions (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96)) ENGINE=InnoDB;
+CREATE TABLE auth_projections (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96)) ENGINE=InnoDB;
+CREATE TABLE guest_active_revisions (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96)) ENGINE=InnoDB;
+CREATE TABLE guest_availability_state (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96)) ENGINE=InnoDB;
+CREATE TABLE remote_read_models (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96)) ENGINE=InnoDB;
+CREATE TABLE remote_projection_events (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96)) ENGINE=InnoDB;
+CREATE TABLE remote_projection_model_cursors (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96)) ENGINE=InnoDB;
+CREATE TABLE remote_projection_cursors (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96)) ENGINE=InnoDB;
+CREATE TABLE installation_heartbeats (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,installation_id VARCHAR(96),last_seen_at DATETIME(6)) ENGINE=InnoDB;
