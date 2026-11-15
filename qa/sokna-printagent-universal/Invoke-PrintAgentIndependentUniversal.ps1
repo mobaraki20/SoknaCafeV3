@@ -110,11 +110,34 @@ try{
     $parent=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'SOKNA Windows Services'
     $data=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
     $agentData=Join-Path $data 'print-worker'
-    $agentRegistry='HKLM:\SOFTWARE\Sokna\Local\PrintWorker'
-    if(Test-Path -LiteralPath $agentRegistry){
-      $configured=[string](Get-ItemProperty -LiteralPath $agentRegistry -Name DataRoot -ErrorAction SilentlyContinue).DataRoot
-      if($configured){$agentData=Full ([Environment]::ExpandEnvironmentVariables($configured))}
+    # Match historical AgentPaths.Default() resolution exactly: service-specific
+    # process Environment (primary/fallback), then Local registry, then legacy
+    # PrintAgent registry. Never assume a newer default when upgrading old data.
+    $configured=''
+    if($snap -or (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)){
+      $envKey='HKLM:\SYSTEM\CurrentControlSet\Services\'+$serviceName
+      $entries=@((Get-ItemProperty -LiteralPath $envKey -Name Environment -ErrorAction SilentlyContinue).Environment)
+      foreach($key in @('SOKNA_PRINT_WORKER_DATA_ROOT','SOKNA_PRINT_AGENT_DATA_ROOT')){
+        foreach($entry in $entries){
+          $prefix=$key+'='
+          if(([string]$entry).StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){
+            $configured=([string]$entry).Substring($prefix.Length).Trim()
+            if($configured){break}
+          }
+        }
+        if($configured){break}
+      }
     }
+    if(!$configured){
+      foreach($agentRegistry in @('HKLM:\SOFTWARE\Sokna\Local\PrintWorker','HKLM:\SOFTWARE\Sokna\PrintAgent')){
+        if(Test-Path -LiteralPath $agentRegistry){
+          $value=Get-ItemProperty -LiteralPath $agentRegistry -Name DataRoot -ErrorAction SilentlyContinue
+          $configured=[string]$value.DataRoot
+          if($configured){break}
+        }
+      }
+    }
+    if($configured){$agentData=Full ([Environment]::ExpandEnvironmentVariables($configured))}
     $LabRoot=Join-Path $data 'setup\print-agent-independent-v1\work'
     $report.test_mode=$false
   }
