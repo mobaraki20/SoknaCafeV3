@@ -1,0 +1,34 @@
+{
+  "build_id": "SOKNA-R247-STABLE-EMERGENCY-OWNER-RECOVERY",
+  "tested_on": "2026-11-15",
+  "archive_sha256": "3977b90a32cb636981730bf80783cd8954be5c6a13f279db84383c7d13b6b2d2",
+  "archive_bytes": 28218,
+  "manifest_paths": [
+    "tools/sokna-emergency-r247-safe-installer.php",
+    "tools/R247-PINS.json"
+  ],
+  "installer_sha256": "dfc233bef3efb7a556ed4bc55ba1ca1a6c6f58d7838e8f99f77df5ae92526035",
+  "new_emergency_sha256": "b41a7deae19becca160586401a0c4bc33150c43f811d838c5973249bbeb2c6ce",
+  "new_access_sha256": "65f5c6fc92f17a5baba3965a69c7f8f2cdabfc5f0d2467240889cc48c8d5a9bb",
+  "source_R171_archive_sha256": "ea1d2f7d90242d5b45fe232da7ff5510f03ee55c835e2dabe5f61980430be157",
+  "source_R171_tree_sha256": "be2ebe23091472480beadd6a06cad621b43da365d3677f54fadaab6ba56242b6",
+  "gates": {
+    "package_only_adds_tools_directory": true,
+    "operator_auth_required_and_has_no_default_password": true,
+    "shared_routine_update_lock": true,
+    "exact_R171_source_and_stable_file_identity_required": true,
+    "no_live_write_if_preflight_fails": true,
+    "backup_and_atomic_replace_with_readback": true,
+    "conditional_rollback_prior_to_R246": true,
+    "php_lint_installer_new_ui_access": true,
+    "isolated_R171_actual_php_install_readback_rollback": true,
+    "isolated_new_GUI_render": true,
+    "managed_tree_and_db_fence_preserved": true,
+    "negative_tests_wrong_version_changed_bridge_unknown_live_entry_pending_state": true,
+    "live_host_preflight_run": false,
+    "real_host_mariadb_and_full_R246_activation_qualified": false
+  },
+  "decision": "OPERATOR_CAN_RUN_FAIL_CLOSED_PREFLIGHT; PRODUCTION_INSTALL_REQUIRES_ALL_CHECKS_PASS_ON_TARGET",
+  "no_server_writes_performed_by_build": true,
+  "not_a_R246_application_upgrade": true
+}
