@@ -1,0 +1,56 @@
+name: SOKNA Print Agent universal updater — non-mutating Windows QA
+on:
+  push:
+    branches:
+      - qa/sokna-printagent-universal-installer-20261115
+    paths:
+      - qa/sokna-printagent-universal/**
+      - .github/workflows/sokna-printagent-universal-probe-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  win-universal-qa:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R198-PRINT-AGENT-6.2.12-BINARY-QA-NOT-INSTALL
+          run-id: 43489066238
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/binary
+      - name: Freeze exact 6.2.12 binary & parse installer scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=Join-Path $env:RUNNER_TEMP 'binary/SoknaPrintAgent-6.2.12-win-x64.zip'
+          if(!(Test-Path $p)){throw 'MISSING_IMMUTABLE_PRINT_BINARY'}
+          if((Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant() -ne '464eb276b446ffe6e30bdf05e36a4ef08671324ac0784f830f241d142d19efb5'){throw 'WRONG_PRINT_BINARY_SHA'}
+          foreach($n in @('Invoke-SoknaPrintAgentUniversal.ps1','Test-SoknaPrintAgentUniversal.ps1')){
+            $script=Join-Path 'qa/sokna-printagent-universal' $n
+            $tokens=$null;$errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script).Path,[ref]$tokens,[ref]$errors)|Out-Null
+            if(@($errors).Count -ne 0){$errors|ForEach-Object{Write-Host $_.Message};throw ('POWER_SHELL_PARSER_FAILED_'+$n)}
+          }
+          Write-Host 'PASS_UNIVERSAL_SOURCE_PARSE_AND_BINARY_IDENTITY'
+      - name: Check clean and multiple synthetic baselines without touching services
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=Join-Path $env:RUNNER_TEMP 'binary/SoknaPrintAgent-6.2.12-win-x64.zip'
+          & 'qa/sokna-printagent-universal/Test-SoknaPrintAgentUniversal.ps1' -PackageZip $p -ScriptPath (Resolve-Path 'qa/sokna-printagent-universal/Invoke-SoknaPrintAgentUniversal.ps1').Path
+          if($LASTEXITCODE -ne 0){throw 'UNIVERSAL_QA_FAILED'}
+      - name: Keep explicit QA HOLD report
+        shell: pwsh
+        run: |
+          $out=Join-Path $env:RUNNER_TEMP 'QA-RESULT'
+          New-Item -ItemType Directory -Force $out|Out-Null
+          @{format='sokna-printagent-universal-probe-gate-v1';version='6.2.12';native_service_upgrade_tested=$false;production_install_allowed=$false;notes='Only source parser, payload SHA and synthetic non-mutating probes run; physical printer and preserve/rollback still required'}|ConvertTo-Json|Set-Content (Join-Path $out 'QA-HOLD.json') -Encoding UTF8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-PrintAgent-Universal-6.2.12-NONINSTALLABLE-QA
+          path: ${{ runner.temp }}/QA-RESULT/QA-HOLD.json
+          retention-days: 30
