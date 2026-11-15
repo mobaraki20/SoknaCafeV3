@@ -17,7 +17,7 @@ $expectedZip='464eb276b446ffe6e30bdf05e36a4ef08671324ac0784f830f241d142d19efb5'
 $serviceName='SoknaPrintWorker'
 $tx=[guid]::NewGuid().ToString('N')
 $report=[ordered]@{format='sokna-printagent-independent-updater-v1';transaction_id=$tx;mode=$Mode;status='BLOCKED';reason='NOT_STARTED';old_version=$null;new_version='6.2.12';service_name=$serviceName;rollback='not_required';data_preserved=$false;other_services_untouched=$false;production_approved_by_ci=$false}
-$oldMoved=$false;$newActivated=$false;$createdSvc=$false;$wasRunning=$false;$lock=$null;$staging=$null;$backup=$null;$oldReceipt=$null;$targetDir=$null;$runtimeStopped=$false;$runtimeWasRunning=$false
+$oldMoved=$false;$newActivated=$false;$createdSvc=$false;$wasRunning=$false;$lock=$null;$staging=$null;$backup=$null;$oldReceipt=$null;$targetDir=$null;$runtimeStopped=$false;$runtimeWasRunning=$false;$journal=$null;$pending=$null
 function Fail([string]$code){throw $code}
 function Full([string]$path){[IO.Path]::GetFullPath($path).TrimEnd('\')}
 function Hash([string]$path){
@@ -375,17 +375,6 @@ try{
   # restart while its owned binaries are renamed, temporarily quiesce only this
   # known supervisor. Its executable, settings and durable data are never changed.
   $runtimeWasRunning=($null -ne $rt -and [string]$rt.Status -eq 'Running')
-  if($runtimeWasRunning){
-    $rinfo=Get-CimInstance Win32_Service -Filter "Name='SoknaRuntime'" -ErrorAction Stop
-    $runtimeImage=ReadServiceExe ([string]$rinfo.PathName)
-    $expectedRuntime=Full (Join-Path $parent 'Runtime\SoknaRuntimeService.exe')
-    if($runtimeImage -ne $expectedRuntime){Fail 'FOREIGN_RUNTIME_SUPERVISOR_OWNER'}
-    Stop-Service -Name 'SoknaRuntime' -ErrorAction Stop
-    $rservice=Get-Service -Name 'SoknaRuntime' -ErrorAction Stop
-    try{$rservice.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(40))}finally{$rservice.Dispose()}
-    $runtimeStopped=$true
-    Write-Host 'PASS_PRINT_R238_RUNTIME_SUPERVISION_QUIESCED_WITHOUT_BINARY_MUTATION'
-  }
   $marker=Join-Path $agentData 'qa-preserve-marker.bin'
   $markerBefore=$(if(Test-Path -LiteralPath $marker){Hash $marker}else{''})
   $staging=Join-Path $parent ('PrintAgent.__incoming.'+$tx)
@@ -405,6 +394,17 @@ try{
     runtime_previously_running=[string]$runtimeWasRunning
   }
   WritePending 'PREPARED'
+  if($runtimeWasRunning){
+    $rinfo=Get-CimInstance Win32_Service -Filter "Name='SoknaRuntime'" -ErrorAction Stop
+    $runtimeImage=ReadServiceExe ([string]$rinfo.PathName)
+    $expectedRuntime=Full (Join-Path $parent 'Runtime\SoknaRuntimeService.exe')
+    if($runtimeImage -ne $expectedRuntime){Fail 'FOREIGN_RUNTIME_SUPERVISOR_OWNER'}
+    Stop-Service -Name 'SoknaRuntime' -ErrorAction Stop
+    $rservice=Get-Service -Name 'SoknaRuntime' -ErrorAction Stop
+    try{$rservice.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(40))}finally{$rservice.Dispose()}
+    $runtimeStopped=$true
+    Write-Host 'PASS_PRINT_R238_RUNTIME_SUPERVISION_QUIESCED_WITHOUT_BINARY_MUTATION'
+  }
   StopIfNeeded
   # Windows print spooler must be idle before replacing binaries; fail closed.
   $pendingSpool=@(Get-CimInstance Win32_PrintJob -ErrorAction Stop)
