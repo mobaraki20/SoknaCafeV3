@@ -1,0 +1,61 @@
+name: SOKNA R239 acquire exact historical 6.2.11 print baseline
+on:
+  push:
+    branches: [qa/sokna-printagent-universal-installer-20261115]
+    paths: [.github/workflows/sokna-printagent-r239-real-baseline.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original official Windows Services 1.1.27 for extraction only
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TEMP 'sokna-r239-baseline'
+          New-Item -ItemType Directory -Path $dir -Force|Out-Null
+          gh release download 'windows-services-v1.1.27-print-stop-rc.1' --repo 'mobaraki20/SoknaCafeV3' -p 'SOKNA-Windows-Services-Setup-1.1.27.exe' -p 'artifact-index.json' -p 'SHA256SUMS.txt' --dir $dir
+          if($LASTEXITCODE -ne 0){throw 'REFERENCE_1127_DOWNLOAD_FAILED'}
+          Get-Content (Join-Path $dir 'artifact-index.json') | Write-Host
+          $sha=Get-Content (Join-Path $dir 'SHA256SUMS.txt') -Raw
+          $exe=Join-Path $dir 'SOKNA-Windows-Services-Setup-1.1.27.exe'
+          $actual=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if(!$sha.Contains($actual)){throw 'REFERENCE_1127_SHA_MISMATCH'}
+          "R239_REF_DIR=$dir" | Out-File $env:GITHUB_ENV -Append
+      - name: Extract (never run) Inno original and locate actual 6.2.11 bits
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $seven='C:/Program Files/7-Zip/7z.exe'
+          if(!(Test-Path $seven)){throw '7ZIP_NOT_INSTALLED'}
+          $output=Join-Path $env:R239_REF_DIR 'extract'
+          & $seven x (Join-Path $env:R239_REF_DIR 'SOKNA-Windows-Services-Setup-1.1.27.exe') "-o$output" -y | Out-Null
+          if($LASTEXITCODE -ne 0){throw 'INNO_EXTRACT_FAILED'}
+          $candidates=@(Get-ChildItem $output -Recurse -File | Where-Object { $_.Name -in @('Sokna.PrintAgent.Service.exe','Sokna.PrintAgent.Worker.exe','component-manifest.json','print-worker.zip') })
+          foreach($f in $candidates){Write-Host ('CANDIDATE '+$f.FullName+' SIZE='+$f.Length+' SHA256='+(Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant())}
+          $service=@($candidates | Where-Object Name -eq 'Sokna.PrintAgent.Service.exe' | Where-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -eq '9f4559d2d15188863212c1cf1c8ea786ed8aa0e2cf5bcee08f40738344dd29b5' })
+          $worker=@($candidates | Where-Object Name -eq 'Sokna.PrintAgent.Worker.exe' | Where-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -eq '6538ce93eec690e21f0901e08c3031d14059781493306870f13b952406249284' })
+          if($service.Count -ne 1 -or $worker.Count -ne 1){throw ('R239_REAL_6211_CAFE_SHA_NOT_MATCHED service='+$service.Count+' worker='+$worker.Count)}
+          $root=Join-Path $env:R239_REF_DIR 'verified-cafe-6211'
+          New-Item -ItemType Directory -Path (Join-Path $root 'Service'),(Join-Path $root 'Worker') -Force|Out-Null
+          Copy-Item -Path (Join-Path (Split-Path $service[0].FullName -Parent) '*') -Destination (Join-Path $root 'Service') -Recurse -Force
+          Copy-Item -Path (Join-Path (Split-Path $worker[0].FullName -Parent) '*') -Destination (Join-Path $root 'Worker') -Recurse -Force
+          $man=@(Get-ChildItem $output -Recurse -File -Filter 'component-manifest.json' | Where-Object {(Get-Content $_.FullName -Raw) -match '"6.2.11"' })
+          if($man.Count -lt 1){throw 'REFERENCE_6211_COMPONENT_MANIFEST_MISSING'}
+          Copy-Item $man[0].FullName (Join-Path $root 'component-manifest.json')
+          $z=Join-Path $env:R239_REF_DIR 'SoknaPrintAgent-6.2.11-CAFE-MATCHED-REFERENCE.zip'
+          Compress-Archive -Path (Join-Path $root '*') -DestinationPath $z -Force
+          "R239_REF_ZIP=$z" | Out-File $env:GITHUB_ENV -Append
+          Write-Host 'PASS_R239_CAFE_6211_EXACT_SERVICE_WORKER_FROM_OFFICIAL_REFERENCE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R239-PRINTAGENT-6211-CAFE-SHA-VERIFIED-REFERENCE
+          path: ${{ env.R239_REF_ZIP }}
+          if-no-files-found: error
+          retention-days: 30
