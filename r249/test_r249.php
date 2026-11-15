@@ -7,7 +7,9 @@ use Sokna\PublicEdge\Update\IndependentEmergencyRoutineBridge;
 use Sokna\PublicEdge\Emergency\PublicUpdateException;
 $D=getenv('R249_QA_FIXTURE');if(!is_string($D)||$D==='')throw new RuntimeException('R249_QA_FIXTURE required');
 $R=__DIR__;
-$source=$D.'/r171';$root=$D.'/run-public';$storage=$D.'/run-storage';
+$baseline=getenv('R249_QA_BASELINE')?:'35ht';
+if(!in_array($baseline,['35hk','35ht'],true))throw new RuntimeException('unknown_baseline');
+$source=$D.'/'.($baseline==='35hk'?'r153':'r171');$root=$D.'/run-public-'.$baseline;$storage=$D.'/run-storage-'.$baseline;
 $pkg=$D.'/SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip';
 require_once $D.'/public-update-exception.php';
 require_once $D.'/r171-service.php';
@@ -28,9 +30,10 @@ file_put_contents($root.'/config.php',"<?php return ['app'=>['base_path'=>'/publ
 file_put_contents($root.'/resources/update-trust-v1.json','{}');
 $emergencyHash=hash_file('sha256',$root.'/emergency.php');$recoveryHash=hash_file('sha256',$root.'/recovery.php');
 $version=trim((string)file_get_contents($root.'/VERSION.txt'));
-qa($version==='3.0.0-g3.6-workspace.35ht-r171-cumulative-staff-expenses-uat','exact_source_35ht');
+$expected=$baseline==='35hk'?'3.0.0-g3.6-workspace.35hk-r153-identity-reconciled-qa':'3.0.0-g3.6-workspace.35ht-r171-cumulative-staff-expenses-uat';
+qa($version===$expected,'exact_source_'.$baseline);
 $accepted=array_values(array_filter($m['compatibility']['supported_baselines'],static fn($a)=>($a['version']??'')===$version));
-qa(count($accepted)===1,'r171_registered_once');
+qa(count($accepted)===1,$baseline.'_registered_once');
 mkdir($storage.'/routine-update-v2',0700,true);
 $state=['format'=>'sokna-public-routine-update-state-v2','schema_version'=>2,'active_version'=>$version,
  'active_managed_tree_sha256'=>$accepted[0]['managed_tree_sha256'],
@@ -39,7 +42,7 @@ $state=['format'=>'sokna-public-routine-update-state-v2','schema_version'=>2,'ac
 file_put_contents($storage.'/routine-update-v2/state.json',json_encode($state,JSON_THROW_ON_ERROR));
 $svc=new RoutinePublicUpdateService($root,$storage,$root.'/resources/update-trust-v1.json',static fn():bool=>true,static fn():array=>[],null,static fn():array=>[]);
 $bridge=new IndependentEmergencyRoutineBridge($svc,$storage,static fn():array=>[],static function()use($root):array{return ['ok'=>true,'database'=>'ready','emergency_ready'=>true,'pending_migrations'=>0,'version'=>trim((string)file_get_contents($root.'/VERSION.txt'))];});
-qa(($bridge->snapshot()['managed_tree_matches_expected']??null)===true,'real_r171_tree_matches_state');
+qa(($bridge->snapshot()['managed_tree_matches_expected']??null)===true,'real_'.$baseline.'_tree_matches_state');
 qa(($bridge->snapshot()['forward_only_protected']??null)===true,'prior_forward_fence_detected');
 $stage=$bridge->stageUploadedZip($pkg,'r249_ci');
 qa(($stage['strict_multibaseline_v1']??null)===true,'stage_strict_compatible');
@@ -61,4 +64,4 @@ qa(($committed['managed_tree_matches_expected']??null)===true,'committed_tree_ve
 qa(($committed['db_forward_fence']['pinned']??null)==='must-preserve','historic_db_fence_preserved');
 qa(($committed['lkg_recovery_id']??null)==='','historic_fence_does_not_fake_rollback');
 try{$bridge->rollback('r249_ci');throw new RuntimeException('UNSAFE_ROLLBACK_ALLOWED');}catch(PublicUpdateException $e){qa($e->errorCode==='emergency_rollback_not_qualified','rollback_explicitly_prohibited');}
-echo "PASS_R249_DUAL_BASE_MANIFEST_R171_REAL_PHP_ROUTINE_FORWARD_ONLY\n";
+echo "PASS_R249_".strtoupper($baseline)."_REAL_PHP_ROUTINE_FORWARD_ONLY\n";
