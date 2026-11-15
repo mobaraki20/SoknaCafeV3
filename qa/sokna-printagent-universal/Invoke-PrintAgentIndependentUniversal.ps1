@@ -293,8 +293,11 @@ try{
       Remove-Item -LiteralPath $incoming -Recurse -Force -ErrorAction Stop
     }
     if($restoreSvc -and [string]$j.print_previously_running-eq'True'){
-      Start-Service -Name $serviceName -ErrorAction Stop
-      (Get-Service $serviceName).WaitForStatus('Running',[TimeSpan]::FromSeconds(35))
+      $now=Get-Service -Name $serviceName -ErrorAction Stop
+      if([string]$now.Status -ne 'Running'){
+        Start-Service -Name $serviceName -ErrorAction Stop
+        $now.WaitForStatus('Running',[TimeSpan]::FromSeconds(35))
+      }
     }
     if($runtimeStopped){
       Start-Service SoknaRuntime -ErrorAction Stop
