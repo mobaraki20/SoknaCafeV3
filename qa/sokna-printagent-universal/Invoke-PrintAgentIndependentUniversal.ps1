@@ -364,12 +364,18 @@ try{
   function CheckQueueIdle {
     $script:queueGuardChecks++
     $output=@(& $QueueGuardExe --data-root $agentData)
-    $exitCode=$LASTEXITCODE
-    $safeReason='UNKNOWN'
+    $code=$LASTEXITCODE
+    $safeReason='GUARD_OUTPUT_UNPARSEABLE'
     try{
-      $json=($output -join '')|ConvertFrom-Json -ErrorAction Stop
+      $json=($output -join '') | ConvertFrom-Json -ErrorAction Stop
       $safeReason=[string]$json.reason
-      if($safeReason -notmatch '^[A-Z0-9_]{2,64}
+      if($safeReason -notmatch '^[A-Z0-9_]{2,64}$'){$safeReason='GUARD_REASON_INVALID'}
+    }catch{$safeReason='GUARD_OUTPUT_UNPARSEABLE'}
+    $stage=$(if($script:queueGuardChecks -eq 1){'INITIAL'}else{'AFTER_QUIESCE'})
+    Write-Host ('SOKNA_PRINT_QUEUE_GUARD_'+$stage+'='+$safeReason)
+    if($code -ne 0){Fail ('PENDING_OR_UNREADABLE_PRINT_QUEUE_BLOCKED_'+$stage+'_'+$safeReason)}
+    $global:LASTEXITCODE=0
+  }
   if($snap -and !(Test-Path -LiteralPath (Join-Path $agentData 'queue.db') -PathType Leaf)){Fail 'EXISTING_AGENT_QUEUE_DATABASE_MISSING'}
   CheckQueueIdle
   $report.status='READY_FOR_GATED_APPLY';$report.reason='PREFLIGHT_PASS'
