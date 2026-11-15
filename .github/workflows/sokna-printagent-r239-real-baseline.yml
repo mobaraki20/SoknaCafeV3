@@ -28,42 +28,56 @@ jobs:
           $actual=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           if(!$sha.Contains($actual)){throw 'REFERENCE_1127_SHA_MISMATCH'}
           "R239_REF_DIR=$dir" | Out-File $env:GITHUB_ENV -Append
-      - name: Checkout exact public 6.2.11 source commit for reference build
-        uses: actions/checkout@v4
-        with:
-          ref: c5c8076cd7eebd95297787d1c9945d95a780556f
-          path: reference-source
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-      - name: Build archived 6.2.11 source and require cafe-identical historical binaries
+      - name: Obtain pinned updated Inno unpacker
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:R239_REF_DIR 'innounp'
+          New-Item -ItemType Directory -Path $dir -Force|Out-Null
+          gh release download ui_2_2_13 --repo jrathlev/InnoUnpacker-Windows-GUI -p innounp-2.zip --dir $dir
+          if($LASTEXITCODE -ne 0){throw 'PINNED_INNO_UNPACKER_DOWNLOAD_FAILED'}
+          $z=Join-Path $dir 'innounp-2.zip'
+          if((Get-FileHash $z -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'f8e45c9676bebc7d7570108ab572673b541fcf7a7d3d24a04319ac6b5315b4e8'){throw 'PINNED_INNOUNP_ZIP_SHA_MISMATCH'}
+          Expand-Archive $z -DestinationPath (Join-Path $dir 'bin')
+          $binary=@(Get-ChildItem -LiteralPath (Join-Path $dir 'bin') -Recurse -Filter '*innounp*.exe' -File | Select-Object -First 1)
+          if($binary.Count -ne 1){throw 'PINNED_INNOUNP_EXE_MISSING'}
+          "R239_INNOUNP=$($binary[0].FullName)" | Out-File $env:GITHUB_ENV -Append
+          Write-Host ('UNPACKER_FILE='+$binary[0].Name)
+      - name: Extract exact 6.2.11 from official signed installer without executing it
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $source=Join-Path $env:GITHUB_WORKSPACE 'reference-source'
-          $output=Join-Path $env:R239_REF_DIR 'reference-output'
-          & (Join-Path $source 'windows/print-agent/build-component-package.ps1') -RepoRoot $source -OutputDir $output
-          if(!$? -or $LASTEXITCODE -ne 0){throw 'REFERENCE_6211_BUILD_FAILED'}
-          $zip=Join-Path $output 'SoknaPrintAgent-6.2.11-win-x64.zip'
-          if(!(Test-Path $zip)){throw 'REFERENCE_6211_BUNDLE_MISSING'}
-          $info=Get-Content (Join-Path $env:R239_REF_DIR 'artifact-index.json') -Raw | ConvertFrom-Json
-          $expected=[string]$info.print_agent.sha256
-          $actual=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          Write-Host ('R239_REFERENCE_BUNDLE_SHA='+$actual+' PUBLISHED_SHA='+$expected)
-          if($actual -ne $expected){Write-Warning 'Historical ZIP byte reproducibility differs (Zip metadata or dotnet SDK may differ). Checking PE bytes.'}
-          $extract=Join-Path $env:R239_REF_DIR 'reference-extract'
-          Expand-Archive -LiteralPath $zip -DestinationPath $extract
-          $svc=(Get-FileHash (Join-Path $extract 'Service/Sokna.PrintAgent.Service.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
-          $wrk=(Get-FileHash (Join-Path $extract 'Worker/Sokna.PrintAgent.Worker.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
-          Write-Host ('REFERENCE_SERVICE='+$svc)
-          Write-Host ('REFERENCE_WORKER='+$wrk)
-          $cafeSvc='9f4559d2d15188863212c1cf1c8ea786ed8aa0e2cf5bcee08f40738344dd29b5'
-          $cafeWrk='6538ce93eec690e21f0901e08c3031d14059781493306870f13b952406249284'
-          if($svc -ne $cafeSvc -or $wrk -ne $cafeWrk){throw 'HISTORICAL_6211_CAFE_REAL_PE_BYTES_DIFFER_BUILD_NOT_ACCEPTED'}
-          $refFile=Join-Path $env:R239_REF_DIR 'SoknaPrintAgent-6.2.11-CAFE-MATCHED-REFERENCE.zip'
-          Copy-Item $zip $refFile
-          "R239_REF_ZIP=$refFile" | Out-File $env:GITHUB_ENV -Append
-          Write-Host 'PASS_R239_CAFE_6211_REAL_SERVICE_WORKER_FROM_HISTORICAL_SOURCE'
+          $output=Join-Path $env:R239_REF_DIR 'extracted-install-1127'
+          New-Item -ItemType Directory -Path $output -Force|Out-Null
+          $exe=Join-Path $env:R239_REF_DIR 'SOKNA-Windows-Services-Setup-1.1.27.exe'
+          & $env:R239_INNOUNP '-x' ('-d'+$output) $exe
+          if($LASTEXITCODE -ne 0){throw ('REFERENCE_INNO_UNPACK_FAILED_'+$LASTEXITCODE)}
+          $files=@(Get-ChildItem $output -Recurse -File)
+          Write-Host ('EXTRACTED_FILE_COUNT='+$files.Count)
+          foreach($v in ($files|Where-Object{$_.Name -match 'print|agent|bundle|shell|\.zip$'}|Select-Object -First 80)){Write-Host ('FOUND '+$v.FullName+' BYTES='+$v.Length)}
+          $inner=@($files|Where-Object{$_.Name -eq 'SoknaPrintAgent-6.2.11-win-x64.zip'})
+          if($inner.Count -eq 1){
+            $raw=Join-Path $env:R239_REF_DIR 'old-component-exact'
+            Expand-Archive $inner[0].FullName -DestinationPath $raw
+            $output=$raw
+            $files=@(Get-ChildItem $output -Recurse -File)
+          }
+          $service=@($files|Where-Object Name -eq 'Sokna.PrintAgent.Service.exe'|Where-Object{(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -eq '9f4559d2d15188863212c1cf1c8ea786ed8aa0e2cf5bcee08f40738344dd29b5'})
+          $worker=@($files|Where-Object Name -eq 'Sokna.PrintAgent.Worker.exe'|Where-Object{(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -eq '6538ce93eec690e21f0901e08c3031d14059781493306870f13b952406249284'})
+          if($service.Count -ne 1 -or $worker.Count -ne 1){throw ('R239_CAFE_REAL_BINARY_NOT_PROVEN_SERVICE='+$service.Count+'_WORKER='+$worker.Count)}
+          $root=Join-Path $env:R239_REF_DIR 'cafe-exact'
+          New-Item -ItemType Directory -Path (Join-Path $root 'Service'),(Join-Path $root 'Worker') -Force|Out-Null
+          Copy-Item -Path (Join-Path (Split-Path $service[0].FullName -Parent) '*') -Destination (Join-Path $root 'Service') -Recurse -Force
+          Copy-Item -Path (Join-Path (Split-Path $worker[0].FullName -Parent) '*') -Destination (Join-Path $root 'Worker') -Recurse -Force
+          $man=@($files|Where-Object Name -eq 'component-manifest.json'|Where-Object{(Get-Content $_.FullName -Raw) -match '"version"\s*:\s*"6\.2\.11"'})
+          if($man.Count -lt 1){throw 'CAFE_REAL_MANIFEST_MISSING'}
+          Copy-Item $man[0].FullName (Join-Path $root 'component-manifest.json')
+          $zip=Join-Path $env:R239_REF_DIR 'SoknaPrintAgent-6.2.11-CAFE-MATCHED-REFERENCE.zip'
+          Compress-Archive -Path (Join-Path $root '*') -DestinationPath $zip -Force
+          "R239_REF_ZIP=$zip" | Out-File $env:GITHUB_ENV -Append
+          Write-Host 'PASS_R239_REAL_CAFE_6211_ACTUAL_BYTES_EXTRACTED_FROM_RELEASE'
       - uses: actions/upload-artifact@v4
         with:
           name: SOKNA-R239-PRINTAGENT-6211-CAFE-SHA-VERIFIED-REFERENCE
