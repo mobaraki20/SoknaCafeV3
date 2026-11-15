@@ -23,7 +23,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: SOKNA-R239-PrintAgent-6.2.12-WIN64-UNIVERSAL-INSTALLER-RC-QA
-          run-id: 43708707691
+          run-id: 43709130216
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate-6212
       - uses: actions/setup-dotnet@v4
