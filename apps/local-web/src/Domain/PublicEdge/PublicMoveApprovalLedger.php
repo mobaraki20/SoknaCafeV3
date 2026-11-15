@@ -51,7 +51,10 @@ final class PublicMoveApprovalLedger
                 if (!hash_equals((string)$existing['challenge_sha256'], $digest)) {
                     throw new RuntimeException('operation_id_conflict');
                 }
-                if (!in_array((string)$existing['status'], ['issued', 'owner_approved'], true)) {\n                    throw new RuntimeException('operation_terminal_cannot_restart');\n                }\n                return self::result($operation, (string)$existing['status'], false);
+                if (!in_array((string)$existing['status'], ['issued', 'owner_approved'], true)) {
+                    throw new RuntimeException('operation_terminal_cannot_restart');
+                }
+                return self::result($operation, (string)$existing['status'], false);
             }
             $q = $this->pdo->prepare('INSERT INTO public_move_auth_operations (operation_id,local_installation_id,challenge_sha256,challenge_json,nonce,status,expires_epoch) VALUES (?,?,?,?,?,\'issued\',?)');
             $q->execute([$operation,$local,$digest,$json,$challenge['nonce'],$challenge['expires_at']]);
