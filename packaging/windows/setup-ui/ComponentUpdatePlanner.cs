@@ -168,7 +168,9 @@ internal static class ComponentUpdatePlanner
             // remain blocked.
             var keepIndependentMaintenance = !forceRepair && cmp >= 0 && IsVerifiedIndependentMaintenancePair(
                 id, currentVersion, installedHash, registrationHealthy, installRoot, dataRoot);
-            if (cmp > 0 && !keepIndependentMaintenance)
+            var keepIndependentPrintAgent = !forceRepair && cmp >= 0 && IsVerifiedIndependentPrintAgentReceipt(
+                id, currentVersion, installedHash, registrationHealthy, installRoot, dataRoot);
+            if (cmp > 0 && !keepIndependentMaintenance && !keepIndependentPrintAgent)
             {
                 action = ComponentAction.Blocked; state = "blocked_incompatible"; reason = $"نسخه نصب‌شده {currentVersion} از نسخه هدف {targetVersion} جدیدتر است؛ downgrade خودکار مجاز نیست.";
             }
@@ -176,6 +178,11 @@ internal static class ComponentUpdatePlanner
             {
                 action = ComponentAction.Keep; state = "independent_compatible_keep";
                 reason = $"Maintenance مستقل {currentVersion} با رسید نصب و سلامت هر دو جزء تأیید شد؛ بدون جایگزینی باقی می‌ماند.";
+            }
+            else if (keepIndependentPrintAgent)
+            {
+                action = ComponentAction.Keep; state = "print_agent_independent_compatible_keep";
+                reason = $"Print Agent مستقل {currentVersion} با رسید و فایل‌های بایت‌دقیق 6.2.12 تأیید شد؛ بدون جایگزینی باقی می‌ماند.";
             }
             else if (CanKeepFrozenRecovery(id, currentVersion, targetVersion, compatibleInstalledHash, registrationHealthy))
             {
@@ -296,6 +303,98 @@ internal static class ComponentUpdatePlanner
         }
     }
 
+    // R238: a separately installed Print Agent may be newer than the unified
+    // Windows Services payload. This is a narrow, byte-pinned compatibility
+    // path, not permission to adopt arbitrary locally edited binaries.
+    private static bool IsVerifiedIndependentPrintAgentReceipt(
+        string componentId, string observedVersion, string observedSha256,
+        bool registrationHealthy, string installRoot, string dataRoot)
+    {
+        const string servicePinnedSha = "b28f0028f3be5f0bf4a1ee49d5ddce06e60b95a56f28300d4ac17b05f9f6051b";
+        const string workerPinnedSha = "cc638a50f191374a015341b27b48b5dccdf0f3017481a7b0454e2c67ea95873b";
+        const string manifestPinnedSha = "6de6b7d54fceb4dddcc7344bafbcb42d9df385ad0359f8d6e19f52e634039e0c";
+        if (!string.Equals(componentId, "print-agent", StringComparison.Ordinal) ||
+            !string.Equals(observedVersion, "6.2.12", StringComparison.Ordinal) ||
+            !registrationHealthy ||
+            !string.Equals(observedSha256, servicePinnedSha, StringComparison.OrdinalIgnoreCase))
+            return false;
+        try
+        {
+            var root = Path.GetFullPath(Path.Combine(installRoot, "PrintAgent"));
+            var servicePath = Path.Combine(root, "Service", "Sokna.PrintAgent.Service.exe");
+            var workerPath = Path.Combine(root, "Worker", "Sokna.PrintAgent.Worker.exe");
+            var manifestPath = Path.Combine(root, "component-manifest.json");
+            var receiptPath = Path.Combine(dataRoot, "setup", "print-agent-independent-v1", "active.json");
+            if (!File.Exists(receiptPath) || !File.Exists(manifestPath) ||
+                !File.Exists(servicePath) || !File.Exists(workerPath) ||
+                (File.GetAttributes(receiptPath) & FileAttributes.ReparsePoint) != 0 ||
+                (File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
+                return false;
+            var sHash = HashIfExists(servicePath);
+            var wHash = HashIfExists(workerPath);
+            var mHash = HashIfExists(manifestPath);
+            if (!string.Equals(sHash, servicePinnedSha, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(wHash, workerPinnedSha, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(mHash, manifestPinnedSha, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(LifecycleFileVersion(servicePath), "6.2.12", StringComparison.Ordinal))
+                return false;
+            using var receiptDoc = JsonDocument.Parse(File.ReadAllBytes(receiptPath));
+            var r = receiptDoc.RootElement;
+            if (r.GetProperty("format").GetString() != "sokna-printagent-independent-receipt-v1" ||
+                r.GetProperty("schema_version").GetInt32() != 1 ||
+                r.GetProperty("status").GetString() != "COMMITTED" ||
+                !Guid.TryParseExact(r.GetProperty("transaction_id").GetString(), "N", out _) ||
+                r.GetProperty("service_name").GetString() != "SoknaPrintWorker" ||
+                r.GetProperty("target_version").GetString() != "6.2.12" ||
+                !r.GetProperty("programdata_preserved").GetBoolean() ||
+                !r.GetProperty("maintenance_unchanged").GetBoolean() ||
+                !r.GetProperty("runtime_unchanged").GetBoolean() ||
+                !string.Equals(Path.GetFullPath(r.GetProperty("installed_root").GetString() ?? ""), root, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(r.GetProperty("component_manifest_sha256").GetString(), mHash, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(r.GetProperty("service_sha256").GetString(), sHash, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(r.GetProperty("worker_sha256").GetString(), wHash, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            using var manifestDoc = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
+            var m = manifestDoc.RootElement;
+            if (m.GetProperty("format").GetString() != "sokna-print-agent-component-v1" ||
+                m.GetProperty("component").GetString() != "print-agent" ||
+                m.GetProperty("version").GetString() != "6.2.12")
+                return false;
+            var rows = m.GetProperty("files").EnumerateArray().ToArray();
+            if (rows.Length is < 2 or > 100) return false;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in rows)
+            {
+                var rel = row.GetProperty("path").GetString() ?? "";
+                if (!System.Text.RegularExpressions.Regex.IsMatch(rel, @"^(Service|Worker)/[A-Za-z0-9._/-]+$") ||
+                    rel.Contains("..", StringComparison.Ordinal) ||
+                    !seen.Add(rel)) return false;
+                var full = Path.GetFullPath(Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar)));
+                if (!full.StartsWith(root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                    !File.Exists(full) || (File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0 ||
+                    new FileInfo(full).Length != row.GetProperty("size").GetInt64() ||
+                    !string.Equals(HashIfExists(full), row.GetProperty("sha256").GetString(), StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+            if (!seen.Contains("Service/Sokna.PrintAgent.Service.exe") ||
+                !seen.Contains("Worker/Sokna.PrintAgent.Worker.exe")) return false;
+            if (Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).Count() != rows.Length + 1)
+                return false;
+            var service = ProbeService("SoknaPrintWorker");
+            return service.Installed &&
+                string.Equals(service.State, "RUNNING", StringComparison.OrdinalIgnoreCase) &&
+                ServiceImageOwnedByInstallRoot(service.ImagePath, installRoot) &&
+                RegistrationMatches("print-agent", service.ImagePath, servicePath, dataRoot);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                   JsonException or InvalidOperationException or
+                                   KeyNotFoundException or ArgumentException or
+                                   FormatException or NotSupportedException)
+        {
+            return false;
+        }
+    }
     private static bool ReadPaired(string dataRoot)
     {
         try
