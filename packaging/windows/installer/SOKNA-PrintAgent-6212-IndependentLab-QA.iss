@@ -60,13 +60,13 @@ begin
   RunnerDir := ExpandConstant('{%RUNNER_TEMP}');
   if (GetEnv('GITHUB_ACTIONS') <> 'true') or (QaLabRoot = '') or (RunnerDir = '') then
   begin
-    MsgBox('این فایل فقط برای آزمایش خودکار Windows در GitHub Actions است و روی رایانه کافه یا خانه نصب نمی‌شود.', mbCriticalError, MB_OK);
+    SuppressibleMsgBox('این فایل فقط برای آزمایش خودکار Windows در GitHub Actions است و روی رایانه کافه یا خانه نصب نمی‌شود.', mbCriticalError, MB_OK, IDOK);
     Exit;
   end;
   ExpandedRoot := Uppercase(AddBackslash(QaLabRoot));
   if Pos(Uppercase(AddBackslash(RunnerDir)), ExpandedRoot) <> 1 then
   begin
-    MsgBox('QA_LAB_ROOT_OUTSIDE_RUNNER_TEMP', mbCriticalError, MB_OK);
+    SuppressibleMsgBox('QA_LAB_ROOT_OUTSIDE_RUNNER_TEMP', mbCriticalError, MB_OK, IDOK);
     Exit;
   end;
   Result := True;
