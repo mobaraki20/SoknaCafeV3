@@ -41,7 +41,7 @@ jobs:
           Copy-Item qa/sokna-printagent-universal/Invoke-PrintAgentIndependentUniversal.ps1 (Join-Path $payload 'Invoke-PrintAgentIndependentUniversal.ps1')
           $tokens=$null;$errors=$null
           [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'qa/sokna-printagent-universal/Invoke-PrintAgentIndependentUniversal.ps1').Path,[ref]$tokens,[ref]$errors)|Out-Null
-          if(@($errors).Count -ne 0){$errors|ForEach-Object{Write-Host $_.Message};throw 'R239_UNIVERSAL_LIVE_SCRIPT_PARSER_FAILED'}
+          if(@($errors).Count -ne 0){$errors|ForEach-Object{Write-Host ('PARSE_ERROR_LINE='+$_.Extent.StartLineNumber+' COL='+$_.Extent.StartColumnNumber+' TEXT='+$_.Extent.Text.Substring(0,[Math]::Min(180,$_.Extent.Text.Length))+' MESSAGE='+$_.Message)};throw 'R239_UNIVERSAL_LIVE_SCRIPT_PARSER_FAILED'}
 
           $guardOut=Join-Path $root 'guard'
           dotnet publish qa/sokna-printagent-universal/Sokna.PrintAgent.UpgradeGuard.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $guardOut
