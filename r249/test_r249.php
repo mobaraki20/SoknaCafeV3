@@ -15,7 +15,7 @@ require_once $D.'/r171-bridge.php';
 function qa(bool $v,string $label):void{if(!$v)throw new RuntimeException('FAIL_'.$label);echo 'PASS_'.$label."\n";}
 function rm_tree(string $dir):void{if(!is_dir($dir))return;$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);foreach($it as $f){if($f->isDir())rmdir($f->getPathname());else unlink($f->getPathname());}rmdir($dir);}
 function cp_tree(string $from,string $to):void{$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($from,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::SELF_FIRST);foreach($it as $f){$p=$to.'/'.substr($f->getPathname(),strlen($from)+1);if($f->isDir()){if(!is_dir($p))mkdir($p,0700,true);}else{if(!is_dir(dirname($p)))mkdir(dirname($p),0700,true);copy($f->getPathname(),$p);}}}
-qa(is_file($pkg),'r249_file_exists');qa(hash_file('sha256',$pkg)==='5056cea5e2171c8e6c6d204f817da66202a667ed7d16e3e5293ba4f20039d546','r249_exact_zip_sha');
+qa(is_file($pkg),'r249_file_exists');qa(hash_file('sha256',$pkg)==='5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4','r249_exact_zip_sha');
 $zip=new ZipArchive();qa($zip->open($pkg)===true,'zip_open');$m=json_decode((string)$zip->getFromName('manifest.json'),true,512,JSON_THROW_ON_ERROR);
 $zip->close();
 qa(($m['version']??null)==='3.0.0-g3.6-workspace.35ic-r249-cumulative-forward-gate','version_35ic');
