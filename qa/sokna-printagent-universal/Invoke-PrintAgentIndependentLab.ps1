@@ -15,7 +15,14 @@ $report=[ordered]@{format='sokna-printagent-independent-lab-v1';transaction_id=$
 $oldMoved=$false;$newActivated=$false;$createdSvc=$false;$wasRunning=$false;$lock=$null;$staging=$null;$backup=$null;$oldReceipt=$null;$targetDir=$null
 function Fail([string]$code){throw $code}
 function Full([string]$path){[IO.Path]::GetFullPath($path).TrimEnd('\')}
-function Hash([string]$path){(Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()}
+function Hash([string]$path){
+  $fs=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+  try{
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try{return ([BitConverter]::ToString($sha.ComputeHash($fs))).Replace('-','').ToLowerInvariant()}
+    finally{$sha.Dispose()}
+  }finally{$fs.Dispose()}
+}
 function CheckNoLink([string]$path){
   $p=Full $path
   while($p -and (Test-Path -LiteralPath $p)){
@@ -94,7 +101,8 @@ try{
   $receiptDir=Join-Path $data 'setup\print-agent-independent-v1';$receiptPath=Join-Path $receiptDir 'active.json'
   foreach($p in @($LabRoot,$parent,$install,$data,$agentData,$receiptDir)){CheckNoLink $p}
   $targetDir=Join-Path $LabRoot ('target-'+$tx)
-  Expand-Archive -LiteralPath $PackageZip -DestinationPath $targetDir -ErrorAction Stop
+  Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+  [IO.Compression.ZipFile]::ExtractToDirectory($PackageZip,$targetDir)
   $manifest=VerifyPayload $targetDir
   if([string]$manifest.version -ne '6.2.12'){Fail 'TARGET_VERSION_NOT_6212'}
   $snap=CurrentService
