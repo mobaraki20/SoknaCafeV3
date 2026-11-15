@@ -1,0 +1,13 @@
+{
+  "format": "sokna-r256-real-baseline-qa-v1",
+  "baseline_sha256": "5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4",
+  "baseline_tree_sha256": "1a5d041fd63ec5425ed9f01f0eff63c86c90c5c76f26530b773784c74884c928",
+  "baseline_files": 228,
+  "baseline_migrations": 8,
+  "customer_specific_defaults": false,
+  "main_changed": false,
+  "production_modified": false,
+  "installable": false,
+  "cutover_allowed": false,
+  "candidate_generated": false
+}
