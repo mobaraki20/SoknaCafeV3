@@ -1,0 +1,95 @@
+{
+  "format": "sokna-universal-migration-progress-v1",
+  "updated_on": "2026-11-16",
+  "project_id": "SOKNA-UNIVERSAL-MIGRATION-R253",
+  "branch": "qa/sokna-r253-migration-approval-ledger-20261116",
+  "predecessor": "qa/sokna-r252-universal-identity-attestation-20261116",
+  "product_scope": "Generic small-cafe UX for any independent customer, installation, host, URL or version; fixtures are not product defaults",
+  "decisions": {
+    "canonical": "r251/DECISIONS-FA.md",
+    "machine_readable": "r251/decisions.json",
+    "latest": "MIG-013",
+    "old_decisions": "OLD-001..OLD-007 superseded or rejected"
+  },
+  "phase": "TRANSACTIONAL_AUTH_LEDGER_QA_PASS_NOT_INTEGRATED",
+  "completed": [
+    {
+      "item": "R251 generic read-only classifier",
+      "status": "PASS",
+      "tests": 55
+    },
+    {
+      "item": "R252 Ed25519 + Local-grant MAC primitives",
+      "status": "PASS",
+      "tests": 57
+    },
+    {
+      "item": "R253 transactional MariaDB authorization ledger",
+      "status": "CI_PASS",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43767627807",
+      "tested": [
+        "per-Local active slot",
+        "challenge uniqueness and idempotent begin",
+        "immutable operation binding",
+        "MAC+signature approval acceptance",
+        "conflicting receipt rejection",
+        "claim nonce exactly once",
+        "canceled/claimed not reactivated",
+        "expiry and cross-customer isolation",
+        "readback on fresh connection"
+      ]
+    },
+    {
+      "item": "R253 operator handoff and decisions",
+      "status": "DONE",
+      "references": [
+        "r253/START-HERE-FA.md",
+        "r251/DECISIONS-FA.md"
+      ]
+    }
+  ],
+  "pending": [
+    {
+      "item": "Authenticated Public owner approval endpoint with session and CSRF",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Secure key provisioning and custody per installation",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Official versioned Local database migration (R253 SQL is test fixture only)",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Real concurrency, crash/restart, recovery tests with two workers",
+      "status": "NOT_TESTED"
+    },
+    {
+      "item": "Read-only backend probe integrated with verifier/ledger",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Resumable orchestration, data synchronization, authority handoff and cutover",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Minimal UI for Public move and Local move",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Multi-customer E2E, final ZIP testing and production deployment",
+      "status": "NOT_TESTED"
+    }
+  ],
+  "safety": {
+    "production_allowed": false,
+    "public_intake_enabled_by_this_branch": false,
+    "local_binding_changed_by_this_branch": false,
+    "safe_to_cutover": false,
+    "no_product_customer_defaults": true,
+    "main_or_current_changed": false
+  },
+  "next_action": "Implement authenticated target Public admin owner approval (not self-asserted browser/remote JSON) and secure per-installation key custody; wire it to the R253 ledger via read-only API; then test crash/concurrency and build orchestrator.",
+  "handoff": "Read r251/DECISIONS-FA.md, r251/decisions.json, r253/START-HERE-FA.md, r253/STATUS.json, then code and CI; do not restart or use superseded decisions."
+}
