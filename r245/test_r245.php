@@ -12,6 +12,7 @@ mkdir($root,0755,true);mkdir($storage,0755,true);
 copy_tree($base.'/r171',$root);
 mkdir($root.'/src/Emergency',0755,true);
 copy(__DIR__.'/public-update-exception.php',$root.'/src/Emergency/PublicUpdateException.php');
+file_put_contents($root.'/emergency.php',"<?php // trusted CI-only owner entrypoint; never exported\n");
 mkdir($root.'/storage',0755,true); // private storage is excluded by routine updater
 file_put_contents($root.'/config.php',"<?php return ['app'=>['base_path'=>'/public']];\n");
 file_put_contents($root.'/resources/update-trust-v1.json',json_encode(['format'=>'sokna-update-trust-v1','signature_policy'=>'not_required_for_operator_upload']));
@@ -38,6 +39,7 @@ try {
  // Restore the original R171 payload and stage the true matching source.
  clear_dir($root);mkdir($root,0755,true);copy_tree($base.'/r171',$root);
  mkdir($root.'/src/Emergency',0755,true);copy(__DIR__.'/public-update-exception.php',$root.'/src/Emergency/PublicUpdateException.php');
+file_put_contents($root.'/emergency.php',"<?php // trusted CI-only owner entrypoint; never exported\n");
  mkdir($root.'/storage',0755,true);file_put_contents($root.'/config.php',"<?php return ['app'=>['base_path'=>'/public']];\n");
  file_put_contents($root.'/resources/update-trust-v1.json',json_encode(['format'=>'sokna-update-trust-v1','signature_policy'=>'not_required_for_operator_upload']));
  $service=$svc();$st=$service->stageUploadedDeltaZip($pkg,'r245-qa');
