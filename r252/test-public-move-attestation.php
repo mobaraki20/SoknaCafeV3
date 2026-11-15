@@ -2,14 +2,17 @@
 declare(strict_types=1);
 
 require dirname(__DIR__) . '/apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php';
+require dirname(__DIR__) . '/apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalMac.php';
 require dirname(__DIR__) . '/apps/local-web/src/Domain/PublicEdge/PublicMoveIdentityVerifier.php';
 require dirname(__DIR__) . '/apps/public/src/Security/PublicMoveAttestationIssuer.php';
 
 use Sokna\Local\Domain\PublicEdge\PublicMoveIdentityVerifier as V;
 use Sokna\Local\Domain\PublicEdge\PublicMoveDecisionEngine as D;
+use Sokna\Local\Domain\PublicEdge\PublicMoveApprovalMac as MAC;
 use Sokna\PublicEdge\Security\PublicMoveAttestationIssuer as I;
 
 $checks = 0;
+$localApprovalKey = random_bytes(32);
 function ok(bool $v, string $message): void {
     global $checks;
     if (!$v) throw new RuntimeException('FAIL: '.$message);
@@ -22,7 +25,8 @@ function rejects(callable $fn, string $message): void {
     throw new RuntimeException('FAIL: expected denial: '.$message);
 }
 function grant(array $challenge, array $envelope, int $expires): array {
-    return [
+    global $localApprovalKey;
+    return MAC::seal([
         'provenance'=>'authenticated_target_admin_session',
         'status'=>'approved',
         'approval_receipt_id'=>'owner-confirm-'.bin2hex(random_bytes(8)),
@@ -33,7 +37,7 @@ function grant(array $challenge, array $envelope, int $expires): array {
         'local_installation_id'=>$challenge['local_installation_id'],
         'operation_id'=>$challenge['operation_id'],
         'nonce'=>$challenge['nonce'],
-    ];
+    ], $localApprovalKey);
 }
 $now = 1800000000;
 $pairA=sodium_crypto_sign_keypair(); $secretA=sodium_crypto_sign_secretkey($pairA);
@@ -41,7 +45,7 @@ $pairB=sodium_crypto_sign_keypair(); $secretB=sodium_crypto_sign_secretkey($pair
 $ch=V::challenge('move-1042','local-B72','public-old-11','https://old.a-cafe.example','https://new.a-cafe.example/app',$now);
 $env=I::issue($ch,'https://new.a-cafe.example/app','public-new-22',$secretA,$now);
 $g=grant($ch,$env,$now+120);
-$p=V::verify($ch,$env,$g,$now+1);
+$p=V::verify($ch,$env,$g,$now+1,$localApprovalKey);
 ok($p['verified']===true && $p['destination_ownership_approved']===true,'signed attestation with independently owner-approved key');
 ok($p['safe_to_cutover']===false && $p['nonce_claim_required']===true && $p['read_only']===true,'attestation never grants cutover or claims nonce');
 ok($p['local_installation_id']==='local-B72' && $p['target_base_url']==='https://new.a-cafe.example/app','source and target bound to proof');
@@ -50,50 +54,58 @@ $classification=D::classify($ch['source_base_url'],$ch['target_base_url'],'resyn
 ok($classification['route']==='independent_destination' && $classification['next_step']==='plan_safe_handoff' && $classification['safe_to_cutover']===false,'integrates with read-only decision classifier');
 
 $mut=$ch; $mut['target_base_url']='https://evil.a-cafe.example/app';
-rejects(fn()=>V::verify($mut,$env,$g,$now+1),'destination URL alteration rejected');
+rejects(fn()=>V::verify($mut,$env,$g,$now+1,$localApprovalKey),'destination URL alteration rejected');
 $mut=$ch; $mut['source_base_url']='https://another-old.example';
-rejects(fn()=>V::verify($mut,$env,$g,$now+1),'source URL alteration rejected');
+rejects(fn()=>V::verify($mut,$env,$g,$now+1,$localApprovalKey),'source URL alteration rejected');
 $mut=$ch; $mut['local_installation_id']='local-B73';
-rejects(fn()=>V::verify($mut,$env,$g,$now+1),'other customer/local id rejected');
+rejects(fn()=>V::verify($mut,$env,$g,$now+1,$localApprovalKey),'other customer/local id rejected');
 $mut=$ch; $mut['operation_id']='move-1043';
-rejects(fn()=>V::verify($mut,$env,$g,$now+1),'other migration id rejected');
+rejects(fn()=>V::verify($mut,$env,$g,$now+1,$localApprovalKey),'other migration id rejected');
 $mut=$ch; $mut['source_public_instance_id']='public-old-12';
-rejects(fn()=>V::verify($mut,$env,$g,$now+1),'source public identity alteration rejected');
+rejects(fn()=>V::verify($mut,$env,$g,$now+1,$localApprovalKey),'source public identity alteration rejected');
 $mut=$ch; $mut['nonce']=bin2hex(random_bytes(24));
-rejects(fn()=>V::verify($mut,$env,$g,$now+1),'old signed reply against new nonce rejected');
+rejects(fn()=>V::verify($mut,$env,$g,$now+1,$localApprovalKey),'old signed reply against new nonce rejected');
 $mut=$ch; $mut['expires_at']=$now+2;
-rejects(fn()=>V::verify($mut,$env,$g,$now+3),'short changed challenge invalid');
-rejects(fn()=>V::verify($ch,$env,$g,$now+180),'expired challenge rejected');
-rejects(fn()=>V::verify($ch,$env,$g,$now-70),'challenge issued in distant future rejected');
+rejects(fn()=>V::verify($mut,$env,$g,$now+3,$localApprovalKey),'short changed challenge invalid');
+rejects(fn()=>V::verify($ch,$env,$g,$now+180,$localApprovalKey),'expired challenge rejected');
+rejects(fn()=>V::verify($ch,$env,$g,$now-70,$localApprovalKey),'challenge issued in distant future rejected');
 $mut=$env; $mut['signature_b64']=base64_encode(random_bytes(SODIUM_CRYPTO_SIGN_BYTES));
-rejects(fn()=>V::verify($ch,$mut,$g,$now+1),'forged signature rejected');
+rejects(fn()=>V::verify($ch,$mut,$g,$now+1,$localApprovalKey),'forged signature rejected');
 $mut=$env; $mut['payload']['target_instance_id']='other-public-100';
-rejects(fn()=>V::verify($ch,$mut,$g,$now+1),'target identity modification rejected');
+rejects(fn()=>V::verify($ch,$mut,$g,$now+1,$localApprovalKey),'target identity modification rejected');
 $mut=$env; $mut['payload']['public_key_b64']=base64_encode(sodium_crypto_sign_publickey($pairB));
-rejects(fn()=>V::verify($ch,$mut,$g,$now+1),'public key substitution rejected');
+rejects(fn()=>V::verify($ch,$mut,$g,$now+1,$localApprovalKey),'public key substitution rejected');
 $mut=$env; $mut['payload']['extra']='untrusted';
-rejects(fn()=>V::verify($ch,$mut,$g,$now+1),'unknown signed field rejected');
+rejects(fn()=>V::verify($ch,$mut,$g,$now+1,$localApprovalKey),'unknown signed field rejected');
 $mut=$env; $mut['signature_b64']='%%%%';
-rejects(fn()=>V::verify($ch,$mut,$g,$now+1),'invalid signature encoding rejected');
-rejects(fn()=>V::verify($ch,$env,[],$now+1),'self-signed URL without independent approval rejected');
+rejects(fn()=>V::verify($ch,$mut,$g,$now+1,$localApprovalKey),'invalid signature encoding rejected');
+rejects(fn()=>V::verify($ch,$env,[],$now+1,$localApprovalKey),'self-signed URL without independent approval rejected');
+
+$unauthenticated=$g; unset($unauthenticated['authorization_mac_b64']);
+rejects(fn()=>V::verify($ch,$env,$unauthenticated,$now+1,$localApprovalKey),'owner-approved label without Local MAC rejected');
+$fakeLocalKey=random_bytes(32);
+rejects(fn()=>V::verify($ch,$env,$g,$now+1,$fakeLocalKey),'grant MAC from other Local installation rejected');
+$forged=$g; $forged['provenance']='authenticated_target_admin_session'; $forged['approval_receipt_id']='invented-owner-ack';
+rejects(fn()=>V::verify($ch,$env,$forged,$now+1,$localApprovalKey),'edited owner grant cannot forge authenticated approval');
+
 $mut=$g; $mut['provenance']='claimed_by_remote_public';
-rejects(fn()=>V::verify($ch,$env,$mut,$now+1),'self-declared remote ownership rejected');
+rejects(fn()=>V::verify($ch,$env,$mut,$now+1,$localApprovalKey),'self-declared remote ownership rejected');
 $mut=$g; $mut['public_key_b64']=base64_encode(sodium_crypto_sign_publickey($pairB));
-rejects(fn()=>V::verify($ch,$env,$mut,$now+1),'wrong owner-approved key rejected');
+rejects(fn()=>V::verify($ch,$env,$mut,$now+1,$localApprovalKey),'wrong owner-approved key rejected');
 $mut=$g; $mut['target_instance_id']='public-other-22';
-rejects(fn()=>V::verify($ch,$env,$mut,$now+1),'wrong owner-approved installation rejected');
+rejects(fn()=>V::verify($ch,$env,$mut,$now+1,$localApprovalKey),'wrong owner-approved installation rejected');
 $mut=$g; $mut['target_base_url']='https://another.a-cafe.example/app';
-rejects(fn()=>V::verify($ch,$env,$mut,$now+1),'owner approval for different URL rejected');
+rejects(fn()=>V::verify($ch,$env,$mut,$now+1,$localApprovalKey),'owner approval for different URL rejected');
 $mut=$g; $mut['local_installation_id']='local-other-19';
-rejects(fn()=>V::verify($ch,$env,$mut,$now+1),'owner approval cannot cross customer boundary');
+rejects(fn()=>V::verify($ch,$env,$mut,$now+1,$localApprovalKey),'owner approval cannot cross customer boundary');
 $mut=$g; $mut['operation_id']='move-other';
-rejects(fn()=>V::verify($ch,$env,$mut,$now+1),'owner approval cannot cross operation boundary');
+rejects(fn()=>V::verify($ch,$env,$mut,$now+1,$localApprovalKey),'owner approval cannot cross operation boundary');
 $mut=$g; $mut['nonce']=bin2hex(random_bytes(24));
-rejects(fn()=>V::verify($ch,$env,$mut,$now+1),'owner approval cannot cross nonce boundary');
+rejects(fn()=>V::verify($ch,$env,$mut,$now+1,$localApprovalKey),'owner approval cannot cross nonce boundary');
 $mut=$g; $mut['expires_at']=$now;
-rejects(fn()=>V::verify($ch,$env,$mut,$now+1),'expired owner approval rejected');
+rejects(fn()=>V::verify($ch,$env,$mut,$now+1,$localApprovalKey),'expired owner approval rejected');
 $mut=$g; $mut['expires_at']=$now+400;
-rejects(fn()=>V::verify($ch,$env,$mut,$now+1),'owner approval cannot outlive signed challenge');
+rejects(fn()=>V::verify($ch,$env,$mut,$now+1,$localApprovalKey),'owner approval cannot outlive signed challenge');
 rejects(fn()=>I::issue($ch,'https://different.a-cafe.example','public-new-22',$secretA,$now),'issuer cannot sign another destination URL');
 rejects(fn()=>I::issue($ch,$ch['target_base_url'],'public-new-22',$secretB,$now+185),'issuer refuses expired challenge');
 rejects(fn()=>V::challenge('move-1044','local-B72','','','http://untrusted.example',$now),'remote HTTP refused');
@@ -123,9 +135,9 @@ foreach ($fixtures as $idx=>$x) {
     $pair=sodium_crypto_sign_keypair();$sk=sodium_crypto_sign_secretkey($pair);
     $reply=I::issue($request,$target,$targetId,$sk,$now);
     $approval=grant($request,$reply,$now+140);
-    $proof=V::verify($request,$reply,$approval,$now+15);
+    $proof=V::verify($request,$reply,$approval,$now+15,$localApprovalKey);
     ok($proof['target_base_url']===$target && $proof['local_installation_id']===$local && !$proof['safe_to_cutover'],'generic cross-customer fixture '.$idx);
     $notForThisCustomer=$approval;$notForThisCustomer['local_installation_id']='local-not-the-one';
-    rejects(fn()=>V::verify($request,$reply,$notForThisCustomer,$now+15),'generic cross-tenant isolation '.$idx);
+    rejects(fn()=>V::verify($request,$reply,$notForThisCustomer,$now+15,$localApprovalKey),'generic cross-tenant isolation '.$idx);
 }
 echo 'R252_PUBLIC_MOVE_ATTESTATION_TESTS_PASS count='.$checks."\n";
