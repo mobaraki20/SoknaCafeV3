@@ -62,7 +62,10 @@ jobs:
           $lab=Join-Path $env:RUNNER_TEMP 'SoknaPrintOneClickLab'
           try{
             foreach($mode in @('initial','repeat')){
-              $proc=Start-Process -FilePath $env:R238_QA_EXE -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/LABROOT='+$lab)) -PassThru -Wait
+              $log=Join-Path $env:RUNNER_TEMP ('inno-'+$mode+'.log')
+              $proc=Start-Process -FilePath $env:R238_QA_EXE -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/LABROOT='+$lab),('/LOG='+$log)) -PassThru -Wait
+              if(Test-Path $log){Get-Content $log | Select-Object -Last 35 | ForEach-Object { Write-Host "INNO_DIAG $_" }}
+              Write-Host ('INNO_EXIT_'+$mode+'='+$proc.ExitCode)
               if($proc.ExitCode -ne 0){throw ('R238_INNO_'+$mode+'_FAILED_'+$proc.ExitCode)}
               if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw ('R238_INNO_SERVICE_NOT_RUNNING_'+$mode)}
               $receipt=Join-Path $lab 'ProgramData/SOKNA/setup/print-agent-independent-v1/active.json'
