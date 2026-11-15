@@ -6,6 +6,8 @@ on:
     paths:
       - qa/sokna-printagent-universal/Invoke-PrintAgentIndependentLab.ps1
       - qa/sokna-printagent-universal/Test-PrintAgentIndependentReceipt.ps1
+      - qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj
+      - qa/sokna-printagent-universal/Program.cs
       - .github/workflows/sokna-printagent-r238-real-service-qa.yml
   workflow_dispatch:
 permissions:
@@ -23,6 +25,15 @@ jobs:
           run-id: 43489066238
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/immutable-print-agent
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Compile real SQLite durable-state QA probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -c Release -r win-x64
+          if($LASTEXITCODE -ne 0){throw 'DURABLE_QA_COMPILE_FAILED'}
       - name: Verify immutable target and PowerShell syntax
         shell: pwsh
         run: |
@@ -71,6 +82,11 @@ jobs:
             if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw 'CLEAN_SERVICE_NOT_RUNNING'}
             & $verify -ReceiptPath $receipt -ExpectedPrintRoot $agentRoot -RequireRunning|Out-Host
             Write-Host 'PASS_R238_INDEPENDENT_RECEIPT_CONSUMER'
+            $database=Join-Path $data 'queue.db'
+            if(!(Test-Path -LiteralPath $database -PathType Leaf)){throw 'SERVICE_DID_NOT_INITIALIZE_SQLITE_QUEUE'}
+            dotnet run --no-build -c Release -r win-x64 --project qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -- seed $database
+            if($LASTEXITCODE -ne 0){throw 'DURABLE_STATE_SEED_FAILED'}
+            $global:LASTEXITCODE=0
             # Synthetic older manifest: the real binary remains 6.2.12, not historical 6.2.11 bytes.
             Stop-Service SoknaPrintWorker -ErrorAction Stop
             (Get-Service SoknaPrintWorker).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
@@ -84,6 +100,9 @@ jobs:
             Invoke-Lab 'SYNTHETIC_6211_TO_6212'
             & $verify -ReceiptPath $receipt -ExpectedPrintRoot $agentRoot -RequireRunning|Out-Host
             Write-Host 'PASS_R238_UPGRADE_RECEIPT_READBACK'
+            dotnet run --no-build -c Release -r win-x64 --project qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -- verify $database
+            if($LASTEXITCODE -ne 0){throw 'DURABLE_STATE_DID_NOT_SURVIVE_UPGRADE'}
+            $global:LASTEXITCODE=0
             # Inject a failure after activation with rollback to the valid synthetic old version.
             Stop-Service SoknaPrintWorker -ErrorAction Stop
             (Get-Service SoknaPrintWorker).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
@@ -96,9 +115,12 @@ jobs:
             if($post.version -ne '6.2.11'){throw 'ROLLBACK_MANIFEST_NOT_RESTORED'}
             if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw 'ROLLBACK_SERVICE_NOT_RUNNING'}
             Write-Host 'PASS_R238_NO_DATA_LOSS_AND_SERVICE_RECOVERY'
+            dotnet run --no-build -c Release -r win-x64 --project qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -- verify $database
+            if($LASTEXITCODE -ne 0){throw 'DURABLE_STATE_DID_NOT_SURVIVE_ROLLBACK'}
+            $global:LASTEXITCODE=0
             $qa=Join-Path $env:RUNNER_TEMP 'R238-QA-RESULT'
             New-Item -ItemType Directory -Path $qa -Force|Out-Null
-            @{format='sokna-r238-native-lab-v1';production_approved=$false;real_windows_service_lifecycle='PASS';clean_install='PASS';synthetic_6211_upgrade='PASS';rollback_after_swap='PASS';durable_marker_preserved='PASS';real_6211_binary_upgrade='NOT_TESTED';actual_printer_jobs='NOT_TESTED';windows_services_owner_integration='NOT_TESTED'}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $qa 'QA-RESULT.json') -Encoding UTF8
+            @{format='sokna-r238-native-lab-v1';production_approved=$false;real_windows_service_lifecycle='PASS';clean_install='PASS';synthetic_6211_upgrade='PASS';rollback_after_swap='PASS';durable_marker_preserved='PASS';sqlite_unknown_attempt_and_pending_outbox_preserved='PASS';real_6211_binary_upgrade='NOT_TESTED';actual_printer_jobs='NOT_TESTED';windows_services_owner_integration='NOT_TESTED'}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $qa 'QA-RESULT.json') -Encoding UTF8
           }finally{
             $svc=Get-Service SoknaPrintWorker -ErrorAction SilentlyContinue
             if($svc){
