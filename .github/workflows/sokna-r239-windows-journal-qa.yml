@@ -1,0 +1,37 @@
+name: SOKNA R239 Windows filesystem recovery QA (no deployment)
+on:
+  push:
+    branches: [qa/sokna-r239-authority-recovery-mariadb-20261115]
+    paths:
+      - 'r239/windows/**'
+      - 'r239/local/**'
+      - 'r239/public/**'
+      - '.github/workflows/sokna-r239-windows-journal-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-journal-and-config-replacement:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo,sodium
+          coverage: none
+      - name: Verify exact PHP source syntax
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem r239/local,r239/public -File -Filter '*.php'
+          foreach ($f in $files) { php -l $f.FullName; if ($LASTEXITCODE -ne 0) { exit 1 } }
+      - name: Windows real filesystem journal, rename and resume (FakePDO only)
+        shell: pwsh
+        run: |
+          php r239/windows/test_recovery_windows.php
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Declare test scope
+        shell: pwsh
+        run: |
+          Write-Host 'This tests real Windows filesystem behavior and simulated fake-DB transport only. NOT Maintenance Stage/Activate/Readback/Rollback.'
