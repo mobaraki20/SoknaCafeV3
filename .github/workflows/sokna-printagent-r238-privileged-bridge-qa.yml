@@ -6,6 +6,7 @@ on:
     paths:
       - qa/sokna-printagent-universal/Add-PrintAgentIndependentOwnerBridge.ps1
       - qa/sokna-printagent-universal/Prepare-WindowsServicesOwnerBridgeQa.ps1
+      - packaging/windows/scripts/prepare-shell-payload-v9.ps1
       - .github/workflows/sokna-printagent-r238-privileged-bridge-qa.yml
   workflow_dispatch:
 permissions:
@@ -16,6 +17,19 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Prove Windows Services v9 production-path compositor includes independent Print owner bridge
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $s=Get-Content 'packaging/windows/scripts/prepare-shell-payload-v9.ps1' -Raw
+          if(!$s.Contains('Add-PrintAgentIndependentOwnerBridge.ps1') -or !$s.Contains('R238_PRINT_OWNER_BRIDGE_REQUIRED')){
+            throw 'WINDOWS_SERVICES_V9_BRIDGE_NOT_IN_ACTUAL_BUILD_PATH'
+          }
+          if(!$s.Contains('$printOwnerBridge -CorePath $corePath')){throw 'WINDOWS_SERVICES_CORE_BRIDGE_NOT_EXECUTED'}
+          $tokens=$null;$errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'packaging/windows/scripts/prepare-shell-payload-v9.ps1').Path,[ref]$tokens,[ref]$errors)|Out-Null
+          if(@($errors).Count -ne 0){throw 'WINDOWS_SERVICES_COMPOSER_PARSER_FAILED'}
+          Write-Host 'PASS_R238_V9_BUILD_PATH_REFERENCES_SCOPED_PRINT_RECEIPT_VALIDATOR'
       - name: Patch canonical core fixture and verify exact guarded transformations
         shell: powershell
         run: |
