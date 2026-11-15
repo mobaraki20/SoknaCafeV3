@@ -33,8 +33,10 @@ jobs:
           echo 'PASS_R239_EXACT_R201_593_FILES_NO_INSTALL'
       - uses: actions/upload-artifact@v4
         with:
-          name: R239-EXACT-BYTE-IDENTITY-PROOF-ONLY
-          path: ${{ runner.temp }}/r239/R239-PROOF.json
+          name: R239-EXACT-QA-TRANSFER-NOT-INSTALLABLE
+          path: |
+            ${{ runner.temp }}/r239/R239-QA-BYTE-IDENTICAL.zip
+            ${{ runner.temp }}/r239/R239-PROOF.json
           if-no-files-found: error
           retention-days: 14
 
@@ -67,15 +69,19 @@ jobs:
           run-id: 43491934082
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/r201-parent
-      - name: Replay exact source and construct disposable runner-only stage candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: R239-EXACT-QA-TRANSFER-NOT-INSTALLABLE
+          path: ${{ runner.temp }}/r239-replayed-qa
+      - name: Verify transferred noninstallable QA ZIP then construct disposable runner-only stage candidate
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $base = (Get-ChildItem '${{ runner.temp }}/r201-parent' -Recurse -Filter 'SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' | Select-Object -First 1).FullName
-          if(-not $base){throw 'PINNED_R201_MISSING'}
-          python r239/replay/build_ci_candidate.py --base "$base" --parts r239/replay/patch-*.txt --out '${{ runner.temp }}/r239-stage'
-          if($LASTEXITCODE -ne 0){throw 'SOURCE_REPLAY_FAILED'}
-          $qa='${{ runner.temp }}/r239-stage/R239-QA-BYTE-IDENTICAL.zip'
+          $qa='${{ runner.temp }}/r239-replayed-qa/R239-QA-BYTE-IDENTICAL.zip'
+          if(-not(Test-Path $qa)){throw 'PINNED_QA_TRANSFER_NOT_FOUND'}
+          python r239/replay/build_ci_candidate.py --from-qa "$qa" --out '${{ runner.temp }}/r239-stage'
+          if($LASTEXITCODE -ne 0){throw 'QA_TRANSFER_VALIDATION_FAILED'}
+          $qa='${{ runner.temp }}/r239-replayed-qa/R239-QA-BYTE-IDENTICAL.zip'
           if((Get-FileHash $qa -Algorithm SHA256).Hash.ToLowerInvariant() -ne '1dab7e39905a48179eeb19f9dbd88bc51a02af098eaf780a93168e3a4d34b2e1'){throw 'SOURCE_REPLAY_SHA_FAILED'}
           python packaging/windows/release-gates/check_local_release_set.py "$qa"
           if($LASTEXITCODE -ne 0){throw 'QA_RELEASE_SET_CHECK_FAILED'}
