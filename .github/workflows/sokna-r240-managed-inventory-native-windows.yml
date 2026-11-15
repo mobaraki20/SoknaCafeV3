@@ -29,15 +29,16 @@ jobs:
           test -f "$BASE"
           python3 r239/replay/build_ci_candidate.py --base "$BASE" --parts r239/replay/patch-*.txt --out '${{ runner.temp }}/r239'
           python3 r240/upgrade_inventory.py --parent '${{ runner.temp }}/r239/R239-QA-BYTE-IDENTICAL.zip' --out '${{ runner.temp }}/r240'
-          echo '0e4b054903c990605a6c5bc0018f83b47e725ea654ab11a0790007e50ea20cc5  '${{ runner.temp }}'/r240/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip' | sha256sum -c -
-          python3 packaging/windows/release-gates/check_local_release_set.py '${{ runner.temp }}/r240/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip'
+          python3 r240/upgrade_identity.py --parent '${{ runner.temp }}/r240/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip' --out '${{ runner.temp }}/r240-final'
+          echo '39e8374b20fbd90c39ecdfe9d352943350abfe9c327a999ddcb6501b3a545e1a  '${{ runner.temp }}'/r240-final/SOKNA-R240-LOCAL-R201-231FA-CUMULATIVE-REV3-QA-DO-NOT-INSTALL.zip' | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py '${{ runner.temp }}/r240-final/SOKNA-R240-LOCAL-R201-231FA-CUMULATIVE-REV3-QA-DO-NOT-INSTALL.zip'
           echo PASS_R240_PINNED_INVENTORY_593_SOURCE_SHA
       - uses: actions/upload-artifact@v4
         with:
-          name: R240-QA-EXACT-NONINSTALLABLE-TRANSFER
+          name: R240-REV3-EXACT-NONINSTALLABLE-TRANSFER
           path: |
-            ${{ runner.temp }}/r240/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip
-            ${{ runner.temp }}/r240/R240-PROOF.json
+            ${{ runner.temp }}/r240-final/SOKNA-R240-LOCAL-R201-231FA-CUMULATIVE-REV3-QA-DO-NOT-INSTALL.zip
+            ${{ runner.temp }}/r240-final/R240-REV3-PROOF.json
           if-no-files-found: error
           retention-days: 14
   windows-r201-to-r240:
@@ -71,15 +72,15 @@ jobs:
           path: ${{ runner.temp }}/r201-parent
       - uses: actions/download-artifact@v4
         with:
-          name: R240-QA-EXACT-NONINSTALLABLE-TRANSFER
+          name: R240-REV3-EXACT-NONINSTALLABLE-TRANSFER
           path: ${{ runner.temp }}/r240-source-qa
       - name: Check byte-exact QA source and prepare ephemeral Windows-only engine stage
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $qa='${{ runner.temp }}/r240-source-qa/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip'
+          $qa='${{ runner.temp }}/r240-source-qa/SOKNA-R240-LOCAL-R201-231FA-CUMULATIVE-REV3-QA-DO-NOT-INSTALL.zip'
           if(-not(Test-Path $qa)){throw 'R240_QA_MISSING'}
-          if((Get-FileHash $qa -Algorithm SHA256).Hash.ToLowerInvariant() -ne '0e4b054903c990605a6c5bc0018f83b47e725ea654ab11a0790007e50ea20cc5'){throw 'R240_QA_SHA_MISMATCH'}
+          if((Get-FileHash $qa -Algorithm SHA256).Hash.ToLowerInvariant() -ne '39e8374b20fbd90c39ecdfe9d352943350abfe9c327a999ddcb6501b3a545e1a'){throw 'R240_QA_SHA_MISMATCH'}
           python r240/ci_stage.py --from-qa "$qa" --out '${{ runner.temp }}/r240-stage'
           if($LASTEXITCODE -ne 0){throw 'R240_SOURCE_AND_INVENTORY_CHECK_FAILED'}
           python packaging/windows/release-gates/check_local_release_set.py "$qa"
