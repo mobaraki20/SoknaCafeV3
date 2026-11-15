@@ -1,0 +1,119 @@
+{
+  "format": "sokna-universal-migration-progress-v1",
+  "updated_on": "2026-11-16",
+  "project_id": "SOKNA-UNIVERSAL-MIGRATION-R255",
+  "branch": "qa/sokna-r255-owner-bootstrap-20261116",
+  "predecessor": "qa/sokna-r254-owner-consent-guard-20261116",
+  "product_scope": "Customer-independent Local/Public migration for any cafe with minimal operator UI; no domain, version, instance, or tenant hardcoded.",
+  "decisions": [
+    "r251/DECISIONS-FA.md",
+    "r251/decisions.json"
+  ],
+  "active_product_decision": "MIG-015",
+  "superseded_decision": "OLD-008",
+  "current_phase": "FRESH_PUBLIC_OWNER_BOOTSTRAP_AND_HTTP_CONTRACT_QA_PASS_NOT_ROUTED",
+  "completed": [
+    {
+      "item": "R251 generic source/destination classification",
+      "status": "CI_PASS",
+      "checks": 55
+    },
+    {
+      "item": "R252 Ed25519 signed destination proof and Local-only owner-grant MAC",
+      "status": "CI_PASS",
+      "checks": 57
+    },
+    {
+      "item": "R253 one-time Local authorization ledger",
+      "status": "CI_PASS_DISPOSABLE_MARIADB",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43767881156"
+    },
+    {
+      "item": "R254 StaffSessionStore admin bridge and protected signing key primitive",
+      "status": "CI_PASS_DISPOSABLE_MARIADB",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43769561421"
+    },
+    {
+      "item": "R255 independent Public instance owner bootstrap and sessions",
+      "status": "CI_PASS_DISPOSABLE_MARIADB",
+      "checks": 48,
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43774179986"
+    },
+    {
+      "item": "R255 Public owner HTTP setup/login/logout/consent contract (NOT ROUTED)",
+      "status": "CI_PASS_DISPOSABLE_MARIADB",
+      "checks": 21,
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43774179986"
+    },
+    {
+      "item": "R255 universal owner identity decision and deprecated paired-only assumption",
+      "status": "RECORDED",
+      "evidence": "r251/DECISIONS-FA.md MIG-015; OLD-008->MIG-015"
+    }
+  ],
+  "new_sources": [
+    "apps/public/src/Security/PublicMoveOwnerBootstrapService.php",
+    "apps/public/src/Security/PublicMoveIndependentOwnerBridge.php",
+    "apps/public/src/Http/PublicMoveOwnerHttpAdapter.php",
+    "r255/owner-bootstrap-schema-fixture.sql",
+    "r255/test-public-owner-bootstrap.php",
+    "r255/test-owner-http-contract.php",
+    ".github/workflows/sokna-r255-owner-bootstrap.yml",
+    "r255/START-HERE-FA.md"
+  ],
+  "gates_not_done": [
+    {
+      "item": "Trusted installer creates immutable Public instance id and short-lived setup claim without manual terminal, config, or Emergency",
+      "status": "NOT_INTEGRATED"
+    },
+    {
+      "item": "Official production Public database migration and Local migration compatibility sequencing",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Route protected owner HTTP adapter into PublicHttpKernel after installed setup plus CSRF/session scope",
+      "status": "NOT_INTEGRATED"
+    },
+    {
+      "item": "Browser setup/approval UI that is simple for ordinary cafe operator",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Signed destination receipt transport and independently trusted Local owner grant minted after authenticated admin action, durable nonce claim via R253",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Secure key provisioning with host/Windows ACL plus concurrency, interrupted setup and recovery tests",
+      "status": "NOT_QUALIFIED"
+    },
+    {
+      "item": "Migration orchestrator, data backfill, pending guest order reconciliation, authority epoch and atomic cutover",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Cross-customer real host E2E, ZIP final qualification, Local move/restore and production release",
+      "status": "NOT_TESTED"
+    }
+  ],
+  "security_no_go": {
+    "production_release_allowed": false,
+    "http_endpoint_routed": false,
+    "public_owner_setup_installer_wired": false,
+    "cutover_allowed": false,
+    "public_order_intake_changed": false,
+    "local_binding_changed": false,
+    "cafe_system_modified": false,
+    "main_or_current_changed": false,
+    "customer_specific_default": false,
+    "sql_fixture_is_production_migration": false
+  },
+  "verified_ci": {
+    "latest_pass": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43774179986",
+    "owner_bootstrap": 48,
+    "owner_http_contract": 21,
+    "signature_regression": 57,
+    "discovery_regression": 55
+  },
+  "next_action": "R256: integrate trusted installer Public instance identity/setup claim and official Public migrations, connect protected owner API to PublicHttpKernel with minimal onboarding UI; then authenticated destination approval receipt to R253 Local ledger, E2E multi-customer tests. Never expose anonymous claim creation.",
+  "handoff": "Read r251/DECISIONS-FA.md, r251/decisions.json, r255/START-HERE-FA.md, r255/STATUS.json, R254 status and R255 source/tests. Continue next_action; do not restart or revive OLD-008 or fixed domain examples."
+}
