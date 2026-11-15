@@ -49,7 +49,7 @@ file_put_contents($root.'/emergency.php',"<?php // trusted CI-only owner entrypo
  check('activation_version',$now['current_version']===$manifest['version']);
  check('activation_tree',$now['managed_tree_sha256']===$manifest['target_managed_tree_sha256']);
  check('db_migrations_unchanged',count(glob($root.'/database/migrations/*.sql'))===8);
- $fin=$service->commitPending('r245-qa');$after=$service->snapshot();
+ $fin=$service->commitActivation('r245-qa');$after=$service->snapshot();
  check('commit_accepted',$after['active_version']===$manifest['version']);
  check('pending_cleared',empty($after['pending_verification'])&&empty($after['activation_journal']));
  check('owner_candidate_protected',hash_file('sha256',$trustedOwner)===$ownerBefore);
