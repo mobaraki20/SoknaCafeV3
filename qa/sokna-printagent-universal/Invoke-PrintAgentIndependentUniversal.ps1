@@ -167,16 +167,13 @@ try{
     if(!$script:pending){Fail 'JOURNAL_NOT_PREPARED'}
     $script:pending.phase=$phase
     New-Item -Path $receiptDir -ItemType Directory -Force|Out-Null
-    $temp=Join-Path $receiptDir ('pending-'+$tx+'.tmp')
+    # Crash-safe append-only phases. pending.json (PREPARED) is never replaced
+    # and always suffices to reconstruct the old/new directory state.
+    $destination=$(if($phase-eq'PREPARED'){$journal}else{Join-Path $receiptDir ('stage-'+$tx+'-'+$phase+'.json')})
+    if(Test-Path -LiteralPath $destination){Fail 'JOURNAL_PHASE_DUPLICATE'}
+    $temp=Join-Path $receiptDir ('phase-'+$tx+'-'+$phase+'.tmp')
     $script:pending | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temp -Encoding UTF8 -ErrorAction Stop
-    if(Test-Path -LiteralPath $journal){
-      # .NET Framework/PowerShell 5.1 requires an actual backup path here.
-      $prior=Join-Path $receiptDir ('pending-'+$tx+'.prev')
-      [IO.File]::Replace($temp,$journal,$prior)
-      if(Test-Path -LiteralPath $prior){Remove-Item -LiteralPath $prior -Force -ErrorAction Stop}
-    }else{
-      [IO.File]::Move($temp,$journal)
-    }
+    [IO.File]::Move($temp,$destination)
   }
   function IsOld([string]$path,$j){
     if(!(Test-Path -LiteralPath $path -PathType Container)){return $false}
@@ -308,6 +305,9 @@ try{
       $runtimeStopped=$false
     }
     Remove-Item -LiteralPath $journal -Force -ErrorAction Stop
+    # Only retire phase markers bearing this journal's verified transaction id.
+    Get-ChildItem -LiteralPath $receiptDir -File -Filter ('stage-'+[string]$j.transaction_id+'-*.json') -ErrorAction SilentlyContinue |
+      Remove-Item -Force -ErrorAction SilentlyContinue
     Write-Host 'PASS_PRINT_INDEPENDENT_PREVIOUS_CRASH_RECOVERED'
     $report.previous_crash_recovered=$true
   }
@@ -524,6 +524,11 @@ try{
     if(!$backup -or !(Test-Path -LiteralPath $backup)){
       Remove-Item -LiteralPath $journal -Force -ErrorAction SilentlyContinue
     }
+  }
+  # Phase markers are evidence only while an uncommitted journal exists.
+  if($receiptDir -and $tx -and !(Test-Path -LiteralPath $journal)){
+    Get-ChildItem -LiteralPath $receiptDir -File -Filter ('stage-'+$tx+'-*.json') -ErrorAction SilentlyContinue |
+      Remove-Item -Force -ErrorAction SilentlyContinue
   }
   if($targetDir -and (Test-Path -LiteralPath $targetDir)){Remove-Item -LiteralPath $targetDir -Force -Recurse -ErrorAction SilentlyContinue}
   SaveReport
