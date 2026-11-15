@@ -163,7 +163,8 @@
       "date": "2026-11-16",
       "reason": "Prevent cross-customer/host impersonation, replay, and false activation from self-signed target responses",
       "acceptance": "R252 signature and owner grant tests plus future transactional nonce ledger tests and authenticated admin E2E",
-      "superseded_by": null
+      "superseded_by": null,
+      "implementation_status": "PHASE_B_QA_PARTIAL: Ed25519 destination signature and Local-only HMAC owner-grant verification tested; authenticated owner consent endpoint, key custody and durable nonce ledger NOT IMPLEMENTED"
     }
   ],
   "fixtures": [
