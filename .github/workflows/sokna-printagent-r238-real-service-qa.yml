@@ -4,7 +4,9 @@ on:
     branches:
       - qa/sokna-printagent-universal-installer-20261115
     paths:
-      - qa/sokna-printagent-universal/Invoke-PrintAgentIndependentLab.ps1
+      - qa/sokna-printagent-universal/Invoke-PrintAgentIndependentUniversal.ps1
+      - qa/sokna-printagent-universal/Sokna.PrintAgent.UpgradeGuard.csproj
+      - qa/sokna-printagent-universal/QueueUpgradeGuard.cs
       - qa/sokna-printagent-universal/Test-PrintAgentIndependentReceipt.ps1
       - qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj
       - qa/sokna-printagent-universal/Program.cs
@@ -49,13 +51,21 @@ jobs:
           dotnet publish windows/runtime/source/Sokna.Runtime.Service.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $out
           if($LASTEXITCODE -ne 0){throw 'ACTUAL_RUNTIME_FIXTURE_COMPILE_FAILED'}
           if(!(Test-Path (Join-Path $out 'SoknaRuntimeService.exe'))){throw 'ACTUAL_RUNTIME_FIXTURE_MISSING'}
+      - name: Compile actual read-only SQLite queue guard
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TEMP 'queue-guard-r239'
+          dotnet publish qa/sokna-printagent-universal/Sokna.PrintAgent.UpgradeGuard.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $dir
+          if($LASTEXITCODE -ne 0){throw 'UNIVERSAL_QUEUE_GUARD_PUBLISH_FAILED'}
+          if(!(Test-Path (Join-Path $dir 'Sokna.PrintAgent.UpgradeGuard.exe'))){throw 'UNIVERSAL_QUEUE_GUARD_MISSING'}
       - name: Verify immutable target and PowerShell syntax
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $zip=Join-Path $env:RUNNER_TEMP 'immutable-print-agent/SoknaPrintAgent-6.2.12-win-x64.zip'
           if((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne '464eb276b446ffe6e30bdf05e36a4ef08671324ac0784f830f241d142d19efb5'){throw 'TARGET_BINARY_MISMATCH'}
-          foreach($f in @('qa/sokna-printagent-universal/Invoke-PrintAgentIndependentLab.ps1','qa/sokna-printagent-universal/Test-PrintAgentIndependentReceipt.ps1')){
+          foreach($f in @('qa/sokna-printagent-universal/Invoke-PrintAgentIndependentUniversal.ps1','qa/sokna-printagent-universal/Test-PrintAgentIndependentReceipt.ps1')){
             $tokens=$null;$errors=$null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f).Path,[ref]$tokens,[ref]$errors)|Out-Null
             if(@($errors).Count -ne 0){$errors|ForEach-Object{Write-Host $_.Message};throw ('SCRIPT_PARSER_FAILED_'+$f)}
@@ -68,7 +78,8 @@ jobs:
           if(Get-Service -Name SoknaPrintWorker -ErrorAction SilentlyContinue){throw 'RUNNER_SERVICE_ALREADY_EXISTS'}
           $root=Join-Path $env:RUNNER_TEMP 'SoknaR238ServiceLab'
           $zip=Join-Path $env:RUNNER_TEMP 'immutable-print-agent/SoknaPrintAgent-6.2.12-win-x64.zip'
-          $script=(Resolve-Path 'qa/sokna-printagent-universal/Invoke-PrintAgentIndependentLab.ps1').Path
+          $script=(Resolve-Path 'qa/sokna-printagent-universal/Invoke-PrintAgentIndependentUniversal.ps1').Path
+          $guard=Join-Path $env:RUNNER_TEMP 'queue-guard-r239/Sokna.PrintAgent.UpgradeGuard.exe'
           $verify=(Resolve-Path 'qa/sokna-printagent-universal/Test-PrintAgentIndependentReceipt.ps1').Path
           $agentRoot=Join-Path $root 'SOKNA Windows Services/PrintAgent'
           $data=Join-Path $root 'ProgramData/SOKNA/print-worker'
@@ -77,8 +88,8 @@ jobs:
           New-Item -ItemType Directory -Path $data -Force|Out-Null
           [IO.File]::WriteAllBytes($marker,[byte[]](1,4,9,16,25,36,49,64))
           $markerHash=(Get-FileHash $marker -Algorithm SHA256).Hash
-          function Invoke-Lab([string]$name,[bool]$inject=$false,[string]$expected='COMMITTED_LAB'){
-            $args=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$script,'-Mode','Apply','-PackageZip',$zip,'-LabRoot',$root,'-AllowMutation')
+          function Invoke-Lab([string]$name,[bool]$inject=$false,[string]$expected='COMMITTED'){
+            $args=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$script,'-Mode','Apply','-PackageZip',$zip,'-QueueGuardExe',$guard,'-LabRoot',$root,'-AllowMutation')
             if($inject){$args+='-InjectFailureAfterSwap'}
             & powershell.exe @args | Out-Host
             $exitCode=$LASTEXITCODE
@@ -86,7 +97,7 @@ jobs:
             if(!$f){throw ('MISSING_TRANSACTION_REPORT_'+$name)}
             $j=Get-Content $f.FullName -Raw|ConvertFrom-Json
             Write-Host ("LAB_${name}_STATUS="+$j.status+" ERROR="+$j.reason)
-            if($inject){if($j.status -ne 'ROLLED_BACK_LAB' -or $j.rollback -ne 'verified' -or $exitCode -eq 0){throw ('INJECTED_ROLLBACK_UNVERIFIED_'+$name)}}
+            if($inject){if($j.status -ne 'ROLLED_BACK' -or $j.rollback -ne 'verified' -or $exitCode -eq 0){throw ('INJECTED_ROLLBACK_UNVERIFIED_'+$name)}}
             else{if($j.status -ne $expected -or $exitCode -ne 0){throw ('LAB_EXPECTED_STATUS_UNVERIFIED_'+$name+'_'+$expected)}}
             if((Get-FileHash $marker -Algorithm SHA256).Hash -ne $markerHash){throw 'DURABLE_QUEUE_MARKER_MUTATED'}
             $global:LASTEXITCODE=0
@@ -99,7 +110,7 @@ jobs:
             Write-Host 'PASS_R238_INDEPENDENT_RECEIPT_CONSUMER'
             $pidBefore=(Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'").ProcessId
             $receiptHashBefore=(Get-FileHash $receipt -Algorithm SHA256).Hash
-            Invoke-Lab 'IDENTICAL_REPLAY_NOOP' $false 'UNCHANGED_LAB'
+            Invoke-Lab 'IDENTICAL_REPLAY_NOOP' $false 'UNCHANGED'
             $pidAfter=(Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'").ProcessId
             if($pidBefore -ne $pidAfter -or (Get-FileHash $receipt -Algorithm SHA256).Hash -ne $receiptHashBefore){
               throw 'IDEMPOTENT_REPEAT_RESTARTED_SERVICE_OR_CHANGED_RECEIPT'
