@@ -154,6 +154,16 @@
       "summary": "Small-cafe product means the named Sokna cafe only",
       "date": "2026-11-16",
       "superseded_by": "MIG-010"
+    },
+    {
+      "id": "MIG-012",
+      "scope": "implementation",
+      "status": "ACTIVE",
+      "summary": "Target identity requires Ed25519 proof tied to exact local/target/operation AND independently authenticated owner approval. Nonce must be durably single-use before any mutation. A verified proof alone never authorizes cutover.",
+      "date": "2026-11-16",
+      "reason": "Prevent cross-customer/host impersonation, replay, and false activation from self-signed target responses",
+      "acceptance": "R252 signature and owner grant tests plus future transactional nonce ledger tests and authenticated admin E2E",
+      "superseded_by": null
     }
   ],
   "fixtures": [
