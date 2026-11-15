@@ -40,8 +40,12 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          dotnet build qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -c Release -r win-x64
+          $dest=Join-Path $env:RUNNER_TEMP 'r239-durable-state-probe'
+          dotnet publish qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $dest
           if($LASTEXITCODE -ne 0){throw 'DURABLE_QA_COMPILE_FAILED'}
+          $exe=Join-Path $dest 'Sokna.PrintAgent.DurableStateQa.exe'
+          if(!(Test-Path $exe)){throw 'DURABLE_STATE_SINGLEFILE_MISSING'}
+          "R239_DURABLE_EXE=$exe"|Out-File $env:GITHUB_ENV -Append
       - name: Compile actual SoknaRuntime supervising service for concurrent restart regression
         shell: pwsh
         run: |
@@ -84,6 +88,7 @@ jobs:
           $agentRoot=Join-Path $root 'SOKNA Windows Services/PrintAgent'
           $data=Join-Path $root 'ProgramData/SOKNA/print-worker'
           $receipt=Join-Path $root 'ProgramData/SOKNA/setup/print-agent-independent-v1/active.json'
+          $durableExe=$env:R239_DURABLE_EXE
           $marker=Join-Path $data 'qa-preserve-marker.bin'
           New-Item -ItemType Directory -Path $data -Force|Out-Null
           [IO.File]::WriteAllBytes($marker,[byte[]](1,4,9,16,25,36,49,64))
@@ -144,7 +149,7 @@ jobs:
             Write-Host 'PASS_R238_REAL_RUNTIME_SUPERVISOR_STARTED'
             $database=Join-Path $data 'queue.db'
             if(!(Test-Path -LiteralPath $database -PathType Leaf)){throw 'SERVICE_DID_NOT_INITIALIZE_SQLITE_QUEUE'}
-            dotnet run --no-build -c Release -r win-x64 --project qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -- seed $database
+            & $durableExe seed $database
             if($LASTEXITCODE -ne 0){throw 'DURABLE_STATE_SEED_FAILED'}
             $global:LASTEXITCODE=0
             # Disable supervision while fabricating a synthetic 6.2.11 baseline.
@@ -174,7 +179,7 @@ jobs:
                         Invoke-Lab 'REAL_6211_TO_6212'
             & $verify -ReceiptPath $receipt -ExpectedPrintRoot $agentRoot -RequireRunning|Out-Host
             Write-Host 'PASS_R238_UPGRADE_RECEIPT_READBACK'
-            dotnet run --no-build -c Release -r win-x64 --project qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -- verify $database
+            & $durableExe verify $database
             if($LASTEXITCODE -ne 0){throw 'DURABLE_STATE_DID_NOT_SURVIVE_UPGRADE'}
             $global:LASTEXITCODE=0
             # Restore synthetic old baseline before intentional rollback test.
@@ -196,7 +201,7 @@ jobs:
             if($post.version -ne '6.2.11'){throw 'ROLLBACK_MANIFEST_NOT_RESTORED'}
             if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw 'ROLLBACK_SERVICE_NOT_RUNNING'}
             Write-Host 'PASS_R238_NO_DATA_LOSS_AND_SERVICE_RECOVERY'
-            dotnet run --no-build -c Release -r win-x64 --project qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -- verify $database
+            & $durableExe verify $database
             if($LASTEXITCODE -ne 0){throw 'DURABLE_STATE_DID_NOT_SURVIVE_ROLLBACK'}
             $global:LASTEXITCODE=0
             $qa=Join-Path $env:RUNNER_TEMP 'R238-QA-RESULT'
