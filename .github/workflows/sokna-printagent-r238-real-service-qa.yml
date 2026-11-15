@@ -34,6 +34,15 @@ jobs:
           $ErrorActionPreference='Stop'
           dotnet build qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -c Release -r win-x64
           if($LASTEXITCODE -ne 0){throw 'DURABLE_QA_COMPILE_FAILED'}
+      - name: Compile actual SoknaRuntime supervising service for concurrent restart regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'SoknaR238ServiceLab'
+          $out=Join-Path $root 'SOKNA Windows Services/Runtime'
+          dotnet publish windows/runtime/source/Sokna.Runtime.Service.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $out
+          if($LASTEXITCODE -ne 0){throw 'ACTUAL_RUNTIME_FIXTURE_COMPILE_FAILED'}
+          if(!(Test-Path (Join-Path $out 'SoknaRuntimeService.exe'))){throw 'ACTUAL_RUNTIME_FIXTURE_MISSING'}
       - name: Verify immutable target and PowerShell syntax
         shell: pwsh
         run: |
@@ -90,11 +99,34 @@ jobs:
               throw 'IDEMPOTENT_REPEAT_RESTARTED_SERVICE_OR_CHANGED_RECEIPT'
             }
             Write-Host 'PASS_R238_IDEMPOTENT_SAME_PID_AND_RECEIPT'
+            # Real SoknaRuntime supervises the print service every 2 seconds.
+            # It must be intentionally quiesced by the standalone installer during mutation.
+            $runtimeExe=Join-Path $root 'SOKNA Windows Services/Runtime/SoknaRuntimeService.exe'
+            $runtimeConfig=Join-Path $root 'runtime-fixture.json'
+            $rtData=Join-Path $root 'ProgramData/SOKNA/runtime/state'
+            New-Item $rtData -ItemType Directory -Force|Out-Null
+            @{
+              ContractVersion=1;InstanceId='r238-fixture-runtime-20261115';
+              DataRoot=$rtData;HealthPort=17623;
+              RuntimeTokenFile=(Join-Path $root 'runtime-token.private');
+              LocalTokenFile=(Join-Path $root 'local-token.private');
+              LocalBaseUrl='http://127.0.0.1:17773/';
+              PrintAgentServiceName='SoknaPrintWorker';SupervisePrintAgent=$true;Triggers=@()
+            }|ConvertTo-Json -Depth 6|Set-Content $runtimeConfig -Encoding UTF8
+            $cmd='"'+$runtimeExe+'" --config "'+$runtimeConfig+'"'
+            New-Service -Name 'SoknaRuntime' -BinaryPathName $cmd -DisplayName 'Sokna Runtime (QA)' -StartupType Manual|Out-Null
+            Start-Service SoknaRuntime
+            (Get-Service SoknaRuntime).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
+            $runtimeHash=(Get-FileHash $runtimeExe -Algorithm SHA256).Hash
+            Write-Host 'PASS_R238_REAL_RUNTIME_SUPERVISOR_STARTED'
             $database=Join-Path $data 'queue.db'
             if(!(Test-Path -LiteralPath $database -PathType Leaf)){throw 'SERVICE_DID_NOT_INITIALIZE_SQLITE_QUEUE'}
             dotnet run --no-build -c Release -r win-x64 --project qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -- seed $database
             if($LASTEXITCODE -ne 0){throw 'DURABLE_STATE_SEED_FAILED'}
             $global:LASTEXITCODE=0
+            # Disable supervision while fabricating a synthetic 6.2.11 baseline.
+            Stop-Service SoknaRuntime
+            (Get-Service SoknaRuntime).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
             # Synthetic older manifest: the real binary remains 6.2.12, not historical 6.2.11 bytes.
             Stop-Service SoknaPrintWorker -ErrorAction Stop
             (Get-Service SoknaPrintWorker).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
@@ -105,12 +137,17 @@ jobs:
             Remove-Item -LiteralPath $receipt -Force
             Start-Service SoknaPrintWorker
             (Get-Service SoknaPrintWorker).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
-            Invoke-Lab 'SYNTHETIC_6211_TO_6212'
+            Start-Service SoknaRuntime
+            (Get-Service SoknaRuntime).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
+                        Invoke-Lab 'SYNTHETIC_6211_TO_6212'
             & $verify -ReceiptPath $receipt -ExpectedPrintRoot $agentRoot -RequireRunning|Out-Host
             Write-Host 'PASS_R238_UPGRADE_RECEIPT_READBACK'
             dotnet run --no-build -c Release -r win-x64 --project qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -- verify $database
             if($LASTEXITCODE -ne 0){throw 'DURABLE_STATE_DID_NOT_SURVIVE_UPGRADE'}
             $global:LASTEXITCODE=0
+            # Restore synthetic old baseline before intentional rollback test.
+            Stop-Service SoknaRuntime
+            (Get-Service SoknaRuntime).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
             # Inject a failure after activation with rollback to the valid synthetic old version.
             Stop-Service SoknaPrintWorker -ErrorAction Stop
             (Get-Service SoknaPrintWorker).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
@@ -118,7 +155,9 @@ jobs:
             Remove-Item -LiteralPath $receipt -Force
             Start-Service SoknaPrintWorker
             (Get-Service SoknaPrintWorker).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
-            Invoke-Lab 'FORCED_FAILURE_AND_ROLLBACK' $true
+            Start-Service SoknaRuntime
+            (Get-Service SoknaRuntime).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
+                        Invoke-Lab 'FORCED_FAILURE_AND_ROLLBACK' $true
             $post=Get-Content $manifest -Raw|ConvertFrom-Json
             if($post.version -ne '6.2.11'){throw 'ROLLBACK_MANIFEST_NOT_RESTORED'}
             if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw 'ROLLBACK_SERVICE_NOT_RUNNING'}
@@ -128,8 +167,16 @@ jobs:
             $global:LASTEXITCODE=0
             $qa=Join-Path $env:RUNNER_TEMP 'R238-QA-RESULT'
             New-Item -ItemType Directory -Path $qa -Force|Out-Null
+            if((Get-Service SoknaRuntime).Status -ne 'Running'){throw 'RUNTIME_NOT_RESTORED_AFTER_ROLLBACK'}
+            if((Get-FileHash $runtimeExe -Algorithm SHA256).Hash -ne $runtimeHash){throw 'RUNTIME_BINARY_MUTATED'}
+            Write-Host 'PASS_R238_RUNTIME_SUPERVISION_COORDINATED_AND_RESTORED'
             @{format='sokna-r238-native-lab-v1';production_approved=$false;real_windows_service_lifecycle='PASS';clean_install='PASS';idempotent_replay_no_restart='PASS';synthetic_6211_upgrade='PASS';rollback_after_swap='PASS';durable_marker_preserved='PASS';sqlite_unknown_attempt_and_pending_outbox_preserved='PASS';real_6211_binary_upgrade='NOT_TESTED';actual_printer_jobs='NOT_TESTED';windows_services_owner_integration='NOT_TESTED'}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $qa 'QA-RESULT.json') -Encoding UTF8
           }finally{
+            $rt=Get-Service SoknaRuntime -ErrorAction SilentlyContinue
+            if($rt){
+              if($rt.Status -ne 'Stopped'){Stop-Service SoknaRuntime -ErrorAction SilentlyContinue}
+              & "$env:SystemRoot/System32/sc.exe" delete SoknaRuntime|Out-Host
+            }
             $svc=Get-Service SoknaPrintWorker -ErrorAction SilentlyContinue
             if($svc){
               if($svc.Status -ne 'Stopped'){Stop-Service SoknaPrintWorker -ErrorAction SilentlyContinue}
