@@ -42,15 +42,34 @@
     {
       "item": "MIG-014 decision and fresh Public admin owner gap",
       "status": "RECORDED"
+    },
+    {
+      "item": "R254 actual PublicSessionStore-backed admin consent bridge",
+      "status": "REAL_MARIADB_CI_PASS_NO_ENDPOINT",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43769561421",
+      "covers": [
+        "admin session from real DB",
+        "no cross-tenant session",
+        "staff vs admin",
+        "session revocation/expiry",
+        "inactive installation",
+        "CSRF and Origin rejection",
+        "missing signing key",
+        "fresh unpaired Public fails closed"
+      ]
     }
   ],
   "pending": [
     {
-      "item": "Independent owner admin bootstrap/login for freshly installed Public (no staff projections)",
+      "item": "Owner bootstrap/login for an unpaired fresh Public without staff projections",
       "status": "NOT_IMPLEMENTED"
     },
     {
-      "item": "Actual authenticated Public admin session bridge and CSRF endpoint",
+      "item": "Expose a protected admin consent endpoint and UI (session bridge exists but is not routed)",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Independent owner admin bootstrap/login for freshly installed Public (no staff projections)",
       "status": "NOT_IMPLEMENTED"
     },
     {
@@ -82,6 +101,14 @@
     "local_binding_changed": false,
     "tenant_specific_constants": false
   },
-  "next_action": "Implement a safe standard-setup owner-admin bootstrap for independent fresh Public installations, then bind R254 consent guard to PublicSessionStore or an equally authenticated owner session; do not use Emergency, hardcoded URL, browser-only grant or unguarded key provisioning.",
-  "handoff": "Read r251 decisions, r254 START-HERE/STATUS, then r253 and r252 code; preserve active decision ledger, branch-only work, and no production changes."
+  "next_action": "Implement a short, secure owner-admin setup for fresh Public instances in the standard install flow, with protected per-instance key provisioning; then wire session bridge into a controlled admin-only consent endpoint + CSRF/receipt and integrate signed approval with R253 Local ledger. No Emergency/manual cPanel or tenant-specific code.",
+  "handoff": "Read r251 decisions, r254 START-HERE/STATUS, then r253 and r252 code; preserve active decision ledger, branch-only work, and no production changes.",
+  "verification": {
+    "latest_github_actions_run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43769561421",
+    "owner_consent_checks": 43,
+    "real_mariadb_session_tests": "PASS",
+    "r252_regression": "PASS",
+    "r251_regression": "PASS",
+    "production_deploy": "NOT_DONE"
+  }
 }
