@@ -4,6 +4,7 @@ on:
     branches: [qa/sokna-r252-universal-identity-attestation-20261116]
     paths:
       - apps/local-web/src/Domain/PublicEdge/PublicMoveIdentityVerifier.php
+      - apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalMac.php
       - apps/public/src/Security/PublicMoveAttestationIssuer.php
       - r252/**
       - r251/**
@@ -21,6 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           php -r 'if (!extension_loaded("sodium")) { fwrite(STDERR, "SODIUM_EXTENSION_REQUIRED\n"); exit(1); }'
+          php -l apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalMac.php
           php -l apps/local-web/src/Domain/PublicEdge/PublicMoveIdentityVerifier.php
           php -l apps/public/src/Security/PublicMoveAttestationIssuer.php
           php -l r252/test-public-move-attestation.php
@@ -28,13 +30,14 @@ jobs:
         run: |
           set -euo pipefail
           php r252/test-public-move-attestation.php | tee /tmp/r252-proof.txt
-          grep -q 'R252_PUBLIC_MOVE_ATTESTATION_TESTS_PASS count=54' /tmp/r252-proof.txt
+          grep -q 'R252_PUBLIC_MOVE_ATTESTATION_TESTS_PASS count=57' /tmp/r252-proof.txt
       - name: Keep earlier generic discovery and decision controls
         run: |
           set -euo pipefail
           php r251/test-public-move-decision.php | tee /tmp/r251-gate.txt
           grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=55' /tmp/r251-gate.txt
           python3 r251/check_decisions.py
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalMac.php
           ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/local-web/src/Domain/PublicEdge/PublicMoveIdentityVerifier.php
           ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveAttestationIssuer.php
           echo PASS_R252_READ_ONLY_NO_ENDPOINT_NO_HOST_DEPLOY
