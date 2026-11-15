@@ -29,3 +29,6 @@ if($probe -notmatch 'runtime_mutated=\$false'){throw 'RUNTIME_SCOPE_GUARD_NOT_FO
 Write-Host 'PASS_PRINT_OWNER_LEGACY_CONTRACT_RECORDED_AND_APPLY_BLOCKED'
 Write-Host 'PENDING: independent Print receipt validator integrated into Windows Services lifecycle owner'
 Write-Host 'PENDING: shared mutation lease, durable queue preservation, service readback and rollback on real Windows'
+
+# The previous QA scenario intentionally returned nonzero; do not inherit it here.
+$global:LASTEXITCODE = 0
