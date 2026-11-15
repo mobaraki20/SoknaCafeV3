@@ -186,7 +186,7 @@ jobs:
                   dest.write_bytes(z.read(name))
           actual={str(x.relative_to(p)).replace('\\','/'):x.read_bytes() for x in p.rglob('*') if x.is_file()}
           assert set(actual)==names,(len(actual),len(names))
-          tree=hashlib.sha256(''.join(n+'\\0'+hashlib.sha256(actual[n]).hexdigest()+'\\n' for n in sorted(actual)).encode()).hexdigest()
+          tree=hashlib.sha256(''.join(n+'\0'+hashlib.sha256(actual[n]).hexdigest()+'\n' for n in sorted(actual)).encode()).hexdigest()
           assert tree=='0fd94f725670f521c60557137aab38e518e72c1c4cd9a0b0b6861e65f9fa7537',tree
           assert actual['VERSION.txt'].decode().strip()=='3.0.0-g3.6-workspace.35hk-r153-identity-reconciled-qa'
           print('PASS_R249_REAL_R153_EXACT_SOURCE_TREE')
