@@ -37,6 +37,7 @@ Source: "{#PayloadRoot}\Invoke-PrintAgentIndependentLab.ps1"; DestDir: "{tmp}\SO
 [Code]
 var
   QaLabRoot: String;
+  QaStepExit: Integer;
 function ReadLabArg(): String;
 var I: Integer; V: String;
 begin
@@ -82,7 +83,21 @@ begin
   Args := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + AddQuotes(ScriptPath) +
     ' -PackageZip ' + AddQuotes(ZipPath) + ' -LabRoot ' + AddQuotes(QaLabRoot) + ' -Mode Apply -AllowMutation';
   if not Exec(PowerShell, Args, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
-    RaiseException('R238_QA_POWERSHELL_START_FAILED');
+  begin
+    QaStepExit := 74;
+    Log('R238_QA_POWERSHELL_START_FAILED');
+    Exit;
+  end;
   if ExitCode <> 0 then
-    RaiseException('R238_QA_TRANSACTION_FAILED_CODE_' + IntToStr(ExitCode));
+  begin
+    QaStepExit := 75;
+    Log('R238_QA_TRANSACTION_FAILED_CODE_' + IntToStr(ExitCode));
+    Exit;
+  end;
+  Log('R238_QA_TRANSACTION_COMPLETED');
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  Result := QaStepExit;
 end;
