@@ -1,0 +1,115 @@
+name: SOKNA Print Agent R238 independent real Windows service transaction - QA NO PRODUCTION
+on:
+  push:
+    branches:
+      - qa/sokna-printagent-universal-installer-20261115
+    paths:
+      - qa/sokna-printagent-universal/Invoke-PrintAgentIndependentLab.ps1
+      - qa/sokna-printagent-universal/Test-PrintAgentIndependentReceipt.ps1
+      - .github/workflows/sokna-printagent-r238-real-service-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  windows-service-transaction:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R198-PRINT-AGENT-6.2.12-BINARY-QA-NOT-INSTALL
+          run-id: 43489066238
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/immutable-print-agent
+      - name: Verify immutable target and PowerShell syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $zip=Join-Path $env:RUNNER_TEMP 'immutable-print-agent/SoknaPrintAgent-6.2.12-win-x64.zip'
+          if((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne '464eb276b446ffe6e30bdf05e36a4ef08671324ac0784f830f241d142d19efb5'){throw 'TARGET_BINARY_MISMATCH'}
+          foreach($f in @('qa/sokna-printagent-universal/Invoke-PrintAgentIndependentLab.ps1','qa/sokna-printagent-universal/Test-PrintAgentIndependentReceipt.ps1')){
+            $tokens=$null;$errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f).Path,[ref]$tokens,[ref]$errors)|Out-Null
+            if(@($errors).Count -ne 0){$errors|ForEach-Object{Write-Host $_.Message};throw ('SCRIPT_PARSER_FAILED_'+$f)}
+          }
+          Write-Host 'PASS_R238_SOURCE_AND_BINARY_IDENTITY'
+      - name: Isolated real Windows service install, synthetic old-version upgrade and rollback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if(Get-Service -Name SoknaPrintWorker -ErrorAction SilentlyContinue){throw 'RUNNER_SERVICE_ALREADY_EXISTS'}
+          $root=Join-Path $env:RUNNER_TEMP 'SoknaR238ServiceLab'
+          $zip=Join-Path $env:RUNNER_TEMP 'immutable-print-agent/SoknaPrintAgent-6.2.12-win-x64.zip'
+          $script=(Resolve-Path 'qa/sokna-printagent-universal/Invoke-PrintAgentIndependentLab.ps1').Path
+          $verify=(Resolve-Path 'qa/sokna-printagent-universal/Test-PrintAgentIndependentReceipt.ps1').Path
+          $agentRoot=Join-Path $root 'SOKNA Windows Services/PrintAgent'
+          $data=Join-Path $root 'ProgramData/SOKNA/print-worker'
+          $receipt=Join-Path $root 'ProgramData/SOKNA/setup/print-agent-independent-v1/active.json'
+          $marker=Join-Path $data 'qa-preserve-marker.bin'
+          New-Item -ItemType Directory -Path $data -Force|Out-Null
+          [IO.File]::WriteAllBytes($marker,[byte[]](1,4,9,16,25,36,49,64))
+          $markerHash=(Get-FileHash $marker -Algorithm SHA256).Hash
+          function Invoke-Lab([string]$name,[bool]$inject=$false){
+            $args=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$script,'-Mode','Apply','-PackageZip',$zip,'-LabRoot',$root,'-AllowMutation')
+            if($inject){$args+='-InjectFailureAfterSwap'}
+            & powershell.exe @args | Out-Host
+            $exitCode=$LASTEXITCODE
+            $f=Get-ChildItem (Join-Path $root 'reports') -File -Filter 'SOKNA-PRINT-TRANSACTION-*.json'|Sort-Object LastWriteTime -Descending|Select-Object -First 1
+            if(!$f){throw ('MISSING_TRANSACTION_REPORT_'+$name)}
+            $j=Get-Content $f.FullName -Raw|ConvertFrom-Json
+            Write-Host ("LAB_${name}_STATUS="+$j.status+" ERROR="+$j.reason)
+            if($inject){if($j.status -ne 'ROLLED_BACK_LAB' -or $j.rollback -ne 'verified' -or $exitCode -eq 0){throw ('INJECTED_ROLLBACK_UNVERIFIED_'+$name)}}
+            else{if($j.status -ne 'COMMITTED_LAB' -or $exitCode -ne 0){throw ('LAB_COMMIT_UNVERIFIED_'+$name)}}
+            if((Get-FileHash $marker -Algorithm SHA256).Hash -ne $markerHash){throw 'DURABLE_QUEUE_MARKER_MUTATED'}
+            $global:LASTEXITCODE=0
+            Write-Host ('PASS_R238_'+$name)
+          }
+          try{
+            Invoke-Lab 'CLEAN_REAL_SERVICE'
+            if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw 'CLEAN_SERVICE_NOT_RUNNING'}
+            & $verify -ReceiptPath $receipt -ExpectedPrintRoot $agentRoot -RequireRunning|Out-Host
+            Write-Host 'PASS_R238_INDEPENDENT_RECEIPT_CONSUMER'
+            # Synthetic older manifest: the real binary remains 6.2.12, not historical 6.2.11 bytes.
+            Stop-Service SoknaPrintWorker -ErrorAction Stop
+            (Get-Service SoknaPrintWorker).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
+            $manifest=Join-Path $agentRoot 'component-manifest.json'
+            $j=Get-Content $manifest -Raw|ConvertFrom-Json
+            $j.version='6.2.11'
+            $j|ConvertTo-Json -Depth 20|Set-Content $manifest -Encoding UTF8
+            Remove-Item -LiteralPath $receipt -Force
+            Start-Service SoknaPrintWorker
+            (Get-Service SoknaPrintWorker).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
+            Invoke-Lab 'SYNTHETIC_6211_TO_6212'
+            & $verify -ReceiptPath $receipt -ExpectedPrintRoot $agentRoot -RequireRunning|Out-Host
+            Write-Host 'PASS_R238_UPGRADE_RECEIPT_READBACK'
+            # Inject a failure after activation with rollback to the valid synthetic old version.
+            Stop-Service SoknaPrintWorker -ErrorAction Stop
+            (Get-Service SoknaPrintWorker).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
+            $j=Get-Content $manifest -Raw|ConvertFrom-Json;$j.version='6.2.11';$j|ConvertTo-Json -Depth 20|Set-Content $manifest -Encoding UTF8
+            Remove-Item -LiteralPath $receipt -Force
+            Start-Service SoknaPrintWorker
+            (Get-Service SoknaPrintWorker).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
+            Invoke-Lab 'FORCED_FAILURE_AND_ROLLBACK' $true
+            $post=Get-Content $manifest -Raw|ConvertFrom-Json
+            if($post.version -ne '6.2.11'){throw 'ROLLBACK_MANIFEST_NOT_RESTORED'}
+            if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw 'ROLLBACK_SERVICE_NOT_RUNNING'}
+            Write-Host 'PASS_R238_NO_DATA_LOSS_AND_SERVICE_RECOVERY'
+            $qa=Join-Path $env:RUNNER_TEMP 'R238-QA-RESULT'
+            New-Item -ItemType Directory -Path $qa -Force|Out-Null
+            @{format='sokna-r238-native-lab-v1';production_approved=$false;real_windows_service_lifecycle='PASS';clean_install='PASS';synthetic_6211_upgrade='PASS';rollback_after_swap='PASS';durable_marker_preserved='PASS';real_6211_binary_upgrade='NOT_TESTED';actual_printer_jobs='NOT_TESTED';windows_services_owner_integration='NOT_TESTED'}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $qa 'QA-RESULT.json') -Encoding UTF8
+          }finally{
+            $svc=Get-Service SoknaPrintWorker -ErrorAction SilentlyContinue
+            if($svc){
+              if($svc.Status -ne 'Stopped'){Stop-Service SoknaPrintWorker -ErrorAction SilentlyContinue}
+              & "$env:SystemRoot/System32/sc.exe" delete SoknaPrintWorker|Out-Host
+            }
+          }
+          $global:LASTEXITCODE=0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R238-PRINTAGENT-REAL-WINDOWS-SERVICE-QA-HOLD
+          path: ${{ runner.temp }}/R238-QA-RESULT/QA-RESULT.json
+          if-no-files-found: error
+          retention-days: 30
