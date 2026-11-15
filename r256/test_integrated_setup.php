@@ -10,10 +10,14 @@ if (is_file($root.'/install.lock') || is_file($root.'/config.php')) {
     throw new RuntimeException('R256_MUST_BE_CLEAN_FIXTURE');
 }
 $_SERVER['HTTPS']='on';
-$_SERVER['HTTP_HOST']='public-tenant-blue.example';
+$host=(string)(getenv('R256_QA_HOST')?:'public-tenant-blue.example');
+$subdir=(string)(getenv('R256_QA_SUBDIR')?:'/public');
+$dbName=(string)(getenv('R256_QA_DB_NAME')?:'sokna_r256_qa');
+if ($subdir!=='' && (!str_starts_with($subdir,'/') || str_ends_with($subdir,'/'))) throw new RuntimeException('invalid_qa_subdir');
+$_SERVER['HTTP_HOST']=$host;
 $_SERVER['DOCUMENT_ROOT']=$root;
-$_SERVER['REQUEST_URI']='/public/setup/';
-$_SERVER['SCRIPT_NAME']='/public/setup/index.php';
+$_SERVER['REQUEST_URI']=$subdir.'/setup/';
+$_SERVER['SCRIPT_NAME']=$subdir.'/setup/index.php';
 require $root.'/bootstrap.php';
 $service=new \Sokna\PublicEdge\Setup\PublicSetupService($root);
 $checks=0;
@@ -21,11 +25,11 @@ function ok256(bool $ok,string $name):void {global $checks;if(!$ok)throw new Run
 $before=$service->status();ok256($before['installed']===false,'clean_state');
 $pre=$service->preflight($root.'/storage');
 ok256($pre['ok']===true,'real_host_setup_preflight');
-ok256($pre['base_url']==='https://public-tenant-blue.example/public','arbitrary_subfolder_base');
+ok256($pre['base_url']==='https://'.$host.$subdir,'arbitrary_host_and_base_path');
 $installed=$service->install([
  'storage_dir'=>$root.'/storage',
  'routing_probe_ok'=>true,
- 'db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>'sokna_r256_qa','user'=>'root','pass'=>$dsnPass],
+ 'db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>$dbName,'user'=>'root','pass'=>$dsnPass],
  'create_database'=>false,
  'emergency_password'=>'isolated-emergency-only-2574',
  'owner_password'=>'isolated-owner-strong-2574',
@@ -50,14 +54,14 @@ $key=(new \Sokna\PublicEdge\Security\PublicMoveInstanceKeyStore($private,$root))
 ok256(strlen($key)===SODIUM_CRYPTO_SIGN_SECRETKEYBYTES,'protected_signing_key_valid');
 $core=sokna_public_bootstrap($config);
 $kernel=new \Sokna\PublicEdge\Http\PublicHttpKernel($core,$root);
-$headers=['Origin'=>'https://public-tenant-blue.example','Sec-Fetch-Site'=>'same-origin'];
-$base='/public/api/v1/owner/';
+$headers=['Origin'=>'https://'.$host,'Sec-Fetch-Site'=>'same-origin'];
+$base=$subdir.'/api/v1/owner/';
 $bad=$kernel->handle('POST',$base.'login',[],json_encode(['password'=>'wrong-password']),$headers);
 ok256((int)$bad['status']===401,'wrong_owner_password_denied_through_real_kernel');
 $login=$kernel->handle('POST',$base.'login',[],json_encode(['password'=>'isolated-owner-strong-2574']),$headers);
 ok256((int)$login['status']===200,'owner_login_routed_via_real_public_kernel');
 $cookie=(string)($login['headers']['Set-Cookie']??'');
-ok256(str_contains($cookie,'Secure')&&str_contains($cookie,'HttpOnly')&&str_contains($cookie,'SameSite=Strict')&&str_contains($cookie,'Path=/public/'),'scoped_secure_owner_cookie');
+ok256(str_contains($cookie,'Secure')&&str_contains($cookie,'HttpOnly')&&str_contains($cookie,'SameSite=Strict')&&str_contains($cookie,'Path='.($subdir===''?'/':$subdir.'/')),'scoped_secure_owner_cookie');
 ok256(!str_contains((string)$login['body'],'token')&&!str_contains((string)$login['body'],'password'),'owner_token_not_in_response_body');
 $headers['Cookie']=explode(';',$cookie)[0];
 $now=time();
@@ -67,7 +71,7 @@ $challenge=[
  'local_installation_id'=>'local-disposable-A01',
  'source_public_instance_id'=>'',
  'source_base_url'=>'',
- 'target_base_url'=>'https://public-tenant-blue.example/public',
+ 'target_base_url'=>'https://'.$host.$subdir,
  'nonce'=>bin2hex(random_bytes(24)),
  'issued_at'=>$now,
  'expires_at'=>$now+180,
