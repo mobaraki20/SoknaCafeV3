@@ -87,7 +87,7 @@ try{$svc->recoverReplacement('https://www.soknaspace.ir',$offer['enrollment_code
 catch(Throwable $e){$failed=true;echo 'EXPECTED_RECOVERY_FAULT '.get_class($e).' '.($e instanceof PublicEdgeSyncException?$e->errorCode:(string)$e->getCode()).' '.substr($e->getMessage(),0,160)."\n";}
 ck('local-db-trigger-injected-after-remote-success',$failed);
 ck('remote-committed-once',$remoteCommits===1);
-ck('local-config-committed-before-db-trigger',(require $cfgPath)['public']['shared_secret']!==$oldSecret);
+echo 'TEST_LOCAL_CONFIG_SECRET_LENGTH '.strlen((string)((require $cfgPath)['public']['shared_secret']??'' )).' OLD_LENGTH '.strlen($oldSecret).' JOURNAL '.(is_file($cfgPath.'.public-recovery-pending.json')?'yes':'no')."\n";\nck('local-config-committed-before-db-trigger',(require $cfgPath)['public']['shared_secret']!==$oldSecret);
 ck('local-phase-stays-fenced',$localState->phase()==='reenroll_required'&&$localState->epoch()===2);
 ck('journal-retained-after-db-failure',is_file($cfgPath.'.public-recovery-pending.json'));
 ck('new-code-overwrite-blocked',expectError(fn()=>$svc->recoverReplacement('https://www.soknaspace.ir','other-code','Cafe',1,'REPLACE_PUBLIC',2),'public_recovery_pending_resume_required'));
