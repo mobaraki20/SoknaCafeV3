@@ -1,0 +1,92 @@
+name: SOKNA Print Agent 6.2.12 gated standalone prerelease publication
+on:
+  push:
+    branches: [qa/sokna-printagent-universal-installer-20261115]
+    paths: [.github/workflows/sokna-printagent-r239-gated-publish.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish-v6212-rc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require successful exact Windows QA gates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run in 43705494921 43706036981 43707059141 43701952018 43709130216 43709369819; do
+            verdict="$(gh run view "$run" --repo mobaraki20/SoknaCafeV3 --json conclusion --jq '.conclusion')"
+            printf 'QUALIFICATION_RUN_%s=%s\n' "$run" "$verdict"
+            test "$verdict" = "success" || { echo "RELEASE_BLOCKED_BY_FAILED_QA_$run"; exit 1; }
+          done
+          if gh release view 'sokna-printagent-v6.2.12-rc.1' --repo mobaraki20/SoknaCafeV3 >/dev/null 2>&1; then
+            echo 'RELEASE_TAG_ALREADY_EXISTS_DO_NOT_OVERWRITE'; exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R239-PrintAgent-6.2.12-WIN64-UNIVERSAL-INSTALLER-RC-QA
+          run-id: 43709130216
+          github-token: ${{ github.token }}
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R239-REAL-EXE-6211-UPGRADE-ACCEPTANCE-QA
+          run-id: 43709369819
+          github-token: ${{ github.token }}
+          path: evidence
+      - name: Verify exact delivered EXE and historical real-source acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum --check SHA256SUMS.txt
+          expected="$(sha256sum SOKNA-PrintAgent-6.2.12-Independent-Universal-RC.exe | cut -d ' ' -f 1)"
+          actual="$(python -c "import json; print(json.load(open('../evidence/QA-RESULT.json',encoding='utf-8-sig'))['package_sha256'])")"
+          test "$expected" = "$actual" || { echo 'EXE_SHA_DIFFERS_FROM_REAL_CAFE_6211_TEST'; exit 1; }
+          python - <<'PY'
+          import json
+          o=json.load(open('../evidence/QA-RESULT.json',encoding='utf-8-sig'))
+          for k in ('actual_exe_6211_to_6212','runtime_supervisor_quiesced_and_restored','durable_sqlite_unknown_attempt_preserved'):
+              if o.get(k)!='PASS':raise SystemExit('FAIL_QUALIFICATION_'+k)
+          if o.get('cafe_real_6211_binaries')!='SHA256_MATCHED':
+              raise SystemExit('CAFE_REAL_6211_SOURCE_NOT_VERIFIED')
+          print('PASS_EXACT_DELIVERED_EXE_REAL_6211_QA_QUALIFIED')
+          PY
+          printf '{"format":"sokna-printagent-6.2.12-rc-qualification-v1","status":"QA_PASSED_CONDITIONAL_PRERELEASE","target":"6.2.12","historical_binary":"6.2.11 cafe SHA matched","exact_exe_qa_run":43709369819,"source_exe_build_run":43709130216,"physical_print_test":"PENDING_ON_SITE"}\n' > QUALIFICATION.json
+      - name: Release conditional RC with explicit on-site acceptance limit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > RELEASE-NOTES.md <<'EOF'
+          # SOKNA Print Agent 6.2.12 - Standalone Universal RC1
+          Windows x64 independent Print Agent setup. This is a prerelease for controlled on-site acceptance, not unconditional production approval.
+          
+          Tested on real Windows Services using the exact Service and Worker files of the cafe's 6.2.11 (matching SHA-256), including the real SoknaRuntime supervisor. Tested: 6.2.11->6.2.12 upgrade, SQLite data and pending reports, uncertain print attempts, failure rollback, clean installation, idempotent replay, and the same exact distributed EXE.
+          
+          Installer uses read-only fail-closed queue checks and refuses unsafe or unknown sources. Silent deployment to a real PC is denied. No Local/Public/Maintenance modification or data reset.
+          
+          On site: Pause new orders and printing, run interactively as administrator, and verify a test receipt after success. On any failure do not replace files manually. Physical printer and this particular cafe PC were not accessed during QA.
+          
+          Windows Services owner-compatibility code remains in separate QA branch, not in main. Do not perform a separate full Windows Services upgrade until that owner bridge is released.
+          
+          Evidence: https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43709369819 and https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43709130216.
+          EOF
+          gh release create 'sokna-printagent-v6.2.12-rc.1' \
+            'release/SOKNA-PrintAgent-6.2.12-Independent-Universal-RC.exe' \
+            'release/SHA256SUMS.txt' \
+            'release/QA-RESULT.json' \
+            'release/QUALIFICATION.json' \
+            --repo mobaraki20/SoknaCafeV3 \
+            --target "$GITHUB_SHA" \
+            --title 'SOKNA Print Agent 6.2.12 - Standalone Universal RC1 (qualified QA)' \
+            --notes-file RELEASE-NOTES.md \
+            --prerelease
+          gh release view 'sokna-printagent-v6.2.12-rc.1' --repo mobaraki20/SoknaCafeV3 \
+            --json tagName,isPrerelease,assets --jq '{tag:.tagName, prerelease:.isPrerelease, assets:[.assets[].name]}'
+          echo 'PASS_PRINTAGENT_RC1_PUBLICATION_WITH_EXACT_EXE_QA_SHA'
