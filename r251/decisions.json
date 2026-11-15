@@ -187,6 +187,26 @@
       "acceptance": "R254 43 isolated tests, production onboarding and end-to-end fresh Public owner login yet to be implemented; key ACL and concurrent key initialization to be tested on real Windows and hosts.",
       "superseded_by": null,
       "implementation_status": "R254_QA_PARTIAL: pure Public admin consent guard with CSRF/session/Origin checks, restricted file key store, and 43 green tests. NO endpoint, owner bootstrap session, PKCE handoff or cutover."
+    },
+    {
+      "id": "MIG-015",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "The owner of a new independent Public installation authenticates against its own Public instance identity, NOT a Local installation identity that may not yet be paired. Standard setup stages a one-time short-lived claim from a trusted installer; owner sets a strong password and receives a short server-side session. Never bootstrap ownership from an anonymous HTTP request, never use Emergency credentials as the normal path, never conflate Public owner confirmation with Local cutover authority.",
+      "date": "2026-11-16",
+      "reason": "R254's projected staff session is impossible on a genuinely unpaired Public; conflating Local and Public identities breaks universal migration and may cause cross-customer scope errors.",
+      "acceptance": "R255 real MariaDB fresh-owner bootstrap tests, multi-customer consent binding, login lockout and one-use claim tests; future installer-owned claim/UI and E2E tests required.",
+      "superseded_by": null,
+      "implementation_status": "R255_QA_PARTIAL: instance-scoped bootstrap/account/session service and independent owner consent bridge; no trusted installer wiring, no HTTP endpoint, no Local signed grant or cutover."
+    },
+    {
+      "id": "OLD-008",
+      "scope": "historical",
+      "status": "SUPERSEDED",
+      "summary": "A Public destination administrator can only be recognized through an already-projected staff session whose installation_id equals the Local installation being moved.",
+      "date": "2026-11-16",
+      "superseded_by": "MIG-015",
+      "reason": "Applicable only to already-paired Public. Fresh independent Public owner must be scoped to its own Public instance and independently authorize the signed Local challenge."
     }
   ],
   "fixtures": [
