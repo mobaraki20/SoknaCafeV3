@@ -1,0 +1,98 @@
+{
+  "format": "sokna-universal-migration-progress-v1",
+  "updated_on": "2026-11-16",
+  "project_id": "SOKNA-UNIVERSAL-MIGRATION-R251",
+  "branch": "qa/sokna-r251-migration-start-20261116",
+  "canonical_documents": [
+    "r251/DECISIONS-FA.md",
+    "r251/decisions.json",
+    "r251/START-HERE-FA.md",
+    "r251/STATUS.json",
+    "r250/PUBLIC-MOVE-WIZARD-ACCEPTANCE-FA.md",
+    "r250/LOCAL-AND-PUBLIC-MIGRATION-SCENARIOS-FA.md"
+  ],
+  "product_scope": "Any independent customer/cafe, any qualified Local/Public origin, URL, path, version, host and machine. All concrete names/URLs are fixtures only.",
+  "current_scope": "Generic read-only Public target classification and decision governance; no production migration endpoint installed.",
+  "completed": [
+    {
+      "item": "universal product decision log",
+      "status": "DONE",
+      "evidence": "r251/DECISIONS-FA.md and r251/decisions.json, 11 active and 7 historical"
+    },
+    {
+      "item": "universal handoff checkpoint",
+      "status": "DONE",
+      "evidence": "r251/START-HERE-FA.md"
+    },
+    {
+      "item": "customer-agnostic PublicMoveDecisionEngine",
+      "status": "CODE_CREATED_READ_ONLY",
+      "evidence": "apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php"
+    },
+    {
+      "item": "multi-deployment unit suite",
+      "status": "CI_PASS",
+      "evidence": "55 read-only assertions, separate synthetic customer domains and paths; CI run 43764152288"
+    },
+    {
+      "item": "decision validity checker",
+      "status": "CODE_CREATED_AWAITING_CI",
+      "evidence": "r251/check_decisions.py"
+    }
+  ],
+  "pending": [
+    {
+      "item": "cryptographically verified destination identity and ownership approval",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "durable migration orchestration and safe Local/Public cutover",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "simple real UI wired to backend",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "cross-customer end-to-end and real hosting matrix",
+      "status": "NOT_TESTED"
+    },
+    {
+      "item": "Local-to-Local migration/recovery capability",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "production-ready cumulative install/update package",
+      "status": "NOT_RELEASED"
+    },
+    {
+      "item": "cafe Local R241 to independent Public R249 migration",
+      "status": "NOT_EXECUTED"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "SOKNA-20261115",
+      "kind": "regression_only",
+      "current_public": "https://www.soknaspace.ir",
+      "example_target": "https://www.soknagroup.ir/public",
+      "local": "R241/231FF",
+      "public": "R249/35IC"
+    },
+    {
+      "id": "BISTRO-BETA",
+      "kind": "regression_only",
+      "current_public": "https://old.bistro-beta.example",
+      "example_target": "https://new.bistro-beta.example"
+    }
+  ],
+  "forbidden": [
+    "Hardcode cafe name, domain, version, tenant, or installation ID as a product default",
+    "Treat an independent Public instance as same-instance rebind",
+    "Change cafe production machine, Local/Public database, main, CURRENT or deploy without evidence and explicit instruction",
+    "Use expired/superseded decisions as active",
+    "Claim a read-only classifier constitutes functional migration"
+  ],
+  "next_action": "Run decision-validator in CI, then design and implement generic signed per-installation destination verification and an idempotent approval flow before mutation; keep simple UX and no operational host changes.",
+  "handoff_instruction": "Read r251/DECISIONS-FA.md, r251/decisions.json, r251/START-HERE-FA.md, r251/STATUS.json and current QA branch code before modifying. Continue at next_action; append decisions and mark superseded entries instead of overwriting history."
+}
