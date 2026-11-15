@@ -165,6 +165,17 @@
       "acceptance": "R252 signature and owner grant tests plus future transactional nonce ledger tests and authenticated admin E2E",
       "superseded_by": null,
       "implementation_status": "PHASE_B_QA_PARTIAL: Ed25519 destination signature and Local-only HMAC owner-grant verification tested; authenticated owner consent endpoint, key custody and durable nonce ledger NOT IMPLEMENTED"
+    },
+    {
+      "id": "MIG-013",
+      "scope": "implementation",
+      "status": "ACTIVE",
+      "summary": "Record generic Public migration ownership challenges and approvals in a transactional per-installation authorization ledger with strictly single-use nonce and a one-active-operation slot; never treat claim as cutover.",
+      "date": "2026-11-16",
+      "reason": "Prevent duplicate grants, cross-customer collision, retry loops, and concurrent transfer races while preserving existing Local/Public state.",
+      "acceptance": "R253 isolated MariaDB 11.4 transactional tests plus future concurrent worker and end-to-end authenticated owner approval tests",
+      "superseded_by": null,
+      "implementation_status": "R253_QA_LEDGER: transactional storage, verified MAC+signature acceptance, duplicate blocking and claim-once tested against disposable MariaDB; not registered as a production migration, owner approval UI/API and cutover not implemented"
     }
   ],
   "fixtures": [
