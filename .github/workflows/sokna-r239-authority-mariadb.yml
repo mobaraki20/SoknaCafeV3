@@ -1,0 +1,51 @@
+name: SOKNA R239 authority recovery real MariaDB QA (no deploy)
+on:
+  push:
+    branches:
+      - qa/sokna-r239-authority-recovery-mariadb-20261115
+    paths:
+      - 'r239/**'
+      - '.github/workflows/sokna-r239-authority-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  authority-mariadb-114:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: testpass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP with PDO MariaDB and Sodium
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql, sodium
+      - name: Syntax checks for exact tested recovery classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          find r239 -name '*.php' -type f -print0 | xargs -0 -n1 php -l
+      - name: Real isolated MariaDB 11.4 recovery and injected failures
+        shell: bash
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PASSWORD: testpass
+        run: |
+          set -euo pipefail
+          php r239/tests/integration.php
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R239-MARIADB-RECOVERY-RESULT
+          path: r239/tests/result.json
+          if-no-files-found: ignore
