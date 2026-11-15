@@ -1,0 +1,46 @@
+name: SOKNA R242 Public authority read-only recovery proof MariaDB 11.4 QA NO DEPLOY
+on:
+  push:
+    branches: [qa/sokna-r242-public-authority-status-20261115]
+    paths:
+      - 'r242/**'
+      - '.github/workflows/sokna-r242-public-authority-status-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-signed-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: testpass
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql, sodium
+      - name: Verify exact original and fixed hashes; PHP syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '8627fbea5f5d912c06ce0bff2a2bf9142456ae9b5e7b19beb8b28caf2807c66e  r242/Verifier.before.php' | sha256sum -c -
+          echo 'cdd8c92d26ef1a2f7deba12ac5490ca9a5fa7a4369347d3602a106926961a351  r242/Verifier.after.php' | sha256sum -c -
+          php -l r242/Verifier.before.php
+          php -l r242/Verifier.after.php
+          php -l r242/verify_recovery_status.php
+      - name: Reproduce failure in original and verify fixed route + security fencing
+        env:
+          MYSQL_PASSWORD: testpass
+        shell: bash
+        run: |
+          set -euo pipefail
+          php r242/verify_recovery_status.php r242/Verifier.before.php legacy
+          php r242/verify_recovery_status.php r242/Verifier.after.php fixed
