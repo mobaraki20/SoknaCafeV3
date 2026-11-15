@@ -1,0 +1,62 @@
+{
+  "format": "sokna-universal-migration-progress-v1",
+  "updated_on": "2026-11-16",
+  "project_id": "SOKNA-UNIVERSAL-MIGRATION-R252",
+  "branch": "qa/sokna-r252-universal-identity-attestation-20261116",
+  "predecessor": "qa/sokna-r251-migration-start-20261116",
+  "scope": "Universal migration across arbitrary independent customers/hosts/paths/versions; never a fixed cafe/domain.",
+  "decision_register": [
+    "r251/DECISIONS-FA.md",
+    "r251/decisions.json"
+  ],
+  "current_phase": "SECURITY_PRIMITIVES_QA_PARTIAL",
+  "completed": [
+    {
+      "item": "R251 source/target classifier",
+      "state": "TESTED_READ_ONLY",
+      "checks": 55
+    },
+    {
+      "item": "R251 decision register + supersession enforcement",
+      "state": "CI_PASS"
+    },
+    {
+      "item": "R252 short-lived operation-bound challenge and Ed25519 destination proof",
+      "state": "CODE_AND_UNIT_PASS"
+    },
+    {
+      "item": "R252 owner approval authenticated-record MAC verification with Local-only key",
+      "state": "CODE_AND_UNIT_PASS"
+    },
+    {
+      "item": "R252 threat rejection across 8 independent simulated customers",
+      "state": "UNIT_PASS",
+      "checks": 57
+    },
+    {
+      "item": "R252 GitHub Actions gate combined with R251 checks",
+      "state": "CI_PASS",
+      "run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43765985057"
+    }
+  ],
+  "not_done": [
+    "Authenticated destination-admin owner approval endpoint and UI",
+    "Safe key provisioning and custody for Local/Public installations",
+    "MariaDB atomic one-time nonce/approval ledger with crash-safe retry and concurrent cutover fence",
+    "Real read-only discovery probe and local backend integration",
+    "Durable orchestrator and UI",
+    "Data sync/backfill, pending guest orders handling, authority epoch handoff",
+    "Full cross-customer end-to-end tests and real install/update qualification",
+    "Production package and cafe transfer"
+  ],
+  "security_no_go": {
+    "production_allowed": false,
+    "proof_safe_to_cutover": false,
+    "nonce_claim_required": true,
+    "owner_grant_cannot_be_from_browser_or_target": true,
+    "local_grant_mac_required": true,
+    "tenant_specific_url_or_version_in_product_code": false
+  },
+  "next_action": "Build transactional MariaDB nonce/approval ledger and authenticated destination admin approval path; do not issue a production package or assert cutover success.",
+  "continuation": "Read r251/DECISIONS-FA.md, r251/decisions.json, r252/START-HERE-FA.md, r252/STATUS.json, r252/SECURITY-BOUNDARY-FA.md, then QA branch code. Reuse existing files, do not restart or override superseded decisions."
+}
