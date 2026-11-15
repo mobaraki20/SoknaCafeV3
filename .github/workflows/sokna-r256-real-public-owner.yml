@@ -78,14 +78,22 @@ jobs:
         run: |
           set -euo pipefail
           export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r256/qa-public-payload"
+          cp -a "$R256_QA_PUBLIC_ROOT" "$RUNNER_TEMP/r256/qa-public-payload-root"
           # R249 operator ZIP intentionally excludes protected Emergency owner files.
           # Supply preexisting compatible fixtures ONLY in disposable QA runtime,
           # never merge them into the managed payload or distribution proof.
           mkdir -p "$R256_QA_PUBLIC_ROOT/src/Emergency"
           cp apps/public/src/Emergency/*.php "$R256_QA_PUBLIC_ROOT/src/Emergency/"
           php r256/test_integrated_setup.php | tee /tmp/r256-setup.txt
-          grep -q 'R256_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r256-setup.txt
-          echo PASS_R256_REAL_MARIADB_QA_NO_HOST_DEPLOY
+          grep -q 'R256_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=25' /tmp/r256-setup.txt
+          # A second independent cafe/host installed at domain root, not /public.
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R256_QA_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r256_root_qa CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r256/qa-public-payload-root"
+          mkdir -p "$R256_QA_PUBLIC_ROOT/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$R256_QA_PUBLIC_ROOT/src/Emergency/"
+          R256_QA_HOST=public-cafe-green.example R256_QA_SUBDIR='' R256_QA_DB_NAME=sokna_r256_root_qa php r256/test_integrated_setup.php | tee /tmp/r256-root.txt
+          grep -q 'R256_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=25' /tmp/r256-root.txt
+          echo PASS_R256_TWO_INDEPENDENT_PUBLIC_INSTANCES_REAL_MARIADB_NO_HOST_DEPLOY
       - name: Verify universal decision register and established security primitives
         run: |
           set -euo pipefail
