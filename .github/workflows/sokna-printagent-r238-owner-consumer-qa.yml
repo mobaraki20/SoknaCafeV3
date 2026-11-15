@@ -1,0 +1,37 @@
+name: SOKNA R238 Windows Services Print Agent independent-receipt consumer QA
+on:
+  push:
+    branches:
+      - qa/sokna-printagent-universal-installer-20261115
+    paths:
+      - packaging/windows/setup-ui/ComponentUpdatePlanner.cs
+      - .github/workflows/sokna-printagent-r238-owner-consumer-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-ui-receipt-consumer:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build Windows Services UI with independent Print receipt verifier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet build packaging/windows/setup-ui/Sokna.SetupUi.csproj -c Release -r win-x64 -p:PublishReadyToRun=false -p:SelfContained=false
+          if($LASTEXITCODE -ne 0){throw 'PRINT_RECEIPT_CONSUMER_UI_COMPILE_FAILED'}
+          Write-Host 'PASS_R238_WINDOWS_SERVICES_UI_RECEIPT_CONSUMER_COMPILES'
+      - name: Read-only source-level exact owner and hash contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $s=Get-Content packaging/windows/setup-ui/ComponentUpdatePlanner.cs -Raw
+          foreach($p in @('keepIndependentPrintAgent','print_agent_independent_compatible_keep','IsVerifiedIndependentPrintAgentReceipt','b28f0028f3be5f0bf4a1ee49d5ddce06e60b95a56f28300d4ac17b05f9f6051b','cc638a50f191374a015341b27b48b5dccdf0f3017481a7b0454e2c67ea95873b','6de6b7d54fceb4dddcc7344bafbcb42d9df385ad0359f8d6e19f52e634039e0c')){
+            if(!$s.Contains($p)){throw ('CONSUMER_MISSING_CONTRACT_'+$p)}
+          }
+          Write-Host 'PASS_R238_CONSUMER_BYTE_PINNED_IN_SOURCE'
+          Write-Host 'PENDING_PRIVILEGED_CORE_AND_INSTALLER_COMPATIBILITY: This job does not authorize deployment.'
