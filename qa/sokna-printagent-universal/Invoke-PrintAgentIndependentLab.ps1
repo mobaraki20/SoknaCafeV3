@@ -116,6 +116,18 @@ try{
   if(Test-Path -LiteralPath $receiptPath -PathType Leaf){
     $oldReceipt=Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
     if([string]$oldReceipt.status -notin @('COMMITTED','ROLLED_BACK','FAILED_BEFORE_MUTATION')){Fail 'PREVIOUS_INDEPENDENT_TRANSACTION_NOT_TERMINAL'}
+    if([string]$oldReceipt.status -eq 'COMMITTED'){
+      if(!$snap -or [string]$oldReceipt.target_version -ne [string]$report.old_version -or
+         [string]$oldReceipt.component_manifest_sha256 -ne (Hash (Join-Path $install 'component-manifest.json')) -or
+         [string]$oldReceipt.service_sha256 -ne (Hash (Join-Path $install 'Service\Sokna.PrintAgent.Service.exe')) -or
+         [string]$oldReceipt.worker_sha256 -ne (Hash (Join-Path $install 'Worker\Sokna.PrintAgent.Worker.exe'))){
+        Fail 'PREVIOUS_INDEPENDENT_RECEIPT_IDENTITY_DRIFT'
+      }
+    }
+  }
+  if(Test-Path -LiteralPath $parent){
+    $incomplete=@(Get-ChildItem -LiteralPath $parent -Directory -ErrorAction Stop | Where-Object {$_.Name -match '^PrintAgent\.__(incoming|backup)\.'})
+    if($incomplete.Count -gt 0){Fail 'PREVIOUS_TRANSACTION_DIRECTORY_REQUIRES_RECOVERY'}
   }
   $report.status='READY_FOR_GATED_APPLY';$report.reason='PREFLIGHT_PASS'
   if($Mode -eq 'Probe'){Write-Host 'PASS_PRINT_INDEPENDENT_LAB_PREFLIGHT';return}
