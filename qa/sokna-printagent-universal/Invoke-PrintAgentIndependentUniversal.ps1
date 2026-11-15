@@ -279,8 +279,24 @@ try{
       $report.rollback='verified';$report.status='ROLLED_BACK'
       Write-Host 'PASS_PRINT_INDEPENDENT_LAB_ROLLBACK'
     }catch{$report.rollback='FAILED';$report.status='ROLLBACK_FAILED';$report.reason=$errorCode+' | '+$_.Exception.Message}
-  }else{$report.status='BLOCKED'}
-  Write-Host ('PRINT_INDEPENDENT_LAB_ERROR='+$report.reason)
+  }else{
+    # A failed preflight after quiescing services must restore Print before
+    # the Runtime supervisor is restarted; never leave a healthy cafe offline.
+    if($wasRunning){
+      try{
+        $previous=Get-Service -Name $serviceName -ErrorAction Stop
+        if([string]$previous.Status -ne 'Running'){
+          Start-Service -Name $serviceName -ErrorAction Stop
+          WaitService 'Running' 35
+        }
+        $report.status='BLOCKED_RESTORED'
+      }catch{
+        $report.status='PREFLIGHT_RESTORE_FAILED'
+        $report.reason=[string]$report.reason+' | PRINT_RESTART_FAILED: '+$_.Exception.Message
+      }
+    }else{$report.status='BLOCKED'}
+  }
+  Write-Host ('PRINT_INDEPENDENT_UPDATER_ERROR='+$report.reason)
 }finally{
   if($runtimeStopped -and $runtimeWasRunning){
     try{
