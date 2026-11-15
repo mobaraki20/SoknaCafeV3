@@ -1,0 +1,62 @@
+name: SOKNA R255 independent Public owner bootstrap QA (NO DEPLOY)
+on:
+  push:
+    branches: [qa/sokna-r255-owner-bootstrap-20261116]
+    paths:
+      - apps/public/src/Security/PublicMoveOwnerBootstrapService.php
+      - apps/public/src/Security/PublicMoveIndependentOwnerBridge.php
+      - r255/**
+      - r251/**
+      - .github/workflows/sokna-r255-owner-bootstrap.yml
+  workflow_dispatch:
+jobs:
+  fresh-public-owner:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-r255-only
+          MARIADB_DATABASE: sokna_r255_qa
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax and dependencies
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -Eiq '^pdo_mysql$'; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq php-mysql
+          fi
+          php -r 'if (!extension_loaded("sodium") || !extension_loaded("pdo_mysql")) exit(1);'
+          php -l apps/public/src/Security/PublicMoveOwnerBootstrapService.php
+          php -l apps/public/src/Security/PublicMoveIndependentOwnerBridge.php
+          php -l r255/test-public-owner-bootstrap.php
+      - name: Real MariaDB first owner and consent isolation
+        env:
+          SOKNA_R255_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=sokna_r255_qa;charset=utf8mb4
+          SOKNA_R255_TEST_USER: root
+          SOKNA_R255_TEST_PASSWORD: qa-r255-only
+        run: |
+          set -euo pipefail
+          php r255/test-public-owner-bootstrap.php | tee /tmp/r255.txt
+          grep -q 'R255_PUBLIC_OWNER_BOOTSTRAP_PASS count=' /tmp/r255.txt
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveOwnerBootstrapService.php
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveIndependentOwnerBridge.php
+          echo R255_FIRST_OWNER_QA_PASS_NO_ENDPOINT_NO_DEPLOY
+      - name: Keep security and decision regressions
+        run: |
+          set -euo pipefail
+          php r252/test-public-move-attestation.php | tee /tmp/r252.txt
+          grep -q 'R252_PUBLIC_MOVE_ATTESTATION_TESTS_PASS count=57' /tmp/r252.txt
+          php r251/test-public-move-decision.php | tee /tmp/r251.txt
+          grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=55' /tmp/r251.txt
+          python3 r251/check_decisions.py
