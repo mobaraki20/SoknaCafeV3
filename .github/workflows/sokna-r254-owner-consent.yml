@@ -1,0 +1,44 @@
+name: SOKNA R254 Protected Destination Owner Consent QA (NO DEPLOY)
+on:
+  push:
+    branches: [qa/sokna-r254-owner-consent-guard-20261116]
+    paths:
+      - apps/public/src/Security/PublicMoveOwnerConsentGuard.php
+      - apps/public/src/Security/PublicMoveInstanceKeyStore.php
+      - r254/**
+      - r251/**
+      - .github/workflows/sokna-r254-owner-consent.yml
+  workflow_dispatch:
+jobs:
+  owner-consent:
+    name: Real Public signer + owner session consent policy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax and sodium
+        run: |
+          set -euo pipefail
+          php -r 'if (!extension_loaded("sodium")) exit(1);'
+          php -l apps/public/src/Security/PublicMoveOwnerConsentGuard.php
+          php -l apps/public/src/Security/PublicMoveInstanceKeyStore.php
+          php -l apps/public/src/Security/PublicMoveAttestationIssuer.php
+          php -l r254/test-public-move-owner-consent.php
+      - name: Consent guard and protected signer across tenants/hosts
+        run: |
+          set -euo pipefail
+          php r254/test-public-move-owner-consent.php | tee /tmp/r254.txt
+          grep -q 'R254_PUBLIC_OWNER_CONSENT_TESTS_PASS count=43' /tmp/r254.txt
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveOwnerConsentGuard.php
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveInstanceKeyStore.php
+          ! grep -q 'Sokna\\Local' apps/public/src/Security/PublicMoveOwnerConsentGuard.php
+          echo PASS_R254_OWNER_SESSION_GUARD_KEY_CUSTODY_NO_ENDPOINT_NO_DEPLOY
+      - name: R251 and R252 regression gate
+        run: |
+          set -euo pipefail
+          php r252/test-public-move-attestation.php | tee /tmp/r252.txt
+          grep -q 'R252_PUBLIC_MOVE_ATTESTATION_TESTS_PASS count=57' /tmp/r252.txt
+          php r251/test-public-move-decision.php | tee /tmp/r251.txt
+          grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=55' /tmp/r251.txt
+          python3 r251/check_decisions.py
