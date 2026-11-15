@@ -72,7 +72,7 @@ manifest={
     'build':'R249-35hk-35ht-exact-baselines-from-r246',
     'strict_multibaseline_v1':True,'stable_emergency_owner':'not_in_payload',
     'release_gate':'host_stage_then_independent_activate_commit',
-    'offline_qualified':False,'production_host_qualified':False,
+    'offline_qualified':True,'offline_scope':'R171-real-PHP-lifecycle;R153-byte-and-structure-only','production_host_qualified':False,
     'qa_only_hold':['R244-WAF-BUDGET'],
     'database_migrations':'byte-identical-8-existing',
     'host_operator_note':'Do not activate unless stage accepted exact installed version/tree and health + database verified; DB-forward fence forbids old-code rollback.'},
