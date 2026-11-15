@@ -18,8 +18,13 @@ foreach($p in @($base,$bridge)){if(!(Test-Path -LiteralPath $p -PathType Leaf)){
 & $base -RepoRoot $RepoRoot -OutputRoot $OutputRoot -RuntimeServiceExe $RuntimeServiceExe -SetupHostExe $SetupHostExe -SetupUiExe $SetupUiExe -PrintWorkerBundle $PrintWorkerBundle -MaintenanceAppBundle $MaintenanceAppBundle -MaintenanceRecoveryBundle $MaintenanceRecoveryBundle -GitSha $GitSha
 if(-not $?) {throw 'R238_V9_COMPOSER_FAILED'}
 $core=Join-Path $OutputRoot 'setup-windows-components-core-v5.ps1'
-& $bridge -CorePath $core
-if(-not $?){throw 'R238_BRIDGE_FAILED'}
+$composedRaw=[IO.File]::ReadAllText($core,[Text.Encoding]::UTF8)
+if($composedRaw -notmatch 'function Verified-IndependentPrintAgentReceipt'){
+  & $bridge -CorePath $core
+  if(-not $?){throw 'R238_BRIDGE_FAILED'}
+}else{
+  Write-Host 'PASS_R238_PRINT_RECEIPT_CONSUMER_ALREADY_COMPOSED_BY_V9'
+}
 # Host-v3 verifies payload-manifest hashes at startup: recompute after source transformation.
 $manifestPath=Join-Path $OutputRoot 'payload-manifest.json'
 if(!(Test-Path -LiteralPath $manifestPath -PathType Leaf)){throw 'R238_HOST_MANIFEST_MISSING'}
