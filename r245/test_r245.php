@@ -58,4 +58,4 @@ try {
  check('owner_metadata_matches_release',$meta['release_version']===$manifest['version']&&$meta['sha256']===hash_file('sha256',$trustedOwner));
  check('base_path_is_untouched',(require $root.'/config.php')['app']['base_path']==='/public');
  echo 'R245_EXACT_R171_TO_TARGET_PHP_ROUTINE_STAGE_ACTIVATE_COMMIT_PASS'."\n";
-}catch(Throwable $e){fwrite(STDERR,'FAIL '.get_class($e).' '.($e->errorCode??$e->getCode()).' '.$e->getMessage().' at '.$e->getFile().':'.$e->getLine()."\n");exit(1);}
+}catch(Throwable $e){fwrite(STDERR,'FAIL '.get_class($e).' '.($e->errorCode??$e->getCode()).' '.$e->getMessage().' CONTEXT='.json_encode($e->context??[],JSON_UNESCAPED_SLASHES).' at '.$e->getFile().':'.$e->getLine()."\n");exit(1);}
