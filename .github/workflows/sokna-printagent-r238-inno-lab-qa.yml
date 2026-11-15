@@ -66,6 +66,15 @@ jobs:
               $proc=Start-Process -FilePath $env:R238_QA_EXE -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/LABROOT='+$lab),('/LOG='+$log)) -PassThru -Wait
               if(Test-Path $log){Get-Content $log | Select-Object -Last 35 | ForEach-Object { Write-Host "INNO_DIAG $_" }}
               Write-Host ('INNO_EXIT_'+$mode+'='+$proc.ExitCode)
+              $reportDir=Join-Path $lab 'reports'
+              if(Test-Path $reportDir){
+                $reports=@(Get-ChildItem -LiteralPath $reportDir -Filter 'SOKNA-PRINT-TRANSACTION-*.json' -ErrorAction SilentlyContinue)
+                foreach($report in ($reports | Sort-Object LastWriteTime -Descending | Select-Object -First 2)){
+                  $safe=(Get-Content -LiteralPath $report.FullName -Raw|ConvertFrom-Json)
+                  Write-Host ('QA_LAB_REPORT_STATUS='+$safe.status+' REASON='+$safe.reason+' ROLLBACK='+$safe.rollback)
+                }
+              }
+
               if($proc.ExitCode -ne 0){throw ('R238_INNO_'+$mode+'_FAILED_'+$proc.ExitCode)}
               if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw ('R238_INNO_SERVICE_NOT_RUNNING_'+$mode)}
               $receipt=Join-Path $lab 'ProgramData/SOKNA/setup/print-agent-independent-v1/active.json'
