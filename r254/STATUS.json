@@ -1,0 +1,87 @@
+{
+  "format": "sokna-universal-migration-progress-v1",
+  "updated_on": "2026-11-16",
+  "project_id": "SOKNA-UNIVERSAL-MIGRATION-R254",
+  "branch": "qa/sokna-r254-owner-consent-guard-20261116",
+  "predecessor": "qa/sokna-r253-migration-approval-ledger-20261116",
+  "scope": "Arbitrary independent cafes/installations/public domains and Local devices; small-cafe UX only",
+  "documents": [
+    "r251/DECISIONS-FA.md",
+    "r251/decisions.json",
+    "r254/START-HERE-FA.md",
+    "r254/STATUS.json",
+    "r253/STATUS.json"
+  ],
+  "current_phase": "DESTINATION_OWNER_CONSENT_AND_KEY_STORAGE_PRIMITIVES_QA",
+  "completed": [
+    {
+      "item": "R251 generic Public destination classification",
+      "status": "CI_PASS",
+      "checks": 55
+    },
+    {
+      "item": "R252 target signature + Local grant MAC verification",
+      "status": "CI_PASS",
+      "checks": 57
+    },
+    {
+      "item": "R253 one-time authorization MariaDB ledger",
+      "status": "CI_PASS",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43767881156"
+    },
+    {
+      "item": "R254 admin consent guard",
+      "status": "QA_PASS_NOT_WIRED",
+      "tests": "43 combined R254 security/tenant/key assertions",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43768835408"
+    },
+    {
+      "item": "R254 protected Ed25519 key store outside webroot",
+      "status": "QA_PASS_NOT_DEPLOYED"
+    },
+    {
+      "item": "MIG-014 decision and fresh Public admin owner gap",
+      "status": "RECORDED"
+    }
+  ],
+  "pending": [
+    {
+      "item": "Independent owner admin bootstrap/login for freshly installed Public (no staff projections)",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Actual authenticated Public admin session bridge and CSRF endpoint",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Owner approval receipt transport and trusted Local grant mint",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Production-grade key custody and Windows ACL/race-tested provisioning",
+      "status": "NOT_QUALIFIED"
+    },
+    {
+      "item": "Official Local/Public migrations and transaction orchestration, approval nonce coordination",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Public sync/backfill/order reconciliation, authority epoch handoff and cutover",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Simple browser UI, multi-tenant real E2E and final install packaging",
+      "status": "NOT_IMPLEMENTED"
+    }
+  ],
+  "security_no_go": {
+    "production_allowed": false,
+    "endpoint_active": false,
+    "cutover_allowed": false,
+    "public_order_intake_changed": false,
+    "local_binding_changed": false,
+    "tenant_specific_constants": false
+  },
+  "next_action": "Implement a safe standard-setup owner-admin bootstrap for independent fresh Public installations, then bind R254 consent guard to PublicSessionStore or an equally authenticated owner session; do not use Emergency, hardcoded URL, browser-only grant or unguarded key provisioning.",
+  "handoff": "Read r251 decisions, r254 START-HERE/STATUS, then r253 and r252 code; preserve active decision ledger, branch-only work, and no production changes."
+}
