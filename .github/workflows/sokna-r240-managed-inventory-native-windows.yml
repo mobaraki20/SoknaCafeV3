@@ -1,0 +1,112 @@
+name: SOKNA R240 exact 231fa managed inventory native Windows QA - NO DEPLOY
+on:
+  push:
+    branches: [qa/sokna-r240-managed-inventory-win-20261115]
+    paths:
+      - 'r240/**'
+      - '.github/workflows/sokna-r240-managed-inventory-native-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-r240-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r201
+      - name: Pinned R201 -> R239 -> corrected 593-inventory R240
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=$(find '${{ runner.temp }}/r201' -type f -name 'SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)
+          test -f "$BASE"
+          python3 r239/replay/build_ci_candidate.py --base "$BASE" --parts r239/replay/patch-*.txt --out '${{ runner.temp }}/r239'
+          python3 r240/upgrade_inventory.py --parent '${{ runner.temp }}/r239/R239-QA-BYTE-IDENTICAL.zip' --out '${{ runner.temp }}/r240'
+          echo '195d8513acbfa4792e2d87dd6ef26d26d3b56a6e8652b46faa48ea73d1080f5a  '${{ runner.temp }}'/r240/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip' | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py '${{ runner.temp }}/r240/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip'
+          echo PASS_R240_PINNED_INVENTORY_593_SOURCE_SHA
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R240-QA-EXACT-NONINSTALLABLE-TRANSFER
+          path: |
+            ${{ runner.temp }}/r240/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip
+            ${{ runner.temp }}/r240/R240-PROOF.json
+          if-no-files-found: error
+          retention-days: 14
+  windows-r201-to-r240:
+    needs: exact-r240-replay
+    runs-on: windows-latest
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r201-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R240-QA-EXACT-NONINSTALLABLE-TRANSFER
+          path: ${{ runner.temp }}/r240-source-qa
+      - name: Check byte-exact QA source and prepare ephemeral Windows-only engine stage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $qa='${{ runner.temp }}/r240-source-qa/SOKNA-R240-LOCAL-231FA-EXACT-QA-DO-NOT-INSTALL.zip'
+          if(-not(Test-Path $qa)){throw 'R240_QA_MISSING'}
+          if((Get-FileHash $qa -Algorithm SHA256).Hash.ToLowerInvariant() -ne '195d8513acbfa4792e2d87dd6ef26d26d3b56a6e8652b46faa48ea73d1080f5a'){throw 'R240_QA_SHA_MISMATCH'}
+          python r240/ci_stage.py --from-qa "$qa" --out '${{ runner.temp }}/r240-stage'
+          if($LASTEXITCODE -ne 0){throw 'R240_SOURCE_AND_INVENTORY_CHECK_FAILED'}
+          python packaging/windows/release-gates/check_local_release_set.py "$qa"
+          if($LASTEXITCODE -ne 0){throw 'R240_QA_MANIFEST_REJECTED'}
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable '${{ runner.temp }}/r240-stage/EPHEMERAL-WINDOWS-R240-STAGE.zip'
+          if($LASTEXITCODE -ne 0){throw 'R240_DISPOSABLE_ENGINE_CONTRACT_REJECTED'}
+      - name: Real Maintenance preflight, stage, activation, HTTP and 81-migration readback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:R186_R153_DIR='${{ runner.temp }}/r153-parent'
+          $env:R201_R177_DIR='${{ runner.temp }}/r177-parent'
+          $env:R201_TARGET_DIR='${{ runner.temp }}/r201-parent'
+          $env:R204_TARGET_DIR='${{ runner.temp }}/r240-stage'
+          $src=Get-Content 'qa/sokna-r204/windows_r204_from_actual_231fa.ps1' -Raw
+          $from='SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip'
+          $to='EPHEMERAL-WINDOWS-R240-STAGE.zip'
+          if(-not $src.Contains($from)){throw 'REFERENCE_HARNESS_MISSING'}
+          $src=$src.Replace($from,$to)
+          $src=$src.Replace('279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3',(Get-Content '${{ runner.temp }}/r240-stage/CI-SHA256.txt' -Raw).Trim())
+          $src=$src.Replace('3.0.0-g6.2-workspace.231fb-r204-ux-zero-empty-canary','3.0.0-g6.2-workspace.231fe-r240-managed-inventory-recovery-qa')
+          $runnerScript='${{ runner.temp }}/r240-disposable-native-test.ps1'
+          Set-Content $runnerScript $src -Encoding utf8NoBOM
+          & $runnerScript
+          if($LASTEXITCODE -ne 0){throw 'R240_NATIVE_MAINTENANCE_FAILURE'}
+          Write-Host 'PASS_R240_REAL_WINDOWS_R201_231FA_TO_R240_HTTP_AND_MARIADB_81'
+      - name: Export proof only, never the test-installable artifact
+        shell: pwsh
+        run: |
+          Write-Host 'No stage package, signing keys, database snapshots or credentials uploaded.'
