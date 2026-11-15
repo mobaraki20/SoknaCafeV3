@@ -22,7 +22,7 @@ if(args[0]=="seed")
        VALUES(987000321,987000320,1,'qa-printer-never-submit','QA-PRINT-NEVER-SUBMIT',80,
           72,1,'text','{}','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
           'r238-qa-receipt-987000321','synthetic-lab-never-unprotect','2099-01-01T00:00:00Z',
-          'unknown',NULL,'2026-11-15T00:00:00Z','2026-11-15T00:00:00Z','qa-no-real-printer','legacy-unbound');
+          'Unknown',NULL,'2026-11-15T00:00:00Z','2026-11-15T00:00:00Z','qa-no-real-printer','legacy-unbound');
        """;
     cmd.ExecuteNonQuery();
     cmd.CommandText="""
