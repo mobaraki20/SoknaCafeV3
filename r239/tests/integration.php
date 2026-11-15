@@ -84,7 +84,7 @@ $public->exec('CREATE TABLE remote_projection_events (id BIGINT AUTO_INCREMENT P
 // Fault after remote success but before Local authority state can update: journal survives.
 $dropLocalPhaseOnce=true;
 try{$svc->recoverReplacement('https://www.soknaspace.ir',$offer['enrollment_code'],'Cafe',1,'REPLACE_PUBLIC',2);$failed=false;}
-catch(Throwable $e){$failed=true;}
+catch(Throwable $e){$failed=true;echo 'EXPECTED_RECOVERY_FAULT '.get_class($e).' '.($e instanceof PublicEdgeSyncException?$e->errorCode:(string)$e->getCode()).' '.substr($e->getMessage(),0,160)."\n";}
 ck('local-db-trigger-injected-after-remote-success',$failed);
 ck('remote-committed-once',$remoteCommits===1);
 ck('local-config-committed-before-db-trigger',(require $cfgPath)['public']['shared_secret']!==$oldSecret);
