@@ -62,7 +62,7 @@ jobs:
           New-Item -ItemType Directory -Path $data -Force|Out-Null
           [IO.File]::WriteAllBytes($marker,[byte[]](1,4,9,16,25,36,49,64))
           $markerHash=(Get-FileHash $marker -Algorithm SHA256).Hash
-          function Invoke-Lab([string]$name,[bool]$inject=$false){
+          function Invoke-Lab([string]$name,[bool]$inject=$false,[string]$expected='COMMITTED_LAB'){
             $args=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$script,'-Mode','Apply','-PackageZip',$zip,'-LabRoot',$root,'-AllowMutation')
             if($inject){$args+='-InjectFailureAfterSwap'}
             & powershell.exe @args | Out-Host
@@ -72,7 +72,7 @@ jobs:
             $j=Get-Content $f.FullName -Raw|ConvertFrom-Json
             Write-Host ("LAB_${name}_STATUS="+$j.status+" ERROR="+$j.reason)
             if($inject){if($j.status -ne 'ROLLED_BACK_LAB' -or $j.rollback -ne 'verified' -or $exitCode -eq 0){throw ('INJECTED_ROLLBACK_UNVERIFIED_'+$name)}}
-            else{if($j.status -ne 'COMMITTED_LAB' -or $exitCode -ne 0){throw ('LAB_COMMIT_UNVERIFIED_'+$name)}}
+            else{if($j.status -ne $expected -or $exitCode -ne 0){throw ('LAB_EXPECTED_STATUS_UNVERIFIED_'+$name+'_'+$expected)}}
             if((Get-FileHash $marker -Algorithm SHA256).Hash -ne $markerHash){throw 'DURABLE_QUEUE_MARKER_MUTATED'}
             $global:LASTEXITCODE=0
             Write-Host ('PASS_R238_'+$name)
@@ -82,6 +82,14 @@ jobs:
             if((Get-Service SoknaPrintWorker).Status -ne 'Running'){throw 'CLEAN_SERVICE_NOT_RUNNING'}
             & $verify -ReceiptPath $receipt -ExpectedPrintRoot $agentRoot -RequireRunning|Out-Host
             Write-Host 'PASS_R238_INDEPENDENT_RECEIPT_CONSUMER'
+            $pidBefore=(Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'").ProcessId
+            $receiptHashBefore=(Get-FileHash $receipt -Algorithm SHA256).Hash
+            Invoke-Lab 'IDENTICAL_REPLAY_NOOP' $false 'UNCHANGED_LAB'
+            $pidAfter=(Get-CimInstance Win32_Service -Filter "Name='SoknaPrintWorker'").ProcessId
+            if($pidBefore -ne $pidAfter -or (Get-FileHash $receipt -Algorithm SHA256).Hash -ne $receiptHashBefore){
+              throw 'IDEMPOTENT_REPEAT_RESTARTED_SERVICE_OR_CHANGED_RECEIPT'
+            }
+            Write-Host 'PASS_R238_IDEMPOTENT_SAME_PID_AND_RECEIPT'
             $database=Join-Path $data 'queue.db'
             if(!(Test-Path -LiteralPath $database -PathType Leaf)){throw 'SERVICE_DID_NOT_INITIALIZE_SQLITE_QUEUE'}
             dotnet run --no-build -c Release -r win-x64 --project qa/sokna-printagent-universal/Sokna.PrintAgent.DurableStateQa.csproj -- seed $database
@@ -120,7 +128,7 @@ jobs:
             $global:LASTEXITCODE=0
             $qa=Join-Path $env:RUNNER_TEMP 'R238-QA-RESULT'
             New-Item -ItemType Directory -Path $qa -Force|Out-Null
-            @{format='sokna-r238-native-lab-v1';production_approved=$false;real_windows_service_lifecycle='PASS';clean_install='PASS';synthetic_6211_upgrade='PASS';rollback_after_swap='PASS';durable_marker_preserved='PASS';sqlite_unknown_attempt_and_pending_outbox_preserved='PASS';real_6211_binary_upgrade='NOT_TESTED';actual_printer_jobs='NOT_TESTED';windows_services_owner_integration='NOT_TESTED'}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $qa 'QA-RESULT.json') -Encoding UTF8
+            @{format='sokna-r238-native-lab-v1';production_approved=$false;real_windows_service_lifecycle='PASS';clean_install='PASS';idempotent_replay_no_restart='PASS';synthetic_6211_upgrade='PASS';rollback_after_swap='PASS';durable_marker_preserved='PASS';sqlite_unknown_attempt_and_pending_outbox_preserved='PASS';real_6211_binary_upgrade='NOT_TESTED';actual_printer_jobs='NOT_TESTED';windows_services_owner_integration='NOT_TESTED'}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $qa 'QA-RESULT.json') -Encoding UTF8
           }finally{
             $svc=Get-Service SoknaPrintWorker -ErrorAction SilentlyContinue
             if($svc){
