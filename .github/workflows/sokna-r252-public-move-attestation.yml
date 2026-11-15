@@ -1,0 +1,40 @@
+name: SOKNA R252 Universal Public Ownership Proof (QA ONLY - NO DEPLOY)
+on:
+  push:
+    branches: [qa/sokna-r252-universal-identity-attestation-20261116]
+    paths:
+      - apps/local-web/src/Domain/PublicEdge/PublicMoveIdentityVerifier.php
+      - apps/public/src/Security/PublicMoveAttestationIssuer.php
+      - r252/**
+      - r251/**
+      - .github/workflows/sokna-r252-public-move-attestation.yml
+  workflow_dispatch:
+jobs:
+  signed-proof:
+    name: Signed proof and cross-customer isolation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PHP sodium and syntax
+        run: |
+          set -euo pipefail
+          php -r 'if (!extension_loaded("sodium")) { fwrite(STDERR, "SODIUM_EXTENSION_REQUIRED\n"); exit(1); }'
+          php -l apps/local-web/src/Domain/PublicEdge/PublicMoveIdentityVerifier.php
+          php -l apps/public/src/Security/PublicMoveAttestationIssuer.php
+          php -l r252/test-public-move-attestation.php
+      - name: Verify signed proof, ownership binding and cross-tenant denial
+        run: |
+          set -euo pipefail
+          php r252/test-public-move-attestation.php | tee /tmp/r252-proof.txt
+          grep -q 'R252_PUBLIC_MOVE_ATTESTATION_TESTS_PASS count=54' /tmp/r252-proof.txt
+      - name: Keep earlier generic discovery and decision controls
+        run: |
+          set -euo pipefail
+          php r251/test-public-move-decision.php | tee /tmp/r251-gate.txt
+          grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=55' /tmp/r251-gate.txt
+          python3 r251/check_decisions.py
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/local-web/src/Domain/PublicEdge/PublicMoveIdentityVerifier.php
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveAttestationIssuer.php
+          echo PASS_R252_READ_ONLY_NO_ENDPOINT_NO_HOST_DEPLOY
