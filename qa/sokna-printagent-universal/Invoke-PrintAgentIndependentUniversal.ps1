@@ -159,6 +159,16 @@ try{
     $incomplete=@(Get-ChildItem -LiteralPath $parent -Directory -ErrorAction Stop | Where-Object {$_.Name -match '^PrintAgent\.__(incoming|backup)\.'})
     if($incomplete.Count -gt 0){Fail 'PREVIOUS_TRANSACTION_DIRECTORY_REQUIRES_RECOVERY'}
   }
+  # Idempotent verified replay must not inspect or block active jobs: it does
+  # not touch services, queue data, registry, or binary files at all.
+  if($Mode -eq 'Apply' -and $snap -and [string]$report.old_version -eq '6.2.12' -and $oldReceipt -and
+     [string]$oldReceipt.status -eq 'COMMITTED' -and
+     [string]$oldReceipt.component_manifest_sha256 -eq (Hash (Join-Path $install 'component-manifest.json'))){
+    $report.status='UNCHANGED';$report.reason='BYTE_IDENTICAL_INDEPENDENT_INSTALL_ALREADY_COMMITTED'
+    $report.data_preserved=$true;$report.other_services_untouched=$true
+    Write-Host 'PASS_PRINT_INDEPENDENT_UNIVERSAL_IDEMPOTENT_NO_STOP_OR_RESTART'
+    return
+  }
   # Preflight must be read-only and block any in-flight print work or corrupt SQLite.
   # This check is repeated after quiescing services to close the claim/stop race.
   function CheckQueueIdle {
@@ -170,14 +180,6 @@ try{
   CheckQueueIdle
   $report.status='READY_FOR_GATED_APPLY';$report.reason='PREFLIGHT_PASS'
   if($Mode -eq 'Probe'){Write-Host 'PASS_PRINT_INDEPENDENT_LAB_PREFLIGHT';return}
-  if($snap -and [string]$report.old_version -eq '6.2.12' -and $oldReceipt -and
-     [string]$oldReceipt.status -eq 'COMMITTED' -and
-     [string]$oldReceipt.component_manifest_sha256 -eq (Hash (Join-Path $install 'component-manifest.json'))){
-    $report.status='UNCHANGED';$report.reason='BYTE_IDENTICAL_INDEPENDENT_INSTALL_ALREADY_COMMITTED'
-    $report.data_preserved=$true;$report.other_services_untouched=$true
-    Write-Host 'PASS_PRINT_INDEPENDENT_LAB_IDEMPOTENT_NO_STOP_OR_RESTART'
-    return
-  }
   $principal=[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
   if(!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){Fail 'ADMIN_REQUIRED'}
   New-Item -Path (Join-Path $data 'Maintenance\update') -ItemType Directory -Force|Out-Null
@@ -312,7 +314,7 @@ try{
   }
   if($lock){$lock.Dispose()}
   if($staging -and (Test-Path -LiteralPath $staging)){Remove-Item -LiteralPath $staging -Force -Recurse -ErrorAction SilentlyContinue}
-  if($backup -and $report.status -eq 'COMMITTED_LAB' -and (Test-Path -LiteralPath $backup)){Remove-Item -LiteralPath $backup -Force -Recurse -ErrorAction SilentlyContinue}
+  if($backup -and $report.status -eq 'COMMITTED' -and (Test-Path -LiteralPath $backup)){Remove-Item -LiteralPath $backup -Force -Recurse -ErrorAction SilentlyContinue}
   if($targetDir -and (Test-Path -LiteralPath $targetDir)){Remove-Item -LiteralPath $targetDir -Force -Recurse -ErrorAction SilentlyContinue}
   SaveReport
 }
