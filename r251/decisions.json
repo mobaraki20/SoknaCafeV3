@@ -176,6 +176,17 @@
       "acceptance": "R253 isolated MariaDB 11.4 transactional tests plus future concurrent worker and end-to-end authenticated owner approval tests",
       "superseded_by": null,
       "implementation_status": "R253_QA_LEDGER: transactional storage, verified MAC+signature acceptance, duplicate blocking and claim-once tested against disposable MariaDB; not registered as a production migration, owner approval UI/API and cutover not implemented"
+    },
+    {
+      "id": "MIG-014",
+      "scope": "implementation",
+      "status": "ACTIVE",
+      "summary": "Destination owner approval must come from an authenticated administrator scoped to that exact Public installation with same-origin CSRF protection. A freshly installed Public without staff projections requires a separate owner-login/bootstrap path in standard setup; it must never be silently approved. Per-instance signing keys live outside public webroot with least-privilege storage.",
+      "date": "2026-11-16",
+      "reason": "R254 QA found fresh independent Public may have no projected staff admin; trusting a browser field or reusing an unrelated installation session would allow impersonation. Protected per-instance Ed25519 key material and authenticated owner access are prerequisites.",
+      "acceptance": "R254 43 isolated tests, production onboarding and end-to-end fresh Public owner login yet to be implemented; key ACL and concurrent key initialization to be tested on real Windows and hosts.",
+      "superseded_by": null,
+      "implementation_status": "R254_QA_PARTIAL: pure Public admin consent guard with CSRF/session/Origin checks, restricted file key store, and 43 green tests. NO endpoint, owner bootstrap session, PKCE handoff or cutover."
     }
   ],
   "fixtures": [
