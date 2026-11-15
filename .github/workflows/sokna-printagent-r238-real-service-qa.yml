@@ -204,12 +204,54 @@ jobs:
             & $durableExe verify $database
             if($LASTEXITCODE -ne 0){throw 'DURABLE_STATE_DID_NOT_SURVIVE_ROLLBACK'}
             $global:LASTEXITCODE=0
+            # R240: force-kill PowerShell after OLD_MOVED and NEW_ACTIVE.
+            # The same one-click transaction must recognize a real journal and
+            # restore original 6.2.11 bytes + the Runtime supervisor on re-run.
+            $pendingJournal=Join-Path $root 'ProgramData/SOKNA/setup/print-agent-independent-v1/pending.json'
+            function ResetToActualCafe6211 {
+              Stop-Service SoknaRuntime -ErrorAction Stop
+              (Get-Service SoknaRuntime).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
+              Stop-Service SoknaPrintWorker -ErrorAction Stop
+              (Get-Service SoknaPrintWorker).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(35))
+              Remove-Item $agentRoot -Recurse -Force
+              New-Item $agentRoot -ItemType Directory -Force | Out-Null
+              Copy-Item (Join-Path $oldFixture '*') -Destination $agentRoot -Recurse -Force
+              if(Test-Path $receipt){Remove-Item $receipt -Force}
+              Start-Service SoknaPrintWorker
+              (Get-Service SoknaPrintWorker).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
+              Start-Service SoknaRuntime
+              (Get-Service SoknaRuntime).WaitForStatus('Running',[TimeSpan]::FromSeconds(25))
+            }
+            function TestCrashRecovery([string]$phase,[string]$flag){
+              $cmd=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$script,'-Mode','Apply','-PackageZip',$zip,'-QueueGuardExe',$guard,'-LabRoot',$root,'-AllowMutation',$flag)
+              & powershell.exe @cmd | Out-Host
+              $hardExit=$LASTEXITCODE
+              if($hardExit -eq 0){throw ('R240_CRASH_INJECTION_DID_NOT_KILL_'+$phase)}
+              if(!(Test-Path $pendingJournal -PathType Leaf)){throw ('R240_CRASH_NO_DURABLE_JOURNAL_'+$phase)}
+              $j=Get-Content $pendingJournal -Raw|ConvertFrom-Json
+              if($j.phase -ne $phase){throw ('R240_CRASH_JOURNAL_PHASE_INVALID_'+$phase+'_'+$j.phase)}
+              $global:LASTEXITCODE=0
+              Invoke-Lab ('R240_RECOVER_'+$phase)
+              if(Test-Path $pendingJournal){throw ('R240_CRASH_JOURNAL_NOT_CLEARED_'+$phase)}
+              if((Get-Service SoknaPrintWorker).Status -ne 'Running' -or (Get-Service SoknaRuntime).Status -ne 'Running'){
+                throw ('R240_CRASH_RECOVERY_SERVICES_NOT_RUNNING_'+$phase)
+              }
+              if((Get-FileHash $runtimeExe -Algorithm SHA256).Hash -ne $runtimeHash){throw ('R240_CRASH_RUNTIME_BINARY_CHANGED_'+$phase)}
+              & $durableExe verify $database
+              if($LASTEXITCODE -ne 0){throw ('R240_CRASH_DURABLE_DATA_LOST_'+$phase)}
+              $global:LASTEXITCODE=0
+              Write-Host ('PASS_R240_CRASH_RECOVERY_'+$phase)
+            }
+            ResetToActualCafe6211
+            TestCrashRecovery 'OLD_MOVED' '-InjectHardCrashAfterOldMove'
+            ResetToActualCafe6211
+            TestCrashRecovery 'NEW_ACTIVE' '-InjectHardCrashAfterSwap'
             $qa=Join-Path $env:RUNNER_TEMP 'R238-QA-RESULT'
             New-Item -ItemType Directory -Path $qa -Force|Out-Null
             if((Get-Service SoknaRuntime).Status -ne 'Running'){throw 'RUNTIME_NOT_RESTORED_AFTER_ROLLBACK'}
             if((Get-FileHash $runtimeExe -Algorithm SHA256).Hash -ne $runtimeHash){throw 'RUNTIME_BINARY_MUTATED'}
             Write-Host 'PASS_R238_RUNTIME_SUPERVISION_COORDINATED_AND_RESTORED'
-            @{format='sokna-r238-native-lab-v1';production_approved=$false;real_windows_service_lifecycle='PASS';clean_install='PASS';idempotent_replay_no_restart='PASS';actual_cafe_6211_binary_upgrade='PASS';rollback_after_swap='PASS';durable_marker_preserved='PASS';sqlite_unknown_attempt_and_pending_outbox_preserved='PASS';real_6211_binary_upgrade='PASS';actual_printer_jobs='NOT_TESTED';windows_services_owner_integration='NOT_TESTED'}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $qa 'QA-RESULT.json') -Encoding UTF8
+            @{format='sokna-r238-native-lab-v1';production_approved=$false;real_windows_service_lifecycle='PASS';clean_install='PASS';idempotent_replay_no_restart='PASS';actual_cafe_6211_binary_upgrade='PASS';rollback_after_swap='PASS';crash_recovery_old_moved='PASS';crash_recovery_new_active='PASS';durable_marker_preserved='PASS';sqlite_unknown_attempt_and_pending_outbox_preserved='PASS';real_6211_binary_upgrade='PASS';actual_printer_jobs='NOT_TESTED';windows_services_owner_integration='NOT_TESTED'}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $qa 'QA-RESULT.json') -Encoding UTF8
           }finally{
             $rt=Get-Service SoknaRuntime -ErrorAction SilentlyContinue
             if($rt){
