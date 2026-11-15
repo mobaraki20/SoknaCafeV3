@@ -119,6 +119,12 @@ jobs:
               LocalBaseUrl='http://127.0.0.1:17773/';
               PrintAgentServiceName='SoknaPrintWorker';SupervisePrintAgent=$true;Triggers=@()
             }|ConvertTo-Json -Depth 6|Set-Content $runtimeConfig -Encoding UTF8
+            # Runtime constructor requires two configured token files even with zero triggers.
+            ('R'*48)|Set-Content (Join-Path $root 'runtime-token.private') -Encoding Ascii
+            ('L'*48)|Set-Content (Join-Path $root 'local-token.private') -Encoding Ascii
+            & $runtimeExe --config $runtimeConfig --self-test
+            if($LASTEXITCODE -ne 0){throw 'REAL_RUNTIME_FIXTURE_CONFIG_SELFTEST_FAILED'}
+            $global:LASTEXITCODE=0
             $cmd='"'+$runtimeExe+'" --config "'+$runtimeConfig+'"'
             New-Service -Name 'SoknaRuntime' -BinaryPathName $cmd -DisplayName 'Sokna Runtime (QA)' -StartupType Manual|Out-Null
             Start-Service SoknaRuntime
