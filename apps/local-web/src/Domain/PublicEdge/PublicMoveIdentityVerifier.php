@@ -12,6 +12,7 @@ use InvalidArgumentException;
  *
  * The $ownerGrant MUST be loaded from an authenticated, durable, trusted
  * approval ledger on Local; it MUST NOT be parsed from a remote response.
+ * The Local-only HMAC key cryptographically prevents spoofed provenance fields.
  */
 final class PublicMoveIdentityVerifier
 {
@@ -54,7 +55,7 @@ final class PublicMoveIdentityVerifier
      * @param array<string,mixed> $ownerGrant trusted server-side record
      * @return array<string,mixed>
      */
-    public static function verify(array $challenge, array $envelope, array $ownerGrant, int $now): array
+    public static function verify(array $challenge, array $envelope, array $ownerGrant, int $now, string $localApprovalKey): array
     {
         self::requireShape($challenge, self::CHALLENGE_KEYS);
         if ($challenge['contract'] !== self::CONTRACT) throw new InvalidArgumentException('wrong_challenge_contract');
@@ -94,7 +95,8 @@ final class PublicMoveIdentityVerifier
         }
         // An attacker can sign their own URL. This trusted grant is the essential
         // external proof that an authenticated operator controls the TARGET.
-        if (($ownerGrant['provenance'] ?? null) !== 'authenticated_target_admin_session' ||
+        if (!PublicMoveApprovalMac::verify($ownerGrant, $localApprovalKey) ||
+            ($ownerGrant['provenance'] ?? null) !== 'authenticated_target_admin_session' ||
             ($ownerGrant['status'] ?? null) !== 'approved' ||
             !is_string($ownerGrant['approval_receipt_id'] ?? null) ||
             strlen($ownerGrant['approval_receipt_id']) < 12 ||
