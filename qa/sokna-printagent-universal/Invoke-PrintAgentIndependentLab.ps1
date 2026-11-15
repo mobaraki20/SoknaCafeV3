@@ -131,6 +131,14 @@ try{
   }
   $report.status='READY_FOR_GATED_APPLY';$report.reason='PREFLIGHT_PASS'
   if($Mode -eq 'Probe'){Write-Host 'PASS_PRINT_INDEPENDENT_LAB_PREFLIGHT';return}
+  if($snap -and [string]$report.old_version -eq '6.2.12' -and $oldReceipt -and
+     [string]$oldReceipt.status -eq 'COMMITTED' -and
+     [string]$oldReceipt.component_manifest_sha256 -eq (Hash (Join-Path $install 'component-manifest.json'))){
+    $report.status='UNCHANGED_LAB';$report.reason='BYTE_IDENTICAL_INDEPENDENT_INSTALL_ALREADY_COMMITTED'
+    $report.data_preserved=$true;$report.other_services_untouched=$true
+    Write-Host 'PASS_PRINT_INDEPENDENT_LAB_IDEMPOTENT_NO_STOP_OR_RESTART'
+    return
+  }
   $principal=[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
   if(!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){Fail 'ADMIN_REQUIRED'}
   New-Item -Path (Join-Path $data 'Maintenance\update') -ItemType Directory -Force|Out-Null
