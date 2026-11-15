@@ -5,6 +5,7 @@ on:
     paths:
       - apps/public/src/Security/PublicMoveOwnerConsentGuard.php
       - apps/public/src/Security/PublicMoveInstanceKeyStore.php
+      - apps/public/src/Security/PublicMoveOwnerSessionBridge.php
       - r254/**
       - r251/**
       - .github/workflows/sokna-r254-owner-consent.yml
@@ -42,3 +43,44 @@ jobs:
           php r251/test-public-move-decision.php | tee /tmp/r251.txt
           grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=55' /tmp/r251.txt
           python3 r251/check_decisions.py
+
+  real-public-admin-session:
+    name: Real MariaDB session resolver, consent scope and signing
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-r254-only
+          MARIADB_DATABASE: sokna_r254_qa
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP MySQL driver and check syntax
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -Eiq '^pdo_mysql$'; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq php-mysql
+          fi
+          php -l apps/public/src/Security/PublicMoveOwnerSessionBridge.php
+          php -l r254/test-public-owner-session-bridge.php
+      - name: Real authenticated session tenant isolation
+        env:
+          SOKNA_R254_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=sokna_r254_qa;charset=utf8mb4
+          SOKNA_R254_TEST_USER: root
+          SOKNA_R254_TEST_PASSWORD: qa-r254-only
+        run: |
+          set -euo pipefail
+          php r254/test-public-owner-session-bridge.php | tee /tmp/r254-session.txt
+          grep -q 'R254_REAL_SESSION_BRIDGE_PASS count=' /tmp/r254-session.txt
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveOwnerSessionBridge.php
+          echo PASS_R254_REAL_PUBLIC_ADMIN_SESSION_GUARD_NO_HOST_DEPLOY
