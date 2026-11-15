@@ -53,7 +53,7 @@ jobs:
           php r255/test-public-owner-bootstrap.php | tee /tmp/r255.txt
           grep -q 'R255_PUBLIC_OWNER_BOOTSTRAP_PASS count=48' /tmp/r255.txt
           php r255/test-owner-http-contract.php | tee /tmp/r255-http.txt
-          grep -q 'R255_OWNER_HTTP_CONTRACT_PASS count=' /tmp/r255-http.txt
+          grep -q 'R255_OWNER_HTTP_CONTRACT_PASS count=21' /tmp/r255-http.txt
           ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveOwnerBootstrapService.php
           ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveIndependentOwnerBridge.php
           echo R255_FIRST_OWNER_QA_PASS_NO_ENDPOINT_NO_DEPLOY
