@@ -1,0 +1,44 @@
+name: SOKNA R239 Print Agent read-only SQLite upgrade guard QA
+on:
+  push:
+    branches: [qa/sokna-printagent-universal-installer-20261115]
+    paths:
+      - qa/sokna-printagent-universal/Sokna.PrintAgent.UpgradeGuard.csproj
+      - qa/sokna-printagent-universal/QueueUpgradeGuard.cs
+      - .github/workflows/sokna-printagent-r239-queue-guard.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-guard:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Compile self-contained Win64 SQLite read-only upgrade guard
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dest=Join-Path $env:RUNNER_TEMP 'sokna-queue-guard'
+          dotnet publish 'qa/sokna-printagent-universal/Sokna.PrintAgent.UpgradeGuard.csproj' -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $dest
+          if($LASTEXITCODE -ne 0){throw 'QUEUE_GUARD_COMPILE_FAILED'}
+          $exe=Join-Path $dest 'Sokna.PrintAgent.UpgradeGuard.exe'
+          if(!(Test-Path $exe)){throw 'QUEUE_GUARD_EXE_MISSING'}
+          $folder=Join-Path $env:RUNNER_TEMP 'clean-queue-not-present'
+          & $exe --data-root $folder
+          if($LASTEXITCODE -ne 0){throw 'QUEUE_GUARD_CLEAN_NOT_ALLOWED'}
+          New-Item $folder -ItemType Directory -Force|Out-Null
+          [IO.File]::WriteAllBytes((Join-Path $folder 'queue.db'),[byte[]](4,8,15,16,23,42))
+          & $exe --data-root $folder
+          if($LASTEXITCODE -eq 0){throw 'QUEUE_GUARD_CORRUPT_WAS_ACCEPTED'}
+          Write-Host 'PASS_R239_SQLITE_QUEUE_GUARD_COMPILE_CLEAN_AND_CORRUPT_FAIL_CLOSED'
+      - name: Inspect guard for direct database mutations
+        shell: pwsh
+        run: |
+          $s=Get-Content 'qa/sokna-printagent-universal/QueueUpgradeGuard.cs' -Raw
+          if(!$s.Contains('SqliteOpenMode.ReadOnly') -or !$s.Contains('IN_FLIGHT_JOBS_BLOCKED')){throw 'READ_ONLY_QUEUE_GUARD_MISSING'}
+          if($s -match '(?i)\b(UPDATE|DELETE|INSERT|DROP)\s+(local_jobs|report_outbox)\b'){throw 'QUEUE_GUARD_HAS_MUTATING_SQL'}
+          Write-Host 'PASS_R239_QUEUE_GUARD_SOURCE_READ_ONLY'
