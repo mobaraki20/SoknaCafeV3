@@ -1,0 +1,53 @@
+{
+  "date": "2026-11-15",
+  "component": "public-edge",
+  "status": "OFFLINE_LIFECYCLE_QA_PASS__HOST_INSTALL_PENDING",
+  "production_host_qualified": false,
+  "host_installed_by_assistant": false,
+  "target_version": "3.0.0-g3.6-workspace.35ic-r249-cumulative-forward-gate",
+  "target_tree_sha256": "1a5d041fd63ec5425ed9f01f0eff63c86c90c5c76f26530b773784c74884c928",
+  "operator_zip_name": "SOKNA-Public-R249-35IC-Update.zip",
+  "operator_zip_sha256": "5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4",
+  "operator_zip_bytes": 1298589,
+  "exact_supported_baselines": [
+    {
+      "managed_tree_sha256": "0fd94f725670f521c60557137aab38e518e72c1c4cd9a0b0b6861e65f9fa7537",
+      "version": "3.0.0-g3.6-workspace.35hk-r153-identity-reconciled-qa"
+    },
+    {
+      "managed_tree_sha256": "be2ebe23091472480beadd6a06cad621b43da365d3677f54fadaab6ba56242b6",
+      "version": "3.0.0-g3.6-workspace.35ht-r171-cumulative-staff-expenses-uat"
+    }
+  ],
+  "offline_evidence": {
+    "ci_url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43749990301",
+    "ci_conclusion": "success",
+    "baseline_35hk_real_php_stage_activate_commit": true,
+    "baseline_35ht_real_php_stage_activate_commit": true,
+    "routine_db_forward_fence_retained": true,
+    "rollback_refused_under_fence": true,
+    "stable_emergency_owner_unchanged": true,
+    "subdirectory_base_path_preserved": true,
+    "migrations_preserved_eight": true,
+    "mariadb_live_test": false
+  },
+  "expected_operator_steps": [
+    "Emergency GUI login",
+    "Verify and Stage same ZIP",
+    "Activate forward in quiet period",
+    "Independent readback and Commit",
+    "Verify Public 35IC and Local communication"
+  ],
+  "known_hold": [
+    "R244 WAF guest traffic budget remains QA"
+  ],
+  "hard_stops": [
+    "wrong source/version/tree",
+    "pending migration",
+    "any unknown update lock or journal",
+    "failed stage/commit",
+    "database outage",
+    "schema mismatch"
+  ],
+  "safe_to_skip_clean_install": true
+}
