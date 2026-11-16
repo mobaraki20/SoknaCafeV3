@@ -5,7 +5,7 @@
   "branch": "qa/sokna-r259-owner-approval-flow-20261116",
   "predecessor": "qa/sokna-r258-universal-public-move-ui-20261116",
   "checkpoint": "r259/START-HERE-FA.md",
-  "phase": "R259_OWNER_CONSENT_QA_PASS__MIG018_MINIMAL_PUBLIC_RECOVERY_SCOPE_APPROVED__OLD_PUBLIC_PROBE_REMOVED__CODE_CI_RECHECK_PENDING__NO_CUTOVER",
+  "phase": "MIG018_MINIMAL_PUBLIC_REPLACEMENT_SCOPE_SET__OLD_PUBLIC_OFFLINE_PATH_TEST_PASS__PAIR_AND_NORMAL_SYNC_PENDING__PRODUCTION_NO_GO",
   "decision_register": {
     "canonical": "r251/DECISIONS-FA.md",
     "machine_readable": "r251/decisions.json",
@@ -65,7 +65,7 @@
         "apps/local-web/public/integrations/api.php",
         "apps/local-web/src/Domain/PublicEdge/PublicMoveLocalFlow.php"
       ],
-      "status": "COMMITTED_QA_CI_RECHECK_PENDING"
+      "status": "CI_PASS"
     }
   ],
   "verified_ci": [
@@ -75,6 +75,14 @@
       "source_commit": "81aefc3074f458e66164a8273257601939025a39",
       "r259_db_checks": 11,
       "real_kernel_browser_surface_checks": 5
+    },
+    {
+      "url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43815262910",
+      "conclusion": "success",
+      "source_commit": "6a7e082d51a9da23968aba77e2497257328ba5df",
+      "r259_db_checks": 12,
+      "real_kernel_browser_surface_checks": 5,
+      "notes": "One additional decisive lost-old-Public recovery start test; no dependency on old deploymentBindingProbe"
     }
   ],
   "pending": [
@@ -120,7 +128,7 @@
     "fixture_urls_are_product_defaults": false
   },
   "next_action": "Implement minimal destination-empty check + owner-authorized secure pairing on new Public, then call existing Local→Public full normal sync and confirm health before enabling guest intake. Keep old Public optional (can be fully offline). Do NOT implement old Public data migration, image transfer, pending-order reconciliation, or generic snapshot engine.",
-  "handoff": "MIG-018 replaces the overbuilt R259→R260 data-transfer plan. On qa/sokna-r259-owner-approval-flow-20261116, old-Public deploymentBindingProbe was removed from public_move_begin; source_public_instance_id may be empty. R259 prior CI passed owner flow, but latest MIG-018 code changes require fresh decisive CI. Production remains blocked until minimal pairing/sync end-to-end.",
+  "handoff": "Decision MIG-018 is binding: Public replacement uses empty target and existing normal Local-to-Public sync only. R259 old-Public-offline start is implemented and CI PASS (12+5). Remaining work is destination empty check, secure new pairing, sync and health gate. NO old Public backfill/media/order transfer. Production not released.",
   "excluded_by_mig018": [
     "Read or export a damaged/inaccessible old Public DB",
     "Transfer old Public media, financial projections, pending guest orders or staff sessions",
