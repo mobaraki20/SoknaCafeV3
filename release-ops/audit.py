@@ -338,7 +338,7 @@ def check_version_registry(path: pathlib.Path | None, result: dict) -> None:
         issue(result, "KNOWN_SHORT_VERSION_QUARANTINED")
     kind = str(result.get("kind", "unknown"))
     component = kind.split("-")[0]
-    for row in registry.get("released", []):
+    for row in (registry.get("released", []) + registry.get("observed", [])):
         if row.get("component") != component or row.get("kind") != kind:
             continue
         same_id = row.get("version") == result.get("version") or (code and row.get("short_code") == code)
