@@ -1,0 +1,46 @@
+name: SOKNA R258 Minimal Public Move UI - QA ONLY
+on:
+  push:
+    branches: [qa/sokna-r258-universal-public-move-ui-20261116]
+    paths:
+      - apps/local-web/src/Domain/PublicEdge/PublicMoveUiInspectionService.php
+      - apps/local-web/public/integrations/**
+      - apps/local-web/public/assets/connections-workspace.js
+      - r258/**
+      - .github/workflows/sokna-r258-public-move-ui.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-only-operator-gate:
+    name: Local administrator UI + signed same-install preview, no cutover
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP and JavaScript syntax
+        run: |
+          set -euo pipefail
+          php -l apps/local-web/src/Domain/PublicEdge/PublicMoveUiInspectionService.php
+          php -l apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php
+          php -l apps/local-web/public/integrations/api.php
+          php -l apps/local-web/public/integrations/index.php
+          php -l r258/test-local-ui-inspection.php
+          node --check apps/local-web/public/assets/connections-workspace.js
+      - name: Safe read-only operator decision matrix
+        run: |
+          set -euo pipefail
+          php r258/test-local-ui-inspection.php | tee /tmp/r258-tests.txt
+          grep -q 'R258_LOCAL_MOVE_UI_INSPECTION_QA_PASS count=' /tmp/r258-tests.txt
+          php r251/test-public-move-decision.php | tail -1
+          python3 r251/check_decisions.py | tail -1
+      - name: Runtime source contract: no browser ownership or implicit transfer
+        run: |
+          set -euo pipefail
+          grep -q "WebAction::requireMutation()" apps/local-web/public/integrations/api.php
+          grep -q "public_move_inspect" apps/local-web/public/integrations/api.php
+          grep -q "data-public-move-form" apps/local-web/public/integrations/index.php
+          grep -q "data-public-move-target" apps/local-web/public/integrations/index.php
+          grep -q "signed SAME-installation preflight" apps/local-web/public/integrations/api.php
+          ! grep -Eiq 'soknaspace[.]ir|soknagroup[.]ir' apps/local-web/src/Domain/PublicEdge/PublicMoveUiInspectionService.php apps/local-web/public/integrations/index.php
+          ! grep -E '->execute\(|->claimOnce\(|->activateAuthority\(|->syncAll\(' apps/local-web/src/Domain/PublicEdge/PublicMoveUiInspectionService.php
+          echo PASS_R258_PREVIEW_ONLY_NO_OPERATOR_PACKAGE
