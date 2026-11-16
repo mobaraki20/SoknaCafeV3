@@ -170,7 +170,7 @@ jobs:
 
   historical-real-archive-lab:
     name: Temporary read-only replay of R201 Local and R171 Public archived ZIPs
-    if: github.event_name == 'push'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
