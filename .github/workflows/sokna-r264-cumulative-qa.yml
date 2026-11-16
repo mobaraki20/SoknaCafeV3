@@ -1,0 +1,130 @@
+name: SOKNA R264 Cafe UI Print Exact Windows QA
+on:
+  push:
+    branches: [qa/sokna-r264-cafe-ui-print-gate-20261116]
+    paths:
+      - r264/**
+      - .github/workflows/sokna-r264-cumulative-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build-r264:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R264-EXACT-LOCAL-PUBLIC-CUMULATIVE-QA-CANDIDATES
+          run-id: 43834210936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r264-base
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
+          run-id: 43835146004
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r264-base
+      - uses: actions/download-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          run-id: 43837950540
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r264-base
+      - name: Byte-pinned R262+R263 sources and small R264 UI-only overlay
+        shell: bash
+        env:
+          R264_ROOT: ${{ runner.temp }}/r264-work
+          R264_BASE_DIR: ${{ runner.temp }}/r264-base
+        run: |
+          set -euo pipefail
+          python3 r264/prepare_r264.py
+          python3 r264/apply_r264.py
+          python3 r264/build_r264.py
+          node --check "$R264_ROOT/local/public/assets/staff-app/hall-workspace.js"
+          node --check "$R264_ROOT/public-hall.js"
+          node --check "$R264_ROOT/local/public/assets/printing-workspace.js"
+          node r264/test_r264_ui.cjs
+          python3 packaging/windows/release-gates/check_local_release_set.py --require-installable "$R264_ROOT/candidate/SOKNA-R264-LOCAL-231FH-CUMULATIVE-UI-PRINT-QA-NOT-FOR-CAFE.zip"
+          echo R264_EXACT_CUMULATIVE_UI_SOURCE_AND_CONTRACT_PASS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R264-EXACT-LOCAL-PUBLIC-CUMULATIVE-QA-CANDIDATES
+          path: |
+            ${{ runner.temp }}/r264-work/candidate/SOKNA-R264-LOCAL-231FH-CUMULATIVE-UI-PRINT-QA-NOT-FOR-CAFE.zip
+            ${{ runner.temp }}/r264-work/candidate/SOKNA-R264-PUBLIC-35IE-CUMULATIVE-UI-QA-NOT-FOR-CAFE.zip
+            ${{ runner.temp }}/r264-work/candidate/SOKNA-R264-PUBLIC-35IE-SELFCONTAINED-CLEAN-UI-QA-NOT-FOR-CAFE.zip
+            ${{ runner.temp }}/r264-work/candidate/R264-QA-PACKAGE-PROOF.json
+          if-no-files-found: error
+          retention-days: 6
+  windows-r241-to-r264:
+    needs: build-r264
+    runs-on: windows-latest
+    timeout-minutes: 100
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r201-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R264-EXACT-LOCAL-PUBLIC-CUMULATIVE-QA-CANDIDATES
+          path: ${{ runner.temp }}/r264-candidate
+      - name: Check final R262 payload SHA, baseline selection and release contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $folder='${{ runner.temp }}/r264-candidate'
+          $candidate=Join-Path $folder 'SOKNA-R264-LOCAL-231FH-CUMULATIVE-UI-PRINT-QA-NOT-FOR-CAFE.zip'
+          $proof=Get-Content (Join-Path $folder 'R264-QA-PACKAGE-PROOF.json') -Raw | ConvertFrom-Json
+          if(-not(Test-Path $candidate)){throw 'R264_RELEASE_ZIP_MISSING'}
+          if((Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant() -ne $proof.local_update_sha256){throw 'R264_RELEASE_SHA_MISMATCH'}
+          if($proof.local_existing_files -ne 604 -or $proof.local_migration_count -ne 82){throw 'R264_RELEASE_PAYLOAD_SCOPE_MISMATCH'}
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$candidate"
+          if($LASTEXITCODE -ne 0){throw 'R264_RELEASE_CONTRACT_REJECTED'}
+      - name: Actual native Windows Maintenance preflight, stage, activate, HTTP readback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $folder='${{ runner.temp }}/r264-candidate'
+          $proof=Get-Content (Join-Path $folder 'R264-QA-PACKAGE-PROOF.json') -Raw | ConvertFrom-Json
+          $env:R186_R153_DIR='${{ runner.temp }}/r153-parent'
+          $env:R201_R177_DIR='${{ runner.temp }}/r177-parent'
+          $env:R201_TARGET_DIR='${{ runner.temp }}/r201-parent'
+          $env:R204_TARGET_DIR="$folder"
+          $src=Get-Content 'qa/sokna-r204/windows_r204_from_actual_231fa.ps1' -Raw
+          $src=$src.Replace('SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip','SOKNA-R264-LOCAL-231FH-CUMULATIVE-UI-PRINT-QA-NOT-FOR-CAFE.zip')
+          $src=$src.Replace('279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3',[string]$proof.local_update_sha256)
+          $src=$src.Replace('3.0.0-g6.2-workspace.231fb-r204-ux-zero-empty-canary','3.0.0-g6.2-workspace.231fh-r264-order-edit-qa')
+          # Only the final target has one newly appended SQL migration (0082).
+          # Keep all earlier R153/R177/R201 assertions at their original 80/81.
+          $oldFinalCount='$r204Ledger -eq ''81'''
+          if(-not $src.Contains($oldFinalCount)){throw 'R264_NATIVE_FINAL_LEDGER_CHECK_NOT_FOUND'}
+          $src=$src.Replace($oldFinalCount,'$r204Ledger -eq ''82''')
+          $src=$src.Replace('R204_MIGRATION_LEDGER_NOT_81','R262_MIGRATION_LEDGER_NOT_82')
+          $path=Join-Path $folder 'native-r264-test.ps1'
+          Set-Content $path $src -Encoding utf8NoBOM
+          & $path
+          if($LASTEXITCODE -ne 0){throw 'R264_NATIVE_STAGE_ACTIVATE_READBACK_FAILED'}
+          Write-Host 'R264_NATIVE_WINDOWS_EXACT_ZIP_STAGE_ACTIVATE_HTTP_PASS__NO_HOST_DEPLOY'
