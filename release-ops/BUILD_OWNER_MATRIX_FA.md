@@ -32,3 +32,9 @@
 - Runtime/PrintAgent/Windows source را نباید برای QA یک تغییر Public بی‌دلیل rebuild کرد؛ real hardware checks در انتشار مرتبط الزام جدا دارند.
 
 **ادعای خروجی این PR:** ابزار و مرجع انتشار GitHub آمادهٔ کنترل read-only و آزمون‌های منفی است؛ موتور/سرویس/اپلیکیشن و میزبان دست‌نخورده. هنوز سازندهٔ عمومی بسته نصب‌پذیر و مدرک عملیاتی end-to-end ایجاد نشده است.
+
+## آزمون بازپخش و ساخت واقعی بدون تغییر محصول (R233)
+
+- دو ZIP سورس با بایت‌های دقیق Library در GitHub بازسازی و منبع‌شناسی شد: [Actions run 43829020152](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43829020152).
+- QA بستهٔ Public Root Clean با همان سورس، فقط نسخه/owner در کپی موقت و بدون تغییر فایل‌های عملکردی انجام شد: [Actions run 43829800080](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43829800080). **Static PASS، functional byte drift=0، Production NO-GO**. ZIP قابل نصب در artifact خروجی منتشر نشده است.
+- بازپخش به آرشیو R204 در Actions run 43513196061 وابسته است که ممکن است expire شود؛ برای پایداری نسخه‌های بعد باید منبع immutable تحت retention پایدار قرار گیرد، وگرنه fail-closed.
