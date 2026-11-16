@@ -15,6 +15,23 @@ on:
       - '.github/workflows/sokna-release-assurance.yml'
   workflow_call:
     inputs:
+      source_artifact_run_id:
+        description: 'Existing source archive artifact run ID (same run if empty)'
+        type: string
+        required: false
+        default: ''
+      source_artifact_name:
+        description: 'Artifact containing one exact pinned full source ZIP'
+        type: string
+        required: true
+      source_checkpoint:
+        description: 'Exact source-register.json checkpoint, not latest guessed from branch'
+        type: string
+        required: true
+      source_component:
+        description: 'local or public'
+        type: string
+        required: true
       artifact_run_id:
         description: 'Run ID with candidate artifact; defaults to invoking workflow run'
         type: string
@@ -35,6 +52,27 @@ on:
         default: auto
   workflow_dispatch:
     inputs:
+      source_artifact_run_id:
+        description: 'Optional run ID holding full source archive'
+        type: string
+        required: false
+        default: ''
+      source_artifact_name:
+        description: 'Optional artifact holding one source ZIP'
+        type: string
+        required: false
+        default: ''
+      source_checkpoint:
+        description: 'Pinned source checkpoint from source-register.json'
+        type: string
+        required: false
+        default: ''
+      source_component:
+        description: 'Source component'
+        type: choice
+        options: [local, public]
+        default: local
+        required: false
       artifact_run_id:
         description: 'Existing GitHub Actions run ID containing candidate ZIP (empty for self-tests only)'
         type: string
@@ -53,7 +91,7 @@ on:
       kind:
         description: 'Expected package kind'
         type: choice
-        options: [auto, local-update, public-update, local-clean, public-clean]
+        options: [auto, local-update, local-legacy-update, public-update, local-clean, public-clean]
         default: auto
         required: true
 
@@ -75,7 +113,7 @@ jobs:
         with:
           fetch-depth: 2
       - name: Compile read-only auditor
-        run: python3 -m py_compile release-ops/audit.py release-ops/tests/test_audit.py
+        run: python3 -m py_compile release-ops/audit.py release-ops/source_gate.py release-ops/tests/test_audit.py release-ops/tests/test_source_gate.py
       - name: Test SAME auditor with synthetic valid, corrupt and regression fixtures
         run: python3 -m unittest discover -s release-ops/tests -p 'test_*.py' -v
       - name: Confirm publication code cannot deploy or change product
@@ -129,6 +167,13 @@ jobs:
           run-id: ${{ inputs.artifact_run_id || github.run_id }}
           github-token: ${{ github.token }}
           path: candidate
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.source_artifact_name != '' }}
+        with:
+          name: ${{ inputs.source_artifact_name }}
+          run-id: ${{ inputs.source_artifact_run_id || inputs.artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+          path: source-snapshot
       - name: Inspect one exact ZIP with portable offline auditor
         shell: bash
         env:
@@ -159,6 +204,34 @@ jobs:
           print('**Blocking errors:**',', '.join(r['errors']) or 'none in static scope')
           print('**Not proven:**',', '.join(r['not_proven']) or 'none in static scope')
           PY
+      - name: Verify exact source ZIP and byte-identical functional code of final candidate
+        if: ${{ inputs.source_artifact_name != '' }}
+        shell: bash
+        env:
+          SOURCE_COMPONENT: ${{ inputs.source_component }}
+          SOURCE_CHECKPOINT: ${{ inputs.source_checkpoint }}
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_CHECKPOINT" || { echo 'SOURCE_CHECKPOINT_REQUIRED'; exit 2; }
+          test "$SOURCE_COMPONENT" = local || test "$SOURCE_COMPONENT" = public
+          mapfile -d '' -t SRC_ZIPS < <(find source-snapshot -type f -iname '*.zip' -print0)
+          mapfile -d '' -t FINAL_ZIPS < <(find candidate -type f -iname '*.zip' -print0)
+          if [[ "${#SRC_ZIPS[@]}" -ne 1 || "${#FINAL_ZIPS[@]}" -ne 1 ]]; then
+            echo 'EXACTLY_ONE_SOURCE_AND_FINAL_ZIP_REQUIRED'; exit 2
+          fi
+          ROUTE="$(python3 - <<'PY'
+          import json
+          kind=json.load(open('audit-out/release-audit.json'))['kind']
+          routes={'local-update':'local-maintenance-update',
+                  'local-legacy-update':'local-legacy-update',
+                  'public-update':'public-update',
+                  'public-clean':'public-root-clean'}
+          print(routes.get(kind,'UNSUPPORTED_CLEAN_ROUTE'))
+          PY
+          )"
+          [[ "$ROUTE" != UNSUPPORTED_CLEAN_ROUTE ]] || { echo 'SOURCE_TO_FINAL_ROUTE_NOT_YET_QUALIFIED'; exit 3; }
+          python3 release-ops/source_gate.py --source "${SRC_ZIPS[0]}"             --checkpoint "$SOURCE_CHECKPOINT" --component "$SOURCE_COMPONENT"             --candidate "${FINAL_ZIPS[0]}" --route "$ROUTE"             --report audit-out/source-to-final.json --require-output-ready
+          echo 'SOURCE_SHA_AND_FUNCTIONAL_BYTE_PRESERVATION_PASS. STILL NOT HOST INSTALL APPROVAL.'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
