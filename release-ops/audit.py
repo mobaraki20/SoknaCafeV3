@@ -353,6 +353,10 @@ def check_version_registry(path: pathlib.Path | None, result: dict) -> None:
         issue(result, "KNOWN_SHORT_VERSION_QUARANTINED")
     kind = str(result.get("kind", "unknown"))
     component = kind.split("-")[0]
+    for row in registry.get("rejected", []):
+        if (row.get("component") == component and row.get("kind") == kind
+            and row.get("sha256") == result.get("sha256")):
+            issue(result, "KNOWN_REJECTED_ARCHIVE_SHA")
     for row in (registry.get("released", []) + registry.get("observed", [])):
         if row.get("component") != component or row.get("kind") != kind:
             continue
