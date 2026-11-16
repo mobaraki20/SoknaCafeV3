@@ -44,6 +44,28 @@ async function refresh(done=''){root.setAttribute('aria-busy','true');status('')
 $('[data-refresh]').addEventListener('click',()=>refresh());$('[data-accommodation-form]').addEventListener('submit',async e=>{e.preventDefault();const b=e.submitter;await SoknaUI.busy(b,async()=>{feedback('accommodation');try{await post({action:'accommodation_config_save',enabled:$('[data-accommodation-enabled]').checked,base_url:$('[data-accommodation-url]').value.trim(),api_key:$('[data-accommodation-key]').value.trim()});$('[data-accommodation-key]').value='';await refresh('تنظیمات اتصال اقامتگاه ذخیره شد.')}catch(err){feedback('accommodation',err.message||'ذخیره تنظیمات انجام نشد.')}})});$('[data-accommodation-test]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('accommodation');try{const j=await post({action:'accommodation_test'}),r=j.result||{};feedback('accommodation',`${r.message||'اتصال اقامتگاه تأیید شد.'}${r.checked_at?` · ${L.instantDateTime?L.instantDateTime(r.checked_at):L.dateTime(r.checked_at)}`:''}`,false)}catch(err){feedback('accommodation',err.message||'آزمایش اتصال اقامتگاه انجام نشد.',true)}}));
 $('[data-lan-staff-preflight]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('lan-staff');const enabled=$('[data-lan-staff-enabled]').checked,url=$('[data-lan-staff-url]').value.trim();if(!enabled){feedback('lan-staff','LAN غیرفعال است؛ برای پیش‌بررسی ابتدا آن را فعال کن.',false);return}try{const j=await post({action:'lan_staff_preflight',enabled,base_url:url}),r=j.lan_staff_preflight||{},ips=(r.resolved_private_addresses||[]).join('، ');feedback('lan-staff',`پیش‌بررسی موفق · DNS خصوصی: ${ips||'تأیید'} · CORS/PNA: تأیید · Health: ${r.health_quorum||'—'} · میانه تأخیر: ${r.median_latency_ms??'—'} ms`,false)}catch(err){feedback('lan-staff',err.message||'پیش‌بررسی مسیر LAN انجام نشد.')}}));
 $('[data-lan-staff-form]')?.addEventListener('submit',async e=>{e.preventDefault();const b=$('[data-lan-staff-save]');await SoknaUI.busy(b,async()=>{feedback('lan-staff');const enabled=$('[data-lan-staff-enabled]').checked,url=$('[data-lan-staff-url]').value.trim();if(enabled&&!url){feedback('lan-staff','برای فعال‌کردن LAN، آدرس داخلی Local لازم است.');return}try{await post({action:'lan_staff_config_save',enabled,base_url:url});await refresh(enabled?'مسیر LAN پس از پیش‌بررسی ذخیره شد.':'مسیر LAN کارکنان غیرفعال شد.')}catch(err){feedback('lan-staff',err.message||'ذخیره مسیر LAN انجام نشد.')}})});
+// R258 safe preview: the server must verify any identity; browser never sends a proof or consent flag.
+$('[data-public-move-form]')?.addEventListener('submit',async e=>{
+ e.preventDefault();
+ const target=$('[data-public-move-target]').value.trim(),button=$('[data-public-move-check]');
+ feedback('public-move');
+ if(!target){feedback('public-move','آدرس وب عمومی جدید را وارد کنید.');return;}
+ await SoknaUI.busy(button,async()=>{
+  try{
+   const response=await post({action:'public_move_inspect',base_url:target}),decision=response.public_move||{};
+   const info=String(decision.message||'بررسی مقصد انجام نشد.');
+   const next=decision.route==='ready_for_review'
+    ?'هویت همین نصب تأیید شده، اما اجرای تغییر آدرس در این مسیر هنوز فعال نیست.'
+    :decision.route==='awaiting_owner'
+      ?'برای این مقصد، فرایند تأیید مالک و انتقال مستقل باید تکمیل شود.'
+      :'';
+   feedback('public-move',info+(next?' '+next:'')+' اتصال فعلی تغییری نکرده است.',
+    decision.route==='blocked'||decision.route==='awaiting_owner');
+  }catch(err){
+   feedback('public-move',err.message||'بررسی مقصد کامل نشد. اتصال فعلی تغییری نکرده است.');
+  }
+ });
+});
 $('[data-public-origin-target]')?.addEventListener('input',()=>{originRebindPreview=null;$('[data-public-origin-execute]').disabled=true;showOriginPreview(null);feedback('public-origin')});
 $('[data-public-origin-preflight]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public-origin');const url=$('[data-public-origin-target]').value.trim();if(!url){feedback('public-origin','آدرس مقصد لازم است.');return}try{const j=await post({action:'public_origin_rebind_preflight',base_url:url}),r=j.origin_rebind||{};originRebindPreview={url,result:r};showOriginPreview(r);$('[data-public-origin-execute]').disabled=false}catch(err){originRebindPreview=null;$('[data-public-origin-execute]').disabled=true;showOriginPreview(null);feedback('public-origin',err.message||'پیش‌بررسی تغییر آدرس انجام نشد.')}}));
 $('[data-public-origin-execute]')?.addEventListener('click',async e=>{const url=$('[data-public-origin-target]').value.trim();if(!originRebindPreview||originRebindPreview.url!==url){feedback('public-origin','ابتدا برای همین آدرس پیش‌بررسی موفق انجام بده.');return}const r=originRebindPreview.result||{},kind=String(r.transition_kind||'')==='cross_origin'?'دامنه/origin عوض می‌شود؛ کاربران ممکن است نیاز به ورود دوباره، PWA و Push جدید داشته باشند.':'origin ثابت می‌ماند؛ مسیر، Service Worker و در صورت نیاز نشست reconcile می‌شوند.';if(!await SoknaUI.confirm('اعمال تغییر آدرس Public',`${kind} مسیر قدیمی تا تأیید مهاجرت باز می‌ماند و تغییر بعدی تا بستن آن مجاز نیست.`,true))return;await SoknaUI.busy(e.currentTarget,async()=>{try{await post({action:'public_origin_rebind_execute',base_url:url});originRebindPreview=null;showOriginPreview(null);await refresh();toast('Rebind Public کامل شد؛ وضعیت انتقال قدیمی را پس از مهاجرت کاربران ببند.','success','تغییر آدرس')}catch(err){feedback('public-origin',err.message||'تغییر آدرس Public کامل نشد.');await refresh().catch(()=>{})}})});
