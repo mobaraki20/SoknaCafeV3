@@ -145,7 +145,7 @@ jobs:
   candidate-audit:
     name: Inspect exact final ZIP; no release promotion
     needs: historical-regressions
-    if: ${{ github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.artifact_run_id != '') }}
+    if: ${{ inputs.artifact_name != '' && inputs.expected_sha256 != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
