@@ -20,6 +20,19 @@ try{
         WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
     }
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
+    if($action==='public_move_inspect'){
+        // R258 QA: authenticated Local admin + WebAction CSRF are already enforced.
+        // No browser-submitted identity proof or approval flags are accepted.
+        // This action performs only signed SAME-installation preflight, no commit.
+        require_once dirname(__DIR__,2).'/src/Domain/PublicEdge/PublicMoveDecisionEngine.php';
+        require_once dirname(__DIR__,2).'/src/Domain/PublicEdge/PublicMoveUiInspectionService.php';
+        $client=$core->publicEdgeSyncClient();
+        $service=new \Sokna\Local\Domain\PublicEdge\PublicMoveUiInspectionService(
+            $client->publicBaseUrl(),$core->publicAuthorityState()->phase(),
+            static fn(string $target):array=>$core->publicOriginRebind()->preflight($target)
+        );
+        WebAction::json(['success'=>true,'public_move'=>$service->inspect((string)($data['base_url']??''))]);
+    }
     if($action==='accommodation_config_save')WebAction::json(['success'=>true,'result'=>$core->integrationSettings()->saveAccommodation($data)]);
     if($action==='accommodation_test'){
         $result=$core->accommodationTransport()->testConnection();
