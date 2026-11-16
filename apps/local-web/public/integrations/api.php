@@ -20,7 +20,7 @@ try{
         WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
     }
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
-    if(in_array($action,['public_move_begin','public_move_confirm','public_move_cancel'],true)){
+    if(in_array($action,['public_move_begin','public_move_confirm','public_move_cancel','public_move_status','public_move_finish'],true)){
         try {
             // This request has already passed real Local admin authentication
             // and WebAction's per-session CSRF. No browser session or Local ID.
@@ -52,6 +52,16 @@ try{
                 $ledger,$resolver,$keys['mac'],$keys['csrf']
             );
             $flow=new \Sokna\Local\Domain\PublicEdge\PublicMoveLocalFlow($ledger,$approval,$localId);
+            $replacement=new \Sokna\Local\Domain\PublicEdge\PublicMoveSimpleReplacement(
+                $core,$ledger,$localId,$core->config()->requiredString('app.data_dir')
+            );
+            if($action==='public_move_status'){
+                $pending=$replacement->status();
+                if(($pending['active']??false)===true){
+                    $_SESSION['sokna_move_operation']=$pending['operation_id'];
+                }
+                WebAction::json(['success'=>true,'move'=>$pending]);
+            }
             if($action==='public_move_begin'){
                 $client=$core->publicEdgeSyncClient();
                 if(!$client->configured()||$core->publicAuthorityState()->phase()!=='active')
@@ -68,17 +78,30 @@ try{
                 WebAction::json(['success'=>true,'move'=>$result]);
             }
             $operation=(string)($_SESSION['sokna_move_operation']??'');
+            if(!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{5,127}$/D',$operation)){
+                $pending=$replacement->status();
+                $operation=($pending['active']??false)===true
+                    ?(string)$pending['operation_id']:'';
+            }
             if(!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{5,127}$/D',$operation))
                 throw new \RuntimeException('move_session_not_active');
+            if($action==='public_move_finish'){
+                $result=$replacement->finish($operation);
+                if(($result['completed']??false)===true)unset($_SESSION['sokna_move_operation']);
+                WebAction::json(['success'=>true,'move'=>$result]);
+            }
             if($action==='public_move_cancel'){
+                if(($replacement->status()['active']??false)===true)
+                    throw new \RuntimeException('paired_replacement_must_finish_before_cancel');
                 $result=$flow->cancel($operation);
                 unset($_SESSION['sokna_move_operation']);
                 WebAction::json(['success'=>true,'move'=>$result]);
             }
             if(!is_array($data['attestation']??null)||!is_array($data['receipt_envelope']??null))
                 throw new \RuntimeException('signed_owner_receipt_required');
-            $result=$flow->confirm($operation,$trustedSessionToken,
+            $flow->confirm($operation,$trustedSessionToken,
                 $data['attestation'],$data['receipt_envelope'],time());
+            $result=$replacement->start($operation,(string)($data['pairing_code']??''),$actorId);
             WebAction::json(['success'=>true,'move'=>$result]);
         }catch(\Throwable $e){
             // Never disclose key paths, challenge hashes, SQL, session tokens,
