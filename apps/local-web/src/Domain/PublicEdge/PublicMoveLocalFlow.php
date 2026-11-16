@@ -35,8 +35,13 @@ final class PublicMoveLocalFlow
         if ($target===null || $source===null || hash_equals($source,$target)) {
             throw new InvalidArgumentException('move_target_url_invalid');
         }
-        if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{5,127}$/D',$verifiedSourceInstanceId)) {
-            throw new InvalidArgumentException('source_identity_not_verified');
+        // In a recovery, the old Public may be permanently offline. The
+        // attestation contract permits an empty source instance ID. Local
+        // supplies its configured old URL and signs the target challenge;
+        // never require a request to the broken old Public.
+        if ($verifiedSourceInstanceId!=='' &&
+            !preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{5,127}$/D',$verifiedSourceInstanceId)) {
+            throw new InvalidArgumentException('source_identity_invalid');
         }
         if (is_string($priorOperationId) && $priorOperationId!=='') {
             try {
