@@ -87,9 +87,47 @@ if ($mode === "emergency") {
     ];
     file_put_contents($storage."/routine-update-v2/state.json", json_encode($state, JSON_THROW_ON_ERROR));
 }
+// Optional real database connection is allowed ONLY in the disposable MariaDB
+// workflow. Both real Public migration closures are supplied to the unchanged
+// installed Routine/Emergency owner classes; target has no new SQL in R233.
+$dbQa = (string)getenv("SOKNA_QA_PUBLIC_SQL_DB");
+$pendingChecks=0;
+$migrate=static fn():array => [];
+$migrationPending=static fn():array => [];
+$dbQaPdo=null;
+if ($dbQa!=="") {
+    need($dbQa==="sokna_r228_public_disposable", "disposable_sql_db_only");
+    need(getenv("GITHUB_ACTIONS")==="true" &&
+         getenv("SOKNA_RELEASE_DB_QA_DISPOSABLE")==="YES", "real_db_ci_guard");
+    $installedRealPublic=realpath((string)getenv("SOKNA_R228_PUBLIC"));
+    $ciTmp=realpath((string)getenv("RUNNER_TEMP"));
+    need($installedRealPublic!==false && $ciTmp!==false &&
+         str_starts_with($installedRealPublic,$ciTmp.DIRECTORY_SEPARATOR), "real_db_source_under_temp");
+    require_once $installedRealPublic."/bootstrap.php";
+    $realConfig=require $installedRealPublic."/config.php";
+    $realCore=\sokna_public_bootstrap($realConfig);
+    $dbQaPdo=$realCore->database();
+    $dbQaPdo->query("SELECT 1")->fetchColumn();
+    need((int)$dbQaPdo->query("SELECT COUNT(*) FROM schema_migrations")->fetchColumn()===8,
+         "real_public_8_migrations_before_upgrade");
+    $marker=(string)$dbQaPdo->query(
+        "SELECT marker FROM sokna_release_qa_preservation_marker WHERE id=1"
+    )->fetchColumn();
+    need($marker==="SOURCE_R233_QA_ONLY_PRESERVE_FINANCIAL_INVENTORY_ORDER_ROWS",
+         "real_public_business_marker_exists");
+    $migrate=static function() use ($dbQaPdo,$root):array {
+        $m=new \Sokna\PublicEdge\Core\Migrations($dbQaPdo,$root."/database/migrations");
+        return $m->migrate();
+    };
+    $migrationPending=static function() use ($dbQaPdo,$root,&$pendingChecks):array {
+        ++$pendingChecks;
+        $m=new \Sokna\PublicEdge\Core\Migrations($dbQaPdo,$root."/database/migrations");
+        return $m->pendingVersions();
+    };
+}
 $service = new RoutinePublicUpdateService($root, $storage,
     $root."/resources/update-trust-v1.json",
-    static fn():bool => true, static fn():array => [], null, static fn():array => []);
+    static fn():bool => true, $migrate, null, $migrationPending);
 $bridge = new IndependentEmergencyRoutineBridge($service, $storage,
     static fn():array => [],
     static function() use ($root): array {
@@ -124,4 +162,15 @@ $owner = json_decode((string)file_get_contents($root."/src/Update/emergency-owne
 need(($owner["release_version"] ?? null) === $m["version"], "owner_version_matches");
 need(($owner["sha256"] ?? null) === hash_file("sha256", $root."/src/Update/EmergencyOwnerCandidate.php"), "owner_code_sha_matches");
 need(($end["active_version"] ?? $service->snapshot()["active_version"] ?? "") === $m["version"], "commit_confirmed");
+if ($dbQaPdo instanceof PDO) {
+    need($pendingChecks>=2, "real_public_owner_migration_inventory_invoked");
+    need((int)$dbQaPdo->query("SELECT COUNT(*) FROM schema_migrations")->fetchColumn()===8,
+         "real_public_8_migrations_preserved_after_upgrade");
+    $marker=(string)$dbQaPdo->query(
+        "SELECT marker FROM sokna_release_qa_preservation_marker WHERE id=1"
+    )->fetchColumn();
+    need($marker==="SOURCE_R233_QA_ONLY_PRESERVE_FINANCIAL_INVENTORY_ORDER_ROWS",
+         "real_public_business_data_preserved_after_owner_upgrade");
+    echo "PASS_PUBLIC_".strtoupper($baseId)."_".strtoupper($mode)."_REAL_DB_OWNER_PATH_NO_PENDING_SQL\n";
+}
 echo "SOKNA_QA_PUBLIC_".strtoupper($baseId)."_".strtoupper($mode)."_ONE_EXACT_ZIP_NATIVE_PHP_PASS\n";
