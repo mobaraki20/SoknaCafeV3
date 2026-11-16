@@ -48,6 +48,12 @@ jobs:
           run-id: 43835146004
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/target262
+      - uses: actions/download-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          run-id: 43837950540
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/clean263
       - name: Materialize only pinned historical Public archives
         shell: bash
         run: |
@@ -57,7 +63,8 @@ jobs:
           import os,pathlib,hashlib,shutil
           t=pathlib.Path(os.environ['RUNNER_TEMP']);out=t/'input'
           targets=[(t/'base249','5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4','SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip'),
-            (t/'target262','5aef4cd781fbd450d3e454f324e294da6f4180bfe1e5eb1871cb4818dc20c93a','SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip')]
+            (t/'target262','5aef4cd781fbd450d3e454f324e294da6f4180bfe1e5eb1871cb4818dc20c93a','SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip'),
+            (t/'clean263','37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21','SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip')]
           for folder,digest,name in targets:
            hits=[p for p in folder.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()==digest]
            assert len(hits)==1,(folder,[str(x) for x in folder.rglob('*.zip')])
