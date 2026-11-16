@@ -278,6 +278,21 @@ def check_public_root_clean(z, outer, result):
         issue(result, "PUBLIC_ROOT_CLEAN_CONTAINS_MANIFEST_OR_PRIVATE_STATE")
     if any(n.startswith(("storage/", "var/", "data/", ".git/")) for n in outer):
         issue(result, "PUBLIC_ROOT_CLEAN_MUTABLE_STATE_INCLUDED")
+    # On a genuinely EMPTY host no test harness may inject missing PHP
+    # dependencies. This catches the historical R262 244-file Clean ZIP:
+    # it passed setup QA after helper-copy, but bootstrap was incomplete.
+    if "bootstrap.php" in outer:
+        bootstrap = z.read("bootstrap.php").decode("utf-8", errors="replace")
+        imports = re.findall(r"""require_once\s+__DIR__\s*\.\s*['"]/([^'"]+)['"]""", bootstrap)
+        missing = sorted({name for name in imports if name not in outer})
+        if missing:
+            issue(result, "PUBLIC_CLEAN_BOOTSTRAP_DEPENDENCIES_MISSING")
+            result["missing_bootstrap_files"] = missing
+    if "resources/update-trust-v1.json" in outer:
+        trust = safe_json(z, "resources/update-trust-v1.json")
+        if (trust.get("format") != "sokna-update-trust-v1"
+            or trust.get("ed25519_public_keys") != {}):
+            issue(result, "PUBLIC_CLEAN_TRUST_TEMPLATE_INVALID_OR_PRECONFIGURED")
     if "VERSION.txt" in outer:
         result["version"] = z.read("VERSION.txt").decode("utf-8").strip()
     else:
@@ -338,6 +353,10 @@ def check_version_registry(path: pathlib.Path | None, result: dict) -> None:
         issue(result, "KNOWN_SHORT_VERSION_QUARANTINED")
     kind = str(result.get("kind", "unknown"))
     component = kind.split("-")[0]
+    for row in registry.get("rejected", []):
+        if (row.get("component") == component and row.get("kind") == kind
+            and row.get("sha256") == result.get("sha256")):
+            issue(result, "KNOWN_REJECTED_ARCHIVE_SHA")
     for row in (registry.get("released", []) + registry.get("observed", [])):
         if row.get("component") != component or row.get("kind") != kind:
             continue

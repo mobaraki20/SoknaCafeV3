@@ -379,5 +379,63 @@ class ReleaseAudit(unittest.TestCase):
         self.assertIn("RELEASE_VERSION_IDENTITY_COLLISION", r["errors"])
 
 
+
+    def test_empty_public_host_bootstrap_cannot_depend_on_missing_emergency_file(self):
+        v = "3.0.0-g3.6-workspace.35zz-qa"
+        code = b"<?php class Candidate {}"
+        files = {
+            ".htaccess": b"RewriteEngine On\n",
+            "VERSION.txt": (v + "\n").encode(),
+            "index.php": b"<?php", "setup/index.php": b"<?php", "setup/api.php": b"<?php",
+            "bootstrap.php": (
+                b"<?php require_once __DIR__ . '/src/Emergency/PublicUpdateService.php';\n"
+                b"require_once __DIR__ . '/src/Emergency/PairingSecretStore.php';\n"
+            ),
+            "src/Emergency/PublicUpdateService.php": b"<?php class Stable {}",
+            "src/Update/EmergencyOwnerCandidate.php": code,
+            "src/Update/emergency-owner-v1.json": j({"release_version": v, "sha256": a.sha(code)}),
+        }
+        r = a.audit(self.save(zip_bytes(files)), expected_kind="public-clean")
+        self.assertIn("PUBLIC_CLEAN_BOOTSTRAP_DEPENDENCIES_MISSING", r["errors"])
+        self.assertEqual(r.get("missing_bootstrap_files"), ["src/Emergency/PairingSecretStore.php"])
+        files["src/Emergency/PairingSecretStore.php"] = b"<?php class PairingSecretStore {}"
+        r2 = a.audit(self.save(zip_bytes(files)), expected_kind="public-clean")
+        self.assertEqual(r2["static"], "PASS", r2)
+
+    def test_empty_public_clean_rejects_inherited_configured_update_trust(self):
+        v = "3.0.0-g3.6-workspace.35zz-qa"
+        code = b"<?php class Candidate {}"
+        files = {
+            ".htaccess": b"RewriteEngine On\n", "VERSION.txt": (v + "\n").encode(),
+            "index.php": b"<?php", "setup/index.php": b"<?php", "setup/api.php": b"<?php",
+            "bootstrap.php": b"<?php require_once __DIR__ . '/src/Emergency/PublicUpdateService.php';",
+            "src/Emergency/PublicUpdateService.php": b"<?php class Stable {}",
+            "src/Update/EmergencyOwnerCandidate.php": code,
+            "src/Update/emergency-owner-v1.json": j({"release_version": v, "sha256": a.sha(code)}),
+            "resources/update-trust-v1.json": j({"format": "sokna-update-trust-v1", "ed25519_public_keys": {"old-machine": "unsafe"}}),
+        }
+        r = a.audit(self.save(zip_bytes(files)), expected_kind="public-clean")
+        self.assertIn("PUBLIC_CLEAN_TRUST_TEMPLATE_INVALID_OR_PRECONFIGURED", r["errors"])
+        files["resources/update-trust-v1.json"] = j({"format": "sokna-update-trust-v1", "ed25519_public_keys": {}})
+        self.assertEqual(a.audit(self.save(zip_bytes(files)), expected_kind="public-clean")["static"], "PASS")
+
+
+
+    def test_exact_rejected_sha_is_not_a_releasable_version_even_if_manifest_looks_valid(self):
+        p = self.public()
+        register = self.dir / "version-registry.json"
+        register.write_text(json.dumps({
+            "format": "sokna-release-version-ledger-v1", "historical_complete": False,
+            "quarantined_short_versions": [], "released": [], "observed": [],
+            "rejected": [{
+                "component": "public", "kind": "public-update",
+                "sha256": a.sha(p.read_bytes()), "reason": "KNOWN_UNSAFE_ARCHIVE"
+            }]
+        }))
+        r = a.audit(p, registry=register)
+        self.assertIn("KNOWN_REJECTED_ARCHIVE_SHA", r["errors"])
+        self.assertFalse(r["release_authorized"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
