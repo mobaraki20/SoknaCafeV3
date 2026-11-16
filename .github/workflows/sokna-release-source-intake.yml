@@ -1,0 +1,126 @@
+name: SOKNA Release Source Intake - universal component source gate, NO INSTALL
+
+on:
+  pull_request:
+    paths:
+      - 'release-ops/**'
+      - '.github/workflows/sokna-release-source-intake.yml'
+  workflow_dispatch:
+    inputs:
+      component:
+        type: choice
+        options: [local, public]
+        default: local
+      package_kind:
+        type: choice
+        options: [local-update, local-legacy-update, local-clean, public-update, public-clean]
+        default: local-update
+      source_checkpoint:
+        type: string
+        description: 'Optional explicit registered checkpoint; empty means active-source.json, NEVER a guessed branch'
+        default: ''
+      target_version:
+        type: string
+        description: 'Optional new target version; no ZIP is built or published'
+        default: ''
+  workflow_call:
+    inputs:
+      component:
+        type: string
+        default: local
+      package_kind:
+        type: string
+        default: local-update
+      source_checkpoint:
+        type: string
+        default: ''
+      target_version:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source-intake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read exact active source from permanent GitHub source register
+        id: identify
+        shell: bash
+        env:
+          COMPONENT: ${{ inputs.component || 'local' }}
+          PACKAGE_KIND: ${{ inputs.package_kind || 'local-update' }}
+          CHECKPOINT: ${{ inputs.source_checkpoint || '' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          info=json.loads(Path('release-ops/active-source.json').read_text())
+          assert info.get('format')=='sokna-release-active-source-v1'
+          component=os.environ['COMPONENT']
+          checkpoint=os.environ['CHECKPOINT']
+          actual=info['active_checkpoint']
+          if checkpoint and checkpoint!=actual:
+              raise SystemExit('REQUEST_CHECKPOINT_NOT_ACTIVE_SOURCE: refresh exact Workspace pointer, DO NOT fall back to R233')
+          kind=os.environ['PACKAGE_KIND']
+          supported={'local':('local-update','local-legacy-update','local-clean'),
+                     'public':('public-update','public-clean')}
+          if component not in supported or kind not in supported[component]:
+              raise SystemExit('PACKAGE_KIND_COMPONENT_OWNER_CONFLICT')
+          path=Path(os.environ['GITHUB_OUTPUT'])
+          with path.open('a') as fp:
+              for k,v in [('component',component),('checkpoint',actual),
+                          ('archive_run_id',info['artifact']['run_id']),
+                          ('archive_name',info['artifact']['name']),
+                          ('source_file',info['components'][component]['file'])]:
+                  fp.write(k+'='+str(v)+'\n')
+          print('SOURCE_POINTER_QUALIFIED_FOR_READ_ONLY_ADMISSION_ONLY:',actual,component)
+          PY
+      - name: Fetch full original source ZIP with exact immutable SHA evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.identify.outputs.archive_name }}
+          run-id: ${{ steps.identify.outputs.archive_run_id }}
+          github-token: ${{ github.token }}
+          path: source-only
+      - name: Run registered source/DB preflight and produce agent-readable gate report
+        shell: bash
+        env:
+          COMPONENT: ${{ steps.identify.outputs.component }}
+          PACKAGE_KIND: ${{ inputs.package_kind || 'local-update' }}
+          CHECKPOINT: ${{ steps.identify.outputs.checkpoint }}
+          SOURCE_FILE: ${{ steps.identify.outputs.source_file }}
+          TARGET_VERSION: ${{ inputs.target_version || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p intake-report
+          SOURCE="source-only/$SOURCE_FILE"
+          test -f "$SOURCE" || { echo 'PINNED_SOURCE_ARCHIVE_MISSING'; exit 2; }
+          python3 -m py_compile release-ops/intake.py release-ops/db_gate.py
+          python3 release-ops/intake.py --source "$SOURCE" --component "$COMPONENT" \
+            --kind "$PACKAGE_KIND" --checkpoint "$CHECKPOINT" --target-version "$TARGET_VERSION" \
+            --report intake-report/source-intake.json
+          python3 release-ops/db_gate.py --source "$SOURCE" --component "$COMPONENT" \
+            --checkpoint "$CHECKPOINT" --report intake-report/db-migration-lineage.json
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          d=json.load(open('intake-report/source-intake.json'))
+          print('### Official SOKNA release source intake')
+          print('Source:',d['checkpoint'],d['component'],d['source_sha256'])
+          print('Source status:',d['source_status'],'; migration static status:',d['database_status'])
+          print('Selected existing builder:',d.get('builder_route','NOT_SELECTED'))
+          print('**Production authorized: NO. This is NOT a built or installable ZIP.**')
+          print('Outstanding:',', '.join(d['not_proven']))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CURRENT-SOURCE-INTAKE-QA-REPORT-ONLY
+          path: intake-report/*.json
+          if-no-files-found: ignore
+          retention-days: 30
