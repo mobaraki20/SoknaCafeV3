@@ -46,7 +46,7 @@ final class PublicMoveReplacementGate
         $this->pdo->beginTransaction();
         try{
             $q=$this->pdo->prepare(
-                'SELECT installation_id,order_intake_enabled FROM installations WHERE installation_id=? AND active=1 FOR UPDATE'
+                'SELECT installation_id,order_intake_enabled,public_move_intake_paused FROM installations WHERE installation_id=? AND active=1 FOR UPDATE'
             );$q->execute([$actual]);$row=$q->fetch(PDO::FETCH_ASSOC);
             if(!is_array($row))throw new RuntimeException('installation_not_paired');
             // These are records written by the existing Local publisher.
@@ -57,9 +57,15 @@ final class PublicMoveReplacementGate
             if(!$has('guest_active_revisions')||!$has('guest_availability_state')) {
                 throw new RuntimeException('first_sync_not_complete');
             }
+            if((int)$row['public_move_intake_paused']===0 && (int)$row['order_intake_enabled']===1) {
+                $this->pdo->commit();
+                return ['status'=>200,'body'=>['ok'=>true,'status'=>'ready','guest_intake_enabled'=>true]];
+            }
+            if((int)$row['public_move_intake_paused']!==1)
+                throw new RuntimeException('no_replacement_intake_gate');
             if((int)$row['order_intake_enabled']!==1){
                 $q=$this->pdo->prepare(
-                    'UPDATE installations SET order_intake_enabled=1 WHERE installation_id=? AND order_intake_enabled=0'
+                    'UPDATE installations SET order_intake_enabled=1,public_move_intake_paused=0 WHERE installation_id=? AND public_move_intake_paused=1'
                 );$q->execute([$actual]);
                 if($q->rowCount()!==1)throw new RuntimeException('guest_activation_race');
             }
