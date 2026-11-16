@@ -362,5 +362,22 @@ class ReleaseAudit(unittest.TestCase):
         self.assertIn("PUBLIC_CLEAN_EMERGENCY_OWNER_VERSION_OR_HASH_MISMATCH", r["errors"])
 
 
+
+    def test_qa_observed_identity_also_prevents_version_collision(self):
+        p = self.public()
+        register = self.dir / "version-registry.json"
+        register.write_text(json.dumps({
+            "format": "sokna-release-version-ledger-v1", "historical_complete": False,
+            "quarantined_short_versions": ["35gg"], "released": [],
+            "observed": [{
+                "component": "public", "kind": "public-update",
+                "short_code": "35hz", "version": "3.0.0-g3.6-workspace.35hz-r258",
+                "sha256": "0" * 64, "status": "QA_ONLY"
+            }]
+        }))
+        r = a.audit(p, registry=register)
+        self.assertIn("RELEASE_VERSION_IDENTITY_COLLISION", r["errors"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
