@@ -84,6 +84,14 @@ jobs:
           php -l r267/source/ResumablePublicSchema.php
           php -l r267/tests/mariadb.php
           php -l r267/tests/lifecycle.php
+      - name: Guard future Public packages against an unsupported Emergency schema route
+        shell: bash
+        env:
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r267
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/input
+        run: |
+          set -euo pipefail
+          python3 r267/gates/test_public_emergency_schema_route.py
       - name: Reproduce 35IC Emergency rejection and prove safe bridge + 3-schema commit
         shell: bash
         env:
