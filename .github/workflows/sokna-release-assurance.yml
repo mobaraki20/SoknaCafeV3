@@ -13,6 +13,26 @@ on:
       - 'release-ops/**'
       - 'AGENTS.md'
       - '.github/workflows/sokna-release-assurance.yml'
+  workflow_call:
+    inputs:
+      artifact_run_id:
+        description: 'Run ID with candidate artifact; defaults to invoking workflow run'
+        type: string
+        required: false
+        default: ''
+      artifact_name:
+        description: 'Exact candidate artifact name'
+        type: string
+        required: true
+      expected_sha256:
+        description: 'Exact candidate ZIP SHA256'
+        type: string
+        required: true
+      kind:
+        description: 'auto, local-update, public-update, local-clean, public-clean'
+        type: string
+        required: false
+        default: auto
   workflow_dispatch:
     inputs:
       artifact_run_id:
@@ -87,7 +107,7 @@ jobs:
   candidate-audit:
     name: Inspect exact final ZIP; no release promotion
     needs: historical-regressions
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact_run_id != '' }}
+    if: ${{ github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.artifact_run_id != '') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -106,7 +126,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.artifact_name }}
-          run-id: ${{ inputs.artifact_run_id }}
+          run-id: ${{ inputs.artifact_run_id || github.run_id }}
           github-token: ${{ github.token }}
           path: candidate
       - name: Inspect one exact ZIP with portable offline auditor
@@ -121,9 +141,24 @@ jobs:
           if [[ "${#ZIPS[@]}" -ne 1 ]]; then
             echo 'EXACTLY_ONE_FINAL_ZIP_REQUIRED'; exit 2
           fi
-          python3 release-ops/audit.py "${ZIPS[0]}" --kind "$REQUESTED_KIND" \
-            --expected-sha256 "$EXPECTED_SHA" --report audit-out/release-audit.json
+          PARAMS=(--kind "$REQUESTED_KIND" --expected-sha256 "$EXPECTED_SHA"
+                  --version-registry release-ops/version-registry.json
+                  --report audit-out/release-audit.json)
+          [[ ! -f candidate/baseline-catalog.json ]] || PARAMS+=(--baseline-catalog candidate/baseline-catalog.json)
+          [[ ! -f candidate/accepted-fixes.json ]] || PARAMS+=(--accepted-fixes candidate/accepted-fixes.json)
+          [[ ! -f candidate/route-evidence.json ]] || PARAMS+=(--route-evidence candidate/route-evidence.json)
+          python3 release-ops/audit.py "${ZIPS[0]}" "${PARAMS[@]}"
           echo 'STATIC_INSPECTION_COMPLETE. NO INSTALL, NO PROMOTION, NO PRODUCTION CLAIM.'
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          r=json.load(open('audit-out/release-audit.json'))
+          print('### SOKNA read-only artifact audit')
+          print('**Static:**',r['static'],'| **Kind:**',r['kind'],'| **Version:**',r['version'])
+          print('**SHA256:**',r['sha256'])
+          print('**Release authorized:** **NO** — native host/DB/behavior acceptance is separate')
+          print('**Blocking errors:**',', '.join(r['errors']) or 'none in static scope')
+          print('**Not proven:**',', '.join(r['not_proven']) or 'none in static scope')
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
