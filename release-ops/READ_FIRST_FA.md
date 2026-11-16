@@ -124,3 +124,12 @@ python3 release-ops/source_gate.py --source /path/to/EXACT-SOURCE.zip --componen
 - **R263 Self-contained Clean (۲۵۱فایلی) فقط QA** است؛ تمام ۲۴۴ فایل مشترک با Public Update برابر و ۷ فایل ثابت Emergency/Trust اضافی دارد. `audit.py` اکنون حضور همه وابستگی‌های صریح bootstrap را کنترل می‌کند.
 - فراداده `for_install=true/production_pass=true` در Local R262 برای Windows CI است، نه اعلام انتشار. با وجود تأیید Stage/Activate روی Windows آزمایشی، پذیرش هاست/سیستم مشتری همچنان لازم است.
 - R262/R263 شواهد QA جدیدترند، ولی بدون ثبت سورس کامل approved و تصمیم کاربر نباید به‌طور خودکار جانشین checkpoint R233 در `active-source.json` شوند.
+
+
+## ۱۳. ممیزی مستقل ۶۲ کنترل قبل از هر انتشار
+
+- سند اصلی: [INDEPENDENT_SYSTEM_COVERAGE_AUDIT_20261116_FA.md](INDEPENDENT_SYSTEM_COVERAGE_AUDIT_20261116_FA.md) و [دفتر قابل پردازش ۶۲ ردیفی](INDEPENDENT_COVERAGE_REGISTER_20261116.json).
+- پوشش حوزه‌ها: **سورس و REG-003؛ مالک بسته Local/Public؛ دیتابیس، تراکنش و Backup؛ Runtime/Print/Maintenance ویندوز؛ ارتباط و ۱۱ projection؛ چاپ تا کاغذ؛ مالی/انبار؛ امنیت/موبایل؛ پذیرش ۵۹ پرونده و ۲۷ HOLD**.
+- تا زمان این ممیزی، **۰ پرونده در دفتر ۵۹تایی دارای امضای پذیرش نصب واقعی** بوده؛ این **مساوی ۵۹ باگ باز نیست**. خروجی R262 Clean ناقص مردود و R263 اصلاح‌شده فقط QA است.
+- در هر Release باید ابتدا کنترل‌های **قابل اعمال به محدوده همان تغییر** انتخاب و برای هرکدام مدرک دقیق artifact+SHA+مبدأ+مقصد+سناریو ثبت شود. صرف شمارنده آزمون‌ها یا حضور کلاس در سورس کافی نیست. P0 قابل اعمال و فاقد اثبات، BLOCKED باقی می‌ماند؛ هیچ وضعیت NOT_RUN به PASS تبدیل نشود.
+- خودِ این سند یک ممیزی بدون تغییر محصول است و **مجوز خودکار انتشار نیست**؛ برای دوره‌های بعدی دوباره از سورس و شواهد همان Release بازبینی شود.
