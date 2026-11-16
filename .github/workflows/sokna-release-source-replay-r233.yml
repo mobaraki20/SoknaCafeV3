@@ -1,0 +1,63 @@
+name: SOKNA frozen R233 source replay - exact bytes, NO INSTALL
+
+on:
+  pull_request:
+    paths:
+      - 'release-ops/**'
+      - '.github/workflows/sokna-release-source-replay-r233.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  replay-pinned-source:
+    name: Reconstruct original R233 source ZIPs from pinned historical evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout release-only tools
+        uses: actions/checkout@v4
+      - name: Checkout historical sources at exact R233 fixture commit
+        uses: actions/checkout@v4
+        with:
+          ref: 120d1fb5107699d6b62eaba74f04fd962338f6a3
+          path: frozen-r233-fixtures
+          persist-credentials: false
+      - name: Download existing exact R204 source artifact (read only)
+        uses: actions/download-artifact@v4
+        with:
+          name: R204-EXACT-SOURCE-AND-MANIFEST-READY-FOR-WINDOWS
+          run-id: 43513196061
+          github-token: ${{ github.token }}
+          path: frozen-r204-parent
+      - name: Reconstruct and SHA-pin byte-exact source ZIPs without modifying product or Windows
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile release-ops/replay_r233_source.py release-ops/source_gate.py
+          PARENT="$(find frozen-r204-parent -type f -name 'SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)"
+          [[ -f "$PARENT" ]] || { echo 'FROZEN_R204_ARTIFACT_MISSING'; exit 2; }
+          mkdir -p source-only
+          python3 release-ops/replay_r233_source.py \
+            --fixtures frozen-r233-fixtures \
+            --r204 "$PARENT" \
+            --out source-only \
+            --register release-ops/source-register.json
+          printf '783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d  source-only/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip\n' | sha256sum -c -
+          printf '8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b  source-only/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip\n' | sha256sum -c -
+          echo 'BYTE_EXACT_R233_SOURCE_ONLY_REPLAY_PASS'
+      - name: Upload frozen source reference ONLY (not deployable, not candidate Update)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE
+          path: source-only/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Explicitly deny release promotion
+        shell: bash
+        run: |
+          echo '### Original R233 source-only verification' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Exact ZIP SHA and content tree must match original Library snapshot.' >> "$GITHUB_STEP_SUMMARY"
+          echo '**This is NOT a production update, installer, Emergency package, or deployment approval.**' >> "$GITHUB_STEP_SUMMARY"
