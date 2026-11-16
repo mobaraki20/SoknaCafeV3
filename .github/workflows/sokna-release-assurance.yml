@@ -115,7 +115,7 @@ jobs:
       - name: Validate immutable candidate selection
         shell: bash
         env:
-          RUN_ID: ${{ inputs.artifact_run_id }}
+          RUN_ID: ${{ inputs.artifact_run_id || github.run_id }}
           ARTIFACT_NAME: ${{ inputs.artifact_name }}
           EXPECTED_SHA: ${{ inputs.expected_sha256 }}
         run: |
