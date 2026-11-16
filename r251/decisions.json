@@ -257,7 +257,7 @@
       "reason": "Operator explicitly narrowed the product to replace an inaccessible or failed Public quickly. Overbuilding a transfer/backfill/reconciliation engine would repeat update-engine complexity and cannot recover unreachable old Public data.",
       "acceptance": "A fresh or otherwise empty Public on arbitrary HTTPS root/subfolder can be owner-confirmed, paired, seeded via existing Local sync and enabled. Verify zero active/pending destination orders and that Local remains unchanged if setup or first sync fails. Show one clear warning for old-Public-only orders. No dependency on old-Public connectivity; no transfer of media/orders from old Public. Keep one active Local pairing and correct menu/QR routing separately.",
       "superseded_by": null,
-      "implementation_status": "PRODUCT_SCOPE_APPROVED; replaces the over-scoped R259->R260 data migration plan. R259 only has two-sided ownership QA; Public replacement cutover not yet implemented. No production release."
+      "implementation_status": "R260 QA source: owner-approved fresh unpaired Public returns pairing code; original pair() runs replacement_mode with one forward-only intake-pause field; normal signed installation sync cannot open guest ordering; new Local PublicMoveSimpleReplacement syncs using standard publisher with old config preserved until publish, claims one-time authorization, commits Local config, then signed Public intake activation, release ledger slot and retry on transient sync interruption. Real pinned R249 Public MariaDB/HTTP and Local ledger tests PASS. No operator package, actual Local host/browser E2E, or production release yet."
     }
   ],
   "fixtures": [
