@@ -17,7 +17,7 @@
 ## ۳. جریان واحدی که ایجنت باید اجرا کند
 1. **ثبت مبنای دقیق:** component و نوع خروجی (Local Update / Public Update / Local Clean / Public Clean / Windows component)، سورسِ نسخهٔ مقصد، SHA256 و در صورت Update آرشیو هویت‌های Full/Delta/Adoption واجد شرایط. منبع تاریخی باید SHA256 داشته باشد؛ رقم نسخه یا نام رایانه کافی نیست.
 2. **حفظ تصمیم‌ها:** موارد تأییدشده، خروج از دامنه، فهرست فایل فعال/بارگذاری واقعی و ماتریس رگرسیون REG-003 از snapshot معتبر خوانده شود. قرار نیست با کپی سورس قدیمی، اصلاحی محو شود.
-3. **استفاده از سازندهٔ معتبر موجود:** فقط builder مخصوص قالب **واقعی نصب‌کننده**، نه هر فایل به نام `*-update.zip`. Local پنلی فعلی `sokna-maintenance-release-set-v2.1` با ریشهٔ `release-set.json` + `artifacts/local/web.zip` است؛ `apps/local-web/tools/build-update-package.py` در شاخه‌های آزمایشگاهی صرفاً `sokna-component-package-v1` می‌سازد و جانشین Release Set نیست. Public مقصد `sokna-component-package-v1` با `manifest.json` و `payload/` است. نصب تمیز Local مستقیم `sokna-install-manifest.json` و Public مستقیم `manifest.json` با `sokna-public-deploy-v1` دارد.
+3. **استفاده از سازندهٔ معتبر موجود:** فقط builder مخصوص قالب **واقعی نصب‌کننده**، نه هر فایل به نام `*-update.zip`. دو مسیر Local وجود دارد: در نصب slot-managed، بستهٔ رسمی Maintenance از نوع `sokna-maintenance-release-set-v2.1` با `release-set.json` و `artifacts/local/web.zip` است؛ مسیر Legacy LocalUpdateService نیز `sokna-component-package-v1` / component=`local` را می‌پذیرد، ولی `LegacySlotUpdateGuard` ممکن است نصب را روی slot-managed رد کند. بنابراین انتخاب قالب با تشخیص مالک واقعی نصب است، نه صرف نام «پنل». R233 بسته Legacy QA ساخته بود و برای Maintenance مناسب نبود. Public مقصد `sokna-component-package-v1` با `manifest.json` و `payload/` است. نصب تمیز Local در سازندهٔ تاریخی از `sokna-install-manifest.json` استفاده می‌کند؛ Public دو قالب تاریخی داشته: deploy-v1 با manifest و **R233 Root Clean مسطح، بدون manifest اضافه**، شامل `index.php`, `setup/` و `.htaccess` در ریشه. قالب را باید بر اساس سورس واقعی و قرارداد میزبان مقصد آزمود.
 4. **ممیزی همان بایت‌های نهایی:** `python3 release-ops/audit.py <EXACT-ZIP> --expected-sha256 <SHA256> --baseline-catalog <VERIFIED-ORIGINS.json> --source-dir <PINNED-UNPACKED-SOURCE> --accepted-fixes <ACCEPTED-FILE-MATRIX.json> --version-registry release-ops/version-registry.json --route-evidence <DUAL-ROUTE-PROOF.json> --paired-package <SAME-VERSION-CLEAN-OR-UPDATE.zip> --report <JSON>`. این ابزار نسخه را از خود ZIP تشخیص می‌دهد؛ فقط خواندنی است و نصب نمی‌کند. برچسب `STATIC PASS` هرگز «نصب شد» نیست.
 5. **تکمیل آزمون‌های مسیر واقعی:** استفاده از گیت‌های موجود برای سازگاری نصب Local در Maintenance Windows، آزمون Native Windows/MariaDB، Public Routine و Emergency با **همان SHA** روی مبدأهای واجد شرایط، DB-forward و recovery، سپس گردش‌های حساس/موبایل/چاپ فقط وقتی دامنهٔ تغییر ایجاب می‌کند. هر آزمون انجام‌نشده `NOT_RUN`؛ اگر حیاتی است بسته نصب‌پذیر تحویل نده.
 6. **تحویل بی‌ابهام:** همان ZIP آزموده‌شده را بدون بازسازی و تغییر منتشر کن، با منبع و هش و وضعیت `STATIC / CI / HOME_UAT / REAL_HOST / PRODUCTION` جدا. GitHub Release نهایی فقط پس از اثبات و مجوز واقعی از فرایند موجود، نه از این ممیزی به‌تنهایی.
@@ -63,3 +63,18 @@ Workflow ثابت: `.github/workflows/sokna-release-assurance.yml`.
 - **شناسه‌های قبلی:** `release-ops/version-registry.json` عمداً `historical_complete=false` دارد و تا ورود داده‌های آرشیو حقیقی نباید کامل معرفی شود. هر نسخه تأییدشده آینده باید با SHA ثابت به دفتر افزوده شود. 35gg فعلاً قرنطینه است.
 
 **توقف اجباری:** این Workflow صرفاً Gate ایستای قبل از تحویل است، نه workflow ساخت موتور و نه انتشار عمومی. اگر پرونده صلاحیت واقعی Windows/Public/DB یا سورس معتبر ناقص بود، ایجنت باید همان را `NOT_RUN / BLOCKED` اعلام کند.
+
+
+## ۸. مرحله «ورود سورس» قبل از تولید بسته
+
+کنترل قطعی بر مبنای سورس معتبر:
+
+```bash
+python3 release-ops/source_gate.py --source /path/to/EXACT-SOURCE.zip --component local --checkpoint R233-20261115 --report source-audit.json
+```
+
+آرشیو `SOURCE-ONLY` را مستقیم به `audit.py` به‌عنوان بستهٔ نصب نده. در سورس R233، `VERSION.txt` هنوز متعلق به R204 است؛ SHA و `source_tree_sha256` مرجع، ملاک هویت **سورس** هستند. هویت **بستهٔ مقصد** تنها پس از مرحله بسته‌سازی بررسی می‌شود. `source-register.json` فقط چک‌پوینت‌های هش‌دار و معتبر را ثبت می‌کند، نه نسخهٔ «جدیدتر» را به‌صورت خودکار انتخاب کند. هر نوبت ایجنت باید آخرین `LATEST-WORKING` و تصمیم‌های کاربر را بخواند.
+
+برای اثبات حفظ بایت فایل‌های مشترک، همان source ZIP و بسته مقصد را با `--candidate`, `--route`, `--require-output-ready` مقایسه کن؛ در صورت نبود مدارک نصب واقعی هیچ وضعیت عملیاتی صادر نکن. GitHub workflow با ورودی `source_artifact_name` این کنترل را اجرا می‌کند.
+
+**یافته R233:** `resources/local-managed-files-v1.json` فقط ۵۹۰ از ۵۹۳ فایل را دارد، و مالک Emergency در سورس Public هنوز `35hk` را ذکر می‌کند؛ هر دو در مرحله تولید Metadata بسته مقصد باید بررسی/ترمیم شوند، بدون دستکاری کد عملکردی. جزئیات در [R233_SOURCE_INTAKE_FINDINGS_FA.md](R233_SOURCE_INTAKE_FINDINGS_FA.md).
