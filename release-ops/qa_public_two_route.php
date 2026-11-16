@@ -36,13 +36,15 @@ need(is_dir($fixture) && is_file($package), "fixture_and_exact_package");
 need((bool)preg_match('/^[a-f0-9]{64}$/', $expectedSha), "sha_declared");
 need(hash_file("sha256", $package) === $expectedSha, "identical_qa_zip_sha");
 
-$source = $fixture."/r171";
-$root = $fixture."/run-public-".$mode;
-$storage = $fixture."/run-storage-".$mode;
-need(is_dir($source) && is_file($source."/VERSION.txt"), "r171_exact_baseline");
+$baseId = getenv("SOKNA_QA_PUBLIC_BASE") ?: "35ht";
+need(in_array($baseId, ["35hk","35ht"], true), "baseline_supported");
+$source = $fixture."/".($baseId === "35hk" ? "r153" : "r171");
+$root = $fixture."/run-public-".$baseId."-".$mode;
+$storage = $fixture."/run-storage-".$baseId."-".$mode;
+need(is_dir($source) && is_file($source."/VERSION.txt"), "exact_historical_baseline");
 require_once $fixture."/public-update-exception.php";
-require_once $source."/src/Update/RoutinePublicUpdateService.php";
-require_once $source."/src/Update/IndependentEmergencyRoutineBridge.php";
+require_once $fixture."/r171/src/Update/RoutinePublicUpdateService.php";
+require_once $fixture."/r171/src/Update/IndependentEmergencyRoutineBridge.php";
 
 $zip = new ZipArchive();
 need($zip->open($package) === true, "zip_open");
@@ -55,7 +57,7 @@ need(count($m["compatibility"]["supported_baselines"] ?? []) === 2, "two_exact_h
 $startVersion = trim((string)file_get_contents($source."/VERSION.txt"));
 $approved = array_values(array_filter($m["compatibility"]["supported_baselines"],
     static fn($x) => ($x["version"] ?? "") === $startVersion));
-need(count($approved) === 1, "r171_registered_once");
+need(count($approved) === 1, "exact_baseline_registered_once");
 $baseTree = $approved[0]["managed_tree_sha256"];
 removeTree($root); removeTree($storage);
 mkdir($root, 0700, true); mkdir($storage, 0700, true);
@@ -94,7 +96,7 @@ $bridge = new IndependentEmergencyRoutineBridge($service, $storage,
         return ["ok"=>true,"database"=>"ready","emergency_ready"=>true,
                 "pending_migrations"=>0,"version"=>trim((string)file_get_contents($root."/VERSION.txt"))];
     });
-need(($service->snapshot()["managed_tree_sha256"] ?? "") === $baseTree, "real_php_base_tree");
+need(($service->snapshot()["managed_tree_sha256"] ?? "") === $baseTree, "real_php_installed_tree");
 $tx = "qa-r233-".$mode;
 if ($mode === "emergency") {
     $stage = $bridge->stageUploadedZip($package, $tx);
@@ -122,4 +124,4 @@ $owner = json_decode((string)file_get_contents($root."/src/Update/emergency-owne
 need(($owner["release_version"] ?? null) === $m["version"], "owner_version_matches");
 need(($owner["sha256"] ?? null) === hash_file("sha256", $root."/src/Update/EmergencyOwnerCandidate.php"), "owner_code_sha_matches");
 need(($end["active_version"] ?? $service->snapshot()["active_version"] ?? "") === $m["version"], "commit_confirmed");
-echo "SOKNA_QA_PUBLIC_".strtoupper($mode)."_ONE_EXACT_ZIP_NATIVE_PHP_PASS\n";
+echo "SOKNA_QA_PUBLIC_".strtoupper($baseId)."_".strtoupper($mode)."_ONE_EXACT_ZIP_NATIVE_PHP_PASS\n";
