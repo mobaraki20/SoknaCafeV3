@@ -33,7 +33,7 @@ jobs:
           python3 - <<'PY'
           import pathlib,os,re
           root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r260/qa-public-payload'
-          paths=['setup/api.php','src/Setup/PublicSetupService.php','src/Http/PublicHttpKernel.php','src/Http/InstallationProjectionHttpAdapter.php','src/Http/GuestSyncHttpAdapter.php']
+          paths=['src/Remote/InstallationProjectionService.php']
           paths+=sorted(str(p.relative_to(root)) for p in (root/'database/migrations').glob('*.sql'))[-3:]
           for name in paths:
             p=root/name
