@@ -65,7 +65,7 @@ assert len(new)==len(old)==604
 assert all(new[n]==data for n,data in old.items() if n.startswith('database/migrations/'))
 changed=sorted(n for n in old if old[n]!=new[n]);assert set(changed)==set(paths)|{'VERSION.txt','resources/build-provenance.json','resources/release-identity-v1.json'},changed
 old_target=copy.deepcopy(release['targets']['local']);assert old_target['version']== '3.0.0-g6.2-workspace.231fg-r262-public-move-qa'
-release['release_set_id']=prov['release_set_id'];release['sequence']=202611160264;release['status']='R264_QA_NOT_FIELD_ACCEPTED'
+release['release_set_id']=prov['release_set_id'];release['sequence']=202611160264;release['status']='R264_NATIVE_WINDOWS_PENDING_HOST_ACCEPTANCE'
 # Flags are required by CI native stage, but do not grant actual operator authorization.
 release['for_install']=True;release['production_pass']=True
 assert not any((v.get('local') or {}).get('version')==old_target['version'] for v in release['supported_baselines'])
