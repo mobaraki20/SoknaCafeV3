@@ -12,7 +12,7 @@
     "superseded_through": "OLD-010",
     "new_decisions": 0
   },
-  "phase": "LOCAL_MINIMAL_MOVE_UI_AND_AUTHENTICATED_READ_ONLY_INSPECTION_IMPLEMENTED__CI_PENDING__PRODUCTION_NO_GO",
+  "phase": "LOCAL_MINIMAL_MOVE_UI_AND_AUTHENTICATED_READ_ONLY_INSPECTION_CI_PASS__PRODUCTION_NO_GO",
   "implemented": [
     {
       "item": "One target URL + one action on existing Local Public connections tab; advanced old same-instance rebind disclosed",
@@ -36,14 +36,27 @@
     },
     {
       "item": "Regression matrix and QA workflow",
-      "status": "CI_PENDING",
+      "status": "CI_PASS",
       "paths": [
         "r258/test-local-ui-inspection.php",
         ".github/workflows/sokna-r258-public-move-ui.yml"
       ]
     }
   ],
-  "validated_ci": [],
+  "validated_ci": [
+    {
+      "url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43810352310",
+      "conclusion": "success",
+      "head_sha": "ff3a5d0ef391a617488fccf971d183315486f300",
+      "checks": {
+        "r258_security_and_ui": 21,
+        "r251_discovery_readonly": 55,
+        "decisions_active": 17,
+        "decisions_historical": 10
+      },
+      "qa_only": true
+    }
+  ],
   "limitations": [
     "QA inspection does not initiate independent target consent or cutover",
     "No destination owner HTML consent page/secure cross-host challenge transport yet",
@@ -55,8 +68,9 @@
   ],
   "pending": [
     {
-      "item": "R258 CI green and code/source review",
-      "status": "PENDING"
+      "item": "R258 QA CI green (21 checks, 55 decision regressions); source review of read-only actions",
+      "status": "DONE_QA_ONLY",
+      "run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43810352310"
     },
     {
       "item": "Existing/fresh Public destination owner consent UI and authenticated receipt transport",
@@ -92,5 +106,5 @@
     "receipt_or_nonce_alone_authorizes_cutover": false
   },
   "next_action": "Validate R258 CI and fix if red; then integrate destination owner consent browser flow and trusted real Local server-side session/CSRF/one-time approval ledger on pinned real cumulative payload; do NOT publish before authority and data reconciliation E2E.",
-  "handoff": "Read r251 decisions and R257 checkpoint, then r258/START-HERE-FA.md and STATUS.json. R258 UI only reviews same-instance signed preflight; it is never a Public independent transfer or production release."
+  "handoff": "Read r251 decisions, R257 checkpoint, then r258/START-HERE-FA.md and STATUS.json. R258 scope is a verified read-only same-instance preview, CI PASS 21 checks, 55 prior regressions; independent Public consent/Local cutover remain NOT IMPLEMENTED. No release."
 }
