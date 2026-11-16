@@ -1,6 +1,7 @@
 name: SOKNA Release DB QA - frozen source, MariaDB 11.4, no host
 
 on:
+  workflow_call:
   pull_request:
     paths:
       - 'release-ops/**'
