@@ -64,6 +64,11 @@ final class PublicMoveExistingOwnerActivation
         if ($csrf === '' || !(hash_equals($expected, $csrf) || hash_equals($previous, $csrf))) {
             throw new RuntimeException('upgrade_owner_csrf_rejected');
         }
+        // Validate user input BEFORE staging a short-lived claim, so a typo
+        // cannot strand the installer in a pending-claim state.
+        if (strlen($newOwnerPassword)<12 || strlen($newOwnerPassword)>256) {
+            throw new InvalidArgumentException('invalid_owner_password_length');
+        }
         if ($this->owners->initialized($this->trustedPublicInstanceId)) {
             throw new RuntimeException('upgrade_owner_already_exists');
         }
