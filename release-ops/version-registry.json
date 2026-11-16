@@ -1,0 +1,59 @@
+{
+  "format": "sokna-release-version-ledger-v1",
+  "updated_at": "2026-11-16",
+  "historical_complete": false,
+  "scope": "publication-only; never infer installed version from this register",
+  "quarantined_short_versions": [
+    "35gg"
+  ],
+  "released": [],
+  "instructions": "Add only immutable, actually approved component/kind/short_code/version/sha256 records with source evidence. Do not seed from filenames, branches or a successful source-only CI. Historical backfill remains NOT_PROVEN.",
+  "observed": [
+    {
+      "component": "local",
+      "kind": "local-update",
+      "short_code": "231fa",
+      "version": "3.0.0-g6.2-workspace.231fa-r201-cash-refund-cancel-canary",
+      "sha256": "911ea673dc1863bee3ce372dbc692602aa3a32439d2fc9ccba69dc2a6c243897",
+      "status": "EXACT_GITHUB_ARCHIVE_STATIC_ONLY",
+      "evidence": "GitHub Actions run 43491934082"
+    },
+    {
+      "component": "public",
+      "kind": "public-update",
+      "short_code": "35ht",
+      "version": "3.0.0-g3.6-workspace.35ht-r171-cumulative-staff-expenses-uat",
+      "sha256": "ea1d2f7d90242d5b45fe232da7ff5510f03ee55c835e2dabe5f61980430be157",
+      "status": "EXACT_GITHUB_ARCHIVE_STATIC_FAIL",
+      "evidence": "GitHub Actions run 43205002445"
+    },
+    {
+      "component": "local",
+      "kind": "local-legacy-update",
+      "short_code": "231fc",
+      "version": "3.0.0-g6.2-workspace.231fc-r233-qa",
+      "sha256": "45caa57d8751635fec2038ef8c40cdda0d4e4c494a2e8061948ffa4dbf1da31e",
+      "status": "REPORTED_QA_ONLY_NOT_INSTALLABLE",
+      "evidence": "Library R233-PRE-RELEASE-CHECKSUMS-AND-GATES.json"
+    },
+    {
+      "component": "public",
+      "kind": "public-update",
+      "short_code": "35hz",
+      "version": "3.0.0-g3.6-workspace.35hz-r233-qa",
+      "sha256": "af84a51983f66adfb1440a9a6824f3c76ed1a305ddecbe611bd6e6bb493daf39",
+      "status": "REPORTED_QA_ONLY_NOT_INSTALLABLE",
+      "evidence": "Library R233-PRE-RELEASE-CHECKSUMS-AND-GATES.json"
+    },
+    {
+      "component": "public",
+      "kind": "public-clean",
+      "short_code": "35hz",
+      "version": "3.0.0-g3.6-workspace.35hz-r233-qa",
+      "sha256": "8942185c2aa788ecfd35fb6007de9fdcef94145e8d688b4d2a3f8415b6df8b8d",
+      "status": "REPORTED_QA_ONLY_NOT_INSTALLABLE",
+      "evidence": "Library R233-PRE-RELEASE-CHECKSUMS-AND-GATES.json"
+    }
+  ],
+  "note": "Incomplete historical registry. 'observed' includes exact externally verified GitHub archive SHAs and separately labeled QA-only report fingerprints; observed != released/installed. Never infer production from this ledger. Do not reuse an observed version identity for different bytes."
+}

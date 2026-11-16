@@ -1,0 +1,241 @@
+name: SOKNA Release Assurance - exact archive, READ ONLY
+
+on:
+  push:
+    branches:
+      - release/sokna-qa001-publication-assurance-20261116
+    paths:
+      - 'release-ops/**'
+      - 'AGENTS.md'
+      - '.github/workflows/sokna-release-assurance.yml'
+  pull_request:
+    paths:
+      - 'release-ops/**'
+      - 'AGENTS.md'
+      - '.github/workflows/sokna-release-assurance.yml'
+  workflow_call:
+    inputs:
+      source_artifact_run_id:
+        description: 'Existing source archive artifact run ID (same run if empty)'
+        type: string
+        required: false
+        default: ''
+      source_artifact_name:
+        description: 'Artifact containing one exact pinned full source ZIP'
+        type: string
+        required: true
+      source_checkpoint:
+        description: 'Exact source-register.json checkpoint, not latest guessed from branch'
+        type: string
+        required: true
+      source_component:
+        description: 'local or public'
+        type: string
+        required: true
+      artifact_run_id:
+        description: 'Run ID with candidate artifact; defaults to invoking workflow run'
+        type: string
+        required: false
+        default: ''
+      artifact_name:
+        description: 'Exact candidate artifact name'
+        type: string
+        required: true
+      expected_sha256:
+        description: 'Exact candidate ZIP SHA256'
+        type: string
+        required: true
+      kind:
+        description: 'auto, local-update, public-update, local-clean, public-clean'
+        type: string
+        required: false
+        default: auto
+  workflow_dispatch:
+    inputs:
+      source_artifact_run_id:
+        description: 'Optional run ID holding full source archive'
+        type: string
+        required: false
+        default: ''
+      source_artifact_name:
+        description: 'Optional artifact holding one source ZIP'
+        type: string
+        required: false
+        default: ''
+      source_checkpoint:
+        description: 'Pinned source checkpoint from source-register.json'
+        type: string
+        required: false
+        default: ''
+      source_component:
+        description: 'Source component'
+        type: choice
+        options: [local, public]
+        default: local
+        required: false
+      artifact_run_id:
+        description: 'Existing GitHub Actions run ID containing candidate ZIP (empty for self-tests only)'
+        type: string
+        required: false
+        default: ''
+      artifact_name:
+        description: 'Artifact containing EXACTLY one Local/Public Update or Clean Install ZIP'
+        type: string
+        required: false
+        default: ''
+      expected_sha256:
+        description: 'SHA256 of exact candidate ZIP'
+        type: string
+        required: false
+        default: ''
+      kind:
+        description: 'Expected package kind'
+        type: choice
+        options: [auto, local-update, local-legacy-update, public-update, local-clean, public-clean]
+        default: auto
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sokna-release-audit-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  historical-regressions:
+    name: Verify R75/R99/R105/R240 and format negative gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Compile read-only auditor
+        run: python3 -m py_compile release-ops/audit.py release-ops/source_gate.py release-ops/tests/test_audit.py release-ops/tests/test_source_gate.py
+      - name: Test SAME auditor with synthetic valid, corrupt and regression fixtures
+        run: python3 -m unittest discover -s release-ops/tests -p 'test_*.py' -v
+      - name: Confirm publication code cannot deploy or change product
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e release-ops/.env
+          python3 - <<'PY'
+          import pathlib
+          auditor=pathlib.Path('release-ops/audit.py').read_text(encoding='utf-8')
+          forbidden=['subprocess.run(', 'os.system(', 'requests.post(', 'urllib.request.urlopen(', 'GitHubRelease(', 'git push', 'install_service(', 'migrate_database(']
+          hits=[x for x in forbidden if x in auditor]
+          assert not hits, hits
+          assert 'release_authorized' in auditor and 'False' in auditor
+          print('READ_ONLY_NON_DEPLOY_GATE_PASS')
+          PY
+      - name: No product or Windows source may be changed by this PR
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse --verify HEAD^1 >/dev/null
+          git diff --name-only HEAD^1 HEAD > changed-files.txt
+          cat changed-files.txt
+          if grep -v -E '^(AGENTS\.md|release-ops/.*|\.github/workflows/sokna-release-assurance\.yml)$' changed-files.txt; then
+            echo 'SCOPE_VIOLATION: only release operations docs, auditor and workflow may change'; exit 4
+          fi
+
+  candidate-audit:
+    name: Inspect exact final ZIP; no release promotion
+    needs: historical-regressions
+    if: ${{ inputs.artifact_name != '' && inputs.expected_sha256 != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate immutable candidate selection
+        shell: bash
+        env:
+          RUN_ID: ${{ inputs.artifact_run_id || github.run_id }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          EXPECTED_SHA: ${{ inputs.expected_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'RUN_ID_REQUIRED'; exit 2; }
+          test -n "$ARTIFACT_NAME" || { echo 'ARTIFACT_NAME_REQUIRED'; exit 2; }
+          [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{64}$ ]] || { echo 'EXACT_SHA256_REQUIRED'; exit 2; }
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          run-id: ${{ inputs.artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+          path: candidate
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.source_artifact_name != '' }}
+        with:
+          name: ${{ inputs.source_artifact_name }}
+          run-id: ${{ inputs.source_artifact_run_id || inputs.artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+          path: source-snapshot
+      - name: Inspect one exact ZIP with portable offline auditor
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha256 }}
+          REQUESTED_KIND: ${{ inputs.kind }}
+        run: |
+          set -euo pipefail
+          mkdir -p audit-out
+          mapfile -d '' -t ZIPS < <(find candidate -type f -iname '*.zip' -print0)
+          if [[ "${#ZIPS[@]}" -ne 1 ]]; then
+            echo 'EXACTLY_ONE_FINAL_ZIP_REQUIRED'; exit 2
+          fi
+          PARAMS=(--kind "$REQUESTED_KIND" --expected-sha256 "$EXPECTED_SHA"
+                  --version-registry release-ops/version-registry.json
+                  --report audit-out/release-audit.json)
+          [[ ! -f candidate/baseline-catalog.json ]] || PARAMS+=(--baseline-catalog candidate/baseline-catalog.json)
+          [[ ! -f candidate/accepted-fixes.json ]] || PARAMS+=(--accepted-fixes candidate/accepted-fixes.json)
+          [[ ! -f candidate/route-evidence.json ]] || PARAMS+=(--route-evidence candidate/route-evidence.json)
+          python3 release-ops/audit.py "${ZIPS[0]}" "${PARAMS[@]}"
+          echo 'STATIC_INSPECTION_COMPLETE. NO INSTALL, NO PROMOTION, NO PRODUCTION CLAIM.'
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          r=json.load(open('audit-out/release-audit.json'))
+          print('### SOKNA read-only artifact audit')
+          print('**Static:**',r['static'],'| **Kind:**',r['kind'],'| **Version:**',r['version'])
+          print('**SHA256:**',r['sha256'])
+          print('**Release authorized:** **NO** — native host/DB/behavior acceptance is separate')
+          print('**Blocking errors:**',', '.join(r['errors']) or 'none in static scope')
+          print('**Not proven:**',', '.join(r['not_proven']) or 'none in static scope')
+          PY
+      - name: Verify exact source ZIP and byte-identical functional code of final candidate
+        if: ${{ inputs.source_artifact_name != '' }}
+        shell: bash
+        env:
+          SOURCE_COMPONENT: ${{ inputs.source_component }}
+          SOURCE_CHECKPOINT: ${{ inputs.source_checkpoint }}
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_CHECKPOINT" || { echo 'SOURCE_CHECKPOINT_REQUIRED'; exit 2; }
+          test "$SOURCE_COMPONENT" = local || test "$SOURCE_COMPONENT" = public
+          mapfile -d '' -t SRC_ZIPS < <(find source-snapshot -type f -iname '*.zip' -print0)
+          mapfile -d '' -t FINAL_ZIPS < <(find candidate -type f -iname '*.zip' -print0)
+          if [[ "${#SRC_ZIPS[@]}" -ne 1 || "${#FINAL_ZIPS[@]}" -ne 1 ]]; then
+            echo 'EXACTLY_ONE_SOURCE_AND_FINAL_ZIP_REQUIRED'; exit 2
+          fi
+          ROUTE="$(python3 - <<'PY'
+          import json
+          kind=json.load(open('audit-out/release-audit.json'))['kind']
+          routes={'local-update':'local-maintenance-update',
+                  'local-legacy-update':'local-legacy-update',
+                  'public-update':'public-update',
+                  'public-clean':'public-root-clean'}
+          print(routes.get(kind,'UNSUPPORTED_CLEAN_ROUTE'))
+          PY
+          )"
+          [[ "$ROUTE" != UNSUPPORTED_CLEAN_ROUTE ]] || { echo 'SOURCE_TO_FINAL_ROUTE_NOT_YET_QUALIFIED'; exit 3; }
+          python3 release-ops/source_gate.py --register release-ops/source-register.json --source "${SRC_ZIPS[0]}"             --checkpoint "$SOURCE_CHECKPOINT" --component "$SOURCE_COMPONENT"             --candidate "${FINAL_ZIPS[0]}" --route "$ROUTE"             --report audit-out/source-to-final.json --require-output-ready
+          echo 'SOURCE_SHA_AND_FUNCTIONAL_BYTE_PRESERVATION_PASS. STILL NOT HOST INSTALL APPROVAL.'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sokna-release-readonly-audit
+          path: audit-out/
+          if-no-files-found: ignore
+          retention-days: 30
