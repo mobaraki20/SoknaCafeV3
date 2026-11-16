@@ -3,7 +3,8 @@ on:
   push:
     branches: [qa/sokna-r259-owner-approval-flow-20261116]
     paths:
-      - r259/**
+      - r259/*.php
+      - r259/*.py
       - apps/public/assets/sokna-public-move.*
       - apps/public/src/Http/PublicMoveConsentPage.php
       - apps/local-web/src/Domain/PublicEdge/PublicMove*
