@@ -172,5 +172,43 @@ class SourceGate(unittest.TestCase):
         self.assertEqual(r["source_integrity"], "PASS", r)
 
 
+
+    def test_slot_managed_candidate_must_rebuild_exact_593_file_inventory(self):
+        source_files = dict(self.local)
+        for i in range(3):
+            source_files[f"src/NewFeature/{i}.php"] = b"<?php echo 'new';"
+        src, reg = self.pin("local", source_files)
+        target = dict(source_files)
+        target["VERSION.txt"] = b"new-local-v2\n"
+        target["resources/local-managed-files-v1.json"] = canonical({
+            "format": "sokna-local-managed-files-v1", "files": sorted(target)
+        })
+        inner = zip_bytes(target)
+        final = self.base / "slot-release.zip"
+        final.write_bytes(zip_bytes({
+            "release-set.json": canonical({"format": "sokna-maintenance-release-set-v2.1"}),
+            "artifacts/local/web.zip": inner,
+        }))
+        r = g.inspect(src, "T", "local", reg, final, "local-maintenance-update")
+        self.assertEqual(r["source_integrity"], "PASS", r)
+        self.assertNotIn("LOCAL_MAINTENANCE_TARGET_INVENTORY_INCOMPLETE", r["release_blockers"])
+        self.assertEqual(r["candidate_comparison"]["functional_drift_count"], 0)
+        broken = dict(target)
+        broken["resources/local-managed-files-v1.json"] = source_files["resources/local-managed-files-v1.json"]
+        final.write_bytes(zip_bytes({"release-set.json": b"{}",
+                                    "artifacts/local/web.zip": zip_bytes(broken)}))
+        r2 = g.inspect(src, "T", "local", reg, final, "local-maintenance-update")
+        self.assertIn("MAINTENANCE_CANDIDATE_INVENTORY_MISMATCH", r2["errors"])
+
+    def test_public_candidate_owner_must_be_restamped(self):
+        src, reg = self.pin("public", self.public)
+        final = self.base / "bad-clean.zip"
+        target = dict(self.public)
+        target["VERSION.txt"] = b"new-public-v2\n"
+        final.write_bytes(zip_bytes(target))
+        r = g.inspect(src, "T", "public", reg, final, "public-root-clean")
+        self.assertIn("CANDIDATE_PUBLIC_OWNER_RELEASE_IDENTITY_STALE", r["errors"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
