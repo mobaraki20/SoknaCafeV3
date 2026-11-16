@@ -131,6 +131,7 @@ jobs:
               assert a==b, 'DATA_CHANGED_AFTER_REAL_MIGRATION_RERUN_'+x
           print('PASS_DISPOSABLE_DATABASE_MIGRATION_REAPPLY_DATA_PRESERVATION')
           PY
+          echo 'SOKNA_PUBLIC_CORE_MIGRATION_REAPPLY_PASS=true' >> "$GITHUB_ENV"
       - name: Build disposable same-SHA Public ZIP and both authentic archived baseline trees; NOT installable
         shell: bash
         run: |
@@ -177,6 +178,7 @@ jobs:
           assert a == b, 'REAL_PUBLIC_DB_DATA_CHANGED_BY_ROUTINE_OR_EMERGENCY'
           print('PASS_PUBLIC_REAL_MARIADB_ALL_TABLES_UNCHANGED_THROUGH_FOUR_OWNER_ROUTES')
           PY
+          echo 'SOKNA_PUBLIC_OWNER_DB_FOUR_ROUTE_PASS=true' >> "$GITHUB_ENV"
       - name: Make consistent database backups, restore to two new schemas, compare entire logical contents
         shell: bash
         run: |
@@ -217,8 +219,8 @@ jobs:
             'installed_old_database_upgrade':'NOT_RUN',
             'native_maintenance_db_forward_fence':'NOT_RUN',
             'real_host_backup_restore':'NOT_RUN',
-            'public_owner_migration_reapply':'PASS_DISPOSABLE_R233_CORE_MIGRATOR_NOOP',
-            'public_routine_emergency_with_real_db':'PASS_DISPOSABLE_TWO_BASELINES_FOUR_ROUTES',
+            'public_owner_migration_reapply':('PASS_DISPOSABLE_R233_CORE_MIGRATOR_NOOP' if __import__('os').environ.get('SOKNA_PUBLIC_CORE_MIGRATION_REAPPLY_PASS')=='true' else 'FAIL_OR_NOT_RUN'),
+            'public_routine_emergency_with_real_db':('PASS_DISPOSABLE_TWO_BASELINES_FOUR_ROUTES' if __import__('os').environ.get('SOKNA_PUBLIC_OWNER_DB_FOUR_ROUTE_PASS')=='true' else 'FAIL_OR_NOT_RUN'),
             'live_database_modified':False,
             'credentials_or_db_dumps_uploaded':False,
             'release_authorized':False
