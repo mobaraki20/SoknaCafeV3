@@ -38,7 +38,7 @@ jobs:
       - name: PHP, JavaScript, Python syntax of actual changed code
         run: |
           set -euo pipefail
-          for f in apps/local-web/public/integrations/api.php apps/local-web/public/integrations/index.php apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php apps/local-web/src/Domain/PublicEdge/PublicReenrollmentService.php apps/local-web/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php apps/local-web/bootstrap.php apps/public/src/Security/PublicMoveReplacementGate.php r260/test_real_public_replacement.php; do php -l "$f"; done
+          for f in apps/local-web/public/integrations/api.php apps/local-web/public/integrations/index.php apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php apps/local-web/src/Domain/PublicEdge/PublicReenrollmentService.php apps/local-web/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php apps/local-web/bootstrap.php apps/public/src/Security/PublicMoveReplacementGate.php r260/test_real_public_replacement.php r260/test_local_ledger_completion.php; do php -l "$f"; done
           node --check apps/public/assets/sokna-public-move.js
           node --check apps/local-web/public/assets/connections-workspace.js
           python3 -m py_compile r260/integrate_real_public.py
@@ -89,4 +89,6 @@ jobs:
           grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r260-setup.txt
           php r260/test_real_public_replacement.php | tee /tmp/r260-replacement.txt
           grep -q 'R260_REAL_PUBLIC_REPLACEMENT_GATE_PASS count=' /tmp/r260-replacement.txt
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r260_local CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          R260_LEDGER_DSN='mysql:host=127.0.0.1;port=3306;dbname=sokna_r260_local;charset=utf8mb4' R260_DB_PASSWORD='qa-only' php r260/test_local_ledger_completion.php
           echo R260_EMPTY_PUBLIC_REPLACEMENT_REAL_GATE_PASS_NO_OPERATOR_INSTALLER
