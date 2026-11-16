@@ -101,12 +101,15 @@ jobs:
           mkdir -p intake-report
           SOURCE="source-only/$SOURCE_FILE"
           test -f "$SOURCE" || { echo 'PINNED_SOURCE_ARCHIVE_MISSING'; exit 2; }
-          python3 -m py_compile release-ops/intake.py release-ops/db_gate.py
+          python3 -m py_compile release-ops/intake.py release-ops/db_gate.py release-ops/module_coverage_gate.py
           python3 release-ops/intake.py --source "$SOURCE" --component "$COMPONENT" \
             --kind "$PACKAGE_KIND" --checkpoint "$CHECKPOINT" --target-version "$TARGET_VERSION" \
             --report intake-report/source-intake.json
           python3 release-ops/db_gate.py --source "$SOURCE" --component "$COMPONENT" \
             --checkpoint "$CHECKPOINT" --report intake-report/db-migration-lineage.json
+          python3 release-ops/module_coverage_gate.py --source "$SOURCE" --component "$COMPONENT" \
+            --report intake-report/module-coverage.json
+          echo 'PASS_REGISTERED_SOURCE_MODULES_MAPPED_TO_RELEASE_RISK_IDS_INVENTORY_ONLY'
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
           d=json.load(open('intake-report/source-intake.json'))

@@ -48,6 +48,10 @@ jobs:
           printf '783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d  source-only/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip\n' | sha256sum -c -
           printf '8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b  source-only/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip\n' | sha256sum -c -
           echo 'BYTE_EXACT_R233_SOURCE_ONLY_REPLAY_PASS'
+          mkdir -p qa-module-coverage
+          python3 release-ops/module_coverage_gate.py --source source-only/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip --component local --report qa-module-coverage/local.json
+          python3 release-ops/module_coverage_gate.py --source source-only/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip --component public --report qa-module-coverage/public.json
+          echo 'PASS_ALL_REGISTERED_LOCAL_AND_PUBLIC_SOURCE_MODULES_HAVE_RISK_OWNER_INVENTORY_ONLY'
       - name: Rehearse existing R233 flat-root Public Clean packaging on ephemeral source
         shell: bash
         run: |

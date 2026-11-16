@@ -1,0 +1,209 @@
+{
+  "format": "sokna-module-coverage-map-v1",
+  "basis": "R233 immutable Local/Public full source ZIPs; update only after review of approved new source and 72-control audit register",
+  "meaning": "Directory presence maps to a risk-control owner; NOT proof that behavior or installation passes",
+  "local_src": {
+    "Core": [
+      "DB-01",
+      "SEC-01"
+    ],
+    "Domain": [
+      "QA-01"
+    ],
+    "Http": [
+      "SEC-01",
+      "SEC-03"
+    ],
+    "Relay": [
+      "COM-03"
+    ],
+    "Runtime": [
+      "WIN-06"
+    ],
+    "Search": [
+      "FIN-06",
+      "SEC-01"
+    ],
+    "Setup": [
+      "PKG-02",
+      "DB-03"
+    ],
+    "Shared": [
+      "SEC-06"
+    ],
+    "UI": [
+      "SEC-06"
+    ]
+  },
+  "local_domain": {
+    "Account": [
+      "MOD-01",
+      "SEC-01"
+    ],
+    "Admin": [
+      "MOD-02",
+      "SEC-03"
+    ],
+    "Expenses": [
+      "MOD-03",
+      "FIN-07"
+    ],
+    "Finance": [
+      "FIN-01",
+      "FIN-02",
+      "FIN-03",
+      "FIN-08"
+    ],
+    "GuestContent": [
+      "MOD-04",
+      "COM-06"
+    ],
+    "GuestLan": [
+      "MOD-05",
+      "COM-06"
+    ],
+    "Integrations": [
+      "MOD-06",
+      "COM-04"
+    ],
+    "Inventory": [
+      "FIN-05",
+      "DB-08"
+    ],
+    "LanStaff": [
+      "COM-06",
+      "SEC-01"
+    ],
+    "Marketing": [
+      "MOD-07",
+      "FIN-06"
+    ],
+    "Notifications": [
+      "COM-05"
+    ],
+    "Operations": [
+      "MOD-08",
+      "COM-02"
+    ],
+    "Orders": [
+      "FIN-09",
+      "DB-06"
+    ],
+    "Preparation": [
+      "MOD-09",
+      "PRN-02"
+    ],
+    "Printing": [
+      "PRN-01",
+      "PRN-05"
+    ],
+    "PublicEdge": [
+      "COM-01",
+      "COM-02",
+      "COM-04"
+    ],
+    "Recovery": [
+      "DB-04",
+      "SEC-04"
+    ],
+    "Reporting": [
+      "FIN-08"
+    ],
+    "Sellables": [
+      "FIN-06",
+      "FIN-10"
+    ],
+    "StaffConsumption": [
+      "FIN-07"
+    ],
+    "Supply": [
+      "FIN-07"
+    ],
+    "System": [
+      "WIN-06",
+      "DB-07"
+    ],
+    "Tax": [
+      "MOD-10",
+      "FIN-01"
+    ],
+    "Update": [
+      "PKG-01",
+      "PKG-02",
+      "PKG-07"
+    ]
+  },
+  "public_src": {
+    "Auth": [
+      "SEC-01",
+      "SEC-02"
+    ],
+    "Authority": [
+      "COM-03",
+      "COM-04"
+    ],
+    "Connectivity": [
+      "COM-03"
+    ],
+    "Core": [
+      "DB-02",
+      "PKG-04"
+    ],
+    "Deferred": [
+      "COM-03"
+    ],
+    "Deployment": [
+      "COM-04",
+      "SEC-07"
+    ],
+    "Emergency": [
+      "PKG-03",
+      "PKG-05"
+    ],
+    "Guest": [
+      "COM-06",
+      "COM-05"
+    ],
+    "Health": [
+      "QA-04"
+    ],
+    "Http": [
+      "SEC-03",
+      "PKG-04"
+    ],
+    "Maintenance": [
+      "SEC-04",
+      "PKG-05"
+    ],
+    "Realtime": [
+      "COM-03"
+    ],
+    "Recovery": [
+      "PKG-07"
+    ],
+    "Remote": [
+      "COM-02"
+    ],
+    "Security": [
+      "SEC-03"
+    ],
+    "Setup": [
+      "PKG-04",
+      "DB-02"
+    ],
+    "Shared": [
+      "SEC-06"
+    ],
+    "Staff": [
+      "COM-06",
+      "SEC-01"
+    ],
+    "UI": [
+      "SEC-06"
+    ],
+    "Update": [
+      "PKG-03",
+      "PKG-05"
+    ]
+  }
+}
