@@ -3,7 +3,7 @@
 **تاریخ:** ۱۶ نوامبر ۲۰۲۶  
 **شاخه:** `qa/sokna-r258-universal-public-move-ui-20261116`  
 **مبنا:** `qa/sokna-r257-existing-public-consent-receipt-20261116`  
-**وضعیت:** پیاده‌سازی گام اول UI/HTTP Local، آزمون CI در حال ارزیابی؛ **Production NO-GO**.
+**وضعیت:** پیاده‌سازی گام اول UI/HTTP Local؛ **QA PASS (۲۱ کنترل R258، ۵۵ کنترل بازگشتی R251)**؛ **Production NO-GO**.
 
 ## هدف تغییرناپذیر
 موتور انتقال Local/Public برای هر کافه و هر نصب مستقل، با دامنه و زیرپوشه و نسخهٔ متفاوت؛ بدون ثابت‌های مشتری، بدون SQL یا Emergency در مسیر معمول کاربر، و با حفاظت از داده و یک authority فعال. تصمیم‌های `MIG-001..MIG-017` و تاریخچهٔ `OLD-001..OLD-010` در `r251/decisions.json` معتبرند؛ این مرحله هیچ تصمیم محصولی را تغییر نمی‌دهد.
@@ -15,6 +15,11 @@
 4. اگر پیش‌بررسی همان نصب واقعاً موفق و همسان با URL های معتبر باشد، فقط `ready_for_review` برمی‌گرداند. اگر امضا، هویت یا اتصال معتبر نباشد، نتیجه `awaiting_owner` یا blocked است. نتیجهٔ mismatch **دلیل قطعی مستقل بودن مقصد نیست**. هیچ تغییر آدرس، رمز، مالی، چاپ، migration، ledger، سفارش‌گیری یا cutover رخ نمی‌دهد.
 5. PHP/JS lint، آزمون سناریوهای root/subfolder، URL آلوده، وضعیت recovery، شواهد جعلی/ناقص، نقص شبکه و ممنوعیت cutover در CI مخصوص R258 قرار گرفتند.
 
+## تأیید آزمون
+- اجرای موفق: https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43810352310
+- نتیجه: syntax PHP/JS موفق؛ ۲۱ آزمون R258 و ۵۵ آزمون R251 موفق؛ دفتر تصمیم‌ها ۱۷ تصمیم فعال و ۱۰ تصمیم تاریخی معتبر.
+- این تأیید فقط برای مرحلهٔ read-only رابط Local است، نه انتقال مستقل یا انتشار.
+
 ## مرز مهم: چه چیزی هنوز انجام نشده
 - صفحهٔ مالک مقصد در Public موجود/تازه، انتقال امن challenge و receipt روی HTTP و اتصال واقعی تأیید جداگانهٔ مدیر Local به ledger رسمی هنوز پیاده‌سازی و آزمون E2E نشده‌اند.
 - سرویس R257 `PublicMoveLocalApprovalService` هنوز به کوکی و نشست واقعی Local متصل نیست؛ صرف داشتن کلاس امنیتی کافی نیست.
@@ -25,7 +30,7 @@
 
 ## دستور ادامهٔ دقیق
 1. پیش از هر کد تازه `r251/DECISIONS-FA.md`، `r251/decisions.json`، `r257/START-HERE-FA.md`، `r257/STATUS.json` و این فایل و `r258/STATUS.json` را بخوان.
-2. نتیجهٔ CI `.github/workflows/sokna-r258-public-move-ui.yml` را بررسی؛ شکست‌ها را رفع و STATUS را به‌روز کن. PASS آزمون واحد هرگز Production PASS نیست.
+2. ابتدا CI سبز R258 را مرور و در هر تغییر جدید دوباره اجرا کن؛ هر شکست تازه را رفع و STATUS را به‌روز کن. PASS آزمون واحد هرگز Production PASS نیست.
 3. روی سورس واقعی R249/35IC Public با ۸ migration پایه و overlayهای 0009/0010 ادامه بده؛ owner consent screen را با cookie HttpOnly، session واقعی، Origin/CSRF و challenge server-bound بساز. برای Local با session واقعی و ledger مجزا؛ به مرورگر برای نتیجهٔ proof اعتماد نکن.
 4. سپس orchestrator ادامه‌پذیر با preflight بدون تغییر، snapshot، media+finance+pending orders reconciliation، epoch fencing و readback بنویس؛ اول روی دو مشتری ساختگی با root/subfolder و نسخه‌های متفاوت، قطع شبکه/برق و recovery آزمون کن.
 5. فقط پس از تأیید end-to-end، تطبیق با payloadهای واقعی و کسب موافقت کاربر، انتشار نهایی را بررسی کن.
