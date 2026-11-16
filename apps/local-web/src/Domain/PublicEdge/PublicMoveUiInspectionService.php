@@ -35,6 +35,10 @@ final class PublicMoveUiInspectionService
         // Validation, unchanged URL, and authority recovery all short-circuit
         // BEFORE any network request. Never accept browser "verified" evidence.
         if (($base['reason_code']??'')!=='health_not_checked') return $base;
+        if ($this->authorityPhase!=='active') {
+            return self::finish($base,'local_recovery_required','blocked',
+                'اتصال فعلی ابتدا باید از وضعیت بازیابی خارج شود؛ انتقال آغاز نشده است.');
+        }
         if (($base['current_base_url']??null)===null) {
             return self::finish($base,'connection_not_configured','blocked',
                 'ابتدا اتصال فعلی وب عمومی باید روشن و تأیید شود.');
