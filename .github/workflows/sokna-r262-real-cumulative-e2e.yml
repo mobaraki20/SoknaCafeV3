@@ -1,0 +1,176 @@
+name: SOKNA R262 R241 Cumulative Real Local Public E2E
+on:
+  push:
+    branches: [qa/sokna-r262-cumulative-source-20261116]
+    paths:
+      - r262/**
+      - .github/workflows/sokna-r262-real-cumulative-e2e.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-local-public:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+          MARIADB_DATABASE: sokna_r261_public
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare only disposable Local and Public
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-mysql php-zip
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r261_local CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          mkdir -p "$RUNNER_TEMP/r261/r249" "$RUNNER_TEMP/r261/work" "$RUNNER_TEMP/r261/private"
+          gh run download 43749990301 -R "$GITHUB_REPOSITORY" -n sokna-r249-dual-baseline-gated-public-candidate -D "$RUNNER_TEMP/r261/r249"
+          python3 - <<'PY'
+          import pathlib,hashlib,os
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r261/r249'
+          matches=[p for p in root.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()=='5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4']
+          if len(matches)!=1:raise SystemExit('R261_PINNED_R249_NOT_FOUND')
+          (root/'pin.txt').write_text(str(matches[0]))
+          PY
+          python3 r260/integrate_real_public.py --r249 "$(cat "$RUNNER_TEMP/r261/r249/pin.txt")" --repo . --out "$RUNNER_TEMP/r261/work"
+          cp -a "$RUNNER_TEMP/r261/work/qa-public-payload" "$RUNNER_TEMP/r261/public"
+          mkdir -p "$RUNNER_TEMP/r261/public/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$RUNNER_TEMP/r261/public/src/Emergency/"
+          # Use the exact prior Windows-qualified R241 package; never run the
+          # older GitHub local-web tree as the product build.
+          mkdir -p "$RUNNER_TEMP/r262/r241" "$RUNNER_TEMP/r262/local-base" "$RUNNER_TEMP/r262/output"
+          gh run download 43705649864 -R "$GITHUB_REPOSITORY" -n R241-FINAL-EXACT-INSTALLABLE-REPLAY-ONLY -D "$RUNNER_TEMP/r262/r241"
+          python3 - <<'PY'
+          import os,pathlib,zipfile,io,hashlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r262'
+          outer=root/'r241/SOKNA-R241-LOCAL-231FA-CUMULATIVE-CONNECTION-RECOVERY.zip'
+          assert hashlib.sha256(outer.read_bytes()).hexdigest()=='2ec84cff9481ca0350dea9401c5b1bb1437f29e7e96f1d1c80f0739f8c7c992b'
+          with zipfile.ZipFile(outer) as z:
+           inner=z.read('artifacts/local/web.zip')
+           assert hashlib.sha256(inner).hexdigest()=='a692a9bc639516da48e0c4d798b97b14e514f2c103ec02bc083f912d1e70dc9b'
+          with zipfile.ZipFile(io.BytesIO(inner)) as z:z.extractall(root/'local-base')
+          PY
+          export R262_BASE_ROOT="$RUNNER_TEMP/r262/local-base"
+          export R262_OVERLAY_ROOT="$GITHUB_WORKSPACE/apps/local-web"
+          export R262_MERGED_ROOT="$RUNNER_TEMP/r261/local-web"
+          export R262_OUTPUT_DIR="$RUNNER_TEMP/r262/output"
+          export R262_SQL_SOURCE="$GITHUB_WORKSPACE/r261/overlay/local/database/migrations/0082_public_move_owner_approval.sql"
+          export R262_SOURCE_PACKAGE="$RUNNER_TEMP/r262/r241/SOKNA-R241-LOCAL-231FA-CUMULATIVE-CONNECTION-RECOVERY.zip"
+          python3 r262/build_cumulative_local.py
+          grep -q '"unchanged_original_files": 586' "$R262_OUTPUT_DIR/R262-LOCAL-MERGE-REPORT.json"
+          grep -q '"migrations_after": 82' "$R262_OUTPUT_DIR/R262-LOCAL-MERGE-REPORT.json"
+          php -l "$RUNNER_TEMP/r261/local-web/bootstrap.php"
+          php -l "$RUNNER_TEMP/r261/local-web/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php"
+          php -l "$RUNNER_TEMP/r261/local-web/public/integrations/api.php"
+          node --check "$RUNNER_TEMP/r261/local-web/public/assets/connections-workspace.js"
+          echo R262_EXACT_R241_CUMULATIVE_LOCAL_SOURCE_PARITY_PASS
+          php -l r261/test-real-local-public.php
+          php -l r261/prepare-public-http.php
+          php -l r261/public-http-router.php
+      - name: Install Public, then serve it on separate HTTP endpoint and run actual Local
+        env:
+          GITHUB_ACTIONS: 'true'
+          R256_QA_DB_PASSWORD: qa-only
+          R256_QA_DB_NAME: sokna_r261_public
+          R256_QA_HOST: fresh.cafe-e2e.example
+          R256_QA_SUBDIR: /new-public
+          R261_DB_PASS: qa-only
+        run: |
+          set -euo pipefail
+          export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r261/public"
+          export R261_PUBLIC_ROOT="$RUNNER_TEMP/r261/public"
+          export R261_LOCAL_ROOT="$RUNNER_TEMP/r261/local-web"
+          export R261_CODE_PATH="$RUNNER_TEMP/r261/private/public-code.txt"
+          export R261_DATA_DIR="$RUNNER_TEMP/r261/private/local"
+          mkdir -p "$R261_DATA_DIR"
+          python3 - <<'PY'
+          import pathlib,os
+          source=pathlib.Path('r257/test_integrated_setup.php').read_text()
+          old="===10,'eight_migrations_plus_two_forward_only'"
+          if source.count(old)!=1:raise SystemExit('R261_SETUP_ASSERT_NOT_PINNED')
+          source=source.replace(old,"===11,'eight_migrations_plus_three_forward_only'")
+          (pathlib.Path(os.environ['RUNNER_TEMP'])/'r261/install-fixture.php').write_text(source)
+          PY
+          php "$RUNNER_TEMP/r261/install-fixture.php" >/tmp/r261-public-setup.txt
+          grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r261-public-setup.txt
+          php r261/prepare-public-http.php
+          php -S 127.0.0.1:18881 r261/public-http-router.php >/tmp/r261-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 35); do
+            if curl -fsS 'http://127.0.0.1:18881/new-public/health' >/tmp/r261-health.txt 2>/dev/null; then break; fi
+            sleep 0.2
+          done
+          cat /tmp/r261-health.txt
+          php r261/test-real-local-public.php | tee /tmp/r261-e2e.txt || { tail -n 80 /tmp/r261-http.log; exit 1; }
+          grep -q 'R261_FULL_LOCAL_PUBLISHER_TO_PUBLIC_AND_GUEST_ORDER_RECEIPT_PASS' /tmp/r261-e2e.txt
+      - name: Actual Local replacement controller with HTTPS owner consent, mid-sync outage and resume
+        env:
+          GITHUB_ACTIONS: 'true'
+          R256_QA_DB_PASSWORD: qa-only
+          R256_QA_DB_NAME: sokna_r261_public_move
+          R256_QA_HOST: move.cafe-e2e.example:18443
+          R256_QA_SUBDIR: /new-public
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq stunnel4 ca-certificates
+          mkdir -p "$RUNNER_TEMP/r261/public-move"
+          cp -a "$RUNNER_TEMP/r261/work/qa-public-payload/." "$RUNNER_TEMP/r261/public-move/"
+          mkdir -p "$RUNNER_TEMP/r261/public-move/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$RUNNER_TEMP/r261/public-move/src/Emergency/"
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r261_public_move CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r261/public-move"
+          export R261_PUBLIC_ROOT="$RUNNER_TEMP/r261/public-move"
+          export R261_LOCAL_ROOT="$RUNNER_TEMP/r261/local-web"
+          export R261_DATA_DIR="$RUNNER_TEMP/r261/private/local"
+          export R261_PUBLIC_OFFLINE_FLAG="$RUNNER_TEMP/r261/private/outage.flag"
+          php "$RUNNER_TEMP/r261/install-fixture.php" >/tmp/r261-move-setup.txt
+          grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r261-move-setup.txt
+          sudo sh -c 'echo "127.0.0.1 move.cafe-e2e.example" >> /etc/hosts'
+          openssl req -new -newkey rsa:2048 -nodes -x509 -days 1 \
+            -keyout "$RUNNER_TEMP/r261/move-key.pem" -out "$RUNNER_TEMP/r261/move-cert.pem" \
+            -subj "/CN=move.cafe-e2e.example" \
+            -addext "subjectAltName=DNS:move.cafe-e2e.example" >/dev/null 2>&1
+          sudo cp "$RUNNER_TEMP/r261/move-cert.pem" /usr/local/share/ca-certificates/r261-move-public.crt
+          sudo update-ca-certificates >/dev/null
+          cat > "$RUNNER_TEMP/r261/move-stunnel.conf" <<EOF
+          foreground = yes
+          [move]
+          client = no
+          accept = 127.0.0.1:18443
+          connect = 127.0.0.1:18882
+          cert = $RUNNER_TEMP/r261/move-cert.pem
+          key = $RUNNER_TEMP/r261/move-key.pem
+          EOF
+          php -S 127.0.0.1:18882 r261/public-http-router.php >/tmp/r261-move-http.log 2>&1 &
+          public_pid=$!
+          stunnel4 "$RUNNER_TEMP/r261/move-stunnel.conf" >/tmp/r261-stunnel.log 2>&1 &
+          tls_pid=$!
+          trap 'kill $public_pid $tls_pid 2>/dev/null || true' EXIT
+          export NO_PROXY="127.0.0.1,localhost,move.cafe-e2e.example"
+          export no_proxy="$NO_PROXY"
+          for attempt in $(seq 1 40); do
+            if curl --max-time 3 --fail --silent --show-error \
+               https://move.cafe-e2e.example:18443/new-public/health >/tmp/r261-move-health.txt 2>/dev/null; then break; fi
+            sleep 0.25
+          done
+          grep -q '"ok":true' /tmp/r261-move-health.txt
+          php -l r261/test-real-replacement-service.php
+          php r261/test-real-replacement-service.php | tee /tmp/r261-replacement.txt || {
+            tail -n 50 /tmp/r261-move-http.log
+            tail -n 30 /tmp/r261-stunnel.log
+            exit 1
+          }
+          grep -q 'R261_REAL_CONTROLLER_MOVE_WITH_OUTAGE_RESUME_COMPLETE_PASS' /tmp/r261-replacement.txt
+          echo R262_REAL_R241_LOCAL_TO_R249_PUBLIC_WITH_OFFLINE_RECOVERY_PASS
