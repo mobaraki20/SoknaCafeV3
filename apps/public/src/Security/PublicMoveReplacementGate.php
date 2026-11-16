@@ -63,12 +63,10 @@ final class PublicMoveReplacementGate
             }
             if((int)$row['public_move_intake_paused']!==1)
                 throw new RuntimeException('no_replacement_intake_gate');
-            if((int)$row['order_intake_enabled']!==1){
-                $q=$this->pdo->prepare(
-                    'UPDATE installations SET order_intake_enabled=1,public_move_intake_paused=0 WHERE installation_id=? AND public_move_intake_paused=1'
-                );$q->execute([$actual]);
-                if($q->rowCount()!==1)throw new RuntimeException('guest_activation_race');
-            }
+            $q=$this->pdo->prepare(
+                'UPDATE installations SET order_intake_enabled=1,public_move_intake_paused=0 WHERE installation_id=? AND public_move_intake_paused=1'
+            );$q->execute([$actual]);
+            if($q->rowCount()!==1)throw new RuntimeException('guest_activation_race');
             $this->pdo->commit();
             return ['status'=>200,'body'=>['ok'=>true,'status'=>'ready','guest_intake_enabled'=>true]];
         }catch(\Throwable $e){
