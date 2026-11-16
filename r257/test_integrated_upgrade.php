@@ -36,7 +36,7 @@ $core=sokna_public_bootstrap($config);
 $kernel=new \Sokna\PublicEdge\Http\PublicHttpKernel($core,$root);
 $staffToken=trim((string)file_get_contents((string)getenv('RUNNER_TEMP').'/r257-admin-token.txt'));
 $h=['Origin'=>'https://legacy.tenant-peach.example','Sec-Fetch-Site'=>'same-origin','Cookie'=>'sokna_staff='.$staffToken];
-$base='/api/v1/owner/';
+$base='/legacy/api/v1/owner/';
 $badH=$h;$badH['Origin']='https://attacker.example';
 $bad=$kernel->handle('POST',$base.'upgrade_preflight',[],'{}',$badH);
 checkU((int)$bad['status']===403,'cross_site_upgrade_preflight_rejected');
