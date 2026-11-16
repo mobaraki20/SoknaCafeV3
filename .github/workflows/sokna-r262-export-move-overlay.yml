@@ -1,0 +1,37 @@
+name: SOKNA R262 Export Incremental Move Overlay
+on:
+  push:
+    branches: [qa/sokna-r261-real-local-public-smoke-20261116]
+    paths:
+      - .github/workflows/sokna-r262-export-move-overlay.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export real QA source without product bundles
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/r262-overlay/apps/local-web
+          cp -a apps/local-web/bootstrap.php /tmp/r262-overlay/apps/local-web/
+          cp -a apps/local-web/src/Core/Bootstrap.php /tmp/r262-overlay/apps/local-web/bootstrap-core.php
+          mkdir -p /tmp/r262-overlay/apps/local-web/src/Domain/PublicEdge
+          cp apps/local-web/src/Domain/PublicEdge/PublicMove*.php /tmp/r262-overlay/apps/local-web/src/Domain/PublicEdge/
+          cp apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php /tmp/r262-overlay/apps/local-web/src/Domain/PublicEdge/
+          cp apps/local-web/src/Domain/PublicEdge/PublicReenrollmentService.php /tmp/r262-overlay/apps/local-web/src/Domain/PublicEdge/
+          mkdir -p /tmp/r262-overlay/apps/local-web/public/integrations /tmp/r262-overlay/apps/local-web/public/assets
+          cp apps/local-web/public/integrations/api.php /tmp/r262-overlay/apps/local-web/public/integrations/
+          cp apps/local-web/public/integrations/index.php /tmp/r262-overlay/apps/local-web/public/integrations/
+          cp apps/local-web/public/assets/connections-workspace.js /tmp/r262-overlay/apps/local-web/public/assets/
+          mkdir -p /tmp/r262-overlay/r261/overlay/local/database/migrations
+          cp r261/overlay/local/database/migrations/*.sql /tmp/r262-overlay/r261/overlay/local/database/migrations/
+          find /tmp/r262-overlay -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/r262-overlay/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r262-move-overlay-only
+          path: /tmp/r262-overlay/
+          if-no-files-found: error
+          retention-days: 3
