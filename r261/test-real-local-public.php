@@ -6,6 +6,7 @@ declare(strict_types=1);
  */
 if(getenv('GITHUB_ACTIONS')!=='true')throw new RuntimeException('R261_CI_ONLY');
 $localRoot=(string)getenv('R261_LOCAL_ROOT');
+$configPath=dirname($localRoot).'/config.php';
 $codePath=(string)getenv('R261_CODE_PATH');
 $dsnPass=(string)getenv('R261_DB_PASS');
 if(!is_file($localRoot.'/bootstrap.php')||!is_file($codePath))throw new RuntimeException('R261_DISPOSABLE_SOURCE_MISSING');
@@ -23,7 +24,7 @@ $values=[
        'charset'=>'utf8mb4','user'=>'root','pass'=>$dsnPass],
  'public'=>['base_url'=>$oldUrl,'shared_secret'=>str_repeat('f',64)],
 ];
-file_put_contents($localRoot.'/config.php',"<?php\nreturn ".var_export($values,true).";\n");
+file_put_contents($configPath,"<?php\nreturn ".var_export($values,true).";\n");
 $core=sokna_local_bootstrap($values);
 $pre=$core->migrations()->migrate('0059_menu_business_reconciliation_v4');
 $seed=$core->defaultContentSeeder()->seed();
@@ -41,7 +42,7 @@ $pdo->prepare("INSERT INTO items(item_code,category_id,name,description,price,av
 $itemId=(int)$pdo->lastInsertId();
 $pdo->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$menuId,$itemId]);
 $pdo->exec("INSERT INTO cafe_tables(name,table_number,code,access_token) VALUES('میز آزمایشی',1,'QA-1','table-token-for-qa-001')");
-$original=require $localRoot.'/config.php';
+$original=require $configPath;
 if($original['public']['base_url']!==$oldUrl)throw new RuntimeException('R261_ORIGINAL_LOCAL_CONFIG_MISMATCH');
 $client=$core->publicEdgeSyncClient();
 $paired=$client->initialPair($base,$code,$newSecret,'Cafe E2E',true);
@@ -78,7 +79,7 @@ if(!$ready){
  }
  throw new RuntimeException('R261_REAL_LOCAL_PUBLISHER_DID_NOT_COMPLETE');
 }
-if((require $localRoot.'/config.php')['public']['base_url']!==$oldUrl)
+if((require $configPath)['public']['base_url']!==$oldUrl)
  throw new RuntimeException('OLD_LOCAL_BINDING_CHANGED_BEFORE_COMMIT');
 $activation=$preview->publicEdgeSyncClient()->post('/api/v1/local/move/activate',[]);
 if(($activation['body']['guest_intake_enabled']??null)!==true)throw new RuntimeException('R261_SIGNED_ACTIVATION_FAILED');
