@@ -48,3 +48,10 @@ Scope: GitHub release tooling and temporary QA only. No Local/Public application
 ## Windows-specific read-only proof
 - [Windows QA run 43832689667](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43832689667): Windows Server 2022 runner accepted the same QA-only Local Maintenance v2.1 ZIP shape with the historical verifier and independently checked its SHA256 using the actual Windows PowerShell 5.1 executable and native .NET SHA256.
 - Windows services were NOT installed, started, stopped, updated or reconfigured. Native Windows Maintenance lifecycle Stage/Activate, business DB and backups remain NOT_RUN.
+
+## Source Vault persistence (no code/product change)
+- Original authenticated Main vault run [43833215488](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43833215488) created one **Draft / not published** GitHub source evidence release, uploaded the two original immutable source ZIPs and downloaded both again: SHA256 checks PASSED.
+- Read-only PR tokens cannot read draft assets (`release not found` is expected); this is a permission boundary, not absence of the archive.
+- The approved workflow on main now supports SHA-verified rehydration **from the Draft** and renews only a 90-day SOURCE-ONLY Actions artifact. No operator ZIP, Windows install or production release is created.
+- To verify the source restoration after any future maintenance, inspect the main-only vault workflow run, not a read-only PR attempt to open the unpublished Draft.
+- Trusted main restoration also passed in [43834090781](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43834090781): restored originals directly from the persistent Draft, checked both Library SHA256 values again, did not overwrite the Draft, then uploaded renewable read-only source-only Actions artifact `SOKNA-R233-RESTORED-SOURCE-ONLY-NOT-INSTALLABLE`. Source remains NON-INSTALLABLE.
