@@ -90,3 +90,62 @@ jobs:
           cat /tmp/r261-health.txt
           php r261/test-real-local-public.php | tee /tmp/r261-e2e.txt || { tail -n 80 /tmp/r261-http.log; exit 1; }
           grep -q 'R261_FULL_LOCAL_PUBLISHER_TO_PUBLIC_AND_GUEST_ORDER_RECEIPT_PASS' /tmp/r261-e2e.txt
+      - name: Actual Local replacement controller with HTTPS owner consent, mid-sync outage and resume
+        env:
+          GITHUB_ACTIONS: 'true'
+          R256_QA_DB_PASSWORD: qa-only
+          R256_QA_DB_NAME: sokna_r261_public_move
+          R256_QA_HOST: move.cafe-e2e.example:18443
+          R256_QA_SUBDIR: /new-public
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq stunnel4 ca-certificates
+          mkdir -p "$RUNNER_TEMP/r261/public-move"
+          cp -a "$RUNNER_TEMP/r261/work/qa-public-payload/." "$RUNNER_TEMP/r261/public-move/"
+          mkdir -p "$RUNNER_TEMP/r261/public-move/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$RUNNER_TEMP/r261/public-move/src/Emergency/"
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r261_public_move CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r261/public-move"
+          export R261_PUBLIC_ROOT="$RUNNER_TEMP/r261/public-move"
+          export R261_LOCAL_ROOT="$RUNNER_TEMP/r261/local-web"
+          export R261_DATA_DIR="$RUNNER_TEMP/r261/private/local"
+          export R261_PUBLIC_OFFLINE_FLAG="$RUNNER_TEMP/r261/private/outage.flag"
+          php "$RUNNER_TEMP/r261/install-fixture.php" >/tmp/r261-move-setup.txt
+          grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r261-move-setup.txt
+          sudo sh -c 'echo "127.0.0.1 move.cafe-e2e.example" >> /etc/hosts'
+          openssl req -new -newkey rsa:2048 -nodes -x509 -days 1 \
+            -keyout "$RUNNER_TEMP/r261/move-key.pem" -out "$RUNNER_TEMP/r261/move-cert.pem" \
+            -subj "/CN=move.cafe-e2e.example" \
+            -addext "subjectAltName=DNS:move.cafe-e2e.example" >/dev/null 2>&1
+          sudo cp "$RUNNER_TEMP/r261/move-cert.pem" /usr/local/share/ca-certificates/r261-move-public.crt
+          sudo update-ca-certificates >/dev/null
+          cat > "$RUNNER_TEMP/r261/move-stunnel.conf" <<EOF
+          foreground = yes
+          [move]
+          client = no
+          accept = 127.0.0.1:18443
+          connect = 127.0.0.1:18882
+          cert = $RUNNER_TEMP/r261/move-cert.pem
+          key = $RUNNER_TEMP/r261/move-key.pem
+          EOF
+          php -S 127.0.0.1:18882 r261/public-http-router.php >/tmp/r261-move-http.log 2>&1 &
+          public_pid=$!
+          stunnel4 "$RUNNER_TEMP/r261/move-stunnel.conf" >/tmp/r261-stunnel.log 2>&1 &
+          tls_pid=$!
+          trap 'kill $public_pid $tls_pid 2>/dev/null || true' EXIT
+          export NO_PROXY="127.0.0.1,localhost,move.cafe-e2e.example"
+          export no_proxy="$NO_PROXY"
+          for attempt in $(seq 1 40); do
+            if curl --max-time 3 --fail --silent --show-error \
+               https://move.cafe-e2e.example:18443/new-public/health >/tmp/r261-move-health.txt 2>/dev/null; then break; fi
+            sleep 0.25
+          done
+          grep -q '"ok":true' /tmp/r261-move-health.txt
+          php -l r261/test-real-replacement-service.php
+          php r261/test-real-replacement-service.php | tee /tmp/r261-replacement.txt || {
+            tail -n 50 /tmp/r261-move-http.log
+            tail -n 30 /tmp/r261-stunnel.log
+            exit 1
+          }
+          grep -q 'R261_REAL_CONTROLLER_MOVE_WITH_OUTAGE_RESUME_COMPLETE_PASS' /tmp/r261-replacement.txt
+          echo R261_REAL_OWNER_TO_LOCAL_REPLACEMENT_COMPLETE_NO_INSTALLER
