@@ -177,8 +177,10 @@ class ReleaseAudit(unittest.TestCase):
     def test_local_component_update_not_installer_release_set(self):
         b = zip_bytes({"manifest.json": j({"format": "sokna-component-package-v1", "component": "local"}),
                        "payload/VERSION.txt": b"test"})
-        r = a.audit(self.save(b))
-        self.assertIn("UNSUPPORTED_RELEASE_FORMAT_OR_COMPONENT", r["errors"])
+        r = a.audit(self.save(b), expected_kind="local-update")
+        self.assertEqual(r["kind"], "local-legacy-update")
+        self.assertIn("PACKAGE_KIND_MISMATCH", r["errors"])
+        self.assertIn("LEGACY_LOCAL_COMPONENT_SCHEMA_INVALID", r["errors"])
 
     def test_corrupted_zip(self):
         r = a.audit(self.save(b"not a zip"))
@@ -309,6 +311,55 @@ class ReleaseAudit(unittest.TestCase):
         }))
         r = a.audit(p, routes=evidence)
         self.assertIn("PUBLIC_TWO_ROUTE_BASELINE_COVERAGE_INCOMPLETE", r["errors"])
+
+
+
+    def test_valid_legacy_local_is_not_maintenance_release_set(self):
+        v = "3.0.0-g6.2-workspace.231zz-qa"
+        files = {"VERSION.txt": (v + "\n").encode(), "bootstrap.php": b"<?php"}
+        m = {"format": "sokna-component-package-v1", "component": "local",
+             "updater_contract": 2, "upgrade": {"mode": "legacy-full-bridge"},
+             "version": v, "files": rows(files)}
+        path = self.save(zip_bytes({"manifest.json": j(m),
+                                   **{"payload/" + k: x for k, x in files.items()}}))
+        r = a.audit(path, expected_kind="local-legacy-update")
+        self.assertEqual(r["static"], "PASS", r)
+        self.assertIn("LEGACY_LOCAL_NOT_A_MAINTENANCE_RELEASE_SET", r["not_proven"])
+        self.assertIn("PACKAGE_KIND_MISMATCH", a.audit(path, expected_kind="local-update")["errors"])
+
+    def test_real_public_flat_root_clean_format(self):
+        v = "3.0.0-g3.6-workspace.35hz-qa"
+        code = b"<?php class Candidate {}"
+        files = {
+            ".htaccess": b"RewriteEngine On\n", "VERSION.txt": (v + "\n").encode(),
+            "index.php": b"<?php", "bootstrap.php": b"<?php", "setup/index.php": b"<?php",
+            "setup/api.php": b"<?php",
+            "src/Emergency/PublicUpdateService.php": b"<?php class Stable {}",
+            "src/Update/EmergencyOwnerCandidate.php": code,
+            "src/Update/emergency-owner-v1.json": j({"release_version": v, "sha256": a.sha(code)}),
+        }
+        p = self.save(zip_bytes(files))
+        r = a.audit(p, expected_kind="public-clean")
+        self.assertEqual(r["kind"], "public-clean")
+        self.assertEqual(r["static"], "PASS", r)
+        self.assertIn("PUBLIC_FLAT_ROOT_CLEAN_HAS_NO_EMBEDDED_SOURCE_MANIFEST", r["not_proven"])
+
+    def test_flat_root_clean_stale_owner_rejected(self):
+        v = "3.0.0-g3.6-workspace.35hz-qa"
+        code = b"<?php class Candidate {}"
+        files = {
+            ".htaccess": b"RewriteEngine On\n", "VERSION.txt": (v + "\n").encode(),
+            "index.php": b"<?php", "bootstrap.php": b"<?php", "setup/index.php": b"<?php",
+            "setup/api.php": b"<?php",
+            "src/Emergency/PublicUpdateService.php": b"<?php class Stable {}",
+            "src/Update/EmergencyOwnerCandidate.php": code,
+            "src/Update/emergency-owner-v1.json": j({
+                "release_version": "3.0.0-g3.6-workspace.35hk-OLD",
+                "sha256": a.sha(code)
+            }),
+        }
+        r = a.audit(self.save(zip_bytes(files)), expected_kind="public-clean")
+        self.assertIn("PUBLIC_CLEAN_EMERGENCY_OWNER_VERSION_OR_HASH_MISMATCH", r["errors"])
 
 
 if __name__ == "__main__":
