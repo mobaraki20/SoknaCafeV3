@@ -53,7 +53,46 @@
       "sha256": "8942185c2aa788ecfd35fb6007de9fdcef94145e8d688b4d2a3f8415b6df8b8d",
       "status": "REPORTED_QA_ONLY_NOT_INSTALLABLE",
       "evidence": "Library R233-PRE-RELEASE-CHECKSUMS-AND-GATES.json"
+    },
+    {
+      "component": "local",
+      "kind": "local-update",
+      "short_code": "231fg",
+      "version": "3.0.0-g6.2-workspace.231fg-r262-public-move-qa",
+      "sha256": "3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c",
+      "status": "QA_NATIVE_WINDOWS_PASS_HOST_UNACCEPTED",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43834210936"
+    },
+    {
+      "component": "public",
+      "kind": "public-update",
+      "short_code": "35id",
+      "version": "3.0.0-g3.6-workspace.35id-r262-public-move",
+      "sha256": "5aef4cd781fbd450d3e454f324e294da6f4180bfe1e5eb1871cb4818dc20c93a",
+      "status": "QA_EXISTING_DB_UPGRADE_PASS_HOST_UNACCEPTED",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43835146004"
+    },
+    {
+      "component": "public",
+      "kind": "public-clean",
+      "short_code": "35id",
+      "version": "3.0.0-g3.6-workspace.35id-r262-public-move",
+      "sha256": "37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21",
+      "status": "QA_R263_SELFCONTAINED_CLEAN_HOST_UNACCEPTED",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43837950540"
     }
   ],
-  "note": "Incomplete historical registry. 'observed' includes exact externally verified GitHub archive SHAs and separately labeled QA-only report fingerprints; observed != released/installed. Never infer production from this ledger. Do not reuse an observed version identity for different bytes."
+  "note": "Incomplete historical registry. 'observed' includes exact externally verified GitHub archive SHAs and separately labeled QA-only report fingerprints; observed != released/installed. Never infer production from this ledger. Do not reuse an observed version identity for different bytes. R262/R263 QA fingerprints are observed/rejected only; release_authorized remains false. NEVER use R262 incomplete Clean or treat Local CI for_install/production_pass flags as operator approval.",
+  "rejected": [
+    {
+      "component": "public",
+      "kind": "public-clean",
+      "short_code": "35id",
+      "version": "3.0.0-g3.6-workspace.35id-r262-public-move",
+      "sha256": "156ddccf01e0755c2d94a6a88442523c02d1e6a63e815089be30a1e50f56616e",
+      "reason": "R262_244_FILE_INCOMPLETE_CLEAN_MISSING_FIVE_REQUIRED_BOOTSTRAP_DEPENDENCIES",
+      "corrected_by_sha256": "37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43837950540"
+    }
+  ]
 }
