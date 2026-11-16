@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/sokna-source-evidence-vault-r233.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/sokna-source-evidence-vault-r233.yml'
+      - 'release-ops/**'
   workflow_dispatch:
 
 permissions:
@@ -83,3 +87,36 @@ jobs:
           echo '783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d  readback/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip' | sha256sum -c -
           echo '8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b  readback/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip' | sha256sum -c -
           echo "PASS_DURABLE_DRAFT_SOURCE_VAULT_READBACK_NO_INSTALL"
+
+
+  verify-draft-readback:
+    name: Verify durable R233 Draft exists and exact source ZIP assets can be downloaded
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VAULT_TAG: sokna-source-evidence-r233-20261116
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show recent main-only vault runs for diagnosis
+        shell: bash
+        run: |
+          gh run list --workflow 'sokna-source-evidence-vault-r233.yml' \
+            --branch main --limit 5 --json databaseId,status,conclusion,url
+      - name: Require existing nonpublic Draft release and verify both original ZIP bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$VAULT_TAG" --json isDraft,tagName,name \
+            --jq 'select(.isDraft == true and .tagName == "sokna-source-evidence-r233-20261116") | .name'
+          mkdir -p readback
+          gh release download "$VAULT_TAG" --dir readback \
+            --pattern 'SOKNA-R233-*-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip'
+          echo '783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d  readback/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip' | sha256sum -c -
+          echo '8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b  readback/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip' | sha256sum -c -
+          echo 'PASS_R233_DRAFT_SOURCE_VAULT_READBACK_NONINSTALLABLE'
