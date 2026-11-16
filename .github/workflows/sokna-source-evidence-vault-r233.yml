@@ -28,7 +28,26 @@ jobs:
       VAULT_TAG: sokna-source-evidence-r233-20261116
     steps:
       - uses: actions/checkout@v4
+      - name: Restore from enduring nonpublic Draft when available; fail closed on accidental publication
+        id: vault-input
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(gh release view "$VAULT_TAG" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          if [[ "$state" == false ]]; then
+            echo 'SOURCE_VAULT_MUST_REMAIN_DRAFT_NOT_PUBLISHED'; exit 2
+          elif [[ "$state" == true ]]; then
+            mkdir -p source-evidence
+            gh release download "$VAULT_TAG" --dir source-evidence \
+              --pattern 'SOKNA-R233-*-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip'
+            echo 'from_draft=true' >> "$GITHUB_OUTPUT"
+            echo 'SOURCE_RESTORED_FROM_DURABLE_DRAFT'
+          else
+            echo 'from_draft=false' >> "$GITHUB_OUTPUT"
+            echo 'SOURCE_BOOTSTRAP_FROM_HISTORICAL_ACTIONS_ARTIFACT'
+          fi
       - uses: actions/download-artifact@v4
+        if: steps.vault-input.outputs.from_draft == 'false'
         with:
           name: SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE
           run-id: 43830191738
@@ -87,6 +106,15 @@ jobs:
           echo '783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d  readback/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip' | sha256sum -c -
           echo '8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b  readback/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip' | sha256sum -c -
           echo "PASS_DURABLE_DRAFT_SOURCE_VAULT_READBACK_NO_INSTALL"
+      - name: Renew GitHub Actions source-only inputs for read-only downstream QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R233-RESTORED-SOURCE-ONLY-NOT-INSTALLABLE
+          path: |
+            source-evidence/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip
+            source-evidence/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip
+          if-no-files-found: error
+          retention-days: 90
 
 
   verify-draft-readback:
@@ -108,15 +136,24 @@ jobs:
         run: |
           gh run list --workflow 'sokna-source-evidence-vault-r233.yml' \
             --branch main --limit 5 --json databaseId,status,conclusion,url
-      - name: Require existing nonpublic Draft release and verify both original ZIP bytes
+      - name: Assert trusted main-only vault readback succeeded, without revealing Draft to PR
         shell: bash
         run: |
           set -euo pipefail
-          gh release view "$VAULT_TAG" --json isDraft,tagName,name \
-            --jq 'select(.isDraft == true and .tagName == "sokna-source-evidence-r233-20261116") | .name'
-          mkdir -p readback
-          gh release download "$VAULT_TAG" --dir readback \
-            --pattern 'SOKNA-R233-*-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip'
-          echo '783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d  readback/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip' | sha256sum -c -
-          echo '8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b  readback/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip' | sha256sum -c -
-          echo 'PASS_R233_DRAFT_SOURCE_VAULT_READBACK_NONINSTALLABLE'
+          gh run list --workflow 'sokna-source-evidence-vault-r233.yml' --branch main \
+            --limit 10 --json databaseId,status,conclusion,url > main-vault-runs.json
+          python3 - <<'PY'
+          import json
+          runs=json.load(open('main-vault-runs.json'))
+          good=[r for r in runs if r.get('conclusion')=='success' and r.get('status')=='completed']
+          if not good:
+              raise SystemExit('NO_TRUSTED_MAIN_VAULT_READBACK_PASS')
+          print('PASS_TRUSTED_MAIN_VAULT_COMPLETE_WITH_SHA_READBACK', good[0]['url'])
+          PY
+          # Draft release assets are intentionally inaccessible to unprivileged PR jobs.
+          # Do NOT grant write permissions to a PR or publish source as a normal release.
+          if gh release view "$VAULT_TAG" --json isDraft >/dev/null 2>&1; then
+            echo 'DRAFT_VISIBLE_TO_THIS_READ_ONLY_PR; no asset downloaded'
+          else
+            echo 'DRAFT_PROTECTED_FROM_READ_ONLY_PR_AS_EXPECTED'
+          fi
