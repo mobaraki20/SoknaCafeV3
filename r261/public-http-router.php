@@ -17,4 +17,5 @@ if($path==='/new-public/setup/api.php'){
     return;
 }
 $_SERVER['SCRIPT_NAME']='/new-public/index.php';
-require $root.'/public/index.php';
+$front=is_file($root.'/public/index.php')?$root.'/public/index.php':$root.'/index.php';
+require $front;
