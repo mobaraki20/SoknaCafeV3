@@ -20,6 +20,71 @@ try{
         WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
     }
     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
+    if(in_array($action,['public_move_begin','public_move_confirm','public_move_cancel'],true)){
+        try {
+            // This request has already passed real Local admin authentication
+            // and WebAction's per-session CSRF. No browser session or Local ID.
+            $localId=$core->config()->requiredString('installation.id');
+            if(session_status()!==PHP_SESSION_ACTIVE)throw new \RuntimeException('local_session_unavailable');
+            $userId=(int)($user['id']??0);
+            if($userId<=0)throw new \RuntimeException('operator_not_authenticated');
+            if(($_SESSION['sokna_move_admin_id']??null)!==$userId ||
+                !is_string($_SESSION['sokna_move_token']??null) ||
+                !preg_match('/^[a-f0-9]{64}$/D',(string)$_SESSION['sokna_move_token'])){
+                $_SESSION['sokna_move_admin_id']=$userId;
+                $_SESSION['sokna_move_token']=bin2hex(random_bytes(32));
+                unset($_SESSION['sokna_move_operation']);
+            }
+            $trustedSessionToken=(string)$_SESSION['sokna_move_token'];
+            $keys=(new \Sokna\Local\Domain\PublicEdge\PublicMoveLocalKeyStore(
+                $core->config()->requiredString('app.data_dir'),
+                dirname(__DIR__)
+            ))->keys();
+            $ledger=new \Sokna\Local\Domain\PublicEdge\PublicMoveApprovalLedger($core->database());
+            $resolver=static function(string $token)use($core,$trustedSessionToken,$localId,$userId):?array{
+                if(!hash_equals($trustedSessionToken,$token))return null;
+                $live=$core->auth()->currentUser();
+                if(!is_array($live)||($live['role']??'')!=='admin'||
+                    (int)($live['id']??0)!==$userId)return null;
+                return ['authenticated'=>true,'role'=>'admin','installation_id'=>$localId];
+            };
+            $approval=new \Sokna\Local\Domain\PublicEdge\PublicMoveLocalApprovalService(
+                $ledger,$resolver,$keys['mac'],$keys['csrf']
+            );
+            $flow=new \Sokna\Local\Domain\PublicEdge\PublicMoveLocalFlow($ledger,$approval,$localId);
+            if($action==='public_move_begin'){
+                $client=$core->publicEdgeSyncClient();
+                if(!$client->configured()||$core->publicAuthorityState()->phase()!=='active')
+                    throw new \RuntimeException('active_public_connection_required');
+                $source=$client->publicBaseUrl();
+                // Never rely on an installation ID supplied by the browser.
+                $existing=$client->deploymentBindingProbe($source,6);
+                $sourceId=(string)($existing['public_instance_id']??'');
+                $result=$flow->begin((string)($data['base_url']??''),$source,$sourceId,time(),
+                    (string)($_SESSION['sokna_move_operation']??''));
+                $_SESSION['sokna_move_operation']=$result['operation_id'];
+                WebAction::json(['success'=>true,'move'=>$result]);
+            }
+            $operation=(string)($_SESSION['sokna_move_operation']??'');
+            if(!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{5,127}$/D',$operation))
+                throw new \RuntimeException('move_session_not_active');
+            if($action==='public_move_cancel'){
+                $result=$flow->cancel($operation);
+                unset($_SESSION['sokna_move_operation']);
+                WebAction::json(['success'=>true,'move'=>$result]);
+            }
+            if(!is_array($data['attestation']??null)||!is_array($data['receipt_envelope']??null))
+                throw new \RuntimeException('signed_owner_receipt_required');
+            $result=$flow->confirm($operation,$trustedSessionToken,
+                $data['attestation'],$data['receipt_envelope'],time());
+            WebAction::json(['success'=>true,'move'=>$result]);
+        }catch(\Throwable $e){
+            // Never disclose key paths, challenge hashes, SQL, session tokens,
+            // owner credentials or remote host internals.
+            WebAction::json(['success'=>false,'code'=>'public_move_confirmation_not_ready',
+                'message'=>'تأیید انتقال کامل نشد. اتصال فعلی بدون تغییر است؛ وضعیت مقصد و ورود مدیر را بررسی کنید.'],409);
+        }
+    }
     if($action==='public_move_inspect'){
         // R258 QA: authenticated Local admin + WebAction CSRF are already enforced.
         // No browser-submitted identity proof or approval flags are accepted.
