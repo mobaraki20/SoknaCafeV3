@@ -247,6 +247,17 @@
       "date": "2026-11-16",
       "reason": "R257 supports a guarded existing-site admin activation path; installation or database deletion is not required.",
       "superseded_by": "MIG-017"
+    },
+    {
+      "id": "MIG-018",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "Public replacement/recovery is Local-authoritative and intentionally minimal: the new Public must have zero live or pending guest orders before association; the OLD Public need not be reachable. Do not transfer its database, pending-only orders, media or historical state. After trusted owner approval and simple safe pairing, existing Local-to-Public synchronization re-publishes catalog, media, staff access and projections. Orders already received by Local are preserved. If old Public-only orders were never delivered to Local, they may be unrecoverable; present a single explicit acknowledgement. Keep new guest intake inactive until initial normal sync/health succeeds, preserve Local binding on pre-commit failure, and avoid simultaneous active pairing. Do not implement full Public backfill, order reconciliation, data snapshots or general-purpose resumable migration for this workflow.",
+      "date": "2026-11-16",
+      "reason": "Operator explicitly narrowed the product to replace an inaccessible or failed Public quickly. Overbuilding a transfer/backfill/reconciliation engine would repeat update-engine complexity and cannot recover unreachable old Public data.",
+      "acceptance": "A fresh or otherwise empty Public on arbitrary HTTPS root/subfolder can be owner-confirmed, paired, seeded via existing Local sync and enabled. Verify zero active/pending destination orders and that Local remains unchanged if setup or first sync fails. Show one clear warning for old-Public-only orders. No dependency on old-Public connectivity; no transfer of media/orders from old Public. Keep one active Local pairing and correct menu/QR routing separately.",
+      "superseded_by": null,
+      "implementation_status": "PRODUCT_SCOPE_APPROVED; replaces the over-scoped R259->R260 data migration plan. R259 only has two-sided ownership QA; Public replacement cutover not yet implemented. No production release."
     }
   ],
   "fixtures": [
