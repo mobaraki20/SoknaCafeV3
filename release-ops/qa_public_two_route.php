@@ -53,11 +53,18 @@ if ((string)getenv("SOKNA_QA_PUBLIC_SQL_DB")!=="") {
     require_once $realPublicPath."/bootstrap.php";
     need(class_exists(\Sokna\PublicEdge\Emergency\PublicUpdateException::class),
          "real_public_exception_loaded_once");
+    // The installed R233 bootstrap owns the target release class namespace.
+    // Autoload both application route owners from this same real source; do
+    // not redeclare them from R171 and do not touch product code.
+    need(class_exists(\Sokna\PublicEdge\Update\RoutinePublicUpdateService::class),
+         "real_public_target_routine_owner_loaded_once");
+    need(class_exists(\Sokna\PublicEdge\Update\IndependentEmergencyRoutineBridge::class),
+         "real_public_target_emergency_owner_loaded_once");
 } else {
     require_once $fixture."/public-update-exception.php";
+    require_once $fixture."/r171/src/Update/RoutinePublicUpdateService.php";
+    require_once $fixture."/r171/src/Update/IndependentEmergencyRoutineBridge.php";
 }
-require_once $fixture."/r171/src/Update/RoutinePublicUpdateService.php";
-require_once $fixture."/r171/src/Update/IndependentEmergencyRoutineBridge.php";
 
 $zip = new ZipArchive();
 need($zip->open($package) === true, "zip_open");
