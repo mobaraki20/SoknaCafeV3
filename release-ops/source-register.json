@@ -1,0 +1,30 @@
+{
+  "format": "sokna-release-source-register-v1",
+  "note": "Checkpoint pins only, not auto-latest. Confirm current WORKING pointer and owner approval for every later release. Raw source archives are not installable.",
+  "checkpoints": {
+    "R233-20261115": {
+      "status": "SOURCE_ONLY_NOT_INSTALLABLE",
+      "authority": "/Cafe/SOKNA-Workspace/HANDOFF/00-LATEST-WORKING-R233-FA.md",
+      "sources": {
+        "local": {
+          "file": "SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip",
+          "library_path": "/Cafe/SOKNA-Workspace/WORKING/20261115-R233-RIAL-PUBLIC-ACCOUNT/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip",
+          "zip_sha256": "783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d",
+          "source_tree_sha256": "f8d6bce01b2cee08b290a361c6759c24af6122ac99c39c1dc65e2bc0d5b60d0f",
+          "file_count": 593,
+          "original_version": "3.0.0-g6.2-workspace.231fb-r204-ux-zero-empty-canary",
+          "migration_count": 81
+        },
+        "public": {
+          "file": "SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip",
+          "library_path": "/Cafe/SOKNA-Workspace/WORKING/20261115-R233-RIAL-PUBLIC-ACCOUNT/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip",
+          "zip_sha256": "8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b",
+          "source_tree_sha256": "ecb2915c599ba57ed2695fb89b8907046294f797c303f3bb19d6b27b5c84f7d0",
+          "file_count": 233,
+          "original_version": "3.0.0-g3.6-workspace.35hy-r204-farsi-description-canary",
+          "migration_count": 8
+        }
+      }
+    }
+  }
+}
