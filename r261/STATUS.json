@@ -1,0 +1,76 @@
+{
+  "format": "sokna-r261-real-local-public-acceptance-v1",
+  "date": "2026-11-16",
+  "branch": "qa/sokna-r261-real-local-public-smoke-20261116",
+  "phase": "FULL_INDEPENDENT_PUBLIC_REPLACEMENT_LOGIC_REAL_MARIADB_HTTP_AND_HTTPS_QA_PASS__RELEASE_PROVENANCE_GATE_OPEN__NO_OPERATOR_INSTALLER",
+  "scope": "MIG-018: replace unavailable old Public with independent empty new Public using normal Local sync; no old Public data migration.",
+  "checks": [
+    {
+      "id": "E2E-001",
+      "status": "PASS",
+      "description": "Actual independently installed Public R249 pinned 35IC+R260 forward overlays, 11 real MariaDB migrations, HTTP root/subfolder health"
+    },
+    {
+      "id": "E2E-002",
+      "status": "PASS",
+      "description": "Actual Local boot + all 76 migrations including default catalog seed at correct boundary; 135 products and 24 media sources"
+    },
+    {
+      "id": "E2E-003",
+      "status": "PASS",
+      "description": "Existing Public initialPair replacement_mode, persistent guest order intake closed until publisher sync"
+    },
+    {
+      "id": "E2E-004",
+      "status": "PASS",
+      "description": "Real Local Full Publisher channels, 24 images delivered, critical + media complete after 3 normal bounded passes, Public signed intake activation"
+    },
+    {
+      "id": "E2E-005",
+      "status": "PASS",
+      "description": "Guest order POST via real Public HTTP -> Public durable Realtime queue -> actual Local relay -> canonical order exists in Local database"
+    },
+    {
+      "id": "E2E-006",
+      "status": "PASS",
+      "description": "Actual destination owner authenticates to isolated Public HTTPS, prepares one-time consent, signs Ed25519 attestation+receipt; authenticated Local admin verifies and signs own approval"
+    },
+    {
+      "id": "E2E-007",
+      "status": "PASS",
+      "description": "Actual R260 PublicMoveSimpleReplacement begin/pair then simulate one HTTP outage mid-sync; old Local binding untouched; retry after online sync 3 passes; commit new Local config, activate Public intake, close Local ledger and keep existing Local order"
+    },
+    {
+      "id": "E2E-008",
+      "status": "PASS",
+      "description": "Arbitrary test HTTPS URL with /new-public; no configured old Public HTTP call, generic per-install owner and Local identity"
+    }
+  ],
+  "evidence": {
+    "full_e2e_https": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43825524618",
+    "previous_guest_order_http": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43824665834",
+    "real_public_baseline_sha256": "5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4"
+  },
+  "source_provenance_audit": {
+    "real_r241_local_operator_zip": "/Cafe/SOKNA-Workspace/WORKING/20261115-R241-OPERATOR-RELEASE-CANDIDATE/SOKNA-R241-LOCAL-231FA-CUMULATIVE-CONNECTION-RECOVERY.zip",
+    "real_r241_local_sha256": "2ec84cff9481ca0350dea9401c5b1bb1437f29e7e96f1d1c80f0739f8c7c992b",
+    "real_r241_local_tree": "593 files 81 migrations",
+    "github_r261_local_tree": "apps/local-web based on older VERSION.txt 231bf, fewer historical migrations",
+    "real_r249_public_tree": "228 managed files 8 migrations base; R260 QA source 244 files and 11 migrations",
+    "blocking_condition": "DO NOT generate a Local installer directly from the GitHub R261 apps/local-web source: it predates R241 cumulative Local and would overwrite accepted source changes. Rebase R260 minimal Local edits onto true cumulative source with parity, preserving 81 preexisting migrations, then qualify native Windows updater."
+  },
+  "not_completed": [
+    "Exact byte-preserving cumulative Local source merge of R260 on latest accepted R241 or later baseline with official forward-only next Local SQL migration number",
+    "Official universal Local updater / clean install and Public fresh install package build, release manifest, compatibility and Windows/host stage-activate-readback test",
+    "Real user browser UI click-through and native physical host test; CI used PHP HTTP, HTTPS, actual Local and Public MariaDB, not physical cafe"
+  ],
+  "excluded": [
+    "Old Public DB/export/photos/orders recovery",
+    "Manual Emergency/SSH/SQL for user",
+    "Any production cafe changes, main or CURRENT updates",
+    "Any false installable package link"
+  ],
+  "next_step": "Rebase the minimal already-qualified PublicMove* Local services on real cumulative Local (R241 231FA or newer accepted version), assign forward-only Local migration after latest 0081 (do not reuse 0075), restore protected Public clean-install sources and use official cumulative package contract; verify Windows install & host E2E only then publish two packages. Do not add more migration features or redundant unit tests.",
+  "operator_status": "NO_ACTION_REQUIRED; no zip to install yet",
+  "production_ready": false
+}
