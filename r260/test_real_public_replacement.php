@@ -72,14 +72,6 @@ $q=$pdo->prepare('SELECT order_intake_enabled,public_move_intake_paused FROM ins
 $q->execute([$installation]);$first=$q->fetch(PDO::FETCH_ASSOC);
 check260((int)$first['order_intake_enabled']===0&&(int)$first['public_move_intake_paused']===1,
     'persisted_intake_gate_disabled_before_catalog_sync');
-$projection=$core->installationProjection()->sync($installation,[
- 'display_name'=>'Delta','remote_enabled'=>true,'order_intake_enabled'=>true
-]);
-$q->execute([$installation]);$middle=$q->fetch(PDO::FETCH_ASSOC);
-check260(($projection['status']??0)===200 &&
-    (int)$middle['order_intake_enabled']===0 &&
-    (int)$middle['public_move_intake_paused']===1,
-    'NORMAL_Local_installation_sync_cannot_prematurely_enable_orders');
 $localConfig=\Sokna\Local\Core\Config::fromArray([
  'installation'=>['id'=>$installation],
  'public'=>['base_url'=>$base,'shared_secret'=>$secret]
@@ -88,6 +80,14 @@ $transport=static function(string $url,string $method,array $h,string $json)use(
  return $kernel->handle($method,(string)(parse_url($url,PHP_URL_PATH)?:'/'),[], $json,$h);
 };
 $client=new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient($localConfig,$transport);
+$projection=$client->postRaw('/api/v1/local/installation',[
+ 'display_name'=>'Delta','remote_enabled'=>true,'order_intake_enabled'=>true
+],10);
+$q->execute([$installation]);$middle=$q->fetch(PDO::FETCH_ASSOC);
+check260(($projection['status']??0)===200 &&
+    (int)$middle['order_intake_enabled']===0 &&
+    (int)$middle['public_move_intake_paused']===1,
+    'NORMAL_Local_installation_sync_cannot_prematurely_enable_orders');
 $notReady=$client->postRaw('/api/v1/local/move/activate',[],10);
 check260(($notReady['status']??0)===409,'cannot_open_guest_ordering_before_guest_catalog_and_availability');
 $pdo->prepare('INSERT INTO guest_publish_revisions(installation_id,revision_id,content_hash,snapshot_json,media_manifest_json,generated_at) VALUES(?,?,?,?,?,UTC_TIMESTAMP())')
