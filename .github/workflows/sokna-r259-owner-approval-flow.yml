@@ -82,6 +82,10 @@ jobs:
           set -euo pipefail
           php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r259_public_http CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
           cp -a "$RUNNER_TEMP/r259/qa-public-payload" "$RUNNER_TEMP/r259/http-public"
+          # Protected Emergency classes are an existing host prerequisite excluded
+          # from the R249 managed ZIP. Supply ONLY in disposable CI, never release.
+          mkdir -p "$RUNNER_TEMP/r259/http-public/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$RUNNER_TEMP/r259/http-public/src/Emergency/"
           export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r259/http-public"
           export R256_QA_DB_NAME=sokna_r259_public_http
           php r257/test_integrated_setup.php >/tmp/r259-public-setup.txt
