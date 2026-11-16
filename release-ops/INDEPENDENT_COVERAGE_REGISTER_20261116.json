@@ -1,0 +1,576 @@
+{
+  "schema": "sokna-independent-release-coverage-v1",
+  "date": "2026-11-16",
+  "source_checkpoint": "Library R233; newer R262/R264 are QA not automatic source authority",
+  "readme": "release-ops/INDEPENDENT_SYSTEM_COVERAGE_AUDIT_20261116_FA.md",
+  "record_count": 62,
+  "installed_accepted_count": 0,
+  "production_authorized": false,
+  "limitations": [
+    "QA_PASS is limited to its named scenario",
+    "No live customer host or physical printer test performed during this audit",
+    "Source path presence does not prove behavioral correctness",
+    "Each P0 requires applicability decision for its release scope",
+    "27 historical HOLD decisions remain unchanged"
+  ],
+  "rows": [
+    {
+      "id": "SRC-01",
+      "domain": "سورس، نسخه و اصل کنترل انتشار",
+      "risk": "مرجع سورس approved و نسخه QA",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "بازخوانی Workspace و تطبیق SHA سورس approved با بایت بستهٔ نهایی",
+      "installed_accepted": false
+    },
+    {
+      "id": "SRC-02",
+      "domain": "سورس، نسخه و اصل کنترل انتشار",
+      "risk": "حفظ اصلاحات پذیرفته‌شده REG-003 و عدم ادغام HOLD",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "تطبیق هر ACCEPT از سورس تا ZIP؛ HOLD جداگانه بماند",
+      "installed_accepted": false
+    },
+    {
+      "id": "SRC-03",
+      "domain": "سورس، نسخه و اصل کنترل انتشار",
+      "risk": "نسخه/ReleaseId و برخورد با آرشیوهای سابق",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "هویت full/delta تمام مبناهای اعلام‌شده بدون ابهام اثبات شود",
+      "installed_accepted": false
+    },
+    {
+      "id": "SRC-04",
+      "domain": "سورس، نسخه و اصل کنترل انتشار",
+      "risk": "همان ZIP و SHA از CI تا نصب واقعی",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "فریز و readback روی سیستم نصب‌شده بدون ساخت مجدد",
+      "installed_accepted": false
+    },
+    {
+      "id": "SRC-05",
+      "domain": "سورس، نسخه و اصل کنترل انتشار",
+      "risk": "کش UI و فایل‌های فعال بعد نصب",
+      "priority": "P1",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "CSS/JS/UI واقعی مرورگر با هش ZIP تطبیق و cache سنجیده شود",
+      "installed_accepted": false
+    },
+    {
+      "id": "PKG-01",
+      "domain": "قالب بسته، مسیر نصب و بازیابی",
+      "risk": "انتخاب درست Local Legacy یا Maintenance slot",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "از capability واقعی نصب‌شده، مسیر مجاز تعیین گردد",
+      "installed_accepted": false
+    },
+    {
+      "id": "PKG-02",
+      "domain": "قالب بسته، مسیر نصب و بازیابی",
+      "risk": "نصب و به‌روزرسانی Local با مبناهای مختلف",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "همه مبناهایی که پشتیبانی‌شان اعلام می‌شود با همان SHA نصب شوند",
+      "installed_accepted": false
+    },
+    {
+      "id": "PKG-03",
+      "domain": "قالب بسته، مسیر نصب و بازیابی",
+      "risk": "Public Routine/Emergency با همان SHA",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "تست دو مسیر در هاست واقعی و با Recovery مستقل",
+      "installed_accepted": false
+    },
+    {
+      "id": "PKG-04",
+      "domain": "قالب بسته، مسیر نصب و بازیابی",
+      "risk": "Clean کامل در ریشه و زیرپوشه بدون fixture",
+      "priority": "P0",
+      "evidence_coverage": "آرشیو مردود",
+      "required_proof": "هر ZIP نهایی از هاست کاملاً خالی با bootstrap/owner مستقل",
+      "installed_accepted": false
+    },
+    {
+      "id": "PKG-05",
+      "domain": "قالب بسته، مسیر نصب و بازیابی",
+      "risk": "حفظ Config/Emergency/Trust در Upgrade",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "سنجش SHA فایل‌های machine-bound قبل/بعد و احراز بازیابی",
+      "installed_accepted": false
+    },
+    {
+      "id": "PKG-06",
+      "domain": "قالب بسته، مسیر نصب و بازیابی",
+      "risk": "Repair، reinstall و rollback same-version",
+      "priority": "P0",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "قطع وسط stage/activate/commit و repair بدون drift داده و فایل",
+      "installed_accepted": false
+    },
+    {
+      "id": "PKG-07",
+      "domain": "قالب بسته، مسیر نصب و بازیابی",
+      "risk": "QR قدیمی /Menu و Host/subfolder عمومی",
+      "priority": "P1",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "QR چاپی و دامنه قدیمی به مقصد جدید با HTTPS واقعی",
+      "installed_accepted": false
+    },
+    {
+      "id": "DB-01",
+      "domain": "دیتابیس و تراکنش‌های داده",
+      "risk": "ثبات بایتی Migrationهای قدیمی",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "مقایسه با Migration Ledger هر نصب واقعی",
+      "installed_accepted": false
+    },
+    {
+      "id": "DB-02",
+      "domain": "دیتابیس و تراکنش‌های داده",
+      "risk": "ارتقای Public از ۸ به ۱۱ با داده موجود",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "بکاپ و ارتقای یکی از دیتابیس‌های واقعی قدیمی، با دیتای اصلی",
+      "installed_accepted": false
+    },
+    {
+      "id": "DB-03",
+      "domain": "دیتابیس و تراکنش‌های داده",
+      "risk": "ارتقای Local به ۸۲ Migration",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "مبناهای قدیمی‌تر با داده، Migration و restore واقعی",
+      "installed_accepted": false
+    },
+    {
+      "id": "DB-04",
+      "domain": "دیتابیس و تراکنش‌های داده",
+      "risk": "بکاپ و بازیابی تمام جدول‌ها",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "حجم واقعی، permission، رمز، زمان/قفل و readback کسب‌وکار",
+      "installed_accepted": false
+    },
+    {
+      "id": "DB-05",
+      "domain": "دیتابیس و تراکنش‌های داده",
+      "risk": "DB-forward fence و rollback منع‌شده",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "kill قبل/حین/بعد Migration و بازیابی بدون double-commit",
+      "installed_accepted": false
+    },
+    {
+      "id": "DB-06",
+      "domain": "دیتابیس و تراکنش‌های داده",
+      "risk": "Migration/backup همزمان با سفارش زنده",
+      "priority": "P0",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "همزمان سفارش/پرداخت/چاپ/Sync با backup و قطع ناگهانی",
+      "installed_accepted": false
+    },
+    {
+      "id": "DB-07",
+      "domain": "دیتابیس و تراکنش‌های داده",
+      "risk": "Go-live Reset و حفظ داده مهمان/تست",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "دیتای تست/واقعی و رسیدهای باز و تایید صریح قبل از حذف",
+      "installed_accepted": false
+    },
+    {
+      "id": "DB-08",
+      "domain": "دیتابیس و تراکنش‌های داده",
+      "risk": "سازگاری تراکنش مالی و موجودی پس از Migration",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "قبل/بعد upgrade حساب/فاکتور/پرداخت/موجودی با دیتای قدیمی برابر",
+      "installed_accepted": false
+    },
+    {
+      "id": "WIN-01",
+      "domain": "سرویس‌های ویندوزی و نگهداری",
+      "risk": "نسخه مستقل Runtime/PrintAgent/Maintenance",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "ماتریس نسخه‌های مستقل و سازگاری روی میزبان واقعی",
+      "installed_accepted": false
+    },
+    {
+      "id": "WIN-02",
+      "domain": "سرویس‌های ویندوزی و نگهداری",
+      "risk": "KEEP بدون stop/restart/copy برای سرویس سالم",
+      "priority": "P0",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "PID، ACL، فایل و uptime جزء KEEP قبل/بعد ثابت بماند",
+      "installed_accepted": false
+    },
+    {
+      "id": "WIN-03",
+      "domain": "سرویس‌های ویندوزی و نگهداری",
+      "risk": "مالکیت SCM، ImagePath، UAC و ACL",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "سرویس هم‌نام خارجی Block؛ عدم نصب در مسیر بیگانه، لاگ قبل UAC",
+      "installed_accepted": false
+    },
+    {
+      "id": "WIN-04",
+      "domain": "سرویس‌های ویندوزی و نگهداری",
+      "risk": "Windows PowerShell 5.1 و UTF-8 BOM",
+      "priority": "P1",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "کل lifecycle با PS5.1 واقعی و لاگ فارسی، بدون API ناسازگار",
+      "installed_accepted": false
+    },
+    {
+      "id": "WIN-05",
+      "domain": "سرویس‌های ویندوزی و نگهداری",
+      "risk": "۲۰ چرخه crash/rollback/resume طبق استاندارد",
+      "priority": "P0",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "۲۰ چرخه مستقل با لاگ ماشین‌خوان، خطا قبل/بعد جهش DB",
+      "installed_accepted": false
+    },
+    {
+      "id": "WIN-06",
+      "domain": "سرویس‌های ویندوزی و نگهداری",
+      "risk": "ماندگاری update پس از خروج GUI و Apache",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "GUI exit / reboot / HTTP loss، resume بدون تکرار mutation",
+      "installed_accepted": false
+    },
+    {
+      "id": "WIN-07",
+      "domain": "سرویس‌های ویندوزی و نگهداری",
+      "risk": "پیش‌نیاز Windows+Apache+PHP+MariaDB+Ports",
+      "priority": "P0",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "سخت‌افزار خانه/کافه، معماری، UAC و PATH بدون وابستگی dev",
+      "installed_accepted": false
+    },
+    {
+      "id": "WIN-08",
+      "domain": "سرویس‌های ویندوزی و نگهداری",
+      "risk": "PrintAgent مستقل و ارتقا 6.2.11→6.2.12",
+      "priority": "P0",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "بسته واقعی Agent و سرویس Windows و پرینتر، نصب/rollback یونیورسال",
+      "installed_accepted": false
+    },
+    {
+      "id": "COM-01",
+      "domain": "ارتباط Local/Public و مهاجرت هاست",
+      "risk": "Local مرجع business و Public فقط projection",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "تمام دستورهای mutation با authority epoch و قطع شبکه",
+      "installed_accepted": false
+    },
+    {
+      "id": "COM-02",
+      "domain": "ارتباط Local/Public و مهاجرت هاست",
+      "risk": "۱۱ مدل همگام‌سازی، چرخه کامل و ACK",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "همه ۱۱ مدل با snapshot قبل/بعد، fail/retry و freshness",
+      "installed_accepted": false
+    },
+    {
+      "id": "COM-03",
+      "domain": "ارتباط Local/Public و مهاجرت هاست",
+      "risk": "دستورهای real-time/deferred، retry و dedupe",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "ACK دیررس، تکراری، race، قطع اینترنت و تایید idempotent",
+      "installed_accepted": false
+    },
+    {
+      "id": "COM-04",
+      "domain": "ارتباط Local/Public و مهاجرت هاست",
+      "risk": "انتقال Public بین هاست/دامنه/کافه مستقل",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "بدون وابستگی به soknagroup و بدون export دیتابیس قبلی، چرخش pairing",
+      "installed_accepted": false
+    },
+    {
+      "id": "COM-05",
+      "domain": "ارتباط Local/Public و مهاجرت هاست",
+      "risk": "Push/VAPID/PWA و پیام‌های تکراری",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "permission، expiration، revocation، Push offline/online و dedupe",
+      "installed_accepted": false
+    },
+    {
+      "id": "COM-06",
+      "domain": "ارتباط Local/Public و مهاجرت هاست",
+      "risk": "مرورگر موبایل کارکنان و Guest در شبکه ضعیف",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "چند کاربر، stale receipt، back/navigation و sync conflict",
+      "installed_accepted": false
+    },
+    {
+      "id": "PRN-01",
+      "domain": "چاپ و پرینت ایجنت",
+      "risk": "جاافتادن باقلوا در فیش میز۷ سفارش۲۳",
+      "priority": "P0",
+      "evidence_coverage": "گزارش ایراد باز",
+      "required_proof": "مقایسه DB job snapshot و manual print/reprint تا کاغذ",
+      "installed_accepted": false
+    },
+    {
+      "id": "PRN-02",
+      "domain": "چاپ و پرینت ایجنت",
+      "risk": "سربرگ تکراری پس از سه قلم",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "۴+ قلم در یک job روی ۵۸ و ۸۰میلی‌متری",
+      "installed_accepted": false
+    },
+    {
+      "id": "PRN-03",
+      "domain": "چاپ و پرینت ایجنت",
+      "risk": "تأخیر ۹–۱۰ثانیه و Heartbeat چاپ",
+      "priority": "P0",
+      "evidence_coverage": "گزارش ایراد باز",
+      "required_proof": "زمان‌بندی enqueue→claim→spool→paper و timeout/reconnect",
+      "installed_accepted": false
+    },
+    {
+      "id": "PRN-04",
+      "domain": "چاپ و پرینت ایجنت",
+      "risk": "دستگاه مقصد و route آشپزخانه/بار",
+      "priority": "P0",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "مسیر هر قلم، بدون حذف پنهانی، printer offline و failover",
+      "installed_accepted": false
+    },
+    {
+      "id": "PRN-05",
+      "domain": "چاپ و پرینت ایجنت",
+      "risk": "چاپ مجدد و idempotency/retry بدون حذف یا دوباره",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "قطع پس از claim، ACK از دست‌رفته، صف و retry فیزیکی",
+      "installed_accepted": false
+    },
+    {
+      "id": "PRN-06",
+      "domain": "چاپ و پرینت ایجنت",
+      "risk": "دو/سه ستون، متن و فونت قالب ۵۸/۸۰",
+      "priority": "P1",
+      "evidence_coverage": "گزارش ایراد باز",
+      "required_proof": "Preview با کاغذ واقعی، یادداشت و RTL و Import/Export",
+      "installed_accepted": false
+    },
+    {
+      "id": "FIN-01",
+      "domain": "فروش، تسویه، مالی و انبار",
+      "risk": "تسویه کامل، جزئی، چندپرداختی، ۱۰۰٪ تخفیف",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "محاسبه مستقل DB/UI/فاکتور/تخفیف/مالیات در چند روش",
+      "installed_accepted": false
+    },
+    {
+      "id": "FIN-02",
+      "domain": "فروش، تسویه، مالی و انبار",
+      "risk": "لغو سفارش/استرداد و شناسه سند بعد از تسویه",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "refund جزئی، حساب بسته، cross-day و موجودی",
+      "installed_accepted": false
+    },
+    {
+      "id": "FIN-03",
+      "domain": "فروش، تسویه، مالی و انبار",
+      "risk": "تومان ذخیره‌سازی/ریال نمایش و گردکردن",
+      "priority": "P0",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "موبایل و دسکتاپ واقعی بدون دستکاری عدد DB یا خطای ×۱۰",
+      "installed_accepted": false
+    },
+    {
+      "id": "FIN-04",
+      "domain": "فروش، تسویه، مالی و انبار",
+      "risk": "شماره فاکتور، شماره سفارش و جست‌وجوی اسناد",
+      "priority": "P1",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "Invoice I، Refund R، شناسه یکتا با امکان جست‌وجو",
+      "installed_accepted": false
+    },
+    {
+      "id": "FIN-05",
+      "domain": "فروش، تسویه، مالی و انبار",
+      "risk": "شمارش تدریجی انبار همزمان با فروش",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "finalize/pause concurrent order و کم‌شدن صحیح موجودی",
+      "installed_accepted": false
+    },
+    {
+      "id": "FIN-06",
+      "domain": "فروش، تسویه، مالی و انبار",
+      "risk": "رسپی، واریانت، باندل و قیمت تمام‌شده",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "ویرایش تا فروش/انبار/گزارش و Public parity",
+      "installed_accepted": false
+    },
+    {
+      "id": "FIN-07",
+      "domain": "فروش، تسویه، مالی و انبار",
+      "risk": "هزینه کارکنان، خرید، مصرف و دوره مالی",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "خرید→موجودی→بهای تمام‌شده/مزایا→دوره مالی",
+      "installed_accepted": false
+    },
+    {
+      "id": "FIN-08",
+      "domain": "فروش، تسویه، مالی و انبار",
+      "risk": "گزارش فروش/بستن دوره/تاخیر ثبت مالی",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "gross/net/refund/late served/report export پس از close",
+      "installed_accepted": false
+    },
+    {
+      "id": "FIN-09",
+      "domain": "فروش، تسویه، مالی و انبار",
+      "risk": "اصلاح سفارش و حساب باز، pending guest append",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "چندکاربره، بعد از تسویه جزئی، اصلاح تکراری و guest pending",
+      "installed_accepted": false
+    },
+    {
+      "id": "FIN-10",
+      "domain": "فروش، تسویه، مالی و انبار",
+      "risk": "ویرایش اتمیک کاتالوگ/رسپی/باندل",
+      "priority": "P1",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "HTTP+CSRF با session واقعی و rollback در خطای دیررس",
+      "installed_accepted": false
+    },
+    {
+      "id": "SEC-01",
+      "domain": "امنیت، پشتیبان، موبایل و خصوصی‌بودن داده",
+      "risk": "احراز هویت نقش‌ها، نشست و Remember Device",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "سرقت/انقضا/ابطال دستگاه، role, cookie, session, CSRF",
+      "installed_accepted": false
+    },
+    {
+      "id": "SEC-02",
+      "domain": "امنیت، پشتیبان، موبایل و خصوصی‌بودن داده",
+      "risk": "تغییر رمز موبایل Public و همگام‌سازی Local",
+      "priority": "P1",
+      "evidence_coverage": "آزمون محدود موفق",
+      "required_proof": "گوشی واقعی، چند دستگاه و رمز نامعتبر/آفلاین",
+      "installed_accepted": false
+    },
+    {
+      "id": "SEC-03",
+      "domain": "امنیت، پشتیبان، موبایل و خصوصی‌بودن داده",
+      "risk": "کلیدهای HMAC/Pairing/Trust و انتقال امن مبدأ",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "key rotation، revoke، no secrets in logs/files, origin migration",
+      "installed_accepted": false
+    },
+    {
+      "id": "SEC-04",
+      "domain": "امنیت، پشتیبان، موبایل و خصوصی‌بودن داده",
+      "risk": "پشتیبان رمزگذاری‌شده، Remote Vault و بازیابی",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "wrong key، قطع انتقال، retention، decrypt و restore به میزبان خالی",
+      "installed_accepted": false
+    },
+    {
+      "id": "SEC-05",
+      "domain": "امنیت، پشتیبان، موبایل و خصوصی‌بودن داده",
+      "risk": "بسته پشتیبانی با redaction و timeline",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "Local down، Windows log قبل UAC، no secrets, correlation",
+      "installed_accepted": false
+    },
+    {
+      "id": "SEC-06",
+      "domain": "امنیت، پشتیبان، موبایل و خصوصی‌بودن داده",
+      "risk": "PWA، موبایل، RTL، رقم فارسی، تاریخ و DST",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "Android/iOS واقعی، scroll, modal, date, Persian/English digits, day boundaries",
+      "installed_accepted": false
+    },
+    {
+      "id": "SEC-07",
+      "domain": "امنیت، پشتیبان، موبایل و خصوصی‌بودن داده",
+      "risk": "پیکربندی خصوصی و چندمشتری مستقل",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "tenant isolation، بدون کپی token/config/storage، مسیر generic",
+      "installed_accepted": false
+    },
+    {
+      "id": "QA-01",
+      "domain": "پوشش پذیرش و تصمیمات تاریخی",
+      "risk": "۵۹ پرونده جاری با امضای پذیرش نصب",
+      "priority": "P0",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "هر پرونده مرتبط با نسخه هدف و شاهد نصب، نه فقط کد",
+      "installed_accepted": false
+    },
+    {
+      "id": "QA-02",
+      "domain": "پوشش پذیرش و تصمیمات تاریخی",
+      "risk": "۲۷ تصمیم HOLD و ۲۳۳ تعهد تاریخی",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "ماتریس ACCEPT و HOLD مطابق تصمیم نهایی و بدون rework",
+      "installed_accepted": false
+    },
+    {
+      "id": "QA-03",
+      "domain": "پوشش پذیرش و تصمیمات تاریخی",
+      "risk": "تطبیق فیزیکی چاپ و مالی با تصویر/دیتا",
+      "priority": "P0",
+      "evidence_coverage": "گزارش ایراد باز",
+      "required_proof": "ردیف سفارش، چاپ، پرداخت و کاغذ با سندهای مستقل",
+      "installed_accepted": false
+    },
+    {
+      "id": "QA-04",
+      "domain": "پوشش پذیرش و تصمیمات تاریخی",
+      "risk": "نقش میزبان Home و Cafe و لاگ مستقل",
+      "priority": "P0",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "baseline، نسخه، SHA، transaction-id و acceptance هر میزبان جدا",
+      "installed_accepted": false
+    },
+    {
+      "id": "QA-05",
+      "domain": "پوشش پذیرش و تصمیمات تاریخی",
+      "risk": "PASS/FAIL/NOT_RUN و منع انتشار با گیت باز",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "برای P0های نسخه هدف شواهد معتبر پیش از production flag",
+      "installed_accepted": false
+    }
+  ]
+}
