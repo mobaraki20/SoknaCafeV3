@@ -1,0 +1,61 @@
+{
+  "format": "sokna-r267-public-emergency-schema-recovery-checkpoint-v1",
+  "date": "2026-11-17",
+  "status": "QA_PASS_HOST_NOT_QUALIFIED_NO_INSTALL",
+  "source_branch": "qa/sokna-r267-emergency-schema-forward-gate-20261117",
+  "incident": {
+    "current_public": "3.0.0-g3.6-workspace.35ic-r249-cumulative-forward-gate",
+    "current_migrations": 8,
+    "staged_rejected_target": "3.0.0-g3.6-workspace.35id-r262-public-move",
+    "error": "emergency_schema_mutation_not_qualified",
+    "activate_performed": false,
+    "db_forward_fence_present": false
+  },
+  "cause": "R249 installed Emergency bridge has a code-only activation guard; R262 has additive SQL migrations 0009..0011. QA had not tested Emergency activation.",
+  "decisions": [
+    "MIG-001..MIG-011",
+    "MIG-017",
+    "MIG-018",
+    "SOKNA-REL-GATE-001",
+    "04-RELEASE-SAFETY-GATES"
+  ],
+  "exception": "One-time code-only compatibility bridge required on legacy Emergency; future Public releases use byte-identical Routine/Emergency package",
+  "packages": [
+    {
+      "name": "SOKNA-R265-PUBLIC-35IF-EMERGENCY-BRIDGE-CODE-ONLY-QA.zip",
+      "sha256": "692aa40939d788aea56efa4e3b62c46a568da0ce5c508cc87844aa63366b8892",
+      "migrations": 8,
+      "operator_install_allowed": false
+    },
+    {
+      "name": "SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip",
+      "sha256": "b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35",
+      "migrations": 11,
+      "operator_install_allowed": false
+    }
+  ],
+  "qa": {
+    "real_mariadb_8_to_11": "PASS",
+    "historical_row_retained": "PASS",
+    "ddl_ledger_replay": "PASS",
+    "incompatible_ddl_rejected": "PASS",
+    "emergency_interrupted_commit_resume": "PASS",
+    "five_route_release_preflight_assertions": "PASS",
+    "ci_run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43970427424"
+  },
+  "impact": {
+    "cafe_local_changed": false,
+    "public_host_changed": false,
+    "main_changed": false,
+    "current_changed": false,
+    "windows_services_changed": false
+  },
+  "remaining": [
+    "Prove real HTTP Emergency owner/candidate path end-to-end on host-like isolated setup",
+    "Verify backup with restore readback for Public files/config/DB/keys",
+    "Verify actual Public active-or-pending orders and independent pairing constraints MIG-017/MIG-018",
+    "Operator host exact ZIP stage/activate/commit and post-install health acceptance",
+    "Confirm QR legacy redirect and guest intake after Local/Public sync"
+  ],
+  "next_action": "Do not activate QA ZIPs. Qualify HTTP Emergency host-like and verifiable backup; then approve a host-specific operator release on exact 35ic baseline. Preserve Local current state and old Public until sync complete."
+}
