@@ -97,6 +97,48 @@ jobs:
           php "$RUNNER_TEMP/r262/qa-install.php" | tee /tmp/r262-real-install.txt
           grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r262-real-install.txt
           echo R262_PUBLIC_REAL_CLEAN_INSTALL_AND_OWNER_QA_PASS_NOT_OPERATOR_DEPLOY
+      - name: Existing R249 Public upgrades to R262 without database reset
+        env:
+          GITHUB_ACTIONS: 'true'
+          R257_QA_DB_PASSWORD: qa-only
+        run: |
+          set -euo pipefail
+          OLD="$RUNNER_TEMP/r262/existing-r249"
+          UPGRADE="$RUNNER_TEMP/r262/existing-r262"
+          mkdir -p "$OLD" "$UPGRADE"
+          python3 - <<'PY'
+          import pathlib,os,zipfile
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r262'
+          base=pathlib.Path((root/'public-base/pin.txt').read_text())
+          old=root/'existing-r249'; target=root/'existing-r262'
+          with zipfile.ZipFile(base) as z:
+            for member in z.namelist():
+              if not member.startswith('payload/') or member.endswith('/'):continue
+              relative=pathlib.PurePosixPath(member[8:])
+              if not relative.parts or '..' in relative.parts or relative.is_absolute():raise SystemExit('R262_UNSAFE_R249_SOURCE')
+              dest=old.joinpath(*relative.parts);dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(z.read(member))
+          with zipfile.ZipFile(root/'release/SOKNA-R262-PUBLIC-35ID-CLEAN-SOURCE-QA-NOT-FOR-INSTALL.zip') as z:z.extractall(target)
+          PY
+          mkdir -p "$OLD/src/Emergency" "$UPGRADE/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$OLD/src/Emergency/"
+          cp apps/public/src/Emergency/*.php "$UPGRADE/src/Emergency/"
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r262_existing_public CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          export R257_QA_OLD_ROOT="$OLD"
+          php r257/prepare_existing_install.php >/tmp/r262-old-setup.txt
+          grep -q 'R257_OLD_R249_EIGHT_MIGRATION_PAIRED_PUBLIC_CREATED' /tmp/r262-old-setup.txt
+          cp "$OLD/config.php" "$UPGRADE/config.php"
+          cp "$OLD/install.lock" "$UPGRADE/install.lock"
+          python3 - <<'PY'
+          import pathlib,os
+          source=pathlib.Path('r257/test_integrated_upgrade.php').read_text()
+          old="count($migrations)!==2 || (int)$pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn()!==10"
+          if source.count(old)!=1:raise SystemExit('R262_EXISTING_UPGRADE_TEST_CONTRACT_CHANGED')
+          source=source.replace(old,"count($migrations)!==3 || (int)$pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn()!==11")
+          (pathlib.Path(os.environ['RUNNER_TEMP'])/'r262/qa-upgrade.php').write_text(source)
+          PY
+          R256_QA_PUBLIC_ROOT="$UPGRADE" php "$RUNNER_TEMP/r262/qa-upgrade.php" | tee /tmp/r262-real-upgrade.txt
+          grep -q 'R257_EXISTING_R249_PUBLIC_REAL_UPGRADE_PASS count=' /tmp/r262-real-upgrade.txt
+          echo R262_REAL_EXISTING_PUBLIC_DATABASE_UPGRADE_8_TO_11_AND_OWNER_PASS_NO_OPERATOR_DEPLOY
       - uses: actions/upload-artifact@v4
         with:
           name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
