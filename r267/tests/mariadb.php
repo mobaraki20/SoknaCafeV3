@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 // Self-contained CI test, never point at a user's production database.
-$base=__DIR__.'/fixture_public';$target=__DIR__.'/fixture_db_final';
+$base=__DIR__.'/fixture_db_base';$target=__DIR__.'/fixture_db_final';
 require_once $target.'/src/Core/Database.php';
 require_once $target.'/src/Core/Migrations.php';
 $host=getenv('SOKNA_QA_DB_HOST')?:'127.0.0.1';$name=getenv('SOKNA_QA_DB_NAME')?:'sokna_public_qa_only';
@@ -10,7 +10,6 @@ $pdo=new PDO("mysql:host=$host;port=3306;dbname=$name;charset=utf8mb4",$user,$pw
 $assert=static function(bool $yes,string $msg):void{if(!$yes)throw new RuntimeException('FAIL '.$msg);};
 $installed=new \Sokna\PublicEdge\Core\Migrations($pdo,$base.'/database/migrations');
 $first=$installed->migrate();
-if(count($first)!==8)fwrite(STDERR,'BASELINE_DEBUG '.json_encode(['applied'=>$first,'ledger'=>$installed->appliedVersions(),'catalog'=>array_keys($installed->catalog())],JSON_UNESCAPED_SLASHES)."\n");
 $assert(count($first)===8,'R249 baseline 8 migrations');
 $pdo->exec("INSERT INTO installations(installation_id,display_name) VALUES ('qa-instance-001','SOKNA-PUBLIC-KEEP-ME')");
 $targetMigrations=new \Sokna\PublicEdge\Core\Migrations($pdo,$target.'/database/migrations');
