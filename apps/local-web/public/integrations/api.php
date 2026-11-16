@@ -64,7 +64,7 @@ try{
             }
             if($action==='public_move_begin'){
                 $client=$core->publicEdgeSyncClient();
-                if(!$client->configured()||$core->publicAuthorityState()->phase()!=='active')
+                if(!$client->configured()||!in_array($core->publicAuthorityState()->phase(),['active','resync_required'],true))
                     throw new \RuntimeException('active_public_connection_required');
                 $source=$client->publicBaseUrl();
                 // Disaster recovery MUST work when the old Public is down.
