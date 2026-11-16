@@ -10,6 +10,7 @@ $pdo=new PDO("mysql:host=$host;port=3306;dbname=$name;charset=utf8mb4",$user,$pw
 $assert=static function(bool $yes,string $msg):void{if(!$yes)throw new RuntimeException('FAIL '.$msg);};
 $installed=new \Sokna\PublicEdge\Core\Migrations($pdo,$base.'/database/migrations');
 $first=$installed->migrate();
+if(count($first)!==8)fwrite(STDERR,'BASELINE_DEBUG '.json_encode(['applied'=>$first,'ledger'=>$installed->appliedVersions(),'catalog'=>array_keys($installed->catalog())],JSON_UNESCAPED_SLASHES)."\n");
 $assert(count($first)===8,'R249 baseline 8 migrations');
 $pdo->exec("INSERT INTO installations(installation_id,display_name) VALUES ('qa-instance-001','SOKNA-PUBLIC-KEEP-ME')");
 $targetMigrations=new \Sokna\PublicEdge\Core\Migrations($pdo,$target.'/database/migrations');
