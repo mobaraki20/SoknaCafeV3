@@ -114,6 +114,12 @@ jobs:
           $src=$src.Replace('SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip','SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip')
           $src=$src.Replace('279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3',[string]$proof.candidate_sha256)
           $src=$src.Replace('3.0.0-g6.2-workspace.231fb-r204-ux-zero-empty-canary','3.0.0-g6.2-workspace.231fg-r262-public-move-qa')
+          # Only the final target has one newly appended SQL migration (0082).
+          # Keep all earlier R153/R177/R201 assertions at their original 80/81.
+          $oldFinalCount='$r204Ledger -eq ''81'''
+          if(-not $src.Contains($oldFinalCount)){throw 'R262_NATIVE_FINAL_LEDGER_CHECK_NOT_FOUND'}
+          $src=$src.Replace($oldFinalCount,'$r204Ledger -eq ''82''')
+          $src=$src.Replace('R204_MIGRATION_LEDGER_NOT_81','R262_MIGRATION_LEDGER_NOT_82')
           $path=Join-Path $folder 'native-r262-test.ps1'
           Set-Content $path $src -Encoding utf8NoBOM
           & $path
