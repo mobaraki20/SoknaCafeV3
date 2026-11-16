@@ -1,0 +1,84 @@
+name: SOKNA R263 Self-contained Public Clean Host Smoke
+on:
+  push:
+    branches: [qa/sokna-r263-browser-public-move-20261116]
+    paths:
+      - r263/build_public_clean_selfcontained.py
+      - .github/workflows/sokna-r263-public-clean-real-empty-host.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-empty-host:
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+          MARIADB_DATABASE: sokna_r263_fresh_subdir
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
+          run-id: 43835146004
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r263/input
+      - name: Produce a clean installer from real R262 + protected static runtime only
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-mysql php-zip
+          mkdir -p "$RUNNER_TEMP/r263/output"
+          python3 r263/build_public_clean_selfcontained.py             --source "$RUNNER_TEMP/r263/input/SOKNA-R262-PUBLIC-35ID-CLEAN-SOURCE-QA-NOT-FOR-INSTALL.zip"             --repo . --out "$RUNNER_TEMP/r263/output"
+          python3 - <<'PY'
+          import pathlib,os,zipfile
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r263/output'
+          package=root/'SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip'
+          for destination in ('fresh-subfolder','fresh-root'):
+            folder=root.parent/destination
+            if folder.exists():raise SystemExit('HOST_NOT_EMPTY')
+            folder.mkdir()
+            with zipfile.ZipFile(package) as z:z.extractall(folder)
+            assert len([p for p in folder.rglob('*') if p.is_file()])==251
+            assert len(list((folder/'src/Emergency').glob('*.php')))==6
+            assert (folder/'resources/update-trust-v1.json').is_file()
+          PY
+          php -l "$RUNNER_TEMP/r263/fresh-subfolder/bootstrap.php"
+          php -r 'require getenv("RUNNER_TEMP")."/r263/fresh-subfolder/bootstrap.php"; echo "R263_REAL_EMPTY_HOST_BOOTSTRAP_PASS\n";'
+      - name: Install from ZIP on truly empty subfolder and root, without any helper copy
+        env:
+          GITHUB_ACTIONS: 'true'
+          R256_QA_DB_PASSWORD: qa-only
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib
+          fixture=pathlib.Path('r257/test_integrated_setup.php').read_text()
+          old="===10,'eight_migrations_plus_two_forward_only'"
+          if fixture.count(old)!=1:raise SystemExit('R263_PINNED_PUBLIC_SETUP_TEST_CHANGED')
+          fixture=fixture.replace(old,"===11,'eight_migrations_plus_three_forward_only'")
+          (pathlib.Path(os.environ['RUNNER_TEMP'])/'r263/setup-fixture.php').write_text(fixture)
+          PY
+          R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r263/fresh-subfolder"             R256_QA_HOST=tenant-sample-one.example             R256_QA_SUBDIR=/nested/public             R256_QA_DB_NAME=sokna_r263_fresh_subdir             php "$RUNNER_TEMP/r263/setup-fixture.php" | tee /tmp/r263-subfolder.log
+          grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=25' /tmp/r263-subfolder.log
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r263_fresh_root CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r263/fresh-root"             R256_QA_HOST=tenant-sample-two.example             R256_QA_SUBDIR=''             R256_QA_DB_NAME=sokna_r263_fresh_root             php "$RUNNER_TEMP/r263/setup-fixture.php" | tee /tmp/r263-root.log
+          grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=25' /tmp/r263-root.log
+          echo R263_TRULY_SELFCONTAINED_PUBLIC_CLEAN_ROOT_AND_SUBFOLDER_INSTALL_PASS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          path: |
+            ${{ runner.temp }}/r263/output/SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip
+            ${{ runner.temp }}/r263/output/R263-PUBLIC-CLEAN-SELFCONTAINED-PROOF.json
+          if-no-files-found: error
+          retention-days: 7
