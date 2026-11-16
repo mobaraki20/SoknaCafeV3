@@ -78,3 +78,14 @@ python3 release-ops/source_gate.py --source /path/to/EXACT-SOURCE.zip --componen
 برای اثبات حفظ بایت فایل‌های مشترک، همان source ZIP و بسته مقصد را با `--candidate`, `--route`, `--require-output-ready` مقایسه کن؛ در صورت نبود مدارک نصب واقعی هیچ وضعیت عملیاتی صادر نکن. GitHub workflow با ورودی `source_artifact_name` این کنترل را اجرا می‌کند.
 
 **یافته R233:** `resources/local-managed-files-v1.json` فقط ۵۹۰ از ۵۹۳ فایل را دارد، و مالک Emergency در سورس Public هنوز `35hk` را ذکر می‌کند؛ هر دو در مرحله تولید Metadata بسته مقصد باید بررسی/ترمیم شوند، بدون دستکاری کد عملکردی. جزئیات در [R233_SOURCE_INTAKE_FINDINGS_FA.md](R233_SOURCE_INTAKE_FINDINGS_FA.md).
+
+
+## ۹. بازپخش واقعی منبع R233 در GitHub (SOURCE-ONLY)
+
+- Workflow: [`sokna-release-source-replay-r233.yml`](../.github/workflows/sokna-release-source-replay-r233.yml).
+- سازنده read-only: `release-ops/replay_r233_source.py` از exact R204 parent Actions 43513196061 و checkout قفل‌شده روی commit `120d1fb5107699d6b62eaba74f04fd962338f6a3` هفت Patch لوکال و فایل‌های Public R220+R233 را بازپخش می‌کند.
+- نتیجهٔ واقعی: [Actions 43829020152](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43829020152): Local ۵۹۳ و Public ۲۳۳ فایل، SHA هر دو ZIP با مرجع Library **بایت‌به‌بایت یکسان**.
+- گام آزمایشی بسته‌سازی: [Actions 43829800080](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43829800080) با `release-ops/qa_public_root_clean_rehearsal.py`: فقط Public Flat Root Clean، فقط تغییر metadata نسخه/owner روی نسخهٔ موقت، کد مشترک ۰ فایل تغییر، Static PASS، `release_authorized=false`. خود ZIP آزمایشی آپلود نمی‌شود؛ فقط گزارش.
+- نام artifact سورس: `SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE`؛ **هرگز به‌عنوان Update یا Clean Install کاربر ارائه نشود**.
+- این Workflow به R233 پین است. برای نسخه تازه، سورس جامع پذیرفته‌شده و ورودی SHA باید جدا ثبت شود. هرگز R233 را «آخرین» معرفی نکن.
+- **ریسک پایایی:** مادر R204 فعلاً در GitHub Actions artifact ذخیره شده که retention محدود دارد. تا وقتی منبع durable و تأییدشده برای آن ایجاد نشده، نباید دسترسی همیشگی به زنجیرهٔ بازپخش ادعا شود. گم‌شدن آن = BLOCKED، نه رجوع خودکار به نسخه قدیمی یا استفاده از فایل نامعلوم.
