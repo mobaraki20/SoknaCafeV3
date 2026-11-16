@@ -9,6 +9,11 @@ $root=(string)getenv('R261_PUBLIC_ROOT');
 if(getenv('GITHUB_ACTIONS')!=='true'||$root===''||!is_file($root.'/install.lock'))
     {http_response_code(503);echo "QA_PUBLIC_NOT_INSTALLED";return;}
 $path=(string)(parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/');
+$offlineFlag=(string)getenv('R261_PUBLIC_OFFLINE_FLAG');
+if($offlineFlag!=='' && is_file($offlineFlag)){
+ http_response_code(503);header('Content-Type: application/json');
+ echo '{"ok":false,"error":"qa_simulated_network_outage"}';return;
+}
 $_SERVER['DOCUMENT_ROOT']=$root;
 $_SERVER['HTTP_HOST']=$_SERVER['HTTP_HOST']??'127.0.0.1:18881';
 if($path==='/new-public/setup/api.php'){
