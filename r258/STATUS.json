@@ -1,0 +1,96 @@
+{
+  "format": "sokna-universal-migration-progress-v1",
+  "updated_on": "2026-11-16",
+  "project_id": "SOKNA-UNIVERSAL-MIGRATION-R258",
+  "branch": "qa/sokna-r258-universal-public-move-ui-20261116",
+  "predecessor": "qa/sokna-r257-existing-public-consent-receipt-20261116",
+  "checkpoint": "r258/START-HERE-FA.md",
+  "decision_register": {
+    "canonical": "r251/DECISIONS-FA.md",
+    "machine_readable": "r251/decisions.json",
+    "active_through": "MIG-017",
+    "superseded_through": "OLD-010",
+    "new_decisions": 0
+  },
+  "phase": "LOCAL_MINIMAL_MOVE_UI_AND_AUTHENTICATED_READ_ONLY_INSPECTION_IMPLEMENTED__CI_PENDING__PRODUCTION_NO_GO",
+  "implemented": [
+    {
+      "item": "One target URL + one action on existing Local Public connections tab; advanced old same-instance rebind disclosed",
+      "status": "COMMITTED_QA_ONLY",
+      "path": "apps/local-web/public/integrations/index.php"
+    },
+    {
+      "item": "Server-side Local admin WebAction CSRF adapter; target URL only from browser; no proof or owner approval accepted",
+      "status": "COMMITTED_QA_ONLY",
+      "path": "apps/local-web/public/integrations/api.php"
+    },
+    {
+      "item": "No-write signed same-Public-instance preview, fail-closed on mismatch, malformed URL, recovery, incomplete evidence",
+      "status": "COMMITTED_QA_ONLY",
+      "path": "apps/local-web/src/Domain/PublicEdge/PublicMoveUiInspectionService.php"
+    },
+    {
+      "item": "Browser reads server decision and explicitly states no transfer yet",
+      "status": "COMMITTED_QA_ONLY",
+      "path": "apps/local-web/public/assets/connections-workspace.js"
+    },
+    {
+      "item": "Regression matrix and QA workflow",
+      "status": "CI_PENDING",
+      "paths": [
+        "r258/test-local-ui-inspection.php",
+        ".github/workflows/sokna-r258-public-move-ui.yml"
+      ]
+    }
+  ],
+  "validated_ci": [],
+  "limitations": [
+    "QA inspection does not initiate independent target consent or cutover",
+    "No destination owner HTML consent page/secure cross-host challenge transport yet",
+    "R257 Local approval service not connected to real Local session/ledger migration",
+    "DNS pinning and SSRF-hardening needed before host release",
+    "Public existing and fresh installation E2E upgrade matrix and authority handoff incomplete",
+    "No cross-version/interrupt/recovery/print/inventory/order reconciliation proof",
+    "No real released Local/Pub cumulative payload byte-level final qualification"
+  ],
+  "pending": [
+    {
+      "item": "R258 CI green and code/source review",
+      "status": "PENDING"
+    },
+    {
+      "item": "Existing/fresh Public destination owner consent UI and authenticated receipt transport",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Real Local session/Origin+CSRF+MAC and official one-time ledger integration",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Idempotent staged sync/readback/reconciliation and single-active authority cutover",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Universal release path across diverse host, path, version and customer fixtures",
+      "status": "NOT_RELEASED"
+    },
+    {
+      "item": "Local migration/restoration and Windows print/runtime handoff",
+      "status": "NOT_IMPLEMENTED"
+    }
+  ],
+  "guardrails": {
+    "production_ready": false,
+    "installable_package_created": false,
+    "main_or_current_mutated": false,
+    "cafe_production_local_or_public_modified": false,
+    "cutover_performed": false,
+    "guest_order_intake_toggled": false,
+    "source_url_updated": false,
+    "local_connection_changed": false,
+    "url_or_cafe_hardcoded_in_new_runtime": false,
+    "receipt_or_nonce_alone_authorizes_cutover": false
+  },
+  "next_action": "Validate R258 CI and fix if red; then integrate destination owner consent browser flow and trusted real Local server-side session/CSRF/one-time approval ledger on pinned real cumulative payload; do NOT publish before authority and data reconciliation E2E.",
+  "handoff": "Read r251 decisions and R257 checkpoint, then r258/START-HERE-FA.md and STATUS.json. R258 UI only reviews same-instance signed preflight; it is never a Public independent transfer or production release."
+}
