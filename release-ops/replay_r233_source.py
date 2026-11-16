@@ -165,6 +165,11 @@ def main() -> int:
     p.add_argument("--out", type=pathlib.Path, required=True)
     p.add_argument("--register", type=pathlib.Path, default=pathlib.Path(__file__).with_name("source-register.json"))
     args = p.parse_args()
+    actual_fixture_sha = subprocess.check_output(
+        ["git", "-C", str(args.fixtures), "rev-parse", "HEAD"], text=True
+    ).strip()
+    if actual_fixture_sha != FIXTURE_COMMIT:
+        raise RuntimeError("HISTORICAL_FIXTURE_COMMIT_DRIFT")
     args.out.mkdir(parents=True, exist_ok=True)
     local = args.out / NAME["local"]
     public = args.out / NAME["public"]
