@@ -115,3 +115,12 @@ python3 release-ops/source_gate.py --source /path/to/EXACT-SOURCE.zip --componen
 - `.github/workflows/sokna-release-db-gate.yml` با MariaDB 11.4 و دیتابیس‌های موقت، نصب واقعی Source، ۱۹ سناریوی کسب‌وکار R233، اجرای دوباره Migrationهای Local، بکاپ consistent و بازیابی تمام داده‌ها را بررسی می‌کند. در Workflow بسته‌سازی QA هم به‌عنوان گیت اجباری فراخوانی می‌شود.
 - گزارش مستند: [DB_RELEASE_GATES_FA.md](DB_RELEASE_GATES_FA.md). گیت Database هنوز **اثبات نصب روی دیتابیس قدیمی عملیاتی، پیشرفت DB-forward در Maintenance Windows یا migration مجدد مالک Public** نیست؛ آنها وضعیت `NOT_RUN` دارند و تولید بسته نهایی تا اثبات نیازمندی‌های همان Release مسدود می‌ماند.
 - همه ابزارها فقط در `release-ops/` و `.github/workflows/` هستند؛ هیچ سورس Local/Public و Windows/Maintenance/PrintAgent تغییر نکند.
+
+
+## ۱۲. مرز مهم میان آزمون R262 و خروجی Clean اصلاح‌شده R263
+
+- ممیزی بایتی: [R262_R263_EXACT_ARCHIVE_GATES_FA.md](R262_R263_EXACT_ARCHIVE_GATES_FA.md). فرایند `.github/workflows/sokna-r262-r263-archive-crossgate.yml` با SHA دقیق روی آرشیوهای واقعی عمل می‌کند.
+- **Clean قدیمی R262 (۲۴۴فایلی) مردود است** چون `bootstrap.php` پنج کلاس لازم را در ZIP نمی‌یابد؛ آزمون قبلی با کپی فایل کمکی این نقص را پنهان می‌کرد.
+- **R263 Self-contained Clean (۲۵۱فایلی) فقط QA** است؛ تمام ۲۴۴ فایل مشترک با Public Update برابر و ۷ فایل ثابت Emergency/Trust اضافی دارد. `audit.py` اکنون حضور همه وابستگی‌های صریح bootstrap را کنترل می‌کند.
+- فراداده `for_install=true/production_pass=true` در Local R262 برای Windows CI است، نه اعلام انتشار. با وجود تأیید Stage/Activate روی Windows آزمایشی، پذیرش هاست/سیستم مشتری همچنان لازم است.
+- R262/R263 شواهد QA جدیدترند، ولی بدون ثبت سورس کامل approved و تصمیم کاربر نباید به‌طور خودکار جانشین checkpoint R233 در `active-source.json` شوند.
