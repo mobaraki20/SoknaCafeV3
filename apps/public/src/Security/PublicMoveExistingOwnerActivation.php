@@ -56,7 +56,7 @@ final class PublicMoveExistingOwnerActivation
 
     public function activate(
         string $staffToken, string $origin, string $fetchSite, string $csrf,
-        string $newOwnerPassword, int $now
+        string $newOwnerPassword, int $now, ?callable $prepareProtectedSigner = null
     ): array {
         $session = $this->staffAdmin($staffToken, $origin, $fetchSite, $now);
         $expected = $this->csrf($staffToken, (string)$session['installation_id'], intdiv($now, 300));
@@ -72,6 +72,9 @@ final class PublicMoveExistingOwnerActivation
         if ($this->owners->initialized($this->trustedPublicInstanceId)) {
             throw new RuntimeException('upgrade_owner_already_exists');
         }
+        // The hosting adapter provisions its protected signer only AFTER the
+        // session, installation scope and CSRF checks have succeeded.
+        if ($prepareProtectedSigner !== null) $prepareProtectedSigner();
         // A trusted authenticated admin may call these internals; there is no
         // public "stage claim" route or unguarded client-supplied installation ID.
         $claim = $this->owners->stageClaim($this->trustedPublicInstanceId, $now, 180);
