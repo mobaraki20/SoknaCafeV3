@@ -58,6 +58,8 @@ if ((string)getenv("SOKNA_QA_PUBLIC_SQL_DB")!=="") {
     // not redeclare them from R171 and do not touch product code.
     need(class_exists(\Sokna\PublicEdge\Update\RoutinePublicUpdateService::class),
          "real_public_target_routine_owner_loaded_once");
+    // The original bootstrap does not eagerly include this independent bridge.
+    require_once $realPublicPath."/src/Update/IndependentEmergencyRoutineBridge.php";
     need(class_exists(\Sokna\PublicEdge\Update\IndependentEmergencyRoutineBridge::class),
          "real_public_target_emergency_owner_loaded_once");
 } else {
