@@ -117,14 +117,16 @@ jobs:
           L=json.loads(r262_out["release-set.json"])
           assert L["for_install"] is True and L["production_pass"] is True
           assert "PENDING_HOST_ACCEPTANCE" in L["status"]
-          rlocal=a.audit(local,expected_kind="local-update",expected_sha=a.sha(local.read_bytes()))
-          rupdate=a.audit(update,expected_kind="public-update",expected_sha=a.sha(update.read_bytes()),paired=goodclean)
-          rgood=a.audit(goodclean,expected_kind="public-clean",expected_sha=a.sha(goodclean.read_bytes()))
-          rbad=a.audit(oldclean,expected_kind="public-clean",expected_sha=a.sha(oldclean.read_bytes()))
+          registry=P("release-ops/version-registry.json")
+          rlocal=a.audit(local,expected_kind="local-update",expected_sha=a.sha(local.read_bytes()),registry=registry)
+          rupdate=a.audit(update,expected_kind="public-update",expected_sha=a.sha(update.read_bytes()),paired=goodclean,registry=registry)
+          rgood=a.audit(goodclean,expected_kind="public-clean",expected_sha=a.sha(goodclean.read_bytes()),registry=registry)
+          rbad=a.audit(oldclean,expected_kind="public-clean",expected_sha=a.sha(oldclean.read_bytes()),registry=registry)
           assert rlocal["static"]=="PASS",rlocal["errors"]
           assert rupdate["static"]=="PASS",rupdate["errors"]
           assert rgood["static"]=="PASS",rgood["errors"]
           assert "PUBLIC_CLEAN_BOOTSTRAP_DEPENDENCIES_MISSING" in rbad["errors"]
+          assert "KNOWN_REJECTED_ARCHIVE_SHA" in rbad["errors"]
           assert rbad["static"]=="FAIL"
           assert not any(x["release_authorized"] for x in (rlocal,rupdate,rgood,rbad))
           report={
