@@ -227,6 +227,26 @@
       "date": "2026-11-16",
       "reason": "Source-of-truth mismatch: actual R249 release has 8 migrations, protected Emergency ownership and a different setup/kernel implementation.",
       "superseded_by": "MIG-016"
+    },
+    {
+      "id": "MIG-017",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "An already-installed Public can activate its independent site-owner credential ONLY via a live authenticated administrator of the sole active Local installation on that Public. Zero/multiple installations or invalid staff sessions fail closed; no automatic owner claim or DB reset. A signed destination-owner consent receipt and explicit authenticated Local administrator confirmation are both required before one-time Local ledger approval; neither authorizes cutover.",
+      "date": "2026-11-16",
+      "reason": "Most users update an existing Public rather than clean-install. Earlier R255/R256 setup-only owner creation otherwise strands them. Separate Public ownership from Local authority and prevent cross-tenant takeover.",
+      "acceptance": "Real MariaDB existing-site owner upgrade gate and signed receipt/Local admin MAC ledger; no rollout until R249-source integration, secure owner UI, upgrade tests, trusted Local session adapter, cutover/fencing and real host tests.",
+      "superseded_by": null,
+      "implementation_status": "R257 Q/A classes and signed ledger unit integration; not exposed in installed Public/Local endpoint, no production migrations or order intake changes."
+    },
+    {
+      "id": "OLD-010",
+      "scope": "historical",
+      "status": "SUPERSEDED",
+      "summary": "Independent Public owner credentials can only be established during fresh clean install, so an existing Public must be reinstalled or use Emergency manually.",
+      "date": "2026-11-16",
+      "reason": "R257 supports a guarded existing-site admin activation path; installation or database deletion is not required.",
+      "superseded_by": "MIG-017"
     }
   ],
   "fixtures": [
