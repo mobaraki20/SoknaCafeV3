@@ -96,6 +96,39 @@ jobs:
           R256_QA_HOST=public-cafe-green.example R256_QA_SUBDIR='' R256_QA_DB_NAME=sokna_r256_root_qa php r257/test_integrated_setup.php | tee /tmp/r256-root.txt
           grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=25' /tmp/r256-root.txt
           echo PASS_R257_TWO_INDEPENDENT_PUBLIC_INSTANCES_REAL_MARIADB_NO_HOST_DEPLOY
+      - name: Upgrade an ALREADY installed R249 Public without reinstall or data reset
+        env:
+          GITHUB_ACTIONS: 'true'
+          R257_QA_DB_PASSWORD: qa-r256-only
+        run: |
+          set -euo pipefail
+          R249="$(cat "$RUNNER_TEMP/r249_path.txt")"
+          OLD_ROOT="$RUNNER_TEMP/r257-old-public"
+          UPGRADE_ROOT="$RUNNER_TEMP/r257-upgrade-public"
+          mkdir -p "$OLD_ROOT"
+          python3 - "$R249" "$OLD_ROOT" <<'PY'
+          import pathlib,sys,zipfile
+          archive,target=pathlib.Path(sys.argv[1]),pathlib.Path(sys.argv[2])
+          with zipfile.ZipFile(archive) as z:
+           for member in z.namelist():
+            if not member.startswith('payload/') or member.endswith('/'):continue
+            relative=pathlib.PurePosixPath(member[8:])
+            if not relative.parts or '..' in relative.parts or relative.is_absolute():raise SystemExit('INVALID_R249_FILE_PATH')
+            output=target.joinpath(*relative.parts)
+            output.parent.mkdir(parents=True,exist_ok=True)
+            output.write_bytes(z.read(member))
+          PY
+          mkdir -p "$OLD_ROOT/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$OLD_ROOT/src/Emergency/"
+          cp -a "$RUNNER_TEMP/r256/qa-public-payload" "$UPGRADE_ROOT"
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R257_QA_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r257_upgrade_qa CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          R257_QA_OLD_ROOT="$OLD_ROOT" php r257/prepare_existing_install.php | tee /tmp/r257-old-setup.txt
+          grep -q 'R257_OLD_R249_EIGHT_MIGRATION_PAIRED_PUBLIC_CREATED' /tmp/r257-old-setup.txt
+          cp "$OLD_ROOT/config.php" "$UPGRADE_ROOT/config.php"
+          cp "$OLD_ROOT/install.lock" "$UPGRADE_ROOT/install.lock"
+          R256_QA_PUBLIC_ROOT="$UPGRADE_ROOT" php r257/test_integrated_upgrade.php | tee /tmp/r257-upgrade.txt
+          grep -q 'R257_EXISTING_R249_PUBLIC_REAL_UPGRADE_PASS count=' /tmp/r257-upgrade.txt
+          echo PASS_R257_REAL_EXISTING_PUBLIC_UPGRADE_NO_REINSTALL_NO_DB_RESET
       - name: Verify universal decision register and established security primitives
         run: |
           set -euo pipefail
