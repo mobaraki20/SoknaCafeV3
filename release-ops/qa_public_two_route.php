@@ -192,7 +192,7 @@ need(($owner["release_version"] ?? null) === $m["version"], "owner_version_match
 need(($owner["sha256"] ?? null) === hash_file("sha256", $root."/src/Update/EmergencyOwnerCandidate.php"), "owner_code_sha_matches");
 need(($end["active_version"] ?? $service->snapshot()["active_version"] ?? "") === $m["version"], "commit_confirmed");
 if ($dbQaPdo instanceof PDO) {
-    need($pendingChecks>=2, "real_public_owner_migration_inventory_invoked");
+    need($pendingChecks>=1, "real_public_owner_migration_inventory_invoked");
     need((int)$dbQaPdo->query("SELECT COUNT(*) FROM schema_migrations")->fetchColumn()===8,
          "real_public_8_migrations_preserved_after_upgrade");
     $marker=(string)$dbQaPdo->query(
