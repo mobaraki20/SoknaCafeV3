@@ -116,8 +116,11 @@ final class PublicMoveSimpleReplacement
             // On transient network failure, Local's existing binding remains.
             // Retry simply calls finish() again; the new Public stays paused.
             $result=$preview->publicEdgePublisher()->syncAll(10);
+            $media=(array)($result['channels']['guest_media']??[]);
             if(($result['success']??false)!==true ||
                 ($result['degraded']??true)!==false ||
+                ($media['ok']??false)!==true ||
+                ($media['complete']??false)!==true ||
                 (($result['guest_publication']['media_ready']??false)!==true)) {
                 return self::result('sync_retry',$target,false);
             }
@@ -134,6 +137,7 @@ final class PublicMoveSimpleReplacement
         if(($activation['body']['guest_intake_enabled']??null)!==true) {
             return self::result('activation_retry',$target,false);
         }
+        $this->ledger->completeAfterActivation($this->installationId,$operationId);
         @unlink($this->statePath());
         return self::result('completed',$target,false);
     }
