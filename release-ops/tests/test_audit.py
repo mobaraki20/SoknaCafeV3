@@ -247,5 +247,69 @@ class ReleaseAudit(unittest.TestCase):
         self.assertIn("ACCEPTED_FIX_FILE_MISSING_OR_CHANGED", r["errors"])
 
 
+    def test_version_registry_rejects_new_colliding_35hz(self):
+        p = self.public()
+        register = self.dir / "version-registry.json"
+        register.write_text(json.dumps({
+            "format": "sokna-release-version-ledger-v1", "historical_complete": False,
+            "quarantined_short_versions": ["35gg"],
+            "released": [{"component": "public", "kind": "public-update",
+                          "short_code": "35hz", "version": "3.0.0-g3.6-workspace.35hz-old",
+                          "sha256": "f" * 64}]
+        }))
+        r = a.audit(p, registry=register)
+        self.assertIn("RELEASE_VERSION_IDENTITY_COLLISION", r["errors"])
+
+    def test_version_registry_accepts_exact_existing_same_bytes(self):
+        p = self.public()
+        register = self.dir / "version-registry.json"
+        register.write_text(json.dumps({
+            "format": "sokna-release-version-ledger-v1", "historical_complete": False,
+            "quarantined_short_versions": ["35gg"],
+            "released": [{"component": "public", "kind": "public-update",
+                          "short_code": "35hz", "version": "3.0.0-g3.6-workspace.35hz-r258",
+                          "sha256": a.sha(p.read_bytes())}]
+        }))
+        r = a.audit(p, registry=register)
+        self.assertEqual(r["static"], "PASS", r)
+        self.assertIn("HISTORICAL_RELEASE_VERSION_LEDGER_INCOMPLETE", r["not_proven"])
+
+    def test_two_public_routes_must_use_same_zip(self):
+        p = self.public()
+        evidence = self.dir / "route-evidence.json"
+        with zipfile.ZipFile(p) as z:
+            baseline = json.loads(z.read("manifest.json"))["compatibility"]["supported_baselines"][0]
+        digest = a.sha(p.read_bytes())
+        evidence.write_text(json.dumps({
+            "format": "sokna-public-two-route-evidence-v1",
+            "package_sha256": digest,
+            "baselines": [{
+                "identity": baseline,
+                "routine": {"status": "PASS", "package_sha256": digest,
+                            "evidence_url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/1"},
+                "emergency": {"status": "PASS", "package_sha256": digest,
+                              "evidence_url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/2"}
+            }]
+        }))
+        r = a.audit(p, routes=evidence)
+        self.assertEqual(r["static"], "PASS", r)
+        self.assertIn("PUBLIC_ROUTE_DECLARATION_NOT_INDEPENDENT_HOST_PROOF", r["not_proven"])
+        data = json.loads(evidence.read_text())
+        data["baselines"][0]["emergency"]["package_sha256"] = "0" * 64
+        evidence.write_text(json.dumps(data))
+        r2 = a.audit(p, routes=evidence)
+        self.assertIn("PUBLIC_TWO_ROUTE_EVIDENCE_MISSING_OR_DIVERGENT", r2["errors"])
+
+    def test_public_route_baseline_omission_denied(self):
+        p = self.public()
+        evidence = self.dir / "route-evidence.json"
+        evidence.write_text(json.dumps({
+            "format": "sokna-public-two-route-evidence-v1",
+            "package_sha256": a.sha(p.read_bytes()), "baselines": []
+        }))
+        r = a.audit(p, routes=evidence)
+        self.assertIn("PUBLIC_TWO_ROUTE_BASELINE_COVERAGE_INCOMPLETE", r["errors"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
