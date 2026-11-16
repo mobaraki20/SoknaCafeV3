@@ -150,6 +150,25 @@ final class PublicMoveApprovalLedger
         });
     }
 
+    /** Release the single-operation slot after Public intake is verified active.
+     * Without this, a successful first replacement would block ALL future ones. */
+    public function completeAfterActivation(string $local,string $operation): array
+    {
+        self::validId($local);self::validId($operation);
+        return $this->atomic(function()use($local,$operation){
+            $q=$this->pdo->prepare('SELECT status FROM public_move_auth_operations WHERE operation_id=? AND local_installation_id=? FOR UPDATE');
+            $q->execute([$operation,$local]);$status=$q->fetchColumn();
+            if($status==='completed')return self::result($operation,'completed',true);
+            if($status!=='claimed')throw new RuntimeException('move_not_ready_to_complete');
+            $this->requireSlot($local,$operation);
+            $this->pdo->prepare("UPDATE public_move_auth_operations SET status='completed' WHERE operation_id=? AND local_installation_id=?")
+                ->execute([$operation,$local]);
+            $this->pdo->prepare('UPDATE public_move_auth_slots SET operation_id=NULL WHERE local_installation_id=? AND operation_id=?')
+                ->execute([$local,$operation]);
+            return self::result($operation,'completed',true);
+        });
+    }
+
     /** Cancellable only before a preflight claim. A claim needs explicit recovery semantics. */
     public function cancelBeforeClaim(string $local, string $operation): array
     {
