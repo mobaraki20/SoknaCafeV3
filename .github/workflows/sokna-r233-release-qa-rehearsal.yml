@@ -1,0 +1,170 @@
+name: SOKNA R233 Packaging QA - Real Formats, No Install
+
+on:
+  pull_request:
+    paths:
+      - 'release-ops/**'
+      - '.github/workflows/sokna-r233-release-qa-rehearsal.yml'
+      - '.github/workflows/sokna-source-evidence-vault-r233.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  local-maintenance-package:
+    name: Exact R233 Local -> Maintenance v2.1 static QA (noninstallable)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 120d1fb5107699d6b62eaba74f04fd962338f6a3
+          path: frozen-fixtures
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE
+          run-id: 43830191738
+          github-token: ${{ github.token }}
+          path: source
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: r201
+      - name: Build a disposable QA-only Maintenance ZIP from pinned R233 and R201 exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="source/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip"
+          BASE="$(find r201 -type f -name 'SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)"
+          test -f "$SRC" && test -f "$BASE"
+          mkdir -p "$RUNNER_TEMP/local-qa" qa-reports
+          python3 release-ops/qa_local_maintenance_rehearsal.py \
+            --source "$SRC" --parent-r201 "$BASE" \
+            --out "$RUNNER_TEMP/local-qa/SOKNA-R233-LOCAL-MAINTENANCE-QA-NOT-INSTALLABLE.zip" \
+            --report qa-reports/local-static.json
+          python3 frozen-fixtures/packaging/windows/release-gates/check_local_release_set.py \
+            "$RUNNER_TEMP/local-qa/SOKNA-R233-LOCAL-MAINTENANCE-QA-NOT-INSTALLABLE.zip"
+          if python3 frozen-fixtures/packaging/windows/release-gates/check_local_release_set.py \
+            --require-installable "$RUNNER_TEMP/local-qa/SOKNA-R233-LOCAL-MAINTENANCE-QA-NOT-INSTALLABLE.zip"; then
+              echo 'BLOCKER: QA-only Local package was accepted as installable'; exit 3
+          fi
+          echo 'LOCAL_MAINTENANCE_FORMAT_QA_ONLY_PASS_NOT_INSTALLABLE'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R233-LOCAL-MAINTENANCE-QA-REPORT-ONLY
+          path: qa-reports/local-static.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  public-same-zip:
+    name: Same Public SHA via native PHP Routine and independent Emergency (no host)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: zip,mbstring,curl,pdo_mysql,sodium,fileinfo
+          coverage: none
+      - uses: actions/checkout@v4
+        with:
+          ref: 120d1fb5107699d6b62eaba74f04fd962338f6a3
+          path: frozen-fixtures
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE
+          run-id: 43830191738
+          github-token: ${{ github.token }}
+          path: source
+      - uses: actions/download-artifact@v4
+        with:
+          name: r171-exact-cumulative-windows-cafe-uat-candidates
+          run-id: 43205002445
+          github-token: ${{ github.token }}
+          path: r171-artifact
+      - name: Build ONE ephemeral Public update and exact same-version root clean from immutable source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="source/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip"
+          test -f "$SRC"
+          mkdir -p "$RUNNER_TEMP/qa-public" qa-reports
+          python3 release-ops/qa_public_update_rehearsal.py \
+            --source "$SRC" \
+            --update "$RUNNER_TEMP/qa-public/R233-ONE-PUBLIC-ZIP-DO-NOT-INSTALL.zip" \
+            --clean "$RUNNER_TEMP/qa-public/R233-CLEAN-QA-DO-NOT-INSTALL.zip" \
+            --report qa-reports/public-static.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('qa-reports/public-static.json'))
+          assert r['update_static'] == 'PASS' and r['clean_static'] == 'PASS'
+          assert r['functional_byte_drift'] == 0 and r['release_authorized'] is False
+          print('PASS_ONE_EXACT_ZIP_STATIC_AND_UPDATE_CLEAN_SHARED_BYTES')
+          PY
+      - name: Prepare unchanged R171 real PHP Routine and Emergency classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/qa-public"
+          R171="$(find r171-artifact -type f -name 'SOKNA-R171-PUBLIC-35HT-FROM-35HK-PANEL-UPDATE.zip' -print -quit)"
+          test -f "$R171"
+          echo "ea1d2f7d90242d5b45fe232da7ff5510f03ee55c835e2dabe5f61980430be157  $R171" | sha256sum -c -
+          mkdir -p "$D/r171-outer" "$D/r171"
+          unzip -q "$R171" -d "$D/r171-outer"
+          cp -a "$D/r171-outer/payload/." "$D/r171/"
+          cp frozen-fixtures/r239/public/PublicUpdateException.php "$D/public-update-exception.php"
+          php -l release-ops/qa_public_two_route.php
+      - name: Genuine R171 Routine stage activate commit with exact SAME Public ZIP
+        shell: bash
+        env:
+          SOKNA_QA_PUBLIC_ROUTE: routine
+        run: |
+          set -euo pipefail
+          export SOKNA_QA_PUBLIC_FIXTURE="$RUNNER_TEMP/qa-public"
+          export SOKNA_QA_PUBLIC_ZIP="$RUNNER_TEMP/qa-public/R233-ONE-PUBLIC-ZIP-DO-NOT-INSTALL.zip"
+          export SOKNA_QA_PUBLIC_SHA="$(python3 -c 'import json;print(json.load(open("qa-reports/public-static.json"))["public_update_sha256"])')"
+          php -d display_errors=1 release-ops/qa_public_two_route.php
+          echo 'QA_ROUTINE_SAME_SHA_PASS'
+      - name: Genuine independent Emergency stage activate commit using SAME ZIP and SHA
+        shell: bash
+        env:
+          SOKNA_QA_PUBLIC_ROUTE: emergency
+        run: |
+          set -euo pipefail
+          export SOKNA_QA_PUBLIC_FIXTURE="$RUNNER_TEMP/qa-public"
+          export SOKNA_QA_PUBLIC_ZIP="$RUNNER_TEMP/qa-public/R233-ONE-PUBLIC-ZIP-DO-NOT-INSTALL.zip"
+          export SOKNA_QA_PUBLIC_SHA="$(python3 -c 'import json;print(json.load(open("qa-reports/public-static.json"))["public_update_sha256"])')"
+          php -d display_errors=1 release-ops/qa_public_two_route.php
+          echo 'QA_EMERGENCY_SAME_SHA_PASS'
+      - name: Record both native PHP paths, same exact SHA — never claim host qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("qa-reports/public-static.json")
+          d=json.loads(p.read_text())
+          d["both_routes_native_php"]="PASS_DISPOSABLE_R171_35HT_ONLY"
+          d["installed_cafe_host"]="NOT_RUN"
+          d["actual_http_https_host"]="NOT_RUN"
+          d["production_installable"]=False
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2,sort_keys=True)+"\n")
+          PY
+          echo 'R233_PUBLIC_NATIVE_DUAL_ROUTE_SAME_SHA_ONLY_QA_PASS'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R233-PUBLIC-TWO-ROUTE-QA-REPORT-ONLY
+          path: qa-reports/public-static.json
+          if-no-files-found: ignore
+          retention-days: 90
