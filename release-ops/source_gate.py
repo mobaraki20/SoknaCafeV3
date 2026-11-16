@@ -178,6 +178,12 @@ def compare_candidate(z, source_files: dict, path: pathlib.Path, component: str,
                     issue(result, "MAINTENANCE_CANDIDATE_INVENTORY_MISMATCH")
             if not set(actual).issubset(expected):
                 issue(result, "MAINTENANCE_CANDIDATE_UNKNOWN_FILES")
+            if not any(k in result["errors"] for k in (
+                "MAINTENANCE_CANDIDATE_INVENTORY_MISSING",
+                "MAINTENANCE_CANDIDATE_INVENTORY_MISMATCH",
+                "MAINTENANCE_CANDIDATE_UNKNOWN_FILES")):
+                result["release_blockers"] = [x for x in result["release_blockers"]
+                    if x != "LOCAL_MAINTENANCE_TARGET_INVENTORY_INCOMPLETE"]
         elif set(actual) != expected:
             issue(result, "CANDIDATE_SOURCE_FILE_SET_MISMATCH")
         # Every shared executable/asset/SQL must preserve exact source bytes.
@@ -185,6 +191,20 @@ def compare_candidate(z, source_files: dict, path: pathlib.Path, component: str,
         exceptions = {"VERSION.txt"}
         if component == "public":
             exceptions.add("src/Update/emergency-owner-v1.json")
+            owner = "src/Update/emergency-owner-v1.json"
+            code = "src/Update/EmergencyOwnerCandidate.php"
+            if owner not in actual_data or code not in actual_data:
+                issue(result, "CANDIDATE_PUBLIC_OWNER_METADATA_OR_CODE_MISSING")
+            else:
+                meta = json.loads(actual_data[owner])
+                if (not isinstance(meta, dict) or meta.get("release_version") != version
+                    or meta.get("sha256") != sha(actual_data[code])):
+                    issue(result, "CANDIDATE_PUBLIC_OWNER_RELEASE_IDENTITY_STALE")
+                else:
+                    result["release_blockers"] = [x for x in result["release_blockers"]
+                        if x != "PUBLIC_RELEASE_OWNER_VERSION_STAMP_REQUIRED"]
+        if route == "local-maintenance-update":
+            exceptions.add("resources/local-managed-files-v1.json")
         changed = [n for n in set(actual) & set(source_files)
                    if n not in exceptions and actual[n][0] != source_files[n][0]]
         if changed:
@@ -209,6 +229,8 @@ def main() -> int:
     p.add_argument("--route", choices=("local-legacy-update", "local-maintenance-update",
                                         "public-update", "public-root-clean"))
     p.add_argument("--report", type=pathlib.Path)
+    p.add_argument("--require-output-ready", action="store_true",
+                   help="Require source + candidate format/metadata continuity; does NOT qualify real install.")
     a = p.parse_args()
     result = inspect(a.source, a.checkpoint, a.component, a.register, a.candidate, a.route)
     text = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2)
@@ -216,7 +238,11 @@ def main() -> int:
     if a.report:
         a.report.parent.mkdir(parents=True, exist_ok=True)
         a.report.write_text(text + "\n", encoding="utf-8")
-    return 0 if result["source_integrity"] == "PASS" else 2
+    if result["source_integrity"] != "PASS":
+        return 2
+    if a.require_output_ready and (a.candidate is None or result["release_blockers"]):
+        return 3
+    return 0
 
 
 if __name__ == "__main__":
