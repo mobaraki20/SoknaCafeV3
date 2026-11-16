@@ -1,0 +1,69 @@
+name: SOKNA R257 Existing Public Owner & Consent Receipt QA (NO DEPLOY)
+on:
+  push:
+    branches: [qa/sokna-r257-existing-public-consent-receipt-20261116]
+    paths:
+      - r257/**
+      - apps/public/src/Security/PublicMoveExistingOwnerActivation.php
+      - apps/public/src/Security/PublicMoveConsentReceiptStore.php
+      - apps/local-web/src/Domain/PublicEdge/PublicMoveReceiptVerifier.php
+      - apps/local-web/src/Domain/PublicEdge/PublicMoveLocalApprovalService.php
+      - .github/workflows/sokna-r257-public-consent.yml
+  workflow_dispatch:
+jobs:
+  existing-owner-and-ledger:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-r257-only
+          MARIADB_DATABASE: sokna_r257_qa
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Runtime dependencies and syntax
+        run: |
+          set -euo pipefail
+          if ! php -m | grep -Eiq '^pdo_mysql$'; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq php-mysql
+          fi
+          php -r 'if (!extension_loaded("pdo_mysql") || !extension_loaded("sodium")) exit(1);'
+          for f in apps/public/src/Security/PublicMoveExistingOwnerActivation.php apps/public/src/Security/PublicMoveConsentReceiptStore.php apps/local-web/src/Domain/PublicEdge/PublicMoveReceiptVerifier.php apps/local-web/src/Domain/PublicEdge/PublicMoveLocalApprovalService.php r257/test-existing-public-owner.php r257/test-consent-receipt.php; do php -l "$f"; done
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveExistingOwnerActivation.php
+          ! grep -Eiq 'soknaspace|soknagroup|231ff|35ic' apps/public/src/Security/PublicMoveConsentReceiptStore.php
+      - name: Existing Public upgrade owner eligibility and CSRF (MariaDB)
+        env:
+          SOKNA_R257_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=sokna_r257_qa;charset=utf8mb4
+          SOKNA_R257_TEST_USER: root
+          SOKNA_R257_TEST_PASSWORD: qa-r257-only
+        run: |
+          set -euo pipefail
+          php r257/test-existing-public-owner.php | tee /tmp/r257-existing.txt
+          grep -q 'R257_EXISTING_PUBLIC_OWNER_PASS count=' /tmp/r257-existing.txt
+      - name: Signed owner receipt and Local admin ledger (MariaDB)
+        env:
+          SOKNA_R257_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=sokna_r257_qa;charset=utf8mb4
+          SOKNA_R257_TEST_USER: root
+          SOKNA_R257_TEST_PASSWORD: qa-r257-only
+        run: |
+          set -euo pipefail
+          php r257/test-consent-receipt.php | tee /tmp/r257-receipt.txt
+          grep -q 'R257_PUBLIC_TO_LOCAL_CONSENT_PASS count=' /tmp/r257-receipt.txt
+          echo PASS_R257_MARIADB_CONSENT_REPLAY_TENANT_NO_CUTOVER
+      - name: Prior decision and cryptography regression
+        run: |
+          set -euo pipefail
+          python3 r251/check_decisions.py
+          php r252/test-public-move-attestation.php | tee /tmp/r252.txt
+          grep -q 'R252_PUBLIC_MOVE_ATTESTATION_TESTS_PASS count=57' /tmp/r252.txt
+          php r251/test-public-move-decision.php | tee /tmp/r251.txt
+          grep -q 'R251_DISCOVERY_READONLY_TESTS_PASS count=55' /tmp/r251.txt
