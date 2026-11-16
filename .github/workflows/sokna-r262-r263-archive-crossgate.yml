@@ -1,0 +1,150 @@
+name: SOKNA R262/R263 exact-package QA cross-check - no operator release
+
+on:
+  pull_request:
+    paths:
+      - 'release-ops/**'
+      - '.github/workflows/sokna-r262-r263-archive-crossgate.yml'
+      - '.github/workflows/sokna-release-assurance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  crosscheck-exact-archives:
+    name: Reject R262 incomplete Clean and quarantine QA Local; verify R263+Update+DB lineage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-EXACT-NATIVE-WINDOWS-UAT-CANDIDATE-DO-NOT-INSTALL
+          run-id: 43834210936
+          github-token: ${{ github.token }}
+          path: archives/r262-local
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
+          run-id: 43835146004
+          github-token: ${{ github.token }}
+          path: archives/r262-public
+      - uses: actions/download-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          run-id: 43837950540
+          github-token: ${{ github.token }}
+          path: archives/r263-public
+      - uses: actions/download-artifact@v4
+        with:
+          name: R241-FINAL-EXACT-INSTALLABLE-REPLAY-ONLY
+          run-id: 43705649864
+          github-token: ${{ github.token }}
+          path: archives/r241
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-r249-dual-baseline-gated-public-candidate
+          run-id: 43749990301
+          github-token: ${{ github.token }}
+          path: archives/r249
+      - name: Check SHA-pinned actual files, old-vs-new SQL, Public clean bootstrap and operator-quarantine
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa-report
+          python3 - <<'PY'
+          import hashlib,io,json,pathlib,re,zipfile,sys
+          sys.path.insert(0, 'release-ops')
+          import audit as a
+          P=pathlib.Path
+          def f(folder,name,expect):
+              p=P("archives")/folder/name
+              assert p.is_file(), "EXACT_ARTIFACT_MISSING:"+str(p)
+              actual=hashlib.sha256(p.read_bytes()).hexdigest()
+              assert actual==expect, "EXACT_ARCHIVE_HASH_CHANGED:"+str(p)
+              return p
+          local=f("r262-local","SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip","3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c")
+          update=f("r262-public","SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip","5aef4cd781fbd450d3e454f324e294da6f4180bfe1e5eb1871cb4818dc20c93a")
+          oldclean=f("r262-public","SOKNA-R262-PUBLIC-35ID-CLEAN-SOURCE-QA-NOT-FOR-INSTALL.zip","156ddccf01e0755c2d94a6a88442523c02d1e6a63e815089be30a1e50f56616e")
+          goodclean=f("r263-public","SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip","37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21")
+          r241=f("r241","SOKNA-R241-LOCAL-231FA-CUMULATIVE-CONNECTION-RECOVERY.zip","2ec84cff9481ca0350dea9401c5b1bb1437f29e7e96f1d1c80f0739f8c7c992b")
+          r249=f("r249","SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip","5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4")
+          def zipmap(blob):
+              with zipfile.ZipFile(io.BytesIO(blob)) as z:
+                  assert z.testzip() is None
+                  names=z.namelist()
+                  assert len(names)==len(set(names)) and all(not n.startswith("/") and ".." not in n.split("/") for n in names)
+                  return {name:z.read(name) for name in names if not name.endswith("/")}
+          def m(path):return zipmap(path.read_bytes())
+          r241_out=m(r241);r262_out=m(local)
+          oldl=zipmap(r241_out["artifacts/local/web.zip"])
+          newl=zipmap(r262_out["artifacts/local/web.zip"])
+          r249_out=m(r249);r262u=m(update);r262c=m(oldclean);r263c=m(goodclean)
+          oldp={n[8:]:v for n,v in r249_out.items() if n.startswith("payload/")}
+          newp={n[8:]:v for n,v in r262u.items() if n.startswith("payload/")}
+          def sql(files):
+              return {n:v for n,v in files.items() if n.startswith("database/migrations/") and n.endswith(".sql")}
+          o_l,n_l=sql(oldl),sql(newl)
+          o_p,n_p=sql(oldp),sql(newp)
+          assert (len(o_l),len(n_l),len(o_p),len(n_p))==(81,82,8,11)
+          assert all(n_l.get(k)==v for k,v in o_l.items())
+          assert all(n_p.get(k)==v for k,v in o_p.items())
+          assert sorted(set(n_l)-set(o_l))==["database/migrations/0082_public_move_owner_approval.sql"]
+          assert sorted(set(n_p)-set(o_p))==[
+             "database/migrations/0009_public_move_owner_setup.sql",
+             "database/migrations/0010_public_move_owner_receipts.sql",
+             "database/migrations/0011_public_move_intake_pause.sql"]
+          assert len(newl)==604 and len(newp)==244 and len(r262c)==244 and len(r263c)==251
+          assert all(r263c.get(k)==v for k,v in newp.items()), "UPDATE_TO_CLEAN_FUNCTIONAL_DRIFT"
+          expected_extra={
+            "src/Emergency/EmergencyAccessService.php",
+            "src/Emergency/PairingSecretStore.php",
+            "src/Emergency/PublicInitialPairingService.php",
+            "src/Emergency/PublicTakeoverService.php",
+            "src/Emergency/PublicUpdateException.php",
+            "src/Emergency/PublicUpdateService.php",
+            "resources/update-trust-v1.json"}
+          assert set(r263c)-set(newp)==expected_extra
+          assert not expected_extra.intersection(newp)
+          for x in ("config.php","install.lock","emergency.php",".env"):
+              assert x not in r263c
+          trust=json.loads(r263c["resources/update-trust-v1.json"])
+          assert trust["format"]=="sokna-update-trust-v1" and trust["ed25519_public_keys"]=={}
+          dep=lambda files:sorted(set(re.findall(r"""require_once\s+__DIR__\s*\.\s*['"]/([^'"]+)['"]""",files["bootstrap.php"].decode()))-set(files))
+          assert len(dep(r262c))>=5 and dep(r263c)==[]
+          L=json.loads(r262_out["release-set.json"])
+          assert L["for_install"] is True and L["production_pass"] is True
+          assert "PENDING_HOST_ACCEPTANCE" in L["status"]
+          rlocal=a.audit(local,expected_kind="local-update",expected_sha=a.sha(local.read_bytes()))
+          rupdate=a.audit(update,expected_kind="public-update",expected_sha=a.sha(update.read_bytes()),paired=goodclean)
+          rgood=a.audit(goodclean,expected_kind="public-clean",expected_sha=a.sha(goodclean.read_bytes()))
+          rbad=a.audit(oldclean,expected_kind="public-clean",expected_sha=a.sha(oldclean.read_bytes()))
+          assert rlocal["static"]=="PASS",rlocal["errors"]
+          assert rupdate["static"]=="PASS",rupdate["errors"]
+          assert rgood["static"]=="PASS",rgood["errors"]
+          assert "PUBLIC_CLEAN_BOOTSTRAP_DEPENDENCIES_MISSING" in rbad["errors"]
+          assert rbad["static"]=="FAIL"
+          assert not any(x["release_authorized"] for x in (rlocal,rupdate,rgood,rbad))
+          report={
+            "format":"sokna-r262-r263-exact-archives-independent-release-qa-v1",
+            "status":"QA_ONLY_STATIC_PASS_OPERATOR_RELEASE_BLOCKED",
+            "sha256":{"r262_local":a.sha(local.read_bytes()),"r262_public_update":a.sha(update.read_bytes()),"r263_public_clean":a.sha(goodclean.read_bytes())},
+            "migrations":{"local_old":81,"local_target":82,"public_old":8,"public_target":11,"all_existing_sql_bytes_identical":True},
+            "public":{"update_managed_files":244,"r263_clean_files":251,"shared_files_byte_identical":True,"clean_required_static_files":sorted(expected_extra),"rejected_r262_clean_missing_bootstrap_files":dep(r262c)},
+            "local":{"managed_files":604,"qa_manifest_flags_true_but_host_approval_missing":True,"native_windows_real_host_not_proven":True,"supported_only_exact_baselines":2},
+            "static_audit":{"local":rlocal["static"],"public_update":rupdate["static"],"r263_clean":rgood["static"],"rejected_old_r262_clean":rbad["static"]},
+            "release_authorized":False,"production_host_acceptance":"NOT_RUN",
+            "notes":["R262 Local CI flags must not count as operator production approval","R262 old Clean is incomplete and must not be distributed","Use corrected R263 self-contained Clean only after real host acceptance"]
+          }
+          P("qa-report/exact-qa-archives.json").write_text(json.dumps(report,ensure_ascii=False,indent=2,sort_keys=True)+"\n")
+          print("PASS_R262_R263_EXACT_ZIP_SHA_SQL_AND_CLEAN_BOOTSTRAP__OPERATOR_RELEASE_BLOCKED")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R262-R263-ARCHIVE-CROSSCHECK-REPORT-ONLY
+          path: qa-report/*.json
+          if-no-files-found: ignore
+          retention-days: 90
