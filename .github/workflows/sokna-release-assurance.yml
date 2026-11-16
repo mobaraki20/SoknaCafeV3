@@ -138,7 +138,7 @@ jobs:
           git rev-parse --verify HEAD^1 >/dev/null
           git diff --name-only HEAD^1 HEAD > changed-files.txt
           cat changed-files.txt
-          if grep -v -E '^(AGENTS\.md|release-ops/.*|\.github/workflows/sokna-release-assurance\.yml|\.github/workflows/sokna-release-source-replay-r233\.yml|\.github/workflows/sokna-r233-release-qa-rehearsal\.yml|\.github/workflows/sokna-source-evidence-vault-r233\.yml|\.github/workflows/sokna-release-db-gate\.yml|\.github/workflows/sokna-release-source-intake\.yml)$' changed-files.txt; then
+          if grep -v -E '^(AGENTS\.md|release-ops/.*|\.github/workflows/sokna-release-assurance\.yml|\.github/workflows/sokna-release-source-replay-r233\.yml|\.github/workflows/sokna-r233-release-qa-rehearsal\.yml|\.github/workflows/sokna-source-evidence-vault-r233\.yml|\.github/workflows/sokna-release-db-gate\.yml|\.github/workflows/sokna-release-source-intake\.yml|\.github/workflows/sokna-r262-r263-archive-crossgate\.yml)$' changed-files.txt; then
             echo 'SCOPE_VIOLATION: only release operations docs, auditor and workflow may change'; exit 4
           fi
 
