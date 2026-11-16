@@ -107,5 +107,11 @@ try{
  throw new RuntimeException('R261_REAL_GUEST_RELAY_FAILED: '.$e->getMessage(),0,$e);
 }
 $count=(int)$pdo->query("SELECT COUNT(*) FROM orders WHERE order_source='guest'")->fetchColumn();
-if($count<1)throw new RuntimeException('R261_PUBLIC_GUEST_ORDER_NOT_RECEIVED_BY_LOCAL');
+if($count<1){
+ $pubDb=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_r261_public;charset=utf8mb4',
+   'root',$dsnPass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+ $requests=$pubDb->query("SELECT request_id,state,error_code,result_json FROM realtime_requests ORDER BY id DESC LIMIT 3")->fetchAll(PDO::FETCH_ASSOC);
+ echo 'REAL_PUBLIC_GUEST_REQUEST_RESULT='.json_encode($requests,JSON_UNESCAPED_UNICODE|JSON_PARTIAL_OUTPUT_ON_ERROR)."\n";
+ throw new RuntimeException('R261_PUBLIC_GUEST_ORDER_NOT_RECEIVED_BY_LOCAL');
+}
 echo "R261_FULL_LOCAL_PUBLISHER_TO_PUBLIC_AND_GUEST_ORDER_RECEIPT_PASS orders=$count\n";
