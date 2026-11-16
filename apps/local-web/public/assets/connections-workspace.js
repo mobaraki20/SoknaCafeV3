@@ -44,54 +44,69 @@ async function refresh(done=''){root.setAttribute('aria-busy','true');status('')
 $('[data-refresh]').addEventListener('click',()=>refresh());$('[data-accommodation-form]').addEventListener('submit',async e=>{e.preventDefault();const b=e.submitter;await SoknaUI.busy(b,async()=>{feedback('accommodation');try{await post({action:'accommodation_config_save',enabled:$('[data-accommodation-enabled]').checked,base_url:$('[data-accommodation-url]').value.trim(),api_key:$('[data-accommodation-key]').value.trim()});$('[data-accommodation-key]').value='';await refresh('تنظیمات اتصال اقامتگاه ذخیره شد.')}catch(err){feedback('accommodation',err.message||'ذخیره تنظیمات انجام نشد.')}})});$('[data-accommodation-test]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('accommodation');try{const j=await post({action:'accommodation_test'}),r=j.result||{};feedback('accommodation',`${r.message||'اتصال اقامتگاه تأیید شد.'}${r.checked_at?` · ${L.instantDateTime?L.instantDateTime(r.checked_at):L.dateTime(r.checked_at)}`:''}`,false)}catch(err){feedback('accommodation',err.message||'آزمایش اتصال اقامتگاه انجام نشد.',true)}}));
 $('[data-lan-staff-preflight]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('lan-staff');const enabled=$('[data-lan-staff-enabled]').checked,url=$('[data-lan-staff-url]').value.trim();if(!enabled){feedback('lan-staff','LAN غیرفعال است؛ برای پیش‌بررسی ابتدا آن را فعال کن.',false);return}try{const j=await post({action:'lan_staff_preflight',enabled,base_url:url}),r=j.lan_staff_preflight||{},ips=(r.resolved_private_addresses||[]).join('، ');feedback('lan-staff',`پیش‌بررسی موفق · DNS خصوصی: ${ips||'تأیید'} · CORS/PNA: تأیید · Health: ${r.health_quorum||'—'} · میانه تأخیر: ${r.median_latency_ms??'—'} ms`,false)}catch(err){feedback('lan-staff',err.message||'پیش‌بررسی مسیر LAN انجام نشد.')}}));
 $('[data-lan-staff-form]')?.addEventListener('submit',async e=>{e.preventDefault();const b=$('[data-lan-staff-save]');await SoknaUI.busy(b,async()=>{feedback('lan-staff');const enabled=$('[data-lan-staff-enabled]').checked,url=$('[data-lan-staff-url]').value.trim();if(enabled&&!url){feedback('lan-staff','برای فعال‌کردن LAN، آدرس داخلی Local لازم است.');return}try{await post({action:'lan_staff_config_save',enabled,base_url:url});await refresh(enabled?'مسیر LAN پس از پیش‌بررسی ذخیره شد.':'مسیر LAN کارکنان غیرفعال شد.')}catch(err){feedback('lan-staff',err.message||'ذخیره مسیر LAN انجام نشد.')}})});
-// One action for same-Public URL rebind or independent destination owner consent.
-// All identity and authority decisions remain exclusively server-side.
-let moveTab=null,movePending=null;
+// R260: replace an unreachable Public with a fresh empty one. The OLD host
+// is optional; pairing, catalog and images use existing Local transport.
+let moveTab=null,movePending=null,moveNeedsResume=false;
 function encodeChallenge(challenge){
  const raw=new TextEncoder().encode(JSON.stringify(challenge));
  let text='';for(const byte of raw)text+=String.fromCharCode(byte);
  return btoa(text).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 }
+function moveUi(state){
+ moveNeedsResume=state==='sync_pending';
+ const resume=$('[data-public-move-resume]'),cancel=$('[data-public-move-cancel]');
+ if(resume)resume.hidden=!moveNeedsResume;
+ if(cancel)cancel.hidden=state!=='awaiting_owner';
+}
+async function finishSimpleMove(){
+ const response=await post({action:'public_move_finish'}),result=response.move||{};
+ if(result.completed===true){
+  movePending=null;moveUi('completed');
+  feedback('public-move','وب عمومی جدید متصل شد؛ منو، تصاویر و سفارش‌گیری آماده‌اند.',false);
+  await refresh();
+  return;
+ }
+ moveUi('sync_pending');
+ feedback('public-move','اتصال جدید آماده است اما همگام‌سازی هنوز کامل نشده. با «ادامهٔ اتصال» دوباره تلاش کنید. سفارش‌گیری مقصد همچنان بسته است.',true);
+}
 $('[data-public-move-form]')?.addEventListener('submit',async e=>{
  e.preventDefault();
  const target=$('[data-public-move-target]').value.trim(),button=$('[data-public-move-check]');
+ if(moveNeedsResume){await SoknaUI.busy(button,finishSimpleMove);return;}
  feedback('public-move');
  if(!target){feedback('public-move','آدرس مقصد را وارد کنید.');return;}
- // Open immediately on the click: browsers otherwise block a popup opened after fetch.
+ // Open on the actual user gesture, before asynchronous requests.
  const popup=window.open('about:blank','_blank');
- if(!popup){feedback('public-move','مرورگر پنجرهٔ تأیید را مسدود کرده است. باز شدن پنجره را برای این سامانه مجاز کنید.');return;}
+ if(!popup){feedback('public-move','بازشدن پنجرهٔ تأیید را برای سامانه مجاز کنید.');return;}
  moveTab=popup;
  await SoknaUI.busy(button,async()=>{
   try{
    const inspected=await post({action:'public_move_inspect',base_url:target});
    const decision=inspected.public_move||{};
    if(decision.route==='same_destination'){
-     popup.close();feedback('public-move','این آدرس هم‌اکنون متصل است؛ انتقال جدید لازم نیست.',false);return;
+     popup.close();feedback('public-move','همین آدرس اکنون متصل است.',false);return;
    }
    if(decision.route==='ready_for_review'){
      popup.close();
      if(!await SoknaUI.confirm('تغییر آدرس وب عمومی',
-       'مقصد همان نصب قبلی است. آدرس را پس از پیش‌بررسی و حفظ مسیر قدیمی تغییر می‌دهیم.',true))return;
+       'مقصد همان نصب قبلی است. تغییر آدرس را تأیید می‌کنید؟',true))return;
      await post({action:'public_origin_rebind_execute',base_url:target});
-     await refresh();feedback('public-move','آدرس همان نصب با موفقیت تغییر کرد.',false);return;
+     await refresh();feedback('public-move','آدرس وب عمومی با موفقیت تغییر کرد.',false);return;
    }
-   if(decision.reason_code==='invalid_target'||decision.reason_code==='local_recovery_required'||
-      decision.reason_code==='connection_not_configured'){
-     popup.close();feedback('public-move',String(decision.message||'ابتدا اتصال فعلی را بررسی کنید.'));return;
+   if(decision.route!=='awaiting_owner'){
+     popup.close();feedback('public-move',String(decision.message||'مقصد معتبر نیست.'));return;
    }
-   // A different Public cannot answer the OLD secret-bound rebind probe.
-   // Ask the target's own owner to approve; this does not auto-pair or transfer.
    const started=await post({action:'public_move_begin',base_url:target}),flow=started.move||{};
-   if(!flow.challenge||!flow.operation_id)throw new Error('درخواست انتقال ثبت نشد.');
+   if(!flow.challenge||!flow.operation_id)throw new Error('درخواست اتصال ثبت نشد.');
    const url=new URL(String(flow.challenge.target_base_url).replace(/\/$/,'')+'/move/approve');
    url.hash=new URLSearchParams({challenge:encodeChallenge(flow.challenge),return_origin:location.origin}).toString();
    movePending={operation:flow.operation_id,target:flow.challenge.target_base_url,handling:false};
-   $('[data-public-move-cancel]').hidden=false;
+   moveUi('awaiting_owner');
    popup.location.href=url.href;
-   feedback('public-move','در پنجرهٔ مقصد با رمز مدیر وارد شوید و انتقال را تأیید کنید. سپس نتیجه به این صفحه برمی‌گردد.',false);
+   feedback('public-move','پنجرهٔ مقصد باز شد؛ مدیر Public جدید باید مالکیت آن را تأیید کند.',false);
   }catch(err){
    try{popup.close()}catch{}
-   feedback('public-move',err.message||'بررسی مقصد کامل نشد؛ اتصال فعلی تغییری نکرده است.');
+   feedback('public-move',err.message||'بررسی مقصد کامل نشد. Local بدون تغییر باقی ماند.');
   }
  });
 });
@@ -104,31 +119,48 @@ window.addEventListener('message',async event=>{
  if(!message||message.type!=='sokna-public-move-owner-approved-v1'||
     message.operation_id!==pending.operation||
     message.target_base_url!==pending.target||
-    !message.attestation||!message.receipt_envelope)return;
+    !message.attestation||!message.receipt_envelope||
+    !/^[A-F0-9]{8}(?:-[A-F0-9]{8}){2}$/.test(message.pairing_code||''))return;
  pending.handling=true;
  try{
-   if(!await SoknaUI.confirm('تأیید مدیر این سامانه',
-      'مالک مقصد تأیید شد. آیا شما هم این مقصد را برای انتقال وب عمومی تأیید می‌کنید؟ اتصال فعلی هنوز حفظ می‌شود.',true)) {
+   if(!await SoknaUI.confirm('اتصال به Public جدید',
+      'اطلاعات و تصاویر از Local دوباره ارسال می‌شوند. سفارش‌هایی که فقط در Public قدیمی بوده و به Local نرسیده‌اند، ممکن است بازیابی نشوند. اتصال جدید را تأیید می‌کنید؟',true)) {
      pending.handling=false;return;
    }
    const j=await post({action:'public_move_confirm',
-     attestation:message.attestation,receipt_envelope:message.receipt_envelope});
-   const result=j.move||{};
-   if(result.status!=='owner_approved')throw new Error('تأیید نهایی مالکیت ثبت نشد.');
-   feedback('public-move','تأیید هر دو مدیر ثبت شد. اطلاعات و اتصال فعلی هنوز جابه‌جا نشده‌اند و مرحلهٔ انتقال امن بعدی باقی است.',false);
-   $('[data-public-move-cancel]').hidden=false;
+     attestation:message.attestation,
+     receipt_envelope:message.receipt_envelope,
+     pairing_code:message.pairing_code});
+   if((j.move||{}).status!=='sync_pending')throw new Error('اتصال اولیهٔ Public جدید کامل نشد.');
    try{moveTab?.close()}catch{}
-   movePending=null;
- }catch(err){pending.handling=false;feedback('public-move',err.message||'ثبت تأیید انتقال کامل نشد.');}
+   movePending=null;moveUi('sync_pending');
+   feedback('public-move','مالکیت و اتصال امن تأیید شد. در حال بازنشر اطلاعات از Local…',false);
+   await finishSimpleMove();
+ }catch(err){
+   const status=await post({action:'public_move_status'}).catch(()=>({}));
+   if(status.move?.status==='sync_pending')moveUi('sync_pending');
+   else moveUi('awaiting_owner');
+   pending.handling=false;
+   feedback('public-move',err.message||'اتصال هنوز کامل نشده؛ وضعیت Public جدید را بررسی کنید.',true);
+ }
 });
+$('[data-public-move-resume]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{
+ try{await finishSimpleMove()}catch(err){feedback('public-move',err.message||'همگام‌سازی هنوز کامل نشده است.',true)}
+}));
 $('[data-public-move-cancel]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{
  try{
   await post({action:'public_move_cancel'});
   movePending=null;try{moveTab?.close()}catch{}
-  $('[data-public-move-cancel]').hidden=true;
-  feedback('public-move','درخواست انتقال لغو شد. اتصال فعلی بدون تغییر است.',false);
+  moveUi('none');feedback('public-move','درخواست اتصال لغو شد. Local بدون تغییر باقی ماند.',false);
  }catch(err){feedback('public-move',err.message||'لغو درخواست کامل نشد.');}
 }));
+post({action:'public_move_status'}).then(data=>{
+ if(data.move?.status==='sync_pending'){
+  moveUi('sync_pending');feedback('public-move','اتصال Public جدید نیمه‌تمام است. «ادامهٔ اتصال» را بزنید.',false);
+ }else if(data.move?.status==='support_required'){
+  feedback('public-move','تأیید اتصال مقصد نامشخص است؛ بدون پاک‌کردن داده‌ها، ابتدا وضعیت نصب Public جدید را بررسی کنید.',true);
+ }
+}).catch(()=>{});
 $('[data-public-origin-target]')?.addEventListener('input',()=>{originRebindPreview=null;$('[data-public-origin-execute]').disabled=true;showOriginPreview(null);feedback('public-origin')});
 $('[data-public-origin-preflight]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public-origin');const url=$('[data-public-origin-target]').value.trim();if(!url){feedback('public-origin','آدرس مقصد لازم است.');return}try{const j=await post({action:'public_origin_rebind_preflight',base_url:url}),r=j.origin_rebind||{};originRebindPreview={url,result:r};showOriginPreview(r);$('[data-public-origin-execute]').disabled=false}catch(err){originRebindPreview=null;$('[data-public-origin-execute]').disabled=true;showOriginPreview(null);feedback('public-origin',err.message||'پیش‌بررسی تغییر آدرس انجام نشد.')}}));
 $('[data-public-origin-execute]')?.addEventListener('click',async e=>{const url=$('[data-public-origin-target]').value.trim();if(!originRebindPreview||originRebindPreview.url!==url){feedback('public-origin','ابتدا برای همین آدرس پیش‌بررسی موفق انجام بده.');return}const r=originRebindPreview.result||{},kind=String(r.transition_kind||'')==='cross_origin'?'دامنه/origin عوض می‌شود؛ کاربران ممکن است نیاز به ورود دوباره، PWA و Push جدید داشته باشند.':'origin ثابت می‌ماند؛ مسیر، Service Worker و در صورت نیاز نشست reconcile می‌شوند.';if(!await SoknaUI.confirm('اعمال تغییر آدرس Public',`${kind} مسیر قدیمی تا تأیید مهاجرت باز می‌ماند و تغییر بعدی تا بستن آن مجاز نیست.`,true))return;await SoknaUI.busy(e.currentTarget,async()=>{try{await post({action:'public_origin_rebind_execute',base_url:url});originRebindPreview=null;showOriginPreview(null);await refresh();toast('Rebind Public کامل شد؛ وضعیت انتقال قدیمی را پس از مهاجرت کاربران ببند.','success','تغییر آدرس')}catch(err){feedback('public-origin',err.message||'تغییر آدرس Public کامل نشد.');await refresh().catch(()=>{})}})});
