@@ -65,14 +65,14 @@ jobs:
           name: SOKNA-R233-PUBLIC-CLEAN-QA-REPORT-ONLY
           path: qa-readonly-report/public-clean-packaging.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
       - name: Upload frozen source reference ONLY (not deployable, not candidate Update)
         uses: actions/upload-artifact@v4
         with:
           name: SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE
           path: source-only/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
       - name: Explicitly deny release promotion
         shell: bash
         run: |
