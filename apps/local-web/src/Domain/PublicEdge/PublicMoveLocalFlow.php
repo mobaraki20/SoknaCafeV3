@@ -54,7 +54,7 @@ final class PublicMoveLocalFlow
         }
         $challenge=PublicMoveIdentityVerifier::challenge(
             'move-'.bin2hex(random_bytes(12)),
-            $this->localInstallationId,$verifiedSourceInstanceId,$source,$target,$now,180
+            $this->localInstallationId,$verifiedSourceInstanceId,$source,$target,$now,300
         );
         $this->ledger->begin($challenge,$now);
         return self::result($challenge,false);
