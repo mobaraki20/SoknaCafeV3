@@ -37,45 +37,45 @@ foreach ([
     'https://target.example\\private',
 ] as $bad) {
     $result=$service->inspect($bad);
-    checkR($result['route']==='blocked' && $result['safe_to_cutover']===false,'invalid URL blocked without writes');
+    checkR258($result['route']==='blocked' && $result['safe_to_cutover']===false,'invalid URL blocked without writes');
 }
-checkR($called===0,'no network request for invalid targets');
+checkR258($called===0,'no network request for invalid targets');
 $same=$service->inspect('https://cafe-one.example/public/');
-checkR($same['route']==='same_destination' && $called===0,'same target does not trigger probe');
+checkR258($same['route']==='same_destination' && $called===0,'same target does not trigger probe');
 $recovery=(new S('https://cafe-one.example/public','resync_required',$probe))
     ->inspect('https://new-cafe.example/subdir');
-checkR($recovery['route']==='blocked' && $called===0,'recovery phase fails before network');
+checkR258($recovery['route']==='blocked' && $called===0,'recovery phase fails before network');
 $unpaired=(new S('','active',$probe))->inspect('https://new-cafe.example');
-checkR($unpaired['reason_code']==='connection_not_configured' && $called===0,'unpaired Local stays safe');
+checkR258($unpaired['reason_code']==='connection_not_configured' && $called===0,'unpaired Local stays safe');
 
 $ok=$service->inspect('https://cafe-one-new.example/edge');
-checkR($ok['route']==='ready_for_review','signed same-instance preflight is recognized');
-checkR($ok['safe_to_cutover']===false && $ok['writes_performed']===false &&
+checkR258($ok['route']==='ready_for_review','signed same-instance preflight is recognized');
+checkR258($ok['safe_to_cutover']===false && $ok['writes_performed']===false &&
     $ok['local_connection_preserved']===true,'verified target cannot trigger cutover');
-checkR($ok['target_base_url']==='https://cafe-one-new.example/edge','subfolder path preserved');
-checkR(!isset($ok['public_instance_id'])&&!isset($ok['nonce']), 'browser receives no identity secrets or nonce');
+checkR258($ok['target_base_url']==='https://cafe-one-new.example/edge','subfolder path preserved');
+checkR258(!isset($ok['public_instance_id'])&&!isset($ok['nonce']), 'browser receives no identity secrets or nonce');
 
 $mismatch=(new S('https://cafe-one.example/public','active',
     static function():never {throw new E('public_origin_instance_mismatch','different instance',409);}
 ))->inspect('https://other-cafe.example');
-checkR($mismatch['route']==='awaiting_owner' && $mismatch['safe_to_cutover']===false,
+checkR258($mismatch['route']==='awaiting_owner' && $mismatch['safe_to_cutover']===false,
     'unrecognized independent target needs owner confirmation, not rebind');
 $wrongProof=(new S('https://a.example','active',
     static fn()=>['ok'=>true,'target_health_verified'=>true,'public_instance_id'=>'untrusted',
         'current_base_url'=>'https://a.example','target_base_url'=>'https://wrong.example']
 ))->inspect('https://b.example');
-checkR($wrongProof['reason_code']==='signed_preflight_incomplete',
+checkR258($wrongProof['reason_code']==='signed_preflight_incomplete',
     'mismatched server evidence rejected');
 $missingHealth=(new S('https://a.example','active',
     static fn()=>['ok'=>true,'public_instance_id'=>'id','current_base_url'=>'https://a.example',
         'target_base_url'=>'https://b.example']
 ))->inspect('https://b.example');
-checkR($missingHealth['reason_code']==='signed_preflight_incomplete',
+checkR258($missingHealth['reason_code']==='signed_preflight_incomplete',
     'no verified health flag cannot promote target');
 $network=(new S('https://a.example','active',
     static function():never {throw new RuntimeException('private SSL details must never leak');}
 ))->inspect('https://b.example');
-checkR($network['reason_code']==='target_check_failed' &&
+checkR258($network['reason_code']==='target_check_failed' &&
     !str_contains($network['message'],'private SSL details'),
     'transport exceptions fail closed without error leak');
 echo "R258_LOCAL_MOVE_UI_INSPECTION_QA_PASS count=$checks\n";
