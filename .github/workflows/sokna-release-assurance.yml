@@ -230,7 +230,7 @@ jobs:
           PY
           )"
           [[ "$ROUTE" != UNSUPPORTED_CLEAN_ROUTE ]] || { echo 'SOURCE_TO_FINAL_ROUTE_NOT_YET_QUALIFIED'; exit 3; }
-          python3 release-ops/source_gate.py --source "${SRC_ZIPS[0]}"             --checkpoint "$SOURCE_CHECKPOINT" --component "$SOURCE_COMPONENT"             --candidate "${FINAL_ZIPS[0]}" --route "$ROUTE"             --report audit-out/source-to-final.json --require-output-ready
+          python3 release-ops/source_gate.py --register release-ops/source-register.json --source "${SRC_ZIPS[0]}"             --checkpoint "$SOURCE_CHECKPOINT" --component "$SOURCE_COMPONENT"             --candidate "${FINAL_ZIPS[0]}" --route "$ROUTE"             --report audit-out/source-to-final.json --require-output-ready
           echo 'SOURCE_SHA_AND_FUNCTIONAL_BYTE_PRESERVATION_PASS. STILL NOT HOST INSTALL APPROVAL.'
       - uses: actions/upload-artifact@v4
         if: always()
