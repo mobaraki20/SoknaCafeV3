@@ -13,6 +13,12 @@ permissions:
   actions: read
 
 jobs:
+  database-mariadb:
+    name: Exact Local/Public MariaDB migration lineage and scratch backup restore
+    uses: ./.github/workflows/sokna-release-db-gate.yml
+    permissions:
+      contents: read
+      actions: read
   local-maintenance-package:
     name: Exact R233 Local -> Maintenance v2.1 static QA (noninstallable)
     runs-on: ubuntu-24.04

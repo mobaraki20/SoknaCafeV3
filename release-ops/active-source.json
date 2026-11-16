@@ -1,0 +1,37 @@
+{
+  "format": "sokna-release-active-source-v1",
+  "checked_on": "2026-11-16",
+  "active_checkpoint": "R233-20261115",
+  "authority": "/Cafe/SOKNA-Workspace/HANDOFF/00-LATEST-WORKING-R233-FA.md",
+  "location_policy": "This is the latest VERIFIED Workspace pointer at the recorded time, not a substitute for re-reading Workspace when a new release is requested.",
+  "source_only": true,
+  "production_installable": false,
+  "artifact": {
+    "provider": "GitHub Actions",
+    "run_id": "43834090781",
+    "name": "SOKNA-R233-RESTORED-SOURCE-ONLY-NOT-INSTALLABLE",
+    "durable_backup": "Non-public Draft GitHub Release: sokna-source-evidence-r233-20261116"
+  },
+  "components": {
+    "local": {
+      "file": "SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip",
+      "sha256": "783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d",
+      "files": 593,
+      "migrations": 81
+    },
+    "public": {
+      "file": "SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip",
+      "sha256": "8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b",
+      "files": 233,
+      "migrations": 8
+    }
+  },
+  "accepted_fix_matrix_complete": false,
+  "installed_baselines_qualified": false,
+  "owner_approval_for_release": false,
+  "rules": [
+    "Never assume this checkpoint remains latest after 2026-11-16; verify authoritative Workspace before each new release.",
+    "Never treat migration-only R250-R259 GitHub QA branches as the complete cumulative Local/Public product source.",
+    "Never publish installable ZIP or change flags based on this pointer alone."
+  ]
+}

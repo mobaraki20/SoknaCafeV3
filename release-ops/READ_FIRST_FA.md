@@ -105,3 +105,13 @@ python3 release-ops/source_gate.py --source /path/to/EXACT-SOURCE.zip --componen
 - Pull Request با مجوز `contents:read` نمی‌تواند Draft را دانلود کند؛ این مجوز را برای PR افزایش نده و Draft را برای رفع این محدودیت Publish نکن.
 - برای تهیه ورودی موقت از منبع پایدار، از Workflow `.github/workflows/sokna-source-evidence-vault-r233.yml` **روی شاخه main** استفاده کن (workflow_dispatch). این Workflow در اجرای مورداعتماد، اول از Draft می‌خواند، SHA دو سورس را تطبیق می‌دهد و Artifact با نام `SOKNA-R233-RESTORED-SOURCE-ONLY-NOT-INSTALLABLE` برای آزمون‌های بعدی می‌سازد. آرشیو قدیمیِ Actions فقط در bootstrap اولیه و وقتی Draft موجود نیست استفاده می‌شود.
 - عمر Artifact موقت محدود است؛ منبع پایدار همان Draft با هش ثابت است. هیچ‌کدام نصب‌پذیر یا به‌معنای تأیید Production نیستند.
+
+
+## ۱۱. نقطه ورود عمومی انتشار + آزمون دیتابیس
+
+- `release-ops/active-source.json` آخرین **مرجع بررسی‌شده** Workspace در زمان ثبت را نگه می‌دارد، نه اینکه آخرین شاخه GitHub را خودکار معتبر بداند. برای هر درخواست جدید ابتدا مرجع `LATEST-WORKING` در Library باید دوباره خوانده شود؛ سپس فقط با تأیید SHA و Source Tree، سورس موردنظر در GitHub ثبت شود.
+- `.github/workflows/sokna-release-source-intake.yml` نقطه ورود واحد `workflow_dispatch` / `workflow_call` برای Local/Public است. ابزار `release-ops/intake.py` نام و SHA ZIP را از مرجع ثبت‌شده می‌سنجد، مالک واقعی نوع بسته را جدا می‌کند و اثرانگشت SQL را کنترل می‌کند. این مسیر **عمداً بسته تولید یا منتشر نمی‌کند**؛ ابتدا مانع بسته‌سازی از سورس اشتباه می‌شود.
+- `release-ops/db_gate.py` Migrationهای مقصد را با آرشیو پایه دقیق و SHA واقعی مقایسه می‌کند؛ SQL اجراشدهٔ حذف/تغییرشده، ترتیب نامعتبر و دستور تخریبی تازه را رد می‌کند. صرف عدد migration کافی نیست.
+- `.github/workflows/sokna-release-db-gate.yml` با MariaDB 11.4 و دیتابیس‌های موقت، نصب واقعی Source، ۱۹ سناریوی کسب‌وکار R233، اجرای دوباره Migrationهای Local، بکاپ consistent و بازیابی تمام داده‌ها را بررسی می‌کند. در Workflow بسته‌سازی QA هم به‌عنوان گیت اجباری فراخوانی می‌شود.
+- گزارش مستند: [DB_RELEASE_GATES_FA.md](DB_RELEASE_GATES_FA.md). گیت Database هنوز **اثبات نصب روی دیتابیس قدیمی عملیاتی، پیشرفت DB-forward در Maintenance Windows یا migration مجدد مالک Public** نیست؛ آنها وضعیت `NOT_RUN` دارند و تولید بسته نهایی تا اثبات نیازمندی‌های همان Release مسدود می‌ماند.
+- همه ابزارها فقط در `release-ops/` و `.github/workflows/` هستند؛ هیچ سورس Local/Public و Windows/Maintenance/PrintAgent تغییر نکند.

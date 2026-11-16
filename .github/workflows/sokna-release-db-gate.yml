@@ -1,0 +1,176 @@
+name: SOKNA Release DB QA - frozen source, MariaDB 11.4, no host
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - 'release-ops/**'
+      - '.github/workflows/sokna-release-db-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  r233-database-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r225-disposable-only
+        ports: [3306:3306]
+    env:
+      SOKNA_RELEASE_DB_QA_DISPOSABLE: 'YES'
+      SOKNA_RELEASE_DB_QA_PASSWORD: r225-disposable-only
+      SOKNA_R213_DB_PASSWORD: r225-disposable-only
+      SOKNA_R213_ADMIN_PASSWORD: only-in-r225-disposable-ci
+      SOKNA_R213_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R225_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R228_DISPOSABLE_ONLY: 'YES'
+      SOKNA_R233_DISPOSABLE_ONLY: 'YES'
+      MYSQL_PWD: r225-disposable-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 120d1fb5107699d6b62eaba74f04fd962338f6a3
+          path: historical-qa
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql,mbstring,curl,gd,zip,fileinfo,sodium
+          coverage: none
+      - name: Install MariaDB client for deterministic scratch backup/restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mariadb-client
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R233-RESTORED-SOURCE-ONLY-NOT-INSTALLABLE
+          run-id: 43834090781
+          github-token: ${{ github.token }}
+          path: source
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: r201
+      - uses: actions/download-artifact@v4
+        with:
+          name: r171-exact-cumulative-windows-cafe-uat-candidates
+          run-id: 43205002445
+          github-token: ${{ github.token }}
+          path: r171
+      - name: Verify original source SHAs and all previously applied migration SQL bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa-db-reports "$RUNNER_TEMP/r233/local/web" "$RUNNER_TEMP/r233/public"
+          echo "SOKNA_R213_WEB=$RUNNER_TEMP/r233/local/web" >> "$GITHUB_ENV"
+          echo "SOKNA_R228_PUBLIC=$RUNNER_TEMP/r233/public" >> "$GITHUB_ENV"
+          LOCAL=source/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip
+          PUBLIC=source/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip
+          R201="$(find r201 -name SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip -print -quit)"
+          R171="$(find r171 -name SOKNA-R171-PUBLIC-35HT-FROM-35HK-PANEL-UPDATE.zip -print -quit)"
+          test -f "$LOCAL" && test -f "$PUBLIC" && test -f "$R201" && test -f "$R171"
+          echo "783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d  $LOCAL" | sha256sum -c -
+          echo "8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b  $PUBLIC" | sha256sum -c -
+          python3 release-ops/db_gate.py --source "$LOCAL" --component local --checkpoint R233-20261115 --baseline "$R201" --baseline-kind local-maintenance --baseline-sha256 911ea673dc1863bee3ce372dbc692602aa3a32439d2fc9ccba69dc2a6c243897 --require-baseline --report qa-db-reports/local-migrations.json
+          python3 release-ops/db_gate.py --source "$PUBLIC" --component public --checkpoint R233-20261115 --baseline "$R171" --baseline-kind public-update --baseline-sha256 ea1d2f7d90242d5b45fe232da7ff5510f03ee55c835e2dabe5f61980430be157 --require-baseline --report qa-db-reports/public-migrations.json
+          unzip -q "$LOCAL" -d "$RUNNER_TEMP/r233/local/web"
+          unzip -q "$PUBLIC" -d "$RUNNER_TEMP/r233/public"
+          php -l release-ops/qa_db_roundtrip.php
+          echo PASS_EXACT_81_AND_8_MIGRATION_LINEAGE_CHECK
+      - name: Install real R233 schemas in temporary MariaDB using unchanged historical setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if php -r 'try{new PDO("mysql:host=127.0.0.1;port=3306","root",getenv("SOKNA_RELEASE_DB_QA_PASSWORD"));exit(0);}catch(Throwable $e){exit(1);}' ; then break; fi
+            sleep 2
+          done
+          php historical-qa/qa/sokna-r225/setup_r213_disposable.php
+          php historical-qa/qa/sokna-r228/setup_r228_public.php
+          php historical-qa/qa/sokna-r233/test_r233_real_mariadb.php
+          echo PASS_REAL_R233_LOCAL_81_PUBLIC_8_AND_BUSINESS_DB_REGRESSION
+      - name: Seed existing rows, rerun Local migrator twice and compare all tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          php release-ops/qa_db_roundtrip.php seed local sokna_r213_isolated
+          php release-ops/qa_db_roundtrip.php seed public sokna_r228_public_disposable
+          php release-ops/qa_db_roundtrip.php snapshot local sokna_r213_isolated > qa-db-reports/local-before.json
+          php release-ops/qa_db_roundtrip.php snapshot public sokna_r228_public_disposable > qa-db-reports/public-before.json
+          php release-ops/qa_db_roundtrip.php reapply local sokna_r213_isolated
+          php release-ops/qa_db_roundtrip.php reapply public sokna_r228_public_disposable
+          php release-ops/qa_db_roundtrip.php snapshot local sokna_r213_isolated > qa-db-reports/local-reapplied.json
+          php release-ops/qa_db_roundtrip.php snapshot public sokna_r228_public_disposable > qa-db-reports/public-reapplied.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for x in ('local','public'):
+              a=json.loads(Path('qa-db-reports/'+x+'-before.json').read_text())
+              b=json.loads(Path('qa-db-reports/'+x+'-reapplied.json').read_text())
+              assert a==b, 'DATA_CHANGED_AFTER_REAL_MIGRATION_RERUN_'+x
+          print('PASS_DISPOSABLE_DATABASE_MIGRATION_REAPPLY_DATA_PRESERVATION')
+          PY
+      - name: Make consistent database backups, restore to two new schemas, compare entire logical contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/private-sql"
+          for DB in sokna_r213_isolated sokna_r228_public_disposable; do
+            OUT="$RUNNER_TEMP/private-sql/$DB.sql"
+            mariadb-dump -h127.0.0.1 -P3306 -uroot --single-transaction --quick --skip-lock-tables --hex-blob --no-tablespaces --routines --triggers --events "$DB" > "$OUT"
+            test -s "$OUT"
+            sha256sum "$OUT" > "$OUT.sha"
+            RESTORE="$DB""_restore_qa"
+            mariadb -h127.0.0.1 -P3306 -uroot -e "CREATE DATABASE $RESTORE CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+            mariadb -h127.0.0.1 -P3306 -uroot "$RESTORE" < "$OUT"
+            sha256sum -c "$OUT.sha"
+          done
+          php release-ops/qa_db_roundtrip.php snapshot local sokna_r213_isolated_restore_qa > qa-db-reports/local-restored.json
+          php release-ops/qa_db_roundtrip.php snapshot public sokna_r228_public_disposable_restore_qa > qa-db-reports/public-restored.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for x,n in (('local',81),('public',8)):
+              a=json.loads(Path('qa-db-reports/'+x+'-before.json').read_text())
+              b=json.loads(Path('qa-db-reports/'+x+'-restored.json').read_text())
+              assert a==b, 'BACKUP_RESTORE_LOST_BUSINESS_OR_SCHEMA_ROWS_'+x
+              assert b['migration_count']==n and b['preservation_marker_present']
+              print('PASS_'+x.upper()+'_FULL_DB_BACKUP_RESTORE_LOGICAL_EQUALITY')
+          PY
+      - name: Record untested installed-host and forward-fence domains
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p qa-db-reports
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          Path('qa-db-reports/release-boundaries.json').write_text(json.dumps({
+            'source':'R233-20261115','db_service':'MariaDB 11.4 disposable only',
+            'installed_old_database_upgrade':'NOT_RUN',
+            'native_maintenance_db_forward_fence':'NOT_RUN',
+            'real_host_backup_restore':'NOT_RUN',
+            'public_owner_migration_reapply':'NOT_RUN',
+            'live_database_modified':False,
+            'credentials_or_db_dumps_uploaded':False,
+            'release_authorized':False
+          },indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R233-DB-RELEASE-QA-REPORT-ONLY
+          path: qa-db-reports/*.json
+          if-no-files-found: ignore
+          retention-days: 90
