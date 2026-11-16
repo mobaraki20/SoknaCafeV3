@@ -12,3 +12,5 @@ This applies to natural-language requests such as «بسته به‌روزرسا
 6. Every release request reports `PASS / FAIL / NOT_RUN`, artifact SHA256, source provenance and blocking reasons. No green source-only run can mean successful field installation.
 
 This policy is intentionally discoverable at repository root and portable for use with or without GitHub Actions.
+
+**Historical source replay (currently R233 only):** If the approved source checkpoint is `R233-20261115`, use `.github/workflows/sokna-release-source-replay-r233.yml` and verify its two byte-exact source ZIPs and noninstallable Public root-clean QA report. This is *not* a general Latest resolver or an installable package builder. The pinned R204 parent originates from an expiring GitHub Actions archive; if it expires, STOP and restore immutable source provenance through an approved durable archive rather than guessing a replacement.
