@@ -3,7 +3,7 @@
   "date": "2026-11-16",
   "branch": "qa/sokna-r262-cumulative-source-20261116",
   "product_goal": "Minimal Local-authoritative new-empty-Public replacement at any supported HTTPS host/root/subfolder, old Public completely optional; existing Local sync republishes menu/media. No transfer of old Public DB or lost-only orders.",
-  "phase": "REAL_CUMULATIVE_WINDOWS_AND_PUBLIC_CLEAN_QA_PASS__EXISTING_PUBLIC_UPGRADE_VERIFICATION_PENDING__PRODUCTION_NO_GO",
+  "phase": "EXACT_R241_LOCAL_PLUS_R249_PUBLIC_MIG018_QA_PASS__NATIVE_WINDOWS_AND_PUBLIC_CLEAN_AND_EXISTING_UPGRADE_PASS__HOST_ACCEPTANCE_AND_UNIVERSAL_BASELINES_PENDING__PRODUCTION_NO_GO",
   "decisions": {
     "canonical": "r251/decisions.json",
     "primary": "MIG-018"
@@ -45,9 +45,10 @@
     "qa_cumulative_filename": "SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip",
     "clean_qa_gate": "PASS, real setup/owner login/receipt MariaDB subfolder",
     "clean_qa_ci": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43834411044",
-    "existing_r249_upgrade_gate": "PENDING",
-    "existing_r249_upgrade_ci": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43834948711",
-    "production_host_accepted": false
+    "existing_r249_upgrade_gate": "PASS: 8 existing migrations upgraded forward to 11 with owner activation and no config/data reset",
+    "existing_r249_upgrade_ci": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43835146004",
+    "production_host_accepted": false,
+    "existing_r249_upgrade_checks": 19
   },
   "end_to_end": {
     "cumulative_local_R241_plus_public_R249": "PASS",
@@ -66,13 +67,12 @@
     "known_only_supported_baselines": true
   },
   "open": [
-    "R262 Public existing R249 live database 8→11 forward migration, owner receipt, no data reset gate result",
     "Exact host upgrade/clean install operator acceptance and data protection on real supported platform",
     "Actual production-ready universal baseline coverage beyond the two pinned Local versions, if product promises additional supported originals",
     "Release build manifest/provenance transition and its exact final byte Windows qualification before labeling production-ready",
     "Legacy printed QR/DNS redirect to new customer Public destination is separate host operations and may require control of old domain"
   ],
-  "next_action": "Read existing Public upgrade CI; if green, record PASS. Then qualify only exact supported baselines and final release bytes with existing Maintenance; do not broaden migration logic. Do not call QA artifacts production installers.",
+  "next_action": "All essential R262 QA gates passed: full real Local/Public order E2E, native Windows Maintenance with 82 migrations, Public clean install, R249 existing Public 8→11 upgrade. Keep QA packages archived; before any production release qualify target customer baseline beyond pinned exact identifiers and host install/readback. No changes to updater engine, main/CURRENT or cafe. Do not add old Public migration features.",
   "library_workspace": "/Cafe/SOKNA-Workspace/WORKING/20261116-R262-SIMPLE-PUBLIC-REPLACEMENT/",
   "previous_checkpoint": "r261/START-HERE-FA.md"
 }
