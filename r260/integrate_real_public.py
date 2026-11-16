@@ -67,8 +67,8 @@ exact_edit(service,
 # signed move activation, even though Local normally publishes 'accepting'.
 projection=root/"src/Remote/InstallationProjectionService.php"
 exact_edit(projection,
-    "order_intake_enabled=VALUES(order_intake_enabled)",
-    "order_intake_enabled=IF(public_move_intake_paused=1,0,VALUES(order_intake_enabled))")
+    "order_intake_enabled=IF(authority_state='active',VALUES(order_intake_enabled),0)",
+    "order_intake_enabled=IF(authority_state='active' AND public_move_intake_paused=0,VALUES(order_intake_enabled),0)")
 
 kernel=root/"src/Http/PublicHttpKernel.php"
 anchor="            '/api/v1/local/installation'=>(new InstallationProjectionHttpAdapter($this->core))->sync"
