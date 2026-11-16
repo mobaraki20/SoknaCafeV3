@@ -97,3 +97,11 @@ python3 release-ops/source_gate.py --source /path/to/EXACT-SOURCE.zip --componen
 - آزمون فرایند: `.github/workflows/sokna-r233-release-qa-rehearsal.yml` سورس دقیق R233، parent واقعی R201 و مبناهای 35HK/35HT را بازیابی و در CI به‌شکل موقت کنترل می‌کند. **فرمت Local Maintenance** با همان validator موجود و Windows PowerShell 5.1 بررسی می‌شود؛ **یک ZIP پابلیک** با همان SHA در Routine/Emergency از هر دو مبنا روی PHP واقعی تست می‌شود. خود ZIP آزمایشی منتشر نمی‌شود؛ فقط گزارش‌های JSON.
 - گزارش جزئی شواهد و مرزها: [R233_PACKAGING_QA_EVIDENCE_20261116_FA.md](R233_PACKAGING_QA_EVIDENCE_20261116_FA.md).
 - تا زمانی که **منبع approved جدید**، سازگاری چندمبدأ روی native Windows و پذیرش واقعی هاست/دیتابیس تأیید نشده است، خروجی همچنان QA/NOT INSTALL است. هیچ فرایند انتشار مجاز به تنظیم دلخواه `for_install=true` یا `production_pass=true` نیست.
+
+
+### دسترسی پایدار به SOURCE-ONLY R233، بدون عمومی‌سازی سورس
+
+- انتشار Draft با tag `sokna-source-evidence-r233-20261116` در اجرای مورداعتماد [43833215488](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43833215488) ساخته شد. هر دو SHA روی آرشیوهای بازخوانی‌شده **PASS** شد.
+- Pull Request با مجوز `contents:read` نمی‌تواند Draft را دانلود کند؛ این مجوز را برای PR افزایش نده و Draft را برای رفع این محدودیت Publish نکن.
+- برای تهیه ورودی موقت از منبع پایدار، از Workflow `.github/workflows/sokna-source-evidence-vault-r233.yml` **روی شاخه main** استفاده کن (workflow_dispatch). این Workflow در اجرای مورداعتماد، اول از Draft می‌خواند، SHA دو سورس را تطبیق می‌دهد و Artifact با نام `SOKNA-R233-RESTORED-SOURCE-ONLY-NOT-INSTALLABLE` برای آزمون‌های بعدی می‌سازد. آرشیو قدیمیِ Actions فقط در bootstrap اولیه و وقتی Draft موجود نیست استفاده می‌شود.
+- عمر Artifact موقت محدود است؛ منبع پایدار همان Draft با هش ثابت است. هیچ‌کدام نصب‌پذیر یا به‌معنای تأیید Production نیستند.
