@@ -3,7 +3,7 @@
   "date": "2026-11-16",
   "branch": "qa/sokna-r262-cumulative-source-20261116",
   "product_goal": "Minimal Local-authoritative new-empty-Public replacement at any supported HTTPS host/root/subfolder, old Public completely optional; existing Local sync republishes menu/media. No transfer of old Public DB or lost-only orders.",
-  "phase": "ALL_ISOLATED_RELEASE_QA_PASS_WINDOWS_PUBLIC_CLEAN_UPGRADE_BROWSER_AND_E2E__PRODUCTION_HOST_ACCEPTANCE_NOT_PERFORMED",
+  "phase": "ALL_CI_GATES_PASS_R262_LOCAL_WINDOWS_PUBLIC_EXISTING_UPGRADE_R263_SELFCONTAINED_CLEAN_ROOT_AND_SUBDIR_BROWSER__PRODUCTION_HOST_UNVERIFIED",
   "decisions": {
     "canonical": "r251/decisions.json",
     "primary": "MIG-018"
@@ -67,12 +67,12 @@
     "known_only_supported_baselines": true
   },
   "open": [
-    "Exact host upgrade/clean install operator acceptance and data protection on real supported platform",
     "Actual production-ready universal baseline coverage beyond the two pinned Local versions, if product promises additional supported originals",
     "Release build manifest/provenance transition and its exact final byte Windows qualification before labeling production-ready",
-    "Legacy printed QR/DNS redirect to new customer Public destination is separate host operations and may require control of old domain"
+    "Legacy printed QR/DNS redirect to new customer Public destination is separate host operations and may require control of old domain",
+    "Real production host deployment and post-install host-only permissions/network routing acceptance; the independently installed clean artifacts were tested on isolated CI MariaDB/PHP but not on customer hosting."
   ],
-  "next_action": "All isolated gates green. Final production host/installed-instance acceptance cannot be certified from CI; keep tested QA packages immutable, verify target installed Local exact release identity via read-only Maintenance preflight, verify target clean Public host setup/HTTP/permissions, then only explicitly approve production usage. Do not broaden old-Public migration functionality.",
+  "next_action": "R263 self-contained clean source (exact app version 35id) is the only eligible empty-host Public source candidate; R262 clean source was incomplete and MUST NOT be used. Full Windows Local, Public existing upgrade and Local/Public E2E remain PASS. For production finalization only actual supported target host and exact installed Local identity need read-only acceptance, then deliberate go-live approval. No code migration engine work needed.",
   "library_workspace": "/Cafe/SOKNA-Workspace/WORKING/20261116-R262-SIMPLE-PUBLIC-REPLACEMENT/",
   "previous_checkpoint": "r261/START-HERE-FA.md",
   "browser": {
@@ -81,5 +81,19 @@
     "source": "Byte-verified exact R262 Local SHA256 3d12ea... and Public clean SHA256 156ddc... ZIP JavaScript",
     "tested": "Chromium actual click, owner popup, cross-origin postMessage, independent Local approval, automatic normal media retry, success UI",
     "limitations": "HTTP API replies in this browser-specific check were controlled; full MariaDB/HTTPS/HMAC and Local server exercised separately by earlier R262 tests"
+  },
+  "public_clean_fix": {
+    "status": "PASS",
+    "cause": "R262 clean archive omitted protected Emergency classes required by bootstrap; prior setup QA injected those classes, so that archive was not independently installable on a truly empty host.",
+    "resolution": "R263 self-contained CLEAN ONLY adds six exact tracked static Emergency PHP files and empty update-trust-v1.json from canonical source; R262 244 managed files byte-identical, update package unaffected.",
+    "exact_zip": "SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip",
+    "sha256": "37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21",
+    "file_count": 251,
+    "app_version": "3.0.0-g3.6-workspace.35id-r262-public-move",
+    "migrations": 11,
+    "ci": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43837950540",
+    "evidence": "two independent genuinely empty hosted source dirs, root and nested subfolder, no helper injection; bootstrap, 11 MariaDB migrations and 25 owner+consent setup checks per install",
+    "old_unusable_file": "SOKNA-R262-PUBLIC-35ID-CLEAN-SOURCE-QA-NOT-FOR-INSTALL.zip",
+    "protected_install_files_not_in_updates": true
   }
 }
