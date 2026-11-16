@@ -1,0 +1,85 @@
+{
+  "format": "sokna-r262-public-replacement-release-status-v1",
+  "date": "2026-11-16",
+  "branch": "qa/sokna-r262-cumulative-source-20261116",
+  "product_goal": "Minimal Local-authoritative new-empty-Public replacement at any supported HTTPS host/root/subfolder, old Public completely optional; existing Local sync republishes menu/media. No transfer of old Public DB or lost-only orders.",
+  "phase": "ALL_ISOLATED_RELEASE_QA_PASS_WINDOWS_PUBLIC_CLEAN_UPGRADE_BROWSER_AND_E2E__PRODUCTION_HOST_ACCEPTANCE_NOT_PERFORMED",
+  "decisions": {
+    "canonical": "r251/decisions.json",
+    "primary": "MIG-018"
+  },
+  "local": {
+    "base": "Exact Windows-qualified R241/231FF 593 source files and 81 migrations, itself derived from R201/231FA",
+    "version": "3.0.0-g6.2-workspace.231fg-r262-public-move-qa",
+    "managed_files": 604,
+    "migrations": 82,
+    "new_migration": "0082_public_move_owner_approval.sql",
+    "old_migrations": "all 81 byte-identical",
+    "target_migration_fingerprint": "migration-ledger-sha256-v1:8ec2563db02945eb3627584e72b1b1d468c04777a1ff79ae12eafde792d5bc3f",
+    "release_set_sha256": "3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c",
+    "supported_baselines_exact": [
+      "3.0.0-g6.2-workspace.231fa-r201-cash-refund-cancel-canary",
+      "3.0.0-g6.2-workspace.231ff-r241-connection-recovery"
+    ],
+    "local_windows_gate": "PASS",
+    "windows_ci": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43834210936",
+    "native_qualification": "Exact ZIP SHA, Maintenance release-set preflight, inactive stage, activation, HTTP/version readback, real Windows+MariaDB 82 migrations",
+    "qa_filename": "SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip",
+    "production_host_accepted": false
+  },
+  "public": {
+    "base": "Exact byte-pinned R249/35IC 228 files, 8 original migrations",
+    "version": "3.0.0-g3.6-workspace.35id-r262-public-move",
+    "files": 244,
+    "migrations": 11,
+    "old_migrations": "all 8 byte-identical",
+    "target_managed_tree_sha256": "3457021783e481a319a145413f804209d2a57e5babf074ac4e9fa41052b84ef1",
+    "supported_baselines_exact": [
+      "35hk-r153",
+      "35ht-r171",
+      "35ic-r249"
+    ],
+    "clean_qa_sha256": "156ddccf01e0755c2d94a6a88442523c02d1e6a63e815089be30a1e50f56616e",
+    "cumulative_qa_sha256": "5aef4cd781fbd450d3e454f324e294da6f4180bfe1e5eb1871cb4818dc20c93a",
+    "qa_clean_filename": "SOKNA-R262-PUBLIC-35ID-CLEAN-SOURCE-QA-NOT-FOR-INSTALL.zip",
+    "qa_cumulative_filename": "SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip",
+    "clean_qa_gate": "PASS, real setup/owner login/receipt MariaDB subfolder",
+    "clean_qa_ci": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43834411044",
+    "existing_r249_upgrade_gate": "PASS: 8 existing migrations upgraded forward to 11 with owner activation and no config/data reset",
+    "existing_r249_upgrade_ci": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43835146004",
+    "production_host_accepted": false,
+    "existing_r249_upgrade_checks": 19
+  },
+  "end_to_end": {
+    "cumulative_local_R241_plus_public_R249": "PASS",
+    "real_http_144_items_36_images_guest_order_to_local": "PASS",
+    "owner_consent_offline_old_public_HTTPS_outage_resume": "PASS",
+    "ci": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43830334976"
+  },
+  "safety": {
+    "main_modified": false,
+    "CURRENT_modified": false,
+    "cafe_machine_modified": false,
+    "old_public_contact_required": false,
+    "release_engine_modified": false,
+    "public_database_export_required": false,
+    "operator_production_package_released": false,
+    "known_only_supported_baselines": true
+  },
+  "open": [
+    "Exact host upgrade/clean install operator acceptance and data protection on real supported platform",
+    "Actual production-ready universal baseline coverage beyond the two pinned Local versions, if product promises additional supported originals",
+    "Release build manifest/provenance transition and its exact final byte Windows qualification before labeling production-ready",
+    "Legacy printed QR/DNS redirect to new customer Public destination is separate host operations and may require control of old domain"
+  ],
+  "next_action": "All isolated gates green. Final production host/installed-instance acceptance cannot be certified from CI; keep tested QA packages immutable, verify target installed Local exact release identity via read-only Maintenance preflight, verify target clean Public host setup/HTTP/permissions, then only explicitly approve production usage. Do not broaden old-Public migration functionality.",
+  "library_workspace": "/Cafe/SOKNA-Workspace/WORKING/20261116-R262-SIMPLE-PUBLIC-REPLACEMENT/",
+  "previous_checkpoint": "r261/START-HERE-FA.md",
+  "browser": {
+    "status": "PASS",
+    "run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43837126379",
+    "source": "Byte-verified exact R262 Local SHA256 3d12ea... and Public clean SHA256 156ddc... ZIP JavaScript",
+    "tested": "Chromium actual click, owner popup, cross-origin postMessage, independent Local approval, automatic normal media retry, success UI",
+    "limitations": "HTTP API replies in this browser-specific check were controlled; full MariaDB/HTTPS/HMAC and Local server exercised separately by earlier R262 tests"
+  }
+}
