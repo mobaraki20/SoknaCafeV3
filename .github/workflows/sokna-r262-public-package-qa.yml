@@ -1,0 +1,108 @@
+name: SOKNA R262 Public Cumulative and Clean Setup Gate
+on:
+  push:
+    branches: [qa/sokna-r262-cumulative-source-20261116]
+    paths:
+      - r262/build_public_release.py
+      - .github/workflows/sokna-r262-public-package-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  public-package:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+          MARIADB_DATABASE: sokna_r262_clean_public
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build exact-pinned Public manifests, clean and cumulative ZIPs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-mysql php-zip
+          mkdir -p "$RUNNER_TEMP/r262/public-base" "$RUNNER_TEMP/r262/overlay" "$RUNNER_TEMP/r262/source" "$RUNNER_TEMP/r262/release"
+          gh run download 43749990301 -R "$GITHUB_REPOSITORY" -n sokna-r249-dual-baseline-gated-public-candidate -D "$RUNNER_TEMP/r262/public-base"
+          python3 - <<'PY'
+          import hashlib,os,pathlib
+          p=pathlib.Path(os.environ["RUNNER_TEMP"])/"r262/public-base"
+          found=[x for x in p.rglob("*.zip") if hashlib.sha256(x.read_bytes()).hexdigest()=="5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4"]
+          if len(found)!=1:raise SystemExit("R262_R249_PINNED_BASE_NOT_FOUND")
+          (p/"pin.txt").write_text(str(found[0]))
+          PY
+          python3 r260/integrate_real_public.py --r249 "$(cat "$RUNNER_TEMP/r262/public-base/pin.txt")" --repo . --out "$RUNNER_TEMP/r262/overlay"
+          python3 - <<'PY'
+          import pathlib,os,zipfile
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r262'
+          with zipfile.ZipFile(root/'source/real-public.zip','w',zipfile.ZIP_DEFLATED) as z:
+            for p in sorted((root/'overlay/qa-public-payload').rglob('*')):
+              if p.is_file():z.write(p,p.relative_to(root/'overlay/qa-public-payload'))
+          PY
+          python3 r262/build_public_release.py --base "$(cat "$RUNNER_TEMP/r262/public-base/pin.txt")" --source "$RUNNER_TEMP/r262/source/real-public.zip" --out "$RUNNER_TEMP/r262/release"
+          python3 - <<'PY'
+          import pathlib,zipfile,json,os,hashlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r262/release'
+          manifest=root/'SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip'
+          clean=root/'SOKNA-R262-PUBLIC-35ID-CLEAN-SOURCE-QA-NOT-FOR-INSTALL.zip'
+          with zipfile.ZipFile(manifest) as z:
+            meta=json.loads(z.read('manifest.json'))
+            assert meta['component']=='public-edge' and len(meta['files'])==244
+            assert len(meta['compatibility']['supported_baselines'])==3
+            assert meta['provenance']['production_host_qualified'] is False
+          with zipfile.ZipFile(clean) as z:
+            assert z.testzip() is None
+            assert len(z.namelist())==244
+            assert not {'config.php','install.lock','emergency.php'}&set(z.namelist())
+          print('R262_PUBLIC_PACKAGE_MANIFEST_AND_CLEAN_SOURCE_PASS')
+          PY
+      - name: Actual installed clean Public owner-login and consent on MariaDB
+        env:
+          GITHUB_ACTIONS: 'true'
+          R256_QA_DB_PASSWORD: qa-only
+          R256_QA_DB_NAME: sokna_r262_clean_public
+          R256_QA_HOST: fresh.cafe-qa.example
+          R256_QA_SUBDIR: /public-new
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r262/installed"
+          export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r262/installed"
+          python3 - <<'PY'
+          import pathlib,os,zipfile
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r262'
+          with zipfile.ZipFile(root/'release/SOKNA-R262-PUBLIC-35ID-CLEAN-SOURCE-QA-NOT-FOR-INSTALL.zip') as z:z.extractall(root/'installed')
+          PY
+          mkdir -p "$RUNNER_TEMP/r262/installed/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$RUNNER_TEMP/r262/installed/src/Emergency/"
+          python3 - <<'PY'
+          import pathlib,os
+          source=pathlib.Path('r257/test_integrated_setup.php').read_text()
+          old="===10,'eight_migrations_plus_two_forward_only'"
+          if source.count(old)!=1:raise SystemExit('R262_INSTALL_TEST_SOURCE_MISMATCH')
+          fixture=source.replace(old,"===11,'eight_migrations_plus_three_forward_only'")
+          (pathlib.Path(os.environ['RUNNER_TEMP'])/'r262/qa-install.php').write_text(fixture)
+          PY
+          php -l "$RUNNER_TEMP/r262/installed/bootstrap.php"
+          php "$RUNNER_TEMP/r262/qa-install.php" | tee /tmp/r262-real-install.txt
+          grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r262-real-install.txt
+          echo R262_PUBLIC_REAL_CLEAN_INSTALL_AND_OWNER_QA_PASS_NOT_OPERATOR_DEPLOY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
+          path: |
+            ${{ runner.temp }}/r262/release/SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip
+            ${{ runner.temp }}/r262/release/SOKNA-R262-PUBLIC-35ID-CLEAN-SOURCE-QA-NOT-FOR-INSTALL.zip
+            ${{ runner.temp }}/r262/release/R262-PUBLIC-PACKAGE-PROOF.json
+          if-no-files-found: error
+          retention-days: 5
