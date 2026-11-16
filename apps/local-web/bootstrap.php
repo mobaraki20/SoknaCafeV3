@@ -161,6 +161,7 @@ require_once __DIR__ . '/src/Domain/PublicEdge/PublicMoveApprovalLedger.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicMoveLocalApprovalService.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicMoveLocalKeyStore.php';
 require_once __DIR__ . '/src/Domain/PublicEdge/PublicMoveLocalFlow.php';
+require_once __DIR__ . '/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php';
 require_once __DIR__ . '/src/Relay/ExpenseDeferredAdapter.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyException.php';
 require_once __DIR__ . '/src/Domain/Supply/SupplyAccessService.php';
