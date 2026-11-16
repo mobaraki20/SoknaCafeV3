@@ -151,10 +151,17 @@ $service = new RoutinePublicUpdateService($root, $storage,
     $root."/resources/update-trust-v1.json",
     static fn():bool => true, $migrate, null, $migrationPending);
 $bridge = new IndependentEmergencyRoutineBridge($service, $storage,
-    static fn():array => [],
-    static function() use ($root): array {
+    $migrationPending,
+    static function() use ($root,$dbQaPdo): array {
+        $pending=0;
+        if ($dbQaPdo instanceof PDO) {
+            need((int)$dbQaPdo->query("SELECT 1")->fetchColumn()===1,
+                 "real_public_db_healthy_for_emergency_readback");
+            $owner=new \Sokna\PublicEdge\Core\Migrations($dbQaPdo,$root."/database/migrations");
+            $pending=count($owner->pendingVersions());
+        }
         return ["ok"=>true,"database"=>"ready","emergency_ready"=>true,
-                "pending_migrations"=>0,"version"=>trim((string)file_get_contents($root."/VERSION.txt"))];
+                "pending_migrations"=>$pending,"version"=>trim((string)file_get_contents($root."/VERSION.txt"))];
     });
 need(($service->snapshot()["managed_tree_sha256"] ?? "") === $baseTree, "real_php_installed_tree");
 $tx = "qa-r233-".$mode;
