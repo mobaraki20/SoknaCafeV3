@@ -122,7 +122,12 @@ final class PublicMoveSimpleReplacement
                 ($media['ok']??false)!==true ||
                 ($media['complete']??false)!==true ||
                 (($result['guest_publication']['media_ready']??false)!==true)) {
-                return self::result('sync_retry',$target,false);
+                return self::result('sync_retry',$target,false)+[
+                    'media_remaining'=>max(0,(int)($media['missing_count']??0)),
+                    'auto_retry'=>($media['ok']??false)===true &&
+                                  ($media['complete']??true)===false &&
+                                  ($result['success']??false)===true,
+                ];
             }
             $state['stage']='sync_ready';$this->writeState($this->statePath(),$state);
             $status=$this->ledger->status($this->installationId,$operationId);
