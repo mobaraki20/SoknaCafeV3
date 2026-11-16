@@ -63,6 +63,61 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
+  windows-local-preflight:
+    name: Windows PowerShell 5.1 SHA + Local ReleaseSet inspector; NO Windows service mutation
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 120d1fb5107699d6b62eaba74f04fd962338f6a3
+          path: frozen-fixtures
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE
+          run-id: 43830191738
+          github-token: ${{ github.token }}
+          path: source
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: r201
+      - name: Build exact same QA format using Python on Windows, never touch SCM or Maintenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parent = Get-ChildItem -Path 'r201' -Recurse -Filter 'SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -File | Select-Object -First 1
+          if (-not $parent) { throw 'R201_PINNED_TEMPLATE_MISSING' }
+          $source = 'source/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip'
+          $out = Join-Path $env:RUNNER_TEMP 'R233-LOCAL-QA-ONLY-DO-NOT-INSTALL.zip'
+          $report = Join-Path $env:RUNNER_TEMP 'R233-LOCAL-READONLY-REPORT.json'
+          python release-ops/qa_local_maintenance_rehearsal.py --source "$source" --parent-r201 "$($parent.FullName)" --out "$out" --report "$report"
+          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_QA_PACKAGE_REHEARSAL_FAILED' }
+          python frozen-fixtures/packaging/windows/release-gates/check_local_release_set.py "$out"
+          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_NATIVE_LOCAL_RELEASESET_CHECK_FAILED' }
+          $proof = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+          if ($proof.production_installable -ne $false -or $proof.functional_byte_changes -ne 0) { throw 'QA_ONLY_OR_BYTE_PRESERVATION_VIOLATION' }
+          $script = @'
+          param([string]$Target, [string]$Expected)
+          $fs = [System.IO.File]::OpenRead($Target)
+          try {
+            $hash = [System.Security.Cryptography.SHA256]::Create()
+            try { $observed = [System.BitConverter]::ToString($hash.ComputeHash($fs)).Replace('-', '').ToLowerInvariant() }
+            finally { $hash.Dispose() }
+          } finally { $fs.Dispose() }
+          if ($observed -ne $Expected) { throw 'PS51_NATIVE_SHA_DRIFT' }
+          Write-Output 'PASS_PS51_NATIVE_SHA_OF_FINAL_QA_RELEASESET'
+          '@
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'ps51-sha-only.ps1'
+          Set-Content -LiteralPath $scriptPath -Value $script -Encoding utf8BOM
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$scriptPath" "$out" "$($proof.candidate_zip_sha256)"
+          if ($LASTEXITCODE -ne 0) { throw 'PS51_SHA_CHECK_FAILED' }
+          Write-Host 'PASS_WINDOWS_LOCAL_FORMAT_AND_PS51_SHA_NONMUTATING_QA_ONLY'
+
   public-same-zip:
     name: Same Public SHA via native PHP Routine and independent Emergency (no host)
     runs-on: ubuntu-24.04
