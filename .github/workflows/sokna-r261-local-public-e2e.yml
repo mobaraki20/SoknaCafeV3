@@ -1,0 +1,92 @@
+name: SOKNA R261 Real Local to Fresh Public E2E
+on:
+  push:
+    branches: [qa/sokna-r261-real-local-public-smoke-20261116]
+    paths:
+      - r261/**
+      - apps/local-web/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
+      - apps/local-web/src/Domain/PublicEdge/PublicEdgePublisherService.php
+      - .github/workflows/sokna-r261-local-public-e2e.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-local-public:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+          MARIADB_DATABASE: sokna_r261_public
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare only disposable Local and Public
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-mysql php-zip
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r261_local CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          mkdir -p "$RUNNER_TEMP/r261/r249" "$RUNNER_TEMP/r261/work" "$RUNNER_TEMP/r261/private"
+          gh run download 43749990301 -R "$GITHUB_REPOSITORY" -n sokna-r249-dual-baseline-gated-public-candidate -D "$RUNNER_TEMP/r261/r249"
+          python3 - <<'PY'
+          import pathlib,hashlib,os
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r261/r249'
+          matches=[p for p in root.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()=='5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4']
+          if len(matches)!=1:raise SystemExit('R261_PINNED_R249_NOT_FOUND')
+          (root/'pin.txt').write_text(str(matches[0]))
+          PY
+          python3 r260/integrate_real_public.py --r249 "$(cat "$RUNNER_TEMP/r261/r249/pin.txt")" --repo . --out "$RUNNER_TEMP/r261/work"
+          cp -a "$RUNNER_TEMP/r261/work/qa-public-payload" "$RUNNER_TEMP/r261/public"
+          mkdir -p "$RUNNER_TEMP/r261/public/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$RUNNER_TEMP/r261/public/src/Emergency/"
+          cp -a apps/local-web "$RUNNER_TEMP/r261/local-web"
+          php -l r261/test-real-local-public.php
+          php -l r261/prepare-public-http.php
+          php -l r261/public-http-router.php
+      - name: Install Public, then serve it on separate HTTP endpoint and run actual Local
+        env:
+          GITHUB_ACTIONS: 'true'
+          R256_QA_DB_PASSWORD: qa-only
+          R256_QA_DB_NAME: sokna_r261_public
+          R256_QA_HOST: fresh.cafe-e2e.example
+          R256_QA_SUBDIR: /new-public
+          R261_DB_PASS: qa-only
+        run: |
+          set -euo pipefail
+          export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r261/public"
+          export R261_PUBLIC_ROOT="$RUNNER_TEMP/r261/public"
+          export R261_LOCAL_ROOT="$RUNNER_TEMP/r261/local-web"
+          export R261_CODE_PATH="$RUNNER_TEMP/r261/private/public-code.txt"
+          export R261_DATA_DIR="$RUNNER_TEMP/r261/private/local"
+          mkdir -p "$R261_DATA_DIR"
+          python3 - <<'PY'
+          import pathlib,os
+          source=pathlib.Path('r257/test_integrated_setup.php').read_text()
+          old="===10,'eight_migrations_plus_two_forward_only'"
+          if source.count(old)!=1:raise SystemExit('R261_SETUP_ASSERT_NOT_PINNED')
+          source=source.replace(old,"===11,'eight_migrations_plus_three_forward_only'")
+          (pathlib.Path(os.environ['RUNNER_TEMP'])/'r261/install-fixture.php').write_text(source)
+          PY
+          php "$RUNNER_TEMP/r261/install-fixture.php" >/tmp/r261-public-setup.txt
+          grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r261-public-setup.txt
+          php r261/prepare-public-http.php
+          php -S 127.0.0.1:18881 r261/public-http-router.php >/tmp/r261-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 35); do
+            if curl -fsS 'http://127.0.0.1:18881/new-public/health' >/tmp/r261-health.txt 2>/dev/null; then break; fi
+            sleep 0.2
+          done
+          cat /tmp/r261-health.txt
+          php r261/test-real-local-public.php | tee /tmp/r261-e2e.txt || { tail -n 80 /tmp/r261-http.log; exit 1; }
+          grep -q 'R261_FULL_LOCAL_PUBLISHER_TO_PUBLIC_AND_GUEST_ORDER_RECEIPT_PASS' /tmp/r261-e2e.txt
