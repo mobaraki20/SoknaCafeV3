@@ -64,7 +64,7 @@ def inspect_active(
         if (entry.get("sha256") != pin["zip_sha256"]
             or entry.get("files") != pin["file_count"]
             or entry.get("migrations") != pin["migration_count"]
-            or entry.get("file") != pin["file"]):
+            or entry.get("file") != pin.get("file", entry.get("file"))):
             # source-register uses file optional: name must be checked only when present
             if (entry.get("sha256") != pin["zip_sha256"]
                 or entry.get("files") != pin["file_count"]
