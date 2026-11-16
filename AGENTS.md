@@ -5,10 +5,10 @@ Before **any** request to create, rebuild, verify, share, publish or install a L
 This applies to natural-language requests such as «بسته به‌روزرسانی بساز»، «کلین اینستال منتشر کن»، «لینک آخرین نسخه»، and requests about Routine or Emergency. It is not authorization to deploy or modify an installed host.
 
 1. Consult the canonical Updater v1.0.3 decision, UUP-01 / Issue #48, REL-GATE-001, QA-001, REG-003, and the release-ops incident/asset map. Newer owner-approved decisions supersede historical experiments; historical PR #47 signer requirements are NOT active policy.
-2. **Never assume \`main\`, a branch named final, \`VERSION.txt\`, or the latest GitHub commit contains the current accepted production source.** Exact source/release artifact identity and accepted-fix preservation must be proven; otherwise STOP.
+2. **Never assume `main`, a branch named final, `VERSION.txt`, or the latest GitHub commit contains the current accepted production source.** Exact source/release artifact identity and accepted-fix preservation must be proven; otherwise STOP.
 3. Use existing builders and validators where applicable. Do not generate a new engine, per-machine updater, signing scheme or route-specific Public ZIP.
-4. Before any claim of installable release, inspect the **exact final ZIP** with \`python3 release-ops/audit.py\`, historical-baseline provenance and the actual component-specific gates; distinguish static audit from Windows, MariaDB, real-host and business UAT.
-5. Publication automation work is confined to \`release-ops/**\`, \`.github/workflows/sokna-release-assurance.yml\`, and this instruction. **Do not edit** \`apps/**\`, \`windows/**\`, \`platform/**\`, \`packaging/**\`, \`contracts/**\`, \`CURRENT\`, existing installers, Maintenance, Runtime, Print Agent or databases under this scope.
-6. Every release request reports \`PASS / FAIL / NOT_RUN\`, artifact SHA256, source provenance and blocking reasons. No green source-only run can mean successful field installation.
+4. Before any claim of installable release, inspect the **exact final ZIP** with `python3 release-ops/audit.py`, historical-baseline provenance and the actual component-specific gates; distinguish static audit from Windows, MariaDB, real-host and business UAT.
+5. Publication automation work is confined to `release-ops/**`, `.github/workflows/sokna-release-assurance.yml`, and this instruction. **Do not edit** `apps/**`, `windows/**`, `platform/**`, `packaging/**`, `contracts/**`, `CURRENT`, existing installers, Maintenance, Runtime, Print Agent or databases under this scope.
+6. Every release request reports `PASS / FAIL / NOT_RUN`, artifact SHA256, source provenance and blocking reasons. No green source-only run can mean successful field installation.
 
 This policy is intentionally discoverable at repository root and portable for use with or without GitHub Actions.
