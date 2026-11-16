@@ -44,7 +44,7 @@ async function withBusy(button,fn){button.disabled=true;try{await fn()}catch(e){
 try{
  const parsed=parseRequest();challenge=parsed.parsed;returnOrigin=parsed.origin;
  // URL fragment never goes to the web server or external assets.
- history.replaceState(null,'',location.pathname+location.search);
+ // Keep the short-lived fragment so refreshing the owner screen can resume.
  sections(true,false);
  status('درخواست انتقال دریافت شد؛ لطفاً با حساب مدیر این وب عمومی تأیید کنید.');
 }catch(e){sections(false,false);el('[data-owner-upgrade]').hidden=true;status(e.message||'درخواست معتبر نیست.',true);return;}
