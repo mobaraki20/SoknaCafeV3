@@ -49,7 +49,8 @@ final class PublicMoveSimpleReplacement
         }
         $config=$this->local->config()->all();
         $old=$config['public']??[];
-        if(!is_array($old) || ($old['base_url']??'')!==$challenge['source_base_url']) {
+        if(!is_array($old) ||
+           PublicMoveDecisionEngine::canonicalUrl((string)($old['base_url']??''))!==$challenge['source_base_url']) {
             throw new RuntimeException('source_public_binding_changed');
         }
         $secret=bin2hex(random_bytes(32));
@@ -76,6 +77,9 @@ final class PublicMoveSimpleReplacement
                 ($body['installation_id']??null)!==$this->installationId) {
                 throw new RuntimeException('public_replacement_pairing_contract_missing');
             }
+            // The signed approval is consumed ONCE while fresh. Media sync can
+            // take longer than the five-minute owner approval window.
+            $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
             $state['stage']='paired';
             $this->writeState($path,$state);
             return self::result('sync_pending',$target,false);
@@ -119,11 +123,8 @@ final class PublicMoveSimpleReplacement
             }
             $state['stage']='sync_ready';$this->writeState($this->statePath(),$state);
             $status=$this->ledger->status($this->installationId,$operationId);
-            if(($status['status']??null)==='owner_approved'){
-                $this->ledger->claimOnce($this->installationId,$operationId,$state['nonce'],time());
-            }elseif(($status['status']??null)!=='claimed'){
-                throw new RuntimeException('replacement_approval_not_current');
-            }
+            if(($status['status']??null)!=='claimed')
+                throw new RuntimeException('replacement_approval_not_consumed');
             $this->local->publicReenrollment()->commitMoveConfig($target,$state['new_secret']);
             $state['stage']='config_committed';$this->writeState($this->statePath(),$state);
         }
