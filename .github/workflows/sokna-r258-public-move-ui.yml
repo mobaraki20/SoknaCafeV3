@@ -33,7 +33,7 @@ jobs:
           grep -q 'R258_LOCAL_MOVE_UI_INSPECTION_QA_PASS count=' /tmp/r258-tests.txt
           php r251/test-public-move-decision.php | tail -1
           python3 r251/check_decisions.py | tail -1
-      - name: Runtime source contract: no browser ownership or implicit transfer
+      - name: "Runtime source contract - no browser ownership or implicit transfer"
         run: |
           set -euo pipefail
           grep -q "WebAction::requireMutation()" apps/local-web/public/integrations/api.php
