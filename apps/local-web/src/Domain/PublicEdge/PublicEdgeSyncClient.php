@@ -540,7 +540,7 @@ final class PublicEdgeSyncClient
         if($phase==='reenroll_required'&&$path!=='/api/v1/local/authority/fence')throw new PublicEdgeSyncException('public_authority_reenrollment_required','پس از بازیابی، اتصال Public باید دوباره ثبت شود.',409);
         $safe=[
             '/api/v1/local/installation','/api/v1/local/auth-projections','/api/v1/local/guest/',
-            '/api/v1/local/read-model','/api/v1/local/read-models','/api/v1/local/heartbeat','/api/v1/local/authority/activate'
+            '/api/v1/local/read-model','/api/v1/local/read-models','/api/v1/local/heartbeat','/api/v1/local/authority/activate','/api/v1/local/move/activate'
         ];
         foreach($safe as $prefix)if(str_starts_with($path,$prefix))return;
         throw new PublicEdgeSyncException('public_authority_resync_required','تا پایان همگام‌سازی بازیابی، دریافت فرمان Public مسدود است.',409);
