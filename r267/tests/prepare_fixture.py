@@ -22,6 +22,16 @@ state={'format':'sokna-public-routine-update-state-v2','schema_version':2,'activ
 (root/'storage/test-applied.json').write_text(json.dumps(sorted(p.stem for p in (root/'database/migrations').glob('*.sql'))))
 print('fixture',root,'files',sum(p.is_file() for p in root.rglob('*')))
 
+# Isolate original R249's eight migrations from the lifecycle fixture,
+# which has been forward-upgraded to eleven by the preceding Emergency test.
+dbbase=root.parent/'fixture_db_base'
+if dbbase.exists():shutil.rmtree(dbbase)
+with zipfile.ZipFile(R/'SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip') as z:
+ for n in z.namelist():
+  if n.startswith('payload/database/migrations/') and n.endswith('.sql'):
+   p=dbbase/n[len('payload/'):];p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(z.read(n))
+assert len(list((dbbase/'database/migrations').glob('*.sql')))==8
+
 # Separate real MariaDB test roots. Never install code in a user's host.
 final=root.parent/'fixture_db_final'
 if final.exists():shutil.rmtree(final)
