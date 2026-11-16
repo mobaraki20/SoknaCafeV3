@@ -59,15 +59,22 @@ function moveUi(state){
  if(cancel)cancel.hidden=state!=='awaiting_owner';
 }
 async function finishSimpleMove(){
- const response=await post({action:'public_move_finish'}),result=response.move||{};
- if(result.completed===true){
-  movePending=null;moveUi('completed');
-  feedback('public-move','وب عمومی جدید متصل شد؛ منو، تصاویر و سفارش‌گیری آماده‌اند.',false);
-  await refresh();
-  return;
+ // The normal publisher intentionally sends images in small batches. Continue
+ // those batches automatically, keeping each individual HTTP request bounded.
+ for(let attempt=0;attempt<6;attempt++){
+  const response=await post({action:'public_move_finish'}),result=response.move||{};
+  if(result.completed===true){
+   movePending=null;moveUi('completed');
+   feedback('public-move','وب عمومی جدید متصل شد؛ منو، تصاویر و سفارش‌گیری آماده‌اند.',false);
+   await refresh();
+   return;
+  }
+  if(result.auto_retry!==true)break;
+  feedback('public-move','در حال همگام‌سازی تصاویر باقی‌مانده… ('+
+    String(result.media_remaining||0)+' تصویر)',false);
  }
  moveUi('sync_pending');
- feedback('public-move','اتصال جدید آماده است اما همگام‌سازی هنوز کامل نشده. با «ادامهٔ اتصال» دوباره تلاش کنید. سفارش‌گیری مقصد همچنان بسته است.',true);
+ feedback('public-move','همگام‌سازی هنوز کامل نشده است. با «ادامهٔ اتصال» دوباره تلاش کنید؛ سفارش‌گیری مقصد همچنان بسته می‌ماند.',true);
 }
 $('[data-public-move-form]')?.addEventListener('submit',async e=>{
  e.preventDefault();
