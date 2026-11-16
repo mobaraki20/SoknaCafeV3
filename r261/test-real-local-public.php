@@ -25,8 +25,11 @@ $values=[
 ];
 file_put_contents($localRoot.'/config.php',"<?php\nreturn ".var_export($values,true).";\n");
 $core=sokna_local_bootstrap($values);
+$pre=$core->migrations()->migrate('0059_menu_business_reconciliation_v4');
+$seed=$core->defaultContentSeeder()->seed();
+echo 'REAL_LOCAL_CLEAN_INSTALL_CATALOG_SEEDED='.json_encode($seed)."\n";
 $applied=$core->migrations()->migrate();
-echo 'REAL_LOCAL_MIGRATIONS='.count($applied)."\n";
+echo 'REAL_LOCAL_MIGRATIONS='.(count($pre)+count($applied))."\n";
 $pdo=$core->database();
 $pdo->exec("INSERT INTO menus(menu_key,name,status,sort_order) VALUES('all','منوی آزمایشی','active',1)");
 $menuId=(int)$pdo->lastInsertId();
