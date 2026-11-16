@@ -79,6 +79,11 @@ jobs:
           ref: 120d1fb5107699d6b62eaba74f04fd962338f6a3
           path: frozen-fixtures
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 8f31405bd9e6d9f03f8faa522a7d37d7c81d8448
+          path: frozen-public-qualification
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE
@@ -121,7 +126,7 @@ jobs:
           mkdir -p "$D/r171-outer" "$D/r171"
           unzip -q "$R171" -d "$D/r171-outer"
           cp -a "$D/r171-outer/payload/." "$D/r171/"
-          cp frozen-fixtures/r239/public/PublicUpdateException.php "$D/public-update-exception.php"
+          cp frozen-public-qualification/r239/public/PublicUpdateException.php "$D/public-update-exception.php"
           php -l release-ops/qa_public_two_route.php
       - name: Genuine R171 Routine stage activate commit with exact SAME Public ZIP
         shell: bash
