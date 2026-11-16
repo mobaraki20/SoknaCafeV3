@@ -57,9 +57,11 @@ try{
                 if(!$client->configured()||$core->publicAuthorityState()->phase()!=='active')
                     throw new \RuntimeException('active_public_connection_required');
                 $source=$client->publicBaseUrl();
-                // Never rely on an installation ID supplied by the browser.
-                $existing=$client->deploymentBindingProbe($source,6);
-                $sourceId=(string)($existing['public_instance_id']??'');
+                // Disaster recovery MUST work when the old Public is down.
+                // Local's current URL is trusted from config. An empty source
+                // instance ID is explicitly supported by the signed challenge.
+                // Do not probe the old Public or require its host/DB to respond.
+                $sourceId='';
                 $result=$flow->begin((string)($data['base_url']??''),$source,$sourceId,time(),
                     (string)($_SESSION['sokna_move_operation']??''));
                 $_SESSION['sokna_move_operation']=$result['operation_id'];
