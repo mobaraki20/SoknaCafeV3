@@ -487,12 +487,13 @@ final class PublicEdgeSyncClient
         return $this->normalizeResponse(['status' => $status, 'body' => (string)$raw, 'headers'=>$http_response_header ?? []]);
     }
 
-    public function initialPair(string $baseUrl, string $code, string $newSecret, string $displayName = ''): array
+    public function initialPair(string $baseUrl, string $code, string $newSecret, string $displayName = '', bool $replacementMode = false): array
     {
         $base = $this->requireBase($baseUrl, 'نشانی وب عمومی معتبر نیست.');
         $payload = [
             'installation_id' => $this->installationId(),
             'pairing_code' => $code,
+            'replacement_mode' => $replacementMode,
             'shared_secret' => $newSecret,
             'display_name' => $displayName,
         ];
