@@ -7,12 +7,13 @@ declare(strict_types=1);
  */
 if(getenv('GITHUB_ACTIONS')!=='true')throw new RuntimeException('R261_QA_ONLY');
 $localRoot=(string)getenv('R261_LOCAL_ROOT');
+$configPath=dirname($localRoot).'/config.php';
 $dataDir=(string)getenv('R261_DATA_DIR');
 $offlineFlag=(string)getenv('R261_PUBLIC_OFFLINE_FLAG');
-if($offlineFlag==='' || !is_file($localRoot.'/config.php'))
+if($offlineFlag==='' || !is_file($configPath))
     throw new RuntimeException('R261_REAL_LOCAL_CONFIG_REQUIRED');
 require_once $localRoot.'/bootstrap.php';
-$oldConfig=require $localRoot.'/config.php';
+$oldConfig=require $configPath;
 $oldUrl=(string)$oldConfig['public']['base_url'];
 $installation=(string)$oldConfig['installation']['id'];
 $target='https://move.cafe-e2e.example:18443/new-public';
@@ -71,7 +72,7 @@ $move=new \Sokna\Local\Domain\PublicEdge\PublicMoveSimpleReplacement(
     $core,$ledger,$installation,$dataDir);
 $started=$move->start($op,$code,1);
 if($started['status']!=='sync_pending')throw new RuntimeException('R261_REPLACEMENT_NOT_PAIRED');
-if((require $localRoot.'/config.php')['public']['base_url']!==$oldUrl)
+if((require $configPath)['public']['base_url']!==$oldUrl)
  throw new RuntimeException('R261_LOCAL_URL_CHANGED_BEFORE_PUBLISH');
 echo "R261_REAL_TWO_SIDED_OWNER_AND_PAIR_PASS\n";
 // Now simulate real connection outage to new Public, NO old Public available.
@@ -80,7 +81,7 @@ file_put_contents($offlineFlag,"offline\n");
 try{
  $retry=$move->finish($op);
  if($retry['status']!=='sync_retry')throw new RuntimeException('R261_OUTAGE_NOT_RETRYABLE');
- if((require $localRoot.'/config.php')['public']['base_url']!==$oldUrl)
+ if((require $configPath)['public']['base_url']!==$oldUrl)
    throw new RuntimeException('R261_LOCAL_CONFIG_CHANGED_DURING_OUTAGE');
  echo "R261_ONE_NETWORK_OUTAGE_PRESERVES_LOCAL_CONNECTION_PASS\n";
 }finally{@unlink($offlineFlag);}
@@ -93,7 +94,7 @@ for($i=0;$i<8;$i++){
     throw new RuntimeException('R261_MOVE_UNEXPECTED_RESULT '.json_encode($result));
 }
 if(!$completed)throw new RuntimeException('R261_REAL_LOCAL_REPLACEMENT_DID_NOT_COMPLETE');
-$onDisk=require $localRoot.'/config.php';
+$onDisk=require $configPath;
 if(($onDisk['public']['base_url']??null)!==$target)
  throw new RuntimeException('R261_REAL_LOCAL_CONFIG_NOT_SWITCHED');
 if($move->status()['active']??true)throw new RuntimeException('R261_STAGED_SECRET_STILL_PENDING');
