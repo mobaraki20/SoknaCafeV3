@@ -126,7 +126,7 @@ def validate_baselines(m, component, result):
     if component == "local":
         rows = m.get("supported_baselines")
     else:
-        rows = m.get("compatibility", {}).get("supported_baselines")
+        rows = (m.get("compatibility") or {}).get("supported_baselines")
     if not isinstance(rows, list) or not rows:
         gap(result, "EXACT_COMPATIBLE_BASELINES_NOT_DECLARED")
         return []
@@ -226,12 +226,12 @@ def check_public_update(z, outer, result):
     code = "src/Update/EmergencyOwnerCandidate.php"
     if owner in payload:
         meta = json.loads(z.read("payload/" + owner))
-        if (meta.get("release_version") != m.get("version")
+        if (not isinstance(meta, dict) or meta.get("release_version") != m.get("version")
             or code not in payload or meta.get("sha256") != payload.get(code, ("", 0))[0]):
             issue(result, "PUBLIC_EMERGENCY_OWNER_VERSION_OR_HASH_MISMATCH")
     else:
         gap(result, "PUBLIC_EMERGENCY_OWNER_NOT_PROVEN")
-    comp = m.get("compatibility", {})
+    comp = m.get("compatibility") or {}
     if any(k.startswith("from_") for k in comp):
         issue(result, "PUBLIC_ONE_SOURCE_ONLY_COMPATIBILITY")
     keys = validate_baselines(m, "public", result)
@@ -317,7 +317,7 @@ def audit(path: pathlib.Path, expected_kind="auto", expected_sha=None, baseline_
                 gap(result, "FULL_DELTA_ORIGIN_CATALOG_NOT_AUDITED")
         if source_dir:
             for rel, (digest, _) in payload.items():
-                if rel in ("VERSION.txt", "resources/build-provenance.json", "resources/release-identity-v1.json"):
+                if rel in ("resources/build-provenance.json", "resources/release-identity-v1.json"):
                     continue
                 source = source_dir / rel
                 if not source.is_file() or sha(source.read_bytes()) != digest:
@@ -362,7 +362,7 @@ def audit(path: pathlib.Path, expected_kind="auto", expected_sha=None, baseline_
         gap(result, "REAL_WINDOWS_OR_PUBLIC_HOST_STAGE_ACTIVATE_READBACK_NOT_RUN_BY_THIS_TOOL")
         gap(result, "DB_BACKUP_MIGRATION_AND_RECOVERY_NOT_RUN_BY_THIS_TOOL")
         gap(result, "BUSINESS_AND_BROWSER_BEHAVIOR_NOT_RUN_BY_THIS_TOOL")
-    except (OSError, KeyError, ValueError, TypeError, zipfile.BadZipFile, json.JSONDecodeError, UnicodeDecodeError) as exc:
+    except (OSError, KeyError, ValueError, TypeError, AttributeError, RuntimeError, zipfile.BadZipFile, json.JSONDecodeError, UnicodeDecodeError) as exc:
         issue(result, "PACKAGE_INSPECTION_ERROR_" + type(exc).__name__)
     result["errors"].sort()
     result["not_proven"].sort()
