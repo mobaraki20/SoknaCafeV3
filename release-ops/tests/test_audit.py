@@ -420,5 +420,22 @@ class ReleaseAudit(unittest.TestCase):
         self.assertEqual(a.audit(self.save(zip_bytes(files)), expected_kind="public-clean")["static"], "PASS")
 
 
+
+    def test_exact_rejected_sha_is_not_a_releasable_version_even_if_manifest_looks_valid(self):
+        p = self.public()
+        register = self.dir / "version-registry.json"
+        register.write_text(json.dumps({
+            "format": "sokna-release-version-ledger-v1", "historical_complete": False,
+            "quarantined_short_versions": [], "released": [], "observed": [],
+            "rejected": [{
+                "component": "public", "kind": "public-update",
+                "sha256": a.sha(p.read_bytes()), "reason": "KNOWN_UNSAFE_ARCHIVE"
+            }]
+        }))
+        r = a.audit(p, registry=register)
+        self.assertIn("KNOWN_REJECTED_ARCHIVE_SHA", r["errors"])
+        self.assertFalse(r["release_authorized"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
