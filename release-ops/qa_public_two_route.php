@@ -63,7 +63,7 @@ copyTree($source, $root);
 if (!is_dir($root."/src/Emergency")) mkdir($root."/src/Emergency", 0700, true);
 copy($fixture."/public-update-exception.php", $root."/src/Emergency/PublicUpdateException.php");
 file_put_contents($root."/emergency.php", "<?php // stable CI fixture only\n");
-file_put_contents($root."/config.php", "<?php return ['app'=>['base_path'=>'/public'];\n");
+file_put_contents($root."/config.php", "<?php return ['app'=>['base_path'=>'/public']];\n");
 file_put_contents($root."/resources/update-trust-v1.json", "{}");
 if (!is_dir($root."/storage")) mkdir($root."/storage", 0700, true);
 $protected = [
