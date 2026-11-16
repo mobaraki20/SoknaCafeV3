@@ -59,13 +59,17 @@ el('[data-owner-approve]').addEventListener('click',e=>withBusy(e.currentTarget,
  const prep=await action('consent_prepare',{challenge});
  const signed=await action('consent_sign',{challenge,csrf:prep.csrf});
  const attestation=signed.proof?.attestation;
- if(!attestation||!signed.receipt_envelope)throw Error('تأیید امضاشده از وب عمومی دریافت نشد.');
+ const pairingCode=String(signed.pairing_code||'');
+ if(!attestation||!signed.receipt_envelope ||
+    !/^[A-F0-9]{8}(?:-[A-F0-9]{8}){2}$/.test(pairingCode))
+   throw Error('مقصد برای اتصال تازه و خالی آماده نیست. یک نصب Public بدون اتصال فعال لازم است.');
  window.opener.postMessage({
    type:'sokna-public-move-owner-approved-v1',
    operation_id:challenge.operation_id,
    target_base_url:base,
    attestation,
-   receipt_envelope:signed.receipt_envelope
+   receipt_envelope:signed.receipt_envelope,
+   pairing_code:pairingCode
  },returnOrigin);
  sections(false,false);
  el('[data-owner-upgrade]').hidden=true;
