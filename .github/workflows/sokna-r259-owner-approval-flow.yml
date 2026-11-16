@@ -73,3 +73,17 @@ jobs:
           php -l "$RUNNER_TEMP/r259/qa-public-payload/bootstrap.php"
           php -l "$RUNNER_TEMP/r259/qa-public-payload/src/Http/PublicHttpKernel.php"
           echo R259_REAL_PUBLIC_SOURCE_QA_PASS_NO_INSTALLER
+      - name: Actual installed Public owner page - one GET smoke
+        env:
+          R256_QA_DB_PASSWORD: qa-only
+          GITHUB_ACTIONS: 'true'
+        run: |
+          set -euo pipefail
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r259_public_http CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          cp -a "$RUNNER_TEMP/r259/qa-public-payload" "$RUNNER_TEMP/r259/http-public"
+          export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r259/http-public"
+          export R256_QA_DB_NAME=sokna_r259_public_http
+          php r257/test_integrated_setup.php >/tmp/r259-public-setup.txt
+          grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r259-public-setup.txt
+          php r259/smoke-real-public-page.php | tee /tmp/r259-smoke.txt
+          grep -q 'R259_REAL_PUBLIC_BROWSER_SURFACE_PASS count=' /tmp/r259-smoke.txt
