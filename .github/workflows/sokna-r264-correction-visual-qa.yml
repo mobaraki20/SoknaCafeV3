@@ -1,0 +1,61 @@
+name: SOKNA R264 Correction Dialog Actual Source Chromium QA
+on:
+  push:
+    branches: [qa/sokna-r264-cafe-ui-print-gate-20261116]
+    paths:
+      - r264/correction_visual_smoke.cjs
+      - r264/correction_modal_fixture.html
+      - .github/workflows/sokna-r264-correction-visual-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: R264-EXACT-LOCAL-PUBLIC-CUMULATIVE-QA-CANDIDATES
+          run-id: 43845123610
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r264-package
+      - name: Prepare exact ZIP Local UI from already built R264 artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,zipfile,io,json,hashlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          path=root/'r264-package/SOKNA-R264-LOCAL-231FH-CUMULATIVE-UI-PRINT-QA-NOT-FOR-CAFE.zip'
+          proof=json.loads((root/'r264-package/R264-QA-PACKAGE-PROOF.json').read_text())
+          assert hashlib.sha256(path.read_bytes()).hexdigest()==proof['local_update_sha256']
+          with zipfile.ZipFile(path) as z:
+           with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
+            for p in ['public/assets/product-ui.css','public/assets/staff-app/hall-workspace.js']:
+             out=root/'r264-visual/local'/p;out.parent.mkdir(parents=True,exist_ok=True);out.write_bytes(w.read(p))
+          print('R264_REAL_CUMULATIVE_ZIP_UI_BYTES_VERIFIED')
+          PY
+      - name: Install isolated Chromium without live server
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install chromium
+      - name: Measure real correction modal 390px mobile and desktop after decrement
+        env:
+          GITHUB_ACTIONS: 'true'
+          R264_SCREEN_ROOT: ${{ runner.temp }}/r264-visual
+        run: |
+          node r264/correction_visual_smoke.cjs | tee /tmp/r264-visual.txt
+          grep -q 'R264_ACTUAL_SOURCE_CORRECTION_VISUAL_PASS mobile' /tmp/r264-visual.txt
+          grep -q 'R264_ACTUAL_SOURCE_CORRECTION_VISUAL_PASS desktop' /tmp/r264-visual.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R264-CORRECTION-MODAL-BROWSER-SCREENSHOTS-QA
+          path: ${{ runner.temp }}/r264-visual/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 7
