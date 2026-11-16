@@ -60,6 +60,9 @@ exact_edit(service,
 exact_edit(service,
     "->execute([$installation,$name]);(new PairingSecretStore",
     "->execute([$installation,$name,$replacement?0:1,$replacement?1:0]);(new PairingSecretStore")
+exact_edit(service,
+    "return ['success'=>true,'ok'=>true,'paired'=>true,'installation_id'=>$installation",
+    "return ['success'=>true,'ok'=>true,'paired'=>true,'replacement_mode'=>$replacement,'guest_intake_enabled'=>!$replacement,'installation_id'=>$installation")
 # The normal installation projection MUST NOT reopen guest ordering before
 # signed move activation, even though Local normally publishes 'accepting'.
 projection=root/"src/Remote/InstallationProjectionService.php"
