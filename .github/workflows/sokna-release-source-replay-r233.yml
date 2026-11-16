@@ -48,6 +48,24 @@ jobs:
           printf '783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d  source-only/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip\n' | sha256sum -c -
           printf '8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b  source-only/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip\n' | sha256sum -c -
           echo 'BYTE_EXACT_R233_SOURCE_ONLY_REPLAY_PASS'
+      - name: Rehearse existing R233 flat-root Public Clean packaging on ephemeral source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile release-ops/qa_public_root_clean_rehearsal.py
+          python3 release-ops/qa_public_root_clean_rehearsal.py \
+            --source source-only/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip \
+            --output "$RUNNER_TEMP/R233-PUBLIC-ROOT-CLEAN-QA-DO-NOT-INSTALL.zip" \
+            --version QA-R233-DO-NOT-INSTALL-20261116 \
+            --report qa-readonly-report/public-clean-packaging.json
+          echo 'PUBLIC_ROOT_CLEAN_STATIC_QA_PASS_NOT_INSTALLABLE'
+      - name: Upload QA REPORT ONLY (never the experimental candidate ZIP)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R233-PUBLIC-CLEAN-QA-REPORT-ONLY
+          path: qa-readonly-report/public-clean-packaging.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload frozen source reference ONLY (not deployable, not candidate Update)
         uses: actions/upload-artifact@v4
         with:
