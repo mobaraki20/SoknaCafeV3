@@ -84,6 +84,11 @@ jobs:
           ref: 8f31405bd9e6d9f03f8faa522a7d37d7c81d8448
           path: frozen-public-qualification
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: fe8bfe0ff6490b41898427ac7fe60d8f90c4486b
+          path: frozen-public-r249
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE
@@ -127,6 +132,7 @@ jobs:
           unzip -q "$R171" -d "$D/r171-outer"
           cp -a "$D/r171-outer/payload/." "$D/r171/"
           cp frozen-public-qualification/r239/public/PublicUpdateException.php "$D/public-update-exception.php"
+          python3 release-ops/qa_reconstruct_public_r153.py --r171 "$D/r171" --fixtures frozen-public-r249 --out "$D/r153"
           php -l release-ops/qa_public_two_route.php
       - name: Genuine R171 Routine stage activate commit with exact SAME Public ZIP
         shell: bash
@@ -137,8 +143,10 @@ jobs:
           export SOKNA_QA_PUBLIC_FIXTURE="$RUNNER_TEMP/qa-public"
           export SOKNA_QA_PUBLIC_ZIP="$RUNNER_TEMP/qa-public/R233-ONE-PUBLIC-ZIP-DO-NOT-INSTALL.zip"
           export SOKNA_QA_PUBLIC_SHA="$(python3 -c 'import json;print(json.load(open("qa-reports/public-static.json"))["public_update_sha256"])')"
-          php -d display_errors=1 release-ops/qa_public_two_route.php
-          echo 'QA_ROUTINE_SAME_SHA_PASS'
+          for base in 35ht 35hk; do
+            SOKNA_QA_PUBLIC_BASE="$base" php -d display_errors=1 release-ops/qa_public_two_route.php
+          done
+          echo 'QA_ROUTINE_BOTH_BASELINES_SAME_SHA_PASS'
       - name: Genuine independent Emergency stage activate commit using SAME ZIP and SHA
         shell: bash
         env:
@@ -148,8 +156,10 @@ jobs:
           export SOKNA_QA_PUBLIC_FIXTURE="$RUNNER_TEMP/qa-public"
           export SOKNA_QA_PUBLIC_ZIP="$RUNNER_TEMP/qa-public/R233-ONE-PUBLIC-ZIP-DO-NOT-INSTALL.zip"
           export SOKNA_QA_PUBLIC_SHA="$(python3 -c 'import json;print(json.load(open("qa-reports/public-static.json"))["public_update_sha256"])')"
-          php -d display_errors=1 release-ops/qa_public_two_route.php
-          echo 'QA_EMERGENCY_SAME_SHA_PASS'
+          for base in 35ht 35hk; do
+            SOKNA_QA_PUBLIC_BASE="$base" php -d display_errors=1 release-ops/qa_public_two_route.php
+          done
+          echo 'QA_EMERGENCY_BOTH_BASELINES_SAME_SHA_PASS'
       - name: Record both native PHP paths, same exact SHA — never claim host qualification
         shell: bash
         run: |
@@ -159,7 +169,9 @@ jobs:
           from pathlib import Path
           p=Path("qa-reports/public-static.json")
           d=json.loads(p.read_text())
-          d["both_routes_native_php"]="PASS_DISPOSABLE_R171_35HT_ONLY"
+          d["both_routes_native_php"]="PASS_DISPOSABLE_R153_35HK_AND_R171_35HT"
+          d["same_zip_native_php_route_baseline_combinations"]=4
+          d["native_php_disposable_baselines_proven"]=2
           d["installed_cafe_host"]="NOT_RUN"
           d["actual_http_https_host"]="NOT_RUN"
           d["production_installable"]=False
