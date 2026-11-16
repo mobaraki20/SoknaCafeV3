@@ -20,7 +20,7 @@ dialog{display:block;position:relative;margin:auto;padding:0;border:1px solid #c
 <script>
 const root=document.getElementById('root');
 let accountEditingItemId=1,accountEditFeedback=null;
-const accountAdjustmentDrafts=new Map([[1,5]]),accountServiceDistributionDrafts=new Map(),accountItemNoteDrafts=new Map(),accountAdjustmentNotes=new Map(),accountAdjustmentReasons=new Map();
+const accountAdjustmentDrafts=new Map([[1,4]]),accountServiceDistributionDrafts=new Map(),accountItemNoteDrafts=new Map(),accountAdjustmentNotes=new Map(),accountAdjustmentReasons=new Map();
 const adjustmentReasons=[['customer','درخواست مشتری'],['mistake','اشتباه ثبت'],['other','سایر']];
 const adjustmentReason=id=>accountAdjustmentReasons.get(id)||'customer';
 const L={integer:n=>Number(n).toLocaleString('fa-IR')};
