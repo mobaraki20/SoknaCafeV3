@@ -42,7 +42,20 @@ $source = $fixture."/".($baseId === "35hk" ? "r153" : "r171");
 $root = $fixture."/run-public-".$baseId."-".$mode;
 $storage = $fixture."/run-storage-".$baseId."-".$mode;
 need(is_dir($source) && is_file($source."/VERSION.txt"), "exact_historical_baseline");
-require_once $fixture."/public-update-exception.php";
+// A single namespace owner must supply PublicUpdateException. In the DB QA
+// path use the exact R233 source autoloader; without DB use the frozen R239
+// test fixture. Loading both duplicates the class and is prohibited.
+if ((string)getenv("SOKNA_QA_PUBLIC_SQL_DB")!=="") {
+    $realPublicPath=realpath((string)getenv("SOKNA_R228_PUBLIC"));
+    $tempPath=realpath((string)getenv("RUNNER_TEMP"));
+    need($realPublicPath!==false && $tempPath!==false &&
+         str_starts_with($realPublicPath,$tempPath.DIRECTORY_SEPARATOR), "real_public_autoloader_temp_only");
+    require_once $realPublicPath."/bootstrap.php";
+    need(class_exists(\Sokna\PublicEdge\Emergency\PublicUpdateException::class),
+         "real_public_exception_loaded_once");
+} else {
+    require_once $fixture."/public-update-exception.php";
+}
 require_once $fixture."/r171/src/Update/RoutinePublicUpdateService.php";
 require_once $fixture."/r171/src/Update/IndependentEmergencyRoutineBridge.php";
 
