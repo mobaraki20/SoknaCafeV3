@@ -93,7 +93,7 @@ jobs:
           export R261_LOCAL_ROOT="$RUNNER_TEMP/r261/local-web"
           export R261_CODE_PATH="$RUNNER_TEMP/r261/private/public-code.txt"
           export R261_DATA_DIR="$RUNNER_TEMP/r261/private/local"
-          mkdir -p "$R261_DATA_DIR"
+          mkdir -p "$R261_DATA_DIR/guest-media"
           python3 - <<'PY'
           import pathlib,os
           source=pathlib.Path('r257/test_integrated_setup.php').read_text()
