@@ -1,0 +1,64 @@
+name: SOKNA R263 R262 Exact ZIP Public Move Browser Smoke
+on:
+  push:
+    branches: [qa/sokna-r263-browser-public-move-20261116]
+    paths:
+      - r263/browser_public_move.cjs
+      - .github/workflows/sokna-r263-real-browser-public-move.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  owner-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-EXACT-NATIVE-WINDOWS-UAT-CANDIDATE-DO-NOT-INSTALL
+          run-id: 43834210936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r263/local
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
+          run-id: 43835146004
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r263/public
+      - name: Read the exact JS bytes from already tested ZIPs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile,hashlib,io,pathlib,os
+          temp=pathlib.Path(os.environ['RUNNER_TEMP'])/'r263'
+          a=temp/'local/SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip'
+          b=temp/'public/SOKNA-R262-PUBLIC-35ID-CLEAN-SOURCE-QA-NOT-FOR-INSTALL.zip'
+          assert hashlib.sha256(a.read_bytes()).hexdigest()=='3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c'
+          assert hashlib.sha256(b.read_bytes()).hexdigest()=='156ddccf01e0755c2d94a6a88442523c02d1e6a63e815089be30a1e50f56616e'
+          with zipfile.ZipFile(a) as outer:
+            with zipfile.ZipFile(io.BytesIO(outer.read('artifacts/local/web.zip'))) as inner:
+              (temp/'local.js').write_bytes(inner.read('public/assets/connections-workspace.js'))
+          with zipfile.ZipFile(b) as z:
+            (temp/'public.js').write_bytes(z.read('assets/sokna-public-move.js'))
+          print('R263_EXACT_ARCHIVED_LOCAL_AND_PUBLIC_JS_BYTES_VERIFIED')
+          PY
+          node --check "$RUNNER_TEMP/r263/local.js"
+          node --check "$RUNNER_TEMP/r263/public.js"
+      - name: Install isolated browser tooling, no server or live host
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install chromium
+      - name: One real Chromium owner popup to Local handoff and normal media retry
+        env:
+          R263_LOCAL_JS: ${{ runner.temp }}/r263/local.js
+          R263_PUBLIC_JS: ${{ runner.temp }}/r263/public.js
+        run: |
+          node r263/browser_public_move.cjs | tee /tmp/r263-browser.txt
+          grep -q R263_REAL_R262_ZIP_JS_BROWSER_OWNER_AND_RETRY_PASS /tmp/r263-browser.txt
+          echo R263_BROWSER_GATE_PASS_NO_PRODUCTION_MUTATION
