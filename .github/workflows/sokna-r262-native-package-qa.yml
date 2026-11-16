@@ -1,0 +1,121 @@
+name: SOKNA R262 Exact Cumulative Native Windows UAT Gate
+on:
+  push:
+    branches: [qa/sokna-r262-cumulative-source-20261116]
+    paths:
+      - r262/build_release_set.py
+      - .github/workflows/sokna-r262-native-package-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build-r262:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R241-FINAL-EXACT-INSTALLABLE-REPLAY-ONLY
+          run-id: 43705649864
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r241
+      - name: Exact R241 source with additive Public Move R262, official release-set structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r262/local-base" "$RUNNER_TEMP/r262/output" "$RUNNER_TEMP/r262/install"
+          python3 - <<'PY'
+          import os,pathlib,zipfile,io,hashlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r262'
+          outer=root/'../r241/SOKNA-R241-LOCAL-231FA-CUMULATIVE-CONNECTION-RECOVERY.zip'
+          assert hashlib.sha256(outer.read_bytes()).hexdigest()=='2ec84cff9481ca0350dea9401c5b1bb1437f29e7e96f1d1c80f0739f8c7c992b'
+          with zipfile.ZipFile(outer) as z:
+           inner=z.read('artifacts/local/web.zip')
+           assert hashlib.sha256(inner).hexdigest()=='a692a9bc639516da48e0c4d798b97b14e514f2c103ec02bc083f912d1e70dc9b'
+          with zipfile.ZipFile(io.BytesIO(inner)) as z:z.extractall(root/'local-base')
+          PY
+          export R262_BASE_ROOT="$RUNNER_TEMP/r262/local-base"
+          export R262_OVERLAY_ROOT="$GITHUB_WORKSPACE/apps/local-web"
+          export R262_MERGED_ROOT="$RUNNER_TEMP/r262/merged-local"
+          export R262_OUTPUT_DIR="$RUNNER_TEMP/r262/output"
+          export R262_SQL_SOURCE="$GITHUB_WORKSPACE/r261/overlay/local/database/migrations/0082_public_move_owner_approval.sql"
+          export R262_SOURCE_PACKAGE="$RUNNER_TEMP/r241/SOKNA-R241-LOCAL-231FA-CUMULATIVE-CONNECTION-RECOVERY.zip"
+          python3 r262/build_cumulative_local.py
+          python3 r262/build_release_set.py --parent "$R262_SOURCE_PACKAGE" --merged "$R262_MERGED_ROOT" --out "$RUNNER_TEMP/r262/install"
+          python3 packaging/windows/release-gates/check_local_release_set.py --require-installable "$RUNNER_TEMP/r262/install/SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip"
+          php -l "$R262_MERGED_ROOT/bootstrap.php"
+          node --check "$R262_MERGED_ROOT/public/assets/connections-workspace.js"
+          echo R262_EXACT_SOURCE_PACKAGE_BUILT_FOR_NATIVE_ONLY_NOT_FOR_OPERATOR
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R262-EXACT-NATIVE-WINDOWS-UAT-CANDIDATE-DO-NOT-INSTALL
+          path: |
+            ${{ runner.temp }}/r262/install/SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip
+            ${{ runner.temp }}/r262/install/R262-RELEASE-BUILD-PROOF.json
+          if-no-files-found: error
+          retention-days: 5
+  windows-r241-to-r262:
+    needs: build-r262
+    runs-on: windows-latest
+    timeout-minutes: 100
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r201-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-EXACT-NATIVE-WINDOWS-UAT-CANDIDATE-DO-NOT-INSTALL
+          path: ${{ runner.temp }}/r262-candidate
+      - name: Check final R262 payload SHA, baseline selection and release contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $folder='${{ runner.temp }}/r262-candidate'
+          $candidate=Join-Path $folder 'SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip'
+          $proof=Get-Content (Join-Path $folder 'R262-RELEASE-BUILD-PROOF.json') -Raw | ConvertFrom-Json
+          if(-not(Test-Path $candidate)){throw 'R262_RELEASE_ZIP_MISSING'}
+          if((Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant() -ne $proof.candidate_sha256){throw 'R262_RELEASE_SHA_MISMATCH'}
+          if($proof.managed_files -ne 604 -or $proof.migrations -ne 82){throw 'R262_RELEASE_PAYLOAD_SCOPE_MISMATCH'}
+          python packaging/windows/release-gates/check_local_release_set.py --require-installable "$candidate"
+          if($LASTEXITCODE -ne 0){throw 'R262_RELEASE_CONTRACT_REJECTED'}
+      - name: Actual native Windows Maintenance preflight, stage, activate, HTTP readback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $folder='${{ runner.temp }}/r262-candidate'
+          $proof=Get-Content (Join-Path $folder 'R262-RELEASE-BUILD-PROOF.json') -Raw | ConvertFrom-Json
+          $env:R186_R153_DIR='${{ runner.temp }}/r153-parent'
+          $env:R201_R177_DIR='${{ runner.temp }}/r177-parent'
+          $env:R201_TARGET_DIR='${{ runner.temp }}/r201-parent'
+          $env:R204_TARGET_DIR="$folder"
+          $src=Get-Content 'qa/sokna-r204/windows_r204_from_actual_231fa.ps1' -Raw
+          $src=$src.Replace('SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip','SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip')
+          $src=$src.Replace('279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3',[string]$proof.candidate_sha256)
+          $src=$src.Replace('3.0.0-g6.2-workspace.231fb-r204-ux-zero-empty-canary','3.0.0-g6.2-workspace.231fg-r262-public-move-qa')
+          $path=Join-Path $folder 'native-r262-test.ps1'
+          Set-Content $path $src -Encoding utf8NoBOM
+          & $path
+          if($LASTEXITCODE -ne 0){throw 'R262_NATIVE_STAGE_ACTIVATE_READBACK_FAILED'}
+          Write-Host 'R262_NATIVE_WINDOWS_EXACT_ZIP_STAGE_ACTIVATE_HTTP_PASS__NO_HOST_DEPLOY'
