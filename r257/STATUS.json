@@ -1,0 +1,144 @@
+{
+  "format": "sokna-universal-migration-progress-v1",
+  "updated_on": "2026-11-16",
+  "project_id": "SOKNA-UNIVERSAL-MIGRATION-R257",
+  "branch": "qa/sokna-r257-existing-public-consent-receipt-20261116",
+  "predecessor": "qa/sokna-r256-real-public-setup-owner-20261116",
+  "scope": "Any independent cafe and Public/Local installation, any supported host/root/subpath/version. Simple operator-facing migration, no per-customer constants.",
+  "decision_register": {
+    "canonical": "r251/DECISIONS-FA.md",
+    "machine_readable": "r251/decisions.json",
+    "active_through": "MIG-017",
+    "superseded_through": "OLD-010"
+  },
+  "checkpoint": "r257/START-HERE-FA.md",
+  "phase": "EXISTING_PUBLIC_UPGRADE_AND_SIGNED_TWO_SIDED_CONSENT_QA_PASS__PRODUCTION_NO_GO",
+  "completed": [
+    {
+      "item": "R257 existing Public owner activation guards",
+      "status": "REAL_MARIADB_CI_PASS",
+      "checks": 19,
+      "run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43808202239",
+      "cases": [
+        "only one active Local install",
+        "authenticated current staff admin",
+        "cross-tenant fail closed",
+        "CSRF and Origin",
+        "preserve existing owner",
+        "no auto cutover"
+      ]
+    },
+    {
+      "item": "R257 signed destination consent receipt and independent Local admin confirmation into one-time ledger",
+      "status": "REAL_MARIADB_CI_PASS",
+      "checks": 27,
+      "run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43808202239",
+      "cases": [
+        "receipt immutable",
+        "signature and challenge binding",
+        "tenant isolation",
+        "Local admin session required",
+        "MAC sealed Local evidence",
+        "single-use nonce",
+        "never cutover"
+      ]
+    },
+    {
+      "item": "R257 actual pinned R249 installed Public upgrade without clean install or data reset",
+      "status": "REAL_R249_MARIADB_E2E_PASS",
+      "checks": 19,
+      "run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43808202165",
+      "cases": [
+        "apply forward-only schema 0009 and 0010",
+        "keep Local association and existing Public instance ID",
+        "keep pairing secret",
+        "preserve authority epoch and order intake",
+        "owner setup",
+        "signed consent",
+        "reject cross-site"
+      ]
+    },
+    {
+      "item": "R257 existing-install test under non-root /legacy corrected",
+      "status": "DONE",
+      "commit": "bd61c05dd7814ef18f04c352f8f0ea5c8028c729",
+      "note": "Kernel applies configured base path before route matching; initial test omitted /legacy."
+    },
+    {
+      "item": "R251/R252 security regression and decision history",
+      "status": "CI_PASS",
+      "discovery_checks": 55,
+      "attestation_checks": 57
+    },
+    {
+      "item": "R257 handoff checkpoint",
+      "status": "DONE",
+      "path": "r257/START-HERE-FA.md"
+    }
+  ],
+  "source_and_tests": [
+    "apps/public/src/Security/PublicMoveExistingOwnerActivation.php",
+    "apps/public/src/Security/PublicMoveConsentReceiptStore.php",
+    "apps/local-web/src/Domain/PublicEdge/PublicMoveReceiptVerifier.php",
+    "apps/local-web/src/Domain/PublicEdge/PublicMoveLocalApprovalService.php",
+    "r257/integrate_real_public.py",
+    "r257/prepare_existing_install.php",
+    "r257/test_integrated_upgrade.php",
+    "r257/test-existing-public-owner.php",
+    "r257/test-consent-receipt.php",
+    "r257/overlay/database/migrations/0010_public_move_owner_receipts.sql",
+    ".github/workflows/sokna-r257-real-public-consent.yml",
+    ".github/workflows/sokna-r257-public-consent.yml"
+  ],
+  "pending": [
+    {
+      "item": "Minimal existing Local connections UI with one action and target site consent UI",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Production-grade HTTP and server-side Local authentication integration for signed receipt/approval transport",
+      "status": "PARTIAL_QA_ONLY"
+    },
+    {
+      "item": "Official versioned Local approval ledger migration and compatibility upgrade paths",
+      "status": "NOT_RELEASED"
+    },
+    {
+      "item": "Resumable authority handoff/cutover orchestration and no dual-active",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Pending guest orders, finance and inventory reconciliation, media backfill/read-back",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Multi-host real environment, cross-version and interrupted upgrade stress",
+      "status": "NOT_FULLY_TESTED"
+    },
+    {
+      "item": "True universal operator installer/updater and production release",
+      "status": "NOT_RELEASED"
+    },
+    {
+      "item": "Local machine migration/restoration and print/runtime state handoff",
+      "status": "NOT_IMPLEMENTED"
+    }
+  ],
+  "guardrails": {
+    "production_ready": false,
+    "installable_package_created": false,
+    "main_or_current_mutated": false,
+    "cafe_production_local_or_public_modified": false,
+    "cutover_performed": false,
+    "guest_order_intake_toggled": false,
+    "source_url_updated": false,
+    "url_or_cafe_hardcoded_in_runtime": false,
+    "receipt_or_nonce_alone_authorizes_cutover": false
+  },
+  "verified_ci_runs": [
+    "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43808202239",
+    "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43808202165"
+  ],
+  "next_action": "R258: implement user-friendly single-step Public move wizard + authenticated Local and destination owner consent UI on existing pages, wire verified receipt transport into real Local server-side session/CSRF and Local ledger, then resilient staged sync/authority cutover with multi-customer E2E before any release.",
+  "handoff": "Read r251/DECISIONS-FA.md, r251/decisions.json, r257/START-HERE-FA.md and r257/STATUS.json then inspect source and two successful runs. Do not repeat fixed missing /legacy prefix, revive fixed-domain assumptions, or claim operational transfer complete."
+}
