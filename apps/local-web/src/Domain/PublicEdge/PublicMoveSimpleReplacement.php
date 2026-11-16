@@ -43,6 +43,8 @@ final class PublicMoveSimpleReplacement
                 ($state['target_base_url']??'')!==$target) {
                 throw new RuntimeException('another_replacement_in_progress');
             }
+            if(!in_array((string)($state['stage']??''),['paired','sync_ready','config_committed'],true))
+                throw new RuntimeException('replacement_pairing_uncertain_needs_review');
             return self::result('sync_pending',$target,true);
         }
         $config=$this->local->config()->all();
@@ -57,6 +59,7 @@ final class PublicMoveSimpleReplacement
             'source_base_url'=>$challenge['source_base_url'],
             'target_base_url'=>$target,
             'new_secret'=>$secret,
+            'nonce'=>$challenge['nonce'],
             'source_public_hash'=>hash('sha256',self::json($old)),
             'stage'=>'pairing',
         ];
@@ -115,8 +118,12 @@ final class PublicMoveSimpleReplacement
                 return self::result('sync_retry',$target,false);
             }
             $state['stage']='sync_ready';$this->writeState($this->statePath(),$state);
-            $this->ledger->claimOnce($this->installationId,$operationId,
-                $this->ledger->pendingChallenge($this->installationId,$operationId,time())['nonce'],time());
+            $status=$this->ledger->status($this->installationId,$operationId);
+            if(($status['status']??null)==='owner_approved'){
+                $this->ledger->claimOnce($this->installationId,$operationId,$state['nonce'],time());
+            }elseif(($status['status']??null)!=='claimed'){
+                throw new RuntimeException('replacement_approval_not_current');
+            }
             $this->local->publicReenrollment()->commitMoveConfig($target,$state['new_secret']);
             $state['stage']='config_committed';$this->writeState($this->statePath(),$state);
         }
