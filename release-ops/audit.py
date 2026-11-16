@@ -238,6 +238,62 @@ def check_public_update(z, outer, result):
     return m, payload, keys
 
 
+
+
+def check_local_legacy_update(z, outer, result):
+    # Distinct old Local Web ownership. This is NOT the Maintenance slot
+    # Release Set and MUST NOT be promoted as a current universal Local ZIP.
+    result["kind"] = "local-legacy-update"
+    m = safe_json(z, "manifest.json")
+    if (m.get("format") != "sokna-component-package-v1"
+        or m.get("component") != "local"
+        or m.get("updater_contract") != 2
+        or (m.get("upgrade") or {}).get("mode") != "legacy-full-bridge"):
+        issue(result, "LEGACY_LOCAL_COMPONENT_SCHEMA_INVALID")
+    payload = {n[8:]: v for n, v in outer.items() if n.startswith("payload/")}
+    if set(outer) != {"manifest.json"} | {"payload/" + p for p in payload}:
+        issue(result, "LEGACY_LOCAL_COMPONENT_LAYOUT_INVALID")
+    manifest_files(z, m.get("files"), payload, result)
+    if not payload or "VERSION.txt" not in payload:
+        issue(result, "LEGACY_LOCAL_VERSION_MISSING")
+    elif z.read("payload/VERSION.txt").decode("utf-8").strip() != m.get("version"):
+        issue(result, "LEGACY_LOCAL_VERSION_MISMATCH")
+    result["version"] = m.get("version")
+    gap(result, "LEGACY_LOCAL_NOT_A_MAINTENANCE_RELEASE_SET")
+    gap(result, "LEGACY_LAYOUT_ELIGIBILITY_NOT_PROVEN_FOR_INSTALLED_TARGET")
+    return m, payload, []
+
+
+def check_public_root_clean(z, outer, result):
+    # R233 Public clean installs are deliberately flat to domain root and have
+    # no artificial deploy manifest. Require explicit --kind and pinned source
+    # for delivery; generic ZIPs must not be misidentified as valid installers.
+    result["kind"] = "public-clean"
+    required = {"VERSION.txt", ".htaccess", "bootstrap.php", "index.php",
+                "setup/index.php", "setup/api.php",
+                "src/Emergency/PublicUpdateService.php"}
+    if not required.issubset(outer):
+        issue(result, "PUBLIC_ROOT_CLEAN_REQUIRED_FILES_MISSING")
+    if any(n in outer for n in ("manifest.json", "config.php", "install.lock")):
+        issue(result, "PUBLIC_ROOT_CLEAN_CONTAINS_MANIFEST_OR_PRIVATE_STATE")
+    if any(n.startswith(("storage/", "var/", "data/", ".git/")) for n in outer):
+        issue(result, "PUBLIC_ROOT_CLEAN_MUTABLE_STATE_INCLUDED")
+    if "VERSION.txt" in outer:
+        result["version"] = z.read("VERSION.txt").decode("utf-8").strip()
+    else:
+        issue(result, "PUBLIC_ROOT_CLEAN_VERSION_MISSING")
+    if "src/Update/emergency-owner-v1.json" in outer:
+        m = safe_json(z, "src/Update/emergency-owner-v1.json")
+        code = "src/Update/EmergencyOwnerCandidate.php"
+        if (m.get("release_version") != result["version"]
+            or code not in outer or m.get("sha256") != outer.get(code, ("", 0))[0]):
+            issue(result, "PUBLIC_CLEAN_EMERGENCY_OWNER_VERSION_OR_HASH_MISMATCH")
+    else:
+        issue(result, "PUBLIC_CLEAN_EMERGENCY_OWNER_METADATA_MISSING")
+    gap(result, "PUBLIC_FLAT_ROOT_CLEAN_HAS_NO_EMBEDDED_SOURCE_MANIFEST")
+    return {}, outer, []
+
+
 def check_clean(z, outer, component, result):
     result["kind"] = component + "-clean"
     name = "sokna-install-manifest.json" if component == "local" else "manifest.json"
@@ -346,9 +402,13 @@ def audit(path: pathlib.Path, expected_kind="auto", expected_sha=None, baseline_
                     m, payload, keys = check_clean(z, files, "public", result)
                 elif top.get("format") == "sokna-component-package-v1" and top.get("component") == "public-edge":
                     m, payload, keys = check_public_update(z, files, result)
+                elif top.get("format") == "sokna-component-package-v1" and top.get("component") == "local":
+                    m, payload, keys = check_local_legacy_update(z, files, result)
                 else:
                     issue(result, "UNSUPPORTED_RELEASE_FORMAT_OR_COMPONENT")
                     m, payload, keys = {}, {}, []
+            elif expected_kind == "public-clean" and "VERSION.txt" in files:
+                m, payload, keys = check_public_root_clean(z, files, result)
             else:
                 issue(result, "RELEASE_MANIFEST_NOT_AT_ROOT")
                 m, payload, keys = {}, {}, []
@@ -433,7 +493,7 @@ def audit(path: pathlib.Path, expected_kind="auto", expected_sha=None, baseline_
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("package", type=pathlib.Path)
-    ap.add_argument("--kind", choices=("auto", "local-update", "public-update", "local-clean", "public-clean"), default="auto")
+    ap.add_argument("--kind", choices=("auto", "local-update", "local-legacy-update", "public-update", "local-clean", "public-clean"), default="auto")
     ap.add_argument("--expected-sha256")
     ap.add_argument("--baseline-catalog", type=pathlib.Path)
     ap.add_argument("--source-dir", type=pathlib.Path)
