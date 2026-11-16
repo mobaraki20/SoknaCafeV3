@@ -1,0 +1,75 @@
+name: SOKNA R259 Owner Approval Real Flow QA
+on:
+  push:
+    branches: [qa/sokna-r259-owner-approval-flow-20261116]
+    paths:
+      - r259/**
+      - apps/public/assets/sokna-public-move.*
+      - apps/public/src/Http/PublicMoveConsentPage.php
+      - apps/local-web/src/Domain/PublicEdge/PublicMove*
+      - apps/local-web/database/migrations/0075_public_move_owner_approval.sql
+      - apps/local-web/public/integrations/**
+      - apps/local-web/public/assets/connections-workspace.js
+      - .github/workflows/sokna-r259-owner-approval-flow.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  owner-flow:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+          MARIADB_DATABASE: sokna_r259_local
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare disposable MariaDB and PHP
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-mysql php-zip
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r259_public CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+      - name: Lint changed files
+        run: |
+          set -euo pipefail
+          for f in apps/local-web/src/Domain/PublicEdge/PublicMoveLocalKeyStore.php apps/local-web/src/Domain/PublicEdge/PublicMoveLocalFlow.php apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalLedger.php apps/local-web/public/integrations/index.php apps/local-web/public/integrations/api.php apps/local-web/bootstrap.php apps/public/src/Http/PublicMoveConsentPage.php r259/test-owner-flow.php; do php -l "$f"; done
+          node --check apps/local-web/public/assets/connections-workspace.js
+          node --check apps/public/assets/sokna-public-move.js
+          python3 -m py_compile r259/integrate_real_public.py
+      - name: Signed owner and Local admin confirmation against two DBs
+        env:
+          R259_LOCAL_DSN: mysql:host=127.0.0.1;port=3306;dbname=sokna_r259_local;charset=utf8mb4
+          R259_PUBLIC_DSN: mysql:host=127.0.0.1;port=3306;dbname=sokna_r259_public;charset=utf8mb4
+          R259_DB_USER: root
+          R259_DB_PASSWORD: qa-only
+        run: |
+          set -euo pipefail
+          php r259/test-owner-flow.php | tee /tmp/r259-flow.txt
+          grep -q 'R259_OWNER_FLOW_REAL_MARIADB_PASS count=' /tmp/r259-flow.txt
+      - name: Verify actual pinned R249 cumulative payload integration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r249"
+          gh run download 43749990301 -R "$GITHUB_REPOSITORY" -n sokna-r249-dual-baseline-gated-public-candidate -D "$RUNNER_TEMP/r249"
+          python3 - <<'PY'
+          import pathlib,hashlib,os
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r249'
+          matches=[p for p in root.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()=='5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4']
+          if len(matches)!=1:raise SystemExit('R259_R249_BASELINE_MISSING')
+          (root/'pin.txt').write_text(str(matches[0]))
+          PY
+          python3 r259/integrate_real_public.py --r249 "$(cat "$RUNNER_TEMP/r249/pin.txt")" --repo . --out "$RUNNER_TEMP/r259"
+          php -l "$RUNNER_TEMP/r259/qa-public-payload/bootstrap.php"
+          php -l "$RUNNER_TEMP/r259/qa-public-payload/src/Http/PublicHttpKernel.php"
+          echo R259_REAL_PUBLIC_SOURCE_QA_PASS_NO_INSTALLER
