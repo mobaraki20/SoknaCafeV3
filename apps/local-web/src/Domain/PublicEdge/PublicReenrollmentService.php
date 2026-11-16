@@ -83,6 +83,21 @@ final class PublicReenrollmentService
         ];
     }
 
+    /**
+     * R260: called only after signed destination owner approval, a successful
+     * Local full sync to a paused Public and a one-time ledger claim.
+     * Never generates another pairing code or contacts the old Public.
+     */
+    public function commitMoveConfig(string $baseUrl,string $secret): void
+    {
+        if(!preg_match('/^[a-f0-9]{64}$/D',$secret)) {
+            throw new PublicEdgeSyncException('replacement_secret_invalid','کلید اتصال جدید معتبر نیست.',409);
+        }
+        $canonical=$this->requiredCanonicalBase($baseUrl);
+        $staged=$this->stagePublicConfig($canonical,$secret);
+        $this->commitPublicConfig($staged);
+    }
+
     private function requiredCanonicalBase(string $baseUrl): string
     {
         $canonical = $this->client->canonicalBaseUrl($baseUrl);
