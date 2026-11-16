@@ -76,7 +76,7 @@ if ($operation === 'reapply') {
         require_once $public.'/bootstrap.php';
         $cfg=require $public.'/config.php';
         $core=sokna_public_bootstrap($cfg);
-        $migrations=new \\Sokna\\PublicEdge\\Core\\Migrations($core->database(),$public.'/database/migrations');
+        $migrations=new \Sokna\PublicEdge\Core\Migrations($core->database(),$public.'/database/migrations');
         $initial=$migrations->appliedVersions();
         if (count($initial)!==8 || $migrations->pendingVersions()!==[]) {
             throw new RuntimeException('PUBLIC_OWNER_MIGRATIONS_NOT_READY');
