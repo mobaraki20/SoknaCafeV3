@@ -89,3 +89,11 @@ python3 release-ops/source_gate.py --source /path/to/EXACT-SOURCE.zip --componen
 - نام artifact سورس: `SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE`؛ **هرگز به‌عنوان Update یا Clean Install کاربر ارائه نشود**.
 - این Workflow به R233 پین است. برای نسخه تازه، سورس جامع پذیرفته‌شده و ورودی SHA باید جدا ثبت شود. هرگز R233 را «آخرین» معرفی نکن.
 - **ریسک پایایی:** مادر R204 فعلاً در GitHub Actions artifact ذخیره شده که retention محدود دارد. تا وقتی منبع durable و تأییدشده برای آن ایجاد نشده، نباید دسترسی همیشگی به زنجیرهٔ بازپخش ادعا شود. گم‌شدن آن = BLOCKED، نه رجوع خودکار به نسخه قدیمی یا استفاده از فایل نامعلوم.
+
+
+## ۱۰. آرشیو پایدار منبع و آزمون واقعی فرایند (بدون انتشار نصب)
+
+- مرجع پایدار سورس SOURCE-ONLY: Workflow `.github/workflows/sokna-source-evidence-vault-r233.yml` فقط روی `main` پس از کنترل SHA، یک **Draft Release غیرعمومی** با نام `sokna-source-evidence-r233-20261116` می‌سازد؛ هیچ ZIP نصب‌پذیر یا Release عمومی ایجاد نمی‌کند. با GitHub token می‌توان آن را بازیابی کرد؛ Source ZIP به‌هیچ‌وجه بسته آپدیت نیست.
+- آزمون فرایند: `.github/workflows/sokna-r233-release-qa-rehearsal.yml` سورس دقیق R233، parent واقعی R201 و مبناهای 35HK/35HT را بازیابی و در CI به‌شکل موقت کنترل می‌کند. **فرمت Local Maintenance** با همان validator موجود و Windows PowerShell 5.1 بررسی می‌شود؛ **یک ZIP پابلیک** با همان SHA در Routine/Emergency از هر دو مبنا روی PHP واقعی تست می‌شود. خود ZIP آزمایشی منتشر نمی‌شود؛ فقط گزارش‌های JSON.
+- گزارش جزئی شواهد و مرزها: [R233_PACKAGING_QA_EVIDENCE_20261116_FA.md](R233_PACKAGING_QA_EVIDENCE_20261116_FA.md).
+- تا زمانی که **منبع approved جدید**، سازگاری چندمبدأ روی native Windows و پذیرش واقعی هاست/دیتابیس تأیید نشده است، خروجی همچنان QA/NOT INSTALL است. هیچ فرایند انتشار مجاز به تنظیم دلخواه `for_install=true` یا `production_pass=true` نیست.

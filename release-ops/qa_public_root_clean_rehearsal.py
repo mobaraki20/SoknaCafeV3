@@ -35,7 +35,11 @@ def canonical_json(obj: dict) -> bytes:
 
 
 def build_qa_clean(source_zip: pathlib.Path, output: pathlib.Path, version: str) -> dict:
-    if not version.startswith("QA-R233-DO-NOT-INSTALL-") or len(version) > 90:
+    approved_qa_versions = (
+        version.startswith("QA-R233-DO-NOT-INSTALL-") or
+        version == "3.0.0-g3.6-workspace.35zy-r233-qa-do-not-install"
+    )
+    if not approved_qa_versions or len(version) > 90:
         raise RuntimeError("INVALID_NONINSTALLABLE_QA_VERSION")
     with zipfile.ZipFile(source_zip) as z:
         paths = z.namelist()

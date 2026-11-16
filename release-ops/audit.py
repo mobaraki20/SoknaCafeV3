@@ -446,7 +446,8 @@ def audit(path: pathlib.Path, expected_kind="auto", expected_sha=None, baseline_
         else:
             gap(result, "CANONICAL_SOURCE_BYTE_EQUIVALENCE_NOT_PROVEN")
         if paired:
-            other = audit(paired, source_dir=None)
+            other_kind = "public-clean" if result["kind"] == "public-update" else "auto"
+            other = audit(paired, expected_kind=other_kind, source_dir=None)
             if other["static"] == "FAIL":
                 issue(result, "PAIRED_PACKAGE_INVALID")
             if other["version"] != result["version"]:

@@ -1,0 +1,85 @@
+name: SOKNA Source Evidence Vault R233 - Draft Non-Installable Only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sokna-source-evidence-vault-r233.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seal-source-only-draft:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VAULT_TAG: sokna-source-evidence-r233-20261116
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R233-FROZEN-SOURCE-ONLY-NOT-INSTALLABLE
+          run-id: 43830191738
+          github-token: ${{ github.token }}
+          path: source-evidence
+      - name: Verify byte-exact source archives and source registry before any archival mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOCAL="source-evidence/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip"
+          PUBLIC="source-evidence/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip"
+          [[ -f "$LOCAL" && -f "$PUBLIC" ]] || { echo "SOURCE_EVIDENCE_MISSING"; exit 2; }
+          echo '783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d  ' "$LOCAL" | awk '{print $1"  "$2}' | sha256sum -c -
+          echo '8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b  ' "$PUBLIC" | awk '{print $1"  "$2}' | sha256sum -c -
+          python3 release-ops/source_gate.py --source "$LOCAL" --checkpoint R233-20261115 --component local --report source-evidence/local-source-proof.json
+          python3 release-ops/source_gate.py --source "$PUBLIC" --checkpoint R233-20261115 --component public --report source-evidence/public-source-proof.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for part in ("local","public"):
+              proof=json.loads(Path(f"source-evidence/{part}-source-proof.json").read_text())
+              assert proof["source_integrity"]=="PASS" and proof["release_authorized"] is False
+          print("VAULT_SOURCE_BYTE_AND_TREE_PASS")
+          PY
+      - name: Create ONE frozen private Draft GitHub Release as durable source evidence; never publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$VAULT_TAG" --json isDraft >/dev/null 2>&1; then
+            echo 'SOURCE_VAULT_ALREADY_EXISTS__NO_OVERWRITE'
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/source-vault-note.md" <<'DOC'
+          # Source Evidence Only — DO NOT INSTALL OR DEPLOY
+          Frozen original Local/Public R233 SOURCE-ONLY archives with identical SHA256 to Library WORKING checkpoint.
+          This GitHub Release is a DRAFT (not publicly published). These are NOT updates, installers, or production artifacts.
+          Local SHA256: 783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d
+          Public SHA256: 8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b
+          Both were reproduced in GitHub Actions 43830191738 against exact source trees.
+          No product source, Windows executable, installed service, database, update engine or host was changed.
+          DOC
+          gh release create "$VAULT_TAG" \
+            source-evidence/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip \
+            source-evidence/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip \
+            --draft --title 'SOKNA R233 SOURCE EVIDENCE ONLY - DO NOT INSTALL' \
+            --notes-file "$RUNNER_TEMP/source-vault-note.md" --target "$GITHUB_SHA"
+          gh release view "$VAULT_TAG" --json isDraft,name,tagName --jq 'select(.isDraft == true and .tagName == "sokna-source-evidence-r233-20261116") | .name'
+      - name: Read back exact draft assets by authenticated API and check their SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$VAULT_TAG" --json isDraft --jq '.isDraft')" = true
+          mkdir -p readback
+          gh release download "$VAULT_TAG" --dir readback \
+            --pattern 'SOKNA-R233-*-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip'
+          echo '783bdde1ecd7bad4e8043d8591b52a2e628b99bc6cd32b2247c4786c5eba7a2d  readback/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip' | sha256sum -c -
+          echo '8d89b156b3efcd380763d907796a9c6914f9ec2c27f40c1a61d04ffb6dc4ca7b  readback/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip' | sha256sum -c -
+          echo "PASS_DURABLE_DRAFT_SOURCE_VAULT_READBACK_NO_INSTALL"

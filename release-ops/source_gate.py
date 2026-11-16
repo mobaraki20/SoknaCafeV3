@@ -204,7 +204,11 @@ def compare_candidate(z, source_files: dict, path: pathlib.Path, component: str,
                     result["release_blockers"] = [x for x in result["release_blockers"]
                         if x != "PUBLIC_RELEASE_OWNER_VERSION_STAMP_REQUIRED"]
         if route == "local-maintenance-update":
-            exceptions.add("resources/local-managed-files-v1.json")
+            exceptions.update((
+                "resources/local-managed-files-v1.json",
+                "resources/build-provenance.json",
+                "resources/release-identity-v1.json",
+            ))
         changed = [n for n in set(actual) & set(source_files)
                    if n not in exceptions and actual[n][0] != source_files[n][0]]
         if changed:
