@@ -61,8 +61,15 @@ def build(r241,merged,out):
  # Operator release remains explicitly blocked regardless of this CI fixture.
  m['for_install']=True;m['production_pass']=True
  m['supported_baselines'].append({'local':old_target,'public':None})
+ # Maintenance computes migration identity from the SHA256 of every
+ # forward-only SQL file, sorted by migration name. Keep the exact R241
+ # fingerprint as the baseline; declare the new target fingerprint after 0082.
+ catalog={pathlib.Path(n).stem:H(body) for n,body in d.items() if n.startswith('database/migrations/') and n.endswith('.sql')}
+ assert len(catalog)==82 and sorted(catalog)[-1]=='0082_public_move_owner_approval'
+ fingerprint='migration-ledger-sha256-v1:'+H(''.join(name+'\0'+digest+'\n' for name,digest in sorted(catalog.items())).encode())
+ assert m['targets']['local']['schema_fingerprint']!=fingerprint,'TARGET_MIGRATION_PROOF_NOT_INCREMENTAL'
  m['targets']['local'].update(version=VERSION,release_id=RELEASE_ID,managed_files=len(d),managed_tree_sha256=tree(d),
-                             migration_head='0082_public_move_owner_approval',authority_epoch_policy='preserved')
+                             migration_head='0082_public_move_owner_approval',schema_fingerprint=fingerprint,authority_epoch_policy='preserved')
  m['database']['local']['migration_dag'].append('0082_public_move_owner_approval')
  m['artifacts']['local-web'].update(sha256=H(inner),size_bytes=len(inner))
  m['qa_notes']['r262_new_source']='Only 7 modified R241 base files plus 11 additions; all 81 historical SQL files unchanged'
@@ -73,7 +80,7 @@ def build(r241,merged,out):
  out.mkdir(parents=True,exist_ok=True);p=out/NAME;p.write_bytes(payload)
  proof={'format':'sokna-r262-source-and-release-set-candidate-v1','candidate_sha256':H(payload),
         'inner_sha256':H(inner),'source_tree_sha256':tree(d),'canonical_tree_sha256':canonical(d),
-        'managed_files':len(d),'migrations':82,'historical_sql_byte_identical':True,
+        'managed_files':len(d),'migrations':82,'migration_target_fingerprint':fingerprint,'historical_sql_byte_identical':True,
         'supported_baselines':[x['local']['version'] for x in m['supported_baselines']],
         'unqualified':True,'operator_install_allowed':False,'native_windows_gate':'NOT_RUN','host_gate':'NOT_RUN',
         'release_set_id':RELEASE_ID,'version':VERSION,'path':str(p)}
