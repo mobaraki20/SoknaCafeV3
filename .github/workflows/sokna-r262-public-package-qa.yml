@@ -122,7 +122,7 @@ jobs:
           mkdir -p "$OLD/src/Emergency" "$UPGRADE/src/Emergency"
           cp apps/public/src/Emergency/*.php "$OLD/src/Emergency/"
           cp apps/public/src/Emergency/*.php "$UPGRADE/src/Emergency/"
-          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r262_existing_public CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r257_upgrade_qa CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
           export R257_QA_OLD_ROOT="$OLD"
           php r257/prepare_existing_install.php >/tmp/r262-old-setup.txt
           grep -q 'R257_OLD_R249_EIGHT_MIGRATION_PAIRED_PUBLIC_CREATED' /tmp/r262-old-setup.txt
