@@ -70,6 +70,19 @@
         "php_js_lint": "PASS"
       },
       "limitations": "Public and Local ledger only, not actual deployed two-server Local publisher/order lifecycle."
+    },
+    {
+      "url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43820792315",
+      "conclusion": "success",
+      "source_commit": "156ab794b47ca029506d4806dbb6891f3c1db257",
+      "checks": {
+        "pinned_real_public_overlay_files": 244,
+        "real_public_replacement_gate": 11,
+        "local_ledger_completion": "PASS",
+        "signed_local_projection_intake_pause": "PASS",
+        "syntax": "PASS"
+      },
+      "notes": "Latest R260 Public gate atomic intake-flag clear and normal Local HMAC projection verification succeeded. No actual end-to-end Local production host or installable package."
     }
   ],
   "excluded": [
@@ -120,5 +133,5 @@
     "authority_cutover_executed": false
   },
   "next_action": "Run ONE actual two-host Local→Public operator end-to-end: fresh Public no orders with old URL offline; confirm initial catalog/media, guest order reaches Local; interrupt mid-sync and retry. Then build a traceable cumulative local updater+Public installer, run one install/upgrade smoke and release only after clean real source parity. Do not add extra migration scenarios or old Public backfill.",
-  "handoff": "QA branch qa/sokna-r260-simple-public-replacement-20261116. Start with r260/START-HERE-FA.md; decisions MIG-018. Public real SQL/HTTP and Local ledger CI PASS, but no full end-to-end Local host or released package. Continue minimal completion, not another engine design."
+  "handoff": "QA branch qa/sokna-r260-simple-public-replacement-20261116. Start with r260/START-HERE-FA.md and MIG-018. Latest CI https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43820792315 PASS. Old Public offline accepted, Public fresh empty and order-intake paused until Local normal sync, automatic media retry on page. Pending one real Local/Public browser E2E, interrupted sync retry, cumulative installer qualification. No production deployment."
 }
