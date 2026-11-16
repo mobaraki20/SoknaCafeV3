@@ -1,0 +1,51 @@
+name: SOKNA R262 Export Exact Public Cumulative QA Source
+on:
+  push:
+    branches: [qa/sokna-r261-real-local-public-smoke-20261116]
+    paths:
+      - .github/workflows/sokna-r262-export-public-source.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Integrate pinned real R249 Public without touching protected original migrations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r262/original" "$RUNNER_TEMP/r262/output"
+          gh run download 43749990301 -R "$GITHUB_REPOSITORY" -n sokna-r249-dual-baseline-gated-public-candidate -D "$RUNNER_TEMP/r262/original"
+          python3 - <<'PY'
+          import os,pathlib,hashlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'r262/original'
+          found=[p for p in root.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()=='5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4']
+          if len(found)!=1:raise SystemExit('R262_WRONG_R249_BASELINE')
+          (root/'selected.txt').write_text(str(found[0]))
+          PY
+          python3 r260/integrate_real_public.py --r249 "$(cat "$RUNNER_TEMP/r262/original/selected.txt")" --repo . --out "$RUNNER_TEMP/r262/output"
+          python3 - <<'PY'
+          import pathlib,os,hashlib,json,zipfile
+          output=pathlib.Path(os.environ['RUNNER_TEMP'])/'r262/output/qa-public-payload'
+          original=pathlib.Path((pathlib.Path(os.environ['RUNNER_TEMP'])/'r262/original/selected.txt').read_text())
+          with zipfile.ZipFile(original) as z:
+           old={x.removeprefix('payload/'):hashlib.sha256(z.read(x)).hexdigest() for x in z.namelist() if x.startswith('payload/') and not x.endswith('/')}
+          new={p.relative_to(output).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in output.rglob('*') if p.is_file()}
+          for path,sha in old.items():
+           if path.startswith('database/migrations/') and path in new and new[path]!=sha:raise SystemExit('R262_PROTECTED_SQL_CHANGED '+path)
+          for fname in ('config.php','install.lock','.env'):
+           if fname in new:raise SystemExit('R262_PRIVATE_INSTALLATION_FILE_IN_PUBLIC_SOURCE')
+          missing=[x for x in old if x not in new]
+          if missing:raise SystemExit('R262_R249_SOURCE_FILES_MISSING '+str(missing[:10]))
+          print('R262_REAL_PUBLIC_EXPORTED_FILES',len(new),'SQL',len([p for p in new if p.startswith('database/migrations/') and p.endswith('.sql')]))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r262-public-real-cumulative-source-only
+          path: ${{ runner.temp }}/r262/output/qa-public-payload/
+          if-no-files-found: error
+          retention-days: 3
