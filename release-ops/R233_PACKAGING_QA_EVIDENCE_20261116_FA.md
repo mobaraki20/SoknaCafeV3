@@ -44,3 +44,7 @@ Scope: GitHub release tooling and temporary QA only. No Local/Public application
 - Public needs other supported origins where claimed and real HTTPS/PHP host, legacy QR and DB-forward tests before production release.
 - UI, finances, warehouse and real printing need acceptance appropriate to changes.
 - Packaging/static QA is not installation approval; all candidate outputs from this work remain DO-NOT-INSTALL.
+
+## Windows-specific read-only proof
+- [Windows QA run 43832689667](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43832689667): Windows Server 2022 runner accepted the same QA-only Local Maintenance v2.1 ZIP shape with the historical verifier and independently checked its SHA256 using the actual Windows PowerShell 5.1 executable and native .NET SHA256.
+- Windows services were NOT installed, started, stopped, updated or reconfigured. Native Windows Maintenance lifecycle Stage/Activate, business DB and backups remain NOT_RUN.
