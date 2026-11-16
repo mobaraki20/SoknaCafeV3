@@ -52,11 +52,20 @@ exact_edit(service,
     "$code=trim((string)($body['pairing_code']??''));",
     "$replacement=(bool)($body['replacement_mode']??false);$code=trim((string)($body['pairing_code']??''));")
 exact_edit(service,
+    "order_intake_enabled,authority_epoch,authority_state,authority_epoch_required)",
+    "order_intake_enabled,authority_epoch,authority_state,authority_epoch_required,public_move_intake_paused)")
+exact_edit(service,
     "VALUES(?,?,1,1,1,1,'active',0)",
-    "VALUES(?,?,1,1,?,1,'active',0)")
+    "VALUES(?,?,1,1,?,1,'active',0,?)")
 exact_edit(service,
     "->execute([$installation,$name]);(new PairingSecretStore",
-    "->execute([$installation,$name,$replacement?0:1]);(new PairingSecretStore")
+    "->execute([$installation,$name,$replacement?0:1,$replacement?1:0]);(new PairingSecretStore")
+# The normal installation projection MUST NOT reopen guest ordering before
+# signed move activation, even though Local normally publishes 'accepting'.
+projection=root/"src/Remote/InstallationProjectionService.php"
+exact_edit(projection,
+    "order_intake_enabled=VALUES(order_intake_enabled)",
+    "order_intake_enabled=IF(public_move_intake_paused=1,0,VALUES(order_intake_enabled))")
 
 kernel=root/"src/Http/PublicHttpKernel.php"
 anchor="            '/api/v1/local/installation'=>(new InstallationProjectionHttpAdapter($this->core))->sync"
@@ -84,18 +93,22 @@ new=r"""        $setup=new \Sokna\PublicEdge\Setup\PublicSetupService($this->com
             'safe_to_cutover'=>false,
         ]]);"""
 exact_edit(kernel,old,new)
+migration=a.repo/"r260/overlay/database/migrations/0011_public_move_intake_pause.sql"
+if not migration.is_file():raise AssertionError("R260_MIGRATION_MISSING")
+dest=root/"database/migrations"/migration.name
+dest.write_bytes(migration.read_bytes())
 after={x.relative_to(root).as_posix():sha(x) for x in root.rglob("*") if x.is_file()}
 added=sorted(set(after)-set(before))
 changed=sorted(p for p in before if after[p]!=before[p])
-if added!=[path] or changed!=["bootstrap.php","src/Http/PublicHttpKernel.php","src/Setup/PublicSetupService.php"]:
+if added!=["database/migrations/0011_public_move_intake_pause.sql",path] or changed!=["bootstrap.php","src/Http/PublicHttpKernel.php","src/Remote/InstallationProjectionService.php","src/Setup/PublicSetupService.php"]:
     raise AssertionError("R260_UNEXPECTED_SOURCE_CHANGES "+str(added)+" "+str(changed))
 for name in (n for n in before if n.startswith("database/migrations/")):
     if before[name]!=after[name]:raise AssertionError("R260_MIGRATION_CHANGED "+name)
 proof={"format":"sokna-r260-minimal-public-replacement-qa-v1","source":"pinned-R249-via-R259",
   "prior_files":len(before),"qa_files":len(after),"source_migrations_unchanged":True,
   "added":added,"changed":changed,"old_public_contact_required":False,
-  "old_public_data_transfer":False,"new_database_migrations":False,
-  "guest_intake_paused_until_local_signed_sync":True,
+  "old_public_data_transfer":False,"new_database_migrations":["0011_public_move_intake_pause.sql"],
+  "guest_intake_paused_until_local_signed_sync":True,"normal_sync_cannot_bypass_gate":True,
   "installable_package":False,"production_modified":False}
 (a.out/"R260-REAL-PUBLIC-QA-PROOF.json").write_text(json.dumps(proof,indent=2)+"\n",encoding="utf-8")
 print("R260_MINIMAL_REAL_PUBLIC_OVERLAY_PASS files="+str(len(after)))
