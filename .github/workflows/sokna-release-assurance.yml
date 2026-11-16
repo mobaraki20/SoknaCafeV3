@@ -166,37 +166,3 @@ jobs:
           path: audit-out/
           if-no-files-found: ignore
           retention-days: 30
-
-
-  historical-real-archive-lab:
-    name: Temporary read-only replay of R201 Local and R171 Public archived ZIPs
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
-          run-id: 43491934082
-          github-token: ${{ github.token }}
-          path: r201
-      - uses: actions/download-artifact@v4
-        with:
-          name: r171-exact-cumulative-windows-cafe-uat-candidates
-          run-id: 43205002445
-          github-token: ${{ github.token }}
-          path: r171
-      - name: Check exact real archived ZIP formats, without installation or release
-        shell: bash
-        run: |
-          set -euo pipefail
-          find r201 r171 -maxdepth 3 -type f | head -40
-          LOCAL="$(find r201 -type f -name 'SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -print -quit)"
-          PUBLIC="$(find r171 -type f -name 'SOKNA-R171-PUBLIC-35HT-FROM-35HK-PANEL-UPDATE.zip' -print -quit)"
-          test -f "$LOCAL" && test -f "$PUBLIC"
-          python3 release-ops/audit.py "$LOCAL" --kind local-update --report r201/audit.json
-          python3 release-ops/audit.py "$PUBLIC" --kind public-update \
-            --expected-sha256 ea1d2f7d90242d5b45fe232da7ff5510f03ee55c835e2dabe5f61980430be157 \
-            --report r171/audit.json
-          echo 'READ_ONLY_REAL_ARCHIVE_FORMAT_AUDIT_COMPLETED'
