@@ -5,15 +5,16 @@
   "branch": "qa/sokna-r259-owner-approval-flow-20261116",
   "predecessor": "qa/sokna-r258-universal-public-move-ui-20261116",
   "checkpoint": "r259/START-HERE-FA.md",
-  "phase": "PUBLIC_OWNER_SCREEN_PLUS_LOCAL_SIGNED_APPROVAL_REAL_DB_AND_INSTALLED_PUBLIC_SMOKE_QA_PASS__TRANSFER_NOT_YET_IMPLEMENTED__PRODUCTION_NO_GO",
+  "phase": "R259_OWNER_CONSENT_QA_PASS__MIG018_MINIMAL_PUBLIC_RECOVERY_SCOPE_APPROVED__OLD_PUBLIC_PROBE_REMOVED__CODE_CI_RECHECK_PENDING__NO_CUTOVER",
   "decision_register": {
     "canonical": "r251/DECISIONS-FA.md",
     "machine_readable": "r251/decisions.json",
-    "active_through": "MIG-017",
+    "active_through": "MIG-018",
     "superseded_through": "OLD-010",
-    "changed_policy": false
+    "changed_policy": true,
+    "latest": "MIG-018: Local-authoritative minimal Public replacement; old Public is optional/unavailable and never a source for transfer"
   },
-  "product_goal": "Generic, minimum-interaction Public/Local moves for any supported cafe/host/root/subfolder/version; one target field and one action in existing Connections → Public tab; no manual database or Emergency.",
+  "product_goal": "One target URL, owner and Local confirmation, then connect an EMPTY Public (zero active/pending destination orders). Populate with existing Local→Public sync. No old-Public DB/media/order transfer and no mandatory old-host contact.",
   "implemented": [
     {
       "item": "Actual R249 cumulative Public owner login and consent HTML (new or already-installed owner), same-origin JS, protected setup and signed receipt via R257",
@@ -57,6 +58,14 @@
       "item": "Actually installed R249-derived Public: fresh setup/owner HTTP regression plus real kernel GET /move/approve + JS/CSS via nested base path",
       "checks": 5,
       "status": "CI_PASS"
+    },
+    {
+      "item": "Allow owner approval to begin with destroyed/unreachable old Public: do not fetch old deployment binding; blank source instance identity permitted by attestation contract",
+      "paths": [
+        "apps/local-web/public/integrations/api.php",
+        "apps/local-web/src/Domain/PublicEdge/PublicMoveLocalFlow.php"
+      ],
+      "status": "COMMITTED_QA_CI_RECHECK_PENDING"
     }
   ],
   "verified_ci": [
@@ -70,24 +79,32 @@
   ],
   "pending": [
     {
-      "item": "Persistent resumable data transfer: snapshot, backfill, readback, media, financial, staff auth and pending guest orders reconciliation",
+      "item": "MIG-018 minimal Public destination validation: healthy configured destination with zero active/pending guest orders, without erasing database",
       "status": "NOT_IMPLEMENTED"
     },
     {
-      "item": "Fencing and exactly-one active authority: freeze/epoch/commit/rollback and robust interrupted transfer retry",
+      "item": "Reuse normal Public pairing/re-enrollment to bind new destination after owner and Local confirmations; avoid creating a new universal data-transfer engine",
       "status": "NOT_IMPLEMENTED"
     },
     {
-      "item": "Run real browser operator E2E across physical root/subfolder and independent tenant fixtures; validate network failure and old/new Public versions",
-      "status": "NOT_FULLY_TESTED"
+      "item": "Re-publish from Local via existing normal catalog/media/staff/availability sync; only switch traffic once first sync and health respond successfully; leave Local unchanged on failure",
+      "status": "NOT_IMPLEMENTED"
     },
     {
-      "item": "Cumulative Local and Public updater/installer source parity, official update compatibility and production release",
+      "item": "One clear acceptance warning: any old-Public-only unreceived guest orders cannot be recovered when old host is inaccessible",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "One decisive real-operator E2E: old Public unreachable; new empty Public under root/subfolder; verify menu and orders; failure preserves Local; ensure customer-facing QR points to new destination",
+      "status": "NOT_TESTED"
+    },
+    {
+      "item": "Cumulative Local/Public source parity, updater compatibility, production release",
       "status": "NOT_RELEASED"
     },
     {
-      "item": "Local migration/restoration including Windows runtime, Print Agent and backups",
-      "status": "NOT_IMPLEMENTED"
+      "item": "Independent future Local-machine move/recovery, Windows runtime and Print Agent: NOT part of Public replacement MVP",
+      "status": "SEPARATE_SCOPE"
     }
   ],
   "safety": {
@@ -102,6 +119,14 @@
     "owner_receipt_alone_grants_cutover": false,
     "fixture_urls_are_product_defaults": false
   },
-  "next_action": "Implement ONE production-grade staged orchestration path from approved Local receipt to safe data snapshot/media/order reconciliation/readback and authority fencing/cutover, then only decisive operator E2E on two independent hosts and official cumulative updater. Avoid adding new tabs, manual SQL, version-specific host config, or redundant unit-test grids.",
-  "handoff": "Read R251 decision register and R257/R258 checkpoints. R259 code is in qa/sokna-r259-owner-approval-flow-20261116; CI https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43813414363 PASS. No operational transfer, package or release yet. Do not claim one."
+  "next_action": "Implement minimal destination-empty check + owner-authorized secure pairing on new Public, then call existing Local→Public full normal sync and confirm health before enabling guest intake. Keep old Public optional (can be fully offline). Do NOT implement old Public data migration, image transfer, pending-order reconciliation, or generic snapshot engine.",
+  "handoff": "MIG-018 replaces the overbuilt R259→R260 data-transfer plan. On qa/sokna-r259-owner-approval-flow-20261116, old-Public deploymentBindingProbe was removed from public_move_begin; source_public_instance_id may be empty. R259 prior CI passed owner flow, but latest MIG-018 code changes require fresh decisive CI. Production remains blocked until minimal pairing/sync end-to-end.",
+  "excluded_by_mig018": [
+    "Read or export a damaged/inaccessible old Public DB",
+    "Transfer old Public media, financial projections, pending guest orders or staff sessions",
+    "Backfill and reconcile old-versus-new Public histories",
+    "General-purpose cross-host Public database snapshot, restore, data migration and complex multi-stage recovery orchestrator",
+    "Block new Public connection solely because the old host cannot be contacted"
+  ],
+  "accepted_limitation": "Orders registered solely on the old Public and never delivered to Local may be unrecoverable. Operator sees one plain-language acknowledgement; existing Local orders remain the source of truth."
 }
