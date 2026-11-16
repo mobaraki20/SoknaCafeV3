@@ -35,7 +35,7 @@ final class PublicMoveExistingOwnerActivation
             !preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{5,127}$/D', $trustedPublicInstanceId)) {
             throw new InvalidArgumentException('invalid_upgrade_owner_configuration');
         }
-        if (!preg_match('#^https://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/[^?#]*)?$#D', $trustedBaseUrl)) {
+        if (!preg_match('~^https://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/[^?#]*)?$~D', $trustedBaseUrl)) {
             throw new InvalidArgumentException('invalid_upgrade_public_base_url');
         }
     }
