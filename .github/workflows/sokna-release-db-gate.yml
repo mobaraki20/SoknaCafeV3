@@ -31,8 +31,6 @@ jobs:
       SOKNA_R225_DISPOSABLE_ONLY: 'YES'
       SOKNA_R228_DISPOSABLE_ONLY: 'YES'
       SOKNA_R233_DISPOSABLE_ONLY: 'YES'
-      SOKNA_R213_WEB: ${{ runner.temp }}/r233/local/web
-      SOKNA_R228_PUBLIC: ${{ runner.temp }}/r233/public
       MYSQL_PWD: r225-disposable-only
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +73,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p qa-db-reports "$RUNNER_TEMP/r233/local/web" "$RUNNER_TEMP/r233/public"
+          echo "SOKNA_R213_WEB=$RUNNER_TEMP/r233/local/web" >> "$GITHUB_ENV"
+          echo "SOKNA_R228_PUBLIC=$RUNNER_TEMP/r233/public" >> "$GITHUB_ENV"
           LOCAL=source/SOKNA-R233-LOCAL-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip
           PUBLIC=source/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip
           R201="$(find r201 -name SOKNA-R201-LOCAL-231FA-60BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip -print -quit)"
