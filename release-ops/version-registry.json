@@ -1,0 +1,11 @@
+{
+  "format": "sokna-release-version-ledger-v1",
+  "updated_at": "2026-11-16",
+  "historical_complete": false,
+  "scope": "publication-only; never infer installed version from this register",
+  "quarantined_short_versions": [
+    "35gg"
+  ],
+  "released": [],
+  "instructions": "Add only immutable, actually approved component/kind/short_code/version/sha256 records with source evidence. Do not seed from filenames, branches or a successful source-only CI. Historical backfill remains NOT_PROVEN."
+}
