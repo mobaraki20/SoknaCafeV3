@@ -1,18 +1,13 @@
 {
   "schema": "sokna-independent-release-coverage-v1",
   "date": "2026-11-16",
-  "source_checkpoint": "Library R233; newer R262/R264 are QA not automatic source authority",
-  "readme": "release-ops/INDEPENDENT_SYSTEM_COVERAGE_AUDIT_20261116_FA.md",
-  "record_count": 62,
+  "source_checkpoint": "R233 authoritative Workspace as of audit; newer R262/R264 are only QA until approved",
+  "report": "release-ops/INDEPENDENT_SYSTEM_COVERAGE_AUDIT_20261116_FA.md",
+  "record_count": 72,
+  "source_domain_directories_covered": "24/24 Local Domain subfolders",
   "installed_accepted_count": 0,
   "production_authorized": false,
-  "limitations": [
-    "QA_PASS is limited to its named scenario",
-    "No live customer host or physical printer test performed during this audit",
-    "Source path presence does not prove behavioral correctness",
-    "Each P0 requires applicability decision for its release scope",
-    "27 historical HOLD decisions remain unchanged"
-  ],
+  "scope_note": "Priority P0 is a hazard grade: only applicable P0 to each release must pass; source presence/QA CI success is not host acceptance",
   "rows": [
     {
       "id": "SRC-01",
@@ -570,6 +565,96 @@
       "priority": "P0",
       "evidence_coverage": "شواهد ناقص",
       "required_proof": "برای P0های نسخه هدف شواهد معتبر پیش از production flag",
+      "installed_accepted": false
+    },
+    {
+      "id": "MOD-01",
+      "domain": "ده دامنهٔ اضافی کشف‌شده از سورس",
+      "risk": "حساب کاربری و ترجیحات دستگاه",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "تغییر رمز/پروفایل/تنظیمات به‌همراه نقش و کش چند دستگاه",
+      "installed_accepted": false
+    },
+    {
+      "id": "MOD-02",
+      "domain": "ده دامنهٔ اضافی کشف‌شده از سورس",
+      "risk": "کنترل مدیریتی و مجوز تنظیمات",
+      "priority": "P0",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "مدیر/کارمند/مهمان نتواند تنظیم حیاتی یا حذف داده را دور بزند",
+      "installed_accepted": false
+    },
+    {
+      "id": "MOD-03",
+      "domain": "ده دامنهٔ اضافی کشف‌شده از سورس",
+      "risk": "هزینه‌های عملیاتی و انتساب به دوره",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "ثبت/ویرایش هزینه، تکرار، استرداد و گزارش پس از تغییر دوره",
+      "installed_accepted": false
+    },
+    {
+      "id": "MOD-04",
+      "domain": "ده دامنهٔ اضافی کشف‌شده از سورس",
+      "risk": "مدیریت محتوای مهمان، رسانه و قالب‌ها",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "آرشیو/بازآوری عکس، تغییر تم، CDN/cache و Public sync واقعی",
+      "installed_accepted": false
+    },
+    {
+      "id": "MOD-05",
+      "domain": "ده دامنهٔ اضافی کشف‌شده از سورس",
+      "risk": "Guest LAN و کارکرد منو هنگام قطع Public",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "WAN قطع، Public قدیمی ناپدید، LAN guest endpoint و بازگشت امن",
+      "installed_accepted": false
+    },
+    {
+      "id": "MOD-06",
+      "domain": "ده دامنهٔ اضافی کشف‌شده از سورس",
+      "risk": "یکپارچه‌سازی اقامتگاه، مشترکان و هویت خارجی",
+      "priority": "P1",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "توکن اشتباه، API timeout، retry idempotent، account mapping و عدم افشای اطلاعات",
+      "installed_accepted": false
+    },
+    {
+      "id": "MOD-07",
+      "domain": "ده دامنهٔ اضافی کشف‌شده از سورس",
+      "risk": "بازاریابی و پیشنهادها و سوابق کمپین",
+      "priority": "P1",
+      "evidence_coverage": "بدون اثبات کافی",
+      "required_proof": "اعمال تخفیف/پیشنهاد با قیمت و مجوز، انقضا و عدم ثبت دوباره",
+      "installed_accepted": false
+    },
+    {
+      "id": "MOD-08",
+      "domain": "ده دامنهٔ اضافی کشف‌شده از سورس",
+      "risk": "صفحات عملیات و وضعیت فعالیت روزانه",
+      "priority": "P1",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "میزهای باز/خدمت/حضور کاربر/روز عملیاتی پس از sync و rebind",
+      "installed_accepted": false
+    },
+    {
+      "id": "MOD-09",
+      "domain": "ده دامنهٔ اضافی کشف‌شده از سورس",
+      "risk": "وضعیت آماده‌سازی و دکمه «گرفتم» چندکاربره",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "دو کارمند همزمان «گرفتم»، پاسخ دیررس و چاپ دوباره بدون ناهماهنگی",
+      "installed_accepted": false
+    },
+    {
+      "id": "MOD-10",
+      "domain": "ده دامنهٔ اضافی کشف‌شده از سورس",
+      "risk": "قانون مالیات و خدمت و محاسبه در اسناد",
+      "priority": "P0",
+      "evidence_coverage": "شواهد ناقص",
+      "required_proof": "دوره/نرخ مالیات، ۱۰۰٪ تخفیف، rounding، invoice و گزارش برابر باشند",
       "installed_accepted": false
     }
   ]
