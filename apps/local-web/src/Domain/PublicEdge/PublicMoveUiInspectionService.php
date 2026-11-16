@@ -35,7 +35,7 @@ final class PublicMoveUiInspectionService
         // Validation, unchanged URL, and authority recovery all short-circuit
         // BEFORE any network request. Never accept browser "verified" evidence.
         if (($base['reason_code']??'')!=='health_not_checked') return $base;
-        if ($this->authorityPhase!=='active') {
+        if (!in_array($this->authorityPhase,['active','resync_required'],true)) {
             return self::finish($base,'local_recovery_required','blocked',
                 'اتصال فعلی ابتدا باید از وضعیت بازیابی خارج شود؛ انتقال آغاز نشده است.');
         }
@@ -46,17 +46,14 @@ final class PublicMoveUiInspectionService
         try {
             $proof=($this->sameInstancePreflight)((string)$base['target_base_url']);
         } catch (PublicEdgeSyncException $e) {
-            if ($e->errorCode==='public_origin_instance_mismatch' ||
-                $e->errorCode==='deployment_probe_proof_invalid' ||
-                $e->errorCode==='deployment_probe_invalid') {
-                return self::finish($base,'target_identity_unconfirmed','awaiting_owner',
-                    'این مقصد با اتصال فعلی تأیید نشد. برای نصب مستقل، تأیید مالک مقصد لازم است؛ هیچ اتصالی تغییر نکرده است.');
-            }
-            return self::finish($base,'target_check_failed','blocked',
-                'بررسی امن مقصد کامل نشد. اتصال فعلی بدون تغییر باقی ماند.');
+            // Different/new Public cannot answer a SAME-instance shared-secret
+            // probe. Treat the outcome only as "needs independent OWNER proof".
+            // It is never evidence of ownership and never permits cutover.
+            return self::finish($base,'target_requires_owner','awaiting_owner',
+                'اگر مقصد نصب تازه است، مالک همان وب عمومی باید اتصال را تأیید کند.');
         } catch (Throwable) {
-            return self::finish($base,'target_check_failed','blocked',
-                'بررسی امن مقصد کامل نشد. اتصال فعلی بدون تغییر باقی ماند.');
+            return self::finish($base,'target_requires_owner','awaiting_owner',
+                'برای اتصال به نصب تازه، تأیید مالک مقصد لازم است.');
         }
         // Only signed, server-generated SAME-instance preflight evidence can
         // reach this point. Never trust a JSON body or a frontend flag as proof.
