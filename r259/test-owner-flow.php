@@ -106,6 +106,11 @@ try{
  }
  assertion($flow->cancel($op)['status']==='canceled',
    'operator can cancel approved preflight without cutover');
+ $offline=$flow->begin($target,$source,'',$now+10);
+ assertion($offline['status']==='awaiting_destination_owner' &&
+   ($offline['challenge']['source_public_instance_id']??null)==='' &&
+   $offline['safe_to_cutover']===false,
+   'lost-old-Public recovery begins without old Public instance proof');
  $page=PublicMoveConsentPage::render($target);
  assertion($page['status']===200 && str_contains($page['body'],$target.'/assets/sokna-public-move.js') &&
    str_contains($page['body'],$target.'/staff/login') &&
