@@ -75,7 +75,7 @@ jobs:
           php -l "$RUNNER_TEMP/r261/local-web/public/integrations/api.php"
           node --check "$RUNNER_TEMP/r261/local-web/public/assets/connections-workspace.js"
           echo R262_EXACT_R241_CUMULATIVE_LOCAL_SOURCE_PARITY_PASS
-          php -l r261/test-real-local-public.php
+          php -l r262/test-real-cumulative-local-public.php
           php -l r261/prepare-public-http.php
           php -l r261/public-http-router.php
       - name: Install Public, then serve it on separate HTTP endpoint and run actual Local
@@ -113,7 +113,7 @@ jobs:
             sleep 0.2
           done
           cat /tmp/r261-health.txt
-          php r261/test-real-local-public.php | tee /tmp/r261-e2e.txt || { tail -n 80 /tmp/r261-http.log; exit 1; }
+          php r262/test-real-cumulative-local-public.php | tee /tmp/r261-e2e.txt || { tail -n 80 /tmp/r261-http.log; exit 1; }
           grep -q 'R261_FULL_LOCAL_PUBLISHER_TO_PUBLIC_AND_GUEST_ORDER_RECEIPT_PASS' /tmp/r261-e2e.txt
       - name: Actual Local replacement controller with HTTPS owner consent, mid-sync outage and resume
         env:
