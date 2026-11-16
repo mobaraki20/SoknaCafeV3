@@ -1,0 +1,124 @@
+{
+  "format": "sokna-universal-migration-progress-v1",
+  "project_id": "SOKNA-UNIVERSAL-MIGRATION-R260",
+  "updated_on": "2026-11-16",
+  "branch": "qa/sokna-r260-simple-public-replacement-20261116",
+  "predecessor": "qa/sokna-r259-owner-approval-flow-20261116",
+  "checkpoint": "r260/START-HERE-FA.md",
+  "phase": "MINIMAL_PUBLIC_REPLACEMENT_SOURCE_IMPLEMENTED_REAL_PUBLIC_GATE_CI_PASS__LOCAL_REAL_BROWSER_E2E_AND_CUMULATIVE_RELEASE_PENDING__PRODUCTION_NO_GO",
+  "decision_register": {
+    "canonical": "r251/DECISIONS-FA.md",
+    "machine_readable": "r251/decisions.json",
+    "active_through": "MIG-018",
+    "historical_through": "OLD-010",
+    "policy": "Local is source of truth; new Public only; no old Public data/guest order/media backfill"
+  },
+  "user_scope": "Replace broken/offline/blocked Public through a fresh empty Public without requiring the old host, with one URL and a confirmation. Catalog, images and staff published by existing Local sync.",
+  "implemented": [
+    {
+      "item": "Owner-approved fresh unpaired Public issues short-lived pairing code, proven zero preexisting installations/orders; Public identity remains per-installation",
+      "path": "r260/integrate_real_public.py",
+      "status": "COMMITTED_QA"
+    },
+    {
+      "item": "Reuse ordinary Public setup pair(replacement_mode=true); block guest intake with forward-only public_move_intake_paused even during regular Local projection sync",
+      "paths": [
+        "r260/overlay/database/migrations/0011_public_move_intake_pause.sql",
+        "apps/public/src/Security/PublicMoveReplacementGate.php"
+      ],
+      "status": "CI_PASS"
+    },
+    {
+      "item": "Signed HMAC activation only once Public guest revision and availability are present",
+      "path": "apps/public/src/Security/PublicMoveReplacementGate.php",
+      "status": "CI_PASS"
+    },
+    {
+      "item": "Local staged replacement with original binding unchanged until normal Local full sync + complete media, then atomic config commit, signed Public activation, Local ledger completion and retry-safe recovery state",
+      "paths": [
+        "apps/local-web/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php",
+        "apps/local-web/src/Domain/PublicEdge/PublicReenrollmentService.php",
+        "apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalLedger.php"
+      ],
+      "status": "COMMITTED_QA_LOCAL_HOST_E2E_PENDING"
+    },
+    {
+      "item": "Single existing Local Connections Public URL input, owner approval and automatic media-batch retries, with Resume on failure; do not expose legacy pairing types to end user",
+      "paths": [
+        "apps/local-web/public/integrations/api.php",
+        "apps/local-web/public/integrations/index.php",
+        "apps/local-web/public/assets/connections-workspace.js",
+        "apps/public/assets/sokna-public-move.js"
+      ],
+      "status": "COMMITTED_QA"
+    },
+    {
+      "item": "Actual cumulative pinned R249 Public source plus R256/257/259 overlays extended to 244 files, 11 migrations and no modification of preceding 10 migration bytes",
+      "path": "r260/integrate_real_public.py",
+      "status": "CI_PASS"
+    }
+  ],
+  "verified_ci": [
+    {
+      "url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43819904278",
+      "conclusion": "success",
+      "source_commit": "390930d7279150d0a2b7ffceb547e59dd9244cf3",
+      "checks": {
+        "real_public_owner_pair_projection_activation": 11,
+        "real_local_ledger_future_operation": "PASS",
+        "real_public_current_source_overlay": "PASS",
+        "php_js_lint": "PASS"
+      },
+      "limitations": "Public and Local ledger only, not actual deployed two-server Local publisher/order lifecycle."
+    }
+  ],
+  "excluded": [
+    "Fetching old Public for preflight, export or recovery",
+    "Transfer or reconciliation of Public-only pending guest orders, pictures, financial data, DB tables or history",
+    "Automated restoration of inaccessible old Public",
+    "Complex generic snapshots, multi-stage Public data migration engine or host-specific defaults",
+    "Changing Local databases, café production system, main or CURRENT in QA"
+  ],
+  "pending": [
+    {
+      "item": "Real Local admin browser E2E connected to independently installed fresh Public: owner approve, server-side pair, full Local sync/catalog/media/staff, guest order and receipt arriving back in Local",
+      "status": "NOT_TESTED"
+    },
+    {
+      "item": "One interrupted internet run across staged pair/sync and successful automatic resume; UI shows correct pending state and never opens guest ordering prematurely",
+      "status": "NOT_TESTED"
+    },
+    {
+      "item": "Cumulative official Local update and Public fresh/update packages from byte-traceable latest accepted source with installation QA across supported baseline versions",
+      "status": "NOT_BUILT"
+    },
+    {
+      "item": "Guest QR/legacy domain delivery to new Public after DNS/host move, customer-specific host routing",
+      "status": "OPERATIONS_FOLLOWUP_NOT_MIGRATION_ENGINE"
+    },
+    {
+      "item": "Additional separate Local machine relocation/Windows runtime/printing recovery",
+      "status": "NOT_PART_OF_PUBLIC_REPLACEMENT_MVP"
+    }
+  ],
+  "known_limits": [
+    "Target for automatic replacement must be a fresh/unpaired Public installation with no existing installation records, orders or guest projections. It need not be a newly created database if the owner install is valid and empty.",
+    "An old Public-only order that never reached Local can be unrecoverable; the operator receives one explicit confirmation warning.",
+    "R260 uses a brief protected Local file for new pairing credentials between requests; an ambiguous remote pairing acknowledgement is deliberately not retried blindly.",
+    "Fresh Public installation must include the R260 intake-pause migration/owner route; an older unqualified target cannot silently bypass the gate.",
+    "The original Local business data and config are unchanged until the first new-target sync succeeds; after config commit and before intake activation a retry state is retained."
+  ],
+  "guardrails": {
+    "production_ready": false,
+    "installable_package_created": false,
+    "main_or_current_mutated": false,
+    "cafe_production_modified": false,
+    "old_public_contacted": false,
+    "old_public_database_migrated": false,
+    "local_business_records_changed": false,
+    "operator_rebind_mode_chooser_added": false,
+    "authority_cutover_executed": false
+  },
+  "next_action": "Run ONE actual two-host Local→Public operator end-to-end: fresh Public no orders with old URL offline; confirm initial catalog/media, guest order reaches Local; interrupt mid-sync and retry. Then build a traceable cumulative local updater+Public installer, run one install/upgrade smoke and release only after clean real source parity. Do not add extra migration scenarios or old Public backfill.",
+  "handoff": "QA branch qa/sokna-r260-simple-public-replacement-20261116. Start with r260/START-HERE-FA.md; decisions MIG-018. Public real SQL/HTTP and Local ledger CI PASS, but no full end-to-end Local host or released package. Continue minimal completion, not another engine design."
+}
