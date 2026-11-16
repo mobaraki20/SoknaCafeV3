@@ -42,5 +42,5 @@ jobs:
           grep -q "data-public-move-target" apps/local-web/public/integrations/index.php
           grep -q "signed SAME-installation preflight" apps/local-web/public/integrations/api.php
           ! grep -Eiq 'soknaspace[.]ir|soknagroup[.]ir' apps/local-web/src/Domain/PublicEdge/PublicMoveUiInspectionService.php apps/local-web/public/integrations/index.php
-          ! grep -E '->execute\(|->claimOnce\(|->activateAuthority\(|->syncAll\(' apps/local-web/src/Domain/PublicEdge/PublicMoveUiInspectionService.php
+          ! grep -E -- '->execute\(|->claimOnce\(|->activateAuthority\(|->syncAll\(' apps/local-web/src/Domain/PublicEdge/PublicMoveUiInspectionService.php
           echo PASS_R258_PREVIEW_ONLY_NO_OPERATOR_PACKAGE
