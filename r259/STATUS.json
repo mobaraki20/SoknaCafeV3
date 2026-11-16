@@ -1,0 +1,107 @@
+{
+  "format": "sokna-universal-migration-progress-v1",
+  "project_id": "SOKNA-UNIVERSAL-MIGRATION-R259",
+  "updated_on": "2026-11-16",
+  "branch": "qa/sokna-r259-owner-approval-flow-20261116",
+  "predecessor": "qa/sokna-r258-universal-public-move-ui-20261116",
+  "checkpoint": "r259/START-HERE-FA.md",
+  "phase": "PUBLIC_OWNER_SCREEN_PLUS_LOCAL_SIGNED_APPROVAL_REAL_DB_AND_INSTALLED_PUBLIC_SMOKE_QA_PASS__TRANSFER_NOT_YET_IMPLEMENTED__PRODUCTION_NO_GO",
+  "decision_register": {
+    "canonical": "r251/DECISIONS-FA.md",
+    "machine_readable": "r251/decisions.json",
+    "active_through": "MIG-017",
+    "superseded_through": "OLD-010",
+    "changed_policy": false
+  },
+  "product_goal": "Generic, minimum-interaction Public/Local moves for any supported cafe/host/root/subfolder/version; one target field and one action in existing Connections → Public tab; no manual database or Emergency.",
+  "implemented": [
+    {
+      "item": "Actual R249 cumulative Public owner login and consent HTML (new or already-installed owner), same-origin JS, protected setup and signed receipt via R257",
+      "paths": [
+        "apps/public/src/Http/PublicMoveConsentPage.php",
+        "apps/public/assets/sokna-public-move.js",
+        "apps/public/assets/sokna-public-move.css",
+        "r259/integrate_real_public.py"
+      ],
+      "status": "QA_PASS"
+    },
+    {
+      "item": "Local full-admin authenticated start/confirm/cancel action on the existing Connections page using server session and WebAction CSRF",
+      "paths": [
+        "apps/local-web/public/integrations/api.php",
+        "apps/local-web/public/assets/connections-workspace.js",
+        "apps/local-web/public/integrations/index.php"
+      ],
+      "status": "QA_PASS"
+    },
+    {
+      "item": "One-time Local durable challenge and independently verified signed owner receipt, Local private MAC/CSRF keys, idempotent resume and cancel",
+      "paths": [
+        "apps/local-web/src/Domain/PublicEdge/PublicMoveLocalFlow.php",
+        "apps/local-web/src/Domain/PublicEdge/PublicMoveLocalKeyStore.php",
+        "apps/local-web/src/Domain/PublicEdge/PublicMoveApprovalLedger.php",
+        "apps/local-web/database/migrations/0075_public_move_owner_approval.sql"
+      ],
+      "status": "QA_PASS"
+    },
+    {
+      "item": "Pinned exact R249/35IC 8 original migrations untouched; R256 0009 and R257 0010 preserved; newly served owner UI compiled into 242-file QA-only payload",
+      "status": "QA_PASS"
+    },
+    {
+      "item": "Real disposable MariaDB across separate Local and Public schemas: owner login + signed receipt + Local approval + no cutover",
+      "checks": 11,
+      "status": "CI_PASS"
+    },
+    {
+      "item": "Actually installed R249-derived Public: fresh setup/owner HTTP regression plus real kernel GET /move/approve + JS/CSS via nested base path",
+      "checks": 5,
+      "status": "CI_PASS"
+    }
+  ],
+  "verified_ci": [
+    {
+      "url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43813414363",
+      "conclusion": "success",
+      "source_commit": "81aefc3074f458e66164a8273257601939025a39",
+      "r259_db_checks": 11,
+      "real_kernel_browser_surface_checks": 5
+    }
+  ],
+  "pending": [
+    {
+      "item": "Persistent resumable data transfer: snapshot, backfill, readback, media, financial, staff auth and pending guest orders reconciliation",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Fencing and exactly-one active authority: freeze/epoch/commit/rollback and robust interrupted transfer retry",
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "item": "Run real browser operator E2E across physical root/subfolder and independent tenant fixtures; validate network failure and old/new Public versions",
+      "status": "NOT_FULLY_TESTED"
+    },
+    {
+      "item": "Cumulative Local and Public updater/installer source parity, official update compatibility and production release",
+      "status": "NOT_RELEASED"
+    },
+    {
+      "item": "Local migration/restoration including Windows runtime, Print Agent and backups",
+      "status": "NOT_IMPLEMENTED"
+    }
+  ],
+  "safety": {
+    "production_ready": false,
+    "installable_package_created": false,
+    "main_or_current_mutated": false,
+    "cafe_production_modified": false,
+    "current_local_public_binding_changed": false,
+    "authority_cutover": false,
+    "guest_order_intake_toggled": false,
+    "transfer_started": false,
+    "owner_receipt_alone_grants_cutover": false,
+    "fixture_urls_are_product_defaults": false
+  },
+  "next_action": "Implement ONE production-grade staged orchestration path from approved Local receipt to safe data snapshot/media/order reconciliation/readback and authority fencing/cutover, then only decisive operator E2E on two independent hosts and official cumulative updater. Avoid adding new tabs, manual SQL, version-specific host config, or redundant unit-test grids.",
+  "handoff": "Read R251 decision register and R257/R258 checkpoints. R259 code is in qa/sokna-r259-owner-approval-flow-20261116; CI https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43813414363 PASS. No operational transfer, package or release yet. Do not claim one."
+}
