@@ -86,7 +86,7 @@ echo "R261_REAL_FULL_LOCAL_SYNC_AND_SIGNED_PUBLIC_ACTIVATION_PASS\n";
 $guestJson=json_encode([
  'installation_id'=>$installation,'table_token'=>'table-token-for-qa-001',
  'device_token'=>'guest-device-qa-001','client_token'=>'guest-client-qa-00000001',
- 'items'=>[['item_id'=>$itemId,'quantity'=>1]]
+ 'items'=>[['id'=>$itemId,'quantity'=>1]]
 ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 $ctx=stream_context_create(['http'=>[
  'method'=>'POST','header'=>"Content-Type: application/json\r\nAccept: application/json\r\n",
