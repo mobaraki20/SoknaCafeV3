@@ -39,6 +39,16 @@ jobs:
           ref: 120d1fb5107699d6b62eaba74f04fd962338f6a3
           path: historical-qa
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 8f31405bd9e6d9f03f8faa522a7d37d7c81d8448
+          path: frozen-public-qualification
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: fe8bfe0ff6490b41898427ac7fe60d8f90c4486b
+          path: frozen-public-r249
+          persist-credentials: false
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
@@ -121,6 +131,54 @@ jobs:
               assert a==b, 'DATA_CHANGED_AFTER_REAL_MIGRATION_RERUN_'+x
           print('PASS_DISPOSABLE_DATABASE_MIGRATION_REAPPLY_DATA_PRESERVATION')
           PY
+          echo 'SOKNA_PUBLIC_CORE_MIGRATION_REAPPLY_PASS=true' >> "$GITHUB_ENV"
+      - name: Build disposable same-SHA Public ZIP and both authentic archived baseline trees; NOT installable
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/qa-public"
+          mkdir -p "$D"
+          python3 release-ops/qa_public_update_rehearsal.py \
+            --source source/SOKNA-R233-PUBLIC-FULL-CUMULATIVE-WORKING-SOURCE-NOT-INSTALLABLE.zip \
+            --update "$D/R233-ONE-PUBLIC-ZIP-DO-NOT-INSTALL.zip" \
+            --clean "$D/R233-CLEAN-QA-DO-NOT-INSTALL.zip" \
+            --report qa-db-reports/public-qa-package.json
+          R171="$(find r171 -type f -name SOKNA-R171-PUBLIC-35HT-FROM-35HK-PANEL-UPDATE.zip -print -quit)"
+          echo "ea1d2f7d90242d5b45fe232da7ff5510f03ee55c835e2dabe5f61980430be157  $R171" | sha256sum -c -
+          mkdir -p "$D/r171-outer" "$D/r171"
+          unzip -q "$R171" -d "$D/r171-outer"
+          cp -a "$D/r171-outer/payload/." "$D/r171/"
+          cp frozen-public-qualification/r239/public/PublicUpdateException.php "$D/public-update-exception.php"
+          python3 release-ops/qa_reconstruct_public_r153.py --r171 "$D/r171" --fixtures frozen-public-r249 --out "$D/r153"
+          php -l release-ops/qa_public_two_route.php
+      - name: Run SAME ZIP on Routine and Emergency across 35HK/35HT with real disposable MariaDB migration owner
+        shell: bash
+        env:
+          SOKNA_QA_PUBLIC_SQL_DB: sokna_r228_public_disposable
+        run: |
+          set -euo pipefail
+          export SOKNA_QA_PUBLIC_FIXTURE="$RUNNER_TEMP/qa-public"
+          export SOKNA_QA_PUBLIC_ZIP="$RUNNER_TEMP/qa-public/R233-ONE-PUBLIC-ZIP-DO-NOT-INSTALL.zip"
+          export SOKNA_QA_PUBLIC_SHA="$(python3 -c 'import json;print(json.load(open("qa-db-reports/public-qa-package.json"))["public_update_sha256"])')"
+          for base in 35ht 35hk; do
+            for route in routine emergency; do
+              SOKNA_QA_PUBLIC_BASE="$base" SOKNA_QA_PUBLIC_ROUTE="$route" \
+                php -d display_errors=1 release-ops/qa_public_two_route.php > "$RUNNER_TEMP/$base-$route-real-db.log"
+              grep -q "PASS_PUBLIC_${base^^}_${route^^}_REAL_DB_OWNER_PATH_NO_PENDING_SQL" "$RUNNER_TEMP/$base-$route-real-db.log"
+              grep -q "SOKNA_QA_PUBLIC_${base^^}_${route^^}_ONE_EXACT_ZIP_NATIVE_PHP_PASS" "$RUNNER_TEMP/$base-$route-real-db.log"
+              echo "PASS_PUBLIC_REAL_MARIADB_OWNER_${base^^}_${route^^}_SAME_SHA"
+            done
+          done
+          php release-ops/qa_db_roundtrip.php snapshot public sokna_r228_public_disposable > qa-db-reports/public-after-owner-4-routes.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('qa-db-reports/public-before.json').read_text())
+          b=json.loads(Path('qa-db-reports/public-after-owner-4-routes.json').read_text())
+          assert a == b, 'REAL_PUBLIC_DB_DATA_CHANGED_BY_ROUTINE_OR_EMERGENCY'
+          print('PASS_PUBLIC_REAL_MARIADB_ALL_TABLES_UNCHANGED_THROUGH_FOUR_OWNER_ROUTES')
+          PY
+          echo 'SOKNA_PUBLIC_OWNER_DB_FOUR_ROUTE_PASS=true' >> "$GITHUB_ENV"
       - name: Make consistent database backups, restore to two new schemas, compare entire logical contents
         shell: bash
         run: |
@@ -161,7 +219,8 @@ jobs:
             'installed_old_database_upgrade':'NOT_RUN',
             'native_maintenance_db_forward_fence':'NOT_RUN',
             'real_host_backup_restore':'NOT_RUN',
-            'public_owner_migration_reapply':'NOT_RUN',
+            'public_owner_migration_reapply':('PASS_DISPOSABLE_R233_CORE_MIGRATOR_NOOP' if __import__('os').environ.get('SOKNA_PUBLIC_CORE_MIGRATION_REAPPLY_PASS')=='true' else 'FAIL_OR_NOT_RUN'),
+            'public_routine_emergency_with_real_db':('PASS_DISPOSABLE_TWO_BASELINES_FOUR_ROUTES' if __import__('os').environ.get('SOKNA_PUBLIC_OWNER_DB_FOUR_ROUTE_PASS')=='true' else 'FAIL_OR_NOT_RUN'),
             'live_database_modified':False,
             'credentials_or_db_dumps_uploaded':False,
             'release_authorized':False

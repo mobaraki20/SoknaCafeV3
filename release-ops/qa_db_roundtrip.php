@@ -68,7 +68,26 @@ if ($operation === 'reapply') {
         }
         echo "PASS_LOCAL_81_REAL_MIGRATIONS_REAPPLY_TWICE_NOOP\n";
     } else {
-        echo "NOT_RUN_PUBLIC_OWNER_MIGRATION_REAPPLY_NOT_DIRECT_CORE_CONTRACT\n";
+        $public=realpath((string)getenv('SOKNA_R228_PUBLIC'));
+        $temp=realpath((string)getenv('RUNNER_TEMP'));
+        if (!$public || !$temp || !str_starts_with($public,$temp.DIRECTORY_SEPARATOR)) {
+            throw new RuntimeException('INVALID_PUBLIC_TEMP_SOURCE');
+        }
+        require_once $public.'/bootstrap.php';
+        $cfg=require $public.'/config.php';
+        $core=sokna_public_bootstrap($cfg);
+        $migrations=new \Sokna\PublicEdge\Core\Migrations($core->database(),$public.'/database/migrations');
+        $initial=$migrations->appliedVersions();
+        if (count($initial)!==8 || $migrations->pendingVersions()!==[]) {
+            throw new RuntimeException('PUBLIC_OWNER_MIGRATIONS_NOT_READY');
+        }
+        $first=$migrations->migrate();
+        $second=$migrations->migrate();
+        if ($first!==[] || $second!==[] || $migrations->pendingVersions()!==[]
+            || $migrations->appliedVersions()!==$initial) {
+            throw new RuntimeException('PUBLIC_OWNER_MIGRATION_REAPPLY_NOT_IDEMPOTENT');
+        }
+        echo "PASS_PUBLIC_8_REAL_OWNER_MIGRATIONS_REAPPLY_TWICE_NOOP\n";
     }
     exit(0);
 }
