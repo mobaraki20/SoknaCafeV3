@@ -52,6 +52,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - name: Compile read-only auditor
         run: python3 -m py_compile release-ops/audit.py release-ops/tests/test_audit.py
       - name: Test SAME auditor with synthetic valid, corrupt and regression fixtures
@@ -75,8 +77,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin "${{ github.base_ref }}" --depth=1
-          git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed-files.txt
+          git rev-parse --verify HEAD^1 >/dev/null
+          git diff --name-only HEAD^1 HEAD > changed-files.txt
           cat changed-files.txt
           if grep -v -E '^(AGENTS\.md|release-ops/.*|\.github/workflows/sokna-release-assurance\.yml)$' changed-files.txt; then
             echo 'SCOPE_VIOLATION: only release operations docs, auditor and workflow may change'; exit 4
