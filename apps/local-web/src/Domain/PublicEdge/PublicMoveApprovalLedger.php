@@ -41,7 +41,18 @@ final class PublicMoveApprovalLedger
         return $this->atomic(function () use ($local, $operation, $challenge, $json) {
             $slot = $this->lockSlot($local);
             if ($slot !== '' && !hash_equals($slot, $operation)) {
-                throw new RuntimeException('another_migration_already_active');
+                // A timed-out owner-confirmation window must not strand a cafe.
+                // Expire the old preflight ONLY after its server timestamp says
+                // it is stale; never overwrite an unexpired or claimed move.
+                $q=$this->pdo->prepare('SELECT status,expires_epoch FROM public_move_auth_operations WHERE operation_id=? AND local_installation_id=? FOR UPDATE');
+                $q->execute([$slot,$local]);$previous=$q->fetch(PDO::FETCH_ASSOC);
+                if (!is_array($previous) ||
+                    (int)$previous['expires_epoch']>$challenge['issued_at'] ||
+                    !in_array((string)$previous['status'],['issued','owner_approved','canceled'],true)) {
+                    throw new RuntimeException('another_migration_already_active');
+                }
+                $this->pdo->prepare("UPDATE public_move_auth_operations SET status='canceled' WHERE operation_id=? AND local_installation_id=?")
+                    ->execute([$slot,$local]);
             }
             $q = $this->pdo->prepare('SELECT challenge_sha256, status FROM public_move_auth_operations WHERE operation_id=? FOR UPDATE');
             $q->execute([$operation]);
@@ -104,6 +115,20 @@ final class PublicMoveApprovalLedger
             if ($q->rowCount() !== 1) throw new RuntimeException('approval_race_rejected');
             return self::result($operation,'owner_approved',false);
         });
+    }
+
+    /** Read back the server-issued challenge, never accept it as trusted JSON from the browser. */
+    public function pendingChallenge(string $local,string $operation,int $now): array
+    {
+        self::validId($local);self::validId($operation);
+        $q=$this->pdo->prepare('SELECT challenge_json,status,expires_epoch FROM public_move_auth_operations WHERE local_installation_id=? AND operation_id=?');
+        $q->execute([$local,$operation]);$r=$q->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($r) || !in_array((string)$r['status'],['issued','owner_approved'],true) ||
+            (int)$r['expires_epoch']<=$now) throw new RuntimeException('move_challenge_not_active');
+        $c=json_decode((string)$r['challenge_json'],true,32,JSON_THROW_ON_ERROR);
+        if (!is_array($c))throw new RuntimeException('move_challenge_unreadable');
+        self::validateChallenge($c,$now);
+        return $c;
     }
 
     /** Claim is exactly-once, and does not grant permission to switch traffic. */
