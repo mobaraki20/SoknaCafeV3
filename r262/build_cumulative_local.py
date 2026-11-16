@@ -97,7 +97,7 @@ anchor="$('[data-public-origin-target]')?.addEventListener('input'"
 patch(js,anchor,block+anchor,'add_one_button_owner_approval_and_resume')
 # Mark unqualified candidate, never build installable release-set until native Windows gate.
 patch(pathlib.Path('VERSION.txt'),(DEST/'VERSION.txt').read_text(),
-      '3.0.0-g6.2-workspace.231ff-r262-public-replacement-qa-source-only\n','qa_version_not_installable')
+      '3.0.0-g6.2-workspace.231fg-r262-public-move-qa\n','qa_version_not_installable')
 # Byte preservation: EVERY old file unchanged unless in this explicit 7-file allowlist.
 allowed={'bootstrap.php','src/Domain/PublicEdge/PublicEdgeSyncClient.php','src/Domain/PublicEdge/PublicReenrollmentService.php','public/integrations/api.php','public/integrations/index.php','public/assets/connections-workspace.js','VERSION.txt'}
 old={p.relative_to(BASE).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in BASE.rglob('*') if p.is_file()}
