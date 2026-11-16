@@ -263,8 +263,66 @@ def check_clean(z, outer, component, result):
     return m, actual, []
 
 
+
+def short_version_code(version: str) -> str:
+    m = re.search(r"\.(35[a-z0-9]+|231[a-z0-9]+)(?:-|$)", version, re.I)
+    return m.group(1).lower() if m else ""
+
+
+def check_version_registry(path: pathlib.Path | None, result: dict) -> None:
+    if path is None:
+        gap(result, "VERSION_REGISTRY_NOT_CHECKED")
+        return
+    registry = json.loads(path.read_text(encoding="utf-8"))
+    if registry.get("format") != "sokna-release-version-ledger-v1":
+        issue(result, "VERSION_REGISTRY_FORMAT_INVALID")
+        return
+    code = short_version_code(str(result.get("version") or ""))
+    if code in registry.get("quarantined_short_versions", []):
+        issue(result, "KNOWN_SHORT_VERSION_QUARANTINED")
+    kind = str(result.get("kind", "unknown"))
+    component = kind.split("-")[0]
+    for row in registry.get("released", []):
+        if row.get("component") != component or row.get("kind") != kind:
+            continue
+        same_id = row.get("version") == result.get("version") or (code and row.get("short_code") == code)
+        if same_id and row.get("sha256") != result.get("sha256"):
+            issue(result, "RELEASE_VERSION_IDENTITY_COLLISION")
+    if registry.get("historical_complete") is not True:
+        gap(result, "HISTORICAL_RELEASE_VERSION_LEDGER_INCOMPLETE")
+
+
+def check_route_evidence(path: pathlib.Path | None, digest: str, baselines: list[tuple], result: dict) -> None:
+    if result["kind"] != "public-update":
+        return
+    if path is None:
+        gap(result, "PUBLIC_TWO_ROUTE_SAME_SHA_NOT_PROVEN")
+        return
+    evidence = json.loads(path.read_text(encoding="utf-8"))
+    if (evidence.get("format") != "sokna-public-two-route-evidence-v1"
+        or evidence.get("package_sha256") != digest):
+        issue(result, "PUBLIC_ROUTE_EVIDENCE_PACKAGE_SHA_MISMATCH")
+        return
+    witnessed = set()
+    for case in evidence.get("baselines", []):
+        identity = case.get("identity", {})
+        key = base_key("public", identity)
+        if key not in baselines or key in witnessed:
+            issue(result, "PUBLIC_ROUTE_EVIDENCE_BASELINE_INVALID")
+        witnessed.add(key)
+        for route in ("routine", "emergency"):
+            r = case.get(route, {})
+            if (r.get("package_sha256") != digest
+                or r.get("status") != "PASS"
+                or not r.get("evidence_url")):
+                issue(result, "PUBLIC_TWO_ROUTE_EVIDENCE_MISSING_OR_DIVERGENT")
+    if not baselines or witnessed != set(baselines):
+        issue(result, "PUBLIC_TWO_ROUTE_BASELINE_COVERAGE_INCOMPLETE")
+    gap(result, "PUBLIC_ROUTE_DECLARATION_NOT_INDEPENDENT_HOST_PROOF")
+
 def audit(path: pathlib.Path, expected_kind="auto", expected_sha=None, baseline_catalog=None,
-          paired=None, source_dir=None, accepted=None) -> dict:
+          paired=None, source_dir=None, accepted=None,
+          registry=None, routes=None) -> dict:
     result = {
         "package": path.name, "kind": "unknown", "version": None,
         "sha256": "", "static": "FAIL", "release_authorized": False,
@@ -298,6 +356,8 @@ def audit(path: pathlib.Path, expected_kind="auto", expected_sha=None, baseline_
             issue(result, "PACKAGE_KIND_MISMATCH")
         if result["version"] and re.search(r"\.35gg(?:-|$)", str(result["version"]), re.I):
             issue(result, "KNOWN_35GG_COLLISION_QUARANTINED")
+        check_version_registry(registry, result)
+        check_route_evidence(routes, result["sha256"], keys, result)
         if result["kind"].endswith("-update"):
             if baseline_catalog:
                 catalog = json.loads(baseline_catalog.read_text(encoding="utf-8"))
@@ -379,12 +439,15 @@ def main() -> int:
     ap.add_argument("--source-dir", type=pathlib.Path)
     ap.add_argument("--accepted-fixes", type=pathlib.Path)
     ap.add_argument("--paired-package", type=pathlib.Path)
+    ap.add_argument("--version-registry", type=pathlib.Path)
+    ap.add_argument("--route-evidence", type=pathlib.Path)
     ap.add_argument("--report", type=pathlib.Path)
     ap.add_argument("--require-delivery-ready", action="store_true",
                     help="Fail unless all host/behavior proof is available; this read-only tool NEVER grants it.")
     args = ap.parse_args()
     result = audit(args.package, args.kind, args.expected_sha256,
-                   args.baseline_catalog, args.paired_package, args.source_dir, args.accepted_fixes)
+                   args.baseline_catalog, args.paired_package, args.source_dir, args.accepted_fixes,
+                   args.version_registry, args.route_evidence)
     text = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True)
     print(text)
     if args.report:
