@@ -1,0 +1,92 @@
+name: SOKNA R260 Minimal Public Replacement QA
+on:
+  push:
+    branches: [qa/sokna-r260-simple-public-replacement-20261116]
+    paths:
+      - r260/*.php
+      - r260/*.py
+      - r260/overlay/**
+      - apps/public/src/Security/PublicMoveReplacementGate.php
+      - apps/public/assets/sokna-public-move.js
+      - apps/local-web/src/Domain/PublicEdge/PublicMove*
+      - apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+      - apps/local-web/src/Domain/PublicEdge/PublicReenrollmentService.php
+      - apps/local-web/public/integrations/**
+      - apps/local-web/public/assets/connections-workspace.js
+      - .github/workflows/sokna-r260-minimal-public-replacement-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-empty-public:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+          MARIADB_DATABASE: sokna_r260_public
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP, JavaScript, Python syntax of actual changed code
+        run: |
+          set -euo pipefail
+          for f in apps/local-web/public/integrations/api.php apps/local-web/public/integrations/index.php apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php apps/local-web/src/Domain/PublicEdge/PublicReenrollmentService.php apps/local-web/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php apps/local-web/bootstrap.php apps/public/src/Security/PublicMoveReplacementGate.php r260/test_real_public_replacement.php; do php -l "$f"; done
+          node --check apps/public/assets/sokna-public-move.js
+          node --check apps/local-web/public/assets/connections-workspace.js
+          python3 -m py_compile r260/integrate_real_public.py
+      - name: Build only pinned actual R249 cumulative Public QA source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r249"
+          gh run download 43749990301 -R "$GITHUB_REPOSITORY" -n sokna-r249-dual-baseline-gated-public-candidate -D "$RUNNER_TEMP/r249"
+          python3 - <<'PY'
+          import pathlib,hashlib,os
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])/"r249"
+          matches=[p for p in root.rglob("*.zip") if hashlib.sha256(p.read_bytes()).hexdigest()=="5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4"]
+          if len(matches)!=1:raise SystemExit("R260_PINNED_R249_MISSING")
+          (root/"pin.txt").write_text(str(matches[0]))
+          PY
+          python3 r260/integrate_real_public.py --r249 "$(cat "$RUNNER_TEMP/r249/pin.txt")" --repo . --out "$RUNNER_TEMP/r260"
+          php -l "$RUNNER_TEMP/r260/qa-public-payload/bootstrap.php"
+          php -l "$RUNNER_TEMP/r260/qa-public-payload/src/Setup/PublicSetupService.php"
+          php -l "$RUNNER_TEMP/r260/qa-public-payload/src/Remote/InstallationProjectionService.php"
+          php -l "$RUNNER_TEMP/r260/qa-public-payload/src/Http/PublicHttpKernel.php"
+          test "$(find "$RUNNER_TEMP/r260/qa-public-payload/database/migrations" -name '*.sql'|wc -l)" -eq 11
+      - name: One installed Public owner-pair-sync-intake real SQL and HTTP test
+        env:
+          R256_QA_DB_PASSWORD: qa-only
+          R256_QA_DB_NAME: sokna_r260_public
+          R256_QA_HOST: fresh.cafe-delta.example
+          R256_QA_SUBDIR: /new-public
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-mysql php-zip
+          cp -a "$RUNNER_TEMP/r260/qa-public-payload" "$RUNNER_TEMP/r260/installed"
+          mkdir -p "$RUNNER_TEMP/r260/installed/src/Emergency"
+          cp apps/public/src/Emergency/*.php "$RUNNER_TEMP/r260/installed/src/Emergency/"
+          export R256_QA_PUBLIC_ROOT="$RUNNER_TEMP/r260/installed"
+          export R260_QA_PUBLIC_ROOT="$RUNNER_TEMP/r260/installed"
+          python3 - <<'PY'
+          import pathlib,os
+          source=pathlib.Path('r257/test_integrated_setup.php').read_text()
+          old="===10,'eight_migrations_plus_two_forward_only'"
+          if source.count(old)!=1:raise SystemExit('R260_SETUP_TEST_ANCHOR_MISSING')
+          source=source.replace(old,"===11,'eight_migrations_plus_three_forward_only'")
+          (pathlib.Path(os.environ["RUNNER_TEMP"])/"r260/install-fixture.php").write_text(source)
+          PY
+          php "$RUNNER_TEMP/r260/install-fixture.php" >/tmp/r260-setup.txt
+          grep -q 'R257_REAL_R249_INTEGRATED_OWNER_SETUP_PASS count=' /tmp/r260-setup.txt
+          php r260/test_real_public_replacement.php | tee /tmp/r260-replacement.txt
+          grep -q 'R260_REAL_PUBLIC_REPLACEMENT_GATE_PASS count=' /tmp/r260-replacement.txt
+          echo R260_EMPTY_PUBLIC_REPLACEMENT_REAL_GATE_PASS_NO_OPERATOR_INSTALLER
