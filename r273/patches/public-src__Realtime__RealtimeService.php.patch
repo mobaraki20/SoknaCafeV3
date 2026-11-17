@@ -1,0 +1,53 @@
+--- a/src/Realtime/RealtimeService.php
++++ b/src/Realtime/RealtimeService.php
+@@ -122,6 +122,15 @@
+ 
+         $this->pdo->beginTransaction();
+         try {
++            // Serialize with Public owner-transfer authority offers. A client
++            // that read the old intake flag before the offer must not enqueue
++            // after the owner closed intake in the same database transaction.
++            $install=$this->pdo->prepare('SELECT active,remote_enabled,order_intake_enabled FROM installations WHERE installation_id=? FOR UPDATE');
++            $install->execute([$installationId]);
++            $open=$install->fetch(\PDO::FETCH_ASSOC);
++            if(!is_array($open)||!(bool)$open['active']||!(bool)$open['remote_enabled']){
++                $this->pdo->rollBack();return $this->error(409,'remote_disabled');
++            }
+             $existingStmt = $this->pdo->prepare(
+                 'SELECT request_hash,state,result_json,error_code FROM realtime_requests ' .
+                 'WHERE installation_id=? AND request_id=? FOR UPDATE'
+@@ -198,6 +207,18 @@
+ 
+         $this->pdo->beginTransaction();
+         try {
++            // Serialize with Public owner-transfer authority offers. A client
++            // that read the old intake flag before the offer must not enqueue
++            // after the owner closed intake in the same database transaction.
++            $install=$this->pdo->prepare('SELECT active,remote_enabled,order_intake_enabled FROM installations WHERE installation_id=? FOR UPDATE');
++            $install->execute([$installationId]);
++            $open=$install->fetch(\PDO::FETCH_ASSOC);
++            if(!is_array($open)||!(bool)$open['active']||!(bool)$open['remote_enabled']){
++                $this->pdo->rollBack();return $this->error(409,'remote_disabled');
++            }
++            if(!(bool)$open['order_intake_enabled']){
++                $this->pdo->rollBack();return $this->error(409,'guest_intake_paused');
++            }
+             $existingStmt = $this->pdo->prepare(
+                 'SELECT state,result_json,error_code,envelope_json FROM realtime_requests ' .
+                 'WHERE installation_id=? AND request_id=? FOR UPDATE'
+@@ -586,6 +607,15 @@
+     {
+         $this->pdo->beginTransaction();
+         try {
++            // Serialize with Public owner-transfer authority offers. A client
++            // that read the old intake flag before the offer must not enqueue
++            // after the owner closed intake in the same database transaction.
++            $install=$this->pdo->prepare('SELECT active,remote_enabled,order_intake_enabled FROM installations WHERE installation_id=? FOR UPDATE');
++            $install->execute([$installationId]);
++            $open=$install->fetch(\PDO::FETCH_ASSOC);
++            if(!is_array($open)||!(bool)$open['active']||!(bool)$open['remote_enabled']){
++                $this->pdo->rollBack();return $this->error(409,'remote_disabled');
++            }
+             if ($expireDue) {
+                 $expire = $this->pdo->prepare(
+                     "UPDATE realtime_requests SET state='expired',lease_token_hash=NULL,lease_expires_at=NULL " .
