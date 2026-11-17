@@ -78,8 +78,8 @@ jobs:
           python3 - <<'PY'
           import json,pathlib,os
           p=json.load(open(os.environ['R273_EXTRACT_ROOT']+'/output/R274-SOURCE-BUILD-PROOF.json'))
-          assert p['local']['sha256']!='a75471e7b540b504ed8fa0ad93bca31cbd295a9fb3f7b55bba479f7d8c23041f'
-          assert p['public']['sha256']!='61899171512f2b356ab7c22cc12f4be66a2078f1f967b8caf8547f08e9a28cc8'
+          assert p['local']['sha256']=='9038abd4757ed1ed3dc3ab92e54f9266096fe73d5919d7667a1f195540991ec4'
+          assert p['public']['sha256']=='68725567e7336e0b43691ff4adae8b494b4a9c793a50a30d4564a2dab11daa92'
           assert p['operator_install_allowed'] is False
           print('R274_CANDIDATE_SHA_LOCAL',p['local']['sha256']);print('R274_CANDIDATE_SHA_PUBLIC',p['public']['sha256'])
           PY
@@ -96,7 +96,9 @@ jobs:
           node --check "$R273_EXTRACT_ROOT/public/assets/sokna-public-move.js"
           python3 packaging/windows/release-gates/check_local_release_set.py \
             "$R273_EXTRACT_ROOT/output/SOKNA-R274-LOCAL-231FK-CAFE-CUTOVER-RESUME-QA-DO-NOT-INSTALL.zip"
-          # R274 explicit operator-delivery guard pinned after first deterministic SHA build.
+          python3 r273/tests/check_delivery_eligibility.py \
+            "$R273_EXTRACT_ROOT/output/SOKNA-R274-LOCAL-231FK-CAFE-CUTOVER-RESUME-QA-DO-NOT-INSTALL.zip" \
+            "$R273_EXTRACT_ROOT/output/SOKNA-R274-PUBLIC-35II-OWNER-RESUME-CODE-ONLY-QA-DO-NOT-INSTALL.zip"
       - name: Actual MariaDB + Public owner HTTP + Local end-to-end move and full publication
         shell: bash
         env:
