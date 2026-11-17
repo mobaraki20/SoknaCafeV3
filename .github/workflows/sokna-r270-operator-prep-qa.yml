@@ -4,6 +4,7 @@ on:
     branches: [qa/sokna-r270-operator-prep-responsibility-20261117]
     paths:
       - 'r269/**'
+      - 'r270/**'
       - '.github/workflows/sokna-r270-operator-prep-qa.yml'
   workflow_dispatch:
 permissions:
@@ -43,6 +44,8 @@ jobs:
           php -l r269/tests/financial_cancel_guard_mariadb.php
           php -l r269/tests/financial_cancel_end_to_end_mariadb.php
           node --check r269/source/public/assets/staff-app/hall-workspace.js
+          node --check r269/source/public/assets/staff-app/preparation-workspace.js
+          node --check r270/public/assets/staff-app/preparation-workspace.js
       - name: Run real MariaDB no-mutating-receipt invariant tests
         run: |
           set -euo pipefail
