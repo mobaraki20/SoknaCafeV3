@@ -12,6 +12,6 @@
     "src/Security/PublicMoveReplacementGate.php": "972e8c87f36bb27192a8dae8319a66271306765334055ef8fdeca4124e4a9ec1",
     "src/Authority/AuthorityEpochService.php": "0a68bc674a9debcce0ed11291a6447694581f3686c964a844f9c47b145787218",
     "src/Http/PublicHttpKernel.php": "4545bed19b859696aec7822a159d63966110b8f117dc6ce5ad3c28d535b4ca2a",
-    "src/Update/emergency-owner-v1.json": "1efe329fbc69468b68f8e484deb741539410a90b7e1b52ea0c95f75df2e6e76b"
+    "src/Update/emergency-owner-v1.json": "22c24d0b21141fcef9d089c255c6dedc0abfef40d86b43c51adae7376faf1700"
   }
 }
