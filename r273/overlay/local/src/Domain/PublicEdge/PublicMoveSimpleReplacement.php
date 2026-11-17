@@ -1,0 +1,277 @@
+<?php
+declare(strict_types=1);
+
+namespace Sokna\Local\Domain\PublicEdge;
+
+use RuntimeException;
+use Sokna\Local\Core\Bootstrap;
+
+/**
+ * R260 small, Local-authoritative Public replacement. ZERO reads from the OLD
+ * Public. Reuses standard Public setup pairing, ordinary Local publisher and
+ * signed Local API. Only the destination is new; orders/catalog stay on Local.
+ *
+ * One protected file stores temporary *new* connection credentials across
+ * two normal Local HTTP requests. The old config is NOT modified before
+ * first successful sync. An interrupted operation can just retry finish().
+ */
+final class PublicMoveSimpleReplacement
+{
+    public function __construct(
+        private readonly Bootstrap $local,
+        private readonly PublicMoveApprovalLedger $ledger,
+        private readonly string $installationId,
+        private readonly string $dataDir,
+    ) {}
+
+    public function start(string $operationId,string $pairingCode,int $actorId,string $kind='fresh_unpaired',int $ownerNextEpoch=0): array
+    {
+        if (!preg_match('/^[A-F0-9]{8}(?:-[A-F0-9]{8}){2}$/D',$pairingCode)) {
+            throw new RuntimeException('invalid_owner_issued_pairing_code');
+        }
+        if ($actorId<=0)throw new RuntimeException('administrator_required');
+        if(!in_array($kind,['fresh_unpaired','existing_paired'],true))
+            throw new RuntimeException('invalid_public_move_kind');
+
+        $challenge=$this->ledger->pendingChallenge($this->installationId,$operationId,time());
+        $status=$this->ledger->status($this->installationId,$operationId);
+        if (($status['status']??null)!=='owner_approved') {
+            throw new RuntimeException('signed_destination_owner_approval_required');
+        }
+        $target=$challenge['target_base_url'];
+        if($kind==='existing_paired'){
+            $remote=$this->local->publicEdgeSyncClient()->destinationSetupStatus($target);
+            if(($remote['installed']??false)!==true||($remote['paired']??false)!==true||
+               !hash_equals((string)$remote['installation_id'],$this->installationId)||
+               !hash_equals((string)$remote['base_url'],$target))
+                throw new RuntimeException('existing_destination_identity_or_pairing_mismatch');
+            if($ownerNextEpoch<=$this->local->publicAuthorityState()->epoch()||
+               $ownerNextEpoch>=$this->local->publicAuthorityState()->epoch()+17)
+                throw new RuntimeException('existing_destination_epoch_not_ahead');
+        }
+
+        $path=$this->statePath();
+        if(is_file($path)){
+            $state=$this->readState($path);
+            if(($state['operation_id']??'')!==$operationId ||
+                ($state['target_base_url']??'')!==$target) {
+                throw new RuntimeException('another_replacement_in_progress');
+            }
+            if(!in_array((string)($state['stage']??''),['paired','sync_ready','config_committed'],true))
+                throw new RuntimeException('replacement_pairing_uncertain_needs_review');
+            return self::result('sync_pending',$target,true);
+        }
+        $config=$this->local->config()->all();
+        $old=$config['public']??[];
+        if(!is_array($old) ||
+           PublicMoveDecisionEngine::canonicalUrl((string)($old['base_url']??''))!==$challenge['source_base_url']) {
+            throw new RuntimeException('source_public_binding_changed');
+        }
+        $secret=bin2hex(random_bytes(32));
+        $state=[
+            'format'=>'sokna-simple-public-replacement-v1',
+            'operation_id'=>$operationId,
+            'source_base_url'=>$challenge['source_base_url'],
+            'target_base_url'=>$target,
+            'new_secret'=>$secret,
+            'nonce'=>$challenge['nonce'],
+            'source_public_hash'=>hash('sha256',self::json($old)),
+            'kind'=>$kind,
+            'expected_epoch'=>$ownerNextEpoch,
+            'stage'=>'pairing',
+        ];
+        $this->writeState($path,$state,true);
+        try {
+            if($kind==='existing_paired'){
+                // Claim before the remote one-time offer can be consumed. The
+                // state file is durable and a lost reply will be probed, never
+                // resent with the same or a different code.
+                $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
+                $pair=$this->local->publicEdgeSyncClient()->reenrollAuthority(
+                    $target,$pairingCode,$secret,''
+                );
+                $body=(array)($pair['body']??[]);
+                $newEpoch=(int)($body['authority_epoch']??0);
+                if($newEpoch!==$ownerNextEpoch||
+                   !hash_equals((string)($body['installation_id']??''),$this->installationId)||
+                   ($body['order_intake_enabled']??null)!==false){
+                    throw new RuntimeException('existing_destination_authority_response_invalid');
+                }
+                $this->local->publicEdgeSyncClient()->probeProposedAuthority($target,$secret,$newEpoch);
+                $this->local->publicAuthorityState()->markReenrolled($newEpoch);
+            }else{
+                // Original R262 setup path for a freshly installed Public.
+                $pair=$this->local->publicEdgeSyncClient()->initialPair(
+                    $target,$pairingCode,$secret,'',true
+                );
+                $body=(array)($pair['body']??[]);
+                if(($body['replacement_mode']??null)!==true ||
+                    ($body['guest_intake_enabled']??null)!==false ||
+                    ($body['installation_id']??null)!==$this->installationId) {
+                    throw new RuntimeException('public_replacement_pairing_contract_missing');
+                }
+                $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
+            }
+            $state['stage']='paired';
+            $this->writeState($path,$state);
+            return self::result('sync_pending',$target,false);
+        }catch(\Throwable $e){
+            // A remote acknowledgement could be lost after remote commit;
+            // do NOT delete the recovery state or try pairing twice blindly.
+            $state['stage']='pairing_uncertain';
+            $this->writeState($path,$state);
+            throw $e;
+        }
+    }
+
+    public function finish(string $operationId): array
+    {
+        $state=$this->readState($this->statePath());
+        if(($state['stage']??'')==='pairing_uncertain' &&
+           ($state['kind']??'')==='existing_paired'){
+            if(!hash_equals((string)($state['operation_id']??''),$operationId))
+                throw new RuntimeException('existing_move_operation_changed');
+            $epoch=(int)($state['expected_epoch']??0);
+            $this->local->publicEdgeSyncClient()->probeProposedAuthority(
+                (string)$state['target_base_url'],(string)$state['new_secret'],$epoch);
+            if($this->local->publicAuthorityState()->epoch()<$epoch)
+                $this->local->publicAuthorityState()->markReenrolled($epoch);
+            $state['stage']='paired';
+            $this->writeState($this->statePath(),$state);
+        }
+        if(!hash_equals((string)($state['operation_id']??''),$operationId) ||
+           !in_array((string)($state['stage']??''),['paired','sync_ready','config_committed'],true)){
+            throw new RuntimeException('replacement_not_ready_for_sync');
+        }
+        $target=(string)$state['target_base_url'];
+        $values=$this->local->config()->all();
+        $previous=(array)($values['public']??[]);
+        $alreadyNew=(string)($previous['base_url']??'')===$target &&
+                    (string)($previous['shared_secret']??'')===$state['new_secret'];
+        if(!$alreadyNew &&
+            (!hash_equals($state['source_public_hash'],hash('sha256',self::json($previous)))||
+             (string)($previous['base_url']??'')!==$state['source_base_url'])) {
+            throw new RuntimeException('local_public_settings_changed_during_replacement');
+        }
+        $values['public']['base_url']=$target;
+        $values['public']['shared_secret']=$state['new_secret'];
+        $preview=Bootstrap::fromArray($values);
+        if(!$alreadyNew) {
+            // On transient network failure, Local's existing binding remains.
+            // Retry simply calls finish() again; the new Public stays paused.
+            $result=$preview->publicEdgePublisher()->syncAll(10,($state['kind']??'')==='existing_paired');
+            $media=(array)($result['channels']['guest_media']??[]);
+            if(($result['success']??false)!==true ||
+                ($result['degraded']??true)!==false ||
+                ($media['ok']??false)!==true ||
+                ($media['complete']??false)!==true ||
+                (($result['guest_publication']['media_ready']??false)!==true)) {
+                return self::result('sync_retry',$target,false)+[
+                    'media_remaining'=>max(0,(int)($media['missing_count']??0)),
+                    'auto_retry'=>($media['ok']??false)===true &&
+                                  ($media['complete']??true)===false &&
+                                  ($result['success']??false)===true,
+                ];
+            }
+            $state['stage']='sync_ready';$this->writeState($this->statePath(),$state);
+            $status=$this->ledger->status($this->installationId,$operationId);
+            if(($status['status']??null)!=='claimed')
+                throw new RuntimeException('replacement_approval_not_consumed');
+            $this->local->publicReenrollment()->commitMoveConfig($target,$state['new_secret']);
+            $state['stage']='config_committed';$this->writeState($this->statePath(),$state);
+        }
+        // Do NOT open new guest intake before the Local binding is committed.
+        // For an existing paired destination the authority epoch remained
+        // resync_required throughout the staged Full Sync, including media.
+        // Only now activate with the rotated secret and mark Local active.
+        if(($state['kind']??'')==='existing_paired'){
+            $preview->publicEdgeSyncClient()->activateAuthority(10);
+            $this->local->publicAuthorityState()->markActive((int)$state['expected_epoch']);
+        }
+        $activation=$preview->publicEdgeSyncClient()->post('/api/v1/local/move/activate',[],10);
+        if(($activation['body']['guest_intake_enabled']??null)!==true) {
+            return self::result('activation_retry',$target,false);
+        }
+        $this->ledger->completeAfterActivation($this->installationId,$operationId);
+        @unlink($this->statePath());
+        return self::result('completed',$target,false);
+    }
+
+    public function status(): array
+    {
+        $path=$this->statePath();
+        if(!is_file($path))return ['status'=>'none','active'=>false];
+        $state=$this->readState($path);
+        return [
+            'status'=>in_array($state['stage'],['paired','sync_ready','config_committed'],true)
+                ?'sync_pending':'support_required',
+            'active'=>true,
+            'operation_id'=>$state['operation_id'],
+            'target_base_url'=>$state['target_base_url'],
+            'safe_to_cutover'=>false,
+        ];
+    }
+
+    private function statePath(): string
+    {
+        $base=realpath($this->dataDir);
+        $web=realpath(dirname(__DIR__,3).'/public');
+        if($base===false || $web===false ||
+           str_starts_with(strtolower(str_replace('\\','/',$base)).'/',
+               strtolower(rtrim(str_replace('\\','/',$web),'/')).'/')) {
+            throw new RuntimeException('private_replacement_storage_unavailable');
+        }
+        $dir=$base.DIRECTORY_SEPARATOR.'private-move';
+        if(!is_dir($dir)&&!@mkdir($dir,0700,true)&&!is_dir($dir))
+            throw new RuntimeException('private_replacement_directory_unavailable');
+        @chmod($dir,0700);
+        return $dir.DIRECTORY_SEPARATOR.'replacement-current.json';
+    }
+
+    private function readState(string $path): array
+    {
+        if(is_link($path)||!is_file($path)||!is_readable($path))
+            throw new RuntimeException('replacement_state_missing');
+        $data=json_decode((string)file_get_contents($path),true);
+        if(!is_array($data)||($data['format']??null)!=='sokna-simple-public-replacement-v1'||
+           !preg_match('/^[a-f0-9]{64}$/D',(string)($data['new_secret']??''))) {
+            throw new RuntimeException('replacement_state_invalid');
+        }
+        return $data;
+    }
+
+    private function writeState(string $path,array $state,bool $exclusive=false): void
+    {
+        if(is_link($path))throw new RuntimeException('replacement_state_symlink');
+        if($exclusive) {
+            $fp=@fopen($path,'x');
+            if(!is_resource($fp))throw new RuntimeException('replacement_already_in_progress');
+            try{
+                @chmod($path,0600);
+                if(fwrite($fp,self::json($state))===false || !fflush($fp))
+                    throw new RuntimeException('replacement_state_write_failed');
+            }finally{fclose($fp);}
+            return;
+        }
+        $temp=$path.'.tmp-'.bin2hex(random_bytes(5));
+        if(file_put_contents($temp,self::json($state),LOCK_EX)===false ||
+           !@rename($temp,$path)){
+            @unlink($temp);throw new RuntimeException('replacement_state_write_failed');
+        }
+        @chmod($path,0600);
+    }
+
+    private static function json(array $state): string
+    {
+        return json_encode($state,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+    }
+
+    private static function result(string $status,string $target,bool $resumed): array
+    {
+        return [
+            'status'=>$status,'target_base_url'=>$target,'resumed'=>$resumed,
+            'transfer_of_old_public_data'=>false,'local_business_data_unchanged'=>true,
+            'completed'=>$status==='completed',
+        ];
+    }
+}
