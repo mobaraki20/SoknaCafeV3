@@ -62,9 +62,9 @@ permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: sokna-factory-qa-${{ github.ref }}
-  cancel-in-progress: false
+# This factory is READ-ONLY. Do not lock by branch: a producer can call it
+# as a nested workflow in the SAME run while ordinary PR historical QA runs.
+# A ref-wide lock would create avoidable blockage/cancellation between them.
 
 jobs:
   source-local:
