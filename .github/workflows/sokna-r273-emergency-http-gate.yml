@@ -78,7 +78,7 @@ jobs:
            (t/'r262','5aef4cd781fbd450d3e454f324e294da6f4180bfe1e5eb1871cb4818dc20c93a','SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip'),
            (t/'r266_baseline','692aa40939d788aea56efa4e3b62c46a568da0ce5c508cc87844aa63366b8892','SOKNA-R265-PUBLIC-35IF-EMERGENCY-BRIDGE-CODE-ONLY-QA.zip'),
            (t/'r266_baseline','b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35','SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip'),
-           (t/'input_artifacts','d137b255fa51d401525ab3de5ec92d20d17a61311b35099a58647c754297ee37','SOKNA-R273-PUBLIC-35IH-OWNER-TRANSFER-CODE-ONLY-QA-DO-NOT-INSTALL.zip'),
+           (t/'input_artifacts','61899171512f2b356ab7c22cc12f4be66a2078f1f967b8caf8547f08e9a28cc8','SOKNA-R273-PUBLIC-35IH-OWNER-TRANSFER-CODE-ONLY-QA-DO-NOT-INSTALL.zip'),
            (t/'r263','37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21','SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip')]
           for root,sha,name in targets:
            found=[p for p in root.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()==sha]
