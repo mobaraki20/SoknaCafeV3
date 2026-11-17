@@ -1,0 +1,59 @@
+{
+  "format": "sokna-r272-universal-public-migration-full-flow-audit-v1",
+  "date": "2026-11-17",
+  "status": "EXACT_SOURCE_AUDITED_END_TO_END_NOT_PROVEN_DO_NOT_INSTALL_R271",
+  "source_branch": "qa/sokna-r272-public-move-endtoend-audit-20261117",
+  "decision_register": {
+    "machine": "r251/decisions.json",
+    "human": "r251/DECISIONS-FA.md",
+    "added": [
+      "MIG-019",
+      "MIG-020"
+    ],
+    "history_preserved": true
+  },
+  "exact_source_sha256": {
+    "local262": "3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c",
+    "public266": "b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35",
+    "local271_QA_not_installed": "a6a9e54baabe310cd62bfff76e681f735c9e1162da5a6c7eae512a9b59fd0e42"
+  },
+  "static_audit": {
+    "count": 17,
+    "pass": 17,
+    "scope": "Byte-pinned source assertions only, NOT runtime E2E"
+  },
+  "reported_field": {
+    "local_version": "231fg",
+    "local_migrations": 82,
+    "local_url": "https://www.soknaspace.ir",
+    "public_version": "35ig",
+    "public_migrations": 11,
+    "public_url": "https://www.soknagroup.ir/public",
+    "projection_pending_events": 4442,
+    "owner_login_http_status": "NOT_KNOWN_FROM_SCREENSHOT",
+    "real_destination_installation_id": "NOT_VERIFIED",
+    "real_destination_live_pending_orders": "NOT_VERIFIED"
+  },
+  "blocking_gaps": [
+    "R262 Public owner consent and Local callback require initial pairing_code; paired Public R266 returns an empty code",
+    "Public owner HTTP 401/403/503 errors collapsed into one UI message; independent owner account not proved initialized",
+    "R271 uses manual Emergency authority recovery for normal operation; violates MIG-002/006",
+    "R271 local URL/secret committed before first full sync; violates MIG-005/018",
+    "R271 preflight omits live/pending guest order gate and authenticated independent owner confirmation",
+    "R271 availability/sync completion weaker than R262 full media and signed guest-intake gate",
+    "R271 CI passes mocked transport, not actual owner browser/HTTP + MariaDB + Windows byte-exact package qualification",
+    "R262 resync_required incorrectly reported as recovery_busy on separate recovery card"
+  ],
+  "go_live": {
+    "operator_install_allowed": false,
+    "cafe_mutated_by_agent": false,
+    "public_host_mutated_by_agent": false,
+    "main_or_CURRENT_changed": false,
+    "expected_next": "Implement and qualify unified owner-confirmed existing paired Public transfer, then produce exact cumulative operator release"
+  },
+  "sources": [
+    "r272/EXACT-SOURCE-AND-FLOW-AUDIT-FA.md",
+    "r251/decisions.json",
+    "r251/DECISIONS-FA.md"
+  ]
+}
