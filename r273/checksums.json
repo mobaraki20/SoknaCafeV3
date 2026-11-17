@@ -1,13 +1,13 @@
 {
   "local": {
-    "src/Domain/PublicEdge/PublicMoveSimpleReplacement.php": "d83f171d0f811bc1fc83e015f8d38088948faf0d37bae603fc87c6da463728b8",
+    "src/Domain/PublicEdge/PublicMoveSimpleReplacement.php": "e53ac55694241be824c4139f243172df19caf1f673fa1e3ab7950887dfa5a27e",
     "src/Domain/PublicEdge/PublicEdgeSyncClient.php": "698e72be44f30541a80f05c830fc4c6e8429d13fb7df91270a18eb5130a9b367",
     "src/Domain/PublicEdge/PublicEdgePublisherService.php": "c19ecc209338baa1ca50315716abfbb06a723be5bf7db6db79731091d6369733",
-    "public/assets/connections-workspace.js": "538518794f5ab8b1e2cbef501c9279de816d802d86c09f8c4270947c31ec50bd",
-    "public/integrations/api.php": "7903f47b93f01e0606b63885ea11ce5e8f5081249bc67cbe702f5448c64cb53d"
+    "public/assets/connections-workspace.js": "2f9942e705270bf32ab45f60e6b3013c4a40d95b592af41100299d935a118107",
+    "public/integrations/api.php": "342a7a24e6acb25cd4394b1e765fefe84671cf36d29f3589141137d5cd3217b3"
   },
   "public": {
-    "assets/sokna-public-move.js": "4f26d29cd1b5d86765659d89275e3945c5b7cfa6e34b3f19a4bb1db9a84eca8a",
+    "assets/sokna-public-move.js": "888520b6faf468ed741ec7adb23f6bdfc1b24e44efe3371c5b1914fd181cffb0",
     "src/Realtime/RealtimeService.php": "3fe95b45f61820cd88c122aa4757fc63bf54395b28441503a0533fe85435f0a4",
     "src/Security/PublicMoveReplacementGate.php": "972e8c87f36bb27192a8dae8319a66271306765334055ef8fdeca4124e4a9ec1",
     "src/Authority/AuthorityEpochService.php": "0a68bc674a9debcce0ed11291a6447694581f3686c964a844f9c47b145787218",
