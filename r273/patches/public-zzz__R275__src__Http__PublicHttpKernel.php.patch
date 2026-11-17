@@ -9,7 +9,8 @@
 +                    ($req['discard_pending_guest_work']??null)===true
                  );
                  return $this->json(['status'=>200,'body'=>[
-@@ -549,6 +550,13 @@
+                     'ok'=>true,'move_kind'=>'existing_paired',
+@@ -548,6 +549,14 @@
                      'owner_next_epoch'=>(int)$offer['authority_epoch'],
                      'safe_to_cutover'=>false,
                  ]]);
@@ -22,3 +23,5 @@
 +                    return $this->json(SafeErrors::response(409,'destination_claim_active'));
 +                return $this->json(SafeErrors::response(409,'existing_move_pending_or_unavailable'));
              }catch(\Throwable){
+                 return $this->json(SafeErrors::response(409,'existing_move_pending_or_unavailable'));
+             }
