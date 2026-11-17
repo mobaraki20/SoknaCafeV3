@@ -17,6 +17,12 @@ jobs:
   exact-public-owner-cutover:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        public_base_path: ['/new-public', '']
+    env:
+      R273_PUBLIC_BASE_PATH: ${{ matrix.public_base_path }}
     services:
       mariadb:
         image: mariadb:11.4
@@ -130,7 +136,7 @@ jobs:
           trap 'kill $public_pid $tls_pid 2>/dev/null || true' EXIT
           export NO_PROXY="127.0.0.1,localhost,r273-public.test" no_proxy="127.0.0.1,localhost,r273-public.test"
           for i in $(seq 1 40); do
-            if curl --fail --silent --show-error --max-time 2 https://r273-public.test:18443/new-public/health > "$RUNNER_TEMP/r273/health.txt" 2>/dev/null; then break; fi
+            if curl --fail --silent --show-error --max-time 2 "https://r273-public.test:18443${R273_PUBLIC_BASE_PATH}/health" > "$RUNNER_TEMP/r273/health.txt" 2>/dev/null; then break; fi
             sleep 0.25
           done
           grep -q '"ok":true' "$RUNNER_TEMP/r273/health.txt"
@@ -142,7 +148,7 @@ jobs:
           grep -q 'R273_REAL_EXISTING_PAIRED_MOVE_HTTP_OWNERS_DB' "$RUNNER_TEMP/r273/real-e2e.log"
           echo R273_HTTPS_OWNER_LOCAL_TWO_PHASE_FULL_SYNC_PASS
       - uses: actions/upload-artifact@v4
-        if: success()
+        if: success() && matrix.public_base_path == '/new-public'
         with:
           name: R273-EXACT-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
           path: |

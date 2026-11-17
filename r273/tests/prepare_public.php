@@ -7,7 +7,7 @@ $name=(string)getenv('R273_PUBLIC_DB');
 $installId=(string)getenv('R273_INSTALLATION_ID');
 if(!is_dir($root)||is_file($root.'/install.lock'))throw new RuntimeException('EXACT_FRESH_FIXTURE_REQUIRED');
 $_SERVER['HTTPS']='on';$_SERVER['HTTP_HOST']='r273-public.test:18443';$_SERVER['DOCUMENT_ROOT']=$root;
-$_SERVER['REQUEST_URI']='/new-public/setup/';$_SERVER['SCRIPT_NAME']='/new-public/setup/index.php';
+$basePath=getenv('R273_PUBLIC_BASE_PATH');$basePath=$basePath===false?'/new-public':$basePath;if(!in_array($basePath,['','/new-public'],true))throw new RuntimeException('INVALID_QA_PUBLIC_BASE_PATH');$_SERVER['REQUEST_URI']=$basePath.'/setup/';$_SERVER['SCRIPT_NAME']=$basePath.'/setup/index.php';
 require $root.'/bootstrap.php';
 $setup=new \Sokna\PublicEdge\Setup\PublicSetupService($root);
 $installed=$setup->install([

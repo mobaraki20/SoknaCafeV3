@@ -5,7 +5,7 @@ declare(strict_types=1);
 if(getenv('GITHUB_ACTIONS')!=='true')throw new RuntimeException('R273_CI_ONLY');
 $localRoot=(string)getenv('R273_LOCAL_ROOT');$publicRoot=(string)getenv('R273_PUBLIC_ROOT');
 $root=dirname($localRoot);$dataDir=(string)getenv('R273_LOCAL_DATA');$pass=(string)getenv('R273_DB_PASSWORD');
-$id=(string)getenv('R273_INSTALLATION_ID');$base='https://r273-public.test:18443/new-public';
+$id=(string)getenv('R273_INSTALLATION_ID');$basePath=getenv('R273_PUBLIC_BASE_PATH');$basePath=$basePath===false?'/new-public':$basePath;if(!in_array($basePath,['','/new-public'],true))throw new RuntimeException('INVALID_QA_PUBLIC_BASE_PATH');$base='https://r273-public.test:18443'.$basePath;
 if(!is_file($localRoot.'/bootstrap.php')||!is_file($publicRoot.'/install.lock'))throw new RuntimeException('R273_REAL_SOURCE_MISSING');
 require $localRoot.'/bootstrap.php';
 $oldUrl='https://offline-old-public.example';$original=[
