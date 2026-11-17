@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""R273 QA-specific fail-closed operator-delivery guard; does not change package bytes.
+"""R274 QA-specific fail-closed operator-delivery guard; does not change package bytes.
 
 The native Maintenance structural test may require 'for_install' for staging in CI,
 but a structurally installable QA archive is NOT a production authorization.
@@ -11,9 +11,9 @@ def main():
     lp,pp=map(pathlib.Path,sys.argv[1:])
     with zipfile.ZipFile(lp) as z: local=json.loads(z.read("release-set.json"))
     with zipfile.ZipFile(pp) as z: public=json.loads(z.read("manifest.json"))
-    if hashlib.sha256(lp.read_bytes()).hexdigest()!="a75471e7b540b504ed8fa0ad93bca31cbd295a9fb3f7b55bba479f7d8c23041f":
+    if hashlib.sha256(lp.read_bytes()).hexdigest()!="9038abd4757ed1ed3dc3ab92e54f9266096fe73d5919d7667a1f195540991ec4":
         raise SystemExit("UNPINNED_LOCAL_PACKAGE")
-    if hashlib.sha256(pp.read_bytes()).hexdigest()!="61899171512f2b356ab7c22cc12f4be66a2078f1f967b8caf8547f08e9a28cc8":
+    if hashlib.sha256(pp.read_bytes()).hexdigest()!="68725567e7336e0b43691ff4adae8b494b4a9c793a50a30d4564a2dab11daa92":
         raise SystemExit("UNPINNED_PUBLIC_PACKAGE")
     qualification=local.get("qualification") or {}
     provenance=public.get("provenance") or {}
