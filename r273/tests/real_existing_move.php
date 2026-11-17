@@ -101,6 +101,31 @@ if($guardedOffer['status']!==409||$getGuardState()!==$guardBefore)
     throw new RuntimeException('PENDING_DEFERRED_GUEST_WORK_NOT_FENCED '.json_encode($guardedOffer));
 $publicGuardDb->prepare('DELETE FROM deferred_work WHERE installation_id=? AND request_id=?')->execute([$id,'r273-pending-deferred-test']);
 echo 'R273_NEGATIVE_PENDING_GUEST_WORK_PASS'.PHP_EOL;
+// Rejected destination ownership and expired challenge must not be
+// interpreted as permission to mutate the already-paired Public authority.
+$foreignChallenge=$challenge;
+$foreignChallenge['local_installation_id']='foreign-cafe-qa-273';
+$foreignPrep=httpOwner($base,'consent_prepare',['challenge'=>$foreignChallenge],$cookie);
+if($foreignPrep['status']===200){
+    $foreignOffer=httpOwner($base,'offer_existing',[
+        'challenge'=>$foreignChallenge,
+        'csrf'=>$foreignPrep['body']['csrf'],
+        'minimum_next_epoch'=>$before+1,
+    ],$cookie);
+    if($foreignOffer['status']!==409)
+        throw new RuntimeException('FOREIGN_LOCAL_OWNER_OFFER_ACCEPTED '.json_encode($foreignOffer));
+}else if($foreignPrep['status']<400||$foreignPrep['status']>=500){
+    throw new RuntimeException('FOREIGN_LOCAL_PREFLIGHT_UNEXPECTED '.json_encode($foreignPrep));
+}
+if($getGuardState()!==$guardBefore)
+    throw new RuntimeException('FOREIGN_OWNER_CHECK_MUTATED_AUTHORITY');
+$expiredChallenge=$challenge;
+$expiredChallenge['issued_at']=time()-900;
+$expiredChallenge['expires_at']=$expiredChallenge['issued_at']+300;
+$expired=httpOwner($base,'consent_prepare',['challenge'=>$expiredChallenge],$cookie);
+if($expired['status']<400||$expired['status']>=500||$getGuardState()!==$guardBefore)
+    throw new RuntimeException('EXPIRED_OWNER_CHALLENGE_ACCEPTED '.json_encode($expired));
+echo 'R273_NEGATIVE_FOREIGN_EXPIRED_OWNER_PASS'.PHP_EOL;
 $offerPrep=httpOwner($base,'consent_prepare',['challenge'=>$challenge],$cookie);
 if($offerPrep['status']!==200)throw new RuntimeException('OWNER_OFFER_CSRF_DENIED');
 $offer=httpOwner($base,'offer_existing',['challenge'=>$challenge,'csrf'=>$offerPrep['body']['csrf'],'minimum_next_epoch'=>$before+1],$cookie);
