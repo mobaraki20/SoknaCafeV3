@@ -1,0 +1,155 @@
+name: SOKNA Reusable Candidate ZIP Gate - exact bytes, NO DEPLOY
+
+on:
+  workflow_call:
+    inputs:
+      contract_path:
+        required: true
+        type: string
+      producer_run_id:
+        required: true
+        type: string
+      producer_artifact:
+        required: true
+        type: string
+    outputs:
+      receipt_status:
+        value: ${{ jobs.exact-candidate.outputs.receipt_status }}
+      exact_zip_verified:
+        value: ${{ jobs.exact-candidate.outputs.exact_zip_verified }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  exact-candidate:
+    name: Shared factory gate - producer SHA / schema / ZIP / migration lineage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      receipt_status: ${{ steps.verify.outputs.receipt_status }}
+      exact_zip_verified: ${{ steps.verify.outputs.exact_zip_verified }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check committed producer contract before selecting artifact
+        if: ${{ inputs.contract_path != 'artifact:candidate-contract.json' }}
+        shell: bash
+        env:
+          CONTRACT: ${{ inputs.contract_path }}
+          SOURCE_RUN: ${{ inputs.producer_run_id }}
+          SOURCE_ARTIFACT: ${{ inputs.producer_artifact }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,pathlib,re
+          contract=os.environ['CONTRACT']
+          assert re.fullmatch(r'release-ops/[A-Za-z0-9_./-]+\.json',contract)
+          assert '..' not in pathlib.PurePosixPath(contract).parts
+          assert re.fullmatch(r'[1-9][0-9]{0,18}',os.environ['SOURCE_RUN'])
+          assert re.fullmatch(r'[A-Za-z0-9_.-]{1,200}',os.environ['SOURCE_ARTIFACT'])
+          p=pathlib.Path(contract)
+          assert p.is_file() and p.resolve().is_relative_to(pathlib.Path('release-ops').resolve())
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['producer']['run_id']==int(os.environ['SOURCE_RUN'])
+          assert d['producer']['artifact']==os.environ['SOURCE_ARTIFACT']
+          assert d['production_authorized'] is False
+          print('PASS_CANDIDATE_PRODUCER_CONTRACT_PINNED_BEFORE_DOWNLOAD')
+          PY
+      - name: Guard same-run generated manifest before selecting producer artifact
+        if: ${{ inputs.contract_path == 'artifact:candidate-contract.json' }}
+        shell: bash
+        env:
+          SOURCE_RUN: ${{ inputs.producer_run_id }}
+          SOURCE_ARTIFACT: ${{ inputs.producer_artifact }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,re
+          assert re.fullmatch(r'[1-9][0-9]{0,18}',os.environ['SOURCE_RUN'])
+          assert os.environ['SOURCE_RUN']==os.environ['GITHUB_RUN_ID'], 'SAME_RUN_REQUIRED_FOR_DYNAMIC_MANIFEST'
+          assert re.fullmatch(r'[A-Za-z0-9_.-]{1,200}',os.environ['SOURCE_ARTIFACT'])
+          print('PASS_SAME_RUN_GENERATED_CONTRACT_GUARD')
+          PY
+      - name: Retrieve the original producer Actions artifact - never rebuild the ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.producer_artifact }}
+          run-id: ${{ inputs.producer_run_id }}
+          github-token: ${{ github.token }}
+          path: actual-candidate
+      - name: Verify producer-generated manifest contained in same original Actions artifact
+        if: ${{ inputs.contract_path == 'artifact:candidate-contract.json' }}
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.producer_artifact }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path('actual-candidate/candidate-contract.json')
+          assert p.is_file() and not p.is_symlink() and p.stat().st_size<=1048576
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['schema']=='sokna-candidate-contract-v1'
+          assert d['producer']['run_id']=='same_run'
+          assert d['producer']['artifact']==os.environ['ARTIFACT_NAME']
+          assert d['production_authorized'] is False
+          print('PASS_POST_BUILD_CONTRACT_IN_SAME_ARTIFACT_SOURCE_APPROVAL_NOT_INFERRED')
+          PY
+      - name: Same-run reusable QA receipt - not production authorization
+        id: verify
+        shell: bash
+        env:
+          CONTRACT: ${{ inputs.contract_path }}
+          SOURCE_RUN: ${{ inputs.producer_run_id }}
+          SOURCE_ARTIFACT: ${{ inputs.producer_artifact }}
+        run: |
+          set -euo pipefail
+          mkdir -p candidate-receipt
+          if [[ "$CONTRACT" == 'artifact:candidate-contract.json' ]]; then
+            CONTRACT='actual-candidate/candidate-contract.json'
+          fi
+          python3 release-ops/candidate_admission.py \
+            --contract "$CONTRACT" \
+            --artifact-dir actual-candidate \
+            --producer-run-id "$SOURCE_RUN" \
+            --artifact-name "$SOURCE_ARTIFACT" \
+            --factory-run-id "$GITHUB_RUN_ID" \
+            --report candidate-receipt/receipt.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('candidate-receipt/receipt.json'))
+          assert d['factory_gate_used'] is True
+          assert d['factory_validated_exact_bytes'] is True
+          assert d['production_authorized'] is False
+          assert len(d['candidate_zip_sha256'])>=1
+          with open('candidate-receipt/README-FA.md','w') as f:
+              f.write('# رسید مشترک کارخانه انتشار سکنا\n\n')
+              f.write('**بررسی همان ZIP در گیت مرکزی: بله (YES)**\n\n')
+              f.write('**تولید بسته داخل همان اجرای کارخانه: '+('بله' if d['built_inside_factory'] else 'خیر')+'**\n\n')
+              f.write('شناسه سازنده: '+str(d['producer_run_id'])+'\n\n')
+              f.write('شناسه کنترل کارخانه: '+str(d['factory_gate_run_id'])+'\n\n')
+              f.write('SHA فایل‌ها: '+', '.join(d['candidate_zip_sha256'])+'\n\n')
+              f.write('**مجوز نصب عملیاتی: ندارد — BLOCKED**\n')
+          print('PASS_CANDIDATE_BYTES_AND_FACTORY_GATE_PROVENANCE__OPERATOR_BLOCKED')
+          PY
+          echo 'receipt_status=QA_EXACT_BYTES_PASS_FIELD_AND_SOURCE_APPROVAL_BLOCKED' >> "$GITHUB_OUTPUT"
+          echo 'exact_zip_verified=true' >> "$GITHUB_OUTPUT"
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ### Shared factory candidate intake
+          Original producer artifact downloaded and verified without rebuilding the ZIP.
+          **FACTORY GATE USED: YES**. **BUILT BY FACTORY: depends on whether producer run matches this run.**
+          **Production release: BLOCKED (no host acceptance)**.
+          EOF
+      - name: Only receipt JSON and guide, never ZIP archives
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-FACTORY-SHARED-CANDIDATE-RECEIPT-ONLY
+          path: |
+            candidate-receipt/receipt.json
+            candidate-receipt/README-FA.md
+          if-no-files-found: ignore
+          retention-days: 90
