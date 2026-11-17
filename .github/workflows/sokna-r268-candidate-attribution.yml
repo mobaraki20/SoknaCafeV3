@@ -95,7 +95,9 @@ jobs:
           | **Unified Factory used?** | **NO** |
           | Producer | Independent R268 Emergency HTTP QA workflow, run **44025587468** |
           | Version chain | Existing **35ic (8 SQL)** -> R265 **35if (8 SQL)** -> R266 **35ig (11 SQL)** |
-          | Exact ZIP SHA proof | Both QA ZIPs downloaded and inspected byte-for-byte |
+          | R265 / 35if SHA | 692aa40939d788aea56efa4e3b62c46a568da0ce5c508cc87844aa63366b8892 |
+          | R266 / 35ig SHA | b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35 |
+          | Exact ZIP SHA proof | Both original QA ZIPs re-downloaded and verified byte-for-byte |
           | QA isolated | Passed real HTTP Emergency and MariaDB 8->11 on test host |
           | Actual host acceptance | **NOT RUN** |
           | **Operator release** | **BLOCKED: QA packages, do not mistake for production** |
