@@ -44,6 +44,12 @@ jobs:
           path: ${{ runner.temp }}/input_artifacts
       - uses: actions/download-artifact@v4
         with:
+          name: R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY
+          run-id: 44025587468
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r266_baseline
+      - uses: actions/download-artifact@v4
+        with:
           name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
           run-id: 43837950540
           github-token: ${{ github.token }}
@@ -56,7 +62,7 @@ jobs:
           python3 - <<'PY'
           import pathlib,os,hashlib,shutil
           t=pathlib.Path(os.environ['RUNNER_TEMP'])
-          targets=[(t/'input_artifacts','b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35','SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip'),
+          targets=[(t/'r266_baseline','b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35','SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip'),
            (t/'input_artifacts','d137b255fa51d401525ab3de5ec92d20d17a61311b35099a58647c754297ee37','SOKNA-R273-PUBLIC-35IH-OWNER-TRANSFER-CODE-ONLY-QA-DO-NOT-INSTALL.zip'),
            (t/'r263','37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21','SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip')]
           for root,sha,name in targets:
