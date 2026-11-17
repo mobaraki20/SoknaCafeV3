@@ -1,0 +1,37 @@
+name: SOKNA R272 Migration Decision Ledger Integrity (NOT Release QA)
+on:
+  push:
+    branches: [qa/sokna-r272-public-move-endtoend-audit-20261117]
+    paths:
+      - 'r251/decisions.json'
+      - 'r251/DECISIONS-FA.md'
+      - 'r272/**'
+      - '.github/workflows/sokna-r272-decision-ledger-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: R251 permanent append-only decision tests
+        run: python3 r251/check_decisions.py
+      - name: R272 new decisions and no premature deployment assertion
+        run: |
+          python3 - <<'PY'
+          import json
+          p=json.load(open('r251/decisions.json'))
+          st=json.load(open('r272/STATUS.json'))
+          ids={d['id']:d for d in p['decisions']}
+          assert p['updated_on']=='2026-11-17'
+          for code in ('MIG-019','MIG-020'):
+              assert ids[code]['status']=='ACTIVE' and ids[code]['superseded_by'] is None
+          assert ids['OLD-005']['status']=='REJECTED'
+          assert ids['OLD-006']['status']=='REJECTED'
+          assert ids['OLD-010']['status']=='SUPERSEDED'
+          assert st['go_live']['operator_install_allowed'] is False
+          assert st['status']=='EXACT_SOURCE_AUDITED_END_TO_END_NOT_PROVEN_DO_NOT_INSTALL_R271'
+          print('R272_DECISIONS_HISTORY_AND_NO_GO_PASS',len(p['decisions']))
+          PY
