@@ -1,0 +1,20 @@
+--- a/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
++++ b/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
+@@ -202,10 +202,16 @@
+         $path=$this->statePath();
+         if(!is_file($path))return ['status'=>'none','active'=>false];
+         $state=$this->readState($path);
+         return [
+-            'status'=>in_array($state['stage'],['paired','sync_ready','config_committed'],true)
++            // A lost reply *after* the destination consumed its one-time
++            // code is recoverable by an authenticated, read-only signed probe
++            // in finish(). Never issue a second enrollment code here.
++            'status'=>(in_array($state['stage'],['paired','sync_ready','config_committed'],true) ||
++                (($state['stage']??'')==='pairing_uncertain' && ($state['kind']??'')==='existing_paired'))
+                 ?'sync_pending':'support_required',
++            'resume_kind'=>(($state['stage']??'')==='pairing_uncertain')
++                ?'probe_existing_authority':'continue_synced_transfer',
+             'active'=>true,
+             'operation_id'=>$state['operation_id'],
+             'target_base_url'=>$state['target_base_url'],
+             'safe_to_cutover'=>false,
