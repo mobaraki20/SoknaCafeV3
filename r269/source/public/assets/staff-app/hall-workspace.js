@@ -425,10 +425,10 @@ function accountNotices(){const html=accountPriceChangeSummary();return html?`<d
  * kitchen is necessary; the accountable shift supervisor states the risk.
  * The backend records an audit and a non-blocking pending prep follow-up.
  */
-function operatorPreparationDispositionDialog(){
+function operatorPreparationDispositionDialog(round=null,includeReason=false){
  const dialog=document.createElement('dialog');dialog.className='sc-price-review-dialog sc-preparation-decision-dialog';
  dialog.setAttribute('aria-label','تصمیم مسئول شیفت برای سفارش و آماده‌سازی');
- dialog.innerHTML=`<form method="dialog" data-prep-responsibility-form><div class="sc-price-review-head"><strong>تصمیم مسئول شیفت درباره آماده‌سازی</strong><button class="sc-icon-button" type="button" data-prep-cancel aria-label="بستن">×</button></div><p class="sc-price-review-note">لازم نیست آشپزخانه در همین لحظه پاسخ بدهد. این انتخاب فقط گزارش و پذیرش مسئولیت شماست، نه تأیید دریافت توسط آشپزخانه. اگر سفارش قبلاً چاپ یا اعلام شده باشد، اصلاحیه برای پیگیری در بخش آماده‌سازی باقی می‌ماند.</p><fieldset class="sc-account-item-editor__section" style="display:grid;gap:10px"><legend>اطلاعاتی که مسئول شیفت دارد</legend><label><input type="radio" name="disposition" value="not_received" required> سفارش به آماده‌سازی نرسیده است (به تشخیص من)</label><label><input type="radio" name="disposition" value="received_or_preparing"> به آماده‌سازی رسیده یا ممکن است کارش شروع شده باشد</label><label><input type="radio" name="disposition" value="unknown"> پاسخ در دسترس نیست / وضعیت دریافت نامشخص است</label></fieldset><label class="sc-price-review-note" style="display:flex;gap:9px;align-items:flex-start"><input type="checkbox" name="responsibility" required><span>با توجه به وضعیت انتخاب‌شده، مسئولیت تصمیم، اطلاع‌رسانی و پیگیری لغو با من است. این گزینه هیچ وجهی را برنمی‌گرداند و تأیید آماده‌سازی محسوب نمی‌شود.</span></label><div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="sc-button sc-button--secondary" type="button" data-prep-cancel>انصراف</button><button class="sc-button" type="submit">ثبت تصمیم و ادامه</button></div></form>`;
+ dialog.innerHTML=`<form method="dialog" data-prep-responsibility-form><div class="sc-price-review-head"><strong>${includeReason?'لغو سفارش · تصمیم مسئول شیفت':'تصمیم مسئول شیفت درباره آماده‌سازی'}</strong><button class="sc-icon-button" type="button" data-prep-cancel aria-label="بستن">×</button></div><p class="sc-price-review-note">لازم نیست آشپزخانه در همین لحظه پاسخ بدهد. این انتخاب فقط گزارش و پذیرش مسئولیت شماست، نه تأیید دریافت توسط آشپزخانه. اگر سفارش قبلاً چاپ یا اعلام شده باشد، اصلاحیه برای پیگیری در بخش آماده‌سازی باقی می‌ماند.</p>${includeReason?`<label class="sc-account-item-editor__section" style="display:grid;gap:6px"><strong>دلیل لغو سفارش ${L.integer(round?.order_number||round?.order_id||0)} (الزامی)</strong><input name="reason" class="sc-control" type="text" maxlength="250" placeholder="مثلاً اشتباه در ثبت یا عدم تحویل کالا" required></label>`:``}<fieldset class="sc-account-item-editor__section" style="display:grid;gap:10px"><legend>اطلاعاتی که مسئول شیفت دارد</legend><label><input type="radio" name="disposition" value="not_received" required> سفارش به آماده‌سازی نرسیده است (به تشخیص من)</label><label><input type="radio" name="disposition" value="received_or_preparing"> به آماده‌سازی رسیده یا ممکن است کارش شروع شده باشد</label><label><input type="radio" name="disposition" value="unknown"> پاسخ در دسترس نیست / وضعیت دریافت نامشخص است</label></fieldset><label class="sc-price-review-note" style="display:flex;gap:9px;align-items:flex-start"><input type="checkbox" name="responsibility" required><span>با توجه به وضعیت انتخاب‌شده، مسئولیت تصمیم، اطلاع‌رسانی و پیگیری لغو با من است. این گزینه هیچ وجهی را برنمی‌گرداند و تأیید آماده‌سازی محسوب نمی‌شود.</span></label><div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="sc-button sc-button--secondary" type="button" data-prep-cancel>انصراف</button><button class="sc-button" type="submit">ثبت تصمیم و ادامه</button></div></form>`;
  document.body.append(dialog);
  return new Promise(resolve=>{
   let settled=false;
@@ -441,7 +441,9 @@ function operatorPreparationDispositionDialog(){
    const status=dialog.querySelector('input[name="disposition"]:checked')?.value;
    const accepted=dialog.querySelector('input[name="responsibility"]')?.checked===true;
    if(!accepted||!['not_received','received_or_preparing','unknown'].includes(String(status||'')))return;
-   done({operator_preparation_disposition:status,operator_accepts_preparation_responsibility:true});
+   const reason=includeReason?String(dialog.querySelector('input[name="reason"]')?.value||'').trim():'';
+   if(includeReason&&!reason)return;
+   done({operator_preparation_disposition:status,operator_accepts_preparation_responsibility:true,...(includeReason?{reason}: {})});
   });
   if(!window.SoknaUI?.showDialog?.(dialog,{focusTitle:true}))dialog.showModal();
  });
@@ -452,13 +454,9 @@ function operatorPreparationDispositionDialog(){
 async function cancelWholeUnsettledOrder(button){
  const orderId=Number(button?.dataset.orderCancelUnsettled||0),round=(account?.order_rounds||[]).find(r=>Number(r.order_id)===orderId);
  if(!canSupervise||!mutationsAllowed()||!round||String(round.status)!=='accounted'||String(round.order_source)!=='staff')return;
- const reason=await SoknaUI.prompt('لغو کامل سفارش',{label:'دلیل لغو (الزامی)',placeholder:'مثلاً سفارش اشتباه ثبت شده است'});
- if(reason===null)return;
- const note=String(reason||'').trim();if(!note){toast('دلیل لغو را وارد کنید.','warning','لغو سفارش');return;}
- const ok=await SoknaUI.confirm('تأیید لغو کامل',`سفارش ${L.integer(round.order_number||orderId)} با ${L.integer(round.items?.length||0)} قلم لغو شود؟ سوابق مالی تغییر نمی‌کند و مسئولیت پیگیری آماده‌سازی با مسئول شیفت است.`);
- if(!ok)return;
- const preparationDecision=await operatorPreparationDispositionDialog();
+ const preparationDecision=await operatorPreparationDispositionDialog(round,true);
  if(!preparationDecision)return;
+ const note=preparationDecision.reason;
  const sessionBefore=Number(account?.table?.session_id||0),tableBefore=Number(account?.table?.id||0),requestId=clientRequestId('whole-cancel');
  try{
   const result=await mutate({action:'order_cancel_unsettled',order_id:orderId,request_id:requestId,reason:note,...preparationDecision});
