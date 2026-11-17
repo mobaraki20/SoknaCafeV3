@@ -1,0 +1,102 @@
+--- a/src/Http/PublicHttpKernel.php
++++ b/src/Http/PublicHttpKernel.php
+@@ -57,7 +57,7 @@
+             if ($method === 'POST' && preg_match('#^/api/v1/owner/(upgrade_preflight|upgrade_activate)$#D', $path, $upgradeMatch) === 1) {
+                 return $this->publicOwnerUpgradeAction($upgradeMatch[1], $headers, $rawBody);
+             }
+-            if ($method === 'POST' && preg_match('#^/api/v1/owner/(login|logout|consent_prepare|consent_sign)$#D', $path, $moveMatch) === 1) {
++            if ($method === 'POST' && preg_match('#^/api/v1/owner/(login|logout|consent_prepare|consent_sign|offer_existing)$#D', $path, $moveMatch) === 1) {
+                 return $this->publicOwnerAction($moveMatch[1], $headers, $rawBody);
+             }
+             if ($method === 'GET' && $path === '/health') {
+@@ -516,6 +516,42 @@
+         $base=$config->string('app.base_url');
+         $keys=new \Sokna\PublicEdge\Security\PublicMoveInstanceKeyStore($private,$this->componentRoot);
+         $bridge=new \Sokna\PublicEdge\Security\PublicMoveIndependentOwnerBridge($owners,$keys,$base,$instanceId,$csrf);
++        if($action==='offer_existing'){
++            $req=json_decode($rawBody,true);
++            if(!is_array($req)||!is_array($req['challenge']??null)||
++               !is_string($req['csrf']??null))
++                return $this->json(SafeErrors::response(400,'invalid_challenge'));
++            try{
++                // Same independently authenticated Public owner and full
++                // same-origin CSRF/origin-bound consent as consent_sign.
++                $bridge->attest((string)$this->ownerMoveCookieToken($headers),
++                    $req['challenge'],(string)$req['csrf'],
++                    $this->header($headers,'Origin'),
++                    $this->header($headers,'Sec-Fetch-Site'),time());
++                $saved=(new \Sokna\PublicEdge\Security\PublicMoveConsentReceiptStore(
++                    $this->core->database(),$keys
++                ))->status((string)($req['challenge']['operation_id']??''),time());
++                if(($saved['status']??null)!=='owner_approved')
++                    return $this->json(SafeErrors::response(409,'owner_receipt_missing'));
++                $setup=(new \Sokna\PublicEdge\Setup\PublicSetupService($this->componentRoot))->status();
++                $installationId=(string)($setup['installation_id']??'');
++                if(($setup['paired']??false)!==true||$installationId===''||
++                   !hash_equals($installationId,(string)($req['challenge']['local_installation_id']??'')))
++                    return $this->json(SafeErrors::response(409,'existing_move_other_installation'));
++                $minimum=(int)($req['minimum_next_epoch']??0);
++                $offer=$this->core->authorityEpoch()->createOffer(
++                    $installationId,900,'authenticated_target_owner_move',$minimum,true
++                );
++                return $this->json(['status'=>200,'body'=>[
++                    'ok'=>true,'move_kind'=>'existing_paired',
++                    'owner_authority_code'=>(string)$offer['enrollment_code'],
++                    'owner_next_epoch'=>(int)$offer['authority_epoch'],
++                    'safe_to_cutover'=>false,
++                ]]);
++            }catch(\Throwable){
++                return $this->json(SafeErrors::response(409,'existing_move_pending_or_unavailable'));
++            }
++        }
+         $result=(new \Sokna\PublicEdge\Http\PublicMoveOwnerHttpAdapter(
+             $owners,$bridge,$instanceId,$base
+         ))->handle($action,$headers,$rawBody,time());
+@@ -532,18 +568,46 @@
+         ))->create($req['challenge'],$body['proof'],$instanceId,time());
+         $setup=new \Sokna\PublicEdge\Setup\PublicSetupService($this->componentRoot);
+         $pairingCode='';
+-        if (($setup->status()['paired']??true)===false) {
++        $setupState=$setup->status();
++        $kind='fresh_unpaired';
++        $ownerAuthorityCode='';
++        $newEpoch=0;
++        if (($setupState['paired']??true)===false) {
+             (new \Sokna\PublicEdge\Security\PublicMoveReplacementGate(
+                 $this->core->database()
+             ))->requireEmpty();
+             $pairingCode=$setup->issueOwnerPairingCode();
++        } else {
++            $kind='existing_paired';
++            $installedId=(string)($setupState['installation_id']??'');
++            $requestedId=(string)($req['challenge']['local_installation_id']??'');
++            if ($installedId==='' || !hash_equals($installedId,$requestedId)) {
++                return $this->json(\Sokna\PublicEdge\Http\SafeErrors::response(409,
++                    'existing_move_other_installation'));
++            }
++            // Owner consent only, NO authority mutation at this stage.
++            // The normal Local administrator must independently confirm first.
+         }
+         return $this->json(['status'=>200,'body'=>[
+             'ok'=>true,'proof'=>$body['proof'],
+             'receipt_envelope'=>$saved['receipt_envelope'],
+             'pairing_code'=>$pairingCode,
++            'move_kind'=>$kind,
++            'owner_authority_code'=>$ownerAuthorityCode,
++            'owner_next_epoch'=>$newEpoch,
+             'safe_to_cutover'=>false,
+         ]]);
++    }
++
++    /** Owner session is a separate HttpOnly cookie, never the Staff session. */
++    private function ownerMoveCookieToken(array $headers): string
++    {
++        $cookie=$this->header($headers,'Cookie');
++        foreach(explode(';',$cookie) as $part){
++            [$key,$value]=array_pad(explode('=',trim($part),2),2,'');
++            if($key==='sokna_public_owner')return rawurldecode($value);
++        }
++        return '';
+     }
+ 
+     private function sessionToken(array $headers): string
