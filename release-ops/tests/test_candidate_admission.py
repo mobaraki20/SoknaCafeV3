@@ -148,6 +148,37 @@ class CandidateIntakeTest(unittest.TestCase):
         report=inspect(embedded,self.artifacts,"123456","PUBLIC-NEW-ARTIFACT","123456")
         self.assertIn("UNTRUSTED_EMBEDDED_CONTRACT",report["errors"][0])
 
+    def test_same_run_can_carry_sha_pinned_qa_evidence_manifest(self):
+        self.contract["producer"]["run_id"]="same_run"
+        evidence=self.artifacts/"qa-evidence.json"
+        evidence.write_text('{"status":"QA_ONLY"}')
+        self.contract["supporting_files"]=[{
+            "file":evidence.name,"sha256":sha(evidence.read_bytes())
+        }]
+        embedded=self.artifacts/"candidate-contract.json"
+        embedded.write_text(json.dumps(self.contract))
+        result=inspect(embedded,self.artifacts,"123456","PUBLIC-NEW-ARTIFACT","123456")
+        self.assertTrue(result["factory_validated_exact_bytes"],result)
+        self.assertEqual(result["supporting_file_sha256"],[sha(evidence.read_bytes())])
+
+    def test_modified_supporting_manifest_blocks_gate(self):
+        evidence=self.artifacts/"qa-evidence.json"
+        evidence.write_text('{"status":"QA_ONLY"}')
+        self.contract["supporting_files"]=[{"file":evidence.name,"sha256":"0"*64}]
+        self.write()
+        self.assertIn("SUPPORTING_FILE_SHA_MISMATCH",self.check()["errors"][0])
+
+    def test_undeclared_evidence_manifest_does_not_sneak_into_zip_artifact(self):
+        (self.artifacts/"other-evidence.json").write_text('{"status":"FORGED_PASS"}')
+        self.assertIn("ARTIFACT_CONTAINS_MISSING_OR_UNDECLARED_FILES",self.check()["errors"][0])
+
+    def test_executable_cannot_be_rebranded_as_supporting_file(self):
+        evidence=self.artifacts/"installer.exe"
+        evidence.write_bytes(b"MZ")
+        self.contract["supporting_files"]=[{"file":evidence.name,"sha256":sha(evidence.read_bytes())}]
+        self.write()
+        self.assertIn("SUPPORTING_FILES_MUST_BE_SHA_PINNED_SMALL_TEXT_ONLY",self.check()["errors"][0])
+
     def test_legacy_requires_actual_pinned_zip_and_cannot_fake_green(self):
         historic=pathlib.Path(__file__).resolve().parents[1]/"external-public-r268-provenance.json"
         r=inspect(historic,self.artifacts,"44025587468",
