@@ -244,7 +244,7 @@ final class OrderStaffActionService
                 $childId='cancel:'.substr(hash('sha256',$requestId.':'.$itemId),0,48);
                 $adjust=$this->adjustSingleItem([
                     'order_item_id'=>$itemId,'quantity'=>0,'request_id'=>$childId,
-                    'reason'=>'لغو کامل سفارش: '.$reason,
+                    'reason'=>($operatorPreparationDecision===null?'لغو کامل سفارش: ':('لغو با تصمیم مسئول شیفت ('.match($operatorPreparationDecision){'not_received'=>'دریافت‌نشده','received_or_preparing'=>'دریافت‌شده/درحال آماده‌سازی','unknown'=>'وضعیت نامشخص',default=>'نامشخص'}.'): ')).$reason,
                     'operator_preparation_disposition'=>$operatorPreparationDecision,
                 ],$actor,$operatorPreparationDecision!==null);
                 if(empty($adjust['success'])||(int)($adjust['to_quantity']??-1)!==0)
