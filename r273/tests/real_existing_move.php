@@ -48,6 +48,16 @@ $invalid=httpOwner($base,'login',['password'=>'wrong']);if($invalid['status']!==
 $login=httpOwner($base,'login',['password'=>'test-owner-only-strong-273']);
 if($login['status']!==200||$login['cookie']==='')throw new RuntimeException('REAL_OWNER_LOGIN_FAILED '.json_encode($login));
 $cookie=explode(';',$login['cookie'])[0];
+// Negative-path QA on the same real HTTP owner adapter and MariaDB.
+// An anonymous caller or a caller without a valid CSRF must never receive
+// an owner consent receipt, even when the challenge is otherwise valid.
+$anonymous=httpOwner($base,'consent_prepare',['challenge'=>$challenge]);
+if($anonymous['status']>=200 && $anonymous['status']<300)
+    throw new RuntimeException('ANONYMOUS_OWNER_CONSENT_ALLOWED');
+$unauthorizedSign=httpOwner($base,'consent_sign',['challenge'=>$challenge,'csrf'=>'invalid-csrf'], $cookie);
+if($unauthorizedSign['status']>=200 && $unauthorizedSign['status']<300)
+    throw new RuntimeException('INVALID_CSRF_OWNER_CONSENT_ALLOWED');
+echo 'R273_NEGATIVE_OWNER_ANONYMOUS_CSRF_DENIAL_PASS'.PHP_EOL;
 $prep=httpOwner($base,'consent_prepare',['challenge'=>$challenge],$cookie);
 if($prep['status']!==200)throw new RuntimeException('REAL_OWNER_PREP_FAILED '.json_encode($prep));
 $csrf=(string)($prep['body']['csrf']??'');
