@@ -135,7 +135,7 @@ if($guardedPrep['status']!==200)throw new RuntimeException('PENDING_REALTIME_PRE
 $guardedOffer=httpOwner($base,'offer_existing',['challenge'=>$challenge,'csrf'=>$guardedPrep['body']['csrf'],'minimum_next_epoch'=>$before+1],$cookie);
 if($guardedOffer['status']!==409||$getGuardState()!==$guardBefore)
     throw new RuntimeException('PENDING_REALTIME_GUEST_WORK_NOT_FENCED '.json_encode($guardedOffer));
-$publicGuardDb->prepare('DELETE FROM realtime_requests WHERE installation_id=? AND request_id=?')->execute([$id,'r273-pending-realtime-test']);
+// Leave queued realtime request until owner explicitly confirms Public-only discard.
 $publicGuardDb->prepare("INSERT INTO deferred_work(installation_id,request_id,request_hash,kind,actor_projection_id,envelope_json,state,occurred_at) VALUES(?,?,'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','guest_order.submit','r273-test','{}','pending_sync',UTC_TIMESTAMP())")
     ->execute([$id,'r273-pending-deferred-test']);
 $guardedPrep=httpOwner($base,'consent_prepare',['challenge'=>$challenge],$cookie);
@@ -143,7 +143,7 @@ if($guardedPrep['status']!==200)throw new RuntimeException('PENDING_DEFERRED_PRE
 $guardedOffer=httpOwner($base,'offer_existing',['challenge'=>$challenge,'csrf'=>$guardedPrep['body']['csrf'],'minimum_next_epoch'=>$before+1],$cookie);
 if($guardedOffer['status']!==409||$getGuardState()!==$guardBefore)
     throw new RuntimeException('PENDING_DEFERRED_GUEST_WORK_NOT_FENCED '.json_encode($guardedOffer));
-$publicGuardDb->prepare('DELETE FROM deferred_work WHERE installation_id=? AND request_id=?')->execute([$id,'r273-pending-deferred-test']);
+// Leave pending deferred request until owner explicitly confirms Public-only discard.
 echo 'R273_NEGATIVE_PENDING_GUEST_WORK_PASS'.PHP_EOL;
 // Rejected destination ownership and expired challenge must not be
 // interpreted as permission to mutate the already-paired Public authority.
@@ -172,8 +172,18 @@ if($expired['status']<400||$expired['status']>=500||$getGuardState()!==$guardBef
 echo 'R273_NEGATIVE_FOREIGN_EXPIRED_OWNER_PASS'.PHP_EOL;
 $offerPrep=httpOwner($base,'consent_prepare',['challenge'=>$challenge],$cookie);
 if($offerPrep['status']!==200)throw new RuntimeException('OWNER_OFFER_CSRF_DENIED');
-$offer=httpOwner($base,'offer_existing',['challenge'=>$challenge,'csrf'=>$offerPrep['body']['csrf'],'minimum_next_epoch'=>$before+1],$cookie);
-if($offer['status']!==200)throw new RuntimeException('OWNER_OFFER_FAILED '.json_encode($offer));
+$offer=httpOwner($base,'offer_existing',['challenge'=>$challenge,'csrf'=>$offerPrep['body']['csrf'],
+    'minimum_next_epoch'=>$before+1,'discard_pending_guest_work'=>true],$cookie);
+if($offer['status']!==200)throw new RuntimeException('OWNER_DISCARD_OFFER_FAILED '.json_encode($offer));
+$checkState=$publicGuardDb->prepare("SELECT state,error_code FROM realtime_requests WHERE installation_id=? AND request_id=?");
+$checkState->execute([$id,'r273-pending-realtime-test']);$rt=$checkState->fetch(PDO::FETCH_ASSOC);
+if(($rt['state']??'')!=='cancelled'||($rt['error_code']??'')!=='owner_confirmed_public_move_discard')
+    throw new RuntimeException('OWNER_DISCARD_REALTIME_INCOMPLETE');
+$checkState=$publicGuardDb->prepare("SELECT state,error_code FROM deferred_work WHERE installation_id=? AND request_id=?");
+$checkState->execute([$id,'r273-pending-deferred-test']);$df=$checkState->fetch(PDO::FETCH_ASSOC);
+if(($df['state']??'')!=='rejected'||($df['error_code']??'')!=='owner_confirmed_public_move_discard')
+    throw new RuntimeException('OWNER_DISCARD_DEFERRED_INCOMPLETE');
+echo 'R275_OWNER_CONFIRMED_PUBLIC_ONLY_DISCARD_PASS'.PHP_EOL;
 $code=(string)($offer['body']['owner_authority_code']??'');$epoch=(int)($offer['body']['owner_next_epoch']??0);
 if(!preg_match('/^[A-F0-9]{8}(?:-[A-F0-9]{8}){2}$/D',$code)||$epoch<=$before)throw new RuntimeException('OWNER_OFFER_INVALID');
 if(($cfg=require $root.'/config.php')['public']['base_url']!==$oldUrl)throw new RuntimeException('CONFIG_CHANGED_BEFORE_REMOTE_PROOF');
