@@ -93,11 +93,7 @@ def exercise(browser,variant):
   actions=[a for m,p,a,body in log[start:]]
   if actions.count("offer_existing")!=1 or "public_move_existing_owner_offer_execute" in actions or "public_move_finish" in actions:
    raise RuntimeError("PENDING_CANCEL_MUTATED_OR_FINISHED "+str(actions))
-  if variant=="pending_confirm":
-  offer_bodies=[body for m,p,a,body in log[start:] if a=="offer_existing"]
-  if len(offer_bodies)!=2 or "discard_pending_guest_work" in offer_bodies[0] or offer_bodies[1].get("discard_pending_guest_work") is not True:
-   raise RuntimeError("PENDING_CONFIRM_NOT_EXPLICIT "+str(offer_bodies))
- if errors:raise RuntimeError("JS_PAGE_ERROR "+str(errors))
+  if errors:raise RuntimeError("JS_PAGE_ERROR "+str(errors))
   print("R275_BROWSER_POPUP_PENDING_CANCEL_PASS",actions)
   context.close();return
  page.wait_for_function('document.querySelector("[data-public-move-feedback]")?.textContent?.includes("متصل شد")',timeout=15000)
@@ -109,6 +105,10 @@ def exercise(browser,variant):
   raise RuntimeError("RESUME_INCORRECTLY_REISSUED_CONSENT "+str(actions))
  if variant!="resume" and ("consent_sign" not in actions or "public_move_confirm" not in actions):
   raise RuntimeError("INITIAL_APPROVAL_MISSING "+str(actions))
+ if variant=="pending_confirm":
+  offer_bodies=[body for m,p,a,body in log[start:] if a=="offer_existing"]
+  if len(offer_bodies)!=2 or "discard_pending_guest_work" in offer_bodies[0] or offer_bodies[1].get("discard_pending_guest_work") is not True:
+   raise RuntimeError("PENDING_CONFIRM_NOT_EXPLICIT "+str(offer_bodies))
  if errors:raise RuntimeError("JS_PAGE_ERROR "+str(errors))
  print("R275_BROWSER_POPUP_"+variant.upper()+"_PASS",actions)
  context.close()
