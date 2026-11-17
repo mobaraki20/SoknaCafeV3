@@ -7,6 +7,7 @@ on:
       - '.github/workflows/sokna-r233-release-qa-rehearsal.yml'
       - '.github/workflows/sokna-source-evidence-vault-r233.yml'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
