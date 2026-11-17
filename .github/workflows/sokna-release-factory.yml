@@ -86,13 +86,17 @@ jobs:
           set -euo pipefail
           mkdir -p final-proof
           python3 release-ops/factory_decision.py --reports evidence --checkpoint "$CHECKPOINT" \
-            --out final-proof/release-readiness.json
+            --factory-run-id "$GITHUB_RUN_ID" --out final-proof/release-readiness.json
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
           d=json.load(open('final-proof/release-readiness.json'))
           assert d['classification']=='QA_PASS_EXTERNAL_HOST_ACCEPTANCE_BLOCKED'
           assert d['production_authorized'] is False and d['operator_package_created'] is False
+          assert d['factory_workflow_executed'] is True
+          assert str(d['factory_workflow_run_id']) == str(__import__('os').environ['GITHUB_RUN_ID'])
           print('### SOKNA Unified Release Factory - historical checkpoint')
+          print('**FACTORY USED: YES — only for this historical R233 QA run**')
+          print('**R265/R266 external Public ZIPs: NOT evaluated by this run**')
           print('**Source:',d['checkpoint'],'**')
           print('**QA: PASS for the listed source/package/Windows/MariaDB fixtures only**')
           print('**OPERATOR RELEASE: BLOCKED - not an installable publication**')
