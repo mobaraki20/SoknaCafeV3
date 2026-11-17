@@ -1,0 +1,108 @@
+name: SOKNA R275 Direct 231FG to 231FL Native Windows Acceptance
+on:
+  push:
+    branches: [qa/sokna-r275-operator-discard-public-pending-20261117]
+    paths:
+      - 'r275/**'
+      - '.github/workflows/sokna-r275-native-windows-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native-windows-r262-to-r275:
+    runs-on: windows-latest
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r201
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-EXACT-NATIVE-WINDOWS-UAT-CANDIDATE-DO-NOT-INSTALL
+          run-id: 43834210936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r262
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44105608985
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r275
+      - name: Pin archives and execute two sequential native Maintenance upgrades with exact 231FG origin
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $r262Zip=Get-ChildItem '${{ runner.temp }}/r262' -Recurse -Filter 'SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip' | Select-Object -First 1
+          $r275Zip=Get-ChildItem '${{ runner.temp }}/r275' -Recurse -Filter 'SOKNA-R275-LOCAL-231FL-OWNER-DISCARD-QA-DO-NOT-INSTALL.zip' | Select-Object -First 1
+          if(!$r262Zip -or !$r275Zip){throw 'R275_NATIVE_EXACT_ARCHIVE_MISSING'}
+          if((Get-FileHash $r262Zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne '3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c'){throw 'R275_NATIVE_R262_SHA_MISMATCH'}
+          if((Get-FileHash $r275Zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'f42d66e26dfee936f29c159bb7028adefcfedda43ddf2dc63e2c25d6a7d6dba9'){throw 'R275_NATIVE_R275_SHA_MISMATCH'}
+          python packaging/windows/release-gates/check_local_release_set.py "$($r275Zip.FullName)"
+          if($LASTEXITCODE -ne 0){throw 'R275_NATIVE_STRUCTURE_INVALID'}
+          $env:R186_R153_DIR='${{ runner.temp }}/r153'
+          $env:R201_R177_DIR='${{ runner.temp }}/r177'
+          $env:R201_TARGET_DIR='${{ runner.temp }}/r201'
+          $env:R204_TARGET_DIR='${{ runner.temp }}/r262'
+          $env:R275_TARGET_DIR='${{ runner.temp }}/r275'
+          $src=Get-Content 'qa/sokna-r204/windows_r204_from_actual_231fa.ps1' -Raw
+          $src=$src.Replace('SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip','SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip')
+          $src=$src.Replace('279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3','3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c')
+          $src=$src.Replace('3.0.0-g6.2-workspace.231fb-r204-ux-zero-empty-canary','3.0.0-g6.2-workspace.231fg-r262-public-move-qa')
+          if(!$src.Contains('$r204Ledger -eq ''81''')){throw 'R275_R262_OLD_LEDGER_ASSERT_MISSING'}
+          $src=$src.Replace('$r204Ledger -eq ''81''','$r204Ledger -eq ''82''')
+          $src=$src.Replace('R204_MIGRATION_LEDGER_NOT_81','R262_MIGRATION_LEDGER_NOT_82')
+          $anchor=" Write-Host 'PASS_R204_EXACT_INSTALLED_CAFE_231FA_TO_231FB_ACTIVATE_HTTP_MIGRATIONS_81'"
+          if(!$src.Contains($anchor)){throw 'R275_NATIVE_SCRIPT_ANCHOR_MISSING'}
+          $extra=@'
+          # Step four: the precise installed cafe R262 231fg origin goes to R275 231fl.
+          $r275Package=(Get-ChildItem $env:R275_TARGET_DIR -Recurse -Filter 'SOKNA-R275-LOCAL-231FL-OWNER-DISCARD-QA-DO-NOT-INSTALL.zip'|Select-Object -First 1).FullName
+          Need ([bool]$r275Package) 'R275_TARGET_FILE_MISSING'
+          Need ((Get-FileHash $r275Package -Algorithm SHA256).Hash.ToLowerInvariant() -eq 'f42d66e26dfee936f29c159bb7028adefcfedda43ddf2dc63e2c25d6a7d6dba9') 'R275_TARGET_PIN_MISMATCH'
+          $r275Outer=Join-Path $lab 'r275-outer';Expand-Archive $r275Package $r275Outer
+          $r275Manifest=Get-Content (Join-Path $r275Outer 'release-set.json') -Raw|ConvertFrom-Json
+          $fromR262=@($r275Manifest.supported_baselines|Where-Object {$_.local.version -ceq $r204Version})
+          Need ($fromR262.Count -eq 1) 'R275_SOURCE_R262_AMBIGUOUS'
+          Need (($fromR262[0].local.managed_tree_sha256 -ceq $r204Manifest.targets.local.managed_tree_sha256) -and ($fromR262[0].local.managed_files -eq 604)) 'R275_INSTALLED_R262_TREE_NOT_MATCHED'
+          Need ($r275Manifest.targets.local.version -ceq '3.0.0-g6.2-workspace.231fl-r275-owner-discard-public-work') 'R275_VERSION_INVALID'
+          $r275Base=Join-Path $lab 'baseline.r262.json';$r275Target=Join-Path $lab 'target.r275.json'
+          $fromR262[0].local|ConvertTo-Json -Depth 7|Set-Content $r275Base -Encoding utf8NoBOM
+          $r275Manifest.targets.local|ConvertTo-Json -Depth 7|Set-Content $r275Target -Encoding utf8NoBOM
+          $r275Args=@($root,$r275Base,$r275Target,$engine,'none',$r275Package)
+          Run $harness (@('prepare')+$r275Args)
+          Run $harness (@('panel-activate')+$r275Args)
+          $finalVersion=$r275Manifest.targets.local.version
+          Need ((Get-Content (Join-Path $root 'Web/VERSION.txt') -Raw).Trim() -ceq $finalVersion) 'R275_NATIVE_VERSION_READBACK_WRONG'
+          $res=Invoke-WebRequest 'http://127.0.0.1:39831/login.php' -UseBasicParsing -TimeoutSec 8
+          Need ($res.StatusCode-eq200 -and $res.Headers['X-Sokna-Build'] -ceq $finalVersion) 'R275_NATIVE_HTTP_BUILD_WRONG'
+          $finalLedger=& $mysql --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r186_exact.schema_migrations;'
+          Need ($LASTEXITCODE -eq 0 -and [string]$finalLedger -eq '82') 'R275_NATIVE_MIGRATIONS_CHANGED'
+          Write-Host 'R275_NATIVE_DIRECT_R262_231FG_TO_R275_231FL_STAGE_ACTIVATE_HTTP_MARIADB_PASS'
+          '@
+          $src=$src.Replace($anchor,$anchor+"`r`n"+$extra)
+          $path=Join-Path '${{ runner.temp }}' 'r275-actual-cafe-origin-test.ps1'
+          Set-Content $path $src -Encoding utf8NoBOM
+          & $path
+          if($LASTEXITCODE -ne 0){throw 'R275_NATIVE_INSTALLER_FAILED'}
+          Write-Host 'R275_NATIVE_WINDOWS_EXACT_ORIGIN_PASS_CI_ONLY_NO_HOST_DEPLOY'
