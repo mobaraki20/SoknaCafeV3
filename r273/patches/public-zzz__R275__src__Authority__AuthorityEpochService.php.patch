@@ -1,0 +1,44 @@
+--- a/src/Authority/AuthorityEpochService.php
++++ b/src/Authority/AuthorityEpochService.php
+@@ -28,7 +28,7 @@
+         }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+     }
+ 
+-    public function createOffer(string $installationId,int $ttlSeconds=1800,string $actor='emergency',int $minimumNextEpoch=0,bool $ownerMove=false): array
++    public function createOffer(string $installationId,int $ttlSeconds=1800,string $actor='emergency',int $minimumNextEpoch=0,bool $ownerMove=false,bool $allowOwnerDiscard=false): array
+     {
+         $this->validId($installationId);$ttl=max(300,min(86400,$ttlSeconds));
+         $this->pdo->beginTransaction();
+@@ -35,12 +35,20 @@
+             $q=$this->pdo->prepare('SELECT authority_epoch,active,revoked_at FROM installations WHERE installation_id=? FOR UPDATE');
+             $q->execute([$installationId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+             if(!is_array($row)||!(bool)$row['active']||!empty($row['revoked_at']))throw new PublicUpdateException('installation_not_found','Installation is not active.',404);
++            $discarded=['realtime'=>0,'deferred'=>0];
+             if ($ownerMove) {
+-                // Same serialized installation scope as the forward-only epoch offer.
+-                // Foreign or ambiguous installs must never be implicitly adopted.
+-                (new \Sokna\PublicEdge\Security\PublicMoveReplacementGate($this->pdo))
+-                    ->requireNoUnresolvedGuestWork($installationId);
+-            }
++                // Serialize against all new requests/claims on this installation.
++                // Never interpret this optional owner consent for Emergency flows.
++                $gate=new \Sokna\PublicEdge\Security\PublicMoveReplacementGate($this->pdo);
++                if($allowOwnerDiscard) {
++                    $discarded=$gate->discardUnresolvedGuestWork($installationId);
++                } else {
++                    $gate->requireNoUnresolvedGuestWork($installationId);
++                }
++            }elseif($allowOwnerDiscard){
++                throw new \RuntimeException('discard_requires_owner_move');
++            }
+             if($ownerMove){
+                 // An owner grant cannot silently supersede an unconsumed
+@@ -68,7 +76,11 @@
+             $this->pdo->prepare("UPDATE installations SET remote_enabled=0,order_intake_enabled=0,authority_state='reenroll_pending',authority_epoch_required=1,authority_changed_at=UTC_TIMESTAMP(6) WHERE installation_id=?")->execute([$installationId]);
+             $this->pdo->commit();
+-            $this->access->audit('authority_offer',$installationId,$actor,['from_epoch'=>$from,'to_epoch'=>$to,'ttl_seconds'=>$ttl]);
++            $this->access->audit('authority_offer',$installationId,$actor,[
++                'from_epoch'=>$from,'to_epoch'=>$to,'ttl_seconds'=>$ttl,
++                'owner_discard_confirmed'=>$ownerMove&&$allowOwnerDiscard,
++                'discarded_realtime'=>$discarded['realtime'],'discarded_deferred'=>$discarded['deferred']
++            ]);
