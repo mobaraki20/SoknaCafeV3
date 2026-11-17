@@ -114,6 +114,9 @@ if ((int)$r!==11)throw new RuntimeException('Expected exactly eleven migrations,
     (root/'qa-verify.php').write_text("<?php require $argv[1].'/src/Core/Config.php';require $argv[1].'/src/Core/Database.php';\n"+verify.removeprefix('<?php'))
     cmd(['php',str(root/'qa-verify.php'),str(root)])
     print(json.dumps({'status':'PASS','test':'actual protected-equivalent Emergency HTTP auth/CSRF/file upload/stage/activate/commit, R249->R265->R266, real MariaDB 8->11','database':'11','warning':'Actual production emergency.php host wrapper is external, not byte-pinned'}))
+except Exception:
+    print('PHP_SERVER_LOG_TAIL',serverlog.read_text(errors='replace')[-14000:])
+    raise
 finally:
     proc.terminate()
     try:proc.wait(timeout=4)
