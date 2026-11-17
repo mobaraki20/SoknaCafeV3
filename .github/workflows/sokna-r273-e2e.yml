@@ -88,7 +88,7 @@ jobs:
            "$R273_EXTRACT_ROOT/public/src/Security/PublicMoveReplacementGate.php"; do php -l "$php"; done
           node --check "$R273_EXTRACT_ROOT/local/public/assets/connections-workspace.js"
           node --check "$R273_EXTRACT_ROOT/public/assets/sokna-public-move.js"
-          python3 packaging/windows/release-gates/check_local_release_set.py --require-installable \
+          python3 packaging/windows/release-gates/check_local_release_set.py \
             "$R273_EXTRACT_ROOT/output/SOKNA-R273-LOCAL-231FJ-EXISTING-PUBLIC-OWNER-TRANSFER-QA-DO-NOT-INSTALL.zip"
       - name: Actual MariaDB + Public owner HTTP + Local end-to-end move and full publication
         shell: bash
