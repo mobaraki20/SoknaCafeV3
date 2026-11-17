@@ -141,3 +141,17 @@
 **پیشنهاد اجرای محصول:** در Local فقط آدرس → یک تأیید مالک Public از همان نصب (در صورت نیاز ورود) → تأیید مسئول Local → Sync خودکار و نتیجه. از کاربر اتصال اولیه، Emergency، تغییر epoch، SQL، code request یا انتخاب حالت فنی خواسته نشود.
 
 گزارش تفصیلی: r272/EXACT-SOURCE-AND-FLOW-AUDIT-FA.md و r272/STATUS.json. هیچ تغییر کافه یا هاست در این ممیزی انجام نشده است.
+
+## شواهد تکمیلی R273 — ۱۷ نوامبر ۲۰۲۶ (بدون تغییر تصمیم)
+
+این الحاقیه **تصمیم جدید یا تغییر وضعیت MIG-019/MIG-020 نیست**؛ صرفاً گواه‌های آزمون را از گیت استقرار تفکیک می‌کند. همهٔ تصمیم‌های پیشین و تصمیم‌های ردشده محفوظ می‌مانند.
+
+| آزمون / شرط | شواهد | نتیجه | حد ادعا |
+|---|---|---|---|
+| اتصال Public موجود با هویت مالک و Local و Sync | [GitHub 44051423863](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44051423863) و [تکرار 44063392605](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44063392605) | QA PASS | HTTP/MariaDB ایزوله، نه UI کامل یا هاست عملیاتی |
+| ارتقای دقیق Local از 231fg به 231fj روی Windows Maintenance | [44063487878](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44063487878) و [44064141955](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44064141955) | QA PASS | ویندوز CI، نه سیستم کافه |
+| Public Emergency با ZIP دقیق 35ih و SHA-256 `61899171512f2b356ab7c22cc12f4be66a2078f1f967b8caf8547f08e9a28cc8` | [44052138092](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44052138092) | **QA PASS** برای login/CSRF/upload/Stage/Activate/Commit/DB readback | `emergency.php` نصب‌شده روی هاست واقعی بایتی شناسایی نشده؛ wrapper در تست fixture محافظت‌شده است |
+| تطبیق پشتیبانِ قابل بازیابی، سفارش‌های باز/معلق و جفت‌شدن حقیقی Public مقصد | چک‌پوینت R273، فاقد readback میدانی معتبر | **OPEN / NO-GO** | از `health ready` نمی‌توان صفر بودن سفارش‌های باز یا امکان restore را نتیجه گرفت |
+| منفی‌ها/قطع و ادامهٔ واقعی/مرورگر و QR | ماتریس ۱۶ سناریوی R272 (MIG-020) | **OPEN / NO-GO** | نتیجهٔ happy-path جای آزمون‌های منفی را نمی‌گیرد |
+
+**خروجی تصمیم:** الزامات MIG-019 و MIG-020 همچنان ACTIVE و گیت انتشار عملیاتی **BLOCKED** است. به‌روزرسانی Public روی هاست کافه، انتقال URL، تغییر SQL/epoch، Clean Install و تغییر CURRENT/main انجام نشده و نباید از نتایج CI استنتاج شود. آدرس‌های نمونه و نسخه‌های سکنا صرفاً fixture هستند؛ موتور همچنان یونیورسال باقی می‌ماند. برای جزئیات جاری: `r273/START-HERE-FA.md`.
