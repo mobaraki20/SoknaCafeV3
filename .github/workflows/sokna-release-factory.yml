@@ -3,11 +3,54 @@ name: SOKNA Unified Release Factory - QA ONLY / NO DEPLOY
 on:
   workflow_dispatch:
     inputs:
-      checkpoint:
-        description: 'Exact approved SOURCE checkpoint (R233 historical QA only until latest-source builders are qualified)'
-        type: string
+      track:
+        description: 'historical-r233 or registered-candidate or legacy-public-35ic'
+        type: choice
+        options: [historical-r233, legacy-public-35ic, registered-candidate]
+        default: historical-r233
         required: true
+      checkpoint:
+        description: 'Exact R233 checkpoint for historical QA track only'
+        type: string
+        required: false
         default: R233-20261115
+      candidate_contract_path:
+        description: 'Registered version-controlled candidate manifest path for the new candidate track'
+        type: string
+        required: false
+        default: ''
+      candidate_run_id:
+        description: 'Producer Actions run containing original ZIPs'
+        type: string
+        required: false
+        default: ''
+      candidate_artifact:
+        description: 'Exact producer artifact; no rebuild permitted'
+        type: string
+        required: false
+        default: ''
+  workflow_call:
+    inputs:
+      track:
+        type: string
+        required: false
+        default: registered-candidate
+      checkpoint:
+        type: string
+        required: false
+        default: R233-20261115
+      candidate_contract_path:
+        type: string
+        required: false
+        default: ''
+      candidate_run_id:
+        type: string
+        required: false
+        default: ''
+      candidate_artifact:
+        type: string
+        required: false
+        default: ''
   pull_request:
     paths:
       - '.github/workflows/sokna-release-factory.yml'
@@ -25,6 +68,7 @@ concurrency:
 
 jobs:
   source-local:
+    if: ${{ inputs.track == '' || inputs.track == null || inputs.track == 'historical-r233' }}
     name: Immutable Local source + MariaDB source lineage + module coverage
     uses: ./.github/workflows/sokna-release-source-intake.yml
     with:
@@ -36,6 +80,7 @@ jobs:
       actions: read
 
   source-public:
+    if: ${{ inputs.track == '' || inputs.track == null || inputs.track == 'historical-r233' }}
     name: Immutable Public source + MariaDB source lineage + module coverage
     uses: ./.github/workflows/sokna-release-source-intake.yml
     with:
@@ -47,6 +92,7 @@ jobs:
       actions: read
 
   local-public-native-qa:
+    if: ${{ inputs.track == '' || inputs.track == null || inputs.track == 'historical-r233' }}
     name: Temporary actual-format Local/Public builders + Windows + MariaDB + dual Public routes
     uses: ./.github/workflows/sokna-r233-release-qa-rehearsal.yml
     permissions:
@@ -54,7 +100,7 @@ jobs:
       actions: read
 
   final-decision:
-    if: always()
+    if: ${{ always() && (inputs.track == '' || inputs.track == null || inputs.track == 'historical-r233') }}
     needs: [source-local, source-public, local-public-native-qa]
     name: ONE release-readiness decision and exact QA checksums; operational install stays blocked
     runs-on: ubuntu-24.04
@@ -113,5 +159,108 @@ jobs:
         with:
           name: SOKNA-UNIFIED-RELEASE-READINESS-REPORT-ONLY
           path: final-proof/release-readiness.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  registered-candidate-gate:
+    if: ${{ inputs.track == 'legacy-public-35ic' || inputs.track == 'registered-candidate' }}
+    name: ONE shared gate for new Public/Local candidate ZIPs and the R265/R266 old Emergency exception
+    uses: ./.github/workflows/sokna-release-candidate-gate.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      contract_path: ${{ inputs.track == 'legacy-public-35ic' && 'release-ops/external-public-r268-provenance.json' || inputs.candidate_contract_path }}
+      producer_run_id: ${{ inputs.track == 'legacy-public-35ic' && '44025587468' || inputs.candidate_run_id }}
+      producer_artifact: ${{ inputs.track == 'legacy-public-35ic' && 'R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY' || inputs.candidate_artifact }}
+
+  candidate-final-decision:
+    if: ${{ always() && (inputs.track == 'legacy-public-35ic' || inputs.track == 'registered-candidate') }}
+    needs: [registered-candidate-gate]
+    name: One final factory receipt - original producer vs validated same ZIP; operator BLOCKED
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write fail-closed initial decision even when producer receipt is missing
+        shell: bash
+        env:
+          GATE_RESULT: ${{ needs.registered-candidate-gate.result }}
+          TRACK: ${{ inputs.track }}
+        run: |
+          mkdir -p final-proof
+          python3 - <<'PY'
+          import json,os
+          out={'schema':'sokna-unified-factory-candidate-final-v1',
+               'track':os.environ['TRACK'],
+               'factory_gate_run_id':os.environ['GITHUB_RUN_ID'],
+               'factory_gate_status':os.environ['GATE_RESULT'],
+               'factory_validated_same_zip':False,
+               'built_inside_factory':False,
+               'production_authorized':False,
+               'operator_package_created':False,
+               'status':'BLOCKED_MISSING_CANDIDATE_QA_OR_HOST_PROOF'}
+          open('final-proof/release-decision.json','w').write(json.dumps(out,indent=2)+'\n')
+          PY
+      - name: Retrieve SAME-RUN shared candidate receipt
+        if: ${{ needs.registered-candidate-gate.result == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FACTORY-SHARED-CANDIDATE-RECEIPT-ONLY
+          path: candidate-proof
+      - name: Validate exact gate-run receipt, producer identity and keep operator BLOCKED
+        if: ${{ needs.registered-candidate-gate.result == 'success' }}
+        shell: bash
+        env:
+          TRACK: ${{ inputs.track }}
+          EXPECTED_PRODUCER: ${{ inputs.track == 'legacy-public-35ic' && '44025587468' || inputs.candidate_run_id }}
+          EXPECTED_ARTIFACT: ${{ inputs.track == 'legacy-public-35ic' && 'R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY' || inputs.candidate_artifact }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          d=json.load(open('candidate-proof/receipt.json'))
+          assert d['factory_gate_used'] is True
+          assert d['factory_validated_exact_bytes'] is True
+          assert d['producer_run_id']==os.environ['EXPECTED_PRODUCER']
+          assert d['producer_artifact']==os.environ['EXPECTED_ARTIFACT']
+          assert str(d['factory_gate_run_id'])==str(os.environ['GITHUB_RUN_ID'])
+          assert len(d['candidate_zip_sha256'])>=1
+          assert d['production_authorized'] is False and d['operator_release_authorized'] is False
+          status='QA_EXACT_ZIPS_VERIFIED_IN_UNIFIED_FACTORY__OPERATOR_BLOCKED'
+          final={'schema':'sokna-unified-factory-candidate-final-v1',
+                 'track':os.environ['TRACK'],
+                 'producer_run_id':d['producer_run_id'],
+                 'factory_gate_run_id':d['factory_gate_run_id'],
+                 'factory_gate_used':True,
+                 'factory_validated_same_zip':True,
+                 'built_inside_factory':d['built_inside_factory'],
+                 'candidate_zip_sha256':d['candidate_zip_sha256'],
+                 'database_migration_path':d['database_migration_path'],
+                 'source_approved':d['source_approved'],
+                 'field_host_activation':d['field_host_activation'],
+                 'field_host_backup_restore':d['field_host_backup_restore'],
+                 'production_authorized':False,
+                 'operator_package_created':False,
+                 'status':status}
+          with open('final-proof/release-decision.json','w') as f:
+              json.dump(final,f,ensure_ascii=False,sort_keys=True,indent=2)
+              f.write('\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('### SOKNA Unified Factory: candidate '+os.environ['TRACK']+'\n')
+              f.write('**FACTORY GATE USED: YES — ORIGINAL ZIP BYTES VERIFIED**\n\n')
+              f.write('**BUILT INSIDE FACTORY:** '+('YES' if final['built_inside_factory'] else 'NO - external producer')+'\n\n')
+              f.write('**Producer run:** '+d['producer_run_id']+'; **Factory run:** '+d['factory_gate_run_id']+'\n\n')
+              for digest in final['candidate_zip_sha256']:
+                  f.write('- Original ZIP SHA256: '+digest+'\n')
+              f.write('\n**Production:** BLOCKED. Source authority/real host backup & install not proven.\n')
+          print(status)
+          PY
+      - name: Upload final decision only; never install ZIP or mutate host
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-UNIFIED-FACTORY-CANDIDATE-DECISION-ONLY
+          path: final-proof/release-decision.json
           if-no-files-found: ignore
           retention-days: 90
