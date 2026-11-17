@@ -119,7 +119,10 @@ try:
     r273Package=R/'SOKNA-R273-PUBLIC-35IH-OWNER-TRANSFER-CODE-ONLY-QA-DO-NOT-INSTALL.zip'
     assert hashlib.sha256(r273Package.read_bytes()).hexdigest()=='d137b255fa51d401525ab3de5ec92d20d17a61311b35099a58647c754297ee37'
     b=post('stage',pkg=r273Package);assertmsg(b,'بسته با موفقیت اعتبارسنجی')
-    b=post('activate',{'confirmation':'activate'});assertmsg(b,'فایل‌ها فعال شدند')
+    b=post('activate',{'confirmation':'activate'})
+    if (root/'VERSION.txt').read_text().strip()!='3.0.0-g3.6-workspace.35ih-r273-existing-public-owner-safe-move':
+        raise RuntimeError('R273_ACTIVATE_DID_NOT_WRITE_TARGET '+repr(re.findall(r'<div[^>]*class="(?:error|notice)"[^>]*>.*?</div>',b,re.S)[:5]))
+    print('R273_ACTIVATE_VERSION_READBACK_PASS')
     b=post('commit',{'confirmation':'commit'})
     import html as _html
     print('R273_COMMIT_ALERTS',[re.sub('<[^>]+>',' ',_html.unescape(t))[:800] for t in re.findall(r'<div[^>]*class="(?:error|notice|warning)"[^>]*>.*?</div>',b,re.S)][:5])
