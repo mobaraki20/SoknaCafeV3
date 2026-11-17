@@ -1,0 +1,31 @@
+--- a/src/Security/PublicMoveReplacementGate.php
++++ b/src/Security/PublicMoveReplacementGate.php
+@@ -24,6 +24,28 @@
+             $count=$this->pdo->query('SELECT COUNT(*) FROM '.$table)->fetchColumn();
+             if($count===false || (int)$count!==0) {
+                 throw new RuntimeException('destination_not_empty');
++            }
++        }
++    }
++
++
++    /**
++     * A previously paired destination need not have an empty database, but it
++     * MUST NOT have guest commands awaiting Local delivery or review. Neither
++     * migration count nor Health can substitute for this order-intake check.
++     * Called with the installation row locked by the owner-authority offer.
++     */
++    public function requireNoUnresolvedGuestWork(string $installationId): void
++    {
++        $checks = [
++            "SELECT COUNT(*) FROM realtime_requests WHERE installation_id=? AND state IN ('queued','claimed','unknown_review')",
++            "SELECT COUNT(*) FROM deferred_work WHERE installation_id=? AND state IN ('pending_sync','needs_review')",
++        ];
++        foreach ($checks as $sql) {
++            $stmt=$this->pdo->prepare($sql);
++            $stmt->execute([$installationId]);
++            if ((int)$stmt->fetchColumn()!==0) {
++                throw new RuntimeException('destination_pending_guest_work');
+             }
+         }
+     }
