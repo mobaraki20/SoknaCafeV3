@@ -379,7 +379,7 @@ function renderAccountItemEditor(){
  body.querySelectorAll('[data-modal-adjust-reason]').forEach(b=>b.addEventListener('click',()=>{accountAdjustmentReasons.set(id,String(b.dataset.modalAdjustReason||'customer'));if(String(b.dataset.modalAdjustReason||'')!=='other')accountAdjustmentNotes.delete(id);renderAccountItemEditor()}));body.querySelector('[data-modal-adjust-note]')?.addEventListener('input',e=>{e.target.value=human(e.target.value);accountAdjustmentNotes.set(id,e.target.value)});
 }
 function openAccountItemEditor(id){const group=accountEditorGroup(id);if(!group)return;const line=group.anchor,preferredMode=String(line.fulfillment_mode||'dine_in')==='takeaway'?'takeaway':'dine_in';accountEditingItemId=Number(id);accountAdjustmentDrafts.set(id,Number(group.total||0));accountServiceDistributionDrafts.set(id,reconcileServiceDistribution(group.distribution,group.total,preferredMode));accountItemNoteDrafts.set(id,human(group.note));accountEditFeedback=null;renderAccountItemEditor();const d=root.querySelector('[data-account-item-edit-dialog]');if(!window.SoknaUI?.showDialog?.(d,{focusTitle:true}))d?.showModal?.()}
-function accountRound(r,index,total){const latest=index===total-1,items=Array.isArray(r.items)?r.items:[],state=roundState(r.status),time=L.time(r.created_at),registered=String(r.status||'accounted')==='accounted'?'ثبت‌شده':state,canCancel=canSupervise&&mutationsAllowed()&&String(r.status)==='accounted'&&String(r.order_source)==='staff'&&String(r.accounting_origin||'regular')!=='late_served',orderId=Number(r.order_id||0);return `<section class="sc-hall-order-round${latest?' is-latest':''}" data-order-round="${orderId}" data-round-state="${esc(String(r.status||'accounted'))}"><header class="sc-hall-round-divider${canCancel?' has-actions':''}"><span aria-hidden="true"></span><strong>نوبت ${L.integer(r.round_index||index+1)}</strong><small>${esc(registered)} · ${esc(time)}</small>${canCancel?`<button class="sc-hall-round-more" type="button" data-round-actions-toggle="${orderId}" aria-controls="sc-round-actions-${orderId}" aria-expanded="false" aria-label="گزینه‌های بیشتر نوبت ${L.integer(r.round_index||index+1)}" title="گزینه‌های بیشتر">⋯</button>`:''}<span aria-hidden="true"></span></header>${canCancel?`<div class="sc-hall-round-actions" id="sc-round-actions-${orderId}" data-round-actions-menu hidden><button class="sc-button sc-button--secondary" type="button" data-order-cancel-unsettled="${orderId}" title="فقط بدون تسویه و دریافت آماده‌سازی">لغو کل این سفارش</button>${canCashier?`<button class="sc-button sc-button--secondary" type="button" data-order-cancel-refunded="${orderId}" title="فقط پس از ثبت سند R و بازپرداخت واقعی نقد؛ رسید تک‌سفارشی و آماده‌سازی دریافت‌نشده">لغو پس از برگشت وجه نقد</button>`:''}</div>`:''}${r.customer_note?`<div class="sc-hall-round-note">${esc(r.customer_note)}</div>`:''}<div class="sc-hall-round-lines">${items.map(l=>accountLine(l,canOrder&&featureCommittedAdjust&&mutationsAllowed()&&String(r.status||'accounted')==='accounted'&&String(r.accounting_origin||'regular')!=='late_served')).join('')}</div></section>`}
+function accountRound(r,index,total){const latest=index===total-1,items=Array.isArray(r.items)?r.items:[],state=roundState(r.status),time=L.time(r.created_at),registered=String(r.status||'accounted')==='accounted'?'ثبت‌شده':state,canCancel=canSupervise&&mutationsAllowed()&&String(r.status)==='accounted'&&String(r.order_source)==='staff'&&String(r.accounting_origin||'regular')!=='late_served',orderId=Number(r.order_id||0);return `<section class="sc-hall-order-round${latest?' is-latest':''}" data-order-round="${orderId}" data-round-state="${esc(String(r.status||'accounted'))}"><header class="sc-hall-round-divider${canCancel?' has-actions':''}"><span aria-hidden="true"></span><strong>نوبت ${L.integer(r.round_index||index+1)}</strong><small>${esc(registered)} · ${esc(time)}</small>${canCancel?`<button class="sc-hall-round-more" type="button" data-round-actions-toggle="${orderId}" aria-controls="sc-round-actions-${orderId}" aria-expanded="false" aria-label="گزینه‌های بیشتر نوبت ${L.integer(r.round_index||index+1)}" title="گزینه‌های بیشتر">⋯</button>`:''}<span aria-hidden="true"></span></header>${canCancel?`<div class="sc-hall-round-actions" id="sc-round-actions-${orderId}" data-round-actions-menu hidden><button class="sc-button sc-button--secondary" type="button" data-order-cancel-unsettled="${orderId}" title="لغو با تأیید مسئول شیفت؛ سوابق مالی و آماده‌سازی حفظ می‌شود">لغو کل این سفارش</button>${canCashier?`<button class="sc-button sc-button--secondary" type="button" data-order-cancel-refunded="${orderId}" title="فقط پس از ثبت سند R و بازپرداخت واقعی نقد؛ رسید تک‌سفارشی و آماده‌سازی دریافت‌نشده">لغو پس از برگشت وجه نقد</button>`:''}</div>`:''}${r.customer_note?`<div class="sc-hall-round-note">${esc(r.customer_note)}</div>`:''}<div class="sc-hall-round-lines">${items.map(l=>accountLine(l,canOrder&&featureCommittedAdjust&&mutationsAllowed()&&String(r.status||'accounted')==='accounted'&&String(r.accounting_origin||'regular')!=='late_served')).join('')}</div></section>`}
 function pendingAccountSummary(){
  const pending=Array.isArray(account?.pending_orders)?account.pending_orders:[];if(!pending.length)return '';
  const sum=pending.reduce((n,o)=>n+Number(o.total_amount||0),0);
@@ -420,6 +420,33 @@ function openAccountPriceChanges(){
 
 function accountNotices(){const html=accountPriceChangeSummary();return html?`<div class="sc-hall-account-notices">${html}</div>`:''}
 
+/**
+ * Operator decision is not a kitchen acknowledgement. No response from the
+ * kitchen is necessary; the accountable shift supervisor states the risk.
+ * The backend records an audit and a non-blocking pending prep follow-up.
+ */
+function operatorPreparationDispositionDialog(){
+ const dialog=document.createElement('dialog');dialog.className='sc-price-review-dialog sc-preparation-decision-dialog';
+ dialog.setAttribute('aria-label','تصمیم مسئول شیفت برای سفارش و آماده‌سازی');
+ dialog.innerHTML=`<form method="dialog" data-prep-responsibility-form><div class="sc-price-review-head"><strong>تصمیم مسئول شیفت درباره آماده‌سازی</strong><button class="sc-icon-button" type="button" data-prep-cancel aria-label="بستن">×</button></div><p class="sc-price-review-note">لازم نیست آشپزخانه در همین لحظه پاسخ بدهد. این انتخاب فقط گزارش و پذیرش مسئولیت شماست، نه تأیید دریافت توسط آشپزخانه. اگر سفارش قبلاً چاپ یا اعلام شده باشد، اصلاحیه برای پیگیری در بخش آماده‌سازی باقی می‌ماند.</p><fieldset class="sc-account-item-editor__section" style="display:grid;gap:10px"><legend>اطلاعاتی که مسئول شیفت دارد</legend><label><input type="radio" name="disposition" value="not_received" required> سفارش به آماده‌سازی نرسیده است (به تشخیص من)</label><label><input type="radio" name="disposition" value="received_or_preparing"> به آماده‌سازی رسیده یا ممکن است کارش شروع شده باشد</label><label><input type="radio" name="disposition" value="unknown"> پاسخ در دسترس نیست / وضعیت دریافت نامشخص است</label></fieldset><label class="sc-price-review-note" style="display:flex;gap:9px;align-items:flex-start"><input type="checkbox" name="responsibility" required><span>با توجه به وضعیت انتخاب‌شده، مسئولیت تصمیم، اطلاع‌رسانی و پیگیری لغو با من است. این گزینه هیچ وجهی را برنمی‌گرداند و تأیید آماده‌سازی محسوب نمی‌شود.</span></label><div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="sc-button sc-button--secondary" type="button" data-prep-cancel>انصراف</button><button class="sc-button" type="submit">ثبت تصمیم و ادامه</button></div></form>`;
+ document.body.append(dialog);
+ return new Promise(resolve=>{
+  let settled=false;
+  const done=result=>{if(settled)return;settled=true;if(dialog.open)dialog.close();dialog.remove();resolve(result)};
+  dialog.querySelectorAll('[data-prep-cancel]').forEach(b=>b.addEventListener('click',()=>done(null)));
+  dialog.addEventListener('cancel',event=>{event.preventDefault();done(null)});
+  dialog.addEventListener('close',()=>done(null));
+  dialog.querySelector('[data-prep-responsibility-form]').addEventListener('submit',event=>{
+   event.preventDefault();
+   const status=dialog.querySelector('input[name="disposition"]:checked')?.value;
+   const accepted=dialog.querySelector('input[name="responsibility"]')?.checked===true;
+   if(!accepted||!['not_received','received_or_preparing','unknown'].includes(String(status||'')))return;
+   done({operator_preparation_disposition:status,operator_accepts_preparation_responsibility:true});
+  });
+  if(!window.SoknaUI?.showDialog?.(dialog,{focusTitle:true}))dialog.showModal();
+ });
+}
+
 // Deliberately no automatic retry after uncertain POST. A readback cannot prove
 // a new financial mutation is safe; the operator must review the order first.
 async function cancelWholeUnsettledOrder(button){
@@ -428,18 +455,13 @@ async function cancelWholeUnsettledOrder(button){
  const reason=await SoknaUI.prompt('لغو کامل سفارش',{label:'دلیل لغو (الزامی)',placeholder:'مثلاً سفارش اشتباه ثبت شده است'});
  if(reason===null)return;
  const note=String(reason||'').trim();if(!note){toast('دلیل لغو را وارد کنید.','warning','لغو سفارش');return;}
- const ok=await SoknaUI.confirm('تأیید لغو کامل',`سفارش ${L.integer(round.order_number||orderId)} با ${L.integer(round.items?.length||0)} قلم لغو شود؟ فقط اگر حساب تسویه نشده و آماده‌سازی سفارش را دریافت نکرده باشد، عملیات انجام می‌شود.`);
+ const ok=await SoknaUI.confirm('تأیید لغو کامل',`سفارش ${L.integer(round.order_number||orderId)} با ${L.integer(round.items?.length||0)} قلم لغو شود؟ سوابق مالی تغییر نمی‌کند و مسئولیت پیگیری آماده‌سازی با مسئول شیفت است.`);
  if(!ok)return;
- let preparationNeverDispatchedConfirmed=false;
- if(printQuickPreferences.preparation===false){
-  const confirmed=await SoknaUI.confirm('تأیید عدم ارسال به آماده‌سازی',
-   'چاپ خودکار فیش آماده‌سازی خاموش است. تأیید می‌کنم این نوبت سفارش هیچ‌وقت به‌صورت دستی چاپ نشده و به بار یا آشپزخانه اعلام نشده است. اگر فیش چاپ شده یا اطلاع داده‌اید، این مسیر لغو مجاز نیست.');
-  if(!confirmed)return;
-  preparationNeverDispatchedConfirmed=true;
- }
+ const preparationDecision=await operatorPreparationDispositionDialog();
+ if(!preparationDecision)return;
  const sessionBefore=Number(account?.table?.session_id||0),tableBefore=Number(account?.table?.id||0),requestId=clientRequestId('whole-cancel');
  try{
-  const result=await mutate({action:'order_cancel_unsettled',order_id:orderId,request_id:requestId,reason:note,preparation_never_dispatched_confirmed:preparationNeverDispatchedConfirmed});
+  const result=await mutate({action:'order_cancel_unsettled',order_id:orderId,request_id:requestId,reason:note,...preparationDecision});
   if(!result.success||result.status!=='cancelled')throw new Error('پاسخ لغو سفارش معتبر نیست. وضعیت حساب را بازبینی کنید.');
   await load();toast('لغو کل سفارش ثبت شد؛ سوابق و اصلاحیه‌ها حفظ شدند.','success','لغو سفارش');
  }catch(e){
@@ -466,13 +488,14 @@ async function cancelRefundedCashOrder(button){
  if(rawReason===null)return;
  const reason=String(rawReason||'').trim();if(!reason){toast('دلیل لغو را وارد کنید.','warning','لغو سفارش');return;}
  const confirm=await SoknaUI.confirm('تأیید برگشت واقعی وجه نقد',
-  'من تأیید می‌کنم وجه نقد این رسید عملاً به مشتری بازگردانده شده و سند برگشت در حسابداری ثبت شده است. فقط رسید نقدی کاملِ متعلق به همین یک سفارش، بدون تخفیف و مالیات و بدون دریافت آماده‌سازی قابل لغو است. این دکمه هیچ وجهی را بازپرداخت نمی‌کند.');
+  'من تأیید می‌کنم وجه نقد این رسید عملاً به مشتری بازگردانده شده و سند برگشت در حسابداری ثبت شده است. فقط رسید نقدی کاملِ متعلق به همین یک سفارش، بدون تخفیف و مالیات، قابل لغو است. مسئولیت اطلاع‌رسانی به آماده‌سازی جداگانه ثبت می‌شود. این دکمه هیچ وجهی را بازپرداخت نمی‌کند.');
  if(!confirm)return;
+ const preparationDecision=await operatorPreparationDispositionDialog();if(!preparationDecision)return;
  const sessionBefore=Number(account?.table?.session_id||0),tableBefore=Number(account?.table?.id||0);
  const requestId=clientRequestId('refunded-cash-cancel');
  try{
   const result=await mutate({action:'order_cancel_refunded_cash',order_id:orderId,request_id:requestId,reason,
-   refund_document_number:refundNumber,cash_refund_physically_confirmed:true});
+   refund_document_number:refundNumber,cash_refund_physically_confirmed:true,...preparationDecision});
   if(!result.success||result.status!=='cancelled')throw new Error('نتیجه لغو معتبر نیست؛ سوابق را بازبینی کنید.');
   await load();toast('سفارش پس از برگشت نقدی تأییدشده لغو شد؛ اسناد I و R حفظ شدند.','success','لغو سفارش');
  }catch(e){
