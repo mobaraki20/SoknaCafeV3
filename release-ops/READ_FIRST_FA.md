@@ -138,3 +138,12 @@ python3 release-ops/source_gate.py --source /path/to/EXACT-SOURCE.zip --componen
 
 
 - **کنترل ضد جاافتادگی معماری:** قبل از بسته‌سازی، `module_coverage_gate.py` پوشه‌های واقعی Local/Public را با `module-coverage-map.json` تطبیق می‌دهد. ثبت مالک برای ۲۴ دامنهٔ کسب‌وکار Local، ۹ ماژول زیرساخت Local و ۲۰ ماژول Public الزامی است. این بررسی `PASS_INVENTORY_ONLY` است، نه آزمون عملکرد. ماژول تازه/حذف‌شده تا بازبینی خطر اجازه عبور ندارد.
+
+
+## ۱۴. اجرای واحد کارخانه QA انتشار — بدون انتشار عملیاتی
+
+برای کنترل منسجم هر دو مؤلفه، [Workflow مشترک](../.github/workflows/sokna-release-factory.yml) را اجرا کن. مرحله اول Local/Public Source Intake و تطبیق SHA با Workspace است؛ مرحله دوم ساخت بسته‌های موقت QA با ابزارهای موجود و Windows/MariaDB/Public dual-route است؛ مرحله سوم `factory_decision.py` شواهد **همان اجرای واحد** را تطبیق می‌دهد و فقط گزارش ماشین‌خوان `SOKNA-UNIFIED-RELEASE-READINESS-REPORT-ONLY` را می‌فرستد.
+
+- [راهنمای عملیاتی](UNIFIED_FACTORY_RUNBOOK_20261117_FA.md). اجرای موجود فقط روی سورس تاریخی **R233** صلاحیت QA دارد؛ سورس جدیدتر باید از ابتدا با SHA و سازنده و آزمونِ همان خروجی تأیید شود.
+- نتیجه `QA_PASS_EXTERNAL_HOST_ACCEPTANCE_BLOCKED` **اجازه نصب نیست**. حتی با سبزبودن همه CI، آخرین Workspace و REG-003 و داده واقعی/بکاپ و Windows Maintenance و Public Host و Print Agent نیازمند شاهد مستقل‌اند.
+- هیچ Workflow اجازه تغییر host/DB/service یا انتشار GitHub Release عملیاتی ندارد. برای نسخه‌های آینده این کنترل‌ها را استفاده مجدد کن؛ سازنده موردی جدید یا دستکاری ناشناس سورس ممنوع.
