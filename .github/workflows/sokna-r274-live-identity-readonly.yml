@@ -1,0 +1,25 @@
+name: SOKNA R274 Historical Public Pairing Identity GET Only
+on:
+  push:
+    branches: [qa/sokna-r274-cafe-cutover-resume-20261117]
+    paths:
+      - 'r274/tests/live_identity_continuity_get.py'
+      - '.github/workflows/sokna-r274-live-identity-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  paired-public-historical-continuity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check only public setup status against historical support-derived hash
+        run: python3 r274/tests/live_identity_continuity_get.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R274-HISTORICAL-IDENTITY-GET-ONLY-NOT-INSTALL-AUTHORIZATION
+          path: r274-readonly-identity-continuity.json
+          retention-days: 7
+          if-no-files-found: warn
