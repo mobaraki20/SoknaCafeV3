@@ -149,7 +149,10 @@ jobs:
             exit 1
           }
           grep -q 'R273_REAL_EXISTING_PAIRED_MOVE_HTTP_OWNERS_DB' "$RUNNER_TEMP/r273/real-e2e.log"
-          echo R273_HTTPS_OWNER_LOCAL_TWO_PHASE_FULL_SYNC_PASS
+          php -l r273/tests/r274_lost_reply_resume.php
+          php r273/tests/r274_lost_reply_resume.php | tee "$RUNNER_TEMP/r273/lost-reply-resume.log"
+          grep -q 'R274_LOST_REPLY_RESUME_STATUS_SAFE_PASS' "$RUNNER_TEMP/r273/lost-reply-resume.log"
+          echo R274_HTTPS_OWNER_LOCAL_TWO_PHASE_FULL_SYNC_AND_SAFE_RESUME_PASS
       - uses: actions/upload-artifact@v4
         if: success() && matrix.public_base_path == '/new-public'
         with:
