@@ -11,6 +11,7 @@ foreach([
  '/Domain/Preparation/PreparationService.php',
  '/Domain/Printing/PrintService.php',
  '/Domain/Orders/OrderStaffActionService.php',
+ '/Domain/Orders/BusinessClock.php',
 ] as $f)require_once $root.$f;
 use Sokna\Local\Core\IdentityRepository;
 use Sokna\Local\Core\Capabilities;
@@ -19,6 +20,8 @@ use Sokna\Local\Domain\Printing\PrintService;
 use Sokna\Local\Domain\Preparation\PreparationService;
 use Sokna\Local\Domain\Orders\OrderStaffActionService;
 use Sokna\Local\Domain\Orders\OrderStaffActionException;
+use Sokna\Local\Domain\Orders\BusinessClock;
+use Sokna\Local\Domain\Preparation\PreparationAccessService;
 $host=getenv('SOKNA_QA_DB_HOST')?:'127.0.0.1';$name=getenv('SOKNA_QA_DB_NAME')?:'';
 if($name!=='sokna_qa_fin_cancel')throw new RuntimeException('wrong DB target');
 $pdo=new PDO("mysql:host=$host;port=3306;dbname=$name;charset=utf8mb4",getenv('SOKNA_QA_DB_USER')?:'root',getenv('SOKNA_QA_DB_PASSWORD')?:'',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);
@@ -43,6 +46,8 @@ $ddl=[
  'CREATE TABLE order_status_history(order_id BIGINT,from_status VARCHAR(30),to_status VARCHAR(30),actor_user_id BIGINT) ENGINE=InnoDB',
  'CREATE TABLE audit_log(id BIGINT PRIMARY KEY AUTO_INCREMENT,actor_user_id BIGINT,actor_display_name_snapshot VARCHAR(100),action VARCHAR(100),entity_type VARCHAR(50),entity_id VARCHAR(100),details_json JSON) ENGINE=InnoDB'
 ];foreach($ddl as $sql)$exec($sql);
+$exec("ALTER TABLE order_item_adjustments ADD CONSTRAINT r270_inventory_effect CHECK (inventory_effect IN ('none','consume_delta','reverse_unprepared','preserve_consumption_after_claim'))");
+$exec("ALTER TABLE order_item_adjustments ADD CONSTRAINT r270_ack_status CHECK (preparation_ack_status IN ('not_required','pending','acknowledged'))");
 $exec('INSERT INTO cafe_tables VALUES (7),(8),(9),(10),(11)');
 $exec("INSERT INTO table_sessions(id,table_id,status,live_table_guard) VALUES (70,7,'active',7),(80,8,'active',8),(90,9,'active',9),(100,10,'active',10),(110,11,'active',11)");
 $exec("INSERT INTO orders VALUES (101,7,70,'accounted','staff','regular',550000,NULL),(201,8,80,'accounted','staff','regular',40000,NULL),(301,9,90,'accounted','staff','regular',40000,NULL),(401,10,100,'accounted','staff','regular',40000,NULL),(501,11,110,'accounted','staff','regular',40000,NULL)");
@@ -114,4 +119,24 @@ $assert($notReceived['success']===true,'not-received decision accepted by superv
 $assert((int)$pdo->query("SELECT inventory_quantity_delta FROM order_item_adjustments WHERE order_id=401 ORDER BY id DESC LIMIT 1")->fetchColumn()===-1,'not received correctly returns unprepared consumption');
 $assert((int)$pdo->query("SELECT COUNT(*) FROM audit_log WHERE action='order.cancelled_unsettled_staff' AND JSON_UNQUOTE(JSON_EXTRACT(details_json,'$.operator_preparation_disposition'))='unknown'")->fetchColumn()>=1,'audit contains operator status without forging chef ACK');
 $assert((int)$pdo->query('SELECT COUNT(*) FROM settlement_records WHERE session_id=70')->fetchColumn()===2,'receipt history unchanged by item adjustment and cancellation');
+// Real cancelled-order read model: late-opening kitchen must still SEE a pending
+// cancellation notice, but that later ACK is not a dependency for the cashier.
+$exec("ALTER TABLE cafe_tables ADD name VARCHAR(120) NULL");
+$exec("ALTER TABLE orders ADD business_date DATE NULL, ADD business_order_number INT NULL, ADD order_context VARCHAR(40) DEFAULT 'table_service', ADD created_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+$exec("ALTER TABLE order_preparation_claims ADD claimed_by_user_id INT NULL, ADD claimed_at DATETIME NULL");
+$exec("ALTER TABLE order_item_adjustments ADD created_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+$exec("CREATE TABLE staff_consumptions (order_id BIGINT,consumer_personnel_id BIGINT NULL,consumer_name_snapshot VARCHAR(120) NULL) ENGINE=InnoDB");
+$exec("CREATE TABLE users (id INT PRIMARY KEY,display_name VARCHAR(100)) ENGINE=InnoDB");
+$clock=new BusinessClock($pdo,'Asia/Tehran');$businessDate=$clock->assignment()['business_date'];
+$pdo->prepare('UPDATE orders SET business_date=?,business_order_number=id')->execute([$businessDate]);
+$exec("UPDATE cafe_tables SET name=CONCAT('Table ',id)");
+$prepAccess=(new ReflectionClass(PreparationAccessService::class))->newInstanceWithoutConstructor();
+$projection=(new PreparationService($pdo,$prepAccess,$clock))->publicProjection();
+$byId=[];foreach($projection['orders']??[] as $o)$byId[(int)$o['id']]=$o;
+$assert(isset($byId[301])&&(string)$byId[301]['status']==='cancelled','cancelled printed order visible to kitchen with pending updates');
+$areas=$byId[301]['areas']??[];$barRows=[];foreach($areas as $area)if(($area['area']??'')==='bar')$barRows=$area['adjustments'];
+$assert(count($barRows)===2,'cancelled printed order retains old and new correction notifications');
+$assert(!isset($byId[201]),'cancelled unprepared order without a kitchen notice hidden from queue');
+$assert(isset($byId[501])&&(string)$byId[501]['status']==='cancelled','claimed and cancelled order with pending correction remains visible');
+
 echo json_encode(['ok'=>true,'suite'=>'real action integration + operator responsibility','unpaid_corrected'=>true,'paid_still_locked'=>true,'idempotent'=>true,'unsent_manual_cancelled'=>true,'printed_pending_cancelled'=>true,'claimed_stale_cancelled'=>true,'unknown_stock_protected'=>true,'receipts_immutable'=>true],JSON_UNESCAPED_SLASHES)."\n";
