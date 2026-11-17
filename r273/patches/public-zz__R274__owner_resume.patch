@@ -1,0 +1,44 @@
+--- a/assets/sokna-public-move.js
++++ b/assets/sokna-public-move.js
+@@ -3,9 +3,9 @@
+ const base=String(root.dataset.publicBase||'').replace(/\/$/,'');
+ const el=selector=>root.querySelector(selector);
+ const status=(message,error=false)=>{const item=el('[data-status]');item.textContent=message;item.classList.toggle('error',error)};
+ const sections=(login,approve)=>{el('[data-login-section]').hidden=!login;el('[data-approve-section]').hidden=!approve;};
+-let challenge=null,returnOrigin='',upgradeCsrf='',minimumNextEpoch=0;
++let challenge=null,returnOrigin='',upgradeCsrf='',minimumNextEpoch=0,restoreAfterLocalApproval=false;
+ const canonical=value=>{try{return new URL(value).href.replace(/\/$/,'')}catch{return ''}};
+ function parseRequest(){
+  const hash=new URLSearchParams(location.hash.slice(1));
+  const encoded=hash.get('challenge')||'';
+@@ -13,8 +13,9 @@
+  const requestedEpoch=Number(hash.get('minimum_next_epoch')||0);
+  if(!Number.isSafeInteger(requestedEpoch)||requestedEpoch<2||requestedEpoch>2147483600)
+     throw Error('نسل اتصال مقصد معتبر نیست. بررسی را از Local دوباره آغاز کنید.');
+  minimumNextEpoch=requestedEpoch;
++ restoreAfterLocalApproval=hash.get('resume_after_local_confirmed')==='1';
+  if(encoded.length>2600||!/^[a-zA-Z0-9_-]{20,2600}$/.test(encoded))throw Error('درخواست انتقال معتبر نیست.');
+  let json='';
+  try{
+    const raw=atob(encoded.replace(/-/g,'+').replace(/_/g,'/'));
+@@ -65,9 +66,19 @@
+  const password=el('[data-password]').value;
+  if(!password)throw Error('رمز مدیریت را وارد کنید.');
+  await action('login',{password});
+  el('[data-password]').value='';
+- sections(false,true);status('ورود مدیر موفق بود. برای تأیید مقصد، دکمهٔ زیر را بزنید.');
++ if(restoreAfterLocalApproval){
++   // The owner already signed and Local independently approved the exact
++   // operation. Reopening a popup must NOT create a second consent receipt;
++   // the Local server first verifies the durable approval before responding.
++   sections(false,false);
++   status('ورود مدیر موفق بود؛ در حال بازیابی تأیید قبلی و مجوز انتقال…');
++   window.opener.postMessage({type:'sokna-public-move-owner-ready-v1',
++     operation_id:challenge.operation_id,target_base_url:base},returnOrigin);
++ }else{
++   sections(false,true);status('ورود مدیر موفق بود. برای تأیید مقصد، دکمهٔ زیر را بزنید.');
++ }
+ }));
+ el('[data-owner-approve]').addEventListener('click',e=>withBusy(e.currentTarget,async()=>{
+  const prep=await action('consent_prepare',{challenge});
+  const signed=await action('consent_sign',{challenge,csrf:prep.csrf});
