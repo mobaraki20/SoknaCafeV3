@@ -44,3 +44,16 @@ MIG-019 و MIG-020 در دفتر تصمیم دائمی R251/R272 باقی می�
 - **تکرار E2E**: [اجرای 44063392605](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44063392605) موفق؛ artifact همان دو ZIP با هش‌های ثابت است. آزمون UI واقعی مرورگر/داده زنده مقصد/restore قابل بازیابی و سناریوهای خطای MIG-020 در این سند تأیید نشده‌اند.
 - **کنترل منفی تازه در همان E2E**: [اجرای 44066078786](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44066078786) موفق شد؛ در مسیر HTTP واقعی درخواست بی‌نشست مالک و CSRF نامعتبر رد شدند (`R273_NEGATIVE_OWNER_ANONYMOUS_CSRF_DENIAL_PASS`). پس از آن، همان عملیات تا full Sync و readback موفق بود و دو هش ZIP ثابت ماندند. این فقط دو مورد از ماتریس منفی MIG-020 است؛ سایر موارد هنوز OPEN هستند.
 - **سیاست انتشار بدون تغییر**: `QA_PASS_PARTIAL — PRODUCTION_HOST_NOT_QUALIFIED`. بسته‌ها با نام `QA-DO-NOT-INSTALL` باقی می‌مانند؛ main و CURRENT و نصب کافه تغییر نکنند. علت NO-GO اکنون «نداشتن آزمون Emergency» نیست، بلکه **عدم احراز wrapper واقعی هاست، سفارش‌های باز/معلق، بکاپ/بازگردانی و پذیرش سناریوهای منفی در همان مسیر انتشار** است.
+
+## ادامهٔ تأیید R273 — آزمون‌های منفی و Public قدیمی (۱۷ نوامبر ۲۰۲۶)
+
+این ردیف‌ها **فقط شواهد اجرایی** هستند؛ متن و وضعیت تصمیم‌های MIG-019 و MIG-020 تغییری نکرده و مجوز انتشار داده نمی‌شود.
+
+| گیت جدید | سند اجرایی | نتیجه |
+|---|---|---|
+| درخواست‌های مهمانِ صف realtime و deferred باید انتقال Public موجود را مسدود کنند، بدون تغییر epoch یا intake | [44070273244](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44070273244) | QA PASS، هر دو حالت با MariaDB واقعی |
+| Public متصل به Local دیگر و درخواست منقضی باید رد شوند | [44070595593](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44070595593) | QA PASS، authority بدون تغییر |
+| نصب قدیمیِ بدون حساب مالک: preflight/upgrade مدیر دارای staff-session واقعی؛ رد درخواست ناشناس و CSRF نادرست، راه‌اندازی مالک و حفظ pairing | [44071059993](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44071059993) | QA PASS، سپس owner HTTP و Local full sync نیز PASS |
+| بایت‌های هر دو بسته بعد از افزودن تست‌ها ثابت باقی بمانند | [44071059993](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44071059993) | Local `a75471e7...` و Public `61899171...` بدون تغییر |
+
+**مانعهای باقیمانده و قطعی:** صحت قابل بازیابی پشتیبان live، هویت و وضعیت سفارش‌های live/Public مقصد، هش فایل حفاظت‌شدهٔ Emergency روی میزبان واقعی، آزمون مرورگر popup و قطع/ادامه و دوURL root/subfolder، یک سفارش مهمان واقعی پس از انتقال، QR، و پذیرش رسمی کارخانهٔ انتشار. `QA_PASS_PARTIAL — PRODUCTION_HOST_NOT_QUALIFIED` برقرار است. تست‌ها هیچ عملیات روی کافه یا تغییر `CURRENT/main` ایجاد نکردند.
