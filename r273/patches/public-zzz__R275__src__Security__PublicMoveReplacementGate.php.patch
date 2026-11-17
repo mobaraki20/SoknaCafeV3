@@ -1,6 +1,6 @@
 --- a/src/Security/PublicMoveReplacementGate.php
 +++ b/src/Security/PublicMoveReplacementGate.php
-@@ -49,6 +49,44 @@
+@@ -50,6 +50,39 @@
          }
      }
  
@@ -38,3 +38,5 @@
 +    }
 +
      public function activateAfterVerifiedSync(
+         Bootstrap $core,string $installationId,string $method,string $path,
+         string $timestamp,string $nonce,string $signature,string $rawBody
