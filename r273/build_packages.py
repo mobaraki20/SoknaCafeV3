@@ -3,8 +3,8 @@
 The resulting ZIPs are source-exact TEST CANDIDATES, NOT automatically Production Ready.
 """
 from pathlib import Path
-import hashlib,io,json,zipfile,copy
-R=Path('/mnt/data/sokna_r273'); OUT=R/'output';OUT.mkdir(exist_ok=True)
+import hashlib,io,json,zipfile,copy,os
+R=Path(os.environ.get('R273_EXTRACT_ROOT','/mnt/data/sokna_r273')); OUT=R/'output';OUT.mkdir(exist_ok=True)
 H=lambda b:hashlib.sha256(b).hexdigest()
 J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
 def tree(d):return H(''.join(n+'\0'+H(b)+'\n' for n,b in sorted(d.items())).encode())
@@ -18,7 +18,7 @@ def zip_d(d):
    z.writestr(i,b,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
  return buf.getvalue()
 # Local exact R262
-lb=Path('/mnt/data/extracted-SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip')
+lb=Path(os.environ.get('R273_LOCAL_BASE','/mnt/data/extracted-SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip'))
 assert H(lb.read_bytes())=='3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c'
 with zipfile.ZipFile(lb) as z:
  lm=json.loads(z.read('release-set.json'))
@@ -49,7 +49,7 @@ lmeta['for_install']=True;lmeta['production_pass']=True # CI/native-stage flags 
 lzip=zip_d({'release-set.json':J(lmeta),'artifacts/local/web.zip':linner})
 lname='SOKNA-R273-LOCAL-231FJ-EXISTING-PUBLIC-OWNER-TRANSFER-QA-DO-NOT-INSTALL.zip';(OUT/lname).write_bytes(lzip)
 # Public exact R266, code-only Emergency and Routine single package
-pb=Path('/mnt/data/r268/02-SOKNA-R266-PUBLIC-35IG-MIGRATION-UPDATE.zip')
+pb=Path(os.environ.get('R273_PUBLIC_BASE','/mnt/data/r268/02-SOKNA-R266-PUBLIC-35IG-MIGRATION-UPDATE.zip'))
 assert H(pb.read_bytes())=='b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35'
 with zipfile.ZipFile(pb) as z:
  pm=json.loads(z.read('manifest.json'));pd={n.removeprefix('payload/'):z.read(n) for n in z.namelist() if n.startswith('payload/') and not n.endswith('/')}
