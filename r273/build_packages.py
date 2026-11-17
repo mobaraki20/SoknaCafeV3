@@ -55,7 +55,7 @@ with zipfile.ZipFile(pb) as z:
  pm=json.loads(z.read('manifest.json'));pd={n.removeprefix('payload/'):z.read(n) for n in z.namelist() if n.startswith('payload/') and not n.endswith('/')}
 ps={p.relative_to(R/'public').as_posix():p.read_bytes() for p in (R/'public').rglob('*') if p.is_file()}
 assert set(pd)==set(ps) and len(ps)==244
-allowedPublic={'VERSION.txt','assets/sokna-public-move.js','src/Http/PublicHttpKernel.php','src/Authority/AuthorityEpochService.php','src/Realtime/RealtimeService.php','src/Security/PublicMoveReplacementGate.php'}
+allowedPublic={'VERSION.txt','assets/sokna-public-move.js','src/Http/PublicHttpKernel.php','src/Authority/AuthorityEpochService.php','src/Realtime/RealtimeService.php','src/Security/PublicMoveReplacementGate.php','src/Update/emergency-owner-v1.json'}
 changedPublic={n for n in ps if pd[n]!=ps[n]}
 assert changedPublic.issubset(allowedPublic),sorted(changedPublic-allowedPublic)
 assert all(pd[n]==ps[n] for n in ps if n.startswith('database/migrations/') or n in ('emergency.php','emergency-next.php','config.php','install.lock'))
@@ -64,6 +64,7 @@ pmanifest=copy.deepcopy(pm)
 pmanifest.update(version=verP,target_managed_tree_sha256=tree(ps))
 pmanifest['compatibility']['supported_baselines']=[{'version':pm['version'],'managed_tree_sha256':pm['target_managed_tree_sha256']}]
 pmanifest['provenance'].update(build='R273 exact R266 code-only owner-and-Local staged transfer; no SQL change',offline_qualified=False,host_operator_note='QA CANDIDATE; full HTTP/local Windows host acceptance required before cafe install',emergency_schema_migration_contract='code_only_source_exact_v1')
+assert json.loads(ps['src/Update/emergency-owner-v1.json'])['release_version']==verP, 'protected Emergency owner must match target Public version'
 pmanifest['files']=[{'path':n,'sha256':H(b),'size':len(b)} for n,b in sorted(ps.items())]
 pzip=zip_d({'manifest.json':J(pmanifest),**{'payload/'+n:b for n,b in ps.items()}})
 pname='SOKNA-R273-PUBLIC-35IH-OWNER-TRANSFER-CODE-ONLY-QA-DO-NOT-INSTALL.zip';(OUT/pname).write_bytes(pzip)
