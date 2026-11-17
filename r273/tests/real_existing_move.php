@@ -196,4 +196,42 @@ $check=new PDO('mysql:host=127.0.0.1;dbname='.(string)getenv('R273_PUBLIC_DB').'
 $q=$check->prepare('SELECT authority_epoch,authority_state,remote_enabled,order_intake_enabled FROM installations WHERE installation_id=?');$q->execute([$id]);$row=$q->fetch(PDO::FETCH_ASSOC);
 if($row['authority_state']!=='active'||(int)$row['order_intake_enabled']!==1||(int)$row['authority_epoch']!==$epoch)throw new RuntimeException('TARGET_ACTIVATION_NOT_VERIFIED '.json_encode($row));
 if($move->status()['active']??false)throw new RuntimeException('PENDING_LOCAL_OPERATION_NOT_CLEARED');
+// MIG-020: a ready flag is not enough. Submit an actual guest command via
+// the byte-pinned Public HTTP endpoint, consume it with the real Local relay,
+// and verify exactly one committed guest order despite a duplicate delivery.
+$connected=\Sokna\Local\Core\Bootstrap::fromArray($new);
+$guestPayload=[
+ 'installation_id'=>$id,
+ 'table_token'=>'r273-table-token-for-qa',
+ 'device_token'=>'r273-guest-device-00001',
+ 'client_token'=>'r273-guest-client-token-00000001',
+ 'items'=>[['id'=>$item,'quantity'=>1,'expected_price'=>150000]],
+];
+$guestJson=json_encode($guestPayload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+$guestContext=stream_context_create(['http'=>[
+ 'method'=>'POST',
+ 'header'=>"Content-Type: application/json\r\nAccept: application/json\r\n",
+ 'content'=>$guestJson,'timeout'=>12,'ignore_errors'=>true,
+]]);
+$beforeGuest=(int)$pdo->query("SELECT COUNT(*) FROM orders WHERE order_source='guest'")->fetchColumn();
+$rawGuest=@file_get_contents($base.'/api/guest/order',false,$guestContext);
+$guestReply=is_string($rawGuest)?json_decode($rawGuest,true):null;
+if(!is_array($guestReply)||($guestReply['success']??null)!==true){
+  throw new RuntimeException('R273_REAL_GUEST_HTTP_NOT_ACCEPTED '.json_encode($guestReply));
+}
+$guestAfter=$beforeGuest;
+for($guestAttempt=0;$guestAttempt<4;$guestAttempt++){
+  $connected->publicEdgeRelay()->syncRealtimeOnly(5,5);
+  $guestAfter=(int)$pdo->query("SELECT COUNT(*) FROM orders WHERE order_source='guest'")->fetchColumn();
+  if($guestAfter>$beforeGuest)break;
+}
+if($guestAfter!==$beforeGuest+1)
+  throw new RuntimeException('R273_GUEST_COMMAND_NOT_DELIVERED_ONCE before='.$beforeGuest.' after='.$guestAfter);
+$secondRaw=@file_get_contents($base.'/api/guest/order',false,$guestContext);
+$secondReply=is_string($secondRaw)?json_decode($secondRaw,true):null;
+$connected->publicEdgeRelay()->syncRealtimeOnly(5,5);
+$afterDuplicate=(int)$pdo->query("SELECT COUNT(*) FROM orders WHERE order_source='guest'")->fetchColumn();
+if($afterDuplicate!==$beforeGuest+1)
+  throw new RuntimeException('R273_DUPLICATE_GUEST_COMMAND_CREATED_SECOND_ORDER '.json_encode($secondReply));
+echo 'R273_REAL_POST_MOVE_GUEST_ORDER_ONCE_PASS'.PHP_EOL;
 echo json_encode(['ok'=>true,'test'=>'R273_REAL_EXISTING_PAIRED_MOVE_HTTP_OWNERS_DB','migrations_local'=>82,'migrations_public'=>11,'owner_http'=>true,'same_local_verified'=>true,'epoch'=>$epoch,'full_sync_before_cutover'=>true,'guest_intake_active'=>true],JSON_UNESCAPED_SLASHES)."\n";
