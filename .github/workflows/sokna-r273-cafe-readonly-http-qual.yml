@@ -1,0 +1,35 @@
+name: SOKNA R273 Cafe Public Host and Legacy QR READONLY Qualification
+on:
+  push:
+    branches: [qa/sokna-r273-real-owner-cutover-20261117]
+    paths:
+      - 'r273/tests/cafe_readonly_http_preflight.py'
+      - '.github/workflows/sokna-r273-cafe-readonly-http-qual.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  readonly-cafe-public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      R273_CAFE_TARGET_PUBLIC_HEALTH: https://www.soknagroup.ir/public/health
+      R273_CAFE_OLD_QR_URL: https://www.soknaspace.ir/Menu/
+      R273_CAFE_DEST_MENU_URL: https://www.soknagroup.ir/public/menu
+      R273_READONLY_PROBE_JSON: ${{ runner.temp }}/r273-readonly-http-preflight.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: HTTPS GET-only external health, current destination and legacy QR (no credentials)
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 r273/tests/cafe_readonly_http_preflight.py | tee "$RUNNER_TEMP/r273-readonly-http-preflight.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R273-CAFE-READONLY-HTTP-PREFLIGHT-NOT-INSTALL-AUTHORIZATION
+          path: |
+            ${{ runner.temp }}/r273-readonly-http-preflight.json
+            ${{ runner.temp }}/r273-readonly-http-preflight.log
+          if-no-files-found: warn
+          retention-days: 7
