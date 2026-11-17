@@ -1,0 +1,49 @@
+{
+  "format": "sokna-r269-finance-cancel-checkpoint-v1",
+  "date": "2026-11-17",
+  "branch": "qa/sokna-r269-itemized-settlement-cancel-print-20261117",
+  "scope": [
+    "FIN-20261116-ITEMIZED-ADJUST-001",
+    "CANCEL-20261115"
+  ],
+  "code_status": "SOURCE_QA_PASS_NOT_INSTALLABLE",
+  "operator_install_allowed": false,
+  "host_modified": false,
+  "base": {
+    "local_installed_reported": "3.0.0.231fg R262",
+    "php_source": "R262 Local web.zip exact",
+    "ui_base": "R264 QA exact Local hall-workspace.js"
+  },
+  "changes": [
+    "Allow correction on unpaid order-item rows even if other rows of session have completed itemized settlements",
+    "Disallow reducing below paid item quantity and any edit of paid group's quantity/metadata without formal refund/reversal workflow; immutable receipts",
+    "Allow whole-round cancellation without automatic prep-correction printing only where no previous order print/reprint or prep claim, no settlement, and explicit manager attestation no dispatch; otherwise fail closed",
+    "Preserve R264 item-editor and Rial UI source improvements; no SQL migration or Windows service changes"
+  ],
+  "qa": {
+    "ci_url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44029678119",
+    "php_lint": "PASS",
+    "node_syntax": "PASS",
+    "real_mariadb_guard_suite": "19_PASS",
+    "real_service_action_suite": "PASS",
+    "unpaid_item_quantity_reduced": "PASS",
+    "paid_receipts_immutable": "PASS",
+    "idempotency": "PASS",
+    "unprinted_round_cancelled": "PASS",
+    "printed_round_rejected": "PASS"
+  },
+  "pending": [
+    "actual cafe production receipt/inventory acceptance",
+    "Windows Print Agent and physical prep cancellation receipt test",
+    "safe refund workflow for paid line reductions",
+    "safe notification/ack after prior print dispatch",
+    "REG-003 cumulative release package and precise origin preflight",
+    "real Local/Public regression"
+  ],
+  "archive": "/Cafe/SOKNA-Workspace/WORKING/20261117-R269-FIN-ITEMIZED-AND-CANCEL-QA",
+  "sha256_changed_source": {
+    "OrderStaffActionService": "96d2cd3516837045cece663506e76cda75f5bccd50f9f9352fb4fe036c1e1745",
+    "local_hall_workspace": "354dc97349d1a2fc2c0d6e57e9f1e5f0a04e812219cee93c25b29e788c67d5cf"
+  },
+  "warning": "QA zip is source overlay only. Never use the ZIP in installed Local updater or Emergency. Old release R262 installed at cafe does not contain these fixes."
+}
