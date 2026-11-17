@@ -1,0 +1,113 @@
+name: SOKNA R265 R266 Candidate Origin Receipt - External vs Unified Factory
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'release-ops/external-public-r268-provenance.json'
+      - 'release-ops/trace_external_public_candidate.py'
+      - '.github/workflows/sokna-r268-candidate-attribution.yml'
+  pull_request:
+    paths:
+      - 'release-ops/external-public-r268-provenance.json'
+      - 'release-ops/trace_external_public_candidate.py'
+      - 'release-ops/PUBLIC_R265_R266_FACTORY_ATTRIBUTION_FA.md'
+      - '.github/workflows/sokna-r268-candidate-attribution.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify-exact-origin:
+    name: Verify actual R265/R266 QA ZIP bytes and record Factory NOT_USED
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download EXACT external producer's two historical QA ZIPs (never deploy)
+        uses: actions/download-artifact@v4
+        with:
+          name: R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY
+          run-id: 44025587468
+          github-token: ${{ github.token }}
+          path: external-output
+      - name: Verify component manifests, both SHA, SQL 8-to-11 continuity and producer identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate-receipt
+          python3 release-ops/trace_external_public_candidate.py \
+            --artifact-dir external-output \
+            --contract release-ops/external-public-r268-provenance.json \
+            --report candidate-receipt/external-public-r268-origin.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('candidate-receipt/external-public-r268-origin.json'))
+          assert d['factory_used'] is False and d['factory_run_id'] is None
+          assert d['producer_run_id'] == 44025587468
+          assert len(d['steps']) == 2
+          assert d['steps'][0]['migrations'] == 8 and d['steps'][1]['migrations'] == 11
+          assert d['release_authorized'] is False
+          with open('candidate-receipt/README-FA.md','w') as f:
+              f.write('# نتیجه منشأ تولید دو بسته Public R265/R266\n\n')
+              f.write('**کارخانه یکپارچه انتشار: استفاده نشده است (NO).**\n\n')
+              f.write('این دو ZIP در Workflow مستقل R268 ساخته/تأیید شده‌اند؛ GitHub Run 44025587468.\n\n')
+              f.write('بایت و SHA واقعی بسته‌ها و زنجیره هویت 35ic→35if→35ig برابر است.\n\n')
+              f.write('آزمون HTTP و MariaDB جداگانه پاس شده، اما بکاپ/بازیابی میزبان واقعی و پذیرش نصب اجرا نشده است.\n\n')
+              f.write('**نصب عملیاتی خودکار/تأیید نهایی: خیر، هنوز BLOCKED.**\n\n')
+          print('PASS_REAL_R265_R266_EXACT_QA_BYTES_FACTORY_NOT_USED_OPERATOR_BLOCKED')
+          PY
+      - name: Negative proof: wrong SHA or false factory claim must fail
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          src=json.load(open('release-ops/external-public-r268-provenance.json'))
+          src['required_install_order'][0]['sha256']='0'*64
+          open('candidate-receipt/invalid-sha.json','w').write(json.dumps(src))
+          src=json.load(open('release-ops/external-public-r268-provenance.json'))
+          src['factory']['invoked_by_producer']=True
+          open('candidate-receipt/false-factory.json','w').write(json.dumps(src))
+          PY
+          if python3 release-ops/trace_external_public_candidate.py --artifact-dir external-output \
+            --contract candidate-receipt/invalid-sha.json --report candidate-receipt/invalid-sha-result.json; then
+            echo 'FAIL_OPEN_SHA_MISMATCH';exit 9
+          fi
+          if python3 release-ops/trace_external_public_candidate.py --artifact-dir external-output \
+            --contract candidate-receipt/false-factory.json --report candidate-receipt/false-factory-result.json; then
+            echo 'FAIL_OPEN_FALSE_FACTORY_CLAIM';exit 9
+          fi
+          rm -f candidate-receipt/invalid-sha.json candidate-receipt/false-factory.json \
+            candidate-receipt/invalid-sha-result.json candidate-receipt/false-factory-result.json
+          echo 'PASS_FAIL_CLOSED_WRONG_SHA_AND_FALSE_FACTORY_CLAIM'
+      - name: Visible release origin at a glance - never imply installable
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ### SOKNA Public R265/R266 - How were these packages produced?
+
+          | Status | Answer |
+          |---|---|
+          | **Unified Factory used?** | **NO** |
+          | Producer | Independent R268 Emergency HTTP QA workflow, run **44025587468** |
+          | Version chain | Existing **35ic (8 SQL)** -> R265 **35if (8 SQL)** -> R266 **35ig (11 SQL)** |
+          | Exact ZIP SHA proof | Both QA ZIPs downloaded and inspected byte-for-byte |
+          | QA isolated | Passed real HTTP Emergency and MariaDB 8->11 on test host |
+          | Actual host acceptance | **NOT RUN** |
+          | **Operator release** | **BLOCKED: QA packages, do not mistake for production** |
+
+          This special two-hop route is only for the legacy schema-blocking Emergency implementation.
+          It is NOT a requirement to split every future Public update into two packages.
+          EOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R265-R266-PRODUCER-FACTORY-STATUS-REPORT-ONLY
+          path: |
+            candidate-receipt/external-public-r268-origin.json
+            candidate-receipt/README-FA.md
+          if-no-files-found: ignore
+          retention-days: 90

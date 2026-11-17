@@ -147,3 +147,12 @@ python3 release-ops/source_gate.py --source /path/to/EXACT-SOURCE.zip --componen
 - [راهنمای عملیاتی](UNIFIED_FACTORY_RUNBOOK_20261117_FA.md). اجرای موجود فقط روی سورس تاریخی **R233** صلاحیت QA دارد؛ سورس جدیدتر باید از ابتدا با SHA و سازنده و آزمونِ همان خروجی تأیید شود.
 - نتیجه `QA_PASS_EXTERNAL_HOST_ACCEPTANCE_BLOCKED` **اجازه نصب نیست**. حتی با سبزبودن همه CI، آخرین Workspace و REG-003 و داده واقعی/بکاپ و Windows Maintenance و Public Host و Print Agent نیازمند شاهد مستقل‌اند.
 - هیچ Workflow اجازه تغییر host/DB/service یا انتشار GitHub Release عملیاتی ندارد. برای نسخه‌های آینده این کنترل‌ها را استفاده مجدد کن؛ سازنده موردی جدید یا دستکاری ناشناس سورس ممنوع.
+
+
+## ۱۵. هر خروجی باید به‌وضوح بگوید از کارخانه استفاده کرده یا نه
+
+- دستورالعمل [PUBLIC_R265_R266_FACTORY_ATTRIBUTION_FA.md](PUBLIC_R265_R266_FACTORY_ATTRIBUTION_FA.md) را برای تجربهٔ جدید پابلیک R265/35if و R266/35ig بخوان. این دو بسته از R267/R268 با [اجرای مستقل GitHub 44025587468](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44025587468) ساخته شده‌اند، نه از کارخانه یکپارچه R233.
+- **همراه هر بسته تحویلی اجباری است:** `Factory used: YES/NO/UNKNOWN`، Workflow/Run ID واقعی، SHA دقیق همان ZIP، نسخه/هویت مبدأ، میزان Migration، شواهد QA و شواهد میزبان واقعی، وضعیت مجوز `READY/BLOCKED`. اگر گزارش همان ZIP از کارخانه وجود ندارد، گفتن YES ممنوع است.
+- برای پروندهٔ R268، `trace_external_public_candidate.py` و `.github/workflows/sokna-r268-candidate-attribution.yml` گزارش «خارج از کارخانه» را به‌صورت مستقل و فقط‌خواندنی تهیه می‌کنند.
+- **قاعده جدید:** پیش از ساخت آپدیت Public باید قابلیت Emergency در **نسخه نصب‌شده** برای DDL/forward migration سنجیده شود؛ R249/35ic مسیر مستقیم R262/35id را مسدود می‌کند. دو مرحله R265 Bridge بدون SQL و R266 با ۳ Migration، فقط استثنای آن نسل است؛ استاندارد هر نسخه همچنان یک ZIP مشترک Routine/Emergency است.
+- تکیه بر CI مستقل کافی نیست؛ انتقال/اتصال Public و Local، backup/restore واقعی، محافظت از کلیدها، سلامت پس از مرحله و سفارش مهمان فعال/معلق باید جداگانه احراز شوند. هیچ بخشی از این ثبت منشأ انتشار عملیاتی ایجاد نمی‌کند.
