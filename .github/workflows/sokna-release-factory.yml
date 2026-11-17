@@ -264,3 +264,15 @@ jobs:
           path: final-proof/release-decision.json
           if-no-files-found: ignore
           retention-days: 90
+
+  temporary-original-r268-integration-smoke:
+    if: ${{ github.event_name == 'pull_request' }}
+    name: TEMP PR QA - proof that real old R265/R266 artifact enters same reusable factory gate
+    uses: ./.github/workflows/sokna-release-candidate-gate.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      contract_path: release-ops/external-public-r268-provenance.json
+      producer_run_id: '44025587468'
+      producer_artifact: R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY
