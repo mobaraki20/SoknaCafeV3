@@ -1,0 +1,135 @@
+--- a/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
++++ b/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
+@@ -24,18 +24,32 @@
+         private readonly string $dataDir,
+     ) {}
+ 
+-    public function start(string $operationId,string $pairingCode,int $actorId): array
++    public function start(string $operationId,string $pairingCode,int $actorId,string $kind='fresh_unpaired',int $ownerNextEpoch=0): array
+     {
+         if (!preg_match('/^[A-F0-9]{8}(?:-[A-F0-9]{8}){2}$/D',$pairingCode)) {
+             throw new RuntimeException('invalid_owner_issued_pairing_code');
+         }
+         if ($actorId<=0)throw new RuntimeException('administrator_required');
++        if(!in_array($kind,['fresh_unpaired','existing_paired'],true))
++            throw new RuntimeException('invalid_public_move_kind');
++
+         $challenge=$this->ledger->pendingChallenge($this->installationId,$operationId,time());
+         $status=$this->ledger->status($this->installationId,$operationId);
+         if (($status['status']??null)!=='owner_approved') {
+             throw new RuntimeException('signed_destination_owner_approval_required');
+         }
+         $target=$challenge['target_base_url'];
++        if($kind==='existing_paired'){
++            $remote=$this->local->publicEdgeSyncClient()->destinationSetupStatus($target);
++            if(($remote['installed']??false)!==true||($remote['paired']??false)!==true||
++               !hash_equals((string)$remote['installation_id'],$this->installationId)||
++               !hash_equals((string)$remote['base_url'],$target))
++                throw new RuntimeException('existing_destination_identity_or_pairing_mismatch');
++            if($ownerNextEpoch<=$this->local->publicAuthorityState()->epoch()||
++               $ownerNextEpoch>=$this->local->publicAuthorityState()->epoch()+17)
++                throw new RuntimeException('existing_destination_epoch_not_ahead');
++        }
++
+         $path=$this->statePath();
+         if(is_file($path)){
+             $state=$this->readState($path);
+@@ -62,24 +76,42 @@
+             'new_secret'=>$secret,
+             'nonce'=>$challenge['nonce'],
+             'source_public_hash'=>hash('sha256',self::json($old)),
++            'kind'=>$kind,
++            'expected_epoch'=>$ownerNextEpoch,
+             'stage'=>'pairing',
+         ];
+         $this->writeState($path,$state,true);
+         try {
+-            // Original setup pairing endpoint. The R260 replacement flag forces
+-            // Public guest intake OFF. This is not Emergency or re-enrollment.
+-            $pair=$this->local->publicEdgeSyncClient()->initialPair(
+-                $target,$pairingCode,$secret,'',true
+-            );
+-            $body=(array)($pair['body']??[]);
+-            if(($body['replacement_mode']??null)!==true ||
+-                ($body['guest_intake_enabled']??null)!==false ||
+-                ($body['installation_id']??null)!==$this->installationId) {
+-                throw new RuntimeException('public_replacement_pairing_contract_missing');
++            if($kind==='existing_paired'){
++                // Claim before the remote one-time offer can be consumed. The
++                // state file is durable and a lost reply will be probed, never
++                // resent with the same or a different code.
++                $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
++                $pair=$this->local->publicEdgeSyncClient()->reenrollAuthority(
++                    $target,$pairingCode,$secret,''
++                );
++                $body=(array)($pair['body']??[]);
++                $newEpoch=(int)($body['authority_epoch']??0);
++                if($newEpoch!==$ownerNextEpoch||
++                   !hash_equals((string)($body['installation_id']??''),$this->installationId)||
++                   ($body['order_intake_enabled']??null)!==false){
++                    throw new RuntimeException('existing_destination_authority_response_invalid');
++                }
++                $this->local->publicEdgeSyncClient()->probeProposedAuthority($target,$secret,$newEpoch);
++                $this->local->publicAuthorityState()->markReenrolled($newEpoch);
++            }else{
++                // Original R262 setup path for a freshly installed Public.
++                $pair=$this->local->publicEdgeSyncClient()->initialPair(
++                    $target,$pairingCode,$secret,'',true
++                );
++                $body=(array)($pair['body']??[]);
++                if(($body['replacement_mode']??null)!==true ||
++                    ($body['guest_intake_enabled']??null)!==false ||
++                    ($body['installation_id']??null)!==$this->installationId) {
++                    throw new RuntimeException('public_replacement_pairing_contract_missing');
++                }
++                $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
+             }
+-            // The signed approval is consumed ONCE while fresh. Media sync can
+-            // take longer than the five-minute owner approval window.
+-            $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
+             $state['stage']='paired';
+             $this->writeState($path,$state);
+             return self::result('sync_pending',$target,false);
+@@ -95,6 +127,18 @@
+     public function finish(string $operationId): array
+     {
+         $state=$this->readState($this->statePath());
++        if(($state['stage']??'')==='pairing_uncertain' &&
++           ($state['kind']??'')==='existing_paired'){
++            if(!hash_equals((string)($state['operation_id']??''),$operationId))
++                throw new RuntimeException('existing_move_operation_changed');
++            $epoch=(int)($state['expected_epoch']??0);
++            $this->local->publicEdgeSyncClient()->probeProposedAuthority(
++                (string)$state['target_base_url'],(string)$state['new_secret'],$epoch);
++            if($this->local->publicAuthorityState()->epoch()<$epoch)
++                $this->local->publicAuthorityState()->markReenrolled($epoch);
++            $state['stage']='paired';
++            $this->writeState($this->statePath(),$state);
++        }
+         if(!hash_equals((string)($state['operation_id']??''),$operationId) ||
+            !in_array((string)($state['stage']??''),['paired','sync_ready','config_committed'],true)){
+             throw new RuntimeException('replacement_not_ready_for_sync');
+@@ -115,7 +159,7 @@
+         if(!$alreadyNew) {
+             // On transient network failure, Local's existing binding remains.
+             // Retry simply calls finish() again; the new Public stays paused.
+-            $result=$preview->publicEdgePublisher()->syncAll(10);
++            $result=$preview->publicEdgePublisher()->syncAll(10,($state['kind']??'')==='existing_paired');
+             $media=(array)($result['channels']['guest_media']??[]);
+             if(($result['success']??false)!==true ||
+                 ($result['degraded']??true)!==false ||
+@@ -137,7 +181,13 @@
+             $state['stage']='config_committed';$this->writeState($this->statePath(),$state);
+         }
+         // Do NOT open new guest intake before the Local binding is committed.
+-        // Activation is signed by the *new* Local/Public pairing secret.
++        // For an existing paired destination the authority epoch remained
++        // resync_required throughout the staged Full Sync, including media.
++        // Only now activate with the rotated secret and mark Local active.
++        if(($state['kind']??'')==='existing_paired'){
++            $preview->publicEdgeSyncClient()->activateAuthority(10);
++            $this->local->publicAuthorityState()->markActive((int)$state['expected_epoch']);
++        }
+         $activation=$preview->publicEdgeSyncClient()->post('/api/v1/local/move/activate',[],10);
+         if(($activation['body']['guest_intake_enabled']??null)!==true) {
+             return self::result('activation_retry',$target,false);
