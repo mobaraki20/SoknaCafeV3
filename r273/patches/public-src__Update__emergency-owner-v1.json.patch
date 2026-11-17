@@ -1,0 +1,5 @@
+--- a/src/Update/emergency-owner-v1.json
++++ b/src/Update/emergency-owner-v1.json
+@@ -1 +1 @@
+-{"format":"sokna-emergency-owner-v1","release_version":"3.0.0-g3.6-workspace.35ig-r266-public-move-schema-recovery","sha256":"2e041f0fb99c59c47954136ae9478d50f9045d95ec5f322df80e543daec173d6"}
++{"format":"sokna-emergency-owner-v1","release_version":"3.0.0-g3.6-workspace.35ih-r273-existing-public-owner-safe-move","sha256":"2e041f0fb99c59c47954136ae9478d50f9045d95ec5f322df80e543daec173d6"}
