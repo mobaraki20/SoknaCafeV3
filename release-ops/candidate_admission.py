@@ -60,7 +60,7 @@ def inspect(contract: pathlib.Path, artifacts: pathlib.Path, run_id: str,
             raise ValueError("ARTIFACT_NAME_INVALID")
         claimed_run_id = (spec.get("producer") or {}).get("run_id")
         if (claimed_run_id != int(run_id) and not (
-                claimed_run_id == "same_run" and run_id == factory_run_id):
+                claimed_run_id == "same_run" and run_id == factory_run_id)):
             raise ValueError("PRODUCER_RUN_ID_NOT_PINNED_BY_CONTRACT")
         if spec["producer"].get("artifact") != artifact_name:
             raise ValueError("ARTIFACT_NAME_NOT_PINNED_BY_CONTRACT")
