@@ -1,0 +1,20 @@
+--- a/src/Domain/PublicEdge/PublicEdgePublisherService.php
++++ b/src/Domain/PublicEdge/PublicEdgePublisherService.php
+@@ -184,7 +184,7 @@
+         ];
+     }
+ 
+-    public function syncAll(int $transportTimeoutSeconds=10): array
++    public function syncAll(int $transportTimeoutSeconds=10,bool $deferAuthorityActivation=false): array
+     {
+         $transportTimeoutSeconds=max(1,min(30,$transportTimeoutSeconds));
+         $supportId=substr($this->obs->correlationId(),0,12);
+@@ -231,7 +231,7 @@
+         $criticalFailed=array_values(array_diff($failed,['guest_media']));
+         $guestState=$this->guestPublicationState();
+         $success=$criticalFailed===[]&&(bool)($guestState['critical_ready']??false);
+-        if($success&&$this->authorityState!==null&&$this->authorityState->resyncRequired()){
++        if($success&&!$deferAuthorityActivation&&$this->authorityState!==null&&$this->authorityState->resyncRequired()){
+             try{
+                 $activation=$this->client->activateAuthority($transportTimeoutSeconds);
+                 $results['authority_activate']=['ok'=>true,'detail'=>$activation['body']??[]];
