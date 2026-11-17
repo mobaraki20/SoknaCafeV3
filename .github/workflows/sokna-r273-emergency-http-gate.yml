@@ -44,6 +44,18 @@ jobs:
           path: ${{ runner.temp }}/input_artifacts
       - uses: actions/download-artifact@v4
         with:
+          name: sokna-r249-dual-baseline-gated-public-candidate
+          run-id: 43749990301
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r249
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
+          run-id: 43835146004
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r262
+      - uses: actions/download-artifact@v4
+        with:
           name: R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY
           run-id: 44025587468
           github-token: ${{ github.token }}
@@ -62,7 +74,10 @@ jobs:
           python3 - <<'PY'
           import pathlib,os,hashlib,shutil
           t=pathlib.Path(os.environ['RUNNER_TEMP'])
-          targets=[(t/'r266_baseline','b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35','SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip'),
+          targets=[(t/'r249','5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4','SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip'),
+           (t/'r262','5aef4cd781fbd450d3e454f324e294da6f4180bfe1e5eb1871cb4818dc20c93a','SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip'),
+           (t/'r266_baseline','692aa40939d788aea56efa4e3b62c46a568da0ce5c508cc87844aa63366b8892','SOKNA-R265-PUBLIC-35IF-EMERGENCY-BRIDGE-CODE-ONLY-QA.zip'),
+           (t/'r266_baseline','b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35','SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip'),
            (t/'input_artifacts','d137b255fa51d401525ab3de5ec92d20d17a61311b35099a58647c754297ee37','SOKNA-R273-PUBLIC-35IH-OWNER-TRANSFER-CODE-ONLY-QA-DO-NOT-INSTALL.zip'),
            (t/'r263','37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21','SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip')]
           for root,sha,name in targets:
