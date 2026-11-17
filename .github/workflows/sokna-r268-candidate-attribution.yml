@@ -6,6 +6,7 @@ on:
     paths:
       - 'release-ops/external-public-r268-provenance.json'
       - 'release-ops/trace_external_public_candidate.py'
+      - 'release-ops/tests/test_external_public_trace.py'
       - '.github/workflows/sokna-r268-candidate-attribution.yml'
   pull_request:
     paths:
