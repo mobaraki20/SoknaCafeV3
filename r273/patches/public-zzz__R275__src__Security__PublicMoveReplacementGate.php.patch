@@ -1,0 +1,40 @@
+--- a/src/Security/PublicMoveReplacementGate.php
++++ b/src/Security/PublicMoveReplacementGate.php
+@@ -49,6 +49,44 @@
+         }
+     }
+ 
++    /**
++     * Owner explicitly accepted losing Public-only unresolved work. Called only
++     * inside the authority-offer transaction AFTER locking installations row.
++     * Active leases can already be executing on Local: never discard those.
++     * Terminal records are kept for idempotency and forensic audit, not replayed.
++     * No Local data, financial records or different installation are touched.
++     * @return array{realtime:int,deferred:int}
++     */
++    public function discardUnresolvedGuestWork(string $installationId): array
++    {
++        foreach ([
++            "SELECT COUNT(*) FROM realtime_requests WHERE installation_id=? AND state='claimed' AND (lease_expires_at IS NULL OR lease_expires_at>=UTC_TIMESTAMP())",
++            "SELECT COUNT(*) FROM deferred_work WHERE installation_id=? AND state='pending_sync' AND lease_token IS NOT NULL AND (lease_expires_at IS NULL OR lease_expires_at>=UTC_TIMESTAMP())",
++        ] as $sql) {
++            $q=$this->pdo->prepare($sql);$q->execute([$installationId]);
++            if((int)$q->fetchColumn()>0)throw new RuntimeException('destination_claim_active');
++        }
++        $q=$this->pdo->prepare(
++            "UPDATE realtime_requests SET state='cancelled',error_code='owner_confirmed_public_move_discard',".
++            "lease_token_hash=NULL,lease_expires_at=NULL ".
++            "WHERE installation_id=? AND state IN ('queued','claimed','unknown_review')"
++        );
++        $q->execute([$installationId]);$real=$q->rowCount();
++        $q=$this->pdo->prepare(
++            "UPDATE deferred_work SET state='rejected',error_code='owner_confirmed_public_move_discard',".
++            "lease_token=NULL,lease_expires_at=NULL ".
++            "WHERE installation_id=? AND state IN ('pending_sync','needs_review')"
++        );
++        $q->execute([$installationId]);$deferred=$q->rowCount();
++        $this->requireNoUnresolvedGuestWork($installationId);
++        return ['realtime'=>$real,'deferred'=>$deferred];
++    }
++
+     public function activateAfterVerifiedSync(
