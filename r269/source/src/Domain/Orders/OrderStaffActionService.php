@@ -147,6 +147,7 @@ final class OrderStaffActionService
         $requestId=$this->requestId((string)($data['request_id']??''));
         $reason=self::cutText(trim((string)($data['reason']??'')),250);
         if($reason==='')throw new OrderStaffActionException('reason_required','دلیل لغو کل سفارش را ثبت کنید.',422);
+        $operatorPreparationDecision=$this->operatorPreparationDisposition($data);
         if($this->pdo->inTransaction())throw new \LogicException('Whole-order cancellation requires transaction ownership.');
         $ownsTransaction=true;
         $this->pdo->beginTransaction();
@@ -192,10 +193,10 @@ final class OrderStaffActionService
             $followup->execute([$sessionId]);if($followup->fetchColumn()!==false)
                 throw new OrderStaffActionException('settlement_followup','این حساب در فرایند پیگیری مالی است؛ لغو خودکار متوقف شد.',409);
             $claimed=$this->pdo->prepare('SELECT order_id FROM order_preparation_claims WHERE order_id=? LIMIT 1 FOR UPDATE');
-            $claimed->execute([$orderId]);if($claimed->fetchColumn()!==false)
+            $claimed->execute([$orderId]);if($claimed->fetchColumn()!==false&&$operatorPreparationDecision===null)
                 throw new OrderStaffActionException('preparation_claimed','آماده‌سازی این سفارش دریافت شده است؛ لغو خودکار مجاز نیست.',409);
             $pending=$this->pdo->prepare("SELECT id FROM order_item_adjustments WHERE order_id=? AND preparation_ack_status='pending' LIMIT 1 FOR UPDATE");
-            $pending->execute([$orderId]);if($pending->fetchColumn()!==false)
+            $pending->execute([$orderId]);if($pending->fetchColumn()!==false&&$operatorPreparationDecision===null)
                 throw new OrderStaffActionException('pending_adjustment','این سفارش اصلاحیه در انتظار تأیید دارد.',409);
             $inventoryState=$this->inventoryOrders->reconcileForWholeOrderCancellationTx($orderId);
             if(!$inventoryState['ready']){
@@ -216,7 +217,12 @@ final class OrderStaffActionService
                 throw new OrderStaffActionException('order_amount_mismatch','اقلام و مبلغ سفارش قابل تطبیق نیستند؛ لغو متوقف شد.',409);
             $printCorrectionRequired=$hasPreparation;
             $confirmedNoDispatchedPreparation=false;
-            if($hasPreparation&&!$this->preparationAutoPrintEnabled()){
+            if($hasPreparation&&$operatorPreparationDecision!==null){
+                // The supervisor makes an explicit risk decision; never infer a kitchen ACK.
+                // Keep the compensation visible as an independent pending area adjustment.
+                $printCorrectionRequired=false;
+                $confirmedNoDispatchedPreparation=$operatorPreparationDecision==='not_received';
+            }elseif($hasPreparation&&!$this->preparationAutoPrintEnabled()){
                 // A manual reprint is a real dispatch risk even with auto-print OFF.
                 // Fail closed for ANY previous preparation print job, including a
                 // pending/failed/unknown job: its physical delivery is uncertain.
@@ -239,7 +245,8 @@ final class OrderStaffActionService
                 $adjust=$this->adjustSingleItem([
                     'order_item_id'=>$itemId,'quantity'=>0,'request_id'=>$childId,
                     'reason'=>'لغو کامل سفارش: '.$reason,
-                ],$actor);
+                    'operator_preparation_disposition'=>$operatorPreparationDecision,
+                ],$actor,$operatorPreparationDecision!==null);
                 if(empty($adjust['success'])||(int)($adjust['to_quantity']??-1)!==0)
                     throw new OrderStaffActionException('adjustment_failed','اصلاح یکی از اقلام سفارش تکمیل نشد.',409);
                 if(isset($tracked[$itemId])&&(int)($adjust['inventory_event_id']??0)<1)
@@ -272,12 +279,18 @@ final class OrderStaffActionService
                 'refund_document_number'=>$cashRefund['refund_document_number']??null,
                 'original_invoice_number'=>$cashRefund['original_invoice_number']??null,
                 'physical_cash_refund_confirmation'=>$cashRefund?'operator_attested':null,
-                'adjustment_ids'=>$adjustmentIds,'correction_print_job_ids'=>$printJobIds,'preparation_never_dispatched_attested'=>$confirmedNoDispatchedPreparation,'session_closed'=>!$hasOther,
+                'adjustment_ids'=>$adjustmentIds,'correction_print_job_ids'=>$printJobIds,'preparation_never_dispatched_attested'=>$confirmedNoDispatchedPreparation,
+                'operator_preparation_disposition'=>$operatorPreparationDecision,
+                'operator_accepts_responsibility'=>$operatorPreparationDecision!==null,
+                'preparation_followup_required'=>$operatorPreparationDecision!==null&&$hasPreparation,
+                'session_closed'=>!$hasOther,
             ]);
             if($ownsTransaction)$this->pdo->commit();
             return ['success'=>true,'idempotent'=>false,'order_id'=>$orderId,'status'=>'cancelled',
                 'session_closed'=>!$hasOther,'adjustment_ids'=>$adjustmentIds,'correction_print_job_ids'=>$printJobIds,
-                'refund_document_number'=>$cashRefund['refund_document_number']??null];
+                'refund_document_number'=>$cashRefund['refund_document_number']??null,
+                'operator_preparation_disposition'=>$operatorPreparationDecision,
+                'preparation_followup_required'=>$operatorPreparationDecision!==null&&$hasPreparation];
         }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
@@ -404,6 +417,24 @@ final class OrderStaffActionService
      * its existence makes non-delivery uncertain; deny this narrow bypass.
      * A claimed preparation job is separately rejected by the caller.
      */
+    /**
+     * This is the operator's own recorded judgment, NOT a preparation employee's
+     * acknowledgement. No external answer is needed before the supervisor can act.
+     * Kitchen follow-up stays pending in the preparation read model after cancel.
+     */
+    private function operatorPreparationDisposition(array $data): ?string
+    {
+        $raw=trim((string)($data['operator_preparation_disposition']??''));
+        if($raw==='')return null; // preserve historic fail-closed callers
+        if(!in_array($raw,['not_received','received_or_preparing','unknown'],true))
+            throw new OrderStaffActionException('invalid_operator_preparation_disposition',
+                'وضعیت دریافت آماده‌سازی معتبر نیست.',422);
+        if(($data['operator_accepts_preparation_responsibility']??null)!==true)
+            throw new OrderStaffActionException('operator_responsibility_required',
+                'مسئول شیفت باید تصمیم و مسئولیت پیگیری آماده‌سازی را صریحاً تأیید کند.',409);
+        return $raw;
+    }
+
     /** Physical item row allocations cannot be silently moved between the
      * grouped dine-in/takeaway rows after they appear on a paid receipt. */
     private function assertGroupedOrderRowsUnpaid(array $rows,array $paidBy): void
@@ -549,7 +580,7 @@ final class OrderStaffActionService
         }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
-    private function adjustSingleItem(array $data,array $user): array
+    private function adjustSingleItem(array $data,array $user,bool $supervisorCancelOverride=false): array
     {
         $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
         try{
@@ -594,7 +625,7 @@ final class OrderStaffActionService
             $orderId=(int)$row['order_id'];$area=PreparationService::areaForPreparationStation((string)$row['preparation_station']);$prepRelevant=$area!==null&&($quantityChanged||$modeChanged||$noteChanged);$claimedBefore=false;
             if($prepRelevant){
                 $claim=$this->preparation->claimStateForAdjustmentTx($orderId,$area);
-                if($claim['has_claim']&&!$claim['current'])throw new OrderStaffActionException('preparation_state_changed','آماده‌سازی این سفارش تغییر کرده است؛ ابتدا وضعیت بخش آماده‌سازی را بررسی کنید.',409,['area'=>$area]);
+                if($claim['has_claim']&&!$claim['current']&&!$supervisorCancelOverride)throw new OrderStaffActionException('preparation_state_changed','آماده‌سازی این سفارش تغییر کرده است؛ ابتدا وضعیت بخش آماده‌سازی را بررسی کنید.',409,['area'=>$area]);
                 $claimedBefore=$claim['has_claim']&&$claim['current'];
                 // Each correction gets a unique event and independent pending acknowledgement.
                 // Never make a later staff action wait for the earlier preparation acknowledgement.
@@ -605,22 +636,26 @@ final class OrderStaffActionService
             $this->pdo->prepare('UPDATE orders SET total_amount=(SELECT COALESCE(SUM(line_total),0) FROM order_items WHERE order_id=?),updated_at=NOW() WHERE id=?')->execute([$orderId,$orderId]);
 
             if($quantityChanged){
-                $inventoryDelta=$delta<0&&$claimedBefore?0:$delta;
-                $inventoryEffect=$delta>0?'consume_delta':($claimedBefore?'preserve_consumption_after_claim':'reverse_unprepared');
+                $operatorPotentialPreparation=$supervisorCancelOverride&&in_array((string)($data['operator_preparation_disposition']??''),['received_or_preparing','unknown'],true);
+                $preserveStock=$claimedBefore||$operatorPotentialPreparation;
+                $inventoryDelta=$delta<0&&$preserveStock?0:$delta;
+                $inventoryEffect=$delta>0?'consume_delta':($claimedBefore?'preserve_consumption_after_claim':($operatorPotentialPreparation?'preserve_consumption_after_claim':'reverse_unprepared'));
             }else{$inventoryDelta=0;$inventoryEffect='none';}
-            $ackStatus=$claimedBefore&&$prepRelevant?'pending':'not_required';
+            $ackStatus=($claimedBefore||$supervisorCancelOverride)&&$prepRelevant?'pending':'not_required';
             $changes=($quantityChanged?1:0)+($modeChanged?1:0)+($noteChanged?1:0);$kind=$changes>1?'combined':($quantityChanged?'quantity':($modeChanged?'fulfillment':'note'));
             $insert=$this->pdo->prepare('INSERT INTO order_item_adjustments(request_id,order_id,order_item_id,area_key,adjustment_kind,from_quantity,to_quantity,delta_quantity,from_fulfillment_mode,to_fulfillment_mode,from_item_note,to_item_note,reason,preparation_claimed_before,preparation_ack_status,inventory_quantity_delta,inventory_effect,actor_user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
             $insert->execute([$requestId,$orderId,$orderItemId,$area,$kind,$fromQuantity,$toQuantity,$quantityChanged?$delta:null,$fromMode,$toMode,$fromNote!==''?$fromNote:null,$toNote!==''?$toNote:null,$reason,$claimedBefore?1:0,$ackStatus,$inventoryDelta,$inventoryEffect,$actorId]);
             $adjustmentId=(int)$this->pdo->lastInsertId();
             if($claimedBefore&&$prepRelevant)$this->preparation->refreshClaimSignatureTx($orderId,$area);
             $inventoryEventId=$quantityChanged?$this->inventoryOrders->enqueueQuantityAdjustedTx($orderId,$orderItemId,$fromQuantity,$toQuantity,$inventoryDelta,$actorId,$requestId):null;
-            $printJob=null;if($prepRelevant&&$this->preparationAutoPrintEnabled()){$printJob=$this->printing->enqueueOrderAdjustmentTx($adjustmentId,$actorId);if(is_array($printJob)&&!empty($printJob['job_id']))$this->pdo->prepare('UPDATE order_item_adjustments SET correction_print_job_id=? WHERE id=?')->execute([(int)$printJob['job_id'],$adjustmentId]);}
+            $printJob=null;if($prepRelevant&&!$supervisorCancelOverride&&$this->preparationAutoPrintEnabled()){$printJob=$this->printing->enqueueOrderAdjustmentTx($adjustmentId,$actorId);if(is_array($printJob)&&!empty($printJob['job_id']))$this->pdo->prepare('UPDATE order_item_adjustments SET correction_print_job_id=? WHERE id=?')->execute([(int)$printJob['job_id'],$adjustmentId]);}
             $this->audit($kind==='quantity'?'order.item_quantity_adjusted':'order.item_preparation_adjusted',$orderId,$actor,[
                 'adjustment_id'=>$adjustmentId,'adjustment_kind'=>$kind,'order_item_id'=>$orderItemId,'item_name'=>(string)$row['item_name'],'table_id'=>(int)$row['table_id'],'session_id'=>$sessionId,
                 'from_quantity'=>$fromQuantity,'to_quantity'=>$toQuantity,'delta_quantity'=>$quantityChanged?$delta:null,'ordered_quantity'=>(int)$row['ordered_quantity'],
                 'from_fulfillment_mode'=>$fromMode,'to_fulfillment_mode'=>$toMode,'item_note_changed'=>$noteChanged,
                 'preparation_area'=>$area,'preparation_claimed_before'=>$claimedBefore,'preparation_ack_status'=>$ackStatus,
+                'operator_supervised_cancellation'=>$supervisorCancelOverride,
+                'operator_preparation_disposition'=>$supervisorCancelOverride?($data['operator_preparation_disposition']??null):null,
                 'inventory_quantity_delta'=>$inventoryDelta,'inventory_effect'=>$inventoryEffect,'inventory_event_id'=>$inventoryEventId,'correction_print_job_id'=>(int)($printJob['job_id']??0),'correction_print_status'=>(string)($printJob['status']??''),'request_id'=>$requestId,'reason'=>$reason,
             ]);
             $fresh=$this->pdo->prepare('SELECT * FROM order_item_adjustments WHERE id=?');$fresh->execute([$adjustmentId]);$adjustment=$fresh->fetch(PDO::FETCH_ASSOC);
