@@ -1,0 +1,49 @@
+name: SOKNA R271 Existing Paired Public Move Exact-Source QA
+on:
+  push:
+    branches: [qa/sokna-r271-existing-public-move-20261117]
+    paths:
+      - 'r271/**'
+      - '.github/workflows/sokna-r271-existing-public-move-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  existing-destination:
+    name: R262 Local to existing paired Public code-proved re-enrollment
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_r271
+          MARIADB_ROOT_PASSWORD: test-only-password
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ptest-only-password"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      SOKNA_TEST_DB_HOST: 127.0.0.1
+      SOKNA_TEST_DB_NAME: sokna_r271
+      SOKNA_TEST_DB_USER: root
+      SOKNA_TEST_DB_PASSWORD: test-only-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql
+          coverage: none
+      - name: PHP syntax and connected form syntax
+        run: |
+          set -euo pipefail
+          php -l r271/local/src/Domain/PublicEdge/PublicReenrollmentService.php
+          php -l r271/local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+          php -l r271/local/public/integrations/api.php
+          php -l r271/local/public/integrations/index.php
+          node --check r271/local/public/assets/connections-workspace.js
+      - name: MariaDB read-only route + one-time owner recovery with signed Local proof
+        run: |
+          set -euo pipefail
+          php r271/tests/existing_destination_test.php
