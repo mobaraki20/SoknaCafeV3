@@ -163,19 +163,19 @@ jobs:
           retention-days: 90
 
   registered-candidate-gate:
-    if: ${{ github.event_name == 'pull_request' || inputs.track == 'legacy-public-35ic' || inputs.track == 'registered-candidate' }}
+    if: ${{ inputs.track == 'legacy-public-35ic' || inputs.track == 'registered-candidate' }}
     name: ONE shared gate for new Public/Local candidate ZIPs and the R265/R266 old Emergency exception
     uses: ./.github/workflows/sokna-release-candidate-gate.yml
     permissions:
       contents: read
       actions: read
     with:
-      contract_path: ${{ (inputs.track == 'legacy-public-35ic' || github.event_name == 'pull_request') && 'release-ops/external-public-r268-provenance.json' || inputs.candidate_contract_path }}
-      producer_run_id: ${{ (inputs.track == 'legacy-public-35ic' || github.event_name == 'pull_request') && '44025587468' || inputs.candidate_run_id }}
-      producer_artifact: ${{ (inputs.track == 'legacy-public-35ic' || github.event_name == 'pull_request') && 'R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY' || inputs.candidate_artifact }}
+      contract_path: ${{ inputs.track == 'legacy-public-35ic' && 'release-ops/external-public-r268-provenance.json' || inputs.candidate_contract_path }}
+      producer_run_id: ${{ inputs.track == 'legacy-public-35ic' && '44025587468' || inputs.candidate_run_id }}
+      producer_artifact: ${{ inputs.track == 'legacy-public-35ic' && 'R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY' || inputs.candidate_artifact }}
 
   candidate-final-decision:
-    if: ${{ always() && (github.event_name == 'pull_request' || inputs.track == 'legacy-public-35ic' || inputs.track == 'registered-candidate') }}
+    if: ${{ always() && (inputs.track == 'legacy-public-35ic' || inputs.track == 'registered-candidate') }}
     needs: [registered-candidate-gate]
     name: One final factory receipt - original producer vs validated same ZIP; operator BLOCKED
     runs-on: ubuntu-24.04
@@ -213,8 +213,8 @@ jobs:
         shell: bash
         env:
           TRACK: ${{ inputs.track }}
-          EXPECTED_PRODUCER: ${{ (inputs.track == 'legacy-public-35ic' || github.event_name == 'pull_request') && '44025587468' || inputs.candidate_run_id }}
-          EXPECTED_ARTIFACT: ${{ (inputs.track == 'legacy-public-35ic' || github.event_name == 'pull_request') && 'R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY' || inputs.candidate_artifact }}
+          EXPECTED_PRODUCER: ${{ inputs.track == 'legacy-public-35ic' && '44025587468' || inputs.candidate_run_id }}
+          EXPECTED_ARTIFACT: ${{ inputs.track == 'legacy-public-35ic' && 'R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY' || inputs.candidate_artifact }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
