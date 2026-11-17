@@ -1,0 +1,47 @@
+name: SOKNA R269 Itemized Settlement and Manual-Print Cancellation QA
+on:
+  push:
+    branches: [qa/sokna-r269-itemized-settlement-cancel-print-20261117]
+    paths:
+      - 'r269/**'
+      - '.github/workflows/sokna-r269-finance-cancel-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  finance-cancel-mariadb:
+    name: Source PHP lint, financial receipt invariants, print dispatch gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_qa_fin_cancel
+          MARIADB_ROOT_PASSWORD: only-local-test
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ponly-local-test"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_NAME: sokna_qa_fin_cancel
+      SOKNA_QA_DB_USER: root
+      SOKNA_QA_DB_PASSWORD: only-local-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql
+          coverage: none
+      - name: Lint exact PHP and Local operator source
+        run: |
+          set -euo pipefail
+          php -l r269/source/src/Domain/Orders/OrderStaffActionService.php
+          php -l r269/tests/financial_cancel_guard_mariadb.php
+          node --check r269/source/public/assets/staff-app/hall-workspace.js
+      - name: Run real MariaDB no-mutating-receipt invariant tests
+        run: |
+          set -euo pipefail
+          php r269/tests/financial_cancel_guard_mariadb.php
