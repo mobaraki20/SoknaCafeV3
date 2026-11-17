@@ -39,6 +39,7 @@ def inspect(contract: pathlib.Path, artifacts: pathlib.Path, run_id: str,
         "built_inside_factory": bool(run_id and run_id == factory_run_id),
         "factory_validated_exact_bytes": False,
         "candidate_zip_sha256": [],
+        "supporting_file_sha256": [],
         "database_migration_path": "NOT_PROVEN",
         "source_approved": False,
         "field_host_backup_restore": "NOT_RUN",
@@ -110,6 +111,15 @@ def inspect(contract: pathlib.Path, artifacts: pathlib.Path, run_id: str,
                     not x.get("version")) for x in packs if isinstance(x, dict)) or \
                any(not isinstance(x, dict) for x in packs):
                 raise ValueError("INVALID_PACKAGE_LINE")
+            supporting = spec.get("supporting_files", [])
+            if (not isinstance(supporting, list) or len(supporting) > 20
+                or any(not isinstance(x, dict) or not NAME.fullmatch(x.get("file", ""))
+                       or not x["file"].endswith((".json", ".md", ".txt"))
+                       or not HEX.fullmatch(x.get("sha256", "")) for x in supporting)):
+                raise ValueError("SUPPORTING_FILES_MUST_BE_SHA_PINNED_SMALL_TEXT_ONLY")
+            registered_names = [x["file"] for x in packs] + [x["file"] for x in supporting]
+            if len(set(registered_names)) != len(registered_names):
+                raise ValueError("DUPLICATE_REGISTERED_ARTIFACT_NAME")
             # For same-run producers, the generated SHA contract may travel
             # inside the exact Actions artifact AFTER the ZIP was built. It
             # is a producer assertion, not a signed source-approval proof.
@@ -123,10 +133,18 @@ def inspect(contract: pathlib.Path, artifacts: pathlib.Path, run_id: str,
             files = sorted(p.name for p in artifacts.rglob("*") if p.is_file())
             if expected_contract:
                 files.remove(expected_contract)
-            if sorted(x["file"] for x in packs) != files:
+            if sorted(registered_names) != files:
                 raise ValueError("ARTIFACT_CONTAINS_MISSING_OR_UNDECLARED_FILES")
             if len(set(files)) != len(files):
                 raise ValueError("DUPLICATE_PACKAGE_FILENAMES")
+            for row in supporting:
+                p = artifacts / row["file"]
+                if not p.is_file() or p.is_symlink() or p.stat().st_size > 1048576:
+                    raise ValueError("SUPPORTING_FILE_NOT_SMALL_REGULAR_FILE")
+                actual = hashlib.sha256(p.read_bytes()).hexdigest()
+                if actual != row["sha256"]:
+                    raise ValueError("SUPPORTING_FILE_SHA_MISMATCH:" + row["file"])
+                result["supporting_file_sha256"].append(actual)
             for row in packs:
                 p = artifacts / row["file"]
                 actual = hashlib.sha256(p.read_bytes()).hexdigest()
