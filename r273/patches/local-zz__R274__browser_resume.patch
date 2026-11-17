@@ -1,0 +1,102 @@
+--- a/public/assets/connections-workspace.js
++++ b/public/assets/connections-workspace.js
+@@ -84,8 +84,10 @@
+ $('[data-public-move-form]')?.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const target=$('[data-public-move-target]').value.trim(),button=$('[data-public-move-check]');
+  if(moveNeedsResume){await SoknaUI.busy(button,finishSimpleMove);return;}
++ const ownerRecovery=!!movePending && movePending.target===target &&
++   movePending.phase==='awaiting_owner_offer';
+  feedback('public-move');
+  if(!target){feedback('public-move','آدرس مقصد را وارد کنید.');return;}
+  // Open on the actual user gesture, before asynchronous requests.
+  const popup=window.open('about:blank','_blank');
+@@ -110,11 +112,14 @@
+    }
+    const started=await post({action:'public_move_begin',base_url:target}),flow=started.move||{};
+    if(!flow.challenge||!flow.operation_id)throw new Error('درخواست اتصال ثبت نشد.');
+    const url=new URL(String(flow.challenge.target_base_url).replace(/\/$/,'')+'/move/approve');
++   const sameConfirmedOperation=ownerRecovery&&movePending.operation===flow.operation_id;
+    url.hash=new URLSearchParams({challenge:encodeChallenge(flow.challenge),return_origin:location.origin,
+-     minimum_next_epoch:String(flow.minimum_next_epoch||0)}).toString();
+-   movePending={operation:flow.operation_id,target:flow.challenge.target_base_url,handling:false};
++     minimum_next_epoch:String(flow.minimum_next_epoch||0),
++     resume_after_local_confirmed:sameConfirmedOperation?'1':'0'}).toString();
++   movePending={operation:flow.operation_id,target:flow.challenge.target_base_url,
++     handling:false,phase:sameConfirmedOperation?'awaiting_owner_offer':'awaiting_owner'};
+    moveUi('awaiting_owner');
+    popup.location.href=url.href;
+    feedback('public-move','پنجرهٔ مقصد باز شد؛ مدیر Public جدید باید مالکیت آن را تأیید کند.',false);
+   }catch(err){
+@@ -128,8 +133,28 @@
+  if(!pending||pending.handling||event.source!==moveTab)return;
+  let expected='';try{expected=new URL(pending.target).origin}catch{return}
+  if(event.origin!==expected)return;
+  const message=event.data;
++ if(message?.type==='sokna-public-move-owner-ready-v1'&&
++    pending.phase==='awaiting_owner_offer'&&
++    message.operation_id===pending.operation &&
++    message.target_base_url===pending.target){
++   // Check durable server-side Local approval after a browser refresh.
++   // A forged popup message alone cannot authorize any authority offer.
++   pending.handling=true;
++   try{
++     const status=await post({action:'public_move_status'});
++     if(status.move?.status!=='awaiting_owner_offer'||
++        status.move?.operation_id!==pending.operation)
++       throw Error('تأیید ثبت‌شدهٔ مدیر Local قابل بازیابی نیست.');
++     moveTab?.postMessage({type:'sokna-public-move-local-confirmed-v1',
++       operation_id:pending.operation,
++       minimum_next_epoch:Number(status.move.minimum_next_epoch)||0},expected);
++     feedback('public-move','تأیید قبلی بازیابی شد؛ در حال دریافت مجوز مالک مقصد…',false);
++   }catch(err){feedback('public-move',err.message||'تأیید قبلی قابل بازیابی نیست.',true)}
++   finally{pending.handling=false}
++   return;
++ }
+  if(message?.type==='sokna-public-move-owner-offer-v1'&&
+     pending.phase==='awaiting_owner_offer'&&
+     message.operation_id===pending.operation&&
+     message.target_base_url===pending.target&&
+@@ -144,10 +169,17 @@
+      movePending=null;moveUi('sync_pending');
+      feedback('public-move','اعتبار مقصد تأیید شد؛ همگام‌سازی کامل پیش از تغییر آدرس…',false);
+      await finishSimpleMove();
+    }catch(err){
+-     feedback('public-move','اتصال نیمه‌تمام ثبت شده است. کد دیگری نساز؛ از ادامهٔ ایمن استفاده کن. '+(err.message||''));
+-     moveUi('sync_pending');
++     const status=await post({action:'public_move_status'}).catch(()=>({}));
++     if(status.move?.status==='sync_pending'){
++       moveUi('sync_pending');
++       feedback('public-move','تأیید اعتبار مقصد نامطمئن است. «ادامهٔ اتصال» ابتدا همان اعتبار را بررسی می‌کند؛ کد دیگری نسازید.',true);
++     }else{
++       pending.handling=false;
++       moveUi('awaiting_owner');
++       feedback('public-move','انتقال هنوز شروع نشده است: '+String(err.message||'')+'؛ اطلاعات اتصال قبلی حفظ شد.',true);
++     }
+    }
+    return;
+  }
+  if(!message||message.type!=='sokna-public-move-owner-approved-v1'||
+@@ -203,9 +235,21 @@
+  }catch(err){feedback('public-move',err.message||'لغو درخواست کامل نشد.');}
+ }));
+ post({action:'public_move_status'}).then(data=>{
+  if(data.move?.status==='sync_pending'){
+-  moveUi('sync_pending');feedback('public-move','اتصال Public جدید نیمه‌تمام است. «ادامهٔ اتصال» را بزنید.',false);
++  moveUi('sync_pending');
++  feedback('public-move',data.move?.resume_kind==='probe_existing_authority'
++    ?'پاسخ مقصد نامطمئن است؛ «ادامهٔ اتصال» اعتبار قبلی را با امضای همان نشست بررسی می‌کند. کد تازه نسازید.'
++    :'اتصال Public جدید نیمه‌تمام است. «ادامهٔ اتصال» را بزنید.',false);
++ }else if(['awaiting_owner','awaiting_owner_offer'].includes(data.move?.status)){
++  movePending={operation:data.move.operation_id,target:data.move.target_base_url,
++    phase:data.move.status,handling:false};
++  const input=$('[data-public-move-target]');
++  if(input)input.value=data.move.target_base_url;
++  moveUi('awaiting_owner');
++  feedback('public-move',data.move.status==='awaiting_owner_offer'
++    ?'تأیید قبلی مدیر ثبت شده است؛ برای ادامهٔ ایمن، دوباره «بررسی و انتقال» را بزنید و در مقصد وارد شوید.'
++    :'درخواست قبلی هنوز معتبر است؛ برای ادامهٔ تأیید مالک، دوباره «بررسی و انتقال» را بزنید.',false);
+  }else if(data.move?.status==='support_required'){
+   feedback('public-move','تأیید اتصال مقصد نامشخص است؛ بدون پاک‌کردن داده‌ها، ابتدا وضعیت نصب Public جدید را بررسی کنید.',true);
+  }
+ }).catch(()=>{});
