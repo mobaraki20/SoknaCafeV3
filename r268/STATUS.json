@@ -1,0 +1,61 @@
+{
+  "format": "sokna-r268-emergency-http-host-candidate-status-v1",
+  "date": "2026-11-17",
+  "branch": "qa/sokna-r268-emergency-real-http-publish-gate-20261117",
+  "release_type": "TWO_HOP_LEGACY_EMERGENCY_BOOTSTRAP_CONDITIONED_ON_HOST_BACKUP",
+  "mode": "PUBLIC_UPGRADE_EXISTING_NO_CLEAN",
+  "source": {
+    "version": "3.0.0-g3.6-workspace.35ic-r249-cumulative-forward-gate",
+    "managed_tree_sha256": "1a5d041fd63ec5425ed9f01f0eff63c86c90c5c76f26530b773784c74884c928",
+    "catalog_migrations": 8,
+    "source": "host health + exact R249 2026-11-16 stage report",
+    "staged_old_r262_sha256": "5aef4cd781fbd450d3e454f324e294da6f4180bfe1e5eb1871cb4818dc20c93a"
+  },
+  "steps": [
+    {
+      "file": "01-SOKNA-R265-PUBLIC-35IF-EMERGENCY-BRIDGE.zip",
+      "version": "3.0.0-g3.6-workspace.35if-r265-emergency-schema-bridge",
+      "sha256": "692aa40939d788aea56efa4e3b62c46a568da0ce5c508cc87844aa63366b8892",
+      "migrations_after": 8
+    },
+    {
+      "file": "02-SOKNA-R266-PUBLIC-35IG-MIGRATION-UPDATE.zip",
+      "version": "3.0.0-g3.6-workspace.35ig-r266-public-move-schema-recovery",
+      "sha256": "b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35",
+      "migrations_after": 11
+    }
+  ],
+  "qa": {
+    "exact_R249_R262_R263_inputs": true,
+    "php83_native_zip": true,
+    "mariadb114": true,
+    "real_http_route": true,
+    "real_protected_R247C_archived_file": true,
+    "real_emergency_login_csrf_upload_stage_activate_commit": true,
+    "real_sql_8_to_11": true,
+    "db_row_preservation": true,
+    "interrupted_ddl_resume": true,
+    "schema_shape_rejection": true,
+    "guard_future_routine_vs_emergency": true,
+    "ci_url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44025587468"
+  },
+  "scope": {
+    "local_cafe_modified_by_agent": false,
+    "public_host_modified_by_agent": false,
+    "main_modified": false,
+    "current_modified": false,
+    "windows_services_modified": false
+  },
+  "field": {
+    "live_protected_host_sha_reverified": false,
+    "backup_and_restore_verified": false,
+    "actual_operator_install_done": false,
+    "post_install_health_accepted": false,
+    "public_guest_intake_enabled": false,
+    "public_local_pairing_completed": false
+  },
+  "deployment_guidance": "Only after verified external DB+files backup, stage/activate/commit step 1 then verify 35if+8/8, then stage/activate/commit step 2 and verify 35ig+11/11. No rollback after forward DB migration. Do not activate old staged R262 or Clean install.",
+  "publish_status": "HOST_CANDIDATE_NOT_YET_ACCEPTED_FIELD",
+  "notes": "Code+native PHP HTTP+DB qualified. Exact operator ZIP bytes are unchanged from previously QA-labeled files; embedded QA provenance is retained to preserve byte-for-byte testing. Never rename contents or edit migrations.",
+  "archive_library_path": "/Cafe/SOKNA-Workspace/WORKING/20261117-R268-PUBLIC-EMERGENCY-HTTP-HOST-CANDIDATE/"
+}
