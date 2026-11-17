@@ -192,3 +192,11 @@
 - SHA-256 فایل مالک نصب‌شده assets/sokna-public-move.js برابر 4fbf205611ab5652ecc4550311119a5e144e81662debaf23ca931bee01e65154 و مطابق ZIP مبنای 35ig/R266 است؛ قابلیت‌های offer_existing و existing_paired در کد Live وجود ندارند.
 - Local 231fg/R262 هنوز روی URL قدیمی با public_authority_resync_required است؛ سورس آن برای callback مالک کد اولیه pairing را الزام می‌کند. Public paired این کد اولیه را نمی‌دهد. public_replacement_busy در phase resync_required به‌تنهایی job فعال را اثبات نمی‌کند.
 - این شواهد اتصال را برقرار نکرده‌اند: هویت مقصد با Local هنوز تطبیق داده نشده، وضعیت guest work و backup/restore و Emergency wrapper معلوم نیست. R273 روی کافه نصب نشده و QA-DO-NOT-INSTALL است؛ تغییر دستی آدرس/epoch/secret، SQL، حذف صف، re-pair و Clean Install ممنوع.
+
+## R274 — شواهد اصلاح بن‌بست اصلی و بازیابی امن (۱۷ نوامبر ۲۰۲۶)
+
+سورس واقعی R262/231fg و R266/35ig به‌دلیل عدم امکان ارائهٔ pairing code از Public موجود، در کافه اتصال را به پایان نمی‌رساند. R274 یک کاندید جدا از R273 است که مشکل بازیابی مرحلهٔ پس از تأیید مالک در refresh و `pairing_uncertain` پس از گم‌شدن پاسخ authority را اصلاح کرد. دو ZIP دقیق SHA Local `9038abd4757ed1ed3dc3ab92e54f9266096fe73d5919d7667a1f195540991ec4` و Public `68725567e7336e0b43691ff4adae8b494b4a9c793a50a30d4564a2dab11daa92` فقط QA هستند.
+
+شواهد PASS: [E2E 44087836405](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44087836405) root+subfolder, MariaDB و سفارش مهمان یک‌بار، lost-reply-safe status؛ [Windows 44087621464](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44087621464) 231fg→231fk؛ [Chromium 44088598201](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44088598201) normal+resumed popup بدون امضای تکراری؛ [Protected Emergency 44089170047](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44089170047) 35ig→35ii Stage/Activate/Commit در CI با wrapper fixture.
+
+**بدون تغییر تصمیم‌های MIG‑019/MIG‑020:** Public هاست واقعی همچنان 35ig، Local کافه همچنان طبق آخرین support 231fg و resync_required است؛ شناسهٔ نصب مقصد در برابر Local، سفارش‌های زندهٔ معلق، بکاپ بازیابی‌شده و wrapper حفاظت‌شدهٔ واقعاً نصب‌شده تأیید نشده‌اند. بنابراین Production GO صادر نشده و بسته‌ها برای نصب کافه مجاز نیستند. main/CURRENT و اطلاعات کافه تغییر نکرده‌اند. 
