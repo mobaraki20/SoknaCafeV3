@@ -120,6 +120,18 @@ try:
     assert hashlib.sha256(r275Package.read_bytes()).hexdigest()=='63213185fcc037b620ea0dccf133d5c63672f01da7db7d3545eb54e617dd150f'
     b=post('stage',pkg=r275Package);assertmsg(b,'بسته با موفقیت اعتبارسنجی')
     b=post('activate',{'confirmation':'activate'})
+    if 'فایل‌ها فعال شدند' not in b:
+        # Disposable CI fixture; only safe fields and support text.
+        visible=re.sub(r'<script.*?</script>','',b,flags=re.S)
+        visible=re.sub(r'<style.*?</style>','',visible,flags=re.S)
+        visible=re.sub(r'<[^>]*>',' ',visible)
+        visible=re.sub(r'\\s+',' ',visible)
+        print('R275_ACTIVATE_UI_SAFE_DIAG',visible[-3500:])
+        st=store/'routine-update-v2/state.json'
+        if st.exists():
+            o=json.loads(st.read_text())
+            print('R275_ACTIVATE_STATE_SAFE_DIAG',{k:o.get(k) for k in ('active_version','pending_verification','db_forward_fence','activation_journal','staged')})
+
     if (root/'VERSION.txt').read_text().strip()!='3.0.0-g3.6-workspace.35ij-r275-operator-confirm-public-discard':
         raise RuntimeError('R275_ACTIVATE_DID_NOT_WRITE_TARGET '+repr(re.findall(r'<div[^>]*class="(?:error|notice)"[^>]*>.*?</div>',b,re.S)[:5]))
     print('R275_ACTIVATE_VERSION_READBACK_PASS')
