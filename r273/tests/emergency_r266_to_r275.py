@@ -84,6 +84,15 @@ def csrf(html):
 def assertmsg(b,fragment):
     if fragment not in b:
         alerts=re.findall(r'<div[^>]*class="(?:alert|warning)"[^>]*>(.*?)</div>',b,re.S)
+        import html as _h
+        visible=re.sub(r'<script.*?</script>','',b,flags=re.S)
+        visible=re.sub(r'<style.*?</style>','',visible,flags=re.S)
+        visible=re.sub(r'<[^>]*>',' ',visible)
+        visible=re.sub(r'\\s+',' ',_h.unescape(visible))
+        status=json.loads((store/'routine-update-v2/state.json').read_text())
+        safe={k:status.get(k) for k in ('active_version','staged','pending_verification','db_forward_fence','activation_journal')}
+        print('R275_EMERGENCY_ACTIVATE_ERROR_VISIBLE',visible[-4000:])
+        print('R275_EMERGENCY_ACTIVATE_ERROR_STATE',safe)
         raise RuntimeError('Expected '+repr(fragment)+' not in page; alerts='+repr(alerts[:4])+' last='+b[-600:])
 def post(action,fields=None,pkg=None):
     _,p=request();token=csrf(p);d=dict(fields or {});d['csrf']=token
