@@ -1,0 +1,66 @@
+name: SOKNA R273 Exact R262-to-R273 Windows Maintenance QA
+on:
+  push:
+    branches: [qa/sokna-r273-real-owner-cutover-20261117]
+    paths:
+      - 'r273/tests/native_r262_to_r273.ps1'
+      - '.github/workflows/sokna-r273-native-windows-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  direct-r262-to-r273:
+    name: Exact cumulative upgrade with Windows Maintenance HTTP and DB readback
+    runs-on: windows-latest
+    timeout-minutes: 100
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-UNIVERSAL-44BASE-FINAL-ZIP-CONTRACT-QA-NOT-INSTALL
+          run-id: 42896959119
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r153-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: r177-real-windows-candidate-and-stage-passed
+          run-id: 43266950479
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r177-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R201-EXACT-WINDOWS-QUALIFIED-NO-CAFE-AUTO-DEPLOY
+          run-id: 43491934082
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r201-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-EXACT-NATIVE-WINDOWS-UAT-CANDIDATE-DO-NOT-INSTALL
+          run-id: 43834210936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r262-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: R273-EXACT-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44051423863
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r273-parent
+      - name: Replay known Windows lineage into R262, then activate R273 on same machine
+        shell: pwsh
+        env:
+          R186_R153_DIR: ${{ runner.temp }}/r153-parent
+          R201_R177_DIR: ${{ runner.temp }}/r177-parent
+          R201_TARGET_DIR: ${{ runner.temp }}/r201-parent
+          R273_R262_DIR: ${{ runner.temp }}/r262-parent
+          R273_TARGET_DIR: ${{ runner.temp }}/r273-parent
+        run: |
+          $ErrorActionPreference='Stop'
+          & 'r273/tests/native_r262_to_r273.ps1'
+          if($LASTEXITCODE -ne 0){throw 'R273_NATIVE_WINDOWS_DIRECT_UPGRADE_FAILED'}
+          Write-Host 'PASS_R273_NATIVE_EXACT_PACKAGE_R262_TO_R273__QA_ONLY_NO_HOST_DEPLOY'
