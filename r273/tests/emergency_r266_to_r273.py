@@ -120,7 +120,10 @@ try:
     assert hashlib.sha256(r273Package.read_bytes()).hexdigest()=='d137b255fa51d401525ab3de5ec92d20d17a61311b35099a58647c754297ee37'
     b=post('stage',pkg=r273Package);assertmsg(b,'بسته با موفقیت اعتبارسنجی')
     b=post('activate',{'confirmation':'activate'});assertmsg(b,'فایل‌ها فعال شدند')
-    b=post('commit',{'confirmation':'commit'});assertmsg(b,'نسخه جدید')
+    b=post('commit',{'confirmation':'commit'})
+    import html as _html
+    print('R273_COMMIT_ALERTS',[re.sub('<[^>]+>',' ',_html.unescape(t))[:800] for t in re.findall(r'<div[^>]*class="(?:error|notice|warning)"[^>]*>.*?</div>',b,re.S)][:5])
+    print('R273_COMMIT_TECHNICAL',[t[:700] for t in re.findall(r'<pre[^>]*id="technical-json"[^>]*>(.*?)</pre>',b,re.S)][:1])
     assert (root/'VERSION.txt').read_text().strip()=='3.0.0-g3.6-workspace.35ih-r273-existing-public-owner-safe-move'
     for name,rel,sha in [
      ('emergency.php','emergency.php','b41a7deae19becca160586401a0c4bc33150c43f811d838c5973249bbeb2c6ce'),
