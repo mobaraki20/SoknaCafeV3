@@ -79,3 +79,27 @@
 Workflowها فقط مجوز **خواندن** GitHub و **آپلود گزارش QA** دارند؛ هیچ کد محصول، Maintenance/PrintAgent، دیتابیس، هاست یا بسته‌ای نصب/منتشر نمی‌شود. سورس `main` به‌تنهایی به‌عنوان نسخه جدید نهایی پذیرفته نیست؛ آخرین Workspace و تصمیم‌های REG-003/۲۷ HOLD پیش‌نیاز پذیرش سورس است. کنترل ساختاری موفق به‌معنای اثبات رفتار نسخه جدید نیست.
 
 **معیار اتمام یکپارچه‌سازی در این مرحله:** یک ورودی GitHub برای R233 و R265/R266 و بسته‌های بعدی، یک گیت عمومی قابل فراخوانی، و رسید تفکیک‌شدهٔ منشأ ساخت و تأیید SHA؛ برای ادعای «انتشار خودکار نصب‌پذیر کامل» هنوز اتصال سازنده‌های اصلی هر مؤلفه و آزمون میدانی همان بسته لازم است.
+
+## اتصال خودکار سازندهٔ آینده در همان اجرای GitHub (بدون دانستن SHA از قبل)
+
+برای خودکارسازی واقعی، **لازم نیست قبل از Build، SHA فایل هنوز ساخته‌نشده را حدس بزنی یا در Git Commit کنی**. پس از اینکه سازندهٔ اصلی ZIP را تولید کرد، همان Job با SHA256 فایل اصلی یک `candidate-contract.json` در کنار ZIP داخل **همان Actions Artifact** ایجاد می‌کند. ساختار آن همان `sokna-candidate-contract-v1` بالاست، فقط `producer.run_id` برابر رشتهٔ `"same_run"` است و `packages[].sha256` از بایت ZIP ساخته‌شده محاسبه می‌شود.
+
+سپس خود سازنده در GitHub این Job قابل استفادهٔ مجدد را به‌عنوان وابستگی فراخوانی می‌کند:
+
+```yaml
+candidate-qa:
+  needs: [build]
+  uses: ./.github/workflows/sokna-release-factory.yml
+  permissions:
+    contents: read
+    actions: read
+  with:
+    track: registered-candidate
+    candidate_contract_path: artifact:candidate-contract.json
+    candidate_run_id: ${{ github.run_id }}
+    candidate_artifact: EXACT-ORIGINAL-CANDIDATE-ARTIFACT
+```
+
+این ورودی فقط وقتی پذیرفته می‌شود که **Producer Run ID و Factory Run ID یکسان باشند** و قرارداد در خود همان Artifact باشد؛ تفاوت نام، SHA، فایل اضافه یا تکراری باعث توقف می‌شود. این راه برای سازنده‌های جدید Public و Local قابل استفاده است؛ **اما ثبت SOURCE/REG-003 در خود Manifest توسط سازنده هنوز به معنای تأیید مستقل سورس نیست**. بنابراین موفقیت این Job فقط QA فایل را اثبات می‌کند، و پذیرش دیتابیس و نصب همان بسته به گیت‌های اختصاصی نیاز دارد.
+
+این اتصال برخلاف مسیر R265/R266 که **آرشیو تاریخی خارج از کارخانه** را دوباره بررسی می‌کند، در خود اجرای سازنده انجام می‌شود؛ دو خروجی در رسید با `built_inside_factory` و `factory_validated_exact_bytes` مشخص‌اند.
