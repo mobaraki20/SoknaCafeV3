@@ -2,7 +2,7 @@ name: SOKNA R265 R266 Candidate Origin Receipt - External vs Unified Factory
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/public-r265-r266-attribution-gate-20261117]
     paths:
       - 'release-ops/external-public-r268-provenance.json'
       - 'release-ops/trace_external_public_candidate.py'
