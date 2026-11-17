@@ -9,7 +9,7 @@
      {
          $this->validId($installationId);$ttl=max(300,min(86400,$ttlSeconds));
          $this->pdo->beginTransaction();
-@@ -35,12 +35,20 @@
+@@ -36,11 +36,18 @@
              $q=$this->pdo->prepare('SELECT authority_epoch,active,revoked_at FROM installations WHERE installation_id=? FOR UPDATE');
              $q->execute([$installationId]);$row=$q->fetch(PDO::FETCH_ASSOC);
              if(!is_array($row)||!(bool)$row['active']||!empty($row['revoked_at']))throw new PublicUpdateException('installation_not_found','Installation is not active.',404);
@@ -19,7 +19,6 @@
 -                // Foreign or ambiguous installs must never be implicitly adopted.
 -                (new \Sokna\PublicEdge\Security\PublicMoveReplacementGate($this->pdo))
 -                    ->requireNoUnresolvedGuestWork($installationId);
--            }
 +                // Serialize against all new requests/claims on this installation.
 +                // Never interpret this optional owner consent for Emergency flows.
 +                $gate=new \Sokna\PublicEdge\Security\PublicMoveReplacementGate($this->pdo);
@@ -30,10 +29,11 @@
 +                }
 +            }elseif($allowOwnerDiscard){
 +                throw new \RuntimeException('discard_requires_owner_move');
-+            }
+             }
              if($ownerMove){
                  // An owner grant cannot silently supersede an unconsumed
-@@ -68,7 +76,11 @@
+@@ -59,7 +66,11 @@
+             $this->pdo->prepare("INSERT INTO installation_authority_reenrollments(installation_id,from_epoch,to_epoch,code_hash,status,expires_at) VALUES(?,?,?,?, 'pending',DATE_ADD(UTC_TIMESTAMP(),INTERVAL ? SECOND))")->execute([$installationId,$from,$to,password_hash($code,PASSWORD_DEFAULT),$ttl]);
              $this->pdo->prepare("UPDATE installations SET remote_enabled=0,order_intake_enabled=0,authority_state='reenroll_pending',authority_epoch_required=1,authority_changed_at=UTC_TIMESTAMP(6) WHERE installation_id=?")->execute([$installationId]);
              $this->pdo->commit();
 -            $this->access->audit('authority_offer',$installationId,$actor,['from_epoch'=>$from,'to_epoch'=>$to,'ttl_seconds'=>$ttl]);
@@ -42,3 +42,6 @@
 +                'owner_discard_confirmed'=>$ownerMove&&$allowOwnerDiscard,
 +                'discarded_realtime'=>$discarded['realtime'],'discarded_deferred'=>$discarded['deferred']
 +            ]);
+             return ['ok'=>true,'installation_id'=>$installationId,'from_epoch'=>$from,'authority_epoch'=>$to,'enrollment_code'=>$code,'expires_in_seconds'=>$ttl];
+         }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+     }
