@@ -218,3 +218,15 @@
 - Local Runtime `degraded` با `public.relay_sync` ۶۵٬۱۷۳ شکست متوالی، `public.projection_sync` ۲٬۴۹۵، و ۴۴۴۲ رویداد outbox pending؛ آنها سفارش شمرده نمی‌شوند و نباید حذف شوند. Old URL `soknaspace.ir`، sync 404، authority 409 و Public جدید `soknagroup.ir/public`.
 - Public R266 `35ig`, ۱۱/۱۱ migration, tree expected matched, relay zero at support time. **Still unknown from provided packages:** private `realtime_requests` and `deferred_work` pending counts, standalone **recoverable** host backup, installed protected `emergency.php` integrity; real production order delivery not yet tested.
 - Full sanitized forensic report in Library `/Cafe/SOKNA-Workspace/WORKING/20261117-R274-CUTOVER-QA/SOKNA-R274-CAFE-ACTUAL-LOCAL-PUBLIC-VERIFICATION-20261117-FA.md`. Identity field gate is now PASS, but R274 stays `QA-DO-NOT-INSTALL` until genuine tenant queue/backup/host gates. No cafe changes were made.
+
+## R275 — اختیار آگاهانه برای کنارگذاشتن صف Public فقط با تأیید مالک (۱۷ نوامبر ۲۰۲۶)
+
+تصمیم جدید کاربر: در سناریوی انتقال Public موجود، حفظ درخواست‌ها/سفارش‌های تحویل‌نشدهٔ **Public مقصد** شرط مانع نیست؛ باید هشدار صریح فارسی دربارهٔ از دست رفتن آن‌ها نشان داده شود و با رضایت مستقل مالک Public، صف همان نصب به وضعیت نهایی غیرقابل‌اجرا منتقل شود. این تصمیم به‌هیچ‌وجه پاک‌سازی سفارش‌های Local، فاکتورها، مواد اولیه، مالی، صف ۴۴۴۲ رویداد projection در Local، یا درخواست درحال اجرای دارای lease معتبر را مجاز نمی‌کند. تاریخچهٔ درخواست به‌جای DELETE با error_code قابل حسابرسی نگه داشته می‌شود.
+
+کد R275 همان R274 با تغییرات محدود Public است، بدون migration جدید. R275 روی نصب ریشه و زیرپوشه، MariaDB HTTP owner consent/deny، جلوگیری از درخواست lease فعال، full sync و exactly-once guest؛ Chromium normal/resume/confirm/cancel؛ Native Windows 231fg→231fl؛ protected Public Emergency 35ig→35ij موفق بوده. شواهد:
+- https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44105878595
+- https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44106881101
+- https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44106880987
+- https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44107838897
+
+هش کاندید Local f42d66e26dfee936f29c159bb7028adefcfedda43ddf2dc63e2c25d6a7d6dba9، Public 63213185fcc037b620ea0dccf133d5c63672f01da7db7d3545eb54e617dd150f. **نصب واقعی اجرا نشده و بسته‌ها هنوز QA با operator_install_allowed=false هستند.** این تصمیم شرط Product MIG-018 فقط برای موارد Public-only pending و تنها پس از owner consent اصلاح می‌کند؛ سایر الزامات ایمنی انتقال، بکاپ Local، و auth پابرجاست.
