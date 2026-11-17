@@ -33,3 +33,11 @@ Local فعلی برای سفارش‌گیری داخلی پابرجا بماند
 
 ## دفتر تصمیمات
 MIG-019/020 در `r251/decisions.json` و `r251/DECISIONS-FA.md` ثابت‌اند؛ R274 شواهد و patchهای جدید این تعهد را اجرا می‌کند، تصمیمِ لغو گیت انتشار صادر نمی‌کند.
+
+
+## ۱۷ نوامبر — تطبیق زندهٔ هویت و محافظ‌های پیش‌از-تغییر
+
+- [GET واقعی فقط‌خواندنی 44097232690](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44097232690) شناسهٔ جفت‌شدن Public در هاست را به‌صورت مقایسهٔ هش با **۱۶ ثبت تاریخی Local actor** در بستهٔ پشتیبانی Public سنجید: `public_pairing_id_matches_historical_actor_in_public_support=true`. شناسهٔ خام منتشر نشد. **شناسهٔ Local فعلی 231fg مستقل بررسی نشده**؛ بنابراین انطباق جاری را PASS ننویسید.
+- کد واقعی `PublicMoveReplacementGate::requireNoUnresolvedGuestWork` قبل از `AuthorityEpochService::createOffer(ownerMove=true)` حالات `realtime_requests: queued/claimed/unknown_review` و `deferred_work: pending_sync/needs_review` را می‌بندد. `relay.queued=0` در support به‌تنهایی این جدول‌ها را اثبات نمی‌کند.
+- `RoutinePublicUpdateService::activateStaged` قبل از `applyDelta` باید recovery pre-image ایجاد کند؛ شکست آن `recovery_preflight_failed` و توقف قبل از mutation می‌دهد. `lkg_recovery_id` عمداً بعد از Commit همراه migration خالی می‌شود. اما **بکاپ مستقل واقعی روی هاست و تمرین restore هنوز اثبات نشده**.
+- گیت field و نصب همچنان `NO-GO`، فایل‌های R274 همچنان `QA-DO-NOT-INSTALL`. main/CURRENT و هاست و Local کافه بدون تغییر؛ گزارش تکمیلی در Library `20261117-R274-CUTOVER-QA/SOKNA-R274-IDENTITY-AND-RUNTIME-GATES-20261117-FA.md`.

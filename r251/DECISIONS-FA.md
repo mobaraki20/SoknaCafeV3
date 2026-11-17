@@ -200,3 +200,11 @@
 شواهد PASS: [E2E 44087836405](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44087836405) root+subfolder, MariaDB و سفارش مهمان یک‌بار، lost-reply-safe status؛ [Windows 44087621464](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44087621464) 231fg→231fk؛ [Chromium 44088598201](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44088598201) normal+resumed popup بدون امضای تکراری؛ [Protected Emergency 44089170047](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44089170047) 35ig→35ii Stage/Activate/Commit در CI با wrapper fixture.
 
 **بدون تغییر تصمیم‌های MIG‑019/MIG‑020:** Public هاست واقعی همچنان 35ig، Local کافه همچنان طبق آخرین support 231fg و resync_required است؛ شناسهٔ نصب مقصد در برابر Local، سفارش‌های زندهٔ معلق، بکاپ بازیابی‌شده و wrapper حفاظت‌شدهٔ واقعاً نصب‌شده تأیید نشده‌اند. بنابراین Production GO صادر نشده و بسته‌ها برای نصب کافه مجاز نیستند. main/CURRENT و اطلاعات کافه تغییر نکرده‌اند. 
+
+
+## ۱۷ نوامبر — تطبیق زندهٔ هویت و محافظ‌های پیش‌از-تغییر
+
+- [GET واقعی فقط‌خواندنی 44097232690](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44097232690) شناسهٔ جفت‌شدن Public در هاست را به‌صورت مقایسهٔ هش با **۱۶ ثبت تاریخی Local actor** در بستهٔ پشتیبانی Public سنجید: `public_pairing_id_matches_historical_actor_in_public_support=true`. شناسهٔ خام منتشر نشد. **شناسهٔ Local فعلی 231fg مستقل بررسی نشده**؛ بنابراین انطباق جاری را PASS ننویسید.
+- کد واقعی `PublicMoveReplacementGate::requireNoUnresolvedGuestWork` قبل از `AuthorityEpochService::createOffer(ownerMove=true)` حالات `realtime_requests: queued/claimed/unknown_review` و `deferred_work: pending_sync/needs_review` را می‌بندد. `relay.queued=0` در support به‌تنهایی این جدول‌ها را اثبات نمی‌کند.
+- `RoutinePublicUpdateService::activateStaged` قبل از `applyDelta` باید recovery pre-image ایجاد کند؛ شکست آن `recovery_preflight_failed` و توقف قبل از mutation می‌دهد. `lkg_recovery_id` عمداً بعد از Commit همراه migration خالی می‌شود. اما **بکاپ مستقل واقعی روی هاست و تمرین restore هنوز اثبات نشده**.
+- گیت field و نصب همچنان `NO-GO`، فایل‌های R274 همچنان `QA-DO-NOT-INSTALL`. main/CURRENT و هاست و Local کافه بدون تغییر؛ گزارش تکمیلی در Library `20261117-R274-CUTOVER-QA/SOKNA-R274-IDENTITY-AND-RUNTIME-GATES-20261117-FA.md`.
