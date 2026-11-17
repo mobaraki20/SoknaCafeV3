@@ -1,6 +1,6 @@
 {
   "format": "sokna-release-version-ledger-v1",
-  "updated_at": "2026-11-16",
+  "updated_at": "2026-11-17",
   "historical_complete": false,
   "scope": "publication-only; never infer installed version from this register",
   "quarantined_short_versions": [
@@ -80,9 +80,27 @@
       "sha256": "37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21",
       "status": "QA_R263_SELFCONTAINED_CLEAN_HOST_UNACCEPTED",
       "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43837950540"
+    },
+    {
+      "component": "public",
+      "kind": "public-update",
+      "short_code": "35if",
+      "version": "3.0.0-g3.6-workspace.35if-r265-emergency-schema-bridge",
+      "sha256": "692aa40939d788aea56efa4e3b62c46a568da0ce5c508cc87844aa63366b8892",
+      "status": "EXTERNAL_R268_QA_ONLY_NOT_UNIFIED_FACTORY_HOST_UNACCEPTED",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44025587468"
+    },
+    {
+      "component": "public",
+      "kind": "public-update",
+      "short_code": "35ig",
+      "version": "3.0.0-g3.6-workspace.35ig-r266-public-move-schema-recovery",
+      "sha256": "b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35",
+      "status": "EXTERNAL_R268_QA_ONLY_NOT_UNIFIED_FACTORY_HOST_UNACCEPTED",
+      "evidence": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44025587468"
     }
   ],
-  "note": "Incomplete historical registry. 'observed' includes exact externally verified GitHub archive SHAs and separately labeled QA-only report fingerprints; observed != released/installed. Never infer production from this ledger. Do not reuse an observed version identity for different bytes. R262/R263 QA fingerprints are observed/rejected only; release_authorized remains false. NEVER use R262 incomplete Clean or treat Local CI for_install/production_pass flags as operator approval.",
+  "note": "Incomplete historical registry. 'observed' includes exact externally verified GitHub archive SHAs and separately labeled QA-only report fingerprints; observed != released/installed. Never infer production from this ledger. Do not reuse an observed version identity for different bytes. R262/R263 QA fingerprints are observed/rejected only; release_authorized remains false. NEVER use R262 incomplete Clean or treat Local CI for_install/production_pass flags as operator approval. R265/35if and R266/35ig exact external producer fingerprints are OBSERVED QA-only, not unified-factory or host acceptance; never reuse short_code for different bytes.",
   "rejected": [
     {
       "component": "public",
