@@ -1,0 +1,35 @@
+--- a/public/integrations/api.php
++++ b/public/integrations/api.php
+@@ -58,8 +58,32 @@
+             if($action==='public_move_status'){
+                 $pending=$replacement->status();
+                 if(($pending['active']??false)===true){
+                     $_SESSION['sokna_move_operation']=$pending['operation_id'];
++                }else{
++                    // The page may have been refreshed after the independent
++                    // Local admin approved the paired Public, but before the
++                    // owner issued an authority offer. Recover the SAME
++                    // challenge; never generate a new nonce/code or expose a
++                    // receipt/credential to the browser.
++                    $op=(string)($_SESSION['sokna_move_operation']??'');
++                    if(preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{5,127}$/D',$op)){
++                        try{
++                            $challenge=$ledger->pendingChallenge($localId,$op,time());
++                            $stage=(string)($ledger->status($localId,$op)['status']??'');
++                            if(in_array($stage,['issued','owner_approved'],true)){
++                                $pending=[
++                                    'status'=>$stage==='owner_approved'?'awaiting_owner_offer':'awaiting_owner',
++                                    'active'=>false,
++                                    'operation_id'=>$op,
++                                    'target_base_url'=>$challenge['target_base_url'],
++                                    'challenge_expires_at'=>$challenge['expires_at'],
++                                    'minimum_next_epoch'=>$core->publicAuthorityState()->epoch()+1,
++                                    'safe_to_cutover'=>false,
++                                ];
++                            }
++                        }catch(\Throwable){/* expired/no current challenge; start normally */}
++                    }
+                 }
+                 WebAction::json(['success'=>true,'move'=>$pending]);
+             }
+             if($action==='public_move_begin'){
