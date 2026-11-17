@@ -155,3 +155,16 @@
 | منفی‌ها/قطع و ادامهٔ واقعی/مرورگر و QR | ماتریس ۱۶ سناریوی R272 (MIG-020) | **OPEN / NO-GO** | نتیجهٔ happy-path جای آزمون‌های منفی را نمی‌گیرد |
 
 **خروجی تصمیم:** الزامات MIG-019 و MIG-020 همچنان ACTIVE و گیت انتشار عملیاتی **BLOCKED** است. به‌روزرسانی Public روی هاست کافه، انتقال URL، تغییر SQL/epoch، Clean Install و تغییر CURRENT/main انجام نشده و نباید از نتایج CI استنتاج شود. آدرس‌های نمونه و نسخه‌های سکنا صرفاً fixture هستند؛ موتور همچنان یونیورسال باقی می‌ماند. برای جزئیات جاری: `r273/START-HERE-FA.md`.
+
+## ادامهٔ تأیید R273 — آزمون‌های منفی و Public قدیمی (۱۷ نوامبر ۲۰۲۶)
+
+این ردیف‌ها **فقط شواهد اجرایی** هستند؛ متن و وضعیت تصمیم‌های MIG-019 و MIG-020 تغییری نکرده و مجوز انتشار داده نمی‌شود.
+
+| گیت جدید | سند اجرایی | نتیجه |
+|---|---|---|
+| درخواست‌های مهمانِ صف realtime و deferred باید انتقال Public موجود را مسدود کنند، بدون تغییر epoch یا intake | [44070273244](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44070273244) | QA PASS، هر دو حالت با MariaDB واقعی |
+| Public متصل به Local دیگر و درخواست منقضی باید رد شوند | [44070595593](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44070595593) | QA PASS، authority بدون تغییر |
+| نصب قدیمیِ بدون حساب مالک: preflight/upgrade مدیر دارای staff-session واقعی؛ رد درخواست ناشناس و CSRF نادرست، راه‌اندازی مالک و حفظ pairing | [44071059993](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44071059993) | QA PASS، سپس owner HTTP و Local full sync نیز PASS |
+| بایت‌های هر دو بسته بعد از افزودن تست‌ها ثابت باقی بمانند | [44071059993](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44071059993) | Local `a75471e7...` و Public `61899171...` بدون تغییر |
+
+**مانعهای باقیمانده و قطعی:** صحت قابل بازیابی پشتیبان live، هویت و وضعیت سفارش‌های live/Public مقصد، هش فایل حفاظت‌شدهٔ Emergency روی میزبان واقعی، آزمون مرورگر popup و قطع/ادامه و دوURL root/subfolder، یک سفارش مهمان واقعی پس از انتقال، QR، و پذیرش رسمی کارخانهٔ انتشار. `QA_PASS_PARTIAL — PRODUCTION_HOST_NOT_QUALIFIED` برقرار است. تست‌ها هیچ عملیات روی کافه یا تغییر `CURRENT/main` ایجاد نکردند.
