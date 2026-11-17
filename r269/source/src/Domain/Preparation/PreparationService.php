@@ -34,7 +34,7 @@ final class PreparationService
              FROM orders o
              LEFT JOIN cafe_tables t ON t.id=o.table_id
              LEFT JOIN staff_consumptions sc ON sc.order_id=o.id
-             WHERE o.business_date=? AND o.status IN ('accounted','completed') AND COALESCE(o.accounting_origin,'regular')<>'late_served'
+             WHERE o.business_date=? AND o.status IN ('accounted','completed','cancelled') AND COALESCE(o.accounting_origin,'regular')<>'late_served'
              ORDER BY o.created_at,o.id"
         );
         $ordersStmt->execute([$businessDate]);
@@ -157,7 +157,7 @@ final class PreparationService
              FROM orders o
              LEFT JOIN cafe_tables t ON t.id=o.table_id
              LEFT JOIN staff_consumptions sc ON sc.order_id=o.id
-             WHERE o.business_date=? AND o.status IN ('accounted','completed') AND COALESCE(o.accounting_origin,'regular')<>'late_served'
+             WHERE o.business_date=? AND o.status IN ('accounted','completed','cancelled') AND COALESCE(o.accounting_origin,'regular')<>'late_served'
              ORDER BY o.created_at,o.id"
         );
         $ordersStmt->execute([$businessDate]);
