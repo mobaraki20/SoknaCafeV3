@@ -1,0 +1,127 @@
+name: SOKNA R268 Real HTTP Emergency Release Qualification
+on:
+  push:
+    branches: [qa/sokna-r268-emergency-real-http-publish-gate-20261117]
+    paths:
+      - 'r267/**'
+      - 'r268/**'
+      - '.github/workflows/sokna-r268-http-emergency-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  emergency-schema-mariadb:
+    name: Exact R249/R262 plus schema recovery end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_public_qa_only
+          MARIADB_ROOT_PASSWORD: test-only-root-pass
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ptest-only-root-pass"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_NAME: sokna_public_qa_only
+      SOKNA_QA_DB_USER: root
+      SOKNA_QA_DB_PASSWORD: test-only-root-pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-r249-dual-baseline-gated-public-candidate
+          run-id: 43749990301
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/base249
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
+          run-id: 43835146004
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/target262
+      - uses: actions/download-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          run-id: 43837950540
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/clean263
+      - name: Materialize only pinned historical Public archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/input"
+          python3 - <<'PY'
+          import os,pathlib,hashlib,shutil
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);out=t/'input'
+          targets=[(t/'base249','5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4','SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip'),
+            (t/'target262','5aef4cd781fbd450d3e454f324e294da6f4180bfe1e5eb1871cb4818dc20c93a','SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip'),
+            (t/'clean263','37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21','SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip')]
+          for folder,digest,name in targets:
+           hits=[p for p in folder.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()==digest]
+           assert len(hits)==1,(folder,[str(x) for x in folder.rglob('*.zip')])
+           shutil.copyfile(hits[0],out/name)
+          print('Pinned R249/R262 source archives PASS')
+          PY
+      - name: Build deterministic two-step operator QA package lineage
+        shell: bash
+        env:
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r267
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/input
+        run: |
+          set -euo pipefail
+          python3 r267/build_qa_packages.py
+          php -l r267/source/IndependentEmergencyRoutineBridge.php
+          php -l r267/source/RoutinePublicUpdateService.php
+          php -l r267/source/ResumablePublicSchema.php
+          php -l r267/tests/mariadb.php
+          php -l r267/tests/lifecycle.php
+      - name: Guard future Public packages against an unsupported Emergency schema route
+        shell: bash
+        env:
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r267
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/input
+        run: |
+          set -euo pipefail
+          python3 r267/gates/test_public_emergency_schema_route.py
+      - name: Reproduce 35IC Emergency rejection and prove safe bridge + 3-schema commit
+        shell: bash
+        env:
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r267
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/input
+        run: |
+          set -euo pipefail
+          python3 r267/tests/prepare_fixture.py
+          for action in reject_old patch_activate patch_commit final_activate fail_commit resume_commit; do
+            php r267/tests/lifecycle.php "$action"
+          done
+      - name: Real MariaDB 8-to-11, persisted install row, interrupted DDL recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          php r267/tests/mariadb.php
+      - name: Real HTTP owner UI with CSRF login uploads and 8 to 11 MariaDB upgrade
+        shell: bash
+        env:
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r267
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/input
+        run: |
+          set -euo pipefail
+          python3 r268/http/test_real_emergency_http.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY
+          path: |
+            r267/output/SOKNA-R265-PUBLIC-35IF-EMERGENCY-BRIDGE-CODE-ONLY-QA.zip
+            r267/output/SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip
+            r267/output/R265-R266-OFFLINE-MANIFEST.json
+          retention-days: 7
