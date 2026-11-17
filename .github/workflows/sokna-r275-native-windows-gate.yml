@@ -3,6 +3,7 @@ on:
   push:
     branches: [qa/sokna-r275-operator-discard-public-pending-20261117]
     paths:
+      - 'r273/**'
       - 'r275/**'
       - '.github/workflows/sokna-r275-native-windows-gate.yml'
   workflow_dispatch:
