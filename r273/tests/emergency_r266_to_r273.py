@@ -117,7 +117,7 @@ try:
     # Now the code-only Public release must work via the same independently
     # authenticated protected Emergency HTTP session already on this exact R266.
     r273Package=R/'SOKNA-R273-PUBLIC-35IH-OWNER-TRANSFER-CODE-ONLY-QA-DO-NOT-INSTALL.zip'
-    assert hashlib.sha256(r273Package.read_bytes()).hexdigest()=='d137b255fa51d401525ab3de5ec92d20d17a61311b35099a58647c754297ee37'
+    assert hashlib.sha256(r273Package.read_bytes()).hexdigest()=='61899171512f2b356ab7c22cc12f4be66a2078f1f967b8caf8547f08e9a28cc8'
     b=post('stage',pkg=r273Package);assertmsg(b,'بسته با موفقیت اعتبارسنجی')
     b=post('activate',{'confirmation':'activate'})
     if (root/'VERSION.txt').read_text().strip()!='3.0.0-g3.6-workspace.35ih-r273-existing-public-owner-safe-move':
