@@ -35,6 +35,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check committed producer contract before selecting artifact
+        if: ${{ inputs.contract_path != 'artifact:candidate-contract.json' }}
         shell: bash
         env:
           CONTRACT: ${{ inputs.contract_path }}
@@ -57,6 +58,21 @@ jobs:
           assert d['production_authorized'] is False
           print('PASS_CANDIDATE_PRODUCER_CONTRACT_PINNED_BEFORE_DOWNLOAD')
           PY
+      - name: Guard same-run generated manifest before selecting producer artifact
+        if: ${{ inputs.contract_path == 'artifact:candidate-contract.json' }}
+        shell: bash
+        env:
+          SOURCE_RUN: ${{ inputs.producer_run_id }}
+          SOURCE_ARTIFACT: ${{ inputs.producer_artifact }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,re
+          assert re.fullmatch(r'[1-9][0-9]{0,18}',os.environ['SOURCE_RUN'])
+          assert os.environ['SOURCE_RUN']==os.environ['GITHUB_RUN_ID'], 'SAME_RUN_REQUIRED_FOR_DYNAMIC_MANIFEST'
+          assert re.fullmatch(r'[A-Za-z0-9_.-]{1,200}',os.environ['SOURCE_ARTIFACT'])
+          print('PASS_SAME_RUN_GENERATED_CONTRACT_GUARD')
+          PY
       - name: Retrieve the original producer Actions artifact - never rebuild the ZIP
         uses: actions/download-artifact@v4
         with:
@@ -64,6 +80,24 @@ jobs:
           run-id: ${{ inputs.producer_run_id }}
           github-token: ${{ github.token }}
           path: actual-candidate
+      - name: Verify producer-generated manifest contained in same original Actions artifact
+        if: ${{ inputs.contract_path == 'artifact:candidate-contract.json' }}
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.producer_artifact }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path('actual-candidate/candidate-contract.json')
+          assert p.is_file() and not p.is_symlink() and p.stat().st_size<=1048576
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['schema']=='sokna-candidate-contract-v1'
+          assert d['producer']['run_id']=='same_run'
+          assert d['producer']['artifact']==os.environ['ARTIFACT_NAME']
+          assert d['production_authorized'] is False
+          print('PASS_POST_BUILD_CONTRACT_IN_SAME_ARTIFACT_SOURCE_APPROVAL_NOT_INFERRED')
+          PY
       - name: Same-run reusable QA receipt - not production authorization
         id: verify
         shell: bash
@@ -74,6 +108,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p candidate-receipt
+          if [[ "$CONTRACT" == 'artifact:candidate-contract.json' ]]; then
+            CONTRACT='actual-candidate/candidate-contract.json'
+          fi
           python3 release-ops/candidate_admission.py \
             --contract "$CONTRACT" \
             --artifact-dir actual-candidate \
