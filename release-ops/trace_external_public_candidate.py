@@ -105,11 +105,27 @@ def trace(contract: pathlib.Path, artifact_dir: pathlib.Path) -> dict:
                     raise ValueError("PAYLOAD_CONTENT_SHA_OR_TREE_MISMATCH")
                 if len(payload) != step["managed_files"]:
                     raise ValueError("WRONG_MANAGED_FILE_COUNT")
+                # Historical R249's managed package already contains the
+                # stable recovery PHP entrypoint/classes. The R265/R266
+                # candidates must preserve their exact original bytes.
+                # Unlike the separately protected Emergency owner, these
+                # two legacy recovery files must NOT simply be prohibited.
+                protected_recovery = {
+                    "recovery.php": "84093636728846bcd5f2480b2f8b90592518befdb1cba55a805d6472dda8381a",
+                    "src/Recovery/StableRecoveryService.php": "872c872d90a3146d5bc4286803a11410a57fd4ebfe6a9a80f919cffc8df72bed",
+                }
                 for name in payload:
-                    if (name in {"config.php", "install.lock", "emergency.php", "recovery.php",
+                    if (name in {"config.php", "install.lock", "emergency.php",
                                 "resources/update-trust-v1.json"}
-                        or name.startswith(("storage/", "src/Emergency/", "src/Recovery/"))):
-                        raise ValueError("PROTECTED_HOST_FILE_IN_UPDATE_PAYLOAD")
+                        or name.startswith(("storage/", "src/Emergency/"))):
+                        raise ValueError("PROTECTED_EMERGENCY_OR_SECRET_IN_UPDATE_PAYLOAD")
+                actual_recovery = {name for name in payload
+                                   if name == "recovery.php" or name.startswith("src/Recovery/")}
+                if actual_recovery != set(protected_recovery) or any(
+                    digest(payload[name]) != expected
+                    for name, expected in protected_recovery.items()
+                ):
+                    raise ValueError("RECOVERY_FILES_NOT_BYTE_IDENTICAL_TO_R249")
                 comp = (m.get("compatibility") or {}).get("supported_baselines") or []
                 if len(comp) != 1 or comp[0].get("version") != step["baseline_version"] \
                    or comp[0].get("managed_tree_sha256") != step["baseline_tree_sha256"]:
@@ -137,6 +153,7 @@ def trace(contract: pathlib.Path, artifact_dir: pathlib.Path) -> dict:
                     "version": m["version"],
                     "migrations": len(sql),
                     "managed_files": len(payload),
+                    "legacy_recovery_php_same_bytes_as_R249": True,
                     "route": "Exact one Public ZIP valid for Routine/Emergency per version",
                 })
         if len(out["steps"]) != 2:
