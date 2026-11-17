@@ -1,0 +1,39 @@
+{
+  "format": "sokna-r270-operator-preparation-decision-qa-v1",
+  "date": "2026-11-17",
+  "scope": "Local/remote staff preparation read model and Local supervisor cancel UI, not guest menu",
+  "source_baseline": ["R262 Local 231fg", "R269 financial/cancel QA", "R264 accepted item editor UI base", "R262 Public staff preparation UI baseline"],
+  "status": "SOURCE_QA_PASS_NO_HOST_DEPLOY",
+  "operator_install_allowed": false,
+  "branch": "qa/sokna-r270-operator-prep-responsibility-20261117",
+  "ci_run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44033449596",
+  "product_policy": {
+    "kitchen_answer_required_before_cancel": false,
+    "operator_preparation_dispositions": ["not_received", "received_or_preparing", "unknown"],
+    "explicit_supervisor_responsibility_required": true,
+    "kitchen_ack_recorded_on_behalf_of_staff": false,
+    "pending_kitchen_followup_nonblocking": true,
+    "cancelled_order_visible_in_local_and_public_preparation_if_pending": true,
+    "financial_receipt_override_allowed": false
+  },
+  "tests": {
+    "php_lint": "PASS",
+    "node_syntax": "PASS",
+    "single_dialog_operator_ux": "PASS",
+    "real_mariadb_regression_guard_19_checks": "PASS",
+    "real_mariadb_service_integration": "PASS",
+    "printed_with_pending_cancel": "PASS",
+    "claimed_with_stale_signature_cancel": "PASS",
+    "operator_unknown_preserves_stock": "PASS",
+    "cancelled_preparation_projection": "PASS",
+    "settled_receipts_unchanged": "PASS",
+    "repeat_request_no_double_mutation": "PASS"
+  },
+  "remaining": [
+    "Field acceptance at cafe; no real host files touched",
+    "Real print agent and kitchen workflow/physical communication acceptance",
+    "New order while kitchen followup pending full browser end-to-end acceptance",
+    "Cumulative source merge REG-003 with R264/R269/R270 and eligible-origin universal update qualification",
+    "Public Staff GUI deployed only in future qualified Public cumulative"
+  ]
+}
