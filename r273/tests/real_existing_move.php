@@ -170,6 +170,17 @@ $expired=httpOwner($base,'consent_prepare',['challenge'=>$expiredChallenge],$coo
 if($expired['status']<400||$expired['status']>=500||$getGuardState()!==$guardBefore)
     throw new RuntimeException('EXPIRED_OWNER_CHALLENGE_ACCEPTED '.json_encode($expired));
 echo 'R273_NEGATIVE_FOREIGN_EXPIRED_OWNER_PASS'.PHP_EOL;
+// Do not claim deletion can safely undo a command currently leased to Local.
+$publicGuardDb->prepare("INSERT INTO realtime_requests(installation_id,request_id,request_hash,kind,actor_projection_id,envelope_json,state,lease_expires_at,expires_at) VALUES(?,?,'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc','guest_order.submit','r275-test','{}','claimed',DATE_ADD(UTC_TIMESTAMP(), INTERVAL 60 SECOND),DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR))")
+    ->execute([$id,'r275-active-lease-test']);
+$activePrep=httpOwner($base,'consent_prepare',['challenge'=>$challenge],$cookie);
+$blocked=httpOwner($base,'offer_existing',['challenge'=>$challenge,'csrf'=>$activePrep['body']['csrf'],
+    'minimum_next_epoch'=>$before+1,'discard_pending_guest_work'=>true],$cookie);
+if($blocked['status']!==409||($blocked['body']['error']??'')!=='destination_claim_active'||
+   $getGuardState()!==$guardBefore)throw new RuntimeException('ACTIVE_LEASE_DISCARD_NOT_BLOCKED '.json_encode($blocked));
+$publicGuardDb->prepare("UPDATE realtime_requests SET lease_expires_at=DATE_SUB(UTC_TIMESTAMP(), INTERVAL 2 SECOND) WHERE installation_id=? AND request_id=?")
+    ->execute([$id,'r275-active-lease-test']);
+echo 'R275_ACTIVE_LEASE_PRESERVED_THEN_SAFE_RETRY_PASS'.PHP_EOL;
 $offerPrep=httpOwner($base,'consent_prepare',['challenge'=>$challenge],$cookie);
 if($offerPrep['status']!==200)throw new RuntimeException('OWNER_OFFER_CSRF_DENIED');
 $offer=httpOwner($base,'offer_existing',['challenge'=>$challenge,'csrf'=>$offerPrep['body']['csrf'],
