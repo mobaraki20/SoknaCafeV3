@@ -1,0 +1,113 @@
+name: SOKNA Unified Release Factory - QA ONLY / NO DEPLOY
+
+on:
+  workflow_dispatch:
+    inputs:
+      checkpoint:
+        description: 'Exact approved SOURCE checkpoint (R233 historical QA only until latest-source builders are qualified)'
+        type: string
+        required: true
+        default: R233-20261115
+  pull_request:
+    paths:
+      - '.github/workflows/sokna-release-factory.yml'
+      - '.github/workflows/sokna-r233-release-qa-rehearsal.yml'
+      - '.github/workflows/sokna-release-source-intake.yml'
+      - 'release-ops/**'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sokna-factory-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-local:
+    name: Immutable Local source + MariaDB source lineage + module coverage
+    uses: ./.github/workflows/sokna-release-source-intake.yml
+    with:
+      component: local
+      package_kind: local-update
+      source_checkpoint: ${{ inputs.checkpoint || 'R233-20261115' }}
+    permissions:
+      contents: read
+      actions: read
+
+  source-public:
+    name: Immutable Public source + MariaDB source lineage + module coverage
+    uses: ./.github/workflows/sokna-release-source-intake.yml
+    with:
+      component: public
+      package_kind: public-update
+      source_checkpoint: ${{ inputs.checkpoint || 'R233-20261115' }}
+    permissions:
+      contents: read
+      actions: read
+
+  local-public-native-qa:
+    name: Temporary actual-format Local/Public builders + Windows + MariaDB + dual Public routes
+    uses: ./.github/workflows/sokna-r233-release-qa-rehearsal.yml
+    permissions:
+      contents: read
+      actions: read
+
+  final-decision:
+    if: always()
+    needs: [source-local, source-public, local-public-native-qa]
+    name: ONE release-readiness decision and exact QA checksums; operational install stays blocked
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download read-only evidence reports from THIS EXACT factory run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-*QA-REPORT-ONLY*
+          path: evidence
+          merge-multiple: false
+      - name: Reject missing/mismatched upstream workflow conclusions
+        shell: bash
+        env:
+          LOCAL_RESULT: ${{ needs.source-local.result }}
+          PUBLIC_RESULT: ${{ needs.source-public.result }}
+          NATIVE_RESULT: ${{ needs.local-public-native-qa.result }}
+        run: |
+          set -euo pipefail
+          printf 'Local source: %s\nPublic source: %s\nNative bundle: %s\n' \
+            "$LOCAL_RESULT" "$PUBLIC_RESULT" "$NATIVE_RESULT"
+          test "$LOCAL_RESULT" = success && test "$PUBLIC_RESULT" = success && test "$NATIVE_RESULT" = success
+      - name: Independently read all five exact QA reports, check source and package SHA, and BLOCK production
+        shell: bash
+        env:
+          CHECKPOINT: ${{ inputs.checkpoint || 'R233-20261115' }}
+        run: |
+          set -euo pipefail
+          mkdir -p final-proof
+          python3 release-ops/factory_decision.py --reports evidence --checkpoint "$CHECKPOINT" \
+            --out final-proof/release-readiness.json
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          d=json.load(open('final-proof/release-readiness.json'))
+          assert d['classification']=='QA_PASS_EXTERNAL_HOST_ACCEPTANCE_BLOCKED'
+          assert d['production_authorized'] is False and d['operator_package_created'] is False
+          print('### SOKNA Unified Release Factory - historical checkpoint')
+          print('**Source:',d['checkpoint'],'**')
+          print('**QA: PASS for the listed source/package/Windows/MariaDB fixtures only**')
+          print('**OPERATOR RELEASE: BLOCKED - not an installable publication**')
+          for name,digest in sorted(d['package_sha256'].items()):
+              print('- QA-only '+name+': '+digest)
+          print('In-scope P0 issues with no field signoff in historic board:',len(d['applicable_p0_unapproved']))
+          print('Missing signed real-host evidence:')
+          for k in sorted(d['host_evidence']): print('- '+k)
+          PY
+          echo "PASS_UNIFIED_QA_PROOFS__FIELD_INSTALL_AND_PUBLICATION_BLOCKED"
+      - name: Upload decision report ONLY; no QA ZIP, no credentials, no executable
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-UNIFIED-RELEASE-READINESS-REPORT-ONLY
+          path: final-proof/release-readiness.json
+          if-no-files-found: ignore
+          retention-days: 90
