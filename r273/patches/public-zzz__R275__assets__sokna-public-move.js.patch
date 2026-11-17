@@ -1,6 +1,7 @@
 --- a/assets/sokna-public-move.js
 +++ b/assets/sokna-public-move.js
-@@ -37,9 +37,12 @@
+@@ -47,10 +47,13 @@
+    const messages={invalid_credentials:'رمز مدیر این وب عمومی پذیرفته نشد.',
       public_owner_not_initialized:'رمز مستقل مدیر هنوز ساخته نشده است؛ بخش آماده‌سازی رمز را باز کنید.',
       existing_move_other_installation:'این وب عمومی به نصب محلی دیگری متصل است؛ اتصال بدون بررسی مالکیت آن مجاز نیست.',
 -     existing_move_pending_or_unavailable:'در مقصد سفارش یا عملیات بررسی‌نشده وجود دارد، یا بازیابی امن آماده نیست. اتصال فعلی حفظ شد.',
@@ -12,7 +13,11 @@
 -   throw Error(messages[code]||('تأیید کامل نشد ('+String(reply.status)+'). کد پیگیری را در گزارش پشتیبانی بررسی کنید.'));
 +   const err=new Error(messages[code]||('تأیید کامل نشد ('+String(reply.status)+'). کد پیگیری را در گزارش پشتیبانی بررسی کنید.'));
 +   err.code=code;throw err;
-@@ -116,8 +119,24 @@
+  }
+  return result;
+ }
+@@ -116,8 +119,22 @@
+    // Local admin approval preceded this request. The remote owner session is
     // still required. No Emergency password or technical recovery UI is shown.
     const csrf=(await action('consent_prepare',{challenge})).csrf;
 -   const offer=await action('offer_existing',{challenge,csrf,
@@ -33,3 +38,6 @@
 +     if(!authorized){status('انتقال لغو شد؛ هیچ درخواستی حذف نشد.',true);return;}
 +     offer=await action('offer_existing',{...request,discard_pending_guest_work:true});
 +   }
+    const code=String(offer.owner_authority_code||'');
+    if(!/^[A-F0-9]{8}(?:-[A-F0-9]{8}){2}$/.test(code))
+      throw Error('مجوز یک‌بارمصرف مقصد آماده نشد.');
