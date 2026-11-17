@@ -2,7 +2,9 @@
 // Isolated test of the exact Local cashier dialog; no simulated remote kitchen ACK.
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const path=require('path');
-const source=fs.readFileSync(path.join(__dirname,'../source/public/assets/staff-app/hall-workspace.js'),'utf8');
+const candidates=[path.join(__dirname,'../source/public/assets/staff-app/hall-workspace.js'),path.join(__dirname,'../../r269/source/public/assets/staff-app/hall-workspace.js')];
+const found=candidates.find(fs.existsSync);assert(found,'exact R270 operator source exists');
+const source=fs.readFileSync(found,'utf8');
 const start=source.indexOf('function operatorPreparationDispositionDialog(');
 const end=source.indexOf('// Deliberately no automatic retry after uncertain POST.',start);
 assert(start>=0&&end>start,'real dialog source found');
