@@ -156,3 +156,11 @@ python3 release-ops/source_gate.py --source /path/to/EXACT-SOURCE.zip --componen
 - برای پروندهٔ R268، `trace_external_public_candidate.py` و `.github/workflows/sokna-r268-candidate-attribution.yml` گزارش «خارج از کارخانه» را به‌صورت مستقل و فقط‌خواندنی تهیه می‌کنند.
 - **قاعده جدید:** پیش از ساخت آپدیت Public باید قابلیت Emergency در **نسخه نصب‌شده** برای DDL/forward migration سنجیده شود؛ R249/35ic مسیر مستقیم R262/35id را مسدود می‌کند. دو مرحله R265 Bridge بدون SQL و R266 با ۳ Migration، فقط استثنای آن نسل است؛ استاندارد هر نسخه همچنان یک ZIP مشترک Routine/Emergency است.
 - تکیه بر CI مستقل کافی نیست؛ انتقال/اتصال Public و Local، backup/restore واقعی، محافظت از کلیدها، سلامت پس از مرحله و سفارش مهمان فعال/معلق باید جداگانه احراز شوند. هیچ بخشی از این ثبت منشأ انتشار عملیاتی ایجاد نمی‌کند.
+
+
+## ۱۶. یک ورودی برای R233 و کاندیدای جدید Local/Public
+
+- در `.github/workflows/sokna-release-factory.yml` اکنون انتخاب مسیر `historical-r233`، `legacy-public-35ic` یا `registered-candidate` وجود دارد. انتخاب مسیر جدید، **از خود بایت‌های ZIP اصلی موجود در Artifact سازنده** و قرارداد پین‌شده بررسی می‌کند، نه بسته بازسازی‌شده.
+- سازنده‌های بعدی باید گیت `.github/workflows/sokna-release-candidate-gate.yml` را فراخوانی کنند و در رسید، `built_inside_factory` و `factory_validated_exact_bytes` را جدا گزارش کنند. ابزار `release-ops/candidate_admission.py` اتصال فراداده سازنده، Artifact، SHA و ساختار را fail-closed بررسی می‌کند.
+- آزمون ساختاری این گیت، سورس واقعیِ تأییدشده، Migration/DB-forward، نصب Windows/host و چاپ فیزیکی را **خودبه‌خود تأیید نمی‌کند**؛ تا زمان پیوست‌شدن آزمون مالک هر مؤلفه و پذیرش میدانی همان SHA، `operator release BLOCKED` است.
+- دستور استفاده و مثال قرارداد: [UNIFIED_CANDIDATE_INTAKE_RUNBOOK_FA.md](UNIFIED_CANDIDATE_INTAKE_RUNBOOK_FA.md). مسیر ویژهٔ R265/R266 فقط استثنای سازگاری Emergency مبدأ 35ic است.
