@@ -1,0 +1,57 @@
+--- a/public/integrations/api.php
++++ b/public/integrations/api.php
+@@ -75,7 +75,9 @@
+                 $result=$flow->begin((string)($data['base_url']??''),$source,$sourceId,time(),
+                     (string)($_SESSION['sokna_move_operation']??''));
+                 $_SESSION['sokna_move_operation']=$result['operation_id'];
+-                WebAction::json(['success'=>true,'move'=>$result]);
++                WebAction::json(['success'=>true,'move'=>$result+[
++                    'minimum_next_epoch'=>$core->publicAuthorityState()->epoch()+1
++                ]]);
+             }
+             $operation=(string)($_SESSION['sokna_move_operation']??'');
+             if(!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{5,127}$/D',$operation)){
+@@ -101,7 +103,18 @@
+                 throw new \RuntimeException('signed_owner_receipt_required');
+             $flow->confirm($operation,$trustedSessionToken,
+                 $data['attestation'],$data['receipt_envelope'],time());
+-            $result=$replacement->start($operation,(string)($data['pairing_code']??''),$actorId);
++            $kind=(string)($data['move_kind']??'fresh_unpaired');
++            if($kind==='existing_paired') {
++                WebAction::json(['success'=>true,'move'=>[
++                    'status'=>'awaiting_owner_offer','requires_owner_offer'=>true,
++                    'minimum_next_epoch'=>$core->publicAuthorityState()->epoch()+1,
++                    'safe_to_cutover'=>false
++                ]]);
++            }
++            $code=$kind==='existing_paired'?(string)($data['owner_authority_code']??''):
++                (string)($data['pairing_code']??'');
++            $result=$replacement->start($operation,$code,$actorId,$kind,
++                (int)($data['owner_next_epoch']??0));
+             WebAction::json(['success'=>true,'move'=>$result]);
+         }catch(\Throwable $e){
+             // Never disclose key paths, challenge hashes, SQL, session tokens,
+@@ -109,6 +122,23 @@
+             WebAction::json(['success'=>false,'code'=>'public_move_confirmation_not_ready',
+                 'message'=>'تأیید انتقال کامل نشد. اتصال فعلی بدون تغییر است؛ وضعیت مقصد و ورود مدیر را بررسی کنید.'],409);
+         }
++    }
++    if($action==='public_move_existing_owner_offer_execute'){
++        $localId=$core->config()->string('installation.id','');
++        $operation=(string)($_SESSION['sokna_move_operation']??'');
++        if($operation===''||($data['move_kind']??'')!=='existing_paired')
++            throw new \RuntimeException('owner_offer_session_not_active');
++        $ledger=new \Sokna\Local\Domain\PublicEdge\PublicMoveApprovalLedger(
++            $core->database()
++        );
++        if(($ledger->status($localId,$operation)['status']??'')!=='owner_approved')
++            throw new \RuntimeException('local_owner_approval_required');
++        $replacement=new \Sokna\Local\Domain\PublicEdge\PublicMoveSimpleReplacement(
++            $core,$ledger,$localId,$core->config()->requiredString('app.data_dir')
++        );
++        $result=$replacement->start($operation,(string)($data['owner_authority_code']??''),
++            $actorId,'existing_paired',(int)($data['owner_next_epoch']??0));
++        WebAction::json(['success'=>true,'move'=>$result]);
+     }
+     if($action==='public_move_inspect'){
+         // R258 QA: authenticated Local admin + WebAction CSRF are already enforced.
