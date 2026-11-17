@@ -29,6 +29,9 @@ for name,target,digest in [
  content=(frozen/name).read_bytes()
  assert hashlib.sha256(content).hexdigest()==digest, name
  dest=root/target;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(content)
+runtime=root.parent/'fixture_http_runtime'
+if runtime.exists():shutil.rmtree(runtime)
+runtime.mkdir(parents=True)
 store=root/'storage';(store/'routine-update-v2').mkdir(parents=True,exist_ok=True)
 state={'format':'sokna-public-routine-update-state-v2','schema_version':2,'active_version':'3.0.0-g3.6-workspace.35ic-r249-cumulative-forward-gate','active_managed_tree_sha256':'1a5d041fd63ec5425ed9f01f0eff63c86c90c5c76f26530b773784c74884c928','previous_version':'','lkg_recovery_id':'','staged':None,'pending_verification':None,'activation_journal':None,'db_forward_fence':None,'history':[]}
 (store/'routine-update-v2/state.json').write_text(json.dumps(state))
@@ -51,11 +54,11 @@ prefix='''<?php
 $d=new PDO('mysql:host=' . $argv[1] . ';port=3306;charset=utf8mb4', $argv[2], $argv[3], [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 $d->exec('CREATE DATABASE IF NOT EXISTS `sokna_public_r267_http_qa` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 '''
-(root/'qa-db.php').write_text(prefix)
-(root/'qa-seed.php').write_text(script)
+(runtime/'qa-db.php').write_text(prefix)
+(runtime/'qa-seed.php').write_text(script)
 def cmd(args):subprocess.run(args,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
-cmd(['php',str(root/'qa-db.php'),dbhost,user,pw]);cmd(['php',str(root/'qa-seed.php'),str(root),password]);
-serverlog=root/'qa-http.log';out=open(serverlog,'wb');proc=subprocess.Popen(['php','-S','127.0.0.1:19867','-t',str(root)],stdout=out,stderr=subprocess.STDOUT)
+cmd(['php',str(runtime/'qa-db.php'),dbhost,user,pw]);cmd(['php',str(runtime/'qa-seed.php'),str(root),password]);
+serverlog=runtime/'qa-http.log';out=open(serverlog,'wb');proc=subprocess.Popen(['php','-S','127.0.0.1:19867','-t',str(root)],stdout=out,stderr=subprocess.STDOUT)
 baseurl='http://127.0.0.1:19867/emergency.php'
 opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 def request(action='',payload=None,package=None):
@@ -79,7 +82,7 @@ def csrf(html):
     if not m:raise RuntimeError('csrf not found: '+html[:500])
     return m.group(1)
 def assertmsg(b,fragment):
-    if fragment not in b:raise RuntimeError('Expected '+repr(fragment)+' not in page; last='+b[-1400:])
+    if fragment not in b:\n        alerts=re.findall(r'<div[^>]*class="(?:alert|warning)"[^>]*>(.*?)</div>',b,re.S)\n        raise RuntimeError('Expected '+repr(fragment)+' not in page; alerts='+repr(alerts[:4])+' last='+b[-600:])
 def post(action,fields=None,pkg=None):
     _,p=request();token=csrf(p);d=dict(fields or {});d['csrf']=token
     status,body=request(action,d,pkg)
@@ -117,8 +120,8 @@ $p=\\Sokna\\PublicEdge\\Core\\Database::connect($c);
 $r=$p->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
 if ((int)$r!==11)throw new RuntimeException('Expected exactly eleven migrations, got '.$r);
 '''
-    (root/'qa-verify.php').write_text("<?php require $argv[1].'/src/Core/Config.php';require $argv[1].'/src/Core/Database.php';\n"+verify.removeprefix('<?php'))
-    cmd(['php',str(root/'qa-verify.php'),str(root)])
+    (runtime/'qa-verify.php').write_text("<?php require $argv[1].'/src/Core/Config.php';require $argv[1].'/src/Core/Database.php';\n"+verify.removeprefix('<?php'))
+    cmd(['php',str(runtime/'qa-verify.php'),str(root)])
     print(json.dumps({'status':'PASS','test':'byte-pinned R247C protected Emergency HTTP auth/CSRF/file upload/stage/activate/commit, R249->R265->R266, real MariaDB 8->11','database':'11','warning':'Actual production emergency.php host wrapper is external, not byte-pinned'}))
 except Exception:
     print('PHP_SERVER_LOG_TAIL',serverlog.read_text(errors='replace')[-14000:])
