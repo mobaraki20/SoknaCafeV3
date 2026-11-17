@@ -9,7 +9,9 @@ on:
       - '.github/workflows/sokna-r268-candidate-attribution.yml'
   pull_request:
     paths:
-      - 'release-ops/**'
+      - 'release-ops/external-public-r268-provenance.json'
+      - 'release-ops/trace_external_public_candidate.py'
+      - 'release-ops/PUBLIC_R265_R266_FACTORY_ATTRIBUTION_FA.md'
       - '.github/workflows/sokna-r268-candidate-attribution.yml'
   workflow_dispatch:
 
