@@ -46,6 +46,7 @@ jobs:
           node --check r269/source/public/assets/staff-app/hall-workspace.js
           node --check r269/source/public/assets/staff-app/preparation-workspace.js
           node --check r270/public/assets/staff-app/preparation-workspace.js
+          node r270/tests/operator_preparation_dialog.test.cjs
       - name: Run real MariaDB no-mutating-receipt invariant tests
         run: |
           set -euo pipefail
