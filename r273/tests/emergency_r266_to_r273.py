@@ -126,7 +126,7 @@ try:
      ('emergency.php','emergency.php','b41a7deae19becca160586401a0c4bc33150c43f811d838c5973249bbeb2c6ce'),
      ('EmergencyAccessService.php','src/Emergency/EmergencyAccessService.php','65f5c6fc92f17a5baba3965a69c7f8f2cdabfc5f0d2467240889cc48c8d5a9bb')]:
       assert hashlib.sha256((root/rel).read_bytes()).hexdigest()==sha, 'protected host file modified '+name
-    st=json.loads((store/'routine-update-v2/state.json').read_text());assert st['pending_verification'] is None and st['db_forward_fence'] is None and st['staged'] is None
+    st=json.loads((store/'routine-update-v2/state.json').read_text());print('R273_FINAL_ROUTINE_STATE',json.dumps({k:st.get(k) for k in ('active_version','previous_version','pending_verification','db_forward_fence','staged','activation_journal')},default=str));assert st['pending_verification'] is None and st['db_forward_fence'] is None and st['staged'] is None
     import textwrap
     verify='''<?php
 $c=\\Sokna\\PublicEdge\\Core\\Config::fromArray(require $argv[1].'/config.php');
