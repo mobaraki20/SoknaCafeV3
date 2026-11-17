@@ -72,6 +72,35 @@ $before=$core->publicAuthorityState()->epoch();
 if(($core->publicAuthorityState()->phase())==='active')echo "R273_LOCAL_WAS_ACTIVE\n";
 $confirmed=$flow->confirm($op,$session,$attestation,$receipt,time());
 if(($confirmed['status']??'')!=='owner_approved')throw new RuntimeException('LOCAL_ADMIN_APPROVAL_NOT_STORED');
+// Protect MIG-018/019: both realtime and deferred guest work block the
+// independently authorized Public owner's forward-only authority offer.
+// This is a real MariaDB test against the byte-pinned Public release.
+// No guest work is deleted or reset by the *production* transfer path.
+$publicGuardDb=new PDO('mysql:host=127.0.0.1;dbname='.(string)getenv('R273_PUBLIC_DB').';charset=utf8mb4','root',$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+$getGuardState=static function()use($publicGuardDb,$id):array{
+    $q=$publicGuardDb->prepare('SELECT authority_epoch,authority_state,remote_enabled,order_intake_enabled FROM installations WHERE installation_id=?');
+    $q->execute([$id]);$row=$q->fetch(PDO::FETCH_ASSOC);
+    if(!is_array($row))throw new RuntimeException('MISSING_PUBLIC_GUARD_ROW');
+    return $row;
+};
+$guardBefore=$getGuardState();
+$publicGuardDb->prepare("INSERT INTO realtime_requests(installation_id,request_id,request_hash,kind,actor_projection_id,envelope_json,state,expires_at) VALUES(?,?,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','guest_order.submit','r273-test','{}','queued',DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 HOUR))")
+    ->execute([$id,'r273-pending-realtime-test']);
+$guardedPrep=httpOwner($base,'consent_prepare',['challenge'=>$challenge],$cookie);
+if($guardedPrep['status']!==200)throw new RuntimeException('PENDING_REALTIME_PREP_FAILED');
+$guardedOffer=httpOwner($base,'offer_existing',['challenge'=>$challenge,'csrf'=>$guardedPrep['body']['csrf'],'minimum_next_epoch'=>$before+1],$cookie);
+if($guardedOffer['status']!==409||$getGuardState()!==$guardBefore)
+    throw new RuntimeException('PENDING_REALTIME_GUEST_WORK_NOT_FENCED '.json_encode($guardedOffer));
+$publicGuardDb->prepare('DELETE FROM realtime_requests WHERE installation_id=? AND request_id=?')->execute([$id,'r273-pending-realtime-test']);
+$publicGuardDb->prepare("INSERT INTO deferred_work(installation_id,request_id,request_hash,kind,actor_projection_id,envelope_json,state,occurred_at) VALUES(?,?,'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','guest_order.submit','r273-test','{}','pending_sync',UTC_TIMESTAMP())")
+    ->execute([$id,'r273-pending-deferred-test']);
+$guardedPrep=httpOwner($base,'consent_prepare',['challenge'=>$challenge],$cookie);
+if($guardedPrep['status']!==200)throw new RuntimeException('PENDING_DEFERRED_PREP_FAILED');
+$guardedOffer=httpOwner($base,'offer_existing',['challenge'=>$challenge,'csrf'=>$guardedPrep['body']['csrf'],'minimum_next_epoch'=>$before+1],$cookie);
+if($guardedOffer['status']!==409||$getGuardState()!==$guardBefore)
+    throw new RuntimeException('PENDING_DEFERRED_GUEST_WORK_NOT_FENCED '.json_encode($guardedOffer));
+$publicGuardDb->prepare('DELETE FROM deferred_work WHERE installation_id=? AND request_id=?')->execute([$id,'r273-pending-deferred-test']);
+echo 'R273_NEGATIVE_PENDING_GUEST_WORK_PASS'.PHP_EOL;
 $offerPrep=httpOwner($base,'consent_prepare',['challenge'=>$challenge],$cookie);
 if($offerPrep['status']!==200)throw new RuntimeException('OWNER_OFFER_CSRF_DENIED');
 $offer=httpOwner($base,'offer_existing',['challenge'=>$challenge,'csrf'=>$offerPrep['body']['csrf'],'minimum_next_epoch'=>$before+1],$cookie);
