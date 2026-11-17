@@ -24,8 +24,8 @@ with zipfile.ZipFile(R/'SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-
 # Confirmed exact Git blob SHA; neither file is modified by either update ZIP.
 frozen=W/'fixtures'
 for name,target,digest in [
- ('r247c-protected-emergency.php','emergency.php','b41a7deae19becca160586401a0c4bc33150c43f811d838c5973249bbeb2c6ce'),
- ('r247c-protected-EmergencyAccessService.php','src/Emergency/EmergencyAccessService.php','65f5c6fc92f17a5baba3965a69c7f8f2cdabfc5f0d2467240889cc48c8d5a9bb')]:
+ ('emergency.php','emergency.php','b41a7deae19becca160586401a0c4bc33150c43f811d838c5973249bbeb2c6ce'),
+ ('EmergencyAccessService.php','src/Emergency/EmergencyAccessService.php','65f5c6fc92f17a5baba3965a69c7f8f2cdabfc5f0d2467240889cc48c8d5a9bb')]:
  content=(frozen/name).read_bytes()
  assert hashlib.sha256(content).hexdigest()==digest, name
  dest=root/target;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(content)
