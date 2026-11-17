@@ -1,12 +1,20 @@
 name: SOKNA R268 Real HTTP Emergency Release Qualification
+# Same-run factory gate loads reviewed tools from a separately pinned commit,
+# independently of this legacy R268 application/QA branch. No host mutation.
 on:
   push:
-    branches: [qa/sokna-r268-emergency-real-http-publish-gate-20261117]
+    branches: [qa/sokna-r268-emergency-real-http-publish-gate-20261117, qa/sokna-r268-factory-same-run-20261117]
     paths:
       - 'r267/**'
       - 'r268/**'
       - '.github/workflows/sokna-r268-http-emergency-ci.yml'
   workflow_dispatch:
+  pull_request:
+    branches: [qa/sokna-r268-emergency-real-http-publish-gate-20261117]
+    paths:
+      - 'r267/**'
+      - 'r268/**'
+      - '.github/workflows/sokna-r268-http-emergency-ci.yml'
 permissions:
   contents: read
   actions: read
@@ -117,6 +125,34 @@ jobs:
         run: |
           set -euo pipefail
           python3 r268/http/test_real_emergency_http.py
+      - name: Emit SAME-RUN factory candidate contract from original post-build ZIP bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,json,hashlib
+          out=pathlib.Path('r267/output')
+          names=[
+            ('SOKNA-R265-PUBLIC-35IF-EMERGENCY-BRIDGE-CODE-ONLY-QA.zip', '3.0.0-g3.6-workspace.35if-r265-emergency-schema-bridge'),
+            ('SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip', '3.0.0-g3.6-workspace.35ig-r266-public-move-schema-recovery')
+          ]
+          h=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          packages=[{'file':name,'sha256':h(out/name),'component':'public','kind':'public-update','version':version}
+                    for name,version in names]
+          data={
+            'schema':'sokna-candidate-contract-v1','component':'public',
+            'producer':{'run_id':'same_run','artifact':'R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY'},
+            'source_authority':{'approved_checkpoint':'R268_HISTORICAL_R249_QA_NOT_CURRENT_WORKSPACE_APPROVED',
+                                'source_sha256':'5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4'},
+            'packages':packages,
+            'supporting_files':[{'file':'R265-R266-OFFLINE-MANIFEST.json',
+                                'sha256':h(out/'R265-R266-OFFLINE-MANIFEST.json')}],
+            'producer_qa_context':{'http':'PHP83 REAL HTTP QA','db':'MariaDB114 8-to-11','host':'NOT_RUN'},
+            'production_authorized':False
+          }
+          (out/'candidate-contract.json').write_text(json.dumps(data,indent=2,sort_keys=True)+'\n')
+          print('PASS_POST_BUILD_EXACT_R265_R266_SHA_MANIFEST_FOR_SAME_RUN_FACTORY_QA_ONLY')
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY
@@ -124,4 +160,18 @@ jobs:
             r267/output/SOKNA-R265-PUBLIC-35IF-EMERGENCY-BRIDGE-CODE-ONLY-QA.zip
             r267/output/SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip
             r267/output/R265-R266-OFFLINE-MANIFEST.json
+            r267/output/candidate-contract.json
           retention-days: 7
+
+  factory-exact-candidate-qa:
+    name: Mandatory shared factory intake on SAME producer run after real HTTP and MariaDB QA
+    needs: [emergency-schema-mariadb]
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: artifact:candidate-contract.json
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY
+    permissions:
+      contents: read
+      actions: read
