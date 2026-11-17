@@ -121,6 +121,33 @@ class CandidateIntakeTest(unittest.TestCase):
         self.write()
         self.assertIn("INVALID_PACKAGE_LINE",self.check()["errors"][0])
 
+    def test_same_run_post_build_manifest_allows_future_producer_without_prepinned_sha(self):
+        self.contract["producer"]["run_id"]="same_run"
+        self.contract["producer"]["artifact"]="PUBLIC-NEW-ARTIFACT"
+        embedded=self.artifacts/"candidate-contract.json"
+        embedded.write_text(json.dumps(self.contract))
+        report=inspect(embedded,self.artifacts,"123456","PUBLIC-NEW-ARTIFACT","123456")
+        self.assertEqual(report["status"],"QA_EXACT_BYTES_PASS_FIELD_AND_SOURCE_APPROVAL_BLOCKED",report)
+        self.assertTrue(report["factory_validated_exact_bytes"])
+        self.assertTrue(report["built_inside_factory"])
+        self.assertFalse(report["source_approved"])
+        self.assertFalse(report["production_authorized"])
+
+    def test_same_run_manifest_from_other_run_fails_closed(self):
+        self.contract["producer"]["run_id"]="same_run"
+        embedded=self.artifacts/"candidate-contract.json"
+        embedded.write_text(json.dumps(self.contract))
+        report=inspect(embedded,self.artifacts,"123456","PUBLIC-NEW-ARTIFACT","78910")
+        self.assertIn("PRODUCER_RUN_ID_NOT_PINNED_BY_CONTRACT",report["errors"][0])
+        self.assertFalse(report["factory_validated_exact_bytes"])
+
+    def test_embedded_fake_filename_cannot_bypass_extra_file_check(self):
+        self.contract["producer"]["run_id"]="same_run"
+        embedded=self.artifacts/"unregistered-contract.json"
+        embedded.write_text(json.dumps(self.contract))
+        report=inspect(embedded,self.artifacts,"123456","PUBLIC-NEW-ARTIFACT","123456")
+        self.assertIn("UNTRUSTED_EMBEDDED_CONTRACT",report["errors"][0])
+
     def test_legacy_requires_actual_pinned_zip_and_cannot_fake_green(self):
         historic=pathlib.Path(__file__).resolve().parents[1]/"external-public-r268-provenance.json"
         r=inspect(historic,self.artifacts,"44025587468",
