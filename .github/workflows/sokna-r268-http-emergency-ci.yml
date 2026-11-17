@@ -7,6 +7,12 @@ on:
       - 'r268/**'
       - '.github/workflows/sokna-r268-http-emergency-ci.yml'
   workflow_dispatch:
+  pull_request:
+    branches: [qa/sokna-r268-emergency-real-http-publish-gate-20261117]
+    paths:
+      - 'r267/**'
+      - 'r268/**'
+      - '.github/workflows/sokna-r268-http-emergency-ci.yml'
 permissions:
   contents: read
   actions: read
