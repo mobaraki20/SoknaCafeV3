@@ -1,7 +1,7 @@
 {
   "format": "sokna-migration-decision-register-v1",
   "schema_version": 1,
-  "updated_on": "2026-11-16",
+  "updated_on": "2026-11-17",
   "canonical_human_doc": "r251/DECISIONS-FA.md",
   "change_policy": {
     "append_only_history": true,
@@ -258,6 +258,28 @@
       "acceptance": "A fresh or otherwise empty Public on arbitrary HTTPS root/subfolder can be owner-confirmed, paired, seeded via existing Local sync and enabled. Verify zero active/pending destination orders and that Local remains unchanged if setup or first sync fails. Show one clear warning for old-Public-only orders. No dependency on old-Public connectivity; no transfer of media/orders from old Public. Keep one active Local pairing and correct menu/QR routing separately.",
       "superseded_by": null,
       "implementation_status": "R262 ALL ESSENTIAL QA GATES PASS: real cumulative Local R241 source byte-preserved, 82 migration Windows Maintenance stage/activate/readback SHA 3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c; real Local→Public 144-item/36-image and guest order delivered; old Public offline + owner consent + Local approval + sync retry; real Public R249 source original 8 migrations retained, R262 clean installation on MariaDB and existing R249 8→11 forward migration with 19 owner checks. No production host accepted, no broad arbitrary-version universal claim, no deployment. Native Windows https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43834210936 ; Public https://github.com/mobaraki20/SoknaCafeV3/actions/runs/43835146004."
+    },
+    {
+      "id": "MIG-019",
+      "scope": "product",
+      "status": "ACTIVE",
+      "summary": "An existing, already-paired Public at a NEW URL is a distinct auto-classified branch, neither first-time pairing nor same-instance origin rebind nor full old-Public backfill. Keep the minimal operator experience (target URL, separately authenticated destination owner consent, Local admin confirmation, explicit result). If it already belongs to the SAME Local installation, use an independently owner-approved, transactional authority resync with signed server proof and durable resume; if it belongs to another or ambiguous Local, fail closed pending a separate authenticated ownership change. Never silently reset the destination, re-pair an active installation, require normal-path Emergency/SQL/manual epoch, or enable guest intake until zero live/pending destination orders and successful full sync. Preserve the old Local binding on pre-commit or first-sync failure.",
+      "date": "2026-11-17",
+      "reason": "Café Local R262/231fg still points to old Public while pre-existing R266/35ig destination is paired. The R262 owner-consent page always requires an initial pairing code unavailable for a paired destination; R271 preliminary patch bypasses owner HTTP via a manual Emergency recovery code and commits before initial sync. Both violate MIG-002/003/005/006/017/018.",
+      "acceptance": "Exact installed R262 Local + R266 paired Public, actual browser/HTTP admin login/CSRF/Origin, signed owner consent + independent Local admin, true MySQL orders and installation scope, no active/pending guest orders before cutover; same-Local and other-Local branches, old-URL-unavailable, root/subfolder, lost reply/journal resume, full menu/media/projection readback then committed authority and guest-intake gating. No host deployment until all pass.",
+      "superseded_by": null,
+      "implementation_status": "OPEN / NOT SHIPPED: R271 QA tested a mock transport with same-Local ID and manual Emergency code; lacked owner-browser E2E, destination pending-order checks, and pre-cutover sync. No installable patch accepted."
+    },
+    {
+      "id": "MIG-020",
+      "scope": "implementation",
+      "status": "ACTIVE",
+      "summary": "The Public/Local migration release gate is a VERSIONED end-to-end state-machine test across both exact cumulative payloads and real HTTP endpoints, not merely source lint, fake transport, database migration count, or a single UI step. It must exercise owner initialization and authenticated consent (including distinct staff/owner/Emergency credentials), popup challenge expiry and replay, target identity, Local approval, pairing vs existing authority, loss and resume, pending order protections, sync/media/guest order, QR routing, Windows Maintenance stage/activate/readback and rollback constraints. The operator UI must preserve non-sensitive structured error codes instead of displaying the same generic login message for all failures.",
+      "date": "2026-11-17",
+      "reason": "R262 and R271 were described as ready based on isolated passing gates, but the real Public /move/approve route always demands an initial code, and R271's successful CI mocked authority HTTP, owner login and signing. This hid an end-to-end dead end.",
+      "acceptance": "CI must fail if any supported route cannot finish from the exact installed source using browser HTTP and real DB; test fresh, existing same-Local, foreign Local, ambiguous owner, pending orders, expired challenge, invalid password, network loss, repeated click and both domains/path. Produce a source→payload hash crossgate and explicit field NO-GO on any uncovered case; no automatic claim of production readiness.",
+      "superseded_by": null,
+      "implementation_status": "REQUIRED_GATES_NOT_YET_IMPLEMENTED / CHECKPOINT ONLY. Existing R271 CI PASS covers a synthetic PHP transport, not end-to-end owner-browser HTTP."
     }
   ],
   "fixtures": [
