@@ -1,6 +1,12 @@
 name: SOKNA R265 R266 Candidate Origin Receipt - External vs Unified Factory
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'release-ops/external-public-r268-provenance.json'
+      - 'release-ops/trace_external_public_candidate.py'
+      - '.github/workflows/sokna-r268-candidate-attribution.yml'
   pull_request:
     paths:
       - 'release-ops/**'
