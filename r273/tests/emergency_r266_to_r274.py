@@ -116,7 +116,7 @@ try:
     assert (root/'VERSION.txt').read_text().strip().endswith('35ig-r266-public-move-schema-recovery')
     # Now the code-only Public release must work via the same independently
     # authenticated protected Emergency HTTP session already on this exact R266.
-    r274Package=R/'SOKNA-R274-PUBLIC-35IH-OWNER-TRANSFER-CODE-ONLY-QA-DO-NOT-INSTALL.zip'
+    r274Package=R/'SOKNA-R274-PUBLIC-35II-OWNER-RESUME-CODE-ONLY-QA-DO-NOT-INSTALL.zip'
     assert hashlib.sha256(r274Package.read_bytes()).hexdigest()=='68725567e7336e0b43691ff4adae8b494b4a9c793a50a30d4564a2dab11daa92'
     b=post('stage',pkg=r274Package);assertmsg(b,'بسته با موفقیت اعتبارسنجی')
     b=post('activate',{'confirmation':'activate'})
