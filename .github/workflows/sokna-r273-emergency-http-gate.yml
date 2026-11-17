@@ -1,0 +1,76 @@
+name: SOKNA R273 Protected Emergency HTTP Existing Public Upgrade
+on:
+  push:
+    branches: [qa/sokna-r273-real-owner-cutover-20261117]
+    paths:
+      - 'r273/tests/emergency_r266_to_r273.py'
+      - 'r273/fixtures/**'
+      - '.github/workflows/sokna-r273-emergency-http-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  protected-emergency-r266-to-r273:
+    name: Actual R247C protected owner HTTP login CSRF upload Stage Activate Commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_public_r267_http_qa
+          MARIADB_ROOT_PASSWORD: test-only-root-pass
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ptest-only-root-pass"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_USER: root
+      SOKNA_QA_DB_PASSWORD: test-only-root-pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: R273-EXACT-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44048213281
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/input_artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          run-id: 43837950540
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r263
+      - name: Copy SHA-pinned exact R266 and R273 ZIPs plus protected R263 bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/input"
+          python3 - <<'PY'
+          import pathlib,os,hashlib,shutil
+          t=pathlib.Path(os.environ['RUNNER_TEMP'])
+          targets=[(t/'input_artifacts','b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35','SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip'),
+           (t/'input_artifacts','d137b255fa51d401525ab3de5ec92d20d17a61311b35099a58647c754297ee37','SOKNA-R273-PUBLIC-35IH-OWNER-TRANSFER-CODE-ONLY-QA-DO-NOT-INSTALL.zip'),
+           (t/'r263','37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21','SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip')]
+          for root,sha,name in targets:
+           found=[p for p in root.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()==sha]
+           assert len(found)==1,(name,[str(x) for x in root.rglob('*.zip')])
+           shutil.copyfile(found[0],t/'input'/name)
+           print('R273_EMERGENCY_PINNED_ZIP',name)
+          PY
+      - name: Real protected Emergency login, CSRF, file upload, Stage, Activate, Commit with 11 preserved migrations
+        shell: bash
+        env:
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r273
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/input
+        run: |
+          set -euo pipefail
+          python3 r273/tests/emergency_r266_to_r273.py
+          echo 'R273_R266_TO_R273_PROTECTED_EMERGENCY_HTTP_ACTIVATE_COMMIT_PASS'
