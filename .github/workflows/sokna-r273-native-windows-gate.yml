@@ -68,7 +68,7 @@ jobs:
           $env:R273_TARGET_DIR='${{ runner.temp }}/r273'
           $src=Get-Content 'qa/sokna-r204/windows_r204_from_actual_231fa.ps1' -Raw
           $src=$src.Replace('SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip','SOKNA-R262-LOCAL-231FG-CUMULATIVE-PUBLIC-MOVE-NATIVE-UAT-UNQUALIFIED.zip')
-          $src=$src.Replace('279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a','3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c')
+          $src=$src.Replace('279d64dcf3800a764c3fcf751a0fc800857de501943af32428c87cc8db2539a3','3d12ea375a307e58c8e36b2036a4fea9dec9ef05330f4a046234102c32164b8c')
           $src=$src.Replace('3.0.0-g6.2-workspace.231fb-r204-ux-zero-empty-canary','3.0.0-g6.2-workspace.231fg-r262-public-move-qa')
           if(!$src.Contains('$r204Ledger -eq ''81''')){throw 'R273_R262_OLD_LEDGER_ASSERT_MISSING'}
           $src=$src.Replace('$r204Ledger -eq ''81''','$r204Ledger -eq ''82''')
