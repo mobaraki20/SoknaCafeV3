@@ -1,0 +1,45 @@
+--- a/src/Domain/PublicEdge/PublicEdgeSyncClient.php
++++ b/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+@@ -653,6 +653,42 @@
+         return $body;
+     }
+ 
++    /**
++     * Read-only destination classification. This unauthenticated setup status is
++     * ONLY a UI routing hint: it never proves ownership or authorizes an update.
++     * The actual transition requires a short-lived code issued by the protected
++     * destination Emergency owner and a new-secret signed authority proof.
++     */
++    public function destinationSetupStatus(string $baseUrl,int $timeoutSeconds=6): array
++    {
++        $base=$this->requireBase($baseUrl,'نشانی مقصد معتبر نیست.');
++        $url=$base.'/setup/api.php?action=status';
++        if(is_callable($this->transport)){
++            $response=($this->transport)($url,'GET',['Accept'=>'application/json'],'');
++            $r=$this->normalizeRawResponse($response);
++        }else{
++            $ctx=stream_context_create([
++                'http'=>['method'=>'GET','header'=>"Accept: application/json\r\nConnection: close\r\n",
++                    'timeout'=>max(1,min(15,$timeoutSeconds)),'ignore_errors'=>true,
++                    'follow_location'=>0,'max_redirects'=>0],
++                'ssl'=>['verify_peer'=>true,'verify_peer_name'=>true,'allow_self_signed'=>false],
++            ]);
++            $raw=@file_get_contents($url,false,$ctx,0,65536);
++            $r=$this->normalizeRawResponse(['status'=>$this->httpStatus($http_response_header??[]),
++                'body'=>is_string($raw)?$raw:'','headers'=>$http_response_header??[]]);
++        }
++        $setup=$r['body']['setup']??null;
++        if((int)($r['status']??0)!==200 || ($r['body']['success']??null)!==true ||
++            !is_array($setup)|| !is_bool($setup['installed']??null) ||
++            !is_bool($setup['paired']??null)){
++            throw new PublicEdgeSyncException('destination_setup_status_unavailable',
++                'وضعیت نصب مقصد روشن نیست. به اتصال اولیه یا بازیابی حدسی ادامه ندهید.',409);
++        }
++        return ['installed'=>$setup['installed'],'paired'=>$setup['paired'],
++            'installation_id'=>(string)($setup['installation_id']??''),
++            'base_url'=>(string)($setup['base_url']??'')];
++    }
++
+     /** Verify browser-facing Staff login + manifest after Public commit, before Local config commit. */
+     public function deploymentTargetStaffSurface(string $baseUrl,string $expectedManifestId='',int $timeoutSeconds=6): array
+     {
