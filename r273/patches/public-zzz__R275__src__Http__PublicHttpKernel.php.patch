@@ -1,0 +1,24 @@
+--- a/src/Http/PublicHttpKernel.php
++++ b/src/Http/PublicHttpKernel.php
+@@ -540,7 +540,8 @@
+                     return $this->json(SafeErrors::response(409,'existing_move_other_installation'));
+                 $minimum=(int)($req['minimum_next_epoch']??0);
+                 $offer=$this->core->authorityEpoch()->createOffer(
+-                    $installationId,900,'authenticated_target_owner_move',$minimum,true
++                    $installationId,900,'authenticated_target_owner_move',$minimum,true,
++                    ($req['discard_pending_guest_work']??null)===true
+                 );
+                 return $this->json(['status'=>200,'body'=>[
+@@ -549,6 +550,13 @@
+                     'owner_next_epoch'=>(int)$offer['authority_epoch'],
+                     'safe_to_cutover'=>false,
+                 ]]);
++            }catch(\RuntimeException $e){
++                // Only reveal safe decision codes to an owner who passed the
++                // independent challenge + CSRF verification above.
++                if($e->getMessage()==='destination_pending_guest_work')
++                    return $this->json(SafeErrors::response(409,'destination_pending_guest_work'));
++                if($e->getMessage()==='destination_claim_active')
++                    return $this->json(SafeErrors::response(409,'destination_claim_active'));
++                return $this->json(SafeErrors::response(409,'existing_move_pending_or_unavailable'));
+             }catch(\Throwable){
