@@ -74,3 +74,10 @@ MIG-019 و MIG-020 در دفتر تصمیم دائمی R251/R272 باقی می�
 - **آخرین شواهد کافه**: Local 231fg/R262، URL قدیمی، خطای public_authority_resync_required؛ ۴۴۴۲ رویداد projection همگام‌نشده (نه ۴۴۴۲ سفارش). اتصال به PC کافه در این گفتگو وجود نداشته است.
 - **گیت مستقل مجوز تحویل**: [اجرای 44082185477](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44082185477) در هر دو مسیر ریشه و زیرپوشه PASS و پیام R273_QA_OPERATOR_DELIVERY_BLOCKED_CORRECTLY_PASS ثبت شد. بستهٔ Local با وجود for_install=true / production_pass=true، وضعیت R273_E2E_QA_PENDING_HOST_NO_GO، signature=null و real_public_host=false / clean_machine_remote_restore=false دارد؛ Public هم offline_qualified=false. این تناقض پرچم‌های ساختاری با عدم پذیرش میدانی، مجوز نصب صادر نمی‌کند. دو ZIP ثابت و فقط QA مانده‌اند.
 - **نتیجه:** ادامهٔ عملیات داخلی Local فعلی GO؛ سلامت وب و QR PASS؛ نصب R273 و اتکای عملیاتی به سفارش مهمان تا رفع شکاف authority و پذیرش واقعی NO-GO. بدون Clean Install، پاک‌سازی صف، تغییر هویت/secret/epoch، یا نصب بسته‌های DO-NOT-INSTALL.
+
+## شواهد Live برای بن‌بست ارتباط فعلی — ۱۷ نوامبر ۲۰۲۶
+
+- [GET فقط‌خواندنی 44083974235](https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44083974235): Public زنده installed=true/paired=true، مسیر /public، آدرس پایه دقیق https://www.soknagroup.ir/public، پنجره تأیید مالک HTTP 200؛ شناسهٔ نصب و CSRF افشا نشده است.
+- SHA-256 فایل مالک نصب‌شده assets/sokna-public-move.js برابر 4fbf205611ab5652ecc4550311119a5e144e81662debaf23ca931bee01e65154 و مطابق ZIP مبنای 35ig/R266 است؛ قابلیت‌های offer_existing و existing_paired در کد Live وجود ندارند.
+- Local 231fg/R262 هنوز روی URL قدیمی با public_authority_resync_required است؛ سورس آن برای callback مالک کد اولیه pairing را الزام می‌کند. Public paired این کد اولیه را نمی‌دهد. public_replacement_busy در phase resync_required به‌تنهایی job فعال را اثبات نمی‌کند.
+- این شواهد اتصال را برقرار نکرده‌اند: هویت مقصد با Local هنوز تطبیق داده نشده، وضعیت guest work و backup/restore و Emergency wrapper معلوم نیست. R273 روی کافه نصب نشده و QA-DO-NOT-INSTALL است؛ تغییر دستی آدرس/epoch/secret، SQL، حذف صف، re-pair و Clean Install ممنوع.
