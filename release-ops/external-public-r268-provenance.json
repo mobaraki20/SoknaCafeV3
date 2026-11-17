@@ -1,0 +1,75 @@
+{
+  "schema": "sokna-candidate-provenance-v1",
+  "family": "SOKNA-R268-PUBLIC-EMERGENCY-HOST-CANDIDATE",
+  "date": "2026-11-17",
+  "origin_type": "EXTERNAL_GITHUB_QA_BUILDER_NOT_UNIFIED_FACTORY",
+  "producer": {
+    "workflow": "SOKNA R268 Real HTTP Emergency Release Qualification",
+    "run_id": 44025587468,
+    "repo": "mobaraki20/SoknaCafeV3",
+    "branch": "qa/sokna-r268-emergency-real-http-publish-gate-20261117",
+    "artifact": "R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY",
+    "builder": "r267/build_qa_packages.py"
+  },
+  "factory": {
+    "workflow": "SOKNA Unified Release Factory - QA ONLY / NO DEPLOY",
+    "invoked_by_producer": false,
+    "run_id": null,
+    "exact_zip_qualified_by_factory": false,
+    "required_future_protocol": "Every new builder must call a shared candidate receipt/validation gate and show the receipt in the handoff; do not infer usage from a green GitHub Action."
+  },
+  "historical_installed_origin": {
+    "version": "3.0.0-g3.6-workspace.35ic-r249-cumulative-forward-gate",
+    "managed_tree_sha256": "1a5d041fd63ec5425ed9f01f0eff63c86c90c5c76f26530b773784c74884c928",
+    "migrations": 8,
+    "verification": "HOST_HEALTH_ASSERTED_IN_PRIOR_REPORT_NOT_REVERIFIED_IN_THIS_TRACE"
+  },
+  "required_install_order": [
+    {
+      "name": "SOKNA-R265-PUBLIC-35IF-EMERGENCY-BRIDGE-CODE-ONLY-QA.zip",
+      "label": "R265 35if legacy Emergency bridge",
+      "sha256": "692aa40939d788aea56efa4e3b62c46a568da0ce5c508cc87844aa63366b8892",
+      "version": "3.0.0-g3.6-workspace.35if-r265-emergency-schema-bridge",
+      "migrations": 8,
+      "managed_files": 228,
+      "target_tree_sha256": "cc6cd692f23db6c80e1ea3f2e6337b36b6c87054d492f439783c3f6945594ebb",
+      "baseline_version": "3.0.0-g3.6-workspace.35ic-r249-cumulative-forward-gate",
+      "baseline_tree_sha256": "1a5d041fd63ec5425ed9f01f0eff63c86c90c5c76f26530b773784c74884c928"
+    },
+    {
+      "name": "SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip",
+      "label": "R266 35ig schema-forward",
+      "sha256": "b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35",
+      "version": "3.0.0-g3.6-workspace.35ig-r266-public-move-schema-recovery",
+      "migrations": 11,
+      "managed_files": 244,
+      "target_tree_sha256": "60323f0dc0b28e4795ee4ca6789c9898e5be9113230683b210216f424b8e4274",
+      "baseline_version": "3.0.0-g3.6-workspace.35if-r265-emergency-schema-bridge",
+      "baseline_tree_sha256": "cc6cd692f23db6c80e1ea3f2e6337b36b6c87054d492f439783c3f6945594ebb"
+    }
+  ],
+  "qa_evidence": {
+    "source": "qa/sokna-r268-emergency-real-http-publish-gate-20261117/r268/STATUS.json",
+    "real_http_emergency_php83_mariadb114": "PASS_ISOLATED_CI",
+    "real_csrf_upload_stage_activate_commit": "PASS_ISOLATED_CI",
+    "forward_migrations_8_to_11": "PASS_ISOLATED_CI",
+    "interrupted_ddl_resume": "PASS_ISOLATED_CI"
+  },
+  "field_acceptance": {
+    "host_files_and_db_backup_restore": "NOT_RUN",
+    "protected_host_sha_readback": "NOT_RUN",
+    "actual_host_activation": "NOT_RUN",
+    "post_install_health": "NOT_RUN",
+    "local_public_pairing": "NOT_RUN",
+    "guest_intake": "NOT_RUN"
+  },
+  "warnings": [
+    "This pair is an exceptional two-hop compatibility bridge for legacy 35ic Emergency, NOT a new universal two-package requirement.",
+    "Never activate already staged R262 on 35ic; the existing Emergency owner rejects schema-forward activation.",
+    "Source of truth is Local; blank replacement Public may be used only if no active or pending guest orders and signed owner checks pass.",
+    "Do not roll back PHP after a forward DB migration; resume under the fenced recovery contract.",
+    "These ZIPs retain original QA-only manifest provenance; their exact bytes are unchanged from isolated QA; NOT a production release."
+  ],
+  "production_authorized": false,
+  "release_status": "EXTERNAL_QA_ONLY_HOST_NOT_ACCEPTED"
+}
