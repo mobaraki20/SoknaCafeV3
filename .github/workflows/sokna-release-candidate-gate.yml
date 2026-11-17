@@ -31,8 +31,16 @@ jobs:
       receipt_status: ${{ steps.verify.outputs.receipt_status }}
       exact_zip_verified: ${{ steps.verify.outputs.exact_zip_verified }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout caller/producer source ONLY for its committed candidate contract
+        uses: actions/checkout@v4
         with:
+          path: producer-checkout
+          persist-credentials: false
+      - name: Checkout immutable reviewed factory-tools (NOT old producer branch)
+        uses: actions/checkout@v4
+        with:
+          ref: d01ed17f0fe12ddcdb49e990086d6afaf2c3f445
+          path: factory-tools
           persist-credentials: false
       - name: Check committed producer contract before selecting artifact
         if: ${{ inputs.contract_path != 'artifact:candidate-contract.json' }}
@@ -50,8 +58,8 @@ jobs:
           assert '..' not in pathlib.PurePosixPath(contract).parts
           assert re.fullmatch(r'[1-9][0-9]{0,18}',os.environ['SOURCE_RUN'])
           assert re.fullmatch(r'[A-Za-z0-9_.-]{1,200}',os.environ['SOURCE_ARTIFACT'])
-          p=pathlib.Path(contract)
-          assert p.is_file() and p.resolve().is_relative_to(pathlib.Path('release-ops').resolve())
+          p=pathlib.Path('producer-checkout')/contract
+          assert p.is_file() and p.resolve().is_relative_to((pathlib.Path('producer-checkout')/'release-ops').resolve())
           d=json.loads(p.read_text(encoding='utf-8'))
           assert d['producer']['run_id']==int(os.environ['SOURCE_RUN'])
           assert d['producer']['artifact']==os.environ['SOURCE_ARTIFACT']
@@ -110,8 +118,11 @@ jobs:
           mkdir -p candidate-receipt
           if [[ "$CONTRACT" == 'artifact:candidate-contract.json' ]]; then
             CONTRACT='actual-candidate/candidate-contract.json'
+          else
+            CONTRACT="producer-checkout/$CONTRACT"
           fi
-          python3 release-ops/candidate_admission.py \
+          echo "FACTORY_TOOLS_COMMIT=$(git -C factory-tools rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          python3 factory-tools/release-ops/candidate_admission.py \
             --contract "$CONTRACT" \
             --artifact-dir actual-candidate \
             --producer-run-id "$SOURCE_RUN" \
