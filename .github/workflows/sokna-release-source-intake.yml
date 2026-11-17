@@ -123,7 +123,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CURRENT-SOURCE-INTAKE-QA-REPORT-ONLY
+          name: SOKNA-CURRENT-SOURCE-INTAKE-QA-REPORT-ONLY-${{ inputs.component || 'local' }}
           path: intake-report/*.json
           if-no-files-found: ignore
           retention-days: 30
