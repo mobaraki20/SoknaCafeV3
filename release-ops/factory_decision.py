@@ -42,10 +42,14 @@ def get(path: pathlib.Path) -> dict:
     return raw
 
 
-def verify(root: pathlib.Path, active: pathlib.Path, matrix: pathlib.Path, checkpoint: str) -> dict:
+def verify(root: pathlib.Path, active: pathlib.Path, matrix: pathlib.Path, checkpoint: str, factory_run_id: str = "") -> dict:
     result = {
         "schema": "sokna-unified-release-factory-qa-decision-v1",
         "checkpoint": checkpoint,
+        "factory_workflow_executed": bool(factory_run_id),
+        "factory_workflow_run_id": factory_run_id or None,
+        "factory_scope": "PINNED_HISTORICAL_R233_QA_ONLY",
+        "qualified_external_public_candidate": False,
         "classification": "BLOCKED_MISSING_OR_FAILED_QA",
         "package_builder": "historical_r233_qa_only",
         "source_intakes": {},
@@ -153,9 +157,10 @@ def main() -> int:
     p.add_argument("--coverage", type=pathlib.Path,
                    default=pathlib.Path(__file__).with_name("INDEPENDENT_COVERAGE_REGISTER_20261116.json"))
     p.add_argument("--checkpoint", default=PROVEN_QA_CHECKPOINT)
+    p.add_argument("--factory-run-id", default="", help="GitHub Actions invoking workflow run ID, not an external producer run")
     p.add_argument("--out", type=pathlib.Path, required=True)
     args = p.parse_args()
-    result = verify(args.reports, args.active, args.coverage, args.checkpoint)
+    result = verify(args.reports, args.active, args.coverage, args.checkpoint, args.factory_run_id)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
