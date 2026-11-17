@@ -1,0 +1,30 @@
+name: SOKNA R273 Live Public Owner Route READONLY Diagnosis
+on:
+  push:
+    branches: [qa/sokna-r273-real-owner-cutover-20261117]
+    paths:
+      - 'r273/tests/cafe_public_owner_readonly.py'
+      - '.github/workflows/sokna-r273-cafe-owner-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-current-owner-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch actual Public setup flags and move JS, excluding sensitive IDs/CSRF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 r273/tests/cafe_public_owner_readonly.py | tee "$RUNNER_TEMP/r273-public-owner-check.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R273-CAFE-PUBLIC-OWNER-CONTRACT-GET-ONLY-NO-INSTALL
+          path: |
+            r273-live-owner-connection-diagnostic.json
+            ${{ runner.temp }}/r273-public-owner-check.log
+          retention-days: 7
+          if-no-files-found: warn
