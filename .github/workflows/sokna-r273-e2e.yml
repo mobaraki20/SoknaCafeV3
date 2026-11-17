@@ -105,7 +105,7 @@ jobs:
           export R273_PUBLIC_ROOT="$RUNNER_TEMP/r273/extracted/public"
           export R273_LOCAL_ROOT="$RUNNER_TEMP/r273/extracted/local"
           export R273_LOCAL_DATA="$RUNNER_TEMP/r273/local-private"
-          mkdir -p "$R273_LOCAL_DATA" "$R273_PUBLIC_ROOT/src/Emergency"
+          mkdir -p "$R273_LOCAL_DATA/guest-media" "$R273_PUBLIC_ROOT/src/Emergency"
           cp -a apps/public/src/Emergency/. "$R273_PUBLIC_ROOT/src/Emergency/"
           php r273/tests/prepare_public.php
           sudo sh -c 'echo "127.0.0.1 r273-public.test" >> /etc/hosts'
