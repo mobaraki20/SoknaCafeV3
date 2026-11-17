@@ -82,7 +82,9 @@ def csrf(html):
     if not m:raise RuntimeError('csrf not found: '+html[:500])
     return m.group(1)
 def assertmsg(b,fragment):
-    if fragment not in b:\n        alerts=re.findall(r'<div[^>]*class="(?:alert|warning)"[^>]*>(.*?)</div>',b,re.S)\n        raise RuntimeError('Expected '+repr(fragment)+' not in page; alerts='+repr(alerts[:4])+' last='+b[-600:])
+    if fragment not in b:
+        alerts=re.findall(r'<div[^>]*class="(?:alert|warning)"[^>]*>(.*?)</div>',b,re.S)
+        raise RuntimeError('Expected '+repr(fragment)+' not in page; alerts='+repr(alerts[:4])+' last='+b[-600:])
 def post(action,fields=None,pkg=None):
     _,p=request();token=csrf(p);d=dict(fields or {});d['csrf']=token
     status,body=request(action,d,pkg)
