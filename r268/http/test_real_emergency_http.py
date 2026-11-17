@@ -20,6 +20,13 @@ with zipfile.ZipFile(R/'SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-
     for n in z.namelist():
         if (n.startswith('src/Emergency/') or n.startswith('src/Recovery/') or n=='recovery.php' or n=='resources/update-trust-v1.json') and not n.endswith('/'):
             p=root/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(z.read(n))
+# Temporarily instrument the isolated web fixture only. Never ship this debug
+# modification in a package; the real managed source and hash stay intact.
+debug_path=root/'emergency-next.php'
+dbg=debug_path.read_text()
+dbg=dbg.replace("}catch(Throwable){http_response_code(500);echo 'Emergency console unavailable.';}",
+ "}catch(Throwable $e){error_log('HTTP_QA_BOOT_EXCEPTION '.get_class($e).' '.$e->getMessage().' at '.$e->getFile().':'.$e->getLine());http_response_code(500);echo 'Emergency console unavailable.';}")
+debug_path.write_text(dbg)
 # R263 clean lacks the host-protected emergency.php. This test wrapper delegates to
 # the exact pinned, managed emergency-next.php; it is NOT a substitute for a real-host test.
 (root/'emergency.php').write_text("<?php require __DIR__.'/emergency-next.php';\n")
