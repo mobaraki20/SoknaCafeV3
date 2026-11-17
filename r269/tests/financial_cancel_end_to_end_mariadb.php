@@ -35,7 +35,7 @@ $ddl=[
  'CREATE TABLE settings(setting_key VARCHAR(160) PRIMARY KEY,setting_value VARCHAR(255)) ENGINE=InnoDB',
  'CREATE TABLE print_jobs(id BIGINT PRIMARY KEY,entity_type VARCHAR(60),entity_id VARCHAR(100),job_type VARCHAR(50),status VARCHAR(30)) ENGINE=InnoDB',
  'CREATE TABLE order_item_bundle_components(id BIGINT PRIMARY KEY,order_item_id BIGINT,item_name_snapshot VARCHAR(160),quantity INT,preparation_station_snapshot VARCHAR(40),component_mode VARCHAR(20),choice_label_snapshot VARCHAR(120)) ENGINE=InnoDB',
- 'CREATE TABLE order_preparation_claims(order_id BIGINT,area_key VARCHAR(30),item_signature VARCHAR(64)) ENGINE=InnoDB',
+ 'CREATE TABLE order_preparation_claims(order_id BIGINT,area_key VARCHAR(30),item_signature VARCHAR(64),updated_at DATETIME NULL) ENGINE=InnoDB',
  'CREATE TABLE settlement_followup_events(id BIGINT PRIMARY KEY,session_id BIGINT) ENGINE=InnoDB',
  'CREATE TABLE inventory_order_events(id BIGINT PRIMARY KEY,event_type VARCHAR(30),status VARCHAR(30),payload_json TEXT,order_id BIGINT) ENGINE=InnoDB',
  'CREATE TABLE table_drafts(id BIGINT PRIMARY KEY,table_id BIGINT,state VARCHAR(20)) ENGINE=InnoDB',
@@ -43,18 +43,21 @@ $ddl=[
  'CREATE TABLE order_status_history(order_id BIGINT,from_status VARCHAR(30),to_status VARCHAR(30),actor_user_id BIGINT) ENGINE=InnoDB',
  'CREATE TABLE audit_log(id BIGINT PRIMARY KEY AUTO_INCREMENT,actor_user_id BIGINT,actor_display_name_snapshot VARCHAR(100),action VARCHAR(100),entity_type VARCHAR(50),entity_id VARCHAR(100),details_json JSON) ENGINE=InnoDB'
 ];foreach($ddl as $sql)$exec($sql);
-$exec('INSERT INTO cafe_tables VALUES (7),(8),(9),(10)');
-$exec("INSERT INTO table_sessions(id,table_id,status,live_table_guard) VALUES (70,7,'active',7),(80,8,'active',8),(90,9,'active',9),(100,10,'active',10)");
-$exec("INSERT INTO orders VALUES (101,7,70,'accounted','staff','regular',550000,NULL),(201,8,80,'accounted','staff','regular',40000,NULL),(301,9,90,'accounted','staff','regular',40000,NULL),(401,10,100,'accounted','staff','regular',40000,NULL)");
+$exec('INSERT INTO cafe_tables VALUES (7),(8),(9),(10),(11)');
+$exec("INSERT INTO table_sessions(id,table_id,status,live_table_guard) VALUES (70,7,'active',7),(80,8,'active',8),(90,9,'active',9),(100,10,'active',10),(110,11,'active',11)");
+$exec("INSERT INTO orders VALUES (101,7,70,'accounted','staff','regular',550000,NULL),(201,8,80,'accounted','staff','regular',40000,NULL),(301,9,90,'accounted','staff','regular',40000,NULL),(401,10,100,'accounted','staff','regular',40000,NULL),(501,11,110,'accounted','staff','regular',40000,NULL)");
 $values=[];for($i=1;$i<=10;$i++){$q=$i===3?2:1;$name=$i===1?'Paid item 1':($i===2?'Paid item 2':('Other item '.$i));$values[]="($i,101,NULL,'$name',50000,$q,$q,NULL,'dine_in','none',".(50000*$q).')';}
 $values[]="(201,201,NULL,'Water small',40000,1,1,NULL,'dine_in','cold_bar',40000)";
 $values[]="(301,301,NULL,'Water small',40000,1,1,NULL,'dine_in','cold_bar',40000)";
 $values[]="(401,401,NULL,'Water small',40000,1,1,NULL,'dine_in','cold_bar',40000)";
+$values[]="(501,501,NULL,'Water small',40000,1,1,NULL,'dine_in','cold_bar',40000)";
 $exec('INSERT INTO order_items VALUES '.implode(',',$values));
 $exec("INSERT INTO settlement_records VALUES (1,70,'completed',NULL,0,0),(2,70,'completed',NULL,0,0)");
 $exec('INSERT INTO settlement_record_lines(settlement_id,order_item_id,quantity) VALUES (1,1,1),(2,2,1)');
 $exec("INSERT INTO settings VALUES ('printing.quick.auto_preparation','0')");
-$exec("INSERT INTO print_jobs VALUES (30,'order_reprint','301','preparation_reprint','completed')");
+$exec("INSERT INTO print_jobs VALUES (30,'order_reprint','301','preparation_reprint','completed'),(31,'order','501','preparation','submitted')");
+$exec("INSERT INTO order_preparation_claims(order_id,area_key,item_signature,updated_at) VALUES (501,'bar','intentionally-stale-claim',NOW())");
+$exec("INSERT INTO order_item_adjustments(order_id,order_item_id,preparation_ack_status,area_key,reason) VALUES (301,301,'pending','bar','earlier pending preparation note')");
 $ident=new class implements IdentityRepository {
  public function findActiveById(int $userId):?array{return $userId===1?['id'=>1,'display_name'=>'QA Admin','role'=>'admin']:null;}
  public function findActiveByUsername(string $s):?array{return null;}
@@ -88,7 +91,27 @@ $ok=$service->cancelUnsettledStaffOrder(['order_id'=>201,'request_id'=>'QA-CANCE
 $assert($ok['success']===true && $ok['status']==='cancelled','unprinted order can be cancelled manually');
 $assert((int)$pdo->query('SELECT COUNT(*) FROM print_jobs WHERE entity_id="201"')->fetchColumn()===0,'no surprise print in manual mode');
 $assert((string)$pdo->query('SELECT status FROM table_sessions WHERE id=80')->fetchColumn()==='closed','empty table closed atomically');
-$expect('preparation_dispatch_uncertain',fn()=>$service->cancelUnsettledStaffOrder(['order_id'=>301,'request_id'=>'QA-PRINTED-REJECT-01','reason'=>'mistaken order','preparation_never_dispatched_confirmed'=>true],$user));
-$assert((string)$pdo->query('SELECT status FROM orders WHERE id=301')->fetchColumn()==='accounted','previously printed order not cancelled');
+// New operator responsibility workflow; a stale/pending kitchen action is NOT a forced waiting gate.
+$expect('operator_responsibility_required',fn()=>$service->cancelUnsettledStaffOrder(['order_id'=>301,'request_id'=>'QA-MISSING-RSP','reason'=>'mistaken order','operator_preparation_disposition'=>'unknown'],$user));
+$expect('invalid_operator_preparation_disposition',fn()=>$service->cancelUnsettledStaffOrder(['order_id'=>301,'request_id'=>'QA-INVALID-CHOICE','reason'=>'mistaken order','operator_preparation_disposition'=>'yes','operator_accepts_preparation_responsibility'=>true],$user));
+$expect('pending_adjustment',fn()=>$service->cancelUnsettledStaffOrder(['order_id'=>301,'request_id'=>'QA-OLD-PENDING-BLOCK','reason'=>'mistaken order','preparation_never_dispatched_confirmed'=>true],$user));
+$cancelRisk=$service->cancelUnsettledStaffOrder(['order_id'=>301,'request_id'=>'QA-SUPERVISED-RISK','reason'=>'cancel by operator after radio unanswered','operator_preparation_disposition'=>'unknown','operator_accepts_preparation_responsibility'=>true],$user);
+$assert($cancelRisk['success']===true && $cancelRisk['preparation_followup_required']===true,'printed pending order cancelled with operator responsibility');
+$assert((string)$pdo->query('SELECT status FROM orders WHERE id=301')->fetchColumn()==='cancelled','printed round cancelled despite earlier pending kitchen update');
+$assert((int)$pdo->query("SELECT COUNT(*) FROM order_item_adjustments WHERE order_id=301 AND preparation_ack_status='pending'")->fetchColumn()===2,'prior and new kitchen followup notifications retained');
+$assert((int)$pdo->query("SELECT COUNT(*) FROM print_jobs WHERE entity_id='301'")->fetchColumn()===1,'no fake correction print when auto printing off');
+$assert((int)$pdo->query("SELECT inventory_quantity_delta FROM order_item_adjustments WHERE order_id=301 ORDER BY id DESC LIMIT 1")->fetchColumn()===0,'unknown preparation keeps stock consumed to avoid phantom reversal');
+// A physically-claimed, stale preparation state is still cancelable by an accountable supervisor.
+$expect('preparation_claimed',fn()=>$service->cancelUnsettledStaffOrder(['order_id'=>501,'request_id'=>'QA-CLAIM-OLD-BLOCK','reason'=>'mistake'],$user));
+$claimedResult=$service->cancelUnsettledStaffOrder(['order_id'=>501,'request_id'=>'QA-CLAIM-RESPONSIBLE','reason'=>'operator confirms cancellation','operator_preparation_disposition'=>'received_or_preparing','operator_accepts_preparation_responsibility'=>true],$user);
+$assert($claimedResult['success']===true,'claimed and stale-preparation order cancelled by authorized supervisor');
+$assert((int)$pdo->query("SELECT COUNT(*) FROM order_item_adjustments WHERE order_id=501 AND preparation_ack_status='pending'")->fetchColumn()===1,'prep claim cancellation visible for later acknowledgment');
+$assert((int)$pdo->query("SELECT inventory_quantity_delta FROM order_item_adjustments WHERE order_id=501 ORDER BY id DESC LIMIT 1")->fetchColumn()===0,'claimed preparation does not reverse stock as never prepared');
+$assert((int)$pdo->query('SELECT COUNT(*) FROM order_preparation_claims WHERE order_id=501')->fetchColumn()===1,'historical claim remains auditable');
+// New operator UI can explicitly choose verified not-received without needing kitchen response.
+$notReceived=$service->cancelUnsettledStaffOrder(['order_id'=>401,'request_id'=>'QA-RSP-NOT-RECEIVED','reason'=>'wrong order','operator_preparation_disposition'=>'not_received','operator_accepts_preparation_responsibility'=>true],$user);
+$assert($notReceived['success']===true,'not-received decision accepted by supervisor');
+$assert((int)$pdo->query("SELECT inventory_quantity_delta FROM order_item_adjustments WHERE order_id=401 ORDER BY id DESC LIMIT 1")->fetchColumn()===-1,'not received correctly returns unprepared consumption');
+$assert((int)$pdo->query("SELECT COUNT(*) FROM audit_log WHERE action='order.cancelled_unsettled_staff' AND JSON_UNQUOTE(JSON_EXTRACT(details_json,'$.operator_preparation_disposition'))='unknown'")->fetchColumn()>=1,'audit contains operator status without forging chef ACK');
 $assert((int)$pdo->query('SELECT COUNT(*) FROM settlement_records WHERE session_id=70')->fetchColumn()===2,'receipt history unchanged by item adjustment and cancellation');
-echo json_encode(['ok'=>true,'suite'=>'real action integration','unpaid_corrected'=>true,'paid_still_locked'=>true,'idempotent'=>true,'unsent_manual_cancelled'=>true,'printed_cancel_blocked'=>true,'receipts_immutable'=>true],JSON_UNESCAPED_SLASHES)."\n";
+echo json_encode(['ok'=>true,'suite'=>'real action integration + operator responsibility','unpaid_corrected'=>true,'paid_still_locked'=>true,'idempotent'=>true,'unsent_manual_cancelled'=>true,'printed_pending_cancelled'=>true,'claimed_stale_cancelled'=>true,'unknown_stock_protected'=>true,'receipts_immutable'=>true],JSON_UNESCAPED_SLASHES)."\n";
