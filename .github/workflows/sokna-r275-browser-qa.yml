@@ -1,0 +1,60 @@
+name: SOKNA R275 Owner Public Pending Confirm/Cancel Chromium Acceptance
+on:
+  push:
+    branches: [qa/sokna-r275-operator-discard-public-pending-20261117]
+    paths:
+      - 'r273/tests/r275_browser_flow.py'
+      - '.github/workflows/sokna-r275-browser-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  chromium-paired-public:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44105608985
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r275-packages
+      - name: Assert exact R274 package bytes, not mocks of frontend source
+        env:
+          R275_BROWSER_ARTIFACT_DIR: ${{ runner.temp }}/r275-packages
+        run: |
+          python3 - <<'PY'
+          import os,hashlib,pathlib
+          p=pathlib.Path(os.environ['R275_BROWSER_ARTIFACT_DIR'])
+          exp={
+           'SOKNA-R275-LOCAL-231FL-OWNER-DISCARD-QA-DO-NOT-INSTALL.zip':'f42d66e26dfee936f29c159bb7028adefcfedda43ddf2dc63e2c25d6a7d6dba9',
+           'SOKNA-R275-PUBLIC-35IJ-OWNER-DISCARD-CODE-ONLY-QA-DO-NOT-INSTALL.zip':'63213185fcc037b620ea0dccf133d5c63672f01da7db7d3545eb54e617dd150f'
+          }
+          for name,sha in exp.items():
+           files=list(p.rglob(name))
+           assert len(files)==1,(name,len(files))
+           assert hashlib.sha256(files[0].read_bytes()).hexdigest()==sha,name
+          print('R275_BROWSER_PINNED_PAYLOAD_SHA_PASS')
+          PY
+      - name: Install isolated Chromium smoke dependency
+        run: |
+          python3 -m pip install --user playwright==1.58.0
+          python3 -m playwright install --with-deps chromium
+      - name: Two real Chromium origins, popup initial and resumed owner grants
+        env:
+          R275_BROWSER_ARTIFACT_DIR: ${{ runner.temp }}/r275-packages
+        run: |
+          python3 r273/tests/r275_browser_flow.py | tee "$RUNNER_TEMP/r274-browser.log"
+          grep -q 'R275_BROWSER_POPUP_NORMAL_PASS' "$RUNNER_TEMP/r274-browser.log"
+          grep -q 'R275_BROWSER_POPUP_RESUME_PASS' "$RUNNER_TEMP/r274-browser.log"
+          grep -q 'R275_BROWSER_POPUP_PENDING_CONFIRM_PASS' "$RUNNER_TEMP/r274-browser.log"
+          grep -q 'R275_BROWSER_POPUP_PENDING_CANCEL_PASS' "$RUNNER_TEMP/r274-browser.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R275-CHROMIUM-PENDING-CONFIRM-EVIDENCE-CI-ONLY
+          path: ${{ runner.temp }}/r274-browser.log
+          retention-days: 7
+          if-no-files-found: warn
