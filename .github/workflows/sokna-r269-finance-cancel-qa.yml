@@ -40,8 +40,10 @@ jobs:
           set -euo pipefail
           php -l r269/source/src/Domain/Orders/OrderStaffActionService.php
           php -l r269/tests/financial_cancel_guard_mariadb.php
+          php -l r269/tests/financial_cancel_end_to_end_mariadb.php
           node --check r269/source/public/assets/staff-app/hall-workspace.js
       - name: Run real MariaDB no-mutating-receipt invariant tests
         run: |
           set -euo pipefail
           php r269/tests/financial_cancel_guard_mariadb.php
+          php r269/tests/financial_cancel_end_to_end_mariadb.php
