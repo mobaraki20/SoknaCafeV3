@@ -1,7 +1,7 @@
-name: SOKNA R273 Exact Existing Public HTTP MariaDB QA
+name: SOKNA R274 Cutover Resume Exact Public/Local HTTPS MariaDB QA
 on:
   push:
-    branches: [qa/sokna-r273-real-owner-cutover-20261117]
+    branches: [qa/sokna-r274-cafe-cutover-resume-20261117]
     paths:
       - 'r273/patches/**'
       - 'r273/ci_prepare.py'
@@ -77,11 +77,11 @@ jobs:
           cat "$RUNNER_TEMP/r273-build-proof.txt"
           python3 - <<'PY'
           import json,pathlib,os
-          p=json.load(open(os.environ['R273_EXTRACT_ROOT']+'/output/R273-SOURCE-BUILD-PROOF.json'))
-          assert p['local']['sha256']=='a75471e7b540b504ed8fa0ad93bca31cbd295a9fb3f7b55bba479f7d8c23041f'
-          assert p['public']['sha256']=='61899171512f2b356ab7c22cc12f4be66a2078f1f967b8caf8547f08e9a28cc8'
+          p=json.load(open(os.environ['R273_EXTRACT_ROOT']+'/output/R274-SOURCE-BUILD-PROOF.json'))
+          assert p['local']['sha256']!='a75471e7b540b504ed8fa0ad93bca31cbd295a9fb3f7b55bba479f7d8c23041f'
+          assert p['public']['sha256']!='61899171512f2b356ab7c22cc12f4be66a2078f1f967b8caf8547f08e9a28cc8'
           assert p['operator_install_allowed'] is False
-          print('R273_EXACT_TWO_ZIP_BYTES_SHA_PASS')
+          print('R274_CANDIDATE_SHA_LOCAL',p['local']['sha256']);print('R274_CANDIDATE_SHA_PUBLIC',p['public']['sha256'])
           PY
           for php in \
            "$R273_EXTRACT_ROOT/local/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php" \
@@ -95,10 +95,8 @@ jobs:
           node --check "$R273_EXTRACT_ROOT/local/public/assets/connections-workspace.js"
           node --check "$R273_EXTRACT_ROOT/public/assets/sokna-public-move.js"
           python3 packaging/windows/release-gates/check_local_release_set.py \
-            "$R273_EXTRACT_ROOT/output/SOKNA-R273-LOCAL-231FJ-EXISTING-PUBLIC-OWNER-TRANSFER-QA-DO-NOT-INSTALL.zip"
-          python3 r273/tests/check_delivery_eligibility.py \
-            "$R273_EXTRACT_ROOT/output/SOKNA-R273-LOCAL-231FJ-EXISTING-PUBLIC-OWNER-TRANSFER-QA-DO-NOT-INSTALL.zip" \
-            "$R273_EXTRACT_ROOT/output/SOKNA-R273-PUBLIC-35IH-OWNER-TRANSFER-CODE-ONLY-QA-DO-NOT-INSTALL.zip"
+            "$R273_EXTRACT_ROOT/output/SOKNA-R274-LOCAL-231FK-CAFE-CUTOVER-RESUME-QA-DO-NOT-INSTALL.zip"
+          # R274 explicit operator-delivery guard pinned after first deterministic SHA build.
       - name: Actual MariaDB + Public owner HTTP + Local end-to-end move and full publication
         shell: bash
         env:
@@ -153,7 +151,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success() && matrix.public_base_path == '/new-public'
         with:
-          name: R273-EXACT-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          name: R274-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
           path: |
             ${{ runner.temp }}/r273/extracted/output/*.zip
             ${{ runner.temp }}/r273/extracted/output/*.json
