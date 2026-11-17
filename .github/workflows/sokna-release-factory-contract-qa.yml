@@ -1,0 +1,72 @@
+name: SOKNA Release Factory End-to-End Contract QA - SYNTHETIC ONLY
+
+on:
+  pull_request:
+    paths:
+      - 'release-ops/candidate_admission.py'
+      - 'release-ops/tests/test_candidate_admission.py'
+      - '.github/workflows/sokna-release-candidate-gate.yml'
+      - '.github/workflows/sokna-release-factory.yml'
+      - '.github/workflows/sokna-release-factory-contract-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-synthetic:
+    name: Create tiny fake candidate ZIP + post-build SHA receipt in SAME GitHub run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build NONINSTALLABLE synthetic Public format fixture and SHA manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p fake-producer
+          python3 - <<'PY'
+          import hashlib,json,pathlib,shutil,sys
+          sys.path.insert(0,'release-ops/tests')
+          from test_audit import ReleaseAudit
+          fixture=ReleaseAudit();fixture.setUp()
+          p=fixture.public(version='3.0.0-g3.6-workspace.35zz-synthetic-contract-qa')
+          dest=pathlib.Path('fake-producer/SOKNA-SYNTHETIC-NOT-FOR-INSTALL.zip')
+          shutil.copyfile(p,dest)
+          sha=hashlib.sha256(dest.read_bytes()).hexdigest()
+          contract={
+            'schema':'sokna-candidate-contract-v1',
+            'component':'public',
+            'producer':{'run_id':'same_run',
+                        'artifact':'SOKNA-SYNTHETIC-POST-BUILD-CONTRACT-NOT-INSTALLABLE'},
+            'source_authority':{'approved_checkpoint':'SYNTHETIC_QA_ONLY_NO_REAL_SOURCE',
+                                'source_sha256':'a'*64},
+            'packages':[{'file':dest.name,'sha256':sha,'kind':'public-update',
+                         'component':'public','version':'3.0.0-g3.6-workspace.35zz-synthetic-contract-qa'}],
+            'production_authorized':False
+          }
+          pathlib.Path('fake-producer/candidate-contract.json').write_text(json.dumps(contract,sort_keys=True,indent=2)+'\n')
+          fixture.tearDown()
+          print('PASS_CREATED_SYNTHETIC_PACKAGE_WITH_TRUE_POST_BUILD_SHA_NOT_FOR_INSTALL',sha)
+          PY
+      - name: Preserve original byte pair in current Actions run only
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-SYNTHETIC-POST-BUILD-CONTRACT-NOT-INSTALLABLE
+          path: fake-producer/*
+          if-no-files-found: error
+          retention-days: 1
+
+  centralized-same-run-admission:
+    needs: [build-synthetic]
+    name: Call SAME unified factory entrypoint with dynamic manifest after build
+    uses: ./.github/workflows/sokna-release-factory.yml
+    with:
+      track: registered-candidate
+      candidate_contract_path: artifact:candidate-contract.json
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-SYNTHETIC-POST-BUILD-CONTRACT-NOT-INSTALLABLE
+    permissions:
+      contents: read
+      actions: read
