@@ -20,16 +20,15 @@ with zipfile.ZipFile(R/'SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-
     for n in z.namelist():
         if (n.startswith('src/Emergency/') or n.startswith('src/Recovery/') or n=='recovery.php' or n=='resources/update-trust-v1.json') and not n.endswith('/'):
             p=root/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(z.read(n))
-# Temporarily instrument the isolated web fixture only. Never ship this debug
-# modification in a package; the real managed source and hash stay intact.
-debug_path=root/'emergency-next.php'
-dbg=debug_path.read_text()
-dbg=dbg.replace("}catch(Throwable){http_response_code(500);echo 'Emergency console unavailable.';}",
- "}catch(Throwable $e){error_log('HTTP_QA_BOOT_EXCEPTION '.get_class($e).' '.$e->getMessage().' at '.$e->getFile().':'.$e->getLine());http_response_code(500);echo 'Emergency console unavailable.';}")
-debug_path.write_text(dbg)
-# R263 clean lacks the host-protected emergency.php. This test wrapper delegates to
-# the exact pinned, managed emergency-next.php; it is NOT a substitute for a real-host test.
-(root/'emergency.php').write_text("<?php require __DIR__.'/emergency-next.php';\n")
+# Byte-exact reference files from the R247C installed protected owner.
+# Confirmed exact Git blob SHA; neither file is modified by either update ZIP.
+frozen=W.parent/'r268/fixtures'
+for name,target,digest in [
+ ('r247c-protected-emergency.php','emergency.php','b41a7deae19becca160586401a0c4bc33150c43f811d838c5973249bbeb2c6ce'),
+ ('r247c-protected-EmergencyAccessService.php','src/Emergency/EmergencyAccessService.php','65f5c6fc92f17a5baba3965a69c7f8f2cdabfc5f0d2467240889cc48c8d5a9bb')]:
+ content=(frozen/name).read_bytes()
+ assert hashlib.sha256(content).hexdigest()==digest, name
+ dest=root/target;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(content)
 store=root/'storage';(store/'routine-update-v2').mkdir(parents=True,exist_ok=True)
 state={'format':'sokna-public-routine-update-state-v2','schema_version':2,'active_version':'3.0.0-g3.6-workspace.35ic-r249-cumulative-forward-gate','active_managed_tree_sha256':'1a5d041fd63ec5425ed9f01f0eff63c86c90c5c76f26530b773784c74884c928','previous_version':'','lkg_recovery_id':'','staged':None,'pending_verification':None,'activation_journal':None,'db_forward_fence':None,'history':[]}
 (store/'routine-update-v2/state.json').write_text(json.dumps(state))
@@ -120,7 +119,7 @@ if ((int)$r!==11)throw new RuntimeException('Expected exactly eleven migrations,
 '''
     (root/'qa-verify.php').write_text("<?php require $argv[1].'/src/Core/Config.php';require $argv[1].'/src/Core/Database.php';\n"+verify.removeprefix('<?php'))
     cmd(['php',str(root/'qa-verify.php'),str(root)])
-    print(json.dumps({'status':'PASS','test':'actual protected-equivalent Emergency HTTP auth/CSRF/file upload/stage/activate/commit, R249->R265->R266, real MariaDB 8->11','database':'11','warning':'Actual production emergency.php host wrapper is external, not byte-pinned'}))
+    print(json.dumps({'status':'PASS','test':'byte-pinned R247C protected Emergency HTTP auth/CSRF/file upload/stage/activate/commit, R249->R265->R266, real MariaDB 8->11','database':'11','warning':'Actual production emergency.php host wrapper is external, not byte-pinned'}))
 except Exception:
     print('PHP_SERVER_LOG_TAIL',serverlog.read_text(errors='replace')[-14000:])
     raise
