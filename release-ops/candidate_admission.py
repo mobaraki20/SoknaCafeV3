@@ -58,7 +58,9 @@ def inspect(contract: pathlib.Path, artifacts: pathlib.Path, run_id: str,
             raise ValueError("REAL_GITHUB_RUN_IDS_REQUIRED")
         if not NAME.fullmatch(artifact_name):
             raise ValueError("ARTIFACT_NAME_INVALID")
-        if (spec.get("producer") or {}).get("run_id") != int(run_id):
+        claimed_run_id = (spec.get("producer") or {}).get("run_id")
+        if (claimed_run_id != int(run_id) and not (
+                claimed_run_id == "same_run" and run_id == factory_run_id):
             raise ValueError("PRODUCER_RUN_ID_NOT_PINNED_BY_CONTRACT")
         if spec["producer"].get("artifact") != artifact_name:
             raise ValueError("ARTIFACT_NAME_NOT_PINNED_BY_CONTRACT")
@@ -108,7 +110,19 @@ def inspect(contract: pathlib.Path, artifacts: pathlib.Path, run_id: str,
                     not x.get("version")) for x in packs if isinstance(x, dict)) or \
                any(not isinstance(x, dict) for x in packs):
                 raise ValueError("INVALID_PACKAGE_LINE")
+            # For same-run producers, the generated SHA contract may travel
+            # inside the exact Actions artifact AFTER the ZIP was built. It
+            # is a producer assertion, not a signed source-approval proof.
+            # The only extra file allowed is the exact one being validated.
+            contract_inside = contract.resolve().is_relative_to(artifacts.resolve())
+            expected_contract = contract.name if contract_inside else None
+            if contract_inside and (contract.name != "candidate-contract.json"
+                                    or run_id != factory_run_id
+                                    or claimed_run_id != "same_run"):
+                raise ValueError("UNTRUSTED_EMBEDDED_CONTRACT")
             files = sorted(p.name for p in artifacts.rglob("*") if p.is_file())
+            if expected_contract:
+                files.remove(expected_contract)
             if sorted(x["file"] for x in packs) != files:
                 raise ValueError("ARTIFACT_CONTAINS_MISSING_OR_UNDECLARED_FILES")
             if len(set(files)) != len(files):
