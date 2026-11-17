@@ -7,11 +7,11 @@
     "public/integrations/api.php": "342a7a24e6acb25cd4394b1e765fefe84671cf36d29f3589141137d5cd3217b3"
   },
   "public": {
-    "assets/sokna-public-move.js": "888520b6faf468ed741ec7adb23f6bdfc1b24e44efe3371c5b1914fd181cffb0",
+    "assets/sokna-public-move.js": "4a8865df4cc53b786a33f01c2522967db795ebac6f014d52cce432c0f4b3f0c7",
     "src/Realtime/RealtimeService.php": "3fe95b45f61820cd88c122aa4757fc63bf54395b28441503a0533fe85435f0a4",
-    "src/Security/PublicMoveReplacementGate.php": "972e8c87f36bb27192a8dae8319a66271306765334055ef8fdeca4124e4a9ec1",
-    "src/Authority/AuthorityEpochService.php": "0a68bc674a9debcce0ed11291a6447694581f3686c964a844f9c47b145787218",
-    "src/Http/PublicHttpKernel.php": "4545bed19b859696aec7822a159d63966110b8f117dc6ce5ad3c28d535b4ca2a",
-    "src/Update/emergency-owner-v1.json": "71b71b413980856b53e00f276cabf220018d232b0feeed06dfd973d224a7bcdf"
+    "src/Security/PublicMoveReplacementGate.php": "128f876b237985da07a143eb151deff6a7fcf93f0110036c728ce90427c6d7e3",
+    "src/Authority/AuthorityEpochService.php": "5efac225da0e4a0860b61ff9e6b1bd291ff66ea53336d9089d9d2a17c80edb34",
+    "src/Http/PublicHttpKernel.php": "c8bc3d8a029131d51710a5d19d507da2dc43675e2a4312022b34de9df1b92c02",
+    "src/Update/emergency-owner-v1.json": "b5fd60d2507e1e70d374b9c9ec7b5b6256896c81de229e4ddcb7d9446fd5c2ff"
   }
 }
