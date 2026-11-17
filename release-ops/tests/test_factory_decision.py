@@ -77,6 +77,15 @@ class FactoryEvidenceTest(unittest.TestCase):
         self.assertGreaterEqual(len(result["applicable_p0_unapproved"]),72)
         self.assertIn("public_https_host",result["host_evidence"])
 
+    def test_factory_attribution_is_scoped_to_own_pinned_qa_run(self):
+        report=verify(self.reports,self.active,self.coverage,
+                      "R233-20261115","44025122333")
+        self.assertTrue(report["factory_workflow_executed"])
+        self.assertEqual(report["factory_workflow_run_id"],"44025122333")
+        self.assertEqual(report["factory_scope"],"PINNED_HISTORICAL_R233_QA_ONLY")
+        self.assertFalse(report["qualified_external_public_candidate"])
+        self.assertFalse(report["production_authorized"])
+
     def test_missing_real_db_proof_blocks(self):
         self.database.unlink()
         result=self.check()
