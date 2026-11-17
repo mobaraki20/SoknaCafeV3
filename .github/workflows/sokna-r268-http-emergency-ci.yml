@@ -1,4 +1,6 @@
 name: SOKNA R268 Real HTTP Emergency Release Qualification
+# Same-run factory gate loads reviewed tools from a separately pinned commit,
+# independently of this legacy R268 application/QA branch. No host mutation.
 on:
   push:
     branches: [qa/sokna-r268-emergency-real-http-publish-gate-20261117, qa/sokna-r268-factory-same-run-20261117]
