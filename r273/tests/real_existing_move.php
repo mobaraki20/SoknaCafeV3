@@ -44,6 +44,50 @@ function httpOwner(string $base,string $name,array $payload,string $cookie=''):a
  $body=is_string($raw)?json_decode($raw,true):null;if(!is_array($body))throw new RuntimeException('OWNER_HTTP_INVALID '.$name.' status='.$status);
  return ['status'=>$status,'body'=>$body,'cookie'=>$set];
 }
+// Legacy already-paired Public did not necessarily initialize an independent
+// owner during the original install. Exercise authenticated STAFF upgrade over
+// actual HTTP before attempting the ordinary owner consent/cutover workflow.
+// All changes below are confined to the disposable runner MariaDB.
+$publicLegacyDb=new PDO('mysql:host=127.0.0.1;dbname='.(string)getenv('R273_PUBLIC_DB').';charset=utf8mb4','root',$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+$publicLock=json_decode((string)file_get_contents($publicRoot.'/install.lock'),true);
+$publicInstanceId=(string)($publicLock['public_instance_id']??'');
+if($publicInstanceId==='')throw new RuntimeException('PUBLIC_INSTANCE_LOCK_ID_MISSING');
+$publicLegacyDb->prepare('DELETE FROM public_move_owner_sessions WHERE public_instance_id=?')->execute([$publicInstanceId]);
+$publicLegacyDb->prepare('DELETE FROM public_move_owner_accounts WHERE public_instance_id=?')->execute([$publicInstanceId]);
+$ownerCount=$publicLegacyDb->prepare('SELECT COUNT(*) FROM public_move_owner_accounts WHERE public_instance_id=?');
+$ownerCount->execute([$publicInstanceId]);
+if((int)$ownerCount->fetchColumn()!==0)throw new RuntimeException('LEGACY_OWNERLESS_FIXTURE_NOT_ESTABLISHED');
+$publicLegacyDb->prepare("INSERT INTO auth_projections(installation_id,projection_id,username,display_name,role,password_hash,capabilities_json,active) VALUES(?,?,'qa-r273-admin','QA legacy authorized staff','admin',?,'[\"*\"]',1)")
+    ->execute([$id,'r273-legacy-staff-admin',password_hash('qa-only-legacy-273', PASSWORD_DEFAULT)]);
+$staffToken=bin2hex(random_bytes(32));
+$publicLegacyDb->prepare('INSERT INTO public_sessions(installation_id,projection_id,token_hash,expires_at) VALUES(?,?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 20 MINUTE))')
+    ->execute([$id,'r273-legacy-staff-admin',hash('sha256',$staffToken)]);
+$upgradeNoStaff=httpOwner($base,'upgrade_preflight',[]);
+if($upgradeNoStaff['status']!==403)
+    throw new RuntimeException('UNAUTHENTICATED_EXISTING_OWNER_UPGRADE_ALLOWED '.json_encode($upgradeNoStaff));
+$staffCookie='sokna_staff='.$staffToken;
+$upgradePrep=httpOwner($base,'upgrade_preflight',[], $staffCookie);
+if($upgradePrep['status']!==200||
+   ($upgradePrep['body']['result']['status']??'')!=='owner_setup_available')
+    throw new RuntimeException('EXISTING_OWNER_UPGRADE_PREFLIGHT_FAILED '.json_encode($upgradePrep));
+$badUpgrade=httpOwner($base,'upgrade_activate',[
+    'csrf'=>'invalid','new_owner_password'=>'test-owner-only-strong-273'], $staffCookie);
+if($badUpgrade['status']!==403)
+    throw new RuntimeException('INVALID_OWNER_UPGRADE_CSRF_ACCEPTED '.json_encode($badUpgrade));
+$beforeOwnerUpgrade=$publicLegacyDb->prepare('SELECT authority_epoch,authority_state,order_intake_enabled FROM installations WHERE installation_id=?');
+$beforeOwnerUpgrade->execute([$id]);$beforeOwnerState=$beforeOwnerUpgrade->fetch(PDO::FETCH_ASSOC);
+$activatedOwner=httpOwner($base,'upgrade_activate',[
+    'csrf'=>$upgradePrep['body']['result']['csrf'],
+    'new_owner_password'=>'test-owner-only-strong-273'], $staffCookie);
+if($activatedOwner['status']!==200||
+   ($activatedOwner['body']['result']['owner_initialized']??false)!==true)
+    throw new RuntimeException('AUTHENTICATED_EXISTING_OWNER_ACTIVATION_FAILED '.json_encode($activatedOwner));
+$ownerCount->execute([$publicInstanceId]);
+$beforeOwnerUpgrade->execute([$id]);
+if((int)$ownerCount->fetchColumn()!==1||
+   $beforeOwnerUpgrade->fetch(PDO::FETCH_ASSOC)!==$beforeOwnerState)
+    throw new RuntimeException('OWNER_ACTIVATION_MUTATED_PAIRING_OR_INTAKE');
+echo 'R273_EXISTING_OWNER_UPGRADE_HTTP_PASS'.PHP_EOL;
 $invalid=httpOwner($base,'login',['password'=>'wrong']);if($invalid['status']!==401)throw new RuntimeException('WRONG_PASSWORD_NOT_REJECTED');
 $login=httpOwner($base,'login',['password'=>'test-owner-only-strong-273']);
 if($login['status']!==200||$login['cookie']==='')throw new RuntimeException('REAL_OWNER_LOGIN_FAILED '.json_encode($login));
