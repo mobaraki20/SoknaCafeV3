@@ -1,0 +1,34 @@
+name: SOKNA R275 Real Host vs Uploaded Artifact Version Read Only
+on:
+  push:
+    branches: [qa/sokna-r275-operator-discard-public-pending-20261117]
+    paths:
+      - 'r275/tests/live_public_stage_version_readonly.py'
+      - '.github/workflows/sokna-r275-live-stage-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-health-and-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44105608985
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r275-exact
+      - name: Read live health and compare exact downloaded Public ZIP manifest version
+        env:
+          PACKAGE_DIR: ${{ runner.temp }}/r275-exact
+        run: python3 r275/tests/live_public_stage_version_readonly.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R275-LIVE-HEALTH-VS-ZIP-VERSION-READONLY-NO-ACTIVATE
+          path: R275-LIVE-STAGE-VERSION-READONLY-RESULT.json
+          if-no-files-found: warn
+          retention-days: 7
