@@ -1,13 +1,14 @@
 <?php
 declare(strict_types=1);
 /** Native MariaDB 11.4 regression: encrypted actual backup, restore, and safety gates. */
-require_once __DIR__.'/../../apps/local-web/src/Core/Observability.php';
-require_once __DIR__.'/../../apps/local-web/src/Core/Config.php';
-require_once __DIR__.'/../../apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncException.php';
-require_once __DIR__.'/../../apps/local-web/src/Domain/PublicEdge/PublicAuthorityStateService.php';
-require_once __DIR__.'/../../apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php';
-require_once __DIR__.'/../../apps/local-web/src/Domain/Recovery/RecoveryException.php';
-require_once __DIR__.'/../../apps/local-web/src/Domain/Recovery/BusinessBackupService.php';
+$localRoot=(string)(getenv('R279_LOCAL_SOURCE_ROOT')?:dirname(__DIR__,2).'/apps/local-web');
+require_once $localRoot.'/src/Core/Observability.php';
+require_once $localRoot.'/src/Core/Config.php';
+require_once $localRoot.'/src/Domain/PublicEdge/PublicEdgeSyncException.php';
+require_once $localRoot.'/src/Domain/PublicEdge/PublicAuthorityStateService.php';
+require_once $localRoot.'/src/Domain/PublicEdge/PublicEdgeSyncClient.php';
+require_once $localRoot.'/src/Domain/Recovery/RecoveryException.php';
+require_once $localRoot.'/src/Domain/Recovery/BusinessBackupService.php';
 
 use Sokna\Local\Core\Observability;
 use Sokna\Local\Core\Config;
