@@ -267,6 +267,15 @@ final class AdminControlService
             if($verify===false||$this->toBool((string)$verify)!==$finalRial){
                 throw new AdminControlException('currency_policy_not_saved','تأیید ذخیره تنظیم ریال انجام نشد؛ تغییرات اعمال نشد.',409);
             }
+            // The existing settings triggers do not invalidate the Public Hall
+            // operations read model. Add a durable, transactionally committed
+            // invalidation ONLY if the installation-wide currency choice changes.
+            // The existing v2 outbox worker delivers/ACKs it when Public is online;
+            // an offline host never prevents the Local setting from persisting.
+            if($currentRial!==$finalRial){
+                $event=$this->pdo->prepare("INSERT INTO public_projection_outbox(event_type,aggregate_type,aggregate_id,model_keys) VALUES('settings.currency_policy_changed','settings','payment.final_amount_rial','operations')");
+                $event->execute();
+            }
             $this->audit('settings.local_updated','setting','local',(int)$admin['id'],[
                 'cafe_name'=>$name,'brand_subtitle'=>$subtitle,'business_day_cutoff'=>$cutoff,
                 'waiter_call_enabled'=>$waiter,'final_amount_rial'=>$finalRial,
