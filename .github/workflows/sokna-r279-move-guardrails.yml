@@ -1,0 +1,32 @@
+name: Sokna R279 move target fail-closed QA
+on:
+  push:
+    branches:
+      - qa/sokna-r279-transfer-guardrails-20261118
+    paths:
+      - 'apps/local-web/src/Domain/PublicEdge/**'
+      - 'r273/overlay/local/public/integrations/api.php'
+      - 'r279/**'
+      - '.github/workflows/sokna-r279-move-guardrails.yml'
+  workflow_dispatch:
+jobs:
+  inspection:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm native PHP and Node
+        run: php -v && node --version
+      - name: Syntax gates
+        run: |
+          php -l apps/local-web/src/Domain/PublicEdge/PublicMoveUiInspectionService.php
+          php -l r273/overlay/local/public/integrations/api.php
+          php -l r279/tests/public_move_inspection_selftest.php
+          node --check r273/overlay/local/public/assets/connections-workspace.js
+      - name: Explicit 19-case fail-closed classifier regression
+        run: php r279/tests/public_move_inspection_selftest.php
+      - name: Keep operator release blocked
+        run: |
+          test -f r276/CAFE-FINAL-QUALIFICATION-20261118.md
+          ! grep -R -E 'operator_install_allowed[" ]*[:=][" ]*true' r279
