@@ -1,0 +1,74 @@
+{
+  "schema": "sokna-r283-transfer-source-validation-v1",
+  "date": "2026-11-18",
+  "branch": "qa/sokna-r283-offline-local-cutover-media-safety-20261118",
+  "version": "3.0.0-g6.2-workspace.231fr-r283-private-media-staging-qa",
+  "original_parent": "R282/231fq",
+  "parent_immutable_sha256": "21d0b209695462c4cfa2a567e2e0755cfe234f3788ac183c0d94a9ce9e3e7563",
+  "r283_candidate_zip_sha256": "94fe600e12f0736b778b341ba21d26085e8b5f1e7557c181b6b290ee91f9b097",
+  "managed_files": 607,
+  "migrations": 82,
+  "source_changes": {
+    "added": [
+      "src/Domain/Recovery/PrivateMediaTransferService.php",
+      "bin/sokna-media-transfer.php"
+    ],
+    "modified_only_metadata": [
+      "VERSION.txt",
+      "resources/local-managed-files-v1.json",
+      "resources/build-provenance.json",
+      "resources/release-identity-v1.json"
+    ]
+  },
+  "tests": {
+    "linux_media_crypto": {
+      "result": "PASS",
+      "run": 44363924678
+    },
+    "windows_native_php_media_crypto": {
+      "result": "PASS",
+      "run": 44363924678
+    },
+    "immutable_producer_and_canonical_factory": {
+      "result": "PASS_QA_ONLY",
+      "run": 44363924678
+    },
+    "r282_previous_direct_cafe_r275_to_r282_maintenance": {
+      "result": "PASS_PRIOR_RUN",
+      "run": 44354235530
+    },
+    "r283_r275_to_r283_native_install": {
+      "result": "NOT_RUN"
+    },
+    "r283_real_media_vault_field": {
+      "result": "NOT_RUN"
+    },
+    "r283_exclusive_old_and_new_local_cutover": {
+      "result": "NOT_IMPLEMENTED"
+    },
+    "r283_live_public_owner_transfer": {
+      "result": "NOT_RUN"
+    },
+    "r283_physical_print": {
+      "result": "NOT_RUN"
+    }
+  },
+  "functional_scope": [
+    "separate encrypted guest-media export bound to exact business-backup SHA and source Local installation ID",
+    "isolated authenticated media import preserving active new-machine media vault",
+    "wrong password, tamper, wrong backup/owner, symlink, conflict guardrails"
+  ],
+  "product_limitations": [
+    "not an operator installation",
+    "no new machine active DB config swap",
+    "no old Local write fence",
+    "no exclusive Public authority transfer",
+    "no physical printer/service reenrollment",
+    "media images tested with disposable source fixtures, not real cafe vault"
+  ],
+  "field_operator_install_allowed": false,
+  "production_authorized": false,
+  "cutover_completed": false,
+  "decision": "R283_QA_SOURCE_AND_MEDIA_TRANSFER_TESTS_PASS__FIELD_AND_EXCLUSIVE_CUTOVER_NO_GO",
+  "original_source_and_factory_run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44363924678"
+}
