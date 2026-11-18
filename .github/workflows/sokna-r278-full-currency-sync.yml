@@ -1,0 +1,65 @@
+name: SOKNA R278 Local to Public Rial Persistence MariaDB
+on:
+  push:
+    branches: [qa/sokna-r278-rial-persistent-settings-20261118]
+    paths:
+      - 'r278/**'
+      - '.github/workflows/sokna-r278-full-currency-sync.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-local-public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_ROOT_PASSWORD: only-local-test
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ponly-local-test"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      GITHUB_ACTIONS: 'true'
+      R277_NATIVE_ROOT: /tmp/sokna-r277-native
+      R278_ROOT: /tmp/sokna-r278-native
+      SOKNA_QA_DB_PASSWORD: only-local-test
+      SOKNA_QA_DB_HOST: 127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql
+          coverage: none
+      - name: Rebuild from exact R277 install-ready source without downloading old artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 r278/ci_prepare.py
+          python3 - <<'PY'
+          import json
+          j=json.load(open('/tmp/sokna-r278-native/output/R278-INSTALL-PROOF-PRE-NATIVE.json'))
+          assert j['final_sha256']=='3a1070e18b14307fb2571634c961b20ca3e5d38e6c9a9dc1afad68be89fe6824'
+          assert j['target_managed_tree']=='2e0d5febc7c8c023bcfe333648a2d83bea2013e7092c7269afb2cc17632d04c5'
+          assert j['migrations']==82 and j['migrations_unchanged'] and j['public_edge_bytes_unchanged']
+          print('R278_REPRODUCIBLE_EXACT_LOCAL_INSTALL_PACKAGE_SHA_PASS',j['final_sha256'])
+          PY
+          python3 packaging/windows/release-gates/check_local_release_set.py /tmp/sokna-r278-native/output/SOKNA-R278-LOCAL-231FN-CUMULATIVE-RIAL-PERSISTENCE-INSTALL-READY.zip --require-installable
+          php -l /tmp/sokna-r278-native/source/src/Domain/Admin/AdminControlService.php
+          node --check /tmp/sokna-r278-native/source/public/assets/admin-workspace.js
+      - name: Test both browsers, transactional outbox and exact real Public v2 read model
+        shell: bash
+        run: |
+          set -euo pipefail
+          php /tmp/sokna-r278-native/tests/rial_local_to_public_mariadb.php
+          echo R278_REAL_LOCAL_TO_PUBLIC_V2_RIAL_CONSISTENCY_CI_PASS
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: R278-LOCAL-231FN-FINANCE-RIAL-CI-EXACT
+          path: |
+            /tmp/sokna-r278-native/output/R278-INSTALL-PROOF-PRE-NATIVE.json
+          retention-days: 14
