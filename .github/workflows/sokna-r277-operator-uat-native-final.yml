@@ -166,7 +166,7 @@ jobs:
           Need ((Get-FileHash $r277Zip -Algorithm SHA256).Hash.ToLowerInvariant() -eq $r277Proof.operator_zip_sha256) 'R277_TARGET_ZIP_SHA_BAD'
           $r277Outer=Join-Path $lab 'r277-outer';Expand-Archive $r277Zip $r277Outer
           $r277Manifest=Get-Content (Join-Path $r277Outer 'release-set.json') -Raw|ConvertFrom-Json
-          Need ($r277Manifest.status -ceq 'R277_CONTROLLED_OPERATOR_UAT_AFTER_NATIVE_GATE' -and $r277Manifest.qa_notes.operator_install_allowed -eq $true) 'R277_NOT_CONTROLLED_OPERATOR_UAT'
+          Need ($r277Manifest.status -ceq 'R277_CONTROLLED_OPERATOR_RELEASE_FIELD_ACCEPTANCE_PENDING' -and $r277Manifest.qa_notes.operator_install_allowed -eq $true) 'R277_NOT_CONTROLLED_OPERATOR_UAT'
           $r277Baseline=@($r277Manifest.supported_baselines|Where-Object {$_.local.version -ceq $finalVersion})
           Need ($r277Baseline.Count -eq 1) 'R277_R275_BASELINE_NOT_UNIQUE'
           Need ($r277Baseline[0].local.managed_tree_sha256 -ceq $r275Manifest.targets.local.managed_tree_sha256) 'R277_R275_TREE_MISMATCH'
