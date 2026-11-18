@@ -4,6 +4,8 @@ on:
     branches: [qa/sokna-r277-local-p0-finance-cancel-20261118]
     paths:
       - '.github/workflows/sokna-r277-windows-source.yml'
+      - 'r277/source/**'
+      - 'r277/tests/**'
   workflow_dispatch:
 permissions:
   contents: read
