@@ -1,6 +1,6 @@
 (()=>{'use strict';const root=document.querySelector('[data-connections-workspace]');if(!root)return;const api=root.dataset.api,csrf=root.dataset.csrf,$=(s,c=root)=>c.querySelector(s),$$=(s,c=root)=>[...c.querySelectorAll(s)],L=window.SoknaLocale||{dateTime:v=>'—',instantDateTime:v=>'—',integer:v=>String(v??'')};let snap=null,originRebindPreview=null,replacementPreflight=null;const toast=(m,tone='success',title='')=>window.SoknaUI?.toast?.(m,{tone,title});
 const status=m=>{const x=$('[data-status]');if(!x)return;x.textContent=m||'';x.hidden=!m};const feedback=(scope,m='',bad=true)=>{const x=$(`[data-${scope}-feedback]`);if(!x)return;x.textContent=m;x.hidden=!m;x.classList.toggle('sc-alert--danger',!!bad)};const reenrollFeedback=(m='',bad=true)=>{const x=$('[data-public-reenroll-feedback]');if(!x)return;x.textContent=m;x.hidden=!m;x.classList.toggle('sc-alert--danger',!!bad)};const badge=(el,text,tone='neutral')=>{if(!el)return;el.textContent=text;el.className='sc-badge'+(tone==='neutral'?'':` sc-badge--${tone}`)};
-async function request(url,opt={}){let r;try{r=await fetch(url,{cache:'no-store',credentials:'same-origin',...opt})}catch{throw new Error('ارتباط با سامانه برقرار نشد.')}let j={};try{j=await r.json()}catch{throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false)throw new Error((j.message||'عملیات انجام نشد.')+(j.support_id?` · کد پیگیری ${j.support_id}`:''));return j}const post=payload=>request(api,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({...payload,csrf_token:csrf})});
+async function request(url,opt={}){let r;try{r=await fetch(url,{cache:'no-store',credentials:'same-origin',...opt})}catch{throw new Error('ارتباط با سامانه برقرار نشد.')}let j={};try{j=await r.json()}catch{throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false){const e=new Error((j.message||'عملیات انجام نشد.')+(j.support_id?` · کد پیگیری ${j.support_id}`:''));e.code=String(j.code||'');e.nextAction=String(j.next_action||'');e.moveState=String(j.move?.status||'');throw e}return j}const post=payload=>request(api,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({...payload,csrf_token:csrf})});
 function renderAccommodation(){const a=snap.accommodation||{},err=snap.errors?.accommodation;badge($('[data-accommodation-badge]'),err?'در دسترس نیست':a.enabled?(a.configured?'فعال':'ناقص'):'غیرفعال',err?'danger':a.enabled&&a.configured?'success':a.enabled?'warning':'neutral');$('[data-accommodation-enabled]').checked=!!a.enabled;$('[data-accommodation-url]').value=a.base_url||'';$('[data-accommodation-key-state]').textContent=a.credential_saved?'کلید اتصال ذخیره شده است؛ برای حفظ آن فیلد را خالی بگذار.':'کلیدی ذخیره نشده است.';const fp=$('[data-accommodation-fingerprint]');if(fp){const value=String(a.key_fingerprint||'');fp.textContent=value?`اثر انگشت کلید: ${value}`:'';fp.hidden=!value}const test=$('[data-accommodation-test]');if(test)test.disabled=!a.configured;feedback('accommodation',err?.message||'',true)}
 function publicLabel(s){return ({ok:'متصل',configured_unprobed:'تنظیم‌شده',attention:'نیازمند بررسی',not_configured:'متصل نیست',unavailable:'در دسترس نیست'})[s]||'در حال بررسی'}
 const publicChannelLabels={installation:'اعتماد اتصال',auth:'ورود کارکنان',guest_publish:'محتوای منو',availability:'قابلیت سفارش و موجودی',guest_media:'تصاویر منو',read_models:'پنل راه‌دور',heartbeat:'ارتباط زنده'};
@@ -96,14 +96,14 @@ $('[data-public-move-form]')?.addEventListener('submit',async e=>{
    const inspected=await post({action:'public_move_inspect',base_url:target});
    const decision=inspected.public_move||{};
    if(decision.route==='same_destination'){
-     popup.close();feedback('public-move','همین آدرس اکنون متصل است.',false);return;
+     popup.close();feedback('public-move','این آدرس قبلاً انتخاب شده است؛ سلامت ارتباط و همگام‌سازی را جداگانه بررسی کنید.',false);return;
    }
    if(decision.route==='ready_for_review'){
      popup.close();
      if(!await SoknaUI.confirm('تغییر آدرس وب عمومی',
        'مقصد همان نصب قبلی است. تغییر آدرس را تأیید می‌کنید؟',true))return;
-     await post({action:'public_origin_rebind_execute',base_url:target});
-     await refresh();feedback('public-move','آدرس وب عمومی با موفقیت تغییر کرد.',false);return;
+     const result=await post({action:'public_origin_rebind_execute',base_url:target});
+     await refresh();feedback('public-move',result.origin_rebind?.finalize_pending===true?'نشانی جدید ثبت شده، اما تأیید پایان انتقال هنوز دریافت نشده است؛ وضعیت را بررسی کنید.':'آدرس جدید ثبت شد؛ وضعیت QR، کارکنان و اعلان‌ها را بازبینی کنید.',result.origin_rebind?.finalize_pending===true);return;
    }
    if(decision.route!=='awaiting_owner'){
      popup.close();feedback('public-move',String(decision.message||'مقصد معتبر نیست.'));return;
@@ -145,8 +145,7 @@ window.addEventListener('message',async event=>{
      feedback('public-move','اعتبار مقصد تأیید شد؛ همگام‌سازی کامل پیش از تغییر آدرس…',false);
      await finishSimpleMove();
    }catch(err){
-     feedback('public-move','اتصال نیمه‌تمام ثبت شده است. کد دیگری نساز؛ از ادامهٔ ایمن استفاده کن. '+(err.message||''));
-     moveUi('sync_pending');
+     if(err.nextAction==='safe_resume'){moveUi('sync_pending');feedback('public-move','مرحله ثبت‌شده آماده ادامهٔ ایمن است. کد دیگری نسازید. '+(err.message||''),true)}else{moveUi('none');feedback('public-move','نتیجهٔ صدور مجوز روشن نیست؛ بدون درخواست جدید بررسی کنید. '+(err.message||''),true)}
    }
    return;
  }
@@ -186,7 +185,8 @@ window.addEventListener('message',async event=>{
    await finishSimpleMove();
  }catch(err){
    const status=await post({action:'public_move_status'}).catch(()=>({}));
-   if(status.move?.status==='sync_pending')moveUi('sync_pending');
+   if(status.move?.status==='sync_pending'||err.nextAction==='safe_resume')moveUi('sync_pending');
+   else if(status.move?.status==='support_required'||err.nextAction==='support_review')moveUi('none');
    else moveUi('awaiting_owner');
    pending.handling=false;
    feedback('public-move',err.message||'اتصال هنوز کامل نشده؛ وضعیت Public جدید را بررسی کنید.',true);
@@ -211,7 +211,7 @@ post({action:'public_move_status'}).then(data=>{
 }).catch(()=>{});
 $('[data-public-origin-target]')?.addEventListener('input',()=>{originRebindPreview=null;$('[data-public-origin-execute]').disabled=true;showOriginPreview(null);feedback('public-origin')});
 $('[data-public-origin-preflight]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public-origin');const url=$('[data-public-origin-target]').value.trim();if(!url){feedback('public-origin','آدرس مقصد لازم است.');return}try{const j=await post({action:'public_origin_rebind_preflight',base_url:url}),r=j.origin_rebind||{};originRebindPreview={url,result:r};showOriginPreview(r);$('[data-public-origin-execute]').disabled=false}catch(err){originRebindPreview=null;$('[data-public-origin-execute]').disabled=true;showOriginPreview(null);feedback('public-origin',err.message||'پیش‌بررسی تغییر آدرس انجام نشد.')}}));
-$('[data-public-origin-execute]')?.addEventListener('click',async e=>{const url=$('[data-public-origin-target]').value.trim();if(!originRebindPreview||originRebindPreview.url!==url){feedback('public-origin','ابتدا برای همین آدرس پیش‌بررسی موفق انجام بده.');return}const r=originRebindPreview.result||{},kind=String(r.transition_kind||'')==='cross_origin'?'دامنه/origin عوض می‌شود؛ کاربران ممکن است نیاز به ورود دوباره، PWA و Push جدید داشته باشند.':'origin ثابت می‌ماند؛ مسیر، Service Worker و در صورت نیاز نشست reconcile می‌شوند.';if(!await SoknaUI.confirm('اعمال تغییر آدرس Public',`${kind} مسیر قدیمی تا تأیید مهاجرت باز می‌ماند و تغییر بعدی تا بستن آن مجاز نیست.`,true))return;await SoknaUI.busy(e.currentTarget,async()=>{try{await post({action:'public_origin_rebind_execute',base_url:url});originRebindPreview=null;showOriginPreview(null);await refresh();toast('Rebind Public کامل شد؛ وضعیت انتقال قدیمی را پس از مهاجرت کاربران ببند.','success','تغییر آدرس')}catch(err){feedback('public-origin',err.message||'تغییر آدرس Public کامل نشد.');await refresh().catch(()=>{})}})});
+$('[data-public-origin-execute]')?.addEventListener('click',async e=>{const url=$('[data-public-origin-target]').value.trim();if(!originRebindPreview||originRebindPreview.url!==url){feedback('public-origin','ابتدا برای همین آدرس پیش‌بررسی موفق انجام بده.');return}const r=originRebindPreview.result||{},kind=String(r.transition_kind||'')==='cross_origin'?'دامنه/origin عوض می‌شود؛ کاربران ممکن است نیاز به ورود دوباره، PWA و Push جدید داشته باشند.':'origin ثابت می‌ماند؛ مسیر، Service Worker و در صورت نیاز نشست reconcile می‌شوند.';if(!await SoknaUI.confirm('اعمال تغییر آدرس Public',`${kind} مسیر قدیمی تا تأیید مهاجرت باز می‌ماند و تغییر بعدی تا بستن آن مجاز نیست.`,true))return;await SoknaUI.busy(e.currentTarget,async()=>{try{const result=await post({action:'public_origin_rebind_execute',base_url:url});originRebindPreview=null;showOriginPreview(null);await refresh();if(result.origin_rebind?.finalize_pending===true){feedback('public-origin','نشانی تغییر کرد، اما مرحله نهایی هنوز تأیید نشده است. وضعیت انتقال را بررسی کنید.',true)}else{toast('نشانی ثبت شد؛ مسیر قدیمی، PWA و اعلان‌ها را بررسی کنید.','success','تغییر آدرس')}}catch(err){feedback('public-origin',err.message||'تغییر آدرس Public کامل نشد.');await refresh().catch(()=>{})}})});
 $('[data-public-origin-transition-close]')?.addEventListener('click',async e=>{const t=snap?.public_origin_transition||{},id=String(t.rebind_id||'');if(!id)return;if(!await SoknaUI.confirm('بستن مسیر انتقال قدیمی','فقط وقتی کاربران/دستگاه‌های لازم به آدرس جدید منتقل شده‌اند، مسیر قدیمی بازنشسته شود.',true))return;await SoknaUI.busy(e.currentTarget,async()=>{try{await post({action:'public_origin_transition_close',rebind_id:id});await refresh();toast('مسیر انتقال قدیمی بازنشسته شد.','success','تغییر آدرس')}catch(err){feedback('public-origin',err.message||'بستن مسیر انتقال انجام نشد.')}})});
 $('[data-public-replacement-preflight]')?.addEventListener('click',async e=>{
     await SoknaUI.busy(e.currentTarget,async()=>{
