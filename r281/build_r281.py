@@ -14,7 +14,7 @@ SOURCE=Path(os.environ["R281_R280_EXACT_ZIP"])
 OUT=Path(os.environ.get("R281_OUTPUT","/tmp/sokna-r281-candidate"))
 ROOT=Path(__file__).resolve().parents[1]
 PARENT_SHA="12bf30d977dfa82ef047381d71153f8f5149653edc706833779f6bb7daa7a277"
-PARENT_TREE="dd9d1c936d7e99bf7d045c46e53a7937c88a4d49f9e98c9158f5f99b4f49fb68"
+PARENT_TREE="f3f0d64e981dedb1c9ba9ddb770f127b3ab3f37152b33f3db294623b884269cd"
 VERSION="3.0.0-g6.2-workspace.231fp-r281-restore-staging-qa"
 RELEASE="sokna-r281-machine-recovery-stage-qa-20261118"
 NAME="SOKNA-R281-LOCAL-231FP-RESTORE-STAGING-QA-DO-NOT-INSTALL.zip"
@@ -44,7 +44,7 @@ assert len(previous)==604
 assert r["targets"]["local"]["version"]=="3.0.0-g6.2-workspace.231fo-r280-transfer-migration-guards"
 # The input's own managed tree is the authoritative parent receipt; never
 # assume a numeric version or a stale code checkout identifies its bytes.
-assert managed(previous)==r["targets"]["local"]["managed_tree_sha256"]
+assert managed(previous)==r["targets"]["local"]["managed_tree_sha256"]==PARENT_TREE
 assert NEW_FILE not in previous
 assert len([n for n in previous if n.startswith("database/migrations/")])==82
 
