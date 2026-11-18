@@ -1,0 +1,69 @@
+{
+  "schema": "sokna-r284-final-qa-handoff-v1",
+  "generated_utc": "2026-11-18",
+  "branch": "qa/sokna-r284-offline-exclusive-local-cutover-20261118",
+  "local_candidate": "3.0.0-g6.2-workspace.231fs-r284-old-local-write-fence-qa",
+  "parent": "3.0.0-g6.2-workspace.231fr-r283-private-media-staging-qa",
+  "source_chain": [
+    "R275/231fl",
+    "R278/231fn",
+    "R280/231fo",
+    "R281/231fp",
+    "R282/231fq",
+    "R283/231fr",
+    "R284/231fs"
+  ],
+  "managed_files": 609,
+  "migrations": 82,
+  "original_qa_candidate_sha256": "76ed488ead182a5388ba8cf008bae30a1d67bbf55b0d06271c0f42cf397e3b1a",
+  "real_mariadb_82_migration_source_fence": "PASS",
+  "real_windows_r284_native_install": "NOT_RUN",
+  "real_windows_r283_media": "PASS_PRIOR_R283_ONLY",
+  "factory": {
+    "run": "44371850585",
+    "producer_artifact": "SOKNA-R284-609-FILE-ORIGINAL-QA-SOURCE",
+    "same_zip_bytes_verified": true,
+    "receipt_status": "QA_EXACT_BYTES_PASS_FIELD_AND_SOURCE_APPROVAL_BLOCKED",
+    "operator_release_authorized": false,
+    "production_authorized": false,
+    "source_approved": false,
+    "database_migration_path": "NOT_PROVEN_BY_STATIC_AUDIT"
+  },
+  "public_other_local": {
+    "tested_public_source": "R275/35ij with R276 owner patch",
+    "exact_failure_code": "existing_move_other_installation",
+    "cause": "PublicHttpKernel existing_paired owner offer and consent require hash_equals(installed Local ID, challenge.local_installation_id)",
+    "code_paths": [
+      "src/Http/PublicHttpKernel.php publicOwnerAction()"
+    ],
+    "validated_new_local_takeover": false,
+    "owner_transfer_implemented": false
+  },
+  "deliverables": [
+    "old machine stopped-workers preflight",
+    "old machine unresolved print job drain",
+    "durable offline source marker",
+    "business backup + private media backup SHA-bound to signed handoff",
+    "old Local web/guest/setup/rescue 503 marker gate"
+  ],
+  "not_proven_or_missing": [
+    "native Windows R284 service lifecycle and source fence after restart",
+    "owner-authorized rebind from old Local ID to distinct new Local ID in installed Public",
+    "transactional activation of staged database and private media on new Local with rollback/resume journal",
+    "remote exclusive epoch revocation of old Local",
+    "full print agent Windows service re-enrollment with physical paper tests",
+    "real cafe and Public host UAT"
+  ],
+  "source_completeness": "PARTIAL_FUNCTIONAL_SAFE_BUILD_NOT_END_TO_END_OPERATIONAL",
+  "allowed_actions": [
+    "source review",
+    "QA-only lab tests"
+  ],
+  "forbidden_actions": [
+    "install R284 on active cafe",
+    "claim full Local move done",
+    "activate a second Local against existing paired Public",
+    "switch new machine DB before owner/public cutover"
+  ],
+  "cafe_or_public_host_changed": false
+}
