@@ -1,0 +1,341 @@
+--- a/src/Domain/PublicEdge/PublicMoveUiInspectionService.php
++++ b/src/Domain/PublicEdge/PublicMoveUiInspectionService.php
+@@ -17,13 +17,20 @@
+ final class PublicMoveUiInspectionService
+ {
+     private readonly Closure $sameInstancePreflight;
++    private readonly ?Closure $targetHealth;
++    private readonly ?Closure $targetSetupStatus;
+ 
+     public function __construct(
+         private readonly string $currentBaseUrl,
+         private readonly string $authorityPhase,
+-        callable $sameInstancePreflight
++        callable $sameInstancePreflight,
++        ?callable $targetHealth = null,
++        ?callable $targetSetupStatus = null,
++        private readonly string $localInstallationId = ''
+     ) {
+         $this->sameInstancePreflight=Closure::fromCallable($sameInstancePreflight);
++        $this->targetHealth=$targetHealth===null?null:Closure::fromCallable($targetHealth);
++        $this->targetSetupStatus=$targetSetupStatus===null?null:Closure::fromCallable($targetSetupStatus);
+     }
+ 
+     /** @return array<string,mixed> */
+@@ -46,14 +53,12 @@
+         try {
+             $proof=($this->sameInstancePreflight)((string)$base['target_base_url']);
+         } catch (PublicEdgeSyncException $e) {
+-            // Different/new Public cannot answer a SAME-instance shared-secret
+-            // probe. Treat the outcome only as "needs independent OWNER proof".
+-            // It is never evidence of ownership and never permits cutover.
+-            return self::finish($base,'target_requires_owner','awaiting_owner',
+-                'اگر مقصد نصب تازه است، مالک همان وب عمومی باید اتصال را تأیید کند.');
++            // A failed same-instance probe does not imply that the new target
++            // is healthy, installed, or belongs to this Local. Verify the target
++            // independently before allowing even an owner-consent popup.
++            return $this->inspectIndependentTarget($base,$e->errorCode);
+         } catch (Throwable) {
+-            return self::finish($base,'target_requires_owner','awaiting_owner',
+-                'برای اتصال به نصب تازه، تأیید مالک مقصد لازم است.');
++            return $this->inspectIndependentTarget($base,'same_instance_probe_unavailable');
+         }
+         // Only signed, server-generated SAME-instance preflight evidence can
+         // reach this point. Never trust a JSON body or a frontend flag as proof.
+@@ -73,6 +78,83 @@
+             'مقصد همان وب عمومی فعلی است و پیش‌بررسی فنی تأیید شد. تغییر آدرس هنوز انجام نشده است.');
+     }
+ 
++    /**
++     * Only chooses the next UI step. No owner grant, secret, Local config,
++     * pairing or Public state can be changed by this read-only classifier.
++     */
++    private function inspectIndependentTarget(array $base,string $probeFailure): array
++    {
++        // These errors already prove that SAME-instance deployment artifacts
++        // are incomplete. Do not bypass a broken PWA/binding via owner consent.
++        if (in_array($probeFailure,[
++            'public_origin_target_pwa_incomplete',
++            'public_origin_target_health_mismatch',
++            'public_origin_target_binding_mismatch',
++            'deployment_target_manifest_identity_mismatch',
++            'deployment_target_manifest_scope_mismatch'
++        ],true)) {
++            return self::finish($base,'target_deployment_incomplete','blocked',
++                'استقرار مقصد اجزای ضروری یا هویت یکسان را تأیید نکرد؛ ابتدا استقرار را اصلاح کنید.');
++        }
++        if ($this->targetHealth===null || $this->targetSetupStatus===null) {
++            return self::finish($base,'target_verification_not_configured','blocked',
++                'پیش‌بررسی مستقل مقصد آماده نیست؛ هیچ درخواست انتقالی آغاز نشد.');
++        }
++        $target=(string)$base['target_base_url'];
++        try {
++            $health=($this->targetHealth)($target);
++        } catch (Throwable) {
++            return self::finish($base,'target_health_unreachable','blocked',
++                'سلامت مقصد از طریق HTTPS بررسی نشد؛ آدرس، گواهی TLS و دسترسی سرور را بررسی کنید.');
++        }
++        if (!is_array($health) ||
++            ($health['ok']??null)!==true ||
++            ($health['component']??null)!=='public-edge' ||
++            ($health['database']??null)!=='ready' ||
++            !array_key_exists('pending_migrations',$health) ||
++            (int)$health['pending_migrations']!==0 ||
++            !is_string($health['version']??null) ||
++            trim($health['version'])==='') {
++            return self::finish($base,'target_health_not_ready','blocked',
++                'Public مقصد سالم یا آماده نیست؛ دیتابیس، نسخه و مهاجرت‌های معلق را بررسی کنید.');
++        }
++        try {
++            $setup=($this->targetSetupStatus)($target);
++        } catch (Throwable) {
++            return self::finish($base,'target_setup_unavailable','blocked',
++                'وضعیت نصب مقصد قابل‌خواندن نیست؛ تشخیص نصب تازه یا موجود انجام نشد.');
++        }
++        if (!is_array($setup) ||
++            !is_bool($setup['installed']??null) ||
++            !is_bool($setup['paired']??null)) {
++            return self::finish($base,'target_setup_invalid','blocked',
++                'پاسخ شناسایی نصب مقصد ناقص است؛ انتقال شروع نشد.');
++        }
++        if ($setup['installed']!==true) {
++            return self::finish($base,'target_not_installed','blocked',
++                'ابتدا نصب استاندارد وب عمومی مقصد را تکمیل کنید.');
++        }
++        if (PublicMoveDecisionEngine::canonicalUrl((string)($setup['base_url']??''))!==$target) {
++            return self::finish($base,'target_base_url_mismatch','blocked',
++                'آدرس پایه گزارش‌شده توسط مقصد با آدرس درخواستی یکسان نیست.');
++        }
++        if ($setup['paired']===true) {
++            $remoteId=trim((string)($setup['installation_id']??''));
++            if ($remoteId==='' || $this->localInstallationId==='') {
++                return self::finish($base,'target_paired_identity_unknown','blocked',
++                    'مالکیت اتصال موجود مقصد روشن نیست؛ برای جلوگیری از جابه‌جایی اشتباه متوقف شد.');
++            }
++            if (!hash_equals($this->localInstallationId,$remoteId)) {
++                return self::finish($base,'target_paired_to_other_local','blocked',
++                    'این وب عمومی به Local دیگری متصل است؛ انتقال مالکیت جداگانه لازم است.');
++            }
++            return self::finish($base,'same_local_existing_public','awaiting_owner',
++                'مقصد وب عمومی موجود همین Local است؛ تأیید مستقل مالک مقصد لازم است.');
++        }
++        return self::finish($base,'fresh_unpaired_public','awaiting_owner',
++            'مقصد نصب‌شده و هنوز جفت نشده است؛ مالک همان وب عمومی باید اتصال را تأیید کند.');
++    }
++
+     /** Every response remains read-only; no transfer or remote intake toggles. */
+     private static function finish(array $base,string $reason,string $route,string $message): array
+     {
+
+--- a/src/Domain/Recovery/BusinessBackupService.php
++++ b/src/Domain/Recovery/BusinessBackupService.php
+@@ -71,17 +71,27 @@
+ 
+     private function writeSnapshot(string $path,int $actorUserId): array
+     {
+-        $tables=$this->businessTables();
+-        $versions=array_map('strval',$this->pdo->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN));
+-        $manifest=[
+-            'format'=>self::FORMAT,'schema_version'=>1,'created_at'=>gmdate('c'),
+-            'source_installation_id'=>$this->sourceInstallationId!==''?$this->sourceInstallationId:'unknown-installation',
+-            'schema_versions'=>$versions,'tables'=>$tables,
+-            'excluded_tables'=>self::EXCLUDED_TABLES,'excluded_machine_identity'=>self::EXCLUDED_MACHINE_IDENTITY,
+-        ];
+-        $gz=@gzopen($path,'wb9');if($gz===false)throw new RecoveryException('backup_write_failed','فایل موقت پشتیبان قابل ایجاد نیست.',500);
+-        $counts=[];$hashes=[];
++        // Under live cafe orders, SELECTing each table in autocommit mode can
++        // silently combine different points in time. Require one InnoDB MVCC
++        // snapshot across schema versions, every business table and footer.
++        if($this->pdo->inTransaction())
++            throw new RecoveryException('backup_transaction_active','پشتیبان‌گیری باید خارج از تراکنش فعال آغاز شود.',409);
++        $gz=null;$manifest=[];$counts=[];$hashes=[];
+         try{
++            $this->pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
++            $this->pdo->beginTransaction();
++            $tables=$this->businessTables();
++            $this->requireTransactionalBackupTables($tables);
++            $versions=array_map('strval',$this->pdo->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN));
++            $manifest=[
++                'format'=>self::FORMAT,'schema_version'=>1,'created_at'=>gmdate('c'),
++                'source_installation_id'=>$this->sourceInstallationId!==''?$this->sourceInstallationId:'unknown-installation',
++                'schema_versions'=>$versions,'tables'=>$tables,
++                'snapshot_consistency'=>'innodb_repeatable_read_v1',
++                'excluded_tables'=>self::EXCLUDED_TABLES,'excluded_machine_identity'=>self::EXCLUDED_MACHINE_IDENTITY,
++            ];
++            $gz=@gzopen($path,'wb9');
++            if($gz===false)throw new RecoveryException('backup_write_failed','فایل موقت پشتیبان قابل ایجاد نیست.',500);
+             $this->gzLine($gz,['kind'=>'manifest','value'=>$manifest]);
+             foreach($tables as $table){
+                 $columns=$this->columns($table);$counts[$table]=0;$ctx=hash_init('sha256');
+@@ -95,9 +105,18 @@
+                 $hashes[$table]=hash_final($ctx);
+             }
+             $this->gzLine($gz,['kind'=>'footer','table_counts'=>$counts,'table_hashes'=>$hashes]);
+-        }finally{gzclose($gz);}
++            if(!gzclose($gz))throw new RecoveryException('backup_write_failed','بستن فایل پشتیبان کامل نشد.',500);
++            $gz=null;
++            $this->pdo->commit();
++        }catch(Throwable $e){
++            if($this->pdo->inTransaction())$this->pdo->rollBack();
++            throw $e;
++        }finally{
++            if(is_resource($gz))@gzclose($gz);
++        }
+         $this->observability->logEvent('info','recovery.backup_created',[
+             'actor_user_id'=>$actorUserId,'table_count'=>count($tables),'row_count'=>array_sum($counts),
++            'snapshot_consistency'=>'innodb_repeatable_read_v1',
+             'excluded_machine_identity'=>self::EXCLUDED_MACHINE_IDENTITY,
+         ]);
+         return $manifest;
+@@ -179,6 +198,21 @@
+         ];
+     }
+ 
++    /** Never claim a cross-table consistent backup if a data table is non-MVCC. */
++    private function requireTransactionalBackupTables(array $tables): void
++    {
++        $rows=$this->pdo->query("SELECT TABLE_NAME,ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()")->fetchAll(PDO::FETCH_ASSOC);
++        $engines=[];
++        foreach($rows as $row)$engines[(string)$row['TABLE_NAME']]=strtolower((string)($row['ENGINE']??''));
++        foreach($tables as $table){
++            if(($engines[$table]??'')!=='innodb'){
++                throw new RecoveryException('backup_nontransactional_table',
++                    'پشتیبان‌گیری سازگار فقط برای جدول‌های تراکنشی امکان‌پذیر است؛ عملیات بدون خروجی متوقف شد.',
++                    409,['table'=>$table]);
++            }
++        }
++    }
++
+     private function businessTables(): array
+     {
+         $tables=array_map('strval',$this->pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
+
+--- a/public/integrations/api.php
++++ b/public/integrations/api.php
+@@ -117,13 +117,28 @@
+                 (int)($data['owner_next_epoch']??0));
+             WebAction::json(['success'=>true,'move'=>$result]);
+         }catch(\Throwable $e){
+-            // Never disclose key paths, challenge hashes, SQL, session tokens,
+-            // owner credentials or remote host internals.
+-            WebAction::json(['success'=>false,'code'=>'public_move_confirmation_not_ready',
+-                'message'=>'تأیید انتقال کامل نشد. اتصال فعلی بدون تغییر است؛ وضعیت مقصد و ورود مدیر را بررسی کنید.'],409);
++            // Remote authority might ALREADY have changed after a lost reply.
++            // Never claim "Local unchanged" without reading the durable journal.
++            $pending=['status'=>'unknown','active'=>false];
++            try{if(isset($replacement))$pending=$replacement->status();}catch(\Throwable){}
++            $phase=(string)($pending['status']??'unknown');
++            $resume=$phase==='sync_pending';
++            $review=$phase==='support_required'||$phase==='unknown';
++            $code=$resume?'public_move_resume_required':($review?'public_move_state_requires_review':'public_move_confirmation_not_ready');
++            $message=$resume
++                ?'مرحلهٔ اتصال روی مقصد ممکن است انجام شده باشد. از «ادامهٔ ایمن» استفاده کنید؛ درخواست جدید نسازید.'
++                :($review
++                    ?'نتیجهٔ مرحلهٔ اتصال قطعی نیست. هیچ تکرار یا لغو خودکاری انجام نشد؛ وضعیت عملیات را بررسی کنید.'
++                    :'تأیید انتقال کامل نشد. تا پیش‌بررسی دوباره، اتصال جدید آغاز نکنید.');
++            WebAction::json(['success'=>false,'code'=>$code,'message'=>$message,
++                'move'=>['status'=>$phase,'active'=>($pending['active']??false)===true],
++                'next_action'=>$resume?'safe_resume':($review?'support_review':'inspect_again')],409);
+         }
+     }
+     if($action==='public_move_existing_owner_offer_execute'){
++        // This is a separate request after the owner popup. A lost response
++        // must be reported as resumable/uncertain, not a generic 500.
++        try {
+         $localId=$core->config()->string('installation.id','');
+         $operation=(string)($_SESSION['sokna_move_operation']??'');
+         if($operation===''||($data['move_kind']??'')!=='existing_paired')
+@@ -139,6 +154,23 @@
+         $result=$replacement->start($operation,(string)($data['owner_authority_code']??''),
+             $actorId,'existing_paired',(int)($data['owner_next_epoch']??0));
+         WebAction::json(['success'=>true,'move'=>$result]);
++        }catch(\Throwable $e){
++            $pending=['status'=>'unknown','active'=>false];
++            try{
++                $localId=$core->config()->string('installation.id','');
++                $replacement=new \Sokna\Local\Domain\PublicEdge\PublicMoveSimpleReplacement(
++                    $core,new \Sokna\Local\Domain\PublicEdge\PublicMoveApprovalLedger($core->database()),
++                    $localId,$core->config()->requiredString('app.data_dir'));
++                $pending=$replacement->status();
++            }catch(\Throwable){}
++            $phase=(string)($pending['status']??'unknown');
++            $resume=$phase==='sync_pending';
++            WebAction::json(['success'=>false,
++                'code'=>$resume?'public_move_resume_required':'public_move_state_requires_review',
++                'message'=>$resume?'مجوز مقصد ممکن است مصرف شده باشد؛ با ادامهٔ ایمن وضعیت ثبت‌شده بررسی می‌شود.':'نتیجهٔ مجوز مقصد روشن نیست؛ بدون صدور کد تازه، بررسی پشتیبانی لازم است.',
++                'move'=>['status'=>$phase,'active'=>($pending['active']??false)===true],
++                'next_action'=>$resume?'safe_resume':'support_review'],409);
++        }
+     }
+     if($action==='public_move_inspect'){
+         // R258 QA: authenticated Local admin + WebAction CSRF are already enforced.
+@@ -149,7 +181,10 @@
+         $client=$core->publicEdgeSyncClient();
+         $service=new \Sokna\Local\Domain\PublicEdge\PublicMoveUiInspectionService(
+             $client->publicBaseUrl(),$core->publicAuthorityState()->phase(),
+-            static fn(string $target):array=>$core->publicOriginRebind()->preflight($target)
++            static fn(string $target):array=>$core->publicOriginRebind()->preflight($target),
++            static fn(string $target):array=>$client->deploymentTargetHealth($target,6),
++            static fn(string $target):array=>$client->destinationSetupStatus($target,6),
++            $core->config()->requiredString('installation.id')
+         );
+         WebAction::json(['success'=>true,'public_move'=>$service->inspect((string)($data['base_url']??''))]);
+     }
+
+--- a/public/assets/connections-workspace.js
++++ b/public/assets/connections-workspace.js
+@@ -1,6 +1,6 @@
+ (()=>{'use strict';const root=document.querySelector('[data-connections-workspace]');if(!root)return;const api=root.dataset.api,csrf=root.dataset.csrf,$=(s,c=root)=>c.querySelector(s),$$=(s,c=root)=>[...c.querySelectorAll(s)],L=window.SoknaLocale||{dateTime:v=>'—',instantDateTime:v=>'—',integer:v=>String(v??'')};let snap=null,originRebindPreview=null,replacementPreflight=null;const toast=(m,tone='success',title='')=>window.SoknaUI?.toast?.(m,{tone,title});
+ const status=m=>{const x=$('[data-status]');if(!x)return;x.textContent=m||'';x.hidden=!m};const feedback=(scope,m='',bad=true)=>{const x=$(`[data-${scope}-feedback]`);if(!x)return;x.textContent=m;x.hidden=!m;x.classList.toggle('sc-alert--danger',!!bad)};const reenrollFeedback=(m='',bad=true)=>{const x=$('[data-public-reenroll-feedback]');if(!x)return;x.textContent=m;x.hidden=!m;x.classList.toggle('sc-alert--danger',!!bad)};const badge=(el,text,tone='neutral')=>{if(!el)return;el.textContent=text;el.className='sc-badge'+(tone==='neutral'?'':` sc-badge--${tone}`)};
+-async function request(url,opt={}){let r;try{r=await fetch(url,{cache:'no-store',credentials:'same-origin',...opt})}catch{throw new Error('ارتباط با سامانه برقرار نشد.')}let j={};try{j=await r.json()}catch{throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false)throw new Error((j.message||'عملیات انجام نشد.')+(j.support_id?` · کد پیگیری ${j.support_id}`:''));return j}const post=payload=>request(api,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({...payload,csrf_token:csrf})});
++async function request(url,opt={}){let r;try{r=await fetch(url,{cache:'no-store',credentials:'same-origin',...opt})}catch{throw new Error('ارتباط با سامانه برقرار نشد.')}let j={};try{j=await r.json()}catch{throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false){const e=new Error((j.message||'عملیات انجام نشد.')+(j.support_id?` · کد پیگیری ${j.support_id}`:''));e.code=String(j.code||'');e.nextAction=String(j.next_action||'');e.moveState=String(j.move?.status||'');throw e}return j}const post=payload=>request(api,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({...payload,csrf_token:csrf})});
+ function renderAccommodation(){const a=snap.accommodation||{},err=snap.errors?.accommodation;badge($('[data-accommodation-badge]'),err?'در دسترس نیست':a.enabled?(a.configured?'فعال':'ناقص'):'غیرفعال',err?'danger':a.enabled&&a.configured?'success':a.enabled?'warning':'neutral');$('[data-accommodation-enabled]').checked=!!a.enabled;$('[data-accommodation-url]').value=a.base_url||'';$('[data-accommodation-key-state]').textContent=a.credential_saved?'کلید اتصال ذخیره شده است؛ برای حفظ آن فیلد را خالی بگذار.':'کلیدی ذخیره نشده است.';const fp=$('[data-accommodation-fingerprint]');if(fp){const value=String(a.key_fingerprint||'');fp.textContent=value?`اثر انگشت کلید: ${value}`:'';fp.hidden=!value}const test=$('[data-accommodation-test]');if(test)test.disabled=!a.configured;feedback('accommodation',err?.message||'',true)}
+ function publicLabel(s){return ({ok:'متصل',configured_unprobed:'تنظیم‌شده',attention:'نیازمند بررسی',not_configured:'متصل نیست',unavailable:'در دسترس نیست'})[s]||'در حال بررسی'}
+ const publicChannelLabels={installation:'اعتماد اتصال',auth:'ورود کارکنان',guest_publish:'محتوای منو',availability:'قابلیت سفارش و موجودی',guest_media:'تصاویر منو',read_models:'پنل راه‌دور',heartbeat:'ارتباط زنده'};
+@@ -96,14 +96,14 @@
+    const inspected=await post({action:'public_move_inspect',base_url:target});
+    const decision=inspected.public_move||{};
+    if(decision.route==='same_destination'){
+-     popup.close();feedback('public-move','همین آدرس اکنون متصل است.',false);return;
++     popup.close();feedback('public-move','این آدرس قبلاً انتخاب شده است؛ سلامت ارتباط و همگام‌سازی را جداگانه بررسی کنید.',false);return;
+    }
+    if(decision.route==='ready_for_review'){
+      popup.close();
+      if(!await SoknaUI.confirm('تغییر آدرس وب عمومی',
+        'مقصد همان نصب قبلی است. تغییر آدرس را تأیید می‌کنید؟',true))return;
+-     await post({action:'public_origin_rebind_execute',base_url:target});
+-     await refresh();feedback('public-move','آدرس وب عمومی با موفقیت تغییر کرد.',false);return;
++     const result=await post({action:'public_origin_rebind_execute',base_url:target});
++     await refresh();feedback('public-move',result.origin_rebind?.finalize_pending===true?'نشانی جدید ثبت شده، اما تأیید پایان انتقال هنوز دریافت نشده است؛ وضعیت را بررسی کنید.':'آدرس جدید ثبت شد؛ وضعیت QR، کارکنان و اعلان‌ها را بازبینی کنید.',result.origin_rebind?.finalize_pending===true);return;
+    }
+    if(decision.route!=='awaiting_owner'){
+      popup.close();feedback('public-move',String(decision.message||'مقصد معتبر نیست.'));return;
+@@ -145,8 +145,7 @@
+      feedback('public-move','اعتبار مقصد تأیید شد؛ همگام‌سازی کامل پیش از تغییر آدرس…',false);
+      await finishSimpleMove();
+    }catch(err){
+-     feedback('public-move','اتصال نیمه‌تمام ثبت شده است. کد دیگری نساز؛ از ادامهٔ ایمن استفاده کن. '+(err.message||''));
+-     moveUi('sync_pending');
++     if(err.nextAction==='safe_resume'){moveUi('sync_pending');feedback('public-move','مرحله ثبت‌شده آماده ادامهٔ ایمن است. کد دیگری نسازید. '+(err.message||''),true)}else{moveUi('none');feedback('public-move','نتیجهٔ صدور مجوز روشن نیست؛ بدون درخواست جدید بررسی کنید. '+(err.message||''),true)}
+    }
+    return;
+  }
+@@ -186,7 +185,8 @@
+    await finishSimpleMove();
+  }catch(err){
+    const status=await post({action:'public_move_status'}).catch(()=>({}));
+-   if(status.move?.status==='sync_pending')moveUi('sync_pending');
++   if(status.move?.status==='sync_pending'||err.nextAction==='safe_resume')moveUi('sync_pending');
++   else if(status.move?.status==='support_required'||err.nextAction==='support_review')moveUi('none');
+    else moveUi('awaiting_owner');
+    pending.handling=false;
+    feedback('public-move',err.message||'اتصال هنوز کامل نشده؛ وضعیت Public جدید را بررسی کنید.',true);
+@@ -211,7 +211,7 @@
+ }).catch(()=>{});
+ $('[data-public-origin-target]')?.addEventListener('input',()=>{originRebindPreview=null;$('[data-public-origin-execute]').disabled=true;showOriginPreview(null);feedback('public-origin')});
+ $('[data-public-origin-preflight]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public-origin');const url=$('[data-public-origin-target]').value.trim();if(!url){feedback('public-origin','آدرس مقصد لازم است.');return}try{const j=await post({action:'public_origin_rebind_preflight',base_url:url}),r=j.origin_rebind||{};originRebindPreview={url,result:r};showOriginPreview(r);$('[data-public-origin-execute]').disabled=false}catch(err){originRebindPreview=null;$('[data-public-origin-execute]').disabled=true;showOriginPreview(null);feedback('public-origin',err.message||'پیش‌بررسی تغییر آدرس انجام نشد.')}}));
+-$('[data-public-origin-execute]')?.addEventListener('click',async e=>{const url=$('[data-public-origin-target]').value.trim();if(!originRebindPreview||originRebindPreview.url!==url){feedback('public-origin','ابتدا برای همین آدرس پیش‌بررسی موفق انجام بده.');return}const r=originRebindPreview.result||{},kind=String(r.transition_kind||'')==='cross_origin'?'دامنه/origin عوض می‌شود؛ کاربران ممکن است نیاز به ورود دوباره، PWA و Push جدید داشته باشند.':'origin ثابت می‌ماند؛ مسیر، Service Worker و در صورت نیاز نشست reconcile می‌شوند.';if(!await SoknaUI.confirm('اعمال تغییر آدرس Public',`${kind} مسیر قدیمی تا تأیید مهاجرت باز می‌ماند و تغییر بعدی تا بستن آن مجاز نیست.`,true))return;await SoknaUI.busy(e.currentTarget,async()=>{try{await post({action:'public_origin_rebind_execute',base_url:url});originRebindPreview=null;showOriginPreview(null);await refresh();toast('Rebind Public کامل شد؛ وضعیت انتقال قدیمی را پس از مهاجرت کاربران ببند.','success','تغییر آدرس')}catch(err){feedback('public-origin',err.message||'تغییر آدرس Public کامل نشد.');await refresh().catch(()=>{})}})});
++$('[data-public-origin-execute]')?.addEventListener('click',async e=>{const url=$('[data-public-origin-target]').value.trim();if(!originRebindPreview||originRebindPreview.url!==url){feedback('public-origin','ابتدا برای همین آدرس پیش‌بررسی موفق انجام بده.');return}const r=originRebindPreview.result||{},kind=String(r.transition_kind||'')==='cross_origin'?'دامنه/origin عوض می‌شود؛ کاربران ممکن است نیاز به ورود دوباره، PWA و Push جدید داشته باشند.':'origin ثابت می‌ماند؛ مسیر، Service Worker و در صورت نیاز نشست reconcile می‌شوند.';if(!await SoknaUI.confirm('اعمال تغییر آدرس Public',`${kind} مسیر قدیمی تا تأیید مهاجرت باز می‌ماند و تغییر بعدی تا بستن آن مجاز نیست.`,true))return;await SoknaUI.busy(e.currentTarget,async()=>{try{const result=await post({action:'public_origin_rebind_execute',base_url:url});originRebindPreview=null;showOriginPreview(null);await refresh();if(result.origin_rebind?.finalize_pending===true){feedback('public-origin','نشانی تغییر کرد، اما مرحله نهایی هنوز تأیید نشده است. وضعیت انتقال را بررسی کنید.',true)}else{toast('نشانی ثبت شد؛ مسیر قدیمی، PWA و اعلان‌ها را بررسی کنید.','success','تغییر آدرس')}}catch(err){feedback('public-origin',err.message||'تغییر آدرس Public کامل نشد.');await refresh().catch(()=>{})}})});
+ $('[data-public-origin-transition-close]')?.addEventListener('click',async e=>{const t=snap?.public_origin_transition||{},id=String(t.rebind_id||'');if(!id)return;if(!await SoknaUI.confirm('بستن مسیر انتقال قدیمی','فقط وقتی کاربران/دستگاه‌های لازم به آدرس جدید منتقل شده‌اند، مسیر قدیمی بازنشسته شود.',true))return;await SoknaUI.busy(e.currentTarget,async()=>{try{await post({action:'public_origin_transition_close',rebind_id:id});await refresh();toast('مسیر انتقال قدیمی بازنشسته شد.','success','تغییر آدرس')}catch(err){feedback('public-origin',err.message||'بستن مسیر انتقال انجام نشد.')}})});
+ $('[data-public-replacement-preflight]')?.addEventListener('click',async e=>{
+     await SoknaUI.busy(e.currentTarget,async()=>{
