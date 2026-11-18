@@ -90,7 +90,7 @@ $token=$new->exchange($newRotation['pairing_code'],'127.0.0.1')['bundle']['print
 $new->confirm($newRotation['pairing_code'],'127.0.0.1');
 $assert(($newRot[$newId]??false)===true&&$newAgents[$newId]['token']===$token,
         'reconnect rotates agent credential rather than cloning old token');
-$old->retireConnection($actor,(int)$oldPayload['bundle']['print_agent_id']??1,'ci-old-retire');
+$old->retireConnection($actor,(int)$oldTicket['print_agent_id'],'ci-old-retire');
 $assert(($old->status()['association_active']??false)===false,'old machine retirement explicit');
 $assert(($new->status()['association_active']??false)===true,'old-machine retirement does not delete new pairing');
 echo 'R280_TWO_SEPARATE_LOCAL_WINDOWS_SERVICES_PAIRING_'.(string)$checks.'_PASS'.PHP_EOL;
