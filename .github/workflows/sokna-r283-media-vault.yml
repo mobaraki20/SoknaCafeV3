@@ -1,0 +1,91 @@
+name: SOKNA R283 exact 231FQ encrypted private media transfer QA
+on:
+  push:
+    branches: [qa/sokna-r283-offline-local-cutover-media-safety-20261118]
+    paths:
+      - 'r283/**'
+      - '.github/workflows/sokna-r283-media-vault.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  media-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R282-231FQ-ORIGINAL-CONTROLLED-UPDATE
+          run-id: 44354235530
+          github-token: \${{ github.token }}
+          path: \${{ runner.temp }}/r282
+      - name: Verify original Local 231FQ source and real encrypted media archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq php-zip php-cli php-sodium
+          export R283_LOCAL_ROOT="$RUNNER_TEMP/r283-web"
+          export R283_EXACT_PARENT="$RUNNER_TEMP/r282/SOKNA-R282-LOCAL-231FQ-CUMULATIVE-RECOVERY-STAGE-CONTROLLED-UPDATE.zip"
+          python3 - <<'PY'
+          import zipfile,io,hashlib,pathlib,os,json
+          p=pathlib.Path(os.environ['R283_EXACT_PARENT'])
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='21d0b209695462c4cfa2a567e2e0755cfe234f3788ac183c0d94a9ce9e3e7563'
+          with zipfile.ZipFile(p) as z:
+           m=json.loads(z.read('release-set.json'))
+           assert m['targets']['local']['managed_files']==605
+           with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
+            assert len(w.namelist())==605
+            for n in w.namelist():
+             f=pathlib.Path(os.environ['R283_LOCAL_ROOT'])/n
+             f.parent.mkdir(parents=True,exist_ok=True);f.write_bytes(w.read(n))
+          print('R283_PARENT_231FQ_605_FILES_SOURCE_EXACT_PASS')
+          PY
+          php -l r283/overlay/src/Domain/Recovery/PrivateMediaTransferService.php
+          php -l r283/tests/private_media_transfer_selftest.php
+          php r283/tests/private_media_transfer_selftest.php | tee "$RUNNER_TEMP/r283-media.log"
+          grep -q R283_MEDIA_VAULT_AUTHENTICATED_CROSS_MACHINE_STAGE_ "$RUNNER_TEMP/r283-media.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R283-ENCRYPTED-MEDIA-TRANSFER-LINUX-RECEIPT
+          path: \${{ runner.temp }}/r283-media.log
+          retention-days: 14
+          if-no-files-found: ignore
+  media-windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R282-231FQ-ORIGINAL-CONTROLLED-UPDATE
+          run-id: 44354235530
+          github-token: \${{ github.token }}
+          path: \${{ runner.temp }}/r282
+      - name: Native Windows PHP 8.4.24 ZipArchive and Sodium vault transfer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://downloads.php.net/~windows/releases/archives/php-8.4.24-Win32-vs17-x64.zip'
+          $zip=Join-Path $env:RUNNER_TEMP 'r283-php.zip'
+          $phpDir=Join-Path $env:RUNNER_TEMP 'r283-php'
+          Invoke-WebRequest $url -OutFile $zip
+          if((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -cne '7b57fc9840273ab153834d0e2bd06e0bcf4fead36e381182b4b8fe9cedff3174'){throw 'R283_PHP_SHA_WRONG'}
+          Expand-Archive $zip $phpDir
+          Copy-Item (Join-Path $phpDir 'php.ini-development') (Join-Path $phpDir 'php.ini')
+          Add-Content (Join-Path $phpDir 'php.ini') ('extension_dir="'+(Join-Path $phpDir 'ext').Replace('\','/')+'"')
+          foreach($ext in @('zip','sodium','mbstring')){Add-Content (Join-Path $phpDir 'php.ini') ('extension='+$ext)}
+          $parent=Join-Path $env:RUNNER_TEMP 'r282/SOKNA-R282-LOCAL-231FQ-CUMULATIVE-RECOVERY-STAGE-CONTROLLED-UPDATE.zip'
+          if((Get-FileHash $parent -Algorithm SHA256).Hash.ToLowerInvariant() -cne '21d0b209695462c4cfa2a567e2e0755cfe234f3788ac183c0d94a9ce9e3e7563'){throw 'R283_PARENT_SHA_WRONG'}
+          Expand-Archive $parent (Join-Path $env:RUNNER_TEMP 'r283-outer')
+          $env:R283_LOCAL_ROOT=Join-Path $env:RUNNER_TEMP 'r283-web'
+          Expand-Archive (Join-Path $env:RUNNER_TEMP 'r283-outer/artifacts/local/web.zip') $env:R283_LOCAL_ROOT
+          $php=Join-Path $phpDir 'php.exe'
+          $ini=Join-Path $phpDir 'php.ini'
+          & $php '-c' $ini '-l' 'r283/overlay/src/Domain/Recovery/PrivateMediaTransferService.php'
+          if($LASTEXITCODE -ne 0){throw 'R283_WINDOWS_LINT_FAILED'}
+          & $php '-c' $ini 'r283/tests/private_media_transfer_selftest.php'
+          if($LASTEXITCODE -ne 0){throw 'R283_WINDOWS_MEDIA_CRYPTO_FAILED'}
+          Write-Host 'R283_WINDOWS_ENCRYPTED_PRIVATE_MEDIA_TRANSFER_PASS'
