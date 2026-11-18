@@ -83,6 +83,8 @@ try {
  $env:R280_DB_PASSWORD=''
  $env:R280_LOCAL_SOURCE_ROOT=$newWeb
  Run $php @('-c',(Join-Path $phpRoot 'php.ini'),$testScript)
+ $pairingScript=(Resolve-Path 'r280/tests/new_machine_services_pairing.php').Path
+ Run $php @('-c',(Join-Path $phpRoot 'php.ini'),$pairingScript)
  foreach($service in @('SoknaApache','SoknaPrintAgent','SoknaMaintenance')){
    Need (-not [bool](Get-Service $service -ErrorAction SilentlyContinue)) ('UNEXPECTED_SERVICE_CLONED_'+$service)
  }
