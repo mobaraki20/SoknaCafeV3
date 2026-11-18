@@ -200,7 +200,7 @@ try {
             'cannot overwrite even a previously staged database');
     }
     try{
-        $stage->stage($targetDb,$wrongStage,$archive,'wrong-pass',
+        $stage->stage($targetDb,$wrongStage,$archive,'r281-incorrect-but-strong-passphrase-2026',
             $configs['new']['installation']['id']);
         throw new RuntimeException('R281_WRONG_PASS_STAGE_DID_NOT_FAIL');
     }catch(\Sokna\Local\Domain\Recovery\RecoveryException $e){
