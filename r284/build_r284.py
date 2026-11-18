@@ -145,7 +145,7 @@ proof={"format":"sokna-r284-source-qa-v1","parent_sha256":SHA,
  "physical_windows_and_printer_accepted":False,"operator_install_allowed":False}
 (OUT/"R284-SOURCE-PROOF.json").write_bytes(J(proof))
 contract={"schema":"sokna-candidate-contract-v1","component":"local",
-"producer":{"run_id":"same_run","artifact":"SOKNA-R284-EXACT-609-SOURCE-QA-ORIGINAL"},
+"producer":{"run_id":"same_run","artifact":"SOKNA-R284-609-FILE-ORIGINAL-QA-SOURCE"},
 "source_authority":{"approved_checkpoint":"R283_SOURCE_AUTHORITY_PLUS_R284_QA_ONLY",
 "source_sha256":canonical(payload),"sha_semantics":"CANONICAL_MANAGED_SOURCE_TREE"},
 "packages":[{"file":NAME,"sha256":proof["candidate_sha256"],"component":"local","kind":"local-update","version":VERSION}],
