@@ -5,9 +5,10 @@ declare(strict_types=1);
  * R279 read-only move classifier regression. No database/network/host writes.
  * Source classes are the real app entrypoints, not rewritten test doubles.
  */
-require_once __DIR__.'/../../apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncException.php';
-require_once __DIR__.'/../../apps/local-web/src/Domain/PublicEdge/PublicMoveDecisionEngine.php';
-require_once __DIR__.'/../../apps/local-web/src/Domain/PublicEdge/PublicMoveUiInspectionService.php';
+$localRoot=(string)(getenv('R279_LOCAL_SOURCE_ROOT')?:dirname(__DIR__,2).'/apps/local-web');
+require_once $localRoot.'/src/Domain/PublicEdge/PublicEdgeSyncException.php';
+require_once $localRoot.'/src/Domain/PublicEdge/PublicMoveDecisionEngine.php';
+require_once $localRoot.'/src/Domain/PublicEdge/PublicMoveUiInspectionService.php';
 
 use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException;
 use Sokna\Local\Domain\PublicEdge\PublicMoveUiInspectionService;
