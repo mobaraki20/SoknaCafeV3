@@ -111,6 +111,10 @@ try {
        },$newObs,$newAuthority);
     $restore=new \Sokna\Local\Domain\Recovery\BusinessBackupService(
         $new,$newObs,$configs['new']['installation']['id'],$newAuthority,$newClient);
+    foreach(['users','orders','inventory_items','expenses','settlement_records','subscriber_ledger','accommodation_transfers'] as $marker){
+        $markerCount=(int)$new->query('SELECT COUNT(*) FROM `'.$marker.'`')->fetchColumn();
+        echo 'R280_FRESH_SETUP_MARKER '.$marker.'='.$markerCount.PHP_EOL;
+    }
     try{
         $restore->restoreEncryptedToEmptyTarget($archive,'incorrect-r280-passphrase');
         $check(false,'reject incorrect passphrase');
