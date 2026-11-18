@@ -1,6 +1,11 @@
 name: SOKNA R278 Local to Public Rial Persistence MariaDB
 on:
   push:
+    branches: [qa/sokna-r278-rial-persistent-settings-20261118, qa/sokna-r278-central-factory-required-20261118]
+    paths:
+      - 'r278/**'
+      - '.github/workflows/sokna-r278-full-currency-sync.yml'
+  pull_request:
     branches: [qa/sokna-r278-rial-persistent-settings-20261118]
     paths:
       - 'r278/**'
@@ -56,6 +61,58 @@ jobs:
           set -euo pipefail
           php /tmp/sokna-r278-native/tests/rial_local_to_public_mariadb.php
           echo R278_REAL_LOCAL_TO_PUBLIC_V2_RIAL_CONSISTENCY_CI_PASS
+      - name: Freeze original R278 Local ZIP and post-build same-run factory manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,hashlib,pathlib,os
+          out=pathlib.Path('/tmp/sokna-r278-native/output')
+          proof=out/'R278-INSTALL-PROOF-PRE-NATIVE.json'
+          meta=json.loads(proof.read_text(encoding='utf-8'))
+          filename=meta['final_zip']
+          p=out/filename
+          assert p.is_file()
+          sha=lambda f:hashlib.sha256(f.read_bytes()).hexdigest()
+          assert sha(p)==meta['final_sha256']=='3a1070e18b14307fb2571634c961b20ca3e5d38e6c9a9dc1afad68be89fe6824'
+          assert meta['managed_files']==604 and meta['migrations']==82
+          assert meta['migrations_unchanged'] and meta['public_edge_bytes_unchanged']
+          assert meta['version']=='3.0.0-g6.2-workspace.231fn-r278-rial-policy-persist'
+          source_tree=meta['target_canonical_tree']
+          assert len(source_tree)==64 and all(c in '0123456789abcdef' for c in source_tree)
+          contract={
+            'schema':'sokna-candidate-contract-v1',
+            'component':'local',
+            'producer':{'run_id':'same_run',
+                        'artifact':'SOKNA-R278-231FN-ORIGINAL-ZIP-FACTORY-QA-ONLY'},
+            'source_authority':{
+              'approved_checkpoint':'R278_FROM_EXACT_R277_SOURCE_QA_NOT_CURRENT_WORKSPACE_REG003_ACCEPTED',
+              'source_sha256':source_tree,
+              'sha_semantics':'CANONICAL_MANAGED_SOURCE_TREE_NOT_RAW_SOURCE_ZIP'},
+            'packages':[{'file':filename,'sha256':sha(p),
+                         'component':'local','kind':'local-update',
+                         'version':meta['version']}],
+            'supporting_files':[{'file':proof.name,'sha256':sha(proof)}],
+            'producer_qa_context':{'isolated_local_public_mariadb':'PASS',
+                                  'windows_native':'INDEPENDENT_WORKFLOW_NOT_SAME_RUN',
+                                  'field_cafe':'NOT_RUN',
+                                  'database':'82_UNCHANGED'},
+            'production_authorized':False,
+          }
+          (out/'candidate-contract.json').write_text(json.dumps(contract,sort_keys=True,indent=2)+'\n',
+                                                     encoding='utf-8')
+          print('R278_POST_BUILD_UNCHANGED_ZIP_SHA_FACTORY_CONTRACT_READY',sha(p))
+          PY
+      - name: Upload actual immutable R278 ZIP and receipt for central factory (NOT delivery approval)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R278-231FN-ORIGINAL-ZIP-FACTORY-QA-ONLY
+          path: |
+            /tmp/sokna-r278-native/output/SOKNA-R278-LOCAL-231FN-CUMULATIVE-RIAL-PERSISTENCE-INSTALL-READY.zip
+            /tmp/sokna-r278-native/output/R278-INSTALL-PROOF-PRE-NATIVE.json
+            /tmp/sokna-r278-native/output/candidate-contract.json
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -63,3 +120,16 @@ jobs:
           path: |
             /tmp/sokna-r278-native/output/R278-INSTALL-PROOF-PRE-NATIVE.json
           retention-days: 14
+
+  factory-exact-r278-qa:
+    name: Mandatory central factory gate on the SAME R278 producer ZIP
+    needs: [real-local-public]
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: artifact:candidate-contract.json
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R278-231FN-ORIGINAL-ZIP-FACTORY-QA-ONLY
+    permissions:
+      contents: read
+      actions: read
