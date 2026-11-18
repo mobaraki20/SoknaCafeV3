@@ -13,7 +13,7 @@ require_once $root.'/bootstrap.php';
 
 $host=(string)(getenv('R280_DB_HOST')?:'127.0.0.1');
 $port=(int)(getenv('R280_DB_PORT')?:3306);
-$pass=(string)(getenv('R280_DB_PASSWORD')?:'qa-only');
+$envPassword=getenv('R280_DB_PASSWORD');$pass=$envPassword===false?'qa-only':(string)$envPassword;
 $dbPrefix='sokna_r280_';
 $dsn='mysql:host='.$host.';port='.$port.';charset=utf8mb4';
 $admin=new PDO($dsn,'root',$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
