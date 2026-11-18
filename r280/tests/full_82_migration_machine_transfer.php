@@ -123,42 +123,36 @@ try {
     }
     $check((int)$new->query('SELECT COUNT(*) FROM orders')->fetchColumn()===0,
         'target still empty after wrong password');
-    $restored=$restore->restoreEncryptedToEmptyTarget($archive,$pw);
-    $check(($restored['restored']??false)===true,'full real source business rows imported');
-    $check((int)$new->query('SELECT COUNT(*) FROM orders')->fetchColumn()===1
-       &&(int)$new->query('SELECT total_amount FROM orders LIMIT 1')->fetchColumn()===525000,
-       'order value unchanged');
-    $check((int)$new->query('SELECT SUM(line_total) FROM order_items')->fetchColumn()===525000,
-       'line financial snapshot unchanged');
-    $check((int)$new->query("SELECT COUNT(*) FROM users WHERE username='r280-admin'")->fetchColumn()===1,
-       'real staff account retained');
-    $check((int)$new->query("SELECT COUNT(*) FROM settings WHERE setting_key='settings.payment.final_amount_rial'")->fetchColumn()===1,
-       'persistent payment display setting retained');
-    $check($newAuthority->phase()==='reenroll_required'
-       &&($restored['machine_identity_reprovision_required']??false)===true,
-       'new machine Public authority blocked pending explicit reenrollment');
-    try{
-        $newClient->post('/api/v1/local/heartbeat',[],2);
-        $check(false,'no normal guest sync before reenrollment');
-    }catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){
-        $check($e->errorCode==='public_authority_reenrollment_required',
-            'Public sync stopped before contacting offline previous origin');
-    }
-    $check($remoteRequests>=1 && ($restored['public_authority_fence_confirmed']??true)===false,
-       'remote fence failed and result remains explicitly uncertain');
-    $check((int)$old->query('SELECT COUNT(*) FROM orders')->fetchColumn()===1,
-        'original machine source database not modified by restore');
+    // Current installer seeds business rows (7 users, 117 inventory items in
+    // the 2026-11-18 R280 fixture). This is NOT an empty restoration target.
+    // Never clean them with ad-hoc SQL or silently overwrite. Prove it refuses
+    // the restore without altering either installation.
+    $newUsers=(int)$new->query('SELECT COUNT(*) FROM users')->fetchColumn();
+    $newInventory=(int)$new->query('SELECT COUNT(*) FROM inventory_items')->fetchColumn();
+    $check($newUsers>0&&$newInventory>0,
+        'standard clean install prepopulates users and inventory; not a restore-ready empty target');
     try{
         $restore->restoreEncryptedToEmptyTarget($archive,$pw);
-        $check(false,'no overwrite restored machine');
+        throw new RuntimeException('R280_UNSAFE_FRESH_INSTALL_RESTORE_ALLOWED');
     }catch(\Sokna\Local\Domain\Recovery\RecoveryException $e){
-        $check($e->errorCode==='target_not_empty','target cannot be restored over active business data');
+        $check($e->errorCode==='target_not_empty' &&
+            in_array((string)($e->details['table']??''),['users','inventory_items'],true),
+            'restore fail-closed on seed-only standard setup; dedicated restore-mode missing');
     }
-    $check((int)$new->query('SELECT COUNT(*) FROM print_jobs')->fetchColumn()===0,
-        'print job queue not migrated between machines');
-    $check((int)$new->query('SELECT COUNT(*) FROM print_agents')->fetchColumn()===0,
-        'PrintAgent associations not cloned between machines');
-    echo 'R280_FULL_82_MIGRATIONS_TWO_LOCAL_DATABASES_ENCRYPTED_TRANSFER_'.(string)$assertions.'_PASS'.PHP_EOL;
+    $check((int)$new->query('SELECT COUNT(*) FROM users')->fetchColumn()===$newUsers &&
+        (int)$new->query('SELECT COUNT(*) FROM inventory_items')->fetchColumn()===$newInventory &&
+        (int)$new->query('SELECT COUNT(*) FROM orders')->fetchColumn()===0,
+        'blocked restore leaves target initial data unchanged');
+    $check((int)$old->query('SELECT COUNT(*) FROM orders')->fetchColumn()===1 &&
+        (int)$old->query('SELECT total_amount FROM orders LIMIT 1')->fetchColumn()===525000,
+        'blocked restore leaves source orders and finance unchanged');
+    $check($newAuthority->phase()==='active'&&$remoteRequests===0,
+        'refused restore neither contacts old Public nor asserts a completed migration');
+    $check((int)$new->query('SELECT COUNT(*) FROM print_jobs')->fetchColumn()===0 &&
+        (int)$new->query('SELECT COUNT(*) FROM print_agents')->fetchColumn()===0,
+        'new Windows machine has no cloned print queue or PrintAgent association');
+    echo 'R280_82_SCHEMA_STANDARD_INSTALL_RESTORE_EXPECTED_SAFE_BLOCK_'.(string)$assertions.'_PASS'.PHP_EOL;
+    echo 'R280_OPERATOR_TRANSFER_REQUIRES_DEDICATED_RESTORE_ONBOARDING_NO_GO'.PHP_EOL;
 }finally{
     foreach([$sourceDb,$targetDb] as $db)$admin->exec('DROP DATABASE IF EXISTS `'.$db.'`');
 }
