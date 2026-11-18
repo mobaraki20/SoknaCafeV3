@@ -117,13 +117,28 @@ try{
                 (int)($data['owner_next_epoch']??0));
             WebAction::json(['success'=>true,'move'=>$result]);
         }catch(\Throwable $e){
-            // Never disclose key paths, challenge hashes, SQL, session tokens,
-            // owner credentials or remote host internals.
-            WebAction::json(['success'=>false,'code'=>'public_move_confirmation_not_ready',
-                'message'=>'تأیید انتقال کامل نشد. اتصال فعلی بدون تغییر است؛ وضعیت مقصد و ورود مدیر را بررسی کنید.'],409);
+            // Remote authority might ALREADY have changed after a lost reply.
+            // Never claim "Local unchanged" without reading the durable journal.
+            $pending=['status'=>'unknown','active'=>false];
+            try{if(isset($replacement))$pending=$replacement->status();}catch(\Throwable){}
+            $phase=(string)($pending['status']??'unknown');
+            $resume=$phase==='sync_pending';
+            $review=$phase==='support_required'||$phase==='unknown';
+            $code=$resume?'public_move_resume_required':($review?'public_move_state_requires_review':'public_move_confirmation_not_ready');
+            $message=$resume
+                ?'مرحلهٔ اتصال روی مقصد ممکن است انجام شده باشد. از «ادامهٔ ایمن» استفاده کنید؛ درخواست جدید نسازید.'
+                :($review
+                    ?'نتیجهٔ مرحلهٔ اتصال قطعی نیست. هیچ تکرار یا لغو خودکاری انجام نشد؛ وضعیت عملیات را بررسی کنید.'
+                    :'تأیید انتقال کامل نشد. تا پیش‌بررسی دوباره، اتصال جدید آغاز نکنید.');
+            WebAction::json(['success'=>false,'code'=>$code,'message'=>$message,
+                'move'=>['status'=>$phase,'active'=>($pending['active']??false)===true],
+                'next_action'=>$resume?'safe_resume':($review?'support_review':'inspect_again')],409);
         }
     }
     if($action==='public_move_existing_owner_offer_execute'){
+        // This is a separate request after the owner popup. A lost response
+        // must be reported as resumable/uncertain, not a generic 500.
+        try {
         $localId=$core->config()->string('installation.id','');
         $operation=(string)($_SESSION['sokna_move_operation']??'');
         if($operation===''||($data['move_kind']??'')!=='existing_paired')
@@ -139,6 +154,23 @@ try{
         $result=$replacement->start($operation,(string)($data['owner_authority_code']??''),
             $actorId,'existing_paired',(int)($data['owner_next_epoch']??0));
         WebAction::json(['success'=>true,'move'=>$result]);
+        }catch(\Throwable $e){
+            $pending=['status'=>'unknown','active'=>false];
+            try{
+                $localId=$core->config()->string('installation.id','');
+                $replacement=new \Sokna\Local\Domain\PublicEdge\PublicMoveSimpleReplacement(
+                    $core,new \Sokna\Local\Domain\PublicEdge\PublicMoveApprovalLedger($core->database()),
+                    $localId,$core->config()->requiredString('app.data_dir'));
+                $pending=$replacement->status();
+            }catch(\Throwable){}
+            $phase=(string)($pending['status']??'unknown');
+            $resume=$phase==='sync_pending';
+            WebAction::json(['success'=>false,
+                'code'=>$resume?'public_move_resume_required':'public_move_state_requires_review',
+                'message'=>$resume?'مجوز مقصد ممکن است مصرف شده باشد؛ با ادامهٔ ایمن وضعیت ثبت‌شده بررسی می‌شود.':'نتیجهٔ مجوز مقصد روشن نیست؛ بدون صدور کد تازه، بررسی پشتیبانی لازم است.',
+                'move'=>['status'=>$phase,'active'=>($pending['active']??false)===true],
+                'next_action'=>$resume?'safe_resume':'support_review'],409);
+        }
     }
     if($action==='public_move_inspect'){
         // R258 QA: authenticated Local admin + WebAction CSRF are already enforced.
@@ -149,7 +181,10 @@ try{
         $client=$core->publicEdgeSyncClient();
         $service=new \Sokna\Local\Domain\PublicEdge\PublicMoveUiInspectionService(
             $client->publicBaseUrl(),$core->publicAuthorityState()->phase(),
-            static fn(string $target):array=>$core->publicOriginRebind()->preflight($target)
+            static fn(string $target):array=>$core->publicOriginRebind()->preflight($target),
+            static fn(string $target):array=>$client->deploymentTargetHealth($target,6),
+            static fn(string $target):array=>$client->destinationSetupStatus($target,6),
+            $core->config()->requiredString('installation.id')
         );
         WebAction::json(['success'=>true,'public_move'=>$service->inspect((string)($data['base_url']??''))]);
     }
