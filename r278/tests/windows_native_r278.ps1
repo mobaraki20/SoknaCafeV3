@@ -93,7 +93,18 @@ try {
  Copy-Item $apacheSource (Join-Path $infra 'Apache') -Recurse
  $php=Join-Path $infra 'PHP/php.exe'
  New-Item -ItemType Directory -Force (Join-Path $root 'Data/guest-media')|Out-Null
- Run $php @('-c','php.ini',(Join-Path $PWD.Path 'r277/tests/windows_bootstrap_r275.php'),$old,$root,"$dbPort")
+ $bootstrap=Join-Path $PWD.Path 'r277/tests/windows_bootstrap_r275.php'
+ Need (Test-Path $bootstrap) 'PHP_BOOTSTRAP_FILE_MISSING'
+ Write-Host ('R278_PHP_BOOTSTRAP_SCRIPT '+$bootstrap)
+ Write-Host ('R278_PHP_BOOTSTRAP_OLD '+$old)
+ Push-Location (Split-Path -Parent $php)
+ try {
+   & $php -c php.ini $bootstrap $old $root "$dbPort"
+   $bootstrapExit=$LASTEXITCODE
+ } finally { Pop-Location }
+ Write-Host ('R278_PHP_BOOTSTRAP_EXIT '+$bootstrapExit)
+ Need ($bootstrapExit -eq 0) 'PHP_BOOTSTRAP_FAILED'
+ Write-Host ('R278_PHP_BOOTSTRAP_BINDING '+(Test-Path (Join-Path $old '.sokna-installation.json')))
  $persistent=Join-Path $root 'LocalWeb/persistent';New-Item -ItemType Directory -Force (Join-Path $persistent 'public')|Out-Null
  Need (Test-Path (Join-Path $old '.sokna-installation.json')) 'OLD_BINDING_NOT_CREATED'
  Copy-Item (Join-Path $old '.sokna-installation.json') $persistent
