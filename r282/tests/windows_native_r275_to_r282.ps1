@@ -12,7 +12,7 @@ function Run([string]$exe,[string[]]$argvNative){
 function P([string]$path){[IO.Path]::GetFullPath($path).Replace('\','/')}
 $lab=Join-Path $env:RUNNER_TEMP ('sokna-r277-native-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $lab|Out-Null
-$env:R282_NATIVE_ROOT=Join-Path $lab 'fixtures'
+$env:R277_NATIVE_ROOT=Join-Path $lab 'fixtures'
 python r277/ci_materialize_native.py
 Need ($LASTEXITCODE -eq 0) 'EXACT_FIXTURE_MATERIALIZE_FAILED'
 python r277/ci_promote_release.py
@@ -34,9 +34,9 @@ Need ($fromR275.Count -eq 1) 'R282_R275_CAFE_BASELINE_MISSING'
 Need ($fromR275[0].local.managed_tree_sha256 -ceq 'a7407fa1ef4bd3cb17ac68fe6d548330e32a9f3ca47331c47d233b4b6398d9c2') 'R282_R275_BASELINE_SOURCE_CHANGED'
 $old=Join-Path $lab 'local-machine/Web.release.r275';$root=Join-Path $lab 'local-machine'
 New-Item -ItemType Directory -Force $root|Out-Null
-Move-Item (Join-Path $env:R282_NATIVE_ROOT 'r275-installed-web') $old
-Set-Content (Join-Path $root '.u01-ci-only') 'disposable-r277' -Encoding ascii
-$baseline=Join-Path $env:R282_NATIVE_ROOT 'baseline.json';$target=Join-Path $env:R282_NATIVE_ROOT 'target.r282.json'
+Move-Item (Join-Path $env:R277_NATIVE_ROOT 'r275-installed-web') $old
+Set-Content (Join-Path $root '.u01-ci-only') 'disposable-r282' -Encoding ascii
+$baseline=Join-Path $env:R277_NATIVE_ROOT 'baseline.json';$target=Join-Path $env:R277_NATIVE_ROOT 'target.r282.json'
 $manifest.targets.local|ConvertTo-Json -Depth 12|Set-Content $target -Encoding utf8NoBOM
 $baselineInfo=Get-Content $baseline -Raw|ConvertFrom-Json
 $targetInfo=Get-Content $target -Raw|ConvertFrom-Json
@@ -139,13 +139,13 @@ PidFile "$ar/logs/httpd.pid"
  Run $harness (@('prepare')+$args)
  Need ((Get-Content (Join-Path $root 'Web/VERSION.txt') -Raw).Trim() -ceq $oldVersion) 'STAGE_MUTATED_ACTIVE_VERSION'
  Run $harness (@('panel-activate')+$args)
- Need ((Get-Content (Join-Path $root 'Web/VERSION.txt') -Raw).Trim() -ceq [string]$targetInfo.version) 'R277_ACTIVATE_VERSION_READBACK_WRONG'
+ Need ((Get-Content (Join-Path $root 'Web/VERSION.txt') -Raw).Trim() -ceq [string]$targetInfo.version) 'R282_ACTIVATE_VERSION_READBACK_WRONG'
  $after=Invoke-WebRequest 'http://127.0.0.1:39841/login.php' -UseBasicParsing -TimeoutSec 10
- Need ($after.StatusCode -eq 200 -and $after.Headers['X-Sokna-Build'] -ceq [string]$targetInfo.version) 'R277_HTTP_READBACK_WRONG'
+ Need ($after.StatusCode -eq 200 -and $after.Headers['X-Sokna-Build'] -ceq [string]$targetInfo.version) 'R282_HTTP_READBACK_WRONG'
  $afterLedger=& $mysql --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r186_exact.schema_migrations;'
- Need ($LASTEXITCODE -eq 0 -and [string]$afterLedger -eq '82') 'R277_LEDGER_CHANGED'
+ Need ($LASTEXITCODE -eq 0 -and [string]$afterLedger -eq '82') 'R282_LEDGER_CHANGED'
  Need ((Test-Path (Join-Path $root 'LocalWeb/persistent/.sokna-installation.json')) -and (Test-Path (Join-Path $root 'config.php')) -and (Test-Path (Join-Path $root 'install.lock'))) 'PERSISTENT_BINDING_LOST'
- Write-Host 'R277_FINAL_INSTALLABLE_EXACT_NATIVE_WINDOWS_R275_231FL_TO_R277_231FM_STAGE_ACTIVATE_HTTP_DB82_IDEMPOTENT_PASS'
+ Write-Host 'R282_ACTUAL_R275_231FL_TO_R282_231FQ_NATIVE_MAINTENANCE_STAGE_ACTIVATE_HTTP_DB82_PASS'
 } finally {
  if($apacheStarted -or (Get-Service SoknaApache -ErrorAction SilentlyContinue)){try{Stop-Service SoknaApache -ErrorAction SilentlyContinue}catch{};try{& $httpd -k uninstall -n SoknaApache|Out-Null}catch{};try{& sc.exe delete SoknaApache|Out-Null}catch{}}
  if($null -ne $db -and -not $db.HasExited){$db.Kill($true);$db.WaitForExit()}
