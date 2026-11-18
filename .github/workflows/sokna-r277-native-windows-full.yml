@@ -147,6 +147,7 @@ jobs:
           Write-Host 'R275_NATIVE_DIRECT_R262_231FG_TO_R275_231FL_STAGE_ACTIVATE_HTTP_MARIADB_PASS'
           '@
           $src=$src.Replace($anchor,$anchor+"`r`n"+$extra)
+          $env:R277_TARGET_DIR=Join-Path $env:RUNNER_TEMP 'r277-built/output'
           $r277Anchor="Write-Host 'R275_NATIVE_DIRECT_R262_231FG_TO_R275_231FL_STAGE_ACTIVATE_HTTP_MARIADB_PASS'"
           if(!$src.Contains($r277Anchor)){throw 'R277_NATIVE_R275_ACTIVATION_ANCHOR_MISSING'}
           $r277Extra=@'
