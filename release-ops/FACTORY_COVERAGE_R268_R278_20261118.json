@@ -1,0 +1,111 @@
+{
+  "schema": "sokna-factory-coverage-inventory-v1",
+  "date": "2026-11-18",
+  "repo": "mobaraki20/SoknaCafeV3",
+  "authoritative_rule": "A version is factory-validated only for exact ZIP SHA and same producer/factory run with successfully retrieved final receipt; package file name, green generic CI, branch name or historical test do not imply factory use.",
+  "production_authorization": "NO GLOBAL PRODUCTION AUTHORIZATION",
+  "enforcement_scope": "Existing connected producer workflows R268 QA and R278 QA plus main factory; arbitrary other producer branches and Library handoffs are NOT automatically intercepted; repo admin branch rulesets/required checks not configured by these GitHub tools.",
+  "record_count": 11,
+  "entries": [
+    {
+      "version": "R268 (R265/35if, R266/35ig)",
+      "candidate": "Public two-hop legacy Emergency",
+      "checked": "YES_NEW_QA_RUN",
+      "producer": "R268",
+      "run": "44042979724",
+      "install": "BLOCKED_REAL_HOST_PROOF",
+      "note": "Original R265/R266 producer run 44025587468 was NOT factory; newer same-run QA rebuild 44042979724 WAS factory-validated; cannot retroactively relabel original artifact."
+    },
+    {
+      "version": "R269",
+      "candidate": "mixed Local/Public / QA work",
+      "checked": "NO_RECEIPT_VERIFIED",
+      "producer": "version-specific GitHub QA",
+      "run": null,
+      "install": "UNKNOWN_NOT_FACTORY_APPROVED",
+      "note": "New version-specific workflows observed; no central same-ZIP factory receipt verified in this audit. Do not infer no other QA."
+    },
+    {
+      "version": "R270",
+      "candidate": "mixed Local/Public / QA work",
+      "checked": "NO_RECEIPT_VERIFIED",
+      "producer": "version-specific GitHub QA",
+      "run": null,
+      "install": "UNKNOWN_NOT_FACTORY_APPROVED",
+      "note": "New version-specific workflows observed; no central same-ZIP factory receipt verified in this audit. Do not infer no other QA."
+    },
+    {
+      "version": "R271",
+      "candidate": "mixed Local/Public / QA work",
+      "checked": "NO_RECEIPT_VERIFIED",
+      "producer": "version-specific GitHub QA",
+      "run": null,
+      "install": "UNKNOWN_NOT_FACTORY_APPROVED",
+      "note": "New version-specific workflows observed; no central same-ZIP factory receipt verified in this audit. Do not infer no other QA."
+    },
+    {
+      "version": "R272",
+      "candidate": "mixed Local/Public / QA work",
+      "checked": "NO_RECEIPT_VERIFIED",
+      "producer": "version-specific GitHub QA",
+      "run": null,
+      "install": "UNKNOWN_NOT_FACTORY_APPROVED",
+      "note": "New version-specific workflows observed; no central same-ZIP factory receipt verified in this audit. Do not infer no other QA."
+    },
+    {
+      "version": "R273",
+      "candidate": "mixed Local/Public / QA work",
+      "checked": "NO_RECEIPT_VERIFIED",
+      "producer": "version-specific GitHub QA",
+      "run": null,
+      "install": "UNKNOWN_NOT_FACTORY_APPROVED",
+      "note": "New version-specific workflows observed; no central same-ZIP factory receipt verified in this audit. Do not infer no other QA."
+    },
+    {
+      "version": "R274",
+      "candidate": "mixed Local/Public / QA work",
+      "checked": "NO_RECEIPT_VERIFIED",
+      "producer": "version-specific GitHub QA",
+      "run": null,
+      "install": "UNKNOWN_NOT_FACTORY_APPROVED",
+      "note": "New version-specific workflows observed; no central same-ZIP factory receipt verified in this audit. Do not infer no other QA."
+    },
+    {
+      "version": "R275",
+      "candidate": "Local 231fl / Public 35ij",
+      "checked": "NO_RECEIPT_VERIFIED",
+      "producer": "R275 native Windows/Emergency QA",
+      "run": null,
+      "install": "SITE_STATE_SEPARATE_FROM_FACTORY",
+      "note": "Individual producer/native workflows; field history exists separately, not factory-approved evidence"
+    },
+    {
+      "version": "R276",
+      "candidate": "Public 35ik",
+      "checked": "NO_RECEIPT_VERIFIED",
+      "producer": "R276 owner setup QA",
+      "run": null,
+      "install": "QA_NOT_HOST_ACCEPTED",
+      "note": "R276 START-HERE explicitly marked QA and not operator install; no factory call in inspected owner setup workflow"
+    },
+    {
+      "version": "R277",
+      "candidate": "Local 231fm",
+      "checked": "NO_RECEIPT_VERIFIED",
+      "producer": "R277 source and native Windows QA",
+      "run": null,
+      "install": "FIELD_STATE_NOT_PROVEN_BY_FACTORY",
+      "note": "Exact R277 builder and release lineage exist; no factory call in inspected R277 source-build workflow"
+    },
+    {
+      "version": "R278",
+      "candidate": "Local 231fn",
+      "checked": "YES_NEW_QA_RUN",
+      "producer": "R278 full-currency-sync GitHub workflow",
+      "run": "44298272934",
+      "zip_sha256": "3a1070e18b14307fb2571634c961b20ca3e5d38e6c9a9dc1afad68be89fe6824",
+      "install": "BLOCKED_FIELD_ACCEPTANCE",
+      "note": "Factory-admission integration merged into R278 QA branch via PR99. Same-run original ZIP SHA and release-set format passed; separate native Windows and real cafe acceptance not implied."
+    }
+  ]
+}
