@@ -25,7 +25,7 @@ assert original['targets']['local']['version']=='3.0.0-g6.2-workspace.231fm-r277
 assert original['artifacts']['local-web']['sha256']==H(web)
 assert any(x['local']['version']=='3.0.0-g6.2-workspace.231fl-r275-owner-discard-public-work' and x['local']['managed_tree_sha256']=='a7407fa1ef4bd3cb17ac68fe6d548330e32a9f3ca47331c47d233b4b6398d9c2' for x in original['supported_baselines'])
 m=copy.deepcopy(original)
-m['status']='R277_CONTROLLED_OPERATOR_UAT_AFTER_NATIVE_GATE'
+m['status']='R277_CONTROLLED_OPERATOR_RELEASE_FIELD_ACCEPTANCE_PENDING'
 m['qa_notes'].update(
  operator_install_allowed=True,
  additional_install_safety='CONTROLLED_OPERATOR_UAT_ONLY: source R275 231fl, verified backup required, one component at a time; field behavioural acceptance pending',
