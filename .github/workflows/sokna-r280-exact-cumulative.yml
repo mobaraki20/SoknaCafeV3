@@ -1,0 +1,96 @@
+name: SOKNA R280 exact R278 Local transfer cumulative QA and factory
+on:
+  push:
+    branches: [qa/sokna-r280-transfer-cumulative-and-windows-20261118]
+    paths:
+      - 'r280/**'
+      - 'r279/patches/**'
+      - 'r279/tests/**'
+      - '.github/workflows/sokna-r280-exact-cumulative.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  produce-r280-exact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      R279_DB_PASSWORD: qa-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R278-231FN-ORIGINAL-ZIP-FACTORY-QA-ONLY
+          run-id: 44298272934
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r278-immutable
+      - name: Reconstruct exact R278 immutable package and apply minimal R279 source edits
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R280_OUT="$RUNNER_TEMP/r280"
+          export R280_R278_PACKAGE="$RUNNER_TEMP/r278-immutable/SOKNA-R278-LOCAL-231FN-CUMULATIVE-RIAL-PERSISTENCE-INSTALL-READY.zip"
+          test -f "$R280_R278_PACKAGE"
+          echo '3a1070e18b14307fb2571634c961b20ca3e5d38e6c9a9dc1afad68be89fe6824  '"$R280_R278_PACKAGE" | sha256sum --check -
+          python3 r280/build_r280.py
+      - name: PHP and JS source checks from exact built ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R280_OUT="$RUNNER_TEMP/r280"
+          python3 - <<'PY'
+          import zipfile,io,pathlib,os,json,hashlib
+          out=pathlib.Path(os.environ['R280_OUT'])
+          z=next(out.glob('SOKNA-R280-LOCAL-*.zip'))
+          with zipfile.ZipFile(z) as outer:
+           manifest=json.loads(outer.read('release-set.json'))
+           assert manifest['for_install'] is False and manifest['production_pass'] is False
+           assert manifest['qa_notes']['operator_install_allowed'] is False
+           with zipfile.ZipFile(io.BytesIO(outer.read('artifacts/local/web.zip'))) as inner:
+            names=inner.namelist()
+            assert len(names)==604
+            for n in names:
+             assert not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts
+             p=out/'web'/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(inner.read(n))
+          print('R280_QA_ONLY_MANIFEST_AND_604_MANAGED_FILES_PASS')
+          PY
+          export R279_LOCAL_SOURCE_ROOT="$R280_OUT/web"
+          php -l "$R279_LOCAL_SOURCE_ROOT/src/Domain/PublicEdge/PublicMoveUiInspectionService.php"
+          php -l "$R279_LOCAL_SOURCE_ROOT/public/integrations/api.php"
+          php -l "$R279_LOCAL_SOURCE_ROOT/src/Domain/Recovery/BusinessBackupService.php"
+          node --check "$R279_LOCAL_SOURCE_ROOT/public/assets/connections-workspace.js"
+          node --check "$R279_LOCAL_SOURCE_ROOT/public/assets/admin-workspace.js"
+          php r279/tests/public_move_inspection_selftest.php
+          sudo apt-get update -qq && sudo apt-get install -y -qq php-mysql
+          php r279/tests/business_backup_mariadb_selftest.php
+      - name: Original source and exact bytes factory handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R280-EXACT-ORIGINAL-PRODUCER-QA-NO-INSTALL
+          path: |
+            ${{ runner.temp }}/r280/SOKNA-R280-LOCAL-231FO-R278-TRANSFER-GUARDS-QA-DO-NOT-INSTALL.zip
+            ${{ runner.temp }}/r280/R280-SOURCE-PROOF.json
+            ${{ runner.temp }}/r280/candidate-contract.json
+          if-no-files-found: error
+          retention-days: 14
+  factory-r280-exact:
+    needs: [produce-r280-exact]
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: artifact:candidate-contract.json
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R280-EXACT-ORIGINAL-PRODUCER-QA-NO-INSTALL
+    permissions:
+      contents: read
+      actions: read
