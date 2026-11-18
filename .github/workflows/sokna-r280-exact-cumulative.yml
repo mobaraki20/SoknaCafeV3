@@ -73,6 +73,13 @@ jobs:
           php r279/tests/public_move_inspection_selftest.php
           sudo apt-get update -qq && sudo apt-get install -y -qq php-mysql
           php r279/tests/business_backup_mariadb_selftest.php
+      - name: Test real WindowsServicesPairingService crypto and new machine secret isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R280_LOCAL_SOURCE_ROOT="$RUNNER_TEMP/r280/web"
+          php -l r280/tests/new_machine_services_pairing.php
+          php r280/tests/new_machine_services_pairing.php
       - name: Test both Local machines from REAL 82-migration schema, order and encrypted business archive
         shell: bash
         run: |
