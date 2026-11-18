@@ -45,7 +45,7 @@ $expected=[regex]::Match([string]$sums,'(?im)^([0-9a-f]{64})\s+\*?(?:\./)?mariad
 Need ($expected.Length -eq 64 -and (Get-FileHash $mdbZip -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $expected) 'MARIADB_SHA_INVALID'
 Expand-Archive $mdbZip (Join-Path $lab 'mdb')
 $mdb=(Get-ChildItem (Join-Path $lab 'mdb') -Directory|Select-Object -First 1).FullName
-$dbData=Join-Path $lab 'mdb-data';$dbPort=39745
+$dbData=Join-Path $mdb 'data';$dbPort=39745
 Run (Join-Path $mdb 'bin/mariadb-install-db.exe') @("--datadir=$dbData","--port=$dbPort")
 $psi=[Diagnostics.ProcessStartInfo]::new((Join-Path $mdb 'bin/mariadbd.exe'))
 $psi.UseShellExecute=$false;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
@@ -55,6 +55,13 @@ $apacheStarted=$false;$httpd=$null
 try {
  $ready=$false
  for($i=0;$i-lt90;$i++){& (Join-Path $mdb 'bin/mariadb-admin.exe') --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root ping 2>$null|Out-Null;if($LASTEXITCODE-eq0){$ready=$true;break};Start-Sleep -Milliseconds 300}
+ if(-not $ready){
+    Write-Host ('R277_MDB_PROCESS_EXITED='+$db.HasExited)
+    if($db.HasExited){Write-Host ('R277_MDB_EXITCODE='+$db.ExitCode)}
+    Write-Host ('R277_MDB_DATADIR='+$dbData)
+    if(Test-Path $dbData){Get-ChildItem $dbData|Select-Object -First 15|ForEach-Object {Write-Host ('R277_MDB_FILE '+$_.Name)}}
+    if($db.HasExited){Write-Host ('R277_MDB_STDERR '+$dbErr.Result);Write-Host ('R277_MDB_STDOUT '+$dbOut.Result)}
+ }
  Need $ready 'MARIADB_NOT_STARTED'
  $apacheSource=$null
  foreach($a in @('C:\tools\Apache24','C:\tools\apache','C:\ProgramData\chocolatey\lib\apache-httpd')){
