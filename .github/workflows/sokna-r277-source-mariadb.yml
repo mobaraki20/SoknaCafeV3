@@ -1,1 +1,109 @@
-The requested file reference is not currently visible. Use files.search or files.list to rediscover the file, then retry with a returned ref_id or file_id.
+name: SOKNA R277 Exact R275 Local P0 Finance Source and MariaDB QA
+on:
+  push:
+    branches: [qa/sokna-r277-local-p0-finance-cancel-20261118]
+    paths:
+      - 'r277/**'
+      - '.github/workflows/sokna-r277-source-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-r275-cumulative:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_qa_fin_cancel
+          MARIADB_ROOT_PASSWORD: only-local-test
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ponly-local-test"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      R277_ROOT: ${{ runner.temp }}/r277
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_NAME: sokna_qa_fin_cancel
+      SOKNA_QA_DB_USER: root
+      SOKNA_QA_DB_PASSWORD: only-local-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r269-itemized-settlement-cancel-print-20261117
+          path: r269-qa
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r275
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip
+          coverage: none
+      - name: Pin installed R275, overlay four source files, build deterministic R277
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R275_LOCAL_PACKAGE="$(find "$RUNNER_TEMP/r275" -name 'SOKNA-R275-LOCAL-231FL-OWNER-DISCARD-QA-DO-NOT-INSTALL.zip' | head -1)"
+          test -f "$R275_LOCAL_PACKAGE"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,hashlib,zipfile,io
+          src=Path(os.environ['R275_LOCAL_PACKAGE'])
+          assert hashlib.sha256(src.read_bytes()).hexdigest()=='f42d66e26dfee936f29c159bb7028adefcfedda43ddf2dc63e2c25d6a7d6dba9'
+          root=Path(os.environ['R277_ROOT']);root.mkdir(parents=True,exist_ok=True)
+          with zipfile.ZipFile(src) as z:
+           with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
+            w.extractall(root/'base');w.extractall(root/'work')
+          repo=Path(os.environ['GITHUB_WORKSPACE'])
+          for rel in ['src/Domain/Orders/OrderStaffActionService.php','public/assets/staff-app/hall-workspace.js','public/assets/hall-settlement-v32.js','public/assets/product-ui.css']:
+           f=repo/'r277/source'/rel;t=root/'work'/rel;t.write_bytes(f.read_bytes())
+          print('R277_EXACT_R275_WITH_FOUR_SOURCE_OVERLAYS_READY')
+          PY
+          R275_LOCAL_PACKAGE="$R275_LOCAL_PACKAGE" python3 r277/build_r277.py
+          python3 - <<'PY'
+          import os,json,pathlib
+          root=pathlib.Path(os.environ['R277_ROOT'])
+          p=json.loads((root/'output/R277-QA-PROOF.json').read_text())
+          assert p['sha256']=='46381c48eb0266b861e27aa020bbef9a19da325d26b41304e10139b0fee747c5',p['sha256']
+          assert p['target_tree']=='7f11ae1e6f5c88454d39b759cee076e2ce9e4f534f86a06b926e88b553fbdca5',p['target_tree']
+          assert p['sql_unchanged'] and p['public_edge_exact_unchanged']
+          print('R277_SOURCE_REPRODUCIBLE_SHA_PASS',p['sha256'])
+          PY
+          python3 packaging/windows/release-gates/check_local_release_set.py "$R277_ROOT/output/SOKNA-R277-LOCAL-231FM-CUMULATIVE-FINANCE-SAFETY-QA-DO-NOT-INSTALL.zip"
+      - name: Syntax, fail-closed discount, and actual OrderStaffActionService with MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l "$R277_ROOT/work/src/Domain/Orders/OrderStaffActionService.php"
+          node --check "$R277_ROOT/work/public/assets/staff-app/hall-workspace.js"
+          node --check "$R277_ROOT/work/public/assets/hall-settlement-v32.js"
+          node r277/tests/tests_discount_preview.cjs
+          export R277_LOCAL_SRC="$R277_ROOT/work/src"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          root=Path(os.environ['GITHUB_WORKSPACE']);r=root/'r269-qa/r269/tests'
+          for f in ['financial_cancel_guard_mariadb.php','financial_cancel_end_to_end_mariadb.php']:
+           src=(r/f).read_text()
+           src=src.replace("$root=dirname(__DIR__).'/source/src';", "$root=(string)getenv('R277_LOCAL_SRC');")
+           dest=Path(os.environ['R277_ROOT'])/f;dest.write_text(src)
+          PY
+          php "$R277_ROOT/financial_cancel_guard_mariadb.php"
+          php "$R277_ROOT/financial_cancel_end_to_end_mariadb.php"
+          echo R277_LOCAL_FINANCE_CANCEL_SOURCE_MARIADB_PASS
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: R277-LOCAL-231FM-CUMULATIVE-QA-NO-CAFE-INSTALL
+          path: |
+            ${{ runner.temp }}/r277/output/*.zip
+            ${{ runner.temp }}/r277/output/R277-QA-PROOF.json
+          if-no-files-found: error
+          retention-days: 7
