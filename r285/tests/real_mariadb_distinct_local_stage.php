@@ -30,8 +30,9 @@ try {
  $n=0;
  $check=function(bool $ok,string $name)use(&$n){if(!$ok)throw new RuntimeException('R285_TEST_FAIL '.$name);$n++;echo 'PASS '.$name."\n";};
  $mustFail=function(callable $f,string $code)use($check){try{$f();throw new RuntimeException('UNSAFE_SUCCESS');}catch(RuntimeException $e){if($e->getMessage()!==$code)throw $e;$check(true,$code);}};
- $try=fn(array $receipt,string $op=$operation,string $b='')=>
-   $stage->reserve($old,$new,$op,$receipt,$hmac,$b?:str_repeat('a',64),str_repeat('b',64));
+ $try=function(array $receipt,?string $op=null,string $b='')use($stage,$old,$new,$operation,$hmac):array {
+   return $stage->reserve($old,$new,$op??$operation,$receipt,$hmac,$b?:str_repeat('a',64),str_repeat('b',64));
+ };
  $mustFail(fn()=>$try($r,'wrong-owner-operation'),'distinct_move_target_owner_approval_missing');
  $bad=$r;$bad['source_http_fenced']=false;
  $mustFail(fn()=>$try($bad),'distinct_move_source_handoff_bad_signature');
