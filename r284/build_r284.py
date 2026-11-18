@@ -20,7 +20,8 @@ ADD={
 }
 PATCH=ROOT/"r284/patches/offline-source-guard-and-media-inspection.patch"
 CHANGED={"src/Domain/Recovery/PrivateMediaTransferService.php",
-         "bootstrap.php","public/_app.php","public/_guest_app.php"}
+         "bootstrap.php","public/_app.php","public/_guest_app.php",
+         "public/setup/api.php","public/update-rescue.php"}
 EXCLUDE={"resources/build-provenance.json","resources/release-identity-v1.json"}
 H=lambda b:hashlib.sha256(b).hexdigest()
 J=lambda x:(json.dumps(x,sort_keys=True,ensure_ascii=False,separators=(",",":"))+"\n").encode()
@@ -72,6 +73,10 @@ anchors={
      "$recoveryMarker=$dataDir!==''?",
  "public/_guest_app.php":
      "$recoveryMarker=$dataDir!==''?",
+ "public/setup/api.php":
+     "require_once dirname(__DIR__,2).'/bootstrap.php';",
+ "public/update-rescue.php":
+     "function rescue_redact(",
 }
 payload=parent.copy()
 for name in sorted(CHANGED):
