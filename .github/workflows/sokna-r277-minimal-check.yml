@@ -1,0 +1,15 @@
+name: SOKNA R277 Minimal Workflow Check
+on:
+  push:
+    branches: [qa/sokna-r277-local-p0-finance-cancel-20261118]
+    paths:
+      - '.github/workflows/sokna-r277-minimal-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo R277_WORKFLOW_PARSE_PASS
