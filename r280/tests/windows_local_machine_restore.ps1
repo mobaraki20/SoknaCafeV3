@@ -44,7 +44,8 @@ foreach($ext in @('pdo_mysql','sodium','mbstring','zip')) {
  Add-Content (Join-Path $phpRoot 'php.ini') -Value ('extension='+$ext)
 }
 $php=Join-Path $phpRoot 'php.exe'
-Run $php @('-c',(Join-Path $phpRoot 'php.ini'),'-l','r280/tests/full_82_migration_machine_transfer.php')
+$testScript=(Resolve-Path 'r280/tests/full_82_migration_machine_transfer.php').Path
+Run $php @('-c',(Join-Path $phpRoot 'php.ini'),'-l',$testScript)
 
 $mdbUrl='https://archive.mariadb.org/mariadb-11.4.7/winx64-packages/'
 $mdbZip=Join-Path $lab 'mariadb.zip'
@@ -81,8 +82,7 @@ try {
  $env:R280_DB_PORT="$port"
  $env:R280_DB_PASSWORD=''
  $env:R280_LOCAL_SOURCE_ROOT=$newWeb
- Run $php @('-c',(Join-Path $phpRoot 'php.ini'),
-            'r280/tests/full_82_migration_machine_transfer.php')
+ Run $php @('-c',(Join-Path $phpRoot 'php.ini'),$testScript)
  foreach($service in @('SoknaApache','SoknaPrintAgent','SoknaMaintenance')){
    Need (-not [bool](Get-Service $service -ErrorAction SilentlyContinue)) ('UNEXPECTED_SERVICE_CLONED_'+$service)
  }
