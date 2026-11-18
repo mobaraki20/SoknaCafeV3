@@ -19,7 +19,7 @@ python r277/ci_promote_release.py
 Need ($LASTEXITCODE -eq 0) 'FINAL_PROMOTION_FAILED'
 $pack=(Get-ChildItem $env:R277_NATIVE_ROOT -File -Filter 'SOKNA-R277-LOCAL-231FM-CUMULATIVE-FINANCE-SAFETY-INSTALL-READY.zip'|Select-Object -First 1).FullName
 Need ([bool]$pack) 'RELEASE_PACKAGE_MISSING'
-Need ((Get-FileHash $pack -Algorithm SHA256).Hash.ToLowerInvariant() -ceq 'a10807502d75ed6f37d7f4c4746f0dc1a62ec218b1368c291921c37c73474ba9') 'PACKAGE_SHA_INVALID'
+Need ((Get-FileHash $pack -Algorithm SHA256).Hash.ToLowerInvariant() -ceq '8b01a0e50513999376b07583a9d39ccc8352e4798821e42e2b3c5e41beb1d83a') 'PACKAGE_SHA_INVALID'
 $old=Join-Path $lab 'local-machine/Web.release.r275';$root=Join-Path $lab 'local-machine'
 New-Item -ItemType Directory -Force $root|Out-Null
 Move-Item (Join-Path $env:R277_NATIVE_ROOT 'r275-installed-web') $old
