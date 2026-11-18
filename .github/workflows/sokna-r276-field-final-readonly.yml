@@ -1,0 +1,41 @@
+name: SOKNA R276 Cafe Public Final Read-Only Release Gate
+on:
+  push:
+    branches: [qa/sokna-r276-owner-setup-access-20261118]
+    paths:
+      - '.github/workflows/sokna-r276-field-final-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  final-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify live Public update state, staff projections, QR and menu without mutation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request,urllib.error,re
+          BASE='https://www.soknagroup.ir/public'
+          def get(url,timeout=16):
+            try:
+              r=urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'Sokna-R276-ReadOnly-Acceptance','Accept':'text/html,application/json'}),timeout=timeout)
+              return r.status,r.geturl(),r.read(300000).decode('utf-8','replace'),str(r.headers.get('Content-Type',''))
+            except urllib.error.HTTPError as e:
+              return e.code,e.geturl(),e.read(20000).decode('utf-8','replace'),str(e.headers.get('Content-Type',''))
+          status,_,body,_=get(BASE+'/health');data=json.loads(body)
+          assert status==200 and data.get('ok')==True and data.get('database')=='ready'
+          upd=data.get('routine_update') or {}
+          report={'version':data.get('version'),'migrations':data.get('applied_migrations'),'pending_migrations':data.get('pending_migrations'),'routine_active':upd.get('active_version'),'staged_version':upd.get('staged_version'),'pending_verification':upd.get('pending_verification'),'pending_version':upd.get('pending_version')}
+          print('LIVE_PUBLIC_UPDATE_GATE',json.dumps(report,ensure_ascii=False))
+          status,_,body,_=get(BASE+'/staff/login')
+          summary={'status':status,'login_form':'name="password"' in body,'account_picker_present':'data-login-accounts' in body,'account_cards':len(re.findall(r'<label[^>]*data-login-account(?:\s|>)',body)),'manual_username_fallback':'name="username"' in body}
+          print('LIVE_PUBLIC_LOGIN_GATE',json.dumps(summary))
+          status,_,body,ct=get(BASE+'/menu')
+          print('LIVE_PUBLIC_MENU_GATE',json.dumps({'http_status':status,'html_response':'text/html' in ct,'has_guest_interface':any(v in body for v in ('data-guest','guest-menu','منوی مهمان'))}))
+          try:
+            status,final,_,_=get('https://www.soknaspace.ir/Menu/',timeout=12)
+            print('LIVE_LEGACY_QR_GATE',json.dumps({'http_status':status,'redirects_to_destination':final.startswith(BASE),'target_path':final.split('?',1)[0]}))
+          except Exception as e:print('LIVE_LEGACY_QR_GATE',json.dumps({'network_error':type(e).__name__}))
+          PY
