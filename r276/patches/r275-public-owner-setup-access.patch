@@ -1,0 +1,177 @@
+--- a/src/Http/PublicHttpKernel.php
++++ b/src/Http/PublicHttpKernel.php
+@@ -42,6 +42,14 @@
+             }
+             if ($method === 'GET' && $path === '/robots.txt') {
+                 return $this->response(200, "User-agent: *\nDisallow: ".$this->url("/api/")."\nDisallow: ".$this->url("/emergency/")."\n", ['Content-Type' => 'text/plain; charset=utf-8', 'Cache-Control' => 'public, max-age=3600']);
++            }
++            // Owner bootstrap is a separate, stable UI entrypoint. It is safe to
++            // render publicly: POST activation still requires a live same-origin
++            // staff ADMIN session on this exact Public installation.
++            if ($method === 'GET' && $path === '/move/owner-setup') {
++                return \Sokna\PublicEdge\Http\PublicMoveConsentPage::render(
++                    $this->core->config()->string('app.base_url'), true
++                );
+             }
+             if ($method === 'GET' && $path === '/move/approve') {
+                 return \Sokna\PublicEdge\Http\PublicMoveConsentPage::render(
+--- a/src/Http/PublicMoveConsentPage.php
++++ b/src/Http/PublicMoveConsentPage.php
+@@ -11,7 +11,7 @@
+  */
+ final class PublicMoveConsentPage
+ {
+-    public static function render(string $baseUrl): array
++    public static function render(string $baseUrl, bool $setupOnly = false): array
+     {
+         $parts=parse_url($baseUrl);
+         if (!is_array($parts)||($parts['scheme']??'')!=='https'||empty($parts['host'])) {
+@@ -19,19 +19,28 @@
+         }
+         $base=rtrim($baseUrl,'/');
+         $safe=htmlspecialchars($base,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
++        $setupAttr=$setupOnly?'1':'0';
++        $header=$setupOnly?'آماده‌سازی رمز مدیریت وب عمومی':'تأیید انتقال وب عمومی';
++        $intro=$setupOnly?'اگر این وب عمومی پیش‌تر نصب شده، با حساب مدیر کارکنان همین Public وارد شوید و سپس رمز مستقل مدیریت وب عمومی را تعریف کنید.':'این درخواست از سامانهٔ مدیریت کافه آغاز شده است. ابتدا با رمز مدیر همین وب عمومی وارد شوید.';
++        $open=$setupOnly?' open':'';
++        // File-content revision prevents a previously cached 300s JS asset from
++        // hiding the corrected owner setup after a code-only update.
++        $file=__DIR__.'/../../assets/sokna-public-move.js';
++        $digest=is_file($file)?hash_file('sha256',$file):false;
++        $jsRevision=is_string($digest)?'?v='.substr($digest,0,16):'';
+         $html=<<<HTML
+ <!doctype html>
+ <html lang="fa" dir="rtl">
+ <head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+-<title>تأیید انتقال وب عمومی</title>
++<title>{$header}</title>
+ <link rel="stylesheet" href="{$safe}/assets/sokna-public-move.css">
+ </head>
+-<body data-move-owner-page data-public-base="{$safe}">
++<body data-move-owner-page data-owner-setup-only="{$setupAttr}" data-public-base="{$safe}">
+ <main class="shell">
+-  <header><h1>تأیید انتقال وب عمومی</h1>
+-  <p>این درخواست از سامانهٔ مدیریت کافه آغاز شده است. ابتدا با رمز مدیر همین وب عمومی وارد شوید.</p></header>
++  <header><h1>{$header}</h1>
++  <p>{$intro}</p></header>
+   <div class="status" data-status role="status" aria-live="polite">در حال بررسی درخواست…</div>
+   <section data-login-section hidden>
+     <label for="owner-password">رمز مدیر وب عمومی</label>
+@@ -43,7 +52,7 @@
+     <p>آیا انتقال وب عمومی به این نصب را تأیید می‌کنید؟</p>
+     <button type="button" data-owner-approve>تأیید مالکیت مقصد</button>
+   </section>
+-  <details data-owner-upgrade>
++  <details data-owner-upgrade{$open}>
+     <summary>اگر قبلاً رمز مدیریت وب عمومی نساخته‌اید</summary>
+     <p>برای نصب موجود، ابتدا از <a href="{$safe}/staff/login" target="_blank" rel="noopener">ورود کارکنان</a> با حساب مدیر وارد شوید؛ سپس اینجا روی «آماده‌سازی رمز» بزنید.</p>
+     <button type="button" class="secondary" data-upgrade-check>آماده‌سازی رمز مدیر وب عمومی</button>
+@@ -54,7 +63,7 @@
+     </div>
+   </details>
+ </main>
+-<script src="{$safe}/assets/sokna-public-move.js" defer></script>
++<script src="{$safe}/assets/sokna-public-move.js{$jsRevision}" defer></script>
+ </body>
+ </html>
+ HTML;
+--- a/assets/sokna-public-move.js
++++ b/assets/sokna-public-move.js
+@@ -2,6 +2,7 @@
+ const root=document.querySelector('[data-move-owner-page]');if(!root)return;
+ const base=String(root.dataset.publicBase||'').replace(/\/$/,'');
+ const el=selector=>root.querySelector(selector);
++const setupOnly=root.dataset.ownerSetupOnly==='1';
+ const status=(message,error=false)=>{const item=el('[data-status]');item.textContent=message;item.classList.toggle('error',error)};
+ const sections=(login,approve)=>{el('[data-login-section]').hidden=!login;el('[data-approve-section]').hidden=!approve;};
+ let challenge=null,returnOrigin='',upgradeCsrf='',minimumNextEpoch=0,restoreAfterLocalApproval=false;
+@@ -46,6 +47,8 @@
+    const code=String(result.code||result.error||'');
+    const messages={invalid_credentials:'رمز مدیر این وب عمومی پذیرفته نشد.',
+      public_owner_not_initialized:'رمز مستقل مدیر هنوز ساخته نشده است؛ بخش آماده‌سازی رمز را باز کنید.',
++     owner_upgrade_not_permitted:'برای ساخت رمز، ابتدا در بخش ورود کارکنان همین Public با حساب مدیر وارد شوید، سپس دوباره «آماده‌سازی رمز» را بزنید.',
++     owner_upgrade_not_ready:'آماده‌سازی رمز در سرور کامل نشد؛ بدون تغییر تنظیمات، گزارش پشتیبانی را بررسی کنید.',
+      existing_move_other_installation:'این وب عمومی به نصب محلی دیگری متصل است؛ اتصال بدون بررسی مالکیت آن مجاز نیست.',
+      existing_move_pending_or_unavailable:'وضعیت مقصد برای انتقال آماده نیست؛ اتصال فعلی حفظ شد.',
+      destination_pending_guest_work:'در Public مقصد، درخواست‌های تحویل‌نشده وجود دارد.',
+@@ -58,13 +61,50 @@
+  return result;
+ }
+ async function withBusy(button,fn){button.disabled=true;try{await fn()}catch(e){status(e?.message||'خطا در تأیید مدیر',true)}finally{button.disabled=false}}
++// Keep owner setup available even when an old Local challenge has expired or
++// its popup was closed. These handlers never grant ownership by themselves:
++// the backend requires same-origin staff admin + CSRF + a single active install.
++el('[data-upgrade-check]').addEventListener('click',e=>withBusy(e.currentTarget,async()=>{
++ const result=await action('upgrade_preflight',{});
++ if(result.result?.owner_initialized===true){
++   status('حساب مدیر از قبل آماده است. با رمز مدیر وب عمومی وارد شوید.');
++   if(!setupOnly && challenge)sections(true,false);
++   return;
++ }
++ if(!result.result?.csrf)throw Error('حساب مدیر این نصب هنوز آماده نیست.');
++ upgradeCsrf=result.result.csrf;
++ el('[data-upgrade-form]').hidden=false;
++ status('حساب مدیر کارکنان تأیید شد. یک رمز مدیریت وب عمومی تعیین کنید.');
++}));
++el('[data-upgrade-create]').addEventListener('click',e=>withBusy(e.currentTarget,async()=>{
++ const password=el('[data-upgrade-password]').value;
++ if(password.length<12||password.length>256)throw Error('رمز مدیریت باید بین ۱۲ تا ۲۵۶ نویسه باشد.');
++ await action('upgrade_activate',{csrf:upgradeCsrf,new_owner_password:password});
++ el('[data-upgrade-password]').value='';
++ el('[data-upgrade-form]').hidden=true;
++ el('[data-owner-upgrade]').open=false;
++ if(!setupOnly && challenge)sections(true,false);
++ status(setupOnly?'رمز مدیریت ساخته شد. به بخش اتصال در Local برگردید و درخواست تازه‌ای آغاز کنید.':'رمز مدیریت ساخته شد. با همین رمز وارد شوید و مقصد را تأیید کنید.');
++}));
++
++if(setupOnly){
++ sections(false,false);
++ el('[data-owner-upgrade]').open=true;
++ status('ابتدا در بخش ورود کارکنان همین وب عمومی با حساب مدیر وارد شوید، سپس رمز مدیریت را آماده کنید.');
++ return;
++}
+ try{
+  const parsed=parseRequest();challenge=parsed.parsed;returnOrigin=parsed.origin;
+  // URL fragment never goes to the web server or external assets.
+  // Keep the short-lived fragment so refreshing the owner screen can resume.
+  sections(true,false);
+  status('درخواست انتقال دریافت شد؛ لطفاً با حساب مدیر این وب عمومی تأیید کنید.');
+-}catch(e){sections(false,false);el('[data-owner-upgrade]').hidden=true;status(e.message||'درخواست معتبر نیست.',true);return;}
++}catch(e){
++ sections(false,false);
++ el('[data-owner-upgrade]').open=true;
++ status((e.message||'درخواست معتبر نیست.')+' برای تأیید انتقال به Local برگردید و درخواست تازه‌ای آغاز کنید. اگر رمز مستقل ندارید، می‌توانید آن را همین‌جا آماده کنید.',true);
++ return;
++}
+ el('[data-owner-login]').addEventListener('click',e=>withBusy(e.currentTarget,async()=>{
+  const password=el('[data-password]').value;
+  if(!password)throw Error('رمز مدیریت را وارد کنید.');
+@@ -149,26 +189,4 @@
+    status('اجازه مالک صادر شد. ادامهٔ انتقال در Local انجام می‌شود.');
+  }catch(e){status(e?.message||'صدور مجوز اتصال کامل نشد.',true)}
+ });
+-el('[data-upgrade-check]').addEventListener('click',e=>withBusy(e.currentTarget,async()=>{
+- const result=await action('upgrade_preflight',{});
+- if(result.result?.owner_initialized===true){
+-   status('حساب مدیر از قبل آماده است. با رمز مدیر وب عمومی وارد شوید.');
+-   sections(true,false);
+-   return;
+- }
+- if(!result.result?.csrf)throw Error('حساب مدیر این نصب هنوز آماده نیست.');
+- upgradeCsrf=result.result.csrf;
+- el('[data-upgrade-form]').hidden=false;
+- status('حساب مدیر کارکنان تأیید شد. یک رمز مدیریت وب عمومی تعیین کنید.');
+-}));
+-el('[data-upgrade-create]').addEventListener('click',e=>withBusy(e.currentTarget,async()=>{
+- const password=el('[data-upgrade-password]').value;
+- if(password.length<12||password.length>256)throw Error('رمز مدیریت باید بین ۱۲ تا ۲۵۶ نویسه باشد.');
+- await action('upgrade_activate',{csrf:upgradeCsrf,new_owner_password:password});
+- el('[data-upgrade-password]').value='';
+- el('[data-upgrade-form]').hidden=true;
+- el('[data-owner-upgrade]').open=false;
+- sections(true,false);
+- status('رمز مدیریت ساخته شد. با همین رمز وارد شوید و مقصد را تأیید کنید.');
+-}));
+ })();
