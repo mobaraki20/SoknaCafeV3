@@ -1,0 +1,65 @@
+--- a/src/Domain/Recovery/PrivateMediaTransferService.php
++++ b/src/Domain/Recovery/PrivateMediaTransferService.php
+@@ -23,6 +23,28 @@
+     private const MAX_TOTAL_BYTES=32212254720;
+     private const MAX_FILES=50000;
+ 
++    /**
++     * Authenticate the exact media archive against source Local and business
++     * snapshot BEFORE issuing the old-machine handoff. No private files are
++     * written under a target or active vault by this read-only verification.
++     */
++    public function inspect(
++        string $archive,string $passphrase,string $sourceInstallationId,string $businessBackupSha
++    ):array {
++        self::requireCrypto($passphrase);
++        self::validateSha($businessBackupSha);
++        $sourceInstallationId=self::validateInstallationId($sourceInstallationId);
++        if(!is_file($archive)||is_link($archive))
++            throw new RecoveryException('media_archive_missing','فایل رسانه‌ای وجود ندارد.',404);
++        $zip=self::temporary('sokna-media-inspect','.zip');
++        try{
++            $this->decrypt($archive,$zip,$passphrase);
++            $m=$this->verifyPlainZip($zip,$sourceInstallationId,$businessBackupSha);
++            return ['media_files'=>count($m['files']),'total_bytes'=>(int)$m['total_bytes'],
++                'source_installation_id'=>$sourceInstallationId,
++                'business_backup_sha256'=>$businessBackupSha,
++                'media_archive_sha256'=>hash_file('sha256',$archive)];
++        }finally{@unlink($zip);}
++    }
++
+     /** Creates a separate encrypted archive. Does not change any source file. */
+--- a/bootstrap.php
++++ b/bootstrap.php
+@@ -94,6 +94,7 @@
+ require_once __DIR__ . '/src/Domain/Recovery/RecoveryException.php';
+ require_once __DIR__ . '/src/Domain/Recovery/BusinessBackupService.php';
++require_once __DIR__ . '/src/Domain/Recovery/LocalMachineTransferFence.php';
+ require_once __DIR__ . '/src/Domain/Recovery/RemoteVaultUploadClient.php';
+--- a/public/_app.php
++++ b/public/_app.php
+@@ -21,6 +21,15 @@
+ $dataDir=rtrim(trim((string)($config['app']['data_dir']??'')),"\\/");
++$offlineMarker=$dataDir!==''?$dataDir.DIRECTORY_SEPARATOR.'lifecycle'.DIRECTORY_SEPARATOR.'local'.DIRECTORY_SEPARATOR.'offline-machine-fenced.json':'';
++// An offline source machine is retired permanently from business traffic:
++// block browser, Runtime, PrintAgent, LAN staff and all regular API requests
++// BEFORE bootstrap or session. Never trust a browser-supplied override.
++if($offlineMarker!==''&&(file_exists($offlineMarker)||is_link($offlineMarker))){
++    http_response_code(503);header('Content-Type: application/json; charset=utf-8');
++    header('Cache-Control: no-store');header('Retry-After: 86400');
++    echo json_encode(['success'=>false,'code'=>'LOCAL_MACHINE_TRANSFER_FENCED',
++        'message'=>'این رایانه برای انتقال به دستگاه جدید غیرفعال شده است.'],JSON_UNESCAPED_UNICODE);exit;
++}
+ $recoveryMarker=$dataDir!==''?$dataDir.DIRECTORY_SEPARATOR.'lifecycle'.DIRECTORY_SEPARATOR.'local'.DIRECTORY_SEPARATOR.'recovery-required.json':'';
+--- a/public/_guest_app.php
++++ b/public/_guest_app.php
+@@ -16,6 +16,14 @@
+ $dataDir=rtrim(trim((string)($config['app']['data_dir']??'')),"\\/");
++$offlineMarker=$dataDir!==''?$dataDir.DIRECTORY_SEPARATOR.'lifecycle'.DIRECTORY_SEPARATOR.'local'.DIRECTORY_SEPARATOR.'offline-machine-fenced.json':'';
++if($offlineMarker!==''&&(file_exists($offlineMarker)||is_link($offlineMarker))){
++    http_response_code(503);header('Content-Type: application/json; charset=utf-8');
++    header('Cache-Control: no-store');header('Retry-After: 86400');
++    echo json_encode(['success'=>false,'code'=>'LOCAL_MACHINE_TRANSFER_FENCED',
++        'message'=>'این رایانه برای انتقال به دستگاه جدید غیرفعال شده است.'],JSON_UNESCAPED_UNICODE);exit;
++}
+ $recoveryMarker=$dataDir!==''?$dataDir.DIRECTORY_SEPARATOR.'lifecycle'.DIRECTORY_SEPARATOR.'local'.DIRECTORY_SEPARATOR.'recovery-required.json':'';
