@@ -3,10 +3,10 @@ Set-StrictMode -Version Latest
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or $env:SOKNA_R186_CI_ONLY -ne 'YES') {throw 'R277_NATIVE_DISPOSABLE_CI_ONLY'}
 if(Get-Service SoknaApache -ErrorAction SilentlyContinue){throw 'R277_REFUSE_EXISTING_APACHE_SERVICE'}
 function Need([bool]$ok,[string]$code){if(-not $ok){throw ('R277_NATIVE_'+$code)}}
-function Run([string]$exe,[string[]]$args){
+function Run([string]$exe,[string[]]$argvNative){
  $pushed=$false
  if([IO.Path]::GetFileName($exe) -ieq 'php.exe'){Push-Location (Split-Path -Parent $exe);$pushed=$true}
- try {& $exe @args;$result=$LASTEXITCODE} finally {if($pushed){Pop-Location}}
+ try {& $exe @argvNative;$result=$LASTEXITCODE} finally {if($pushed){Pop-Location}}
  if($result -ne 0){throw "R277_NATIVE_COMMAND_EXIT_$result $exe"}
 }
 function P([string]$path){[IO.Path]::GetFullPath($path).Replace('\','/')}
