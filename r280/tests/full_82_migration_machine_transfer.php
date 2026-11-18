@@ -58,8 +58,8 @@ try {
     }
     $old=$cores['old']->database();
     $new=$cores['new']->database();
-    $old->exec("INSERT INTO users(username,password_hash,display_name,role) VALUES('r280-admin','
-        .str_repeat('x',60).','R280 migration admin','admin')");
+    $userInsert=$old->prepare("INSERT INTO users(username,password_hash,display_name,role) VALUES(?,?,?,?)");
+    $userInsert->execute(['r280-admin',str_repeat('x',60),'R280 migration admin','admin']);
     $old->exec("INSERT INTO cafe_tables(name,table_number,code,access_token)
        VALUES('R280 real table',407,'r280-407','r280-qr-token')");
     $tableId=(int)$old->lastInsertId();
