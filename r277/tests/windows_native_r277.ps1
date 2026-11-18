@@ -15,9 +15,11 @@ New-Item -ItemType Directory -Force $lab|Out-Null
 $env:R277_NATIVE_ROOT=Join-Path $lab 'fixtures'
 python r277/ci_materialize_native.py
 Need ($LASTEXITCODE -eq 0) 'EXACT_FIXTURE_MATERIALIZE_FAILED'
-$pack=(Get-ChildItem $env:R277_NATIVE_ROOT -File -Filter 'SOKNA-R277-LOCAL-231FM-*.zip'|Select-Object -First 1).FullName
+python r277/ci_promote_release.py
+Need ($LASTEXITCODE -eq 0) 'FINAL_PROMOTION_FAILED'
+$pack=(Get-ChildItem $env:R277_NATIVE_ROOT -File -Filter 'SOKNA-R277-LOCAL-231FM-CUMULATIVE-FINANCE-SAFETY-INSTALL-READY.zip'|Select-Object -First 1).FullName
 Need ([bool]$pack) 'RELEASE_PACKAGE_MISSING'
-Need ((Get-FileHash $pack -Algorithm SHA256).Hash.ToLowerInvariant() -ceq '46381c48eb0266b861e27aa020bbef9a19da325d26b41304e10139b0fee747c5') 'PACKAGE_SHA_INVALID'
+Need ((Get-FileHash $pack -Algorithm SHA256).Hash.ToLowerInvariant() -ceq 'a10807502d75ed6f37d7f4c4746f0dc1a62ec218b1368c291921c37c73474ba9') 'PACKAGE_SHA_INVALID'
 $old=Join-Path $lab 'local-machine/Web.release.r275';$root=Join-Path $lab 'local-machine'
 New-Item -ItemType Directory -Force $root|Out-Null
 Move-Item (Join-Path $env:R277_NATIVE_ROOT 'r275-installed-web') $old
@@ -28,7 +30,7 @@ $targetInfo=Get-Content $target -Raw|ConvertFrom-Json
 Need ($baselineInfo.version -ceq '3.0.0-g6.2-workspace.231fl-r275-owner-discard-public-work') 'BASELINE_VERSION_WRONG'
 Need ($baselineInfo.managed_tree_sha256 -ceq 'a7407fa1ef4bd3cb17ac68fe6d548330e32a9f3ca47331c47d233b4b6398d9c2') 'BASELINE_TREE_WRONG'
 Need ($targetInfo.version -ceq '3.0.0-g6.2-workspace.231fm-r277-local-finance-safety') 'TARGET_VERSION_WRONG'
-Need ($targetInfo.managed_tree_sha256 -ceq '7f11ae1e6f5c88454d39b759cee076e2ce9e4f534f86a06b926e88b553fbdca5') 'TARGET_TREE_WRONG'
+Need ($targetInfo.managed_tree_sha256 -ceq '65e1a18a5adb6ed3f4e59d768e53b2d3bfeedaf2d1d41f638a8803fd225eefde') 'TARGET_TREE_WRONG'
 # Reuse the externally SHA-pinned PHP and MariaDB components already used by R275 native acceptance.
 $phpUrl='https://downloads.php.net/~windows/releases/archives/php-8.4.24-Win32-vs17-x64.zip'
 $phpZip=Join-Path $lab 'php-ts.zip';$phpRoot=Join-Path $lab 'php-ts'
@@ -130,7 +132,7 @@ PidFile "$ar/logs/httpd.pid"
  $afterLedger=& $mysql --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r186_exact.schema_migrations;'
  Need ($LASTEXITCODE -eq 0 -and [string]$afterLedger -eq '82') 'R277_LEDGER_CHANGED'
  Need ((Test-Path (Join-Path $root 'LocalWeb/persistent/.sokna-installation.json')) -and (Test-Path (Join-Path $root 'config.php')) -and (Test-Path (Join-Path $root 'install.lock'))) 'PERSISTENT_BINDING_LOST'
- Write-Host 'R277_NATIVE_WINDOWS_REAL_MAINTENANCE_R275_231FL_TO_R277_231FM_STAGE_ACTIVATE_HTTP_DB82_IDEMPOTENT_PASS'
+ Write-Host 'R277_FINAL_INSTALLABLE_EXACT_NATIVE_WINDOWS_R275_231FL_TO_R277_231FM_STAGE_ACTIVATE_HTTP_DB82_IDEMPOTENT_PASS'
 } finally {
  if($apacheStarted -or (Get-Service SoknaApache -ErrorAction SilentlyContinue)){try{Stop-Service SoknaApache -ErrorAction SilentlyContinue}catch{};try{& $httpd -k uninstall -n SoknaApache|Out-Null}catch{};try{& sc.exe delete SoknaApache|Out-Null}catch{}}
  if($null -ne $db -and -not $db.HasExited){$db.Kill($true);$db.WaitForExit()}
