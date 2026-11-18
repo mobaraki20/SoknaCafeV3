@@ -1,0 +1,22 @@
+--- a/public/assets/system-diagnostics.js
++++ b/public/assets/system-diagnostics.js
+@@ -529,7 +529,18 @@
+ $('[data-backup-create]')?.addEventListener('click',async e=>{await SoknaUI.busy(e.currentTarget,async()=>{const pass=$('[data-backup-pass]').value;try{const j=await post({action:'backup_create',passphrase:pass});$('[data-backup-pass]').value='';await refresh('نسخه پشتیبان ساخته شد.');location.href=appPath(j.backup.download)}catch(err){toast(err.message,'danger','عملیات انجام نشد')}})});
+ $('[data-recovery-upload]')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget;await SoknaUI.busy(form,async()=>{try{const j=await request(appPath('/system/recovery-upload.php'),{method:'POST',body:new FormData(form)});$('[data-restore-id]').value=j.backup.id;toast('فایل انتخاب شد؛ برای اطمینان ابتدا آن را بررسی کن.','info','بازیابی')}catch(err){toast(err.message,'danger','عملیات انجام نشد')}})});
+ $('[data-backup-inspect]')?.addEventListener('click',async e=>{await SoknaUI.busy(e.currentTarget,async()=>{try{await post({action:'backup_inspect',id:$('[data-restore-id]').value,passphrase:$('[data-restore-pass]').value});const box=$('[data-backup-manifest]');box.classList.remove('sc-hidden');box.textContent='فایل پشتیبان معتبر است و برای بازیابی آماده است.';toast('فایل پشتیبان تأیید شد.','success','بازیابی')}catch(err){toast(err.message,'danger','عملیات انجام نشد')}})});
+-$('[data-backup-restore]')?.addEventListener('click',async e=>{const b=e.currentTarget;if(!await SoknaUI.confirm('بازیابی اطلاعات','این عملیات فقط روی نصب خالی مجاز است. ادامه می‌دهی؟',true))return;await SoknaUI.busy(b,async()=>{try{await post({action:'backup_restore',id:$('[data-restore-id]').value,passphrase:$('[data-restore-pass]').value});location.assign(appPath('/logout.php?restored=1'));return}catch(err){toast(err.message,'danger','عملیات انجام نشد')}})});
++$('[data-backup-stage]')?.addEventListener('click',async e=>{
++ const ack=$('[data-restore-stage-ack]');const id=$('[data-restore-id]')?.value||'';const pass=$('[data-restore-pass]')?.value||'';
++ if(!ack?.checked){toast('ابتدا استفاده از دستگاه جدید را تأیید کن.','danger','انتقال Local');return}
++ if(!id||!pass){toast('فایل و رمز پشتیبان را انتخاب کن.','danger','انتقال Local');return}
++ if(!await SoknaUI.confirm('آماده‌سازی انتقال Local','بازیابی فقط در دیتابیس جداگانه انجام می‌شود. این مرحله نه دیتابیس فعلی را تغییر می‌دهد، نه ارتباط Public یا چاپ را فعال می‌کند. ادامه می‌دهی؟',true))return;
++ await SoknaUI.busy(e.currentTarget,async()=>{try{
++  const j=await post({action:'backup_stage_for_new_machine',id,passphrase:pass,new_machine_ack:true});
++  const info=j.staging||{};const box=$('[data-backup-stage-result]');if(box){box.classList.remove('sc-hidden');box.textContent='اطلاعات در دیتابیس موقت '+String(info.staged_database||'')+' آماده شد. سامانه و چاپگر هنوز فعال نشده‌اند. برای تکمیل انتقال باید سرویس‌ها و اتصال Public جداگانه تأیید شوند.'}
++  $('[data-restore-pass]').value='';toast('مرحله آماده‌سازی کامل شد؛ فعال‌سازی انجام نشده است.','success','انتقال Local');
++ }catch(err){toast(err.message,'danger','آماده‌سازی انجام نشد')}});
++});
++$('[data-backup-restore]')?.addEventListener('click',async e=>{const b=e.currentTarget;if(!await SoknaUI.confirm('بازیابی فنی فقط روی دیتابیس خالی','بازیابی مستقیم روی نصب عادی مجاز نیست و نباید برای انتقال رایانه استفاده شود. ادامه می‌دهی؟',true))return;await SoknaUI.busy(b,async()=>{try{await post({action:'backup_restore',id:$('[data-restore-id]').value,passphrase:$('[data-restore-pass]').value});location.assign(appPath('/logout.php?restored=1'));return}catch(err){toast(err.message,'danger','عملیات انجام نشد')}})});
+ root.addEventListener('sokna:tabchange',event=>{const tab=event.detail?.tab;if(tab==='updates'&&!updates)loadUpdates();else if(tab==='recovery'&&!recovery)loadRecovery();else if(tab==='health'&&healthDone.size===0)loadHealth()});
+ if(activeTab()==='updates')loadUpdates();else if(activeTab()==='recovery')loadRecovery();else loadHealth();
+ })();
