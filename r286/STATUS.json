@@ -1,0 +1,45 @@
+{
+  "schema": "sokna-r286-cafe-public-current-state-v1",
+  "checked_at_utc": "2026-11-18T22:57:38Z",
+  "live_public": {
+    "base_url": "https://www.soknagroup.ir/public",
+    "version": "3.0.0-g3.6-workspace.35ij-r275-operator-confirm-public-discard",
+    "health_http": 200,
+    "database": "ready",
+    "migrations_applied": 11,
+    "migrations_pending": 0,
+    "staff_login_http": 200,
+    "guest_menu_http": 200,
+    "owner_setup_http": 404,
+    "routine_active_version": "3.0.0-g3.6-workspace.35ij-r275-operator-confirm-public-discard",
+    "staged_version": "",
+    "pending_verification": false
+  },
+  "qa": {
+    "live_run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44416385365",
+    "source_candidate_version": "3.0.0-g3.6-workspace.35ik-r276-owner-setup-access",
+    "sha256": "effbe0b41011807341c794b616c4a70c3a999bde730384d6fbee76680f1e2c8d",
+    "changed_files": 5,
+    "manifest_verified": true,
+    "migrations_unchanged": true,
+    "php_js_syntax_pass": true,
+    "direct_http_stage_fixture_pass_run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44242310527",
+    "real_http_staff_owner_login_fixture_pass_run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44243934697"
+  },
+  "decision": "OWNER_SETUP_FIX_NOT_DEPLOYED__CONTROLLED_STAGE_READY__ACTIVATE_BLOCKED_PENDING_AUTHORIZED_HOST_BACKUP_AND_GATE",
+  "stage_only_allowed": true,
+  "operator_install_allowed": false,
+  "live_host_modified": false,
+  "required_field_next": [
+    "verified_host_files_and_db_restore_backup",
+    "nonmutating_stage_35ij_to_35ik_and_host_readback",
+    "authorized_public_staff_admin_owner_bootstrap_and_owner_approval",
+    "local_admin_approval_full_sync_media_ack",
+    "QR_guest_order_exactly_once"
+  ],
+  "errors_not_yet_resolved": [
+    "actual_prior_403_endpoint_unconfirmed",
+    "live_guest_pending_orders_not_checked",
+    "live_local_state_not_read"
+  ]
+}
