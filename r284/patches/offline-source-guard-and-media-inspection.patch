@@ -64,3 +64,29 @@
 +        'message'=>'این رایانه برای انتقال به دستگاه جدید غیرفعال شده است.'],JSON_UNESCAPED_UNICODE);exit;
 +}
  $recoveryMarker=$dataDir!==''?$dataDir.DIRECTORY_SEPARATOR.'lifecycle'.DIRECTORY_SEPARATOR.'local'.DIRECTORY_SEPARATOR.'recovery-required.json':'';
+--- a/public/setup/api.php
++++ b/public/setup/api.php
+@@ -3,0 +4,13 @@
++// An old Local sealed for transfer must never be reconfigured through Setup.
++// Check BEFORE importing the app or starting the setup CSRF session.
++$soknaPrivateConfig=dirname(__DIR__,3).'/config.php';
++if(is_file($soknaPrivateConfig)){
++    $soknaSourceConfig=require $soknaPrivateConfig;
++    $soknaSourceRoot=is_array($soknaSourceConfig)?trim((string)($soknaSourceConfig['app']['data_dir']??'')):'';
++    $soknaSourceMarker=rtrim($soknaSourceRoot,"\\/").'/lifecycle/local/offline-machine-fenced.json';
++    if($soknaSourceRoot!==''&&(file_exists($soknaSourceMarker)||is_link($soknaSourceMarker))){
++        http_response_code(503);header('Cache-Control: no-store');
++        echo '{"success":false,"code":"LOCAL_MACHINE_TRANSFER_FENCED"}';exit;
++    }
++}
+--- a/public/update-rescue.php
++++ b/public/update-rescue.php
+@@ -43,0 +44,9 @@
++// The Update Rescue must not rebind a retired old Local into business use.
++$soknaRetiredSource=$dataDir!==''?$dataDir.'/lifecycle/local/offline-machine-fenced.json':'';
++if($soknaRetiredSource!==''&&(file_exists($soknaRetiredSource)||is_link($soknaRetiredSource))){
++    http_response_code(503);
++    header('Content-Type: application/json; charset=utf-8');
++    header('Cache-Control: no-store');
++    echo '{"success":false,"code":"LOCAL_MACHINE_TRANSFER_FENCED"}';exit;
++}
