@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      # Operational fixture only; no tenant URL enters product source.
-      SOKNA_FIELD_PUBLIC_URL: ${{ inputs.public_base_url || 'https://www.soknaspace.ir' }}
+      # Current cafe field target from R276 release ledger only; the tool itself accepts any HTTPS installation.
+      SOKNA_FIELD_PUBLIC_URL: ${{ inputs.public_base_url || 'https://www.soknagroup.ir/public' }}
     steps:
       - uses: actions/checkout@v4
       - name: GET-only probe - no authorization cookies or POST/PUT/PATCH
