@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq php-zip php-cli php-sodium
+          sudo apt-get update -qq && sudo apt-get install -y -qq php-zip php-cli
           export R283_LOCAL_ROOT="$RUNNER_TEMP/r283-web"
           export R283_EXACT_PARENT="$RUNNER_TEMP/r282/SOKNA-R282-LOCAL-231FQ-CUMULATIVE-RECOVERY-STAGE-CONTROLLED-UPDATE.zip"
           python3 - <<'PY'
