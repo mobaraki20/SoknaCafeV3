@@ -125,6 +125,7 @@ jobs:
           set -euo pipefail
           export R279_LOCAL_SOURCE_ROOT="$RUNNER_TEMP/r279-real-source/local"
           (cd "$R279_LOCAL_SOURCE_ROOT" && patch --batch --forward --fuzz=0 -p1 -i "$GITHUB_WORKSPACE/r279/patches/r275-local-transfer-guardrails.patch")
+          (cd "$R279_LOCAL_SOURCE_ROOT" && patch --batch --forward --fuzz=0 -p1 -i "$GITHUB_WORKSPACE/r279/patches/r275-owner-lost-reply-ux.patch")
           for f in src/Domain/PublicEdge/PublicMoveUiInspectionService.php src/Domain/Recovery/BusinessBackupService.php public/integrations/api.php; do
             php -l "$R279_LOCAL_SOURCE_ROOT/$f"
           done
