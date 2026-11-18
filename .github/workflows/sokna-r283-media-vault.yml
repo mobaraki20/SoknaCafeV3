@@ -89,3 +89,63 @@ jobs:
           & $php '-c' $ini 'r283/tests/private_media_transfer_selftest.php'
           if($LASTEXITCODE -ne 0){throw 'R283_WINDOWS_MEDIA_CRYPTO_FAILED'}
           Write-Host 'R283_WINDOWS_ENCRYPTED_PRIVATE_MEDIA_TRANSFER_PASS'
+
+  produce-r283-exact:
+    runs-on: ubuntu-24.04
+    needs: [media-linux, media-windows]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R282-231FQ-ORIGINAL-CONTROLLED-UPDATE
+          run-id: 44354235530
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r282
+      - name: Produce exact 607-file encrypted media QA cumulative with canonical inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R283_EXACT_R282_PACKAGE="$RUNNER_TEMP/r282/SOKNA-R282-LOCAL-231FQ-CUMULATIVE-RECOVERY-STAGE-CONTROLLED-UPDATE.zip"
+          export R283_OUTPUT="$RUNNER_TEMP/r283-candidate"
+          python3 r283/build_r283.py
+          python3 packaging/windows/release-gates/check_local_release_set.py \
+            "$R283_OUTPUT/SOKNA-R283-LOCAL-231FR-PRIVATE-MEDIA-TRANSFER-QA-DO-NOT-INSTALL.zip"
+          python3 - <<'PY'
+          import zipfile,io,json,os,pathlib,hashlib
+          p=pathlib.Path(os.environ['R283_OUTPUT'])/'SOKNA-R283-LOCAL-231FR-PRIVATE-MEDIA-TRANSFER-QA-DO-NOT-INSTALL.zip'
+          with zipfile.ZipFile(p) as z:
+           m=json.loads(z.read('release-set.json'))
+           assert m['for_install'] is False and m['production_pass'] is False
+           with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
+            assert len(w.namelist())==607
+            assert sum(x.startswith('database/migrations/') for x in w.namelist())==82
+            files=json.loads(w.read('resources/local-managed-files-v1.json'))['files']
+            assert sorted(files)==sorted(w.namelist())
+            assert b'final class PrivateMediaTransferService' in w.read('src/Domain/Recovery/PrivateMediaTransferService.php')
+            assert b'SOKNA_MEDIA_TRANSFER_PASSWORD' in w.read('bin/sokna-media-transfer.php')
+          print('R283_MANAGED_607_MEDIA_SERVICE_CLI_ALL_82_SQL_AND_QA_BLOCK_PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R283-607-FILE-IMMUTABLE-PRODUCER-QA
+          path: |
+            ${{ runner.temp }}/r283-candidate/SOKNA-R283-LOCAL-231FR-PRIVATE-MEDIA-TRANSFER-QA-DO-NOT-INSTALL.zip
+            ${{ runner.temp }}/r283-candidate/R283-SOURCE-PROOF.json
+            ${{ runner.temp }}/r283-candidate/candidate-contract.json
+          retention-days: 14
+          if-no-files-found: error
+  factory-r283-exact:
+    needs: [produce-r283-exact]
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: artifact:candidate-contract.json
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R283-607-FILE-IMMUTABLE-PRODUCER-QA
+    permissions:
+      contents: read
+      actions: read
