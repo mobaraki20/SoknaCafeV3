@@ -1,0 +1,93 @@
+{
+  "schema": "sokna-r280-transfer-handoff-v1",
+  "date": "2026-11-18",
+  "branch": "qa/sokna-r280-transfer-cumulative-and-windows-20261118",
+  "version": "3.0.0-g6.2-workspace.231fo-r280-transfer-migration-guards",
+  "operator_install_allowed": false,
+  "production_authorized": false,
+  "cafe_host_changed": false,
+  "main_changed": false,
+  "source": {
+    "parent": "R278/231fn",
+    "parent_original_producer_zip_sha256": "3a1070e18b14307fb2571634c961b20ca3e5d38e6c9a9dc1afad68be89fe6824",
+    "candidate_qa_zip_sha256": "12bf30d977dfa82ef047381d71153f8f5149653edc706833779f6bb7daa7a277",
+    "managed_files": 604,
+    "migrations": 82,
+    "source_changes": [
+      "src/Domain/PublicEdge/PublicMoveUiInspectionService.php",
+      "public/integrations/api.php",
+      "public/assets/connections-workspace.js"
+    ],
+    "preserved": [
+      "R277 financial/cancel changes",
+      "R278 rial settings persistence",
+      "R275 InnoDB consistent backup",
+      "Windows and PrintAgent code",
+      "Local 82 migrations"
+    ],
+    "factory": {
+      "run": 44322686850,
+      "same_run": true,
+      "exact_byte_verified": true,
+      "source_approved": false,
+      "production_authorized": false
+    }
+  },
+  "tests": {
+    "r280_cumulative_and_factory": {
+      "status": "PASS",
+      "run": 44322686850
+    },
+    "real_windows_824_php_mariadb_114": {
+      "status": "PASS_SAFETY_NEGATIVE_TEST_ONLY",
+      "run": 44322686850,
+      "actual_new_machine_data_restored": false,
+      "summary": "Full 82 migrations on two isolated MariaDB instances; old encrypted business backup valid, target standard install seeded with users=7 and inventory_items=117; restoring is correctly denied, no data loss"
+    },
+    "win_services_pairing": {
+      "status": "PASS_SIMULATED_AGENT_CALLBACKS_NO_SERVICE_INSTALL",
+      "run": 44322686850,
+      "assertions": 14,
+      "physical_print": false
+    },
+    "real_r280_local_to_public_276_e2e": {
+      "status": "PASS",
+      "run": 44323860609,
+      "root": true,
+      "subfolder": true,
+      "owner_auth": true,
+      "full_sync": true,
+      "guest_idempotency": true
+    },
+    "restore_82_schema": {
+      "status": "BLOCKED_BY_DESIGN",
+      "run": 44322686850,
+      "error": "target_not_empty",
+      "source_accounting_preserved": true,
+      "production_transfer_proven": false
+    }
+  },
+  "blockers": [
+    {
+      "priority": "P0",
+      "item": "A first-class restore-onboarding installation that can accept a signed encrypted backup into a precisely verified pristine setup DB, with no blind deletion and explicit machine identity semantics."
+    },
+    {
+      "priority": "P0",
+      "item": "Mutually exclusive cutover: old Local deactivation/fencing and Public owner-authorized authority epoch rollover, plus durable resume after interrupted commit."
+    },
+    {
+      "priority": "P0",
+      "item": "Actual new machine Windows Maintenance/Runtime service installation and PrintAgent re-pairing, printer delivery, 58/80mm and duplicate/no-missing jobs."
+    },
+    {
+      "priority": "P0",
+      "item": "Real cafe and Public host readback, pending guest-work gate, backup/rollback exercise, no production state mutation before approval."
+    },
+    {
+      "priority": "P1",
+      "item": "Move guest media vault and cross-origin PWA/QR/Push readback; folder/root and different cafe hosts."
+    }
+  ],
+  "decision": "QA_SOURCE_VALIDATED_TRANSFER_GUARDS__FULL_MACHINE_MIGRATION_NOT_READY"
+}
