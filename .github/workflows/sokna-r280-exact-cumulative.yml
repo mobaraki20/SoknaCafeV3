@@ -120,7 +120,7 @@ jobs:
           $env:R280_PKG=Join-Path $env:RUNNER_TEMP 'r280-immutable/SOKNA-R280-LOCAL-231FO-R278-TRANSFER-GUARDS-QA-DO-NOT-INSTALL.zip'
           & ./r280/tests/windows_local_machine_restore.ps1
           if($LASTEXITCODE -ne 0){throw 'R280_WINDOWS_TRANSFER_FAILED'}
-          Write-Host 'R280_WINDOWS_DISPOSABLE_REAL_DATABASE_TRANSFER_PASS_NO_CAFE_MUTATION'
+          Write-Host 'R280_WINDOWS_DISPOSABLE_RESTORE_SAFELY_BLOCKED_AND_NEW_PAIRING_PASS_NO_CAFE_MUTATION'
   factory-r280-exact:
     needs: [produce-r280-exact, native-windows-migration]
     uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
