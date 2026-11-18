@@ -34,6 +34,7 @@
 @@ -94,3 +94,4 @@
  require_once __DIR__ . '/src/Domain/Recovery/RecoveryException.php';
  require_once __DIR__ . '/src/Domain/Recovery/BusinessBackupService.php';
++require_once __DIR__ . '/src/Domain/Recovery/PrivateMediaTransferService.php';
 +require_once __DIR__ . '/src/Domain/Recovery/LocalMachineTransferFence.php';
  require_once __DIR__ . '/src/Domain/Recovery/RemoteVaultUploadClient.php';
 --- a/public/_app.php
