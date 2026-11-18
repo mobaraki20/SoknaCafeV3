@@ -54,6 +54,12 @@ content=source.read_bytes()
 assert b"final class SafeRestoreStagingService" in content
 new=previous.copy()
 new[NEW_FILE]=content
+# The factory validates the actual authoritative managed-files inventory.
+# Register the new class in that pinned ledger, not only inside web.zip.
+ledger=json.loads(previous["resources/local-managed-files-v1.json"])
+assert sorted(ledger["files"])==sorted(previous)
+ledger["files"]=sorted([*ledger["files"],NEW_FILE])
+new["resources/local-managed-files-v1.json"]=J(ledger)
 new["VERSION.txt"]=(VERSION+"\n").encode()
 provenance=json.loads(new["resources/build-provenance.json"])
 provenance.update(version=VERSION,release_set_id=RELEASE,
@@ -71,7 +77,7 @@ identity["qualification"]["tier"]="R281_QA_NO_MACHINE_TAKEOVER_OR_OPERATOR_INSTA
 new["resources/release-identity-v1.json"]=J(identity)
 assert len(new)==605 and managed(new)!=managed(previous)
 actual_changes={n for n in new if n not in previous or new[n]!=previous[n]}
-assert actual_changes=={NEW_FILE,"VERSION.txt","resources/build-provenance.json","resources/release-identity-v1.json"},actual_changes
+assert actual_changes=={NEW_FILE,"VERSION.txt","resources/local-managed-files-v1.json","resources/build-provenance.json","resources/release-identity-v1.json"},actual_changes
 for name,value in previous.items():
     if name not in actual_changes:assert new[name]==value
 web=archive(new)
@@ -96,6 +102,7 @@ proof={
     "target_tree":managed(new),"target_canonical_tree":canonical(new),
     "managed_files":605,"migrations":82,
     "added_source_files":[NEW_FILE],"changed_existing_source_files":[],
+    "updated_inventory":"resources/local-managed-files-v1.json",
     "preserved_local_public_communication":True,
     "preserved_finance_print_recovery_base":True,
     "operator_install_allowed":False,"machine_cutover_complete":False,
