@@ -997,7 +997,8 @@ body[data-page="home"] .sc-home__panel{border-radius:var(--sc-panel-radius);box-
 
 /* ================================================================
    D4.2 — Management / System / Notifications / Account
-   Same V107-derived information grammar used by D4.1 data workspaces.   ================================================================ */
+   Same V107-derived information grammar used by D4.1 data workspaces.
+   ================================================================ */
 .sc-management-panel{min-inline-size:0}
 .sc-management-form-panel>.sc-card__body{padding:14px!important}
 .sc-management-module-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:12px}
@@ -1998,6 +1999,7 @@ body[data-page="printing"] .sc-shell__content{
 
 /* Badges stay compact and semantic; they must not visually compete with actions. */
 
+
 /* Cards are structural surfaces by default. Raise only interactive/decision surfaces. */
 
 
@@ -2995,7 +2997,8 @@ body[data-page="operator"] .sc-hall-account-actions{grid-template-columns:minmax
 .sc-order-workspace-v107 .sc-order-categories button>span:last-child{grid-column:2;direction:rtl;text-align:right;white-space:normal;line-height:1.35}
 .sc-order-workspace-v107 .sc-order-categories button.is-active{background:var(--sc-surface-raised);border-color:color-mix(in srgb,var(--sc-accent) 60%,var(--sc-border));color:var(--sc-accent);box-shadow:none}
 .sc-order-workspace-v107 .sc-order-products{grid-area:products;min-height:0;overflow:auto;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;align-content:start;padding:10px 12px 12px}
-.sc-order-workspace-v107 .sc-order-product{min-height:112px}.sc-order-workspace-v107 .sc-order-product__copy strong{font-size:13px}
+.sc-order-workspace-v107 .sc-order-product{min-height:112px}
+.sc-order-workspace-v107 .sc-order-product__copy strong{font-size:13px}
 .sc-order-workspace-v107 .sc-order-product__price{font-size:12px}
 .sc-order-workspace-v107 .sc-order-product__count{font-size:.75rem;min-width:28px;height:28px}
 .sui-settlement-dialog{border-radius:18px;width:min(92vw,640px);max-height:min(88vh,820px);display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden}
@@ -3994,7 +3997,8 @@ body[data-page="operator"] .sc-hall-account-price-change p+p{border-block-start:
 .sc-public-health__metric small{color:var(--sc-text-muted,#667773)}
 .sc-public-health__metric strong{font-size:1.15rem;line-height:1.5}
 .sc-public-health__table{display:grid;gap:8px}
-.sc-public-health__row{display:grid;grid-template-columns:minmax(150px,1.4fr) repeat(4,minmax(92px,.7fr));gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--sc-border,#d9e2e0);border-radius:12px;background:var(--sc-surface,#fff)}.sc-public-health__row--event{grid-template-columns:minmax(170px,1.2fr) minmax(120px,.8fr) minmax(110px,.7fr) minmax(150px,1fr)}
+.sc-public-health__row{display:grid;grid-template-columns:minmax(150px,1.4fr) repeat(4,minmax(92px,.7fr));gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--sc-border,#d9e2e0);border-radius:12px;background:var(--sc-surface,#fff)}
+.sc-public-health__row--event{grid-template-columns:minmax(170px,1.2fr) minmax(120px,.8fr) minmax(110px,.7fr) minmax(150px,1fr)}
 .sc-public-health__row small{color:var(--sc-text-muted,#667773)}
 .sc-public-health__empty{padding:14px;border:1px dashed var(--sc-border,#d9e2e0);border-radius:12px;color:var(--sc-text-muted,#667773)}
 @media (max-width:980px){.sc-public-health__metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.sc-public-health__row,.sc-public-health__row--event{grid-template-columns:1fr 1fr}}
@@ -4993,7 +4997,8 @@ body[data-page="operator"] .sc-hall-account-price-change small{font-size:.72rem;
 body[data-page="operator"] .sc-hall-account-price-change>[data-price-details]{
   margin:0;min-width:0;min-height:42px;line-height:1.5;white-space:normal;padding-inline:11px;
 }
-.sc-price-review-dialog{  box-sizing:border-box;width:min(94vw,580px);max-width:none;
+.sc-price-review-dialog{
+  box-sizing:border-box;width:min(94vw,580px);max-width:none;
   max-height:calc(100dvh - 32px);padding:0;overflow:hidden;
   border:1px solid var(--sc-border);border-radius:16px;
 }
@@ -5992,7 +5997,8 @@ body[data-page="staff-consumption"] .sc-consumption-order-line .sc-order-note-ed
  .sc-section-head,.sc-entity-editor__section-head,.sc-dialog-frame__head{min-width:0;flex-wrap:wrap;gap:10px}
  .sc-section-head>div,.sc-entity-editor__section-head>div,.sc-dialog-frame__head>div{min-width:0;flex:1 1 220px}
  .sc-section-head h2,.sc-entity-editor__section-head h3,.sc-dialog-frame__head h2{overflow-wrap:anywhere;max-width:100%}
- .sc-section-head>.sc-actions{flex-wrap:wrap;min-width:0;max-width:100%}}
+ .sc-section-head>.sc-actions{flex-wrap:wrap;min-width:0;max-width:100%}
+}
 
 /* R120: persistent, read-only ingredient-cost feedback next to selling price. */
 .sc-item-cost-overview{margin-top:12px;padding:12px;border:1px solid var(--sc-border);border-radius:12px;background:var(--sc-surface-subtle);display:grid;gap:7px;min-width:0}
