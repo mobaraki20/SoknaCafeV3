@@ -1,0 +1,35 @@
+{
+  "schema": "sokna-r285-public-distinct-local-safe-stage-qa-v1",
+  "date": "2026-11-19",
+  "base_public": "R276/35ik QA source; not modified in installed host",
+  "purpose": "distinct original Local ID -> new Local ID transfer in existing Public, safe first reservation phase",
+  "implemented": [
+    "Internal PublicDistinctLocalStage.reserve method requiring HMAC-verified R284 offline source handoff",
+    "require same Public owner approved receipt for new Local operation",
+    "disallow pending realtime and deferred guest orders",
+    "atomically pause old Local remote and guest intake and reserve new Local inactive with higher epoch",
+    "preserve old staff/history and unrelated installations",
+    "return safe_to_cutover=false; no config.php default binding update, no active Public takeover"
+  ],
+  "proof": {
+    "run": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44397326896",
+    "MariaDB_11_4": "PASS",
+    "checks": 12,
+    "test_scope": "minimal real-MariaDB schema fixture of exact accessed tables, not entire 11-migration Public install"
+  },
+  "outstanding": [
+    "operator integration of authenticated Public owner consent and independent Local admin approval",
+    "safe media/data staged identity activation on Windows including rollback journal",
+    "exclusive Public ownership cutover and config binding with disaster recovery",
+    "Windows maintenance, Runtime, PrintAgent service reprovision and physical printer tests",
+    "real Public host consent, source PC fence and cafe field UAT"
+  ],
+  "branch": "qa/sokna-r285-public-distinct-local-safe-reenrollment-20261119",
+  "installable": false,
+  "production_approved": false,
+  "live_host_modified": false,
+  "cafe_host_modified": false,
+  "decision": "QA_STAGING_PRIMITIVE_PASS__FULL_MACHINE_TRANSFER_NOT_READY",
+  "last_install_ready_local": "R278/231fn; native Windows tested; cafe field acceptance not done",
+  "latest_public_candidate": "R276/35ik QA DO NOT INSTALL; currently reported installed Public 35ij/R275"
+}
