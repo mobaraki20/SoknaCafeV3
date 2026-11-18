@@ -7,6 +7,7 @@ on:
       - 'r277/tests/windows_native_r277.ps1'
       - 'r277/tests/windows_bootstrap_r275.php'
       - 'r277/ci_materialize_native.py'
+      - 'r277/ci_promote_release.py'
   workflow_dispatch:
 permissions:
   contents: read
