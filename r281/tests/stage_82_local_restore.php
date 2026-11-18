@@ -10,7 +10,7 @@ if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true')
 $root=(string)getenv('R280_LOCAL_SOURCE_ROOT');
 if(!is_dir($root)||!is_file($root.'/bootstrap.php'))throw new RuntimeException('R280_SOURCE_ROOT_MISSING');
 require_once $root.'/bootstrap.php';
-require_once __DIR__.'/../overlay/local/src/Domain/Recovery/SafeRestoreStagingService.php';
+require_once (is_file($root.'/src/Domain/Recovery/SafeRestoreStagingService.php') ? $root.'/src/Domain/Recovery/SafeRestoreStagingService.php' : __DIR__.'/../overlay/local/src/Domain/Recovery/SafeRestoreStagingService.php');
 
 $host=(string)(getenv('R280_DB_HOST')?:'127.0.0.1');
 $port=(int)(getenv('R280_DB_PORT')?:3306);
