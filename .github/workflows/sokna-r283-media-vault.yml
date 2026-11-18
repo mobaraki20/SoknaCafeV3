@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
   actions: read
-  actions: read
 jobs:
   media-linux:
     runs-on: ubuntu-24.04
@@ -20,8 +19,8 @@ jobs:
         with:
           name: SOKNA-R282-231FQ-ORIGINAL-CONTROLLED-UPDATE
           run-id: 44354235530
-          github-token: \${{ github.token }}
-          path: \${{ runner.temp }}/r282
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r282
       - name: Verify original Local 231FQ source and real encrypted media archive
         shell: bash
         run: |
@@ -51,7 +50,7 @@ jobs:
         if: always()
         with:
           name: R283-ENCRYPTED-MEDIA-TRANSFER-LINUX-RECEIPT
-          path: \${{ runner.temp }}/r283-media.log
+          path: ${{ runner.temp }}/r283-media.log
           retention-days: 14
           if-no-files-found: ignore
   media-windows:
@@ -63,8 +62,8 @@ jobs:
         with:
           name: SOKNA-R282-231FQ-ORIGINAL-CONTROLLED-UPDATE
           run-id: 44354235530
-          github-token: \${{ github.token }}
-          path: \${{ runner.temp }}/r282
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r282
       - name: Native Windows PHP 8.4.24 ZipArchive and Sodium vault transfer
         shell: pwsh
         run: |
