@@ -1,0 +1,66 @@
+{
+  "format": "sokna-r279-transfer-guardrails-qa-v1",
+  "date": "2026-11-18",
+  "status": "SOURCE_AND_SELECTED_CI_PASS_FIELD_AND_UNIVERSAL_NOT_ACCEPTED",
+  "branch": "qa/sokna-r279-transfer-guardrails-20261118",
+  "decision_register": "r251/decisions.json",
+  "active_decisions": [
+    "MIG-001",
+    "MIG-002",
+    "MIG-003",
+    "MIG-005",
+    "MIG-009",
+    "MIG-018",
+    "MIG-019",
+    "MIG-020"
+  ],
+  "new_product_decision": false,
+  "exact_evidence": {
+    "local_r275_version": "3.0.0-g6.2-workspace.231fl-r275-owner-discard-public-work",
+    "local_r275_sha256": "f42d66e26dfee936f29c159bb7028adefcfedda43ddf2dc63e2c25d6a7d6dba9",
+    "local_managed_files": 604,
+    "public_r275_sha256": "63213185fcc037b620ea0dccf133d5c63672f01da7db7d3545eb54e617dd150f",
+    "public_r276_candidate_sha256": "effbe0b41011807341c794b616c4a70c3a999bde730384d6fbee76680f1e2c8d",
+    "prior_snapshot_in_real_r275": "innodb-repeatable-read-single-transaction-v1"
+  },
+  "source_changes_in_exact_r275": [
+    "src/Domain/PublicEdge/PublicMoveUiInspectionService.php",
+    "public/integrations/api.php",
+    "public/assets/connections-workspace.js"
+  ],
+  "patches": [
+    "r279/patches/r275-local-transfer-guardrails.patch",
+    "r279/patches/r275-owner-lost-reply-ux.patch"
+  ],
+  "preserved": [
+    "R274 browser owner lost reply resume",
+    "R275 Public pending work explicit discard",
+    "R275 MariaDB transactional business backup",
+    "all 82 Local migrations",
+    "all Local finance/inventory/order source"
+  ],
+  "tested": {
+    "routing_19_cases": "PASS",
+    "exact_r275_source_no_fuzz_patch": "PASS",
+    "actual_r275_mariadb_backup_restore": "PASS",
+    "actual_r275_authority_fence_after_restore": "PASS",
+    "real_public_http_owner_root_and_subfolder": "PENDING",
+    "cafe_live_cutover": "NOT_RUN",
+    "combined_local_machine_and_public_move": "NOT_RUN"
+  },
+  "known_gaps": [
+    "No current-version cumulative operator release constructed; R277/R278 changed Local independently",
+    "Real cafe owner credential and pending guest work not read back",
+    "Destination host recovery and rollback not practiced in the cafe",
+    "No single E2E machine-replacement+Public-rebind on native Windows + host",
+    "PrintAgent and Windows services machine identity still require reprovision during Local move"
+  ],
+  "release": {
+    "operator_install_allowed": false,
+    "production_authorized": false,
+    "main_or_CURRENT_changed": false,
+    "user_cafe_or_host_changed": false,
+    "needs_latest_cumulative_source_reconcile": true,
+    "requires_same_run_factory_receipt": true
+  }
+}
