@@ -1,0 +1,46 @@
+name: SOKNA R277 Exact Local Source Build
+on:
+  push:
+    branches: [qa/sokna-r277-local-p0-finance-cancel-20261118]
+    paths:
+      - '.github/workflows/sokna-r277-build-qa.yml'
+      - 'r277/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  source-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      R277_ROOT: /tmp/r277
+      R277_INPUT_DIR: /tmp/r275
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: \${{ github.token }}
+          path: /tmp/r275
+      - name: Rebuild and verify source-exact cumulative
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 r277/ci_prepare.py
+          export R275_LOCAL_PACKAGE="$(find /tmp/r275 -name 'SOKNA-R275-LOCAL-231FL-OWNER-DISCARD-QA-DO-NOT-INSTALL.zip' | head -n 1)"
+          python3 r277/build_r277.py
+          python3 -c 'import json; p=json.load(open("/tmp/r277/output/R277-QA-PROOF.json")); assert p["sha256"]=="46381c48eb0266b861e27aa020bbef9a19da325d26b41304e10139b0fee747c5"; assert p["sql_unchanged"] and p["public_edge_exact_unchanged"]; print("R277_SOURCE_PIN_PASS",p["sha256"])'
+          python3 packaging/windows/release-gates/check_local_release_set.py /tmp/r277/output/SOKNA-R277-LOCAL-231FM-CUMULATIVE-FINANCE-SAFETY-QA-DO-NOT-INSTALL.zip
+          node --check /tmp/r277/work/public/assets/staff-app/hall-workspace.js
+          node r277/tests/tests_discount_preview.cjs
+          echo R277_REPRODUCIBLE_SOURCE_AND_DISCOUNT_PASS
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: R277-LOCAL-231FM-FINANCE-QA-BUILD-DO-NOT-INSTALL
+          path: |
+            /tmp/r277/output/*.zip
+            /tmp/r277/output/R277-QA-PROOF.json
+          retention-days: 7
