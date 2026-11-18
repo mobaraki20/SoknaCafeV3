@@ -204,6 +204,7 @@ try {
             $configs['new']['installation']['id']);
         throw new RuntimeException('R281_WRONG_PASS_STAGE_DID_NOT_FAIL');
     }catch(\Sokna\Local\Domain\Recovery\RecoveryException $e){
+        echo 'R281_WRONG_PASS_FAILURE_CODE '.$e->errorCode.PHP_EOL;
         $check($e->errorCode==='backup_auth_failed',
             'wrong passphrase aborts isolated staging without touching existing database');
     }
