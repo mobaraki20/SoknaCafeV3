@@ -1,0 +1,32 @@
+--- a/src/Domain/Recovery/SafeRestoreStagingService.php
++++ b/src/Domain/Recovery/SafeRestoreStagingService.php
+@@ -72,12 +72,29 @@
+         if(!$sourceConnection instanceof PDO)
+             throw new RecoveryException('restore_source_connection_invalid',
+                 'اتصال ساختار نصب مرجع معتبر نیست.',500);
++        // Authenticate/decrypt before CREATE DATABASE. A mistyped passphrase
++        // must not leave an empty staging schema or change any existing DB.
++        $inspection=(new BusinessBackupService($sourceConnection,$this->observability,$newId))
++            ->inspectEncrypted($encryptedBackupPath,$passphrase);
++        $archiveInstallation=trim((string)($inspection['source_installation_id']??''));
++        if($archiveInstallation===''||$archiveInstallation==='unknown-installation')
++            throw new RecoveryException('restore_source_identity_missing',
++                'شناسهٔ نصب مبدأ پشتیبان معتبر نیست.',409);
++        if(hash_equals($archiveInstallation,$newId))
++            throw new RecoveryException('restore_backup_is_same_machine',
++                'فایل مربوط به همین نصب است؛ انتقال بین دو رایانه نیست.',409);
+         $sourceVersions=$sourceConnection
+             ->query('SELECT version FROM schema_migrations ORDER BY version')
+             ->fetchAll(PDO::FETCH_COLUMN);
+         if(!is_array($sourceVersions)||count($sourceVersions)<1)
+             throw new RecoveryException('restore_source_migrations_empty',
+                 'تاریخچه نسخه‌های دیتابیس موجود نیست.',409);
++        foreach((array)($inspection['schema_versions']??[]) as $version){
++            if(!in_array((string)$version,$sourceVersions,true))
++                throw new RecoveryException('restore_staging_schema_incompatible',
++                    'دیتابیس نصب جدید برای این پشتیبان قدیمی‌تر است.',409,
++                    ['missing_version'=>(string)$version]);
++        }
+         // Derive all tables, never use a fixed catalogue of 82 migration files.
+         // Separate tenant installations can have different supported versions.
+         $this->control->exec('CREATE DATABASE '.self::quote($target).
