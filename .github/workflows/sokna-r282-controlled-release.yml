@@ -1,0 +1,126 @@
+name: SOKNA R282 231FQ Cumulative Controlled Update Exact Release Gates
+on:
+  push:
+    branches: [qa/sokna-r282-recovery-ui-controlled-release-20261118]
+    paths:
+      - 'r282/**'
+      - '.github/workflows/sokna-r282-controlled-release.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-mariadb-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      GITHUB_ACTIONS: 'true'
+      R280_DB_PASSWORD: qa-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R281-EXACT-CUMULATIVE-QA-ORIGINAL
+          run-id: 44330473363
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r281
+      - name: Build only from exact 231FP R281 source without changing finance, printing or DB migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R282_EXACT_R281_ZIP="$RUNNER_TEMP/r281/SOKNA-R281-LOCAL-231FP-RESTORE-STAGING-QA-DO-NOT-INSTALL.zip"
+          export R282_OUTPUT="$RUNNER_TEMP/r282"
+          python3 r282/build_r282.py
+          python3 packaging/windows/release-gates/check_local_release_set.py "$R282_OUTPUT/SOKNA-R282-LOCAL-231FQ-CUMULATIVE-RECOVERY-STAGE-CONTROLLED-UPDATE.zip" --require-installable
+      - name: Materialize exact built 605-file web package, inspect UI/API and lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R282_OUTPUT="$RUNNER_TEMP/r282"
+          python3 - <<'PY'
+          import zipfile,io,os,pathlib,json
+          root=pathlib.Path(os.environ['R282_OUTPUT'])
+          with zipfile.ZipFile(root/'SOKNA-R282-LOCAL-231FQ-CUMULATIVE-RECOVERY-STAGE-CONTROLLED-UPDATE.zip') as o:
+           m=json.loads(o.read('release-set.json'))
+           assert m['for_install'] and m['production_pass']
+           assert m['targets']['local']['managed_files']==605
+           with zipfile.ZipFile(io.BytesIO(o.read('artifacts/local/web.zip'))) as z:
+            names=z.namelist()
+            assert len(names)==605 and sum(n.startswith('database/migrations/') for n in names)==82
+            for n in names:
+             assert '..' not in pathlib.PurePosixPath(n).parts and not pathlib.PurePosixPath(n).is_absolute()
+             path=root/'web'/n;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(z.read(n))
+          assert len(list((root/'web/database/migrations').glob('*.sql')))==82
+          print('R282_EXACT_SOURCE_605_82_MIGRATIONS_PASS')
+          PY
+          php -l "$R282_OUTPUT/web/src/Domain/Recovery/SafeRestoreStagingService.php"
+          php -l "$R282_OUTPUT/web/public/system/api.php"
+          php -l "$R282_OUTPUT/web/public/system/index.php"
+          node --check "$R282_OUTPUT/web/public/assets/system-diagnostics.js"
+          grep -q 'backup_stage_for_new_machine' "$R282_OUTPUT/web/public/system/api.php"
+          grep -q 'data-backup-stage' "$R282_OUTPUT/web/public/system/index.php"
+          grep -q "orders','settlement_records','print_jobs','print_agents" "$R282_OUTPUT/web/public/system/api.php"
+          echo R282_STAGE_UI_BACKEND_CONNECTED_AND_FORBIDDEN_ON_ACTIVE_PRINT_ORDER_PASS
+      - name: Native MariaDB 11.4 82-migration encrypted backup and restored identity regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-cli php-mysql
+          export R280_LOCAL_SOURCE_ROOT="$RUNNER_TEMP/r282/web"
+          php r282/tests/stage_82_local_restore.php | tee "$RUNNER_TEMP/r282-mariadb.log"
+          grep -q R282_SAFE_SEPARATE_DATABASE_BUSINESS_RESTORE_END_TO_END_ "$RUNNER_TEMP/r282-mariadb.log"
+          grep -q 'invalid backup password rejected BEFORE creating' "$RUNNER_TEMP/r282-mariadb.log"
+      - name: Upload exact original ZIP and same-run SHA contract
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R282-231FQ-ORIGINAL-CONTROLLED-UPDATE
+          path: |
+            ${{ runner.temp }}/r282/SOKNA-R282-LOCAL-231FQ-CUMULATIVE-RECOVERY-STAGE-CONTROLLED-UPDATE.zip
+            ${{ runner.temp }}/r282/R282-PREFACTORY-PROOF.json
+            ${{ runner.temp }}/r282/candidate-contract.json
+          retention-days: 14
+          if-no-files-found: error
+  native-windows-staged:
+    runs-on: windows-latest
+    timeout-minutes: 100
+    needs: [real-mariadb-and-build]
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SOKNA_R282_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R282-231FQ-ORIGINAL-CONTROLLED-UPDATE
+          path: ${{ runner.temp }}/r282-original
+      - name: Verify exact controlled 231FQ source in real Windows PHP MariaDB environment
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:R282_PKG=Join-Path $env:RUNNER_TEMP 'r282-original/SOKNA-R282-LOCAL-231FQ-CUMULATIVE-RECOVERY-STAGE-CONTROLLED-UPDATE.zip'
+          & ./r282/tests/windows_staged_restore.ps1
+          if($LASTEXITCODE -ne 0){throw 'R282_REAL_WINDOWS_STAGED_RESTORE_FAILED'}
+          Write-Host 'R282_WINDOWS_605_FILES_82_MIGRATIONS_SAFE_STAGING_PASSED'
+  factory-r282-exact:
+    needs: [real-mariadb-and-build,native-windows-staged]
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: artifact:candidate-contract.json
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R282-231FQ-ORIGINAL-CONTROLLED-UPDATE
+    permissions:
+      contents: read
+      actions: read
