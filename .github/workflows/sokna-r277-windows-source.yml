@@ -1,0 +1,47 @@
+name: SOKNA R277 Windows Source Regression Gate
+on:
+  push:
+    branches: [qa/sokna-r277-local-p0-finance-cancel-20261118]
+    paths:
+      - '.github/workflows/sokna-r277-windows-source.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-source:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Pin exact four Local source files and run Windows syntax and discount guard
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $pins=@{
+            'r277/source/src/Domain/Orders/OrderStaffActionService.php'='96d2cd3516837045cece663506e76cda75f5bccd50f9f9352fb4fe036c1e1745'
+            'r277/source/public/assets/staff-app/hall-workspace.js'='ccafc91c347faec66a0a8a487794307af1e19ed300ca5fac7117bf1bde8f827a'
+            'r277/source/public/assets/hall-settlement-v32.js'='403aef86ece1c3d276d3c55162b985642a0de8c61bc918e6062728704fbd2ee9'
+            'r277/source/public/assets/product-ui.css'='2edaead04f2de29daf2c20406c698cf29fd1c3880fe207f362b29bab6648d467'
+          }
+          foreach($k in $pins.Keys){
+            $hash=(Get-FileHash $k -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($hash -cne $pins[$k]){throw "R277_CHANGED_SOURCE_PIN_FAIL: $k"}
+          }
+          php -l r277/source/src/Domain/Orders/OrderStaffActionService.php
+          if($LASTEXITCODE -ne 0){throw 'R277_PHP_LINT_FAIL'}
+          node --check r277/source/public/assets/staff-app/hall-workspace.js
+          if($LASTEXITCODE -ne 0){throw 'R277_HALL_JS_SYNTAX_FAIL'}
+          node --check r277/source/public/assets/hall-settlement-v32.js
+          if($LASTEXITCODE -ne 0){throw 'R277_SETTLEMENT_JS_SYNTAX_FAIL'}
+          $root=Join-Path $env:RUNNER_TEMP 'r277'
+          $destination=Join-Path $root 'work/public/assets/staff-app'
+          New-Item -ItemType Directory -Path $destination -Force | Out-Null
+          Copy-Item 'r277/source/public/assets/staff-app/hall-workspace.js' (Join-Path $destination 'hall-workspace.js')
+          $env:R277_ROOT=$root
+          node r277/tests/tests_discount_preview.cjs
+          if($LASTEXITCODE -ne 0){throw 'R277_DISCOUNT_GUARD_FAIL'}
+          Write-Host 'R277_WINDOWS_4_SHA_PHP_JS_DISCOUNT_GUARD_PASS_SOURCE_ONLY'
