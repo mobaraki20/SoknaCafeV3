@@ -1,0 +1,105 @@
+name: SOKNA R284 source-exact offline old Local machine fence E2E
+on:
+  push:
+    branches: [qa/sokna-r284-offline-exclusive-local-cutover-20261118]
+    paths:
+      - 'r284/**'
+      - '.github/workflows/sokna-r284-exact-offline-fence.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-source-and-real-mariadb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      GITHUB_ACTIONS: 'true'
+      R280_DB_PASSWORD: qa-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R283-607-FILE-IMMUTABLE-PRODUCER-QA
+          run-id: 44363924678
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r283-source
+      - name: Build exact R283 SHA to 609-file R284 offline safety candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R284_ORIGINAL_R283_PACKAGE="$RUNNER_TEMP/r283-source/SOKNA-R283-LOCAL-231FR-PRIVATE-MEDIA-TRANSFER-QA-DO-NOT-INSTALL.zip"
+          export R284_OUTPUT="$RUNNER_TEMP/r284-producer"
+          python3 r284/build_r284.py
+          python3 packaging/windows/release-gates/check_local_release_set.py "$R284_OUTPUT/SOKNA-R284-LOCAL-231FS-OFFLINE-CUTOVER-GUARDS-QA-DO-NOT-INSTALL.zip"
+          python3 - <<'PY'
+          import pathlib,zipfile,io,json,hashlib,os
+          out=pathlib.Path(os.environ['R284_OUTPUT'])
+          with zipfile.ZipFile(out/'SOKNA-R284-LOCAL-231FS-OFFLINE-CUTOVER-GUARDS-QA-DO-NOT-INSTALL.zip') as o:
+           m=json.loads(o.read('release-set.json'))
+           assert m['for_install'] is False and m['production_pass'] is False
+           assert m['targets']['local']['managed_files']==609
+           with zipfile.ZipFile(io.BytesIO(o.read('artifacts/local/web.zip'))) as w:
+            assert w.testzip() is None and len(w.namelist())==609
+            assert sum(n.startswith('database/migrations/') for n in w.namelist())==82
+            for n in w.namelist():
+             assert not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts
+             p=out/'web'/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(w.read(n))
+          print('R284_ORIGINAL_609_FILES_ALL_82_SQL_UNCHANGED_SOURCE_VALIDATED')
+          PY
+          echo "R280_LOCAL_SOURCE_ROOT=$R284_OUTPUT/web" >> "$GITHUB_ENV"
+      - name: PHP source byte and atomic marker route lint plus media implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R284_OUTPUT="$RUNNER_TEMP/r284-producer"
+          for f in "$R284_OUTPUT/web/src/Domain/Recovery/LocalMachineTransferFence.php" \
+                   "$R284_OUTPUT/web/src/Domain/Recovery/PrivateMediaTransferService.php" \
+                   "$R284_OUTPUT/web/public/_app.php" "$R284_OUTPUT/web/public/_guest_app.php" \
+                   "$R284_OUTPUT/web/bootstrap.php" "$R284_OUTPUT/web/tools/prepare-machine-transfer.php"; do php -l "$f"; done
+          test "$(grep -l LOCAL_MACHINE_TRANSFER_FENCED "$R284_OUTPUT/web/public/_app.php" "$R284_OUTPUT/web/public/_guest_app.php" | wc -l)" -eq 2
+          grep -q 'offline-machine-fenced.json' "$R284_OUTPUT/web/public/_app.php"
+      - name: Full 82 migrations both Local DBs, original order and offline source HMAC handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq php-mysql php-zip
+          php r284/tests/full_82_schema_offline_fence.php | tee "$RUNNER_TEMP/r284-old-fence.log"
+          grep -q R284_82_SCHEMA_SOURCE_OFFLINE_FENCE_AND_CRYPTO_HANDOFF_ "$RUNNER_TEMP/r284-old-fence.log"
+      - name: Upload QA original producer and central factory contract
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R284-609-FILE-ORIGINAL-QA-SOURCE
+          path: |
+            ${{ runner.temp }}/r284-producer/SOKNA-R284-LOCAL-231FS-OFFLINE-CUTOVER-GUARDS-QA-DO-NOT-INSTALL.zip
+            ${{ runner.temp }}/r284-producer/R284-SOURCE-PROOF.json
+            ${{ runner.temp }}/r284-producer/candidate-contract.json
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R284-82-MARIADB-OLD-MACHINE-OFFLINE-FENCE-TEST-LOG
+          path: ${{ runner.temp }}/r284-old-fence.log
+          retention-days: 14
+          if-no-files-found: ignore
+  factory-r284:
+    needs: [exact-source-and-real-mariadb]
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: artifact:candidate-contract.json
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R284-609-FILE-ORIGINAL-QA-SOURCE
+    permissions:
+      contents: read
+      actions: read
