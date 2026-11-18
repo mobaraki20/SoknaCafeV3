@@ -1,6 +1,6 @@
 --- a/src/Domain/Recovery/PrivateMediaTransferService.php
 +++ b/src/Domain/Recovery/PrivateMediaTransferService.php
-@@ -23,6 +23,28 @@
+@@ -23,4 +23,28 @@
      private const MAX_TOTAL_BYTES=32212254720;
      private const MAX_FILES=50000;
  
@@ -31,14 +31,14 @@
      /** Creates a separate encrypted archive. Does not change any source file. */
 --- a/bootstrap.php
 +++ b/bootstrap.php
-@@ -94,6 +94,7 @@
+@@ -94,3 +94,4 @@
  require_once __DIR__ . '/src/Domain/Recovery/RecoveryException.php';
  require_once __DIR__ . '/src/Domain/Recovery/BusinessBackupService.php';
 +require_once __DIR__ . '/src/Domain/Recovery/LocalMachineTransferFence.php';
  require_once __DIR__ . '/src/Domain/Recovery/RemoteVaultUploadClient.php';
 --- a/public/_app.php
 +++ b/public/_app.php
-@@ -21,6 +21,15 @@
+@@ -21,2 +21,12 @@
  $dataDir=rtrim(trim((string)($config['app']['data_dir']??'')),"\\/");
 +$offlineMarker=$dataDir!==''?$dataDir.DIRECTORY_SEPARATOR.'lifecycle'.DIRECTORY_SEPARATOR.'local'.DIRECTORY_SEPARATOR.'offline-machine-fenced.json':'';
 +// An offline source machine is retired permanently from business traffic:
@@ -53,7 +53,7 @@
  $recoveryMarker=$dataDir!==''?$dataDir.DIRECTORY_SEPARATOR.'lifecycle'.DIRECTORY_SEPARATOR.'local'.DIRECTORY_SEPARATOR.'recovery-required.json':'';
 --- a/public/_guest_app.php
 +++ b/public/_guest_app.php
-@@ -16,6 +16,14 @@
+@@ -16,2 +16,9 @@
  $dataDir=rtrim(trim((string)($config['app']['data_dir']??'')),"\\/");
 +$offlineMarker=$dataDir!==''?$dataDir.DIRECTORY_SEPARATOR.'lifecycle'.DIRECTORY_SEPARATOR.'local'.DIRECTORY_SEPARATOR.'offline-machine-fenced.json':'';
 +if($offlineMarker!==''&&(file_exists($offlineMarker)||is_link($offlineMarker))){
