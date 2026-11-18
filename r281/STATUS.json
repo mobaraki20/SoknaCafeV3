@@ -1,0 +1,65 @@
+{
+  "schema": "sokna-r281-local-safe-staging-handoff-v1",
+  "date": "2026-11-18",
+  "branch": "qa/sokna-r281-local-safe-restore-staging-20261118",
+  "version": "3.0.0-g6.2-workspace.231fp-r281-restore-staging-qa",
+  "base": "R280 exact producer Local 231fo",
+  "base_sha256": "12bf30d977dfa82ef047381d71153f8f5149653edc706833779f6bb7daa7a277",
+  "candidate_sha256": "0326dfad22e00a95a8ce5b6907de904ddc3a85d9469774cf61977641755aca3a",
+  "managed_files": 605,
+  "sql_migrations": 82,
+  "additive_product_file": "src/Domain/Recovery/SafeRestoreStagingService.php",
+  "preserved_existing_source": true,
+  "tests": {
+    "linux_native_mariadb_full_82_schema_stage": {
+      "result": "PASS",
+      "run_id": 44330473363,
+      "assertions": 24
+    },
+    "windows_php_mariadb_full_82_schema_stage": {
+      "result": "PASS",
+      "run_id": 44330473363,
+      "assertions": 24
+    },
+    "windows_services_agent_pairing_logic": {
+      "result": "PASS",
+      "run_id": 44330473363,
+      "assertions": 14,
+      "physical_service_install_tested": false
+    },
+    "public_https_root_and_subfolder": {
+      "result": "PASS_BOTH",
+      "run_id": 44331431284
+    },
+    "factory": {
+      "result": "QA_EXACT_BYTES_PASS_FIELD_AND_SOURCE_APPROVAL_BLOCKED",
+      "producer_run_id": 44330473363,
+      "factory_run_id": 44330473363,
+      "same_run": true,
+      "validated_sha256": "0326dfad22e00a95a8ce5b6907de904ddc3a85d9469774cf61977641755aca3a",
+      "source_approved": false
+    }
+  },
+  "functional_scope": [
+    "schema-only clone in fresh isolated database",
+    "encrypted business restore into new staging DB",
+    "new Local installation ID only in staged DB",
+    "re-enroll-required Public state",
+    "no printer job/agent state copied",
+    "existing source/target databases never deleted or swapped"
+  ],
+  "remaining_blockers": [
+    "cutover with old Local fencing and exclusive authority",
+    "new machine database activation, rollback/resume journal",
+    "private media vault file transfer/readback",
+    "real Windows Maintenance/PrintAgent service installation and paper printing",
+    "real cafe+host acceptance and guest work readback",
+    "UI workflow for nontechnical operators"
+  ],
+  "operator_install_allowed": false,
+  "production_authorized": false,
+  "field_cutover_proven": false,
+  "main_or_current_changed": false,
+  "cafe_or_public_host_modified": false,
+  "library_handoff": "/Cafe/SOKNA-Workspace/WORKING/20261118-TRANSFER-ENDTOEND-AUDIT/SOKNA-R281-LOCAL-PUBLIC-TRANSFER-HANDOFF-20261118-FA.md"
+}
