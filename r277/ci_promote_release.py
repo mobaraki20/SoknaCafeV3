@@ -31,8 +31,8 @@ def z(d):
  b=io.BytesIO()
  with zipfile.ZipFile(b,'w') as zz:
   for name,payload in sorted(d.items()):
-   zi=zipfile.ZipInfo(name,(2026,11,18,0,0,0));zi.compress_type=zipfile.ZIP_DEFLATED;zi.external_attr=0o100644<<16
-   zz.writestr(zi,payload,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+   zi=zipfile.ZipInfo(name,(2026,11,18,0,0,0));zi.compress_type=zipfile.ZIP_STORED;zi.external_attr=0o100644<<16
+   zz.writestr(zi,payload,compress_type=zipfile.ZIP_STORED)
  return b.getvalue()
 tree=H(''.join(n+'\0'+H(content)+'\n' for n,content in sorted(new.items())).encode())
 release['status']='R277_LOCAL_NATIVE_WINDOWS_VERIFIED_CONTROLLED_INSTALL'
