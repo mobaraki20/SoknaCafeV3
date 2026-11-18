@@ -1,7 +1,7 @@
 {
   "format": "sokna-r279-transfer-guardrails-qa-v1",
   "date": "2026-11-18",
-  "status": "SOURCE_AND_SELECTED_CI_PASS_FIELD_AND_UNIVERSAL_NOT_ACCEPTED",
+  "status": "EXACT_R275_CODE_GUARDS_CI_PASS__REAL_HTTP_MARIADB_ROOT_SUBFOLDER_PASS__PRODUCTION_NOT_ACCEPTED",
   "branch": "qa/sokna-r279-transfer-guardrails-20261118",
   "decision_register": "r251/decisions.json",
   "active_decisions": [
@@ -44,9 +44,12 @@
     "exact_r275_source_no_fuzz_patch": "PASS",
     "actual_r275_mariadb_backup_restore": "PASS",
     "actual_r275_authority_fence_after_restore": "PASS",
-    "real_public_http_owner_root_and_subfolder": "PENDING",
+    "real_public_http_owner_root_and_subfolder": "PASS run 44315829189 (both jobs)",
     "cafe_live_cutover": "NOT_RUN",
-    "combined_local_machine_and_public_move": "NOT_RUN"
+    "combined_local_machine_and_public_move": "NOT_RUN",
+    "cross_source_exact_r275_plus_public_r276": "PASS run 44315829189",
+    "selected_r279_qa_suite": "PASS run 44315959003",
+    "latest_cafe_and_real_windows_operator_validation": "NOT_RUN"
   },
   "known_gaps": [
     "No current-version cumulative operator release constructed; R277/R278 changed Local independently",
@@ -61,6 +64,24 @@
     "main_or_CURRENT_changed": false,
     "user_cafe_or_host_changed": false,
     "needs_latest_cumulative_source_reconcile": true,
-    "requires_same_run_factory_receipt": true
-  }
+    "requires_same_run_factory_receipt": true,
+    "cafe_cutover_proven": false
+  },
+  "corrections": [
+    "BusinessBackupService in exact Local R275 231fl already enforces a stronger InnoDB consistent read-only snapshot; do not attribute this functionality as a new R279 production fix.",
+    "Base apps/local-web BusinessBackupService was modernized in QA tree, but intentionally excluded from exact-R275 patch because replacing the newer source is unsafe.",
+    "Earlier R279 no-fuzz patch failure revealed exact source mismatch, resolved by rebuilding two exact-source patches; current exact-source CI passes."
+  ],
+  "test_evidence": [
+    {
+      "run_id": 44315959003,
+      "url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44315959003",
+      "scope": "R279 inspection+backup+actual 604-managed-file Local preimage; 19 cases; MariaDB restore; zero-fuzz patch"
+    },
+    {
+      "run_id": 44315829189,
+      "url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44315829189",
+      "scope": "R279 Local guarded exact R275 231fl + Public R276 candidate; TLS, PHP HTTP, MariaDB; owner login/consent, Local approval, full sync, guest exactly-once; root and /new-public"
+    }
+  ]
 }
