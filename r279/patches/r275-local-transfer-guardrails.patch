@@ -127,89 +127,6 @@
      private static function finish(array $base,string $reason,string $route,string $message): array
      {
 
---- a/src/Domain/Recovery/BusinessBackupService.php
-+++ b/src/Domain/Recovery/BusinessBackupService.php
-@@ -71,17 +71,27 @@
- 
-     private function writeSnapshot(string $path,int $actorUserId): array
-     {
--        $tables=$this->businessTables();
--        $versions=array_map('strval',$this->pdo->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN));
--        $manifest=[
--            'format'=>self::FORMAT,'schema_version'=>1,'created_at'=>gmdate('c'),
--            'source_installation_id'=>$this->sourceInstallationId!==''?$this->sourceInstallationId:'unknown-installation',
--            'schema_versions'=>$versions,'tables'=>$tables,
--            'excluded_tables'=>self::EXCLUDED_TABLES,'excluded_machine_identity'=>self::EXCLUDED_MACHINE_IDENTITY,
--        ];
--        $gz=@gzopen($path,'wb9');if($gz===false)throw new RecoveryException('backup_write_failed','فایل موقت پشتیبان قابل ایجاد نیست.',500);
--        $counts=[];$hashes=[];
-+        // Under live cafe orders, SELECTing each table in autocommit mode can
-+        // silently combine different points in time. Require one InnoDB MVCC
-+        // snapshot across schema versions, every business table and footer.
-+        if($this->pdo->inTransaction())
-+            throw new RecoveryException('backup_transaction_active','پشتیبان‌گیری باید خارج از تراکنش فعال آغاز شود.',409);
-+        $gz=null;$manifest=[];$counts=[];$hashes=[];
-         try{
-+            $this->pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
-+            $this->pdo->beginTransaction();
-+            $tables=$this->businessTables();
-+            $this->requireTransactionalBackupTables($tables);
-+            $versions=array_map('strval',$this->pdo->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN));
-+            $manifest=[
-+                'format'=>self::FORMAT,'schema_version'=>1,'created_at'=>gmdate('c'),
-+                'source_installation_id'=>$this->sourceInstallationId!==''?$this->sourceInstallationId:'unknown-installation',
-+                'schema_versions'=>$versions,'tables'=>$tables,
-+                'snapshot_consistency'=>'innodb_repeatable_read_v1',
-+                'excluded_tables'=>self::EXCLUDED_TABLES,'excluded_machine_identity'=>self::EXCLUDED_MACHINE_IDENTITY,
-+            ];
-+            $gz=@gzopen($path,'wb9');
-+            if($gz===false)throw new RecoveryException('backup_write_failed','فایل موقت پشتیبان قابل ایجاد نیست.',500);
-             $this->gzLine($gz,['kind'=>'manifest','value'=>$manifest]);
-             foreach($tables as $table){
-                 $columns=$this->columns($table);$counts[$table]=0;$ctx=hash_init('sha256');
-@@ -95,9 +105,18 @@
-                 $hashes[$table]=hash_final($ctx);
-             }
-             $this->gzLine($gz,['kind'=>'footer','table_counts'=>$counts,'table_hashes'=>$hashes]);
--        }finally{gzclose($gz);}
-+            if(!gzclose($gz))throw new RecoveryException('backup_write_failed','بستن فایل پشتیبان کامل نشد.',500);
-+            $gz=null;
-+            $this->pdo->commit();
-+        }catch(Throwable $e){
-+            if($this->pdo->inTransaction())$this->pdo->rollBack();
-+            throw $e;
-+        }finally{
-+            if(is_resource($gz))@gzclose($gz);
-+        }
-         $this->observability->logEvent('info','recovery.backup_created',[
-             'actor_user_id'=>$actorUserId,'table_count'=>count($tables),'row_count'=>array_sum($counts),
-+            'snapshot_consistency'=>'innodb_repeatable_read_v1',
-             'excluded_machine_identity'=>self::EXCLUDED_MACHINE_IDENTITY,
-         ]);
-         return $manifest;
-@@ -179,6 +198,21 @@
-         ];
-     }
- 
-+    /** Never claim a cross-table consistent backup if a data table is non-MVCC. */
-+    private function requireTransactionalBackupTables(array $tables): void
-+    {
-+        $rows=$this->pdo->query("SELECT TABLE_NAME,ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()")->fetchAll(PDO::FETCH_ASSOC);
-+        $engines=[];
-+        foreach($rows as $row)$engines[(string)$row['TABLE_NAME']]=strtolower((string)($row['ENGINE']??''));
-+        foreach($tables as $table){
-+            if(($engines[$table]??'')!=='innodb'){
-+                throw new RecoveryException('backup_nontransactional_table',
-+                    'پشتیبان‌گیری سازگار فقط برای جدول‌های تراکنشی امکان‌پذیر است؛ عملیات بدون خروجی متوقف شد.',
-+                    409,['table'=>$table]);
-+            }
-+        }
-+    }
-+
-     private function businessTables(): array
-     {
-         $tables=array_map('strval',$this->pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
-
 --- a/public/integrations/api.php
 +++ b/public/integrations/api.php
 @@ -117,13 +117,28 @@
@@ -310,16 +227,6 @@
     }
     if(decision.route!=='awaiting_owner'){
       popup.close();feedback('public-move',String(decision.message||'مقصد معتبر نیست.'));return;
-@@ -145,8 +145,7 @@
-      feedback('public-move','اعتبار مقصد تأیید شد؛ همگام‌سازی کامل پیش از تغییر آدرس…',false);
-      await finishSimpleMove();
-    }catch(err){
--     feedback('public-move','اتصال نیمه‌تمام ثبت شده است. کد دیگری نساز؛ از ادامهٔ ایمن استفاده کن. '+(err.message||''));
--     moveUi('sync_pending');
-+     if(err.nextAction==='safe_resume'){moveUi('sync_pending');feedback('public-move','مرحله ثبت‌شده آماده ادامهٔ ایمن است. کد دیگری نسازید. '+(err.message||''),true)}else{moveUi('none');feedback('public-move','نتیجهٔ صدور مجوز روشن نیست؛ بدون درخواست جدید بررسی کنید. '+(err.message||''),true)}
-    }
-    return;
-  }
 @@ -186,7 +185,8 @@
     await finishSimpleMove();
   }catch(err){
