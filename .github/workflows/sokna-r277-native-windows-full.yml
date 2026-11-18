@@ -84,8 +84,14 @@ jobs:
             $env:GITHUB_WORKSPACE=$realWorkspace
           }
           $package=Join-Path $env:R277_ROOT 'output/SOKNA-R277-LOCAL-231FM-CUMULATIVE-FINANCE-SAFETY-QA-DO-NOT-INSTALL.zip'
+          # Cross-platform zlib versions can produce different ZIP compressed
+          # bytes despite an identical 604-file payload tree. Pin the exact tree
+          # AND canonical tree, plus validate outer and inner ZIP integrity.
+          $proof=Get-Content (Join-Path $env:R277_ROOT 'output/R277-QA-PROOF.json') -Raw|ConvertFrom-Json
+          if($proof.target_tree -cne '7f11ae1e6f5c88454d39b759cee076e2ce9e4f534f86a06b926e88b553fbdca5'){throw 'R277_NATIVE_TARGET_TREE_MISMATCH'}
+          if($proof.target_canonical_tree -cne 'f3f2aa6ab3d3ad22c50d70d34ffc8628283e737ecaa89f92a981e309e1926e78'){throw 'R277_NATIVE_CANONICAL_TREE_MISMATCH'}
           $hash=(Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
-          if($hash -cne '46381c48eb0266b861e27aa020bbef9a19da325d26b41304e10139b0fee747c5'){throw "R277_NATIVE_BUILT_ZIP_HASH_MISMATCH $hash"}
+          if($hash -cne $proof.sha256){throw 'R277_NATIVE_PROOF_ARCHIVE_SHA_INVALID'}
           python packaging/windows/release-gates/check_local_release_set.py $package
           if($LASTEXITCODE -ne 0){throw 'R277_NATIVE_RELEASE_SET_STRUCTURE_FAILED'}
           $env:R277_TARGET_DIR=Join-Path $env:R277_ROOT 'output'
@@ -147,7 +153,8 @@ jobs:
           # Step five: exact 231fl R275 installed runtime -> R277 via real Maintenance.
           $r277Zip=(Get-ChildItem $env:R277_TARGET_DIR -Filter 'SOKNA-R277-LOCAL-231FM-CUMULATIVE-FINANCE-SAFETY-QA-DO-NOT-INSTALL.zip'|Select-Object -First 1).FullName
           Need ([bool]$r277Zip) 'R277_TARGET_PACKAGE_MISSING'
-          Need ((Get-FileHash $r277Zip -Algorithm SHA256).Hash.ToLowerInvariant() -eq '46381c48eb0266b861e27aa020bbef9a19da325d26b41304e10139b0fee747c5') 'R277_TARGET_ZIP_SHA_BAD'
+          $r277Proof=Get-Content (Join-Path $env:R277_TARGET_DIR 'R277-QA-PROOF.json') -Raw|ConvertFrom-Json
+          Need ((Get-FileHash $r277Zip -Algorithm SHA256).Hash.ToLowerInvariant() -eq $r277Proof.sha256) 'R277_TARGET_ZIP_SHA_BAD'
           $r277Outer=Join-Path $lab 'r277-outer';Expand-Archive $r277Zip $r277Outer
           $r277Manifest=Get-Content (Join-Path $r277Outer 'release-set.json') -Raw|ConvertFrom-Json
           $r277Baseline=@($r277Manifest.supported_baselines|Where-Object {$_.local.version -ceq $finalVersion})
@@ -176,3 +183,12 @@ jobs:
           & $path
           if($LASTEXITCODE -ne 0){throw 'R275_NATIVE_INSTALLER_FAILED'}
           Write-Host 'R277_NATIVE_WINDOWS_231FL_TO_231FM_PASS_CI_ONLY_NO_HOST_DEPLOY'
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: R277-NATIVE-WINDOWS-PASS-EXACT-INSTALLER-CANDIDATE
+          path: |
+            ${{ runner.temp }}/r277-built/output/SOKNA-R277-LOCAL-231FM-CUMULATIVE-FINANCE-SAFETY-QA-DO-NOT-INSTALL.zip
+            ${{ runner.temp }}/r277-built/output/R277-QA-PROOF.json
+          if-no-files-found: error
+          retention-days: 14
