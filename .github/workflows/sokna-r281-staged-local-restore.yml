@@ -82,7 +82,7 @@ jobs:
             for n in web.namelist():
              p=source/n
              if p.is_file() and p.read_bytes()!=web.read(n):
-              assert n in {'VERSION.txt','resources/build-provenance.json','resources/release-identity-v1.json'},'R281_UNEXPECTED_SOURCE_DIFF '+n
+              assert n in {'VERSION.txt','resources/local-managed-files-v1.json','resources/build-provenance.json','resources/release-identity-v1.json'},'R281_UNEXPECTED_SOURCE_DIFF '+n
              p.parent.mkdir(parents=True,exist_ok=True)
              p.write_bytes(web.read(n))
           assert (source/'src/Domain/Recovery/SafeRestoreStagingService.php').is_file()
