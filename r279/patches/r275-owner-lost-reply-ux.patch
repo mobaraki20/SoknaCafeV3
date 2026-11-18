@@ -1,0 +1,23 @@
+--- a/public/assets/connections-workspace.js
++++ b/public/assets/connections-workspace.js
+@@ -171,13 +171,17 @@
+      await finishSimpleMove();
+    }catch(err){
+      const status=await post({action:'public_move_status'}).catch(()=>({}));
+-     if(status.move?.status==='sync_pending'){
++     if(status.move?.status==='sync_pending'||err.nextAction==='safe_resume'){
+        moveUi('sync_pending');
+-       feedback('public-move','تأیید اعتبار مقصد نامطمئن است. «ادامهٔ اتصال» ابتدا همان اعتبار را بررسی می‌کند؛ کد دیگری نسازید.',true);
++       feedback('public-move','وضعیت ثبت‌شده قابل ادامه است؛ کد تازه نسازید. از «ادامهٔ اتصال» استفاده کنید.',true);
++     }else if(status.move?.status==='support_required'||err.nextAction==='support_review'){
++       pending.handling=true;
++       moveUi('none');
++       feedback('public-move','نتیجهٔ تغییر اعتبار مقصد نامشخص است؛ درخواست دیگری نفرستید. گزارش وضعیت عملیات را بررسی کنید.',true);
+      }else{
+        pending.handling=false;
+        moveUi('awaiting_owner');
+-       feedback('public-move','انتقال هنوز شروع نشده است: '+String(err.message||'')+'؛ اطلاعات اتصال قبلی حفظ شد.',true);
++       feedback('public-move','تأیید مقصد کامل نشد. '+String(err.message||'')+'؛ وضعیت را پیش از تلاش دوباره بررسی کنید.',true);
+      }
+    }
+    return;
