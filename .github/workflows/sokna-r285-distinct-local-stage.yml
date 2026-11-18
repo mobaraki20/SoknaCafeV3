@@ -1,0 +1,45 @@
+name: SOKNA R285 Public Distinct Local Owner Approved Safe Reservation
+on:
+  push:
+    branches: [qa/sokna-r285-public-distinct-local-safe-reenrollment-20261119]
+    paths:
+      - 'r285/**'
+      - '.github/workflows/sokna-r285-distinct-local-stage.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-mariadb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      GITHUB_ACTIONS: 'true'
+      R285_DB_PASSWORD: qa-only
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP lint, MariaDB real 2-ID transfer reservation, owner receipt, encrypted source HMAC and guest queue fence
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-cli php-mysql
+          php -l r285/overlay/src/Security/PublicDistinctLocalStage.php
+          php -l r285/tests/qa_public_replacement_gate.php
+          php -l r285/tests/real_mariadb_distinct_local_stage.php
+          php r285/tests/real_mariadb_distinct_local_stage.php | tee "$RUNNER_TEMP/r285-stage.log"
+          grep -q R285_PUBLIC_DISTINCT_MACHINE_SOURCE_FENCED_OWNER_CONFIRMED_ "$RUNNER_TEMP/r285-stage.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R285-PUBLIC-DISTINCT-ID-MARIADB-QA
+          path: ${{ runner.temp }}/r285-stage.log
+          retention-days: 14
+          if-no-files-found: ignore
