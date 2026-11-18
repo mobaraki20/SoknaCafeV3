@@ -1,0 +1,28 @@
+name: SOKNA R278 Native Windows Maintenance R275 to R278
+on:
+  push:
+    branches: [qa/sokna-r278-rial-persistent-settings-20261118]
+    paths:
+      - '.github/workflows/sokna-r278-native-windows.yml'
+      - 'r278/tests/windows_native_r278.ps1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-windows-update:
+    runs-on: windows-latest
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Exact candidate SHA and real Windows PHP Apache MariaDB Maintenance Stage Activate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./r278/tests/windows_native_r278.ps1
+          if($LASTEXITCODE -ne 0){throw 'R278_REAL_NATIVE_WINDOWS_NONZERO'}
+          Write-Host 'R278_NATIVE_WINDOWS_R275_TO_R278_REAL_INSTALL_PASS'
