@@ -1,0 +1,34 @@
+name: SOKNA R286 Cafe Public Read-Only Current-State Gate
+on:
+  push:
+    branches:
+      - qa/sokna-r286-cafe-public-readonly-gate-20261119
+    paths:
+      - r286/readonly_http_probe.py
+      - .github/workflows/sokna-r286-cafe-public-readonly.yml
+  workflow_dispatch:
+    inputs:
+      public_base_url:
+        description: "Public HTTPS root or subfolder URL (read-only)"
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  get-only-cafe-public:
+    name: Public live version, health and owner URL - strictly GET only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      # Operational fixture only; no tenant URL enters product source.
+      SOKNA_FIELD_PUBLIC_URL: ${{ inputs.public_base_url || 'https://www.soknaspace.ir' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: GET-only probe - no authorization cookies or POST/PUT/PATCH
+        run: python3 r286/readonly_http_probe.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R286-CAFE-PUBLIC-READONLY-CURRENT-STATE
+          path: r286-readonly-field-probe.json
+          retention-days: 14
