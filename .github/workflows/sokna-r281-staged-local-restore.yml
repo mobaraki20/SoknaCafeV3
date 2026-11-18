@@ -60,6 +60,35 @@ jobs:
           print('R281_604_FILE_EXACT_R280_PRODUCER_SOURCE_CONFIRMED')
           PY
           echo "R280_LOCAL_SOURCE_ROOT=$R281_OUT" >> "$GITHUB_ENV"
+      - name: Produce immutable QA-only R281 cumulative from original 231fo ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R281_R280_EXACT_ZIP="$RUNNER_TEMP/r280-exact/SOKNA-R280-LOCAL-231FO-R278-TRANSFER-GUARDS-QA-DO-NOT-INSTALL.zip"
+          export R281_OUTPUT="$RUNNER_TEMP/r281/candidate"
+          test -f "$R281_R280_EXACT_ZIP"
+          python3 r281/build_r281.py
+          python3 packaging/windows/release-gates/check_local_release_set.py             "$R281_OUTPUT/SOKNA-R281-LOCAL-231FP-RESTORE-STAGING-QA-DO-NOT-INSTALL.zip"
+          python3 - <<'PY'
+          import pathlib,os,zipfile,io,json,hashlib
+          out=pathlib.Path(os.environ['R281_OUTPUT'])
+          source=pathlib.Path(os.environ['RUNNER_TEMP'])/'r281/web'
+          with zipfile.ZipFile(out/'SOKNA-R281-LOCAL-231FP-RESTORE-STAGING-QA-DO-NOT-INSTALL.zip') as z:
+           r=json.loads(z.read('release-set.json'))
+           assert r['for_install'] is False and r['production_pass'] is False
+           assert r['targets']['local']['managed_files']==605
+           with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as web:
+            assert len(web.namelist())==605
+            for n in web.namelist():
+             p=source/n
+             if p.is_file() and p.read_bytes()!=web.read(n):
+              assert n in {'VERSION.txt','resources/build-provenance.json','resources/release-identity-v1.json'},'R281_UNEXPECTED_SOURCE_DIFF '+n
+             p.parent.mkdir(parents=True,exist_ok=True)
+             p.write_bytes(web.read(n))
+          assert (source/'src/Domain/Recovery/SafeRestoreStagingService.php').is_file()
+          assert len(list(source.rglob('*.sql')))==82
+          print('R281_605_EXACT_FILES_AND_82_SQL_NO_UNRELATED_SOURCE_CHANGES_PASS')
+          PY
       - name: Install native PHP MariaDB driver and lint real implementation
         run: |
           sudo apt-get update -qq
@@ -72,6 +101,17 @@ jobs:
           set -euo pipefail
           php r281/tests/stage_82_local_restore.php | tee "$RUNNER_TEMP/r281-real-stage.log"
           grep -q 'R281_SAFE_SEPARATE_DATABASE_BUSINESS_RESTORE_END_TO_END_' "$RUNNER_TEMP/r281-real-stage.log"
+      - name: Original immutable R281 producer ZIP plus contract for central factory
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R281-EXACT-CUMULATIVE-QA-ORIGINAL
+          path: |
+            ${{ runner.temp }}/r281/candidate/SOKNA-R281-LOCAL-231FP-RESTORE-STAGING-QA-DO-NOT-INSTALL.zip
+            ${{ runner.temp }}/r281/candidate/R281-PREFACTORY-SOURCE-PROOF.json
+            ${{ runner.temp }}/r281/candidate/candidate-contract.json
+          retention-days: 14
+          if-no-files-found: error
+
       - name: Record non-production qualification
         run: |
           echo 'R281_SOURCE_ARCHIVE_RESTORED_IN_ISOLATED_DATABASE_ONLY'
@@ -83,3 +123,15 @@ jobs:
           path: ${{ runner.temp }}/r281-real-stage.log
           retention-days: 7
           if-no-files-found: ignore
+
+  factory-r281-exact:
+    needs: [real-staged-restore]
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: artifact:candidate-contract.json
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R281-EXACT-CUMULATIVE-QA-ORIGINAL
+    permissions:
+      contents: read
+      actions: read
