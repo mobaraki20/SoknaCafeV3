@@ -71,17 +71,27 @@ final class BusinessBackupService
 
     private function writeSnapshot(string $path,int $actorUserId): array
     {
-        $tables=$this->businessTables();
-        $versions=array_map('strval',$this->pdo->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN));
-        $manifest=[
-            'format'=>self::FORMAT,'schema_version'=>1,'created_at'=>gmdate('c'),
-            'source_installation_id'=>$this->sourceInstallationId!==''?$this->sourceInstallationId:'unknown-installation',
-            'schema_versions'=>$versions,'tables'=>$tables,
-            'excluded_tables'=>self::EXCLUDED_TABLES,'excluded_machine_identity'=>self::EXCLUDED_MACHINE_IDENTITY,
-        ];
-        $gz=@gzopen($path,'wb9');if($gz===false)throw new RecoveryException('backup_write_failed','فایل موقت پشتیبان قابل ایجاد نیست.',500);
-        $counts=[];$hashes=[];
+        // Under live cafe orders, SELECTing each table in autocommit mode can
+        // silently combine different points in time. Require one InnoDB MVCC
+        // snapshot across schema versions, every business table and footer.
+        if($this->pdo->inTransaction())
+            throw new RecoveryException('backup_transaction_active','پشتیبان‌گیری باید خارج از تراکنش فعال آغاز شود.',409);
+        $gz=null;$manifest=[];$counts=[];$hashes=[];
         try{
+            $this->pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+            $this->pdo->beginTransaction();
+            $tables=$this->businessTables();
+            $this->requireTransactionalBackupTables($tables);
+            $versions=array_map('strval',$this->pdo->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN));
+            $manifest=[
+                'format'=>self::FORMAT,'schema_version'=>1,'created_at'=>gmdate('c'),
+                'source_installation_id'=>$this->sourceInstallationId!==''?$this->sourceInstallationId:'unknown-installation',
+                'schema_versions'=>$versions,'tables'=>$tables,
+                'snapshot_consistency'=>'innodb_repeatable_read_v1',
+                'excluded_tables'=>self::EXCLUDED_TABLES,'excluded_machine_identity'=>self::EXCLUDED_MACHINE_IDENTITY,
+            ];
+            $gz=@gzopen($path,'wb9');
+            if($gz===false)throw new RecoveryException('backup_write_failed','فایل موقت پشتیبان قابل ایجاد نیست.',500);
             $this->gzLine($gz,['kind'=>'manifest','value'=>$manifest]);
             foreach($tables as $table){
                 $columns=$this->columns($table);$counts[$table]=0;$ctx=hash_init('sha256');
@@ -95,9 +105,18 @@ final class BusinessBackupService
                 $hashes[$table]=hash_final($ctx);
             }
             $this->gzLine($gz,['kind'=>'footer','table_counts'=>$counts,'table_hashes'=>$hashes]);
-        }finally{gzclose($gz);}
+            if(!gzclose($gz))throw new RecoveryException('backup_write_failed','بستن فایل پشتیبان کامل نشد.',500);
+            $gz=null;
+            $this->pdo->commit();
+        }catch(Throwable $e){
+            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            throw $e;
+        }finally{
+            if(is_resource($gz))@gzclose($gz);
+        }
         $this->observability->logEvent('info','recovery.backup_created',[
             'actor_user_id'=>$actorUserId,'table_count'=>count($tables),'row_count'=>array_sum($counts),
+            'snapshot_consistency'=>'innodb_repeatable_read_v1',
             'excluded_machine_identity'=>self::EXCLUDED_MACHINE_IDENTITY,
         ]);
         return $manifest;
@@ -177,6 +196,21 @@ final class BusinessBackupService
             'excluded_machine_identity'=>(array)($manifest['excluded_machine_identity']??[]),
             'machine_identity_reprovision_required'=>true,'public_authority_fence_confirmed'=>$publicFenceConfirmed,'public_authority_fence_error'=>$publicFenceError,
         ];
+    }
+
+    /** Never claim a cross-table consistent backup if a data table is non-MVCC. */
+    private function requireTransactionalBackupTables(array $tables): void
+    {
+        $rows=$this->pdo->query("SELECT TABLE_NAME,ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()")->fetchAll(PDO::FETCH_ASSOC);
+        $engines=[];
+        foreach($rows as $row)$engines[(string)$row['TABLE_NAME']]=strtolower((string)($row['ENGINE']??''));
+        foreach($tables as $table){
+            if(($engines[$table]??'')!=='innodb'){
+                throw new RecoveryException('backup_nontransactional_table',
+                    'پشتیبان‌گیری سازگار فقط برای جدول‌های تراکنشی امکان‌پذیر است؛ عملیات بدون خروجی متوقف شد.',
+                    409,['table'=>$table]);
+            }
+        }
     }
 
     private function businessTables(): array
