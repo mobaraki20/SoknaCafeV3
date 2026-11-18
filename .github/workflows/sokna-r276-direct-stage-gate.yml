@@ -1,0 +1,140 @@
+name: SOKNA R276 Direct 35ij to 35ik Stage HTTP Gate
+on:
+  push:
+    branches: [qa/sokna-r276-owner-setup-access-20261118]
+    paths:
+      - 'r276/tests/emergency_direct_35ij_to_35ik.py'
+      - 'r276/patches/**'
+      - 'r273/fixtures/**'
+      - '.github/workflows/sokna-r276-direct-stage-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  protected-emergency-r266-to-r275:
+    name: Actual protected HTTP 35ij-to-35ik Stage Activate Commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_public_r267_http_qa
+          MARIADB_ROOT_PASSWORD: test-only-root-pass
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ptest-only-root-pass"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_USER: root
+      SOKNA_QA_DB_PASSWORD: test-only-root-pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/input_artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-r249-dual-baseline-gated-public-candidate
+          run-id: 43749990301
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r249
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
+          run-id: 43835146004
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r262
+      - uses: actions/download-artifact@v4
+        with:
+          name: R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY
+          run-id: 44025587468
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r266_baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          run-id: 43837950540
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r263
+      - name: Copy SHA-pinned exact R266 and R273 ZIPs plus protected R263 bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/input"
+          python3 - <<'PY'
+          import pathlib,os,hashlib,shutil
+          t=pathlib.Path(os.environ['RUNNER_TEMP'])
+          targets=[(t/'r249','5c887968b6fcec1126e2b1b3123552a9ba0ba2c7672d29774c05ec58fa5cd0e4','SOKNA-R249-PUBLIC-35IC-CUMULATIVE-35HK-35HT-GATED.zip'),
+           (t/'r262','5aef4cd781fbd450d3e454f324e294da6f4180bfe1e5eb1871cb4818dc20c93a','SOKNA-R262-PUBLIC-35ID-CUMULATIVE-QA-NOT-FOR-INSTALL.zip'),
+           (t/'r266_baseline','692aa40939d788aea56efa4e3b62c46a568da0ce5c508cc87844aa63366b8892','SOKNA-R265-PUBLIC-35IF-EMERGENCY-BRIDGE-CODE-ONLY-QA.zip'),
+           (t/'r266_baseline','b6d4d2236ab3da126a4070d75802a9cac6719c139a188808d1712b8c1827bd35','SOKNA-R266-PUBLIC-35IG-SCHEMA-MOVE-CUMULATIVE-QA.zip'),
+           (t/'input_artifacts','63213185fcc037b620ea0dccf133d5c63672f01da7db7d3545eb54e617dd150f','SOKNA-R275-PUBLIC-35IJ-OWNER-DISCARD-CODE-ONLY-QA-DO-NOT-INSTALL.zip'),
+           (t/'r263','37242dabf6893bfc4bf26e8233485802c197ea8b742ae264b8aed9e0971f0d21','SOKNA-R263-PUBLIC-35ID-SELF-CONTAINED-CLEAN-UAT-NO-HOST-DEPLOY.zip')]
+          for root,sha,name in targets:
+           found=[p for p in root.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()==sha]
+           assert len(found)==1,(name,[str(x) for x in root.rglob('*.zip')])
+           shutil.copyfile(found[0],t/'input'/name)
+           print('R273_EMERGENCY_PINNED_ZIP',name)
+          PY
+      - name: Deterministically rebuild exact R276 Public ZIP from installed R275 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,os,zipfile,hashlib,json,subprocess,io,tempfile
+          t=pathlib.Path(os.environ['RUNNER_TEMP'])
+          old=t/'input/SOKNA-R275-PUBLIC-35IJ-OWNER-DISCARD-CODE-ONLY-QA-DO-NOT-INSTALL.zip'
+          assert hashlib.sha256(old.read_bytes()).hexdigest()=='63213185fcc037b620ea0dccf133d5c63672f01da7db7d3545eb54e617dd150f'
+          sha=lambda b:hashlib.sha256(b).hexdigest()
+          J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
+          with zipfile.ZipFile(old) as z:
+            manifest=json.loads(z.read('manifest.json'))
+            files={name[8:]:z.read(name) for name in z.namelist() if name.startswith('payload/') and not name.endswith('/')}
+          with tempfile.TemporaryDirectory() as d:
+            root=pathlib.Path(d)
+            for name,contents in files.items():
+              dest=root/name;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(contents)
+            patch=pathlib.Path(os.environ['GITHUB_WORKSPACE'])/'r276/patches/r275-public-owner-setup-access.patch'
+            subprocess.run(['patch','--batch','--forward','-p1','-i',str(patch)],cwd=root,check=True)
+            files={x.relative_to(root).as_posix():x.read_bytes() for x in root.rglob('*') if x.is_file()}
+          ver='3.0.0-g3.6-workspace.35ik-r276-owner-setup-access'
+          files['VERSION.txt']=(ver+'\n').encode()
+          owner=json.loads(files['src/Update/emergency-owner-v1.json']);owner['release_version']=ver
+          files['src/Update/emergency-owner-v1.json']=J(owner)
+          tree=sha(''.join(n+'\0'+sha(b)+'\n' for n,b in sorted(files.items())).encode())
+          assert len(files)==244 and tree=='254e74b23fe6f614909b23a3b937480723c030bfac07179cce3b2207bfc91b04'
+          manifest['version']=ver
+          manifest['target_managed_tree_sha256']=tree
+          manifest['compatibility']['supported_baselines']=[{'version':'3.0.0-g3.6-workspace.35ij-r275-operator-confirm-public-discard','managed_tree_sha256':'91d27d4ddb0fdd0640227b8efed461cde94c7efc3c578d52623056dcb859d57c'}]
+          manifest['provenance'].update(build='R276 from exact R275: owner setup UI independently reachable; no SQL or Local changes',offline_qualified=False,host_operator_note='QA ONLY NOT FOR CAFE INSTALL; requires Public 35ij host Stage + acceptance first',emergency_schema_migration_contract='code_only_source_exact_v1')
+          manifest['files']=[{'path':n,'sha256':sha(b),'size':len(b)} for n,b in sorted(files.items())]
+          buf=io.BytesIO()
+          with zipfile.ZipFile(buf,'w') as z:
+            for name,b in sorted({'manifest.json':J(manifest),**{'payload/'+n:b for n,b in files.items()}}.items()):
+              info=zipfile.ZipInfo(name,(2026,11,18,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED;info.external_attr=0o100644<<16
+              z.writestr(info,b,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+          data=buf.getvalue()
+          assert sha(data)=='effbe0b41011807341c794b616c4a70c3a999bde730384d6fbee76680f1e2c8d',sha(data)
+          dest=t/'input/SOKNA-R276-PUBLIC-35IK-OWNER-SETUP-QA-DO-NOT-INSTALL.zip';dest.write_bytes(data)
+          print('R276_EMERGENCY_BYTE_PINNED_ZIP_PASS',sha(data))
+          PY
+      - name: Real protected Emergency login, CSRF, file upload, Stage, Activate, Commit with 11 preserved migrations
+        shell: bash
+        env:
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r273
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/input
+        run: |
+          set -euo pipefail
+          python3 r276/tests/emergency_direct_35ij_to_35ik.py
+          echo 'R276_DIRECT_STAGE_ACTIVATE_COMMIT_HTTP_PASS'
