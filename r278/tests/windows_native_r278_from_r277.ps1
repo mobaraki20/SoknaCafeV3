@@ -73,7 +73,18 @@ $db=[Diagnostics.Process]::Start($psi);$dbOut=$db.StandardOutput.ReadToEndAsync(
 $apacheStarted=$false;$httpd=$null
 try {
  $ready=$false
- for($i=0;$i-lt90;$i++){& (Join-Path $mdb 'bin/mariadb-admin.exe') --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root ping 2>$null|Out-Null;if($LASTEXITCODE-eq0){$ready=$true;break};Start-Sleep -Milliseconds 300}
+ for($i=0;$i-lt20;$i++){
+  if($db.HasExited){Write-Host 'R278_DB_EARLY_EXIT';break}
+  & (Join-Path $mdb 'bin/mariadb-admin.exe') --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --connect-timeout=1 --user=root ping 2>$null|Out-Null
+  if($LASTEXITCODE-eq0){$ready=$true;break}
+  Start-Sleep -Milliseconds 500
+ }
+ if(-not $ready){
+  Write-Host ('R278_MARIADB_DIAGNOSTIC_HAS_EXITED '+$db.HasExited)
+  if(-not $db.HasExited){$db.Kill($true);$db.WaitForExit()}
+  try{Write-Host ('R278_MARIADB_STDERR '+$dbErr.Result)}catch{}
+  try{Write-Host ('R278_MARIADB_STDOUT '+$dbOut.Result)}catch{}
+ }
  Need $ready 'MARIADB_NOT_STARTED'
  $apacheSource=$null
  foreach($a in @('C:\tools\Apache24','C:\tools\apache','C:\ProgramData\chocolatey\lib\apache-httpd')){
