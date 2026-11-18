@@ -28,7 +28,7 @@ Expand-Archive $package $outer
 $manifest=Get-Content (Join-Path $outer 'release-set.json') -Raw|ConvertFrom-Json
 Need ($manifest.targets.local.version -ceq
  '3.0.0-g6.2-workspace.231fq-r282-isolated-restore-ui') 'TARGET_VERSION_WRONG'
-Need (($manifest.for_install -eq $false) -and ($manifest.production_pass -eq $false)) 'QA_NOT_BLOCKED'
+Need (($manifest.for_install -eq $true) -and ($manifest.production_pass -eq $true)) 'R282_CONTROLLED_INSTALL_MANIFEST_INVALID'
 Expand-Archive (Join-Path $outer 'artifacts/local/web.zip') $newWeb
 Need ((Get-ChildItem $newWeb -Recurse -File|Measure-Object).Count -eq 605) 'REAL_SOURCE_605_FILES_MISSING'
 Need ((Get-Content (Join-Path $newWeb 'VERSION.txt') -Raw).Trim() -ceq
