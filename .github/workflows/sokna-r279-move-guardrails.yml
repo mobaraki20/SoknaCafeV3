@@ -55,3 +55,57 @@ jobs:
           php -l r279/tests/business_backup_mariadb_selftest.php
       - name: Real encrypted backup/restore, pending fencing and engine negative tests
         run: php r279/tests/business_backup_mariadb_selftest.php
+  exact-r275-source:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original SHA-pinned R275 candidate, not the base app tree
+        uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r275-input
+      - name: Extract and verify immutable Local 231fl source
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R279_OUT="$RUNNER_TEMP/r279-real-source"
+          export R279_INPUT="$RUNNER_TEMP/r275-input"
+          python3 - <<'PY'
+          import os,pathlib,hashlib,zipfile,io,json
+          out=pathlib.Path(os.environ['R279_OUT'])/'local'
+          out.mkdir(parents=True,exist_ok=True)
+          paths=list(pathlib.Path(os.environ['R279_INPUT']).rglob('*.zip'))
+          loc=next((p for p in paths if hashlib.sha256(p.read_bytes()).hexdigest()=='f42d66e26dfee936f29c159bb7028adefcfedda43ddf2dc63e2c25d6a7d6dba9'),None)
+          assert loc is not None,'EXACT_R275_LOCAL_ZIP_NOT_FOUND'
+          with zipfile.ZipFile(loc) as z:
+           release=json.loads(z.read('release-set.json'))
+           assert release['targets']['local']['version']=='3.0.0-g6.2-workspace.231fl-r275-owner-discard-public-work'
+           with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as inner:
+            names=[n for n in inner.namelist() if not n.endswith('/')]
+            assert len(names)==604,len(names)
+            for n in names:
+             assert not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts
+             p=out/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(inner.read(n))
+          print('R279_EXACT_R275_LOCAL_PREIMAGE_PASS',len(names))
+          PY
+      - name: Apply four-file code change without fuzzy context or SQL change
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R279_LOCAL_SOURCE_ROOT="$RUNNER_TEMP/r279-real-source/local"
+          (cd "$R279_LOCAL_SOURCE_ROOT" && patch --batch --forward --fuzz=0 -p1 -i "$GITHUB_WORKSPACE/r279/patches/r275-local-transfer-guardrails.patch")
+          for f in src/Domain/PublicEdge/PublicMoveUiInspectionService.php src/Domain/Recovery/BusinessBackupService.php public/integrations/api.php; do
+            php -l "$R279_LOCAL_SOURCE_ROOT/$f"
+          done
+          node --check "$R279_LOCAL_SOURCE_ROOT/public/assets/connections-workspace.js"
+          test "$(find "$R279_LOCAL_SOURCE_ROOT/database/migrations" -type f | wc -l)" -eq 82
+          R279_LOCAL_SOURCE_ROOT="$R279_LOCAL_SOURCE_ROOT" php r279/tests/public_move_inspection_selftest.php
+          grep -q 'target_paired_to_other_local' "$R279_LOCAL_SOURCE_ROOT/src/Domain/PublicEdge/PublicMoveUiInspectionService.php"
+          grep -q 'public_move_resume_required' "$R279_LOCAL_SOURCE_ROOT/public/integrations/api.php"
+          grep -q 'snapshot_consistency' "$R279_LOCAL_SOURCE_ROOT/src/Domain/Recovery/BusinessBackupService.php"
+          echo 'R279_ACTUAL_CUMULATIVE_231FL_FOUR_FILE_SOURCE_QA_PASS'
