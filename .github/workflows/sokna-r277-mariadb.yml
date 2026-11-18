@@ -1,0 +1,53 @@
+name: SOKNA R277 Local Finance MariaDB Acceptance
+on:
+  push:
+    branches: [qa/sokna-r277-local-p0-finance-cancel-20261118]
+    paths:
+      - '.github/workflows/sokna-r277-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actual-service:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_qa_fin_cancel
+          MARIADB_ROOT_PASSWORD: only-local-test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ponly-local-test"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_NAME: sokna_qa_fin_cancel
+      SOKNA_QA_DB_USER: root
+      SOKNA_QA_DB_PASSWORD: only-local-test
+      R277_ROOT: /tmp/r277
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r269-itemized-settlement-cancel-print-20261117
+          path: r269-qa
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql
+          coverage: none
+      - name: Test exact R277 changed sources on isolated MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/r277/work/public/assets/staff-app
+          cp r277/source/public/assets/staff-app/hall-workspace.js /tmp/r277/work/public/assets/staff-app/hall-workspace.js
+          cp r277/source/src/Domain/Orders/OrderStaffActionService.php r269-qa/r269/source/src/Domain/Orders/OrderStaffActionService.php
+          php -l r269-qa/r269/source/src/Domain/Orders/OrderStaffActionService.php
+          node --check /tmp/r277/work/public/assets/staff-app/hall-workspace.js
+          node r277/tests/tests_discount_preview.cjs
+          php r269-qa/r269/tests/financial_cancel_guard_mariadb.php
+          php r269-qa/r269/tests/financial_cancel_end_to_end_mariadb.php
+          echo R277_FINANCE_ORDERS_CANCEL_TRUE_MARIADB_PASS
