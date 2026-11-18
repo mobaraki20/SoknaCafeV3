@@ -92,8 +92,32 @@ jobs:
           path: ${{ runner.temp }}/r284-old-fence.log
           retention-days: 14
           if-no-files-found: ignore
-  factory-r284:
+  native-windows-source-fence:
     needs: [exact-source-and-real-mariadb]
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SOKNA_R284_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R284-609-FILE-ORIGINAL-QA-SOURCE
+          path: ${{ runner.temp }}/r284-original
+      - name: Actual Windows PHP MariaDB full 82-schema old-machine source fence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:R284_PKG=Join-Path $env:RUNNER_TEMP 'r284-original/SOKNA-R284-LOCAL-231FS-OFFLINE-CUTOVER-GUARDS-QA-DO-NOT-INSTALL.zip'
+          & ./r284/tests/windows_native_source_fence.ps1
+          if($LASTEXITCODE -ne 0){throw 'R284_REAL_WINDOWS_SOURCE_FENCE_FAILED'}
+          Write-Host 'R284_NATIVE_WINDOWS_SOURCE_OFFLINE_PRINT_DRAIN_HMAC_TEST_PASS'
+
+  factory-r284:
+    needs: [exact-source-and-real-mariadb,native-windows-source-fence]
     uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
     with:
       track: registered-candidate
