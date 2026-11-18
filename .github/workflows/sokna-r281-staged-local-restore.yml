@@ -1,0 +1,85 @@
+name: SOKNA R281 real 82-schema isolated staged Local restore
+on:
+  push:
+    branches: [qa/sokna-r281-local-safe-restore-staging-20261118]
+    paths:
+      - 'r281/**'
+      - '.github/workflows/sokna-r281-staged-local-restore.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-staged-restore:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      R280_DB_PASSWORD: qa-only
+      GITHUB_ACTIONS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R280-EXACT-ORIGINAL-PRODUCER-QA-NO-INSTALL
+          run-id: 44322686850
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r280-exact
+      - name: Require exact original factory-producer Local R280 byte hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          export R281_OUT="$RUNNER_TEMP/r281/web"
+          export R281_INPUT="$RUNNER_TEMP/r280-exact"
+          python3 - <<'PY'
+          import os,pathlib,zipfile,io,hashlib,json
+          input=pathlib.Path(os.environ['R281_INPUT'])
+          packages=list(input.rglob('*.zip'))
+          candidates=[p for p in packages if hashlib.sha256(p.read_bytes()).hexdigest()=='12bf30d977dfa82ef047381d71153f8f5149653edc706833779f6bb7daa7a277']
+          assert len(candidates)==1,'R281_ORIGINAL_R280_CUMULATIVE_PACKAGE_MISSING_OR_WRONG_HASH'
+          output=pathlib.Path(os.environ['R281_OUT'])
+          with zipfile.ZipFile(candidates[0]) as z:
+           r=json.loads(z.read('release-set.json'))
+           assert r['targets']['local']['version']=='3.0.0-g6.2-workspace.231fo-r280-transfer-migration-guards'
+           assert r['for_install'] is False and r['production_pass'] is False
+           with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as web:
+            names=web.namelist()
+            assert len(names)==604
+            assert sum(n.startswith('database/migrations/') for n in names)==82
+            for n in names:
+             assert not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts
+             dest=output/n;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(web.read(n))
+          print('R281_604_FILE_EXACT_R280_PRODUCER_SOURCE_CONFIRMED')
+          PY
+          echo "R280_LOCAL_SOURCE_ROOT=$R281_OUT" >> "$GITHUB_ENV"
+      - name: Install native PHP MariaDB driver and lint real implementation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-mysql php-cli
+          php -l r281/overlay/local/src/Domain/Recovery/SafeRestoreStagingService.php
+          php -l r281/tests/stage_82_local_restore.php
+          php -l "$R280_LOCAL_SOURCE_ROOT/src/Domain/Recovery/BusinessBackupService.php"
+      - name: End-to-end stage to separate DB with actual 82 migrations and real encrypted source
+        run: |
+          set -euo pipefail
+          php r281/tests/stage_82_local_restore.php | tee "$RUNNER_TEMP/r281-real-stage.log"
+          grep -q 'R281_SAFE_SEPARATE_DATABASE_BUSINESS_RESTORE_END_TO_END_' "$RUNNER_TEMP/r281-real-stage.log"
+      - name: Record non-production qualification
+        run: |
+          echo 'R281_SOURCE_ARCHIVE_RESTORED_IN_ISOLATED_DATABASE_ONLY'
+          echo 'R281_LIVE_ACTIVATION_DISABLED_MACHINE_FENCE_AND_PRINT_FIELD_PENDING'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R281-MARIADB-82-SCHEMA-STAGED-RESTORE-QA-LOGS
+          path: ${{ runner.temp }}/r281-real-stage.log
+          retention-days: 7
+          if-no-files-found: ignore
