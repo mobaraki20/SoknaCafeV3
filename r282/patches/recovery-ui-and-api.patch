@@ -1,0 +1,68 @@
+--- a/public/system/index.php
++++ b/public/system/index.php
+@@ -107,12 +107,25 @@
+     </div></section>
+ 
+     <section class="sc-card sc-system-operation-card"><div class="sc-card__body sc-stack">
+-      <div class="sc-section-head"><div><h2>بازیابی از فایل پشتیبان</h2><p>برای جلوگیری از بازنویسی اطلاعات، بازیابی فقط روی نصب خالی انجام می‌شود.</p></div></div>
++      <div class="sc-section-head"><div><h2>بازیابی از فایل پشتیبان</h2><p>برای رایانه جدید، ابتدا فایل را بررسی کن و سپس اطلاعات را در دیتابیس جداگانه آماده کن؛ فعال‌سازی مرحله مستقلی است.</p></div></div>
+       <form data-recovery-upload class="sc-stack" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>"><div class="sc-field"><label class="sc-field__label" for="sc-recovery-backup-file">فایل پشتیبان</label><div class="sc-file-picker" data-file-picker><input class="sc-file-picker__input" id="sc-recovery-backup-file" type="file" name="backup" required><button class="sc-button sc-button--secondary" type="button" data-file-trigger aria-controls="sc-recovery-backup-file">انتخاب فایل</button><span class="sc-file-picker__name" data-file-name aria-live="polite">فایلی انتخاب نشده است</span></div></div><div class="sc-actions"><button class="sc-button sc-button--secondary" type="submit">بارگذاری فایل پشتیبان</button></div></form>
+       <input type="hidden" data-restore-id>
+       <label class="sc-field"><span class="sc-field__label">رمز فایل پشتیبان</span><input class="sc-control" type="password" data-restore-pass autocomplete="off"></label>
+-      <div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-backup-inspect>بررسی فایل</button><button class="sc-button sc-button--danger" type="button" data-backup-restore>بازیابی اطلاعات</button></div>
++      <div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-backup-inspect>بررسی فایل</button></div>
+       <div class="sc-alert sc-alert--info sc-hidden" data-backup-manifest></div>
++      <details class="sc-disclosure"><summary>آماده‌سازی انتقال به رایانه جدید (بدون فعال‌سازی)</summary>
++        <div class="sc-stack sc-details-body">
++          <p class="sc-muted">فقط روی رایانه جدیدی استفاده کن که نصب اولیه انجام شده و هنوز هیچ سفارش یا اتصال چاپی ندارد. اطلاعات پشتیبان در یک دیتابیس <strong>کاملاً جدا</strong> قرار می‌گیرد. سامانه، وب عمومی و چاپگر خودکار فعال نمی‌شوند؛ تکمیل انتقال به بررسی جداگانه نیاز دارد.</p>
++          <label class="sc-check"><input type="checkbox" data-restore-stage-ack> تأیید می‌کنم این دستگاه جدید است و هنوز برای ثبت سفارش یا چاپ استفاده نشده است.</label>
++          <div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-backup-stage>آماده‌سازی امن اطلاعات در دیتابیس جداگانه</button></div>
++          <div class="sc-alert sc-alert--warning sc-hidden" data-backup-stage-result aria-live="polite"></div>
++        </div>
++      </details>
++      <details class="sc-disclosure"><summary>بازیابی مستقیم در دیتابیس خالی (فنی)</summary>
++        <div class="sc-stack sc-details-body"><p class="sc-muted">این مسیر فقط برای دیتابیس واقعاً خالی در بازیابی فنی است و روی نصب عادی که داده اولیه دارد رد می‌شود. در انتقال رایانه از گزینه امن بالا استفاده کن.</p>
++          <button class="sc-button sc-button--danger" type="button" data-backup-restore>بازیابی مستقیم (فقط مقصد خالی)</button>
++        </div>
++      </details>
+     </div></section>
+   </div>
+ </section>
+--- a/public/system/api.php
++++ b/public/system/api.php
+@@ -293,6 +293,35 @@
+     }
+     if($action==='backup_create')WebAction::json(['success'=>true,'backup'=>$core->recoveryWorkspace()->create((string)($data['passphrase']??''),$actorId)]);
+     if($action==='backup_inspect')WebAction::json(['success'=>true,'manifest'=>$core->recoveryWorkspace()->inspect((string)($data['id']??''),(string)($data['passphrase']??''))]);
++    if($action==='backup_stage_for_new_machine'){
++        if((string)($user['role']??'')!=='admin')WebAction::json(['success'=>false,'code'=>'forbidden','message'=>'فقط مدیر می‌تواند بازیابی را آماده کند.'],403);
++        if(($data['new_machine_ack']??false)!==true)
++            throw new RecoveryException('restore_new_machine_ack_required','ابتدا تأیید کن که این دستگاه برای انتقال جدید است.',409);
++        // Never permit staging from a cafe actively carrying transactions or
++        // a paired/working printer. Stage is an onboarding path, not an export.
++        $db=$core->database();
++        foreach(['orders','settlement_records','print_jobs','print_agents'] as $name){
++            if((int)$db->query('SELECT COUNT(*) FROM `'.$name.'`')->fetchColumn()>0)
++                throw new RecoveryException('restore_new_machine_not_pristine',
++                    'در این دستگاه فعالیت یا اتصال چاپ وجود دارد؛ عملیات بازیابی مسدود شد.',409,
++                    ['table'=>$name]);
++        }
++        $config=$core->config();$values=$config->all();
++        $connect=static function(string $name)use($values):\PDO{
++            $local=$values;$local['db']['name']=$name;
++            return \Sokna\Local\Core\Database::connect(\Sokna\Local\Core\Config::fromArray($local));
++        };
++        $stage=new \Sokna\Local\Domain\Recovery\SafeRestoreStagingService(
++            $db,$connect,$core->observability());
++        $result=$stage->stage($config->requiredString('db.name'),
++            'sokna_restore_'.bin2hex(random_bytes(12)),
++            $core->recoveryWorkspace()->path((string)($data['id']??'')),
++            (string)($data['passphrase']??''),
++            $config->requiredString('installation.id'));
++        // Do NOT change config.php, install.lock, active database, binding,
++        // Public authority or PrintAgent pairing. There is no Activate API.
++        WebAction::json(['success'=>true,'staging'=>$result]);
++    }
+     if($action==='backup_restore')WebAction::json(['success'=>true,'restore'=>$core->recoveryWorkspace()->restore((string)($data['id']??''),(string)($data['passphrase']??''),$actorId)]);
+     WebAction::json(['success'=>false,'code'=>'invalid_action','message'=>'عملیات معتبر نیست.'],422);
+ }catch(LocalUpdateException|RecoveryException|PublicEdgeSyncException $e){WebAction::knownFailure($e);}catch(Throwable $e){WebAction::unexpected($core,$e,'system.web_action_failed','عملیات پشتیبانی و نگهداری کامل نشد.');}
