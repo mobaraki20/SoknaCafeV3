@@ -1,0 +1,30 @@
+name: SOKNA R277 Windows Artifact Access Gate
+on:
+  push:
+    branches: [qa/sokna-r276-owner-setup-access-20261118]
+    paths:
+      - '.github/workflows/sokna-r277-windows-artifact-access.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  access:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r275
+      - name: Verify exact R275 local baseline
+        shell: pwsh
+        run: |
+          $file=Get-ChildItem "${{ runner.temp }}/r275" -Recurse -Filter 'SOKNA-R275-LOCAL-231FL-OWNER-DISCARD-QA-DO-NOT-INSTALL.zip' | Select-Object -First 1
+          if(!$file){throw 'PINNED_ARCHIVE_NOT_FOUND'}
+          $actual=(Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actual -cne 'f42d66e26dfee936f29c159bb7028adefcfedda43ddf2dc63e2c25d6a7d6ba9'){throw "SHA_MISMATCH $actual"}
+          Write-Host R277_WINDOWS_EXACT_R275_ARTIFACT_AVAILABLE
