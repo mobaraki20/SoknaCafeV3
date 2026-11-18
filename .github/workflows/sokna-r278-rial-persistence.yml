@@ -1,0 +1,43 @@
+name: SOKNA R278 Persistent Rial Policy Real MariaDB QA
+on:
+  push:
+    branches: [qa/sokna-r278-rial-persistent-settings-20261118]
+    paths:
+      - 'r278/**'
+      - '.github/workflows/sokna-r278-rial-persistence.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  persistent-rial-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_qa_rial_persist
+          MARIADB_ROOT_PASSWORD: only-local-test
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ponly-local-test"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      SOKNA_QA_DB_NAME: sokna_qa_rial_persist
+      SOKNA_QA_DB_PASSWORD: only-local-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql
+          coverage: none
+      - name: Test exact finance-policy service and browser policy source
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l r278/source/src/Domain/Admin/AdminControlService.php
+          php -l r278/tests/persistent_rial_mariadb.php
+          node --check r278/source/public/assets/admin-workspace.js
+          php r278/tests/persistent_rial_mariadb.php
+          echo R278_RIAL_SAVED_IN_DB_NOT_BROWSER_CROSS_BROWSER_SAFE
