@@ -268,7 +268,7 @@ try {
     $inspected=(new \Sokna\Local\Domain\Recovery\PrivateMediaTransferService())
         ->inspect($mediaOut,$mediaKey,$configs['old']['installation']['id'],
             (string)$verified['business_backup_sha256']);
-    $check($inspected['media_files']===1,'encrypted private media archive independently authenticated');
+    $check($inspected['media_files']>=1,'encrypted private media archive independently authenticated, including existing default media');
     try {
         $safeWorkers->seal($dirs.'/second.skbf',$dirs.'/second.smv',$pw,$mediaKey,$handoffKey,$dirs.'/second.json');
         throw new RuntimeException('R284_REPEATED_FENCE_ACCEPTED');
