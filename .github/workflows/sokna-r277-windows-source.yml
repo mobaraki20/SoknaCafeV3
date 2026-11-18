@@ -28,7 +28,9 @@ jobs:
             'r277/source/public/assets/product-ui.css'='2edaead04f2de29daf2c20406c698cf29fd1c3880fe207f362b29bab6648d467'
           }
           foreach($k in $pins.Keys){
-            $hash=(Get-FileHash $k -Algorithm SHA256).Hash.ToLowerInvariant()
+            # Git on Windows may checkout text with CRLF. Compare canonical original LF bytes.
+            $raw=[System.IO.File]::ReadAllText((Resolve-Path $k),[System.Text.Encoding]::UTF8).Replace("`r`n","`n")
+            $hash=[Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($raw))).ToLowerInvariant()
             if($hash -cne $pins[$k]){throw "R277_CHANGED_SOURCE_PIN_FAIL: $k"}
           }
           php -l r277/source/src/Domain/Orders/OrderStaffActionService.php
