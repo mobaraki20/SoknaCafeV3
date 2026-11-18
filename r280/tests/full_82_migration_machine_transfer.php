@@ -45,6 +45,16 @@ try {
                       'shared_secret'=>str_repeat($key==='old'?'a':'b',64)],
         ];
     }
+    // Real Local migration 0060 requires a writable private media vault and
+    // the original installer-style config outside Web. Keep both CI-only.
+    foreach($configs as $config){
+        $media=$config['app']['data_dir'].'/guest-media';
+        if(!is_dir($media))mkdir($media,0700,true);
+    }
+    $hostConfig=dirname($root).'/config.php';
+    if(is_file($hostConfig)||is_link($hostConfig))
+        throw new RuntimeException('R280_REFUSE_REAL_HOST_CONFIG_OVERWRITE');
+    file_put_contents($hostConfig,"<?php\nreturn ".var_export($configs['old'],true).";\n");
     $cores=[];
     foreach($configs as $key=>$config){
         $core=sokna_local_bootstrap($config);
