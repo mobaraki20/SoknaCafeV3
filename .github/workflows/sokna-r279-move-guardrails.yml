@@ -30,3 +30,28 @@ jobs:
         run: |
           test -f r276/CAFE-FINAL-QUALIFICATION-20261118.md
           ! grep -R -E 'operator_install_allowed[" ]*[:=][" ]*true' r279
+  backup:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      R279_DB_PASSWORD: qa-only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP PDO MySQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq php-mysql php-cli
+      - name: PHP real recovery lint
+        run: |
+          php -l apps/local-web/src/Domain/Recovery/BusinessBackupService.php
+          php -l r279/tests/business_backup_mariadb_selftest.php
+      - name: Real encrypted backup/restore, pending fencing and engine negative tests
+        run: php r279/tests/business_backup_mariadb_selftest.php
