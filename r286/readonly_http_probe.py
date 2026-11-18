@@ -44,8 +44,11 @@ try:
 except Exception:
     raw={}
 out["public_health"]={k:raw.get(k) for k in ("ok","component","database","version","applied_migrations","pending_migrations")}
-update=raw.get("update") or {}
+update=raw.get("routine_update") or raw.get("update") or {}
 out["public_health"]["active_update_version"]=update.get("active_version")
+out["public_health"]["staged_update_version"]=update.get("staged_version")
+out["public_health"]["pending_update_verification"]=update.get("pending_verification")
+out["public_health"]["pending_update_version"]=update.get("pending_version")
 version=str(raw.get("version") or "")
 owner_status=out["requests"]["owner_setup"]["status"]
 if h["status"] == 200 and "35ij" in version and owner_status == 404:
