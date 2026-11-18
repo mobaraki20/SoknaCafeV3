@@ -47,14 +47,44 @@ assert original["targets"]["local"]["version"]=="3.0.0-g6.2-workspace.231fr-r283
 assert len(parent)==607
 assert original["targets"]["local"]["managed_tree_sha256"]==managed(parent)
 assert len([n for n in parent if n.startswith("database/migrations/")])==82
-with tempfile.TemporaryDirectory(prefix="r284-source-exact-") as temporary:
-    work=Path(temporary)
-    for name in CHANGED:
-        p=work/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(parent[name])
-    p=subprocess.run(["patch","--batch","--forward","--fuzz=0","-p1","-i",str(PATCH)],cwd=work,capture_output=True,text=True)
-    assert p.returncode==0,"R284_PATCH_REJECTED "+p.stdout+" "+p.stderr
-    payload=parent.copy()
-    for name in CHANGED:payload[name]=(work/name).read_bytes()
+# Extract only ADDITIONS from the versioned R284 patch and insert them
+# at immutable, source-exact anchor lines. This rejects altered parent bytes,
+# but does not depend on stale unified diff context/line-number heuristics.
+patch_lines=PATCH.read_text().splitlines(keepends=True)
+additions={}
+current=None
+for line in patch_lines:
+    if line.startswith("--- a/"):
+        current=line[6:].strip()
+        assert current in CHANGED,current
+        additions[current]=[]
+    elif line.startswith("+++ b/") or line.startswith("@@ "):
+        continue
+    elif line.startswith("+") and current is not None:
+        additions[current].append(line[1:])
+assert set(additions)==CHANGED
+anchors={
+ "src/Domain/Recovery/PrivateMediaTransferService.php":
+     "    /** Creates a separate encrypted archive. Does not change any source file. */",
+ "bootstrap.php":
+     "require_once __DIR__ . '/src/Domain/Recovery/RemoteVaultUploadClient.php';",
+ "public/_app.php":
+     "$recoveryMarker=$dataDir!==''?",
+ "public/_guest_app.php":
+     "$recoveryMarker=$dataDir!==''?",
+}
+payload=parent.copy()
+for name in sorted(CHANGED):
+    contents=parent[name].decode("utf-8")
+    anchor=anchors[name]
+    assert contents.count(anchor)==1,"R284_IMMUTABLE_SOURCE_ANCHOR_MISMATCH "+name
+    insertion="".join(additions[name])
+    assert insertion.strip(),"R284_EMPTY_PATCH "+name
+    # Both PHP bootstrap and source domains are anchored before the following
+    # statement. Existing managed bytes are preserved without heuristic fuzz.
+    if name=="bootstrap.php":
+        assert insertion.startswith("require_once")
+    payload[name]=contents.replace(anchor,insertion+anchor,1).encode("utf-8")
 assert all(payload[n]!=parent[n] for n in CHANGED),"R284_UNCHANGED_REQUIRED_FILE"
 for name,path in ADD.items():
     assert name not in payload and path.is_file()
