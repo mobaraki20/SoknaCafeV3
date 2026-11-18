@@ -88,7 +88,7 @@ try {
  foreach($service in @('SoknaApache','SoknaPrintAgent','SoknaMaintenance')){
    Need (-not [bool](Get-Service $service -ErrorAction SilentlyContinue)) ('UNEXPECTED_SERVICE_CLONED_'+$service)
  }
- Write-Host 'R280_WINDOWS_ACTUAL_82_SCHEMA_TWO_LOCAL_DATABASES_BACKUP_RESTORE_NO_MACHINE_ID_CLONE_PASS'
+ Write-Host 'R280_WINDOWS_82_SCHEMA_SEEDED_TARGET_RESTORE_SAFE_BLOCK_AND_AGENT_PAIRING_PASS'
  Write-Host 'R280_WINDOWS_PRINTAGENT_MAINTENANCE_REPROVISION_NOT_TESTED_OPERATOR_BLOCKED'
 } finally {
  if($null -ne $db -and -not $db.HasExited){$db.Kill($true);$db.WaitForExit()}
