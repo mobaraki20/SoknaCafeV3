@@ -47,14 +47,40 @@ jobs:
       R279_DB_PASSWORD: qa-only
     steps:
       - uses: actions/checkout@v4
+      - name: Download authentic preexisting R275 Local ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r275-input
+      - name: Extract exact R275 business recovery source (do not overwrite)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,zipfile,io,hashlib,os
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          files=list((root/'r275-input').rglob('*.zip'))
+          source=next((p for p in files if hashlib.sha256(p.read_bytes()).hexdigest()=='f42d66e26dfee936f29c159bb7028adefcfedda43ddf2dc63e2c25d6a7d6dba9'),None)
+          assert source is not None,'R275_RECOVERY_EXACT_PACKAGE_MISSING'
+          dest=root/'r279-r275-local'
+          with zipfile.ZipFile(source) as z:
+           with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as web:
+            assert len([p for p in web.namelist() if not p.endswith('/')])==604
+            for name in web.namelist():
+             if name.endswith('/'):continue
+             path=dest/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(web.read(name))
+          print('R279_RECOVERY_ACTUAL_R275_EXACT_BYTES_READY')
+          PY
       - name: Install PHP PDO MySQL
         run: sudo apt-get update -qq && sudo apt-get install -y -qq php-mysql php-cli
-      - name: PHP real recovery lint
+      - name: PHP real recovery lint on the shipped candidate
         run: |
-          php -l apps/local-web/src/Domain/Recovery/BusinessBackupService.php
+          php -l "$RUNNER_TEMP/r279-r275-local/src/Domain/Recovery/BusinessBackupService.php"
           php -l r279/tests/business_backup_mariadb_selftest.php
-      - name: Real encrypted backup/restore, pending fencing and engine negative tests
-        run: php r279/tests/business_backup_mariadb_selftest.php
+      - name: Real encrypted backup/restore, authority fencing, and engine negative tests
+        run: R279_LOCAL_SOURCE_ROOT="$RUNNER_TEMP/r279-r275-local" php r279/tests/business_backup_mariadb_selftest.php
   exact-r275-source:
     runs-on: ubuntu-24.04
     permissions:
