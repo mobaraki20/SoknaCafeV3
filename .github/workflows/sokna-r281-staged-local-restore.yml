@@ -124,8 +124,32 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  factory-r281-exact:
+  native-windows-staged:
     needs: [real-staged-restore]
+    runs-on: windows-latest
+    timeout-minutes: 80
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SOKNA_R281_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R281-EXACT-CUMULATIVE-QA-ORIGINAL
+          path: ${{ runner.temp }}/r281-original
+      - name: Native Windows PHP MariaDB real staged restore, 82 SQL, separate printer tokens
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:R281_PKG=Join-Path $env:RUNNER_TEMP 'r281-original/SOKNA-R281-LOCAL-231FP-RESTORE-STAGING-QA-DO-NOT-INSTALL.zip'
+          & ./r281/tests/windows_staged_restore.ps1
+          if($LASTEXITCODE -ne 0){throw 'R281_WINDOWS_STAGED_RESTORE_FAILED'}
+          Write-Host 'R281_NATIVE_WINDOWS_BUSINESS_RESTORE_IN_ISOLATED_DB_PASS_STAGE_ONLY_NO_CUTOVER'
+
+  factory-r281-exact:
+    needs: [real-staged-restore, native-windows-staged]
     uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
     with:
       track: registered-candidate
