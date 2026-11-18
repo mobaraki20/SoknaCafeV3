@@ -19,7 +19,7 @@ $proofFile=Join-Path (Split-Path -Parent $package) 'R282-PREFACTORY-PROOF.json'
 Need (Test-Path $proofFile) 'ORIGINAL_PRODUCER_PROOF_MISSING'
 $proof=Get-Content $proofFile -Raw|ConvertFrom-Json
 Need ($proof.parent_sha256 -ceq '0326dfad22e00a95a8ce5b6907de904ddc3a85d9469774cf61977641755aca3a') 'R280_PARENT_SHA_CHANGED'
-Need ($proof.managed_files -eq 605 -and $proof.operator_install_allowed -eq $false) 'QA_ONLY_SOURCE_PROOF_INVALID'
+Need ($proof.managed_file_count -eq 605 -and $proof.operator_technical_installable -eq $true) 'QA_ONLY_SOURCE_PROOF_INVALID'
 Need ((Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant() -ceq [string]$proof.sha256) 'SOURCE_ZIP_SHA_CHANGED'
 $lab=Join-Path $env:RUNNER_TEMP ('sokna-r282-newmachine-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $lab|Out-Null
