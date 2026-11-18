@@ -2,10 +2,18 @@
 declare(strict_types=1);
 /** Native MariaDB 11.4 regression: encrypted actual backup, restore, and safety gates. */
 require_once __DIR__.'/../../apps/local-web/src/Core/Observability.php';
+require_once __DIR__.'/../../apps/local-web/src/Core/Config.php';
+require_once __DIR__.'/../../apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncException.php';
+require_once __DIR__.'/../../apps/local-web/src/Domain/PublicEdge/PublicAuthorityStateService.php';
+require_once __DIR__.'/../../apps/local-web/src/Domain/PublicEdge/PublicEdgeSyncClient.php';
 require_once __DIR__.'/../../apps/local-web/src/Domain/Recovery/RecoveryException.php';
 require_once __DIR__.'/../../apps/local-web/src/Domain/Recovery/BusinessBackupService.php';
 
 use Sokna\Local\Core\Observability;
+use Sokna\Local\Core\Config;
+use Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService;
+use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient;
+use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException;
 use Sokna\Local\Domain\Recovery\BusinessBackupService;
 use Sokna\Local\Domain\Recovery\RecoveryException;
 
@@ -36,6 +44,7 @@ try{
         $pdo->exec('CREATE TABLE orders(id INT PRIMARY KEY,user_id INT NOT NULL,total_amount INT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id)) ENGINE=InnoDB');
         $pdo->exec('CREATE TABLE inventory_items(id INT PRIMARY KEY,on_hand INT NOT NULL) ENGINE=InnoDB');
         $pdo->exec('CREATE TABLE print_jobs(id INT PRIMARY KEY,queue_state VARCHAR(30)) ENGINE=InnoDB');
+        $pdo->exec('CREATE TABLE public_authority_state(installation_id VARCHAR(96) PRIMARY KEY,authority_epoch INT NOT NULL DEFAULT 1,phase VARCHAR(32) NOT NULL,reason VARCHAR(96) NULL,blocked_at DATETIME(6) NULL,reenrolled_at DATETIME(6) NULL,activated_at DATETIME(6) NULL,updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)) ENGINE=InnoDB');
         $pdo->exec("INSERT INTO schema_migrations(version) VALUES('0001_r279')");
     }
     $source->exec("INSERT INTO users VALUES(11,'R279 Cafe Admin')");
@@ -55,7 +64,13 @@ try{
     $assert(!in_array('print_jobs',(array)$inspected['tables'],true) &&
         in_array('orders',(array)$inspected['tables'],true),
         'business rows included, device-specific print jobs excluded');
-    $restorer=new BusinessBackupService($target,$obs,'qa-local-destination');
+    $authority=new PublicAuthorityStateService($target,'qa-local-destination');
+    $config=new Config(['installation'=>['id'=>'qa-local-destination'],
+        'public'=>['base_url'=>'https://offline-restored-public.example.org','shared_secret'=>str_repeat('a',64)]]);
+    $client=new PublicEdgeSyncClient($config,static function():array{
+        return ['status'=>503,'body'=>['ok'=>false,'error'=>'offline_qa_target']];
+    },$obs,$authority);
+    $restorer=new BusinessBackupService($target,$obs,'qa-local-destination',$authority,$client);
     $restored=$restorer->restoreEncryptedToEmptyTarget($archive,$pw);
     $assert(($restored['restored']??false)===true,
         'encrypted archive decrypts and restores to empty target');
@@ -69,6 +84,15 @@ try{
     $assert(($restored['machine_identity_reprovision_required']??null)===true &&
         ($restored['public_authority_fence_confirmed']??null)===false,
         'machine identity re-provision and Public fence uncertainty are explicit');
+    $assert($authority->phase()==='reenroll_required',
+        'actual restored Local blocks old Public authority before activation');
+    try{
+        $client->post('/api/v1/local/heartbeat',[],2);
+        $assert(false,'normal sync blocked until authorized public reenrollment');
+    }catch(PublicEdgeSyncException $e){
+        $assert($e->errorCode==='public_authority_reenrollment_required',
+            'normal sync blocked until authorized public reenrollment');
+    }
     try{$restorer->restoreEncryptedToEmptyTarget($archive,$pw);$assert(false,'nonempty target refused');}
     catch(RecoveryException $e){
         $assert($e->errorCode==='target_not_empty','nonempty target refused');
