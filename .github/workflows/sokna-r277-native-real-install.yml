@@ -1,0 +1,30 @@
+name: SOKNA R277 Native Windows Real Maintenance 231fl to 231fm
+on:
+  push:
+    branches: [qa/sokna-r277-local-p0-finance-cancel-20261118]
+    paths:
+      - '.github/workflows/sokna-r277-native-real-install.yml'
+      - 'r277/tests/windows_native_r277.ps1'
+      - 'r277/tests/windows_bootstrap_r275.php'
+      - 'r277/ci_materialize_native.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-windows-local-upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Windows PHP MariaDB Apache real Maintenance Stage and Activate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./r277/tests/windows_native_r277.ps1
+          if($LASTEXITCODE -ne 0){throw 'R277_NATIVE_WINDOWS_EXIT_NONZERO'}
+          Write-Host 'R277_NATIVE_WINDOWS_231FL_TO_231FM_JOB_PASS'
