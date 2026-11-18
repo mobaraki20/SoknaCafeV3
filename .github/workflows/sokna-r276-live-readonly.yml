@@ -1,0 +1,49 @@
+name: SOKNA R276 Cafe Public Read-Only Field Status
+on:
+  push:
+    branches: [qa/sokna-r276-owner-setup-access-20261118]
+    paths:
+      - '.github/workflows/sokna-r276-live-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-public-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Verify public GET surfaces without any production mutation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,json,re
+          base='https://www.soknagroup.ir/public'
+          for path in ['/health','/setup/api.php?action=status','/staff/login','/move/approve','/move/owner-setup']:
+            url=base+path
+            req=urllib.request.Request(url,headers={'Accept':'application/json, text/html;q=0.9','User-Agent':'Sokna-QA-ReadOnly-R276'})
+            try:
+              with urllib.request.urlopen(req,timeout=18) as response:
+                status=response.status;body=response.read(256000).decode('utf-8','replace');typ=response.headers.get('Content-Type','')
+            except urllib.error.HTTPError as err:
+              status=err.code;body=err.read(8192).decode('utf-8','replace');typ=err.headers.get('Content-Type','')
+            except Exception as err:
+              print('LIVE_GET',path,'NETWORK_ERROR',type(err).__name__,str(err)[:120]);continue
+            output={'route':path.split('?')[0],'http':status,'content_type':typ.split(';')[0]}
+            if path=='/health':
+              try:
+                data=json.loads(body)
+                output.update(version=str(data.get('version',''))[:125],database=str(data.get('database',''))[:30],ok=data.get('ok'))
+              except:output['parse']='nonjson'
+            elif path.startswith('/setup/'):
+              try:
+                data=json.loads(body);s=data.get('setup') if isinstance(data,dict) else None
+                output.update(paired=s.get('paired') if isinstance(s,dict) else None,setup_key_present=isinstance(s,dict))
+              except:output['parse']='nonjson'
+            elif path=='/staff/login':
+              output['login_form_present']='name="password"' in body
+            elif path=='/move/approve':
+              output['owner_approval_ui_present']='data-move-owner-page' in body
+            else:
+              output.update(owner_setup_ui_present='data-owner-setup-only="1"' in body,admin_login_hint='/staff/login' in body)
+            print('LIVE_GET',json.dumps(output,ensure_ascii=False))
+          PY
