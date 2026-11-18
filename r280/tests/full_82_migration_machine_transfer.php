@@ -60,7 +60,9 @@ try {
         $core=sokna_local_bootstrap($config);
         $first=$core->migrations()->migrate('0059_menu_business_reconciliation_v4');
         // The original setup seeds catalogue between the two exact SQL phases.
-        if($key==='old')$core->defaultContentSeeder()->seed();
+        // Schema 0059 expects the canonical seed even for a fresh target.
+        // The target still has no transactional users/orders/inventory.
+        $core->defaultContentSeeder()->seed();
         $rest=$core->migrations()->migrate();
         $count=(int)$core->database()->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
         $check($count===82 && count($first)+count($rest)===82, $key.' complete 82 real migrations');
