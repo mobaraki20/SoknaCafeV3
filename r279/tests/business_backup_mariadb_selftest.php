@@ -60,7 +60,7 @@ try{
     $assert(is_file($archive) && ($result['sha256']??'')===hash_file('sha256',$archive),
         'encrypted archive sha and disk bytes');
     $inspected=$backup->inspectEncrypted($archive,$pw);
-    $assert(($inspected['snapshot_consistency']??'')==='innodb_repeatable_read_v1',
+    $assert(($inspected['snapshot_consistency']??'')==='innodb-repeatable-read-single-transaction-v1',
         'snapshot manifest declares repeatable-read InnoDB');
     $assert(!in_array('print_jobs',(array)$inspected['tables'],true) &&
         in_array('orders',(array)$inspected['tables'],true),
@@ -100,12 +100,12 @@ try{
     }
     $source->beginTransaction();
     try{$backup->createEncrypted($dir.'/bad-transaction.skbf',$pw);$assert(false,'active txn refused');}
-    catch(RecoveryException $e){$assert($e->errorCode==='backup_transaction_active','active txn refused');}
+    catch(RecoveryException $e){$assert($e->errorCode==='backup_transaction_busy','active txn refused');}
     finally{$source->rollBack();}
     $source->exec('CREATE TABLE legacy_nontransactional(id INT PRIMARY KEY) ENGINE=MyISAM');
     try{$backup->createEncrypted($dir.'/nontransactional.skbf',$pw);$assert(false,'MyISAM refused');}
     catch(RecoveryException $e){
-        $assert($e->errorCode==='backup_nontransactional_table','non-transactional table refused');
+        $assert($e->errorCode==='backup_engine_not_transactional','non-transactional table refused');
     }
     $source->exec('DROP TABLE legacy_nontransactional');
     $assert((int)$source->query('SELECT COUNT(*) FROM orders')->fetchColumn()===2,
