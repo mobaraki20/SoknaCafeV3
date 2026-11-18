@@ -13,10 +13,14 @@ function P([string]$path){[IO.Path]::GetFullPath($path).Replace('\','/')}
 $lab=Join-Path $env:RUNNER_TEMP ('sokna-r277-native-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $lab|Out-Null
 $env:R277_NATIVE_ROOT=Join-Path $lab 'fixtures'
-python r277/ci_materialize_native.py
-Need ($LASTEXITCODE -eq 0) 'EXACT_FIXTURE_MATERIALIZE_FAILED'
-python r277/ci_promote_release.py
-Need ($LASTEXITCODE -eq 0) 'FINAL_PROMOTION_FAILED'
+$priorWorkspace=$env:GITHUB_WORKSPACE
+$env:GITHUB_WORKSPACE=$PWD.Path
+try {
+ python r277/ci_materialize_native.py
+ Need ($LASTEXITCODE -eq 0) 'EXACT_FIXTURE_MATERIALIZE_FAILED'
+ python r277/ci_promote_release.py
+ Need ($LASTEXITCODE -eq 0) 'FINAL_PROMOTION_FAILED'
+} finally {$env:GITHUB_WORKSPACE=$priorWorkspace}
 $pack=$env:R282_PKG
 Need ([bool]$pack -and (Test-Path $pack)) 'R282_RELEASE_PACKAGE_MISSING'
 $proofFile=Join-Path (Split-Path -Parent $pack) 'R282-PREFACTORY-PROOF.json'
