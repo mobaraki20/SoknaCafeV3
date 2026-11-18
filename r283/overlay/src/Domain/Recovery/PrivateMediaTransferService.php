@@ -152,7 +152,7 @@ final class PrivateMediaTransferService
 
     private function collect(string $root): array
     {
-        $out=[];$total=0;
+        $out=[];$total=0;$count=0;
         $iter=new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($root,\FilesystemIterator::SKIP_DOTS));
         foreach($iter as $entry){
