@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-19",
+  "baseline": "R291 exact 604-file source",
+  "files_total": 605,
+  "changed": [
+    "public/assets/dashboard-open-accounts.js",
+    "public/assets/product-ui.css",
+    "public/index.php",
+    "resources/shared-staff-ui/dashboard-workspace.php"
+  ],
+  "tree_sha256": "c5a7e0e7df29c75a07278a25e165211ddef453885b07c885af8150d821173aa5",
+  "status": "QA_DO_NOT_INSTALL",
+  "chrome_ui": "PASS",
+  "MariaDB": "PENDING"
+}
