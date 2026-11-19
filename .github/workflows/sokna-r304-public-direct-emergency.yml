@@ -1,0 +1,70 @@
+name: SOKNA R304 Public Emergency — direct exact 35ij to 35im real HTTP MariaDB
+on:
+  push:
+    branches: [qa/sokna-r304-native-qualification-20261120]
+    paths: ['r304/qa/prepare_public_emergency_direct.py', '.github/workflows/sokna-r304-public-direct-emergency.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  direct-emergency-35ij-to-35im:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_public_r267_http_qa
+          MARIADB_ROOT_PASSWORD: test-only-root-pass
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ptest-only-root-pass"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_USER: root
+      SOKNA_QA_DB_PASSWORD: test-only-root-pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT
+          run-id: 44637786705
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-direct-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-direct-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          run-id: 43837950540
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-direct-input
+      - name: Actual independent protected Emergency from exact R275 35ij to R304 35im
+        shell: bash
+        env:
+          R304_CI_ARTIFACTS: ${{ runner.temp }}/r304-direct-input
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r273
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/r304-public-input
+        run: |
+          set -euo pipefail
+          python3 r304/qa/prepare_public_emergency_direct.py
+          python3 "$RUNNER_TEMP/r304-public-direct-http-qa.py" | tee "$RUNNER_TEMP/r304-public-direct-http.log"
+          grep -q 'R304_PROTECTED_EMERGENCY_35IJ_TO_35IM_STAGE_ACTIVATE_COMMIT_PASS' "$RUNNER_TEMP/r304-public-direct-http.log"
+          echo 'PASS_R304_PUBLIC_DIRECT_35IJ_TO_35IM_STAGE_ACTIVATE_COMMIT_MARIADB_11'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R304-PUBLIC-DIRECT-EMERGENCY-VERIFIED-RECEIPT
+          path: ${{ runner.temp }}/r304-public-direct-http.log
+          if-no-files-found: ignore
