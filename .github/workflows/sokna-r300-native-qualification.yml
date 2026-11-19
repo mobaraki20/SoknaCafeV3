@@ -64,7 +64,7 @@ jobs:
           path: ${{ runner.temp }}/r278-parent
       - uses: actions/download-artifact@v4
         with:
-          name: SOKNA-R300-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+          name: SOKNA-R300-QUALIFICATION-CANDIDATE-NO-FIELD
           path: ${{ runner.temp }}/r300-target
       - name: Real Windows R278-to-R300 Maintenance prepare, activate, HTTP, DB83
         shell: pwsh
