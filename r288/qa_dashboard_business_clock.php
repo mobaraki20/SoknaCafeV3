@@ -9,7 +9,7 @@ $db->exec("INSERT INTO settings VALUES('business_day_cutoff','04:00')");
 $clock=new Sokna\Local\Domain\Orders\BusinessClock($db,'Asia/Tehran');
 if($clock->assignment('2026-11-19 03:59:59')['business_date']!=='2026-11-18')throw new RuntimeException('BEFORE_CUTOFF_FAILED');
 if($clock->assignment('2026-11-19 04:00:00')['business_date']!=='2026-11-19')throw new RuntimeException('AT_CUTOFF_FAILED');
-if($clock->assignment('2026-11-18T23:59:59Z')['business_date']!=='2026-11-19')throw new RuntimeException('UTC_TO_TEHRAN_FAILED');
+if($clock->assignment('2026-11-19T00:30:00Z')['business_date']!=='2026-11-19')throw new RuntimeException('UTC_TO_TEHRAN_FAILED');
 $source=file_get_contents($root.'/public/index.php');
 $start=strpos($source,'$recent=[];');$stop=strpos($source,'$attentionErrors=', $start);
 if($start===false||$stop===false)throw new RuntimeException('DASHBOARD_FILTER_CODE_NOT_FOUND');
