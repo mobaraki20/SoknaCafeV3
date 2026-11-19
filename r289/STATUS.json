@@ -1,0 +1,35 @@
+{
+  "schema": "sokna-r289-local-qa-checkpoint-v1",
+  "date": "2026-11-19",
+  "base": "Local R278/231fn",
+  "target": "QA source only; not operator install",
+  "source_managed_files": 604,
+  "source_managed_tree_sha256": "3770026190cc71d6163936b0663159d400b37020e6595b2d05743733fafdf860",
+  "github_qa_run": 44472554465,
+  "github_qa_result": "PASS",
+  "performed": [
+    "R288 full preparation slip first option (both Local UI routes)",
+    "single MariaDB print job for all accounted rounds of current session",
+    "idempotency and wrong-table/closed-session safety",
+    "business-day clock 04:00 Asia/Tehran",
+    "historical settlement notifications to immutable invoice_id"
+  ],
+  "browser_screenshots": "In Library R288/R289 QA checkpoints; mock API/account data",
+  "unresolved": [
+    "historic order detail deep link",
+    "fifth dashboard open-account total",
+    "default POS policy",
+    "holiday calendar dataset",
+    "print template improvements",
+    "itemized finance restrictions",
+    "discount modal",
+    "other 21-item full release gates",
+    "native Windows Maintenance update",
+    "physical printer test",
+    "Public UI mirror for preparation"
+  ],
+  "operator_install_allowed": false,
+  "production_authorized": false,
+  "cafe_modified": false,
+  "public_modified": false
+}
