@@ -21,11 +21,11 @@
   "supporting_files": [
     {
       "file": "R297-INTEGRITY-AND-RELEASE-GATES.json",
-      "sha256": "13d4a76e9c3f913af74c7fc93d07d6c8e1353b3fa9ebe370ac1c5083fccb2dd2"
+      "sha256": "e038d8ccea28c28d40238359c8d37f967d151098517a96f321707ebfe55b839c"
     },
     {
       "file": "candidate-contract.json",
-      "sha256": "55a460b6d92cb6a6b3304b029342b8df4ade6e43b3c0ddc337193119188d8ec3"
+      "sha256": "771b93dc287d4e3c2499db53a3210d7461d9f544aeb8b94f73ef04c50a7459a5"
     }
   ],
   "production_authorized": false
