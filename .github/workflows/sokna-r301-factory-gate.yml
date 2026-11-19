@@ -1,0 +1,22 @@
+name: SOKNA R301 Exact Public Move Local Release - Central Factory Gate
+on:
+  push:
+    branches: [qa/sokna-r301-public-move-controlled-20261119]
+    paths:
+      - 'release-ops/candidates/r301.json'
+      - '.github/workflows/sokna-r301-factory-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  factory:
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: release-ops/candidates/r301.json
+      candidate_run_id: '44561325048'
+      candidate_artifact: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT
+    permissions:
+      contents: read
+      actions: read
