@@ -1,0 +1,28 @@
+{
+  "schema": "sokna-candidate-contract-v1",
+  "component": "local",
+  "producer": {
+    "run_id": 44541550259,
+    "artifact": "SOKNA-R299-EXACT-NATIVE-QUALIFICATION-CANDIDATE"
+  },
+  "source_authority": {
+    "approved_checkpoint": "R298_FACTORY_44540029943_AND_NATIVE_44539271420__FIELD_SIGNOFF_PENDING",
+    "source_sha256": "f8f55e046a70f6366c2f51c467157b10257313141cf0375d42eb601e98a47d18"
+  },
+  "packages": [
+    {
+      "file": "SOKNA-R299-LOCAL-231FQ-CUMULATIVE-CONTROLLED-INSTALL.zip",
+      "sha256": "8a897f3ac9215e06d72f67be292b11cf17263a0ab687d9b59d8bc341ac818507",
+      "kind": "local-update",
+      "component": "local",
+      "version": "3.0.0-g6.2-workspace.231fq-r299-cumulative-controlled-install"
+    }
+  ],
+  "supporting_files": [
+    {
+      "file": "R299-RELEASE-CANDIDATE-PROOF.json",
+      "sha256": "40049e9cb9ea3baf532efc0f32bd23f58ee3080bedf3ad55accb7133241d9cca"
+    }
+  ],
+  "production_authorized": false
+}
