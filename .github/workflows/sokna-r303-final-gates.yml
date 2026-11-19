@@ -213,16 +213,10 @@ jobs:
           if((Get-FileHash $pack.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne '0adb90b62e488f21ed3443608a5a2691445351666c4fecb181e3d8a28839d8aa'){throw 'R303_QA_ZIP_DRIFT'}
           python packaging/windows/release-gates/check_local_release_set.py $pack.FullName
           if($LASTEXITCODE -ne 0){throw 'R303_QA_STRUCTURAL_GATE_FAILED'}
-          # Rejecting an unqualified archive is the EXPECTED outcome. Under
-          # PowerShell 7, disable native nonzero->exception conversion for just
-          # this deliberate negative test; preserve strict handling elsewhere.
-          $nativePreference=$PSNativeCommandUseErrorActionPreference
-          $PSNativeCommandUseErrorActionPreference=$false
-          try {
-            python packaging/windows/release-gates/check_local_release_set.py $pack.FullName --require-installable
-            $rejectionExit=$LASTEXITCODE
-          } finally { $PSNativeCommandUseErrorActionPreference=$nativePreference }
-          if($rejectionExit -eq 0){throw 'R303_QA_MUST_REMAIN_NOT_INSTALLABLE'}
+          # A Python wrapper captures the deliberately nonzero policy refusal;
+          # the runner sees only the wrapper success, not PowerShell stderr.
+          python -c "import subprocess,sys; q=subprocess.run([sys.executable,'packaging/windows/release-gates/check_local_release_set.py',sys.argv[1],'--require-installable'],capture_output=True,text=True); assert q.returncode!=0 and 'RELEASE_SET_QA_NOT_INSTALLABLE' in q.stderr, (q.returncode,q.stderr); print('EXPECTED_QA_REJECTION_CONFIRMED')" $pack.FullName
+          if($LASTEXITCODE -ne 0){throw 'R303_QA_REJECTION_POLICY_TEST_FAILED'}
           'PASS_R303_WINDOWS_QA_FAIL_CLOSED_NO_MUTATION' | Out-File "$env:RUNNER_TEMP/r303-windows-qa-receipt.txt"
       - uses: actions/upload-artifact@v4
         with:
