@@ -1,0 +1,91 @@
+name: SOKNA R299 Windows Maintenance Native Qualification - Exact ZIP / NO HOST DEPLOY
+on:
+  push:
+    branches: [qa/sokna-r299-controlled-release-20261119]
+    paths: ['r299/**', '.github/workflows/sokna-r299-native-qualification.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOKNA_R299_WORKDIR: ${{ github.workspace }}/r299-work
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R298-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+          run-id: 44539271420
+          github-token: ${{ github.token }}
+          path: ${{ github.workspace }}/r299-work/r298-out
+      - name: Build exact R299 candidate from R297 and verify SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 r299/build_r299.py
+          echo '8a897f3ac9215e06d72f67be292b11cf17263a0ab687d9b59d8bc341ac818507  '"$SOKNA_R299_WORKDIR/r299-out/SOKNA-R299-LOCAL-231FQ-CUMULATIVE-CONTROLLED-INSTALL.zip" | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py "$SOKNA_R299_WORKDIR/r299-out/SOKNA-R299-LOCAL-231FQ-CUMULATIVE-CONTROLLED-INSTALL.zip" --require-installable
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R299-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+          path: |
+            ${{ github.workspace }}/r299-work/r299-out/SOKNA-R299-LOCAL-231FQ-CUMULATIVE-CONTROLLED-INSTALL.zip
+            ${{ github.workspace }}/r299-work/r299-out/R299-RELEASE-CANDIDATE-PROOF.json
+          if-no-files-found: error
+          retention-days: 30
+  actual-windows-maintenance:
+    needs: build-candidate
+    runs-on: windows-2022
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R278-231FN-ORIGINAL-ZIP-FACTORY-QA-ONLY
+          run-id: 44305226007
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r278-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R299-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+          path: ${{ runner.temp }}/r299-target
+      - name: Real Windows R278-to-R299 Maintenance prepare, activate, HTTP, DB83
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $orig=Get-ChildItem '${{ runner.temp }}/r278-parent' -Recurse -Filter 'SOKNA-R278-LOCAL-231FN-CUMULATIVE-RIAL-PERSISTENCE-INSTALL-READY.zip' | Select-Object -First 1
+          $target=Get-ChildItem '${{ runner.temp }}/r299-target' -Recurse -Filter 'SOKNA-R299-LOCAL-231FQ-CUMULATIVE-CONTROLLED-INSTALL.zip' | Select-Object -First 1
+          if(!$orig -or !$target){throw 'R299_REQUIRED_EXACT_ARCHIVE_NOT_FOUND'}
+          $env:SOKNA_R278_ORIGINAL_ZIP=$orig.FullName
+          $env:SOKNA_R299_CANDIDATE_ZIP=$target.FullName
+          if((Get-FileHash $target.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne '8a897f3ac9215e06d72f67be292b11cf17263a0ab687d9b59d8bc341ac818507'){throw 'R299_TARGET_SHA_NOT_EXACT'}
+          Push-Location 'native-src'
+          try {
+            & (Join-Path $env:GITHUB_WORKSPACE 'r299/tests/native_r278_to_r299.ps1')
+            if($LASTEXITCODE -ne 0){throw 'R299_NATIVE_MAINTENANCE_FAILED'}
+            Write-Host 'PASS_R299_EXACT_NATIVE_STAGE_ACTIVATE_HTTP_DB83_DISPOSABLE_WINDOWS_ONLY'
+          } finally {Pop-Location}
+      - name: Write Windows-only acceptance receipt
+        shell: pwsh
+        run: |
+          @{schema='sokna-r299-windows-native-receipt-v1';status='PASS';package_sha256='8a897f3ac9215e06d72f67be292b11cf17263a0ab687d9b59d8bc341ac818507';baseline='R278_231FN';target='R299_231FP';db_migrations=83;host_deployed=$false;field_install_authorized=$false} |
+            ConvertTo-Json -Depth 5 | Set-Content 'r299-native-receipt.json' -Encoding utf8NoBOM
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R299-NATIVE-WINDOWS-REPORT-ONLY
+          path: r299-native-receipt.json
+          if-no-files-found: ignore
+          retention-days: 30
