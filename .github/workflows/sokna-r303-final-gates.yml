@@ -1,0 +1,253 @@
+name: SOKNA R303 QA Exact Source - MariaDB, Emergency HTTP, Windows Safety
+on:
+  push:
+    branches: [qa/sokna-r303-final-gates-20261120]
+    paths:
+      - 'r303/**'
+      - '.github/workflows/sokna-r303-final-gates.yml'
+  workflow_dispatch:
+  pull_request:
+    branches: [qa/sokna-r301-public-move-controlled-20261119]
+    paths:
+      - 'r303/**'
+      - '.github/workflows/sokna-r303-final-gates.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  rebuild-exact-qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT
+          run-id: 44561325048
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r303-source
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r303-source
+      - name: Byte-exact source reconstruction and two immutable candidate ZIPs
+        shell: bash
+        env:
+          R303_CI_ARTIFACTS: ${{ runner.temp }}/r303-source
+          R303_CI_WORK: ${{ runner.temp }}/r303-build
+        run: |
+          set -euo pipefail
+          python3 r303/qa/rebuild_exact.py
+          python3 packaging/windows/release-gates/check_local_release_set.py "$R303_CI_WORK/out/SOKNA-R303-LOCAL-231FT-QA-NOT-INSTALL.zip"
+          if python3 packaging/windows/release-gates/check_local_release_set.py "$R303_CI_WORK/out/SOKNA-R303-LOCAL-231FT-QA-NOT-INSTALL.zip" --require-installable; then
+            echo 'UNSAFE_QA_PACKAGE_MARKED_INSTALLABLE'; exit 1
+          fi
+          echo 'PASS_R303_QA_INSTALL_REJECTION_IS_FAIL_CLOSED'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip
+          coverage: none
+      - name: Changed sources PHP and JavaScript syntax
+        shell: bash
+        env:
+          R303_CI_WORK: ${{ runner.temp }}/r303-build
+        run: |
+          set -euo pipefail
+          for f in "$R303_CI_WORK/local/src/Domain/Reporting/ReportingService.php" "$R303_CI_WORK/local/public/reports/api.php" "$R303_CI_WORK/local/public/index.php" "$R303_CI_WORK/local/resources/shared-staff-ui/reports-workspace.php"; do php -l "$f"; done
+          for f in "$R303_CI_WORK/local/public/assets/reports-workspace.js" "$R303_CI_WORK/local/public/assets/order-draft-workspace.js" "$R303_CI_WORK/local/public/assets/staff-app/hall-workspace.js" "$R303_CI_WORK/local/public/assets/staff-app/preparation-workspace.js" "$R303_CI_WORK/public/assets/staff-app/order-draft-workspace.js" "$R303_CI_WORK/public/assets/staff-app/preparation-workspace.js"; do node --check "$f"; done
+          echo 'PASS_R303_JS_PHP_CHANGED_SYNTAX'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R303-BYTE-PINNED-QA-CANDIDATES-NOT-INSTALLABLE
+          path: ${{ runner.temp }}/r303-build/out/*
+          retention-days: 60
+          if-no-files-found: error
+  finance-mariadb:
+    needs: [rebuild-exact-qa]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-r303-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=4s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R303-BYTE-PINNED-QA-CANDIDATES-NOT-INSTALLABLE
+          path: ${{ runner.temp }}/r303-output
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip
+          coverage: none
+      - name: Exact R303 financial query semantics against real MariaDB 11.4
+        shell: bash
+        env:
+          R303_DB_DISPOSABLE: 'yes'
+          R303_DB_HOST: 127.0.0.1
+          R303_DB_PASSWORD: disposable-r303-only
+          R303_LOCAL_SOURCE: ${{ runner.temp }}/r303-local-web
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,zipfile,io,hashlib,os
+          root=pathlib.Path(os.environ['RUNNER_TEMP']);files=list((root/'r303-output').rglob('SOKNA-R303-LOCAL-231FT-QA-NOT-INSTALL.zip'))
+          assert len(files)==1
+          assert hashlib.sha256(files[0].read_bytes()).hexdigest()=='0adb90b62e488f21ed3443608a5a2691445351666c4fecb181e3d8a28839d8aa'
+          dest=pathlib.Path(os.environ['R303_LOCAL_SOURCE']);dest.mkdir()
+          with zipfile.ZipFile(files[0]) as outer:
+            with zipfile.ZipFile(io.BytesIO(outer.read('artifacts/local/web.zip'))) as inner:
+              for n in inner.namelist():
+                if n.endswith('/'):continue
+                p=dest/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(inner.read(n))
+          PY
+          php r303/tests/finance_mariadb.php | tee "$RUNNER_TEMP/r303-real-mariadb-finance.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R303-FINANCE-MARIADB-RECEIPT
+          path: ${{ runner.temp }}/r303-real-mariadb-finance.json
+          if-no-files-found: ignore
+  protected-public-emergency:
+    needs: [rebuild-exact-qa]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_public_r267_http_qa
+          MARIADB_ROOT_PASSWORD: test-only-root-pass
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ptest-only-root-pass"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_USER: root
+      SOKNA_QA_DB_PASSWORD: test-only-root-pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R303-BYTE-PINNED-QA-CANDIDATES-NOT-INSTALLABLE
+          path: ${{ runner.temp }}/r303-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r303-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-r249-dual-baseline-gated-public-candidate
+          run-id: 43749990301
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r303-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
+          run-id: 43835146004
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r303-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY
+          run-id: 44025587468
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r303-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          run-id: 43837950540
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r303-all-input
+      - name: "Real HTTP protected Emergency: R275 to R303 Stage Activate Commit with MariaDB"
+        shell: bash
+        env:
+          R303_CI_ARTIFACTS: ${{ runner.temp }}/r303-all-input
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r273
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/r303-public-input
+        run: |
+          set -euo pipefail
+          python3 r303/qa/prepare_public_emergency.py
+          python3 "$RUNNER_TEMP/r303-public-http-qa.py" | tee "$RUNNER_TEMP/r303-emergency-http.log"
+          grep -q 'R303_PROTECTED_EMERGENCY_35IJ_TO_35IL_STAGE_ACTIVATE_COMMIT_PASS' "$RUNNER_TEMP/r303-emergency-http.log"
+          echo 'PASS_R303_PROTECTED_EMERGENCY_HTTP_ACTIVATION_COMMIT_DISPOSABLE'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R303-PUBLIC-EMERGENCY-MARIADB-RECEIPT
+          path: ${{ runner.temp }}/r303-emergency-http.log
+          if-no-files-found: ignore
+  windows-fail-closed:
+    needs: [rebuild-exact-qa]
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R303-BYTE-PINNED-QA-CANDIDATES-NOT-INSTALLABLE
+          path: ${{ runner.temp }}/r303-output
+      - name: Windows CI verifies exact ZIP and refuses non-qualified install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $pack=Get-ChildItem '${{ runner.temp }}/r303-output' -Recurse -Filter 'SOKNA-R303-LOCAL-231FT-QA-NOT-INSTALL.zip' | Select-Object -First 1
+          if(!$pack){throw 'R303_QA_LOCAL_ZIP_MISSING'}
+          if((Get-FileHash $pack.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne '0adb90b62e488f21ed3443608a5a2691445351666c4fecb181e3d8a28839d8aa'){throw 'R303_QA_ZIP_DRIFT'}
+          python packaging/windows/release-gates/check_local_release_set.py $pack.FullName
+          if($LASTEXITCODE -ne 0){throw 'R303_QA_STRUCTURAL_GATE_FAILED'}
+          # A Python wrapper captures the deliberately nonzero policy refusal;
+          # the runner sees only the wrapper success, not PowerShell stderr.
+          python -c "import subprocess,sys; q=subprocess.run([sys.executable,'packaging/windows/release-gates/check_local_release_set.py',sys.argv[1],'--require-installable'],capture_output=True,text=True); assert q.returncode!=0 and 'RELEASE_SET_QA_NOT_INSTALLABLE' in q.stderr, (q.returncode,q.stderr); print('EXPECTED_QA_REJECTION_CONFIRMED')" $pack.FullName
+          if($LASTEXITCODE -ne 0){throw 'R303_QA_REJECTION_POLICY_TEST_FAILED'}
+          'PASS_R303_WINDOWS_QA_FAIL_CLOSED_NO_MUTATION' | Out-File "$env:RUNNER_TEMP/r303-windows-qa-receipt.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R303-WINDOWS-FAIL-CLOSED-RECEIPT
+          path: ${{ runner.temp }}/r303-windows-qa-receipt.txt
+          if-no-files-found: ignore
+  final-decision:
+    if: always()
+    needs: [rebuild-exact-qa,finance-mariadb,protected-public-emergency,windows-fail-closed]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Release QA verdict explicitly blocks production before field acceptance
+        shell: bash
+        env:
+          BUILD: ${{ needs.rebuild-exact-qa.result }}
+          FINANCE: ${{ needs.finance-mariadb.result }}
+          PUBLIC: ${{ needs.protected-public-emergency.result }}
+          WINDOWS: ${{ needs.windows-fail-closed.result }}
+        run: |
+          python3 - <<'PY'
+          import json,os,pathlib
+          statuses={x:os.environ[x] for x in ['BUILD','FINANCE','PUBLIC','WINDOWS']}
+          ok=all(v=='success' for v in statuses.values())
+          data={'schema':'sokna-r303-action-gate-v1','github_run_id':os.environ['GITHUB_RUN_ID'],'checks':statuses,'qa_pass':ok,'production_authorized':False,'public_operator_emergency_allowed':False,'local_operator_install_allowed':False,'reason':'Real cafe backup/field Print Agent and actual host acceptance still required; QA artifacts deliberately fail-closed'}
+          pathlib.Path('r303-final-verdict.json').write_text(json.dumps(data,indent=2)+'\n')
+          print(json.dumps(data,indent=2))
+          if not ok:raise SystemExit('R303_ACTION_GATES_FAILED')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R303-FACTORY-QA-VERDICT-NOT-INSTALL
+          path: r303-final-verdict.json
+          if-no-files-found: ignore
