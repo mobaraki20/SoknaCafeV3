@@ -1,0 +1,28 @@
+{
+  "schema": "sokna-candidate-contract-v1",
+  "component": "local",
+  "producer": {
+    "run_id": 44539271420,
+    "artifact": "SOKNA-R298-EXACT-NATIVE-QUALIFICATION-CANDIDATE"
+  },
+  "source_authority": {
+    "approved_checkpoint": "R297_FACTORY_QA_44529766536__FIELD_SOURCE_NOT_APPROVED",
+    "source_sha256": "44f62caccfc87d18283556d75db05e29a4aa3cbc7077bbe37f50e716a59d3c1d"
+  },
+  "packages": [
+    {
+      "file": "SOKNA-R298-LOCAL-231FP-CUMULATIVE-NATIVE-QUALIFICATION-CANDIDATE.zip",
+      "sha256": "a6326bdd1fa3e5a720379ee1716406ac62b08206bb9f878d6dcb854e7d2d3568",
+      "component": "local",
+      "kind": "local-update",
+      "version": "3.0.0-g6.2-workspace.231fp-r298-cumulative-native-candidate"
+    }
+  ],
+  "supporting_files": [
+    {
+      "file": "R298-CANDIDATE-PROOF.json",
+      "sha256": "17e09dafa3942e31f047463e7fecb57ad6da1f9c2156f01bf4a99b9340b1daad"
+    }
+  ],
+  "production_authorized": false
+}
