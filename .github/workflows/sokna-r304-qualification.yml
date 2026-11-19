@@ -1,0 +1,259 @@
+name: SOKNA R304 Exact Release Candidate — Native Windows, MariaDB, Public Emergency
+on:
+  push:
+    branches: [qa/sokna-r304-native-qualification-20261120]
+    paths: ['r304/**', '.github/workflows/sokna-r304-qualification.yml']
+  pull_request:
+    branches: [qa/sokna-r303-final-gates-20261120]
+    paths: ['r304/**', '.github/workflows/sokna-r304-qualification.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  byte-identical-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT
+          run-id: 44561325048
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-source
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-source
+      - name: Rebuild original R303 byte-exact patches then stamp R304 release-candidate payload
+        shell: bash
+        env:
+          R303_CI_ARTIFACTS: ${{ runner.temp }}/r304-source
+          R303_CI_WORK: ${{ runner.temp }}/r304-work
+          R304_WORK: ${{ runner.temp }}/r304-work
+        run: |
+          set -euo pipefail
+          python3 r303/qa/rebuild_exact.py
+          export R304_LOCAL_BASE="$(find "$RUNNER_TEMP/r304-source" -name 'SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip' -type f | head -1)"
+          export R304_PUBLIC_BASE="$(find "$RUNNER_TEMP/r304-source" -name 'SOKNA-R275-PUBLIC-35IJ-OWNER-DISCARD-CODE-ONLY-QA-DO-NOT-INSTALL.zip' -type f | head -1)"
+          test -f "$R304_LOCAL_BASE" && test -f "$R304_PUBLIC_BASE"
+          python3 r304/qa/build_r304_github.py
+          printf '6dccf704f130610821e2727858bbcdd2531780ede5781c896153fb480201f1e1  %s\n' "$R304_WORK/out/SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip" | sha256sum -c -
+          printf 'd7f702322de0890e5483cd987b46860441aba2612d9f4fdc763735b68951721c  %s\n' "$R304_WORK/out/SOKNA-R304-PUBLIC-35IM-EMERGENCY-CANDIDATE-NOT-FIELD.zip" | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py "$R304_WORK/out/SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip" --require-installable
+          echo 'PASS_R304_NATIVE_CANDIDATE_BYTE_EXACT_AND_RELEASE_CONTRACT'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT
+          path: ${{ runner.temp }}/r304-work/out/*
+          retention-days: 30
+          if-no-files-found: error
+  finance-mariadb:
+    needs: [byte-identical-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-r303-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=4s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT
+          path: ${{ runner.temp }}/r304-artifact
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip
+          coverage: none
+      - name: Actual R304 source invoice grouping + multiple-item selected sales against MariaDB
+        shell: bash
+        env:
+          R303_DB_DISPOSABLE: 'yes'
+          R303_DB_HOST: 127.0.0.1
+          R303_DB_PASSWORD: disposable-r303-only
+          R303_LOCAL_SOURCE: ${{ runner.temp }}/r304-local-web
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,zipfile,io,hashlib,os
+          root=pathlib.Path(os.environ['RUNNER_TEMP']);files=list((root/'r304-artifact').rglob('SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip'))
+          assert len(files)==1
+          assert hashlib.sha256(files[0].read_bytes()).hexdigest()=='6dccf704f130610821e2727858bbcdd2531780ede5781c896153fb480201f1e1'
+          dest=pathlib.Path(os.environ['R303_LOCAL_SOURCE']);dest.mkdir()
+          with zipfile.ZipFile(files[0]) as outer:
+            with zipfile.ZipFile(io.BytesIO(outer.read('artifacts/local/web.zip'))) as inner:
+              for n in inner.namelist():
+                if n.endswith('/'):continue
+                p=dest/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(inner.read(n))
+          PY
+          php r303/tests/finance_mariadb.php | tee "$RUNNER_TEMP/r304-finance.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R304-FINANCE-MARIADB-RECEIPT
+          path: ${{ runner.temp }}/r304-finance.json
+          if-no-files-found: ignore
+  public-emergency-actual-http:
+    needs: [byte-identical-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_public_r267_http_qa
+          MARIADB_ROOT_PASSWORD: test-only-root-pass
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ptest-only-root-pass"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_USER: root
+      SOKNA_QA_DB_PASSWORD: test-only-root-pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT
+          path: ${{ runner.temp }}/r304-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: sokna-r249-dual-baseline-gated-public-candidate
+          run-id: 43749990301
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R262-PUBLIC-CUMULATIVE-AND-CLEAN-QA-PACKAGES-NO-OPERATOR-INSTALL
+          run-id: 43835146004
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R267-EMERGENCY-SCHEMA-QA-NO-HOST-DEPLOY
+          run-id: 44025587468
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          run-id: 43837950540
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-all-input
+      - name: Real protected Public Emergency HTTP upload, Stage Activate Commit with 11 migrations retained
+        shell: bash
+        env:
+          R304_CI_ARTIFACTS: ${{ runner.temp }}/r304-all-input
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r273
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/r304-public-input
+        run: |
+          set -euo pipefail
+          python3 r304/qa/prepare_public_emergency.py
+          python3 "$RUNNER_TEMP/r304-public-http-qa.py" | tee "$RUNNER_TEMP/r304-public-emergency.log"
+          grep -q 'R304_PROTECTED_EMERGENCY_35IJ_TO_35IM_STAGE_ACTIVATE_COMMIT_PASS' "$RUNNER_TEMP/r304-public-emergency.log"
+          echo PASS_R304_PUBLIC_EMERGENCY_HTTP_STAGE_ACTIVATE_COMMIT_MARIADB
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R304-PUBLIC-EMERGENCY-ACTIVATION-RECEIPT
+          path: ${{ runner.temp }}/r304-public-emergency.log
+          if-no-files-found: ignore
+  native-windows-exact-activation:
+    needs: [byte-identical-build]
+    runs-on: windows-2022
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT
+          run-id: 44561325048
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT
+          path: ${{ runner.temp }}/r304-target
+      - name: Exact R301 to R304 Windows Maintenance Stage Activate PHP HTTP MariaDB83 and preserved bindings
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem '${{ runner.temp }}/r304-baseline' -Recurse -Filter 'SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip' | Select-Object -First 1
+          $target=Get-ChildItem '${{ runner.temp }}/r304-target' -Recurse -Filter 'SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip' | Select-Object -First 1
+          if(!$base -or !$target){throw 'R304_EXACT_ARCHIVES_NOT_FOUND'}
+          $env:SOKNA_R301_ORIGINAL_ZIP=$base.FullName
+          $env:SOKNA_R304_CANDIDATE_ZIP=$target.FullName
+          python r304/qa/prepare_native_windows.py
+          if($LASTEXITCODE -ne 0){throw 'R304_NATIVE_SCRIPT_PREP_FAILED'}
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'r304-native.ps1')
+            if($LASTEXITCODE -ne 0){throw 'R304_EXACT_NATIVE_WINDOWS_FAILED'}
+          } finally {Pop-Location}
+          'PASS_R304_EXACT_NATIVE_WINDOWS_R301_TO_R304' | Out-File "$env:RUNNER_TEMP/r304-native-receipt.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R304-NATIVE-WINDOWS-RECEIPT
+          path: ${{ runner.temp }}/r304-native-receipt.txt
+          if-no-files-found: ignore
+  final-decision:
+    if: always()
+    needs: [byte-identical-build,finance-mariadb,public-emergency-actual-http,native-windows-exact-activation]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Issue fail-closed field qualification decision, no live host mutation
+        shell: bash
+        env:
+          BUILD: ${{ needs.byte-identical-build.result }}
+          FINANCE: ${{ needs.finance-mariadb.result }}
+          PUBLIC: ${{ needs.public-emergency-actual-http.result }}
+          WINDOWS: ${{ needs.native-windows-exact-activation.result }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          checks={k:os.environ[k] for k in ('BUILD','FINANCE','PUBLIC','WINDOWS')}
+          good=all(v=='success' for v in checks.values())
+          obj={'schema':'sokna-r304-native-qualification-v1','checks':checks,'all_disposable_gates_pass':good,'ready_for_onsite_backup_and_host_preflight':good,'production_host_installed':False,'user_hardware_print_tested':False,'public_host_activated':False,'cafe_field_acceptance_completed':False,'operator_install_automatically_authorized':False,'github_run':os.environ.get('GITHUB_RUN_ID')}
+          open('r304-final-receipt.json','w').write(json.dumps(obj,indent=2)+'\n')
+          print('R304_RELEASE_DECISION',obj)
+          if not good:raise SystemExit('R304_RELEASE_GATES_FAILED__OPERATOR_REJECT')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R304-FINAL-DISPOSABLE-QUALIFICATION-RECEIPT
+          path: r304-final-receipt.json
+          if-no-files-found: ignore

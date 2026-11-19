@@ -1,0 +1,101 @@
+name: SOKNA R304 Canonical Central Release Factory Intake — source SHA, no live deploy
+on:
+  push:
+    branches: [qa/sokna-r304-native-qualification-20261120]
+    paths: ['.github/workflows/sokna-r304-factory-intake.yml']
+  workflow_dispatch:
+  pull_request:
+    branches: [qa/sokna-r303-final-gates-20261120]
+    paths: ['.github/workflows/sokna-r304-factory-intake.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare-qualified-originals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT
+          run-id: 44637786705
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304-source-original
+      - name: Read actual latest job status from immutable producer run, including retries
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/44637786705/jobs?per_page=100&filter=all" > "$RUNNER_TEMP/r304-producer-jobs.json"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/44638944730/jobs?per_page=100&filter=all" > "$RUNNER_TEMP/r304-direct-jobs.json"
+      - name: Verify successful native Windows, MariaDB, Public Emergency and exact immutable ZIPs before factory intake
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,hashlib,json,os,shutil
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);s=t/'r304-source-original';out=pathlib.Path('r304-factory')
+          jobs=json.loads((t/'r304-producer-jobs.json').read_text())['jobs']
+          direct_jobs=json.loads((t/'r304-direct-jobs.json').read_text())['jobs']
+          want=['byte-identical-build','finance-mariadb','native-windows-exact-activation']
+          latest={}
+          for j in jobs:
+              n=j.get('name'); a=j.get('run_attempt',0); i=j.get('id',0)
+              if n in want and (n not in latest or (a,i)>(latest[n][0],latest[n][1])):
+                  latest[n]=(a,i,j.get('status'),j.get('conclusion'))
+          assert set(want)==set(latest),latest
+          assert all(latest[n][2]=='completed' and latest[n][3]=='success' for n in want),latest
+          direct=sorted((j for j in direct_jobs if j.get('name')=='direct-emergency-35ij-to-35im'),key=lambda j:(j.get('run_attempt',0),j.get('id',0)))[-1]
+          assert direct['status']=='completed' and direct['conclusion']=='success',direct
+          ci={'schema':'sokna-r304-disposable-qa-ci-v1','producer_run':44637786705,'public_direct_run':44638944730,'all_disposable_checks_pass':True,'checks':{n:{'attempt':latest[n][0],'id':latest[n][1],'conclusion':latest[n][3]} for n in want},'public_direct_emergency':{'job_id':direct['id'],'conclusion':direct['conclusion']},'production_host_installed':False,'public_host_activated':False,'operator_release_authorized':False}
+          cb=(json.dumps(ci,sort_keys=True,ensure_ascii=False,indent=2)+'\n').encode()
+          print('R304_FACTORY_CI_LATEST_SUCCESS',ci)
+          packages=[('local','local-update','SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip','6dccf704f130610821e2727858bbcdd2531780ede5781c896153fb480201f1e1','3.0.0-g6.2-workspace.231fu-r304-controlled-ui-finance','159b20c33d9b8d92a0a53f5ab1a91bcf8ca60e6a446b836636d66dbd4213193a','SOKNA-R304-LOCAL-ORIGINAL-ZIP-FACTORY-SOURCE'),
+                    ('public','public-update','SOKNA-R304-PUBLIC-35IM-EMERGENCY-CANDIDATE-NOT-FIELD.zip','d7f702322de0890e5483cd987b46860441aba2612d9f4fdc763735b68951721c','3.0.0-g3.6-workspace.35im-r304-controlled-preparation','91d27d4ddb0fdd0640227b8efed461cde94c7efc3c578d52623056dcb859d57c','SOKNA-R304-PUBLIC-ORIGINAL-ZIP-FACTORY-SOURCE')]
+          proof=list(s.rglob('R304-NATIVE-CANDIDATE-VERIFY.json')); assert len(proof)==1
+          pb=proof[0].read_bytes(); ph=hashlib.sha256(pb).hexdigest()
+          for component,kind,name,digest,version,src,artifact in packages:
+              found=list(s.rglob(name)); assert len(found)==1,found
+              original=found[0];assert hashlib.sha256(original.read_bytes()).hexdigest()==digest,(name,digest)
+              folder=out/component;folder.mkdir(parents=True,exist_ok=True)
+              shutil.copyfile(original,folder/name)
+              (folder/'R304-NATIVE-CANDIDATE-VERIFY.json').write_bytes(pb)
+              (folder/'R304-DISPOSABLE-CI-RECEIPT.json').write_bytes(cb)
+              spec={'schema':'sokna-candidate-contract-v1','component':component,'producer':{'run_id':'same_run','artifact':artifact},'source_authority':{'approved_checkpoint':'EXACT_R301_R275_SOURCE_R304_DISPOSABLE_GATES_44637786705','source_sha256':src},'packages':[{'file':name,'sha256':digest,'kind':kind,'component':component,'version':version}], 'supporting_files':[{'file':'R304-NATIVE-CANDIDATE-VERIFY.json','sha256':ph},{'file':'R304-DISPOSABLE-CI-RECEIPT.json','sha256':hashlib.sha256(cb).hexdigest()}], 'production_authorized':False}
+              (folder/'candidate-contract.json').write_text(json.dumps(spec,ensure_ascii=False,sort_keys=True,indent=2)+'\n')
+              print('FACTORY_SOURCE_PREPARED_NO_REBUILD',component,name,digest)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R304-LOCAL-ORIGINAL-ZIP-FACTORY-SOURCE
+          path: r304-factory/local/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R304-PUBLIC-ORIGINAL-ZIP-FACTORY-SOURCE
+          path: r304-factory/public/*
+          if-no-files-found: error
+  factory-local:
+    needs: prepare-qualified-originals
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    permissions:
+      contents: read
+      actions: read
+    with:
+      track: registered-candidate
+      candidate_contract_path: 'artifact:candidate-contract.json'
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R304-LOCAL-ORIGINAL-ZIP-FACTORY-SOURCE
+  factory-public:
+    needs: prepare-qualified-originals
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    permissions:
+      contents: read
+      actions: read
+    with:
+      track: registered-candidate
+      candidate_contract_path: 'artifact:candidate-contract.json'
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R304-PUBLIC-ORIGINAL-ZIP-FACTORY-SOURCE
