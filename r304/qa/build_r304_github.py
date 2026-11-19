@@ -34,11 +34,12 @@ ident['qualification']={'tier':'R304_CONTROLLED_CANDIDATE','claim_rule':'Native 
 local['resources/release-identity-v1.json']=J(ident)
 prov=json.loads(local['resources/build-provenance.json']);prov.update(classification='R304_CONTROLLED_CANDIDATE_EXACT_NATIVE_AND_HOST_PREFLIGHT_REQUIRED',created_at='2026-11-20T00:00:00Z',full_business_acceptance=False,installed_host_accepted=False,production_host_install_verified=False,operator_preflight_required=True,r304_qa_run=44635319699,r304_field_acceptance='PENDING_VERIFIED_BACKUP_AND_REAL_PRINTER')
 local['resources/build-provenance.json']=J(prov)
+source_target=copy.deepcopy(lm['targets']['local'])
 lm['release_set_id']=ident['release_set_id'];lm['created_at']='2026-11-20T00:00:00Z';lm['sequence']=202611200304
 lm['targets']['local'].update(version=versionL,release_id=lm['release_set_id'],managed_tree_sha256=TL(local),managed_files=608)
 lm['status']='R304_CONTROLLED_LOCAL_UPDATE_BACKUP_PREFLIGHT_REQUIRED';lm['for_install']=True;lm['production_pass']=True
 lm['qualification'].update(canary=True,real_windows=True,real_mariadb=True,business_backup_consistency_real_mariadb=True,real_public_host=False)
-lm['supported_baselines']=[{'local':{'version':oldL['VERSION.txt'].decode().strip(),'managed_tree_sha256':TL(oldL)}}]
+lm['supported_baselines']=[{'local':{key:source_target[key] for key in ('release_id','version','managed_tree_sha256','schema_fingerprint','migration_head','authority_epoch_policy')}}]
 lm['qa_notes']['r304']='Native Windows exact archive PASS required before field release. Real host backup, preflight, PrintAgent and Public QR checks still required. Source changes match R303 QA 11 files.'
 lm['qa_notes']['r304_evidence']='GitHub 44635319699 R303 SQL MariaDB 11.4 + protected Emergency + byte-pinned QA; R304 new exact native needs distinct qualification'
 web=zbytes(local,zipfile.ZIP_STORED)
