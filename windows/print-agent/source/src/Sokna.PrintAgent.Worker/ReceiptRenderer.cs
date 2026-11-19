@@ -38,13 +38,14 @@ internal static class ReceiptRenderer
 
     private sealed class Canvas
     {
-        private readonly Graphics _g;private readonly int _width,_marginX,_marginY,_base,_title,_table,_gap;private readonly JsonElement _template,_design;private readonly double _paperWidth,_scaleX,_scaleY;
+        private readonly Graphics _g;private readonly int _width,_marginX,_marginY,_base,_title,_table,_gap,_notesFont,_footerFont,_totalsFont,_settlementFont,_metaFont;private readonly JsonElement _template,_design;private readonly double _paperWidth,_scaleX,_scaleY;
         private readonly bool _showActor,_showTime,_showOrder,_showSectionTitles,_showPrices;private readonly string _layout,_separatorStyle,_headerAlignment,_density;private readonly Dictionary<string,string> _labels;private readonly List<string> _sectionOrder;
         public int Y{get;private set;}
         public Canvas(Graphics g,int width,int marginX,int marginY,JsonElement template,JsonElement design,double paperWidth,double scaleX,double scaleY)
         {
             _g=g;_width=width;_marginX=marginX;_marginY=marginY;_template=template;_design=design;_paperWidth=paperWidth;_scaleX=scaleX;_scaleY=scaleY;Y=marginY;
             _base=Math.Clamp(GetInt(template,"base_font_size",23),18,42);_title=Math.Clamp(GetInt(template,"title_font_size",30),22,60);_table=Math.Clamp(GetInt(template,"table_font_size",28),24,72);_gap=Py(Math.Clamp(GetInt(template,"line_spacing",5),2,20));
+            _notesFont=OptionalFont(template,"notes_font_size");_footerFont=OptionalFont(template,"footer_font_size");_totalsFont=OptionalFont(template,"totals_font_size");_settlementFont=OptionalFont(template,"settlement_font_size");_metaFont=OptionalFont(template,"meta_font_size");
             _showActor=GetBool(template,"show_actor",false);_showTime=GetBool(template,"show_time",true);_showOrder=GetBool(template,"show_order_number",true);_showSectionTitles=GetBool(template,"show_section_titles",true);_showPrices=GetBool(template,"show_prices",true);
             _layout=Get(design,"item_layout",paperWidth<=60?"columnar-compact":"columnar");if(_paperWidth<=60&&_layout=="columnar")_layout="columnar-compact";
             _separatorStyle=Get(design,"separator_style","solid");_headerAlignment=Get(design,"header_alignment","center");_density=Get(design,"density","compact");_labels=ReadLabels(design);_sectionOrder=ReadStringArray(design,"section_order");
@@ -66,7 +67,7 @@ internal static class ReceiptRenderer
                     case "notes" when prep:DrawCustomerNote(root);break;
                     case "summary" when !prep:Rule();DrawSummary(root);break;
                     case "settlement" when !prep:DrawSettlement(root);break;
-                    case "footer":var footer=Get(_template,"footer",Get(root,"footer",""));if(footer.Length>0){Rule();Text(footer,Math.Max(16,_base-5),false,StringAlignment.Center,3);}break;
+                    case "footer":var footer=Get(_template,"footer",Get(root,"footer",""));if(footer.Length>0){Rule();Text(footer,_footerFont>0?_footerFont:Math.Max(16,_base-5),false,StringAlignment.Center,3);}break;
                 }
             }
         }
@@ -79,8 +80,8 @@ internal static class ReceiptRenderer
         {
             var parts=new List<string>();var table=Get(root,"table_name","");if(table.Length>0)parts.Add(FaDigits(table));
             var number=prep?Get(root,"order_number",""):Get(root,"invoice_number",Get(root,"badge",""));if(number.Length>0&&(prep?_showOrder:true))parts.Add((prep?"سفارش ":"")+FaDigits(number));
-            if(_showTime){var date=Get(root,"display_date",Get(root,"created_at",""));if(date.Length>0)parts.Add(Sokna.Shared.IranPresentation.ReceiptDate(date));}if(parts.Count>0)Text(string.Join(" · ",parts),Math.Max(15,_base-5),true,StringAlignment.Center,3);
-            if(_showActor){var actor=Get(root,"actor_name","");if(actor.Length>0)Text("ثبت‌کننده: "+actor,Math.Max(13,_base-7),false,StringAlignment.Center,2);}
+            if(_showTime){var date=Get(root,"display_date",Get(root,"created_at",""));if(date.Length>0)parts.Add(Sokna.Shared.IranPresentation.ReceiptDate(date));}if(parts.Count>0)Text(string.Join(" · ",parts),_metaFont>0?_metaFont:Math.Max(15,_base-5),true,StringAlignment.Center,3);
+            if(_showActor){var actor=Get(root,"actor_name","");if(actor.Length>0)Text("ثبت‌کننده: "+actor,_metaFont>0?_metaFont:Math.Max(13,_base-7),false,StringAlignment.Center,2);}
         }
         private void DrawPreparationItems(JsonElement root)
         {
@@ -129,10 +130,10 @@ internal static class ReceiptRenderer
         private void DrawPreparationAnnotations(JsonElement item,string quantity)
         {
             if(item.TryGetProperty("previous_quantity",out var previous)&&previous.ValueKind!=JsonValueKind.Null){var oldQuantity=FaDigits(previous.ToString());BoxText($"{Label("adjustment","اصلاح")}: قبلی {oldQuantity} ← جدید {quantity}",Math.Max(17,_base-3),true);}
-            var mode=Get(item,"fulfillment_mode","");if(mode=="takeaway")BoxText(Label("takeaway","بیرون‌بر"),Math.Max(18,_base-2),true);
-            var note=Get(item,"note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,Math.Max(18,_base-2),true);
+            var mode=Get(item,"fulfillment_mode","");if(mode=="takeaway")BoxText(Label("takeaway","بیرون‌بر"),_notesFont>0?_notesFont:Math.Max(18,_base-2),true);
+            var note=Get(item,"note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,_notesFont>0?_notesFont:Math.Max(18,_base-2),true);
         }
-        private void DrawCustomerNote(JsonElement root){var note=Get(root,"customer_note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,Math.Max(19,_base-1),true);}
+        private void DrawCustomerNote(JsonElement root){var note=Get(root,"customer_note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,_notesFont>0?_notesFont:Math.Max(19,_base-1),true);}
         private void DrawCustomerItems(JsonElement root)
         {
             var items=new List<JsonElement>();if(root.TryGetProperty("sections",out var sections)&&sections.ValueKind==JsonValueKind.Array)foreach(var section in sections.EnumerateArray())if(section.TryGetProperty("items",out var array)&&array.ValueKind==JsonValueKind.Array)items.AddRange(array.EnumerateArray());
@@ -141,11 +142,11 @@ internal static class ReceiptRenderer
         private void DrawSummary(JsonElement root)
         {
             var discount=GetLong(root,"discount",0);var subtotal=GetLong(root,"subtotal",0);var taxable=GetLong(root,"taxable",0);var tax=GetLong(root,"tax",0);var total=GetLong(root,"total",0);var currency=Get(root,"currency","تومان");
-            if(discount>0){Pair(Label("subtotal","جمع اقلام"),Money(subtotal)+" "+currency,Math.Max(17,_base-3),false);Pair(Label("discount","تخفیف"),"− "+Money(discount)+" "+currency,Math.Max(17,_base-3),false);}
-            if(tax>0||taxable>0){var rateLabel=TaxRateLabel(root);Pair(Label("taxable","مبلغ مشمول مالیات"),Money(taxable)+" "+currency,Math.Max(17,_base-3),false);Pair(rateLabel.Length>0?Label("tax","مالیات")+" ("+rateLabel+")":Label("tax","مالیات"),Money(tax)+" "+currency,Math.Max(17,_base-3),false);}
-            Pair(Label("total","جمع نهایی"),Money(total)+" "+currency,Math.Max(24,_base+2),true);
+            if(discount>0){Pair(Label("subtotal","جمع اقلام"),Money(subtotal)+" "+currency,_totalsFont>0?_totalsFont:Math.Max(17,_base-3),false);Pair(Label("discount","تخفیف"),"− "+Money(discount)+" "+currency,_totalsFont>0?_totalsFont:Math.Max(17,_base-3),false);}
+            if(tax>0||taxable>0){var rateLabel=TaxRateLabel(root);Pair(Label("taxable","مبلغ مشمول مالیات"),Money(taxable)+" "+currency,_totalsFont>0?_totalsFont:Math.Max(17,_base-3),false);Pair(rateLabel.Length>0?Label("tax","مالیات")+" ("+rateLabel+")":Label("tax","مالیات"),Money(tax)+" "+currency,_totalsFont>0?_totalsFont:Math.Max(17,_base-3),false);}
+            Pair(Label("total","جمع نهایی"),Money(total)+" "+currency,_totalsFont>0?_totalsFont:Math.Max(24,_base+2),true);
         }
-        private void DrawSettlement(JsonElement root){var settlement=Get(root,"settlement_label","");if(settlement.Length>0)Text(Label("settlement","نحوه ثبت")+": "+settlement,Math.Max(15,_base-5),true,StringAlignment.Center,2);}
+        private void DrawSettlement(JsonElement root){var settlement=Get(root,"settlement_label","");if(settlement.Length>0)Text(Label("settlement","نحوه ثبت")+": "+settlement,_settlementFont>0?_settlementFont:Math.Max(15,_base-5),true,StringAlignment.Center,2);}
         private void DrawCustomerColumns(List<JsonElement> items,bool full)
         {
             var usable=_width-_marginX*2;var totalWidth=(int)(usable*.23);var quantityWidth=full?(int)(usable*.12):(int)(usable*.28);var unitWidth=full?(int)(usable*.22):0;var nameWidth=usable-totalWidth-quantityWidth-unitWidth;
@@ -167,7 +168,7 @@ internal static class ReceiptRenderer
         {
             var name=Get(item,"name","—");var quantity=FaDigits(Get(item,"quantity","1"));var unit=Money(GetLong(item,"unit_price",0));var line=Money(GetLong(item,"line_total",0));
             if(_showPrices){var lineWidth=(int)((_width-_marginX*2)*.32);using var boldFont=MakeFont(Math.Max(17,_table-6),true);using var nameFont=MakeFont(_table,true);var nameWidth=_width-_marginX*2-lineWidth;var height=Math.Max(Py(_density=="comfortable"?48:38),Math.Max(MeasureCellHeight(name,nameWidth,nameFont,StringAlignment.Far),MeasureCellHeight(line,lineWidth,boldFont,StringAlignment.Near)));DrawCell(name,_marginX+lineWidth,Y,nameWidth,nameFont,StringAlignment.Far,height);DrawCell(line,_marginX,Y,lineWidth,boldFont,StringAlignment.Near,height);Y+=height;Text(quantity+" × "+unit,Math.Max(14,_table-8),false,StringAlignment.Far,1);}else Text(quantity+" × "+name,Math.Max(19,_table),true,StringAlignment.Far,2);
-            var note=Get(item,"note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,Math.Max(16,_base-4),true);Hairline();
+            var note=Get(item,"note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,_notesFont>0?_notesFont:Math.Max(16,_base-4),true);Hairline();
         }
         private void Pair(string right,string left,int size,bool bold){using var font=MakeFont(size,bold);var height=Math.Max(Py(34),(int)font.GetHeight(_g)+Py(12));var half=(_width-_marginX*2)/2;DrawCell(right,_marginX+half,Y,half,font,StringAlignment.Far,height);DrawCell(left,_marginX,Y,half,font,StringAlignment.Near,height);Y+=height+_gap;}
         private void Text(string text,int size,bool bold,StringAlignment alignment,int gapMultiplier)
@@ -198,6 +199,7 @@ internal static class ReceiptRenderer
     private static Dictionary<string,string> ReadLabels(JsonElement design){var map=new Dictionary<string,string>(StringComparer.Ordinal);if(design.ValueKind==JsonValueKind.Object&&design.TryGetProperty("labels",out var labels)&&labels.ValueKind==JsonValueKind.Object)foreach(var property in labels.EnumerateObject())if(property.Value.ValueKind==JsonValueKind.String)map[property.Name]=property.Value.GetString()??"";return map;}
     private static List<string> ReadStringArray(JsonElement element,string name){var values=new List<string>();if(element.ValueKind==JsonValueKind.Object&&element.TryGetProperty(name,out var array)&&array.ValueKind==JsonValueKind.Array)foreach(var item in array.EnumerateArray())if(item.ValueKind==JsonValueKind.String&&!string.IsNullOrWhiteSpace(item.GetString()))values.Add(item.GetString()!);return values;}
     private static string Get(JsonElement element,string name,string fallback){if(element.ValueKind==JsonValueKind.Object&&element.TryGetProperty(name,out var value)){if(value.ValueKind==JsonValueKind.String)return value.GetString()??fallback;if(value.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)return value.ToString();}return fallback;}
+    private static int OptionalFont(JsonElement template,string field){var value=GetInt(template,field,0);return value<=0?0:Math.Clamp(value,14,72);}
     private static int GetInt(JsonElement element,string name,int fallback)=>int.TryParse(Get(element,name,""),out var value)?value:fallback;
     private static long GetLong(JsonElement element,string name,long fallback){if(element.ValueKind==JsonValueKind.Object&&element.TryGetProperty(name,out var value)){if(value.ValueKind==JsonValueKind.Number&&value.TryGetInt64(out var number))return number;if(long.TryParse(value.ToString(),out number))return number;}return fallback;}
     private static bool GetBool(JsonElement element,string name,bool fallback){if(element.ValueKind==JsonValueKind.Object&&element.TryGetProperty(name,out var value)){if(value.ValueKind==JsonValueKind.True)return true;if(value.ValueKind==JsonValueKind.False)return false;if(bool.TryParse(value.ToString(),out var boolean))return boolean;}return fallback;}
