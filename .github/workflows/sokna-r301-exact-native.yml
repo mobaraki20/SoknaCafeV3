@@ -1,0 +1,90 @@
+name: SOKNA R301 Exact Controlled Local Release - Native Windows and SHA
+on:
+  push:
+    branches: [qa/sokna-r301-public-move-controlled-20261119]
+    paths: ['r301/**', '.github/workflows/sokna-r301-exact-native.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build-exact-r301:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOKNA_R301_WORKDIR: ${{ github.workspace }}/r301-work
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R300-QUALIFICATION-CANDIDATE-NO-FIELD
+          run-id: 44558233042
+          github-token: ${{ github.token }}
+          path: ${{ github.workspace }}/r301-work/source
+      - name: Rebuild final R301 exactly with installed source provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 r301/build_r301.py
+          echo '399356a587230c770cbf50f6c3bdd93f0ee4a339e35ec3c1c381d61473d8cb73  '"$SOKNA_R301_WORKDIR/output/SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip" | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py "$SOKNA_R301_WORKDIR/output/SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip" --require-installable
+          echo 'PASS_R301_IDENTICAL_TO_LIBRARY_ZIP_SHA_AND_RELEASE_CONTRACT'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT
+          path: |
+            ${{ github.workspace }}/r301-work/output/SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip
+            ${{ github.workspace }}/r301-work/output/R301-INTEGRITY-AND-GATES.json
+          retention-days: 30
+          if-no-files-found: error
+  r299-to-r301-native-windows:
+    needs: build-exact-r301
+    runs-on: windows-2022
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R299-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+          run-id: 44541550259
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r299-baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT
+          path: ${{ runner.temp }}/r301-target
+      - name: Exact R299 to R301 Windows Maintenance active web, MariaDB83, binding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem '${{ runner.temp }}/r299-baseline' -Recurse -File -Filter 'SOKNA-R299-LOCAL-231FQ-CUMULATIVE-CONTROLLED-INSTALL.zip' | Select-Object -First 1
+          $target=Get-ChildItem '${{ runner.temp }}/r301-target' -Recurse -File -Filter 'SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip' | Select-Object -First 1
+          if(!$base -or !$target){throw 'R301_EXACT_ARCHIVES_NOT_FOUND'}
+          $env:SOKNA_R299_ORIGINAL_ZIP=$base.FullName
+          $env:SOKNA_R301_CANDIDATE_ZIP=$target.FullName
+          Push-Location native-src
+          try{
+            & (Join-Path $env:GITHUB_WORKSPACE 'r301/tests/native_r299_to_r301.ps1')
+            if($LASTEXITCODE -ne 0){throw 'R301_EXACT_NATIVE_UPGRADE_FAILED'}
+            Write-Host 'PASS_R301_EXACT_R299_TO_R301_NATIVE_WINDOWS_RELEASE_CONTRACT'
+          }finally{Pop-Location}
+      - name: Write isolated Windows qualification receipt
+        shell: pwsh
+        run: |
+          @{schema='sokna-r301-windows-native-v1';status='PASS';baseline='231FQ_R299';target='231FS_R301';package_sha256='399356a587230c770cbf50f6c3bdd93f0ee4a339e35ec3c1c381d61473d8cb73';migrations=83;host_deployed=$false}|
+            ConvertTo-Json -Depth 6 | Set-Content r301-native-receipt.json -Encoding utf8NoBOM
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R301-NATIVE-RECEIPT
+          path: r301-native-receipt.json
+          if-no-files-found: ignore
