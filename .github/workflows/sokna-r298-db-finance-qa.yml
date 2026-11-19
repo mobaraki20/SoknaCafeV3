@@ -1,0 +1,87 @@
+name: SOKNA R298 Exact Candidate Finance MariaDB Upgrade QA
+on:
+  push:
+    branches: [qa/sokna-r298-native-install-qualification-20261119]
+    paths: ['.github/workflows/sokna-r298-db-finance-qa.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-r298-finance-db:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r298-disposable-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=4s --health-retries=20
+    env:
+      R294_SOURCE_ROOT: ${{ runner.temp }}/r298-source
+      R293_SOURCE_ROOT: ${{ runner.temp }}/r298-source
+      R296_SOURCE_ROOT: ${{ runner.temp }}/r298-source
+      R293_DB_PASSWORD: r298-disposable-only
+      R294_DB_PASSWORD: r298-disposable-only
+      R296_DB_PASSWORD: r298-disposable-only
+      R293_QA_MODE: disposable_only
+      R296_QA_ONLY: disposable
+      SOKNA_R294_DB_QA: disposable_only
+      GITHUB_ACTIONS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R298-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+          run-id: 44539271420
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r298-artifact
+      - name: Verify original R298 bytes and extract actual web files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,hashlib,zipfile,io,json
+          ar=pathlib.Path(os.environ['RUNNER_TEMP'])/'r298-artifact'
+          files=list(ar.rglob('SOKNA-R298-LOCAL-231FP-CUMULATIVE-NATIVE-QUALIFICATION-CANDIDATE.zip'))
+          assert len(files)==1,len(files)
+          raw=files[0].read_bytes()
+          assert hashlib.sha256(raw).hexdigest()=='a6326bdd1fa3e5a720379ee1716406ac62b08206bb9f878d6dcb854e7d2d3568'
+          dest=pathlib.Path(os.environ['RUNNER_TEMP'])/'r298-source';dest.mkdir()
+          with zipfile.ZipFile(io.BytesIO(raw)) as outer:
+            assert outer.testzip() is None
+            manifest=json.loads(outer.read('release-set.json'))
+            assert manifest['targets']['local']['migration_head']=='0083_remaining_account_discount'
+            with zipfile.ZipFile(io.BytesIO(outer.read('artifacts/local/web.zip'))) as inner:
+              assert inner.testzip() is None and len(inner.namelist())==607
+              for name in inner.namelist():
+                p=dest/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(inner.read(name))
+          print('PASS_R298_EXACT_SHA_607_MANAGED_AND_DB83')
+          PY
+      - name: Exact R298 actual source full 82 to 83 migration and immutable financial tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          php r294/qa_full_r278_to_r293_migrations.php | tee "$RUNNER_TEMP/r298-db-upgrade.json"
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R293_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r293 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r293/qa_remaining_discount_and_move_mariadb.php | tee "$RUNNER_TEMP/r298-financial.json"
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R293_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r296_templates CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r296/qa_template_lifecycle_mariadb.php | tee "$RUNNER_TEMP/r298-templates.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R298-EXACT-FINAL-CANDIDATE-FINANCE-MARIADB-RECEIPT
+          path: |
+            ${{ runner.temp }}/r298-db-upgrade.json
+            ${{ runner.temp }}/r298-financial.json
+            ${{ runner.temp }}/r298-templates.json
+          if-no-files-found: ignore
+          retention-days: 30
