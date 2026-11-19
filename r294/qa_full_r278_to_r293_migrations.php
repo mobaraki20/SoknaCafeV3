@@ -85,9 +85,9 @@ if($missingFromPolicy!==[]||$missingFromDb!==[]){
  throw new RuntimeException('GOLIVE_AUDITED_SCHEMA_DIFF '.json_encode(['actual_count'=>count($actualTableNames),'policy_count'=>count($policyNames),'unclassified'=>$missingFromPolicy,'absent'=>$missingFromDb],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));
 }
 $inspection=$goLive->inspect();
-if(($inspection['safe_schema']??false)!==true||(int)$inspection['table_count']!==113) throw new RuntimeException('GOLIVE_SCHEMA_POLICY_NOT_113 '.json_encode($inspection));
-foreach(['remaining_account_discount_grants','remaining_account_discount_lines'] as $newTable){
+if(($inspection['safe_schema']??false)!==true||(int)$inspection['table_count']!==115) throw new RuntimeException('GOLIVE_SCHEMA_POLICY_NOT_113 '.json_encode($inspection));
+foreach(['remaining_account_discount_grants','remaining_account_discount_lines','public_move_auth_operations','public_move_auth_slots'] as $newTable){
  if(($inspection['counts'][$newTable]['action']??null)!=='CLEAR') throw new RuntimeException('GOLIVE_DISCOUNT_CLEARANCE_MISSING '.$newTable);
 }
-$report=['result'=>'PASS','origin_catalog'=>82,'origin_applied'=>count($initial),'target_catalog'=>83,'newly_applied'=>['0083_remaining_account_discount'],'idempotent_reapply'=>true,'unchanged_old_ledger'=>true,'unchanged_business_data'=>true,'new_tables'=>$tables,'foreign_keys_verified'=>4,'go_live_policy_includes_new_tables'=>true,'go_live_table_count'=>113,'old_migration_statements'=>$oldStatementCount,'new_migration_statements'=>$statementCount,'environment'=>'real MariaDB 11.4, exact R293 source, actual Sokna Migrations class, empty disposable install'];
+$report=['result'=>'PASS','origin_catalog'=>82,'origin_applied'=>count($initial),'target_catalog'=>83,'newly_applied'=>['0083_remaining_account_discount'],'idempotent_reapply'=>true,'unchanged_old_ledger'=>true,'unchanged_business_data'=>true,'new_tables'=>$tables,'foreign_keys_verified'=>4,'go_live_policy_includes_new_tables'=>true,'go_live_table_count'=>115,'old_migration_statements'=>$oldStatementCount,'new_migration_statements'=>$statementCount,'environment'=>'real MariaDB 11.4, exact R293 source, actual Sokna Migrations class, empty disposable install'];
 echo json_encode($report,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),"\n";
