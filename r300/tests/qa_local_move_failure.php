@@ -1,10 +1,11 @@
 <?php
 declare(strict_types=1);
 // CI and offline QA only: no actual host, no DB, no HTTP, no config writes.
-require dirname(__DIR__).'/source/src/Domain/PublicEdge/PublicEdgeSyncException.php';
-require dirname(__DIR__).'/source/src/Domain/PublicEdge/PublicMoveFailureDiagnostic.php';
-require dirname(__DIR__).'/source/src/Domain/PublicEdge/PublicMoveDecisionEngine.php';
-require dirname(__DIR__).'/source/src/Domain/PublicEdge/PublicMoveUiInspectionService.php';
+$source=getenv('R300_QA_SOURCE_ROOT') ?: dirname(__DIR__).'/source';
+require $source.'/src/Domain/PublicEdge/PublicEdgeSyncException.php';
+require $source.'/src/Domain/PublicEdge/PublicMoveFailureDiagnostic.php';
+require $source.'/src/Domain/PublicEdge/PublicMoveDecisionEngine.php';
+require $source.'/src/Domain/PublicEdge/PublicMoveUiInspectionService.php';
 use Sokna\Local\Domain\PublicEdge\PublicMoveFailureDiagnostic as D;
 use Sokna\Local\Domain\PublicEdge\PublicMoveUiInspectionService as U;
 use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException as E;
