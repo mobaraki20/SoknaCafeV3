@@ -6,6 +6,11 @@ on:
       - 'r303/**'
       - '.github/workflows/sokna-r303-final-gates.yml'
   workflow_dispatch:
+  pull_request:
+    branches: [qa/sokna-r301-public-move-controlled-20261119]
+    paths:
+      - 'r303/**'
+      - '.github/workflows/sokna-r303-final-gates.yml'
 permissions:
   contents: read
   actions: read
