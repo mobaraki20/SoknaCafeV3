@@ -82,7 +82,7 @@
    throw new Error('پیش‌نمایش با مبلغ واردشده یا حساب فعلی مطابقت ندارد؛ تخفیف اعمال نشد. اطلاعات حساب را تازه‌سازی کنید.');
   return {session_id:session,discount_type:req.discount_type,discount_value:value,subtotal,discount_amount:discount,net,tax,total};
  }
-@@ -692,7 +695,12 @@
+@@ -692,7 +695,16 @@
    }catch(e){if(seq!==discountPreviewSeq)return;if(netEl)netEl.textContent='—';if(amountEl)amountEl.textContent='—';if(statusEl){statusEl.hidden=false;statusEl.textContent=e?.message||'محاسبه مبلغ نهایی انجام نشد.'}discountPreviewValid=false;discountPreviewSnapshot=null;if(apply)apply.disabled=true}
   },160);
  }
@@ -92,11 +92,15 @@
 + const partial=Number(financeAccount.receipt_count||0)>0;
 + const baseCaption=discountDialog.querySelector('[data-discount-base]')?.previousElementSibling;
 + if(baseCaption)baseCaption.textContent=partial?'مانده اقلام پرداخت‌نشده (پیش از مالیات)':'جمع سفارش‌ها';
++ const description=discountDialog.querySelector('.sc-hall-discount-head p');
++ if(description)description.textContent=partial?'تخفیف فقط روی اقلام پرداخت‌نشده است؛ رسیدهای قبلی تغییر نمی‌کنند.':'مبلغ قابل پرداخت را پیش از ثبت بررسی کنید.';
++ const remove=discountDialog.querySelector('[data-discount-remove]');
++ if(remove)remove.hidden=partial||!hasCurrent;
 + discountPreview();if(!window.SoknaUI?.showDialog?.(discountDialog,{initialFocus:'[data-discount-value]'}))discountDialog.showModal()}
  function closeDiscountDialog(){clearTimeout(discountPreviewTimer);discountPreviewSeq++;discountPreviewValid=false;discountPreviewSnapshot=null;if(discountDialog?.open)discountDialog.close()}
  async function applyHallDiscount(){
   if(!financeAccount||!discountDialog)return;
-@@ -705,7 +713,8 @@
+@@ -705,7 +717,8 @@
   if(discountRequestKey(discountRequest())!==expected.key||fresh.discount_amount!==expected.response.discount_amount||fresh.total!==expected.response.total||fresh.tax!==expected.response.tax)
    throw new Error('پیش‌نمایش حساب تغییر کرد؛ تخفیف اعمال نشد. ابتدا حساب را تازه‌سازی کنید.');
   discountPreviewValid=false;discountPreviewSnapshot=null;
@@ -106,7 +110,7 @@
   const applied=result?.result||result||{};
   discountDraftType=req.discount_type;discountDraftValue=String(req.discount_value);
   closeDiscountDialog();await loadAccount(selectedTableId);
-@@ -714,7 +723,8 @@
+@@ -714,7 +727,8 @@
    throw new Error('پاسخ ثبت تخفیف با پیش‌نمایش یکسان نیست؛ حساب تازه‌سازی شد. قبل از دریافت وجه، نتیجه را بررسی کنید.');
   toast('تخفیف حساب اعمال شد.','success');
  }
