@@ -1,0 +1,23 @@
+{
+  "status": "PASS",
+  "tests": [
+    {
+      "viewport": "desktop",
+      "active": 2,
+      "pending": 5,
+      "archive": 4,
+      "filter_persisted": true,
+      "nested_delete": true,
+      "errors": []
+    },
+    {
+      "viewport": "mobile",
+      "active": 2,
+      "pending": 5,
+      "archive": 4,
+      "filter_persisted": true,
+      "nested_delete": true,
+      "errors": []
+    }
+  ]
+}
