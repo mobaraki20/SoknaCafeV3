@@ -1,0 +1,22 @@
+name: SOKNA R300 Central Release Factory QA - SHA-pinned no field deploy
+on:
+  push:
+    branches: [qa/sokna-r300-public-move-hardening-20261119]
+    paths:
+      - 'release-ops/candidates/r300.json'
+      - '.github/workflows/sokna-r300-factory-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  factory:
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: release-ops/candidates/r300.json
+      candidate_run_id: '44558233042'
+      candidate_artifact: SOKNA-R300-QUALIFICATION-CANDIDATE-NO-FIELD
+    permissions:
+      contents: read
+      actions: read
