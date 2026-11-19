@@ -1,6 +1,11 @@
 --- a/resources/golive-clearance-policy.json
 +++ b/resources/golive-clearance-policy.json
-@@ -83,6 +83,8 @@
+@@ -80,9 +80,13 @@
+     "public_projection_model_delivery": "CLEAR",
+     "public_projection_model_targets": "CLEAR",
+     "public_projection_outbox": "CLEAR",
++    "public_move_auth_operations": "CLEAR",
++    "public_move_auth_slots": "CLEAR",
      "public_realtime_ack_outbox": "CLEAR",
      "public_sync_state": "CLEAR",
      "remote_user_credentials": "PRESERVE",
@@ -16,7 +21,7 @@
          if(!is_string($raw))throw new RuntimeException('GOLIVE_POLICY_MISSING');
          $p=json_decode($raw,true,512,JSON_THROW_ON_ERROR);
 -        if(($p['format']??'')!=='sokna-golive-cleanup-v1'||($p['surface']??'')!=='local'||!is_array($p['actions']??null)||count($p['actions'])!==111)throw new RuntimeException('GOLIVE_POLICY_INVALID');
-+        if(($p['format']??'')!=='sokna-golive-cleanup-v1'||($p['surface']??'')!=='local'||!is_array($p['actions']??null)||count($p['actions'])!==113)throw new RuntimeException('GOLIVE_POLICY_INVALID');
++        if(($p['format']??'')!=='sokna-golive-cleanup-v1'||($p['surface']??'')!=='local'||!is_array($p['actions']??null)||count($p['actions'])!==115)throw new RuntimeException('GOLIVE_POLICY_INVALID');
          $a=$p['actions'];ksort($a);
          foreach($a as $k=>$v)if(!is_string($k)||!preg_match('/^[a-z_]+$/D',$k)||!in_array($v,['PRESERVE','CLEAR'],true))throw new RuntimeException('GOLIVE_POLICY_INVALID_ACTION');
          foreach(['users','items','inventory_items','inventory_recipe_components','menus','cafe_tables','guest_media_assets'] as $required)if(($a[$required]??null)!=='PRESERVE')throw new RuntimeException('GOLIVE_PROTECTED_TABLE_POLICY_INVALID');
