@@ -1,0 +1,23 @@
+{
+  "source_parent": "R290 604-file exact QA",
+  "source_tree_sha256": "e7e76fda9e479384720461382601bf70a055148cc9d7870193a2173313f19459",
+  "files_total": 604,
+  "changed_files": [
+    "public/admin/index.php",
+    "public/assets/admin-workspace.js",
+    "public/assets/hall-settlement-v32.js",
+    "public/assets/settlement-tender.js",
+    "public/assets/staff-app/hall-workspace.js",
+    "public/operator/api.php",
+    "src/Domain/Admin/AdminControlService.php",
+    "src/Domain/PublicEdge/PublicProjectionBuilder.php"
+  ],
+  "status": "QA_NOT_INSTALLABLE",
+  "tests": {
+    "chrome_uis": [
+      "desktop",
+      "mobile"
+    ],
+    "sql": "PENDING"
+  }
+}
