@@ -111,6 +111,15 @@ jobs:
           set -euo pipefail
           php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R295_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r295 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
           php r295/qa_historical_order_mariadb.php | tee "$RUNNER_TEMP/r295-history.json"
+      - name: Validate unsaved template draft on real MariaDB and real PrintTemplatePackageService
+        env:
+          R295_SOURCE_ROOT: ${{ runner.temp }}/local
+          R295_DB_PASSWORD: r293-disposable-test-only
+          R295_QA_ONLY: disposable
+        run: |
+          set -euo pipefail
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R295_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r295_print CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r295/qa_print_draft_mariadb.php | tee "$RUNNER_TEMP/r295-print-draft.json"
       - name: Full real 82-step R278 schema and forward-only 0083 upgrade, idempotency and go-live policy
         env:
           R294_SOURCE_ROOT: ${{ runner.temp }}/local
@@ -130,6 +139,7 @@ jobs:
           name: SOKNA-R295-HISTORY-DB-AND-FINANCE-QA
           path: |
             ${{ runner.temp }}/r295-history.json
+            ${{ runner.temp }}/r295-print-draft.json
             ${{ runner.temp }}/r293-mariadb.json
             ${{ runner.temp }}/r294-db-full-upgrade.json
           if-no-files-found: ignore
