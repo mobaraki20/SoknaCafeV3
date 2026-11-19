@@ -1,0 +1,144 @@
+--- /dev/null
++++ b/public/assets/dashboard-open-accounts.js
+@@ -0,0 +1,23 @@
++(()=>{'use strict';
++const card=document.querySelector('[data-open-accounts-kpi][data-url]');if(!card)return;
++const amount=card.querySelector('strong'),hint=card.querySelector('div>span:not(.sc-dashboard-kpi__delta)');if(!amount)return;
++const url=card.getAttribute('data-url');if(!url)return;
++let busy=false,request=0;
++const fa=(n)=>new Intl.NumberFormat('fa-IR',{maximumFractionDigits:0}).format(n);
++const unknown=()=>{amount.textContent='—';if(hint)hint.textContent='مبلغ فعلاً نامشخص است';};
++async function read(){
++ if(busy||document.hidden)return;busy=true;const current=++request;
++ try{
++  const resp=await fetch(url,{method:'GET',credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
++  if(!resp.ok)throw new Error('dashboard_open_accounts_status');
++  const result=await resp.json();const n=result?.amount_toman,accounts=result?.account_count,rial=result?.rial_display===true;
++  if(result?.ok!==true||!Number.isSafeInteger(n)||n<0||!Number.isSafeInteger(accounts)||accounts<0||!Number.isSafeInteger(rial?n*10:n))throw new Error('dashboard_unreliable_amount');
++  if(current!==request)return;
++  amount.textContent=fa(rial?n*10:n)+(rial?' ریال':' تومان');
++  if(hint)hint.textContent='مانده تسویه‌نشده '+fa(accounts)+' حساب';
++ }catch{if(current===request)unknown();}
++ finally{busy=false;}
++}
++void read();const timer=setInterval(read,20000);
++window.addEventListener('pagehide',()=>clearInterval(timer),{once:true});
++})();
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6417,3 +6417,6 @@
+ 
+ /* R287: only the tab bar counts preparation tickets. */
+ [data-preparation-summary][hidden]{display:none!important}
++
++/* Five compact dashboard KPIs on desktop; four-card layouts remain unchanged. */
++@media(min-width:981px){.sc-dashboard-kpis--five{grid-template-columns:repeat(5,minmax(0,1fr))}.sc-dashboard-kpis--five .sc-dashboard-kpi{grid-template-columns:34px minmax(0,1fr) 12px;gap:7px;padding-inline:10px}.sc-dashboard-kpis--five .sc-dashboard-kpi__icon{inline-size:34px;block-size:34px;border-radius:11px}.sc-dashboard-kpis--five .sc-dashboard-kpi strong{font-size:clamp(.95rem,1.18vw,1.4rem);overflow-wrap:anywhere}.sc-dashboard-kpis--five .sc-dashboard-kpi small{font-size:.68rem}}
+--- a/public/index.php
++++ b/public/index.php
+@@ -3,14 +3,54 @@
+ use Sokna\Local\UI\LocalPage;
+ use Sokna\Local\UI\ProductShell;
+ use Sokna\Local\UI\LocalUrl;
++use Sokna\Local\UI\WebAction;
+ $core=require __DIR__.'/_app.php';
+ $user=LocalPage::user($core);
++// Local-only, authenticated readback endpoint: this must not become a writable financial API.
++if(($_SERVER['REQUEST_METHOD']??'GET')==='GET' && ($_GET['live_open_accounts']??'')==='1'){
++    header('Cache-Control: private, no-store, max-age=0');
++    if(!home_any($core,$user,['cashier_accounts','shift_supervision']))WebAction::json(['ok'=>false,'message'=>'دسترسی مجاز نیست.'],403);
++    try{WebAction::json(['ok'=>true]+home_open_accounts_snapshot($core));}
++    catch(Throwable $e){WebAction::json(['ok'=>false,'message'=>'مبلغ حساب‌های باز فعلاً قابل اطمینان نیست.'],503);}
++}
+ ProductShell::start($core,$user,'داشبورد','home','نمای مدیریتی امروز؛ روند، فعالیت و فقط مواردی که تصمیم می‌خواهند.');
+ function home_e(string $v): string{return htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
+ function home_icon(string $name): string{return '<svg class="sc-ui-icon" aria-hidden="true" focusable="false"><use href="'.home_e(\Sokna\Local\UI\AssetUrl::asset('/assets/ui-sprite.svg')).'#icon-'.home_e($name).'"></use></svg>';}
+ function home_url(string $path): string{return home_e(LocalUrl::path($path));}
+ function home_fa_num(string|int|float $v): string{return strtr((string)$v,['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']);}
+ function home_money(int $v): string{return home_fa_num(str_replace(',', '٬', number_format($v))).' تومان';}
++function home_open_money(?int $amountToman,bool $rial): string{
++    if($amountToman===null||$amountToman<0)return '—';
++    if($rial && $amountToman>intdiv(PHP_INT_MAX,10))return '—';
++    return home_fa_num(str_replace(',', '٬', number_format($rial?$amountToman*10:$amountToman))).($rial?' ریال':' تومان');
++}
++/** Coherent MVCC readback from the same authoritative financial account computation
++ * used for settlement. Never approximate unpaid balance by gross order totals.
++ * One financially inconsistent open session makes the whole KPI unknown.
++ */
++function home_open_accounts_snapshot($core): array{
++    $pdo=$core->database();
++    if($pdo->inTransaction())throw new RuntimeException('dashboard_account_transaction_busy');
++    $pdo->beginTransaction();
++    try{
++        $q=$pdo->query("SELECT s.id FROM table_sessions s WHERE s.status IN('active','pending') AND EXISTS(SELECT 1 FROM orders o WHERE o.session_id=s.id AND o.status='accounted') ORDER BY s.id");
++        $ids=$q->fetchAll(PDO::FETCH_COLUMN);
++        $sum=0;$count=0;
++        foreach($ids as $sessionId){
++            $account=$core->settlements()->projectionAccountTx((int)$sessionId);
++            $value=$account['remaining_total']??null;
++            if(!is_int($value)||$value<0||$sum>PHP_INT_MAX-$value)
++                throw new RuntimeException('dashboard_unreliable_open_account_amount');
++            $sum+=$value;if($value>0)++$count;
++        }
++        $currency=$pdo->query("SELECT setting_value FROM settings WHERE setting_key='payment.final_amount_rial' LIMIT 1")->fetchColumn();
++        $rial=in_array(strtolower(trim((string)$currency)),['1','true','yes','on'],true);
++        if($rial&&$sum>intdiv(PHP_INT_MAX,10))throw new RuntimeException('dashboard_rial_overflow');
++        $pdo->commit();
++        return ['amount_toman'=>$sum,'account_count'=>$count,'rial_display'=>$rial];
++    }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
++}
++
+ function home_weekday(DateTimeImmutable $d,bool $today=false): string{if($today)return 'امروز';$m=[1=>'دوشنبه',2=>'سه‌شنبه',3=>'چهارشنبه',4=>'پنجشنبه',5=>'جمعه',6=>'شنبه',7=>'یکشنبه'];return $m[(int)$d->format('N')]??'';}
+ function home_delta(int $current,int $reference): ?int{return $reference>0?(int)round((($current-$reference)/$reference)*100):null;}
+ function home_relative(string $value,DateTimeZone $tz): string{
+@@ -31,6 +71,7 @@
+ 
+ $canReports=home_any($core,$user,['cashier_accounts','shift_supervision','staff_consumption_reports']);
+ $canOps=home_any($core,$user,['orders_floor','cashier_accounts','shift_supervision']);
++$canAccounts=home_any($core,$user,['cashier_accounts','shift_supervision']);
+ $canInventory=home_any($core,$user,['inventory_operations','inventory_finalize','inventory_manage','preparation','shift_supervision']);
+ $tzName='Asia/Tehran';try{$tz=new DateTimeZone($tzName);}catch(Throwable){$tz=new DateTimeZone('Asia/Tehran');}
+ $dashboardErrors=[];
+@@ -55,6 +96,13 @@
+ $opsFallback=['metrics'=>['open_tables'=>null,'attention_orders'=>null,'active_waiter_calls'=>null],'attention_orders'=>[],'waiter_calls'=>[],'tables'=>[]];$ops=$opsFallback;$opsError=null;
+ if($canOps){$opsSection=$core->snapshotGuard()->capture('dashboard','operations',$opsFallback,'وضعیت سالن و سفارش‌ها فعلاً در دسترس نیست.',fn(): array=>$core->orderWorkspace()->operatorSnapshot($user));$ops=array_replace_recursive($opsFallback,(array)$opsSection['value']);$opsError=$opsSection['error'];if($opsError!==null)$dashboardErrors['operations']=$opsError;}
+ 
++$openAccounts=['amount_toman'=>null,'account_count'=>null,'rial_display'=>false];$openAccountsError=null;
++if($canAccounts){
++    $openAccountsSection=$core->snapshotGuard()->capture('dashboard','open_accounts',$openAccounts,'جمع حساب‌های باز فعلاً در دسترس نیست.',fn():array=>home_open_accounts_snapshot($core));
++    $openAccounts=(array)$openAccountsSection['value'];
++    $openAccountsError=$openAccountsSection['error'];
++    if($openAccountsError!==null)$dashboardErrors['open_accounts']=$openAccountsError;
++}
+ $inventory=[];$lowStock=[];$inventoryError=null;
+ if($canInventory){$inventorySection=$core->snapshotGuard()->capture('dashboard','inventory',[],'وضعیت اقلام انبار فعلاً در دسترس نیست.',fn(): array=>$core->operationsWorkspace()->inventoryItems());$inventory=(array)$inventorySection['value'];$inventoryError=$inventorySection['error'];if($inventoryError!==null)$dashboardErrors['inventory']=$inventoryError;if($inventoryError===null){$lowStock=array_values(array_filter($inventory,static fn(array $r):bool=>(int)($r['active']??0)===1&&(int)($r['warning_threshold']??0)>0&&(int)($r['quantity_base']??0)<=(int)($r['warning_threshold']??0)));usort($lowStock,static fn(array $a,array $b):int=>(((int)$a['quantity_base']-(int)$a['warning_threshold'])<=>((int)$b['quantity_base']-(int)$b['warning_threshold']))?:strcmp((string)$a['name'],(string)$b['name']));$lowStock=array_slice($lowStock,0,5);}}
+ 
+@@ -65,6 +113,7 @@
+ $metrics=[];
+ if($canReports){
+     $metrics[]=['icon'=>'chart','tone'=>'success','label'=>'فروش خالص امروز','value'=>$reportsError?'—':home_money((int)$todaySummary['net_sales']),'delta'=>($reportsError||!$todayHasSettlements||!$yesterdayHasSettlements)?null:home_delta((int)$todaySummary['net_sales'],(int)$yesterdaySummary['net_sales']),'helper'=>$reportsError?'موقتاً در دسترس نیست':(!$todayHasSettlements?'هنوز تسویهٔ موفقی ثبت نشده':(!$yesterdayHasSettlements?'دیروز تسویهٔ موفقی ثبت نشده':'نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=sales'];
++    if($canAccounts)$metrics[]=['icon'=>'ticket','tone'=>'info','label'=>'جمع حساب‌های باز','value'=>$openAccountsError?'—':home_open_money($openAccounts['amount_toman']??null,!empty($openAccounts['rial_display'])),'delta'=>null,'helper'=>$openAccountsError?'مبلغ فعلاً نامشخص است':'مانده تسویه‌نشده '.home_fa_num((int)($openAccounts['account_count']??0)).' حساب','href'=>'/operator/?view=open','live_open_accounts'=>true];
+     $metrics[]=['icon'=>'cart','tone'=>'info','label'=>'سفارش‌های امروز','value'=>$reportsError?'—':home_fa_num((int)$todaySummary['order_count']),'delta'=>null,'helper'=>$reportsError?'موقتاً در دسترس نیست':'کل سفارش‌های ثبت‌شده','href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=orders'];
+ }
+ if($canOps)$metrics[]=['icon'=>'table','tone'=>'neutral','label'=>'میزهای فعال','value'=>$opsError?'—':home_fa_num((int)($ops['metrics']['open_tables']??0)),'delta'=>null,'helper'=>$opsError?'موقتاً در دسترس نیست':'نشست باز در سالن','href'=>'/operator/?view=open'];
+@@ -106,6 +155,7 @@
+ $dashNotificationIcon=static fn(array $item):string=>home_notification_icon($item);
+ $dashMoney=static fn(int $v):string=>home_money($v);
+ $dashUnit=static fn(int $quantity,string $unit):string=>home_unit($quantity,$unit);
++if($canAccounts)echo '<script defer src="'.home_e(ProductShell::asset('assets/dashboard-open-accounts.js')).'"></script>';
+ require dirname(__DIR__).'/resources/shared-staff-ui/dashboard-workspace.php';
+ ?>
+ <?php ProductShell::end(); ?>
+--- a/resources/shared-staff-ui/dashboard-workspace.php
++++ b/resources/shared-staff-ui/dashboard-workspace.php
+@@ -5,9 +5,9 @@
+ ?>
+ <section class="sc-dashboard sc-dashboard--converged" aria-label="داشبورد مدیریتی">
+   <?php if($metrics): ?>
+-  <div class="sc-dashboard-kpis" aria-label="شاخص‌های امروز">
++  <div class="sc-dashboard-kpis<?=!empty($canAccounts)?' sc-dashboard-kpis--five':''?>" aria-label="شاخص‌های امروز">
+     <?php foreach($metrics as $metric): $delta=$metric['delta']; ?>
+-    <a class="sc-card sc-dashboard-kpi sc-dashboard-kpi--link" data-tone="<?=$dashE((string)$metric['tone'])?>" href="<?=$dashUrl((string)$metric['href'])?>" aria-label="<?=$dashE((string)$metric['label'])?>؛ مشاهده جزئیات"><span class="sc-dashboard-kpi__icon"><?=$dashIcon((string)$metric['icon'])?></span><div><small><?=$dashE((string)$metric['label'])?></small><strong><?=$dashE((string)$metric['value'])?></strong><?php if(is_int($delta)): ?><span class="sc-dashboard-kpi__delta <?=$delta>=0?'is-up':'is-down'?>"><?=$delta>=0?'↑':'↓'?> <?=$dashFaNum(abs($delta))?>٪ <?=$dashE((string)$metric['helper'])?></span><?php else: ?><span><?=$dashE((string)$metric['helper'])?></span><?php endif; ?></div><span class="sc-dashboard-chevron" aria-hidden="true"><?=$dashIcon('chevron-left')?></span></a>
++    <a class="sc-card sc-dashboard-kpi sc-dashboard-kpi--link" data-tone="<?=$dashE((string)$metric['tone'])?>" <?=!empty($metric['live_open_accounts'])?'data-open-accounts-kpi data-url="'.$dashUrl('/?live_open_accounts=1').'"':''?> href="<?=$dashUrl((string)$metric['href'])?>" aria-label="<?=$dashE((string)$metric['label'])?>؛ مشاهده جزئیات"><span class="sc-dashboard-kpi__icon"><?=$dashIcon((string)$metric['icon'])?></span><div><small><?=$dashE((string)$metric['label'])?></small><strong><?=$dashE((string)$metric['value'])?></strong><?php if(is_int($delta)): ?><span class="sc-dashboard-kpi__delta <?=$delta>=0?'is-up':'is-down'?>"><?=$delta>=0?'↑':'↓'?> <?=$dashFaNum(abs($delta))?>٪ <?=$dashE((string)$metric['helper'])?></span><?php else: ?><span><?=$dashE((string)$metric['helper'])?></span><?php endif; ?></div><span class="sc-dashboard-chevron" aria-hidden="true"><?=$dashIcon('chevron-left')?></span></a>
+     <?php endforeach; ?>
+   </div>
+   <?php endif; ?>
