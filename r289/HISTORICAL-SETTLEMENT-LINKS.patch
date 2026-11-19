@@ -1,0 +1,35 @@
+--- a/src/Domain/Notifications/NotificationService.php
++++ b/src/Domain/Notifications/NotificationService.php
+@@ -22,6 +22,14 @@
+         return $url;
+     }
+ 
++    /** Historical event URLs are based on the immutable document ID, never today's table number. */
++    public static function historicalTargetUrl(string $eventKey,string $fallback): string
++    {
++        if(preg_match('/^settlement\.completed\.([1-9][0-9]{0,14})$/D',$eventKey,$m))
++            return '/finance/?tab=receipts&invoice_id='.$m[1];
++        return self::normalizeTargetUrl($fallback);
++    }
++
+     /** Bind legacy/current Push rows to the currently configured Public deployment before a rebind starts. */
+     public function sealCurrentPushBinding(): array
+     {
+@@ -44,7 +52,7 @@
+     public function snapshot(array $user): array
+     {
+         $uid=$this->uid($user);$this->ensurePreference($uid);$q=$this->pdo->prepare('SELECT in_app_enabled,push_enabled,push_operations_enabled,push_management_enabled,updated_at FROM notification_preferences WHERE user_id=?');$q->execute([$uid]);$pref=$q->fetch(PDO::FETCH_ASSOC)?:[];
+-        $q=$this->pdo->prepare('SELECT id,title,body,target_url,read_at,created_at FROM notification_inbox WHERE user_id=? ORDER BY id DESC LIMIT 100');$q->execute([$uid]);$items=$q->fetchAll(PDO::FETCH_ASSOC)?:[];foreach($items as &$item)$item['target_url']=self::normalizeTargetUrl((string)($item['target_url']??''));unset($item);
++        $q=$this->pdo->prepare('SELECT i.id,i.title,i.body,i.target_url,i.read_at,i.created_at,o.event_key FROM notification_inbox i LEFT JOIN notification_outbox o ON o.id=i.outbox_id WHERE i.user_id=? ORDER BY i.id DESC LIMIT 100');$q->execute([$uid]);$items=$q->fetchAll(PDO::FETCH_ASSOC)?:[];foreach($items as &$item){$item['target_url']=self::historicalTargetUrl((string)($item['event_key']??''),(string)($item['target_url']??''));unset($item['event_key']);}unset($item);
+         $binding=$this->pushBindingState();$subscriptions=0;if(($binding['ready']??false)===true){$q=$this->pdo->prepare('SELECT COUNT(*) FROM notification_push_endpoint_owners WHERE user_id=?');$q->execute([$uid]);$subscriptions=(int)$q->fetchColumn();}
+         return ['preferences'=>$pref,'items'=>$items,'unread'=>count(array_filter($items,fn($r)=>empty($r['read_at']))),'push'=>['subscriptions'=>$subscriptions,'vapid_public_key'=>$this->setting('notifications.vapid_public_key'),'bridge_configured'=>$this->setting('notifications.push_bridge_url')!=='','binding_ready'=>(bool)($binding['ready']??false),'origin_rebind_pending'=>(bool)($binding['rebind_pending']??false)]];
+     }
+@@ -189,7 +197,7 @@
+             'guest_order.new'=>['roles'=>['admin','operator','waiter'],'category'=>'operations','action'=>'دیدن سفارش','title'=>'سفارش جدید مهمان','body'=>fn($r)=>'سفارش '.MoneyDisplay::digits((string)(int)($r['business_order_number']??0)).' · '.MoneyDisplay::digits(trim((string)($r['table_name']??''))),'url'=>'/operator/?work=attention&attention_filter=orders#attention','priority'=>95,'ttl'=>300],
+             'preparation.accounted'=>['roles'=>['admin','operator'],'category'=>'operations','action'=>'بازکردن آماده‌سازی','title'=>'سفارش وارد آماده‌سازی شد','body'=>fn($r)=>'سفارش '.MoneyDisplay::digits((string)(int)($r['business_order_number']??0)).' · '.MoneyDisplay::digits(trim((string)($r['table_name']??''))),'url'=>'/waiter/','priority'=>80,'ttl'=>600],
+             'waiter_call.new'=>['roles'=>['admin','operator','waiter'],'category'=>'operations','action'=>'دیدن فراخوان','title'=>'فراخوان مهمان','body'=>fn($r)=>'میز '.MoneyDisplay::digits(trim((string)($r['table_name']??''))),'url'=>'/operator/?work=attention&attention_filter=calls#attention','priority'=>100,'ttl'=>180],
+-            'settlement.completed'=>['roles'=>['admin'],'category'=>'management','action'=>'دیدن گزارش','title'=>'تسویه ثبت شد','body'=>fn($r)=>'تسویه حساب #'.MoneyDisplay::digits((string)(int)($r['session_id']??0)).' ثبت شد.','url'=>'/reports/','priority'=>60,'ttl'=>1800],
++            'settlement.completed'=>['roles'=>['admin'],'category'=>'management','action'=>'دیدن فاکتور','title'=>'تسویه ثبت شد','body'=>fn($r)=>'تسویه حساب #'.MoneyDisplay::digits((string)(int)($r['session_id']??0)).' ثبت شد.','url'=>fn($r)=>self::historicalTargetUrl('settlement.completed.'.(int)($r['entity_id']??0),'/finance/?tab=receipts'),'priority'=>60,'ttl'=>1800],
+             'inventory.purchase_price_changed'=>['roles'=>['admin'],'category'=>'management','action'=>'دیدن دریافت خرید','title'=>fn($r)=>$this->purchasePriceNotificationTitle($r),'body'=>fn($r)=>$this->purchasePriceNotificationBody($r),'url'=>fn($r)=>'/operations/?workflow=receive&receipt_id='.(int)($r['receipt_id']??0).'#receipt-'.(int)($r['receipt_id']??0),'priority'=>fn($r)=>(string)($r['notification_level']??'')==='high'?90:65,'ttl'=>86400],
+             default=>null,
+         };
