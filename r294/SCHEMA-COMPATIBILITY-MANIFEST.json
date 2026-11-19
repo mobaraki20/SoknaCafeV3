@@ -1,0 +1,19 @@
+{
+  "base": "R293 source",
+  "target": "R294 QA source",
+  "source_file_count": 606,
+  "tree_sha256": "1018ab34a984cd275f02f6cba25377c3bc0f5b659895eb1ab01ee3c4c2552128",
+  "migration_count": 83,
+  "migration_additions_from_R293": 0,
+  "new_schema_tables_from_R278": 2,
+  "policy_tables": 113,
+  "added_policy_actions": {
+    "remaining_account_discount_grants": "CLEAR",
+    "remaining_account_discount_lines": "CLEAR"
+  },
+  "code_files_changed": [
+    "resources/golive-clearance-policy.json",
+    "src/Domain/System/GoLiveResetEngine.php"
+  ],
+  "operator_install_allowed": false
+}
