@@ -1,0 +1,20 @@
+{
+  "schema": "sokna-r296-cumulative-qa",
+  "from": "Local R295 on exact R278 231fn",
+  "source_tree_sha256": "9ecbbc9850d3f077d57f0cff4e808975157710781682cfa8be0e0b3bca458246",
+  "managed_files": 607,
+  "new_migrations": [],
+  "original_migrations": 83,
+  "patch": "/mnt/data/sokna_r296/R295-TO-R296-CALENDAR-TEMPLATES.patch",
+  "changes": [
+    "public/assets/iran-calendar-1405.json",
+    "public/assets/product-shell.js",
+    "public/assets/printing-workspace.js",
+    "public/assets/product-ui.css"
+  ],
+  "browser_qa": [
+    "R296-CALENDAR-QA.json",
+    "R296-TEMPLATE-LIBRARY-QA.json"
+  ],
+  "status": "QA_NOT_INSTALLABLE"
+}
