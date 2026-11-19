@@ -1,0 +1,28 @@
+{
+  "schema": "sokna-candidate-contract-v1",
+  "component": "local",
+  "producer": {
+    "run_id": 44561325048,
+    "artifact": "SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT"
+  },
+  "source_authority": {
+    "approved_checkpoint": "R300_EXACT_44558233042_WINDOWS_44560320737_E2E_RESYNC_44559254422_FACTORY_44559580526",
+    "source_sha256": "b43dca4463c0c62e42e4298de4b6c148478912ec6cc2c4d5dcec32def8e4b6d5"
+  },
+  "packages": [
+    {
+      "file": "SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip",
+      "sha256": "399356a587230c770cbf50f6c3bdd93f0ee4a339e35ec3c1c381d61473d8cb73",
+      "kind": "local-update",
+      "component": "local",
+      "version": "3.0.0-g6.2-workspace.231fs-r301-public-move-controlled-install"
+    }
+  ],
+  "supporting_files": [
+    {
+      "file": "R301-INTEGRITY-AND-GATES.json",
+      "sha256": "de0776582dc1f295757545e5a9e0c037eed54e53ef568c259cd61db7302746ef"
+    }
+  ],
+  "production_authorized": false
+}
