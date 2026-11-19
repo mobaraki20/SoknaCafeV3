@@ -31,7 +31,7 @@ jobs:
           find "$R300_QA_SOURCE_ROOT" -name '*.php' -print0 | xargs -0 -n1 php -l > "$SOKNA_R300_WORKDIR/php-lint.log"
           find "$R300_QA_SOURCE_ROOT" -name '*.js' -print0 | xargs -0 -n1 node --check > "$SOKNA_R300_WORKDIR/js-lint.log"
           echo 'PASS_R300_608_FILE_SOURCE_PHP_JS_AND_13_SAFETY_TESTS'
-          echo 'f69fb483f977ffc8dd65452375de6e18aa3e755899d9ae16d2dd97e69c7bb59c  '"$SOKNA_R300_WORKDIR/output/SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip" | sha256sum -c -
+          echo '40be5ce560c699fab1c86522ee61c12198f30ab248674df74388924ed5faeb1a  '"$SOKNA_R300_WORKDIR/output/SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip" | sha256sum -c -
           python3 packaging/windows/release-gates/check_local_release_set.py "$SOKNA_R300_WORKDIR/output/SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip" --require-installable
       - uses: actions/upload-artifact@v4
         with:
@@ -75,7 +75,7 @@ jobs:
           if(!$orig -or !$target){throw 'R300_REQUIRED_EXACT_ARCHIVE_NOT_FOUND'}
           $env:SOKNA_R278_ORIGINAL_ZIP=$orig.FullName
           $env:SOKNA_R300_CANDIDATE_ZIP=$target.FullName
-          if((Get-FileHash $target.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'f69fb483f977ffc8dd65452375de6e18aa3e755899d9ae16d2dd97e69c7bb59c'){throw 'R300_TARGET_SHA_NOT_EXACT'}
+          if((Get-FileHash $target.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne '40be5ce560c699fab1c86522ee61c12198f30ab248674df74388924ed5faeb1a'){throw 'R300_TARGET_SHA_NOT_EXACT'}
           Push-Location 'native-src'
           try {
             & (Join-Path $env:GITHUB_WORKSPACE 'r300/tests/native_r278_to_r300.ps1')
@@ -85,7 +85,7 @@ jobs:
       - name: Write Windows-only acceptance receipt
         shell: pwsh
         run: |
-          @{schema='sokna-r300-windows-native-receipt-v1';status='PASS';package_sha256='f69fb483f977ffc8dd65452375de6e18aa3e755899d9ae16d2dd97e69c7bb59c';baseline='R278_231FN';target='R300_231FR';db_migrations=83;host_deployed=$false;field_install_authorized=$false} |
+          @{schema='sokna-r300-windows-native-receipt-v1';status='PASS';package_sha256='40be5ce560c699fab1c86522ee61c12198f30ab248674df74388924ed5faeb1a';baseline='R278_231FN';target='R300_231FR';db_migrations=83;host_deployed=$false;field_install_authorized=$false} |
             ConvertTo-Json -Depth 5 | Set-Content 'r300-native-receipt.json' -Encoding utf8NoBOM
       - uses: actions/upload-artifact@v4
         if: always()
