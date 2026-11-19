@@ -14,7 +14,7 @@ $lab=Join-Path $env:RUNNER_TEMP ('sokna-r300-native-'+[guid]::NewGuid().ToString
 New-Item -ItemType Directory -Force $lab|Out-Null
 $pack=$env:SOKNA_R300_CANDIDATE_ZIP
 $parent=$env:SOKNA_R278_ORIGINAL_ZIP
-Need ((Test-Path $pack) -and (Get-FileHash $pack -Algorithm SHA256).Hash.ToLowerInvariant() -ceq 'f69fb483f977ffc8dd65452375de6e18aa3e755899d9ae16d2dd97e69c7bb59c') 'R300_EXACT_PACKAGE_SHA_INVALID'
+Need ((Test-Path $pack) -and (Get-FileHash $pack -Algorithm SHA256).Hash.ToLowerInvariant() -ceq '40be5ce560c699fab1c86522ee61c12198f30ab248674df74388924ed5faeb1a') 'R300_EXACT_PACKAGE_SHA_INVALID'
 Need ((Test-Path $parent) -and (Get-FileHash $parent -Algorithm SHA256).Hash.ToLowerInvariant() -ceq '3a1070e18b14307fb2571634c961b20ca3e5d38e6c9a9dc1afad68be89fe6824') 'R278_EXACT_PARENT_PACKAGE_SHA_INVALID'
 $root=Join-Path $lab 'local-machine'
 $old=Join-Path $root 'Web.release.r278'
