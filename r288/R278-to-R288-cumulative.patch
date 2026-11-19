@@ -1,0 +1,295 @@
+--- a/public/index.php
++++ b/public/index.php
+@@ -76,5 +76,21 @@
+ $usedNotificationIds=[];
+ if(count($attention)<4){foreach($notificationItems as $item){if(!empty($item['read_at']))continue;$id=(int)($item['id']??0);if($id>0)$usedNotificationIds[$id]=true;$attention[]=['tone'=>'info','context'=>'اعلان','status'=>'جدید','title'=>(string)($item['title']??'اعلان جدید'),'subtitle'=>(string)($item['body']??''),'href'=>(string)($item['target_url']??'/notifications/')];if(count($attention)>=4)break;}}
+-$recent=[];foreach($notificationItems as $item){$id=(int)($item['id']??0);if(isset($usedNotificationIds[$id]))continue;$recent[]=$item;if(count($recent)>=5)break;}
++// Keep the dashboard focused on the current operational day. Older *read* items
++// remain available in the full notification history; unread work stays visible.
++// Use the same BusinessClock cutoff and timezone as orders/settlements.
++$recent=[];
++foreach($notificationItems as $item){
++    $id=(int)($item['id']??0);
++    if(isset($usedNotificationIds[$id]))continue;
++    $created=trim((string)($item['created_at']??''));
++    $currentBusinessDay=false;
++    if($created!==''){
++        try{$currentBusinessDay=(string)$core->businessClock()->assignment($created)['business_date']===$todayKey;}
++        catch(Throwable){$currentBusinessDay=true;} // Never silently discard records on clock failure.
++    }
++    if(!$currentBusinessDay&&!empty($item['read_at']))continue;
++    $recent[]=$item;
++    if(count($recent)>=5)break;
++}
+ $attentionErrors=array_values(array_filter([$opsError])); /* Notification failure already appears in the recent-activity card. */
+ $maxTrend=max(1,...array_map(static fn(array $r):int=>(int)$r['value'],$weekDaily?:[['value'=>0]]));
+--- a/public/assets/operator-workspace.js
++++ b/public/assets/operator-workspace.js
+@@ -105,5 +105,30 @@
+ }
+ async function reprintPreparationRound(orderId){if(orderId<1)return;const result=await mutate({action:'order_reprint',order_id:orderId,request_id:clientRequestId('prep-reprint')});const status=String(result.status||'');if(status==='pending'||status==='reserved'||status==='claimed'||status==='started'){toast('چاپ مجدد در صف چاپ قرار گرفت.','success','فیش آماده‌سازی');return}if(status==='blocked'){toast('درخواست ثبت شد اما مقصد چاپ آماده نیست؛ وضعیت چاپ را بررسی کن.','warning','فیش آماده‌سازی');return}toast('وضعیت درخواست چاپ: '+(status||'ثبت‌شده'),'info','فیش آماده‌سازی')}
+-async function reprintPreparationFromMenu(){const rounds=(Array.isArray(account?.order_rounds)?account.order_rounds:[]).filter(r=>Number(r.order_id)>0&&String(r.status||'accounted')==='accounted');if(!rounds.length){toast('فیش آماده‌سازی قابل چاپی برای این حساب وجود ندارد.','warning','چاپ مجدد');return}let orderId=Number(rounds[rounds.length-1].order_id);if(rounds.length>1){const picked=await SoknaUI.choose('فیش آماده‌سازی',rounds.slice().reverse().map(r=>({label:`نوبت ${L.integer(r.round_index||1)} · سفارش ${L.integer(r.order_number||r.order_id)}`,value:String(r.order_id)})),{message:'کدام نوبت دوباره چاپ شود؟'});if(picked===null)return;orderId=Number(picked||0)}await reprintPreparationRound(orderId)}
++async function reprintPreparationFromMenu(){
++ // Use only accounted orders from this open table session; never silently choose the last round.
++ const selectedSessionId=Number(account?.table?.session_id||0),selectedTableId=Number(account?.table?.id||0);
++ const rounds=(Array.isArray(account?.order_rounds)?account.order_rounds:[])
++   .filter(r=>Number(r.order_id)>0&&String(r.status||'accounted')==='accounted'&&String(r.accounting_origin||'regular')!=='late_served')
++   .filter(r=>!Array.isArray(r.items)||r.items.some(i=>Number(i.quantity||0)>0&&String(i.preparation_station||'other')!=='none'))
++   .sort((a,b)=>Number(a.round_index||0)-Number(b.round_index||0)||Number(a.order_id)-Number(b.order_id));
++ if(!rounds.length||selectedSessionId<1||selectedTableId<1){toast('فیش آماده‌سازی قابل چاپی برای این حساب باز وجود ندارد.','warning','چاپ مجدد');return}
++ const choices=[{label:'چاپ کل فیش · همه نوبت‌های حساب باز',value:'all'},
++   ...rounds.map(r=>({label:`نوبت ${L.integer(r.round_index||1)} · سفارش ${L.integer(r.order_number||r.order_id)}`,value:String(r.order_id)}))];
++ const picked=await SoknaUI.choose('فیش آماده‌سازی',choices,{message:'«چاپ کل فیش» یک فیش یکپارچه می‌سازد؛ یا فقط یک نوبت را انتخاب کنید.',layout:'list'});
++ if(picked===null)return;
++ // A table can be closed, transferred or replaced while the chooser is open.
++ if(Number(account?.table?.session_id||0)!==selectedSessionId||Number(account?.table?.id||0)!==selectedTableId){toast('حساب میز تغییر کرده است؛ دوباره انتخاب کنید.','warning','چاپ مجدد');return}
++ if(picked==='all'){
++   const result=await mutate({action:'order_reprint',scope:'all',session_id:selectedSessionId,table_id:selectedTableId,request_id:clientRequestId('prep-reprint-all')});
++   const printStatus=String(result.status||'');
++   if(printStatus==='blocked')toast('درخواست کل فیش ثبت شد اما مقصد چاپ آماده نیست؛ وضعیت چاپ را بررسی کنید.','warning','فیش آماده‌سازی');
++   else if(['pending','reserved','claimed','started'].includes(printStatus))toast('چاپ کل فیش در یک کار در صف چاپ قرار گرفت.','success','فیش آماده‌سازی');
++   else toast('وضعیت درخواست چاپ کل فیش: '+(printStatus||'ثبت‌شده'),'info','فیش آماده‌سازی');
++   return;
++ }
++ const orderId=Number(picked);
++ if(!rounds.some(r=>Number(r.order_id)===orderId))return;
++ await reprintPreparationRound(orderId);
++}
+ async function reprintCustomerReceiptFromMenu(){const receipts=Array.isArray(financeAccount?.receipts)?financeAccount.receipts:[];if(!receipts.length){toast('هنوز فیش مشتری ثبت‌شده‌ای برای چاپ مجدد وجود ندارد.','warning','چاپ مجدد');return}let settlementId=Number(receipts[0].id||0);if(receipts.length>1){const picked=await SoknaUI.choose('فیش مشتری',receipts.map(r=>({label:`${r.invoice_number||'فیش مشتری'} · ${money(r.total||0)}`,value:String(r.id)})),{message:'کدام سند دوباره چاپ شود؟'});if(picked===null)return;settlementId=Number(picked||0)}if(settlementId<1)return;const j=await financeMutate({action:'receipt_reprint',settlement_id:settlementId,request_id:clientRequestId('receipt-reprint')});const st=String(j.result?.status||'');if(st==='blocked')toast('درخواست ثبت شد اما مقصد چاپ آماده نیست؛ وضعیت چاپ را بررسی کن.','warning','فیش مشتری');else toast('فیش مشتری برای چاپ مجدد ارسال شد.','success','فیش مشتری')}
+ function closePrintMenu(){const menu=accountPane.querySelector('[data-account-print-menu]'),toggle=accountPane.querySelector('[data-account-print-toggle]');if(menu)menu.hidden=true;if(toggle)toggle.setAttribute('aria-expanded','false')}
+--- a/public/assets/product-shell.js
++++ b/public/assets/product-shell.js
+@@ -39,4 +39,54 @@
+   const syncClocks=()=>clocks.forEach(updateClock);
+   if(clocks.length){syncClocks();window.setInterval(syncClocks,30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncClocks()})}
++
++  // Local notification bell: read-only preview of the authenticated user's inbox.
++  // Never acknowledge/delete notifications in a preview; the inbox remains authoritative.
++  (()=>{
++    const wrap=document.querySelector('[data-shell-notify-wrap]');
++    if(!wrap)return;
++    const toggle=wrap.querySelector('[data-shell-notify-toggle]');
++    const panel=wrap.querySelector('[data-shell-notify-panel]');
++    const items=wrap.querySelector('[data-shell-notify-items]');
++    const closeButton=wrap.querySelector('[data-shell-notify-close]');
++    let generation=0;
++    const close=({focus=false}={})=>{
++      if(panel.hidden)return;
++      panel.hidden=true;
++      toggle.setAttribute('aria-expanded','false');
++      generation++;
++      if(focus)toggle.focus({preventScroll:true});
++    };
++    const render=rows=>{
++      items.replaceChildren();
++      // Preserve all important/unread entries, but keep the header panel compact.
++      const sorted=[...rows].sort((a,b)=>Boolean(a.read_at)-Boolean(b.read_at)||Number(b.id||0)-Number(a.id||0)).slice(0,6);
++      if(!sorted.length){const empty=document.createElement('p');empty.textContent='اعلان جدیدی وجود ندارد.';items.append(empty);return}
++      for(const item of sorted){
++        const raw=String(item.target_url||'');
++        const safePath=raw.startsWith('/')&&!raw.startsWith('//')&&!raw.includes('\\')?appPath(raw):'';
++        const card=document.createElement(safePath?'a':'article');card.className='sc-shell__notify-item';
++        if(safePath)card.setAttribute('href',safePath);
++        if(!item.read_at)card.classList.add('is-unread');
++        const title=document.createElement('strong');title.textContent=faDigits(item.title||'اعلان');
++        const detail=document.createElement('small');detail.textContent=faDigits(item.body||'');
++        card.append(title,detail);items.append(card);
++      }
++    };
++    const open=async()=>{
++      panel.hidden=false;toggle.setAttribute('aria-expanded','true');
++      items.textContent='در حال دریافت اعلان‌ها…';const current=++generation;
++      try{
++        const res=await fetch(panel.dataset.api,{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
++        if(!res.ok)throw Error('HTTP '+res.status);
++        const data=await res.json();
++        if(data.success===false||!Array.isArray(data.snapshot?.items))throw Error('invalid snapshot');
++        if(current===generation&&!panel.hidden)render(data.snapshot.items);
++      }catch(_){if(current===generation&&!panel.hidden)items.textContent='دریافت اعلان‌ها ممکن نشد؛ از «مشاهده همه اعلان‌ها» استفاده کنید.'}
++    };
++    toggle.addEventListener('click',()=>{if(panel.hidden)open();else close({focus:true})});
++    closeButton.addEventListener('click',()=>close({focus:true}));
++    document.addEventListener('pointerdown',event=>{if(!panel.hidden&&!wrap.contains(event.target))close()});
++    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!panel.hidden){event.preventDefault();close({focus:true})}});
++  })();
+ 
+   const pageHeaderActions=document.querySelector('[data-page-header-actions]');
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6399,2 +6399,21 @@
+   min-block-size:max-content!important;
+ }
++
++
++/* R287 Local header notification preview; read-only, responsive, no overlay over critical controls. */
++.sc-shell__notify-wrap{position:relative;flex:none}
++.sc-shell__notify-panel{position:absolute;z-index:180;inset-block-start:calc(100% + 10px);inset-inline-end:0;inline-size:min(370px,calc(100vw - 28px));max-block-size:min(68vh,540px);overflow:auto;padding:12px;background:var(--sc-surface-raised,#fff);color:var(--sc-text,#233);border:1px solid var(--sc-border,#ddd);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.15)}
++.sc-shell__notify-panel[hidden]{display:none!important}
++.sc-shell__notify-panel>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-block-end:8px}
++.sc-shell__notify-panel>header>.sc-icon-button{min-inline-size:32px;min-block-size:32px}
++.sc-shell__notify-items{display:grid;gap:7px;min-inline-size:0}
++.sc-shell__notify-item{display:grid;gap:4px;min-inline-size:0;padding:9px 11px;border:1px solid var(--sc-border,#ddd);border-radius:9px;color:inherit;text-decoration:none;overflow-wrap:anywhere}
++.sc-shell__notify-item.is-unread{border-inline-start:3px solid var(--sc-accent,#187c79)}
++.sc-shell__notify-item>strong,.sc-shell__notify-item>small{font-size:.86rem;line-height:1.55}
++.sc-shell__notify-item>small{opacity:.76}
++.sc-shell__notify-panel>footer{margin-block-start:10px;border-block-start:1px solid var(--sc-border,#ddd);padding-block-start:9px}
++.sc-shell__notify-panel>footer>a{display:block;text-align:center}
++@media(max-width:700px){.sc-shell__notify-wrap>.sc-shell__notify{display:inline-flex!important}.sc-shell__notify-panel{position:fixed;inset-inline:14px;inset-block-start:68px;inline-size:auto;max-block-size:min(65vh,550px)}}
++
++/* R287: only the tab bar counts preparation tickets. */
++[data-preparation-summary][hidden]{display:none!important}
+--- a/public/assets/staff-app/preparation-workspace.js
++++ b/public/assets/staff-app/preparation-workspace.js
+@@ -23,14 +23,21 @@
+ const areaNeedsAction=area=>Boolean((area.adjustments||[]).length)||!Boolean(area.claim&&area.claim.current);
+ const orderNeedsAction=order=>(order.areas||[]).some(areaNeedsAction);
+-function renderSummary(orders){if(!summary)return;const active=orders.filter(orderNeedsAction).length,handled=orders.length-active,adjustments=orders.reduce((n,o)=>n+(o.areas||[]).reduce((a,x)=>a+(x.adjustments||[]).length,0),0);summary.replaceChildren();const label=make('div',undefined,'sc-preparation-summary__copy');label.append(make('strong','صف امروز'),make('small',`${L.integer(orders.length)} سفارش قابل مشاهده`));summary.append(label);const metrics=make('div',undefined,'sc-preparation-summary__metrics');const chip=(text,value,cls='')=>{const el=make('span',undefined,'sc-preparation-chip'+(cls?' '+cls:''));el.append(make('b',L.integer(value)),make('span',text));return el};metrics.append(chip('نیازمند اقدام',active,active?'is-attention':''),chip('دریافت‌شده',handled,'is-done'));if(adjustments)metrics.append(chip('اصلاح منتظر',adjustments,'is-adjustment'));summary.append(metrics)}
+-function renderOrder(order,monitor){const card=document.createElement('article');card.className='sc-preparation-order'+(orderNeedsAction(order)?' is-attention':' is-handled');card.dataset.preparationState=orderNeedsAction(order)?'attention':'handled';const head=make('header',undefined,'sc-preparation-order__head'),copy=make('div',undefined,'sc-preparation-order__copy');copy.append(make('h3',`${L.humanDigits?L.humanDigits(order.table_name):order.table_name} · سفارش ${L.integer(order.order_number)}`));const meta=make('div',undefined,'sc-preparation-order__meta');meta.append(make('span',L.time?L.time(order.created_at):String(order.created_at||'')));const age=ageCopy(order.created_at);if(age)meta.append(make('span',age,'sc-preparation-age'));copy.append(meta);head.append(copy);const state=make('span',orderNeedsAction(order)?'نیازمند اقدام':'دریافت‌شده','sc-badge '+(orderNeedsAction(order)?'sc-badge--warning':'sc-badge--success'));head.append(state);card.append(head);const areas=make('div',undefined,'sc-preparation-order__areas');for(const area of order.areas||[]){const adjustments=Array.isArray(area.adjustments)?area.adjustments:[],box=make('section',undefined,'sc-preparation-area'+(areaNeedsAction(area)?' is-attention':' is-handled')),ah=make('div',undefined,'sc-preparation-area__head');ah.append(make('strong',area.label||({kitchen:'آشپزخانه',bar:'بار'}[area.area]||area.area||'بخش')));const current=Boolean(area.claim&&area.claim.current),claimState=adjustments.length?`${L.integer(adjustments.length)} اصلاح منتظر تأیید`:(current?(area.claim.claimed_by?`گرفته‌شده توسط ${area.claim.claimed_by}`:'دریافت‌شده'):'نیازمند دریافت');ah.append(make('span',claimState,adjustments.length?'sc-badge sc-badge--warning':(current?'sc-badge sc-badge--success':'sc-badge sc-badge--warning')));box.append(ah);for(const a of adjustments){const note=make('div',undefined,'sc-preparation-adjustment');note.append(make('strong',adjustmentCopy(a)));note.append(make('small',adjustmentHint(a)));if(area.actionable&&!monitor&&!stale){const b=make('button','اصلاح را دیدم','sc-button sc-button--secondary');b.type='button';b.addEventListener('click',()=>acknowledge(Number(a.id),b));note.append(b)}box.append(note)}const items=make('div',undefined,'sc-preparation-items');const columns=make('div',undefined,'sc-preparation-items__head');columns.append(make('span','آیتم'),make('span','تعداد'),make('span','توضیح'));items.append(columns);for(const item of area.items||[]){const row=make('div',undefined,'sc-preparation-item'),name=make('strong',item.item_name||'—'),qty=make('b',L.integer(item.quantity||0),'sc-preparation-item__qty'),note=make('small',item.item_note||'—','sc-preparation-item__note');row.append(name,qty,note);items.append(row)}box.append(items);if(area.actionable&&!monitor&&!adjustments.length&&!current&&!stale){const b=make('button','گرفتم','sc-button');b.type='button';b.addEventListener('click',()=>claim(order.id,area.area,b));box.append(b)}areas.append(box)}card.append(areas);return card}
+-function groupBlock(title,copy,orders,monitor,kind){const section=make('section',undefined,'sc-preparation-group sc-preparation-group--'+kind),head=make('div',undefined,'sc-preparation-group__head');head.append(make('div',undefined));head.firstElementChild.append(make('h2',title),make('p',copy));head.append(make('span',L.integer(orders.length),'sc-preparation-group__count'));section.append(head);const list=make('div',undefined,'sc-preparation-group__list');orders.forEach(order=>list.append(renderOrder(order,monitor)));section.append(list);return section}
++// The two tabs below are the only order counters; keep the legacy summary slot
++// empty to prevent three conflicting copies of the same figures.
++function renderSummary(_orders){if(!summary)return;summary.replaceChildren();summary.hidden=true}
++function renderOrder(order,monitor){const card=document.createElement('article');card.className='sc-preparation-order'+(orderNeedsAction(order)?' is-attention':' is-handled');card.dataset.preparationState=orderNeedsAction(order)?'attention':'handled';const head=make('header',undefined,'sc-preparation-order__head'),copy=make('div',undefined,'sc-preparation-order__copy');copy.append(make('h3',`${L.humanDigits?L.humanDigits(order.table_name):order.table_name} · سفارش ${L.integer(order.order_number)}`));const meta=make('div',undefined,'sc-preparation-order__meta');meta.append(make('span',L.time?L.time(order.created_at):String(order.created_at||'')));const age=ageCopy(order.created_at);if(age)meta.append(make('span',age,'sc-preparation-age'));copy.append(meta);head.append(copy);card.append(head);const areas=make('div',undefined,'sc-preparation-order__areas');for(const area of order.areas||[]){const adjustments=Array.isArray(area.adjustments)?area.adjustments:[],box=make('section',undefined,'sc-preparation-area'+(areaNeedsAction(area)?' is-attention':' is-handled')),ah=make('div',undefined,'sc-preparation-area__head');ah.append(make('strong',area.label||({kitchen:'آشپزخانه',bar:'بار'}[area.area]||area.area||'بخش')));const current=Boolean(area.claim&&area.claim.current),claimState=adjustments.length?`${L.integer(adjustments.length)} اصلاح منتظر تأیید`:(current?(area.claim.claimed_by?`گرفته‌شده توسط ${area.claim.claimed_by}`:'دریافت‌شده'):'نیازمند دریافت');ah.append(make('span',claimState,adjustments.length?'sc-badge sc-badge--warning':(current?'sc-badge sc-badge--success':'sc-badge sc-badge--warning')));box.append(ah);for(const a of adjustments){const note=make('div',undefined,'sc-preparation-adjustment');note.append(make('strong',adjustmentCopy(a)));note.append(make('small',adjustmentHint(a)));if(area.actionable&&!monitor&&!stale){const b=make('button','اصلاح را دیدم','sc-button sc-button--secondary');b.type='button';b.addEventListener('click',()=>acknowledge(Number(a.id),b));note.append(b)}box.append(note)}const items=make('div',undefined,'sc-preparation-items');const columns=make('div',undefined,'sc-preparation-items__head');columns.append(make('span','آیتم'),make('span','تعداد'),make('span','توضیح'));items.append(columns);for(const item of area.items||[]){const row=make('div',undefined,'sc-preparation-item'),name=make('strong',item.item_name||'—'),qty=make('b',L.integer(item.quantity||0),'sc-preparation-item__qty'),note=make('small',String(item.item_note||'').trim(),'sc-preparation-item__note');row.append(name,qty,note);items.append(row)}box.append(items);if(area.actionable&&!monitor&&!adjustments.length&&!current&&!stale){const b=make('button','گرفتم','sc-button');b.type='button';b.addEventListener('click',()=>claim(order.id,area.area,b));box.append(b)}areas.append(box)}card.append(areas);return card}
++function groupBlock(_title,_copy,orders,monitor,kind){
++ const section=make('section',undefined,'sc-preparation-group sc-preparation-group--'+kind);
++ const list=make('div',undefined,'sc-preparation-group__list');
++ for(const order of orders)list.append(renderOrder(order,monitor));
++ section.append(list);return section;
++}
+ function render(data){
+  const wrap=root.querySelector('[data-preparation-list]');if(!wrap)return;lastPreparationData=data;wrap.replaceChildren();
+  const orders=Array.isArray(data.orders)?data.orders:[],monitor=data.permissions?.monitor_only===true;
+  renderSummary(orders);
+- const pending=orders.filter(orderNeedsAction),received=orders.filter(o=>!orderNeedsAction(o));
++ const chronological=(a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||''))||Number(a.id||0)-Number(b.id||0);const pending=orders.filter(orderNeedsAction).sort(chronological),received=orders.filter(o=>!orderNeedsAction(o)).sort(chronological);
+  const tabs=make('div',undefined,'sc-preparation-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','وضعیت سفارش‌های آماده‌سازی');
+- for(const [key,label,rows] of [['pending','سفارش‌های در انتظار',pending],['received','دریافت‌شده',received]]){
++ for(const [key,label,rows] of [['pending','در انتظار',pending],['received','دریافت‌شده',received]]){
+   const button=make('button',undefined,'sc-preparation-tab'+(preparationTab===key?' is-current':''));button.type='button';button.setAttribute('role','tab');button.setAttribute('aria-selected',preparationTab===key?'true':'false');button.setAttribute('tabindex',preparationTab===key?'0':'-1');button.append(make('span',label),make('b',L.integer(rows.length)));
+   button.addEventListener('click',()=>{preparationTab=key;render(lastPreparationData)});tabs.append(button);
+--- a/public/assets/staff-app/hall-workspace.js
++++ b/public/assets/staff-app/hall-workspace.js
+@@ -572,5 +572,30 @@
+ }
+ async function reprintPreparationRound(orderId){if(orderId<1)return;const result=await mutate({action:'order_reprint',order_id:orderId,request_id:clientRequestId('prep-reprint')});const status=String(result.status||'');if(status==='pending'||status==='reserved'||status==='claimed'||status==='started'){toast('چاپ مجدد در صف چاپ قرار گرفت.','success','فیش آماده‌سازی');return}if(status==='blocked'){toast('درخواست ثبت شد اما مقصد چاپ آماده نیست؛ وضعیت چاپ را بررسی کن.','warning','فیش آماده‌سازی');return}toast('وضعیت درخواست چاپ: '+(status||'ثبت‌شده'),'info','فیش آماده‌سازی')}
+-async function reprintPreparationFromMenu(){const rounds=(Array.isArray(account?.order_rounds)?account.order_rounds:[]).filter(r=>Number(r.order_id)>0&&String(r.status||'accounted')==='accounted');if(!rounds.length){toast('فیش آماده‌سازی قابل چاپی برای این حساب وجود ندارد.','warning','چاپ مجدد');return}let orderId=Number(rounds[rounds.length-1].order_id);if(rounds.length>1){const picked=await SoknaUI.choose('فیش آماده‌سازی',rounds.slice().reverse().map(r=>({label:`نوبت ${L.integer(r.round_index||1)} · سفارش ${L.integer(r.order_number||r.order_id)}`,value:String(r.order_id)})),{message:'کدام نوبت دوباره چاپ شود؟'});if(picked===null)return;orderId=Number(picked||0)}await reprintPreparationRound(orderId)}
++async function reprintPreparationFromMenu(){
++ // Use only accounted orders from this open table session; never silently choose the last round.
++ const selectedSessionId=Number(account?.table?.session_id||0),selectedTableId=Number(account?.table?.id||0);
++ const rounds=(Array.isArray(account?.order_rounds)?account.order_rounds:[])
++   .filter(r=>Number(r.order_id)>0&&String(r.status||'accounted')==='accounted'&&String(r.accounting_origin||'regular')!=='late_served')
++   .filter(r=>!Array.isArray(r.items)||r.items.some(i=>Number(i.quantity||0)>0&&String(i.preparation_station||'other')!=='none'))
++   .sort((a,b)=>Number(a.round_index||0)-Number(b.round_index||0)||Number(a.order_id)-Number(b.order_id));
++ if(!rounds.length||selectedSessionId<1||selectedTableId<1){toast('فیش آماده‌سازی قابل چاپی برای این حساب باز وجود ندارد.','warning','چاپ مجدد');return}
++ const choices=[{label:'چاپ کل فیش · همه نوبت‌های حساب باز',value:'all'},
++   ...rounds.map(r=>({label:`نوبت ${L.integer(r.round_index||1)} · سفارش ${L.integer(r.order_number||r.order_id)}`,value:String(r.order_id)}))];
++ const picked=await SoknaUI.choose('فیش آماده‌سازی',choices,{message:'«چاپ کل فیش» یک فیش یکپارچه می‌سازد؛ یا فقط یک نوبت را انتخاب کنید.',layout:'list'});
++ if(picked===null)return;
++ // A table can be closed, transferred or replaced while the chooser is open.
++ if(Number(account?.table?.session_id||0)!==selectedSessionId||Number(account?.table?.id||0)!==selectedTableId){toast('حساب میز تغییر کرده است؛ دوباره انتخاب کنید.','warning','چاپ مجدد');return}
++ if(picked==='all'){
++   const result=await mutate({action:'order_reprint',scope:'all',session_id:selectedSessionId,table_id:selectedTableId,request_id:clientRequestId('prep-reprint-all')});
++   const printStatus=String(result.status||'');
++   if(printStatus==='blocked')toast('درخواست کل فیش ثبت شد اما مقصد چاپ آماده نیست؛ وضعیت چاپ را بررسی کنید.','warning','فیش آماده‌سازی');
++   else if(['pending','reserved','claimed','started'].includes(printStatus))toast('چاپ کل فیش در یک کار در صف چاپ قرار گرفت.','success','فیش آماده‌سازی');
++   else toast('وضعیت درخواست چاپ کل فیش: '+(printStatus||'ثبت‌شده'),'info','فیش آماده‌سازی');
++   return;
++ }
++ const orderId=Number(picked);
++ if(!rounds.some(r=>Number(r.order_id)===orderId))return;
++ await reprintPreparationRound(orderId);
++}
+ async function reprintCustomerReceiptFromMenu(){const receipts=Array.isArray(financeAccount?.receipts)?financeAccount.receipts:[];if(!receipts.length){toast('هنوز فیش مشتری ثبت‌شده‌ای برای چاپ مجدد وجود ندارد.','warning','چاپ مجدد');return}let settlementId=Number(receipts[0].id||0);if(receipts.length>1){const picked=await SoknaUI.choose('فیش مشتری',receipts.map(r=>({label:`${r.invoice_number||'فیش مشتری'} · ${money(r.total||0)}`,value:String(r.id)})),{message:'کدام سند دوباره چاپ شود؟'});if(picked===null)return;settlementId=Number(picked||0)}if(settlementId<1)return;const j=await financeMutate({action:'receipt_reprint',settlement_id:settlementId,request_id:clientRequestId('receipt-reprint')});const st=String(j.result?.status||'');if(st==='blocked')toast('درخواست ثبت شد اما مقصد چاپ آماده نیست؛ وضعیت چاپ را بررسی کن.','warning','فیش مشتری');else toast('فیش مشتری برای چاپ مجدد ارسال شد.','success','فیش مشتری')}
+ // One customer receipt action: before settlement use preview (no invoice/settlement),
+--- a/src/UI/ProductShell.php
++++ b/src/UI/ProductShell.php
+@@ -89,5 +89,5 @@
+         echo '<div class="sc-user-menu sc-theme-picker" data-theme-picker data-user-menu><button class="sc-shell__user-card sc-user-menu__trigger" type="button" data-theme-menu-toggle data-theme-menu-label="preserve" aria-label="منوی کاربر، '.$name.'" aria-haspopup="true" aria-expanded="false"><span class="sc-shell__user-copy"><strong>'.$name.'</strong><small>'.$safeRole.'</small></span><span class="sc-user-menu__chevron" aria-hidden="true">'.self::icon('chevron-down').'</span></button><div class="sc-theme-picker__menu sc-user-menu__menu" aria-label="منوی کاربر" hidden data-theme-menu data-user-menu-panel>'.$accountLink.'<div class="sc-user-menu__section"><span class="sc-user-menu__section-label">پوسته</span><div class="sc-user-menu__theme" role="radiogroup" aria-label="پوسته سامانه"><button type="button" role="radio" data-theme-option="light" aria-checked="false"><span>'.self::icon('sun').'</span><span>روشن</span></button><button type="button" role="radio" data-theme-option="dark" aria-checked="false"><span>'.self::icon('moon').'</span><span>تیره</span></button><button type="button" role="radio" data-theme-option="system" aria-checked="false"><span>'.self::icon('device').'</span><span>سیستم</span></button></div></div><a class="sc-user-menu__link sc-user-menu__link--logout" href="'.$u($logoutPath).'"><span>'.self::icon('logout').'</span><span><strong>خروج</strong><small>پایان نشست جاری</small></span></a></div></div>';
+         echo '<div class="sc-shell__date-card" data-shell-clock data-timezone="'.$timezone.'" data-server-now="'.$serverNow.'"><span class="sc-shell__date-icon" aria-hidden="true">'.self::icon('calendar').'</span><span class="sc-shell__date-copy"><strong data-shell-date>—</strong><span data-shell-time>—</span></span></div>';
+-        echo '<a class="sc-icon-button sc-shell__notify" href="'.$u($notificationsPath).'" aria-label="اعلان‌ها">'.self::icon('bell').'</a>';
++        echo '<div class="sc-shell__notify-wrap" data-shell-notify-wrap><button class="sc-icon-button sc-shell__notify" type="button" data-shell-notify-toggle aria-haspopup="true" aria-expanded="false" aria-controls="sokna-shell-notify-panel" aria-label="اعلان‌ها">'.self::icon('bell').'</button><section id="sokna-shell-notify-panel" class="sc-shell__notify-panel" data-shell-notify-panel data-api="'.$u('/notifications/api.php').'" hidden aria-label="اعلان‌های اخیر"><header><strong>اعلان‌های اخیر</strong><button type="button" class="sc-icon-button" data-shell-notify-close aria-label="بستن اعلان‌ها">×</button></header><div class="sc-shell__notify-items" data-shell-notify-items aria-live="polite">در حال دریافت اعلان‌ها…</div><footer><a href="'.$u($notificationsPath).'" data-shell-notify-all>مشاهده همه اعلان‌ها</a></footer></section></div>';
+         echo '</div>';
+         echo '<div class="sc-shell__top-spacer" aria-hidden="true"></div>';
+--- a/src/Domain/Printing/PrintService.php
++++ b/src/Domain/Printing/PrintService.php
+@@ -353,4 +353,60 @@
+         $this->audit('printing.order_reprint_enqueued','print_job',(int)($job['job_id']??0),$actorUserId,['order_id'=>$orderId,'request_id'=>$requestId,'status'=>(string)($job['status']??'')]);
+         return $job+['order_id'=>$orderId,'request_id'=>$requestId];
++    }
++
++    /**
++     * One PRINT JOB for all printable, accounted rounds in ONE active table session.
++     * No previous table session, unapproved order, served-late item, stock or payment action.
++     * A request_id has durable idempotency through print_jobs, just like a single-round reprint.
++     */
++    public function enqueueAccountPreparationReprintTx(int $sessionId,int $tableId,int $actorUserId,string $requestId): array
++    {
++        $this->requireTx();$requestId=self::requestId($requestId);
++        if($sessionId<1||$tableId<1)throw new PrintException('invalid_session','حساب باز معتبر نیست.',422);
++        $stmt=$this->pdo->prepare('SELECT s.id,s.status,s.table_id,t.name table_name FROM table_sessions s JOIN cafe_tables t ON t.id=s.table_id WHERE s.id=? FOR UPDATE');
++        $stmt->execute([$sessionId]);$session=$stmt->fetch(PDO::FETCH_ASSOC);
++        if(!is_array($session)||(string)($session['status']??'')!=='active'||(int)$session['table_id']!==$tableId)
++            throw new PrintException('session_changed','حساب میز تغییر کرده یا بسته شده است؛ صفحه را تازه کنید.',409);
++        // Accounted rows only. This deliberately excludes historical sessions on the same table.
++        $orders=$this->pdo->prepare("SELECT id,business_order_number,customer_note,created_at FROM orders WHERE session_id=? AND table_id=? AND status='accounted' AND order_context='table_service' AND accounting_origin<>'late_served' ORDER BY created_at,id FOR UPDATE");
++        $orders->execute([$sessionId,$tableId]);$rounds=$orders->fetchAll(PDO::FETCH_ASSOC)?:[];
++        if(count($rounds)>150)throw new PrintException('too_many_rounds','تعداد نوبت‌ها برای چاپ یکپارچه بیش از حد است؛ نوبت‌ها را جدا چاپ کنید.',409);
++        $allRows=[];$printedRounds=[];$notes=[];$firstDate='';
++        foreach($rounds as $round){
++            $rows=$this->preparationRowsForOrder((int)$round['id']);
++            if(!$rows)continue;
++            if(count($allRows)+count($rows)>3000)throw new PrintException('too_many_items','تعداد اقلام برای چاپ یکپارچه بیش از حد است؛ نوبت‌ها را جدا چاپ کنید.',409);
++            $roundNumber=count($printedRounds)+1;
++            $printedRounds[]=['order_id'=>(int)$round['id'],'order_number'=>(int)$round['business_order_number'],'item_count'=>count($rows)];
++            $allRows=array_merge($allRows,$rows);
++            if($firstDate==='')$firstDate=(string)$round['created_at'];
++            $note=trim((string)($round['customer_note']??''));
++            if($note!=='')$notes[]='سفارش '.self::faDigits((string)$round['business_order_number']).': '.$note;
++        }
++        if(!$allRows)throw new PrintException('nothing_to_reprint','این حساب قلم قابل چاپ آماده‌سازی ندارد.',409);
++        $payload=[
++            'schema'=>'sokna-print-document-v2','document_kind'=>'preparation',
++            'document_role'=>'preparation_full_account_reprint',
++            'order_number'=>'همه نوبت‌ها','order_id'=>null,
++            'session_id'=>$sessionId,'table_id'=>$tableId,
++            'table_name'=>self::faDigits((string)$session['table_name']),
++            'badge'=>'چاپ مجدد · کل فیش آماده‌سازی',
++            'customer_note'=>$notes?implode("
++",$notes):null,
++            'items'=>self::sortPreparationRows($allRows),
++            'sections'=>self::preparationSections($allRows),
++            'created_at'=>\Sokna\Shared\IranTime::iso($firstDate),'display_date'=>\Sokna\Shared\IranTime::display($firstDate),
++            'reprint'=>true,'full_account_reprint'=>true,'round_count'=>count($printedRounds),
++            'rounds'=>$printedRounds,'reprint_request_id'=>$requestId,
++            'reprint_requested_by_user_id'=>$actorUserId,
++        ];
++        $payload=$this->templates->applyActive($payload);
++        $job=$this->enqueueTx('preparation_reprint','prep_shared',$payload,'session_preparation_reprint',(string)$sessionId,
++            $actorUserId,'prep:reprint:all:session:'.$sessionId.':'.$requestId,false);
++        $this->audit('printing.account_preparation_reprint_enqueued','print_job',(int)($job['job_id']??0),$actorUserId,[
++            'session_id'=>$sessionId,'table_id'=>$tableId,'round_count'=>count($printedRounds),
++            'order_ids'=>array_column($printedRounds,'order_id'),'request_id'=>$requestId,'status'=>(string)($job['status']??'')
++        ]);
++        return $job+['scope'=>'all','session_id'=>$sessionId,'table_id'=>$tableId,'round_count'=>count($printedRounds),'request_id'=>$requestId];
+     }
+ 
+--- a/src/Domain/Orders/OrderStaffActionService.php
++++ b/src/Domain/Orders/OrderStaffActionService.php
+@@ -634,4 +634,17 @@
+         try{
+             $actor=$this->actor($user);$actorId=(int)$actor['id'];$orderId=(int)($data['order_id']??0);$requestId=trim((string)($data['request_id']??''));
++            $scope=(string)($data['scope']??'single');
++            if($scope==='all'){
++                $sessionId=(int)($data['session_id']??0);$tableId=(int)($data['table_id']??0);
++                if($sessionId<1||$tableId<1)throw new OrderStaffActionException('invalid_session','حساب باز معتبر نیست.',422);
++                // Session binding is checked again by PrintService in this transaction.
++                $job=$this->printing->enqueueAccountPreparationReprintTx($sessionId,$tableId,$actorId,$requestId);
++                $this->audit('order.preparation_full_reprint_requested',0,$actor,[
++                    'table_id'=>$tableId,'session_id'=>$sessionId,'round_count'=>$job['round_count'],
++                    'print_job_id'=>(int)($job['job_id']??0),'print_status'=>(string)($job['status']??''),'request_id'=>$requestId,
++                ]);
++                if($ownsTransaction)$this->pdo->commit();return ['success'=>true]+$job;
++            }
++            if($scope!=='single')throw new OrderStaffActionException('invalid_scope','نوع چاپ مجدد معتبر نیست.',422);
+             if($orderId<1)throw new OrderStaffActionException('invalid_order','سفارش معتبر نیست.',422);
+             $stmt=$this->pdo->prepare("SELECT o.id,o.status,o.accounting_origin,o.table_id,o.session_id,s.status session_status FROM orders o LEFT JOIN table_sessions s ON s.id=o.session_id WHERE o.id=? FOR UPDATE");
