@@ -8,7 +8,7 @@ old_version='3.0.0-g6.2-workspace.231fs-r301-public-move-controlled-install'
 changes={
 '$pack=$env:SOKNA_R301_CANDIDATE_ZIP':'$pack=$env:SOKNA_R304_CANDIDATE_ZIP',
 '$parent=$env:SOKNA_R299_ORIGINAL_ZIP':'$parent=$env:SOKNA_R301_ORIGINAL_ZIP',
-"-ceq '399356a587230c770cbf50f6c3bdd93f0ee4a339e35ec3c1c381d61473d8cb73') 'R301_EXACT_PACKAGE_SHA_INVALID'":"-ceq 'f84c3f258af59242eed1d5ce1025456503e59a6e2085eeeade66b06763594c77') 'R304_EXACT_PACKAGE_SHA_INVALID'",
+"-ceq '399356a587230c770cbf50f6c3bdd93f0ee4a339e35ec3c1c381d61473d8cb73') 'R301_EXACT_PACKAGE_SHA_INVALID'":"-ceq '6dccf704f130610821e2727858bbcdd2531780ede5781c896153fb480201f1e1') 'R304_EXACT_PACKAGE_SHA_INVALID'",
 "-ceq '8a897f3ac9215e06d72f67be292b11cf17263a0ab687d9b59d8bc341ac818507') 'R299_EXACT_PARENT_PACKAGE_SHA_INVALID'":"-ceq '399356a587230c770cbf50f6c3bdd93f0ee4a339e35ec3c1c381d61473d8cb73') 'R301_EXACT_PARENT_PACKAGE_SHA_INVALID'",
 "$old=Join-Path $root 'Web.release.r299'":"$old=Join-Path $root 'Web.release.r301'",
 "-ceq '3.0.0-g6.2-workspace.231fq-r299-cumulative-controlled-install'})":"-ceq '"+old_version+"'})",
