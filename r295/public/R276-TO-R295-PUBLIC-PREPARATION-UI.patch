@@ -11,6 +11,19 @@
 +.sc-preparation-tab b{font-size:.73rem;border-radius:10px;background:var(--sc-surface-subtle);padding:2px 8px}
 +.sc-preparation-tab.is-current{border-color:var(--sc-accent);background:var(--sc-accent-soft);color:var(--sc-accent)}
 +.sc-preparation-tab-panel{min-inline-size:0}
+--- a/payload/assets/scds/remote-staff.css
++++ b/payload/assets/scds/remote-staff.css
+@@ -146,3 +146,10 @@
+ 
+ /* PWA notification account preferences */
+ .sc-pwa-notification-prefs{align-items:flex-start}.sc-pwa-notification-prefs .sc-pwa-setting__copy{gap:8px}.sc-pwa-toggle{display:flex;align-items:center;gap:9px;min-height:36px;font-size:.9rem;cursor:pointer}.sc-pwa-toggle input{inline-size:18px;block-size:18px;accent-color:var(--sc-accent,#0f6b66)}.sc-pwa-toggle:has(input:disabled){opacity:.55;cursor:not-allowed}
++
++/* R295 Public — legible two-line app menu entry at narrow RTL widths. */
++.sc-pwa-menu-entry{grid-template-columns:34px minmax(0,1fr) 9px 16px;column-gap:7px;align-items:center;min-inline-size:0}
++.sc-pwa-menu-entry__copy{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;min-inline-size:0;text-align:start}
++.sc-pwa-menu-entry__copy strong,.sc-pwa-menu-entry__copy small{display:block;max-inline-size:100%;line-height:1.5}
++.sc-pwa-menu-entry__copy small{white-space:normal;overflow-wrap:anywhere}
++.sc-pwa-menu-entry>.sc-ui-icon{align-self:center;justify-self:center}
 --- a/payload/assets/scds/staff-product-ui.css
 +++ b/payload/assets/scds/staff-product-ui.css
 @@ -3902,3 +3902,10 @@
