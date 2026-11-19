@@ -202,6 +202,8 @@ jobs:
         run: |
           set -euo pipefail
           php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R292_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r292 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          # Older R292 fixture predates the R293 discount grant table; this is an empty no-grant cohort.
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;dbname=sokna_r292;charset=utf8mb4","root",getenv("R292_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE TABLE remaining_account_discount_grants(id INT PRIMARY KEY,session_id INT NOT NULL) ENGINE=InnoDB");'
           php r292/qa_open_accounts_mariadb.php | tee "$RUNNER_TEMP/r292-open-accounts.json"
       - uses: actions/upload-artifact@v4
         if: always()
