@@ -21,9 +21,9 @@ jobs:
           --health-cmd="healthcheck.sh --connect --innodb_initialized"
           --health-interval=5s --health-timeout=4s --health-retries=20
     env:
-      R294_SOURCE_ROOT: ${{ runner.temp }}/r298-source
-      R293_SOURCE_ROOT: ${{ runner.temp }}/r298-source
-      R296_SOURCE_ROOT: ${{ runner.temp }}/r298-source
+      R294_SOURCE_ROOT: ${{ github.workspace }}/r298-source
+      R293_SOURCE_ROOT: ${{ github.workspace }}/r298-source
+      R296_SOURCE_ROOT: ${{ github.workspace }}/r298-source
       R293_DB_PASSWORD: r298-disposable-only
       R294_DB_PASSWORD: r298-disposable-only
       R296_DB_PASSWORD: r298-disposable-only
@@ -55,7 +55,7 @@ jobs:
           assert len(files)==1,len(files)
           raw=files[0].read_bytes()
           assert hashlib.sha256(raw).hexdigest()=='a6326bdd1fa3e5a720379ee1716406ac62b08206bb9f878d6dcb854e7d2d3568'
-          dest=pathlib.Path(os.environ['RUNNER_TEMP'])/'r298-source';dest.mkdir()
+          dest=pathlib.Path(os.environ['GITHUB_WORKSPACE'])/'r298-source';dest.mkdir()
           with zipfile.ZipFile(io.BytesIO(raw)) as outer:
             assert outer.testzip() is None
             manifest=json.loads(outer.read('release-set.json'))
