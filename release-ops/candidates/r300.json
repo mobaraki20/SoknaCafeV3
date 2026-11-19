@@ -1,0 +1,28 @@
+{
+  "schema": "sokna-candidate-contract-v1",
+  "component": "local",
+  "producer": {
+    "run_id": 44558233042,
+    "artifact": "SOKNA-R300-QUALIFICATION-CANDIDATE-NO-FIELD"
+  },
+  "source_authority": {
+    "approved_checkpoint": "R299_LOCAL_NATIVE_AND_FACTORY_20261119__FIELD_TRANSFER_R300_PENDING",
+    "source_sha256": "04e4bf1cc5c9c860835f4081a9f7f847f5fd9d9979f3d8558c5fcd3cee79517f"
+  },
+  "packages": [
+    {
+      "file": "SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip",
+      "sha256": "40be5ce560c699fab1c86522ee61c12198f30ab248674df74388924ed5faeb1a",
+      "kind": "local-update",
+      "component": "local",
+      "version": "3.0.0-g6.2-workspace.231fr-r300-public-move-hardening"
+    }
+  ],
+  "supporting_files": [
+    {
+      "file": "R300-CANDIDATE-PROOF.json",
+      "sha256": "0946137b12e9336ca047ec939568828607ae338406f253d40a738ce56c2a39da"
+    }
+  ],
+  "production_authorized": false
+}
