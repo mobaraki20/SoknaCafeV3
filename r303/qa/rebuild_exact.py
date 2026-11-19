@@ -32,7 +32,7 @@ for key,(digest,name) in sources.items():
 env={**os.environ,'R303_CI_BASE_LOCAL':str(found['local']),'R303_CI_BASE_PUBLIC':str(found['public'])}
 for key in ['local','public']:
  subprocess.run([sys.executable,str(repo/'r303/qa'/f'build_{key}.py')],env=env,check=True)
-for name,digest in [('SOKNA-R303-LOCAL-231FT-QA-NOT-INSTALL.zip','0adb90b62e488f21ed3443608a5a2691445351666c4fecb181e3d8a28839d8aa'),('SOKNA-R303-PUBLIC-35IL-EMERGENCY-UI-QA-NOT-INSTALL.zip','a5c5743e1804dbd10282b399916ae0cd8399aa71dbf79bdf62a4deeef1291afe')]:
+for name,digest in [('SOKNA-R303-LOCAL-231FT-QA-NOT-INSTALL.zip','0adb90b62e488f21ed3443608a5a2691445351666c4fecb181e3d8a28839d8aa'),('SOKNA-R303-PUBLIC-35IL-EMERGENCY-UI-COMPRESSED-QA-NOT-INSTALL.zip','b1a11905b023c989f9ab968f9ddec50c16ddd69aff471032cd32986940d7b085')]:
  file=work/'out'/name;actual=sha(file.read_bytes())
  if actual!=digest:raise RuntimeError('R303_REPRODUCIBILITY_MISMATCH '+name+' '+actual)
  print('PASS_R303_BYTE_IDENTICAL',name,actual,flush=True)
