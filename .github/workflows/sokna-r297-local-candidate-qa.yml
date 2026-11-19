@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      SOKNA_R297_WORKDIR: ${{ runner.temp }}/r297-work
-      SOKNA_R296_SOURCE_DIR: ${{ runner.temp }}/r297-source
+      SOKNA_R297_WORKDIR: ${{ github.workspace }}/r297-work
+      SOKNA_R296_SOURCE_DIR: ${{ github.workspace }}/r297-source
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
