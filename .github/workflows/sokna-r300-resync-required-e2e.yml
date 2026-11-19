@@ -132,7 +132,10 @@ jobs:
           p=pathlib.Path(sys.argv[1]);s=p.read_text()
           anchor='$pdo=$core->database();'
           assert s.count(anchor)==1
-          extra=anchor+'\\n$core->publicAuthorityState()->status();\\n$pdo->prepare("UPDATE public_authority_state SET phase=\\'resync_required\\' WHERE installation_id=?")->execute([$id]);\\nif($core->publicAuthorityState()->phase()!==\\'resync_required\\')throw new RuntimeException(\\'RESYNC_FIXTURE_FAILED\\');\\n'
+          extra=chr(10).join([anchor,
+            '$core->publicAuthorityState()->status();',
+            """$pdo->prepare("UPDATE public_authority_state SET phase='resync_required' WHERE installation_id=?")->execute([$id]);""",
+            """if($core->publicAuthorityState()->phase()!=='resync_required')throw new RuntimeException('RESYNC_FIXTURE_FAILED');"""]) + chr(10)
           p.write_text(s.replace(anchor,extra))
           PY
           php "$RUNNER_TEMP/r300-resync.php" | tee "$RUNNER_TEMP/owner-e2e.log" || {
