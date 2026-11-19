@@ -1,0 +1,30 @@
+name: SOKNA R295 Print Agent Independent Font Windows QA
+on:
+  push:
+    branches: [qa/sokna-r295-open-issues-20261119]
+    paths:
+      - 'windows/print-agent/source/src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs'
+      - 'r295/agent_font_probe/**'
+      - '.github/workflows/sokna-r295-print-agent-font-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-font-render:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+      - name: Compile actual Print Agent renderer and exercise independent typography with real Windows GDI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet run --project r295/agent_font_probe/FontProbe.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'R295_AGENT_FONT_RENDER_FAILURE'}
+      - name: Independent no-print compatibility report
+        shell: pwsh
+        run: |
+          Write-Host 'R295_WINDOWS_AGENT_RENDER_QA_ONLY__NO_PRINT_QUEUE_MUTATIONS'
