@@ -98,7 +98,7 @@ jobs:
           assert len(data)==607,len(data)
           sha=lambda b:hashlib.sha256(b).hexdigest()
           digest=sha(''.join(n+'\0'+sha(b)+'\n' for n,b in sorted(data.items())).encode())
-          expected='1e731621a0dfe021d5c08d1b5e419608771b1a6daaae4d72b4a3095fc2a4253d'
+          expected='1ab96cb7ca75c0ddcbffa17bd9c6aa76165daf277d045fd535cf9ba0219ba41b'
           assert digest==expected,(digest,expected)
           print('R295_EXACT_MANAGED_TREE_PASS',digest)
           PY
