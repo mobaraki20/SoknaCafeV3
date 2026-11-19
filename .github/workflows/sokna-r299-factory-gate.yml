@@ -1,0 +1,22 @@
+name: SOKNA R299 Controlled Local Exact Release Factory Verification - NO HOST DEPLOY
+on:
+  push:
+    branches: [qa/sokna-r299-controlled-release-20261119]
+    paths:
+      - 'release-ops/candidates/r299.json'
+      - '.github/workflows/sokna-r299-factory-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  factory:
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: release-ops/candidates/r299.json
+      candidate_run_id: '44541550259'
+      candidate_artifact: SOKNA-R299-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+    permissions:
+      contents: read
+      actions: read
