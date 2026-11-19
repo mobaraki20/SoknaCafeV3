@@ -1,0 +1,91 @@
+name: SOKNA R298 Windows Maintenance Native Qualification - Exact ZIP / NO HOST DEPLOY
+on:
+  push:
+    branches: [qa/sokna-r298-native-install-qualification-20261119]
+    paths: ['r298/**', '.github/workflows/sokna-r298-native-qualification.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOKNA_R298_WORKDIR: ${{ github.workspace }}/r298-work
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R297-LOCAL-CANDIDATE-FACTORY-QA
+          run-id: 44529037706
+          github-token: ${{ github.token }}
+          path: ${{ github.workspace }}/r298-work/output
+      - name: Build exact R298 candidate from R297 and verify SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 r298/build_r298_candidate.py
+          echo 'a6326bdd1fa3e5a720379ee1716406ac62b08206bb9f878d6dcb854e7d2d3568  '"$SOKNA_R298_WORKDIR/r298-out/SOKNA-R298-LOCAL-231FP-CUMULATIVE-NATIVE-QUALIFICATION-CANDIDATE.zip" | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py "$SOKNA_R298_WORKDIR/r298-out/SOKNA-R298-LOCAL-231FP-CUMULATIVE-NATIVE-QUALIFICATION-CANDIDATE.zip" --require-installable
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R298-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+          path: |
+            ${{ github.workspace }}/r298-work/r298-out/SOKNA-R298-LOCAL-231FP-CUMULATIVE-NATIVE-QUALIFICATION-CANDIDATE.zip
+            ${{ github.workspace }}/r298-work/r298-out/R298-CANDIDATE-PROOF.json
+          if-no-files-found: error
+          retention-days: 30
+  actual-windows-maintenance:
+    needs: build-candidate
+    runs-on: windows-2022
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R278-231FN-ORIGINAL-ZIP-FACTORY-QA-ONLY
+          run-id: 44305226007
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r278-parent
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R298-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+          path: ${{ runner.temp }}/r298-target
+      - name: Real Windows R278-to-R298 Maintenance prepare, activate, HTTP, DB83
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $orig=Get-ChildItem '${{ runner.temp }}/r278-parent' -Recurse -Filter 'SOKNA-R278-LOCAL-231FN-CUMULATIVE-RIAL-PERSISTENCE-INSTALL-READY.zip' | Select-Object -First 1
+          $target=Get-ChildItem '${{ runner.temp }}/r298-target' -Recurse -Filter 'SOKNA-R298-LOCAL-231FP-CUMULATIVE-NATIVE-QUALIFICATION-CANDIDATE.zip' | Select-Object -First 1
+          if(!$orig -or !$target){throw 'R298_REQUIRED_EXACT_ARCHIVE_NOT_FOUND'}
+          $env:SOKNA_R278_ORIGINAL_ZIP=$orig.FullName
+          $env:SOKNA_R298_CANDIDATE_ZIP=$target.FullName
+          if((Get-FileHash $target.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'a6326bdd1fa3e5a720379ee1716406ac62b08206bb9f878d6dcb854e7d2d3568'){throw 'R298_TARGET_SHA_NOT_EXACT'}
+          Push-Location 'native-src'
+          try {
+            & (Join-Path $env:GITHUB_WORKSPACE 'r298/tests/native_r278_to_r298.ps1')
+            if($LASTEXITCODE -ne 0){throw 'R298_NATIVE_MAINTENANCE_FAILED'}
+            Write-Host 'PASS_R298_EXACT_NATIVE_STAGE_ACTIVATE_HTTP_DB83_DISPOSABLE_WINDOWS_ONLY'
+          } finally {Pop-Location}
+      - name: Write Windows-only acceptance receipt
+        shell: pwsh
+        run: |
+          @{schema='sokna-r298-windows-native-receipt-v1';status='PASS';package_sha256='a6326bdd1fa3e5a720379ee1716406ac62b08206bb9f878d6dcb854e7d2d3568';baseline='R278_231FN';target='R298_231FP';db_migrations=83;host_deployed=$false;field_install_authorized=$false} |
+            ConvertTo-Json -Depth 5 | Set-Content 'r298-native-receipt.json' -Encoding utf8NoBOM
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R298-NATIVE-WINDOWS-REPORT-ONLY
+          path: r298-native-receipt.json
+          if-no-files-found: ignore
+          retention-days: 30
