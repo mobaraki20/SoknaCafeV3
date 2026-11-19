@@ -21,7 +21,7 @@ jobs:
           run-id: 44541550259
           github-token: ${{ github.token }}
           path: ${{ github.workspace }}/r300-work/source
-      - name: Build exact R300 candidate from R298 and verify SHA
+      - name: Build exact R300 candidate from R299 and verify SHA
         shell: bash
         run: |
           set -euo pipefail
@@ -31,14 +31,14 @@ jobs:
           find "$R300_QA_SOURCE_ROOT" -name '*.php' -print0 | xargs -0 -n1 php -l > "$SOKNA_R300_WORKDIR/php-lint.log"
           find "$R300_QA_SOURCE_ROOT" -name '*.js' -print0 | xargs -0 -n1 node --check > "$SOKNA_R300_WORKDIR/js-lint.log"
           echo 'PASS_R300_608_FILE_SOURCE_PHP_JS_AND_13_SAFETY_TESTS'
-          echo 'f69fb483f977ffc8dd65452375de6e18aa3e755899d9ae16d2dd97e69c7bb59c  '"$SOKNA_R300_WORKDIR/r300-out/SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip" | sha256sum -c -
-          python3 packaging/windows/release-gates/check_local_release_set.py "$SOKNA_R300_WORKDIR/r300-out/SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip" --require-installable
+          echo 'f69fb483f977ffc8dd65452375de6e18aa3e755899d9ae16d2dd97e69c7bb59c  '"$SOKNA_R300_WORKDIR/output/SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip" | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py "$SOKNA_R300_WORKDIR/output/SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip" --require-installable
       - uses: actions/upload-artifact@v4
         with:
           name: SOKNA-R300-QUALIFICATION-CANDIDATE-NO-FIELD
           path: |
-            ${{ github.workspace }}/r300-work/r300-out/SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip
-            ${{ github.workspace }}/r300-work/r300-out/R300-CANDIDATE-PROOF.json
+            ${{ github.workspace }}/r300-work/output/SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip
+            ${{ github.workspace }}/r300-work/output/R300-CANDIDATE-PROOF.json
           if-no-files-found: error
           retention-days: 30
   actual-windows-maintenance:
