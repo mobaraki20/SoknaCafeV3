@@ -159,7 +159,7 @@ PidFile "$ar/logs/httpd.pid"
  $grantExists=& $mysql --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='sokna_r186_exact' AND table_name IN ('remaining_account_discount_grants','remaining_account_discount_lines');"
  Need ($LASTEXITCODE -eq 0 -and [string]$grantExists -eq '2') 'R299_DISCOUNT_TABLES_MISSING'
  Need ((Test-Path (Join-Path $root 'LocalWeb/persistent/.sokna-installation.json')) -and (Test-Path (Join-Path $root 'config.php')) -and (Test-Path (Join-Path $root 'install.lock'))) 'PERSISTENT_BINDING_LOST'
- Write-Host 'R299_NATIVE_WINDOWS_REAL_MAINTENANCE_R278_231FN_TO_R299_231FP_STAGE_ACTIVATE_HTTP_DB83_PERSISTENT_PASS'
+ Write-Host 'R299_NATIVE_WINDOWS_REAL_MAINTENANCE_R278_231FN_TO_R299_231FQ_STAGE_ACTIVATE_HTTP_DB83_PERSISTENT_PASS'
 } finally {
  if($apacheStarted -or (Get-Service SoknaApache -ErrorAction SilentlyContinue)){try{Stop-Service SoknaApache -ErrorAction SilentlyContinue}catch{};try{& $httpd -k uninstall -n SoknaApache|Out-Null}catch{};try{& sc.exe delete SoknaApache|Out-Null}catch{}}
  if($null -ne $db -and -not $db.HasExited){$db.Kill($true);$db.WaitForExit()}
