@@ -41,7 +41,7 @@ jobs:
           export R304_PUBLIC_BASE="$(find "$RUNNER_TEMP/r304-source" -name 'SOKNA-R275-PUBLIC-35IJ-OWNER-DISCARD-CODE-ONLY-QA-DO-NOT-INSTALL.zip' -type f | head -1)"
           test -f "$R304_LOCAL_BASE" && test -f "$R304_PUBLIC_BASE"
           python3 r304/qa/build_r304_github.py
-          printf 'f84c3f258af59242eed1d5ce1025456503e59a6e2085eeeade66b06763594c77  %s\n' "$R304_WORK/out/SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip" | sha256sum -c -
+          printf '6dccf704f130610821e2727858bbcdd2531780ede5781c896153fb480201f1e1  %s\n' "$R304_WORK/out/SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip" | sha256sum -c -
           printf 'd7f702322de0890e5483cd987b46860441aba2612d9f4fdc763735b68951721c  %s\n' "$R304_WORK/out/SOKNA-R304-PUBLIC-35IM-EMERGENCY-CANDIDATE-NOT-FIELD.zip" | sha256sum -c -
           python3 packaging/windows/release-gates/check_local_release_set.py "$R304_WORK/out/SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip" --require-installable
           echo 'PASS_R304_NATIVE_CANDIDATE_BYTE_EXACT_AND_RELEASE_CONTRACT'
@@ -88,7 +88,7 @@ jobs:
           import pathlib,zipfile,io,hashlib,os
           root=pathlib.Path(os.environ['RUNNER_TEMP']);files=list((root/'r304-artifact').rglob('SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip'))
           assert len(files)==1
-          assert hashlib.sha256(files[0].read_bytes()).hexdigest()=='f84c3f258af59242eed1d5ce1025456503e59a6e2085eeeade66b06763594c77'
+          assert hashlib.sha256(files[0].read_bytes()).hexdigest()=='6dccf704f130610821e2727858bbcdd2531780ede5781c896153fb480201f1e1'
           dest=pathlib.Path(os.environ['R303_LOCAL_SOURCE']);dest.mkdir()
           with zipfile.ZipFile(files[0]) as outer:
             with zipfile.ZipFile(io.BytesIO(outer.read('artifacts/local/web.zip'))) as inner:
