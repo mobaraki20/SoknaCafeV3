@@ -76,6 +76,14 @@ if($statementCount!==$oldStatementCount+2)throw new RuntimeException('MIGRATION_
 // precisely 111 tables and would reject the two new financial tables.
 require_once $root.'/src/Domain/System/GoLiveResetEngine.php';
 $goLive=new Sokna\Local\Domain\System\GoLiveResetEngine($p,$root.'/resources/golive-clearance-policy.json');
+$policyDoc=json_decode(file_get_contents($root.'/resources/golive-clearance-policy.json'),true,512,JSON_THROW_ON_ERROR);
+$actualTableNames=$p->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+$policyNames=array_keys($policyDoc['actions']);
+$missingFromPolicy=array_values(array_diff($actualTableNames,$policyNames));
+$missingFromDb=array_values(array_diff($policyNames,$actualTableNames));
+if($missingFromPolicy!==[]||$missingFromDb!==[]){
+ throw new RuntimeException('GOLIVE_AUDITED_SCHEMA_DIFF '.json_encode(['actual_count'=>count($actualTableNames),'policy_count'=>count($policyNames),'unclassified'=>$missingFromPolicy,'absent'=>$missingFromDb],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));
+}
 $inspection=$goLive->inspect();
 if(($inspection['safe_schema']??false)!==true||(int)$inspection['table_count']!==113) throw new RuntimeException('GOLIVE_SCHEMA_POLICY_NOT_113 '.json_encode($inspection));
 foreach(['remaining_account_discount_grants','remaining_account_discount_lines'] as $newTable){
