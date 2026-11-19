@@ -1,0 +1,40 @@
+<?php
+declare(strict_types=1);
+// Disposable QA database only: exercise the actual R295 reporting repository and immutable order IDs.
+if(getenv('GITHUB_ACTIONS')!=='true'||getenv('R295_QA_ONLY')!=='disposable')throw new RuntimeException('QA_ONLY');
+$root=rtrim((string)getenv('R295_SOURCE_ROOT'),'/');
+require $root.'/src/Core/TimeAuthority.php';
+require $root.'/src/Domain/Reporting/ReportingException.php';
+require $root.'/src/Domain/Reporting/ReportingService.php';
+require $root.'/src/Domain/Notifications/NotificationService.php';
+$pdo=new PDO('mysql:host=127.0.0.1;dbname=sokna_r295;charset=utf8mb4','root',(string)getenv('R295_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+$pdo->exec("CREATE TABLE cafe_tables (id INT PRIMARY KEY,name VARCHAR(100) NOT NULL)");
+$pdo->exec("CREATE TABLE table_sessions (id BIGINT PRIMARY KEY,table_id INT,status VARCHAR(30),started_at DATETIME,ended_at DATETIME NULL)");
+$pdo->exec("CREATE TABLE orders (id BIGINT PRIMARY KEY, session_id BIGINT,table_id INT,status VARCHAR(30),order_source VARCHAR(20),business_order_number INT,business_date DATE,total_amount BIGINT,customer_note TEXT,created_at DATETIME, accepted_at DATETIME NULL)");
+$pdo->exec("CREATE TABLE order_items (id BIGINT PRIMARY KEY,order_id BIGINT,item_name VARCHAR(100),quantity INT,ordered_quantity INT,unit_price BIGINT,line_total BIGINT,item_note TEXT,fulfillment_mode VARCHAR(20))");
+$pdo->exec("CREATE TABLE settlement_records (id BIGINT PRIMARY KEY,invoice_number VARCHAR(40),status VARCHAR(20),settlement_kind VARCHAR(20),settled_at DATETIME,table_name_snapshot VARCHAR(150))");
+$pdo->exec("CREATE TABLE settlement_record_lines (id BIGINT PRIMARY KEY,order_id BIGINT,settlement_id BIGINT)");
+$pdo->exec("INSERT INTO cafe_tables VALUES(7,'میز ۷')");
+$pdo->exec("INSERT INTO table_sessions VALUES(10,7,'closed','2026-11-14 10:00:00','2026-11-14 12:00:00'),(20,7,'active','2026-11-19 10:00:00',NULL)");
+$pdo->exec("INSERT INTO orders VALUES(101,10,7,'settled','staff',9,'2026-11-14',135000,'قدیمی','2026-11-14 11:30:00','2026-11-14 11:31:00'),(202,20,7,'new','staff',3,'2026-11-19',50000,'جدید','2026-11-19 10:30:00',NULL)");
+$pdo->exec("INSERT INTO order_items VALUES(301,101,'قهوه قدیمی',1,1,135000,135000,'بدون شکر','dine_in'),(302,202,'چای جدید',1,1,50000,50000,NULL,'dine_in')");
+$pdo->exec("INSERT INTO settlement_records VALUES(901,'I-1405-000901','completed','itemized','2026-11-14 11:59:00','میز ۷')");
+$pdo->exec("INSERT INTO settlement_record_lines VALUES(9901,101,901)");
+$hash=hash('sha256',json_encode($pdo->query('SELECT * FROM orders ORDER BY id')->fetchAll(PDO::FETCH_ASSOC),JSON_UNESCAPED_UNICODE));
+$report=new \Sokna\Local\Domain\Reporting\ReportingService($pdo,new \Sokna\Local\Core\TimeAuthority());
+$old=$report->historicalOrder(101);
+if((int)$old['order']['id']!==101||(int)$old['order']['session_id']!==10||(int)$old['order']['business_order_number']!==9)throw new RuntimeException('wrong_old_order');
+if(count($old['items'])!==1||(string)$old['items'][0]['item_name']!=='قهوه قدیمی')throw new RuntimeException('mixed_order_items');
+if(count($old['invoices'])!==1||(int)$old['invoices'][0]['id']!==901)throw new RuntimeException('wrong_receipt');
+$new=$report->historicalOrder(202);
+if((int)$new['order']['session_id']!==20||count($new['items'])!==1||count($new['invoices'])!==0)throw new RuntimeException('wrong_current_account');
+try{$report->historicalOrder(9999);throw new RuntimeException('missing_not_rejected');}catch(\Sokna\Local\Domain\Reporting\ReportingException $e){if($e->httpStatus!==404)throw $e;}
+$urls=\Sokna\Local\Domain\Notifications\NotificationService::class;
+if($urls::historicalOrderUrl('guest_order.new.101')!=='/reports/?order_id=101#order-history')throw new RuntimeException('url_wrong_guest');
+if($urls::historicalOrderUrl('preparation.accounted.202')!=='/reports/?order_id=202#order-history')throw new RuntimeException('url_wrong_preparation');
+if($urls::historicalOrderUrl('foo.101')!=='')throw new RuntimeException('url_wrong_other');
+if($urls::historicalTargetUrl('settlement.completed.901','/finance/')!=='/finance/?tab=receipts&invoice_id=901')throw new RuntimeException('invoice_regression');
+if($hash!==hash('sha256',json_encode($pdo->query('SELECT * FROM orders ORDER BY id')->fetchAll(PDO::FETCH_ASSOC),JSON_UNESCAPED_UNICODE)))throw new RuntimeException('history_mutated');
+$api=file_get_contents($root.'/public/reports/api.php');
+if(!str_contains($api,"WebAction::requireAny(\$core,['cashier_accounts','shift_supervision'])"))throw new RuntimeException('api_role_gate_absent');
+print json_encode(['status'=>'PASS','old_id'=>101,'old_session'=>10,'new_same_table_session'=>20,'old_invoice'=>901,'old_items_immutable'=>true,'no_table_number_lookup'=>true,'invalid_order_404'=>true,'read_only'=>true,'cashier_supervisor_gate_present'=>true],JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT)."\n";
