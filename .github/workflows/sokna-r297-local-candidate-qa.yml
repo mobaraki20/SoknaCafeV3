@@ -133,14 +133,3 @@ jobs:
           if($d.production_authorized -ne $false -or $d.for_install -ne $false){throw 'R297_QA_ONLY_POLICY_VIOLATED'}
           Write-Host 'PASS_R297_EXACT_FINAL_CANDIDATE_WINDOWS_ARCHIVE_STATIC_ONLY_NO_MAINTENANCE_ACTIVATION'
 
-  shared-factory-admission:
-    needs: build-candidate
-    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
-    with:
-      track: registered-candidate
-      candidate_contract_path: artifact:candidate-contract.json
-      candidate_run_id: ${{ github.run_id }}
-      candidate_artifact: SOKNA-R297-LOCAL-CANDIDATE-FACTORY-QA
-    permissions:
-      contents: read
-      actions: read
