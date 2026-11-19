@@ -181,6 +181,9 @@ jobs:
         run: |
           set -euo pipefail
           php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R290_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r290 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          # R290 fixture predates the new R293 unpaid-discount table: add its no-allocation mirror.
+          # The application source still runs the exact current SQL guard on this disposable DB.
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;dbname=sokna_r290;charset=utf8mb4","root",getenv("R290_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE TABLE remaining_account_discount_lines(order_item_id INT NOT NULL) ENGINE=InnoDB");'
           php r290/qa_itemized_mariadb.php | tee "$RUNNER_TEMP/r290-itemized.json"
       - name: Real MariaDB persisted POS default and version-guard
         env:
