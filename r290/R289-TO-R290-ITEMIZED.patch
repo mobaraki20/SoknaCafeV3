@@ -1,0 +1,194 @@
+--- a/public/assets/staff-app/hall-workspace.js
++++ b/public/assets/staff-app/hall-workspace.js
+@@ -324,7 +324,7 @@
+ function renderAccountEmpty(message='یک میز در سرویس را انتخاب کنید تا حساب همان میز اینجا باز شود.'){syncHallSelectionState();accountPane.innerHTML=`<div class="sc-hall-account__empty"><span class="sc-hall-account__empty-icon" aria-hidden="true">▧</span><strong>حساب میز</strong><p>${esc(message)}</p></div>`}
+ function roundState(status){const s=String(status||'accounted');if(s==='accounted')return 'ثبت‌شده';if(s==='pending_approval'||s==='new')return 'منتظر تأیید';if(s==='cancelled')return 'لغوشده';return 'ثبت‌شده'}
+ function accountLine(l,editable=false){
+- const changed=Number(l.ordered_quantity??l.quantity)!==Number(l.quantity),id=Number(l.order_item_id||0),actual=Number(l.quantity||0),currentMode=String(l.fulfillment_mode||'dine_in')==='takeaway'?'takeaway':'dine_in',hasNote=Boolean(String(l.note||'').trim()),takeaway=currentMode==='takeaway',originalQuantity=Number(l.ordered_quantity??l.quantity),priceChanged=Boolean(l.price_changed)&&Number.isFinite(Number(l.current_price))&&Number(l.current_price)!==Number(l.unit_price),badges=[String(l.accounting_origin||'')==='late_served'?LineUI.badge('قبلاً تحویل‌شده'):'' ,takeaway?LineUI.badge('بیرون‌بر'):'',hasNote?LineUI.badge('یادداشت','is-note'):'',changed?LineUI.badge('اصلاح‌شده','is-warning'):'',changed?`<small class="sc-order-line__original">ابتدا ${L.integer(originalQuantity)}</small>`:'',].filter(Boolean).join(''),feedback=accountEditFeedback?.id===id?`<div class="sc-hall-item-feedback" data-tone="${esc(accountEditFeedback.tone||'success')}">${esc(accountEditFeedback.message||'')}</div>`:'',actionHtml=editable?`<button type="button" class="sc-icon-button sc-account-line-edit-button" data-account-line-edit="${id}" aria-label="ویرایش ${esc(l.name)}" title="ویرایش">${uiIcon('edit')}</button>`:'';
++ const changed=Number(l.ordered_quantity??l.quantity)!==Number(l.quantity),id=Number(l.order_item_id||0),actual=Number(l.quantity||0),paid=Math.max(0,Number(l.paid_quantity||0)),currentMode=String(l.fulfillment_mode||'dine_in')==='takeaway'?'takeaway':'dine_in',hasNote=Boolean(String(l.note||'').trim()),takeaway=currentMode==='takeaway',originalQuantity=Number(l.ordered_quantity??l.quantity),priceChanged=Boolean(l.price_changed)&&Number.isFinite(Number(l.current_price))&&Number(l.current_price)!==Number(l.unit_price),badges=[String(l.accounting_origin||'')==='late_served'?LineUI.badge('قبلاً تحویل‌شده'):'' ,paid>0?LineUI.badge(`تسویه‌شده ${L.integer(paid)} · مانده ${L.integer(Math.max(0,actual-paid))}`):'',takeaway?LineUI.badge('بیرون‌بر'):'',hasNote?LineUI.badge('یادداشت','is-note'):'',changed?LineUI.badge('اصلاح‌شده','is-warning'):'',changed?`<small class="sc-order-line__original">ابتدا ${L.integer(originalQuantity)}</small>`:'',].filter(Boolean).join(''),feedback=accountEditFeedback?.id===id?`<div class="sc-hall-item-feedback" data-tone="${esc(accountEditFeedback.tone||'success')}">${esc(accountEditFeedback.message||'')}</div>`:'',actionHtml=editable?`<button type="button" class="sc-icon-button sc-account-line-edit-button" data-account-line-edit="${id}" aria-label="ویرایش ${esc(l.name)}" title="ویرایش">${uiIcon('edit')}</button>`:'';
+  return LineUI.renderLine({rootAttrs:{'data-account-line':id,'data-price-changed':priceChanged?'1':'0'},toggleAttrs:{'aria-disabled':'true','tabindex':'-1'},name:l.name,badges,quantity:actual,amount:moneyNumber(Number(l.line_total||0)),actionHtml,feedbackHtml:feedback,classes:'sc-account-order-line'});
+ }
+ function accountEditorLine(id){return (account?.lines||[]).find(x=>Number(x.order_item_id||0)===Number(id))||null}
+@@ -332,7 +332,7 @@
+  const anchor=accountEditorLine(id);if(!anchor)return null;
+  const anchorOrderId=Number(anchor.order_id||0),anchorOrderNumber=Number(anchor.order_number||0),anchorItemId=Number(anchor.item_id||0),anchorName=String(anchor.name||''),anchorPrice=Number(anchor.unit_price||0),anchorNote=String(anchor.note||''),anchorStation=String(anchor.preparation_station||'');
+  const lines=(account?.lines||[]).filter(x=>{const anchorCreatedAt=String(anchor.created_at||''),sameOrder=anchorOrderId>0?Number(x.order_id||0)===anchorOrderId:(Number(x.order_item_id||0)===id||(anchorCreatedAt!==''&&Number(x.order_number||0)===anchorOrderNumber&&String(x.created_at||'')===anchorCreatedAt));if(!sameOrder)return false;const itemId=Number(x.item_id||0),sameItem=anchorItemId>0?itemId===anchorItemId:(itemId===0&&String(x.name||'')===anchorName);if(!sameItem||String(x.name||'')!==anchorName||Number(x.unit_price||0)!==anchorPrice||String(x.note||'')!==anchorNote)return false;return String(x.preparation_station||'')===anchorStation});
+- const distribution={dine_in:0,takeaway:0};let total=0;for(const row of lines){const q=Math.max(0,Number(row.quantity||0)),mode=String(row.fulfillment_mode||'dine_in')==='takeaway'?'takeaway':'dine_in';distribution[mode]+=q;total+=q}return {anchor,lines,total,distribution,note:anchorNote}
++ const distribution={dine_in:0,takeaway:0},paidDistribution={dine_in:0,takeaway:0};let total=0,paidTotal=0;for(const row of lines){const q=Math.max(0,Number(row.quantity||0)),paid=Math.max(0,Number(row.paid_quantity||0)),mode=String(row.fulfillment_mode||'dine_in')==='takeaway'?'takeaway':'dine_in';distribution[mode]+=q;paidDistribution[mode]+=paid;total+=q;paidTotal+=paid}return {anchor,lines,total,distribution,paidDistribution,paidTotal,note:anchorNote}
+ }
+ const serviceDistributionEqual=(a,b)=>Number(a?.dine_in||0)===Number(b?.dine_in||0)&&Number(a?.takeaway||0)===Number(b?.takeaway||0);
+ function reconcileServiceDistribution(dist,total,preferred='dine_in'){
+@@ -356,7 +356,7 @@
+  const priorNoteDisclosure=body.querySelector('details.is-note');
+  const priorNoteOpen=priorNoteDisclosure?priorNoteDisclosure.open:null;
+  const priorScrollTop=body.scrollTop;
+- body.innerHTML=`<div class="sc-account-item-editor__summary"><div><strong>${esc(line.name)}</strong><small>${priceChanged?`قیمت زمان ثبت ${money(unitPrice)}`:`قیمت واحد ${money(unitPrice)}`}</small></div><span>${L.integer(actual)} عدد ثبت‌شده</span></div>${priceLock}<section class="sc-account-item-editor__section is-quick"><div class="sc-account-item-editor__section-head"><strong>تعداد</strong><small>${priceChanged?'افزایش این ردیف مجاز نیست':`${L.integer(actual)} ثبت‌شده`}</small></div>${LineUI.stepper({value:draft,min:0,max:maxQuantity,label:`تعداد ${line.name}`,minus:{'data-modal-item-delta':'-1'},plus:{'data-modal-item-delta':'1'}})}</section><div class="sc-account-item-impact ${impactTone}" aria-live="polite"><div><span>مبلغ فعلی این آیتم</span><strong>${money(currentTotal)}</strong></div><div><span>مبلغ پس از تغییر</span><strong>${money(nextTotal)}</strong></div><div class="is-delta"><span>اثر روی حساب</span><strong>${impactLabel}</strong></div></div>${draft===0?'<div class="sc-account-item-remove-warning" role="status"><strong>این آیتم از حساب حذف می‌شود.</strong><span>پس از ثبت، تعداد این آیتم صفر خواهد شد.</span></div>':''}${qtyChanged?`<section class="sc-account-item-editor__section is-reason"><div class="sc-account-item-editor__section-head"><strong>دلیل اصلاح تعداد</strong><small>${L.integer(actual)} ← ${L.integer(draft)}</small></div><div class="sc-order-adjust-reasons" role="group" aria-label="دلیل اصلاح">${reasonButtons}</div>${reasonKey==='other'?`<input class="sc-control sc-order-adjust-note" type="text" maxlength="160" value="${esc(reasonNote)}" data-modal-adjust-note placeholder="توضیح کوتاه دلیل (اختیاری)">`:''}</section>`:''}<section class="sc-account-item-editor__section is-service"><div class="sc-account-item-editor__section-head"><strong>نحوه سرو</strong><small>جمع: ${L.integer(draft)}</small></div><div class="sc-account-service-split" role="group" aria-label="تفکیک تعداد داخل کافه و بیرون‌بر">${serviceRow('dine_in','داخل کافه')}${serviceRow('takeaway','بیرون‌بر')}</div><p class="sc-account-service-split__hint">تعداد هر دو ردیف با هم برابر تعداد کل آیتم است.</p></section><details class="sc-account-item-editor__section sc-disclosure is-note" ${currentNote?'open':''}><summary>یادداشت آماده‌سازی${currentNote?' · دارد':''}</summary><div class="sc-account-item-editor__note"><input class="sc-control" type="text" maxlength="500" value="${esc(targetNote)}" data-modal-item-note placeholder="مثلاً بدون شکر"></div></details>`;
++ body.innerHTML=`${group.paidTotal>0?`<div class="sc-account-price-snapshot-lock" role="note"><strong>پرداخت ثبت‌شده: ${L.integer(group.paidTotal)} عدد</strong><p>فقط سهم پرداخت‌نشده قابل کاهش است. تعداد پرداخت‌شدهٔ داخل کافه ${L.integer(group.paidDistribution.dine_in)} و بیرون‌بر ${L.integer(group.paidDistribution.takeaway)} محفوظ می‌ماند؛ برای تغییر آن باید سند مالی جداگانه ثبت شود.</p></div>`:''}<div class="sc-account-item-editor__summary"><div><strong>${esc(line.name)}</strong><small>${priceChanged?`قیمت زمان ثبت ${money(unitPrice)}`:`قیمت واحد ${money(unitPrice)}`}</small></div><span>${L.integer(actual)} عدد ثبت‌شده</span></div>${priceLock}<section class="sc-account-item-editor__section is-quick"><div class="sc-account-item-editor__section-head"><strong>تعداد</strong><small>${priceChanged?'افزایش این ردیف مجاز نیست':`${L.integer(actual)} ثبت‌شده`}</small></div>${LineUI.stepper({value:draft,min:0,max:maxQuantity,label:`تعداد ${line.name}`,minus:{'data-modal-item-delta':'-1'},plus:{'data-modal-item-delta':'1'}})}</section><div class="sc-account-item-impact ${impactTone}" aria-live="polite"><div><span>مبلغ فعلی این آیتم</span><strong>${money(currentTotal)}</strong></div><div><span>مبلغ پس از تغییر</span><strong>${money(nextTotal)}</strong></div><div class="is-delta"><span>اثر روی حساب</span><strong>${impactLabel}</strong></div></div>${draft===0?'<div class="sc-account-item-remove-warning" role="status"><strong>این آیتم از حساب حذف می‌شود.</strong><span>پس از ثبت، تعداد این آیتم صفر خواهد شد.</span></div>':''}${qtyChanged?`<section class="sc-account-item-editor__section is-reason"><div class="sc-account-item-editor__section-head"><strong>دلیل اصلاح تعداد</strong><small>${L.integer(actual)} ← ${L.integer(draft)}</small></div><div class="sc-order-adjust-reasons" role="group" aria-label="دلیل اصلاح">${reasonButtons}</div>${reasonKey==='other'?`<input class="sc-control sc-order-adjust-note" type="text" maxlength="160" value="${esc(reasonNote)}" data-modal-adjust-note placeholder="توضیح کوتاه دلیل (اختیاری)">`:''}</section>`:''}<section class="sc-account-item-editor__section is-service"><div class="sc-account-item-editor__section-head"><strong>نحوه سرو</strong><small>جمع: ${L.integer(draft)}</small></div><div class="sc-account-service-split" role="group" aria-label="تفکیک تعداد داخل کافه و بیرون‌بر">${serviceRow('dine_in','داخل کافه')}${serviceRow('takeaway','بیرون‌بر')}</div><p class="sc-account-service-split__hint">تعداد هر دو ردیف با هم برابر تعداد کل آیتم است.</p></section><details class="sc-account-item-editor__section sc-disclosure is-note" ${currentNote?'open':''}><summary>یادداشت آماده‌سازی${currentNote?' · دارد':''}</summary><div class="sc-account-item-editor__note"><input class="sc-control" type="text" maxlength="500" value="${esc(targetNote)}" data-modal-item-note placeholder="مثلاً بدون شکر"></div></details>`;
+  // A new reason section must scroll inside the dialog, not squash other rows.
+  const noteDisclosure=body.querySelector('details.is-note');
+  if(noteDisclosure&&priorNoteOpen!==null)noteDisclosure.open=priorNoteOpen;
+--- a/src/Domain/Orders/OrderStaffActionService.php
++++ b/src/Domain/Orders/OrderStaffActionService.php
+@@ -404,15 +404,61 @@
+      * its existence makes non-delivery uncertain; deny this narrow bypass.
+      * A claimed preparation job is separately rejected by the caller.
+      */
+-    /** Physical item row allocations cannot be silently moved between the
+-     * grouped dine-in/takeaway rows after they appear on a paid receipt. */
+-    private function assertGroupedOrderRowsUnpaid(array $rows,array $paidBy): void
+-    {
++    /**
++     * Calculate a grouped dine-in / takeaway correction against immutable
++     * item-level settlement quantities. Only the unpaid tail may be reduced;
++     * a paid row's identity, note and service mode can never be reassigned.
++     * All rows and receipt allocations must already be locked by the caller.
++     *
++     * @return array{quantities:array<int,int>,insert_modes:list<string>}
++     */
++    private function planGroupedCorrectionTx(array $rows,array $paidBy,array $targets,bool $noteChanged): array
++    {
++        $byMode=['dine_in'=>[],'takeaway'=>[]];$quantities=[];$paidTotal=0;
+         foreach($rows as $row){
+-            if((int)($paidBy[(int)$row['id']]??0)>0)
+-                throw new OrderStaffActionException('paid_group_row_locked',
+-                    'این قلم با رسید پرداخت مرتبط است. برای اصلاح سهم پرداخت‌نشده یا تغییر نحوه سرو، ابتدا مسیر اصلاح مالی همان قلم را بررسی کنید.',409);
+-        }
++            $id=(int)$row['id'];$quantity=(int)$row['quantity'];$paid=(int)($paidBy[$id]??0);
++            if($quantity<0||$paid<0||$paid>$quantity)
++                throw new OrderStaffActionException('paid_quantity_invalid',
++                    'مقدار پرداخت‌شده با قلم سفارش تطبیق ندارد؛ اصلاح تا بررسی حسابداری متوقف است.',409);
++            $mode=(string)($row['fulfillment_mode']??'dine_in')==='takeaway'?'takeaway':'dine_in';
++            $byMode[$mode][]=['id'=>$id,'quantity'=>$quantity,'paid'=>$paid];
++            $quantities[$id]=$quantity;$paidTotal+=$paid;
++        }
++        if($noteChanged&&$paidTotal>0)
++            throw new OrderStaffActionException('paid_item_identity_locked',
++                'یادداشت قلم پرداخت‌شده در سند مالی ثبت است؛ برای اصلاح یادداشت، سند مالی جداگانه لازم است.',409);
++        $insertModes=[];
++        foreach(['dine_in','takeaway'] as $mode){
++            $modeRows=$byMode[$mode];$target=(int)$targets[$mode];
++            $current=array_sum(array_column($modeRows,'quantity'));
++            $paidInMode=array_sum(array_column($modeRows,'paid'));
++            if($target<$paidInMode)
++                throw new OrderStaffActionException('paid_mode_quantity_floor',
++                    'تعداد پرداخت‌شدهٔ '.($mode==='takeaway'?'بیرون‌بر':'سرو داخل کافه').' را نمی‌توان کاهش یا به نحوه سرو دیگری منتقل کرد.',409,
++                    ['mode'=>$mode,'paid_quantity'=>$paidInMode,'requested_quantity'=>$target]);
++            if($target<$current){
++                $remove=$current-$target;
++                // Remove unpaid rows first; then any unpaid share of paid rows.
++                // The receipt line references remain unchanged at all times.
++                foreach([false,true] as $paidRows){
++                    foreach(array_reverse($modeRows) as $row){
++                        if(($row['paid']>0)!==$paidRows)continue;
++                        $id=$row['id'];$free=$quantities[$id]-$row['paid'];
++                        $change=min($free,$remove);$quantities[$id]-=$change;$remove-=$change;
++                        if($remove===0)break;
++                    }
++                    if($remove===0)break;
++                }
++                if($remove!==0)throw new \LogicException('Grouped settlement quantity floor invariant.');
++            }elseif($target>$current){
++                $increase=$target-$current;$grow=null;
++                foreach($modeRows as $row){if($row['paid']===0){$grow=$row['id'];break;}}
++                if($grow===null&&$modeRows)$grow=$modeRows[0]['id'];
++                if($grow===null)$insertModes[]=$mode;
++                else $quantities[$grow]+=$increase;
++            }
++        }
++        return ['quantities'=>$quantities,'insert_modes'=>$insertModes];
+     }
+ 
+     private function assertSinglePaidOrderRowSafe(int $orderItemId,int $paidQuantity,int $toQuantity,bool $modeChanged,bool $noteChanged): void
+@@ -492,12 +538,13 @@
+             $rows=$groupStmt->fetchAll(PDO::FETCH_ASSOC);if(!$rows)$rows=[$anchor];
+             $allocations=$this->settlementAllocationsTx($sessionId);
+             $this->assertCorrectionReceiptTotalsSafe($allocations);
+-            $this->assertGroupedOrderRowsUnpaid($rows,$allocations['paid_by_item']);
+             $fromDine=0;$fromTake=0;foreach($rows as $r){$q=max(0,(int)$r['quantity']);if((string)($r['fulfillment_mode']??'dine_in')==='takeaway')$fromTake+=$q;else $fromDine+=$q;}
+             $fromQuantity=$fromDine+$fromTake;$fromNote=trim((string)($anchor['item_note']??''));$toNote=$noteProvided?$requestedNote:$fromNote;
+             $this->assertPriceSnapshotIncreaseAllowed($anchor,$fromQuantity,$toQuantity);
+             $quantityChanged=$fromQuantity!==$toQuantity;$distributionChanged=$fromDine!==$toDine||$fromTake!==$toTake;$noteChanged=$fromNote!==$toNote;
+             if(!$quantityChanged&&!$distributionChanged&&!$noteChanged){if($ownsTransaction)$this->pdo->commit();return ['success'=>true,'idempotent'=>true,'no_change'=>true,'order_item_id'=>$orderItemId,'display_order_item_id'=>$orderItemId,'quantity'=>$toQuantity,'fulfillment_quantities'=>['dine_in'=>$toDine,'takeaway'=>$toTake],'item_note'=>$toNote];}
++            // Identity-aware quantity plan; payment allocations cannot move to a different row or mode.
++            $rowPlan=$this->planGroupedCorrectionTx($rows,$allocations['paid_by_item'],['dine_in'=>$toDine,'takeaway'=>$toTake],$noteChanged);
+ 
+             $orderId=(int)$anchor['order_id'];$area=PreparationService::areaForPreparationStation((string)$anchor['preparation_station']);$prepRelevant=$area!==null&&($quantityChanged||$distributionChanged||$noteChanged);$claimedBefore=false;
+             if($prepRelevant){
+@@ -509,21 +556,20 @@
+                 // Order-item row locks, current preparation signature and request_id still guard races/replays.
+             }
+ 
+-            $byMode=['dine_in'=>[],'takeaway'=>[]];foreach($rows as $r){$m=(string)($r['fulfillment_mode']??'dine_in')==='takeaway'?'takeaway':'dine_in';$byMode[$m][]=$r;}
+-            $targets=['dine_in'=>$toDine,'takeaway'=>$toTake];$displayOrderItemId=0;
+-            foreach(['dine_in','takeaway'] as $mode){
+-                $target=$targets[$mode];$modeRows=$byMode[$mode];$primary=null;
+-                foreach($modeRows as $candidate)if((int)$candidate['id']===$orderItemId){$primary=$candidate;break;}
+-                if($primary===null&&$modeRows)$primary=$modeRows[0];
+-                if($primary!==null){
+-                    $primaryId=(int)$primary['id'];$this->pdo->prepare('UPDATE order_items SET quantity=?,line_total=?,item_note=? WHERE id=?')->execute([$target,(int)$anchor['unit_price']*$target,$toNote!==''?$toNote:null,$primaryId]);
+-                    if($target>0&&$displayOrderItemId===0)$displayOrderItemId=$primaryId;
+-                    foreach($modeRows as $extra)if((int)$extra['id']!==$primaryId)$this->pdo->prepare('UPDATE order_items SET quantity=0,line_total=0,item_note=? WHERE id=?')->execute([$toNote!==''?$toNote:null,(int)$extra['id']]);
+-                }elseif($target>0){
+-                    $insert=$this->pdo->prepare('INSERT INTO order_items(order_id,item_id,category_id_snapshot,category_name_snapshot,category_snapshot_quality,item_name,sellable_kind_snapshot,unit_price,quantity,ordered_quantity,item_note,fulfillment_mode,preparation_station,line_total,tax_policy_snapshot,tax_rate_bps_snapshot,tax_rate_version_id,tax_item_policy_version_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+-                    $insert->execute([$orderId,$anchor['item_id'],$anchor['category_id_snapshot']??null,$anchor['category_name_snapshot']??null,$anchor['category_snapshot_quality']??'unknown',(string)$anchor['item_name'],$anchor['sellable_kind_snapshot']??null,(int)$anchor['unit_price'],$target,0,$toNote!==''?$toNote:null,$mode,(string)$anchor['preparation_station'],(int)$anchor['unit_price']*$target,(string)($anchor['tax_policy_snapshot']??'disabled'),(int)($anchor['tax_rate_bps_snapshot']??0),$anchor['tax_rate_version_id']??null,$anchor['tax_item_policy_version_id']??null]);
+-                    $newId=(int)$this->pdo->lastInsertId();if($displayOrderItemId===0)$displayOrderItemId=$newId;
+-                }
++            $displayOrderItemId=0;$targets=['dine_in'=>$toDine,'takeaway'=>$toTake];
++            foreach($rows as $existingRow){
++                $rowId=(int)$existingRow['id'];$qty=(int)$rowPlan['quantities'][$rowId];
++                $currentQty=(int)$existingRow['quantity'];
++                if($qty!==$currentQty||$noteChanged)
++                    $this->pdo->prepare('UPDATE order_items SET quantity=?,line_total=?,item_note=? WHERE id=?')
++                        ->execute([$qty,(int)$existingRow['unit_price']*$qty,$toNote!==''?$toNote:null,$rowId]);
++                if($qty>0&&($rowId===$orderItemId||$displayOrderItemId===0))$displayOrderItemId=$rowId;
++            }
++            foreach($rowPlan['insert_modes'] as $mode){
++                $target=$targets[$mode];if($target===0)continue;
++                $insert=$this->pdo->prepare('INSERT INTO order_items(order_id,item_id,category_id_snapshot,category_name_snapshot,category_snapshot_quality,item_name,sellable_kind_snapshot,unit_price,quantity,ordered_quantity,item_note,fulfillment_mode,preparation_station,line_total,tax_policy_snapshot,tax_rate_bps_snapshot,tax_rate_version_id,tax_item_policy_version_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
++                $insert->execute([$orderId,$anchor['item_id'],$anchor['category_id_snapshot']??null,$anchor['category_name_snapshot']??null,$anchor['category_snapshot_quality']??'unknown',(string)$anchor['item_name'],$anchor['sellable_kind_snapshot']??null,(int)$anchor['unit_price'],$target,0,$toNote!==''?$toNote:null,$mode,(string)$anchor['preparation_station'],(int)$anchor['unit_price']*$target,(string)($anchor['tax_policy_snapshot']??'disabled'),(int)($anchor['tax_rate_bps_snapshot']??0),$anchor['tax_rate_version_id']??null,$anchor['tax_item_policy_version_id']??null]);
++                $newId=(int)$this->pdo->lastInsertId();if($displayOrderItemId===0)$displayOrderItemId=$newId;
+             }
+             if($displayOrderItemId===0)$displayOrderItemId=$orderItemId;
+             $this->pdo->prepare('UPDATE orders SET total_amount=(SELECT COALESCE(SUM(line_total),0) FROM order_items WHERE order_id=?),updated_at=NOW() WHERE id=?')->execute([$orderId,$orderId]);
+--- a/src/Domain/Orders/OrderWorkspaceService.php
++++ b/src/Domain/Orders/OrderWorkspaceService.php
+@@ -175,6 +175,17 @@
+         $sessionId=(int)($table['session_id']??0);
+         $lines=[];$rounds=[];$pending=[];$calls=[];
+         if($sessionId>0){
++            // Read-only item-level allocation snapshot for the cashier. Always
++            // exclude reversed receipts; the correction service independently
++            // locks/revalidates these quantities before any write.
++            $paidStmt=$this->pdo->prepare("SELECT sl.order_item_id,SUM(sl.quantity) paid_quantity
++                FROM settlement_record_lines sl JOIN settlement_records sr ON sr.id=sl.settlement_id
++                WHERE sr.session_id=? AND sr.status='completed'
++                  AND NOT EXISTS(SELECT 1 FROM settlement_records rv WHERE rv.reverses_settlement_id=sr.id AND rv.status='reversal')
++                GROUP BY sl.order_item_id");
++            $paidStmt->execute([$sessionId]);$paidByItem=[];
++            foreach($paidStmt->fetchAll(PDO::FETCH_ASSOC) as $paidRow)
++                $paidByItem[(int)$paidRow['order_item_id']]=(int)$paidRow['paid_quantity'];
+             $lineStmt=$this->pdo->prepare("SELECT oi.id order_item_id,oi.item_id,oi.item_name,oi.unit_price,oi.quantity,oi.ordered_quantity,oi.line_total,oi.item_note,oi.fulfillment_mode,oi.preparation_station,
+                 o.id order_id,o.business_order_number,o.status order_status,o.order_source,o.total_amount order_total,o.accounting_origin,o.customer_note order_note,o.created_at,ci.price current_catalog_price
+                 FROM order_items oi JOIN orders o ON o.id=oi.order_id LEFT JOIN items ci ON ci.id=oi.item_id
+@@ -184,9 +195,11 @@
+             foreach($lineStmt->fetchAll(PDO::FETCH_ASSOC) as $r){
+                 $currentCatalogPrice=array_key_exists('current_catalog_price',$r)&&$r['current_catalog_price']!==null?(int)$r['current_catalog_price']:null;
+                 $orderedQuantity=array_key_exists('ordered_quantity',$r)&&$r['ordered_quantity']!==null?(int)$r['ordered_quantity']:(int)$r['quantity'];
++                $paidQuantity=(int)($paidByItem[(int)$r['order_item_id']]??0);
++                $remainingQuantity=max(0,(int)$r['quantity']-$paidQuantity);
+                 $line=[
+                     'order_item_id'=>(int)$r['order_item_id'],'order_id'=>(int)$r['order_id'],'item_id'=>$r['item_id']!==null?(int)$r['item_id']:null,'name'=>(string)$r['item_name'],
+-                    'unit_price'=>(int)$r['unit_price'],'current_price'=>$currentCatalogPrice,'price_changed'=>$currentCatalogPrice!==null&&$currentCatalogPrice!==(int)$r['unit_price'],'quantity'=>(int)$r['quantity'],'ordered_quantity'=>$orderedQuantity,'line_total'=>(int)$r['line_total'],'note'=>(string)($r['item_note']??''),
++                    'unit_price'=>(int)$r['unit_price'],'current_price'=>$currentCatalogPrice,'price_changed'=>$currentCatalogPrice!==null&&$currentCatalogPrice!==(int)$r['unit_price'],'quantity'=>(int)$r['quantity'],'paid_quantity'=>$paidQuantity,'remaining_quantity'=>$remainingQuantity,'ordered_quantity'=>$orderedQuantity,'line_total'=>(int)$r['line_total'],'note'=>(string)($r['item_note']??''),
+                     'fulfillment_mode'=>(string)($r['fulfillment_mode']??'dine_in'),'preparation_station'=>(string)($r['preparation_station']??''),'order_number'=>(int)$r['business_order_number'],'accounting_origin'=>(string)($r['accounting_origin']??'regular'),'created_at'=>(string)$r['created_at'],
+                 ];
+                 $lines[]=$line;$orderId=(int)$r['order_id'];
+@@ -201,7 +214,7 @@
+                 $idx=$roundIndex[$orderId];$rounds[$idx]['item_count']++;$rounds[$idx]['quantity_count']+=(int)$r['quantity'];
+                 $rounds[$idx]['items'][]=[
+                     'order_item_id'=>(int)$r['order_item_id'],'item_id'=>$r['item_id']!==null?(int)$r['item_id']:null,'name'=>(string)$r['item_name'],
+-                    'unit_price'=>(int)$r['unit_price'],'current_price'=>$currentCatalogPrice,'price_changed'=>$currentCatalogPrice!==null&&$currentCatalogPrice!==(int)$r['unit_price'],'quantity'=>(int)$r['quantity'],'ordered_quantity'=>$orderedQuantity,'line_total'=>(int)$r['line_total'],'note'=>(string)($r['item_note']??''),
++                    'unit_price'=>(int)$r['unit_price'],'current_price'=>$currentCatalogPrice,'price_changed'=>$currentCatalogPrice!==null&&$currentCatalogPrice!==(int)$r['unit_price'],'quantity'=>(int)$r['quantity'],'paid_quantity'=>$paidQuantity,'remaining_quantity'=>$remainingQuantity,'ordered_quantity'=>$orderedQuantity,'line_total'=>(int)$r['line_total'],'note'=>(string)($r['item_note']??''),
+                     'fulfillment_mode'=>(string)($r['fulfillment_mode']??'dine_in'),'preparation_station'=>(string)($r['preparation_station']??''),'order_id'=>$orderId,'order_number'=>(int)$r['business_order_number'],'accounting_origin'=>(string)($r['accounting_origin']??'regular'),
+                 ];
+             }
