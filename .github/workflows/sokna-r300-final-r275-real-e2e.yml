@@ -1,0 +1,146 @@
+name: SOKNA R300 Exact Hardened Local to Existing R275 Public End-to-End QA
+on:
+  push:
+    branches: [qa/sokna-r300-public-move-hardening-20261119]
+    paths:
+      - 'r300/**'
+      - '.github/workflows/sokna-r300-final-r275-real-e2e.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  public-owner-real-http:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        base_path: ['/new-public', '']
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only
+          MARIADB_DATABASE: sokna_r273_public
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      R273_DB_PASSWORD: qa-only
+      R273_PUBLIC_DB: sokna_r273_public
+      R273_INSTALLATION_ID: local-cafe-e2e-001
+      R273_PUBLIC_BASE_PATH: ${{ matrix.base_path }}
+      GITHUB_ACTIONS: 'true'
+      R300_QA_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: R275-TWO-CUMULATIVE-SOURCE-QA-NOT-OPERATOR-INSTALL
+          run-id: 44107836936
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r275-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R300-QUALIFICATION-CANDIDATE-NO-FIELD
+          run-id: 44558233042
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r300-input
+      - name: Restore exact installed Public R275 plus exact installed Local R299 (no owner UI patch)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export OUT="$RUNNER_TEMP/r276" INPUT="$RUNNER_TEMP/r275-input"
+          mkdir -p "$OUT/public" "$OUT/local" "$OUT/private/guest-media"
+          python3 - <<'PY'
+          import os,zipfile,io,hashlib,pathlib,json
+          root=pathlib.Path(os.environ['OUT'])
+          files=list(pathlib.Path(os.environ['INPUT']).rglob('*.zip'))
+          values={hashlib.sha256(p.read_bytes()).hexdigest():p for p in files}
+          assert '63213185fcc037b620ea0dccf133d5c63672f01da7db7d3545eb54e617dd150f' in values,values
+          candidates=list(pathlib.Path(os.environ['RUNNER_TEMP']).joinpath('r300-input').rglob('*.zip'))
+          local_map={hashlib.sha256(p.read_bytes()).hexdigest():p for p in candidates}
+          assert '40be5ce560c699fab1c86522ee61c12198f30ab248674df74388924ed5faeb1a' in local_map
+          pub=values['63213185fcc037b620ea0dccf133d5c63672f01da7db7d3545eb54e617dd150f']
+          loc=local_map['40be5ce560c699fab1c86522ee61c12198f30ab248674df74388924ed5faeb1a']
+          with zipfile.ZipFile(pub) as z:
+           manifest=json.loads(z.read('manifest.json'))
+           for n in z.namelist():
+            if n.startswith('payload/') and not n.endswith('/'):
+             p=root/'public'/n[8:];p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(z.read(n))
+          assert manifest['version']=='3.0.0-g3.6-workspace.35ij-r275-operator-confirm-public-discard'
+          with zipfile.ZipFile(loc) as z:
+           with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as inner:
+            for n in inner.namelist():
+             if n.endswith('/'):continue
+             p=root/'local'/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(inner.read(n))
+          PY
+          # This is byte-exact R275 Public as installed on the customer's host.
+          # Do not patch owner setup, mutate host or substitute a newer Public build.
+          for file in "$OUT/public/src/Http/PublicHttpKernel.php" "$OUT/public/src/Http/PublicMoveConsentPage.php"; do php -l "$file"; done
+          node --check "$OUT/public/assets/sokna-public-move.js"
+          echo "R273_PUBLIC_ROOT=$OUT/public" >> "$GITHUB_ENV"
+          echo "R273_LOCAL_ROOT=$OUT/local" >> "$GITHUB_ENV"
+          echo "R273_LOCAL_DATA=$OUT/private" >> "$GITHUB_ENV"
+      - name: Test actual Public owner HTTP + exact R300 Local 83 migrations, full sync and QR once
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-mysql php-zip stunnel4 ca-certificates
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root","qa-only",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r273_local CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          cp -a apps/public/src/Emergency/. "$R273_PUBLIC_ROOT/src/Emergency/"
+          php r273/tests/prepare_public.php
+          sudo sh -c 'echo "127.0.0.1 r273-public.test" >> /etc/hosts'
+          openssl req -new -newkey rsa:2048 -nodes -x509 -days 1 \
+            -keyout "$RUNNER_TEMP/key.pem" -out "$RUNNER_TEMP/cert.pem" \
+            -subj "/CN=r273-public.test" -addext "subjectAltName=DNS:r273-public.test" >/dev/null 2>&1
+          sudo cp "$RUNNER_TEMP/cert.pem" /usr/local/share/ca-certificates/r276-owner-http.crt
+          sudo update-ca-certificates >/dev/null
+          cat > "$RUNNER_TEMP/stunnel.conf" <<EOF
+          foreground = yes
+          [web]
+          client = no
+          accept = 127.0.0.1:18443
+          connect = 127.0.0.1:18882
+          cert = $RUNNER_TEMP/cert.pem
+          key = $RUNNER_TEMP/key.pem
+          EOF
+          php -S 127.0.0.1:18882 r273/tests/public_router.php > "$RUNNER_TEMP/public-http.log" 2>&1 &
+          public_pid=$!
+          stunnel4 "$RUNNER_TEMP/stunnel.conf" > "$RUNNER_TEMP/stunnel.log" 2>&1 &
+          tls_pid=$!
+          trap 'kill $public_pid $tls_pid 2>/dev/null || true' EXIT
+          export NO_PROXY="127.0.0.1,localhost,r273-public.test" no_proxy="127.0.0.1,localhost,r273-public.test"
+          for i in $(seq 1 40); do
+            if curl --fail --silent --show-error --max-time 2 "https://r273-public.test:18443$R273_PUBLIC_BASE_PATH/health" > "$RUNNER_TEMP/health.json" 2>/dev/null; then break; fi
+            sleep 0.25
+          done
+          grep -q '"ok":true' "$RUNNER_TEMP/health.json"
+          curl -sS -o "$RUNNER_TEMP/anon-owner.json" -w '%{http_code}' \
+            -X POST -H 'Origin: https://r273-public.test:18443' -H 'Sec-Fetch-Site: same-origin' \
+            -H 'Content-Type: application/json' -d '{}' \
+            "https://r273-public.test:18443$R273_PUBLIC_BASE_PATH/api/v1/owner/upgrade_preflight" > "$RUNNER_TEMP/anon-status"
+          grep -qx '403' "$RUNNER_TEMP/anon-status"
+          grep -q 'owner_upgrade_not_permitted' "$RUNNER_TEMP/anon-owner.json"
+          php r300/tests/real_existing_move_r299.php | tee "$RUNNER_TEMP/owner-e2e.log" || {
+            tail -n 100 "$RUNNER_TEMP/public-http.log"
+            exit 1
+          }
+          grep -q 'R273_REAL_EXISTING_PAIRED_MOVE_HTTP_OWNERS_DB' "$RUNNER_TEMP/owner-e2e.log"
+          grep -q 'R275_OWNER_CONFIRMED_PUBLIC_ONLY_DISCARD_PASS' "$RUNNER_TEMP/owner-e2e.log"
+          php r273/tests/r274_lost_reply_resume.php | tee "$RUNNER_TEMP/resume-e2e.log"
+          grep -q 'R274_LOST_REPLY_RESUME_STATUS_SAFE_PASS' "$RUNNER_TEMP/resume-e2e.log"
+          echo 'R300_R299_LOCAL_R275_PUBLIC_REAL_HTTP_MARIADB_END_TO_END_PASS'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: R300-EXACT-R275-REAL-HTTP-LOGS-QA
+          path: |
+            ${{ runner.temp }}/owner-e2e.log
+            ${{ runner.temp }}/resume-e2e.log
+            ${{ runner.temp }}/anon-status
+          if-no-files-found: warn
+          retention-days: 7
