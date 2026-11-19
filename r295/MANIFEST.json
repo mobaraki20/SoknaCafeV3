@@ -1,0 +1,34 @@
+{
+  "schema": "sokna-r295-local-qa-checkpoint-v1",
+  "date": "2026-11-19",
+  "baseline": "R294 source (not installable)",
+  "files": 607,
+  "changed": [
+    "public/assets/iran-calendar-1405.json",
+    "public/assets/printing-workspace.js",
+    "public/assets/product-shell.js",
+    "public/assets/product-ui.css",
+    "public/printing/api.php",
+    "public/printing/index.php",
+    "src/Domain/Printing/PrintTemplatePackageService.php",
+    "src/UI/ProductShell.php"
+  ],
+  "tree_sha256": "3e1240e8740f316e1bb8026e0a984cec5201502f16cdb15fbf6cd6ac5caeeba0",
+  "current_state": "QA only; not production authorized",
+  "new_migrations": 0,
+  "external_print_agent_source": "Separate QA branch required for renderer new typography fields",
+  "qa_files": [
+    "R295-PRINT-TABS-desktop.png",
+    "R295-CALENDAR-mobile.png",
+    "R295-DISCOUNT-CENTER-1366.png",
+    "R295-PRINT-EDITOR-desktop.png",
+    "R295-PRINT-TABS-mobile.png",
+    "R295-DISCOUNT-CENTER-390.png",
+    "R295-CALENDAR-desktop.png",
+    "R295-PRINT-EDITOR-mobile.png",
+    "R295-PRINT-TABS-QA.json",
+    "R295-DISCOUNT-CENTER-QA.json",
+    "R295-PRINT-BROWSER-QA.json",
+    "R295-CALENDAR-QA.json"
+  ]
+}
