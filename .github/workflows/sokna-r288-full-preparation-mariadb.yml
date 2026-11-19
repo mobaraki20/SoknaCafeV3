@@ -1,0 +1,92 @@
+name: SOKNA R288 Full Preparation Reprint Exact R278 MariaDB QA
+on:
+  push:
+    branches: [qa/sokna-r288-full-preparation-one-job-20261119]
+    paths:
+      - 'r288/**'
+      - '.github/workflows/sokna-r288-full-preparation-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-r278-full-prep-mariadb:
+    name: Real MariaDB 11.4 - one job all rounds + idempotency
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only-r288-secret
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=4s --health-retries=20
+    env:
+      R288_DB_PASSWORD: qa-only-r288-secret
+      R288_QA_MODE: disposable_only
+      GITHUB_ACTIONS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R278-231FN-ORIGINAL-ZIP-FACTORY-QA-ONLY
+          run-id: 44305226007
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r278
+      - name: Recreate exact 604-file R278 source and apply full R288 checkpoint patch
+        env:
+          ROOT: ${{ runner.temp }}/local
+          ARTIFACTS: ${{ runner.temp }}/r278
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,os,zipfile,hashlib,io,json
+          ar=pathlib.Path(os.environ['ARTIFACTS']);dst=pathlib.Path(os.environ['ROOT']);dst.mkdir(parents=True,exist_ok=True)
+          digest='3a1070e18b14307fb2571634c961b20ca3e5d38e6c9a9dc1afad68be89fe6824'
+          candidates=[p for p in ar.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()==digest]
+          assert len(candidates)==1,[(p.name,p.stat().st_size) for p in ar.rglob('*.zip')]
+          with zipfile.ZipFile(candidates[0]) as outer:
+            manifest=json.loads(outer.read('release-set.json'))
+            assert manifest['targets']['local']['version']=='3.0.0-g6.2-workspace.231fn-r278-rial-policy-persist'
+            inner=outer.read('artifacts/local/web.zip')
+          with zipfile.ZipFile(io.BytesIO(inner)) as z:
+            files=[n for n in z.namelist() if not n.endswith('/')]
+            assert len(files)==604,len(files)
+            for n in files:
+              p=dst/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(z.read(n))
+          print('R288_BASELINE_EXACT_R278',digest,len(files))
+          PY
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r288/R278-to-R288-cumulative.patch")
+          for f in "$ROOT/src/Domain/Orders/OrderStaffActionService.php" "$ROOT/src/Domain/Printing/PrintService.php" "$ROOT/src/UI/ProductShell.php"; do php -l "$f"; done
+          for f in "$ROOT/public/assets/staff-app/hall-workspace.js" "$ROOT/public/assets/operator-workspace.js" "$ROOT/public/assets/product-shell.js" "$ROOT/public/assets/staff-app/preparation-workspace.js"; do node --check "$f"; done
+          python3 - <<'PY'
+          import os,pathlib,hashlib
+          root=pathlib.Path(os.environ['ROOT']);data={p.relative_to(root).as_posix():p.read_bytes() for p in root.rglob('*') if p.is_file()}
+          assert len(data)==604,len(data)
+          sha=lambda b:hashlib.sha256(b).hexdigest()
+          tree=sha(''.join(n+'\0'+sha(b)+'\n' for n,b in sorted(data.items())).encode())
+          expected='6e3bfb627888d8f84c8db504504519f3c8bd3e8161f2f4133f146999a19e89fd'
+          assert tree==expected,(tree,expected)
+          print('R288_EXACT_CUMULATIVE_MANAGED_TREE_PASS',tree)
+          PY
+      - name: Exercise real PDO MySQL transaction, audit, single job, immutable IDs and blocked operations
+        env:
+          R288_SOURCE_ROOT: ${{ runner.temp }}/local
+        run: |
+          set -euo pipefail
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R288_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r288_print CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r288/qa_full_reprint_mariadb.php | tee "$RUNNER_TEMP/r288-mariadb-result.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R288-FULL-PREP-MARIADB-REAL-RESULT
+          path: ${{ runner.temp }}/r288-mariadb-result.json
+          if-no-files-found: ignore
+          retention-days: 30
