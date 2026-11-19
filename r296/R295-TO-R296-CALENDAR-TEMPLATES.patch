@@ -1,0 +1,343 @@
+--- a/public/assets/iran-calendar-1405.json
++++ b/public/assets/iran-calendar-1405.json
+@@ -2,8 +2,8 @@
+   "schema": "sokna-iran-calendar-v1",
+   "year": 1405,
+   "source": "شورای مرکز تقویم مؤسسه ژئوفیزیک دانشگاه تهران؛ تقویم رسمی کشور سال ۱۴۰۵ (نسخه نهایی)",
+-  "source_url": "https://www.avazehgostar.com/file/pdf/calendar_1405",
+-  "coverage": "confirmed_holidays_and_selected_occasions",
++  "source_url": "https://calendar.ut.ac.ir/documents/2139738/7092644/Calendar-1405.pdf",
++  "coverage": "all_26_annual_national_public_holidays_plus_selected_official_occasions",
+   "events": {
+     "1405-01-01": {
+       "label": "عید سعید فطر و آغاز نوروز",
+@@ -49,10 +49,38 @@
+       "label": "شهادت امام جعفر صادق (ع)",
+       "holiday": true
+     },
++    "1405-02-01": {
++      "label": "روز بزرگداشت سعدی و روز نثر فارسی",
++      "holiday": false
++    },
++    "1405-02-09": {
++      "label": "ولادت امام رضا (ع) و روز شوراها",
++      "holiday": false
++    },
++    "1405-02-10": {
++      "label": "روز ملی خلیج فارس",
++      "holiday": false
++    },
++    "1405-02-11": {
++      "label": "روز جهانی کار و کارگر",
++      "holiday": false
++    },
++    "1405-02-12": {
++      "label": "روز معلم",
++      "holiday": false
++    },
++    "1405-02-25": {
++      "label": "روز پاسداشت زبان فارسی و بزرگداشت فردوسی",
++      "holiday": false
++    },
+     "1405-03-03": {
+       "label": "فتح خرمشهر و روز مقاومت",
+       "holiday": false
+     },
++    "1405-03-05": {
++      "label": "روز عرفه",
++      "holiday": false
++    },
+     "1405-03-06": {
+       "label": "عید سعید قربان",
+       "holiday": true
+@@ -65,6 +93,14 @@
+       "label": "قیام ۱۵ خرداد",
+       "holiday": true
+     },
++    "1405-03-20": {
++      "label": "روز صنایع دستی و روز ملی فرش",
++      "holiday": false
++    },
++    "1405-04-01": {
++      "label": "روز اصناف",
++      "holiday": false
++    },
+     "1405-04-03": {
+       "label": "تاسوعای حسینی",
+       "holiday": true
+@@ -73,10 +109,22 @@
+       "label": "عاشورای حسینی",
+       "holiday": true
+     },
++    "1405-04-07": {
++      "label": "روز قوه قضائیه",
++      "holiday": false
++    },
++    "1405-04-08": {
++      "label": "روز مبارزه با سلاح‌های شیمیایی و میکروبی",
++      "holiday": false
++    },
+     "1405-05-13": {
+       "label": "اربعین حسینی",
+       "holiday": true
+     },
++    "1405-05-14": {
++      "label": "صدور فرمان مشروطیت",
++      "holiday": false
++    },
+     "1405-05-17": {
+       "label": "روز خبرنگار",
+       "holiday": false
+@@ -97,26 +145,90 @@
+       "label": "روز پزشک",
+       "holiday": false
+     },
++    "1405-06-04": {
++      "label": "روز کارمند",
++      "holiday": false
++    },
+     "1405-06-05": {
+       "label": "روز داروسازی",
+       "holiday": false
+     },
++    "1405-06-07": {
++      "label": "روز وقف",
++      "holiday": false
++    },
+     "1405-06-08": {
+       "label": "ولادت پیامبر اکرم (ص) و امام جعفر صادق (ع)",
+       "holiday": true
+     },
++    "1405-07-07": {
++      "label": "روز آتش‌نشانی و ایمنی",
++      "holiday": false
++    },
++    "1405-07-20": {
++      "label": "روز بزرگداشت حافظ",
++      "holiday": false
++    },
++    "1405-07-26": {
++      "label": "روز تربیت بدنی و ورزش",
++      "holiday": false
++    },
++    "1405-08-13": {
++      "label": "روز دانش‌آموز",
++      "holiday": false
++    },
++    "1405-08-22": {
++      "label": "شهادت حضرت فاطمه زهرا (س)",
++      "holiday": true
++    },
++    "1405-08-24": {
++      "label": "روز کتاب، کتاب‌خوانی و کتابدار",
++      "holiday": false
++    },
++    "1405-09-16": {
++      "label": "روز دانشجو",
++      "holiday": false
++    },
++    "1405-09-30": {
++      "label": "شب یلدا",
++      "holiday": false
++    },
++    "1405-10-02": {
++      "label": "ولادت امام علی (ع) و روز پدر",
++      "holiday": true
++    },
++    "1405-10-04": {
++      "label": "روز بزرگداشت رودکی",
++      "holiday": false
++    },
+     "1405-10-16": {
+       "label": "مبعث پیامبر اسلام",
+       "holiday": true
+     },
++    "1405-11-04": {
++      "label": "ولادت حضرت قائم (عج) و جشن نیمه شعبان",
++      "holiday": true
++    },
++    "1405-11-12": {
++      "label": "آغاز دهه فجر",
++      "holiday": false
++    },
+     "1405-11-22": {
+       "label": "پیروزی انقلاب اسلامی",
+       "holiday": true
+     },
++    "1405-12-05": {
++      "label": "روز مهندسی",
++      "holiday": false
++    },
+     "1405-12-09": {
+       "label": "شهادت امام علی (ع)",
+       "holiday": true
+     },
++    "1405-12-15": {
++      "label": "روز درختکاری",
++      "holiday": false
++    },
+     "1405-12-19": {
+       "label": "عید سعید فطر",
+       "holiday": true
+@@ -129,5 +241,9 @@
+       "label": "روز ملی شدن صنعت نفت ایران",
+       "holiday": true
+     }
+-  }
++  },
++  "source_mirror_url": "https://www.avazehgostar.com/file/pdf/calendar_1405",
++  "official_holiday_count": 26,
++  "event_count": 59,
++  "notes": "فقط تعطیلات رسمی سال ۱۴۰۵ کامل است. رویدادهای غیرتعطیل مجموعه‌ای منتخب از تقویم نهایی هستند؛ تعطیلات موردی، استانی یا اعلان‌شده پس از تصویب تقویم پوشش داده نمی‌شوند."
+ }
+--- a/public/assets/product-shell.js
++++ b/public/assets/product-shell.js
+@@ -73,10 +73,10 @@
+         if(event?.holiday)b.classList.add('is-holiday');else if(event)b.classList.add('has-occasion');
+         if(k===nowKey){b.classList.add('is-today');b.setAttribute('aria-current','date')}
+         b.setAttribute('aria-label',`${fd(stamp.day)} ${months[stamp.month-1]} ${fd(stamp.year)}${event?'، '+event.label:''}${friday?'، جمعه':''}`);
+-        b.addEventListener('click',()=>{days.querySelectorAll('.is-selected').forEach(x=>x.classList.remove('is-selected'));b.classList.add('is-selected');detail.textContent=event?((event.holiday?'تعطیل رسمی: ':'مناسبت: ')+event.label):(friday?'جمعه — تعطیلی هفتگی':(events?.year===stamp.year?'مناسبت ثبت‌شده‌ای در مجموعه داده موجود نیست.':'اطلاعات مناسبت‌های این سال در دسترس نیست.'))});
++        b.addEventListener('click',()=>{days.querySelectorAll('.is-selected').forEach(x=>x.classList.remove('is-selected'));b.classList.add('is-selected');detail.textContent=event?((event.holiday?'تعطیل رسمی: ':'مناسبت: ')+event.label):(friday?'جمعه — تعطیلی هفتگی':(events?.year===stamp.year?'مناسبت منتخبی برای این روز ثبت نشده است.':'اطلاعات مناسبت‌های این سال در دسترس نیست.'))});
+         days.append(b);
+       }
+-      source.textContent=events?.year===ym.year?'منبع: تقویم رسمی مرکز تقویم دانشگاه تهران، ۱۴۰۵ (تعطیلات و مناسبت‌های منتخب)':'اطلاعات مناسبت‌های این سال در دسترس نیست';
++      source.textContent=events?.year===ym.year?'تعطیلات رسمی ۱۴۰۵ (۲۶ روز) + مناسبت‌های منتخب؛ منبع: مرکز تقویم دانشگاه تهران':'اطلاعات مناسبت‌های این سال در دسترس نیست';
+     };
+     const load=async()=>{
+       try{
+--- a/public/assets/printing-workspace.js
++++ b/public/assets/printing-workspace.js
+@@ -65,8 +65,93 @@
+ const templateLabelLabels={adjustment:'اصلاح',discount:'تخفیف',note:'یادداشت',reprint:'چاپ مجدد',settlement:'روش تسویه',subtotal:'جمع جزء',takeaway:'بیرون‌بر',tax:'مالیات',taxable:'مشمول مالیات',ticket_title:'عنوان فیش',total:'مبلغ نهایی'};
+ let templateEditorBase=null,templateSectionOrder=[],templateSectionEnabled=new Set();
+ function activeTemplateForKind(p,kind){return p.templates?.active?.[kind]||null}
+-function renderPrintTemplates(p){const box=$('[data-print-template-list]');if(!box)return;box.replaceChildren();const rows=p.templates?.packages||[],current=rows.filter(r=>Number(r.active)===1),archived=rows.filter(r=>Number(r.active)!==1);if(!rows.length){box.append(el('div','sc-empty','هنوز قالب چاپی اضافه نشده است. از قالب‌های استاندارد سکنا یا یک فایل .soknaprint شروع کن.'));return}current.forEach(r=>{const card=el('article','sc-list-item'),h=el('div','sc-list-item__head'),copy=el('div'),kindLabel=r.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';copy.append(el('strong','',r.display_name),el('div','sc-list-item__meta',`${kindLabel} · نسخه ${r.version||'—'} · ${r.created_at?L.dateTime(r.created_at):'—'}`));h.append(copy,badge(Number(r.active)===1?'فعال':'غیرفعال',Number(r.active)===1?'success':'neutral'));card.append(h);if(r.description)card.append(el('p','sc-muted',r.description));const actions=el('div','sc-actions'),dest=templateDestination(p,r),active=activeTemplateForKind(p,r.document_kind);actions.append(button('ویرایش به نسخه جدید',()=>openTemplateEditor(r.id),'secondary'));if(Number(r.active)!==1){if(active&&active.template_key===r.template_key)actions.append(button('بازگردانی این نسخه',()=>rollbackPrintTemplate(r),'secondary'));else actions.append(button('فعال‌سازی',()=>activatePrintTemplate(r.id),'primary'))}actions.append(button('پیش‌نمایش',()=>previewPrintTemplate(r,dest,'pdf'),'secondary'));if(dest){if(Number(dest.active)===1&&dest.operational)actions.append(button('چاپ آزمایشی',()=>printTest(dest.destination_key,Number(r.id)),'secondary'));else if(Number(dest.active)===1){const test=button('چاپ آزمایشی',()=>{},'secondary');test.disabled=true;test.title=dest.readiness_label||'این مقصد هنوز آماده چاپ نیست.';actions.append(test)}}else actions.append(el('span','sc-muted','پیش‌نمایش با پروفایل استاندارد ۸۰mm انجام می‌شود؛ برای چاپ آزمایشی باید مقصد تعریف شود.'));card.append(actions);box.append(card)});
+- if(archived.length){const archive=el('details','sc-history-archive'),summary=el('summary','',`آرشیو نسخه‌های قدیمی قالب چاپ (${L.integer(archived.length)})`),body=el('div','sc-history-archive__body');archive.append(summary,body);archived.forEach(r=>{const card=el('article','sc-list-item'),h=el('div','sc-list-item__head'),name=el('strong','',r.display_name||r.name||'قالب چاپ'),kind=r.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';h.append(name,badge('بایگانی‌شده'));card.append(h,el('div','sc-list-item__meta',`${kind} · نسخه ${r.version||'—'}`));const actions=el('div','sc-actions'),active=activeTemplateForKind(p,r.document_kind);actions.append(button('ویرایش به نسخه جدید',()=>openTemplateEditor(r.id),'secondary'));if(active&&active.template_key===r.template_key)actions.append(button('بازگردانی نسخه',()=>rollbackPrintTemplate(r),'secondary'));else actions.append(button('فعال‌سازی',()=>activatePrintTemplate(r.id),'secondary'));actions.append(button('پیش‌نمایش واقعی',()=>previewPrintTemplate(r,templateDestination(p,r),'pdf'),'secondary'));actions.append(button('حذف دائمی',()=>deletePrintTemplate(r),'secondary'));card.append(actions);body.append(card)});box.append(archive)}
++// Template library: active and newly saved versions stay visible; older versions live in a collapsed archive.
++// The archive state is preserved when the snapshot refreshes after preview/edit/activation.
++const printTemplateArchiveUi={open:false,query:'',kind:'all'};
++function renderPrintTemplates(p){
++  const box=$('[data-print-template-list]');if(!box)return;
++  box.replaceChildren();
++  const rows=Array.isArray(p.templates?.packages)?p.templates.packages:[];
++  if(!rows.length){box.append(el('div','sc-empty','هنوز قالب چاپی اضافه نشده است. از قالب‌های استاندارد سکنا یا یک فایل .soknaprint شروع کن.'));return}
++  const kindLabel=r=>r.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';
++  const active=rows.filter(r=>Number(r.active)===1);
++  const byKey=new Map();
++  rows.forEach(r=>{const k=String(r.template_key||r.document_kind||'');const ids=byKey.get(k)||[];ids.push(r);byKey.set(k,ids)});
++  const pending=[],archived=[];
++  byKey.forEach(group=>{
++    const current=group.find(r=>Number(r.active)===1);
++    const others=group.filter(r=>Number(r.active)!==1).sort((a,b)=>Number(b.id)-Number(a.id));
++    if(!current&&others.length){pending.push(others.shift())}
++    else if(current){for(const row of [...others]){
++      if(Number(row.id)>Number(current.id)){pending.push(row);others.splice(others.indexOf(row),1)}
++    }}
++    archived.push(...others);
++  });
++  const byRecency=(a,b)=>Number(b.id)-Number(a.id);
++  pending.sort(byRecency);archived.sort(byRecency);
++  const heading=(title,description)=>{const head=el('div','sc-print-template-group-heading');head.append(el('strong','',title));if(description)head.append(el('p','sc-muted',description));box.append(head)};
++  const renderRow=(r,mode)=>{
++    const card=el('article',`sc-list-item sc-print-template-version is-${mode}`),head=el('div','sc-list-item__head'),copy=el('div','sc-print-template-version__copy');
++    const name=el('strong','',r.display_name||r.name||'قالب چاپ');
++    const meta=el('div','sc-list-item__meta',`${kindLabel(r)} · نسخه ${r.version||'—'} · ${r.created_at?L.dateTime(r.created_at):'—'}`);
++    copy.append(name,meta);head.append(copy,badge(mode==='active'?'فعال':mode==='pending'?'نسخه ذخیره‌شده':'نسخه قدیمی',mode==='active'?'success':mode==='pending'?'warning':'neutral'));card.append(head);
++    if(mode!=='archive'&&r.description)card.append(el('p','sc-muted',r.description));
++    const actions=el('div','sc-actions sc-print-template-version__actions'),dest=templateDestination(p,r),current=activeTemplateForKind(p,r.document_kind);
++    if(mode!=='archive')actions.append(button('ویرایش به نسخه جدید',()=>openTemplateEditor(r.id),'secondary'));
++    if(mode==='pending')actions.append(button('فعال‌سازی این نسخه',()=>activatePrintTemplate(r.id),'primary'));
++    if(mode==='archive'){
++      if(current&&current.template_key===r.template_key)actions.append(button('بازگردانی نسخه',()=>rollbackPrintTemplate(r),'secondary'));
++      else actions.append(button('فعال‌سازی',()=>activatePrintTemplate(r.id),'secondary'));
++    }
++    actions.append(button('پیش‌نمایش',()=>previewPrintTemplate(r,dest,'pdf'),'secondary'));
++    if(mode==='active'){
++      if(dest&&Number(dest.active)===1&&dest.operational)actions.append(button('چاپ آزمایشی',()=>printTest(dest.destination_key,Number(r.id)),'secondary'));
++      else if(dest){const disabled=button('چاپ آزمایشی',()=>{},'secondary');disabled.disabled=true;disabled.title=dest.readiness_label||'این مقصد آماده چاپ نیست.';actions.append(disabled)}
++    }
++    card.append(actions);
++    if(mode==='archive'){
++      const more=el('details','sc-print-template-destructive'),summary=el('summary','','گزینه‌های بیشتر');
++      const deleteButton=button('حذف دائمی نسخه',()=>deletePrintTemplate(r),'secondary');
++      more.append(summary,deleteButton);card.append(more);
++    }
++    return card;
++  };
++  heading('قالب‌های فعال','این نسخه‌ها در عملیات واقعی چاپ استفاده می‌شوند.');
++  const activeGroup=el('div','sc-print-template-current');
++  for(const kind of ['preparation','customer']){
++    const group=active.filter(r=>r.document_kind===kind);
++    if(!group.length){const stub=el('div','sc-print-template-empty-kind',`${kind==='preparation'?'آماده‌سازی':'فیش مشتری'}: هنوز قالب فعالی انتخاب نشده است.`);activeGroup.append(stub)}
++    else group.forEach(r=>activeGroup.append(renderRow(r,'active')));
++  }
++  box.append(activeGroup);
++  if(pending.length){
++    heading('نسخه‌های ذخیره‌شده و فعال‌نشده','این نسخه‌ها ثبت شده‌اند، اما در چاپ واقعی استفاده نمی‌شوند.');
++    const pendingGroup=el('div','sc-print-template-pending');pending.forEach(r=>pendingGroup.append(renderRow(r,'pending')));box.append(pendingGroup);
++  }
++  if(!archived.length)return;
++  const archive=el('details','sc-history-archive sc-print-template-archive');archive.open=printTemplateArchiveUi.open;
++  const title=el('summary','',`آرشیو نسخه‌های قبلی (${L.integer(archived.length)})`);title.setAttribute('aria-label','باز کردن فهرست نسخه‌های قدیمی قالب چاپ');
++  archive.addEventListener('toggle',()=>{printTemplateArchiveUi.open=archive.open});archive.append(title);
++  const body=el('div','sc-history-archive__body'),toolbar=el('div','sc-print-template-archive-tools');
++  const label=el('label','sc-field'),labelText=el('span','sc-field__label','جست‌وجو در آرشیو'),search=el('input','sc-control');
++  search.type='search';search.autocomplete='off';search.value=printTemplateArchiveUi.query;search.placeholder='نام قالب یا شماره نسخه';search.setAttribute('aria-label','جست‌وجو در نسخه‌های آرشیوی');label.append(labelText,search);
++  const selectLabel=el('label','sc-field'),selectText=el('span','sc-field__label','نوع فیش'),selector=el('select','sc-control');
++  for(const [value,text] of [['all','همه قالب‌ها'],['preparation','آماده‌سازی'],['customer','فیش مشتری']]){
++    const option=el('option','',text);option.value=value;selector.append(option)
++  }
++  selector.value=printTemplateArchiveUi.kind;selector.setAttribute('aria-label','فیلتر آرشیو بر اساس نوع فیش');selectLabel.append(selectText,selector);
++  toolbar.append(label,selectLabel);body.append(toolbar);
++  const matches=el('div','sc-print-template-archive-rows'),note=el('p','sc-muted sc-print-template-filter-result');
++  const updateArchive=()=>{
++    matches.replaceChildren();const q=printTemplateArchiveUi.query.trim().toLocaleLowerCase('fa');
++    const filtered=archived.filter(r=>(printTemplateArchiveUi.kind==='all'||r.document_kind===printTemplateArchiveUi.kind)&&[r.display_name,r.version,r.template_key,r.description].some(s=>String(s||'').toLocaleLowerCase('fa').includes(q)));
++    filtered.forEach(r=>matches.append(renderRow(r,'archive')));
++    if(!filtered.length)matches.append(el('p','sc-empty','نسخه‌ای مطابق جست‌وجو پیدا نشد.'));
++    note.textContent=`${L.integer(filtered.length)} نسخه از ${L.integer(archived.length)} نسخه آرشیوی نمایش داده می‌شود.`;
++  };
++  search.addEventListener('input',()=>{printTemplateArchiveUi.query=search.value;updateArchive()});
++  selector.addEventListener('change',()=>{printTemplateArchiveUi.kind=selector.value;updateArchive()});
++  body.append(note,matches);archive.append(body);box.append(archive);updateArchive();
+ }
+ async function deletePrintTemplate(row){
+  const ok=await SoknaUI.confirm('حذف دائمی قالب چاپ',`نسخه ${row.version} از «${row.display_name}» برای همیشه حذف شود؟ این عملیات برگشت‌پذیر نیست و فقط برای نسخه غیرفعال مجاز است.`);
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6458,3 +6458,35 @@
+ .sc-template-live-paper .sc-template-live-footer{line-height:1.5}
+ .sc-template-live-paper .sc-template-live-meta{font-size:var(--sc-draft-meta-size,12px)}
+ .sc-template-live-paper .sc-template-live-note{font-size:var(--sc-draft-notes-size,12px)}
++
++/* R296: current, saved-but-inactive and archived print-template versions. */
++body[data-page="printing"] [data-print-template-list]{display:grid;gap:.8rem}
++body[data-page="printing"] .sc-print-template-group-heading{display:grid;gap:.15rem;padding-block:.4rem .05rem}
++body[data-page="printing"] .sc-print-template-group-heading strong{font-size:.94rem}
++body[data-page="printing"] .sc-print-template-group-heading p{font-size:.79rem;margin:0}
++body[data-page="printing"] .sc-print-template-current,body[data-page="printing"] .sc-print-template-pending{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}
++body[data-page="printing"] .sc-print-template-version{min-width:0;border:1px solid var(--sc-border);border-radius:var(--sc-radius-2,10px);background:var(--sc-surface-raised,#fff)}
++body[data-page="printing"] .sc-print-template-version__copy{min-width:0;overflow-wrap:anywhere}
++body[data-page="printing"] .sc-print-template-version__actions{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
++body[data-page="printing"] .sc-print-template-empty-kind{border:1px dashed var(--sc-border);border-radius:10px;padding:1rem;color:var(--sc-muted,#657670);font-size:.84rem}
++body[data-page="printing"] .sc-print-template-pending .sc-list-item{border-inline-start:3px solid var(--sc-warning,#bd903d)}
++body[data-page="printing"] .sc-print-template-archive{margin-block:0;overflow:visible}
++body[data-page="printing"] .sc-print-template-archive-tools{display:grid;grid-template-columns:2fr 1fr;gap:.6rem}
++body[data-page="printing"] .sc-print-template-archive-rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem}
++body[data-page="printing"] .sc-print-template-archive-rows>.sc-empty{grid-column:1/-1}
++body[data-page="printing"] .sc-print-template-filter-result{font-size:.77rem;margin:0}
++body[data-page="printing"] .sc-print-template-destructive{border-top:1px dashed var(--sc-border);padding-top:.35rem;font-size:.77rem}
++body[data-page="printing"] .sc-print-template-destructive summary{cursor:pointer;width:max-content;color:var(--sc-muted,#657670)}
++body[data-page="printing"] .sc-print-template-destructive .sc-button{margin-top:.4rem}
++@media(max-width:900px){body[data-page="printing"] .sc-print-template-current,body[data-page="printing"] .sc-print-template-pending,body[data-page="printing"] .sc-print-template-archive-rows{grid-template-columns:1fr}}
++@media(max-width:490px){body[data-page="printing"] .sc-print-template-archive-tools{grid-template-columns:1fr}}
++
++/* R296: the calendar must remain reachable at tablet/mobile widths. Previous shared
++   topbar breakpoints hid all .sc-shell__date-card elements, including the calendar. */
++@media(max-width:980px){
++ .sc-shell__date-card.sc-shell__calendar-wrap{display:flex!important;inline-size:42px;min-inline-size:42px;block-size:42px;padding:0;align-items:center;justify-content:center;border-radius:12px}
++ .sc-shell__calendar-wrap .sc-shell__calendar-toggle{inline-size:40px;block-size:40px;justify-content:center}
++ .sc-shell__calendar-wrap .sc-shell__date-copy{display:none}
++ .sc-shell__calendar-wrap .sc-shell__calendar-panel{position:fixed;inset-block-start:64px;inset-inline-start:12px;inset-inline-end:auto;max-block-size:calc(100dvh - 84px);overflow-y:auto}
++}
++@media(max-width:640px){.sc-shell__calendar-wrap .sc-shell__calendar-panel{inset-inline:12px;inline-size:auto;max-inline-size:390px}}
