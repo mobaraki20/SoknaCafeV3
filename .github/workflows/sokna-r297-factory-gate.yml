@@ -1,0 +1,22 @@
+name: SOKNA R297 Unified Factory Original Artifact QA - NO DEPLOY
+on:
+  push:
+    branches: [qa/sokna-r297-local-release-20261119]
+    paths:
+      - 'release-ops/candidates/r297.json'
+      - '.github/workflows/sokna-r297-factory-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  shared-factory-gate:
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: release-ops/candidates/r297.json
+      candidate_run_id: '44529037706'
+      candidate_artifact: SOKNA-R297-LOCAL-CANDIDATE-FACTORY-QA
+    permissions:
+      contents: read
+      actions: read
