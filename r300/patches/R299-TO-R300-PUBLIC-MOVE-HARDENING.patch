@@ -1,0 +1,310 @@
+--- a/public/integrations/api.php
++++ b/public/integrations/api.php
+@@ -20,7 +20,7 @@
+         WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
+     }
+     $data=WebAction::requireMutation();$action=(string)($data['action']??'');
+-    if(in_array($action,['public_move_begin','public_move_confirm','public_move_cancel','public_move_status','public_move_finish'],true)){
++    if(in_array($action,['public_move_begin','public_move_confirm','public_move_cancel','public_move_status','public_move_finish','public_move_existing_owner_offer_execute'],true)){
+         try {
+             // This request has already passed real Local admin authentication
+             // and WebAction's per-session CSRF. No browser session or Local ID.
+@@ -123,6 +123,19 @@
+                 unset($_SESSION['sokna_move_operation']);
+                 WebAction::json(['success'=>true,'move'=>$result]);
+             }
++            if($action==='public_move_existing_owner_offer_execute'){
++                // The existing paired destination offers authority only AFTER
++                // a durable, independently signed Local admin approval.
++                // This operation is now covered by the same safe failure path.
++                if((string)($_SESSION['sokna_move_operation']??'')!==$operation ||
++                   ($data['move_kind']??'')!=='existing_paired')
++                    throw new \RuntimeException('owner_offer_session_not_active');
++                if(($ledger->status($localId,$operation)['status']??'')!=='owner_approved')
++                    throw new \RuntimeException('local_owner_approval_required');
++                $result=$replacement->start($operation,(string)($data['owner_authority_code']??''),
++                    $actorId,'existing_paired',(int)($data['owner_next_epoch']??0));
++                WebAction::json(['success'=>true,'move'=>$result]);
++            }
+             if(!is_array($data['attestation']??null)||!is_array($data['receipt_envelope']??null))
+                 throw new \RuntimeException('signed_owner_receipt_required');
+             $flow->confirm($operation,$trustedSessionToken,
+@@ -141,28 +154,30 @@
+                 (int)($data['owner_next_epoch']??0));
+             WebAction::json(['success'=>true,'move'=>$result]);
+         }catch(\Throwable $e){
+-            // Never disclose key paths, challenge hashes, SQL, session tokens,
+-            // owner credentials or remote host internals.
+-            WebAction::json(['success'=>false,'code'=>'public_move_confirmation_not_ready',
+-                'message'=>'تأیید انتقال کامل نشد. اتصال فعلی بدون تغییر است؛ وضعیت مقصد و ورود مدیر را بررسی کنید.'],409);
++            // Never expose raw exceptions, passwords, tokens, URLs, challenges,
++            // keys, SQL or file paths. Capture a stable error stage and reason
++            // in the ordinary support bundle. No mutation is attempted here.
++            $pending=['status'=>'unknown','active'=>false];
++            try {if(isset($replacement))$pending=$replacement->status();}catch(\Throwable){}
++            $bindingState='unknown';
++            try {
++                $target=(string)($pending['target_base_url']??'');
++                $current=$core->publicEdgeSyncClient()->publicBaseUrl();
++                if($target!=='' && $current!=='' && hash_equals($target,$current))$bindingState='target';
++                elseif($target!=='')$bindingState='not_target';
++            }catch(\Throwable){}
++            $diagnostic=\Sokna\Local\Domain\PublicEdge\PublicMoveFailureDiagnostic::classify(
++                $e,$action,$pending,$bindingState);
++            $supportId=substr($core->observability()->correlationId(),0,12);
++            $core->observability()->logEvent('error','public.move_operation_failed',[
++                'step'=>$diagnostic['move_step'],'code'=>$diagnostic['code'],
++                'safe_reason'=>\Sokna\Local\Domain\PublicEdge\PublicMoveFailureDiagnostic::safeReason($e),
++                'move_status'=>$diagnostic['move_status'],
++                'binding_state'=>$bindingState,
++            ],$core->observability()->correlationId());
++            $diagnostic['support_id']=$supportId;
++            WebAction::json($diagnostic,409);
+         }
+-    }
+-    if($action==='public_move_existing_owner_offer_execute'){
+-        $localId=$core->config()->string('installation.id','');
+-        $operation=(string)($_SESSION['sokna_move_operation']??'');
+-        if($operation===''||($data['move_kind']??'')!=='existing_paired')
+-            throw new \RuntimeException('owner_offer_session_not_active');
+-        $ledger=new \Sokna\Local\Domain\PublicEdge\PublicMoveApprovalLedger(
+-            $core->database()
+-        );
+-        if(($ledger->status($localId,$operation)['status']??'')!=='owner_approved')
+-            throw new \RuntimeException('local_owner_approval_required');
+-        $replacement=new \Sokna\Local\Domain\PublicEdge\PublicMoveSimpleReplacement(
+-            $core,$ledger,$localId,$core->config()->requiredString('app.data_dir')
+-        );
+-        $result=$replacement->start($operation,(string)($data['owner_authority_code']??''),
+-            $actorId,'existing_paired',(int)($data['owner_next_epoch']??0));
+-        WebAction::json(['success'=>true,'move'=>$result]);
+     }
+     if($action==='public_move_inspect'){
+         // R258 QA: authenticated Local admin + WebAction CSRF are already enforced.
+@@ -173,7 +188,8 @@
+         $client=$core->publicEdgeSyncClient();
+         $service=new \Sokna\Local\Domain\PublicEdge\PublicMoveUiInspectionService(
+             $client->publicBaseUrl(),$core->publicAuthorityState()->phase(),
+-            static fn(string $target):array=>$core->publicOriginRebind()->preflight($target)
++            static fn(string $target):array=>$core->publicOriginRebind()->preflight($target),
++            static fn(string $target):array=>$core->publicEdgeSyncClient()->deploymentTargetHealth($target,6)
+         );
+         WebAction::json(['success'=>true,'public_move'=>$service->inspect((string)($data['base_url']??''))]);
+     }
+--- a/src/Domain/PublicEdge/PublicMoveUiInspectionService.php
++++ b/src/Domain/PublicEdge/PublicMoveUiInspectionService.php
+@@ -17,13 +17,16 @@
+ final class PublicMoveUiInspectionService
+ {
+     private readonly Closure $sameInstancePreflight;
++    private readonly ?Closure $targetHealthProbe;
+ 
+     public function __construct(
+         private readonly string $currentBaseUrl,
+         private readonly string $authorityPhase,
+-        callable $sameInstancePreflight
++        callable $sameInstancePreflight,
++        ?callable $targetHealthProbe = null
+     ) {
+         $this->sameInstancePreflight=Closure::fromCallable($sameInstancePreflight);
++        $this->targetHealthProbe=$targetHealthProbe!==null?Closure::fromCallable($targetHealthProbe):null;
+     }
+ 
+     /** @return array<string,mixed> */
+@@ -43,17 +46,53 @@
+             return self::finish($base,'connection_not_configured','blocked',
+                 'ابتدا اتصال فعلی وب عمومی باید روشن و تأیید شود.');
+         }
++        // R300: verify that the actual destination URL serves a ready Public,
++        // even if the old Public is offline and its signed rebind probe cannot
++        // be used. Health is NOT identity proof or permission to cut over.
++        if($this->targetHealthProbe!==null){
++            try{$health=($this->targetHealthProbe)((string)$base['target_base_url']);}
++            catch(PublicEdgeSyncException $e){
++                return self::finish($base,$e->httpStatus===404?'target_http_404':'target_unreachable',
++                    'blocked','مسیر وب عمومی مقصد در دسترس نیست یا پاسخ سلامت معتبر ندارد.');
++            }catch(Throwable){
++                return self::finish($base,'target_health_check_failed','blocked',
++                    'سلامت وب عمومی مقصد بررسی نشد؛ انتقال هنوز آغاز نشده است.');
++            }
++            if(!is_array($health)||($health['ok']??false)!==true||
++                ($health['component']??'')!=='public-edge'||
++                ($health['database']??'')!=='ready'||
++                (int)($health['pending_migrations']??-1)!==0||
++                !is_string($health['version']??null)||trim($health['version'])===''){
++                return self::finish($base,'target_not_ready','blocked',
++                    'وب عمومی مقصد آماده نیست؛ اتصال قبلی بدون تغییر باقی می‌ماند.');
++            }
++            $base['target_health_verified']=true;
++            $base['target_version']=$health['version'];
++        }
++        if($this->authorityPhase==='resync_required'){
++            // Preflight for SAME-instance rebind categorically requires active
++            // authority. Calling it here ALWAYS produces not-active, which
++            // R299 incorrectly reported as a fresh-owner determination.
++            // Use independent owner attestation without trusting health as ID.
++            return self::finish($base,'target_ready_owner_identity_unproven','awaiting_owner',
++                'مقصد سالم است؛ اتصال قبلی نیازمند بازهمگام‌سازی است. مالک این Public باید مستقل تأیید کند.');
++        }
+         try {
+             $proof=($this->sameInstancePreflight)((string)$base['target_base_url']);
+         } catch (PublicEdgeSyncException $e) {
+-            // Different/new Public cannot answer a SAME-instance shared-secret
+-            // probe. Treat the outcome only as "needs independent OWNER proof".
+-            // It is never evidence of ownership and never permits cutover.
+-            return self::finish($base,'target_requires_owner','awaiting_owner',
+-                'اگر مقصد نصب تازه است، مالک همان وب عمومی باید اتصال را تأیید کند.');
++            if(in_array($e->errorCode,['public_url_invalid','public_not_configured',
++                'public_origin_target_pwa_incomplete','public_origin_target_health_mismatch'],true)){
++                return self::finish($base,'signed_preflight_target_not_ready','blocked',
++                    'پیش‌بررسی مقصد آماده نیست؛ انتقال مجاز نشده است.');
++            }
++            // Invalid/absent shared-secret proof does not establish identity.
++            // Destination health was verified independently above; owner proof
++            // is mandatory for any different or unverified installation.
++            return self::finish($base,'target_ready_owner_identity_unproven','awaiting_owner',
++                'هویت یکسان مقصد ثابت نشده است؛ تأیید مستقل مالک Public لازم است.');
+         } catch (Throwable) {
+-            return self::finish($base,'target_requires_owner','awaiting_owner',
+-                'برای اتصال به نصب تازه، تأیید مالک مقصد لازم است.');
++            return self::finish($base,'same_instance_preflight_failed','blocked',
++                'پیش‌بررسی فنی مقصد با خطا مواجه شد؛ انتقال انجام نشده است.');
+         }
+         // Only signed, server-generated SAME-instance preflight evidence can
+         // reach this point. Never trust a JSON body or a frontend flag as proof.
+--- a/src/Domain/PublicEdge/PublicMoveFailureDiagnostic.php
++++ b/src/Domain/PublicEdge/PublicMoveFailureDiagnostic.php
+@@ -0,0 +1,133 @@
++<?php
++declare(strict_types=1);
++
++namespace Sokna\Local\Domain\PublicEdge;
++
++use Throwable;
++
++/**
++ * R300: non-sensitive, deterministic error taxonomy for the existing Public move.
++ * The raw exception (SQL, URL, token, filesystem) is NEVER sent to the browser.
++ * This class performs no writes and does not authorize any cutover.
++ */
++final class PublicMoveFailureDiagnostic
++{
++    private const EXPIRED = [
++        'move_challenge_not_active','challenge_not_current','approval_expired',
++        'owner_receipt_expired','expired_or_invalid_challenge','invalid_or_expired_challenge',
++    ];
++    private const OWNER_PROOF = [
++        'signed_owner_receipt_required','owner_receipt_envelope_invalid',
++        'owner_receipt_shape_invalid','owner_receipt_fields_invalid','owner_receipt_challenge_mismatch',
++        'owner_receipt_challenge_hash_invalid','owner_receipt_attestation_mismatch',
++        'owner_receipt_signature_invalid','owner_attestation_signature_invalid',
++        'attestation_payload_missing','attestation_binding_mismatch','signature_not_verified',
++        'wrong_challenge_contract','trusted_owner_approval_required','conflicting_approval_receipt',
++        'invalid_attestation_envelope','invalid_wire_shape','invalid_preflight_proof',
++    ];
++    private const LOCAL_ADMIN = [
++        'local_session_unavailable','operator_not_authenticated','local_authenticated_operator_required',
++        'local_admin_for_installation_required','local_operator_csrf_invalid',
++        'owner_offer_session_not_active','move_session_not_active',
++    ];
++    private const TARGET_ID = [
++        'existing_destination_identity_or_pairing_mismatch','existing_destination_authority_response_invalid',
++        'existing_destination_epoch_not_ahead','source_public_binding_changed',
++        'local_public_settings_changed_during_replacement','invalid_owner_issued_pairing_code',
++        'invalid_public_move_kind','move_target_url_invalid','existing_move_operation_changed',
++    ];
++    private const RESUME = [
++        'another_migration_already_active','another_replacement_in_progress',
++        'replacement_already_in_progress','replacement_pairing_uncertain_needs_review',
++        'replacement_not_ready_for_sync','claimed_operation_requires_recovery',
++        'paired_replacement_must_finish_before_cancel','operation_not_current_for_installation',
++        'replacement_state_missing','replacement_state_invalid',
++    ];
++
++    public static function classify(Throwable $error, string $action, array $pending, string $bindingState): array
++    {
++        $raw = $error->getMessage();
++        // Exception messages are used ONLY as exact, predefined codes. They are
++        // never returned or persisted as arbitrary strings.
++        $pendingState = (string)($pending['status'] ?? 'unknown');
++        $hasJournal = ($pending['active'] ?? false) === true;
++        $bindingChanged = $bindingState === 'target';
++        if (in_array($raw, self::EXPIRED, true)) {
++            $code = 'public_move_challenge_expired';
++            $instruction = 'اعتبار تأیید مالک تمام شده است؛ ابتدا وضعیت عملیات را بررسی کنید و اگر انتقال شروع نشده، درخواست تازه بسازید.';
++            $policy = $hasJournal ? 'resume_existing_operation' : 'restart_owner_challenge';
++        } elseif (in_array($raw, self::OWNER_PROOF, true)) {
++            $code = 'public_move_owner_proof_invalid';
++            $instruction = 'رسید امضاشدهٔ مالک برای همین درخواست پذیرفته نشد؛ اتصال جدید تأیید نشده است.';
++            $policy = 'review_owner_receipt';
++        } elseif (in_array($raw, self::LOCAL_ADMIN, true)) {
++            $code = 'public_move_local_admin_session_required';
++            $instruction = 'نشست مدیر Local یا درخواست فعال معتبر نیست؛ بدون شروع عملیات جدید وضعیت فعلی را بررسی کنید.';
++            $policy = 'review_local_admin_session';
++        } elseif (in_array($raw, self::TARGET_ID, true)) {
++            $code = 'public_move_destination_identity_mismatch';
++            $instruction = 'هویت، نسل اتصال یا تنظیمات مقصد با عملیات تأییدشده منطبق نیست؛ انتقال متوقف شد.';
++            $policy = 'review_destination_identity';
++        } elseif (in_array($raw, self::RESUME, true) || $bindingChanged || $hasJournal) {
++            $code = 'public_move_recovery_required';
++            $instruction = 'عملیات انتقال قبلاً شروع شده یا نتیجه آن نامطمئن است؛ وضعیت همان عملیات را بازیابی کنید و کد جدید نسازید.';
++            $policy = 'resume_existing_operation';
++        } elseif ($error instanceof PublicEdgeSyncException) {
++            $code = $error->httpStatus === 404 ? 'public_move_destination_http_404' : 'public_move_destination_unreachable';
++            $instruction = $error->httpStatus === 404
++                ? 'مسیر API مقصد پیدا نشد؛ آدرس و نسخهٔ Public بررسی شود، بدون هیچ تغییر در اتصال.'
++                : 'ارتباط امن با مقصد کامل نشد؛ وضعیت مقصد باید پیش از ادامه بررسی شود.';
++            $policy = 'check_destination_health';
++        } elseif ($raw === 'active_public_connection_required') {
++            $code = 'public_move_local_authority_not_ready';
++            $instruction = 'مرجع ارتباط Local برای شروع عملیات مجاز نیست؛ وضعیت اتصال ابتدا بررسی شود.';
++            $policy = 'review_local_authority';
++        } else {
++            $code = 'public_move_unclassified_failure';
++            $instruction = 'علت انتقال مشخص نشد. با کد پیگیری، مرحله شکست را در گزارش پشتیبانی بررسی کنید.';
++            $policy = 'support_required';
++        }
++        // After a durable journal or config commit, claiming the Local was
++        // unchanged is unsafe. The response is a snapshot, not a rollback proof.
++        return [
++            'success' => false,
++            'code' => $code,
++            'message' => $instruction,
++            'move_step' => self::step($action),
++            'recovery_policy' => $policy,
++            'move_status' => in_array($pendingState,['none','sync_pending','support_required'],true)
++                ? $pendingState : 'unknown',
++            'binding_state' => $bindingState,
++            'local_connection_preserved' => $bindingChanged ? false :
++                (!$hasJournal && $bindingState==='not_target' ? true : null),
++            'safe_to_cutover' => false,
++            'restart_without_status_check_allowed' => false,
++        ];
++    }
++
++    public static function safeReason(Throwable $error): string
++    {
++        $raw = $error->getMessage();
++        foreach([self::EXPIRED,self::OWNER_PROOF,self::LOCAL_ADMIN,self::TARGET_ID,self::RESUME] as $set) {
++            if (in_array($raw,$set,true)) return $raw;
++        }
++        if ($error instanceof PublicEdgeSyncException) {
++            return preg_match('/^[a-z0-9_]{3,64}$/D',$error->errorCode) === 1
++                ? $error->errorCode : 'public_sync_exception';
++        }
++        return 'unclassified';
++    }
++
++    private static function step(string $action): string
++    {
++        return match($action) {
++            'public_move_begin' => 'create_challenge',
++            'public_move_confirm' => 'verify_owner_and_local_admin',
++            'public_move_existing_owner_offer_execute' => 'exchange_owner_authority_offer',
++            'public_move_finish' => 'sync_commit_activate',
++            'public_move_cancel' => 'cancel_before_commit',
++            'public_move_status' => 'readback',
++            default => 'unknown',
++        };
++    }
++}
