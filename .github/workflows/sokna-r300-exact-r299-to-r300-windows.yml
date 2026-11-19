@@ -1,0 +1,54 @@
+name: SOKNA R300 Actual Cafe R299 to R300 Native Windows Qualification - NO FIELD DEPLOY
+on:
+  push:
+    branches: [qa/sokna-r300-public-move-hardening-20261119]
+    paths:
+      - '.github/workflows/sokna-r300-exact-r299-to-r300-windows.yml'
+      - 'r300/tests/native_r299_to_r300.ps1'
+      - 'r300/tests/windows_bootstrap_r299.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-r299-to-r300:
+    runs-on: windows-2022
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R299-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+          run-id: 44541550259
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/exact-r299
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R300-QUALIFICATION-CANDIDATE-NO-FIELD
+          run-id: 44558233042
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/exact-r300
+      - name: Native prepare + activate exact R299 to exact R300, no schema delta, preserved installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem '${{ runner.temp }}/exact-r299' -Recurse -File -Filter 'SOKNA-R299-LOCAL-231FQ-CUMULATIVE-CONTROLLED-INSTALL.zip'|Select-Object -First 1
+          $target=Get-ChildItem '${{ runner.temp }}/exact-r300' -Recurse -File -Filter 'SOKNA-R300-LOCAL-231FR-PUBLIC-MOVE-QA-NOT-FIELD-INSTALL.zip'|Select-Object -First 1
+          if(!$base -or !$target){throw 'EXACT_R299_R300_ARCHIVE_NOT_PRESENT'}
+          $env:SOKNA_R299_ORIGINAL_ZIP=$base.FullName
+          $env:SOKNA_R300_CANDIDATE_ZIP=$target.FullName
+          Push-Location native-src
+          try{
+            & (Join-Path $env:GITHUB_WORKSPACE 'r300/tests/native_r299_to_r300.ps1')
+            if($LASTEXITCODE -ne 0){throw 'EXACT_R299_TO_R300_NATIVE_FAILED'}
+            Write-Host 'PASS_R299_231FQ_TO_R300_231FR_WINDOWS_REAL_STAGE_ACTIVATE_HTTP_DB83_NO_SCHEMA_CHANGE'
+          }finally{Pop-Location}
