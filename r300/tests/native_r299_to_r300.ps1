@@ -91,7 +91,7 @@ try {
  Copy-Item $apacheSource (Join-Path $infra 'Apache') -Recurse
  $php=Join-Path $infra 'PHP/php.exe'
  New-Item -ItemType Directory -Force (Join-Path $root 'Data/guest-media')|Out-Null
- $bootstrap=Join-Path $PWD.Path 'r300/tests/windows_bootstrap_r299.php'
+ $bootstrap=Join-Path $env:GITHUB_WORKSPACE 'r300/tests/windows_bootstrap_r299.php'
  Need (Test-Path $bootstrap) 'PHP_BOOTSTRAP_FILE_MISSING'
  Write-Host ('R278_PHP_BOOTSTRAP_SCRIPT '+$bootstrap)
  Write-Host ('R278_PHP_BOOTSTRAP_OLD '+$old)
