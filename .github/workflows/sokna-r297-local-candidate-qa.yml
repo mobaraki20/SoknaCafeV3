@@ -104,9 +104,9 @@ jobs:
         with:
           name: SOKNA-R297-LOCAL-CANDIDATE-FACTORY-QA
           path: |
-            ${{ runner.temp }}/r297-work/output/SOKNA-R297-LOCAL-231FO-CUMULATIVE-CANDIDATE-NOT-INSTALL.zip
-            ${{ runner.temp }}/r297-work/output/R297-INTEGRITY-AND-RELEASE-GATES.json
-            ${{ runner.temp }}/r297-work/output/candidate-contract.json
+            ${{ github.workspace }}/r297-work/output/SOKNA-R297-LOCAL-231FO-CUMULATIVE-CANDIDATE-NOT-INSTALL.zip
+            ${{ github.workspace }}/r297-work/output/R297-INTEGRITY-AND-RELEASE-GATES.json
+            ${{ github.workspace }}/r297-work/output/candidate-contract.json
           if-no-files-found: error
           retention-days: 30
 
