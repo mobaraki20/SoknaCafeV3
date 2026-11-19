@@ -1,0 +1,478 @@
+--- a/database/migrations/0083_remaining_account_discount.sql
++++ b/database/migrations/0083_remaining_account_discount.sql
+@@ -0,0 +1,30 @@
++-- R293: an immutable, single remaining-balance discount after the first itemized payment.
++-- Existing settlement receipts and the original invoice-wide discount stay unchanged.
++CREATE TABLE IF NOT EXISTS remaining_account_discount_grants (
++    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
++    session_id BIGINT UNSIGNED NOT NULL,
++    discount_type VARCHAR(10) NOT NULL,
++    discount_value BIGINT UNSIGNED NOT NULL,
++    base_unpaid_subtotal BIGINT UNSIGNED NOT NULL,
++    discount_amount BIGINT UNSIGNED NOT NULL,
++    actor_user_id INT UNSIGNED NULL,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    UNIQUE KEY uq_remaining_discount_session (session_id),
++    CONSTRAINT fk_remaining_grant_session FOREIGN KEY (session_id) REFERENCES table_sessions(id) ON UPDATE CASCADE ON DELETE RESTRICT,
++    CONSTRAINT fk_remaining_grant_actor FOREIGN KEY (actor_user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL,
++    CONSTRAINT ck_remaining_grant_type CHECK (discount_type IN ('percent','fixed'))
++) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
++
++CREATE TABLE IF NOT EXISTS remaining_account_discount_lines (
++    grant_id BIGINT UNSIGNED NOT NULL,
++    order_item_id BIGINT UNSIGNED NOT NULL,
++    quantity_snapshot INT UNSIGNED NOT NULL,
++    paid_quantity_at_grant INT UNSIGNED NOT NULL,
++    original_discount_snapshot BIGINT UNSIGNED NOT NULL,
++    discount_amount BIGINT UNSIGNED NOT NULL,
++    invoice_tax_after_grant BIGINT UNSIGNED NOT NULL,
++    invoice_taxable_after_grant BIGINT UNSIGNED NOT NULL,
++    PRIMARY KEY(grant_id, order_item_id),
++    CONSTRAINT fk_remaining_line_grant FOREIGN KEY (grant_id) REFERENCES remaining_account_discount_grants(id) ON UPDATE CASCADE ON DELETE RESTRICT,
++    CONSTRAINT fk_remaining_line_item FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON UPDATE CASCADE ON DELETE RESTRICT
++) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+--- a/public/assets/finance-workspace.js
++++ b/public/assets/finance-workspace.js
+@@ -54,7 +54,9 @@
+ }
+ function renderAccounts(){const box=$('[data-account-list]'),followupBox=$('[data-followup-list]'),followupCount=$('[data-followup-count]'),error=sectionError('open_accounts');box?.replaceChildren();followupBox?.replaceChildren();if(error){box?.append(unavailable(error,'حساب‌های باز فعلاً در دسترس نیستند.'));followupBox?.append(unavailable(error,'حساب‌های نیازمند پیگیری فعلاً در دسترس نیستند.'));if(followupCount)followupCount.textContent='—';return}const all=Array.isArray(snap.open_accounts)?snap.open_accounts:[],rows=financeVisibleAccounts(all.filter(a=>!a.service_detached_at),"accounts"),followups=financeVisibleAccounts(all.filter(a=>a.service_detached_at),"followups");if(followupCount)followupCount.textContent=L.integer(followups.length);if(!rows.length)box?.append(el('div','sc-empty','حساب بازی وجود ندارد.'));else rows.forEach(a=>box?.append(financeAccountRow(a,'accounts')));if(!followups.length)followupBox?.append(el('div','sc-empty','حسابی برای پیگیری باقی نمانده است.'));else followups.forEach(a=>followupBox?.append(financeAccountRow(a,'followups')))}
+ async function loadAccount(id,target=accountTarget){const token=++financeAccountLoadToken,scoped=target==='followups'?'followups':'accounts',view=captureView(),box=$(scoped==='followups'?'[data-followup-detail]':'[data-account-detail]');box?.setAttribute('aria-busy','true');status('');try{const j=await request(`${api}?action=account&session_id=${encodeURIComponent(id)}`);if(token!==financeAccountLoadToken)return;if(Number(j.account?.session?.id)!==Number(id))throw new Error('پاسخ حساب متعلق به میز انتخاب‌شده نیست.');accountTarget=scoped;account=j.account;renderAccounts();renderAccount();restoreView(view)}catch(e){if(token===financeAccountLoadToken){restoreView(view);actionError(e)}}finally{box?.removeAttribute('aria-busy')}}
+-async function applyDiscount(){if(!account)return;const s=account.session,originalId=Number(s.id),originalToken=financeAccountLoadToken,originalTarget=accountTarget;const isCurrent=()=>financeAccountLoadToken===originalToken&&Number(account?.session?.id)===originalId&&accountTarget===originalTarget;const type=await SoknaUI.choose('نوع تخفیف',[{label:'درصدی',value:'percent'},{label:'مبلغ ثابت',value:'fixed'},{label:'حذف تخفیف',value:''}],{message:'روش تخفیف را انتخاب کن.'});if(type===null)return;let val=0;if(type!==''){const raw=await SoknaUI.prompt('مقدار تخفیف',{label:type==='percent'?'درصد تخفیف':'مبلغ تخفیف (تومان)',value:'0',dir:'ltr',inputMode:type==='percent'?'decimal':'numeric',humanNumeric:true,money:type==='fixed'});if(raw===null)return;val=L.numericValue(raw,{decimal:type==='percent'});}if(!isCurrent())return;try{await post({action:'discount',session_id:originalId,discount_type:type||null,discount_value:val});if(!isCurrent())return;await loadAccount(originalId,originalTarget);await refresh()}catch(e){actionError(e)}}
++async function applyDiscount(){if(!account)return;const s=account.session,originalId=Number(s.id),originalToken=financeAccountLoadToken,originalTarget=accountTarget;const isCurrent=()=>financeAccountLoadToken===originalToken&&Number(account?.session?.id)===originalId&&accountTarget===originalTarget;const type=await SoknaUI.choose('نوع تخفیف',[{label:'درصدی',value:'percent'},{label:'مبلغ ثابت',value:'fixed'},{label:'حذف تخفیف',value:''}],{message:'روش تخفیف را انتخاب کن.'});if(type===null)return;let val=0;if(type!==''){const raw=await SoknaUI.prompt('مقدار تخفیف',{label:type==='percent'?'درصد تخفیف':'مبلغ تخفیف (تومان)',value:'0',dir:'ltr',inputMode:type==='percent'?'decimal':'numeric',humanNumeric:true,money:type==='fixed'});if(raw===null)return;val=L.numericValue(raw,{decimal:type==='percent'});}if(!isCurrent())return;try{const preview=await post({action:'discount_preview',session_id:originalId,discount_type:type||null,discount_value:val});
++ const expected=Number(account?.receipt_count||0)>0?String(preview?.result?.expected_signature||''):'';
++ await post({action:'discount',session_id:originalId,discount_type:type||null,discount_value:val,expected_signature:expected});if(!isCurrent())return;await loadAccount(originalId,originalTarget);await refresh()}catch(e){actionError(e)}}
+ function tenderDialogMarkup(total){if(!T||!financeTender)return '';T.sync(financeTender,total);const split=financeTender.selected.length>1;const choices=T.TYPES.map(x=>`<button type="button" class="sui-tender-choice${financeTender.selected.includes(x.type)?' is-selected':''}" data-finance-tender-type="${x.type}" aria-pressed="${financeTender.selected.includes(x.type)?'true':'false'}"><strong>${x.label}</strong><small>${financeTender.selected.length===1&&financeTender.selected[0]===x.type?finalMoney(total):'انتخاب'}</small></button>`).join('');const autoType=split?T.autoType(financeTender):'';const fields=split?`<div class="sui-tender-split">${financeTender.selected.map(type=>{const auto=type===autoType;return `<label${auto?' class="is-auto"':''}><span>${T.label(type)}${auto?'<small>باقیمانده</small>':''}</span><input type="text" inputmode="numeric" data-money-input="1" autocomplete="off" data-finance-tender-amount="${type}" value="${L.humanDigits(finalInput(financeTender.amounts[type]||0))}" ${auto?'readonly aria-readonly="true"':''}></label>`}).join('')}</div>`:'';const delta=T.delta(financeTender);const summary=financeTender.selected.length?`<div class="sui-tender-summary${T.valid(financeTender)?' is-valid':' is-pending'}"><span>${T.valid(financeTender)?'جمع روش‌های پرداخت':'مانده تخصیص'}</span><strong>${finalMoney(T.valid(financeTender)?T.sum(financeTender):Math.abs(delta))}</strong><small>${delta<0?'جمع واردشده بیشتر از مبلغ تسویه است.':delta>0?'مبلغ روش‌های قبلی را وارد کنید؛ باقیمانده خودکار محاسبه می‌شود.':'آماده ثبت'}</small></div>`:'';return `<section class="sui-tender"><div class="sui-tender-head"><strong>روش پرداخت</strong><small>برای پرداخت ترکیبی بیش از یک روش را انتخاب کنید.</small></div><div class="sui-tender-choices">${choices}</div>${fields}${summary}</section>`}
+ function ensureTenderDialog(){if(tenderDialog)return tenderDialog;tenderDialog=document.createElement('dialog');tenderDialog.className='sc-dialog sc-tender-dialog';tenderDialog.innerHTML='<div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h2>روش پرداخت</h2><p>مبلغ تسویه را به روش پرداخت واقعی ثبت کنید.</p></div><button class="sc-icon-button" type="button" data-finance-tender-close aria-label="بستن">×</button></div><div data-finance-tender-host></div><div class="sc-actions"><button class="sc-button" type="button" data-finance-tender-submit>ثبت تسویه</button><button class="sc-button sc-button--secondary" type="button" data-finance-tender-close>انصراف</button></div></div>';root.append(tenderDialog);tenderDialog.addEventListener('click',e=>{const close=e.target.closest('[data-finance-tender-close]');if(close){if(financePosting)return;tenderDialog.close();return}const choice=e.target.closest('[data-finance-tender-type]');if(choice){T.toggle(financeTender,String(choice.dataset.financeTenderType||''),Number(account?.remaining_total||0));renderTenderDialog();return}const submit=e.target.closest('[data-finance-tender-submit]');if(submit){if(!T.valid(financeTender))return;submit.disabled=true;performSettle('direct',0,T.rows(financeTender)).then(()=>tenderDialog.close()).catch(()=>{}).finally(()=>{submit.disabled=false;renderTenderDialog()})}});tenderDialog.addEventListener('input',e=>{const input=e.target.closest?.('[data-finance-tender-amount]');if(!input)return;const value=parseFinal(input.value);if(value===null){input.setAttribute('aria-invalid','true');tenderDialog.querySelector('[data-finance-tender-submit]')?.setAttribute('disabled','');return}T.setAmount(financeTender,String(input.dataset.financeTenderAmount||''),value);renderTenderDialog(String(input.dataset.financeTenderAmount||''))});tenderDialog.addEventListener('cancel',e=>{if(financePosting)e.preventDefault()});return tenderDialog}
+ function renderTenderDialog(refocus=''){if(!tenderDialog||!account||!T)return;const host=tenderDialog.querySelector('[data-finance-tender-host]');host.innerHTML=tenderDialogMarkup(Number(account.remaining_total||0));const submit=tenderDialog.querySelector('[data-finance-tender-submit]');if(submit)submit.disabled=financeBlocked()||!T.valid(financeTender);if(refocus){const input=tenderDialog.querySelector(`[data-finance-tender-amount="${refocus}"]`);input?.focus({preventScroll:true});input?.setSelectionRange?.(input.value.length,input.value.length)}}
+--- a/public/assets/operator-workspace.js
++++ b/public/assets/operator-workspace.js
+@@ -151,7 +151,9 @@
+ function discountPreview(){if(!discountDialog||!financeAccount)return;const type=String(discountDraftType||'percent'),input=discountDialog.querySelector('[data-discount-value]');let value=numericValue(input?.value||discountDraftValue||0);if(!Number.isFinite(value))value=0;value=type==='percent'?Math.max(0,Math.min(100,value)):Math.max(0,Math.trunc(value));const base=Math.max(0,Number(financeAccount.subtotal??financeAccount.remaining_subtotal??0)),amount=type==='percent'?Math.min(base,Math.round(base*value/100)):Math.min(base,value),net=Math.max(0,base-amount),label=discountDialog.querySelector('[data-discount-input-label]'),apply=discountDialog.querySelector('[data-discount-apply]');discountDialog.querySelectorAll('[data-discount-type]').forEach(b=>{const on=String(b.dataset.discountType)===type;b.classList.toggle('is-active',on);b.setAttribute('aria-pressed',on?'true':'false')});if(label)label.textContent=type==='percent'?'درصد تخفیف':'مبلغ تخفیف';if(input){input.placeholder=type==='percent'?'مثلاً ۱۰':'مبلغ به تومان';if(type==='percent')delete input.dataset.moneyInput;else input.dataset.moneyInput='1';L.humanizeNumericInput?.(input)}const baseEl=discountDialog.querySelector('[data-discount-base]'),amountEl=discountDialog.querySelector('[data-discount-amount]'),netEl=discountDialog.querySelector('[data-discount-net]');if(baseEl)baseEl.textContent=money(base);if(amountEl)amountEl.textContent=value>0?`− ${money(amount)}`:'—';if(netEl)netEl.textContent=money(net);if(apply)apply.disabled=value<=0;}
+ function openDiscountDialog(){if(!discountDialog||!financeAccount)return;discountDraftType=String(financeAccount.session?.discount_type||'percent');discountDraftValue=String(financeAccount.session?.discount_value||'');const input=discountDialog.querySelector('[data-discount-value]'),remove=discountDialog.querySelector('[data-discount-remove]');if(input)input.value=human(discountDraftValue);if(remove)remove.hidden=!(String(financeAccount.session?.discount_type||'')&&Number(financeAccount.session?.discount_value||0)>0);discountPreview();if(!window.SoknaUI?.showDialog?.(discountDialog,{initialFocus:'[data-discount-value]'}))discountDialog.showModal()}
+ function closeDiscountDialog(){if(discountDialog?.open)discountDialog.close()}
+-async function applyHallDiscount(){if(!financeAccount||!discountDialog)return;const s=financeAccount.session,type=String(discountDraftType||'percent'),input=discountDialog.querySelector('[data-discount-value]');let value=numericValue(input?.value||0);if(!Number.isFinite(value))value=0;if(type==='percent')value=Math.max(0,Math.min(100,value));else value=Math.max(0,Math.trunc(value));if(value<=0)throw new Error('مقدار تخفیف را وارد کن.');await financeMutate({action:'discount',session_id:Number(s.id),discount_type:type,discount_value:value});discountDraftType=type;discountDraftValue=String(value);closeDiscountDialog();await loadAccount(selectedTableId);toast('تخفیف حساب اعمال شد.','success')}
++async function applyHallDiscount(){if(!financeAccount||!discountDialog)return;const s=financeAccount.session,type=String(discountDraftType||'percent'),input=discountDialog.querySelector('[data-discount-value]');let value=numericValue(input?.value||0);if(!Number.isFinite(value))value=0;if(type==='percent')value=Math.max(0,Math.min(100,value));else value=Math.max(0,Math.trunc(value));if(value<=0)throw new Error('مقدار تخفیف را وارد کن.');const preview=await financeMutate({action:'discount_preview',session_id:Number(s.id),discount_type:type,discount_value:value});
++ await financeMutate({action:'discount',session_id:Number(s.id),discount_type:type,discount_value:value,
++ expected_signature:Number(financeAccount?.receipt_count||0)>0?String(preview?.result?.expected_signature||''):''});discountDraftType=type;discountDraftValue=String(value);closeDiscountDialog();await loadAccount(selectedTableId);toast('تخفیف حساب اعمال شد.','success')}
+ async function removeHallDiscount(){if(!financeAccount)return;await financeMutate({action:'discount',session_id:Number(financeAccount.session.id),discount_type:null,discount_value:0});discountDraftType='percent';discountDraftValue='';closeDiscountDialog();await loadAccount(selectedTableId);toast('تخفیف حساب حذف شد.','success')}
+ async function chooseSubscriber(){const q=await SoknaUI.prompt('حساب مشتری',{label:'نام یا موبایل مشتری'});if(!q)return 0;const j=await request(`${subscriberApi}?action=search&q=${encodeURIComponent(q)}`);const rows=Array.isArray(j.rows)?j.rows:[];if(!rows.length)throw new Error('مشتری پیدا نشد.');const picked=await SoknaUI.choose('انتخاب مشتری',rows.slice(0,8).map(r=>({label:`${r.name}${r.mobile?` · ${r.mobile}`:''}${r.balance!=null?` · مانده ${money(r.balance)}`:''}`,value:String(r.id)})),{message:'مشتری موردنظر را انتخاب کنید.'});return Number(picked||0)}
+ async function settleHallAccount(){if(!financeAccount)return;if(!window.SoknaHallSettlement?.open)throw new Error('پنجره تسویه آماده نیست.');window.SoknaHallSettlement.open(financeAccount,{printPreferences:printQuickPreferences,accommodationEnabled:Boolean(snap?.accommodation_enabled),canManageConnections:Boolean(snap?.can_manage_connections),onComplete:async({closes})=>{account=null;financeAccount=null;financeError='';if(closes){selectedTableId=0;updateUrl()}await load()}})}
+--- a/public/assets/staff-app/hall-workspace.js
++++ b/public/assets/staff-app/hall-workspace.js
+@@ -659,14 +659,17 @@
+  const sessionId=Number(financeAccount?.session?.id||0),type=String(discountDraftType||'percent'),input=discountDialog?.querySelector('[data-discount-value]');
+  let value=numericValue(input?.value||0);if(!Number.isFinite(value))value=0;
+  value=type==='percent'?Math.max(0,Math.min(100,value)):Math.max(0,Math.trunc(value));
+- const base=Math.max(0,Number(financeAccount?.subtotal??financeAccount?.remaining_subtotal??0));
+- return {session_id:sessionId,discount_type:type,discount_value:value,subtotal:base};
+-}
+-function discountRequestKey(req){return [req.session_id,req.discount_type,req.discount_value,req.subtotal].join('|')}
++ const partial=Number(financeAccount?.receipt_count||0)>0;
++ const base=Math.max(0,Number(partial?financeAccount?.remaining_subtotal:financeAccount?.subtotal)||0);
++ return {session_id:sessionId,discount_type:type,discount_value:value,subtotal:base,
++   expected_signature:partial?String(financeAccount?.signature||''):''};
++}
++function discountRequestKey(req){return [req.session_id,req.discount_type,req.discount_value,req.subtotal,req.expected_signature].join('|')}
+ function verifyDiscountResponse(raw,req){
+  const r=raw?.result||raw||{},actual=(v)=>Number.isSafeInteger(Number(v))?Number(v):NaN;
+  const session=actual(r.session_id),value=actual(r.discount_value),subtotal=actual(r.subtotal),discount=actual(r.discount_amount),net=actual(r.net),tax=actual(r.tax),total=actual(r.total);
+- if(session!==req.session_id||String(r.discount_type||'')!==req.discount_type||value!==req.discount_value||subtotal!==req.subtotal||![discount,net,tax,total].every(Number.isFinite)||discount<0||discount>subtotal||net!==subtotal-discount||tax<0||total!==net+tax||(req.discount_type==='fixed'&&discount!==req.discount_value))
++ if(session!==req.session_id||String(r.discount_type||'')!==req.discount_type||value!==req.discount_value||subtotal!==req.subtotal||
++    (req.expected_signature&&String(r.expected_signature||'')!==req.expected_signature)||![discount,net,tax,total].every(Number.isFinite)||discount<0||discount>subtotal||net!==subtotal-discount||tax<0||total!==net+tax||(req.discount_type==='fixed'&&discount!==req.discount_value))
+   throw new Error('پیش‌نمایش با مبلغ واردشده یا حساب فعلی مطابقت ندارد؛ تخفیف اعمال نشد. اطلاعات حساب را تازه‌سازی کنید.');
+  return {session_id:session,discount_type:req.discount_type,discount_value:value,subtotal,discount_amount:discount,net,tax,total};
+ }
+@@ -692,7 +695,12 @@
+   }catch(e){if(seq!==discountPreviewSeq)return;if(netEl)netEl.textContent='—';if(amountEl)amountEl.textContent='—';if(statusEl){statusEl.hidden=false;statusEl.textContent=e?.message||'محاسبه مبلغ نهایی انجام نشد.'}discountPreviewValid=false;discountPreviewSnapshot=null;if(apply)apply.disabled=true}
+  },160);
+ }
+-function openDiscountDialog(){if(!discountDialog||!financeAccount)return;const currentType=String(financeAccount.session?.discount_type||''),currentValue=Number(financeAccount.session?.discount_value||0),hasCurrent=Boolean(currentType&&currentValue>0);discountDraftType=currentType||'percent';discountDraftValue=hasCurrent?String(currentValue):'';const input=discountDialog.querySelector('[data-discount-value]'),current=discountDialog.querySelector('[data-discount-current]'),currentLabel=discountDialog.querySelector('[data-discount-current-label]');if(input)input.value=human(discountDraftValue);if(current)current.hidden=!hasCurrent;if(currentLabel&&hasCurrent)currentLabel.textContent=currentType==='percent'?`${L.integer(currentValue)}٪`:`${money(currentValue)}`;discountPreview();if(!window.SoknaUI?.showDialog?.(discountDialog,{initialFocus:'[data-discount-value]'}))discountDialog.showModal()}
++function openDiscountDialog(){if(!discountDialog||!financeAccount)return;
++ if(financeAccount.session?.remaining_discount_grant){toast('تخفیف مانده قبلاً ثبت شده است؛ برای اصلاح آن به مسئول مالی مراجعه کنید.','warning');return;}const currentType=String(financeAccount.session?.discount_type||''),currentValue=Number(financeAccount.session?.discount_value||0),hasCurrent=Boolean(currentType&&currentValue>0);discountDraftType=currentType||'percent';discountDraftValue=hasCurrent?String(currentValue):'';const input=discountDialog.querySelector('[data-discount-value]'),current=discountDialog.querySelector('[data-discount-current]'),currentLabel=discountDialog.querySelector('[data-discount-current-label]');if(input)input.value=human(discountDraftValue);if(current)current.hidden=!hasCurrent;if(currentLabel&&hasCurrent)currentLabel.textContent=currentType==='percent'?`${L.integer(currentValue)}٪`:`${money(currentValue)}`;
++ const partial=Number(financeAccount.receipt_count||0)>0;
++ const baseCaption=discountDialog.querySelector('[data-discount-base]')?.previousElementSibling;
++ if(baseCaption)baseCaption.textContent=partial?'مانده اقلام پرداخت‌نشده (پیش از مالیات)':'جمع سفارش‌ها';
++ discountPreview();if(!window.SoknaUI?.showDialog?.(discountDialog,{initialFocus:'[data-discount-value]'}))discountDialog.showModal()}
+ function closeDiscountDialog(){clearTimeout(discountPreviewTimer);discountPreviewSeq++;discountPreviewValid=false;discountPreviewSnapshot=null;if(discountDialog?.open)discountDialog.close()}
+ async function applyHallDiscount(){
+  if(!financeAccount||!discountDialog)return;
+@@ -705,7 +713,8 @@
+  if(discountRequestKey(discountRequest())!==expected.key||fresh.discount_amount!==expected.response.discount_amount||fresh.total!==expected.response.total||fresh.tax!==expected.response.tax)
+   throw new Error('پیش‌نمایش حساب تغییر کرد؛ تخفیف اعمال نشد. ابتدا حساب را تازه‌سازی کنید.');
+  discountPreviewValid=false;discountPreviewSnapshot=null;
+- const result=await financeMutate({action:'discount',session_id:req.session_id,discount_type:req.discount_type,discount_value:req.discount_value});
++ const result=await financeMutate({action:'discount',session_id:req.session_id,discount_type:req.discount_type,discount_value:req.discount_value,
++   expected_signature:req.expected_signature});
+  const applied=result?.result||result||{};
+  discountDraftType=req.discount_type;discountDraftValue=String(req.discount_value);
+  closeDiscountDialog();await loadAccount(selectedTableId);
+@@ -714,7 +723,8 @@
+   throw new Error('پاسخ ثبت تخفیف با پیش‌نمایش یکسان نیست؛ حساب تازه‌سازی شد. قبل از دریافت وجه، نتیجه را بررسی کنید.');
+  toast('تخفیف حساب اعمال شد.','success');
+ }
+-async function removeHallDiscount(){if(!financeAccount)return;await financeMutate({action:'discount',session_id:Number(financeAccount.session.id),discount_type:null,discount_value:0});discountDraftType='percent';discountDraftValue='';closeDiscountDialog();await loadAccount(selectedTableId);toast('تخفیف حساب حذف شد.','success')}
++async function removeHallDiscount(){if(!financeAccount)return;
++ if(Number(financeAccount.receipt_count||0)>0)throw new Error('پس از ثبت پرداخت، حذف تخفیف فقط با سند مالی اصلاحی مجاز است.');await financeMutate({action:'discount',session_id:Number(financeAccount.session.id),discount_type:null,discount_value:0});discountDraftType='percent';discountDraftValue='';closeDiscountDialog();await loadAccount(selectedTableId);toast('تخفیف حساب حذف شد.','success')}
+ async function chooseSubscriber(){const q=await SoknaUI.prompt('حساب مشتری',{label:'نام یا موبایل مشتری'});if(!q)return 0;const j=await request(`${subscriberApi}?action=search&q=${encodeURIComponent(q)}`);const rows=Array.isArray(j.rows)?j.rows:[];if(!rows.length)throw new Error('مشتری پیدا نشد.');const picked=await SoknaUI.choose('انتخاب مشتری',rows.slice(0,8).map(r=>({label:`${r.name}${r.mobile?` · ${r.mobile}`:''}${r.balance!=null?` · مانده ${money(r.balance)}`:''}`,value:String(r.id)})),{message:'مشتری موردنظر را انتخاب کنید.'});return Number(picked||0)}
+ async function settleHallAccount(){if(!financeAccount||!featureSettlement||!mutationsAllowed())return;const sessionId=Number(financeAccount.session?.id||0);if(transport?.settleAccount){await transport.settleAccount(financeAccount,{table:account?.table||null});settlementRecoveryBySession.delete(sessionId);account=null;financeAccount=null;financeError='';selectedTableId=0;updateUrl();await load();return}if(!window.SoknaHallSettlement?.open)throw new Error('پنجره تسویه آماده نیست.');window.SoknaHallSettlement.open(financeAccount,{printPreferences:printQuickPreferences,accommodationEnabled:Boolean(snap?.accommodation_enabled),canManageConnections:Boolean(snap?.can_manage_connections),onRecoveryState:info=>{if(info)settlementRecoveryBySession.set(sessionId,info);else settlementRecoveryBySession.delete(sessionId);renderAccount()},onDetachFollowup:async info=>{await detachAccountForFollowup(info);},onComplete:async({closes})=>{settlementRecoveryBySession.delete(sessionId);account=null;financeAccount=null;financeError='';if(closes){selectedTableId=0;updateUrl()}await load()}})}
+ async function detachAccountForFollowup(recovery=null){if(!financeAccount||!mutationsAllowed()||!recovery)return;const s=financeAccount.session,defaultReason=String(recovery?.message||'').trim(),reason=defaultReason||await SoknaUI.prompt('آزاد کردن میز و پیگیری حساب',{label:'دلیل یا یادداشت پیگیری',value:'',placeholder:'مثلاً ارتباط اقامتگاه در دسترس نیست'});if(reason===null)return;const ok=await SoknaUI.confirm('آزاد کردن میز و پیگیری حساب','میز همین حالا آزاد می‌شود، اما حساب و مانده آن در بخش مالی باز می‌ماند تا بعداً تعیین تکلیف شود.');if(!ok)return;await financeMutate({action:'settlement_recovery_required',session_id:Number(s.id),destination:String(recovery.destination||''),code:String(recovery.code||'network_failed'),message:String(recovery.message||''),status:Number(recovery.status||0)});await financeMutate({action:'followup_detach',session_id:Number(s.id),reason:String(reason||''),destination:String(recovery?.destination||''),expected_session_id:Number(s.id),expected_remaining_total:Number(financeAccount.remaining_total||0),expected_signature:String(financeAccount.signature||'')});settlementRecoveryBySession.delete(Number(s.id));window.SoknaHallSettlement?.close?.();account=null;financeAccount=null;financeError='';selectedTableId=0;updateUrl();await load();toast('میز آزاد شد و حساب برای پیگیری مالی باز ماند.','success','پیگیری حساب')}
+--- a/public/finance/api.php
++++ b/public/finance/api.php
+@@ -46,7 +46,7 @@
+     if($action==='receipt_reprint')WebAction::json(['success'=>true,'result'=>$core->settlements()->reprintReceipt((int)($data['settlement_id']??0),(string)($data['request_id']??''),$user)]);
+     if($action==='account_preview_print')WebAction::json(['success'=>true,'result'=>$core->settlements()->printOpenAccount((int)($data['session_id']??0),(int)($data['expected_remaining_total']??-1),(string)($data['expected_signature']??''),(string)($data['request_id']??''),$user)]);
+     if($action==='discount_preview')WebAction::json(['success'=>true,'result'=>$core->settlements()->previewDiscount((int)($data['session_id']??0),isset($data['discount_type'])?(string)$data['discount_type']:null,(int)($data['discount_value']??0),$user)]);
+-    if($action==='discount')WebAction::json(['success'=>true,'result'=>$core->settlements()->setDiscount((int)($data['session_id']??0),isset($data['discount_type'])?(string)$data['discount_type']:null,(int)($data['discount_value']??0),$user)]);
++    if($action==='discount')WebAction::json(['success'=>true,'result'=>$core->settlements()->setDiscount((int)($data['session_id']??0),isset($data['discount_type'])?(string)$data['discount_type']:null,(int)($data['discount_value']??0),$user,(string)($data['expected_signature']??''))]);
+     if($action==='settle')WebAction::json(['success'=>true,'result'=>$core->settlements()->settle($data,$user)]);
+     if($action==='settlement_recovery_required')WebAction::json(['success'=>true,'result'=>$core->settlements()->markRecoveryRequired($data,$user)]);
+     if($action==='followup_detach')WebAction::json(['success'=>true,'result'=>$core->settlements()->detachForFollowup($data,$user)]);
+--- a/src/Domain/Finance/SettlementService.php
++++ b/src/Domain/Finance/SettlementService.php
+@@ -188,12 +188,16 @@
+         }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+     }
+ 
+-    public function setDiscount(int $sessionId,?string $type,int $value,array $user): array
++    public function setDiscount(int $sessionId,?string $type,int $value,array $user,string $expectedSignature=''): array
+     {
+         $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
+         try{
+             $actor=$this->assertCashier($user);
+-            $result=$this->applyDiscountTx($sessionId,$type,$value,$actor,'settlement.discount_updated',[]);
++            if($sessionId>0&&$this->hasActiveItemizedTx($sessionId)){
++                $result=$this->applyRemainingDiscountTx($sessionId,$type,$value,$actor,$expectedSignature);
++            }else{
++                $result=$this->applyDiscountTx($sessionId,$type,$value,$actor,'settlement.discount_updated',[]);
++            }
+             if($ownsTransaction)$this->pdo->commit();
+             return $result;
+         }catch(Throwable $e){
+@@ -208,8 +212,12 @@
+         try{
+             $this->assertCashier($user);
+             if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
+-            if($this->hasActiveItemizedTx($sessionId))
+-                throw new SettlementStateConflict('itemized_locked','پس از شروع پرداخت جداگانه، تخفیف حساب قابل تغییر نیست.',409);
++            if($this->hasActiveItemizedTx($sessionId)){
++                $account=$this->accountTx($sessionId);
++                $plan=$this->remainingDiscountPlanTx($account,$type,$value);
++                $this->pdo->commit();
++                return $plan['preview']+['expected_signature'=>(string)$account['signature'],'remaining_only'=>true];
++            }
+             $account=$this->accountTx($sessionId);
+             $type=$type===null||trim($type)===''?null:trim($type);
+             if($type!==null&&!in_array($type,['percent','fixed'],true))
+@@ -232,6 +240,89 @@
+             if($this->pdo->inTransaction())$this->pdo->rollBack();
+             throw $e;
+         }
++    }
++
++    /** One post-payment discount is allocated only to unpaid units at the time of grant.
++     * No mutation of table_sessions.discount_* or settlement_record_lines is permitted.
++     * A second grant, removal, or reversal must use a separately audited financial
++     * adjustment feature; this bounded workflow deliberately fails closed.
++     */
++    private function remainingDiscountPlanTx(array $account,?string $type,int $value): array
++    {
++        $session=$account['session'];$sessionId=(int)$session['id'];
++        if(!empty($session['remaining_discount_grant']))
++            throw new SettlementStateConflict('remaining_discount_exists','تخفیف مانده این حساب قبلاً ثبت شده است؛ برای اصلاح آن از مسئول مالی کمک بگیرید.',409);
++        if((int)($account['receipt_count']??0)<1)
++            throw new SettlementStateConflict('no_partial_payment','هنوز پرداخت آیتمی قطعی برای حساب وجود ندارد.',409);
++        if((int)($account['discount']??0)>0)
++            throw new SettlementStateConflict('prior_discount_requires_review','این حساب از قبل تخفیف دیگری دارد؛ برای جلوگیری از تغییر سهم رسیدهای قبلی، بررسی مالی لازم است.',409);
++        $type=$type===null?null:trim($type);
++        if(!in_array($type,['percent','fixed'],true)||$value<1||($type==='percent'&&$value>100))
++            throw new SettlementException('invalid_discount','مقدار یا نوع تخفیف مانده معتبر نیست.',422);
++        $base=(int)$account['remaining_subtotal'];
++        if($base<2)throw new SettlementStateConflict('nothing_remaining','مانده‌ای برای تخفیف وجود ندارد.',409);
++        $amount=self::discountAmount($base,$type,$value);
++        if(($type==='fixed'&&$value>$base)||$amount<1||$amount>=$base)
++            throw new SettlementException('invalid_discount','مبلغ تخفیف باید مثبت و کمتر از مانده اقلام پیش از مالیات باشد.',422);
++        $eligible=[];$originalBy=[];
++        foreach($account['items'] as $line){
++            $qty=(int)$line['remaining_quantity'];if($qty<1)continue;
++            $gross=(int)$line['unit_price']*$qty;
++            $eligible[]=['order_item_id'=>(int)$line['id'],'quantity'=>$qty,'unit_price'=>(int)$line['unit_price'],
++                'gross_amount'=>$gross,'tax_policy_snapshot'=>(string)$line['tax_policy_snapshot'],
++                'tax_rate_bps_snapshot'=>(int)$line['tax_rate_bps_snapshot']];
++            $originalBy[(int)$line['id']]=$line;
++        }
++        if($eligible===[])throw new SettlementStateConflict('nothing_remaining','قلم قابل تخفیفی وجود ندارد.',409);
++        $allocated=TaxService::calculateInvoiceLines($eligible,$amount);
++        if((int)$allocated['subtotal']!==$base||(int)$allocated['discount']!==$amount)
++            throw new SettlementStateConflict('discount_allocation_mismatch','تخصیص تخفیف با مانده حساب برابر نیست.',409);
++        $rows=[];$tax=0;
++        foreach($allocated['lines'] as $line){
++            $id=(int)$line['order_item_id'];$old=$originalBy[$id];$paidTax=(int)($old['paid_tax_amount']??0);
++            $paidTaxable=(int)($old['paid_taxable_amount']??0);
++            $pendingNet=(int)$line['gross_amount']-(int)$line['invoice_discount_amount'];
++            $taxTotal=$paidTax+(int)$line['invoice_tax_amount'];
++            $taxableTotal=$paidTaxable+(int)$line['invoice_taxable_amount'];
++            $rows[]=['order_item_id'=>$id,'quantity_snapshot'=>(int)$old['quantity'],
++                'paid_quantity_at_grant'=>(int)$old['paid_quantity'],
++                'original_discount_snapshot'=>(int)$old['invoice_discount_amount'],
++                'discount_amount'=>(int)$line['invoice_discount_amount'],
++                'invoice_tax_after_grant'=>$taxTotal,'invoice_taxable_after_grant'=>$taxableTotal];
++            $tax+=(int)$line['invoice_tax_amount'];
++        }
++        $net=$base-$amount;
++        return ['preview'=>['session_id'=>$sessionId,'discount_type'=>$type,'discount_value'=>$value,
++                'subtotal'=>$base,'discount_amount'=>$amount,'net'=>$net,'tax'=>$tax,'total'=>$net+$tax],
++            'allocations'=>$rows];
++    }
++
++    private function applyRemainingDiscountTx(int $sessionId,?string $type,int $value,array $actor,string $expectedSignature): array
++    {
++        if($expectedSignature===''||!preg_match('/^[0-9a-f]{64}$/D',$expectedSignature))
++            throw new SettlementStateConflict('discount_preview_required','پیش‌نمایش تازه تخفیف لازم است؛ حساب را دوباره باز کنید.',409);
++        $account=$this->accountTx($sessionId);
++        if(!hash_equals((string)$account['signature'],$expectedSignature))
++            throw new SettlementStateConflict('discount_account_changed','مانده حساب پس از پیش‌نمایش تغییر کرده است؛ دوباره محاسبه کنید.',409);
++        $plan=$this->remainingDiscountPlanTx($account,$type,$value);
++        $preview=$plan['preview'];
++        $insert=$this->pdo->prepare('INSERT INTO remaining_account_discount_grants(session_id,discount_type,discount_value,base_unpaid_subtotal,discount_amount,actor_user_id) VALUES(?,?,?,?,?,?)');
++        $insert->execute([$sessionId,$preview['discount_type'],$preview['discount_value'],$preview['subtotal'],$preview['discount_amount'],(int)$actor['id']]);
++        $grantId=(int)$this->pdo->lastInsertId();
++        $lineInsert=$this->pdo->prepare('INSERT INTO remaining_account_discount_lines(grant_id,order_item_id,quantity_snapshot,paid_quantity_at_grant,original_discount_snapshot,discount_amount,invoice_tax_after_grant,invoice_taxable_after_grant) VALUES(?,?,?,?,?,?,?,?)');
++        foreach($plan['allocations'] as $line)$lineInsert->execute([$grantId,$line['order_item_id'],$line['quantity_snapshot'],
++            $line['paid_quantity_at_grant'],$line['original_discount_snapshot'],$line['discount_amount'],
++            $line['invoice_tax_after_grant'],$line['invoice_taxable_after_grant']]);
++        $this->audit('settlement.remaining_discount_granted','table_session',$sessionId,(int)$actor['id'],[
++            'grant_id'=>$grantId,'discount_type'=>$type,'discount_value'=>$value,
++            'discount_amount'=>$preview['discount_amount'],'unpaid_subtotal_before'=>$preview['subtotal'],
++            'unpaid_total_after'=>$preview['total'],'prior_receipts_kept'=>true]);
++        $after=$this->accountTx($sessionId);
++        if((int)$after['remaining_total']!==(int)$preview['total'])
++            throw new SettlementStateConflict('discount_readback_mismatch','مانده مالی پس از ثبت با پیش‌نمایش مطابقت ندارد؛ تغییر برگشت داده شد.',409);
++        return ['session_id'=>$sessionId,'discount_type'=>$type,'discount_value'=>$value,
++            'discount_amount'=>(int)$preview['discount_amount'],'remaining_total'=>(int)$after['remaining_total'],
++            'remaining_only'=>true,'grant_id'=>$grantId];
+     }
+ 
+     /**
+@@ -752,6 +843,7 @@
+             $line['paid_quantity']=$paidQty;
+             $line['paid_discount_amount']=(int)($p['paid_discount']??0);
+             $line['paid_tax_amount']=(int)($p['paid_tax']??0);
++            $line['paid_taxable_amount']=(int)($p['paid_taxable']??0);
+             $line['remaining_quantity']=$remaining;
+             $line['invoice_discount_amount']=(int)($calc['invoice_discount_amount']??0);
+             $line['invoice_tax_amount']=(int)($calc['invoice_tax_amount']??0);
+@@ -765,6 +857,44 @@
+                     'سهم مالیات یا تخفیف اقلام پرداخت‌شده با سند قبلی سازگار نیست.',409);
+             $remainingItems[]=$line;$byOrder[(int)$line['order_id']][]=$line;
+             if($paidQty>0)$paidQuantities[$id]=$paidQty;
++        }
++
++        // A post-itemized grant is anchored to a fixed snapshot of unpaid
++        // order-item IDs. Prior paid line amounts and tax are never recomputed.
++        $grantQuery=$this->pdo->prepare('SELECT * FROM remaining_account_discount_grants WHERE session_id=? LIMIT 1'.$suffix);
++        $grantQuery->execute([$sessionId]);$grant=$grantQuery->fetch(PDO::FETCH_ASSOC);
++        if(is_array($grant)){
++            $gLines=$this->pdo->prepare('SELECT * FROM remaining_account_discount_lines WHERE grant_id=? ORDER BY order_item_id'.$suffix);
++            $gLines->execute([(int)$grant['id']]);$rows=$gLines->fetchAll(PDO::FETCH_ASSOC);
++            $assigned=0;$byId=[];
++            foreach($rows as $row)$byId[(int)$row['order_item_id']]=$row;
++            foreach($remainingItems as &$line){
++                $id=(int)$line['id'];$alloc=$byId[$id]??null;if(!is_array($alloc))continue;
++                $calc=$fullBy[$id]??null;
++                if(!is_array($calc)||(int)$line['quantity']!==(int)$alloc['quantity_snapshot']||
++                   (int)$line['paid_quantity']<(int)$alloc['paid_quantity_at_grant']||
++                   (int)$line['invoice_discount_amount']!==(int)$alloc['original_discount_snapshot'])
++                    throw new SettlementStateConflict('discounted_line_changed','قلم دارای تخفیف مانده تغییر کرده است؛ بررسی مسئول مالی لازم است.',409);
++                $extra=(int)$alloc['discount_amount'];$assigned+=$extra;
++                if($extra<0||(int)$line['invoice_discount_amount']+$extra>(int)$line['line_total'])
++                    throw new SettlementStateConflict('discount_allocation_invalid','مبلغ تخفیف مانده از سقف ردیف عبور کرده است.',409);
++                $taxBefore=(int)$calc['invoice_tax_amount'];$taxableBefore=(int)$calc['invoice_taxable_amount'];
++                $newTax=(int)$alloc['invoice_tax_after_grant'];$newTaxable=(int)$alloc['invoice_taxable_after_grant'];
++                if($newTax<(int)$line['paid_tax_amount']||$newTaxable<(int)$line['paid_taxable_amount'])
++                    throw new SettlementStateConflict('paid_allocation_changed','تخفیف نباید مالیات ثبت‌شده قبلی را تغییر دهد.',409);
++                $line['invoice_discount_amount']+=$extra;
++                $line['invoice_tax_amount']=$newTax;
++                $line['remaining_grant']=true;
++                $calculated['discount']+=$extra;$calculated['net']-=$extra;
++                $calculated['tax']+=$newTax-$taxBefore;$calculated['taxable']+=$newTaxable-$taxableBefore;
++                $calculated['total']+=($newTax-$taxBefore)-$extra;
++            }
++            unset($line);
++            if($assigned!==(int)$grant['discount_amount']||count($rows)<1)
++                throw new SettlementStateConflict('discount_grant_invalid','سند تخصیص تخفیف مانده ناقص است.',409);
++            $session['remaining_discount_grant']=[
++                'id'=>(int)$grant['id'],'type'=>(string)$grant['discount_type'],
++                'value'=>(int)$grant['discount_value'],'amount'=>(int)$grant['discount_amount']];
+         }
+ 
+         $paidSubtotal=(int)($paidTotals['paid_subtotal']??0);$paidDiscount=(int)($paidTotals['paid_discount']??0);
+@@ -811,13 +941,25 @@
+             $gross=(int)$item['unit_price']*$quantity;
+             $fullDiscount=(int)$item['invoice_discount_amount'];
+             $targetDiscount=TaxService::proportionalTarget($fullDiscount,$ordered,$newPaidQty,$newPaidQty===$ordered);
+-            $lineDiscount=max(0,$targetDiscount-(int)$item['paid_discount_amount']);$lineDiscount=min($gross,$lineDiscount);
++            if(!empty($item['remaining_grant'])){
++                $outstandingDiscount=max(0,$fullDiscount-(int)$item['paid_discount_amount']);
++                $lineDiscount=TaxService::proportionalTarget($outstandingDiscount,(int)$item['remaining_quantity'],$quantity,$quantity===(int)$item['remaining_quantity']);
++            }else{
++                $lineDiscount=max(0,$targetDiscount-(int)$item['paid_discount_amount']);
++            }
++            $lineDiscount=min($gross,$lineDiscount);
+             $net=$gross-$lineDiscount;
+             $policy=(string)($item['tax_policy_snapshot']??'disabled');$rate=max(0,min(10000,(int)($item['tax_rate_bps_snapshot']??0)));
+             $lineTaxable=($policy!=='disabled'&&$policy!=='exempt')?$net:0;
+             $cumulativeGross=(int)$item['unit_price']*$newPaidQty;$cumulativeNet=$cumulativeGross-$targetDiscount;
+             $targetTax=$lineTaxable>0?TaxService::roundAmount($cumulativeNet,$rate):0;
+-            $lineTax=max(0,$targetTax-(int)$item['paid_tax_amount']);$final=$net+$lineTax;
++            if(!empty($item['remaining_grant'])){
++                $taxPending=max(0,(int)$item['invoice_tax_amount']-(int)$item['paid_tax_amount']);
++                $lineTax=TaxService::proportionalTarget($taxPending,(int)$item['remaining_quantity'],$quantity,$quantity===(int)$item['remaining_quantity']);
++            }else{
++                $lineTax=max(0,$targetTax-(int)$item['paid_tax_amount']);
++            }
++            $final=$net+$lineTax;
+             $lines[]=[
+                 'order_item_id'=>$itemId,'order_id'=>(int)$item['order_id'],
+                 'item_id_snapshot'=>$item['item_id']!==null?(int)$item['item_id']:null,
+@@ -1029,7 +1171,8 @@
+         $pq=[];foreach((array)($paid['paid_quantities']??[]) as $id=>$q)if((int)$q>0)$pq[(int)$id]=(int)$q;ksort($pq,SORT_NUMERIC);
+         $payload=[
+             'session_id'=>(int)$session['id'],'discount_type'=>(string)($session['discount_type']??''),
+-            'discount_value'=>(int)($session['discount_value']??0),'orders'=>$normOrders,
++            'discount_value'=>(int)($session['discount_value']??0),
++            'remaining_discount_grant'=>$session['remaining_discount_grant']??null,'orders'=>$normOrders,
+             'paid_state'=>[
+                 'paid_quantities'=>$pq,'paid_subtotal'=>(int)($paid['paid_subtotal']??0),
+                 'paid_discount'=>(int)($paid['paid_discount']??0),'paid_taxable'=>(int)($paid['paid_taxable']??0),
+--- a/src/Domain/Orders/OrderStaffActionService.php
++++ b/src/Domain/Orders/OrderStaffActionService.php
+@@ -543,6 +543,7 @@
+             $this->assertPriceSnapshotIncreaseAllowed($anchor,$fromQuantity,$toQuantity);
+             $quantityChanged=$fromQuantity!==$toQuantity;$distributionChanged=$fromDine!==$toDine||$fromTake!==$toTake;$noteChanged=$fromNote!==$toNote;
+             if(!$quantityChanged&&!$distributionChanged&&!$noteChanged){if($ownsTransaction)$this->pdo->commit();return ['success'=>true,'idempotent'=>true,'no_change'=>true,'order_item_id'=>$orderItemId,'display_order_item_id'=>$orderItemId,'quantity'=>$toQuantity,'fulfillment_quantities'=>['dine_in'=>$toDine,'takeaway'=>$toTake],'item_note'=>$toNote];}
++            $this->assertRemainingDiscountGroupUnlockedTx($rows);
+             // Identity-aware quantity plan; payment allocations cannot move to a different row or mode.
+             $rowPlan=$this->planGroupedCorrectionTx($rows,$allocations['paid_by_item'],['dine_in'=>$toDine,'takeaway'=>$toTake],$noteChanged);
+ 
+@@ -637,6 +638,7 @@
+             $quantityChanged=$fromQuantity!==$toQuantity;$modeChanged=$fromMode!==$toMode;$noteChanged=$fromNote!==$toNote;
+             if(!$quantityChanged&&!$modeChanged&&!$noteChanged){if($ownsTransaction)$this->pdo->commit();return ['success'=>true,'idempotent'=>true,'no_change'=>true,'order_item_id'=>$orderItemId,'quantity'=>$toQuantity,'fulfillment_mode'=>$toMode,'item_note'=>$toNote];}
+ 
++            $this->assertRemainingDiscountGroupUnlockedTx([['id'=>$orderItemId]]);
+             $orderId=(int)$row['order_id'];$area=PreparationService::areaForPreparationStation((string)$row['preparation_station']);$prepRelevant=$area!==null&&($quantityChanged||$modeChanged||$noteChanged);$claimedBefore=false;
+             if($prepRelevant){
+                 $claim=$this->preparation->claimStateForAdjustmentTx($orderId,$area);
+@@ -705,6 +707,21 @@
+         }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+     }
+ 
++    /** A paid-account discount is attached to exact unpaid line identities.
++     * To change those quantities safely, a separate prorated grant adjustment
++     * would be required. Other rows remain editable under existing R290 rules.
++     */
++    private function assertRemainingDiscountGroupUnlockedTx(array $rows): void
++    {
++        $ids=array_values(array_unique(array_filter(array_map(static fn(array $r):int=>(int)($r['id']??0),$rows))));
++        if($ids===[])return;
++        $placeholders=implode(',',array_fill(0,count($ids),'?'));
++        $q=$this->pdo->prepare("SELECT order_item_id FROM remaining_account_discount_lines WHERE order_item_id IN ($placeholders) LIMIT 1 FOR UPDATE");
++        $q->execute($ids);
++        if($q->fetchColumn()!==false)throw new OrderStaffActionException('discounted_unpaid_line_locked',
++            'برای این قلم تخفیف روی مانده ثبت شده است؛ اصلاح تعداد آن نیازمند بررسی مسئول مالی است. برای مصرف جدید سفارش تازه ثبت کنید.',409);
++    }
++
+     private function adjustmentResult(array $row,bool $idempotent): array
+     {
+         return [
+--- a/src/Domain/Orders/TableChangeService.php
++++ b/src/Domain/Orders/TableChangeService.php
+@@ -187,10 +187,10 @@
+                  ORDER BY sr.id LIMIT 1 FOR UPDATE"
+             );
+             $paidStmt->execute([$expectedSessionId]);$paid=$paidStmt->fetch(PDO::FETCH_ASSOC);
+-            if(is_array($paid))throw new TableChangeException(
+-                'settlement_started','برای این حساب پرداخت ثبت شده است؛ تغییر میز تا تعیین تکلیف حساب مجاز نیست.',409,
+-                ['settlement_id'=>(int)$paid['id'],'invoice_number'=>(string)$paid['invoice_number']]
+-            );
++            // A partially settled account must keep its ORIGINAL session id and
++            // all immutable settlement receipts. The paid branch below changes
++            // only the physical table binding; it never closes/recreates finance.
++            $preserveFinancialSession=is_array($paid);
+ 
+             // Accommodation is an external financial state. Only an explicitly resolved
+             // failed/voided transfer is safe to leave behind on the historical source session.
+@@ -211,6 +211,54 @@
+             foreach($orderRows as $orderRow){
+                 if(in_array((string)($orderRow['status']??''),['pending_approval','new'],true))
+                     throw new TableChangeException('pending_order_blocks_move','ابتدا سفارش‌های منتظر تأیید میز را تأیید یا رد کن؛ سپس تغییر میز را انجام بده.',409,['order_id'=>(int)$orderRow['id']]);
++            }
++
++            if($preserveFinancialSession){
++                // The original account and all issued invoices remain the same.
++                // Rotate its guest public token to invalidate a cached QR/session
++                // link from the old physical table; do not touch printed snapshots.
++                $newToken='S'.bin2hex(random_bytes(24));
++                $keep=$this->pdo->prepare("UPDATE table_sessions SET table_id=?,live_table_guard=?,public_token=? WHERE id=? AND table_id=? AND status IN('active','pending') AND live_table_guard=?");
++                $keep->execute([$targetTableId,$targetTableId,$newToken,$expectedSessionId,$sourceTableId,$sourceTableId]);
++                if($keep->rowCount()!==1)throw new TableChangeException('session_changed','حساب میز هم‌زمان تغییر کرده است؛ انتقال انجام نشد.',409);
++
++                $moveOrders=$this->pdo->prepare("UPDATE orders SET table_id=? WHERE session_id=? AND status IN('pending_approval','new','accounted')");
++                $moveOrders->execute([$targetTableId,$expectedSessionId]);
++                $movedOrders=$moveOrders->rowCount();
++                if($movedOrders!==count($orderRows))throw new TableChangeException('order_set_changed','مجموعه سفارش‌های حساب هم‌زمان تغییر کرد؛ انتقال متوقف شد.',409);
++
++                $movedDraftId=0;
++                if(is_array($sourceDraft)){
++                    $draftId=(int)$sourceDraft['id'];$nextVersion=(int)$sourceDraft['version']+1;
++                    $moveDraft=$this->pdo->prepare("UPDATE table_drafts SET table_id=?,active_table_guard=?,expected_session_id=?,version=?,updated_by_user_id=? WHERE id=? AND state='active' AND table_id=? AND version=?");
++                    $moveDraft->execute([$targetTableId,$targetTableId,$expectedSessionId,$nextVersion,$actorId,$draftId,$sourceTableId,(int)$sourceDraft['version']]);
++                    if($moveDraft->rowCount()!==1)throw new TableChangeException('draft_changed','پیش‌نویس سفارش هم‌زمان تغییر کرده است.',409);
++                    $movedDraftId=$draftId;
++                }
++                $movedCalls=0;
++                if($sourceCallIds!==[]){
++                    $moveCalls=$this->pdo->prepare("UPDATE waiter_calls SET table_id=?,session_id=?,active_table_guard=? WHERE table_id=? AND status IN('new','accepted')");
++                    $moveCalls->execute([$targetTableId,$expectedSessionId,$targetTableId,$sourceTableId]);
++                    $movedCalls=$moveCalls->rowCount();
++                    if($movedCalls!==count($sourceCallIds))throw new TableChangeException('waiter_call_changed','فراخوان میز هم‌زمان تغییر کرده است.',409);
++                }
++                $details=[
++                    'request_id'=>$requestId,
++                    'source_table_id'=>$sourceTableId,'source_table_name'=>(string)$source['name'],
++                    'target_table_id'=>$targetTableId,'target_table_name'=>(string)$target['name'],
++                    'source_session_id'=>$expectedSessionId,'new_session_id'=>$expectedSessionId,
++                    'financial_session_preserved'=>true,'session_status'=>(string)$session['status'],
++                    'started_at'=>(string)$session['started_at'],'moved_order_count'=>$movedOrders,
++                    'moved_waiter_call_count'=>$movedCalls,'source_draft_id'=>(int)($sourceDraft['id']??0),
++                    'moved_draft_id'=>$movedDraftId,'moved_draft_version'=>is_array($sourceDraft)?(int)$sourceDraft['version']+1:0,
++                ];
++                $this->audit($requestId,$actor,$details);
++                if($ownsTransaction)$this->pdo->commit();
++                $this->observability->logEvent('warning','orders.table_moved_financial_session_preserved',[
++                    'source_session_id'=>$expectedSessionId,'from_table_id'=>$sourceTableId,'to_table_id'=>$targetTableId,
++                    'moved_order_count'=>$movedOrders,'actor_user_id'=>$actorId,
++                ]);
++                return $this->resultFromDetails($details,false);
+             }
+ 
+             $sourceStatus=(string)$session['status']==='pending'?'pending':'active';
+@@ -390,6 +438,7 @@
+             'target_table_id'=>(int)($details['target_table_id']??0),'target_table_name'=>(string)($details['target_table_name']??''),
+             'source_session_id'=>(int)($details['source_session_id']??0),'new_session_id'=>(int)($details['new_session_id']??0),
+             'session_status'=>(string)($details['session_status']??''),'started_at'=>(string)($details['started_at']??''),
++            'financial_session_preserved'=>(bool)($details['financial_session_preserved']??false),
+             'moved_order_count'=>(int)($details['moved_order_count']??0),
+             'moved_waiter_call_count'=>(int)($details['moved_waiter_call_count']??0),
+             'moved_draft_id'=>(int)($details['moved_draft_id']??0),
+--- a/src/Relay/SettlementRealtimeAdapter.php
++++ b/src/Relay/SettlementRealtimeAdapter.php
+@@ -41,7 +41,8 @@
+             (int)($payload['session_id']??0),
+             array_key_exists('discount_type',$payload)&&$payload['discount_type']!==null?(string)$payload['discount_type']:null,
+             (int)($payload['discount_value']??0),
+-            $actor
++            $actor,
++            (string)($payload['expected_signature']??'')
+         );
+         if($kind==='settlement.receipt_reprint')return $this->settlements->reprintReceipt(
+             (int)($payload['settlement_id']??0),$requestId,$actor
