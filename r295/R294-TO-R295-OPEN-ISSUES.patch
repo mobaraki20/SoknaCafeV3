@@ -327,6 +327,92 @@
    </form></dialog>
    <dialog class="sc-dialog sc-print-preview-dialog sc-print-task-dialog" data-dialog="preview" aria-labelledby="sc-dialog-title-printing-preview" data-dialog-size="xl"><div class="sc-dialog-frame"><header class="sc-dialog-frame__head"><div><h2 id="sc-dialog-title-printing-preview" tabindex="-1">پیش‌نمایش قالب چاپ</h2><p data-preview-meta>در حال دریافت اطلاعات قالب…</p><small class="sc-muted" data-preview-detail></small></div><button class="sc-icon-button" type="button" data-preview-close aria-label="بستن"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="sc-dialog-frame__body sc-print-preview-body"><div class="sc-segmented sc-print-preview-formats" aria-label="فرمت پیش‌نمایش"><button class="sc-button sc-button--secondary" type="button" data-preview-format="pdf" aria-pressed="true">PDF</button><button class="sc-button sc-button--secondary" type="button" data-preview-format="png" aria-pressed="false">تصویر</button></div><div class="sc-print-preview-stage"><div class="sc-empty" data-preview-empty>پیش‌نمایش در حال دریافت است…</div><iframe data-preview-pdf title="پیش‌نمایش PDF قالب چاپ" class="sc-print-preview sc-print-preview--pdf" hidden></iframe><img data-preview-image alt="پیش‌نمایش تصویری رسید چاپ" class="sc-print-preview sc-print-preview--image" hidden></div></div><footer class="sc-dialog-frame__foot"><span class="sc-muted">پیش‌نمایش با همان قالب واقعی چاپ ساخته می‌شود.</span><button class="sc-button sc-button--secondary" type="button" data-preview-close>بستن</button></footer></div></dialog>
    <dialog class="sc-dialog sc-print-task-dialog sc-print-destination-dialog" data-dialog="destination" aria-labelledby="sc-dialog-title-printing-destination" data-dialog-size="md"><form method="dialog" class="sc-dialog-frame" data-form="destination"><header class="sc-dialog-frame__head"><div><h2 id="sc-dialog-title-printing-destination" tabindex="-1">تنظیم مقصد چاپ</h2><p data-destination-label>مسیر اصلی و در صورت نیاز مسیر پشتیبان را انتخاب کن.</p></div><button class="sc-icon-button" type="button" data-dialog-close aria-label="بستن"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="sc-dialog-frame__body"><input type="hidden" name="destination_key"><section class="sc-dialog-section"><div class="sc-dialog-section__head"><strong>مسیر اصلی</strong><small>فقط دستگاه‌ها و چاپگرهای شناسایی‌شده قابل انتخاب‌اند.</small></div><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">دستگاه اصلی</span><select class="sc-control" name="agent_id" data-agent-select></select></label><label class="sc-field"><span class="sc-field__label">چاپگر اصلی</span><select class="sc-control" name="windows_queue_name" data-printer-select required></select><small class="sc-help" data-printer-help>ابتدا دستگاه چاپ را انتخاب کن.</small></label></div></section><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">تعداد نسخه چاپی</span><input class="sc-control" name="copies" type="text" inputmode="numeric" data-fa-number="1" min="1" max="5" value="۱"></label><fieldset class="sc-field"><legend>وضعیت مقصد</legend><div class="sc-check-grid"><label><input type="checkbox" name="active" value="1"> فعال</label><label><input type="checkbox" name="required_for_operation" value="1"> ضروری برای عملیات</label></div></fieldset></div><details class="sc-disclosure"><summary><span><strong>مسیر پشتیبان</strong><small>اختیاری؛ فقط هنگام خرابی واقعی مسیر اصلی استفاده می‌شود.</small></span></summary><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">دستگاه پشتیبان</span><select class="sc-control" name="fallback_agent_id" data-fallback-agent-select><option value="">بدون مسیر پشتیبان</option></select></label><label class="sc-field"><span class="sc-field__label">چاپگر پشتیبان</span><select class="sc-control" name="fallback_windows_queue_name" data-fallback-printer-select><option value="">بدون چاپگر پشتیبان</option></select><small class="sc-help" data-fallback-printer-help>مسیر پشتیبان اختیاری است.</small></label></div></details><details class="sc-disclosure"><summary><span><strong>ابعاد کاغذ</strong><small>برای چاپگرهای ۸۰mm معمولاً نیازی به تغییر نیست.</small></span></summary><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">عرض کاغذ (میلی‌متر)</span><input class="sc-control" name="paper_width_mm" inputmode="decimal" value="80"></label><label class="sc-field"><span class="sc-field__label">عرض قابل چاپ (میلی‌متر)</span><input class="sc-control" name="printable_width_mm" inputmode="decimal" value="72.1"></label></div></details></div><footer class="sc-dialog-frame__foot"><button class="sc-button" type="submit" value="submit">ذخیره مقصد چاپ</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></footer></form></dialog>
+--- a/public/reports/api.php
++++ b/public/reports/api.php
+@@ -5,6 +5,11 @@
+ try{
+     if(($_SERVER['REQUEST_METHOD']??'GET')!=='GET')WebAction::json(['success'=>false,'code'=>'method_not_allowed','message'=>'روش معتبر نیست.'],405);
+     $action=(string)($_GET['action']??'report');
++    if($action==='order_history'){
++        WebAction::requireAny($core,['cashier_accounts','shift_supervision']);
++        $id=(int)($_GET['order_id']??0);
++        WebAction::json(['success'=>true,'historical_order'=>$core->reporting()->historicalOrder($id)]);
++    }
+     if($action==='pricing'){
+         $viewer=WebAction::requireAny($core,['shift_supervision']);
+         if(!$core->auth()->hasCapability('inventory_cost_view',$viewer))WebAction::json(['success'=>false,'code'=>'forbidden','message'=>'دسترسی مشاهده هزینه مواد فعال نیست.'],403);
+--- a/public/reports/index.php
++++ b/public/reports/index.php
+@@ -3,7 +3,32 @@
+ use Sokna\Local\UI\LocalPage;use Sokna\Local\UI\ProductShell;
+ $core=require dirname(__DIR__).'/_app.php';$user=LocalPage::requireAny($core,['cashier_accounts','shift_supervision','staff_consumption_reports']);
+ ProductShell::start($core,$user,'گزارش و تحلیل','reports','فروش، عملکرد و روندهای مجموعه را در یک نمای مدیریتی بررسی کن.');
++$historyId=(int)($_GET['order_id']??0);$historyAllowed=(string)($user['role']??'')==='admin'||$core->auth()->hasCapability('cashier_accounts',$user)||$core->auth()->hasCapability('shift_supervision',$user);$historyOrder=null;$historyError=null;
++if($historyId>0&&$historyAllowed){try{$historyOrder=$core->reporting()->historicalOrder($historyId);}catch(\Throwable $e){$historyError=($e instanceof \Sokna\Local\Domain\Reporting\ReportingException)?$e->getMessage():'جزئیات سفارش فعلاً در دسترس نیست.';}}
++elseif($historyId>0){http_response_code(403);$historyError='دسترسی مشاهده جزئیات سفارش را ندارید.';}
++
+ $civilToday=$core->time()->civilDate();$civilWeekStart=(new DateTimeImmutable($civilToday))->modify('-6 days')->format('Y-m-d');$to=(string)($_GET['to']??$civilToday);$from=(string)($_GET['from']??$civilWeekStart);$focus=preg_replace('/[^a-z_]/','',(string)($_GET['focus']??''));$canAudit=(string)($user['role']??'')==='admin'||$core->auth()->hasCapability('shift_supervision',$user);if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$from))$from=$civilWeekStart;if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$to))$to=$civilToday;
+ $workspaceApi='reports/api.php';$workspaceAsset=static fn(string $path):string=>ProductShell::asset($path);$workspaceExportCurrent='reports/export.php';$workspaceExportAnalytical='reports/export-analytical.php';$reportRangeEnabled=true;$pricingEnabled=$canAudit&&$core->auth()->hasCapability('inventory_cost_view',$user);
++// Historical detail is a read-only panel, independently permission-gated from general trend reporting.
++if($historyId>0){
++    $esc=static fn($v):string=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
++    echo '<section id="order-history" class="sc-card" style="margin:16px 0"><div class="sc-card__body sc-stack">';
++    if($historyError!==null){echo '<div class="sc-alert sc-alert--warning">'.$esc($historyError).'</div>';}
++    elseif(is_array($historyOrder)){
++        $o=$historyOrder['order'];$id=(int)$o['id'];
++        echo '<div class="sc-section-head"><div><h2>جزئیات سفارش تاریخی #'.$esc($id).'</h2><p>نمای فقط‌خواندنی · شماره سفارش روز: '.$esc($o['business_order_number']).' · تاریخ کاری '.$esc($o['business_date']).'</p></div><a class="sc-button sc-button--secondary" href="/reports/">بازگشت به گزارش‌ها</a></div>';
++        echo '<p>میز ثبت‌شده در آخرین وضعیت سفارش: '.$esc($o['table_name']??'—').' · شناسه ثابت حساب: '.$esc($o['session_id']??'—').' · وضعیت سفارش: '.$esc($o['status']??'—').'</p>';
++        echo '<div class="sc-report-compact-stats">';
++        foreach($historyOrder['items'] as $item)echo '<div class="sc-card" style="padding:10px"><strong>'.$esc($item['item_name']).'</strong> · تعداد '.$esc($item['quantity']).' · '.$esc(number_format((int)$item['line_total'])).' تومان'.(!empty($item['item_note'])?' · یادداشت: '.$esc($item['item_note']):'').'</div>';
++        echo '</div>';
++        if(!empty($historyOrder['invoices'])){
++            echo '<p><strong>اسناد تسویه مرتبط با ردیف‌های این سفارش</strong></p><div class="sc-actions">';
++            foreach($historyOrder['invoices'] as $invoice)echo '<a class="sc-button sc-button--secondary" href="/finance/?tab=receipts&amp;invoice_id='.$esc((int)$invoice['id']).'">'.$esc($invoice['invoice_number']).' ('.$esc($invoice['status']).')</a> ';
++            echo '</div>';
++        }
++        echo '<p class="sc-field__hint">این صفحه فقط برای مشاهده است و هیچ سفارش یا سند مالی را تغییر نمی‌دهد.</p>';
++    }
++    echo '</div></section>';
++}
+ require dirname(__DIR__,2).'/resources/shared-staff-ui/reports-workspace.php';
+ ProductShell::end();
+--- a/resources/shared-staff-ui/dashboard-workspace.php
++++ b/resources/shared-staff-ui/dashboard-workspace.php
+@@ -17,7 +17,7 @@
+     <section class="sc-card sc-dashboard-trend"><div class="sc-card__body"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>روند فروش</h2><p>برای دیدن مبلغ هر روز، روی ستون مکث کنید</p></div><a href="<?=$dashUrl('/reports/?from='.$weekFrom.'&to='.$todayKey.'&focus=trend')?>">گزارش کامل</a></div><?php if($reportsError): ?><?=$dashDegraded($reportsError,'روند فروش فعلاً در دسترس نیست.')?><?php else: ?><?php if(!empty($todayProjectionUnavailable)): ?><div class="sc-alert sc-alert--warning" role="status">اطلاعات امروز هنوز از Local همگام نشده است؛ فروش امروز نامعلوم است. روزهای قبلی از آخرین آرشیو معتبر نمایش داده می‌شوند.</div><?php endif; ?><div class="sc-dashboard-chart" aria-label="روند فروش هفت روز اخیر"><?php $trendIndex=0; $trendValues=array_map(static fn(array $r):int=>(int)$r['value'],$weekDaily); $trendSigned=min(0,...$trendValues)<0; $trendScale=max(1,...array_map('abs',$trendValues)); $trendBase=$trendSigned?50:100; foreach($weekDaily as $row): ++$trendIndex; $trendValue=(int)$row['value']; $h=$trendValue!==0?max(5,(int)round((abs($trendValue)/$trendScale)*100))*($trendSigned?0.5:1):0; ?><div class="sc-dashboard-bar" tabindex="<?=$trendValue===0?'-1':'0'?>" role="group" aria-label="<?=$dashE((string)$row['label'])?>؛ <?=$dashMoney($trendValue)?>"><div class="sc-dashboard-bar__track"><?php if($trendValue!==0): ?><output class="sc-dashboard-bar__value" aria-hidden="true"><?=$dashMoney($trendValue)?></output><?php endif; ?><svg class="sc-dashboard-column <?=$h===0?'is-zero':($trendValue<0?'is-negative':'')?>" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="sc-trend-<?=$trendIndex?>" x1="0" x2="0" y1="0" y2="1"><stop class="sc-dashboard-column__start" offset="0"/><stop class="sc-dashboard-column__end" offset="1"/></linearGradient></defs><?php if($trendSigned): ?><line class="sc-dashboard-zero-axis" x1="0" y1="50" x2="100" y2="50"/><?php endif; ?><rect x="0" y="<?=$trendValue<0?$trendBase:$trendBase-$h?>" width="100" height="<?=$h?>" rx="20" ry="4" fill="url(#sc-trend-<?=$trendIndex?>)"/></svg></div><span<?php if(isset($row['known'])&&$row['known']===false): ?> class="is-missing" title="دادهٔ این روز همگام نشده است"<?php endif; ?>><?=$dashE($row['label'])?></span></div><?php endforeach; ?></div><?php endif; ?></div></section>
+     <?php endif; ?>
+ 
+-    <section class="sc-card sc-dashboard-recent"><div class="sc-card__body sc-stack"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>آخرین فعالیت‌ها</h2><p>رویدادهای اخیر این حساب</p></div><a href="<?=$dashUrl('/notifications/')?>">مشاهده همه</a></div><div class="sc-dashboard-feed"><?php if($notificationsError): ?><?=$dashDegraded($notificationsError,'فعالیت‌های اخیر فعلاً در دسترس نیست.')?><?php elseif(!$recent): ?><div class="sc-empty">فعالیت دیگری برای نمایش ثبت نشده است.</div><?php else: foreach($recent as $item): ?><a class="sc-dashboard-feed__item" href="<?=$dashUrl((string)($item['target_url']??'/notifications/'))?>"><span class="sc-dashboard-feed__icon"><?=$dashIcon($dashNotificationIcon($item))?></span><span class="sc-dashboard-feed__copy"><strong><?=$dashE($dashFaNum((string)($item['title']??'اعلان')))?></strong><small><?=$dashE($dashFaNum((string)($item['body']??'')))?></small></span><time><?=$dashClock((string)($item['created_at']??''),$tz)?></time></a><?php endforeach; endif; ?></div></div></section>
++    <section class="sc-card sc-dashboard-recent"><div class="sc-card__body sc-stack"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>آخرین فعالیت‌ها</h2><p>رویدادهای اخیر این حساب</p></div><a href="<?=$dashUrl('/notifications/')?>">مشاهده همه</a></div><div class="sc-dashboard-feed"><?php if($notificationsError): ?><?=$dashDegraded($notificationsError,'فعالیت‌های اخیر فعلاً در دسترس نیست.')?><?php elseif(!$recent): ?><div class="sc-empty">فعالیت دیگری برای نمایش ثبت نشده است.</div><?php else: foreach($recent as $item): ?><a class="sc-dashboard-feed__item" href="<?=$dashUrl((string)(!empty($canAccounts)&&!empty($item['history_target_url'])?$item['history_target_url']:($item['target_url']??'/notifications/')) )?>"><span class="sc-dashboard-feed__icon"><?=$dashIcon($dashNotificationIcon($item))?></span><span class="sc-dashboard-feed__copy"><strong><?=$dashE($dashFaNum((string)($item['title']??'اعلان')))?></strong><small><?=$dashE($dashFaNum((string)($item['body']??'')))?></small></span><time><?=$dashClock((string)($item['created_at']??''),$tz)?></time></a><?php endforeach; endif; ?></div></div></section>
+ 
+     <section class="sc-card sc-dashboard-attention-panel"><div class="sc-card__body sc-stack"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>نیازمند اقدام</h2><p>فقط مواردی که تصمیم می‌خواهند</p></div></div><div class="sc-dashboard-attention"><?php if(!$attention&&$attentionErrors===[]): ?><div class="sc-dashboard-clear"><span><?=$dashIcon('check')?></span><div><strong>مورد بازی باقی نمانده</strong><small>در حال حاضر اقدامی برای این حساب لازم نیست.</small></div></div><?php else: foreach($attention as $item): ?><a class="sc-dashboard-attention__item" data-tone="<?=$dashE((string)$item['tone'])?>" href="<?=$dashUrl((string)$item['href'])?>"><i aria-hidden="true"></i><span class="sc-dashboard-attention__copy"><strong><?=$dashE($dashFaNum((string)$item['title']))?></strong><small><?=$dashE($dashFaNum((string)$item['subtitle']))?></small></span><span class="sc-dashboard-attention__tags"><span class="sc-dashboard-context"><?=$dashE($dashFaNum((string)$item['context']))?></span><span class="sc-badge sc-badge--<?=$dashE((string)$item['tone'])?>"><?=$dashE($dashFaNum((string)$item['status']))?></span></span><span class="sc-dashboard-chevron"><?=$dashIcon('chevron-left')?></span></a><?php endforeach; foreach($attentionErrors as $attentionError): ?><?=$dashDegraded($attentionError,'بخشی از موارد نیازمند اقدام فعلاً در دسترس نیست.')?><?php endforeach; endif; ?></div></div></section>
+   </div>
+--- a/src/Domain/Notifications/NotificationService.php
++++ b/src/Domain/Notifications/NotificationService.php
+@@ -30,6 +30,14 @@
+         return self::normalizeTargetUrl($fallback);
+     }
+ 
++    /** Link historical order events to an immutable order ID, never the current table. */
++    public static function historicalOrderUrl(string $eventKey): string
++    {
++        if(preg_match('/^(?:guest_order\.new|preparation\.accounted)\.([1-9][0-9]{0,14})$/D',$eventKey,$m))
++            return '/reports/?order_id='.$m[1].'#order-history';
++        return '';
++    }
++
+     /** Bind legacy/current Push rows to the currently configured Public deployment before a rebind starts. */
+     public function sealCurrentPushBinding(): array
+     {
+@@ -52,7 +60,7 @@
+     public function snapshot(array $user): array
+     {
+         $uid=$this->uid($user);$this->ensurePreference($uid);$q=$this->pdo->prepare('SELECT in_app_enabled,push_enabled,push_operations_enabled,push_management_enabled,updated_at FROM notification_preferences WHERE user_id=?');$q->execute([$uid]);$pref=$q->fetch(PDO::FETCH_ASSOC)?:[];
+-        $q=$this->pdo->prepare('SELECT i.id,i.title,i.body,i.target_url,i.read_at,i.created_at,o.event_key FROM notification_inbox i LEFT JOIN notification_outbox o ON o.id=i.outbox_id WHERE i.user_id=? ORDER BY i.id DESC LIMIT 100');$q->execute([$uid]);$items=$q->fetchAll(PDO::FETCH_ASSOC)?:[];foreach($items as &$item){$item['target_url']=self::historicalTargetUrl((string)($item['event_key']??''),(string)($item['target_url']??''));unset($item['event_key']);}unset($item);
++        $q=$this->pdo->prepare('SELECT i.id,i.title,i.body,i.target_url,i.read_at,i.created_at,o.event_key FROM notification_inbox i LEFT JOIN notification_outbox o ON o.id=i.outbox_id WHERE i.user_id=? ORDER BY i.id DESC LIMIT 100');$q->execute([$uid]);$items=$q->fetchAll(PDO::FETCH_ASSOC)?:[];foreach($items as &$item){$item['target_url']=self::historicalTargetUrl((string)($item['event_key']??''),(string)($item['target_url']??''));$item['history_target_url']=self::historicalOrderUrl((string)($item['event_key']??''));unset($item['event_key']);}unset($item);
+         $binding=$this->pushBindingState();$subscriptions=0;if(($binding['ready']??false)===true){$q=$this->pdo->prepare('SELECT COUNT(*) FROM notification_push_endpoint_owners WHERE user_id=?');$q->execute([$uid]);$subscriptions=(int)$q->fetchColumn();}
+         return ['preferences'=>$pref,'items'=>$items,'unread'=>count(array_filter($items,fn($r)=>empty($r['read_at']))),'push'=>['subscriptions'=>$subscriptions,'vapid_public_key'=>$this->setting('notifications.vapid_public_key'),'bridge_configured'=>$this->setting('notifications.push_bridge_url')!=='','binding_ready'=>(bool)($binding['ready']??false),'origin_rebind_pending'=>(bool)($binding['rebind_pending']??false)]];
+     }
 --- a/src/Domain/Printing/PrintTemplatePackageService.php
 +++ b/src/Domain/Printing/PrintTemplatePackageService.php
 @@ -10,7 +10,7 @@
@@ -388,6 +474,31 @@
          foreach(['show_actor','show_time','show_order_number','show_section_titles','show_prices'] as $key)if(array_key_exists($key,$value)){if(!is_bool($value[$key]))throw new PrintException('print_template_boolean','مقدار '.$key.' باید true/false باشد.',422);$out[$key]=$value[$key];}
          if(array_key_exists('footer',$value))$out['footer']=$this->optional($value['footer'],300);
          if(array_key_exists('design',$value))$out['design']=$this->validateDesign($value['design'],$kind);
+--- a/src/Domain/Reporting/ReportingService.php
++++ b/src/Domain/Reporting/ReportingService.php
+@@ -7,6 +7,22 @@
+ final class ReportingService
+ {
+     public function __construct(private readonly PDO $pdo,private readonly TimeAuthority $time){}
++    /** Immutable-id order lookup for authorized cashier/supervisor historical review.
++     * Read-only: never resolve via a table's currently open session.
++     */
++    public function historicalOrder(int $orderId): array
++    {
++        if($orderId<=0)throw new ReportingException('invalid_order_id','شناسه سفارش معتبر نیست.',422);
++        $q=$this->pdo->prepare('SELECT o.id,o.session_id,o.table_id,o.status,o.order_source,o.business_order_number,o.business_date,o.total_amount,o.customer_note,o.created_at,o.accepted_at,t.name table_name,s.status session_status,s.started_at session_started_at,s.ended_at session_ended_at FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id LEFT JOIN table_sessions s ON s.id=o.session_id WHERE o.id=? LIMIT 1');
++        $q->execute([$orderId]);$order=$q->fetch(PDO::FETCH_ASSOC);
++        if(!$order)throw new ReportingException('order_not_found','این سفارش در سوابق پیدا نشد.',404);
++        $q=$this->pdo->prepare('SELECT id,item_name,quantity,ordered_quantity,unit_price,line_total,item_note,fulfillment_mode FROM order_items WHERE order_id=? ORDER BY id');
++        $q->execute([$orderId]);$items=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
++        $q=$this->pdo->prepare('SELECT DISTINCT r.id,r.invoice_number,r.status,r.settlement_kind,r.settled_at,r.table_name_snapshot FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id WHERE l.order_id=? ORDER BY r.id');
++        $q->execute([$orderId]);$invoices=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
++        return ['order'=>$order,'items'=>$items,'invoices'=>$invoices,'read_only'=>true];
++    }
++
+     public function report(?string $from=null,?string $to=null): array
+     {
+         [$from,$to]=$this->range($from,$to);$p=[$from,$to];
 --- a/src/UI/ProductShell.php
 +++ b/src/UI/ProductShell.php
 @@ -87,7 +87,7 @@
