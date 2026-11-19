@@ -1,0 +1,22 @@
+name: SOKNA R298 Shared Release Factory Exact Candidate Gate - READ ONLY
+on:
+  push:
+    branches: [qa/sokna-r298-native-install-qualification-20261119]
+    paths:
+      - 'release-ops/candidates/r298.json'
+      - '.github/workflows/sokna-r298-factory-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  factory:
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    with:
+      track: registered-candidate
+      candidate_contract_path: release-ops/candidates/r298.json
+      candidate_run_id: '44539271420'
+      candidate_artifact: SOKNA-R298-EXACT-NATIVE-QUALIFICATION-CANDIDATE
+    permissions:
+      contents: read
+      actions: read
