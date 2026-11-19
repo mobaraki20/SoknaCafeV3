@@ -1,0 +1,16 @@
+{
+  "source_package": "R276 35ik QA not installable",
+  "changed": [
+    "payload/assets/product-ui.css",
+    "payload/assets/scds/staff-product-ui.css",
+    "payload/assets/staff-app/preparation-workspace.js"
+  ],
+  "sha256": {
+    "payload/assets/product-ui.css": "94ee06ab97a758db34a05d116c71ce7f8079789cb830d75888561168f6034770",
+    "payload/assets/scds/staff-product-ui.css": "a0d27e0637604369bf5e258e7ebb10bc5ab531c689425128999dd8f71f0a0030",
+    "payload/assets/staff-app/preparation-workspace.js": "e96dab91f2c5cb2f9f70242ad3e425c3f6deb895ff15ad5912e5b4c431a352b2"
+  },
+  "mutation_readiness_kept": true,
+  "projection_listener_kept": true,
+  "status": "QA not installable"
+}
