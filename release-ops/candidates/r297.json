@@ -1,0 +1,28 @@
+{
+  "schema": "sokna-candidate-contract-v1",
+  "component": "local",
+  "producer": {
+    "run_id": 44529037706,
+    "artifact": "SOKNA-R297-LOCAL-CANDIDATE-FACTORY-QA"
+  },
+  "source_authority": {
+    "approved_checkpoint": "R296_SOURCE_GITHUB_QA_44501927499__FIELD_NOT_APPROVED",
+    "source_sha256": "9ecbbc9850d3f077d57f0cff4e808975157710781682cfa8be0e0b3bca458246"
+  },
+  "packages": [
+    {
+      "file": "SOKNA-R297-LOCAL-231FO-CUMULATIVE-CANDIDATE-NOT-INSTALL.zip",
+      "sha256": "dc91ddc34d97e0ae500d9f61bd8151c8be531fec11d9f6fcdf3b938ca6f2ceaf",
+      "kind": "local-update",
+      "component": "local",
+      "version": "3.0.0-g6.2-workspace.231fo-r297-r296-cumulative-qa"
+    }
+  ],
+  "supporting_files": [
+    {
+      "file": "R297-INTEGRITY-AND-RELEASE-GATES.json",
+      "sha256": "13d4a76e9c3f913af74c7fc93d07d6c8e1353b3fa9ebe370ac1c5083fccb2dd2"
+    }
+  ],
+  "production_authorized": false
+}
