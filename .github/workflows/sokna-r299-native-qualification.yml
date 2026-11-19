@@ -21,7 +21,7 @@ jobs:
           run-id: 44539271420
           github-token: ${{ github.token }}
           path: ${{ github.workspace }}/r299-work/r298-out
-      - name: Build exact R299 candidate from R297 and verify SHA
+      - name: Build exact R299 candidate from R298 and verify SHA
         shell: bash
         run: |
           set -euo pipefail
@@ -80,7 +80,7 @@ jobs:
       - name: Write Windows-only acceptance receipt
         shell: pwsh
         run: |
-          @{schema='sokna-r299-windows-native-receipt-v1';status='PASS';package_sha256='8a897f3ac9215e06d72f67be292b11cf17263a0ab687d9b59d8bc341ac818507';baseline='R278_231FN';target='R299_231FP';db_migrations=83;host_deployed=$false;field_install_authorized=$false} |
+          @{schema='sokna-r299-windows-native-receipt-v1';status='PASS';package_sha256='8a897f3ac9215e06d72f67be292b11cf17263a0ab687d9b59d8bc341ac818507';baseline='R278_231FN';target='R299_231FQ';db_migrations=83;host_deployed=$false;field_install_authorized=$false} |
             ConvertTo-Json -Depth 5 | Set-Content 'r299-native-receipt.json' -Encoding utf8NoBOM
       - uses: actions/upload-artifact@v4
         if: always()
