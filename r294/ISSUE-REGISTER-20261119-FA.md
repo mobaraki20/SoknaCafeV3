@@ -56,3 +56,14 @@
 **P0:** یک آزمون تجمیعیِ schema 82→83 با موتور واقعی Migrations، idempotence، full financial itemized + discount + table transfer، مانده حساب و رسیدهای immutable؛ سپس QA مسیر QR/Public و آزمون Windows Maintenance. **P1:** تکمیل لینک سفارش تاریخی، همسان‌سازی آماده‌سازی Public، اصلاح مجموعه چاپ ۱۰–۱۳ و ۱۶–۱۷، چاپ فیزیکی و آزمون نهایی مرورگرها. **P2:** تقویم رسمی، مرکزیت مودال، UX تب‌ها/آرشیو و فاصله منوی Public.
 
 تا عبور از تست‌های native Windows/backup/restore، Public compatibility و چاپ واقعی، **NO-GO / NOT-INSTALL**. هیچ پاک‌سازی DB، صدور رسید واقعی یا تغییر تنظیمات کافه مجاز نیست.
+
+## نتیجه اجرای تجمیعی پایگاه‌داده (پس از اصلاح R294)
+
+- **PASS** — GitHub Actions Run `44487965092`؛ https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44487965092
+- مسیر نصب تمیز با همان ترتیب واقعی BrowserSetup (اجرای قبل از `0059`، ثبت مدیر و داده کاتالوگ، ادامه تا پایان ۸۲ Migration).
+- **PASS** — ارتقای `82 → 83` با موتور واقعی `Migrations` و فقط `0083_remaining_account_discount`؛ ثبت ۲ دستور جدید در journal (۱۲۹۵ → ۱۲۹۷)، اجرای دوباره بدون تغییر، تاریخچه و داده‌های قدیمی محفوظ.
+- **PASS** — هر دو جدول جدید، ۴ FK و سیاست ثبت‌شده ۱۱۵ جدول (۲ جدول تازه تخفیف + ۲ جدول پیشین `0082` با مشخص‌شدن رفتار CLEAR).
+- **PASS** — آزمون تراکنشی مستقل `SettlementService` / `TableChangeService` روی MariaDB همان اجرای CI: تخفیف مانده، مالیات، انتقال میز، حفظ رسید قبلی و idempotency.
+- **NOT PROVEN** — مسیر بسته واقعی Maintenance در Windows، backup/restore روی میزبان کافه، QR/Public هاست عملیاتی، Print Agent/چاپگر واقعی و آزمون مقادیر واقعی مشتریان.
+
+در این مرحله **هیچ Migration جدیدی پس از 0083** ساخته نشده و هیچ نصب عملیاتی صورت نگرفته است.
