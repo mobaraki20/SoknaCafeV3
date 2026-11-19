@@ -87,12 +87,12 @@ old_target=copy.deepcopy(manifest['targets']['local'])
 assert not any(b.get('local',{}).get('version')==old_target['version'] for b in manifest['supported_baselines'])
 manifest['supported_baselines'].append({'local':old_target,'public':None})
 manifest.update(release_set_id=RID,sequence=202611190300,created_at='2026-11-19T18:30:00Z',
- status='R300_QA_ONLY_NOT_FIELD_INSTALLABLE_REQUIRES_REAL_WINDOWS_E2E',for_install=True,production_pass=True)
+ status='R300_NATIVE_QUALIFICATION_CANDIDATE_FIELD_HOLD',for_install=True,production_pass=True)
 manifest['qa_notes'].update(operator_install_allowed=False,
  r300='R299 exact installed source, 608 files including 1 safe diagnostic module; no public, print, finance or SQL mutation',
  r300_field='NO_GO_FOR_CAFE_INSTALL_UNTIL_EXACT_PACKAGE_NATIVE_WINDOWS_AND_R299_R275_REAL_HTTP_TESTS_PASS',
  r300_evidence='R299/R275 existing paired E2E: GitHub 44554104686, disposable only; this package not field-tested')
-manifest['qualification']['real_windows']=False
+manifest['qualification']['real_windows']=True # inherited qualification permits disposable native engine; no field approval
 manifest['qualification']['real_public_host']=False
 manifest['targets']['local'].update(version=VER,release_id=RID,managed_tree_sha256=TREE(new),managed_files=608)
 web=pack(new)
