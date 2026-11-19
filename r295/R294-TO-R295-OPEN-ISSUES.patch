@@ -1,0 +1,401 @@
+--- a/public/assets/iran-calendar-1405.json
++++ b/public/assets/iran-calendar-1405.json
+@@ -0,0 +1,133 @@
++{
++  "schema": "sokna-iran-calendar-v1",
++  "year": 1405,
++  "source": "شورای مرکز تقویم مؤسسه ژئوفیزیک دانشگاه تهران؛ تقویم رسمی کشور سال ۱۴۰۵ (نسخه نهایی)",
++  "source_url": "https://www.avazehgostar.com/file/pdf/calendar_1405",
++  "coverage": "confirmed_holidays_and_selected_occasions",
++  "events": {
++    "1405-01-01": {
++      "label": "عید سعید فطر و آغاز نوروز",
++      "holiday": true
++    },
++    "1405-01-02": {
++      "label": "عید نوروز و تعطیل عید سعید فطر",
++      "holiday": true
++    },
++    "1405-01-03": {
++      "label": "عید نوروز",
++      "holiday": true
++    },
++    "1405-01-04": {
++      "label": "عید نوروز",
++      "holiday": true
++    },
++    "1405-01-06": {
++      "label": "زادروز زرتشت پیامبر",
++      "holiday": false
++    },
++    "1405-01-12": {
++      "label": "روز جمهوری اسلامی ایران",
++      "holiday": true
++    },
++    "1405-01-13": {
++      "label": "روز طبیعت",
++      "holiday": true
++    },
++    "1405-01-17": {
++      "label": "روز فرهنگ پهلوانی و ورزش زورخانه‌ای",
++      "holiday": false
++    },
++    "1405-01-18": {
++      "label": "روز سلامتی",
++      "holiday": false
++    },
++    "1405-01-20": {
++      "label": "روز ملی فناوری هسته‌ای",
++      "holiday": false
++    },
++    "1405-01-25": {
++      "label": "شهادت امام جعفر صادق (ع)",
++      "holiday": true
++    },
++    "1405-03-03": {
++      "label": "فتح خرمشهر و روز مقاومت",
++      "holiday": false
++    },
++    "1405-03-06": {
++      "label": "عید سعید قربان",
++      "holiday": true
++    },
++    "1405-03-14": {
++      "label": "عید غدیر و رحلت امام خمینی",
++      "holiday": true
++    },
++    "1405-03-15": {
++      "label": "قیام ۱۵ خرداد",
++      "holiday": true
++    },
++    "1405-04-03": {
++      "label": "تاسوعای حسینی",
++      "holiday": true
++    },
++    "1405-04-04": {
++      "label": "عاشورای حسینی",
++      "holiday": true
++    },
++    "1405-05-13": {
++      "label": "اربعین حسینی",
++      "holiday": true
++    },
++    "1405-05-17": {
++      "label": "روز خبرنگار",
++      "holiday": false
++    },
++    "1405-05-21": {
++      "label": "رحلت پیامبر و شهادت امام حسن",
++      "holiday": true
++    },
++    "1405-05-22": {
++      "label": "شهادت امام رضا (ع)",
++      "holiday": true
++    },
++    "1405-05-30": {
++      "label": "شهادت امام حسن عسکری (ع)",
++      "holiday": true
++    },
++    "1405-06-01": {
++      "label": "روز پزشک",
++      "holiday": false
++    },
++    "1405-06-05": {
++      "label": "روز داروسازی",
++      "holiday": false
++    },
++    "1405-06-08": {
++      "label": "ولادت پیامبر اکرم (ص) و امام جعفر صادق (ع)",
++      "holiday": true
++    },
++    "1405-10-16": {
++      "label": "مبعث پیامبر اسلام",
++      "holiday": true
++    },
++    "1405-11-22": {
++      "label": "پیروزی انقلاب اسلامی",
++      "holiday": true
++    },
++    "1405-12-09": {
++      "label": "شهادت امام علی (ع)",
++      "holiday": true
++    },
++    "1405-12-19": {
++      "label": "عید سعید فطر",
++      "holiday": true
++    },
++    "1405-12-20": {
++      "label": "تعطیل به مناسبت عید سعید فطر",
++      "holiday": true
++    },
++    "1405-12-29": {
++      "label": "روز ملی شدن صنعت نفت ایران",
++      "holiday": true
++    }
++  }
++}
+--- a/public/assets/printing-workspace.js
++++ b/public/assets/printing-workspace.js
+@@ -89,6 +89,15 @@
+  area.replaceChildren();const f=form.elements,base=templateEditorBase.package?.template||{},sample=el('div','sc-template-live-paper'),h=el('h4','',form.elements.name?.value||'نمونه فیش مشتری');
+  sample.dir='rtl';const design=base.design||{},density=f.density?.value||design.density||'comfortable';sample.classList.toggle('is-compact',density==='compact');
+  const headerAlign=f.header_alignment?.value||design.header_alignment||'right';sample.style.textAlign=headerAlign==='center'?'center':'right';
++ // Pixel preview is explicitly approximate; ratios are shared with the real template input values.
++ const numeric=(key,fallback,min,max)=>{const value=Number(String(f[key]?.value??'').trim()||base[key]||fallback);return Number.isFinite(value)?Math.max(min,Math.min(max,value)):fallback};
++ const baseSize=numeric('base_font_size',24,18,42),titleSize=numeric('title_font_size',32,22,60),itemSize=numeric('table_font_size',28,24,72);
++ const lineSpacing=numeric('line_spacing',5,2,20),margin=numeric('margin',8,2,30);
++ sample.style.fontSize=(baseSize*.55).toFixed(2)+'px';sample.style.padding=(margin*.9+6).toFixed(1)+'px';
++ sample.style.lineHeight=(1.28+lineSpacing*.04).toFixed(2);h.style.fontSize=(titleSize*.48).toFixed(2)+'px';
++ sample.style.setProperty('--sc-draft-item-size',(itemSize*.47).toFixed(2)+'px');sample.style.setProperty('--sc-draft-meta-size',(numeric('meta_font_size',baseSize-5,14,72)*.54).toFixed(2)+'px');sample.style.setProperty('--sc-draft-notes-size',(numeric('notes_font_size',baseSize-2,14,72)*.54).toFixed(2)+'px');
++ sample.style.setProperty('--sc-draft-row-gap',Math.max(1,lineSpacing*.4).toFixed(1)+'px');
++ 
+  const line=(a,b)=>{const row=el('div','sc-template-live-row');row.append(el('span','',a),el('span','',b));sample.append(row)};
+  sample.append(h);
+  const setting=k=>f[k]?.value===''?base[k]!==false:f[k]?.value!=='0';
+@@ -101,21 +110,21 @@
+  line('قهوه دمی × ۱',setting('show_prices')?'۱۵۰٬۰۰۰':'');
+  line('چای × ۲',setting('show_prices')?'۲۰۰٬۰۰۰':'');
+  const separator=f.separator_style?.value||design.separator_style||'solid';sample.classList.toggle('is-dashed',separator==='dashed');sample.classList.toggle('is-minimal',separator==='minimal');
+- const footer=String(f.footer?.value||base.footer||'').trim();if(footer)sample.append(el('p','sc-template-live-footer',footer));
++ const footer=String(f.footer?.value??base.footer??'').trim();if(footer){const foot=el('p','sc-template-live-footer',footer);foot.style.fontSize=(numeric('footer_font_size',baseSize-5,14,72)*.55).toFixed(2)+'px';sample.append(foot)}
+  area.append(sample);
+ }
+ 
+-function fillTemplateEditor(details){templateEditorBase=structuredClone(details);const form=$('[data-template-editor-form]'),pkg=details.package||{},template=pkg.template||{},design=template.design||{},contract=details.contract||{};form.reset();editorValidation();setEditorValue(form,'name',pkg.name||'');setEditorValue(form,'version',details.suggested_version||'');setEditorValue(form,'description',pkg.description||'');$('[data-template-kind]').value=pkg.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';for(const key of ['base_font_size','title_font_size','table_font_size','line_spacing','margin'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(template,key)?template[key]:'');for(const key of ['show_actor','show_time','show_order_number','show_section_titles','show_prices'])setTriState(form,key,template);setEditorValue(form,'footer',Object.prototype.hasOwnProperty.call(template,'footer')?template.footer:'');for(const key of ['density','header_alignment','separator_style','item_layout'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(design,key)?design[key]:'');const allowed=[...(contract.sections?.[pkg.document_kind]||[])],saved=Array.isArray(design.section_order)?design.section_order:[];templateSectionOrder=[...saved,...allowed.filter(x=>!saved.includes(x))];templateSectionEnabled=new Set(saved.length?saved:allowed);$('[data-template-custom-order]').checked=saved.length>0;renderTemplateSectionOrder();renderTemplateLabels(contract,design.labels||{});$('[data-template-editor-context]').textContent=`مبنا: ${pkg.name||'قالب'} · نسخه ${pkg.version||'—'} · ذخیره فقط نسخه جدید می‌سازد.`;renderTemplateDraftPreview()}
++function fillTemplateEditor(details){templateEditorBase=structuredClone(details);const form=$('[data-template-editor-form]'),pkg=details.package||{},template=pkg.template||{},design=template.design||{},contract=details.contract||{};form.reset();editorValidation();setEditorValue(form,'name',pkg.name||'');setEditorValue(form,'version',details.suggested_version||'');setEditorValue(form,'description',pkg.description||'');$('[data-template-kind]').value=pkg.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';for(const key of ['base_font_size','title_font_size','table_font_size','notes_font_size','footer_font_size','totals_font_size','settlement_font_size','meta_font_size','line_spacing','margin'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(template,key)?template[key]:'');for(const key of ['show_actor','show_time','show_order_number','show_section_titles','show_prices'])setTriState(form,key,template);setEditorValue(form,'footer',Object.prototype.hasOwnProperty.call(template,'footer')?template.footer:'');for(const key of ['density','header_alignment','separator_style','item_layout'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(design,key)?design[key]:'');const allowed=[...(contract.sections?.[pkg.document_kind]||[])],saved=Array.isArray(design.section_order)?design.section_order:[];templateSectionOrder=[...saved,...allowed.filter(x=>!saved.includes(x))];templateSectionEnabled=new Set(saved.length?saved:allowed);$('[data-template-custom-order]').checked=saved.length>0;renderTemplateSectionOrder();renderTemplateLabels(contract,design.labels||{});$('[data-template-editor-context]').textContent=`مبنا: ${pkg.name||'قالب'} · نسخه ${pkg.version||'—'} · ذخیره فقط نسخه جدید می‌سازد.`;renderTemplateDraftPreview()}
+ async function openTemplateEditor(id){try{status('در حال دریافت نسخه قالب…');const j=await request(`${api}?action=print_template_details&package_id=${encodeURIComponent(Number(id))}`);fillTemplateEditor(j.result);{const d=$('[data-dialog="template-editor"]');if(!window.SoknaUI?.showDialog?.(d,{focusTitle:true}))d?.showModal?.()};status('')}catch(e){sectionState(e.message||'جزئیات قالب چاپ دریافت نشد.',true);status('')}}
+-function buildTemplateEditorPackage(){const form=$('[data-template-editor-form]'),template={},design={};for(const key of ['base_font_size','title_font_size','table_font_size','line_spacing','margin']){const value=String(form.elements[key]?.value||'').trim();if(value!=='')template[key]=Number(value)}for(const key of ['show_actor','show_time','show_order_number','show_section_titles','show_prices']){const value=String(form.elements[key]?.value??'');if(value!=='')template[key]=value==='1'}template.footer=String(form.elements.footer?.value||'');for(const key of ['density','header_alignment','separator_style','item_layout']){const value=String(form.elements[key]?.value||'');if(value!=='')design[key]=value}if($('[data-template-custom-order]').checked){const order=templateSectionOrder.filter(key=>templateSectionEnabled.has(key));if(!order.length)throw new Error('برای ترتیب سفارشی حداقل یک بخش را فعال نگه دار.');design.section_order=order}const labels={};for(const key of templateEditorBase?.contract?.label_fields||[]){const value=String(form.elements['label_'+key]?.value||'').trim();if(value!=='')labels[key]=value}if(Object.keys(labels).length)design.labels=labels;if(Object.keys(design).length)template.design=design;return{name:String(form.elements.name.value||'').trim(),version:String(form.elements.version.value||'').trim(),description:String(form.elements.description.value||'').trim(),template}}
+-async function saveTemplateVersion(e){e.preventDefault();const form=e.currentTarget;if(!(e.submitter instanceof HTMLButtonElement)||e.submitter.value!=='submit'){form.closest('dialog').close();return}if(!form.reportValidity())return;editorValidation();let packageData;try{packageData=buildTemplateEditorPackage()}catch(err){editorValidation(err.message||'تنظیمات قالب کامل نیست.');return}await SoknaUI.busy(form,async()=>{try{const j=await post({action:'print_template_version_save',base_package_id:Number(templateEditorBase?.package_id||0),package:packageData});form.closest('dialog').close();await refresh(j.result.deduplicated?'این نسخه با همین محتوا از قبل وجود داشت.':'نسخه جدید قالب ذخیره شد.');activatePrintTab('templates')}catch(err){editorValidation(err.message||'ذخیره نسخه جدید قالب انجام نشد.')}})}
++function buildTemplateEditorPackage(){const form=$('[data-template-editor-form]'),template={},design={};for(const key of ['base_font_size','title_font_size','table_font_size','notes_font_size','footer_font_size','totals_font_size','settlement_font_size','meta_font_size','line_spacing','margin']){const value=String(form.elements[key]?.value||'').trim();if(value!=='')template[key]=Number(value)}for(const key of ['show_actor','show_time','show_order_number','show_section_titles','show_prices']){const value=String(form.elements[key]?.value??'');if(value!=='')template[key]=value==='1'}template.footer=String(form.elements.footer?.value||'');for(const key of ['density','header_alignment','separator_style','item_layout']){const value=String(form.elements[key]?.value||'');if(value!=='')design[key]=value}if($('[data-template-custom-order]').checked){const order=templateSectionOrder.filter(key=>templateSectionEnabled.has(key));if(!order.length)throw new Error('برای ترتیب سفارشی حداقل یک بخش را فعال نگه دار.');design.section_order=order}const labels={};for(const key of templateEditorBase?.contract?.label_fields||[]){const value=String(form.elements['label_'+key]?.value||'').trim();if(value!=='')labels[key]=value}if(Object.keys(labels).length)design.labels=labels;if(Object.keys(design).length)template.design=design;return{name:String(form.elements.name.value||'').trim(),version:String(form.elements.version.value||'').trim(),description:String(form.elements.description.value||'').trim(),template}}
++async function saveTemplateVersion(e){e.preventDefault();const form=e.currentTarget;if(!(e.submitter instanceof HTMLButtonElement)||e.submitter.value!=='submit'){form.closest('dialog').close();return}if(!form.reportValidity())return;editorValidation();let packageData;try{packageData=buildTemplateEditorPackage()}catch(err){editorValidation(err.message||'تنظیمات قالب کامل نیست.');return}await SoknaUI.busy(form,async()=>{try{const j=await post({action:'print_template_version_save',base_package_id:Number(templateEditorBase?.package_id||0),package:packageData});form.closest('dialog').close();await refresh(j.result.deduplicated?'همین نسخه قبلاً ثبت شده است؛ قالب فعال تغییر نکرد.':'نسخه جدید ذخیره شد اما هنوز فعال نیست؛ پس از بررسی پیش‌نمایش، آن را فعال کن.');activatePrintTab('templates')}catch(err){editorValidation(err.message||'ذخیره نسخه جدید قالب انجام نشد.')}})}
+ let previewContext=null,previewBlobUrl='';
+ function clearPreviewArtifact(){const frame=$('[data-preview-pdf]'),img=$('[data-preview-image]');if(previewBlobUrl){URL.revokeObjectURL(previewBlobUrl);previewBlobUrl=''}if(frame){frame.hidden=true;frame.removeAttribute('src')}if(img){img.hidden=true;img.removeAttribute('src')}}
+ function base64BlobUrl(base64,type){const raw=atob(base64),bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);return URL.createObjectURL(new Blob([bytes],{type}))}
+ function legacyPreviewCapabilities(){return{negotiated:false,preview_formats:['png'],preview_default_format:'png'}}
+ async function bridgePreviewCapabilities(b){const fallback=legacyPreviewCapabilities();let response;try{response=await fetch(`http://127.0.0.1:${Number(b.port)}/v1/capabilities`,{method:'POST',headers:{'Content-Type':'application/json','X-Sokna-Bridge-Pairing':b.pairing_id},body:JSON.stringify({type:'print.capabilities',protocol_version:1})})}catch{throw new Error('ارتباط با سرویس محلی پیش‌نمایش چاپ برقرار نشد.')}if(response.status===404||response.status===405)return fallback;let data={};try{data=await response.json()}catch{}if(!response.ok||data.success!==true)throw new Error('امکانات پیش‌نمایش سرویس چاپ قابل دریافت نیست.');const formats=Array.isArray(data.preview_formats)?data.preview_formats.filter(x=>x==='png'||x==='pdf'):[];if(!formats.includes('png'))formats.unshift('png');return{negotiated:true,preview_formats:[...new Set(formats)],preview_default_format:data.preview_default_format==='pdf'&&formats.includes('pdf')?'pdf':'png'}}
+ function applyPreviewCapabilityUi(caps,requested,detail){const formats=caps.preview_formats||['png'];root.querySelectorAll('[data-preview-format]').forEach(b=>{const f=String(b.dataset.previewFormat||'png'),supported=formats.includes(f);b.disabled=!supported;b.setAttribute('aria-disabled',String(!supported));b.title=supported?'':(f==='pdf'?'پیش‌نمایش PDF روی سرویس چاپ این دستگاه در دسترس نیست.':'این فرمت توسط سرویس چاپ این دستگاه پشتیبانی نمی‌شود.')});const effective=formats.includes(requested)?requested:(formats.includes(caps.preview_default_format)?caps.preview_default_format:'png');root.querySelectorAll('[data-preview-format]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.previewFormat===effective)));if(requested==='pdf'&&effective!=='pdf'&&detail)detail.textContent=caps.negotiated?'سرویس چاپ این دستگاه پیش‌نمایش PDF ندارد؛ پیش‌نمایش تصویری همان قالب چاپ نمایش داده می‌شود.':'سرویس چاپ این دستگاه از نسخه قدیمی پیش‌نمایش استفاده می‌کند؛ PDF غیرفعال است و پیش‌نمایش تصویری نمایش داده می‌شود.';return effective}
+-async function previewPrintTemplate(row,dest=null,format='pdf'){const dialog=$('[data-dialog="preview"]'),img=$('[data-preview-image]'),frame=$('[data-preview-pdf]'),empty=$('[data-preview-empty]'),detail=$('[data-preview-detail]');previewContext={row,dest};clearPreviewArtifact();empty.hidden=false;empty.textContent=format==='pdf'?'در حال بررسی قابلیت PDF و ساخت پیش‌نمایش…':'در حال ساخت پیش‌نمایش تصویری…';$('[data-preview-meta]').textContent=`${row.display_name} · ${dest?.label||'پروفایل استاندارد ۸۰mm'}`;if(detail)detail.textContent='';if(!dialog.open&&!window.SoknaUI?.showDialog?.(dialog,{focusTitle:true}))dialog.showModal();try{const j=await post({action:'print_template_preview',package_id:Number(row.id),destination_key:dest?.destination_key||'',output_format:format}),r=j.result,b=r.bridge;if(b.origin&&b.origin!==location.origin)throw new Error('پیش‌نمایش روی این دستگاه در دسترس نیست.');const caps=await bridgePreviewCapabilities(b),effective=applyPreviewCapabilityUi(caps,format,detail);r.preview.output_format=effective;empty.textContent=effective==='pdf'?'در حال ساخت PDF با قالب واقعی چاپ…':'در حال ساخت پیش‌نمایش تصویری…';const response=await fetch(`http://127.0.0.1:${Number(b.port)}/v1/preview`,{method:'POST',headers:{'Content-Type':'application/json','X-Sokna-Bridge-Pairing':b.pairing_id},body:JSON.stringify(r.preview)});let data={};try{data=await response.json()}catch{}if(!response.ok||data.success!==true)throw new Error('پیش‌نمایش ساخته نشد.');if(effective==='pdf'&&data.pdf_base64){previewBlobUrl=base64BlobUrl(data.pdf_base64,'application/pdf');frame.src=previewBlobUrl;frame.hidden=false}else if(data.image_base64){img.src='data:image/png;base64,'+data.image_base64;img.hidden=false;if(effective==='pdf'&&detail)detail.textContent='سرویس چاپ به‌جای PDF تصویر برگرداند؛ همان پیش‌نمایش تصویری نمایش داده شد.'}else throw new Error(effective==='pdf'?'PDF پیش‌نمایش دریافت نشد.':'تصویر پیش‌نمایش دریافت نشد.');empty.hidden=true;$('[data-preview-meta]').textContent=`${row.display_name} · ${r.profile_label||dest?.label||'پروفایل استاندارد ۸۰mm'}`;if(detail&&!detail.textContent)detail.textContent=`موتور چاپ ${data.renderer_version||'—'} · ${data.font_family||'—'} · ${(data.output_format||effective).toUpperCase()} · شناسه ${(data.pdf_sha256||data.png_sha256||'').slice(0,12)}…`}catch(e){clearPreviewArtifact();empty.textContent=e.message||'پیش‌نمایش ساخته نشد.';empty.hidden=false}}
++async function previewPrintTemplate(row,dest=null,format='pdf',draftPackage=null){const dialog=$('[data-dialog="preview"]'),img=$('[data-preview-image]'),frame=$('[data-preview-pdf]'),empty=$('[data-preview-empty]'),detail=$('[data-preview-detail]');previewContext={row,dest,draftPackage};clearPreviewArtifact();empty.hidden=false;empty.textContent=format==='pdf'?'در حال بررسی قابلیت PDF و ساخت پیش‌نمایش…':'در حال ساخت پیش‌نمایش تصویری…';$('[data-preview-meta]').textContent=`${row.display_name} · ${dest?.label||'پروفایل استاندارد ۸۰mm'}`;if(detail)detail.textContent='';if(!dialog.open&&!window.SoknaUI?.showDialog?.(dialog,{focusTitle:true}))dialog.showModal();try{const j=await post(draftPackage?{action:'print_template_draft_preview',base_package_id:Number(templateEditorBase?.package_id||0),package:draftPackage,destination_key:dest?.destination_key||'',output_format:format}:{action:'print_template_preview',package_id:Number(row.id),destination_key:dest?.destination_key||'',output_format:format}),r=j.result,b=r.bridge;if(b.origin&&b.origin!==location.origin)throw new Error('پیش‌نمایش روی این دستگاه در دسترس نیست.');const caps=await bridgePreviewCapabilities(b),effective=applyPreviewCapabilityUi(caps,format,detail);r.preview.output_format=effective;empty.textContent=effective==='pdf'?'در حال ساخت PDF با قالب واقعی چاپ…':'در حال ساخت پیش‌نمایش تصویری…';const response=await fetch(`http://127.0.0.1:${Number(b.port)}/v1/preview`,{method:'POST',headers:{'Content-Type':'application/json','X-Sokna-Bridge-Pairing':b.pairing_id},body:JSON.stringify(r.preview)});let data={};try{data=await response.json()}catch{}if(!response.ok||data.success!==true)throw new Error('پیش‌نمایش ساخته نشد.');if(effective==='pdf'&&data.pdf_base64){previewBlobUrl=base64BlobUrl(data.pdf_base64,'application/pdf');frame.src=previewBlobUrl;frame.hidden=false}else if(data.image_base64){img.src='data:image/png;base64,'+data.image_base64;img.hidden=false;if(effective==='pdf'&&detail)detail.textContent='سرویس چاپ به‌جای PDF تصویر برگرداند؛ همان پیش‌نمایش تصویری نمایش داده شد.'}else throw new Error(effective==='pdf'?'PDF پیش‌نمایش دریافت نشد.':'تصویر پیش‌نمایش دریافت نشد.');empty.hidden=true;$('[data-preview-meta]').textContent=`${row.display_name} · ${r.profile_label||dest?.label||'پروفایل استاندارد ۸۰mm'}`;if(detail&&!detail.textContent)detail.textContent=`موتور چاپ ${data.renderer_version||'—'} · ${data.font_family||'—'} · ${(data.output_format||effective).toUpperCase()} · شناسه ${(data.pdf_sha256||data.png_sha256||'').slice(0,12)}…`}catch(e){clearPreviewArtifact();empty.textContent=e.message||'پیش‌نمایش ساخته نشد.';empty.hidden=false}}
+ 
+ 
+ function selectedAgent(kind='primary'){const selector=kind==='fallback'?'[data-fallback-agent-select]':'[data-agent-select]',id=Number($(selector)?.value||0);return snap?.agents?.find(a=>Number(a.id)===id)||null}
+@@ -163,7 +172,8 @@
+ $('[data-template-editor-reset]')?.addEventListener('click',()=>{if(templateEditorBase)fillTemplateEditor(templateEditorBase)});
+ $('[data-template-editor-form]')?.addEventListener('submit',saveTemplateVersion);$('[data-template-editor-form]')?.addEventListener('input',renderTemplateDraftPreview);$('[data-template-editor-form]')?.addEventListener('change',renderTemplateDraftPreview);
+ $('[data-preview-close]').addEventListener('click',()=>{clearPreviewArtifact();$('[data-dialog="preview"]').close()});
+-root.querySelectorAll('[data-preview-format]').forEach(b=>b.addEventListener('click',()=>{if(previewContext)previewPrintTemplate(previewContext.row,previewContext.dest,String(b.dataset.previewFormat||'pdf'))}));
++$('[data-template-draft-preview]')?.addEventListener('click',()=>{try{if(!templateEditorBase||!$('[data-template-editor-form]').reportValidity())return;const draft=buildTemplateEditorPackage();previewPrintTemplate({id:templateEditorBase.package_id,display_name:draft.name+' — پیش‌نویس'},null,'pdf',draft)}catch(err){editorValidation(err.message||'پیش‌نویس معتبر نیست.')}});
++root.querySelectorAll('[data-preview-format]').forEach(b=>b.addEventListener('click',()=>{if(previewContext)previewPrintTemplate(previewContext.row,previewContext.dest,String(b.dataset.previewFormat||'pdf'),previewContext.draftPackage)}));
+ $('[data-agent-select]').addEventListener('change',()=>renderPrinterOptions('','primary'));$('[data-fallback-agent-select]').addEventListener('change',()=>renderPrinterOptions('','fallback'));
+ $('[data-printer-select]').addEventListener('change',()=>renderPrinterOptions($('[data-printer-select]').value));
+ const form=$('[data-form="destination"]');form.addEventListener('submit',async e=>{e.preventDefault();await SoknaUI.busy(e.currentTarget,async()=>{if(!(e.submitter instanceof HTMLButtonElement)||e.submitter.value!=='submit'){form.closest('dialog').close();return}const d=Object.fromEntries(new FormData(form).entries());if(form.elements.active.checked&&!d.windows_queue_name){sectionState('برای فعال‌کردن مقصد، یک چاپگر گزارش‌شده توسط ویندوز انتخاب کن.',true);return}if(d.fallback_agent_id&&d.fallback_agent_id===d.agent_id){sectionState('دستگاه پشتیبان باید با دستگاه اصلی متفاوت باشد.',true);return}try{await post({action:'print_destination_configure',...d,active:form.elements.active.checked,required_for_operation:form.elements.required_for_operation.checked});form.closest('dialog').close();await refresh('مقصد چاپ ذخیره شد.')}catch(err){sectionState(err.message||'ذخیره مقصد چاپ انجام نشد.',true)}})});
+--- a/public/assets/product-shell.js
++++ b/public/assets/product-shell.js
+@@ -38,6 +38,61 @@
+   const clocks=[...document.querySelectorAll('[data-shell-clock]')];
+   const syncClocks=()=>clocks.forEach(updateClock);
+   if(clocks.length){syncClocks();window.setInterval(syncClocks,30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncClocks()})}
++
++  // Observational Persian calendar. Does not alter the operational business-day cutoff.
++  (()=>{
++    const wrap=document.querySelector('.sc-shell__calendar-wrap');
++    if(!wrap)return;
++    const toggle=wrap.querySelector('[data-shell-calendar-toggle]'),panel=wrap.querySelector('[data-shell-calendar-panel]');
++    const days=wrap.querySelector('[data-shell-calendar-days]'),label=wrap.querySelector('[data-shell-calendar-month]');
++    const detail=wrap.querySelector('[data-shell-calendar-detail]'),source=wrap.querySelector('[data-shell-calendar-source]');
++    const months=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
++    const cal=new Intl.DateTimeFormat('en-US-u-ca-persian',{year:'numeric',month:'numeric',day:'numeric',timeZone:'Asia/Tehran'});
++    const fd=n=>faDigits(n);
++    const dayParts=d=>Object.fromEntries(cal.formatToParts(d).filter(x=>x.type!=='literal').map(x=>[x.type,Number(x.value)]));
++    const utcDay=d=>new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),12));
++    const shift=(d,n)=>new Date(d.getTime()+n*86400000);
++    const key=({year,month,day})=>[year,String(month).padStart(2,'0'),String(day).padStart(2,'0')].join('-');
++    const firstDate=d=>{let first=utcDay(d);for(let n=0;n<33&&dayParts(first).day!==1;n++)first=shift(first,-1);return first};
++    let first=null,events=null;
++    const today=()=>dayParts(canonicalNow(wrap));
++    const close=(focus=false)=>{if(panel.hidden)return;panel.hidden=true;toggle.setAttribute('aria-expanded','false');if(focus)toggle.focus({preventScroll:true})};
++    const render=()=>{
++      if(!first)return;
++      const ym=dayParts(first);label.textContent=months[ym.month-1]+' '+fd(ym.year);
++      days.replaceChildren();
++      const blank=(first.getUTCDay()+1)%7;
++      for(let i=0;i<blank;i++){const gap=document.createElement('span');gap.className='is-gap';gap.setAttribute('aria-hidden','true');days.append(gap)}
++      const nowKey=key(today());
++      for(let d=first,n=0;n<31;n++,d=shift(d,1)){
++        const stamp=dayParts(d);if(stamp.month!==ym.month||stamp.year!==ym.year)break;
++        const k=key(stamp),event=events?.year===stamp.year?events.events?.[k]:null;
++        const b=document.createElement('button');b.type='button';b.textContent=fd(stamp.day);b.className='sc-shell__calendar-day';
++        const friday=d.getUTCDay()===5;
++        if(friday)b.classList.add('is-weekend');
++        if(event?.holiday)b.classList.add('is-holiday');else if(event)b.classList.add('has-occasion');
++        if(k===nowKey){b.classList.add('is-today');b.setAttribute('aria-current','date')}
++        b.setAttribute('aria-label',`${fd(stamp.day)} ${months[stamp.month-1]} ${fd(stamp.year)}${event?'، '+event.label:''}${friday?'، جمعه':''}`);
++        b.addEventListener('click',()=>{days.querySelectorAll('.is-selected').forEach(x=>x.classList.remove('is-selected'));b.classList.add('is-selected');detail.textContent=event?((event.holiday?'تعطیل رسمی: ':'مناسبت: ')+event.label):(friday?'جمعه — تعطیلی هفتگی':(events?.year===stamp.year?'مناسبت ثبت‌شده‌ای در مجموعه داده موجود نیست.':'اطلاعات مناسبت‌های این سال در دسترس نیست.'))});
++        days.append(b);
++      }
++      source.textContent=events?.year===ym.year?'منبع: تقویم رسمی مرکز تقویم دانشگاه تهران، ۱۴۰۵ (تعطیلات و مناسبت‌های منتخب)':'اطلاعات مناسبت‌های این سال در دسترس نیست';
++    };
++    const load=async()=>{
++      try{
++        const res=await fetch(appPath('/assets/iran-calendar-1405.json'),{credentials:'same-origin'});
++        if(!res.ok)throw Error('offline');const data=await res.json();
++        if(data.schema==='sokna-iran-calendar-v1'&&data.year===1405&&data.events&&typeof data.events==='object'){events=data}
++      }catch(_){events=null}
++      render();
++    };
++    toggle.addEventListener('click',()=>{if(!panel.hidden){close(true);return}first=firstDate(canonicalNow(wrap));panel.hidden=false;toggle.setAttribute('aria-expanded','true');render();load()});
++    wrap.querySelector('[data-shell-calendar-prev]').addEventListener('click',()=>{first=firstDate(shift(first,-1));render()});
++    wrap.querySelector('[data-shell-calendar-next]').addEventListener('click',()=>{first=firstDate(shift(first,35));render()});
++    wrap.querySelector('[data-shell-calendar-close]').addEventListener('click',()=>close(true));
++    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!panel.hidden){e.preventDefault();close(true)}});
++    document.addEventListener('pointerdown',e=>{if(!panel.hidden&&!wrap.contains(e.target))close()});
++  })();
+ 
+   // Local notification bell: read-only preview of the authenticated user's inbox.
+   // Never acknowledge/delete notifications in a preview; the inbox remains authoritative.
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6420,3 +6420,41 @@
+ 
+ /* Five compact dashboard KPIs on desktop; four-card layouts remain unchanged. */
+ @media(min-width:981px){.sc-dashboard-kpis--five{grid-template-columns:repeat(5,minmax(0,1fr))}.sc-dashboard-kpis--five .sc-dashboard-kpi{grid-template-columns:34px minmax(0,1fr) 12px;gap:7px;padding-inline:10px}.sc-dashboard-kpis--five .sc-dashboard-kpi__icon{inline-size:34px;block-size:34px;border-radius:11px}.sc-dashboard-kpis--five .sc-dashboard-kpi strong{font-size:clamp(.95rem,1.18vw,1.4rem);overflow-wrap:anywhere}.sc-dashboard-kpis--five .sc-dashboard-kpi small{font-size:.68rem}}
++
++
++/* R295: print density and readable differentiated draft preview. */
++.sc-template-live-paper .sc-template-live-row{font-size:var(--sc-draft-item-size,13px);padding-block:var(--sc-draft-row-gap,3px)}
++body[data-page="printing"] .sc-print-main:has([data-print-panel="devices"][hidden])>.sc-print-readiness,
++body[data-page="printing"] .sc-print-main:has([data-print-panel="devices"][hidden])>.sc-print-kpis{display:none!important}
++body[data-page="printing"] .sc-print-tabs{display:flex;inline-size:100%;gap:6px;align-items:center;flex-wrap:wrap}
++body[data-page="printing"] .sc-print-tabs .sc-tab{min-block-size:40px;white-space:nowrap}
++body[data-page="printing"] .sc-print-main [data-print-template-list] .sc-list-item{padding:10px 12px;gap:6px}
++body[data-page="printing"] .sc-print-main [data-print-template-list] .sc-list-item__head{gap:8px}
++body[data-page="printing"] .sc-print-main [data-print-template-list] .sc-actions{gap:6px}
++/* Native dialog layout: predictable centering regardless of RTL and sidebar state. */
++body[data-page="operator"] dialog.sc-hall-discount-dialog[open]{position:fixed!important;inset:0!important;margin:auto!important;transform:none!important;max-block-size:min(88dvh,720px)}
++@media(max-width:640px){body[data-page="operator"] dialog.sc-hall-discount-dialog[open]{inline-size:calc(100vw - 24px)!important;max-inline-size:calc(100vw - 24px)!important}}
++
++/* R295: accessible, observational Jalali calendar anchored to the existing header clock. */
++.sc-shell__calendar-wrap{position:relative}
++.sc-shell__calendar-toggle{display:flex;align-items:center;gap:8px;background:transparent;color:inherit;border:0;cursor:pointer;text-align:inherit;font:inherit;padding:0;min-height:40px}
++.sc-shell__calendar-toggle:focus-visible{outline:2px solid var(--sc-primary,#8a4b35);outline-offset:3px;border-radius:8px}
++.sc-shell__calendar-panel[hidden]{display:none!important}
++.sc-shell__calendar-panel{position:absolute;z-index:850;inset-block-start:calc(100% + 7px);inset-inline-start:0;width:min(340px,calc(100vw - 24px));border:1px solid var(--sc-border,#ddd);border-radius:14px;background:var(--sc-surface,#fff);color:var(--sc-text,#222);box-shadow:0 18px 32px #0002;padding:12px;direction:rtl}
++.sc-shell__calendar-panel header{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:8px}
++.sc-shell__calendar-panel header strong{flex:1;text-align:center;font-size:14px}
++.sc-shell__calendar-weekdays,.sc-shell__calendar-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center}
++.sc-shell__calendar-weekdays{margin-bottom:5px;font-size:11px;color:var(--sc-muted,#777)}
++.sc-shell__calendar-day{border:1px solid transparent;border-radius:8px;min-height:38px;font:inherit;background:transparent;color:inherit;cursor:pointer}
++.sc-shell__calendar-day:hover,.sc-shell__calendar-day.is-selected{background:color-mix(in srgb,var(--sc-primary,#8a4b35) 13%,transparent)}
++.sc-shell__calendar-day.is-today{border-color:var(--sc-primary,#8a4b35);font-weight:700}
++.sc-shell__calendar-day.is-holiday{color:#b12c42;font-weight:700}
++.sc-shell__calendar-day.is-weekend{color:#b12c42}
++.sc-shell__calendar-day.has-occasion::after,.sc-shell__calendar-day.is-holiday::after{content:'';display:block;width:4px;height:4px;margin:1px auto 0;border-radius:50%;background:currentColor}
++.sc-shell__calendar-detail{min-height:38px;font-size:12px;margin:10px 0 6px}
++.sc-shell__calendar-panel footer{font-size:10px;line-height:1.7;color:var(--sc-muted,#777);border-top:1px solid var(--sc-border,#eee);padding-top:6px}
++@media(max-width:640px){.sc-shell__calendar-panel{position:fixed;top:64px;left:12px;right:12px;inset-inline:12px;width:auto;max-width:390px;margin-inline:auto}.sc-shell__calendar-day{min-height:44px}}
++
++.sc-template-live-paper .sc-template-live-footer{line-height:1.5}
++.sc-template-live-paper .sc-template-live-meta{font-size:var(--sc-draft-meta-size,12px)}
++.sc-template-live-paper .sc-template-live-note{font-size:var(--sc-draft-notes-size,12px)}
+--- a/public/printing/api.php
++++ b/public/printing/api.php
+@@ -19,6 +19,7 @@
+     if($action==='print_template_rollback')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->rollback((int)($data['package_id']??0),$user)]);
+     if($action==='print_template_delete')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->delete((int)($data['package_id']??0),$user)]);
+     if($action==='print_template_activate')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->activate((int)($data['package_id']??0),$user)]);
++    if($action==='print_template_draft_preview')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->previewDraft((int)($data['base_package_id']??0),(array)($data['package']??[]),(string)($data['destination_key']??''),$user,(string)($data['output_format']??'pdf'))]);
+     if($action==='print_template_preview')WebAction::json(['success'=>true,'result'=>$core->printTemplates()->preview((int)($data['package_id']??0),(string)($data['destination_key']??''),$user,(string)($data['output_format']??'pdf'))]);
+     if($action==='pdf_test_bridge')WebAction::json(['success'=>true,'result'=>$core->printing()->pdfTestBridge($user,(int)($data['agent_id']??0))]);
+     if($action==='print_test')WebAction::json(['success'=>true,'result'=>$core->printing()->enqueueTest((string)($data['destination_key']??''),(string)($data['request_id']??''),$user,isset($data['package_id'])?(int)$data['package_id']:null)]);
+--- a/public/printing/index.php
++++ b/public/printing/index.php
+@@ -54,14 +54,14 @@
+     <div class="sc-entity-editor__validation sc-alert sc-alert--danger" data-template-editor-validation role="status" aria-live="polite" hidden></div>
+     <div class="sc-entity-editor__body">
+       <section class="sc-entity-editor__section" aria-labelledby="print-template-meta"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-meta">نسخه و معرفی</h3><p>خانواده و نوع سند از نسخه مبنا ثابت می‌ماند.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field sc-entity-editor__span-2"><span class="sc-field__label">نام قالب</span><input class="sc-control" name="name" maxlength="120" required></label><label class="sc-field"><span class="sc-field__label">نسخه جدید</span><input class="sc-control" name="version" dir="ltr" inputmode="text" pattern="[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?" required></label><label class="sc-field"><span class="sc-field__label">نوع سند</span><input class="sc-control" data-template-kind readonly></label><label class="sc-field sc-entity-editor__span-2"><span class="sc-field__label">توضیح</span><textarea class="sc-control" name="description" rows="3" maxlength="500"></textarea></label></div></section>
+-      <section class="sc-entity-editor__section" aria-labelledby="print-template-typography"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-typography">اندازه و فاصله</h3><p>مقادیر خارج از محدوده مجاز ذخیره نمی‌شوند.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">متن پایه</span><input class="sc-control" name="base_font_size" type="text" inputmode="numeric" data-fa-number="1" min="18" max="42"></label><label class="sc-field"><span class="sc-field__label">عنوان</span><input class="sc-control" name="title_font_size" type="text" inputmode="numeric" data-fa-number="1" min="22" max="60"></label><label class="sc-field"><span class="sc-field__label">اقلام</span><input class="sc-control" name="table_font_size" type="text" inputmode="numeric" data-fa-number="1" min="24" max="72"></label><label class="sc-field"><span class="sc-field__label">فاصله خطوط</span><input class="sc-control" name="line_spacing" type="text" inputmode="numeric" data-fa-number="1" min="2" max="20"></label><label class="sc-field"><span class="sc-field__label">حاشیه</span><input class="sc-control" name="margin" type="text" inputmode="numeric" data-fa-number="1" min="2" max="30"></label></div></section>
++      <section class="sc-entity-editor__section" aria-labelledby="print-template-typography"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-typography">اندازه و فاصله</h3><p>مقادیر خارج از محدوده مجاز ذخیره نمی‌شوند.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">متن پایه</span><input class="sc-control" name="base_font_size" type="text" inputmode="numeric" data-fa-number="1" min="18" max="42"></label><label class="sc-field"><span class="sc-field__label">عنوان</span><input class="sc-control" name="title_font_size" type="text" inputmode="numeric" data-fa-number="1" min="22" max="60"></label><label class="sc-field"><span class="sc-field__label">اقلام</span><input class="sc-control" name="table_font_size" type="text" inputmode="numeric" data-fa-number="1" min="24" max="72"></label><label class="sc-field"><span class="sc-field__label">یادداشت‌ها</span><input class="sc-control" name="notes_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">متن پایانی</span><input class="sc-control" name="footer_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">جمع‌ها</span><input class="sc-control" name="totals_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">اطلاعات پرداخت</span><input class="sc-control" name="settlement_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">مشخصات و زمان</span><input class="sc-control" name="meta_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">فاصله خطوط</span><input class="sc-control" name="line_spacing" type="text" inputmode="numeric" data-fa-number="1" min="2" max="20"></label><label class="sc-field"><span class="sc-field__label">حاشیه</span><input class="sc-control" name="margin" type="text" inputmode="numeric" data-fa-number="1" min="2" max="30"></label></div></section>
+       <section class="sc-entity-editor__section" aria-labelledby="print-template-content"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-content">محتوا</h3><p>اگر گزینه‌ای تعیین نشود، مقدار پیش‌فرض سامانه استفاده می‌شود.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">نام کاربر</span><select class="sc-control" name="show_actor"><option value="">پیش‌فرض سامانه</option><option value="1">نمایش</option><option value="0">مخفی</option></select></label><label class="sc-field"><span class="sc-field__label">زمان</span><select class="sc-control" name="show_time"><option value="">پیش‌فرض سامانه</option><option value="1">نمایش</option><option value="0">مخفی</option></select></label><label class="sc-field"><span class="sc-field__label">شماره سفارش</span><select class="sc-control" name="show_order_number"><option value="">پیش‌فرض سامانه</option><option value="1">نمایش</option><option value="0">مخفی</option></select></label><label class="sc-field"><span class="sc-field__label">عنوان بخش‌ها</span><select class="sc-control" name="show_section_titles"><option value="">پیش‌فرض سامانه</option><option value="1">نمایش</option><option value="0">مخفی</option></select></label><label class="sc-field"><span class="sc-field__label">قیمت‌ها</span><select class="sc-control" name="show_prices"><option value="">پیش‌فرض سامانه</option><option value="1">نمایش</option><option value="0">مخفی</option></select></label><label class="sc-field sc-entity-editor__span-2"><span class="sc-field__label">متن پایانی</span><textarea class="sc-control" name="footer" rows="2" maxlength="300"></textarea></label></div></section>
+       <section class="sc-entity-editor__section" aria-labelledby="print-template-layout"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-layout">چیدمان</h3><p>این تنظیمات همان چیدمانی را مشخص می‌کنند که در چاپ واقعی استفاده می‌شود.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">تراکم</span><select class="sc-control" name="density"><option value="">پیش‌فرض سامانه</option><option value="compact">فشرده</option><option value="comfortable">راحت</option></select></label><label class="sc-field"><span class="sc-field__label">تراز سرصفحه</span><select class="sc-control" name="header_alignment"><option value="">پیش‌فرض سامانه</option><option value="right">راست</option><option value="center">وسط</option></select></label><label class="sc-field"><span class="sc-field__label">جداکننده</span><select class="sc-control" name="separator_style"><option value="">پیش‌فرض سامانه</option><option value="solid">خط ممتد</option><option value="dashed">خط‌چین</option><option value="minimal">حداقلی</option></select></label><label class="sc-field"><span class="sc-field__label">چیدمان آیتم</span><select class="sc-control" name="item_layout"><option value="">پیش‌فرض سامانه</option><option value="columnar">ستونی</option><option value="columnar-compact">ستونی فشرده</option><option value="two-line">دوخطی</option><option value="responsive-receipt">رسید واکنش‌گرا</option></select></label></div></section>
+       <section class="sc-entity-editor__section sc-entity-editor__wide" aria-labelledby="print-template-sections"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-sections">ترتیب بخش‌ها</h3><p>اگر ترتیب سفارشی خاموش باشد، قرارداد پیش‌فرض سامانه دست‌نخورده می‌ماند.</p></div></div><label class="sc-inline"><input type="checkbox" data-template-custom-order> ترتیب سفارشی بخش‌ها</label><div class="sc-print-template-section-order" data-template-section-order></div></section>
+       <section class="sc-entity-editor__section sc-entity-editor__wide" aria-labelledby="print-template-labels"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-labels">برچسب‌های اختیاری</h3><p>فقط برچسب‌هایی که لازم است با متن پیش‌فرض متفاوت باشند پر شوند.</p></div></div><div class="sc-entity-editor__fields" data-template-labels></div></section>
+     </div>
+-    <aside class="sc-template-live-block" aria-label="پیش‌نمایش فوری چیدمان فیش"><div class="sc-entity-editor__section-head"><div><h3>پیش‌نمایش زنده چیدمان</h3><p>نمونه تقریبی برای تشخیص اثر گزینه‌ها؛ برای بررسی خروجی دقیق از پیش‌نمایش واقعی نسخه ذخیره‌شده استفاده کن.</p></div></div><div class="sc-template-live-stage" data-template-live-preview aria-live="off"></div></aside>
+-    <footer class="sc-entity-editor__footer"><span class="sc-entity-editor__footer-hint">بازنشانی فقط تغییرات این فرم را برمی‌گرداند؛ نسخه مبنا در پایگاه داده هرگز تغییر نمی‌کند.</span><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-template-editor-reset>بازنشانی تغییرات</button><button class="sc-button" type="submit" value="submit">ذخیره به‌عنوان نسخه جدید</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></div></footer>
++    <aside class="sc-template-live-block" aria-label="پیش‌نمایش فوری چیدمان فیش"><div class="sc-entity-editor__section-head"><div><h3>پیش‌نمایش زنده چیدمان</h3><p>نمونه سریع برای بررسی چیدمان؛ پیش‌نمایش دقیق همین تغییرات را با موتور چاپ ویندوز ببین.</p></div></div><div class="sc-template-live-stage" data-template-live-preview aria-live="off"></div></aside>
++    <footer class="sc-entity-editor__footer"><span class="sc-entity-editor__footer-hint">بازنشانی فقط تغییرات این فرم را برمی‌گرداند؛ نسخه مبنا در پایگاه داده هرگز تغییر نمی‌کند.</span><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-template-editor-reset>بازنشانی تغییرات</button><button class="sc-button sc-button--secondary" type="button" data-template-draft-preview>پیش‌نمایش دقیق پیش‌نویس</button><button class="sc-button" type="submit" value="submit">ذخیره به‌عنوان نسخه جدید</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></div></footer>
+   </form></dialog>
+   <dialog class="sc-dialog sc-print-preview-dialog sc-print-task-dialog" data-dialog="preview" aria-labelledby="sc-dialog-title-printing-preview" data-dialog-size="xl"><div class="sc-dialog-frame"><header class="sc-dialog-frame__head"><div><h2 id="sc-dialog-title-printing-preview" tabindex="-1">پیش‌نمایش قالب چاپ</h2><p data-preview-meta>در حال دریافت اطلاعات قالب…</p><small class="sc-muted" data-preview-detail></small></div><button class="sc-icon-button" type="button" data-preview-close aria-label="بستن"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="sc-dialog-frame__body sc-print-preview-body"><div class="sc-segmented sc-print-preview-formats" aria-label="فرمت پیش‌نمایش"><button class="sc-button sc-button--secondary" type="button" data-preview-format="pdf" aria-pressed="true">PDF</button><button class="sc-button sc-button--secondary" type="button" data-preview-format="png" aria-pressed="false">تصویر</button></div><div class="sc-print-preview-stage"><div class="sc-empty" data-preview-empty>پیش‌نمایش در حال دریافت است…</div><iframe data-preview-pdf title="پیش‌نمایش PDF قالب چاپ" class="sc-print-preview sc-print-preview--pdf" hidden></iframe><img data-preview-image alt="پیش‌نمایش تصویری رسید چاپ" class="sc-print-preview sc-print-preview--image" hidden></div></div><footer class="sc-dialog-frame__foot"><span class="sc-muted">پیش‌نمایش با همان قالب واقعی چاپ ساخته می‌شود.</span><button class="sc-button sc-button--secondary" type="button" data-preview-close>بستن</button></footer></div></dialog>
+   <dialog class="sc-dialog sc-print-task-dialog sc-print-destination-dialog" data-dialog="destination" aria-labelledby="sc-dialog-title-printing-destination" data-dialog-size="md"><form method="dialog" class="sc-dialog-frame" data-form="destination"><header class="sc-dialog-frame__head"><div><h2 id="sc-dialog-title-printing-destination" tabindex="-1">تنظیم مقصد چاپ</h2><p data-destination-label>مسیر اصلی و در صورت نیاز مسیر پشتیبان را انتخاب کن.</p></div><button class="sc-icon-button" type="button" data-dialog-close aria-label="بستن"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="sc-dialog-frame__body"><input type="hidden" name="destination_key"><section class="sc-dialog-section"><div class="sc-dialog-section__head"><strong>مسیر اصلی</strong><small>فقط دستگاه‌ها و چاپگرهای شناسایی‌شده قابل انتخاب‌اند.</small></div><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">دستگاه اصلی</span><select class="sc-control" name="agent_id" data-agent-select></select></label><label class="sc-field"><span class="sc-field__label">چاپگر اصلی</span><select class="sc-control" name="windows_queue_name" data-printer-select required></select><small class="sc-help" data-printer-help>ابتدا دستگاه چاپ را انتخاب کن.</small></label></div></section><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">تعداد نسخه چاپی</span><input class="sc-control" name="copies" type="text" inputmode="numeric" data-fa-number="1" min="1" max="5" value="۱"></label><fieldset class="sc-field"><legend>وضعیت مقصد</legend><div class="sc-check-grid"><label><input type="checkbox" name="active" value="1"> فعال</label><label><input type="checkbox" name="required_for_operation" value="1"> ضروری برای عملیات</label></div></fieldset></div><details class="sc-disclosure"><summary><span><strong>مسیر پشتیبان</strong><small>اختیاری؛ فقط هنگام خرابی واقعی مسیر اصلی استفاده می‌شود.</small></span></summary><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">دستگاه پشتیبان</span><select class="sc-control" name="fallback_agent_id" data-fallback-agent-select><option value="">بدون مسیر پشتیبان</option></select></label><label class="sc-field"><span class="sc-field__label">چاپگر پشتیبان</span><select class="sc-control" name="fallback_windows_queue_name" data-fallback-printer-select><option value="">بدون چاپگر پشتیبان</option></select><small class="sc-help" data-fallback-printer-help>مسیر پشتیبان اختیاری است.</small></label></div></details><details class="sc-disclosure"><summary><span><strong>ابعاد کاغذ</strong><small>برای چاپگرهای ۸۰mm معمولاً نیازی به تغییر نیست.</small></span></summary><div class="sc-form-grid"><label class="sc-field"><span class="sc-field__label">عرض کاغذ (میلی‌متر)</span><input class="sc-control" name="paper_width_mm" inputmode="decimal" value="80"></label><label class="sc-field"><span class="sc-field__label">عرض قابل چاپ (میلی‌متر)</span><input class="sc-control" name="printable_width_mm" inputmode="decimal" value="72.1"></label></div></details></div><footer class="sc-dialog-frame__foot"><button class="sc-button" type="submit" value="submit">ذخیره مقصد چاپ</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></footer></form></dialog>
+--- a/src/Domain/Printing/PrintTemplatePackageService.php
++++ b/src/Domain/Printing/PrintTemplatePackageService.php
+@@ -10,7 +10,7 @@
+     public const FORMAT='sokna-print-template-package-v1';
+     private const KINDS=['preparation','customer'];
+     private const TOP_KEYS=['format','template_key','name','version','document_kind','description','template'];
+-    private const TEMPLATE_KEYS=['base_font_size','title_font_size','table_font_size','line_spacing','margin','show_actor','show_time','show_order_number','show_section_titles','show_prices','footer','design'];
++    private const TEMPLATE_KEYS=['base_font_size','title_font_size','table_font_size','notes_font_size','footer_font_size','totals_font_size','settlement_font_size','meta_font_size','line_spacing','margin','show_actor','show_time','show_order_number','show_section_titles','show_prices','footer','design'];
+     private const DESIGN_KEYS=['density','header_alignment','separator_style','item_layout','section_order','labels'];
+     private const LABEL_KEYS=['adjustment','discount','note','reprint','settlement','subtotal','takeaway','tax','taxable','ticket_title','total'];
+     private const PREP_SECTIONS=['status','meta','items','notes','footer'];
+@@ -168,6 +168,31 @@
+         ];
+     }
+ 
++    /** Authenticated, CSRF-gated, no-write preview of a validated draft against the actual Print Agent. */
++    public function previewDraft(int $basePackageId,array $input,string $destinationKey,array $actor,string $outputFormat='pdf'): array
++    {
++        $this->admin($actor);
++        if(strlen(self::json($input))>65536)throw new PrintException('print_template_package_size','پیش‌نویس قالب بزرگ‌تر از حد مجاز است.',413);
++        $base=$this->packageRow($basePackageId);
++        $draft=$this->canonicalPackage([
++            'format'=>self::FORMAT,
++            'template_key'=>(string)$base['template_key'],
++            'name'=>$input['name']??$base['display_name'],
++            'version'=>$input['version']??(string)$base['version'],
++            'document_kind'=>(string)$base['document_kind'],
++            'description'=>$input['description']??'',
++            'template'=>$input['template']??null,
++        ]);
++        // preview() enforces agent pairing, destination kind and output format; it makes no write.
++        $result=$this->preview($basePackageId,$destinationKey,$actor,$outputFormat);
++        $fixture=$this->fixture((string)$base['document_kind']);
++        $fixture['template']=$draft['template'];
++        $result['preview']['payload_json']=self::json($fixture);
++        $result['preview']['session_id']='draft-'.bin2hex(random_bytes(8));
++        $result['draft']=true;
++        return $result;
++    }
++
+     private function previewAgent(int $preferredAgentId=0): array
+     {
+         $where='active=1 AND retired_at IS NULL AND bridge_protocol_version=1 AND bridge_port>0 AND bridge_pairing_id IS NOT NULL AND bridge_pairing_id<>\'\'';
+@@ -189,7 +214,7 @@
+             'design_fields'=>self::DESIGN_KEYS,
+             'label_fields'=>self::LABEL_KEYS,
+             'sections'=>['preparation'=>self::PREP_SECTIONS,'customer'=>self::CUSTOMER_SECTIONS],
+-            'ranges'=>['base_font_size'=>[18,42],'title_font_size'=>[22,60],'table_font_size'=>[24,72],'line_spacing'=>[2,20],'margin'=>[2,30]],
++            'ranges'=>['base_font_size'=>[18,42],'title_font_size'=>[22,60],'table_font_size'=>[24,72],'notes_font_size'=>[14,72],'footer_font_size'=>[14,72],'totals_font_size'=>[14,72],'settlement_font_size'=>[14,72],'meta_font_size'=>[14,72],'line_spacing'=>[2,20],'margin'=>[2,30]],
+             'choices'=>['density'=>['compact','comfortable'],'header_alignment'=>['center','right'],'separator_style'=>['solid','dashed','minimal'],'item_layout'=>['columnar','columnar-compact','two-line','responsive-receipt']],
+             'standards'=>['preparation'=>['template_key'=>'sokna-standard-preparation','version'=>'1.1.0'],'customer'=>['template_key'=>'sokna-standard-customer','version'=>'1.0.0']],
+             'executable_content'=>false,
+@@ -262,7 +287,7 @@
+     private function validateTemplate(mixed $value,string $kind): array
+     {
+         if(!is_array($value)||array_is_list($value))throw new PrintException('print_template_shape','بدنه قالب معتبر نیست.',422);$this->keys($value,self::TEMPLATE_KEYS,'template');$out=[];
+-        foreach(['base_font_size'=>[18,42],'title_font_size'=>[22,60],'table_font_size'=>[24,72],'line_spacing'=>[2,20],'margin'=>[2,30]] as $key=>$range)if(array_key_exists($key,$value)){$n=filter_var($value[$key],FILTER_VALIDATE_INT);if($n===false||$n<$range[0]||$n>$range[1])throw new PrintException('print_template_range','مقدار '.$key.' خارج از محدوده امن است.',422);$out[$key]=(int)$n;}
++        foreach(['base_font_size'=>[18,42],'title_font_size'=>[22,60],'table_font_size'=>[24,72],'notes_font_size'=>[14,72],'footer_font_size'=>[14,72],'totals_font_size'=>[14,72],'settlement_font_size'=>[14,72],'meta_font_size'=>[14,72],'line_spacing'=>[2,20],'margin'=>[2,30]] as $key=>$range)if(array_key_exists($key,$value)){$n=filter_var($value[$key],FILTER_VALIDATE_INT);if($n===false||$n<$range[0]||$n>$range[1])throw new PrintException('print_template_range','مقدار '.$key.' خارج از محدوده امن است.',422);$out[$key]=(int)$n;}
+         foreach(['show_actor','show_time','show_order_number','show_section_titles','show_prices'] as $key)if(array_key_exists($key,$value)){if(!is_bool($value[$key]))throw new PrintException('print_template_boolean','مقدار '.$key.' باید true/false باشد.',422);$out[$key]=$value[$key];}
+         if(array_key_exists('footer',$value))$out['footer']=$this->optional($value['footer'],300);
+         if(array_key_exists('design',$value))$out['design']=$this->validateDesign($value['design'],$kind);
+--- a/src/UI/ProductShell.php
++++ b/src/UI/ProductShell.php
+@@ -87,7 +87,7 @@
+         echo '<div class="sc-shell__top-left">';
+         $accountLink=$accountPath!==''?'<a class="sc-user-menu__link" href="'.$u($accountPath).'" data-user-menu-primary><span>'.self::icon('users').'</span><span><strong>حساب کاربری</strong><small>پروفایل و امنیت حساب</small></span></a>':'';
+         echo '<div class="sc-user-menu sc-theme-picker" data-theme-picker data-user-menu><button class="sc-shell__user-card sc-user-menu__trigger" type="button" data-theme-menu-toggle data-theme-menu-label="preserve" aria-label="منوی کاربر، '.$name.'" aria-haspopup="true" aria-expanded="false"><span class="sc-shell__user-copy"><strong>'.$name.'</strong><small>'.$safeRole.'</small></span><span class="sc-user-menu__chevron" aria-hidden="true">'.self::icon('chevron-down').'</span></button><div class="sc-theme-picker__menu sc-user-menu__menu" aria-label="منوی کاربر" hidden data-theme-menu data-user-menu-panel>'.$accountLink.'<div class="sc-user-menu__section"><span class="sc-user-menu__section-label">پوسته</span><div class="sc-user-menu__theme" role="radiogroup" aria-label="پوسته سامانه"><button type="button" role="radio" data-theme-option="light" aria-checked="false"><span>'.self::icon('sun').'</span><span>روشن</span></button><button type="button" role="radio" data-theme-option="dark" aria-checked="false"><span>'.self::icon('moon').'</span><span>تیره</span></button><button type="button" role="radio" data-theme-option="system" aria-checked="false"><span>'.self::icon('device').'</span><span>سیستم</span></button></div></div><a class="sc-user-menu__link sc-user-menu__link--logout" href="'.$u($logoutPath).'"><span>'.self::icon('logout').'</span><span><strong>خروج</strong><small>پایان نشست جاری</small></span></a></div></div>';
+-        echo '<div class="sc-shell__date-card" data-shell-clock data-timezone="'.$timezone.'" data-server-now="'.$serverNow.'"><span class="sc-shell__date-icon" aria-hidden="true">'.self::icon('calendar').'</span><span class="sc-shell__date-copy"><strong data-shell-date>—</strong><span data-shell-time>—</span></span></div>';
++        echo '<div class="sc-shell__date-card sc-shell__calendar-wrap" data-shell-clock data-timezone="'.$timezone.'" data-server-now="'.$serverNow.'"><button type="button" class="sc-shell__calendar-toggle" data-shell-calendar-toggle aria-label="بازکردن تقویم شمسی" aria-haspopup="dialog" aria-controls="sokna-shell-calendar" aria-expanded="false"><span class="sc-shell__date-icon" aria-hidden="true">'.self::icon('calendar').'</span><span class="sc-shell__date-copy"><strong data-shell-date>—</strong><span data-shell-time>—</span></span></button><section id="sokna-shell-calendar" class="sc-shell__calendar-panel" data-shell-calendar-panel role="dialog" aria-modal="false" aria-label="تقویم شمسی" hidden><header><button type="button" class="sc-icon-button" data-shell-calendar-prev aria-label="ماه قبل">›</button><strong data-shell-calendar-month>—</strong><button type="button" class="sc-icon-button" data-shell-calendar-next aria-label="ماه بعد">‹</button><button type="button" class="sc-icon-button" data-shell-calendar-close aria-label="بستن تقویم">×</button></header><div class="sc-shell__calendar-weekdays" aria-hidden="true"><span>ش</span><span>ی</span><span>د</span><span>س</span><span>چ</span><span>پ</span><span>ج</span></div><div class="sc-shell__calendar-days" data-shell-calendar-days></div><p class="sc-shell__calendar-detail" data-shell-calendar-detail aria-live="polite">برای مشاهده مناسبت، یک روز را انتخاب کنید.</p><footer><span data-shell-calendar-source>تقویم رسمی ۱۴۰۵؛ داده مناسبت‌ها در حال دریافت…</span></footer></section></div>';
+         echo '<div class="sc-shell__notify-wrap" data-shell-notify-wrap><button class="sc-icon-button sc-shell__notify" type="button" data-shell-notify-toggle aria-haspopup="true" aria-expanded="false" aria-controls="sokna-shell-notify-panel" aria-label="اعلان‌ها">'.self::icon('bell').'</button><section id="sokna-shell-notify-panel" class="sc-shell__notify-panel" data-shell-notify-panel data-api="'.$u('/notifications/api.php').'" hidden aria-label="اعلان‌های اخیر"><header><strong>اعلان‌های اخیر</strong><button type="button" class="sc-icon-button" data-shell-notify-close aria-label="بستن اعلان‌ها">×</button></header><div class="sc-shell__notify-items" data-shell-notify-items aria-live="polite">در حال دریافت اعلان‌ها…</div><footer><a href="'.$u($notificationsPath).'" data-shell-notify-all>مشاهده همه اعلان‌ها</a></footer></section></div>';
+         echo '</div>';
+         echo '<div class="sc-shell__top-spacer" aria-hidden="true"></div>';
