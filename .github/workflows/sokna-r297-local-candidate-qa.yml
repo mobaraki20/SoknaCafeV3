@@ -135,7 +135,7 @@ jobs:
 
   shared-factory-admission:
     needs: build-candidate
-    uses: ./.github/workflows/sokna-release-factory.yml
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
     with:
       track: registered-candidate
       candidate_contract_path: artifact:candidate-contract.json
