@@ -26,7 +26,24 @@ $old = new Migrations($p,$oldDir);
 $catalog=$old->catalog();
  $catalogKeys=array_keys($catalog);
 if(count($catalog)!==82 || end($catalogKeys)!=='0082_public_move_owner_approval') throw new RuntimeException('OLD_CATALOG_WRONG '.count($catalog));
-$initial=$old->migrate();
+// Actual BrowserSetup does not run the 82 migrations in a single pass:
+// it must seed canonical products BEFORE 0059 (which hard-guards item codes).
+$beforeSeed=$old->migrate('0059_menu_business_reconciliation_v4');
+if(count($beforeSeed)<1 || count($beforeSeed)>=82)throw new RuntimeException('PRE_SEED_BOUNDARY_FAILED');
+$p->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'admin',1)")
+  ->execute(['r294-qa-admin',password_hash('disposable-r294-only',PASSWORD_DEFAULT),'R294 QA']);
+$admin=(int)$p->lastInsertId();
+$p->prepare("INSERT INTO remote_user_credentials(user_id,password_hash,credential_version,source_mode) VALUES(?,?,1,'local_password')")
+  ->execute([$admin,password_hash('disposable-r294-only',PASSWORD_DEFAULT)]);
+$p->prepare("INSERT INTO settings(setting_key,setting_value) VALUES(?,?)")->execute(['installation.id','local-disposable-r294-qa']);
+$p->prepare("INSERT INTO cafe_tables(name,table_number,code,access_token,active,sort_order) VALUES(?,?,?,?,1,1)")->execute(['میز ۱',1,'T1',bin2hex(random_bytes(24))]);
+require_once $root.'/src/Domain/Sellables/CategoryIconLibrary.php';
+require_once $root.'/src/Domain/Sellables/DefaultContentSeeder.php';
+$icons=new Sokna\Local\Domain\Sellables\CategoryIconLibrary($root.'/resources/default-content/v1/category-icons.json');
+$seeder=new Sokna\Local\Domain\Sellables\DefaultContentSeeder($p,$icons,$root.'/resources/default-content/v1',sys_get_temp_dir().'/sokna-r294/guest-media');
+$seeder->seed($admin);
+$afterSeed=$old->migrate();
+$initial=array_merge($beforeSeed,$afterSeed);
 $oldDone=$old->appliedVersions();
 if(count($initial)!==82 || count($oldDone)!==82)throw new RuntimeException('R278_MIGRATIONS_NOT_82 '.json_encode(['new'=>count($initial),'all'=>count($oldDone)]));
 $before=[];
@@ -38,7 +55,10 @@ $oldStatementCount=(int)$p->query('SELECT COUNT(*) FROM schema_migration_stateme
 if((int)$p->query("SELECT COUNT(*) FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'remaining_account_discount_%'")->fetchColumn()!==0) throw new RuntimeException('TARGET_TABLE_ALREADY_EXISTS');
 // The 83rd forward DDL must succeed with the actual Migrations runner,
 // retaining unchanged 82-step history and previous business records.
-$new=new Migrations($p,$root.'/database/migrations');
+$targetDir=sys_get_temp_dir().'/sokna-r294/new/database/migrations';
+@mkdir($targetDir,0777,true);
+foreach(glob($root.'/database/migrations/*.sql') as $src)if(!copy($src,$targetDir.'/'.basename($src)))throw new RuntimeException('COPY_83_FAILED');
+$new=new Migrations($p,$targetDir);
 $changes=$new->migrate();
 if($changes!==['0083_remaining_account_discount'])throw new RuntimeException('EXPECTED_ONLY_0083 '.json_encode($changes));
 if(count($new->appliedVersions())!==83)throw new RuntimeException('NEW_COUNT_NOT_83');
