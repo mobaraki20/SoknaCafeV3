@@ -1,0 +1,19 @@
+{
+  "baseline": "R292 Local 605 files",
+  "target": "R293 QA",
+  "managed_files": 606,
+  "tree_sha256": "46fb003861483270ba0695dc17e48262f5433f5c2450241e101d200266410452",
+  "changed_files": [
+    "database/migrations/0083_remaining_account_discount.sql",
+    "public/assets/finance-workspace.js",
+    "public/assets/operator-workspace.js",
+    "public/assets/staff-app/hall-workspace.js",
+    "public/finance/api.php",
+    "src/Domain/Finance/SettlementService.php",
+    "src/Domain/Orders/OrderStaffActionService.php",
+    "src/Domain/Orders/TableChangeService.php",
+    "src/Relay/SettlementRealtimeAdapter.php"
+  ],
+  "operator_install_allowed": false,
+  "real_field_install_verified": false
+}
