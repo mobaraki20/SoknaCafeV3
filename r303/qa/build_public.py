@@ -1,5 +1,5 @@
 from pathlib import Path
-from zipfile import ZipFile,ZipInfo,ZIP_STORED
+from zipfile import ZipFile,ZipInfo,ZIP_DEFLATED
 import hashlib,json,io,copy,os
 SHA=lambda b:hashlib.sha256(b).hexdigest()
 WORK=Path(os.environ['R303_CI_WORK']);ROOT=WORK/'public';OUT=WORK/'out';OUT.mkdir(parents=True,exist_ok=True);BASE=Path(os.environ['R303_CI_BASE_PUBLIC'])
@@ -28,13 +28,14 @@ manifest['provenance']={
 }
 JB=lambda v:(json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
 by={'manifest.json':JB(manifest),**{'payload/'+p:b for p,b in new.items()}}
-path=OUT/'SOKNA-R303-PUBLIC-35IL-EMERGENCY-UI-QA-NOT-INSTALL.zip'
+path=OUT/'SOKNA-R303-PUBLIC-35IL-EMERGENCY-UI-COMPRESSED-QA-NOT-INSTALL.zip'
 with ZipFile(path,'w') as z:
  for name,b in sorted(by.items()):
-  i=ZipInfo(name,(2026,11,20,0,0,0));i.compress_type=ZIP_STORED;i.create_system=3;i.external_attr=0o100644<<16
-  z.writestr(i,b,compress_type=ZIP_STORED)
+  i=ZipInfo(name,(2026,11,20,0,0,0));i.compress_type=ZIP_DEFLATED;i.create_system=3;i.external_attr=0o100644<<16
+  z.writestr(i,b,compress_type=ZIP_DEFLATED,compresslevel=9)
 with ZipFile(path) as z:
  assert z.testzip() is None
+ assert path.stat().st_size<2*1024*1024,'PUBLIC_PHP_UPLOAD_MAX_2M_EXCEEDED'
  d=json.loads(z.read('manifest.json'))
  assert d['target_managed_tree_sha256']==TREE({p.removeprefix('payload/'):z.read(p) for p in z.namelist() if p.startswith('payload/')})
  assert all(x['size']==len(z.read('payload/'+x['path'])) and x['sha256']==SHA(z.read('payload/'+x['path'])) for x in d['files'])
